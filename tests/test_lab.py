@@ -65,15 +65,15 @@ def test_latency_filters_ipv6(api):
 
 
 def test_client_has_ipv6(api):
-    c = api.post("/_lab/clients", json={"name": "alice"}).json()["client"]
-    assert c["ip6"] == "2001:db8:ffff::b"
+    client = api.post("/_lab/clients", json={"name": "alice"}).json()["client"]
+    assert client["ip6"] == "2001:db8:ffff::b"
     assert ("client-add", "alice", "cl1", "192.0.2.11", "2001:db8:ffff::b") in api.sh.calls
 
 
 def test_antispoofing_sets_follow_the_addresses(api):
-    s = create_server(api, "a")["server"]
-    f = api.post("/v1/floating_ips", json={"type": "ipv4", "home_location": "fsn1"}).json()["floating_ip"]
-    wait_action(api, api.post(f"/v1/floating_ips/{f['id']}/actions/assign", json={"server": s["id"]}).json()["action"])
+    server = create_server(api, "a")["server"]
+    floating_ip = api.post("/v1/floating_ips", json={"type": "ipv4", "home_location": "fsn1"}).json()["floating_ip"]
+    wait_action(api, api.post(f"/v1/floating_ips/{floating_ip['id']}/actions/assign", json={"server": server["id"]}).json()["action"])
     src4 = nft_set(api, "src4")
-    assert '"pub1" . 198.51.100.11' in src4 and f'"pub1" . {f["ip"]}' in src4
+    assert '"pub1" . 198.51.100.11' in src4 and f'"pub1" . {floating_ip["ip"]}' in src4
     assert '"pub1" . 2001:db8:1::/64' in nft_set(api, "src6")

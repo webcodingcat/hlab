@@ -69,29 +69,29 @@ class SpecClient(TestClient):
     spec = "cloud"
 
     def request(self, method, url, *args, **kwargs):
-        r = super().request(method, url, *args, **kwargs)
+        response = super().request(method, url, *args, **kwargs)
         path = str(url).split("?")[0]
-        if path.startswith("/v1/") and r.status_code not in (401, 503, 429) and spec_check.available():
-            body = r.json() if r.headers.get("content-type", "").startswith("application/json") else None
-            errors = spec_check.check(self.spec, method.upper(), path[3:], r.status_code, body)
+        if path.startswith("/v1/") and response.status_code not in (401, 503, 429) and spec_check.available():
+            body = response.json() if response.headers.get("content-type", "").startswith("application/json") else None
+            errors = spec_check.check(self.spec, method.upper(), path[3:], response.status_code, body)
             assert not errors, "response does not match the Hetzner spec:\n" + "\n".join(errors)
-        return r
+        return response
 
 
 @pytest.fixture
 def api(lab):
-    with SpecClient(create_app(lab), headers={"Authorization": "Bearer secret"}) as c:
-        c.lab = lab
-        c.sh = lab.fabric.sh
-        yield c
+    with SpecClient(create_app(lab), headers={"Authorization": "Bearer secret"}) as client:
+        client.lab = lab
+        client.sh = lab.fabric.sh
+        yield client
 
 
 def wait_action(api, action, timeout=5.0):
     deadline = time.time() + timeout
     while time.time() < deadline:
-        a = api.get(f"/v1/actions/{action['id']}").json()["action"]
-        if a["status"] != "running":
-            return a
+        current = api.get(f"/v1/actions/{action['id']}").json()["action"]
+        if current["status"] != "running":
+            return current
         time.sleep(0.02)
     raise AssertionError(f"action {action['id']} still running")
 
@@ -104,14 +104,14 @@ def dhcp(root) -> str:
 def nft_set(api, name: str) -> str:
     """The elements of an nft set as the lab last wrote them (one transaction, faults.nft)."""
     text = (api.lab.fabric.root / "faults.nft").read_text()
-    m = re.search(rf"add element inet hlab {name} {{ (.*) }}", text)
-    return m.group(1) if m else ""
+    match = re.search(rf"add element inet hlab {name} {{ (.*) }}", text)
+    return match.group(1) if match else ""
 
 
 # --- helpers of several test files ----------------------------------------------------------------------------
 
-def make_key(i: int) -> str:
-    blob = b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00 " + bytes([i]) * 32
+def make_key(index: int) -> str:
+    blob = b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00 " + bytes([index]) * 32
     return "ssh-ed25519 " + base64.b64encode(blob).decode()
 
 
@@ -120,19 +120,19 @@ KEY = make_key(99) + " test@lab"
 
 def create_server(api, name="s1", **extra):
     body = {"name": name, "server_type": "cx23", "image": "debian-13", "location": "fsn1", **extra}
-    r = api.post("/v1/servers", json=body)
-    assert r.status_code == 201, r.text
-    out = r.json()
+    response = api.post("/v1/servers", json=body)
+    assert response.status_code == 201, response.text
+    out = response.json()
     wait_action(api, out["action"])
     return out
 
 
 def metadata(api, ip: str, path: str = "") -> dict:
     """The metadata a server with that address sees (yaml), or the raw response for a path."""
-    with TestClient(create_metadata_app(api.lab), client=(ip, 40000)) as c:
-        r = c.get(f"/hetzner/v1/metadata{path}")
-    assert r.status_code == 200, r.text
-    return yaml.safe_load(r.text)
+    with TestClient(create_metadata_app(api.lab), client=(ip, 40000)) as client:
+        response = client.get(f"/hetzner/v1/metadata{path}")
+    assert response.status_code == 200, response.text
+    return yaml.safe_load(response.text)
 
 
 def off(api, sid):
@@ -146,7 +146,7 @@ def ruleset(api) -> str:
     return (api.lab.fabric.root / "firewall.nft").read_text()
 
 
-def network(api, *subnets, name="n"):
+def create_network(api, *subnets, name="n"):
     return api.post("/v1/networks", json={"name": name, "ip_range": "10.0.0.0/16", "subnets": [
         {"type": "cloud", "ip_range": s, "network_zone": "eu-central"} for s in subnets]}).json()["network"]
 
@@ -156,25 +156,25 @@ def box_api(lab):
     """The api.hetzner.com stand-in, every /v1 response checked against Hetzner's specification."""
     class Client(SpecClient):
         spec = "hetzner"
-    with Client(storagebox.create_app(lab), headers={"Authorization": "Bearer secret"}) as c:
-        c.lab, c.sh = lab, lab.fabric.sh
-        yield c
+    with Client(storagebox.create_app(lab), headers={"Authorization": "Bearer secret"}) as client:
+        client.lab, client.sh = lab, lab.fabric.sh
+        yield client
 
 
 def box_wait(api, action, timeout=5.0):
     """Actions of the Storage Box API live under /v1/storage_boxes/actions."""
     deadline = time.time() + timeout
     while time.time() < deadline:
-        a = api.get(f"/v1/storage_boxes/actions/{action['id']}").json()["action"]
-        if a["status"] != "running":
-            return a
+        current = api.get(f"/v1/storage_boxes/actions/{action['id']}").json()["action"]
+        if current["status"] != "running":
+            return current
         time.sleep(0.02)
     raise AssertionError(f"action {action['id']} still running")
 
 
 def new_box(api, name="backup", **extra):
-    r = api.post("/v1/storage_boxes", json={"name": name, "location": "fsn1", "storage_box_type": "bx11",
-                                            "password": "Secret-Pass-123", **extra})
-    assert r.status_code == 201, r.text
-    box_wait(api, r.json()["action"])
-    return api.get(f"/v1/storage_boxes/{r.json()['storage_box']['id']}").json()["storage_box"]
+    response = api.post("/v1/storage_boxes", json={"name": name, "location": "fsn1", "storage_box_type": "bx11",
+                                                   "password": "Secret-Pass-123", **extra})
+    assert response.status_code == 201, response.text
+    box_wait(api, response.json()["action"])
+    return api.get(f"/v1/storage_boxes/{response.json()['storage_box']['id']}").json()["storage_box"]

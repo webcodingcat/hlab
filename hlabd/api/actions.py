@@ -3,7 +3,8 @@ or resource; the project-wide list only by ID (Hetzner, 30 January 2025)."""
 
 from fastapi import FastAPI, Request
 
-from .web import invalid, not_found, paginate
+from ..errors import invalid, not_found
+from .web import paginate
 
 # the resource types of actions, by the API path of their resources
 KINDS = {"servers": "server", "networks": "network", "floating_ips": "floating_ip", "volumes": "volume",
@@ -15,11 +16,11 @@ def add_routes(app: FastAPI, lab) -> None:
     state = lab.state
 
     def listed(request: Request, items: list[dict]) -> dict:
-        q = request.query_params
-        ids = {int(i) for i in q.getlist("id") if i.isdigit()}
+        query = request.query_params
+        ids = {int(i) for i in query.getlist("id") if i.isdigit()}
         if ids:
             items = [a for a in items if a["id"] in ids]
-        statuses = {s for v in q.getlist("status") for s in v.split(",")}
+        statuses = {s for v in query.getlist("status") for s in v.split(",")}
         if statuses:
             items = [a for a in items if a["status"] in statuses]
         return paginate(request, sorted(items, key=lambda a: a["id"]), "actions")
@@ -31,19 +32,19 @@ def add_routes(app: FastAPI, lab) -> None:
 
     def resource(kind: str, rid: str) -> tuple[str, int]:
         """The resource type and ID of /v1/<kind>/<rid>, or 404."""
-        t = kind_of(kind)
+        resource_type = kind_of(kind)
         if not rid.isdigit() or int(rid) not in state.data.get(kind, {}):
-            raise not_found(t)
-        return t, int(rid)
+            raise not_found(resource_type)
+        return resource_type, int(rid)
 
-    def touches(a: dict, t: str, rid: int | None = None) -> bool:
-        return any(r["type"] == t and (rid is None or r["id"] == rid) for r in a["resources"])
+    def touches(action: dict, resource_type: str, rid: int | None = None) -> bool:
+        return any(r["type"] == resource_type and (rid is None or r["id"] == rid) for r in action["resources"])
 
-    def action_or_404(aid: int, t: str | None = None, rid: int | None = None) -> dict:
-        a = state["actions"].get(aid)
-        if not a or (t and not touches(a, t, rid)):
+    def action_or_404(aid: int, resource_type: str | None = None, rid: int | None = None) -> dict:
+        action = state["actions"].get(aid)
+        if not action or (resource_type and not touches(action, resource_type, rid)):
             raise not_found("action")
-        return a
+        return action
 
     @app.get("/v1/actions")
     def actions(request: Request):
@@ -57,8 +58,8 @@ def add_routes(app: FastAPI, lab) -> None:
 
     @app.get("/v1/{kind}/actions")
     def kind_actions(request: Request, kind: str):
-        t = kind_of(kind)
-        return listed(request, [a for a in state["actions"].values() if touches(a, t)])
+        resource_type = kind_of(kind)
+        return listed(request, [a for a in state["actions"].values() if touches(a, resource_type)])
 
     @app.get("/v1/{kind}/actions/{aid}")
     def kind_action_get(kind: str, aid: int):
@@ -66,10 +67,10 @@ def add_routes(app: FastAPI, lab) -> None:
 
     @app.get("/v1/{kind}/{rid}/actions")
     def resource_actions(request: Request, kind: str, rid: str):
-        t, i = resource(kind, rid)
-        return listed(request, [a for a in state["actions"].values() if touches(a, t, i)])
+        resource_type, resource_id = resource(kind, rid)
+        return listed(request, [a for a in state["actions"].values() if touches(a, resource_type, resource_id)])
 
     @app.get("/v1/{kind}/{rid}/actions/{aid}")
     def resource_action_get(kind: str, rid: str, aid: int):
-        t, i = resource(kind, rid)
-        return {"action": action_or_404(aid, t, i)}
+        resource_type, resource_id = resource(kind, rid)
+        return {"action": action_or_404(aid, resource_type, resource_id)}

@@ -39,25 +39,25 @@ class Lab:
         self.http = httpx.Client(base_url=API, headers={"Authorization": f"Bearer {TOKEN}"}, timeout=30)
 
     def api(self, method: str, path: str, body: dict | None = None, ok: bool = True) -> dict:
-        r = self.http.request(method, path, json=body)
+        response = self.http.request(method, path, json=body)
         if ok:
-            assert r.status_code < 300, f"{method} {path}: {r.status_code} {r.text}"
-        return r.json() if r.content else {}
+            assert response.status_code < 300, f"{method} {path}: {response.status_code} {response.text}"
+        return response.json() if response.content else {}
 
     def control(self, method: str, path: str, body: dict | None = None) -> dict:
-        r = httpx.request(method, f"http://198.18.0.1/_lab{path}", json=body, timeout=120)
-        assert r.status_code < 300, r.text
-        return r.json()
+        response = httpx.request(method, f"http://198.18.0.1/_lab{path}", json=body, timeout=120)
+        assert response.status_code < 300, response.text
+        return response.json()
 
-    def wait_action(self, a: dict, timeout: float = 120) -> dict:
+    def wait_action(self, action: dict, timeout: float = 120) -> dict:
         deadline = time.time() + timeout
         while time.time() < deadline:
-            a = self.api("GET", f"/actions/{a['id']}")["action"]
-            if a["status"] != "running":
-                assert a["status"] == "success", a
-                return a
+            action = self.api("GET", f"/actions/{action['id']}")["action"]
+            if action["status"] != "running":
+                assert action["status"] == "success", action
+                return action
             time.sleep(0.5)
-        raise AssertionError(f"action {a} still running")
+        raise AssertionError(f"action {action} still running")
 
     def server(self, name: str) -> dict:
         return self.api("GET", f"/servers?name={name}")["servers"][0]
@@ -69,9 +69,9 @@ class Lab:
         return subprocess.run(["hlab", "ssh", name, cmd], capture_output=True, text=True, timeout=timeout)
 
     def sh(self, name: str, cmd: str, timeout: float = 30) -> str:
-        p = self.ssh(name, cmd, timeout)
-        assert p.returncode == 0, f"{name}: {cmd}: {p.stderr}"
-        return p.stdout.strip()
+        result = self.ssh(name, cmd, timeout)
+        assert result.returncode == 0, f"{name}: {cmd}: {result.stderr}"
+        return result.stdout.strip()
 
     def wait_ssh(self, name: str, timeout: float = 180) -> None:
         deadline = time.time() + timeout
@@ -86,9 +86,9 @@ class Lab:
 
     def create(self, name: str, **body) -> dict:
         """A server, booted and through cloud-init."""
-        a = self.api("POST", "/servers", {"name": name, "server_type": "cx23", "image": "debian-13",
-                                          "location": "fsn1", "labels": {"lab": "live"}, **body})
-        self.wait_action(a["action"], timeout=600)
+        created = self.api("POST", "/servers", {"name": name, "server_type": "cx23", "image": "debian-13",
+                                                "location": "fsn1", "labels": {"lab": "live"}, **body})
+        self.wait_action(created["action"], timeout=600)
         if body.get("start_after_create", True):
             self.wait_ssh(name)
             self.sh(name, "cloud-init status --wait >/dev/null; sync", timeout=300)
@@ -102,11 +102,11 @@ class Lab:
                               timeout=timeout)
 
     def start_echo(self, name: str) -> None:
-        p = subprocess.run(["hlab", "ssh", name, "cat > /root/echo.py && { [ -f /run/echo.pid ] && kill $(cat /run/echo.pid); "
-                            "setsid python3 /root/echo.py >/dev/null 2>&1 < /dev/null & echo $! > /run/echo.pid; "
-                            "sleep 1; }"],
-                           input=ECHO, capture_output=True, text=True, timeout=30)
-        assert p.returncode == 0, p.stderr
+        result = subprocess.run(["hlab", "ssh", name, "cat > /root/echo.py && { [ -f /run/echo.pid ] && kill $(cat /run/echo.pid); "
+                                 "setsid python3 /root/echo.py >/dev/null 2>&1 < /dev/null & echo $! > /run/echo.pid; "
+                                 "sleep 1; }"],
+                                input=ECHO, capture_output=True, text=True, timeout=30)
+        assert result.returncode == 0, result.stderr
 
 
 def probe(lab: Lab, where: str, proto: str, addr: str, port: int = 7000) -> str:

@@ -8,7 +8,7 @@ from livelab import Lab, ping, probe
 
 def test_boots_through_hetzners_datasource(lab: Lab):
     out = lab.sh("a", "cat /run/cloud-init/cloud-id; cat /sys/class/dmi/id/sys_vendor /sys/class/dmi/id/product_serial;"
-                      " ip -br link show eth0")
+                 " ip -br link show eth0")
     cloud_id, vendor, serial, link = out.splitlines()
     assert cloud_id == "hetzner" and vendor == "Hetzner" and serial == str(lab.server("a")["id"])
     assert "eth0" in link
@@ -42,10 +42,10 @@ def test_primary_ip_moves_to_another_server(lab: Lab):
 
 
 def test_rebuild(lab: Lab):
-    x = lab.create("x3")
+    server = lab.create("x3")
     try:
         lab.sh("x3", "echo from-x3 > /root/marker; sync")
-        lab.wait_action(lab.api("POST", f"/servers/{x['id']}/actions/rebuild", {"image": "debian-13"})["action"],
+        lab.wait_action(lab.api("POST", f"/servers/{server['id']}/actions/rebuild", {"image": "debian-13"})["action"],
                         timeout=300)
         lab.wait_ssh("x3")
         assert lab.ssh("x3", "test -e /root/marker").returncode == 1   # a fresh system
@@ -55,34 +55,34 @@ def test_rebuild(lab: Lab):
 
 def test_volume_automount_hotplug_and_move(lab: Lab):
     x6, x7 = lab.create("x6"), lab.create("x7")
-    r = lab.api("POST", "/volumes", {"name": "data", "size": 10, "server": x6["id"], "automount": True,
-                                     "format": "ext4"})
-    v = r["volume"]
-    lab.wait_action(r["action"], timeout=120)
+    response = lab.api("POST", "/volumes", {"name": "data", "size": 10, "server": x6["id"], "automount": True,
+                                            "format": "ext4"})
+    volume = response["volume"]
+    lab.wait_action(response["action"], timeout=120)
     try:
-        path = f"/mnt/HC_Volume_{v['id']}"
+        path = f"/mnt/HC_Volume_{volume['id']}"
         for _ in range(30):
             if lab.ssh("x6", f"mountpoint -q {path}").returncode == 0:
                 break
             time.sleep(1)
-        assert lab.sh("x6", f"ls -l {v['linux_device']} && echo hi > {path}/f && sync && cat {path}/f").endswith("hi")
+        assert lab.sh("x6", f"ls -l {volume['linux_device']} && echo hi > {path}/f && sync && cat {path}/f").endswith("hi")
         lab.sh("x6", f"umount {path}")
-        lab.wait_action(lab.api("POST", f"/volumes/{v['id']}/actions/detach")["action"])
-        assert lab.ssh("x6", f"test -e {v['linux_device']}").returncode == 1
-        lab.wait_action(lab.api("POST", f"/volumes/{v['id']}/actions/attach",
+        lab.wait_action(lab.api("POST", f"/volumes/{volume['id']}/actions/detach")["action"])
+        assert lab.ssh("x6", f"test -e {volume['linux_device']}").returncode == 1
+        lab.wait_action(lab.api("POST", f"/volumes/{volume['id']}/actions/attach",
                                 {"server": x7["id"], "automount": True})["action"])
         for _ in range(30):
             if lab.ssh("x7", f"cat {path}/f").stdout.strip() == "hi":
                 break
             time.sleep(1)
         assert lab.sh("x7", f"cat {path}/f") == "hi"
-        lab.wait_action(lab.api("POST", f"/volumes/{v['id']}/actions/resize", {"size": 20})["action"])
-        size = lab.sh("x7", f"blockdev --getsize64 {v['linux_device']}")
+        lab.wait_action(lab.api("POST", f"/volumes/{volume['id']}/actions/resize", {"size": 20})["action"])
+        size = lab.sh("x7", f"blockdev --getsize64 {volume['linux_device']}")
         assert int(size) == 20 * 2**30
     finally:
-        lab.ssh("x7", f"umount /mnt/HC_Volume_{v['id']}")
-        lab.wait_action(lab.api("POST", f"/volumes/{v['id']}/actions/detach")["action"])
-        lab.api("DELETE", f"/volumes/{v['id']}")
+        lab.ssh("x7", f"umount /mnt/HC_Volume_{volume['id']}")
+        lab.wait_action(lab.api("POST", f"/volumes/{volume['id']}/actions/detach")["action"])
+        lab.api("DELETE", f"/volumes/{volume['id']}")
         lab.delete("x6")
         lab.delete("x7")
 
@@ -107,17 +107,17 @@ def test_reset_password(lab: Lab):
     lab.sh("a", "for i in $(seq 1 120); do systemctl is-active --quiet qemu-guest-agent && exit 0; sleep 2; done; exit 1",
            timeout=300)
     before = lab.sh("a", "grep ^root: /etc/shadow | cut -d: -f2")
-    r = lab.api("POST", f"/servers/{lab.server('a')['id']}/actions/reset_password")
-    lab.wait_action(r["action"])
+    response = lab.api("POST", f"/servers/{lab.server('a')['id']}/actions/reset_password")
+    lab.wait_action(response["action"])
     assert lab.sh("a", "grep ^root: /etc/shadow | cut -d: -f2") != before
 
 
 def test_ubuntu_image(lab: Lab):
-    x = lab.create("x8", image="ubuntu-26.04", networks=[lab.nets["one"]])
+    server = lab.create("x8", image="ubuntu-26.04", networks=[lab.nets["one"]])
     try:
         assert "Ubuntu 26.04" in lab.sh("x8", "cat /etc/os-release")
         assert lab.sh("x8", "cat /run/cloud-init/cloud-id") == "hetzner"
-        priv = x["private_net"][0]["ip"]
+        priv = server["private_net"][0]["ip"]
         for _ in range(30):
             if priv in lab.ssh("x8", "ip -br a").stdout:
                 break

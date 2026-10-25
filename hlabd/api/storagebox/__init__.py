@@ -27,28 +27,28 @@ def restore(lab) -> None:
     """After a lab start: the accounts of all boxes (their roots live in /run). Passwords stay as set (shadow is
     in the container, so they are set again from the state). A box that cannot be set up again is skipped and
     logged; the lab comes up anyway. Snapshots whose copy a restart cut off go."""
-    state, box = lab.state, lab.fabric.box
+    state, fabric = lab.state, lab.fabric
     for s in [s for s in state["box_snapshots"].values() if s.get("_copying")]:
-        b = state["storage_boxes"].get(s["box"])
-        if b:
-            box.rmtree(snap_dir(b, s["name"]), check=False)
+        box = state["storage_boxes"].get(s["box"])
+        if box:
+            fabric.box.rmtree(snap_dir(box, s["name"]), check=False)
         del state["box_snapshots"][s["id"]]
-    box.rmtree(f"{BOX}/snapshots/.work", check=False)   # copies cut off
-    for b in state["storage_boxes"].values():
-        b.pop("_busy", None)
+    fabric.box.rmtree(f"{BOX}/snapshots/.work", check=False)   # copies cut off
+    for box in state["storage_boxes"].values():
+        box.pop("_busy", None)
     for a in state["subaccounts"].values():
         a.pop("_creating", None)
     state.save()
-    for b in state["storage_boxes"].values():
+    for box in state["storage_boxes"].values():
         try:
-            box.account(username(b), data_dir(b), b.get("_password"), quota(lab, b), str(b["id"]))
-            sync_box(lab, b)
+            fabric.box.account(username(box), data_dir(box), box.get("_password"), quota(lab, box), str(box["id"]))
+            sync_box(lab, box)
         except Exception:  # noqa: BLE001
-            log.exception("Storage Box %s not restored", b["id"])
+            log.exception("Storage Box %s not restored", box["id"])
             continue
-        for a in [a for a in state["subaccounts"].values() if a["box"] == b["id"]]:
+        for a in [a for a in state["subaccounts"].values() if a["box"] == box["id"]]:
             try:
-                box.account(a["username"], sub_home(b, a), a.get("_password"), quota(lab, b), username(b))
-                box.access(a["username"], a["access"], quota(lab, b))
+                fabric.box.account(a["username"], sub_home(box, a), a.get("_password"), quota(lab, box), username(box))
+                fabric.box.access(a["username"], a["access"], quota(lab, box))
             except Exception:  # noqa: BLE001
                 log.exception("sub-account %s not restored", a["username"])

@@ -44,7 +44,7 @@ def check(which: str, method: str, path: str, status: int, body) -> list[str]:
         schema = (resp.get("content") or {}).get("application/json", {}).get("schema")
         if schema is None:
             return [] if body in (None, "", {}) else [f"{method} {template} {status}: spec has no body"]
-        v = Draft202012Validator(schema)
+        validator = Draft202012Validator(schema)
         return [f"{method} {template} {status}: {'/'.join(map(str, e.absolute_path))}: {e.message[:300]}"
-                for e in sorted(v.iter_errors(body), key=lambda e: list(map(str, e.absolute_path)))][:10]
+                for e in sorted(validator.iter_errors(body), key=lambda e: list(map(str, e.absolute_path)))][:10]
     return []

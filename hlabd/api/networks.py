@@ -7,9 +7,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import Response
 
 from .. import config as C
-from ..fabric.network import network_gateway, private_mac, route_table
+from ..errors import ApiError, invalid, limit_exceeded, locked, not_found, unique_name, unsupported
+from ..fabric.network import network_gateway, private_mac
+from ..lab import now
 from . import hetzner as H
-from .web import ApiError, body, filtered, invalid, limit_exceeded, not_found, paginate, unique_name, unsupported
+from .web import read_body, filtered, paginate
 
 NETWORKS_PER_SERVER = 3   # Hetzner's limit
 PRIVATE_RANGES = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")]
@@ -31,18 +33,19 @@ def private_range(net: ipaddress.IPv4Network) -> bool:
 
 def network_range(value) -> ipaddress.IPv4Network:
     """The ip_range of a network: RFC 1918, at least a /24."""
-    rng = cidr(value, "ip_range")
-    if not private_range(rng):
+    ip_range = cidr(value, "ip_range")
+    if not private_range(ip_range):
         raise invalid("ip_range must be a private range (RFC 1918)", "ip_range")
-    if rng.prefixlen > 24:
+    if ip_range.prefixlen > 24:
         raise invalid("the smallest network is a /24", "ip_range")
-    return rng
+    return ip_range
 
 
-def addresses_in(state, nid: int, but: dict | None = None) -> set[str]:
+def addresses_in(state, nid: int, except_nic: dict | None = None) -> set[str]:
     """The private and alias IPs servers have in a network (but one NIC)."""
-    return {ip for s in state["servers"].values() for n in s["_lab"]["nics"] if n["network"] == nid and n is not but
-            for ip in [n["ip"], *(n.get("alias_ips") or [])]}
+    nics = [n for s in state["servers"].values() for n in s["_lab"]["nics"]
+            if n["network"] == nid and n is not except_nic]
+    return {ip for n in nics for ip in [n["ip"], *(n.get("alias_ips") or [])]}
 
 
 def lab_addresses(lab) -> set[str]:
@@ -67,14 +70,14 @@ def network_ip(lab, net: dict, ip: str | None, zone: str = "eu-central", ip_rang
     used = addresses_in(lab.state, net["id"]) | lab_addresses(lab)
     if ip:
         try:
-            addr = ipaddress.ip_address(str(ip))
+            address = ipaddress.ip_address(str(ip))
         except ValueError:
             raise invalid("ip must be an IP address", "ip") from None
-        if ip_range is not None and addr not in subnets[0]:
+        if ip_range is not None and address not in subnets[0]:
             raise invalid("ip is not part of ip_range", "ip")
-        if str(addr) in used or not any(addr in sn for sn in subnets):
-            raise ApiError(422, "ip_not_available", f"IP {addr} is not available")
-        return str(addr)
+        if str(address) in used or not any(address in sn for sn in subnets):
+            raise ApiError(422, "ip_not_available", f"IP {address} is not available")
+        return str(address)
     ip = next((str(h) for sn in subnets for h in sn.hosts() if str(h) not in used), None)
     if not ip:
         raise ApiError(422, "no_subnet_available", "no free IP in the network")
@@ -89,46 +92,46 @@ def alias_ips(lab, nic: dict, ips) -> list[str]:
         raise invalid("alias_ips is a list of IPs", "alias_ips")
     net = lab.state["networks"][nic["network"]]
     subnets = [ipaddress.ip_network(x["ip_range"]) for x in net["subnets"]]
-    taken = addresses_in(lab.state, net["id"], but=nic) | lab_addresses(lab) | {nic["ip"]}
+    taken = addresses_in(lab.state, net["id"], except_nic=nic) | lab_addresses(lab) | {nic["ip"]}
     out = []
     for ip in ips:
         try:
-            a = ipaddress.IPv4Address(str(ip))
+            address = ipaddress.IPv4Address(str(ip))
         except ValueError:
             raise invalid(f"{ip!r} is not an IPv4 address", "alias_ips") from None
-        if not any(a in sn for sn in subnets) or str(a) in taken or str(a) in out:
-            raise ApiError(422, "ip_not_available", f"IP {a} is not available")
-        out.append(str(a))
+        if not any(address in sn for sn in subnets) or str(address) in taken or str(address) in out:
+            raise ApiError(422, "ip_not_available", f"IP {address} is not available")
+        out.append(str(address))
     return out
 
 
-def add_nic(lab, s: dict, nid: int, ip: str | None, ip_range: str | None = None) -> dict:
+def add_nic(lab, server: dict, nid: int, ip: str | None, ip_range: str | None = None) -> dict:
     """A NIC of the server in a network (state only; the fabric adds it to the VM)."""
     state = lab.state
     net = state["networks"].get(nid)
     if not net or net.get("_deleting"):
         raise invalid(f"network {nid} not found")
-    nics = s["_lab"]["nics"]
+    nics = server["_lab"]["nics"]
     if any(n["network"] == nid for n in nics):
         raise ApiError(422, "server_already_attached", "server is already attached to this network")
     if len(nics) >= NETWORKS_PER_SERVER:
         raise limit_exceeded(f"a server is in at most {NETWORKS_PER_SERVER} networks", "networks")
-    rng = ipaddress.ip_network(net["ip_range"])
-    if any(rng.overlaps(ipaddress.ip_network(state["networks"][n["network"]]["ip_range"])) for n in nics):
+    network_range = ipaddress.ip_network(net["ip_range"])
+    if any(network_range.overlaps(ipaddress.ip_network(state["networks"][n["network"]]["ip_range"])) for n in nics):
         raise ApiError(422, "networks_overlap", "the network overlaps another network of the server")
-    zone = lab.cfg["locations"][s["location"]].get("network_zone", "eu-central")
+    zone = lab.cfg["locations"][server["location"]].get("network_zone", "eu-central")
     ip = network_ip(lab, net, ip, zone, ip_range)
     used = {int(n["tap"].rsplit("x", 1)[1]) for n in nics}
-    k = next(i for i in range(1, 256) if i not in used)   # the lowest free: MAC and tap name stay valid
-    nic = {"network": nid, "ip": ip, "alias_ips": [], "tap": f"prv{s['_lab']['index']}x{k}",
-           "mac": private_mac(s["_lab"]["index"], k)}
+    number = next(i for i in range(1, 256) if i not in used)   # the lowest free: MAC and tap name stay valid
+    nic = {"network": nid, "ip": ip, "alias_ips": [], "tap": f"prv{server['_lab']['index']}x{number}",
+           "mac": private_mac(server["_lab"]["index"], number)}
     nics.append(nic)
     return nic
 
 
-def server_nic(s: dict, b: dict) -> dict:
-    nid = int(b.get("network") or 0)
-    nic = next((n for n in s["_lab"]["nics"] if n["network"] == nid), None)
+def server_nic(server: dict, body: dict) -> dict:
+    nid = int(body.get("network") or 0)
+    nic = next((n for n in server["_lab"]["nics"] if n["network"] == nid), None)
     if not nic:
         raise invalid("server is not attached to this network")
     return nic
@@ -136,25 +139,25 @@ def server_nic(s: dict, b: dict) -> dict:
 
 # --- server actions (see servers.SERVER_ACTIONS) -------------------------------------------------------------------
 
-def attach_to_network(lab, s: dict, b: dict):
+def attach_to_network(lab, server: dict, body: dict):
     """A running server gets the NIC hot-plugged; one that is off at its next start."""
     with lab.state.lock:
-        nic = add_nic(lab, s, int(b.get("network") or 0), b.get("ip"), b.get("ip_range"))
+        nic = add_nic(lab, server, int(body.get("network") or 0), body.get("ip"), body.get("ip_range"))
         try:
-            nic["alias_ips"] = alias_ips(lab, nic, b.get("alias_ips"))
+            nic["alias_ips"] = alias_ips(lab, nic, body.get("alias_ips"))
         except ApiError:
-            s["_lab"]["nics"].remove(nic)
+            server["_lab"]["nics"].remove(nic)
             raise
         lab.state.save()
 
     async def steps():
         try:
-            await lab.blocking(lab.fabric.attach_nic, s, nic)
+            await lab.blocking(lab.fabric.attach_nic, server, nic)
         except Exception:   # the NIC goes again: no network reported that the VM does not have
-            await lab.blocking(lab.fabric.detach_nic, s, nic)
+            await lab.blocking(lab.fabric.detach_nic, server, nic)
             with lab.state.lock:
-                if nic in s["_lab"]["nics"]:
-                    s["_lab"]["nics"].remove(nic)
+                if nic in server["_lab"]["nics"]:
+                    server["_lab"]["nics"].remove(nic)
                 lab.state.save()
             await lab.blocking(lab.fabric.write_dhcp)
             raise
@@ -162,13 +165,13 @@ def attach_to_network(lab, s: dict, b: dict):
     return steps, {}
 
 
-def detach_from_network(lab, s: dict, b: dict):
-    nic = server_nic(s, b)
+def detach_from_network(lab, server: dict, body: dict):
+    nic = server_nic(server, body)
 
     async def steps():
-        await lab.blocking(lab.fabric.detach_nic, s, nic)
+        await lab.blocking(lab.fabric.detach_nic, server, nic)
         with lab.state.lock:
-            s["_lab"]["nics"].remove(nic)
+            server["_lab"]["nics"].remove(nic)
             lab.state.save()
         await lab.blocking(lab.fabric.write_dhcp)
         await lab.blocking(lab.fabric.apply_faults)
@@ -176,118 +179,125 @@ def detach_from_network(lab, s: dict, b: dict):
     return steps, {}
 
 
-def change_alias_ips(lab, s: dict, b: dict):
+def change_alias_ips(lab, server: dict, body: dict):
     """The lab routes them to the server; the guest configures them itself."""
-    nic = server_nic(s, b)
+    nic = server_nic(server, body)
     with lab.state.lock:
-        nic["alias_ips"] = alias_ips(lab, nic, b.get("alias_ips"))
+        nic["alias_ips"] = alias_ips(lab, nic, body.get("alias_ips"))
         lab.state.save()
 
     async def steps():
-        if await lab.blocking(lab.fabric.vm_alive, s):
-            await lab.blocking(lab.fabric._private_tap_up, nic)
+        if await lab.blocking(lab.fabric.vm_alive, server):
+            await lab.blocking(lab.fabric.nic_up, nic)
+        await lab.blocking(lab.fabric.apply_routes)   # an alias IP may be the gateway of a route
         await lab.sleep(2)
     return steps, {}
 
 
 # --- networks ----------------------------------------------------------------------------------------------------
 
-def add_subnet(n: dict, sn: dict) -> None:
+def add_subnet(network: dict, subnet: dict) -> None:
     """A subnet as Hetzner checks it: inside the network, at least /30, no overlap with subnets or routes."""
-    rng = ipaddress.ip_network(n["ip_range"])
-    taken = [ipaddress.ip_network(x["ip_range"]) for x in n["subnets"]]
-    taken += [ipaddress.ip_network(r["destination"]) for r in n["routes"]]
-    if sn.get("ip_range"):
-        sub = cidr(sn["ip_range"], "ip_range")
+    ip_range = ipaddress.ip_network(network["ip_range"])
+    taken = [ipaddress.ip_network(x["ip_range"]) for x in network["subnets"]]
+    taken += [ipaddress.ip_network(r["destination"]) for r in network["routes"]]
+    if subnet.get("ip_range"):
+        subnet_range = cidr(subnet["ip_range"], "ip_range")
     else:   # the next free /24
-        sub = next((c for c in rng.subnets(new_prefix=max(24, rng.prefixlen))
-                    if not any(c.overlaps(t) for t in taken)), None)
-        if sub is None:
+        subnet_range = next((c for c in ip_range.subnets(new_prefix=max(24, ip_range.prefixlen))
+                             if not any(c.overlaps(t) for t in taken)), None)
+        if subnet_range is None:
             raise invalid("no space for a subnet", "ip_range")
-    if not sub.subnet_of(rng):
+    if not subnet_range.subnet_of(ip_range):
         raise invalid("subnet must be inside the network's ip_range", "ip_range")
-    if sub.prefixlen > 30:
+    if subnet_range.prefixlen > 30:
         raise invalid("the smallest subnet is a /30", "ip_range")
-    if any(sub.overlaps(t) for t in taken):
+    if any(subnet_range.overlaps(t) for t in taken):
         raise invalid("subnet overlaps another subnet or a route", "ip_range")
-    if sn.get("type", "cloud") not in ("cloud", "server", "vswitch"):
+    if subnet.get("type", "cloud") not in ("cloud", "server", "vswitch"):
         raise invalid("type must be cloud, server or vswitch", "type")
-    n["subnets"].append({"type": sn.get("type", "cloud"), "ip_range": str(sub),
-                         "network_zone": str(sn.get("network_zone", "eu-central")),
-                         "gateway": network_gateway(n["ip_range"]), "vswitch_id": sn.get("vswitch_id")})
+    network["subnets"].append({"type": subnet.get("type", "cloud"), "ip_range": str(subnet_range),
+                               "network_zone": str(subnet.get("network_zone", "eu-central")),
+                               "gateway": network_gateway(network["ip_range"]), "vswitch_id": subnet.get("vswitch_id")})
 
 
-def add_route(n: dict, r: dict) -> None:
+def add_route(network: dict, route: dict) -> None:
     """A route as Hetzner checks it: an RFC 1918 destination (or 0.0.0.0/0) clear of subnets and other routes, a
     gateway inside the network that is neither its first IP nor 172.31.1.1."""
-    dest = cidr(r.get("destination"), "destination")
+    dest = cidr(route.get("destination"), "destination")
     default = dest == ipaddress.ip_network("0.0.0.0/0")
     if not default and not private_range(dest):
         raise invalid("destination must be a private range (RFC 1918) or 0.0.0.0/0", "destination")
-    taken = [ipaddress.ip_network(x["ip_range"]) for x in n["subnets"]]
-    taken += [ipaddress.ip_network(x["destination"]) for x in n["routes"]]
+    taken = [ipaddress.ip_network(x["ip_range"]) for x in network["subnets"]]
+    taken += [ipaddress.ip_network(x["destination"]) for x in network["routes"]]
     if not default and any(dest.overlaps(t) for t in taken):
         raise invalid("destination overlaps a subnet or another route", "destination")
     try:
-        gw = ipaddress.IPv4Address(str(r.get("gateway")))
+        gateway = ipaddress.IPv4Address(str(route.get("gateway")))
     except ValueError:
         raise invalid("gateway must be an IPv4 address", "gateway") from None
-    if gw not in ipaddress.ip_network(n["ip_range"]) or str(gw) in (network_gateway(n["ip_range"]), C.GATEWAY):
+    reserved = (network_gateway(network["ip_range"]), C.GATEWAY)
+    if gateway not in ipaddress.ip_network(network["ip_range"]) or str(gateway) in reserved:
         raise invalid("gateway must be an address of the network other than its first IP", "gateway")
-    n["routes"].append({"destination": str(dest), "gateway": str(gw)})
+    network["routes"].append({"destination": str(dest), "gateway": str(gateway)})
 
 
-def create_network(lab, b: dict) -> dict:
+def create_network(lab, body: dict) -> dict:
     state = lab.state
-    if not b.get("name") or not b.get("ip_range"):
+    if not body.get("name") or not body.get("ip_range"):
         raise invalid("name and ip_range are required")
-    rng = network_range(b["ip_range"])
-    n = {"name": b["name"], "ip_range": str(rng), "subnets": [], "routes": [],
-         "labels": b.get("labels") or {}, "protection": {"delete": False}, "created": H.now(),
-         "expose_routes_to_vswitch": bool(b.get("expose_routes_to_vswitch", False))}
-    for sn in b.get("subnets") or []:   # everything checked before the network exists
-        add_subnet(n, sn)
-    for r in b.get("routes") or []:
-        add_route(n, r)
-    gw = network_gateway(n["ip_range"])
+    ip_range = network_range(body["ip_range"])
+    network = {"name": body["name"], "ip_range": str(ip_range), "subnets": [], "routes": [],
+               "labels": body.get("labels") or {}, "protection": {"delete": False}, "created": now(),
+               "expose_routes_to_vswitch": bool(body.get("expose_routes_to_vswitch", False))}
+    for sn in body.get("subnets") or []:   # everything checked before the network exists
+        add_subnet(network, sn)
+    for r in body.get("routes") or []:
+        add_route(network, r)
+    gateway = network_gateway(network["ip_range"])
     with state.lock:
-        unique_name(state["networks"].values(), n["name"], None, "network")
+        unique_name(state["networks"].values(), network["name"], None, "network")
         # the first address becomes the lab's (its gateway in the network): not one in use elsewhere – the gateway
         # of another network is fine (overlapping networks share it)
         used = {ip for x in state["networks"] for ip in addresses_in(state, x)}
         shared = {network_gateway(x["ip_range"]) for x in state["networks"].values()}
-        if gw in used or (gw in lab.fabric.local_addresses(fresh=True) and gw not in shared):
-            raise invalid(f"the network's first address {gw} (the lab's gateway in it) is in use", "ip_range")
-        n["id"] = state.new_id("networks")
-        state["networks"][n["id"]] = n
+        if gateway in used or (gateway in lab.fabric.local_addresses(fresh=True) and gateway not in shared):
+            raise invalid(f"the network's first address {gateway} (the lab's gateway in it) is in use", "ip_range")
+        network["id"] = state.new_id("networks")
+        state["networks"][network["id"]] = network
         state.save()
-    return {"network": H.network(state, n)}
+    return {"network": H.network_json(state, network)}
 
 
-def network_action(lab, nid: int, cmd: str, b: dict) -> dict:
-    n = lab.state["networks"].get(nid)
-    if not n:
+def network_or_404(lab, nid: int) -> dict:
+    network = lab.state["networks"].get(nid)
+    if not network:
         raise not_found("network")
+    return network
+
+
+def network_action(lab, nid: int, cmd: str, body: dict) -> dict:
+    network = network_or_404(lab, nid)
     with lab.state.lock:
         if cmd == "add_subnet":
-            add_subnet(n, b)
+            add_subnet(network, body)
         elif cmd == "delete_subnet":
-            sub = cidr(b.get("ip_range"), "ip_range")
-            if any(ipaddress.ip_address(ip) in sub for ip in addresses_in(lab.state, nid)):
+            subnet_range = cidr(body.get("ip_range"), "ip_range")
+            if any(ipaddress.ip_address(ip) in subnet_range for ip in addresses_in(lab.state, nid)):
                 raise invalid("subnets with attached resources cannot be deleted", "ip_range")
-            n["subnets"] = [x for x in n["subnets"] if x["ip_range"] != str(sub)]
+            network["subnets"] = [x for x in network["subnets"] if x["ip_range"] != str(subnet_range)]
         elif cmd == "add_route":
-            add_route(n, b)
+            add_route(network, body)
         elif cmd == "delete_route":
-            n["routes"] = [r for r in n["routes"]
-                           if (r["destination"], r["gateway"]) != (b.get("destination"), b.get("gateway"))]
+            network["routes"] = [r for r in network["routes"]
+                                 if (r["destination"], r["gateway"]) != (body.get("destination"), body.get("gateway"))]
         elif cmd == "change_ip_range":
-            old, new = ipaddress.ip_network(n["ip_range"]), network_range(b.get("ip_range"))
+            old, new = ipaddress.ip_network(network["ip_range"]), network_range(body.get("ip_range"))
             if new.network_address != old.network_address or new.prefixlen > old.prefixlen:
                 raise invalid("the range can only be extended: same first address, smaller netmask", "ip_range")
-            n["ip_range"] = str(new)
+            network["ip_range"] = str(new)
         elif cmd == "change_protection":
-            n["protection"]["delete"] = bool(b.get("delete", n["protection"]["delete"]))
+            network["protection"]["delete"] = bool(body.get("delete", network["protection"]["delete"]))
         else:
             raise unsupported(f"the action {cmd!r}")
         lab.state.save()
@@ -295,23 +305,19 @@ def network_action(lab, nid: int, cmd: str, b: dict) -> dict:
         lab.fabric.refresh_network(nid)
     lab.fabric.write_dhcp()
     lab.fabric.apply_routes()
-    a = lab.new_action(cmd, [(nid, "network")])
-    lab.finish(a)
-    return {"action": a}
+    return {"action": lab.done(cmd, [(nid, "network")])}
 
 
 def delete_network(lab, nid: int) -> None:
     """Deleting a network detaches its servers, as on Hetzner (each of them locked meanwhile)."""
     state = lab.state
-    n = state["networks"].get(nid)
-    if not n:
-        raise not_found("network")
-    if n["protection"]["delete"]:
+    network = network_or_404(lab, nid)
+    if network["protection"]["delete"]:
         raise ApiError(423, "protected", "network is delete protected")
     with state.lock:   # from here no server can join it (add_nic refuses)
-        if n.get("_deleting"):
-            raise ApiError(423, "locked", "the network is being deleted")
-        n["_deleting"] = True
+        if network.get("_deleting"):
+            raise locked("the network is being deleted")
+        network["_deleting"] = True
         members = [s for s in state["servers"].values() if any(x["network"] == nid for x in s["_lab"]["nics"])]
     reserved = []
     try:
@@ -327,12 +333,10 @@ def delete_network(lab, nid: int) -> None:
             del state["networks"][nid]
             state.save()
     finally:
-        n.pop("_deleting", None)
+        network.pop("_deleting", None)
         for s in reserved:
-            s["locked"] = False
-    lab.fabric.sh.run("route-flush", route_table(nid))
-    lab.fabric.write_dhcp()
-    lab.fabric.apply_faults()
+            lab.release(s)
+    lab.fabric.drop_network(nid)
 
 
 # --- routes ------------------------------------------------------------------------------------------------------
@@ -340,53 +344,47 @@ def delete_network(lab, nid: int) -> None:
 def add_routes(app: FastAPI, lab) -> None:
     state = lab.state
 
-    def network_or_404(nid: int) -> dict:
-        n = state["networks"].get(nid)
-        if not n:
-            raise not_found("network")
-        return n
-
     @app.get("/v1/networks")
     def networks(request: Request):
         items = filtered(request, list(state["networks"].values()))
-        return paginate(request, [H.network(state, n) for n in items], "networks")
+        return paginate(request, [H.network_json(state, n) for n in items], "networks")
 
     @app.post("/v1/networks", status_code=201)
     async def network_create(request: Request):
-        return await lab.blocking(create_network, lab, await body(request))
+        return await lab.blocking(create_network, lab, await read_body(request))
 
     @app.get("/v1/networks/{nid}/members")
     def network_members(request: Request, nid: int):
-        n = network_or_404(nid)
+        network = network_or_404(lab, nid)
 
         def subnet(ip: str) -> str:
-            return next((x["ip_range"] for x in n["subnets"]
-                         if ipaddress.ip_address(ip) in ipaddress.ip_network(x["ip_range"])), n["ip_range"])
+            return next((x["ip_range"] for x in network["subnets"]
+                         if ipaddress.ip_address(ip) in ipaddress.ip_network(x["ip_range"])), network["ip_range"])
         members = [{"type": "server", "id": s["id"], "ip": nic["ip"], "status": "ok",
                     "alias_ips": nic.get("alias_ips") or [], "subnet": subnet(nic["ip"])}
                    for s in state["servers"].values() for nic in s["_lab"]["nics"] if nic["network"] == nid]
-        q = request.query_params
-        if q.get("type"):
-            members = [m for m in members if m["type"] in q["type"].split(",")]
-        if q.get("subnet"):
-            members = [m for m in members if m["subnet"] == q["subnet"]]
+        query = request.query_params
+        if query.get("type"):
+            members = [m for m in members if m["type"] in query["type"].split(",")]
+        if query.get("subnet"):
+            members = [m for m in members if m["subnet"] == query["subnet"]]
         return paginate(request, members, "members")
 
     @app.get("/v1/networks/{nid}")
     def network_get(nid: int):
-        return {"network": H.network(state, network_or_404(nid))}
+        return {"network": H.network_json(state, network_or_404(lab, nid))}
 
     @app.put("/v1/networks/{nid}")
     async def network_update(nid: int, request: Request):
-        n = network_or_404(nid)
-        b = await body(request)
+        network = network_or_404(lab, nid)
+        body = await read_body(request)
         with state.lock:
-            unique_name(state["networks"].values(), b.get("name"), n, "network")
+            unique_name(state["networks"].values(), body.get("name"), network, "network")
             for k in ("name", "labels", "expose_routes_to_vswitch"):
-                if k in b:
-                    n[k] = b[k] if k != "labels" else (b[k] or {})
+                if k in body:
+                    network[k] = body[k] if k != "labels" else (body[k] or {})
             state.save()
-        return {"network": H.network(state, n)}
+        return {"network": H.network_json(state, network)}
 
     @app.delete("/v1/networks/{nid}", status_code=204)
     def network_delete(nid: int):
@@ -395,4 +393,4 @@ def add_routes(app: FastAPI, lab) -> None:
 
     @app.post("/v1/networks/{nid}/actions/{cmd}", status_code=201)
     async def network_post_action(nid: int, cmd: str, request: Request):
-        return await lab.blocking(network_action, lab, nid, cmd, await body(request))
+        return await lab.blocking(network_action, lab, nid, cmd, await read_body(request))

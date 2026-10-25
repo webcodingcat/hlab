@@ -80,97 +80,99 @@ def create_metadata_app(lab) -> FastAPI:
         servers = list(state["servers"].values())
         if ip.startswith("fe80:"):   # the link-local address follows from the MAC: one per server
             return next((s for s in servers if link_local(s["_lab"]["index"]) == ip), None)
-        holders = {n["tap"]: s for s in servers for n in s["_lab"]["nics"] if ip in [n["ip"], *(n.get("alias_ips") or [])]}
+        holders = {nic["tap"]: s for s in servers for nic in s["_lab"]["nics"]
+                   if ip in [nic["ip"], *(nic.get("alias_ips") or [])]}
         if holders:
             # a private IP (networks may overlap): the tap the neighbour sits on tells the server – only taps that
             # hold the address count (any guest can put entries into the neighbour table), and only a single one
-            taps = set(fabric.sh.run("neigh-dev", ip, check=False).split()) & set(holders)
+            taps = fabric.neighbour_taps(ip) & set(holders)
             return holders[taps.pop()] if len(taps) == 1 else None
         for s in servers:
-            v6 = fabric.ipv6_net(s)
-            if ip == fabric.ipv4(s) or (v6 and ":" in ip and ipaddress.ip_address(ip) in ipaddress.ip_network(v6)):
+            ipv6 = fabric.ipv6_net(s)
+            if ip == fabric.ipv4(s) or (ipv6 and ":" in ip and ipaddress.ip_address(ip) in ipaddress.ip_network(ipv6)):
                 return s
         return None
 
-    def private_networks(s: dict) -> list[dict]:
+    def private_networks(server: dict) -> list[dict]:
         out = []
-        for i, n in enumerate(s["_lab"]["nics"], start=1):
+        for i, n in enumerate(server["_lab"]["nics"], start=1):
             net = state["networks"][n["network"]]
-            sub = next((x["ip_range"] for x in net["subnets"]
-                        if ipaddress.ip_address(n["ip"]) in ipaddress.ip_network(x["ip_range"])), net["ip_range"])
+            subnet = next((x["ip_range"] for x in net["subnets"]
+                           if ipaddress.ip_address(n["ip"]) in ipaddress.ip_network(x["ip_range"])), net["ip_range"])
             out.append({"ip": n["ip"], "alias_ips": n.get("alias_ips", []), "interface_num": i,
                         "mac_address": n["mac"], "network_id": net["id"], "network_name": net["name"],
-                        "network": net["ip_range"], "subnet": sub, "gateway": network_gateway(net["ip_range"])})
+                        "network": net["ip_range"], "subnet": subnet, "gateway": network_gateway(net["ip_range"])})
         return out
 
-    def network_config(s: dict) -> dict:
+    def network_config(server: dict) -> dict:
         subnets = []
-        if fabric.ipv4(s):
+        if fabric.ipv4(server):
             subnets.append({"type": "dhcp", "ipv4": True})
-        v6 = fabric.ipv6_net(s)
-        if v6:
-            subnets.append({"type": "static", "ipv6": True, "address": v6.split("/")[0] + "1/64",
+        ipv6 = fabric.ipv6_net(server)
+        if ipv6:
+            subnets.append({"type": "static", "ipv6": True, "address": ipv6.split("/")[0] + "1/64",
                             "gateway": "fe80::1"})
         return {"version": 1, "config": [{"type": "physical", "name": "eth0",
-                                          "mac_address": public_mac(s["_lab"]["index"]), "subnets": subnets}]}
+                                          "mac_address": public_mac(server["_lab"]["index"]), "subnets": subnets}]}
 
-    def values(s: dict) -> dict:
-        keys = list(s.get("public_keys", []))
+    def values(server: dict) -> dict:
+        keys = list(server.get("public_keys", []))
         lab_key = fabric.lab_key.with_suffix(".pub")
         if lab_key.is_file():  # the lab's own access (hlab ssh)
             keys.append(lab_key.read_text().strip())
         vendor = VENDOR_DATA
-        if s["_lab"].get("root_password"):   # no SSH keys: Hetzner's root password and password login
+        if server["_lab"].get("root_password"):   # no SSH keys: Hetzner's root password and password login
+            password = json.dumps(server["_lab"]["root_password"])
             vendor = vendor.replace("ssh_pwauth: false", "ssh_pwauth: true\nchpasswd:\n  expire: false\n  users:\n"
-                                    f"  - {{name: root, password: {json.dumps(s['_lab']['root_password'])}, type: text}}")
-        return {"hostname": s["name"], "instance-id": s["id"],
-                "public-ipv4": fabric.ipv4(s) or "", "local-ipv4": "",
-                "availability-zone": H.DC_NAMES.get(s["location"], f"{s['location']}-dc1"),
-                "region": cfg["locations"][s["location"]].get("network_zone", "eu-central"),
-                "public-keys": keys, "vendor_data": vendor, "network-config": network_config(s),
+                                    f"  - {{name: root, password: {password}, type: text}}")
+        return {"hostname": server["name"], "instance-id": server["id"],
+                "public-ipv4": fabric.ipv4(server) or "", "local-ipv4": "",
+                "availability-zone": H.DC_NAMES.get(server["location"], f"{server['location']}-dc1"),
+                "region": cfg["locations"][server["location"]].get("network_zone", "eu-central"),
+                "public-keys": keys, "vendor_data": vendor, "network-config": network_config(server),
                 # older cloud-init (Debian 13) reads the cloud networks from here, newer from their own path
-                "private-networks": private_networks(s)}
+                "private-networks": private_networks(server)}
 
-    def text(v) -> PlainTextResponse:
-        return PlainTextResponse(str(v) if isinstance(v, str | int) else yaml.safe_dump(v, sort_keys=False))
+    def text(value) -> PlainTextResponse:
+        return PlainTextResponse(str(value) if isinstance(value, str | int) else yaml.safe_dump(value, sort_keys=False))
 
     @app.get("/hetzner/v1/metadata")
     def metadata(request: Request):
-        s = caller(request)
-        if not s:
+        server = caller(request)
+        if not server:
             return PlainTextResponse("not found", status_code=404)
-        return text(values(s))
+        return text(values(server))
 
     @app.get("/hetzner/v1/metadata/private-networks")
     def metadata_private(request: Request):
-        s = caller(request)
-        if not s:
+        server = caller(request)
+        if not server:
             return PlainTextResponse("not found", status_code=404)
-        return text(private_networks(s))
+        return text(private_networks(server))
 
     @app.get("/hetzner/v1/metadata/hlab-automount")
     def metadata_automount(request: Request):
         """Lab extension for the automount helper of the vendor data: IDs of volumes to mount."""
-        s = caller(request)
-        ids = sorted(v["id"] for v in state["volumes"].values() if s and v.get("server") == s["id"]
+        server = caller(request)
+        ids = sorted(v["id"] for v in state["volumes"].values() if server and v.get("server") == server["id"]
                      and v.get("automount"))
         return PlainTextResponse(" ".join(map(str, ids)))
 
     @app.get("/hetzner/v1/metadata/{key}")
     def metadata_key(key: str, request: Request):
-        s = caller(request)
-        v = values(s).get(key) if s else None
-        if v is None:
+        server = caller(request)
+        value = values(server).get(key) if server else None
+        if value is None:
             return PlainTextResponse("not found", status_code=404)
-        return text(v)
+        return text(value)
 
     @app.get("/hetzner/v1/userdata")
     def userdata(request: Request):
-        s = caller(request)
-        if not s:
+        server = caller(request)
+        if not server:
             return PlainTextResponse("not found", status_code=404)
-        if not s.get("user_data"):
+        if not server.get("user_data"):
             return Response(status_code=204)  # cloud-init waits for content otherwise
-        return PlainTextResponse(s["user_data"])
+        return PlainTextResponse(server["user_data"])
 
     return app

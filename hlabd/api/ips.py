@@ -7,21 +7,23 @@ from fastapi import FastAPI, Request
 from fastapi.responses import Response
 
 from .. import config as C
+from ..errors import ApiError, invalid, limit_exceeded, locked, not_found, unique_name, unsupported
+from ..lab import now
 from . import hetzner as H
 from .catalogue import resolve
 from .spec import hostname_ok
-from .web import ApiError, body, filtered, invalid, limit_exceeded, not_found, paginate, unsupported
+from .web import read_body, filtered, paginate
 
 
 # --- reverse DNS ---------------------------------------------------------------------------------------------------
 
-def set_dns_ptr(p: dict, ip: str, ptr: str | None) -> None:
+def set_dns_ptr(record: dict, ip: str, ptr: str | None) -> None:
     """The reverse DNS entry of one address of a primary or Floating IP (None removes it)."""
     if ptr is not None and not (isinstance(ptr, str) and hostname_ok(ptr)):
         raise invalid("dns_ptr must be a host name (without trailing dot)", "dns_ptr")
-    p["dns_ptr"] = [x for x in p.get("dns_ptr", []) if x["ip"] != ip]
+    record["dns_ptr"] = [x for x in record.get("dns_ptr", []) if x["ip"] != ip]
     if ptr:
-        p["dns_ptr"].append({"ip": ip, "dns_ptr": ptr})
+        record["dns_ptr"].append({"ip": ip, "dns_ptr": ptr})
 
 
 def contains(prefix: str, ip: str) -> bool:
@@ -32,13 +34,13 @@ def contains(prefix: str, ip: str) -> bool:
         return False
 
 
-def server_dns_ptr(lab, s: dict, b: dict) -> None:
+def server_dns_ptr(lab, server: dict, body: dict) -> None:
     """change_dns_ptr of a server: the address belongs to one of its primary IPs."""
-    ip = str(b.get("ip"))
+    ip = str(body.get("ip"))
     for kind in ("ipv4", "ipv6"):
-        p = lab.state["primary_ips"].get(s.get(f"{kind}_id"))
-        if p and contains(p["ip"], ip):
-            set_dns_ptr(p, str(ipaddress.ip_address(ip)), b.get("dns_ptr"))
+        primary_ip = lab.state["primary_ips"].get(server.get(f"{kind}_id"))
+        if primary_ip and contains(primary_ip["ip"], ip):
+            set_dns_ptr(primary_ip, str(ipaddress.ip_address(ip)), body.get("dns_ptr"))
             return
     raise invalid("the IP does not belong to the server", "ip")
 
@@ -65,129 +67,138 @@ def new_primary_ip(lab, kind: str, location: str, assignee: int | None = None, n
                    auto_delete: bool = False, labels: dict | None = None) -> dict:
     state = lab.state
     pid = state.new_id("primary_ips")
-    p = {"id": pid, "name": name or f"primary_ip-{pid}", "type": kind, "location": location,
-         "ip": free_ipv4(state) if kind == "ipv4" else free_ipv6(state), "assignee_id": assignee,
-         "auto_delete": auto_delete, "labels": labels or {}, "protection": {"delete": False}, "dns_ptr": [],
-         "created": H.now()}
-    state["primary_ips"][pid] = p
-    return p
+    primary_ip = {"id": pid, "name": name or f"primary_ip-{pid}", "type": kind, "location": location,
+                  "ip": free_ipv4(state) if kind == "ipv4" else free_ipv6(state), "assignee_id": assignee,
+                  "auto_delete": auto_delete, "labels": labels or {}, "protection": {"delete": False}, "dns_ptr": [],
+                  "created": now()}
+    state["primary_ips"][pid] = primary_ip
+    return primary_ip
 
 
-def check_server_ips(lab, s: dict, public_net: dict) -> None:
+def check_server_ips(lab, server: dict, public_net: dict) -> None:
     """The primary IPs a new server asks for exist, are free and fit (Hetzner's errors)."""
     for kind in ("ipv4", "ipv6"):
         ref = public_net.get(kind)
         if ref is None:
             continue
         try:
-            p = lab.state["primary_ips"].get(int(ref))
+            primary_ip = lab.state["primary_ips"].get(int(ref))
         except (TypeError, ValueError):
-            p = None
-        if not p:
+            primary_ip = None
+        if not primary_ip:
             raise invalid(f"primary IP {ref} not found", f"public_net.{kind}")
-        if p["type"] != kind:
+        if primary_ip["type"] != kind:
             raise ApiError(412, "primary_ip_version_mismatch", f"primary IP {ref} is not an {kind}")
-        if p.get("assignee_id"):
+        if primary_ip.get("assignee_id"):
             raise ApiError(422, "primary_ip_assigned", f"primary IP {ref} is already assigned")
-        if p["location"] != s["location"]:
+        if primary_ip["location"] != server["location"]:
             raise ApiError(422, "primary_ip_datacenter_mismatch", "primary IP is in another location")
 
 
-def setup_server_ips(lab, s: dict, public_net: dict) -> None:
+def setup_server_ips(lab, server: dict, public_net: dict) -> None:
     """Primary IPs of a new server: given ones (unassigned, same location) or new ones with auto_delete."""
-    check_server_ips(lab, s, public_net)
+    check_server_ips(lab, server, public_net)
     for kind in ("ipv4", "ipv6"):
         ref = public_net.get(kind)
         if ref is not None:
-            p = lab.state["primary_ips"][int(ref)]
-            p["assignee_id"] = s["id"]
-            s[f"{kind}_id"] = p["id"]
+            primary_ip = lab.state["primary_ips"][int(ref)]
+            primary_ip["assignee_id"] = server["id"]
+            server[f"{kind}_id"] = primary_ip["id"]
         elif public_net.get(f"enable_{kind}", True):
-            s[f"{kind}_id"] = new_primary_ip(lab, kind, s["location"], s["id"], auto_delete=True)["id"]
+            server[f"{kind}_id"] = new_primary_ip(lab, kind, server["location"], server["id"], auto_delete=True)["id"]
 
 
-def release_server_ips(lab, s: dict) -> None:
+def release_server_ips(lab, server: dict) -> None:
     """On server deletion: primary IPs with auto_delete go, the others stay unassigned."""
     for kind in ("ipv4", "ipv6"):
-        p = lab.state["primary_ips"].get(s.get(f"{kind}_id"))
-        if not p:
+        primary_ip = lab.state["primary_ips"].get(server.get(f"{kind}_id"))
+        if not primary_ip:
             continue
-        if p.get("auto_delete"):
-            del lab.state["primary_ips"][p["id"]]
+        if primary_ip.get("auto_delete"):
+            del lab.state["primary_ips"][primary_ip["id"]]
         else:
-            p["assignee_id"] = None
+            primary_ip["assignee_id"] = None
 
 
-def check_assignable(lab, s: dict, kind: str) -> None:
+def check_assignable(lab, server: dict, kind: str) -> None:
     """A primary IP is assigned to a server that is off and has none of that kind."""
-    if s.get("locked"):
-        raise ApiError(423, "locked", "server is locked by another action")
-    if s["status"] != "off":
+    if server.get("locked"):
+        raise locked("server is locked by another action")
+    if server["status"] != "off":
         raise ApiError(422, "server_not_stopped", "the server must be powered off")
-    if lab.state["primary_ips"].get(s.get(f"{kind}_id")):
+    if lab.state["primary_ips"].get(server.get(f"{kind}_id")):
         raise ApiError(422, "server_has_ipv4" if kind == "ipv4" else "server_has_ipv6",
                        f"the server already has a primary {kind}")
 
 
-def primary_ip_action(lab, pid: int, cmd: str, b: dict) -> dict:
-    state = lab.state
-    p = state["primary_ips"].get(pid)
-    if not p:
+def primary_ip_or_404(lab, pid: int) -> dict:
+    primary_ip = lab.state["primary_ips"].get(pid)
+    if not primary_ip:
         raise not_found("primary IP")
+    return primary_ip
+
+
+def floating_ip_or_404(lab, fid: int) -> dict:
+    floating_ip = lab.state["floating_ips"].get(fid)
+    if not floating_ip:
+        raise not_found("floating IP")
+    return floating_ip
+
+
+def primary_ip_action(lab, pid: int, cmd: str, body: dict) -> dict:
+    state = lab.state
+    primary_ip = primary_ip_or_404(lab, pid)
     with state.lock:
         if cmd == "assign":
-            s = state["servers"].get(int(b.get("assignee_id") or 0))
-            if not s:
+            server = state["servers"].get(int(body.get("assignee_id") or 0))
+            if not server:
                 raise invalid("server not found", "assignee_id")
-            if p.get("assignee_id"):
+            if primary_ip.get("assignee_id"):
                 raise ApiError(422, "primary_ip_already_assigned", "primary IP is already assigned")
-            if p["location"] != s["location"]:
+            if primary_ip["location"] != server["location"]:
                 raise ApiError(422, "primary_ip_location_mismatch", "primary IP is in another location")
-            check_assignable(lab, s, p["type"])
-            p["assignee_id"], s[f"{p['type']}_id"] = s["id"], p["id"]
+            check_assignable(lab, server, primary_ip["type"])
+            primary_ip["assignee_id"], server[f"{primary_ip['type']}_id"] = server["id"], primary_ip["id"]
         elif cmd == "unassign":
-            s = state["servers"].get(p.get("assignee_id"))
-            if s:
-                if s.get("locked"):
-                    raise ApiError(423, "locked", "server is locked by another action")
-                if s["status"] != "off":
+            server = state["servers"].get(primary_ip.get("assignee_id"))
+            if server:
+                if server.get("locked"):
+                    raise locked("server is locked by another action")
+                if server["status"] != "off":
                     raise ApiError(422, "server_not_stopped", "the server must be powered off")
-                s[f"{p['type']}_id"] = None
-            p["assignee_id"] = None
+                server[f"{primary_ip['type']}_id"] = None
+            primary_ip["assignee_id"] = None
         elif cmd == "change_dns_ptr":
-            ip = str(b.get("ip") or p["ip"])
-            if not contains(p["ip"], ip):
+            ip = str(body.get("ip") or primary_ip["ip"])
+            if not contains(primary_ip["ip"], ip):
                 raise invalid("ip must be an address of the primary IP", "ip")
-            set_dns_ptr(p, str(ipaddress.ip_address(ip)), b.get("dns_ptr"))
+            set_dns_ptr(primary_ip, str(ipaddress.ip_address(ip)), body.get("dns_ptr"))
         elif cmd == "change_protection":
-            if b.get("delete") and p.get("auto_delete"):   # Hetzner: only for auto_delete false
+            if body.get("delete") and primary_ip.get("auto_delete"):   # Hetzner: only for auto_delete false
                 raise invalid("delete protection needs auto_delete false", "delete")
-            p["protection"]["delete"] = bool(b.get("delete", p["protection"]["delete"]))
+            primary_ip["protection"]["delete"] = bool(body.get("delete", primary_ip["protection"]["delete"]))
         else:
             raise unsupported(f"the action {cmd!r}")
         state.save()
     lab.fabric.write_dhcp()   # the server's DHCP hands out its (new) address
-    a = lab.new_action({"assign": "assign_primary_ip", "unassign": "unassign_primary_ip"}.get(cmd, cmd),
-                       [(pid, "primary_ip")])
-    lab.finish(a)
-    return {"action": a}
+    name = {"assign": "assign_primary_ip", "unassign": "unassign_primary_ip"}.get(cmd, cmd)
+    return {"action": lab.done(name, [(pid, "primary_ip")])}
 
 
 # --- Floating IPs --------------------------------------------------------------------------------------------------
 
-def create_floating_ip(lab, b: dict) -> dict:
+def create_floating_ip(lab, body: dict) -> dict:
     state = lab.state
-    kind = b.get("type")
+    kind = body.get("type")
     if kind not in ("ipv4", "ipv6"):
         raise invalid("type must be ipv4 or ipv6")
-    server = lab.server(int(b["server"])) if b.get("server") else None
-    home = b.get("home_location") or (server["location"] if server else None)
+    server = lab.server(int(body["server"])) if body.get("server") else None
+    home = body.get("home_location") or (server["location"] if server else None)
     if not home:
         raise invalid("home_location or server is required")
     home = resolve(lab, "location", home)
     with state.lock:
-        if b.get("name") and any(x["name"] == b["name"] for x in state["floating_ips"].values()):
-            raise ApiError(409, "uniqueness_error", "Floating IP name is already used", {"fields": [{"name": "name"}]})
+        unique_name(state["floating_ips"].values(), body.get("name"), None, "Floating IP")
         # the lowest free address (IPv6: 2001:db8:ff01::/64 to ...:fffd::/64, clear of the lab's own ff fe/ff)
         used = {x["ip"] for x in state["floating_ips"].values()}
         candidates = ([f"{C.FLOATING_NET}.{10 + n}" for n in range(1, 241)] if kind == "ipv4"
@@ -196,34 +207,33 @@ def create_floating_ip(lab, b: dict) -> dict:
         if ip is None:
             raise limit_exceeded(f"the lab has no Floating {kind} left", "floating_ips")
         fid = state.new_id("floating_ips")
-        f = {"id": fid, "name": b.get("name") or f"floating-ip-{fid}", "description": b.get("description"),
-             "ip": ip, "type": kind, "server": None, "home_location": home, "labels": b.get("labels") or {},
-             "protection": {"delete": False}, "dns_ptr": [], "created": H.now()}
-        state["floating_ips"][fid] = f
+        floating_ip = {"id": fid, "name": body.get("name") or f"floating-ip-{fid}",
+                       "description": body.get("description"), "ip": ip, "type": kind, "server": None,
+                       "home_location": home, "labels": body.get("labels") or {},
+                       "protection": {"delete": False}, "dns_ptr": [], "created": now()}
+        state["floating_ips"][fid] = floating_ip
         state.save()
-    out = {"floating_ip": H.floating_ip(lab.cfg, f), "action": None}
+    out = {"floating_ip": H.floating_ip_json(lab.cfg, floating_ip), "action": None}
     if server:
         out["action"] = floating_ip_action(lab, fid, "assign", {"server": server["id"]})["action"]
     return out
 
 
-def floating_ip_action(lab, fid: int, cmd: str, b: dict) -> dict:
+def floating_ip_action(lab, fid: int, cmd: str, body: dict) -> dict:
     """assign and unassign move the route (one move at a time: `_moving`); the others change the record only."""
     state = lab.state
-    f = state["floating_ips"].get(fid)
-    if not f:
-        raise not_found("floating IP")
+    floating_ip = floating_ip_or_404(lab, fid)
     if cmd == "change_protection":
-        f["protection"]["delete"] = bool(b.get("delete", False))
-        return finished(lab, fid, cmd)
+        floating_ip["protection"]["delete"] = bool(body.get("delete", False))
+        return {"action": lab.done(cmd, [(fid, "floating_ip")])}
     if cmd == "change_dns_ptr":
-        ip = str(b.get("ip") or "")
-        if not contains(f["ip"], ip):
+        ip = str(body.get("ip") or "")
+        if not contains(floating_ip["ip"], ip):
             raise invalid("ip must be an address of the Floating IP", "ip")
-        set_dns_ptr(f, str(ipaddress.ip_address(ip)), b.get("dns_ptr"))
-        return finished(lab, fid, cmd)
+        set_dns_ptr(floating_ip, str(ipaddress.ip_address(ip)), body.get("dns_ptr"))
+        return {"action": lab.done(cmd, [(fid, "floating_ip")])}
     if cmd == "assign":
-        sid = b.get("server")
+        sid = body.get("server")
         if isinstance(sid, bool) or not (isinstance(sid, int) or (isinstance(sid, str) and sid.isdigit())):
             raise invalid("server must be the ID of a server", "server")
         target = lab.server(int(sid))
@@ -232,11 +242,11 @@ def floating_ip_action(lab, fid: int, cmd: str, b: dict) -> dict:
     else:
         target = None
     with state.lock:
-        if f.get("_moving"):
-            raise ApiError(423, "locked", "the Floating IP is being moved")
-        f["_moving"] = True
-    a = (lab.new_action("assign_floating_ip", [(fid, "floating_ip"), (target["id"], "server")]) if target
-         else lab.new_action("unassign_floating_ip", [(fid, "floating_ip")]))
+        if floating_ip.get("_moving"):
+            raise locked("the Floating IP is being moved")
+        floating_ip["_moving"] = True
+    action = (lab.new_action("assign_floating_ip", [(fid, "floating_ip"), (target["id"], "server")]) if target
+              else lab.new_action("unassign_floating_ip", [(fid, "floating_ip")]))
 
     async def steps():
         try:
@@ -245,22 +255,16 @@ def floating_ip_action(lab, fid: int, cmd: str, b: dict) -> dict:
             with state.lock:
                 if target and (fid not in state["floating_ips"] or target["id"] not in state["servers"]):
                     raise RuntimeError("the Floating IP or the server was deleted meanwhile")
-                f["server"] = target["id"] if target else None
+                floating_ip["server"] = target["id"] if target else None
                 state.save()
-            await lab.blocking(lab.fabric.route_floating, f)
+            await lab.blocking(lab.fabric.route_floating, floating_ip)
             await lab.blocking(lab.fabric.apply_faults)   # the server may send from it now
             if target:
                 await lab.blocking(lab.fabric.apply_latency)
         finally:
-            f.pop("_moving", None)
-    lab.run_action(a, steps)
-    return {"action": a}
-
-
-def finished(lab, fid: int, cmd: str) -> dict:
-    a = lab.new_action(cmd, [(fid, "floating_ip")])
-    lab.finish(a)
-    return {"action": a}
+            floating_ip.pop("_moving", None)
+    lab.run_action(action, steps)
+    return {"action": action}
 
 
 # --- routes ------------------------------------------------------------------------------------------------------
@@ -268,76 +272,62 @@ def finished(lab, fid: int, cmd: str) -> dict:
 def add_routes(app: FastAPI, lab) -> None:
     cfg, state = lab.cfg, lab.state
 
-    def pip_or_404(pid: int) -> dict:
-        p = state["primary_ips"].get(pid)
-        if not p:
-            raise not_found("primary IP")
-        return p
-
-    def fip_or_404(fid: int) -> dict:
-        f = state["floating_ips"].get(fid)
-        if not f:
-            raise not_found("floating IP")
-        return f
-
     @app.get("/v1/primary_ips")
     def primary_ips(request: Request):
         items = filtered(request, list(state["primary_ips"].values()), {"ip": lambda p, v: p["ip"] == v})
-        return paginate(request, [H.primary_ip(cfg, p) for p in items], "primary_ips")
+        return paginate(request, [H.primary_ip_json(cfg, p) for p in items], "primary_ips")
 
     @app.post("/v1/primary_ips", status_code=201)
     async def primary_ip_create(request: Request):
-        b = await body(request)
-        if any(p["name"] == b["name"] for p in state["primary_ips"].values()):
-            raise ApiError(409, "uniqueness_error", "primary IP name is already used", {"fields": [{"name": "name"}]})
-        if b.get("location") and b.get("assignee_id"):
+        body = await read_body(request)
+        unique_name(state["primary_ips"].values(), body["name"], None, "primary IP")
+        if body.get("location") and body.get("assignee_id"):
             raise invalid("location and assignee_id are mutually exclusive", "location")
-        assignee = state["servers"].get(int(b["assignee_id"])) if b.get("assignee_id") else None
-        if b.get("assignee_id") and not assignee:
+        assignee = state["servers"].get(int(body["assignee_id"])) if body.get("assignee_id") else None
+        if body.get("assignee_id") and not assignee:
             raise invalid("server not found", "assignee_id")
-        loc = b.get("location") or (assignee or {}).get("location")
-        if not loc:
+        location = body.get("location") or (assignee or {}).get("location")
+        if not location:
             raise invalid("location or assignee_id is required", "location")
-        loc = resolve(lab, "location", loc)
+        location = resolve(lab, "location", location)
         if assignee:
-            check_assignable(lab, assignee, b["type"])
+            check_assignable(lab, assignee, body["type"])
         with state.lock:
-            p = new_primary_ip(lab, b["type"], loc, assignee["id"] if assignee else None, b["name"],
-                               bool(b.get("auto_delete", False)), b.get("labels"))
+            primary_ip = new_primary_ip(lab, body["type"], location, assignee["id"] if assignee else None, body["name"],
+                                        bool(body.get("auto_delete", False)), body.get("labels"))
             if assignee:
-                assignee[f"{b['type']}_id"] = p["id"]
+                assignee[f"{body['type']}_id"] = primary_ip["id"]
             state.save()
-        a = None   # Hetzner: an action only when the IP is assigned
+        action = None   # Hetzner: an action only when the IP is assigned
         if assignee:
-            a = lab.new_action("assign_primary_ip", [(p["id"], "primary_ip"), (assignee["id"], "server")])
-            lab.finish(a)
+            action = lab.new_action("assign_primary_ip", [(primary_ip["id"], "primary_ip"), (assignee["id"], "server")])
+            lab.finish(action)
             await lab.blocking(lab.fabric.write_dhcp)
-        return {"primary_ip": H.primary_ip(cfg, p), "action": a}
+        return {"primary_ip": H.primary_ip_json(cfg, primary_ip), "action": action}
 
     @app.get("/v1/primary_ips/{pid}")
     def primary_ip_get(pid: int):
-        return {"primary_ip": H.primary_ip(cfg, pip_or_404(pid))}
+        return {"primary_ip": H.primary_ip_json(cfg, primary_ip_or_404(lab, pid))}
 
     @app.put("/v1/primary_ips/{pid}")
     async def primary_ip_update(pid: int, request: Request):
-        p = pip_or_404(pid)
-        b = await body(request)
-        if b.get("name") and any(x["name"] == b["name"] and x is not p for x in state["primary_ips"].values()):
-            raise ApiError(409, "uniqueness_error", "primary IP name is already used", {"fields": [{"name": "name"}]})
-        if b.get("auto_delete") and p["protection"]["delete"]:
+        primary_ip = primary_ip_or_404(lab, pid)
+        body = await read_body(request)
+        unique_name(state["primary_ips"].values(), body.get("name"), primary_ip, "primary IP")
+        if body.get("auto_delete") and primary_ip["protection"]["delete"]:
             raise invalid("a delete protected primary IP cannot be auto_delete", "auto_delete")
         for k in ("name", "labels", "auto_delete"):
-            if k in b:
-                p[k] = b[k] if k != "labels" else (b[k] or {})
+            if k in body:
+                primary_ip[k] = body[k] if k != "labels" else (body[k] or {})
         state.save()
-        return {"primary_ip": H.primary_ip(cfg, p)}
+        return {"primary_ip": H.primary_ip_json(cfg, primary_ip)}
 
     @app.delete("/v1/primary_ips/{pid}", status_code=204)
     def primary_ip_delete(pid: int):
-        p = pip_or_404(pid)
-        if p["protection"]["delete"]:
+        primary_ip = primary_ip_or_404(lab, pid)
+        if primary_ip["protection"]["delete"]:
             raise ApiError(423, "protected", "primary IP is delete protected")
-        if p.get("assignee_id"):
+        if primary_ip.get("assignee_id"):
             raise ApiError(422, "must_be_unassigned", "primary IP is assigned to a server; unassign it first")
         del state["primary_ips"][pid]
         state.save()
@@ -345,41 +335,39 @@ def add_routes(app: FastAPI, lab) -> None:
 
     @app.post("/v1/primary_ips/{pid}/actions/{cmd}", status_code=201)
     async def primary_ip_post_action(pid: int, cmd: str, request: Request):
-        return await lab.blocking(primary_ip_action, lab, pid, cmd, await body(request))
+        return await lab.blocking(primary_ip_action, lab, pid, cmd, await read_body(request))
 
     @app.get("/v1/floating_ips")
     def floating_ips(request: Request):
         items = filtered(request, list(state["floating_ips"].values()))
-        return paginate(request, [H.floating_ip(cfg, f) for f in items], "floating_ips")
+        return paginate(request, [H.floating_ip_json(cfg, f) for f in items], "floating_ips")
 
     @app.post("/v1/floating_ips", status_code=201)
     async def floating_ip_create(request: Request):
-        return await lab.blocking(create_floating_ip, lab, await body(request))
+        return await lab.blocking(create_floating_ip, lab, await read_body(request))
 
     @app.get("/v1/floating_ips/{fid}")
     def floating_ip_get(fid: int):
-        return {"floating_ip": H.floating_ip(cfg, fip_or_404(fid))}
+        return {"floating_ip": H.floating_ip_json(cfg, floating_ip_or_404(lab, fid))}
 
     @app.put("/v1/floating_ips/{fid}")
     async def floating_ip_update(fid: int, request: Request):
-        f = fip_or_404(fid)
-        b = await body(request)
+        floating_ip = floating_ip_or_404(lab, fid)
+        body = await read_body(request)
         with state.lock:
-            if b.get("name") and any(x["name"] == b["name"] and x is not f for x in state["floating_ips"].values()):
-                raise ApiError(409, "uniqueness_error", "Floating IP name is already used",
-                               {"fields": [{"name": "name"}]})
+            unique_name(state["floating_ips"].values(), body.get("name"), floating_ip, "Floating IP")
             for k in ("name", "description", "labels"):
-                if k in b:
-                    f[k] = b[k] if k != "labels" else (b[k] or {})
+                if k in body:
+                    floating_ip[k] = body[k] if k != "labels" else (body[k] or {})
             state.save()
-        return {"floating_ip": H.floating_ip(cfg, f)}
+        return {"floating_ip": H.floating_ip_json(cfg, floating_ip)}
 
     @app.delete("/v1/floating_ips/{fid}", status_code=204)
     def floating_ip_delete(fid: int):
-        f = fip_or_404(fid)
-        if f["protection"]["delete"]:
+        floating_ip = floating_ip_or_404(lab, fid)
+        if floating_ip["protection"]["delete"]:
             raise ApiError(423, "protected", "floating IP is delete protected")
-        if f.get("server"):   # Hetzner since 1 May 2026
+        if floating_ip.get("server"):   # Hetzner since 1 May 2026
             raise ApiError(422, "must_be_unassigned", "the Floating IP is assigned; unassign it first")
         with state.lock:
             del state["floating_ips"][fid]
@@ -388,4 +376,4 @@ def add_routes(app: FastAPI, lab) -> None:
 
     @app.post("/v1/floating_ips/{fid}/actions/{cmd}", status_code=201)
     async def floating_ip_post_action(fid: int, cmd: str, request: Request):
-        return await lab.blocking(floating_ip_action, lab, fid, cmd, await body(request))
+        return await lab.blocking(floating_ip_action, lab, fid, cmd, await read_body(request))

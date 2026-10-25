@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# The Storage Box stand-in: one sshd on ports 22 (SFTP only) and 23 (SFTP and a few commands), every account
+# The Storage Box stand-in: one sshd on ports 22 (SFTP, always on) and 23 (SSH support: SFTP and a few commands,
+# only with ssh_enabled), as on Hetzner; every account
 # (box user u<id>, sub-account u<id>-sub<n>) locked into its own root where only its directory is visible, as /home.
 # Called by hlabd (hlabd/fabric/storagebox.py), which keeps the boxes and accounts; nothing here decides anything.
 #
@@ -31,12 +32,26 @@ start() { # start <size gb>
     mkdir -p "${box}/data" "${box}/snapshots"
     [[ -f /hlab/box-hostkey ]] || ssh-keygen -q -t ed25519 -N "" -f /hlab/box-hostkey
     write_shell
-    # Keys: the lab's own (/hlab/box-keys) and, like on the Storage Box, .ssh/authorized_keys in the account's home.
+    # Keys: the lab's own (/hlab/box-keys) and, like on the Storage Box, .ssh/authorized_keys in the account's home:
+    # port 23 takes keys in OpenSSH format, port 22 only keys in RFC4716 format (ssh-keygen -e), as on Hetzner.
     cat > "${lib}/box-keys" <<'SH'
 #!/bin/sh
-cat "/hlab/box-keys/$1" 2>/dev/null
-# the user's own keys, as on the Storage Box
-head -c 65536 "$(cat "/hlab/box-accounts/$1" 2>/dev/null)/.ssh/authorized_keys" 2>/dev/null
+# box-keys <user> <connection (%C)>
+user="$1"
+port="$(echo "$*" | awk '{print $3}')"   # %C: local address, local port, client address, client port
+cat "/hlab/box-keys/${user}" 2>/dev/null
+keys="$(cat "/hlab/box-accounts/${user}" 2>/dev/null)/.ssh/authorized_keys"
+if [ "${port}" = 22 ]; then
+    tmp="$(mktemp -d)"
+    head -c 65536 "${keys}" 2>/dev/null | awk -v d="${tmp}" '
+        /^---- BEGIN SSH2 PUBLIC KEY ----/ { n++; f = d "/" n }
+        f { print > f }
+        /^---- END SSH2 PUBLIC KEY ----/ { close(f); f = "" }'
+    for k in "${tmp}"/*; do [ -f "${k}" ] && ssh-keygen -i -m RFC4716 -f "${k}" 2>/dev/null; done
+    rm -rf "${tmp}"
+else
+    head -c 65536 "${keys}" 2>/dev/null
+fi
 exit 0
 SH
     chmod 755 "${lib}/box-keys"
@@ -52,7 +67,7 @@ KbdInteractiveAuthentication no
 UsePAM no
 StrictModes no
 AuthorizedKeysFile none
-AuthorizedKeysCommand ${lib}/box-keys %u
+AuthorizedKeysCommand ${lib}/box-keys %u %C
 AuthorizedKeysCommandUser root
 ChrootDirectory ${roots}/%u
 ForceCommand ${lib}/box-shell
@@ -86,7 +101,9 @@ write_shell() {
 #!/bin/sh
 . /etc/hlab-access   # ssh, external, readonly, quota (bytes)
 deny() { echo "$1" >&2; exit 1; }
-[ "${ssh}" = 1 ] || deny "SSH is disabled for this account"
+port="$(echo "${SSH_CONNECTION}" | cut -d' ' -f4)"
+# port 22 (SFTP) is always on; port 23 is the SSH support that ssh_enabled switches
+[ "${port}" = 22 ] || [ "${ssh}" = 1 ] || deny "SSH is disabled for this account"
 if [ "${external}" != 1 ]; then  # only from Hetzner's networks: servers and Floating IPs, not the Internet
     ip="${SSH_CLIENT%% *}"
     case "${ip}" in
@@ -96,7 +113,6 @@ if [ "${external}" != 1 ]; then  # only from Hetzner's networks: servers and Flo
         *) deny "not reachable from outside" ;;
     esac
 fi
-port="$(echo "${SSH_CONNECTION}" | cut -d' ' -f4)"
 cd /home || exit 1
 cmd="${SSH_ORIGINAL_COMMAND:-}"
 ro=""; [ "${readonly}" = 1 ] && ro="-R"
@@ -236,12 +252,13 @@ deny_config() { # the accounts sshd refuses before login: ssh disabled, or inter
         grep -qx 'ssh=1' "${f}" || off+=("${u}")
         grep -qx 'external=1' "${f}" || internal+=("${u}")
     done
+    # ssh disabled shuts port 23 only (SFTP on 22 is always on); "outside" are the Internet clients and the lab
+    # itself. sshd takes the first DenyUsers that matches, so the case of both comes first.
+    local outside="192.0.2.0/24,2001:db8:ffff::/48,2001:db8:fffe::/48" both=("${off[@]}" "${internal[@]}")
     {
-        [[ ${#off[@]} -gt 0 ]] && echo "DenyUsers ${off[*]}"
-        if [[ ${#internal[@]} -gt 0 ]]; then   # outside: the Internet clients and the lab itself
-            echo "Match Address 192.0.2.0/24,2001:db8:ffff::/48,2001:db8:fffe::/48"
-            echo "    DenyUsers ${internal[*]}"
-        fi
+        [[ ${#both[@]} -gt 0 ]] && printf 'Match LocalPort 23 Address %s\n    DenyUsers %s\n' "${outside}" "${both[*]}"
+        [[ ${#off[@]} -gt 0 ]] && printf 'Match LocalPort 23\n    DenyUsers %s\n' "${off[*]}"
+        [[ ${#internal[@]} -gt 0 ]] && printf 'Match Address %s\n    DenyUsers %s\n' "${outside}" "${internal[*]}"
         true
     } > /hlab/box-deny.conf.tmp
     mv /hlab/box-deny.conf.tmp /hlab/box-deny.conf   # whole: sshd never reads half a file

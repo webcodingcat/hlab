@@ -79,8 +79,8 @@ bin/hlab reset                            # delete everything the APIs created
 - **Volumes**: SCSI disks as `/dev/disk/by-id/scsi-0HC_Volume_<id>`, hot-plugged, formatted on request, resized,
   automounted.
 - **Storage Box**: boxes, sub-accounts, snapshots and plans, rollback and access settings through the API; SFTP on
-  port 22, SFTP and commands (`rsync`, `scp`, `borg`, ...) on port 23; snapshots under `/home/.zfs/snapshot`. A plain
-  SFTP rename never overwrites (atomic leases work as on the real box).
+  port 22 (always on, keys in RFC4716 format), SFTP and commands (`rsync`, `scp`, `borg`, ...) on port 23 (with
+  `ssh_enabled`, keys in OpenSSH format); snapshots under `/home/.zfs/snapshot`. A plain SFTP rename never overwrites.
 - **Compatibility** is checked by the tests: every API response against Hetzner's OpenAPI specification, and the
   OpenTofu smoke test with Hetzner's own provider (an empty second plan, a clean destroy).
 
@@ -88,7 +88,10 @@ bin/hlab reset                            # delete everything the APIs created
 
 - Not offered: load balancers, certificates, DNS zones, images of your own (snapshots, backups), rescue, ISOs,
   console, placement groups, pricing, metrics. Samba and WebDAV of Storage Boxes are only reported.
-- No IPv6 to the real Internet, no vSwitch. All Storage Boxes share `storage_box.size_gb`.
+- No IPv6 to the real Internet, no vSwitch. All Storage Boxes share `storage_box.size_gb`; SCP on port 22 only
+  through SFTP (OpenSSH's default), and the automatic snapshots share the limit of the manual ones.
+- A server's `locked` is true while one of its actions runs; on Hetzner it marks an administrative lock. Wait for the
+  action instead.
 - A test lab, not a hosting platform: the guests run your own code. The lab keeps the Docker host and its network
   out of reach, but it does not defend servers and users against each other (`/_lab` has no authentication, QEMU
   runs as root in the container, cloud networks have no source checks).

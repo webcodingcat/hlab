@@ -1,4 +1,4 @@
-"""HTTP plumbing shared by all API modules: errors, lists (filter, sort, pages), request checks, rate limit."""
+"""HTTP plumbing shared by all API modules: error answers, lists (filter, sort, pages), request checks, rate limit."""
 
 import asyncio
 import json
@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from ..errors import ApiError, invalid, not_found
 from ..labels import match_labels
 from . import hetzner as H
 from . import spec as S
@@ -17,39 +18,11 @@ from . import spec as S
 log = logging.getLogger("hlabd.web")
 
 
-class ApiError(Exception):
-    def __init__(self, status: int, code: str, message: str, details: dict | None = None):
-        self.status, self.code, self.message, self.details = status, code, message, details
+def error_response(error: ApiError) -> JSONResponse:
+    return JSONResponse(H.error(error.code, error.message, error.details), status_code=error.status)
 
 
-def not_found(what: str) -> ApiError:
-    return ApiError(404, "not_found", f"{what} not found")
-
-
-def invalid(message: str, field: str | None = None) -> ApiError:
-    details = {"fields": [{"name": field, "messages": [message]}]} if field else None
-    return ApiError(422, "invalid_input", f"invalid input in field '{field}': {message}" if field else message, details)
-
-
-def unique_name(items, name, current: dict | None = None, what: str = "resource") -> None:
-    """Names are unique per project (409 uniqueness_error), on create and on rename."""
-    if name and any(x.get("name") == name and x is not current for x in items):
-        raise ApiError(409, "uniqueness_error", f"{what} name is already used", {"fields": [{"name": "name"}]})
-
-
-def unsupported(what: str) -> ApiError:
-    return ApiError(422, "unsupported_error", f"the lab does not support {what}")
-
-
-def limit_exceeded(message: str, name: str) -> ApiError:
-    return ApiError(403, "resource_limit_exceeded", message, {"limits": [{"name": name}]})
-
-
-def error_response(e: ApiError) -> JSONResponse:
-    return JSONResponse(H.error(e.code, e.message, e.details), status_code=e.status)
-
-
-async def body(request: Request) -> dict:
+async def read_body(request: Request) -> dict:
     """The JSON body (already checked by the middleware); {} when there is none."""
     raw = await request.body()
     try:
@@ -60,16 +33,16 @@ async def body(request: Request) -> dict:
 
 
 def paginate(request: Request, items: list, key: str) -> dict:
-    q = request.query_params
-    items = S.sort_items(items, q.getlist("sort")) if q.getlist("sort") else items
-    def number(v: str | None, default: int) -> int:   # Hetzner: invalid values fall back to the default
+    query = request.query_params
+    items = S.sort_items(items, query.getlist("sort")) if query.getlist("sort") else items
+    def number(value: str | None, default: int) -> int:   # Hetzner: invalid values fall back to the default
         try:
-            return int(v) if v is not None and int(v) >= 1 else default
+            return int(value) if value is not None and int(value) >= 1 else default
         except ValueError:
             return default
 
-    page = number(q.get("page"), 1)
-    per_page = min(50, number(q.get("per_page"), 25))
+    page = number(query.get("page"), 1)
+    per_page = min(50, number(query.get("per_page"), 25))
     total = len(items)
     last = max(1, -(-total // per_page))
     chunk = items[(page - 1) * per_page: page * per_page]
@@ -79,15 +52,15 @@ def paginate(request: Request, items: list, key: str) -> dict:
 
 
 def filtered(request: Request, items: list[dict], extra: dict | None = None) -> list[dict]:
-    q = request.query_params
+    query = request.query_params
     out = items
-    if "name" in q and "name" not in (extra or {}):
-        out = [i for i in out if i.get("name") == q["name"]]
-    if "label_selector" in q:
-        out = [i for i in out if match_labels(i.get("labels") or {}, q["label_selector"])]
+    if "name" in query and "name" not in (extra or {}):
+        out = [i for i in out if i.get("name") == query["name"]]
+    if "label_selector" in query:
+        out = [i for i in out if match_labels(i.get("labels") or {}, query["label_selector"])]
     for k, fn in (extra or {}).items():
-        if k in q:   # a filter may be given several times (status=running&status=off): any of the values
-            value = ",".join(q.getlist(k))
+        if k in query:   # a filter may be given several times (status=running&status=off): any of the values
+            value = ",".join(query.getlist(k))
             out = [i for i in out if fn(i, value)]
     return sorted(out, key=lambda i: i.get("id", 0))
 
@@ -126,27 +99,27 @@ def install(app: FastAPI, lab, spec_name: str, prefix: str) -> None:
     limiter = RateLimit(lab.cfg["api"].get("rate_limit", 3600))
 
     @app.exception_handler(ApiError)
-    async def api_error(_: Request, e: ApiError):
-        return error_response(e)
+    async def api_error(_: Request, error: ApiError):
+        return error_response(error)
 
     @app.exception_handler(StarletteHTTPException)
-    async def http_error(_: Request, e: StarletteHTTPException):
-        if e.status_code == 405:
+    async def http_error(_: Request, error: StarletteHTTPException):
+        if error.status_code == 405:
             return error_response(ApiError(405, "method_not_allowed", "the request method is not allowed"))
-        return error_response(ApiError(e.status_code, "not_found" if e.status_code == 404 else "server_error",
-                                       str(e.detail)))
+        return error_response(ApiError(error.status_code, "not_found" if error.status_code == 404 else "server_error",
+                                       str(error.detail)))
 
     @app.exception_handler(Exception)
-    async def unexpected(_: Request, e: Exception):
+    async def unexpected(_: Request, error: Exception):
         """A failure of the lab itself (a shell command, say) answers like the cloud's server errors: JSON."""
         log.exception("unexpected error")
-        return error_response(ApiError(500, "server_error", f"the lab failed: {str(e)[:300]}"))
+        return error_response(ApiError(500, "server_error", f"the lab failed: {str(error)[:300]}"))
 
     @app.exception_handler(RequestValidationError)
-    async def validation_error(_: Request, e: RequestValidationError):
-        if any(err.get("loc", [None])[0] == "path" for err in e.errors()):
+    async def validation_error(_: Request, error: RequestValidationError):
+        if any(err.get("loc", [None])[0] == "path" for err in error.errors()):
             return error_response(not_found("resource"))
-        return error_response(invalid(str(e.errors()[0].get("msg")), "query"))
+        return error_response(invalid(str(error.errors()[0].get("msg")), "query"))
 
     @app.middleware("http")
     async def middleware(request: Request, call_next):
@@ -160,50 +133,50 @@ def install(app: FastAPI, lab, spec_name: str, prefix: str) -> None:
             return error_response(ApiError(401, "unauthorized", "unable to authenticate"))
         ok, headers = limiter.take(auth[7:])
         if not ok:
-            r = error_response(ApiError(429, "rate_limit_exceeded", "limit of requests per hour reached"))
-            r.headers.update(headers)
-            return r
+            response = error_response(ApiError(429, "rate_limit_exceeded", "limit of requests per hour reached"))
+            response.headers.update(headers)
+            return response
         if lab.fault["delay_ms"]:
             await asyncio.sleep(lab.fault["delay_ms"] / 1000)
         if lab.fault["count"] > 0:
             lab.fault["count"] -= 1
             code = lab.fault["status"]
-            r = error_response(ApiError(code, {429: "rate_limit_exceeded", 503: "unavailable"}.get(
+            response = error_response(ApiError(code, {429: "rate_limit_exceeded", 503: "unavailable"}.get(
                 code, "server_error"), "injected fault"))
-            r.headers.update(headers)
-            return r
+            response.headers.update(headers)
+            return response
         try:
             check_request(spec, request, await request.body() if request.method in ("POST", "PUT", "PATCH") else b"")
-        except ApiError as e:
-            r = error_response(e)
-            r.headers.update(headers)
-            return r
-        resp = await call_next(request)
-        resp.headers.update(headers)
-        return resp
+        except ApiError as error:
+            response = error_response(error)
+            response.headers.update(headers)
+            return response
+        answer = await call_next(request)
+        answer.headers.update(headers)
+        return answer
 
 
 def check_request(spec: S.Spec, request: Request, raw: bytes) -> None:
-    op = spec.op(request.method, request.url.path)
+    operation = spec.op(request.method, request.url.path)
     data = None
     if raw:
         try:
             data = json.loads(raw)
         except ValueError:
             raise ApiError(400, "json_error", "request body is not valid JSON") from None
-    if op is None:
+    if operation is None:
         return
-    if data is not None or (op.get("requestBody") or {}).get("required"):
-        fields = spec.body_errors(op, data if data is not None else {})
+    if data is not None or (operation.get("requestBody") or {}).get("required"):
+        fields = spec.body_errors(operation, data if data is not None else {})
         if isinstance(data, dict) and "labels" in data:
-            msgs = S.label_errors(data["labels"])
-            if msgs:
-                fields.append({"name": "labels", "messages": msgs})
+            messages = S.label_errors(data["labels"])
+            if messages:
+                fields.append({"name": "labels", "messages": messages})
         if fields:
-            f = fields[0]
-            raise ApiError(422, "invalid_input", f"invalid input in field '{f['name']}': {f['messages'][0]}",
+            field = fields[0]
+            raise ApiError(422, "invalid_input", f"invalid input in field '{field['name']}': {field['messages'][0]}",
                            {"fields": fields})
-    allowed = spec.query_enum(op, "sort")
+    allowed = spec.query_enum(operation, "sort")
     for s in request.query_params.getlist("sort"):
         if allowed is not None and s not in allowed:
             raise invalid(f"must be one of {', '.join(allowed)}", "sort")

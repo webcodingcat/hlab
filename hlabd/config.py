@@ -49,7 +49,8 @@ FLOATING_NET = "203.0.113"        # Floating IPv4: .10 + n
 CLIENT_NET = "192.0.2"            # "Internet" clients: .10 + n, gateway .1
 OPERATOR = "192.0.2.2"            # source of everything the lab container itself (and its consumers) sends to VMs
 ADMIN = "198.18.0.2"              # source of `hlab ssh`: the lab's own access, not filtered by Cloud firewalls
-# IPv6, all from the documentation prefix 2001:db8::/32. Every server routes a /64 (guest: <prefix>::1, gateway fe80::1).
+# IPv6, all from the documentation prefix 2001:db8::/32. Every server routes a /64 (guest: <prefix>::1,
+# gateway fe80::1).
 IPV6_PREFIX = "2001:db8"          # server /64: 2001:db8:<index>::/64, Floating IPv6: 2001:db8:ff<n>::/64
 GATEWAY6 = "fe80::1"
 SERVICES6 = "2001:db8:fffe::1"    # fake Cloud API, Storage Box, DNS over IPv6
@@ -86,5 +87,5 @@ def load(path: str | Path | None) -> dict:
     return _merge(DEFAULTS, data)
 
 
-def location_pair(a: str, b: str) -> str:
-    return "-".join(sorted((a, b)))
+def location_pair(first: str, second: str) -> str:
+    return "-".join(sorted((first, second)))

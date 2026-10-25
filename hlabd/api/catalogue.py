@@ -5,8 +5,9 @@ import logging
 
 from fastapi import FastAPI, Request
 
+from ..errors import ApiError, invalid, not_found
 from . import hetzner as H
-from .web import ApiError, filtered, invalid, not_found, paginate
+from .web import filtered, paginate
 
 log = logging.getLogger("hlabd.images")
 
@@ -46,19 +47,19 @@ def load_images(lab) -> None:
     """At the lab's start: every image of the configuration in the version its checksum file names now, downloaded
     unless it is there already. The files are named by checksum, so servers keep the version they were made from;
     without network the newest one there is used."""
-    d = lab.fabric.root / "images" / "system"
+    directory = lab.fabric.root / "images" / "system"   # for the fallback: the newest file there
     for name, src in lab.cfg["images"].items():
         log.info("image %s: checking %s", name, src["url"])
         try:
-            lab.images[name] = lab.fabric.sh.run("image-fetch", name, src["url"], src["checksums"], str(d)).strip()
+            lab.images[name] = lab.fabric.fetch_image(name, src["url"], src["checksums"])
             log.info("image %s: %s", name, lab.images[name])
-        except Exception as e:  # noqa: BLE001 – the lab comes up; servers of this image fail with a clear message
-            have = sorted(d.glob(f"{name}-*.qcow2"), key=lambda p: p.stat().st_mtime)
+        except Exception as error:  # noqa: BLE001 – the lab comes up; servers of this image fail with a clear message
+            have = sorted(directory.glob(f"{name}-*.qcow2"), key=lambda p: p.stat().st_mtime)
             if have:
                 lab.images[name] = str(have[-1])
-                log.warning("image %s: %s; using %s", name, e, have[-1])
+                log.warning("image %s: %s; using %s", name, error, have[-1])
             else:
-                log.error("image %s: not available: %s", name, e)
+                log.error("image %s: not available: %s", name, error)
 
 
 # --- routes ------------------------------------------------------------------------------------------------------
@@ -74,33 +75,35 @@ def add_routes(app: FastAPI, lab) -> None:
 
     @app.get("/v1/server_types")
     def server_types(request: Request):
-        return paginate(request, filtered(request, [H.server_type(cfg, n) for n in cfg["server_types"]]), "server_types")
+        types = [H.server_type_json(cfg, n) for n in cfg["server_types"]]
+        return paginate(request, filtered(request, types), "server_types")
 
     @app.get("/v1/server_types/{tid}")
     def server_type_get(tid: int):
-        return {"server_type": H.server_type(cfg, by_id(cfg["server_types"], H.server_type_id, tid, "server type"))}
+        name = by_id(cfg["server_types"], H.server_type_id, tid, "server type")
+        return {"server_type": H.server_type_json(cfg, name)}
 
     @app.get("/v1/locations")
     def locations(request: Request):
-        return paginate(request, filtered(request, [H.location(cfg, n) for n in cfg["locations"]]), "locations")
+        return paginate(request, filtered(request, [H.location_json(cfg, n) for n in cfg["locations"]]), "locations")
 
     @app.get("/v1/locations/{lid}")
     def location_get(lid: int):
-        return {"location": H.location(cfg, by_id(cfg["locations"], H.location_id, lid, "location"))}
+        return {"location": H.location_json(cfg, by_id(cfg["locations"], H.location_id, lid, "location"))}
 
     @app.get("/v1/images")
     def images(request: Request):
-        q = request.query_params
-        items = [H.image(cfg, n) for n in cfg["images"]]
-        if q.getlist("type"):
-            items = [i for i in items if i["type"] in q.getlist("type")]
-        if q.get("architecture"):
-            items = [i for i in items if i["architecture"] == q["architecture"]]
+        query = request.query_params
+        items = [H.image_json(cfg, n) for n in cfg["images"]]
+        if query.getlist("type"):
+            items = [i for i in items if i["type"] in query.getlist("type")]
+        if query.get("architecture"):
+            items = [i for i in items if i["architecture"] == query["architecture"]]
         return paginate(request, filtered(request, items), "images")
 
     @app.get("/v1/images/{iid}")
     def image_get(iid: int):
-        return {"image": H.image(cfg, by_id(cfg["images"], H.image_id, iid, "image"))}
+        return {"image": H.image_json(cfg, by_id(cfg["images"], H.image_id, iid, "image"))}
 
     # removed by Hetzner on 1 Oct. 2026 (the "datacenter" properties of servers and primary IPs on 1 July 2026)
     @app.get("/v1/datacenters")

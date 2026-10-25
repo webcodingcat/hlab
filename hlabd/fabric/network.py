@@ -17,8 +17,8 @@ def link_local(index: int) -> str:
     return f"fe80::9400:ff:fe00:{index:x}"
 
 
-def private_mac(index: int, n: int) -> str:
-    return f"86:00:00:00:{index:02x}:{n:02x}"
+def private_mac(index: int, number: int) -> str:
+    return f"86:00:00:00:{index:02x}:{number:02x}"
 
 
 def network_gateway(ip_range: str) -> str:
@@ -36,12 +36,14 @@ def prefix(ip: str) -> str:
 
 
 class Network:
-    def _private_tap_up(self, nic: dict) -> None:
+    def nic_up(self, nic: dict) -> None:
+        """A NIC's tap in its cloud network: gateway address, routes to the server's IP and alias IPs, the rules of
+        the network's routing table."""
         net = self.state["networks"][nic["network"]]
-        rng = ipaddress.ip_network(net["ip_range"])
+        ip_range = ipaddress.ip_network(net["ip_range"])
         with self.net_lock:   # two servers of one network starting side by side would both add its ip rules
-            self.sh.run("private-tap-up", nic["tap"], f"{network_gateway(net['ip_range'])}/{rng.prefixlen}",
-                        nic["ip"], route_table(nic["network"]), str(rng), *(nic.get("alias_ips") or []))
+            self.sh.run("private-tap-up", nic["tap"], f"{network_gateway(net['ip_range'])}/{ip_range.prefixlen}",
+                        nic["ip"], route_table(nic["network"]), str(ip_range), *(nic.get("alias_ips") or []))
 
     def local_addresses(self, fresh: bool = False) -> set[str]:
         """The IPv4 addresses the lab container itself has (never handed to a server); read at most every 10 s
@@ -60,11 +62,11 @@ class Network:
                 if self.vm_alive(s):
                     for nic in list(s["_lab"]["nics"]):
                         if nic["network"] == nid:
-                            self._private_tap_up(nic)
+                            self.nic_up(nic)
 
     def attach_nic(self, server: dict, nic: dict) -> None:
         if self.vm_alive(server):
-            self._private_tap_up(nic)
+            self.nic_up(nic)
             used = {n.get("port") for n in server["_lab"]["nics"]}
             nic["port"] = next((p for p in ("hp1", "hp2", "hp3", "hp4") if p not in used), None)
             if nic["port"] is None:
@@ -78,60 +80,86 @@ class Network:
         self.apply_latency()
 
     def detach_nic(self, server: dict, nic: dict) -> None:
-        if self.vm_alive(server):
-            self.sh.run("nic-del", str(self.vm_dir(server)), nic["tap"], check=False)
-        self.sh.run("tap-down", nic["tap"])
-        self.state.data.get("netem", {}).pop(nic["tap"], None)   # the next NIC gets the tap name again
+        with self.net_lock:   # taps come and go only under the lock: tc and nft changes find what they checked
+            if self.vm_alive(server):
+                self.sh.run("nic-del", str(self.vm_dir(server)), nic["tap"], check=False)
+            self.sh.run("tap-down", nic["tap"])
+            self.state.data.get("netem", {}).pop(nic["tap"], None)   # the next NIC gets the tap name again
 
-    def write_dhcp(self) -> None:
-        with self.net_lock:  # servers starting side by side must not restart dnsmasq concurrently
-            self._write_dhcp()
+    def neighbour_taps(self, ip: str) -> set[str]:
+        """The taps on which the lab sees a neighbour with this address."""
+        return set(self.sh.run("neigh-dev", ip, check=False).split())
 
-    def _write_dhcp(self) -> None:
+    def add_client(self, client: dict) -> None:
+        """An Internet client: its own network namespace behind a veth, with its addresses."""
+        with self.net_lock:
+            self.sh.run("client-add", client["name"], client["veth"], client["ip"], client["ip6"])
+        self.apply_faults()
+
+    def remove_client(self, client: dict) -> None:
+        with self.net_lock:
+            self.sh.run("client-del", client["name"], client["veth"])
+        self.apply_faults()
+
+    def drop_network(self, nid: int) -> None:
+        """A deleted network: its routing table goes, and with it its routes; DHCP and fault sets follow."""
+        with self.net_lock:
+            self.sh.run("route-flush", route_table(nid), check=False)
+        self.write_dhcp()
+        self.apply_faults()
+        self.apply_routes()
+
+    def dhcp_configs(self) -> dict[str, str]:
         """DHCP like Hetzner's: a fixed address per NIC, a /32 with routes – on public interfaces to 172.31.1.1, on
-        cloud networks to the network's gateway and range. One dnsmasq per tap (only taps that exist: dnsmasq binds
-        to its interface at start); only instances whose configuration changed are restarted."""
-        d = self.root / "dhcp"
-        d.mkdir(exist_ok=True)
-        confs: dict[str, str] = {}
-        for s in list(self.state["servers"].values()):
-            lab = s["_lab"]
-            if self.ipv4(s):
+        cloud networks to the network's gateway and range. One dnsmasq configuration per tap."""
+        configs: dict[str, str] = {}
+        for server in list(self.state["servers"].values()):
+            lab = server["_lab"]
+            if self.ipv4(server):
                 # the primary IPv4 as /32, on-link gateway 172.31.1.1, the lab's resolver
-                confs[lab["tap"]] = self._dhcp_conf(lab["tap"], public_mac(lab["index"]), self.ipv4(s), [
+                configs[lab["tap"]] = self.dnsmasq_config(lab["tap"], public_mac(lab["index"]), self.ipv4(server), [
                     f"dhcp-range={C.PUBLIC_NET}.0,static,255.255.255.0,infinite",
                     "dhcp-option=option:netmask,255.255.255.255",
                     f"dhcp-option=option:router,{C.GATEWAY}",
                     f"dhcp-option=121,{C.GATEWAY}/32,0.0.0.0,0.0.0.0/0,{C.GATEWAY}",
                     f"dhcp-option=option:dns-server,{C.SERVICES}"])
             for nic in list(lab["nics"]):
-                net = self.state["networks"].get(nic["network"])
-                if not net:   # its network went meanwhile
+                network = self.state["networks"].get(nic["network"])
+                if not network:   # its network went meanwhile
                     continue
-                rng = ipaddress.ip_network(net["ip_range"])
-                gw = network_gateway(net["ip_range"])
+                ip_range = ipaddress.ip_network(network["ip_range"])
+                gateway = network_gateway(network["ip_range"])
                 # the network's routes go to its gateway too; the lab forwards them to the route's server
-                extra = "".join(f",{r['destination']},{gw}" for r in net["routes"])
-                confs[nic["tap"]] = self._dhcp_conf(nic["tap"], nic["mac"], nic["ip"], [
-                    f"dhcp-range={rng.network_address},static,{rng.netmask},infinite",
+                routes = "".join(f",{r['destination']},{gateway}" for r in network["routes"])
+                configs[nic["tap"]] = self.dnsmasq_config(nic["tap"], nic["mac"], nic["ip"], [
+                    f"dhcp-range={ip_range.network_address},static,{ip_range.netmask},infinite",
                     "dhcp-option=option:netmask,255.255.255.255",
                     "dhcp-option=option:router",
-                    f"dhcp-option=121,{gw}/32,0.0.0.0,{rng},{gw}{extra}"])
-        confs = {tap: c for tap, c in confs.items() if self.sh.ok("link-exists", tap)}
-        for f in d.glob("*.conf"):
-            if f.stem not in confs:
-                self.sh.run("dhcp-stop", str(f))
-                f.unlink()
-        for tap, conf in confs.items():
-            f = d / f"{tap}.conf"
-            if not f.is_file() or f.read_text() != conf:
-                f.write_text(conf)
-                self.sh.run("dhcp-restart", str(f))
+                    f"dhcp-option=121,{gateway}/32,0.0.0.0,{ip_range},{gateway}{routes}"])
+        return configs
 
-    def _dhcp_conf(self, tap: str, mac: str, ip: str, options: list[str]) -> str:
+    def dnsmasq_config(self, tap: str, mac: str, ip: str, options: list[str]) -> str:
         return "\n".join(["port=0", "bind-dynamic", f"interface={tap}", "dhcp-authoritative", "leasefile-ro",
                           f"pid-file={self.root / 'dhcp' / (tap + '.pid')}", f"dhcp-host={mac},{ip}",
                           *options]) + "\n"
+
+    def write_dhcp(self) -> None:
+        """One dnsmasq per tap, only for taps that exist (dnsmasq binds to its interface at start); only instances
+        whose configuration changed are restarted. Under the lock: servers starting side by side must not restart
+        dnsmasq concurrently."""
+        directory = self.root / "dhcp"
+        directory.mkdir(exist_ok=True)
+        with self.net_lock:
+            configs = {tap: c for tap, c in self.dhcp_configs().items() if self.sh.ok("link-exists", tap)}
+            for path in directory.glob("*.conf"):
+                if path.stem not in configs:
+                    self.sh.run("dhcp-stop", str(path))
+                    path.unlink()
+            for tap, config in configs.items():
+                path = directory / f"{tap}.conf"
+                if not path.is_file() or path.read_text() != config:
+                    path.write_text(config)
+                    self.sh.run("dhcp-restart", str(path))
 
     def apply_routes(self) -> None:
         """Routes of cloud networks: the destination goes to the tap of the server that holds the gateway IP, in
@@ -185,10 +213,11 @@ class Network:
             else:
                 self.sh.run("route", prefix(ip))
 
-    def route_floating(self, f: dict) -> None:
+    def route_floating(self, floating_ip: dict) -> None:
         """A Floating IP routed as the state says now: of two moves in a row, the later one wins."""
         with self.net_lock:
-            self.route_floating_ip(f["ip"], self.state["servers"].get(f.get("server")) if f.get("server") else None)
+            server = self.state["servers"].get(floating_ip["server"]) if floating_ip.get("server") else None
+            self.route_floating_ip(floating_ip["ip"], server)
 
     def apply_firewalls(self) -> None:
         """Replace the firewall table (inet hlabfw) atomically with the rules of all firewalls."""

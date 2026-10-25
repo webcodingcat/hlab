@@ -8,22 +8,28 @@ part (VMs, disks, networks) in the background.
 How things are kept apart while an action runs:
 
 - A server has `locked`: set by `reserve()` before an action starts (423 if one already runs, as on Hetzner) and
-  cleared by `run_action()` when the action's steps end.
+  cleared by `run_action()` when the action's steps end, or by `release()` when nothing was started after all.
 - Other resources mark themselves for the few moments that need it: `_moving` (a Floating IP being moved), `_busy` (a
   volume in an action, a Storage Box being rolled back), `_deleting` (a network or Storage Box being deleted),
   `_creating` (a sub-account being set up), `_copying` (a Storage Box snapshot being copied). Fields starting with
   `_` are the lab's own and never shown by the API; a restart of the lab clears them (api/restart.py).
+
+Changes that are done at once still get an action, finished right away (`done()`), as on Hetzner.
 """
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 
-from .api.hetzner import now
-from .api.web import ApiError, not_found
+from .errors import ApiError, locked, not_found
 from .fabric import Fabric
 
 log = logging.getLogger("hlabd.lab")
 
+
+def now() -> str:
+    """A timestamp as the API shows it."""
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
 class Lab:
@@ -49,40 +55,47 @@ class Lab:
     def spawn(self, coro) -> None:
         """Run a coroutine on the server's event loop, also from the worker threads of sync endpoints."""
         try:
-            t = asyncio.get_running_loop().create_task(coro)
+            task = asyncio.get_running_loop().create_task(coro)
         except RuntimeError:
-            t = asyncio.run_coroutine_threadsafe(coro, self.loop)
-        self.tasks.add(t)
-        t.add_done_callback(self.tasks.discard)
+            task = asyncio.run_coroutine_threadsafe(coro, self.loop)
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
 
     # --- actions -------------------------------------------------------------------------------------------------
 
     def new_action(self, command: str, resources: list[tuple[int, str]]) -> dict:
         """A new action in status running, for the given (id, type) resources."""
         with self.state.lock:
-            a = {"id": self.state.new_id("actions"), "command": command, "status": "running", "progress": 0,
-                 "started": now(), "finished": None, "error": None,
-                 "resources": [{"id": i, "type": t} for i, t in resources]}
-            acts = self.state["actions"]
-            acts[a["id"]] = a
-            if len(acts) > 10000:   # the state stays small: the oldest finished actions go
-                for aid in [i for i, x in acts.items() if x["status"] != "running"][:len(acts) - 5000]:
-                    del acts[aid]
-        log.info("action %s %s %s", a["id"], command, " ".join(f"{t}:{i}" for i, t in resources))
-        return a
+            action = {"id": self.state.new_id("actions"), "command": command, "status": "running", "progress": 0,
+                      "started": now(), "finished": None, "error": None,
+                      "resources": [{"id": i, "type": t} for i, t in resources]}
+            actions = self.state["actions"]
+            actions[action["id"]] = action
+            if len(actions) > 10000:   # the state stays small: the oldest finished actions go
+                for aid in [i for i, x in actions.items() if x["status"] != "running"][:len(actions) - 5000]:
+                    del actions[aid]
+        log.info("action %s %s %s", action["id"], command, " ".join(f"{t}:{i}" for i, t in resources))
+        return action
 
-    def finish(self, a: dict, err: str | None = None) -> None:
+    def done(self, command: str, resources: list[tuple[int, str]]) -> dict:
+        """An action for a change that is done at once."""
+        action = self.new_action(command, resources)
+        self.finish(action)
+        return action
+
+    def finish(self, action: dict, message: str | None = None) -> None:
         with self.state.lock:
-            a.update(progress=100, finished=now(), status="error" if err else "success")
-            if err:
-                a["error"] = {"code": "action_failed", "message": err}
+            action.update(progress=100, finished=now(), status="error" if message else "success")
+            if message:
+                action["error"] = {"code": "action_failed", "message": message}
             self.state.save()
-        if err:
-            log.warning("action %s %s failed: %s", a["id"], a["command"], err)
+        if message:
+            log.warning("action %s %s failed: %s", action["id"], action["command"], message)
         else:
-            log.info("action %s %s done", a["id"], a["command"])
+            log.info("action %s %s done", action["id"], action["command"])
 
-    def run_action(self, a: dict, steps, server: dict | None = None, nxt: list[dict] | None = None) -> None:
+    def run_action(self, action: dict, steps, server: dict | None = None,
+                   next_actions: list[dict] | None = None) -> None:
         """Run an action's steps in the background and finish it. A server is locked until the steps end. When they
         fail, the next actions fail with them, and the server leaves its in-between status (starting, rebuilding,
         ...) for what its VM really does."""
@@ -90,35 +103,35 @@ class Lab:
             server["locked"] = True
 
         async def go():
-            err = None
+            message = None
             try:
                 await steps()
-            except Exception as e:  # noqa: BLE001 – reported through the action, like the cloud does
-                log.exception("action %s failed", a["command"])
-                err = str(e)
-                for n in nxt or []:
+            except Exception as error:  # noqa: BLE001 – reported through the action, like the cloud does
+                log.exception("action %s failed", action["command"])
+                message = str(error)
+                for n in next_actions or []:
                     if n["status"] == "running":
-                        self.finish(n, err)
+                        self.finish(n, message)
                 if server is not None and server["status"] in ("initializing", "starting", "stopping", "rebuilding",
                                                                "deleting"):
                     alive = await self.blocking(self.fabric.vm_alive, server)
                     self.set_status(server, "running" if alive else "off")
             except asyncio.CancelledError:
-                err = "the action was cancelled (lab stopped or reset)"
+                message = "the action was cancelled (lab stopped or reset)"
                 raise
             finally:
                 if server is not None:
-                    server["locked"] = False
-                self.finish(a, err)
+                    self.release(server)
+                self.finish(action, message)
         self.spawn(go())
 
     # --- servers -------------------------------------------------------------------------------------------------
 
     def server(self, sid: int) -> dict:
-        s = self.state["servers"].get(sid)
-        if not s:
+        server = self.state["servers"].get(sid)
+        if not server:
             raise not_found("server")
-        return s
+        return server
 
     def server_by_name(self, name: str) -> dict:
         for s in self.state["servers"].values():
@@ -126,27 +139,31 @@ class Lab:
                 return s
         raise not_found(f"server {name!r}")
 
-    def reserve(self, s: dict) -> None:
+    def reserve(self, server: dict) -> None:
         """Lock a server for an action that is about to start, or 423 if one runs (check and set in one step)."""
         with self.state.lock:
-            if s.get("locked"):
-                raise ApiError(423, "locked", "server is locked by another action")
-            s["locked"] = True
+            if server.get("locked"):
+                raise locked("server is locked by another action")
+            server["locked"] = True
 
-    def set_status(self, s: dict, status: str) -> None:
+    def release(self, server: dict) -> None:
+        """Unlock a server reserved for an action that did not start (or whose steps ended)."""
+        server["locked"] = False
+
+    def set_status(self, server: dict, status: str) -> None:
         with self.state.lock:
-            s["status"] = status
+            server["status"] = status
             self.state.save()
 
     # --- watching VMs --------------------------------------------------------------------------------------------
 
-    async def off_when_down(self, s: dict, timeout: float = 600) -> None:
+    async def off_when_down(self, server: dict, timeout: float = 600) -> None:
         """After a shutdown: the server is off once its VM has ended (within ten minutes)."""
         for _ in range(int(timeout)):
             await asyncio.sleep(1)
-            if self.state["servers"].get(s["id"]) is not s or s["status"] != "running":
+            if self.state["servers"].get(server["id"]) is not server or server["status"] != "running":
                 return   # deleted, or something else changed it
-            if not s.get("locked") and await self.blocking(self.stop_if_ended, s):
+            if not server.get("locked") and await self.blocking(self.stop_if_ended, server):
                 return
 
     async def vm_watcher(self) -> None:
@@ -165,20 +182,20 @@ class Lab:
             if s["status"] == "running" and not s.get("locked"):
                 self.stop_if_ended(s)
 
-    def stop_if_ended(self, s: dict) -> bool:
+    def stop_if_ended(self, server: dict) -> bool:
         """A running server whose VM has ended is off (its taps and DHCP go). True if that happened."""
-        if self.fabric.vm_alive(s):
+        if self.fabric.vm_alive(server):
             return False
         try:
-            self.reserve(s)   # an action that started meanwhile wins
+            self.reserve(server)   # an action that started meanwhile wins
         except ApiError:
             return False
         try:
-            if s["status"] != "running" or self.fabric.vm_alive(s):
+            if server["status"] != "running" or self.fabric.vm_alive(server):
                 return False
-            log.info("server %s: its VM ended", s["name"])
-            self.fabric.kill_vm(s)
-            self.set_status(s, "off")
+            log.info("server %s: its VM ended", server["name"])
+            self.fabric.kill_vm(server)
+            self.set_status(server, "off")
             return True
         finally:
-            s["locked"] = False
+            self.release(server)

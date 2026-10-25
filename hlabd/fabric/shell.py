@@ -12,10 +12,10 @@ HLAB_SH = "/opt/hlab/scripts/hlab.sh"
 
 class Shell:
     def run(self, *args: str, check: bool = True, input: str | None = None) -> str:
-        p = subprocess.run([HLAB_SH, *args], capture_output=True, text=True, input=input)
-        if check and p.returncode != 0:
-            raise RuntimeError(f"hlab.sh {' '.join(args)}: {p.stderr.strip() or p.returncode}")
-        return p.stdout
+        process = subprocess.run([HLAB_SH, *args], capture_output=True, text=True, input=input)
+        if check and process.returncode != 0:
+            raise RuntimeError(f"hlab.sh {' '.join(args)}: {process.stderr.strip() or process.returncode}")
+        return process.stdout
 
     def ok(self, *args: str) -> bool:
         return subprocess.run([HLAB_SH, *args], capture_output=True).returncode == 0
@@ -26,21 +26,21 @@ class Shell:
         token = secrets.randbelow(2**31)
         deadline = time.monotonic() + timeout
         try:
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as c:
-                c.settimeout(timeout)
-                c.connect(str(sock))
-                f = c.makefile("rwb")
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+                connection.settimeout(timeout)
+                connection.connect(str(sock))
+                stream = connection.makefile("rwb")
 
                 def send(cmd: dict) -> None:
-                    f.write(json.dumps(cmd).encode() + b"\n")
-                    f.flush()
+                    stream.write(json.dumps(cmd).encode() + b"\n")
+                    stream.flush()
 
                 def line() -> bytes:   # a guest that keeps talking does not hold the lab up
                     left = deadline - time.monotonic()
                     if left <= 0:
                         raise TimeoutError
-                    c.settimeout(left)
-                    return f.readline(1 << 20)
+                    connection.settimeout(left)
+                    return stream.readline(1 << 20)
 
                 send({"execute": "guest-sync", "arguments": {"id": token}})
                 for _ in range(1000):

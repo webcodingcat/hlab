@@ -101,7 +101,7 @@ def test_dns_and_metadata(lab: Lab):
 def test_api_reachable_from_servers_over_both_families(lab: Lab):
     for host in ("198.18.0.1", "[2001:db8:fffe::1]"):
         code = lab.sh("a", f"curl -s -o /dev/null -w '%{{http_code}}' -H 'Authorization: Bearer {'hlab' * 16}' "
-                           f"http://{host}/v1/servers")
+                      f"http://{host}/v1/servers")
         assert code == "200"
 
 
@@ -174,44 +174,44 @@ def test_firewall_outbound(lab: Lab):
 
 def test_firewall_covers_floating_ip(lab: Lab):
     fip = lab.api("POST", "/floating_ips", {"type": "ipv4", "home_location": "fsn1", "server": lab.server("a")["id"]})
-    f = fip["floating_ip"]
+    floating_ip = fip["floating_ip"]
     lab.wait_action(fip["action"])
-    lab.sh("a", f"ip addr add {f['ip']}/32 dev eth0")
-    lab.sh("b", f"ip addr add {f['ip']}/32 dev eth0")
+    lab.sh("a", f"ip addr add {floating_ip['ip']}/32 dev eth0")
+    lab.sh("b", f"ip addr add {floating_ip['ip']}/32 dev eth0")
     fw = lab.api("POST", "/firewalls", {"name": "fipfw", "rules": [
         {"direction": "in", "protocol": "tcp", "port": "7000", "source_ips": ANY}],
-        "apply_to": [{"type": "server", "server": {"id": lab.server("a")["id"]}}]})["firewall"]
+                                        "apply_to": [{"type": "server", "server": {"id": lab.server("a")["id"]}}]})["firewall"]
     try:
-        assert probe(lab, "client:alice", "tcp", f["ip"]) == f"a tcp {ALICE4}"
-        assert probe(lab, "client:alice", "tcp", f["ip"], 7001) == ""
-        lab.wait_action(lab.api("POST", f"/floating_ips/{f['id']}/actions/assign", {"server": lab.server("b")["id"]})["action"])
-        assert probe(lab, "client:alice", "tcp", f["ip"], 7001) == f"b tcp {ALICE4}"   # b has no firewall
+        assert probe(lab, "client:alice", "tcp", floating_ip["ip"]) == f"a tcp {ALICE4}"
+        assert probe(lab, "client:alice", "tcp", floating_ip["ip"], 7001) == ""
+        lab.wait_action(lab.api("POST", f"/floating_ips/{floating_ip['id']}/actions/assign", {"server": lab.server("b")["id"]})["action"])
+        assert probe(lab, "client:alice", "tcp", floating_ip["ip"], 7001) == f"b tcp {ALICE4}"   # b has no firewall
     finally:
         lab.api("POST", f"/firewalls/{fw['id']}/actions/remove_from_resources",
                 {"remove_from": [{"type": "server", "server": {"id": lab.server("a")["id"]}}]})
         lab.api("DELETE", f"/firewalls/{fw['id']}")
-        lab.sh("a", f"ip addr del {f['ip']}/32 dev eth0")
-        lab.sh("b", f"ip addr del {f['ip']}/32 dev eth0")
-        lab.wait_action(lab.api("POST", f"/floating_ips/{f['id']}/actions/unassign")["action"])
-        lab.api("DELETE", f"/floating_ips/{f['id']}")
+        lab.sh("a", f"ip addr del {floating_ip['ip']}/32 dev eth0")
+        lab.sh("b", f"ip addr del {floating_ip['ip']}/32 dev eth0")
+        lab.wait_action(lab.api("POST", f"/floating_ips/{floating_ip['id']}/actions/unassign")["action"])
+        lab.api("DELETE", f"/floating_ips/{floating_ip['id']}")
 
 
 def test_floating_ipv6_moves(lab: Lab):
     fip = lab.api("POST", "/floating_ips", {"type": "ipv6", "home_location": "fsn1", "server": lab.server("a")["id"]})
-    f = fip["floating_ip"]
+    floating_ip = fip["floating_ip"]
     lab.wait_action(fip["action"])
-    addr = f["ip"].split("/")[0] + "1"
+    addr = floating_ip["ip"].split("/")[0] + "1"
     for n in ("a", "b"):
         lab.sh(n, f"ip -6 addr add {addr}/64 dev eth0 nodad")
     try:
         assert probe(lab, "client:alice", "tcp", addr) == f"a tcp {ALICE6}"
-        lab.wait_action(lab.api("POST", f"/floating_ips/{f['id']}/actions/assign", {"server": lab.server("b")["id"]})["action"])
+        lab.wait_action(lab.api("POST", f"/floating_ips/{floating_ip['id']}/actions/assign", {"server": lab.server("b")["id"]})["action"])
         assert probe(lab, "client:alice", "tcp", addr) == f"b tcp {ALICE6}"
     finally:
         for n in ("a", "b"):
             lab.ssh(n, f"ip -6 addr del {addr}/64 dev eth0")
-        lab.wait_action(lab.api("POST", f"/floating_ips/{f['id']}/actions/unassign")["action"])
-        lab.api("DELETE", f"/floating_ips/{f['id']}")
+        lab.wait_action(lab.api("POST", f"/floating_ips/{floating_ip['id']}/actions/unassign")["action"])
+        lab.api("DELETE", f"/floating_ips/{floating_ip['id']}")
 
 
 # --- faults ---------------------------------------------------------------------------------------------------
@@ -340,26 +340,26 @@ def test_storage_box(lab: Lab, tmp_path):
     key = paramiko.Ed25519Key.from_private_key_file(_keypair(tmp_path))
     lab.control("POST", "/box/users", {"name": "backup1", "public_key": (tmp_path / "k.pub").read_text()})
     for host in ("198.18.0.1", "2001:db8:fffe::1"):
-        t = paramiko.Transport((host, 23))
-        t.connect(username="backup1", pkey=key)
-        sftp = paramiko.SFTPClient.from_transport(t)
-        d = f"t-{time.time_ns()}"
-        sftp.mkdir(d)
+        transport = paramiko.Transport((host, 23))
+        transport.connect(username="backup1", pkey=key)
+        sftp = paramiko.SFTPClient.from_transport(transport)
+        directory = f"t-{time.time_ns()}"
+        sftp.mkdir(directory)
         for name in ("one", "two"):
-            with sftp.open(f"{d}/tmp-{name}", "w") as f:
-                f.write(name)
-        sftp.rename(f"{d}/tmp-one", f"{d}/lease")
+            with sftp.open(f"{directory}/tmp-{name}", "w") as file:
+                file.write(name)
+        sftp.rename(f"{directory}/tmp-one", f"{directory}/lease")
         with pytest.raises(IOError):
-            sftp.rename(f"{d}/tmp-two", f"{d}/lease")    # a plain rename never overwrites: exactly one winner
-        with sftp.open(f"{d}/lease") as f:
-            assert f.read() == b"one"
-        sftp.posix_rename(f"{d}/tmp-two", f"{d}/lease")  # posix-rename does overwrite
-        with sftp.open(f"{d}/lease") as f:
-            assert f.read() == b"two"
-        sftp.remove(f"{d}/lease")
-        sftp.rmdir(d)
+            sftp.rename(f"{directory}/tmp-two", f"{directory}/lease")    # a plain rename never overwrites: exactly one winner
+        with sftp.open(f"{directory}/lease") as file:
+            assert file.read() == b"one"
+        sftp.posix_rename(f"{directory}/tmp-two", f"{directory}/lease")  # posix-rename does overwrite
+        with sftp.open(f"{directory}/lease") as file:
+            assert file.read() == b"two"
+        sftp.remove(f"{directory}/lease")
+        sftp.rmdir(directory)
         sftp.close()
-        t.close()
+        transport.close()
     out = subprocess.run(["ssh", "-p", "23", "-i", str(tmp_path / "k"), "-o", "StrictHostKeyChecking=no",
                           "-o", "UserKnownHostsFile=/dev/null", "backup1@198.18.0.1", "df"],
                          capture_output=True, text=True, timeout=20)
@@ -395,10 +395,10 @@ def test_poweroff_and_on(lab: Lab):
 
 def test_server_locked_while_action_runs(lab: Lab):
     sid = lab.server("b")["id"]
-    a = lab.api("POST", f"/servers/{sid}/actions/poweroff")["action"]
-    r = lab.http.post(f"/servers/{sid}/actions/poweron")
-    assert r.status_code == 423
-    lab.wait_action(a)
+    action = lab.api("POST", f"/servers/{sid}/actions/poweroff")["action"]
+    response = lab.http.post(f"/servers/{sid}/actions/poweron")
+    assert response.status_code == 423
+    lab.wait_action(action)
     lab.action("b", "poweron")
     lab.wait_ssh("b")
 

@@ -26,19 +26,19 @@ CONTROL = f"http://{C.SERVICES}/_lab"
 
 def call(method: str, path: str, body: dict | None = None) -> dict:
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(CONTROL + path, data=data, method=method,
-                                 headers={"Content-Type": "application/json"})
+    request = urllib.request.Request(CONTROL + path, data=data, method=method,
+                                     headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=120) as r:
-            return json.loads(r.read() or b"{}")
-    except urllib.error.HTTPError as e:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            return json.loads(response.read() or b"{}")
+    except urllib.error.HTTPError as error:
         try:
-            msg = json.loads(e.read())["error"]["message"]
+            message = json.loads(error.read())["error"]["message"]
         except Exception:  # noqa: BLE001
-            msg = str(e)
-        sys.exit(f"hlab: {msg}")
-    except urllib.error.URLError as e:
-        sys.exit(f"hlab: control API not reachable ({e.reason}) – is the lab up?")
+            message = str(error)
+        sys.exit(f"hlab: {message}")
+    except urllib.error.URLError as error:
+        sys.exit(f"hlab: control API not reachable ({error.reason}) – is the lab up?")
 
 
 def serve(cfg_path: str | None) -> None:
@@ -47,7 +47,7 @@ def serve(cfg_path: str | None) -> None:
     from .api.app import create_app
     from .api.catalogue import load_images
     from .api.metadata import create_metadata_app
-    from .api.restart import reconcile
+    from .api.restart import restart
     from .fabric import Fabric, Shell
     from .lab import Lab
     from .state import State
@@ -72,15 +72,6 @@ def serve(cfg_path: str | None) -> None:
     fabric.write_dhcp()
     lab = Lab(cfg, state, fabric)
     load_images(lab)
-    box = cfg["storage_box"]
-    if box.get("enabled"):
-        sh.run("box-start", str(int(box.get("size_gb") or 0)))
-        for user, pub in state.data.get("box_users", {}).items():
-            p = ROOT / f"{user}.restore.pub"
-            p.write_text(pub + "\n")
-            fabric.box.lab_account(state.data.setdefault("box_uids", {}), user, str(p))
-            p.unlink()
-        storagebox.restore(lab)
     api, meta, hetzner = create_app(lab), create_metadata_app(lab), storagebox.create_app(lab)
 
     async def dispatch(scope, receive, send):  # one server for all addresses, dispatched by address
@@ -113,13 +104,13 @@ def serve(cfg_path: str | None) -> None:
         lab.loop = asyncio.get_running_loop()   # actions started from worker threads run here (schedulers too)
         # blocking work runs in threads; downloads waiting for each other must not starve the rest
         lab.loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(64))
-        await reconcile(lab)
+        await restart(lab)
         socks = []
         for addr in (C.SERVICES, C.METADATA, C.SERVICES6, C.METADATA6, C.HETZNER_API, C.HETZNER_API6):
-            s = socket.socket(socket.AF_INET6 if ":" in addr else socket.AF_INET, socket.SOCK_STREAM)
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind((addr, 80))
-            socks.append(s)
+            listener = socket.socket(socket.AF_INET6 if ":" in addr else socket.AF_INET, socket.SOCK_STREAM)
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.bind((addr, 80))
+            socks.append(listener)
         server = uvicorn.Server(uvicorn.Config(app, log_level="warning", access_log=False, lifespan="off"))
 
         async def ready():
@@ -145,7 +136,7 @@ def serve(cfg_path: str | None) -> None:
             if not any(fabric.vm_alive(s) for s in running):
                 break
             time.sleep(1)
-        sh.run("box-stop", check=False)
+        fabric.box.stop()
 
 
 def env() -> None:
@@ -162,26 +153,26 @@ def env() -> None:
 
 
 def status(as_json: bool) -> None:
-    st = call("GET", "/status")
+    status = call("GET", "/status")
     if as_json:
-        print(json.dumps(st, indent=2))
+        print(json.dumps(status, indent=2))
         return
     print(f"{'ID':<6}{'NAME':<16}{'STATUS':<14}{'VM':<5}{'LOC':<6}{'TYPE':<7}{'PUBLIC':<16}{'IPV6':<20}PRIVATE")
-    for s in st["servers"]:
-        priv = ", ".join(p["ip"] for p in s["private"])
-        pub = (s["public_ip"] or {}).get("ip", "-")
+    for s in status["servers"]:
+        private = ", ".join(p["ip"] for p in s["private"])
+        public = (s["public_ip"] or {}).get("ip", "-")
         print(f"{s['id']:<6}{s['name']:<16}{s['status'] + (' (dead)' if s['dead'] else ''):<14}{s['vm']:<5}"
-              f"{s['location']:<6}{s['server_type']:<7}{pub:<16}{s.get('ipv6') or '-':<20}{priv}")
-    for f in st["floating_ips"]:
+              f"{s['location']:<6}{s['server_type']:<7}{public:<16}{s.get('ipv6') or '-':<20}{private}")
+    for f in status["floating_ips"]:
         print(f"floating IP {f['ip']} → server {f['server'] or '-'}")
-    for c in st["clients"]:
+    for c in status["clients"]:
         print(f"client {c['name']} {c['ip']} {c.get('ip6', '')}")
-    for f in st["faults"]:
+    for f in status["faults"]:
         print("fault " + " ".join(f"{k}={v}" for k, v in f.items()))
-    for tap, args in st["netem"].items():
+    for tap, args in status["netem"].items():
         print(f"netem {tap}: {args}")
-    if st["api_fault"]["count"] or st["api_fault"]["delay_ms"]:
-        print(f"API fault: {st['api_fault']}")
+    if status["api_fault"]["count"] or status["api_fault"]["delay_ms"]:
+        print(f"API fault: {status['api_fault']}")
 
 
 def server_ip(name: str) -> str:
@@ -218,127 +209,133 @@ def ssh(name: str, cmd: list[str]) -> None:
 
 
 def console(name: str) -> None:
-    st = call("GET", "/status")
-    s = next((s for s in st["servers"] if s["name"] == name), None)
-    if not s:
+    status = call("GET", "/status")
+    server = next((s for s in status["servers"] if s["name"] == name), None)
+    if not server:
         sys.exit(f"hlab: no server named {name!r}")
-    os.execvp("tail", ["tail", "-n", "100", "-f", str(ROOT / "vm" / str(s["id"]) / "console.log")])
+    os.execvp("tail", ["tail", "-n", "100", "-f", str(ROOT / "vm" / str(server["id"]) / "console.log")])
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="hlab", description="Hetzner Cloud stand-in with QEMU/KVM VMs")
-    p.add_argument("-c", "--config", default=os.environ.get("HLAB_CONFIG"))
-    sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("serve", help="run the lab (container main process)")
-    st = sub.add_parser("status", help="servers, Floating IPs, clients and faults")
-    st.add_argument("--json", action="store_true")
-    sub.add_parser("env", help="what consumers need: API endpoint, token, network namespace, Storage Box")
-    x = sub.add_parser("ssh", help="SSH into a server as root (lab key)")
-    x.add_argument("server")
-    x.add_argument("command", nargs=argparse.REMAINDER)
-    x = sub.add_parser("console", help="follow a server's serial console")
-    x.add_argument("server")
-    sub.add_parser("reset", help="delete everything the API created (servers, networks, ...)")
+    parser = argparse.ArgumentParser(prog="hlab", description="Hetzner Cloud stand-in with QEMU/KVM VMs")
+    parser.add_argument("-c", "--config", default=os.environ.get("HLAB_CONFIG"))
+    subparsers = parser.add_subparsers(dest="cmd", required=True)
+    subparsers.add_parser("serve", help="run the lab (container main process)")
+    status_parser = subparsers.add_parser("status", help="servers, Floating IPs, clients and faults")
+    status_parser.add_argument("--json", action="store_true")
+    subparsers.add_parser("env", help="what consumers need: API endpoint, token, network namespace, Storage Box")
+    command_parser = subparsers.add_parser("ssh", help="SSH into a server as root (lab key)")
+    command_parser.add_argument("server")
+    command_parser.add_argument("command", nargs=argparse.REMAINDER)
+    command_parser = subparsers.add_parser("console", help="follow a server's serial console")
+    command_parser.add_argument("server")
+    subparsers.add_parser("reset", help="delete everything the API created (servers, networks, ...)")
 
-    f = sub.add_parser("fault", help="network and machine faults").add_subparsers(dest="fault", required=True)
-    for name, hlp in (("cut", "drop traffic between two servers/clients"), ("heal", "undo a cut")):
-        x = f.add_parser(name, help=hlp)
-        x.add_argument("a")
-        x.add_argument("b")
-        x.add_argument("--net", choices=("public", "private", "all"), default="all")
+    fault_parser = subparsers.add_parser("fault", help="network and machine faults")
+    fault_parser = fault_parser.add_subparsers(dest="fault", required=True)
+    for name, help_text in (("cut", "drop traffic between two servers/clients"), ("heal", "undo a cut")):
+        command_parser = fault_parser.add_parser(name, help=help_text)
+        command_parser.add_argument("a")
+        command_parser.add_argument("b")
+        command_parser.add_argument("--net", choices=("public", "private", "all"), default="all")
     for name in ("isolate", "unisolate"):
-        f.add_parser(name, help="cut a server off from everything" if name == "isolate" else "undo isolate").add_argument("vm")
+        help_text = "cut a server off from everything" if name == "isolate" else "undo isolate"
+        fault_parser.add_parser(name, help=help_text).add_argument("vm")
     for name in ("block", "unblock"):
-        x = f.add_parser(name, help="keep a server from the API, the Storage Box or the Internet")
-        x.add_argument("vm")
-        x.add_argument("what", choices=("api", "box", "internet"))
-    for name, hlp in (("pause", "freeze a VM (clock stops)"), ("cont", "resume a paused VM"),
-                      ("dead", "broken hardware: power-on succeeds, the VM stays off"), ("alive", "repair")):
-        f.add_parser(name, help=hlp).add_argument("vm")
-    x = f.add_parser("netem", help="tc netem on a server's taps (towards the server), e.g. delay 100ms loss 5%%")
-    x.add_argument("vm")
-    x.add_argument("--net", choices=("public", "private", "all"), default="all")
-    x.add_argument("args", nargs=argparse.REMAINDER)
-    x = f.add_parser("api", help="answer the next COUNT API requests with STATUS, or delay all by --delay-ms")
-    x.add_argument("status", type=int, nargs="?", default=0)
-    x.add_argument("count", type=int, nargs="?", default=0)
-    x.add_argument("--delay-ms", type=int, default=0)
-    f.add_parser("clear", help="remove all faults")
+        command_parser = fault_parser.add_parser(name,
+                                                 help="keep a server from the API, the Storage Box or the Internet")
+        command_parser.add_argument("vm")
+        command_parser.add_argument("what", choices=("api", "box", "internet"))
+    for name, help_text in (("pause", "freeze a VM (clock stops)"), ("cont", "resume a paused VM"),
+                            ("dead", "broken hardware: power-on succeeds, the VM stays off"), ("alive", "repair")):
+        fault_parser.add_parser(name, help=help_text).add_argument("vm")
+    command_parser = fault_parser.add_parser(
+        "netem", help="tc netem on a server's taps (towards the server), e.g. delay 100ms loss 5%%")
+    command_parser.add_argument("vm")
+    command_parser.add_argument("--net", choices=("public", "private", "all"), default="all")
+    command_parser.add_argument("args", nargs=argparse.REMAINDER)
+    command_parser = fault_parser.add_parser(
+        "api", help="answer the next COUNT API requests with STATUS, or delay all by --delay-ms")
+    command_parser.add_argument("status", type=int, nargs="?", default=0)
+    command_parser.add_argument("count", type=int, nargs="?", default=0)
+    command_parser.add_argument("--delay-ms", type=int, default=0)
+    fault_parser.add_parser("clear", help="remove all faults")
 
-    c = sub.add_parser("client", help="'Internet' clients (own addresses, no NAT)").add_subparsers(dest="client", required=True)
-    c.add_parser("add").add_argument("name")
-    c.add_parser("rm").add_argument("name")
-    c.add_parser("list")
-    x = c.add_parser("exec", help="run a command in the client, e.g. curl")
-    x.add_argument("name")
-    x.add_argument("command", nargs=argparse.REMAINDER)
+    client_parser = subparsers.add_parser("client", help="'Internet' clients (own addresses, no NAT)")
+    client_parser = client_parser.add_subparsers(dest="client", required=True)
+    client_parser.add_parser("add").add_argument("name")
+    client_parser.add_parser("rm").add_argument("name")
+    client_parser.add_parser("list")
+    command_parser = client_parser.add_parser("exec", help="run a command in the client, e.g. curl")
+    command_parser.add_argument("name")
+    command_parser.add_argument("command", nargs=argparse.REMAINDER)
 
-    b = sub.add_parser("box", help="Storage Box stand-in").add_subparsers(dest="box", required=True)
-    x = b.add_parser("user", help="add an SFTP account (public key from a file or '-' for stdin)")
-    x.add_argument("name")
-    x.add_argument("key_file")
+    box_parser = subparsers.add_parser("box", help="Storage Box stand-in").add_subparsers(dest="box", required=True)
+    command_parser = box_parser.add_parser("user", help="add an SFTP account (public key from a file or '-' for stdin)")
+    command_parser.add_argument("name")
+    command_parser.add_argument("key_file")
 
-    a = p.parse_args(argv)
-    if a.config:
-        os.environ["HLAB_CONFIG"] = a.config
-    match a.cmd:
+    args = parser.parse_args(argv)
+    if args.config:
+        os.environ["HLAB_CONFIG"] = args.config
+    match args.cmd:
         case "serve":
-            serve(a.config)
+            serve(args.config)
         case "status":
-            status(a.json)
+            status(args.json)
         case "env":
             env()
         case "ssh":
-            ssh(a.server, a.command)
+            ssh(args.server, args.command)
         case "console":
-            console(a.server)
+            console(args.server)
         case "reset":
             call("POST", "/reset")
             print("hlab reset")
         case "fault":
-            fault(a)
+            fault(args)
         case "client":
-            client(a)
+            client(args)
         case "box":
-            key = sys.stdin.read() if a.key_file == "-" else Path(a.key_file).read_text()
-            r = call("POST", "/box/users", {"name": a.name, "public_key": key.strip()})
-            print(f"sftp -P {r['port']} {a.name}@{r['host']}")
+            key = sys.stdin.read() if args.key_file == "-" else Path(args.key_file).read_text()
+            response = call("POST", "/box/users", {"name": args.name, "public_key": key.strip()})
+            print(f"sftp -P {response['port']} {args.name}@{response['host']}")
 
 
-def fault(a) -> None:
-    match a.fault:
+def fault(args) -> None:
+    match args.fault:
         case "cut":
-            call("POST", "/faults", {"type": "cut", "a": a.a, "b": a.b, "net": a.net})
+            call("POST", "/faults", {"type": "cut", "a": args.a, "b": args.b, "net": args.net})
         case "heal":
-            call("POST", "/faults/remove", {"type": "cut", "a": a.a, "b": a.b, "net": a.net})
-            call("POST", "/faults/remove", {"type": "cut", "a": a.b, "b": a.a, "net": a.net})
+            call("POST", "/faults/remove", {"type": "cut", "a": args.a, "b": args.b, "net": args.net})
+            call("POST", "/faults/remove", {"type": "cut", "a": args.b, "b": args.a, "net": args.net})
         case "isolate":
-            call("POST", "/faults", {"type": "isolate", "vm": a.vm})
+            call("POST", "/faults", {"type": "isolate", "vm": args.vm})
         case "unisolate":
-            call("POST", "/faults/remove", {"type": "isolate", "vm": a.vm})
+            call("POST", "/faults/remove", {"type": "isolate", "vm": args.vm})
         case "block":
-            call("POST", "/faults", {"type": "block", "vm": a.vm, "what": a.what})
+            call("POST", "/faults", {"type": "block", "vm": args.vm, "what": args.what})
         case "unblock":
-            call("POST", "/faults/remove", {"type": "block", "vm": a.vm, "what": a.what})
+            call("POST", "/faults/remove", {"type": "block", "vm": args.vm, "what": args.what})
         case "pause" | "cont" | "dead" | "alive":
-            call("POST", f"/vm/{a.vm}/{a.fault}")
+            call("POST", f"/vm/{args.vm}/{args.fault}")
         case "netem":
-            call("POST", "/netem", {"vm": a.vm, "net": a.net, "args": " ".join(a.args)})
+            call("POST", "/netem", {"vm": args.vm, "net": args.net, "args": " ".join(args.args)})
         case "api":
-            call("POST", "/api-fault", {"status": a.status, "count": a.count, "delay_ms": a.delay_ms})
+            call("POST", "/api-fault", {"status": args.status, "count": args.count, "delay_ms": args.delay_ms})
         case "clear":
             call("POST", "/faults/clear")
 
 
-def client(a) -> None:
-    match a.client:
+def client(args) -> None:
+    match args.client:
         case "add":
-            c = call("POST", "/clients", {"name": a.name})["client"]
-            print(f"client {c['name']} at {c['ip']} and {c['ip6']}")
+            client_info = call("POST", "/clients", {"name": args.name})["client"]
+            print(f"client {client_info['name']} at {client_info['ip']} and {client_info['ip6']}")
         case "rm":
-            call("DELETE", f"/clients/{a.name}")
+            call("DELETE", f"/clients/{args.name}")
         case "list":
-            for c in call("GET", "/status")["clients"]:
-                print(f"{c['name']} {c['ip']} {c.get('ip6', '')}")
+            for client_info in call("GET", "/status")["clients"]:
+                print(f"{client_info['name']} {client_info['ip']} {client_info.get('ip6', '')}")
         case "exec":
-            os.execvp("ip", ["ip", "netns", "exec", a.name, *a.command])
+            os.execvp("ip", ["ip", "netns", "exec", args.name, *args.command])

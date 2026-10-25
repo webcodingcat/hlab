@@ -1,41 +1,49 @@
-"""After a (re)start of the lab: what was half done is finished or dropped, servers that should run are powered on
-again, clients come back. One broken server does not keep the lab from starting."""
+"""After a (re)start of the lab, in this order: the Storage Box comes up with its accounts; what was half done is
+finished or dropped, and every lab-own `_` mark is cleared; firewalls and faults are in place before any VM runs;
+servers that should run are powered on again; clients come back. One broken server or box does not keep the lab
+from starting."""
 
 import logging
 
-from . import hetzner as H
+from ..lab import now
+from . import storagebox
 from .servers import ensure_disk, forget_server
-from .volumes import volume_file
 
 log = logging.getLogger("hlabd.lab")
 
 
-async def reconcile(lab) -> None:
-    st, fabric = lab.state, lab.fabric
-    for a in st["actions"].values():
+async def restart(lab) -> None:
+    state, fabric = lab.state, lab.fabric
+    box = lab.cfg["storage_box"]
+    if box.get("enabled"):
+        await lab.blocking(fabric.box.start, int(box.get("size_gb") or 0))
+        for user, key in state.data.get("box_users", {}).items():
+            await lab.blocking(fabric.box.lab_account, state.data.setdefault("box_uids", {}), user, key)
+        await lab.blocking(storagebox.restore, lab)   # also clears the boxes' `_busy`, `_creating`, `_copying`
+    for a in state["actions"].values():
         if a["status"] == "running":
             a.update(status="error", error={"code": "action_failed", "message": "lab restarted"},
-                     finished=H.now(), progress=100)
-    for v in list(st["volumes"].values()):
+                     finished=now(), progress=100)
+    for v in list(state["volumes"].values()):
         if v["status"] == "creating":   # cut off (maybe in the middle of mkfs): it goes, its action failed
-            volume_file(lab, v).unlink(missing_ok=True)
-            del st["volumes"][v["id"]]
-    for b in st["storage_boxes"].values():
-        if b["status"] == "initializing":   # its account was set up again before (storagebox.restore)
+            fabric.delete_volume(v)
+            del state["volumes"][v["id"]]
+    for b in state["storage_boxes"].values():
+        if b["status"] == "initializing":   # its account was set up again above
             b["status"] = "active"
         b.pop("_deleting", None)   # a delete cut off can be asked for again
-    for f in st["floating_ips"].values():
+    for f in state["floating_ips"].values():
         f.pop("_moving", None)
-    for n in st["networks"].values():
+    for n in state["networks"].values():
         n.pop("_deleting", None)
-    for v in st["volumes"].values():
+    for v in state["volumes"].values():
         v.pop("_busy", None)
-    st.save()
+    state.save()
     # firewalls and faults before any VM runs: a server is never unfiltered
     await lab.blocking(fabric.apply_firewalls)
     await lab.blocking(fabric.apply_faults)
-    for s in list(st["servers"].values()):
-        s["locked"] = False
+    for s in list(state["servers"].values()):
+        lab.release(s)
         try:
             if s["status"] == "deleting":
                 await lab.blocking(forget_server, lab, s)
@@ -54,12 +62,12 @@ async def reconcile(lab) -> None:
         except Exception:  # noqa: BLE001 – the server stays off, the lab comes up
             log.exception("server %s could not be started again", s["name"])
             s["status"] = "off"
-    for c in st["clients"].values():
+    for c in state["clients"].values():
         try:
-            await lab.blocking(fabric.sh.run, "client-add", c["name"], c["veth"], c["ip"], c["ip6"])
+            await lab.blocking(fabric.add_client, c)
         except Exception:  # noqa: BLE001
             log.exception("client %s not restored", c["name"])
-    st.save()
+    state.save()
     for step in (fabric.apply_faults, fabric.apply_latency, fabric.apply_firewalls):
         try:   # the lab comes up; what failed is in the log
             await lab.blocking(step)

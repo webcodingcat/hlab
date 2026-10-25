@@ -1,4 +1,12 @@
-"""The lab's state: everything the fake API knows, persisted as JSON in the state volume."""
+"""The lab's state: everything the fake API knows, persisted as JSON in the state volume.
+
+Next to the resources (KINDS, by ID) and `next_id`, the state keeps the lab's own records:
+
+- `faults`: the faults set through /_lab/faults (cuts, isolation, blocks), see fabric/faults.py
+- `netem`: netem options per tap or client link (/_lab/netem)
+- `net_routes`: the routes of cloud networks the fabric has put in place (to remove them again)
+- `box_users`, `box_uids`: the lab's own Storage Box accounts (/_lab/box/users) with their keys and fixed UIDs
+"""
 
 import json
 import os
@@ -47,8 +55,8 @@ class State:
                         raise
             tmp.write_text(text)
             tmp.chmod(0o600)   # passwords of Storage Boxes are in it
-            with open(tmp, "rb+") as f:   # on disk before it replaces the old state
-                os.fsync(f.fileno())
+            with open(tmp, "rb+") as file:   # on disk before it replaces the old state
+                os.fsync(file.fileno())
             os.replace(tmp, self.path)
 
     def free_index(self) -> int:

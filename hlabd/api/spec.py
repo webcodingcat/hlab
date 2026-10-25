@@ -45,10 +45,10 @@ class Spec:
         spec = json.loads(path.read_text())
         base = re.sub(r"^https?://[^/]+", "", spec.get("servers", [{}])[0].get("url", "")).rstrip("/")
         for template, methods in spec["paths"].items():
-            rx = re.compile("^" + base + re.sub(r"\{[^}]+\}", "[^/]+", template) + "$")
+            pattern = re.compile("^" + base + re.sub(r"\{[^}]+\}", "[^/]+", template) + "$")
             for method, op in methods.items():
                 if method in ("get", "post", "put", "delete", "patch"):
-                    self.ops.append((method.upper(), rx, template, op))
+                    self.ops.append((method.upper(), pattern, template, op))
         self.ops.sort(key=lambda o: o[2].count("{"))  # literal segments win over parameters
 
     def op(self, method: str, path: str) -> dict | None:
@@ -57,9 +57,9 @@ class Spec:
                 return op
         return None
 
-    def body_errors(self, op: dict, body) -> list[dict]:
+    def body_errors(self, operation: dict, body) -> list[dict]:
         """invalid_input details: [{"name": field, "messages": [...]}]."""
-        schema = (op.get("requestBody") or {}).get("content", {}).get("application/json", {}).get("schema")
+        schema = (operation.get("requestBody") or {}).get("content", {}).get("application/json", {}).get("schema")
         if not schema:
             return []
         fields: dict[str, list[str]] = {}
@@ -67,48 +67,49 @@ class Spec:
             path = [str(p) for p in e.absolute_path]
             if e.validator == "required":
                 path.append(e.message.split("'")[1])
-                msg = "is required"
+                message = "is required"
             elif e.validator == "enum":
-                msg = f"must be one of {', '.join(map(str, e.validator_value))}"
+                message = f"must be one of {', '.join(map(str, e.validator_value))}"
             elif e.validator == "type":
-                msg = f"must be of type {e.validator_value}"
+                message = f"must be of type {e.validator_value}"
             else:
-                msg = e.message
-            fields.setdefault(".".join(path) or "body", []).append(msg)
+                message = e.message
+            fields.setdefault(".".join(path) or "body", []).append(message)
         for path in _null_required(schema, body):
             fields.setdefault(path, []).append("is required")
         return [{"name": k, "messages": v} for k, v in fields.items()]
 
-    def query_enum(self, op: dict, name: str) -> list[str] | None:
-        for p in op.get("parameters") or []:
+    def query_enum(self, operation: dict, name: str) -> list[str] | None:
+        for p in operation.get("parameters") or []:
             if p.get("in") == "query" and p.get("name") == name:
-                s = p.get("schema") or {}
-                return (s.get("items") or s).get("enum")
+                schema = p.get("schema") or {}
+                return (schema.get("items") or schema).get("enum")
         return None
 
 
-def _real(e) -> list:
+def _real(error) -> list:
     """The errors of a validation error that the API would reject: unknown fields pass (the API ignores them),
     and of a oneOf/anyOf only the alternative that was meant counts – the one whose
     discriminator (an enum such as protocol) matched; an alternative with nothing left satisfies it."""
-    if e.validator == "additionalProperties":
+    if error.validator == "additionalProperties":
         return []
-    if not e.context:
-        return [e]
-    alts: dict = {}
-    for c in e.context:
-        alts.setdefault(c.relative_schema_path[0] if c.relative_schema_path else 0, []).extend(_real(c))
-    if e.validator in ("oneOf", "anyOf"):
-        if any(not errs for errs in alts.values()):
+    if not error.context:
+        return [error]
+    alternatives: dict = {}
+    for c in error.context:
+        alternatives.setdefault(c.relative_schema_path[0] if c.relative_schema_path else 0, []).extend(_real(c))
+    if error.validator in ("oneOf", "anyOf"):
+        if any(not errs for errs in alternatives.values()):
             return []
-        fitting = [errs for errs in alts.values() if not any(x.validator in ("enum", "const") for x in errs)]
-        return [best_match(min(fitting or list(alts.values()), key=len))]
-    return [x for errs in alts.values() for x in errs]
+        fitting = [errs for errs in alternatives.values() if not any(x.validator in ("enum", "const") for x in errs)]
+        return [best_match(min(fitting or list(alternatives.values()), key=len))]
+    return [x for errs in alternatives.values() for x in errs]
 
 
 def _nullable(schema: dict) -> bool:
-    t = schema.get("type")
-    return schema.get("nullable") is True or t == "null" or (isinstance(t, list) and "null" in t) \
+    schema_type = schema.get("type")
+    return schema.get("nullable") is True or schema_type == "null" \
+        or (isinstance(schema_type, list) and "null" in schema_type) \
         or any(_nullable(s) for s in schema.get("anyOf", []) + schema.get("oneOf", []))
 
 

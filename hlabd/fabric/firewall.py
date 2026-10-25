@@ -24,54 +24,54 @@ def nft_port(port: str) -> str:
     return "1-65535" if port == "any" else str(port)
 
 
-def _rule_lines(r: dict, verdict: str) -> list[str]:
+def _rule_lines(rule: dict, verdict: str) -> list[str]:
     """One Hetzner rule → nft rules (one per address family present)."""
-    addrs = r["source_ips"] if r["direction"] == "in" else r["destination_ips"]
-    side = "saddr" if r["direction"] == "in" else "daddr"
-    nets = [ipaddress.ip_network(a) for a in addrs]
+    addrs = rule["source_ips"] if rule["direction"] == "in" else rule["destination_ips"]
+    side = "saddr" if rule["direction"] == "in" else "daddr"
+    networks = [ipaddress.ip_network(a) for a in addrs]
     lines = []
     for fam, ver, any_net in (("ip", 4, "0.0.0.0/0"), ("ip6", 6, "::/0")):
-        fam_nets = [n for n in nets if n.version == ver]
+        fam_nets = [n for n in networks if n.version == ver]
         if not fam_nets:
             continue
-        if r["protocol"] == "gre" and ver == 6:
+        if rule["protocol"] == "gre" and ver == 6:
             continue  # GRE over IPv6 is dropped by Hetzner's firewalls
         match = (f"meta nfproto {'ipv4' if ver == 4 else 'ipv6'}" if any(str(n) == any_net for n in fam_nets)
                  else f"{fam} {side} {{ {', '.join(str(n) for n in fam_nets)} }}")
-        proto = r["protocol"]
+        proto = rule["protocol"]
         if proto in ("tcp", "udp"):
-            l4 = f"{proto} dport {nft_port(r['port'])}"
+            layer4 = f"{proto} dport {nft_port(rule['port'])}"
         elif proto == "icmp":
-            l4 = "meta l4proto icmp" if ver == 4 else "meta l4proto ipv6-icmp"
+            layer4 = "meta l4proto icmp" if ver == 4 else "meta l4proto ipv6-icmp"
         else:
-            l4 = f"meta l4proto {proto}"
-        lines.append(f"{match} {l4} {verdict}")
+            layer4 = f"meta l4proto {proto}"
+        lines.append(f"{match} {layer4} {verdict}")
     return lines
 
 
 def ruleset(state, taps: dict[int, str]) -> str:
     """The complete table inet hlabfw for the current state (servers' public taps by server ID)."""
-    chains, fwd, inp, outp = [], [], [], []
+    chains, forward, input_rules, output = [], [], [], []
     for sid, tap in sorted(taps.items()):
-        fws = [f for f in state["firewalls"].values() if sid in firewall_servers(f, state)]
-        if not fws:
+        firewalls = [f for f in state["firewalls"].values() if sid in firewall_servers(f, state)]
+        if not firewalls:
             continue
-        rules = [r for f in fws for r in f["rules"]]
-        ins = [r for r in rules if r["direction"] == "in"]
-        outs = [r for r in rules if r["direction"] == "out"]
+        rules = [r for f in firewalls for r in f["rules"]]
+        inbound = [r for r in rules if r["direction"] == "in"]
+        outbound = [r for r in rules if r["direction"] == "out"]
         body = [f"ip saddr {C.ADMIN} accept", f"ip6 saddr {C.ADMIN6} accept"]
-        for r in ins:
+        for r in inbound:
             body += _rule_lines(r, "accept")
         chains.append(f"    chain in_{sid} {{\n" + "".join(f"        {x}\n" for x in body) + "        drop\n    }")
-        fwd.append(f'oifname "{tap}" jump in_{sid}')
-        outp.append(f'oifname "{tap}" jump in_{sid}')
-        if outs:  # outbound rules: only what they allow; return lets the receiver's inbound rules decide next
+        forward.append(f'oifname "{tap}" jump in_{sid}')
+        output.append(f'oifname "{tap}" jump in_{sid}')
+        if outbound:  # outbound rules: only what they allow; return lets the receiver's inbound rules decide next
             body = [f"ip daddr {C.ADMIN} return", f"ip6 daddr {C.ADMIN6} return"]
-            for r in outs:
+            for r in outbound:
                 body += _rule_lines(r, "return")
             chains.append(f"    chain out_{sid} {{\n" + "".join(f"        {x}\n" for x in body) + "        drop\n    }")
-            fwd.insert(0, f'iifname "{tap}" jump out_{sid}')
-            inp.append(f'iifname "{tap}" jump out_{sid}')
+            forward.insert(0, f'iifname "{tap}" jump out_{sid}')
+            input_rules.append(f'iifname "{tap}" jump out_{sid}')
     always = ["ct state established,related accept", "ct state invalid drop",
               "icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit, nd-router-advert, "
               "nd-redirect } accept"]
@@ -85,6 +85,6 @@ def ruleset(state, taps: dict[int, str]) -> str:
         lines = [f"type filter hook {hook} priority 10; policy accept;"] + (always + extra + rules if rules else [])
         return f"    chain {name} {{\n" + "".join(f"        {x}\n" for x in lines) + "    }"
 
-    parts = [base("forward", "forward", fwd, []), base("input", "input", inp, to_lab),
-             base("output", "output", outp, from_lab)] + chains
+    parts = [base("forward", "forward", forward, []), base("input", "input", input_rules, to_lab),
+             base("output", "output", output, from_lab)] + chains
     return "table inet hlabfw\ndelete table inet hlabfw\ntable inet hlabfw {\n" + "\n".join(parts) + "\n}\n"
