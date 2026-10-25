@@ -82,7 +82,7 @@ def test_snapshots_and_plan(box_api):
     assert r.status_code == 201
     box = box_api.lab.state["storage_boxes"][b["id"]]
     for _ in range(3):
-        storagebox.take_snapshot(box_api.lab, box, True)
+        storagebox.snapshots.take_snapshot(box_api.lab, box, True)
     autos = [x for x in box_api.lab.state["box_snapshots"].values() if x["is_automatic"]]
     assert len(autos) == 2   # the plan keeps max_snapshots
     assert box_api.get(f"/v1/storage_boxes/{b['id']}").json()["storage_box"]["snapshot_plan"]["hour"] == 3
@@ -93,9 +93,9 @@ def test_plan_due():
     from datetime import datetime, timezone
     plan = {"max_snapshots": 3, "minute": 30, "hour": 2, "day_of_week": 0, "day_of_month": None}
     sunday = datetime(2026, 10, 25, 2, 30, tzinfo=timezone.utc)
-    assert storagebox.plan_due(plan, sunday)
-    assert not storagebox.plan_due(plan, sunday.replace(day=26))
-    assert not storagebox.plan_due({**plan, "day_of_week": None, "minute": 31}, sunday)
+    assert storagebox.snapshots.plan_due(plan, sunday)
+    assert not storagebox.snapshots.plan_due(plan, sunday.replace(day=26))
+    assert not storagebox.snapshots.plan_due({**plan, "day_of_week": None, "minute": 31}, sunday)
 
 
 def test_validation_and_errors(box_api):

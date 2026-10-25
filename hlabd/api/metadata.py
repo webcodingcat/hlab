@@ -9,7 +9,7 @@ import yaml
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse, Response
 
-from ..fabric import link_local, network_gateway, public_mac
+from ..fabric.network import link_local, network_gateway, public_mac
 from . import hetzner as H
 
 # Hetzner's images let root log in with the project's SSH keys, configure cloud network NICs (MAC 86:…) by DHCP –

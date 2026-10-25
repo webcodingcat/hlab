@@ -127,7 +127,7 @@ def serve(cfg_path: str | None) -> None:
                 await asyncio.sleep(0.1)
             print(f"hlab ready: {cfg['name']}, API http://{C.SERVICES}/v1", flush=True)
         asyncio.get_running_loop().create_task(ready())
-        asyncio.get_running_loop().create_task(storagebox.plan_scheduler(lab))
+        asyncio.get_running_loop().create_task(storagebox.snapshots.plan_scheduler(lab))
         asyncio.get_running_loop().create_task(lab.vm_watcher())
         await server.serve(sockets=socks)
 

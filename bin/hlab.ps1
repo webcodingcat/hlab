@@ -29,7 +29,8 @@ $container = "hlab-$name"
 function Ordinal($items) { $a = [string[]]@($items); [Array]::Sort($a, [StringComparer]::Ordinal); $a }
 $files = @("$root\Dockerfile") + (Ordinal (Get-ChildItem "$root\scripts\*" | Where-Object { -not $_.Name.StartsWith('.') }).FullName) +
          (Ordinal (Get-ChildItem "$root\hlabd\*.py").FullName) +
-         (Ordinal (Get-ChildItem "$root\hlabd\*\*.py").FullName) + (Ordinal (Get-ChildItem "$root\tests\*.py").FullName) +
+         (Ordinal (Get-ChildItem "$root\hlabd\*\*.py").FullName) +
+         (Ordinal (Get-ChildItem "$root\hlabd\*\*\*.py").FullName) + (Ordinal (Get-ChildItem "$root\tests\*.py").FullName) +
          (Ordinal (Get-ChildItem "$root\tests\tofu-smoke\*.tf").FullName) +
          (Ordinal (Get-ChildItem "$root\tests\tofu-smoke\*.sh").FullName) +
          (Ordinal (Get-ChildItem "$root\itests\*.py").FullName)

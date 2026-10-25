@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import Response
 
 from .. import config as C
-from ..fabric import network_gateway, private_mac, route_table
+from ..fabric.network import network_gateway, private_mac, route_table
 from . import hetzner as H
 from .web import ApiError, body, filtered, invalid, limit_exceeded, not_found, paginate, unique_name, unsupported
 

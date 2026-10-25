@@ -11,7 +11,7 @@ import tempfile
 from fastapi import FastAPI, Request
 
 from .. import config as C
-from ..fabric import route_table
+from ..fabric.network import route_table
 from ..fabric.storagebox import data_dir, snap_dir, username
 from ..state import ID_BASE, KINDS
 from . import hetzner as H

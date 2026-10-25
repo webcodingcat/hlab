@@ -27,7 +27,7 @@ if [[ -f "${config}" ]]; then
     cfgmount=(-v "${dir}:/config:ro" -e "HLAB_CONFIG=/config/$(basename "${config}")")
 fi
 container="hlab-${name}"
-hash="$(cat "${root}/Dockerfile" "${root}"/scripts/* "${root}"/hlabd/*.py "${root}"/hlabd/*/*.py "${root}"/tests/*.py "${root}"/tests/tofu-smoke/*.tf "${root}"/tests/tofu-smoke/*.sh "${root}"/itests/*.py | sha256sum | cut -c1-12)"
+hash="$(cat "${root}/Dockerfile" "${root}"/scripts/* "${root}"/hlabd/*.py "${root}"/hlabd/*/*.py "${root}"/hlabd/*/*/*.py "${root}"/tests/*.py "${root}"/tests/tofu-smoke/*.tf "${root}"/tests/tofu-smoke/*.sh "${root}"/itests/*.py | sha256sum | cut -c1-12)"
 image="hlab:${hash}"
 
 build() {
