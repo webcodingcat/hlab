@@ -30,7 +30,8 @@ bin/hlab -c examples/hlab.yaml status    # servers, Floating IPs, clients, fault
 bin/hlab -c examples/hlab.yaml logs      # what the lab does: requests, actions, VMs
 bin/hlab -c examples/hlab.yaml down      # stop; disks and state stay in the volume hlab-demo
 bin/hlab -c examples/hlab.yaml purge     # stop and delete the volume
-bin/hlab test                           # unit tests (no VMs)
+bin/hlab test                           # style checks (STYLE.md) and unit tests (no VMs)
+bin/hlab format                         # apply what the formatters can fix
 bin/hlab -c examples/hlab.yaml itest     # live tests with VMs (resets the lab, ~15 min)
 tests/tofu-smoke/run.sh                # OpenTofu with the hcloud provider against a running lab
 ```
@@ -110,3 +111,4 @@ bin/hlab reset                            # delete everything the APIs created
 | `hlabd/cli.py` | the `hlab` command inside the container |
 | `tests/` | unit tests by feature, the OpenTofu smoke test |
 | `itests/` | live tests with VMs |
+| `tools/lint.sh`, `STYLE.md` | style checks and the standards they follow |

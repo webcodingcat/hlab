@@ -1,11 +1,15 @@
-"""The lab's state: everything the fake API knows, persisted as JSON in the state volume.
+"""The lab's state: everything the fake API knows.
 
-Next to the resources (KINDS, by ID) and `next_id`, the state keeps the lab's own records:
+It is persisted as JSON in the state volume. Next to the resources (KINDS, by ID) and
+`next_id`, the state keeps the lab's own records:
 
-- `faults`: the faults set through /_lab/faults (cuts, isolation, blocks), see fabric/faults.py
+- `faults`: the faults set through /_lab/faults (cuts, isolation, blocks), see
+  fabric/faults.py
 - `netem`: netem options per tap or client link (/_lab/netem)
-- `net_routes`: the routes of cloud networks the fabric has put in place (to remove them again)
-- `box_users`, `box_uids`: the lab's own Storage Box accounts (/_lab/box/users) with their keys and fixed UIDs
+- `net_routes`: the routes of cloud networks the fabric has put in place (to remove them
+  again)
+- `box_users`, `box_uids`: the lab's own Storage Box accounts (/_lab/box/users) with
+  their keys and fixed UIDs
 """
 
 import json
@@ -14,14 +18,28 @@ import threading
 from pathlib import Path
 
 # First ID per kind, so IDs in logs tell what they are (server 1001, network 2001, ...).
-ID_BASE = {"servers": 1000, "networks": 2000, "ssh_keys": 3000, "firewalls": 4000, "floating_ips": 5000,
-           "primary_ips": 6000, "actions": 9000, "volumes": 10000, "storage_boxes": 14000, "subaccounts": 15000,
-           "box_snapshots": 16000, "clients": 0}
+ID_BASE = {
+    "servers": 1000,
+    "networks": 2000,
+    "ssh_keys": 3000,
+    "firewalls": 4000,
+    "floating_ips": 5000,
+    "primary_ips": 6000,
+    "actions": 9000,
+    "volumes": 10000,
+    "storage_boxes": 14000,
+    "subaccounts": 15000,
+    "box_snapshots": 16000,
+    "clients": 0,
+}
 KINDS = tuple(ID_BASE)
 
 
 class State:
+    """The lab's state, kept in memory and saved as JSON."""
+
     def __init__(self, path: Path | None):
+        """Load the state from `path` if it exists; without a path, nothing is saved."""
         self.path = path
         self.lock = threading.RLock()
         self.data: dict = {k: {} for k in KINDS}
@@ -29,24 +47,32 @@ class State:
         if path and path.is_file():
             loaded = json.loads(path.read_text())
             self.data.update(loaded)
-            self.data["next_id"] = {**ID_BASE, **loaded.get("next_id", {})}  # kinds added later
+            # kinds added later
+            self.data["next_id"] = {
+                **ID_BASE,
+                **loaded.get("next_id", {}),
+            }
             for k in KINDS:  # JSON keys are strings
                 self.data[k] = {int(i): v for i, v in self.data.get(k, {}).items()}
 
     def new_id(self, kind: str) -> int:
+        """Return the next free ID for a kind."""
         with self.lock:
             self.data["next_id"][kind] += 1
             return self.data["next_id"][kind]
 
     def __getitem__(self, kind: str) -> dict:
+        """Return the resources of a kind, by ID."""
         return self.data[kind]
 
     def save(self) -> None:
+        """Write the state to its file atomically (no-op without a path)."""
         if not self.path:
             return
         with self.lock:
             tmp = self.path.with_suffix(".tmp")
-            for attempt in range(5):  # a handler in another thread may change a dict while it is written
+            # a handler in another thread may change a dict while it is written
+            for attempt in range(5):
                 try:
                     text = json.dumps(self.data, indent=1, sort_keys=True)
                     break
@@ -54,13 +80,17 @@ class State:
                     if attempt == 4:
                         raise
             tmp.write_text(text)
-            tmp.chmod(0o600)   # passwords of Storage Boxes are in it
-            with open(tmp, "rb+") as file:   # on disk before it replaces the old state
+            tmp.chmod(0o600)  # passwords of Storage Boxes are in it
+            with open(tmp, "rb+") as file:  # on disk before it replaces the old state
                 os.fsync(file.fileno())
             os.replace(tmp, self.path)
 
     def free_index(self) -> int:
-        """Lab index of a new server (tap pub<index>, MAC, console port)."""
+        """Return the lab index of a new server (tap pub<index>, MAC, console port).
+
+        Returns 0 when the lab is full.
+        """
         with self.lock:
             used = {s["_lab"]["index"] for s in self.data["servers"].values()}
-            return next((i for i in range(1, 240) if i not in used), 0)   # 0: the lab is full
+            # 0: the lab is full
+            return next((i for i in range(1, 240) if i not in used), 0)

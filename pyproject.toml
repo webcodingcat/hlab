@@ -1,0 +1,17 @@
+# Development tools only (the lab itself needs no packaging): ruff checks PEP 8 and PEP 257.
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ruff.lint.isort]
+known-first-party = ["hlabd"]
+
+[tool.ruff.lint.per-file-ignores]
+# test names are sentences that say what they check
+"tests/*" = ["D100", "D101", "D102", "D103", "D104", "D105", "D107"]
+"itests/*" = ["D100", "D101", "D102", "D103", "D104", "D105", "D107"]

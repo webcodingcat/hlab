@@ -1,0 +1,7 @@
+---
+# yamllint's default rules; a key whose value is one long word (a URL) may pass
+# the line length, as yamllint allows for plain long words.
+extends: default
+rules:
+  line-length:
+    allow-non-breakable-inline-mappings: true

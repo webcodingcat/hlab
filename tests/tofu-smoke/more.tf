@@ -2,10 +2,10 @@
 # HETZNER_ENDPOINT).
 
 resource "hcloud_primary_ip" "spare" {
-  name          = "smoke-spare"
-  type          = "ipv4"
-  auto_delete   = false
-  location      = "fsn1"
+  name        = "smoke-spare"
+  type        = "ipv4"
+  auto_delete = false
+  location    = "fsn1"
 }
 
 resource "hcloud_server" "pinned" {

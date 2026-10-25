@@ -1,13 +1,14 @@
-"""The API itself: authentication, catalogue, validation, pagination, rate limit, actions."""
+"""The API itself.
+
+Authentication, catalogue, validation, pagination, rate limit, actions.
+"""
 
 import asyncio
-import time
 
 import pytest
-import yaml
+from conftest import create_server, make_key, off, wait_action
 from fastapi.testclient import TestClient
 
-from conftest import create_server, make_key, create_network, off, wait_action
 from hlabd.api.app import create_app
 from hlabd.api.web import RateLimit
 
@@ -23,9 +24,11 @@ def test_catalogue(api):
     assert [t["name"] for t in types] == ["cx33"]
     assert types[0]["memory"] == 8.0
     locs = api.get("/v1/locations").json()["locations"]
-    assert {l["name"] for l in locs} == {"fsn1", "nbg1", "hel1"}
-    assert next(l for l in locs if l["name"] == "fsn1")["id"] == 1
-    imgs = api.get("/v1/images", params={"name": "debian-13", "architecture": "x86"}).json()["images"]
+    assert {loc["name"] for loc in locs} == {"fsn1", "nbg1", "hel1"}
+    assert next(loc for loc in locs if loc["name"] == "fsn1")["id"] == 1
+    imgs = api.get(
+        "/v1/images", params={"name": "debian-13", "architecture": "x86"}
+    ).json()["images"]
     assert imgs[0]["os_flavor"] == "debian"
 
 
@@ -48,7 +51,10 @@ def test_pagination(api):
 def test_datacenters_are_gone(api):
     for path in ("/v1/datacenters", "/v1/datacenters/1"):
         response = api.get(path)
-        assert response.status_code == 410 and response.json()["error"]["code"] == "deprecated_api_endpoint"
+        assert (
+            response.status_code == 410
+            and response.json()["error"]["code"] == "deprecated_api_endpoint"
+        )
     server = create_server(api, "nodc")["server"]
     assert "datacenter" not in server and server["location"]["name"] == "fsn1"
     assert "datacenter" not in api.get("/v1/primary_ips").json()["primary_ips"][0]
@@ -61,7 +67,9 @@ def test_only_the_newest_images(api):
 
 def test_configuration_typos_are_reported(tmp_path):
     import pytest
+
     from hlabd import config
+
     config_file = tmp_path / "hlab.yaml"
     config_file.write_text("name: x\nstorage_boxes: {enabled: false}\n")
     with pytest.raises(ValueError, match="unknown settings storage_boxes"):
@@ -72,24 +80,55 @@ def test_configuration_typos_are_reported(tmp_path):
 
 
 def test_null_where_an_id_belongs(api):
-    floating_ip = api.post("/v1/floating_ips", json={"type": "ipv4", "home_location": "fsn1"}).json()["floating_ip"]
-    response = api.post(f"/v1/floating_ips/{floating_ip['id']}/actions/assign", json={"server": None})
-    assert response.status_code == 422 and response.json()["error"]["code"] == "invalid_input"
-    server = create_server(api, "a")["server"]   # the Floating IP is not left locked
-    response = api.post(f"/v1/floating_ips/{floating_ip['id']}/actions/assign", json={"server": server["id"]})
+    floating_ip = api.post(
+        "/v1/floating_ips", json={"type": "ipv4", "home_location": "fsn1"}
+    ).json()["floating_ip"]
+    response = api.post(
+        f"/v1/floating_ips/{floating_ip['id']}/actions/assign", json={"server": None}
+    )
+    assert (
+        response.status_code == 422
+        and response.json()["error"]["code"] == "invalid_input"
+    )
+    server = create_server(api, "a")["server"]  # the Floating IP is not left locked
+    response = api.post(
+        f"/v1/floating_ips/{floating_ip['id']}/actions/assign",
+        json={"server": server["id"]},
+    )
     assert wait_action(api, response.json()["action"])["status"] == "success"
-    assert api.post(f"/v1/servers/{server['id']}/actions/attach_to_network", json={"network": None}).status_code == 422
-    assert api.post("/v1/volumes", json={"name": "v", "size": None, "location": "fsn1"}).status_code == 422
+    assert (
+        api.post(
+            f"/v1/servers/{server['id']}/actions/attach_to_network",
+            json={"network": None},
+        ).status_code
+        == 422
+    )
+    assert (
+        api.post(
+            "/v1/volumes", json={"name": "v", "size": None, "location": "fsn1"}
+        ).status_code
+        == 422
+    )
 
 
 def test_action_routes_of_every_resource(api):
     server = create_server(api, "a")
-    for kind in ("volumes", "primary_ips", "servers", "networks", "floating_ips", "firewalls"):
+    for kind in (
+        "volumes",
+        "primary_ips",
+        "servers",
+        "networks",
+        "floating_ips",
+        "firewalls",
+    ):
         assert api.get(f"/v1/{kind}/actions").status_code == 200, kind
-    aid = server["action"]["id"]   # a server's action is no volume's action
+    aid = server["action"]["id"]  # a server's action is no volume's action
     assert api.get(f"/v1/volumes/actions/{aid}").status_code == 404
     assert api.get(f"/v1/servers/actions/{aid}").status_code == 200
-    assert api.get(f"/v1/servers/{server['server']['id']}/actions/{aid}").status_code == 200
+    assert (
+        api.get(f"/v1/servers/{server['server']['id']}/actions/{aid}").status_code
+        == 200
+    )
 
 
 def test_rate_limit_buckets_stay_bounded():
@@ -101,7 +140,9 @@ def test_rate_limit_buckets_stay_bounded():
 
 def test_actions_do_not_pile_up(lab):
     for _ in range(10050):
-        lab.new_action("x", [])["status"] = "success"   # finished (without saving the state each time)
+        lab.new_action("x", [])["status"] = (
+            "success"  # finished (without saving the state each time)
+        )
     assert len(lab.state["actions"]) <= 10000
 
 
@@ -112,37 +153,69 @@ def test_cancelled_action_is_an_error(lab):
 
         async def steps():
             await asyncio.sleep(10)
+
         lab.run_action(action, steps)
         await asyncio.sleep(0)
         for t in list(lab.tasks):
             t.cancel()
         await asyncio.sleep(0.05)
         return action
+
     assert asyncio.run(go())["status"] == "error"
 
 
-@pytest.mark.parametrize("labels", [
-    {"-bad": "x"}, {"ok": "-bad"}, {"hetzner.cloud/x": "y"}, {"Bad_Prefix!/x": "y"}, {"k": "x" * 64},
-])
+@pytest.mark.parametrize(
+    "labels",
+    [
+        {"-bad": "x"},
+        {"ok": "-bad"},
+        {"hetzner.cloud/x": "y"},
+        {"Bad_Prefix!/x": "y"},
+        {"k": "x" * 64},
+    ],
+)
 def test_invalid_labels(api, labels):
-    response = api.post("/v1/ssh_keys", json={"name": "k", "public_key": "ssh-ed25519 AAAA", "labels": labels})
+    response = api.post(
+        "/v1/ssh_keys",
+        json={"name": "k", "public_key": "ssh-ed25519 AAAA", "labels": labels},
+    )
     assert response.status_code == 422
     err = response.json()["error"]
-    assert err["code"] == "invalid_input" and err["details"]["fields"][0]["name"] == "labels"
+    assert (
+        err["code"] == "invalid_input"
+        and err["details"]["fields"][0]["name"] == "labels"
+    )
 
 
 def test_valid_labels(api):
-    create_server(api, "lbl", labels={"environment": "prod", "example.com/my": "label", "just-a-key": ""})
+    create_server(
+        api,
+        "lbl",
+        labels={"environment": "prod", "example.com/my": "label", "just-a-key": ""},
+    )
 
 
 @pytest.mark.parametrize("name", ["under_score", "-dash", "x" * 64, "a..b", ""])
 def test_server_name_must_be_hostname(api, name):
-    response = api.post("/v1/servers", json={"name": name, "server_type": "cx23", "image": "debian-13"})
-    assert response.status_code == 422 and response.json()["error"]["details"]["fields"][0]["name"] == "name"
+    response = api.post(
+        "/v1/servers", json={"name": name, "server_type": "cx23", "image": "debian-13"}
+    )
+    assert (
+        response.status_code == 422
+        and response.json()["error"]["details"]["fields"][0]["name"] == "name"
+    )
 
 
 def test_schema_errors_name_the_field(api):
-    response = api.post("/v1/servers", json={"name": "x", "server_type": "cx23", "image": "debian-13", "start_after_create": "yes"})
+    response = api.post(
+        "/v1/servers",
+        json={
+            "name": "x",
+            "server_type": "cx23",
+            "image": "debian-13",
+            "start_after_create": "yes",
+        },
+    )
     err = response.json()["error"]
     assert response.status_code == 422 and err["code"] == "invalid_input"
     assert err["details"]["fields"][0]["name"] == "start_after_create"
@@ -151,33 +224,54 @@ def test_schema_errors_name_the_field(api):
 
 
 def test_json_error(api):
-    response = api.post("/v1/servers", content=b"{nope", headers={"Content-Type": "application/json"})
-    assert response.status_code == 400 and response.json()["error"]["code"] == "json_error"
+    response = api.post(
+        "/v1/servers", content=b"{nope", headers={"Content-Type": "application/json"}
+    )
+    assert (
+        response.status_code == 400 and response.json()["error"]["code"] == "json_error"
+    )
 
 
 def test_unknown_route_and_method(api):
     response = api.get("/v1/nothing")
-    assert response.status_code == 404 and response.json()["error"]["code"] == "not_found"
+    assert (
+        response.status_code == 404 and response.json()["error"]["code"] == "not_found"
+    )
     response = api.patch("/v1/servers")
-    assert response.status_code == 405 and response.json()["error"]["code"] == "method_not_allowed"
+    assert (
+        response.status_code == 405
+        and response.json()["error"]["code"] == "method_not_allowed"
+    )
     assert api.get("/v1/servers/abc").json()["error"]["code"] == "not_found"
 
 
 def test_sorting(api):
     for n in ("b", "a", "c"):
         create_server(api, n)
-    names = lambda q: [s["name"] for s in api.get(f"/v1/servers?{q}").json()["servers"]]
+
+    def names(q):
+        return [s["name"] for s in api.get(f"/v1/servers?{q}").json()["servers"]]
+
     assert names("sort=name") == ["a", "b", "c"]
     assert names("sort=name:desc") == ["c", "b", "a"]
     assert names("sort=id:desc") == ["c", "a", "b"]
-    assert names("sort=name:asc&sort=name:desc") == ["b", "a", "c"]   # contrary orders are ignored
+    assert names("sort=name:asc&sort=name:desc") == [
+        "b",
+        "a",
+        "c",
+    ]  # contrary orders are ignored
     response = api.get("/v1/servers?sort=status")
-    assert response.status_code == 422 and response.json()["error"]["details"]["fields"][0]["name"] == "sort"
+    assert (
+        response.status_code == 422
+        and response.json()["error"]["details"]["fields"][0]["name"] == "sort"
+    )
 
 
 def test_rate_limit(lab):
     lab.cfg["api"]["rate_limit"] = 3
-    with TestClient(create_app(lab), headers={"Authorization": "Bearer secret"}) as client:
+    with TestClient(
+        create_app(lab), headers={"Authorization": "Bearer secret"}
+    ) as client:
         codes = [client.get("/v1/locations") for _ in range(4)]
     assert [r.status_code for r in codes] == [200, 200, 200, 429]
     assert codes[0].headers["RateLimit-Limit"] == "3"
@@ -187,8 +281,13 @@ def test_rate_limit(lab):
 
 
 def test_values_that_must_not_get_through(api):
-    body = {"name": "srv\n", "server_type": "cx23", "image": "debian-13", "location": "fsn1"}
-    assert api.post("/v1/servers", json=body).status_code == 422                          # a trailing newline
+    body = {
+        "name": "srv\n",
+        "server_type": "cx23",
+        "image": "debian-13",
+        "location": "fsn1",
+    }
+    assert api.post("/v1/servers", json=body).status_code == 422  # a trailing newline
     create_server(api, "a")
     response = api.post("/_lab/netem", json={"vm": "a", "args": "delay foo; reboot"})
     assert response.status_code == 422
@@ -196,9 +295,19 @@ def test_values_that_must_not_get_through(api):
 
 def test_names_unique_on_rename(api):
     api.post("/v1/networks", json={"name": "a", "ip_range": "10.0.0.0/16"})
-    assert api.post("/v1/networks", json={"name": "a", "ip_range": "10.1.0.0/16"}).status_code == 409
-    network_b = api.post("/v1/networks", json={"name": "b", "ip_range": "10.1.0.0/16"}).json()["network"]
-    assert api.put(f"/v1/networks/{network_b['id']}", json={"name": "a"}).status_code == 409
+    assert (
+        api.post(
+            "/v1/networks", json={"name": "a", "ip_range": "10.1.0.0/16"}
+        ).status_code
+        == 409
+    )
+    network_b = api.post(
+        "/v1/networks", json={"name": "b", "ip_range": "10.1.0.0/16"}
+    ).json()["network"]
+    assert (
+        api.put(f"/v1/networks/{network_b['id']}", json={"name": "a"}).status_code
+        == 409
+    )
 
 
 def test_filters_given_several_times(api):

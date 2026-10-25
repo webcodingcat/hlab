@@ -1,21 +1,30 @@
-"""Hetzner label selectors, and the servers a firewall applies to through them. Used by the API and by the
-fabric (firewall rules)."""
+"""Hetzner label selectors, and the servers a firewall applies to through them.
+
+Used by the API and by the fabric (firewall rules).
+"""
 
 
 def firewall_servers(firewall: dict, state) -> set[int]:
-    """Servers a firewall applies to, directly or by label selector."""
+    """Return the servers a firewall applies to, directly or by label selector."""
     out = set()
     for a in firewall["applied_to"]:
         if a["type"] == "server":
             out.add(a["server"]["id"])
         elif a["type"] == "label_selector":
             selector = a["label_selector"]["selector"]
-            out |= {s["id"] for s in state["servers"].values() if match_labels(s["labels"], selector)}
+            out |= {
+                s["id"]
+                for s in state["servers"].values()
+                if match_labels(s["labels"], selector)
+            }
     return out
 
 
 def match_labels(labels: dict, selector: str) -> bool:
-    """Hetzner label selectors: k=v, k==v, k!=v, k, !k, k in (a,b), k notin (a,b); comma means AND."""
+    """Check whether labels match a Hetzner label selector.
+
+    Terms: k=v, k==v, k!=v, k, !k, k in (a,b), k notin (a,b); a comma means AND.
+    """
     if not selector:
         return True
     terms, depth, current = [], 0, ""
@@ -31,11 +40,15 @@ def match_labels(labels: dict, selector: str) -> bool:
     for t in (t.strip() for t in terms):
         if " notin " in t:
             key, values = t.split(" notin ", 1)
-            if labels.get(key.strip()) in [v.strip() for v in values.strip("() ").split(",")]:
+            if labels.get(key.strip()) in [
+                v.strip() for v in values.strip("() ").split(",")
+            ]:
                 return False
         elif " in " in t:
             key, values = t.split(" in ", 1)
-            if labels.get(key.strip()) not in [v.strip() for v in values.strip("() ").split(",")]:
+            if labels.get(key.strip()) not in [
+                v.strip() for v in values.strip("() ").split(",")
+            ]:
                 return False
         elif "!=" in t:
             key, value = t.split("!=", 1)

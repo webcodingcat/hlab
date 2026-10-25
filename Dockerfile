@@ -1,7 +1,7 @@
 # HLab: Hetzner Cloud stand-in with QEMU/KVM virtual machines, a fake Cloud API, a Storage Box stand-in and
 # "Internet" clients, all inside one privileged container with its own network namespace. bin/hlab drives it.
 # The newest Debian 13 (trixie-slim, not pinned); apt upgrades it to the current security fixes.
-FROM debian:trixie-slim
+FROM debian:trixie-slim AS lab
 
 # Only Debian packages, so apt keeps everything up to date. QEMU (runs the untrusted guests) and OpenSSH (the Storage
 # Box's sshd, the client that logs into guests) come from Debian's backports, whose releases fix issues the trixie
@@ -40,3 +40,17 @@ RUN set -eux; \
 
 ENTRYPOINT ["/usr/local/bin/hlab"]
 CMD ["serve"]
+
+# Development tools for `bin/hlab test`, `lint` and `format` (not part of the lab image):
+# ruff checks PEP 8 and PEP 257, shellcheck and shfmt the Google Shell Style Guide,
+# yamllint YAML. ruff comes from PyPI (newest), the others from Debian.
+FROM lab AS dev
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends shellcheck shfmt yamllint python3-venv; \
+    rm -rf /var/lib/apt/lists/*; \
+    python3 -m venv /opt/dev; \
+    /opt/dev/bin/pip install --no-cache-dir ruff
+ENV PATH=/opt/dev/bin:$PATH
+WORKDIR /src
+ENTRYPOINT []

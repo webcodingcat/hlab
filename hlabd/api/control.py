@@ -1,5 +1,8 @@
-"""Lab control under /_lab/: faults, Internet clients, Storage Box accounts, reset. Used by the lab CLI and by test
-harnesses (also from inside the VMs, through http://198.18.0.1/_lab/...)."""
+"""Lab control under /_lab/: faults, Internet clients, Storage Box accounts, reset.
+
+Used by the lab CLI and by test harnesses (also from inside the VMs, through
+http://198.18.0.1/_lab/...).
+"""
 
 import asyncio
 import pwd
@@ -7,23 +10,28 @@ import re
 
 from fastapi import FastAPI, Request
 
-from .. import config as C
+from .. import config
 from ..errors import ApiError, invalid, not_found
 from ..fabric.storagebox import data_dir, snap_dir, username
 from ..state import ID_BASE, KINDS
-from . import hetzner as H
+from . import hetzner
 from .web import read_body
 
 FAULT_TYPES = {"cut": ("a", "b", "net"), "isolate": ("vm",), "block": ("vm", "what")}
 
 
-NETEM_WORD = re.compile(r"(delay|loss|duplicate|corrupt|reorder|rate|limit|gap|distribution|normal|pareto|"
-                        r"paretonormal|uniform|random|state|gemodel|ecn|slot|"
-                        r"\d+(\.\d+)?(us|ms|s|%|bit|kbit|mbit|gbit)?)")
+NETEM_WORD = re.compile(
+    r"(delay|loss|duplicate|corrupt|reorder|rate|limit|gap|distribution|normal|pareto|"
+    r"paretonormal|uniform|random|state|gemodel|ecn|slot|"
+    r"\d+(\.\d+)?(us|ms|s|%|bit|kbit|mbit|gbit)?)"
+)
 
 
 def fault_ref(state, name: str) -> str:
-    """What a fault points at: a server by ID (s:<id>), a client by name (c:<name>); see fabric/faults.py."""
+    """Return what a fault points at for a server or client name.
+
+    A server is named by ID (s:<id>), a client by name (c:<name>); see fabric/faults.py.
+    """
     for s in state["servers"].values():
         if s["name"] == name:
             return f"s:{s['id']}"
@@ -34,6 +42,7 @@ def fault_ref(state, name: str) -> str:
 
 
 def add_routes(app: FastAPI, lab) -> None:
+    """Register the lab control routes under /_lab/."""
     state, fabric = lab.state, lab.fabric
 
     def fault_of(body: dict) -> dict:
@@ -56,17 +65,36 @@ def add_routes(app: FastAPI, lab) -> None:
 
     @app.get("/_lab/status")
     def status():
-        servers = [{"id": s["id"], "name": s["name"], "status": s["status"], "location": s["location"],
-                    "server_type": s["server_type"],
-                    "public_ip": H.server_json(lab.cfg, state, s)["public_net"]["ipv4"],
-                    "ipv6": fabric.ipv6_net(s),
-                    "private": [{"network": n["network"], "ip": n["ip"]} for n in s["_lab"]["nics"]],
-                    "vm": "on" if fabric.vm_alive(s) else "off", "dead": bool(s.get("_dead"))}
-                   for s in sorted(state["servers"].values(), key=lambda s: s["id"])]
-        floating_ips = [H.floating_ip_json(lab.cfg, f) for f in state["floating_ips"].values()]
-        return {"servers": servers, "floating_ips": floating_ips,
-                "clients": list(state["clients"].values()), "faults": state.data.get("faults", []),
-                "netem": state.data.get("netem", {}), "api_fault": lab.fault}
+        servers = [
+            {
+                "id": s["id"],
+                "name": s["name"],
+                "status": s["status"],
+                "location": s["location"],
+                "server_type": s["server_type"],
+                "public_ip": hetzner.server_json(lab.cfg, state, s)["public_net"][
+                    "ipv4"
+                ],
+                "ipv6": fabric.ipv6_net(s),
+                "private": [
+                    {"network": n["network"], "ip": n["ip"]} for n in s["_lab"]["nics"]
+                ],
+                "vm": "on" if fabric.vm_alive(s) else "off",
+                "dead": bool(s.get("_dead")),
+            }
+            for s in sorted(state["servers"].values(), key=lambda s: s["id"])
+        ]
+        floating_ips = [
+            hetzner.floating_ip_json(lab.cfg, f) for f in state["floating_ips"].values()
+        ]
+        return {
+            "servers": servers,
+            "floating_ips": floating_ips,
+            "clients": list(state["clients"].values()),
+            "faults": state.data.get("faults", []),
+            "netem": state.data.get("netem", {}),
+            "api_fault": lab.fault,
+        }
 
     @app.post("/_lab/faults")
     async def fault_add(request: Request):
@@ -88,7 +116,9 @@ def add_routes(app: FastAPI, lab) -> None:
         with state.lock:
             faults = state.data.setdefault("faults", [])
             given = {k: v for k, v in body.items() if v is not None}
-            state.data["faults"] = [f for f in faults if not all(f.get(k) == v for k, v in given.items())]
+            state.data["faults"] = [
+                f for f in faults if not all(f.get(k) == v for k, v in given.items())
+            ]
             state.save()
         await lab.blocking(fabric.apply_faults)
         return {"faults": state.data["faults"]}
@@ -108,13 +138,22 @@ def add_routes(app: FastAPI, lab) -> None:
 
     @app.post("/_lab/netem")
     async def netem(request: Request):
-        """{"vm": name, "net": public|private|all, "args": "delay 100ms loss 5%"} – empty args clears."""
+        """Set netem options on a VM's interfaces; empty args clears them.
+
+        Body: {"vm": name, "net": public|private|all, "args": "delay 100ms loss 5%"}.
+        """
         body = await read_body(request)
         args = body.get("args") or ""
-        if not isinstance(args, str) or (args and not all(NETEM_WORD.fullmatch(w) for w in args.split())):
-            raise invalid("args are netem options like 'delay 100ms 10ms loss 5%'", "args")
+        if not isinstance(args, str) or (
+            args and not all(NETEM_WORD.fullmatch(w) for w in args.split())
+        ):
+            raise invalid(
+                "args are netem options like 'delay 100ms 10ms loss 5%'", "args"
+            )
         try:
-            taps = fabric.server_ifaces(fault_ref(state, body.get("vm", "")), body.get("net") or "all")
+            taps = fabric.server_ifaces(
+                fault_ref(state, body.get("vm", "")), body.get("net") or "all"
+            )
         except KeyError as error:
             raise ApiError(404, "not_found", str(error).strip("\"'")) from None
         with state.lock:
@@ -135,7 +174,10 @@ def add_routes(app: FastAPI, lab) -> None:
             await lab.blocking(fabric.qmp, server, "stop")
         elif cmd == "cont":
             await lab.blocking(fabric.qmp, server, "cont")
-        elif cmd in ("dead", "alive"):  # broken hardware: a power-on succeeds, the VM stays off
+        elif cmd in (
+            "dead",
+            "alive",
+        ):  # broken hardware: a power-on succeeds, the VM stays off
             server["_dead"] = cmd == "dead"
             state.save()
         else:
@@ -144,7 +186,11 @@ def add_routes(app: FastAPI, lab) -> None:
 
     @app.post("/_lab/api-fault")
     async def api_fault(request: Request):
-        """{"status": 503, "count": 3} answers the next requests with that status; {"delay_ms": n} delays all."""
+        """Inject faults into the API's answers.
+
+        {"status": 503, "count": 3} answers the next requests with that status;
+        {"delay_ms": n} delays all.
+        """
         body = await read_body(request)
         try:
             new = {k: int(body.get(k) or 0) for k in ("status", "count", "delay_ms")}
@@ -158,15 +204,25 @@ def add_routes(app: FastAPI, lab) -> None:
         body = await read_body(request)
         name = body.get("name", "")
         if not name.isidentifier() or len(name) > 12:
-            raise invalid("client name: letters, digits, underscore, at most 12 characters")
+            raise invalid(
+                "client name: letters, digits, underscore, at most 12 characters"
+            )
         with state.lock:
-            client = next((c for c in state["clients"].values() if c["name"] == name), None)
+            client = next(
+                (c for c in state["clients"].values() if c["name"] == name), None
+            )
             if not client:
                 used = {c["n"] for c in state["clients"].values()}
                 number = next(i for i in range(1, 200) if i not in used)
                 cid = state.new_id("clients")
-                client = {"id": cid, "name": name, "n": number, "veth": f"cl{number}",
-                          "ip": f"{C.CLIENT_NET}.{10 + number}", "ip6": f"{C.CLIENT6}::{10 + number:x}"}
+                client = {
+                    "id": cid,
+                    "name": name,
+                    "n": number,
+                    "veth": f"cl{number}",
+                    "ip": f"{config.CLIENT_NET}.{10 + number}",
+                    "ip6": f"{config.CLIENT6}::{10 + number:x}",
+                }
                 state["clients"][cid] = client
                 state.save()
         await lab.blocking(fabric.add_client, client)
@@ -175,7 +231,9 @@ def add_routes(app: FastAPI, lab) -> None:
     @app.delete("/_lab/clients/{name}")
     async def client_delete(name: str):
         with state.lock:
-            client = next((c for c in state["clients"].values() if c["name"] == name), None)
+            client = next(
+                (c for c in state["clients"].values() if c["name"] == name), None
+            )
             if not client:
                 raise not_found("client")
             del state["clients"][client["id"]]
@@ -186,13 +244,25 @@ def add_routes(app: FastAPI, lab) -> None:
 
     @app.post("/_lab/box/users")
     async def box_user(request: Request):
-        """{"name": "backup1", "public_key": "ssh-ed25519 ..."} – an SFTP account with its own home. Names of the
-        API's accounts (u<id>, u<id>-sub<n>) and of the container's own users are taken."""
+        """Create an SFTP account on the Storage Box with its own home.
+
+        Body: {"name": "backup1", "public_key": "ssh-ed25519 ..."}. Names of the API's
+        accounts (u<id>, u<id>-sub<n>) and of the container's own users are taken.
+        """
         body = await read_body(request)
         name, key = str(body.get("name") or ""), str(body.get("public_key") or "")
-        keyed = key.startswith(("ssh-", "ecdsa-sha2-", "sk-ssh-", "sk-ecdsa-"))   # ed25519, RSA, ECDSA, FIDO
-        if not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", name) or not keyed or "\n" in key.strip():
-            raise invalid("name (lower case letters, digits, - and _) and one public_key are required")
+        keyed = key.startswith(
+            ("ssh-", "ecdsa-sha2-", "sk-ssh-", "sk-ecdsa-")
+        )  # ed25519, RSA, ECDSA, FIDO
+        if (
+            not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", name)
+            or not keyed
+            or "\n" in key.strip()
+        ):
+            raise invalid(
+                "name (lower case letters, digits, - and _) and one public_key "
+                "are required"
+            )
         if re.fullmatch(r"u[0-9]+(-sub[0-9]+)?", name):
             raise invalid("names like u<id> belong to the Storage Box API", "name")
         try:
@@ -201,17 +271,22 @@ def add_routes(app: FastAPI, lab) -> None:
                 raise invalid("a user of the container has this name", "name")
         except KeyError:
             pass
-        await lab.blocking(fabric.box.lab_account, state.data.setdefault("box_uids", {}), name, key)
+        await lab.blocking(
+            fabric.box.lab_account, state.data.setdefault("box_uids", {}), name, key
+        )
         with state.lock:
             state.data.setdefault("box_users", {})[name] = key.strip()
             state.save()
-        return {"user": name, "host": C.SERVICES, "port": 23}
+        return {"user": name, "host": config.SERVICES, "port": 23}
 
     @app.post("/_lab/reset")
     async def reset():
-        """Everything the APIs created goes: servers (VMs and disks), networks, keys, firewalls, Floating IPs,
-        volumes, Storage Boxes with their data, clients, faults. System images, the lab key and the lab's own
-        Storage Box accounts (/_lab/box/users) stay."""
+        """Remove everything the APIs created.
+
+        That is servers (VMs and disks), networks, keys, firewalls, Floating IPs,
+        volumes, Storage Boxes with their data, clients, faults. System images, the lab
+        key and the lab's own Storage Box accounts (/_lab/box/users) stay.
+        """
         for t in list(lab.tasks):
             t.cancel()
         for s in list(state["servers"].values()):
@@ -231,19 +306,23 @@ def add_routes(app: FastAPI, lab) -> None:
             await lab.blocking(fabric.remove_client, c)
         networks = list(state["networks"])
         with state.lock:
-            keep = {k: state.data[k] for k in ("box_users", "box_uids") if k in state.data}
+            keep = {
+                k: state.data[k] for k in ("box_users", "box_uids") if k in state.data
+            }
             next_id = dict(state.data.get("next_id") or ID_BASE)
             state.data.clear()
             for k in KINDS:
                 state.data[k] = {}
-            state.data["next_id"] = next_id   # IDs go on counting, as in the cloud: nothing old matches a new one
+            # IDs go on counting, as in the cloud: nothing old matches a new one
+            state.data["next_id"] = next_id
             state.data.update(keep)
             lab.fault.update(status=0, count=0, delay_ms=0)
             state.save()
-        # an action that was inside a blocking call when it was cancelled may still have started a VM
+        # an action that was inside a blocking call when it was cancelled may still have
+        # started a VM
         await asyncio.sleep(1)
         await lab.blocking(fabric.kill_all_vms)
-        for nid in networks:   # no old routes may wait in the deleted networks' tables
+        for nid in networks:  # no old routes may wait in the deleted networks' tables
             await lab.blocking(fabric.drop_network, nid)
         await lab.blocking(fabric.write_dhcp)
         await lab.blocking(fabric.apply_faults)

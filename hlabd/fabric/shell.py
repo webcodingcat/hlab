@@ -1,4 +1,7 @@
-"""The way to scripts/hlab.sh (a fake shell replaces it in the tests), and to a VM's QEMU guest agent."""
+"""The way to scripts/hlab.sh, and to a VM's QEMU guest agent.
+
+A fake shell replaces it in the tests.
+"""
 
 import json
 import secrets
@@ -11,18 +14,31 @@ HLAB_SH = "/opt/hlab/scripts/hlab.sh"
 
 
 class Shell:
+    """Runs scripts/hlab.sh commands and talks to QEMU guest agents."""
+
     def run(self, *args: str, check: bool = True, input: str | None = None) -> str:
-        process = subprocess.run([HLAB_SH, *args], capture_output=True, text=True, input=input)
+        """Run an hlab.sh command and return its output; raise on failure if checked."""
+        process = subprocess.run(
+            [HLAB_SH, *args], capture_output=True, text=True, input=input
+        )
         if check and process.returncode != 0:
-            raise RuntimeError(f"hlab.sh {' '.join(args)}: {process.stderr.strip() or process.returncode}")
+            raise RuntimeError(
+                f"hlab.sh {' '.join(args)}: "
+                f"{process.stderr.strip() or process.returncode}"
+            )
         return process.stdout
 
     def ok(self, *args: str) -> bool:
+        """Run an hlab.sh command and tell whether it succeeded."""
         return subprocess.run([HLAB_SH, *args], capture_output=True).returncode == 0
 
     def qga(self, sock: Path, command: dict, timeout: float = 10) -> dict | None:
-        """One command to a QEMU guest agent. Its channel buffers answers a client left behind, so guest-sync with
-        a fresh ID first discards them; None when the agent does not answer (within the timeout in all)."""
+        """Send one command to a QEMU guest agent and return its answer.
+
+        The agent's channel buffers answers a client left behind, so a guest-sync with a
+        fresh ID first discards them. Returns None when the agent does not answer
+        (within the timeout in all).
+        """
         token = secrets.randbelow(2**31)
         deadline = time.monotonic() + timeout
         try:
@@ -35,7 +51,8 @@ class Shell:
                     stream.write(json.dumps(cmd).encode() + b"\n")
                     stream.flush()
 
-                def line() -> bytes:   # a guest that keeps talking does not hold the lab up
+                # a guest that keeps talking does not hold the lab up
+                def line() -> bytes:
                     left = deadline - time.monotonic()
                     if left <= 0:
                         raise TimeoutError

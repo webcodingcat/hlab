@@ -1,5 +1,6 @@
 # The lab from Windows PowerShell; same commands as bin/hlab:
-#   .\bin\hlab.ps1 [-c hlab.yaml] up | down | purge | logs | shell | build | test | <command inside the lab>
+#   .\bin\hlab.ps1 [-c hlab.yaml] up | down | purge | logs | shell | build | test | lint | format
+#   .\bin\hlab.ps1 [-c hlab.yaml] <command inside the lab>
 # Native commands report through $LASTEXITCODE; Windows PowerShell would turn their stderr into errors.
 $ErrorActionPreference = 'Continue'
 $root = Split-Path -Parent $PSScriptRoot
@@ -37,17 +38,31 @@ $files = @("$root\Dockerfile") + (Ordinal (Get-ChildItem "$root\scripts\*" | Whe
 $bytes = [System.Collections.Generic.List[byte]]::new()
 foreach ($f in $files) { $bytes.AddRange([System.IO.File]::ReadAllBytes($f)) }
 $sha = [System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes.ToArray())
-$image = 'hlab:' + (-join ($sha | ForEach-Object { $_.ToString('x2') })).Substring(0, 12)
+$tag = (-join ($sha | ForEach-Object { $_.ToString('x2') })).Substring(0, 12)
+$image = "hlab:$tag"
+$devImage = "hlab-dev:$tag"   # the development tools (STYLE.md), built on top of the lab image
 
-function Build {
-    docker image inspect $image 2>&1 | Out-Null
+function Build([string]$Target = 'lab', [string]$Tagged = $image) {
+    docker image inspect $Tagged 2>&1 | Out-Null
     if ($LASTEXITCODE -eq 0) { return }
-    Write-Host "Building $image ..."
-    docker build -q -t $image $root | Out-Null
+    Write-Host "Building $Tagged ..."
+    docker build -q --target $Target -t $Tagged $root | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'docker build failed' }
     # older builds go (those a container still uses stay: docker refuses to remove them)
-    docker images hlab --format '{{.Repository}}:{{.Tag}}' | Where-Object { $_ -ne $image } |
+    $repository = $Tagged.Split(':')[0]
+    docker images $repository --format '{{.Repository}}:{{.Tag}}' | Where-Object { $_ -ne $Tagged } |
         ForEach-Object { docker rmi $_ *> $null }
+}
+
+# Style checks or fixes (STYLE.md): tools/lint.sh in the development image, tofu fmt in OpenTofu's.
+function Invoke-Lint([string]$Mode) {
+    Build 'dev' $devImage
+    # the tools' output goes to the console, not into this function's return value
+    docker run --rm -v "${root}:/src" --entrypoint bash $devImage /src/tools/lint.sh $Mode | Out-Host
+    if ($LASTEXITCODE -ne 0) { return $LASTEXITCODE }
+    $tofuArgs = if ($Mode -eq 'fix') { @('fmt', '-recursive') } else { @('fmt', '-check', '-diff', '-recursive') }
+    docker run --rm -v "${root}\tests\tofu-smoke:/work" -w /work ghcr.io/opentofu/opentofu:1 @tofuArgs | Out-Host
+    return $LASTEXITCODE
 }
 
 $cmd = if ($rest.Count -gt 0) { $rest[0] } else { '' }
@@ -74,7 +89,15 @@ switch ($cmd) {
     'purge' { docker stop $container *> $null; docker rm -f $container *> $null; docker volume rm $container *> $null; exit 0 }
     'logs' { docker logs -f $container; exit $LASTEXITCODE }
     'shell' { docker exec -it $container bash; exit $LASTEXITCODE }
-    'test' { Build; docker run --rm --entrypoint python3 -w /opt/hlab $image -m pytest -q -p no:cacheprovider tests; exit $LASTEXITCODE }
+    'lint' { exit (Invoke-Lint 'check') }
+    'format' { exit (Invoke-Lint 'fix') }
+    'test' {
+        $status = Invoke-Lint 'check'
+        if ($status -ne 0) { exit $status }
+        Build
+        docker run --rm --entrypoint python3 -w /opt/hlab $image -m pytest -q -p no:cacheprovider tests
+        exit $LASTEXITCODE
+    }
     'itest' {
         $extra = @(if ($rest.Count -gt 1) { $rest.GetRange(1, $rest.Count - 1) })   # an array, also of one
         docker exec -e HLAB_LIVE=1 -w /opt/hlab/itests $container python3 -m pytest -p no:cacheprovider -v @extra
