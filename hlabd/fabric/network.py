@@ -39,8 +39,9 @@ class Network:
     def _private_tap_up(self, nic: dict) -> None:
         net = self.state["networks"][nic["network"]]
         rng = ipaddress.ip_network(net["ip_range"])
-        self.sh.run("private-tap-up", nic["tap"], f"{network_gateway(net['ip_range'])}/{rng.prefixlen}", nic["ip"],
-                    route_table(nic["network"]), str(rng), *(nic.get("alias_ips") or []))
+        with self.net_lock:   # two servers of one network starting side by side would both add its ip rules
+            self.sh.run("private-tap-up", nic["tap"], f"{network_gateway(net['ip_range'])}/{rng.prefixlen}",
+                        nic["ip"], route_table(nic["network"]), str(rng), *(nic.get("alias_ips") or []))
 
     def local_addresses(self, fresh: bool = False) -> set[str]:
         """The IPv4 addresses the lab container itself has (never handed to a server); read at most every 10 s

@@ -50,8 +50,15 @@ case "${1:-}" in
         docker run -d --name "${container}" --init --privileged --device /dev/kvm --device /dev/net/tun \
             --stop-timeout 20 -e "HLAB_NAME=${name}" -v "${container}:/hlab" ${cfgmount[@]+"${cfgmount[@]}"} "${image}" serve >/dev/null
         # the start's log until the lab is ready (or the container ends): image downloads take a while
-        docker logs -f "${container}" 2>&1 | sed '/hlab ready/q'
-        docker logs "${container}" 2>&1 | grep -q "hlab ready" || exit 1 ;;
+        shown=0
+        while true; do
+            log="$(docker logs "${container}" 2>&1)"
+            printf '%s\n' "${log}" | tail -n +"$((shown + 1))"
+            shown="$(printf '%s\n' "${log}" | wc -l)"
+            grep -q "hlab ready" <<<"${log}" && break
+            [[ "$(docker inspect -f '{{.State.Running}}' "${container}" 2>/dev/null)" == true ]] || exit 1
+            sleep 1
+        done ;;
     down) docker stop "${container}" >/dev/null 2>&1 || true; docker rm -f "${container}" >/dev/null 2>&1 || true ;;
     purge) "$0" -c "${config}" down; docker volume rm "${container}" >/dev/null 2>&1 || true ;;
     logs) docker logs -f "${container}" ;;
