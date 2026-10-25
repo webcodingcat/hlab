@@ -1,0 +1,55 @@
+# Lab configuration. Every key is optional; the values shown are the defaults unless marked otherwise.
+# Start with:  bin/hlab -c examples/hlab.yaml up
+
+# Name of the lab: container hlab-<name>, state volume hlab-<name>. Several labs run side by side, each in its own
+# network namespace (the addresses below repeat in every lab).
+name: demo
+
+api:
+  # Token the fake Cloud API accepts (Authorization: Bearer <token>). null accepts any token. The hcloud
+  # provider and CLI insist on 64 characters.
+  token: null
+  # Factor on the cloud timings (power off ~9 s, reset ~15 s, Floating IP move ~3 s). 0 = instant.
+  time_scale: 1.0
+  # Requests per hour and token, refilled gradually like on Hetzner (429 when used up). null switches it off.
+  rate_limit: 3600
+
+# Server types offered by the API. VM size = real size; memory_scale shrinks the RAM of every VM (e.g. 0.5) when
+# the Docker host is short of memory – the type still reports its real size.
+memory_scale: 1.0
+server_types:
+  cx23: {cores: 2, memory_gb: 4, disk_gb: 40}
+  cx33: {cores: 4, memory_gb: 8, disk_gb: 80}
+  cx43: {cores: 8, memory_gb: 16, disk_gb: 160}
+
+# Locations and the simulated round-trip time between them (ms), applied on the public and private networks.
+locations:
+  fsn1: {city: Falkenstein, country: DE, network_zone: eu-central}
+  nbg1: {city: Nuremberg, country: DE, network_zone: eu-central}
+  hel1: {city: Helsinki, country: FI, network_zone: eu-central}
+latency_ms:
+  fsn1-nbg1: 3
+  fsn1-hel1: 24
+  hel1-nbg1: 24
+
+# System images by name (as used in "image" when creating a server): the current release and its checksum file.
+# The lab loads them when it starts (a newer release comes as a new file; servers keep the version they were made
+# from). Only these images exist in the lab.
+images:
+  debian-13:
+    url: https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-amd64.qcow2
+    checksums: https://cloud.debian.org/images/cloud/trixie/latest/SHA512SUMS
+  ubuntu-26.04:
+    url: https://cloud-images.ubuntu.com/releases/26.04/release/ubuntu-26.04-server-cloudimg-amd64.img
+    checksums: https://cloud-images.ubuntu.com/releases/26.04/release/SHA256SUMS
+
+# Storage Box stand-in on 198.18.0.1 (box.hlab): SFTP on port 22, SSH (rsync, scp, borg, commands) on port 23. size_gb limits the space (a full box can be tested); it
+# can grow later (the next start enlarges the box), not shrink.
+storage_box:
+  enabled: true
+  size_gb: 10
+
+# Extra DNS answers of the lab resolver (198.18.0.1), e.g. test domains pointing at a Floating IP.
+# A name covers its subdomains too.
+dns: {}
+#  example.test: 203.0.113.10

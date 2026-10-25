@@ -1,0 +1,90 @@
+"""Cloud firewalls as nftables rules, with Hetzner's semantics:
+
+- They filter the public interface only (cloud networks are not filtered) – here a server's public tap, so Floating
+  IPs routed to it are covered too.
+- Stateful: answers to allowed connections pass.
+- Inbound: once a firewall applies, everything not allowed by a rule is dropped (also without any rules).
+- Outbound: everything is allowed until a firewall of the server has an outbound rule; then only what rules allow.
+- Several firewalls on a server: their rules add up.
+- Protocols tcp, udp, icmp, esp, gre (gre IPv4 only); anything else is dropped inbound.
+- Always allowed: ARP (not IP), DHCP, the ICMPv6 types of neighbour discovery, the metadata service.
+
+The lab's own access (`hlab ssh` from 198.18.0.2 / 2001:db8:fffe::3) passes, like the cloud console would.
+
+The rules come checked by the API (api/firewalls.py).
+"""
+
+import ipaddress
+
+from .. import config as C
+from ..labels import firewall_servers
+
+
+def nft_port(port: str) -> str:
+    return "1-65535" if port == "any" else str(port)
+
+
+def _rule_lines(r: dict, verdict: str) -> list[str]:
+    """One Hetzner rule → nft rules (one per address family present)."""
+    addrs = r["source_ips"] if r["direction"] == "in" else r["destination_ips"]
+    side = "saddr" if r["direction"] == "in" else "daddr"
+    nets = [ipaddress.ip_network(a) for a in addrs]
+    lines = []
+    for fam, ver, any_net in (("ip", 4, "0.0.0.0/0"), ("ip6", 6, "::/0")):
+        fam_nets = [n for n in nets if n.version == ver]
+        if not fam_nets:
+            continue
+        if r["protocol"] == "gre" and ver == 6:
+            continue  # GRE over IPv6 is dropped by Hetzner's firewalls
+        match = (f"meta nfproto {'ipv4' if ver == 4 else 'ipv6'}" if any(str(n) == any_net for n in fam_nets)
+                 else f"{fam} {side} {{ {', '.join(str(n) for n in fam_nets)} }}")
+        proto = r["protocol"]
+        if proto in ("tcp", "udp"):
+            l4 = f"{proto} dport {nft_port(r['port'])}"
+        elif proto == "icmp":
+            l4 = "meta l4proto icmp" if ver == 4 else "meta l4proto ipv6-icmp"
+        else:
+            l4 = f"meta l4proto {proto}"
+        lines.append(f"{match} {l4} {verdict}")
+    return lines
+
+
+def ruleset(state, taps: dict[int, str]) -> str:
+    """The complete table inet hlabfw for the current state (servers' public taps by server ID)."""
+    chains, fwd, inp, outp = [], [], [], []
+    for sid, tap in sorted(taps.items()):
+        fws = [f for f in state["firewalls"].values() if sid in firewall_servers(f, state)]
+        if not fws:
+            continue
+        rules = [r for f in fws for r in f["rules"]]
+        ins = [r for r in rules if r["direction"] == "in"]
+        outs = [r for r in rules if r["direction"] == "out"]
+        body = [f"ip saddr {C.ADMIN} accept", f"ip6 saddr {C.ADMIN6} accept"]
+        for r in ins:
+            body += _rule_lines(r, "accept")
+        chains.append(f"    chain in_{sid} {{\n" + "".join(f"        {x}\n" for x in body) + "        drop\n    }")
+        fwd.append(f'oifname "{tap}" jump in_{sid}')
+        outp.append(f'oifname "{tap}" jump in_{sid}')
+        if outs:  # outbound rules: only what they allow; return lets the receiver's inbound rules decide next
+            body = [f"ip daddr {C.ADMIN} return", f"ip6 daddr {C.ADMIN6} return"]
+            for r in outs:
+                body += _rule_lines(r, "return")
+            chains.append(f"    chain out_{sid} {{\n" + "".join(f"        {x}\n" for x in body) + "        drop\n    }")
+            fwd.insert(0, f'iifname "{tap}" jump out_{sid}')
+            inp.append(f'iifname "{tap}" jump out_{sid}')
+    always = ["ct state established,related accept", "ct state invalid drop",
+              "icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit, nd-router-advert, "
+              "nd-redirect } accept"]
+    # DHCP and the metadata service pass only between a server and the lab itself (never server to server);
+    # metadata over IPv6 arrives DNATed from fe80::a9fe:a9fe
+    to_lab = ["udp sport 68 udp dport 67 accept", f"ip daddr {C.METADATA} tcp dport 80 accept",
+              f"ct status dnat ip6 daddr {C.METADATA6} tcp dport 80 accept"]
+    from_lab = ["udp sport 67 udp dport 68 accept"]
+
+    def base(name: str, hook: str, rules: list[str], extra: list[str]) -> str:
+        lines = [f"type filter hook {hook} priority 10; policy accept;"] + (always + extra + rules if rules else [])
+        return f"    chain {name} {{\n" + "".join(f"        {x}\n" for x in lines) + "    }"
+
+    parts = [base("forward", "forward", fwd, []), base("input", "input", inp, to_lab),
+             base("output", "output", outp, from_lab)] + chains
+    return "table inet hlabfw\ndelete table inet hlabfw\ntable inet hlabfw {\n" + "\n".join(parts) + "\n}\n"

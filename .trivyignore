@@ -1,0 +1,8 @@
+# Findings in the image (trivy image --severity CRITICAL,HIGH) that have no fixed Debian package yet (also not in
+# trixie-backports) and are not reachable in the lab. The image takes only Debian packages, so they go away with a
+# rebuild once Debian ships the fix; remove the entry then.
+
+# openssh-client (also flagged on openssh-server/-sftp-server, same source package): use-after-free when a server
+# changes its host key during a re-exchange - client side only. The lab's ssh client (hlab ssh) runs as nobody, not
+# as root, so a malicious guest gets no root in the container from it; the Storage Box's sshd is not affected.
+CVE-2026-60002
