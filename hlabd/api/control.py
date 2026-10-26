@@ -15,7 +15,7 @@ from ..fabric.storagebox import data_dir, snap_dir, username
 from ..lab import Lab
 from ..records import Client
 from ..state import client_by_name, primary_address_of, server_by_name
-from . import hetzner
+from . import desired, hetzner, system
 from .faults import REF_FIELDS, drop_faults
 from .storagebox.base import set_up_box_user
 from .web import read_body
@@ -88,7 +88,7 @@ def status(lab: Lab) -> dict:
 def fault_ref(lab: Lab, name: str) -> str:
     """Return the reference a fault uses for a server or client name, or raise 404.
 
-    A server is named by ID (s:<id>), a client by name (c:<name>); see fabric/faults.py.
+    A server is named by ID (s:<id>), a client by name (c:<name>); see api/desired.py.
     """
     server = server_by_name(lab.state, name)
     if server:
@@ -138,7 +138,7 @@ def add_fault(lab: Lab, body: dict) -> dict:
         if fault not in state.data["faults"]:
             state.data["faults"].append(fault)
         faults = list(state.data["faults"])  # the answer, as this change left them
-    lab.fabric.faults.apply()
+    system.apply_faults(lab)
     return {"faults": faults}
 
 
@@ -153,7 +153,7 @@ def remove_faults(lab: Lab, body: dict) -> dict:
             if not all(fault.get(k) == v for k, v in given.items())
         ]
         faults = list(state.data["faults"])  # the answer, as this change left them
-    lab.fabric.faults.apply()
+    system.apply_faults(lab)
     return {"faults": faults}
 
 
@@ -168,8 +168,8 @@ def clear_faults(lab: Lab) -> dict:
         state.data["netem"] = {}
         for server in state["servers"].values():
             server.pop("_dead", None)
-    lab.fabric.faults.apply()
-    lab.fabric.faults.apply_latency()
+    system.apply_faults(lab)
+    system.apply_latency(lab)
     return {"ok": True}
 
 
@@ -185,15 +185,15 @@ def set_netem(lab: Lab, body: dict) -> dict:
     ):
         raise invalid("args are netem options like 'delay 100ms 10ms loss 5%'", "args")
     ref = fault_ref(lab, body.get("vm", ""))
-    taps = lab.fabric.faults.target_ifaces(ref, body.get("net") or "all")
     with state.change():
+        taps = desired.target_ifaces(state, ref, body.get("net") or "all")
         for tap in taps:
             if args:
                 state.data["netem"][tap] = " ".join(args.split())
             else:
                 state.data["netem"].pop(tap, None)
         netem = dict(state.data["netem"])  # the answer, as this change left them
-    lab.fabric.faults.apply_latency()
+    system.apply_latency(lab)
     return {"netem": netem}
 
 
@@ -265,7 +265,7 @@ def add_client(lab: Lab, body: dict) -> dict:
                 "ip6": f"{config.CLIENT6}::{10 + number:x}",
             }
             state["clients"][cid] = client
-    lab.fabric.network.add_client(client)
+    system.add_client(lab, client)
     return {"client": client}
 
 
@@ -276,7 +276,7 @@ def remove_client(lab: Lab, name: str) -> dict:
         client = client_or_404(lab, name)
         del state["clients"][client["id"]]
         drop_faults(lab, f"c:{client['name']}", [client["veth"]])
-    lab.fabric.network.remove_client(client)
+    system.remove_client(lab, client)
     return {"ok": True}
 
 
@@ -335,7 +335,7 @@ async def reset_lab(lab: Lab) -> dict:
         clients = list(state["clients"].values())
         networks = list(state["networks"])
     for server in servers:
-        await lab.blocking(fabric.delete_vm, server)
+        await lab.blocking(system.delete_vm, lab, server)
     for volume in volumes:
         await lab.blocking(fabric.volumes.delete, volume)
     for subaccount in subaccounts:
@@ -347,16 +347,16 @@ async def reset_lab(lab: Lab) -> dict:
     for ip in routed:
         await lab.blocking(fabric.network.route_floating_ip, ip, None)
     for client in clients:
-        await lab.blocking(fabric.network.remove_client, client)
+        await lab.blocking(system.remove_client, lab, client)
     await lab.blocking(state.clear)
     lab.clear_api_fault()
     # a VM the state no longer knows (e.g. one whose server's creation was cut short)
     await lab.blocking(fabric.vms.kill_all)
     for nid in networks:  # clear the tables of the deleted networks
-        await lab.blocking(fabric.network.drop_cloud_network, nid)
-    await lab.blocking(fabric.network.write_dhcp)
-    await lab.blocking(fabric.faults.apply)
-    await lab.blocking(fabric.firewall.apply)
+        await lab.blocking(system.drop_cloud_network, lab, nid)
+    await lab.blocking(system.write_dhcp, lab)
+    await lab.blocking(system.apply_faults, lab)
+    await lab.blocking(system.apply_firewall, lab)
     return {"ok": True}
 
 

@@ -1,6 +1,6 @@
 """Hetzner label selectors, and the servers a firewall applies to through them.
 
-Used by the API and by the fabric (firewall rules).
+Used by the API (and by api/desired.py for the firewall rules).
 """
 
 from .records import Firewall, Server

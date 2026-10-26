@@ -13,7 +13,7 @@ from ..errors import (
 )
 from ..lab import FLOATING_IP_MOVE_SECONDS, ActionTable, Lab, Plan, now
 from ..records import FloatingIP, Server
-from . import hetzner
+from . import hetzner, system
 from .catalogue import catalogue_name
 from .public_addresses import first_free, record_dns_ptr
 from .web import (
@@ -141,9 +141,9 @@ def move_floating_ip(lab: Lab, floating_ip: FloatingIP, target: Server | None) -
         await lab.blocking(
             lab.fabric.network.route_floating_ip, floating_ip["ip"], target
         )
-        await lab.blocking(lab.fabric.faults.apply)
+        await lab.blocking(system.apply_faults, lab)
         if target:
-            await lab.blocking(lab.fabric.faults.apply_latency)
+            await lab.blocking(system.apply_latency, lab)
 
     return Plan(steps, resources=[(target["id"], "server")] if target else [])
 

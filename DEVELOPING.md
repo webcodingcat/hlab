@@ -29,7 +29,7 @@ The repository:
 | Path | What |
 |---|---|
 | `Dockerfile` | the lab image (Debian 13 packages: QEMU, dnsmasq, nftables, OpenSSH, Python/FastAPI; the live tests) and the development image on top (linters, the unit tests) |
-| `bin/hlab`, `bin/hlab.ps1` | host side: build, start, stop, pass commands into the container |
+| `bin/hlab` | host side (Bash: Linux, macOS, Git Bash or WSL on Windows): build, start, stop, pass commands into the container |
 | `scripts/hlab.sh` | low-level primitives: taps, QEMU, nftables, tc, DHCP, DNS, volumes, images |
 | `scripts/hlab.nft` | the lab's nftables table `inet hlab`; `hlab.sh init-net` puts the addresses in and loads it |
 | `scripts/box.sh` | the Storage Box: sshd, chrooted accounts, snapshots |
@@ -37,10 +37,7 @@ The repository:
 | `tests/` | unit tests by feature, the OpenTofu smoke test |
 | `itests/` | live tests with VMs |
 | `tools/lint.sh` | the style and type checks of [STYLE.md](STYLE.md) |
-
-There are two wrappers so that every host can drive the lab: `bin/hlab` for Bash
-(Linux, macOS, Git Bash on Windows) and `bin/hlab.ps1` for Windows PowerShell without
-Bash; they offer the same commands, so a change to one goes into the other too.
+| `tools/fetch_specs.py` | downloads Hetzner's OpenAPI specs (the image build, the unit tests outside Docker) |
 
 Inside `hlabd/`:
 
@@ -57,7 +54,9 @@ Inside `hlabd/`:
 | `api/restart.py` | what happens after the lab (re)starts: flags cleared, servers back |
 | `api/control.py` | lab control under `/_lab/` (faults, clients, reset); no resource module imports it |
 | `api/faults.py` | the faults and netem in the state, dropped with the server, client or link they point at |
-| `fabric/` | carries out: `Fabric` (`__init__.py`) holds one object per part, each given what it uses in its constructor: `shell` (`shell.py`, runs hlab.sh), `vms` (`vm.py`), `volumes` (`volumes.py`), `faults` (`faults.py`: nft sets, latency), `network` (`network.py`: taps, DHCP, DNS, routes, Floating IPs, clients), `firewall` (`firewall.py`: the firewall table), `box` (`storagebox.py`); `addresses.py` has the address rules (MACs, gateways, tables). A VM's start and stop across the parts are `Fabric`'s own methods (`start_vm`, `kill_vm`, `delete_vm`) |
+| `api/desired.py` | pure functions: the state in, plain data out – what the system should look like (fault sets, latency, DHCP, taps, routes, firewall rules per server, boot volumes) |
+| `api/system.py` | puts the state in place: reads it under the lock (through `desired.py`), hands the plain data to the fabric, stores what the fabric reports back (`net_routes`); a VM's start and stop across the parts (`start_vm`, `kill_vm`, `delete_vm`) |
+| `fabric/` | carries out, with plain data as arguments; it never sees the state (records handed in are read only for what never changes: ID, name, tap, MAC). `Fabric` (`__init__.py`) holds one object per part, each given what it uses in its constructor: `shell` (`shell.py`, runs hlab.sh), `vms` (`vm.py`), `volumes` (`volumes.py`), `faults` (`faults.py`: nft sets, latency), `network` (`network.py`: taps, DHCP, DNS, routes, Floating IPs, clients), `firewall` (`firewall.py`: the firewall table), `box` (`storagebox.py`); `addresses.py` has the address rules (MACs, gateways, tables) |
 | `config.py` | configuration defaults and the lab's addresses (the scripts get them as `HLAB_*`) |
 | `daemon.py`, `cli.py` | the container's main process; the `hlab` command inside the container |
 
@@ -144,9 +143,10 @@ is gone (a deleted volume). No code outside `lab.py` calls `lab.claim()` or
 5. The plan has steps, so `act()` creates the action (`lab.new_action("stop_server",
    ...)`) and hands steps and flag to `lab.run_action`. It starts the steps as a task
    on the loop (`lab.spawn`). The route answers 201, the action `running`.
-6. The steps run `await lab.blocking(lab.fabric.kill_vm, server)`. `Fabric.kill_vm`
-   calls `vms.kill` (`hlab.sh kill-vm`) and `network.taps_down` (`hlab.sh
-   tear-down-tap` per tap, then the DHCP config). The steps set the status to
+6. The steps run `await lab.blocking(system.kill_vm, lab, server)`. `system.kill_vm`
+   calls `fabric.vms.kill` (`hlab.sh kill-vm`), copies the server's taps under the lock
+   for `fabric.network.taps_down` (`hlab.sh tear-down-tap` per tap), then writes the
+   DHCP configs (`system.write_dhcp`). The steps set the status to
    `stopping` and, after `POWEROFF_SECONDS`, to `off` (`lab.set_status` through
    `lab.blocking`), then wait `POWEROFF_END_SECONDS`.
 7. When the steps end, `run_action` takes the `locked` flag off and finishes the action
@@ -165,6 +165,13 @@ is gone (a deleted volume). No code outside `lab.py` calls `lab.claim()` or
   `lab.blocking` too. So do the VM watcher and the snapshot plans. A thread cannot be
   cancelled, so `lab.blocking` keeps track of its threads, and a lab reset waits for
   them after cancelling the actions (`lab.stop_actions`).
+- The fabric gets plain data and never sees the state: no `state`, no `state.lock`.
+  What it needs is read on the API side, under the lock (`api/desired.py`), and
+  handed over by `api/system.py`, which also stores what the fabric returns. A whole
+  picture (fault sets, latency, firewall, DHCP, routes) is computed and handed over
+  under the fabric's `net_lock`, so the newest one is put in place last; the order is
+  `net_lock`, then `state.lock`, so `api/system.py` is never called with the state's
+  lock held.
 - Code on the event loop never saves the state itself (a save writes and fsyncs the
   whole file): it hands whatever saves (`set_status`, `finish`, a `state.change()`
   block in a small function) to a thread with `await lab.blocking(...)`.
@@ -183,7 +190,7 @@ another thread in the middle of a save, or of a loop, breaks it.
 
 **Changes.** Every change to the state holds `lab.state.lock`: any dict or list
 reachable from `state.data`, flags, statuses and the lab's own records included. That
-holds in routes, action steps, the fabric and the restart alike. Slow work (scripts, VM
+holds in routes, action steps, `api/system.py` and the restart alike. Slow work (scripts, VM
 calls, `lab.sleep`) stays outside: take the lock only around the change and its save.
 The lock is re-entrant, so a helper that locks may be called with it held.
 
@@ -219,8 +226,9 @@ one holds the lock. `state.save()`, `state.new_id()` and the helpers that change
 several records call `state.lock.assert_held()`, which raises AssertionError when the
 caller does not hold the lock. Those helpers are `add_nic`, `setup_server_ips`,
 `release_server_ips`, `record_attachment`, `checked_alias_ips`, `update_fields`,
-`set_dns_ptr`, `check_limit`, the address pickers, the firewall ruleset and the fault
-sets. The check costs two lookups, so it is always on. In an action's steps the error
+`set_dns_ptr`, `check_limit`, the address pickers, and the functions of
+`api/desired.py` that read several records (fault sets, latency, DHCP, routes, firewall
+rules, ...). The check costs two lookups, so it is always on. In an action's steps the error
 only fails the action, so the unit tests record every breach and fail the test
 (`locking_rule_kept` in `tests/conftest.py`). A new helper that expects its caller to
 hold the lock says so and asserts it.
@@ -242,6 +250,9 @@ tests tells you if the shape is wrong.
 comment to `scripts/hlab.sh` and its verb to `main` (the function's name with dashes:
 `create_volume` is `create-volume`), call it from a method of the fitting `fabric/`
 part, and call that method from the API. Addresses come from `config.py` as `HLAB_*`.
+What the method needs from the state comes as arguments: a pure function in
+`api/desired.py` computes it, `api/system.py` (or the caller) reads it under the lock
+and passes it.
 
 **A new flag**: add it to `FLAGS` in `lab.py` and to the list above it, so a restart
 clears it (`api/restart.py`).
@@ -249,29 +260,31 @@ clears it (`api/restart.py`).
 ## The packet path of a public address
 
 Who may send what, and where an address goes, comes from four places, each rebuilt as a
-whole from the state when something changes:
+whole from the state when something changes (computed by `api/desired.py`, handed over
+by `api/system.py`):
 
-- routes (`fabric/network.py`: `route_floating_ip`, `reroute_floating_ips`;
+- routes (`fabric/network.py`: `route_floating_ip`; `system.reroute_floating_ips`;
   `hlab.sh set-route`),
-- the nft sets of `table inet hlab` (`fabric/faults.py`: `Faults.apply` – faults, the
-  sources each tap may send from, cloud network members),
-- the firewall table `inet hlabfw` (`fabric/firewall.py`: built by `ruleset`, applied
-  by `Firewall.apply`),
-- tc on the taps (`fabric/faults.py`: `Faults.apply_latency` – latency between
+- the nft sets of `table inet hlab` (`system.apply_faults` → `Faults.apply` – faults,
+  the sources each tap may send from, cloud network members),
+- the firewall table `inet hlabfw` (`system.apply_firewall` → `Firewall.apply`, the
+  table built by `ruleset` in `fabric/firewall.py`),
+- tc on the taps (`system.apply_latency` → `Faults.apply_latency` – latency between
   locations, netem faults).
 
-So moving a Floating IP changes its route and calls `faults.apply` (the new server may
-send from it) and `faults.apply_latency`.
+So moving a Floating IP changes its route and calls `system.apply_faults` (the new
+server may send from it) and `system.apply_latency`.
 
 ## Tests
 
 - `tests/`: unit tests, no VMs. `FakeShell` (`tests/conftest.py`) stands in for
   `hlab.sh` and records every call; `time_scale = 0` skips Hetzner's waits.
-  The `api` fixture is a test client of the Cloud API. Run with `bin/hlab test`, in the
-  development image, which carries the unit tests (the lab image has only `itests/`).
-- `tests/test_wrappers.py`: `bin/hlab` and `bin/hlab.ps1` dispatch and document the same
-  commands and options (both read as text, the test container has no PowerShell);
-  `bin/hlab` reads the lab name from sample configurations.
+  The `api` fixture is a test client of the Cloud API. `bin/hlab test` is the
+  reference: it runs all of them in the development image, which carries the unit
+  tests (the lab image has only `itests/`).
+- `tests/test_wrappers.py`: every command `bin/hlab` dispatches is in its usage comment
+  and back (both read as text); `bin/hlab` reads the lab name from sample
+  configurations.
 - `tests/test_scripts.py`: the scripts themselves, in seconds and without VMs: every
   verb hlabd calls exists in `hlab.sh`/`box.sh` with a fitting argument count (both
   sides parsed) and is its function's name with dashes, the nftables rulesets parse
@@ -279,6 +292,21 @@ send from it) and `faults.apply_latency`.
   table), `box-shell.sh`'s allow/deny decisions with stubbed commands,
   and `lib.sh`'s `stop_pid`/`is_alive`. `nft -c` checks fully only with
   CAP_NET_ADMIN, which `bin/hlab test` gives the test container; without it only nft's
-  parser runs and the full check is skipped.
+  parser runs and the full check is skipped. Without bash, nft or /proc (`lib.sh`)
+  the tests that need them skip and say why.
 - `itests/`: live tests with VMs in a running lab (`bin/hlab itest`, ~15 min).
 - `tests/tofu-smoke/run.sh`: OpenTofu with Hetzner's provider against a running lab.
+
+The unit tests also run without Docker, on Linux or macOS with Python 3.13 or newer
+(from the repository's root):
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
+python3 tools/fetch_specs.py   # Hetzner's specs into .cache/spec/
+.venv/bin/pytest -q
+```
+
+The tests find the specs in `$HLAB_SPEC_DIR`, else in the image's `/opt/hlab/spec`, else
+in `.cache/spec/`. Here the runtime comes from PyPI (the image has Debian's packages),
+and the tests that need bash, nft, CAP_NET_ADMIN or /proc skip where those are missing
+(macOS: the nftables and `lib.sh` tests); `bin/hlab test` runs everything.

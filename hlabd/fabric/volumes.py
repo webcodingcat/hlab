@@ -6,7 +6,6 @@ A part of the fabric (see __init__.py); it plugs into the VMs of vm.py.
 from pathlib import Path
 
 from ..records import Server, Volume
-from ..state import State
 from .shell import Shell
 from .vm import VMs
 
@@ -14,9 +13,8 @@ from .vm import VMs
 class Volumes:
     """The volumes' disk files and their place in the VMs."""
 
-    def __init__(self, state: State, root: Path, shell: Shell, vms: VMs):
-        """Keep the state, the lab's directory, the shell and the VMs to plug into."""
-        self.state = state
+    def __init__(self, root: Path, shell: Shell, vms: VMs):
+        """Keep the lab's directory, the shell and the VMs to plug into."""
         self.root = root
         self.shell = shell
         self.vms = vms
@@ -79,14 +77,8 @@ class Volumes:
             str(volume["id"]),
         )
 
-    def write_boot_list(self, server: Server) -> None:
-        """Write the volumes the VM gets at boot: those attached whose disk exists."""
-        with self.state.lock:
-            volumes = [
-                v
-                for v in self.state["volumes"].values()
-                if v.get("server") == server["id"] and v["status"] == "available"
-            ]
+    def write_boot_list(self, server: Server, volumes: list[Volume]) -> None:
+        """Write the volumes the VM gets at boot (the API picks them: boot_volumes)."""
         (self.vms.directory(server) / "volumes").write_text(
             "".join(f"{v['id']} {self.path(v)}\n" for v in volumes)
         )

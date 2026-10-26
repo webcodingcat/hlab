@@ -23,7 +23,7 @@ from ..errors import (
 from ..lab import SERVER_LOCKED, ActionTable, Lab, Plan, now
 from ..records import PrimaryIP, Server
 from ..state import primary_ip_field, primary_ip_of, server_by_id
-from . import hetzner
+from . import hetzner, system
 from .catalogue import catalogue_name
 from .public_addresses import contains, first_free, record_dns_ptr, set_dns_ptr
 from .web import (
@@ -298,7 +298,7 @@ def primary_ip_assign(lab: Lab, primary_ip: PrimaryIP, body: dict) -> Plan:
         check_assignable(lab, server, primary_ip["type"])
         primary_ip["assignee_id"] = server["id"]
         server[primary_ip_field(primary_ip["type"])] = primary_ip["id"]
-    lab.fabric.network.write_dhcp()
+    system.write_dhcp(lab)
     return Plan()
 
 
@@ -311,7 +311,7 @@ def primary_ip_unassign(lab: Lab, primary_ip: PrimaryIP, body: dict) -> Plan:
             require_off(server)
             server[primary_ip_field(primary_ip["type"])] = None
         primary_ip["assignee_id"] = None
-    lab.fabric.network.write_dhcp()
+    system.write_dhcp(lab)
     return Plan()
 
 

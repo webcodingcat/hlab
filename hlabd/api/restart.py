@@ -11,7 +11,7 @@ import logging
 from ..lab import FLAGS, Lab, now
 from ..records import Server
 from ..state import KINDS
-from . import storagebox
+from . import storagebox, system
 from .servers import ensure_disk, remove_server
 from .storagebox.base import set_up_box_user
 
@@ -112,7 +112,7 @@ async def restart_servers(lab: Lab) -> None:
             target = status_after_restart(server)
             if target == "running":
                 await ensure_disk(lab, server)
-                await lab.blocking(lab.fabric.start_vm, server)
+                await lab.blocking(system.start_vm, lab, server)
             elif server["status"] in ("initializing", "rebuilding"):
                 # cut off while its disk was made: create the disk; the server stays off
                 await ensure_disk(lab, server)
@@ -128,30 +128,29 @@ async def restore_clients(lab: Lab) -> None:
         clients = list(lab.state["clients"].values())
     for client in clients:
         try:
-            await lab.blocking(lab.fabric.network.add_client, client)
+            await lab.blocking(system.add_client, lab, client)
         except Exception:  # the lab comes up without this client
             log.exception("client %s not restored", client["name"])
 
 
 async def restore_lab(lab: Lab) -> None:
     """Restore the Storage Box, state, network, servers and clients after a start."""
-    fabric = lab.fabric
     await lab.blocking(clear_flags, lab)
     await restore_storage_box(lab)
     await lab.blocking(fail_running_actions, lab)
     await lab.blocking(drop_half_created_volumes, lab)
     await lab.blocking(finish_box_setup, lab)
     # firewalls and faults before any VM runs, so no server ever runs unfiltered
-    await lab.blocking(fabric.firewall.apply)
-    await lab.blocking(fabric.faults.apply)
+    await lab.blocking(system.apply_firewall, lab)
+    await lab.blocking(system.apply_faults, lab)
     await restart_servers(lab)
     await restore_clients(lab)
     for step in (
-        fabric.faults.apply,
-        fabric.faults.apply_latency,
-        fabric.firewall.apply,
+        system.apply_faults,
+        system.apply_latency,
+        system.apply_firewall,
     ):
         try:
-            await lab.blocking(step)
+            await lab.blocking(step, lab)
         except Exception:  # the lab comes up; what failed is in the log
             log.exception("restoring the lab's network state")

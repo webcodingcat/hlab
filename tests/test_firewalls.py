@@ -3,6 +3,7 @@
 import pytest
 from conftest import create_server, wait_action
 
+from hlabd.api import desired
 from hlabd.api.firewalls import check_port, checked_rules
 from hlabd.errors import ApiError
 
@@ -347,3 +348,32 @@ def test_firewall_cannot_name_the_same_server_twice(api):
         },
     )
     assert response.json()["error"]["code"] == "server_already_added"
+
+
+def test_the_firewall_rules_are_gathered_per_server_by_id(api):
+    first = create_server(api, "a")["server"]
+    create_server(api, "b")
+    third = create_server(api, "c")["server"]
+    rule = {"direction": "in", "protocol": "tcp", "port": "22", "source_ips": ANY}
+    for server, rules in ((third, [rule]), (first, [])):
+        response = api.post(
+            "/v1/firewalls",
+            json={
+                "name": f"fw{server['id']}",
+                "rules": rules,
+                "apply_to": [{"type": "server", "server": {"id": server["id"]}}],
+            },
+        )
+        assert response.status_code == 201, response.text
+    state = api.lab.state
+    with state.lock:
+        servers = desired.firewall_rules(state)
+    # a server whose firewall has no rules is listed: everything inbound is dropped
+    assert [(x.sid, x.tap, len(x.rules)) for x in servers] == [
+        (first["id"], "pub1", 0),
+        (third["id"], "pub3", 1),
+    ]
+    servers[1].rules[0]["port"] = "23"  # a copy: the firewall keeps its rule
+    assert any(
+        r["port"] == "22" for f in state["firewalls"].values() for r in f["rules"]
+    )

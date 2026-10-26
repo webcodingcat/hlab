@@ -6,9 +6,11 @@ the test clients is checked against Hetzner's OpenAPI specification.
 
 import asyncio
 import base64
+import os
 import re
 import time
 import traceback
+from pathlib import Path
 
 import pytest
 import spec_check
@@ -104,20 +106,26 @@ def lab(tmp_path):
     cfg["api"]["time_scale"] = 0
     cfg["api"]["token"] = "secret"
     state = State(tmp_path / "state.json")
-    lab = Lab(cfg, state, Fabric(cfg, state, tmp_path, FakeShell()))
+    lab = Lab(cfg, state, Fabric(cfg, tmp_path, FakeShell()))
     # as if loaded at the lab's start
     lab.images = {name: str(tmp_path / f"{name}.qcow2") for name in cfg["images"]}
     return lab
 
 
 def pytest_sessionstart(session):
-    """Stop at once without the specifications: no answer could be checked."""
+    """Find the specifications; stop at once without them: no answer could be checked.
+
+    HLAB_SPEC_DIR wins, then the image's /opt/hlab/spec, then the repository's
+    .cache/spec/ that tools/fetch_specs.py fills.
+    """
+    if "HLAB_SPEC_DIR" not in os.environ and not spec.SPEC_DIR.exists():
+        spec.SPEC_DIR = Path(__file__).resolve().parents[1] / ".cache" / "spec"
     absent = spec_check.missing()
     if absent:
         pytest.exit(
             f"Hetzner's OpenAPI specifications are missing ({', '.join(absent)} in "
-            f"{spec.SPEC_DIR}): run the tests through bin/hlab test; the specs are in "
-            "the image",
+            f"{spec.SPEC_DIR}): run python3 tools/fetch_specs.py (or the tests "
+            "through bin/hlab test; the specs are in the image)",
             returncode=1,
         )
 

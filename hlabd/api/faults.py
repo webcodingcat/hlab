@@ -21,7 +21,7 @@ def drop_netem(lab: Lab, links: list[str]) -> None:
 def drop_faults(lab: Lab, ref: str, links: list[str]) -> None:
     """Drop the faults of a deleted server or client, and the netem of its links.
 
-    A new server or client may get the same links. fabric.faults.apply() then updates
+    A new server or client may get the same links. system.apply_faults() then updates
     the fault sets.
     """
     with lab.state.lock:

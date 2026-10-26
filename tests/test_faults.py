@@ -2,6 +2,8 @@
 
 from conftest import create_server, nft_set, wait_action
 
+from hlabd.api import desired, system
+
 
 def test_injected_api_faults_answer_until_used_up(api):
     api.post("/_lab/api-fault", json={"status": 503, "count": 2})
@@ -47,7 +49,7 @@ def test_netem_takes_only_text(api):
     )
     assert set(api.lab.state.data["netem"].values()) == {"delay 50ms"}
     # the stored text goes into a tc command line as it is: applying it must work
-    api.lab.fabric.faults.apply_latency()
+    system.apply_latency(api.lab)
 
 
 def test_latency_between_locations_is_split_over_both_sides(api):
@@ -83,3 +85,23 @@ def test_antispoofing_sets_follow_the_addresses(api):
     src4 = nft_set(api, "src4")
     assert '"pub1" . 198.51.100.11' in src4 and f'"pub1" . {floating_ip["ip"]}' in src4
     assert '"pub1" . 2001:db8:1::/64' in nft_set(api, "src6")
+
+
+def test_a_tap_with_netem_gets_no_delays_the_others_by_location(api):
+    first = create_server(api, "a", location="fsn1")["server"]
+    second = create_server(api, "b", location="hel1")["server"]
+    response = api.post("/_lab/netem", json={"vm": "a", "args": "loss 5%"})
+    assert response.status_code == 200, response.text
+    state = api.lab.state
+    with state.lock:
+        latency = desired.latency(state, api.lab.cfg)
+    shapings = {server["id"]: taps for server, taps in latency.servers}
+    (first_tap,) = shapings[first["id"]]
+    (second_tap,) = shapings[second["id"]]
+    assert (first_tap.netem, first_tap.delays) == ("loss 5%", {})
+    # the 24 ms round trip fsn1-hel1, from a's public addresses
+    public = first["public_net"]
+    assert (second_tap.netem, second_tap.delays) == (
+        None,
+        {24: [f"{public['ipv4']['ip']}/32", public["ipv6"]["ip"]]},
+    )

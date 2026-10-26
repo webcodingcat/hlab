@@ -23,7 +23,7 @@ from ..lab import Lab, now
 from ..labels import firewall_servers
 from ..records import Action, Firewall, FirewallRule
 from ..state import primary_address_of
-from . import hetzner
+from . import hetzner, system
 from .web import filtered, paginate, read_body, update_resource
 
 FIREWALLS_PER_SERVER = 5
@@ -211,7 +211,7 @@ def create_firewall(lab: Lab, body: dict) -> dict:
         except ApiError:
             del state["firewalls"][fid]
             raise
-    lab.fabric.firewall.apply()
+    system.apply_firewall(lab)
     actions = rule_actions(lab, firewall, created=True)
     return {"firewall": hetzner.firewall_json(lab, firewall), "actions": actions}
 
@@ -308,7 +308,7 @@ def run_firewall_action(lab: Lab, fid: int, cmd: str, body: dict) -> dict:
         raise unsupported(f"the action {cmd!r}")
     with lab.state.change():
         actions = FIREWALL_ACTIONS[cmd](lab, firewall, body)
-    lab.fabric.firewall.apply()
+    system.apply_firewall(lab)
     return {"actions": actions}
 
 

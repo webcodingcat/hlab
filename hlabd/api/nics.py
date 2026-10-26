@@ -17,6 +17,7 @@ from ..errors import (
 from ..fabric.addresses import network_gateway, private_mac
 from ..lab import ALIAS_IPS_SECONDS, NIC_ATTACH_SECONDS, NIC_DETACH_SECONDS, Lab, Plan
 from ..records import CloudNetwork, Nic, Server
+from . import system
 from .faults import drop_netem
 from .networks import addresses_in
 from .web import ref_id
@@ -213,12 +214,12 @@ def attach_to_network(lab: Lab, server: Server, body: dict) -> Plan:
 
     async def steps():
         try:
-            await lab.blocking(lab.fabric.network.attach_nic, server, nic)
+            await lab.blocking(system.attach_nic, lab, server, nic)
         except Exception:  # whatever failed: undo, then re-raise
             # remove the NIC again, so the API reports no network the VM does not have
             await lab.blocking(lab.fabric.network.detach_nic, server, nic)
             await lab.blocking(remove_nic, lab, server, nic)
-            await lab.blocking(lab.fabric.network.write_dhcp)
+            await lab.blocking(system.write_dhcp, lab)
             raise
         await lab.sleep(NIC_ATTACH_SECONDS)
 
@@ -232,8 +233,8 @@ def detach_from_network(lab: Lab, server: Server, body: dict) -> Plan:
     async def steps():
         await lab.blocking(lab.fabric.network.detach_nic, server, nic)
         await lab.blocking(remove_nic, lab, server, nic)
-        await lab.blocking(lab.fabric.network.write_dhcp)
-        await lab.blocking(lab.fabric.faults.apply)
+        await lab.blocking(system.write_dhcp, lab)
+        await lab.blocking(system.apply_faults, lab)
         await lab.sleep(NIC_DETACH_SECONDS)
 
     return Plan(steps, server=server)
@@ -251,9 +252,9 @@ def change_alias_ips(lab: Lab, server: Server, body: dict) -> Plan:
 
     async def steps():
         if await lab.blocking(lab.fabric.vms.is_alive, server):
-            await lab.blocking(lab.fabric.network.nic_up, nic)
+            await lab.blocking(system.nic_up, lab, nic)
         # an alias IP may be the gateway of a route
-        await lab.blocking(lab.fabric.network.apply_routes)
+        await lab.blocking(system.apply_routes, lab)
         await lab.sleep(ALIAS_IPS_SECONDS)
 
     return Plan(steps, server=server)

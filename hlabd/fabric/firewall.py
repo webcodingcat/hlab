@@ -15,19 +15,27 @@
 The lab's own access (`hlab ssh` from 198.18.0.2 / 2001:db8:fffe::3) passes, like
 Hetzner's console.
 
-The API (api/firewalls.py) has checked the rules already. A part of the fabric (see
-__init__.py).
+The API (api/firewalls.py) has checked the rules already, and it gathers the rules of
+each server (api/desired.py). A part of the fabric (see __init__.py).
 """
 
 import ipaddress
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 
 from .. import config
-from ..labels import firewall_servers
 from ..records import FirewallRule
-from ..state import State
 from .shell import Shell
+
+
+@dataclass
+class ServerRules:
+    """The rules of all firewalls that apply to one server."""
+
+    sid: int
+    tap: str  # its public tap
+    rules: list[FirewallRule]  # maybe empty: then everything inbound is dropped
 
 
 def nft_port(port: str | None) -> str:
@@ -68,21 +76,11 @@ def chain(name: str, lines: list[str]) -> str:
     return f"    chain {name} {{\n" + "".join(f"        {x}\n" for x in lines) + "    }"
 
 
-def ruleset(state: State, taps: dict[int, str]) -> str:
-    """Return the complete table inet hlabfw for the current state.
-
-    `taps` maps server IDs to the servers' public taps. The caller holds the state's
-    lock.
-    """
-    state.lock.assert_held()
+def ruleset(servers: list[ServerRules]) -> str:
+    """Return the complete table inet hlabfw for the servers that have firewalls."""
     chains, forward, input_rules, output = [], [], [], []
-    for sid, tap in sorted(taps.items()):
-        firewalls = [
-            f for f in state["firewalls"].values() if sid in firewall_servers(state, f)
-        ]
-        if not firewalls:
-            continue
-        rules = [r for f in firewalls for r in f["rules"]]
+    for server in servers:
+        sid, tap, rules = server.sid, server.tap, server.rules
         inbound = [r for r in rules if r["direction"] == "in"]
         outbound = [r for r in rules if r["direction"] == "out"]
         body = [f"ip saddr {config.ADMIN} accept", f"ip6 saddr {config.ADMIN6} accept"]
@@ -137,28 +135,20 @@ def ruleset(state: State, taps: dict[int, str]) -> str:
 
 
 class Firewall:
-    """The firewall table inet hlabfw, built from the state by `ruleset`."""
+    """The firewall table inet hlabfw, built by `ruleset`."""
 
-    def __init__(
-        self, state: State, root: Path, shell: Shell, net_lock: threading.RLock
-    ):
+    def __init__(self, root: Path, shell: Shell, net_lock: threading.RLock):
         """Store what the table uses; `net_lock` is the fabric's lock (see Fabric)."""
-        self.state = state
         self.root = root
         self.shell = shell
         self.net_lock = net_lock
 
-    def apply(self) -> None:
+    def apply(self, servers: list[ServerRules]) -> None:
         """Replace the firewall table (inet hlabfw) atomically.
 
-        The new table holds the rules of all firewalls.
+        The new table holds the rules of all firewalls, per server (sorted by ID).
         """
         with self.net_lock:
             path = self.root / "firewall.nft"
-            with self.state.lock:
-                taps = {
-                    s["id"]: s["_lab"]["tap"] for s in self.state["servers"].values()
-                }
-                text = ruleset(self.state, taps)
-            path.write_text(text)
+            path.write_text(ruleset(servers))
             self.shell.run("nft", "-f", str(path))

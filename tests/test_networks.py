@@ -8,7 +8,7 @@ import json
 import pytest
 from conftest import create_network, create_server, dhcp, nft_set, wait_action
 
-from hlabd.api import networks
+from hlabd.api import desired, networks
 
 
 def test_servers_in_a_network_get_their_address_by_dhcp(api, tmp_path):
@@ -89,14 +89,10 @@ def test_overlapping_networks_stay_apart(api, tmp_path):
             and ",10.0.1.1\n" in conf
         )
     # a server's private address counts for latency only on taps of the same network
-    lab = api.lab
-    assert (
-        lab.fabric.faults.source_prefixes(lab.state["servers"][s1["id"]], n2["id"])
-        == []
-    )
-    assert lab.fabric.faults.source_prefixes(
-        lab.state["servers"][s1["id"]], n1["id"]
-    ) == ["10.0.1.1/32"]
+    state = api.lab.state
+    first = state["servers"][s1["id"]]
+    assert desired.source_prefixes(state, first, n2["id"]) == []
+    assert desired.source_prefixes(state, first, n1["id"]) == ["10.0.1.1/32"]
 
 
 def test_deleting_a_network_drops_its_table(api):
@@ -534,3 +530,34 @@ def test_a_failed_detach_keeps_the_network_and_frees_its_servers(api, monkeypatc
         networks.delete_network(api.lab, network["id"])
     assert "_deleting" not in api.lab.state["networks"][network["id"]]
     assert api.lab.state["servers"][server["id"]]["locked"] is False
+
+
+def test_a_route_is_wanted_with_the_nics_that_hold_its_gateway(api):
+    network = create_network(api, "10.0.1.0/24")
+    gateway = create_server(api, "gw", networks=[network["id"]])["server"]
+    create_server(api, "other", networks=[network["id"]])
+    route = {"destination": "10.100.0.0/24", "gateway": "10.0.1.1"}
+    action = api.post(
+        f"/v1/networks/{network['id']}/actions/add_route", json=route
+    ).json()["action"]
+    wait_action(api, action)
+    state = api.lab.state
+    with state.lock:
+        (wanted,) = desired.wanted_routes(state)
+    assert (wanted.destination, wanted.gateway, wanted.network) == (
+        "10.100.0.0/24",
+        "10.0.1.1",
+        network["id"],
+    )
+    assert [(server["id"], tap) for server, tap in wanted.holders] == [
+        (gateway["id"], "prv1x1")
+    ]
+    # the routes put in are kept, to be removed before the next ones go in
+    assert state.data["net_routes"] == [["10.100.0.0/24", str(network["id"])]]
+
+
+def test_a_hot_plugged_nic_takes_the_lowest_free_port():
+    server = {"_lab": {"nics": [{"port": "hp1"}, {"port": None}, {"port": "hp3"}]}}
+    assert desired.free_hot_plug_port(server) == "hp2"
+    server["_lab"]["nics"] = [{"port": port} for port in desired.HOT_PLUG_PORTS]
+    assert desired.free_hot_plug_port(server) is None

@@ -41,7 +41,7 @@ from ..lab import (
     now,
 )
 from ..records import Action, Server, Volume
-from . import hetzner, nics, primary_ips, volumes
+from . import hetzner, nics, primary_ips, system, volumes
 from .catalogue import by_name_or_id, catalogue_name, image_path
 from .faults import drop_faults
 from .spec import hostname_ok
@@ -251,12 +251,12 @@ def create_steps(
     """Return the background steps of a create action: disk, then start or off."""
 
     async def steps():
-        await lab.blocking(lab.fabric.firewall.apply)
+        await lab.blocking(system.apply_firewall, lab)
         base = await lab.blocking(image_path, lab, request.image)
         await lab.blocking(lab.fabric.vms.create_disk, server, base)
         if request.start:
             await lab.blocking(lab.set_status, server, "starting")
-            await lab.blocking(lab.fabric.start_vm, server)
+            await lab.blocking(system.start_vm, lab, server)
             await lab.sleep(CREATE_START_SECONDS)
             await lab.blocking(lab.set_status, server, "running")
         else:
@@ -274,7 +274,7 @@ def update_server(lab: Lab, sid: int, body: dict) -> dict:
         check_hostname(body["name"])
     update_resource(lab, "servers", server, body, ("name", "labels"), "server")
     if "labels" in body:  # label selectors of firewalls may match differently now
-        lab.fabric.firewall.apply()
+        system.apply_firewall(lab)
     return {"server": hetzner.server_json(lab, server)}
 
 
@@ -321,7 +321,7 @@ def remove_server(lab: Lab, server: Server) -> None:
     Its volumes stay, detached.
     """
     state, fabric, sid = lab.state, lab.fabric, server["id"]
-    fabric.delete_vm(server)
+    system.delete_vm(lab, server)
     unrouted = []
     with state.change():
         for floating_ip in state["floating_ips"].values():
@@ -346,9 +346,9 @@ def remove_server(lab: Lab, server: Server) -> None:
         state["servers"].pop(sid, None)
     for ip in unrouted:
         fabric.network.route_floating_ip(ip, None)
-    fabric.network.write_dhcp()
-    fabric.faults.apply()
-    fabric.firewall.apply()
+    system.write_dhcp(lab)
+    system.apply_faults(lab)
+    system.apply_firewall(lab)
 
 
 # --- server actions -------------------------------------------------------------------
@@ -376,7 +376,7 @@ def poweroff(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan a hard power off: the VM is killed at once, the status changes after."""
 
     async def steps():
-        await lab.blocking(lab.fabric.kill_vm, server)
+        await lab.blocking(system.kill_vm, lab, server)
         await lab.blocking(lab.set_status, server, "stopping")
         await lab.sleep(POWEROFF_SECONDS)
         await lab.blocking(lab.set_status, server, "off")
@@ -414,7 +414,7 @@ def poweron(lab: Lab, server: Server, body: dict) -> Plan:
             await lab.blocking(lab.set_status, server, "off")
             return
         await ensure_disk(lab, server)
-        await lab.blocking(lab.fabric.start_vm, server)
+        await lab.blocking(system.start_vm, lab, server)
         await lab.sleep(POWERON_SECONDS)
         await lab.blocking(lab.set_status, server, "running")
         await lab.sleep(POWERON_END_SECONDS)
@@ -478,14 +478,14 @@ def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
             target = "running" if previous_status == "running" else "off"
             server["_lab"]["target"] = target
         base = await lab.blocking(image_path, lab, image)  # before the old disk is gone
-        await lab.blocking(lab.fabric.delete_vm, server)
+        await lab.blocking(system.delete_vm, lab, server)
         await lab.blocking(start_rebuild)
         await lab.blocking(lab.fabric.vms.create_disk, server, base)
         if "user_data" in body:
             with lab.state.lock:
                 server["user_data"] = body["user_data"]
         if previous_status == "running":
-            await lab.blocking(lab.fabric.start_vm, server)
+            await lab.blocking(system.start_vm, lab, server)
         await lab.sleep(REBUILD_SECONDS)
         await lab.blocking(
             lab.set_status,

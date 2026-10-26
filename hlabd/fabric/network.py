@@ -1,21 +1,82 @@
 """Networks: taps, DHCP, DNS, routes of cloud networks, Floating IPs, Internet clients.
 
-A part of the fabric (see __init__.py). It asks the VMs (vm.py) whether a server runs
-and has the faults (faults.py) re-applied when taps or clients come and go.
+A part of the fabric (see __init__.py). It asks the VMs (vm.py) whether a server runs.
+What each tap, DHCP server and route should look like is computed from the state by the
+API (api/desired.py); this part only puts it in place.
 """
 
 import ipaddress
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from .. import config
 from ..records import Client, Nic, Server
-from ..state import State, nic_addresses, nics_in, primary_address_of
 from .addresses import link_local, network_gateway, prefix, public_mac, route_table
-from .faults import Faults
 from .shell import Shell
 from .vm import VMs
+
+
+@dataclass
+class PrivateTap:
+    """A NIC's tap in a cloud network, as it is set up."""
+
+    tap: str
+    mac: str
+    ip: str  # the NIC's private IP
+    network: int  # the network's ID: its routing table
+    ip_range: str  # the network's range: the gateway address and its routes
+    alias_ips: list[str]  # routed to the tap as well
+
+
+@dataclass
+class ServerTaps:
+    """What a server's taps are set up with when its VM starts."""
+
+    ipv4: str | None  # its primary IPv4, routed to its public tap
+    ipv6_net: str | None  # its primary IPv6 /64, routed to its link-local address
+    nics: list[PrivateTap]  # its NICs in cloud networks, in their order
+
+
+@dataclass
+class DhcpHost:
+    """The one fixed address a tap's dnsmasq hands out, with its DHCP options."""
+
+    tap: str
+    mac: str
+    ip: str
+    options: list[str]  # dnsmasq lines: range, netmask, routes, resolver
+
+
+@dataclass
+class WantedRoute:
+    """A route of a cloud network and the NICs that hold its gateway IP."""
+
+    destination: str
+    gateway: str
+    network: int  # the network's ID: its routing table
+    # (server, its tap in the network) for every NIC that holds the gateway IP; the
+    # route goes to the first whose VM runs
+    holders: list[tuple[Server, str]]
+
+
+def dnsmasq_config(host: DhcpHost) -> str:
+    """Return a dnsmasq configuration serving one fixed address on a tap."""
+    return (
+        "\n".join(
+            [
+                "port=0",
+                "bind-dynamic",
+                f"interface={host.tap}",
+                "dhcp-authoritative",
+                "leasefile-ro",
+                f"dhcp-host={host.mac},{host.ip}",
+                *host.options,
+            ]
+        )
+        + "\n"
+    )
 
 
 class Network:
@@ -24,81 +85,61 @@ class Network:
     def __init__(
         self,
         cfg: dict,
-        state: State,
         root: Path,
         shell: Shell,
         net_lock: threading.RLock,
         vms: VMs,
-        faults: Faults,
     ):
         """Store what the network uses; `net_lock` is the fabric's lock (see Fabric)."""
         self.cfg = cfg
-        self.state = state
         self.root = root
         self.shell = shell
         self.net_lock = net_lock
         self.vms = vms
-        self.faults = faults
         # the container's own addresses and when they were read (local_addresses)
         self._local_addresses_cache: tuple[float, set[str]] | None = None
 
-    def taps_up(self, server: Server) -> list[str]:
+    def taps_up(self, server: Server, taps: ServerTaps) -> list[str]:
         """Bring up the server's public tap and the taps of its cloud networks.
 
-        Their routes and DHCP are set up with them. Returns the NICs for QEMU (tap=mac).
+        Their routes are set up with them. Returns the NICs for QEMU (tap=mac).
         """
         server_lab = server["_lab"]
         tap, index = server_lab["tap"], server_lab["index"]
-        ipv4 = primary_address_of(self.state, server, "ipv4")
-        self.shell.run("set-up-public-tap", tap, *([ipv4] if ipv4 else []))
+        self.shell.run("set-up-public-tap", tap, *([taps.ipv4] if taps.ipv4 else []))
         nics = [f"{tap}={public_mac(index)}"]
-        with self.state.lock:  # a copy: bringing a tap up runs a script
-            server_nics = list(server_lab["nics"])
-        for nic in server_nics:
+        for nic in taps.nics:
             self.nic_up(nic)
-            # at boot each network NIC gets its own root port (bp<n>); hp1..hp4 are free
-            with self.state.lock:
-                nic.pop("port", None)
-            nics.append(f"{nic['tap']}={nic['mac']}")
-        ipv6_net = primary_address_of(self.state, server, "ipv6")
+            nics.append(f"{nic.tap}={nic.mac}")
         # the /64 is routed to the guest's link-local address, as Hetzner routes it
-        if ipv6_net:
-            self.shell.run("set-route6", ipv6_net, tap, link_local(index))
-        self.write_dhcp()
+        if taps.ipv6_net:
+            self.shell.run("set-route6", taps.ipv6_net, tap, link_local(index))
         return nics
 
-    def taps_down(self, server: Server) -> None:
-        """Take the server's taps down, and their DHCP with them."""
-        server_lab = server["_lab"]
-        with self.state.lock:  # a copy: taking a tap down runs a script
-            taps = [server_lab["tap"], *(nic["tap"] for nic in server_lab["nics"])]
+    def taps_down(self, taps: list[str]) -> None:
+        """Take a server's taps down (their dnsmasq instances stop with them)."""
         # taps change only under the lock, so tc and nft find the taps they checked
         with self.net_lock:
             for tap in taps:
                 self.shell.run("tear-down-tap", tap)
-        self.write_dhcp()  # the taps' dnsmasq instances are stopped too
 
-    def nic_up(self, nic: Nic) -> None:
+    def nic_up(self, nic: PrivateTap) -> None:
         """Bring up a NIC's tap in its cloud network.
 
         It gets the gateway address, routes to the server's IP and alias IPs, and the
         rules of the network's routing table.
         """
-        with self.state.lock:  # copies that fit together: the script runs unlocked
-            ip_range = ipaddress.ip_network(
-                self.state["networks"][nic["network"]]["ip_range"]
-            )
-            alias_ips = list(nic["alias_ips"])
+        ip_range = ipaddress.ip_network(nic.ip_range)
         # two servers of one network starting side by side would both add its ip rules
         with self.net_lock:
             self.shell.run(
                 "set-up-private-tap",
-                nic["tap"],
+                nic.tap,
                 f"{network_gateway(str(ip_range))}/{ip_range.prefixlen}",
-                nic["ip"],
-                route_table(nic["network"]),
+                nic.ip,
+                route_table(nic.network),
                 str(ip_range),
-                *alias_ips,
+                *nic.alias_ips,
             )
 
     def read_local_addresses(self, fresh: bool = False) -> set[str]:
@@ -122,43 +163,25 @@ class Network:
         cache = self._local_addresses_cache
         return cache[1] if cache else set()
 
-    def refresh_cloud_network(self, nid: int) -> None:
+    def refresh_cloud_network(
+        self, nid: int, members: list[tuple[Server, PrivateTap]]
+    ) -> None:
         """Set a network up again after its range changed.
 
-        Its routing table and the gateway address on its members' taps are set up again.
+        Its routing table and the gateway address on its members' taps (those whose VM
+        runs) are set up again.
         """
         with self.net_lock:
             self.shell.run("flush-routes", route_table(nid))
-            for server, nic in nics_in(self.state, nid):
+            for server, nic in members:
                 if self.vms.is_alive(server):
                     self.nic_up(nic)
 
-    def attach_nic(self, server: Server, nic: Nic) -> None:
-        """Attach a NIC to a server, hot-plugged if its VM runs."""
-        if self.vms.is_alive(server):
-            self.nic_up(nic)
-            with self.state.lock:
-                used = {n.get("port") for n in server["_lab"]["nics"]}
-                nic["port"] = next(
-                    (p for p in ("hp1", "hp2", "hp3", "hp4") if p not in used), None
-                )
-            if nic["port"] is None:
-                raise RuntimeError(
-                    "no free hot-plug port (the lab hot-plugs 4 NICs per boot)"
-                )
-            self.write_dhcp()  # the tap exists now: its dnsmasq binds to it
-            self.shell.run(
-                "add-nic",
-                str(self.vms.directory(server)),
-                nic["tap"],
-                nic["mac"],
-                nic["port"],
-            )
-        else:
-            self.write_dhcp()
-        self.faults.apply()
-        self.apply_routes()  # a gateway server attached now gets the network's routes
-        self.faults.apply_latency()
+    def hot_plug_nic(self, server: Server, nic: PrivateTap, port: str) -> None:
+        """Hot-plug a NIC whose tap is up into the running VM, on a free root port."""
+        self.shell.run(
+            "add-nic", str(self.vms.directory(server)), nic.tap, nic.mac, port
+        )
 
     def detach_nic(self, server: Server, nic: Nic) -> None:
         """Detach a NIC from a server and take its tap down."""
@@ -190,97 +213,18 @@ class Network:
                 client["ip"],
                 client["ip6"],
             )
-        self.faults.apply()
 
     def remove_client(self, client: Client) -> None:
         """Remove an Internet client and its namespace."""
         with self.net_lock:
             self.shell.run("delete-client", client["name"], client["veth"])
-        self.faults.apply()
 
     def drop_cloud_network(self, nid: int) -> None:
-        """Clean up after a deleted network.
-
-        Its routing table is flushed with its routes; DHCP and the fault sets are
-        updated.
-        """
+        """Flush the routing table of a deleted network, with its routes."""
         with self.net_lock:
             self.shell.run("flush-routes", route_table(nid), check=False)
-        self.write_dhcp()
-        self.faults.apply()
-        self.apply_routes()
 
-    def dhcp_configs(self) -> dict[str, str]:
-        """Return one dnsmasq configuration per tap, with DHCP like Hetzner's.
-
-        Each NIC gets a fixed address, a /32 with routes – on public interfaces to
-        172.31.1.1, on cloud networks to the network's gateway and range. The caller
-        holds the state's lock.
-        """
-        configs: dict[str, str] = {}
-        for server in self.state["servers"].values():
-            server_lab = server["_lab"]
-            ipv4 = primary_address_of(self.state, server, "ipv4")
-            if ipv4:
-                # primary IPv4 as /32, on-link gateway 172.31.1.1, lab resolver
-                configs[server_lab["tap"]] = self.dnsmasq_config(
-                    server_lab["tap"],
-                    public_mac(server_lab["index"]),
-                    ipv4,
-                    [
-                        f"dhcp-range={config.PUBLIC_NET}.0,"
-                        "static,255.255.255.0,infinite",
-                        "dhcp-option=option:netmask,255.255.255.255",
-                        f"dhcp-option=option:router,{config.GATEWAY}",
-                        f"dhcp-option=121,{config.GATEWAY}/32,"
-                        f"0.0.0.0,0.0.0.0/0,{config.GATEWAY}",
-                        f"dhcp-option=option:dns-server,{config.SERVICES}",
-                    ],
-                )
-            for nic in server_lab["nics"]:
-                network = self.state["networks"].get(nic["network"])
-                if not network:  # its network was deleted meanwhile
-                    continue
-                ip_range = ipaddress.ip_network(network["ip_range"])
-                gateway = network_gateway(network["ip_range"])
-                # the network's routes go to its gateway too; the lab forwards them to
-                # the route's server
-                routes = "".join(
-                    f",{r['destination']},{gateway}" for r in network["routes"]
-                )
-                configs[nic["tap"]] = self.dnsmasq_config(
-                    nic["tap"],
-                    nic["mac"],
-                    nic["ip"],
-                    [
-                        f"dhcp-range={ip_range.network_address},"
-                        f"static,{ip_range.netmask},infinite",
-                        "dhcp-option=option:netmask,255.255.255.255",
-                        "dhcp-option=option:router",
-                        f"dhcp-option=121,{gateway}/32,0.0.0.0,"
-                        f"{ip_range},{gateway}{routes}",
-                    ],
-                )
-        return configs
-
-    def dnsmasq_config(self, tap: str, mac: str, ip: str, options: list[str]) -> str:
-        """Return a dnsmasq configuration serving one fixed address on a tap."""
-        return (
-            "\n".join(
-                [
-                    "port=0",
-                    "bind-dynamic",
-                    f"interface={tap}",
-                    "dhcp-authoritative",
-                    "leasefile-ro",
-                    f"dhcp-host={mac},{ip}",
-                    *options,
-                ]
-            )
-            + "\n"
-        )
-
-    def write_dhcp(self) -> None:
+    def write_dhcp(self, hosts: list[DhcpHost]) -> None:
         """Run one dnsmasq per tap, only for taps that exist.
 
         dnsmasq binds to its interface at start. Only instances whose configuration
@@ -290,12 +234,10 @@ class Network:
         directory = self.root / "dhcp"
         directory.mkdir(exist_ok=True)
         with self.net_lock:
-            with self.state.lock:
-                all_configs = self.dhcp_configs()
             configs = {
-                tap: c
-                for tap, c in all_configs.items()
-                if self.shell.ok("link-exists", tap)
+                host.tap: dnsmasq_config(host)
+                for host in hosts
+                if self.shell.ok("link-exists", host.tap)
             }
             for path in directory.glob("*.conf"):
                 if path.stem not in configs:
@@ -307,49 +249,36 @@ class Network:
                     path.write_text(dnsmasq_conf)
                     self.shell.run("restart-dhcp", str(path))
 
-    def apply_routes(self) -> None:
-        """Put the routes of cloud networks in place.
+    def apply_routes(
+        self, old_routes: list[list[str]], wanted: list[WantedRoute]
+    ) -> list[list[str]]:
+        """Put the routes of cloud networks in place; return [destination, table] each.
 
-        A route's destination goes to the tap of the server that holds the gateway IP,
-        in the network's routing table.
+        The routes put in before (`old_routes`, as returned then) are removed first. A
+        route's destination goes to the tap of the first running server that holds the
+        gateway IP, in the network's routing table.
         """
         with self.net_lock:
-            with self.state.lock:  # copies: the loops below run scripts
-                old_routes = list(self.state.data["net_routes"])
-                # (route, its table, the servers' NICs that hold its gateway IP)
-                wanted = [
-                    (
-                        route,
-                        route_table(net["id"]),
-                        [
-                            (server, nic)
-                            for server, nic in nics_in(self.state, net["id"])
-                            if route["gateway"] in nic_addresses(nic)
-                        ],
-                    )
-                    for net in self.state["networks"].values()
-                    for route in net["routes"]
-                ]
             for dest, table in old_routes:
                 self.shell.run("delete-route", dest, table, check=False)
             applied = []
-            for route, table, holders in wanted:
-                # the NIC of a running server that holds the route's gateway IP
-                nic = next(
-                    (nic for server, nic in holders if self.vms.is_alive(server)), None
+            for route in wanted:
+                table = route_table(route.network)
+                tap = next(
+                    (tap for server, tap in route.holders if self.vms.is_alive(server)),
+                    None,
                 )
-                if nic:
+                if tap:
                     self.shell.run(
                         "set-route-via",
-                        route["destination"],
-                        route["gateway"],
-                        nic["tap"],
+                        route.destination,
+                        route.gateway,
+                        tap,
                         table,
                         check=False,
                     )
-                    applied.append([route["destination"], table])
-            with self.state.lock:
-                self.state.data["net_routes"] = applied
+                    applied.append([route.destination, table])
+            return applied
 
     def write_dns(self) -> None:
         """Start the lab resolver with its own names and the hlab.yaml records."""
@@ -384,17 +313,3 @@ class Network:
                 self.shell.run("set-route6", prefix(ip), tap, link_local(index))
             else:
                 self.shell.run("set-route", prefix(ip), server["_lab"]["tap"])
-
-    def reroute_floating_ips(self, server: Server) -> None:
-        """Route the Floating IPs assigned to a server to it again, after it started.
-
-        Hetzner keeps routing an assigned IP across a power cycle; the route was removed
-        with the old tap. The check and the route happen under one lock: a move that
-        routes the IP elsewhere meanwhile comes before or after, never in between.
-        """
-        with self.net_lock:
-            with self.state.lock:
-                floating_ips = list(self.state["floating_ips"].values())
-            for floating_ip in floating_ips:
-                if floating_ip.get("server") == server["id"]:
-                    self.route_floating_ip(floating_ip["ip"], server)

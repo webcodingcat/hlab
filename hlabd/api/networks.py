@@ -15,7 +15,7 @@ from ..fabric.addresses import network_gateway
 from ..lab import SERVER_LOCKED, ActionTable, Lab, Plan, now
 from ..records import CloudNetwork, Nic, Route, Subnet
 from ..state import nic_addresses, nics_in
-from . import hetzner
+from . import hetzner, system
 from .faults import drop_netem
 from .web import (
     change_delete_protection,
@@ -213,8 +213,8 @@ def create_network(lab: Lab, body: dict) -> dict:
 
 def apply_network_change(lab: Lab) -> None:
     """Hand the servers their new DHCP options and put the network routes in place."""
-    lab.fabric.network.write_dhcp()
-    lab.fabric.network.apply_routes()
+    system.write_dhcp(lab)
+    system.apply_routes(lab)
 
 
 def add_subnet(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
@@ -271,7 +271,7 @@ def change_ip_range(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
         )
     with lab.state.lock:
         network["ip_range"] = str(new)
-    lab.fabric.network.refresh_cloud_network(network["id"])
+    system.refresh_cloud_network(lab, network["id"])
     apply_network_change(lab)
     return Plan()
 
@@ -318,12 +318,12 @@ def delete_network(lab: Lab, nid: int) -> None:
                     drop_netem(lab, [nic["tap"]])
         except Exception:  # whatever failed: sync, then re-raise
             # update DHCP and the fault sets for the NICs detached so far
-            lab.fabric.network.write_dhcp()
-            lab.fabric.faults.apply()
+            system.write_dhcp(lab)
+            system.apply_faults(lab)
             raise
         with state.change():
             del state["networks"][nid]
-    lab.fabric.network.drop_cloud_network(nid)
+    system.drop_cloud_network(lab, nid)
 
 
 def update_network(lab: Lab, nid: int, body: dict) -> dict:

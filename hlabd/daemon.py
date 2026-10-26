@@ -17,7 +17,7 @@ import time
 import uvicorn
 
 from . import config
-from .api import storagebox
+from .api import storagebox, system
 from .api.app import create_app
 from .api.catalogue import load_images
 from .api.metadata import create_metadata_app
@@ -53,10 +53,10 @@ def set_up(cfg: dict) -> Lab:
     shell = Shell()
     shell.run("init-net")
     state = State(config.ROOT / "state.json")
-    fabric = Fabric(cfg, state, config.ROOT, shell)
+    fabric = Fabric(cfg, config.ROOT, shell)
     fabric.network.write_dns()
-    fabric.network.write_dhcp()
     lab = Lab(cfg, state, fabric)
+    system.write_dhcp(lab)
     load_images(lab)
     return lab
 

@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from .api import system
 from .errors import ApiError, locked, not_found, unsupported
 from .fabric import Fabric
 from .records import Action, ActionRecord, AnyRecord, Server
@@ -501,5 +502,5 @@ class Lab:
             if server["status"] != "running" or self.fabric.vms.is_alive(server):
                 return
             log.info("server %s: its VM ended", server["name"])
-            self.fabric.kill_vm(server)
+            system.kill_vm(self, server)
             self.set_status(server, "off")
