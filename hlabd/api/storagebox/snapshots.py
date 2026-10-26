@@ -12,16 +12,16 @@ from fastapi import FastAPI, Request
 
 from ...errors import limit_exceeded, locked, not_found
 from ...fabric.storagebox import data_dir, snap_dir
-from ...lab import now
-from ..spec import sort_items
-from ..web import filtered, read_body
-from .base import box_or_404, sync_subaccount, update_fields
+from ...lab import Lab, Plan, now
+from ...records import BoxSnapshot, StorageBox
+from ..web import filtered, read_body, sort_items, update_fields
+from .base import box_busy, box_or_404, sync_subaccount
 
-log = logging.getLogger("hlabd.box")
+log = logging.getLogger(__name__)
 
 
-def snapshot_json(snapshot: dict) -> dict:
-    """Return the API view of a snapshot."""
+def snapshot_json(lab: Lab, snapshot: BoxSnapshot) -> dict:
+    """Return the API object of a snapshot."""
     size = snapshot.get("size", 0)
     return {
         "storage_box": snapshot["box"],
@@ -35,32 +35,37 @@ def snapshot_json(snapshot: dict) -> dict:
     }
 
 
-def snapshot_or_404(lab, box: dict, ref) -> dict:
+def snapshot_or_404(lab: Lab, box: StorageBox, ref) -> BoxSnapshot:
     """Return a snapshot of the box by ID or name, or raise 404."""
-    for s in lab.state["box_snapshots"].values():
-        if s["box"] == box["id"] and str(ref) in (str(s["id"]), s["name"]):
-            return s
+    with lab.state.lock:
+        for s in lab.state["box_snapshots"].values():
+            if s["box"] == box["id"] and str(ref) in (str(s["id"]), s["name"]):
+                return s
     raise not_found("snapshot")
 
 
 def new_snapshot(
-    lab, box: dict, automatic: bool, description: str = "", labels: dict | None = None
-) -> dict:
+    lab: Lab,
+    box: StorageBox,
+    automatic: bool,
+    description: str = "",
+    labels: dict | None = None,
+) -> BoxSnapshot:
     """Create the record of a snapshot, named by the time.
 
     The copy follows, see copy_snapshot.
     """
     state = lab.state
     with state.lock:
-        sid = state.new_id("box_snapshots")
+        snapshot_id = state.new_id("box_snapshots")
         name = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
         while any(
             s["box"] == box["id"] and s["name"] == name
             for s in state["box_snapshots"].values()
         ):
             name += "-1"
-        snapshot = {
-            "id": sid,
+        snapshot: BoxSnapshot = {
+            "id": snapshot_id,
             "box": box["id"],
             "name": name,
             "description": description,
@@ -70,230 +75,246 @@ def new_snapshot(
             "size": 0,
             "_copying": True,
         }
-        state["box_snapshots"][sid] = snapshot
+        state["box_snapshots"][snapshot_id] = snapshot
         state.save()
     return snapshot
 
 
-def copy_snapshot(lab, box: dict, snapshot: dict) -> None:
+def copy_snapshot(lab: Lab, box: StorageBox, snapshot: BoxSnapshot) -> None:
     """Copy the box's data behind a snapshot record.
 
     If the copy fails, the record is removed again.
     """
     try:
-        lab.fabric.box.snapshot(
-            data_dir(box), snap_dir(box, snapshot["name"]), str(box["id"])
-        )
-    except Exception:
+        lab.fabric.box.take_snapshot(data_dir(box), snap_dir(box, snapshot["name"]))
+    except Exception:  # undo the half-done change, then raise
         with lab.state.lock:
             lab.state["box_snapshots"].pop(snapshot["id"], None)
             lab.state.save()
         raise
     # deleted (or a lab reset): no orphan copy
     if lab.state["box_snapshots"].get(snapshot["id"]) is not snapshot:
-        lab.fabric.box.rmtree(snap_dir(box, snapshot["name"]), check=False)
+        lab.fabric.box.remove_tree(snap_dir(box, snapshot["name"]), check=False)
         return
-    snapshot["size"] = lab.fabric.box.usage(snap_dir(box, snapshot["name"]))
-    snapshot.pop("_copying", None)
-    lab.state.save()
+    size = lab.fabric.box.bytes_used(snap_dir(box, snapshot["name"]))
+    with lab.state.lock:
+        snapshot["size"] = size
+        snapshot.pop("_copying", None)
+        lab.state.save()
 
 
-def take_snapshot(lab, box: dict, automatic: bool) -> dict:
-    """Take a snapshot of the box.
-
-    An automatic one is taken by the plan, which keeps max_snapshots automatic ones.
-    """
+def take_automatic_snapshot(lab: Lab, box: StorageBox) -> BoxSnapshot:
+    """Take a snapshot of the box for its plan, which keeps max_snapshots of them."""
     state = lab.state
-    snapshot = new_snapshot(lab, box, automatic)
+    snapshot = new_snapshot(lab, box, automatic=True)
     copy_snapshot(lab, box, snapshot)
-    if automatic:
-        auto = sorted(
+    with state.lock:
+        automatic = sorted(
             (
-                x
-                for x in state["box_snapshots"].values()
-                if x["box"] == box["id"] and x["is_automatic"]
+                s
+                for s in state["box_snapshots"].values()
+                if s["box"] == box["id"] and s["is_automatic"]
             ),
-            key=lambda x: x["id"],
+            key=lambda s: s["id"],
         )
-        for old in auto[: -max(1, box["plan"]["max_snapshots"])]:
-            delete_snapshot(lab, box, old)
+    assert box["plan"] is not None  # the scheduler takes them for a plan only
+    for old in automatic[: -max(1, box["plan"]["max_snapshots"])]:
+        remove_snapshot(lab, box, old)
     state.save()
     return snapshot
 
 
-def delete_snapshot(lab, box: dict, snapshot: dict) -> None:
-    """Delete a snapshot's copy and its record."""
-    lab.fabric.box.rmtree(snap_dir(box, snapshot["name"]))
-    del lab.state["box_snapshots"][snapshot["id"]]
+def remove_snapshot(lab: Lab, box: StorageBox, snapshot: BoxSnapshot) -> None:
+    """Remove a snapshot's copy and its record."""
+    lab.fabric.box.remove_tree(snap_dir(box, snapshot["name"]))
+    with lab.state.lock:
+        del lab.state["box_snapshots"][snapshot["id"]]
 
 
-def rollback(lab, box: dict, body: dict) -> dict:
-    """Roll the box back to a snapshot (the box action rollback_snapshot).
+def create_snapshot(lab: Lab, bid: int, body: dict) -> dict:
+    """Take a snapshot by hand, within the snapshot limit of the box's type.
 
-    The data goes back to the snapshot and newer snapshots are deleted (as on Hetzner).
-    The box is busy meanwhile: no snapshot is taken, deleted or pruned.
+    The record is there at once; the action copies the data.
     """
     state = lab.state
-    snapshot = snapshot_or_404(lab, box, body.get("snapshot"))
+    box = box_or_404(lab, bid, ready=True)
     with state.lock:
-        if snapshot.get("_copying"):
-            raise locked("the snapshot is still being taken")
-        if box.get("_busy"):
-            raise locked("the Storage Box is busy with another action")
-        box["_busy"] = True
+        manual = [
+            s
+            for s in state["box_snapshots"].values()
+            if s["box"] == bid and not s["is_automatic"]
+        ]
+    if len(manual) >= lab.cfg["storage_box_types"][box["type"]]["snapshots"]:
+        raise limit_exceeded(
+            "snapshot limit of the Storage Box type reached", "snapshots"
+        )
+    snapshot = new_snapshot(
+        lab, box, False, body.get("description") or "", body.get("labels")
+    )
     action = lab.new_action(
-        "rollback_snapshot",
-        [(box["id"], "storage_box"), (snapshot["id"], "storage_box_snapshot")],
+        "create_snapshot",
+        [(bid, "storage_box"), (snapshot["id"], "storage_box_snapshot")],
     )
 
     async def steps():
-        try:
-            await lab.blocking(
-                lab.fabric.box.rollback,
-                snap_dir(box, snapshot["name"]),
-                data_dir(box),
-                str(box["id"]),
-            )
-            # homes are paths
-            for x in [
+        await lab.blocking(copy_snapshot, lab, box, snapshot)
+
+    lab.run_action(action, steps)
+    return {"snapshot": snapshot_json(lab, snapshot), "action": action}
+
+
+def update_snapshot(lab: Lab, bid: int, ref: str, body: dict) -> dict:
+    """Change a snapshot's description and labels."""
+    snapshot = snapshot_or_404(lab, box_or_404(lab, bid), ref)
+    with lab.state.lock:
+        update_fields(snapshot, body, ("description", "labels"))
+        lab.state.save()
+    return {"snapshot": snapshot_json(lab, snapshot)}
+
+
+def delete_snapshot(lab: Lab, bid: int, ref: str) -> dict:
+    """Delete a snapshot at once (not while the box is busy)."""
+    box = box_or_404(lab, bid, ready=True)
+    snapshot = snapshot_or_404(lab, box, ref)
+    remove_snapshot(lab, box, snapshot)
+    lab.state.save()
+    return {
+        "action": lab.finished_action(
+            "delete_snapshot",
+            [(bid, "storage_box"), (snapshot["id"], "storage_box_snapshot")],
+        )
+    }
+
+
+def rollback_snapshot(lab: Lab, box: StorageBox, body: dict) -> Plan:
+    """Roll the box back to a snapshot (the box action rollback_snapshot).
+
+    The data goes back to the snapshot and newer snapshots are deleted (as on Hetzner).
+    The box is busy meanwhile (`_busy`): no snapshot is taken, deleted or pruned.
+    """
+    state = lab.state
+    snapshot = snapshot_or_404(lab, box, body.get("snapshot"))
+    if snapshot.get("_copying"):
+        raise locked("the snapshot is still being taken")
+
+    async def steps():
+        await lab.blocking(
+            lab.fabric.box.roll_back, snap_dir(box, snapshot["name"]), data_dir(box)
+        )
+        # sub-account homes are paths: they follow what the snapshot has there
+        with state.lock:
+            subaccounts = [
                 x for x in state["subaccounts"].values() if x["box"] == box["id"]
-            ]:
-                try:
-                    await lab.blocking(sync_subaccount, lab, box, x)
-                except Exception:  # noqa: BLE001 – a home the snapshot does not have: as before
-                    log.exception(
-                        "sub-account %s keeps its home after the rollback",
-                        x["username"],
-                    )
+            ]
+        for subaccount in subaccounts:
+            try:
+                await lab.blocking(sync_subaccount, lab, box, subaccount)
+            # a home the snapshot does not have stays as it was
+            except Exception:
+                log.exception(
+                    "sub-account %s keeps its home after the rollback",
+                    subaccount["username"],
+                )
+        with state.lock:
             newer_snapshots = [
                 x
                 for x in state["box_snapshots"].values()
                 if x["box"] == box["id"] and x["id"] > snapshot["id"]
             ]
-            for newer in newer_snapshots:
-                await lab.blocking(delete_snapshot, lab, box, newer)
-            state.save()
-        finally:
-            box.pop("_busy", None)
+        for newer in newer_snapshots:
+            await lab.blocking(remove_snapshot, lab, box, newer)
+        state.save()
 
-    lab.run_action(action, steps)
-    return action
+    return Plan(steps, resources=[(snapshot["id"], "storage_box_snapshot")])
 
 
 # --- snapshot plans -------------------------------------------------------------------
 
 
-def plan_due(plan: dict, now: datetime) -> bool:
+def snapshot_plan_due(plan: dict, moment: datetime) -> bool:
     """Check whether a snapshot plan is due in the given minute."""
     return (
-        now.minute == plan["minute"]
-        and now.hour == plan["hour"]
+        moment.minute == plan["minute"]
+        and moment.hour == plan["hour"]
         and (
             plan.get("day_of_week") is None
-            or now.isoweekday() % 7 == plan["day_of_week"] % 7
+            or moment.isoweekday() % 7 == plan["day_of_week"] % 7
         )
-        and (plan.get("day_of_month") is None or now.day == plan["day_of_month"])
+        and (plan.get("day_of_month") is None or moment.day == plan["day_of_month"])
     )
 
 
-async def plan_scheduler(lab) -> None:
+async def snapshot_plan_scheduler(lab: Lab) -> None:
     """Take the automatic snapshots of all boxes with a snapshot plan.
 
     The plans are checked once a minute; minutes that went by while snapshots ran (an
     hour at most) are checked too, so a slow snapshot of one box does not skip another's
     plan.
     """
-    last = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    last_minute = datetime.now(timezone.utc).replace(second=0, microsecond=0)
     while True:
-        now = datetime.now(timezone.utc)
-        await asyncio.sleep(60 - now.second)
-        now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
-        minutes = [
-            now - timedelta(minutes=i)
-            for i in range(min(60, int((now - last).total_seconds() // 60)))
-        ]
-        last = now
-        for b in list(lab.state["storage_boxes"].values()):
+        await asyncio.sleep(60 - datetime.now(timezone.utc).second)
+        this_minute = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+        missed = min(60, int((this_minute - last_minute).total_seconds() // 60))
+        minutes = [this_minute - timedelta(minutes=i) for i in range(missed)]
+        last_minute = this_minute
+        with lab.state.lock:
+            boxes = list(lab.state["storage_boxes"].values())
+        for box in boxes:
             # a rollback or delete runs: the plan waits for them
-            if b.get("_busy") or b.get("_deleting"):
+            if box_busy(lab, box):
                 continue
-            if b.get("plan") and any(plan_due(b["plan"], m) for m in minutes):
+            plan = box.get("plan")
+            if plan and any(snapshot_plan_due(plan, m) for m in minutes):
                 try:
-                    await lab.blocking(take_snapshot, lab, b, True)
-                except Exception:  # noqa: BLE001 – one failed snapshot must not end the plans of all boxes
-                    log.exception("automatic snapshot of box %s failed", b["id"])
+                    await lab.blocking(take_automatic_snapshot, lab, box)
+                # one failed snapshot must not end the plans of all boxes
+                except Exception:
+                    log.exception("automatic snapshot of box %s failed", box["id"])
 
 
 # --- routes ---------------------------------------------------------------------------
 
 
-def add_routes(app: FastAPI, lab) -> None:
-    """Register the routes of a box's snapshots."""
-    cfg, state = lab.cfg, lab.state
+def add_routes(app: FastAPI, lab: Lab) -> None:
+    """Add the routes of a box's snapshots to the app."""
+    state = lab.state
 
     @app.get("/v1/storage_boxes/{bid}/snapshots")
-    def snapshots(bid: int, request: Request):
-        box_or_404(lab, bid)
-        items = filtered(
-            request,
-            [s for s in state["box_snapshots"].values() if s["box"] == bid],
-            {"is_automatic": lambda s, v: str(s["is_automatic"]).lower() == v.lower()},
-        )
-        return {
-            "snapshots": sort_items(
-                [snapshot_json(s) for s in items], request.query_params.getlist("sort")
+    def snapshot_list(bid: int, request: Request):
+        with state.lock:
+            box_or_404(lab, bid)
+            items = filtered(
+                request,
+                [s for s in state["box_snapshots"].values() if s["box"] == bid],
+                {
+                    "is_automatic": lambda snapshot, value: (
+                        str(snapshot["is_automatic"]).lower() == value.lower()
+                    )
+                },
             )
-        }
+            return {
+                "snapshots": sort_items(
+                    [snapshot_json(lab, s) for s in items],
+                    request.query_params.getlist("sort"),
+                )
+            }
 
     @app.post("/v1/storage_boxes/{bid}/snapshots", status_code=201)
     async def snapshot_create(bid: int, request: Request):
-        box = box_or_404(lab, bid, ready=True)
         body = await read_body(request)
-        manual = [
-            s
-            for s in state["box_snapshots"].values()
-            if s["box"] == bid and not s["is_automatic"]
-        ]
-        if len(manual) >= cfg["storage_box_types"][box["type"]]["snapshots"]:
-            raise limit_exceeded(
-                "snapshot limit of the Storage Box type reached", "snapshots"
-            )
-        snapshot = new_snapshot(
-            lab, box, False, body.get("description") or "", body.get("labels")
-        )
-        action = lab.new_action(
-            "create_snapshot",
-            [(bid, "storage_box"), (snapshot["id"], "storage_box_snapshot")],
-        )
-
-        async def steps():
-            await lab.blocking(copy_snapshot, lab, box, snapshot)
-
-        lab.run_action(action, steps)
-        return {"snapshot": snapshot_json(snapshot), "action": action}
+        return await lab.blocking(create_snapshot, lab, bid, body)
 
     @app.get("/v1/storage_boxes/{bid}/snapshots/{ref}")
     def snapshot_get(bid: int, ref: str):
-        return {
-            "snapshot": snapshot_json(snapshot_or_404(lab, box_or_404(lab, bid), ref))
-        }
+        snapshot = snapshot_or_404(lab, box_or_404(lab, bid), ref)
+        return {"snapshot": snapshot_json(lab, snapshot)}
 
     @app.put("/v1/storage_boxes/{bid}/snapshots/{ref}")
     async def snapshot_update(bid: int, ref: str, request: Request):
-        snapshot = snapshot_or_404(lab, box_or_404(lab, bid), ref)
-        update_fields(snapshot, await read_body(request), ("description", "labels"))
-        state.save()
-        return {"snapshot": snapshot_json(snapshot)}
+        body = await read_body(request)
+        return await lab.blocking(update_snapshot, lab, bid, ref, body)
 
     @app.delete("/v1/storage_boxes/{bid}/snapshots/{ref}", status_code=201)
     def snapshot_delete(bid: int, ref: str):
-        box = box_or_404(lab, bid, ready=True)
-        snapshot = snapshot_or_404(lab, box, ref)
-        delete_snapshot(lab, box, snapshot)
-        state.save()
-        return {
-            "action": lab.done(
-                "delete_snapshot",
-                [(bid, "storage_box"), (snapshot["id"], "storage_box_snapshot")],
-            )
-        }
+        return delete_snapshot(lab, bid, ref)

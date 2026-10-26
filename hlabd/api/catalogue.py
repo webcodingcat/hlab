@@ -1,7 +1,7 @@
-"""The catalogue: server types, locations and the system images of the configuration.
+"""The catalogue: server types, locations, system images and Storage Box types.
 
-The images are loaded at the lab's start. Datacenters are gone, as on Hetzner since
-2026.
+All of them come from the configuration; the images are loaded at the lab's start.
+Datacenters are gone, as on Hetzner since 2026.
 """
 
 import logging
@@ -9,31 +9,59 @@ import logging
 from fastapi import FastAPI, Request
 
 from ..errors import ApiError, invalid, not_found
+from ..lab import Lab
 from . import hetzner
 from .web import filtered, paginate
 
-log = logging.getLogger("hlabd.images")
+log = logging.getLogger(__name__)
+
+# the ID of a catalogue entry by its kind; the entries are the configuration's
+# "<kind>s" (server_types, locations, images, storage_box_types)
+ID_OF = {
+    "server_type": hetzner.server_type_id,
+    "location": hetzner.location_id,
+    "image": hetzner.image_id,
+    "storage_box_type": hetzner.storage_box_type_id,
+}
 
 
-# --- images ---------------------------------------------------------------------------
+def by_name_or_id(items, ref, name_and_id):
+    """Return the first item that `ref` names, by name or by ID, or None.
 
-
-def image_name(lab, ref) -> str:
-    """Return the name of a system image of the configuration, given by name or ID.
-
-    The name is what a server stores as its image.
+    `name_and_id(item)` gives an item's name and ID; an ID matches as number or as
+    text ("5" and 5 alike), as clients send either.
     """
-    if isinstance(ref, dict):
-        ref = ref.get("id") or ref.get("name")
-    for n in lab.cfg["images"]:
-        if str(ref) in (n, str(hetzner.image_id(lab.cfg, n))):
-            return n
-    raise invalid(f"image {ref!r} not found", "image")
+    return next(
+        (item for item in items if str(ref) in map(str, name_and_id(item))), None
+    )
 
 
-def image_path(lab, ref) -> str:
+def catalogue_name(lab: Lab, kind: str, ref, field: str | None = None) -> str:
+    """Return the name of a catalogue entry a request gives by name or ID.
+
+    The name is what a resource stores (a server its image, a box its type). The
+    specification types these fields as strings, so the request check refuses objects.
+    An unknown entry is invalid input in `field` (default: the kind).
+    """
+    id_of = ID_OF[kind]
+    name = by_name_or_id(lab.cfg[f"{kind}s"], ref, lambda n: (n, id_of(lab, n)))
+    if name is None:
+        raise invalid(f"{kind} {ref!r} not found", field or kind)
+    return name
+
+
+def catalogue_entry_or_404(lab: Lab, kind: str, rid: int, what: str) -> str:
+    """Return the name of the catalogue entry with this ID, or raise 404 (`what`)."""
+    id_of = ID_OF[kind]
+    name = next((n for n in lab.cfg[f"{kind}s"] if id_of(lab, n) == rid), None)
+    if name is None:
+        raise not_found(what)
+    return name
+
+
+def image_path(lab: Lab, name: str) -> str:
     """Return the qcow2 file of a system image, as loaded at the lab's start."""
-    name = image_name(lab, ref)
+    name = catalogue_name(lab, "image", name)
     if not lab.images.get(name):
         raise RuntimeError(
             f"image {name} could not be loaded at the lab's start (see the lab's log)"
@@ -41,32 +69,15 @@ def image_path(lab, ref) -> str:
     return lab.images[name]
 
 
-def resolve(lab, kind: str, ref) -> str:
-    """Return the name of a server type or location of the configuration.
-
-    It is given by name or ID, or as an object with one of them.
-    """
-    if isinstance(ref, dict):
-        ref = ref.get("name") or ref.get("id")
-    id_of = {"server_type": hetzner.server_type_id, "location": hetzner.location_id}[
-        kind
-    ]
-    for n in lab.cfg[f"{kind}s"]:
-        if str(ref) in (n, str(id_of(lab.cfg, n))):
-            return n
-    raise invalid(f"{kind} {ref!r} not found")
-
-
-def load_images(lab) -> None:
+def load_images(lab: Lab) -> None:
     """Load every image of the configuration at the lab's start.
 
     Each image is taken in the version its checksum file names now, downloaded unless it
     is there already. The files are named by checksum, so servers keep the version they
     were made from; without network the newest one there is used.
     """
-    directory = (
-        lab.fabric.root / "images" / "system"
-    )  # for the fallback: the newest file there
+    # for the fallback: the newest file there
+    directory = lab.fabric.root / "images" / "system"
     for name, src in lab.cfg["images"].items():
         log.info("image %s: checking %s", name, src["url"])
         try:
@@ -74,7 +85,8 @@ def load_images(lab) -> None:
                 name, src["url"], src["checksums"]
             )
             log.info("image %s: %s", name, lab.images[name])
-        except Exception as error:  # noqa: BLE001 – the lab comes up; servers of this image fail with a clear message
+        # the lab comes up; servers of this image fail with a clear message
+        except Exception as error:  # noqa: BLE001
             have = sorted(
                 directory.glob(f"{name}-*.qcow2"), key=lambda p: p.stat().st_mtime
             )
@@ -88,67 +100,60 @@ def load_images(lab) -> None:
 # --- routes ---------------------------------------------------------------------------
 
 
-def add_routes(app: FastAPI, lab) -> None:
-    """Register the routes of server types, locations, images and datacenters."""
+def add_routes(app: FastAPI, lab: Lab) -> None:
+    """Add the routes of server types, locations, images and datacenters to the app."""
     cfg = lab.cfg
 
-    def by_id(names, id_of, rid: int, what: str) -> str:
-        for n in names:
-            if id_of(cfg, n) == rid:
-                return n
-        raise not_found(what)
-
     @app.get("/v1/server_types")
-    def server_types(request: Request):
-        types = [hetzner.server_type_json(cfg, n) for n in cfg["server_types"]]
+    def server_type_list(request: Request):
+        types = [hetzner.server_type_json(lab, n) for n in cfg["server_types"]]
         return paginate(request, filtered(request, types), "server_types")
 
     @app.get("/v1/server_types/{tid}")
     def server_type_get(tid: int):
-        name = by_id(cfg["server_types"], hetzner.server_type_id, tid, "server type")
-        return {"server_type": hetzner.server_type_json(cfg, name)}
+        name = catalogue_entry_or_404(lab, "server_type", tid, "server type")
+        return {"server_type": hetzner.server_type_json(lab, name)}
 
     @app.get("/v1/locations")
-    def locations(request: Request):
+    def location_list(request: Request):
         return paginate(
             request,
             filtered(
-                request, [hetzner.location_json(cfg, n) for n in cfg["locations"]]
+                request, [hetzner.location_json(lab, n) for n in cfg["locations"]]
             ),
             "locations",
         )
 
     @app.get("/v1/locations/{lid}")
     def location_get(lid: int):
-        return {
-            "location": hetzner.location_json(
-                cfg, by_id(cfg["locations"], hetzner.location_id, lid, "location")
-            )
-        }
+        name = catalogue_entry_or_404(lab, "location", lid, "location")
+        return {"location": hetzner.location_json(lab, name)}
 
     @app.get("/v1/images")
-    def images(request: Request):
-        query = request.query_params
-        items = [hetzner.image_json(cfg, n) for n in cfg["images"]]
-        if query.getlist("type"):
-            items = [i for i in items if i["type"] in query.getlist("type")]
-        if query.get("architecture"):
-            items = [i for i in items if i["architecture"] == query["architecture"]]
-        return paginate(request, filtered(request, items), "images")
+    def image_list(request: Request):
+        items = filtered(
+            request,
+            [hetzner.image_json(lab, n) for n in cfg["images"]],
+            {
+                "type": lambda image, value: image["type"] in value.split(","),
+                # an empty architecture filters nothing
+                "architecture": lambda image, value: (
+                    not value or image["architecture"] in value.split(",")
+                ),
+            },
+        )
+        return paginate(request, items, "images")
 
     @app.get("/v1/images/{iid}")
     def image_get(iid: int):
-        return {
-            "image": hetzner.image_json(
-                cfg, by_id(cfg["images"], hetzner.image_id, iid, "image")
-            )
-        }
+        name = catalogue_entry_or_404(lab, "image", iid, "image")
+        return {"image": hetzner.image_json(lab, name)}
 
     # removed by Hetzner on 1 Oct. 2026 (the "datacenter" properties of servers and
     # primary IPs on 1 July 2026)
     @app.get("/v1/datacenters")
     @app.get("/v1/datacenters/{did}")
-    def datacenters(did: int = 0):
+    def datacenter_removed(did: int = 0):
         raise ApiError(
             410,
             "deprecated_api_endpoint",

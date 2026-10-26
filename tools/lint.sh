@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Style checks (STYLE.md) inside the development image, with the repository
+# Style and type checks (STYLE.md) inside the development image, with the repository
 # mounted at /src. Called by bin/hlab and bin/hlab.ps1:
 #   lint.sh check   report every deviation, fail if there is one
 #   lint.sh fix     apply what the formatters can fix
@@ -11,13 +11,15 @@ case "${1:-check}" in
   check)
     ruff format --check .
     ruff check .
+    mypy hlabd
     shfmt -i 2 -ci -bn -d "${shell_files[@]}"
     shellcheck -x "${shell_files[@]}"
     yamllint .
     ;;
   fix)
+    # fixes only; what is left is reported by `check`
+    ruff check --fix --exit-zero .
     ruff format .
-    ruff check --fix .
     shfmt -i 2 -ci -bn -w "${shell_files[@]}"
     ;;
   *)

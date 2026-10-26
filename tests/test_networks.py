@@ -3,10 +3,15 @@
 Subnets, routes, alias IPs, attach and detach, overlapping networks.
 """
 
+import json
+
+import pytest
 from conftest import create_network, create_server, dhcp, nft_set, wait_action
 
+from hlabd.api import networks
 
-def test_networks_and_dhcp(api, tmp_path):
+
+def test_servers_in_a_network_get_their_address_by_dhcp(api, tmp_path):
     network = api.post(
         "/v1/networks",
         json={
@@ -124,9 +129,8 @@ def test_network_values_are_checked_like_hetzner(api):
         ).status_code
         == 422
     )
-    assert not api.get("/v1/networks").json()[
-        "networks"
-    ]  # nothing created by the failures
+    # nothing created by the failures
+    assert not api.get("/v1/networks").json()["networks"]
     network = net(
         subnets=[
             {"type": "cloud", "ip_range": "10.0.1.0/24", "network_zone": "eu-central"}
@@ -139,7 +143,9 @@ def test_network_values_are_checked_like_hetzner(api):
     # a destination that would add a line to dnsmasq's configuration, other bad routes
     assert (
         act(
-            "add_route", destination="10.9.0.0/16\ndhcp-script=/x", gateway="10.0.1.5"
+            "add_route",
+            destination="10.9.0.0/16\ndhcp-script=/x",
+            gateway="10.0.1.5",
         ).status_code
         == 422
     )
@@ -147,24 +153,24 @@ def test_network_values_are_checked_like_hetzner(api):
         act("add_route", destination="8.8.8.0/24", gateway="10.0.1.5").status_code
         == 422
     )
+    # overlaps a subnet
     assert (
         act("add_route", destination="10.0.1.0/25", gateway="10.0.1.5").status_code
         == 422
-    )  # overlaps a subnet
+    )
+    # the network's own gateway
     assert (
         act("add_route", destination="10.9.0.0/16", gateway="10.0.0.1").status_code
         == 422
-    )  # the network's own gateway
+    )
     assert (
         act("add_route", destination="10.9.0.0/16", gateway="10.0.1.5").status_code
         == 201
     )
-    assert (
-        act("change_ip_range", ip_range="10.0.0.0/17").status_code == 422
-    )  # shrinking
-    assert (
-        act("change_ip_range", ip_range="10.1.0.0/15").status_code == 422
-    )  # another base address
+    # shrinking
+    assert act("change_ip_range", ip_range="10.0.0.0/17").status_code == 422
+    # another base address
+    assert act("change_ip_range", ip_range="10.1.0.0/15").status_code == 422
     assert act("change_ip_range", ip_range="10.0.0.0/15").status_code == 201
     assert ("route-flush", str(network["id"])) in api.sh.calls  # the table is set anew
 
@@ -197,7 +203,7 @@ def test_deleting_a_network_detaches_its_servers(api):
     assert ("tap-down", "prv1x1") in api.sh.calls
 
 
-def test_network_members_and_overlap_on_one_server(api):
+def test_overlapping_networks_on_one_server_are_refused_and_members_listed(api):
     body = {
         "ip_range": "10.0.0.0/16",
         "subnets": [
@@ -284,7 +290,7 @@ def test_failed_attach_takes_its_nic_back(api):
     assert api.get(f"/v1/servers/{server['id']}").json()["server"]["private_net"] == []
 
 
-def test_networks_per_server(api):
+def test_a_server_joins_at_most_three_networks(api):
     server = create_server(api, "a")["server"]
     for i in range(4):
         network = api.post(
@@ -314,7 +320,7 @@ def test_networks_per_server(api):
             )
 
 
-def test_attach_to_a_chosen_subnet(api):
+def test_attach_takes_an_address_from_the_chosen_subnet(api):
     network = create_network(api, "10.0.1.0/24", "10.0.2.0/24")
     server = create_server(api, "a")["server"]
     response = api.post(
@@ -344,19 +350,17 @@ def test_attach_to_a_chosen_subnet(api):
 def test_a_new_network_does_not_take_an_address_in_use(api):
     network = create_network(api, "10.0.1.0/24")
     create_server(api, "a", networks=[network["id"]])
-    response = api.post(
-        "/v1/networks", json={"name": "m", "ip_range": "10.0.1.0/24"}
-    )  # its first address is a's
+    # its first address is a's
+    response = api.post("/v1/networks", json={"name": "m", "ip_range": "10.0.1.0/24"})
     assert response.status_code == 422
     api.sh.run = (
         lambda run: (
             lambda *a, **k: "10.0.0.1\n" if a[0] == "local-addrs" else run(*a, **k)
         )
     )(api.sh.run)
-    api.lab.fabric._local = None
-    response = api.post(
-        "/v1/networks", json={"name": "o", "ip_range": "10.0.0.0/16"}
-    )  # n's gateway: shared, fine
+    api.lab.fabric._local_addresses_cache = None
+    # n's gateway: shared, fine
+    response = api.post("/v1/networks", json={"name": "o", "ip_range": "10.0.0.0/16"})
     assert response.status_code == 201, response.text
 
 
@@ -381,7 +385,7 @@ def test_detached_nic_takes_its_netem_along(api):
     wait_action(api, response.json()["action"])
 
 
-def test_alias_ip_not_a_network_gateway(api):
+def test_alias_ip_must_not_be_a_network_gateway(api):
     network = api.post(
         "/v1/networks",
         json={
@@ -396,9 +400,8 @@ def test_alias_ip_not_a_network_gateway(api):
             ],
         },
     ).json()["network"]
-    response = api.post(
-        "/v1/networks", json={"name": "m", "ip_range": "10.0.4.0/24"}
-    )  # its gateway: 10.0.4.1
+    # its gateway: 10.0.4.1
+    response = api.post("/v1/networks", json={"name": "m", "ip_range": "10.0.4.0/24"})
     assert response.status_code == 201, response.text
     server = create_server(api, "a", networks=[network["id"]])["server"]
     response = api.post(
@@ -470,3 +473,36 @@ def test_private_networks_are_isolated_from_each_other(api):
     pairs = nft_set(api, "private_pairs")
     assert '"prv1x1" . "prv2x1"' in pairs
     assert "prv3x1" not in pairs
+
+
+def test_a_failed_detach_leaves_the_network_with_the_nics_not_yet_detached(
+    api, monkeypatch
+):
+    network = create_network(api, "10.0.1.0/24")
+    nid = network["id"]
+    first = create_server(api, "a", networks=[nid])["server"]
+    second = create_server(api, "b", networks=[nid])["server"]
+    run = api.sh.run
+
+    def tap_down_fails_for_b(*args, **kwargs):
+        if args == ("tap-down", "prv2x1"):
+            raise RuntimeError("tap-down failed")
+        return run(*args, **kwargs)
+
+    monkeypatch.setattr(api.sh, "run", tap_down_fails_for_b)
+    with pytest.raises(RuntimeError):
+        networks.delete_network(api.lab, nid)
+    # the first NIC is gone, also from the saved state; the second stays with its
+    # network, and every flag is off again
+    servers = api.lab.state["servers"]
+    assert servers[first["id"]]["_lab"]["nics"] == []
+    assert [nic["network"] for nic in servers[second["id"]]["_lab"]["nics"]] == [nid]
+    saved = json.loads(api.lab.state.path.read_text())
+    assert saved["servers"][str(first["id"])]["_lab"]["nics"] == []
+    assert api.get(f"/v1/networks/{nid}").json()["network"]["servers"] == [second["id"]]
+    assert not servers[first["id"]]["locked"] and not servers[second["id"]]["locked"]
+    assert "_deleting" not in api.lab.state["networks"][nid]
+    # deleting it again goes on from there
+    monkeypatch.setattr(api.sh, "run", run)
+    assert api.delete(f"/v1/networks/{nid}").status_code == 204
+    assert servers[second["id"]]["_lab"]["nics"] == []

@@ -1,24 +1,36 @@
 """HTTP plumbing shared by all API modules.
 
-Error answers, lists (filter, sort, pages), request checks, rate limit.
+Error answers, lists (filter, sort, pages), request checks, rate limit, and what every
+resource does the same way (IDs in request bodies, PUT, delete protection).
 """
 
 import asyncio
 import json
 import logging
 import time
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from ..errors import ApiError, invalid, not_found
+from ..errors import (
+    ApiError,
+    check_unique_name,
+    invalid,
+    invalid_fields,
+    not_found,
+    rate_limit_exceeded,
+    server_error,
+)
+from ..lab import Lab, Plan
 from ..labels import match_labels
+from ..records import AnyRecord
 from . import hetzner
 from . import spec as openapi
 
-log = logging.getLogger("hlabd.web")
+log = logging.getLogger(__name__)
 
 
 def error_response(error: ApiError) -> JSONResponse:
@@ -39,25 +51,104 @@ async def read_body(request: Request) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def ref_id(value, field: str) -> int:
+    """Return a resource ID from a request body, or raise invalid_input for the field.
+
+    The request check lets only numbers (or null) through where the specification
+    wants an ID.
+    """
+    if isinstance(value, bool):
+        raise invalid(f"{field} must be an ID", field)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise invalid(f"{field} must be an ID", field) from None
+
+
+def update_fields(item: AnyRecord, body: dict, keys: tuple[str, ...]) -> None:
+    """Change the given fields of an item on PUT (labels null means none).
+
+    The caller holds the state's lock.
+    """
+    for key in keys:
+        if key in body:
+            item[key] = (body[key] or {}) if key == "labels" else body[key]
+
+
+def update_resource(
+    lab: Lab, kind: str, item: AnyRecord, body: dict, keys: tuple[str, ...], what: str
+) -> None:
+    """Apply a PUT to a resource of a kind: names stay unique within the kind."""
+    with lab.state.lock:
+        check_unique_name(lab.state[kind].values(), body.get("name"), item, what)
+        update_fields(item, body, keys)
+        lab.state.save()
+
+
+def change_delete_protection(lab: Lab, item: AnyRecord, body: dict) -> Plan:
+    """Set a resource's delete protection: the change_protection action.
+
+    A body without `delete` keeps the current value. Used by the tables of networks,
+    primary IPs, Floating IPs, volumes and Storage Boxes (servers set delete and
+    rebuild together).
+    """
+    with lab.state.lock:
+        item["protection"]["delete"] = bool(
+            body.get("delete", item["protection"]["delete"])
+        )
+    return Plan()
+
+
+# --- lists ----------------------------------------------------------------------------
+
+
+def positive_int_or_default(value: str | None, default: int) -> int:
+    """Return a query value as a number of at least 1, else the default (Hetzner)."""
+    try:
+        return int(value) if value is not None and int(value) >= 1 else default
+    except ValueError:
+        return default
+
+
+def sort_items(items: list[AnyRecord], sorts: list[str]) -> list[AnyRecord]:
+    """Sort items by the sort=field[:asc|:desc] parameters.
+
+    Several are allowed; they apply in order (the first is the primary key).
+    """
+    seen: dict[str, str] = {}
+    for s in sorts:
+        field, _, direction = s.partition(":")
+        direction = direction or "asc"
+        if field in seen and seen[field] != direction:
+            seen[field] = "ignore"  # contrary orders are ignored
+        else:
+            seen.setdefault(field, direction)
+
+    for field, direction in reversed(
+        [(f, d) for f, d in seen.items() if d != "ignore"]
+    ):
+        items = sorted(items, key=_sort_key(field), reverse=direction == "desc")
+    return items
+
+
+def _sort_key(field: str):
+    """Return the sort key of a field (nested ones like stats.size); null sorts last."""
+
+    def key(item: dict) -> tuple:
+        value: Any = item
+        for part in field.split("."):
+            value = value.get(part) if isinstance(value, dict) else None
+        return (value is None, value if value is not None else 0)
+
+    return key
+
+
 def paginate(request: Request, items: list, key: str) -> dict:
     """Return a sorted page of items under key, with the pagination meta."""
     query = request.query_params
-    items = (
-        openapi.sort_items(items, query.getlist("sort"))
-        if query.getlist("sort")
-        else items
-    )
-
-    def number(
-        value: str | None, default: int
-    ) -> int:  # Hetzner: invalid values fall back to the default
-        try:
-            return int(value) if value is not None and int(value) >= 1 else default
-        except ValueError:
-            return default
-
-    page = number(query.get("page"), 1)
-    per_page = min(50, number(query.get("per_page"), 25))
+    items = sort_items(items, query.getlist("sort"))
+    page = positive_int_or_default(query.get("page"), 1)
+    per_page = min(50, positive_int_or_default(query.get("per_page"), 25))
     total = len(items)
     last = max(1, -(-total // per_page))
     chunk = items[(page - 1) * per_page : page * per_page]
@@ -77,9 +168,13 @@ def paginate(request: Request, items: list, key: str) -> dict:
 
 
 def filtered(
-    request: Request, items: list[dict], extra: dict | None = None
-) -> list[dict]:
-    """Return the items matching the name, label_selector and extra filters, by ID."""
+    request: Request, items: list[AnyRecord], extra: dict | None = None
+) -> list[AnyRecord]:
+    """Return the items matching the name, label_selector and extra filters, by ID.
+
+    `extra` maps a query parameter to a test `(item, value) -> bool`. The caller holds
+    the state's lock when the items are records of the state.
+    """
     query = request.query_params
     out = items
     if "name" in query and "name" not in (extra or {}):
@@ -91,8 +186,7 @@ def filtered(
             if match_labels(i.get("labels") or {}, query["label_selector"])
         ]
     for k, fn in (extra or {}).items():
-        # a filter may be given several times (status=running&status=off): any of the
-        # values
+        # a filter given several times (status=running&status=off) matches any value
         if k in query:
             value = ",".join(query.getlist(k))
             out = [i for i in out if fn(i, value)]
@@ -122,9 +216,8 @@ class RateLimit:
                 for k, (n, t) in self.buckets.items()
                 if n + (now - t) * rate >= self.limit
             ]
-            for k in (
-                full or list(self.buckets)[:500]
-            ):  # full buckets are the same as none
+            # full buckets are the same as none
+            for k in full or list(self.buckets)[:500]:
                 del self.buckets[k]
         tokens, last = self.buckets.get(key, (float(self.limit), now))
         tokens = min(self.limit, tokens + (now - last) * rate)
@@ -140,107 +233,46 @@ class RateLimit:
         }
 
 
-def install(app: FastAPI, lab, spec_name: str, prefix: str) -> None:
-    """Install the error handlers and the request middleware for an API under prefix.
+# --- the request middleware -----------------------------------------------------------
 
-    The prefix is e.g. /v1; the middleware does auth, rate limit, injected faults and
-    spec checks.
+
+def check_auth(lab: Lab, request: Request) -> str:
+    """Return the request's bearer token, or raise 401 if it is missing or wrong.
+
+    Without a configured token, any token is accepted.
     """
-    spec = openapi.load(spec_name)
-    limiter = RateLimit(lab.cfg["api"].get("rate_limit", 3600))
-
-    @app.exception_handler(ApiError)
-    async def api_error(_: Request, error: ApiError):
-        return error_response(error)
-
-    @app.exception_handler(StarletteHTTPException)
-    async def http_error(_: Request, error: StarletteHTTPException):
-        if error.status_code == 405:
-            return error_response(
-                ApiError(405, "method_not_allowed", "the request method is not allowed")
-            )
-        return error_response(
-            ApiError(
-                error.status_code,
-                "not_found" if error.status_code == 404 else "server_error",
-                str(error.detail),
-            )
-        )
-
-    @app.exception_handler(Exception)
-    async def unexpected(_: Request, error: Exception):
-        """Answer a failure of the lab itself like the cloud's server errors: JSON.
-
-        Such a failure is, say, a shell command.
-        """
-        log.exception("unexpected error")
-        return error_response(
-            ApiError(500, "server_error", f"the lab failed: {str(error)[:300]}")
-        )
-
-    @app.exception_handler(RequestValidationError)
-    async def validation_error(_: Request, error: RequestValidationError):
-        if any(err.get("loc", [None])[0] == "path" for err in error.errors()):
-            return error_response(not_found("resource"))
-        return error_response(invalid(str(error.errors()[0].get("msg")), "query"))
-
-    @app.middleware("http")
-    async def middleware(request: Request, call_next):
-        lab.loop = asyncio.get_running_loop()
-        path = request.url.path
-        if not path.startswith(prefix + "/"):
-            return await call_next(request)
-        token = lab.cfg["api"]["token"]
-        auth = request.headers.get("authorization", "")
-        if not auth.startswith("Bearer ") or (token and auth[7:] != token):
-            return error_response(
-                ApiError(401, "unauthorized", "unable to authenticate")
-            )
-        ok, headers = limiter.take(auth[7:])
-        if not ok:
-            response = error_response(
-                ApiError(
-                    429, "rate_limit_exceeded", "limit of requests per hour reached"
-                )
-            )
-            response.headers.update(headers)
-            return response
-        if lab.fault["delay_ms"]:
-            await asyncio.sleep(lab.fault["delay_ms"] / 1000)
-        if lab.fault["count"] > 0:
-            lab.fault["count"] -= 1
-            code = lab.fault["status"]
-            response = error_response(
-                ApiError(
-                    code,
-                    {429: "rate_limit_exceeded", 503: "unavailable"}.get(
-                        code, "server_error"
-                    ),
-                    "injected fault",
-                )
-            )
-            response.headers.update(headers)
-            return response
-        try:
-            check_request(
-                spec,
-                request,
-                await request.body()
-                if request.method in ("POST", "PUT", "PATCH")
-                else b"",
-            )
-        except ApiError as error:
-            response = error_response(error)
-            response.headers.update(headers)
-            return response
-        answer = await call_next(request)
-        answer.headers.update(headers)
-        return answer
+    token = lab.cfg["api"]["token"]
+    auth = request.headers.get("authorization", "")
+    given_token = auth.removeprefix("Bearer ")
+    if given_token == auth or (token and given_token != token):
+        raise ApiError(401, "unauthorized", "unable to authenticate")
+    return given_token
 
 
-def check_request(spec: openapi.Spec, request: Request, raw: bytes) -> None:
+def injected_fault_error(status: int) -> ApiError:
+    """Return the error an injected API fault answers with (/_lab/api-fault)."""
+    if status == 429:
+        return rate_limit_exceeded("injected fault")
+    if status == 503:
+        return ApiError(503, "unavailable", "injected fault")
+    return server_error("injected fault", status)
+
+
+async def apply_injected_fault(lab: Lab) -> None:
+    """Delay the request and raise the injected fault, as /_lab/api-fault asks."""
+    api_fault = lab.api_fault
+    if api_fault["delay_ms"]:
+        await asyncio.sleep(api_fault["delay_ms"] / 1000)
+    if api_fault["count"] > 0:
+        api_fault["count"] -= 1
+        raise injected_fault_error(api_fault["status"])
+
+
+async def check_request(spec: openapi.Spec, request: Request) -> None:
     """Check a request's JSON body, labels and sort values; raise an ApiError if bad."""
-    operation = spec.op(request.method, request.url.path)
+    has_body = request.method in ("POST", "PUT", "PATCH")
+    raw = await request.body() if has_body else b""
+    operation = spec.operation(request.method, request.url.path)
     data = None
     if raw:
         try:
@@ -258,14 +290,69 @@ def check_request(spec: openapi.Spec, request: Request, raw: bytes) -> None:
             if messages:
                 fields.append({"name": "labels", "messages": messages})
         if fields:
-            field = fields[0]
-            raise ApiError(
-                422,
-                "invalid_input",
-                f"invalid input in field '{field['name']}': {field['messages'][0]}",
-                {"fields": fields},
-            )
+            raise invalid_fields(fields)
     allowed = spec.query_enum(operation, "sort")
     for s in request.query_params.getlist("sort"):
         if allowed is not None and s not in allowed:
             raise invalid(f"must be one of {', '.join(allowed)}", "sort")
+
+
+def install(app: FastAPI, lab: Lab, spec_name: str, prefix: str) -> None:
+    """Install the error handlers and the request middleware for an API under prefix.
+
+    The prefix is e.g. /v1; the middleware does auth, rate limit, injected faults and
+    spec checks.
+    """
+    spec = openapi.load(spec_name)
+    limiter = RateLimit(lab.cfg["api"].get("rate_limit", 3600))
+
+    @app.exception_handler(ApiError)
+    async def api_error(_: Request, error: ApiError):
+        return error_response(error)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(_: Request, error: StarletteHTTPException):
+        if error.status_code == 404:
+            return error_response(not_found("resource"))
+        if error.status_code == 405:
+            return error_response(
+                ApiError(405, "method_not_allowed", "the request method is not allowed")
+            )
+        return error_response(server_error(str(error.detail), error.status_code))
+
+    @app.exception_handler(Exception)  # anything else that went wrong in the lab
+    async def unexpected(_: Request, error: Exception):
+        """Answer a failure of the lab itself like the cloud's server errors: JSON.
+
+        Such a failure is, say, a shell command.
+        """
+        log.exception("unexpected error")
+        return error_response(server_error(f"the lab failed: {str(error)[:300]}"))
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(_: Request, error: RequestValidationError):
+        if any(err.get("loc", [None])[0] == "path" for err in error.errors()):
+            return error_response(not_found("resource"))
+        return error_response(invalid(str(error.errors()[0].get("msg")), "query"))
+
+    @app.middleware("http")
+    async def middleware(request: Request, call_next):
+        # actions started from the worker threads of sync handlers run on this loop
+        # (the daemon sets it at start; a test client brings a loop of its own)
+        lab.loop = asyncio.get_running_loop()
+        if not request.url.path.startswith(prefix + "/"):
+            return await call_next(request)
+        headers: dict[str, str] = {}  # the rate limit's, once the token is known
+        try:
+            token = check_auth(lab, request)
+            allowed, headers = limiter.take(token)
+            if not allowed:
+                raise rate_limit_exceeded("limit of requests per hour reached")
+            await apply_injected_fault(lab)
+            await check_request(spec, request)
+        except ApiError as error:
+            response = error_response(error)
+        else:
+            response = await call_next(request)
+        response.headers.update(headers)
+        return response

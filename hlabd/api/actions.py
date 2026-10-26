@@ -7,10 +7,12 @@ Listed per resource kind or resource; the project-wide list only by ID (Hetzner,
 from fastapi import FastAPI, Request
 
 from ..errors import invalid, not_found
+from ..lab import Lab
+from ..records import Action
 from .web import paginate
 
 # the resource types of actions, by the API path of their resources
-KINDS = {
+RESOURCE_TYPES = {
     "servers": "server",
     "networks": "network",
     "floating_ips": "floating_ip",
@@ -20,83 +22,98 @@ KINDS = {
 }
 
 
-def add_routes(app: FastAPI, lab) -> None:
-    """Register the action routes.
+# --- lookups --------------------------------------------------------------------------
 
-    Registered before the resource routes: their /{id} would take "actions" for an ID.
+
+def listed(request: Request, actions: list[Action]) -> dict:
+    """Return a page of actions, filtered by the `id` and `status` query parameters."""
+    query = request.query_params
+    ids = {int(i) for i in query.getlist("id") if i.isdigit()}
+    if ids:
+        actions = [a for a in actions if a["id"] in ids]
+    statuses = {s for v in query.getlist("status") for s in v.split(",")}
+    if statuses:
+        actions = [a for a in actions if a["status"] in statuses]
+    return paginate(request, sorted(actions, key=lambda a: a["id"]), "actions")
+
+
+def resource_type_of(kind: str) -> str:
+    """Return the resource type of an API path (`servers` → `server`), or raise 404."""
+    if kind not in RESOURCE_TYPES:
+        raise not_found("resource")
+    return RESOURCE_TYPES[kind]
+
+
+def resource_of(lab: Lab, kind: str, rid: str) -> tuple[str, int]:
+    """Return the resource type and ID of /v1/<kind>/<rid>, or raise 404."""
+    resource_type = resource_type_of(kind)
+    if not rid.isdigit() or int(rid) not in lab.state[kind]:
+        raise not_found(resource_type)
+    return resource_type, int(rid)
+
+
+def touches(action: Action, resource_type: str, rid: int | None = None) -> bool:
+    """Tell whether an action concerns a resource type (or one resource of it)."""
+    return any(
+        r["type"] == resource_type and (rid is None or r["id"] == rid)
+        for r in action["resources"]
+    )
+
+
+def action_or_404(
+    lab: Lab, aid: int, resource_type: str | None = None, rid: int | None = None
+) -> Action:
+    """Return an action, or raise 404 (also if it does not concern the resource)."""
+    action = lab.state["actions"].get(aid)
+    if not action or (resource_type and not touches(action, resource_type, rid)):
+        raise not_found("action")
+    return action
+
+
+# --- routes ---------------------------------------------------------------------------
+
+
+def add_routes(app: FastAPI, lab: Lab) -> None:
+    """Add the action routes to the app.
+
+    They go in before the resource routes: those would take "actions" for an ID.
     """
     state = lab.state
 
-    def listed(request: Request, items: list[dict]) -> dict:
-        query = request.query_params
-        ids = {int(i) for i in query.getlist("id") if i.isdigit()}
-        if ids:
-            items = [a for a in items if a["id"] in ids]
-        statuses = {s for v in query.getlist("status") for s in v.split(",")}
-        if statuses:
-            items = [a for a in items if a["status"] in statuses]
-        return paginate(request, sorted(items, key=lambda a: a["id"]), "actions")
-
-    def kind_of(kind: str) -> str:
-        if kind not in KINDS:
-            raise not_found("resource")
-        return KINDS[kind]
-
-    def resource(kind: str, rid: str) -> tuple[str, int]:
-        """Return the resource type and ID of /v1/<kind>/<rid>, or raise a 404."""
-        resource_type = kind_of(kind)
-        if not rid.isdigit() or int(rid) not in state.data.get(kind, {}):
-            raise not_found(resource_type)
-        return resource_type, int(rid)
-
-    def touches(action: dict, resource_type: str, rid: int | None = None) -> bool:
-        return any(
-            r["type"] == resource_type and (rid is None or r["id"] == rid)
-            for r in action["resources"]
-        )
-
-    def action_or_404(
-        aid: int, resource_type: str | None = None, rid: int | None = None
-    ) -> dict:
-        action = state["actions"].get(aid)
-        if not action or (resource_type and not touches(action, resource_type, rid)):
-            raise not_found("action")
-        return action
-
     @app.get("/v1/actions")
-    def actions(request: Request):
+    def action_list(request: Request):
         if not request.query_params.getlist("id"):
             raise invalid("id is required", "id")
-        return listed(request, list(state["actions"].values()))
+        with state.lock:
+            return listed(request, list(state["actions"].values()))
 
     @app.get("/v1/actions/{aid}")
     def action_get(aid: int):
-        return {"action": action_or_404(aid)}
+        return {"action": action_or_404(lab, aid)}
 
     @app.get("/v1/{kind}/actions")
-    def kind_actions(request: Request, kind: str):
-        resource_type = kind_of(kind)
-        return listed(
-            request, [a for a in state["actions"].values() if touches(a, resource_type)]
-        )
+    def kind_actions(request: Request, kind: str):  # the actions of a resource kind
+        resource_type = resource_type_of(kind)
+        with state.lock:
+            mine = [a for a in state["actions"].values() if touches(a, resource_type)]
+            return listed(request, mine)
 
     @app.get("/v1/{kind}/actions/{aid}")
     def kind_action_get(kind: str, aid: int):
-        return {"action": action_or_404(aid, kind_of(kind))}
+        return {"action": action_or_404(lab, aid, resource_type_of(kind))}
 
     @app.get("/v1/{kind}/{rid}/actions")
     def resource_actions(request: Request, kind: str, rid: str):
-        resource_type, resource_id = resource(kind, rid)
-        return listed(
-            request,
-            [
+        with state.lock:
+            resource_type, resource_id = resource_of(lab, kind, rid)
+            mine = [
                 a
                 for a in state["actions"].values()
                 if touches(a, resource_type, resource_id)
-            ],
-        )
+            ]
+            return listed(request, mine)
 
     @app.get("/v1/{kind}/{rid}/actions/{aid}")
     def resource_action_get(kind: str, rid: str, aid: int):
-        resource_type, resource_id = resource(kind, rid)
-        return {"action": action_or_404(aid, resource_type, resource_id)}
+        resource_type, resource_id = resource_of(lab, kind, rid)
+        return {"action": action_or_404(lab, aid, resource_type, resource_id)}

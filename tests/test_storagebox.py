@@ -1,53 +1,76 @@
 """The Storage Box API: boxes, sub-accounts, snapshots, plans, access settings."""
 
+from datetime import datetime, timezone
+
 import pytest
-from conftest import box_wait, new_box
+from conftest import wait_action
 
 from hlabd.api import storagebox
 
+# the Storage Box API keeps its actions under /v1/storage_boxes/actions
+BOX_ACTIONS_PREFIX = "/storage_boxes"
 
-def test_types(box_api):
+
+def create_box(api, name="backup", **extra):
+    """Create a bx11 Storage Box in fsn1, wait for it and return the box."""
+    response = api.post(
+        "/v1/storage_boxes",
+        json={
+            "name": name,
+            "location": "fsn1",
+            "storage_box_type": "bx11",
+            "password": "Secret-Pass-123",
+            **extra,
+        },
+    )
+    assert response.status_code == 201, response.text
+    wait_action(api, response.json()["action"], prefix=BOX_ACTIONS_PREFIX)
+    box_id = response.json()["storage_box"]["id"]
+    return api.get(f"/v1/storage_boxes/{box_id}").json()["storage_box"]
+
+
+def test_box_types_are_hetzners_four_sizes(box_api):
     types = box_api.get("/v1/storage_box_types").json()["storage_box_types"]
     assert [t["name"] for t in types] == ["bx11", "bx21", "bx31", "bx41"]
     assert types[0]["size"] == 2**40
 
 
-def test_box_lifecycle(box_api):
-    box = new_box(
+def test_box_is_created_configured_protected_and_deleted(box_api):
+    box = create_box(
         box_api, access_settings={"ssh_enabled": True, "reachable_externally": True}
     )
     assert box["status"] == "active" and box["username"] == f"u{box['id']}"
     assert box["server"] == f"u{box['id']}.your-storagebox.de"
     sh = box_api.sh
+    # the box ID is the account's UID
     assert (
         "box-account",
         f"u{box['id']}",
         f"/hlab/box/data/{box['id']}",
-        "@stdin",
         str(2**40),
         str(box["id"]),
-    ) in sh.calls  # the box ID is the account's UID
-    assert (
-        "box-account",
-        "Secret-Pass-123\n",
-    ) in sh.stdin  # the password never in a process list
+    ) in sh.calls
+    # the password never in a process list
+    assert ("box-account", "Secret-Pass-123\n") in sh.stdin
     assert ("box-access", f"u{box['id']}", "1", "1", "0", str(2**40)) in sh.calls
 
-    box_wait(
+    wait_action(
         box_api,
         box_api.post(
             f"/v1/storage_boxes/{box['id']}/actions/update_access_settings",
             json={"zfs_enabled": True, "reachable_externally": False},
         ).json()["action"],
+        prefix=BOX_ACTIONS_PREFIX,
     )
     assert ("box-zfs", f"u{box['id']}", f"/hlab/box/snapshots/{box['id']}") in sh.calls
     assert ("box-access", f"u{box['id']}", "1", "0", "0", str(2**40)) in sh.calls
-    box_wait(
+    wait_action(
         box_api,
         box_api.post(
             f"/v1/storage_boxes/{box['id']}/actions/reset_password",
             json={"password": "Other-Pass-456"},
         ).json()["action"],
+        prefix=BOX_ACTIONS_PREFIX,
     )
     assert ("box-account", "Other-Pass-456\n") in sh.stdin
 
@@ -60,13 +83,17 @@ def test_box_lifecycle(box_api):
         f"/v1/storage_boxes/{box['id']}/actions/change_protection",
         json={"delete": False},
     )
-    box_wait(box_api, box_api.delete(f"/v1/storage_boxes/{box['id']}").json()["action"])
+    wait_action(
+        box_api,
+        box_api.delete(f"/v1/storage_boxes/{box['id']}").json()["action"],
+        prefix=BOX_ACTIONS_PREFIX,
+    )
     assert ("box-remove", f"u{box['id']}") in sh.calls
     assert box_api.get("/v1/storage_boxes").json()["storage_boxes"] == []
 
 
-def test_subaccounts(box_api):
-    box = new_box(box_api)
+def test_subaccounts_get_their_own_account_and_home_directory(box_api):
+    box = create_box(box_api)
     response = box_api.post(
         f"/v1/storage_boxes/{box['id']}/subaccounts",
         json={
@@ -86,7 +113,6 @@ def test_subaccounts(box_api):
         "box-account",
         subaccount["username"],
         f"/hlab/box/data/{box['id']}/backups/cluster-a",
-        "@stdin",
         str(2**40),
         f"u{box['id']}",
     ) in box_api.sh.calls
@@ -125,8 +151,8 @@ def test_subaccounts(box_api):
     )
 
 
-def test_snapshots_and_plan(box_api):
-    box = new_box(box_api)
+def test_snapshots_roll_back_and_the_plan_keeps_max_snapshots(box_api):
+    box = create_box(box_api)
     response = box_api.post(
         f"/v1/storage_boxes/{box['id']}/snapshots",
         json={"description": "before upgrade"},
@@ -134,31 +160,29 @@ def test_snapshots_and_plan(box_api):
     assert response.status_code == 201, response.text
     snapshot = response.json()["snapshot"]
     assert not snapshot["is_automatic"]
-    box_wait(
-        box_api, response.json()["action"]
-    )  # the copy runs as the action, as on Hetzner
+    # the copy runs as the action, as on Hetzner
+    wait_action(box_api, response.json()["action"], prefix=BOX_ACTIONS_PREFIX)
     assert any(c[0] == "box-snapshot" for c in box_api.sh.calls)
     response = box_api.post(
         f"/v1/storage_boxes/{box['id']}/snapshots", json={"description": "later"}
     )
-    box_wait(box_api, response.json()["action"])
-    box_wait(
+    wait_action(box_api, response.json()["action"], prefix=BOX_ACTIONS_PREFIX)
+    wait_action(
         box_api,
         box_api.post(
             f"/v1/storage_boxes/{box['id']}/actions/rollback_snapshot",
             json={"snapshot": snapshot["name"]},
         ).json()["action"],
+        prefix=BOX_ACTIONS_PREFIX,
     )
     assert (
         "box-rollback",
         f"/hlab/box/snapshots/{box['id']}/{snapshot['name']}",
         f"/hlab/box/data/{box['id']}",
-        str(box["id"]),
     ) in box_api.sh.calls
     snaps = box_api.get(f"/v1/storage_boxes/{box['id']}/snapshots").json()["snapshots"]
-    assert [x["id"] for x in snaps] == [
-        snapshot["id"]
-    ]  # the newer one went with the rollback
+    # the newer one was deleted with the rollback
+    assert [x["id"] for x in snaps] == [snapshot["id"]]
     response = box_api.post(
         f"/v1/storage_boxes/{box['id']}/actions/enable_snapshot_plan",
         json={"max_snapshots": 2, "minute": 0, "hour": 3},
@@ -166,7 +190,7 @@ def test_snapshots_and_plan(box_api):
     assert response.status_code == 201
     record = box_api.lab.state["storage_boxes"][box["id"]]
     for _ in range(3):
-        storagebox.snapshots.take_snapshot(box_api.lab, record, True)
+        storagebox.snapshots.take_automatic_snapshot(box_api.lab, record)
     autos = [
         x for x in box_api.lab.state["box_snapshots"].values() if x["is_automatic"]
     ]
@@ -185,8 +209,7 @@ def test_snapshots_and_plan(box_api):
     )
 
 
-def test_plan_due():
-    from datetime import datetime, timezone
+def test_snapshot_plan_is_due_at_its_time_and_day():
 
     plan = {
         "max_snapshots": 3,
@@ -196,14 +219,14 @@ def test_plan_due():
         "day_of_month": None,
     }
     sunday = datetime(2026, 10, 25, 2, 30, tzinfo=timezone.utc)
-    assert storagebox.snapshots.plan_due(plan, sunday)
-    assert not storagebox.snapshots.plan_due(plan, sunday.replace(day=26))
-    assert not storagebox.snapshots.plan_due(
+    assert storagebox.snapshots.snapshot_plan_due(plan, sunday)
+    assert not storagebox.snapshots.snapshot_plan_due(plan, sunday.replace(day=26))
+    assert not storagebox.snapshots.snapshot_plan_due(
         {**plan, "day_of_week": None, "minute": 31}, sunday
     )
 
 
-def test_validation_and_errors(box_api):
+def test_box_without_password_is_refused_and_unknown_box_not_found(box_api):
     response = box_api.post(
         "/v1/storage_boxes",
         json={"name": "x", "location": "fsn1", "storage_box_type": "bx11"},
@@ -234,7 +257,7 @@ def test_passwords_follow_hetzners_policy(box_api):
         )
         assert response.status_code == 422, pw
     assert not box_api.get("/v1/storage_boxes").json()["storage_boxes"]
-    box = new_box(box_api)
+    box = create_box(box_api)
     response = box_api.post(
         f"/v1/storage_boxes/{box['id']}/actions/reset_password",
         json={"password": "weak"},
@@ -242,13 +265,13 @@ def test_passwords_follow_hetzners_policy(box_api):
     assert response.status_code == 422
 
 
-def test_box_access_null_leaves_it(box_api):
-    box = new_box(box_api, access_settings={"ssh_enabled": True})
+def test_null_access_setting_leaves_it_unchanged(box_api):
+    box = create_box(box_api, access_settings={"ssh_enabled": True})
     response = box_api.post(
         f"/v1/storage_boxes/{box['id']}/actions/update_access_settings",
         json={"ssh_enabled": None},
     )
-    box_wait(box_api, response.json()["action"])
+    wait_action(box_api, response.json()["action"], prefix=BOX_ACTIONS_PREFIX)
     assert box_api.get(f"/v1/storage_boxes/{box['id']}").json()["storage_box"][
         "access_settings"
     ]["ssh_enabled"]
@@ -260,7 +283,7 @@ def test_box_access_null_leaves_it(box_api):
             "access_settings": {},
         },
     )
-    box_wait(box_api, response.json()["action"])
+    wait_action(box_api, response.json()["action"], prefix=BOX_ACTIONS_PREFIX)
     user = box_api.get(f"/v1/storage_boxes/{box['id']}/subaccounts").json()[
         "subaccounts"
     ][0]["username"]
@@ -270,8 +293,8 @@ def test_box_access_null_leaves_it(box_api):
     assert [a["username"] for a in found] == [user]  # the default name is the username
 
 
-def test_storage_box_rules(box_api):
-    box = new_box(box_api)
+def test_box_follows_hetzners_rules_for_names_actions_and_locks(box_api):
+    box = create_box(box_api)
     url = f"/v1/storage_boxes/{box['id']}/subaccounts"
     body = {
         "password": "Secret-Pass-123",
@@ -293,8 +316,8 @@ def test_storage_box_rules(box_api):
     )
 
 
-def test_box_access_settings_on_create(box_api):
-    box = new_box(
+def test_access_settings_are_cleaned_on_create_and_kept_when_not_applied(box_api):
+    box = create_box(
         box_api,
         access_settings={"ssh_enabled": None, "bogus": True, "zfs_enabled": True},
     )
@@ -305,9 +328,8 @@ def test_box_access_settings_on_create(box_api):
         and "bogus" not in acc
     )
     box_api.sh.fail.add("box-access")  # not applied: not reported either
-    with pytest.raises(
-        RuntimeError
-    ):  # the API answers 500 (the test client passes the error on)
+    # the API answers 500 (the test client passes the error on)
+    with pytest.raises(RuntimeError):
         box_api.post(
             f"/v1/storage_boxes/{box['id']}/actions/update_access_settings",
             json={"ssh_enabled": True},
@@ -321,10 +343,10 @@ def test_box_access_settings_on_create(box_api):
     )
 
 
-def test_box_busy_while_rolled_back(box_api):
-    box = new_box(box_api)
+def test_box_is_busy_while_rolled_back(box_api):
+    box = create_box(box_api)
     response = box_api.post(f"/v1/storage_boxes/{box['id']}/snapshots", json={})
-    box_wait(box_api, response.json()["action"])
+    wait_action(box_api, response.json()["action"], prefix=BOX_ACTIONS_PREFIX)
     snap = response.json()["snapshot"]
     box_api.lab.state["storage_boxes"][box["id"]]["_busy"] = True  # a rollback runs
     assert (
@@ -337,26 +359,35 @@ def test_box_busy_while_rolled_back(box_api):
         ).status_code
         == 423
     )
-    box_api.lab.state["storage_boxes"][box["id"]].pop("_busy")
-    box_api.lab.state["box_snapshots"][snap["id"]]["_copying"] = (
-        True  # still being taken
-    )
+
+
+def test_snapshot_still_being_copied_blocks_rollback_and_is_removed_on_restart(box_api):
+    box = create_box(box_api)
+    response = box_api.post(f"/v1/storage_boxes/{box['id']}/snapshots", json={})
+    wait_action(box_api, response.json()["action"], prefix=BOX_ACTIONS_PREFIX)
+    snap = response.json()["snapshot"]
+    box_api.lab.state["box_snapshots"][snap["id"]]["_copying"] = True
     response = box_api.post(
         f"/v1/storage_boxes/{box['id']}/actions/rollback_snapshot",
         json={"snapshot": snap["id"]},
     )
     assert response.status_code == 423
-    storagebox.restore(box_api.lab)  # a lab start: the cut-off copy goes
+    storagebox.restore(box_api.lab)  # a lab start: the cut-off copy is removed
     assert snap["id"] not in box_api.lab.state["box_snapshots"]
 
 
 def test_rollback_frees_the_box(box_api):
-    box = new_box(box_api)
+    box = create_box(box_api)
     response = box_api.post(f"/v1/storage_boxes/{box['id']}/snapshots", json={})
-    box_wait(box_api, response.json()["action"])
+    wait_action(box_api, response.json()["action"], prefix=BOX_ACTIONS_PREFIX)
     response = box_api.post(
         f"/v1/storage_boxes/{box['id']}/actions/rollback_snapshot",
         json={"snapshot": response.json()["snapshot"]["id"]},
     )
-    assert box_wait(box_api, response.json()["action"])["status"] == "success"
+    assert (
+        wait_action(box_api, response.json()["action"], prefix=BOX_ACTIONS_PREFIX)[
+            "status"
+        ]
+        == "success"
+    )
     assert not box_api.lab.state["storage_boxes"][box["id"]].get("_busy")

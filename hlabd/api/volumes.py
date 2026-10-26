@@ -10,84 +10,79 @@ from fastapi.responses import Response
 
 from ..errors import (
     ApiError,
+    check_unique_name,
     invalid,
     limit_exceeded,
     locked,
-    not_found,
-    unique_name,
-    unsupported,
+    protected,
 )
-from ..lab import now
+from ..lab import SERVER_LOCKED, VOLUME_SECONDS, Lab, Plan, now
+from ..records import Server, Volume
+from ..state import server_by_id
 from . import hetzner
-from .catalogue import resolve
-from .web import filtered, paginate, read_body
+from .catalogue import catalogue_name
+from .web import (
+    change_delete_protection,
+    filtered,
+    paginate,
+    read_body,
+    ref_id,
+    update_resource,
+)
 
 MIN_GB, MAX_GB = 10, 10240
-PER_SERVER = 16
+VOLUMES_PER_SERVER = 16
+VOLUME_BUSY = "the volume is busy"
 
 
-def volume_json(lab, volume: dict) -> dict:
-    """Return a volume as the API shows it."""
-    return {
-        "id": volume["id"],
-        "name": volume["name"],
-        "created": volume["created"],
-        "server": volume.get("server"),
-        "location": hetzner.location_json(lab.cfg, volume["location"]),
-        "size": volume["size"],
-        "linux_device": f"/dev/disk/by-id/scsi-0HC_Volume_{volume['id']}",
-        "protection": volume["protection"],
-        "labels": volume["labels"],
-        "status": volume["status"],
-        "format": volume.get("format"),
-    }
-
-
-def volume_or_404(lab, vid: int) -> dict:
-    """Return a volume, or raise not_found."""
-    volume = lab.state["volumes"].get(vid)
-    if not volume:
-        raise not_found("volume")
-    return volume
-
-
-def check_attach(lab, volume: dict, server: dict) -> None:
+def check_attach(lab: Lab, volume: Volume, server: Server) -> None:
     """Check that the volume can be attached to the server (Hetzner's errors)."""
     if volume.get("server"):
         raise ApiError(
             422, "volume_already_attached", "the volume is attached to another server"
         )
-    if volume["location"] != server["location"]:
+    check_room(lab, volume["location"], server)
+
+
+def check_room(lab: Lab, location: str, server: Server) -> None:
+    """Check that a volume in a location fits the server: same location, room left."""
+    if location != server["location"]:
         raise ApiError(
             422, "location_mismatch", "server and volume must be in the same location"
         )
-    if (
-        sum(1 for x in lab.state["volumes"].values() if x.get("server") == server["id"])
-        >= PER_SERVER
-    ):
+    with lab.state.lock:
+        attached = sum(
+            1 for x in lab.state["volumes"].values() if x.get("server") == server["id"]
+        )
+    if attached >= VOLUMES_PER_SERVER:
         raise limit_exceeded(
-            f"at most {PER_SERVER} volumes per server", "volumes_per_server"
+            f"at most {VOLUMES_PER_SERVER} volumes per server", "volumes_per_server"
         )
 
 
-def attach(lab, volume: dict, server: dict, automount: bool) -> None:
-    """Record an attachment in the state.
+def record_attachment(volume: Volume, server: Server, automount: bool) -> None:
+    """Record an attachment in the state, checked already (`check_attach`).
 
-    The disk itself follows (hot-plug or next boot).
+    The disk itself follows (hot-plug or next boot). The caller holds the state's lock.
     """
-    check_attach(lab, volume, server)
     volume["server"], volume["automount"] = server["id"], bool(automount)
 
 
-def alive(lab, server: dict | None) -> bool:
-    """Return whether there is a server and its VM runs."""
-    return bool(server) and lab.fabric.vm_alive(server)
+def vm_running(lab: Lab, server: Server | None) -> bool:
+    """Return whether there is a server and its VM runs.
+
+    This asks the VM through a script (`hlab.sh vm-alive`), so steps call it through
+    `lab.blocking`.
+    """
+    return server is not None and lab.fabric.vm_alive(server)
 
 
-def create_volume(lab, body: dict) -> dict:
+def create_volume(lab: Lab, body: dict) -> dict:
     """Create a volume, attached to a server if the body names one.
 
-    The disk is made by the create action in the background.
+    The disk is made by the create action in the background. A named server is locked
+    until then, as by an attach (423 if an action runs on it): the disk is hot-plugged
+    into its VM at the end.
     """
     state = lab.state
     size = int(body["size"])
@@ -95,17 +90,25 @@ def create_volume(lab, body: dict) -> dict:
         raise invalid(f"must be between {MIN_GB} and {MAX_GB}", "size")
     if body.get("format") not in (None, "ext4", "xfs"):
         raise invalid("must be ext4 or xfs", "format")
-    server = lab.server(int(body["server"])) if body.get("server") else None
+    server = None
+    if body.get("server"):
+        server = lab.server_or_404(ref_id(body["server"], "server"))
     if not (body.get("location") or server):
         raise invalid("location or server is required", "location")
-    location = resolve(lab, "location", body.get("location") or server["location"])
+    location = catalogue_name(
+        lab,
+        "location",
+        body.get("location") or (server["location"] if server else None),
+    )
     with state.lock:
-        unique_name(state["volumes"].values(), body["name"], None, "volume")
+        check_unique_name(state["volumes"].values(), body["name"], None, "volume")
         # checked before the volume exists: a refused request leaves nothing behind
         if server:
-            check_attach(lab, {"server": None, "location": location}, server)
+            check_room(lab, location, server)  # a new volume is attached to nothing
+            # the last check: nothing is refused after the server is claimed
+            lab.claim(server, "locked", SERVER_LOCKED)
         vid = state.new_id("volumes")
-        volume = {
+        volume: Volume = {
             "id": vid,
             "name": body["name"],
             "size": size,
@@ -119,7 +122,7 @@ def create_volume(lab, body: dict) -> dict:
         }
         state["volumes"][vid] = volume
         if server:
-            attach(lab, volume, server, body.get("automount", False))
+            record_attachment(volume, server, body.get("automount", False))
         state.save()
     action = lab.new_action("create_volume", [(vid, "volume")])
     next_actions = (
@@ -137,68 +140,92 @@ def create_volume(lab, body: dict) -> dict:
                 state["volumes"].pop(vid, None)
                 state.save()
             raise
-        # deleted meanwhile: its disk goes too
+        # The volume left the state while its disk was made: its disk goes too. The API
+        # refuses to delete a volume that is still being created, and a lab reset
+        # cancels this action first, so this is only a guard. It checks identity, not
+        # the ID: is this very record still in the state?
         if state["volumes"].get(vid) is not volume:
             await lab.blocking(lab.fabric.delete_volume, volume)
             return
-        volume["status"] = "available"
-        if await lab.blocking(alive, lab, server):
+        with state.lock:
+            volume["status"] = "available"
+            state.save()
+        if await lab.blocking(vm_running, lab, server):
             await lab.blocking(lab.fabric.attach_volume, server, volume)
-        for n in next_actions:
-            lab.finish(n)
-        await lab.sleep(2)
+        for next_action in next_actions:
+            lab.finish(next_action)
+        await lab.sleep(VOLUME_SECONDS)
 
-    lab.run_action(action, steps, next_actions=next_actions)
+    holding = [(server, "locked")] if server else []
+    lab.run_action(action, steps, next_actions=next_actions, holding=holding)
     return {
-        "volume": volume_json(lab, volume),
+        "volume": hetzner.volume_json(lab, volume),
         "action": action,
         "next_actions": next_actions,
     }
 
 
-def delete_volume(lab, vid: int) -> None:
-    """Delete a volume that is unprotected, detached and not busy."""
-    volume = volume_or_404(lab, vid)
-    if volume["protection"]["delete"]:
-        raise ApiError(423, "protected", "volume is delete protected")
-    if volume.get("server"):
-        raise ApiError(422, "volume_attached", "detach the volume first")
-    if volume.get("_busy") or volume["status"] != "available":
-        raise locked("the volume is busy")
-    lab.fabric.delete_volume(volume)
-    del lab.state["volumes"][vid]
-    lab.state.save()
+def update_volume(lab: Lab, vid: int, body: dict) -> dict:
+    """Change a volume's name or labels."""
+    volume = lab.get_or_404("volumes", vid, "volume")
+    update_resource(lab, "volumes", volume, body, ("name", "labels"), "volume")
+    return {"volume": hetzner.volume_json(lab, volume)}
+
+
+def delete_volume(lab: Lab, vid: int) -> None:
+    """Delete a volume that is unprotected, detached and not busy.
+
+    The volume is claimed with the checks, so no action starts on it while its disk is
+    deleted; it stays claimed once deleted, and is free again if the disk stays.
+    """
+    volume = lab.get_or_404("volumes", vid, "volume")
+    with lab.state.lock:
+        if volume["protection"]["delete"]:
+            raise protected("volume is delete protected")
+        if volume.get("server"):
+            raise ApiError(422, "volume_attached", "detach the volume first")
+        if volume["status"] != "available":
+            raise locked(VOLUME_BUSY)
+        lab.claim(volume, "_busy", VOLUME_BUSY)
+    try:
+        lab.fabric.delete_volume(volume)
+    except BaseException:
+        lab.release(volume, "_busy")
+        raise
+    with lab.state.lock:
+        del lab.state["volumes"][vid]
+        lab.state.save()
 
 
 # --- volume actions -------------------------------------------------------------------
-# Each action below checks the request and returns (action, steps, server); the steps
-# run in the background while the volume is busy and its server (if any) locked.
+# Each action below checks the request and returns its plan (lab.Plan). The steps run
+# in the background while the volume is busy and its server (if any) is locked
+# (lab.act).
 
 
-def attach_volume(lab, volume: dict, body: dict):
-    """Check an attach and return the action, its steps and the server.
+def require_available(volume: Volume) -> None:
+    """Refuse an action on a volume whose disk is still being made (423)."""
+    if volume["status"] != "available":
+        raise locked(VOLUME_BUSY)
 
-    A running server gets the disk hot-plugged; if that fails, the volume is detached
+
+def attach(lab: Lab, volume: Volume, body: dict) -> Plan:
+    """Plan an attach to a server.
+
+    The attachment is recorded when the action runs (the server is locked then); a
+    running server gets the disk hot-plugged, and if that fails, the volume is detached
     again.
     """
-    sid = body.get("server")
-    if isinstance(sid, bool) or not isinstance(sid, int):
-        raise invalid("server must be the ID of a server", "server")
-    server = lab.server(sid)
-    lab.reserve(server)  # 423 while the server has an action running
-    try:
-        with lab.state.lock:
-            attach(lab, volume, server, body.get("automount", False))
-            lab.state.save()
-    except BaseException:
-        lab.release(server)
-        raise
-    action = lab.new_action(
-        "attach_volume", [(volume["id"], "volume"), (server["id"], "server")]
-    )
+    require_available(volume)
+    server = lab.server_or_404(ref_id(body.get("server"), "server"))
+    check_attach(lab, volume, server)
+    automount = body.get("automount", False)
 
     async def steps():
-        if await lab.blocking(alive, lab, server):
+        with lab.state.lock:
+            record_attachment(volume, server, automount)
+            lab.state.save()
+        if await lab.blocking(vm_running, lab, server):
             try:
                 await lab.blocking(lab.fabric.attach_volume, server, volume)
             except Exception:  # not attached: the volume says so
@@ -206,39 +233,33 @@ def attach_volume(lab, volume: dict, body: dict):
                     volume["server"], volume["automount"] = None, False
                     lab.state.save()
                 raise
-        await lab.sleep(2)
+        await lab.sleep(VOLUME_SECONDS)
 
-    return action, steps, server
+    return Plan(steps, server=server, resources=[(server["id"], "server")])
 
 
-def detach_volume(lab, volume: dict, body: dict):
-    """Check a detach and return the action, its steps and the server (if any)."""
+def detach(lab: Lab, volume: Volume, body: dict) -> Plan:
+    """Plan a detach from the volume's server."""
+    require_available(volume)
     if not volume.get("server"):
         raise invalid("the volume is not attached", "volume")
-    server = lab.state["servers"].get(volume["server"])
-    if server:
-        lab.reserve(server)
-    resources = [(volume["id"], "volume")] + (
-        [(server["id"], "server")] if server else []
-    )
-    action = lab.new_action("detach_volume", resources)
+    server = server_by_id(lab.state, volume["server"])
 
     async def steps():
-        if await lab.blocking(alive, lab, server):
+        if await lab.blocking(vm_running, lab, server):
             await lab.blocking(lab.fabric.detach_volume, server, volume)
         with lab.state.lock:
             volume["server"], volume["automount"] = None, False
             lab.state.save()
-        await lab.sleep(2)
+        await lab.sleep(VOLUME_SECONDS)
 
-    return action, steps, server
+    resources = [(server["id"], "server")] if server else []
+    return Plan(steps, server=server, resources=resources)
 
 
-def resize_volume(lab, volume: dict, body: dict):
-    """Check a resize and return the action, its steps and the server (if any).
-
-    A volume can only grow.
-    """
+def resize(lab: Lab, volume: Volume, body: dict) -> Plan:
+    """Plan a resize; a volume can only grow."""
+    require_available(volume)
     size = body.get("size")
     if (
         isinstance(size, bool)
@@ -249,93 +270,68 @@ def resize_volume(lab, volume: dict, body: dict):
         raise invalid(
             f"must be larger than {volume['size']} and at most {MAX_GB}", "size"
         )
-    server = lab.state["servers"].get(volume.get("server"))
-    if server:
-        lab.reserve(server)
-    action = lab.new_action("resize_volume", [(volume["id"], "volume")])
+    server = server_by_id(lab.state, volume["server"])
 
     async def steps():
-        live = await lab.blocking(alive, lab, server)
+        live = await lab.blocking(vm_running, lab, server)
         await lab.blocking(
             lab.fabric.resize_volume, volume, size, server if live else None
         )
-        volume["size"] = size
-        lab.state.save()
-        await lab.sleep(2)
+        with lab.state.lock:
+            volume["size"] = size
+            lab.state.save()
+        await lab.sleep(VOLUME_SECONDS)
 
-    return action, steps, server
-
-
-ACTIONS = {"attach": attach_volume, "detach": detach_volume, "resize": resize_volume}
+    return Plan(steps, server=server)
 
 
-def volume_action(lab, vid: int, cmd: str, body: dict) -> dict:
-    """Run a volume action; one at a time per volume, only once it is available."""
-    state = lab.state
-    volume = volume_or_404(lab, vid)
-    if cmd == "change_protection":  # nothing to wait for
-        volume["protection"]["delete"] = bool(
-            body.get("delete", volume["protection"]["delete"])
-        )
-        state.save()
-        return {"action": lab.done(cmd, [(vid, "volume")])}
-    if cmd not in ACTIONS:
-        raise unsupported(f"the action {cmd!r}")
-    with state.lock:  # one action of a volume at a time, and only once it exists
-        if volume["status"] != "available" or volume.get("_busy"):
-            raise locked("the volume is busy")
-        volume["_busy"] = True
-    try:
-        action, steps, server = ACTIONS[cmd](lab, volume, body)
-    except BaseException:
-        volume.pop("_busy", None)
-        raise
+# the volume actions: Hetzner's name of the action and the function that plans it
+VOLUME_ACTIONS = {
+    "change_protection": ("change_protection", change_delete_protection),
+    "attach": ("attach_volume", attach),
+    "detach": ("detach_volume", detach),
+    "resize": ("resize_volume", resize),
+}
 
-    async def busy():
-        try:
-            await steps()
-        finally:
-            volume.pop("_busy", None)
 
-    lab.run_action(action, busy, server)  # the server is unlocked when the steps end
-    return {"action": action}
+def run_volume_action(lab: Lab, vid: int, cmd: str, body: dict) -> dict:
+    """Run a volume action: one at a time per volume (423 otherwise)."""
+    volume = lab.get_or_404("volumes", vid, "volume")
+    return lab.act(VOLUME_ACTIONS, cmd, volume, "volume", body, "_busy", VOLUME_BUSY)
 
 
 # --- routes ---------------------------------------------------------------------------
 
 
-def add_routes(app: FastAPI, lab) -> None:
+def add_routes(app: FastAPI, lab: Lab) -> None:
     """Add the volume routes to the app."""
     state = lab.state
 
     @app.get("/v1/volumes")
-    def volumes(request: Request):
-        items = filtered(
-            request,
-            list(state["volumes"].values()),
-            {"status": lambda v, x: v["status"] in x.split(",")},
-        )
-        return paginate(request, [volume_json(lab, v) for v in items], "volumes")
+    def volume_list(request: Request):
+        with state.lock:
+            items = filtered(
+                request,
+                list(state["volumes"].values()),
+                {"status": lambda volume, value: volume["status"] in value.split(",")},
+            )
+            return paginate(
+                request, [hetzner.volume_json(lab, v) for v in items], "volumes"
+            )
 
     @app.post("/v1/volumes", status_code=201)
     async def volume_create(request: Request):
-        return create_volume(lab, await read_body(request))
+        return await lab.blocking(create_volume, lab, await read_body(request))
 
     @app.get("/v1/volumes/{vid}")
     def volume_get(vid: int):
-        return {"volume": volume_json(lab, volume_or_404(lab, vid))}
+        return {
+            "volume": hetzner.volume_json(lab, lab.get_or_404("volumes", vid, "volume"))
+        }
 
     @app.put("/v1/volumes/{vid}")
     async def volume_update(vid: int, request: Request):
-        volume = volume_or_404(lab, vid)
-        body = await read_body(request)
-        with state.lock:
-            unique_name(state["volumes"].values(), body.get("name"), volume, "volume")
-            for k in ("name", "labels"):
-                if k in body:
-                    volume[k] = body[k] if k != "labels" else (body[k] or {})
-            state.save()
-        return {"volume": volume_json(lab, volume)}
+        return await lab.blocking(update_volume, lab, vid, await read_body(request))
 
     @app.delete("/v1/volumes/{vid}", status_code=204)
     def volume_delete(vid: int):
@@ -343,5 +339,7 @@ def add_routes(app: FastAPI, lab) -> None:
         return Response(status_code=204)
 
     @app.post("/v1/volumes/{vid}/actions/{cmd}", status_code=201)
-    async def volume_action_route(vid: int, cmd: str, request: Request):
-        return volume_action(lab, vid, cmd, await read_body(request))
+    async def volume_action(vid: int, cmd: str, request: Request):
+        return await lab.blocking(
+            run_volume_action, lab, vid, cmd, await read_body(request)
+        )

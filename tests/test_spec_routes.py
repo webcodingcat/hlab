@@ -6,22 +6,29 @@ Every route exists in the specification and answers with the specified success s
 import re
 
 import pytest
-import spec_check
 
-from hlabd.api import storagebox
+from hlabd.api import spec, storagebox
 from hlabd.api.app import create_app
 
 
 def spec_codes(which: str) -> dict[tuple[str, str], set[str]]:
+    """Return the success statuses of every operation of a specification.
+
+    The key is (method, path) with every path parameter written as {}.
+    """
     out = {}
-    for method, rx, template, responses in spec_check._routes(which):
+    for method, _, template, operation in spec.load(f"{which}.json").ops:
         out[(method, re.sub(r"\{[^}]+\}", "{}", template))] = {
-            c for c in responses if c.startswith("2")
+            code for code in operation.get("responses", {}) if code.startswith("2")
         }
     return out
 
 
 def lab_routes(app) -> list[tuple[str, str, int]]:
+    """Return (method, path, success status) of the app's /v1 routes.
+
+    Paths are written like spec_codes() writes them, without the /v1 prefix.
+    """
     out = []
     for r in app.routes:
         if not getattr(r, "path", "").startswith("/v1/"):
@@ -33,17 +40,12 @@ def lab_routes(app) -> list[tuple[str, str, int]]:
     return out
 
 
-@pytest.mark.skipif(not spec_check.available(), reason="specification not in the image")
 @pytest.mark.parametrize("which", ["cloud", "hetzner"])
 def test_routes_match_the_specification(lab, which):
     app = create_app(lab) if which == "cloud" else storagebox.create_app(lab)
     codes = spec_codes(which)
-    generic = {
-        "/{}/actions",
-        "/{}/actions/{}",
-        "/{}/{}/actions/{}",
-        "/{}/{}/actions",
-    }  # the lab's catch-all action routes
+    # the lab's catch-all action routes
+    generic = {"/{}/actions", "/{}/actions/{}", "/{}/{}/actions/{}", "/{}/{}/actions"}
     problems = []
     for method, path, status in lab_routes(app):
         if path in generic:
@@ -51,8 +53,8 @@ def test_routes_match_the_specification(lab, which):
         want = codes.get((method, path))
         if want is None and path.endswith("/actions/{}") and method == "POST":
             # one lab route for all actions of a resource: every specified action must
-            # answer like it, apart from the one action the lab answers itself with 200
-            # (update_records of an RRSet)
+            # answer like it; update_records of an RRSet is left out: the spec's DNS
+            # action answers 200, and the lab offers no DNS
             prefix = path[: -len("{}")]
             actions = {
                 p: c

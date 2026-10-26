@@ -5,15 +5,18 @@ Part of Fabric (see __init__.py).
 
 from pathlib import Path
 
+from ..records import Server, Volume
+from .base import FabricBase
 
-class Volumes:
+
+class Volumes(FabricBase):
     """Fabric mixin for volume disks."""
 
-    def volume_file(self, volume: dict) -> Path:
+    def volume_file(self, volume: Volume) -> Path:
         """Return the path of a volume's raw disk file."""
         return self.root / "volumes" / f"{volume['id']}.raw"
 
-    def create_volume(self, volume: dict) -> None:
+    def create_volume(self, volume: Volume) -> None:
         """Create the disk of a new volume, formatted if asked.
 
         If creating it fails, no file stays.
@@ -27,15 +30,15 @@ class Volumes:
                 str(volume["size"]),
                 volume.get("format") or "",
             )
-        except Exception:
+        except Exception:  # whatever failed: no half-made file stays, then re-raise
             path.unlink(missing_ok=True)
             raise
 
-    def delete_volume(self, volume: dict) -> None:
+    def delete_volume(self, volume: Volume) -> None:
         """Delete a volume's disk file."""
         self.volume_file(volume).unlink(missing_ok=True)
 
-    def attach_volume(self, server: dict, volume: dict) -> None:
+    def attach_volume(self, server: Server, volume: Volume) -> None:
         """Hot-plug a volume into the running VM.
 
         A VM that starts gets its volumes at boot.
@@ -47,11 +50,11 @@ class Volumes:
             str(self.volume_file(volume)),
         )
 
-    def detach_volume(self, server: dict, volume: dict) -> None:
+    def detach_volume(self, server: Server, volume: Volume) -> None:
         """Hot-unplug a volume from the running VM."""
         self.sh.run("volume-detach", str(self.vm_dir(server)), str(volume["id"]))
 
-    def resize_volume(self, volume: dict, size: int, server: dict | None) -> None:
+    def resize_volume(self, volume: Volume, size: int, server: Server | None) -> None:
         """Grow a volume's disk.
 
         A running VM it is attached to sees the new size at once.

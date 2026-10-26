@@ -1,9 +1,17 @@
 """Cloud firewalls: rules, limits, label selectors, applying and removing."""
 
 import pytest
-from conftest import ANY, create_server, ruleset, wait_action
+from conftest import create_server, wait_action
 
-from hlabd.api.firewalls import RuleError, parse_port, validate_rules
+from hlabd.api.firewalls import check_port, checked_rules
+from hlabd.errors import ApiError
+
+ANY = ["0.0.0.0/0", "::/0"]
+
+
+def ruleset(api) -> str:
+    """Return the firewall ruleset the lab last wrote."""
+    return (api.lab.fabric.root / "firewall.nft").read_text()
 
 
 @pytest.mark.parametrize(
@@ -42,20 +50,19 @@ from hlabd.api.firewalls import RuleError, parse_port, validate_rules
         ),
     ],
 )
-def test_rule_validation(api, rule, message):
+def test_invalid_rules_are_refused_with_a_message(api, rule, message):
     response = api.post("/v1/firewalls", json={"name": "fw", "rules": [rule]})
     assert response.status_code == 422
     assert message in response.json()["error"]["message"]
 
 
-def test_parse_port():
-    assert parse_port("80") == "80"
-    assert parse_port("80-85") == "80-85"
-    assert parse_port("any") == "1-65535"
-    with pytest.raises(RuleError):
-        parse_port("x")
+def test_ports_are_numbers_ranges_or_any():
+    for port in ("80", "80-85", "any"):
+        check_port(port)
+    with pytest.raises(ApiError):
+        check_port("x")
     assert (
-        validate_rules([{"direction": "in", "protocol": "gre", "source_ips": ANY}])[0][
+        checked_rules([{"direction": "in", "protocol": "gre", "source_ips": ANY}])[0][
             "port"
         ]
         is None
@@ -67,7 +74,7 @@ def test_server_without_firewall_is_open(api):
     assert "jump in_" not in ruleset(api)
 
 
-def test_inbound_and_outbound_rules(api):
+def test_inbound_and_outbound_rules_become_nft_chains(api):
     server = create_server(api, "web", labels={"role": "web"})["server"]
     rules = [
         {"direction": "in", "protocol": "tcp", "port": "22", "source_ips": ANY},
@@ -111,7 +118,7 @@ def test_inbound_and_outbound_rules(api):
         == "applied"
     )
 
-    # the label goes, the firewall no longer applies
+    # the label is removed, the firewall no longer applies
     api.put(f"/v1/servers/{sid}", json={"labels": {}})
     assert f"jump in_{sid}" not in ruleset(api)
 
@@ -159,7 +166,7 @@ def test_rules_of_several_firewalls_add_up(api):
     assert rs.count(f"chain in_{server['id']} ") == 1
 
 
-def test_firewall_limits_and_errors(api):
+def test_firewall_limits_and_errors_are_hetzners(api):
     server = create_server(api, "lim")["server"]
     target = [{"type": "server", "server": {"id": server["id"]}}]
     for i in range(5):
@@ -188,7 +195,7 @@ def test_firewall_limits_and_errors(api):
     assert response.json()["error"]["code"] == "firewall_already_applied"
 
 
-def test_server_create_with_firewall(api):
+def test_server_created_with_a_firewall_gets_and_releases_it(api):
     fid = api.post("/v1/firewalls", json={"name": "fw"}).json()["firewall"]["id"]
     server = create_server(api, "fwd", firewalls=[{"firewall": fid}])["server"]
     assert f"jump in_{server['id']}" in ruleset(api)
@@ -197,7 +204,7 @@ def test_server_create_with_firewall(api):
     assert api.get(f"/v1/firewalls/{fid}").json()["firewall"]["applied_to"] == []
 
 
-def test_firewall_label_selector(api):
+def test_firewall_applies_to_servers_by_label_selector(api):
     server = create_server(api, "w", labels={"cluster": "x"})["server"]
     out = api.post(
         "/v1/firewalls",
@@ -219,7 +226,7 @@ def test_firewall_label_selector(api):
     )
 
 
-def test_firewall_remove_with_null_fields(api):
+def test_firewall_removal_accepts_null_fields(api):
     sel = {"type": "label_selector", "label_selector": {"selector": "cluster=x"}}
     fid = api.post("/v1/firewalls", json={"name": "fw", "apply_to": [sel]}).json()[
         "firewall"
@@ -310,3 +317,33 @@ def test_remove_firewall_names_its_servers(api):
         json={"remove_from": [{"type": "server", "server": {"id": server["id"]}}]},
     ).json()["actions"]
     assert {"id": server["id"], "type": "server"} in acts[0]["resources"]
+
+
+def test_server_reached_through_a_label_selector_cannot_be_removed_by_hand(api):
+    server = create_server(api, "a", labels={"web": "1"})["server"]
+    fw = api.post(
+        "/v1/firewalls",
+        json={
+            "name": "fw",
+            "apply_to": [
+                {"type": "label_selector", "label_selector": {"selector": "web=1"}}
+            ],
+        },
+    ).json()["firewall"]
+    response = api.post(
+        f"/v1/firewalls/{fw['id']}/actions/remove_from_resources",
+        json={"remove_from": [{"type": "server", "server": {"id": server["id"]}}]},
+    )
+    assert response.json()["error"]["code"] == "firewall_managed_by_label_selector"
+
+
+def test_firewall_cannot_name_the_same_server_twice(api):
+    server = create_server(api, "a")["server"]
+    response = api.post(
+        "/v1/firewalls",
+        json={
+            "name": "twice",
+            "apply_to": [{"type": "server", "server": {"id": server["id"]}}] * 2,
+        },
+    )
+    assert response.json()["error"]["code"] == "server_already_added"

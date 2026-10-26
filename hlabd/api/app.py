@@ -20,12 +20,10 @@ def create_app(lab: Lab) -> FastAPI:
         docs_url="/_docs",
         openapi_url="/_openapi.json",
     )
-    install(
-        app, lab, "cloud.json", "/v1"
-    )  # auth, rate limit, injected faults, spec checks, error answers
-    actions.add_routes(
-        app, lab
-    )  # first: /v1/<kind>/actions must not be taken for /v1/<kind>/<id>
+    # auth, rate limit, injected faults, spec checks, error answers
+    install(app, lab, "cloud.json", "/v1")
+    # first: /v1/<kind>/actions must not be taken for /v1/<kind>/<id>
+    actions.add_routes(app, lab)
     for module in (catalogue, servers, networks, ips, firewalls, volumes, control):
         module.add_routes(app, lab)
     return app

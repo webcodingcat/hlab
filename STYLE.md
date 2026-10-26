@@ -6,6 +6,7 @@ Official standards first, checked by `bin/hlab lint` (also part of `bin/hlab tes
 | Files | Standard | Tool |
 |---|---|---|
 | Python | [PEP 8](https://peps.python.org/pep-0008/), [PEP 257](https://peps.python.org/pep-0257/) | `ruff format`, `ruff check` (`pyproject.toml`) |
+| Python types | [typing](https://typing.python.org/) | `mypy hlabd` (`pyproject.toml`) |
 | Bash | [Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html) | `shfmt -i 2 -ci -bn`, `shellcheck` |
 | PowerShell | [PowerShell Practice and Style](https://poshcode.gitbook.io/powershell-practice-and-style/), approved verbs | by review |
 | Terraform | [OpenTofu/Terraform style conventions](https://developer.hashicorp.com/terraform/language/style) | `tofu fmt` |
@@ -20,11 +21,22 @@ Official standards first, checked by `bin/hlab lint` (also part of `bin/hlab tes
   (`cfg`, `ip`, `cmd`, IDs like `sid`) are fine.
 - One job per function; no `name()` that only calls `_name()`.
 - Comments and docstrings say why (Hetzner's behaviour, caveats); the code says
-  what.
+  what. Docstrings and shell function headers are sentences; other comments
+  (Python and shell) may be short lowercase fragments (a deliberate deviation
+  from PEP 8), one style per comment.
+- Wrappers (`bin/`): functions may read the script's read-only constants
+  (image names, the repository path) instead of taking them as parameters, in
+  Bash and PowerShell alike; no `SupportsShouldProcess` in this developer tool.
 - Layout of `hlabd/`: `api/` decides (HTTP, checks, state, actions) and never
   runs scripts; `fabric/` carries out and knows no HTTP; `lab.py` is the core.
   API modules are module-level functions taking `lab` first, with thin routes;
-  actions are tables of small functions; errors come from `errors.py`; lookups
-  are `<thing>_or_404`, JSON shapes `<thing>_json`.
+  every resource's actions are a table run by `lab.act()`, except firewalls
+  (DEVELOPING.md); errors come from `errors.py`; lookups go through
+  `lab.get_or_404()` or a `<thing>_or_404()` helper; JSON shapes are
+  `<thing>_json(lab, thing)`.
+- Types where they help reading: `lab: Lab`, `state: State`, and the records of
+  `records.py` (`server: Server`, `nic: Nic`, ...), so mypy catches a mistyped field;
+  code that treats every kind alike takes `AnyRecord`. Annotating everything is not
+  the goal.
 - Tests: one file per feature; test names are sentences; a comment notes where
   a test checks Hetzner's behaviour.

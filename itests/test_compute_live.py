@@ -1,16 +1,19 @@
-"""Live tests of what surrounds a server.
+"""Live tests of servers and what surrounds them.
 
-Boot like Hetzner, primary IPs, rebuild, volumes, routes, password reset, other system
-images. They bring their own servers (x*) and leave a, b and c alone.
+Boot like Hetzner, primary IPs, rebuild, volumes, password reset, other system
+images: these bring their own servers (x*) and leave a, b and c alone. The power tests
+at the end power b off, reset a and delete c; conftest.py runs them after all others.
 """
 
+import subprocess
 import time
 
-from livelab import Lab, ping, probe
+import pytest
+from livelab import A_PRIV, ALICE6, B6, B_PRIV, LiveLab, ping, probe
 
 
-def test_boots_through_hetzners_datasource(lab: Lab):
-    out = lab.sh(
+def test_server_boots_through_hetzners_datasource(lab: LiveLab):
+    out = lab.check_output(
         "a",
         "cat /run/cloud-init/cloud-id; "
         "cat /sys/class/dmi/id/sys_vendor /sys/class/dmi/id/product_serial;"
@@ -23,21 +26,23 @@ def test_boots_through_hetzners_datasource(lab: Lab):
         and serial == str(lab.server("a")["id"])
     )
     assert "eth0" in link
-    assert lab.sh("a", "cat /sys/class/net/eth0/mtu") == "1500"
+    assert lab.check_output("a", "cat /sys/class/net/eth0/mtu") == "1500"
     assert (
-        lab.sh("a", "cat /sys/class/net/$(ip -br a | awk '/^en/ {print $1; exit}')/mtu")
+        lab.check_output(
+            "a", "cat /sys/class/net/$(ip -br a | awk '/^en/ {print $1; exit}')/mtu"
+        )
         == "1450"
     )
     # metadata over IPv6 link-local, as cloud-init tries first
     assert (
-        lab.sh(
+        lab.check_output(
             "a", "curl -s -g http://[fe80::a9fe:a9fe%eth0]/hetzner/v1/metadata/hostname"
         )
         == "a"
     )
 
 
-def test_primary_ip_moves_to_another_server(lab: Lab):
+def test_primary_ip_moves_to_another_server(lab: LiveLab):
     x1, x2 = (
         lab.create("x1"),
         lab.create("x2", public_net={"enable_ipv4": True, "enable_ipv6": False}),
@@ -66,9 +71,8 @@ def test_primary_ip_moves_to_another_server(lab: Lab):
             lab.api("POST", f"/servers/{x2['id']}/actions/poweron")["action"]
         )
         lab.wait_ssh("x2")
-        assert f"{ip['ip']}/32" in lab.sh(
-            "x2", "ip -br a show eth0"
-        )  # DHCP hands out the moved address
+        # DHCP hands out the moved address
+        assert f"{ip['ip']}/32" in lab.check_output("x2", "ip -br a show eth0")
         assert lab.server("x1")["public_net"]["ipv4"] is None
     finally:
         lab.delete("x1")
@@ -78,10 +82,10 @@ def test_primary_ip_moves_to_another_server(lab: Lab):
                 lab.api("DELETE", f"/primary_ips/{p['id']}")
 
 
-def test_rebuild(lab: Lab):
+def test_rebuild_gives_a_fresh_system(lab: LiveLab):
     server = lab.create("x3")
     try:
-        lab.sh("x3", "echo from-x3 > /root/marker; sync")
+        lab.check_output("x3", "echo from-x3 > /root/marker; sync")
         lab.wait_action(
             lab.api(
                 "POST",
@@ -91,12 +95,12 @@ def test_rebuild(lab: Lab):
             timeout=300,
         )
         lab.wait_ssh("x3")
-        assert lab.ssh("x3", "test -e /root/marker").returncode == 1  # a fresh system
+        assert lab.run("x3", "test -e /root/marker").returncode == 1  # a fresh system
     finally:
         lab.delete("x3")
 
 
-def test_volume_automount_hotplug_and_move(lab: Lab):
+def test_volume_automounts_hot_plugs_moves_and_grows(lab: LiveLab):
     x6, x7 = lab.create("x6"), lab.create("x7")
     response = lab.api(
         "POST",
@@ -114,19 +118,19 @@ def test_volume_automount_hotplug_and_move(lab: Lab):
     try:
         path = f"/mnt/HC_Volume_{volume['id']}"
         for _ in range(30):
-            if lab.ssh("x6", f"mountpoint -q {path}").returncode == 0:
+            if lab.run("x6", f"mountpoint -q {path}").returncode == 0:
                 break
             time.sleep(1)
-        assert lab.sh(
+        assert lab.check_output(
             "x6",
             f"ls -l {volume['linux_device']} && "
             f"echo hi > {path}/f && sync && cat {path}/f",
         ).endswith("hi")
-        lab.sh("x6", f"umount {path}")
+        lab.check_output("x6", f"umount {path}")
         lab.wait_action(
             lab.api("POST", f"/volumes/{volume['id']}/actions/detach")["action"]
         )
-        assert lab.ssh("x6", f"test -e {volume['linux_device']}").returncode == 1
+        assert lab.run("x6", f"test -e {volume['linux_device']}").returncode == 1
         lab.wait_action(
             lab.api(
                 "POST",
@@ -135,19 +139,19 @@ def test_volume_automount_hotplug_and_move(lab: Lab):
             )["action"]
         )
         for _ in range(30):
-            if lab.ssh("x7", f"cat {path}/f").stdout.strip() == "hi":
+            if lab.run("x7", f"cat {path}/f").stdout.strip() == "hi":
                 break
             time.sleep(1)
-        assert lab.sh("x7", f"cat {path}/f") == "hi"
+        assert lab.check_output("x7", f"cat {path}/f") == "hi"
         lab.wait_action(
             lab.api("POST", f"/volumes/{volume['id']}/actions/resize", {"size": 20})[
                 "action"
             ]
         )
-        size = lab.sh("x7", f"blockdev --getsize64 {volume['linux_device']}")
+        size = lab.check_output("x7", f"blockdev --getsize64 {volume['linux_device']}")
         assert int(size) == 20 * 2**30
     finally:
-        lab.ssh("x7", f"umount /mnt/HC_Volume_{volume['id']}")
+        lab.run("x7", f"umount /mnt/HC_Volume_{volume['id']}")
         lab.wait_action(
             lab.api("POST", f"/volumes/{volume['id']}/actions/detach")["action"]
         )
@@ -156,57 +160,30 @@ def test_volume_automount_hotplug_and_move(lab: Lab):
         lab.delete("x7")
 
 
-def test_network_route_through_a_server(lab: Lab):
-    net = lab.nets["one"]
-    b_priv = next(
-        p["ip"] for p in lab.server("b")["private_net"] if p["network"] == net
-    )
-    lab.sh("b", "ip addr add 10.100.0.1/32 dev lo")
-    lab.wait_action(
-        lab.api(
-            "POST",
-            f"/networks/{net}/actions/add_route",
-            {"destination": "10.100.0.0/24", "gateway": b_priv},
-        )["action"]
-    )
-    try:
-        iface = lab.sh("a", "ip -br a | awk '/10.0.1.1\\// {print $1}'")
-        lab.sh("a", f"networkctl renew {iface}; sleep 3")  # the route arrives by DHCP
-        assert "10.100.0.0/24 via 10.0.0.1" in lab.sh("a", "ip r")
-        assert ping(lab, "a", "10.100.0.1") is not None
-    finally:
-        lab.api(
-            "POST",
-            f"/networks/{net}/actions/delete_route",
-            {"destination": "10.100.0.0/24", "gateway": b_priv},
-        )
-        lab.ssh("b", "ip addr del 10.100.0.1/32 dev lo")
-
-
-def test_reset_password(lab: Lab):
-    lab.sh(
+def test_reset_password_changes_the_root_password(lab: LiveLab):
+    lab.check_output(
         "a",
         "for i in $(seq 1 120); do "
         "systemctl is-active --quiet qemu-guest-agent && exit 0; sleep 2; "
         "done; exit 1",
         timeout=300,
     )
-    before = lab.sh("a", "grep ^root: /etc/shadow | cut -d: -f2")
+    before = lab.check_output("a", "grep ^root: /etc/shadow | cut -d: -f2")
     response = lab.api(
         "POST", f"/servers/{lab.server('a')['id']}/actions/reset_password"
     )
     lab.wait_action(response["action"])
-    assert lab.sh("a", "grep ^root: /etc/shadow | cut -d: -f2") != before
+    assert lab.check_output("a", "grep ^root: /etc/shadow | cut -d: -f2") != before
 
 
-def test_ubuntu_image(lab: Lab):
+def test_ubuntu_image_boots_and_joins_a_network(lab: LiveLab):
     server = lab.create("x8", image="ubuntu-26.04", networks=[lab.nets["one"]])
     try:
-        assert "Ubuntu 26.04" in lab.sh("x8", "cat /etc/os-release")
-        assert lab.sh("x8", "cat /run/cloud-init/cloud-id") == "hetzner"
+        assert "Ubuntu 26.04" in lab.check_output("x8", "cat /etc/os-release")
+        assert lab.check_output("x8", "cat /run/cloud-init/cloud-id") == "hetzner"
         priv = server["private_net"][0]["ip"]
         for _ in range(30):
-            if priv in lab.ssh("x8", "ip -br a").stdout:
+            if priv in lab.run("x8", "ip -br a").stdout:
                 break
             time.sleep(1)
         assert ping(lab, "x8", "10.0.1.1") is not None
@@ -214,51 +191,83 @@ def test_ubuntu_image(lab: Lab):
         lab.delete("x8")
 
 
-def test_overlapping_networks(lab: Lab):
-    """Check a second network with the range of "one" (allowed on Hetzner).
+# --- power (run last, see conftest.py: these disturb a, b and c) ----------------------
 
-    Its servers get a's and b's private IPs, both networks work side by side and stay
-    apart, and removing the twins leaves a and b alone.
-    """
-    nid = lab.api(
-        "POST",
-        "/networks",
-        {
-            "name": "one-again",
-            "ip_range": "10.0.0.0/16",
-            "subnets": [
-                {
-                    "type": "cloud",
-                    "ip_range": "10.0.1.0/24",
-                    "network_zone": "eu-central",
-                }
-            ],
-        },
-    )["network"]["id"]
-    try:
-        x9, x10 = (
-            lab.create("x9", networks=[nid]),
-            lab.create("x10", networks=[nid], location="nbg1"),
-        )
-        assert [x["private_net"][0]["ip"] for x in (x9, x10)] == [
-            "10.0.1.1",
-            "10.0.1.2",
-        ]
-        for n, ip in (("x9", "10.0.1.1"), ("x10", "10.0.1.2")):
-            for _ in range(30):
-                if f"{ip}/32" in lab.ssh(n, "ip -br a").stdout:
-                    break
-                time.sleep(1)
-            assert f"{ip}/32" in lab.sh(
-                n, "ip -br a"
-            )  # DHCP hands out the same address in both networks
-        lab.start_echo("x9")
-        assert probe(lab, "x10", "tcp", "10.0.1.1") == "x9 tcp 10.0.1.2"
-        assert probe(lab, "b", "tcp", "10.0.1.1") == "a tcp 10.0.1.2"
-    finally:
-        lab.delete("x9")
-        lab.delete("x10")
-        lab.api("DELETE", f"/networks/{nid}")
-    assert (
-        probe(lab, "b", "tcp", "10.0.1.1") == "a tcp 10.0.1.2"
-    )  # a's and b's routes survived the twins
+
+@pytest.mark.disturbs_servers
+def test_poweroff_and_poweron_keep_the_routes(lab: LiveLab):
+    t0 = time.time()
+    lab.server_action("b", "poweroff")
+    assert 8 <= time.time() - t0 < 20
+    assert lab.server("b")["status"] == "off"
+    assert probe(lab, "a", "tcp", B_PRIV) == ""
+    lab.server_action("b", "poweron")
+    assert lab.server("b")["status"] == "running"
+    lab.wait_ssh("b")
+    lab.start_echo("b")
+    # IPv6 route survives the power cycle
+    assert probe(lab, "client:alice", "tcp", B6) == f"b tcp {ALICE6}"
+    assert probe(lab, "a", "tcp", B_PRIV) == f"b tcp {A_PRIV}"
+
+
+@pytest.mark.disturbs_servers
+def test_server_is_locked_while_an_action_runs(lab: LiveLab):
+    sid = lab.server("b")["id"]
+    action = lab.api("POST", f"/servers/{sid}/actions/poweroff")["action"]
+    response = lab.http.post(f"/servers/{sid}/actions/poweron")
+    assert response.status_code == 423
+    lab.wait_action(action)
+    lab.server_action("b", "poweron")
+    lab.wait_ssh("b")
+
+
+@pytest.mark.disturbs_servers
+def test_dead_hardware_keeps_the_server_off(lab: LiveLab):
+    lab.server_action("b", "poweroff")
+    lab.control("POST", "/vm/b/dead")
+    lab.server_action("b", "poweron")
+    assert lab.server("b")["status"] == "off"
+    lab.control("POST", "/vm/b/alive")
+    lab.server_action("b", "poweron")
+    lab.wait_ssh("b")
+
+
+@pytest.mark.disturbs_servers
+def test_shutdown_is_graceful(lab: LiveLab):
+    lab.check_output("b", "cloud-init status --wait >/dev/null; sync")
+    # done once the button is pressed; off follows when the guest is down
+    lab.server_action("b", "shutdown")
+    for _ in range(60):
+        if lab.server("b")["status"] == "off":
+            break
+        time.sleep(1)
+    assert lab.server("b")["status"] == "off"
+    console = subprocess.run(
+        ["sh", "-c", f"tail -40 /hlab/vm/{lab.server('b')['id']}/console.log"],
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert "reboot: Power down" in console or "Power-Off" in console
+    lab.server_action("b", "poweron")
+    lab.wait_ssh("b")
+
+
+@pytest.mark.disturbs_servers
+def test_reset_reboots(lab: LiveLab):
+    boot0 = lab.check_output("a", "cat /proc/sys/kernel/random/boot_id")
+    lab.server_action("a", "reset")
+    lab.wait_ssh("a")
+    assert lab.check_output("a", "cat /proc/sys/kernel/random/boot_id") != boot0
+
+
+@pytest.mark.disturbs_servers
+def test_delete_cleans_up(lab: LiveLab):
+    sid = lab.server("c")["id"]
+    lab.wait_action(lab.api("DELETE", f"/servers/{sid}")["action"])
+    links = subprocess.run(["ip", "-br", "link"], capture_output=True, text=True).stdout
+    routes = subprocess.run(
+        ["ip", "-6", "route"], capture_output=True, text=True
+    ).stdout
+    assert "pub3 " not in links and "prv3x1" not in links
+    assert "2001:db8:3::/64" not in routes
+    assert lab.http.get(f"/servers/{sid}").status_code == 404

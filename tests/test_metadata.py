@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from hlabd.api.metadata import create_metadata_app
 
 
-def test_metadata_for_cloud_init(api):
+def test_metadata_serves_what_cloud_init_reads(api):
     ssh_key = api.post("/v1/ssh_keys", json={"name": "k", "public_key": KEY}).json()[
         "ssh_key"
     ]
@@ -28,9 +28,8 @@ def test_metadata_for_cloud_init(api):
     with TestClient(
         create_metadata_app(api.lab), client=(s2["public_net"]["ipv4"]["ip"], 1)
     ) as client:
-        assert (
-            client.get("/hetzner/v1/userdata").status_code == 204
-        )  # cloud-init would wait for content
+        # cloud-init would wait for content
+        assert client.get("/hetzner/v1/userdata").status_code == 204
 
 
 def test_metadata_lists_cloud_networks_in_both_places(api):
@@ -79,7 +78,7 @@ def test_metadata_by_private_ip_needs_a_single_tap(api):
         assert client.get("/hetzner/v1/metadata").status_code == 404
 
 
-def test_metadata_by_private_ip(api):
+def test_metadata_by_private_ip_counts_only_the_tap_holding_it(api):
     network = create_network(api, "10.0.1.0/24")
     server_a = create_server(api, "a", networks=[network["id"]])["server"]
     create_server(api, "b", networks=[network["id"]])

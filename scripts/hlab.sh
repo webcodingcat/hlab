@@ -10,100 +10,106 @@
 # incoming private tap: networks may overlap like on Hetzner, the same private
 # IP in two networks are two different servers.
 set -euo pipefail
+# set -e also inside $(...)
+shopt -s inherit_errexit
 
-gw=172.31.1.1
-svc=198.18.0.1
-meta=169.254.169.254
-# source of what the container itself sends to VMs (consumers in its namespace
-# too)
-operator=192.0.2.2
-admin=198.18.0.2 # source of `hlab ssh`, exempt from Cloud firewalls
-svc6=2001:db8:fffe::1
-operator6=2001:db8:fffe::2
-admin6=2001:db8:fffe::3
-hetzner_api=198.18.0.3 # api.hetzner.com stand-in (Storage Boxes)
-hetzner_api6=2001:db8:fffe::4
-# where fe80::a9fe:a9fe goes (DNAT): the metadata service only
-meta6=2001:db8:fffe::a9fe
+# The lab's addresses come from hlabd (hlabd/config.py) with every call.
+readonly GATEWAY="${HLAB_GATEWAY:?}"
+# The gateway's IPv6 link-local address, on every tap and client veth.
+readonly GATEWAY6="${HLAB_GATEWAY6:?}"
+readonly SERVICES="${HLAB_SERVICES:?}"
+readonly SERVICES6="${HLAB_SERVICES6:?}"
+readonly SERVICES_NET="${HLAB_SERVICES_NET:?}"
+readonly METADATA="${HLAB_METADATA:?}"
+# Where fe80::a9fe:a9fe goes (DNAT): the metadata service only.
+readonly METADATA6="${HLAB_METADATA6:?}"
+# Source of what the container itself sends to VMs (and of the consumers in its
+# namespace).
+readonly OPERATOR="${HLAB_OPERATOR:?}"
+readonly OPERATOR6="${HLAB_OPERATOR6:?}"
+# Source of `hlab ssh`, exempt from Cloud firewalls.
+readonly ADMIN="${HLAB_ADMIN:?}"
+readonly ADMIN6="${HLAB_ADMIN6:?}"
+# The api.hetzner.com stand-in (Storage Boxes).
+readonly HETZNER_API="${HLAB_HETZNER_API:?}"
+readonly HETZNER_API6="${HLAB_HETZNER_API6:?}"
+# Servers' IPv4 (<net>.0/24), Floating IPv4 (<net>.0/24), "Internet" clients
+# (<net>.0/24) and the IPv6 prefix of everything (<prefix>::/32).
+readonly PUBLIC_NET="${HLAB_PUBLIC_NET:?}"
+readonly FLOATING_NET="${HLAB_FLOATING_NET:?}"
+readonly CLIENT_NET="${HLAB_CLIENT_NET:?}"
+readonly IPV6_PREFIX="${HLAB_IPV6_PREFIX:?}"
 
-# stop_pid <pid file> <comm prefix> [signal]: kill the process only if it is
-# still the one the file names – the files outlive the container (/hlab is a
-# volume), and in a new container their PIDs belong to others.
-stop_pid() {
-  local f="$1" want="$2" sig="${3:-TERM}" p
-  [[ -f "$f" ]] || return 0
-  p="$(cat "$f")"
-  if [[ "$(cat "/proc/${p}/comm" 2>/dev/null)" == "${want}"* ]]; then
-    kill -s "${sig}" "${p}" 2>/dev/null || true
-  fi
-  rm -f "$f"
-}
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=lib.sh
+source "$(dirname "$0")/lib.sh"
 
-alive() { # alive <pid file> <comm prefix>
-  [[ -f "$1" ]] && [[ "$(cat "/proc/$(cat "$1")/comm" 2>/dev/null)" == "$2"* ]]
-}
-
-# qmp <vm dir> <json command>: fails when QEMU does not answer or answers with
-# an error (also an HMP command whose text output is an error: device_add,
-# netdev_add, ...)
-qmp() {
-  local out
-  out="$(printf '{"execute":"qmp_capabilities"}\n%s\n' "$2" \
-    | socat -t1 - "UNIX-CONNECT:$1/qmp.sock")" \
+# send_qmp <vm dir> <json command>: Send a QMP command to the VM's QEMU. Fail
+# when QEMU does not answer or answers with an error, also when an HMP command
+# (device_add, netdev_add, ...) returns an error text. QEMU's error goes to
+# stderr.
+send_qmp() {
+  local vm_dir="$1" qmp_command="$2" answer errors
+  answer="$(printf '{"execute":"qmp_capabilities"}\n%s\n' "${qmp_command}" \
+    | socat -t1 - "UNIX-CONNECT:${vm_dir}/qmp.sock")" \
     || {
-      echo "qmp: no answer from $1" >&2
+      echo "hlab.sh: qmp: no answer from ${vm_dir}" >&2
       return 1
     }
-  if printf '%s\n' "${out}" \
-    | jq -e -s 'map(select(.error)) | length > 0' >/dev/null 2>&1; then
-    printf '%s\n' "${out}" | jq -r 'select(.error) | .error.desc' >&2
-    return 1
-  fi
-  if printf '%s\n' "${out}" \
-    | jq -e -s 'map(select((.return | type) == "string" and (.return | test("^Error|error:"; "i"))))
-            | length > 0' >/dev/null 2>&1; then
-    printf '%s\n' "${out}" \
-      | jq -r 'select((.return | type) == "string") | .return' >&2
+  # Print QMP errors; failing those, the string returns of HMP commands if one
+  # of them is an error text. An answer that is not JSON counts as no error.
+  errors="$(printf '%s\n' "${answer}" | jq -rs '
+    def error_text: (.return | type) == "string"
+      and (.return | test("^Error|error:"; "i"));
+    if any(.[]; .error) then .[] | select(.error) | .error.desc
+    elif any(.[]; error_text) then
+      .[] | select((.return | type) == "string") | .return
+    else empty end' 2>/dev/null)" || true
+  if [[ -n "${errors}" ]]; then
+    printf '%s\n' "${errors}" >&2
     return 1
   fi
 }
 
-hmp() { # hmp <vm dir> <monitor command>
-  qmp "$1" "$(jq -cn --arg c "$2" \
+# send_hmp <vm dir> <monitor command>: Send a human monitor command through
+# QMP.
+send_hmp() {
+  local vm_dir="$1" monitor_command="$2"
+  send_qmp "${vm_dir}" "$(jq -cn --arg c "${monitor_command}" \
     '{execute: "human-monitor-command", arguments: {"command-line": $c}}')"
 }
 
-net_init() {
-  local uplink
+# init_net: Set up the gateway's addresses, the unreachable ends of the lab's
+# ranges and the nftables ruleset.
+init_net() {
+  local uplink address
   uplink="$(ip -4 route show default | awk '{print $5; exit}')"
-  ip link add hlabgw type dummy 2>/dev/null || true
-  ip addr replace "${gw}/32" dev hlabgw
-  ip addr replace "${svc}/32" dev hlabgw
-  ip addr replace "${meta}/32" dev hlabgw
-  ip addr replace "${operator}/32" dev hlabgw
-  ip addr replace "${admin}/32" dev hlabgw
-  ip addr replace "${hetzner_api}/32" dev hlabgw
+  link_exists hlabgw || ip link add hlabgw type dummy
+  for address in "${GATEWAY}" "${SERVICES}" "${METADATA}" "${OPERATOR}" \
+    "${ADMIN}" "${HETZNER_API}"; do
+    ip addr replace "${address}/32" dev hlabgw
+  done
   # Docker starts containers with IPv6 off; taps created later inherit
   # "default".
   sysctl -qw net.ipv6.conf.all.disable_ipv6=0 \
     net.ipv6.conf.default.disable_ipv6=0
   ip link set hlabgw up
   sysctl -qw net.ipv6.conf.hlabgw.disable_ipv6=0
-  for a in "${svc6}" "${operator6}" "${admin6}" "${hetzner_api6}" \
-    "${meta6}"; do
-    ip -6 addr replace "${a}/128" dev hlabgw nodad
+  for address in "${SERVICES6}" "${OPERATOR6}" "${ADMIN6}" "${HETZNER_API6}" \
+    "${METADATA6}"; do
+    ip -6 addr replace "${address}/128" dev hlabgw nodad
   done
   sysctl -qw net.ipv4.ip_forward=1 net.ipv6.conf.all.forwarding=1
-  # the lab's public ranges end here when nothing is routed to an address (a
+  # The lab's public ranges end here when nothing is routed to an address (a
   # Floating IP of a server that is off, an address no one has): never out of
-  # the uplink into the Docker host's network
-  ip route replace unreachable 198.51.100.0/24
-  ip route replace unreachable 203.0.113.0/24
-  ip -6 route replace unreachable 2001:db8::/32
-  # Internet clients (each has its own route)
-  ip route replace unreachable 192.0.2.0/24
-  # the lab's services (local addresses win)
-  ip route replace unreachable 198.18.0.0/15
+  # the uplink into the Docker host's network.
+  ip route replace unreachable "${PUBLIC_NET}.0/24"
+  ip route replace unreachable "${FLOATING_NET}.0/24"
+  ip -6 route replace unreachable "${IPV6_PREFIX}::/32"
+  # Internet clients (each has its own route).
+  ip route replace unreachable "${CLIENT_NET}.0/24"
+  # The lab's services (local addresses win).
+  ip route replace unreachable "${SERVICES_NET}"
   nft -f - <<NFT
 table inet hlab
 delete table inet hlab
@@ -154,8 +160,8 @@ table inet hlab {
         # neighbour containers and the Docker host get nothing of the lab
         iifname "${uplink}" drop
         iifname @isolated drop
-        ip daddr { ${svc}, ${hetzner_api} } iifname . tcp dport @blocked_svc drop
-        ip6 daddr { ${svc6}, ${hetzner_api6} } iifname . tcp dport @blocked_svc drop
+        ip daddr { ${SERVICES}, ${HETZNER_API} } iifname . tcp dport @blocked_svc drop
+        ip6 daddr { ${SERVICES6}, ${HETZNER_API6} } iifname . tcp dport @blocked_svc drop
     }
     chain output {
         type filter hook output priority 0;
@@ -165,7 +171,7 @@ table inet hlab {
         oifname "prv*" udp sport 67 accept
         oifname "prv*" meta l4proto icmp accept
         # the metadata service, for private-only servers
-        oifname "prv*" ip saddr ${meta} tcp sport 80 accept
+        oifname "prv*" ip saddr ${METADATA} tcp sport 80 accept
         oifname "prv*" drop
     }
     chain forward {
@@ -189,72 +195,352 @@ table inet hlab {
         type nat hook prerouting priority dstnat;
         # the metadata service over IPv6 (link-local, answered on every public
         # tap)
-        ip6 daddr fe80::a9fe:a9fe tcp dport 80 dnat ip6 to [${meta6}]:80
+        ip6 daddr fe80::a9fe:a9fe tcp dport 80 dnat ip6 to [${METADATA6}]:80
     }
     chain postrouting {
         type nat hook postrouting priority srcnat;
         # public addresses only: private ones reach the Internet through a
         # gateway server, as on Hetzner
-        oifname "${uplink}" ip saddr { 198.51.100.0/24, 203.0.113.0/24, 192.0.2.0/24 } masquerade
+        oifname "${uplink}" ip saddr { ${PUBLIC_NET}.0/24, ${FLOATING_NET}.0/24, ${CLIENT_NET}.0/24 } masquerade
     }
 }
 NFT
 }
 
-# public_tap_up <tap> [guest ip]: a server's public NIC, with DHCP and IPv6
-# metadata like Hetzner's
-public_tap_up() {
-  tap_up "$1" "${gw}/32" "${2:-}"
-  # Hetzner's public network: 1500 (cloud networks: 1450)
-  ip link set "$1" mtu 1500
-  # an address in the public range, so dnsmasq serves DHCP here (the /32 routes
-  # still decide)
-  ip addr replace 198.51.100.1/24 dev "$1" noprefixroute
-  ip -6 addr replace fe80::a9fe:a9fe/64 dev "$1" nodad
-}
-
-tap_up() { # tap_up <tap> <gateway cidr> [guest ip] [noprefixroute]
-  local tap="$1" addr="$2" guest="${3:-}"
-  ip tuntap add "${tap}" mode tap 2>/dev/null || true
+# set_up_tap <tap> <gateway cidr> [guest ip] [noprefixroute]: Create a tap
+# with the gateway address and proxy ARP, and route the guest IP to it.
+set_up_tap() {
+  local tap="$1" gateway_cidr="$2" guest_ip="${3:-}" noprefixroute="${4:-}"
+  link_exists "${tap}" || ip tuntap add "${tap}" mode tap
   sysctl -qw "net.ipv6.conf.${tap}.disable_ipv6=0"
   ip link set "${tap}" mtu 1450 up
   # noprefixroute: several taps carry the same gateway address; only the /32
   # routes below decide where packets go.
-  ip addr replace "${addr}" dev "${tap}" ${4:+noprefixroute}
-  ip -6 addr replace fe80::1/64 dev "${tap}" nodad
-  if [[ -n "${guest}" ]]; then
-    ip route replace "${guest}/32" dev "${tap}" src "${operator}"
+  ip addr replace "${gateway_cidr}" dev "${tap}" \
+    ${noprefixroute:+noprefixroute}
+  ip -6 addr replace "${GATEWAY6}/64" dev "${tap}" nodad
+  if [[ -n "${guest_ip}" ]]; then
+    ip route replace "${guest_ip}/32" dev "${tap}" src "${OPERATOR}"
   fi
   sysctl -qw "net.ipv4.conf.${tap}.proxy_arp=1"
 }
 
-vm_start() { # vm_start <dir> <name> <ram mb> <cpus> <serial> <tap=mac>...
-  local dir="$1" name="$2" ram="$3" cpus="$4" serial="$5" nics=() disks=() \
-  i=0 spec
+# set_up_public_tap <tap> [guest ip]: Set up a server's public NIC, with DHCP
+# and IPv6 metadata like Hetzner's.
+set_up_public_tap() {
+  local tap="$1" guest_ip="${2:-}"
+  set_up_tap "${tap}" "${GATEWAY}/32" "${guest_ip}"
+  # Hetzner's public network: 1500 (cloud networks: 1450).
+  ip link set "${tap}" mtu 1500
+  # An address in the public range, so dnsmasq serves DHCP here (the /32 routes
+  # still decide).
+  ip addr replace "${PUBLIC_NET}.1/24" dev "${tap}" noprefixroute
+  ip -6 addr replace fe80::a9fe:a9fe/64 dev "${tap}" nodad
+}
+
+# set_up_private_tap <tap> <gateway cidr> <guest ip> <table> <range>
+# [alias ip]...: Set up a NIC in a cloud network and route the guest IP and its
+# alias IPs to the tap in the network's table.
+set_up_private_tap() {
+  local tap="$1" gateway_cidr="$2" guest_ip="$3" table="$4" range="$5"
   shift 5
-  for spec in "$@"; do
-    nics+=(-netdev
-      "tap,id=${spec%%=*},ifname=${spec%%=*},script=no,downscript=no")
-    # the public NIC stays for the server's life: on the root bus
-    if [[ "${i}" -eq 0 ]]; then
-      nics+=(-device
-        "virtio-net-pci,netdev=${spec%%=*},id=dev-${spec%%=*},mac=${spec#*=}")
-    else
-      # a network's NIC can be detached later: q35 unplugs only from a root
-      # port, so it gets its own
-      nics+=(-device
-        "pcie-root-port,id=bp${i},chassis=$((10 + i)),slot=$((10 + i))"
-        -device
-        "virtio-net-pci,netdev=${spec%%=*},id=dev-${spec%%=*},mac=${spec#*=},bus=bp${i}")
-    fi
-    i=$((i + 1))
+  local alias_ips=("$@") keep route alias_ip mark
+  # The gateway address of an earlier range is removed.
+  if link_exists "${tap}"; then
+    ip -4 addr flush dev "${tap}"
+  fi
+  set_up_tap "${tap}" "${gateway_cidr}" "" noprefixroute
+  # Cloud networks are IPv4 only, as on Hetzner.
+  sysctl -qw "net.ipv6.conf.${tap}.disable_ipv6=1"
+  # Alias IPs given up are removed; routes through a gateway server (via) stay.
+  # A table that never had a route does not exist yet: nothing to remove.
+  keep=" ${guest_ip} ${alias_ips[*]} "
+  for route in $(ip route show table "${table}" dev "${tap}" 2>/dev/null \
+    | awk '!/ via / {print $1}'); do
+    [[ "${keep}" == *" ${route%/32} "* ]] \
+      || ip route del "${route}" dev "${tap}" table "${table}"
   done
-  # cache=writeback: the guest's flushes reach the host – a power-off kills
+  ip route replace "${guest_ip}/32" dev "${tap}" src "${OPERATOR}" \
+    table "${table}"
+  for alias_ip in "${alias_ips[@]}"; do
+    ip route replace "${alias_ip}/32" dev "${tap}" src "${OPERATOR}" \
+      table "${table}"
+  done
+  # Members only; nothing of the range leaks to the main table, unless a
+  # default route is there (then the add fails with "File exists": fine).
+  ip route replace unreachable "${range}" table "${table}"
+  ip route add unreachable default table "${table}" 2>/dev/null || true
+  mark="$(printf '0x%x' "${table}")"
+  ip rule show pref 1002 \
+    | grep -q "fwmark ${mark} lookup ${table}\$" \
+    || ip rule add fwmark "${table}" lookup "${table}" pref 1002
+  # Replies of the lab end there too when the table has no route (its gateway
+  # server is off).
+  ip rule show pref 1003 \
+    | grep -q "fwmark ${mark} unreachable" \
+    || ip rule add fwmark "${table}" unreachable pref 1003
+  # Nothing else either: what the network's table has no route for (no
+  # add_route, or its gateway server is off) ends at the second rule instead
+  # of falling through to the main table. Rules are only replaced when they
+  # differ, so a running tap never loses them for a moment.
+  if ! ip rule show pref 1000 | grep -q "iif ${tap} lookup ${table}\$" \
+    || ! ip rule show pref 1001 | grep -q "iif ${tap} unreachable"; then
+    while ip rule del iif "${tap}" 2>/dev/null; do :; done
+    ip rule add iif "${tap}" lookup "${table}" pref 1000
+    ip rule add iif "${tap}" unreachable pref 1001
+  fi
+}
+
+# tear_down_tap <tap>: Remove the tap and its rules.
+tear_down_tap() {
+  local tap="$1"
+  if link_exists "${tap}"; then
+    ip link del "${tap}"
+  fi
+  while ip rule del iif "${tap}" 2>/dev/null; do :; done
+}
+
+# link_exists <link>: Succeed if the network interface exists.
+link_exists() {
+  local link="$1"
+  ip link show "${link}" >/dev/null 2>&1
+}
+
+# list_neigh_devs <ip>: Print every tap the address sits on.
+list_neigh_devs() {
+  local ip="$1"
+  ip neigh show "${ip}" \
+    | awk '{for (i = 1; i < NF; i++) if ($i == "dev") print $(i + 1)}' \
+    | sort -u
+}
+
+# list_local_addrs: Print the container's own IPv4 addresses and its default
+# gateway (the Docker host's).
+list_local_addrs() {
+  ip -4 -o addr show | awk '{print $4}' | cut -d/ -f1
+  ip -4 route show default | awk '{print $3}'
+}
+
+# set_route <prefix> [tap]: Route an address or prefix (v4 or v6) to a tap, or
+# remove the route.
+set_route() {
+  local prefix="$1" tap="${2:-}" src="${OPERATOR}"
+  [[ "${prefix}" == *:* ]] && src="${OPERATOR6}"
+  if [[ -n "${tap}" ]]; then
+    ip route replace "${prefix}" dev "${tap}" src "${src}"
+  else
+    # not routed (anymore): fine
+    ip route del "${prefix}" 2>/dev/null || true
+  fi
+}
+
+# set_route6 <prefix> <tap> <guest link-local>: Route an IPv6 prefix to a
+# guest, as Hetzner routes /64s.
+set_route6() {
+  local prefix="$1" tap="$2" guest_link_local="$3"
+  ip -6 route replace "${prefix}" via "${guest_link_local}" dev "${tap}" \
+    src "${OPERATOR6}"
+}
+
+# set_route_via <prefix> <gateway ip> <tap> <table>: Route a prefix in a
+# network's table through a gateway server.
+set_route_via() {
+  local prefix="$1" gateway_ip="$2" tap="$3" table="$4"
+  ip route replace "${prefix}" via "${gateway_ip}" dev "${tap}" onlink \
+    table "${table}"
+}
+
+# delete_route <prefix> <table>: Delete a network route and bring the table's
+# end back (a default route had taken its place).
+delete_route() {
+  local prefix="$1" table="$2"
+  # never routed (its gateway server was off) or gone already: fine; the end
+  # is there already unless a default route had taken its place
+  ip route del "${prefix}" table "${table}" 2>/dev/null || true
+  ip route add unreachable default table "${table}" 2>/dev/null || true
+}
+
+# flush_routes <table>: Remove the routes and rules of a deleted network.
+flush_routes() {
+  local table="$1"
+  # a table that never had a route does not exist: fine
+  ip route flush table "${table}" 2>/dev/null || true
+  while ip rule del fwmark "${table}" 2>/dev/null; do :; done
+}
+
+# add_client <name> <veth> <ipv4> <ipv6>: Create a client, a network
+# namespace on the "Internet".
+add_client() {
+  local name="$1" veth="$2" ipv4="$3" ipv6="$4"
+  local client_gateway="${CLIENT_NET}.1"
+  [[ -e "/run/netns/${name}" ]] || ip netns add "${name}"
+  link_exists "${veth}" \
+    || ip link add "${veth}" type veth peer name eth0 netns "${name}"
+  sysctl -qw "net.ipv6.conf.${veth}.disable_ipv6=0"
+  ip netns exec "${name}" sysctl -qw net.ipv6.conf.all.disable_ipv6=0 \
+    net.ipv6.conf.default.disable_ipv6=0 net.ipv6.conf.eth0.disable_ipv6=0
+  ip link set "${veth}" up
+  ip addr replace "${client_gateway}/32" dev "${veth}" noprefixroute
+  ip -6 addr replace "${GATEWAY6}/64" dev "${veth}" nodad
+  ip route replace "${ipv4}/32" dev "${veth}" src "${OPERATOR}"
+  ip route replace "${ipv6}/128" dev "${veth}" src "${OPERATOR6}"
+  sysctl -qw "net.ipv4.conf.${veth}.proxy_arp=1"
+  ip -n "${name}" link set lo up
+  ip -n "${name}" link set eth0 up
+  ip -n "${name}" addr replace "${ipv4}/32" dev eth0
+  ip -n "${name}" -6 addr replace "${ipv6}/128" dev eth0 nodad
+  ip -n "${name}" route replace "${client_gateway}/32" dev eth0 scope link
+  ip -n "${name}" route replace default via "${client_gateway}" dev eth0 onlink
+  ip -n "${name}" -6 route replace default via "${GATEWAY6}" dev eth0
+  mkdir -p "/etc/netns/${name}"
+  echo "nameserver ${SERVICES}" >"/etc/netns/${name}/resolv.conf"
+}
+
+# delete_client <name> <veth>: Remove a client and its namespace.
+delete_client() {
+  local name="$1" veth="$2"
+  if link_exists "${veth}"; then
+    ip link del "${veth}"
+  fi
+  if [[ -e "/run/netns/${name}" ]]; then
+    ip netns del "${name}"
+  fi
+  rm -rf "/etc/netns/${name}"
+}
+
+# stop_dhcp <conf>: Stop the DHCP dnsmasq of one tap (hlabd writes the file).
+# One instance per tap: with a single interface dnsmasq binds its socket to it,
+# so the same IP can be handed out in two networks. Every earlier instance must
+# be gone: a leftover one answers NAK ("address not available").
+stop_dhcp() {
+  local conf="$1"
+  # exit status 1: none runs
+  pkill -f "^dnsmasq --conf-file=${conf}\$" || (($? == 1))
+  for _ in $(seq 1 50); do
+    pgrep -f "^dnsmasq --conf-file=${conf}\$" >/dev/null || break
+    sleep 0.1
+  done
+}
+
+# restart_dhcp <conf>: (Re)start the DHCP dnsmasq of one tap.
+restart_dhcp() {
+  local conf="$1"
+  stop_dhcp "${conf}"
+  dnsmasq --conf-file="${conf}"
+}
+
+# start_dns <conf file>: Start the lab resolver on the services address.
+start_dns() {
+  local conf_file="$1" upstream
+  stop_pid /run/dnsmasq-dns.pid dnsmasq
+  upstream="$(awk '/^nameserver/ {print $2; exit}' /etc/resolv.conf)"
+  dnsmasq --listen-address="${SERVICES},${SERVICES6}" --bind-interfaces \
+    --no-resolv --server="${upstream}" --conf-file="${conf_file}" \
+    --pid-file=/run/dnsmasq-dns.pid
+}
+
+# fetch_image <name> <url> <checksum file url> <dir>: Download and check the
+# image in the version the checksum file names, unless it is there, as
+# <dir>/<name>-<first 12 characters of the checksum>.qcow2. Print its path.
+fetch_image() {
+  local name="$1" url="$2" sums_url="$3" dir="$4"
+  local file sums checksum dst sum_tool
+  file="$(basename "${url}")"
+  sums="$(curl -fsSL --connect-timeout 30 --max-time 120 "${sums_url}")"
+  checksum="$(printf '%s\n' "${sums}" \
+    | awk -v f="${file}" '{n = $2; sub(/^\*/, "", n)} n == f {print $1}')"
+  if [[ -z "${checksum}" ]]; then
+    echo "hlab.sh: no checksum for ${file} in ${sums_url}" >&2
+    return 1
+  fi
+  dst="${dir}/${name}-${checksum:0:12}.qcow2"
+  if [[ ! -f "${dst}" ]]; then
+    mkdir -p "${dir}"
+    curl -fsSL --connect-timeout 30 --speed-limit 1024 --speed-time 60 \
+      -o "${dst}.tmp" "${url}"
+    sum_tool=sha256sum
+    ((${#checksum} == 128)) && sum_tool=sha512sum
+    if ! echo "${checksum}  ${dst}.tmp" | "${sum_tool}" -c --quiet - >&2; then
+      rm -f "${dst}.tmp"
+      echo "hlab.sh: checksum mismatch for ${url}" >&2
+      return 1
+    fi
+    mv "${dst}.tmp" "${dst}"
+  fi
+  echo "${dst}"
+}
+
+# create_vm_disk <dir> <base> <size gb>: Create the server's disk, an overlay
+# on a system image; keep it when it is there.
+create_vm_disk() {
+  local dir="$1" base="$2" size_gb="$3"
+  [[ -f "${dir}/disk.qcow2" ]] && return 0
+  qemu-img create -q -f qcow2 -F qcow2 -b "${base}" "${dir}/disk.qcow2" \
+    "${size_gb}G"
+}
+
+# resize_vm_disk <dir> <size gb>: Grow the server's disk (qemu-img grows
+# only).
+resize_vm_disk() {
+  local dir="$1" size_gb="$2"
+  qemu-img resize -q "${dir}/disk.qcow2" "${size_gb}G"
+}
+
+# print_nic_netdev <tap>: Print the QEMU netdev of a NIC's tap (the tap names
+# it).
+print_nic_netdev() {
+  local tap="$1"
+  printf 'tap,id=%s,ifname=%s,script=no,downscript=no\n' "${tap}" "${tap}"
+}
+
+# print_nic_device <tap> <mac> [bus]: Print the QEMU device of a NIC, for the
+# boot and for hot-plugging alike.
+print_nic_device() {
+  local tap="$1" mac="$2" bus="${3:-}"
+  printf 'virtio-net-pci,netdev=%s,id=dev-%s,mac=%s%s\n' \
+    "${tap}" "${tap}" "${mac}" "${bus:+,bus=${bus}}"
+}
+
+# print_volume_drive <id> <file>: Print the QEMU drive of a volume.
+print_volume_drive() {
+  local id="$1" file="$2"
+  printf 'file=%s,format=raw,if=none,id=vol%s,cache=none\n' "${file}" "${id}"
+}
+
+# print_volume_device <id>: Print the QEMU device of a volume on the SCSI
+# controller, identifying like Hetzner (scsi-0HC_Volume_<id>).
+print_volume_device() {
+  local id="$1"
+  printf 'scsi-hd,drive=vol%s,id=dvol%s,bus=scsi0.0,%s\n' "${id}" "${id}" \
+    "vendor=HC,product=Volume,serial=${id}"
+}
+
+# start_vm <dir> <name> <ram mb> <cpus> <serial> <tap=mac>...: Start QEMU; the
+# first NIC is the public one.
+start_vm() {
+  local dir="$1" name="$2" ram="$3" cpus="$4" serial="$5"
+  shift 5
+  local nics=() disks=() nic_index=0 spec tap mac slot vid vpath
+  for spec in "$@"; do
+    tap="${spec%%=*}"
+    mac="${spec#*=}"
+    slot=$((10 + nic_index))
+    nics+=(-netdev "$(print_nic_netdev "${tap}")")
+    if ((nic_index == 0)); then
+      # The public NIC stays for the server's life: on the root bus.
+      nics+=(-device "$(print_nic_device "${tap}" "${mac}")")
+    else
+      # A network's NIC can be detached later: q35 unplugs only from a root
+      # port, so it gets its own.
+      nics+=(-device
+        "pcie-root-port,id=bp${nic_index},chassis=${slot},slot=${slot}"
+        -device "$(print_nic_device "${tap}" "${mac}" "bp${nic_index}")")
+    fi
+    nic_index=$((nic_index + 1))
+  done
+  # cache=writeback: the guest's flushes reach the host. A power-off kills
   # qemu, and with cache=unsafe qcow2 metadata and flushed data still in qemu's
-  # memory were lost. Hetzner keeps what a guest flushed. The virtio-scsi
-  # controller is there from the boot: a disk on a controller hot-plugged just
-  # before is missed. q35 hot-plugs only into PCIe root ports: four of them
-  # (hp1..hp4) for networks attached later.
+  # memory were lost. Hetzner keeps what a guest flushed.
   disks=(-drive "file=${dir}/disk.qcow2,if=none,id=root,cache=writeback"
     -device "virtio-blk-pci,drive=root,bootindex=1")
   # Attached volumes (id path per line) sit on the SCSI controller from the
@@ -262,15 +548,16 @@ vm_start() { # vm_start <dir> <name> <ram mb> <cpus> <serial> <tap=mac>...
   if [[ -f "${dir}/volumes" ]]; then
     while read -r vid vpath; do
       [[ -n "${vid}" ]] || continue
-      disks+=(-drive "file=${vpath},format=raw,if=none,id=vol${vid},cache=none"
-        -device
-        "scsi-hd,drive=vol${vid},id=dvol${vid},bus=scsi0.0,vendor=HC,product=Volume,serial=${vid}")
+      disks+=(-drive "$(print_volume_drive "${vid}" "${vpath}")"
+      -device "$(print_volume_device "${vid}")")
     done <"${dir}/volumes"
   fi
   # SMBIOS like Hetzner's: cloud-init recognises the platform by the
   # manufacturer and checks the serial. No device the guests do not need (no
   # USB, no 9p, no balloon, no QXL) and no VAPIC option ROM: less to attack from
-  # a guest.
+  # a guest. The virtio-scsi controller is there from the boot: a disk on a
+  # controller hot-plugged just before is missed. q35 hot-plugs only into PCIe
+  # root ports: four of them (hp1..hp4) for networks attached later.
   qemu-system-x86_64 -machine q35,usb=off -enable-kvm -cpu host \
     -smp "${cpus}" -m "${ram}" -name "${name}" \
     -global kvm-apic.vapic=off \
@@ -292,229 +579,121 @@ vm_start() { # vm_start <dir> <name> <ram mb> <cpus> <serial> <tap=mac>...
     -display none -daemonize -pidfile "${dir}/qemu.pid"
 }
 
-cmd="${1:-}"
-shift || true
-case "${cmd}" in
-  net-init) net_init ;;
-  public-tap-up) public_tap_up "$@" ;;
-  # every tap it sits on
-  neigh-dev)
-    ip neigh show "$1" \
-      | awk '{for (i = 1; i < NF; i++) if ($i == "dev") print $(i + 1)}' \
-      | sort -u
-    ;;
-  # volume-create <file> <gb> [ext4|xfs]: a sparse raw volume, formatted on
-  # request
-  volume-create)
-    truncate -s "$2G" "$1"
-    case "${3:-}" in
-      ext4) mkfs.ext4 -q -F "$1" ;;
-      xfs) mkfs.xfs -q -f "$1" ;;
-    esac
-    ;;
-  # volume-attach <vm dir> <id> <file>: hot-plug, identifying like Hetzner
-  # (scsi-0HC_Volume_<id>)
-  volume-attach)
-    hmp "$1" "drive_add 0 file=$3,format=raw,if=none,id=vol$2,cache=none"
-    hmp "$1" "device_add scsi-hd,drive=vol$2,id=dvol$2,bus=scsi0.0,vendor=HC,product=Volume,serial=$2"
-    ;;
-  volume-detach) # volume-detach <vm dir> <id>
-    hmp "$1" "device_del dvol$2"
-    sleep 1
-    hmp "$1" "drive_del vol$2" 2>/dev/null || true
-    ;;
-  # volume-resize <file> <gb> [vm dir] [id]: grow; a running VM sees the new
-  # size at once
-  volume-resize)
-    if [[ -n "${3:-}" ]]; then
-      hmp "$3" "block_resize vol$4 $2G"
-    else
-      truncate -s "$2G" "$1"
-    fi
-    ;;
-  # image-fetch <name> <url> <checksum file url> <dir>: the image in the version
-  # the checksum file names, as <dir>/<name>-<checksum>.qcow2 – downloaded and
-  # checked unless it is there; prints its path
-  image-fetch)
-    sums="$(curl -fsSL --connect-timeout 30 --max-time 120 "$3")"
-    want="$(printf '%s\n' "${sums}" \
-      | awk -v f="$(basename "$2")" \
-        '{n = $2; sub(/^\*/, "", n)} n == f {print $1}')"
-    [[ -n "${want}" ]] || {
-      echo "no checksum for $(basename "$2") in $3" >&2
-      exit 1
-    }
-    dst="$4/$1-${want:0:12}.qcow2"
-    if [[ ! -f "${dst}" ]]; then
-      mkdir -p "$4"
-      curl -fsSL --connect-timeout 30 --speed-limit 1024 --speed-time 60 \
-        -o "${dst}.tmp" "$2"
-      sum=sha256sum
-      [[ ${#want} -eq 128 ]] && sum=sha512sum
-      echo "${want}  ${dst}.tmp" | "${sum}" -c --quiet - >&2 \
-        && mv "${dst}.tmp" "${dst}"
-    fi
-    echo "${dst}"
-    ;;
-  hmp) hmp "$1" "$2" ;;
-  # private-tap-up <tap> <gateway cidr> <guest ip> <table> <range> [alias
-  # ip]...: a NIC in a cloud network; the guest IP and its alias IPs are routed
-  # to the tap
-  private-tap-up)
-    # the gateway address of an earlier range goes
-    ip -4 addr flush dev "$1" 2>/dev/null || true
-    tap_up "$1" "$2" "" noprefixroute
-    # cloud networks are IPv4 only, as on Hetzner
-    sysctl -qw "net.ipv6.conf.$1.disable_ipv6=1"
-    keep=" $3 ${*:6} "
-    for r in $(ip route show table "$4" dev "$1" 2>/dev/null \
-      | awk '!/ via / {print $1}'); do
-      [[ "${keep}" == *" ${r%/32} "* ]] \
-        || ip route del "${r}" dev "$1" table "$4" 2>/dev/null || true
-    done # alias IPs given up go; routes through a gateway server (via) stay
-    ip route replace "$3/32" dev "$1" src "${operator}" table "$4"
-    for a in "${@:6}"; do
-      ip route replace "${a}/32" dev "$1" src "${operator}" table "$4"
-    done
-    # members only; nothing of the range leaks to the main table
-    ip route replace unreachable "$5" table "$4"
-    # unless a default route is there
-    ip route add unreachable default table "$4" 2>/dev/null || true
-    ip rule show pref 1002 \
-      | grep -q "fwmark $(printf '0x%x' "$4") lookup $4\$" \
-      || ip rule add fwmark "$4" lookup "$4" pref 1002
-    # replies of the lab end there too when the table has no route (its gateway
-    # server is off)
-    ip rule show pref 1003 \
-      | grep -q "fwmark $(printf '0x%x' "$4") unreachable" \
-      || ip rule add fwmark "$4" unreachable pref 1003
-    # Nothing else either: what the network's table has no route for (no
-    # add_route, or its gateway server is off) ends at the second rule instead
-    # of falling through to the main table. Rules are only replaced when they
-    # differ, so a running tap never loses them for a moment.
-    if ! ip rule show pref 1000 | grep -q "iif $1 lookup $4\$" \
-      || ! ip rule show pref 1001 | grep -q "iif $1 unreachable"; then
-      while ip rule del iif "$1" 2>/dev/null; do :; done
-      ip rule add iif "$1" lookup "$4" pref 1000
-      ip rule add iif "$1" unreachable pref 1001
-    fi
-    ;;
-  tap-down)
-    ip link del "$1" 2>/dev/null || true
-    while ip rule del iif "$1" 2>/dev/null; do :; done
-    ;;
-  link-exists) ip link show "$1" >/dev/null 2>&1 ;;
-  # the container's own IPv4 addresses and its default gateway (the Docker
-  # host's)
-  local-addrs)
-    ip -4 -o addr show | awk '{print $4}' | cut -d/ -f1
-    ip -4 route show default | awk '{print $3}'
-    ;;
-  # vm-disk <dir> <base> <size gb>: the server's disk, an overlay on a system
-  # image
-  vm-disk)
-    [[ -f "$1/disk.qcow2" ]] && exit 0
-    qemu-img create -q -f qcow2 -F qcow2 -b "$2" "$1/disk.qcow2" "$3G"
-    ;;
-  # vm-disk-resize <dir> <size gb>: grows only
-  vm-disk-resize) qemu-img resize -q "$1/disk.qcow2" "$2G" ;;
-  vm-start) vm_start "$@" ;;
-  vm-kill) stop_pid "$1/qemu.pid" qemu-system KILL ;;
-  vm-alive) alive "$1/qemu.pid" qemu-system ;;
-  qmp) qmp "$1" "$2" ;;
-  nic-add) # nic-add <dir> <id> <tap> <mac> <root port>
-    hmp "$1" "netdev_add tap,id=$2,ifname=$3,script=no,downscript=no"
-    hmp "$1" "device_add virtio-net-pci,netdev=$2,id=dev-$2,mac=$4,bus=$5"
-    ;;
-  nic-del)
-    hmp "$1" "device_del dev-$2"
-    sleep 1
-    hmp "$1" "netdev_del $2"
-    ;;
-  # route <prefix> [tap]: route an address or prefix (v4 or v6) to a tap, or
-  # remove the route
-  route)
-    src="${operator}"
-    [[ "$1" == *:* ]] && src="${operator6}"
-    if [[ -n "${2:-}" ]]; then
-      ip route replace "$1" dev "$2" src "${src}"
-    else
-      ip route del "$1" 2>/dev/null || true
-    fi
-    ;;
-  # route6 <prefix> <tap> <guest link-local>: an IPv6 prefix routed to a guest,
-  # as Hetzner routes /64s
-  route6)
-    ip -6 route replace "$1" via "$3" dev "$2" src "${operator6}"
-    ;;
-  # route-via <prefix> <gateway ip> <tap> <table>
-  route-via) ip route replace "$1" via "$2" dev "$3" onlink table "$4" ;;
-  # route-del <prefix> <table>: a network route goes; the table's end comes back
-  # (a default route had taken its place)
-  route-del)
-    ip route del "$1" table "$2" 2>/dev/null || true
-    ip route add unreachable default table "$2" 2>/dev/null || true
-    ;;
-  route-flush) # route-flush <table>: a network is gone
-    ip route flush table "$1" 2>/dev/null || true
-    while ip rule del fwmark "$1" 2>/dev/null; do :; done
-    ;;
-  nft) nft "$@" ;;
-  tc) tc "$@" ;;
-  # client-add <name> <veth> <ipv4> <ipv6>: a network namespace on the
-  # "Internet"
-  client-add)
-    ip netns add "$1" 2>/dev/null || true
-    ip link add "$2" type veth peer name eth0 netns "$1" 2>/dev/null || true
-    sysctl -qw "net.ipv6.conf.$2.disable_ipv6=0"
-    ip netns exec "$1" sysctl -qw net.ipv6.conf.all.disable_ipv6=0 \
-      net.ipv6.conf.default.disable_ipv6=0 net.ipv6.conf.eth0.disable_ipv6=0
-    ip link set "$2" up
-    ip addr replace "192.0.2.1/32" dev "$2" noprefixroute
-    ip -6 addr replace fe80::1/64 dev "$2" nodad
-    ip route replace "$3/32" dev "$2" src "${operator}"
-    ip route replace "$4/128" dev "$2" src "${operator6}"
-    sysctl -qw "net.ipv4.conf.$2.proxy_arp=1"
-    ip -n "$1" link set lo up
-    ip -n "$1" link set eth0 up
-    ip -n "$1" addr replace "$3/32" dev eth0
-    ip -n "$1" -6 addr replace "$4/128" dev eth0 nodad
-    ip -n "$1" route replace 192.0.2.1/32 dev eth0 scope link
-    ip -n "$1" route replace default via 192.0.2.1 dev eth0 onlink
-    ip -n "$1" -6 route replace default via fe80::1 dev eth0
-    mkdir -p "/etc/netns/$1"
-    echo "nameserver ${svc}" >"/etc/netns/$1/resolv.conf"
-    ;;
-  client-del)
-    ip link del "$2" 2>/dev/null || true
-    ip netns del "$1" 2>/dev/null || true
-    rm -rf "/etc/netns/$1"
-    ;;
-  # dhcp-restart|dhcp-stop <conf>: the DHCP dnsmasq of one tap (hlabd writes the
-  # file)
-  dhcp-restart | dhcp-stop)
-    # One instance per tap: with a single interface dnsmasq binds its socket to
-    # it, so the same IP can be handed out in two networks. Every earlier
-    # instance must be gone: a leftover one answers NAK ("address not
-    # available").
-    pkill -f "^dnsmasq --conf-file=$1\$" 2>/dev/null || true
-    for _ in $(seq 1 50); do
-      pgrep -f "^dnsmasq --conf-file=$1\$" >/dev/null || break
-      sleep 0.1
-    done
-    if [[ "${cmd}" == dhcp-restart ]]; then dnsmasq --conf-file="$1"; fi
-    ;;
-  dns-start) # dns-start <hosts file>: the lab resolver on the services address
-    stop_pid /run/dnsmasq-dns.pid dnsmasq
-    upstream="$(awk '/^nameserver/ {print $2; exit}' /etc/resolv.conf)"
-    dnsmasq --listen-address="${svc},${svc6}" --bind-interfaces --no-resolv \
-      --server="${upstream}" --conf-file="$1" \
-      --pid-file=/run/dnsmasq-dns.pid
-    ;;
-  # the Storage Box: scripts/box.sh
-  box-*) exec "$(dirname "$0")/box.sh" "${cmd#box-}" "$@" ;;
-  *)
-    echo "unknown command: ${cmd}" >&2
-    exit 2
-    ;;
-esac
+# kill_vm <dir>: Kill the VM's QEMU.
+kill_vm() {
+  local dir="$1"
+  stop_pid "${dir}/qemu.pid" qemu-system KILL
+}
+
+# is_vm_alive <dir>: Succeed while the VM's QEMU runs.
+is_vm_alive() {
+  local dir="$1"
+  is_alive "${dir}/qemu.pid" qemu-system
+}
+
+# add_nic <vm dir> <tap> <mac> <root port>: Hot-plug a NIC; the tap names
+# its QEMU netdev too.
+add_nic() {
+  local vm_dir="$1" tap="$2" mac="$3" root_port="$4"
+  send_hmp "${vm_dir}" "netdev_add $(print_nic_netdev "${tap}")"
+  send_hmp "${vm_dir}" \
+    "device_add $(print_nic_device "${tap}" "${mac}" "${root_port}")"
+}
+
+# delete_nic <vm dir> <tap>: Unplug a NIC.
+delete_nic() {
+  local vm_dir="$1" tap="$2"
+  send_hmp "${vm_dir}" "device_del dev-${tap}"
+  sleep 1
+  send_hmp "${vm_dir}" "netdev_del ${tap}"
+}
+
+# create_volume <file> <gb> [ext4|xfs]: Create a sparse raw volume, formatted
+# on request.
+create_volume() {
+  local file="$1" size_gb="$2" format="${3:-}"
+  truncate -s "${size_gb}G" "${file}"
+  case "${format}" in
+    ext4) mkfs.ext4 -q -F "${file}" ;;
+    xfs) mkfs.xfs -q -f "${file}" ;;
+  esac
+}
+
+# attach_volume <vm dir> <id> <file>: Hot-plug a volume.
+attach_volume() {
+  local vm_dir="$1" id="$2" file="$3"
+  send_hmp "${vm_dir}" "drive_add 0 $(print_volume_drive "${id}" "${file}")"
+  send_hmp "${vm_dir}" "device_add $(print_volume_device "${id}")"
+}
+
+# detach_volume <vm dir> <id>: Unplug a volume.
+detach_volume() {
+  local vm_dir="$1" id="$2"
+  send_hmp "${vm_dir}" "device_del dvol${id}"
+  sleep 1
+  # QEMU may have removed the drive with its device already
+  send_hmp "${vm_dir}" "drive_del vol${id}" 2>/dev/null || true
+}
+
+# resize_volume <file> <gb> [vm dir] [id]: Grow a volume; a running VM sees
+# the new size at once.
+resize_volume() {
+  local file="$1" size_gb="$2" vm_dir="${3:-}" id="${4:-}"
+  if [[ -n "${vm_dir}" ]]; then
+    send_hmp "${vm_dir}" "block_resize vol${id} ${size_gb}G"
+  else
+    truncate -s "${size_gb}G" "${file}"
+  fi
+}
+
+# main <verb> <arg>...: Run one verb.
+main() {
+  local verb="${1:-}"
+  shift || true
+  # verbs are <noun>-<verb>, the API side's vocabulary; each maps to a <verb>_<noun>
+  # function, so volume-create is found in create_volume
+  case "${verb}" in
+    net-init) init_net ;;
+    public-tap-up) set_up_public_tap "$@" ;;
+    private-tap-up) set_up_private_tap "$@" ;;
+    tap-down) tear_down_tap "$@" ;;
+    link-exists) link_exists "$@" ;;
+    neigh-dev) list_neigh_devs "$@" ;;
+    local-addrs) list_local_addrs ;;
+    volume-create) create_volume "$@" ;;
+    volume-attach) attach_volume "$@" ;;
+    volume-detach) detach_volume "$@" ;;
+    volume-resize) resize_volume "$@" ;;
+    image-fetch) fetch_image "$@" ;;
+    vm-disk) create_vm_disk "$@" ;;
+    vm-disk-resize) resize_vm_disk "$@" ;;
+    vm-start) start_vm "$@" ;;
+    vm-kill) kill_vm "$@" ;;
+    vm-alive) is_vm_alive "$@" ;;
+    qmp) send_qmp "$@" ;;
+    hmp) send_hmp "$@" ;;
+    nic-add) add_nic "$@" ;;
+    nic-del) delete_nic "$@" ;;
+    route) set_route "$@" ;;
+    route6) set_route6 "$@" ;;
+    route-via) set_route_via "$@" ;;
+    route-del) delete_route "$@" ;;
+    route-flush) flush_routes "$@" ;;
+    # nft and tc take hlabd's rules as they are (fabric/faults.py, network.py,
+    # firewall.py)
+    nft) nft "$@" ;;
+    tc) tc "$@" ;;
+    client-add) add_client "$@" ;;
+    client-del) delete_client "$@" ;;
+    dhcp-stop) stop_dhcp "$@" ;;
+    dhcp-restart) restart_dhcp "$@" ;;
+    dns-start) start_dns "$@" ;;
+    box-*) exec "$(dirname "$0")/box.sh" "${verb#box-}" "$@" ;;
+    *)
+      echo "hlab.sh: unknown command: ${verb}" >&2
+      exit 2
+      ;;
+  esac
+}
+
+main "$@"

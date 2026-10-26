@@ -1,22 +1,26 @@
 """JSON shapes of the Hetzner Cloud API for the catalogue and the lab's resources.
 
-See https://docs.hetzner.cloud/.
+See https://docs.hetzner.cloud/. A shape that loops over the state takes `state.lock`
+for the loop itself (lab.py has the rule), so every caller may use it.
 """
 
-import base64
-import hashlib
-
-from .. import config
-from ..labels import firewall_servers, match_labels
+from ..lab import Lab
+from ..labels import firewall_servers, selector_servers
+from ..records import (
+    CloudNetwork,
+    DnsPtr,
+    Firewall,
+    FloatingIP,
+    PrimaryIP,
+    Server,
+    SSHKey,
+    Volume,
+)
+from ..state import nics_in, primary_ip_of
 
 CREATED = "2026-01-01T00:00:00+00:00"  # catalogue entries
 TRAFFIC = 21990232555520  # 20 TB included traffic
 
-DC_NAMES = {
-    "fsn1": "fsn1-dc14",
-    "nbg1": "nbg1-dc3",
-    "hel1": "hel1-dc2",
-}  # metadata: availability-zone
 LOCATION_IDS = {"fsn1": 1, "nbg1": 2, "hel1": 3}
 COORDS = {
     "fsn1": (50.47612, 12.370071),
@@ -30,17 +34,18 @@ def error(code: str, message: str, details: dict | None = None) -> dict:
     return {"error": {"code": code, "message": message, "details": details or {}}}
 
 
-def location_id(cfg: dict, name: str) -> int:
+def location_id(lab: Lab, name: str) -> int:
     """Return the ID of a location: Hetzner's for the known ones, else 10 and up."""
-    return LOCATION_IDS.get(name) or 10 + list(cfg["locations"]).index(name)
+    return LOCATION_IDS.get(name) or 10 + list(lab.cfg["locations"]).index(name)
 
 
-def location_json(cfg: dict, name: str) -> dict:
+def location_json(lab: Lab, name: str) -> dict:
     """Return the API object of a location."""
+    cfg = lab.cfg
     location = cfg["locations"][name]
     latitude, longitude = COORDS.get(name, (50.0, 10.0))
     return {
-        "id": location_id(cfg, name),
+        "id": location_id(lab, name),
         "name": name,
         "description": f"{location.get('city', name)} DC Park 1",
         "country": location.get("country", "DE"),
@@ -51,13 +56,14 @@ def location_json(cfg: dict, name: str) -> dict:
     }
 
 
-def server_type_id(cfg: dict, name: str) -> int:
+def server_type_id(lab: Lab, name: str) -> int:
     """Return the ID of a server type (100 and up, in configuration order)."""
-    return 100 + list(cfg["server_types"]).index(name)
+    return 100 + list(lab.cfg["server_types"]).index(name)
 
 
-def server_type_json(cfg: dict, name: str) -> dict:
+def server_type_json(lab: Lab, name: str) -> dict:
     """Return the API object of a server type, with prices in every location."""
+    cfg = lab.cfg
     entry = cfg["server_types"][name]
     prices = [
         {
@@ -70,7 +76,7 @@ def server_type_json(cfg: dict, name: str) -> dict:
         for loc in cfg["locations"]
     ]
     return {
-        "id": server_type_id(cfg, name),
+        "id": server_type_id(lab, name),
         "name": name,
         "description": name.upper(),
         "category": "cost_optimized",
@@ -86,7 +92,7 @@ def server_type_json(cfg: dict, name: str) -> dict:
         "included_traffic": TRAFFIC,
         "locations": [
             {
-                "id": location_id(cfg, loc),
+                "id": location_id(lab, loc),
                 "name": loc,
                 "deprecation": None,
                 "recommended": True,
@@ -97,22 +103,31 @@ def server_type_json(cfg: dict, name: str) -> dict:
     }
 
 
-def image_id(cfg: dict, name: str) -> int:
+def image_id(lab: Lab, name: str) -> int:
     """Return the ID of a system image (200 and up, in configuration order)."""
-    return 200 + list(cfg["images"]).index(name)
+    return 200 + list(lab.cfg["images"]).index(name)
+
+
+def storage_box_type_id(lab: Lab, name: str) -> int:
+    """Return the ID of a Storage Box type (1330 and up, in configuration order)."""
+    return 1330 + list(lab.cfg["storage_box_types"]).index(name)
 
 
 def _flavor(name: str) -> tuple[str, str | None]:
+    """Return the OS flavor and version of an image name like "debian-13".
+
+    A flavor Hetzner does not know is "unknown".
+    """
     flavor, _, version = name.partition("-")
     known = ("debian", "ubuntu", "centos", "fedora", "rocky", "alma")
     return (flavor if flavor in known else "unknown"), version or None
 
 
-def image_json(cfg: dict, name: str) -> dict:
+def image_json(lab: Lab, name: str) -> dict:
     """Return the API object of a system image."""
     flavor, version = _flavor(name)
     return {
-        "id": image_id(cfg, name),
+        "id": image_id(lab, name),
         "type": "system",
         "status": "available",
         "name": name,
@@ -134,23 +149,36 @@ def image_json(cfg: dict, name: str) -> dict:
     }
 
 
-def server_json(cfg: dict, state, server: dict) -> dict:
+def server_json(lab: Lab, server: Server) -> dict:
     """Return the API object of a server."""
-    ipv4 = state["primary_ips"].get(server.get("ipv4_id"))
-    ipv6 = state["primary_ips"].get(server.get("ipv6_id"))
-    firewalls = [
-        {"id": fid, "status": "applied"}
-        for fid, firewall in state["firewalls"].items()
-        if server["id"] in firewall_servers(firewall, state)
-    ]
-    ipv4_ptr = next(
-        (
-            x["dns_ptr"]
-            for x in (ipv4 or {}).get("dns_ptr", [])
-            if x["ip"] == (ipv4 or {}).get("ip")
-        ),
-        None,
-    )
+    cfg, state = lab.cfg, lab.state
+    with state.lock:
+        ipv4 = primary_ip_of(state, server, "ipv4")
+        ipv6 = primary_ip_of(state, server, "ipv6")
+        firewalls = [
+            {"id": fid, "status": "applied"}
+            for fid, firewall in state["firewalls"].items()
+            if server["id"] in firewall_servers(state, firewall)
+        ]
+        floating_ips = [
+            f["id"]
+            for f in state["floating_ips"].values()
+            if f["server"] == server["id"]
+        ]
+        private_net = [
+            {
+                "network": nic["network"],
+                "ip": nic["ip"],
+                "alias_ips": nic["alias_ips"],
+                "mac_address": nic["mac"],
+            }
+            for nic in server["_lab"]["nics"]
+        ]
+        volumes = sorted(
+            v["id"]
+            for v in state["volumes"].values()
+            if v.get("server") == server["id"]
+        )
     return {
         "id": server["id"],
         "name": server["name"],
@@ -162,7 +190,8 @@ def server_json(cfg: dict, state, server: dict) -> dict:
                 "id": ipv4["id"],
                 "ip": ipv4["ip"],
                 "blocked": False,
-                "dns_ptr": ipv4_ptr or default_ptr(ipv4["ip"]),
+                # the server shows the entry of the address itself, as a string
+                "dns_ptr": dns_ptrs(ipv4)[0]["dns_ptr"],
             }
             if ipv4
             else None,
@@ -170,29 +199,17 @@ def server_json(cfg: dict, state, server: dict) -> dict:
                 "id": ipv6["id"],
                 "ip": ipv6["ip"],
                 "blocked": False,
-                "dns_ptr": ipv6.get("dns_ptr", []),
+                "dns_ptr": dns_ptrs(ipv6),
             }
             if ipv6
             else None,
-            "floating_ips": [
-                f["id"]
-                for f in state["floating_ips"].values()
-                if f.get("server") == server["id"]
-            ],
+            "floating_ips": floating_ips,
             "firewalls": firewalls,
         },
-        "private_net": [
-            {
-                "network": nic["network"],
-                "ip": nic["ip"],
-                "alias_ips": nic.get("alias_ips", []),
-                "mac_address": nic["mac"],
-            }
-            for nic in server["_lab"]["nics"]
-        ],
-        "server_type": server_type_json(cfg, server["server_type"]),
-        "location": location_json(cfg, server["location"]),
-        "image": image_json(cfg, server["image"])
+        "private_net": private_net,
+        "server_type": server_type_json(lab, server["server_type"]),
+        "location": location_json(lab, server["location"]),
+        "image": image_json(lab, server["image"])
         if server["image"] in cfg["images"]
         else None,
         "iso": None,
@@ -203,14 +220,9 @@ def server_json(cfg: dict, state, server: dict) -> dict:
         "ingoing_traffic": 0,
         "included_traffic": TRAFFIC,
         "protection": server["protection"],
-        "volumes": sorted(
-            v["id"]
-            for v in state["volumes"].values()
-            if v.get("server") == server["id"]
-        ),
+        "volumes": volumes,
         "load_balancers": [],
-        "primary_disk_size": server["_lab"].get("disk_gb")
-        or cfg["server_types"][server["server_type"]]["disk_gb"],
+        "primary_disk_size": server["_lab"]["disk_gb"],
         "placement_group": None,
     }
 
@@ -223,36 +235,51 @@ def default_ptr(ip: str) -> str:
     return f"static.{'.'.join(reversed(ip.split('.')))}.clients.your-server.de"
 
 
-def primary_ip_json(cfg: dict, primary_ip: dict) -> dict:
+def dns_ptrs(record: PrimaryIP | FloatingIP) -> list[DnsPtr]:
+    """Return the reverse DNS entries of a primary or Floating IP.
+
+    Entries are per address (several in an IPv6 /64); an IPv4 without its own entry has
+    Hetzner's default.
+    """
+    if record["type"] == "ipv4" and not record["dns_ptr"]:
+        return [{"ip": record["ip"], "dns_ptr": default_ptr(record["ip"])}]
+    return record["dns_ptr"]
+
+
+def ssh_key_json(lab: Lab, ssh_key: SSHKey) -> dict:
+    """Return the API object of an SSH key."""
+    return {
+        "id": ssh_key["id"],
+        "name": ssh_key["name"],
+        "fingerprint": ssh_key["fingerprint"],
+        "public_key": ssh_key["public_key"],
+        "labels": ssh_key["labels"],
+        "created": ssh_key["created"],
+    }
+
+
+def primary_ip_json(lab: Lab, primary_ip: PrimaryIP) -> dict:
     """Return the API object of a primary IP."""
-    ip = primary_ip["ip"]
-    default = (
-        [{"ip": ip, "dns_ptr": default_ptr(ip)}] if primary_ip["type"] == "ipv4" else []
-    )
     return {
         "id": primary_ip["id"],
         "name": primary_ip["name"],
-        "ip": ip,
+        "ip": primary_ip["ip"],
         "type": primary_ip["type"],
-        "assignee_id": primary_ip.get("assignee_id"),
-        "assignee_type": "server" if primary_ip.get("assignee_id") else "unassigned",
-        "auto_delete": primary_ip.get("auto_delete", True),
+        "assignee_id": primary_ip["assignee_id"],
+        "assignee_type": "server" if primary_ip["assignee_id"] else "unassigned",
+        "auto_delete": primary_ip["auto_delete"],
         "blocked": False,
-        "location": location_json(cfg, primary_ip["location"]),
-        "dns_ptr": primary_ip.get("dns_ptr") or default,
-        "labels": primary_ip.get("labels", {}),
-        "protection": primary_ip.get("protection") or {"delete": False},
+        "location": location_json(lab, primary_ip["location"]),
+        "dns_ptr": dns_ptrs(primary_ip),
+        "labels": primary_ip["labels"],
+        "protection": primary_ip["protection"],
         "created": primary_ip["created"],
     }
 
 
-def network_json(state, network: dict) -> dict:
+def network_json(lab: Lab, network: CloudNetwork) -> dict:
     """Return the API object of a network, with the servers attached to it."""
-    servers = [
-        s["id"]
-        for s in state["servers"].values()
-        if any(nic["network"] == network["id"] for nic in s["_lab"]["nics"])
-    ]
+    servers = [server["id"] for server, _ in nics_in(lab.state, network["id"])]
     return {
         "id": network["id"],
         "name": network["name"],
@@ -264,34 +291,21 @@ def network_json(state, network: dict) -> dict:
         "protection": network["protection"],
         "labels": network["labels"],
         "created": network["created"],
-        "expose_routes_to_vswitch": network.get("expose_routes_to_vswitch", False),
+        "expose_routes_to_vswitch": network["expose_routes_to_vswitch"],
     }
 
 
-def floating_ip_json(cfg: dict, floating_ip: dict) -> dict:
-    """Return the API object of a Floating IP.
-
-    Reverse DNS is per address (several in an IPv6 /64); an IPv4 without its own entry
-    has Hetzner's default.
-    """
-    ip = floating_ip["ip"]
-    ptrs = floating_ip.get("dns_ptr")
-    ptrs = (
-        ptrs
-        if isinstance(ptrs, list)
-        else ([{"ip": ip, "dns_ptr": ptrs}] if ptrs else [])
-    )
-    if floating_ip["type"] == "ipv4" and not ptrs:
-        ptrs = [{"ip": ip, "dns_ptr": default_ptr(ip)}]
+def floating_ip_json(lab: Lab, floating_ip: FloatingIP) -> dict:
+    """Return the API object of a Floating IP."""
     return {
         "id": floating_ip["id"],
         "name": floating_ip["name"],
-        "description": floating_ip.get("description"),
-        "ip": ip,
+        "description": floating_ip["description"],
+        "ip": floating_ip["ip"],
         "type": floating_ip["type"],
-        "server": floating_ip.get("server"),
-        "dns_ptr": ptrs,
-        "home_location": location_json(cfg, floating_ip["home_location"]),
+        "server": floating_ip["server"],
+        "dns_ptr": dns_ptrs(floating_ip),
+        "home_location": location_json(lab, floating_ip["home_location"]),
         "blocked": False,
         "protection": floating_ip["protection"],
         "labels": floating_ip["labels"],
@@ -299,43 +313,44 @@ def floating_ip_json(cfg: dict, floating_ip: dict) -> dict:
     }
 
 
-def ssh_fingerprint(public_key: str) -> str:
-    """Return the MD5 fingerprint of an OpenSSH public key.
+def volume_json(lab: Lab, volume: Volume) -> dict:
+    """Return the API object of a volume."""
+    return {
+        "id": volume["id"],
+        "name": volume["name"],
+        "created": volume["created"],
+        "server": volume["server"],
+        "location": location_json(lab, volume["location"]),
+        "size": volume["size"],
+        "linux_device": f"/dev/disk/by-id/scsi-0HC_Volume_{volume['id']}",
+        "protection": volume["protection"],
+        "labels": volume["labels"],
+        "status": volume["status"],
+        "format": volume["format"],
+    }
 
-    A key that is none raises ValueError: its blob does not name its type, or it has
-    leading whitespace (Hetzner refuses that since 2026-04).
-    """
-    parts = public_key.split()
-    if len(parts) < 2 or public_key != public_key.lstrip():
-        raise ValueError("invalid public key")
-    blob = base64.b64decode(parts[1], validate=True)
-    length = int.from_bytes(blob[:4], "big")
-    if len(blob) < 4 + length or blob[4 : 4 + length] != parts[0].encode():
-        raise ValueError("invalid public key")
-    digest = hashlib.md5(blob).hexdigest()
-    return ":".join(digest[i : i + 2] for i in range(0, 32, 2))
 
-
-def firewall_json(state, firewall: dict) -> dict:
+def firewall_json(lab: Lab, firewall: Firewall) -> dict:
     """Return the API object of a firewall, with the servers its selectors reach."""
+    state = lab.state
     applied = []
-    for entry in firewall["applied_to"]:
-        if entry["type"] == "label_selector":
-            selector = entry["label_selector"]["selector"]
-            reached = [
-                {"type": "server", "server": {"id": s["id"]}}
-                for s in state["servers"].values()
-                if match_labels(s["labels"], selector)
-            ]
-            applied.append(
-                {
-                    "type": "label_selector",
-                    "label_selector": {"selector": selector},
-                    "applied_to_resources": reached,
-                }
-            )
-        else:
-            applied.append(entry)
+    with state.lock:
+        for entry in firewall["applied_to"]:
+            if entry["type"] == "label_selector":
+                selector = entry["label_selector"]["selector"]
+                reached = [
+                    {"type": "server", "server": {"id": s["id"]}}
+                    for s in selector_servers(state, selector)
+                ]
+                applied.append(
+                    {
+                        "type": "label_selector",
+                        "label_selector": {"selector": selector},
+                        "applied_to_resources": reached,
+                    }
+                )
+            else:
+                applied.append(entry)
     return {
         "id": firewall["id"],
         "name": firewall["name"],
@@ -344,8 +359,3 @@ def firewall_json(state, firewall: dict) -> dict:
         "rules": firewall["rules"],
         "applied_to": applied,
     }
-
-
-def ipv6_net(index: int) -> str:
-    """Return the IPv6 /64 with the given index in the lab's prefix."""
-    return f"{config.IPV6_PREFIX}:{index:x}::/64"

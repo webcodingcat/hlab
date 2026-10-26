@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The lab from the Docker host (Linux, macOS, Git Bash on Windows):
-#   bin/hlab [-c hlab.yaml] up         build the image if needed, start the lab
+#   bin/hlab [-c hlab.yaml] up         build the image (cached), start the lab
 #                                      container hlab-<name>
 #   bin/hlab [-c hlab.yaml] down       stop it (VM disks and state stay in the
 #                                      volume hlab-<name>)
@@ -17,129 +17,199 @@
 # The configuration defaults to $HLAB_CONFIG or ./hlab.yaml; without a file
 # the lab "demo" runs with defaults.
 set -euo pipefail
+# Git Bash must not turn the container paths in docker's arguments into
+# Windows paths.
 export MSYS_NO_PATHCONV=1
-# byte order for the globs below: the image hash must match bin/hlab.ps1
-export LC_ALL=C
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-config="${HLAB_CONFIG:-hlab.yaml}"
-explicit="${HLAB_CONFIG:+1}"
-if [[ "${1:-}" == "-c" || "${1:-}" == "--config" ]]; then
-  config="$2"
-  explicit=1
-  shift 2
-fi
-# a mistyped path must not mean the lab "demo"
-if [[ -n "${explicit}" && ! -f "${config}" ]]; then
-  echo "hlab: no such configuration: ${config}" >&2
-  exit 2
-fi
-name=demo
-cfgmount=()
-if [[ -f "${config}" ]]; then
-  n="$(sed -n 's/^name:[[:space:]]*["'\'']\{0,1\}\([A-Za-z0-9_-]*\).*/\1/p' \
-    "${config}" | head -1)"
-  [[ -n "${n}" ]] && name="${n}"
-  dir="$(cd "$(dirname "${config}")" && (pwd -W 2>/dev/null || pwd))"
-  cfgmount=(-v "${dir}:/config:ro"
-    -e "HLAB_CONFIG=/config/$(basename "${config}")")
-fi
-container="hlab-${name}"
-hash="$(cat "${root}/Dockerfile" "${root}"/scripts/* "${root}"/hlabd/*.py \
-  "${root}"/hlabd/*/*.py "${root}"/hlabd/*/*/*.py "${root}"/tests/*.py \
-  "${root}"/tests/tofu-smoke/*.tf "${root}"/tests/tofu-smoke/*.sh \
-  "${root}"/itests/*.py | sha256sum | cut -c1-12)"
-image="hlab:${hash}"
-# the development tools (STYLE.md), built on top of the lab image
-dev_image="hlab-dev:${hash}"
-src="$(cd "${root}" && (pwd -W 2>/dev/null || pwd))"
+# The repository as Docker sees it (a Windows path under Git Bash).
+SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && (pwd -W 2>/dev/null || pwd))"
+readonly SRC
+readonly IMAGE=hlab:latest
+# The development tools (STYLE.md), built on top of the lab image.
+readonly DEV_IMAGE=hlab-dev:latest
+readonly TOFU_IMAGE=ghcr.io/opentofu/opentofu:1
 
-# build [target] [image]: the lab image (or the dev image), unless it exists
-build() {
-  local target="${1:-lab}" tagged="${2:-${image}}"
-  docker image inspect "${tagged}" >/dev/null 2>&1 && return 0
-  echo "Building ${tagged} ..." >&2
-  docker build -q --target "${target}" -t "${tagged}" "${src}" >/dev/null
-  # older builds go (those a container still uses stay: docker refuses to
-  # remove them)
-  docker images "${tagged%%:*}" --format '{{.Repository}}:{{.Tag}}' \
-    | grep -vxF "${tagged}" | xargs -r docker rmi >/dev/null 2>&1 || true
+# Set by load_config.
+lab_name=demo
+container=hlab-demo
+config_mount=()
+# Set by main.
+tty_flags=(-i)
+
+# print_usage: Print the comment block at the top of this file.
+print_usage() {
+  awk 'NR > 1 && !/^#/ { exit } NR > 1' "$0"
 }
 
-# lint check|fix: the style checks or fixes (STYLE.md), tools/lint.sh in the
-# dev image and tofu fmt in OpenTofu's
-lint() {
-  local tofu_args=(fmt -check -diff -recursive)
-  [[ "$1" == fix ]] && tofu_args=(fmt -recursive)
-  build dev "${dev_image}"
-  docker run --rm -v "${src}:/src" --entrypoint bash "${dev_image}" \
-    /src/tools/lint.sh "$1"
-  docker run --rm -v "${src}/tests/tofu-smoke:/work" -w /work \
-    ghcr.io/opentofu/opentofu:1 "${tofu_args[@]}"
-}
-
-tty=(-i)
-[[ -t 0 && -t 1 ]] && tty=(-it)
-
-case "${1:-}" in
-  build) build ;;
-  up)
-    build
-    # a running lab shuts its guests down first
-    docker stop "${container}" >/dev/null 2>&1 || true
-    docker rm -f "${container}" >/dev/null 2>&1 || true
-    docker run -d --name "${container}" --init --privileged \
-      --device /dev/kvm --device /dev/net/tun \
-      --stop-timeout 20 -e "HLAB_NAME=${name}" -v "${container}:/hlab" \
-      ${cfgmount[@]+"${cfgmount[@]}"} "${image}" serve >/dev/null
-    # the start's log until the lab is ready (or the container ends): image
-    # downloads take a while
-    shown=0
-    while true; do
-      log="$(docker logs "${container}" 2>&1)"
-      printf '%s\n' "${log}" | tail -n +"$((shown + 1))"
-      shown="$(printf '%s\n' "${log}" | wc -l)"
-      grep -q "hlab ready" <<<"${log}" && break
-      [[ "$(docker inspect -f '{{.State.Running}}' "${container}" \
-        2>/dev/null)" == true ]] || exit 1
-      sleep 1
-    done
-    ;;
-  down)
-    docker stop "${container}" >/dev/null 2>&1 || true
-    docker rm -f "${container}" >/dev/null 2>&1 || true
-    ;;
-  purge)
-    "$0" -c "${config}" down
-    docker volume rm "${container}" >/dev/null 2>&1 || true
-    ;;
-  logs) docker logs -f "${container}" ;;
-  shell) docker exec "${tty[@]}" "${container}" bash ;;
-  lint) lint check ;;
-  format) lint fix ;;
-  test)
-    lint check
-    build
-    docker run --rm --entrypoint python3 -w /opt/hlab "${image}" \
-      -m pytest -q -p no:cacheprovider tests
-    ;;
-  itest)
-    shift
-    exec docker exec "${tty[@]}" -e HLAB_LIVE=1 -w /opt/hlab/itests \
-      "${container}" python3 -m pytest -p no:cacheprovider -v "$@"
-    ;;
-  "")
-    # the comment block at the top of this file
-    awk 'NR > 1 && !/^#/ { exit } NR > 1' "$0"
-    exit 2
-    ;;
-  # box user <name> <key file>: the key file is on this host, the command runs
-  # in the container
-  box)
-    if [[ "${2:-}" == user && -n "${4:-}" && "${4}" != - && -f "${4}" ]]; then
-      exec docker exec -i "${container}" hlab box user "$3" - <"$4"
+# load_config <file> <explicit>: Take the lab's name from the configuration
+# file and mount its directory into the container. Without the file the lab
+# "demo" runs with defaults, unless the file was named explicitly: a mistyped
+# path must not mean the lab "demo".
+# Globals:
+#   lab_name, container, config_mount (set)
+load_config() {
+  local config="$1" explicit="$2"
+  local configured_name config_dir
+  if [[ ! -f "${config}" ]]; then
+    if [[ -n "${explicit}" ]]; then
+      echo "hlab: no such configuration: ${config}" >&2
+      exit 2
     fi
-    exec docker exec "${tty[@]}" "${container}" hlab "$@"
-    ;;
-  *) exec docker exec "${tty[@]}" "${container}" hlab "$@" ;;
-esac
+    return 0
+  fi
+  configured_name="$(sed -n \
+    's/^name:[[:space:]]*["'\'']\{0,1\}\([A-Za-z0-9_-]*\).*/\1/p' \
+    "${config}" | head -1)"
+  if [[ -n "${configured_name}" ]]; then
+    lab_name="${configured_name}"
+    container="hlab-${lab_name}"
+  fi
+  config_dir="$(cd "$(dirname "${config}")" && (pwd -W 2>/dev/null || pwd))"
+  config_mount=(-v "${config_dir}:/config:ro"
+    -e "HLAB_CONFIG=/config/$(basename "${config}")")
+}
+
+# build_image <target> <tag>: Build a stage of the Dockerfile. Docker's layer
+# cache makes this quick when nothing has changed.
+build_image() {
+  local target="$1" tag="$2"
+  echo "Building ${tag} ..." >&2
+  docker build -q --target "${target}" -t "${tag}" "${SRC}" >/dev/null
+  prune_images
+}
+
+# prune_images: Remove the untagged images that rebuilds leave behind (all
+# carry the label hlab=1). One that a container still uses stays until a
+# later prune.
+prune_images() {
+  docker image prune -f --filter label=hlab=1 >/dev/null 2>&1 || true
+}
+
+# run_lint <check|fix>: Run the style checks or fixes (STYLE.md): tools/lint.sh
+# in the development image, tofu fmt in OpenTofu's image.
+run_lint() {
+  local mode="$1"
+  local tofu_args=(fmt -check -diff -recursive)
+  if [[ "${mode}" == fix ]]; then
+    tofu_args=(fmt -recursive)
+  fi
+  build_image dev "${DEV_IMAGE}"
+  docker run --rm -v "${SRC}:/src" --entrypoint bash "${DEV_IMAGE}" \
+    /src/tools/lint.sh "${mode}"
+  docker run --rm -v "${SRC}/tests/tofu-smoke:/work" -w /work \
+    "${TOFU_IMAGE}" "${tofu_args[@]}"
+}
+
+# stop_lab: Stop and remove the lab container; the volume with the VM disks
+# and the lab's state stays.
+# Globals:
+#   container (read)
+stop_lab() {
+  docker stop "${container}" >/dev/null 2>&1 || true
+  docker rm -f "${container}" >/dev/null 2>&1 || true
+}
+
+# start_lab: Start the lab container afresh and show its log until the lab
+# is ready (or the container ends). Loading the OS images takes a while.
+# Globals:
+#   lab_name, container, config_mount (read)
+start_lab() {
+  local log running shown=0
+  build_image lab "${IMAGE}"
+  # A running lab shuts its guests down first.
+  stop_lab
+  docker run -d --name "${container}" --init --privileged \
+    --device /dev/kvm --device /dev/net/tun \
+    --stop-timeout 20 -e "HLAB_NAME=${lab_name}" -v "${container}:/hlab" \
+    ${config_mount[@]+"${config_mount[@]}"} "${IMAGE}" serve >/dev/null
+  # The old container is gone, and with it the last user of an old image.
+  prune_images
+  while true; do
+    log="$(docker logs "${container}" 2>&1)"
+    printf '%s\n' "${log}" | tail -n +"$((shown + 1))"
+    shown="$(printf '%s\n' "${log}" | wc -l)"
+    if grep -q "hlab ready" <<<"${log}"; then
+      return 0
+    fi
+    running="$(docker inspect -f '{{.State.Running}}' "${container}" \
+      2>/dev/null || true)"
+    if [[ "${running}" != true ]]; then
+      exit 1
+    fi
+    sleep 1
+  done
+}
+
+# run_box <box arguments>: Run "hlab box" in the container. For "box user
+# <name> <key file>" read the key file on this host and hand it to the
+# container on stdin; anything else goes to the container as it is.
+# Globals:
+#   container, tty_flags (read)
+run_box() {
+  local subcommand="${1:-}" user="${2:-}" key_file="${3:-}"
+  # "-" already means stdin inside the container.
+  if [[ "${subcommand}" == user && "${key_file}" != - ]] \
+    && [[ -f "${key_file}" ]]; then
+    exec docker exec -i "${container}" hlab box user "${user}" - \
+      <"${key_file}"
+  fi
+  exec docker exec "${tty_flags[@]}" "${container}" hlab box "$@"
+}
+
+# main [-c <file>] <command> [arguments]: Run the command; see the comment
+# block at the top.
+# Globals:
+#   container (read)
+#   tty_flags (set)
+main() {
+  local config="${HLAB_CONFIG:-hlab.yaml}" explicit="${HLAB_CONFIG:+1}"
+  if [[ "${1:-}" == -c || "${1:-}" == --config ]]; then
+    if (($# < 2)); then
+      echo "hlab: $1 needs a configuration file" >&2
+      exit 2
+    fi
+    config="$2"
+    explicit=1
+    shift 2
+  fi
+  load_config "${config}" "${explicit}"
+  # docker exec gets a terminal only when both ends are one: redirected output
+  # must not get a terminal's line endings.
+  if [[ -t 0 && -t 1 ]]; then
+    tty_flags=(-it)
+  fi
+
+  case "${1:-}" in
+    build) build_image lab "${IMAGE}" ;;
+    up) start_lab ;;
+    down) stop_lab ;;
+    purge)
+      stop_lab
+      docker volume rm "${container}" >/dev/null 2>&1 || true
+      ;;
+    logs) docker logs -f "${container}" ;;
+    shell) docker exec "${tty_flags[@]}" "${container}" bash ;;
+    lint) run_lint check ;;
+    format) run_lint fix ;;
+    test)
+      run_lint check
+      build_image lab "${IMAGE}"
+      # NET_ADMIN: nft -c checks the rulesets against the kernel
+      docker run --rm --cap-add NET_ADMIN --entrypoint python3 \
+        -w /opt/hlab "${IMAGE}" -m pytest -q -p no:cacheprovider tests
+      ;;
+    itest)
+      exec docker exec "${tty_flags[@]}" -e HLAB_LIVE=1 \
+        -w /opt/hlab/itests "${container}" \
+        python3 -m pytest -p no:cacheprovider -v "${@:2}"
+      ;;
+    box) run_box "${@:2}" ;;
+    "")
+      print_usage >&2
+      exit 2
+      ;;
+    *) exec docker exec "${tty_flags[@]}" "${container}" hlab "$@" ;;
+  esac
+}
+
+main "$@"

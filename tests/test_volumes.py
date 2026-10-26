@@ -1,12 +1,13 @@
 """Volumes: create, attach, detach, resize, and their busy states."""
 
-from conftest import create_server, off, wait_action
+import pytest
+from conftest import create_server, power_off, wait_action
 
-from hlabd.api import ips
+from hlabd.api import ips, volumes
 from hlabd.errors import limit_exceeded
 
 
-def test_volume_lifecycle(api, tmp_path):
+def test_volume_is_created_attached_resized_and_deleted(api, tmp_path):
     server = create_server(api, "a")["server"]
     response = api.post(
         "/v1/volumes",
@@ -54,7 +55,7 @@ def test_volume_lifecycle(api, tmp_path):
     assert api.get(f"/v1/volumes/{volume['id']}").json()["volume"]["size"] == 20
 
     # boots with the volume after a power cycle
-    off(api, server["id"])
+    power_off(api, server["id"])
     wait_action(
         api, api.post(f"/v1/servers/{server['id']}/actions/poweron").json()["action"]
     )
@@ -70,7 +71,7 @@ def test_volume_lifecycle(api, tmp_path):
     assert api.delete(f"/v1/volumes/{volume['id']}").status_code == 204
 
 
-def test_volume_rules(api):
+def test_volume_size_and_location_follow_hetzners_rules(api):
     server = create_server(api, "a", location="nbg1")["server"]
     assert (
         api.post(
@@ -103,7 +104,7 @@ def test_volume_rules(api):
     )
 
 
-def test_server_created_with_volume_and_deleted(api):
+def test_server_created_with_a_volume_frees_it_when_deleted(api):
     volume = api.post(
         "/v1/volumes", json={"name": "z", "size": 10, "location": "fsn1"}
     ).json()
@@ -150,7 +151,7 @@ def test_refused_volume_leaves_nothing(api):
     assert api.get(f"/v1/volumes/{volume['id']}").json()["volume"]["server"] is None
 
 
-def test_failed_volume_create_goes_again(api):
+def test_failed_volume_create_leaves_no_volume(api):
     api.sh.fail.add("volume-create")
     response = api.post(
         "/v1/volumes", json={"name": "v", "size": 10, "location": "fsn1"}
@@ -159,15 +160,14 @@ def test_failed_volume_create_goes_again(api):
     assert api.get("/v1/volumes").json()["volumes"] == []
 
 
-def test_volume_actions_one_at_a_time(api):
+def test_volume_runs_one_action_at_a_time(api):
     volume = api.post(
         "/v1/volumes", json={"name": "v", "size": 10, "location": "fsn1"}
     ).json()
     wait_action(api, volume["action"])
     vid = volume["volume"]["id"]
-    assert (
-        api.post(f"/v1/volumes/{vid}/actions/detach").status_code == 422
-    )  # not attached
+    # not attached
+    assert api.post(f"/v1/volumes/{vid}/actions/detach").status_code == 422
     api.lab.state["volumes"][vid]["_busy"] = True
     assert (
         api.post(f"/v1/volumes/{vid}/actions/resize", json={"size": 20}).status_code
@@ -183,9 +183,10 @@ def test_volume_actions_one_at_a_time(api):
     volume = api.get(f"/v1/volumes/{vid}").json()["volume"]
     assert volume["server"] is None
     api.sh.fail.discard("volume-attach")
+    # and not left busy
     response = api.post(
         f"/v1/volumes/{vid}/actions/attach", json={"server": server["id"]}
-    )  # and not left busy
+    )
     assert wait_action(api, response.json()["action"])["status"] == "success"
 
 
@@ -196,9 +197,8 @@ def test_volumes_wait_for_a_busy_server_and_are_not_deleted_while_busy(api):
     ).json()
     wait_action(api, volume["action"])
     vid = volume["volume"]["id"]
-    api.lab.state["servers"][server["id"]]["locked"] = (
-        True  # an action of the server runs
-    )
+    # an action of the server runs
+    api.lab.state["servers"][server["id"]]["locked"] = True
     assert (
         api.post(
             f"/v1/volumes/{vid}/actions/attach", json={"server": server["id"]}
@@ -213,9 +213,8 @@ def test_volumes_wait_for_a_busy_server_and_are_not_deleted_while_busy(api):
         f"/v1/volumes/{vid}/actions/attach", json={"server": server["id"]}
     )
     assert wait_action(api, response.json()["action"])["status"] == "success"
-    assert not api.lab.state["servers"][server["id"]][
-        "locked"
-    ]  # the server is free again
+    # the server is free again
+    assert not api.lab.state["servers"][server["id"]]["locked"]
 
 
 def test_server_create_takes_only_available_volumes_and_leaves_nothing(
@@ -255,6 +254,73 @@ def test_server_create_takes_only_available_volumes_and_leaves_nothing(
         },
     )
     assert response.status_code == 403
-    assert (
-        api.get(f"/v1/volumes/{vid}").json()["volume"]["server"] is None
-    )  # nothing left pointing at it
+    # nothing left pointing at it
+    assert api.get(f"/v1/volumes/{vid}").json()["volume"]["server"] is None
+
+
+def test_volume_created_for_a_server_locks_it_until_attached(api):
+    server = create_server(api, "a")["server"]
+    api.lab.state["servers"][server["id"]]["locked"] = True  # an action runs
+    body = {"name": "v", "size": 10, "server": server["id"]}
+    assert api.post("/v1/volumes", json=body).status_code == 423
+    assert api.get("/v1/volumes").json()["volumes"] == []
+    api.lab.state["servers"][server["id"]]["locked"] = False
+    response = api.post("/v1/volumes", json=body).json()
+    wait_action(api, response["action"])
+    assert api.get(f"/v1/servers/{server['id']}").json()["server"]["locked"] is False
+    assert api.get("/v1/volumes").json()["volumes"][0]["server"] == server["id"]
+
+
+def test_volume_delete_claims_the_volume_and_frees_it_when_the_disk_stays(
+    api, monkeypatch
+):
+    volume = api.post(
+        "/v1/volumes", json={"name": "v", "size": 10, "location": "fsn1"}
+    ).json()
+    wait_action(api, volume["action"])
+    vid = volume["volume"]["id"]
+    busy_while_deleted = []
+
+    def failing_delete(record):
+        busy_while_deleted.append(record.get("_busy"))  # no action may start now
+        raise RuntimeError("volume-delete failed")
+
+    monkeypatch.setattr(api.lab.fabric, "delete_volume", failing_delete)
+    with pytest.raises(RuntimeError):
+        volumes.delete_volume(api.lab, vid)
+    assert busy_while_deleted == [True]
+    assert "_busy" not in api.lab.state["volumes"][vid]
+    monkeypatch.undo()
+    assert api.delete(f"/v1/volumes/{vid}").status_code == 204
+    assert api.get("/v1/volumes").json()["volumes"] == []
+
+
+def test_server_create_refuses_a_volume_whose_action_started_after_the_check(
+    api, monkeypatch
+):
+    volume = api.post(
+        "/v1/volumes", json={"name": "v", "size": 10, "location": "fsn1"}
+    ).json()
+    wait_action(api, volume["action"])
+    vid = volume["volume"]["id"]
+    state = api.lab.state
+    free_index = state.free_index
+
+    def action_starts_meanwhile():
+        state["volumes"][vid]["_busy"] = True  # e.g. an attach elsewhere
+        return free_index()
+
+    monkeypatch.setattr(state, "free_index", action_starts_meanwhile)
+    response = api.post(
+        "/v1/servers",
+        json={
+            "name": "a",
+            "server_type": "cx23",
+            "image": "debian-13",
+            "location": "fsn1",
+            "volumes": [vid],
+        },
+    )
+    assert response.status_code == 423
+    assert api.get("/v1/servers").json()["servers"] == []
+    assert state["volumes"][vid]["server"] is None

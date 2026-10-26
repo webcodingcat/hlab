@@ -1,9 +1,11 @@
-# Development tools only (the lab itself needs no packaging): ruff checks PEP 8 and PEP 257.
+# Development tools only (the lab itself needs no packaging): ruff checks PEP 8 and PEP 257,
+# mypy the types.
 [tool.ruff]
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["E", "W", "F", "I", "N", "D"]
+# BLE: a broad `except Exception` needs a reason; RUF100: no unused noqa comments
+select = ["E", "W", "F", "I", "N", "D", "BLE", "RUF100"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "pep257"
@@ -13,5 +15,18 @@ known-first-party = ["hlabd"]
 
 [tool.ruff.lint.per-file-ignores]
 # test names are sentences that say what they check
-"tests/*" = ["D100", "D101", "D102", "D103", "D104", "D105", "D107"]
-"itests/*" = ["D100", "D101", "D102", "D103", "D104", "D105", "D107"]
+"tests/test_*.py" = ["D100", "D101", "D102", "D103", "D104", "D105", "D107"]
+"itests/test_*.py" = ["D100", "D101", "D102", "D103", "D104", "D105", "D107"]
+
+# mypy (`mypy hlabd`): annotations are optional, but where they are (`lab: Lab`, the
+# record TypedDicts of records.py) they are checked, so a typo in a record key fails.
+[tool.mypy]
+python_version = "3.13"
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+# no type stubs in the image (Debian's packages)
+module = ["yaml", "jsonschema.*"]
+ignore_missing_imports = true

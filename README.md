@@ -25,7 +25,7 @@ Docker with `/dev/kvm` (Linux, or Docker Desktop on Windows with WSL2). Check:
 ## Use
 
 ```bash
-bin/hlab -c examples/hlab.yaml up        # build the image if needed, load the OS images, start hlab-demo
+bin/hlab -c examples/hlab.yaml up        # build the image (cached), load the OS images, start hlab-demo
 bin/hlab -c examples/hlab.yaml status    # servers, Floating IPs, clients, faults
 bin/hlab -c examples/hlab.yaml logs      # what the lab does: requests, actions, VMs
 bin/hlab -c examples/hlab.yaml down      # stop; disks and state stay in the volume hlab-demo
@@ -97,18 +97,6 @@ bin/hlab reset                            # delete everything the APIs created
   out of reach, but it does not defend servers and users against each other (`/_lab` has no authentication, QEMU
   runs as root in the container, cloud networks have no source checks).
 
-## Layout
+## Developing
 
-| Path | What |
-|---|---|
-| `Dockerfile` | the lab image (Debian 13 packages: QEMU, dnsmasq, nftables, OpenSSH, Python/FastAPI) |
-| `bin/hlab`, `bin/hlab.ps1` | host side: build, start, stop, pass commands into the container |
-| `scripts/hlab.sh` | low-level primitives: taps, QEMU, nftables, tc, DHCP, DNS, volumes, images |
-| `scripts/box.sh` | the Storage Box: sshd, chrooted accounts, snapshots |
-| `hlabd/lab.py` | the core: state, actions, locks (how resources are kept apart while actions run) |
-| `hlabd/api/` | what happens: Cloud API, Storage Box API, metadata service, lab control (one module per resource) |
-| `hlabd/fabric/` | how it happens: VMs, taps, nftables firewall rules, Storage Box accounts (through the scripts) |
-| `hlabd/cli.py` | the `hlab` command inside the container |
-| `tests/` | unit tests by feature, the OpenTofu smoke test |
-| `itests/` | live tests with VMs |
-| `tools/lint.sh`, `STYLE.md` | style checks and the standards they follow |
+How the code fits together is in [DEVELOPING.md](DEVELOPING.md), the standards it follows in [STYLE.md](STYLE.md).

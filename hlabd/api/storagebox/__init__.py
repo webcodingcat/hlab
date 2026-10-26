@@ -9,15 +9,16 @@ import logging
 
 from fastapi import FastAPI
 
-from ...fabric.storagebox import BOX, data_dir, snap_dir, username
+from ...fabric.storagebox import BOX, snap_dir
+from ...lab import Lab
 from ..web import install
 from . import boxes, snapshots, subaccounts
-from .base import quota, sub_home, sync_box
+from .base import box_account, sync_box, sync_subaccount
 
-log = logging.getLogger("hlabd.box")
+log = logging.getLogger(__name__)
 
 
-def create_app(lab) -> FastAPI:
+def create_app(lab: Lab) -> FastAPI:
     """Build the FastAPI app that serves the Storage Box API."""
     app = FastAPI(
         title="hlab: fake Hetzner API (Storage Boxes)",
@@ -32,7 +33,7 @@ def create_app(lab) -> FastAPI:
     return app
 
 
-def restore(lab) -> None:
+def restore(lab: Lab) -> None:
     """Set up the accounts of all boxes again after a lab start.
 
     Their roots live in /run. Passwords stay as set (shadow is in the container, so they
@@ -40,39 +41,32 @@ def restore(lab) -> None:
     logged; the lab comes up anyway. Snapshots whose copy a restart cut off are removed.
     """
     state, fabric = lab.state, lab.fabric
-    for s in [s for s in state["box_snapshots"].values() if s.get("_copying")]:
+    with state.lock:  # copies: the loops below run scripts
+        cut_off = [s for s in state["box_snapshots"].values() if s.get("_copying")]
+        boxes = list(state["storage_boxes"].values())
+    for s in cut_off:
         box = state["storage_boxes"].get(s["box"])
         if box:
-            fabric.box.rmtree(snap_dir(box, s["name"]), check=False)
-        del state["box_snapshots"][s["id"]]
-    fabric.box.rmtree(f"{BOX}/snapshots/.work", check=False)  # copies cut off
-    for box in state["storage_boxes"].values():
-        box.pop("_busy", None)
-    for a in state["subaccounts"].values():
-        a.pop("_creating", None)
+            fabric.box.remove_tree(snap_dir(box, s["name"]), check=False)
+        with state.lock:
+            del state["box_snapshots"][s["id"]]
+    fabric.box.remove_tree(f"{BOX}/snapshots/.work", check=False)  # copies cut off
     state.save()
-    for box in state["storage_boxes"].values():
+    for box in boxes:
         try:
-            fabric.box.account(
-                username(box),
-                data_dir(box),
-                box.get("_password"),
-                quota(lab, box),
-                str(box["id"]),
-            )
+            box_account(lab, box, box.get("_password"))
             sync_box(lab, box)
-        except Exception:  # noqa: BLE001
+        # one box that fails must not keep the lab from coming up
+        except Exception:
             log.exception("Storage Box %s not restored", box["id"])
             continue
-        for a in [a for a in state["subaccounts"].values() if a["box"] == box["id"]]:
+        with state.lock:
+            accounts = [
+                a for a in state["subaccounts"].values() if a["box"] == box["id"]
+            ]
+        for account in accounts:
             try:
-                fabric.box.account(
-                    a["username"],
-                    sub_home(box, a),
-                    a.get("_password"),
-                    quota(lab, box),
-                    username(box),
-                )
-                fabric.box.access(a["username"], a["access"], quota(lab, box))
-            except Exception:  # noqa: BLE001
-                log.exception("sub-account %s not restored", a["username"])
+                sync_subaccount(lab, box, account, account.get("_password"))
+            # nor one sub-account that fails
+            except Exception:
+                log.exception("sub-account %s not restored", account["username"])

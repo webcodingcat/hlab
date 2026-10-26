@@ -4,31 +4,38 @@ import posixpath
 
 from fastapi import FastAPI, Request
 
-from ...errors import ApiError, invalid, locked, not_found, unique_name, unsupported
+from ...errors import check_unique_name, invalid, locked, protected
 from ...fabric.storagebox import TB, data_dir, snap_dir, username
-from ...lab import now
+from ...lab import BOX_CREATE_SECONDS, Lab, Plan, now
+from ...records import StorageBox
 from .. import hetzner
-from ..catalogue import resolve
-from ..web import filtered, paginate, read_body
-from .base import (
-    access,
-    box_or_404,
-    check_home,
-    check_password,
-    quota,
-    sync_box,
-    update_fields,
+from ..actions import action_or_404, listed, touches
+from ..catalogue import catalogue_entry_or_404, catalogue_name
+from ..servers import ssh_fingerprint
+from ..web import (
+    change_delete_protection,
+    filtered,
+    paginate,
+    read_body,
+    update_resource,
 )
-from .snapshots import rollback
+from .base import (
+    BUSY,
+    box_account,
+    box_busy,
+    box_or_404,
+    checked_access_settings,
+    checked_password,
+    normalized_box_path,
+    quota_bytes,
+    sync_box,
+)
+from .snapshots import rollback_snapshot
 
 
-def box_type_id(cfg: dict, name: str) -> int:
-    """Return the ID of a box type, from its place in the config."""
-    return 1330 + list(cfg["storage_box_types"]).index(name)
-
-
-def box_type(cfg: dict, name: str) -> dict:
-    """Return the API view of a box type."""
+def box_type_json(lab: Lab, name: str) -> dict:
+    """Return the API object of a box type."""
+    cfg = lab.cfg
     entry = cfg["storage_box_types"][name]
     prices = [
         {
@@ -40,7 +47,7 @@ def box_type(cfg: dict, name: str) -> dict:
         for loc in cfg["locations"]
     ]
     return {
-        "id": box_type_id(cfg, name),
+        "id": hetzner.storage_box_type_id(lab, name),
         "name": name,
         "description": entry.get("description", name.upper()),
         "snapshot_limit": entry["snapshots"],
@@ -52,25 +59,15 @@ def box_type(cfg: dict, name: str) -> dict:
     }
 
 
-def box_type_name(cfg: dict, ref) -> str:
-    """Return the name of a box type given by name or ID."""
-    for n in cfg["storage_box_types"]:
-        if str(ref) in (n, str(box_type_id(cfg, n))):
-            return n
-    raise invalid("Storage Box type not found", "storage_box_type")
-
-
-def stats(lab, box: dict) -> dict:
+def box_stats(lab: Lab, box: StorageBox) -> dict:
     """Return the box's disk usage: data, snapshots and both together."""
-    data, snaps = (
-        lab.fabric.box.usage(data_dir(box)),
-        lab.fabric.box.usage(snap_dir(box)),
-    )
-    return {"size": data + snaps, "size_data": data, "size_snapshots": snaps}
+    data = lab.fabric.box.bytes_used(data_dir(box))
+    snapshots = lab.fabric.box.bytes_used(snap_dir(box))
+    return {"size": data + snapshots, "size_data": data, "size_snapshots": snapshots}
 
 
-def box_json(lab, box: dict) -> dict:
-    """Return the API view of a box.
+def box_json(lab: Lab, box: StorageBox) -> dict:
+    """Return the API object of a box.
 
     It reads the box's usage from disk: call it off the event loop.
     """
@@ -78,8 +75,8 @@ def box_json(lab, box: dict) -> dict:
     return {
         "id": box["id"],
         "name": box["name"],
-        "storage_box_type": box_type(lab.cfg, box["type"]),
-        "location": hetzner.location_json(lab.cfg, box["location"]),
+        "storage_box_type": box_type_json(lab, box["type"]),
+        "location": hetzner.location_json(lab, box["location"]),
         "access_settings": box["access"],
         "snapshot_plan": box.get("plan"),
         "protection": box["protection"],
@@ -88,121 +85,125 @@ def box_json(lab, box: dict) -> dict:
         "username": username(box) if ready else None,
         "server": f"{username(box)}.your-storagebox.de" if ready else None,
         "system": f"{box['location'].upper()}-BX{box['id'] % 1000}",
-        "stats": stats(lab, box),
+        "stats": box_stats(lab, box),
         "created": box["created"],
     }
 
 
-def check_unique_name(lab, name, current: dict | None) -> None:
-    """Check that no other box has this name."""
-    unique_name(lab.state["storage_boxes"].values(), name, current, "Storage Box")
-
-
-def check_ssh_keys(keys) -> list[str]:
+def checked_ssh_keys(keys) -> list[str]:
     """Check a list of SSH public keys (one per entry, 64 KiB in all) and return it."""
     if (
         not isinstance(keys, list)
-        or not all(isinstance(k, str) for k in keys)
+        or not all(isinstance(key, str) for key in keys)
         or sum(map(len, keys)) > 65536
     ):
         raise invalid("ssh_keys is a list of public keys (64 KiB in all)", "ssh_keys")
-    for k in keys:
+    for key in keys:
         try:
-            hetzner.ssh_fingerprint(k)
+            ssh_fingerprint(key)
+        # whatever the parser trips over, the key is not one
         except Exception:  # noqa: BLE001
             raise invalid("not an SSH public key", "ssh_keys") from None
-        if any(ord(ch) < 32 for ch in k):
+        if any(ord(char) < 32 for char in key):
             raise invalid("one key per entry", "ssh_keys")
     return keys
 
 
-def set_up(lab, box: dict, password: str, keys: list[str]) -> None:
+def set_up_box_account(
+    lab: Lab, box: StorageBox, password: str, keys: list[str]
+) -> None:
     """Set up the box's account.
 
     If that fails, nothing of the box stays.
     """
     try:
-        lab.fabric.box.account(
-            username(box), data_dir(box), password, quota(lab, box), str(box["id"])
-        )
+        box_account(lab, box, password)
         # like on the Storage Box: they end up in the box's .ssh/authorized_keys
         if keys:
-            lab.fabric.box.authorized_keys(username(box), keys)
+            lab.fabric.box.write_authorized_keys(username(box), keys)
         sync_box(lab, box)
-    except Exception:
-        lab.fabric.box.remove(username(box), check=False)
-        lab.fabric.box.rmtree(data_dir(box), check=False)
+    except Exception:  # undo the half-done change, then raise
+        lab.fabric.box.remove_account(username(box), check=False)
+        lab.fabric.box.remove_tree(data_dir(box), check=False)
         with lab.state.lock:
             lab.state["storage_boxes"].pop(box["id"], None)
             lab.state.save()
         raise
 
 
-def remove(lab, box: dict) -> None:
+def remove_box(lab: Lab, box: StorageBox) -> None:
     """Remove the box with its sub-accounts, snapshots and data."""
     state = lab.state
-    for x in [x for x in state["subaccounts"].values() if x["box"] == box["id"]]:
-        lab.fabric.box.remove(x["username"])
-        del state["subaccounts"][x["id"]]
-    for s in [s for s in state["box_snapshots"].values() if s["box"] == box["id"]]:
-        del state["box_snapshots"][s["id"]]
-    lab.fabric.box.remove(username(box))
-    lab.fabric.box.rmtree(data_dir(box))
-    lab.fabric.box.rmtree(snap_dir(box))
-    state["storage_boxes"].pop(box["id"], None)
-    state.save()
+    with state.lock:
+        mine = [x for x in state["subaccounts"].values() if x["box"] == box["id"]]
+    for subaccount in mine:
+        lab.fabric.box.remove_account(subaccount["username"])
+        with state.lock:
+            del state["subaccounts"][subaccount["id"]]
+    with state.lock:
+        for s in [s for s in state["box_snapshots"].values() if s["box"] == box["id"]]:
+            del state["box_snapshots"][s["id"]]
+    lab.fabric.box.remove_account(username(box))
+    lab.fabric.box.remove_tree(data_dir(box))
+    lab.fabric.box.remove_tree(snap_dir(box))
+    with state.lock:
+        state["storage_boxes"].pop(box["id"], None)
+        state.save()
 
 
 # --- box actions ----------------------------------------------------------------------
-# Each gets the box and the request; it is done at once unless it returns its own
-# (running) action.
+# Each gets the box and the request and returns its plan (lab.Plan).
 
 
-def change_protection(lab, box: dict, body: dict) -> None:
-    """Change the box's delete protection."""
-    box["protection"]["delete"] = bool(body.get("delete", box["protection"]["delete"]))
-
-
-def change_type(lab, box: dict, body: dict) -> None:
+def change_type(lab: Lab, box: StorageBox, body: dict) -> Plan:
     """Change the box's type, if the new one has room for what the box uses."""
-    type_name = box_type_name(lab.cfg, body.get("storage_box_type"))
+    type_name = catalogue_name(lab, "storage_box_type", body.get("storage_box_type"))
     if (
         lab.cfg["storage_box_types"][type_name]["size_tb"] * TB
-        < stats(lab, box)["size"]
+        < box_stats(lab, box)["size"]
     ):
         raise invalid(
             "the type offers less space than the box uses", "storage_box_type"
         )
-    box["type"] = type_name
+    with lab.state.lock:
+        box["type"] = type_name
     sync_box(lab, box)
     # sub-accounts share the quota
-    for a in [a for a in lab.state["subaccounts"].values() if a["box"] == box["id"]]:
-        lab.fabric.box.access(a["username"], a["access"], quota(lab, box))
+    with lab.state.lock:
+        mine = [a for a in lab.state["subaccounts"].values() if a["box"] == box["id"]]
+    for subaccount in mine:
+        lab.fabric.box.set_access(
+            subaccount["username"], subaccount["access"], quota_bytes(lab, box)
+        )
+    return Plan()
 
 
-def reset_password(lab, box: dict, body: dict) -> None:
+def reset_password(lab: Lab, box: StorageBox, body: dict) -> Plan:
     """Set a new password for the box's main account."""
-    password = check_password(body.get("password"))
-    lab.fabric.box.account(
-        username(box), data_dir(box), password, quota(lab, box), str(box["id"])
-    )
+    password = checked_password(body.get("password"))
+    box_account(lab, box, password)
     # stored only once it is set (a lab start sets the stored one again)
-    box["_password"] = password
+    with lab.state.lock:
+        box["_password"] = password
     sync_box(lab, box)
+    return Plan()
 
 
-def update_access_settings(lab, box: dict, body: dict) -> None:
+def update_access_settings(lab: Lab, box: StorageBox, body: dict) -> Plan:
     """Change the box's access settings; on failure the old ones stay."""
     old = dict(box["access"])
-    box["access"].update(access(body, box["access"]))
+    with lab.state.lock:
+        box["access"].update(checked_access_settings(body, box["access"]))
     try:
         sync_box(lab, box)
     except Exception:  # not in effect: not reported either
-        box["access"] = old
+        with lab.state.lock:
+            box["access"] = old
         raise
+    return Plan()
 
 
-def enable_snapshot_plan(lab, box: dict, body: dict) -> None:
+def enable_snapshot_plan(lab: Lab, box: StorageBox, body: dict) -> Plan:
     """Set the box's snapshot plan, within the snapshot limit of its type."""
     if (
         not 1
@@ -210,144 +211,176 @@ def enable_snapshot_plan(lab, box: dict, body: dict) -> None:
         <= lab.cfg["storage_box_types"][box["type"]]["snapshots"]
     ):
         raise invalid("exceeds the snapshot limit of the type", "max_snapshots")
-    box["plan"] = {
-        k: body.get(k)
-        for k in ("max_snapshots", "minute", "hour", "day_of_week", "day_of_month")
-    }
+    keys = ("max_snapshots", "minute", "hour", "day_of_week", "day_of_month")
+    with lab.state.lock:
+        box["plan"] = {key: body.get(key) for key in keys}
+    return Plan()
 
 
-def disable_snapshot_plan(lab, box: dict, body: dict) -> None:
+def disable_snapshot_plan(lab: Lab, box: StorageBox, body: dict) -> Plan:
     """Remove the box's snapshot plan."""
-    box["plan"] = None
+    with lab.state.lock:
+        box["plan"] = None
+    return Plan()
 
 
-ACTIONS = {
-    "change_protection": change_protection,
-    "change_type": change_type,
-    "reset_password": reset_password,
-    "update_access_settings": update_access_settings,
-    "enable_snapshot_plan": enable_snapshot_plan,
-    "disable_snapshot_plan": disable_snapshot_plan,
-    "rollback_snapshot": rollback,
+# the Storage Box actions: Hetzner's name of the action and the function that plans it
+BOX_ACTIONS = {
+    "change_protection": ("change_protection", change_delete_protection),
+    "change_type": ("change_type", change_type),
+    "reset_password": ("reset_password", reset_password),
+    "update_access_settings": ("update_access_settings", update_access_settings),
+    "enable_snapshot_plan": ("enable_snapshot_plan", enable_snapshot_plan),
+    "disable_snapshot_plan": ("disable_snapshot_plan", disable_snapshot_plan),
+    "rollback_snapshot": ("rollback_snapshot", rollback_snapshot),
 }
+
+
+# --- route logic ----------------------------------------------------------------------
+
+
+def create_box(lab: Lab, body: dict) -> dict:
+    """Create a box; its account is set up in the background."""
+    state = lab.state
+    type_name = catalogue_name(lab, "storage_box_type", body["storage_box_type"])
+    location = catalogue_name(lab, "location", body["location"])
+    with state.lock:
+        check_unique_name(
+            state["storage_boxes"].values(), body["name"], None, "Storage Box"
+        )
+    access_settings = {
+        "reachable_externally": False,
+        "samba_enabled": False,
+        "ssh_enabled": False,
+        "webdav_enabled": False,
+        "zfs_enabled": False,
+    }
+    access_settings.update(
+        checked_access_settings(body.get("access_settings"), access_settings)
+    )
+    keys = checked_ssh_keys(body.get("ssh_keys") or [])
+    password = checked_password(body.get("password"))
+    with state.lock:
+        bid = state.new_id("storage_boxes")
+        box: StorageBox = {
+            "id": bid,
+            "name": body["name"],
+            "type": type_name,
+            "location": location,
+            "access": access_settings,
+            "plan": None,
+            "protection": {"delete": False},
+            "labels": body.get("labels") or {},
+            "status": "initializing",
+            "created": now(),
+            "_password": password,
+        }
+        state["storage_boxes"][bid] = box
+        state.save()
+    action = lab.new_action("create", [(bid, "storage_box")])
+
+    async def steps():
+        await lab.blocking(set_up_box_account, lab, box, password, keys)
+        await lab.sleep(BOX_CREATE_SECONDS)
+        with state.lock:
+            box["status"] = "active"
+            state.save()
+
+    lab.run_action(action, steps)
+    return {"storage_box": box_json(lab, box), "action": action}
+
+
+def update_box(lab: Lab, bid: int, body: dict) -> dict:
+    """Change a box's name and labels (names are unique)."""
+    box = box_or_404(lab, bid)
+    update_resource(lab, "storage_boxes", box, body, ("name", "labels"), "Storage Box")
+    return {"storage_box": box_json(lab, box)}
+
+
+def delete_box(lab: Lab, bid: int) -> dict:
+    """Delete a box with its sub-accounts, snapshots and data, in the background.
+
+    Not while it is set up, rolled back, copied, getting a sub-account or already
+    being deleted (423); if the delete fails, the box can be deleted again.
+    """
+    box = box_or_404(lab, bid)
+    if box["protection"]["delete"]:
+        raise protected("Storage Box is delete protected")
+    with lab.state.lock:
+        if box_busy(lab, box, for_delete=True):
+            raise locked(BUSY)
+        lab.claim(box, "_deleting", BUSY)
+    action = lab.new_action("delete", [(bid, "storage_box")])
+
+    async def steps():
+        await lab.blocking(remove_box, lab, box)
+
+    lab.run_action(action, steps, holding=[(box, "_deleting")])
+    return {"action": action}
+
+
+def box_folders(lab: Lab, bid: int, path: str) -> dict:
+    """Return the folders below a path of the box."""
+    box = box_or_404(lab, bid)
+    path = normalized_box_path(path, "path")
+    return {"folders": lab.fabric.box.list_folders(posixpath.join(data_dir(box), path))}
+
+
+def run_box_action(lab: Lab, bid: int, cmd: str, body: dict) -> dict:
+    """Run an action of a box; the box is busy (`_busy`) until it ends."""
+    box = box_or_404(lab, bid, ready=True)
+    return lab.act(BOX_ACTIONS, cmd, box, "storage_box", body, "_busy", BUSY)
 
 
 # --- routes ---------------------------------------------------------------------------
 
 
-def add_routes(app: FastAPI, lab) -> None:
-    """Register the routes of box types, boxes and their actions and folders."""
+def add_routes(app: FastAPI, lab: Lab) -> None:
+    """Add the routes of box types, boxes, their actions and folders to the app."""
     cfg, state = lab.cfg, lab.state
 
     @app.get("/v1/storage_box_types")
-    def types(request: Request):
-        return paginate(
-            request,
-            filtered(request, [box_type(cfg, n) for n in cfg["storage_box_types"]]),
-            "storage_box_types",
-        )
+    def box_type_list(request: Request):
+        box_types = [box_type_json(lab, name) for name in cfg["storage_box_types"]]
+        return paginate(request, filtered(request, box_types), "storage_box_types")
 
     @app.get("/v1/storage_box_types/{tid}")
-    def type_get(tid: int):
-        for n in cfg["storage_box_types"]:
-            if box_type_id(cfg, n) == tid:
-                return {"storage_box_type": box_type(cfg, n)}
-        raise not_found("Storage Box type")
+    def box_type_get(tid: int):
+        name = catalogue_entry_or_404(lab, "storage_box_type", tid, "Storage Box type")
+        return {"storage_box_type": box_type_json(lab, name)}
 
     # actions: of Storage Boxes only (of one box, under its path); registered before
     # /v1/storage_boxes/{bid}
-    def box_actions(request: Request, bid: int | None) -> dict:
-        query = request.query_params
-        ids = {int(i) for i in query.getlist("id") if i.isdigit()}
-        statuses = {s for v in query.getlist("status") for s in v.split(",")}
-        items = [
-            a
-            for a in state["actions"].values()
-            if any(
-                r["type"] == "storage_box" and (bid is None or r["id"] == bid)
-                for r in a["resources"]
-            )
-            and (not ids or a["id"] in ids)
-            and (not statuses or a["status"] in statuses)
-        ]
-        return paginate(request, sorted(items, key=lambda a: a["id"]), "actions")
-
     @app.get("/v1/storage_boxes/actions")
-    def actions(request: Request):
-        return box_actions(request, None)
+    def box_action_list(request: Request):
+        with state.lock:
+            mine = [a for a in state["actions"].values() if touches(a, "storage_box")]
+            return listed(request, mine)
 
     @app.get("/v1/storage_boxes/actions/{aid}")
     @app.get("/v1/storage_boxes/{bid}/actions/{aid}")
-    def action_get(aid: int, bid: int = 0):
-        action = state["actions"].get(aid)
-        mine = action and any(
-            r["type"] == "storage_box" and (not bid or r["id"] == bid)
-            for r in action["resources"]
-        )
-        if not mine:
-            raise not_found("action")
-        return {"action": action}
+    def box_action_get(aid: int, bid: int = 0):
+        return {"action": action_or_404(lab, aid, "storage_box", bid or None)}
 
     @app.get("/v1/storage_boxes/{bid}/actions")
-    def actions_of_box(request: Request, bid: int):
-        box_or_404(lab, bid)
-        return box_actions(request, bid)
+    def box_actions(request: Request, bid: int):
+        with state.lock:
+            box_or_404(lab, bid)
+            mine = [
+                a for a in state["actions"].values() if touches(a, "storage_box", bid)
+            ]
+            return listed(request, mine)
 
     # boxes
     @app.get("/v1/storage_boxes")
-    def boxes(request: Request):
-        return paginate(
-            request,
-            [
-                box_json(lab, b)
-                for b in filtered(request, list(state["storage_boxes"].values()))
-            ],
-            "storage_boxes",
-        )
+    def box_list(request: Request):
+        with state.lock:
+            items = filtered(request, list(state["storage_boxes"].values()))
+            return paginate(request, [box_json(lab, b) for b in items], "storage_boxes")
 
     @app.post("/v1/storage_boxes", status_code=201)
     async def box_create(request: Request):
-        body = await read_body(request)
-        type_name = box_type_name(cfg, body["storage_box_type"])
-        location = resolve(lab, "location", body["location"])
-        check_unique_name(lab, body["name"], None)
-        access_settings = {
-            "reachable_externally": False,
-            "samba_enabled": False,
-            "ssh_enabled": False,
-            "webdav_enabled": False,
-            "zfs_enabled": False,
-        }
-        access_settings.update(access(body.get("access_settings"), access_settings))
-        keys = check_ssh_keys(body.get("ssh_keys") or [])
-        password = check_password(body.get("password"))
-        with state.lock:
-            bid = state.new_id("storage_boxes")
-            box = {
-                "id": bid,
-                "name": body["name"],
-                "type": type_name,
-                "location": location,
-                "access": access_settings,
-                "plan": None,
-                "protection": {"delete": False},
-                "labels": body.get("labels") or {},
-                "status": "initializing",
-                "created": now(),
-                "_password": password,
-            }
-            state["storage_boxes"][bid] = box
-            state.save()
-        action = lab.new_action("create", [(bid, "storage_box")])
-
-        async def steps():
-            await lab.blocking(set_up, lab, box, password, keys)
-            await lab.sleep(5)
-            box["status"] = "active"
-            state.save()
-
-        lab.run_action(action, steps)
-        return {"storage_box": await lab.blocking(box_json, lab, box), "action": action}
+        return await lab.blocking(create_box, lab, await read_body(request))
 
     @app.get("/v1/storage_boxes/{bid}")
     def box_get(bid: int):
@@ -355,62 +388,17 @@ def add_routes(app: FastAPI, lab) -> None:
 
     @app.put("/v1/storage_boxes/{bid}")
     async def box_update(bid: int, request: Request):
-        box = box_or_404(lab, bid)
-        body = await read_body(request)
-        check_unique_name(lab, body.get("name"), box)
-        update_fields(box, body, ("name", "labels"))
-        state.save()
-        return {"storage_box": await lab.blocking(box_json, lab, box)}
+        return await lab.blocking(update_box, lab, bid, await read_body(request))
 
     @app.delete("/v1/storage_boxes/{bid}", status_code=201)
     def box_delete(bid: int):
-        box = box_or_404(lab, bid)
-        if box["protection"]["delete"]:
-            raise ApiError(423, "protected", "Storage Box is delete protected")
-        # not while it is set up, rolled back, copied, getting a sub-account or already
-        # going
-        with state.lock:
-            busy = (
-                box["status"] == "initializing"
-                or box.get("_deleting")
-                or box.get("_busy")
-            )
-            busy = busy or any(
-                s["box"] == bid and s.get("_copying")
-                for s in state["box_snapshots"].values()
-            )
-            busy = busy or any(
-                a["box"] == bid and a.get("_creating")
-                for a in state["subaccounts"].values()
-            )
-            if busy:
-                raise locked("the Storage Box is busy with another action")
-            box["_deleting"] = True
-        action = lab.new_action("delete", [(bid, "storage_box")])
-
-        async def steps():
-            try:
-                await lab.blocking(remove, lab, box)
-            except Exception:
-                box.pop("_deleting", None)  # it can be deleted again
-                state.save()
-                raise
-
-        lab.run_action(action, steps)
-        return {"action": action}
+        return delete_box(lab, bid)
 
     @app.get("/v1/storage_boxes/{bid}/folders")
-    def folders(bid: int, request: Request):
-        box = box_or_404(lab, bid)
-        path = check_home(request.query_params.get("path", "."))
-        return {"folders": lab.fabric.box.folders(posixpath.join(data_dir(box), path))}
+    def box_folder_list(bid: int, request: Request):
+        return box_folders(lab, bid, request.query_params.get("path", "."))
 
     @app.post("/v1/storage_boxes/{bid}/actions/{cmd}", status_code=201)
     async def box_action(bid: int, cmd: str, request: Request):
-        box = box_or_404(lab, bid, ready=True)
         body = await read_body(request)
-        if cmd not in ACTIONS:
-            raise unsupported(f"the action {cmd!r}")
-        running = await lab.blocking(ACTIONS[cmd], lab, box, body)
-        state.save()
-        return {"action": running or lab.done(cmd, [(bid, "storage_box")])}
+        return await lab.blocking(run_box_action, lab, bid, cmd, body)

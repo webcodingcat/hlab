@@ -1,25 +1,21 @@
 """The API itself.
 
-Authentication, catalogue, validation, pagination, rate limit, actions.
+Authentication, catalogue, validation, pagination, sorting, filters, actions.
 """
 
 import asyncio
 
 import pytest
-from conftest import create_server, make_key, off, wait_action
-from fastapi.testclient import TestClient
-
-from hlabd.api.app import create_app
-from hlabd.api.web import RateLimit
+from conftest import create_server, make_key, power_off, wait_action
 
 
-def test_auth_required(api):
+def test_requests_without_a_valid_token_are_unauthorized(api):
     response = api.get("/v1/servers", headers={"Authorization": "Bearer wrong"})
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "unauthorized"
 
 
-def test_catalogue(api):
+def test_catalogue_lists_server_types_locations_and_images(api):
     types = api.get("/v1/server_types", params={"name": "cx33"}).json()["server_types"]
     assert [t["name"] for t in types] == ["cx33"]
     assert types[0]["memory"] == 8.0
@@ -32,14 +28,7 @@ def test_catalogue(api):
     assert imgs[0]["os_flavor"] == "debian"
 
 
-def test_injected_api_faults(api):
-    api.post("/_lab/api-fault", json={"status": 503, "count": 2})
-    assert api.get("/v1/servers").status_code == 503
-    assert api.get("/v1/servers").status_code == 503
-    assert api.get("/v1/servers").status_code == 200
-
-
-def test_pagination(api):
+def test_lists_are_paginated(api):
     for i in range(3):
         api.post("/v1/ssh_keys", json={"name": f"k{i}", "public_key": make_key(i)})
     response = api.get("/v1/ssh_keys", params={"per_page": 2}).json()
@@ -60,26 +49,12 @@ def test_datacenters_are_gone(api):
     assert "datacenter" not in api.get("/v1/primary_ips").json()["primary_ips"][0]
 
 
-def test_only_the_newest_images(api):
+def test_only_the_newest_images_are_offered(api):
     names = [i["name"] for i in api.get("/v1/images?type=system").json()["images"]]
     assert names == ["debian-13", "ubuntu-26.04"]
 
 
-def test_configuration_typos_are_reported(tmp_path):
-    import pytest
-
-    from hlabd import config
-
-    config_file = tmp_path / "hlab.yaml"
-    config_file.write_text("name: x\nstorage_boxes: {enabled: false}\n")
-    with pytest.raises(ValueError, match="unknown settings storage_boxes"):
-        config.load(config_file)
-    config_file.write_text("name: x\nstorage_box: true\n")
-    with pytest.raises(ValueError, match="storage_box must be a mapping"):
-        config.load(config_file)
-
-
-def test_null_where_an_id_belongs(api):
+def test_null_where_an_id_belongs_is_invalid_input(api):
     floating_ip = api.post(
         "/v1/floating_ips", json={"type": "ipv4", "home_location": "fsn1"}
     ).json()["floating_ip"]
@@ -111,7 +86,7 @@ def test_null_where_an_id_belongs(api):
     )
 
 
-def test_action_routes_of_every_resource(api):
+def test_every_resource_has_its_own_action_routes(api):
     server = create_server(api, "a")
     for kind in (
         "volumes",
@@ -131,18 +106,10 @@ def test_action_routes_of_every_resource(api):
     )
 
 
-def test_rate_limit_buckets_stay_bounded():
-    limit = RateLimit(3600)
-    for i in range(5000):
-        limit.take(f"token{i}")
-    assert len(limit.buckets) <= 1000
-
-
 def test_actions_do_not_pile_up(lab):
     for _ in range(10050):
-        lab.new_action("x", [])["status"] = (
-            "success"  # finished (without saving the state each time)
-        )
+        # finished (without saving the state each time)
+        lab.new_action("x", [])["status"] = "success"
     assert len(lab.state["actions"]) <= 10000
 
 
@@ -174,7 +141,7 @@ def test_cancelled_action_is_an_error(lab):
         {"k": "x" * 64},
     ],
 )
-def test_invalid_labels(api, labels):
+def test_invalid_labels_are_refused(api, labels):
     response = api.post(
         "/v1/ssh_keys",
         json={"name": "k", "public_key": "ssh-ed25519 AAAA", "labels": labels},
@@ -187,7 +154,7 @@ def test_invalid_labels(api, labels):
     )
 
 
-def test_valid_labels(api):
+def test_valid_labels_are_accepted(api):
     create_server(
         api,
         "lbl",
@@ -196,7 +163,7 @@ def test_valid_labels(api):
 
 
 @pytest.mark.parametrize("name", ["under_score", "-dash", "x" * 64, "a..b", ""])
-def test_server_name_must_be_hostname(api, name):
+def test_server_name_must_be_a_hostname(api, name):
     response = api.post(
         "/v1/servers", json={"name": name, "server_type": "cx23", "image": "debian-13"}
     )
@@ -223,7 +190,7 @@ def test_schema_errors_name_the_field(api):
     assert response.json()["error"]["details"]["fields"][0]["name"] == "ip_range"
 
 
-def test_json_error(api):
+def test_malformed_json_is_a_json_error(api):
     response = api.post(
         "/v1/servers", content=b"{nope", headers={"Content-Type": "application/json"}
     )
@@ -232,7 +199,7 @@ def test_json_error(api):
     )
 
 
-def test_unknown_route_and_method(api):
+def test_unknown_routes_and_methods_get_hetzners_errors(api):
     response = api.get("/v1/nothing")
     assert (
         response.status_code == 404 and response.json()["error"]["code"] == "not_found"
@@ -245,21 +212,18 @@ def test_unknown_route_and_method(api):
     assert api.get("/v1/servers/abc").json()["error"]["code"] == "not_found"
 
 
-def test_sorting(api):
+def test_lists_sort_by_the_given_fields(api):
     for n in ("b", "a", "c"):
         create_server(api, n)
 
-    def names(q):
-        return [s["name"] for s in api.get(f"/v1/servers?{q}").json()["servers"]]
+    def names(query):
+        return [s["name"] for s in api.get(f"/v1/servers?{query}").json()["servers"]]
 
     assert names("sort=name") == ["a", "b", "c"]
     assert names("sort=name:desc") == ["c", "b", "a"]
     assert names("sort=id:desc") == ["c", "a", "b"]
-    assert names("sort=name:asc&sort=name:desc") == [
-        "b",
-        "a",
-        "c",
-    ]  # contrary orders are ignored
+    # contrary orders are ignored
+    assert names("sort=name:asc&sort=name:desc") == ["b", "a", "c"]
     response = api.get("/v1/servers?sort=status")
     assert (
         response.status_code == 422
@@ -267,20 +231,7 @@ def test_sorting(api):
     )
 
 
-def test_rate_limit(lab):
-    lab.cfg["api"]["rate_limit"] = 3
-    with TestClient(
-        create_app(lab), headers={"Authorization": "Bearer secret"}
-    ) as client:
-        codes = [client.get("/v1/locations") for _ in range(4)]
-    assert [r.status_code for r in codes] == [200, 200, 200, 429]
-    assert codes[0].headers["RateLimit-Limit"] == "3"
-    assert codes[2].headers["RateLimit-Remaining"] == "0"
-    assert codes[3].json()["error"]["code"] == "rate_limit_exceeded"
-    assert int(codes[3].headers["RateLimit-Reset"]) > 0
-
-
-def test_values_that_must_not_get_through(api):
+def test_dangerous_values_do_not_get_through(api):
     body = {
         "name": "srv\n",
         "server_type": "cx23",
@@ -293,7 +244,7 @@ def test_values_that_must_not_get_through(api):
     assert response.status_code == 422
 
 
-def test_names_unique_on_rename(api):
+def test_names_stay_unique_on_rename(api):
     api.post("/v1/networks", json={"name": "a", "ip_range": "10.0.0.0/16"})
     assert (
         api.post(
@@ -310,9 +261,28 @@ def test_names_unique_on_rename(api):
     )
 
 
-def test_filters_given_several_times(api):
+def test_filters_given_several_times_match_any_value(api):
     server_a = create_server(api, "a")["server"]
     server_b = create_server(api, "b")["server"]
-    off(api, server_b["id"])
+    power_off(api, server_b["id"])
     response = api.get("/v1/servers?status=running&status=off").json()["servers"]
     assert sorted(s["id"] for s in response) == sorted([server_a["id"], server_b["id"]])
+
+
+def test_actions_are_listed_per_type_not_for_the_whole_project(api):
+    create_server(api, "a")
+    assert api.get("/v1/actions").status_code == 422
+    acts = api.get("/v1/servers/actions").json()["actions"]
+    assert acts and all(
+        any(x["type"] == "server" for x in a["resources"]) for a in acts
+    )
+    assert api.get("/v1/servers/9999/actions").status_code == 404
+
+
+def test_unreadable_pagination_falls_back_to_the_defaults(api):
+    assert (
+        api.get("/v1/servers?page=abc&per_page=x").json()["meta"]["pagination"][
+            "per_page"
+        ]
+        == 25
+    )

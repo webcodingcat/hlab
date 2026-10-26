@@ -16,46 +16,70 @@ from jsonschema.validators import extend
 
 SPEC_DIR = Path("/opt/hlab/spec")
 
+# keywords that still look at a null; all others skip it. The ones that combine
+# schemas (a "oneOf" of objects) and the ones that refer to a schema ("$ref",
+# "$dynamicRef") hand the null on to the schemas they name; "type" is here because
+# its checker (below) admits null itself.
+_SEES_NULL = {"allOf", "anyOf", "oneOf", "not", "if", "$ref", "$dynamicRef", "type"}
+
+# rules the specification only describes in prose (labels, host names)
+_LABEL_NAME = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9_.-]{0,61}[a-zA-Z0-9])?$")
+_LABEL_VALUE = re.compile(r"^([a-zA-Z0-9]([a-zA-Z0-9_.-]{0,61}[a-zA-Z0-9])?)?$")
+_DNS_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+
 # The specification types IDs-or-names as strings; clients (hcloud-go, the CLI) also
 # send plain integers. And the API takes null for any field like a missing one (the
 # hcloud provider sends them), while a required field may be null where the
 # specification says so – so null passes every type check, and "required" still sees the
 # key.
-_base = Draft202012Validator.TYPE_CHECKER
-_types = _base.redefine_many(
-    {
-        t: (lambda t: lambda c, v: v is None or _base.is_type(v, t))(t)
-        for t in ("object", "array", "integer", "number", "boolean")
-    }
-    | {
-        "string": lambda c, v: (
-            v is None
-            or isinstance(v, str)
-            or (isinstance(v, int) and not isinstance(v, bool))
-        )
-    }
-)
+BASE_TYPE_CHECKER = Draft202012Validator.TYPE_CHECKER
 
 
-def _skip_null(fn):
-    def check(validator, value, instance, schema):
-        if instance is None:
-            return
-        yield from fn(validator, value, instance, schema) or ()
+def _null_or(type_name: str):
+    """Return a type check that passes null and what the base check passes."""
+
+    def check(checker, value) -> bool:
+        return value is None or BASE_TYPE_CHECKER.is_type(value, type_name)
 
     return check
 
 
-# keywords that combine schemas must still look at a null (a "oneOf" of objects); the
-# others skip it
-_COMBINE = {"allOf", "anyOf", "oneOf", "not", "if", "$ref", "$dynamicRef", "type"}
+def _null_string_or_int(checker, value) -> bool:
+    """Check a string field: null, a string, or an integer (an ID given as number)."""
+    return (
+        value is None
+        or isinstance(value, str)
+        or (isinstance(value, int) and not isinstance(value, bool))
+    )
+
+
+TYPE_CHECKER = BASE_TYPE_CHECKER.redefine_many(
+    {
+        type_name: _null_or(type_name)
+        for type_name in ("object", "array", "integer", "number", "boolean")
+    }
+    | {"string": _null_string_or_int}
+)
+
+
+def _skip_null(validate):
+    """Return a keyword check that lets null pass and checks everything else."""
+
+    def check(validator, value, instance, schema):
+        if instance is None:
+            return
+        yield from validate(validator, value, instance, schema) or ()
+
+    return check
+
+
 Validator = extend(
     Draft202012Validator,
-    type_checker=_types,
+    type_checker=TYPE_CHECKER,
     validators={
         k: _skip_null(v)
         for k, v in Draft202012Validator.VALIDATORS.items()
-        if k not in _COMBINE
+        if k not in _SEES_NULL
     },
 )
 
@@ -79,15 +103,14 @@ class Spec:
             for method, op in methods.items():
                 if method in ("get", "post", "put", "delete", "patch"):
                     self.ops.append((method.upper(), pattern, template, op))
-        self.ops.sort(
-            key=lambda o: o[2].count("{")
-        )  # literal segments win over parameters
+        # literal segments win over parameters
+        self.ops.sort(key=lambda o: o[2].count("{"))
 
-    def op(self, method: str, path: str) -> dict | None:
+    def operation(self, method: str, path: str) -> dict | None:
         """Return the operation for a method and request path, or None."""
-        for m, rx, _, op in self.ops:
-            if m == method and rx.match(path):
-                return op
+        for op_method, pattern, _, operation in self.ops:
+            if op_method == method and pattern.match(path):
+                return operation
         return None
 
     def body_errors(self, operation: dict, body) -> list[dict]:
@@ -101,7 +124,12 @@ class Spec:
         if not schema:
             return []
         fields: dict[str, list[str]] = {}
-        for e in (r for top in Validator(schema).iter_errors(body) for r in _real(top)):
+        errors = (
+            rejected
+            for top in Validator(schema).iter_errors(body)
+            for rejected in _rejected_errors(top)
+        )
+        for e in errors:
             path = [str(p) for p in e.absolute_path]
             if e.validator == "required":
                 path.append(e.message.split("'")[1])
@@ -113,8 +141,8 @@ class Spec:
             else:
                 message = e.message
             fields.setdefault(".".join(path) or "body", []).append(message)
-        for path in _null_required(schema, body):
-            fields.setdefault(path, []).append("is required")
+        for missing in _null_required(schema, body):
+            fields.setdefault(missing, []).append("is required")
         return [{"name": k, "messages": v} for k, v in fields.items()]
 
     def query_enum(self, operation: dict, name: str) -> list[str] | None:
@@ -126,7 +154,7 @@ class Spec:
         return None
 
 
-def _real(error) -> list:
+def _rejected_errors(error) -> list:
     """Return the errors of a validation error that the API would reject.
 
     Unknown fields pass (the API ignores them), and of a oneOf/anyOf only the
@@ -141,7 +169,7 @@ def _real(error) -> list:
     for c in error.context:
         alternatives.setdefault(
             c.relative_schema_path[0] if c.relative_schema_path else 0, []
-        ).extend(_real(c))
+        ).extend(_rejected_errors(c))
     if error.validator in ("oneOf", "anyOf"):
         if any(not errs for errs in alternatives.values()):
             return []
@@ -155,6 +183,7 @@ def _real(error) -> list:
 
 
 def _nullable(schema: dict) -> bool:
+    """Return whether a schema allows null (nullable, a null type, or a null option)."""
     schema_type = schema.get("type")
     return (
         schema.get("nullable") is True
@@ -192,10 +221,6 @@ def load(name: str) -> Spec:
 
 # --- rules the specification only describes in prose ----------------------------------
 
-_LABEL_NAME = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9_.-]{0,61}[a-zA-Z0-9])?$")
-_LABEL_VALUE = re.compile(r"^([a-zA-Z0-9]([a-zA-Z0-9_.-]{0,61}[a-zA-Z0-9])?)?$")
-_DNS_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
-
 
 def label_errors(labels) -> list[str]:
     """Return the violations of Hetzner's label rules.
@@ -226,36 +251,3 @@ def hostname_ok(name: str) -> bool:
         re.fullmatch(r"[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?", p)
         for p in name.split(".")
     )
-
-
-def sort_items(items: list[dict], sorts: list[str]) -> list[dict]:
-    """Sort items by the sort=field[:asc|:desc] parameters.
-
-    Several are allowed; they apply in order (the first is the primary key).
-    """
-    seen: dict[str, str] = {}
-    for s in sorts:
-        field, _, direction = s.partition(":")
-        direction = direction or "asc"
-        if field in seen and seen[field] != direction:
-            seen[field] = "ignore"  # contrary orders are ignored
-        else:
-            seen.setdefault(field, direction)
-
-    def get(item: dict, field: str):
-        for part in field.split("."):  # nested fields: stats.size
-            item = item.get(part) if isinstance(item, dict) else None
-        return item
-
-    for field, direction in reversed(
-        [(f, d) for f, d in seen.items() if d != "ignore"]
-    ):
-        items = sorted(
-            items,
-            key=lambda i: (
-                get(i, field) is None,
-                get(i, field) if get(i, field) is not None else 0,
-            ),
-            reverse=direction == "desc",
-        )
-    return items

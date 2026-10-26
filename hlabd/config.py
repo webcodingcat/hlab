@@ -74,14 +74,20 @@ DEFAULTS: dict = {
     "dns": {},
 }
 
+# the lab's volume: state, VM disks, images, keys
+ROOT = Path("/hlab")
+
 # Fixed addresses of every lab (each lab has its own network namespace).
 GATEWAY = "172.31.1.1"  # Hetzner's public gateway, on-link on every server
+# the lab's services sit in the benchmarking range (local addresses win)
+SERVICES_NET = "198.18.0.0/15"
 SERVICES = "198.18.0.1"  # fake Cloud API (port 80), Storage Box (ports 22, 23), DNS
 HETZNER_API = "198.18.0.3"  # fake api.hetzner.com (Storage Boxes), port 80
 METADATA = "169.254.169.254"
 # where fe80::a9fe:a9fe is DNATed to: the metadata service only
 METADATA6 = "2001:db8:fffe::a9fe"
-PUBLIC_NET = "198.51.100"  # server primary IPv4: .10 + index
+# primary IPv4: the lowest free of .11 to .250 (api/ips.py, free_ipv4)
+PUBLIC_NET = "198.51.100"
 FLOATING_NET = "203.0.113"  # Floating IPv4: .10 + n
 CLIENT_NET = "192.0.2"  # "Internet" clients: .10 + n, gateway .1
 # source of everything the lab container itself (and its consumers) sends to VMs
@@ -90,7 +96,8 @@ OPERATOR = "192.0.2.2"
 ADMIN = "198.18.0.2"
 # IPv6, all from the documentation prefix 2001:db8::/32. Every server routes a /64
 # (guest: <prefix>::1, gateway fe80::1).
-# server /64: 2001:db8:<index>::/64, Floating IPv6: 2001:db8:ff<n>::/64
+# primary IPv6: the lowest free 2001:db8:<n>::/64 (api/ips.py, free_ipv6); Floating
+# IPv6: 2001:db8:ff<n>::/64
 IPV6_PREFIX = "2001:db8"
 GATEWAY6 = "fe80::1"
 SERVICES6 = "2001:db8:fffe::1"  # fake Cloud API, Storage Box, DNS over IPv6
@@ -98,8 +105,35 @@ HETZNER_API6 = "2001:db8:fffe::4"
 OPERATOR6 = "2001:db8:fffe::2"
 ADMIN6 = "2001:db8:fffe::3"
 CLIENT6 = "2001:db8:ffff"  # clients: 2001:db8:ffff::<10 + n>
+SERVICES_NET6 = "2001:db8:fffe"  # the /48 of the lab's own IPv6 addresses above
+
 # what `hlab env` hands out when any token is accepted (hcloud wants 64 characters)
 ANY_TOKEN = "hlab" * 16
+
+
+def script_env() -> dict[str, str]:
+    """Return the lab's addresses for the scripts (scripts/hlab.sh, scripts/box.sh)."""
+    return {
+        "HLAB_GATEWAY": GATEWAY,
+        "HLAB_GATEWAY6": GATEWAY6,
+        "HLAB_SERVICES": SERVICES,
+        "HLAB_SERVICES6": SERVICES6,
+        "HLAB_SERVICES_NET": SERVICES_NET,
+        "HLAB_SERVICES_NET6": SERVICES_NET6,
+        "HLAB_ADMIN": ADMIN,
+        "HLAB_ADMIN6": ADMIN6,
+        "HLAB_HETZNER_API": HETZNER_API,
+        "HLAB_HETZNER_API6": HETZNER_API6,
+        "HLAB_OPERATOR": OPERATOR,
+        "HLAB_OPERATOR6": OPERATOR6,
+        "HLAB_METADATA": METADATA,
+        "HLAB_METADATA6": METADATA6,
+        "HLAB_PUBLIC_NET": PUBLIC_NET,
+        "HLAB_FLOATING_NET": FLOATING_NET,
+        "HLAB_CLIENT_NET": CLIENT_NET,
+        "HLAB_IPV6_PREFIX": IPV6_PREFIX,
+        "HLAB_CLIENT6": CLIENT6,
+    }
 
 
 def _merge(base: dict, over: dict) -> dict:
@@ -125,7 +159,7 @@ def load(path: str | Path | None) -> dict:
     Raises ValueError on unknown settings or a mapping where a value belongs (and the
     other way round).
     """
-    data = {}
+    data: dict = {}
     if path and Path(path).is_file():
         data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     if not isinstance(data, dict):

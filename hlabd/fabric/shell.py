@@ -4,22 +4,40 @@ A fake shell replaces it in the tests.
 """
 
 import json
+import os
 import secrets
 import socket
 import subprocess
 import time
 from pathlib import Path
 
+from .. import config
+
 HLAB_SH = "/opt/hlab/scripts/hlab.sh"
 
 
 class Shell:
-    """Runs scripts/hlab.sh commands and talks to QEMU guest agents."""
+    """Runs scripts/hlab.sh commands and talks to QEMU guest agents.
 
-    def run(self, *args: str, check: bool = True, input: str | None = None) -> str:
-        """Run an hlab.sh command and return its output; raise on failure if checked."""
+    The scripts get the lab's addresses from config.py as HLAB_* environment variables,
+    so config.py is their only source.
+    """
+
+    def __init__(self):
+        """Prepare the environment the scripts run with."""
+        self.env = {**os.environ, **config.script_env()}
+
+    def run(self, *args: str, check: bool = True, stdin_text: str | None = None) -> str:
+        """Run an hlab.sh command and return its output; raise on failure if checked.
+
+        `stdin_text` is written to the command's standard input (e.g. a password).
+        """
         process = subprocess.run(
-            [HLAB_SH, *args], capture_output=True, text=True, input=input
+            [HLAB_SH, *args],
+            capture_output=True,
+            text=True,
+            input=stdin_text,
+            env=self.env,
         )
         if check and process.returncode != 0:
             raise RuntimeError(
@@ -30,7 +48,8 @@ class Shell:
 
     def ok(self, *args: str) -> bool:
         """Run an hlab.sh command and tell whether it succeeded."""
-        return subprocess.run([HLAB_SH, *args], capture_output=True).returncode == 0
+        process = subprocess.run([HLAB_SH, *args], capture_output=True, env=self.env)
+        return process.returncode == 0
 
     def qga(self, sock: Path, command: dict, timeout: float = 10) -> dict | None:
         """Send one command to a QEMU guest agent and return its answer.

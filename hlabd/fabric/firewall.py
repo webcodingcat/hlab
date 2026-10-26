@@ -22,14 +22,16 @@ import ipaddress
 
 from .. import config
 from ..labels import firewall_servers
+from ..records import FirewallRule
+from ..state import State
 
 
-def nft_port(port: str) -> str:
+def nft_port(port: str | None) -> str:
     """Return a Hetzner port (a port, a range or "any") in nft syntax."""
     return "1-65535" if port == "any" else str(port)
 
 
-def _rule_lines(rule: dict, verdict: str) -> list[str]:
+def _rule_lines(rule: FirewallRule, verdict: str) -> list[str]:
     """Turn one Hetzner rule into nft rules (one per address family present)."""
     addrs = rule["source_ips"] if rule["direction"] == "in" else rule["destination_ips"]
     side = "saddr" if rule["direction"] == "in" else "daddr"
@@ -57,15 +59,21 @@ def _rule_lines(rule: dict, verdict: str) -> list[str]:
     return lines
 
 
-def ruleset(state, taps: dict[int, str]) -> str:
+def chain(name: str, lines: list[str]) -> str:
+    """Return an nft chain of the table with these lines, indented in the table."""
+    return f"    chain {name} {{\n" + "".join(f"        {x}\n" for x in lines) + "    }"
+
+
+def ruleset(state: State, taps: dict[int, str]) -> str:
     """Return the complete table inet hlabfw for the current state.
 
-    `taps` maps server IDs to the servers' public taps.
+    `taps` maps server IDs to the servers' public taps. The caller holds the state's
+    lock.
     """
     chains, forward, input_rules, output = [], [], [], []
     for sid, tap in sorted(taps.items()):
         firewalls = [
-            f for f in state["firewalls"].values() if sid in firewall_servers(f, state)
+            f for f in state["firewalls"].values() if sid in firewall_servers(state, f)
         ]
         if not firewalls:
             continue
@@ -75,11 +83,7 @@ def ruleset(state, taps: dict[int, str]) -> str:
         body = [f"ip saddr {config.ADMIN} accept", f"ip6 saddr {config.ADMIN6} accept"]
         for r in inbound:
             body += _rule_lines(r, "accept")
-        chains.append(
-            f"    chain in_{sid} {{\n"
-            + "".join(f"        {x}\n" for x in body)
-            + "        drop\n    }"
-        )
+        chains.append(chain(f"in_{sid}", [*body, "drop"]))
         forward.append(f'oifname "{tap}" jump in_{sid}')
         output.append(f'oifname "{tap}" jump in_{sid}')
         # outbound rules: only what they allow; return lets the receiver's inbound rules
@@ -91,11 +95,7 @@ def ruleset(state, taps: dict[int, str]) -> str:
             ]
             for r in outbound:
                 body += _rule_lines(r, "return")
-            chains.append(
-                f"    chain out_{sid} {{\n"
-                + "".join(f"        {x}\n" for x in body)
-                + "        drop\n    }"
-            )
+            chains.append(chain(f"out_{sid}", [*body, "drop"]))
             forward.insert(0, f'iifname "{tap}" jump out_{sid}')
             input_rules.append(f'iifname "{tap}" jump out_{sid}')
     always = [
@@ -117,11 +117,7 @@ def ruleset(state, taps: dict[int, str]) -> str:
         lines = [f"type filter hook {hook} priority 10; policy accept;"] + (
             always + extra + rules if rules else []
         )
-        return (
-            f"    chain {name} {{\n"
-            + "".join(f"        {x}\n" for x in lines)
-            + "    }"
-        )
+        return chain(name, lines)
 
     parts = [
         base("forward", "forward", forward, []),

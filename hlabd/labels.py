@@ -3,21 +3,29 @@
 Used by the API and by the fabric (firewall rules).
 """
 
+from .records import Firewall, Server
+from .state import State
 
-def firewall_servers(firewall: dict, state) -> set[int]:
+
+def firewall_servers(state: State, firewall: Firewall) -> set[int]:
     """Return the servers a firewall applies to, directly or by label selector."""
     out = set()
-    for a in firewall["applied_to"]:
-        if a["type"] == "server":
-            out.add(a["server"]["id"])
-        elif a["type"] == "label_selector":
-            selector = a["label_selector"]["selector"]
-            out |= {
-                s["id"]
-                for s in state["servers"].values()
-                if match_labels(s["labels"], selector)
-            }
+    with state.lock:
+        for entry in firewall["applied_to"]:
+            if entry["type"] == "server":
+                out.add(entry["server"]["id"])
+            elif entry["type"] == "label_selector":
+                selector = entry["label_selector"]["selector"]
+                out |= {s["id"] for s in selector_servers(state, selector)}
     return out
+
+
+def selector_servers(state: State, selector: str) -> list[Server]:
+    """Return the servers whose labels match a label selector, in the state's order."""
+    with state.lock:
+        return [
+            s for s in state["servers"].values() if match_labels(s["labels"], selector)
+        ]
 
 
 def match_labels(labels: dict, selector: str) -> bool:
