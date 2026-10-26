@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 
 from ...errors import check_unique_name, invalid, locked, protected
 from ...fabric.storagebox import TB, data_dir, snap_dir, username
-from ...lab import BOX_CREATE_SECONDS, ActionTable, Lab, Plan, now
+from ...lab import BOX_CREATE_SECONDS, ActionSpec, ActionTable, Lab, Plan, now
 from ...records import StorageBox
 from .. import hetzner
 from ..actions import action_or_404, listed, touches
@@ -218,13 +218,17 @@ def disable_snapshot_plan(lab: Lab, box: StorageBox, body: dict) -> Plan:
 
 # the Storage Box actions: Hetzner's name of the action and the function that plans it
 BOX_ACTIONS: ActionTable[StorageBox] = {
-    "change_protection": ("change_protection", change_delete_protection),
-    "change_type": ("change_type", change_type),
-    "reset_password": ("reset_password", reset_password),
-    "update_access_settings": ("update_access_settings", update_access_settings),
-    "enable_snapshot_plan": ("enable_snapshot_plan", enable_snapshot_plan),
-    "disable_snapshot_plan": ("disable_snapshot_plan", disable_snapshot_plan),
-    "rollback_snapshot": ("rollback_snapshot", rollback_snapshot),
+    "change_protection": ActionSpec(
+        "change_protection", change_delete_protection, flag=False
+    ),
+    "change_type": ActionSpec("change_type", change_type),
+    "reset_password": ActionSpec("reset_password", reset_password),
+    "update_access_settings": ActionSpec(
+        "update_access_settings", update_access_settings
+    ),
+    "enable_snapshot_plan": ActionSpec("enable_snapshot_plan", enable_snapshot_plan),
+    "disable_snapshot_plan": ActionSpec("disable_snapshot_plan", disable_snapshot_plan),
+    "rollback_snapshot": ActionSpec("rollback_snapshot", rollback_snapshot),
 }
 
 

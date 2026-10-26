@@ -163,9 +163,8 @@ def test_failed_create_ends_its_next_actions_and_status(api):
     assert wait_action(api, out["action"])["status"] == "error"
     assert wait_action(api, out["next_actions"][0])["status"] == "error"
     server = api.get(f"/v1/servers/{out['server']['id']}").json()["server"]
-    assert (
-        server["status"] == "off"
-        and not state_of(api, "servers")[server["id"]]["locked"]
+    assert server["status"] == "off" and not state_of(api, "servers")[server["id"]].get(
+        "_locked"
     )
 
 
@@ -290,14 +289,14 @@ def test_the_vm_watcher_frees_its_server_and_leaves_a_busy_one_alone(api):
     servers = state_of(api, "servers")
     api.sh.running.clear()  # both guests powered off
     # an action runs on b
-    api.on_loop(api.lab.claim, servers[second["id"]], "locked", "locked")
+    api.on_loop(api.lab.claim, servers[second["id"]], "_locked", "locked")
     api.on_loop(api.lab.stop_if_ended, servers[first["id"]])
     api.on_loop(api.lab.stop_if_ended, servers[second["id"]])
     assert servers[first["id"]]["status"] == "off"
-    assert servers[first["id"]]["locked"] is False
+    assert "_locked" not in servers[first["id"]]
     # the action owns b: its status is the action's to change, and so is its flag
     assert servers[second["id"]]["status"] == "running"
-    assert servers[second["id"]]["locked"] is True
+    assert servers[second["id"]]["_locked"] is True
 
 
 def test_rebuild_keeps_a_disk_kept_small(api):
@@ -436,4 +435,4 @@ def test_a_delete_that_cannot_start_leaves_the_server_as_it_was(api, monkeypatch
     with pytest.raises(RuntimeError):
         api.on_loop(servers.delete_server, api.lab, server["id"])
     assert server["status"] == "running"
-    assert server["locked"] is False
+    assert "_locked" not in server

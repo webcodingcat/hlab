@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 
 from ...errors import limit_exceeded, locked, not_found, not_unique
 from ...fabric.storagebox import username
-from ...lab import ActionTable, Lab, Plan, now
+from ...lab import ActionSpec, ActionTable, Lab, Plan, now
 from ...records import StorageBox, Subaccount
 from ..web import filtered, read_body, sort_items, update_fields
 from .base import (
@@ -117,12 +117,14 @@ async def update_access_settings(lab: Lab, subaccount: Subaccount, body: dict) -
 
 # the sub-account actions: Hetzner's name of the action and the function that plans it
 SUBACCOUNT_ACTIONS: ActionTable[Subaccount] = {
-    "change_home_directory": ("change_home_directory", change_home_directory),
-    "reset_subaccount_password": (
+    "change_home_directory": ActionSpec("change_home_directory", change_home_directory),
+    "reset_subaccount_password": ActionSpec(
         "reset_subaccount_password",
         reset_subaccount_password,
     ),
-    "update_access_settings": ("update_access_settings", update_access_settings),
+    "update_access_settings": ActionSpec(
+        "update_access_settings", update_access_settings
+    ),
 }
 
 

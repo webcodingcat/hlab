@@ -11,7 +11,7 @@ from ..errors import (
     must_be_unassigned,
     protected,
 )
-from ..lab import FLOATING_IP_MOVE_SECONDS, ActionTable, Lab, Plan, now
+from ..lab import FLOATING_IP_MOVE_SECONDS, ActionSpec, ActionTable, Lab, Plan, now
 from ..records import FloatingIP, Server
 from . import hetzner, system
 from .catalogue import catalogue_name
@@ -159,10 +159,14 @@ def floating_ip_unassign(lab: Lab, floating_ip: FloatingIP, body: dict) -> Plan:
 
 # the Floating IP actions: Hetzner's name of the action and the function that plans it
 FLOATING_IP_ACTIONS: ActionTable[FloatingIP] = {
-    "change_protection": ("change_protection", change_delete_protection),
-    "change_dns_ptr": ("change_dns_ptr", floating_ip_change_dns_ptr),
-    "assign": ("assign_floating_ip", floating_ip_assign),
-    "unassign": ("unassign_floating_ip", floating_ip_unassign),
+    "change_protection": ActionSpec(
+        "change_protection", change_delete_protection, flag=False
+    ),
+    "change_dns_ptr": ActionSpec(
+        "change_dns_ptr", floating_ip_change_dns_ptr, flag=False
+    ),
+    "assign": ActionSpec("assign_floating_ip", floating_ip_assign),
+    "unassign": ActionSpec("unassign_floating_ip", floating_ip_unassign),
 }
 
 

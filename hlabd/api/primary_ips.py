@@ -20,7 +20,7 @@ from ..errors import (
     protected,
     server_not_stopped,
 )
-from ..lab import SERVER_LOCKED, ActionTable, Lab, Plan, now
+from ..lab import SERVER_LOCKED, ActionSpec, ActionTable, Lab, Plan, now
 from ..records import PrimaryIP, Server
 from ..state import primary_ip_field, primary_ip_of, server_by_id
 from . import hetzner, system
@@ -43,7 +43,7 @@ def server_ipv6_net(number: int) -> str:
 
 def require_off(server: Server) -> None:
     """Refuse a change of a server's primary IPs unless it is off and unlocked."""
-    if server.get("locked"):
+    if server.get("_locked"):
         raise locked(SERVER_LOCKED)
     if server["status"] != "off":
         raise server_not_stopped()
@@ -319,10 +319,14 @@ def primary_ip_change_protection(lab: Lab, primary_ip: PrimaryIP, body: dict) ->
 
 # the primary IP actions: Hetzner's name of the action and the function that plans it
 PRIMARY_IP_ACTIONS: ActionTable[PrimaryIP] = {
-    "assign": ("assign_primary_ip", primary_ip_assign),
-    "unassign": ("unassign_primary_ip", primary_ip_unassign),
-    "change_dns_ptr": ("change_dns_ptr", primary_ip_change_dns_ptr),
-    "change_protection": ("change_protection", primary_ip_change_protection),
+    "assign": ActionSpec("assign_primary_ip", primary_ip_assign),
+    "unassign": ActionSpec("unassign_primary_ip", primary_ip_unassign),
+    "change_dns_ptr": ActionSpec(
+        "change_dns_ptr", primary_ip_change_dns_ptr, flag=False
+    ),
+    "change_protection": ActionSpec(
+        "change_protection", primary_ip_change_protection, flag=False
+    ),
 }
 
 

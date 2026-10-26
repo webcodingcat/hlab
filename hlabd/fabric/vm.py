@@ -57,7 +57,9 @@ class VMs:
             "fetch-image", name, url, checksums, str(self.root / "images" / "system")
         ).strip()
 
-    def launch(self, server: Server, type_name: str, nics: list[str]) -> None:
+    def launch(
+        self, server: Server, name: str, type_name: str, nics: list[str]
+    ) -> None:
         """Start the QEMU process with its NICs (tap=mac), sized by the server type.
 
         Memory is scaled by memory_scale.
@@ -66,7 +68,7 @@ class VMs:
         ram = max(512, int(server_type["memory_gb"] * 1024 * self.cfg["memory_scale"]))
         log.info(
             "VM %s (server %s) starts: %s MB, %s cores",
-            server["name"],
+            name,
             server["id"],
             ram,
             server_type["cores"],
@@ -74,16 +76,16 @@ class VMs:
         self.shell.run(
             "start-vm",
             str(self.directory(server)),
-            server["name"],
+            name,
             str(ram),
             str(server_type["cores"]),
             str(server["id"]),
             *nics,
         )
 
-    def kill(self, server: Server) -> None:
+    def kill(self, server: Server, name: str) -> None:
         """Kill the server's QEMU process (its taps stay)."""
-        log.info("VM %s (server %s) stops", server["name"], server["id"])
+        log.info("VM %s (server %s) stops", name, server["id"])
         self.shell.run("kill-vm", str(self.directory(server)))
 
     def kill_all(self) -> None:

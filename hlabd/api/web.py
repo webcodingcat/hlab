@@ -8,7 +8,8 @@ import asyncio
 import json
 import logging
 import time
-from typing import Any
+from collections.abc import Callable, Mapping
+from typing import Any, cast
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -26,7 +27,7 @@ from ..errors import (
 )
 from ..lab import Lab, Plan
 from ..labels import match_labels
-from ..records import AnyRecord, ProtectedRecord
+from ..records import ProtectedRecord, Record
 from . import hetzner
 from . import spec as openapi
 
@@ -65,15 +66,17 @@ def ref_id(value, field: str) -> int:
         raise invalid(f"{field} must be an ID", field) from None
 
 
-def update_fields(lab: Lab, item: AnyRecord, body: dict, keys: tuple[str, ...]) -> None:
+def update_fields(lab: Lab, item: Record, body: dict, keys: tuple[str, ...]) -> None:
     """Change the given fields of an item on PUT (null labels mean no labels)."""
+    # the keys come from the caller's list, more than mypy can match to the record type
+    fields = cast(dict[str, object], item)
     for key in keys:
         if key in body:
-            item[key] = (body[key] or {}) if key == "labels" else body[key]
+            fields[key] = (body[key] or {}) if key == "labels" else body[key]
 
 
 def update_resource(
-    lab: Lab, kind: str, item: AnyRecord, body: dict, keys: tuple[str, ...], what: str
+    lab: Lab, kind: str, item: Record, body: dict, keys: tuple[str, ...], what: str
 ) -> None:
     """Apply a PUT to a resource of a kind: names stay unique within the kind."""
     with lab.state.change():
@@ -105,7 +108,7 @@ def positive_int_or_default(value: str | None, default: int) -> int:
         return default
 
 
-def sort_items(items: list[AnyRecord], sorts: list[str]) -> list[AnyRecord]:
+def sort_items[T: Mapping[str, Any]](items: list[T], sorts: list[str]) -> list[T]:
     """Sort items by the sort=field[:asc|:desc] parameters.
 
     Several are allowed; they apply in order (the first is the primary key).
@@ -129,7 +132,7 @@ def sort_items(items: list[AnyRecord], sorts: list[str]) -> list[AnyRecord]:
 def _sort_key(field: str):
     """Return the sort key of a field (nested ones like stats.size); null sorts last."""
 
-    def key(item: dict) -> tuple:
+    def key(item: Mapping[str, Any]) -> tuple:
         value: Any = item
         for part in field.split("."):
             value = value.get(part) if isinstance(value, dict) else None
@@ -162,9 +165,11 @@ def paginate(request: Request, items: list, key: str) -> dict:
     }
 
 
-def filtered(
-    request: Request, items: list[AnyRecord], extra: dict | None = None
-) -> list[AnyRecord]:
+def filtered[T: Mapping[str, Any]](
+    request: Request,
+    items: list[T],
+    extra: dict[str, Callable[[T, str], bool]] | None = None,
+) -> list[T]:
     """Return the items matching the name, label_selector and extra filters, by ID.
 
     `extra` maps a query parameter to a test `(item, value) -> bool`.

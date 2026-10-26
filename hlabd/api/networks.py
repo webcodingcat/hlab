@@ -12,7 +12,7 @@ from fastapi.responses import Response
 from .. import config
 from ..errors import check_unique_name, invalid, protected
 from ..fabric.addresses import network_gateway
-from ..lab import SERVER_LOCKED, ActionTable, Lab, Plan, now
+from ..lab import SERVER_LOCKED, ActionSpec, ActionTable, Lab, Plan, now
 from ..records import CloudNetwork, Nic, Route, Subnet
 from ..state import nic_addresses, nics_in
 from . import hetzner, system
@@ -272,12 +272,14 @@ async def change_ip_range(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
 
 # the network actions: Hetzner's name of the action and the function that plans it
 NETWORK_ACTIONS: ActionTable[CloudNetwork] = {
-    "add_subnet": ("add_subnet", add_subnet),
-    "delete_subnet": ("delete_subnet", delete_subnet),
-    "add_route": ("add_route", add_route),
-    "delete_route": ("delete_route", delete_route),
-    "change_ip_range": ("change_ip_range", change_ip_range),
-    "change_protection": ("change_protection", change_delete_protection),
+    "add_subnet": ActionSpec("add_subnet", add_subnet),
+    "delete_subnet": ActionSpec("delete_subnet", delete_subnet),
+    "add_route": ActionSpec("add_route", add_route),
+    "delete_route": ActionSpec("delete_route", delete_route),
+    "change_ip_range": ActionSpec("change_ip_range", change_ip_range),
+    "change_protection": ActionSpec(
+        "change_protection", change_delete_protection, flag=False
+    ),
 }
 
 
@@ -303,7 +305,7 @@ async def delete_network(lab: Lab, nid: int) -> None:
         held.claim(network, "_deleting", "the network is being deleted")
         members = nics_in(state, nid)  # a server has one NIC per network at most
         for server, _ in members:  # 423 if one of them has an action running
-            held.claim(server, "locked", SERVER_LOCKED)
+            held.claim(server, "_locked", SERVER_LOCKED)
         try:
             for server, nic in members:
                 await lab.blocking(lab.fabric.network.detach_nic, server, nic)

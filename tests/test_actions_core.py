@@ -12,7 +12,7 @@ import time
 import pytest
 
 from hlabd.errors import ApiError, invalid
-from hlabd.lab import SERVER_LOCKED, Plan
+from hlabd.lab import SERVER_LOCKED, ActionSpec, Plan
 
 
 def make_server(lab, sid=1001, status="running"):
@@ -21,7 +21,6 @@ def make_server(lab, sid=1001, status="running"):
         "id": sid,
         "name": f"s{sid}",
         "status": status,
-        "locked": False,
         "_lab": {"index": sid - 1000, "tap": f"pub{sid - 1000}", "nics": []},
     }
     lab.state["servers"][sid] = server
@@ -49,8 +48,8 @@ async def settle(lab):
 def table(function):
     """Return an action table with the command "go" (Hetzner's name "do_go")."""
     return {
-        "go": ("do_go", function),
-        "change_protection": ("change_protection", function),
+        "go": ActionSpec("do_go", function),
+        "change_protection": ActionSpec("change_protection", function, flag=False),
     }
 
 
@@ -70,32 +69,40 @@ def test_claim_sets_the_flag_and_refuses_a_second_claim_with_423(lab):
 def test_release_takes_a_flag_off_and_leaves_a_server_unlocked(lab):
     volume, server = make_volume(lab), make_server(lab)
     lab.claim(volume, "_busy", "busy")
-    lab.claim(server, "locked", "locked")
+    lab.claim(server, "_locked", "locked")
     lab.release(volume, "_busy")
-    lab.release(server)
-    assert "_busy" not in volume
-    # the API shows a server's flag, so it stays as False
-    assert server["locked"] is False
+    lab.release(server, "_locked")
+    assert "_busy" not in volume and "_locked" not in server
     lab.claim(volume, "_busy", "busy")  # free again
+
+
+def test_a_restart_clears_every_flag_and_the_old_locked_field(lab):
+    volume, server = make_volume(lab), make_server(lab)
+    lab.claim(volume, "_busy", "busy")
+    lab.claim(server, "_locked", "locked")
+    server["locked"] = True  # a state file from before `_locked`
+    lab.clear_flags()
+    assert "_busy" not in volume
+    assert "_locked" not in server and "locked" not in server
 
 
 def test_holding_takes_off_what_it_holds_when_the_block_ends(lab):
     volume, server = make_volume(lab), make_server(lab)
     with lab.holding() as held:
         held.claim(volume, "_busy", "busy")
-        held.claim(server, "locked", SERVER_LOCKED)
-        assert volume["_busy"] is True and server["locked"] is True
-    assert "_busy" not in volume and server["locked"] is False
+        held.claim(server, "_locked", SERVER_LOCKED)
+        assert volume["_busy"] is True and server["_locked"] is True
+    assert "_busy" not in volume and "_locked" not in server
 
 
 def test_holding_takes_its_flags_off_when_the_block_fails(lab):
     volume, server = make_volume(lab), make_server(lab)
-    lab.claim(server, "locked", "locked")  # another action runs on the server
+    lab.claim(server, "_locked", "locked")  # another action runs on the server
     with pytest.raises(ApiError), lab.holding() as held:
         held.claim(volume, "_busy", "busy")
-        held.claim(server, "locked", SERVER_LOCKED)  # 423
+        held.claim(server, "_locked", SERVER_LOCKED)  # 423
     assert "_busy" not in volume
-    assert server["locked"] is True  # still the other action's
+    assert server["_locked"] is True  # still the other action's
 
 
 def test_holding_leaves_kept_and_handed_over_flags(lab):
@@ -103,9 +110,9 @@ def test_holding_leaves_kept_and_handed_over_flags(lab):
     with lab.holding() as held:
         held.claim(volume, "_busy", "busy")
         held.keep()
-        held.claim(server, "locked", SERVER_LOCKED)
-        assert held.take() == [(server, "locked")]
-    assert volume["_busy"] is True and server["locked"] is True
+        held.claim(server, "_locked", SERVER_LOCKED)
+        assert held.take() == [(server, "_locked")]
+    assert volume["_busy"] is True and server["_locked"] is True
 
 
 # --- act ------------------------------------------------------------------------------
@@ -185,7 +192,7 @@ def test_act_holds_the_flags_until_the_steps_succeed(lab):
             "_busy",
         )
         await asyncio.sleep(0)
-        assert volume["_busy"] is True and server["locked"] is True
+        assert volume["_busy"] is True and server["_locked"] is True
         assert answer["action"]["status"] == "running"
         go.set()
         await settle(lab)
@@ -193,7 +200,7 @@ def test_act_holds_the_flags_until_the_steps_succeed(lab):
 
     action = run(main())
     assert action["status"] == "success"
-    assert "_busy" not in volume and server["locked"] is False
+    assert "_busy" not in volume and "_locked" not in server
 
 
 def test_act_releases_the_flags_when_the_steps_fail(lab):
@@ -217,12 +224,12 @@ def test_act_releases_the_flags_when_the_steps_fail(lab):
     action = run(main())
     assert action["status"] == "error"
     assert action["error"] == {"code": "action_failed", "message": "the disk broke"}
-    assert "_busy" not in volume and server["locked"] is False
+    assert "_busy" not in volume and "_locked" not in server
 
 
 def test_act_refuses_a_locked_plan_server_and_frees_the_resource(lab):
     volume, server = make_volume(lab), make_server(lab)
-    lab.claim(server, "locked", "locked")
+    lab.claim(server, "_locked", "locked")
 
     async def steps():
         pass
@@ -240,7 +247,7 @@ def test_act_refuses_a_locked_plan_server_and_frees_the_resource(lab):
         )
     assert refused.value.status == 423
     assert "_busy" not in volume
-    assert server["locked"] is True  # still the other action's
+    assert server["_locked"] is True  # still the other action's
 
 
 def test_act_locks_a_server_that_is_the_resource_only_once(lab):
@@ -248,7 +255,7 @@ def test_act_locks_a_server_that_is_the_resource_only_once(lab):
 
     async def main():
         async def steps():
-            assert server["locked"] is True
+            assert server["_locked"] is True
 
         await lab.act(
             table(lambda *_: Plan(steps, server=server)),
@@ -256,12 +263,12 @@ def test_act_locks_a_server_that_is_the_resource_only_once(lab):
             server,
             "server",
             {},
-            "locked",
+            "_locked",
         )
         await settle(lab)
 
     run(main())
-    assert server["locked"] is False
+    assert "_locked" not in server
 
 
 def test_record_only_actions_take_no_flag(lab):
@@ -290,7 +297,7 @@ def test_failed_steps_fail_the_next_actions_too(lab):
             raise RuntimeError("no disk")
 
         with lab.holding() as held:
-            held.claim(server, "locked", SERVER_LOCKED)
+            held.claim(server, "_locked", SERVER_LOCKED)
             lab.run_action(action, steps, server, [next_action], held)
         await settle(lab)
         return action, next_action
@@ -315,7 +322,7 @@ def test_a_failed_server_leaves_its_in_between_status_for_what_its_vm_does(
             raise RuntimeError("QEMU failed")
 
         with lab.holding() as held:
-            held.claim(server, "locked", SERVER_LOCKED)
+            held.claim(server, "_locked", SERVER_LOCKED)
             lab.run_action(action, steps, server, holding=held)
         await settle(lab)
 
@@ -381,3 +388,13 @@ def test_act_awaits_a_plan_function_that_is_async(lab):
     assert answer["asked"] is True
     assert answer["action"]["status"] == "success"
     assert "_busy" not in volume
+
+
+def test_act_answers_a_list_of_actions_with_the_finished_ones(lab):
+    volume = make_volume(lab)
+    plan = Plan(finished=[("do_more", [(10001, "volume"), (1001, "server")])])
+    actions = {"go": ActionSpec("do_go", lambda *_: plan, answer="actions")}
+    answer = run(lab.act(actions, "go", volume, "volume", {}))
+    assert [action["command"] for action in answer["actions"]] == ["do_go", "do_more"]
+    assert all(action["status"] == "success" for action in answer["actions"])
+    assert answer["actions"][1]["resources"][1] == {"id": 1001, "type": "server"}

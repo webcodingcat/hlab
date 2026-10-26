@@ -9,12 +9,7 @@ The lab's own records besides the resources (faults, netem, routes of networks, 
 lab's Storage Box accounts) are described in state.py.
 """
 
-from typing import Any, NotRequired, TypedDict
-
-# A record of any kind, for code that picks fields by a variable key (flags, PUT fields,
-# filters and sorting of lists, lookups by a kind given as a string): a TypedDict allows
-# only literal keys, so such code cannot be checked field by field anyway.
-AnyRecord = Any
+from typing import NotRequired, TypedDict
 
 
 class Protection(TypedDict):
@@ -75,7 +70,6 @@ class Server(TypedDict):
     image: str
     location: str
     protection: ServerProtection
-    locked: bool  # an action runs (shown by the API)
     user_data: str | None
     public_keys: list[str]  # the SSH keys it was made with
     _lab: ServerLab
@@ -83,6 +77,7 @@ class Server(TypedDict):
     ipv4_id: NotRequired[int | None]
     ipv6_id: NotRequired[int | None]
     _dead: NotRequired[bool]  # the fault "dead": a power on leaves it off
+    _locked: NotRequired[bool]  # an action runs (the API shows it as `locked`)
 
 
 class ActionResource(TypedDict):
@@ -282,9 +277,32 @@ class BoxSnapshot(TypedDict):
     _copying: NotRequired[bool]  # being copied (a restart removes it)
 
 
+# A record of any kind of resource, for the code that treats every kind alike (flags,
+# PUT fields, lookups); code that knows the kind uses its own type.
+Record = (
+    Server
+    | Volume
+    | PrimaryIP
+    | FloatingIP
+    | CloudNetwork
+    | Firewall
+    | SSHKey
+    | StorageBox
+    | Subaccount
+    | BoxSnapshot
+    | Client
+)
+
 # The resources that have an action table run by `Lab.act()` (one of them per table).
 ActionRecord = (
-    Server | Volume | PrimaryIP | FloatingIP | CloudNetwork | StorageBox | Subaccount
+    Server
+    | Volume
+    | PrimaryIP
+    | FloatingIP
+    | CloudNetwork
+    | Firewall
+    | StorageBox
+    | Subaccount
 )
 
 # The resources with a plain delete protection (`api/web.py`: change_delete_protection).

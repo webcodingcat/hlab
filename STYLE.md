@@ -28,13 +28,13 @@ Official standards first, checked by `bin/hlab lint` (also part of `bin/hlab tes
 - Layout of `hlabd/`: `api/` decides (HTTP, checks, state, actions) and never
   runs scripts; `fabric/` carries out and knows no HTTP; `lab.py` is the core.
   API modules are module-level functions taking `lab` first, with thin routes;
-  every resource's actions are a table run by `lab.act()`, except firewalls
-  (DEVELOPING.md); errors come from `errors.py`; lookups go through
-  `lab.get_or_404()` or a `<thing>_or_404()` helper; JSON shapes are
-  `<thing>_json(lab, thing)`.
+  every resource's actions are a table of `ActionSpec` rows run by `lab.act()`;
+  errors come from `errors.py`; lookups go through `lab.get_or_404()` or a
+  `<thing>_or_404()` helper; JSON shapes are `<thing>_json(lab, thing)`.
 - Types where they help reading: `lab: Lab`, `state: State`, and the records of
   `records.py` (`server: Server`, `nic: Nic`, ...), so mypy catches a mistyped field;
-  code that treats every kind alike takes `AnyRecord`. Annotating everything is not
-  the goal.
+  code that treats every kind alike takes `Record` (or a type variable bound to it),
+  never `Any`; where a field is picked by a variable key, one commented `cast`
+  says why. Annotating everything is not the goal.
 - Tests: one file per feature; test names are sentences; a comment notes where
   a test checks Hetzner's behaviour.

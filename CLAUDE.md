@@ -41,11 +41,14 @@ Python, pytest and the linters are not needed on the host.
   `await lab.blocking(work, ...)` with plain data in and out, never the state. A saved
   change is `with state.change():`, undone if it raises; it never awaits.
   See DEVELOPING.md, State.
-- **New actions go through `lab.act()`**; other code holds flags only through
-  `with lab.holding() as held:`, never `lab.claim()`/`lab.release()`. See DEVELOPING.md,
-  How flags flow.
+- **New actions go through `lab.act()`** (a row `ActionSpec(...)` in the resource's
+  table); other code holds flags only through `with lab.holding() as held:`, never
+  `lab.claim()`/`lab.release()`. Flags are lab-private fields (`_locked`, `_busy`, ...,
+  `FLAGS`); the API's `locked` of a server is derived from `_locked`. See
+  DEVELOPING.md, How flags flow.
 - **Records are typed** (`records.py`); annotate `lab: Lab` and use the record types, so
-  mypy catches a mistyped field.
+  mypy catches a mistyped field; code for every kind takes `Record` (or a type variable
+  bound to it), not `Any`.
 - **Hetzner behaviour first:** answers, status codes and error codes as the real API (and
   its changelog) has them; the spec check in the unit tests is the safety net.
 - A command `bin/hlab` dispatches is named in its usage comment, and back

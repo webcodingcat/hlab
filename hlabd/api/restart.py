@@ -8,29 +8,13 @@ or box does not stop the lab from starting.
 
 import logging
 
-from ..lab import FLAGS, Lab, now
+from ..lab import Lab, now
 from ..records import Server
-from ..state import KINDS
 from . import storagebox, system
 from .servers import ensure_disk, remove_server
 from .storagebox.base import set_up_box_user
 
 log = logging.getLogger(__name__)
-
-
-def clear_flags(lab: Lab) -> None:
-    """Take every action flag off every resource, and unlock every server.
-
-    No action survives a restart.
-    """
-    state = lab.state
-    with state.change():
-        for kind in KINDS:
-            for item in state[kind].values():
-                for flag in FLAGS:
-                    item.pop(flag, None)
-        for server in state["servers"].values():
-            server["locked"] = False
 
 
 async def restore_storage_box(lab: Lab) -> None:
@@ -135,7 +119,7 @@ async def restore_clients(lab: Lab) -> None:
 
 async def restore_lab(lab: Lab) -> None:
     """Restore the Storage Box, state, network, servers and clients after a start."""
-    clear_flags(lab)
+    lab.clear_flags()
     await restore_storage_box(lab)
     fail_running_actions(lab)
     await drop_half_created_volumes(lab)

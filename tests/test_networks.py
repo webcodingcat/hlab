@@ -501,7 +501,9 @@ def test_a_failed_detach_leaves_the_network_with_the_nics_not_yet_detached(
     saved = json.loads(api.lab.state.path.read_text())
     assert saved["servers"][str(first["id"])]["_lab"]["nics"] == []
     assert api.get(f"/v1/networks/{nid}").json()["network"]["servers"] == [second["id"]]
-    assert not servers[first["id"]]["locked"] and not servers[second["id"]]["locked"]
+    assert not servers[first["id"]].get("_locked") and not servers[second["id"]].get(
+        "_locked"
+    )
     assert "_deleting" not in state_of(api, "networks")[nid]
     # deleting it again goes on from there
     monkeypatch.setattr(api.sh, "run", run)
@@ -513,11 +515,11 @@ def test_a_network_with_a_busy_member_is_not_deleted_and_flags_come_off(api):
     network = create_network(api, "10.0.1.0/24")
     server = create_server(api, "a", networks=[network["id"]])["server"]
     record = state_of(api, "servers")[server["id"]]
-    api.on_loop(api.lab.claim, record, "locked", "locked")  # an action runs on it
+    api.on_loop(api.lab.claim, record, "_locked", "locked")  # an action runs on it
     response = api.delete(f"/v1/networks/{network['id']}")
     assert response.status_code == 423
     assert "_deleting" not in state_of(api, "networks")[network["id"]]
-    assert record["locked"] is True  # still the other action's
+    assert record["_locked"] is True  # still the other action's
 
 
 def test_a_failed_detach_keeps_the_network_and_frees_its_servers(api, monkeypatch):
@@ -531,7 +533,7 @@ def test_a_failed_detach_keeps_the_network_and_frees_its_servers(api, monkeypatc
     with pytest.raises(RuntimeError):
         api.on_loop(networks.delete_network, api.lab, network["id"])
     assert "_deleting" not in state_of(api, "networks")[network["id"]]
-    assert state_of(api, "servers")[server["id"]]["locked"] is False
+    assert "_locked" not in state_of(api, "servers")[server["id"]]
 
 
 def test_a_route_is_wanted_with_the_nics_that_hold_its_gateway(api):

@@ -208,7 +208,7 @@ def server_json(lab: Lab, server: Server) -> dict:
         else None,
         "iso": None,
         "rescue_enabled": False,
-        "locked": server.get("locked", False),
+        "locked": server.get("_locked", False),
         "backup_window": None,
         "outgoing_traffic": 0,
         "ingoing_traffic": 0,

@@ -51,22 +51,22 @@ Inside `hlabd/`:
 | `api/nics.py` | a server's NICs in cloud networks: attach, detach, alias IPs (server actions, in `SERVER_ACTIONS`) |
 | `api/public_addresses.py` | what primary and Floating IPs share: free addresses, reverse DNS |
 | `api/storagebox/` | the Storage Box API (its own app, its own JSON shapes) |
-| `api/restart.py` | what happens after the lab (re)starts: flags cleared, servers back |
+| `api/restart.py` | what happens after the lab (re)starts: flags cleared (`lab.clear_flags`), servers back |
 | `api/control.py` | lab control under `/_lab/` (faults, clients, reset); no resource module imports it |
 | `api/faults.py` | the faults and netem in the state, dropped with the server, client or link they point at |
 | `api/desired.py` | pure functions: the state in, plain data out – what the system should look like (fault sets, latency, DHCP, taps, routes, firewall rules per server, boot volumes) |
 | `api/system.py` | puts the state in place: reads it on the loop (through `desired.py`), hands the plain data to the fabric in a thread, stores what the fabric reports back (`net_routes`); whole pictures in the order they were computed (`lab.picture_lock`); a VM's start and stop across the parts (`start_vm`, `kill_vm`, `delete_vm`) |
-| `fabric/` | carries out, with plain data as arguments; it never sees the state (records handed in are read only for what never changes: ID, name, tap, MAC). `Fabric` (`__init__.py`) holds one object per part, each given what it uses in its constructor: `shell` (`shell.py`, runs hlab.sh), `vms` (`vm.py`), `volumes` (`volumes.py`), `faults` (`faults.py`: nft sets, latency), `network` (`network.py`: taps, DHCP, DNS, routes, Floating IPs, clients), `firewall` (`firewall.py`: the firewall table), `box` (`storagebox.py`); `addresses.py` has the address rules (MACs, gateways, tables) |
+| `fabric/` | carries out, with plain data as arguments; it never sees the state (records handed in are read only for what never changes: ID, tap, MAC). `Fabric` (`__init__.py`) holds one object per part, each given what it uses in its constructor: `shell` (`shell.py`, runs hlab.sh), `vms` (`vm.py`), `volumes` (`volumes.py`), `faults` (`faults.py`: nft sets, latency), `network` (`network.py`: taps, DHCP, DNS, routes, Floating IPs, clients), `firewall` (`firewall.py`: the firewall table), `box` (`storagebox.py`); `addresses.py` has the address rules (MACs, gateways, tables) |
 | `config.py` | configuration defaults and the lab's addresses (the scripts get them as `HLAB_*`) |
 | `daemon.py`, `cli.py` | the container's main process; the `hlab` command inside the container |
 
 ## Actions
 
-Every resource lists its actions in a table, `{command: (Hetzner's name, function)}`.
-The tables are `SERVER_ACTIONS` (`api/servers.py`; the network actions come from
-`api/nics.py`), `VOLUME_ACTIONS`, `PRIMARY_IP_ACTIONS`, `FLOATING_IP_ACTIONS` and
-`NETWORK_ACTIONS`, each in its resource's module, and `BOX_ACTIONS` and
-`SUBACCOUNT_ACTIONS` in `api/storagebox/`.
+Every resource lists its actions in a table, `{command: ActionSpec(Hetzner's name,
+function)}` (`lab.py`). The tables are `SERVER_ACTIONS` (`api/servers.py`; the network
+actions come from `api/nics.py`), `VOLUME_ACTIONS`, `PRIMARY_IP_ACTIONS`,
+`FLOATING_IP_ACTIONS`, `NETWORK_ACTIONS` and `FIREWALL_ACTIONS`, each in its
+resource's module, and `BOX_ACTIONS` and `SUBACCOUNT_ACTIONS` in `api/storagebox/`.
 
 A function is named after its command (`reboot`, `add_subnet`). If two resources share
 a command, the resource goes in front (`primary_ip_assign`, `floating_ip_assign`). The
@@ -81,15 +81,19 @@ awaits it then. The plan has:
 - `server`: the server the steps work on. It stays locked while they run. If they
   fail, it leaves its in-between status.
 - `resources`: further resources the action concerns.
+- `finished`: further actions the change brings, finished at once, as (Hetzner's
+  name, resources); for a table that answers with a list of actions (below).
 
 `lab.act()` runs every table the same way, so an action function never sets a flag
-itself. Two actions only change the record (`change_protection`, `change_dns_ptr`);
-they take no flag. The delete protection of networks, primary IPs, Floating IPs,
-volumes and Storage Boxes is one function: `change_delete_protection` in `api/web.py`.
+itself. Two actions only change the record (`change_protection`, `change_dns_ptr`):
+their row says `flag=False`, so they take no flag. The delete protection of networks,
+primary IPs, Floating IPs, volumes and Storage Boxes is one function:
+`change_delete_protection` in `api/web.py`.
 
-Firewalls are the one exception. `FIREWALL_ACTIONS` (`api/firewalls.py`) maps each
-command straight to a function, and `act()` does not run it. The function returns
-Hetzner's finished actions itself, several at once, as on Hetzner.
+Firewall actions answer, as on Hetzner, with a list of actions: their rows say
+`answer="actions"`, and the answer lists the action and the plan's `finished` ones
+(`set_firewall_rules`, then `apply_firewall` naming the servers). They take effect at
+once and take no flag; the route rewrites the firewall table after `act()`.
 
 ### How flags flow
 
@@ -112,15 +116,16 @@ request
                                           finishes the action
 ```
 
-`act()` claims the resource's flag, and the `locked` flag of the plan's server if that
-is another resource. New code uses `act()`. Some paths are no Hetzner action on an
-existing resource: creating and deleting a server, creating a volume for a server,
+`act()` claims the resource's flag, and the `_locked` flag of the plan's server if
+that is another resource. Every flag is the lab's own field, set to True and removed
+again; the API shows a server's `_locked` as its `locked` (`server_json`). New code
+uses `act()`. Some paths are no Hetzner action on an existing resource: creating and deleting a server, creating a volume for a server,
 deleting a volume, a network or a Storage Box, creating a sub-account, and the VM
 watcher. They hold their flags through `lab.holding()` themselves:
 
 ```python
 with lab.holding() as held:
-    held.claim(server, "locked", SERVER_LOCKED)  # 423 if it is set already
+    held.claim(server, "_locked", SERVER_LOCKED)  # 423 if it is set already
     ...  # refused or failed: the flags come off
     lab.run_action(action, steps, holding=held)  # the flags stay on until the steps end
 ```
@@ -137,11 +142,11 @@ is gone (a deleted volume). No code outside `lab.py` calls `lab.claim()` or
 2. The route `server_action` (`api/servers.py`, `add_routes`) is `async def`, like
    every route: it awaits the body (`read_body`), then `run_server_action`.
 3. `run_server_action` looks the server up (`lab.server_or_404`: 404) and awaits
-   `lab.act(SERVER_ACTIONS, "poweroff", server, "server", body, "locked",
+   `lab.act(SERVER_ACTIONS, "poweroff", server, "server", body, "_locked",
    SERVER_LOCKED)`.
-4. `act()` finds `("stop_server", poweroff)` in the table (else `unsupported`), claims
-   the server's `locked` flag (423 if another action runs) and calls
-   `poweroff(lab, server, body)`. That returns `Plan(steps, server=server)`.
+4. `act()` finds `ActionSpec("stop_server", poweroff)` in the table (else
+   `unsupported`), claims the server's `_locked` flag (423 if another action runs)
+   and calls `poweroff(lab, server, body)`. That returns `Plan(steps, server=server)`.
 5. The plan has steps, so `act()` creates the action (`lab.new_action("stop_server",
    ...)`) and hands steps and flag to `lab.run_action`. It starts the steps as a task
    on the loop (`lab.spawn`). The route answers 201, the action `running`.
@@ -151,9 +156,9 @@ is gone (a deleted volume). No code outside `lab.py` calls `lab.claim()` or
    writes the DHCP configs (`system.write_dhcp`). The steps set the status to
    `stopping` and, after `POWEROFF_SECONDS`, to `off` (`lab.set_status`, which saves),
    then wait `POWEROFF_END_SECONDS`.
-7. When the steps end, `run_action` takes the `locked` flag off and finishes the action
-   (`lab.finish`: `success`, or `error` with the message). If the steps failed, the
-   server leaves `stopping` for what its VM really does.
+7. When the steps end, `run_action` takes the `_locked` flag off and finishes the
+   action (`lab.finish`: `success`, or `error` with the message). If the steps failed,
+   the server leaves `stopping` for what its VM really does.
 
 ## Where code runs
 
@@ -164,8 +169,8 @@ is gone (a deleted volume). No code outside `lab.py` calls `lab.claim()` or
   `await lab.blocking(work, *args)`, so the API keeps answering. `work` gets plain
   data and returns plain data, never the state: the fabric's methods, which get what
   `api/desired.py` computed, or a record only for fields that never change (ID, tap,
-  MAC; `VMs.launch` and `VMs.create_disk` get the server type and the disk size as
-  arguments). A thread cannot be cancelled, so `lab.blocking` keeps track of its
+  MAC; `VMs.launch` gets the server's name and type, `VMs.kill` its name and
+  `VMs.create_disk` the disk size as arguments, since a PUT or an action changes them). A thread cannot be cancelled, so `lab.blocking` keeps track of its
   threads, and a lab reset waits for them after cancelling the actions
   (`lab.stop_actions`).
 - A whole picture of the system (fault sets, latency, firewall, DHCP, routes) is
@@ -226,7 +231,9 @@ after the await where it matters (`stop_if_ended`, `make_available`).
 
 **A new action**: write a function named after the command (see Actions), `(lab,
 resource, body) -> Plan`, next to the others in the resource's module, and add it to
-the table with Hetzner's name. If it gives the server a new in-between status (like
+the table: `"command": ActionSpec("hetzner_name", function)`, with `flag=False` if it
+changes only the record, and `answer="actions"` if Hetzner answers with a list of
+actions. If it gives the server a new in-between status (like
 `rebuilding`), teach `lab.py` (`IN_BETWEEN`, for failures) and `api/restart.py`
 (`status_after_restart`) what that status means.
 
@@ -243,8 +250,9 @@ What the method needs from the state comes as arguments: a pure function in
 `api/desired.py` computes it, `api/system.py` (or the caller) reads it on the loop and
 passes it to the method in a thread (`await lab.blocking(...)`).
 
-**A new flag**: add it to `FLAGS` in `lab.py` and to the list above it, so a restart
-clears it (`api/restart.py`).
+**A new flag**: add it to `Flag` and `FLAGS` in `lab.py` and to the list above them,
+so a restart clears it (`lab.clear_flags`), and to the record's TypedDict as
+`NotRequired[bool]`.
 
 ## The packet path of a public address
 

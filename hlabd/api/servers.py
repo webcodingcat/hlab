@@ -33,6 +33,7 @@ from ..lab import (
     RESTART_SECONDS,
     SERVER_LOCKED,
     SHUTDOWN_SECONDS,
+    ActionSpec,
     ActionTable,
     HeldFlags,
     Lab,
@@ -214,7 +215,7 @@ def record_server(lab: Lab, request: ServerRequest, held: HeldFlags) -> Server:
         if not request.public_keys:
             server["_lab"]["root_password"] = secrets.token_urlsafe(15)
         state["servers"][server["id"]] = server
-        held.claim(server, "locked", SERVER_LOCKED)  # new, so still free
+        held.claim(server, "_locked", SERVER_LOCKED)  # new, so still free
     return server
 
 
@@ -230,7 +231,6 @@ def new_server(lab: Lab, request: ServerRequest, sid: int, index: int) -> Server
         "image": request.image,
         "location": request.location,
         "protection": {"delete": False, "rebuild": False},
-        "locked": False,  # claimed by record_server for its create action
         "user_data": request.user_data,
         "public_keys": request.public_keys,
         "_lab": {
@@ -291,7 +291,7 @@ def delete_server(lab: Lab, sid: int) -> dict:
         await lab.sleep(DELETE_SECONDS)
 
     with lab.holding() as held:
-        held.claim(server, "locked", SERVER_LOCKED)
+        held.claim(server, "_locked", SERVER_LOCKED)
         previous_status = server["status"]
         try:
             action = lab.new_action("delete_server", [(sid, "server")])
@@ -560,19 +560,19 @@ async def reset_password(lab: Lab, server: Server, body: dict) -> Plan:
 
 # the server actions: Hetzner's name of the action and the function that plans it
 SERVER_ACTIONS: ActionTable[Server] = {
-    "change_protection": ("change_protection", change_protection),
-    "change_dns_ptr": ("change_dns_ptr", change_dns_ptr),
-    "poweroff": ("stop_server", poweroff),
-    "shutdown": ("shutdown_server", shutdown),
-    "poweron": ("start_server", poweron),
-    "reboot": ("reboot_server", reboot),
-    "reset": ("reset_server", reset),
-    "rebuild": ("rebuild_server", rebuild),
-    "change_type": ("change_server_type", change_type),
-    "reset_password": ("reset_password", reset_password),
-    "attach_to_network": ("attach_to_network", nics.attach_to_network),
-    "detach_from_network": ("detach_from_network", nics.detach_from_network),
-    "change_alias_ips": ("change_alias_ips", nics.change_alias_ips),
+    "change_protection": ActionSpec("change_protection", change_protection, flag=False),
+    "change_dns_ptr": ActionSpec("change_dns_ptr", change_dns_ptr, flag=False),
+    "poweroff": ActionSpec("stop_server", poweroff),
+    "shutdown": ActionSpec("shutdown_server", shutdown),
+    "poweron": ActionSpec("start_server", poweron),
+    "reboot": ActionSpec("reboot_server", reboot),
+    "reset": ActionSpec("reset_server", reset),
+    "rebuild": ActionSpec("rebuild_server", rebuild),
+    "change_type": ActionSpec("change_server_type", change_type),
+    "reset_password": ActionSpec("reset_password", reset_password),
+    "attach_to_network": ActionSpec("attach_to_network", nics.attach_to_network),
+    "detach_from_network": ActionSpec("detach_from_network", nics.detach_from_network),
+    "change_alias_ips": ActionSpec("change_alias_ips", nics.change_alias_ips),
 }
 
 
@@ -580,7 +580,7 @@ async def run_server_action(lab: Lab, sid: int, cmd: str, body: dict) -> dict:
     """Run a server action; like Hetzner, allow one at a time per server (else 423)."""
     server = lab.server_or_404(sid)
     return await lab.act(
-        SERVER_ACTIONS, cmd, server, "server", body, "locked", SERVER_LOCKED
+        SERVER_ACTIONS, cmd, server, "server", body, "_locked", SERVER_LOCKED
     )
 
 

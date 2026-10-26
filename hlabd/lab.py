@@ -8,11 +8,11 @@ The event loop owns the state: everything that reads or changes it runs on the l
 and blocking work (scripts, files) runs in threads through `blocking()`, with plain
 data in and out. See DEVELOPING.md, State.
 
-Actions: every resource lists its actions in a table, `{command: (Hetzner's name,
-function)}`. The function checks the request and returns a `Plan` (an `async def` one
-when it must ask the system first); `act()` runs it the same way for every resource.
-As on Hetzner, a change that is done at once still gets an action, finished right
-away. Firewalls are the exception (`api/firewalls.py`).
+Actions: every resource lists its actions in a table, `{command: ActionSpec(Hetzner's
+name, function)}`. The function checks the request and returns a `Plan` (an `async def`
+one when it must ask the system first); `act()` runs it the same way for every
+resource. As on Hetzner, a change that is done at once still gets an action, finished
+right away.
 
 Flags: a flag on a resource says that an action works on it, so a second one gets 423,
 as on Hetzner. Code holds flags only through `holding()`: what is still held when the
@@ -20,7 +20,8 @@ block ends comes off, however it ends. `run_action()` takes over the flags of st
 that run in the background and takes them off when they end. The flags are listed at
 `FLAGS`; DEVELOPING.md, Actions, shows how they flow.
 
-Fields starting with `_` are the lab's own; the API never shows them.
+Fields starting with `_` are the lab's own; the API never shows them as they are (a
+server's `_locked` is its `locked`).
 """
 
 import asyncio
@@ -30,25 +31,29 @@ from collections.abc import Awaitable, Callable, Coroutine, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal, cast, overload
 
 from .api import system
 from .errors import ApiError, locked, not_found, unsupported
 from .fabric import Fabric
-from .records import Action, ActionRecord, AnyRecord, Server
-from .state import State, server_by_name
+from .records import (
+    Action,
+    ActionRecord,
+    CloudNetwork,
+    Firewall,
+    FloatingIP,
+    PrimaryIP,
+    Record,
+    Server,
+    SSHKey,
+    Volume,
+)
+from .state import KINDS, State, server_by_name
 
 log = logging.getLogger(__name__)
 
 # the slow part of an action, run in the background (`Plan.steps`, `run_action`)
 type Steps = Callable[[], Awaitable[None]]
-
-# a resource's action table: {Hetzner's command: (Hetzner's action name, function)};
-# the function checks the request for a record of the table's kind and plans the action
-# (an `async def` one when it must ask the system first, through `Lab.blocking`)
-type ActionTable[R: ActionRecord] = dict[
-    str, tuple[str, Callable[[Lab, R, dict], Plan | Awaitable[Plan]]]
-]
 
 # Finished actions kept in the state. Hetzner keeps every action; the lab keeps the
 # recent ones only, because every save writes the whole state: above MAX_ACTIONS, the
@@ -56,21 +61,20 @@ type ActionTable[R: ActionRecord] = dict[
 MAX_ACTIONS = 1000
 KEPT_ACTIONS = 500
 
-# The action flags. Each says that an action works on the resource (423 for another):
-# - `locked`: on a server; the API shows it, as Hetzner's does (not in FLAGS: it is a
-#   field of every server, set to False instead of removed)
+# The action flags. Each says that an action works on the resource (423 for another);
+# a flag is set to True and removed again, never set to False:
+# - `_locked`: a server in an action; the API shows it as `locked`, as Hetzner does
+#   (`api/hetzner.py`, `server_json`)
 # - `_busy`: a volume or Storage Box in an action
 # - `_moving`: a Floating IP being moved
 # - `_deleting`: a network or Storage Box being deleted
 # - `_creating`: a sub-account being set up
-# A lab restart takes them all off (`api/restart.py`, `clear_flags()`). A new flag goes
-# here, so the restart clears it. `_copying` on a Storage Box snapshot is not an action
-# flag: a restart removes such a snapshot, because its copy was cut off
+# A lab restart takes them all off (`Lab.clear_flags`). A new flag goes here, so the
+# restart clears it. `_copying` on a Storage Box snapshot is not an action flag: a
+# restart removes such a snapshot, because its copy was cut off
 # (`api/storagebox/__init__.py`, `restore()`).
-FLAGS = ("_busy", "_moving", "_deleting", "_creating")
-
-# actions that change only the record: they take no flag and may run alongside others
-RECORD_ONLY = ("change_protection", "change_dns_ptr")
+type Flag = Literal["_locked", "_busy", "_moving", "_deleting", "_creating"]
+FLAGS: tuple[Flag, ...] = ("_locked", "_busy", "_moving", "_deleting", "_creating")
 
 # the 423 message when an action already runs on the server
 SERVER_LOCKED = "server is locked by another action"
@@ -107,6 +111,15 @@ def now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+def flag_fields(item: Record) -> dict[str, object]:
+    """Return a record as a plain dict, to set or remove a flag by its name.
+
+    Each record type declares its own flags (records.py), but mypy cannot match a flag
+    given as a variable to the record's fields.
+    """
+    return cast(dict[str, object], item)
+
+
 @dataclass
 class Plan:
     """The plan of an action: its slow part, extra answer fields, what it locks.
@@ -123,6 +136,31 @@ class Plan:
     server: Server | None = None
     # (id, type) of further resources the action concerns (e.g. the target server)
     resources: list[tuple[int, str]] = field(default_factory=list)
+    # further actions the change brings, finished at once, after the action itself:
+    # (Hetzner's name, its (id, type) resources), such as a firewall's apply_firewall;
+    # only for a table that answers with a list of actions (`ActionSpec.answer`)
+    finished: list[tuple[str, list[tuple[int, str]]]] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ActionSpec[R: ActionRecord]:
+    """One row of a resource's action table: what `act()` runs for a command."""
+
+    # Hetzner's name of the action (`stop_server` for the command `poweroff`)
+    name: str
+    # checks the request for a record of the table's kind and plans the action (an
+    # `async def` one when it must ask the system first, through `Lab.blocking`)
+    plan: Callable[["Lab", R, dict], Plan | Awaitable[Plan]]
+    # False: the action changes only the record; it takes no flag and may run
+    # alongside another action (change_protection, change_dns_ptr)
+    flag: bool = True
+    # the answer's key: one "action", or a list of "actions" (firewalls: the action
+    # and `Plan.finished`)
+    answer: Literal["action", "actions"] = "action"
+
+
+# a resource's action table: {Hetzner's command: what `act()` runs for it}
+type ActionTable[R: ActionRecord] = dict[str, ActionSpec[R]]
 
 
 class HeldFlags:
@@ -131,9 +169,9 @@ class HeldFlags:
     def __init__(self, lab: "Lab"):
         """Hold no flag yet."""
         self.lab = lab
-        self.flags: list[tuple[AnyRecord, str]] = []
+        self.flags: list[tuple[Record, Flag]] = []
 
-    def claim(self, item: AnyRecord, flag: str, message: str) -> None:
+    def claim(self, item: Record, flag: Flag, message: str) -> None:
         """Set a flag on a resource and hold it, or raise 423 (`message`)."""
         self.lab.claim(item, flag, message)
         self.flags.append((item, flag))
@@ -148,7 +186,7 @@ class HeldFlags:
         """Leave the held flags set for good (on a record that is gone)."""
         self.flags = []
 
-    def take(self) -> list[tuple[AnyRecord, str]]:
+    def take(self) -> list[tuple[Record, Flag]]:
         """Hand the held flags over to whoever takes them off later (`run_action`)."""
         flags, self.flags = self.flags, []
         return flags
@@ -242,7 +280,37 @@ class Lab:
 
     # --- lookups ----------------------------------------------------------------------
 
-    def get_or_404(self, kind: str, item_id: int, what: str) -> AnyRecord:
+    # each kind looked up by ID with its record type, as `State.__getitem__` has them
+    @overload
+    def get_or_404(
+        self, kind: Literal["servers"], item_id: int, what: str
+    ) -> Server: ...
+    @overload
+    def get_or_404(
+        self, kind: Literal["volumes"], item_id: int, what: str
+    ) -> Volume: ...
+    @overload
+    def get_or_404(
+        self, kind: Literal["primary_ips"], item_id: int, what: str
+    ) -> PrimaryIP: ...
+    @overload
+    def get_or_404(
+        self, kind: Literal["floating_ips"], item_id: int, what: str
+    ) -> FloatingIP: ...
+    @overload
+    def get_or_404(
+        self, kind: Literal["networks"], item_id: int, what: str
+    ) -> CloudNetwork: ...
+    @overload
+    def get_or_404(
+        self, kind: Literal["firewalls"], item_id: int, what: str
+    ) -> Firewall: ...
+    @overload
+    def get_or_404(
+        self, kind: Literal["ssh_keys"], item_id: int, what: str
+    ) -> SSHKey: ...
+
+    def get_or_404(self, kind: str, item_id: int, what: str) -> Record:
         """Return a resource of a kind (e.g. "volumes") by ID, or raise 404 (`what`)."""
         item = self.state[kind].get(item_id)
         if not item:
@@ -371,41 +439,47 @@ class Lab:
         item: R,
         item_type: str,
         body: dict,
-        flag: str | None = None,
+        flag: Flag | None = None,
         busy_message: str = "",
     ) -> dict:
         """Run one action of a resource from its table and return the answer.
 
         The table's function checks the request and returns a `Plan` (awaited if the
-        function is `async def`). Before that, the
-        resource gets `flag` (423 `busy_message` if it is set already); a record-only
-        action (`RECORD_ONLY`) takes no flag. If the plan names another server, that
-        server gets its `locked` flag too (423 if another action runs on it).
+        function is `async def`). Before that, the resource gets `flag` (423
+        `busy_message` if it is set already); an action whose row says `flag=False`
+        takes none. If the plan names another server, that server gets its `_locked`
+        flag too (423 if another action runs on it).
 
         The flags are held through `holding()`: if the function refuses the request, or
         a flag is set already, they come off as the block ends. If the plan has no steps
         (done at once), they come off before the answer; otherwise `run_action()` takes
         them off when the steps end, whether they succeed, fail or are cancelled.
+
+        The answer has the action under "action", or, if the row says
+        `answer="actions"`, the action and the plan's `finished` ones under "actions";
+        then the plan's `extra` fields.
         """
         if command not in actions:
             raise unsupported(f"the action {command!r}")
-        name, plan_action = actions[command]
-        if command in RECORD_ONLY:
-            flag = None
+        spec = actions[command]
         with self.holding() as held:
-            if flag:
+            if flag and spec.flag:
                 held.claim(item, flag, busy_message)
-            planned = plan_action(self, item, body)
+            planned = spec.plan(self, item, body)
             plan = await planned if inspect.isawaitable(planned) else planned
             if plan.server is not None and plan.server is not item:
-                held.claim(plan.server, "locked", SERVER_LOCKED)
+                held.claim(plan.server, "_locked", SERVER_LOCKED)
             resources = [(item["id"], item_type), *plan.resources]
             if plan.steps is None:
                 with self.state.change():  # flags off, then the block saves
                     held.release()
-                return {"action": self.finished_action(name, resources), **plan.extra}
-            action = self.new_action(name, resources)
-            self.run_action(action, plan.steps, plan.server, holding=held)
+                action = self.finished_action(spec.name, resources)
+            else:
+                action = self.new_action(spec.name, resources)
+                self.run_action(action, plan.steps, plan.server, holding=held)
+        if spec.answer == "actions":
+            finished = [self.finished_action(*more) for more in plan.finished]
+            return {"actions": [action, *finished], **plan.extra}
         return {"action": action, **plan.extra}
 
     @contextmanager
@@ -422,23 +496,33 @@ class Lab:
         finally:
             held.release()
 
-    def claim(self, item: AnyRecord, flag: str, message: str) -> None:
+    def claim(self, item: Record, flag: Flag, message: str) -> None:
         """Set a flag on a resource, or raise 423 (`message`) if it is set already.
 
         Check and change run on the loop without an await between them, so of two
         requests at the same time exactly one wins. Code outside this module claims
         through `holding()`.
         """
-        if item.get(flag):
+        fields = flag_fields(item)
+        if fields.get(flag):
             raise locked(message)
-        item[flag] = True
+        fields[flag] = True
 
-    def release(self, item: AnyRecord, flag: str = "locked") -> None:
-        """Take a flag off a resource (a server's `locked` by default)."""
-        if flag == "locked":
-            item["locked"] = False  # shown by the API
-        else:
-            item.pop(flag, None)
+    def release(self, item: Record, flag: Flag) -> None:
+        """Take a flag off a resource."""
+        flag_fields(item).pop(flag, None)
+
+    def clear_flags(self) -> None:
+        """Take every action flag off every resource (a lab restart).
+
+        No action survives a restart. State files from before `_locked` have a
+        server field `locked` (True or False); it is dropped here too.
+        """
+        with self.state.change():
+            for kind in KINDS:
+                for item in self.state[kind].values():
+                    for flag in (*FLAGS, "locked"):
+                        flag_fields(item).pop(flag, None)
 
     def set_status(self, server: Server, status: str) -> None:
         """Set a server's status and save the state."""
@@ -466,7 +550,7 @@ class Lab:
         servers = list(self.state["servers"].values())
         for server in servers:
             await self.blocking(self.fabric.vms.trim_console, server)
-            if server["status"] == "running" and not server.get("locked"):
+            if server["status"] == "running" and not server.get("_locked"):
                 await self.stop_if_ended(server)
 
     async def stop_if_ended(self, server: Server) -> None:
@@ -475,7 +559,7 @@ class Lab:
             return
         with self.holding() as held:
             try:
-                held.claim(server, "locked", SERVER_LOCKED)
+                held.claim(server, "_locked", SERVER_LOCKED)
             except ApiError:
                 # an action started meanwhile: it owns the server now
                 return

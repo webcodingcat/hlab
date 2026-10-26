@@ -16,7 +16,7 @@ from ..errors import (
     locked,
     protected,
 )
-from ..lab import SERVER_LOCKED, VOLUME_SECONDS, ActionTable, Lab, Plan, now
+from ..lab import SERVER_LOCKED, VOLUME_SECONDS, ActionSpec, ActionTable, Lab, Plan, now
 from ..records import Server, Volume
 from ..state import server_by_id
 from . import hetzner
@@ -111,7 +111,7 @@ def create_volume(lab: Lab, body: dict) -> dict:
             if server:
                 check_room(lab, location, server)  # the new volume is not attached yet
                 # the last check: nothing may refuse after the server is claimed
-                held.claim(server, "locked", SERVER_LOCKED)
+                held.claim(server, "_locked", SERVER_LOCKED)
             vid = state.new_id("volumes")
             volume: Volume = {
                 "id": vid,
@@ -300,10 +300,12 @@ def resize(lab: Lab, volume: Volume, body: dict) -> Plan:
 
 # the volume actions: Hetzner's name of the action and the function that plans it
 VOLUME_ACTIONS: ActionTable[Volume] = {
-    "change_protection": ("change_protection", change_delete_protection),
-    "attach": ("attach_volume", attach),
-    "detach": ("detach_volume", detach),
-    "resize": ("resize_volume", resize),
+    "change_protection": ActionSpec(
+        "change_protection", change_delete_protection, flag=False
+    ),
+    "attach": ActionSpec("attach_volume", attach),
+    "detach": ActionSpec("detach_volume", detach),
+    "resize": ActionSpec("resize_volume", resize),
 }
 
 

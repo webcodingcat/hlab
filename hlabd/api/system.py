@@ -100,7 +100,9 @@ async def start_vm(lab: "Lab", server: Server) -> None:
         await write_dhcp(lab)
         volumes = desired.boot_volumes(state, server)
         await lab.blocking(fabric.volumes.write_boot_list, server, volumes)
-        await lab.blocking(fabric.vms.launch, server, server["server_type"], nics)
+        await lab.blocking(
+            fabric.vms.launch, server, server["name"], server["server_type"], nics
+        )
     except Exception:  # whatever failed: remove the half-started VM, then re-raise
         await kill_vm(lab, server)
         raise
@@ -112,7 +114,7 @@ async def start_vm(lab: "Lab", server: Server) -> None:
 
 async def kill_vm(lab: "Lab", server: Server) -> None:
     """Stop the server's VM and take its taps and DHCP down."""
-    await lab.blocking(lab.fabric.vms.kill, server)
+    await lab.blocking(lab.fabric.vms.kill, server, server["name"])
     server_lab = server["_lab"]
     taps = [server_lab["tap"], *(nic["tap"] for nic in server_lab["nics"])]
     await lab.blocking(lab.fabric.network.taps_down, taps)

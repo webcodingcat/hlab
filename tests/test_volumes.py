@@ -198,14 +198,14 @@ def test_volumes_wait_for_a_busy_server_and_are_not_deleted_while_busy(api):
     wait_action(api, volume["action"])
     vid = volume["volume"]["id"]
     # an action of the server runs
-    state_of(api, "servers")[server["id"]]["locked"] = True
+    state_of(api, "servers")[server["id"]]["_locked"] = True
     assert (
         api.post(
             f"/v1/volumes/{vid}/actions/attach", json={"server": server["id"]}
         ).status_code
         == 423
     )
-    state_of(api, "servers")[server["id"]]["locked"] = False
+    state_of(api, "servers")[server["id"]].pop("_locked")
     state_of(api, "volumes")[vid]["_busy"] = True
     assert api.delete(f"/v1/volumes/{vid}").status_code == 423
     state_of(api, "volumes")[vid].pop("_busy")
@@ -214,7 +214,7 @@ def test_volumes_wait_for_a_busy_server_and_are_not_deleted_while_busy(api):
     )
     assert wait_action(api, response.json()["action"])["status"] == "success"
     # the server is free again
-    assert not state_of(api, "servers")[server["id"]]["locked"]
+    assert not state_of(api, "servers")[server["id"]].get("_locked")
 
 
 def test_server_create_takes_only_available_volumes_and_leaves_nothing(
@@ -260,11 +260,11 @@ def test_server_create_takes_only_available_volumes_and_leaves_nothing(
 
 def test_volume_created_for_a_server_locks_it_until_attached(api):
     server = create_server(api, "a")["server"]
-    state_of(api, "servers")[server["id"]]["locked"] = True  # an action runs
+    state_of(api, "servers")[server["id"]]["_locked"] = True  # an action runs
     body = {"name": "v", "size": 10, "server": server["id"]}
     assert api.post("/v1/volumes", json=body).status_code == 423
     assert api.get("/v1/volumes").json()["volumes"] == []
-    state_of(api, "servers")[server["id"]]["locked"] = False
+    state_of(api, "servers")[server["id"]].pop("_locked")
     response = api.post("/v1/volumes", json=body).json()
     wait_action(api, response["action"])
     assert api.get(f"/v1/servers/{server['id']}").json()["server"]["locked"] is False

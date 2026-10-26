@@ -5,7 +5,6 @@ change here rewrites them.
 """
 
 import ipaddress
-from collections.abc import Callable
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
@@ -17,11 +16,10 @@ from ..errors import (
     invalid,
     limit_exceeded,
     resource_in_use,
-    unsupported,
 )
-from ..lab import Lab, now
+from ..lab import ActionSpec, ActionTable, Lab, Plan, now
 from ..labels import firewall_servers
-from ..records import Action, Firewall, FirewallRule
+from ..records import Firewall, FirewallRule
 from ..state import primary_address_of
 from . import hetzner, system
 from .web import filtered, paginate, read_body, update_resource
@@ -149,37 +147,18 @@ def check_limit(lab: Lab) -> None:
             )
 
 
-def finished_firewall_action(
-    lab: Lab, firewall: Firewall, cmd: str, servers: set[int]
-) -> Action:
-    """Return the finished action of a firewall change, with the servers it applies to.
-
-    Firewall changes take effect at once.
-    """
-    resources = [(firewall["id"], "firewall")] + [
-        (sid, "server") for sid in sorted(servers)
-    ]
-    return lab.finished_action(cmd, resources)
-
-
-def rule_actions(lab: Lab, firewall: Firewall, created: bool = False) -> list[Action]:
-    """Return the actions for new rules: set_firewall_rules and apply_firewall.
-
-    apply_firewall lists the servers the firewall applies to. For changed rules it comes
-    only when there are such servers. For a new firewall it comes whenever the firewall
-    is applied to anything (a label selector may match no server yet).
-    """
-    actions = [finished_firewall_action(lab, firewall, "set_firewall_rules", set())]
-    servers = firewall_servers(lab.state, firewall)
-    if servers or (created and firewall["applied_to"]):
-        actions.append(
-            finished_firewall_action(lab, firewall, "apply_firewall", servers)
-        )
-    return actions
+def server_resources(servers: set[int]) -> list[tuple[int, str]]:
+    """Return the (id, type) resources of the servers a firewall action names."""
+    return [(sid, "server") for sid in sorted(servers)]
 
 
 async def create_firewall(lab: Lab, body: dict) -> dict:
-    """Create a firewall with its rules and resources; return it and its actions."""
+    """Create a firewall with its rules and resources; return it and its actions.
+
+    Like the change of the rules, it brings set_firewall_rules and apply_firewall.
+    apply_firewall comes whenever the new firewall is applied to anything (a label
+    selector may match no server yet).
+    """
     state = lab.state
     if not body.get("name"):
         raise invalid("name is required")
@@ -208,7 +187,15 @@ async def create_firewall(lab: Lab, body: dict) -> dict:
             del state["firewalls"][fid]
             raise
     await system.apply_firewall(lab)
-    actions = rule_actions(lab, firewall, created=True)
+    resource = (fid, "firewall")
+    actions = [lab.finished_action("set_firewall_rules", [resource])]
+    reached = firewall_servers(state, firewall)
+    if reached or applied:
+        actions.append(
+            lab.finished_action(
+                "apply_firewall", [resource, *server_resources(reached)]
+            )
+        )
     return {"firewall": hetzner.firewall_json(lab, firewall), "actions": actions}
 
 
@@ -229,16 +216,26 @@ def delete_firewall(lab: Lab, fid: int) -> None:
 
 
 # --- firewall actions -----------------------------------------------------------------
-# Each changes the firewall (in the caller's `change()`) and returns its actions.
+# As on Hetzner they take effect at once, take no flag and answer with a list of
+# finished actions: the action itself, naming the servers it changes, and the further
+# ones of `Plan.finished`.
 
 
-def set_rules(lab: Lab, firewall: Firewall, body: dict) -> list[Action]:
-    """Replace the firewall's rules."""
+def set_rules(lab: Lab, firewall: Firewall, body: dict) -> Plan:
+    """Replace the firewall's rules.
+
+    apply_firewall follows, naming the servers the firewall applies to, if there are
+    any.
+    """
     firewall["rules"] = checked_rules(body.get("rules"))
-    return rule_actions(lab, firewall)
+    servers = firewall_servers(lab.state, firewall)
+    if not servers:
+        return Plan()
+    resources = [(firewall["id"], "firewall"), *server_resources(servers)]
+    return Plan(finished=[("apply_firewall", resources)])
 
 
-def apply_to_resources(lab: Lab, firewall: Firewall, body: dict) -> list[Action]:
+def apply_to_resources(lab: Lab, firewall: Firewall, body: dict) -> Plan:
     """Apply the firewall to more servers or label selectors."""
     have = {apply_to_key(r) for r in firewall["applied_to"]}
     new = [checked_apply_to(lab, r, 404) for r in body.get("apply_to") or []]
@@ -256,10 +253,10 @@ def apply_to_resources(lab: Lab, firewall: Firewall, body: dict) -> list[Action]
         firewall["applied_to"] = before
         raise
     servers = firewall_servers(lab.state, firewall)
-    return [finished_firewall_action(lab, firewall, "apply_firewall", servers)]
+    return Plan(resources=server_resources(servers))
 
 
-def remove_from_resources(lab: Lab, firewall: Firewall, body: dict) -> list[Action]:
+def remove_from_resources(lab: Lab, firewall: Firewall, body: dict) -> Plan:
     """Remove the firewall from servers or label selectors.
 
     A server that the firewall applies to only through a label selector cannot be
@@ -286,26 +283,26 @@ def remove_from_resources(lab: Lab, firewall: Firewall, body: dict) -> list[Acti
         r for r in firewall["applied_to"] if apply_to_key(r) not in remove
     ]
     removed = before - firewall_servers(state, firewall)
-    return [finished_firewall_action(lab, firewall, "remove_firewall", removed)]
+    return Plan(resources=server_resources(removed))
 
 
-# the firewall actions: the function that changes the firewall and returns its actions
-FIREWALL_ACTIONS: dict[str, Callable[[Lab, Firewall, dict], list[Action]]] = {
-    "set_rules": set_rules,
-    "apply_to_resources": apply_to_resources,
-    "remove_from_resources": remove_from_resources,
+FIREWALL_ACTIONS: ActionTable[Firewall] = {
+    "set_rules": ActionSpec("set_firewall_rules", set_rules, answer="actions"),
+    "apply_to_resources": ActionSpec(
+        "apply_firewall", apply_to_resources, answer="actions"
+    ),
+    "remove_from_resources": ActionSpec(
+        "remove_firewall", remove_from_resources, answer="actions"
+    ),
 }
 
 
 async def run_firewall_action(lab: Lab, fid: int, cmd: str, body: dict) -> dict:
-    """Run a firewall action and rewrite the firewall rules; return the actions."""
+    """Run a firewall action, then rewrite the firewall rules; return the actions."""
     firewall = lab.get_or_404("firewalls", fid, "firewall")
-    if cmd not in FIREWALL_ACTIONS:
-        raise unsupported(f"the action {cmd!r}")
-    with lab.state.change():
-        actions = FIREWALL_ACTIONS[cmd](lab, firewall, body)
+    answer = await lab.act(FIREWALL_ACTIONS, cmd, firewall, "firewall", body)
     await system.apply_firewall(lab)
-    return {"actions": actions}
+    return answer
 
 
 # --- routes ---------------------------------------------------------------------------
