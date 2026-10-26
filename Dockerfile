@@ -57,8 +57,9 @@ RUN set -eux; \
     python3 -m venv --system-site-packages /opt/dev; \
     /opt/dev/bin/pip install --no-cache-dir ruff==0.17.2 mypy==2.4.0
 ENV PATH=/opt/dev/bin:$PATH
-# Outside the mounted repository, which stays free of caches.
-ENV RUFF_CACHE_DIR=/tmp/ruff-cache MYPY_CACHE_DIR=/tmp/mypy-cache
+# The mounted repository stays free of caches: ruff and mypy keep theirs in /tmp,
+# and Python writes no __pycache__.
+ENV RUFF_CACHE_DIR=/tmp/ruff-cache MYPY_CACHE_DIR=/tmp/mypy-cache PYTHONDONTWRITEBYTECODE=1
 # The unit tests run here (`bin/hlab test`), next to the lab's code and specs; they also read
 # the wrappers in bin/.
 COPY tests/ /opt/hlab/tests/

@@ -25,9 +25,7 @@ Official standards first, checked by `bin/hlab lint` (also part of `bin/hlab tes
   from PEP 8), one style per comment.
 - Wrappers (`bin/`): functions may read the script's read-only constants
   (image names, the repository path) instead of taking them as parameters.
-- Layout of `hlabd/`: `api/` decides (HTTP, checks, state, actions) and never
-  runs scripts; `fabric/` does the work on the system and knows nothing about HTTP;
-  `lab.py` is the core.
+- Layout of `hlabd/` (the layers are in DEVELOPING.md, The pieces):
   API modules are module-level functions taking `lab` first, with thin routes;
   every resource's actions are a table of `ActionSpec` rows run by `lab.act()`;
   errors come from `errors.py`; lookups go through `lab.get_or_404()` or a

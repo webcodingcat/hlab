@@ -1,16 +1,12 @@
 """Put the state in place on the system.
 
-Each function here first reads what it needs from the state, on the event loop. Most
-of that goes through the pure functions of desired.py. Then it hands the plain data to
-the fabric in a thread (`lab.blocking`); the fabric never sees the state. When the
-fabric reports something back for the state (the routes it added), the function
-stores it here, on the loop again.
+Each function here reads what it needs from the state on the event loop, mostly
+through desired.py, and hands the plain data to the fabric in a thread
+(`lab.blocking`). What the fabric reports back for the state (the routes it added) is
+stored here, on the loop again.
 
-Some functions put a whole picture in place: fault sets, latency, firewall, DHCP or
-routes. They compute it and put it in place while they hold `lab.picture_lock`. So
-pictures are put in place in the order they were computed, and an older picture never
-overwrites a newer one. The lock is not re-entrant: a function that holds it must not
-call another function here that takes it.
+The functions that put a whole picture in place hold `lab.picture_lock`, which is not
+re-entrant (DEVELOPING.md, Where code runs).
 """
 
 from ..lab import Lab

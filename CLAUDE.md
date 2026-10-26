@@ -8,7 +8,7 @@ about the projects that use it; they only use `hlab env`.
 
 Everything in this repo is English. Read these before changing code:
 
-- @DEVELOPING.md – how the code fits together and how to make the usual changes.
+- @DEVELOPING.md – how the code fits together, its rules, and how to make the usual changes.
 - @STYLE.md – the standards, and the rules this project adds to them.
 
 ## Commands
@@ -32,27 +32,23 @@ missing skip.
 
 ## Rules that are easy to break
 
-- **Action table keys are Hetzner's commands** (`add_subnet`, `poweroff`, ...), and the
-  action names are Hetzner's (`stop_server`, ...). Never rename them when you rename the
-  functions.
-- **`api/` decides, `fabric/` does the work.** `api/` never runs scripts. `fabric/`
-  knows nothing about HTTP and never decides about the state. Only `scripts/*.sh`
-  change the system.
-- **The event loop owns the state.** Only code on the loop reads or changes it (every
-  route is `async def`). Blocking work runs in a thread through
-  `await lab.blocking(work, ...)`, with plain data in and out, never the state. Every
-  change to the state is inside a `with state.change():` block (the unit tests check
-  this). It is undone if it raises, and it never awaits. See DEVELOPING.md, State.
-- **New actions go through `lab.act()`**: add an `ActionSpec(...)` row to the
-  resource's table. Other code holds flags only through `with lab.holding() as held:`,
-  never through `lab.claim()` or `lab.release()`. Flags are fields that only the lab
-  uses (`_locked`, `_busy`, ...; see `FLAGS`). The API shows a server's `_locked` as
-  `locked`. See DEVELOPING.md, How flags flow.
-- **Records are typed** (`records.py`). Annotate `lab: Lab` and use the record types, so
-  mypy catches a mistyped field. Code that works for every kind takes `Record` (or a
-  type variable bound to it), not `Any`.
-- **Hetzner behaviour first:** answers, status codes and error codes follow the real API
-  and its changelog. The spec check in the unit tests is the safety net.
+DEVELOPING.md explains each one in the section named in parentheses.
+
+- Action table keys are Hetzner's commands, `ActionSpec` names Hetzner's action names;
+  never rename them with the functions (Actions and flags).
+- `api/` decides and never runs scripts; `fabric/` does the work and never sees the
+  state; only `scripts/*.sh` change the system (The pieces, Layers).
+- Only code on the event loop reads or changes the state; blocking work goes through
+  `await lab.blocking(...)` with plain data in and out (Where code runs).
+- Every state change is inside a `with state.change():` block, which never awaits
+  (The state).
+- New actions are `ActionSpec` rows run by `lab.act()`; other code holds flags only
+  through `with lab.holding() as held:` (How flags flow).
+- A new flag goes into `Flag` and `FLAGS` in `lab.py`, or a restart keeps it (Recipes).
+- Records are typed: `lab: Lab`, the types of `records.py`, `Record` instead of `Any`
+  (STYLE.md).
+- Hetzner behaviour first: answers, status codes and error codes follow the real API;
+  the spec check in the unit tests is the safety net.
 - Every command that `bin/hlab` dispatches is named in its usage comment, and the other
   way round (`tests/test_wrappers.py`).
 

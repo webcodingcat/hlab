@@ -2,9 +2,8 @@
 
 These are pure functions. They take the state (or a record) and return plain data:
 the dataclasses of the fabric's parts, lists and strings. They run nothing and change
-nothing. api/system.py hands what they return to the fabric, which never sees the
-state. They run on the event loop, which owns the state, so all records they read
-belong to the same moment.
+nothing. api/system.py hands what they return to the fabric (DEVELOPING.md, Where code
+runs).
 """
 
 import copy

@@ -1,28 +1,12 @@
 """The core of the lab: its state, its fabric, and the actions.
 
-`api/` decides what happens: it checks a request, changes the state and starts an
-action. `fabric/` does the work on the system through scripts/*.sh. This module
-connects the two. Every API module gets the same `Lab` object.
+This module connects `api/` (which decides) and `fabric/` (which does the work); every
+API module gets the same `Lab` object. It runs the action tables (`ActionSpec`, `Plan`,
+`act()`, `run_action()`), holds the action flags (`FLAGS`, `holding()`), runs blocking
+work in threads (`blocking()`) and keeps Hetzner's timings.
 
-The event loop owns the state: all code that reads or changes it runs on the loop.
-Blocking work (scripts, files) runs in threads through `blocking()`, with plain data
-in and out. See DEVELOPING.md, State.
-
-Actions: every resource lists its actions in a table, `{command: ActionSpec(Hetzner's
-name, function)}`. The function checks the request and returns a `Plan`. It is
-`async def` only when it must ask the system first. `act()` runs the plan in the same
-way for every resource. On Hetzner, even a change that completes immediately gets an
-action, which is finished right away; the lab does the same.
-
-Flags: a flag on a resource says that an action is working on it, so a second action
-gets 423, as on Hetzner. Code holds flags only through `holding()`. When the block
-ends, every flag it still holds comes off, however the block ends. `run_action()`
-takes over the flags of steps that run in the background and takes them off when the
-steps end. The flags are listed at `FLAGS`; DEVELOPING.md, Actions, shows how they
-flow.
-
-Fields that start with `_` are used only by the lab. The API never shows them
-directly; for example, a server's `_locked` is shown as `locked`.
+The rules for the state, actions and flags are in DEVELOPING.md (Actions and flags,
+Where code runs, The state).
 """
 
 import asyncio

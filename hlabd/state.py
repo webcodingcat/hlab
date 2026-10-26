@@ -9,11 +9,8 @@ and ID; their fields are the TypedDicts in records.py. Besides the resources and
 - `net_routes`: the routes the fabric added for cloud networks, so they can be removed
 - `box_users`, `box_uids`: Storage Box accounts created outside the API, with fixed UIDs
 
-The event loop owns the state: only code on the loop's thread reads or changes it, and
-`check_owner()` checks this. Every change is a `with state.change():` block, a
-transaction that is undone if the block raises and saved if it succeeds; with
-`State.verify_changes` on (the unit tests), a change outside a block raises
-AssertionError (`check_committed()`). See DEVELOPING.md, State.
+Who may use the state and how to change it (`check_owner()`, `change()`,
+`check_committed()`): DEVELOPING.md, The state.
 """
 
 import asyncio

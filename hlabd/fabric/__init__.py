@@ -1,11 +1,8 @@
 """The work on the system, all of it done through scripts/hlab.sh.
 
-The API decides; the fabric does the work and knows nothing about HTTP. The fabric
-never sees the state. The API computes from the state what the system should look
-like (api/desired.py) and passes it to the fabric's methods as plain data (the
-dataclasses of the parts). A method may also get a record (a server, a volume, a NIC),
-but it reads only fields that never change once the record exists: ID, tap, MAC. A
-field that can change, such as a server's name, comes as a separate argument.
+The fabric gets plain data (mostly the dataclasses of its parts, computed by
+api/desired.py) and never sees the state; DEVELOPING.md (The pieces, Where code runs)
+has the rules.
 
 `Fabric` holds its parts. Each part is an object that gets what it uses in its
 constructor:

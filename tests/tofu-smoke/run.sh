@@ -110,6 +110,9 @@ main() {
   check_firewall "${container}"
   tofu destroy -input=false -auto-approve >/dev/null
   echo "OK: destroyed"
+  # The state is empty now; .terraform.lock.hcl stays (it is committed), and
+  # .terraform/ keeps the provider for the next run.
+  rm -f "${HERE}/terraform.tfstate" "${HERE}/terraform.tfstate.backup"
   docker exec "${container}" hlab status
 }
 
