@@ -232,7 +232,39 @@ set_access() {
     "${ssh}" "${external}" "${read_only}" "${quota}" \
     >"${ROOTS}/${user}/etc/hlab-access"
   write_deny_config
+  reload_sshd
+}
+
+# listening_sockets: Print the inodes of sshd's listening sockets (ports 22
+# and 23), one line; nothing while sshd does not listen.
+listening_sockets() {
+  ss -Hltne '( sport = :22 or sport = :23 )' \
+    | { grep -o 'ino:[0-9]*' || true; } | sort | tr '\n' ' '
+}
+
+# reload_sshd: Let sshd reread its configuration and wait until it accepts
+# connections again. On SIGHUP sshd starts itself anew and closes its ports
+# for a moment; an account created just before must be able to log in at once,
+# as on Hetzner. New ports have new socket inodes.
+reload_sshd() {
+  local before now n
+  is_alive "${PID_FILE}" sshd || return 0
+  before="$(listening_sockets)"
   signal_pid "${PID_FILE}" sshd HUP
+  for ((n = 0; n < 100; n++)); do
+    now="$(listening_sockets)"
+    # Just started, it did not listen yet: any listening sshd will do.
+    if [[ -z "${before}" && -n "${now}" ]]; then
+      return 0
+    fi
+    if [[ -n "${now}" && "${now}" != "${before}" ]] \
+      && (($(wc -w <<<"${now}") == $(wc -w <<<"${before}"))); then
+      return 0
+    fi
+    sleep 0.05
+  done
+  echo "box.sh: sshd did not listen again after a reload" >&2
+  return 1
 }
 
 # write_deny_config: Write the accounts sshd refuses before login: ssh
