@@ -10,7 +10,6 @@ Where code runs, The state).
 """
 
 import asyncio
-import inspect
 import logging
 from collections.abc import Awaitable, Callable, Coroutine, Iterator
 from contextlib import contextmanager
@@ -143,9 +142,10 @@ class ActionSpec[R: ActionRecord]:
 
     # Hetzner's name of the action (`stop_server` for the command `poweroff`)
     name: str
-    # checks the request for a record of the table's kind and plans the action; it is
-    # `async def` when it must ask the system first (through `Lab.blocking`)
-    plan: Callable[["Lab", R, dict], Plan | Awaitable[Plan]]
+    # checks the request for a record of the table's kind and plans the action; always
+    # `async def`, so `act()` awaits every one alike (most never await: they only
+    # check and change the state; some ask the system first, through `Lab.blocking`)
+    plan: Callable[["Lab", R, dict], Awaitable[Plan]]
     # False: the action changes only the record; it takes no flag and may run
     # alongside another action (change_protection, change_dns_ptr)
     flag: bool = True
@@ -289,7 +289,7 @@ class Lab:
     # --- lookups ----------------------------------------------------------------------
 
     # one overload per kind, so a lookup returns the kind's record type (as in
-    # `State.__getitem__`)
+    # `State.__getitem__`; tests/test_state.py compares them with `KIND_TYPES`)
     @overload
     def get_or_404(
         self, kind: Literal["servers"], item_id: int, what: str
@@ -432,7 +432,26 @@ class Lab:
         if there is one, then leaves its in-between status (starting, rebuilding, ...)
         and gets the status its VM really has: running or off.
         """
+        # The exit paths, and who finishes the action and frees the flags in each:
+        # - the steps succeed: `run_steps`' finally block frees the flags and
+        #   finishes the action (success), in one change block.
+        # - the steps fail (Exception): the except block fails the next actions and
+        #   moves the server out of its in-between status; then the same finally
+        #   block frees the flags and finishes the action with the error.
+        # - the steps are cancelled (a lab stop or reset, `stop_actions`): the
+        #   finally block frees the flags and finishes the action with an error, and
+        #   the cancellation goes on to the task.
+        # - the task never starts (`spawn` raises): no finally block will run, so the
+        #   except block below frees the flags and fails the action, then re-raises.
+        # From here on only this function holds the flags (`holding.take()`); the
+        # caller's `holding()` block no longer frees them.
         flags = holding.take() if holding else []
+
+        def end(message: str | None) -> None:
+            with self.state.change():  # saved once: flags off, action finished
+                for item, flag in flags:
+                    self.release(item, flag)
+                self.finish(action, message)
 
         async def run_steps() -> None:
             message = None
@@ -446,25 +465,20 @@ class Lab:
                     if next_action["status"] == "running":
                         self.finish(next_action, message)
                 if server is not None and server["status"] in IN_BETWEEN:
-                    alive = await self.blocking(self.fabric.vms.is_alive, server)
+                    alive = await self.blocking(self.fabric.vms.is_alive, server["id"])
                     self.set_status(server, "running" if alive else "off")
             except asyncio.CancelledError:
                 message = "the action was cancelled (lab stopped or reset)"
                 raise
             finally:
-                with self.state.change():  # saved once: flags off, action finished
-                    for item, flag in flags:
-                        self.release(item, flag)
-                    self.finish(action, message)
+                end(message)
 
         steps_run = run_steps()
         try:
             self.spawn(steps_run)
-        except BaseException:  # the steps never started: nothing else frees the flags
+        except BaseException:  # the steps never started: nothing else ends them
             steps_run.close()
-            with self.state.change():
-                for item, flag in flags:
-                    self.release(item, flag)
+            end("the action could not be started")
             raise
 
     async def act[R: ActionRecord](
@@ -479,8 +493,8 @@ class Lab:
     ) -> dict:
         """Run one action of a resource from its table and return the answer.
 
-        The table's function checks the request and returns a `Plan`; if the function
-        is `async def`, it is awaited. Before that, the resource gets `flag` (423 with
+        The table's function (`async def`) checks the request and returns a `Plan`.
+        Before that, the resource gets `flag` (423 with
         `busy_message` if the flag is set already). An action whose row says
         `flag=False` takes no flag. If the plan names another server, that server gets
         its `_locked` flag too (423 if another action runs on it).
@@ -500,8 +514,7 @@ class Lab:
         with self.holding() as held:
             if flag and spec.flag:
                 held.claim(item, flag, busy_message)
-            planned = spec.plan(self, item, body)
-            plan = await planned if inspect.isawaitable(planned) else planned
+            plan = await spec.plan(self, item, body)
             if plan.server is not None and plan.server is not item:
                 held.claim(plan.server, "_locked", SERVER_LOCKED)
             resources = [(item["id"], item_type), *plan.resources]

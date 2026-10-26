@@ -1,10 +1,10 @@
 """The lab's state: everything the fake API knows.
 
-The state is saved as JSON in the state volume. Resources are stored by kind (KINDS)
-and ID; their fields are the TypedDicts in records.py. Besides the resources and
-`next_id`, the state holds records that only the lab uses:
+The state is saved as JSON in the state volume. Resources are stored by kind and ID;
+`KIND_TYPES` lists the kinds with their record types (records.py) and ID ranges.
+Besides the resources and `next_id`, the state holds records that only the lab uses:
 
-- `faults`: the faults set through /_lab/faults (see fabric/faults.py)
+- `faults`: the faults set through /_lab/faults (`Fault` in records.py, api/faults.py)
 - `netem`: netem options per tap or client link (/_lab/netem)
 - `net_routes`: the routes the fabric added for cloud networks, so they can be removed
 - `box_users`, `box_uids`: Storage Box accounts created outside the API, with fixed UIDs
@@ -21,6 +21,7 @@ import os
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, overload
 
@@ -42,24 +43,36 @@ from .records import (
 
 log = logging.getLogger(__name__)
 
-# The first ID of each kind, so that an ID in a log shows its kind (server 1000001,
-# network 2000001, ...). Each kind has a million IDs before the next kind's range
-# starts. Actions grow fastest, so their range starts far above the others.
-ID_BASE = {
-    "servers": 1_000_000,
-    "networks": 2_000_000,
-    "ssh_keys": 3_000_000,
-    "firewalls": 4_000_000,
-    "floating_ips": 5_000_000,
-    "primary_ips": 6_000_000,
-    "volumes": 10_000_000,
-    "storage_boxes": 14_000_000,
-    "subaccounts": 15_000_000,
-    "box_snapshots": 16_000_000,
-    "actions": 100_000_000,
-    "clients": 0,
+
+@dataclass(frozen=True)
+class KindType:
+    """What the lab knows about a kind of resource in general."""
+
+    record: type  # its TypedDict in records.py
+    # Its first ID, so that an ID in a log shows its kind (server 1000001, network
+    # 2000001, ...). Each kind has a million IDs before the next kind's range starts.
+    # Actions grow fastest, so their range starts far above the others.
+    id_base: int
+
+
+# Every kind of resource the state keeps. A new kind starts here; the recipe in
+# DEVELOPING.md lists the other places, and tests/test_state.py finds those missed.
+KIND_TYPES: dict[str, KindType] = {
+    "servers": KindType(Server, 1_000_000),
+    "networks": KindType(CloudNetwork, 2_000_000),
+    "ssh_keys": KindType(SSHKey, 3_000_000),
+    "firewalls": KindType(Firewall, 4_000_000),
+    "floating_ips": KindType(FloatingIP, 5_000_000),
+    "primary_ips": KindType(PrimaryIP, 6_000_000),
+    "volumes": KindType(Volume, 10_000_000),
+    "storage_boxes": KindType(StorageBox, 14_000_000),
+    "subaccounts": KindType(Subaccount, 15_000_000),
+    "box_snapshots": KindType(BoxSnapshot, 16_000_000),
+    "actions": KindType(Action, 100_000_000),
+    "clients": KindType(Client, 0),
 }
-KINDS = tuple(ID_BASE)
+KINDS = tuple(KIND_TYPES)
+ID_BASE = {kind: kind_type.id_base for kind, kind_type in KIND_TYPES.items()}
 
 
 def nics_in(state: "State", nid: int) -> list[tuple[Server, Nic]]:
@@ -240,6 +253,8 @@ class State:
         self.owner: int | None = None
         # the tasks whose `change()` blocks are open, innermost last
         self.changing: list[asyncio.Task | None] = []
+        # a nested block of the open transaction raised (`change`)
+        self.nested_failed = False
         self._data: dict[str, Any] = {k: {} for k in KINDS}
         self._data["next_id"] = dict(ID_BASE)
         self._data.update(lab_records())
@@ -289,7 +304,8 @@ class State:
         self._data["next_id"][kind] += 1
         return self._data["next_id"][kind]
 
-    # each kind with its record type (records.py), so the type checker knows the fields
+    # each kind with its record type (`KIND_TYPES`), so the type checker knows the
+    # fields; overloads cannot be generated, so tests/test_state.py compares them
     @overload
     def __getitem__(self, kind: Literal["servers"]) -> dict[int, Server]: ...
     @overload
@@ -343,22 +359,36 @@ class State:
         A block that raises is undone: the state is put back as it was before the block
         (`snapshot`). So a refused request leaves nothing behind, in memory or in the
         file. The block must not await. It is a plain `with`, and another task would
-        see the change half done (`check_owner` refuses that). Blocks may nest; only
-        the outermost one saves.
+        see the change half done (`check_owner` refuses that).
+
+        Blocks may nest. Only the outermost one takes a snapshot, undoes and saves: a
+        nested block is part of its transaction. So an error in a nested block must
+        reach the outermost one; caught in between, it would leave the nested block's
+        change half done. The unit tests (`verify_changes`) fail such a transaction.
         """
         self.check_owner()
-        if not self.changing:
+        outermost = not self.changing
+        if outermost:
             self.check_committed()
-        saved = snapshot(self._data)
+            saved = snapshot(self._data)
+            self.nested_failed = False
         self.changing.append(current_task())
         try:
             yield
         except BaseException:
-            restore(saved)
+            if outermost:
+                restore(saved)
+            else:
+                self.nested_failed = True
             raise
         finally:
             self.changing.pop()
-        if not self.changing:
+        if outermost:
+            if self.nested_failed and self.verify_changes:
+                raise AssertionError(
+                    "a nested state.change() block failed, and its error was caught "
+                    "inside the outer block: the nested change was not undone"
+                )
             self.save()
 
     def save(self) -> None:

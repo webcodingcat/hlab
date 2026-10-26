@@ -50,6 +50,15 @@ async def settle(lab):
         await asyncio.gather(*list(lab.tasks), return_exceptions=True)
 
 
+def planning(plan):
+    """Return a plan function for a table (`async def`, like all of them)."""
+
+    async def plan_function(*_):
+        return plan
+
+    return plan_function
+
+
 def table(function):
     """Return an action table with the command "go" (Hetzner's name "do_go")."""
     return {
@@ -127,7 +136,7 @@ def test_holding_leaves_kept_and_handed_over_flags(lab):
 def test_act_refuses_an_unknown_command_as_unsupported(lab):
     volume = make_volume(lab)
     with pytest.raises(ApiError) as refused:
-        run(lab.act(table(lambda *_: Plan()), "fly", volume, "volume", {}, "_busy"))
+        run(lab.act(table(planning(Plan())), "fly", volume, "volume", {}, "_busy"))
     assert (refused.value.status, refused.value.code) == (422, "unsupported_error")
     assert "_busy" not in volume
 
@@ -136,7 +145,7 @@ def test_act_takes_the_flag_off_when_the_plan_refuses(lab):
     volume = make_volume(lab)
     seen = []
 
-    def refuse(lab, item, body):
+    async def refuse(lab, item, body):
         seen.append(item.get("_busy"))  # the flag is set while the plan is made
         raise invalid("no")
 
@@ -152,7 +161,7 @@ def test_act_refuses_a_flagged_resource_and_leaves_its_flag(lab):
     with pytest.raises(ApiError) as refused:
         run(
             lab.act(
-                table(lambda *_: Plan()), "go", volume, "volume", {}, "_busy", "busy"
+                table(planning(Plan())), "go", volume, "volume", {}, "_busy", "busy"
             )
         )
     assert refused.value.status == 423
@@ -163,7 +172,7 @@ def test_act_without_steps_finishes_at_once_and_frees_the_resource(lab):
     volume = make_volume(lab)
     answer = run(
         lab.act(
-            table(lambda *_: Plan(extra={"note": 1})),
+            table(planning(Plan(extra={"note": 1}))),
             "go",
             volume,
             "volume",
@@ -190,7 +199,7 @@ def test_act_holds_the_flags_until_the_steps_succeed(lab):
             await go.wait()
 
         answer = await lab.act(
-            table(lambda *_: Plan(steps, server=server)),
+            table(planning(Plan(steps, server=server))),
             "go",
             volume,
             "volume",
@@ -217,7 +226,7 @@ def test_act_releases_the_flags_when_the_steps_fail(lab):
             raise RuntimeError("the disk broke")
 
         answer = await lab.act(
-            table(lambda *_: Plan(steps, server=server)),
+            table(planning(Plan(steps, server=server))),
             "go",
             volume,
             "volume",
@@ -243,7 +252,7 @@ def test_act_refuses_a_locked_plan_server_and_frees_the_resource(lab):
     with pytest.raises(ApiError) as refused:
         run(
             lab.act(
-                table(lambda *_: Plan(steps, server=server)),
+                table(planning(Plan(steps, server=server))),
                 "go",
                 volume,
                 "volume",
@@ -264,7 +273,7 @@ def test_act_locks_a_server_that_is_the_resource_only_once(lab):
             assert server["_locked"] is True
 
         await lab.act(
-            table(lambda *_: Plan(steps, server=server)),
+            table(planning(Plan(steps, server=server))),
             "go",
             server,
             "server",
@@ -282,7 +291,7 @@ def test_record_only_actions_take_no_flag(lab):
     lab.claim(volume, "_busy", "busy")  # another action runs
     answer = run(
         lab.act(
-            table(lambda *_: Plan()), "change_protection", volume, "volume", {}, "_busy"
+            table(planning(Plan())), "change_protection", volume, "volume", {}, "_busy"
         )
     )
     assert answer["action"]["status"] == "success"
@@ -319,7 +328,7 @@ def test_a_failed_server_leaves_its_in_between_status_for_what_its_vm_does(
 ):
     server = make_server(lab, status="starting")
     if vm_runs:
-        lab.fabric.shell.running.add(str(lab.fabric.vms.directory(server)))
+        lab.fabric.shell.running.add(str(lab.fabric.vms.directory(server["id"])))
 
     async def main():
         action = lab.new_action("start_server", [(1001, "server")])
@@ -358,6 +367,30 @@ def test_a_cancelled_action_ends_with_an_error_and_frees_its_flags(lab):
     assert "_busy" not in volume
 
 
+def test_an_action_whose_steps_never_start_fails_and_frees_its_flags(lab, monkeypatch):
+    volume = make_volume(lab)
+
+    def no_task(coro):
+        raise RuntimeError("no task")
+
+    monkeypatch.setattr(lab, "spawn", no_task)
+
+    async def main():
+        action = lab.new_action("resize_volume", [(10001, "volume")])
+
+        async def steps():
+            pass
+
+        with pytest.raises(RuntimeError), lab.holding() as held:
+            held.claim(volume, "_busy", "busy")
+            lab.run_action(action, steps, holding=held)
+        return action
+
+    action = run(main())
+    assert action["status"] == "error"
+    assert "_busy" not in volume
+
+
 def test_stopping_actions_waits_for_their_threads(lab):
     returned = threading.Event()
 
@@ -382,7 +415,7 @@ def test_stopping_actions_waits_for_their_threads(lab):
     assert run(main())["status"] == "error"
 
 
-def test_act_awaits_a_plan_function_that_is_async(lab):
+def test_act_holds_the_flag_while_a_plan_function_awaits(lab):
     volume = make_volume(lab)
 
     async def plan(lab, item, body):
@@ -399,7 +432,7 @@ def test_act_awaits_a_plan_function_that_is_async(lab):
 def test_act_answers_a_list_of_actions_with_the_finished_ones(lab):
     volume = make_volume(lab)
     plan = Plan(finished=[("do_more", [(10001, "volume"), (1001, "server")])])
-    actions = {"go": ActionSpec("do_go", lambda *_: plan, answer="actions")}
+    actions = {"go": ActionSpec("do_go", planning(plan), answer="actions")}
     answer = run(lab.act(actions, "go", volume, "volume", {}))
     assert [action["command"] for action in answer["actions"]] == ["do_go", "do_more"]
     assert all(action["status"] == "success" for action in answer["actions"])

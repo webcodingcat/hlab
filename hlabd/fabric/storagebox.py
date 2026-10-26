@@ -6,21 +6,20 @@ The methods of `Box` are named after the box.sh functions they run. The one exce
 is `bytes_used`: it runs print_bytes_used and returns the number that it prints.
 """
 
-from ..records import StorageBox
 from .shell import LONG_TIMEOUT, Shell
 
 BOX = "/hlab/box"
 TB = 2**40
 
 
-def username(box: StorageBox) -> str:
+def username(box_id: int) -> str:
     """Return the account of a box (Hetzner: u<number>)."""
-    return f"u{box['id']}"
+    return f"u{box_id}"
 
 
-def data_dir(box: StorageBox) -> str:
+def data_dir(box_id: int) -> str:
     """Return the data directory of a box."""
-    return f"{BOX}/data/{box['id']}"
+    return f"{BOX}/data/{box_id}"
 
 
 def lab_user_dir(name: str) -> str:
@@ -28,9 +27,9 @@ def lab_user_dir(name: str) -> str:
     return f"{BOX}/data/hlab-{name}"
 
 
-def snap_dir(box: StorageBox, name: str = "") -> str:
+def snap_dir(box_id: int, name: str = "") -> str:
     """Return the snapshot directory of a box, or of one of its snapshots."""
-    return f"{BOX}/snapshots/{box['id']}" + (f"/{name}" if name else "")
+    return f"{BOX}/snapshots/{box_id}" + (f"/{name}" if name else "")
 
 
 class Box:

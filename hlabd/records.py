@@ -5,11 +5,12 @@ keeps the records by kind and ID. Fields that start with `_` are used only by th
 and the API never shows them. lab.py describes the action flags among them.
 `NotRequired` fields are missing until something sets them.
 
-state.py describes the other records that only the lab uses (faults, netem, routes of
-networks, Storage Box accounts created outside the API).
+The faults (/_lab/faults) are typed here too. state.py describes the other records
+that only the lab uses (netem, routes of networks, Storage Box accounts created outside
+the API).
 """
 
-from typing import NotRequired, TypedDict
+from typing import Literal, NotRequired, TypedDict, final
 
 
 class Protection(TypedDict):
@@ -307,3 +308,59 @@ ActionRecord = (
 
 # The resources with a plain delete protection (`api/web.py`: change_delete_protection).
 ProtectedRecord = Volume | PrimaryIP | FloatingIP | CloudNetwork | StorageBox
+
+
+# --- faults (/_lab/faults; state.py: `faults`) ---------------------------------------
+
+
+# final: no other keys, so `"server" in ref` tells the two apart for mypy
+@final
+class ServerTarget(TypedDict):
+    """A fault's server, by ID: a renamed server keeps its faults."""
+
+    server: int
+
+
+@final
+class ClientTarget(TypedDict):
+    """A fault's Internet client, by name (a client cannot be renamed)."""
+
+    client: str
+
+
+# what a fault points at; the API shows it as s:<id> or c:<name> (api/faults.py)
+TargetRef = ServerTarget | ClientTarget
+
+# which interfaces of a server a fault or netem takes; a client has only a public link
+type Which = Literal["public", "private", "all"]
+
+
+class CutFault(TypedDict):
+    """A cut link between two servers or clients, in both directions."""
+
+    type: Literal["cut"]
+    first: str  # the names as given, sorted (a cut is stored in one order)
+    second: str
+    net: Which
+    first_ref: TargetRef
+    second_ref: TargetRef
+
+
+class IsolateFault(TypedDict):
+    """A server or client cut off from everything."""
+
+    type: Literal["isolate"]
+    vm: str  # the name as given
+    target_ref: TargetRef
+
+
+class BlockFault(TypedDict):
+    """A server or client cut off from a service: the API, the box or the Internet."""
+
+    type: Literal["block"]
+    vm: str  # the name as given
+    what: Literal["api", "box", "internet"]
+    target_ref: TargetRef
+
+
+Fault = CutFault | IsolateFault | BlockFault

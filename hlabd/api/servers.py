@@ -184,7 +184,8 @@ def record_server(
     """Record the new server with its addresses, volumes and firewalls; save.
 
     This is one change: the checks come first, then the changes. If a check fails,
-    the addresses taken so far are freed, and nothing is saved. `local_addresses` are
+    the change block undoes everything (the addresses taken so far included), and
+    nothing is saved. `local_addresses` are
     the container's own addresses, which no NIC gets. When this returns, the server's
     `_locked` flag is claimed through `held`.
     """
@@ -206,11 +207,9 @@ def record_server(
             volumes.check_attach(lab, volume, server)
         for nid in request.network_ids:  # only the new server changes here
             nics.add_nic(lab, server, nid, None, local_addresses)
-        try:  # the lab may run out of addresses
-            primary_ips.setup_server_ips(lab, server, request.public_net)
-        except Exception:  # whatever failed: free the addresses, then re-raise
-            primary_ips.release_server_ips(lab, server)
-            raise
+        # the lab may run out of addresses; the block then undoes the NICs and the
+        # addresses taken so far (they are only in the state)
+        primary_ips.setup_server_ips(lab, server, request.public_net)
         # from here on nothing fails
         for volume in request.volumes:
             volumes.record_attachment(lab, volume, server, request.automount)
@@ -259,7 +258,7 @@ def create_steps(
         await system.apply_firewall(lab)
         base = image_path(lab, request.image)
         disk_gb = server["_lab"]["disk_gb"]
-        await lab.blocking(lab.fabric.vms.create_disk, server, base, disk_gb)
+        await lab.blocking(lab.fabric.vms.create_disk, server["id"], base, disk_gb)
         if request.start:
             lab.set_status(server, "starting")
             await system.start_vm(lab, server)
@@ -316,10 +315,10 @@ async def ensure_disk(lab: Lab, server: Server) -> None:
 
     A lab restart can cut the creation of a server short and leave it without a disk.
     """
-    if not await lab.blocking(lab.fabric.vms.has_disk, server):
+    if not await lab.blocking(lab.fabric.vms.has_disk, server["id"]):
         base = image_path(lab, server["image"])
         disk_gb = server["_lab"]["disk_gb"]
-        await lab.blocking(lab.fabric.vms.create_disk, server, base, disk_gb)
+        await lab.blocking(lab.fabric.vms.create_disk, server["id"], base, disk_gb)
 
 
 async def remove_server(lab: Lab, server: Server) -> None:
@@ -347,7 +346,7 @@ async def remove_server(lab: Lab, server: Server) -> None:
                 volume["server"], volume["automount"] = None, False
         drop_faults(
             lab,
-            f"s:{sid}",
+            {"server": sid},
             [server["_lab"]["tap"]] + [nic["tap"] for nic in server["_lab"]["nics"]],
         )
         state["servers"].pop(sid, None)
@@ -363,7 +362,7 @@ async def remove_server(lab: Lab, server: Server) -> None:
 # in the background while the server is locked.
 
 
-def change_protection(lab: Lab, server: Server, body: dict) -> Plan:
+async def change_protection(lab: Lab, server: Server, body: dict) -> Plan:
     """Set delete and rebuild protection (Hetzner: both go together)."""
     given = {bool(body[k]) for k in ("delete", "rebuild") if k in body}
     if len(given) != 1:
@@ -373,13 +372,13 @@ def change_protection(lab: Lab, server: Server, body: dict) -> Plan:
     return Plan()
 
 
-def change_dns_ptr(lab: Lab, server: Server, body: dict) -> Plan:
+async def change_dns_ptr(lab: Lab, server: Server, body: dict) -> Plan:
     """Set the reverse DNS of one of the server's addresses."""
     primary_ips.server_dns_ptr(lab, server, body)
     return Plan()
 
 
-def poweroff(lab: Lab, server: Server, body: dict) -> Plan:
+async def poweroff(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan a hard power off: kill the VM at once; the status changes later."""
 
     async def steps():
@@ -392,7 +391,7 @@ def poweroff(lab: Lab, server: Server, body: dict) -> Plan:
     return Plan(steps, server=server)
 
 
-def shutdown(lab: Lab, server: Server, body: dict) -> Plan:
+async def shutdown(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan a shutdown: press the ACPI power button.
 
     As on Hetzner, the action is finished once the button is pressed. The server's
@@ -402,18 +401,18 @@ def shutdown(lab: Lab, server: Server, body: dict) -> Plan:
     """
 
     async def steps():
-        await lab.blocking(lab.fabric.vms.press_power_button, server)
+        await lab.blocking(lab.fabric.vms.press_power_button, server["id"])
         await lab.sleep(SHUTDOWN_SECONDS)
 
     return Plan(steps, server=server)
 
 
-def poweron(lab: Lab, server: Server, body: dict) -> Plan:
+async def poweron(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan a power on; a running server stays as it is."""
 
     async def steps():
         if server["status"] == "running" and await lab.blocking(
-            lab.fabric.vms.is_alive, server
+            lab.fabric.vms.is_alive, server["id"]
         ):
             return  # already on: the action succeeds, nothing changes
         lab.set_status(server, "starting")
@@ -430,8 +429,8 @@ def poweron(lab: Lab, server: Server, body: dict) -> Plan:
     return Plan(steps, server=server)
 
 
-def restart_vm(lab: Lab, server: Server, press: Callable[[Server], None]) -> Plan:
-    """Plan a reboot or reset: `press(server)` restarts a running VM.
+def restart_vm(lab: Lab, server: Server, press: Callable[[int], None]) -> Plan:
+    """Plan a reboot or reset: `press(sid)` restarts a running VM.
 
     A server that is not running stays as it is.
     """
@@ -439,7 +438,7 @@ def restart_vm(lab: Lab, server: Server, press: Callable[[Server], None]) -> Pla
     async def steps():
         if server["status"] != "running":
             return
-        await lab.blocking(press, server)
+        await lab.blocking(press, server["id"])
         lab.set_status(server, "starting")
         await lab.sleep(RESTART_SECONDS)
         lab.set_status(server, "running")
@@ -448,7 +447,7 @@ def restart_vm(lab: Lab, server: Server, press: Callable[[Server], None]) -> Pla
     return Plan(steps, server=server)
 
 
-def reboot(lab: Lab, server: Server, body: dict) -> Plan:
+async def reboot(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan a soft reboot: the guest reboots itself after ctrl-alt-delete.
 
     This has the same effect as Hetzner's ACPI reboot.
@@ -456,12 +455,12 @@ def reboot(lab: Lab, server: Server, body: dict) -> Plan:
     return restart_vm(lab, server, lab.fabric.vms.send_ctrl_alt_delete)
 
 
-def reset(lab: Lab, server: Server, body: dict) -> Plan:
+async def reset(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan a hard reset, like pressing the VM's reset button."""
     return restart_vm(lab, server, lab.fabric.vms.reset)
 
 
-def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
+async def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan a rebuild: a fresh disk from an image.
 
     New user data is used if given; otherwise the old user data stays. A server
@@ -471,15 +470,16 @@ def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
         raise protected("server is rebuild protected")
     image = catalogue_name(lab, "image", body.get("image"))
     check_user_data(body.get("user_data"))
-    if not server["public_keys"]:
-        # set while planning: Hetzner's answer carries the new password at once
-        with lab.state.change():
-            server["_lab"]["root_password"] = secrets.token_urlsafe(15)
+    # made while planning, because Hetzner's answer carries it at once; stored only
+    # when the steps start, so a refused or failed act() keeps the old one
+    password = None if server["public_keys"] else secrets.token_urlsafe(15)
 
     async def steps():
         # the server is locked, so it is running or off; it ends as it was
         target = "running" if server["status"] == "running" else "off"
         with lab.state.change():  # a lab restart reads the target to finish
+            if password is not None:
+                server["_lab"]["root_password"] = password
             server["_lab"]["target"] = target
         base = image_path(lab, image)  # before the old disk is gone
         await system.delete_vm(lab, server)
@@ -487,7 +487,7 @@ def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
             server["image"] = image
             server["status"] = "rebuilding"
         disk_gb = server["_lab"]["disk_gb"]
-        await lab.blocking(lab.fabric.vms.create_disk, server, base, disk_gb)
+        await lab.blocking(lab.fabric.vms.create_disk, server["id"], base, disk_gb)
         if "user_data" in body:
             with lab.state.change():
                 server["user_data"] = body["user_data"]
@@ -498,12 +498,12 @@ def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
 
     return Plan(
         steps,
-        extra={"root_password": server["_lab"].get("root_password")},
+        extra={"root_password": password or server["_lab"].get("root_password")},
         server=server,
     )
 
 
-def change_type(lab: Lab, server: Server, body: dict) -> Plan:
+async def change_type(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan a change of the server type; only while the server is off.
 
     The disk grows only with upgrade_disk. As on Hetzner, a server with a grown disk
@@ -524,7 +524,7 @@ def change_type(lab: Lab, server: Server, body: dict) -> Plan:
 
     async def steps():
         if grow:
-            await lab.blocking(lab.fabric.vms.resize_disk, server, new_disk)
+            await lab.blocking(lab.fabric.vms.resize_disk, server["id"], new_disk)
         with lab.state.change():
             if grow:
                 server["_lab"]["disk_gb"] = new_disk
@@ -539,7 +539,7 @@ async def reset_password(lab: Lab, server: Server, body: dict) -> Plan:
 
     As on Hetzner, the password is set in the guest through the QEMU guest agent.
     """
-    if not await lab.blocking(lab.fabric.vms.is_alive, server):
+    if not await lab.blocking(lab.fabric.vms.is_alive, server["id"]):
         raise ApiError(409, "server_not_running", "the server is not running")
     password = secrets.token_urlsafe(15)
 
@@ -552,7 +552,7 @@ async def reset_password(lab: Lab, server: Server, body: dict) -> Plan:
                 "crypted": False,
             },
         }
-        out = await lab.blocking(lab.fabric.vms.qga, server, cmd)
+        out = await lab.blocking(lab.fabric.vms.qga, server["id"], cmd)
         if out is None or "error" in out:
             raise RuntimeError(
                 "the QEMU guest agent did not answer (qemu-guest-agent not running?)"

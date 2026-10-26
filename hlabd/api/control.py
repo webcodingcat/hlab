@@ -13,10 +13,10 @@ from .. import config
 from ..errors import invalid, not_found
 from ..fabric.storagebox import data_dir, snap_dir, username
 from ..lab import Lab
-from ..records import Client
+from ..records import Client, Fault, TargetRef
 from ..state import client_by_name, primary_address_of, server_by_name
 from . import desired, hetzner, system
-from .faults import REF_FIELDS, drop_faults
+from .faults import drop_faults, fault_json
 from .storagebox.base import set_up_box_user
 from .web import read_body
 
@@ -71,12 +71,12 @@ async def status(lab: Lab) -> dict:
             hetzner.floating_ip_json(lab, f) for f in state["floating_ips"].values()
         ],
         "clients": list(state["clients"].values()),
-        "faults": list(state.data["faults"]),
+        "faults": [fault_json(fault) for fault in state.data["faults"]],
         "netem": dict(state.data["netem"]),
         "api_fault": dict(lab.api_fault),
     }
     for entry, server in zip(entries, servers, strict=True):
-        alive = await lab.blocking(fabric.vms.is_alive, server)
+        alive = await lab.blocking(fabric.vms.is_alive, server["id"])
         entry["vm"] = "on" if alive else "off"
     return report
 
@@ -84,16 +84,16 @@ async def status(lab: Lab) -> dict:
 # --- faults ---------------------------------------------------------------------------
 
 
-def fault_ref(lab: Lab, name: str) -> str:
+def fault_target(lab: Lab, name: str) -> TargetRef:
     """Return the reference a fault uses for a server or client name, or raise 404.
 
-    A server is named by ID (s:<id>), a client by name (c:<name>); see api/desired.py.
+    A server is named by ID, a client by name (api/faults.py).
     """
     server = server_by_name(lab.state, name)
     if server:
-        return f"s:{server['id']}"
+        return {"server": server["id"]}
     if client_by_name(lab.state, name):
-        return f"c:{name}"
+        return {"client": name}
     raise not_found(f"server or client {name!r}")
 
 
@@ -108,25 +108,42 @@ def in_cut_order(fault: dict) -> dict:
     return fault
 
 
-def checked_fault(lab: Lab, body: dict) -> dict:
+def checked_fault(lab: Lab, body: dict) -> Fault:
     """Return the fault a request describes, with references to what it points at."""
     fault_type = body.get("type")
     if fault_type not in FAULT_TYPES:
         raise invalid(f"fault type must be one of {', '.join(FAULT_TYPES)}")
-    fault = {"type": fault_type}
+    given = {"type": fault_type}
     for field, default in FAULT_TYPES[fault_type].items():
-        fault[field] = body.get(field) or default
-        if fault[field] is None:
+        given[field] = body.get(field) or default
+        if given[field] is None:
             raise invalid(f"{fault_type}: {field} is required")
-    if fault_type == "cut" and fault["net"] not in ("public", "private", "all"):
+    if fault_type == "cut" and given["net"] not in ("public", "private", "all"):
         raise invalid("net must be public, private or all")
-    if fault_type == "block" and fault["what"] not in ("api", "box", "internet"):
+    if fault_type == "block" and given["what"] not in ("api", "box", "internet"):
         raise invalid("what must be api, box or internet")
-    fault = in_cut_order(fault)
-    for field, ref_field in REF_FIELDS.items():
-        if field in fault:
-            fault[ref_field] = fault_ref(lab, fault[field])
-    return fault
+    given = in_cut_order(given)
+    if fault_type == "cut":
+        return {
+            "type": "cut",
+            "first": given["first"],
+            "second": given["second"],
+            "net": given["net"],
+            "first_ref": fault_target(lab, given["first"]),
+            "second_ref": fault_target(lab, given["second"]),
+        }
+    if fault_type == "isolate":
+        return {
+            "type": "isolate",
+            "vm": given["vm"],
+            "target_ref": fault_target(lab, given["vm"]),
+        }
+    return {
+        "type": "block",
+        "vm": given["vm"],
+        "what": given["what"],
+        "target_ref": fault_target(lab, given["vm"]),
+    }
 
 
 async def add_fault(lab: Lab, body: dict) -> dict:
@@ -136,24 +153,30 @@ async def add_fault(lab: Lab, body: dict) -> dict:
     with state.change():
         if fault not in state.data["faults"]:
             state.data["faults"].append(fault)
-        faults = list(state.data["faults"])  # the answer: faults after this change
+        # the answer: faults after this change
+        faults = [fault_json(fault) for fault in state.data["faults"]]
     await system.apply_faults(lab)
     return {"faults": faults}
 
 
 async def remove_faults(lab: Lab, body: dict) -> dict:
-    """Remove the faults that match every given field (a cut in either direction)."""
+    """Remove the faults that match every given field (a cut in either direction).
+
+    The fields are compared as the API shows them (references as text).
+    """
     state = lab.state
     given = in_cut_order({k: v for k, v in body.items() if v is not None})
     with state.change():
+        faults: list[Fault] = state.data["faults"]
         state.data["faults"] = [
             fault
-            for fault in state.data["faults"]
-            if not all(fault.get(k) == v for k, v in given.items())
+            for fault in faults
+            if not all(fault_json(fault).get(k) == v for k, v in given.items())
         ]
-        faults = list(state.data["faults"])  # the answer: faults after this change
+        # the answer: faults after this change
+        shown = [fault_json(fault) for fault in state.data["faults"]]
     await system.apply_faults(lab)
-    return {"faults": faults}
+    return {"faults": shown}
 
 
 async def clear_faults(lab: Lab) -> dict:
@@ -183,9 +206,9 @@ async def set_netem(lab: Lab, body: dict) -> dict:
         args and not all(NETEM_WORD.fullmatch(word) for word in args.split())
     ):
         raise invalid("args are netem options like 'delay 100ms 10ms loss 5%'", "args")
-    ref = fault_ref(lab, body.get("vm", ""))
+    target = fault_target(lab, body.get("vm", ""))
     with state.change():
-        taps = desired.target_ifaces(state, ref, body.get("net") or "all")
+        taps = desired.target_ifaces(state, target, body.get("net") or "all")
         for tap in taps:
             if args:
                 state.data["netem"][tap] = " ".join(args.split())
@@ -203,9 +226,9 @@ async def control_vm(lab: Lab, name: str, cmd: str) -> dict:
     """
     server = lab.server_by_name_or_404(name)
     if cmd == "pause":
-        await lab.blocking(lab.fabric.vms.pause, server)
+        await lab.blocking(lab.fabric.vms.pause, server["id"])
     elif cmd == "cont":
-        await lab.blocking(lab.fabric.vms.resume, server)
+        await lab.blocking(lab.fabric.vms.resume, server["id"])
     elif cmd in ("dead", "alive"):
         with lab.state.change():
             server["_dead"] = cmd == "dead"
@@ -274,7 +297,7 @@ async def remove_client(lab: Lab, name: str) -> dict:
     with state.change():
         client = client_or_404(lab, name)
         del state["clients"][client["id"]]
-        drop_faults(lab, f"c:{client['name']}", [client["veth"]])
+        drop_faults(lab, {"client": client["name"]}, [client["veth"]])
     await system.remove_client(lab, client)
     return {"ok": True}
 
@@ -336,13 +359,13 @@ async def reset_lab(lab: Lab) -> dict:
     for server in servers:
         await system.delete_vm(lab, server)
     for volume in volumes:
-        await lab.blocking(fabric.volumes.delete, volume)
+        await lab.blocking(fabric.volumes.delete, volume["id"])
     for subaccount in subaccounts:
         await lab.blocking(fabric.box.remove_account, subaccount["username"])
     for box in boxes:
-        await lab.blocking(fabric.box.remove_account, username(box))
-        await lab.blocking(fabric.box.remove_tree, data_dir(box))
-        await lab.blocking(fabric.box.remove_tree, snap_dir(box))
+        await lab.blocking(fabric.box.remove_account, username(box["id"]))
+        await lab.blocking(fabric.box.remove_tree, data_dir(box["id"]))
+        await lab.blocking(fabric.box.remove_tree, snap_dir(box["id"]))
     for ip in routed:
         await system.route_floating_ip(lab, ip, None)
     for client in clients:

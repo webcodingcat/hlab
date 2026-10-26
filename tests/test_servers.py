@@ -358,6 +358,20 @@ def test_failed_rebuild_keeps_user_data(api):
     assert state_of(api, "servers")[server["id"]]["user_data"] == "#cloud-config\n"
 
 
+def test_rebuild_answers_the_new_root_password_and_stores_it_only_when_it_runs(api):
+    server = create_server(api, "a")["server"]
+    old = state_of(api, "servers")[server["id"]]["_lab"]["root_password"]
+    url = f"/v1/servers/{server['id']}/actions/rebuild"
+    # a refused rebuild (the image is unknown) keeps the old password
+    assert api.post(url, json={"image": "nope"}).status_code == 422
+    assert state_of(api, "servers")[server["id"]]["_lab"]["root_password"] == old
+    response = api.post(url, json={"image": "debian-13"}).json()
+    assert response["root_password"] not in (None, old)
+    wait_action(api, response["action"])
+    stored = state_of(api, "servers")[server["id"]]["_lab"]["root_password"]
+    assert stored == response["root_password"]
+
+
 def test_vm_has_hetzner_smbios_and_dhcp(api, tmp_path):
     server = create_server(api, "a")["server"]
     start = [c for c in api.sh.calls if c[0] == "start-vm"][-1]

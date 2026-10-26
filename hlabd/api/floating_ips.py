@@ -110,7 +110,9 @@ def delete_floating_ip(lab: Lab, fid: int) -> None:
 # (`_moving`). The other actions change only the record.
 
 
-def floating_ip_change_dns_ptr(lab: Lab, floating_ip: FloatingIP, body: dict) -> Plan:
+async def floating_ip_change_dns_ptr(
+    lab: Lab, floating_ip: FloatingIP, body: dict
+) -> Plan:
     """Set the reverse DNS of one of the Floating IP's addresses (named in the body)."""
     return record_dns_ptr(lab, floating_ip, body, default_ip="")
 
@@ -146,13 +148,13 @@ def move_floating_ip(lab: Lab, floating_ip: FloatingIP, target: Server | None) -
     return Plan(steps, resources=[(target["id"], "server")] if target else [])
 
 
-def floating_ip_assign(lab: Lab, floating_ip: FloatingIP, body: dict) -> Plan:
+async def floating_ip_assign(lab: Lab, floating_ip: FloatingIP, body: dict) -> Plan:
     """Plan the move of the Floating IP to the server the body names."""
     server = lab.server_or_404(ref_id(body.get("server"), "server"))
     return move_floating_ip(lab, floating_ip, server)
 
 
-def floating_ip_unassign(lab: Lab, floating_ip: FloatingIP, body: dict) -> Plan:
+async def floating_ip_unassign(lab: Lab, floating_ip: FloatingIP, body: dict) -> Plan:
     """Plan the move of the Floating IP to no server."""
     return move_floating_ip(lab, floating_ip, None)
 

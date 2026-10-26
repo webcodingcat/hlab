@@ -34,14 +34,14 @@ async def watch_vms(lab: Lab) -> None:
     # a copy: servers may be deleted while the scripts run
     servers = list(lab.state["servers"].values())
     for server in servers:
-        await lab.blocking(lab.fabric.vms.trim_console, server)
+        await lab.blocking(lab.fabric.vms.trim_console, server["id"])
         if server["status"] == "running" and not server.get("_locked"):
             await stop_if_ended(lab, server)
 
 
 async def stop_if_ended(lab: Lab, server: Server) -> None:
     """Mark a running server off if its VM has ended; remove its taps and DHCP."""
-    if await lab.blocking(lab.fabric.vms.is_alive, server):
+    if await lab.blocking(lab.fabric.vms.is_alive, server["id"]):
         return
     with lab.holding() as held:
         try:
@@ -50,7 +50,7 @@ async def stop_if_ended(lab: Lab, server: Server) -> None:
             # an action started in the meantime: it owns the server now
             return
         if server["status"] != "running" or await lab.blocking(
-            lab.fabric.vms.is_alive, server
+            lab.fabric.vms.is_alive, server["id"]
         ):
             return
         log.info("server %s: its VM ended", server["name"])

@@ -283,8 +283,11 @@ def test_volume_delete_claims_the_volume_and_frees_it_when_the_disk_stays(
     vid = volume["volume"]["id"]
     busy_while_deleted = []
 
-    def failing_delete(record):
-        busy_while_deleted.append(record.get("_busy"))  # no action may start now
+    def failing_delete(volume_id):
+        # no action may start now (a test may peek at the state from the thread)
+        busy_while_deleted.append(
+            api.lab.state._data["volumes"][volume_id].get("_busy")
+        )
         raise RuntimeError("volume-delete failed")
 
     monkeypatch.setattr(api.lab.fabric.volumes, "delete", failing_delete)

@@ -64,8 +64,8 @@ async def box_account(lab: Lab, box: StorageBox, password: str | None) -> None:
     """Create or update the box's main account (its UID is the box ID)."""
     await lab.blocking(
         lab.fabric.box.set_account,
-        username(box),
-        data_dir(box),
+        username(box["id"]),
+        data_dir(box["id"]),
         password,
         quota_bytes(lab, box),
         box["id"],
@@ -75,9 +75,9 @@ async def box_account(lab: Lab, box: StorageBox, password: str | None) -> None:
 async def sync_box(lab: Lab, box: StorageBox) -> None:
     """Apply the access settings of the box's main account and its .zfs view."""
     access = dict(box["access"])  # a copy for the thread
-    user = username(box)
+    user = username(box["id"])
     await lab.blocking(lab.fabric.box.set_access, user, access, quota_bytes(lab, box))
-    zfs_view = snap_dir(box) if access["zfs_enabled"] else None
+    zfs_view = snap_dir(box["id"]) if access["zfs_enabled"] else None
     await lab.blocking(lab.fabric.box.set_zfs_view, user, zfs_view)
 
 
@@ -87,7 +87,7 @@ def sub_home(box: StorageBox, subaccount: Subaccount) -> str:
     A home is a path inside the box; it holds whatever files are there now.
     """
     return posixpath.normpath(
-        posixpath.join(data_dir(box), subaccount["home_directory"].lstrip("/"))
+        posixpath.join(data_dir(box["id"]), subaccount["home_directory"].lstrip("/"))
     )
 
 
@@ -103,7 +103,7 @@ async def sync_subaccount(
     access, quota = dict(subaccount["access"]), quota_bytes(lab, box)
     if password is not None:
         await lab.blocking(
-            lab.fabric.box.set_account, user, home, password, quota, username(box)
+            lab.fabric.box.set_account, user, home, password, quota, username(box["id"])
         )
     else:
         await lab.blocking(lab.fabric.box.set_home, user, home)

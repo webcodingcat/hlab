@@ -48,7 +48,7 @@ async def restore(lab: Lab) -> None:
     for s in cut_off:
         box = state["storage_boxes"].get(s["box"])
         if box:
-            path = snap_dir(box, s["name"])
+            path = snap_dir(box["id"], s["name"])
             await lab.blocking(fabric.box.remove_tree, path, check=False)
         with state.change():
             del state["box_snapshots"][s["id"]]

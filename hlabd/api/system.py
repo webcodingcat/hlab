@@ -70,7 +70,8 @@ async def route_floating_ip(lab: Lab, ip: str, server: Server | None) -> None:
     (`reroute_floating_ips`).
     """
     async with lab.picture_lock:
-        await lab.blocking(lab.fabric.network.route_floating_ip, ip, server)
+        target = desired.public_tap(server) if server is not None else None
+        await lab.blocking(lab.fabric.network.route_floating_ip, ip, target)
 
 
 # --- a VM's start and stop ------------------------------------------------------------
@@ -83,7 +84,7 @@ async def start_vm(lab: Lab, server: Server) -> None:
     does not start, its taps are taken down again.
     """
     state, fabric = lab.state, lab.fabric
-    if await lab.blocking(fabric.vms.is_alive, server):
+    if await lab.blocking(fabric.vms.is_alive, server["id"]):
         return
     try:
         taps = desired.server_taps(state, server)
@@ -91,12 +92,16 @@ async def start_vm(lab: Lab, server: Server) -> None:
         with state.change():
             for nic in server["_lab"]["nics"]:
                 nic.pop("port", None)
-        nics = await lab.blocking(fabric.network.taps_up, server, taps)
+        nics = await lab.blocking(fabric.network.taps_up, taps)
         await write_dhcp(lab)
         volumes = desired.boot_volumes(state, server)
-        await lab.blocking(fabric.volumes.write_boot_list, server, volumes)
+        await lab.blocking(fabric.volumes.write_boot_list, server["id"], volumes)
         await lab.blocking(
-            fabric.vms.launch, server, server["name"], server["server_type"], nics
+            fabric.vms.launch,
+            server["id"],
+            server["name"],
+            server["server_type"],
+            nics,
         )
     except Exception:  # whatever failed: remove the half-started VM, then re-raise
         await kill_vm(lab, server)
@@ -109,7 +114,7 @@ async def start_vm(lab: Lab, server: Server) -> None:
 
 async def kill_vm(lab: Lab, server: Server) -> None:
     """Stop the server's VM and take its taps and DHCP down."""
-    await lab.blocking(lab.fabric.vms.kill, server, server["name"])
+    await lab.blocking(lab.fabric.vms.kill, server["id"], server["name"])
     server_lab = server["_lab"]
     taps = [server_lab["tap"], *(nic["tap"] for nic in server_lab["nics"])]
     await lab.blocking(lab.fabric.network.taps_down, taps)
@@ -119,7 +124,7 @@ async def kill_vm(lab: Lab, server: Server) -> None:
 async def delete_vm(lab: Lab, server: Server) -> None:
     """Stop the server's VM and remove its directory."""
     await kill_vm(lab, server)
-    await lab.blocking(lab.fabric.vms.remove_directory, server)
+    await lab.blocking(lab.fabric.vms.remove_directory, server["id"])
 
 
 async def reroute_floating_ips(lab: Lab, server: Server) -> None:
@@ -136,8 +141,9 @@ async def reroute_floating_ips(lab: Lab, server: Server) -> None:
             for f in lab.state["floating_ips"].values()
             if f.get("server") == server["id"]
         ]
+        target = desired.public_tap(server)
         for ip in ips:
-            await lab.blocking(lab.fabric.network.route_floating_ip, ip, server)
+            await lab.blocking(lab.fabric.network.route_floating_ip, ip, target)
 
 
 # --- NICs, networks, clients ----------------------------------------------------------
@@ -156,7 +162,7 @@ async def attach_nic(lab: Lab, server: Server, nic: Nic) -> None:
     applied.
     """
     state, fabric = lab.state, lab.fabric
-    if await lab.blocking(fabric.vms.is_alive, server):
+    if await lab.blocking(fabric.vms.is_alive, server["id"]):
         tap = desired.private_tap(state, nic)
         await lab.blocking(fabric.network.nic_up, tap)
         port = desired.free_hot_plug_port(server)
@@ -167,7 +173,7 @@ async def attach_nic(lab: Lab, server: Server, nic: Nic) -> None:
         with state.change():
             nic["port"] = port
         await write_dhcp(lab)  # the tap exists now: its dnsmasq binds to it
-        await lab.blocking(fabric.network.hot_plug_nic, server, tap, port)
+        await lab.blocking(fabric.network.hot_plug_nic, server["id"], tap, port)
     else:
         await write_dhcp(lab)
     await apply_faults(lab)
@@ -179,7 +185,7 @@ async def refresh_cloud_network(lab: Lab, nid: int) -> None:
     """Set a network up again after its range changed: its table, its members' taps."""
     async with lab.picture_lock:
         members = [
-            (server, desired.private_tap(lab.state, nic))
+            (server["id"], desired.private_tap(lab.state, nic))
             for server, nic in nics_in(lab.state, nid)
         ]
         await lab.blocking(lab.fabric.network.refresh_cloud_network, nid, members)
@@ -199,11 +205,12 @@ async def drop_cloud_network(lab: Lab, nid: int) -> None:
 
 async def add_client(lab: Lab, client: Client) -> None:
     """Add an Internet client with its namespace, then its sources and faults."""
-    await lab.blocking(lab.fabric.network.add_client, client)
+    await lab.blocking(lab.fabric.network.add_client, desired.client_link(client))
     await apply_faults(lab)
 
 
 async def remove_client(lab: Lab, client: Client) -> None:
     """Remove an Internet client with its namespace, then its sources and faults."""
-    await lab.blocking(lab.fabric.network.remove_client, client)
+    link = desired.client_link(client)
+    await lab.blocking(lab.fabric.network.remove_client, link)
     await apply_faults(lab)

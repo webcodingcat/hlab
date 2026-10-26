@@ -54,7 +54,8 @@ The project's own words, in alphabetical order.
 - **plan**: a `Plan` (`lab.py`). An action's function returns it; it says what the
   action will do (`steps`, `server`, `extra`, ...).
 - **state**: everything the fake API knows, in memory and saved as JSON in the lab's
-  volume (`State` in `state.py`). Resources are kept by kind (`KINDS`) and ID.
+  volume (`State` in `state.py`). Resources are kept by kind (`KIND_TYPES`) and
+  ID.
 - **steps**: `Plan.steps`, the slow part of an action. It is an async function that
   runs in the background after the answer has gone out.
 - **system**: `api/system.py`. It puts the state in place: it reads the state on the
@@ -139,10 +140,10 @@ you rename a function.
 A function is named after its command (`reboot`, `add_subnet`). If two resources share
 a command, the name starts with the resource (`primary_ip_assign`,
 `floating_ip_assign`). The function gets `(lab, resource, body)`, checks the request
-and returns a `Plan`. It is a plain `def`. It is `async def` only when it must ask
-the system before it can decide; for example, `reset_password` asks whether the VM
-runs, through `await lab.blocking(...)`. Then `act()` awaits it. The plan has these
-fields:
+and returns a `Plan`. Every such function is `async def`, and `act()` awaits it.
+Most never await: they only check and change the state. Some must ask the system
+before they can decide; for example, `reset_password` asks whether the VM runs,
+through `await lab.blocking(...)`. The plan has these fields:
 
 - `steps`: an async function that does the slow part through `lab.fabric`. `None`
   means the change is already complete. As on Hetzner, it still gets an action, which
@@ -240,9 +241,11 @@ is gone (a deleted volume). Only `lab.py` calls `lab.claim()` and `lab.release()
 - Blocking work (scripts, files, guest agents) runs in a thread through
   `await lab.blocking(work, *args)`, so the API keeps answering. `work` gets plain
   data and returns plain data, never the state. Mostly `work` is a fabric method that
-  gets what `api/desired.py` computed. A fabric method may also get a record, but it
-  reads only fields that never change (ID, tap, MAC). A field that can change, such as
-  a server's name or type, is passed as its own argument.
+  gets what `api/desired.py` computed. A fabric method never gets a record of the
+  state: it gets IDs (`sid`, `vid`), plain values, or the small dataclasses that its
+  module defines (`PublicTap`, `PrivateTap`, `ClientLink`, `Rule`, ...), built on the
+  loop. `tests/test_layers.py` checks that no type of `records.py` appears in
+  `hlabd/fabric/`.
 - A thread cannot be cancelled. So `lab.blocking` keeps track of its threads, and a
   lab reset waits for them after it has cancelled the actions (`lab.stop_actions`),
   at most `THREADS_WAIT_SECONDS`; threads still running then are logged. Every
@@ -269,8 +272,8 @@ part runs:
 
 ```text
 event loop   the poweroff steps call `await system.kill_vm(lab, server)`
-thread       `await lab.blocking(fabric.vms.kill, server, server["name"])`
-               the name is read on the loop and passed as plain data;
+thread       `await lab.blocking(fabric.vms.kill, server["id"], server["name"])`
+               the ID and name are read on the loop and passed as plain data;
                hlab.sh kill-vm runs; the loop serves other requests meanwhile
 event loop   kill_vm reads the server's taps from the state (a plain list)
 thread       `await lab.blocking(fabric.network.taps_down, taps)`
@@ -319,8 +322,10 @@ the action, and then fail the test (`state_owner_kept` in `tests/conftest.py`).
 records, flags, actions, the lab-only records. The block is a transaction. If it
 raises, the state is put back as it was and nothing is saved. Every dict and list
 keeps its identity, so records that other code holds stay valid. If the block
-succeeds, the state is committed and saved. Nested blocks commit once, at the end of
-the outer one.
+succeeds, the state is committed and saved. Nested blocks belong to the outermost
+one: it alone takes the snapshot, undoes and commits. So an error in a nested block
+must reach the outermost block; caught in between, the nested change would stay half
+done (the unit tests fail such a block).
 
 ```python
 with lab.state.change():
@@ -359,12 +364,12 @@ matters, it checks again after the await (`stop_if_ended`, `make_available`).
 ## Recipes
 
 **A new action**: write a function named after the command (see Action tables),
-`(lab, resource, body) -> Plan`, next to the others in the resource's module. Add it to
-the table: `"command": ActionSpec("hetzner_name", function)`. Add `flag=False` if it
-only changes the record, and `answer="actions"` if Hetzner answers with a list of
-actions. If it gives the server a new in-between status (like `rebuilding`), add the
-status to `IN_BETWEEN` in `lab.py` (for failures) and to `status_after_restart` in
-`api/restart.py`.
+`async def name(lab, resource, body) -> Plan`, next to the others in the resource's
+module. Add it to the table: `"command": ActionSpec("hetzner_name", function)`. Add
+`flag=False` if it only changes the record, and `answer="actions"` if Hetzner answers
+with a list of actions. If it gives the server a new in-between status (like
+`rebuilding`), add the status to `IN_BETWEEN` in `lab.py` (for failures) and to
+`status_after_restart` in `api/restart.py`.
 
 **A new field on a resource**: add it to the resource's TypedDict (`records.py`), to
 the code that creates the resource (`create_*`), to its JSON shape (`api/hetzner.py`,
@@ -382,6 +387,18 @@ loop and passes it to the method in a thread (`await lab.blocking(...)`).
 **A new flag**: add it to `Flag` and `FLAGS` in `lab.py` and to the comment above
 them, so that a restart clears it (`lab.clear_flags`). Add it to the record's
 TypedDict as `NotRequired[bool]`.
+
+**A new resource kind**: `tests/test_state.py` fails until the first three are done.
+
+1. `records.py`: its TypedDict, and add it to `Record` (and to `ActionRecord` if it
+   has actions, to `ProtectedRecord` if it has a plain delete protection).
+2. `state.py`: a row in `KIND_TYPES` (record type, a free ID range); `KINDS` and
+   `ID_BASE` follow from it.
+3. The `@overload`s of `State.__getitem__` (`state.py`) and `Lab.get_or_404`
+   (`lab.py`): mypy needs them written out.
+4. Its module `api/<kind>.py` (checks, action table, routes), added to
+   `create_app` (`api/app.py`); its JSON shape in `api/hetzner.py`; its flag, if new
+   (above).
 
 ## Tests
 

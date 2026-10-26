@@ -162,14 +162,14 @@ def shut_down(lab: Lab) -> None:
     fabric = lab.fabric
     lab.state.flush()
     servers = list(lab.state["servers"].values())
-    running = [s for s in servers if fabric.vms.is_alive(s)]
-    for server in running:
+    running = [s["id"] for s in servers if fabric.vms.is_alive(s["id"])]
+    for sid in running:
         try:
-            fabric.vms.press_power_button(server)
+            fabric.vms.press_power_button(sid)
         except RuntimeError:  # its QEMU does not answer: it is killed with the rest
             pass
     for _ in range(15):
-        if not any(fabric.vms.is_alive(s) for s in running):
+        if not any(fabric.vms.is_alive(sid) for sid in running):
             break
         time.sleep(1)
     fabric.box.stop_box()

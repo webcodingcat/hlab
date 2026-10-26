@@ -2,7 +2,8 @@
 
 A part of the fabric (see __init__.py). It asks the VMs (vm.py) whether a server runs.
 The API computes from the state what each tap, DHCP server and route should look like
-(api/desired.py). This part only puts that in place.
+(api/desired.py). This part only puts that in place. A server is named by its ID
+(`sid`), which never changes.
 """
 
 import ipaddress
@@ -12,10 +13,28 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .. import config
-from ..records import Client, Nic, Server
 from .addresses import link_local, network_gateway, prefix, public_mac, route_table
 from .shell import Shell
 from .vm import VMs
+
+
+@dataclass(frozen=True)
+class PublicTap:
+    """A server's public tap, with what routes to the server need."""
+
+    sid: int  # the server's ID: whether its VM runs
+    tap: str
+    index: int  # the server's lab index: its MAC and IPv6 link-local address
+
+
+@dataclass(frozen=True)
+class ClientLink:
+    """An Internet client's network namespace behind a veth."""
+
+    name: str  # also the name of its namespace
+    veth: str
+    ip: str
+    ip6: str
 
 
 @dataclass
@@ -34,6 +53,7 @@ class PrivateTap:
 class ServerTaps:
     """What a server's taps are set up with when its VM starts."""
 
+    public: PublicTap
     ipv4: str | None  # its primary IPv4, routed to its public tap
     ipv6_net: str | None  # its primary IPv6 /64, routed to its link-local address
     nics: list[PrivateTap]  # its NICs in cloud networks, in their order
@@ -56,9 +76,9 @@ class WantedRoute:
     destination: str
     gateway: str
     network: int  # the network's ID: its routing table
-    # (server, its tap in the network) for every NIC that holds the gateway IP; the
-    # route goes to the first whose VM runs
-    holders: list[tuple[Server, str]]
+    # (server ID, its tap in the network) for every NIC that holds the gateway IP;
+    # the route goes to the first whose VM runs
+    holders: list[tuple[int, str]]
 
 
 def dnsmasq_config(host: DhcpHost) -> str:
@@ -99,13 +119,12 @@ class Network:
         # the container's own addresses and when they were read (read_local_addresses)
         self._local_addresses_cache: tuple[float, set[str]] | None = None
 
-    def taps_up(self, server: Server, taps: ServerTaps) -> list[str]:
+    def taps_up(self, taps: ServerTaps) -> list[str]:
         """Bring up the server's public tap and the taps of its cloud networks.
 
         It also sets up their routes. Return the NICs for QEMU (tap=mac).
         """
-        server_lab = server["_lab"]
-        tap, index = server_lab["tap"], server_lab["index"]
+        tap, index = taps.public.tap, taps.public.index
         self.shell.run("set-up-public-tap", tap, *([taps.ipv4] if taps.ipv4 else []))
         nics = [f"{tap}={public_mac(index)}"]
         for nic in taps.nics:
@@ -156,7 +175,7 @@ class Network:
         return set(cache[1])
 
     def refresh_cloud_network(
-        self, nid: int, members: list[tuple[Server, PrivateTap]]
+        self, nid: int, members: list[tuple[int, PrivateTap]]
     ) -> None:
         """Set a network up again after its range changed.
 
@@ -165,51 +184,45 @@ class Network:
         """
         with self.net_lock:
             self.shell.run("flush-routes", route_table(nid))
-            for server, nic in members:
-                if self.vms.is_alive(server):
+            for sid, nic in members:
+                if self.vms.is_alive(sid):
                     self.nic_up(nic)
 
-    def hot_plug_nic(self, server: Server, nic: PrivateTap, port: str) -> None:
+    def hot_plug_nic(self, sid: int, nic: PrivateTap, port: str) -> None:
         """Hot-plug a NIC whose tap is up into the running VM, on a free root port."""
-        self.shell.run(
-            "add-nic", str(self.vms.directory(server)), nic.tap, nic.mac, port
-        )
+        self.shell.run("add-nic", str(self.vms.directory(sid)), nic.tap, nic.mac, port)
 
-    def detach_nic(self, server: Server, nic: Nic) -> None:
-        """Detach a NIC from a server and take its tap down."""
+    def detach_nic(self, sid: int, tap: str) -> None:
+        """Detach a NIC (its tap) from a server and take its tap down."""
         # taps change only under the lock, so tc and nft find the taps they checked
         with self.net_lock:
-            if self.vms.is_alive(server):
+            if self.vms.is_alive(sid):
                 self.shell.run(
                     "delete-nic",
-                    str(self.vms.directory(server)),
-                    nic["tap"],
+                    str(self.vms.directory(sid)),
+                    tap,
                     check=False,
                 )
-            self.shell.run("tear-down-tap", nic["tap"])
+            self.shell.run("tear-down-tap", tap)
 
     def neighbour_taps(self, ip: str) -> set[str]:
         """Return the taps on which the lab sees a neighbour with this address."""
         return set(self.shell.run("list-neigh-devs", ip, check=False).split())
 
-    def add_client(self, client: Client) -> None:
+    def add_client(self, client: ClientLink) -> None:
         """Add an Internet client: its own network namespace behind a veth.
 
         The client gets its addresses there.
         """
         with self.net_lock:
             self.shell.run(
-                "add-client",
-                client["name"],
-                client["veth"],
-                client["ip"],
-                client["ip6"],
+                "add-client", client.name, client.veth, client.ip, client.ip6
             )
 
-    def remove_client(self, client: Client) -> None:
+    def remove_client(self, client: ClientLink) -> None:
         """Remove an Internet client and its namespace."""
         with self.net_lock:
-            self.shell.run("delete-client", client["name"], client["veth"])
+            self.shell.run("delete-client", client.name, client.veth)
 
     def drop_cloud_network(self, nid: int) -> None:
         """Flush the routing table of a deleted network, with its routes."""
@@ -257,7 +270,7 @@ class Network:
             for route in wanted:
                 table = route_table(route.network)
                 tap = next(
-                    (tap for server, tap in route.holders if self.vms.is_alive(server)),
+                    (tap for sid, tap in route.holders if self.vms.is_alive(sid)),
                     None,
                 )
                 if tap:
@@ -290,7 +303,7 @@ class Network:
             (self.root / "dns.conf").write_text("\n".join(lines) + "\n")
             self.shell.run("start-dns", str(self.root / "dns.conf"))
 
-    def route_floating_ip(self, ip: str, server: Server | None) -> None:
+    def route_floating_ip(self, ip: str, server: PublicTap | None) -> None:
         """Route a Floating IP to the server it is assigned to, or nowhere.
 
         If the server runs, the IP goes to its tap: an IPv4 address as /32, an IPv6 /64
@@ -298,10 +311,11 @@ class Network:
         server, the IP goes nowhere; the old server does not keep it.
         """
         with self.net_lock:
-            if server is None or not self.vms.is_alive(server):
+            if server is None or not self.vms.is_alive(server.sid):
                 self.shell.run("set-route", prefix(ip))
             elif ":" in ip:
-                tap, index = server["_lab"]["tap"], server["_lab"]["index"]
-                self.shell.run("set-route6", prefix(ip), tap, link_local(index))
+                self.shell.run(
+                    "set-route6", prefix(ip), server.tap, link_local(server.index)
+                )
             else:
-                self.shell.run("set-route", prefix(ip), server["_lab"]["tap"])
+                self.shell.run("set-route", prefix(ip), server.tap)

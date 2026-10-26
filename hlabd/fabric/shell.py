@@ -34,6 +34,28 @@ class Shell:
         """Prepare the environment the scripts run with."""
         self.env = {**os.environ, **config.script_env()}
 
+    def execute(
+        self, args: tuple[str, ...], timeout: float, stdin_text: str | None = None
+    ) -> subprocess.CompletedProcess[str]:
+        """Run an hlab.sh command and return how it ended, whatever its exit code.
+
+        A command that runs longer than `timeout` seconds is killed, and this raises
+        RuntimeError: a hung script must not hold its thread.
+        """
+        try:
+            return subprocess.run(
+                [HLAB_SH, *args],
+                capture_output=True,
+                text=True,
+                input=stdin_text,
+                env=self.env,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(
+                f"hlab.sh {' '.join(args)}: no end after {timeout:g} s (killed)"
+            ) from None
+
     def run(
         self,
         *args: str,
@@ -47,19 +69,7 @@ class Shell:
         command that runs longer than `timeout` seconds is killed, and this raises
         RuntimeError, whether checked or not.
         """
-        try:
-            process = subprocess.run(
-                [HLAB_SH, *args],
-                capture_output=True,
-                text=True,
-                input=stdin_text,
-                env=self.env,
-                timeout=timeout,
-            )
-        except subprocess.TimeoutExpired:
-            raise RuntimeError(
-                f"hlab.sh {' '.join(args)}: no end after {timeout:g} s (killed)"
-            ) from None
+        process = self.execute(args, timeout, stdin_text)
         if check and process.returncode != 0:
             raise RuntimeError(
                 f"hlab.sh {' '.join(args)}: "
@@ -73,15 +83,7 @@ class Shell:
         A command that runs longer than `timeout` seconds is killed, and this raises
         RuntimeError.
         """
-        try:
-            process = subprocess.run(
-                [HLAB_SH, *args], capture_output=True, env=self.env, timeout=timeout
-            )
-        except subprocess.TimeoutExpired:
-            raise RuntimeError(
-                f"hlab.sh {' '.join(args)}: no end after {timeout:g} s (killed)"
-            ) from None
-        return process.returncode == 0
+        return self.execute(args, timeout).returncode == 0
 
     def qga(self, sock: Path, command: dict, timeout: float = 10) -> dict | None:
         """Send one command to a QEMU guest agent and return its answer.

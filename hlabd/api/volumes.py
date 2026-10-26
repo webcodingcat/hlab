@@ -78,7 +78,9 @@ def save_detached(lab: Lab, volume: Volume) -> None:
 
 async def vm_running(lab: Lab, server: Server | None) -> bool:
     """Return whether there is a server and its VM runs (runs a script in a thread)."""
-    return server is not None and await lab.blocking(lab.fabric.vms.is_alive, server)
+    return server is not None and await lab.blocking(
+        lab.fabric.vms.is_alive, server["id"]
+    )
 
 
 def create_volume(lab: Lab, body: dict) -> dict:
@@ -158,17 +160,24 @@ def create_volume(lab: Lab, body: dict) -> dict:
 
         async def steps():
             try:
-                await lab.blocking(lab.fabric.volumes.create, volume)
+                await lab.blocking(
+                    lab.fabric.volumes.create,
+                    volume["id"],
+                    volume["size"],
+                    volume.get("format"),
+                )
             except Exception:  # whatever failed: undo, then re-raise
                 # no volume stays "creating" (or attached) without its disk
                 drop_volume()
                 raise
             if not make_available():
                 # removed from the state while its disk was made: delete the disk too
-                await lab.blocking(lab.fabric.volumes.delete, volume)
+                await lab.blocking(lab.fabric.volumes.delete, volume["id"])
                 return
             if server is not None and await vm_running(lab, server):
-                await lab.blocking(lab.fabric.volumes.attach, server, volume)
+                await lab.blocking(
+                    lab.fabric.volumes.attach, server["id"], volume["id"]
+                )
             for next_action in next_actions:
                 lab.finish(next_action)
             await lab.sleep(VOLUME_SECONDS)
@@ -204,7 +213,7 @@ async def delete_volume(lab: Lab, vid: int) -> None:
         if volume["status"] != "available":
             raise locked(VOLUME_BUSY)
         held.claim(volume, "_busy", VOLUME_BUSY)
-        await lab.blocking(lab.fabric.volumes.delete, volume)
+        await lab.blocking(lab.fabric.volumes.delete, volume["id"])
         with lab.state.change():
             del lab.state["volumes"][vid]
             held.keep()  # a request that looked up the volume earlier still gets 423
@@ -222,7 +231,7 @@ def require_available(volume: Volume) -> None:
         raise locked(VOLUME_BUSY)
 
 
-def attach(lab: Lab, volume: Volume, body: dict) -> Plan:
+async def attach(lab: Lab, volume: Volume, body: dict) -> Plan:
     """Plan an attach to a server.
 
     The attachment is recorded when the action runs, while the server is locked. A
@@ -242,7 +251,9 @@ def attach(lab: Lab, volume: Volume, body: dict) -> Plan:
         save_attachment()
         if await vm_running(lab, server):
             try:
-                await lab.blocking(lab.fabric.volumes.attach, server, volume)
+                await lab.blocking(
+                    lab.fabric.volumes.attach, server["id"], volume["id"]
+                )
             except Exception:  # not attached: record that in the volume
                 save_detached(lab, volume)
                 raise
@@ -251,7 +262,7 @@ def attach(lab: Lab, volume: Volume, body: dict) -> Plan:
     return Plan(steps, server=server, resources=[(server["id"], "server")])
 
 
-def detach(lab: Lab, volume: Volume, body: dict) -> Plan:
+async def detach(lab: Lab, volume: Volume, body: dict) -> Plan:
     """Plan a detach from the volume's server."""
     require_available(volume)
     if not volume.get("server"):
@@ -260,7 +271,7 @@ def detach(lab: Lab, volume: Volume, body: dict) -> Plan:
 
     async def steps():
         if server is not None and await vm_running(lab, server):
-            await lab.blocking(lab.fabric.volumes.detach, server, volume)
+            await lab.blocking(lab.fabric.volumes.detach, server["id"], volume["id"])
         save_detached(lab, volume)
         await lab.sleep(VOLUME_SECONDS)
 
@@ -268,7 +279,7 @@ def detach(lab: Lab, volume: Volume, body: dict) -> Plan:
     return Plan(steps, server=server, resources=resources)
 
 
-def resize(lab: Lab, volume: Volume, body: dict) -> Plan:
+async def resize(lab: Lab, volume: Volume, body: dict) -> Plan:
     """Plan a resize; a volume can only grow."""
     require_available(volume)
     size = body.get("size")
@@ -290,7 +301,10 @@ def resize(lab: Lab, volume: Volume, body: dict) -> Plan:
     async def steps():
         live = await vm_running(lab, server)
         await lab.blocking(
-            lab.fabric.volumes.resize, volume, size, server if live else None
+            lab.fabric.volumes.resize,
+            volume["id"],
+            size,
+            server["id"] if live and server is not None else None,
         )
         save_size()
         await lab.sleep(VOLUME_SECONDS)

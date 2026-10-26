@@ -307,16 +307,20 @@ async def primary_ip_unassign(lab: Lab, primary_ip: PrimaryIP, body: dict) -> Pl
     return Plan()
 
 
-def primary_ip_change_dns_ptr(lab: Lab, primary_ip: PrimaryIP, body: dict) -> Plan:
+async def primary_ip_change_dns_ptr(
+    lab: Lab, primary_ip: PrimaryIP, body: dict
+) -> Plan:
     """Set the reverse DNS of one of the primary IP's addresses (its own by default)."""
     return record_dns_ptr(lab, primary_ip, body, default_ip=primary_ip["ip"])
 
 
-def primary_ip_change_protection(lab: Lab, primary_ip: PrimaryIP, body: dict) -> Plan:
+async def primary_ip_change_protection(
+    lab: Lab, primary_ip: PrimaryIP, body: dict
+) -> Plan:
     """Set the delete protection; Hetzner allows it only when auto_delete is false."""
     if body.get("delete") and primary_ip.get("auto_delete"):
         raise invalid("delete protection needs auto_delete false", "delete")
-    return change_delete_protection(lab, primary_ip, body)
+    return await change_delete_protection(lab, primary_ip, body)
 
 
 # the primary IP actions: Hetzner's name of the action and the function that plans it

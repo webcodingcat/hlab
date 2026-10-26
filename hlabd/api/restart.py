@@ -8,9 +8,10 @@ broken server or box does not stop the lab from starting.
 
 import logging
 
-from ..lab import Lab, now
+from ..lab import Lab
 from ..records import Server
 from . import storagebox, system
+from .faults import upgrade_faults
 from .servers import ensure_disk, remove_server
 from .storagebox.base import set_up_box_user
 
@@ -35,17 +36,10 @@ async def restore_storage_box(lab: Lab) -> None:
 
 def fail_running_actions(lab: Lab) -> None:
     """Fail the actions that were running: the restart cut them off."""
-    with lab.state.change():
+    with lab.state.change():  # saved once
         for action in lab.state["actions"].values():
             if action["status"] == "running":
-                action.update(
-                    {
-                        "status": "error",
-                        "error": {"code": "action_failed", "message": "lab restarted"},
-                        "finished": now(),
-                        "progress": 100,
-                    }
-                )
+                lab.finish(action, "lab restarted")
 
 
 async def drop_half_created_volumes(lab: Lab) -> None:
@@ -57,9 +51,14 @@ async def drop_half_created_volumes(lab: Lab) -> None:
     # a copy: other tasks may change the state while the scripts run
     creating = [v for v in state["volumes"].values() if v["status"] == "creating"]
     for volume in creating:
-        await lab.blocking(lab.fabric.volumes.delete, volume)
+        await lab.blocking(lab.fabric.volumes.delete, volume["id"])
         with state.change():
-            del state["volumes"][volume["id"]]
+            # checked again after the await: only this very record, still creating
+            if (
+                state["volumes"].get(volume["id"]) is volume
+                and volume["status"] == "creating"
+            ):
+                del state["volumes"][volume["id"]]
 
 
 def finish_box_setup(lab: Lab) -> None:
@@ -121,6 +120,7 @@ async def restore_clients(lab: Lab) -> None:
 async def restore_lab(lab: Lab) -> None:
     """Restore the Storage Box, state, network, servers and clients after a start."""
     lab.clear_flags()
+    upgrade_faults(lab)
     await restore_storage_box(lab)
     fail_running_actions(lab)
     await drop_half_created_volumes(lab)

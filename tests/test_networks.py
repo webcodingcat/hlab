@@ -551,9 +551,7 @@ def test_a_route_is_wanted_with_the_nics_that_hold_its_gateway(api):
         "10.0.1.1",
         network["id"],
     )
-    assert [(server["id"], tap) for server, tap in wanted.holders] == [
-        (gateway["id"], "prv1x1")
-    ]
+    assert wanted.holders == [(gateway["id"], "prv1x1")]
     # the routes put in are kept, to be removed before the next ones go in
     assert state_of(api, "net_routes") == [["10.100.0.0/24", str(network["id"])]]
 

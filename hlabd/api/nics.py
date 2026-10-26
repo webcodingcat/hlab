@@ -223,7 +223,7 @@ async def attach_to_network(lab: Lab, server: Server, body: dict) -> Plan:
             await system.attach_nic(lab, server, nic)
         except Exception:  # whatever failed: undo, then re-raise
             # remove the NIC again, so the API reports no network the VM does not have
-            await lab.blocking(lab.fabric.network.detach_nic, server, nic)
+            await lab.blocking(lab.fabric.network.detach_nic, server["id"], nic["tap"])
             remove_nic(lab, server, nic)
             await system.write_dhcp(lab)
             raise
@@ -232,12 +232,12 @@ async def attach_to_network(lab: Lab, server: Server, body: dict) -> Plan:
     return Plan(steps, server=server)
 
 
-def detach_from_network(lab: Lab, server: Server, body: dict) -> Plan:
+async def detach_from_network(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan a detach from a network."""
     nic = server_nic(lab, server, body)
 
     async def steps():
-        await lab.blocking(lab.fabric.network.detach_nic, server, nic)
+        await lab.blocking(lab.fabric.network.detach_nic, server["id"], nic["tap"])
         remove_nic(lab, server, nic)
         await system.write_dhcp(lab)
         await system.apply_faults(lab)
@@ -260,7 +260,7 @@ async def change_alias_ips(lab: Lab, server: Server, body: dict) -> Plan:
         )
 
     async def steps():
-        if await lab.blocking(lab.fabric.vms.is_alive, server):
+        if await lab.blocking(lab.fabric.vms.is_alive, server["id"]):
             await system.nic_up(lab, nic)
         # an alias IP may be the gateway of a route
         await system.apply_routes(lab)

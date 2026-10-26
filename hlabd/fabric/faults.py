@@ -14,7 +14,6 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..records import Server
 from .addresses import route_table
 from .shell import Shell
 from .vm import VMs
@@ -37,7 +36,8 @@ class Shaping:
 class Latency:
     """The shaping of every server's taps and every client's link."""
 
-    servers: list[tuple[Server, list[Shaping]]]  # shaped only while its VM runs
+    # (server ID, the shaping of its taps): shaped only while its VM runs
+    servers: list[tuple[int, list[Shaping]]]
     clients: list[Shaping]  # shaped only while the link exists (netem only)
 
 
@@ -99,8 +99,8 @@ class Faults:
         a tap replaces this until cleared.
         """
         with self.net_lock:
-            for server, shapings in latency.servers:
-                if not self.vms.is_alive(server):
+            for sid, shapings in latency.servers:
+                if not self.vms.is_alive(sid):
                     continue
                 for shaping in shapings:
                     # a broken tap must not fail another server's action

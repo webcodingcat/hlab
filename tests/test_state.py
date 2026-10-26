@@ -9,8 +9,10 @@ from pathlib import Path
 
 import pytest
 
+from hlabd import records
+from hlabd import state as state_module
 from hlabd.lab import Lab
-from hlabd.state import KINDS, State, Writer
+from hlabd.state import ID_BASE, KIND_TYPES, KINDS, State, Writer
 
 
 def in_thread(work):
@@ -93,6 +95,35 @@ def test_a_nested_change_saves_once_with_the_outer_one(tmp_path, monkeypatch):
             state["clients"][1] = {"id": 1}
         assert saves == []
     assert saves == [1]
+
+
+def test_only_the_outermost_change_takes_a_snapshot_and_undoes(tmp_path, monkeypatch):
+    state = State(tmp_path / "state.json")
+    snapshots = []
+    real_snapshot = state_module.snapshot
+    monkeypatch.setattr(
+        state_module,
+        "snapshot",
+        lambda data: snapshots.append(1) or real_snapshot(data),
+    )
+    with pytest.raises(RuntimeError), state.change():
+        state["clients"][1] = {"id": 1}
+        with state.change():
+            state["clients"][2] = {"id": 2}
+            raise RuntimeError("refused")
+    assert snapshots == [1]
+    assert state["clients"] == {}  # the outer block undid the nested change too
+
+
+def test_a_nested_error_caught_inside_the_outer_change_fails_in_the_tests(tmp_path):
+    state = State(tmp_path / "state.json")
+    with pytest.raises(AssertionError, match="nested"), state.change():
+        try:
+            with state.change():
+                state["clients"][1] = {"id": 1}
+                raise RuntimeError("refused")
+        except RuntimeError:
+            pass  # wrong: the nested change stays half done
 
 
 def test_a_change_that_awaits_is_caught_when_another_task_uses_the_state(
@@ -231,10 +262,24 @@ def test_the_check_is_off_unless_turned_on(tmp_path, monkeypatch):
     "overloaded", [State.__getitem__, Lab.get_or_404], ids=["state", "get_or_404"]
 )
 def test_the_typed_lookups_have_an_overload_for_every_kind(overloaded):
-    # a new kind without an overload would be typed Any (or not at all) by mypy
-    kinds = set()
+    # a new kind without an overload would be typed Any (or not at all) by mypy; the
+    # overloads cannot be generated from KIND_TYPES, so they are compared with it
+    typed = {}
     for overload in typing.get_overloads(overloaded):
-        annotation = typing.get_type_hints(overload)["kind"]
-        if typing.get_origin(annotation) is typing.Literal:
-            kinds.update(typing.get_args(annotation))
-    assert kinds == set(KINDS)
+        hints = typing.get_type_hints(overload)
+        if typing.get_origin(hints["kind"]) is typing.Literal:
+            (kind,) = typing.get_args(hints["kind"])
+            returned = hints["return"]
+            if typing.get_origin(returned) is dict:  # State: {id: record}
+                returned = typing.get_args(returned)[1]
+            typed[kind] = returned
+    assert typed == {kind: kind_type.record for kind, kind_type in KIND_TYPES.items()}
+
+
+def test_every_kind_has_its_own_id_range_and_is_a_record():
+    assert KINDS == tuple(ID_BASE)
+    bases = sorted(ID_BASE.values())
+    assert len(set(bases)) == len(bases)
+    # `Record` (code that treats every kind alike) covers every kind but actions
+    record_types = {t for t in KIND_TYPES.values() if t.record is not records.Action}
+    assert {t.record for t in record_types} == set(typing.get_args(records.Record))

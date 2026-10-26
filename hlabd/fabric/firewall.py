@@ -25,8 +25,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .. import config
-from ..records import FirewallRule
 from .shell import Shell
+
+
+@dataclass(frozen=True)
+class Rule:
+    """A firewall rule as the API checked it (Hetzner's fields, no description)."""
+
+    direction: str  # in, out
+    protocol: str  # tcp, udp, icmp, esp, gre
+    port: str | None  # a port, a range like 80-85 or any; tcp and udp only
+    source_ips: tuple[str, ...]  # inbound rules
+    destination_ips: tuple[str, ...]  # outbound rules
 
 
 @dataclass
@@ -35,7 +45,7 @@ class ServerRules:
 
     sid: int
     tap: str  # its public tap
-    rules: list[FirewallRule]  # maybe empty: then everything inbound is dropped
+    rules: list[Rule]  # maybe empty: then everything inbound is dropped
 
 
 def nft_port(port: str | None) -> str:
@@ -43,26 +53,26 @@ def nft_port(port: str | None) -> str:
     return "1-65535" if port == "any" else str(port)
 
 
-def _rule_lines(rule: FirewallRule, verdict: str) -> list[str]:
+def _rule_lines(rule: Rule, verdict: str) -> list[str]:
     """Turn one Hetzner rule into nft rules (one per address family present)."""
-    addrs = rule["source_ips"] if rule["direction"] == "in" else rule["destination_ips"]
-    side = "saddr" if rule["direction"] == "in" else "daddr"
+    addrs = rule.source_ips if rule.direction == "in" else rule.destination_ips
+    side = "saddr" if rule.direction == "in" else "daddr"
     networks = [ipaddress.ip_network(a) for a in addrs]
     lines = []
     for fam, ver, any_net in (("ip", 4, "0.0.0.0/0"), ("ip6", 6, "::/0")):
         fam_nets = [n for n in networks if n.version == ver]
         if not fam_nets:
             continue
-        if rule["protocol"] == "gre" and ver == 6:
+        if rule.protocol == "gre" and ver == 6:
             continue  # GRE over IPv6 is dropped by Hetzner's firewalls
         match = (
             f"meta nfproto {'ipv4' if ver == 4 else 'ipv6'}"
             if any(str(n) == any_net for n in fam_nets)
             else f"{fam} {side} {{ {', '.join(str(n) for n in fam_nets)} }}"
         )
-        proto = rule["protocol"]
+        proto = rule.protocol
         if proto in ("tcp", "udp"):
-            layer4 = f"{proto} dport {nft_port(rule['port'])}"
+            layer4 = f"{proto} dport {nft_port(rule.port)}"
         elif proto == "icmp":
             layer4 = "meta l4proto icmp" if ver == 4 else "meta l4proto ipv6-icmp"
         else:
@@ -81,8 +91,8 @@ def ruleset(servers: list[ServerRules]) -> str:
     chains, forward, input_rules, output = [], [], [], []
     for server in servers:
         sid, tap, rules = server.sid, server.tap, server.rules
-        inbound = [r for r in rules if r["direction"] == "in"]
-        outbound = [r for r in rules if r["direction"] == "out"]
+        inbound = [r for r in rules if r.direction == "in"]
+        outbound = [r for r in rules if r.direction == "out"]
         body = [f"ip saddr {config.ADMIN} accept", f"ip6 saddr {config.ADMIN6} accept"]
         for r in inbound:
             body += _rule_lines(r, "accept")

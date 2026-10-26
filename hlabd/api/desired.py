@@ -1,21 +1,27 @@
 """What the system should look like, computed from the state.
 
 These are pure functions. They take the state (or a record) and return plain data:
-the dataclasses of the fabric's parts, lists and strings. They run nothing and change
-nothing. api/system.py hands what they return to the fabric (DEVELOPING.md, Where code
-runs).
+the dataclasses of the fabric's parts, IDs, lists and strings, never a record. They
+run nothing and change nothing. api/system.py hands what they return to the fabric
+(DEVELOPING.md, Where code runs).
 """
 
-import copy
 import ipaddress
 
 from .. import config
 from ..fabric.addresses import link_local, network_gateway, prefix, public_mac
 from ..fabric.faults import Latency, Shaping
-from ..fabric.firewall import ServerRules
-from ..fabric.network import DhcpHost, PrivateTap, ServerTaps, WantedRoute
+from ..fabric.firewall import Rule, ServerRules
+from ..fabric.network import (
+    ClientLink,
+    DhcpHost,
+    PrivateTap,
+    PublicTap,
+    ServerTaps,
+    WantedRoute,
+)
 from ..labels import firewall_servers
-from ..records import Nic, Server, Volume
+from ..records import Client, Fault, FirewallRule, Nic, Server, TargetRef, Which
 from ..state import (
     State,
     client_by_name,
@@ -42,15 +48,14 @@ FAULT_SETS = (
 # --- faults and latency ---------------------------------------------------------------
 
 
-def target_ifaces(state: State, ref: str, which: str = "all") -> list[str]:
+def target_ifaces(state: State, ref: TargetRef, which: Which = "all") -> list[str]:
     """Return the interfaces of what a fault points at: a server or a client.
 
     `which` picks 'public', 'private' or 'all'; a client has only a public link.
     Raise KeyError when the server or client is gone.
     """
-    kind, key = ref.split(":", 1)
-    if kind == "s":
-        server = state["servers"].get(int(key))
+    if "server" in ref:
+        server = state["servers"].get(ref["server"])
         if not server:
             raise KeyError(f"{ref} is gone")
         public = [server["_lab"]["tap"]]
@@ -60,8 +65,8 @@ def target_ifaces(state: State, ref: str, which: str = "all") -> list[str]:
         if which == "private":
             return private
         return public + private
-    client = client_by_name(state, key)
-    if kind != "c" or not client:
+    client = client_by_name(state, ref["client"])
+    if not client:
         raise KeyError(f"{ref} is gone")
     return [client["veth"]] if which in ("public", "all") else []
 
@@ -124,7 +129,8 @@ def fault_sets(state: State) -> dict[str, list[str]]:
     for client in state["clients"].values():
         sets["src4"].append(f'"{client["veth"]}" . {client["ip"]}')
         sets["src6"].append(f'"{client["veth"]}" . {client["ip6"]}/128')
-    for fault in state.data["faults"]:
+    faults: list[Fault] = state.data["faults"]
+    for fault in faults:
         try:
             if fault["type"] == "cut":
                 first = target_ifaces(state, fault["first_ref"], fault["net"])
@@ -204,7 +210,7 @@ def latency(state: State, cfg: dict) -> Latency:
             )
             for tap, net in taps
         ]
-        shaped.append((server, shapings))
+        shaped.append((server["id"], shapings))
     clients = [
         Shaping(client["veth"], netem.get(client["veth"]))
         for client in state["clients"].values()
@@ -213,6 +219,16 @@ def latency(state: State, cfg: dict) -> Latency:
 
 
 # --- taps, DHCP and routes ------------------------------------------------------------
+
+
+def public_tap(server: Server) -> PublicTap:
+    """Return a server's public tap, with what routes to the server need."""
+    return PublicTap(server["id"], server["_lab"]["tap"], server["_lab"]["index"])
+
+
+def client_link(client: Client) -> ClientLink:
+    """Return an Internet client's namespace and veth, as the fabric sets them up."""
+    return ClientLink(client["name"], client["veth"], client["ip"], client["ip6"])
 
 
 def private_tap(state: State, nic: Nic) -> PrivateTap:
@@ -230,6 +246,7 @@ def private_tap(state: State, nic: Nic) -> PrivateTap:
 def server_taps(state: State, server: Server) -> ServerTaps:
     """Return what a server's taps are set up with when its VM starts."""
     return ServerTaps(
+        public_tap(server),
         primary_address_of(state, server, "ipv4"),
         primary_address_of(state, server, "ipv6"),
         [private_tap(state, nic) for nic in server["_lab"]["nics"]],
@@ -308,7 +325,7 @@ def wanted_routes(state: State) -> list[WantedRoute]:
             route["gateway"],
             network["id"],
             [
-                (server, nic["tap"])
+                (server["id"], nic["tap"])
                 for server, nic in nics_in(state, network["id"])
                 if route["gateway"] in nic_addresses(nic)
             ],
@@ -321,10 +338,21 @@ def wanted_routes(state: State) -> list[WantedRoute]:
 # --- firewalls and volumes ------------------------------------------------------------
 
 
+def firewall_rule(rule: FirewallRule) -> Rule:
+    """Return a firewall rule as the fabric builds it into nft rules."""
+    return Rule(
+        rule["direction"],
+        rule["protocol"],
+        rule["port"],
+        tuple(rule["source_ips"]),
+        tuple(rule["destination_ips"]),
+    )
+
+
 def firewall_rules(state: State) -> list[ServerRules]:
     """Return the rules of every server that a firewall applies to, by server ID.
 
-    A server's rules are copies of the rules of all its firewalls.
+    A server's rules are the rules of all its firewalls.
     """
     out = []
     for sid, server in sorted(state["servers"].items()):
@@ -332,18 +360,18 @@ def firewall_rules(state: State) -> list[ServerRules]:
             f for f in state["firewalls"].values() if sid in firewall_servers(state, f)
         ]
         if firewalls:
-            rules = copy.deepcopy([r for f in firewalls for r in f["rules"]])
+            rules = [firewall_rule(r) for f in firewalls for r in f["rules"]]
             out.append(ServerRules(sid, server["_lab"]["tap"], rules))
     return out
 
 
-def boot_volumes(state: State, server: Server) -> list[Volume]:
-    """Return the volumes a server's VM gets at boot.
+def boot_volumes(state: State, server: Server) -> list[int]:
+    """Return the IDs of the volumes a server's VM gets at boot.
 
     Those are the volumes attached to it whose disk exists.
     """
     return [
-        v
+        v["id"]
         for v in state["volumes"].values()
         if v.get("server") == server["id"] and v["status"] == "available"
     ]

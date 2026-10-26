@@ -83,9 +83,9 @@ async def copy_snapshot(lab: Lab, box: StorageBox, snapshot: BoxSnapshot) -> Non
 
     If the copy fails, the record is removed again.
     """
-    fabric_box, path = lab.fabric.box, snap_dir(box, snapshot["name"])
+    fabric_box, path = lab.fabric.box, snap_dir(box["id"], snapshot["name"])
     try:
-        await lab.blocking(fabric_box.take_snapshot, data_dir(box), path)
+        await lab.blocking(fabric_box.take_snapshot, data_dir(box["id"]), path)
     except Exception:  # undo the partial change, then raise
         with lab.state.change():
             lab.state["box_snapshots"].pop(snapshot["id"], None)
@@ -121,7 +121,9 @@ async def take_automatic_snapshot(lab: Lab, box: StorageBox) -> BoxSnapshot:
 
 async def remove_snapshot(lab: Lab, box: StorageBox, snapshot: BoxSnapshot) -> None:
     """Remove a snapshot's copy and its record."""
-    await lab.blocking(lab.fabric.box.remove_tree, snap_dir(box, snapshot["name"]))
+    await lab.blocking(
+        lab.fabric.box.remove_tree, snap_dir(box["id"], snapshot["name"])
+    )
     with lab.state.change():
         del lab.state["box_snapshots"][snapshot["id"]]
 
@@ -178,7 +180,7 @@ async def delete_snapshot(lab: Lab, bid: int, ref: str) -> dict:
     }
 
 
-def rollback_snapshot(lab: Lab, box: StorageBox, body: dict) -> Plan:
+async def rollback_snapshot(lab: Lab, box: StorageBox, body: dict) -> Plan:
     """Roll the box back to a snapshot (the box action rollback_snapshot).
 
     As on Hetzner, the data goes back to the snapshot, and newer snapshots are
@@ -192,7 +194,9 @@ def rollback_snapshot(lab: Lab, box: StorageBox, body: dict) -> Plan:
 
     async def steps():
         await lab.blocking(
-            lab.fabric.box.roll_back, snap_dir(box, snapshot["name"]), data_dir(box)
+            lab.fabric.box.roll_back,
+            snap_dir(box["id"], snapshot["name"]),
+            data_dir(box["id"]),
         )
         # sub-account homes are paths: they follow what the snapshot has there
         subaccounts = [

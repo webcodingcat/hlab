@@ -91,7 +91,7 @@ def update_resource(
         update_fields(lab, item, body, keys)
 
 
-def change_delete_protection(lab: Lab, item: ProtectedRecord, body: dict) -> Plan:
+async def change_delete_protection(lab: Lab, item: ProtectedRecord, body: dict) -> Plan:
     """Set a resource's delete protection: the change_protection action.
 
     A body without `delete` keeps the current value. Every resource with a plain
@@ -192,11 +192,11 @@ def filtered[T: Mapping[str, Any]](
             for i in out
             if match_labels(i.get("labels") or {}, query["label_selector"])
         ]
-    for k, fn in (extra or {}).items():
+    for parameter, matches in (extra or {}).items():
         # a filter given several times (status=running&status=off) matches any value
-        if k in query:
-            value = ",".join(query.getlist(k))
-            out = [i for i in out if fn(i, value)]
+        if parameter in query:
+            value = ",".join(query.getlist(parameter))
+            out = [i for i in out if matches(i, value)]
     return sorted(out, key=lambda i: i.get("id", 0))
 
 

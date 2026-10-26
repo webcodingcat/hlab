@@ -181,11 +181,7 @@ async def create_firewall(lab: Lab, body: dict) -> dict:
             "applied_to": applied,
         }
         state["firewalls"][fid] = firewall
-        try:
-            check_limit(lab)
-        except ApiError:
-            del state["firewalls"][fid]
-            raise
+        check_limit(lab)  # over the limit: the block undoes the new firewall
     await system.apply_firewall(lab)
     resource = (fid, "firewall")
     actions = [lab.finished_action("set_firewall_rules", [resource])]
@@ -221,7 +217,7 @@ def delete_firewall(lab: Lab, fid: int) -> None:
 # actions in `Plan.finished`.
 
 
-def set_rules(lab: Lab, firewall: Firewall, body: dict) -> Plan:
+async def set_rules(lab: Lab, firewall: Firewall, body: dict) -> Plan:
     """Replace the firewall's rules.
 
     apply_firewall follows, naming the servers the firewall applies to, if there are
@@ -237,7 +233,7 @@ def set_rules(lab: Lab, firewall: Firewall, body: dict) -> Plan:
     return Plan(finished=[("apply_firewall", resources)])
 
 
-def apply_to_resources(lab: Lab, firewall: Firewall, body: dict) -> Plan:
+async def apply_to_resources(lab: Lab, firewall: Firewall, body: dict) -> Plan:
     """Apply the firewall to more servers or label selectors."""
     have = {apply_to_key(r) for r in firewall["applied_to"]}
     new = [checked_apply_to(lab, r, 404) for r in body.get("apply_to") or []]
@@ -254,7 +250,7 @@ def apply_to_resources(lab: Lab, firewall: Firewall, body: dict) -> Plan:
     return Plan(resources=server_resources(servers))
 
 
-def remove_from_resources(lab: Lab, firewall: Firewall, body: dict) -> Plan:
+async def remove_from_resources(lab: Lab, firewall: Firewall, body: dict) -> Plan:
     """Remove the firewall from servers or label selectors.
 
     A server that the firewall applies to only through a label selector cannot be

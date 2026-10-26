@@ -318,7 +318,9 @@ async def delete_network(lab: Lab, nid: int) -> None:
             held.claim(server, "_locked", SERVER_LOCKED)
         try:
             for server, nic in members:
-                await lab.blocking(lab.fabric.network.detach_nic, server, nic)
+                await lab.blocking(
+                    lab.fabric.network.detach_nic, server["id"], nic["tap"]
+                )
                 with state.change():
                     server["_lab"]["nics"].remove(nic)
                     drop_netem(lab, [nic["tap"]])

@@ -175,7 +175,7 @@ async def create_subaccount(lab: Lab, bid: int, body: dict) -> dict:
                 "id": subaccount_id,
                 "box": box["id"],
                 "number": number,
-                "username": f"{username(box)}-sub{number}",
+                "username": f"{username(box['id'])}-sub{number}",
                 "name": body.get("name"),
                 "home_directory": home,
                 "access": access_settings,
