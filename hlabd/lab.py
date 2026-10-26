@@ -4,13 +4,15 @@
 action. `fabric/` carries it out through scripts/*.sh. This module ties the two
 together; every API module gets the one `Lab`.
 
-Locking: every change to the state, and every loop over it, holds `state.lock`. Slow
-work stays outside the lock. See DEVELOPING.md, State and locking.
+The event loop owns the state: everything that reads or changes it runs on the loop,
+and blocking work (scripts, files) runs in threads through `blocking()`, with plain
+data in and out. See DEVELOPING.md, State.
 
 Actions: every resource lists its actions in a table, `{command: (Hetzner's name,
-function)}`. The function checks the request and returns a `Plan`; `act()` runs it the
-same way for every resource. As on Hetzner, a change that is done at once still gets an
-action, finished right away. Firewalls are the exception (`api/firewalls.py`).
+function)}`. The function checks the request and returns a `Plan` (an `async def` one
+when it must ask the system first); `act()` runs it the same way for every resource.
+As on Hetzner, a change that is done at once still gets an action, finished right
+away. Firewalls are the exception (`api/firewalls.py`).
 
 Flags: a flag on a resource says that an action works on it, so a second one gets 423,
 as on Hetzner. Code holds flags only through `holding()`: what is still held when the
@@ -22,6 +24,7 @@ Fields starting with `_` are the lab's own; the API never shows them.
 """
 
 import asyncio
+import inspect
 import logging
 from collections.abc import Awaitable, Callable, Coroutine, Iterator
 from contextlib import contextmanager
@@ -42,8 +45,9 @@ type Steps = Callable[[], Awaitable[None]]
 
 # a resource's action table: {Hetzner's command: (Hetzner's action name, function)};
 # the function checks the request for a record of the table's kind and plans the action
+# (an `async def` one when it must ask the system first, through `Lab.blocking`)
 type ActionTable[R: ActionRecord] = dict[
-    str, tuple[str, Callable[[Lab, R, dict], Plan]]
+    str, tuple[str, Callable[[Lab, R, dict], Plan | Awaitable[Plan]]]
 ]
 
 # Finished actions kept in the state. Hetzner keeps every action; the lab keeps the
@@ -158,9 +162,7 @@ class Lab:
         self.cfg, self.state, self.fabric = cfg, state, fabric
         # factor on Hetzner's timings (0 = instant)
         self.scale = float(cfg["api"]["time_scale"])
-        # injected API faults (/_lab/api-fault). Only code on the event loop reads or
-        # changes it (the middleware, the async control routes): the middleware counts
-        # it down, and a worker thread changing it meanwhile could undo that count.
+        # injected API faults (/_lab/api-fault), counted down by the middleware
         self.api_fault: dict[str, int] = {}
         self.clear_api_fault()
         # the running actions, as tasks on the event loop (`spawn`)
@@ -172,7 +174,15 @@ class Lab:
         self.threads: set[asyncio.Future] = set()
         # system image name → its file (loaded at start)
         self.images: dict[str, str] = {}
-        self.loop: asyncio.AbstractEventLoop | None = None
+        # held while a whole picture of the system (fault sets, latency, firewall, DHCP,
+        # routes) is computed and put in place, so the newest is put in place last
+        # (api/system.py)
+        self.picture_lock = asyncio.Lock()
+
+    def own_state(self) -> None:
+        """Make the running event loop the state's owner (daemon.run, test clients)."""
+        asyncio.get_running_loop()  # raises outside the loop
+        self.state.own()
 
     def clear_api_fault(self) -> None:
         """Answer API requests normally again: no injected status, no delay."""
@@ -188,11 +198,12 @@ class Lab:
     async def blocking[**P, T](
         self, work: Callable[P, T], *args: P.args, **kwargs: P.kwargs
     ) -> T:
-        """Run blocking work (scripts, files, saving the state) in a thread.
+        """Run blocking work (scripts, files) in a thread, so the API keeps answering.
 
-        So the API keeps answering. A cancelled caller stops waiting at once, but the
-        thread runs on until `work` returns. It stays in `threads` until then, so a lab
-        reset can wait for it.
+        `work` gets plain data and returns plain data: never the state, nor a record
+        whose changing fields it reads (only the loop may touch the state). A cancelled
+        caller stops waiting at once, but the thread runs on until `work` returns. It
+        stays in `threads` until then, so a lab reset can wait for it.
         """
         future = asyncio.ensure_future(asyncio.to_thread(work, *args, **kwargs))
         self.threads.add(future)
@@ -209,27 +220,8 @@ class Lab:
             future.exception()
 
     def spawn(self, coro: Coroutine[Any, Any, None]) -> None:
-        """Run a coroutine as a task on the lab's event loop, from any thread.
-
-        The task is in `tasks` before this returns. A worker thread (a sync route) lets
-        the loop create the task and waits until it has; so `tasks` holds only asyncio
-        Tasks, and only the loop changes it.
-        """
-        try:
-            asyncio.get_running_loop()
-        # a worker thread: the loop is set at start (daemon.run; the test clients)
-        except RuntimeError:
-            assert self.loop is not None
-            asyncio.run_coroutine_threadsafe(self.start_task(coro), self.loop).result()
-            return
-        self.track(asyncio.create_task(coro))
-
-    async def start_task(self, coro: Coroutine[Any, Any, None]) -> None:
-        """Create a task for a coroutine on the running loop (see `spawn`)."""
-        self.track(asyncio.create_task(coro))
-
-    def track(self, task: asyncio.Task) -> None:
-        """Keep a task in `tasks` until it ends."""
+        """Run a coroutine as a task on the event loop, in `tasks` until it ends."""
+        task = asyncio.create_task(coro)
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
 
@@ -272,26 +264,23 @@ class Lab:
 
     def new_action(self, command: str, resources: list[tuple[int, str]]) -> Action:
         """Create a new action in status running, for the given (id, type) resources."""
-        with self.state.lock:
-            action: Action = {
-                "id": self.state.new_id("actions"),
-                "command": command,
-                "status": "running",
-                "progress": 0,
-                "started": now(),
-                "finished": None,
-                "error": None,
-                "resources": [{"id": i, "type": t} for i, t in resources],
-            }
-            actions = self.state["actions"]
-            actions[action["id"]] = action
-            # the state stays small: the oldest finished actions are removed
-            if len(actions) > MAX_ACTIONS:
-                finished = [
-                    aid for aid, x in actions.items() if x["status"] != "running"
-                ]
-                for aid in finished[: len(actions) - KEPT_ACTIONS]:
-                    del actions[aid]
+        action: Action = {
+            "id": self.state.new_id("actions"),
+            "command": command,
+            "status": "running",
+            "progress": 0,
+            "started": now(),
+            "finished": None,
+            "error": None,
+            "resources": [{"id": i, "type": t} for i, t in resources],
+        }
+        actions = self.state["actions"]
+        actions[action["id"]] = action
+        # the state stays small: the oldest finished actions are removed
+        if len(actions) > MAX_ACTIONS:
+            finished = [aid for aid, x in actions.items() if x["status"] != "running"]
+            for aid in finished[: len(actions) - KEPT_ACTIONS]:
+                del actions[aid]
         log.info(
             "action %s %s %s",
             action["id"],
@@ -307,10 +296,7 @@ class Lab:
         return action
 
     def finish(self, action: Action, message: str | None = None) -> None:
-        """Finish an action: success, or error with `message`, and save the state.
-
-        It saves: on the event loop, call it through `blocking`.
-        """
+        """Finish an action: success, or error with `message`, and save the state."""
         with self.state.change():
             action.update(
                 {
@@ -357,21 +343,17 @@ class Lab:
                 message = str(error)
                 for next_action in next_actions or []:
                     if next_action["status"] == "running":
-                        await self.blocking(self.finish, next_action, message)
+                        self.finish(next_action, message)
                 if server is not None and server["status"] in IN_BETWEEN:
                     alive = await self.blocking(self.fabric.vms.is_alive, server)
-                    await self.blocking(
-                        self.set_status, server, "running" if alive else "off"
-                    )
+                    self.set_status(server, "running" if alive else "off")
             except asyncio.CancelledError:
                 message = "the action was cancelled (lab stopped or reset)"
                 raise
             finally:
                 for item, flag in flags:
                     self.release(item, flag)
-                # saved with the flags off; the thread runs on even if the task is
-                # cancelled again meanwhile, and a lab reset waits for it
-                await self.blocking(self.finish, action, message)
+                self.finish(action, message)  # saved with the flags off
 
         steps_run = run_steps()
         try:
@@ -382,7 +364,7 @@ class Lab:
                 self.release(item, flag)
             raise
 
-    def act[R: ActionRecord](
+    async def act[R: ActionRecord](
         self,
         actions: ActionTable[R],
         command: str,
@@ -394,7 +376,8 @@ class Lab:
     ) -> dict:
         """Run one action of a resource from its table and return the answer.
 
-        The table's function checks the request and returns a `Plan`. Before that, the
+        The table's function checks the request and returns a `Plan` (awaited if the
+        function is `async def`). Before that, the
         resource gets `flag` (423 `busy_message` if it is set already); a record-only
         action (`RECORD_ONLY`) takes no flag. If the plan names another server, that
         server gets its `locked` flag too (423 if another action runs on it).
@@ -412,7 +395,8 @@ class Lab:
         with self.holding() as held:
             if flag:
                 held.claim(item, flag, busy_message)
-            plan = plan_action(self, item, body)
+            planned = plan_action(self, item, body)
+            plan = await planned if inspect.isawaitable(planned) else planned
             if plan.server is not None and plan.server is not item:
                 held.claim(plan.server, "locked", SERVER_LOCKED)
             resources = [(item["id"], item_type), *plan.resources]
@@ -441,27 +425,23 @@ class Lab:
     def claim(self, item: AnyRecord, flag: str, message: str) -> None:
         """Set a flag on a resource, or raise 423 (`message`) if it is set already.
 
-        The check and the change happen under one lock, so of two requests at the same
-        time exactly one wins. Code outside this module claims through `holding()`.
+        Check and change run on the loop without an await between them, so of two
+        requests at the same time exactly one wins. Code outside this module claims
+        through `holding()`.
         """
-        with self.state.lock:
-            if item.get(flag):
-                raise locked(message)
-            item[flag] = True
+        if item.get(flag):
+            raise locked(message)
+        item[flag] = True
 
     def release(self, item: AnyRecord, flag: str = "locked") -> None:
         """Take a flag off a resource (a server's `locked` by default)."""
-        with self.state.lock:
-            if flag == "locked":
-                item["locked"] = False  # shown by the API
-            else:
-                item.pop(flag, None)
+        if flag == "locked":
+            item["locked"] = False  # shown by the API
+        else:
+            item.pop(flag, None)
 
     def set_status(self, server: Server, status: str) -> None:
-        """Set a server's status and save the state.
-
-        It saves: on the event loop, call it through `blocking`.
-        """
+        """Set a server's status and save the state."""
         with self.state.change():
             server["status"] = status
 
@@ -476,22 +456,22 @@ class Lab:
         while True:
             await asyncio.sleep(5)
             try:
-                await self.blocking(self.watch_vms)
+                await self.watch_vms()
             except Exception:  # the watcher keeps going; the error is in the log
                 log.exception("VM watcher")
 
-    def watch_vms(self) -> None:
+    async def watch_vms(self) -> None:
         """Trim console logs and mark servers off whose VM has ended."""
-        with self.state.lock:  # a copy: the loop runs scripts
-            servers = list(self.state["servers"].values())
+        # a copy: servers may go while the scripts run
+        servers = list(self.state["servers"].values())
         for server in servers:
-            self.fabric.vms.trim_console(server)
+            await self.blocking(self.fabric.vms.trim_console, server)
             if server["status"] == "running" and not server.get("locked"):
-                self.stop_if_ended(server)
+                await self.stop_if_ended(server)
 
-    def stop_if_ended(self, server: Server) -> None:
+    async def stop_if_ended(self, server: Server) -> None:
         """Mark a running server off if its VM has ended; remove its taps and DHCP."""
-        if self.fabric.vms.is_alive(server):
+        if await self.blocking(self.fabric.vms.is_alive, server):
             return
         with self.holding() as held:
             try:
@@ -499,8 +479,10 @@ class Lab:
             except ApiError:
                 # an action started meanwhile: it owns the server now
                 return
-            if server["status"] != "running" or self.fabric.vms.is_alive(server):
+            if server["status"] != "running" or await self.blocking(
+                self.fabric.vms.is_alive, server
+            ):
                 return
             log.info("server %s: its VM ended", server["name"])
-            system.kill_vm(self, server)
+            await system.kill_vm(self, server)
             self.set_status(server, "off")

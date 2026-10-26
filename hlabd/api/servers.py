@@ -88,7 +88,7 @@ class ServerRequest:
     start: bool
 
 
-def create_server(lab: Lab, body: dict) -> dict:
+async def create_server(lab: Lab, body: dict) -> dict:
     """Create a server and start its create action.
 
     Everything is checked before anything changes, so a refused request leaves nothing
@@ -96,8 +96,8 @@ def create_server(lab: Lab, body: dict) -> dict:
     a server (`server["_lab"]`) and of its NICs are in records.py.
     """
     request = checked_server_request(lab, body)
-    if request.network_ids:
-        lab.fabric.network.read_local_addresses()  # a script: not under the lock
+    if request.network_ids:  # a script: the addresses no NIC gets
+        await lab.blocking(lab.fabric.network.read_local_addresses)
     with lab.holding() as held:
         server = record_server(lab, request, held)
         sid = server["id"]
@@ -129,10 +129,9 @@ def checked_server_request(lab: Lab, body: dict) -> ServerRequest:
     location = catalogue_name(lab, "location", body.get("location") or "fsn1")
     keys = []
     for ref in body.get("ssh_keys") or []:
-        with state.lock:
-            ssh_key = by_name_or_id(
-                state["ssh_keys"].values(), ref, lambda k: (k["name"], k["id"])
-            )
+        ssh_key = by_name_or_id(
+            state["ssh_keys"].values(), ref, lambda k: (k["name"], k["id"])
+        )
         if not ssh_key:
             raise invalid(f"ssh key {ref!r} not found")
         keys.append(ssh_key["public_key"])
@@ -145,14 +144,13 @@ def checked_server_request(lab: Lab, body: dict) -> ServerRequest:
     if len({str(v) for v in volume_refs}) != len(volume_refs):
         raise invalid("a volume is listed twice", "volumes")
     given_volumes = []
-    with state.lock:  # several reads that must fit together
-        for vid in volume_refs:
-            volume = state["volumes"].get(ref_id(vid, "volumes"))
-            if not volume:
-                raise invalid(f"volume {vid} not found", "volumes")
-            if volume["status"] != "available" or volume.get("_busy"):
-                raise locked(f"volume {vid} is busy")
-            given_volumes.append(volume)
+    for vid in volume_refs:
+        volume = state["volumes"].get(ref_id(vid, "volumes"))
+        if not volume:
+            raise invalid(f"volume {vid} not found", "volumes")
+        if volume["status"] != "available" or volume.get("_busy"):
+            raise locked(f"volume {vid} is busy")
+        given_volumes.append(volume)
     if len(given_volumes) > volumes.VOLUMES_PER_SERVER:
         raise limit_exceeded(
             f"at most {volumes.VOLUMES_PER_SERVER} volumes per server",
@@ -178,9 +176,9 @@ def checked_server_request(lab: Lab, body: dict) -> ServerRequest:
 def record_server(lab: Lab, request: ServerRequest, held: HeldFlags) -> Server:
     """Record the new server with its addresses, volumes and firewalls; save.
 
-    All under one lock: the checks that need it come first, then the changes. If a
-    check fails, the addresses taken so far are freed and nothing is saved. The server
-    leaves with its `locked` flag claimed through `held`.
+    One change: the checks come first, then the changes. If a check fails, the
+    addresses taken so far are freed and nothing is saved. The server leaves with its
+    `locked` flag claimed through `held`.
     """
     state = lab.state
     with state.change():
@@ -193,8 +191,8 @@ def record_server(lab: Lab, request: ServerRequest, held: HeldFlags) -> Server:
                 raise invalid(f"firewall {fid} not found", "firewalls")
         server = new_server(lab, request, state.new_id("servers"), index)
         for volume in request.volumes:
-            # check again under the lock: a volume action may have started since the
-            # first check, and it must not run while the attachment is recorded
+            # check again: a volume action may have started since the first check,
+            # and it must not run while the attachment is recorded
             if volume["status"] != "available" or volume.get("_busy"):
                 raise locked(f"volume {volume['id']} is busy")
             volumes.check_attach(lab, volume, server)
@@ -216,7 +214,7 @@ def record_server(lab: Lab, request: ServerRequest, held: HeldFlags) -> Server:
         if not request.public_keys:
             server["_lab"]["root_password"] = secrets.token_urlsafe(15)
         state["servers"][server["id"]] = server
-        held.claim(server, "locked", SERVER_LOCKED)  # under the lock, so still free
+        held.claim(server, "locked", SERVER_LOCKED)  # new, so still free
     return server
 
 
@@ -251,30 +249,31 @@ def create_steps(
     """Return the background steps of a create action: disk, then start or off."""
 
     async def steps():
-        await lab.blocking(system.apply_firewall, lab)
-        base = await lab.blocking(image_path, lab, request.image)
-        await lab.blocking(lab.fabric.vms.create_disk, server, base)
+        await system.apply_firewall(lab)
+        base = image_path(lab, request.image)
+        disk_gb = server["_lab"]["disk_gb"]
+        await lab.blocking(lab.fabric.vms.create_disk, server, base, disk_gb)
         if request.start:
-            await lab.blocking(lab.set_status, server, "starting")
-            await lab.blocking(system.start_vm, lab, server)
+            lab.set_status(server, "starting")
+            await system.start_vm(lab, server)
             await lab.sleep(CREATE_START_SECONDS)
-            await lab.blocking(lab.set_status, server, "running")
+            lab.set_status(server, "running")
         else:
-            await lab.blocking(lab.set_status, server, "off")
+            lab.set_status(server, "off")
         for next_action in next_actions:
-            await lab.blocking(lab.finish, next_action)
+            lab.finish(next_action)
 
     return steps
 
 
-def update_server(lab: Lab, sid: int, body: dict) -> dict:
+async def update_server(lab: Lab, sid: int, body: dict) -> dict:
     """Change a server's name or labels; new labels update the firewalls."""
     server = lab.server_or_404(sid)
     if "name" in body:
         check_hostname(body["name"])
     update_resource(lab, "servers", server, body, ("name", "labels"), "server")
     if "labels" in body:  # label selectors of firewalls may match differently now
-        system.apply_firewall(lab)
+        await system.apply_firewall(lab)
     return {"server": hetzner.server_json(lab, server)}
 
 
@@ -288,7 +287,7 @@ def delete_server(lab: Lab, sid: int) -> dict:
         raise protected("server is delete protected")
 
     async def steps():
-        await lab.blocking(remove_server, lab, server)
+        await remove_server(lab, server)
         await lab.sleep(DELETE_SECONDS)
 
     with lab.holding() as held:
@@ -311,17 +310,18 @@ async def ensure_disk(lab: Lab, server: Server) -> None:
     A lab restart can cut the creation of a server short and leave it without a disk.
     """
     if not (lab.fabric.vms.directory(server) / "disk.qcow2").is_file():
-        base = await lab.blocking(image_path, lab, server["image"])
-        await lab.blocking(lab.fabric.vms.create_disk, server, base)
+        base = image_path(lab, server["image"])
+        disk_gb = server["_lab"]["disk_gb"]
+        await lab.blocking(lab.fabric.vms.create_disk, server, base, disk_gb)
 
 
-def remove_server(lab: Lab, server: Server) -> None:
+async def remove_server(lab: Lab, server: Server) -> None:
     """Remove a server: its VM, its addresses and every reference to it.
 
     Its volumes stay, detached.
     """
-    state, fabric, sid = lab.state, lab.fabric, server["id"]
-    system.delete_vm(lab, server)
+    state, sid = lab.state, server["id"]
+    await system.delete_vm(lab, server)
     unrouted = []
     with state.change():
         for floating_ip in state["floating_ips"].values():
@@ -345,10 +345,10 @@ def remove_server(lab: Lab, server: Server) -> None:
         )
         state["servers"].pop(sid, None)
     for ip in unrouted:
-        fabric.network.route_floating_ip(ip, None)
-    system.write_dhcp(lab)
-    system.apply_faults(lab)
-    system.apply_firewall(lab)
+        await system.route_floating_ip(lab, ip, None)
+    await system.write_dhcp(lab)
+    await system.apply_faults(lab)
+    await system.apply_firewall(lab)
 
 
 # --- server actions -------------------------------------------------------------------
@@ -361,8 +361,7 @@ def change_protection(lab: Lab, server: Server, body: dict) -> Plan:
     given = {bool(body[k]) for k in ("delete", "rebuild") if k in body}
     if len(given) != 1:
         raise invalid("delete and rebuild need the same value", "delete")
-    with lab.state.lock:
-        server["protection"]["delete"] = server["protection"]["rebuild"] = given.pop()
+    server["protection"]["delete"] = server["protection"]["rebuild"] = given.pop()
     return Plan()
 
 
@@ -376,10 +375,10 @@ def poweroff(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan a hard power off: the VM is killed at once, the status changes after."""
 
     async def steps():
-        await lab.blocking(system.kill_vm, lab, server)
-        await lab.blocking(lab.set_status, server, "stopping")
+        await system.kill_vm(lab, server)
+        lab.set_status(server, "stopping")
         await lab.sleep(POWEROFF_SECONDS)
-        await lab.blocking(lab.set_status, server, "off")
+        lab.set_status(server, "off")
         await lab.sleep(POWEROFF_END_SECONDS)
 
     return Plan(steps, server=server)
@@ -408,15 +407,15 @@ def poweron(lab: Lab, server: Server, body: dict) -> Plan:
             lab.fabric.vms.is_alive, server
         ):
             return  # already on: the action succeeds, nothing changes
-        await lab.blocking(lab.set_status, server, "starting")
+        lab.set_status(server, "starting")
         if server.get("_dead"):  # the fault "dead": broken hardware, the VM stays off
             await lab.sleep(POWERON_SECONDS)
-            await lab.blocking(lab.set_status, server, "off")
+            lab.set_status(server, "off")
             return
         await ensure_disk(lab, server)
-        await lab.blocking(system.start_vm, lab, server)
+        await system.start_vm(lab, server)
         await lab.sleep(POWERON_SECONDS)
-        await lab.blocking(lab.set_status, server, "running")
+        lab.set_status(server, "running")
         await lab.sleep(POWERON_END_SECONDS)
 
     return Plan(steps, server=server)
@@ -432,9 +431,9 @@ def restart_vm(lab: Lab, server: Server, press: Callable[[Server], None]) -> Pla
         if server["status"] != "running":
             return
         await lab.blocking(press, server)
-        await lab.blocking(lab.set_status, server, "starting")
+        lab.set_status(server, "starting")
         await lab.sleep(RESTART_SECONDS)
-        await lab.blocking(lab.set_status, server, "running")
+        lab.set_status(server, "running")
         await lab.sleep(RESTART_END_SECONDS)
 
     return Plan(steps, server=server)
@@ -464,8 +463,7 @@ def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
     image = catalogue_name(lab, "image", body.get("image"))
     check_user_data(body.get("user_data"))
     if not server["public_keys"]:
-        with lab.state.lock:
-            server["_lab"]["root_password"] = secrets.token_urlsafe(15)
+        server["_lab"]["root_password"] = secrets.token_urlsafe(15)
 
     def start_rebuild() -> None:
         with lab.state.change():
@@ -474,21 +472,20 @@ def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
 
     async def steps():
         previous_status = server["status"]
-        with lab.state.lock:  # a lab restart reads it
-            target = "running" if previous_status == "running" else "off"
-            server["_lab"]["target"] = target
-        base = await lab.blocking(image_path, lab, image)  # before the old disk is gone
-        await lab.blocking(system.delete_vm, lab, server)
-        await lab.blocking(start_rebuild)
-        await lab.blocking(lab.fabric.vms.create_disk, server, base)
+        # a lab restart reads it
+        target = "running" if previous_status == "running" else "off"
+        server["_lab"]["target"] = target
+        base = image_path(lab, image)  # before the old disk is gone
+        await system.delete_vm(lab, server)
+        start_rebuild()
+        disk_gb = server["_lab"]["disk_gb"]
+        await lab.blocking(lab.fabric.vms.create_disk, server, base, disk_gb)
         if "user_data" in body:
-            with lab.state.lock:
-                server["user_data"] = body["user_data"]
+            server["user_data"] = body["user_data"]
         if previous_status == "running":
-            await lab.blocking(system.start_vm, lab, server)
+            await system.start_vm(lab, server)
         await lab.sleep(REBUILD_SECONDS)
-        await lab.blocking(
-            lab.set_status,
+        lab.set_status(
             server,
             previous_status if previous_status in ("running", "off") else "running",
         )
@@ -526,21 +523,20 @@ def change_type(lab: Lab, server: Server, body: dict) -> Plan:
     async def steps():
         if upgrade and new_disk > disk:
             await lab.blocking(lab.fabric.vms.resize_disk, server, new_disk)
-            with lab.state.lock:
-                server["_lab"]["disk_gb"] = new_disk
-        await lab.blocking(save_type)
+            server["_lab"]["disk_gb"] = new_disk
+        save_type()
         await lab.sleep(CHANGE_TYPE_SECONDS)
 
     return Plan(steps, server=server)
 
 
-def reset_password(lab: Lab, server: Server, body: dict) -> Plan:
+async def reset_password(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan a root password reset.
 
     Like Hetzner, the lab sets the password in the guest through the QEMU guest
     agent.
     """
-    if not lab.fabric.vms.is_alive(server):
+    if not await lab.blocking(lab.fabric.vms.is_alive, server):
         raise ApiError(409, "server_not_running", "the server is not running")
     password = secrets.token_urlsafe(15)
 
@@ -580,10 +576,12 @@ SERVER_ACTIONS: ActionTable[Server] = {
 }
 
 
-def run_server_action(lab: Lab, sid: int, cmd: str, body: dict) -> dict:
+async def run_server_action(lab: Lab, sid: int, cmd: str, body: dict) -> dict:
     """Run a server action; like Hetzner, allow one at a time per server (else 423)."""
     server = lab.server_or_404(sid)
-    return lab.act(SERVER_ACTIONS, cmd, server, "server", body, "locked", SERVER_LOCKED)
+    return await lab.act(
+        SERVER_ACTIONS, cmd, server, "server", body, "locked", SERVER_LOCKED
+    )
 
 
 # --- routes ---------------------------------------------------------------------------
@@ -594,35 +592,32 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     state = lab.state
 
     @app.get("/v1/servers")
-    def server_list(request: Request):
-        with state.lock:
-            items = filtered(
-                request,
-                list(state["servers"].values()),
-                {"status": lambda server, value: server["status"] in value.split(",")},
-            )
-            return paginate(
-                request, [hetzner.server_json(lab, s) for s in items], "servers"
-            )
+    async def server_list(request: Request):
+        items = filtered(
+            request,
+            list(state["servers"].values()),
+            {"status": lambda server, value: server["status"] in value.split(",")},
+        )
+        return paginate(
+            request, [hetzner.server_json(lab, s) for s in items], "servers"
+        )
 
     @app.post("/v1/servers", status_code=201)
     async def server_create(request: Request):
-        return await lab.blocking(create_server, lab, await read_body(request))
+        return await create_server(lab, await read_body(request))
 
     @app.get("/v1/servers/{sid}")
-    def server_get(sid: int):
+    async def server_get(sid: int):
         return {"server": hetzner.server_json(lab, lab.server_or_404(sid))}
 
     @app.put("/v1/servers/{sid}")
     async def server_update(sid: int, request: Request):
-        return await lab.blocking(update_server, lab, sid, await read_body(request))
+        return await update_server(lab, sid, await read_body(request))
 
     @app.delete("/v1/servers/{sid}")
-    def server_delete(sid: int):
+    async def server_delete(sid: int):
         return delete_server(lab, sid)
 
     @app.post("/v1/servers/{sid}/actions/{cmd}", status_code=201)
     async def server_action(sid: int, cmd: str, request: Request):
-        return await lab.blocking(
-            run_server_action, lab, sid, cmd, await read_body(request)
-        )
+        return await run_server_action(lab, sid, cmd, await read_body(request))

@@ -162,7 +162,7 @@ def checked_route(network: CloudNetwork, route: dict) -> Route:
     return {"destination": str(dest), "gateway": str(gateway)}
 
 
-def create_network(lab: Lab, body: dict) -> dict:
+async def create_network(lab: Lab, body: dict) -> dict:
     """Create a network with its subnets and routes."""
     state = lab.state
     if not body.get("name") or not body.get("ip_range"):
@@ -186,8 +186,10 @@ def create_network(lab: Lab, body: dict) -> dict:
     for route in body.get("routes") or []:
         network["routes"].append(checked_route(network, route))
     gateway = network_gateway(network["ip_range"])
-    # read before taking the lock: reading them fresh runs a script
-    local_addresses = lab.fabric.network.read_local_addresses(fresh=True)
+    # reading them fresh runs a script
+    local_addresses = await lab.blocking(
+        lab.fabric.network.read_local_addresses, fresh=True
+    )
     with state.change():
         check_unique_name(state["networks"].values(), network["name"], None, "network")
         # the first address becomes the lab's gateway in the network, so it must not be
@@ -206,61 +208,54 @@ def create_network(lab: Lab, body: dict) -> dict:
     return {"network": hetzner.network_json(lab, network)}
 
 
-# Each network action below is done at once (under the state's lock) and returns an
-# empty plan (lab.Plan). Then DHCP and the routing tables get the network's new
-# settings.
+# Each network action below is done at once (`act()` saves it) and returns an empty
+# plan (lab.Plan). Then DHCP and the routing tables get the network's new settings.
 
 
-def apply_network_change(lab: Lab) -> None:
+async def apply_network_change(lab: Lab) -> None:
     """Hand the servers their new DHCP options and put the network routes in place."""
-    system.write_dhcp(lab)
-    system.apply_routes(lab)
+    await system.write_dhcp(lab)
+    await system.apply_routes(lab)
 
 
-def add_subnet(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
+async def add_subnet(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
     """Add a subnet to the network."""
-    with lab.state.lock:
-        network["subnets"].append(checked_subnet(network, body))
-    apply_network_change(lab)
+    network["subnets"].append(checked_subnet(network, body))
+    await apply_network_change(lab)
     return Plan()
 
 
-def delete_subnet(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
+async def delete_subnet(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
     """Delete a subnet that has no addresses in use."""
     subnet_range = cidr(body.get("ip_range"), "ip_range")
-    with lab.state.lock:
-        in_use = addresses_in(lab, network["id"])
-        if any(ipaddress.ip_address(ip) in subnet_range for ip in in_use):
-            raise invalid(
-                "subnets with attached resources cannot be deleted", "ip_range"
-            )
-        network["subnets"] = [
-            x for x in network["subnets"] if x["ip_range"] != str(subnet_range)
-        ]
-    apply_network_change(lab)
+    in_use = addresses_in(lab, network["id"])
+    if any(ipaddress.ip_address(ip) in subnet_range for ip in in_use):
+        raise invalid("subnets with attached resources cannot be deleted", "ip_range")
+    network["subnets"] = [
+        x for x in network["subnets"] if x["ip_range"] != str(subnet_range)
+    ]
+    await apply_network_change(lab)
     return Plan()
 
 
-def add_route(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
+async def add_route(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
     """Add a route to the network."""
-    with lab.state.lock:
-        network["routes"].append(checked_route(network, body))
-    apply_network_change(lab)
+    network["routes"].append(checked_route(network, body))
+    await apply_network_change(lab)
     return Plan()
 
 
-def delete_route(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
+async def delete_route(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
     """Delete a route of the network."""
     given = (body.get("destination"), body.get("gateway"))
-    with lab.state.lock:
-        network["routes"] = [
-            r for r in network["routes"] if (r["destination"], r["gateway"]) != given
-        ]
-    apply_network_change(lab)
+    network["routes"] = [
+        r for r in network["routes"] if (r["destination"], r["gateway"]) != given
+    ]
+    await apply_network_change(lab)
     return Plan()
 
 
-def change_ip_range(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
+async def change_ip_range(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
     """Extend the network's range: same first address, smaller netmask."""
     old = ipaddress.ip_network(network["ip_range"])
     new = network_range(body.get("ip_range"))
@@ -269,10 +264,9 @@ def change_ip_range(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
             "the range can only be extended: same first address, smaller netmask",
             "ip_range",
         )
-    with lab.state.lock:
-        network["ip_range"] = str(new)
-    system.refresh_cloud_network(lab, network["id"])
-    apply_network_change(lab)
+    network["ip_range"] = str(new)
+    await system.refresh_cloud_network(lab, network["id"])
+    await apply_network_change(lab)
     return Plan()
 
 
@@ -287,13 +281,13 @@ NETWORK_ACTIONS: ActionTable[CloudNetwork] = {
 }
 
 
-def run_network_action(lab: Lab, nid: int, cmd: str, body: dict) -> dict:
+async def run_network_action(lab: Lab, nid: int, cmd: str, body: dict) -> dict:
     """Run a network action (all of them are done at once)."""
     network = lab.get_or_404("networks", nid, "network")
-    return lab.act(NETWORK_ACTIONS, cmd, network, "network", body)
+    return await lab.act(NETWORK_ACTIONS, cmd, network, "network", body)
 
 
-def delete_network(lab: Lab, nid: int) -> None:
+async def delete_network(lab: Lab, nid: int) -> None:
     """Delete a network and detach its servers, as on Hetzner.
 
     Each of the servers is locked meanwhile. A NIC is removed from the state only after
@@ -312,18 +306,18 @@ def delete_network(lab: Lab, nid: int) -> None:
             held.claim(server, "locked", SERVER_LOCKED)
         try:
             for server, nic in members:
-                lab.fabric.network.detach_nic(server, nic)
+                await lab.blocking(lab.fabric.network.detach_nic, server, nic)
                 with state.change():
                     server["_lab"]["nics"].remove(nic)
                     drop_netem(lab, [nic["tap"]])
         except Exception:  # whatever failed: sync, then re-raise
             # update DHCP and the fault sets for the NICs detached so far
-            system.write_dhcp(lab)
-            system.apply_faults(lab)
+            await system.write_dhcp(lab)
+            await system.apply_faults(lab)
             raise
         with state.change():
             del state["networks"][nid]
-    system.drop_cloud_network(lab, nid)
+    await system.drop_cloud_network(lab, nid)
 
 
 def update_network(lab: Lab, nid: int, body: dict) -> dict:
@@ -362,25 +356,24 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     state = lab.state
 
     @app.get("/v1/networks")
-    def network_list(request: Request):
-        with state.lock:
-            items = filtered(request, list(state["networks"].values()))
-            return paginate(
-                request, [hetzner.network_json(lab, n) for n in items], "networks"
-            )
+    async def network_list(request: Request):
+        items = filtered(request, list(state["networks"].values()))
+        return paginate(
+            request, [hetzner.network_json(lab, n) for n in items], "networks"
+        )
 
     @app.post("/v1/networks", status_code=201)
     async def network_create(request: Request):
-        return await lab.blocking(create_network, lab, await read_body(request))
+        return await create_network(lab, await read_body(request))
 
     @app.get("/v1/networks/{nid}/members")
-    def network_member_list(request: Request, nid: int):
+    async def network_member_list(request: Request, nid: int):
         network = lab.get_or_404("networks", nid, "network")
         members = network_members(lab, network, request.query_params)
         return paginate(request, members, "members")
 
     @app.get("/v1/networks/{nid}")
-    def network_get(nid: int):
+    async def network_get(nid: int):
         return {
             "network": hetzner.network_json(
                 lab, lab.get_or_404("networks", nid, "network")
@@ -389,15 +382,13 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
 
     @app.put("/v1/networks/{nid}")
     async def network_update(nid: int, request: Request):
-        return await lab.blocking(update_network, lab, nid, await read_body(request))
+        return update_network(lab, nid, await read_body(request))
 
     @app.delete("/v1/networks/{nid}", status_code=204)
-    def network_delete(nid: int):
-        delete_network(lab, nid)
+    async def network_delete(nid: int):
+        await delete_network(lab, nid)
         return Response(status_code=204)
 
     @app.post("/v1/networks/{nid}/actions/{cmd}", status_code=201)
     async def network_action(nid: int, cmd: str, request: Request):
-        return await lab.blocking(
-            run_network_action, lab, nid, cmd, await read_body(request)
-        )
+        return await run_network_action(lab, nid, cmd, await read_body(request))

@@ -43,42 +43,41 @@ CLIENT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,11}")
 # --- status ---------------------------------------------------------------------------
 
 
-def status(lab: Lab) -> dict:
-    """Return the lab's status: servers, Floating IPs, clients and faults.
-
-    The injected API fault is added by the route, on the event loop (see `Lab`).
-    """
+async def status(lab: Lab) -> dict:
+    """Return the lab's status: servers, Floating IPs, clients, faults, API faults."""
     state, fabric = lab.state, lab.fabric
-    with state.lock:  # a copy: checking whether a VM runs calls a script
-        servers = sorted(state["servers"].values(), key=lambda s: s["id"])
-        entries: list[dict] = [
-            {
-                "id": s["id"],
-                "name": s["name"],
-                "status": s["status"],
-                "location": s["location"],
-                "server_type": s["server_type"],
-                "public_ip": primary_address_of(state, s, "ipv4"),
-                "ipv6": primary_address_of(state, s, "ipv6"),
-                "private": [
-                    {"network": nic["network"], "ip": nic["ip"]}
-                    for nic in s["_lab"]["nics"]
-                ],
-                "dead": bool(s.get("_dead")),
-            }
-            for s in servers
-        ]
-        report = {
-            "servers": entries,
-            "floating_ips": [
-                hetzner.floating_ip_json(lab, f) for f in state["floating_ips"].values()
+    # a copy: checking whether a VM runs calls a script
+    servers = sorted(state["servers"].values(), key=lambda s: s["id"])
+    entries: list[dict] = [
+        {
+            "id": s["id"],
+            "name": s["name"],
+            "status": s["status"],
+            "location": s["location"],
+            "server_type": s["server_type"],
+            "public_ip": primary_address_of(state, s, "ipv4"),
+            "ipv6": primary_address_of(state, s, "ipv6"),
+            "private": [
+                {"network": nic["network"], "ip": nic["ip"]}
+                for nic in s["_lab"]["nics"]
             ],
-            "clients": list(state["clients"].values()),
-            "faults": list(state.data["faults"]),
-            "netem": dict(state.data["netem"]),
+            "dead": bool(s.get("_dead")),
         }
+        for s in servers
+    ]
+    report = {
+        "servers": entries,
+        "floating_ips": [
+            hetzner.floating_ip_json(lab, f) for f in state["floating_ips"].values()
+        ],
+        "clients": list(state["clients"].values()),
+        "faults": list(state.data["faults"]),
+        "netem": dict(state.data["netem"]),
+        "api_fault": dict(lab.api_fault),
+    }
     for entry, server in zip(entries, servers, strict=True):
-        entry["vm"] = "on" if fabric.vms.is_alive(server) else "off"
+        alive = await lab.blocking(fabric.vms.is_alive, server)
+        entry["vm"] = "on" if alive else "off"
     return report
 
 
@@ -130,7 +129,7 @@ def checked_fault(lab: Lab, body: dict) -> dict:
     return fault
 
 
-def add_fault(lab: Lab, body: dict) -> dict:
+async def add_fault(lab: Lab, body: dict) -> dict:
     """Add a fault (once) and put it in place."""
     state = lab.state
     fault = checked_fault(lab, body)
@@ -138,11 +137,11 @@ def add_fault(lab: Lab, body: dict) -> dict:
         if fault not in state.data["faults"]:
             state.data["faults"].append(fault)
         faults = list(state.data["faults"])  # the answer, as this change left them
-    system.apply_faults(lab)
+    await system.apply_faults(lab)
     return {"faults": faults}
 
 
-def remove_faults(lab: Lab, body: dict) -> dict:
+async def remove_faults(lab: Lab, body: dict) -> dict:
     """Remove the faults that match every given field (a cut either way round)."""
     state = lab.state
     given = in_cut_order({k: v for k, v in body.items() if v is not None})
@@ -153,14 +152,14 @@ def remove_faults(lab: Lab, body: dict) -> dict:
             if not all(fault.get(k) == v for k, v in given.items())
         ]
         faults = list(state.data["faults"])  # the answer, as this change left them
-    system.apply_faults(lab)
+    await system.apply_faults(lab)
     return {"faults": faults}
 
 
-def clear_faults(lab: Lab) -> dict:
+async def clear_faults(lab: Lab) -> dict:
     """Remove the network faults, netem and dead hardware.
 
-    The route clears the API faults itself, on the event loop (see `Lab.api_fault`).
+    The route clears the API faults itself.
     """
     state = lab.state
     with state.change():
@@ -168,12 +167,12 @@ def clear_faults(lab: Lab) -> dict:
         state.data["netem"] = {}
         for server in state["servers"].values():
             server.pop("_dead", None)
-    system.apply_faults(lab)
-    system.apply_latency(lab)
+    await system.apply_faults(lab)
+    await system.apply_latency(lab)
     return {"ok": True}
 
 
-def set_netem(lab: Lab, body: dict) -> dict:
+async def set_netem(lab: Lab, body: dict) -> dict:
     """Set netem options on a server's (or client's) interfaces; empty args clear them.
 
     Body: {"vm": name, "net": public|private|all, "args": "delay 100ms loss 5%"}.
@@ -193,20 +192,20 @@ def set_netem(lab: Lab, body: dict) -> dict:
             else:
                 state.data["netem"].pop(tap, None)
         netem = dict(state.data["netem"])  # the answer, as this change left them
-    system.apply_latency(lab)
+    await system.apply_latency(lab)
     return {"netem": netem}
 
 
-def control_vm(lab: Lab, name: str, cmd: str) -> dict:
+async def control_vm(lab: Lab, name: str, cmd: str) -> dict:
     """Pause or continue a VM, or mark its hardware dead or alive again.
 
     Dead hardware: a power-on succeeds, the VM stays off.
     """
     server = lab.server_by_name_or_404(name)
     if cmd == "pause":
-        lab.fabric.vms.pause(server)
+        await lab.blocking(lab.fabric.vms.pause, server)
     elif cmd == "cont":
-        lab.fabric.vms.resume(server)
+        await lab.blocking(lab.fabric.vms.resume, server)
     elif cmd in ("dead", "alive"):
         with lab.state.change():
             server["_dead"] = cmd == "dead"
@@ -216,7 +215,7 @@ def control_vm(lab: Lab, name: str, cmd: str) -> dict:
 
 
 def set_api_fault(lab: Lab, body: dict) -> dict:
-    """Inject faults into the API's answers; runs on the event loop (see `Lab`).
+    """Inject faults into the API's answers.
 
     {"status": 503, "count": 3} answers the next requests with that status;
     {"delay_ms": n} delays all.
@@ -240,7 +239,7 @@ def client_or_404(lab: Lab, name: str) -> Client:
     return client
 
 
-def add_client(lab: Lab, body: dict) -> dict:
+async def add_client(lab: Lab, body: dict) -> dict:
     """Add an "Internet" client with its own addresses (or return the existing one)."""
     state = lab.state
     name = body.get("name")
@@ -265,25 +264,25 @@ def add_client(lab: Lab, body: dict) -> dict:
                 "ip6": f"{config.CLIENT6}::{10 + number:x}",
             }
             state["clients"][cid] = client
-    system.add_client(lab, client)
+    await system.add_client(lab, client)
     return {"client": client}
 
 
-def remove_client(lab: Lab, name: str) -> dict:
+async def remove_client(lab: Lab, name: str) -> dict:
     """Remove a client; its faults and netem are removed with it."""
     state = lab.state
     with state.change():
         client = client_or_404(lab, name)
         del state["clients"][client["id"]]
         drop_faults(lab, f"c:{client['name']}", [client["veth"]])
-    system.remove_client(lab, client)
+    await system.remove_client(lab, client)
     return {"ok": True}
 
 
 # --- Storage Box accounts and reset ---------------------------------------------------
 
 
-def add_box_user(lab: Lab, body: dict) -> dict:
+async def add_box_user(lab: Lab, body: dict) -> dict:
     """Create an SFTP account on the Storage Box with its own home.
 
     Body: {"name": "backup1", "public_key": "ssh-ed25519 ..."}. The names of the API's
@@ -304,12 +303,12 @@ def add_box_user(lab: Lab, body: dict) -> dict:
     if re.fullmatch(r"u[0-9]+(-sub[0-9]+)?", name):
         raise invalid("names like u<id> belong to the Storage Box API", "name")
     try:
-        pwd.getpwnam(name)
+        pwd.getpwnam(name)  # a file read, small
         if name not in state.data["box_users"]:
             raise invalid("a user of the container has this name", "name")
     except KeyError:
         pass
-    set_up_box_user(lab, name, key)
+    await set_up_box_user(lab, name, key)
     with state.change():
         state.data["box_users"][name] = key.strip()
     return {"user": name, "host": config.SERVICES, "port": 23}
@@ -326,16 +325,16 @@ async def reset_lab(lab: Lab) -> dict:
     state, fabric = lab.state, lab.fabric
     # no old action may start a VM or change the state while the lab is emptied
     await lab.stop_actions()
-    with state.lock:  # copies: the loops below run scripts
-        servers = list(state["servers"].values())
-        volumes = list(state["volumes"].values())
-        subaccounts = list(state["subaccounts"].values())
-        boxes = list(state["storage_boxes"].values())
-        routed = [f["ip"] for f in state["floating_ips"].values() if f.get("server")]
-        clients = list(state["clients"].values())
-        networks = list(state["networks"])
+    # copies: the loops below run scripts
+    servers = list(state["servers"].values())
+    volumes = list(state["volumes"].values())
+    subaccounts = list(state["subaccounts"].values())
+    boxes = list(state["storage_boxes"].values())
+    routed = [f["ip"] for f in state["floating_ips"].values() if f.get("server")]
+    clients = list(state["clients"].values())
+    networks = list(state["networks"])
     for server in servers:
-        await lab.blocking(system.delete_vm, lab, server)
+        await system.delete_vm(lab, server)
     for volume in volumes:
         await lab.blocking(fabric.volumes.delete, volume)
     for subaccount in subaccounts:
@@ -345,18 +344,19 @@ async def reset_lab(lab: Lab) -> dict:
         await lab.blocking(fabric.box.remove_tree, data_dir(box))
         await lab.blocking(fabric.box.remove_tree, snap_dir(box))
     for ip in routed:
-        await lab.blocking(fabric.network.route_floating_ip, ip, None)
+        await system.route_floating_ip(lab, ip, None)
     for client in clients:
-        await lab.blocking(system.remove_client, lab, client)
-    await lab.blocking(state.clear)
+        await system.remove_client(lab, client)
+    state.clear()
+    await lab.blocking(state.flush)  # the empty lab is on disk before the answer
     lab.clear_api_fault()
     # a VM the state no longer knows (e.g. one whose server's creation was cut short)
     await lab.blocking(fabric.vms.kill_all)
     for nid in networks:  # clear the tables of the deleted networks
-        await lab.blocking(system.drop_cloud_network, lab, nid)
-    await lab.blocking(system.write_dhcp, lab)
-    await lab.blocking(system.apply_faults, lab)
-    await lab.blocking(system.apply_firewall, lab)
+        await system.drop_cloud_network(lab, nid)
+    await system.write_dhcp(lab)
+    await system.apply_faults(lab)
+    await system.apply_firewall(lab)
     return {"ok": True}
 
 
@@ -368,46 +368,44 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
 
     @app.get("/_lab/status")
     async def status_get():
-        report = await lab.blocking(status, lab)
-        return {**report, "api_fault": dict(lab.api_fault)}
+        return await status(lab)
 
     @app.post("/_lab/faults")
     async def fault_create(request: Request):
-        return await lab.blocking(add_fault, lab, await read_body(request))
+        return await add_fault(lab, await read_body(request))
 
     @app.post("/_lab/faults/remove")
     async def fault_delete(request: Request):
-        return await lab.blocking(remove_faults, lab, await read_body(request))
+        return await remove_faults(lab, await read_body(request))
 
     @app.post("/_lab/faults/clear")
     async def fault_clear():
-        lab.clear_api_fault()  # on the event loop, like the middleware's count
-        return await lab.blocking(clear_faults, lab)
+        lab.clear_api_fault()
+        return await clear_faults(lab)
 
     @app.post("/_lab/netem")
     async def netem_update(request: Request):
-        return await lab.blocking(set_netem, lab, await read_body(request))
+        return await set_netem(lab, await read_body(request))
 
     @app.post("/_lab/vm/{name}/{cmd}")
-    def vm_action(name: str, cmd: str):
-        return control_vm(lab, name, cmd)
+    async def vm_action(name: str, cmd: str):
+        return await control_vm(lab, name, cmd)
 
     @app.post("/_lab/api-fault")
     async def api_fault_update(request: Request):
-        # on the event loop, like the middleware that counts the fault down
         return set_api_fault(lab, await read_body(request))
 
     @app.post("/_lab/clients")
     async def client_create(request: Request):
-        return await lab.blocking(add_client, lab, await read_body(request))
+        return await add_client(lab, await read_body(request))
 
     @app.delete("/_lab/clients/{name}")
     async def client_delete(name: str):
-        return await lab.blocking(remove_client, lab, name)
+        return await remove_client(lab, name)
 
     @app.post("/_lab/box/users")
     async def box_user_create(request: Request):
-        return await lab.blocking(add_box_user, lab, await read_body(request))
+        return await add_box_user(lab, await read_body(request))
 
     @app.post("/_lab/reset")
     async def reset_action():

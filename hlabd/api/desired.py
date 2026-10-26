@@ -2,8 +2,8 @@
 
 Pure functions: the state (or a record) in, plain data out – the dataclasses of the
 fabric's parts, lists and strings. They run nothing and change nothing. api/system.py
-hands what they return to the fabric, which never sees the state. Each function that
-reads several records expects its caller to hold the state's lock, and asserts it.
+hands what they return to the fabric, which never sees the state. They run on the
+event loop, which owns the state, so the records they read fit together.
 """
 
 import copy
@@ -54,8 +54,7 @@ def target_ifaces(state: State, ref: str, which: str = "all") -> list[str]:
         if not server:
             raise KeyError(f"{ref} is gone")
         public = [server["_lab"]["tap"]]
-        with state.lock:
-            private = [nic["tap"] for nic in server["_lab"]["nics"]]
+        private = [nic["tap"] for nic in server["_lab"]["nics"]]
         if which == "public":
             return public
         if which == "private":
@@ -74,21 +73,19 @@ def source_prefixes(state: State, server: Server, network: int | None) -> list[s
     IPs. On a tap of a cloud network: its private IP there (networks may overlap).
     """
     if network is not None:
-        with state.lock:
-            return [
-                prefix(nic["ip"])
-                for nic in server["_lab"]["nics"]
-                if nic["network"] == network
-            ]
+        return [
+            prefix(nic["ip"])
+            for nic in server["_lab"]["nics"]
+            if nic["network"] == network
+        ]
     ipv4 = primary_address_of(state, server, "ipv4")
     ipv6_net = primary_address_of(state, server, "ipv6")
     ips = [prefix(ipv4)] if ipv4 else []
-    with state.lock:
-        ips += [
-            prefix(f["ip"])
-            for f in state["floating_ips"].values()
-            if f.get("server") == server["id"]
-        ]
+    ips += [
+        prefix(f["ip"])
+        for f in state["floating_ips"].values()
+        if f.get("server") == server["id"]
+    ]
     if ipv6_net:
         ips.append(ipv6_net)
     return ips
@@ -98,9 +95,8 @@ def fault_sets(state: State) -> dict[str, list[str]]:
     """Return the elements (nft syntax) of the nftables sets of table inet hlab.
 
     These are the faults, the cloud network members, and the sources each public tap
-    and client may send from (anti-spoofing). The caller holds the state's lock.
+    and client may send from (anti-spoofing).
     """
-    state.lock.assert_held()
     sets: dict[str, list[str]] = {name: [] for name in FAULT_SETS}
     servers = list(state["servers"].values())
     # cloud network → private taps of its servers
@@ -154,11 +150,7 @@ def fault_sets(state: State) -> dict[str, list[str]]:
 
 
 def tap_networks(state: State) -> list[tuple[str, int]]:
-    """Return (tap, network ID) for every NIC in a cloud network.
-
-    The caller holds the state's lock.
-    """
-    state.lock.assert_held()
+    """Return (tap, network ID) for every NIC in a cloud network."""
     return [
         (nic["tap"], nic["network"])
         for server in state["servers"].values()
@@ -193,10 +185,8 @@ def latency(state: State, cfg: dict) -> Latency:
     """Return how each server's taps and each client's link are shaped.
 
     A tap with a netem fault gets that fault; else a delay band per round-trip time to
-    the other servers' locations (`latency_ms` of `cfg`). The caller holds the state's
-    lock.
+    the other servers' locations (`latency_ms` of `cfg`).
     """
-    state.lock.assert_held()
     netem = state.data["netem"]
     servers = list(state["servers"].values())
     shaped = []
@@ -224,11 +214,7 @@ def latency(state: State, cfg: dict) -> Latency:
 
 
 def private_tap(state: State, nic: Nic) -> PrivateTap:
-    """Return how a NIC's tap in its cloud network is set up.
-
-    The caller holds the state's lock, so range and alias IPs fit together.
-    """
-    state.lock.assert_held()
+    """Return how a NIC's tap in its cloud network is set up."""
     return PrivateTap(
         nic["tap"],
         nic["mac"],
@@ -240,11 +226,7 @@ def private_tap(state: State, nic: Nic) -> PrivateTap:
 
 
 def server_taps(state: State, server: Server) -> ServerTaps:
-    """Return what a server's taps are set up with when its VM starts.
-
-    The caller holds the state's lock.
-    """
-    state.lock.assert_held()
+    """Return what a server's taps are set up with when its VM starts."""
     return ServerTaps(
         primary_address_of(state, server, "ipv4"),
         primary_address_of(state, server, "ipv6"),
@@ -262,10 +244,8 @@ def dhcp_hosts(state: State) -> list[DhcpHost]:
     """Return the fixed address of every tap, with DHCP options like Hetzner's.
 
     Each NIC gets a fixed address, a /32 with routes – on public interfaces to
-    172.31.1.1, on cloud networks to the network's gateway and range. The caller
-    holds the state's lock.
+    172.31.1.1, on cloud networks to the network's gateway and range.
     """
-    state.lock.assert_held()
     hosts = []
     for server in state["servers"].values():
         server_lab = server["_lab"]
@@ -318,11 +298,7 @@ def dhcp_hosts(state: State) -> list[DhcpHost]:
 
 
 def wanted_routes(state: State) -> list[WantedRoute]:
-    """Return every route of every cloud network, with the NICs holding its gateway.
-
-    The caller holds the state's lock.
-    """
-    state.lock.assert_held()
+    """Return every route of every cloud network, with the NICs holding its gateway."""
     return [
         WantedRoute(
             route["destination"],
@@ -345,10 +321,8 @@ def wanted_routes(state: State) -> list[WantedRoute]:
 def firewall_rules(state: State) -> list[ServerRules]:
     """Return the rules of every server that a firewall applies to, by server ID.
 
-    A server's rules are those of all its firewalls (copies). The caller holds the
-    state's lock.
+    A server's rules are those of all its firewalls (copies).
     """
-    state.lock.assert_held()
     out = []
     for sid, server in sorted(state["servers"].items()):
         firewalls = [
@@ -361,11 +335,10 @@ def firewall_rules(state: State) -> list[ServerRules]:
 
 
 def boot_volumes(state: State, server: Server) -> list[Volume]:
-    """Return the volumes a server's VM gets at boot: those attached whose disk exists.
+    """Return the volumes a server's VM gets at boot.
 
-    The caller holds the state's lock.
+    Those are the volumes attached to it whose disk exists.
     """
-    state.lock.assert_held()
     return [
         v
         for v in state["volumes"].values()

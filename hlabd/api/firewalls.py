@@ -132,11 +132,7 @@ def checked_apply_to(lab: Lab, entry: dict, missing_status: int = 422) -> dict:
 
 
 def check_limit(lab: Lab) -> None:
-    """Check that no server has more firewalls than Hetzner allows.
-
-    The caller holds the state's lock.
-    """
-    lab.state.lock.assert_held()
+    """Check that no server has more firewalls than Hetzner allows."""
     state = lab.state
     for sid in state["servers"]:
         if (
@@ -182,7 +178,7 @@ def rule_actions(lab: Lab, firewall: Firewall, created: bool = False) -> list[Ac
     return actions
 
 
-def create_firewall(lab: Lab, body: dict) -> dict:
+async def create_firewall(lab: Lab, body: dict) -> dict:
     """Create a firewall with its rules and resources; return it and its actions."""
     state = lab.state
     if not body.get("name"):
@@ -211,7 +207,7 @@ def create_firewall(lab: Lab, body: dict) -> dict:
         except ApiError:
             del state["firewalls"][fid]
             raise
-    system.apply_firewall(lab)
+    await system.apply_firewall(lab)
     actions = rule_actions(lab, firewall, created=True)
     return {"firewall": hetzner.firewall_json(lab, firewall), "actions": actions}
 
@@ -233,7 +229,7 @@ def delete_firewall(lab: Lab, fid: int) -> None:
 
 
 # --- firewall actions -----------------------------------------------------------------
-# Each changes the firewall (under the state's lock) and returns its actions.
+# Each changes the firewall (in the caller's `change()`) and returns its actions.
 
 
 def set_rules(lab: Lab, firewall: Firewall, body: dict) -> list[Action]:
@@ -301,14 +297,14 @@ FIREWALL_ACTIONS: dict[str, Callable[[Lab, Firewall, dict], list[Action]]] = {
 }
 
 
-def run_firewall_action(lab: Lab, fid: int, cmd: str, body: dict) -> dict:
+async def run_firewall_action(lab: Lab, fid: int, cmd: str, body: dict) -> dict:
     """Run a firewall action and rewrite the firewall rules; return the actions."""
     firewall = lab.get_or_404("firewalls", fid, "firewall")
     if cmd not in FIREWALL_ACTIONS:
         raise unsupported(f"the action {cmd!r}")
     with lab.state.change():
         actions = FIREWALL_ACTIONS[cmd](lab, firewall, body)
-    system.apply_firewall(lab)
+    await system.apply_firewall(lab)
     return {"actions": actions}
 
 
@@ -320,19 +316,18 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     state = lab.state
 
     @app.get("/v1/firewalls")
-    def firewall_list(request: Request):
-        with state.lock:
-            items = filtered(request, list(state["firewalls"].values()))
-            return paginate(
-                request, [hetzner.firewall_json(lab, f) for f in items], "firewalls"
-            )
+    async def firewall_list(request: Request):
+        items = filtered(request, list(state["firewalls"].values()))
+        return paginate(
+            request, [hetzner.firewall_json(lab, f) for f in items], "firewalls"
+        )
 
     @app.post("/v1/firewalls", status_code=201)
     async def firewall_create(request: Request):
-        return await lab.blocking(create_firewall, lab, await read_body(request))
+        return await create_firewall(lab, await read_body(request))
 
     @app.get("/v1/firewalls/{fid}")
-    def firewall_get(fid: int):
+    async def firewall_get(fid: int):
         return {
             "firewall": hetzner.firewall_json(
                 lab, lab.get_or_404("firewalls", fid, "firewall")
@@ -341,15 +336,13 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
 
     @app.put("/v1/firewalls/{fid}")
     async def firewall_update(fid: int, request: Request):
-        return await lab.blocking(update_firewall, lab, fid, await read_body(request))
+        return update_firewall(lab, fid, await read_body(request))
 
     @app.delete("/v1/firewalls/{fid}", status_code=204)
-    def firewall_delete(fid: int):
+    async def firewall_delete(fid: int):
         delete_firewall(lab, fid)
         return Response(status_code=204)
 
     @app.post("/v1/firewalls/{fid}/actions/{cmd}", status_code=201)
     async def firewall_action(fid: int, cmd: str, request: Request):
-        return await lab.blocking(
-            run_firewall_action, lab, fid, cmd, await read_body(request)
-        )
+        return await run_firewall_action(lab, fid, cmd, await read_body(request))

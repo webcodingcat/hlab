@@ -34,17 +34,15 @@ class VMs:
         """Tell whether the server's VM process runs."""
         return self.shell.ok("is-vm-alive", str(self.directory(server)))
 
-    def create_disk(self, server: Server, base: str) -> None:
-        """Create the disk of a new server: an overlay on a system image.
+    def create_disk(self, server: Server, base: str, size_gb: int) -> None:
+        """Create the disk of a new server: an overlay on a system image, `size_gb` big.
 
         Everything else comes from the metadata service at boot, as on Hetzner
         (cloud-init's Hetzner datasource).
         """
         directory = self.directory(server)
         directory.mkdir(parents=True, exist_ok=True)
-        # a type change without upgrade_disk keeps the smaller disk
-        size = server["_lab"]["disk_gb"]
-        self.shell.run("create-vm-disk", str(directory), base, str(size))
+        self.shell.run("create-vm-disk", str(directory), base, str(size_gb))
 
     def resize_disk(self, server: Server, gb: int) -> None:
         """Grow a server's disk to `gb` GB."""
@@ -59,12 +57,12 @@ class VMs:
             "fetch-image", name, url, checksums, str(self.root / "images" / "system")
         ).strip()
 
-    def launch(self, server: Server, nics: list[str]) -> None:
+    def launch(self, server: Server, type_name: str, nics: list[str]) -> None:
         """Start the QEMU process with its NICs (tap=mac), sized by the server type.
 
         Memory is scaled by memory_scale.
         """
-        server_type = self.cfg["server_types"][server["server_type"]]
+        server_type = self.cfg["server_types"][type_name]
         ram = max(512, int(server_type["memory_gb"] * 1024 * self.cfg["memory_scale"]))
         log.info(
             "VM %s (server %s) starts: %s MB, %s cores",

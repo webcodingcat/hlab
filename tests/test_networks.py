@@ -6,7 +6,7 @@ Subnets, routes, alias IPs, attach and detach, overlapping networks.
 import json
 
 import pytest
-from conftest import create_network, create_server, dhcp, nft_set, wait_action
+from conftest import create_network, create_server, dhcp, nft_set, state_of, wait_action
 
 from hlabd.api import desired, networks
 
@@ -90,9 +90,10 @@ def test_overlapping_networks_stay_apart(api, tmp_path):
         )
     # a server's private address counts for latency only on taps of the same network
     state = api.lab.state
-    first = state["servers"][s1["id"]]
-    assert desired.source_prefixes(state, first, n2["id"]) == []
-    assert desired.source_prefixes(state, first, n1["id"]) == ["10.0.1.1/32"]
+    first = state_of(api, "servers")[s1["id"]]
+    prefixes = desired.source_prefixes
+    assert api.on_loop(prefixes, state, first, n2["id"]) == []
+    assert api.on_loop(prefixes, state, first, n1["id"]) == ["10.0.1.1/32"]
 
 
 def test_deleting_a_network_drops_its_table(api):
@@ -370,13 +371,13 @@ def test_detached_nic_takes_its_netem_along(api):
     )
     server = create_server(api, "a", networks=[n1["id"]])["server"]
     api.post("/_lab/netem", json={"vm": "a", "net": "private", "args": "delay 100ms"})
-    assert "prv1x1" in api.lab.state.data["netem"]
+    assert "prv1x1" in state_of(api, "netem")
     response = api.post(
         f"/v1/servers/{server['id']}/actions/detach_from_network",
         json={"network": n1["id"]},
     )
     wait_action(api, response.json()["action"])
-    assert "prv1x1" not in api.lab.state.data["netem"]
+    assert "prv1x1" not in state_of(api, "netem")
     response = api.post(
         f"/v1/servers/{server['id']}/actions/attach_to_network",
         json={"network": n2["id"]},
@@ -490,17 +491,18 @@ def test_a_failed_detach_leaves_the_network_with_the_nics_not_yet_detached(
 
     monkeypatch.setattr(api.sh, "run", tap_down_fails_for_b)
     with pytest.raises(RuntimeError):
-        networks.delete_network(api.lab, nid)
+        api.on_loop(networks.delete_network, api.lab, nid)
     # the first NIC is gone, also from the saved state; the second stays with its
     # network, and every flag is off again
-    servers = api.lab.state["servers"]
+    servers = state_of(api, "servers")
     assert servers[first["id"]]["_lab"]["nics"] == []
     assert [nic["network"] for nic in servers[second["id"]]["_lab"]["nics"]] == [nid]
+    api.lab.state.flush()
     saved = json.loads(api.lab.state.path.read_text())
     assert saved["servers"][str(first["id"])]["_lab"]["nics"] == []
     assert api.get(f"/v1/networks/{nid}").json()["network"]["servers"] == [second["id"]]
     assert not servers[first["id"]]["locked"] and not servers[second["id"]]["locked"]
-    assert "_deleting" not in api.lab.state["networks"][nid]
+    assert "_deleting" not in state_of(api, "networks")[nid]
     # deleting it again goes on from there
     monkeypatch.setattr(api.sh, "run", run)
     assert api.delete(f"/v1/networks/{nid}").status_code == 204
@@ -510,11 +512,11 @@ def test_a_failed_detach_leaves_the_network_with_the_nics_not_yet_detached(
 def test_a_network_with_a_busy_member_is_not_deleted_and_flags_come_off(api):
     network = create_network(api, "10.0.1.0/24")
     server = create_server(api, "a", networks=[network["id"]])["server"]
-    record = api.lab.state["servers"][server["id"]]
-    api.lab.claim(record, "locked", "locked")  # an action runs on the member
+    record = state_of(api, "servers")[server["id"]]
+    api.on_loop(api.lab.claim, record, "locked", "locked")  # an action runs on it
     response = api.delete(f"/v1/networks/{network['id']}")
     assert response.status_code == 423
-    assert "_deleting" not in api.lab.state["networks"][network["id"]]
+    assert "_deleting" not in state_of(api, "networks")[network["id"]]
     assert record["locked"] is True  # still the other action's
 
 
@@ -527,9 +529,9 @@ def test_a_failed_detach_keeps_the_network_and_frees_its_servers(api, monkeypatc
 
     monkeypatch.setattr(api.lab.fabric.network, "detach_nic", failing_detach)
     with pytest.raises(RuntimeError):
-        networks.delete_network(api.lab, network["id"])
-    assert "_deleting" not in api.lab.state["networks"][network["id"]]
-    assert api.lab.state["servers"][server["id"]]["locked"] is False
+        api.on_loop(networks.delete_network, api.lab, network["id"])
+    assert "_deleting" not in state_of(api, "networks")[network["id"]]
+    assert state_of(api, "servers")[server["id"]]["locked"] is False
 
 
 def test_a_route_is_wanted_with_the_nics_that_hold_its_gateway(api):
@@ -541,9 +543,7 @@ def test_a_route_is_wanted_with_the_nics_that_hold_its_gateway(api):
         f"/v1/networks/{network['id']}/actions/add_route", json=route
     ).json()["action"]
     wait_action(api, action)
-    state = api.lab.state
-    with state.lock:
-        (wanted,) = desired.wanted_routes(state)
+    (wanted,) = api.on_loop(desired.wanted_routes, api.lab.state)
     assert (wanted.destination, wanted.gateway, wanted.network) == (
         "10.100.0.0/24",
         "10.0.1.1",
@@ -553,7 +553,7 @@ def test_a_route_is_wanted_with_the_nics_that_hold_its_gateway(api):
         (gateway["id"], "prv1x1")
     ]
     # the routes put in are kept, to be removed before the next ones go in
-    assert state.data["net_routes"] == [["10.100.0.0/24", str(network["id"])]]
+    assert state_of(api, "net_routes") == [["10.100.0.0/24", str(network["id"])]]
 
 
 def test_a_hot_plugged_nic_takes_the_lowest_free_port():

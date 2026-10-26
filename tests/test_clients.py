@@ -1,5 +1,7 @@
 """Internet clients: their addresses, and their faults going with them."""
 
+from conftest import state_of
+
 
 def test_client_has_ipv6(api):
     client = api.post("/_lab/clients", json={"name": "alice"}).json()["client"]
@@ -16,7 +18,7 @@ def test_client_has_ipv6(api):
 def test_client_goes_with_its_faults(api):
     api.post("/_lab/clients", json={"name": "c1"})
     api.post("/_lab/netem", json={"vm": "c1", "args": "delay 50ms"})
-    assert api.lab.state.data["netem"] == {"cl1": "delay 50ms"}
+    assert state_of(api, "netem") == {"cl1": "delay 50ms"}
     assert (
         "tc",
         "qdisc",
@@ -29,7 +31,7 @@ def test_client_goes_with_its_faults(api):
         "50ms",
     ) in api.sh.calls
     api.delete("/_lab/clients/c1")
-    assert api.lab.state.data["netem"] == {}
+    assert state_of(api, "netem") == {}
 
 
 def test_client_names_are_plain_ascii_namespace_names(api):

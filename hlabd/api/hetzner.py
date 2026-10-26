@@ -1,7 +1,6 @@
 """JSON shapes of the Hetzner Cloud API for the catalogue and the lab's resources.
 
-See https://docs.hetzner.cloud/. A shape that loops over the state takes `state.lock`
-for the loop itself (the rule is in lab.py), so any caller can use it.
+See https://docs.hetzner.cloud/.
 """
 
 from ..lab import Lab
@@ -152,33 +151,28 @@ def image_json(lab: Lab, name: str) -> dict:
 def server_json(lab: Lab, server: Server) -> dict:
     """Return the API object of a server."""
     cfg, state = lab.cfg, lab.state
-    with state.lock:
-        ipv4 = primary_ip_of(state, server, "ipv4")
-        ipv6 = primary_ip_of(state, server, "ipv6")
-        firewalls = [
-            {"id": fid, "status": "applied"}
-            for fid, firewall in state["firewalls"].items()
-            if server["id"] in firewall_servers(state, firewall)
-        ]
-        floating_ips = [
-            f["id"]
-            for f in state["floating_ips"].values()
-            if f["server"] == server["id"]
-        ]
-        private_net = [
-            {
-                "network": nic["network"],
-                "ip": nic["ip"],
-                "alias_ips": nic["alias_ips"],
-                "mac_address": nic["mac"],
-            }
-            for nic in server["_lab"]["nics"]
-        ]
-        volumes = sorted(
-            v["id"]
-            for v in state["volumes"].values()
-            if v.get("server") == server["id"]
-        )
+    ipv4 = primary_ip_of(state, server, "ipv4")
+    ipv6 = primary_ip_of(state, server, "ipv6")
+    firewalls = [
+        {"id": fid, "status": "applied"}
+        for fid, firewall in state["firewalls"].items()
+        if server["id"] in firewall_servers(state, firewall)
+    ]
+    floating_ips = [
+        f["id"] for f in state["floating_ips"].values() if f["server"] == server["id"]
+    ]
+    private_net = [
+        {
+            "network": nic["network"],
+            "ip": nic["ip"],
+            "alias_ips": nic["alias_ips"],
+            "mac_address": nic["mac"],
+        }
+        for nic in server["_lab"]["nics"]
+    ]
+    volumes = sorted(
+        v["id"] for v in state["volumes"].values() if v.get("server") == server["id"]
+    )
     return {
         "id": server["id"],
         "name": server["name"],
@@ -334,23 +328,22 @@ def firewall_json(lab: Lab, firewall: Firewall) -> dict:
     """Return the API object of a firewall, with the servers its selectors reach."""
     state = lab.state
     applied = []
-    with state.lock:
-        for entry in firewall["applied_to"]:
-            if entry["type"] == "label_selector":
-                selector = entry["label_selector"]["selector"]
-                reached = [
-                    {"type": "server", "server": {"id": s["id"]}}
-                    for s in selector_servers(state, selector)
-                ]
-                applied.append(
-                    {
-                        "type": "label_selector",
-                        "label_selector": {"selector": selector},
-                        "applied_to_resources": reached,
-                    }
-                )
-            else:
-                applied.append(entry)
+    for entry in firewall["applied_to"]:
+        if entry["type"] == "label_selector":
+            selector = entry["label_selector"]["selector"]
+            reached = [
+                {"type": "server", "server": {"id": s["id"]}}
+                for s in selector_servers(state, selector)
+            ]
+            applied.append(
+                {
+                    "type": "label_selector",
+                    "label_selector": {"selector": selector},
+                    "applied_to_resources": reached,
+                }
+            )
+        else:
+            applied.append(entry)
     return {
         "id": firewall["id"],
         "name": firewall["name"],

@@ -13,9 +13,8 @@ REF_FIELDS = {"first": "first_ref", "second": "second_ref", "vm": "target_ref"}
 
 def drop_netem(lab: Lab, links: list[str]) -> None:
     """Drop the netem faults of links that are gone (a new link may reuse the name)."""
-    with lab.state.lock:
-        for link in links:
-            lab.state.data["netem"].pop(link, None)
+    for link in links:
+        lab.state.data["netem"].pop(link, None)
 
 
 def drop_faults(lab: Lab, ref: str, links: list[str]) -> None:
@@ -24,10 +23,9 @@ def drop_faults(lab: Lab, ref: str, links: list[str]) -> None:
     A new server or client may get the same links. system.apply_faults() then updates
     the fault sets.
     """
-    with lab.state.lock:
-        lab.state.data["faults"] = [
-            fault
-            for fault in lab.state.data["faults"]
-            if ref not in [fault.get(ref_field) for ref_field in REF_FIELDS.values()]
-        ]
-        drop_netem(lab, links)
+    lab.state.data["faults"] = [
+        fault
+        for fault in lab.state.data["faults"]
+        if ref not in [fault.get(ref_field) for ref_field in REF_FIELDS.values()]
+    ]
+    drop_netem(lab, links)

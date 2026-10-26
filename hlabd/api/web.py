@@ -66,11 +66,7 @@ def ref_id(value, field: str) -> int:
 
 
 def update_fields(lab: Lab, item: AnyRecord, body: dict, keys: tuple[str, ...]) -> None:
-    """Change the given fields of an item on PUT (null labels mean no labels).
-
-    The caller holds the state's lock.
-    """
-    lab.state.lock.assert_held()
+    """Change the given fields of an item on PUT (null labels mean no labels)."""
     for key in keys:
         if key in body:
             item[key] = (body[key] or {}) if key == "labels" else body[key]
@@ -92,10 +88,9 @@ def change_delete_protection(lab: Lab, item: ProtectedRecord, body: dict) -> Pla
     primary IPs, Floating IPs, volumes and Storage Boxes (servers set delete and
     rebuild together).
     """
-    with lab.state.lock:
-        item["protection"]["delete"] = bool(
-            body.get("delete", item["protection"]["delete"])
-        )
+    item["protection"]["delete"] = bool(
+        body.get("delete", item["protection"]["delete"])
+    )
     return Plan()
 
 
@@ -172,8 +167,7 @@ def filtered(
 ) -> list[AnyRecord]:
     """Return the items matching the name, label_selector and extra filters, by ID.
 
-    `extra` maps a query parameter to a test `(item, value) -> bool`. The caller holds
-    the state's lock when the items are records of the state.
+    `extra` maps a query parameter to a test `(item, value) -> bool`.
     """
     query = request.query_params
     out = items

@@ -30,15 +30,14 @@ def box_busy(lab: Lab, box: StorageBox, for_delete: bool = False) -> bool:
     if not for_delete:
         return False
     state = lab.state
-    with state.lock:
-        copying = any(
-            s["box"] == box["id"] and s.get("_copying")
-            for s in state["box_snapshots"].values()
-        )
-        creating = any(
-            a["box"] == box["id"] and a.get("_creating")
-            for a in state["subaccounts"].values()
-        )
+    copying = any(
+        s["box"] == box["id"] and s.get("_copying")
+        for s in state["box_snapshots"].values()
+    )
+    creating = any(
+        a["box"] == box["id"] and a.get("_creating")
+        for a in state["subaccounts"].values()
+    )
     return copying or creating
 
 
@@ -60,19 +59,25 @@ def quota_bytes(lab: Lab, box: StorageBox) -> int:
     return int(lab.cfg["storage_box_types"][box["type"]]["size_tb"] * TB)
 
 
-def box_account(lab: Lab, box: StorageBox, password: str | None) -> None:
+async def box_account(lab: Lab, box: StorageBox, password: str | None) -> None:
     """Create or update the box's main account (its UID is the box ID)."""
-    lab.fabric.box.set_account(
-        username(box), data_dir(box), password, quota_bytes(lab, box), box["id"]
+    await lab.blocking(
+        lab.fabric.box.set_account,
+        username(box),
+        data_dir(box),
+        password,
+        quota_bytes(lab, box),
+        box["id"],
     )
 
 
-def sync_box(lab: Lab, box: StorageBox) -> None:
+async def sync_box(lab: Lab, box: StorageBox) -> None:
     """Apply the access settings of the box's main account and its .zfs view."""
-    lab.fabric.box.set_access(username(box), box["access"], quota_bytes(lab, box))
-    lab.fabric.box.set_zfs_view(
-        username(box), snap_dir(box) if box["access"]["zfs_enabled"] else None
-    )
+    access = dict(box["access"])  # a copy for the thread
+    user = username(box)
+    await lab.blocking(lab.fabric.box.set_access, user, access, quota_bytes(lab, box))
+    zfs_view = snap_dir(box) if access["zfs_enabled"] else None
+    await lab.blocking(lab.fabric.box.set_zfs_view, user, zfs_view)
 
 
 def sub_home(box: StorageBox, subaccount: Subaccount) -> str:
@@ -85,7 +90,7 @@ def sub_home(box: StorageBox, subaccount: Subaccount) -> str:
     )
 
 
-def sync_subaccount(
+async def sync_subaccount(
     lab: Lab, box: StorageBox, subaccount: Subaccount, password: str | None = None
 ) -> None:
     """Apply a sub-account's home and access settings (and its password, if given).
@@ -94,28 +99,29 @@ def sync_subaccount(
     IDs, so the box user keeps full access to its files.
     """
     user, home = subaccount["username"], sub_home(box, subaccount)
+    access, quota = dict(subaccount["access"]), quota_bytes(lab, box)
     if password is not None:
-        lab.fabric.box.set_account(
-            user, home, password, quota_bytes(lab, box), username(box)
+        await lab.blocking(
+            lab.fabric.box.set_account, user, home, password, quota, username(box)
         )
     else:
-        lab.fabric.box.set_home(user, home)
-    lab.fabric.box.set_access(user, subaccount["access"], quota_bytes(lab, box))
+        await lab.blocking(lab.fabric.box.set_home, user, home)
+    await lab.blocking(lab.fabric.box.set_access, user, access, quota)
 
 
-def set_up_box_user(lab: Lab, name: str, public_key: str) -> None:
+async def set_up_box_user(lab: Lab, name: str, public_key: str) -> None:
     """Create or update a lab account on the box, with its own directory and key.
 
     Such accounts live outside the Storage Box API (/_lab/box/users). The UID is fixed
     in the state (`box_uids`), like a box's: files outlive the container's /etc/passwd.
     """
-    with lab.state.lock:
-        uids = lab.state.data["box_uids"]
-        uid = uids.setdefault(name, 30000 + len(uids))
+    uids = lab.state.data["box_uids"]
+    uid = uids.setdefault(name, 30000 + len(uids))
     box = lab.fabric.box
-    box.set_account(name, lab_user_dir(name), None, TB, uid)
-    box.set_access(name, {"ssh_enabled": True, "reachable_externally": True}, TB)
-    box.add_key(name, public_key)
+    access = {"ssh_enabled": True, "reachable_externally": True}
+    await lab.blocking(box.set_account, name, lab_user_dir(name), None, TB, uid)
+    await lab.blocking(box.set_access, name, access, TB)
+    await lab.blocking(box.add_key, name, public_key)
 
 
 def checked_password(password, field: str = "password") -> str:

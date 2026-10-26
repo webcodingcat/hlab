@@ -33,7 +33,7 @@ def create_app(lab: Lab) -> FastAPI:
     return app
 
 
-def restore(lab: Lab) -> None:
+async def restore(lab: Lab) -> None:
     """Set up the accounts of all boxes again after a lab start.
 
     Their roots are in /run, which a restart empties. Passwords are set again from the
@@ -42,31 +42,30 @@ def restore(lab: Lab) -> None:
     cut off are removed.
     """
     state, fabric = lab.state, lab.fabric
-    with state.lock:  # copies: the loops below run scripts
-        cut_off = [s for s in state["box_snapshots"].values() if s.get("_copying")]
-        boxes = list(state["storage_boxes"].values())
+    # copies: the loops below run scripts
+    cut_off = [s for s in state["box_snapshots"].values() if s.get("_copying")]
+    boxes = list(state["storage_boxes"].values())
     for s in cut_off:
         box = state["storage_boxes"].get(s["box"])
         if box:
-            fabric.box.remove_tree(snap_dir(box, s["name"]), check=False)
+            path = snap_dir(box, s["name"])
+            await lab.blocking(fabric.box.remove_tree, path, check=False)
         with state.change():
             del state["box_snapshots"][s["id"]]
-    fabric.box.remove_tree(f"{BOX}/snapshots/.work", check=False)  # unfinished copies
+    # unfinished copies
+    await lab.blocking(fabric.box.remove_tree, f"{BOX}/snapshots/.work", check=False)
     for box in boxes:
         try:
-            box_account(lab, box, box.get("_password"))
-            sync_box(lab, box)
+            await box_account(lab, box, box.get("_password"))
+            await sync_box(lab, box)
         # one box that fails must not keep the lab from coming up
         except Exception:
             log.exception("Storage Box %s not restored", box["id"])
             continue
-        with state.lock:
-            accounts = [
-                a for a in state["subaccounts"].values() if a["box"] == box["id"]
-            ]
+        accounts = [a for a in state["subaccounts"].values() if a["box"] == box["id"]]
         for account in accounts:
             try:
-                sync_subaccount(lab, box, account, account.get("_password"))
+                await sync_subaccount(lab, box, account, account.get("_password"))
             # nor one sub-account that fails
             except Exception:
                 log.exception("sub-account %s not restored", account["username"])

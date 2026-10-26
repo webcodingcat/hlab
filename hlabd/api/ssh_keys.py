@@ -84,31 +84,30 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     state = lab.state
 
     @app.get("/v1/ssh_keys")
-    def ssh_key_list(request: Request):
-        with state.lock:
-            items = filtered(
-                request,
-                list(state["ssh_keys"].values()),
-                {"fingerprint": lambda ssh_key, value: ssh_key["fingerprint"] == value},
-            )
-            return paginate(
-                request, [hetzner.ssh_key_json(lab, k) for k in items], "ssh_keys"
-            )
+    async def ssh_key_list(request: Request):
+        items = filtered(
+            request,
+            list(state["ssh_keys"].values()),
+            {"fingerprint": lambda ssh_key, value: ssh_key["fingerprint"] == value},
+        )
+        return paginate(
+            request, [hetzner.ssh_key_json(lab, k) for k in items], "ssh_keys"
+        )
 
     @app.post("/v1/ssh_keys", status_code=201)
     async def ssh_key_create(request: Request):
-        return await lab.blocking(create_ssh_key, lab, await read_body(request))
+        return create_ssh_key(lab, await read_body(request))
 
     @app.get("/v1/ssh_keys/{kid}")
-    def ssh_key_get(kid: int):
+    async def ssh_key_get(kid: int):
         ssh_key = lab.get_or_404("ssh_keys", kid, "SSH key")
         return {"ssh_key": hetzner.ssh_key_json(lab, ssh_key)}
 
     @app.put("/v1/ssh_keys/{kid}")
     async def ssh_key_update(kid: int, request: Request):
-        return await lab.blocking(update_ssh_key, lab, kid, await read_body(request))
+        return update_ssh_key(lab, kid, await read_body(request))
 
     @app.delete("/v1/ssh_keys/{kid}", status_code=204)
-    def ssh_key_delete(kid: int):
+    async def ssh_key_delete(kid: int):
         delete_ssh_key(lab, kid)
         return Response(status_code=204)

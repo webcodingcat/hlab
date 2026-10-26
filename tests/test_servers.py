@@ -3,20 +3,18 @@
 Create, delete, power actions, rebuild, change_type, locks, restart of the lab.
 """
 
-import asyncio
-
 import pytest
 from conftest import (
     KEY,
     create_server,
     dhcp,
+    metadata_client,
     power_off,
+    state_of,
     wait_action,
 )
-from fastapi.testclient import TestClient
 
 from hlabd.api import servers
-from hlabd.api.metadata import create_metadata_app
 from hlabd.api.restart import restore_lab
 
 
@@ -138,15 +136,16 @@ def test_a_busy_server_is_locked_and_refused_actions_do_not_linger(api):
 def test_restart_finishes_or_drops_what_was_half_done(api):
     server_a = create_server(api, "a")["server"]
     server_b = create_server(api, "b")["server"]
-    st = api.lab.state
+    servers = state_of(api, "servers")
     # the lab stopped while a was being deleted
-    st["servers"][server_a["id"]]["status"] = "deleting"
+    servers[server_a["id"]]["status"] = "deleting"
     api.sh.running.clear()  # a new container: no VM runs
     api.sh.fail.add("start-vm")  # and b's VM does not come up
-    asyncio.run(restore_lab(api.lab))  # must not raise: the lab comes up anyway
-    assert server_a["id"] not in st["servers"]
-    assert st["servers"][server_b["id"]]["status"] == "off"
-    assert not [x for x in st["actions"].values() if x["status"] == "running"]
+    api.on_loop(restore_lab, api.lab)  # must not raise: the lab comes up anyway
+    assert server_a["id"] not in servers
+    assert servers[server_b["id"]]["status"] == "off"
+    actions = state_of(api, "actions").values()
+    assert not [x for x in actions if x["status"] == "running"]
 
 
 def test_failed_create_ends_its_next_actions_and_status(api):
@@ -166,7 +165,7 @@ def test_failed_create_ends_its_next_actions_and_status(api):
     server = api.get(f"/v1/servers/{out['server']['id']}").json()["server"]
     assert (
         server["status"] == "off"
-        and not api.lab.state["servers"][server["id"]]["locked"]
+        and not state_of(api, "servers")[server["id"]]["locked"]
     )
 
 
@@ -244,10 +243,8 @@ def test_root_password_only_without_ssh_keys(api):
     )
     pw = response.json()["root_password"]
     assert pw
-    with TestClient(
-        create_metadata_app(api.lab), client=("198.51.100.11", 1)
-    ) as client:
-        vendor = client.get("/hetzner/v1/metadata").text
+    client = metadata_client(api, "198.51.100.11", 1)
+    vendor = client.get("/hetzner/v1/metadata").text
     assert "ssh_pwauth: true" in vendor and pw in vendor
     api.post("/v1/ssh_keys", json={"name": "k", "public_key": KEY})
     response = api.post(
@@ -271,14 +268,14 @@ def test_rebuild_takes_new_user_data(api):
     )
     wait_action(api, response.json()["action"])
     assert (
-        api.lab.state["servers"][server["id"]]["user_data"] == "#cloud-config\nx: 1\n"
+        state_of(api, "servers")[server["id"]]["user_data"] == "#cloud-config\nx: 1\n"
     )
 
 
 def test_a_vm_that_ends_by_itself_leaves_the_server_off(api):
     server = create_server(api, "a")["server"]
     api.sh.running.clear()  # the guest powered off
-    api.lab.watch_vms()
+    api.on_loop(api.lab.watch_vms)
     assert api.get(f"/v1/servers/{server['id']}").json()["server"]["status"] == "off"
     response = api.post(f"/v1/servers/{server['id']}/actions/poweron")
     wait_action(api, response.json()["action"])
@@ -290,11 +287,12 @@ def test_a_vm_that_ends_by_itself_leaves_the_server_off(api):
 def test_the_vm_watcher_frees_its_server_and_leaves_a_busy_one_alone(api):
     first = create_server(api, "a")["server"]
     second = create_server(api, "b")["server"]
-    servers = api.lab.state["servers"]
+    servers = state_of(api, "servers")
     api.sh.running.clear()  # both guests powered off
-    api.lab.claim(servers[second["id"]], "locked", "locked")  # an action runs on b
-    api.lab.stop_if_ended(servers[first["id"]])
-    api.lab.stop_if_ended(servers[second["id"]])
+    # an action runs on b
+    api.on_loop(api.lab.claim, servers[second["id"]], "locked", "locked")
+    api.on_loop(api.lab.stop_if_ended, servers[first["id"]])
+    api.on_loop(api.lab.stop_if_ended, servers[second["id"]])
     assert servers[first["id"]]["status"] == "off"
     assert servers[first["id"]]["locked"] is False
     # the action owns b: its status is the action's to change, and so is its flag
@@ -314,7 +312,7 @@ def test_rebuild_keeps_a_disk_kept_small(api):
         f"/v1/servers/{server['id']}/actions/rebuild", json={"image": "debian-13"}
     )
     wait_action(api, response.json()["action"])
-    assert api.lab.state["servers"][server["id"]]["_lab"]["disk_gb"] == 40
+    assert state_of(api, "servers")[server["id"]]["_lab"]["disk_gb"] == 40
     assert (
         api.get(f"/v1/servers/{server['id']}").json()["server"]["primary_disk_size"]
         == 40
@@ -357,7 +355,7 @@ def test_failed_rebuild_keeps_user_data(api):
         json={"image": "debian-13", "user_data": "#new\n"},
     )
     assert wait_action(api, response.json()["action"])["status"] == "error"
-    assert api.lab.state["servers"][server["id"]]["user_data"] == "#cloud-config\n"
+    assert state_of(api, "servers")[server["id"]]["user_data"] == "#cloud-config\n"
 
 
 def test_vm_has_hetzner_smbios_and_dhcp(api, tmp_path):
@@ -429,13 +427,13 @@ def test_delete_and_rebuild_protection_change_together(api):
 
 
 def test_a_delete_that_cannot_start_leaves_the_server_as_it_was(api, monkeypatch):
-    server = api.lab.state["servers"][create_server(api, "a")["server"]["id"]]
+    server = state_of(api, "servers")[create_server(api, "a")["server"]["id"]]
 
     def no_background(*_args, **_kwargs):
         raise RuntimeError("no event loop")
 
     monkeypatch.setattr(api.lab, "run_action", no_background)
     with pytest.raises(RuntimeError):
-        servers.delete_server(api.lab, server["id"])
+        api.on_loop(servers.delete_server, api.lab, server["id"])
     assert server["status"] == "running"
     assert server["locked"] is False

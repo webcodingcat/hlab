@@ -145,8 +145,8 @@ class Network:
     def read_local_addresses(self, fresh: bool = False) -> set[str]:
         """Read the IPv4 addresses the lab container itself has, at most every 10 s.
 
-        It runs a script, so call it before taking the state's lock; under the lock,
-        `local_addresses()` gives what it read. `fresh` reads now.
+        It runs a script, so the API calls it in a thread first; `local_addresses()`
+        then gives what it read without a script. `fresh` reads now.
         """
         now = time.monotonic()
         cache = self._local_addresses_cache

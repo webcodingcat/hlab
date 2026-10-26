@@ -30,9 +30,8 @@ def free_floating_ip(lab: Lab, ip_type: str) -> str:
     """Return the lowest free Floating IP address of a type.
 
     IPv6: 2001:db8:ff01::/64 to ...:fffd::/64; fffe and ffff are the lab's own. The
-    caller holds the state's lock until it has stored the new record.
+    caller stores the new record in the same `change()`.
     """
-    lab.state.lock.assert_held()
     used = {x["ip"] for x in lab.state["floating_ips"].values()}
     if ip_type == "ipv4":
         candidates = (f"{config.FLOATING_NET}.{10 + n}" for n in range(1, 241))
@@ -42,7 +41,7 @@ def free_floating_ip(lab: Lab, ip_type: str) -> str:
     return first_free(candidates, used, error)
 
 
-def create_floating_ip(lab: Lab, body: dict) -> dict:
+async def create_floating_ip(lab: Lab, body: dict) -> dict:
     """Create a Floating IP, assigned to a server if the body names one."""
     state = lab.state
     ip_type = body.get("type")
@@ -80,9 +79,10 @@ def create_floating_ip(lab: Lab, body: dict) -> dict:
         "action": None,
     }
     if server:
-        out["action"] = run_floating_ip_action(
+        assigned = await run_floating_ip_action(
             lab, fid, "assign", {"server": server["id"]}
-        )["action"]
+        )
+        out["action"] = assigned["action"]
     return out
 
 
@@ -137,13 +137,11 @@ def move_floating_ip(lab: Lab, floating_ip: FloatingIP, target: Server | None) -
     async def steps():
         if target:
             await lab.sleep(FLOATING_IP_MOVE_SECONDS)
-        await lab.blocking(save_move)
-        await lab.blocking(
-            lab.fabric.network.route_floating_ip, floating_ip["ip"], target
-        )
-        await lab.blocking(system.apply_faults, lab)
+        save_move()
+        await system.route_floating_ip(lab, floating_ip["ip"], target)
+        await system.apply_faults(lab)
         if target:
-            await lab.blocking(system.apply_latency, lab)
+            await system.apply_latency(lab)
 
     return Plan(steps, resources=[(target["id"], "server")] if target else [])
 
@@ -168,11 +166,11 @@ FLOATING_IP_ACTIONS: ActionTable[FloatingIP] = {
 }
 
 
-def run_floating_ip_action(lab: Lab, fid: int, cmd: str, body: dict) -> dict:
+async def run_floating_ip_action(lab: Lab, fid: int, cmd: str, body: dict) -> dict:
     """Run a Floating IP action: one at a time per Floating IP (423 otherwise)."""
     floating_ip = lab.get_or_404("floating_ips", fid, "Floating IP")
     busy = "the Floating IP is being moved"
-    return lab.act(
+    return await lab.act(
         FLOATING_IP_ACTIONS, cmd, floating_ip, "floating_ip", body, "_moving", busy
     )
 
@@ -185,36 +183,33 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     state = lab.state
 
     @app.get("/v1/floating_ips")
-    def floating_ip_list(request: Request):
-        with state.lock:
-            items = filtered(request, list(state["floating_ips"].values()))
-            return paginate(
-                request,
-                [hetzner.floating_ip_json(lab, f) for f in items],
-                "floating_ips",
-            )
+    async def floating_ip_list(request: Request):
+        items = filtered(request, list(state["floating_ips"].values()))
+        return paginate(
+            request,
+            [hetzner.floating_ip_json(lab, f) for f in items],
+            "floating_ips",
+        )
 
     @app.post("/v1/floating_ips", status_code=201)
     async def floating_ip_create(request: Request):
-        return await lab.blocking(create_floating_ip, lab, await read_body(request))
+        return await create_floating_ip(lab, await read_body(request))
 
     @app.get("/v1/floating_ips/{fid}")
-    def floating_ip_get(fid: int):
+    async def floating_ip_get(fid: int):
         floating_ip = lab.get_or_404("floating_ips", fid, "Floating IP")
         return {"floating_ip": hetzner.floating_ip_json(lab, floating_ip)}
 
     @app.put("/v1/floating_ips/{fid}")
     async def floating_ip_update(fid: int, request: Request):
         body = await read_body(request)
-        return await lab.blocking(update_floating_ip, lab, fid, body)
+        return update_floating_ip(lab, fid, body)
 
     @app.delete("/v1/floating_ips/{fid}", status_code=204)
-    def floating_ip_delete(fid: int):
+    async def floating_ip_delete(fid: int):
         delete_floating_ip(lab, fid)
         return Response(status_code=204)
 
     @app.post("/v1/floating_ips/{fid}/actions/{cmd}", status_code=201)
     async def floating_ip_action(fid: int, cmd: str, request: Request):
-        return await lab.blocking(
-            run_floating_ip_action, lab, fid, cmd, await read_body(request)
-        )
+        return await run_floating_ip_action(lab, fid, cmd, await read_body(request))

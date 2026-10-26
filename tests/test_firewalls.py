@@ -1,7 +1,7 @@
 """Cloud firewalls: rules, limits, label selectors, applying and removing."""
 
 import pytest
-from conftest import create_server, wait_action
+from conftest import create_server, state_of, wait_action
 
 from hlabd.api import desired
 from hlabd.api.firewalls import check_port, checked_rules
@@ -365,9 +365,7 @@ def test_the_firewall_rules_are_gathered_per_server_by_id(api):
             },
         )
         assert response.status_code == 201, response.text
-    state = api.lab.state
-    with state.lock:
-        servers = desired.firewall_rules(state)
+    servers = api.on_loop(desired.firewall_rules, api.lab.state)
     # a server whose firewall has no rules is listed: everything inbound is dropped
     assert [(x.sid, x.tap, len(x.rules)) for x in servers] == [
         (first["id"], "pub1", 0),
@@ -375,5 +373,7 @@ def test_the_firewall_rules_are_gathered_per_server_by_id(api):
     ]
     servers[1].rules[0]["port"] = "23"  # a copy: the firewall keeps its rule
     assert any(
-        r["port"] == "22" for f in state["firewalls"].values() for r in f["rules"]
+        r["port"] == "22"
+        for f in state_of(api, "firewalls").values()
+        for r in f["rules"]
     )

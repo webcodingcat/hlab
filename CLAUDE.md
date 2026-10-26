@@ -8,8 +8,8 @@ they only use `hlab env`.
 
 Everything in this repo is English. Read these before changing code:
 
-- @DEVELOPING.md – how a request flows, the pieces, actions, where code runs, state and
-  locking, recipes, the packet path, tests.
+- @DEVELOPING.md – how a request flows, the pieces, actions, where code runs, the
+  state, recipes, the packet path, tests.
 - @STYLE.md – the standards and the project's own rules on top of them.
 
 ## Commands
@@ -36,10 +36,11 @@ Python, pytest and the linters are not needed on the host.
   action names are Hetzner's (`stop_server`, ...). Never rename them with the functions.
 - **`api/` decides, `fabric/` carries out.** `api/` never runs scripts; `fabric/` knows no
   HTTP and decides no state; only `scripts/*.sh` touch the system.
-- **Every change to the state and every loop over it holds `state.lock`**; a saved change
-  is `with state.change():`. Slow work (scripts, sleeps) stays outside the lock. Code on
-  the event loop never saves: it hands the save to a thread with `await lab.blocking(...)`.
-  See DEVELOPING.md, State and locking.
+- **The event loop owns the state**: only code on the loop reads or changes it (every
+  route is `async def`). Blocking work runs in a thread through
+  `await lab.blocking(work, ...)` with plain data in and out, never the state. A saved
+  change is `with state.change():`, undone if it raises; it never awaits.
+  See DEVELOPING.md, State.
 - **New actions go through `lab.act()`**; other code holds flags only through
   `with lab.holding() as held:`, never `lab.claim()`/`lab.release()`. See DEVELOPING.md,
   How flags flow.

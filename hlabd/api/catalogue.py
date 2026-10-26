@@ -107,17 +107,17 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     cfg = lab.cfg
 
     @app.get("/v1/server_types")
-    def server_type_list(request: Request):
+    async def server_type_list(request: Request):
         types = [hetzner.server_type_json(lab, n) for n in cfg["server_types"]]
         return paginate(request, filtered(request, types), "server_types")
 
     @app.get("/v1/server_types/{tid}")
-    def server_type_get(tid: int):
+    async def server_type_get(tid: int):
         name = catalogue_entry_or_404(lab, "server_type", tid, "server type")
         return {"server_type": hetzner.server_type_json(lab, name)}
 
     @app.get("/v1/locations")
-    def location_list(request: Request):
+    async def location_list(request: Request):
         return paginate(
             request,
             filtered(
@@ -127,12 +127,12 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
         )
 
     @app.get("/v1/locations/{lid}")
-    def location_get(lid: int):
+    async def location_get(lid: int):
         name = catalogue_entry_or_404(lab, "location", lid, "location")
         return {"location": hetzner.location_json(lab, name)}
 
     @app.get("/v1/images")
-    def image_list(request: Request):
+    async def image_list(request: Request):
         items = filtered(
             request,
             [hetzner.image_json(lab, n) for n in cfg["images"]],
@@ -147,7 +147,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
         return paginate(request, items, "images")
 
     @app.get("/v1/images/{iid}")
-    def image_get(iid: int):
+    async def image_get(iid: int):
         name = catalogue_entry_or_404(lab, "image", iid, "image")
         return {"image": hetzner.image_json(lab, name)}
 
@@ -155,7 +155,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     # primary IPs on 1 July 2026)
     @app.get("/v1/datacenters")
     @app.get("/v1/datacenters/{did}")
-    def datacenter_removed(did: int = 0):
+    async def datacenter_removed(did: int = 0):
         raise ApiError(
             410,
             "deprecated_api_endpoint",

@@ -40,7 +40,7 @@ log = logging.getLogger(__name__)
 
 
 def set_up(cfg: dict) -> Lab:
-    """Prepare the container and return the lab: state, fabric, network, images."""
+    """Prepare the container and return the lab: state, fabric, network."""
     (config.ROOT / "vm").mkdir(parents=True, exist_ok=True)
     # this process starts with the container: no VM of an earlier run is alive, and
     # their PIDs may belong to other processes now
@@ -55,10 +55,7 @@ def set_up(cfg: dict) -> Lab:
     state = State(config.ROOT / "state.json")
     fabric = Fabric(cfg, config.ROOT, shell)
     fabric.network.write_dns()
-    lab = Lab(cfg, state, fabric)
-    system.write_dhcp(lab)
-    load_images(lab)
-    return lab
+    return Lab(cfg, state, fabric)
 
 
 def http_app(lab: Lab):
@@ -118,12 +115,17 @@ def listeners() -> list[socket.socket]:
 
 
 async def run(lab: Lab) -> None:
-    """Bring the lab back, then serve until stopped (with the background jobs)."""
-    # actions started from worker threads run on this loop (the schedulers too).
-    # Blocking work runs in threads; downloads that wait for each other must not
-    # leave the rest without threads.
-    lab.loop = asyncio.get_running_loop()
-    lab.loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(64))
+    """Bring the lab back (DHCP, images, state), then serve until stopped.
+
+    The background jobs run as long as the server does.
+    """
+    # this loop owns the state. Blocking work runs in threads; downloads that wait for
+    # each other must not leave the rest without threads.
+    lab.own_state()
+    loop = asyncio.get_running_loop()
+    loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(64))
+    await system.write_dhcp(lab)
+    await lab.blocking(load_images, lab)  # downloads; only `lab.images` changes
     await restore_lab(lab)
     server = uvicorn.Server(
         uvicorn.Config(
@@ -140,7 +142,7 @@ async def run(lab: Lab) -> None:
         )
 
     lab.jobs.update(
-        lab.loop.create_task(job)
+        loop.create_task(job)
         for job in (
             announce_ready(),
             storagebox.snapshots.snapshot_plan_scheduler(lab),
@@ -153,11 +155,12 @@ async def run(lab: Lab) -> None:
 def shut_down(lab: Lab) -> None:
     """Power the guests down like the power button, then stop the Storage Box.
 
-    `docker stop` gives the lab 20 seconds in all.
+    `docker stop` gives the lab 20 seconds in all. The last save is on disk first. The
+    loop has ended; this is its thread, which still owns the state.
     """
     fabric = lab.fabric
-    with lab.state.lock:
-        servers = list(lab.state["servers"].values())
+    lab.state.flush()
+    servers = list(lab.state["servers"].values())
     running = [s for s in servers if fabric.vms.is_alive(s)]
     for server in running:
         try:

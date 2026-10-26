@@ -81,39 +81,38 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     state = lab.state
 
     @app.get("/v1/actions")
-    def action_list(request: Request):
+    async def action_list(request: Request):
         if not request.query_params.getlist("id"):
             raise invalid("id is required", "id")
-        with state.lock:
-            return listed(request, list(state["actions"].values()))
+        return listed(request, list(state["actions"].values()))
 
     @app.get("/v1/actions/{aid}")
-    def action_get(aid: int):
+    async def action_get(aid: int):
         return {"action": action_or_404(lab, aid)}
 
     @app.get("/v1/{kind}/actions")
-    def kind_actions(request: Request, kind: str):  # the actions of a resource kind
+    async def kind_actions(
+        request: Request, kind: str
+    ):  # the actions of a resource kind
         resource_type = resource_type_of(kind)
-        with state.lock:
-            mine = [a for a in state["actions"].values() if touches(a, resource_type)]
-            return listed(request, mine)
+        mine = [a for a in state["actions"].values() if touches(a, resource_type)]
+        return listed(request, mine)
 
     @app.get("/v1/{kind}/actions/{aid}")
-    def kind_action_get(kind: str, aid: int):
+    async def kind_action_get(kind: str, aid: int):
         return {"action": action_or_404(lab, aid, resource_type_of(kind))}
 
     @app.get("/v1/{kind}/{rid}/actions")
-    def resource_actions(request: Request, kind: str, rid: str):
-        with state.lock:
-            resource_type, resource_id = resource_of(lab, kind, rid)
-            mine = [
-                a
-                for a in state["actions"].values()
-                if touches(a, resource_type, resource_id)
-            ]
-            return listed(request, mine)
+    async def resource_actions(request: Request, kind: str, rid: str):
+        resource_type, resource_id = resource_of(lab, kind, rid)
+        mine = [
+            a
+            for a in state["actions"].values()
+            if touches(a, resource_type, resource_id)
+        ]
+        return listed(request, mine)
 
     @app.get("/v1/{kind}/{rid}/actions/{aid}")
-    def resource_action_get(kind: str, rid: str, aid: int):
+    async def resource_action_get(kind: str, rid: str, aid: int):
         resource_type, resource_id = resource_of(lab, kind, rid)
         return {"action": action_or_404(lab, aid, resource_type, resource_id)}

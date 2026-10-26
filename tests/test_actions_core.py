@@ -1,7 +1,8 @@
 """The core of actions (lab.py): flags, `act()`, `run_action()`, stopping actions.
 
-Each test runs its actions on its own event loop; `steps` wait for an event, so a test
-can look at the flags while they run.
+Each test runs its actions on its own event loop (`act()` is async), in the test's
+thread, which then owns the state; `steps` wait for an event, so a test can look at the
+flags while they run.
 """
 
 import asyncio
@@ -113,7 +114,7 @@ def test_holding_leaves_kept_and_handed_over_flags(lab):
 def test_act_refuses_an_unknown_command_as_unsupported(lab):
     volume = make_volume(lab)
     with pytest.raises(ApiError) as refused:
-        lab.act(table(lambda *_: Plan()), "fly", volume, "volume", {}, "_busy")
+        run(lab.act(table(lambda *_: Plan()), "fly", volume, "volume", {}, "_busy"))
     assert (refused.value.status, refused.value.code) == (422, "unsupported_error")
     assert "_busy" not in volume
 
@@ -127,7 +128,7 @@ def test_act_takes_the_flag_off_when_the_plan_refuses(lab):
         raise invalid("no")
 
     with pytest.raises(ApiError):
-        lab.act(table(refuse), "go", volume, "volume", {}, "_busy")
+        run(lab.act(table(refuse), "go", volume, "volume", {}, "_busy"))
     assert seen == [True]
     assert "_busy" not in volume
 
@@ -136,21 +137,33 @@ def test_act_refuses_a_flagged_resource_and_leaves_its_flag(lab):
     volume = make_volume(lab)
     lab.claim(volume, "_busy", "busy")
     with pytest.raises(ApiError) as refused:
-        lab.act(table(lambda *_: Plan()), "go", volume, "volume", {}, "_busy", "busy")
+        run(
+            lab.act(
+                table(lambda *_: Plan()), "go", volume, "volume", {}, "_busy", "busy"
+            )
+        )
     assert refused.value.status == 423
     assert volume["_busy"] is True  # still the other action's
 
 
 def test_act_without_steps_finishes_at_once_and_frees_the_resource(lab):
     volume = make_volume(lab)
-    answer = lab.act(
-        table(lambda *_: Plan(extra={"note": 1})), "go", volume, "volume", {}, "_busy"
+    answer = run(
+        lab.act(
+            table(lambda *_: Plan(extra={"note": 1})),
+            "go",
+            volume,
+            "volume",
+            {},
+            "_busy",
+        )
     )
     assert answer["action"]["status"] == "success"
     assert answer["action"]["command"] == "do_go"
     assert answer["action"]["resources"] == [{"id": 10001, "type": "volume"}]
     assert answer["note"] == 1
     assert "_busy" not in volume
+    lab.state.flush()
     assert lab.state.path.is_file()  # saved
 
 
@@ -163,7 +176,7 @@ def test_act_holds_the_flags_until_the_steps_succeed(lab):
         async def steps():
             await go.wait()
 
-        answer = lab.act(
+        answer = await lab.act(
             table(lambda *_: Plan(steps, server=server)),
             "go",
             volume,
@@ -190,7 +203,7 @@ def test_act_releases_the_flags_when_the_steps_fail(lab):
         async def steps():
             raise RuntimeError("the disk broke")
 
-        answer = lab.act(
+        answer = await lab.act(
             table(lambda *_: Plan(steps, server=server)),
             "go",
             volume,
@@ -215,13 +228,15 @@ def test_act_refuses_a_locked_plan_server_and_frees_the_resource(lab):
         pass
 
     with pytest.raises(ApiError) as refused:
-        lab.act(
-            table(lambda *_: Plan(steps, server=server)),
-            "go",
-            volume,
-            "volume",
-            {},
-            "_busy",
+        run(
+            lab.act(
+                table(lambda *_: Plan(steps, server=server)),
+                "go",
+                volume,
+                "volume",
+                {},
+                "_busy",
+            )
         )
     assert refused.value.status == 423
     assert "_busy" not in volume
@@ -235,7 +250,7 @@ def test_act_locks_a_server_that_is_the_resource_only_once(lab):
         async def steps():
             assert server["locked"] is True
 
-        lab.act(
+        await lab.act(
             table(lambda *_: Plan(steps, server=server)),
             "go",
             server,
@@ -252,8 +267,10 @@ def test_act_locks_a_server_that_is_the_resource_only_once(lab):
 def test_record_only_actions_take_no_flag(lab):
     volume = make_volume(lab)
     lab.claim(volume, "_busy", "busy")  # another action runs
-    answer = lab.act(
-        table(lambda *_: Plan()), "change_protection", volume, "volume", {}, "_busy"
+    answer = run(
+        lab.act(
+            table(lambda *_: Plan()), "change_protection", volume, "volume", {}, "_busy"
+        )
     )
     assert answer["action"]["status"] == "success"
     assert volume["_busy"] is True  # the running action keeps its flag
@@ -350,3 +367,17 @@ def test_stopping_actions_waits_for_their_threads(lab):
         return action
 
     assert run(main())["status"] == "error"
+
+
+def test_act_awaits_a_plan_function_that_is_async(lab):
+    volume = make_volume(lab)
+
+    async def plan(lab, item, body):
+        await asyncio.sleep(0)  # asks the system first (a script, in a thread)
+        assert item["_busy"] is True  # the flag is held meanwhile
+        return Plan(extra={"asked": True})
+
+    answer = run(lab.act(table(plan), "go", volume, "volume", {}, "_busy"))
+    assert answer["asked"] is True
+    assert answer["action"]["status"] == "success"
+    assert "_busy" not in volume

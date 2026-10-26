@@ -11,7 +11,7 @@ HTTP request
                             Storage Box API, metadata service); every request is logged
   → api/web.py              auth, rate limit, injected faults, OpenAPI request check
   → api/<resource>.py       route → module function `f(lab, ...)`: check the request,
-                            change the state under `lab.state.lock`, start an action
+                            change the state (on the event loop), start an action
   → lab.py                  `act()` runs an action from the resource's table; the slow
                             part runs in the background; flags stop a second action
                             on the same resource
@@ -44,7 +44,7 @@ Inside `hlabd/`:
 | Module | Job |
 |---|---|
 | `lab.py` | state, actions (`Plan`, `act`, `run_action`), the flags that stop two actions on one resource (`FLAGS`) |
-| `state.py` | the state as JSON in the volume; resources by kind, plus the lab's own records (its docstring), the lock |
+| `state.py` | the state as JSON in the volume; resources by kind, plus the lab's own records (its docstring); its owner check, `change()`, the thread that writes it |
 | `records.py` | the fields of every resource, the lab's own included (a server's `_lab`, its NICs): one TypedDict per kind, checked by mypy |
 | `api/hetzner.py` | the JSON shapes of the Cloud API (`<thing>_json(lab, thing)`) |
 | `api/<resource>.py` | one resource each: checks, its action table, routes |
@@ -55,7 +55,7 @@ Inside `hlabd/`:
 | `api/control.py` | lab control under `/_lab/` (faults, clients, reset); no resource module imports it |
 | `api/faults.py` | the faults and netem in the state, dropped with the server, client or link they point at |
 | `api/desired.py` | pure functions: the state in, plain data out – what the system should look like (fault sets, latency, DHCP, taps, routes, firewall rules per server, boot volumes) |
-| `api/system.py` | puts the state in place: reads it under the lock (through `desired.py`), hands the plain data to the fabric, stores what the fabric reports back (`net_routes`); a VM's start and stop across the parts (`start_vm`, `kill_vm`, `delete_vm`) |
+| `api/system.py` | puts the state in place: reads it on the loop (through `desired.py`), hands the plain data to the fabric in a thread, stores what the fabric reports back (`net_routes`); whole pictures in the order they were computed (`lab.picture_lock`); a VM's start and stop across the parts (`start_vm`, `kill_vm`, `delete_vm`) |
 | `fabric/` | carries out, with plain data as arguments; it never sees the state (records handed in are read only for what never changes: ID, name, tap, MAC). `Fabric` (`__init__.py`) holds one object per part, each given what it uses in its constructor: `shell` (`shell.py`, runs hlab.sh), `vms` (`vm.py`), `volumes` (`volumes.py`), `faults` (`faults.py`: nft sets, latency), `network` (`network.py`: taps, DHCP, DNS, routes, Floating IPs, clients), `firewall` (`firewall.py`: the firewall table), `box` (`storagebox.py`); `addresses.py` has the address rules (MACs, gateways, tables) |
 | `config.py` | configuration defaults and the lab's addresses (the scripts get them as `HLAB_*`) |
 | `daemon.py`, `cli.py` | the container's main process; the `hlab` command inside the container |
@@ -70,7 +70,10 @@ The tables are `SERVER_ACTIONS` (`api/servers.py`; the network actions come from
 
 A function is named after its command (`reboot`, `add_subnet`). If two resources share
 a command, the resource goes in front (`primary_ip_assign`, `floating_ip_assign`). The
-function gets `(lab, resource, body)`. It checks the request and returns a `lab.Plan`:
+function gets `(lab, resource, body)`. It checks the request and returns a `lab.Plan`.
+It is `def`, or `async def` when it must ask the system before it decides (a script
+through `await lab.blocking(...)`: `reset_password` asks whether the VM runs); `act()`
+awaits it then. The plan has:
 
 - `steps`: an async function that does the slow part through `lab.fabric`. `None`
   means the change is done already, so the action finishes at once.
@@ -131,10 +134,9 @@ is gone (a deleted volume). No code outside `lab.py` calls `lab.claim()` or
 `POST /v1/servers/{id}/actions/poweroff`, from the request to the finished action:
 
 1. `api/web.py` checks auth and the rate limit, and the request against the spec.
-2. The route `server_action` (`api/servers.py`, `add_routes`) is `async def`: it awaits
-   the body (`read_body`), then runs `run_server_action` in a thread
-   (`await lab.blocking(...)`).
-3. `run_server_action` looks the server up (`lab.server_or_404`: 404) and calls
+2. The route `server_action` (`api/servers.py`, `add_routes`) is `async def`, like
+   every route: it awaits the body (`read_body`), then `run_server_action`.
+3. `run_server_action` looks the server up (`lab.server_or_404`: 404) and awaits
    `lab.act(SERVER_ACTIONS, "poweroff", server, "server", body, "locked",
    SERVER_LOCKED)`.
 4. `act()` finds `("stop_server", poweroff)` in the table (else `unsupported`), claims
@@ -143,95 +145,82 @@ is gone (a deleted volume). No code outside `lab.py` calls `lab.claim()` or
 5. The plan has steps, so `act()` creates the action (`lab.new_action("stop_server",
    ...)`) and hands steps and flag to `lab.run_action`. It starts the steps as a task
    on the loop (`lab.spawn`). The route answers 201, the action `running`.
-6. The steps run `await lab.blocking(system.kill_vm, lab, server)`. `system.kill_vm`
-   calls `fabric.vms.kill` (`hlab.sh kill-vm`), copies the server's taps under the lock
-   for `fabric.network.taps_down` (`hlab.sh tear-down-tap` per tap), then writes the
-   DHCP configs (`system.write_dhcp`). The steps set the status to
-   `stopping` and, after `POWEROFF_SECONDS`, to `off` (`lab.set_status` through
-   `lab.blocking`), then wait `POWEROFF_END_SECONDS`.
+6. The steps run `await system.kill_vm(lab, server)`. It runs `fabric.vms.kill`
+   (`hlab.sh kill-vm`) in a thread (`await lab.blocking(...)`), reads the server's taps
+   and hands them to `fabric.network.taps_down` (`hlab.sh tear-down-tap` per tap), then
+   writes the DHCP configs (`system.write_dhcp`). The steps set the status to
+   `stopping` and, after `POWEROFF_SECONDS`, to `off` (`lab.set_status`, which saves),
+   then wait `POWEROFF_END_SECONDS`.
 7. When the steps end, `run_action` takes the `locked` flag off and finishes the action
    (`lab.finish`: `success`, or `error` with the message). If the steps failed, the
    server leaves `stopping` for what its VM really does.
 
 ## Where code runs
 
-- Routes come in two forms. `def` routes run in FastAPI's worker threads. `async def`
-  routes run on the event loop; they are used when the body must be awaited
-  (`await read_body(request)`), and they hand the blocking work to
-  `await lab.blocking(...)` (a thread), so the API keeps answering.
-  For a new route: `def` when it needs no body, or only query and path parameters, and
-  may block; `async def` with `await lab.blocking(...)` when it must await the body.
-- Steps run as background tasks on the loop (`lab.spawn`); they call the fabric through
-  `lab.blocking` too. So do the VM watcher and the snapshot plans. A thread cannot be
-  cancelled, so `lab.blocking` keeps track of its threads, and a lab reset waits for
-  them after cancelling the actions (`lab.stop_actions`).
-- The fabric gets plain data and never sees the state: no `state`, no `state.lock`.
-  What it needs is read on the API side, under the lock (`api/desired.py`), and
-  handed over by `api/system.py`, which also stores what the fabric returns. A whole
-  picture (fault sets, latency, firewall, DHCP, routes) is computed and handed over
-  under the fabric's `net_lock`, so the newest one is put in place last; the order is
-  `net_lock`, then `state.lock`, so `api/system.py` is never called with the state's
-  lock held.
-- Code on the event loop never saves the state itself (a save writes and fsyncs the
-  whole file): it hands whatever saves (`set_status`, `finish`, a `state.change()`
-  block in a small function) to a thread with `await lab.blocking(...)`.
-- `lab.api_fault` is read and changed only on the event loop (the middleware, async
-  control routes), so the middleware's count of injected faults stays right.
+- Everything that reads or changes the state runs on the event loop: every route is
+  `async def`, and so are the steps of actions (`lab.spawn`), the VM watcher, the
+  snapshot plans and the restart. FastAPI's worker threads are not used.
+- Blocking work (scripts, files, guest agents) runs in a thread through
+  `await lab.blocking(work, *args)`, so the API keeps answering. `work` gets plain
+  data and returns plain data, never the state: the fabric's methods, which get what
+  `api/desired.py` computed, or a record only for fields that never change (ID, tap,
+  MAC; `VMs.launch` and `VMs.create_disk` get the server type and the disk size as
+  arguments). A thread cannot be cancelled, so `lab.blocking` keeps track of its
+  threads, and a lab reset waits for them after cancelling the actions
+  (`lab.stop_actions`).
+- A whole picture of the system (fault sets, latency, firewall, DHCP, routes) is
+  computed and handed over while `lab.picture_lock` (an `asyncio.Lock`) is held, so
+  pictures are put in place in the order they were computed and an older one never
+  overwrites a newer one (`api/system.py`). A Floating IP's route goes through it too
+  (`system.route_floating_ip`). Inside the fabric, `net_lock` (a thread lock) keeps
+  its threads apart: taps change only under it, so tc and nft find the taps they
+  checked.
 - The waits of actions are Hetzner's measured timings, one table in `lab.py`
   (`POWEROFF_SECONDS`, ...), scaled by `time_scale` in `lab.sleep()`.
 
-## State and locking
+## State
 
 This is the one full explanation; `lab.py`, `state.py` and CLAUDE.md point here.
 
-**Why.** Worker threads (routes, `lab.blocking`) and the event loop (steps, the VM
-watcher) share one state, and `state.save()` writes all of it as JSON. A change from
-another thread in the middle of a save, or of a loop, breaks it.
+**One owner.** The event loop owns the state: everything reachable from `state.data`
+(records, flags, statuses, the lab's own records) is read and changed only on the
+loop's thread. So two pieces of code never change it at the same time, and between two
+awaits nothing else runs: a check and the change after it fit together, a loop over
+the state sees no change in the middle. `state.check_owner()` turns this into a check:
+`state[kind]`, `state.data`, `change()`, `save()` and `new_id()` raise AssertionError
+on another thread. The daemon makes its loop the owner at start (`lab.own_state()`).
+The unit tests record every breach, also in background steps where the error only
+fails the action, and fail the test (`state_owner_kept` in `tests/conftest.py`).
 
-**Changes.** Every change to the state holds `lab.state.lock`: any dict or list
-reachable from `state.data`, flags, statuses and the lab's own records included. That
-holds in routes, action steps, `api/system.py` and the restart alike. Slow work (scripts, VM
-calls, `lab.sleep`) stays outside: take the lock only around the change and its save.
-The lock is re-entrant, so a helper that locks may be called with it held.
-
-A change that must be saved uses `state.change()`. It takes the lock and saves when the
-block ends without an error, so a refused request saves nothing:
+**Changes.** A change that must be saved is a `with lab.state.change():` block, a
+transaction: if the block raises, the state is put back as it was (every dict and
+list keeps its identity, so records held elsewhere stay valid), and nothing is saved;
+if it succeeds, the state is saved. Nested blocks save once, with the outer one.
 
 ```python
 with lab.state.change():
-    volume["size"] = size
+    check_unique_name(lab.state["volumes"].values(), name, volume, "volume")
+    volume["name"] = name
 ```
 
-A block checks first, then changes. Nothing is rolled back: a block that raises after a
-change leaves memory and file apart until the next save.
+The block must not await: it is a plain `with`, and another task would see the change
+half done (`check_owner` refuses a task's access while another task's block is open;
+`tests/test_state.py` also checks that no block in `hlabd/` awaits). Check first, then
+change still reads best. A change outside a block (a flag, a plan's change that is
+done at once) is saved by the next save: `act()` saves it, and so do
+`lab.set_status()` and `lab.finish()`.
 
-A plan's change that is done at once may use the plain lock, because `act()` saves it.
-`lab.claim()`, `lab.release()` and `lab.new_action()` lock themselves.
-`lab.set_status()` and `lab.finish()` lock and save, so on the event loop they go
-through `lab.blocking` (see "Where code runs").
+**Saving.** `state.save()` serializes the state on the loop (JSON, quick at the lab's
+size; finished actions are capped) and hands it to a writer thread, which writes the
+file atomically and fsyncs it. If saves come faster than the disk, only the newest is
+written. `state.flush()` waits until everything saved is on disk: the daemon flushes
+when it stops, a lab reset before it answers, and the unit tests before they read the
+file.
 
-**Reads.** A loop over the state, or several reads that must fit together, hold the
-lock. Without it, another thread breaks them ("dictionary changed size during
-iteration", or a range and its gateway from two versions). A single lookup of one
-record by key, or of one field, may go without. List routes build their whole answer
-under the lock (`filtered`, the JSON shapes, `paginate`). The JSON shapes
-(`api/hetzner.py`) and the lookups of `state.py` (`nics_in`, `server_by_name`, ...)
-take the lock themselves, so any caller may use them. A loop that runs slow work (a
-script per server) first copies what it needs under the lock (`list(...)`), then loops
-over the copy without it.
-
-**The check.** `state.lock` knows who holds it (`held_by_me()`): the thread, and on the
-event loop the asyncio task. So one coroutine does not count as a holder while another
-one holds the lock. `state.save()`, `state.new_id()` and the helpers that change
-several records call `state.lock.assert_held()`, which raises AssertionError when the
-caller does not hold the lock. Those helpers are `add_nic`, `setup_server_ips`,
-`release_server_ips`, `record_attachment`, `checked_alias_ips`, `update_fields`,
-`set_dns_ptr`, `check_limit`, the address pickers, and the functions of
-`api/desired.py` that read several records (fault sets, latency, DHCP, routes, firewall
-rules, ...). The check costs two lookups, so it is always on. In an action's steps the error
-only fails the action, so the unit tests record every breach and fail the test
-(`locking_rule_kept` in `tests/conftest.py`). A new helper that expects its caller to
-hold the lock says so and asserts it.
+**Awaits.** Across an await other tasks run: what was read before may have changed.
+Flags (`lab.holding()`) keep other actions off a resource across awaits; a loop that
+awaits per item (a script per server) loops over a copy (`list(...)`) and checks again
+after the await where it matters (`stop_if_ended`, `make_available`).
 
 ## Recipes
 
@@ -251,8 +240,8 @@ comment to `scripts/hlab.sh` and its verb to `main` (the function's name with da
 `create_volume` is `create-volume`), call it from a method of the fitting `fabric/`
 part, and call that method from the API. Addresses come from `config.py` as `HLAB_*`.
 What the method needs from the state comes as arguments: a pure function in
-`api/desired.py` computes it, `api/system.py` (or the caller) reads it under the lock
-and passes it.
+`api/desired.py` computes it, `api/system.py` (or the caller) reads it on the loop and
+passes it to the method in a thread (`await lab.blocking(...)`).
 
 **A new flag**: add it to `FLAGS` in `lab.py` and to the list above it, so a restart
 clears it (`api/restart.py`).
@@ -279,7 +268,9 @@ server may send from it) and `system.apply_latency`.
 
 - `tests/`: unit tests, no VMs. `FakeShell` (`tests/conftest.py`) stands in for
   `hlab.sh` and records every call; `time_scale = 0` skips Hetzner's waits.
-  The `api` fixture is a test client of the Cloud API. `bin/hlab test` is the
+  The `api` fixture is a test client of the Cloud API; it runs the app on a loop of its
+  own, which owns the state, so a test reads or changes the state there:
+  `api.on_loop(work, *args)` (`work` may be async) and `state_of(api, "servers")`. `bin/hlab test` is the
   reference: it runs all of them in the development image, which carries the unit
   tests (the lab image has only `itests/`).
 - `tests/test_wrappers.py`: every command `bin/hlab` dispatches is in its usage comment

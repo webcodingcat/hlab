@@ -4,7 +4,6 @@ The lab runs against FakeShell instead of scripts/hlab.sh, and every /v1 respons
 the test clients is checked against Hetzner's OpenAPI specification.
 """
 
-import asyncio
 import base64
 import os
 import re
@@ -23,7 +22,7 @@ from hlabd.api.app import create_app
 from hlabd.api.metadata import create_metadata_app
 from hlabd.fabric import Fabric
 from hlabd.lab import Lab
-from hlabd.state import State, StateLock
+from hlabd.state import State
 
 
 class FakeShell:
@@ -77,26 +76,27 @@ class FakeShell:
 
 
 @pytest.fixture(autouse=True)
-def locking_rule_kept(monkeypatch):
-    """Fail a test in which the state changed without its lock, wherever it happened.
+def state_owner_kept(monkeypatch):
+    """Fail a test in which the state was used outside its owner, wherever that was.
 
-    `assert_held()` raises, but in an action's steps or a thread that error only
+    `check_owner()` raises, but in an action's steps or a thread that error only
     fails the action; so every breach is recorded here and fails the test at its end.
     A test that breaks the rule on purpose empties the list it gets.
     """
     breaches: list[str] = []
-    check = StateLock.assert_held
+    check = State.check_owner
 
-    def recorded_check(lock: StateLock) -> None:
+    def recorded_check(state: State) -> None:
         try:
-            check(lock)
-        except AssertionError:
-            breaches.append("".join(traceback.format_stack(limit=6)[:-1]))
+            check(state)
+        except AssertionError as error:
+            stack = "".join(traceback.format_stack(limit=6)[:-1])
+            breaches.append(f"{error}\n{stack}")
             raise
 
-    monkeypatch.setattr(StateLock, "assert_held", recorded_check)
+    monkeypatch.setattr(State, "check_owner", recorded_check)
     yield breaches
-    assert not breaches, "the state changed without its lock:\n" + "\n".join(breaches)
+    assert not breaches, "the state was used outside its owner:\n" + "\n".join(breaches)
 
 
 @pytest.fixture
@@ -157,12 +157,14 @@ class SpecClient(TestClient):
 
 
 def use_client_loop(lab: Lab, client: TestClient) -> None:
-    """Run the lab's actions on the test client's event loop, as the daemon does on its.
+    """Make the test client's event loop the state's owner, as the daemon makes its.
 
-    The daemon sets `lab.loop` at start; a test client brings a loop of its own, in a
-    thread, and sync routes start actions on it from their worker threads.
+    A test client runs the app on a loop of its own, in a thread. The test reads and
+    changes the state on that loop with `client.on_loop(work, *args)` (`work` may be
+    async): `client.on_loop(lambda: lab.state["servers"][sid]["status"])`.
     """
-    lab.loop = client.portal.call(asyncio.get_running_loop)
+    client.portal.call(lab.own_state)
+    client.on_loop = client.portal.call
 
 
 @pytest.fixture
@@ -175,6 +177,26 @@ def api(lab):
         client.lab = lab
         client.sh = lab.fabric.shell
         yield client
+
+
+def state_of(client, key: str):
+    """Return a part of the state by key (a kind such as "servers", or "netem").
+
+    It is looked up on the loop that owns the state. The test reads it afterwards,
+    and may change a record for a setup while no request runs.
+    """
+    return client.on_loop(lambda: client.lab.state.data[key])
+
+
+def metadata_client(api, ip: str, port: int = 40000) -> TestClient:
+    """Return a client of the metadata service, calling from `ip`, on `api`'s loop.
+
+    The state has one owner, the event loop of `api`; a client entered with `with`
+    would bring a loop of its own, so this one is used without `with`.
+    """
+    client = TestClient(create_metadata_app(api.lab), client=(ip, port))
+    client.portal = api.portal
+    return client
 
 
 def wait_action(api, action, prefix="", timeout=5.0):
@@ -240,8 +262,7 @@ def metadata(api, ip: str, path: str = "") -> dict | list:
 
     With a path, return that key's value (parsed YAML).
     """
-    with TestClient(create_metadata_app(api.lab), client=(ip, 40000)) as client:
-        response = client.get(f"/hetzner/v1/metadata{path}")
+    response = metadata_client(api, ip).get(f"/hetzner/v1/metadata{path}")
     assert response.status_code == 200, response.text
     return yaml.safe_load(response.text)
 

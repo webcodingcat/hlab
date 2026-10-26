@@ -43,11 +43,11 @@ class Fabric:
         self.root = root
         self.lab_key = root / "id_ed25519"  # the lab's SSH key
         self.shell = shell or Shell()
-        # Taps, tc and nft change only under this lock: concurrent actions (two servers
-        # starting) must not interleave, and a tap checked to exist must still be there
-        # when it is configured. The API holds it while it computes a whole picture
-        # (fault sets, DHCP, routes, latency, firewall) and hands it over, so the
-        # pictures are put in place in the order they were computed.
+        # Taps, tc and nft change only under this lock: the fabric's methods run in
+        # threads side by side (two servers starting), they must not interleave, and a
+        # tap checked to exist must still be there when it is configured. That the
+        # newest picture of the system is put in place last is the API's job
+        # (`Lab.picture_lock`, api/system.py).
         self.net_lock = threading.RLock()
         self.vms = VMs(cfg, root, self.shell)
         self.volumes = Volumes(root, self.shell, self.vms)

@@ -42,11 +42,11 @@ async def restore_storage_box(lab: Lab) -> None:
     if not box_cfg.get("enabled"):
         return
     await lab.blocking(lab.fabric.box.start_box, int(box_cfg.get("size_gb") or 0))
-    with lab.state.lock:  # a copy: the loop runs scripts
-        box_users = list(lab.state.data["box_users"].items())
+    # a copy: the loop runs scripts
+    box_users = list(lab.state.data["box_users"].items())
     for user, key in box_users:
-        await lab.blocking(set_up_box_user, lab, user, key)
-    await lab.blocking(storagebox.restore, lab)
+        await set_up_box_user(lab, user, key)
+    await storagebox.restore(lab)
 
 
 def fail_running_actions(lab: Lab) -> None:
@@ -64,16 +64,16 @@ def fail_running_actions(lab: Lab) -> None:
                 )
 
 
-def drop_half_created_volumes(lab: Lab) -> None:
+async def drop_half_created_volumes(lab: Lab) -> None:
     """Delete the volumes whose creation the restart cut off (maybe during mkfs).
 
     Their create action failed.
     """
     state = lab.state
-    with state.lock:  # a copy: the loop runs scripts
-        creating = [v for v in state["volumes"].values() if v["status"] == "creating"]
+    # a copy: the loop runs scripts
+    creating = [v for v in state["volumes"].values() if v["status"] == "creating"]
     for volume in creating:
-        lab.fabric.volumes.delete(volume)
+        await lab.blocking(lab.fabric.volumes.delete, volume)
         with state.change():
             del state["volumes"][volume["id"]]
 
@@ -102,47 +102,47 @@ async def restart_servers(lab: Lab) -> None:
 
     A server that cannot be started stays off; the lab comes up anyway.
     """
-    with lab.state.lock:  # a copy: the loop runs scripts
-        servers = list(lab.state["servers"].values())
+    # a copy: the loop runs scripts
+    servers = list(lab.state["servers"].values())
     for server in servers:
         try:
             if server["status"] == "deleting":
-                await lab.blocking(remove_server, lab, server)
+                await remove_server(lab, server)
                 continue
             target = status_after_restart(server)
             if target == "running":
                 await ensure_disk(lab, server)
-                await lab.blocking(system.start_vm, lab, server)
+                await system.start_vm(lab, server)
             elif server["status"] in ("initializing", "rebuilding"):
                 # cut off while its disk was made: create the disk; the server stays off
                 await ensure_disk(lab, server)
-            await lab.blocking(lab.set_status, server, target)
+            lab.set_status(server, target)
         except Exception:  # the server stays off, the lab comes up
             log.exception("server %s could not be started again", server["name"])
-            await lab.blocking(lab.set_status, server, "off")
+            lab.set_status(server, "off")
 
 
 async def restore_clients(lab: Lab) -> None:
     """Bring the Internet clients back; one that fails is left out (see the log)."""
-    with lab.state.lock:  # a copy: the loop runs scripts
-        clients = list(lab.state["clients"].values())
+    # a copy: the loop runs scripts
+    clients = list(lab.state["clients"].values())
     for client in clients:
         try:
-            await lab.blocking(system.add_client, lab, client)
+            await system.add_client(lab, client)
         except Exception:  # the lab comes up without this client
             log.exception("client %s not restored", client["name"])
 
 
 async def restore_lab(lab: Lab) -> None:
     """Restore the Storage Box, state, network, servers and clients after a start."""
-    await lab.blocking(clear_flags, lab)
+    clear_flags(lab)
     await restore_storage_box(lab)
-    await lab.blocking(fail_running_actions, lab)
-    await lab.blocking(drop_half_created_volumes, lab)
-    await lab.blocking(finish_box_setup, lab)
+    fail_running_actions(lab)
+    await drop_half_created_volumes(lab)
+    finish_box_setup(lab)
     # firewalls and faults before any VM runs, so no server ever runs unfiltered
-    await lab.blocking(system.apply_firewall, lab)
-    await lab.blocking(system.apply_faults, lab)
+    await system.apply_firewall(lab)
+    await system.apply_faults(lab)
     await restart_servers(lab)
     await restore_clients(lab)
     for step in (
@@ -151,6 +151,6 @@ async def restore_lab(lab: Lab) -> None:
         system.apply_firewall,
     ):
         try:
-            await lab.blocking(step, lab)
+            await step(lab)
         except Exception:  # the lab comes up; what failed is in the log
             log.exception("restoring the lab's network state")

@@ -6,6 +6,7 @@ user data and the cloud networks.
 """
 
 import json
+from pathlib import Path
 
 import yaml
 from fastapi import FastAPI, Request
@@ -93,18 +94,17 @@ systemd-run --unit=hlab-qemu-guest-agent --no-block \
 # --- the caller -----------------------------------------------------------------------
 
 
-def calling_server(lab: Lab, request: Request) -> Server | None:
+async def calling_server(lab: Lab, request: Request) -> Server | None:
     """Return the server a request comes from, or None."""
     state, fabric = lab.state, lab.fabric
     ip = request.client.host if request.client else ""
-    with state.lock:
-        servers = list(state["servers"].values())
-        holders = {
-            nic["tap"]: server
-            for server in servers
-            for nic in server["_lab"]["nics"]
-            if ip in nic_addresses(nic)
-        }
+    servers = list(state["servers"].values())
+    holders = {
+        nic["tap"]: server
+        for server in servers
+        for nic in server["_lab"]["nics"]
+        if ip in nic_addresses(nic)
+    }
     # the link-local address follows from the MAC: one per server
     if ip.startswith("fe80:"):
         return next((s for s in servers if link_local(s["_lab"]["index"]) == ip), None)
@@ -112,15 +112,14 @@ def calling_server(lab: Lab, request: Request) -> Server | None:
         # a private IP (networks may overlap): the tap on which the address is a
         # neighbour tells the server. Only taps that hold the address count (any guest
         # can add entries to the neighbour table), and only if there is exactly one.
-        taps = fabric.network.neighbour_taps(ip) & set(holders)
+        taps = await lab.blocking(fabric.network.neighbour_taps, ip) & set(holders)
         return holders[taps.pop()] if len(taps) == 1 else None
-    with state.lock:
-        for server in servers:
-            ipv6 = primary_address_of(state, server, "ipv6")
-            if ip == primary_address_of(state, server, "ipv4") or (
-                ipv6 and contains(ipv6, ip)
-            ):
-                return server
+    for server in servers:
+        ipv6 = primary_address_of(state, server, "ipv6")
+        if ip == primary_address_of(state, server, "ipv4") or (
+            ipv6 and contains(ipv6, ip)
+        ):
+            return server
     return None
 
 
@@ -131,22 +130,21 @@ def private_networks(lab: Lab, server: Server) -> list[dict]:
     """Return the cloud networks of a server as the metadata lists them."""
     state = lab.state
     out = []
-    with state.lock:
-        for number, nic in enumerate(server["_lab"]["nics"], start=1):
-            network = state["networks"][nic["network"]]
-            out.append(
-                {
-                    "ip": nic["ip"],
-                    "alias_ips": nic["alias_ips"],
-                    "interface_num": number,
-                    "mac_address": nic["mac"],
-                    "network_id": network["id"],
-                    "network_name": network["name"],
-                    "network": network["ip_range"],
-                    "subnet": subnet_of(network, nic["ip"]),
-                    "gateway": network_gateway(network["ip_range"]),
-                }
-            )
+    for number, nic in enumerate(server["_lab"]["nics"], start=1):
+        network = state["networks"][nic["network"]]
+        out.append(
+            {
+                "ip": nic["ip"],
+                "alias_ips": nic["alias_ips"],
+                "interface_num": number,
+                "mac_address": nic["mac"],
+                "network_id": network["id"],
+                "network_name": network["name"],
+                "network": network["ip_range"],
+                "subnet": subnet_of(network, nic["ip"]),
+                "gateway": network_gateway(network["ip_range"]),
+            }
+        )
     return out
 
 
@@ -179,13 +177,19 @@ def network_config(lab: Lab, server: Server) -> dict:
     }
 
 
-def metadata_values(lab: Lab, server: Server) -> dict:
+def read_lab_key(lab_key: Path) -> str | None:
+    """Return the lab's own public key (for `hlab ssh`), or None without one."""
+    public_key = lab_key.with_suffix(".pub")
+    return public_key.read_text().strip() if public_key.is_file() else None
+
+
+async def metadata_values(lab: Lab, server: Server) -> dict:
     """Return the metadata of a server, by key."""
-    cfg, fabric = lab.cfg, lab.fabric
+    cfg = lab.cfg
+    lab_key = await lab.blocking(read_lab_key, lab.fabric.lab_key)
     keys = list(server.get("public_keys", []))
-    lab_key = fabric.lab_key.with_suffix(".pub")
-    if lab_key.is_file():  # the lab's own access (hlab ssh)
-        keys.append(lab_key.read_text().strip())
+    if lab_key:  # the lab's own access (hlab ssh)
+        keys.append(lab_key)
     vendor = VENDOR_DATA
     # no SSH keys: Hetzner's root password and password login
     if server["_lab"].get("root_password"):
@@ -233,39 +237,38 @@ def create_metadata_app(lab: Lab) -> FastAPI:
     state = lab.state
 
     @app.get("/hetzner/v1/metadata")
-    def metadata_get(request: Request):
-        server = calling_server(lab, request)
+    async def metadata_get(request: Request):
+        server = await calling_server(lab, request)
         if not server:
             return PlainTextResponse("not found", status_code=404)
-        return text_response(metadata_values(lab, server))
+        return text_response(await metadata_values(lab, server))
 
     @app.get("/hetzner/v1/metadata/hlab-automount")
-    def automount_get(request: Request):
+    async def automount_get(request: Request):
         """Return the IDs of the caller's volumes to mount.
 
         A lab extension for the automount helper of the vendor data.
         """
-        server = calling_server(lab, request)
-        with state.lock:
-            ids = sorted(
-                v["id"]
-                for v in state["volumes"].values()
-                if server and v.get("server") == server["id"] and v.get("automount")
-            )
+        server = await calling_server(lab, request)
+        ids = sorted(
+            v["id"]
+            for v in state["volumes"].values()
+            if server and v.get("server") == server["id"] and v.get("automount")
+        )
         return PlainTextResponse(" ".join(map(str, ids)))
 
     # every key, also private-networks (which cloud-init reads on its own path)
     @app.get("/hetzner/v1/metadata/{key}")
-    def metadata_key_get(key: str, request: Request):
-        server = calling_server(lab, request)
-        value = metadata_values(lab, server).get(key) if server else None
+    async def metadata_key_get(key: str, request: Request):
+        server = await calling_server(lab, request)
+        value = (await metadata_values(lab, server)).get(key) if server else None
         if value is None:
             return PlainTextResponse("not found", status_code=404)
         return text_response(value)
 
     @app.get("/hetzner/v1/userdata")
-    def userdata_get(request: Request):
-        server = calling_server(lab, request)
+    async def userdata_get(request: Request):
+        server = await calling_server(lab, request)
         if not server:
             return PlainTextResponse("not found", status_code=404)
         if not server.get("user_data"):

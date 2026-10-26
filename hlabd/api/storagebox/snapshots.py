@@ -37,10 +37,9 @@ def snapshot_json(lab: Lab, snapshot: BoxSnapshot) -> dict:
 
 def snapshot_or_404(lab: Lab, box: StorageBox, ref) -> BoxSnapshot:
     """Return a snapshot of the box by ID or name, or raise 404."""
-    with lab.state.lock:
-        for s in lab.state["box_snapshots"].values():
-            if s["box"] == box["id"] and str(ref) in (str(s["id"]), s["name"]):
-                return s
+    for s in lab.state["box_snapshots"].values():
+        if s["box"] == box["id"] and str(ref) in (str(s["id"]), s["name"]):
+            return s
     raise not_found("snapshot")
 
 
@@ -79,50 +78,50 @@ def new_snapshot(
     return snapshot
 
 
-def copy_snapshot(lab: Lab, box: StorageBox, snapshot: BoxSnapshot) -> None:
+async def copy_snapshot(lab: Lab, box: StorageBox, snapshot: BoxSnapshot) -> None:
     """Copy the box's data behind a snapshot record.
 
     If the copy fails, the record is removed again.
     """
+    fabric_box, path = lab.fabric.box, snap_dir(box, snapshot["name"])
     try:
-        lab.fabric.box.take_snapshot(data_dir(box), snap_dir(box, snapshot["name"]))
+        await lab.blocking(fabric_box.take_snapshot, data_dir(box), path)
     except Exception:  # undo the half-done change, then raise
         with lab.state.change():
             lab.state["box_snapshots"].pop(snapshot["id"], None)
         raise
     # the snapshot was deleted meanwhile (or the lab reset): leave no orphan copy
     if lab.state["box_snapshots"].get(snapshot["id"]) is not snapshot:
-        lab.fabric.box.remove_tree(snap_dir(box, snapshot["name"]), check=False)
+        await lab.blocking(fabric_box.remove_tree, path, check=False)
         return
-    size = lab.fabric.box.bytes_used(snap_dir(box, snapshot["name"]))
+    size = await lab.blocking(fabric_box.bytes_used, path)
     with lab.state.change():
         snapshot["size"] = size
         snapshot.pop("_copying", None)
 
 
-def take_automatic_snapshot(lab: Lab, box: StorageBox) -> BoxSnapshot:
+async def take_automatic_snapshot(lab: Lab, box: StorageBox) -> BoxSnapshot:
     """Take a snapshot of the box for its plan, which keeps max_snapshots of them."""
     state = lab.state
     snapshot = new_snapshot(lab, box, automatic=True)
-    copy_snapshot(lab, box, snapshot)
-    with state.lock:
-        automatic = sorted(
-            (
-                s
-                for s in state["box_snapshots"].values()
-                if s["box"] == box["id"] and s["is_automatic"]
-            ),
-            key=lambda s: s["id"],
-        )
+    await copy_snapshot(lab, box, snapshot)
+    automatic = sorted(
+        (
+            s
+            for s in state["box_snapshots"].values()
+            if s["box"] == box["id"] and s["is_automatic"]
+        ),
+        key=lambda s: s["id"],
+    )
     assert box["plan"] is not None  # called only for boxes with a plan
     for old in automatic[: -max(1, box["plan"]["max_snapshots"])]:
-        remove_snapshot(lab, box, old)
+        await remove_snapshot(lab, box, old)
     return snapshot
 
 
-def remove_snapshot(lab: Lab, box: StorageBox, snapshot: BoxSnapshot) -> None:
+async def remove_snapshot(lab: Lab, box: StorageBox, snapshot: BoxSnapshot) -> None:
     """Remove a snapshot's copy and its record."""
-    lab.fabric.box.remove_tree(snap_dir(box, snapshot["name"]))
+    await lab.blocking(lab.fabric.box.remove_tree, snap_dir(box, snapshot["name"]))
     with lab.state.change():
         del lab.state["box_snapshots"][snapshot["id"]]
 
@@ -134,12 +133,11 @@ def create_snapshot(lab: Lab, bid: int, body: dict) -> dict:
     """
     state = lab.state
     box = box_or_404(lab, bid, ready=True)
-    with state.lock:
-        manual = [
-            s
-            for s in state["box_snapshots"].values()
-            if s["box"] == bid and not s["is_automatic"]
-        ]
+    manual = [
+        s
+        for s in state["box_snapshots"].values()
+        if s["box"] == bid and not s["is_automatic"]
+    ]
     if len(manual) >= lab.cfg["storage_box_types"][box["type"]]["snapshots"]:
         raise limit_exceeded(
             "snapshot limit of the Storage Box type reached", "snapshots"
@@ -153,7 +151,7 @@ def create_snapshot(lab: Lab, bid: int, body: dict) -> dict:
     )
 
     async def steps():
-        await lab.blocking(copy_snapshot, lab, box, snapshot)
+        await copy_snapshot(lab, box, snapshot)
 
     lab.run_action(action, steps)
     return {"snapshot": snapshot_json(lab, snapshot), "action": action}
@@ -167,11 +165,11 @@ def update_snapshot(lab: Lab, bid: int, ref: str, body: dict) -> dict:
     return {"snapshot": snapshot_json(lab, snapshot)}
 
 
-def delete_snapshot(lab: Lab, bid: int, ref: str) -> dict:
+async def delete_snapshot(lab: Lab, bid: int, ref: str) -> dict:
     """Delete a snapshot at once (not while the box is busy)."""
     box = box_or_404(lab, bid, ready=True)
     snapshot = snapshot_or_404(lab, box, ref)
-    remove_snapshot(lab, box, snapshot)
+    await remove_snapshot(lab, box, snapshot)
     return {
         "action": lab.finished_action(
             "delete_snapshot",
@@ -197,27 +195,25 @@ def rollback_snapshot(lab: Lab, box: StorageBox, body: dict) -> Plan:
             lab.fabric.box.roll_back, snap_dir(box, snapshot["name"]), data_dir(box)
         )
         # sub-account homes are paths: they follow what the snapshot has there
-        with state.lock:
-            subaccounts = [
-                x for x in state["subaccounts"].values() if x["box"] == box["id"]
-            ]
+        subaccounts = [
+            x for x in state["subaccounts"].values() if x["box"] == box["id"]
+        ]
         for subaccount in subaccounts:
             try:
-                await lab.blocking(sync_subaccount, lab, box, subaccount)
+                await sync_subaccount(lab, box, subaccount)
             # a home the snapshot does not have stays as it was
             except Exception:
                 log.exception(
                     "sub-account %s keeps its home after the rollback",
                     subaccount["username"],
                 )
-        with state.lock:
-            newer_snapshots = [
-                x
-                for x in state["box_snapshots"].values()
-                if x["box"] == box["id"] and x["id"] > snapshot["id"]
-            ]
+        newer_snapshots = [
+            x
+            for x in state["box_snapshots"].values()
+            if x["box"] == box["id"] and x["id"] > snapshot["id"]
+        ]
         for newer in newer_snapshots:
-            await lab.blocking(remove_snapshot, lab, box, newer)
+            await remove_snapshot(lab, box, newer)
 
     return Plan(steps, resources=[(snapshot["id"], "storage_box_snapshot")])
 
@@ -264,8 +260,7 @@ async def run_snapshot_plans(
     `waiting` holds the IDs of boxes whose plan came due while a rollback or delete
     ran; such a box gets one snapshot once it is free, however many slots it missed.
     """
-    with lab.state.lock:
-        boxes = list(lab.state["storage_boxes"].values())
+    boxes = list(lab.state["storage_boxes"].values())
     # a box that is gone or lost its plan waits for nothing
     waiting.intersection_update(box["id"] for box in boxes if box.get("plan"))
     for box in boxes:
@@ -281,7 +276,7 @@ async def run_snapshot_plans(
             continue
         waiting.discard(box["id"])
         try:
-            await lab.blocking(take_automatic_snapshot, lab, box)
+            await take_automatic_snapshot(lab, box)
         # one failed snapshot must not end the plans of all boxes
         except Exception:
             log.exception("automatic snapshot of box %s failed", box["id"])
@@ -295,40 +290,39 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     state = lab.state
 
     @app.get("/v1/storage_boxes/{bid}/snapshots")
-    def snapshot_list(bid: int, request: Request):
-        with state.lock:
-            box_or_404(lab, bid)
-            items = filtered(
-                request,
-                [s for s in state["box_snapshots"].values() if s["box"] == bid],
-                {
-                    "is_automatic": lambda snapshot, value: (
-                        str(snapshot["is_automatic"]).lower() == value.lower()
-                    )
-                },
-            )
-            return {
-                "snapshots": sort_items(
-                    [snapshot_json(lab, s) for s in items],
-                    request.query_params.getlist("sort"),
+    async def snapshot_list(bid: int, request: Request):
+        box_or_404(lab, bid)
+        items = filtered(
+            request,
+            [s for s in state["box_snapshots"].values() if s["box"] == bid],
+            {
+                "is_automatic": lambda snapshot, value: (
+                    str(snapshot["is_automatic"]).lower() == value.lower()
                 )
-            }
+            },
+        )
+        return {
+            "snapshots": sort_items(
+                [snapshot_json(lab, s) for s in items],
+                request.query_params.getlist("sort"),
+            )
+        }
 
     @app.post("/v1/storage_boxes/{bid}/snapshots", status_code=201)
     async def snapshot_create(bid: int, request: Request):
         body = await read_body(request)
-        return await lab.blocking(create_snapshot, lab, bid, body)
+        return create_snapshot(lab, bid, body)
 
     @app.get("/v1/storage_boxes/{bid}/snapshots/{ref}")
-    def snapshot_get(bid: int, ref: str):
+    async def snapshot_get(bid: int, ref: str):
         snapshot = snapshot_or_404(lab, box_or_404(lab, bid), ref)
         return {"snapshot": snapshot_json(lab, snapshot)}
 
     @app.put("/v1/storage_boxes/{bid}/snapshots/{ref}")
     async def snapshot_update(bid: int, ref: str, request: Request):
         body = await read_body(request)
-        return await lab.blocking(update_snapshot, lab, bid, ref, body)
+        return update_snapshot(lab, bid, ref, body)
 
     @app.delete("/v1/storage_boxes/{bid}/snapshots/{ref}", status_code=201)
-    def snapshot_delete(bid: int, ref: str):
-        return delete_snapshot(lab, bid, ref)
+    async def snapshot_delete(bid: int, ref: str):
+        return await delete_snapshot(lab, bid, ref)

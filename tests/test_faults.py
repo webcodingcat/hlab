@@ -1,6 +1,9 @@
 """Faults and the packet path: API faults, cut links, netem, latency, anti-spoofing."""
 
-from conftest import create_server, nft_set, wait_action
+import asyncio
+import threading
+
+from conftest import create_server, nft_set, state_of, wait_action
 
 from hlabd.api import desired, system
 
@@ -47,9 +50,9 @@ def test_netem_takes_only_text(api):
         api.post("/_lab/netem", json={"vm": "a", "args": "delay  50ms"}).status_code
         == 200
     )
-    assert set(api.lab.state.data["netem"].values()) == {"delay 50ms"}
+    assert set(state_of(api, "netem").values()) == {"delay 50ms"}
     # the stored text goes into a tc command line as it is: applying it must work
-    system.apply_latency(api.lab)
+    api.on_loop(system.apply_latency, api.lab)
 
 
 def test_latency_between_locations_is_split_over_both_sides(api):
@@ -92,9 +95,7 @@ def test_a_tap_with_netem_gets_no_delays_the_others_by_location(api):
     second = create_server(api, "b", location="hel1")["server"]
     response = api.post("/_lab/netem", json={"vm": "a", "args": "loss 5%"})
     assert response.status_code == 200, response.text
-    state = api.lab.state
-    with state.lock:
-        latency = desired.latency(state, api.lab.cfg)
+    latency = api.on_loop(desired.latency, api.lab.state, api.lab.cfg)
     shapings = {server["id"]: taps for server, taps in latency.servers}
     (first_tap,) = shapings[first["id"]]
     (second_tap,) = shapings[second["id"]]
@@ -105,3 +106,35 @@ def test_a_tap_with_netem_gets_no_delays_the_others_by_location(api):
         None,
         {24: [f"{public['ipv4']['ip']}/32", public["ipv6"]["ip"]]},
     )
+
+
+def test_pictures_are_put_in_place_in_the_order_they_were_computed(lab, monkeypatch):
+    applied, first_runs, release_first = [], threading.Event(), threading.Event()
+
+    def slow_first_apply(sets, tap_networks):
+        if not applied and not first_runs.is_set():
+            first_runs.set()
+            release_first.wait(5)  # the older picture takes long to put in place
+        applied.append(sets["faults"])
+
+    # a picture: how many faults the state had when it was computed
+    monkeypatch.setattr(
+        desired, "fault_sets", lambda state: {"faults": len(state.data["faults"])}
+    )
+    monkeypatch.setattr(lab.fabric.faults, "apply", slow_first_apply)
+
+    async def two_pictures():
+        older = asyncio.create_task(system.apply_faults(lab))
+        while not first_runs.is_set():
+            await asyncio.sleep(0.01)
+        lab.state.data["faults"].append(
+            {"type": "cut", "first": "a", "second": "b", "net": "all"}
+        )
+        newer = asyncio.create_task(system.apply_faults(lab))
+        await asyncio.sleep(0.05)  # the newer picture waits for the older one
+        release_first.set()
+        await asyncio.gather(older, newer)
+
+    asyncio.run(two_pictures())
+    # the newest picture is in place last: an older one never overwrites it
+    assert applied == [0, 1]

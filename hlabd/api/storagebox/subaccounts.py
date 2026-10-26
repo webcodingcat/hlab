@@ -53,12 +53,11 @@ def check_unique_subaccount_name(
 
     Names are unique per box; an unnamed sub-account is called by its username.
     """
-    with lab.state.lock:
-        others = [
-            x
-            for x in lab.state["subaccounts"].values()
-            if x["box"] == box["id"] and x is not current
-        ]
+    others = [
+        x
+        for x in lab.state["subaccounts"].values()
+        if x["box"] == box["id"] and x is not current
+    ]
     if name and any((x.get("name") or x["username"]) == name for x in others):
         raise not_unique("a sub-account has this name already", "name")
 
@@ -77,44 +76,41 @@ def box_plan(subaccount: Subaccount) -> Plan:
 # Each gets the sub-account and the request and returns its plan; each is done at once.
 
 
-def change_home_directory(lab: Lab, subaccount: Subaccount, body: dict) -> Plan:
+async def change_home_directory(lab: Lab, subaccount: Subaccount, body: dict) -> Plan:
     """Change a sub-account's home; on failure the old one stays."""
     box = box_of(lab, subaccount)
     old = subaccount["home_directory"]
     home = normalized_box_path(body["home_directory"], "home_directory")
-    with lab.state.lock:
-        subaccount["home_directory"] = home
+    subaccount["home_directory"] = home
     try:
-        sync_subaccount(lab, box, subaccount)
+        await sync_subaccount(lab, box, subaccount)
     except Exception:  # undo the half-done change, then raise
-        with lab.state.lock:
-            subaccount["home_directory"] = old
+        subaccount["home_directory"] = old
         raise
     return box_plan(subaccount)
 
 
-def reset_subaccount_password(lab: Lab, subaccount: Subaccount, body: dict) -> Plan:
+async def reset_subaccount_password(
+    lab: Lab, subaccount: Subaccount, body: dict
+) -> Plan:
     """Set a new password for a sub-account."""
     box = box_of(lab, subaccount)
     password = checked_password(body.get("password"))
-    with lab.state.lock:
-        subaccount["_password"] = password
-    sync_subaccount(lab, box, subaccount, password)
+    subaccount["_password"] = password
+    await sync_subaccount(lab, box, subaccount, password)
     return box_plan(subaccount)
 
 
-def update_access_settings(lab: Lab, subaccount: Subaccount, body: dict) -> Plan:
+async def update_access_settings(lab: Lab, subaccount: Subaccount, body: dict) -> Plan:
     """Change a sub-account's access settings; on failure the old ones stay."""
     box = box_of(lab, subaccount)
     old = dict(subaccount["access"])
     access = checked_access_settings(body, subaccount["access"])
-    with lab.state.lock:
-        subaccount["access"].update(access)
+    subaccount["access"].update(access)
     try:
-        sync_subaccount(lab, box, subaccount)
+        await sync_subaccount(lab, box, subaccount)
     except Exception:  # not in effect, so not reported either
-        with lab.state.lock:
-            subaccount["access"] = old
+        subaccount["access"] = old
         raise
     return box_plan(subaccount)
 
@@ -133,11 +129,11 @@ SUBACCOUNT_ACTIONS: ActionTable[Subaccount] = {
 # --- route logic ----------------------------------------------------------------------
 
 
-def create_subaccount(lab: Lab, bid: int, body: dict) -> dict:
+async def create_subaccount(lab: Lab, bid: int, body: dict) -> dict:
     """Create a sub-account of a box with its account on the box.
 
-    Sub-accounts are numbered per box (u<box>-sub<n>); the number is taken under the
-    lock, so a second create at the same time gets the next one. The box is not
+    Sub-accounts are numbered per box (u<box>-sub<n>); the number is taken with the
+    record, so a second create at the same time gets the next one. The box is not
     deleted while the account is set up (`_creating`). If the account cannot be set up,
     the sub-account is removed again. Refused while the box is busy (423).
     """
@@ -156,38 +152,38 @@ def create_subaccount(lab: Lab, bid: int, body: dict) -> dict:
     home = normalized_box_path(body.get("home_directory"), "home_directory")
     password = checked_password(body.get("password"))
     with lab.holding() as held:
-        with state.lock:
-            check_unique_subaccount_name(lab, box, body.get("name"), None)
-            mine = [a for a in state["subaccounts"].values() if a["box"] == box["id"]]
-            if len(mine) >= lab.cfg["storage_box_types"][box["type"]]["subaccounts"]:
-                raise limit_exceeded(
-                    "sub-account limit of the Storage Box type reached", "subaccounts"
-                )
-            if box_busy(lab, box):  # the box got busy meanwhile (e.g. it is deleted)
-                raise locked(BUSY)
-            number = 1 + max([a["number"] for a in mine], default=0)
-            subaccount_id = state.new_id("subaccounts")
-            subaccount: Subaccount = {
-                "id": subaccount_id,
-                "box": box["id"],
-                "number": number,
-                "username": f"{username(box)}-sub{number}",
-                "name": body.get("name"),
-                "home_directory": home,
-                "access": access_settings,
-                "description": body.get("description") or "",
-                "labels": body.get("labels") or {},
-                "created": now(),
-                "_password": password,
-            }
-            state["subaccounts"][subaccount_id] = subaccount
-            held.claim(subaccount, "_creating", BUSY)  # new: nobody holds it yet
+        check_unique_subaccount_name(lab, box, body.get("name"), None)
+        mine = [a for a in state["subaccounts"].values() if a["box"] == box["id"]]
+        if len(mine) >= lab.cfg["storage_box_types"][box["type"]]["subaccounts"]:
+            raise limit_exceeded(
+                "sub-account limit of the Storage Box type reached", "subaccounts"
+            )
+        if box_busy(lab, box):  # the box got busy meanwhile (e.g. it is deleted)
+            raise locked(BUSY)
+        number = 1 + max([a["number"] for a in mine], default=0)
+        subaccount_id = state.new_id("subaccounts")
+        subaccount: Subaccount = {
+            "id": subaccount_id,
+            "box": box["id"],
+            "number": number,
+            "username": f"{username(box)}-sub{number}",
+            "name": body.get("name"),
+            "home_directory": home,
+            "access": access_settings,
+            "description": body.get("description") or "",
+            "labels": body.get("labels") or {},
+            "created": now(),
+            "_password": password,
+        }
+        state["subaccounts"][subaccount_id] = subaccount
+        held.claim(subaccount, "_creating", BUSY)  # new: nobody holds it yet
         try:
-            sync_subaccount(lab, box, subaccount, password)
+            await sync_subaccount(lab, box, subaccount, password)
         except Exception:  # undo the half-done change, then raise
-            lab.fabric.box.remove_account(subaccount["username"], check=False)
-            with state.lock:
-                state["subaccounts"].pop(subaccount_id, None)
+            await lab.blocking(
+                lab.fabric.box.remove_account, subaccount["username"], check=False
+            )
+            state["subaccounts"].pop(subaccount_id, None)
             raise
         with state.change():  # the sub-account is ready
             held.release()
@@ -208,11 +204,11 @@ def update_subaccount(lab: Lab, bid: int, subaccount_id: int, body: dict) -> dic
     return {"subaccount": subaccount_json(lab, subaccount)}
 
 
-def delete_subaccount(lab: Lab, bid: int, subaccount_id: int) -> dict:
+async def delete_subaccount(lab: Lab, bid: int, subaccount_id: int) -> dict:
     """Delete a sub-account and its account at once (its files stay in the box)."""
     box = box_or_404(lab, bid, ready=True)
     subaccount = subaccount_or_404(lab, box, subaccount_id)
-    lab.fabric.box.remove_account(subaccount["username"])
+    await lab.blocking(lab.fabric.box.remove_account, subaccount["username"])
     with lab.state.change():
         del lab.state["subaccounts"][subaccount_id]
     return {
@@ -223,13 +219,15 @@ def delete_subaccount(lab: Lab, bid: int, subaccount_id: int) -> dict:
     }
 
 
-def run_subaccount_action(
+async def run_subaccount_action(
     lab: Lab, bid: int, subaccount_id: int, cmd: str, body: dict
 ) -> dict:
     """Run an action of a sub-account (not while its box is busy)."""
     box = box_or_404(lab, bid, ready=True)
     subaccount = subaccount_or_404(lab, box, subaccount_id)
-    return lab.act(SUBACCOUNT_ACTIONS, cmd, subaccount, "storage_box_subaccount", body)
+    return await lab.act(
+        SUBACCOUNT_ACTIONS, cmd, subaccount, "storage_box_subaccount", body
+    )
 
 
 # --- routes ---------------------------------------------------------------------------
@@ -240,47 +238,44 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     state = lab.state
 
     @app.get("/v1/storage_boxes/{bid}/subaccounts")
-    def subaccount_list(bid: int, request: Request):
-        with state.lock:
-            box_or_404(lab, bid)
-            items = filtered(
-                request,
-                [a for a in state["subaccounts"].values() if a["box"] == bid],
-                {
-                    "username": lambda subaccount, value: (
-                        subaccount["username"] == value
-                    ),
-                    # a sub-account without a name goes by its username
-                    "name": lambda subaccount, value: (
-                        (subaccount.get("name") or subaccount["username"]) == value
-                    ),
-                },
+    async def subaccount_list(bid: int, request: Request):
+        box_or_404(lab, bid)
+        items = filtered(
+            request,
+            [a for a in state["subaccounts"].values() if a["box"] == bid],
+            {
+                "username": lambda subaccount, value: subaccount["username"] == value,
+                # a sub-account without a name goes by its username
+                "name": lambda subaccount, value: (
+                    (subaccount.get("name") or subaccount["username"]) == value
+                ),
+            },
+        )
+        return {
+            "subaccounts": sort_items(
+                [subaccount_json(lab, a) for a in items],
+                request.query_params.getlist("sort"),
             )
-            return {
-                "subaccounts": sort_items(
-                    [subaccount_json(lab, a) for a in items],
-                    request.query_params.getlist("sort"),
-                )
-            }
+        }
 
     @app.post("/v1/storage_boxes/{bid}/subaccounts", status_code=201)
     async def subaccount_create(bid: int, request: Request):
         body = await read_body(request)
-        return await lab.blocking(create_subaccount, lab, bid, body)
+        return await create_subaccount(lab, bid, body)
 
     @app.get("/v1/storage_boxes/{bid}/subaccounts/{subaccount_id}")
-    def subaccount_get(bid: int, subaccount_id: int):
+    async def subaccount_get(bid: int, subaccount_id: int):
         subaccount = subaccount_or_404(lab, box_or_404(lab, bid), subaccount_id)
         return {"subaccount": subaccount_json(lab, subaccount)}
 
     @app.put("/v1/storage_boxes/{bid}/subaccounts/{subaccount_id}")
     async def subaccount_update(bid: int, subaccount_id: int, request: Request):
         body = await read_body(request)
-        return await lab.blocking(update_subaccount, lab, bid, subaccount_id, body)
+        return update_subaccount(lab, bid, subaccount_id, body)
 
     @app.delete("/v1/storage_boxes/{bid}/subaccounts/{subaccount_id}", status_code=201)
-    def subaccount_delete(bid: int, subaccount_id: int):
-        return delete_subaccount(lab, bid, subaccount_id)
+    async def subaccount_delete(bid: int, subaccount_id: int):
+        return await delete_subaccount(lab, bid, subaccount_id)
 
     @app.post(
         "/v1/storage_boxes/{bid}/subaccounts/{subaccount_id}/actions/{cmd}",
@@ -290,6 +285,4 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
         bid: int, subaccount_id: int, cmd: str, request: Request
     ):
         body = await read_body(request)
-        return await lab.blocking(
-            run_subaccount_action, lab, bid, subaccount_id, cmd, body
-        )
+        return await run_subaccount_action(lab, bid, subaccount_id, cmd, body)

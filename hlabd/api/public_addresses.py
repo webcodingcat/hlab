@@ -29,9 +29,8 @@ def set_dns_ptr(
 ) -> None:
     """Set the reverse DNS entry of one address of a primary or Floating IP.
 
-    None removes the entry. The caller holds the state's lock.
+    None removes the entry. The caller saves it.
     """
-    lab.state.lock.assert_held()
     if ptr is not None and not (isinstance(ptr, str) and hostname_ok(ptr)):
         raise invalid("dns_ptr must be a host name (without trailing dot)", "dns_ptr")
     record["dns_ptr"] = [x for x in record.get("dns_ptr", []) if x["ip"] != ip]
@@ -49,6 +48,5 @@ def record_dns_ptr(
     ip = str(body.get("ip") or default_ip)
     if not contains(record["ip"], ip):
         raise invalid("ip must be an address of the IP", "ip")
-    with lab.state.lock:
-        set_dns_ptr(lab, record, str(ipaddress.ip_address(ip)), body.get("dns_ptr"))
+    set_dns_ptr(lab, record, str(ipaddress.ip_address(ip)), body.get("dns_ptr"))
     return Plan()

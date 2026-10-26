@@ -1,12 +1,11 @@
 """The Storage Box API: boxes, sub-accounts, snapshots, plans, access settings."""
 
 import asyncio
-import threading
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
-from conftest import wait_action
+from conftest import state_of, wait_action
 
 from hlabd.api import storagebox
 
@@ -195,11 +194,13 @@ def test_snapshots_roll_back_and_the_plan_keeps_max_snapshots(box_api):
         json={"max_snapshots": 2, "minute": 0, "hour": 3},
     )
     assert response.status_code == 201
-    record = box_api.lab.state["storage_boxes"][box["id"]]
+    record = state_of(box_api, "storage_boxes")[box["id"]]
     for _ in range(3):
-        storagebox.snapshots.take_automatic_snapshot(box_api.lab, record)
+        box_api.on_loop(
+            storagebox.snapshots.take_automatic_snapshot, box_api.lab, record
+        )
     autos = [
-        x for x in box_api.lab.state["box_snapshots"].values() if x["is_automatic"]
+        x for x in state_of(box_api, "box_snapshots").values() if x["is_automatic"]
     ]
     assert len(autos) == 2  # the plan keeps max_snapshots
     assert (
@@ -243,18 +244,14 @@ def test_snapshot_plan_due_while_the_box_is_busy_is_caught_up_once(monkeypatch):
     }
     box = {"id": 7, "status": "active", "plan": plan, "_busy": True}
 
-    class FakeState(dict):
-        lock = threading.RLock()
-
-    async def blocking(work, *args):
-        return work(*args)
-
-    lab = SimpleNamespace(state=FakeState(storage_boxes={7: box}), blocking=blocking)
+    lab = SimpleNamespace(state={"storage_boxes": {7: box}})
     taken = []
+
+    async def take_automatic_snapshot(lab, box):
+        taken.append(box["id"])
+
     monkeypatch.setattr(
-        storagebox.snapshots,
-        "take_automatic_snapshot",
-        lambda lab, box: taken.append(box["id"]),
+        storagebox.snapshots, "take_automatic_snapshot", take_automatic_snapshot
     )
     due = datetime(2026, 10, 25, 2, 30, tzinfo=timezone.utc)
     later = due.replace(minute=31)
@@ -355,9 +352,9 @@ def test_box_follows_hetzners_rules_for_names_actions_and_locks(box_api):
     assert response.status_code == 409  # names are unique per box
     running = box_api.get("/v1/storage_boxes/actions?status=running").json()["actions"]
     assert all(a["status"] == "running" for a in running)
-    other = box_api.lab.new_action("start_server", [(1, "server")])
+    other = box_api.on_loop(box_api.lab.new_action, "start_server", [(1, "server")])
     assert box_api.get(f"/v1/storage_boxes/actions/{other['id']}").status_code == 404
-    box_api.lab.state["storage_boxes"][box["id"]]["_deleting"] = True
+    state_of(box_api, "storage_boxes")[box["id"]]["_deleting"] = True
     assert (
         box_api.post(f"/v1/storage_boxes/{box['id']}/snapshots", json={}).status_code
         == 423
@@ -396,7 +393,7 @@ def test_box_is_busy_while_rolled_back(box_api):
     response = box_api.post(f"/v1/storage_boxes/{box['id']}/snapshots", json={})
     wait_action(box_api, response.json()["action"], prefix=BOX_ACTIONS_PREFIX)
     snap = response.json()["snapshot"]
-    box_api.lab.state["storage_boxes"][box["id"]]["_busy"] = True  # a rollback runs
+    state_of(box_api, "storage_boxes")[box["id"]]["_busy"] = True  # a rollback runs
     assert (
         box_api.post(f"/v1/storage_boxes/{box['id']}/snapshots", json={}).status_code
         == 423
@@ -414,14 +411,15 @@ def test_snapshot_still_being_copied_blocks_rollback_and_is_removed_on_restart(b
     response = box_api.post(f"/v1/storage_boxes/{box['id']}/snapshots", json={})
     wait_action(box_api, response.json()["action"], prefix=BOX_ACTIONS_PREFIX)
     snap = response.json()["snapshot"]
-    box_api.lab.state["box_snapshots"][snap["id"]]["_copying"] = True
+    state_of(box_api, "box_snapshots")[snap["id"]]["_copying"] = True
     response = box_api.post(
         f"/v1/storage_boxes/{box['id']}/actions/rollback_snapshot",
         json={"snapshot": snap["id"]},
     )
     assert response.status_code == 423
-    storagebox.restore(box_api.lab)  # a lab start: the cut-off copy is removed
-    assert snap["id"] not in box_api.lab.state["box_snapshots"]
+    # a lab start: the cut-off copy is removed
+    box_api.on_loop(storagebox.restore, box_api.lab)
+    assert snap["id"] not in state_of(box_api, "box_snapshots")
 
 
 def test_rollback_frees_the_box(box_api):
@@ -438,7 +436,7 @@ def test_rollback_frees_the_box(box_api):
         ]
         == "success"
     )
-    assert not box_api.lab.state["storage_boxes"][box["id"]].get("_busy")
+    assert not state_of(box_api, "storage_boxes")[box["id"]].get("_busy")
 
 
 def test_a_subaccount_whose_account_fails_is_removed_and_frees_the_box(box_api):
@@ -449,7 +447,7 @@ def test_a_subaccount_whose_account_fails_is_removed_and_frees_the_box(box_api):
             f"/v1/storage_boxes/{box['id']}/subaccounts",
             json={"home_directory": "backups", "password": "Sub-Pass-123"},
         )
-    assert box_api.lab.state["subaccounts"] == {}
+    assert state_of(box_api, "subaccounts") == {}
     box_api.sh.fail.clear()
     response = box_api.delete(f"/v1/storage_boxes/{box['id']}")
     assert response.status_code == 201  # no sub-account is left being set up

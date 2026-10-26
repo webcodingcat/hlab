@@ -29,13 +29,10 @@ def lab_addresses(lab: Lab) -> set[str]:
     """Return the addresses no server gets.
 
     These are the lab's gateways in the networks, Hetzner's gateway (config.GATEWAY)
-    and the container's own addresses (read before the state's lock with
+    and the container's own addresses (read before in a thread with
     `read_local_addresses()`).
     """
-    with lab.state.lock:
-        gateways = {
-            network_gateway(n["ip_range"]) for n in lab.state["networks"].values()
-        }
+    gateways = {network_gateway(n["ip_range"]) for n in lab.state["networks"].values()}
     return gateways | {config.GATEWAY} | lab.fabric.network.local_addresses()
 
 
@@ -93,10 +90,9 @@ def checked_alias_ips(lab: Lab, nic: Nic, ips) -> list[str]:
     """Return the checked alias IPs of a NIC.
 
     They must be free addresses in the network's subnets. Once set, they are taken
-    like a NIC's own IP. The caller holds the state's lock, so the addresses it finds
-    free are still free when it sets them.
+    like a NIC's own IP. The caller sets them without an await in between, so the
+    addresses found free are still free then.
     """
-    lab.state.lock.assert_held()
     if ips is None:
         return []
     if not isinstance(ips, list):
@@ -127,10 +123,9 @@ def add_nic(
 ) -> Nic:
     """Add a NIC in a network to the server and return it.
 
-    This changes the state only (the caller holds its lock); the fabric adds the NIC to
-    the VM.
+    This changes the state only (in the caller's `change()`); the fabric adds the NIC
+    to the VM.
     """
-    lab.state.lock.assert_held()
     state = lab.state
     net = state["networks"].get(nid)
     if not net or net.get("_deleting"):
@@ -176,8 +171,7 @@ def add_nic(
 def server_nic(lab: Lab, server: Server, body: dict) -> Nic:
     """Return the server's NIC in the network the body names, or raise invalid_input."""
     nid = ref_id(body.get("network"), "network")
-    with lab.state.lock:
-        nic = next((n for n in server["_lab"]["nics"] if n["network"] == nid), None)
+    nic = next((n for n in server["_lab"]["nics"] if n["network"] == nid), None)
     if not nic:
         raise invalid("server is not attached to this network")
     return nic
@@ -191,13 +185,14 @@ def remove_nic(lab: Lab, server: Server, nic: Nic) -> None:
         drop_netem(lab, [nic["tap"]])  # the next NIC may get this tap name
 
 
-def attach_to_network(lab: Lab, server: Server, body: dict) -> Plan:
+async def attach_to_network(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan an attach to a network.
 
     A running server gets the NIC hot-plugged; one that is off gets it at its next
     start.
     """
-    lab.fabric.network.read_local_addresses()  # a script: not under the lock
+    # a script: the addresses no NIC gets
+    await lab.blocking(lab.fabric.network.read_local_addresses)
     with lab.state.change():
         nic = add_nic(
             lab,
@@ -206,20 +201,16 @@ def attach_to_network(lab: Lab, server: Server, body: dict) -> Plan:
             body.get("ip"),
             body.get("ip_range"),
         )
-        try:
-            nic["alias_ips"] = checked_alias_ips(lab, nic, body.get("alias_ips"))
-        except ApiError:
-            server["_lab"]["nics"].remove(nic)
-            raise
+        nic["alias_ips"] = checked_alias_ips(lab, nic, body.get("alias_ips"))
 
     async def steps():
         try:
-            await lab.blocking(system.attach_nic, lab, server, nic)
+            await system.attach_nic(lab, server, nic)
         except Exception:  # whatever failed: undo, then re-raise
             # remove the NIC again, so the API reports no network the VM does not have
             await lab.blocking(lab.fabric.network.detach_nic, server, nic)
-            await lab.blocking(remove_nic, lab, server, nic)
-            await lab.blocking(system.write_dhcp, lab)
+            remove_nic(lab, server, nic)
+            await system.write_dhcp(lab)
             raise
         await lab.sleep(NIC_ATTACH_SECONDS)
 
@@ -232,29 +223,30 @@ def detach_from_network(lab: Lab, server: Server, body: dict) -> Plan:
 
     async def steps():
         await lab.blocking(lab.fabric.network.detach_nic, server, nic)
-        await lab.blocking(remove_nic, lab, server, nic)
-        await lab.blocking(system.write_dhcp, lab)
-        await lab.blocking(system.apply_faults, lab)
+        remove_nic(lab, server, nic)
+        await system.write_dhcp(lab)
+        await system.apply_faults(lab)
         await lab.sleep(NIC_DETACH_SECONDS)
 
     return Plan(steps, server=server)
 
 
-def change_alias_ips(lab: Lab, server: Server, body: dict) -> Plan:
+async def change_alias_ips(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan a change of alias IPs.
 
     The lab routes the alias IPs to the server; the guest sets them up itself.
     """
     nic = server_nic(lab, server, body)
-    lab.fabric.network.read_local_addresses()  # a script: not under the lock
+    # a script: the addresses no NIC gets
+    await lab.blocking(lab.fabric.network.read_local_addresses)
     with lab.state.change():
         nic["alias_ips"] = checked_alias_ips(lab, nic, body.get("alias_ips"))
 
     async def steps():
         if await lab.blocking(lab.fabric.vms.is_alive, server):
-            await lab.blocking(system.nic_up, lab, nic)
+            await system.nic_up(lab, nic)
         # an alias IP may be the gateway of a route
-        await lab.blocking(system.apply_routes, lab)
+        await system.apply_routes(lab)
         await lab.sleep(ALIAS_IPS_SECONDS)
 
     return Plan(steps, server=server)

@@ -1,9 +1,6 @@
 """The metadata service: what cloud-init gets, and how the caller is found."""
 
-from conftest import KEY, create_network, create_server, metadata
-from fastapi.testclient import TestClient
-
-from hlabd.api.metadata import create_metadata_app
+from conftest import KEY, create_network, create_server, metadata, metadata_client
 
 
 def test_metadata_serves_what_cloud_init_reads(api):
@@ -18,18 +15,14 @@ def test_metadata_serves_what_cloud_init_reads(api):
     assert KEY in md["public-keys"]
     assert md["network-config"]["config"][0]["mac_address"] == "96:00:00:00:00:01"
     assert "disable_root: false" in md["vendor_data"]
-    with TestClient(
-        create_metadata_app(api.lab), client=("198.51.100.11", 1)
-    ) as client:
-        assert client.get("/hetzner/v1/userdata").text.startswith("#cloud-config")
-        assert client.get("/hetzner/v1/metadata/hostname").text == "web"
-        assert client.get("/hetzner/v1/metadata/private-networks").text.strip() == "[]"
+    client = metadata_client(api, "198.51.100.11", 1)
+    assert client.get("/hetzner/v1/userdata").text.startswith("#cloud-config")
+    assert client.get("/hetzner/v1/metadata/hostname").text == "web"
+    assert client.get("/hetzner/v1/metadata/private-networks").text.strip() == "[]"
     s2 = create_server(api, "empty")["server"]
-    with TestClient(
-        create_metadata_app(api.lab), client=(s2["public_net"]["ipv4"]["ip"], 1)
-    ) as client:
-        # cloud-init would wait for content
-        assert client.get("/hetzner/v1/userdata").status_code == 204
+    client = metadata_client(api, s2["public_net"]["ipv4"]["ip"], 1)
+    # cloud-init would wait for content
+    assert client.get("/hetzner/v1/userdata").status_code == 204
 
 
 def test_metadata_lists_cloud_networks_in_both_places(api):
@@ -74,8 +67,8 @@ def test_metadata_by_private_ip_needs_a_single_tap(api):
     api.sh.neigh["10.0.1.1"] = "prv2x1"
     assert metadata(api, "10.0.1.1")["hostname"] == "b"
     api.sh.neigh["10.0.1.1"] = "prv1x1\nprv2x1"
-    with TestClient(create_metadata_app(api.lab), client=("10.0.1.1", 40000)) as client:
-        assert client.get("/hetzner/v1/metadata").status_code == 404
+    client = metadata_client(api, "10.0.1.1")
+    assert client.get("/hetzner/v1/metadata").status_code == 404
 
 
 def test_metadata_by_private_ip_counts_only_the_tap_holding_it(api):
@@ -85,10 +78,8 @@ def test_metadata_by_private_ip_counts_only_the_tap_holding_it(api):
     # metadata by private IP: only a tap that holds the address counts (the neighbour
     # table may know it elsewhere)
     api.sh.neigh["10.0.1.1"] = "prv1x1 prv2x1"
-    with TestClient(create_metadata_app(api.lab), client=("10.0.1.1", 40000)) as client:
-        assert client.get("/hetzner/v1/metadata/instance-id").text == str(
-            server_a["id"]
-        )
+    client = metadata_client(api, "10.0.1.1")
+    assert client.get("/hetzner/v1/metadata/instance-id").text == str(server_a["id"])
     api.sh.neigh["10.0.1.1"] = "prv2x1"
-    with TestClient(create_metadata_app(api.lab), client=("10.0.1.1", 40000)) as client:
-        assert client.get("/hetzner/v1/metadata/instance-id").status_code == 404
+    client = metadata_client(api, "10.0.1.1")
+    assert client.get("/hetzner/v1/metadata/instance-id").status_code == 404

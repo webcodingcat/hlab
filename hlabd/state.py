@@ -9,12 +9,14 @@ keeps the lab's own records:
 - `net_routes`: the routes the fabric put in for cloud networks, to remove them again
 - `box_users`, `box_uids`: the lab's own Storage Box accounts, with fixed UIDs
 
-Every change to the state, and every loop over it, holds `lock`; `change()` also saves.
-The lookups below take the lock themselves. See DEVELOPING.md, State and locking.
+The event loop owns the state: it is read and changed only on the loop's thread, which
+`check_owner()` checks. A saved change is `with state.change():`, a transaction that
+is undone if its block raises. See DEVELOPING.md, State.
 """
 
 import asyncio
 import json
+import logging
 import os
 import threading
 from collections.abc import Iterator
@@ -38,6 +40,8 @@ from .records import (
     Volume,
 )
 
+log = logging.getLogger(__name__)
+
 # First ID per kind, so IDs in logs tell what they are (server 1000001, network
 # 2000001, ...): a million IDs per kind before the next kind's range, and actions, which
 # grow fastest, far behind the rest.
@@ -60,13 +64,12 @@ KINDS = tuple(ID_BASE)
 
 def nics_in(state: "State", nid: int) -> list[tuple[Server, Nic]]:
     """Return (server, NIC) for every NIC in the cloud network with this ID."""
-    with state.lock:
-        return [
-            (server, nic)
-            for server in state["servers"].values()
-            for nic in server["_lab"]["nics"]
-            if nic["network"] == nid
-        ]
+    return [
+        (server, nic)
+        for server in state["servers"].values()
+        for nic in server["_lab"]["nics"]
+        if nic["network"] == nid
+    ]
 
 
 def nic_addresses(nic: Nic) -> list[str]:
@@ -76,20 +79,17 @@ def nic_addresses(nic: Nic) -> list[str]:
 
 def client_by_name(state: "State", name: str) -> Client | None:
     """Return the Internet client with this name, or None."""
-    with state.lock:
-        return next((c for c in state["clients"].values() if c["name"] == name), None)
+    return next((c for c in state["clients"].values() if c["name"] == name), None)
 
 
 def server_by_id(state: "State", sid: int | None) -> Server | None:
     """Return the server with this ID, or None (also without an ID)."""
-    with state.lock:
-        return state["servers"].get(sid) if sid is not None else None
+    return state["servers"].get(sid) if sid is not None else None
 
 
 def server_by_name(state: "State", name: str) -> Server | None:
     """Return the server with this name, or None."""
-    with state.lock:
-        return next((s for s in state["servers"].values() if s["name"] == name), None)
+    return next((s for s in state["servers"].values() if s["name"] == name), None)
 
 
 def primary_ip_field(ip_type: str) -> Literal["ipv4_id", "ipv6_id"]:
@@ -99,16 +99,14 @@ def primary_ip_field(ip_type: str) -> Literal["ipv4_id", "ipv6_id"]:
 
 def primary_ip_of(state: "State", server: Server, ip_type: str) -> PrimaryIP | None:
     """Return the server's primary IP of a type ("ipv4", "ipv6"), or None."""
-    with state.lock:
-        pid = server.get(primary_ip_field(ip_type))
-        return state["primary_ips"].get(pid) if pid is not None else None
+    pid = server.get(primary_ip_field(ip_type))
+    return state["primary_ips"].get(pid) if pid is not None else None
 
 
 def primary_address_of(state: "State", server: Server, ip_type: str) -> str | None:
     """Return the address of the server's primary IP of a type (IPv6: its /64)."""
-    with state.lock:
-        primary_ip = primary_ip_of(state, server, ip_type)
-        return primary_ip["ip"] if primary_ip else None
+    primary_ip = primary_ip_of(state, server, ip_type)
+    return primary_ip["ip"] if primary_ip else None
 
 
 def lab_records() -> dict:
@@ -122,100 +120,164 @@ def lab_records() -> dict:
     }
 
 
-def lock_holder() -> tuple[int, asyncio.Task | None]:
-    """Return who runs this code: the thread, and the asyncio task it runs (or None)."""
+def current_task() -> asyncio.Task | None:
+    """Return the asyncio task that runs this code, or None (no task, no loop)."""
     try:
-        task = asyncio.current_task()
+        return asyncio.current_task()
     except RuntimeError:  # no event loop runs in this thread
-        task = None
-    return threading.get_ident(), task
+        return None
 
 
-class StateLock:
-    """The state's re-entrant lock, which knows who holds it.
+# what `snapshot()` keeps: every dict and list of the state with a shallow copy of it
+type Snapshot = list[tuple[dict | list, dict | list]]
 
-    `threading.RLock` cannot tell its holder (only through a private method), so this
-    lock records its owner and how often it entered, and `assert_held()` turns the
-    locking rule into a check. The owner is the thread and, on the event loop, the
-    asyncio task: the coroutines there share one thread, and a coroutine that does not
-    hold the lock must fail the check while another one holds it. It costs two cheap
-    lookups, so it is always on. The rule keeps awaits outside the lock; a task that
-    takes the lock while another task of the same thread holds it (an await inside the
-    lock) raises.
+
+def snapshot(data: dict) -> Snapshot:
+    """Return a snapshot of the state's data that `restore()` puts back in place.
+
+    Every dict and list keeps its identity: code holds records (a server in an action's
+    steps) and compares them by identity, so a restore must refill the very objects,
+    not replace them with copies.
+    """
+    saved: Snapshot = []
+    seen: set[int] = set()
+    pending: list[Any] = [data]
+    while pending:
+        node = pending.pop()
+        if id(node) in seen:
+            continue
+        seen.add(id(node))
+        if isinstance(node, dict):
+            saved.append((node, dict(node)))
+            pending.extend(v for v in node.values() if isinstance(v, (dict, list)))
+        else:
+            saved.append((node, list(node)))
+            pending.extend(v for v in node if isinstance(v, (dict, list)))
+    return saved
+
+
+def restore(saved: Snapshot) -> None:
+    """Put the state's data back as `snapshot()` saw it."""
+    for node, content in saved:
+        if isinstance(node, dict):
+            node.clear()
+            node.update(content)
+        else:
+            node[:] = content
+
+
+class Writer:
+    """Writes the saved state to its file in a thread of its own.
+
+    `State.save()` hands it the serialized state; it writes atomically and fsyncs. If
+    several saves come in while it writes, only the newest is written next. The thread
+    ends when nothing is left to write and starts again with the next save.
     """
 
-    def __init__(self) -> None:
-        """Start unlocked."""
-        self.rlock = threading.RLock()
-        # the holder (`lock_holder()`): its thread's ident and its task, or None
-        self.owner: tuple[int, asyncio.Task | None] | None = None
-        self.depth = 0  # how often the owner entered
+    def __init__(self, path: Path):
+        """Write to `path`; nothing is waiting yet."""
+        self.path = path
+        self.condition = threading.Condition()
+        self.pending: bytes | None = None  # the newest state not yet written
+        self.running = False  # a thread writes, or is about to
 
-    def acquire(self) -> None:
-        """Wait for the lock and take it (again, if the caller holds it already)."""
-        self.rlock.acquire()
-        holder = lock_holder()
-        if self.depth and self.owner != holder:
-            # the RLock let in another task of the owner's thread
-            self.rlock.release()
-            raise RuntimeError("state.lock is held across an await by another task")
-        self.owner = holder
-        self.depth += 1
+    def put(self, data: bytes) -> None:
+        """Have `data` written soon, instead of any older state not yet written."""
+        with self.condition:
+            self.pending = data
+            if not self.running:
+                self.running = True
+                threading.Thread(
+                    target=self.run, name="state-writer", daemon=True
+                ).start()
 
-    def release(self) -> None:
-        """Give the lock back once; it is free when every acquire is undone."""
-        if not self.held_by_me():
-            raise RuntimeError("state.lock released by a caller that does not hold it")
-        self.depth -= 1
-        if self.depth == 0:
-            self.owner = None
-        self.rlock.release()
+    def run(self) -> None:
+        """Write the pending states until none is left."""
+        while True:
+            with self.condition:
+                data, self.pending = self.pending, None
+                if data is None:
+                    self.running = False
+                    self.condition.notify_all()
+                    return
+            try:
+                self.write(data)
+            except Exception:  # the next save tries again; the state stays in memory
+                log.exception("saving the state to %s failed", self.path)
 
-    def __enter__(self) -> "StateLock":
-        """Take the lock for a `with` block."""
-        self.acquire()
-        return self
+    def write(self, data: bytes) -> None:
+        """Write the state to its file atomically, on disk before it replaces it."""
+        tmp = self.path.with_suffix(".tmp")
+        with open(tmp, "wb") as file:
+            os.fchmod(file.fileno(), 0o600)  # passwords of Storage Boxes are in it
+            file.write(data)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(tmp, self.path)
 
-    def __exit__(self, *exc_info: object) -> None:
-        """Give the lock back at the end of a `with` block."""
-        self.release()
-
-    def held_by_me(self) -> bool:
-        """Return whether the caller (its thread and asyncio task) holds the lock."""
-        return self.owner == lock_holder()
-
-    def assert_held(self) -> None:
-        """Raise AssertionError unless the caller holds the lock."""
-        if not self.held_by_me():
-            raise AssertionError("the state is changed without holding state.lock")
+    def flush(self) -> None:
+        """Wait until everything handed in so far is on disk."""
+        with self.condition:
+            self.condition.wait_for(lambda: not self.running)
 
 
 class State:
-    """The lab's state: kept in memory, saved as JSON."""
+    """The lab's state: kept in memory, owned by the event loop, saved as JSON."""
 
     def __init__(self, path: Path | None):
         """Load the state from `path` if it exists; without a path, nothing is saved."""
         self.path = path
-        self.lock = StateLock()
-        self.data: dict[str, Any] = {k: {} for k in KINDS}
-        self.data["next_id"] = dict(ID_BASE)
-        self.data.update(lab_records())
+        self.writer = Writer(path) if path else None
+        # the thread of the event loop that owns the state (`own`); None until then,
+        # and the first thread that uses the state owns it
+        self.owner: int | None = None
+        # the tasks whose `change()` blocks are open, innermost last
+        self.changing: list[asyncio.Task | None] = []
+        self._data: dict[str, Any] = {k: {} for k in KINDS}
+        self._data["next_id"] = dict(ID_BASE)
+        self._data.update(lab_records())
         if path and path.is_file():
             loaded = json.loads(path.read_text())
-            self.data.update(loaded)
+            self._data.update(loaded)
             # kinds added since the file was written start at their base
-            self.data["next_id"] = {
+            self._data["next_id"] = {
                 **ID_BASE,
                 **loaded.get("next_id", {}),
             }
             for k in KINDS:  # JSON keys are strings
-                self.data[k] = {int(i): v for i, v in self.data.get(k, {}).items()}
+                self._data[k] = {int(i): v for i, v in self._data.get(k, {}).items()}
+
+    # --- the owner ----------------------------------------------------------------
+
+    def own(self) -> None:
+        """Make the calling thread (the event loop's) the state's owner."""
+        self.owner = threading.get_ident()
+
+    def check_owner(self) -> None:
+        """Raise AssertionError unless the caller runs on the owner's thread.
+
+        Also when a `change()` block of another task is open: that block awaited, so
+        another task sees its change half done. Called on every access, so it is cheap.
+        """
+        thread = threading.get_ident()
+        if self.owner is None:
+            self.owner = thread
+        elif thread != self.owner:
+            raise AssertionError("the state is used outside the event loop's thread")
+        if self.changing and self.changing[-1] is not current_task():
+            raise AssertionError("a state.change() block of another task is open")
+
+    @property
+    def data(self) -> dict[str, Any]:
+        """Return the whole state: resources by kind, `next_id`, the lab's records."""
+        self.check_owner()
+        return self._data
 
     def new_id(self, kind: str) -> int:
         """Return the next free ID for a kind."""
-        self.lock.assert_held()  # the new ID belongs to a record the caller adds
-        self.data["next_id"][kind] += 1
-        return self.data["next_id"][kind]
+        self.check_owner()
+        self._data["next_id"][kind] += 1
+        return self._data["next_id"][kind]
 
     # each kind with its record type (records.py), so the type checker knows the fields
     @overload
@@ -247,7 +309,8 @@ class State:
 
     def __getitem__(self, kind: str) -> dict[int, Any]:
         """Return the resources of a kind, by ID."""
-        return self.data[kind]
+        self.check_owner()
+        return self._data[kind]
 
     def clear(self) -> None:
         """Remove every resource and the lab's records (a lab reset).
@@ -256,46 +319,55 @@ class State:
         new resource. The lab's own Storage Box accounts stay too.
         """
         with self.change():
-            kept = {key: self.data[key] for key in ("box_users", "box_uids")}
-            self.data.update({kind: {} for kind in KINDS})
-            self.data.update(lab_records())
-            self.data.update(kept)
+            kept = {key: self._data[key] for key in ("box_users", "box_uids")}
+            self._data.update({kind: {} for kind in KINDS})
+            self._data.update(lab_records())
+            self._data.update(kept)
+
+    # --- changing and saving ------------------------------------------------------
 
     @contextmanager
     def change(self) -> Iterator[None]:
-        """Hold the lock for a change, and save the state if the block succeeds.
+        """Change the state as one transaction: saved if the block succeeds.
 
-        A block that raises leaves the state unsaved, as a refused request should.
-        Check first, then change: an exception after a change leaves memory and file
-        apart until the next save (nothing is rolled back), so a block makes no change
-        before its checks have passed, or undoes it before it raises. It saves: on the
-        event loop, run the block in a function through `lab.blocking`.
+        A block that raises is undone: the state is put back as it was before the block
+        (`snapshot`), so a refused request leaves nothing behind, in memory or in the
+        file. The block must not await: it is a plain `with`, and another task would
+        see the change half done (`check_owner` refuses that). Blocks may nest; the
+        outermost one saves.
         """
-        with self.lock:
+        self.check_owner()
+        saved = snapshot(self._data)
+        self.changing.append(current_task())
+        try:
             yield
+        except BaseException:
+            restore(saved)
+            raise
+        finally:
+            self.changing.pop()
+        if not self.changing:
             self.save()
 
     def save(self) -> None:
-        """Write the state to its file atomically (no-op without a path).
+        """Hand the state to the writer thread (no-op without a path).
 
-        The caller holds the lock (usually through `change()`), so the state it saves is
-        the one its change left, not one half changed by another thread.
+        The state is serialized here, on the loop, so the file gets the state as it is
+        now; writing and fsyncing happen in the writer's thread.
         """
-        self.lock.assert_held()
-        if not self.path:
-            return
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.data, indent=1, sort_keys=True))
-        tmp.chmod(0o600)  # passwords of Storage Boxes are in it
-        with open(tmp, "rb+") as file:  # on disk before it replaces the old state
-            os.fsync(file.fileno())
-        os.replace(tmp, self.path)
+        self.check_owner()
+        if self.writer:
+            self.writer.put(json.dumps(self._data, indent=1, sort_keys=True).encode())
+
+    def flush(self) -> None:
+        """Wait until every save so far is on disk (any thread; it reads no state)."""
+        if self.writer:
+            self.writer.flush()
 
     def free_index(self) -> int:
         """Return the lab index of a new server (tap pub<index>, MACs, IPv6 link-local).
 
         Returns 0 when the lab is full.
         """
-        with self.lock:
-            used = {s["_lab"]["index"] for s in self.data["servers"].values()}
-            return next((i for i in range(1, 240) if i not in used), 0)
+        used = {s["_lab"]["index"] for s in self["servers"].values()}
+        return next((i for i in range(1, 240) if i not in used), 0)
