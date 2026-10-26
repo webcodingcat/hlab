@@ -1,11 +1,12 @@
 """Faults and latency.
 
-Faults are cuts, isolation, blocked services and anti-spoofing sources in nftables sets;
-latency is tc netem between locations, and netem faults. A part of the fabric (see
-__init__.py); it asks the VMs (vm.py) whether a server runs.
+Faults are cuts, isolation, blocked services and anti-spoofing sources, kept in
+nftables sets. Latency is tc netem between locations, plus netem faults. This module
+is a part of the fabric (see __init__.py). It asks the VMs (vm.py) whether a server
+runs.
 
-What the sets hold and how each tap is shaped is computed from the state by the API
-(api/desired.py); this part only puts it in place.
+The API computes from the state what the sets hold and how each tap is shaped
+(api/desired.py). This part only puts that in place.
 """
 
 import logging
@@ -28,7 +29,7 @@ class Shaping:
     tap: str
     netem: str | None  # its netem fault; it replaces the delays
     # round-trip time (ms) → the source prefixes delayed by half of it; a time may
-    # have no prefixes (its band is made all the same)
+    # have no prefixes, and its band is still created
     delays: dict[int, list[str]] = field(default_factory=dict)
 
 
@@ -43,10 +44,10 @@ class Latency:
 class Faults:
     """Faults and latency, in nftables sets and tc qdiscs.
 
-    Faults are kept in the state (`faults`, `netem`) by the API, which also drops them
-    with a deleted server or client (api/faults.py). A fault points at servers by ID
-    (s:<id>) and at clients by name (c:<name>), so a renamed server keeps its faults
-    and a new one under an old name does not inherit them.
+    The API keeps the faults in the state (`faults`, `netem`) and drops them when
+    their server or client is deleted (api/faults.py). A fault names servers by ID
+    (s:<id>) and clients by name (c:<name>). So a renamed server keeps its faults, and
+    a new server with an old name does not inherit them.
     """
 
     def __init__(
@@ -69,9 +70,9 @@ class Faults:
 
         `sets` are the elements (nft syntax) of each set; `tap_networks` maps each
         private tap to its cloud network, whose routing table it uses. Interfaces come
-        and go with power cycles. With one transaction there is no moment without
-        anti-spoofing sources (which would drop every packet) and no moment without
-        the faults.
+        and go with power cycles. Because it is one transaction, there is no moment
+        without the anti-spoofing sources (which would drop every packet), and no
+        moment without the faults.
         """
         tables = [f'"{tap}" : {route_table(nid)}' for tap, nid in tap_networks]
         with self.net_lock:
@@ -113,10 +114,10 @@ class Faults:
                     self.apply_netem(shaping.tap, shaping.netem)
 
     def apply_netem(self, link: str, netem: str | None) -> bool:
-        """Return whether a link has a netem fault, after applying it to the link.
+        """Apply a link's netem fault, and return whether the link has one.
 
-        Clears the link's queueing first. The fault was checked when it was set; a
-        failure here must not stop a server's start.
+        This clears the link's queueing first. Errors are ignored: the fault was
+        checked when it was set, and a failure here must not stop a server's start.
         """
         self.tc(f"qdisc del dev {link} root", check=False)
         if netem:
@@ -126,8 +127,8 @@ class Faults:
     def set_tap_latency(self, shaping: Shaping) -> None:
         """Shape the packets towards a server on one of its taps.
 
-        They get its netem fault, or else a delay band per round-trip time to the other
-        servers' locations.
+        The tap gets the server's netem fault. Without one, it gets a delay band for
+        each round-trip time to the other servers' locations.
         """
         tap = shaping.tap
         if not self.shell.ok("link-exists", tap):

@@ -1,7 +1,7 @@
 """Lab control under /_lab/: faults, Internet clients, Storage Box accounts, reset.
 
-Used by the lab CLI and by test harnesses (also from inside the VMs, through
-http://198.18.0.1/_lab/...).
+The lab CLI and test harnesses use it, also from inside the VMs through
+http://198.18.0.1/_lab/...
 """
 
 import pwd
@@ -100,7 +100,7 @@ def fault_ref(lab: Lab, name: str) -> str:
 def in_cut_order(fault: dict) -> dict:
     """Return a fault with the two ends of a cut sorted by name.
 
-    A cut is the same either way round, so it is stored and removed in one order.
+    A cut is the same in both directions, so it is always stored in one order.
     """
     if fault.get("type") == "cut" and fault.get("first") and fault.get("second"):
         first, second = sorted((fault["first"], fault["second"]))
@@ -136,13 +136,13 @@ async def add_fault(lab: Lab, body: dict) -> dict:
     with state.change():
         if fault not in state.data["faults"]:
             state.data["faults"].append(fault)
-        faults = list(state.data["faults"])  # the answer, as this change left them
+        faults = list(state.data["faults"])  # the answer: faults after this change
     await system.apply_faults(lab)
     return {"faults": faults}
 
 
 async def remove_faults(lab: Lab, body: dict) -> dict:
-    """Remove the faults that match every given field (a cut either way round)."""
+    """Remove the faults that match every given field (a cut in either direction)."""
     state = lab.state
     given = in_cut_order({k: v for k, v in body.items() if v is not None})
     with state.change():
@@ -151,7 +151,7 @@ async def remove_faults(lab: Lab, body: dict) -> dict:
             for fault in state.data["faults"]
             if not all(fault.get(k) == v for k, v in given.items())
         ]
-        faults = list(state.data["faults"])  # the answer, as this change left them
+        faults = list(state.data["faults"])  # the answer: faults after this change
     await system.apply_faults(lab)
     return {"faults": faults}
 
@@ -191,7 +191,7 @@ async def set_netem(lab: Lab, body: dict) -> dict:
                 state.data["netem"][tap] = " ".join(args.split())
             else:
                 state.data["netem"].pop(tap, None)
-        netem = dict(state.data["netem"])  # the answer, as this change left them
+        netem = dict(state.data["netem"])  # the answer: netem after this change
     await system.apply_latency(lab)
     return {"netem": netem}
 
@@ -199,7 +199,7 @@ async def set_netem(lab: Lab, body: dict) -> dict:
 async def control_vm(lab: Lab, name: str, cmd: str) -> dict:
     """Pause or continue a VM, or mark its hardware dead or alive again.
 
-    Dead hardware: a power-on succeeds, the VM stays off.
+    With dead hardware, a power on succeeds, but the VM stays off.
     """
     server = lab.server_by_name_or_404(name)
     if cmd == "pause":
@@ -217,8 +217,8 @@ async def control_vm(lab: Lab, name: str, cmd: str) -> dict:
 def set_api_fault(lab: Lab, body: dict) -> dict:
     """Inject faults into the API's answers.
 
-    {"status": 503, "count": 3} answers the next requests with that status;
-    {"delay_ms": n} delays all.
+    {"status": 503, "count": 3} answers the next 3 requests with that status.
+    {"delay_ms": n} delays every request by n milliseconds.
     """
     try:
         new = {k: int(body.get(k) or 0) for k in ("status", "count", "delay_ms")}
@@ -286,7 +286,7 @@ async def add_box_user(lab: Lab, body: dict) -> dict:
     """Create an SFTP account on the Storage Box with its own home.
 
     Body: {"name": "backup1", "public_key": "ssh-ed25519 ..."}. The names of the API's
-    accounts (u<id>, u<id>-sub<n>) and of the container's own users cannot be used.
+    accounts (u<id>, u<id>-sub<n>) and the users of the container cannot be used.
     """
     state = lab.state
     name, key = str(body.get("name") or ""), str(body.get("public_key") or "")
@@ -303,7 +303,7 @@ async def add_box_user(lab: Lab, body: dict) -> dict:
     if re.fullmatch(r"u[0-9]+(-sub[0-9]+)?", name):
         raise invalid("names like u<id> belong to the Storage Box API", "name")
     try:
-        pwd.getpwnam(name)  # a file read, small
+        pwd.getpwnam(name)  # reads a small file; fine on the loop
         if name not in state.data["box_users"]:
             raise invalid("a user of the container has this name", "name")
     except KeyError:
@@ -318,14 +318,14 @@ async def reset_lab(lab: Lab) -> dict:
     """Remove everything the APIs created.
 
     That is servers (VMs and disks), networks, keys, firewalls, Floating IPs, volumes,
-    Storage Boxes with their data, clients, faults. System images, the lab key and the
-    lab's own Storage Box accounts (/_lab/box/users) stay. IDs keep counting up, as on
-    Hetzner, so no old ID matches a new resource.
+    Storage Boxes with their data, clients and faults. System images, the lab key and
+    the Storage Box accounts made through /_lab/box/users stay. IDs keep counting up,
+    as on Hetzner, so no old ID matches a new resource.
     """
     state, fabric = lab.state, lab.fabric
     # no old action may start a VM or change the state while the lab is emptied
     await lab.stop_actions()
-    # copies: the loops below run scripts
+    # copies: the loops below run scripts, so the state may change in between
     servers = list(state["servers"].values())
     volumes = list(state["volumes"].values())
     subaccounts = list(state["subaccounts"].values())

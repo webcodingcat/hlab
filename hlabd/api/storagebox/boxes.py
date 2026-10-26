@@ -121,11 +121,11 @@ async def set_up_box_account(
     fabric_box = lab.fabric.box
     try:
         await box_account(lab, box, password)
-        # like on the Storage Box: they end up in the box's .ssh/authorized_keys
+        # as on Hetzner: the keys end up in the box's .ssh/authorized_keys
         if keys:
             await lab.blocking(fabric_box.write_authorized_keys, username(box), keys)
         await sync_box(lab, box)
-    except Exception:  # undo the half-done change, then raise
+    except Exception:  # undo the partial change, then raise
         await lab.blocking(fabric_box.remove_account, username(box), check=False)
         await lab.blocking(fabric_box.remove_tree, data_dir(box), check=False)
         with lab.state.change():
@@ -150,7 +150,7 @@ async def remove_box(lab: Lab, box: StorageBox) -> None:
 
 
 # --- box actions ----------------------------------------------------------------------
-# Each gets the box and the request and returns its plan (lab.Plan).
+# Each function gets the box and the request and returns its plan (lab.Plan).
 
 
 async def change_type(lab: Lab, box: StorageBox, body: dict) -> Plan:
@@ -179,7 +179,7 @@ async def reset_password(lab: Lab, box: StorageBox, body: dict) -> Plan:
     """Set a new password for the box's main account."""
     password = checked_password(body.get("password"))
     await box_account(lab, box, password)
-    # stored only once it is set (a lab start sets the stored one again)
+    # stored only after it is set; a lab start sets the stored password again
     box["_password"] = password
     await sync_box(lab, box)
     return Plan()
@@ -191,7 +191,7 @@ async def update_access_settings(lab: Lab, box: StorageBox, body: dict) -> Plan:
     box["access"].update(checked_access_settings(body, box["access"]))
     try:
         await sync_box(lab, box)
-    except Exception:  # not in effect, so not reported either
+    except Exception:  # the settings did not take effect, so do not store them
         box["access"] = old
         raise
     return Plan()
@@ -296,8 +296,9 @@ async def update_box(lab: Lab, bid: int, body: dict) -> dict:
 def delete_box(lab: Lab, bid: int) -> dict:
     """Delete a box with its sub-accounts, snapshots and data, in the background.
 
-    Refused (423) while the box is being set up, rolled back, copied, getting a
-    sub-account or deleted already. If the delete fails, the box can be deleted again.
+    The lab refuses this (423) while the box is being set up, rolled back, copied,
+    getting a sub-account, or already deleted. If the delete fails, the box can be
+    deleted again.
     """
     box = box_or_404(lab, bid)
     if box["protection"]["delete"]:

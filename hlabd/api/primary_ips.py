@@ -1,4 +1,4 @@
-"""Primary IPs: a server's own public IPv4 and IPv6 /64.
+"""Primary IPs: the public IPv4 and the IPv6 /64 of a server.
 
 Addresses come from documentation ranges outside RFC 1918, so firewall rules treat
 them as public addresses, as they would on Hetzner.
@@ -151,8 +151,8 @@ def check_server_ips(lab: Lab, server: Server, public_net: dict) -> None:
 def setup_server_ips(lab: Lab, server: Server, public_net: dict) -> None:
     """Assign the primary IPs of a new server.
 
-    These are the given ones (unassigned, same location) or new ones with auto_delete.
-    The caller saves them (in its `change()`).
+    These are the IPs the request names (unassigned, same location), or new ones with
+    auto_delete. The caller saves them in its `change()`.
     """
     check_server_ips(lab, server, public_net)
     for kind in ("ipv4", "ipv6"):
@@ -170,8 +170,8 @@ def setup_server_ips(lab: Lab, server: Server, public_net: dict) -> None:
 def release_server_ips(lab: Lab, server: Server) -> None:
     """Release a server's primary IPs when it is deleted.
 
-    Primary IPs with auto_delete are deleted, the others stay unassigned. The caller
-    saves this (in its `change()`).
+    Primary IPs with auto_delete are deleted; the others stay, unassigned. The caller
+    saves this in its `change()`.
     """
     for kind in ("ipv4", "ipv6"):
         primary_ip = primary_ip_of(lab.state, server, kind)
@@ -232,7 +232,7 @@ async def create_primary_ip(lab: Lab, body: dict) -> dict:
     if assignee:
         try:
             await primary_ip_assign(lab, primary_ip, {"assignee_id": assignee["id"]})
-        except ApiError:  # the server changed meanwhile: delete the new IP again
+        except ApiError:  # the server changed in the meantime: delete the new IP again
             with state.change():
                 del state["primary_ips"][primary_ip["id"]]
             raise
@@ -254,7 +254,7 @@ def update_primary_ip(lab: Lab, pid: int, body: dict) -> dict:
 
 
 def delete_primary_ip(lab: Lab, pid: int) -> None:
-    """Delete a primary IP; like Hetzner, refuse a protected or assigned one."""
+    """Delete a primary IP; as on Hetzner, refuse a protected or assigned one."""
     primary_ip = lab.get_or_404("primary_ips", pid, "primary IP")
     if primary_ip["protection"]["delete"]:
         raise protected("primary IP is delete protected")
@@ -266,9 +266,9 @@ def delete_primary_ip(lab: Lab, pid: int) -> None:
         del lab.state["primary_ips"][pid]
 
 
-# Each primary IP action below is done at once (`act()` saves it) and returns its
-# plan (lab.Plan). After assign and unassign, the server's DHCP hands out its new
-# address.
+# Each primary IP action below changes only the state and returns a plan without
+# steps (lab.Plan), so the action finishes right away (`act()` saves the change). After
+# assign and unassign, the server's DHCP hands out its new address.
 
 
 async def primary_ip_assign(lab: Lab, primary_ip: PrimaryIP, body: dict) -> Plan:
@@ -331,7 +331,7 @@ PRIMARY_IP_ACTIONS: ActionTable[PrimaryIP] = {
 
 
 async def run_primary_ip_action(lab: Lab, pid: int, cmd: str, body: dict) -> dict:
-    """Run a primary IP action (all of them are done at once)."""
+    """Run a primary IP action; every one of them finishes right away."""
     primary_ip = lab.get_or_404("primary_ips", pid, "primary IP")
     return await lab.act(PRIMARY_IP_ACTIONS, cmd, primary_ip, "primary_ip", body)
 

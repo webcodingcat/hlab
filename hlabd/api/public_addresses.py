@@ -43,7 +43,8 @@ def record_dns_ptr(
 ) -> Plan:
     """Set the reverse DNS of one of a primary or Floating IP's addresses.
 
-    The address is the body's `ip`, else `default_ip` (empty: the body must name one).
+    The address is the body's `ip`, else `default_ip`. If `default_ip` is empty, the
+    body must name the address.
     """
     ip = str(body.get("ip") or default_ip)
     if not contains(record["ip"], ip):

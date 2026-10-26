@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # box-keys <user> <connection (%C)>: sshd's AuthorizedKeysCommand for the
-# Storage Box (see box.sh). Print the account's keys: the lab's own
-# (/hlab/box-keys) and, like on the Storage Box, .ssh/authorized_keys in the
-# account's home. Port 23 takes keys in OpenSSH format, port 22 only keys in
-# RFC4716 format (ssh-keygen -e), as on Hetzner.
+# Storage Box (see box.sh). Print the account's keys: the lab keys from
+# /hlab/box-keys and, as on Hetzner, .ssh/authorized_keys in the account's
+# home. As on Hetzner, port 23 takes keys in OpenSSH format, and port 22 takes
+# only keys in RFC4716 format (ssh-keygen -e).
 
 # print_rfc4716_keys <keys file>: Print every RFC4716 key in the file in
 # OpenSSH format, each block converted in a file of its own.

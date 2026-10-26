@@ -64,8 +64,8 @@ def record_attachment(
 ) -> None:
     """Record an attachment in the state; `check_attach` has checked it already.
 
-    The disk itself comes later (hot-plugged, or at the next boot). The caller saves
-    it (in its `change()`).
+    The disk itself comes later: hot-plugged, or at the next boot. The caller saves
+    the change in its `change()`.
     """
     volume["server"], volume["automount"] = server["id"], bool(automount)
 
@@ -77,16 +77,16 @@ def save_detached(lab: Lab, volume: Volume) -> None:
 
 
 async def vm_running(lab: Lab, server: Server | None) -> bool:
-    """Return whether there is a server and its VM runs (a script, in a thread)."""
+    """Return whether there is a server and its VM runs (runs a script in a thread)."""
     return server is not None and await lab.blocking(lab.fabric.vms.is_alive, server)
 
 
 def create_volume(lab: Lab, body: dict) -> dict:
     """Create a volume, attached to a server if the body names one.
 
-    The create action makes the disk in the background. A server named in the body is
-    locked until then, as for an attach (423 if an action runs on it), because the disk
-    is hot-plugged into its VM at the end.
+    The create action makes the disk in the background. A server named in the body
+    stays locked until then, as for an attach (423 if an action runs on it), because
+    the disk is hot-plugged into its VM at the end.
     """
     state = lab.state
     size = int(body["size"])
@@ -144,11 +144,11 @@ def create_volume(lab: Lab, body: dict) -> dict:
                 state["volumes"].pop(vid, None)
 
         def make_available() -> bool:
-            """Mark the volume available; return False if it left the state meanwhile.
+            """Mark the volume available; return False if it is gone.
 
             The API refuses to delete a volume that is still being created, and a lab
-            reset cancels this action first, so this is only a guard. It checks
-            identity, not the ID: is this very record still in the state?
+            reset cancels this action first, so this is only a guard. It compares by
+            identity, not by ID: is this same record still in the state?
             """
             with state.change():
                 if state["volumes"].get(vid) is not volume:
@@ -164,7 +164,7 @@ def create_volume(lab: Lab, body: dict) -> dict:
                 drop_volume()
                 raise
             if not make_available():
-                # removed from the state while its disk was made: the disk goes too
+                # removed from the state while its disk was made: delete the disk too
                 await lab.blocking(lab.fabric.volumes.delete, volume)
                 return
             if server is not None and await vm_running(lab, server):
@@ -192,7 +192,7 @@ async def delete_volume(lab: Lab, vid: int) -> None:
     """Delete a volume that is unprotected, detached and not busy.
 
     The volume is claimed during the checks, so no action starts on it while its disk
-    is deleted. It stays claimed once it is deleted; if deleting the disk fails, it is
+    is deleted. After the delete it stays claimed. If deleting the disk fails, it is
     free again.
     """
     volume = lab.get_or_404("volumes", vid, "volume")
@@ -207,12 +207,12 @@ async def delete_volume(lab: Lab, vid: int) -> None:
         await lab.blocking(lab.fabric.volumes.delete, volume)
         with lab.state.change():
             del lab.state["volumes"][vid]
-            held.keep()  # a request that found the volume before still gets 423
+            held.keep()  # a request that looked up the volume earlier still gets 423
 
 
 # --- volume actions -------------------------------------------------------------------
 # Each action below checks the request and returns its plan (lab.Plan). The steps run
-# in the background while the volume is busy and its server (if any) is locked
+# in the background. Meanwhile the volume is busy and its server, if any, is locked
 # (lab.act).
 
 
@@ -225,8 +225,8 @@ def require_available(volume: Volume) -> None:
 def attach(lab: Lab, volume: Volume, body: dict) -> Plan:
     """Plan an attach to a server.
 
-    The attachment is recorded when the action runs (the server is locked then); a
-    running server gets the disk hot-plugged, and if that fails, the volume is detached
+    The attachment is recorded when the action runs, while the server is locked. A
+    running server gets the disk hot-plugged. If that fails, the volume is detached
     again.
     """
     require_available(volume)

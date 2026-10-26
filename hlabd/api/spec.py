@@ -15,14 +15,14 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import best_match
 from jsonschema.validators import extend
 
-# the image's copy; the unit tests outside Docker point HLAB_SPEC_DIR (or
-# tests/conftest.py) at the one tools/fetch_specs.py downloads
+# the image's copy; outside Docker, the unit tests use the copy that
+# tools/fetch_specs.py downloads (through HLAB_SPEC_DIR or tests/conftest.py)
 SPEC_DIR = Path(os.environ.get("HLAB_SPEC_DIR", "/opt/hlab/spec"))
 
 # keywords that still check a null value; all others skip it. Keywords that combine
 # schemas (a "oneOf" of objects) or refer to a schema ("$ref", "$dynamicRef") pass
-# the null on to the schemas they name; "type" is here because its checker (below)
-# accepts null itself.
+# the null on to the schemas they name. "type" is in this list because its checker
+# (below) accepts null itself.
 _SEES_NULL = {"allOf", "anyOf", "oneOf", "not", "if", "$ref", "$dynamicRef", "type"}
 
 # rules the specification only describes in prose (labels, host names)
@@ -30,11 +30,11 @@ _LABEL_NAME = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9_.-]{0,61}[a-zA-Z0-9])?$")
 _LABEL_VALUE = re.compile(r"^([a-zA-Z0-9]([a-zA-Z0-9_.-]{0,61}[a-zA-Z0-9])?)?$")
 _DNS_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
 
-# The specification types IDs-or-names as strings; clients (hcloud-go, the CLI) also
-# send plain integers. The API also treats null in any field like a missing field
-# (the hcloud provider sends nulls), and a required field may be null where the
-# specification allows it. So null passes every type check, and "required" still
-# counts the key as present.
+# The specification types fields that take an ID or a name as strings, but clients
+# (hcloud-go, the CLI) also send plain integers. The API also treats null in any field
+# like a missing field (the hcloud provider sends nulls), and a required field may be
+# null where the specification allows it. So null passes every type check, and
+# "required" still counts the key as present.
 BASE_TYPE_CHECKER = Draft202012Validator.TYPE_CHECKER
 
 
@@ -160,9 +160,9 @@ class Spec:
 def _rejected_errors(error) -> list:
     """Return the errors of a validation error that the API would reject.
 
-    Unknown fields pass (the API ignores them). For a oneOf/anyOf only the intended
-    alternative counts: the one whose discriminator (an enum such as protocol) matched.
-    If an alternative has no errors left, the oneOf/anyOf passes.
+    Unknown fields pass, because the API ignores them. For a oneOf or anyOf, only the
+    intended alternative counts: the one whose discriminator (an enum such as
+    protocol) matched. If an alternative has no errors left, the oneOf or anyOf passes.
     """
     if error.validator == "additionalProperties":
         return []
@@ -228,7 +228,8 @@ def load(name: str) -> Spec:
 def label_errors(labels) -> list[str]:
     """Return the violations of Hetzner's label rules.
 
-    Key = optional DNS-subdomain prefix + '/' + name, value at most 63 characters.
+    A key is an optional DNS subdomain prefix with '/', then a name. A value has at
+    most 63 characters.
     """
     if not isinstance(labels, dict):
         return []

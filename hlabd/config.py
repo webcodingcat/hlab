@@ -79,7 +79,7 @@ ROOT = Path("/hlab")
 
 # Fixed addresses of every lab (each lab has its own network namespace).
 GATEWAY = "172.31.1.1"  # Hetzner's public gateway, on-link on every server
-# the lab's services sit in the benchmarking range (local addresses win)
+# the lab's services use the benchmarking range 198.18.0.0/15
 SERVICES_NET = "198.18.0.0/15"
 SERVICES = "198.18.0.1"  # fake Cloud API (port 80), Storage Box (ports 22, 23), DNS
 HETZNER_API = "198.18.0.3"  # fake api.hetzner.com (Storage Boxes), port 80
@@ -92,7 +92,7 @@ FLOATING_NET = "203.0.113"  # Floating IPv4: .10 + n
 CLIENT_NET = "192.0.2"  # "Internet" clients: .10 + n, gateway .1
 # source of everything the lab container itself (and its consumers) sends to VMs
 OPERATOR = "192.0.2.2"
-# source of `hlab ssh`: the lab's own access, not filtered by Cloud firewalls
+# source of `hlab ssh`: the lab's admin access; Cloud firewalls do not filter it
 ADMIN = "198.18.0.2"
 # IPv6, all from the documentation prefix 2001:db8::/32. Every server routes a /64
 # (guest: <prefix>::1, gateway fe80::1).
@@ -105,7 +105,7 @@ HETZNER_API6 = "2001:db8:fffe::4"
 OPERATOR6 = "2001:db8:fffe::2"
 ADMIN6 = "2001:db8:fffe::3"
 CLIENT6 = "2001:db8:ffff"  # clients: 2001:db8:ffff::<10 + n>
-SERVICES_NET6 = "2001:db8:fffe"  # the /48 of the lab's own IPv6 addresses above
+SERVICES_NET6 = "2001:db8:fffe"  # the /48 of the service IPv6 addresses above
 
 # what `hlab env` hands out when any token is accepted (hcloud wants 64 characters)
 ANY_TOKEN = "hlab" * 16
@@ -137,7 +137,7 @@ def script_env() -> dict[str, str]:
 
 
 def _merge(base: dict, over: dict) -> dict:
-    """Return `base` with `over` laid on top; only `api` and `storage_box` merge."""
+    """Return `base` updated with `over`; only `api` and `storage_box` merge by key."""
     out = copy.deepcopy(base)
     for k, v in (over or {}).items():
         # Catalogue-like maps (types, locations, images, dns) are replaced, not merged,
@@ -156,8 +156,8 @@ def _merge(base: dict, over: dict) -> dict:
 def load(path: str | Path | None) -> dict:
     """Load hlab.yaml from `path` (if it exists) over the defaults.
 
-    Raises ValueError on unknown settings or a mapping where a value belongs (and the
-    other way round).
+    Raise ValueError on unknown settings, or on a mapping where a value belongs (or
+    the other way round).
     """
     data: dict = {}
     if path and Path(path).is_file():

@@ -1,17 +1,17 @@
 """The lab's state: everything the fake API knows.
 
-It is saved as JSON in the state volume. Resources are kept by kind (KINDS) and ID;
-their fields are the TypedDicts in records.py. Next to them and `next_id`, the state
-keeps the lab's own records:
+The state is saved as JSON in the state volume. Resources are stored by kind (KINDS)
+and ID; their fields are the TypedDicts in records.py. Besides the resources and
+`next_id`, the state holds records that only the lab uses:
 
 - `faults`: the faults set through /_lab/faults (see fabric/faults.py)
 - `netem`: netem options per tap or client link (/_lab/netem)
-- `net_routes`: the routes the fabric put in for cloud networks, to remove them again
-- `box_users`, `box_uids`: the lab's own Storage Box accounts, with fixed UIDs
+- `net_routes`: the routes the fabric added for cloud networks, so they can be removed
+- `box_users`, `box_uids`: Storage Box accounts created outside the API, with fixed UIDs
 
-The event loop owns the state: it is read and changed only on the loop's thread, which
-`check_owner()` checks. A saved change is `with state.change():`, a transaction that
-is undone if its block raises. See DEVELOPING.md, State.
+The event loop owns the state: only code on the loop's thread reads or changes it, and
+`check_owner()` checks this. A change that is saved is a `with state.change():` block,
+a transaction that is undone if the block raises. See DEVELOPING.md, State.
 """
 
 import asyncio
@@ -42,9 +42,9 @@ from .records import (
 
 log = logging.getLogger(__name__)
 
-# First ID per kind, so IDs in logs tell what they are (server 1000001, network
-# 2000001, ...): a million IDs per kind before the next kind's range, and actions, which
-# grow fastest, far behind the rest.
+# The first ID of each kind, so that an ID in a log shows its kind (server 1000001,
+# network 2000001, ...). Each kind has a million IDs before the next kind's range
+# starts. Actions grow fastest, so their range starts far above the others.
 ID_BASE = {
     "servers": 1_000_000,
     "networks": 2_000_000,
@@ -110,7 +110,7 @@ def primary_address_of(state: "State", server: Server, ip_type: str) -> str | No
 
 
 def lab_records() -> dict:
-    """Return the lab's own records, empty (see the module docstring)."""
+    """Return the records that only the lab uses, empty (see the module docstring)."""
     return {
         "faults": [],
         "netem": {},
@@ -133,11 +133,11 @@ type Snapshot = list[tuple[dict | list, dict | list]]
 
 
 def snapshot(data: dict) -> Snapshot:
-    """Return a snapshot of the state's data that `restore()` puts back in place.
+    """Return a snapshot of the state's data, for `restore()` to put back.
 
-    Every dict and list keeps its identity: code holds records (a server in an action's
-    steps) and compares them by identity, so a restore must refill the very objects,
-    not replace them with copies.
+    Every dict and list keeps its identity. Code holds records (such as a server in an
+    action's steps) and compares them by identity. So a restore must refill the same
+    objects, not replace them with copies.
     """
     saved: Snapshot = []
     seen: set[int] = set()
@@ -167,11 +167,12 @@ def restore(saved: Snapshot) -> None:
 
 
 class Writer:
-    """Writes the saved state to its file in a thread of its own.
+    """Write the saved state to its file, in a separate thread.
 
-    `State.save()` hands it the serialized state; it writes atomically and fsyncs. If
-    several saves come in while it writes, only the newest is written next. The thread
-    ends when nothing is left to write and starts again with the next save.
+    `State.save()` hands it the serialized state. The writer writes the file
+    atomically and fsyncs it. If several saves come in while it writes, only the newest
+    is written next. The thread ends when nothing is left to write, and a new one
+    starts with the next save.
     """
 
     def __init__(self, path: Path):
@@ -182,7 +183,7 @@ class Writer:
         self.running = False  # a thread writes, or is about to
 
     def put(self, data: bytes) -> None:
-        """Have `data` written soon, instead of any older state not yet written."""
+        """Have `data` written soon; it replaces an older state not yet written."""
         with self.condition:
             self.pending = data
             if not self.running:
@@ -206,7 +207,7 @@ class Writer:
                 log.exception("saving the state to %s failed", self.path)
 
     def write(self, data: bytes) -> None:
-        """Write the state to its file atomically, on disk before it replaces it."""
+        """Write the state to its file atomically, fsynced before the rename."""
         tmp = self.path.with_suffix(".tmp")
         with open(tmp, "wb") as file:
             os.fchmod(file.fileno(), 0o600)  # passwords of Storage Boxes are in it
@@ -228,8 +229,8 @@ class State:
         """Load the state from `path` if it exists; without a path, nothing is saved."""
         self.path = path
         self.writer = Writer(path) if path else None
-        # the thread of the event loop that owns the state (`own`); None until then,
-        # and the first thread that uses the state owns it
+        # the thread of the event loop that owns the state (`own`); while it is None,
+        # the first thread that uses the state becomes the owner
         self.owner: int | None = None
         # the tasks whose `change()` blocks are open, innermost last
         self.changing: list[asyncio.Task | None] = []
@@ -239,7 +240,7 @@ class State:
         if path and path.is_file():
             loaded = json.loads(path.read_text())
             self._data.update(loaded)
-            # kinds added since the file was written start at their base
+            # kinds that are newer than the file start at their base ID
             self._data["next_id"] = {
                 **ID_BASE,
                 **loaded.get("next_id", {}),
@@ -256,8 +257,9 @@ class State:
     def check_owner(self) -> None:
         """Raise AssertionError unless the caller runs on the owner's thread.
 
-        Also when a `change()` block of another task is open: that block awaited, so
-        another task sees its change half done. Called on every access, so it is cheap.
+        It also raises while a `change()` block of another task is open. That block
+        has awaited, and this task would see its change half done. It runs on every
+        access, so it must stay cheap.
         """
         thread = threading.get_ident()
         if self.owner is None:
@@ -269,7 +271,7 @@ class State:
 
     @property
     def data(self) -> dict[str, Any]:
-        """Return the whole state: resources by kind, `next_id`, the lab's records."""
+        """Return the whole state: resources by kind, `next_id`, lab-only records."""
         self.check_owner()
         return self._data
 
@@ -316,7 +318,7 @@ class State:
         """Remove every resource and the lab's records (a lab reset).
 
         IDs keep counting up (`next_id` stays), as on Hetzner, so no old ID matches a
-        new resource. The lab's own Storage Box accounts stay too.
+        new resource. The Storage Box accounts created outside the API stay too.
         """
         with self.change():
             kept = {key: self._data[key] for key in ("box_users", "box_uids")}
@@ -331,10 +333,10 @@ class State:
         """Change the state as one transaction: saved if the block succeeds.
 
         A block that raises is undone: the state is put back as it was before the block
-        (`snapshot`), so a refused request leaves nothing behind, in memory or in the
-        file. The block must not await: it is a plain `with`, and another task would
-        see the change half done (`check_owner` refuses that). Blocks may nest; the
-        outermost one saves.
+        (`snapshot`). So a refused request leaves nothing behind, in memory or in the
+        file. The block must not await. It is a plain `with`, and another task would
+        see the change half done (`check_owner` refuses that). Blocks may nest; only
+        the outermost one saves.
         """
         self.check_owner()
         saved = snapshot(self._data)
@@ -353,14 +355,14 @@ class State:
         """Hand the state to the writer thread (no-op without a path).
 
         The state is serialized here, on the loop, so the file gets the state as it is
-        now; writing and fsyncing happen in the writer's thread.
+        now. The writer's thread writes and fsyncs the file.
         """
         self.check_owner()
         if self.writer:
             self.writer.put(json.dumps(self._data, indent=1, sort_keys=True).encode())
 
     def flush(self) -> None:
-        """Wait until every save so far is on disk (any thread; it reads no state)."""
+        """Wait until every save so far is on disk; any thread may call this."""
         if self.writer:
             self.writer.flush()
 

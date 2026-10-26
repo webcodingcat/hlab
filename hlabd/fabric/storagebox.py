@@ -1,9 +1,9 @@
 """The lab's Storage Box: its sshd, accounts, their directories and snapshots on disk.
 
 All of it goes through scripts/box.sh (via hlab.sh). The API (api/storagebox/) decides
-what a box looks like; this part of the fabric (see __init__.py) only carries it out.
-The methods of `Box` are named after the box.sh functions they run, except
-`bytes_used` (print_bytes_used: the method returns the number the function prints).
+what a box looks like; this part of the fabric (see __init__.py) only puts it on disk.
+The methods of `Box` are named after the box.sh functions they run. The one exception
+is `bytes_used`: it runs print_bytes_used and returns the number that it prints.
 """
 
 from ..records import StorageBox
@@ -56,11 +56,11 @@ class Box:
     ) -> None:
         """Create or update an account with its home.
 
-        `owner` gives the account's IDs: a number is its UID (a box's own account uses
-        the box ID, so its files keep their owner across container restarts); a name is
-        the box user whose IDs a sub-account shares. Without a password the account
-        cannot log in with one. The password goes over stdin (never into a process
-        list).
+        `owner` gives the account's IDs. A number is its UID: the main account of a
+        box uses the box ID, so its files keep their owner across container restarts.
+        A name is the box user whose IDs a sub-account shares. Without a password, the
+        account cannot log in with a password. The password goes over stdin, so it
+        never shows in a process list.
         """
         self.shell.run(
             "set-account",
@@ -95,9 +95,9 @@ class Box:
         self.shell.run("write-authorized-keys", user, "\n".join(keys))
 
     def add_key(self, user: str, public_key: str) -> None:
-        """Add a key of the lab's own (/hlab/box-keys) to an account.
+        """Add a lab key (/hlab/box-keys) to an account.
 
-        It counts next to the account's .ssh/authorized_keys.
+        It works in addition to the account's .ssh/authorized_keys.
         """
         self.shell.run("add-key", user, public_key.strip())
 

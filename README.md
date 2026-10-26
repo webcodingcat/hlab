@@ -39,7 +39,7 @@ tests/tofu-smoke/run.sh                # OpenTofu with the hcloud provider again
 On Windows run `bin/hlab` from Git Bash or WSL.
 
 The OS images are those listed in `hlab.yaml` (URL and checksum file); the lab loads them when it starts. Servers
-come into being through the API, for example with OpenTofu:
+are created through the API, for example with OpenTofu:
 
 ```bash
 eval "$(bin/hlab env)"
@@ -63,14 +63,14 @@ bin/hlab fault clear
 bin/hlab client add alice                 # an Internet client with its own addresses, no NAT
 bin/hlab client exec alice curl -s http://203.0.113.11/
 bin/hlab box user lab1 key.pub            # a Storage Box account outside the API
-bin/hlab ssh a uptime                     # root on a server with the lab's own key
+bin/hlab ssh a uptime                     # root on a server with the lab's SSH key
 bin/hlab reset                            # delete everything the APIs created
 ```
 
 ## What it does
 
 - **Servers** boot through cloud-init's Hetzner datasource (SMBIOS, metadata, DHCP on `eth0`, IPv6 from the
-  metadata), with the cloud's timings for power actions and `locked` (423) while an action runs. Rebuild,
+  metadata), with Hetzner's timings for power actions and `locked` (423) while an action runs. Rebuild,
   `change_type`, `reset_password` (guest agent), reverse DNS, primary IPs, SSH keys.
 - **Networks**: cloud networks with subnets and routes (pushed by DHCP, forwarded to the gateway server), alias IPs,
   hot-plugged NICs, overlapping networks; Floating IPs routed to their server; firewalls with Hetzner's semantics;

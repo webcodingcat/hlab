@@ -1,4 +1,4 @@
-"""JSON shapes of the Hetzner Cloud API for the catalogue and the lab's resources.
+"""JSON shapes of the Hetzner Cloud API, for the catalogue and the resources.
 
 See https://docs.hetzner.cloud/.
 """
@@ -232,8 +232,8 @@ def default_ptr(ip: str) -> str:
 def dns_ptrs(record: PrimaryIP | FloatingIP) -> list[DnsPtr]:
     """Return the reverse DNS entries of a primary or Floating IP.
 
-    Entries are per address (several in an IPv6 /64); an IPv4 without its own entry has
-    Hetzner's default.
+    There is one entry per address, so an IPv6 /64 may have several. An IPv4 without
+    its own entry gets Hetzner's default.
     """
     if record["type"] == "ipv4" and not record["dns_ptr"]:
         return [{"ip": record["ip"], "dns_ptr": default_ptr(record["ip"])}]

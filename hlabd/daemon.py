@@ -1,9 +1,10 @@
 """The lab daemon: the container's main process (`hlab serve`).
 
-It sets the lab up (state, fabric, images), brings back what ran before (api/restart.py)
-and serves three apps on one HTTP server, chosen by the address a request arrives at:
-the Cloud API (and lab control under /_lab/), the Storage Box API (api.hetzner.com
-stand-in) and the metadata service. On `docker stop` the guests are powered down.
+It sets up the lab (state, fabric, images) and brings back what ran before
+(api/restart.py). Then it serves three apps on one HTTP server. The address that a
+request arrives at picks the app: the Cloud API (with lab control under /_lab/), the
+Storage Box API (the stand-in for api.hetzner.com), or the metadata service. On
+`docker stop` the guests are powered down.
 """
 
 import asyncio
@@ -119,8 +120,8 @@ async def run(lab: Lab) -> None:
 
     The background jobs run as long as the server does.
     """
-    # this loop owns the state. Blocking work runs in threads; downloads that wait for
-    # each other must not leave the rest without threads.
+    # this loop owns the state. Blocking work runs in threads; the pool is large, so
+    # downloads that wait for each other do not use up every thread
     lab.own_state()
     loop = asyncio.get_running_loop()
     loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(64))
@@ -155,8 +156,8 @@ async def run(lab: Lab) -> None:
 def shut_down(lab: Lab) -> None:
     """Power the guests down like the power button, then stop the Storage Box.
 
-    `docker stop` gives the lab 20 seconds in all. The last save is on disk first. The
-    loop has ended; this is its thread, which still owns the state.
+    `docker stop` gives the lab 20 seconds in total. First the last save is written to
+    disk. The loop has ended, but this runs on its thread, which still owns the state.
     """
     fabric = lab.fabric
     lab.state.flush()

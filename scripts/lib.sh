@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Functions hlab.sh and box.sh share; sourced by both.
+# Functions that hlab.sh and box.sh share; both source this file.
 
 # is_alive <pid file> <comm prefix>: Succeed while the process the file names
 # runs.

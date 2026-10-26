@@ -1,9 +1,8 @@
 """The fake Hetzner Cloud API.
 
 It covers the part that OpenTofu's hcloud provider and cluster tooling use. Each
-resource has its own module (servers, ssh_keys, networks, primary_ips, floating_ips,
-firewalls, volumes, catalogue, actions). Lab control (faults, clients, Storage Box
-accounts) is under /_lab/ on the same server.
+resource has its own module; `create_app` adds their routes. Lab control (faults,
+clients, Storage Box accounts) is under /_lab/ on the same server.
 """
 
 from fastapi import FastAPI

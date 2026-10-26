@@ -29,8 +29,8 @@ def lab_addresses(lab: Lab) -> set[str]:
     """Return the addresses no server gets.
 
     These are the lab's gateways in the networks, Hetzner's gateway (config.GATEWAY)
-    and the container's own addresses (read before in a thread with
-    `read_local_addresses()`).
+    and the container's addresses. The caller must read the container's addresses
+    first, in a thread (`read_local_addresses()`).
     """
     gateways = {network_gateway(n["ip_range"]) for n in lab.state["networks"].values()}
     return gateways | {config.GATEWAY} | lab.fabric.network.local_addresses()
@@ -123,8 +123,8 @@ def add_nic(
 ) -> Nic:
     """Add a NIC in a network to the server and return it.
 
-    This changes the state only (in the caller's `change()`); the fabric adds the NIC
-    to the VM.
+    This changes only the state, in the caller's `change()`. The fabric adds the NIC
+    to the VM later.
     """
     state = lab.state
     net = state["networks"].get(nid)
@@ -188,10 +188,10 @@ def remove_nic(lab: Lab, server: Server, nic: Nic) -> None:
 async def attach_to_network(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan an attach to a network.
 
-    A running server gets the NIC hot-plugged; one that is off gets it at its next
-    start.
+    A running server gets the NIC hot-plugged. A server that is off gets it at its
+    next start.
     """
-    # a script: the addresses no NIC gets
+    # runs a script: the addresses that no NIC may get
     await lab.blocking(lab.fabric.network.read_local_addresses)
     with lab.state.change():
         nic = add_nic(
@@ -237,7 +237,7 @@ async def change_alias_ips(lab: Lab, server: Server, body: dict) -> Plan:
     The lab routes the alias IPs to the server; the guest sets them up itself.
     """
     nic = server_nic(lab, server, body)
-    # a script: the addresses no NIC gets
+    # runs a script: the addresses that no NIC may get
     await lab.blocking(lab.fabric.network.read_local_addresses)
     with lab.state.change():
         nic["alias_ips"] = checked_alias_ips(lab, nic, body.get("alias_ips"))

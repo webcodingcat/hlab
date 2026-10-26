@@ -12,7 +12,7 @@ Official standards first, checked by `bin/hlab lint` (also part of `bin/hlab tes
 | YAML | yamllint defaults | `yamllint` (`.yamllint`) |
 | Commits | [Git's conventions](https://git-scm.com/docs/SubmittingPatches#describe-changes): imperative subject (~50 characters), blank line, why | by review |
 
-## On top of the standards
+## Rules on top of the standards
 
 - English throughout.
 - Readable for developers before short: descriptive names; no single letters
@@ -26,7 +26,8 @@ Official standards first, checked by `bin/hlab lint` (also part of `bin/hlab tes
 - Wrappers (`bin/`): functions may read the script's read-only constants
   (image names, the repository path) instead of taking them as parameters.
 - Layout of `hlabd/`: `api/` decides (HTTP, checks, state, actions) and never
-  runs scripts; `fabric/` carries out and knows no HTTP; `lab.py` is the core.
+  runs scripts; `fabric/` does the work on the system and knows nothing about HTTP;
+  `lab.py` is the core.
   API modules are module-level functions taking `lab` first, with thin routes;
   every resource's actions are a table of `ActionSpec` rows run by `lab.act()`;
   errors come from `errors.py`; lookups go through `lab.get_or_404()` or a

@@ -54,9 +54,9 @@ class Shell:
     def qga(self, sock: Path, command: dict, timeout: float = 10) -> dict | None:
         """Send one command to a QEMU guest agent and return its answer.
 
-        The agent's channel buffers answers a client left behind, so a guest-sync with a
-        fresh ID first discards them. Returns None when the agent does not answer
-        (within the total timeout).
+        The agent's channel keeps answers that an earlier client did not read. So a
+        guest-sync with a fresh ID comes first and skips them. Return None when the
+        agent does not answer within the timeout.
         """
         token = secrets.randbelow(2**31)
         deadline = time.monotonic() + timeout
@@ -70,7 +70,7 @@ class Shell:
                     stream.write(json.dumps(cmd).encode() + b"\n")
                     stream.flush()
 
-                # a guest that keeps talking does not hold the lab up
+                # one deadline for all reads: a chatty guest cannot hold up the lab
                 def line() -> bytes:
                     left = deadline - time.monotonic()
                     if left <= 0:

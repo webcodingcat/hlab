@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # box-shell: the ForceCommand of every Storage Box account (see box.sh). It
-# runs inside the account's root: /usr is there (bash with it; /bin is a link
-# to usr/bin), the account's data is /home, its settings /etc/hlab-access, the
-# lab's addresses box-shell.env next to this script (box.sh installs both).
-# The settings come from the two files sourced below:
+# runs inside the account's root. That root contains /usr with bash (/bin is a
+# link to usr/bin). The account's data is in /home. Its settings are in
+# /etc/hlab-access, and the lab's addresses are in box-shell.env next to this
+# script; box.sh installs both files. The settings come from the two files
+# sourced below:
 # shellcheck disable=SC2154
 
 # public_net, floating_net, client6, lab6, ipv6_prefix

@@ -1,7 +1,7 @@
 """Cloud networks: their ranges, subnets and routes.
 
 Ranges, subnets and routes are checked the way Hetzner checks them. Each network
-routes in its own table, so networks may overlap. A server's NICs are in nics.py.
+routes in its own table, so networks may overlap. nics.py handles the NICs of servers.
 """
 
 import ipaddress
@@ -75,7 +75,7 @@ def addresses_in(lab: Lab, nid: int, except_nic: Nic | None = None) -> set[str]:
 
 
 def subnet_of(network: CloudNetwork, ip: str) -> str:
-    """Return the subnet of a network an address lies in (else the network's range)."""
+    """Return the network's subnet that holds an address, else the network's range."""
     address = ipaddress.ip_address(ip)
     return next(
         (
@@ -91,7 +91,7 @@ def subnet_of(network: CloudNetwork, ip: str) -> str:
 
 
 def checked_subnet(network: CloudNetwork, subnet: dict) -> Subnet:
-    """Check a new subnet of the network as Hetzner does; return it normalised.
+    """Check a new subnet of the network like Hetzner; return it normalised.
 
     It must be inside the network, at least a /30, and must not overlap subnets or
     routes. Without an ip_range it takes the next free /24.
@@ -131,10 +131,11 @@ def checked_subnet(network: CloudNetwork, subnet: dict) -> Subnet:
 
 
 def checked_route(network: CloudNetwork, route: dict) -> Route:
-    """Check a new route of the network as Hetzner does; return it normalised.
+    """Check a new route of the network like Hetzner; return it normalised.
 
-    It needs an RFC 1918 destination (or 0.0.0.0/0) clear of subnets and other routes,
-    and a gateway inside the network that is neither its first IP nor 172.31.1.1.
+    The destination must be in RFC 1918 (or 0.0.0.0/0) and must not overlap subnets
+    or other routes. The gateway must be inside the network, and it must be neither
+    the network's first IP nor 172.31.1.1.
     """
     dest = cidr(route.get("destination"), "destination")
     default = dest == ipaddress.ip_network("0.0.0.0/0")
@@ -186,7 +187,7 @@ async def create_network(lab: Lab, body: dict) -> dict:
     for route in body.get("routes") or []:
         network["routes"].append(checked_route(network, route))
     gateway = network_gateway(network["ip_range"])
-    # reading them fresh runs a script
+    # reading the local addresses fresh runs a script, so it runs in a thread
     local_addresses = await lab.blocking(
         lab.fabric.network.read_local_addresses, fresh=True
     )
@@ -208,8 +209,9 @@ async def create_network(lab: Lab, body: dict) -> dict:
     return {"network": hetzner.network_json(lab, network)}
 
 
-# Each network action below is done at once (`act()` saves it) and returns an empty
-# plan (lab.Plan). Then DHCP and the routing tables get the network's new settings.
+# Each network action below changes only the state and returns an empty plan
+# (lab.Plan), so the action finishes right away (`act()` saves the change). Then DHCP
+# and the routing tables get the network's new settings.
 
 
 async def apply_network_change(lab: Lab) -> None:
@@ -284,7 +286,7 @@ NETWORK_ACTIONS: ActionTable[CloudNetwork] = {
 
 
 async def run_network_action(lab: Lab, nid: int, cmd: str, body: dict) -> dict:
-    """Run a network action (all of them are done at once)."""
+    """Run a network action; every one of them finishes right away."""
     network = lab.get_or_404("networks", nid, "network")
     return await lab.act(NETWORK_ACTIONS, cmd, network, "network", body)
 
@@ -292,16 +294,17 @@ async def run_network_action(lab: Lab, nid: int, cmd: str, body: dict) -> dict:
 async def delete_network(lab: Lab, nid: int) -> None:
     """Delete a network and detach its servers, as on Hetzner.
 
-    Each of the servers is locked meanwhile. A NIC is removed from the state only after
-    its detach worked, and the state is saved after each one. So if a detach fails, the
-    network keeps the NICs not yet detached, and a second delete goes on from there.
+    Each of the servers is locked while this runs. A NIC is removed from the state only
+    after its detach worked, and the state is saved after each one. So if a detach
+    fails, the network keeps the NICs that are not yet detached, and a second delete
+    continues from there.
     """
     state = lab.state
     network = lab.get_or_404("networks", nid, "network")
     if network["protection"]["delete"]:
         raise protected("network is delete protected")
     with lab.holding() as held:
-        # from here no server can join it (add_nic refuses)
+        # from here on no server can join it (add_nic refuses)
         held.claim(network, "_deleting", "the network is being deleted")
         members = nics_in(state, nid)  # a server has one NIC per network at most
         for server, _ in members:  # 423 if one of them has an action running
@@ -312,7 +315,7 @@ async def delete_network(lab: Lab, nid: int) -> None:
                 with state.change():
                     server["_lab"]["nics"].remove(nic)
                     drop_netem(lab, [nic["tap"]])
-        except Exception:  # whatever failed: sync, then re-raise
+        except Exception:  # whatever failed: update the system, then re-raise
             # update DHCP and the fault sets for the NICs detached so far
             await system.write_dhcp(lab)
             await system.apply_faults(lab)

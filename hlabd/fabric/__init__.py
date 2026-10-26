@@ -1,11 +1,14 @@
 """The work on the system, all of it done through scripts/hlab.sh.
 
-The API decides, the fabric carries it out and knows nothing of HTTP. It never sees the
-state: the API computes from the state what should be (api/desired.py) and hands it to
-the fabric's methods as plain data (the dataclasses of the parts); records handed in
-(a server, a volume, a NIC) are read for what never changes once they exist (ID, name,
-tap, MAC). `Fabric` holds its parts, each an object of its own that gets what it uses in
-its constructor:
+The API decides; the fabric does the work and knows nothing about HTTP. The fabric
+never sees the state. The API computes from the state what the system should look
+like (api/desired.py) and passes it to the fabric's methods as plain data (the
+dataclasses of the parts). A method may also get a record (a server, a volume, a NIC),
+but it reads only fields that never change once the record exists: ID, tap, MAC. A
+field that can change, such as a server's name, comes as a separate argument.
+
+`Fabric` holds its parts. Each part is an object that gets what it uses in its
+constructor:
 
 | Part | Module | Uses |
 |---|---|---|
@@ -18,8 +21,8 @@ its constructor:
 | `box` (`Box`) | storagebox.py | shell (the Storage Box) |
 
 The address rules (MACs, gateways, routing tables) are plain functions in addresses.py.
-Work that spans several parts (a VM's start and stop with its taps, volumes, routes
-and faults) is put together by the API (api/system.py).
+Work that spans several parts, such as a VM's start and stop with its taps, volumes,
+routes and faults, is put together by the API (api/system.py).
 """
 
 import threading
@@ -43,11 +46,11 @@ class Fabric:
         self.root = root
         self.lab_key = root / "id_ed25519"  # the lab's SSH key
         self.shell = shell or Shell()
-        # Taps, tc and nft change only under this lock: the fabric's methods run in
-        # threads side by side (two servers starting), they must not interleave, and a
-        # tap checked to exist must still be there when it is configured. That the
-        # newest picture of the system is put in place last is the API's job
-        # (`Lab.picture_lock`, api/system.py).
+        # Taps, tc and nft change only while this lock is held. The fabric's methods
+        # run in threads side by side (for example when two servers start), and their
+        # changes must not interleave. A tap that was checked to exist must still be
+        # there when it is configured. Putting the newest picture of the system in
+        # place last is the API's job (`Lab.picture_lock`, api/system.py).
         self.net_lock = threading.RLock()
         self.vms = VMs(cfg, root, self.shell)
         self.volumes = Volumes(root, self.shell, self.vms)

@@ -1,7 +1,7 @@
 """What boxes, sub-accounts and snapshots share.
 
-Finding a box and whether it is busy, its quota, the accounts on disk (the lab's own
-too, /_lab/box/users), and the checks of requests.
+This module finds a box and tells whether it is busy. It has the quota, the accounts on
+disk (also those made through /_lab/box/users), and the checks of requests.
 """
 
 import posixpath
@@ -22,8 +22,9 @@ BUSY = "the Storage Box is busy with another action"
 def box_busy(lab: Lab, box: StorageBox, for_delete: bool = False) -> bool:
     """Check whether the box is busy being set up, rolled back or deleted.
 
-    For a delete, a snapshot still being copied and a sub-account still being set up
-    count too: their data or account would be removed under them.
+    For a delete, a snapshot that is still being copied and a sub-account that is
+    still being set up count too. Otherwise the delete would remove their data or
+    account while they are in use.
     """
     if box["status"] == "initializing" or box.get("_deleting") or box.get("_busy"):
         return True
@@ -44,7 +45,7 @@ def box_busy(lab: Lab, box: StorageBox, for_delete: bool = False) -> bool:
 def box_or_404(lab: Lab, bid: int, ready: bool = False) -> StorageBox:
     """Return a box by ID, or raise 404.
 
-    With ready, the box must not be busy (Hetzner: 423 locked).
+    With `ready`, the box must not be busy (Hetzner: 423 locked).
     """
     box = lab.state["storage_boxes"].get(bid)
     if not box:
@@ -83,7 +84,7 @@ async def sync_box(lab: Lab, box: StorageBox) -> None:
 def sub_home(box: StorageBox, subaccount: Subaccount) -> str:
     """Return a sub-account's home on disk.
 
-    A home is a path inside the box: it holds whatever lies there now.
+    A home is a path inside the box; it holds whatever files are there now.
     """
     return posixpath.normpath(
         posixpath.join(data_dir(box), subaccount["home_directory"].lstrip("/"))
@@ -95,8 +96,8 @@ async def sync_subaccount(
 ) -> None:
     """Apply a sub-account's home and access settings (and its password, if given).
 
-    With a password the account is created if it is missing; it shares the box user's
-    IDs, so the box user keeps full access to its files.
+    With a password, the account is created if it is missing. It shares the box
+    user's IDs, so the box user keeps full access to its files.
     """
     user, home = subaccount["username"], sub_home(box, subaccount)
     access, quota = dict(subaccount["access"]), quota_bytes(lab, box)
@@ -112,8 +113,9 @@ async def sync_subaccount(
 async def set_up_box_user(lab: Lab, name: str, public_key: str) -> None:
     """Create or update a lab account on the box, with its own directory and key.
 
-    Such accounts live outside the Storage Box API (/_lab/box/users). The UID is fixed
-    in the state (`box_uids`), like a box's: files outlive the container's /etc/passwd.
+    Such accounts exist outside the Storage Box API (/_lab/box/users). Their UID is
+    fixed in the state (`box_uids`), like a box's UID, because the files outlive the
+    container's /etc/passwd.
     """
     uids = lab.state.data["box_uids"]
     uid = uids.setdefault(name, 30000 + len(uids))
@@ -161,7 +163,7 @@ def normalized_box_path(path: str | None, field: str) -> str:
 def checked_access_settings(given, known: dict) -> dict:
     """Return the access settings of a request.
 
-    Known keys only; null leaves a setting as it is (partial updates).
+    Only known keys count. A null value leaves a setting as it is (partial updates).
     """
     if given is not None and not isinstance(given, dict):
         raise invalid("access_settings is an object", "access_settings")

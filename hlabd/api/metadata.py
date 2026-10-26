@@ -1,8 +1,8 @@
 """Hetzner's metadata service (169.254.169.254 and fe80::a9fe:a9fe).
 
-It tells the caller by its address and serves what cloud-init's Hetzner datasource
-reads at boot: hostname, instance ID, SSH keys, network configuration, vendor data,
-user data and the cloud networks.
+It finds the calling server by its address. It serves what cloud-init's Hetzner
+datasource reads at boot: hostname, instance ID, SSH keys, network configuration,
+vendor data, user data and the cloud networks.
 """
 
 import json
@@ -30,8 +30,8 @@ DC_NAMES = {
 # Hetzner's images let root log in with the project's SSH keys, configure cloud network
 # NICs (MAC 86:…) by DHCP with hc-utils (hot-plugged ones too), and ship the QEMU
 # guest agent (reset_password needs it). The stock cloud images have neither hc-utils
-# nor the agent, so the vendor data adds the same: a networkd rule for the private
-# NICs and, in the background, the guest agent.
+# nor the agent, so the vendor data installs the same things: a networkd rule for the
+# private NICs and, in the background, the guest agent.
 VENDOR_DATA = """Content-Type: multipart/mixed; boundary="==LAB=="
 MIME-Version: 1.0
 
@@ -81,7 +81,7 @@ echo 'ACTION=="add", SUBSYSTEM=="block", ENV{ID_SERIAL}=="0HC_Volume_*",' \
 udevadm control --reload
 /usr/local/sbin/hc-volume-automount
 command -v qemu-ga >/dev/null 2>&1 && exit 0
-# its own unit: a background job of this script would die with cloud-init's service
+# a separate unit: a background job of this script would die with cloud-init's service
 systemd-run --unit=hlab-qemu-guest-agent --no-block \
     sh -c 'export DEBIAN_FRONTEND=noninteractive;
   apt-get update -qq && apt-get install -y -qq qemu-guest-agent &&
@@ -110,8 +110,9 @@ async def calling_server(lab: Lab, request: Request) -> Server | None:
         return next((s for s in servers if link_local(s["_lab"]["index"]) == ip), None)
     if holders:
         # a private IP (networks may overlap): the tap on which the address is a
-        # neighbour tells the server. Only taps that hold the address count (any guest
-        # can add entries to the neighbour table), and only if there is exactly one.
+        # neighbour tells which server it is. Only taps that hold the address count,
+        # because any guest can add entries to the neighbour table. And it counts only
+        # if there is exactly one such tap.
         taps = await lab.blocking(fabric.network.neighbour_taps, ip) & set(holders)
         return holders[taps.pop()] if len(taps) == 1 else None
     for server in servers:
@@ -178,7 +179,7 @@ def network_config(lab: Lab, server: Server) -> dict:
 
 
 def read_lab_key(lab_key: Path) -> str | None:
-    """Return the lab's own public key (for `hlab ssh`), or None without one."""
+    """Return the lab's public SSH key (for `hlab ssh`), or None without one."""
     public_key = lab_key.with_suffix(".pub")
     return public_key.read_text().strip() if public_key.is_file() else None
 
@@ -188,7 +189,7 @@ async def metadata_values(lab: Lab, server: Server) -> dict:
     cfg = lab.cfg
     lab_key = await lab.blocking(read_lab_key, lab.fabric.lab_key)
     keys = list(server.get("public_keys", []))
-    if lab_key:  # the lab's own access (hlab ssh)
+    if lab_key:  # the lab's admin access (hlab ssh)
         keys.append(lab_key)
     vendor = VENDOR_DATA
     # no SSH keys: Hetzner's root password and password login
@@ -213,8 +214,8 @@ async def metadata_values(lab: Lab, server: Server) -> dict:
         "public-keys": keys,
         "vendor_data": vendor,
         "network-config": network_config(lab, server),
-        # older cloud-init (Debian 13) reads the cloud networks from here, newer
-        # from their own path
+        # older cloud-init (Debian 13) reads the cloud networks from here; newer
+        # versions read them from their own path
         "private-networks": private_networks(lab, server),
     }
 
@@ -247,7 +248,8 @@ def create_metadata_app(lab: Lab) -> FastAPI:
     async def automount_get(request: Request):
         """Return the IDs of the caller's volumes to mount.
 
-        A lab extension for the automount helper of the vendor data.
+        Hetzner has no such key; the lab adds it for the automount helper of the vendor
+        data.
         """
         server = await calling_server(lab, request)
         ids = sorted(
@@ -272,7 +274,7 @@ def create_metadata_app(lab: Lab) -> FastAPI:
         if not server:
             return PlainTextResponse("not found", status_code=404)
         if not server.get("user_data"):
-            return Response(status_code=204)  # cloud-init waits for content otherwise
+            return Response(status_code=204)  # else cloud-init waits for content
         return PlainTextResponse(server["user_data"])
 
     return app

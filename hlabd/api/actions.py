@@ -53,7 +53,7 @@ def resource_of(lab: Lab, kind: str, rid: str) -> tuple[str, int]:
 
 
 def touches(action: Action, resource_type: str, rid: int | None = None) -> bool:
-    """Tell whether an action concerns a resource type (or one resource of it)."""
+    """Tell whether an action is about a resource type (or one resource of it)."""
     return any(
         r["type"] == resource_type and (rid is None or r["id"] == rid)
         for r in action["resources"]
@@ -63,7 +63,7 @@ def touches(action: Action, resource_type: str, rid: int | None = None) -> bool:
 def action_or_404(
     lab: Lab, aid: int, resource_type: str | None = None, rid: int | None = None
 ) -> Action:
-    """Return an action, or raise 404 (also if it does not concern the resource)."""
+    """Return an action, or raise 404 (also if it is not about the resource)."""
     action = lab.state["actions"].get(aid)
     if not action or (resource_type and not touches(action, resource_type, rid)):
         raise not_found("action")

@@ -1,8 +1,8 @@
 """Networks: taps, DHCP, DNS, routes of cloud networks, Floating IPs, Internet clients.
 
 A part of the fabric (see __init__.py). It asks the VMs (vm.py) whether a server runs.
-What each tap, DHCP server and route should look like is computed from the state by the
-API (api/desired.py); this part only puts it in place.
+The API computes from the state what each tap, DHCP server and route should look like
+(api/desired.py). This part only puts that in place.
 """
 
 import ipaddress
@@ -102,7 +102,7 @@ class Network:
     def taps_up(self, server: Server, taps: ServerTaps) -> list[str]:
         """Bring up the server's public tap and the taps of its cloud networks.
 
-        Their routes are set up with them. Returns the NICs for QEMU (tap=mac).
+        It also sets up their routes. Return the NICs for QEMU (tap=mac).
         """
         server_lab = server["_lab"]
         tap, index = server_lab["tap"], server_lab["index"]
@@ -130,7 +130,7 @@ class Network:
         rules of the network's routing table.
         """
         ip_range = ipaddress.ip_network(nic.ip_range)
-        # two servers of one network starting side by side would both add its ip rules
+        # two servers of one network that start side by side would both add its rules
         with self.net_lock:
             self.shell.run(
                 "set-up-private-tap",
@@ -145,8 +145,9 @@ class Network:
     def read_local_addresses(self, fresh: bool = False) -> set[str]:
         """Read the IPv4 addresses the lab container itself has, at most every 10 s.
 
-        It runs a script, so the API calls it in a thread first; `local_addresses()`
-        then gives what it read without a script. `fresh` reads now.
+        It runs a script, so the API calls it in a thread. Afterwards
+        `local_addresses()` returns what it read without running a script. With
+        `fresh`, it reads now.
         """
         now = time.monotonic()
         cache = self._local_addresses_cache
@@ -156,7 +157,7 @@ class Network:
         return cache[1]
 
     def local_addresses(self) -> set[str]:
-        """Return the container's own addresses as last read; never runs a script.
+        """Return the container's addresses as last read, without running a script.
 
         These are never handed to a server.
         """
@@ -168,8 +169,8 @@ class Network:
     ) -> None:
         """Set a network up again after its range changed.
 
-        Its routing table and the gateway address on its members' taps (those whose VM
-        runs) are set up again.
+        This sets up its routing table again, and the gateway address on the taps of
+        its members whose VM runs.
         """
         with self.net_lock:
             self.shell.run("flush-routes", route_table(nid))
@@ -254,9 +255,9 @@ class Network:
     ) -> list[list[str]]:
         """Put the routes of cloud networks in place; return [destination, table] each.
 
-        The routes put in before (`old_routes`, as returned then) are removed first. A
-        route's destination goes to the tap of the first running server that holds the
-        gateway IP, in the network's routing table.
+        First it removes the routes added last time (`old_routes`, as this method
+        returned them). Each route goes, in the network's routing table, to the tap of
+        the first running server that holds the gateway IP.
         """
         with self.net_lock:
             for dest, table in old_routes:
@@ -281,7 +282,7 @@ class Network:
             return applied
 
     def write_dns(self) -> None:
-        """Start the lab resolver with its own names and the hlab.yaml records."""
+        """Start the DNS resolver with the lab's names and the hlab.yaml records."""
         lines = [
             f"address=/{n}/{a}"
             for a in (config.SERVICES, config.SERVICES6)
@@ -301,9 +302,9 @@ class Network:
     def route_floating_ip(self, ip: str, server: Server | None) -> None:
         """Route a Floating IP to the server it is assigned to, or nowhere.
 
-        Assigned to a running server, the IP goes to its tap (an IPv4 as /32, an IPv6
-        /64 to the guest's link-local address); assigned to a server that is off, or to
-        none, it goes nowhere – the old server does not keep it.
+        If the server runs, the IP goes to its tap: an IPv4 address as /32, an IPv6 /64
+        to the guest's link-local address. If the server is off, or there is no
+        server, the IP goes nowhere; the old server does not keep it.
         """
         with self.net_lock:
             if server is None or not self.vms.is_alive(server):

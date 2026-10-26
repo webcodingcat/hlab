@@ -1,7 +1,7 @@
 """Cloud firewalls as nftables rules, with Hetzner's semantics.
 
-- They filter the public interface only (cloud networks are not filtered) – here a
-  server's public tap, so Floating IPs routed to it are covered too.
+- They filter only the public interface, not cloud networks. In the lab that is a
+  server's public tap, so Floating IPs routed to it are filtered too.
 - Stateful: answers to allowed connections pass.
 - Inbound: once a firewall applies, everything not allowed by a rule is dropped (also
   without any rules).
@@ -12,11 +12,11 @@
 - Always allowed: ARP (not IP), DHCP, the ICMPv6 types of neighbour discovery, the
   metadata service.
 
-The lab's own access (`hlab ssh` from 198.18.0.2 / 2001:db8:fffe::3) passes, like
-Hetzner's console.
+The lab's admin access (`hlab ssh` from 198.18.0.2 / 2001:db8:fffe::3) always passes,
+like Hetzner's console.
 
-The API (api/firewalls.py) has checked the rules already, and it gathers the rules of
-each server (api/desired.py). A part of the fabric (see __init__.py).
+The API has already checked the rules (api/firewalls.py) and collected the rules of
+each server (api/desired.py). This module is a part of the fabric (see __init__.py).
 """
 
 import ipaddress
@@ -89,8 +89,8 @@ def ruleset(servers: list[ServerRules]) -> str:
         chains.append(chain(f"in_{sid}", [*body, "drop"]))
         forward.append(f'oifname "{tap}" jump in_{sid}')
         output.append(f'oifname "{tap}" jump in_{sid}')
-        # outbound rules: only what they allow; return lets the receiver's inbound rules
-        # decide next
+        # outbound rules allow only what they list; `return` lets the receiver's
+        # inbound rules decide next
         if outbound:
             body = [
                 f"ip daddr {config.ADMIN} return",

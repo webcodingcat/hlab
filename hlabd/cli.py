@@ -1,7 +1,7 @@
 """The lab command inside the container.
 
-`serve` runs the lab (container main process, see daemon.py); every other command talks
-to it through the control API on http://198.18.0.1/_lab/.
+`serve` runs the lab as the container's main process (see daemon.py). Every other
+command talks to the running lab through the control API on http://198.18.0.1/_lab/.
 """
 
 import argparse
@@ -25,7 +25,7 @@ SSH_HOME = Path("/run/hlab-ssh")
 def call(method: str, path: str, body: dict | None = None) -> dict:
     """Send a request to the control API and return its JSON answer.
 
-    Exits with the error message if the request fails.
+    Exit with the error message if the request fails.
     """
     data = json.dumps(body).encode() if body is not None else None
     request = urllib.request.Request(
@@ -117,9 +117,9 @@ def server_ip(name: str) -> str:
 def ssh(name: str, cmd: list[str]) -> None:
     """SSH into a server as root, from the admin address.
 
-    Like Hetzner's console, the lab's own access passes Cloud firewalls. The client
-    runs as nobody, not as root: it talks to guests, which are not trusted, and the
-    container is privileged.
+    Like Hetzner's console, the admin access passes Cloud firewalls. The SSH client
+    runs as nobody, not as root, because it talks to guests, which are not trusted,
+    and the container is privileged.
     """
     ip = server_ip(name)
     key = SSH_HOME / "id_ed25519"

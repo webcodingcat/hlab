@@ -133,3 +133,8 @@ def server_error(message: str, status: int = 500) -> ApiError:
 def rate_limit_exceeded(message: str) -> ApiError:
     """Return a 429 rate_limit_exceeded error."""
     return ApiError(429, "rate_limit_exceeded", message)
+
+
+def json_error() -> ApiError:
+    """Return a 400 json_error: the request body is not valid JSON."""
+    return ApiError(400, "json_error", "request body is not valid JSON")

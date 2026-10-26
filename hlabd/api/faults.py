@@ -1,8 +1,8 @@
 """The bookkeeping of faults and netem in the state.
 
 Faults and netem are set through the lab's control API (api/control.py). They refer to
-servers, clients and their links, so code that removes one of those calls the
-functions here to drop its faults. The fabric puts them in place (fabric/faults.py).
+servers, clients and their links. Code that removes one of those calls the functions
+here to drop its faults. The fabric puts the faults in place (fabric/faults.py).
 """
 
 from ..lab import Lab

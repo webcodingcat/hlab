@@ -1,7 +1,8 @@
 """HTTP plumbing shared by all API modules.
 
-Error answers, lists (filter, sort, pages), request checks, rate limit, and what every
-resource does the same way (IDs in request bodies, PUT, delete protection).
+This module has the error answers, lists (filter, sort, pages), request checks and the
+rate limit. It also has what every resource does the same way: IDs in request bodies,
+PUT, delete protection.
 """
 
 import asyncio
@@ -21,6 +22,7 @@ from ..errors import (
     check_unique_name,
     invalid,
     invalid_fields,
+    json_error,
     not_found,
     rate_limit_exceeded,
     server_error,
@@ -43,12 +45,17 @@ def error_response(error: ApiError) -> JSONResponse:
 
 
 async def read_body(request: Request) -> dict:
-    """Return the JSON body, already checked by the middleware; {} if there is none."""
+    """Return the JSON body as a dict; raise 400 json_error if it is not valid JSON.
+
+    An empty body, or JSON that is not an object, gives {}. Under /v1 the middleware
+    has already refused broken JSON with the same error; the lab's control routes
+    (/_lab) have no middleware, so this check is theirs.
+    """
     raw = await request.body()
     try:
         data = json.loads(raw) if raw else {}
     except ValueError:
-        return {}
+        raise json_error() from None
     return data if isinstance(data, dict) else {}
 
 
@@ -87,9 +94,9 @@ def update_resource(
 def change_delete_protection(lab: Lab, item: ProtectedRecord, body: dict) -> Plan:
     """Set a resource's delete protection: the change_protection action.
 
-    A body without `delete` keeps the current value. Used by the tables of networks,
-    primary IPs, Floating IPs, volumes and Storage Boxes (servers set delete and
-    rebuild together).
+    A body without `delete` keeps the current value. Every resource with a plain
+    delete protection uses this in its action table. Servers have their own function,
+    because they set delete and rebuild protection together.
     """
     item["protection"]["delete"] = bool(
         body.get("delete", item["protection"]["delete"])
@@ -277,9 +284,7 @@ async def check_request(spec: openapi.Spec, request: Request) -> None:
         try:
             data = json.loads(raw)
         except ValueError:
-            raise ApiError(
-                400, "json_error", "request body is not valid JSON"
-            ) from None
+            raise json_error() from None
     if operation is None:
         return
     if data is not None or (operation.get("requestBody") or {}).get("required"):

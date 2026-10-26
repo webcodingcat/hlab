@@ -1,9 +1,10 @@
 """What the system should look like, computed from the state.
 
-Pure functions: the state (or a record) in, plain data out – the dataclasses of the
-fabric's parts, lists and strings. They run nothing and change nothing. api/system.py
-hands what they return to the fabric, which never sees the state. They run on the
-event loop, which owns the state, so the records they read fit together.
+These are pure functions. They take the state (or a record) and return plain data:
+the dataclasses of the fabric's parts, lists and strings. They run nothing and change
+nothing. api/system.py hands what they return to the fabric, which never sees the
+state. They run on the event loop, which owns the state, so all records they read
+belong to the same moment.
 """
 
 import copy
@@ -45,8 +46,8 @@ FAULT_SETS = (
 def target_ifaces(state: State, ref: str, which: str = "all") -> list[str]:
     """Return the interfaces of what a fault points at: a server or a client.
 
-    `which` picks 'public', 'private' or 'all' (a client has a public link only).
-    Raises KeyError when the server or client is gone.
+    `which` picks 'public', 'private' or 'all'; a client has only a public link.
+    Raise KeyError when the server or client is gone.
     """
     kind, key = ref.split(":", 1)
     if kind == "s":
@@ -69,8 +70,9 @@ def target_ifaces(state: State, ref: str, which: str = "all") -> list[str]:
 def source_prefixes(state: State, server: Server, network: int | None) -> list[str]:
     """Return the source prefixes of a server's packets on one of its taps.
 
-    On a public tap (network None): its public IPv4, its IPv6 /64, its Floating
-    IPs. On a tap of a cloud network: its private IP there (networks may overlap).
+    On the public tap (network None), these are its public IPv4, its IPv6 /64 and its
+    Floating IPs. On a tap in a cloud network, this is its private IP there; the
+    network matters because networks may overlap.
     """
     if network is not None:
         return [
@@ -167,8 +169,9 @@ def tap_delays(
 ) -> dict[int, list[str]]:
     """Return the delays towards a server on one of its taps.
 
-    Round-trip time (ms) to another server's location → that server's source prefixes
-    on the tap's network (`network` None: the public one).
+    The result maps the round-trip time (ms) to another server's location to that
+    server's source prefixes in the tap's network. `network` None means the public
+    network.
     """
     by_rtt: dict[int, list[str]] = {}
     for other in servers:
@@ -184,8 +187,8 @@ def tap_delays(
 def latency(state: State, cfg: dict) -> Latency:
     """Return how each server's taps and each client's link are shaped.
 
-    A tap with a netem fault gets that fault; else a delay band per round-trip time to
-    the other servers' locations (`latency_ms` of `cfg`).
+    A tap with a netem fault gets that fault. Otherwise it gets a delay band for each
+    round-trip time to the other servers' locations (`latency_ms` of `cfg`).
     """
     netem = state.data["netem"]
     servers = list(state["servers"].values())
@@ -243,8 +246,9 @@ def free_hot_plug_port(server: Server) -> str | None:
 def dhcp_hosts(state: State) -> list[DhcpHost]:
     """Return the fixed address of every tap, with DHCP options like Hetzner's.
 
-    Each NIC gets a fixed address, a /32 with routes – on public interfaces to
-    172.31.1.1, on cloud networks to the network's gateway and range.
+    Each NIC gets a fixed address as a /32, with routes. On the public interface the
+    route goes to 172.31.1.1. In a cloud network it goes to the network's gateway and
+    range.
     """
     hosts = []
     for server in state["servers"].values():
@@ -270,7 +274,7 @@ def dhcp_hosts(state: State) -> list[DhcpHost]:
             )
         for nic in server_lab["nics"]:
             network = state["networks"].get(nic["network"])
-            if not network:  # its network was deleted meanwhile
+            if not network:  # its network was deleted in the meantime
                 continue
             ip_range = ipaddress.ip_network(network["ip_range"])
             gateway = network_gateway(network["ip_range"])
@@ -321,7 +325,7 @@ def wanted_routes(state: State) -> list[WantedRoute]:
 def firewall_rules(state: State) -> list[ServerRules]:
     """Return the rules of every server that a firewall applies to, by server ID.
 
-    A server's rules are those of all its firewalls (copies).
+    A server's rules are copies of the rules of all its firewalls.
     """
     out = []
     for sid, server in sorted(state["servers"].items()):

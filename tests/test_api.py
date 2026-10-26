@@ -200,6 +200,18 @@ def test_malformed_json_is_a_json_error(api):
     )
 
 
+def test_malformed_json_on_lab_control_is_a_json_error_too(api):
+    # /_lab has no middleware: read_body itself refuses the body
+    response = api.post(
+        "/_lab/api-fault",
+        content=b"{nope",
+        headers={"Content-Type": "application/json"},
+    )
+    assert (
+        response.status_code == 400 and response.json()["error"]["code"] == "json_error"
+    )
+
+
 def test_unknown_routes_and_methods_get_hetzners_errors(api):
     response = api.get("/v1/nothing")
     assert (

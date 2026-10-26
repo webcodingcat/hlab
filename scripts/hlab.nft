@@ -1,7 +1,7 @@
-# The lab's own nftables table: anti-spoofing, isolation of the cloud networks, faults
-# (the sets hlabd fills, fabric/faults.py), the metadata service over IPv6 and NAT to
-# the Internet. hlab.sh's init_net loads it; before that, print_ruleset puts the uplink
-# and the lab's addresses in place of each ${NAME}.
+# The lab's nftables table. It handles anti-spoofing, the isolation of the cloud
+# networks, faults (the sets that hlabd fills, see fabric/faults.py), the metadata
+# service over IPv6, and NAT to the Internet. init_net in hlab.sh loads it. Before
+# that, print_ruleset replaces each ${NAME} with the uplink or a lab address.
 table inet hlab
 delete table inet hlab
 table inet hlab {

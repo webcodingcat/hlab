@@ -1,12 +1,12 @@
 """The record types of the state, for the type checker.
 
-One TypedDict per kind of resource (state.py keeps them by kind and ID), with the
-meaning of each field. Fields starting with `_` are the lab's own and never shown by the
-API; the flags of actions among them are described in lab.py. `NotRequired` fields are
-missing until something sets them.
+There is one TypedDict per kind of resource, with the meaning of each field; state.py
+keeps the records by kind and ID. Fields that start with `_` are used only by the lab,
+and the API never shows them. lab.py describes the action flags among them.
+`NotRequired` fields are missing until something sets them.
 
-The lab's own records besides the resources (faults, netem, routes of networks, the
-lab's Storage Box accounts) are described in state.py.
+state.py describes the other records that only the lab uses (faults, netem, routes of
+networks, Storage Box accounts created outside the API).
 """
 
 from typing import NotRequired, TypedDict
@@ -46,16 +46,16 @@ class Nic(TypedDict):
 
 
 class ServerLab(TypedDict):
-    """The lab's own fields of a server (`server["_lab"]`, set by `create_server`)."""
+    """The lab-only fields of a server (`server["_lab"]`, set by `create_server`)."""
 
     index: int  # its number in the lab (1-239): tap pub<index>, MACs, IPv6 link-local
     tap: str  # its public tap
     nics: list[Nic]  # its NICs in cloud networks, in the order they were attached
     disk_gb: int  # the size of its disk (a type change without upgrade_disk keeps it)
-    # "running" or "off": the status its create or rebuild ends in, so a lab restart
-    # can finish either one the same way
+    # "running" or "off": the status that its create or rebuild ends in; a lab restart
+    # uses it to finish either one
     target: str
-    root_password: NotRequired[str]  # when it has no SSH keys (Hetzner hands one out)
+    root_password: NotRequired[str]  # only without SSH keys (Hetzner then sets one)
 
 
 class Server(TypedDict):
@@ -81,7 +81,7 @@ class Server(TypedDict):
 
 
 class ActionResource(TypedDict):
-    """A resource an action concerns."""
+    """A resource that an action is about."""
 
     id: int
     type: str  # "server", "volume", ...
@@ -167,7 +167,7 @@ class Subnet(TypedDict):
     type: str  # cloud, server, vswitch
     ip_range: str
     network_zone: str
-    gateway: str  # the network's first address (the lab's)
+    gateway: str  # the network's first address, which the lab holds
     vswitch_id: int | None
 
 
@@ -274,11 +274,11 @@ class BoxSnapshot(TypedDict):
     is_automatic: bool  # taken by the snapshot plan
     created: str
     size: int
-    _copying: NotRequired[bool]  # being copied (a restart removes it)
+    _copying: NotRequired[bool]  # while it is copied (a restart removes it)
 
 
-# A record of any kind of resource, for the code that treats every kind alike (flags,
-# PUT fields, lookups); code that knows the kind uses its own type.
+# A record of any kind of resource, for code that treats every kind alike (flags, PUT
+# fields, lookups). Code that knows the kind uses that kind's type.
 Record = (
     Server
     | Volume
@@ -293,7 +293,7 @@ Record = (
     | Client
 )
 
-# The resources that have an action table run by `Lab.act()` (one of them per table).
+# The resources that have an action table, run by `Lab.act()`.
 ActionRecord = (
     Server
     | Volume

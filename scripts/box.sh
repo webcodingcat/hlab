@@ -1,22 +1,24 @@
 #!/usr/bin/env bash
-# The Storage Box stand-in: one sshd on ports 22 (SFTP, always on) and 23 (SSH
-# support: SFTP and a few commands, only with ssh_enabled), as on Hetzner. Every
-# account (box user u<id>, sub-account u<id>-sub<n>) is locked into its own root,
-# where it sees only its own directory, mounted as /home. Called by hlabd
-# (hlabd/fabric/storagebox.py), which keeps the boxes and accounts; nothing here
-# decides anything.
+# The Storage Box stand-in. As on Hetzner, one sshd listens on port 22 (SFTP,
+# always on) and on port 23 (SFTP and a few commands, only with ssh_enabled).
+# Every account (box user u<id>, sub-account u<id>-sub<n>) is locked into its
+# own root, where it sees only its own directory, mounted as /home. hlabd
+# (hlabd/fabric/storagebox.py) calls this script and keeps track of the boxes
+# and accounts; nothing here decides anything.
 #
-# Layout: /hlab/box (size-limited ext4 image) holds data/<box>/ and
-# snapshots/<box>/<name>/; every account gets a root /run/box-roots/<user>
-# (root-owned, as sshd's ChrootDirectory demands) with /usr read-only and its
-# directory bound to /home. OpenSSH's sftp-server renames by link()+unlink()
-# like the Storage Box: a rename never overwrites.
+# Layout: /hlab/box is a size-limited ext4 image. It holds data/<box>/ and
+# snapshots/<box>/<name>/. Every account gets a root /run/box-roots/<user>,
+# owned by root, as sshd's ChrootDirectory demands. The root has /usr
+# read-only, and the account's directory is bound to /home. OpenSSH's
+# sftp-server renames with link() and unlink(), like the Storage Box, so a
+# rename never overwrites a file.
 #
-# sshd runs two helpers, installed from this directory by start_box:
+# sshd runs two helpers, which start_box installs from this directory:
 # box-keys.sh (AuthorizedKeysCommand) and box-shell.sh (ForceCommand).
 #
-# The lab is a test lab: box users run the operator's own code, so root does
-# the work in their directories and hands the results to the account's IDs.
+# The lab is a test lab, and box users run the operator's own code. So root
+# does the work in their directories and then gives the results to the
+# account's IDs.
 set -euo pipefail
 # set -e also inside $(...)
 shopt -s inherit_errexit
@@ -353,7 +355,7 @@ remove_account() {
   write_deny_config
 }
 
-# add_key <user> <public key>: Add a key of the lab's own to an account.
+# add_key <user> <public key>: Add a lab key to an account.
 add_key() {
   local user="$1" public_key="$2"
   printf '%s\n' "${public_key}" >"/hlab/box-keys/${user}"

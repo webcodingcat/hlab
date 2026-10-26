@@ -1,7 +1,7 @@
 """Servers.
 
-Creating and deleting servers, and the server actions (power, rebuild, ...), with
-Hetzner's measured timings (the table in lab.py).
+This module creates and deletes servers and runs the server actions (power, rebuild,
+...). The actions wait as long as Hetzner does (the timings are in lab.py).
 """
 
 import base64
@@ -93,11 +93,11 @@ async def create_server(lab: Lab, body: dict) -> dict:
     """Create a server and start its create action.
 
     Everything is checked before anything changes, so a refused request leaves nothing
-    behind. The create action creates the VM in the background. The lab's own fields of
-    a server (`server["_lab"]`) and of its NICs are in records.py.
+    behind. The create action creates the VM in the background. records.py describes
+    the lab-only fields of a server (`server["_lab"]`) and of its NICs.
     """
     request = checked_server_request(lab, body)
-    if request.network_ids:  # a script: the addresses no NIC gets
+    if request.network_ids:  # runs a script: the addresses that no NIC may get
         await lab.blocking(lab.fabric.network.read_local_addresses)
     with lab.holding() as held:
         server = record_server(lab, request, held)
@@ -117,10 +117,11 @@ async def create_server(lab: Lab, body: dict) -> dict:
 
 
 def checked_server_request(lab: Lab, body: dict) -> ServerRequest:
-    """Check a create request as far as that needs no change; change nothing.
+    """Check a create request as far as possible without changing anything.
 
-    The checks that must hold until the server is recorded (its name, a free slot, the
-    firewalls, the addresses, the volumes once more) run in `record_server`.
+    Some checks must still hold when the server is recorded: its name, a free slot,
+    the firewalls, the addresses, and the volumes once more. They run in
+    `record_server`.
     """
     state = lab.state
     name = body.get("name") or ""  # check_hostname refuses an empty name
@@ -177,9 +178,9 @@ def checked_server_request(lab: Lab, body: dict) -> ServerRequest:
 def record_server(lab: Lab, request: ServerRequest, held: HeldFlags) -> Server:
     """Record the new server with its addresses, volumes and firewalls; save.
 
-    One change: the checks come first, then the changes. If a check fails, the
-    addresses taken so far are freed and nothing is saved. The server leaves with its
-    `locked` flag claimed through `held`.
+    This is one change: the checks come first, then the changes. If a check fails,
+    the addresses taken so far are freed, and nothing is saved. When this returns,
+    the server's `_locked` flag is claimed through `held`.
     """
     state = lab.state
     with state.change():
@@ -298,7 +299,7 @@ def delete_server(lab: Lab, sid: int) -> dict:
             # if the lab restarts, it finishes this delete (status deleting)
             lab.set_status(server, "deleting")
             lab.run_action(action, steps, server, holding=held)
-        except BaseException:  # nothing runs: restore the status (the flag comes off)
+        except BaseException:  # nothing runs: restore the status; the flag comes off
             lab.set_status(server, previous_status)
             raise
     return {"action": action}
@@ -372,7 +373,7 @@ def change_dns_ptr(lab: Lab, server: Server, body: dict) -> Plan:
 
 
 def poweroff(lab: Lab, server: Server, body: dict) -> Plan:
-    """Plan a hard power off: the VM is killed at once, the status changes after."""
+    """Plan a hard power off: kill the VM at once; the status changes later."""
 
     async def steps():
         await system.kill_vm(lab, server)
@@ -387,9 +388,9 @@ def poweroff(lab: Lab, server: Server, body: dict) -> Plan:
 def shutdown(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan a shutdown: press the ACPI power button.
 
-    Like on Hetzner, the action is finished once the button is pressed. The server's
-    status becomes off when the guest has shut down (the VM watcher, `lab.watch_vms`,
-    sees the VM end). A guest that ignores the button keeps running.
+    As on Hetzner, the action is finished once the button is pressed. The server's
+    status becomes off when the guest has shut down: the VM watcher
+    (`lab.watch_vms`) sees the VM end. A guest that ignores the button keeps running.
     """
 
     async def steps():
@@ -455,8 +456,8 @@ def reset(lab: Lab, server: Server, body: dict) -> Plan:
 def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan a rebuild: a fresh disk from an image.
 
-    New user data is used if given (else the old stays). A server without SSH keys
-    gets a new root password.
+    New user data is used if given; otherwise the old user data stays. A server
+    without SSH keys gets a new root password.
     """
     if server["protection"]["rebuild"]:
         raise protected("server is rebuild protected")
@@ -472,7 +473,7 @@ def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
 
     async def steps():
         previous_status = server["status"]
-        # a lab restart reads it
+        # a lab restart reads the target to finish the rebuild
         target = "running" if previous_status == "running" else "off"
         server["_lab"]["target"] = target
         base = image_path(lab, image)  # before the old disk is gone
@@ -500,7 +501,7 @@ def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
 def change_type(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan a change of the server type; only while the server is off.
 
-    The disk grows with upgrade_disk. Like on Hetzner, a server with a grown disk
+    The disk grows only with upgrade_disk. As on Hetzner, a server with a grown disk
     cannot change back to a type with a smaller disk.
     """
     if server["status"] != "off":
@@ -533,8 +534,7 @@ def change_type(lab: Lab, server: Server, body: dict) -> Plan:
 async def reset_password(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan a root password reset.
 
-    Like Hetzner, the lab sets the password in the guest through the QEMU guest
-    agent.
+    As on Hetzner, the password is set in the guest through the QEMU guest agent.
     """
     if not await lab.blocking(lab.fabric.vms.is_alive, server):
         raise ApiError(409, "server_not_running", "the server is not running")
@@ -577,7 +577,7 @@ SERVER_ACTIONS: ActionTable[Server] = {
 
 
 async def run_server_action(lab: Lab, sid: int, cmd: str, body: dict) -> dict:
-    """Run a server action; like Hetzner, allow one at a time per server (else 423)."""
+    """Run a server action; as on Hetzner, one at a time per server (else 423)."""
     server = lab.server_or_404(sid)
     return await lab.act(
         SERVER_ACTIONS, cmd, server, "server", body, "_locked", SERVER_LOCKED

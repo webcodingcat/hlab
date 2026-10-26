@@ -1,7 +1,8 @@
 """VMs: a server's disk, its QEMU process and its console, and the system images.
 
-A part of the fabric (see __init__.py). Its taps belong to network.py; a server's
-whole start and stop, taps included, is in `Fabric.start_vm` and `Fabric.kill_vm`.
+A part of the fabric (see __init__.py). The taps belong to network.py. A server's
+whole start and stop, taps included, is put together in api/system.py (`start_vm`,
+`kill_vm`).
 """
 
 import logging

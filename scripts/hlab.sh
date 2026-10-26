@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Low-level lab primitives (taps, QEMU, QMP, nftables, Storage Box). Called by
-# hlabd, which keeps the state and picks names and addresses; nothing here
+# Low-level lab commands: taps, QEMU, QMP, nftables, Storage Box. hlabd calls
+# them. hlabd keeps the state and picks names and addresses; nothing here
 # decides anything. The nftables table is in hlab.nft.
 #
-# As on Hetzner, the segments are routed, not bridged: every VM NIC is its own
-# tap, and the container answers ARP for everything (proxy ARP) and routes
-# between the taps. So a network cut is a drop rule in the forward chain. Every
-# cloud network routes in its own table (the network's ID), chosen by the
-# private tap a packet comes in on. So networks may overlap as on Hetzner: the
-# same private IP in two networks belongs to two different servers.
+# As on Hetzner, the segments are routed, not bridged. Every VM NIC is a
+# separate tap. The container answers ARP for every address (proxy ARP) and
+# routes between the taps. So a network cut is a drop rule in the forward
+# chain. Every cloud network routes in its own table (the network's ID), and
+# the private tap that a packet comes in on picks the table. So networks may
+# overlap, as on Hetzner: the same private IP in two networks belongs to two
+# different servers.
 set -euo pipefail
 # set -e also inside $(...)
 shopt -s inherit_errexit

@@ -1,6 +1,6 @@
 """Sub-accounts of a box.
 
-Each is an account of its own (u<box>-sub<n>) with a home directory inside the box.
+Each one is a separate account (u<box>-sub<n>) with a home directory inside the box.
 """
 
 from fastapi import FastAPI, Request
@@ -51,7 +51,7 @@ def check_unique_subaccount_name(
 ) -> None:
     """Check that no other sub-account of the box has this name.
 
-    Names are unique per box; an unnamed sub-account is called by its username.
+    Names are unique per box. A sub-account without a name goes by its username.
     """
     others = [
         x
@@ -68,12 +68,12 @@ def box_of(lab: Lab, subaccount: Subaccount) -> StorageBox:
 
 
 def box_plan(subaccount: Subaccount) -> Plan:
-    """Return the plan of a sub-account action: done at once, concerning the box too."""
+    """Return the plan of a sub-account action: no steps; it is also about the box."""
     return Plan(resources=[(subaccount["box"], "storage_box")])
 
 
 # --- sub-account actions --------------------------------------------------------------
-# Each gets the sub-account and the request and returns its plan; each is done at once.
+# Each function gets the sub-account and the request and returns a plan without steps.
 
 
 async def change_home_directory(lab: Lab, subaccount: Subaccount, body: dict) -> Plan:
@@ -84,7 +84,7 @@ async def change_home_directory(lab: Lab, subaccount: Subaccount, body: dict) ->
     subaccount["home_directory"] = home
     try:
         await sync_subaccount(lab, box, subaccount)
-    except Exception:  # undo the half-done change, then raise
+    except Exception:  # undo the partial change, then raise
         subaccount["home_directory"] = old
         raise
     return box_plan(subaccount)
@@ -109,7 +109,7 @@ async def update_access_settings(lab: Lab, subaccount: Subaccount, body: dict) -
     subaccount["access"].update(access)
     try:
         await sync_subaccount(lab, box, subaccount)
-    except Exception:  # not in effect, so not reported either
+    except Exception:  # the settings did not take effect, so do not store them
         subaccount["access"] = old
         raise
     return box_plan(subaccount)
@@ -134,10 +134,11 @@ SUBACCOUNT_ACTIONS: ActionTable[Subaccount] = {
 async def create_subaccount(lab: Lab, bid: int, body: dict) -> dict:
     """Create a sub-account of a box with its account on the box.
 
-    Sub-accounts are numbered per box (u<box>-sub<n>); the number is taken with the
-    record, so a second create at the same time gets the next one. The box is not
-    deleted while the account is set up (`_creating`). If the account cannot be set up,
-    the sub-account is removed again. Refused while the box is busy (423).
+    Sub-accounts are numbered per box (u<box>-sub<n>). The number is taken together
+    with the record, so a second create at the same time gets the next number. The
+    box cannot be deleted while the account is set up (`_creating`). If the account
+    cannot be set up, the sub-account is removed again. While the box is busy, the
+    request gets 423.
     """
     state = lab.state
     box = box_or_404(lab, bid, ready=True)
@@ -160,7 +161,7 @@ async def create_subaccount(lab: Lab, bid: int, body: dict) -> dict:
             raise limit_exceeded(
                 "sub-account limit of the Storage Box type reached", "subaccounts"
             )
-        if box_busy(lab, box):  # the box got busy meanwhile (e.g. it is deleted)
+        if box_busy(lab, box):  # the box became busy in the meantime (e.g. a delete)
             raise locked(BUSY)
         number = 1 + max([a["number"] for a in mine], default=0)
         subaccount_id = state.new_id("subaccounts")
@@ -181,7 +182,7 @@ async def create_subaccount(lab: Lab, bid: int, body: dict) -> dict:
         held.claim(subaccount, "_creating", BUSY)  # new: nobody holds it yet
         try:
             await sync_subaccount(lab, box, subaccount, password)
-        except Exception:  # undo the half-done change, then raise
+        except Exception:  # undo the partial change, then raise
             await lab.blocking(
                 lab.fabric.box.remove_account, subaccount["username"], check=False
             )
@@ -207,7 +208,7 @@ def update_subaccount(lab: Lab, bid: int, subaccount_id: int, body: dict) -> dic
 
 
 async def delete_subaccount(lab: Lab, bid: int, subaccount_id: int) -> dict:
-    """Delete a sub-account and its account at once (its files stay in the box)."""
+    """Delete a sub-account and its account at once; its files stay in the box."""
     box = box_or_404(lab, bid, ready=True)
     subaccount = subaccount_or_404(lab, box, subaccount_id)
     await lab.blocking(lab.fabric.box.remove_account, subaccount["username"])

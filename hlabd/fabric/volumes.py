@@ -66,7 +66,7 @@ class Volumes:
     def resize(self, volume: Volume, size: int, server: Server | None) -> None:
         """Grow a volume's disk.
 
-        A running VM it is attached to sees the new size at once.
+        If the volume is attached to a running VM, the VM sees the new size at once.
         """
         vm_dir = str(self.vms.directory(server)) if server else ""
         self.shell.run(

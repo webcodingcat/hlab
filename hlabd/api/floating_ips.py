@@ -29,8 +29,8 @@ from .web import (
 def free_floating_ip(lab: Lab, ip_type: str) -> str:
     """Return the lowest free Floating IP address of a type.
 
-    IPv6: 2001:db8:ff01::/64 to ...:fffd::/64; fffe and ffff are the lab's own. The
-    caller stores the new record in the same `change()`.
+    IPv6 uses 2001:db8:ff01::/64 to ...:fffd::/64; the lab uses fffe and ffff for its
+    services and clients. The caller stores the new record in the same `change()`.
     """
     used = {x["ip"] for x in lab.state["floating_ips"].values()}
     if ip_type == "ipv4":
@@ -107,7 +107,7 @@ def delete_floating_ip(lab: Lab, fid: int) -> None:
 
 # Each Floating IP action below checks the request and returns its plan (lab.Plan).
 # Assign and unassign move the route in the background, one move at a time
-# (`_moving`); the others change the record only.
+# (`_moving`). The other actions change only the record.
 
 
 def floating_ip_change_dns_ptr(lab: Lab, floating_ip: FloatingIP, body: dict) -> Plan:
@@ -118,8 +118,8 @@ def floating_ip_change_dns_ptr(lab: Lab, floating_ip: FloatingIP, body: dict) ->
 def move_floating_ip(lab: Lab, floating_ip: FloatingIP, target: Server | None) -> Plan:
     """Plan a move of the Floating IP to a server (or to none).
 
-    Like on Hetzner, the route moves after about 3 s; from then on, the server may
-    send from the IP.
+    As on Hetzner, the route moves after about 3 s. From then on, the server may send
+    from the IP.
     """
     state = lab.state
 

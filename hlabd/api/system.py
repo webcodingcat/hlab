@@ -1,15 +1,16 @@
-"""Putting the state in place on the system.
+"""Put the state in place on the system.
 
-Each function here reads what it needs from the state on the event loop (mostly through
-the pure functions of desired.py), then hands that plain data to the fabric in a thread
-(`lab.blocking`); the fabric never sees the state. What the fabric reports back for the
-state (the routes it put in) is stored here, on the loop again.
+Each function here first reads what it needs from the state, on the event loop. Most
+of that goes through the pure functions of desired.py. Then it hands the plain data to
+the fabric in a thread (`lab.blocking`); the fabric never sees the state. When the
+fabric reports something back for the state (the routes it added), the function
+stores it here, on the loop again.
 
-A whole picture (fault sets, latency, firewall, DHCP, routes) is computed and put in
-place while `lab.picture_lock` is held, so pictures are put in place in the order they
-were computed and the last one put in place is the newest: an older picture never
-overwrites a newer one. The lock is not re-entrant: a function that holds it calls no
-other function here.
+Some functions put a whole picture in place: fault sets, latency, firewall, DHCP or
+routes. They compute it and put it in place while they hold `lab.picture_lock`. So
+pictures are put in place in the order they were computed, and an older picture never
+overwrites a newer one. The lock is not re-entrant: a function that holds it must not
+call another function here that takes it.
 """
 
 from typing import TYPE_CHECKING
@@ -55,9 +56,9 @@ async def write_dhcp(lab: "Lab") -> None:
 
 
 async def apply_routes(lab: "Lab") -> None:
-    """Put the routes of cloud networks in place, instead of those put in before.
+    """Put the routes of cloud networks in place, replacing the routes added before.
 
-    The routes put in are kept in the state (`net_routes`), to be removed next time.
+    The state keeps the added routes (`net_routes`), so the next call can remove them.
     """
     state = lab.state
     async with lab.picture_lock:
@@ -72,8 +73,9 @@ async def apply_routes(lab: "Lab") -> None:
 async def route_floating_ip(lab: "Lab", ip: str, server: Server | None) -> None:
     """Route a Floating IP to a server (or nowhere), in order with the reroutes.
 
-    The caller has stored the new assignment before: a reroute that read the old one
-    puts its route in place before this one, never after (`reroute_floating_ips`).
+    The caller stores the new assignment first. A reroute that read the old
+    assignment then puts its route in place before this one, never after
+    (`reroute_floating_ips`).
     """
     async with lab.picture_lock:
         await lab.blocking(lab.fabric.network.route_floating_ip, ip, server)
@@ -85,8 +87,8 @@ async def route_floating_ip(lab: "Lab", ip: str, server: Server | None) -> None:
 async def start_vm(lab: "Lab", server: Server) -> None:
     """Start the server's VM with its taps, DHCP and volumes.
 
-    Then the routes, faults and latency that involve it are applied. If the VM does
-    not start, its taps are taken down again.
+    Then it applies the routes, faults and latency that involve the server. If the VM
+    does not start, its taps are taken down again.
     """
     state, fabric = lab.state, lab.fabric
     if await lab.blocking(fabric.vms.is_alive, server):
@@ -118,7 +120,7 @@ async def kill_vm(lab: "Lab", server: Server) -> None:
     server_lab = server["_lab"]
     taps = [server_lab["tap"], *(nic["tap"] for nic in server_lab["nics"])]
     await lab.blocking(lab.fabric.network.taps_down, taps)
-    await write_dhcp(lab)  # the taps' dnsmasq instances are stopped too
+    await write_dhcp(lab)  # this also stops the dnsmasq of each removed tap
 
 
 async def delete_vm(lab: "Lab", server: Server) -> None:
@@ -130,10 +132,10 @@ async def delete_vm(lab: "Lab", server: Server) -> None:
 async def reroute_floating_ips(lab: "Lab", server: Server) -> None:
     """Route the Floating IPs assigned to a server to it again, after it started.
 
-    Hetzner keeps routing an assigned IP across a power cycle; the route was removed
-    with the old tap. The IPs are read and routed under the picture lock: a move that
-    routes an IP elsewhere meanwhile (`route_floating_ip`) comes before or after, never
-    in between.
+    Hetzner keeps routing an assigned IP across a power cycle, but the lab removed the
+    route together with the old tap. The IPs are read and routed while the picture
+    lock is held. So a move that routes an IP elsewhere at the same time
+    (`route_floating_ip`) comes before or after this, never in between.
     """
     async with lab.picture_lock:
         ips = [
@@ -157,7 +159,8 @@ async def nic_up(lab: "Lab", nic: Nic) -> None:
 async def attach_nic(lab: "Lab", server: Server, nic: Nic) -> None:
     """Attach a NIC to a server, hot-plugged if its VM runs.
 
-    The NIC is in the state already; then its faults, routes and latency follow.
+    The NIC is already in the state. Afterwards its faults, routes and latency are
+    applied.
     """
     state, fabric = lab.state, lab.fabric
     if await lab.blocking(fabric.vms.is_alive, server):
@@ -190,8 +193,8 @@ async def refresh_cloud_network(lab: "Lab", nid: int) -> None:
 async def drop_cloud_network(lab: "Lab", nid: int) -> None:
     """Clean up after a deleted network.
 
-    Its routing table is flushed with its routes; DHCP, the fault sets and the routes
-    of the other networks are updated.
+    This flushes the network's routing table and its routes. Then it updates DHCP, the
+    fault sets and the routes of the other networks.
     """
     await lab.blocking(lab.fabric.network.drop_cloud_network, nid)
     await write_dhcp(lab)

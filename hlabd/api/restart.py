@@ -1,9 +1,9 @@
-"""What happens when the lab (re)starts.
+"""What happens when the lab starts again.
 
 The steps, in order: clear the action flags; start the Storage Box with its accounts;
-finish or drop what was half done; put firewalls and faults in place before any VM
-runs; power on the servers that should run; bring the clients back. One broken server
-or box does not stop the lab from starting.
+finish or drop the work that a restart cut off; put firewalls and faults in place
+before any VM runs; power on the servers that should run; bring the clients back. One
+broken server or box does not stop the lab from starting.
 """
 
 import logging
@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 
 
 async def restore_storage_box(lab: Lab) -> None:
-    """Start the Storage Box with the lab's own accounts and the API's boxes.
+    """Start the Storage Box with the API's boxes and the accounts made outside the API.
 
     `storagebox.restore` also removes snapshots whose copy was cut off (`_copying`).
     """
@@ -26,7 +26,7 @@ async def restore_storage_box(lab: Lab) -> None:
     if not box_cfg.get("enabled"):
         return
     await lab.blocking(lab.fabric.box.start_box, int(box_cfg.get("size_gb") or 0))
-    # a copy: the loop runs scripts
+    # a copy: other tasks may change the state while the scripts run
     box_users = list(lab.state.data["box_users"].items())
     for user, key in box_users:
         await set_up_box_user(lab, user, key)
@@ -51,10 +51,10 @@ def fail_running_actions(lab: Lab) -> None:
 async def drop_half_created_volumes(lab: Lab) -> None:
     """Delete the volumes whose creation the restart cut off (maybe during mkfs).
 
-    Their create action failed.
+    Their create action has failed already.
     """
     state = lab.state
-    # a copy: the loop runs scripts
+    # a copy: other tasks may change the state while the scripts run
     creating = [v for v in state["volumes"].values() if v["status"] == "creating"]
     for volume in creating:
         await lab.blocking(lab.fabric.volumes.delete, volume)
@@ -63,7 +63,7 @@ async def drop_half_created_volumes(lab: Lab) -> None:
 
 
 def finish_box_setup(lab: Lab) -> None:
-    """Mark Storage Boxes that were being set up as active (the restart set them up)."""
+    """Mark Storage Boxes that were being set up as active; the restart set them up."""
     with lab.state.change():
         for box in lab.state["storage_boxes"].values():
             if box["status"] == "initializing":
@@ -73,8 +73,9 @@ def finish_box_setup(lab: Lab) -> None:
 def status_after_restart(server: Server) -> str:
     """Return the status a server ends in after a restart: "running" or "off".
 
-    A server whose creation or rebuild the restart cut off ends as its action would
-    have ended (`target`). A server that was running or starting runs again.
+    If the restart cut off the creation or rebuild of a server, the server gets the
+    status its action would have given it (`target`). A server that was running or
+    starting runs again.
     """
     if server["status"] in ("initializing", "rebuilding"):
         return server["_lab"].get("target", "running")
@@ -86,7 +87,7 @@ async def restart_servers(lab: Lab) -> None:
 
     A server that cannot be started stays off; the lab comes up anyway.
     """
-    # a copy: the loop runs scripts
+    # a copy: other tasks may change the state while the scripts run
     servers = list(lab.state["servers"].values())
     for server in servers:
         try:
@@ -98,7 +99,7 @@ async def restart_servers(lab: Lab) -> None:
                 await ensure_disk(lab, server)
                 await system.start_vm(lab, server)
             elif server["status"] in ("initializing", "rebuilding"):
-                # cut off while its disk was made: create the disk; the server stays off
+                # the restart cut off the disk: create it; the server stays off
                 await ensure_disk(lab, server)
             lab.set_status(server, target)
         except Exception:  # the server stays off, the lab comes up
@@ -108,7 +109,7 @@ async def restart_servers(lab: Lab) -> None:
 
 async def restore_clients(lab: Lab) -> None:
     """Bring the Internet clients back; one that fails is left out (see the log)."""
-    # a copy: the loop runs scripts
+    # a copy: other tasks may change the state while the scripts run
     clients = list(lab.state["clients"].values())
     for client in clients:
         try:

@@ -31,7 +31,7 @@ def ssh_fingerprint(public_key: str) -> str:
 
 
 def create_ssh_key(lab: Lab, body: dict) -> dict:
-    """Create an SSH key; like on Hetzner, names and fingerprints must be unique."""
+    """Create an SSH key; as on Hetzner, names and fingerprints must be unique."""
     state = lab.state
     if not body.get("name") or not body.get("public_key"):
         raise invalid("name and public_key are required")

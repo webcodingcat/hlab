@@ -1,7 +1,7 @@
 """Cloud firewalls: the API, with the checks of their rules.
 
-What the rules do (nftables, with Hetzner's semantics) is in fabric/firewall.py; every
-change here rewrites them.
+fabric/firewall.py turns the rules into nftables, with Hetzner's semantics. Every
+change here rewrites the nftables rules.
 """
 
 import ipaddress
@@ -30,9 +30,9 @@ MAX_RULES = 50  # per firewall (Hetzner: 50 entries, 500 effective rules)
 
 
 def checked_rules(rules) -> list[FirewallRule]:
-    """Check rules as Hetzner's API does (422 if one is wrong); return them normalised.
+    """Check rules like Hetzner's API (422 if one is wrong); return them normalised.
 
-    Normalised rules have exactly Hetzner's fields; no rules give an empty list.
+    Normalised rules have exactly Hetzner's fields. No rules give an empty list.
     """
     rules = rules or []
     if not isinstance(rules, list):
@@ -155,9 +155,9 @@ def server_resources(servers: set[int]) -> list[tuple[int, str]]:
 async def create_firewall(lab: Lab, body: dict) -> dict:
     """Create a firewall with its rules and resources; return it and its actions.
 
-    Like the change of the rules, it brings set_firewall_rules and apply_firewall.
-    apply_firewall comes whenever the new firewall is applied to anything (a label
-    selector may match no server yet).
+    Like a change of the rules, it brings the actions set_firewall_rules and
+    apply_firewall. apply_firewall comes whenever the new firewall is applied to
+    anything, even a label selector that matches no server yet.
     """
     state = lab.state
     if not body.get("name"):
@@ -207,7 +207,7 @@ def update_firewall(lab: Lab, fid: int, body: dict) -> dict:
 
 
 def delete_firewall(lab: Lab, fid: int) -> None:
-    """Delete a firewall; like Hetzner, refuse one that is still applied to anything."""
+    """Delete a firewall; as on Hetzner, refuse one that still applies to anything."""
     firewall = lab.get_or_404("firewalls", fid, "firewall")
     if firewall["applied_to"]:
         raise resource_in_use("firewall is still applied to resources")
@@ -216,9 +216,9 @@ def delete_firewall(lab: Lab, fid: int) -> None:
 
 
 # --- firewall actions -----------------------------------------------------------------
-# As on Hetzner they take effect at once, take no flag and answer with a list of
-# finished actions: the action itself, naming the servers it changes, and the further
-# ones of `Plan.finished`.
+# As on Hetzner, they take effect at once, take no flag, and answer with a list of
+# finished actions: the action itself, which names the servers it changes, and the
+# actions in `Plan.finished`.
 
 
 def set_rules(lab: Lab, firewall: Firewall, body: dict) -> Plan:

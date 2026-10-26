@@ -1,8 +1,8 @@
 """The Storage Box API of api.hetzner.com.
 
-The lab serves it on its own address (config.HETZNER_API): boxes (boxes.py),
-sub-accounts (subaccounts.py), snapshots and snapshot plans (snapshots.py). The accounts
-and files behind them are fabric/storagebox.py.
+The lab serves it on a separate address (config.HETZNER_API): boxes (boxes.py),
+sub-accounts (subaccounts.py), snapshots and snapshot plans (snapshots.py).
+fabric/storagebox.py handles the accounts and files behind them.
 """
 
 import logging
@@ -38,11 +38,11 @@ async def restore(lab: Lab) -> None:
 
     Their roots are in /run, which a restart empties. Passwords are set again from the
     state, because /etc/shadow belongs to the container. A box that cannot be set up
-    again is skipped and logged; the lab starts anyway. Snapshots whose copy a restart
-    cut off are removed.
+    again is skipped and logged; the lab starts anyway. Snapshots whose copy the
+    restart cut off are removed.
     """
     state, fabric = lab.state, lab.fabric
-    # copies: the loops below run scripts
+    # copies: the loops below run scripts, so the state may change in between
     cut_off = [s for s in state["box_snapshots"].values() if s.get("_copying")]
     boxes = list(state["storage_boxes"].values())
     for s in cut_off:
@@ -52,7 +52,7 @@ async def restore(lab: Lab) -> None:
             await lab.blocking(fabric.box.remove_tree, path, check=False)
         with state.change():
             del state["box_snapshots"][s["id"]]
-    # unfinished copies
+    # snapshots whose copy was not finished
     await lab.blocking(fabric.box.remove_tree, f"{BOX}/snapshots/.work", check=False)
     for box in boxes:
         try:

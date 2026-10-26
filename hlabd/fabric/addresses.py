@@ -38,7 +38,7 @@ def route_table(network_id: int) -> str:
 
 
 def prefix(ip: str) -> str:
-    """Return an address as routed prefix.
+    """Return an address as a prefix for a route.
 
     An IPv4 address gets /32, an IPv6 address /128; networks stay as they are.
     """
