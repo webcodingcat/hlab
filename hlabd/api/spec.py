@@ -16,10 +16,10 @@ from jsonschema.validators import extend
 
 SPEC_DIR = Path("/opt/hlab/spec")
 
-# keywords that still look at a null; all others skip it. The ones that combine
-# schemas (a "oneOf" of objects) and the ones that refer to a schema ("$ref",
-# "$dynamicRef") hand the null on to the schemas they name; "type" is here because
-# its checker (below) admits null itself.
+# keywords that still check a null value; all others skip it. Keywords that combine
+# schemas (a "oneOf" of objects) or refer to a schema ("$ref", "$dynamicRef") pass
+# the null on to the schemas they name; "type" is here because its checker (below)
+# accepts null itself.
 _SEES_NULL = {"allOf", "anyOf", "oneOf", "not", "if", "$ref", "$dynamicRef", "type"}
 
 # rules the specification only describes in prose (labels, host names)
@@ -28,10 +28,10 @@ _LABEL_VALUE = re.compile(r"^([a-zA-Z0-9]([a-zA-Z0-9_.-]{0,61}[a-zA-Z0-9])?)?$")
 _DNS_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
 
 # The specification types IDs-or-names as strings; clients (hcloud-go, the CLI) also
-# send plain integers. And the API takes null for any field like a missing one (the
-# hcloud provider sends them), while a required field may be null where the
-# specification says so – so null passes every type check, and "required" still sees the
-# key.
+# send plain integers. The API also treats null in any field like a missing field
+# (the hcloud provider sends nulls), and a required field may be null where the
+# specification allows it. So null passes every type check, and "required" still
+# counts the key as present.
 BASE_TYPE_CHECKER = Draft202012Validator.TYPE_CHECKER
 
 
@@ -157,9 +157,9 @@ class Spec:
 def _rejected_errors(error) -> list:
     """Return the errors of a validation error that the API would reject.
 
-    Unknown fields pass (the API ignores them), and of a oneOf/anyOf only the
-    alternative that was meant counts – the one whose discriminator (an enum such as
-    protocol) matched; an alternative with nothing left satisfies it.
+    Unknown fields pass (the API ignores them). For a oneOf/anyOf only the intended
+    alternative counts: the one whose discriminator (an enum such as protocol) matched.
+    If an alternative has no errors left, the oneOf/anyOf passes.
     """
     if error.validator == "additionalProperties":
         return []

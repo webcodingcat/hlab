@@ -1,4 +1,4 @@
-"""The way to scripts/hlab.sh, and to a VM's QEMU guest agent.
+"""Access to scripts/hlab.sh and to a VM's QEMU guest agent.
 
 A fake shell replaces it in the tests.
 """
@@ -56,7 +56,7 @@ class Shell:
 
         The agent's channel buffers answers a client left behind, so a guest-sync with a
         fresh ID first discards them. Returns None when the agent does not answer
-        (within the timeout in all).
+        (within the total timeout).
         """
         token = secrets.randbelow(2**31)
         deadline = time.monotonic() + timeout

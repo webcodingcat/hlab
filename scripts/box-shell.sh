@@ -30,8 +30,8 @@ check_writes() {
 
 # check_rsync <arg>...: Allow rsync as the server side of a transfer. Sending
 # only reads, unless options make the server side write (remove what it sent,
-# a log file); a daemon with its own configuration would run any program:
-# never.
+# a log file). A daemon with its own configuration could run any program, so
+# it is never allowed.
 check_rsync() {
   local arg
   if [[ "$2" != --server ]]; then
@@ -95,7 +95,8 @@ check_access() {
     deny "SSH is disabled for this account"
   fi
   # Only from Hetzner's networks: servers and Floating IPs, not the Internet.
-  # Cloud networks do not reach the box (as on Hetzner, it is public).
+  # Cloud networks do not reach the box: like Hetzner's, it has public
+  # addresses only.
   if [[ "${external}" != 1 ]]; then
     client_ip="${SSH_CLIENT%% *}"
     case "${client_ip}" in

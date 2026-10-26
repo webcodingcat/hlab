@@ -11,7 +11,7 @@ import time
 import pytest
 
 from hlabd.errors import ApiError, invalid
-from hlabd.lab import Plan
+from hlabd.lab import SERVER_LOCKED, Plan
 
 
 def make_server(lab, sid=1001, status="running"):
@@ -76,6 +76,35 @@ def test_release_takes_a_flag_off_and_leaves_a_server_unlocked(lab):
     # the API shows a server's flag, so it stays as False
     assert server["locked"] is False
     lab.claim(volume, "_busy", "busy")  # free again
+
+
+def test_holding_takes_off_what_it_holds_when_the_block_ends(lab):
+    volume, server = make_volume(lab), make_server(lab)
+    with lab.holding() as held:
+        held.claim(volume, "_busy", "busy")
+        held.claim(server, "locked", SERVER_LOCKED)
+        assert volume["_busy"] is True and server["locked"] is True
+    assert "_busy" not in volume and server["locked"] is False
+
+
+def test_holding_takes_its_flags_off_when_the_block_fails(lab):
+    volume, server = make_volume(lab), make_server(lab)
+    lab.claim(server, "locked", "locked")  # another action runs on the server
+    with pytest.raises(ApiError), lab.holding() as held:
+        held.claim(volume, "_busy", "busy")
+        held.claim(server, "locked", SERVER_LOCKED)  # 423
+    assert "_busy" not in volume
+    assert server["locked"] is True  # still the other action's
+
+
+def test_holding_leaves_kept_and_handed_over_flags(lab):
+    volume, server = make_volume(lab), make_server(lab)
+    with lab.holding() as held:
+        held.claim(volume, "_busy", "busy")
+        held.keep()
+        held.claim(server, "locked", SERVER_LOCKED)
+        assert held.take() == [(server, "locked")]
+    assert volume["_busy"] is True and server["locked"] is True
 
 
 # --- act ------------------------------------------------------------------------------
@@ -243,7 +272,9 @@ def test_failed_steps_fail_the_next_actions_too(lab):
         async def steps():
             raise RuntimeError("no disk")
 
-        lab.run_action(action, steps, server, [next_action], [(server, "locked")])
+        with lab.holding() as held:
+            held.claim(server, "locked", SERVER_LOCKED)
+            lab.run_action(action, steps, server, [next_action], held)
         await settle(lab)
         return action, next_action
 
@@ -258,7 +289,7 @@ def test_a_failed_server_leaves_its_in_between_status_for_what_its_vm_does(
 ):
     server = make_server(lab, status="starting")
     if vm_runs:
-        lab.fabric.sh.running.add(str(lab.fabric.vm_dir(server)))
+        lab.fabric.shell.running.add(str(lab.fabric.vms.directory(server)))
 
     async def main():
         action = lab.new_action("start_server", [(1001, "server")])
@@ -266,7 +297,9 @@ def test_a_failed_server_leaves_its_in_between_status_for_what_its_vm_does(
         async def steps():
             raise RuntimeError("QEMU failed")
 
-        lab.run_action(action, steps, server, holding=[(server, "locked")])
+        with lab.holding() as held:
+            held.claim(server, "locked", SERVER_LOCKED)
+            lab.run_action(action, steps, server, holding=held)
         await settle(lab)
 
     run(main())
@@ -275,7 +308,6 @@ def test_a_failed_server_leaves_its_in_between_status_for_what_its_vm_does(
 
 def test_a_cancelled_action_ends_with_an_error_and_frees_its_flags(lab):
     volume = make_volume(lab)
-    lab.claim(volume, "_busy", "busy")
 
     async def main():
         action = lab.new_action("resize_volume", [(10001, "volume")])
@@ -283,7 +315,9 @@ def test_a_cancelled_action_ends_with_an_error_and_frees_its_flags(lab):
         async def steps():
             await asyncio.Event().wait()  # forever
 
-        lab.run_action(action, steps, holding=[(volume, "_busy")])
+        with lab.holding() as held:
+            held.claim(volume, "_busy", "busy")
+            lab.run_action(action, steps, holding=held)
         await asyncio.sleep(0)
         await lab.stop_actions()
         return action

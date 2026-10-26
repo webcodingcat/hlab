@@ -3,7 +3,7 @@
 import pytest
 from conftest import create_server, power_off, wait_action
 
-from hlabd.api import ips, volumes
+from hlabd.api import primary_ips, volumes
 from hlabd.errors import limit_exceeded
 
 
@@ -17,7 +17,7 @@ def test_volume_is_created_attached_resized_and_deleted(api, tmp_path):
     volume = response.json()["volume"]
     wait_action(api, response.json()["action"])
     path = str(tmp_path / "volumes" / f"{volume['id']}.raw")
-    assert ("volume-create", path, "10", "ext4") in api.sh.calls
+    assert ("create-volume", path, "10", "ext4") in api.sh.calls
     assert (
         api.get(f"/v1/volumes/{volume['id']}").json()["volume"]["status"] == "available"
     )
@@ -31,7 +31,7 @@ def test_volume_is_created_attached_resized_and_deleted(api, tmp_path):
         ).json()["action"],
     )
     assert (
-        "volume-attach",
+        "attach-volume",
         str(tmp_path / "vm" / str(server["id"])),
         str(volume["id"]),
         path,
@@ -152,7 +152,7 @@ def test_refused_volume_leaves_nothing(api):
 
 
 def test_failed_volume_create_leaves_no_volume(api):
-    api.sh.fail.add("volume-create")
+    api.sh.fail.add("create-volume")
     response = api.post(
         "/v1/volumes", json={"name": "v", "size": 10, "location": "fsn1"}
     ).json()
@@ -175,14 +175,14 @@ def test_volume_runs_one_action_at_a_time(api):
     )
     api.lab.state["volumes"][vid].pop("_busy")
     server = create_server(api, "a")["server"]
-    api.sh.fail.add("volume-attach")  # the hot-plug fails: the volume is not attached
+    api.sh.fail.add("attach-volume")  # the hot-plug fails: the volume is not attached
     response = api.post(
         f"/v1/volumes/{vid}/actions/attach", json={"server": server["id"]}
     )
     assert wait_action(api, response.json()["action"])["status"] == "error"
     volume = api.get(f"/v1/volumes/{vid}").json()["volume"]
     assert volume["server"] is None
-    api.sh.fail.discard("volume-attach")
+    api.sh.fail.discard("attach-volume")
     # and not left busy
     response = api.post(
         f"/v1/volumes/{vid}/actions/attach", json={"server": server["id"]}
@@ -242,7 +242,7 @@ def test_server_create_takes_only_available_volumes_and_leaves_nothing(
     def no_ips(*_):
         raise limit_exceeded("no IPv4 left", "primary_ips")
 
-    monkeypatch.setattr(ips, "setup_server_ips", no_ips)
+    monkeypatch.setattr(primary_ips, "setup_server_ips", no_ips)
     response = api.post(
         "/v1/servers",
         json={
@@ -285,7 +285,7 @@ def test_volume_delete_claims_the_volume_and_frees_it_when_the_disk_stays(
         busy_while_deleted.append(record.get("_busy"))  # no action may start now
         raise RuntimeError("volume-delete failed")
 
-    monkeypatch.setattr(api.lab.fabric, "delete_volume", failing_delete)
+    monkeypatch.setattr(api.lab.fabric.volumes, "delete", failing_delete)
     with pytest.raises(RuntimeError):
         volumes.delete_volume(api.lab, vid)
     assert busy_while_deleted == [True]
@@ -324,3 +324,14 @@ def test_server_create_refuses_a_volume_whose_action_started_after_the_check(
     assert response.status_code == 423
     assert api.get("/v1/servers").json()["servers"] == []
     assert state["volumes"][vid]["server"] is None
+
+
+def test_a_deleted_volume_stays_claimed(api):
+    volume = api.post(
+        "/v1/volumes", json={"name": "v", "size": 10, "location": "fsn1"}
+    ).json()
+    wait_action(api, volume["action"])
+    record = api.lab.state["volumes"][volume["volume"]["id"]]
+    assert api.delete(f"/v1/volumes/{record['id']}").status_code == 204
+    # a request that looked the volume up before the delete gets 423, no action
+    assert record["_busy"] is True

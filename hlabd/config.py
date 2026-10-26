@@ -43,8 +43,8 @@ DEFAULTS: dict = {
         },
     },
     "storage_box": {"enabled": True, "size_gb": 10},
-    # Storage Box types of the Storage Box API (size in TB is reported; the lab's box
-    # holds storage_box.size_gb)
+    # Storage Box types of the Storage Box API (the API reports their size in TB; the
+    # lab's box really holds storage_box.size_gb)
     "storage_box_types": {
         "bx11": {
             "size_tb": 1,
@@ -86,7 +86,7 @@ HETZNER_API = "198.18.0.3"  # fake api.hetzner.com (Storage Boxes), port 80
 METADATA = "169.254.169.254"
 # where fe80::a9fe:a9fe is DNATed to: the metadata service only
 METADATA6 = "2001:db8:fffe::a9fe"
-# primary IPv4: the lowest free of .11 to .250 (api/ips.py, free_ipv4)
+# primary IPv4: the lowest free of .11 to .250 (api/primary_ips.py, free_ipv4)
 PUBLIC_NET = "198.51.100"
 FLOATING_NET = "203.0.113"  # Floating IPv4: .10 + n
 CLIENT_NET = "192.0.2"  # "Internet" clients: .10 + n, gateway .1
@@ -96,8 +96,8 @@ OPERATOR = "192.0.2.2"
 ADMIN = "198.18.0.2"
 # IPv6, all from the documentation prefix 2001:db8::/32. Every server routes a /64
 # (guest: <prefix>::1, gateway fe80::1).
-# primary IPv6: the lowest free 2001:db8:<n>::/64 (api/ips.py, free_ipv6); Floating
-# IPv6: 2001:db8:ff<n>::/64
+# primary IPv6: the lowest free 2001:db8:<n>::/64 (api/primary_ips.py, free_ipv6);
+# Floating IPv6: 2001:db8:ff<n>::/64
 IPV6_PREFIX = "2001:db8"
 GATEWAY6 = "fe80::1"
 SERVICES6 = "2001:db8:fffe::1"  # fake Cloud API, Storage Box, DNS over IPv6

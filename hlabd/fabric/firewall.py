@@ -12,18 +12,22 @@
 - Always allowed: ARP (not IP), DHCP, the ICMPv6 types of neighbour discovery, the
   metadata service.
 
-The lab's own access (`hlab ssh` from 198.18.0.2 / 2001:db8:fffe::3) passes, like the
-cloud console would.
+The lab's own access (`hlab ssh` from 198.18.0.2 / 2001:db8:fffe::3) passes, like
+Hetzner's console.
 
-The rules come checked by the API (api/firewalls.py).
+The API (api/firewalls.py) has checked the rules already. A part of the fabric (see
+__init__.py).
 """
 
 import ipaddress
+import threading
+from pathlib import Path
 
 from .. import config
 from ..labels import firewall_servers
 from ..records import FirewallRule
 from ..state import State
+from .shell import Shell
 
 
 def nft_port(port: str | None) -> str:
@@ -70,6 +74,7 @@ def ruleset(state: State, taps: dict[int, str]) -> str:
     `taps` maps server IDs to the servers' public taps. The caller holds the state's
     lock.
     """
+    state.lock.assert_held()
     chains, forward, input_rules, output = [], [], [], []
     for sid, tap in sorted(taps.items()):
         firewalls = [
@@ -129,3 +134,31 @@ def ruleset(state: State, taps: dict[int, str]) -> str:
         + "\n".join(parts)
         + "\n}\n"
     )
+
+
+class Firewall:
+    """The firewall table inet hlabfw, built from the state by `ruleset`."""
+
+    def __init__(
+        self, state: State, root: Path, shell: Shell, net_lock: threading.RLock
+    ):
+        """Store what the table uses; `net_lock` is the fabric's lock (see Fabric)."""
+        self.state = state
+        self.root = root
+        self.shell = shell
+        self.net_lock = net_lock
+
+    def apply(self) -> None:
+        """Replace the firewall table (inet hlabfw) atomically.
+
+        The new table holds the rules of all firewalls.
+        """
+        with self.net_lock:
+            path = self.root / "firewall.nft"
+            with self.state.lock:
+                taps = {
+                    s["id"]: s["_lab"]["tap"] for s in self.state["servers"].values()
+                }
+                text = ruleset(self.state, taps)
+            path.write_text(text)
+            self.shell.run("nft", "-f", str(path))

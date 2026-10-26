@@ -1,27 +1,24 @@
 """The lab's state: everything the fake API knows.
 
-It is saved as JSON in the state volume. The resources are kept by kind (KINDS) and ID.
-Their fields, the lab's own included (a server's `_lab`, its NICs), are the TypedDicts
-in records.py. Next to the resources and `next_id`, the state keeps the lab's own
-records:
+It is saved as JSON in the state volume. Resources are kept by kind (KINDS) and ID;
+their fields are the TypedDicts in records.py. Next to them and `next_id`, the state
+keeps the lab's own records:
 
-- `faults`: the faults set through /_lab/faults (cuts, isolation, blocks), see
-  fabric/faults.py
+- `faults`: the faults set through /_lab/faults (see fabric/faults.py)
 - `netem`: netem options per tap or client link (/_lab/netem)
-- `net_routes`: the routes of cloud networks the fabric has put in place (to remove them
-  again)
-- `box_users`, `box_uids`: the lab's own Storage Box accounts (/_lab/box/users) with
-  their keys and fixed UIDs
+- `net_routes`: the routes the fabric put in for cloud networks, to remove them again
+- `box_users`, `box_uids`: the lab's own Storage Box accounts, with fixed UIDs
 
-Every change to the state (any dict or list reachable from `data`) happens under `lock`,
-and so does every loop over it. The lock is re-entrant. The API's worker threads and the
-event loop share the state, and `save()` writes it under the lock. Slow work stays
-outside the lock (lab.py has the rule). The lookups below take the lock themselves.
+Every change to the state, and every loop over it, holds `lock`; `change()` also saves.
+The lookups below take the lock themselves. See DEVELOPING.md, State and locking.
 """
 
+import asyncio
 import json
 import os
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Literal, overload
 
@@ -125,13 +122,81 @@ def lab_records() -> dict:
     }
 
 
+def lock_holder() -> tuple[int, asyncio.Task | None]:
+    """Return who runs this code: the thread, and the asyncio task it runs (or None)."""
+    try:
+        task = asyncio.current_task()
+    except RuntimeError:  # no event loop runs in this thread
+        task = None
+    return threading.get_ident(), task
+
+
+class StateLock:
+    """The state's re-entrant lock, which knows who holds it.
+
+    `threading.RLock` cannot tell its holder (only through a private method), so this
+    lock records its owner and how often it entered, and `assert_held()` turns the
+    locking rule into a check. The owner is the thread and, on the event loop, the
+    asyncio task: the coroutines there share one thread, and a coroutine that does not
+    hold the lock must fail the check while another one holds it. It costs two cheap
+    lookups, so it is always on. The rule keeps awaits outside the lock; a task that
+    takes the lock while another task of the same thread holds it (an await inside the
+    lock) raises.
+    """
+
+    def __init__(self) -> None:
+        """Start unlocked."""
+        self.rlock = threading.RLock()
+        # the holder (`lock_holder()`): its thread's ident and its task, or None
+        self.owner: tuple[int, asyncio.Task | None] | None = None
+        self.depth = 0  # how often the owner entered
+
+    def acquire(self) -> None:
+        """Wait for the lock and take it (again, if the caller holds it already)."""
+        self.rlock.acquire()
+        holder = lock_holder()
+        if self.depth and self.owner != holder:
+            # the RLock let in another task of the owner's thread
+            self.rlock.release()
+            raise RuntimeError("state.lock is held across an await by another task")
+        self.owner = holder
+        self.depth += 1
+
+    def release(self) -> None:
+        """Give the lock back once; it is free when every acquire is undone."""
+        if not self.held_by_me():
+            raise RuntimeError("state.lock released by a caller that does not hold it")
+        self.depth -= 1
+        if self.depth == 0:
+            self.owner = None
+        self.rlock.release()
+
+    def __enter__(self) -> "StateLock":
+        """Take the lock for a `with` block."""
+        self.acquire()
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        """Give the lock back at the end of a `with` block."""
+        self.release()
+
+    def held_by_me(self) -> bool:
+        """Return whether the caller (its thread and asyncio task) holds the lock."""
+        return self.owner == lock_holder()
+
+    def assert_held(self) -> None:
+        """Raise AssertionError unless the caller holds the lock."""
+        if not self.held_by_me():
+            raise AssertionError("the state is changed without holding state.lock")
+
+
 class State:
     """The lab's state: kept in memory, saved as JSON."""
 
     def __init__(self, path: Path | None):
         """Load the state from `path` if it exists; without a path, nothing is saved."""
         self.path = path
-        self.lock = threading.RLock()
+        self.lock = StateLock()
         self.data: dict[str, Any] = {k: {} for k in KINDS}
         self.data["next_id"] = dict(ID_BASE)
         self.data.update(lab_records())
@@ -148,9 +213,9 @@ class State:
 
     def new_id(self, kind: str) -> int:
         """Return the next free ID for a kind."""
-        with self.lock:
-            self.data["next_id"][kind] += 1
-            return self.data["next_id"][kind]
+        self.lock.assert_held()  # the new ID belongs to a record the caller adds
+        self.data["next_id"][kind] += 1
+        return self.data["next_id"][kind]
 
     # each kind with its record type (records.py), so the type checker knows the fields
     @overload
@@ -187,28 +252,44 @@ class State:
     def clear(self) -> None:
         """Remove every resource and the lab's records (a lab reset).
 
-        IDs go on counting (`next_id` stays), as in the cloud, so nothing old matches a
-        new one; the lab's own Storage Box accounts stay too.
+        IDs keep counting up (`next_id` stays), as on Hetzner, so no old ID matches a
+        new resource. The lab's own Storage Box accounts stay too.
         """
-        with self.lock:
+        with self.change():
             kept = {key: self.data[key] for key in ("box_users", "box_uids")}
             self.data.update({kind: {} for kind in KINDS})
             self.data.update(lab_records())
             self.data.update(kept)
+
+    @contextmanager
+    def change(self) -> Iterator[None]:
+        """Hold the lock for a change, and save the state if the block succeeds.
+
+        A block that raises leaves the state unsaved, as a refused request should.
+        Check first, then change: an exception after a change leaves memory and file
+        apart until the next save (nothing is rolled back), so a block makes no change
+        before its checks have passed, or undoes it before it raises. It saves: on the
+        event loop, run the block in a function through `lab.blocking`.
+        """
+        with self.lock:
+            yield
             self.save()
 
     def save(self) -> None:
-        """Write the state to its file atomically (no-op without a path)."""
+        """Write the state to its file atomically (no-op without a path).
+
+        The caller holds the lock (usually through `change()`), so the state it saves is
+        the one its change left, not one half changed by another thread.
+        """
+        self.lock.assert_held()
         if not self.path:
             return
-        with self.lock:
-            tmp = self.path.with_suffix(".tmp")
-            # every change happens under the lock: nothing changes while it is written
-            tmp.write_text(json.dumps(self.data, indent=1, sort_keys=True))
-            tmp.chmod(0o600)  # passwords of Storage Boxes are in it
-            with open(tmp, "rb+") as file:  # on disk before it replaces the old state
-                os.fsync(file.fileno())
-            os.replace(tmp, self.path)
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self.data, indent=1, sort_keys=True))
+        tmp.chmod(0o600)  # passwords of Storage Boxes are in it
+        with open(tmp, "rb+") as file:  # on disk before it replaces the old state
+            os.fsync(file.fileno())
+        os.replace(tmp, self.path)
 
     def free_index(self) -> int:
         """Return the lab index of a new server (tap pub<index>, MACs, IPv6 link-local).

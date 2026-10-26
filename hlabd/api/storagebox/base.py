@@ -1,7 +1,7 @@
 """What boxes, sub-accounts and snapshots share.
 
-Finding a box and whether it is busy, its quota, the accounts on disk (also the lab's
-own, /_lab/box/users), the checks of requests.
+Finding a box and whether it is busy, its quota, the accounts on disk (the lab's own
+too, /_lab/box/users), and the checks of requests.
 """
 
 import posixpath
@@ -78,7 +78,7 @@ def sync_box(lab: Lab, box: StorageBox) -> None:
 def sub_home(box: StorageBox, subaccount: Subaccount) -> str:
     """Return a sub-account's home on disk.
 
-    Homes are paths: whatever lies there now.
+    A home is a path inside the box: it holds whatever lies there now.
     """
     return posixpath.normpath(
         posixpath.join(data_dir(box), subaccount["home_directory"].lstrip("/"))

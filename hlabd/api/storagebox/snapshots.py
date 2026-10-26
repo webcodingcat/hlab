@@ -1,7 +1,7 @@
 """Snapshots of a box: taken by hand or by its snapshot plan, rolled back to, deleted.
 
-As on Hetzner a snapshot is there at once and its action copies the data (the record is
-marked `_copying` until then).
+Like on Hetzner, a snapshot exists at once and its action copies the data afterwards
+(the record is marked `_copying` until then).
 """
 
 import asyncio
@@ -56,7 +56,7 @@ def new_snapshot(
     The copy follows, see copy_snapshot.
     """
     state = lab.state
-    with state.lock:
+    with state.change():
         snapshot_id = state.new_id("box_snapshots")
         name = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
         while any(
@@ -76,7 +76,6 @@ def new_snapshot(
             "_copying": True,
         }
         state["box_snapshots"][snapshot_id] = snapshot
-        state.save()
     return snapshot
 
 
@@ -88,19 +87,17 @@ def copy_snapshot(lab: Lab, box: StorageBox, snapshot: BoxSnapshot) -> None:
     try:
         lab.fabric.box.take_snapshot(data_dir(box), snap_dir(box, snapshot["name"]))
     except Exception:  # undo the half-done change, then raise
-        with lab.state.lock:
+        with lab.state.change():
             lab.state["box_snapshots"].pop(snapshot["id"], None)
-            lab.state.save()
         raise
-    # deleted (or a lab reset): no orphan copy
+    # the snapshot was deleted meanwhile (or the lab reset): leave no orphan copy
     if lab.state["box_snapshots"].get(snapshot["id"]) is not snapshot:
         lab.fabric.box.remove_tree(snap_dir(box, snapshot["name"]), check=False)
         return
     size = lab.fabric.box.bytes_used(snap_dir(box, snapshot["name"]))
-    with lab.state.lock:
+    with lab.state.change():
         snapshot["size"] = size
         snapshot.pop("_copying", None)
-        lab.state.save()
 
 
 def take_automatic_snapshot(lab: Lab, box: StorageBox) -> BoxSnapshot:
@@ -117,17 +114,16 @@ def take_automatic_snapshot(lab: Lab, box: StorageBox) -> BoxSnapshot:
             ),
             key=lambda s: s["id"],
         )
-    assert box["plan"] is not None  # the scheduler takes them for a plan only
+    assert box["plan"] is not None  # called only for boxes with a plan
     for old in automatic[: -max(1, box["plan"]["max_snapshots"])]:
         remove_snapshot(lab, box, old)
-    state.save()
     return snapshot
 
 
 def remove_snapshot(lab: Lab, box: StorageBox, snapshot: BoxSnapshot) -> None:
     """Remove a snapshot's copy and its record."""
     lab.fabric.box.remove_tree(snap_dir(box, snapshot["name"]))
-    with lab.state.lock:
+    with lab.state.change():
         del lab.state["box_snapshots"][snapshot["id"]]
 
 
@@ -166,9 +162,8 @@ def create_snapshot(lab: Lab, bid: int, body: dict) -> dict:
 def update_snapshot(lab: Lab, bid: int, ref: str, body: dict) -> dict:
     """Change a snapshot's description and labels."""
     snapshot = snapshot_or_404(lab, box_or_404(lab, bid), ref)
-    with lab.state.lock:
-        update_fields(snapshot, body, ("description", "labels"))
-        lab.state.save()
+    with lab.state.change():
+        update_fields(lab, snapshot, body, ("description", "labels"))
     return {"snapshot": snapshot_json(lab, snapshot)}
 
 
@@ -177,7 +172,6 @@ def delete_snapshot(lab: Lab, bid: int, ref: str) -> dict:
     box = box_or_404(lab, bid, ready=True)
     snapshot = snapshot_or_404(lab, box, ref)
     remove_snapshot(lab, box, snapshot)
-    lab.state.save()
     return {
         "action": lab.finished_action(
             "delete_snapshot",
@@ -189,7 +183,8 @@ def delete_snapshot(lab: Lab, bid: int, ref: str) -> dict:
 def rollback_snapshot(lab: Lab, box: StorageBox, body: dict) -> Plan:
     """Roll the box back to a snapshot (the box action rollback_snapshot).
 
-    The data goes back to the snapshot and newer snapshots are deleted (as on Hetzner).
+    Like on Hetzner, the data goes back to the snapshot and newer snapshots are
+    deleted.
     The box is busy meanwhile (`_busy`): no snapshot is taken, deleted or pruned.
     """
     state = lab.state
@@ -223,7 +218,6 @@ def rollback_snapshot(lab: Lab, box: StorageBox, body: dict) -> Plan:
             ]
         for newer in newer_snapshots:
             await lab.blocking(remove_snapshot, lab, box, newer)
-        state.save()
 
     return Plan(steps, resources=[(snapshot["id"], "storage_box_snapshot")])
 
@@ -249,28 +243,48 @@ async def snapshot_plan_scheduler(lab: Lab) -> None:
 
     The plans are checked once a minute; minutes that went by while snapshots ran (an
     hour at most) are checked too, so a slow snapshot of one box does not skip another's
-    plan.
+    plan. A plan that is due while its box is busy waits until the box is free.
     """
     last_minute = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    waiting: set[int] = set()
     while True:
         await asyncio.sleep(60 - datetime.now(timezone.utc).second)
         this_minute = datetime.now(timezone.utc).replace(second=0, microsecond=0)
         missed = min(60, int((this_minute - last_minute).total_seconds() // 60))
         minutes = [this_minute - timedelta(minutes=i) for i in range(missed)]
         last_minute = this_minute
-        with lab.state.lock:
-            boxes = list(lab.state["storage_boxes"].values())
-        for box in boxes:
-            # a rollback or delete runs: the plan waits for them
-            if box_busy(lab, box):
-                continue
-            plan = box.get("plan")
-            if plan and any(snapshot_plan_due(plan, m) for m in minutes):
-                try:
-                    await lab.blocking(take_automatic_snapshot, lab, box)
-                # one failed snapshot must not end the plans of all boxes
-                except Exception:
-                    log.exception("automatic snapshot of box %s failed", box["id"])
+        await run_snapshot_plans(lab, minutes, waiting)
+
+
+async def run_snapshot_plans(
+    lab: Lab, minutes: list[datetime], waiting: set[int]
+) -> None:
+    """Take the automatic snapshots whose plans are due in one of the minutes.
+
+    `waiting` holds the IDs of boxes whose plan came due while a rollback or delete
+    ran; such a box gets one snapshot once it is free, however many slots it missed.
+    """
+    with lab.state.lock:
+        boxes = list(lab.state["storage_boxes"].values())
+    # a box that is gone or lost its plan waits for nothing
+    waiting.intersection_update(box["id"] for box in boxes if box.get("plan"))
+    for box in boxes:
+        plan = box.get("plan")
+        if not plan:
+            continue
+        if box["id"] not in waiting and not any(
+            snapshot_plan_due(plan, minute) for minute in minutes
+        ):
+            continue
+        if box_busy(lab, box):
+            waiting.add(box["id"])
+            continue
+        waiting.discard(box["id"])
+        try:
+            await lab.blocking(take_automatic_snapshot, lab, box)
+        # one failed snapshot must not end the plans of all boxes
+        except Exception:
+            log.exception("automatic snapshot of box %s failed", box["id"])
 
 
 # --- routes ---------------------------------------------------------------------------

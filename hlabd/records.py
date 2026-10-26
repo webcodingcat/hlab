@@ -1,4 +1,4 @@
-"""The records of the state, as the type checker knows them.
+"""The record types of the state, for the type checker.
 
 One TypedDict per kind of resource (state.py keeps them by kind and ID), with the
 meaning of each field. Fields starting with `_` are the lab's own and never shown by the
@@ -11,8 +11,9 @@ lab's Storage Box accounts) are described in state.py.
 
 from typing import Any, NotRequired, TypedDict
 
-# A record of any kind, for code that treats all kinds alike (flags, PUT fields, lists).
-# Such code picks fields by variables, which a TypedDict does not allow.
+# A record of any kind, for code that picks fields by a variable key (flags, PUT fields,
+# filters and sorting of lists, lookups by a kind given as a string): a TypedDict allows
+# only literal keys, so such code cannot be checked field by field anyway.
 AnyRecord = Any
 
 
@@ -56,8 +57,8 @@ class ServerLab(TypedDict):
     tap: str  # its public tap
     nics: list[Nic]  # its NICs in cloud networks, in the order they were attached
     disk_gb: int  # the size of its disk (a type change without upgrade_disk keeps it)
-    # "running" or "off": the status it ends in while it is being created or rebuilt,
-    # so a restart of the lab finishes either the same way
+    # "running" or "off": the status its create or rebuild ends in, so a lab restart
+    # can finish either one the same way
     target: str
     root_password: NotRequired[str]  # when it has no SSH keys (Hetzner hands one out)
 
@@ -279,3 +280,12 @@ class BoxSnapshot(TypedDict):
     created: str
     size: int
     _copying: NotRequired[bool]  # being copied (a restart removes it)
+
+
+# The resources that have an action table run by `Lab.act()` (one of them per table).
+ActionRecord = (
+    Server | Volume | PrimaryIP | FloatingIP | CloudNetwork | StorageBox | Subaccount
+)
+
+# The resources with a plain delete protection (`api/web.py`: change_delete_protection).
+ProtectedRecord = Volume | PrimaryIP | FloatingIP | CloudNetwork | StorageBox

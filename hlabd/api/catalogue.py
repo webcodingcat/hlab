@@ -1,7 +1,7 @@
 """The catalogue: server types, locations, system images and Storage Box types.
 
 All of them come from the configuration; the images are loaded at the lab's start.
-Datacenters are gone, as on Hetzner since 2026.
+There are no datacenters: Hetzner removed them in 2026.
 """
 
 import logging
@@ -15,8 +15,8 @@ from .web import filtered, paginate
 
 log = logging.getLogger(__name__)
 
-# the ID of a catalogue entry by its kind; the entries are the configuration's
-# "<kind>s" (server_types, locations, images, storage_box_types)
+# the function that returns a catalogue entry's ID, per kind; the entries are the
+# configuration's "<kind>s" (server_types, locations, images, storage_box_types)
 ID_OF = {
     "server_type": hetzner.server_type_id,
     "location": hetzner.location_id,
@@ -37,11 +37,12 @@ def by_name_or_id(items, ref, name_and_id):
 
 
 def catalogue_name(lab: Lab, kind: str, ref, field: str | None = None) -> str:
-    """Return the name of a catalogue entry a request gives by name or ID.
+    """Return the name of a catalogue entry that a request gives by name or ID.
 
-    The name is what a resource stores (a server its image, a box its type). The
-    specification types these fields as strings, so the request check refuses objects.
-    An unknown entry is invalid input in `field` (default: the kind).
+    Resources store the name (a server the name of its image, a box the name of its
+    type). The specification types these fields as strings, so the request check
+    already refuses objects. An unknown entry raises invalid_input for `field`
+    (default: the kind).
     """
     id_of = ID_OF[kind]
     name = by_name_or_id(lab.cfg[f"{kind}s"], ref, lambda n: (n, id_of(lab, n)))
@@ -72,20 +73,21 @@ def image_path(lab: Lab, name: str) -> str:
 def load_images(lab: Lab) -> None:
     """Load every image of the configuration at the lab's start.
 
-    Each image is taken in the version its checksum file names now, downloaded unless it
-    is there already. The files are named by checksum, so servers keep the version they
-    were made from; without network the newest one there is used.
+    Each image is used in the version that its checksum file names now. It is downloaded
+    unless it is there already. The files are named by checksum, so servers keep the
+    version they were created from. Without network access, the newest local file is
+    used.
     """
-    # for the fallback: the newest file there
+    # for the fallback: the newest local file
     directory = lab.fabric.root / "images" / "system"
     for name, src in lab.cfg["images"].items():
         log.info("image %s: checking %s", name, src["url"])
         try:
-            lab.images[name] = lab.fabric.fetch_image(
+            lab.images[name] = lab.fabric.vms.fetch_image(
                 name, src["url"], src["checksums"]
             )
             log.info("image %s: %s", name, lab.images[name])
-        # the lab comes up; servers of this image fail with a clear message
+        # the lab still starts; servers with this image fail with a clear message
         except Exception as error:  # noqa: BLE001
             have = sorted(
                 directory.glob(f"{name}-*.qcow2"), key=lambda p: p.stat().st_mtime

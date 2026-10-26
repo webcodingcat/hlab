@@ -1,6 +1,6 @@
 """Hetzner's metadata service (169.254.169.254 and fe80::a9fe:a9fe).
 
-It answers by the caller's address and carries what cloud-init's Hetzner datasource
+It tells the caller by its address and serves what cloud-init's Hetzner datasource
 reads at boot: hostname, instance ID, SSH keys, network configuration, vendor data,
 user data and the cloud networks.
 """
@@ -12,12 +12,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse, Response
 
 from .. import config
-from ..fabric.network import link_local, network_gateway, public_mac
+from ..fabric.addresses import link_local, network_gateway, public_mac
 from ..lab import Lab
 from ..records import Server
 from ..state import nic_addresses, primary_address_of
-from .ips import contains
 from .networks import subnet_of
+from .public_addresses import contains
 
 # the availability-zone of a location (others: <location>-dc1)
 DC_NAMES = {
@@ -27,10 +27,10 @@ DC_NAMES = {
 }
 
 # Hetzner's images let root log in with the project's SSH keys, configure cloud network
-# NICs (MAC 86:…) by DHCP – also hot-plugged ones – with hc-utils, and ship the QEMU
-# guest agent (reset_password needs it). The stock cloud images lack both; vendor data
-# adds the equivalent: a networkd rule for the private NICs and, in the background, the
-# guest agent.
+# NICs (MAC 86:…) by DHCP with hc-utils (hot-plugged ones too), and ship the QEMU
+# guest agent (reset_password needs it). The stock cloud images have neither hc-utils
+# nor the agent, so the vendor data adds the same: a networkd rule for the private
+# NICs and, in the background, the guest agent.
 VENDOR_DATA = """Content-Type: multipart/mixed; boundary="==LAB=="
 MIME-Version: 1.0
 
@@ -109,10 +109,10 @@ def calling_server(lab: Lab, request: Request) -> Server | None:
     if ip.startswith("fe80:"):
         return next((s for s in servers if link_local(s["_lab"]["index"]) == ip), None)
     if holders:
-        # a private IP (networks may overlap): the tap the neighbour sits on tells
-        # the server – only taps that hold the address count (any guest can put
-        # entries into the neighbour table), and only a single one
-        taps = fabric.neighbour_taps(ip) & set(holders)
+        # a private IP (networks may overlap): the tap on which the address is a
+        # neighbour tells the server. Only taps that hold the address count (any guest
+        # can add entries to the neighbour table), and only if there is exactly one.
+        taps = fabric.network.neighbour_taps(ip) & set(holders)
         return holders[taps.pop()] if len(taps) == 1 else None
     with state.lock:
         for server in servers:

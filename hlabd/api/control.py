@@ -35,8 +35,8 @@ NETEM_WORD = re.compile(
 )
 
 
-# client names name network namespaces (/run/netns/<name>, `ip netns`): plain ASCII,
-# and no leading - or _, which `ip` would take for an option
+# a client's name is also the name of its network namespace (/run/netns/<name>,
+# `ip netns`): plain ASCII, and no leading - or _, which `ip` would read as an option
 CLIENT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,11}")
 
 
@@ -49,7 +49,7 @@ def status(lab: Lab) -> dict:
     The injected API fault is added by the route, on the event loop (see `Lab`).
     """
     state, fabric = lab.state, lab.fabric
-    with state.lock:  # a copy: asking whether a VM runs is a script call
+    with state.lock:  # a copy: checking whether a VM runs calls a script
         servers = sorted(state["servers"].values(), key=lambda s: s["id"])
         entries: list[dict] = [
             {
@@ -78,7 +78,7 @@ def status(lab: Lab) -> dict:
             "netem": dict(state.data["netem"]),
         }
     for entry, server in zip(entries, servers, strict=True):
-        entry["vm"] = "on" if fabric.vm_alive(server) else "off"
+        entry["vm"] = "on" if fabric.vms.is_alive(server) else "off"
     return report
 
 
@@ -86,7 +86,7 @@ def status(lab: Lab) -> dict:
 
 
 def fault_ref(lab: Lab, name: str) -> str:
-    """Return what a fault points at for a server or client name, or raise 404.
+    """Return the reference a fault uses for a server or client name, or raise 404.
 
     A server is named by ID (s:<id>), a client by name (c:<name>); see fabric/faults.py.
     """
@@ -130,45 +130,46 @@ def checked_fault(lab: Lab, body: dict) -> dict:
     return fault
 
 
-async def add_fault(lab: Lab, body: dict) -> dict:
+def add_fault(lab: Lab, body: dict) -> dict:
     """Add a fault (once) and put it in place."""
     state = lab.state
     fault = checked_fault(lab, body)
-    with state.lock:
+    with state.change():
         if fault not in state.data["faults"]:
             state.data["faults"].append(fault)
-        state.save()
-    await lab.blocking(lab.fabric.apply_faults)
-    return {"faults": state.data["faults"]}
+        faults = list(state.data["faults"])  # the answer, as this change left them
+    lab.fabric.faults.apply()
+    return {"faults": faults}
 
 
-async def remove_faults(lab: Lab, body: dict) -> dict:
+def remove_faults(lab: Lab, body: dict) -> dict:
     """Remove the faults that match every given field (a cut either way round)."""
     state = lab.state
     given = in_cut_order({k: v for k, v in body.items() if v is not None})
-    with state.lock:
+    with state.change():
         state.data["faults"] = [
             fault
             for fault in state.data["faults"]
             if not all(fault.get(k) == v for k, v in given.items())
         ]
-        state.save()
-    await lab.blocking(lab.fabric.apply_faults)
-    return {"faults": state.data["faults"]}
+        faults = list(state.data["faults"])  # the answer, as this change left them
+    lab.fabric.faults.apply()
+    return {"faults": faults}
 
 
-async def clear_faults(lab: Lab) -> dict:
-    """Remove every fault: network faults, netem, dead hardware, API faults."""
+def clear_faults(lab: Lab) -> dict:
+    """Remove the network faults, netem and dead hardware.
+
+    The route clears the API faults itself, on the event loop (see `Lab.api_fault`).
+    """
     state = lab.state
-    with state.lock:
+    with state.change():
         state.data["faults"] = []
         state.data["netem"] = {}
         for server in state["servers"].values():
             server.pop("_dead", None)
-        lab.clear_api_fault()
-        state.save()
-    await lab.blocking(lab.fabric.apply_faults)
-    await lab.blocking(lab.fabric.apply_latency)
+    lab.fabric.faults.apply()
+    lab.fabric.faults.apply_latency()
     return {"ok": True}
 
 
@@ -184,32 +185,31 @@ def set_netem(lab: Lab, body: dict) -> dict:
     ):
         raise invalid("args are netem options like 'delay 100ms 10ms loss 5%'", "args")
     ref = fault_ref(lab, body.get("vm", ""))
-    taps = lab.fabric.target_ifaces(ref, body.get("net") or "all")
-    with state.lock:
+    taps = lab.fabric.faults.target_ifaces(ref, body.get("net") or "all")
+    with state.change():
         for tap in taps:
             if args:
                 state.data["netem"][tap] = " ".join(args.split())
             else:
                 state.data["netem"].pop(tap, None)
-        state.save()
-    lab.fabric.apply_latency()
-    return {"netem": state.data["netem"]}
+        netem = dict(state.data["netem"])  # the answer, as this change left them
+    lab.fabric.faults.apply_latency()
+    return {"netem": netem}
 
 
-async def control_vm(lab: Lab, name: str, cmd: str) -> dict:
+def control_vm(lab: Lab, name: str, cmd: str) -> dict:
     """Pause or continue a VM, or mark its hardware dead or alive again.
 
     Dead hardware: a power-on succeeds, the VM stays off.
     """
     server = lab.server_by_name_or_404(name)
     if cmd == "pause":
-        await lab.blocking(lab.fabric.pause_vm, server)
+        lab.fabric.vms.pause(server)
     elif cmd == "cont":
-        await lab.blocking(lab.fabric.continue_vm, server)
+        lab.fabric.vms.resume(server)
     elif cmd in ("dead", "alive"):
-        with lab.state.lock:
+        with lab.state.change():
             server["_dead"] = cmd == "dead"
-            lab.state.save()
     else:
         raise invalid("command must be pause, cont, dead or alive")
     return {"ok": True}
@@ -241,7 +241,7 @@ def client_or_404(lab: Lab, name: str) -> Client:
 
 
 def add_client(lab: Lab, body: dict) -> dict:
-    """Add an "Internet" client with its own addresses (or return the one there)."""
+    """Add an "Internet" client with its own addresses (or return the existing one)."""
     state = lab.state
     name = body.get("name")
     if not isinstance(name, str) or not CLIENT_NAME.fullmatch(name):
@@ -250,7 +250,7 @@ def add_client(lab: Lab, body: dict) -> dict:
             "starting with a letter or digit",
             "name",
         )
-    with state.lock:
+    with state.change():
         client = client_by_name(state, name)
         if not client:
             used = {c["number"] for c in state["clients"].values()}
@@ -265,20 +265,18 @@ def add_client(lab: Lab, body: dict) -> dict:
                 "ip6": f"{config.CLIENT6}::{10 + number:x}",
             }
             state["clients"][cid] = client
-            state.save()
-    lab.fabric.add_client(client)
+    lab.fabric.network.add_client(client)
     return {"client": client}
 
 
 def remove_client(lab: Lab, name: str) -> dict:
     """Remove a client; its faults and netem are removed with it."""
     state = lab.state
-    with state.lock:
+    with state.change():
         client = client_or_404(lab, name)
         del state["clients"][client["id"]]
         drop_faults(lab, f"c:{client['name']}", [client["veth"]])
-        state.save()
-    lab.fabric.remove_client(client)
+    lab.fabric.network.remove_client(client)
     return {"ok": True}
 
 
@@ -288,8 +286,8 @@ def remove_client(lab: Lab, name: str) -> dict:
 def add_box_user(lab: Lab, body: dict) -> dict:
     """Create an SFTP account on the Storage Box with its own home.
 
-    Body: {"name": "backup1", "public_key": "ssh-ed25519 ..."}. Names of the API's
-    accounts (u<id>, u<id>-sub<n>) and of the container's own users are taken.
+    Body: {"name": "backup1", "public_key": "ssh-ed25519 ..."}. The names of the API's
+    accounts (u<id>, u<id>-sub<n>) and of the container's own users cannot be used.
     """
     state = lab.state
     name, key = str(body.get("name") or ""), str(body.get("public_key") or "")
@@ -312,9 +310,8 @@ def add_box_user(lab: Lab, body: dict) -> dict:
     except KeyError:
         pass
     set_up_box_user(lab, name, key)
-    with state.lock:
+    with state.change():
         state.data["box_users"][name] = key.strip()
-        state.save()
     return {"user": name, "host": config.SERVICES, "port": 23}
 
 
@@ -323,8 +320,8 @@ async def reset_lab(lab: Lab) -> dict:
 
     That is servers (VMs and disks), networks, keys, firewalls, Floating IPs, volumes,
     Storage Boxes with their data, clients, faults. System images, the lab key and the
-    lab's own Storage Box accounts (/_lab/box/users) stay; IDs go on counting, as in
-    the cloud, so nothing old matches a new one.
+    lab's own Storage Box accounts (/_lab/box/users) stay. IDs keep counting up, as on
+    Hetzner, so no old ID matches a new resource.
     """
     state, fabric = lab.state, lab.fabric
     # no old action may start a VM or change the state while the lab is emptied
@@ -340,7 +337,7 @@ async def reset_lab(lab: Lab) -> dict:
     for server in servers:
         await lab.blocking(fabric.delete_vm, server)
     for volume in volumes:
-        await lab.blocking(fabric.delete_volume, volume)
+        await lab.blocking(fabric.volumes.delete, volume)
     for subaccount in subaccounts:
         await lab.blocking(fabric.box.remove_account, subaccount["username"])
     for box in boxes:
@@ -348,18 +345,18 @@ async def reset_lab(lab: Lab) -> dict:
         await lab.blocking(fabric.box.remove_tree, data_dir(box))
         await lab.blocking(fabric.box.remove_tree, snap_dir(box))
     for ip in routed:
-        await lab.blocking(fabric.route_floating_ip, ip, None)
+        await lab.blocking(fabric.network.route_floating_ip, ip, None)
     for client in clients:
-        await lab.blocking(fabric.remove_client, client)
-    state.clear()
+        await lab.blocking(fabric.network.remove_client, client)
+    await lab.blocking(state.clear)
     lab.clear_api_fault()
     # a VM the state no longer knows (e.g. one whose server's creation was cut short)
-    await lab.blocking(fabric.kill_all_vms)
-    for nid in networks:  # no old routes may wait in the deleted networks' tables
-        await lab.blocking(fabric.drop_network, nid)
-    await lab.blocking(fabric.write_dhcp)
-    await lab.blocking(fabric.apply_faults)
-    await lab.blocking(fabric.apply_firewalls)
+    await lab.blocking(fabric.vms.kill_all)
+    for nid in networks:  # clear the tables of the deleted networks
+        await lab.blocking(fabric.network.drop_cloud_network, nid)
+    await lab.blocking(fabric.network.write_dhcp)
+    await lab.blocking(fabric.faults.apply)
+    await lab.blocking(fabric.firewall.apply)
     return {"ok": True}
 
 
@@ -376,23 +373,24 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
 
     @app.post("/_lab/faults")
     async def fault_create(request: Request):
-        return await add_fault(lab, await read_body(request))
+        return await lab.blocking(add_fault, lab, await read_body(request))
 
     @app.post("/_lab/faults/remove")
     async def fault_delete(request: Request):
-        return await remove_faults(lab, await read_body(request))
+        return await lab.blocking(remove_faults, lab, await read_body(request))
 
     @app.post("/_lab/faults/clear")
     async def fault_clear():
-        return await clear_faults(lab)
+        lab.clear_api_fault()  # on the event loop, like the middleware's count
+        return await lab.blocking(clear_faults, lab)
 
     @app.post("/_lab/netem")
     async def netem_update(request: Request):
         return await lab.blocking(set_netem, lab, await read_body(request))
 
     @app.post("/_lab/vm/{name}/{cmd}")
-    async def vm_action(name: str, cmd: str):
-        return await control_vm(lab, name, cmd)
+    def vm_action(name: str, cmd: str):
+        return control_vm(lab, name, cmd)
 
     @app.post("/_lab/api-fault")
     async def api_fault_update(request: Request):

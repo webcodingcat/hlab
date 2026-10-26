@@ -5,8 +5,6 @@ into the API's error answers. An error code used in more than one place has its 
 here, so its text is the same everywhere.
 """
 
-from .records import AnyRecord
-
 
 class ApiError(Exception):
     """An error answer of the API: HTTP status, error code, message and details."""
@@ -56,7 +54,7 @@ def not_unique(message: str, field: str) -> ApiError:
 def check_unique_name(
     items,
     name,
-    current: AnyRecord | None = None,
+    current: object = None,  # the item being renamed (compared by identity)
     what: str = "resource",
     message: str | None = None,
 ) -> None:

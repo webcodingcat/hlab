@@ -4,9 +4,11 @@ The lab runs against FakeShell instead of scripts/hlab.sh, and every /v1 respons
 the test clients is checked against Hetzner's OpenAPI specification.
 """
 
+import asyncio
 import base64
 import re
 import time
+import traceback
 
 import pytest
 import spec_check
@@ -19,7 +21,7 @@ from hlabd.api.app import create_app
 from hlabd.api.metadata import create_metadata_app
 from hlabd.fabric import Fabric
 from hlabd.lab import Lab
-from hlabd.state import State
+from hlabd.state import State, StateLock
 
 
 class FakeShell:
@@ -47,18 +49,18 @@ class FakeShell:
             self.stdin.append((args[0], stdin_text))
         if args[0] in self.fail:
             raise RuntimeError(f"{args[0]} failed")
-        if args[0] == "vm-start":
+        if args[0] == "start-vm":
             self.running.add(args[1])
-        elif args[0] == "neigh-dev":
+        elif args[0] == "list-neigh-devs":
             return self.neigh.get(args[1], "")
-        elif args[0] == "vm-kill":
+        elif args[0] == "kill-vm":
             self.running.discard(args[1])
         return ""
 
     def ok(self, *args):
         """Answer a yes/no command: a VM is alive while it runs, every link exists."""
         command = args[0]
-        return (command == "vm-alive" and args[1] in self.running) or (
+        return (command == "is-vm-alive" and args[1] in self.running) or (
             command == "link-exists"
         )
 
@@ -70,6 +72,29 @@ class FakeShell:
     def commands(self, name):
         """Return the recorded calls of one command."""
         return [call for call in self.calls if call[0] == name]
+
+
+@pytest.fixture(autouse=True)
+def locking_rule_kept(monkeypatch):
+    """Fail a test in which the state changed without its lock, wherever it happened.
+
+    `assert_held()` raises, but in an action's steps or a thread that error only
+    fails the action; so every breach is recorded here and fails the test at its end.
+    A test that breaks the rule on purpose empties the list it gets.
+    """
+    breaches: list[str] = []
+    check = StateLock.assert_held
+
+    def recorded_check(lock: StateLock) -> None:
+        try:
+            check(lock)
+        except AssertionError:
+            breaches.append("".join(traceback.format_stack(limit=6)[:-1]))
+            raise
+
+    monkeypatch.setattr(StateLock, "assert_held", recorded_check)
+    yield breaches
+    assert not breaches, "the state changed without its lock:\n" + "\n".join(breaches)
 
 
 @pytest.fixture
@@ -123,14 +148,24 @@ class SpecClient(TestClient):
         return response
 
 
+def use_client_loop(lab: Lab, client: TestClient) -> None:
+    """Run the lab's actions on the test client's event loop, as the daemon does on its.
+
+    The daemon sets `lab.loop` at start; a test client brings a loop of its own, in a
+    thread, and sync routes start actions on it from their worker threads.
+    """
+    lab.loop = client.portal.call(asyncio.get_running_loop)
+
+
 @pytest.fixture
 def api(lab):
     """Provide a client of the Cloud API, with .lab and .sh (the FakeShell)."""
     with SpecClient(
         create_app(lab), headers={"Authorization": "Bearer secret"}
     ) as client:
+        use_client_loop(lab, client)
         client.lab = lab
-        client.sh = lab.fabric.sh
+        client.sh = lab.fabric.shell
         yield client
 
 
@@ -238,5 +273,6 @@ def box_api(lab):
     with StorageBoxClient(
         storagebox.create_app(lab), headers={"Authorization": "Bearer secret"}
     ) as client:
-        client.lab, client.sh = lab, lab.fabric.sh
+        use_client_loop(lab, client)
+        client.lab, client.sh = lab, lab.fabric.shell
         yield client

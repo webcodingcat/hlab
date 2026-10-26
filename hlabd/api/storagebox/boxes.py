@@ -6,12 +6,12 @@ from fastapi import FastAPI, Request
 
 from ...errors import check_unique_name, invalid, locked, protected
 from ...fabric.storagebox import TB, data_dir, snap_dir, username
-from ...lab import BOX_CREATE_SECONDS, Lab, Plan, now
+from ...lab import BOX_CREATE_SECONDS, ActionTable, Lab, Plan, now
 from ...records import StorageBox
 from .. import hetzner
 from ..actions import action_or_404, listed, touches
 from ..catalogue import catalogue_entry_or_404, catalogue_name
-from ..servers import ssh_fingerprint
+from ..ssh_keys import ssh_fingerprint
 from ..web import (
     change_delete_protection,
     filtered,
@@ -101,7 +101,7 @@ def checked_ssh_keys(keys) -> list[str]:
     for key in keys:
         try:
             ssh_fingerprint(key)
-        # whatever the parser trips over, the key is not one
+        # whatever the parser fails on: it is not a valid key
         except Exception:  # noqa: BLE001
             raise invalid("not an SSH public key", "ssh_keys") from None
         if any(ord(char) < 32 for char in key):
@@ -125,9 +125,8 @@ def set_up_box_account(
     except Exception:  # undo the half-done change, then raise
         lab.fabric.box.remove_account(username(box), check=False)
         lab.fabric.box.remove_tree(data_dir(box), check=False)
-        with lab.state.lock:
+        with lab.state.change():
             lab.state["storage_boxes"].pop(box["id"], None)
-            lab.state.save()
         raise
 
 
@@ -146,9 +145,8 @@ def remove_box(lab: Lab, box: StorageBox) -> None:
     lab.fabric.box.remove_account(username(box))
     lab.fabric.box.remove_tree(data_dir(box))
     lab.fabric.box.remove_tree(snap_dir(box))
-    with state.lock:
+    with state.change():
         state["storage_boxes"].pop(box["id"], None)
-        state.save()
 
 
 # --- box actions ----------------------------------------------------------------------
@@ -196,7 +194,7 @@ def update_access_settings(lab: Lab, box: StorageBox, body: dict) -> Plan:
         box["access"].update(checked_access_settings(body, box["access"]))
     try:
         sync_box(lab, box)
-    except Exception:  # not in effect: not reported either
+    except Exception:  # not in effect, so not reported either
         with lab.state.lock:
             box["access"] = old
         raise
@@ -225,7 +223,7 @@ def disable_snapshot_plan(lab: Lab, box: StorageBox, body: dict) -> Plan:
 
 
 # the Storage Box actions: Hetzner's name of the action and the function that plans it
-BOX_ACTIONS = {
+BOX_ACTIONS: ActionTable[StorageBox] = {
     "change_protection": ("change_protection", change_delete_protection),
     "change_type": ("change_type", change_type),
     "reset_password": ("reset_password", reset_password),
@@ -260,7 +258,7 @@ def create_box(lab: Lab, body: dict) -> dict:
     )
     keys = checked_ssh_keys(body.get("ssh_keys") or [])
     password = checked_password(body.get("password"))
-    with state.lock:
+    with state.change():
         bid = state.new_id("storage_boxes")
         box: StorageBox = {
             "id": bid,
@@ -276,15 +274,16 @@ def create_box(lab: Lab, body: dict) -> dict:
             "_password": password,
         }
         state["storage_boxes"][bid] = box
-        state.save()
     action = lab.new_action("create", [(bid, "storage_box")])
+
+    def activate() -> None:
+        with state.change():
+            box["status"] = "active"
 
     async def steps():
         await lab.blocking(set_up_box_account, lab, box, password, keys)
         await lab.sleep(BOX_CREATE_SECONDS)
-        with state.lock:
-            box["status"] = "active"
-            state.save()
+        await lab.blocking(activate)
 
     lab.run_action(action, steps)
     return {"storage_box": box_json(lab, box), "action": action}
@@ -300,22 +299,23 @@ def update_box(lab: Lab, bid: int, body: dict) -> dict:
 def delete_box(lab: Lab, bid: int) -> dict:
     """Delete a box with its sub-accounts, snapshots and data, in the background.
 
-    Not while it is set up, rolled back, copied, getting a sub-account or already
-    being deleted (423); if the delete fails, the box can be deleted again.
+    Refused (423) while the box is being set up, rolled back, copied, getting a
+    sub-account or deleted already. If the delete fails, the box can be deleted again.
     """
     box = box_or_404(lab, bid)
     if box["protection"]["delete"]:
         raise protected("Storage Box is delete protected")
-    with lab.state.lock:
-        if box_busy(lab, box, for_delete=True):
-            raise locked(BUSY)
-        lab.claim(box, "_deleting", BUSY)
-    action = lab.new_action("delete", [(bid, "storage_box")])
 
     async def steps():
         await lab.blocking(remove_box, lab, box)
 
-    lab.run_action(action, steps, holding=[(box, "_deleting")])
+    with lab.holding() as held:
+        with lab.state.lock:
+            if box_busy(lab, box, for_delete=True):
+                raise locked(BUSY)
+            held.claim(box, "_deleting", BUSY)
+        action = lab.new_action("delete", [(bid, "storage_box")])
+        lab.run_action(action, steps, holding=held)
     return {"action": action}
 
 
@@ -349,8 +349,8 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
         name = catalogue_entry_or_404(lab, "storage_box_type", tid, "Storage Box type")
         return {"storage_box_type": box_type_json(lab, name)}
 
-    # actions: of Storage Boxes only (of one box, under its path); registered before
-    # /v1/storage_boxes/{bid}
+    # the actions of all Storage Boxes (those of one box are under its own path);
+    # registered before /v1/storage_boxes/{bid}
     @app.get("/v1/storage_boxes/actions")
     def box_action_list(request: Request):
         with state.lock:

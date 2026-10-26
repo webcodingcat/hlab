@@ -1,7 +1,7 @@
 """JSON shapes of the Hetzner Cloud API for the catalogue and the lab's resources.
 
 See https://docs.hetzner.cloud/. A shape that loops over the state takes `state.lock`
-for the loop itself (lab.py has the rule), so every caller may use it.
+for the loop itself (the rule is in lab.py), so any caller can use it.
 """
 
 from ..lab import Lab
@@ -190,7 +190,7 @@ def server_json(lab: Lab, server: Server) -> dict:
                 "id": ipv4["id"],
                 "ip": ipv4["ip"],
                 "blocked": False,
-                # the server shows the entry of the address itself, as a string
+                # a server shows the entry of its own address, as a string
                 "dns_ptr": dns_ptrs(ipv4)[0]["dns_ptr"],
             }
             if ipv4

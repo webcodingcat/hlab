@@ -8,6 +8,8 @@ import asyncio
 import pytest
 from conftest import create_server, make_key, power_off, wait_action
 
+from hlabd.lab import MAX_ACTIONS
+
 
 def test_requests_without_a_valid_token_are_unauthorized(api):
     response = api.get("/v1/servers", headers={"Authorization": "Bearer wrong"})
@@ -107,15 +109,16 @@ def test_every_resource_has_its_own_action_routes(api):
 
 
 def test_actions_do_not_pile_up(lab):
-    for _ in range(10050):
+    running = lab.new_action("x", [])
+    for _ in range(MAX_ACTIONS + 50):
         # finished (without saving the state each time)
         lab.new_action("x", [])["status"] = "success"
-    assert len(lab.state["actions"]) <= 10000
+    assert len(lab.state["actions"]) <= MAX_ACTIONS
+    assert running["id"] in lab.state["actions"]  # a running action stays
 
 
 def test_cancelled_action_is_an_error(lab):
     async def go():
-        lab.loop = asyncio.get_running_loop()
         action = lab.new_action("x", [])
 
         async def steps():
@@ -123,9 +126,7 @@ def test_cancelled_action_is_an_error(lab):
 
         lab.run_action(action, steps)
         await asyncio.sleep(0)
-        for t in list(lab.tasks):
-            t.cancel()
-        await asyncio.sleep(0.05)
+        await lab.stop_actions()  # cancels the steps and waits for the finish
         return action
 
     assert asyncio.run(go())["status"] == "error"

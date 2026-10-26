@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # The Storage Box stand-in: one sshd on ports 22 (SFTP, always on) and 23 (SSH
-# support: SFTP and a few commands, only with ssh_enabled), as on Hetzner; every
-# account (box user u<id>, sub-account u<id>-sub<n>) locked into its own root
-# where only its directory is visible, as /home. Called by hlabd
+# support: SFTP and a few commands, only with ssh_enabled), as on Hetzner. Every
+# account (box user u<id>, sub-account u<id>-sub<n>) is locked into its own root,
+# where it sees only its own directory, mounted as /home. Called by hlabd
 # (hlabd/fabric/storagebox.py), which keeps the boxes and accounts; nothing here
 # decides anything.
 #
@@ -422,25 +422,26 @@ list_folders() {
     | sort
 }
 
-# main <verb> <arg>...: Run one verb.
+# main <verb> <arg>...: Run one verb. A verb is its function's name with dashes
+# (take-snapshot runs take_snapshot); hlab.sh hands them on.
 main() {
   local verb="${1:-}"
   shift || true
   case "${verb}" in
-    start) start_box "$@" ;;
-    stop) stop_box ;;
-    account) set_account "$@" ;;
-    access) set_access "$@" ;;
-    home) set_home "$@" ;;
-    zfs) set_zfs_view "$@" ;;
-    remove) remove_account "$@" ;;
-    key) add_key "$@" ;;
-    authorized-keys) write_authorized_keys "$@" ;;
-    snapshot) take_snapshot "$@" ;;
-    rollback) roll_back "$@" ;;
-    rmtree) remove_tree "$@" ;;
-    usage) print_bytes_used "$@" ;;
-    folders) list_folders "$@" ;;
+    start-box) start_box "$@" ;;
+    stop-box) stop_box ;;
+    set-account) set_account "$@" ;;
+    set-access) set_access "$@" ;;
+    set-home) set_home "$@" ;;
+    set-zfs-view) set_zfs_view "$@" ;;
+    remove-account) remove_account "$@" ;;
+    add-key) add_key "$@" ;;
+    write-authorized-keys) write_authorized_keys "$@" ;;
+    take-snapshot) take_snapshot "$@" ;;
+    roll-back) roll_back "$@" ;;
+    remove-tree) remove_tree "$@" ;;
+    print-bytes-used) print_bytes_used "$@" ;;
+    list-folders) list_folders "$@" ;;
     *)
       echo "box.sh: unknown command: ${verb}" >&2
       exit 2

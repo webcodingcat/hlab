@@ -19,7 +19,7 @@ def test_floating_ip_follows_server(api):
             json={"server": s1["id"]},
         ).json()["action"],
     )
-    assert ("route", "203.0.113.11/32", "pub1") in api.sh.calls
+    assert ("set-route", "203.0.113.11/32", "pub1") in api.sh.calls
     wait_action(
         api,
         api.post(
@@ -27,7 +27,7 @@ def test_floating_ip_follows_server(api):
             json={"server": s2["id"]},
         ).json()["action"],
     )
-    assert ("route", "203.0.113.11/32", "pub2") in api.sh.calls
+    assert ("set-route", "203.0.113.11/32", "pub2") in api.sh.calls
     assert api.get(f"/v1/servers/{s2['id']}").json()["server"]["public_net"][
         "floating_ips"
     ] == [floating_ip["id"]]
@@ -39,7 +39,7 @@ def test_floating_ip_follows_server(api):
     wait_action(
         api, api.post(f"/v1/servers/{s2['id']}/actions/poweron").json()["action"]
     )
-    assert ("route", "203.0.113.11/32", "pub2") in api.sh.calls
+    assert ("set-route", "203.0.113.11/32", "pub2") in api.sh.calls
 
 
 def test_floating_ip_must_be_unassigned_and_has_reverse_dns_per_address(api):
@@ -263,7 +263,12 @@ def test_server_gets_a_routed_ipv6_network_unless_disabled(api, tmp_path):
     server = create_server(api, "v6")["server"]
     assert server["public_net"]["ipv6"]["ip"] == "2001:db8:1::/64"
     # via its link-local address
-    assert ("route6", "2001:db8:1::/64", "pub1", "fe80::9400:ff:fe00:1") in api.sh.calls
+    assert (
+        "set-route6",
+        "2001:db8:1::/64",
+        "pub1",
+        "fe80::9400:ff:fe00:1",
+    ) in api.sh.calls
     net = metadata(api, "198.51.100.11")["network-config"]
     subnets = net["config"][0]["subnets"]
     assert {
@@ -298,7 +303,7 @@ def test_floating_ipv6_is_routed(api):
         ).json()["action"],
     )
     assert (
-        "route6",
+        "set-route6",
         "2001:db8:ff01::/64",
         "pub1",
         "fe80::9400:ff:fe00:1",
@@ -309,4 +314,4 @@ def test_floating_ipv6_is_routed(api):
             "action"
         ],
     )
-    assert ("route", "2001:db8:ff01::/64") in api.sh.calls
+    assert ("set-route", "2001:db8:ff01::/64") in api.sh.calls

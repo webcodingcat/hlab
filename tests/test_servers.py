@@ -36,7 +36,7 @@ def test_server_is_created_powered_off_and_on_and_deleted(api):
     assert server["status"] == "running"
     assert server["public_net"]["ipv4"]["ip"] == "198.51.100.11"
     assert server["server_type"]["name"] == "cx23"
-    assert api.sh.commands("vm-start")
+    assert api.sh.commands("start-vm")
     assert (
         api.get("/v1/servers", params={"label_selector": "role=web"}).json()["servers"][
             0
@@ -142,7 +142,7 @@ def test_restart_finishes_or_drops_what_was_half_done(api):
     # the lab stopped while a was being deleted
     st["servers"][server_a["id"]]["status"] = "deleting"
     api.sh.running.clear()  # a new container: no VM runs
-    api.sh.fail.add("vm-start")  # and b's VM does not come up
+    api.sh.fail.add("start-vm")  # and b's VM does not come up
     asyncio.run(restore_lab(api.lab))  # must not raise: the lab comes up anyway
     assert server_a["id"] not in st["servers"]
     assert st["servers"][server_b["id"]]["status"] == "off"
@@ -150,7 +150,7 @@ def test_restart_finishes_or_drops_what_was_half_done(api):
 
 
 def test_failed_create_ends_its_next_actions_and_status(api):
-    api.sh.fail.add("vm-start")
+    api.sh.fail.add("start-vm")
     response = api.post(
         "/v1/servers",
         json={
@@ -192,7 +192,7 @@ def test_change_type_grows_the_disk_only_when_asked(api, tmp_path):
         == 80
     )
     assert (
-        "vm-disk-resize",
+        "resize-vm-disk",
         str(tmp_path / "vm" / str(server["id"])),
         "80",
     ) in api.sh.calls
@@ -214,7 +214,7 @@ def test_shutdown_is_done_when_the_button_is_pressed(api):
     assert (
         api.get(f"/v1/servers/{server['id']}").json()["server"]["status"] == "running"
     )
-    assert not [c for c in api.sh.calls if c[0] == "vm-kill"]
+    assert not [c for c in api.sh.calls if c[0] == "kill-vm"]
 
 
 def test_failed_rebuild_keeps_the_disk(api):
@@ -225,7 +225,7 @@ def test_failed_rebuild_keeps_the_disk(api):
     ).json()["action"]
     assert wait_action(api, action)["status"] == "error"
     # the old disk was never touched
-    assert not [c for c in api.sh.calls if c[0] == "vm-kill"]
+    assert not [c for c in api.sh.calls if c[0] == "kill-vm"]
     assert (
         api.get(f"/v1/servers/{server['id']}").json()["server"]["image"]["name"]
         == "debian-13"
@@ -287,6 +287,21 @@ def test_a_vm_that_ends_by_itself_leaves_the_server_off(api):
     )
 
 
+def test_the_vm_watcher_frees_its_server_and_leaves_a_busy_one_alone(api):
+    first = create_server(api, "a")["server"]
+    second = create_server(api, "b")["server"]
+    servers = api.lab.state["servers"]
+    api.sh.running.clear()  # both guests powered off
+    api.lab.claim(servers[second["id"]], "locked", "locked")  # an action runs on b
+    api.lab.stop_if_ended(servers[first["id"]])
+    api.lab.stop_if_ended(servers[second["id"]])
+    assert servers[first["id"]]["status"] == "off"
+    assert servers[first["id"]]["locked"] is False
+    # the action owns b: its status is the action's to change, and so is its flag
+    assert servers[second["id"]]["status"] == "running"
+    assert servers[second["id"]]["locked"] is True
+
+
 def test_rebuild_keeps_a_disk_kept_small(api):
     server = create_server(api, "a")["server"]
     power_off(api, server["id"])
@@ -308,10 +323,10 @@ def test_rebuild_keeps_a_disk_kept_small(api):
 
 def test_power_on_a_running_server_changes_nothing(api):
     server = create_server(api, "a")["server"]
-    starts = len(api.sh.commands("public-tap-up"))
+    starts = len(api.sh.commands("set-up-public-tap"))
     action = api.post(f"/v1/servers/{server['id']}/actions/poweron").json()["action"]
     assert wait_action(api, action)["status"] == "success"
-    assert len(api.sh.commands("public-tap-up")) == starts
+    assert len(api.sh.commands("set-up-public-tap")) == starts
 
 
 def test_new_server_is_locked_while_created(api):
@@ -336,7 +351,7 @@ def test_new_server_is_locked_while_created(api):
 
 def test_failed_rebuild_keeps_user_data(api):
     server = create_server(api, "a", user_data="#cloud-config\n")["server"]
-    api.sh.fail.add("vm-disk")
+    api.sh.fail.add("create-vm-disk")
     response = api.post(
         f"/v1/servers/{server['id']}/actions/rebuild",
         json={"image": "debian-13", "user_data": "#new\n"},
@@ -347,11 +362,11 @@ def test_failed_rebuild_keeps_user_data(api):
 
 def test_vm_has_hetzner_smbios_and_dhcp(api, tmp_path):
     server = create_server(api, "a")["server"]
-    start = [c for c in api.sh.calls if c[0] == "vm-start"][-1]
+    start = [c for c in api.sh.calls if c[0] == "start-vm"][-1]
     # SMBIOS serial = instance ID (cloud-init checks it)
     assert start[5] == str(server["id"])
     assert "dhcp-host=96:00:00:00:00:01,198.51.100.11" in dhcp(tmp_path)
-    assert ("public-tap-up", "pub1", "198.51.100.11") in api.sh.calls
+    assert ("set-up-public-tap", "pub1", "198.51.100.11") in api.sh.calls
 
 
 def test_reset_password_needs_the_guest_agent(api):

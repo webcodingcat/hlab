@@ -5,6 +5,7 @@ change here rewrites them.
 """
 
 import ipaddress
+from collections.abc import Callable
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
@@ -31,9 +32,9 @@ MAX_RULES = 50  # per firewall (Hetzner: 50 entries, 500 effective rules)
 
 
 def checked_rules(rules) -> list[FirewallRule]:
-    """Check rules like the API does (422 if one is wrong); return them normalised.
+    """Check rules as Hetzner's API does (422 if one is wrong); return them normalised.
 
-    The normalised rules have Hetzner's field set; no rules at all is an empty list.
+    Normalised rules have exactly Hetzner's fields; no rules give an empty list.
     """
     rules = rules or []
     if not isinstance(rules, list):
@@ -135,6 +136,7 @@ def check_limit(lab: Lab) -> None:
 
     The caller holds the state's lock.
     """
+    lab.state.lock.assert_held()
     state = lab.state
     for sid in state["servers"]:
         if (
@@ -154,7 +156,7 @@ def check_limit(lab: Lab) -> None:
 def finished_firewall_action(
     lab: Lab, firewall: Firewall, cmd: str, servers: set[int]
 ) -> Action:
-    """Return the finished action of a firewall change, naming the servers it reaches.
+    """Return the finished action of a firewall change, with the servers it applies to.
 
     Firewall changes take effect at once.
     """
@@ -165,11 +167,11 @@ def finished_firewall_action(
 
 
 def rule_actions(lab: Lab, firewall: Firewall, created: bool = False) -> list[Action]:
-    """Return the actions of new rules: set_firewall_rules, and apply_firewall.
+    """Return the actions for new rules: set_firewall_rules and apply_firewall.
 
-    apply_firewall names the servers the firewall reaches. New rules get it only when
-    there are such servers; a new firewall whenever it is applied to anything (a label
-    selector may match no server yet).
+    apply_firewall lists the servers the firewall applies to. For changed rules it comes
+    only when there are such servers. For a new firewall it comes whenever the firewall
+    is applied to anything (a label selector may match no server yet).
     """
     actions = [finished_firewall_action(lab, firewall, "set_firewall_rules", set())]
     servers = firewall_servers(lab.state, firewall)
@@ -192,7 +194,7 @@ def create_firewall(lab: Lab, body: dict) -> dict:
         raise ApiError(
             422, "server_already_added", "a server is in apply_to more than once"
         )
-    with state.lock:
+    with state.change():
         check_unique_name(state["firewalls"].values(), body["name"], None, "firewall")
         fid = state.new_id("firewalls")
         firewall: Firewall = {
@@ -209,8 +211,7 @@ def create_firewall(lab: Lab, body: dict) -> dict:
         except ApiError:
             del state["firewalls"][fid]
             raise
-        state.save()
-    lab.fabric.apply_firewalls()
+    lab.fabric.firewall.apply()
     actions = rule_actions(lab, firewall, created=True)
     return {"firewall": hetzner.firewall_json(lab, firewall), "actions": actions}
 
@@ -223,13 +224,12 @@ def update_firewall(lab: Lab, fid: int, body: dict) -> dict:
 
 
 def delete_firewall(lab: Lab, fid: int) -> None:
-    """Delete a firewall that is applied to nothing (Hetzner)."""
+    """Delete a firewall; like Hetzner, refuse one that is still applied to anything."""
     firewall = lab.get_or_404("firewalls", fid, "firewall")
     if firewall["applied_to"]:
         raise resource_in_use("firewall is still applied to resources")
-    with lab.state.lock:
+    with lab.state.change():
         del lab.state["firewalls"][fid]
-        lab.state.save()
 
 
 # --- firewall actions -----------------------------------------------------------------
@@ -266,7 +266,8 @@ def apply_to_resources(lab: Lab, firewall: Firewall, body: dict) -> list[Action]
 def remove_from_resources(lab: Lab, firewall: Firewall, body: dict) -> list[Action]:
     """Remove the firewall from servers or label selectors.
 
-    A server the firewall reaches only through a label selector cannot be removed.
+    A server that the firewall applies to only through a label selector cannot be
+    removed.
     """
     state = lab.state
     remove = {apply_to_key(r) for r in body.get("remove_from") or []}
@@ -293,7 +294,7 @@ def remove_from_resources(lab: Lab, firewall: Firewall, body: dict) -> list[Acti
 
 
 # the firewall actions: the function that changes the firewall and returns its actions
-FIREWALL_ACTIONS = {
+FIREWALL_ACTIONS: dict[str, Callable[[Lab, Firewall, dict], list[Action]]] = {
     "set_rules": set_rules,
     "apply_to_resources": apply_to_resources,
     "remove_from_resources": remove_from_resources,
@@ -305,10 +306,9 @@ def run_firewall_action(lab: Lab, fid: int, cmd: str, body: dict) -> dict:
     firewall = lab.get_or_404("firewalls", fid, "firewall")
     if cmd not in FIREWALL_ACTIONS:
         raise unsupported(f"the action {cmd!r}")
-    with lab.state.lock:
+    with lab.state.change():
         actions = FIREWALL_ACTIONS[cmd](lab, firewall, body)
-        lab.state.save()
-    lab.fabric.apply_firewalls()
+    lab.fabric.firewall.apply()
     return {"actions": actions}
 
 

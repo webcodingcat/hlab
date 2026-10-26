@@ -1,9 +1,9 @@
-"""Bringing the lab back after a (re)start.
+"""What happens when the lab (re)starts.
 
-In this order: the flags of actions are cleared; the Storage Box comes up with its
-accounts; what was half done is finished or dropped; firewalls and faults are in place
-before any VM runs; servers that should run are powered on again; clients come back.
-One broken server or box does not keep the lab from starting.
+The steps, in order: clear the action flags; start the Storage Box with its accounts;
+finish or drop what was half done; put firewalls and faults in place before any VM
+runs; power on the servers that should run; bring the clients back. One broken server
+or box does not stop the lab from starting.
 """
 
 import logging
@@ -21,10 +21,10 @@ log = logging.getLogger(__name__)
 def clear_flags(lab: Lab) -> None:
     """Take every action flag off every resource, and unlock every server.
 
-    None of their actions survived the restart.
+    No action survives a restart.
     """
     state = lab.state
-    with state.lock:
+    with state.change():
         for kind in KINDS:
             for item in state[kind].values():
                 for flag in FLAGS:
@@ -51,7 +51,7 @@ async def restore_storage_box(lab: Lab) -> None:
 
 def fail_running_actions(lab: Lab) -> None:
     """Fail the actions that were running: the restart cut them off."""
-    with lab.state.lock:
+    with lab.state.change():
         for action in lab.state["actions"].values():
             if action["status"] == "running":
                 action.update(
@@ -65,7 +65,7 @@ def fail_running_actions(lab: Lab) -> None:
 
 
 def drop_half_created_volumes(lab: Lab) -> None:
-    """Delete the volumes cut off while being created (maybe in the middle of mkfs).
+    """Delete the volumes whose creation the restart cut off (maybe during mkfs).
 
     Their create action failed.
     """
@@ -73,14 +73,14 @@ def drop_half_created_volumes(lab: Lab) -> None:
     with state.lock:  # a copy: the loop runs scripts
         creating = [v for v in state["volumes"].values() if v["status"] == "creating"]
     for volume in creating:
-        lab.fabric.delete_volume(volume)
-        with state.lock:
+        lab.fabric.volumes.delete(volume)
+        with state.change():
             del state["volumes"][volume["id"]]
 
 
 def finish_box_setup(lab: Lab) -> None:
-    """Mark Storage Boxes that were being set up active (they got their account)."""
-    with lab.state.lock:
+    """Mark Storage Boxes that were being set up as active (the restart set them up)."""
+    with lab.state.change():
         for box in lab.state["storage_boxes"].values():
             if box["status"] == "initializing":
                 box["status"] = "active"
@@ -89,8 +89,8 @@ def finish_box_setup(lab: Lab) -> None:
 def status_after_restart(server: Server) -> str:
     """Return the status a server ends in after a restart: "running" or "off".
 
-    A server cut off while being created or rebuilt ends as its action would have
-    (`target`); one that was running or starting runs again.
+    A server whose creation or rebuild the restart cut off ends as its action would
+    have ended (`target`). A server that was running or starting runs again.
     """
     if server["status"] in ("initializing", "rebuilding"):
         return server["_lab"].get("target", "running")
@@ -114,12 +114,12 @@ async def restart_servers(lab: Lab) -> None:
                 await ensure_disk(lab, server)
                 await lab.blocking(lab.fabric.start_vm, server)
             elif server["status"] in ("initializing", "rebuilding"):
-                # cut off while its disk was made: it gets the disk and stays off
+                # cut off while its disk was made: create the disk; the server stays off
                 await ensure_disk(lab, server)
-            lab.set_status(server, target)
+            await lab.blocking(lab.set_status, server, target)
         except Exception:  # the server stays off, the lab comes up
             log.exception("server %s could not be started again", server["name"])
-            lab.set_status(server, "off")
+            await lab.blocking(lab.set_status, server, "off")
 
 
 async def restore_clients(lab: Lab) -> None:
@@ -128,27 +128,29 @@ async def restore_clients(lab: Lab) -> None:
         clients = list(lab.state["clients"].values())
     for client in clients:
         try:
-            await lab.blocking(lab.fabric.add_client, client)
+            await lab.blocking(lab.fabric.network.add_client, client)
         except Exception:  # the lab comes up without this client
             log.exception("client %s not restored", client["name"])
 
 
 async def restore_lab(lab: Lab) -> None:
     """Restore the Storage Box, state, network, servers and clients after a start."""
-    state, fabric = lab.state, lab.fabric
-    clear_flags(lab)
+    fabric = lab.fabric
+    await lab.blocking(clear_flags, lab)
     await restore_storage_box(lab)
-    fail_running_actions(lab)
-    drop_half_created_volumes(lab)
-    finish_box_setup(lab)
-    state.save()
-    # firewalls and faults before any VM runs: a server is never unfiltered
-    await lab.blocking(fabric.apply_firewalls)
-    await lab.blocking(fabric.apply_faults)
+    await lab.blocking(fail_running_actions, lab)
+    await lab.blocking(drop_half_created_volumes, lab)
+    await lab.blocking(finish_box_setup, lab)
+    # firewalls and faults before any VM runs, so no server ever runs unfiltered
+    await lab.blocking(fabric.firewall.apply)
+    await lab.blocking(fabric.faults.apply)
     await restart_servers(lab)
     await restore_clients(lab)
-    state.save()
-    for step in (fabric.apply_faults, fabric.apply_latency, fabric.apply_firewalls):
+    for step in (
+        fabric.faults.apply,
+        fabric.faults.apply_latency,
+        fabric.firewall.apply,
+    ):
         try:
             await lab.blocking(step)
         except Exception:  # the lab comes up; what failed is in the log

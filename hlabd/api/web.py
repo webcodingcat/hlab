@@ -26,7 +26,7 @@ from ..errors import (
 )
 from ..lab import Lab, Plan
 from ..labels import match_labels
-from ..records import AnyRecord
+from ..records import AnyRecord, ProtectedRecord
 from . import hetzner
 from . import spec as openapi
 
@@ -65,11 +65,12 @@ def ref_id(value, field: str) -> int:
         raise invalid(f"{field} must be an ID", field) from None
 
 
-def update_fields(item: AnyRecord, body: dict, keys: tuple[str, ...]) -> None:
-    """Change the given fields of an item on PUT (labels null means none).
+def update_fields(lab: Lab, item: AnyRecord, body: dict, keys: tuple[str, ...]) -> None:
+    """Change the given fields of an item on PUT (null labels mean no labels).
 
     The caller holds the state's lock.
     """
+    lab.state.lock.assert_held()
     for key in keys:
         if key in body:
             item[key] = (body[key] or {}) if key == "labels" else body[key]
@@ -79,13 +80,12 @@ def update_resource(
     lab: Lab, kind: str, item: AnyRecord, body: dict, keys: tuple[str, ...], what: str
 ) -> None:
     """Apply a PUT to a resource of a kind: names stay unique within the kind."""
-    with lab.state.lock:
+    with lab.state.change():
         check_unique_name(lab.state[kind].values(), body.get("name"), item, what)
-        update_fields(item, body, keys)
-        lab.state.save()
+        update_fields(lab, item, body, keys)
 
 
-def change_delete_protection(lab: Lab, item: AnyRecord, body: dict) -> Plan:
+def change_delete_protection(lab: Lab, item: ProtectedRecord, body: dict) -> Plan:
     """Set a resource's delete protection: the change_protection action.
 
     A body without `delete` keeps the current value. Used by the tables of networks,
@@ -120,7 +120,7 @@ def sort_items(items: list[AnyRecord], sorts: list[str]) -> list[AnyRecord]:
         field, _, direction = s.partition(":")
         direction = direction or "asc"
         if field in seen and seen[field] != direction:
-            seen[field] = "ignore"  # contrary orders are ignored
+            seen[field] = "ignore"  # a field sorted both ways is ignored
         else:
             seen.setdefault(field, direction)
 
@@ -216,7 +216,7 @@ class RateLimit:
                 for k, (n, t) in self.buckets.items()
                 if n + (now - t) * rate >= self.limit
             ]
-            # full buckets are the same as none
+            # a full bucket is the same as no bucket, so it can go
             for k in full or list(self.buckets)[:500]:
                 del self.buckets[k]
         tokens, last = self.buckets.get(key, (float(self.limit), now))
@@ -322,9 +322,9 @@ def install(app: FastAPI, lab: Lab, spec_name: str, prefix: str) -> None:
 
     @app.exception_handler(Exception)  # anything else that went wrong in the lab
     async def unexpected(_: Request, error: Exception):
-        """Answer a failure of the lab itself like the cloud's server errors: JSON.
+        """Answer a failure of the lab itself as JSON, like Hetzner's server errors.
 
-        Such a failure is, say, a shell command.
+        A shell command that failed is an example.
         """
         log.exception("unexpected error")
         return error_response(server_error(f"the lab failed: {str(error)[:300]}"))
@@ -337,12 +337,9 @@ def install(app: FastAPI, lab: Lab, spec_name: str, prefix: str) -> None:
 
     @app.middleware("http")
     async def middleware(request: Request, call_next):
-        # actions started from the worker threads of sync handlers run on this loop
-        # (the daemon sets it at start; a test client brings a loop of its own)
-        lab.loop = asyncio.get_running_loop()
         if not request.url.path.startswith(prefix + "/"):
             return await call_next(request)
-        headers: dict[str, str] = {}  # the rate limit's, once the token is known
+        headers: dict[str, str] = {}  # the rate limit headers, once the token is known
         try:
             token = check_auth(lab, request)
             allowed, headers = limiter.take(token)

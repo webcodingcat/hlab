@@ -1,9 +1,9 @@
 """The lab's Storage Box: its sshd, accounts, their directories and snapshots on disk.
 
 All of it goes through scripts/box.sh (via hlab.sh). The API (api/storagebox/) decides
-what a box looks like; this module only carries it out. The methods of `Box` are named
-after the functions of box.sh they run, except `bytes_used` (print_bytes_used: the
-method returns the number the function prints).
+what a box looks like; this part of the fabric (see __init__.py) only carries it out.
+The methods of `Box` are named after the box.sh functions they run, except
+`bytes_used` (print_bytes_used: the method returns the number the function prints).
 """
 
 from ..records import StorageBox
@@ -36,20 +36,20 @@ def snap_dir(box: StorageBox, name: str = "") -> str:
 class Box:
     """The Storage Box's sshd, accounts and directories, through hlab.sh."""
 
-    def __init__(self, sh: Shell):
-        """Use `sh` to run the box commands."""
-        self.sh = sh
+    def __init__(self, shell: Shell):
+        """Use `shell` to run the box commands."""
+        self.shell = shell
 
     def start_box(self, size_gb: int) -> None:
         """Start the box's disk and its sshd on ports 22 and 23.
 
         The disk is limited to `size_gb` (0: no limit).
         """
-        self.sh.run("box-start", str(size_gb))
+        self.shell.run("start-box", str(size_gb))
 
     def stop_box(self) -> None:
         """Stop the box (failures are ignored)."""
-        self.sh.run("box-stop", check=False)
+        self.shell.run("stop-box", check=False)
 
     def set_account(
         self, user: str, home: str, password: str | None, quota: int, owner: int | str
@@ -62,8 +62,8 @@ class Box:
         cannot log in with one. The password goes over stdin (never into a process
         list).
         """
-        self.sh.run(
-            "box-account",
+        self.shell.run(
+            "set-account",
             user,
             home,
             str(quota),
@@ -73,8 +73,8 @@ class Box:
 
     def set_access(self, user: str, access: dict, quota: int) -> None:
         """Set an account's access (SSH, external reach, read-only) and quota."""
-        self.sh.run(
-            "box-access",
+        self.shell.run(
+            "set-access",
             user,
             str(int(access["ssh_enabled"])),
             str(int(access["reachable_externally"])),
@@ -84,44 +84,44 @@ class Box:
 
     def set_zfs_view(self, user: str, snapshots: str | None) -> None:
         """Show the snapshots as .zfs in the account's home, or none."""
-        self.sh.run("box-zfs", user, snapshots or "-")
+        self.shell.run("set-zfs-view", user, snapshots or "-")
 
     def set_home(self, user: str, home: str) -> None:
         """Set an account's home directory."""
-        self.sh.run("box-home", user, home)
+        self.shell.run("set-home", user, home)
 
     def write_authorized_keys(self, user: str, keys: list[str]) -> None:
         """Set an account's authorized SSH keys (its .ssh/authorized_keys)."""
-        self.sh.run("box-authorized-keys", user, "\n".join(keys))
+        self.shell.run("write-authorized-keys", user, "\n".join(keys))
 
     def add_key(self, user: str, public_key: str) -> None:
         """Add a key of the lab's own (/hlab/box-keys) to an account.
 
         It counts next to the account's .ssh/authorized_keys.
         """
-        self.sh.run("box-key", user, public_key.strip())
+        self.shell.run("add-key", user, public_key.strip())
 
     def remove_account(self, user: str, check: bool = True) -> None:
         """Remove an account (not its data)."""
-        self.sh.run("box-remove", user, check=check)
+        self.shell.run("remove-account", user, check=check)
 
     def remove_tree(self, path: str, check: bool = True) -> None:
         """Remove a directory tree on the box."""
-        self.sh.run("box-rmtree", path, check=check)
+        self.shell.run("remove-tree", path, check=check)
 
     def bytes_used(self, path: str) -> int:
         """Return the bytes used below a path (0 if it is missing)."""
-        return int(self.sh.run("box-usage", path, check=False).strip() or 0)
+        return int(self.shell.run("print-bytes-used", path, check=False).strip() or 0)
 
     def take_snapshot(self, data: str, dest: str) -> None:
         """Take a snapshot of a data directory into `dest` (owners are kept)."""
-        self.sh.run("box-snapshot", data, dest)
+        self.shell.run("take-snapshot", data, dest)
 
     def roll_back(self, snapshot: str, data: str) -> None:
         """Roll a data directory back to a snapshot (owners are kept)."""
-        self.sh.run("box-rollback", snapshot, data)
+        self.shell.run("roll-back", snapshot, data)
 
     def list_folders(self, path: str) -> list[str]:
         """Return the folders below a path."""
-        output = self.sh.run("box-folders", path, check=False)
+        output = self.shell.run("list-folders", path, check=False)
         return [folder for folder in output.splitlines() if folder]

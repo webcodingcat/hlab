@@ -1,13 +1,13 @@
 """Sub-accounts of a box.
 
-Accounts of their own (u<box>-sub<n>) with a home directory inside the box.
+Each is an account of its own (u<box>-sub<n>) with a home directory inside the box.
 """
 
 from fastapi import FastAPI, Request
 
 from ...errors import limit_exceeded, locked, not_found, not_unique
 from ...fabric.storagebox import username
-from ...lab import Lab, Plan, now
+from ...lab import ActionTable, Lab, Plan, now
 from ...records import StorageBox, Subaccount
 from ..web import filtered, read_body, sort_items, update_fields
 from .base import (
@@ -69,7 +69,7 @@ def box_of(lab: Lab, subaccount: Subaccount) -> StorageBox:
 
 
 def box_plan(subaccount: Subaccount) -> Plan:
-    """Return the plan of a sub-account action: done, and it concerns the box too."""
+    """Return the plan of a sub-account action: done at once, concerning the box too."""
     return Plan(resources=[(subaccount["box"], "storage_box")])
 
 
@@ -112,7 +112,7 @@ def update_access_settings(lab: Lab, subaccount: Subaccount, body: dict) -> Plan
         subaccount["access"].update(access)
     try:
         sync_subaccount(lab, box, subaccount)
-    except Exception:  # not in effect: not reported either
+    except Exception:  # not in effect, so not reported either
         with lab.state.lock:
             subaccount["access"] = old
         raise
@@ -120,7 +120,7 @@ def update_access_settings(lab: Lab, subaccount: Subaccount, body: dict) -> Plan
 
 
 # the sub-account actions: Hetzner's name of the action and the function that plans it
-SUBACCOUNT_ACTIONS = {
+SUBACCOUNT_ACTIONS: ActionTable[Subaccount] = {
     "change_home_directory": ("change_home_directory", change_home_directory),
     "reset_subaccount_password": (
         "reset_subaccount_password",
@@ -138,8 +138,8 @@ def create_subaccount(lab: Lab, bid: int, body: dict) -> dict:
 
     Sub-accounts are numbered per box (u<box>-sub<n>); the number is taken under the
     lock, so a second create at the same time gets the next one. The box is not
-    deleted while the account is set up (`_creating`); without its account, the
-    sub-account is removed again. Not while the box is busy (423).
+    deleted while the account is set up (`_creating`). If the account cannot be set up,
+    the sub-account is removed again. Refused while the box is busy (423).
     """
     state = lab.state
     box = box_or_404(lab, bid, ready=True)
@@ -155,42 +155,42 @@ def create_subaccount(lab: Lab, bid: int, body: dict) -> dict:
     )
     home = normalized_box_path(body.get("home_directory"), "home_directory")
     password = checked_password(body.get("password"))
-    with state.lock:
-        check_unique_subaccount_name(lab, box, body.get("name"), None)
-        mine = [a for a in state["subaccounts"].values() if a["box"] == box["id"]]
-        if len(mine) >= lab.cfg["storage_box_types"][box["type"]]["subaccounts"]:
-            raise limit_exceeded(
-                "sub-account limit of the Storage Box type reached", "subaccounts"
-            )
-        if box_busy(lab, box):  # the box got busy meanwhile (e.g. it is deleted)
-            raise locked(BUSY)
-        number = 1 + max([a["number"] for a in mine], default=0)
-        subaccount_id = state.new_id("subaccounts")
-        subaccount: Subaccount = {
-            "id": subaccount_id,
-            "box": box["id"],
-            "number": number,
-            "username": f"{username(box)}-sub{number}",
-            "name": body.get("name"),
-            "home_directory": home,
-            "access": access_settings,
-            "description": body.get("description") or "",
-            "labels": body.get("labels") or {},
-            "created": now(),
-            "_password": password,
-            "_creating": True,
-        }
-        state["subaccounts"][subaccount_id] = subaccount
-    try:
-        sync_subaccount(lab, box, subaccount, password)
-    except Exception:  # undo the half-done change, then raise
-        lab.fabric.box.remove_account(subaccount["username"], check=False)
+    with lab.holding() as held:
         with state.lock:
-            state["subaccounts"].pop(subaccount_id, None)
-        raise
-    finally:
-        lab.release(subaccount, "_creating")
-    state.save()
+            check_unique_subaccount_name(lab, box, body.get("name"), None)
+            mine = [a for a in state["subaccounts"].values() if a["box"] == box["id"]]
+            if len(mine) >= lab.cfg["storage_box_types"][box["type"]]["subaccounts"]:
+                raise limit_exceeded(
+                    "sub-account limit of the Storage Box type reached", "subaccounts"
+                )
+            if box_busy(lab, box):  # the box got busy meanwhile (e.g. it is deleted)
+                raise locked(BUSY)
+            number = 1 + max([a["number"] for a in mine], default=0)
+            subaccount_id = state.new_id("subaccounts")
+            subaccount: Subaccount = {
+                "id": subaccount_id,
+                "box": box["id"],
+                "number": number,
+                "username": f"{username(box)}-sub{number}",
+                "name": body.get("name"),
+                "home_directory": home,
+                "access": access_settings,
+                "description": body.get("description") or "",
+                "labels": body.get("labels") or {},
+                "created": now(),
+                "_password": password,
+            }
+            state["subaccounts"][subaccount_id] = subaccount
+            held.claim(subaccount, "_creating", BUSY)  # new: nobody holds it yet
+        try:
+            sync_subaccount(lab, box, subaccount, password)
+        except Exception:  # undo the half-done change, then raise
+            lab.fabric.box.remove_account(subaccount["username"], check=False)
+            with state.lock:
+                state["subaccounts"].pop(subaccount_id, None)
+            raise
+        with state.change():  # the sub-account is ready
+            held.release()
     resources = [(box["id"], "storage_box"), (subaccount_id, "storage_box_subaccount")]
     return {
         "subaccount": subaccount_json(lab, subaccount),
@@ -202,10 +202,9 @@ def update_subaccount(lab: Lab, bid: int, subaccount_id: int, body: dict) -> dic
     """Change a sub-account's name, description and labels."""
     box = box_or_404(lab, bid)
     subaccount = subaccount_or_404(lab, box, subaccount_id)
-    with lab.state.lock:
+    with lab.state.change():
         check_unique_subaccount_name(lab, box, body.get("name"), subaccount)
-        update_fields(subaccount, body, ("name", "description", "labels"))
-        lab.state.save()
+        update_fields(lab, subaccount, body, ("name", "description", "labels"))
     return {"subaccount": subaccount_json(lab, subaccount)}
 
 
@@ -214,9 +213,8 @@ def delete_subaccount(lab: Lab, bid: int, subaccount_id: int) -> dict:
     box = box_or_404(lab, bid, ready=True)
     subaccount = subaccount_or_404(lab, box, subaccount_id)
     lab.fabric.box.remove_account(subaccount["username"])
-    with lab.state.lock:
+    with lab.state.change():
         del lab.state["subaccounts"][subaccount_id]
-        lab.state.save()
     return {
         "action": lab.finished_action(
             "delete_subaccount",

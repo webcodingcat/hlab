@@ -2,16 +2,18 @@
 
 Covered here:
 
-- the verbs hlabd calls: every `sh.run(...)` / `sh.ok(...)` in hlabd/ names a verb of
-  hlab.sh's `main` (box-* ones of box.sh's) and passes an argument count its function
-  takes; both sides are parsed from the sources, so there is no table to keep up;
-- the nftables rulesets: the table inet hlab that `hlab.sh net-init` writes (ip, sysctl
-  and nft stubbed), the set elements of fabric/faults.py and the firewall table of
-  fabric/firewall.py, rendered from a lab with servers, a network, a client, faults
-  and firewalls. `nft -c` needs CAP_NET_ADMIN for its full check (it reads the
-  kernel's ruleset first); without it, as in `bin/hlab test`, only nft's parser runs
-  (grammar, keywords, statement order) and the set names are compared in Python. The
-  full check runs where `nft -c` works, e.g. `docker run --cap-add NET_ADMIN`;
+- the verbs hlabd calls: every `shell.run(...)` / `shell.ok(...)` in hlabd/ names a
+  verb of hlab.sh's `main` (or of box.sh's, which hlab.sh hands on) and passes an
+  argument count its function takes; both sides are parsed from the sources, so there
+  is no table to keep up; every verb is its function's name with dashes;
+- the nftables rulesets: the table inet hlab that `hlab.sh init-net` loads from
+  hlab.nft with the addresses put in (ip, sysctl and nft stubbed), the set elements
+  of fabric/faults.py and the firewall table of fabric/firewall.py, rendered from a
+  lab with servers, a network, a client, faults and firewalls. `nft -c` needs
+  CAP_NET_ADMIN for its full check (it reads the kernel's ruleset first); without it,
+  only nft's parser runs (grammar, keywords, statement order) and the set names are
+  compared in Python. `bin/hlab test` gives the test container CAP_NET_ADMIN, so the
+  full check runs there;
 - box-shell.sh's decisions (SFTP, read-only, rsync, scp, borg, df, who may connect),
   table-driven with stubbed commands on PATH;
 - lib.sh's is_alive and stop_pid with a real process and a PID file.
@@ -79,6 +81,18 @@ def function_arity(body: str) -> tuple[int, int]:
     return required, most
 
 
+def main_arms(script: Path) -> list[tuple[str, str, bool]]:
+    """Return the one-verb arms of a script's main: (verb, function, passes "$@")."""
+    return [
+        (verb, function, bool(passes_args))
+        for verb, function, passes_args in re.findall(
+            r"^\s+([\w-]+)\) (\w+)( \"\$@\")? ;;$",
+            shell_functions(script)["main"],
+            re.M,
+        )
+    ]
+
+
 def script_verbs(script: Path) -> dict[str, tuple[int, int]]:
     """Return the verbs of a script's main with the argument counts they take.
 
@@ -87,9 +101,7 @@ def script_verbs(script: Path) -> dict[str, tuple[int, int]]:
     """
     functions = shell_functions(script)
     verbs = {}
-    for verb, function, passes_args in re.findall(
-        r"^\s+([\w-]+)\) (\w+)( \"\$@\")? ;;$", functions["main"], re.M
-    ):
+    for verb, function, passes_args in main_arms(script):
         if not passes_args:
             assert function_arity(functions[function])[0] == 0, (
                 f"{script.name}: {verb} calls {function} without its arguments"
@@ -102,10 +114,22 @@ def script_verbs(script: Path) -> dict[str, tuple[int, int]]:
     return verbs
 
 
+def handed_to_box() -> set[str]:
+    """Return the verbs hlab.sh's main hands on to box.sh (one arm, `a | b ...)`)."""
+    arm = re.search(
+        r"^\s+([\w|\s\\-]+)\)\n"
+        r'\s+exec "\$\(dirname "\$0"\)/box\.sh" "\$\{verb\}" "\$@"$',
+        HLAB_SH.read_text(),
+        re.M,
+    )
+    assert arm, "hlab.sh no longer hands verbs on to box.sh"
+    return {verb.strip(" \\\n") for verb in arm.group(1).split("|")}
+
+
 def hlabd_calls() -> list[tuple[str, str, int, bool]]:
     """Return every hlab.sh call in hlabd/: (where, verb, argument count, starred).
 
-    A call is `<...>.sh.run|ok("verb", ...)` or `shell.run|ok(...)`; with a starred
+    A call is `<...>.shell.run|ok("verb", ...)` or `shell.run|ok(...)`; with a starred
     argument the count is the least.
     """
     calls = []
@@ -122,8 +146,8 @@ def hlabd_calls() -> list[tuple[str, str, int, bool]]:
                 continue
             target = node.func.value
             if not (
-                (isinstance(target, ast.Attribute) and target.attr == "sh")
-                or (isinstance(target, ast.Name) and target.id in ("sh", "shell"))
+                (isinstance(target, ast.Attribute) and target.attr == "shell")
+                or (isinstance(target, ast.Name) and target.id == "shell")
             ):
                 continue
             rest = node.args[1:]
@@ -135,26 +159,33 @@ def hlabd_calls() -> list[tuple[str, str, int, bool]]:
 
 
 def all_verbs() -> dict[str, tuple[int, int]]:
-    """Return hlab.sh's verbs and box.sh's as box-<verb>, which hlab.sh hands on."""
-    assert re.search(
-        r'^\s+box-\*\) exec "\$\(dirname "\$0"\)/box.sh" "\$\{verb#box-\}" "\$@" ;;$',
-        HLAB_SH.read_text(),
-        re.M,
-    ), "hlab.sh no longer hands box-* to box.sh"
+    """Return hlab.sh's verbs and box.sh's, which hlab.sh hands on."""
     verbs = script_verbs(HLAB_SH)
-    verbs.update({f"box-{verb}": arity for verb, arity in script_verbs(BOX_SH).items()})
-    return verbs
+    box_verbs = script_verbs(BOX_SH)
+    assert handed_to_box() == set(box_verbs), (
+        "hlab.sh hands on other verbs than box.sh's"
+    )
+    assert not set(verbs) & set(box_verbs), "a verb in both hlab.sh and box.sh"
+    return verbs | box_verbs
 
 
 def test_the_parsers_find_the_verbs_and_the_calls():
     verbs = all_verbs()
-    assert verbs["net-init"] == (0, 0)
-    assert verbs["route"] == (1, 2)
-    assert verbs["vm-start"] == (5, MANY)
+    assert verbs["init-net"] == (0, 0)
+    assert verbs["set-route"] == (1, 2)
+    assert verbs["start-vm"] == (5, MANY)
     assert verbs["nft"] == (0, MANY)
-    assert verbs["box-access"] == (5, 5)
+    assert verbs["set-access"] == (5, 5)
     called = {verb for _, verb, _, _ in hlabd_calls()}
-    assert {"net-init", "vm-start", "nft", "tc", "box-account"} <= called
+    assert {"init-net", "start-vm", "nft", "tc", "set-account"} <= called
+
+
+@pytest.mark.parametrize("script", [HLAB_SH, BOX_SH], ids=lambda path: path.name)
+def test_every_verb_is_its_functions_name_with_dashes(script):
+    for verb, function, _ in main_arms(script):
+        assert verb.replace("-", "_") == function, (
+            f"{script.name}: {verb} runs {function}"
+        )
 
 
 @pytest.mark.parametrize(
@@ -222,7 +253,7 @@ def parse_errors(text: str, path: Path) -> str:
 
 
 def render_init_ruleset(tmp_path: Path) -> str:
-    """Return the table inet hlab that `hlab.sh net-init` loads.
+    """Return the table inet hlab that `hlab.sh init-net` loads (hlab.nft, rendered).
 
     ip, sysctl and nft are stubs: ip names eth0 as the uplink, nft keeps its input.
     """
@@ -243,7 +274,7 @@ def render_init_ruleset(tmp_path: Path) -> str:
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "NFT_OUT": str(out),
     }
-    subprocess.run(["bash", str(HLAB_SH), "net-init"], check=True, env=env)
+    subprocess.run(["bash", str(HLAB_SH), "init-net"], check=True, env=env)
     return out.read_text()
 
 
@@ -319,6 +350,8 @@ def rulesets(api, tmp_path) -> dict[str, str]:
 
 def test_the_rendered_rulesets_fill_what_they_should(rulesets):
     assert 'iifname "eth0" drop' in rulesets["init"]
+    rules = [x for x in rulesets["init"].splitlines() if not x.lstrip().startswith("#")]
+    assert not [x for x in rules if "${" in x], "a placeholder of hlab.nft is left"
     assert f"ip saddr {config.METADATA} tcp sport 80" in rulesets["init"]
     for name in (
         "cuts",

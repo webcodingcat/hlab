@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Low-level lab primitives (taps, QEMU, QMP, nftables, Storage Box). Called by
-# hlabd, which keeps the state and allocates names and addresses; nothing here
-# decides anything.
+# hlabd, which keeps the state and picks names and addresses; nothing here
+# decides anything. The nftables table is in hlab.nft.
 #
-# Like Hetzner's networks the segments are routed, not bridged: every VM NIC is
-# its own tap, the container answers ARP for everything (proxy ARP) and routes
-# between the taps, so a network cut is a drop rule in the forward chain. Every
-# cloud network routes in its own table (the network's ID), selected by the
-# incoming private tap: networks may overlap like on Hetzner, the same private
-# IP in two networks are two different servers.
+# As on Hetzner, the segments are routed, not bridged: every VM NIC is its own
+# tap, and the container answers ARP for everything (proxy ARP) and routes
+# between the taps. So a network cut is a drop rule in the forward chain. Every
+# cloud network routes in its own table (the network's ID), chosen by the
+# private tap a packet comes in on. So networks may overlap as on Hetzner: the
+# same private IP in two networks belongs to two different servers.
 set -euo pipefail
 # set -e also inside $(...)
 shopt -s inherit_errexit
@@ -56,8 +56,8 @@ send_qmp() {
       echo "hlab.sh: qmp: no answer from ${vm_dir}" >&2
       return 1
     }
-  # Print QMP errors; failing those, the string returns of HMP commands if one
-  # of them is an error text. An answer that is not JSON counts as no error.
+  # Print QMP errors; if there are none, print the string results of HMP
+  # commands when one of them is an error text. An answer that is not JSON counts as no error.
   errors="$(printf '%s\n' "${answer}" | jq -rs '
     def error_text: (.return | type) == "string"
       and (.return | test("^Error|error:"; "i"));
@@ -77,6 +77,18 @@ send_hmp() {
   local vm_dir="$1" monitor_command="$2"
   send_qmp "${vm_dir}" "$(jq -cn --arg c "${monitor_command}" \
     '{execute: "human-monitor-command", arguments: {"command-line": $c}}')"
+}
+
+# print_ruleset <uplink>: Print the nftables table of hlab.nft, with the uplink
+# and the lab's addresses put in for its ${NAME} placeholders.
+print_ruleset() {
+  local uplink="$1" ruleset name
+  ruleset="$(<"$(dirname "$0")/hlab.nft")"
+  for name in uplink SERVICES SERVICES6 HETZNER_API HETZNER_API6 METADATA \
+    METADATA6 PUBLIC_NET FLOATING_NET CLIENT_NET; do
+    ruleset="${ruleset//"\${${name}}"/${!name}}"
+  done
+  printf '%s\n' "${ruleset}"
 }
 
 # init_net: Set up the gateway's addresses, the unreachable ends of the lab's
@@ -110,101 +122,7 @@ init_net() {
   ip route replace unreachable "${CLIENT_NET}.0/24"
   # The lab's services (local addresses win).
   ip route replace unreachable "${SERVICES_NET}"
-  nft -f - <<NFT
-table inet hlab
-delete table inet hlab
-table inet hlab {
-    # traffic between two interfaces dropped
-    set cuts { type ifname . ifname; }
-    # interface cut off from everything
-    set isolated { type ifname; }
-    # interface may not reach a lab service port
-    set blocked_svc { type ifname . inet_service; }
-    # interface may not reach the real Internet
-    set blocked_inet { type ifname; }
-    # private taps of the same cloud network
-    set private_pairs { type ifname . ifname; }
-    # the IPv4 sources a public tap or client may send from
-    set src4 { type ifname . ipv4_addr; }
-    # and the IPv6 ones (prefixes)
-    set src6 { type ifname . ipv6_addr; flags interval; }
-    # private tap → its network's routing table
-    map tap_tables { type ifname : mark; }
-    chain antispoof {
-        # Like Hetzner: a server sends from its own addresses (primary IPs,
-        # assigned Floating IPs) only, a client from its own. Cloud networks
-        # are not checked (a gateway server forwards for others there).
-        type filter hook prerouting priority -150;
-        iifname "pub*" ip saddr 0.0.0.0 udp dport 67 accept
-        # DAD, MLD
-        iifname "pub*" ip6 saddr :: icmpv6 type { nd-neighbor-solicit, mld2-listener-report } accept
-        iifname "pub*" meta nfproto ipv4 iifname . ip saddr != @src4 drop
-        iifname "pub*" meta nfproto ipv6 iifname . ip6 saddr != @src6 drop
-        iifname "cl*" ip6 saddr { ::, fe80::/10 } accept
-        iifname "cl*" meta nfproto ipv4 iifname . ip saddr != @src4 drop
-        iifname "cl*" meta nfproto ipv6 iifname . ip6 saddr != @src6 drop
-        # cloud networks carry IPv4 only
-        iifname "prv*" meta nfproto ipv6 drop
-        # the network's routing table, for the replies
-        iifname "prv*" ct mark set iifname map @tap_tables
-    }
-    chain route_out {
-        # what the lab itself sends on a connection from a cloud network goes
-        # back through that network's table
-        type route hook output priority mangle;
-        ct mark != 0 meta mark set ct mark
-    }
-    chain input {
-        type filter hook input priority 0;
-        iifname "${uplink}" ct state established,related accept
-        # neighbour containers and the Docker host get nothing of the lab
-        iifname "${uplink}" drop
-        iifname @isolated drop
-        ip daddr { ${SERVICES}, ${HETZNER_API} } iifname . tcp dport @blocked_svc drop
-        ip6 daddr { ${SERVICES6}, ${HETZNER_API6} } iifname . tcp dport @blocked_svc drop
-    }
-    chain output {
-        type filter hook output priority 0;
-        oifname @isolated drop
-        # Cloud networks are not reachable from outside; only DHCP (and ICMP
-        # errors) come from the gateway.
-        oifname "prv*" udp sport 67 accept
-        oifname "prv*" meta l4proto icmp accept
-        # the metadata service, for private-only servers
-        oifname "prv*" ip saddr ${METADATA} tcp sport 80 accept
-        oifname "prv*" drop
-    }
-    chain forward {
-        type filter hook forward priority 0;
-        iifname "${uplink}" ct state established,related accept
-        # no packets (with any source) from outside to the guests
-        iifname "${uplink}" drop
-        # the lab's IPv6 is its own: none of it leaves
-        oifname "${uplink}" meta nfproto ipv6 drop
-        iifname @isolated drop
-        oifname @isolated drop
-        iifname . oifname @cuts drop
-        iifname @blocked_inet oifname "${uplink}" drop
-        oifname "${uplink}" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 } drop
-        # A cloud network only carries traffic between its own members.
-        oifname "prv*" iifname . oifname != @private_pairs drop
-        # and nothing leaves them (Internet only through a gateway server)
-        iifname "prv*" oifname != "prv*" drop
-    }
-    chain prerouting {
-        type nat hook prerouting priority dstnat;
-        # the metadata service over IPv6 (link-local, answered on every public
-        # tap)
-        ip6 daddr fe80::a9fe:a9fe tcp dport 80 dnat ip6 to [${METADATA6}]:80
-    }
-    chain postrouting {
-        type nat hook postrouting priority srcnat;
-        # public addresses only: private ones reach the Internet through a
-        # gateway server, as on Hetzner
-        oifname "${uplink}" ip saddr { ${PUBLIC_NET}.0/24, ${FLOATING_NET}.0/24, ${CLIENT_NET}.0/24 } masquerade
-    }
-}
-NFT
+  print_ruleset "${uplink}" | nft -f -
 }
 
 # set_up_tap <tap> <gateway cidr> [guest ip] [noprefixroute]: Create a tap
@@ -266,8 +184,9 @@ set_up_private_tap() {
     ip route replace "${alias_ip}/32" dev "${tap}" src "${OPERATOR}" \
       table "${table}"
   done
-  # Members only; nothing of the range leaks to the main table, unless a
-  # default route is there (then the add fails with "File exists": fine).
+  # Only members are reachable: the rest of the range and everything else
+  # ends here, never in the main table. If a default route (add_route
+  # 0.0.0.0/0) is there already, the add fails with "File exists": fine.
   ip route replace unreachable "${range}" table "${table}"
   ip route add unreachable default table "${table}" 2>/dev/null || true
   mark="$(printf '0x%x' "${table}")"
@@ -350,12 +269,13 @@ set_route_via() {
     table "${table}"
 }
 
-# delete_route <prefix> <table>: Delete a network route and bring the table's
-# end back (a default route had taken its place).
+# delete_route <prefix> <table>: Delete a network route and put the table's
+# unreachable default back, in case the deleted route was a default route
+# that had replaced it.
 delete_route() {
   local prefix="$1" table="$2"
-  # never routed (its gateway server was off) or gone already: fine; the end
-  # is there already unless a default route had taken its place
+  # never routed (its gateway server was off) or gone already: fine; the
+  # unreachable default is still there unless the deleted route replaced it
   ip route del "${prefix}" table "${table}" 2>/dev/null || true
   ip route add unreachable default table "${table}" 2>/dev/null || true
 }
@@ -539,8 +459,8 @@ start_vm() {
     nic_index=$((nic_index + 1))
   done
   # cache=writeback: the guest's flushes reach the host. A power-off kills
-  # qemu, and with cache=unsafe qcow2 metadata and flushed data still in qemu's
-  # memory were lost. Hetzner keeps what a guest flushed.
+  # qemu, and with cache=unsafe the qcow2 metadata and flushed data still in
+  # qemu's memory would be lost. Hetzner keeps what a guest flushed.
   disks=(-drive "file=${dir}/disk.qcow2,if=none,id=root,cache=writeback"
     -device "virtio-blk-pci,drive=root,bootindex=1")
   # Attached volumes (id path per line) sit on the SCSI controller from the
@@ -646,49 +566,51 @@ resize_volume() {
   fi
 }
 
-# main <verb> <arg>...: Run one verb.
+# main <verb> <arg>...: Run one verb. A verb is its function's name with dashes
+# (create-volume runs create_volume); the Storage Box's verbs are box.sh's.
 main() {
   local verb="${1:-}"
   shift || true
-  # verbs are <noun>-<verb>, the API side's vocabulary; each maps to a <verb>_<noun>
-  # function, so volume-create is found in create_volume
   case "${verb}" in
-    net-init) init_net ;;
-    public-tap-up) set_up_public_tap "$@" ;;
-    private-tap-up) set_up_private_tap "$@" ;;
-    tap-down) tear_down_tap "$@" ;;
+    init-net) init_net ;;
+    set-up-public-tap) set_up_public_tap "$@" ;;
+    set-up-private-tap) set_up_private_tap "$@" ;;
+    tear-down-tap) tear_down_tap "$@" ;;
     link-exists) link_exists "$@" ;;
-    neigh-dev) list_neigh_devs "$@" ;;
-    local-addrs) list_local_addrs ;;
-    volume-create) create_volume "$@" ;;
-    volume-attach) attach_volume "$@" ;;
-    volume-detach) detach_volume "$@" ;;
-    volume-resize) resize_volume "$@" ;;
-    image-fetch) fetch_image "$@" ;;
-    vm-disk) create_vm_disk "$@" ;;
-    vm-disk-resize) resize_vm_disk "$@" ;;
-    vm-start) start_vm "$@" ;;
-    vm-kill) kill_vm "$@" ;;
-    vm-alive) is_vm_alive "$@" ;;
-    qmp) send_qmp "$@" ;;
-    hmp) send_hmp "$@" ;;
-    nic-add) add_nic "$@" ;;
-    nic-del) delete_nic "$@" ;;
-    route) set_route "$@" ;;
-    route6) set_route6 "$@" ;;
-    route-via) set_route_via "$@" ;;
-    route-del) delete_route "$@" ;;
-    route-flush) flush_routes "$@" ;;
-    # nft and tc take hlabd's rules as they are (fabric/faults.py, network.py,
-    # firewall.py)
+    list-neigh-devs) list_neigh_devs "$@" ;;
+    list-local-addrs) list_local_addrs ;;
+    create-volume) create_volume "$@" ;;
+    attach-volume) attach_volume "$@" ;;
+    detach-volume) detach_volume "$@" ;;
+    resize-volume) resize_volume "$@" ;;
+    fetch-image) fetch_image "$@" ;;
+    create-vm-disk) create_vm_disk "$@" ;;
+    resize-vm-disk) resize_vm_disk "$@" ;;
+    start-vm) start_vm "$@" ;;
+    kill-vm) kill_vm "$@" ;;
+    is-vm-alive) is_vm_alive "$@" ;;
+    send-qmp) send_qmp "$@" ;;
+    send-hmp) send_hmp "$@" ;;
+    add-nic) add_nic "$@" ;;
+    delete-nic) delete_nic "$@" ;;
+    set-route) set_route "$@" ;;
+    set-route6) set_route6 "$@" ;;
+    set-route-via) set_route_via "$@" ;;
+    delete-route) delete_route "$@" ;;
+    flush-routes) flush_routes "$@" ;;
+    # nft and tc take hlabd's rules as they are (fabric/faults.py, firewall.py)
     nft) nft "$@" ;;
     tc) tc "$@" ;;
-    client-add) add_client "$@" ;;
-    client-del) delete_client "$@" ;;
-    dhcp-stop) stop_dhcp "$@" ;;
-    dhcp-restart) restart_dhcp "$@" ;;
-    dns-start) start_dns "$@" ;;
-    box-*) exec "$(dirname "$0")/box.sh" "${verb#box-}" "$@" ;;
+    add-client) add_client "$@" ;;
+    delete-client) delete_client "$@" ;;
+    stop-dhcp) stop_dhcp "$@" ;;
+    restart-dhcp) restart_dhcp "$@" ;;
+    start-dns) start_dns "$@" ;;
+    start-box | stop-box | set-account | set-access | set-home | set-zfs-view | \
+      remove-account | add-key | write-authorized-keys | take-snapshot | \
+      roll-back | remove-tree | print-bytes-used | list-folders)
+      exec "$(dirname "$0")/box.sh" "${verb}" "$@"
+      ;;
     *)
       echo "hlab.sh: unknown command: ${verb}" >&2
       exit 2

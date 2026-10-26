@@ -37,7 +37,7 @@ def test_servers_in_a_network_get_their_address_by_dhcp(api, tmp_path):
     wait_action(api, action.json()["action"])
     s2 = api.get(f"/v1/servers/{s2['id']}").json()["server"]
     assert s2["private_net"][0]["ip"] == "10.0.1.20"
-    assert api.sh.commands("nic-add")
+    assert api.sh.commands("add-nic")
     hosts = dhcp(tmp_path)
     assert "10.0.1.1" in hosts and "10.0.1.20" in hosts
     conf = dhcp(tmp_path)
@@ -63,9 +63,9 @@ def test_overlapping_networks_stay_apart(api, tmp_path):
     s1 = create_server(api, "a", networks=[n1["id"]])["server"]
     s2 = create_server(api, "b", networks=[n2["id"]])["server"]
     assert s1["private_net"][0]["ip"] == s2["private_net"][0]["ip"] == "10.0.1.1"
-    ups = api.sh.commands("private-tap-up")
+    ups = api.sh.commands("set-up-private-tap")
     assert (
-        "private-tap-up",
+        "set-up-private-tap",
         "prv1x1",
         "10.0.0.1/16",
         "10.0.1.1",
@@ -73,7 +73,7 @@ def test_overlapping_networks_stay_apart(api, tmp_path):
         "10.0.0.0/16",
     ) in ups
     assert (
-        "private-tap-up",
+        "set-up-private-tap",
         "prv2x1",
         "10.0.0.1/16",
         "10.0.1.1",
@@ -90,10 +90,13 @@ def test_overlapping_networks_stay_apart(api, tmp_path):
         )
     # a server's private address counts for latency only on taps of the same network
     lab = api.lab
-    assert lab.fabric.source_prefixes(lab.state["servers"][s1["id"]], n2["id"]) == []
-    assert lab.fabric.source_prefixes(lab.state["servers"][s1["id"]], n1["id"]) == [
-        "10.0.1.1/32"
-    ]
+    assert (
+        lab.fabric.faults.source_prefixes(lab.state["servers"][s1["id"]], n2["id"])
+        == []
+    )
+    assert lab.fabric.faults.source_prefixes(
+        lab.state["servers"][s1["id"]], n1["id"]
+    ) == ["10.0.1.1/32"]
 
 
 def test_deleting_a_network_drops_its_table(api):
@@ -101,7 +104,7 @@ def test_deleting_a_network_drops_its_table(api):
         "/v1/networks", json={"name": "gone", "ip_range": "10.5.0.0/16"}
     ).json()["network"]
     assert api.delete(f"/v1/networks/{network['id']}").status_code == 204
-    assert ("route-flush", str(network["id"])) in api.sh.calls
+    assert ("flush-routes", str(network["id"])) in api.sh.calls
 
 
 def test_network_values_are_checked_like_hetzner(api):
@@ -172,7 +175,7 @@ def test_network_values_are_checked_like_hetzner(api):
     # another base address
     assert act("change_ip_range", ip_range="10.1.0.0/15").status_code == 422
     assert act("change_ip_range", ip_range="10.0.0.0/15").status_code == 201
-    assert ("route-flush", str(network["id"])) in api.sh.calls  # the table is set anew
+    assert ("flush-routes", str(network["id"])) in api.sh.calls  # the table is set anew
 
 
 def test_deleting_a_network_detaches_its_servers(api):
@@ -200,7 +203,7 @@ def test_deleting_a_network_detaches_its_servers(api):
     )
     assert api.delete(f"/v1/networks/{network['id']}").status_code == 204
     assert api.get(f"/v1/servers/{server['id']}").json()["server"]["private_net"] == []
-    assert ("tap-down", "prv1x1") in api.sh.calls
+    assert ("tear-down-tap", "prv1x1") in api.sh.calls
 
 
 def test_overlapping_networks_on_one_server_are_refused_and_members_listed(api):
@@ -261,7 +264,7 @@ def test_alias_ips_are_checked_and_reserved(api):
     )
     server_b = create_server(api, "b", networks=[network["id"]])["server"]
     assert server_b["private_net"][0]["ip"] == "10.0.1.3"  # 10.0.1.2 is a's alias
-    tap_ups = [c for c in api.sh.calls if c[:2] == ("private-tap-up", "prv1x1")]
+    tap_ups = [c for c in api.sh.calls if c[:2] == ("set-up-private-tap", "prv1x1")]
     assert tap_ups[-1][-1] == "10.0.1.2"  # routed to a
 
 
@@ -281,7 +284,7 @@ def test_failed_attach_takes_its_nic_back(api):
         },
     ).json()["network"]
     server = create_server(api, "a")["server"]
-    api.sh.fail.add("nic-add")
+    api.sh.fail.add("add-nic")
     action = api.post(
         f"/v1/servers/{server['id']}/actions/attach_to_network",
         json={"network": network["id"]},
@@ -355,10 +358,10 @@ def test_a_new_network_does_not_take_an_address_in_use(api):
     assert response.status_code == 422
     api.sh.run = (
         lambda run: (
-            lambda *a, **k: "10.0.0.1\n" if a[0] == "local-addrs" else run(*a, **k)
+            lambda *a, **k: "10.0.0.1\n" if a[0] == "list-local-addrs" else run(*a, **k)
         )
     )(api.sh.run)
-    api.lab.fabric._local_addresses_cache = None
+    api.lab.fabric.network._local_addresses_cache = None
     # n's gateway: shared, fine
     response = api.post("/v1/networks", json={"name": "o", "ip_range": "10.0.0.0/16"})
     assert response.status_code == 201, response.text
@@ -435,7 +438,7 @@ def test_network_routes_go_to_the_gateway_server(api, tmp_path):
         ).json()["action"],
     )
     assert (
-        "route-via",
+        "set-route-via",
         "10.100.0.0/24",
         "10.0.1.1",
         "prv1x1",
@@ -446,7 +449,7 @@ def test_network_routes_go_to_the_gateway_server(api, tmp_path):
         f"/v1/networks/{network['id']}/actions/delete_route",
         json={"destination": "10.100.0.0/24", "gateway": "10.0.1.1"},
     )
-    assert ("route-del", "10.100.0.0/24", str(network["id"])) in api.sh.calls
+    assert ("delete-route", "10.100.0.0/24", str(network["id"])) in api.sh.calls
 
 
 def test_private_networks_are_isolated_from_each_other(api):
@@ -485,7 +488,7 @@ def test_a_failed_detach_leaves_the_network_with_the_nics_not_yet_detached(
     run = api.sh.run
 
     def tap_down_fails_for_b(*args, **kwargs):
-        if args == ("tap-down", "prv2x1"):
+        if args == ("tear-down-tap", "prv2x1"):
             raise RuntimeError("tap-down failed")
         return run(*args, **kwargs)
 
@@ -506,3 +509,28 @@ def test_a_failed_detach_leaves_the_network_with_the_nics_not_yet_detached(
     monkeypatch.setattr(api.sh, "run", run)
     assert api.delete(f"/v1/networks/{nid}").status_code == 204
     assert servers[second["id"]]["_lab"]["nics"] == []
+
+
+def test_a_network_with_a_busy_member_is_not_deleted_and_flags_come_off(api):
+    network = create_network(api, "10.0.1.0/24")
+    server = create_server(api, "a", networks=[network["id"]])["server"]
+    record = api.lab.state["servers"][server["id"]]
+    api.lab.claim(record, "locked", "locked")  # an action runs on the member
+    response = api.delete(f"/v1/networks/{network['id']}")
+    assert response.status_code == 423
+    assert "_deleting" not in api.lab.state["networks"][network["id"]]
+    assert record["locked"] is True  # still the other action's
+
+
+def test_a_failed_detach_keeps_the_network_and_frees_its_servers(api, monkeypatch):
+    network = create_network(api, "10.0.1.0/24")
+    server = create_server(api, "a", networks=[network["id"]])["server"]
+
+    def failing_detach(*_):
+        raise RuntimeError("tear-down-tap failed")
+
+    monkeypatch.setattr(api.lab.fabric.network, "detach_nic", failing_detach)
+    with pytest.raises(RuntimeError):
+        networks.delete_network(api.lab, network["id"])
+    assert "_deleting" not in api.lab.state["networks"][network["id"]]
+    assert api.lab.state["servers"][server["id"]]["locked"] is False

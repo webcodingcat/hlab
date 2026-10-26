@@ -42,8 +42,8 @@ log = logging.getLogger(__name__)
 def set_up(cfg: dict) -> Lab:
     """Prepare the container and return the lab: state, fabric, network, images."""
     (config.ROOT / "vm").mkdir(parents=True, exist_ok=True)
-    # this process starts with the container: no VM of a former run lives, and their
-    # PIDs may belong to new processes now
+    # this process starts with the container: no VM of an earlier run is alive, and
+    # their PIDs may belong to other processes now
     for pid_file in config.ROOT.glob("vm/*/qemu.pid"):
         pid_file.unlink(missing_ok=True)
     key = config.ROOT / "id_ed25519"
@@ -51,11 +51,11 @@ def set_up(cfg: dict) -> Lab:
         command = ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "hlab"]
         subprocess.run([*command, "-f", str(key)], check=True)
     shell = Shell()
-    shell.run("net-init")
+    shell.run("init-net")
     state = State(config.ROOT / "state.json")
     fabric = Fabric(cfg, state, config.ROOT, shell)
-    fabric.write_dns()
-    fabric.write_dhcp()
+    fabric.network.write_dns()
+    fabric.network.write_dhcp()
     lab = Lab(cfg, state, fabric)
     load_images(lab)
     return lab
@@ -119,9 +119,9 @@ def listeners() -> list[socket.socket]:
 
 async def run(lab: Lab) -> None:
     """Bring the lab back, then serve until stopped (with the background jobs)."""
-    # actions started from worker threads run on this loop (the schedulers too);
-    # blocking work runs in threads, and downloads waiting for each other must not
-    # starve the rest
+    # actions started from worker threads run on this loop (the schedulers too).
+    # Blocking work runs in threads; downloads that wait for each other must not
+    # leave the rest without threads.
     lab.loop = asyncio.get_running_loop()
     lab.loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(64))
     await restore_lab(lab)
@@ -139,9 +139,14 @@ async def run(lab: Lab) -> None:
             flush=True,
         )
 
-    lab.loop.create_task(announce_ready())
-    lab.loop.create_task(storagebox.snapshots.snapshot_plan_scheduler(lab))
-    lab.loop.create_task(lab.vm_watcher())
+    lab.jobs.update(
+        lab.loop.create_task(job)
+        for job in (
+            announce_ready(),
+            storagebox.snapshots.snapshot_plan_scheduler(lab),
+            lab.vm_watcher(),
+        )
+    )
     await server.serve(sockets=listeners())
 
 
@@ -153,14 +158,14 @@ def shut_down(lab: Lab) -> None:
     fabric = lab.fabric
     with lab.state.lock:
         servers = list(lab.state["servers"].values())
-    running = [s for s in servers if fabric.vm_alive(s)]
+    running = [s for s in servers if fabric.vms.is_alive(s)]
     for server in running:
         try:
-            fabric.press_power_button(server)
+            fabric.vms.press_power_button(server)
         except RuntimeError:  # its QEMU does not answer: it is killed with the rest
             pass
     for _ in range(15):
-        if not any(fabric.vm_alive(s) for s in running):
+        if not any(fabric.vms.is_alive(s) for s in running):
             break
         time.sleep(1)
     fabric.box.stop_box()

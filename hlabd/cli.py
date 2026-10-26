@@ -40,7 +40,7 @@ def call(method: str, path: str, body: dict | None = None) -> dict:
     except urllib.error.HTTPError as error:
         try:
             message = json.loads(error.read())["error"]["message"]
-        # not the lab's JSON (a proxy's page, a cut-off answer): the HTTP error says it
+        # not the lab's JSON (a proxy's page, a cut-off answer): report the HTTP error
         except Exception:  # noqa: BLE001
             message = str(error)
         sys.exit(f"hlab: {message}")
@@ -103,7 +103,7 @@ def status(as_json: bool) -> None:
 
 
 def server_ip(name: str) -> str:
-    """Return the public IPv4 of a server, or its IPv6 (::1 of its /64) without one."""
+    """Return a server's public IPv4, or its IPv6 (::1 of its /64) if it has none."""
     for s in call("GET", "/status")["servers"]:
         if s["name"] == name:
             if s["public_ip"]:
@@ -117,7 +117,7 @@ def server_ip(name: str) -> str:
 def ssh(name: str, cmd: list[str]) -> None:
     """SSH into a server as root, from the admin address.
 
-    The lab's own access passes Cloud firewalls, like the console would. The client
+    Like Hetzner's console, the lab's own access passes Cloud firewalls. The client
     runs as nobody, not as root: it talks to guests, which are not trusted, and the
     container is privileged.
     """

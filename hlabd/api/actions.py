@@ -1,7 +1,7 @@
-"""Actions: what the API returns for every change, read back by clients while they wait.
+"""Actions: the API returns one for every change, and clients poll it while they wait.
 
-Listed per resource kind or resource; the project-wide list only by ID (Hetzner,
-30 January 2025).
+Actions are listed per resource type or per resource. The project-wide list returns
+actions by ID only (Hetzner changed this on 30 January 2025).
 """
 
 from fastapi import FastAPI, Request
@@ -76,7 +76,7 @@ def action_or_404(
 def add_routes(app: FastAPI, lab: Lab) -> None:
     """Add the action routes to the app.
 
-    They go in before the resource routes: those would take "actions" for an ID.
+    They must come before the resource routes, which would read "actions" as an ID.
     """
     state = lab.state
 

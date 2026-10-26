@@ -1,29 +1,49 @@
 """Faults and latency.
 
 Faults are cuts, isolation, blocked services and anti-spoofing sources in nftables sets;
-latency is tc netem between locations, and netem faults. Part of Fabric (see
-__init__.py).
+latency is tc netem between locations, and netem faults. A part of the fabric (see
+__init__.py); it asks the VMs (vm.py) whether a server runs.
 """
 
 import logging
+import threading
+from pathlib import Path
 
 from .. import config
 from ..records import Server
-from ..state import client_by_name, primary_address_of
-from .base import FabricBase
-from .network import link_local, prefix, route_table
+from ..state import State, client_by_name, primary_address_of
+from .addresses import link_local, prefix, route_table
+from .shell import Shell
+from .vm import VMs
 
 log = logging.getLogger(__name__)
 
 
-class Faults(FabricBase):
-    """Fabric mixin for faults and latency.
+class Faults:
+    """Faults and latency, in nftables sets and tc qdiscs.
 
     Faults are kept in the state (`faults`, `netem`) by the API, which also drops them
     with a deleted server or client (api/faults.py). A fault points at servers by ID
     (s:<id>) and at clients by name (c:<name>), so a renamed server keeps its faults
     and a new one under an old name does not inherit them.
     """
+
+    def __init__(
+        self,
+        cfg: dict,
+        state: State,
+        root: Path,
+        shell: Shell,
+        net_lock: threading.RLock,
+        vms: VMs,
+    ):
+        """Store what the faults use; `net_lock` is the fabric's lock (see Fabric)."""
+        self.cfg = cfg
+        self.state = state
+        self.root = root
+        self.shell = shell
+        self.net_lock = net_lock
+        self.vms = vms
 
     def target_ifaces(self, ref: str, which: str = "all") -> list[str]:
         """Return the interfaces of what a fault points at: a server or a client.
@@ -55,6 +75,7 @@ class Faults(FabricBase):
         These are the faults, the cloud network members, and the sources each public tap
         and client may send from (anti-spoofing). The caller holds the state's lock.
         """
+        self.state.lock.assert_held()
         sets: dict[str, list[str]] = {
             name: []
             for name in (
@@ -117,12 +138,12 @@ class Faults(FabricBase):
                 continue  # the server is gone; the fault stays listed until cleared
         return sets
 
-    def apply_faults(self) -> None:
+    def apply(self) -> None:
         """Re-create the nftables set elements, all in one nft transaction.
 
-        Interfaces come and go with power cycles. One transaction means no moment
-        without anti-spoofing sources (which would drop every packet) or with faults
-        lifted.
+        Interfaces come and go with power cycles. With one transaction there is no
+        moment without anti-spoofing sources (which would drop every packet) and no
+        moment without the faults.
         """
         with self.net_lock:
             with self.state.lock:
@@ -146,13 +167,13 @@ class Faults(FabricBase):
             ]
             script = self.root / "faults.nft"
             script.write_text("\n".join(lines) + "\n")
-            self.sh.run("nft", "-f", str(script))
+            self.shell.run("nft", "-f", str(script))
 
     def source_prefixes(self, server: Server, network: int | None) -> list[str]:
         """Return the source prefixes of a server's packets on one of its taps.
 
         On a public tap (network None): its public IPv4, its IPv6 /64, its Floating
-        IPs. On a tap of a cloud network: its private IP there – networks may overlap.
+        IPs. On a tap of a cloud network: its private IP there (networks may overlap).
         """
         if network is not None:
             with self.state.lock:
@@ -185,7 +206,7 @@ class Faults(FabricBase):
                 servers = list(self.state["servers"].values())
                 clients = list(self.state["clients"].values())
             for server in servers:
-                if not self.vm_alive(server):
+                if not self.vms.is_alive(server):
                     continue
                 server_lab = server["_lab"]
                 taps: list[tuple[str, int | None]] = [(server_lab["tap"], None)]
@@ -199,7 +220,7 @@ class Faults(FabricBase):
                         log.warning("latency on %s: %s", tap, error)
             # an Internet client's link: only a netem fault
             for client in clients:
-                if self.sh.ok("link-exists", client["veth"]):
+                if self.shell.ok("link-exists", client["veth"]):
                     self.apply_netem(client["veth"])
 
     def apply_netem(self, link: str) -> bool:
@@ -222,7 +243,7 @@ class Faults(FabricBase):
         They get its netem fault, or else a delay band per round-trip time to the other
         servers' locations.
         """
-        if not self.sh.ok("link-exists", tap):
+        if not self.shell.ok("link-exists", tap):
             # a NIC being attached right now: its tap gets the rules when it comes up
             return
         if self.apply_netem(tap):
@@ -262,4 +283,4 @@ class Faults(FabricBase):
 
     def tc(self, command: str, check: bool = True) -> None:
         """Run a tc command, given as one line (no argument contains spaces)."""
-        self.sh.run("tc", *command.split(), check=check)
+        self.shell.run("tc", *command.split(), check=check)

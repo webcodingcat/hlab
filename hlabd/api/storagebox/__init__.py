@@ -26,7 +26,7 @@ def create_app(lab: Lab) -> FastAPI:
         openapi_url="/_openapi.json",
     )
     install(app, lab, "hetzner.json", "/v1")
-    # first: /v1/storage_boxes/actions must not be taken for /v1/storage_boxes/{id}
+    # first, so that /v1/storage_boxes/actions is not read as /v1/storage_boxes/{id}
     boxes.add_routes(app, lab)
     subaccounts.add_routes(app, lab)
     snapshots.add_routes(app, lab)
@@ -36,9 +36,10 @@ def create_app(lab: Lab) -> FastAPI:
 def restore(lab: Lab) -> None:
     """Set up the accounts of all boxes again after a lab start.
 
-    Their roots live in /run. Passwords stay as set (shadow is in the container, so they
-    are set again from the state). A box that cannot be set up again is skipped and
-    logged; the lab comes up anyway. Snapshots whose copy a restart cut off are removed.
+    Their roots are in /run, which a restart empties. Passwords are set again from the
+    state, because /etc/shadow belongs to the container. A box that cannot be set up
+    again is skipped and logged; the lab starts anyway. Snapshots whose copy a restart
+    cut off are removed.
     """
     state, fabric = lab.state, lab.fabric
     with state.lock:  # copies: the loops below run scripts
@@ -48,10 +49,9 @@ def restore(lab: Lab) -> None:
         box = state["storage_boxes"].get(s["box"])
         if box:
             fabric.box.remove_tree(snap_dir(box, s["name"]), check=False)
-        with state.lock:
+        with state.change():
             del state["box_snapshots"][s["id"]]
-    fabric.box.remove_tree(f"{BOX}/snapshots/.work", check=False)  # copies cut off
-    state.save()
+    fabric.box.remove_tree(f"{BOX}/snapshots/.work", check=False)  # unfinished copies
     for box in boxes:
         try:
             box_account(lab, box, box.get("_password"))

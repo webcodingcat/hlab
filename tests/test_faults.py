@@ -47,7 +47,7 @@ def test_netem_takes_only_text(api):
     )
     assert set(api.lab.state.data["netem"].values()) == {"delay 50ms"}
     # the stored text goes into a tc command line as it is: applying it must work
-    api.lab.fabric.apply_latency()
+    api.lab.fabric.faults.apply_latency()
 
 
 def test_latency_between_locations_is_split_over_both_sides(api):
