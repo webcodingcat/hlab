@@ -36,8 +36,7 @@ bin/hlab -c examples/hlab.yaml itest     # live tests with VMs (resets the lab, 
 tests/tofu-smoke/run.sh                # OpenTofu with the hcloud provider against a running lab
 ```
 
-On Windows PowerShell use `.\bin\hlab.ps1` with the same arguments (allow scripts once with
-`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`).
+On Windows run `bin/hlab` from Git Bash or WSL.
 
 The OS images are those listed in `hlab.yaml` (URL and checksum file); the lab loads them when it starts. Servers
 come into being through the API, for example with OpenTofu:

@@ -6,6 +6,7 @@ nothing is checked.
 """
 
 import json
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -14,7 +15,9 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import best_match
 from jsonschema.validators import extend
 
-SPEC_DIR = Path("/opt/hlab/spec")
+# the image's copy; the unit tests outside Docker point HLAB_SPEC_DIR (or
+# tests/conftest.py) at the one tools/fetch_specs.py downloads
+SPEC_DIR = Path(os.environ.get("HLAB_SPEC_DIR", "/opt/hlab/spec"))
 
 # keywords that still check a null value; all others skip it. Keywords that combine
 # schemas (a "oneOf" of objects) or refer to a schema ("$ref", "$dynamicRef") pass

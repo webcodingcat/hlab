@@ -14,8 +14,8 @@ Everything in this repo is English. Read these before changing code:
 
 ## Commands
 
-All of them run from the host through Docker (Linux, macOS, Git Bash; `bin/hlab.ps1` on
-Windows PowerShell). Python, pytest and the linters are not needed on the host.
+All of them run from the host through Docker (Linux, macOS; Git Bash or WSL on Windows).
+Python, pytest and the linters are not needed on the host.
 
 | Command | What it does |
 |---|---|
@@ -26,8 +26,9 @@ Windows PowerShell). Python, pytest and the linters are not needed on the host.
 | `bin/hlab -c examples/hlab.yaml itest` | live tests with VMs, resets the lab first (~15 min) |
 | `tests/tofu-smoke/run.sh demo` | OpenTofu + hcloud provider against the running lab |
 
-The unit tests need the Hetzner OpenAPI specs, which only the images have, and
-`--cap-add NET_ADMIN` for the full nftables check; always run them through `bin/hlab test`.
+`bin/hlab test` is the reference: it runs every unit test, the full nftables check
+(`--cap-add NET_ADMIN`) included. Outside Docker they run from a venv with the specs of
+`tools/fetch_specs.py` (DEVELOPING.md, Tests); tests whose tools are missing skip.
 
 ## Rules that are easy to break
 
@@ -46,7 +47,8 @@ The unit tests need the Hetzner OpenAPI specs, which only the images have, and
   mypy catches a mistyped field.
 - **Hetzner behaviour first:** answers, status codes and error codes as the real API (and
   its changelog) has them; the spec check in the unit tests is the safety net.
-- `bin/hlab` and `bin/hlab.ps1` offer the same commands; change both together.
+- A command `bin/hlab` dispatches is named in its usage comment, and back
+  (`tests/test_wrappers.py`).
 
 ## Working on the repo
 

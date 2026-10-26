@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Style and type checks (STYLE.md) inside the development image, with the repository
-# mounted at /src. Called by bin/hlab and bin/hlab.ps1:
+# mounted at /src. Called by bin/hlab:
 #   lint.sh check   report every deviation, fail if there is one
 #   lint.sh fix     apply what the formatters can fix
 set -euo pipefail

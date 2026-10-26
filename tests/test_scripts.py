@@ -44,6 +44,15 @@ LIB_SH = SCRIPTS / "lib.sh"
 # an argument count without an upper bound
 MANY = 1000
 
+# the scripts run in bash; lib.sh reads /proc/<pid>/comm
+NEEDS_BASH = pytest.mark.skipif(
+    not shutil.which("bash"), reason="bash is not installed"
+)
+NEEDS_BASH_AND_PROC = pytest.mark.skipif(
+    not shutil.which("bash") or not Path("/proc/self/comm").exists(),
+    reason="lib.sh needs bash and /proc (Linux)",
+)
+
 
 def write_stub(bin_dir: Path, name: str, body: str) -> None:
     """Write an executable bash script `name` into bin_dir."""
@@ -202,6 +211,7 @@ def test_every_verb_hlabd_calls_exists_with_its_argument_count(
         assert count >= least, f"{where}: {verb} takes at least {least} arguments"
 
 
+@NEEDS_BASH
 def test_an_unknown_verb_fails_with_status_2():
     env = {**os.environ, **config.script_env()}
     process = subprocess.run(
@@ -348,6 +358,7 @@ def rulesets(api, tmp_path) -> dict[str, str]:
     }
 
 
+@NEEDS_BASH
 def test_the_rendered_rulesets_fill_what_they_should(rulesets):
     assert 'iifname "eth0" drop' in rulesets["init"]
     rules = [x for x in rulesets["init"].splitlines() if not x.lstrip().startswith("#")]
@@ -368,6 +379,7 @@ def test_the_rendered_rulesets_fill_what_they_should(rulesets):
     assert "jump out_" in rulesets["firewall"]
 
 
+@NEEDS_BASH
 def test_faults_fill_only_the_sets_hlab_sh_declares(rulesets):
     declared = set(re.findall(r"^\s+(?:set|map) (\w+) \{", rulesets["init"], re.M))
     used = set(
@@ -382,6 +394,7 @@ def test_faults_fill_only_the_sets_hlab_sh_declares(rulesets):
 
 @pytest.mark.skipif(not NFT, reason="nft is not installed")
 @pytest.mark.parametrize("name", ["init", "faults", "firewall"])
+@NEEDS_BASH
 def test_the_rulesets_parse(rulesets, name, tmp_path):
     assert parse_errors(rulesets[name], tmp_path / "check.nft") == ""
 
@@ -397,6 +410,7 @@ def test_a_misspelt_rule_fails_the_parse_check(tmp_path):
     reason="nft -c needs CAP_NET_ADMIN (e.g. docker run --cap-add NET_ADMIN)",
 )
 @pytest.mark.parametrize("name", ["init", "faults", "firewall"])
+@NEEDS_BASH
 def test_the_rulesets_pass_nfts_full_check(rulesets, name, tmp_path):
     process = nft_check(rulesets[name], tmp_path / "check.nft")
     assert process.returncode == 0, process.stderr
@@ -666,6 +680,7 @@ BOX_SHELL_CASES = [
     "command, port, client, settings, expected",
     [pytest.param(*case[1:], id=case[0]) for case in BOX_SHELL_CASES],
 )
+@NEEDS_BASH
 def test_box_shell_allows_and_refuses_like_the_storage_box(
     box_shell, command, port, client, settings, expected
 ):
@@ -682,6 +697,7 @@ def test_box_shell_allows_and_refuses_like_the_storage_box(
         assert calls == ""
 
 
+@NEEDS_BASH
 def test_box_shell_df_reports_the_usage_against_the_quota(box_shell):
     status, stdout, _, _ = box_shell("df -h", quota=100000)
     assert status == 0
@@ -712,17 +728,20 @@ def sleeper(tmp_path):
     process.wait()
 
 
+@NEEDS_BASH_AND_PROC
 def test_is_alive_while_the_named_process_runs(sleeper):
     _, pid_file = sleeper
     assert lib("is_alive", str(pid_file), "sleep") == 0
     assert lib("is_alive", str(pid_file), "sle") == 0
 
 
+@NEEDS_BASH_AND_PROC
 def test_is_alive_fails_for_another_program_under_that_pid(sleeper):
     _, pid_file = sleeper
     assert lib("is_alive", str(pid_file), "qemu-system") == 1
 
 
+@NEEDS_BASH_AND_PROC
 def test_is_alive_fails_without_a_pid_file_or_process(tmp_path):
     assert lib("is_alive", str(tmp_path / "missing.pid"), "sleep") == 1
     process = subprocess.Popen(["true"])
@@ -732,6 +751,7 @@ def test_is_alive_fails_without_a_pid_file_or_process(tmp_path):
     assert lib("is_alive", str(pid_file), "true") == 1
 
 
+@NEEDS_BASH_AND_PROC
 def test_stop_pid_terminates_the_process_and_removes_the_file(sleeper):
     process, pid_file = sleeper
     assert lib("stop_pid", str(pid_file), "sleep") == 0
@@ -739,12 +759,14 @@ def test_stop_pid_terminates_the_process_and_removes_the_file(sleeper):
     assert not pid_file.exists()
 
 
+@NEEDS_BASH_AND_PROC
 def test_stop_pid_sends_the_signal_it_is_given(sleeper):
     process, pid_file = sleeper
     assert lib("stop_pid", str(pid_file), "sleep", "KILL") == 0
     assert process.wait(timeout=5) == -9
 
 
+@NEEDS_BASH_AND_PROC
 def test_stop_pid_spares_another_program_under_that_pid(sleeper):
     process, pid_file = sleeper
     assert lib("stop_pid", str(pid_file), "qemu-system") == 0
@@ -752,5 +774,6 @@ def test_stop_pid_spares_another_program_under_that_pid(sleeper):
     assert not pid_file.exists()
 
 
+@NEEDS_BASH_AND_PROC
 def test_stop_pid_without_a_pid_file_succeeds(tmp_path):
     assert lib("stop_pid", str(tmp_path / "missing.pid"), "sleep") == 0

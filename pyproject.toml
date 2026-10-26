@@ -1,5 +1,26 @@
-# Development tools only (the lab itself needs no packaging): ruff checks PEP 8 and PEP 257,
-# mypy the types.
+# The lab image installs the runtime from Debian's packages (Dockerfile), not from here.
+# This describes the package for the unit tests outside Docker (DEVELOPING.md, Tests):
+# `pip install -e '.[dev]'` in a venv; ruff checks PEP 8 and PEP 257, mypy the types.
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hlabd"
+version = "0"
+description = "HLab: a local stand-in for Hetzner Cloud"
+requires-python = ">=3.13"
+# the Dockerfile's python3-* packages that hlabd imports
+dependencies = ["fastapi", "uvicorn", "pyyaml", "jsonschema"]
+
+[project.optional-dependencies]
+# pytest, httpx (FastAPI's test client, itests) and paramiko (itests) come from Debian in
+# the dev image; ruff and mypy are pinned as in its dev stage: a new release may report more
+dev = ["pytest", "httpx", "paramiko", "ruff==0.17.2", "mypy==2.4.0"]
+
+[tool.setuptools.packages.find]
+include = ["hlabd*"]
+
 [tool.ruff]
 target-version = "py313"
 
@@ -30,3 +51,7 @@ warn_redundant_casts = true
 # no type stubs in the image (Debian's packages)
 module = ["yaml", "jsonschema.*"]
 ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+# the unit tests; the live tests (itests/) run inside the lab (`bin/hlab itest`)
+testpaths = ["tests"]

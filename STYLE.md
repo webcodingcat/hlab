@@ -8,7 +8,6 @@ Official standards first, checked by `bin/hlab lint` (also part of `bin/hlab tes
 | Python | [PEP 8](https://peps.python.org/pep-0008/), [PEP 257](https://peps.python.org/pep-0257/) | `ruff format`, `ruff check` (`pyproject.toml`) |
 | Python types | [typing](https://typing.python.org/) | `mypy hlabd` (`pyproject.toml`) |
 | Bash | [Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html) | `shfmt -i 2 -ci -bn`, `shellcheck` |
-| PowerShell | [PowerShell Practice and Style](https://poshcode.gitbook.io/powershell-practice-and-style/), approved verbs | by review |
 | Terraform | [OpenTofu/Terraform style conventions](https://developer.hashicorp.com/terraform/language/style) | `tofu fmt` |
 | YAML | yamllint defaults | `yamllint` (`.yamllint`) |
 | Commits | [Git's conventions](https://git-scm.com/docs/SubmittingPatches#describe-changes): imperative subject (~50 characters), blank line, why | by review |
@@ -25,8 +24,7 @@ Official standards first, checked by `bin/hlab lint` (also part of `bin/hlab tes
   (Python and shell) may be short lowercase fragments (a deliberate deviation
   from PEP 8), one style per comment.
 - Wrappers (`bin/`): functions may read the script's read-only constants
-  (image names, the repository path) instead of taking them as parameters, in
-  Bash and PowerShell alike; no `SupportsShouldProcess` in this developer tool.
+  (image names, the repository path) instead of taking them as parameters.
 - Layout of `hlabd/`: `api/` decides (HTTP, checks, state, actions) and never
   runs scripts; `fabric/` carries out and knows no HTTP; `lab.py` is the core.
   API modules are module-level functions taking `lab` first, with thin routes;

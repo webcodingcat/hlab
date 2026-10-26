@@ -1,6 +1,6 @@
 """Checks of API responses against Hetzner's OpenAPI specifications.
 
-The specifications are fetched into the image at build time and loaded through
+The specifications (the image's, or those of tools/fetch_specs.py) are loaded through
 hlabd.api.spec, so the tests route requests exactly like the lab does.
 """
 
@@ -12,7 +12,7 @@ SPECS = ("cloud", "hetzner")
 
 
 def missing() -> list[str]:
-    """Return the specifications that are not in the image (none in `bin/hlab test`)."""
+    """Return the specifications that are not in spec.SPEC_DIR (none in the image)."""
     return [which for which in SPECS if not spec.load(f"{which}.json").ops]
 
 

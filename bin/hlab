@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The lab from the Docker host (Linux, macOS, Git Bash on Windows):
+# The lab from the Docker host (Linux, macOS; Git Bash or WSL on Windows):
 #   bin/hlab [-c hlab.yaml] up         build the image (cached), start the lab
 #                                      container hlab-<name>
 #   bin/hlab [-c hlab.yaml] down       stop it (VM disks and state stay in the
