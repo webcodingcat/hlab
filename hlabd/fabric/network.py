@@ -120,9 +120,9 @@ class Network:
         self._local_addresses_cache: tuple[float, set[str]] | None = None
 
     def taps_up(self, taps: ServerTaps) -> list[str]:
-        """Bring up the server's public tap and the taps of its cloud networks.
+        """Bring up the server's taps with their routes; return the NICs for QEMU.
 
-        It also sets up their routes. Return the NICs for QEMU (tap=mac).
+        These are the public tap and the taps of its cloud networks, as tap=mac.
         """
         tap, index = taps.public.tap, taps.public.index
         self.shell.run("set-up-public-tap", tap, *([taps.ipv4] if taps.ipv4 else []))
@@ -137,7 +137,7 @@ class Network:
 
     def taps_down(self, taps: list[str]) -> None:
         """Take a server's taps down (their dnsmasq instances stop with them)."""
-        # taps change only under the lock, so tc and nft find the taps they checked
+        # taps are removed only under the lock: tc and nft find the taps they checked
         with self.net_lock:
             for tap in taps:
                 self.shell.run("tear-down-tap", tap)
@@ -194,7 +194,7 @@ class Network:
 
     def detach_nic(self, sid: int, tap: str) -> None:
         """Detach a NIC (its tap) from a server and take its tap down."""
-        # taps change only under the lock, so tc and nft find the taps they checked
+        # taps are removed only under the lock: tc and nft find the taps they checked
         with self.net_lock:
             if self.vms.is_alive(sid):
                 self.shell.run(
@@ -257,11 +257,11 @@ class Network:
     def apply_routes(
         self, old_routes: list[list[str]], wanted: list[WantedRoute]
     ) -> list[list[str]]:
-        """Put the routes of cloud networks in place; return [destination, table] each.
+        """Replace the routes of cloud networks; return them as [destination, table].
 
-        First it removes the routes added last time (`old_routes`, as this method
-        returned them). Each route goes, in the network's routing table, to the tap of
-        the first running server that holds the gateway IP.
+        `old_routes` are what this method returned last time; they are removed. Each
+        wanted route goes, in its network's routing table, to the tap of the first
+        running server that holds the gateway IP.
         """
         with self.net_lock:
             for dest, table in old_routes:

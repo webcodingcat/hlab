@@ -78,10 +78,10 @@ async def route_floating_ip(lab: Lab, ip: str, server: Server | None) -> None:
 
 
 async def start_vm(lab: Lab, server: Server) -> None:
-    """Start the server's VM with its taps, DHCP and volumes.
+    """Start the server's VM, with everything the system needs for it.
 
-    Then it applies the routes, faults and latency that involve the server. If the VM
-    does not start, its taps are taken down again.
+    That is its taps, DHCP, boot volumes, and the routes, faults and latency that
+    involve the server. A VM that fails to start leaves no taps behind.
     """
     state, fabric = lab.state, lab.fabric
     if await lab.blocking(fabric.vms.is_alive, server["id"]):
@@ -156,10 +156,10 @@ async def nic_up(lab: Lab, nic: Nic) -> None:
 
 
 async def attach_nic(lab: Lab, server: Server, nic: Nic) -> None:
-    """Attach a NIC to a server, hot-plugged if its VM runs.
+    """Put a NIC that is already in the state in place: hot-plugged if the VM runs.
 
-    The NIC is already in the state. Afterwards its faults, routes and latency are
-    applied.
+    A VM that is off gets the NIC at its next start. Either way, the faults, routes
+    and latency take the new NIC into account.
     """
     state, fabric = lab.state, lab.fabric
     if await lab.blocking(fabric.vms.is_alive, server["id"]):
@@ -192,10 +192,9 @@ async def refresh_cloud_network(lab: Lab, nid: int) -> None:
 
 
 async def drop_cloud_network(lab: Lab, nid: int) -> None:
-    """Clean up after a deleted network.
+    """Remove a deleted network from the system: its routing table and its routes.
 
-    This flushes the network's routing table and its routes. Then it updates DHCP, the
-    fault sets and the routes of the other networks.
+    DHCP, the fault sets and the other networks' routes are brought up to date.
     """
     await lab.blocking(lab.fabric.network.drop_cloud_network, nid)
     await write_dhcp(lab)

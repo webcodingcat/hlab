@@ -1,8 +1,9 @@
 """The record types of the state, for the type checker.
 
 There is one TypedDict per kind of resource, with the meaning of each field; state.py
-keeps the records by kind and ID. Fields that start with `_` are used only by the lab,
-and the API never shows them. lab.py describes the action flags among them.
+keeps the records by kind and ID. Fields that start with `_` are used only by the lab;
+the API never shows them as they are (a server's `_locked` appears as `locked`).
+lab.py describes the action flags among them.
 `NotRequired` fields are missing until something sets them.
 
 The faults (/_lab/faults) are typed here too. state.py describes the other records

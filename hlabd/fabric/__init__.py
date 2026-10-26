@@ -1,4 +1,8 @@
-"""The work on the system, all of it done through scripts/hlab.sh.
+"""The work on the system: VMs, taps, routes, nftables, tc, DHCP, the Storage Box.
+
+Most of it runs as verbs of scripts/hlab.sh. The lab's own files under its directory
+are handled here in Python: VM directories, console logs, volume files, and the files
+a verb then loads (nft scripts, dnsmasq and DNS configuration).
 
 The fabric gets plain data (mostly the dataclasses of its parts, computed by
 api/desired.py) and never sees the state; DEVELOPING.md (The pieces, Where code runs)
@@ -43,11 +47,12 @@ class Fabric:
         self.root = root
         self.lab_key = root / "id_ed25519"  # the lab's SSH key
         self.shell = shell or Shell()
-        # Taps, tc and nft change only while this lock is held. The fabric's methods
-        # run in threads side by side (for example when two servers start), and their
-        # changes must not interleave. A tap that was checked to exist must still be
-        # there when it is configured. Putting the newest picture of the system in
-        # place last is the API's job (`Lab.picture_lock`, api/system.py).
+        # Taps are torn down, and nft, tc and dnsmasq are changed, only while this
+        # lock is held. The fabric's methods run in threads side by side (for example
+        # when two servers start), and these changes must not interleave. A tap that
+        # was checked to exist must still be there when it is configured. Putting the
+        # newest picture of the system in place last is the API's job
+        # (`Lab.picture_lock`, api/system.py).
         self.net_lock = threading.RLock()
         self.vms = VMs(cfg, root, self.shell)
         self.volumes = Volumes(root, self.shell, self.vms)

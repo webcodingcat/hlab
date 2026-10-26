@@ -1,7 +1,8 @@
 """Cloud firewalls: the API, with the checks of their rules.
 
-fabric/firewall.py turns the rules into nftables, with Hetzner's semantics. Every
-change here rewrites the nftables rules.
+fabric/firewall.py turns the rules into nftables, with Hetzner's semantics. Creating a
+firewall and every firewall action rewrite the nftables rules; a rename or a delete
+changes no rule (only a firewall that applies to nothing can be deleted).
 """
 
 import ipaddress

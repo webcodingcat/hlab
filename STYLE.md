@@ -32,8 +32,10 @@ Official standards first, checked by `bin/hlab lint` (also part of `bin/hlab tes
   `<thing>_or_404()` helper; JSON shapes are `<thing>_json(lab, thing)`.
 - Types where they help reading: `lab: Lab`, `state: State`, and the records of
   `records.py` (`server: Server`, `nic: Nic`, ...), so mypy catches a mistyped field;
-  code that treats every kind alike takes `Record` (or a type variable bound to it),
-  never `Any`; where a field is picked by a variable key, one commented `cast`
-  says why. Annotating everything is not the goal.
+  code that treats every kind of record alike takes `Record` (or a type variable bound
+  to it), never `Any`; only helpers that also take catalogue entries or JSON shapes, such as
+  `filtered` and `sort_items` in `api/web.py`, are typed over `Mapping[str, Any]`;
+  where a field is picked by a variable key, one commented `cast` says why.
+  Annotating everything is not the goal.
 - Tests: one file per feature; test names are sentences; a comment notes where
   a test checks Hetzner's behaviour.

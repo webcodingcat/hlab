@@ -494,10 +494,10 @@ class Lab:
         """Run one action of a resource from its table and return the answer.
 
         The table's function (`async def`) checks the request and returns a `Plan`.
-        Before that, the resource gets `flag` (423 with
-        `busy_message` if the flag is set already). An action whose row says
-        `flag=False` takes no flag. If the plan names another server, that server gets
-        its `_locked` flag too (423 if another action runs on it).
+        While the action runs, the resource holds `flag` (423 with `busy_message` if
+        the flag is set already), unless its row says `flag=False` or no `flag` is
+        given. If the plan names another server, that server holds its `_locked` flag
+        too (423 if another action runs on it).
 
         The flags are held through `holding()`. If the function refuses the request,
         or a flag is set already, they come off when the block ends. If the plan has no

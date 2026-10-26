@@ -68,9 +68,9 @@ async def box_stats(lab: Lab, box: StorageBox) -> dict:
 
 
 async def box_json(lab: Lab, box: StorageBox) -> dict:
-    """Return the API object of a box.
+    """Return the API object of a box, with its disk usage.
 
-    It reads the box's usage from disk first (in threads), then the record.
+    The usage is read (in threads) before the record, so the record is current.
     """
     stats = await box_stats(lab, box)
     ready = box["status"] != "initializing"

@@ -183,11 +183,10 @@ def record_server(
 ) -> Server:
     """Record the new server with its addresses, volumes and firewalls; save.
 
-    This is one change: the checks come first, then the changes. If a check fails,
-    the change block undoes everything (the addresses taken so far included), and
-    nothing is saved. `local_addresses` are
-    the container's own addresses, which no NIC gets. When this returns, the server's
-    `_locked` flag is claimed through `held`.
+    It is one transaction: if a check fails, everything is undone (the addresses taken
+    so far included), and nothing is saved. `local_addresses` are the container's own
+    addresses, which no NIC gets. When this returns, the server's `_locked` flag is
+    claimed through `held`.
     """
     state = lab.state
     with state.change():

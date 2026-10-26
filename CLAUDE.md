@@ -36,10 +36,13 @@ DEVELOPING.md explains each one in the section named in parentheses.
 
 - Action table keys are Hetzner's commands, `ActionSpec` names Hetzner's action names;
   never rename them with the functions (Actions and flags).
-- `api/` decides and never runs scripts; `fabric/` does the work and never sees the
-  state; only `scripts/*.sh` change the system (The pieces, Layers).
+- `api/` decides and reaches the system only through `lab.fabric`, always in a thread
+  (`await lab.blocking(...)`); `fabric/` does the work and never sees the state; while
+  the lab runs, only `fabric/` changes the system: through `scripts/*.sh`, plus the
+  lab's own files under `/hlab` (The pieces, Layers).
 - Only code on the event loop reads or changes the state; blocking work goes through
-  `await lab.blocking(...)` with plain data in and out (Where code runs).
+  `await lab.blocking(...)` with plain data in and out, never the state (Where code
+  runs).
 - Every state change is inside a `with state.change():` block, which never awaits
   (The state).
 - New actions are `ActionSpec` rows run by `lab.act()`; other code holds flags only

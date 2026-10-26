@@ -156,8 +156,9 @@ async def run(lab: Lab) -> None:
 def shut_down(lab: Lab) -> None:
     """Power the guests down like the power button, then stop the Storage Box.
 
-    `docker stop` gives the lab 20 seconds in total. First the last save is written to
-    disk. The loop has ended, but this runs on its thread, which still owns the state.
+    `docker stop` gives the lab 20 seconds in total, so the last save goes to disk
+    before anything else. The loop has ended, but this runs on its thread, which still
+    owns the state.
     """
     fabric = lab.fabric
     lab.state.flush()
