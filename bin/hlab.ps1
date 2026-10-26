@@ -12,6 +12,9 @@
     .\bin\hlab.ps1 [-c hlab.yaml] format     apply what the formatters can fix
     .\bin\hlab.ps1 [-c hlab.yaml] itest [pytest args]
                                              live tests with VMs in the running lab (resets it first)
+    .\bin\hlab.ps1 [-c hlab.yaml] box <arguments>
+                                             the Storage Box inside the lab; "box user <name> <key file>" reads
+                                             the key file here
     .\bin\hlab.ps1 [-c hlab.yaml] <command>  any other command runs inside the lab:
                                              status, env, ssh, fault, client, ...
     The configuration defaults to $env:HLAB_CONFIG or .\hlab.yaml; without a file the lab "demo" runs with
@@ -100,10 +103,23 @@ function Get-LabConfig {
         }
         return $labConfig
     }
-    $nameLine = Select-String -CaseSensitive -LiteralPath $Path -Pattern '^name:\s*["'']?([A-Za-z0-9_-]+)' |
-        Select-Object -First 1
+    # the top-level "name:", plain or quoted, a comment after it allowed. The name becomes part of Docker
+    # names, so other characters stop the wrapper instead of being cut off.
+    $nameLine = Select-String -CaseSensitive -LiteralPath $Path -Pattern '^name\s*:' | Select-Object -First 1
     if ($nameLine) {
-        $labConfig.Name = $nameLine.Matches[0].Groups[1].Value
+        $nameMatch = [regex]::Match($nameLine.Line.TrimEnd("`r"),
+            '^name\s*:\s*(?:"([^"]*)"|''([^'']*)''|(\S*))(?:\s+#.*)?\s*$')
+        # a line that does not match has no valid name
+        $name = '?'
+        if ($nameMatch.Success) {
+            $name = $nameMatch.Groups[1].Value + $nameMatch.Groups[2].Value + $nameMatch.Groups[3].Value
+        }
+        if ($name -cnotmatch '^[A-Za-z0-9_-]*$') {
+            throw (New-LabException -Message "${Path}: the name may only have letters, digits, - and _" -ExitCode 2)
+        }
+        if ($name) {
+            $labConfig.Name = $name
+        }
     }
     $fullPath = (Resolve-Path -LiteralPath $Path).Path
     $labConfig.Mount = @('-v', "$(Split-Path -Parent $fullPath):/config:ro",
@@ -340,10 +356,10 @@ try {
             exit 0
         }
         'test' {
+            # Invoke-LabLint builds the development image, which carries the unit tests
             Invoke-LabLint -Mode 'check'
-            New-LabImage -Target 'lab' -Tag $Image
             # NET_ADMIN: nft -c checks the rulesets against the kernel
-            docker run --rm --cap-add NET_ADMIN --entrypoint python3 -w /opt/hlab $Image `
+            docker run --rm --cap-add NET_ADMIN --entrypoint python3 -w /opt/hlab $DevImage `
                 -m pytest -q -p no:cacheprovider tests
             exit $LASTEXITCODE
         }

@@ -34,7 +34,7 @@ RUN set -eux; \
 
 COPY scripts/ /opt/hlab/scripts/
 COPY hlabd/ /opt/hlab/hlabd/
-COPY tests/ /opt/hlab/tests/
+# The live tests stay in the lab image: `bin/hlab itest` runs them inside the running lab container.
 COPY itests/ /opt/hlab/itests/
 RUN set -eux; \
     chmod 0755 /opt/hlab/scripts/*.sh; \
@@ -59,5 +59,9 @@ RUN set -eux; \
 ENV PATH=/opt/dev/bin:$PATH
 # Outside the mounted repository, which stays free of caches.
 ENV RUFF_CACHE_DIR=/tmp/ruff-cache MYPY_CACHE_DIR=/tmp/mypy-cache
+# The unit tests run here (`bin/hlab test`), next to the lab's code and specs; they also read
+# the wrappers in bin/.
+COPY tests/ /opt/hlab/tests/
+COPY bin/ /opt/hlab/bin/
 WORKDIR /src
 ENTRYPOINT []
