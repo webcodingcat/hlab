@@ -139,9 +139,11 @@ async def remove_box(lab: Lab, box: StorageBox) -> None:
     mine = [x for x in state["subaccounts"].values() if x["box"] == box["id"]]
     for subaccount in mine:
         await lab.blocking(fabric_box.remove_account, subaccount["username"])
-        del state["subaccounts"][subaccount["id"]]
-    for s in [s for s in state["box_snapshots"].values() if s["box"] == box["id"]]:
-        del state["box_snapshots"][s["id"]]
+        with state.change():
+            del state["subaccounts"][subaccount["id"]]
+    with state.change():
+        for s in [s for s in state["box_snapshots"].values() if s["box"] == box["id"]]:
+            del state["box_snapshots"][s["id"]]
     await lab.blocking(fabric_box.remove_account, username(box))
     await lab.blocking(fabric_box.remove_tree, data_dir(box))
     await lab.blocking(fabric_box.remove_tree, snap_dir(box))
@@ -161,7 +163,8 @@ async def change_type(lab: Lab, box: StorageBox, body: dict) -> Plan:
         raise invalid(
             "the type offers less space than the box uses", "storage_box_type"
         )
-    box["type"] = type_name
+    with lab.state.change():
+        box["type"] = type_name
     await sync_box(lab, box)
     # sub-accounts share the quota
     mine = [a for a in lab.state["subaccounts"].values() if a["box"] == box["id"]]
@@ -180,7 +183,8 @@ async def reset_password(lab: Lab, box: StorageBox, body: dict) -> Plan:
     password = checked_password(body.get("password"))
     await box_account(lab, box, password)
     # stored only after it is set; a lab start sets the stored password again
-    box["_password"] = password
+    with lab.state.change():
+        box["_password"] = password
     await sync_box(lab, box)
     return Plan()
 
@@ -188,11 +192,14 @@ async def reset_password(lab: Lab, box: StorageBox, body: dict) -> Plan:
 async def update_access_settings(lab: Lab, box: StorageBox, body: dict) -> Plan:
     """Change the box's access settings; on failure the old ones stay."""
     old = dict(box["access"])
-    box["access"].update(checked_access_settings(body, box["access"]))
+    access = checked_access_settings(body, box["access"])
+    with lab.state.change():
+        box["access"].update(access)
     try:
         await sync_box(lab, box)
     except Exception:  # the settings did not take effect, so do not store them
-        box["access"] = old
+        with lab.state.change():
+            box["access"] = old
         raise
     return Plan()
 
@@ -206,13 +213,15 @@ def enable_snapshot_plan(lab: Lab, box: StorageBox, body: dict) -> Plan:
     ):
         raise invalid("exceeds the snapshot limit of the type", "max_snapshots")
     keys = ("max_snapshots", "minute", "hour", "day_of_week", "day_of_month")
-    box["plan"] = {key: body.get(key) for key in keys}
+    with lab.state.change():
+        box["plan"] = {key: body.get(key) for key in keys}
     return Plan()
 
 
 def disable_snapshot_plan(lab: Lab, box: StorageBox, body: dict) -> Plan:
     """Remove the box's snapshot plan."""
-    box["plan"] = None
+    with lab.state.change():
+        box["plan"] = None
     return Plan()
 
 

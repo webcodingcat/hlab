@@ -303,7 +303,7 @@ async def add_box_user(lab: Lab, body: dict) -> dict:
     if re.fullmatch(r"u[0-9]+(-sub[0-9]+)?", name):
         raise invalid("names like u<id> belong to the Storage Box API", "name")
     try:
-        pwd.getpwnam(name)  # reads a small file; fine on the loop
+        await lab.blocking(pwd.getpwnam, name)  # reads /etc/passwd
         if name not in state.data["box_users"]:
             raise invalid("a user of the container has this name", "name")
     except KeyError:

@@ -29,13 +29,14 @@ def set_dns_ptr(
 ) -> None:
     """Set the reverse DNS entry of one address of a primary or Floating IP.
 
-    None removes the entry. The caller saves it.
+    None removes the entry.
     """
     if ptr is not None and not (isinstance(ptr, str) and hostname_ok(ptr)):
         raise invalid("dns_ptr must be a host name (without trailing dot)", "dns_ptr")
-    record["dns_ptr"] = [x for x in record.get("dns_ptr", []) if x["ip"] != ip]
-    if ptr:
-        record["dns_ptr"].append({"ip": ip, "dns_ptr": ptr})
+    with lab.state.change():
+        record["dns_ptr"] = [x for x in record.get("dns_ptr", []) if x["ip"] != ip]
+        if ptr:
+            record["dns_ptr"].append({"ip": ip, "dns_ptr": ptr})
 
 
 def record_dns_ptr(

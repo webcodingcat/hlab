@@ -25,27 +25,30 @@ from .web import ref_id
 NETWORKS_PER_SERVER = 3  # Hetzner's limit
 
 
-def lab_addresses(lab: Lab) -> set[str]:
+def lab_addresses(lab: Lab, local_addresses: set[str]) -> set[str]:
     """Return the addresses no server gets.
 
     These are the lab's gateways in the networks, Hetzner's gateway (config.GATEWAY)
-    and the container's addresses. The caller must read the container's addresses
-    first, in a thread (`read_local_addresses()`).
+    and the container's own addresses (`local_addresses`). The caller reads those in
+    a thread, since that runs a script:
+    `await lab.blocking(lab.fabric.network.read_local_addresses)`.
     """
     gateways = {network_gateway(n["ip_range"]) for n in lab.state["networks"].values()}
-    return gateways | {config.GATEWAY} | lab.fabric.network.local_addresses()
+    return gateways | {config.GATEWAY} | local_addresses
 
 
 def network_ip(
     lab: Lab,
     net: CloudNetwork,
     ip: str | None,
+    local_addresses: set[str],
     zone: str = "eu-central",
     ip_range: str | None = None,
 ) -> str:
     """Return the requested address of a cloud network if it is free, else a free one.
 
-    `ip_range` picks the subnet.
+    `ip_range` picks the subnet; `local_addresses` are the container's own addresses
+    (`lab_addresses`).
     """
     subnets = [
         ipaddress.ip_network(x["ip_range"])
@@ -67,7 +70,7 @@ def network_ip(
                 "ip_range is not a subnet of the network in its network zone",
                 "ip_range",
             )
-    used = addresses_in(lab, net["id"]) | lab_addresses(lab)
+    used = addresses_in(lab, net["id"]) | lab_addresses(lab, local_addresses)
     if ip:
         try:
             address = ipaddress.ip_address(str(ip))
@@ -86,10 +89,11 @@ def network_ip(
     return ip
 
 
-def checked_alias_ips(lab: Lab, nic: Nic, ips) -> list[str]:
+def checked_alias_ips(lab: Lab, nic: Nic, ips, local_addresses: set[str]) -> list[str]:
     """Return the checked alias IPs of a NIC.
 
-    They must be free addresses in the network's subnets. Once set, they are taken
+    They must be free addresses in the network's subnets, and none of the container's
+    own addresses (`local_addresses`, see `lab_addresses`). Once set, they are taken
     like a NIC's own IP. The caller sets them without an await in between, so the
     addresses found free are still free then.
     """
@@ -100,7 +104,9 @@ def checked_alias_ips(lab: Lab, nic: Nic, ips) -> list[str]:
     net = lab.state["networks"][nic["network"]]
     subnets = [ipaddress.ip_network(x["ip_range"]) for x in net["subnets"]]
     taken = (
-        addresses_in(lab, net["id"], except_nic=nic) | lab_addresses(lab) | {nic["ip"]}
+        addresses_in(lab, net["id"], except_nic=nic)
+        | lab_addresses(lab, local_addresses)
+        | {nic["ip"]}
     )
     out = []
     for ip in ips:
@@ -119,12 +125,18 @@ def checked_alias_ips(lab: Lab, nic: Nic, ips) -> list[str]:
 
 
 def add_nic(
-    lab: Lab, server: Server, nid: int, ip: str | None, ip_range: str | None = None
+    lab: Lab,
+    server: Server,
+    nid: int,
+    ip: str | None,
+    local_addresses: set[str],
+    ip_range: str | None = None,
 ) -> Nic:
     """Add a NIC in a network to the server and return it.
 
     This changes only the state, in the caller's `change()`. The fabric adds the NIC
-    to the VM later.
+    to the VM later. `local_addresses` are the container's own addresses, which the
+    NIC must not get (`lab_addresses`).
     """
     state = lab.state
     net = state["networks"].get(nid)
@@ -152,7 +164,7 @@ def add_nic(
             "the network overlaps another network of the server",
         )
     zone = lab.cfg["locations"][server["location"]].get("network_zone", "eu-central")
-    ip = network_ip(lab, net, ip, zone, ip_range)
+    ip = network_ip(lab, net, ip, local_addresses, zone, ip_range)
     used = {n["number"] for n in nics}
     # the lowest free number, so the MAC and the tap name stay valid
     number = next(i for i in range(1, 256) if i not in used)
@@ -192,16 +204,19 @@ async def attach_to_network(lab: Lab, server: Server, body: dict) -> Plan:
     next start.
     """
     # runs a script: the addresses that no NIC may get
-    await lab.blocking(lab.fabric.network.read_local_addresses)
+    local_addresses = await lab.blocking(lab.fabric.network.read_local_addresses)
     with lab.state.change():
         nic = add_nic(
             lab,
             server,
             ref_id(body.get("network"), "network"),
             body.get("ip"),
+            local_addresses,
             body.get("ip_range"),
         )
-        nic["alias_ips"] = checked_alias_ips(lab, nic, body.get("alias_ips"))
+        nic["alias_ips"] = checked_alias_ips(
+            lab, nic, body.get("alias_ips"), local_addresses
+        )
 
     async def steps():
         try:
@@ -238,9 +253,11 @@ async def change_alias_ips(lab: Lab, server: Server, body: dict) -> Plan:
     """
     nic = server_nic(lab, server, body)
     # runs a script: the addresses that no NIC may get
-    await lab.blocking(lab.fabric.network.read_local_addresses)
+    local_addresses = await lab.blocking(lab.fabric.network.read_local_addresses)
     with lab.state.change():
-        nic["alias_ips"] = checked_alias_ips(lab, nic, body.get("alias_ips"))
+        nic["alias_ips"] = checked_alias_ips(
+            lab, nic, body.get("alias_ips"), local_addresses
+        )
 
     async def steps():
         if await lab.blocking(lab.fabric.vms.is_alive, server):

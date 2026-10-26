@@ -1,7 +1,7 @@
 """Volumes: create, attach, detach, resize, and their busy states."""
 
 import pytest
-from conftest import create_server, power_off, state_of, wait_action
+from conftest import change_state, create_server, power_off, state_of, wait_action
 
 from hlabd.api import primary_ips, volumes
 from hlabd.errors import limit_exceeded
@@ -168,12 +168,12 @@ def test_volume_runs_one_action_at_a_time(api):
     vid = volume["volume"]["id"]
     # not attached
     assert api.post(f"/v1/volumes/{vid}/actions/detach").status_code == 422
-    state_of(api, "volumes")[vid]["_busy"] = True
+    change_state(api, state_of(api, "volumes")[vid].update, {"_busy": True})
     assert (
         api.post(f"/v1/volumes/{vid}/actions/resize", json={"size": 20}).status_code
         == 423
     )
-    state_of(api, "volumes")[vid].pop("_busy")
+    change_state(api, state_of(api, "volumes")[vid].pop, "_busy")
     server = create_server(api, "a")["server"]
     api.sh.fail.add("attach-volume")  # the hot-plug fails: the volume is not attached
     response = api.post(
@@ -198,17 +198,17 @@ def test_volumes_wait_for_a_busy_server_and_are_not_deleted_while_busy(api):
     wait_action(api, volume["action"])
     vid = volume["volume"]["id"]
     # an action of the server runs
-    state_of(api, "servers")[server["id"]]["_locked"] = True
+    change_state(api, state_of(api, "servers")[server["id"]].update, {"_locked": True})
     assert (
         api.post(
             f"/v1/volumes/{vid}/actions/attach", json={"server": server["id"]}
         ).status_code
         == 423
     )
-    state_of(api, "servers")[server["id"]].pop("_locked")
-    state_of(api, "volumes")[vid]["_busy"] = True
+    change_state(api, state_of(api, "servers")[server["id"]].pop, "_locked")
+    change_state(api, state_of(api, "volumes")[vid].update, {"_busy": True})
     assert api.delete(f"/v1/volumes/{vid}").status_code == 423
-    state_of(api, "volumes")[vid].pop("_busy")
+    change_state(api, state_of(api, "volumes")[vid].pop, "_busy")
     response = api.post(
         f"/v1/volumes/{vid}/actions/attach", json={"server": server["id"]}
     )
@@ -225,7 +225,7 @@ def test_server_create_takes_only_available_volumes_and_leaves_nothing(
     ).json()
     wait_action(api, volume["action"])
     vid = volume["volume"]["id"]
-    state_of(api, "volumes")[vid]["status"] = "creating"
+    change_state(api, state_of(api, "volumes")[vid].update, {"status": "creating"})
     response = api.post(
         "/v1/servers",
         json={
@@ -237,7 +237,7 @@ def test_server_create_takes_only_available_volumes_and_leaves_nothing(
         },
     )
     assert response.status_code == 423
-    state_of(api, "volumes")[vid]["status"] = "available"
+    change_state(api, state_of(api, "volumes")[vid].update, {"status": "available"})
 
     def no_ips(*_):
         raise limit_exceeded("no IPv4 left", "primary_ips")
@@ -260,11 +260,13 @@ def test_server_create_takes_only_available_volumes_and_leaves_nothing(
 
 def test_volume_created_for_a_server_locks_it_until_attached(api):
     server = create_server(api, "a")["server"]
-    state_of(api, "servers")[server["id"]]["_locked"] = True  # an action runs
+    change_state(
+        api, state_of(api, "servers")[server["id"]].update, {"_locked": True}
+    )  # an action runs
     body = {"name": "v", "size": 10, "server": server["id"]}
     assert api.post("/v1/volumes", json=body).status_code == 423
     assert api.get("/v1/volumes").json()["volumes"] == []
-    state_of(api, "servers")[server["id"]].pop("_locked")
+    change_state(api, state_of(api, "servers")[server["id"]].pop, "_locked")
     response = api.post("/v1/volumes", json=body).json()
     wait_action(api, response["action"])
     assert api.get(f"/v1/servers/{server['id']}").json()["server"]["locked"] is False

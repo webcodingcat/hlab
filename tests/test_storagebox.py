@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
-from conftest import state_of, wait_action
+from conftest import change_state, state_of, wait_action
 
 from hlabd.api import storagebox
 
@@ -354,7 +354,8 @@ def test_box_follows_hetzners_rules_for_names_actions_and_locks(box_api):
     assert all(a["status"] == "running" for a in running)
     other = box_api.on_loop(box_api.lab.new_action, "start_server", [(1, "server")])
     assert box_api.get(f"/v1/storage_boxes/actions/{other['id']}").status_code == 404
-    state_of(box_api, "storage_boxes")[box["id"]]["_deleting"] = True
+    box_record = state_of(box_api, "storage_boxes")[box["id"]]
+    change_state(box_api, box_record.update, {"_deleting": True})
     assert (
         box_api.post(f"/v1/storage_boxes/{box['id']}/snapshots", json={}).status_code
         == 423
@@ -393,7 +394,8 @@ def test_box_is_busy_while_rolled_back(box_api):
     response = box_api.post(f"/v1/storage_boxes/{box['id']}/snapshots", json={})
     wait_action(box_api, response.json()["action"], prefix=BOX_ACTIONS_PREFIX)
     snap = response.json()["snapshot"]
-    state_of(box_api, "storage_boxes")[box["id"]]["_busy"] = True  # a rollback runs
+    box_record = state_of(box_api, "storage_boxes")[box["id"]]
+    change_state(box_api, box_record.update, {"_busy": True})  # a rollback runs
     assert (
         box_api.post(f"/v1/storage_boxes/{box['id']}/snapshots", json={}).status_code
         == 423
@@ -411,7 +413,8 @@ def test_snapshot_still_being_copied_blocks_rollback_and_is_removed_on_restart(b
     response = box_api.post(f"/v1/storage_boxes/{box['id']}/snapshots", json={})
     wait_action(box_api, response.json()["action"], prefix=BOX_ACTIONS_PREFIX)
     snap = response.json()["snapshot"]
-    state_of(box_api, "box_snapshots")[snap["id"]]["_copying"] = True
+    snapshot = state_of(box_api, "box_snapshots")[snap["id"]]
+    change_state(box_api, snapshot.update, {"_copying": True})
     response = box_api.post(
         f"/v1/storage_boxes/{box['id']}/actions/rollback_snapshot",
         json={"snapshot": snap["id"]},

@@ -227,7 +227,9 @@ def set_rules(lab: Lab, firewall: Firewall, body: dict) -> Plan:
     apply_firewall follows, naming the servers the firewall applies to, if there are
     any.
     """
-    firewall["rules"] = checked_rules(body.get("rules"))
+    rules = checked_rules(body.get("rules"))
+    with lab.state.change():
+        firewall["rules"] = rules
     servers = firewall_servers(lab.state, firewall)
     if not servers:
         return Plan()
@@ -245,13 +247,9 @@ def apply_to_resources(lab: Lab, firewall: Firewall, body: dict) -> Plan:
             "firewall_already_applied",
             "firewall is already applied to the resource",
         )
-    before = list(firewall["applied_to"])
-    firewall["applied_to"] += new
-    try:
+    with lab.state.change():  # undone if it exceeds the limit
+        firewall["applied_to"] += new
         check_limit(lab)
-    except ApiError:
-        firewall["applied_to"] = before
-        raise
     servers = firewall_servers(lab.state, firewall)
     return Plan(resources=server_resources(servers))
 
@@ -279,9 +277,10 @@ def remove_from_resources(lab: Lab, firewall: Firewall, body: dict) -> Plan:
                 "the firewall reaches this server through a label selector",
             )
     before = firewall_servers(state, firewall)
-    firewall["applied_to"] = [
-        r for r in firewall["applied_to"] if apply_to_key(r) not in remove
-    ]
+    with state.change():
+        firewall["applied_to"] = [
+            r for r in firewall["applied_to"] if apply_to_key(r) not in remove
+        ]
     removed = before - firewall_servers(state, firewall)
     return Plan(resources=server_resources(removed))
 

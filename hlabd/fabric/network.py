@@ -96,7 +96,7 @@ class Network:
         self.shell = shell
         self.net_lock = net_lock
         self.vms = vms
-        # the container's own addresses and when they were read (local_addresses)
+        # the container's own addresses and when they were read (read_local_addresses)
         self._local_addresses_cache: tuple[float, set[str]] | None = None
 
     def taps_up(self, server: Server, taps: ServerTaps) -> list[str]:
@@ -143,26 +143,17 @@ class Network:
             )
 
     def read_local_addresses(self, fresh: bool = False) -> set[str]:
-        """Read the IPv4 addresses the lab container itself has, at most every 10 s.
+        """Return the IPv4 addresses the lab container itself has; no server gets them.
 
-        It runs a script, so the API calls it in a thread. Afterwards
-        `local_addresses()` returns what it read without running a script. With
-        `fresh`, it reads now.
+        It runs a script, so the API calls it in a thread. The addresses rarely
+        change, so requests within 10 s share one reading; with `fresh`, it reads now.
         """
         now = time.monotonic()
         cache = self._local_addresses_cache
         if fresh or cache is None or now - cache[0] > 10:
             out = self.shell.run("list-local-addrs", check=False)
             cache = self._local_addresses_cache = (now, {a for a in out.split() if a})
-        return cache[1]
-
-    def local_addresses(self) -> set[str]:
-        """Return the container's addresses as last read, without running a script.
-
-        These are never handed to a server.
-        """
-        cache = self._local_addresses_cache
-        return cache[1] if cache else set()
+        return set(cache[1])
 
     def refresh_cloud_network(
         self, nid: int, members: list[tuple[Server, PrivateTap]]

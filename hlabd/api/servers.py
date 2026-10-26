@@ -97,10 +97,13 @@ async def create_server(lab: Lab, body: dict) -> dict:
     the lab-only fields of a server (`server["_lab"]`) and of its NICs.
     """
     request = checked_server_request(lab, body)
-    if request.network_ids:  # runs a script: the addresses that no NIC may get
+    local_addresses = (  # runs a script: the addresses that no NIC may get
         await lab.blocking(lab.fabric.network.read_local_addresses)
+        if request.network_ids
+        else set()
+    )
     with lab.holding() as held:
-        server = record_server(lab, request, held)
+        server = record_server(lab, request, local_addresses, held)
         sid = server["id"]
         action = lab.new_action("create_server", [(sid, "server")])
         next_actions = (
@@ -175,12 +178,15 @@ def checked_server_request(lab: Lab, body: dict) -> ServerRequest:
     )
 
 
-def record_server(lab: Lab, request: ServerRequest, held: HeldFlags) -> Server:
+def record_server(
+    lab: Lab, request: ServerRequest, local_addresses: set[str], held: HeldFlags
+) -> Server:
     """Record the new server with its addresses, volumes and firewalls; save.
 
     This is one change: the checks come first, then the changes. If a check fails,
-    the addresses taken so far are freed, and nothing is saved. When this returns,
-    the server's `_locked` flag is claimed through `held`.
+    the addresses taken so far are freed, and nothing is saved. `local_addresses` are
+    the container's own addresses, which no NIC gets. When this returns, the server's
+    `_locked` flag is claimed through `held`.
     """
     state = lab.state
     with state.change():
@@ -199,7 +205,7 @@ def record_server(lab: Lab, request: ServerRequest, held: HeldFlags) -> Server:
                 raise locked(f"volume {volume['id']} is busy")
             volumes.check_attach(lab, volume, server)
         for nid in request.network_ids:  # only the new server changes here
-            nics.add_nic(lab, server, nid, None)
+            nics.add_nic(lab, server, nid, None, local_addresses)
         try:  # the lab may run out of addresses
             primary_ips.setup_server_ips(lab, server, request.public_net)
         except Exception:  # whatever failed: free the addresses, then re-raise
@@ -310,7 +316,7 @@ async def ensure_disk(lab: Lab, server: Server) -> None:
 
     A lab restart can cut the creation of a server short and leave it without a disk.
     """
-    if not (lab.fabric.vms.directory(server) / "disk.qcow2").is_file():
+    if not await lab.blocking(lab.fabric.vms.has_disk, server):
         base = image_path(lab, server["image"])
         disk_gb = server["_lab"]["disk_gb"]
         await lab.blocking(lab.fabric.vms.create_disk, server, base, disk_gb)
@@ -362,7 +368,8 @@ def change_protection(lab: Lab, server: Server, body: dict) -> Plan:
     given = {bool(body[k]) for k in ("delete", "rebuild") if k in body}
     if len(given) != 1:
         raise invalid("delete and rebuild need the same value", "delete")
-    server["protection"]["delete"] = server["protection"]["rebuild"] = given.pop()
+    with lab.state.change():
+        server["protection"]["delete"] = server["protection"]["rebuild"] = given.pop()
     return Plan()
 
 
@@ -390,7 +397,8 @@ def shutdown(lab: Lab, server: Server, body: dict) -> Plan:
 
     As on Hetzner, the action is finished once the button is pressed. The server's
     status becomes off when the guest has shut down: the VM watcher
-    (`lab.watch_vms`) sees the VM end. A guest that ignores the button keeps running.
+    (`watcher.watch_vms`) sees the VM end. A guest that ignores the button keeps
+    running.
     """
 
     async def steps():
@@ -464,32 +472,29 @@ def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
     image = catalogue_name(lab, "image", body.get("image"))
     check_user_data(body.get("user_data"))
     if not server["public_keys"]:
-        server["_lab"]["root_password"] = secrets.token_urlsafe(15)
+        # set while planning: Hetzner's answer carries the new password at once
+        with lab.state.change():
+            server["_lab"]["root_password"] = secrets.token_urlsafe(15)
 
-    def start_rebuild() -> None:
+    async def steps():
+        # the server is locked, so it is running or off; it ends as it was
+        target = "running" if server["status"] == "running" else "off"
+        with lab.state.change():  # a lab restart reads the target to finish
+            server["_lab"]["target"] = target
+        base = image_path(lab, image)  # before the old disk is gone
+        await system.delete_vm(lab, server)
         with lab.state.change():
             server["image"] = image
             server["status"] = "rebuilding"
-
-    async def steps():
-        previous_status = server["status"]
-        # a lab restart reads the target to finish the rebuild
-        target = "running" if previous_status == "running" else "off"
-        server["_lab"]["target"] = target
-        base = image_path(lab, image)  # before the old disk is gone
-        await system.delete_vm(lab, server)
-        start_rebuild()
         disk_gb = server["_lab"]["disk_gb"]
         await lab.blocking(lab.fabric.vms.create_disk, server, base, disk_gb)
         if "user_data" in body:
-            server["user_data"] = body["user_data"]
-        if previous_status == "running":
+            with lab.state.change():
+                server["user_data"] = body["user_data"]
+        if target == "running":
             await system.start_vm(lab, server)
         await lab.sleep(REBUILD_SECONDS)
-        lab.set_status(
-            server,
-            previous_status if previous_status in ("running", "off") else "running",
-        )
+        lab.set_status(server, target)
 
     return Plan(
         steps,
@@ -515,17 +520,15 @@ def change_type(lab: Lab, server: Server, body: dict) -> Plan:
             "invalid_server_type",
             "the server type's disk is smaller than the server's",
         )
-    upgrade = bool(body.get("upgrade_disk"))
-
-    def save_type() -> None:
-        with lab.state.change():
-            server["server_type"] = stype
+    grow = bool(body.get("upgrade_disk")) and new_disk > disk
 
     async def steps():
-        if upgrade and new_disk > disk:
+        if grow:
             await lab.blocking(lab.fabric.vms.resize_disk, server, new_disk)
-            server["_lab"]["disk_gb"] = new_disk
-        save_type()
+        with lab.state.change():
+            if grow:
+                server["_lab"]["disk_gb"] = new_disk
+            server["server_type"] = stype
         await lab.sleep(CHANGE_TYPE_SECONDS)
 
     return Plan(steps, server=server)

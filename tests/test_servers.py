@@ -6,6 +6,7 @@ Create, delete, power actions, rebuild, change_type, locks, restart of the lab.
 import pytest
 from conftest import (
     KEY,
+    change_state,
     create_server,
     dhcp,
     metadata_client,
@@ -14,7 +15,7 @@ from conftest import (
     wait_action,
 )
 
-from hlabd.api import servers
+from hlabd.api import servers, watcher
 from hlabd.api.restart import restore_lab
 
 
@@ -138,7 +139,7 @@ def test_restart_finishes_or_drops_what_was_half_done(api):
     server_b = create_server(api, "b")["server"]
     servers = state_of(api, "servers")
     # the lab stopped while a was being deleted
-    servers[server_a["id"]]["status"] = "deleting"
+    change_state(api, servers[server_a["id"]].update, {"status": "deleting"})
     api.sh.running.clear()  # a new container: no VM runs
     api.sh.fail.add("start-vm")  # and b's VM does not come up
     api.on_loop(restore_lab, api.lab)  # must not raise: the lab comes up anyway
@@ -274,7 +275,7 @@ def test_rebuild_takes_new_user_data(api):
 def test_a_vm_that_ends_by_itself_leaves_the_server_off(api):
     server = create_server(api, "a")["server"]
     api.sh.running.clear()  # the guest powered off
-    api.on_loop(api.lab.watch_vms)
+    api.on_loop(watcher.watch_vms, api.lab)
     assert api.get(f"/v1/servers/{server['id']}").json()["server"]["status"] == "off"
     response = api.post(f"/v1/servers/{server['id']}/actions/poweron")
     wait_action(api, response.json()["action"])
@@ -290,8 +291,8 @@ def test_the_vm_watcher_frees_its_server_and_leaves_a_busy_one_alone(api):
     api.sh.running.clear()  # both guests powered off
     # an action runs on b
     api.on_loop(api.lab.claim, servers[second["id"]], "_locked", "locked")
-    api.on_loop(api.lab.stop_if_ended, servers[first["id"]])
-    api.on_loop(api.lab.stop_if_ended, servers[second["id"]])
+    api.on_loop(watcher.stop_if_ended, api.lab, servers[first["id"]])
+    api.on_loop(watcher.stop_if_ended, api.lab, servers[second["id"]])
     assert servers[first["id"]]["status"] == "off"
     assert "_locked" not in servers[first["id"]]
     # the action owns b: its status is the action's to change, and so is its flag

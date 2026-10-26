@@ -110,9 +110,9 @@ def test_every_resource_has_its_own_action_routes(api):
 
 def test_actions_do_not_pile_up(lab):
     running = lab.new_action("x", [])
-    for _ in range(MAX_ACTIONS + 50):
-        # finished (without saving the state each time)
-        lab.new_action("x", [])["status"] = "success"
+    with lab.state.change():  # one block: the state is saved once
+        for _ in range(MAX_ACTIONS + 50):
+            lab.new_action("x", [])["status"] = "success"  # finished
     assert len(lab.state["actions"]) <= MAX_ACTIONS
     assert running["id"] in lab.state["actions"]  # a running action stays
 

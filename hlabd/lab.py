@@ -34,12 +34,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal, cast, overload
 
-from .api import system
-from .errors import ApiError, locked, not_found, unsupported
+from .errors import locked, not_found, unsupported
 from .fabric import Fabric
 from .records import (
     Action,
     ActionRecord,
+    BoxSnapshot,
+    Client,
     CloudNetwork,
     Firewall,
     FloatingIP,
@@ -47,6 +48,8 @@ from .records import (
     Record,
     Server,
     SSHKey,
+    StorageBox,
+    Subaccount,
     Volume,
 )
 from .state import KINDS, State, server_by_name
@@ -107,6 +110,10 @@ ALIAS_IPS_SECONDS = 2  # change_alias_ips: routed → the action ends
 VOLUME_SECONDS = 2  # a volume's create, attach, detach, resize: done → the action ends
 FLOATING_IP_MOVE_SECONDS = 3  # a Floating IP's route moves to its new server
 BOX_CREATE_SECONDS = 5  # a Storage Box: its account is set up → active
+
+# How long a lab reset waits for the threads of `blocking` (`stop_actions`). A script
+# ends after its timeout (fabric/shell.py), so normally every thread has ended by then.
+THREADS_WAIT_SECONDS = 150
 
 
 def now() -> str:
@@ -183,8 +190,9 @@ class HeldFlags:
     def release(self) -> None:
         """Take every held flag off, in the order they were claimed."""
         flags, self.flags = self.flags, []
-        for item, flag in flags:
-            self.lab.release(item, flag)
+        with self.lab.state.change():
+            for item, flag in flags:
+                self.lab.release(item, flag)
 
     def keep(self) -> None:
         """Leave the held flags set for good (on a record that is gone)."""
@@ -213,8 +221,9 @@ class Lab:
         # here because asyncio keeps only weak references to tasks. They are not in
         # `tasks`, so a reset does not cancel them
         self.jobs: set[asyncio.Task] = set()
-        # the running threads of `blocking` (a thread cannot be cancelled)
-        self.threads: set[asyncio.Future] = set()
+        # the running threads of `blocking` (a thread cannot be cancelled), each with
+        # the name of its work for the log
+        self.threads: dict[asyncio.Future, str] = {}
         # system image name → its file (loaded at start)
         self.images: dict[str, str] = {}
         # held while a whole picture of the system (fault sets, latency, firewall, DHCP,
@@ -250,14 +259,14 @@ class Lab:
         for it.
         """
         future = asyncio.ensure_future(asyncio.to_thread(work, *args, **kwargs))
-        self.threads.add(future)
+        self.threads[future] = getattr(work, "__qualname__", repr(work))
         future.add_done_callback(self.thread_done)
         # shielded: cancelling the caller must not mark the thread's future done early
         return await asyncio.shield(future)
 
     def thread_done(self, future: asyncio.Future) -> None:
         """Forget a thread of `blocking` that has returned."""
-        self.threads.discard(future)
+        self.threads.pop(future, None)
         if not future.cancelled():
             # read the error: a caller that was cancelled in the meantime never sees
             # it, and asyncio would log it as "never retrieved"
@@ -274,15 +283,24 @@ class Lab:
 
         A cancelled action ends at once. But a thread it started in `blocking` keeps
         running until its script returns, and that script may still start a VM or
-        write a file. So this also waits for every thread of `blocking`. Afterwards no
-        old action can change the lab.
+        write a file. So this also waits for every thread of `blocking`, at most
+        THREADS_WAIT_SECONDS: a script that hangs past its timeout must not block a
+        reset forever. Threads still running then are logged; otherwise no old action
+        can change the lab afterwards.
         """
         tasks = list(self.tasks)
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        while self.threads:
-            await asyncio.wait(list(self.threads))
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + THREADS_WAIT_SECONDS
+        while self.threads and loop.time() < deadline:
+            await asyncio.wait(list(self.threads), timeout=deadline - loop.time())
+        if self.threads:
+            log.warning(
+                "a reset stopped waiting for threads that still run: %s",
+                ", ".join(sorted(self.threads.values())),
+            )
 
     # --- lookups ----------------------------------------------------------------------
 
@@ -316,8 +334,28 @@ class Lab:
     def get_or_404(
         self, kind: Literal["ssh_keys"], item_id: int, what: str
     ) -> SSHKey: ...
+    @overload
+    def get_or_404(
+        self, kind: Literal["actions"], item_id: int, what: str
+    ) -> Action: ...
+    @overload
+    def get_or_404(
+        self, kind: Literal["storage_boxes"], item_id: int, what: str
+    ) -> StorageBox: ...
+    @overload
+    def get_or_404(
+        self, kind: Literal["subaccounts"], item_id: int, what: str
+    ) -> Subaccount: ...
+    @overload
+    def get_or_404(
+        self, kind: Literal["box_snapshots"], item_id: int, what: str
+    ) -> BoxSnapshot: ...
+    @overload
+    def get_or_404(
+        self, kind: Literal["clients"], item_id: int, what: str
+    ) -> Client: ...
 
-    def get_or_404(self, kind: str, item_id: int, what: str) -> Record:
+    def get_or_404(self, kind: str, item_id: int, what: str) -> Record | Action:
         """Return a resource of a kind (e.g. "volumes") by ID, or raise 404 (`what`)."""
         item = self.state[kind].get(item_id)
         if not item:
@@ -339,23 +377,26 @@ class Lab:
 
     def new_action(self, command: str, resources: list[tuple[int, str]]) -> Action:
         """Create a new action in status running, for the given (id, type) resources."""
-        action: Action = {
-            "id": self.state.new_id("actions"),
-            "command": command,
-            "status": "running",
-            "progress": 0,
-            "started": now(),
-            "finished": None,
-            "error": None,
-            "resources": [{"id": i, "type": t} for i, t in resources],
-        }
-        actions = self.state["actions"]
-        actions[action["id"]] = action
-        # the state stays small: the oldest finished actions are removed
-        if len(actions) > MAX_ACTIONS:
-            finished = [aid for aid, x in actions.items() if x["status"] != "running"]
-            for aid in finished[: len(actions) - KEPT_ACTIONS]:
-                del actions[aid]
+        with self.state.change():
+            action: Action = {
+                "id": self.state.new_id("actions"),
+                "command": command,
+                "status": "running",
+                "progress": 0,
+                "started": now(),
+                "finished": None,
+                "error": None,
+                "resources": [{"id": i, "type": t} for i, t in resources],
+            }
+            actions = self.state["actions"]
+            actions[action["id"]] = action
+            # the state stays small: the oldest finished actions are removed
+            if len(actions) > MAX_ACTIONS:
+                finished = [
+                    aid for aid, x in actions.items() if x["status"] != "running"
+                ]
+                for aid in finished[: len(actions) - KEPT_ACTIONS]:
+                    del actions[aid]
         log.info(
             "action %s %s %s",
             action["id"],
@@ -366,8 +407,9 @@ class Lab:
 
     def finished_action(self, command: str, resources: list[tuple[int, str]]) -> Action:
         """Create an action for a change that is already complete, and finish it."""
-        action = self.new_action(command, resources)
-        self.finish(action)
+        with self.state.change():  # saved once, finished
+            action = self.new_action(command, resources)
+            self.finish(action)
         return action
 
     def finish(self, action: Action, message: str | None = None) -> None:
@@ -426,17 +468,19 @@ class Lab:
                 message = "the action was cancelled (lab stopped or reset)"
                 raise
             finally:
-                for item, flag in flags:
-                    self.release(item, flag)
-                self.finish(action, message)  # saved with the flags off
+                with self.state.change():  # saved once: flags off, action finished
+                    for item, flag in flags:
+                        self.release(item, flag)
+                    self.finish(action, message)
 
         steps_run = run_steps()
         try:
             self.spawn(steps_run)
         except BaseException:  # the steps never started: nothing else frees the flags
             steps_run.close()
-            for item, flag in flags:
-                self.release(item, flag)
+            with self.state.change():
+                for item, flag in flags:
+                    self.release(item, flag)
             raise
 
     async def act[R: ActionRecord](
@@ -478,14 +522,15 @@ class Lab:
                 held.claim(plan.server, "_locked", SERVER_LOCKED)
             resources = [(item["id"], item_type), *plan.resources]
             if plan.steps is None:
-                with self.state.change():  # flags off, then the block saves
+                with self.state.change():  # saved once: flags off, action finished
                     held.release()
-                action = self.finished_action(spec.name, resources)
+                    action = self.finished_action(spec.name, resources)
             else:
                 action = self.new_action(spec.name, resources)
                 self.run_action(action, plan.steps, plan.server, holding=held)
         if spec.answer == "actions":
-            finished = [self.finished_action(*more) for more in plan.finished]
+            with self.state.change():
+                finished = [self.finished_action(*more) for more in plan.finished]
             return {"actions": [action, *finished], **plan.extra}
         return {"action": action, **plan.extra}
 
@@ -513,11 +558,13 @@ class Lab:
         fields = flag_fields(item)
         if fields.get(flag):
             raise locked(message)
-        fields[flag] = True
+        with self.state.change():
+            fields[flag] = True
 
     def release(self, item: Record, flag: Flag) -> None:
         """Take a flag off a resource."""
-        flag_fields(item).pop(flag, None)
+        with self.state.change():
+            flag_fields(item).pop(flag, None)
 
     def clear_flags(self) -> None:
         """Take every action flag off every resource (a lab restart).
@@ -535,45 +582,3 @@ class Lab:
         """Set a server's status and save the state."""
         with self.state.change():
             server["status"] = status
-
-    # --- watching VMs -----------------------------------------------------------------
-
-    async def vm_watcher(self) -> None:
-        """Check the VMs every five seconds, as long as the lab runs.
-
-        When a guest powers itself off (after a shutdown, or on its own) or crashes,
-        its server becomes off, as on Hetzner. The check also keeps console logs small.
-        """
-        while True:
-            await asyncio.sleep(5)
-            try:
-                await self.watch_vms()
-            except Exception:  # the watcher keeps going; the error is in the log
-                log.exception("VM watcher")
-
-    async def watch_vms(self) -> None:
-        """Trim console logs and mark servers off whose VM has ended."""
-        # a copy: servers may be deleted while the scripts run
-        servers = list(self.state["servers"].values())
-        for server in servers:
-            await self.blocking(self.fabric.vms.trim_console, server)
-            if server["status"] == "running" and not server.get("_locked"):
-                await self.stop_if_ended(server)
-
-    async def stop_if_ended(self, server: Server) -> None:
-        """Mark a running server off if its VM has ended; remove its taps and DHCP."""
-        if await self.blocking(self.fabric.vms.is_alive, server):
-            return
-        with self.holding() as held:
-            try:
-                held.claim(server, "_locked", SERVER_LOCKED)
-            except ApiError:
-                # an action started in the meantime: it owns the server now
-                return
-            if server["status"] != "running" or await self.blocking(
-                self.fabric.vms.is_alive, server
-            ):
-                return
-            log.info("server %s: its VM ended", server["name"])
-            await system.kill_vm(self, server)
-            self.set_status(server, "off")

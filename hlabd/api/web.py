@@ -98,9 +98,10 @@ def change_delete_protection(lab: Lab, item: ProtectedRecord, body: dict) -> Pla
     delete protection uses this in its action table. Servers have their own function,
     because they set delete and rebuild protection together.
     """
-    item["protection"]["delete"] = bool(
-        body.get("delete", item["protection"]["delete"])
-    )
+    with lab.state.change():
+        item["protection"]["delete"] = bool(
+            body.get("delete", item["protection"]["delete"])
+        )
     return Plan()
 
 

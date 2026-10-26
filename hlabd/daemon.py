@@ -18,7 +18,7 @@ import time
 import uvicorn
 
 from . import config
-from .api import storagebox, system
+from .api import storagebox, system, watcher
 from .api.app import create_app
 from .api.catalogue import load_images
 from .api.metadata import create_metadata_app
@@ -147,7 +147,7 @@ async def run(lab: Lab) -> None:
         for job in (
             announce_ready(),
             storagebox.snapshots.snapshot_plan_scheduler(lab),
-            lab.vm_watcher(),
+            watcher.vm_watcher(lab),
         )
     )
     await server.serve(sockets=listeners())

@@ -118,7 +118,8 @@ async def set_up_box_user(lab: Lab, name: str, public_key: str) -> None:
     container's /etc/passwd.
     """
     uids = lab.state.data["box_uids"]
-    uid = uids.setdefault(name, 30000 + len(uids))
+    with lab.state.change():
+        uid = uids.setdefault(name, 30000 + len(uids))
     box = lab.fabric.box
     access = {"ssh_enabled": True, "reachable_externally": True}
     await lab.blocking(box.set_account, name, lab_user_dir(name), None, TB, uid)

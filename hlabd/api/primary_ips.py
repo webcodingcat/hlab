@@ -266,9 +266,9 @@ def delete_primary_ip(lab: Lab, pid: int) -> None:
         del lab.state["primary_ips"][pid]
 
 
-# Each primary IP action below changes only the state and returns a plan without
-# steps (lab.Plan), so the action finishes right away (`act()` saves the change). After
-# assign and unassign, the server's DHCP hands out its new address.
+# Each primary IP action below changes only the state (in its own `change()` block)
+# and returns a plan without steps (lab.Plan), so the action finishes right away.
+# After assign and unassign, the server's DHCP hands out its new address.
 
 
 async def primary_ip_assign(lab: Lab, primary_ip: PrimaryIP, body: dict) -> Plan:
@@ -299,8 +299,10 @@ async def primary_ip_unassign(lab: Lab, primary_ip: PrimaryIP, body: dict) -> Pl
     server = server_by_id(state, primary_ip["assignee_id"])
     if server:
         require_off(server)
-        server[primary_ip_field(primary_ip["type"])] = None
-    primary_ip["assignee_id"] = None
+    with state.change():
+        if server:
+            server[primary_ip_field(primary_ip["type"])] = None
+        primary_ip["assignee_id"] = None
     await system.write_dhcp(lab)
     return Plan()
 

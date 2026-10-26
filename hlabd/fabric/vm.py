@@ -10,7 +10,7 @@ import shutil
 from pathlib import Path
 
 from ..records import Server
-from .shell import Shell
+from .shell import LONG_TIMEOUT, Shell
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +45,10 @@ class VMs:
         directory.mkdir(parents=True, exist_ok=True)
         self.shell.run("create-vm-disk", str(directory), base, str(size_gb))
 
+    def has_disk(self, server: Server) -> bool:
+        """Tell whether the server's disk exists."""
+        return (self.directory(server) / "disk.qcow2").is_file()
+
     def resize_disk(self, server: Server, gb: int) -> None:
         """Grow a server's disk to `gb` GB."""
         self.shell.run("resize-vm-disk", str(self.directory(server)), str(gb))
@@ -55,7 +59,12 @@ class VMs:
         It is the version that the image's checksum file names now.
         """
         return self.shell.run(
-            "fetch-image", name, url, checksums, str(self.root / "images" / "system")
+            "fetch-image",
+            name,
+            url,
+            checksums,
+            str(self.root / "images" / "system"),
+            timeout=LONG_TIMEOUT,
         ).strip()
 
     def launch(

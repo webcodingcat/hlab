@@ -44,7 +44,7 @@ Inside `hlabd/`:
 
 | Module | Job |
 |---|---|
-| `lab.py` | the core: actions (`Plan`, `act`, `run_action`), flags, Hetzner's timings, `blocking` for threads |
+| `lab.py` | the core: actions (`Plan`, `act`, `run_action`), flags, Hetzner's timings, `blocking` for threads; it imports nothing from `api/` |
 | `state.py` | the state, saved as JSON in the volume: resources by kind and the records only the lab uses (see its docstring); the owner check, `change()`, the writer thread |
 | `records.py` | one TypedDict per kind with the fields of the resource, including the fields only the lab uses (a server's `_lab`, its NICs); mypy checks them |
 | `api/hetzner.py` | the JSON shapes of the Cloud API (`<thing>_json(lab, thing)`) |
@@ -53,6 +53,7 @@ Inside `hlabd/`:
 | `api/public_addresses.py` | what primary IPs and Floating IPs share: free addresses, reverse DNS |
 | `api/storagebox/` | the Storage Box API (a separate app with its own JSON shapes) |
 | `api/restart.py` | what happens when the lab starts again: flags are cleared, servers come back |
+| `api/watcher.py` | the VM watcher: a server whose VM ended by itself becomes off |
 | `api/control.py` | lab control under `/_lab/` (faults, clients, reset); no resource module imports it |
 | `api/faults.py` | the faults and netem settings in the state; they are dropped together with the server, client or link they point to |
 | `api/desired.py` | pure functions: they read the state and return plain data that says what the system should look like |
@@ -173,7 +174,13 @@ is gone (a deleted volume). Only `lab.py` calls `lab.claim()` and `lab.release()
   reads only fields that never change (ID, tap, MAC). A field that can change, such as
   a server's name or type, is passed as its own argument.
 - A thread cannot be cancelled. So `lab.blocking` keeps track of its threads, and a
-  lab reset waits for them after it has cancelled the actions (`lab.stop_actions`).
+  lab reset waits for them after it has cancelled the actions (`lab.stop_actions`),
+  at most `THREADS_WAIT_SECONDS`; threads still running then are logged. Every
+  script has a timeout (`Shell.run`: 120 s; `LONG_TIMEOUT` for commands that copy
+  data, such as image downloads and Storage Box snapshots), so a hung script fails
+  its action instead of holding a thread forever.
+- Files are threads' work too: code on the loop never reads or writes a file (for
+  example `fabric.vms.has_disk`, the lab key in `api/metadata.py`).
 - Some work puts a whole picture of the system in place: fault sets, latency,
   firewall, DHCP, routes. It computes and hands over the picture while it holds
   `lab.picture_lock` (an `asyncio.Lock`). So pictures are put in place in the order
@@ -224,8 +231,8 @@ The unit tests record every breach, also in background steps where the error wou
 only fail the action, and then fail the test (`state_owner_kept` in
 `tests/conftest.py`).
 
-**Changes.** A change that must be saved is a `with lab.state.change():` block. The
-block is a transaction. If it raises, the state is put back as it was and nothing is
+**Changes.** Every change to the state is inside a `with lab.state.change():` block:
+records, flags, actions, the records only the lab uses. The block is a transaction. If it raises, the state is put back as it was and nothing is
 saved. Every dict and list keeps its identity, so records that other code holds stay
 valid. If the block succeeds, the state is saved. Nested blocks save once, at the end
 of the outer one.
@@ -239,9 +246,18 @@ with lab.state.change():
 The block must not await. It is a plain `with`, and another task would see the change
 half done. `check_owner` refuses a task's access while another task's block is open,
 and `tests/test_state.py` checks that no block in `hlabd/` awaits. Checking first and
-changing afterwards still reads best. Some changes happen outside a block, such as a
-flag, or the change of a plan that has no steps. The next save stores them: `act()`
-saves, and so do `lab.set_status()` and `lab.finish()`.
+changing afterwards still reads best. A change that spans an await (a script) is two
+blocks: one before the await and one after it, or one that undoes the first if the
+script fails. Helpers that change the state, such as `lab.claim()`, `lab.new_action()`,
+`lab.set_status()` and `lab.finish()`, open their own block; inside a caller's block
+it simply nests.
+
+The unit tests enforce the rule. With `State.verify_changes` (on in the tests, off in
+the daemon, because it serializes the state once more per block), the state remembers
+what the last block committed. Each outermost block and the end of each test check
+that nothing changed since; a difference is a change outside a block, and the
+AssertionError shows it as a diff. A test changes the state for its setup through
+`change_state(api, work, ...)` (`tests/conftest.py`).
 
 **Saving.** `state.save()` serializes the state to JSON on the loop. This is quick at
 the lab's size, and the number of finished actions is capped. Then it hands the JSON

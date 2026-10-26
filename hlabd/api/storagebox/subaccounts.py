@@ -81,11 +81,13 @@ async def change_home_directory(lab: Lab, subaccount: Subaccount, body: dict) ->
     box = box_of(lab, subaccount)
     old = subaccount["home_directory"]
     home = normalized_box_path(body["home_directory"], "home_directory")
-    subaccount["home_directory"] = home
+    with lab.state.change():
+        subaccount["home_directory"] = home
     try:
         await sync_subaccount(lab, box, subaccount)
     except Exception:  # undo the partial change, then raise
-        subaccount["home_directory"] = old
+        with lab.state.change():
+            subaccount["home_directory"] = old
         raise
     return box_plan(subaccount)
 
@@ -96,7 +98,8 @@ async def reset_subaccount_password(
     """Set a new password for a sub-account."""
     box = box_of(lab, subaccount)
     password = checked_password(body.get("password"))
-    subaccount["_password"] = password
+    with lab.state.change():
+        subaccount["_password"] = password
     await sync_subaccount(lab, box, subaccount, password)
     return box_plan(subaccount)
 
@@ -106,11 +109,13 @@ async def update_access_settings(lab: Lab, subaccount: Subaccount, body: dict) -
     box = box_of(lab, subaccount)
     old = dict(subaccount["access"])
     access = checked_access_settings(body, subaccount["access"])
-    subaccount["access"].update(access)
+    with lab.state.change():
+        subaccount["access"].update(access)
     try:
         await sync_subaccount(lab, box, subaccount)
     except Exception:  # the settings did not take effect, so do not store them
-        subaccount["access"] = old
+        with lab.state.change():
+            subaccount["access"] = old
         raise
     return box_plan(subaccount)
 
@@ -164,29 +169,31 @@ async def create_subaccount(lab: Lab, bid: int, body: dict) -> dict:
         if box_busy(lab, box):  # the box became busy in the meantime (e.g. a delete)
             raise locked(BUSY)
         number = 1 + max([a["number"] for a in mine], default=0)
-        subaccount_id = state.new_id("subaccounts")
-        subaccount: Subaccount = {
-            "id": subaccount_id,
-            "box": box["id"],
-            "number": number,
-            "username": f"{username(box)}-sub{number}",
-            "name": body.get("name"),
-            "home_directory": home,
-            "access": access_settings,
-            "description": body.get("description") or "",
-            "labels": body.get("labels") or {},
-            "created": now(),
-            "_password": password,
-        }
-        state["subaccounts"][subaccount_id] = subaccount
-        held.claim(subaccount, "_creating", BUSY)  # new: nobody holds it yet
+        with state.change():
+            subaccount_id = state.new_id("subaccounts")
+            subaccount: Subaccount = {
+                "id": subaccount_id,
+                "box": box["id"],
+                "number": number,
+                "username": f"{username(box)}-sub{number}",
+                "name": body.get("name"),
+                "home_directory": home,
+                "access": access_settings,
+                "description": body.get("description") or "",
+                "labels": body.get("labels") or {},
+                "created": now(),
+                "_password": password,
+            }
+            state["subaccounts"][subaccount_id] = subaccount
+            held.claim(subaccount, "_creating", BUSY)  # new: nobody holds it yet
         try:
             await sync_subaccount(lab, box, subaccount, password)
         except Exception:  # undo the partial change, then raise
             await lab.blocking(
                 lab.fabric.box.remove_account, subaccount["username"], check=False
             )
-            state["subaccounts"].pop(subaccount_id, None)
+            with state.change():
+                state["subaccounts"].pop(subaccount_id, None)
             raise
         with state.change():  # the sub-account is ready
             held.release()

@@ -1,14 +1,16 @@
-"""The state: its owner, changes as transactions, and the thread that saves it."""
+"""The state: its owner, changes as checked transactions, the thread that saves it."""
 
 import ast
 import asyncio
 import json
 import threading
+import typing
 from pathlib import Path
 
 import pytest
 
-from hlabd.state import State, Writer
+from hlabd.lab import Lab
+from hlabd.state import KINDS, State, Writer
 
 
 def in_thread(work):
@@ -188,3 +190,51 @@ def test_no_change_block_in_the_lab_awaits():
                     if isinstance(inner, (ast.Await, ast.AsyncWith, ast.AsyncFor))
                 ]
     assert awaits == []
+
+
+def test_a_change_outside_a_block_is_caught_by_the_next_block(
+    tmp_path, state_owner_kept
+):
+    state = State(tmp_path / "state.json")
+    with state.change():
+        state["clients"][1] = {"id": 1, "name": "a"}
+    state["clients"][1]["name"] = "b"  # outside a block: breaks the rule on purpose
+    with pytest.raises(AssertionError, match="outside a") as caught:
+        with state.change():
+            pass
+    assert '"name": "b"' in str(caught.value)  # the diff shows what changed
+    assert len(state_owner_kept) == 1
+    state_owner_kept.clear()
+
+
+def test_the_state_is_unchanged_since_the_last_block_after_a_failed_one(tmp_path):
+    state = State(tmp_path / "state.json")
+    with state.change():
+        state["clients"][1] = {"id": 1}
+    with pytest.raises(RuntimeError), state.change():
+        state["clients"][2] = {"id": 2}
+        raise RuntimeError("refused")
+    state.check_committed()  # the undone block left the committed state
+
+
+def test_the_check_is_off_unless_turned_on(tmp_path, monkeypatch):
+    monkeypatch.setattr(State, "verify_changes", False)  # as in the daemon
+    state = State(tmp_path / "state.json")
+    state["clients"][1] = {"id": 1}  # not seen: the check would serialize the state
+    with state.change():
+        pass
+    state.flush()
+    assert json.loads(state.path.read_text())["clients"] == {"1": {"id": 1}}
+
+
+@pytest.mark.parametrize(
+    "overloaded", [State.__getitem__, Lab.get_or_404], ids=["state", "get_or_404"]
+)
+def test_the_typed_lookups_have_an_overload_for_every_kind(overloaded):
+    # a new kind without an overload would be typed Any (or not at all) by mypy
+    kinds = set()
+    for overload in typing.get_overloads(overloaded):
+        annotation = typing.get_type_hints(overload)["kind"]
+        if typing.get_origin(annotation) is typing.Literal:
+            kinds.update(typing.get_args(annotation))
+    assert kinds == set(KINDS)

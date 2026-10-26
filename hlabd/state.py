@@ -10,11 +10,14 @@ and ID; their fields are the TypedDicts in records.py. Besides the resources and
 - `box_users`, `box_uids`: Storage Box accounts created outside the API, with fixed UIDs
 
 The event loop owns the state: only code on the loop's thread reads or changes it, and
-`check_owner()` checks this. A change that is saved is a `with state.change():` block,
-a transaction that is undone if the block raises. See DEVELOPING.md, State.
+`check_owner()` checks this. Every change is a `with state.change():` block, a
+transaction that is undone if the block raises and saved if it succeeds; with
+`State.verify_changes` on (the unit tests), a change outside a block raises
+AssertionError (`check_committed()`). See DEVELOPING.md, State.
 """
 
 import asyncio
+import difflib
 import json
 import logging
 import os
@@ -225,6 +228,12 @@ class Writer:
 class State:
     """The lab's state: kept in memory, owned by the event loop, saved as JSON."""
 
+    # Check at every `change()` and save that the state is still what the last block
+    # committed, so a change outside a block raises AssertionError. It serializes the
+    # whole state once more per block, so the unit tests turn it on (conftest.py) and
+    # the daemon leaves it off.
+    verify_changes = False
+
     def __init__(self, path: Path | None):
         """Load the state from `path` if it exists; without a path, nothing is saved."""
         self.path = path
@@ -247,6 +256,8 @@ class State:
             }
             for k in KINDS:  # JSON keys are strings
                 self._data[k] = {int(i): v for i, v in self._data.get(k, {}).items()}
+        # the state as the last `change()` block left it (`check_committed`)
+        self.committed = self.serialized()
 
     # --- the owner ----------------------------------------------------------------
 
@@ -339,6 +350,8 @@ class State:
         the outermost one saves.
         """
         self.check_owner()
+        if not self.changing:
+            self.check_committed()
         saved = snapshot(self._data)
         self.changing.append(current_task())
         try:
@@ -352,14 +365,40 @@ class State:
             self.save()
 
     def save(self) -> None:
-        """Hand the state to the writer thread (no-op without a path).
+        """Commit the state and hand it to the writer thread; only `change()` calls it.
 
         The state is serialized here, on the loop, so the file gets the state as it is
-        now. The writer's thread writes and fsyncs the file.
+        now. The writer's thread writes and fsyncs the file (none without a path).
         """
         self.check_owner()
+        self.committed = self.serialized()
         if self.writer:
-            self.writer.put(json.dumps(self._data, indent=1, sort_keys=True).encode())
+            self.writer.put(self.committed)
+
+    def serialized(self) -> bytes:
+        """Return the state as it is saved: JSON, keys sorted."""
+        return json.dumps(self._data, indent=1, sort_keys=True).encode()
+
+    def check_committed(self) -> None:
+        """Raise AssertionError if the state changed since the last `change()` block.
+
+        Such a change was made outside a block: it was neither undone on an error nor
+        saved. It runs only with `verify_changes` (the unit tests), because it
+        serializes the whole state.
+        """
+        self.check_owner()
+        if not self.verify_changes:
+            return
+        now = self.serialized()
+        if now != self.committed:
+            # what changed, so the change can be found
+            diff = difflib.unified_diff(
+                self.committed.decode().splitlines(), now.decode().splitlines(), n=4
+            )
+            raise AssertionError(
+                "the state was changed outside a `with state.change():` block:\n"
+                + "\n".join(list(diff)[2:40])
+            )
 
     def flush(self) -> None:
         """Wait until every save so far is on disk; any thread may call this."""

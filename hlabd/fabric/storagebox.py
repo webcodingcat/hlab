@@ -7,7 +7,7 @@ is `bytes_used`: it runs print_bytes_used and returns the number that it prints.
 """
 
 from ..records import StorageBox
-from .shell import Shell
+from .shell import LONG_TIMEOUT, Shell
 
 BOX = "/hlab/box"
 TB = 2**40
@@ -45,7 +45,7 @@ class Box:
 
         The disk is limited to `size_gb` (0: no limit).
         """
-        self.shell.run("start-box", str(size_gb))
+        self.shell.run("start-box", str(size_gb), timeout=LONG_TIMEOUT)  # mkfs
 
     def stop_box(self) -> None:
         """Stop the box (failures are ignored)."""
@@ -107,19 +107,22 @@ class Box:
 
     def remove_tree(self, path: str, check: bool = True) -> None:
         """Remove a directory tree on the box."""
-        self.shell.run("remove-tree", path, check=check)
+        self.shell.run("remove-tree", path, check=check, timeout=LONG_TIMEOUT)
 
     def bytes_used(self, path: str) -> int:
         """Return the bytes used below a path (0 if it is missing)."""
-        return int(self.shell.run("print-bytes-used", path, check=False).strip() or 0)
+        output = self.shell.run(
+            "print-bytes-used", path, check=False, timeout=LONG_TIMEOUT
+        )
+        return int(output.strip() or 0)
 
     def take_snapshot(self, data: str, dest: str) -> None:
         """Take a snapshot of a data directory into `dest` (owners are kept)."""
-        self.shell.run("take-snapshot", data, dest)
+        self.shell.run("take-snapshot", data, dest, timeout=LONG_TIMEOUT)
 
     def roll_back(self, snapshot: str, data: str) -> None:
         """Roll a data directory back to a snapshot (owners are kept)."""
-        self.shell.run("roll-back", snapshot, data)
+        self.shell.run("roll-back", snapshot, data, timeout=LONG_TIMEOUT)
 
     def list_folders(self, path: str) -> list[str]:
         """Return the folders below a path."""

@@ -6,7 +6,7 @@ A part of the fabric (see __init__.py); it plugs into the VMs of vm.py.
 from pathlib import Path
 
 from ..records import Server, Volume
-from .shell import Shell
+from .shell import LONG_TIMEOUT, Shell
 from .vm import VMs
 
 
@@ -36,6 +36,7 @@ class Volumes:
                 str(path),
                 str(volume["size"]),
                 volume.get("format") or "",
+                timeout=LONG_TIMEOUT,  # mkfs on a big volume
             )
         except Exception:  # whatever failed: remove the half-made file, then re-raise
             path.unlink(missing_ok=True)

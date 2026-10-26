@@ -5,12 +5,15 @@ thread, which then owns the state; `steps` wait for an event, so a test can look
 flags while they run.
 """
 
+import ast
 import asyncio
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
+from hlabd import lab as lab_module
 from hlabd.errors import ApiError, invalid
 from hlabd.lab import SERVER_LOCKED, ActionSpec, Plan
 
@@ -23,14 +26,16 @@ def make_server(lab, sid=1001, status="running"):
         "status": status,
         "_lab": {"index": sid - 1000, "tap": f"pub{sid - 1000}", "nics": []},
     }
-    lab.state["servers"][sid] = server
+    with lab.state.change():
+        lab.state["servers"][sid] = server
     return server
 
 
 def make_volume(lab, vid=10001):
     """Put a bare volume into the state and return it."""
     volume = {"id": vid, "name": f"v{vid}", "status": "available", "server": None}
-    lab.state["volumes"][vid] = volume
+    with lab.state.change():
+        lab.state["volumes"][vid] = volume
     return volume
 
 
@@ -80,7 +85,8 @@ def test_a_restart_clears_every_flag_and_the_old_locked_field(lab):
     volume, server = make_volume(lab), make_server(lab)
     lab.claim(volume, "_busy", "busy")
     lab.claim(server, "_locked", "locked")
-    server["locked"] = True  # a state file from before `_locked`
+    with lab.state.change():  # a state file from before `_locked`
+        server["locked"] = True
     lab.clear_flags()
     assert "_busy" not in volume
     assert "_locked" not in server and "locked" not in server
@@ -398,3 +404,34 @@ def test_act_answers_a_list_of_actions_with_the_finished_ones(lab):
     assert [action["command"] for action in answer["actions"]] == ["do_go", "do_more"]
     assert all(action["status"] == "success" for action in answer["actions"])
     assert answer["actions"][1]["resources"][1] == {"id": 1001, "type": "server"}
+
+
+def test_stopping_actions_gives_up_on_a_hung_thread_and_names_it(
+    lab, monkeypatch, caplog
+):
+    monkeypatch.setattr(lab_module, "THREADS_WAIT_SECONDS", 0.05)
+    release = threading.Event()
+
+    def hung_script():
+        release.wait(5)
+
+    async def main():
+        lab.spawn(lab.blocking(hung_script))
+        await asyncio.sleep(0.02)  # the thread runs
+        await lab.stop_actions()  # returns although the thread still runs
+        assert len(lab.threads) == 1
+        release.set()
+
+    run(main())
+    assert "hung_script" in caplog.text
+
+
+def test_the_core_imports_nothing_from_the_api():
+    # api/ builds on lab.py; the other way round would be a cycle
+    tree = ast.parse((Path(lab_module.__file__)).read_text())
+    imported = [
+        node.module or ""
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.level
+    ]
+    assert not [module for module in imported if module.startswith("api")]

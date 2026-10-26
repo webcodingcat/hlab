@@ -8,7 +8,7 @@ import json
 import pytest
 from conftest import create_network, create_server, dhcp, nft_set, state_of, wait_action
 
-from hlabd.api import desired, networks
+from hlabd.api import desired, networks, nics
 
 
 def test_servers_in_a_network_get_their_address_by_dhcp(api, tmp_path):
@@ -563,3 +563,32 @@ def test_a_hot_plugged_nic_takes_the_lowest_free_port():
     assert desired.free_hot_plug_port(server) == "hp2"
     server["_lab"]["nics"] = [{"port": port} for port in desired.HOT_PLUG_PORTS]
     assert desired.free_hot_plug_port(server) is None
+
+
+def test_no_nic_gets_an_address_of_the_container(api):
+    # the container's addresses are read in a thread and handed down explicitly
+    api.sh.run = (
+        lambda run: (
+            lambda *a, **k: "10.0.1.1\n" if a[0] == "list-local-addrs" else run(*a, **k)
+        )
+    )(api.sh.run)
+    network = create_network(api, "10.0.1.0/24")
+    server = create_server(api, "a", networks=[network["id"]])["server"]
+    assert server["private_net"][0]["ip"] == "10.0.1.2"  # 10.0.1.1 is the container's
+    response = api.post(
+        f"/v1/servers/{server['id']}/actions/change_alias_ips",
+        json={"network": network["id"], "alias_ips": ["10.0.1.1"]},
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "ip_not_available"
+
+
+def test_a_free_address_skips_the_local_addresses_it_is_given(api):
+    network = create_network(api, "10.0.1.0/24")
+
+    def pick(local_addresses):
+        record = api.lab.state["networks"][network["id"]]
+        return nics.network_ip(api.lab, record, None, local_addresses)
+
+    assert api.on_loop(pick, set()) == "10.0.1.1"
+    assert api.on_loop(pick, {"10.0.1.1", "10.0.1.2"}) == "10.0.1.3"

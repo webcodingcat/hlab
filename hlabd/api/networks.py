@@ -209,9 +209,9 @@ async def create_network(lab: Lab, body: dict) -> dict:
     return {"network": hetzner.network_json(lab, network)}
 
 
-# Each network action below changes only the state and returns an empty plan
-# (lab.Plan), so the action finishes right away (`act()` saves the change). Then DHCP
-# and the routing tables get the network's new settings.
+# Each network action below changes only the state (in its own `change()` block) and
+# returns an empty plan (lab.Plan), so the action finishes right away. Then DHCP and
+# the routing tables get the network's new settings.
 
 
 async def apply_network_change(lab: Lab) -> None:
@@ -222,7 +222,9 @@ async def apply_network_change(lab: Lab) -> None:
 
 async def add_subnet(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
     """Add a subnet to the network."""
-    network["subnets"].append(checked_subnet(network, body))
+    subnet = checked_subnet(network, body)
+    with lab.state.change():
+        network["subnets"].append(subnet)
     await apply_network_change(lab)
     return Plan()
 
@@ -233,16 +235,19 @@ async def delete_subnet(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
     in_use = addresses_in(lab, network["id"])
     if any(ipaddress.ip_address(ip) in subnet_range for ip in in_use):
         raise invalid("subnets with attached resources cannot be deleted", "ip_range")
-    network["subnets"] = [
-        x for x in network["subnets"] if x["ip_range"] != str(subnet_range)
-    ]
+    with lab.state.change():
+        network["subnets"] = [
+            x for x in network["subnets"] if x["ip_range"] != str(subnet_range)
+        ]
     await apply_network_change(lab)
     return Plan()
 
 
 async def add_route(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
     """Add a route to the network."""
-    network["routes"].append(checked_route(network, body))
+    route = checked_route(network, body)
+    with lab.state.change():
+        network["routes"].append(route)
     await apply_network_change(lab)
     return Plan()
 
@@ -250,9 +255,10 @@ async def add_route(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
 async def delete_route(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
     """Delete a route of the network."""
     given = (body.get("destination"), body.get("gateway"))
-    network["routes"] = [
-        r for r in network["routes"] if (r["destination"], r["gateway"]) != given
-    ]
+    with lab.state.change():
+        network["routes"] = [
+            r for r in network["routes"] if (r["destination"], r["gateway"]) != given
+        ]
     await apply_network_change(lab)
     return Plan()
 
@@ -266,7 +272,8 @@ async def change_ip_range(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
             "the range can only be extended: same first address, smaller netmask",
             "ip_range",
         )
-    network["ip_range"] = str(new)
+    with lab.state.change():
+        network["ip_range"] = str(new)
     await system.refresh_cloud_network(lab, network["id"])
     await apply_network_change(lab)
     return Plan()

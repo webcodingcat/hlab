@@ -15,6 +15,13 @@ from .. import config
 
 HLAB_SH = "/opt/hlab/scripts/hlab.sh"
 
+# How long a command may run, in seconds. A hung script would hold its thread and a
+# lab reset that waits for it (`Lab.stop_actions`). Most commands end in a second.
+TIMEOUT = 120
+# for commands that copy data: image downloads, Storage Box snapshots and rollbacks,
+# formatting or removing big files
+LONG_TIMEOUT = 3600
+
 
 class Shell:
     """Runs scripts/hlab.sh commands and talks to QEMU guest agents.
@@ -27,18 +34,32 @@ class Shell:
         """Prepare the environment the scripts run with."""
         self.env = {**os.environ, **config.script_env()}
 
-    def run(self, *args: str, check: bool = True, stdin_text: str | None = None) -> str:
+    def run(
+        self,
+        *args: str,
+        check: bool = True,
+        stdin_text: str | None = None,
+        timeout: float = TIMEOUT,
+    ) -> str:
         """Run an hlab.sh command and return its output; raise on failure if checked.
 
-        `stdin_text` is written to the command's standard input (e.g. a password).
+        `stdin_text` is written to the command's standard input (e.g. a password). A
+        command that runs longer than `timeout` seconds is killed, and this raises
+        RuntimeError, whether checked or not.
         """
-        process = subprocess.run(
-            [HLAB_SH, *args],
-            capture_output=True,
-            text=True,
-            input=stdin_text,
-            env=self.env,
-        )
+        try:
+            process = subprocess.run(
+                [HLAB_SH, *args],
+                capture_output=True,
+                text=True,
+                input=stdin_text,
+                env=self.env,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(
+                f"hlab.sh {' '.join(args)}: no end after {timeout:g} s (killed)"
+            ) from None
         if check and process.returncode != 0:
             raise RuntimeError(
                 f"hlab.sh {' '.join(args)}: "
@@ -46,9 +67,20 @@ class Shell:
             )
         return process.stdout
 
-    def ok(self, *args: str) -> bool:
-        """Run an hlab.sh command and tell whether it succeeded."""
-        process = subprocess.run([HLAB_SH, *args], capture_output=True, env=self.env)
+    def ok(self, *args: str, timeout: float = TIMEOUT) -> bool:
+        """Run an hlab.sh command and tell whether it succeeded.
+
+        A command that runs longer than `timeout` seconds is killed, and this raises
+        RuntimeError.
+        """
+        try:
+            process = subprocess.run(
+                [HLAB_SH, *args], capture_output=True, env=self.env, timeout=timeout
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(
+                f"hlab.sh {' '.join(args)}: no end after {timeout:g} s (killed)"
+            ) from None
         return process.returncode == 0
 
     def qga(self, sock: Path, command: dict, timeout: float = 10) -> dict | None:

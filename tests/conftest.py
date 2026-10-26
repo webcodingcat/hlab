@@ -39,7 +39,7 @@ class FakeShell:
         self.fail: set[str] = set()  # commands that fail (error paths)
         self.stdin: list[tuple] = []  # (command, what it got on stdin): passwords
 
-    def run(self, *args, check=True, stdin_text=None):
+    def run(self, *args, check=True, stdin_text=None, timeout=None):
         """Record a command and play its effect on the fake VMs.
 
         Takes the arguments of hlabd.fabric.shell.Shell.run; a command in self.fail
@@ -58,7 +58,7 @@ class FakeShell:
             self.running.discard(args[1])
         return ""
 
-    def ok(self, *args):
+    def ok(self, *args, timeout=None):
         """Answer a yes/no command: a VM is alive while it runs, every link exists."""
         command = args[0]
         return (command == "is-vm-alive" and args[1] in self.running) or (
@@ -77,26 +77,32 @@ class FakeShell:
 
 @pytest.fixture(autouse=True)
 def state_owner_kept(monkeypatch):
-    """Fail a test in which the state was used outside its owner, wherever that was.
+    """Fail a test that broke a rule of the state, wherever that was.
 
-    `check_owner()` raises, but in an action's steps or a thread that error only
-    fails the action; so every breach is recorded here and fails the test at its end.
-    A test that breaks the rule on purpose empties the list it gets.
+    The rules: only the owner uses the state (`check_owner()`), and every change is
+    inside a `with state.change():` block (`check_committed()`, turned on here through
+    `State.verify_changes`). The checks raise, but in an action's steps or a thread
+    that error only fails the action; so every breach is recorded here and fails the
+    test at its end. A test that breaks a rule on purpose empties the list it gets.
     """
     breaches: list[str] = []
-    check = State.check_owner
 
-    def recorded_check(state: State) -> None:
-        try:
-            check(state)
-        except AssertionError as error:
-            stack = "".join(traceback.format_stack(limit=6)[:-1])
-            breaches.append(f"{error}\n{stack}")
-            raise
+    def recorded(check):
+        def recorded_check(state: State) -> None:
+            try:
+                check(state)
+            except AssertionError as error:
+                stack = "".join(traceback.format_stack(limit=8)[:-1])
+                breaches.append(f"{error}\n{stack}")
+                raise
 
-    monkeypatch.setattr(State, "check_owner", recorded_check)
+        return recorded_check
+
+    monkeypatch.setattr(State, "verify_changes", True)
+    monkeypatch.setattr(State, "check_owner", recorded(State.check_owner))
+    monkeypatch.setattr(State, "check_committed", recorded(State.check_committed))
     yield breaches
-    assert not breaches, "the state was used outside its owner:\n" + "\n".join(breaches)
+    assert not breaches, "a rule of the state was broken:\n" + "\n".join(breaches)
 
 
 @pytest.fixture
@@ -177,15 +183,31 @@ def api(lab):
         client.lab = lab
         client.sh = lab.fabric.shell
         yield client
+        # a change outside a block that no later block noticed
+        client.on_loop(lab.state.check_committed)
 
 
 def state_of(client, key: str):
     """Return a part of the state by key (a kind such as "servers", or "netem").
 
-    It is looked up on the loop that owns the state. The test reads it afterwards,
-    and may change a record for a setup while no request runs.
+    It is looked up on the loop that owns the state. The test reads it afterwards; a
+    change for a setup goes through `change_state`, while no request runs.
     """
     return client.on_loop(lambda: client.lab.state.data[key])
+
+
+def change_state(client, work, *args):
+    """Run `work(*args)` on the loop in a `change()` block and return its result.
+
+    A test changes a record for its setup this way, as the lab would:
+    `change_state(api, record.update, {"_busy": True})`.
+    """
+
+    def changed():
+        with client.lab.state.change():
+            return work(*args)
+
+    return client.on_loop(changed)
 
 
 def metadata_client(api, ip: str, port: int = 40000) -> TestClient:
@@ -305,3 +327,4 @@ def box_api(lab):
         use_client_loop(lab, client)
         client.lab, client.sh = lab, lab.fabric.shell
         yield client
+        client.on_loop(lab.state.check_committed)

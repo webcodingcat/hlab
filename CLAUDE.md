@@ -40,9 +40,9 @@ missing skip.
   change the system.
 - **The event loop owns the state.** Only code on the loop reads or changes it (every
   route is `async def`). Blocking work runs in a thread through
-  `await lab.blocking(work, ...)`, with plain data in and out, never the state. A change
-  that is saved is a `with state.change():` block. It is undone if it raises, and it
-  never awaits. See DEVELOPING.md, State.
+  `await lab.blocking(work, ...)`, with plain data in and out, never the state. Every
+  change to the state is inside a `with state.change():` block (the unit tests check
+  this). It is undone if it raises, and it never awaits. See DEVELOPING.md, State.
 - **New actions go through `lab.act()`**: add an `ActionSpec(...)` row to the
   resource's table. Other code holds flags only through `with lab.holding() as held:`,
   never through `lab.claim()` or `lab.release()`. Flags are fields that only the lab
