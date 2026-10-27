@@ -6,6 +6,7 @@ Covered here:
   verb of hlab.sh's `main` (or of box.sh's, which hlab.sh hands on) and passes an
   argument count its function takes; both sides are parsed from the sources, so there
   is no table to keep up; every verb is its function's name with dashes;
+- box.sh's remove-tree refuses every path not strictly inside the box (HLAB_BOX);
 - the nftables rulesets: the table inet hlab that `hlab.sh init-net` loads from
   hlab.nft with the addresses put in (ip, sysctl and nft stubbed), the set elements
   of fabric/faults.py and the firewall table of fabric/firewall.py, rendered from a
@@ -219,6 +220,44 @@ def test_an_unknown_verb_fails_with_status_2():
     )
     assert process.returncode == 2
     assert "unknown command: no-such-verb" in process.stderr
+
+
+@NEEDS_BASH
+def test_remove_tree_removes_only_paths_strictly_inside_the_box(tmp_path):
+    box, outside = tmp_path / "box", tmp_path / "outside"
+    (box / "data" / "7").mkdir(parents=True)
+    (box / "data" / "7" / "file").write_text("data")
+    outside.mkdir()
+    (outside / "file").write_text("keep")
+    (box / "data" / "escape").symlink_to(outside)
+    env = {**os.environ, **config.script_env(), "HLAB_BOX": str(box)}
+
+    def remove_tree(path) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["bash", str(BOX_SH), "remove-tree", str(path)],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+    refused = [
+        "/",
+        box,
+        f"{box}/",
+        f"{box}/data/..",
+        outside,
+        f"{box}/data/../../outside",
+        box / "data" / "escape",
+        box / "data" / "escape" / "file",
+    ]
+    for path in refused:
+        process = remove_tree(path)
+        assert process.returncode == 1, path
+        assert "refusing to remove" in process.stderr
+    assert (outside / "file").read_text() == "keep"
+    assert (box / "data" / "7" / "file").exists()
+    assert remove_tree(box / "data" / "7").returncode == 0
+    assert not (box / "data" / "7").exists()
 
 
 # --- nftables -------------------------------------------------------------------------

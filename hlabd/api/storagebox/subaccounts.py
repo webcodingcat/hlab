@@ -6,7 +6,6 @@ Each one is a separate account (u<box>-sub<n>) with a home directory inside the 
 from fastapi import FastAPI, Request
 
 from ...errors import limit_exceeded, locked, not_found, not_unique
-from ...fabric.storagebox import username
 from ...lab import ActionSpec, ActionTable, Lab, Plan, now
 from ...records import StorageBox, Subaccount
 from ..web import filtered, read_body, sort_items, update_fields
@@ -18,6 +17,7 @@ from .base import (
     checked_password,
     normalized_box_path,
     sync_subaccount,
+    username,
 )
 
 

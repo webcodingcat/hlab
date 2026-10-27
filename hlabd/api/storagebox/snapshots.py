@@ -11,7 +11,6 @@ from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Request
 
 from ...errors import limit_exceeded, locked, not_found
-from ...fabric.storagebox import data_dir, snap_dir
 from ...lab import Lab, Plan, now
 from ...records import BoxSnapshot, StorageBox
 from ..web import filtered, read_body, sort_items, update_fields
@@ -83,18 +82,18 @@ async def copy_snapshot(lab: Lab, box: StorageBox, snapshot: BoxSnapshot) -> Non
 
     If the copy fails, the record is removed again.
     """
-    fabric_box, path = lab.fabric.box, snap_dir(box["id"], snapshot["name"])
+    fabric_box, name = lab.fabric.box, snapshot["name"]
     try:
-        await lab.blocking(fabric_box.take_snapshot, data_dir(box["id"]), path)
+        await lab.blocking(fabric_box.take_snapshot, box["id"], name)
     except Exception:  # undo the partial change, then raise
         with lab.state.change():
             lab.state["box_snapshots"].pop(snapshot["id"], None)
         raise
     # the snapshot was deleted in the meantime (or the lab reset): leave no copy
     if lab.state["box_snapshots"].get(snapshot["id"]) is not snapshot:
-        await lab.blocking(fabric_box.remove_tree, path, check=False)
+        await lab.blocking(fabric_box.remove_snapshot, box["id"], name, check=False)
         return
-    size = await lab.blocking(fabric_box.bytes_used, path)
+    size = await lab.blocking(fabric_box.snapshot_bytes, box["id"], name)
     with lab.state.change():
         snapshot["size"] = size
         snapshot.pop("_copying", None)
@@ -121,9 +120,7 @@ async def take_automatic_snapshot(lab: Lab, box: StorageBox) -> BoxSnapshot:
 
 async def remove_snapshot(lab: Lab, box: StorageBox, snapshot: BoxSnapshot) -> None:
     """Remove a snapshot's copy and its record."""
-    await lab.blocking(
-        lab.fabric.box.remove_tree, snap_dir(box["id"], snapshot["name"])
-    )
+    await lab.blocking(lab.fabric.box.remove_snapshot, box["id"], snapshot["name"])
     with lab.state.change():
         del lab.state["box_snapshots"][snapshot["id"]]
 
@@ -193,11 +190,7 @@ async def rollback_snapshot(lab: Lab, box: StorageBox, body: dict) -> Plan:
         raise locked("the snapshot is still being taken")
 
     async def steps():
-        await lab.blocking(
-            lab.fabric.box.roll_back,
-            snap_dir(box["id"], snapshot["name"]),
-            data_dir(box["id"]),
-        )
+        await lab.blocking(lab.fabric.box.roll_back, box["id"], snapshot["name"])
         # sub-account homes are paths: they follow what the snapshot has there
         subaccounts = [
             x for x in state["subaccounts"].values() if x["box"] == box["id"]

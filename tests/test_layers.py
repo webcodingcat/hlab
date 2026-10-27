@@ -62,3 +62,20 @@ def test_no_record_type_appears_in_the_fabric():
                 if name in records:
                     found.append(f"{path.name}:{node.lineno} {name}")
     assert found == []
+
+
+def test_the_api_names_box_things_and_never_builds_box_paths():
+    # the layout of the Storage Box on disk lives in fabric/storagebox.py (and box.sh);
+    # api/ passes box IDs and names to the methods of fabric.box
+    found = []
+    for path in sorted((HLABD / "api").rglob("*.py")):
+        tree = ast.parse(path.read_text())
+        found += [
+            f"{path.relative_to(HLABD)}:{node.lineno}"
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            and (node.module or "").endswith("fabric.storagebox")
+        ]
+        if "/hlab/box" in path.read_text():
+            found.append(f"{path.relative_to(HLABD)} names /hlab/box")
+    assert found == []

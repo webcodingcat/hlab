@@ -110,10 +110,13 @@ async def change_delete_protection(lab: Lab, item: ProtectedRecord, body: dict) 
 
 def positive_int_or_default(value: str | None, default: int) -> int:
     """Return a query value as a number of at least 1, else the default (Hetzner)."""
+    if value is None:
+        return default
     try:
-        return int(value) if value is not None and int(value) >= 1 else default
+        number = int(value)
     except ValueError:
         return default
+    return number if number >= 1 else default
 
 
 def sort_items[T: Mapping[str, Any]](items: list[T], sorts: list[str]) -> list[T]:

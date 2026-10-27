@@ -9,7 +9,6 @@ import logging
 
 from fastapi import FastAPI
 
-from ...fabric.storagebox import BOX, snap_dir
 from ...lab import Lab
 from ..web import install
 from . import boxes, snapshots, subaccounts
@@ -48,12 +47,13 @@ async def restore(lab: Lab) -> None:
     for s in cut_off:
         box = state["storage_boxes"].get(s["box"])
         if box:
-            path = snap_dir(box["id"], s["name"])
-            await lab.blocking(fabric.box.remove_tree, path, check=False)
+            await lab.blocking(
+                fabric.box.remove_snapshot, box["id"], s["name"], check=False
+            )
         with state.change():
             del state["box_snapshots"][s["id"]]
     # snapshots whose copy was not finished
-    await lab.blocking(fabric.box.remove_tree, f"{BOX}/snapshots/.work", check=False)
+    await lab.blocking(fabric.box.clear_snapshot_work)
     for box in boxes:
         try:
             await box_account(lab, box, box.get("_password"))

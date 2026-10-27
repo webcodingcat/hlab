@@ -38,7 +38,8 @@ readonly CLIENT6="${HLAB_CLIENT6:?}"
 # The lab's own IPv6 service range (a /48).
 readonly LAB6="${HLAB_SERVICES_NET6:?}"
 
-readonly BOX=/hlab/box
+# HLAB_BOX: only the unit tests set another one (tests/test_scripts.py).
+readonly BOX="${HLAB_BOX:-/hlab/box}"
 readonly ROOTS=/run/box-roots
 # The helpers live below /usr, which every account's root has (read-only).
 readonly LIB=/usr/local/lib/lab
@@ -435,10 +436,19 @@ roll_back() {
   rsync -aHAX --delete --exclude=/.zfs "${snapshot}/" "${data}/"
 }
 
-# remove_tree <dir>: Remove a directory tree on the box.
+# remove_tree <dir>: Remove a directory tree on the box. Only a path that is
+# strictly inside the box once its symlinks are resolved is removed; anything
+# else (the box itself, /, a path that leaves the box) is refused with status
+# 1. --one-file-system: nothing mounted below it (a .zfs view) is deleted.
 remove_tree() {
-  local dir="$1"
-  rm -rf "${dir}"
+  local dir="$1" box resolved
+  box="$(realpath -m -- "${BOX}")"
+  resolved="$(realpath -m -- "${dir}")"
+  if [[ "${resolved}" != "${box}"/?* ]]; then
+    echo "box.sh: refusing to remove ${dir}: not inside ${BOX}" >&2
+    return 1
+  fi
+  rm -rf --one-file-system -- "${dir}"
 }
 
 # print_bytes_used <dir>: Print the bytes used below the directory (nothing

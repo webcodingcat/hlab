@@ -11,13 +11,12 @@ from fastapi import FastAPI, Request
 
 from .. import config
 from ..errors import invalid, not_found
-from ..fabric.storagebox import data_dir, snap_dir, username
 from ..lab import Lab
 from ..records import Client, Fault, TargetRef
 from ..state import client_by_name, primary_address_of, server_by_name
 from . import desired, hetzner, system
 from .faults import drop_faults, fault_json
-from .storagebox.base import set_up_box_user
+from .storagebox.base import set_up_box_user, username
 from .web import read_body
 
 # the fields of each fault type, with their defaults (None: required). The field "vm"
@@ -364,8 +363,7 @@ async def reset_lab(lab: Lab) -> dict:
         await lab.blocking(fabric.box.remove_account, subaccount["username"])
     for box in boxes:
         await lab.blocking(fabric.box.remove_account, username(box["id"]))
-        await lab.blocking(fabric.box.remove_tree, data_dir(box["id"]))
-        await lab.blocking(fabric.box.remove_tree, snap_dir(box["id"]))
+        await lab.blocking(fabric.box.remove_box_data, box["id"])
     for ip in routed:
         await system.route_floating_ip(lab, ip, None)
     for client in clients:

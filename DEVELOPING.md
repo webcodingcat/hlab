@@ -453,6 +453,10 @@ done.
   After a clean destroy it removes its local state files; `.terraform/` (the provider)
   stays and is ignored by git.
 
+CI (`.github/workflows/test.yml`) runs `bin/hlab test` on every push and pull request
+to `main`. `bin/hlab itest` and the OpenTofu smoke test stay manual: they need a
+running lab (a privileged container with `/dev/kvm`), which GitHub's runners lack.
+
 The unit tests also run without Docker, on Linux or macOS with Python 3.13 or newer.
 From the repository's root:
 

@@ -173,7 +173,7 @@ def checked_server_request(lab: Lab, body: dict) -> ServerRequest:
         firewall_ids=firewall_ids,
         volumes=given_volumes,
         network_ids=[ref_id(n, "networks") for n in body.get("networks") or []],
-        automount=body.get("automount", False),
+        automount=bool(body.get("automount", False)),
         start=bool(body.get("start_after_create", True)),
     )
 

@@ -26,7 +26,7 @@ Python, pytest and the linters are not needed on the host.
 | `tests/tofu-smoke/run.sh demo` | OpenTofu + hcloud provider against the running lab |
 
 `bin/hlab test` is the reference: it runs every unit test, including the full nftables
-check (`--cap-add NET_ADMIN`). Outside Docker the tests run from a venv with the specs
+check (`--cap-add NET_ADMIN`); CI runs it on every push and pull request. Outside Docker the tests run from a venv with the specs
 that `tools/fetch_specs.py` downloads (DEVELOPING.md, Tests); tests whose tools are
 missing skip.
 

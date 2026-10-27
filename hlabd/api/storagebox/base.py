@@ -7,7 +7,6 @@ disk (also those made through /_lab/box/users), and the checks of requests.
 import posixpath
 
 from ...errors import invalid, locked, not_found
-from ...fabric.storagebox import TB, data_dir, lab_user_dir, snap_dir, username
 from ...lab import Lab
 from ...records import StorageBox, Subaccount
 
@@ -17,6 +16,12 @@ PASSWORD_CHARS = (
     | PASSWORD_SPECIAL
 )
 BUSY = "the Storage Box is busy with another action"
+TB = 2**40
+
+
+def username(box_id: int) -> str:
+    """Return the account of a box (Hetzner: u<number>)."""
+    return f"u{box_id}"
 
 
 def box_busy(lab: Lab, box: StorageBox, for_delete: bool = False) -> bool:
@@ -65,7 +70,8 @@ async def box_account(lab: Lab, box: StorageBox, password: str | None) -> None:
     await lab.blocking(
         lab.fabric.box.set_account,
         username(box["id"]),
-        data_dir(box["id"]),
+        box["id"],
+        ".",
         password,
         quota_bytes(lab, box),
         box["id"],
@@ -77,17 +83,8 @@ async def sync_box(lab: Lab, box: StorageBox) -> None:
     access = dict(box["access"])  # a copy for the thread
     user = username(box["id"])
     await lab.blocking(lab.fabric.box.set_access, user, access, quota_bytes(lab, box))
-    zfs_view = snap_dir(box["id"]) if access["zfs_enabled"] else None
-    await lab.blocking(lab.fabric.box.set_zfs_view, user, zfs_view)
-
-
-def sub_home(box: StorageBox, subaccount: Subaccount) -> str:
-    """Return a sub-account's home on disk.
-
-    A home is a path inside the box; it holds whatever files are there now.
-    """
-    return posixpath.normpath(
-        posixpath.join(data_dir(box["id"]), subaccount["home_directory"].lstrip("/"))
+    await lab.blocking(
+        lab.fabric.box.set_zfs_view, user, box["id"], bool(access["zfs_enabled"])
     )
 
 
@@ -97,16 +94,23 @@ async def sync_subaccount(
     """Apply a sub-account's home and access settings (and its password, if given).
 
     With a password, the account is created if it is missing. It shares the box
-    user's IDs, so the box user keeps full access to its files.
+    user's IDs, so the box user keeps full access to its files. A home is a path
+    inside the box; it holds whatever files are there now.
     """
-    user, home = subaccount["username"], sub_home(box, subaccount)
+    user, home = subaccount["username"], subaccount["home_directory"]
     access, quota = dict(subaccount["access"]), quota_bytes(lab, box)
     if password is not None:
         await lab.blocking(
-            lab.fabric.box.set_account, user, home, password, quota, username(box["id"])
+            lab.fabric.box.set_account,
+            user,
+            box["id"],
+            home,
+            password,
+            quota,
+            username(box["id"]),
         )
     else:
-        await lab.blocking(lab.fabric.box.set_home, user, home)
+        await lab.blocking(lab.fabric.box.set_home, user, box["id"], home)
     await lab.blocking(lab.fabric.box.set_access, user, access, quota)
 
 
@@ -122,7 +126,7 @@ async def set_up_box_user(lab: Lab, name: str, public_key: str) -> None:
         uid = uids.setdefault(name, 30000 + len(uids))
     box = lab.fabric.box
     access = {"ssh_enabled": True, "reachable_externally": True}
-    await lab.blocking(box.set_account, name, lab_user_dir(name), None, TB, uid)
+    await lab.blocking(box.set_lab_account, name, uid, TB)
     await lab.blocking(box.set_access, name, access, TB)
     await lab.blocking(box.add_key, name, public_key)
 

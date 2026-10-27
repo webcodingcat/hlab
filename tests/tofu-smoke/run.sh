@@ -23,6 +23,23 @@ tofu() {
     -w /work "${TOFU_IMAGE}" "$@"
 }
 
+# remove_state: Remove the local state files after a clean destroy and fail if
+# one is left. The rm runs in the OpenTofu image, through the same mount as the
+# tofu that wrote them (as root), so neither the host's path translation (Git
+# Bash) nor the files' owner can keep one. .terraform.lock.hcl stays (it is
+# committed), and .terraform/ keeps the provider for the next run.
+remove_state() {
+  local file
+  docker run --rm -v "${HERE}:/work" -w /work --entrypoint rm "${TOFU_IMAGE}" \
+    -f terraform.tfstate terraform.tfstate.backup
+  for file in terraform.tfstate terraform.tfstate.backup; do
+    if [[ -e "${HERE}/${file}" ]]; then
+      echo "FAIL: ${file} is left after the destroy" >&2
+      exit 1
+    fi
+  done
+}
+
 # check_plan_empty: Fail unless a plan after the apply shows no changes; on
 # failure show the plan.
 check_plan_empty() {
@@ -110,9 +127,7 @@ main() {
   check_firewall "${container}"
   tofu destroy -input=false -auto-approve >/dev/null
   echo "OK: destroyed"
-  # The state is empty now; .terraform.lock.hcl stays (it is committed), and
-  # .terraform/ keeps the provider for the next run.
-  rm -f "${HERE}/terraform.tfstate" "${HERE}/terraform.tfstate.backup"
+  remove_state
   docker exec "${container}" hlab status
 }
 

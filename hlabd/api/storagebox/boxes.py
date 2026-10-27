@@ -1,11 +1,8 @@
 """Storage Boxes: their types, the boxes themselves, their actions and folders."""
 
-import posixpath
-
 from fastapi import FastAPI, Request
 
 from ...errors import check_unique_name, invalid, locked, protected
-from ...fabric.storagebox import TB, data_dir, snap_dir, username
 from ...lab import BOX_CREATE_SECONDS, ActionSpec, ActionTable, Lab, Plan, now
 from ...records import StorageBox
 from .. import hetzner
@@ -21,6 +18,7 @@ from ..web import (
 )
 from .base import (
     BUSY,
+    TB,
     box_account,
     box_busy,
     box_or_404,
@@ -29,6 +27,7 @@ from .base import (
     normalized_box_path,
     quota_bytes,
     sync_box,
+    username,
 )
 from .snapshots import rollback_snapshot
 
@@ -61,9 +60,8 @@ def box_type_json(lab: Lab, name: str) -> dict:
 
 async def box_stats(lab: Lab, box: StorageBox) -> dict:
     """Return the box's disk usage: data, snapshots and both together."""
-    data_path, snap_path = data_dir(box["id"]), snap_dir(box["id"])
-    data = await lab.blocking(lab.fabric.box.bytes_used, data_path)
-    snapshots = await lab.blocking(lab.fabric.box.bytes_used, snap_path)
+    data = await lab.blocking(lab.fabric.box.data_bytes, box["id"])
+    snapshots = await lab.blocking(lab.fabric.box.snapshot_bytes, box["id"])
     return {"size": data + snapshots, "size_data": data, "size_snapshots": snapshots}
 
 
@@ -129,7 +127,7 @@ async def set_up_box_account(
         await sync_box(lab, box)
     except Exception:  # undo the partial change, then raise
         await lab.blocking(fabric_box.remove_account, username(box["id"]), check=False)
-        await lab.blocking(fabric_box.remove_tree, data_dir(box["id"]), check=False)
+        await lab.blocking(fabric_box.remove_box_data, box["id"], check=False)
         with lab.state.change():
             lab.state["storage_boxes"].pop(box["id"], None)
         raise
@@ -147,8 +145,7 @@ async def remove_box(lab: Lab, box: StorageBox) -> None:
         for s in [s for s in state["box_snapshots"].values() if s["box"] == box["id"]]:
             del state["box_snapshots"][s["id"]]
     await lab.blocking(fabric_box.remove_account, username(box["id"]))
-    await lab.blocking(fabric_box.remove_tree, data_dir(box["id"]))
-    await lab.blocking(fabric_box.remove_tree, snap_dir(box["id"]))
+    await lab.blocking(fabric_box.remove_box_data, box["id"])
     with state.change():
         state["storage_boxes"].pop(box["id"], None)
 
@@ -330,8 +327,8 @@ def delete_box(lab: Lab, bid: int) -> dict:
 async def box_folders(lab: Lab, bid: int, path: str) -> dict:
     """Return the folders below a path of the box."""
     box = box_or_404(lab, bid)
-    path = posixpath.join(data_dir(box["id"]), normalized_box_path(path, "path"))
-    return {"folders": await lab.blocking(lab.fabric.box.list_folders, path)}
+    path = normalized_box_path(path, "path")
+    return {"folders": await lab.blocking(lab.fabric.box.list_folders, box["id"], path)}
 
 
 async def run_box_action(lab: Lab, bid: int, cmd: str, body: dict) -> dict:
