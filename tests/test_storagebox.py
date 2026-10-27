@@ -36,6 +36,23 @@ def test_box_types_are_hetzners_four_sizes(box_api):
     types = box_api.get("/v1/storage_box_types").json()["storage_box_types"]
     assert [t["name"] for t in types] == ["bx11", "bx21", "bx31", "bx41"]
     assert types[0]["size"] == 2**40
+    assert types[1]["description"] == "BX21"
+    assert types[1]["prices"][0]["price_monthly"]["net"] == "10.9000000000"
+
+
+def test_snapshot_plan_keeps_to_the_automatic_limit_of_the_type(box_api):
+    # Hetzner limits manual and automatic snapshots separately
+    box_api.lab.cfg["storage_box_types"]["bx11"]["automatic_snapshots"] = 2
+    box = create_box(box_api)
+    plan = f"/v1/storage_boxes/{box['id']}/actions/enable_snapshot_plan"
+    response = box_api.post(plan, json={"max_snapshots": 3, "minute": 0, "hour": 3})
+    assert response.json()["error"]["code"] == "invalid_input"
+    response = box_api.post(plan, json={"max_snapshots": 2, "minute": 0, "hour": 3})
+    assert response.status_code == 201
+    automatic_limit = box_api.get("/v1/storage_box_types").json()["storage_box_types"][
+        0
+    ]["automatic_snapshot_limit"]
+    assert automatic_limit == 2
 
 
 def test_box_is_created_configured_protected_and_deleted(box_api):

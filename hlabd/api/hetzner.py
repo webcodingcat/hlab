@@ -3,6 +3,9 @@
 See https://docs.hetzner.cloud/.
 """
 
+from decimal import Decimal
+
+from ..config import SERVER_CATEGORIES
 from ..lab import Lab
 from ..labels import firewall_servers, selector_servers
 from ..records import (
@@ -18,7 +21,10 @@ from ..records import (
 from ..state import FIREWALLS, FLOATING_IPS, VOLUMES, nics_in, primary_ip_of
 
 CREATED = "2026-01-01T00:00:00+00:00"  # catalogue entries
-TRAFFIC = 21990232555520  # 20 TB included traffic
+TB = 1024**4  # Hetzner counts traffic in binary terabytes
+# Hetzner's hourly price is the monthly one spread over 624 hours (26 days): a
+# server costs its monthly price at most
+HOURS_PER_MONTH = Decimal(624)
 
 LOCATION_IDS = {"fsn1": 1, "nbg1": 2, "hel1": 3}
 COORDS = {
@@ -60,35 +66,54 @@ def server_type_id(lab: Lab, name: str) -> int:
     return 100 + list(lab.cfg["server_types"]).index(name)
 
 
-def server_type_json(lab: Lab, name: str) -> dict:
-    """Return the API object of a server type, with prices in every location."""
-    cfg = lab.cfg
-    entry = cfg["server_types"][name]
-    prices = [
+def price(lab: Lab, net) -> dict:
+    """Return a price as the API gives it: net and with VAT, as decimal strings.
+
+    `net` is a number of the configuration (EUR without VAT).
+    """
+    amount = Decimal(str(net))
+    vat = Decimal(str(lab.cfg["pricing"]["vat_rate"])) / 100
+    return {"net": f"{amount:.10f}", "gross": f"{amount * (1 + vat):.10f}"}
+
+
+def hourly(monthly) -> Decimal:
+    """Return Hetzner's hourly price for a monthly price, to four decimals."""
+    return (Decimal(str(monthly)) / HOURS_PER_MONTH).quantize(Decimal("0.0001"))
+
+
+def server_type_prices(lab: Lab, name: str) -> list[dict]:
+    """Return a server type's prices: the same in every location of the lab."""
+    entry = lab.cfg["server_types"][name]
+    return [
         {
             "location": loc,
-            "price_hourly": {"net": "0.0080", "gross": "0.0095"},
-            "price_monthly": {"net": "4.9900", "gross": "5.9381"},
-            "included_traffic": TRAFFIC,
-            "price_per_tb_traffic": {"net": "1.0000", "gross": "1.1900"},
+            "price_hourly": price(lab, hourly(entry["price_monthly"])),
+            "price_monthly": price(lab, entry["price_monthly"]),
+            "included_traffic": entry["traffic_tb"] * TB,
+            "price_per_tb_traffic": price(lab, lab.cfg["pricing"]["traffic_per_tb"]),
         }
-        for loc in cfg["locations"]
+        for loc in lab.cfg["locations"]
     ]
+
+
+def server_type_json(lab: Lab, name: str) -> dict:
+    """Return the API object of a server type, offered in every location."""
+    cfg = lab.cfg
+    entry = cfg["server_types"][name]
     return {
         "id": server_type_id(lab, name),
         "name": name,
         "description": name.upper(),
-        "category": "cost_optimized",
+        "category": entry["category"],
         "cores": entry["cores"],
         "memory": float(entry["memory_gb"]),
         "disk": entry["disk_gb"],
         "deprecated": False,
         "deprecation": None,
-        "prices": prices,
+        "prices": server_type_prices(lab, name),
         "storage_type": "local",
-        "cpu_type": "shared",
+        "cpu_type": SERVER_CATEGORIES[entry["category"]],
         "architecture": "x86",
-        "included_traffic": TRAFFIC,
         "locations": [
             {
                 "id": location_id(lab, loc),
@@ -99,6 +124,51 @@ def server_type_json(lab: Lab, name: str) -> dict:
             }
             for loc in cfg["locations"]
         ],
+    }
+
+
+def pricing_json(lab: Lab) -> dict:
+    """Return the price list of /v1/pricing.
+
+    There are no load balancers (yet), so their list is empty.
+    """
+    pricing = lab.cfg["pricing"]
+    locations = lab.cfg["locations"]
+
+    def ip_prices(kind: str, hourly_too: bool) -> list[dict]:
+        monthly = pricing[f"{kind}_monthly"]
+        per_location = {"price_monthly": price(lab, monthly)}
+        if hourly_too:  # primary IPs are billed by the hour, Floating IPs by month
+            per_location["price_hourly"] = price(lab, hourly(monthly))
+        return [{"location": loc, **per_location} for loc in locations]
+
+    return {
+        "currency": "EUR",
+        "vat_rate": f"{Decimal(str(pricing['vat_rate'])):.2f}",
+        "primary_ips": [
+            {"type": "ipv4", "prices": ip_prices("primary_ipv4", True)},
+            {"type": "ipv6", "prices": ip_prices("primary_ipv6", True)},
+        ],
+        "floating_ips": [
+            {"type": "ipv4", "prices": ip_prices("floating_ipv4", False)},
+            {"type": "ipv6", "prices": ip_prices("floating_ipv6", False)},
+        ],
+        # deprecated by Hetzner in favour of floating_ips, still required
+        "floating_ip": {"price_monthly": price(lab, pricing["floating_ipv4_monthly"])},
+        "image": {"price_per_gb_month": price(lab, pricing["image_per_gb_monthly"])},
+        "volume": {"price_per_gb_month": price(lab, pricing["volume_per_gb_monthly"])},
+        "server_backup": {
+            "percentage": f"{Decimal(str(pricing['backup_percent'])):.2f}"
+        },
+        "server_types": [
+            {
+                "id": server_type_id(lab, name),
+                "name": name,
+                "prices": server_type_prices(lab, name),
+            }
+            for name in lab.cfg["server_types"]
+        ],
+        "load_balancer_types": [],
     }
 
 
@@ -212,7 +282,8 @@ def server_json(lab: Lab, server: Server) -> dict:
         "backup_window": None,
         "outgoing_traffic": 0,
         "ingoing_traffic": 0,
-        "included_traffic": TRAFFIC,
+        "included_traffic": cfg["server_types"][server["server_type"]]["traffic_tb"]
+        * TB,
         "protection": server["protection"],
         "volumes": volumes,
         "load_balancers": [],

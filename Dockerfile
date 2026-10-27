@@ -61,8 +61,9 @@ ENV PATH=/opt/dev/bin:$PATH
 # and Python writes no __pycache__.
 ENV RUFF_CACHE_DIR=/tmp/ruff-cache MYPY_CACHE_DIR=/tmp/mypy-cache PYTHONDONTWRITEBYTECODE=1
 # The unit tests run here (`bin/hlab test`), next to the lab's code and specs; they also read
-# the wrappers in bin/.
+# the wrappers in bin/ and the sample configuration.
 COPY tests/ /opt/hlab/tests/
 COPY bin/ /opt/hlab/bin/
+COPY examples/ /opt/hlab/examples/
 WORKDIR /src
 ENTRYPOINT []

@@ -37,21 +37,22 @@ def box_type_json(lab: Lab, name: str) -> dict:
     """Return the API object of a box type."""
     cfg = lab.cfg
     entry = cfg["storage_box_types"][name]
+    monthly = entry["price_monthly"]
     prices = [
         {
             "location": loc,
-            "price_hourly": {"net": "0.0050", "gross": "0.0060"},
-            "price_monthly": {"net": "3.2000", "gross": "3.8080"},
-            "setup_fee": {"net": "0.0000", "gross": "0.0000"},
+            "price_hourly": hetzner.price(lab, hetzner.hourly(monthly)),
+            "price_monthly": hetzner.price(lab, monthly),
+            "setup_fee": hetzner.price(lab, 0),
         }
         for loc in cfg["locations"]
     ]
     return {
         "id": hetzner.storage_box_type_id(lab, name),
         "name": name,
-        "description": entry.get("description", name.upper()),
+        "description": name.upper(),
         "snapshot_limit": entry["snapshots"],
-        "automatic_snapshot_limit": entry["snapshots"],
+        "automatic_snapshot_limit": entry["automatic_snapshots"],
         "subaccounts_limit": entry["subaccounts"],
         "size": int(entry["size_tb"] * TB),
         "prices": prices,
@@ -223,11 +224,11 @@ async def update_access_settings(lab: Lab, box: StorageBox, body: dict) -> Plan:
 
 
 async def enable_snapshot_plan(lab: Lab, box: StorageBox, body: dict) -> Plan:
-    """Set the box's snapshot plan, within the snapshot limit of its type."""
+    """Set the box's snapshot plan, within the automatic snapshot limit of its type."""
     if (
         not 1
         <= int(body["max_snapshots"])
-        <= lab.cfg["storage_box_types"][box["type"]]["snapshots"]
+        <= lab.cfg["storage_box_types"][box["type"]]["automatic_snapshots"]
     ):
         raise invalid("exceeds the snapshot limit of the type", "max_snapshots")
     keys = ("max_snapshots", "minute", "hour", "day_of_week", "day_of_month")

@@ -1,4 +1,4 @@
-"""The catalogue: server types, locations, system images and Storage Box types.
+"""The catalogue: server types, locations, system images, Storage Box types, prices.
 
 All of them come from the configuration. The images are loaded when the lab starts.
 There are no datacenters: Hetzner removed them in 2026.
@@ -103,7 +103,7 @@ def load_images(lab: Lab) -> None:
 
 
 def add_routes(app: FastAPI, lab: Lab) -> None:
-    """Add the routes of server types, locations, images and datacenters to the app."""
+    """Add the routes of server types, prices, locations, images and datacenters."""
     cfg = lab.cfg
 
     @app.get("/v1/server_types")
@@ -115,6 +115,10 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     async def server_type_get(tid: int):
         name = catalogue_entry_or_404(lab, "server_type", tid, "server type")
         return {"server_type": hetzner.server_type_json(lab, name)}
+
+    @app.get("/v1/pricing")
+    async def pricing_get():
+        return {"pricing": hetzner.pricing_json(lab)}
 
     @app.get("/v1/locations")
     async def location_list(request: Request):

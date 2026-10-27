@@ -81,15 +81,19 @@ bin/hlab reset                            # delete everything the APIs created
 - **Storage Box**: boxes, sub-accounts, snapshots and plans, rollback and access settings through the API; SFTP on
   port 22 (always on, keys in RFC4716 format), SFTP and commands (`rsync`, `scp`, `borg`, ...) on port 23 (with
   `ssh_enabled`, keys in OpenSSH format); snapshots under `/home/.zfs/snapshot`. A plain SFTP rename never overwrites.
+- **Catalogue and prices**: Hetzner's x86 server types of `eu-central` (CX, CPX, CCX) and Storage Box types with
+  their prices from `hlab.yaml`, and `/v1/pricing`.
 - **Compatibility** is checked by the tests: every API response against Hetzner's OpenAPI specification, and the
   OpenTofu smoke test with Hetzner's own provider (an empty second plan, a clean destroy).
 
 ### Not like Hetzner
 
 - Not offered: load balancers, certificates, DNS zones, images of your own (snapshots, backups), rescue, ISOs,
-  console, placement groups, pricing, metrics. Samba and WebDAV of Storage Boxes are only reported.
+  console, placement groups, metrics. Samba and WebDAV of Storage Boxes are only reported.
+- Only the network zone `eu-central` and x86: no locations in the US or Asia, no Arm types (CAX), not even in the
+  catalogue. Every server type is offered in every location.
 - No IPv6 to the real Internet, no vSwitch. All Storage Boxes share `storage_box.size_gb`; SCP on port 22 only
-  through SFTP (OpenSSH's default), and the automatic snapshots share the limit of the manual ones.
+  through SFTP (OpenSSH's default).
 - A server's `locked` is true while one of its actions runs; on Hetzner it marks an administrative lock. Wait for the
   action instead.
 - A test lab, not a hosting platform: the guests run your own code. The lab keeps the Docker host and its network

@@ -31,6 +31,34 @@ def test_catalogue_lists_server_types_locations_and_images(api):
     assert imgs[0]["os_flavor"] == "debian"
 
 
+def test_server_types_carry_their_category_traffic_and_prices(api):
+    # Hetzner: the hourly price is the monthly one over 624 hours, gross adds 19 % VAT
+    types = api.get("/v1/server_types", params={"per_page": 50}).json()
+    by_name = {t["name"]: t for t in types["server_types"]}
+    assert len(by_name) == 17 and "cax11" not in by_name
+    ccx33 = by_name["ccx33"]
+    assert (ccx33["category"], ccx33["cpu_type"]) == ("general_purpose", "dedicated")
+    assert by_name["cpx22"]["cpu_type"] == "shared"
+    fsn1 = next(p for p in by_name["cx23"]["prices"] if p["location"] == "fsn1")
+    assert fsn1["price_monthly"]["net"] == "5.4900000000"
+    assert fsn1["price_monthly"]["gross"] == "6.5331000000"
+    assert fsn1["price_hourly"]["net"] == "0.0088000000"
+    assert ccx33["prices"][0]["included_traffic"] == 30 * 2**40
+    server = create_server(api, "traffic", server_type="ccx33")["server"]
+    assert server["included_traffic"] == 30 * 2**40
+
+
+def test_pricing_lists_types_ips_volumes_and_backups(api):
+    pricing = api.get("/v1/pricing").json()["pricing"]
+    assert (pricing["currency"], pricing["vat_rate"]) == ("EUR", "19.00")
+    assert [t["name"] for t in pricing["server_types"]][:2] == ["cx23", "cx33"]
+    ipv4 = next(ip for ip in pricing["primary_ips"] if ip["type"] == "ipv4")
+    assert ipv4["prices"][0]["price_hourly"]["net"] == "0.0008000000"
+    assert pricing["volume"]["price_per_gb_month"]["net"] == "0.0440000000"
+    assert pricing["server_backup"]["percentage"] == "20.00"
+    assert pricing["load_balancer_types"] == []
+
+
 def test_lists_are_paginated(api):
     for i in range(3):
         api.post("/v1/ssh_keys", json={"name": f"k{i}", "public_key": make_key(i)})

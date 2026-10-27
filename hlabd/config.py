@@ -5,14 +5,91 @@ from pathlib import Path
 
 import yaml
 
+# Hetzner's server categories and the kind of vCPU each has
+SERVER_CATEGORIES = {
+    "cost_optimized": "shared",
+    "regular_purpose": "shared",
+    "general_purpose": "dedicated",
+}
+
+# the keys every entry of a catalogue in hlab.yaml needs
+ENTRY_KEYS = {
+    "server_types": (
+        "category",
+        "cores",
+        "memory_gb",
+        "disk_gb",
+        "traffic_tb",
+        "price_monthly",
+    ),
+    "storage_box_types": (
+        "size_tb",
+        "snapshots",
+        "automatic_snapshots",
+        "subaccounts",
+        "price_monthly",
+    ),
+}
+
+
+def _server_type(
+    category: str,
+    cores: int,
+    memory_gb: int,
+    disk_gb: int,
+    traffic_tb: int,
+    price_monthly: float,
+) -> dict:
+    """Return a server type entry of the defaults, in the order of its columns."""
+    return {
+        "category": category,
+        "cores": cores,
+        "memory_gb": memory_gb,
+        "disk_gb": disk_gb,
+        "traffic_tb": traffic_tb,
+        "price_monthly": price_monthly,
+    }
+
+
+def _box_type(size_tb: int, snapshots: int, price_monthly: float) -> dict:
+    """Return a Storage Box type entry of the defaults.
+
+    On Hetzner every type allows as many automatic snapshots as manual ones, and 100
+    sub-accounts.
+    """
+    return {
+        "size_tb": size_tb,
+        "snapshots": snapshots,
+        "automatic_snapshots": snapshots,
+        "subaccounts": 100,
+        "price_monthly": price_monthly,
+    }
+
+
 DEFAULTS: dict = {
     "name": "demo",
     "api": {"token": None, "time_scale": 1.0, "rate_limit": 3600},
     "memory_scale": 1.0,
+    # Hetzner's server types in eu-central (category, cores, memory GB, disk GB,
+    # included traffic TB, EUR per month without VAT and IPv4)
     "server_types": {
-        "cx23": {"cores": 2, "memory_gb": 4, "disk_gb": 40},
-        "cx33": {"cores": 4, "memory_gb": 8, "disk_gb": 80},
-        "cx43": {"cores": 8, "memory_gb": 16, "disk_gb": 160},
+        "cx23": _server_type("cost_optimized", 2, 4, 40, 20, 5.49),
+        "cx33": _server_type("cost_optimized", 4, 8, 80, 20, 8.49),
+        "cx43": _server_type("cost_optimized", 8, 16, 160, 20, 15.99),
+        "cx53": _server_type("cost_optimized", 16, 32, 320, 20, 29.49),
+        "cpx02": _server_type("regular_purpose", 1, 1, 20, 20, 5.99),
+        "cpx12": _server_type("regular_purpose", 1, 2, 40, 20, 11.49),
+        "cpx22": _server_type("regular_purpose", 2, 4, 80, 20, 19.49),
+        "cpx32": _server_type("regular_purpose", 4, 8, 160, 20, 35.49),
+        "cpx42": _server_type("regular_purpose", 8, 16, 320, 20, 69.49),
+        "cpx52": _server_type("regular_purpose", 12, 24, 480, 20, 100.49),
+        "cpx62": _server_type("regular_purpose", 16, 32, 640, 20, 129.99),
+        "ccx13": _server_type("general_purpose", 2, 8, 80, 20, 42.99),
+        "ccx23": _server_type("general_purpose", 4, 16, 160, 20, 85.99),
+        "ccx33": _server_type("general_purpose", 8, 32, 240, 30, 138.49),
+        "ccx43": _server_type("general_purpose", 16, 64, 360, 40, 275.99),
+        "ccx53": _server_type("general_purpose", 32, 128, 600, 50, 533.49),
+        "ccx63": _server_type("general_purpose", 48, 192, 960, 60, 853.49),
     },
     "locations": {
         "fsn1": {"city": "Falkenstein", "country": "DE", "network_zone": "eu-central"},
@@ -43,33 +120,26 @@ DEFAULTS: dict = {
         },
     },
     "storage_box": {"enabled": True, "size_gb": 10},
-    # Storage Box types of the Storage Box API (the API reports their size in TB; the
-    # lab's box really holds storage_box.size_gb)
+    # Storage Box types of the Storage Box API (size TB, snapshots, EUR per month
+    # without VAT); the API reports their size, the lab's box really holds
+    # storage_box.size_gb
     "storage_box_types": {
-        "bx11": {
-            "size_tb": 1,
-            "snapshots": 10,
-            "subaccounts": 100,
-            "description": "BX11",
-        },
-        "bx21": {
-            "size_tb": 5,
-            "snapshots": 20,
-            "subaccounts": 100,
-            "description": "BX21",
-        },
-        "bx31": {
-            "size_tb": 10,
-            "snapshots": 30,
-            "subaccounts": 100,
-            "description": "BX31",
-        },
-        "bx41": {
-            "size_tb": 20,
-            "snapshots": 40,
-            "subaccounts": 100,
-            "description": "BX41",
-        },
+        "bx11": _box_type(1, 10, 3.20),
+        "bx21": _box_type(5, 20, 10.90),
+        "bx31": _box_type(10, 30, 20.80),
+        "bx41": _box_type(20, 40, 40.60),
+    },
+    # what /v1/pricing reports besides the types; EUR without VAT
+    "pricing": {
+        "vat_rate": 19,
+        "traffic_per_tb": 1.00,
+        "primary_ipv4_monthly": 0.50,
+        "primary_ipv6_monthly": 0.00,
+        "floating_ipv4_monthly": 3.00,
+        "floating_ipv6_monthly": 1.00,
+        "volume_per_gb_monthly": 0.044,
+        "image_per_gb_monthly": 0.0119,
+        "backup_percent": 20,
     },
     "dns": {},
 }
@@ -137,7 +207,7 @@ def script_env() -> dict[str, str]:
 
 
 def _merge(base: dict, over: dict) -> dict:
-    """Return `base` updated with `over`; only `api` and `storage_box` merge by key."""
+    """Return `base` updated with `over`; only the settings groups merge by key."""
     out = copy.deepcopy(base)
     for k, v in (over or {}).items():
         # Catalogue-like maps (types, locations, images, dns) are replaced, not merged,
@@ -145,7 +215,7 @@ def _merge(base: dict, over: dict) -> dict:
         if (
             isinstance(v, dict)
             and isinstance(out.get(k), dict)
-            and k in ("api", "storage_box")
+            and k in ("api", "storage_box", "pricing")
         ):
             out[k] = _merge(out[k], v)
         else:
@@ -156,8 +226,9 @@ def _merge(base: dict, over: dict) -> dict:
 def load(path: str | Path | None) -> dict:
     """Load hlab.yaml from `path` (if it exists) over the defaults.
 
-    Raise ValueError on unknown settings, or on a mapping where a value belongs (or
-    the other way round).
+    Raise ValueError on unknown settings, on a mapping where a value belongs (or the
+    other way round), and on a catalogue entry that lacks a key or names an unknown
+    server category.
     """
     data: dict = {}
     if path and Path(path).is_file():
@@ -180,7 +251,21 @@ def load(path: str | Path | None) -> dict:
                 f"{path}: {key} must be "
                 f"{'a mapping' if isinstance(default, dict) else 'a value'}"
             )
-    return _merge(DEFAULTS, data)
+    cfg = _merge(DEFAULTS, data)
+    for catalogue, keys in ENTRY_KEYS.items():
+        for name, entry in cfg[catalogue].items():
+            missing = [key for key in keys if key not in (entry or {})]
+            if missing:  # older files lack the prices, for example
+                raise ValueError(
+                    f"{path}: {catalogue}.{name} lacks {', '.join(missing)}"
+                )
+    for name, entry in cfg["server_types"].items():
+        if entry["category"] not in SERVER_CATEGORIES:
+            raise ValueError(
+                f"{path}: server_types.{name}: unknown category {entry['category']!r} "
+                f"(known: {', '.join(SERVER_CATEGORIES)})"
+            )
+    return cfg
 
 
 def location_pair(first: str, second: str) -> str:
