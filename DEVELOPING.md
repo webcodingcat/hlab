@@ -32,7 +32,8 @@ standards. `bin/hlab test` checks the style and runs the unit tests.
   as `starting` (`IN_BETWEEN` in `lab.py`).
 - **lab-only records**: what the state holds but the API never shows as it is: fields
   starting with `_` (a server's `_lab`, the flags) and the top-level records `faults`,
-  `netem`, `net_routes`, `box_users`, `box_uids` (`lab_records()` in `state.py`).
+  `netem`, `net_routes`, `box_users`, `box_uids`, typed properties of `State`
+  (`lab.state.faults`).
 - **owner**: the event loop's thread, the only one that may touch the state.
 - **picture**: a complete description of one part of the system (fault sets, latency,
   firewall, DHCP, routes), computed from the state and put in place as a whole, under
@@ -299,8 +300,9 @@ The unit tests turn on `State.verify_changes`: each outermost block and the end 
 each test compare the state with the committed one, so a change outside a block fails
 with a diff. Tests set up state with `change_state(api, work, ...)`.
 
-**Saving.** Committing serializes the state on the loop (quick at the lab's size;
-finished actions are capped by `MAX_ACTIONS`). A writer thread writes the file
+**Saving.** Each outermost block snapshots every dict and list of the state first,
+so it can restore them, and committing serializes the state on the loop. Both are
+quick at the lab's size (finished actions are capped by `MAX_ACTIONS`). A writer thread writes the file
 atomically; if saves come faster than the disk, only the newest is written.
 `state.flush()` waits until it is on disk (when the daemon stops, after a reset, in
 tests).
@@ -396,6 +398,19 @@ clears it), and `NotRequired[bool]` in the record's TypedDict.
    shape in `api/hetzner/`; its flag, if new.
 
 ## Tests
+
+Which test catches a broken rule:
+
+| Rule | Caught by |
+|---|---|
+| only the loop touches the state | every unit test (`state_owner_kept` in `tests/conftest.py`) |
+| changes only inside `change()` blocks | every unit test (`State.verify_changes`) |
+| no `change()` block awaits; a new kind is registered fully | `tests/test_state.py` |
+| no record kept across an await | `tests/test_await_rule.py` |
+| the fabric never sees a record | `tests/test_layers.py` |
+| answers look like Hetzner's | the spec check of every API test (`tests/spec_check.py`) |
+| every verb exists and takes fitting arguments | `tests/test_scripts.py` |
+| `bin/hlab`'s usage names its commands | `tests/test_wrappers.py` |
 
 - `tests/`: unit tests without VMs. `FakeShell` stands in for `hlab.sh` and records
   every call; `time_scale = 0` skips the waits. The `api` fixture runs the app on its

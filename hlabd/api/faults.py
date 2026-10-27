@@ -38,7 +38,7 @@ def fault_json(fault: Fault) -> dict:
 def drop_netem(lab: Lab, links: list[str]) -> None:
     """Drop the netem faults of links that are gone (a new link may reuse the name)."""
     for link in links:
-        lab.state.data["netem"].pop(link, None)
+        lab.state.netem.pop(link, None)
 
 
 def drop_faults(lab: Lab, target: TargetRef, links: list[str]) -> None:
@@ -47,8 +47,8 @@ def drop_faults(lab: Lab, target: TargetRef, links: list[str]) -> None:
     A new server or client may get the same links. system.apply_faults() then updates
     the fault sets.
     """
-    faults: list[Fault] = lab.state.data["faults"]
-    lab.state.data["faults"] = [
+    faults = lab.state.faults
+    lab.state.faults = [
         fault
         for fault in faults
         if target not in [fault.get(ref_field) for ref_field in REF_FIELDS.values()]

@@ -47,8 +47,9 @@ DEVELOPING.md explains each one in the section named in parentheses.
   (The state).
 - Across an await, code keeps a record's ID, not the record: steps look it up again
   with `lab.current(KIND, id)` (The state, Awaits).
-- The state is indexed by `Kind` constants (`lab.state[SERVERS]`), not by strings
-  (The state, Kinds).
+- The state is indexed by `Kind` constants (`lab.state[SERVERS]`), and the lab-only
+  records are its typed properties (`lab.state.faults`), never strings (The state,
+  Kinds).
 - New actions are `ActionSpec` rows run by `lab.act()`; other code holds flags only
   through `with lab.holding() as held:` (How flags flow).
 - A new flag goes into `Flag` and `FLAGS` in `lab.py`, or a restart keeps it (Recipes).

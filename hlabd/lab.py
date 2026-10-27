@@ -123,8 +123,9 @@ class Plan:
     extra: dict[str, object] = field(default_factory=dict)
     # the server whose status the steps change: `act()` keeps it locked while they run
     # (423 if another action runs); if they fail, it leaves its in-between status.
-    # A plan that names another server than the resource leaves the state alone: that
-    # server is claimed only after the plan, and a 423 then must not leave a change.
+    # It may be another resource than the action's (a volume's attach names the
+    # server it attaches to). Such a server is claimed only after the plan, so such a
+    # plan must not change the state: a 423 then would leave the change behind.
     # record: act() compares it by identity at once; run_action() reads its ID only
     server: Server | None = None
     # (id, type) of more resources the action is about (e.g. the target server)
@@ -464,6 +465,9 @@ class Lab:
         actions fail with it. The server, if there is one, then leaves its in-between
         status (starting, rebuilding, ...) and gets the status its VM really has:
         running or off.
+
+        Inside a `change()` block it is the block's last statement: the steps start at
+        once, and a later error would undo the state but not the running steps.
         """
         # The flow: take the flags over; start run_steps as a task. It awaits the
         # steps; on an error it fails the next actions and the server's in-between
@@ -509,20 +513,9 @@ class Lab:
     ) -> dict:
         """Run one action of a resource from its table and return the answer.
 
-        The row's function (`async def`) checks the request and returns a `Plan`.
-        While the action runs, the resource holds the table's flag (423 with its
-        `busy` text if the flag is set already), unless the row says `flag=False` or
-        the table has none. If the plan names another server, that server holds its
-        `_locked` flag too (423 if another action runs on it).
-
-        The flags are held through `holding()`. If the function refuses the request,
-        or a flag is set already, they come off when the block ends. If the plan has no
-        steps, they come off before the answer. Otherwise `run_action()` takes them off
-        when the steps end, whether the steps succeed, fail or are cancelled.
-
-        The answer has the action under "action". If the row says `answer="actions"`,
-        it has the action and the plan's `finished` actions under "actions" instead.
-        The plan's `extra` fields follow.
+        How the flags come and go: DEVELOPING.md, How flags flow. The answer has the
+        action under "action", or with `answer="actions"` the action and the plan's
+        `finished` actions under "actions"; the plan's `extra` fields follow.
         """
         if command not in table.actions:
             raise unsupported(f"the action {command!r}")
@@ -544,7 +537,9 @@ class Lab:
             else:
                 action = self.new_action(spec.name, resources)
                 self.run_action(action, plan.steps, plan.server, holding=held)
-        if spec.answer == "actions":  # only tables without a flag: no flag to wait for
+        if spec.answer == "actions":
+            # the actions the change causes, after the action itself; finished at
+            # once, they hold no flag
             with self.state.change():
                 finished = [self.finished_action(*more) for more in plan.finished]
             return {"actions": [action, *finished], **plan.extra}

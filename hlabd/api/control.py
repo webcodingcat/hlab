@@ -87,8 +87,8 @@ async def status(lab: Lab) -> dict:
             hetzner.floating_ip_json(lab, f) for f in state[FLOATING_IPS].values()
         ],
         "clients": list(state[CLIENTS].values()),
-        "faults": [fault_json(fault) for fault in state.data["faults"]],
-        "netem": dict(state.data["netem"]),
+        "faults": [fault_json(fault) for fault in state.faults],
+        "netem": dict(state.netem),
         "api_fault": dict(lab.api_fault),
     }
     for entry, server in zip(entries, servers, strict=True):
@@ -167,10 +167,10 @@ async def add_fault(lab: Lab, body: dict) -> dict:
     state = lab.state
     fault = checked_fault(lab, body)
     with state.change():
-        if fault not in state.data["faults"]:
-            state.data["faults"].append(fault)
+        if fault not in state.faults:
+            state.faults.append(fault)
         # the answer: faults after this change
-        faults = [fault_json(fault) for fault in state.data["faults"]]
+        faults = [fault_json(fault) for fault in state.faults]
     await system.apply_faults(lab)
     return {"faults": faults}
 
@@ -183,14 +183,14 @@ async def remove_faults(lab: Lab, body: dict) -> dict:
     state = lab.state
     given = in_cut_order({k: v for k, v in body.items() if v is not None})
     with state.change():
-        faults: list[Fault] = state.data["faults"]
-        state.data["faults"] = [
+        faults = state.faults
+        state.faults = [
             fault
             for fault in faults
             if not all(fault_json(fault).get(k) == v for k, v in given.items())
         ]
         # the answer: faults after this change
-        shown = [fault_json(fault) for fault in state.data["faults"]]
+        shown = [fault_json(fault) for fault in state.faults]
     await system.apply_faults(lab)
     return {"faults": shown}
 
@@ -202,8 +202,8 @@ async def clear_faults(lab: Lab) -> dict:
     """
     state = lab.state
     with state.change():
-        state.data["faults"] = []
-        state.data["netem"] = {}
+        state.faults = []
+        state.netem = {}
         for server in state[SERVERS].values():
             server.pop("_dead", None)
     await system.apply_faults(lab)
@@ -227,10 +227,10 @@ async def set_netem(lab: Lab, body: dict) -> dict:
         taps = desired.target_ifaces(state, target, body.get("net") or "all")
         for tap in taps:
             if args:
-                state.data["netem"][tap] = " ".join(args.split())
+                state.netem[tap] = " ".join(args.split())
             else:
-                state.data["netem"].pop(tap, None)
-        netem = dict(state.data["netem"])  # the answer: netem after this change
+                state.netem.pop(tap, None)
+        netem = dict(state.netem)  # the answer: netem after this change
     await system.apply_latency(lab)
     return {"netem": netem}
 
@@ -343,13 +343,13 @@ async def add_box_user(lab: Lab, body: dict) -> dict:
         raise invalid("names like u<id> belong to the Storage Box API", "name")
     try:
         await lab.blocking(pwd.getpwnam, name)  # reads /etc/passwd
-        if name not in state.data["box_users"]:
+        if name not in state.box_users:
             raise invalid("a user of the container has this name", "name")
     except KeyError:
         pass
     await set_up_box_user(lab, name, key)
     with state.change():
-        state.data["box_users"][name] = key.strip()
+        state.box_users[name] = key.strip()
     return {"user": name, "host": config.SERVICES, "port": 23}
 
 

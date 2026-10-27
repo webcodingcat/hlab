@@ -28,7 +28,7 @@ async def restore_storage_box(lab: Lab) -> None:
         return
     await lab.blocking(lab.fabric.box.start_box, int(box_cfg.get("size_gb") or 0))
     # a copy: other tasks may change the state while the scripts run
-    box_users = list(lab.state.data["box_users"].items())
+    box_users = list(lab.state.box_users.items())
     for user, key in box_users:
         await set_up_box_user(lab, user, key)
     await storagebox.restore(lab)

@@ -73,13 +73,13 @@ async def apply_routes(lab: Lab) -> None:
     """
     state = lab.state
     async with lab.picture_lock:
-        old_routes = list(state.data["net_routes"])
+        old_routes = list(state.net_routes)
         wanted = desired.wanted_routes(state)
         applied = await lab.blocking(
             lab.fabric.network.apply_routes, old_routes, wanted
         )
         with state.change():
-            state.data["net_routes"] = applied
+            state.net_routes = applied
 
 
 async def route_floating_ip(lab: Lab, ip: str, server: Server | None) -> None:

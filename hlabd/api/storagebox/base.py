@@ -122,7 +122,7 @@ async def set_up_box_user(lab: Lab, name: str, public_key: str) -> None:
     fixed in the state (`box_uids`), like a box's UID, because the files outlive the
     container's /etc/passwd.
     """
-    uids = lab.state.data["box_uids"]
+    uids = lab.state.box_uids
     with lab.state.change():
         uid = uids.setdefault(name, 30000 + len(uids))
     box = lab.fabric.box

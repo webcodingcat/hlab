@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from hlabd import config
+
 BIN = Path(__file__).resolve().parents[1] / "bin"
 BASH = (BIN / "hlab").read_text()
 
@@ -166,3 +168,9 @@ def test_bin_hlab_reads_the_web_ui_port(text, port, tmp_path):
 def test_bin_hlab_refuses_a_web_ui_port_that_is_no_number(tmp_path):
     process = bash_ui_port("ui_port: http\n", tmp_path)
     assert process.returncode == 2 and "port number" in process.stderr
+
+
+def test_bin_hlab_publishes_the_port_the_web_ui_listens_on():
+    # bin/hlab cannot import config.py, so the port is written twice
+    match = re.search(r"^readonly UI_PORT=(\d+)$", (BIN / "hlab").read_text(), re.M)
+    assert match and int(match.group(1)) == config.UI_PORT

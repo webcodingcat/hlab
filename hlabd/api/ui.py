@@ -156,8 +156,8 @@ async def overview(lab: Lab) -> dict:
         "ssh_keys": [hetzner.ssh_key_json(lab, k) for k in ordered(lab, SSH_KEYS)],
         "storage_boxes": [box_entry(lab, b) for b in ordered(lab, STORAGE_BOXES)],
         "clients": ordered(lab, CLIENTS),
-        "faults": [fault_json(fault) for fault in state.data["faults"]],
-        "netem": dict(state.data["netem"]),
+        "faults": [fault_json(fault) for fault in state.faults],
+        "netem": dict(state.netem),
         "api_fault": dict(lab.api_fault),
         "actions": [state[ACTIONS][aid] for aid in newest_actions],
     }

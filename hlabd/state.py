@@ -33,6 +33,7 @@ from .records import (
     BoxSnapshot,
     Client,
     CloudNetwork,
+    Fault,
     Firewall,
     FloatingIP,
     Image,
@@ -361,6 +362,59 @@ class State:
         """Return the whole state: resources by kind, `next_id`, lab-only records."""
         self.check_owner()
         return self._data
+
+    # The lab-only records (see the module docstring), typed, so mypy checks their use.
+    # A change goes through `change()` like any other.
+
+    @property
+    def faults(self) -> list[Fault]:
+        """Return the faults set through /_lab/faults, in the order they came."""
+        self.check_owner()
+        faults: list[Fault] = self._data["faults"]
+        return faults
+
+    @faults.setter
+    def faults(self, faults: list[Fault]) -> None:
+        self.check_owner()
+        self._data["faults"] = faults
+
+    @property
+    def netem(self) -> dict[str, str]:
+        """Return the netem options per tap or client link."""
+        self.check_owner()
+        netem: dict[str, str] = self._data["netem"]
+        return netem
+
+    @netem.setter
+    def netem(self, netem: dict[str, str]) -> None:
+        self.check_owner()
+        self._data["netem"] = netem
+
+    @property
+    def net_routes(self) -> list[list[str]]:
+        """Return the routes the fabric added for networks: [destination, table]."""
+        self.check_owner()
+        routes: list[list[str]] = self._data["net_routes"]
+        return routes
+
+    @net_routes.setter
+    def net_routes(self, routes: list[list[str]]) -> None:
+        self.check_owner()
+        self._data["net_routes"] = routes
+
+    @property
+    def box_users(self) -> dict[str, str]:
+        """Return the Storage Box accounts made outside the API: name → public key."""
+        self.check_owner()
+        users: dict[str, str] = self._data["box_users"]
+        return users
+
+    @property
+    def box_uids(self) -> dict[str, int]:
+        """Return the fixed UIDs of those accounts, by name."""
+        self.check_owner()
+        uids: dict[str, int] = self._data["box_uids"]
+        return uids
 
     def new_id(self, kind: Kind[object]) -> int:
         """Return the next free ID for a kind."""

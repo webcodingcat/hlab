@@ -6,7 +6,6 @@ from ...fabric.addresses import link_local, prefix
 from ...fabric.balancers import namespace, private_veth
 from ...fabric.faults import Latency, Shaping
 from ...records import (
-    Fault,
     Server,
     TargetRef,
     Which,
@@ -122,7 +121,7 @@ def fault_sets(state: State) -> dict[str, list[str]]:
         veth = namespace(balancer["id"])
         sets["src4"].append(f'"{veth}" . {balancer["ipv4"]}')
         sets["src6"].append(f'"{veth}" . {balancer_ipv6(balancer)}/128')
-    faults: list[Fault] = state.data["faults"]
+    faults = state.faults
     for fault in faults:
         try:
             if fault["type"] == "cut":
@@ -194,7 +193,7 @@ def latency(state: State, cfg: Config) -> Latency:
     A tap with a netem fault gets that fault. Otherwise it gets a delay band for each
     round-trip time to the other servers' locations (`latency_ms` of `cfg`).
     """
-    netem = state.data["netem"]
+    netem = state.netem
     servers = list(state[SERVERS].values())
     shaped = []
     for server in servers:

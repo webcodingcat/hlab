@@ -113,7 +113,7 @@ async def create_server(lab: Lab, body: dict) -> dict:
         else set()
     )
     # one transaction: if the steps cannot start, the server, its flag and its
-    # actions are undone together
+    # actions are undone together; run_action comes last (see its docstring)
     with lab.holding() as held, lab.state.change():
         server = record_server(lab, request, local_addresses, held)
         sid = server["id"]
@@ -469,7 +469,7 @@ async def poweron(lab: Lab, server: Server, body: dict) -> Plan:
     return Plan(steps, server=server)
 
 
-def restart_vm(lab: Lab, server: Server, press: Callable[[int], None]) -> Plan:
+def restart_plan(lab: Lab, server: Server, press: Callable[[int], None]) -> Plan:
     """Plan a reboot or reset: `press(sid)` restarts a running VM.
 
     A server that is not running stays as it is.
@@ -493,12 +493,12 @@ async def reboot(lab: Lab, server: Server, body: dict) -> Plan:
 
     This has the same effect as Hetzner's ACPI reboot.
     """
-    return restart_vm(lab, server, lab.fabric.vms.send_ctrl_alt_delete)
+    return restart_plan(lab, server, lab.fabric.vms.send_ctrl_alt_delete)
 
 
 async def reset(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan a hard reset, like pressing the VM's reset button."""
-    return restart_vm(lab, server, lab.fabric.vms.reset)
+    return restart_plan(lab, server, lab.fabric.vms.reset)
 
 
 async def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
@@ -518,7 +518,9 @@ async def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
     sid = server["id"]
 
     async def steps():
-        images.check_usable(lab, image)  # before anything changes
+        # again here, before anything changes: an image of the project may have
+        # been deleted since the request was checked
+        images.check_usable(lab, image)
         server = lab.current(SERVERS, sid)
         # the server is locked, so it is running or off; it ends as it was
         target = "running" if server["status"] == "running" else "off"
@@ -678,7 +680,9 @@ async def take_daily_backups(lab: Lab) -> None:
             continue
         try:
             await lab.act(SERVER_ACTIONS, "create_image", server, {"type": "backup"})
-        except Exception:  # a busy server misses its backup; the others get theirs
+        except ApiError as error:  # busy (423): it misses today's backup
+            log.info("server %s gets no backup today: %s", sid, error.message)
+        except Exception:  # the others still get theirs
             log.exception("daily backup of server %s", sid)
 
 
