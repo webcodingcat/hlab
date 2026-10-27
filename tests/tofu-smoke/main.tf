@@ -104,3 +104,37 @@ resource "hcloud_zone_rrset" "entry" {
   type    = "A"
   records = [{ value = hcloud_floating_ip.entry.ip_address, comment = "entry" }]
 }
+
+resource "hcloud_managed_certificate" "smoke" {
+  name         = "smoke"
+  domain_names = ["example.com", "*.example.com"]
+  labels       = { cluster = "smoke" }
+
+  # the lab issues it through DNS-01 in this zone
+  depends_on = [hcloud_zone.smoke]
+}
+
+resource "hcloud_load_balancer" "smoke" {
+  name               = "smoke-lb"
+  load_balancer_type = "lb11"
+  location           = "fsn1"
+  labels             = { cluster = "smoke" }
+}
+
+resource "hcloud_load_balancer_target" "nodes" {
+  load_balancer_id = hcloud_load_balancer.smoke.id
+  type             = "label_selector"
+  label_selector   = "cluster=smoke"
+}
+
+resource "hcloud_load_balancer_service" "https" {
+  load_balancer_id = hcloud_load_balancer.smoke.id
+  protocol         = "https"
+  listen_port      = 443
+  destination_port = 80
+
+  http {
+    certificates  = [hcloud_managed_certificate.smoke.id]
+    redirect_http = true
+  }
+}

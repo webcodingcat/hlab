@@ -18,7 +18,7 @@ import time
 import uvicorn
 
 from . import config
-from .api import images, metrics, storagebox, system, watcher
+from .api import images, load_balancers, metrics, storagebox, system, watcher
 from .api.app import create_app
 from .api.catalogue import load_images
 from .api.metadata import create_metadata_app
@@ -150,6 +150,7 @@ async def run(lab: Lab) -> None:
             storagebox.snapshots.snapshot_plan_scheduler(lab),
             images.backup_scheduler(lab),
             metrics.sampler(lab),
+            load_balancers.health_watcher(lab),
             watcher.vm_watcher(lab),
         )
     )

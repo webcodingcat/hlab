@@ -36,6 +36,7 @@ from .records import (
     Firewall,
     FloatingIP,
     Image,
+    LoadBalancer,
     Nic,
     PlacementGroup,
     PrimaryIP,
@@ -45,6 +46,7 @@ from .records import (
     SSHKey,
     StorageBox,
     Subaccount,
+    TlsCertificate,
     Volume,
     Zone,
 )
@@ -87,6 +89,12 @@ PLACEMENT_GROUPS: Kind[PlacementGroup] = Kind(
 IMAGES: Kind[Image] = Kind("images", Image, 8_000_000, "image")
 ZONES: Kind[Zone] = Kind("zones", Zone, 9_000_000, "zone")
 RRSETS: Kind[RRSet] = Kind("rrsets", RRSet, 11_000_000, "RRSet")
+LOAD_BALANCERS: Kind[LoadBalancer] = Kind(
+    "load_balancers", LoadBalancer, 12_000_000, "load balancer"
+)
+CERTIFICATES: Kind[TlsCertificate] = Kind(
+    "certificates", TlsCertificate, 13_000_000, "certificate"
+)
 VOLUMES: Kind[Volume] = Kind("volumes", Volume, 10_000_000, "volume")
 STORAGE_BOXES: Kind[StorageBox] = Kind(
     "storage_boxes", StorageBox, 14_000_000, "Storage Box"
@@ -114,6 +122,8 @@ RECORD_KINDS: tuple[Kind[Record], ...] = (
     IMAGES,
     ZONES,
     RRSETS,
+    CERTIFICATES,
+    LOAD_BALANCERS,
     VOLUMES,
     STORAGE_BOXES,
     SUBACCOUNTS,

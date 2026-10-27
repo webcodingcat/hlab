@@ -17,6 +17,7 @@ from ..records import Client, Fault, TargetRef
 from ..state import (
     CLIENTS,
     FLOATING_IPS,
+    IMAGES,
     NETWORKS,
     SERVERS,
     STORAGE_BOXES,
@@ -352,7 +353,8 @@ async def reset_lab(lab: Lab) -> dict:
     """Remove everything the APIs created.
 
     That is servers (VMs and disks), networks, keys, firewalls, Floating IPs, volumes,
-    Storage Boxes with their data, clients and faults. System images, the lab key and
+    images, DNS zones, certificates, load balancers, Storage Boxes with their data,
+    clients and faults. System images, the lab key and
     the Storage Box accounts made through /_lab/box/users stay. IDs keep counting up,
     as on Hetzner, so no old ID matches a new resource.
     """
@@ -367,6 +369,7 @@ async def reset_lab(lab: Lab) -> dict:
     boxes = list(state[STORAGE_BOXES].values())  # record: torn down as last seen
     routed = [f["ip"] for f in state[FLOATING_IPS].values() if f.get("server")]
     clients = list(state[CLIENTS].values())
+    images = list(state[IMAGES])
     networks = list(state[NETWORKS])
     for server in servers:
         await system.delete_vm(lab, server)
@@ -381,6 +384,8 @@ async def reset_lab(lab: Lab) -> dict:
         await system.route_floating_ip(lab, ip, None)
     for client in clients:
         await system.remove_client(lab, client)
+    for iid in images:
+        await lab.blocking(fabric.vms.delete_image, iid)
     state.clear()
     await lab.blocking(state.flush)  # the empty lab is on disk before the answer
     lab.clear_api_fault()
@@ -389,6 +394,8 @@ async def reset_lab(lab: Lab) -> dict:
     for nid in networks:  # clear the tables of the deleted networks
         await system.drop_cloud_network(lab, nid)
     await system.write_dhcp(lab)
+    await system.apply_dns(lab)
+    await system.apply_load_balancers(lab)  # stops them all
     await system.apply_faults(lab)
     await system.apply_firewall(lab)
     return {"ok": True}

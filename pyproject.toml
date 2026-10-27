@@ -11,7 +11,15 @@ version = "0"
 description = "HLab: a local stand-in for Hetzner Cloud"
 requires-python = ">=3.13"
 # the Dockerfile's python3-* packages that hlabd imports
-dependencies = ["fastapi", "uvicorn", "pyyaml", "jsonschema", "dnspython"]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pyyaml",
+    "jsonschema",
+    "dnspython",
+    "cryptography",
+    "acme",
+]
 
 [project.optional-dependencies]
 # pytest, httpx (FastAPI's test client, itests) and paramiko (itests) come from Debian in

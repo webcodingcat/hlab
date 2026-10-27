@@ -14,11 +14,13 @@ from ..records import (
     Firewall,
     FloatingIP,
     Image,
+    LoadBalancer,
     PlacementGroup,
     PrimaryIP,
     RRSet,
     Server,
     SSHKey,
+    TlsCertificate,
     Volume,
     Zone,
 )
@@ -26,6 +28,7 @@ from ..state import (
     FIREWALLS,
     FLOATING_IPS,
     IMAGES,
+    LOAD_BALANCERS,
     PLACEMENT_GROUPS,
     RRSETS,
     SERVERS,
@@ -33,6 +36,7 @@ from ..state import (
     nics_in,
     primary_ip_of,
 )
+from . import desired
 
 CREATED = "2026-01-01T00:00:00+00:00"  # catalogue entries
 TB = 1024**4  # Hetzner counts traffic in binary terabytes
@@ -97,17 +101,7 @@ def hourly(monthly) -> Decimal:
 
 def server_type_prices(lab: Lab, name: str) -> list[dict]:
     """Return a server type's prices: the same in every location of the lab."""
-    entry = lab.cfg["server_types"][name]
-    return [
-        {
-            "location": loc,
-            "price_hourly": price(lab, hourly(entry["price_monthly"])),
-            "price_monthly": price(lab, entry["price_monthly"]),
-            "included_traffic": entry["traffic_tb"] * TB,
-            "price_per_tb_traffic": price(lab, lab.cfg["pricing"]["traffic_per_tb"]),
-        }
-        for loc in lab.cfg["locations"]
-    ]
+    return type_prices(lab, lab.cfg["server_types"][name])
 
 
 def server_type_json(lab: Lab, name: str) -> dict:
@@ -141,11 +135,44 @@ def server_type_json(lab: Lab, name: str) -> dict:
     }
 
 
-def pricing_json(lab: Lab) -> dict:
-    """Return the price list of /v1/pricing.
+def load_balancer_type_id(lab: Lab, name: str) -> int:
+    """Return the ID of a load balancer type (1 and up, in configuration order)."""
+    return 1 + list(lab.cfg["load_balancer_types"]).index(name)
 
-    There are no load balancers (yet), so their list is empty.
-    """
+
+def type_prices(lab: Lab, entry: dict) -> list[dict]:
+    """Return the prices of a server or load balancer type, alike in every location."""
+    return [
+        {
+            "location": loc,
+            "price_hourly": price(lab, hourly(entry["price_monthly"])),
+            "price_monthly": price(lab, entry["price_monthly"]),
+            "included_traffic": entry["traffic_tb"] * TB,
+            "price_per_tb_traffic": price(lab, lab.cfg["pricing"]["traffic_per_tb"]),
+        }
+        for loc in lab.cfg["locations"]
+    ]
+
+
+def load_balancer_type_json(lab: Lab, name: str) -> dict:
+    """Return the API object of a load balancer type."""
+    entry = lab.cfg["load_balancer_types"][name]
+    return {
+        "id": load_balancer_type_id(lab, name),
+        "name": name,
+        "description": name.upper(),
+        "max_connections": entry["max_connections"],
+        "max_services": entry["max_services"],
+        "max_targets": entry["max_targets"],
+        "max_assigned_certificates": entry["max_certificates"],
+        "deprecated": None,
+        "deprecation": None,
+        "prices": type_prices(lab, entry),
+    }
+
+
+def pricing_json(lab: Lab) -> dict:
+    """Return the price list of /v1/pricing."""
     pricing = lab.cfg["pricing"]
     locations = lab.cfg["locations"]
 
@@ -182,7 +209,14 @@ def pricing_json(lab: Lab) -> dict:
             }
             for name in lab.cfg["server_types"]
         ],
-        "load_balancer_types": [],
+        "load_balancer_types": [
+            {
+                "id": load_balancer_type_id(lab, name),
+                "name": name,
+                "prices": type_prices(lab, lab.cfg["load_balancer_types"][name]),
+            }
+            for name in lab.cfg["load_balancer_types"]
+        ],
     }
 
 
@@ -538,4 +572,114 @@ def rrset_json(rrset: RRSet) -> dict:
         "protection": rrset["protection"],
         "records": rrset["records"],
         "zone": rrset["zone"],
+    }
+
+
+def certificate_json(lab: Lab, certificate: TlsCertificate) -> dict:
+    """Return the API object of a certificate (never its private key)."""
+    used_by = [
+        {"id": lid, "type": "load_balancer"}
+        for lid, balancer in lab.state[LOAD_BALANCERS].items()
+        if any(
+            certificate["id"] in (s.get("http") or {}).get("certificates", [])
+            for s in balancer["services"]
+        )
+    ]
+    return {
+        "id": certificate["id"],
+        "name": certificate["name"],
+        "labels": certificate["labels"],
+        "type": certificate["type"],
+        "certificate": certificate["certificate"],
+        "created": certificate["created"],
+        "not_valid_before": certificate["not_valid_before"],
+        "not_valid_after": certificate["not_valid_after"],
+        "domain_names": certificate["domain_names"],
+        "fingerprint": certificate["fingerprint"],
+        "status": certificate["status"],
+        "used_by": used_by,
+    }
+
+
+# HAProxy's check status → Hetzner's health status of a target
+HEALTH = {"UP": "healthy", "DOWN": "unhealthy"}
+
+
+def health_status(
+    health: dict[tuple[str, str], str], ports: list[int], name: str
+) -> list[dict]:
+    """Return a member's health per service, from HAProxy's checks of the backends."""
+    return [
+        {
+            "listen_port": port,
+            "status": HEALTH.get(
+                health.get((f"b{port}", name), "").split(" ")[0], "unknown"
+            ),
+        }
+        for port in ports
+    ]
+
+
+def target_json(lab: Lab, balancer: LoadBalancer, target: dict) -> dict:
+    """Return a load balancer target with its health per service.
+
+    A label selector target lists the servers it matches, each with its health.
+    """
+    health = lab.balancer_health.get(balancer["id"], {})
+    ports = [s["listen_port"] for s in balancer["services"]]
+    members = desired.target_members(lab.state, target)
+    if target["type"] == "label_selector":
+        return {
+            **target,
+            "targets": [
+                {
+                    "type": "server",
+                    "server": {"id": int(name[1:]), "ip": ip},
+                    "health_status": health_status(health, ports, name),
+                    "use_private_ip": target["use_private_ip"],
+                }
+                for name, ip in members
+            ],
+        }
+    if target["type"] == "server":
+        ip = members[0][1] if members else ""
+        target = {**target, "server": {**target["server"], "ip": ip}}
+    name = desired.member_name(target)
+    return {**target, "health_status": health_status(health, ports, name)}
+
+
+def load_balancer_json(lab: Lab, balancer: LoadBalancer) -> dict:
+    """Return the API object of a load balancer."""
+    ipv4, ipv6 = balancer["ipv4"], desired.balancer_ipv6(balancer)
+    entry = lab.cfg["load_balancer_types"][balancer["type"]]
+    return {
+        "id": balancer["id"],
+        "name": balancer["name"],
+        "public_net": {
+            "enabled": True,
+            "ipv4": {
+                "id": None,
+                "ip": ipv4,
+                "blocked": False,
+                "dns_ptr": balancer["dns_ptr"].get(ipv4) or default_ptr(ipv4),
+            },
+            "ipv6": {
+                "id": None,
+                "ip": ipv6,
+                "blocked": False,
+                "dns_ptr": balancer["dns_ptr"].get(ipv6),
+            },
+        },
+        "private_net": [],
+        "location": location_json(lab, balancer["location"]),
+        "load_balancer_type": load_balancer_type_json(lab, balancer["type"]),
+        "protection": balancer["protection"],
+        "labels": balancer["labels"],
+        "created": balancer["created"],
+        "services": balancer["services"],
+        "targets": [target_json(lab, balancer, t) for t in balancer["targets"]],
+        "algorithm": {"type": balancer["algorithm"]},
+        "outgoing_traffic": 0,
+        "ingoing_traffic": 0,
+        "included_traffic": entry["traffic_tb"] * TB,
     }

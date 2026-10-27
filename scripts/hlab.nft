@@ -34,6 +34,10 @@ table inet hlab {
         iifname "cl*" ip6 saddr { ::, fe80::/10 } accept
         iifname "cl*" meta nfproto ipv4 iifname . ip saddr != @src4 drop
         iifname "cl*" meta nfproto ipv6 iifname . ip6 saddr != @src6 drop
+        # load balancers: the same as clients
+        iifname "lb*" ip6 saddr { ::, fe80::/10 } accept
+        iifname "lb*" meta nfproto ipv4 iifname . ip saddr != @src4 drop
+        iifname "lb*" meta nfproto ipv6 iifname . ip6 saddr != @src6 drop
         # cloud networks carry IPv4 only
         iifname "prv*" meta nfproto ipv6 drop
         # the network's routing table, for the replies

@@ -317,19 +317,17 @@ flush_routes() {
   while ip rule del fwmark "${table}" 2>/dev/null; do :; done
 }
 
-# add_client <name> <veth> <ipv4> <ipv6>: Create a client, a network
-# namespace on the "Internet".
-add_client() {
-  local name="$1" veth="$2" ipv4="$3" ipv6="$4"
-  local client_gateway="${CLIENT_NET}.1"
+# add_namespace <name> <veth> <ipv4> <ipv6> <gateway>: Create a network
+# namespace with public addresses behind a veth: an Internet client (gateway
+# ${CLIENT_NET}.1) or a load balancer (Hetzner's gateway, as on a server).
+add_namespace() {
+  local name="$1" veth="$2" ipv4="$3" ipv6="$4" gateway="$5"
   [[ -e "/run/netns/${name}" ]] || ip netns add "${name}"
-  link_exists "${veth}" \
-    || ip link add "${veth}" type veth peer name eth0 netns "${name}"
+  link_exists "${veth}" || ip link add "${veth}" type veth peer name eth0 netns "${name}"
   sysctl -qw "net.ipv6.conf.${veth}.disable_ipv6=0"
-  ip netns exec "${name}" sysctl -qw net.ipv6.conf.all.disable_ipv6=0 \
-    net.ipv6.conf.default.disable_ipv6=0 net.ipv6.conf.eth0.disable_ipv6=0
+  ip netns exec "${name}" sysctl -qw net.ipv6.conf.all.disable_ipv6=0 net.ipv6.conf.default.disable_ipv6=0 net.ipv6.conf.eth0.disable_ipv6=0
   ip link set "${veth}" up
-  ip addr replace "${client_gateway}/32" dev "${veth}" noprefixroute
+  ip addr replace "${gateway}/32" dev "${veth}" noprefixroute
   ip -6 addr replace "${GATEWAY6}/64" dev "${veth}" nodad
   ip route replace "${ipv4}/32" dev "${veth}" src "${OPERATOR}"
   ip route replace "${ipv6}/128" dev "${veth}" src "${OPERATOR6}"
@@ -338,15 +336,15 @@ add_client() {
   ip -n "${name}" link set eth0 up
   ip -n "${name}" addr replace "${ipv4}/32" dev eth0
   ip -n "${name}" -6 addr replace "${ipv6}/128" dev eth0 nodad
-  ip -n "${name}" route replace "${client_gateway}/32" dev eth0 scope link
-  ip -n "${name}" route replace default via "${client_gateway}" dev eth0 onlink
+  ip -n "${name}" route replace "${gateway}/32" dev eth0 scope link
+  ip -n "${name}" route replace default via "${gateway}" dev eth0 onlink
   ip -n "${name}" -6 route replace default via "${GATEWAY6}" dev eth0
   mkdir -p "/etc/netns/${name}"
   echo "nameserver ${SERVICES}" >"/etc/netns/${name}/resolv.conf"
 }
 
-# delete_client <name> <veth>: Remove a client and its namespace.
-delete_client() {
+# delete_namespace <name> <veth>: Remove a namespace of add_namespace.
+delete_namespace() {
   local name="$1" veth="$2"
   if link_exists "${veth}"; then
     ip link del "${veth}"
@@ -406,6 +404,31 @@ start_pebble() {
     setsid pebble -config "${conf_file}" -dnsserver "${dns_server}" \
     >/proc/1/fd/1 2>&1 </dev/null &
   echo "$!" >"${pid_file}"
+}
+
+# start_balancer <namespace> <dir>: Start HAProxy in a load balancer's
+# namespace with <dir>/haproxy.cfg, or reload it: the new process takes over
+# the listeners, the old one finishes its connections.
+start_balancer() {
+  local name="$1" dir="$2" old=()
+  if is_alive "${dir}/haproxy.pid" haproxy; then
+    old=(-sf "$(cat "${dir}/haproxy.pid")")
+  fi
+  # paths in the configuration are relative to the balancer's directory
+  (cd "${dir}" && ip netns exec "${name}" haproxy -D -f haproxy.cfg \
+    -p haproxy.pid "${old[@]}")
+}
+
+# is_balancer_alive <dir>: Succeed while the load balancer's HAProxy runs.
+is_balancer_alive() {
+  local dir="$1"
+  is_alive "${dir}/haproxy.pid" haproxy
+}
+
+# stop_balancer <dir>: Stop a load balancer's HAProxy.
+stop_balancer() {
+  local dir="$1"
+  stop_pid "${dir}/haproxy.pid" haproxy
 }
 
 # start_dns <conf file>: Start the lab resolver on the services address.
@@ -685,13 +708,16 @@ main() {
     # nft and tc take hlabd's rules as they are (fabric/faults.py, firewall.py)
     nft) nft "$@" ;;
     tc) tc "$@" ;;
-    add-client) add_client "$@" ;;
-    delete-client) delete_client "$@" ;;
+    add-namespace) add_namespace "$@" ;;
+    delete-namespace) delete_namespace "$@" ;;
     stop-dhcp) stop_dhcp "$@" ;;
     restart-dhcp) restart_dhcp "$@" ;;
     start-dns) start_dns "$@" ;;
     start-nsd) start_nsd "$@" ;;
     start-pebble) start_pebble "$@" ;;
+    start-balancer) start_balancer "$@" ;;
+    is-balancer-alive) is_balancer_alive "$@" ;;
+    stop-balancer) stop_balancer "$@" ;;
     start-box | stop-box | set-account | set-access | set-home | set-zfs-view | \
       remove-account | add-key | write-authorized-keys | take-snapshot | \
       roll-back | remove-tree | print-bytes-used | list-folders)

@@ -87,6 +87,16 @@ images:
     url: https://cloud-images.ubuntu.com/releases/26.04/release/ubuntu-26.04-server-cloudimg-amd64.img
     checksums: https://cloud-images.ubuntu.com/releases/26.04/release/SHA256SUMS
 
+# Load balancer types: Hetzner's limits, included traffic, and EUR per month
+# without VAT (the hourly price is price_monthly / 624).
+load_balancer_types:
+  lb11: {max_connections: 10000, max_services: 5, max_targets: 25,
+         max_certificates: 10, traffic_tb: 20, price_monthly: 7.49}
+  lb21: {max_connections: 20000, max_services: 15, max_targets: 75,
+         max_certificates: 25, traffic_tb: 20, price_monthly: 21.49}
+  lb31: {max_connections: 40000, max_services: 30, max_targets: 150,
+         max_certificates: 50, traffic_tb: 20, price_monthly: 42.99}
+
 # Storage Box stand-in on 198.18.0.1 (box.hlab): SFTP on port 22 (always on),
 # SSH (rsync, scp, borg, commands) on port 23 (with ssh_enabled). size_gb
 # limits the space (a full box can be tested); it can grow later (the next

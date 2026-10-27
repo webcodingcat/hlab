@@ -20,7 +20,8 @@ RUN set -eux; \
         socat curl ca-certificates jq procps e2fsprogs util-linux \
         python3 python3-fastapi python3-uvicorn python3-yaml python3-httpx python3-pytest \
         python3-paramiko python3-jsonschema iputils-ping rsync \
-        borgbackup xfsprogs nsd publicsuffix python3-dnspython pebble; \
+        borgbackup xfsprogs nsd publicsuffix python3-dnspython pebble \
+        haproxy python3-acme; \
     rm -rf /var/lib/apt/lists/*
 
 # Hetzner's OpenAPI specifications, for the conformance tests. Not pinned on purpose: a rebuild with a new

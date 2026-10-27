@@ -10,6 +10,7 @@ import ipaddress
 
 from .. import config
 from ..fabric.addresses import link_local, network_gateway, prefix, public_mac
+from ..fabric.balancers import BalancerSpec, namespace
 from ..fabric.dns import ZoneFile
 from ..fabric.faults import Latency, Shaping
 from ..fabric.firewall import Rule, ServerRules
@@ -21,11 +22,12 @@ from ..fabric.network import (
     ServerTaps,
     WantedRoute,
 )
-from ..labels import firewall_servers
+from ..labels import firewall_servers, selector_servers
 from ..records import (
     Client,
     Fault,
     FirewallRule,
+    LoadBalancer,
     Nic,
     Server,
     TargetRef,
@@ -33,9 +35,11 @@ from ..records import (
     Zone,
 )
 from ..state import (
+    CERTIFICATES,
     CLIENTS,
     FIREWALLS,
     FLOATING_IPS,
+    LOAD_BALANCERS,
     NETWORKS,
     RRSETS,
     SERVERS,
@@ -118,8 +122,8 @@ def source_prefixes(state: State, server: Server, network: int | None) -> list[s
 def fault_sets(state: State) -> dict[str, list[str]]:
     """Return the elements (nft syntax) of the nftables sets of table inet hlab.
 
-    These are the faults, the cloud network members, and the sources each public tap
-    and client may send from (anti-spoofing).
+    These are the faults, the cloud network members, and the sources each public tap,
+    client and load balancer may send from (anti-spoofing).
     """
     sets: dict[str, list[str]] = {name: [] for name in FAULT_SETS}
     servers = list(state[SERVERS].values())
@@ -147,6 +151,10 @@ def fault_sets(state: State) -> dict[str, list[str]]:
     for client in state[CLIENTS].values():
         sets["src4"].append(f'"{client["veth"]}" . {client["ip"]}')
         sets["src6"].append(f'"{client["veth"]}" . {client["ip6"]}/128')
+    for balancer in state[LOAD_BALANCERS].values():
+        veth = namespace(balancer["id"])
+        sets["src4"].append(f'"{veth}" . {balancer["ipv4"]}')
+        sets["src6"].append(f'"{veth}" . {balancer_ipv6(balancer)}/128')
     faults: list[Fault] = state.data["faults"]
     for fault in faults:
         try:
@@ -421,3 +429,171 @@ def zone_files(state: State) -> list[ZoneFile]:
         ZoneFile(zone["name"], zone_text(state, zone))
         for zone in sorted(state[ZONES].values(), key=lambda z: z["name"])
     ]
+
+
+# --- load balancers -------------------------------------------------------------------
+
+# HAProxy's balance algorithm for Hetzner's
+ALGORITHMS = {"round_robin": "roundrobin", "least_connections": "leastconn"}
+
+
+def member_name(target: dict, sid: int | None = None) -> str:
+    """Return HAProxy's name of a target's member: s<server ID> or i<address>.
+
+    A label selector target has one member per matching server (`sid`).
+    """
+    if target["type"] == "ip":
+        return "i" + target["ip"]["ip"].replace(".", "-").replace(":", "-")
+    return f"s{sid if sid is not None else target['server']['id']}"
+
+
+def target_members(state: State, target: dict) -> list[tuple[str, str]]:
+    """Return a target's members as (HAProxy name, address).
+
+    Servers are reached at their primary IPv4, as on Hetzner; a server without one
+    is left out.
+    """
+    if target["type"] == "ip":
+        return [(member_name(target), target["ip"]["ip"])]
+    if target["type"] == "server":
+        servers = [s for s in [state.get(SERVERS, target["server"]["id"])] if s]
+    else:
+        servers = selector_servers(state, target["label_selector"]["selector"])
+    return [
+        (member_name(target, server["id"]), ip)
+        for server in servers
+        if (ip := primary_address_of(state, server, "ipv4"))
+    ]
+
+
+def health_check_lines(check: dict) -> list[str]:
+    """Return a backend's lines for a service's HTTP health check (none for TCP)."""
+    if check["protocol"] != "http":
+        return []
+    http = check["http"]
+    send = f"    http-check send meth GET uri {http['path']}"
+    if http.get("domain"):
+        send += f" hdr Host {http['domain']}"
+    # Hetzner's status codes are patterns like "2??"
+    codes = "|".join(c.replace("?", ".") for c in http["status_codes"])
+    lines = ["    option httpchk", send, f"    http-check expect rstatus ^({codes})$"]
+    if http.get("response"):
+        lines.append(f"    http-check expect string {http['response']}")
+    return lines
+
+
+def bind_lines(port: int, tls: str) -> list[str]:
+    """Return a frontend's listeners: IPv4 and IPv6 apart.
+
+    One dual-stack socket would show IPv4 clients as ::ffff:a.b.c.d to the targets;
+    Hetzner hands over the plain address.
+    """
+    return [f"    bind 0.0.0.0:{port}{tls}", f"    bind :::{port} v6only{tls}"]
+
+
+def haproxy_config(state: State, cfg: dict, balancer: LoadBalancer) -> str:
+    """Return HAProxy's configuration of a load balancer, one frontend per service.
+
+    The client's address reaches the targets: through the PROXY protocol where the
+    service has it, and in X-Forwarded-For (with -Proto and -Port) for HTTP(S).
+    """
+    entry = cfg["load_balancer_types"][balancer["type"]]
+    lines = [
+        "global",
+        f"    maxconn {entry['max_connections']}",
+        "    stats socket unix@haproxy.sock mode 600 level admin",
+        "defaults",
+        "    timeout connect 5s",
+        "    timeout client 50s",
+        "    timeout server 50s",
+    ]
+    for service in balancer["services"]:
+        port, protocol = service["listen_port"], service["protocol"]
+        http = service.get("http") or {}
+        mode = "tcp" if protocol == "tcp" else "http"
+        tls = ""
+        if protocol == "https":
+            certificates = [
+                f"crt certs/{cid}.pem"
+                for cid in http["certificates"]
+                if (c := state.get(CERTIFICATES, cid)) and c["certificate"]
+            ]
+            tls = " ssl " + " ".join(certificates)
+        lines += ["frontend f" + str(port), *bind_lines(port, tls), f"    mode {mode}"]
+        if mode == "http":
+            lines += [
+                "    option forwardfor",
+                f"    http-request set-header X-Forwarded-Proto {protocol}",
+                f"    http-request set-header X-Forwarded-Port {port}",
+                f"    timeout http-keep-alive {http['timeout_idle']}s",
+            ]
+        lines.append(f"    default_backend b{port}")
+        if protocol == "https" and http.get("redirect_http"):
+            lines += [
+                "frontend redirect",
+                *bind_lines(80, ""),
+                "    mode http",
+                "    http-request redirect scheme https code 301",
+            ]
+        check = service["health_check"]
+        lines += [
+            f"backend b{port}",
+            f"    mode {mode}",
+            f"    balance {ALGORITHMS[balancer['algorithm']]}",
+            f"    timeout check {check['timeout']}s",
+            *health_check_lines(check),
+        ]
+        sticky = mode == "http" and http.get("sticky_sessions")
+        if sticky:
+            lines.append(
+                f"    cookie {http['cookie_name']} insert indirect nocache "
+                f"maxlife {http['cookie_lifetime']}s"
+            )
+        options = (
+            f"check port {check['port']} inter {check['interval']}s "
+            f"fall {check['retries']} rise {check['retries']}"
+        )
+        if check["protocol"] == "http" and check["http"].get("tls"):
+            options += " check-ssl verify none"
+        if service["proxyprotocol"]:
+            options += " send-proxy"
+        for target in balancer["targets"]:
+            for name, ip in target_members(state, target):
+                address = f"[{ip}]" if ":" in ip else ip
+                cookie = f" cookie {name}" if sticky else ""
+                lines.append(
+                    f"    server {name} {address}:{service['destination_port']} "
+                    f"{options}{cookie}"
+                )
+    return "\n".join(lines) + "\n"
+
+
+def balancer_specs(state: State, cfg: dict) -> list[BalancerSpec]:
+    """Return every load balancer as the fabric runs it, with its certificates."""
+    specs = []
+    for balancer in sorted(state[LOAD_BALANCERS].values(), key=lambda b: b["id"]):
+        cids = {
+            cid
+            for service in balancer["services"]
+            for cid in (service.get("http") or {}).get("certificates", [])
+        }
+        certificates = {
+            f"{cid}.pem": c["certificate"] + (c["_key"] or "")
+            for cid in sorted(cids)
+            if (c := state.get(CERTIFICATES, cid)) and c["certificate"]
+        }
+        specs.append(
+            BalancerSpec(
+                balancer["id"],
+                balancer["ipv4"],
+                balancer_ipv6(balancer),
+                haproxy_config(state, cfg, balancer),
+                certificates,
+            )
+        )
+    return specs
+
+
+def balancer_ipv6(balancer: LoadBalancer) -> str:
+    """Return a load balancer's IPv6 address: the ::1 of its /64."""
+    return balancer["ipv6_net"].split("::")[0] + "::1"

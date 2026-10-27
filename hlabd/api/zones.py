@@ -302,6 +302,57 @@ def replace_rrsets(lab: Lab, zone: Zone, text: str) -> None:
     bump_serial(lab, zone)
 
 
+def zone_of(lab: Lab, domain: str) -> Zone | None:
+    """Return the zone a domain name belongs to ("*." aside), or None."""
+    name = domain.removeprefix("*.")
+    return next(
+        (
+            z
+            for z in lab.state[ZONES].values()
+            if name == z["name"] or name.endswith(f".{z['name']}")
+        ),
+        None,
+    )
+
+
+def relative_name(zone: Zone, fqdn: str) -> str:
+    """Return a name below the zone as an RRSet names it ("@" for the zone itself)."""
+    name = fqdn.rstrip(".")
+    return "@" if name == zone["name"] else name.removesuffix(f".{zone['name']}")
+
+
+def publish_txt(lab: Lab, fqdn: str, value: str) -> None:
+    """Add a TXT record (an ACME challenge) to the zone of the name.
+
+    Inside the caller's state.change(); the zone exists.
+    """
+    zone = zone_of(lab, fqdn.rstrip("."))
+    assert zone is not None  # the caller checked the zones of its domains
+    name = relative_name(zone, fqdn)
+    record = {"value": f'"{value}"'}
+    rrset = find_rrset(lab, zone, name, "TXT")
+    if rrset is None:
+        add_rrset(lab, zone, name, "TXT", 60, [record])
+    elif record["value"] not in {r["value"] for r in rrset["records"]}:
+        rrset["records"].append({"value": record["value"], "comment": ""})
+    bump_serial(lab, zone)
+
+
+def withdraw_txt(lab: Lab, fqdn: str, value: str) -> None:
+    """Remove a TXT record that `publish_txt` added, if its zone and RRSet are left.
+
+    Inside the caller's state.change().
+    """
+    zone = zone_of(lab, fqdn.rstrip("."))
+    rrset = find_rrset(lab, zone, relative_name(zone, fqdn), "TXT") if zone else None
+    if zone is None or rrset is None:
+        return
+    rrset["records"] = [r for r in rrset["records"] if r["value"] != f'"{value}"']
+    if not rrset["records"]:
+        del lab.state[RRSETS][rrset["id"]]
+    bump_serial(lab, zone)
+
+
 # --- zones ----------------------------------------------------------------------------
 
 

@@ -5,6 +5,9 @@ https://acme.hlab:14000/dir and checks DNS-01 and HTTP-01 challenges through the
 resolver, so it sees the DNS zones of the API. Its HTTPS certificate comes from the
 lab's own CA, made once and kept in the lab's volume. Pebble makes a new root for the
 certificates it issues on every start; `ca_bundle` hands out both.
+
+The lab also orders the managed certificates of the API there (`start_order`,
+`finish_order`), with DNS-01 through the API's zones.
 """
 
 import datetime
@@ -12,11 +15,15 @@ import ipaddress
 import json
 import ssl
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
+import josepy as jose
+from acme import challenges, client, crypto_util, messages
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from .. import config
@@ -25,6 +32,17 @@ from .shell import Shell
 # Pebble's management API (its current roots); only the lab itself asks it
 MANAGEMENT = "127.0.0.1:15000"
 CERT_DAYS = 3650
+
+
+@dataclass
+class AcmeOrder:
+    """An order at Pebble, between publishing its DNS-01 records and finishing it."""
+
+    records: list[tuple[str, str]]  # (TXT name with a final dot or not, value)
+    key_pem: str  # the certificate's private key
+    acme: Any  # the client and order of python3-acme, only for finish_order
+    order: Any
+    answers: list[tuple[Any, Any]]
 
 
 def new_key() -> ec.EllipticCurvePrivateKey:
@@ -173,3 +191,51 @@ class Acme:
             with urllib.request.urlopen(url, context=context, timeout=5) as answer:
                 pems.append(answer.read().decode())
         return "".join(pem if pem.endswith("\n") else pem + "\n" for pem in pems)
+
+    def start_order(self, domains: list[str]) -> AcmeOrder:
+        """Order a certificate for the domains; return the DNS-01 records to publish.
+
+        Each order has its own account and key, as the lab's certificates are few.
+        """
+        account = jose.JWKRSA(
+            key=rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        )
+        network = client.ClientNetwork(
+            account,
+            user_agent="hlab",
+            # requests takes a CA file as well as a flag
+            verify_ssl=str(self.directory / "lab-ca.pem"),  # type: ignore[arg-type]
+        )
+        directory = client.ClientV2.get_directory(
+            f"https://{config.SERVICES}:{config.ACME_PORT}/dir", network
+        )
+        acme = client.ClientV2(directory, network)
+        network.account = acme.new_account(
+            messages.NewRegistration.from_data(terms_of_service_agreed=True)
+        )
+        key_pem = pem_key(new_key()).decode()
+        order = acme.new_order(crypto_util.make_csr(key_pem.encode(), domains))
+        records, answers = [], []
+        for authorization in order.authorizations:
+            domain = authorization.body.identifier.value
+            for challenge in authorization.body.challenges:
+                if isinstance(challenge.chall, challenges.DNS01):
+                    records.append(
+                        (
+                            challenge.chall.validation_domain_name(domain),
+                            challenge.chall.validation(account),
+                        )
+                    )
+                    answers.append((challenge, challenge.chall.response(account)))
+        return AcmeOrder(records, key_pem, acme, order, answers)
+
+    def finish_order(self, order: AcmeOrder) -> str:
+        """Answer the challenges of an order and return its PEM chain, leaf first.
+
+        Call it once the records of `start_order` are published.
+        """
+        for challenge, response in order.answers:
+            order.acme.answer_challenge(challenge, response)
+        deadline = datetime.datetime.now() + datetime.timedelta(seconds=60)
+        done = order.acme.poll_and_finalize(order.order, deadline)
+        return done.fullchain_pem

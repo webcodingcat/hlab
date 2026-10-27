@@ -11,10 +11,12 @@ from ..lab import Lab
 from . import (
     actions,
     catalogue,
+    certificates,
     control,
     firewalls,
     floating_ips,
     images,
+    load_balancers,
     metrics,
     networks,
     placement_groups,
@@ -51,6 +53,8 @@ def create_app(lab: Lab) -> FastAPI:
         firewalls,
         volumes,
         zones,
+        certificates,
+        load_balancers,
         control,
     ):
         module.add_routes(app, lab)

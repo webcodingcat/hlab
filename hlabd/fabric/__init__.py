@@ -22,6 +22,7 @@ constructor:
 | `box` (`Box`) | storagebox.py | shell (the Storage Box) |
 | `dns` (`Dns`) | dns.py | shell (the lab resolver, NSD for the DNS zones) |
 | `acme` (`Acme`) | acme.py | shell (Pebble, the lab CA) |
+| `balancers` (`Balancers`) | balancers.py | shell (load balancers, HAProxy) |
 
 The address rules (MACs, gateways, routing tables) are plain functions in addresses.py.
 Work that spans several parts, such as a VM's start and stop with its taps, volumes,
@@ -32,6 +33,7 @@ import threading
 from pathlib import Path
 
 from .acme import Acme
+from .balancers import Balancers
 from .dns import Dns
 from .faults import Faults
 from .firewall import Firewall
@@ -66,3 +68,4 @@ class Fabric:
         self.box = Box(self.shell)
         self.dns = Dns(root, self.shell)
         self.acme = Acme(root, self.shell)
+        self.balancers = Balancers(root, self.shell)

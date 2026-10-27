@@ -286,6 +286,7 @@ def create_steps(
             lab.set_status(lab.current(SERVERS, sid), "off")
         for next_action in next_actions:
             lab.finish(next_action)
+        await system.apply_load_balancers(lab)  # a label selector may match it
 
     return steps
 
@@ -299,6 +300,7 @@ async def update_server(lab: Lab, sid: int, body: dict) -> dict:
     answer = {"server": hetzner.server_json(lab, server)}  # before the await
     if "labels" in body:  # label selectors of firewalls may match differently now
         await system.apply_firewall(lab)
+        await system.apply_load_balancers(lab)  # and those of load balancer targets
     return answer
 
 
@@ -373,6 +375,7 @@ async def remove_server(lab: Lab, server: Server) -> None:
     await system.apply_faults(lab)
     await system.apply_firewall(lab)
     await images.drop_server_backups(lab, sid)
+    await system.apply_load_balancers(lab)  # it is no target any more
 
 
 # --- server actions -------------------------------------------------------------------

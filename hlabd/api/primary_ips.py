@@ -22,7 +22,15 @@ from ..errors import (
 )
 from ..lab import SERVER_LOCKED, ActionSpec, ActionTable, Lab, Plan, now
 from ..records import PrimaryIP, Server
-from ..state import PRIMARY_IPS, SERVERS, primary_ip_field, primary_ip_of, server_by_id
+from ..state import (
+    FLOATING_IPS,
+    LOAD_BALANCERS,
+    PRIMARY_IPS,
+    SERVERS,
+    primary_ip_field,
+    primary_ip_of,
+    server_by_id,
+)
 from . import hetzner, system
 from .catalogue import catalogue_name
 from .public_addresses import contains, first_free, record_dns_ptr, set_dns_ptr
@@ -64,23 +72,34 @@ def server_dns_ptr(lab: Lab, server: Server, body: dict) -> None:
     raise invalid("the IP does not belong to the server", "ip")
 
 
+def is_cloud_address(lab: Lab, ip: str) -> bool:
+    """Tell whether an address belongs to a primary IP, a Floating IP or a balancer."""
+    prefixes = [p["ip"] for p in lab.state[PRIMARY_IPS].values()]
+    prefixes += [f["ip"] for f in lab.state[FLOATING_IPS].values()]
+    prefixes += [b["ipv4"] for b in lab.state[LOAD_BALANCERS].values()]
+    prefixes += [b["ipv6_net"] for b in lab.state[LOAD_BALANCERS].values()]
+    return any(contains(prefix, ip) for prefix in prefixes)
+
+
 def free_ipv4(lab: Lab) -> str:
-    """Return the lowest public IPv4 that no primary IP has.
+    """Return the lowest public IPv4 that no primary IP and no load balancer has.
 
     The caller stores the new record in the same `change()`.
     """
     used = {p["ip"] for p in lab.state[PRIMARY_IPS].values()}
+    used |= {b["ipv4"] for b in lab.state[LOAD_BALANCERS].values()}
     candidates = (f"{config.PUBLIC_NET}.{n}" for n in range(11, 251))
     error = limit_exceeded("the lab has no public IPv4 left", "primary_ips")
     return first_free(candidates, used, error)
 
 
 def free_ipv6(lab: Lab) -> str:
-    """Return the lowest public IPv6 /64 that no primary IP has.
+    """Return the lowest public IPv6 /64 that no primary IP and no load balancer has.
 
     The caller stores the new record in the same `change()`.
     """
     used = {p["ip"] for p in lab.state[PRIMARY_IPS].values()}
+    used |= {b["ipv6_net"] for b in lab.state[LOAD_BALANCERS].values()}
     candidates = (server_ipv6_net(n) for n in range(1, 0xFF00))
     error = limit_exceeded("the lab has no public IPv6 network left", "primary_ips")
     return first_free(candidates, used, error)

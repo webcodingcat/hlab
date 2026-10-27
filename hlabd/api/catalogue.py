@@ -1,4 +1,4 @@
-"""The catalogue: server types, locations, system images, Storage Box types, prices.
+"""The catalogue: server, load balancer and Storage Box types, locations, prices.
 
 All of them come from the configuration. The images are loaded when the lab starts;
 their routes are in api/images.py, next to the project's own images.
@@ -17,12 +17,14 @@ from .web import filtered, paginate
 log = logging.getLogger(__name__)
 
 # the function that returns a catalogue entry's ID, per kind; the entries are the
-# configuration's "<kind>s" (server_types, locations, images, storage_box_types)
+# configuration's "<kind>s" (server_types, locations, images, storage_box_types,
+# load_balancer_types)
 ID_OF = {
     "server_type": hetzner.server_type_id,
     "location": hetzner.location_id,
     "image": hetzner.image_id,
     "storage_box_type": hetzner.storage_box_type_id,
+    "load_balancer_type": hetzner.load_balancer_type_id,
 }
 
 
@@ -104,7 +106,7 @@ def load_images(lab: Lab) -> None:
 
 
 def add_routes(app: FastAPI, lab: Lab) -> None:
-    """Add the routes of server types, prices, locations and datacenters."""
+    """Add the routes of the types, prices, locations and datacenters."""
     cfg = lab.cfg
 
     @app.get("/v1/server_types")
@@ -116,6 +118,20 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     async def server_type_get(tid: int):
         name = catalogue_entry_or_404(lab, "server_type", tid, "server type")
         return {"server_type": hetzner.server_type_json(lab, name)}
+
+    @app.get("/v1/load_balancer_types")
+    async def load_balancer_type_list(request: Request):
+        types = [
+            hetzner.load_balancer_type_json(lab, n) for n in cfg["load_balancer_types"]
+        ]
+        return paginate(request, filtered(request, types), "load_balancer_types")
+
+    @app.get("/v1/load_balancer_types/{tid}")
+    async def load_balancer_type_get(tid: int):
+        name = catalogue_entry_or_404(
+            lab, "load_balancer_type", tid, "load balancer type"
+        )
+        return {"load_balancer_type": hetzner.load_balancer_type_json(lab, name)}
 
     @app.get("/v1/pricing")
     async def pricing_get():

@@ -87,6 +87,12 @@ bin/hlab reset                            # delete everything the APIs created
   Cloud firewall must let them in. `HLAB_ACME_DIRECTORY` and `HLAB_ACME_CA` (`hlab env`) tell clients where it is
   and what to trust: the lab CA, which signs the directory's HTTPS and stays, and Pebble's root, which is new after
   every start of the lab.
+- **Certificates and load balancers**: uploaded certificates, and managed ones that the lab issues at its ACME
+  server through DNS-01 in the DNS zones (as on Hetzner, each domain needs a zone). Load balancers (lb11, lb21, lb31)
+  with TCP, HTTP and HTTPS services, servers, label selectors and IPs as targets, health checks, sticky sessions and
+  the redirect to HTTPS: HAProxy runs each one in a network namespace of its own with public IPv4 and IPv6. The
+  targets see the load balancer's address; the client's address reaches them through the PROXY protocol or in
+  `X-Forwarded-For` (with `-Proto` and `-Port`).
 - **Networks**: cloud networks with subnets and routes (pushed by DHCP, forwarded to the gateway server), alias IPs,
   hot-plugged NICs, overlapping networks; Floating IPs routed to their server; firewalls with Hetzner's semantics;
   latency between locations. A server sends only from its own public addresses, so the source a server sees is the
@@ -103,7 +109,9 @@ bin/hlab reset                            # delete everything the APIs created
 
 ### Not like Hetzner
 
-- Not offered: load balancers, certificates, rescue, ISOs, console. Samba and WebDAV of Storage Boxes are only reported.
+- Not offered: rescue, ISOs, console. Samba and WebDAV of Storage Boxes are only reported.
+- Load balancers in private networks (`use_private_ip`, attach, detach), without a public interface, and their
+  metrics are not there yet. Managed certificates are not renewed (Pebble's last five years).
 - Only the network zone `eu-central` and x86: no locations in the US or Asia, no Arm types (CAX), not even in the
   catalogue. Every server type is offered in every location.
 - DNS zones in primary mode only (secondary zones are refused). As on Hetzner, a zone is a domain right below a

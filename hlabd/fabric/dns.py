@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .. import config
+from .files import write_if_changed
 from .shell import Shell
 
 # NSD listens on the loopback only: just the resolver asks it
@@ -85,15 +86,19 @@ class Dns:
         zones_dir = directory / "zones"
         with self.lock:
             zones_dir.mkdir(parents=True, exist_ok=True)
-            changed = self._write(directory / "nsd.conf", nsd_config(zones_dir, zones))
+            changed = write_if_changed(
+                directory / "nsd.conf", nsd_config(zones_dir, zones)
+            )
             wanted = {f"{zone.name}.zone" for zone in zones}
             for old in zones_dir.glob("*.zone"):
                 if old.name not in wanted:
                     old.unlink()
                     changed = True
             for zone in zones:
-                changed |= self._write(zones_dir / f"{zone.name}.zone", zone.text)
-            changed |= self._write(directory / "resolver.conf", resolver_config(zones))
+                changed |= write_if_changed(zones_dir / f"{zone.name}.zone", zone.text)
+            changed |= write_if_changed(
+                directory / "resolver.conf", resolver_config(zones)
+            )
             if changed or not self.nsd_started:
                 self.shell.run("start-nsd", str(directory / "nsd.conf"))
                 self.shell.run("start-dns", str(directory / "resolver.conf"))
@@ -106,11 +111,3 @@ class Dns:
             directory.mkdir(parents=True, exist_ok=True)
             (directory / "resolver.conf").write_text(resolver_config([]))
             self.shell.run("start-dns", str(directory / "resolver.conf"))
-
-    @staticmethod
-    def _write(path: Path, text: str) -> bool:
-        """Write a file unless it has this text already; tell whether it changed."""
-        if path.is_file() and path.read_text() == text:
-            return False
-        path.write_text(text)
-        return True

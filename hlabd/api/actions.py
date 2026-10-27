@@ -22,6 +22,8 @@ RESOURCE_TYPES = {
     "primary_ips": "primary_ip",
     "images": "image",
     "zones": "zone",
+    "certificates": "certificate",
+    "load_balancers": "load_balancer",
 }
 
 

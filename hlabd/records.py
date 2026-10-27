@@ -180,6 +180,65 @@ class RRSet(TypedDict):
     created: str
 
 
+class CertificateError(TypedDict):
+    """Why a managed certificate could not be issued."""
+
+    code: str
+    message: str
+
+
+class CertificateStatus(TypedDict):
+    """Where a managed certificate stands: its issuance and its renewal."""
+
+    issuance: str  # pending, completed, failed
+    renewal: str  # scheduled, pending, failed, unavailable
+    error: CertificateError | None
+
+
+class TlsCertificate(TypedDict):
+    """A TLS certificate for load balancers: uploaded, or issued by the lab's ACME.
+
+    `certificate` is the PEM chain, leaf first; it is None until a managed one is
+    issued. The private key is lab-only: the API never shows it.
+    """
+
+    id: int
+    name: str
+    labels: dict[str, str]
+    type: str  # uploaded, managed
+    created: str
+    certificate: str | None
+    domain_names: list[str]
+    not_valid_before: str | None
+    not_valid_after: str | None
+    fingerprint: str | None
+    status: CertificateStatus | None  # managed ones only
+    _key: str | None  # the PEM private key
+
+
+class LoadBalancer(TypedDict):
+    """A load balancer: HAProxy in a network namespace of its own (fabric/balancers.py).
+
+    Its services and targets are kept in the API's shape (without the targets'
+    health, which the lab reads from HAProxy).
+    """
+
+    id: int
+    name: str
+    type: str  # a load_balancer_types entry (hlab.yaml)
+    location: str
+    algorithm: str  # round_robin, least_connections
+    labels: dict[str, str]
+    protection: Protection
+    created: str
+    ipv4: str
+    ipv6_net: str  # a /64 of the public pool; the load balancer has its ::1
+    dns_ptr: dict[str, str]  # address → reverse DNS entry set through the API
+    services: list[dict]
+    targets: list[dict]
+    _busy: NotRequired[bool]  # an action runs
+
+
 class PlacementGroup(TypedDict):
     """A placement group; its servers name it (`Server.placement_group`)."""
 
@@ -370,6 +429,8 @@ Record = (
     | Image
     | Zone
     | RRSet
+    | TlsCertificate
+    | LoadBalancer
     | StorageBox
     | Subaccount
     | BoxSnapshot
@@ -388,11 +449,20 @@ ActionRecord = (
     | Subaccount
     | Image
     | Zone
+    | TlsCertificate
+    | LoadBalancer
 )
 
 # The resources with a plain delete protection (`api/web.py`: change_delete_protection).
 ProtectedRecord = (
-    Volume | PrimaryIP | FloatingIP | CloudNetwork | StorageBox | Image | Zone
+    Volume
+    | PrimaryIP
+    | FloatingIP
+    | CloudNetwork
+    | StorageBox
+    | Image
+    | Zone
+    | LoadBalancer
 )
 
 

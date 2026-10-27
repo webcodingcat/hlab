@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from .. import config
 from .addresses import link_local, network_gateway, prefix, public_mac, route_table
 from .shell import Shell
 from .vm import VMs
@@ -215,13 +216,18 @@ class Network:
         """
         with self.net_lock:
             self.shell.run(
-                "add-client", client.name, client.veth, client.ip, client.ip6
+                "add-namespace",
+                client.name,
+                client.veth,
+                client.ip,
+                client.ip6,
+                f"{config.CLIENT_NET}.1",
             )
 
     def remove_client(self, client: ClientLink) -> None:
         """Remove an Internet client and its namespace."""
         with self.net_lock:
-            self.shell.run("delete-client", client.name, client.veth)
+            self.shell.run("delete-namespace", client.name, client.veth)
 
     def drop_cloud_network(self, nid: int) -> None:
         """Flush the routing table of a deleted network, with its routes."""

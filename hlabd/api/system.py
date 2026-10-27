@@ -46,6 +46,18 @@ async def apply_dns(lab: Lab) -> None:
         await lab.blocking(lab.fabric.dns.apply, zones)
 
 
+async def apply_load_balancers(lab: Lab) -> None:
+    """Run the load balancers as they are now, then let them send from their addresses.
+
+    Their targets follow servers, labels and certificates, so this runs after those
+    change too.
+    """
+    async with lab.picture_lock:
+        specs = desired.balancer_specs(lab.state, lab.cfg)
+        await lab.blocking(lab.fabric.balancers.apply, specs)
+    await apply_faults(lab)
+
+
 async def write_dhcp(lab: Lab) -> None:
     """Hand every tap that exists its DHCP configuration."""
     async with lab.picture_lock:

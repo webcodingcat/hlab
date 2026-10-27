@@ -56,7 +56,9 @@ def test_pricing_lists_types_ips_volumes_and_backups(api):
     assert ipv4["prices"][0]["price_hourly"]["net"] == "0.0008000000"
     assert pricing["volume"]["price_per_gb_month"]["net"] == "0.0440000000"
     assert pricing["server_backup"]["percentage"] == "20.00"
-    assert pricing["load_balancer_types"] == []
+    lb11 = pricing["load_balancer_types"][0]
+    assert lb11["name"] == "lb11"
+    assert lb11["prices"][0]["price_hourly"]["net"] == "0.0120000000"
 
 
 def test_lists_are_paginated(api):

@@ -232,6 +232,9 @@ class Lab:
         # each running server's counters over time (api/metrics.py): only in memory, so
         # the metrics start anew when the lab restarts
         self.samples: dict[int, deque[tuple[float, VMCounters]]] = {}
+        # each load balancer's HAProxy check status per (backend, member), read by
+        # api/load_balancers.py; only in memory, like the samples
+        self.balancer_health: dict[int, dict[tuple[str, str], str]] = {}
         # system image name → its file (loaded at start)
         self.images: dict[str, str] = {}
         # held while a whole picture of the system (fault sets, latency, firewall, DHCP,

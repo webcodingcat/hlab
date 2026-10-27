@@ -7,11 +7,12 @@ def test_client_has_ipv6(api):
     client = api.post("/_lab/clients", json={"name": "alice"}).json()["client"]
     assert client["ip6"] == "2001:db8:ffff::b"
     assert (
-        "add-client",
+        "add-namespace",
         "alice",
         "cl1",
         "192.0.2.11",
         "2001:db8:ffff::b",
+        "192.0.2.1",
     ) in api.sh.calls
 
 

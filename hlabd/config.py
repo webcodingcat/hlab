@@ -29,6 +29,14 @@ ENTRY_KEYS = {
         "subaccounts",
         "price_monthly",
     ),
+    "load_balancer_types": (
+        "max_connections",
+        "max_services",
+        "max_targets",
+        "max_certificates",
+        "traffic_tb",
+        "price_monthly",
+    ),
 }
 
 
@@ -47,6 +55,24 @@ def _server_type(
         "memory_gb": memory_gb,
         "disk_gb": disk_gb,
         "traffic_tb": traffic_tb,
+        "price_monthly": price_monthly,
+    }
+
+
+def _load_balancer_type(
+    max_connections: int,
+    max_services: int,
+    max_targets: int,
+    max_certificates: int,
+    price_monthly: float,
+) -> dict:
+    """Return a load balancer type entry of the defaults (20 TB traffic in the EU)."""
+    return {
+        "max_connections": max_connections,
+        "max_services": max_services,
+        "max_targets": max_targets,
+        "max_certificates": max_certificates,
+        "traffic_tb": 20,
         "price_monthly": price_monthly,
     }
 
@@ -118,6 +144,13 @@ DEFAULTS: dict = {
                 "https://cloud-images.ubuntu.com/releases/26.04/release/SHA256SUMS"
             ),
         },
+    },
+    # Hetzner's load balancer types (max connections, services, targets and assigned
+    # certificates, EUR per month without VAT)
+    "load_balancer_types": {
+        "lb11": _load_balancer_type(10_000, 5, 25, 10, 7.49),
+        "lb21": _load_balancer_type(20_000, 15, 75, 25, 21.49),
+        "lb31": _load_balancer_type(40_000, 30, 150, 50, 42.99),
     },
     "storage_box": {"enabled": True, "size_gb": 10},
     # Storage Box types of the Storage Box API (size TB, snapshots, EUR per month
