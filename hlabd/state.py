@@ -88,6 +88,7 @@ PLACEMENT_GROUPS: Kind[PlacementGroup] = Kind(
 )
 IMAGES: Kind[Image] = Kind("images", Image, 8_000_000, "image")
 ZONES: Kind[Zone] = Kind("zones", Zone, 9_000_000, "zone")
+VOLUMES: Kind[Volume] = Kind("volumes", Volume, 10_000_000, "volume")
 RRSETS: Kind[RRSet] = Kind("rrsets", RRSet, 11_000_000, "RRSet")
 LOAD_BALANCERS: Kind[LoadBalancer] = Kind(
     "load_balancers", LoadBalancer, 12_000_000, "load balancer"
@@ -95,7 +96,6 @@ LOAD_BALANCERS: Kind[LoadBalancer] = Kind(
 CERTIFICATES: Kind[TlsCertificate] = Kind(
     "certificates", TlsCertificate, 13_000_000, "certificate"
 )
-VOLUMES: Kind[Volume] = Kind("volumes", Volume, 10_000_000, "volume")
 STORAGE_BOXES: Kind[StorageBox] = Kind(
     "storage_boxes", StorageBox, 14_000_000, "Storage Box"
 )
@@ -106,6 +106,8 @@ BOX_SNAPSHOTS: Kind[BoxSnapshot] = Kind(
     "box_snapshots", BoxSnapshot, 16_000_000, "snapshot"
 )
 ACTIONS: Kind[Action] = Kind("actions", Action, 100_000_000, "action")
+# Internet clients are no resource of the API: the lab names them, and their IDs
+# only key them in the state, so they need no range of their own.
 CLIENTS: Kind[Client] = Kind("clients", Client, 0, "client")
 
 # Every kind of resource the state keeps: the one registry. A new kind starts here;
@@ -155,11 +157,6 @@ def nic_addresses(nic: Nic) -> list[str]:
 def client_by_name(state: "State", name: str) -> Client | None:
     """Return the Internet client with this name, or None."""
     return next((c for c in state[CLIENTS].values() if c["name"] == name), None)
-
-
-def server_by_id(state: "State", sid: int | None) -> Server | None:
-    """Return the server with this ID, or None (also without an ID)."""
-    return state.get(SERVERS, sid)
 
 
 def server_by_name(state: "State", name: str) -> Server | None:
@@ -475,10 +472,10 @@ class State:
         if self.writer:
             self.writer.flush()
 
-    def free_index(self) -> int:
+    def free_index(self) -> int | None:
         """Return the lab index of a new server (tap pub<index>, MACs, IPv6 link-local).
 
-        Returns 0 when the lab is full.
+        Returns None when the lab is full.
         """
         used = {s["_lab"]["index"] for s in self[SERVERS].values()}
-        return next((i for i in range(1, MAX_SERVERS + 1) if i not in used), 0)
+        return next((i for i in range(1, MAX_SERVERS + 1) if i not in used), None)

@@ -14,7 +14,8 @@ from ...errors import limit_exceeded, locked, not_found
 from ...lab import Lab, Plan, RecordGoneError, now
 from ...records import BoxSnapshot, StorageBox
 from ...state import BOX_SNAPSHOTS, STORAGE_BOXES, SUBACCOUNTS
-from ..web import filtered, read_body, sort_items, update_fields
+from ..resources import update_fields
+from ..web import filtered, read_body, sort_items
 from .base import box_busy, box_or_404, sync_subaccount
 
 log = logging.getLogger(__name__)
@@ -86,12 +87,13 @@ async def copy_snapshot(lab: Lab, box: StorageBox, snapshot: BoxSnapshot) -> Non
     """
     fabric_box, name = lab.fabric.box, snapshot["name"]
     bid, snapshot_id = box["id"], snapshot["id"]
-    try:
-        await lab.blocking(fabric_box.take_snapshot, bid, name)
-    except Exception:  # undo the partial change, then raise
+
+    async def undo():
         with lab.state.change():
             lab.state[BOX_SNAPSHOTS].pop(snapshot_id, None)
-        raise
+
+    async with lab.undo_on_failure(undo):
+        await lab.blocking(fabric_box.take_snapshot, bid, name)
     # the snapshot was deleted in the meantime: leave no copy
     if lab.state.get(BOX_SNAPSHOTS, snapshot_id) is None:
         await lab.blocking(fabric_box.remove_snapshot, bid, name, check=False)
@@ -219,8 +221,7 @@ async def rollback_snapshot(lab: Lab, box: StorageBox, body: dict) -> Plan:
             username = subaccount["username"]
             try:
                 await sync_subaccount(lab, lab.current(STORAGE_BOXES, bid), subaccount)
-            # a home the snapshot does not have stays as it was
-            except Exception:
+            except Exception:  # a home the snapshot lacks stays as it was
                 log.exception(
                     "sub-account %s keeps its home after the rollback", username
                 )
@@ -267,7 +268,8 @@ async def snapshot_plan_scheduler(lab: Lab) -> None:
         missed = min(60, int((this_minute - last_minute).total_seconds() // 60))
         minutes = [this_minute - timedelta(minutes=i) for i in range(missed)]
         last_minute = this_minute
-        await run_snapshot_plans(lab, minutes, waiting)
+        if not lab.resetting:  # a plan due during a reset is skipped
+            await run_snapshot_plans(lab, minutes, waiting)
 
 
 async def run_snapshot_plans(
@@ -298,8 +300,7 @@ async def run_snapshot_plans(
         waiting.discard(bid)
         try:
             await take_automatic_snapshot(lab, box)
-        # one failed snapshot must not end the plans of all boxes
-        except Exception:
+        except Exception:  # one failed snapshot must not end every box's plan
             log.exception("automatic snapshot of box %s failed", bid)
 
 

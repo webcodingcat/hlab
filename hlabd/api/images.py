@@ -7,20 +7,19 @@ deleted any time, as on Hetzner. Backups belong to their server: it keeps at mos
 the server or with `disable_backup`. Converting one to a snapshot keeps it.
 """
 
-import asyncio
 import logging
-from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
 
 from ..errors import invalid, locked, not_found, protected
-from ..lab import SERVER_LOCKED, ActionSpec, ActionTable, Lab, Plan, now
+from ..lab import ActionSpec, ActionTable, Lab, Plan, now
 from ..records import Image, Server
-from ..state import IMAGES, SERVERS
+from ..state import IMAGES
 from . import hetzner
 from .catalogue import by_name_or_id, catalogue_entry_or_404, image_path
-from .web import change_delete_protection, filtered, paginate, read_body, update_fields
+from .resources import change_delete_protection, update_fields
+from .web import filtered, paginate, read_body
 
 log = logging.getLogger(__name__)
 
@@ -139,11 +138,8 @@ async def create_image(lab: Lab, server: Server, body: dict) -> Plan:
         lab.state[IMAGES][iid] = image
 
     async def steps():
-        try:
+        async with lab.undo_on_failure(lambda: delete_images(lab, [iid])):
             size = await lab.blocking(lab.fabric.vms.create_image, sid, iid)
-        except Exception:
-            await delete_images(lab, [iid])
-            raise
         with lab.state.change():
             image = lab.current(IMAGES, iid)
             image["status"] = "available"
@@ -179,14 +175,6 @@ async def disable_backup(lab: Lab, server: Server, body: dict) -> Plan:
         await delete_images(lab, backups)
 
     return Plan(steps, server=server)
-
-
-# the server actions about images, part of SERVER_ACTIONS (api/servers.py)
-IMAGE_SERVER_ACTIONS: ActionTable[Server] = {
-    "create_image": ActionSpec("create_image", create_image),
-    "enable_backup": ActionSpec("enable_backup", enable_backup),
-    "disable_backup": ActionSpec("disable_backup", disable_backup),
-}
 
 
 # --- the project's images -------------------------------------------------------------
@@ -228,11 +216,14 @@ async def image_change_protection(lab: Lab, image: Image, body: dict) -> Plan:
 
 
 # the image actions: Hetzner's name of the action and the function that plans it
-IMAGE_ACTIONS: ActionTable[Image] = {
-    "change_protection": ActionSpec(
-        "change_protection", image_change_protection, flag=False
-    ),
-}
+IMAGE_ACTIONS = ActionTable[Image](
+    "image",
+    {
+        "change_protection": ActionSpec(
+            "change_protection", image_change_protection, flag=False
+        ),
+    },
+)
 
 
 async def drop_server_backups(lab: Lab, sid: int) -> None:
@@ -246,44 +237,6 @@ async def drop_half_created_images(lab: Lab) -> None:
         iid for iid, i in lab.state[IMAGES].items() if i["status"] == "creating"
     ]
     await delete_images(lab, creating)
-
-
-# --- daily backups --------------------------------------------------------------------
-
-
-async def backup_scheduler(lab: Lab) -> None:
-    """Take the daily backup of every server with backups enabled.
-
-    Checked once a minute. A server that is busy when its backup window begins (an
-    action runs) gets no backup that day.
-    """
-    while True:
-        await asyncio.sleep(60 - datetime.now(timezone.utc).second)
-        moment = datetime.now(timezone.utc)
-        if (moment.hour, moment.minute) == (BACKUP_HOUR, 0):
-            await take_daily_backups(lab)
-
-
-async def take_daily_backups(lab: Lab) -> None:
-    """Start a backup of every server with backups enabled that is not busy."""
-    for sid in [
-        s for s, server in lab.state[SERVERS].items() if server["backup_window"]
-    ]:
-        server = lab.state.get(SERVERS, sid)
-        if server is None or server["status"] not in ("running", "off"):
-            continue
-        try:
-            await lab.act(
-                IMAGE_SERVER_ACTIONS,
-                "create_image",
-                server,
-                "server",
-                {"type": "backup"},
-                "_locked",
-                SERVER_LOCKED,
-            )
-        except Exception:  # a busy server misses its backup; the others get theirs
-            log.exception("daily backup of server %s", sid)
 
 
 # --- routes ---------------------------------------------------------------------------
@@ -342,6 +295,4 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
         image = state.get(IMAGES, iid)
         if image is None:
             raise not_found("image")
-        return await lab.act(
-            IMAGE_ACTIONS, cmd, image, "image", await read_body(request)
-        )
+        return await lab.act(IMAGE_ACTIONS, cmd, image, await read_body(request))

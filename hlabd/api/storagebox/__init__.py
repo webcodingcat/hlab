@@ -68,8 +68,7 @@ async def restore(lab: Lab) -> None:
         try:
             await box_account(lab, box, box.get("_password"))
             await sync_box(lab, lab.current(STORAGE_BOXES, bid))
-        # one box that fails must not keep the lab from coming up
-        except Exception:
+        except Exception:  # one failed box must not keep the lab from coming up
             log.exception("Storage Box %s not restored", bid)
             continue
         accounts = [aid for aid, a in state[SUBACCOUNTS].items() if a["box"] == bid]
@@ -85,6 +84,5 @@ async def restore(lab: Lab) -> None:
                     account,
                     account.get("_password"),
                 )
-            # nor one sub-account that fails
-            except Exception:
+            except Exception:  # nor one failed sub-account
                 log.exception("sub-account %s not restored", name)

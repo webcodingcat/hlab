@@ -51,14 +51,14 @@ source "$(dirname "$0")/lib.sh"
 # stderr.
 send_qmp() {
   local vm_dir="$1" qmp_command="$2" answer errors
-  answer="$(printf '{"execute":"qmp_capabilities"}\n%s\n' "${qmp_command}" \
-    | socat -t1 - "UNIX-CONNECT:${vm_dir}/qmp.sock")" \
+  answer="$(query_qmp "${vm_dir}" "${qmp_command}")" \
     || {
       echo "hlab.sh: qmp: no answer from ${vm_dir}" >&2
       return 1
     }
   # Print QMP errors; if there are none, print the string results of HMP
-  # commands when one of them is an error text. An answer that is not JSON counts as no error.
+  # commands when one of them is an error text. An answer that is not JSON
+  # counts as no error.
   errors="$(printf '%s\n' "${answer}" | jq -rs '
     def error_text: (.return | type) == "string"
       and (.return | test("^Error|error:"; "i"));
@@ -81,8 +81,7 @@ print_vm_counters() {
   pid="$(cat "${vm_dir}/qemu.pid")"
   # utime and stime: fields 14 and 15, counted after the name in parentheses
   cpu_ticks="$(sed 's/.*) //' "/proc/${pid}/stat" | awk '{print $12 + $13}')"
-  disk="$(printf '{"execute":"qmp_capabilities"}\n{"execute":"query-blockstats"}\n' \
-    | socat -t1 - "UNIX-CONNECT:${vm_dir}/qmp.sock" \
+  disk="$(query_qmp "${vm_dir}" '{"execute":"query-blockstats"}' \
     | jq -cs '[.[] | .return? | arrays | .[] | select(.device == "root")
       | .stats][0]')"
   stats="/sys/class/net/${tap}/statistics"
@@ -98,6 +97,30 @@ print_vm_counters() {
       disk_read_bytes: $disk.rd_bytes, disk_write_bytes: $disk.wr_bytes,
       packets_in: $packets_in, packets_out: $packets_out,
       bytes_in: $bytes_in, bytes_out: $bytes_out}'
+}
+
+# query_qmp <vm dir> <json command>: Print QEMU's answers to a QMP command,
+# one JSON document per line (the greeting and the capabilities answer
+# first).
+query_qmp() {
+  local vm_dir="$1" qmp_command="$2"
+  printf '{"execute":"qmp_capabilities"}\n%s\n' "${qmp_command}" \
+    | socat -t1 - "UNIX-CONNECT:${vm_dir}/qmp.sock"
+}
+
+# wait_device_gone <vm dir> <device id>: Wait until QEMU has removed a device,
+# 10 seconds at most. A guest acknowledges a PCI unplug on its own time; a
+# SCSI disk goes at once.
+wait_device_gone() {
+  local vm_dir="$1" device="$2" i
+  local list='{"execute":"qom-list","arguments":{"path":"/machine/peripheral"}}'
+  for ((i = 0; i < 100; i++)); do
+    query_qmp "${vm_dir}" "${list}" \
+      | jq -se --arg device "${device}" \
+        '[.[] | .return? | arrays | .[].name] | any(. == $device)' \
+        >/dev/null || return 0
+    sleep 0.1
+  done
 }
 
 # send_hmp <vm dir> <monitor command>: Send a human monitor command through
@@ -323,9 +346,11 @@ flush_routes() {
 add_namespace() {
   local name="$1" veth="$2" ipv4="$3" ipv6="$4" gateway="$5"
   [[ -e "/run/netns/${name}" ]] || ip netns add "${name}"
-  link_exists "${veth}" || ip link add "${veth}" type veth peer name eth0 netns "${name}"
+  link_exists "${veth}" \
+    || ip link add "${veth}" type veth peer name eth0 netns "${name}"
   sysctl -qw "net.ipv6.conf.${veth}.disable_ipv6=0"
-  ip netns exec "${name}" sysctl -qw net.ipv6.conf.all.disable_ipv6=0 net.ipv6.conf.default.disable_ipv6=0 net.ipv6.conf.eth0.disable_ipv6=0
+  ip netns exec "${name}" sysctl -qw net.ipv6.conf.all.disable_ipv6=0 \
+    net.ipv6.conf.default.disable_ipv6=0 net.ipv6.conf.eth0.disable_ipv6=0
   ip link set "${veth}" up
   ip addr replace "${gateway}/32" dev "${veth}" noprefixroute
   ip -6 addr replace "${GATEWAY6}/64" dev "${veth}" nodad
@@ -603,10 +628,12 @@ start_vm() {
   fi
   # SMBIOS like Hetzner's: cloud-init recognises the platform by the
   # manufacturer and checks the serial. No device the guests do not need (no
-  # USB, no 9p, no balloon, no QXL) and no VAPIC option ROM: less to attack from
-  # a guest. The virtio-scsi controller is there from the boot: a disk on a
-  # controller hot-plugged just before is missed. q35 hot-plugs only into PCIe
-  # root ports: four of them (hp1..hp4) for networks attached later.
+  # USB, no 9p, no balloon, no QXL), no VAPIC option ROM, and QEMU's seccomp
+  # sandbox: they cost nothing and keep the VM lean; they are no defence, the
+  # lab does not guard against its guests. The virtio-scsi controller is there
+  # from the boot: a disk on a controller hot-plugged just before is missed.
+  # q35 hot-plugs only into PCIe root ports: four of them (hp1..hp4) for
+  # networks attached later.
   qemu-system-x86_64 -machine q35,usb=off -enable-kvm -cpu host \
     -smp "${cpus}" -m "${ram}" -name "${name}" \
     -global kvm-apic.vapic=off \
@@ -653,7 +680,7 @@ add_nic() {
 delete_nic() {
   local vm_dir="$1" tap="$2"
   send_hmp "${vm_dir}" "device_del dev-${tap}"
-  sleep 1
+  wait_device_gone "${vm_dir}" "dev-${tap}"
   send_hmp "${vm_dir}" "netdev_del ${tap}"
 }
 
@@ -679,7 +706,7 @@ attach_volume() {
 detach_volume() {
   local vm_dir="$1" id="$2"
   send_hmp "${vm_dir}" "device_del dvol${id}"
-  sleep 1
+  wait_device_gone "${vm_dir}" "dvol${id}"
   # QEMU may have removed the drive with its device already
   send_hmp "${vm_dir}" "drive_del vol${id}" 2>/dev/null || true
 }
@@ -745,9 +772,9 @@ main() {
     start-balancer) start_balancer "$@" ;;
     is-balancer-alive) is_balancer_alive "$@" ;;
     stop-balancer) stop_balancer "$@" ;;
-    start-box | stop-box | set-account | set-access | set-home | set-zfs-view | \
-      remove-account | add-key | write-authorized-keys | take-snapshot | \
-      roll-back | remove-tree | print-bytes-used | list-folders)
+    start-box | stop-box | set-account | set-access | set-home | \
+      set-zfs-view | remove-account | add-key | write-authorized-keys | \
+      take-snapshot | roll-back | remove-tree | print-bytes-used | list-folders)
       exec "$(dirname "$0")/box.sh" "${verb}" "$@"
       ;;
     *)

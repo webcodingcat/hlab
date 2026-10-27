@@ -13,7 +13,7 @@ from .shell import LONG_TIMEOUT, Shell
 BOX = "/hlab/box"
 
 
-def _data_dir(box_id: int, path: str = ".") -> str:
+def data_dir(box_id: int, path: str = ".") -> str:
     """Return the data directory of a box, or a directory inside it.
 
     The API has checked that `path` stays inside the box.
@@ -21,7 +21,7 @@ def _data_dir(box_id: int, path: str = ".") -> str:
     return posixpath.normpath(f"{BOX}/data/{box_id}/{path.lstrip('/')}")
 
 
-def _snap_dir(box_id: int, name: str = "") -> str:
+def snapshot_dir(box_id: int, name: str = "") -> str:
     """Return the snapshot directory of a box, or of one of its snapshots."""
     return f"{BOX}/snapshots/{box_id}" + (f"/{name}" if name else "")
 
@@ -60,7 +60,7 @@ class Box:
         A name is the box user whose IDs a sub-account shares. Without a password, the
         account cannot log in with a password.
         """
-        self._set_account(user, _data_dir(box_id, home), password, quota, owner)
+        self._set_account(user, data_dir(box_id, home), password, quota, owner)
 
     def set_lab_account(self, name: str, uid: int, quota: int) -> None:
         """Create or update a lab account outside the API (/_lab/box/users).
@@ -95,11 +95,11 @@ class Box:
 
     def set_zfs_view(self, user: str, box_id: int, shown: bool) -> None:
         """Show the box's snapshots as .zfs in the account's home, or hide them."""
-        self.shell.run("set-zfs-view", user, _snap_dir(box_id) if shown else "-")
+        self.shell.run("set-zfs-view", user, snapshot_dir(box_id) if shown else "-")
 
     def set_home(self, user: str, box_id: int, home: str) -> None:
         """Set an account's home, a directory inside the box."""
-        self.shell.run("set-home", user, _data_dir(box_id, home))
+        self.shell.run("set-home", user, data_dir(box_id, home))
 
     def write_authorized_keys(self, user: str, keys: list[str]) -> None:
         """Set an account's authorized SSH keys (its .ssh/authorized_keys)."""
@@ -118,13 +118,13 @@ class Box:
 
     def remove_box_data(self, box_id: int, check: bool = True) -> None:
         """Remove a box's data and all its snapshots."""
-        for path in (_data_dir(box_id), _snap_dir(box_id)):
+        for path in (data_dir(box_id), snapshot_dir(box_id)):
             self.shell.run("remove-tree", path, check=check, timeout=LONG_TIMEOUT)
 
     def remove_snapshot(self, box_id: int, name: str, check: bool = True) -> None:
         """Remove the copy of a snapshot."""
         self.shell.run(
-            "remove-tree", _snap_dir(box_id, name), check=check, timeout=LONG_TIMEOUT
+            "remove-tree", snapshot_dir(box_id, name), check=check, timeout=LONG_TIMEOUT
         )
 
     def clear_snapshot_work(self) -> None:
@@ -135,11 +135,11 @@ class Box:
 
     def data_bytes(self, box_id: int) -> int:
         """Return the bytes a box's data uses."""
-        return self._bytes_used(_data_dir(box_id))
+        return self._bytes_used(data_dir(box_id))
 
     def snapshot_bytes(self, box_id: int, name: str = "") -> int:
         """Return the bytes a box's snapshots use, or one of them."""
-        return self._bytes_used(_snap_dir(box_id, name))
+        return self._bytes_used(snapshot_dir(box_id, name))
 
     def _bytes_used(self, path: str) -> int:
         """Run print-bytes-used and return its number (0 if the path is missing)."""
@@ -152,8 +152,8 @@ class Box:
         """Take a snapshot of a box's data under a name (owners are kept)."""
         self.shell.run(
             "take-snapshot",
-            _data_dir(box_id),
-            _snap_dir(box_id, name),
+            data_dir(box_id),
+            snapshot_dir(box_id, name),
             timeout=LONG_TIMEOUT,
         )
 
@@ -161,12 +161,12 @@ class Box:
         """Roll a box's data back to one of its snapshots (owners are kept)."""
         self.shell.run(
             "roll-back",
-            _snap_dir(box_id, name),
-            _data_dir(box_id),
+            snapshot_dir(box_id, name),
+            data_dir(box_id),
             timeout=LONG_TIMEOUT,
         )
 
     def list_folders(self, box_id: int, path: str) -> list[str]:
         """Return the folders below a directory inside the box."""
-        output = self.shell.run("list-folders", _data_dir(box_id, path), check=False)
+        output = self.shell.run("list-folders", data_dir(box_id, path), check=False)
         return [folder for folder in output.splitlines() if folder]

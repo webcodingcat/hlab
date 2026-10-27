@@ -1,8 +1,8 @@
 """HTTP plumbing shared by all API modules.
 
-This module has the error answers, lists (filter, sort, pages), request checks and the
-rate limit. It also has what every resource does the same way: IDs in request bodies,
-PUT, delete protection.
+This module has the error answers, lists (filter, sort, pages), request checks, IDs in
+request bodies and the rate limit. What every resource changes the same way (PUT,
+delete protection) is in resources.py.
 """
 
 import asyncio
@@ -10,7 +10,7 @@ import json
 import logging
 import time
 from collections.abc import Callable, Mapping
-from typing import Any, cast
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -19,18 +19,16 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..errors import (
     ApiError,
-    check_unique_name,
     invalid,
     invalid_fields,
     json_error,
     not_found,
     rate_limit_exceeded,
     server_error,
+    unavailable,
 )
-from ..lab import Lab, Plan
+from ..lab import Lab
 from ..labels import match_labels
-from ..records import ProtectedRecord, Record
-from ..state import Kind
 from . import hetzner
 from . import spec as openapi
 
@@ -60,50 +58,18 @@ async def read_body(request: Request) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def ref_id(value, field: str) -> int:
+def ref_id(value: int | str | None, field: str) -> int:
     """Return a resource ID from a request body, or raise invalid_input for the field.
 
     The request check lets only numbers (or null) through where the specification
     wants an ID.
     """
-    if isinstance(value, bool):
+    if value is None or isinstance(value, bool):
         raise invalid(f"{field} must be an ID", field)
     try:
         return int(value)
     except (TypeError, ValueError):
         raise invalid(f"{field} must be an ID", field) from None
-
-
-def update_fields(item: Record, body: dict, keys: tuple[str, ...]) -> None:
-    """Change the given fields of an item on PUT (null labels mean no labels)."""
-    # the keys come from the caller's list, more than mypy can match to the record type
-    fields = cast(dict[str, object], item)
-    for key in keys:
-        if key in body:
-            fields[key] = (body[key] or {}) if key == "labels" else body[key]
-
-
-def update_resource[R: Record](
-    lab: Lab, kind: Kind[R], item: R, body: dict, keys: tuple[str, ...], what: str
-) -> None:
-    """Apply a PUT to a resource of a kind: names stay unique within the kind."""
-    with lab.state.change():
-        check_unique_name(lab.state[kind].values(), body.get("name"), item, what)
-        update_fields(item, body, keys)
-
-
-async def change_delete_protection(lab: Lab, item: ProtectedRecord, body: dict) -> Plan:
-    """Set a resource's delete protection: the change_protection action.
-
-    A body without `delete` keeps the current value. Every resource with a plain
-    delete protection uses this in its action table. Servers have their own function,
-    because they set delete and rebuild protection together.
-    """
-    with lab.state.change():
-        item["protection"]["delete"] = bool(
-            body.get("delete", item["protection"]["delete"])
-        )
-    return Plan()
 
 
 # --- lists ----------------------------------------------------------------------------
@@ -126,8 +92,8 @@ def sort_items[T: Mapping[str, Any]](items: list[T], sorts: list[str]) -> list[T
     Several are allowed; they apply in order (the first is the primary key).
     """
     seen: dict[str, str] = {}
-    for s in sorts:
-        field, _, direction = s.partition(":")
+    for sort in sorts:
+        field, _, direction = sort.partition(":")
         direction = direction or "asc"
         if field in seen and seen[field] != direction:
             seen[field] = "ignore"  # a field sorted both ways is ignored
@@ -137,20 +103,21 @@ def sort_items[T: Mapping[str, Any]](items: list[T], sorts: list[str]) -> list[T
     for field, direction in reversed(
         [(f, d) for f, d in seen.items() if d != "ignore"]
     ):
-        items = sorted(items, key=_sort_key(field), reverse=direction == "desc")
+        # null sorts last in both directions, so it stays out of the sorted values
+        keyed = [(field_value(item, field), item) for item in items]
+        present = [pair for pair in keyed if pair[0] is not None]
+        present.sort(key=lambda pair: pair[0], reverse=direction == "desc")
+        items = [item for _, item in present]
+        items += [item for value, item in keyed if value is None]
     return items
 
 
-def _sort_key(field: str):
-    """Return the sort key of a field (nested ones like stats.size); null sorts last."""
-
-    def key(item: Mapping[str, Any]) -> tuple:
-        value: Any = item
-        for part in field.split("."):
-            value = value.get(part) if isinstance(value, dict) else None
-        return (value is None, value if value is not None else 0)
-
-    return key
+def field_value(item: Mapping[str, Any], field: str) -> Any:
+    """Return a field's value, nested ones like stats.size too; None if missing."""
+    value: Any = item
+    for part in field.split("."):
+        value = value.get(part) if isinstance(value, dict) else None
+    return value
 
 
 def paginate(request: Request, items: list, key: str) -> dict:
@@ -210,6 +177,10 @@ class RateLimit:
     The budget is refilled gradually (N/3600 per second).
     """
 
+    # Buckets kept at most: with more, the full ones go (a full bucket is the same
+    # as none), or else the oldest half, so many tokens cannot grow the memory.
+    MAX_BUCKETS = 1000
+
     def __init__(self, per_hour: int | None):
         """Allow per_hour requests per hour and key; none or 0 means no limit."""
         self.limit = per_hour
@@ -221,15 +192,15 @@ class RateLimit:
             return True, {}
         now = time.time()
         rate = self.limit / 3600
-        if key not in self.buckets and len(self.buckets) >= 1000:
+        if key not in self.buckets and len(self.buckets) >= self.MAX_BUCKETS:
             full = [
-                k
-                for k, (n, t) in self.buckets.items()
-                if n + (now - t) * rate >= self.limit
+                bucket_key
+                for bucket_key, (tokens, last) in self.buckets.items()
+                if tokens + (now - last) * rate >= self.limit
             ]
-            # a full bucket is the same as no bucket, so it can go
-            for k in full or list(self.buckets)[:500]:
-                del self.buckets[k]
+            oldest_half = list(self.buckets)[: self.MAX_BUCKETS // 2]
+            for bucket_key in full or oldest_half:
+                del self.buckets[bucket_key]
         tokens, last = self.buckets.get(key, (float(self.limit), now))
         tokens = min(self.limit, tokens + (now - last) * rate)
         ok = tokens >= 1
@@ -265,7 +236,7 @@ def injected_fault_error(status: int) -> ApiError:
     if status == 429:
         return rate_limit_exceeded("injected fault")
     if status == 503:
-        return ApiError(503, "unavailable", "injected fault")
+        return unavailable("injected fault")
     return server_error("injected fault", status)
 
 
@@ -301,8 +272,8 @@ async def check_request(spec: openapi.Spec, request: Request) -> None:
         if fields:
             raise invalid_fields(fields)
     allowed = spec.query_enum(operation, "sort")
-    for s in request.query_params.getlist("sort"):
-        if allowed is not None and s not in allowed:
+    for sort in request.query_params.getlist("sort"):
+        if allowed is not None and sort not in allowed:
             raise invalid(f"must be one of {', '.join(allowed)}", "sort")
 
 
@@ -350,6 +321,8 @@ def install(app: FastAPI, lab: Lab, spec_name: str, prefix: str) -> None:
             return await call_next(request)
         headers: dict[str, str] = {}  # the rate limit headers, once the token is known
         try:
+            if lab.resetting:
+                raise unavailable("the lab is being reset")
             token = check_auth(lab, request)
             allowed, headers = limiter.take(token)
             if not allowed:

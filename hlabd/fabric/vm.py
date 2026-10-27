@@ -11,6 +11,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..config import Config
 from .shell import LONG_TIMEOUT, Shell
 
 log = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ CONSOLE_LIMIT = 8 << 20
 class VMs:
     """The servers' VMs: disks, QEMU processes, monitors, guest agents, consoles."""
 
-    def __init__(self, cfg: dict, root: Path, shell: Shell):
+    def __init__(self, cfg: Config, root: Path, shell: Shell):
         """Keep the server types (`cfg`), the lab's directory and the shell."""
         self.cfg = cfg
         self.root = root
@@ -141,7 +142,7 @@ class VMs:
         )
 
     def kill(self, sid: int, name: str) -> None:
-        """Kill the server's QEMU process (its taps stay)."""
+        """Kill the server's QEMU process (its taps stay); `name` is for the log."""
         log.info("VM %s (server %s) stops", name, sid)
         self.shell.run("kill-vm", str(self.directory(sid)))
 

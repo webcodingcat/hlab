@@ -108,7 +108,7 @@ def test_health_comes_from_haproxys_checks(api):
     )
 
     def checked():
-        api.lab.balancer_health = {balancer["id"]: {("b22", f"s{server['id']}"): "UP"}}
+        api.lab.readings.health = {balancer["id"]: {("b22", f"s{server['id']}"): "UP"}}
 
     api.on_loop(checked)
     got = api.get(f"/v1/load_balancers/{balancer['id']}").json()["load_balancer"]

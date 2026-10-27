@@ -29,19 +29,12 @@ from ..state import (
     SERVERS,
     primary_ip_field,
     primary_ip_of,
-    server_by_id,
 )
 from . import hetzner, system
 from .catalogue import catalogue_name
 from .public_addresses import contains, first_free, record_dns_ptr, set_dns_ptr
-from .web import (
-    change_delete_protection,
-    filtered,
-    paginate,
-    read_body,
-    ref_id,
-    update_resource,
-)
+from .resources import change_delete_protection, update_resource
+from .web import filtered, paginate, read_body, ref_id
 
 
 def server_ipv6_net(number: int) -> str:
@@ -317,7 +310,7 @@ async def primary_ip_assign(lab: Lab, primary_ip: PrimaryIP, body: dict) -> Plan
 async def primary_ip_unassign(lab: Lab, primary_ip: PrimaryIP, body: dict) -> Plan:
     """Take a primary IP from its server, which must be off."""
     state = lab.state
-    server = server_by_id(state, primary_ip["assignee_id"])
+    server = state.get(SERVERS, primary_ip["assignee_id"])
     if server:
         require_off(server)
     with state.change():
@@ -345,22 +338,25 @@ async def primary_ip_change_protection(
 
 
 # the primary IP actions: Hetzner's name of the action and the function that plans it
-PRIMARY_IP_ACTIONS: ActionTable[PrimaryIP] = {
-    "assign": ActionSpec("assign_primary_ip", primary_ip_assign),
-    "unassign": ActionSpec("unassign_primary_ip", primary_ip_unassign),
-    "change_dns_ptr": ActionSpec(
-        "change_dns_ptr", primary_ip_change_dns_ptr, flag=False
-    ),
-    "change_protection": ActionSpec(
-        "change_protection", primary_ip_change_protection, flag=False
-    ),
-}
+PRIMARY_IP_ACTIONS = ActionTable[PrimaryIP](
+    "primary_ip",
+    {
+        "assign": ActionSpec("assign_primary_ip", primary_ip_assign),
+        "unassign": ActionSpec("unassign_primary_ip", primary_ip_unassign),
+        "change_dns_ptr": ActionSpec(
+            "change_dns_ptr", primary_ip_change_dns_ptr, flag=False
+        ),
+        "change_protection": ActionSpec(
+            "change_protection", primary_ip_change_protection, flag=False
+        ),
+    },
+)
 
 
 async def run_primary_ip_action(lab: Lab, pid: int, cmd: str, body: dict) -> dict:
     """Run a primary IP action; every one of them finishes right away."""
     primary_ip = lab.get_or_404(PRIMARY_IPS, pid, "primary IP")
-    return await lab.act(PRIMARY_IP_ACTIONS, cmd, primary_ip, "primary_ip", body)
+    return await lab.act(PRIMARY_IP_ACTIONS, cmd, primary_ip, body)
 
 
 # --- routes ---------------------------------------------------------------------------

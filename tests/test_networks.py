@@ -591,3 +591,16 @@ def test_a_free_address_skips_the_local_addresses_it_is_given(api):
 
     assert api.on_loop(pick, set()) == "10.0.1.1"
     assert api.on_loop(pick, {"10.0.1.1", "10.0.1.2"}) == "10.0.1.3"
+
+
+def test_failed_alias_change_keeps_the_old_alias_ips(api):
+    network = create_network(api, "10.0.1.0/24")
+    server = create_server(api, "a", networks=[network["id"]])["server"]
+    api.sh.fail.add("set-up-private-tap")
+    action = api.post(
+        f"/v1/servers/{server['id']}/actions/change_alias_ips",
+        json={"network": network["id"], "alias_ips": ["10.0.1.9"]},
+    ).json()["action"]
+    assert wait_action(api, action)["status"] == "error"
+    got = api.get(f"/v1/servers/{server['id']}").json()["server"]
+    assert got["private_net"][0]["alias_ips"] == []

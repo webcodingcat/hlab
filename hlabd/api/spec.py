@@ -38,7 +38,7 @@ _DNS_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
 BASE_TYPE_CHECKER = Draft202012Validator.TYPE_CHECKER
 
 
-def _null_or(type_name: str):
+def null_or(type_name: str):
     """Return a type check that passes null and what the base check passes."""
 
     def check(checker, value) -> bool:
@@ -47,7 +47,7 @@ def _null_or(type_name: str):
     return check
 
 
-def _null_string_or_int(checker, value) -> bool:
+def null_string_or_int(checker, value) -> bool:
     """Check a string field: null, a string, or an integer (an ID given as number)."""
     return (
         value is None
@@ -58,14 +58,14 @@ def _null_string_or_int(checker, value) -> bool:
 
 TYPE_CHECKER = BASE_TYPE_CHECKER.redefine_many(
     {
-        type_name: _null_or(type_name)
+        type_name: null_or(type_name)
         for type_name in ("object", "array", "integer", "number", "boolean")
     }
-    | {"string": _null_string_or_int}
+    | {"string": null_string_or_int}
 )
 
 
-def _skip_null(validate):
+def skip_null(validate):
     """Return a keyword check that lets null pass and checks everything else."""
 
     def check(validator, value, instance, schema):
@@ -80,7 +80,7 @@ Validator = extend(
     Draft202012Validator,
     type_checker=TYPE_CHECKER,
     validators={
-        k: _skip_null(v)
+        k: skip_null(v)
         for k, v in Draft202012Validator.VALIDATORS.items()
         if k not in _SEES_NULL
     },
@@ -130,7 +130,7 @@ class Spec:
         errors = (
             rejected
             for top in Validator(schema).iter_errors(body)
-            for rejected in _rejected_errors(top)
+            for rejected in rejected_errors(top)
         )
         for e in errors:
             path = [str(p) for p in e.absolute_path]
@@ -144,7 +144,7 @@ class Spec:
             else:
                 message = e.message
             fields.setdefault(".".join(path) or "body", []).append(message)
-        for missing in _null_required(schema, body):
+        for missing in null_required(schema, body):
             fields.setdefault(missing, []).append("is required")
         return [{"name": k, "messages": v} for k, v in fields.items()]
 
@@ -157,7 +157,7 @@ class Spec:
         return None
 
 
-def _rejected_errors(error) -> list:
+def rejected_errors(error) -> list:
     """Return the errors of a validation error that the API would reject.
 
     Unknown fields pass, because the API ignores them. For a oneOf or anyOf, only the
@@ -172,7 +172,7 @@ def _rejected_errors(error) -> list:
     for c in error.context:
         alternatives.setdefault(
             c.relative_schema_path[0] if c.relative_schema_path else 0, []
-        ).extend(_rejected_errors(c))
+        ).extend(rejected_errors(c))
     if error.validator in ("oneOf", "anyOf"):
         if any(not errs for errs in alternatives.values()):
             return []
@@ -185,18 +185,20 @@ def _rejected_errors(error) -> list:
     return [x for errs in alternatives.values() for x in errs]
 
 
-def _nullable(schema: dict) -> bool:
+def is_nullable(schema: dict) -> bool:
     """Return whether a schema allows null (nullable, a null type, or a null option)."""
     schema_type = schema.get("type")
     return (
         schema.get("nullable") is True
         or schema_type == "null"
         or (isinstance(schema_type, list) and "null" in schema_type)
-        or any(_nullable(s) for s in schema.get("anyOf", []) + schema.get("oneOf", []))
+        or any(
+            is_nullable(s) for s in schema.get("anyOf", []) + schema.get("oneOf", [])
+        )
     )
 
 
-def _null_required(schema: dict, value, path: str = "") -> list[str]:
+def null_required(schema: dict, value, path: str = "") -> list[str]:
     """Return the required fields given as null where the specification forbids null.
 
     Only plain objects and arrays are followed.
@@ -205,14 +207,14 @@ def _null_required(schema: dict, value, path: str = "") -> list[str]:
     if isinstance(value, dict) and isinstance(schema.get("properties"), dict):
         props = schema["properties"]
         for k in schema.get("required", []):
-            if k in value and value[k] is None and not _nullable(props.get(k) or {}):
+            if k in value and value[k] is None and not is_nullable(props.get(k) or {}):
                 out.append(f"{path}{k}")
         for k, v in value.items():
             if isinstance(props.get(k), dict) and v is not None:
-                out += _null_required(props[k], v, f"{path}{k}.")
+                out += null_required(props[k], v, f"{path}{k}.")
     elif isinstance(value, list) and isinstance(schema.get("items"), dict):
         for i, v in enumerate(value):
-            out += _null_required(schema["items"], v, f"{path}{i}.")
+            out += null_required(schema["items"], v, f"{path}{i}.")
     return out
 
 
@@ -225,7 +227,7 @@ def load(name: str) -> Spec:
 # --- rules the specification only describes in prose ----------------------------------
 
 
-def label_errors(labels) -> list[str]:
+def label_errors(labels: object) -> list[str]:
     """Return the violations of Hetzner's label rules.
 
     A key is an optional DNS subdomain prefix with '/', then a name. A value has at

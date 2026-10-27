@@ -2,9 +2,9 @@
 
 A sampler reads the counters of every running VM (the fabric's `VMCounters`) and of
 every load balancer's HAProxy (`BalancerCounters`) each `SAMPLE_SECONDS`, and keeps
-them in memory for `KEEP_SECONDS` (`lab.samples`, `lab.balancer_samples`). A request
-turns them into rates and averages those per step, as Hetzner's /metrics endpoints
-do. Hetzner keeps 30 days; the lab keeps one, and none across a restart.
+them for `KEEP_SECONDS` in `lab.readings`, in memory. A request turns them into
+rates and averages those per step, as Hetzner's /metrics endpoints do. Hetzner keeps
+30 days; the lab keeps one, and none across a restart.
 """
 
 import asyncio
@@ -63,6 +63,8 @@ async def sampler(lab: Lab) -> None:
     """Take samples of the running servers and the load balancers while the lab runs."""
     while True:
         await asyncio.sleep(SAMPLE_SECONDS)
+        if lab.resetting:
+            continue
         try:
             await take_samples(lab)
         except Exception:  # the sampler keeps going; the error is in the log
@@ -75,8 +77,8 @@ async def take_samples(lab: Lab) -> None:
     Deleted ones are forgotten.
     """
     servers = lab.state[SERVERS]
-    for sid in [sid for sid in lab.samples if sid not in servers]:
-        del lab.samples[sid]
+    for sid in [sid for sid in lab.readings.vms if sid not in servers]:
+        del lab.readings.vms[sid]
     # the IDs and taps: servers may change while the scripts run
     running = [
         (sid, server["_lab"]["tap"])
@@ -86,17 +88,17 @@ async def take_samples(lab: Lab) -> None:
     for sid, tap in running:
         counters = await lab.blocking(lab.fabric.vms.counters, sid, tap)
         if counters is not None and sid in lab.state[SERVERS]:
-            kept = lab.samples.setdefault(
+            kept = lab.readings.vms.setdefault(
                 sid, deque(maxlen=KEEP_SECONDS // SAMPLE_SECONDS)
             )
             kept.append((time.time(), counters))
     balancers = lab.state[LOAD_BALANCERS]
-    for lid in [lid for lid in lab.balancer_samples if lid not in balancers]:
-        del lab.balancer_samples[lid]
+    for lid in [lid for lid in lab.readings.balancers if lid not in balancers]:
+        del lab.readings.balancers[lid]
     for lid in list(balancers):
         totals = await lab.blocking(lab.fabric.balancers.counters, lid)
         if totals is not None and lid in lab.state[LOAD_BALANCERS]:
-            kept_totals = lab.balancer_samples.setdefault(
+            kept_totals = lab.readings.balancers.setdefault(
                 lid, deque(maxlen=KEEP_SECONDS // SAMPLE_SECONDS)
             )
             kept_totals.append((time.time(), totals))
@@ -205,11 +207,11 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     @app.get("/v1/servers/{sid}/metrics")
     async def server_metrics(sid: int, request: Request):
         lab.server_or_404(sid)
-        samples = list(lab.samples.get(sid, ()))
+        samples = list(lab.readings.vms.get(sid, ()))
         return {"metrics": metrics_json(samples, SERVER_SERIES, request)}
 
     @app.get("/v1/load_balancers/{lid}/metrics")
     async def load_balancer_metrics(lid: int, request: Request):
         lab.get_or_404(LOAD_BALANCERS, lid, "load balancer")
-        samples = list(lab.balancer_samples.get(lid, ()))
+        samples = list(lab.readings.balancers.get(lid, ()))
         return {"metrics": metrics_json(samples, BALANCER_SERIES, request)}

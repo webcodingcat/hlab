@@ -10,71 +10,62 @@ standards. `bin/hlab test` checks the style and runs the unit tests.
 
 ## Glossary
 
-The project's own words, in alphabetical order.
-
-- **action**: Hetzner's record of a change (`/v1/actions/...`). Clients poll it until
-  it is `success` or `error`. `lab.new_action()` creates one, `lab.finish()` ends it.
-- **action table**: a resource's dict `{command: ActionSpec(...)}`, of type
-  `ActionTable`, named `<KIND>_ACTIONS` (`SERVER_ACTIONS` in `api/servers.py`).
-  `lab.act()` runs its rows. See Actions and flags.
-- **ActionSpec**: one row of an action table (`lab.py`): Hetzner's name of the action,
-  the function that plans it, whether it takes a flag (`flag`), and how it answers
-  (`answer`).
-- **command**: the last part of an action's URL, such as `poweroff` in
-  `/servers/{id}/actions/poweroff`. Hetzner's name for the resulting action may differ
-  (`stop_server`).
-- **commit, committed state**: when the outermost `with state.change():` block ends,
-  `State.save()` serializes the state into `State.committed` and hands it to the
-  writer thread. In the unit tests, `State.check_committed()` compares the state with
-  it to find changes made outside a block. See The state.
-- **desired**: `api/desired.py`, pure functions that read the state and return plain
-  data describing what the system should look like.
-- **fabric**: `hlabd/fabric/`, and the `Fabric` object with its parts (`vms`,
-  `network`, `firewall`, ...; the table is in `fabric/__init__.py`). It does the work
-  on the system and never sees the state.
-- **flag**: a field such as `_locked` or `_busy` on a resource, meaning that an action
-  is working on it; a second action gets 423. The flags are `Flag` and `FLAGS` in
-  `lab.py`.
-- **held, `lab.holding()`**: code holds flags only inside `with lab.holding() as
-  held:`. `held` is a `HeldFlags` object; `held.claim(...)` sets a flag, and every flag
-  still held comes off when the block ends.
+- **action**: Hetzner's record of a change (`/v1/actions/...`), polled by clients until
+  it is `success` or `error`.
+- **action table**: a resource's `ActionTable` (`lab.py`), named `<KIND>_ACTIONS`: its
+  rows, the type its actions name it by, its flag. `lab.act()` runs its rows.
+- **ActionSpec**: one row of an action table: Hetzner's action name, the function that
+  plans it, whether it takes a flag, how it answers.
+- **command**: the last part of an action's URL (`poweroff` in
+  `/servers/{id}/actions/poweroff`). Hetzner's action name may differ (`stop_server`).
+- **commit**: the end of the outermost `with state.change():` block. The state is
+  serialized and handed to the writer thread.
+- **desired**: `api/desired/`, pure functions from the state to plain data that
+  describe what the system should look like.
+- **fabric**: `hlabd/fabric/`, the parts that do the work on the system
+  (`vms`, `network`, `firewall`, ...). It never sees the state.
+- **flag**: a field such as `_locked` on a resource: an action works on it, and a
+  second action gets 423. The flags are `Flag` and `FLAGS` in `lab.py`.
+- **held**: the `HeldFlags` of `with lab.holding() as held:`, the only way code holds
+  flags.
 - **in-between status**: a server status that lasts only while an action runs, such
-  as `starting` or `rebuilding` (`IN_BETWEEN` in `lab.py`).
-- **lab-only records**: what the state holds but the API never shows as it is: the
-  fields that start with `_` (a server's `_lab`, which is a `ServerLab` in
-  `records.py`; the flags; `_dead`; `_copying`) and the top-level records `faults`,
-  `netem`, `net_routes`, `box_users` and `box_uids` (`lab_records()` in `state.py`).
-- **owner** (of the state): the event loop's thread. Only it may read or change the
-  state, and `State.check_owner()` enforces that. See The state.
+  as `starting` (`IN_BETWEEN` in `lab.py`).
+- **lab-only records**: what the state holds but the API never shows as it is: fields
+  starting with `_` (a server's `_lab`, the flags) and the top-level records `faults`,
+  `netem`, `net_routes`, `box_users`, `box_uids` (`lab_records()` in `state.py`).
+- **owner**: the event loop's thread, the only one that may touch the state.
 - **picture**: a complete description of one part of the system (fault sets, latency,
-  firewall, DHCP, routes), computed from the state and put in place as a whole.
-- **picture_lock**: `lab.picture_lock`, an `asyncio.Lock` held while a picture is
-  computed and put in place, so an older picture never overwrites a newer one.
-- **plan**: a `Plan` (`lab.py`), returned by an action's function. It says what the
-  action will do (`steps`, `server`, `extra`, ...).
-- **state**: everything the fake API knows, in memory and saved as JSON in the lab's
-  volume (`State` in `state.py`). Resources are kept by kind (a `Kind`, such as
-  `SERVERS`) and ID; the saved file has a version (`migrations.py`).
-- **steps**: `Plan.steps`, the slow part of an action: an async function that runs in
-  the background after the answer has gone out.
-- **system**: `api/system.py`, which puts the state in place. It reads the state on
+  firewall, DHCP, routes), computed from the state and put in place as a whole, under
+  `lab.picture_lock`.
+- **plan**: the `Plan` an action's function returns: what the action will do.
+- **`# record:` comment**: marks a record used after an await on purpose, with the
+  reason. See The state, Awaits.
+- **state**: everything the fake API knows, in memory and saved as JSON (`State` in
+  `state.py`), kept by kind (`SERVERS`, ...) and ID.
+- **steps**: `Plan.steps`, the slow part of an action, run in the background after the
+  answer has gone out.
+- **system**: `api/system.py`, which puts the state in place: it reads the state on
   the loop (mostly through `desired`) and hands plain data to the fabric in a thread.
-- **verb**: a command of `scripts/hlab.sh` (or `scripts/box.sh`), such as
-  `create-volume`: the shell function's name with dashes. The fabric runs verbs
-  through `Shell.run` (`fabric/shell.py`).
+- **verb**: a command of `scripts/hlab.sh` (or `box.sh`), the shell function's name
+  with dashes (`create-volume`).
+
+## Where to start reading
+
+One path shows most of the ideas: `lab.py` (`Plan`, `act`, `run_action`), the action
+`poweroff` in `api/servers.py`, `system.kill_vm`, and the verb `kill-vm` in
+`scripts/hlab.sh`. The two examples below walk along it. Then read The state.
 
 ## How a request flows
 
 ```text
 HTTP request
-  → hlabd/daemon.py         one server; the address picks the app (Cloud API,
-                            Storage Box API, metadata service); every request is logged
+  → daemon.py               one server; the address picks the app (Cloud API, Storage
+                            Box API, metadata service); every request is logged
   → api/web.py              auth, rate limit, injected faults, OpenAPI request check
-  → api/<resource>.py       route → module function `f(lab, ...)`: check the request,
-                            change the state (on the event loop), start an action
-  → lab.py                  `act()` runs an action from the resource's table; the slow
-                            part runs in the background; flags stop a second action
-                            on the same resource
+  → api/<resource>.py       the route checks the request, changes the state, starts
+                            an action
+  → lab.py                  act() runs the action from the resource's table; flags
+                            stop a second action; the slow part runs in the background
   → fabric/<part>.py        VMs, taps, routes, nftables, Storage Box accounts
   → scripts/hlab.sh <verb>  most changes to the system (box.sh for the Storage Box)
 ```
@@ -84,274 +75,208 @@ The unit tests check every answer against Hetzner's OpenAPI specification
 
 ## The pieces
 
-The repository:
-
 | Path | What |
 |---|---|
-| `Dockerfile` | the lab image (Debian 13 packages: QEMU, dnsmasq, NSD, nftables, OpenSSH, Python/FastAPI; the live tests) and the development image on top of it (linters, unit tests) |
-| `bin/hlab` | the host side, in Bash (Linux, macOS, Git Bash or WSL on Windows): build, start, stop, pass commands into the container |
-| `scripts/hlab.sh` | low-level commands: taps, QEMU, nftables, tc, DHCP, DNS, volumes, images |
-| `scripts/hlab.nft` | the nftables table `inet hlab`; `hlab.sh init-net` fills in the addresses and loads it |
+| `Dockerfile` | the lab image (Debian 13 packages: QEMU, dnsmasq, NSD, nftables, HAProxy, Pebble, OpenSSH, Python) and the development image on top (linters, unit tests) |
+| `bin/hlab` | the host side, in Bash: build, start, stop, pass commands into the container |
+| `scripts/hlab.sh`, `hlab.nft` | the verbs (taps, QEMU, nftables, tc, DHCP, DNS, volumes, images, namespaces) and the table `inet hlab` |
 | `scripts/box.sh` | the Storage Box: sshd, chrooted accounts, snapshots |
-| `hlabd/` | the daemon (below) |
-| `tests/` | unit tests, one file per feature, and the OpenTofu smoke test |
-| `itests/` | live tests with VMs |
-| `tools/lint.sh` | the style and type checks of [STYLE.md](STYLE.md) |
-| `tools/fetch_specs.py` | downloads Hetzner's OpenAPI specs (for the image build and for unit tests outside Docker) |
+| `tests/`, `itests/` | unit tests (one file per feature) and the OpenTofu smoke test; live tests with VMs |
+| `tools/lint.sh`, `tools/fetch_specs.py` | the checks of STYLE.md; Hetzner's OpenAPI specs |
 
 Inside `hlabd/`:
 
 | Module | Job |
 |---|---|
-| `lab.py` | the core: actions (`Plan`, `act`, `run_action`), flags, Hetzner's timings, `blocking` for threads; it imports nothing from `api/` |
-| `state.py` | the state and the lab-only records; the kinds (`Kind`, `ALL_KINDS`); the owner check, `change()`, the writer thread |
-| `migrations.py` | the version of the saved state and the migrations from older versions |
-| `records.py` | one TypedDict per kind with the fields of the resource, including the lab-only fields (a server's `_lab`, its NICs); mypy checks them |
-| `api/hetzner.py` | the JSON shapes of the Cloud API (`<thing>_json(lab, thing)`) |
-| `api/<resource>.py` | one resource each: checks, its action table, routes |
-| `api/nics.py` | a server's NICs in cloud networks: attach, detach, alias IPs (these are server actions) |
-| `api/public_addresses.py` | what primary IPs and Floating IPs share: free addresses, reverse DNS |
-| `api/storagebox/` | the Storage Box API (a separate app with its own JSON shapes) |
-| `api/restart.py` | what happens when the lab starts again: flags are cleared, servers come back |
-| `api/watcher.py` | the VM watcher: a server whose VM ended by itself becomes off |
-| `api/control.py` | lab control under `/_lab/` (faults, clients, reset); no resource module imports it |
-| `api/faults.py` | the faults and netem settings in the state; they are dropped together with the server, client or link they point to |
-| `api/desired.py` | pure functions from the state to plain data (see desired) |
-| `api/system.py` | puts the state in place on the system (see system) |
-| `fabric/` | changes the system, with plain data as arguments; its parts are listed in `fabric/__init__.py` |
-| `config.py` | configuration defaults and the lab's addresses (the scripts get them as `HLAB_*`) |
-| `daemon.py`, `cli.py` | the container's main process; the `hlab` command inside the container |
+| `lab.py` | the core: actions, flags, Hetzner's timings, `blocking`; imports nothing from `api/` |
+| `state.py`, `migrations.py` | the state, its kinds, the owner check, `change()`, the writer thread; the saved version and its migrations |
+| `records.py` | one TypedDict per kind, lab-only fields included |
+| `config.py` | the typed configuration, its defaults, the lab's addresses (`HLAB_*` for the scripts) |
+| `api/<resource>.py` | one resource each: checks, action table, routes |
+| `api/hetzner/` | the Cloud API's JSON shapes (`<thing>_json(lab, thing)`), one module per area |
+| `api/resources.py` | what every resource changes alike: fields on PUT, delete protection |
+| `api/nics.py`, `api/public_addresses.py` | a server's NICs in cloud networks; what primary and Floating IPs share |
+| `api/storagebox/` | the Storage Box API, a separate app |
+| `api/restart.py`, `api/watcher.py` | what happens when the lab starts again; a VM that ended by itself |
+| `api/control.py`, `api/faults.py` | lab control under `/_lab/`; the faults in the state |
+| `api/desired/`, `api/system.py` | see desired and system |
+| `fabric/` | changes the system, with plain data as arguments (parts listed in `fabric/__init__.py`) |
+| `daemon.py`, `cli.py` | the container's main process; `hlab` inside the container |
 
 ### Layers
 
 - **`api/` decides.** It checks requests, changes the state and starts actions. It
-  never changes the system itself: it calls a `lab.fabric` method, always in a thread
-  through `await lab.blocking(...)`. The few files that `api/` reads on its own (the
-  lab's public key in `api/metadata.py`, `/etc/passwd` in `api/control.py`) are read in
-  a thread too.
-- **`fabric/` does the work.** It knows nothing about HTTP and never sees the state;
-  it gets IDs, plain values and its own small dataclasses.
-- **Only `fabric/` changes the system while the lab runs.** Mostly it runs verbs of
-  `scripts/hlab.sh` (and `box.sh`). It also handles the lab's own files under `/hlab`
-  in Python: VM directories, console logs (trimmed), volume files, and the files a
-  verb then loads (nft scripts, dnsmasq and DNS configuration). Outside the fabric,
-  the daemon changes the system only in `daemon.set_up`, before the loop starts, and
-  in the state's writer thread (`state.json`).
-
-`lab.py` connects the layers, and every API module gets the same `Lab` object.
+  reaches the system only through `lab.fabric`, always in a thread
+  (`await lab.blocking(...)`). The few files it reads itself (the lab key, `/etc/passwd`)
+  are read in a thread too; only at start, before serving, does it read the OpenAPI
+  specs, the Public Suffix List and the image files.
+- **`fabric/` does the work.** It knows nothing about HTTP and never sees the state; it
+  gets IDs, plain values and its own small dataclasses (`tests/test_layers.py` checks
+  that it does not touch `records.py`).
+- **Only `fabric/` changes the system while the lab runs**: through the verbs, and the
+  lab's own files under `/hlab` (VM directories, console logs, volume files, the files
+  a verb loads). Outside it, only `daemon.set_up` before the loop starts and the
+  state's writer thread (`state.json`).
 
 ## Actions and flags
 
 ### Action tables
 
-Every resource lists its actions in a table: `{command: ActionSpec(Hetzner's name,
-function)}`. The table is a constant `<KIND>_ACTIONS` of type `ActionTable` in the
-resource's module (`grep -rn "ActionTable\[" hlabd` finds them all). The keys are
-Hetzner's commands and the names are Hetzner's action names, so never rename them
-when you rename a function.
+Every resource lists its actions in a table in its module
+(`grep -rn "ActionTable\[" hlabd`):
 
-A function is named after its command (`reboot`, `add_subnet`). Primary IPs and
-Floating IPs share most of their commands, so their functions start with the resource
-(`primary_ip_assign`, `floating_ip_assign`). Elsewhere the command alone is the name,
-even where another resource has the same command (`change_type` in `api/servers.py`
-and in `api/storagebox/boxes.py`).
+```python
+SERVER_ACTIONS = ActionTable[Server](
+    "server",  # how its actions name the resource
+    {"poweroff": ActionSpec("stop_server", poweroff), ...},
+    flag="_locked",  # held while an action runs; another one gets 423 with busy
+    busy=SERVER_LOCKED,
+)
+```
 
-The function gets `(lab, resource, body)`, checks the request and returns a `Plan`.
-It is always `async def`, and `act()` awaits it. Most never await anything, because
-they only check and change the state. Some must ask the system before they can
-decide: `reset_password`, for example, asks whether the VM runs, through
-`await lab.blocking(...)`.
+The keys are Hetzner's commands and the names Hetzner's action names: never rename
+them with a function. A table without a flag runs its actions side by side.
 
-The plan has these fields:
+A function is named after its command (`reboot`, `add_subnet`), even where another
+resource has the same command. Where two resources share commands in one module, the
+second one's functions start with it: primary and Floating IPs (`primary_ip_assign`),
+and RRSets next to their zone (`rrset_change_ttl`).
 
-- `steps`: an async function that does the slow part through `lab.fabric`. `None`
-  means the change is already complete; as on Hetzner, it still gets an action, which
-  is finished right away.
-- `extra`: more fields for the answer, such as `root_password`.
-- `server`: the server the steps work on. It stays locked while they run, and if they
-  fail, it leaves its in-between status (such as `starting`).
+The function is `async def name(lab, resource, body) -> Plan`. It checks the request,
+may change the state, and returns a plan. Most never await; some must ask the system
+first (`reset_password` asks whether the VM runs). The plan's fields:
+
+- `steps`: the slow part, an async function. `None` means the change is complete; as
+  on Hetzner, it still gets an action, finished right away.
+- `extra`: more fields for the answer (`root_password`).
+- `server`: the server the steps work on. It stays locked while they run and leaves
+  its in-between status if they fail.
 - `resources`: more resources the action is about.
-- `finished`: more actions that the change causes, finished right away. Each is a pair
-  of Hetzner's name and the resources. Only tables that answer with a list of actions
-  use it (see below).
+- `finished`: more actions the change causes, finished right away, for tables that
+  answer with a list of actions.
 
-`lab.act()` handles the flags for every table, so an action function never sets a flag
-itself. An action that only changes the record has `flag=False` in its row and takes
-no flag (`change_protection`, `change_dns_ptr`). Every resource with a plain delete
-protection uses the shared `change_delete_protection` from `api/web.py` (primary IPs
-wrap it with one extra check).
-
-Firewall actions answer with a list of actions, as on Hetzner, and their rows say
-`answer="actions"`. The list holds the action and then the plan's `finished` actions,
-for example `set_firewall_rules` followed by `apply_firewall` with the servers. They
-take effect right away and take no flag, because `run_firewall_action` passes none to
-`act()`. After `act()` returns, it rewrites the firewall table.
+`act()` handles the flags, so an action function never sets one. A row with
+`flag=False` takes none (`change_protection`, `change_dns_ptr`). Firewall rows say
+`answer="actions"`: the answer lists the action and then the `finished` ones
+(`set_firewall_rules`, then `apply_firewall`).
 
 ### How flags flow
 
-A flag on a resource means that an action is working on it, so a second action gets
-423, as on Hetzner. The comment above `FLAGS` in `lab.py` lists the flags, what each
-one means, and how they are set and cleared. Code holds flags only through
-`lab.holding()`, and `act()` uses it too:
-
 ```text
 request
-  → act() or lab.holding(): held.claim(resource, flag)   423 if the flag is set already
-  → the plan is made (in act(): by the table's function)
-      ├─ refused (ApiError) or failed → the holding block ends: flags off
-      ├─ no steps (steps is None)     → act() takes the flags off and saves,
-      │                                 then answers with the finished action
-      └─ steps                        → run_action(..., holding=held) takes over the
-                                        flags; the answer goes out with the action
-                                        running; the steps run in the background
-                                        (lab.spawn)
-                                        → when they end (success, error, cancelled),
-                                          run_action takes the flags off and then
-                                          finishes the action
+  → held.claim(resource, flag)        423 if it is set already
+  → the plan is made
+      ├─ refused or failed            → the holding block ends: flags off
+      ├─ no steps                     → flags off, the action is finished
+      └─ steps                        → run_action takes the flags over; the answer
+                                        goes out; the steps run in the background;
+                                        when they end, run_action takes the flags
+                                        off and then finishes the action
 ```
 
-`act()` claims the resource's flag. If the plan names a different server, it also
-claims that server's `_locked`.
-
-New actions go through `act()`. Work that is not a Hetzner action on an existing
-resource, such as creating or deleting a server, holds its flags through
-`lab.holding()` itself (`grep -rn "lab.holding()" hlabd` lists these places):
+`act()` claims the table's flag, and the server's `_locked` too if the plan names
+another server. Work that is not an action on an existing resource (creating or
+deleting a server) holds its flags itself (`grep -rn "lab.holding()" hlabd`):
 
 ```python
 with lab.holding() as held:
     held.claim(server, "_locked", SERVER_LOCKED)  # 423 if it is set already
-    ...  # refused or failed: the flags come off
-    lab.run_action(action, steps, holding=held)  # the flags stay on until the steps end
+    ...  # refused or failed: flags off
+    lab.run_action(action, steps, holding=held)  # on until the steps end
 ```
 
-`held.release()` takes the flags off early. `held.keep()` leaves them on a record that
-is gone, such as a deleted volume. Only `lab.py` calls `lab.claim()` and
-`lab.release()`.
+What happens to the held flags:
+
+| Call | Effect |
+|---|---|
+| block ends | every flag still held comes off |
+| `held.release()` | they come off now (the work goes on without them) |
+| `held.take()` | they are handed over; `run_action` calls it and takes them off when the steps end |
+| `held.keep()` | they stay on for good: the record is gone (a deleted volume) |
+
+Where the flag and the state change must be undone together, open both in one `with`:
+`with lab.holding() as held, lab.state.change():`. `change()` is the inner block, so
+on an error it restores the state first, flags included, and `holding()` then has
+nothing left to take off. Only `lab.py` calls `lab.claim()` and `lab.release()`.
 
 ### Example: powering off a server
 
-`POST /v1/servers/{id}/actions/poweroff`, from the request to the finished action:
+`POST /v1/servers/{id}/actions/poweroff`:
 
-1. `api/web.py` checks auth, the rate limit, and the request against the spec.
-2. The route `server_action` (`api/servers.py`, `add_routes`) awaits the body
-   (`read_body`), then `run_server_action`.
-3. `run_server_action` looks up the server (`lab.server_or_404`, else 404) and awaits
-   `lab.act(SERVER_ACTIONS, "poweroff", server, "server", body, "_locked",
-   SERVER_LOCKED)`.
-4. `act()` finds `ActionSpec("stop_server", poweroff)` in the table (else
-   `unsupported`). It claims the server's `_locked` flag (423 if another action runs)
-   and calls `poweroff(lab, server, body)`, which returns `Plan(steps, server=server)`.
-5. The plan has steps, so `act()` creates the action (`lab.new_action`) and hands the
-   steps and the flag to `lab.run_action`, which starts the steps as a task on the
-   loop (`lab.spawn`). The route answers 201 with the action `running`.
-6. The steps await `system.kill_vm(lab, server)`, set the status to `stopping`, wait
-   `POWEROFF_SECONDS`, set it to `off` (`lab.set_status`, which saves), and wait
-   `POWEROFF_END_SECONDS`. The next section shows what `kill_vm` does.
-7. When the steps end, `run_action` takes the `_locked` flag off and finishes the
-   action (`lab.finish`: `success`, or `error` with the message). If the steps failed,
-   the server leaves `stopping` and gets the status its VM really has.
+1. `api/web.py` checks auth, the rate limit and the request.
+2. The route looks the server up (404 if gone) and awaits
+   `lab.act(SERVER_ACTIONS, "poweroff", server, body)`.
+3. `act()` finds the row (else `unsupported`), claims `_locked` (423 if another action
+   runs) and calls `poweroff`, which returns `Plan(steps, server=server)`.
+4. `act()` creates the action and hands steps and flag to `run_action`, which starts
+   the steps as a task. The route answers 201 with the action `running`.
+5. The steps kill the VM (next section), set `stopping`, wait, set `off`, wait.
+6. `run_action` takes the flag off and finishes the action (`success`, or `error` with
+   the message; a failed server gets the status its VM really has).
 
 ## Where code runs
 
 Everything that touches the state runs on the event loop; everything that blocks runs
-in a thread. The details:
+in a thread.
 
-- **The loop.** Every route is `async def`, so FastAPI's worker threads are not used.
-  The steps of actions, the VM watcher, the snapshot plans, the daily backups, the
-  metrics sampler, the load balancers' health watcher and the restart are tasks on
-  the loop too. The sampler and the health watcher keep what they read in
-  `lab.samples` and `lab.balancer_health`, in memory only and not part of the state.
-- **Threads.** Blocking work (scripts, files, guest agents) runs in a thread through
-  `await lab.blocking(work, *args)`, so the API keeps answering meanwhile. `work` gets
-  plain data and returns plain data, never the state. Usually it is a fabric method
-  whose arguments are IDs (`sid`, `vid`), plain values or the fabric's small
-  dataclasses (`PublicTap`, `ClientLink`, `Rule`, ...), built on the loop, mostly by
-  `api/desired.py`. Two exceptions get an object that holds the state but leave the
-  state alone: `state.flush`, and `catalogue.load_images` at start, which fills
-  `lab.images`. `tests/test_layers.py` checks that the fabric neither imports nor
-  annotates a type of `records.py`.
-- **Files.** Once the lab serves requests, code on the loop neither reads nor writes
-  files; that is thread work too (for example `fabric.vms.has_disk`, or the lab key in
-  `api/metadata.py`). Only the start reads files on the loop: the OpenAPI specs, when
-  the apps are built.
-- **Cancelling.** A thread cannot be cancelled, so `lab.blocking` keeps track of its
-  threads. A lab reset first cancels the actions (`lab.stop_actions`) and then waits
-  for their threads, at most `THREADS_WAIT_SECONDS`, and logs the ones still running.
-  Every hlab.sh call has a timeout (`Shell.run`: `TIMEOUT`, 120 s, or `LONG_TIMEOUT`
-  for commands that copy data, such as image downloads and Storage Box snapshots), so
-  a hung script fails its action instead of holding a thread forever.
-- **Pictures.** Fault sets, latency, firewall, DHCP and routes are computed and handed
-  over while `lab.picture_lock` is held, so they are put in place in the order they
-  were computed (`api/system.py`). Routing a Floating IP takes the lock too
-  (`system.route_floating_ip`). The lock is not re-entrant: a function that holds it
-  must not call another function of `api/system.py` that takes it (that raises
-  RuntimeError instead of waiting forever).
-- **The fabric's lock.** Fabric methods run in threads side by side, for example when
-  two servers start at once. `net_lock` (a thread lock) keeps them apart where it
-  matters: taps are torn down, and nft, tc and dnsmasq are changed, only while it is
-  held. So a method that found a tap still finds it when it configures it.
-- **Waits.** Actions take as long as on Hetzner. The waits are Hetzner's measured
-  timings, in one table in `lab.py` (`POWEROFF_SECONDS`, ...), and `lab.sleep()`
+- **The loop.** Every route is `async def`. The steps of actions, the VM watcher,
+  snapshot plans, daily backups, the metrics sampler, the load balancers' health
+  watcher and the restart are tasks on the loop too. The sampler and the health
+  watcher keep what they read in `lab.readings`, in memory only, not in the state.
+- **Threads.** Blocking work (scripts, files, guest agents) runs through
+  `await lab.blocking(work, *args)`. `work` gets and returns plain data, never the
+  state: IDs, values, or the fabric's dataclasses, built on the loop. Two exceptions
+  hold the state but leave it alone: `state.flush`, and `catalogue.load_images` at
+  start.
+- **Files.** Once serving, code on the loop reads and writes no files.
+- **The reset.** While `/_lab/reset` runs, `lab.resetting` is set: the APIs answer
+  503, background jobs skip their turn, a second reset gets 409. A failed teardown
+  step is logged and named in the answer; the others go on.
+- **Cancelling.** A thread cannot be cancelled. A reset cancels the actions, then waits
+  for their threads (at most `THREADS_WAIT_SECONDS`) and logs the rest. Every verb has
+  a timeout (`Shell.run`), so a hung script fails its action.
+- **Pictures.** Computed and handed over while `lab.picture_lock` is held, so they are
+  put in place in the order they were computed. The lock is not re-entrant: a holder
+  that takes it again raises RuntimeError instead of waiting forever.
+- **The fabric's lock.** Fabric methods run side by side (two servers start at once).
+  Taps are torn down, and nft, tc and dnsmasq changed, only under `net_lock`, so a
+  method that found a tap still finds it when it configures it.
+- **Waits.** Hetzner's measured timings are one table in `lab.py`; `lab.sleep()`
   scales them by `time_scale`.
 
 ### Example: a VM stops
 
-This is `system.kill_vm`, which the power-off steps above await, step by step:
-
 ```text
-event loop   the poweroff steps call
-             `await system.kill_vm(lab, lab.current(SERVERS, sid))`;
-             kill_vm reads the server's taps from the record (a plain list)
-thread       `await lab.blocking(fabric.vms.kill, server["id"], server["name"])`
-               the ID and name are read on the loop and passed as plain data;
-               hlab.sh kill-vm runs; the loop serves other requests meanwhile
-thread       `await lab.blocking(fabric.network.taps_down, taps)`
-event loop   `system.write_dhcp`: under `lab.picture_lock`, `desired.dhcp_hosts`
-             computes the DHCP hosts from the state
-thread       `await lab.blocking(fabric.network.write_dhcp, hosts)`
-event loop   back in the steps: `lab.set_status(lab.current(SERVERS, sid),
-             "stopping")` looks the server up again and changes the state in a
-             `with state.change():` block; the block's end commits
-             (`State.save()` serializes the state on the loop)
-writer       the writer thread writes the file and fsyncs it
+event loop   the poweroff steps: await system.kill_vm(lab, lab.current(SERVERS, sid))
+             kill_vm reads the ID, name and taps from the record (plain data)
+thread       fabric.vms.kill(sid, name)        hlab.sh kill-vm; the loop serves others
+thread       fabric.network.taps_down(taps)
+event loop   under picture_lock: desired.dhcp_hosts(state)
+thread       fabric.network.write_dhcp(hosts)
+event loop   lab.set_status(lab.current(SERVERS, sid), "stopping"): the server is
+             looked up again and changed in a change() block, which commits
+writer       the file is written and fsynced
 ```
 
-Between two awaits only this task runs, so what it reads and changes in the state is
-consistent. Across an await, other tasks may change the state (see The state, Awaits).
+Between two awaits only this task runs, so what it reads is consistent. Across an
+await, other tasks may change the state (The state, Awaits).
 
 ### The packet path of a public address
 
-Four pictures decide who may send what and where an address goes. Each is rebuilt as
-a whole from the state when something changes: `api/desired.py` computes it, and
-`api/system.py` hands it to the fabric.
-
-- routes (`system.route_floating_ip`, `system.reroute_floating_ips`; in the end
-  `hlab.sh set-route`),
-- the nft sets of `table inet hlab` (`system.apply_faults`): faults, the sources each
-  tap may send from, the members of cloud networks,
-- the firewall table `inet hlabfw` (`system.apply_firewall`; `ruleset` in
-  `fabric/firewall.py` builds it),
-- tc on the taps (`system.apply_latency`): latency between locations, netem faults.
-
-Moving a Floating IP, for example, changes its route and calls `system.apply_faults`
-(the new server may now send from it) and `system.apply_latency`.
+Four pictures decide who may send what and where an address goes: routes, the nft
+sets of `inet hlab` (faults, allowed sources, network members), the firewall table
+`inet hlabfw`, and tc on the taps (latency, netem). Moving a Floating IP, for example,
+changes its route, then the nft sets (the new server may send from it) and tc.
 
 ## The state
 
-**One owner.** The event loop owns the state: everything reachable from `state.data`
-(records, flags, statuses, the lab-only records). Only code on the loop's thread reads
-or changes it, so two pieces of code never change it at the same time, and between two
-awaits nothing else runs. A check and the change after it therefore fit together, and
-a loop over the state sees no change in the middle.
+**One owner.** Only code on the loop's thread reads or changes the state, so between
+two awaits nothing else touches it: a check and the change after it fit together.
+Every accessor calls `state.check_owner()`, which raises AssertionError on another
+thread; the unit tests fail on any breach, even inside background steps.
 
-`state.check_owner()` enforces this. Every accessor of `State` calls it, and it raises
-AssertionError on any other thread. The daemon makes its loop the owner at start
-(`lab.own_state()`). The unit tests record every breach, even one in background steps
-where the error would only fail the action, and then fail the test (`state_owner_kept`
-in `tests/conftest.py`).
-
-**Changes.** Every change to the state happens inside a `with lab.state.change():`
-block: records, flags, actions, the lab-only records.
+**Changes.** Every change, flags and actions included, is inside a
+`with lab.state.change():` block:
 
 ```python
 with lab.state.change():
@@ -359,158 +284,138 @@ with lab.state.change():
     volume["name"] = name
 ```
 
-The block is a transaction. If it raises, the state is put back as it was and nothing
-is saved; every dict and list keeps its identity, so records that other code holds
-stay valid. If it succeeds, the state is committed and saved. Blocks may nest, but only
-the outermost one takes the snapshot, undoes and commits. So an error in a nested
-block must reach the outermost block: if code in between catches it, the nested change
-stays half done (the unit tests fail such a block).
+The block is a transaction. If it raises, the state is restored in place (dicts and
+lists keep their identity) and nothing is saved; if it succeeds, the state is
+committed. Blocks nest, but only the outermost one snapshots, restores and commits, so
+an error in a nested block must reach it.
 
-The block must not await. It is a plain `with`, and another task would see the change
-half done. `check_owner` refuses another task's access while a block is open, and
-`tests/test_state.py` checks that no block in `hlabd/` awaits. A change that spans an
-await (a script, say) is two blocks: one before the await and one after it, or one that
-undoes the first if the script fails. Helpers that change the state, such as
-`lab.claim()`, `lab.new_action()`, `lab.set_status()` and `lab.finish()`, open their
-own block, which simply nests inside a caller's block.
+The block must not await (`tests/test_state.py` checks it). A change that spans an
+await is two blocks, one before and one after, or an undo (below). Helpers such as
+`lab.set_status()` open their own block, which nests in the caller's.
 
-The unit tests turn on `State.verify_changes`. Then each outermost block, and the end
-of each test, checks that the state still equals the committed state
-(`check_committed()`); a difference is a change made outside a block, and the
-AssertionError shows it as a diff. The daemon leaves this off, because it serializes
-the state once more per block. A test that needs to set up the state uses
-`change_state(api, work, ...)` (`tests/conftest.py`).
+The unit tests turn on `State.verify_changes`: each outermost block and the end of
+each test compare the state with the committed one, so a change outside a block fails
+with a diff. Tests set up state with `change_state(api, work, ...)`.
 
-**Saving.** Committing serializes the state to JSON on the loop. That is quick at the
-lab's size, and the number of finished actions is capped (`MAX_ACTIONS`). A writer
-thread then writes the file atomically and fsyncs it; if saves come faster than the
-disk, only the newest is written. `state.flush()` waits until everything saved is on
-disk. The daemon flushes when it stops, a lab reset flushes before it answers, and the
-unit tests flush before they read the file.
+**Saving.** Committing serializes the state on the loop (quick at the lab's size;
+finished actions are capped by `MAX_ACTIONS`). A writer thread writes the file
+atomically; if saves come faster than the disk, only the newest is written.
+`state.flush()` waits until it is on disk (when the daemon stops, after a reset, in
+tests).
 
-**Kinds.** Resources are kept by kind and ID. A kind is a typed key, a `Kind` constant
-of `state.py` (`SERVERS`, `VOLUMES`, ...): `lab.state[SERVERS]` is a
-`dict[int, Server]`, `lab.state.get(SERVERS, sid)` a server or None, and
-`lab.get_or_404(VOLUMES, vid, "volume")` a volume or 404. `ALL_KINDS` is the one list
-of kinds; `KIND_TYPES` finds a kind by its name, for code that gets the name at
-runtime (the path of `/v1/{kind}/{id}/actions`). The file keeps the names as keys.
+**Kinds.** A kind is a typed key (`SERVERS`, `VOLUMES`, ...): `lab.state[SERVERS]` is
+a `dict[int, Server]`. `ALL_KINDS` is the one list of kinds; `KIND_TYPES` finds one by
+name at runtime.
 
-**Versions.** The saved state has a `version` (`STATE_VERSION` in `migrations.py`).
-`State` brings an older file up to date when it loads it: `MIGRATIONS[n]` takes the
-data from version n to n + 1, and the steps run in order. A file without a version is
-version 0, from before the state had one. A file of a newer version refuses to load
-(`StateVersionError`): this code does not know its shapes, and saving would lose
-them. A new kind or lab-only record needs no migration; it starts empty.
+**Versions.** The saved state has a `version`. `MIGRATIONS[n]` takes it from n to
+n + 1, in order, on load; a file without a version is version 0. A newer file refuses
+to load (`StateVersionError`), because saving would lose shapes this code does not
+know. A new kind or lab-only record needs no migration.
 
-**Awaits.** Across an await, other tasks run, so what was read before may have
-changed, and a record may be gone. Flags (`lab.holding()`) keep other actions off a
-resource across awaits, but not every change: a lab reset, or code that ignores the
-flags. So code keeps a record's ID across an await, never the record, and looks it up
-again after the await before it reads or changes it. IDs never change and are never
-reused; other fields that never change (a tap's name) may be read from the record
-held before the await.
+**Awaits.** Across an await other tasks run, and a record may change or vanish. Flags
+keep other actions off, but not a reset. So code keeps a record's ID across an await
+and looks the record up again. IDs never change and are never reused; other fields
+that never change (a tap's name) may be read from the old record.
 
-- **Steps** of an action use `lab.current(KIND, id)`. If the record is gone, it raises
-  `RecordGoneError`, and the action ends with an error ("the server 1000001 was
-  deleted while the action ran"). Before that, a step removes what it made on the
-  system for the record (`copy_snapshot` removes the copy, a volume's create deletes
-  the disk). Cleanup after a failure looks up with `lab.state.get(KIND, id)` and
-  skips what is gone, so it never hides the first error. `run_action` leaves a gone
-  server alone.
-- **Other background work** (the VM watcher) uses `lab.state.get(KIND, id)` and
-  leaves a record that is gone alone.
-- A loop that awaits for each item (a script per server) iterates over a copy of
-  the IDs (`list(lab.state[SERVERS])`) and looks each record up again.
+Which lookup to use:
 
-`tests/test_await_rule.py` checks this in `api/` and `lab.py`: a record held in a
-local name may not be used after an await unless the name was bound again. Its
-docstring says what counts as a record. A deliberate exception carries a comment
-`# record: <why>` on the line of the use or of the binding (or on its own line just
-above), for example a running action, which stays in the state until it is finished.
+| Where | Lookup | If the record is gone |
+|---|---|---|
+| routes and action functions | `lab.get_or_404(KIND, id, what)` or a `<thing>_or_404` helper | 404 |
+| steps of an action | `lab.current(KIND, id)` | `RecordGoneError`: the action ends with an error ("the server … was deleted while the action ran") |
+| background work, cleanup after a failure | `lab.state.get(KIND, id)` | None: leave it alone, never hide the first error |
+
+Before a step fails on a gone record, it removes what it made on the system. A loop
+that awaits per item iterates over a copy of the IDs (`list(lab.state[SERVERS])`). A
+function that awaits may take a record if it reads only its ID before the first await
+and looks it up after each (`system.start_vm`).
+
+`tests/test_await_rule.py` checks this in `api/` and `lab.py`, and that no dataclass
+field holds a record. This fails:
+
+```python
+async def steps():
+    server = lab.current(SERVERS, sid)
+    await lab.blocking(lab.fabric.vms.kill, sid, server["name"])
+    lab.set_status(server, "off")  # flagged: "12: server"
+```
+
+The test names the line and the name (`hlabd/api/servers.py:12: server`). The fix binds the
+name again: `lab.set_status(lab.current(SERVERS, sid), "off")`. A deliberate exception
+carries `# record: <why>` on the line of the use or right above it, for example a
+running action, which stays in the state until it is finished.
+
+**Undoing a failed step.** Code that records something before system work that may
+fail wraps the work in `async with lab.undo_on_failure(undo):`. If it raises, `undo`
+takes the change back on the system and in the state, and the error goes on.
+`lab.put_back(KIND, id, field, old)` undoes a changed field. Only errors undo: a
+cancelled step undoes nothing, because only a reset (which tears everything down) or
+the daemon stopping (which keeps the state) cancels. Entering the block counts as an
+await, so records inside it are looked up again.
 
 ## Recipes
 
-**A new action**: write a function named after the command (see Action tables),
-`async def name(lab, resource, body) -> Plan`, next to the others in the resource's
-module. Add it to the table: `"command": ActionSpec("hetzner_name", function)`. Add
-`flag=False` if it only changes the record, and `answer="actions"` if Hetzner answers
-with a list of actions. If it gives the server a new in-between status (like
-`rebuilding`), add the status to `IN_BETWEEN` in `lab.py` (for failures) and to
-`status_after_restart` in `api/restart.py`.
+**A new action**: `async def <command>(lab, resource, body) -> Plan` in the resource's
+module, and a row `"command": ActionSpec("hetzner_name", function)`. Add `flag=False`
+if it only changes the record, `answer="actions"` if Hetzner answers with a list. A new
+in-between status goes into `IN_BETWEEN` (`lab.py`) and `status_after_restart`
+(`api/restart.py`).
 
-**A new field on a resource**: add it to the resource's TypedDict (`records.py`), to
-the code that creates the resource (`create_*`), to its JSON shape (`api/hetzner.py`,
-or the Storage Box modules), and to its PUT keys if it can change. The spec check in
-the unit tests tells you if the shape is wrong. If old state files lack the field,
-change the record's shape as below.
+**A new field on a resource**: its TypedDict (`records.py`), the code that creates the
+resource, its JSON shape (`api/hetzner/`), its PUT keys if it can change. The spec
+check tells you if the shape is wrong. Old state files without it need a migration.
 
-**Changing a record's shape** (a field added, renamed, moved or dropped, a value
-stored differently): saved state files still have the old shape, so the lab migrates
-them (The state, Versions).
+**Changing a record's shape** (a field added, renamed, moved, dropped, stored
+differently):
 
-1. `migrations.py`: write `migrate_<n>_to_<n+1>(data)` for the current version n, a
-   plain function that changes the loaded JSON data in place (IDs are still strings),
-   with a docstring saying what changed and why. It uses literal field names, not the
-   current code's constants: those describe the newest shape. A kind may be missing
-   in old files (`data.get("servers", {})`).
-2. Append it to `MIGRATIONS`; `STATE_VERSION` follows from it.
-3. `tests/test_migrations.py`: a test of the step on data of the old shape, and the
-   old shape in `old_state()` if the chain test should cover it.
+1. `migrations.py`: `migrate_<n>_to_<n+1>(data)`, which changes the loaded JSON in
+   place (IDs are strings there). It uses literal field names, not the current
+   constants, and a docstring says what changed and why. A kind may be missing
+   (`data.get("servers", {})`).
+2. Append it to `MIGRATIONS`; `STATE_VERSION` follows.
+3. `tests/test_migrations.py`: a test on data of the old shape, and the shape in
+   `old_state()` for the chain test.
 
-**Something new on the system** (a tap, a route, a file): add a function with a header
-comment to `scripts/hlab.sh` and its verb to `main`. The verb is the function's name
-with dashes: `create_volume` becomes `create-volume`. Call it from a method of the
-right `fabric/` part, and call that method from the API. Addresses come from
-`config.py` as `HLAB_*`. The method gets what it needs from the state as arguments: a
-pure function in `api/desired.py` computes it, and `api/system.py` (or the caller)
-reads it on the loop and passes it to the method in a thread
-(`await lab.blocking(...)`).
+**Something new on the system**: a function with a header comment in
+`scripts/hlab.sh` and its verb in `main`; a method of the right `fabric/` part that
+runs it; the API calls the method through `lab.blocking`. What the method needs from
+the state is computed by a function in `api/desired/` and passed as plain data.
 
-**A new flag**: add it to `Flag` and `FLAGS` in `lab.py` and to the comment above
-them, so that a restart clears it (`lab.clear_flags`). Add it to the record's
-TypedDict as `NotRequired[bool]`.
+**A new flag**: `Flag`, `FLAGS` and the comment above them in `lab.py` (so a restart
+clears it), and `NotRequired[bool]` in the record's TypedDict.
 
-**A new resource kind**: `tests/test_state.py` fails until the first two steps are
-done.
+**A new resource kind** (`tests/test_state.py` fails until steps 1 and 2 are done):
 
-1. `records.py`: its TypedDict, added to `Record` (and to `ActionRecord` if it has
-   actions, to `ProtectedRecord` if it has a plain delete protection).
-2. `state.py`: its `Kind` constant (name, record type, a free ID range, its noun for
-   messages), added to `RECORD_KINDS`; `ALL_KINDS`, `KIND_TYPES`, `KINDS` and
-   `ID_BASE` follow from it. Old state files need no migration: the kind starts empty.
-3. Its module `api/<kind>.py` (checks, action table, routes), added to
-   `create_app` (`api/app.py`); its JSON shape in `api/hetzner.py`; its flag, if new
-   (above).
+1. `records.py`: its TypedDict, added to `Record` (and `ActionRecord`,
+   `ProtectedRecord` where they fit).
+2. `state.py`: its `Kind` (name, record type, ID range, noun), added to
+   `RECORD_KINDS`; the rest follows. No migration needed.
+3. `api/<kind>.py` (checks, action table, routes), added to `create_app`; its JSON
+   shape in `api/hetzner/`; its flag, if new.
 
 ## Tests
 
-- `tests/`: unit tests, no VMs. `FakeShell` (`tests/conftest.py`) stands in for
-  `hlab.sh` and records every call, and `time_scale = 0` skips Hetzner's waits. The
-  `api` fixture is a test client of the Cloud API. It runs the app on its own loop,
-  which owns the state, so a test reads or changes the state there:
-  `api.on_loop(work, *args)` (`work` may be async) and `state_of(api, "servers")`.
-  `bin/hlab test` is the reference: it runs all of them in the development image. The
-  lab image contains only `itests/`.
-- `tests/test_wrappers.py`: every command that `bin/hlab` dispatches is in its usage
-  comment, and the other way round. `bin/hlab` reads the lab name from the sample
-  configurations.
-- `tests/test_scripts.py`: tests of the scripts themselves, in seconds and without
-  VMs. Every verb that hlabd calls exists in `hlab.sh` or `box.sh`, takes a fitting
-  number of arguments, and is its function's name with dashes; the nftables rulesets
-  parse; `box-shell.sh` allows and denies the right commands. `nft -c` checks fully
-  only with CAP_NET_ADMIN, which `bin/hlab test` gives the test container; without it,
-  only nft's parser runs.
-- `itests/`: live tests with VMs in a running lab (`bin/hlab itest`, ~15 min).
+- `tests/`: unit tests without VMs. `FakeShell` stands in for `hlab.sh` and records
+  every call; `time_scale = 0` skips the waits. The `api` fixture runs the app on its
+  own loop, which owns the state: tests touch it through `api.on_loop(work, *args)` and
+  `state_of(api, "servers")`.
+- `tests/test_wrappers.py`: every command `bin/hlab` dispatches is in its usage
+  comment, and the other way round.
+- `tests/test_scripts.py`: every verb hlabd calls exists, takes a fitting number of
+  arguments and is its function's name with dashes; the nftables rulesets parse
+  (fully only with CAP_NET_ADMIN, which `bin/hlab test` gives); `box-shell.sh` allows
+  and denies the right commands.
+- `itests/`: live tests with VMs (`bin/hlab itest`, ~15 min).
 - `tests/tofu-smoke/run.sh`: OpenTofu with Hetzner's provider against a running lab.
-  After a clean destroy it removes its local state files; `.terraform/` (the provider)
-  stays and is ignored by git.
 
-CI (`.github/workflows/test.yml`) runs `bin/hlab test` on every push and pull request
-to `main`. `bin/hlab itest` and the OpenTofu smoke test stay manual: they need a
-running lab (a privileged container with `/dev/kvm`), which GitHub's runners lack.
+`bin/hlab test` is the reference. It builds the development image from the working
+copy and runs every unit test there; `bin/hlab lint` checks the mounted working copy,
+so both see the same code. CI runs `bin/hlab test` on every push and pull request to
+`main`; the live tests stay manual, since GitHub's runners have no `/dev/kvm`. CI may
+turn red without a change here: the image fetches Hetzner's current specs, so a
+changed spec shows where the lab falls behind. That is intended.
 
-The unit tests also run without Docker, on Linux or macOS with Python 3.13 or newer.
-From the repository's root:
+On Linux or macOS (Python 3.13+), the unit tests also run without Docker:
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
@@ -518,9 +423,6 @@ python3 tools/fetch_specs.py   # Hetzner's specs into .cache/spec/
 .venv/bin/pytest -q
 ```
 
-The tests look for the specs in `$HLAB_SPEC_DIR`, then in the image's
-`/opt/hlab/spec`, then in `.cache/spec/`. Outside Docker the Python packages come
-from PyPI (the image uses Debian's). Tests that need bash, nft, CAP_NET_ADMIN or /proc
-skip and say why where those are missing (on macOS: the nftables and `lib.sh` tests).
-Set `PYTHONDONTWRITEBYTECODE=1` to keep `__pycache__` out of the working copy (the
-development image sets it).
+The specs are looked up in `$HLAB_SPEC_DIR`, `/opt/hlab/spec`, then `.cache/spec/`.
+Tests that need bash, nft, CAP_NET_ADMIN or /proc skip and say why. Set
+`PYTHONDONTWRITEBYTECODE=1` to keep `__pycache__` out of the working copy.

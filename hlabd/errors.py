@@ -139,6 +139,11 @@ def no_subnet_available(message: str) -> ApiError:
     return ApiError(422, "no_subnet_available", message)
 
 
+def unavailable(message: str) -> ApiError:
+    """Return a 503 unavailable error (an injected fault, or the lab is being reset)."""
+    return ApiError(503, "unavailable", message)
+
+
 def server_error(message: str, status: int = 500) -> ApiError:
     """Return a server_error (a failure of the lab itself, or an injected fault)."""
     return ApiError(status, "server_error", message)

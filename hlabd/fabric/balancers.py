@@ -3,7 +3,7 @@
 A part of the fabric (see __init__.py). A load balancer's namespace is built like an
 Internet client's (hlab.sh add-namespace): its public addresses are routed to its veth,
 and Hetzner's gateway is its on-link gateway, as on a server. HAProxy runs inside with
-the configuration the API renders (api/desired.py), so connections reach the targets
+the configuration the API renders (api/desired/), so connections reach the targets
 from the load balancer's own address, and the client's address reaches it unchanged.
 """
 

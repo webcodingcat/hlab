@@ -5,7 +5,7 @@ are handled here in Python: VM directories, console logs, volume files, and the 
 a verb then loads (nft scripts, dnsmasq and DNS configuration).
 
 The fabric gets plain data (mostly the dataclasses of its parts, computed by
-api/desired.py) and never sees the state; DEVELOPING.md (The pieces, Where code runs)
+api/desired/) and never sees the state; DEVELOPING.md (The pieces, Where code runs)
 has the rules.
 
 `Fabric` holds its parts. Each part is an object that gets what it uses in its
@@ -32,6 +32,7 @@ routes and faults, is put together by the API (api/system.py).
 import threading
 from pathlib import Path
 
+from ..config import Config
 from .acme import Acme
 from .balancers import Balancers
 from .dns import Dns
@@ -47,7 +48,7 @@ from .volumes import Volumes
 class Fabric:
     """The lab's fabric: its parts, on one shell and one network lock."""
 
-    def __init__(self, cfg: dict, root: Path, shell: Shell | None = None):
+    def __init__(self, cfg: Config, root: Path, shell: Shell | None = None):
         """Set up the parts on one shell and one network lock."""
         # the lab's directory: VMs, volumes, images, DHCP, nft scripts
         self.root = root

@@ -17,13 +17,8 @@ from ..records import CloudNetwork, Nic, Route, Subnet
 from ..state import LOAD_BALANCERS, NETWORKS, nic_addresses, nics_in
 from . import hetzner, system
 from .faults import drop_netem
-from .web import (
-    change_delete_protection,
-    filtered,
-    paginate,
-    read_body,
-    update_resource,
-)
+from .resources import change_delete_protection, update_resource
+from .web import filtered, paginate, read_body
 
 PRIVATE_RANGES = [
     ipaddress.IPv4Network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
@@ -51,7 +46,7 @@ def private_range(net: ipaddress.IPv4Network) -> bool:
     return any(net.subnet_of(r) for r in PRIVATE_RANGES)
 
 
-def network_range(value) -> ipaddress.IPv4Network:
+def network_range(value: object) -> ipaddress.IPv4Network:
     """Return the checked ip_range of a network: RFC 1918, at least a /24."""
     ip_range = cidr(value, "ip_range")
     if not private_range(ip_range):
@@ -287,22 +282,25 @@ async def change_ip_range(lab: Lab, network: CloudNetwork, body: dict) -> Plan:
 
 
 # the network actions: Hetzner's name of the action and the function that plans it
-NETWORK_ACTIONS: ActionTable[CloudNetwork] = {
-    "add_subnet": ActionSpec("add_subnet", add_subnet),
-    "delete_subnet": ActionSpec("delete_subnet", delete_subnet),
-    "add_route": ActionSpec("add_route", add_route),
-    "delete_route": ActionSpec("delete_route", delete_route),
-    "change_ip_range": ActionSpec("change_ip_range", change_ip_range),
-    "change_protection": ActionSpec(
-        "change_protection", change_delete_protection, flag=False
-    ),
-}
+NETWORK_ACTIONS = ActionTable[CloudNetwork](
+    "network",
+    {
+        "add_subnet": ActionSpec("add_subnet", add_subnet),
+        "delete_subnet": ActionSpec("delete_subnet", delete_subnet),
+        "add_route": ActionSpec("add_route", add_route),
+        "delete_route": ActionSpec("delete_route", delete_route),
+        "change_ip_range": ActionSpec("change_ip_range", change_ip_range),
+        "change_protection": ActionSpec(
+            "change_protection", change_delete_protection, flag=False
+        ),
+    },
+)
 
 
 async def run_network_action(lab: Lab, nid: int, cmd: str, body: dict) -> dict:
     """Run a network action; every one of them finishes right away."""
     network = lab.get_or_404(NETWORKS, nid, "network")
-    return await lab.act(NETWORK_ACTIONS, cmd, network, "network", body)
+    return await lab.act(NETWORK_ACTIONS, cmd, network, body)
 
 
 async def delete_network(lab: Lab, nid: int) -> None:
@@ -323,7 +321,13 @@ async def delete_network(lab: Lab, nid: int) -> None:
         members = nics_in(state, nid)  # a server has one NIC per network at most
         for server, _ in members:  # 423 if one of them has an action running
             held.claim(server, "_locked", SERVER_LOCKED)
-        try:
+
+        async def undo():
+            # DHCP and the fault sets follow the NICs detached so far
+            await system.write_dhcp(lab)
+            await system.apply_faults(lab)
+
+        async with lab.undo_on_failure(undo):
             for server, nic in members:
                 await lab.blocking(
                     lab.fabric.network.detach_nic, server["id"], nic["tap"]
@@ -331,11 +335,6 @@ async def delete_network(lab: Lab, nid: int) -> None:
                 with state.change():
                     server["_lab"]["nics"].remove(nic)
                     drop_netem(lab, [nic["tap"]])
-        except Exception:  # whatever failed: update the system, then re-raise
-            # update DHCP and the fault sets for the NICs detached so far
-            await system.write_dhcp(lab)
-            await system.apply_faults(lab)
-            raise
         with state.change():
             # load balancers leave it too; their targets there have no members now
             for balancer in state[LOAD_BALANCERS].values():

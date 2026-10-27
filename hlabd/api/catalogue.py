@@ -6,6 +6,8 @@ There are no datacenters: Hetzner removed them in 2026.
 """
 
 import logging
+from collections.abc import Mapping
+from typing import cast
 
 from fastapi import FastAPI, Request
 
@@ -28,6 +30,12 @@ ID_OF = {
 }
 
 
+def entries(lab: Lab, kind: str) -> Mapping[str, object]:
+    """Return the configuration's catalogue of a kind ("server_type": server_types)."""
+    # the key is built from the kind, more than mypy can match to Config's keys
+    return cast(Mapping[str, Mapping[str, object]], lab.cfg)[f"{kind}s"]
+
+
 def by_name_or_id(items, ref, name_and_id):
     """Return the first item that `ref` names, by name or by ID, or None.
 
@@ -48,7 +56,7 @@ def catalogue_name(lab: Lab, kind: str, ref, field: str | None = None) -> str:
     default the kind).
     """
     id_of = ID_OF[kind]
-    name = by_name_or_id(lab.cfg[f"{kind}s"], ref, lambda n: (n, id_of(lab, n)))
+    name = by_name_or_id(entries(lab, kind), ref, lambda n: (n, id_of(lab, n)))
     if name is None:
         raise invalid(f"{kind} {ref!r} not found", field or kind)
     return name
@@ -57,7 +65,7 @@ def catalogue_name(lab: Lab, kind: str, ref, field: str | None = None) -> str:
 def catalogue_entry_or_404(lab: Lab, kind: str, rid: int, what: str) -> str:
     """Return the name of the catalogue entry with this ID, or raise 404 (`what`)."""
     id_of = ID_OF[kind]
-    name = next((n for n in lab.cfg[f"{kind}s"] if id_of(lab, n) == rid), None)
+    name = next((n for n in entries(lab, kind) if id_of(lab, n) == rid), None)
     if name is None:
         raise not_found(what)
     return name
@@ -162,6 +170,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
             "deprecated_api_endpoint",
             "API functionality was removed",
             {
+                # one long word, a URL, may pass the line length (ruff's E501)
                 "announcement": "https://docs.hetzner.cloud/changelog#2026-07-01-removing-datacenters"
             },
         )

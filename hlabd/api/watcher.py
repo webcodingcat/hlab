@@ -24,6 +24,8 @@ async def vm_watcher(lab: Lab) -> None:
     """
     while True:
         await asyncio.sleep(5)
+        if lab.resetting:
+            continue
         try:
             await watch_vms(lab)
         except Exception:  # the watcher keeps going; the error is in the log

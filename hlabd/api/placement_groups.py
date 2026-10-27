@@ -22,7 +22,8 @@ from ..lab import Lab, Plan, now
 from ..records import PlacementGroup, Server
 from ..state import PLACEMENT_GROUPS, SERVERS
 from . import hetzner
-from .web import filtered, paginate, read_body, ref_id, update_resource
+from .resources import update_resource
+from .web import filtered, paginate, read_body, ref_id
 
 GROUPS_PER_PROJECT = 50
 SERVERS_PER_GROUP = 10  # for the type "spread"

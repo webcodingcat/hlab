@@ -23,12 +23,12 @@ Python, pytest and the linters are not needed on the host.
 | `bin/hlab test` | lint, then the unit tests in the dev image (seconds, no VMs) |
 | `bin/hlab -c examples/hlab.yaml up` / `down` | start or stop the lab (state stays in the volume) |
 | `bin/hlab -c examples/hlab.yaml itest` | live tests with VMs, resets the lab first (~15 min) |
-| `tests/tofu-smoke/run.sh demo` | OpenTofu + hcloud provider against the running lab |
+| `tests/tofu-smoke/run.sh` | OpenTofu + hcloud provider against the running lab (`demo`) |
 
 `bin/hlab test` is the reference: it runs every unit test, including the full nftables
-check (`--cap-add NET_ADMIN`); CI runs it on every push and pull request. Outside Docker the tests run from a venv with the specs
-that `tools/fetch_specs.py` downloads (DEVELOPING.md, Tests); tests whose tools are
-missing skip.
+check (`--cap-add NET_ADMIN`); CI runs it on every push and pull request. Outside
+Docker the tests run from a venv with the specs that `tools/fetch_specs.py` downloads
+(DEVELOPING.md, Tests); tests whose tools are missing skip.
 
 ## Rules that are easy to break
 

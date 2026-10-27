@@ -2,7 +2,7 @@
 
 A part of the fabric (see __init__.py). It asks the VMs (vm.py) whether a server runs.
 The API computes from the state what each tap, DHCP server and route should look like
-(api/desired.py). This part only puts that in place. A server is named by its ID
+(api/desired/). This part only puts that in place. A server is named by its ID
 (`sid`), which never changes.
 """
 
@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .. import config
+from ..config import Config
 from .addresses import link_local, network_gateway, prefix, public_mac, route_table
 from .shell import Shell
 from .vm import VMs
@@ -104,7 +105,7 @@ class Network:
 
     def __init__(
         self,
-        cfg: dict,
+        cfg: Config,
         root: Path,
         shell: Shell,
         net_lock: threading.RLock,

@@ -232,11 +232,7 @@ async def attach_to_network(lab: Lab, server: Server, body: dict) -> Plan:
     nid, tap = nic["network"], nic["tap"]
 
     async def steps():
-        try:
-            await system.attach_nic(
-                lab, lab.current(SERVERS, sid), system.current_nic(lab, sid, nid)
-            )
-        except Exception:  # whatever failed: undo, then re-raise
+        async def undo():
             # remove the NIC again, so the API reports no network the VM does not have
             await lab.blocking(lab.fabric.network.detach_nic, sid, tap)
             with suppress(RecordGoneError):  # nothing to undo if it is gone
@@ -244,7 +240,11 @@ async def attach_to_network(lab: Lab, server: Server, body: dict) -> Plan:
                     lab, lab.current(SERVERS, sid), system.current_nic(lab, sid, nid)
                 )
             await system.write_dhcp(lab)
-            raise
+
+        async with lab.undo_on_failure(undo):
+            await system.attach_nic(
+                lab, lab.current(SERVERS, sid), system.current_nic(lab, sid, nid)
+            )
         await lab.sleep(NIC_ATTACH_SECONDS)
 
     return Plan(steps, server=server)
@@ -276,18 +276,27 @@ async def change_alias_ips(lab: Lab, server: Server, body: dict) -> Plan:
     local_addresses = await lab.blocking(lab.fabric.network.read_local_addresses)
     server = lab.server_or_404(sid)  # looked up again after the await
     nic = server_nic(lab, server, body)
+    nid, old = nic["network"], list(nic["alias_ips"])
     with lab.state.change():
         nic["alias_ips"] = checked_alias_ips(
             lab, nic, body.get("alias_ips"), local_addresses
         )
 
-    nid = nic["network"]
+    async def undo():
+        # the old alias IPs come back, in the state and on the system
+        with suppress(RecordGoneError):  # nothing to undo if it is gone
+            with lab.state.change():
+                system.current_nic(lab, sid, nid)["alias_ips"] = old
+            if await lab.blocking(lab.fabric.vms.is_alive, sid):
+                await system.nic_up(lab, system.current_nic(lab, sid, nid))
+        await system.apply_routes(lab)
 
     async def steps():
-        if await lab.blocking(lab.fabric.vms.is_alive, sid):
-            await system.nic_up(lab, system.current_nic(lab, sid, nid))
-        # an alias IP may be the gateway of a route
-        await system.apply_routes(lab)
+        async with lab.undo_on_failure(undo):
+            if await lab.blocking(lab.fabric.vms.is_alive, sid):
+                await system.nic_up(lab, system.current_nic(lab, sid, nid))
+            # an alias IP may be the gateway of a route
+            await system.apply_routes(lab)
         await lab.sleep(ALIAS_IPS_SECONDS)
 
     return Plan(steps, server=server)

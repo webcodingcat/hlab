@@ -2,8 +2,8 @@
 
 The API keeps services and targets in Hetzner's shape and fills in Hetzner's defaults
 (`service_of`). The fabric runs each load balancer in a namespace of its own with the
-HAProxy configuration that api/desired.py renders; a background job reads HAProxy's
-checks into `lab.balancer_health` for the targets' health status.
+HAProxy configuration that api/desired/ renders; a background job reads HAProxy's
+checks into `lab.readings.health` for the targets' health status.
 
 A load balancer joins one cloud network at most, like a server with a NIC (a veth
 whose name starts with "prv"); with `use_private_ip` it reaches its targets there.
@@ -23,14 +23,8 @@ from ..records import BalancerNic, LoadBalancer
 from ..state import CERTIFICATES, LOAD_BALANCERS, NETWORKS, SERVERS
 from . import desired, hetzner, nics, primary_ips, system
 from .catalogue import catalogue_name
-from .web import (
-    change_delete_protection,
-    filtered,
-    paginate,
-    read_body,
-    ref_id,
-    update_resource,
-)
+from .resources import change_delete_protection, update_resource
+from .web import filtered, paginate, read_body, ref_id
 
 log = logging.getLogger(__name__)
 
@@ -463,27 +457,32 @@ async def disable_public_interface(
 
 
 # the load balancer actions: Hetzner's name of the action and the function that plans it
-LOAD_BALANCER_ACTIONS: ActionTable[LoadBalancer] = {
-    "add_service": ActionSpec("add_service", add_service),
-    "update_service": ActionSpec("update_service", update_service),
-    "delete_service": ActionSpec("delete_service", delete_service),
-    "add_target": ActionSpec("add_target", add_target),
-    "remove_target": ActionSpec("remove_target", remove_target),
-    "change_algorithm": ActionSpec("change_algorithm", change_algorithm),
-    "change_type": ActionSpec("change_load_balancer_type", change_type),
-    "change_protection": ActionSpec(
-        "change_protection", change_delete_protection, flag=False
-    ),
-    "change_dns_ptr": ActionSpec("change_dns_ptr", change_dns_ptr, flag=False),
-    "attach_to_network": ActionSpec("attach_to_network", attach_to_network),
-    "detach_from_network": ActionSpec("detach_from_network", detach_from_network),
-    "enable_public_interface": ActionSpec(
-        "enable_public_interface", enable_public_interface
-    ),
-    "disable_public_interface": ActionSpec(
-        "disable_public_interface", disable_public_interface
-    ),
-}
+LOAD_BALANCER_ACTIONS = ActionTable[LoadBalancer](
+    "load_balancer",
+    {
+        "add_service": ActionSpec("add_service", add_service),
+        "update_service": ActionSpec("update_service", update_service),
+        "delete_service": ActionSpec("delete_service", delete_service),
+        "add_target": ActionSpec("add_target", add_target),
+        "remove_target": ActionSpec("remove_target", remove_target),
+        "change_algorithm": ActionSpec("change_algorithm", change_algorithm),
+        "change_type": ActionSpec("change_load_balancer_type", change_type),
+        "change_protection": ActionSpec(
+            "change_protection", change_delete_protection, flag=False
+        ),
+        "change_dns_ptr": ActionSpec("change_dns_ptr", change_dns_ptr, flag=False),
+        "attach_to_network": ActionSpec("attach_to_network", attach_to_network),
+        "detach_from_network": ActionSpec("detach_from_network", detach_from_network),
+        "enable_public_interface": ActionSpec(
+            "enable_public_interface", enable_public_interface
+        ),
+        "disable_public_interface": ActionSpec(
+            "disable_public_interface", disable_public_interface
+        ),
+    },
+    flag="_busy",
+    busy=BUSY,
+)
 
 
 # --- health ---------------------------------------------------------------------------
@@ -493,6 +492,8 @@ async def health_watcher(lab: Lab) -> None:
     """Read the checks of every load balancer's HAProxy, as long as the lab runs."""
     while True:
         await asyncio.sleep(HEALTH_SECONDS)
+        if lab.resetting:
+            continue
         try:
             await read_health(lab)
         except Exception:  # the watcher keeps going; the error is in the log
@@ -505,7 +506,7 @@ async def read_health(lab: Lab) -> None:
     health = {}
     for lid in lids:
         health[lid] = await lab.blocking(lab.fabric.balancers.health, lid)
-    lab.balancer_health = health
+    lab.readings.health = health
 
 
 # --- routes ---------------------------------------------------------------------------
@@ -549,6 +550,4 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     async def load_balancer_action(lid: int, cmd: str, request: Request):
         body = await read_body(request)
         balancer = lab.get_or_404(LOAD_BALANCERS, lid, "load balancer")
-        return await lab.act(
-            LOAD_BALANCER_ACTIONS, cmd, balancer, "load_balancer", body, "_busy", BUSY
-        )
+        return await lab.act(LOAD_BALANCER_ACTIONS, cmd, balancer, body)

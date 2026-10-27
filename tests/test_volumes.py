@@ -205,6 +205,9 @@ def test_volumes_wait_for_a_busy_server_and_are_not_deleted_while_busy(api):
         ).status_code
         == 423
     )
+    # the refused attach left nothing behind: no attachment, no flag
+    assert state_of(api, "volumes")[vid]["server"] is None
+    assert not state_of(api, "volumes")[vid].get("_busy")
     change_state(api, state_of(api, "servers")[server["id"]].pop, "_locked")
     change_state(api, state_of(api, "volumes")[vid].update, {"_busy": True})
     assert api.delete(f"/v1/volumes/{vid}").status_code == 423

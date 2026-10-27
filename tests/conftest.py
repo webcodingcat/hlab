@@ -192,7 +192,8 @@ def api(lab):
 def state_of(client, key: str):
     """Return a part of the state by key (a kind such as "servers", or "netem").
 
-    It is looked up on the loop that owns the state. The test reads it afterwards; a
+    It is looked up on the loop that owns the state and is the state itself, not a
+    copy: the test only reads it, and only once its requests and actions are done. A
     change for a setup goes through `change_state`, while no request runs.
     """
     return client.on_loop(lambda: client.lab.state.data[key])

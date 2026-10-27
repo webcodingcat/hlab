@@ -17,14 +17,8 @@ from ..state import FLOATING_IPS, SERVERS
 from . import hetzner, system
 from .catalogue import catalogue_name
 from .public_addresses import first_free, record_dns_ptr
-from .web import (
-    change_delete_protection,
-    filtered,
-    paginate,
-    read_body,
-    ref_id,
-    update_resource,
-)
+from .resources import change_delete_protection, update_resource
+from .web import filtered, paginate, read_body, ref_id
 
 
 def free_floating_ip(lab: Lab, ip_type: str) -> str:
@@ -159,25 +153,27 @@ async def floating_ip_unassign(lab: Lab, floating_ip: FloatingIP, body: dict) ->
 
 
 # the Floating IP actions: Hetzner's name of the action and the function that plans it
-FLOATING_IP_ACTIONS: ActionTable[FloatingIP] = {
-    "change_protection": ActionSpec(
-        "change_protection", change_delete_protection, flag=False
-    ),
-    "change_dns_ptr": ActionSpec(
-        "change_dns_ptr", floating_ip_change_dns_ptr, flag=False
-    ),
-    "assign": ActionSpec("assign_floating_ip", floating_ip_assign),
-    "unassign": ActionSpec("unassign_floating_ip", floating_ip_unassign),
-}
+FLOATING_IP_ACTIONS = ActionTable[FloatingIP](
+    "floating_ip",
+    {
+        "change_protection": ActionSpec(
+            "change_protection", change_delete_protection, flag=False
+        ),
+        "change_dns_ptr": ActionSpec(
+            "change_dns_ptr", floating_ip_change_dns_ptr, flag=False
+        ),
+        "assign": ActionSpec("assign_floating_ip", floating_ip_assign),
+        "unassign": ActionSpec("unassign_floating_ip", floating_ip_unassign),
+    },
+    flag="_moving",
+    busy="the Floating IP is being moved",
+)
 
 
 async def run_floating_ip_action(lab: Lab, fid: int, cmd: str, body: dict) -> dict:
     """Run a Floating IP action: one at a time per Floating IP (423 otherwise)."""
     floating_ip = lab.get_or_404(FLOATING_IPS, fid, "Floating IP")
-    busy = "the Floating IP is being moved"
-    return await lab.act(
-        FLOATING_IP_ACTIONS, cmd, floating_ip, "floating_ip", body, "_moving", busy
-    )
+    return await lab.act(FLOATING_IP_ACTIONS, cmd, floating_ip, body)
 
 
 # --- routes ---------------------------------------------------------------------------

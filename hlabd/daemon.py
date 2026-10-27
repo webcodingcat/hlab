@@ -18,7 +18,7 @@ import time
 import uvicorn
 
 from . import config
-from .api import images, load_balancers, metrics, storagebox, system, watcher
+from .api import load_balancers, metrics, servers, storagebox, system, watcher
 from .api.app import create_app
 from .api.catalogue import load_images
 from .api.metadata import create_metadata_app
@@ -40,7 +40,7 @@ LISTEN = (
 log = logging.getLogger(__name__)
 
 
-def set_up(cfg: dict) -> Lab:
+def set_up(cfg: config.Config) -> Lab:
     """Prepare the container and return the lab: state, fabric, network."""
     (config.ROOT / "vm").mkdir(parents=True, exist_ok=True)
     # this process starts with the container: no VM of an earlier run is alive, and
@@ -148,7 +148,7 @@ async def run(lab: Lab) -> None:
         for job in (
             announce_ready(),
             storagebox.snapshots.snapshot_plan_scheduler(lab),
-            images.backup_scheduler(lab),
+            servers.backup_scheduler(lab),
             metrics.sampler(lab),
             load_balancers.health_watcher(lab),
             watcher.vm_watcher(lab),

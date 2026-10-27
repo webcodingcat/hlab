@@ -18,6 +18,9 @@ change may be read from a record held across an await. A nested function (the st
 of a plan) runs later, so the records it takes from the function around it count as
 held across an await from its first line on.
 
+A dataclass carries what one phase of a request hands to the next, often across an
+await, so its fields hold IDs, not records (`test_no_dataclass_holds_a_record`).
+
 The few deliberate exceptions carry a comment `# record: <why>`: on the line of a use
 (for that use), or on the line that binds the name (for every use until the name is
 bound again; for a parameter, its line in the signature; for a list, also its items).
@@ -528,6 +531,51 @@ def check(source: str) -> list[str]:
     records = record_types()
     found = ModuleCheck(source, records, returning_records(records)).run()
     return [f"{line}: {name}" for line, name in found]
+
+
+def record_fields(source: str) -> list[str]:
+    """Return `line: field` for each field of a dataclass annotated with a record.
+
+    A field whose line (or the line above) has a `# record:` comment is left out.
+    """
+    module = ModuleCheck(source, set(), {})
+    records = record_types()
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.ClassDef) or not any(
+            "dataclass" in ast.unparse(d) for d in node.decorator_list
+        ):
+            continue
+        for item in node.body:
+            if (
+                isinstance(item, ast.AnnAssign)
+                and isinstance(item.target, ast.Name)
+                and annotation_kind(item.annotation, records)
+                and item.lineno not in module.allowed_lines
+            ):
+                found.append(f"{item.lineno}: {item.target.id}")
+    return found
+
+
+def test_no_dataclass_holds_a_record():
+    # a dataclass hands data from one phase to the next, across awaits: IDs only
+    paths = sorted((HLABD / "api").rglob("*.py")) + [HLABD / "lab.py"]
+    found = [
+        f"{path.relative_to(HLABD.parent).as_posix()}:{entry}"
+        for path in paths
+        for entry in record_fields(path.read_text())
+    ]
+    assert found == []
+
+
+def test_a_record_in_a_dataclass_field_is_found():
+    source = """
+@dataclass(frozen=True)
+class Request:
+    volumes: list[Volume]
+    server_id: int
+"""
+    assert record_fields(source) == ["4: volumes"]
 
 
 def test_no_record_is_used_across_an_await():

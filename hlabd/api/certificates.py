@@ -19,7 +19,8 @@ from ..lab import ActionSpec, ActionTable, Lab, Plan, now
 from ..records import CertificateError, TlsCertificate
 from ..state import CERTIFICATES, LOAD_BALANCERS
 from . import hetzner, system, zones
-from .web import filtered, paginate, read_body, update_resource
+from .resources import update_resource
+from .web import filtered, paginate, read_body
 
 
 class IssuanceError(Exception):
@@ -142,7 +143,7 @@ def issue_steps(lab: Lab, cid: int):
         except IssuanceError as error:
             fail(lab, cid, {"code": error.code, "message": str(error)})
             raise
-        except Exception as error:
+        except Exception as error:  # any other failure: the certificate shows it too
             fail(lab, cid, {"code": "unknown_error", "message": str(error)})
             raise
         with lab.state.change():
@@ -216,9 +217,12 @@ async def retry(lab: Lab, certificate: TlsCertificate, body: dict) -> Plan:
 
 
 # the certificate actions: Hetzner's name of the action and the function that plans it
-CERTIFICATE_ACTIONS: ActionTable[TlsCertificate] = {
-    "retry": ActionSpec("issue_certificate", retry, flag=False),
-}
+CERTIFICATE_ACTIONS = ActionTable[TlsCertificate](
+    "certificate",
+    {
+        "retry": ActionSpec("issue_certificate", retry, flag=False),
+    },
+)
 
 
 def delete_certificate(lab: Lab, cid: int) -> None:
@@ -277,4 +281,4 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     async def certificate_action(cid: int, cmd: str, request: Request):
         body = await read_body(request)
         certificate = lab.get_or_404(CERTIFICATES, cid, "certificate")
-        return await lab.act(CERTIFICATE_ACTIONS, cmd, certificate, "certificate", body)
+        return await lab.act(CERTIFICATE_ACTIONS, cmd, certificate, body)

@@ -9,14 +9,9 @@ from ...state import ACTIONS, BOX_SNAPSHOTS, STORAGE_BOXES, SUBACCOUNTS
 from .. import hetzner
 from ..actions import action_or_404, listed, touches
 from ..catalogue import catalogue_entry_or_404, catalogue_name
-from ..ssh_keys import ssh_fingerprint
-from ..web import (
-    change_delete_protection,
-    filtered,
-    paginate,
-    read_body,
-    update_resource,
-)
+from ..resources import change_delete_protection, update_resource
+from ..ssh_keys import checked_public_key
+from ..web import filtered, paginate, read_body
 from .base import (
     BUSY,
     TB,
@@ -95,7 +90,7 @@ async def box_json(lab: Lab, box: StorageBox) -> dict:
     }
 
 
-def checked_ssh_keys(keys) -> list[str]:
+def checked_ssh_keys(keys: object) -> list[str]:
     """Check a list of SSH public keys (one per entry, 64 KiB in all) and return it."""
     if (
         not isinstance(keys, list)
@@ -104,11 +99,7 @@ def checked_ssh_keys(keys) -> list[str]:
     ):
         raise invalid("ssh_keys is a list of public keys (64 KiB in all)", "ssh_keys")
     for key in keys:
-        try:
-            ssh_fingerprint(key)
-        # whatever the parser fails on: it is not a valid key
-        except Exception:  # noqa: BLE001
-            raise invalid("not an SSH public key", "ssh_keys") from None
+        checked_public_key(key, "ssh_keys")
         if any(ord(char) < 32 for char in key):
             raise invalid("one key per entry", "ssh_keys")
     return keys
@@ -121,21 +112,20 @@ async def set_up_box_account(
 
     If that fails, nothing of the box stays.
     """
-    fabric_box = lab.fabric.box
-    try:
-        await box_account(lab, box, password)
+    fabric_box, bid = lab.fabric.box, box["id"]
+
+    async def undo():
+        await lab.blocking(fabric_box.remove_account, username(bid), check=False)
+        await lab.blocking(fabric_box.remove_box_data, bid, check=False)
+        with lab.state.change():
+            lab.state[STORAGE_BOXES].pop(bid, None)
+
+    async with lab.undo_on_failure(undo):
+        await box_account(lab, lab.current(STORAGE_BOXES, bid), password)
         # as on Hetzner: the keys end up in the box's .ssh/authorized_keys
         if keys:
-            await lab.blocking(
-                fabric_box.write_authorized_keys, username(box["id"]), keys
-            )
-        await sync_box(lab, lab.current(STORAGE_BOXES, box["id"]))
-    except Exception:  # undo the partial change, then raise
-        await lab.blocking(fabric_box.remove_account, username(box["id"]), check=False)
-        await lab.blocking(fabric_box.remove_box_data, box["id"], check=False)
-        with lab.state.change():
-            lab.state[STORAGE_BOXES].pop(box["id"], None)
-        raise
+            await lab.blocking(fabric_box.write_authorized_keys, username(bid), keys)
+        await sync_box(lab, lab.current(STORAGE_BOXES, bid))
 
 
 async def remove_box(lab: Lab, box: StorageBox) -> None:
@@ -212,14 +202,11 @@ async def update_access_settings(lab: Lab, box: StorageBox, body: dict) -> Plan:
     access = checked_access_settings(body, box["access"])
     with lab.state.change():
         box["access"].update(access)
-    try:
-        await sync_box(lab, box)
-    except Exception:  # the settings did not take effect, so do not store them
-        box_now = lab.state.get(STORAGE_BOXES, bid)  # nothing to undo if it is gone
-        if box_now is not None:
-            with lab.state.change():
-                box_now["access"] = old
-        raise
+    # the settings did not take effect if the sync fails: then they are not stored
+    async with lab.undo_on_failure(
+        lambda: lab.put_back(STORAGE_BOXES, bid, "access", old)
+    ):
+        await sync_box(lab, lab.current(STORAGE_BOXES, bid))
     return Plan()
 
 
@@ -245,19 +232,28 @@ async def disable_snapshot_plan(lab: Lab, box: StorageBox, body: dict) -> Plan:
 
 
 # the Storage Box actions: Hetzner's name of the action and the function that plans it
-BOX_ACTIONS: ActionTable[StorageBox] = {
-    "change_protection": ActionSpec(
-        "change_protection", change_delete_protection, flag=False
-    ),
-    "change_type": ActionSpec("change_type", change_type),
-    "reset_password": ActionSpec("reset_password", reset_password),
-    "update_access_settings": ActionSpec(
-        "update_access_settings", update_access_settings
-    ),
-    "enable_snapshot_plan": ActionSpec("enable_snapshot_plan", enable_snapshot_plan),
-    "disable_snapshot_plan": ActionSpec("disable_snapshot_plan", disable_snapshot_plan),
-    "rollback_snapshot": ActionSpec("rollback_snapshot", rollback_snapshot),
-}
+BOX_ACTIONS = ActionTable[StorageBox](
+    "storage_box",
+    {
+        "change_protection": ActionSpec(
+            "change_protection", change_delete_protection, flag=False
+        ),
+        "change_type": ActionSpec("change_type", change_type),
+        "reset_password": ActionSpec("reset_password", reset_password),
+        "update_access_settings": ActionSpec(
+            "update_access_settings", update_access_settings
+        ),
+        "enable_snapshot_plan": ActionSpec(
+            "enable_snapshot_plan", enable_snapshot_plan
+        ),
+        "disable_snapshot_plan": ActionSpec(
+            "disable_snapshot_plan", disable_snapshot_plan
+        ),
+        "rollback_snapshot": ActionSpec("rollback_snapshot", rollback_snapshot),
+    },
+    flag="_busy",
+    busy=BUSY,
+)
 
 
 # --- route logic ----------------------------------------------------------------------
@@ -353,7 +349,7 @@ async def box_folders(lab: Lab, bid: int, path: str) -> dict:
 async def run_box_action(lab: Lab, bid: int, cmd: str, body: dict) -> dict:
     """Run an action of a box; the box is busy (`_busy`) until it ends."""
     box = box_or_404(lab, bid, ready=True)
-    return await lab.act(BOX_ACTIONS, cmd, box, "storage_box", body, "_busy", BUSY)
+    return await lab.act(BOX_ACTIONS, cmd, box, body)
 
 
 # --- routes ---------------------------------------------------------------------------

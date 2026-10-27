@@ -4,10 +4,13 @@ This module creates and deletes servers and runs the server actions (power, rebu
 ...). The actions wait as long as Hetzner does (the timings are in lab.py).
 """
 
+import asyncio
 import base64
+import logging
 import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request
 
@@ -46,8 +49,11 @@ from ..state import FIREWALLS, FLOATING_IPS, MAX_SERVERS, SERVERS, SSH_KEYS, VOL
 from . import hetzner, images, nics, placement_groups, primary_ips, system, volumes
 from .catalogue import by_name_or_id, catalogue_name
 from .faults import drop_faults
+from .resources import update_resource
 from .spec import hostname_ok
-from .web import filtered, paginate, read_body, ref_id, update_resource
+from .web import filtered, paginate, read_body, ref_id
+
+log = logging.getLogger(__name__)
 
 USER_DATA_LIMIT = 32 * 1024
 
@@ -84,7 +90,7 @@ class ServerRequest:
     user_data: str | None
     labels: dict
     firewall_ids: list[int]
-    volumes: list[Volume]
+    volume_ids: list[int]  # looked up again when the server is recorded
     network_ids: list[int]
     placement_group: int | None
     automount: bool
@@ -99,12 +105,16 @@ async def create_server(lab: Lab, body: dict) -> dict:
     the lab-only fields of a server (`server["_lab"]`) and of its NICs.
     """
     request = checked_server_request(lab, body)
+    # Read before the flags are held: an address taken meanwhile is no local one, and
+    # record_server checks everything else again.
     local_addresses = (  # runs a script: the addresses that no NIC may get
         await lab.blocking(lab.fabric.network.read_local_addresses)
         if request.network_ids
         else set()
     )
-    with lab.holding() as held:
+    # one transaction: if the steps cannot start, the server, its flag and its
+    # actions are undone together
+    with lab.holding() as held, lab.state.change():
         server = record_server(lab, request, local_addresses, held)
         sid = server["id"]
         action = lab.new_action("create_server", [(sid, "server")])
@@ -151,15 +161,10 @@ def checked_server_request(lab: Lab, body: dict) -> ServerRequest:
     volume_refs = body.get("volumes") or []
     if len({str(v) for v in volume_refs}) != len(volume_refs):
         raise invalid("a volume is listed twice", "volumes")
-    given_volumes = []
-    for vid in volume_refs:
-        volume = state[VOLUMES].get(ref_id(vid, "volumes"))
-        if not volume:
-            raise invalid(f"volume {vid} not found", "volumes")
-        if volume["status"] != "available" or volume.get("_busy"):
-            raise locked(f"volume {vid} is busy")
-        given_volumes.append(volume)
-    if len(given_volumes) > volumes.VOLUMES_PER_SERVER:
+    volume_ids = [ref_id(vid, "volumes") for vid in volume_refs]
+    for vid in volume_ids:
+        free_volume(lab, vid)
+    if len(volume_ids) > volumes.VOLUMES_PER_SERVER:
         raise limit_exceeded(
             f"at most {volumes.VOLUMES_PER_SERVER} volumes per server",
             "volumes_per_server",
@@ -175,7 +180,7 @@ def checked_server_request(lab: Lab, body: dict) -> ServerRequest:
         user_data=body.get("user_data"),
         labels=body.get("labels") or {},
         firewall_ids=firewall_ids,
-        volumes=given_volumes,
+        volume_ids=volume_ids,
         network_ids=[ref_id(n, "networks") for n in body.get("networks") or []],
         placement_group=None
         if group is None
@@ -183,6 +188,16 @@ def checked_server_request(lab: Lab, body: dict) -> ServerRequest:
         automount=bool(body.get("automount", False)),
         start=bool(body.get("start_after_create", True)),
     )
+
+
+def free_volume(lab: Lab, vid: int) -> Volume:
+    """Return a volume a new server may get: there, available and not busy."""
+    volume = lab.state.get(VOLUMES, vid)
+    if not volume:
+        raise invalid(f"volume {vid} not found", "volumes")
+    if volume["status"] != "available" or volume.get("_busy"):
+        raise locked(f"volume {vid} is busy")
+    return volume
 
 
 def record_server(
@@ -199,7 +214,7 @@ def record_server(
     with state.change():
         check_unique_name(state[SERVERS].values(), request.name, None, "server")
         index = state.free_index()
-        if not index:
+        if index is None:
             raise limit_exceeded(
                 f"the lab runs at most {MAX_SERVERS} servers", "servers"
             )
@@ -211,11 +226,10 @@ def record_server(
                 lab, request.placement_group, "placement_group"
             )
         server = new_server(lab, request, state.new_id(SERVERS), index)
-        for volume in request.volumes:
-            # check again: a volume action may have started since the first check,
-            # and it must not run while the attachment is recorded
-            if volume["status"] != "available" or volume.get("_busy"):
-                raise locked(f"volume {volume['id']} is busy")
+        # check again: since the first check a volume may have been deleted, or an
+        # action may have started on it, which must not run while it is attached
+        given_volumes = [free_volume(lab, vid) for vid in request.volume_ids]
+        for volume in given_volumes:
             volumes.check_attach(lab, volume, server)
         for nid in request.network_ids:  # only the new server changes here
             nics.add_nic(lab, server, nid, None, local_addresses)
@@ -223,7 +237,7 @@ def record_server(
         # addresses taken so far (they are only in the state)
         primary_ips.setup_server_ips(lab, server, request.public_net)
         # from here on nothing fails
-        for volume in request.volumes:
+        for volume in given_volumes:
             volumes.record_attachment(lab, volume, server, request.automount)
         for fid in request.firewall_ids:
             state[FIREWALLS][fid]["applied_to"].append(
@@ -277,16 +291,17 @@ def create_steps(
         disk_gb = lab.current(SERVERS, sid)["_lab"]["disk_gb"]
         await images.create_disk(lab, sid, request.image, disk_gb)
         if request.start:
-            server = lab.current(SERVERS, sid)
-            lab.set_status(server, "starting")
-            await system.start_vm(lab, server)
+            starting = lab.current(SERVERS, sid)
+            lab.set_status(starting, "starting")
+            await system.start_vm(lab, starting)
             await lab.sleep(CREATE_START_SECONDS)
             lab.set_status(lab.current(SERVERS, sid), "running")
         else:
             lab.set_status(lab.current(SERVERS, sid), "off")
+        # before the next actions end: if this fails, they fail with the create
+        await system.apply_load_balancers(lab)  # a label selector may match it
         for next_action in next_actions:
             lab.finish(next_action)
-        await system.apply_load_balancers(lab)  # a label selector may match it
 
     return steps
 
@@ -372,10 +387,10 @@ async def remove_server(lab: Lab, server: Server) -> None:
     for ip in unrouted:
         await system.route_floating_ip(lab, ip, None)
     await system.write_dhcp(lab)
-    await system.apply_faults(lab)
     await system.apply_firewall(lab)
     await images.drop_server_backups(lab, sid)
-    await system.apply_load_balancers(lab)  # it is no target any more
+    # it is no target any more; this puts the fault sets in place too
+    await system.apply_load_balancers(lab)
 
 
 # --- server actions -------------------------------------------------------------------
@@ -503,6 +518,7 @@ async def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
     sid = server["id"]
 
     async def steps():
+        images.check_usable(lab, image)  # before anything changes
         server = lab.current(SERVERS, sid)
         # the server is locked, so it is running or off; it ends as it was
         target = "running" if server["status"] == "running" else "off"
@@ -510,7 +526,6 @@ async def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
             if password is not None:
                 server["_lab"]["root_password"] = password
             server["_lab"]["target"] = target
-        images.check_usable(lab, image)  # before the old disk is gone
         await system.delete_vm(lab, server)
         server = lab.current(SERVERS, sid)
         with lab.state.change():
@@ -527,7 +542,7 @@ async def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
 
     return Plan(
         steps,
-        extra={"root_password": password or server["_lab"].get("root_password")},
+        extra={"root_password": password},
         server=server,
     )
 
@@ -595,36 +610,76 @@ async def reset_password(lab: Lab, server: Server, body: dict) -> Plan:
 
 
 # the server actions: Hetzner's name of the action and the function that plans it
-SERVER_ACTIONS: ActionTable[Server] = {
-    "change_protection": ActionSpec("change_protection", change_protection, flag=False),
-    "change_dns_ptr": ActionSpec("change_dns_ptr", change_dns_ptr, flag=False),
-    "poweroff": ActionSpec("stop_server", poweroff),
-    "shutdown": ActionSpec("shutdown_server", shutdown),
-    "poweron": ActionSpec("start_server", poweron),
-    "reboot": ActionSpec("reboot_server", reboot),
-    "reset": ActionSpec("reset_server", reset),
-    "rebuild": ActionSpec("rebuild_server", rebuild),
-    "change_type": ActionSpec("change_server_type", change_type),
-    "reset_password": ActionSpec("reset_password", reset_password),
-    "attach_to_network": ActionSpec("attach_to_network", nics.attach_to_network),
-    "detach_from_network": ActionSpec("detach_from_network", nics.detach_from_network),
-    "change_alias_ips": ActionSpec("change_alias_ips", nics.change_alias_ips),
-    **images.IMAGE_SERVER_ACTIONS,
-    "add_to_placement_group": ActionSpec(
-        "add_to_placement_group", placement_groups.add_to_placement_group
-    ),
-    "remove_from_placement_group": ActionSpec(
-        "remove_from_placement_group", placement_groups.remove_from_placement_group
-    ),
-}
+SERVER_ACTIONS = ActionTable[Server](
+    "server",
+    {
+        "change_protection": ActionSpec(
+            "change_protection", change_protection, flag=False
+        ),
+        "change_dns_ptr": ActionSpec("change_dns_ptr", change_dns_ptr, flag=False),
+        "poweroff": ActionSpec("stop_server", poweroff),
+        "shutdown": ActionSpec("shutdown_server", shutdown),
+        "poweron": ActionSpec("start_server", poweron),
+        "reboot": ActionSpec("reboot_server", reboot),
+        "reset": ActionSpec("reset_server", reset),
+        "rebuild": ActionSpec("rebuild_server", rebuild),
+        "change_type": ActionSpec("change_server_type", change_type),
+        "reset_password": ActionSpec("reset_password", reset_password),
+        "attach_to_network": ActionSpec("attach_to_network", nics.attach_to_network),
+        "detach_from_network": ActionSpec(
+            "detach_from_network", nics.detach_from_network
+        ),
+        "change_alias_ips": ActionSpec("change_alias_ips", nics.change_alias_ips),
+        "create_image": ActionSpec("create_image", images.create_image),
+        "enable_backup": ActionSpec("enable_backup", images.enable_backup),
+        "disable_backup": ActionSpec("disable_backup", images.disable_backup),
+        "add_to_placement_group": ActionSpec(
+            "add_to_placement_group", placement_groups.add_to_placement_group
+        ),
+        "remove_from_placement_group": ActionSpec(
+            "remove_from_placement_group", placement_groups.remove_from_placement_group
+        ),
+    },
+    flag="_locked",
+    busy=SERVER_LOCKED,
+)
 
 
 async def run_server_action(lab: Lab, sid: int, cmd: str, body: dict) -> dict:
     """Run a server action; as on Hetzner, one at a time per server (else 423)."""
     server = lab.server_or_404(sid)
-    return await lab.act(
-        SERVER_ACTIONS, cmd, server, "server", body, "_locked", SERVER_LOCKED
-    )
+    return await lab.act(SERVER_ACTIONS, cmd, server, body)
+
+
+# --- daily backups: server actions, started by the lab -------------------------------
+
+
+async def backup_scheduler(lab: Lab) -> None:
+    """Take the daily backup of every server with backups enabled.
+
+    Checked once a minute. A server that is busy when its backup window begins (an
+    action runs) gets no backup that day.
+    """
+    while True:
+        await asyncio.sleep(60 - datetime.now(timezone.utc).second)
+        moment = datetime.now(timezone.utc)
+        window_begins = (moment.hour, moment.minute) == (images.BACKUP_HOUR, 0)
+        if window_begins and not lab.resetting:
+            await take_daily_backups(lab)
+
+
+async def take_daily_backups(lab: Lab) -> None:
+    """Start a backup of every server with backups enabled that is not busy."""
+    for sid in [
+        s for s, server in lab.state[SERVERS].items() if server["backup_window"]
+    ]:
+        server = lab.state.get(SERVERS, sid)
+        if server is None or server["status"] not in ("running", "off"):
+            continue
+        try:
+            await lab.act(SERVER_ACTIONS, "create_image", server, {"type": "backup"})
+        except Exception:  # a busy server misses its backup; the others get theirs
+            log.exception("daily backup of server %s", sid)
 
 
 # --- routes ---------------------------------------------------------------------------

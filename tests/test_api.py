@@ -8,6 +8,7 @@ import asyncio
 import pytest
 from conftest import create_server, make_key, power_off, wait_action
 
+from hlabd.api.web import sort_items
 from hlabd.lab import MAX_ACTIONS
 from hlabd.state import ACTIONS
 
@@ -273,6 +274,12 @@ def test_lists_sort_by_the_given_fields(api):
         response.status_code == 422
         and response.json()["error"]["details"]["fields"][0]["name"] == "sort"
     )
+
+
+def test_null_sorts_last_in_both_directions():
+    items = [{"name": "b"}, {"name": None}, {"name": "a"}]
+    assert [i["name"] for i in sort_items(items, ["name"])] == ["a", "b", None]
+    assert [i["name"] for i in sort_items(items, ["name:desc"])] == ["b", "a", None]
 
 
 def test_dangerous_values_do_not_get_through(api):

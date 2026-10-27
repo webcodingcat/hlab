@@ -3,15 +3,14 @@
 Each one is a separate account (u<box>-sub<n>) with a home directory inside the box.
 """
 
-from typing import cast
-
 from fastapi import FastAPI, Request
 
 from ...errors import limit_exceeded, locked, not_found, not_unique
 from ...lab import ActionSpec, ActionTable, Lab, Plan, now
 from ...records import StorageBox, Subaccount
 from ...state import STORAGE_BOXES, SUBACCOUNTS
-from ..web import filtered, read_body, sort_items, update_fields
+from ..resources import update_fields
+from ..web import filtered, read_body, sort_items
 from .base import (
     BUSY,
     box_busy,
@@ -75,14 +74,6 @@ def box_plan(subaccount: Subaccount) -> Plan:
     return Plan(resources=[(subaccount["box"], "storage_box")])
 
 
-def undo(lab: Lab, aid: int, field: str, old: object) -> None:
-    """Put a sub-account's field back after a failed sync; nothing to undo if gone."""
-    subaccount = lab.state.get(SUBACCOUNTS, aid)
-    if subaccount is not None:
-        with lab.state.change():
-            cast(dict[str, object], subaccount)[field] = old  # the field is a variable
-
-
 # --- sub-account actions --------------------------------------------------------------
 # Each function gets the sub-account and the request and returns a plan without steps.
 # The sync awaits, so the plan is made before it, from the sub-account as it was.
@@ -90,16 +81,17 @@ def undo(lab: Lab, aid: int, field: str, old: object) -> None:
 
 async def change_home_directory(lab: Lab, subaccount: Subaccount, body: dict) -> Plan:
     """Change a sub-account's home; on failure the old one stays."""
-    box, plan = box_of(lab, subaccount), box_plan(subaccount)
+    bid, plan = box_of(lab, subaccount)["id"], box_plan(subaccount)
     aid, old = subaccount["id"], subaccount["home_directory"]
     home = normalized_box_path(body["home_directory"], "home_directory")
     with lab.state.change():
         subaccount["home_directory"] = home
-    try:
-        await sync_subaccount(lab, box, subaccount)
-    except Exception:  # undo the partial change, then raise
-        undo(lab, aid, "home_directory", old)
-        raise
+    async with lab.undo_on_failure(
+        lambda: lab.put_back(SUBACCOUNTS, aid, "home_directory", old)
+    ):
+        await sync_subaccount(
+            lab, lab.current(STORAGE_BOXES, bid), lab.current(SUBACCOUNTS, aid)
+        )
     return plan
 
 
@@ -117,30 +109,37 @@ async def reset_subaccount_password(
 
 async def update_access_settings(lab: Lab, subaccount: Subaccount, body: dict) -> Plan:
     """Change a sub-account's access settings; on failure the old ones stay."""
-    box, plan = box_of(lab, subaccount), box_plan(subaccount)
+    bid, plan = box_of(lab, subaccount)["id"], box_plan(subaccount)
     aid, old = subaccount["id"], dict(subaccount["access"])
     access = checked_access_settings(body, subaccount["access"])
     with lab.state.change():
         subaccount["access"].update(access)
-    try:
-        await sync_subaccount(lab, box, subaccount)
-    except Exception:  # the settings did not take effect, so do not store them
-        undo(lab, aid, "access", old)
-        raise
+    # the settings did not take effect if the sync fails: then they are not stored
+    async with lab.undo_on_failure(
+        lambda: lab.put_back(SUBACCOUNTS, aid, "access", old)
+    ):
+        await sync_subaccount(
+            lab, lab.current(STORAGE_BOXES, bid), lab.current(SUBACCOUNTS, aid)
+        )
     return plan
 
 
 # the sub-account actions: Hetzner's name of the action and the function that plans it
-SUBACCOUNT_ACTIONS: ActionTable[Subaccount] = {
-    "change_home_directory": ActionSpec("change_home_directory", change_home_directory),
-    "reset_subaccount_password": ActionSpec(
-        "reset_subaccount_password",
-        reset_subaccount_password,
-    ),
-    "update_access_settings": ActionSpec(
-        "update_access_settings", update_access_settings
-    ),
-}
+SUBACCOUNT_ACTIONS = ActionTable[Subaccount](
+    "storage_box_subaccount",
+    {
+        "change_home_directory": ActionSpec(
+            "change_home_directory", change_home_directory
+        ),
+        "reset_subaccount_password": ActionSpec(
+            "reset_subaccount_password",
+            reset_subaccount_password,
+        ),
+        "update_access_settings": ActionSpec(
+            "update_access_settings", update_access_settings
+        ),
+    },
+)
 
 
 # --- route logic ----------------------------------------------------------------------
@@ -196,15 +195,20 @@ async def create_subaccount(lab: Lab, bid: int, body: dict) -> dict:
             }
             state[SUBACCOUNTS][subaccount_id] = subaccount
             held.claim(subaccount, "_creating", BUSY)  # new: nobody holds it yet
-        try:
-            await sync_subaccount(lab, box, subaccount, password)
-        except Exception:  # undo the partial change, then raise
-            await lab.blocking(
-                lab.fabric.box.remove_account, subaccount["username"], check=False
-            )
+        user = subaccount["username"]
+
+        async def undo():
+            await lab.blocking(lab.fabric.box.remove_account, user, check=False)
             with state.change():
                 state[SUBACCOUNTS].pop(subaccount_id, None)
-            raise
+
+        async with lab.undo_on_failure(undo):
+            await sync_subaccount(
+                lab,
+                lab.current(STORAGE_BOXES, bid),
+                lab.current(SUBACCOUNTS, subaccount_id),
+                password,
+            )
         with state.change():  # the sub-account is ready
             held.release()
     resources = [(box["id"], "storage_box"), (subaccount_id, "storage_box_subaccount")]
@@ -245,9 +249,7 @@ async def run_subaccount_action(
     """Run an action of a sub-account (not while its box is busy)."""
     box = box_or_404(lab, bid, ready=True)
     subaccount = subaccount_or_404(lab, box, subaccount_id)
-    return await lab.act(
-        SUBACCOUNT_ACTIONS, cmd, subaccount, "storage_box_subaccount", body
-    )
+    return await lab.act(SUBACCOUNT_ACTIONS, cmd, subaccount, body)
 
 
 # --- routes ---------------------------------------------------------------------------

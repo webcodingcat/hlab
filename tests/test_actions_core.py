@@ -15,7 +15,7 @@ import pytest
 
 from hlabd import lab as lab_module
 from hlabd.errors import ApiError, invalid
-from hlabd.lab import SERVER_LOCKED, ActionSpec, Plan, RecordGoneError
+from hlabd.lab import SERVER_LOCKED, ActionSpec, ActionTable, Plan, RecordGoneError
 from hlabd.state import SERVERS, VOLUMES
 
 
@@ -60,12 +60,17 @@ def planning(plan):
     return plan_function
 
 
-def table(function):
+def table(function, resource_type="volume", flag="_busy"):
     """Return an action table with the command "go" (Hetzner's name "do_go")."""
-    return {
-        "go": ActionSpec("do_go", function),
-        "change_protection": ActionSpec("change_protection", function, flag=False),
-    }
+    return ActionTable(
+        resource_type,
+        {
+            "go": ActionSpec("do_go", function),
+            "change_protection": ActionSpec("change_protection", function, flag=False),
+        },
+        flag=flag,
+        busy="busy",
+    )
 
 
 # --- claim and release ----------------------------------------------------------------
@@ -134,7 +139,7 @@ def test_holding_leaves_kept_and_handed_over_flags(lab):
 def test_act_refuses_an_unknown_command_as_unsupported(lab):
     volume = make_volume(lab)
     with pytest.raises(ApiError) as refused:
-        run(lab.act(table(planning(Plan())), "fly", volume, "volume", {}, "_busy"))
+        run(lab.act(table(planning(Plan())), "fly", volume, {}))
     assert (refused.value.status, refused.value.code) == (422, "unsupported_error")
     assert "_busy" not in volume
 
@@ -148,7 +153,7 @@ def test_act_takes_the_flag_off_when_the_plan_refuses(lab):
         raise invalid("no")
 
     with pytest.raises(ApiError):
-        run(lab.act(table(refuse), "go", volume, "volume", {}, "_busy"))
+        run(lab.act(table(refuse), "go", volume, {}))
     assert seen == [True]
     assert "_busy" not in volume
 
@@ -157,11 +162,7 @@ def test_act_refuses_a_flagged_resource_and_leaves_its_flag(lab):
     volume = make_volume(lab)
     lab.claim(volume, "_busy", "busy")
     with pytest.raises(ApiError) as refused:
-        run(
-            lab.act(
-                table(planning(Plan())), "go", volume, "volume", {}, "_busy", "busy"
-            )
-        )
+        run(lab.act(table(planning(Plan())), "go", volume, {}))
     assert refused.value.status == 423
     assert volume["_busy"] is True  # still the other action's
 
@@ -173,9 +174,7 @@ def test_act_without_steps_finishes_at_once_and_frees_the_resource(lab):
             table(planning(Plan(extra={"note": 1}))),
             "go",
             volume,
-            "volume",
             {},
-            "_busy",
         )
     )
     assert answer["action"]["status"] == "success"
@@ -200,9 +199,7 @@ def test_act_holds_the_flags_until_the_steps_succeed(lab):
             table(planning(Plan(steps, server=server))),
             "go",
             volume,
-            "volume",
             {},
-            "_busy",
         )
         await asyncio.sleep(0)
         assert volume["_busy"] is True and server["_locked"] is True
@@ -227,9 +224,7 @@ def test_act_releases_the_flags_when_the_steps_fail(lab):
             table(planning(Plan(steps, server=server))),
             "go",
             volume,
-            "volume",
             {},
-            "_busy",
         )
         await settle(lab)
         return answer["action"]
@@ -253,9 +248,7 @@ def test_act_refuses_a_locked_plan_server_and_frees_the_resource(lab):
                 table(planning(Plan(steps, server=server))),
                 "go",
                 volume,
-                "volume",
                 {},
-                "_busy",
             )
         )
     assert refused.value.status == 423
@@ -271,12 +264,10 @@ def test_act_locks_a_server_that_is_the_resource_only_once(lab):
             assert server["_locked"] is True
 
         await lab.act(
-            table(planning(Plan(steps, server=server))),
+            table(planning(Plan(steps, server=server)), "server", "_locked"),
             "go",
             server,
-            "server",
             {},
-            "_locked",
         )
         await settle(lab)
 
@@ -287,11 +278,7 @@ def test_act_locks_a_server_that_is_the_resource_only_once(lab):
 def test_record_only_actions_take_no_flag(lab):
     volume = make_volume(lab)
     lab.claim(volume, "_busy", "busy")  # another action runs
-    answer = run(
-        lab.act(
-            table(planning(Plan())), "change_protection", volume, "volume", {}, "_busy"
-        )
-    )
+    answer = run(lab.act(table(planning(Plan())), "change_protection", volume, {}))
     assert answer["action"]["status"] == "success"
     assert volume["_busy"] is True  # the running action keeps its flag
 
@@ -421,7 +408,7 @@ def test_act_holds_the_flag_while_a_plan_function_awaits(lab):
         assert item["_busy"] is True  # the flag is held meanwhile
         return Plan(extra={"asked": True})
 
-    answer = run(lab.act(table(plan), "go", volume, "volume", {}, "_busy"))
+    answer = run(lab.act(table(plan), "go", volume, {}))
     assert answer["asked"] is True
     assert answer["action"]["status"] == "success"
     assert "_busy" not in volume
@@ -430,8 +417,10 @@ def test_act_holds_the_flag_while_a_plan_function_awaits(lab):
 def test_act_answers_a_list_of_actions_with_the_finished_ones(lab):
     volume = make_volume(lab)
     plan = Plan(finished=[("do_more", [(10001, "volume"), (1001, "server")])])
-    actions = {"go": ActionSpec("do_go", planning(plan), answer="actions")}
-    answer = run(lab.act(actions, "go", volume, "volume", {}))
+    actions = ActionTable(
+        "volume", {"go": ActionSpec("do_go", planning(plan), answer="actions")}
+    )
+    answer = run(lab.act(actions, "go", volume, {}))
     assert [action["command"] for action in answer["actions"]] == ["do_go", "do_more"]
     assert all(action["status"] == "success" for action in answer["actions"])
     assert answer["actions"][1]["resources"][1] == {"id": 1001, "type": "server"}

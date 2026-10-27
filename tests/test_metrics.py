@@ -17,7 +17,7 @@ def give_samples(api, sid, samples):
     """Put samples of a server into the lab, as the sampler would."""
 
     def put():
-        api.lab.samples[sid] = deque(samples)
+        api.lab.readings.vms[sid] = deque(samples)
 
     api.on_loop(put)
 
@@ -104,7 +104,7 @@ def test_the_sampler_reads_running_servers_and_forgets_deleted_ones(api, monkeyp
     give_samples(api, 999, [(START, ZERO)])  # a server that is gone
     api.on_loop(metrics.take_samples, api.lab)
     assert read == [(sid, "pub1")]
-    assert api.on_loop(lambda: sorted(api.lab.samples)) == [sid]
+    assert api.on_loop(lambda: sorted(api.lab.readings.vms)) == [sid]
 
 
 class AnsweringShell:
@@ -140,7 +140,7 @@ def test_balancer_metrics_show_connections_requests_and_bandwidth(api):
     start = metrics.parse_time("2027-01-15T08:00:00Z", "start")
 
     def put():
-        api.lab.balancer_samples[balancer["id"]] = deque(
+        api.lab.readings.balancers[balancer["id"]] = deque(
             [
                 (start, BalancerCounters(4, 100, 50, 0, 0)),
                 (start + 10, BalancerCounters(6, 200, 150, 10_000, 40_000)),

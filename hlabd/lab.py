@@ -6,18 +6,20 @@ API module gets the same `Lab` object. It runs the action tables (`ActionSpec`, 
 work in threads (`blocking()`) and keeps Hetzner's timings.
 
 The rules for the state, actions and flags are in DEVELOPING.md (Actions and flags,
-Where code runs, The state).
+Where code runs, The state). A `# record: <why>` comment marks a record used after an
+await on purpose; tests/test_await_rule.py accepts such a use only with one.
 """
 
 import asyncio
 import logging
 from collections import deque
-from collections.abc import Awaitable, Callable, Coroutine, Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
+from .config import Config
 from .errors import locked, not_found, unsupported
 from .fabric import Fabric
 from .fabric.balancers import BalancerCounters
@@ -40,7 +42,7 @@ KEPT_ACTIONS = 500
 # another action gets 423. A flag is set to True and later removed; it is never set to
 # False.
 # - `_locked`: a server in an action; the API shows it as `locked` (`server_json` in
-#   `api/hetzner.py`)
+#   `api/hetzner/`)
 # - `_busy`: a volume or Storage Box in an action
 # - `_moving`: a Floating IP that is being moved
 # - `_deleting`: a network or Storage Box that is being deleted
@@ -99,11 +101,11 @@ def now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def flag_fields(item: Record) -> dict[str, object]:
-    """Return a record as a plain dict, so a flag can be set or removed by its name.
+def fields_of(item: Record) -> dict[str, object]:
+    """Return a record as a plain dict, to set a field whose name is in a variable.
 
-    Each record type declares its own flags (records.py). But when the flag's name is
-    in a variable, mypy cannot match it to the record's fields.
+    Each record type declares its fields (records.py), flags included. But when a
+    field's name is in a variable, mypy cannot match it to the record's fields.
     """
     return cast(dict[str, object], item)
 
@@ -118,9 +120,12 @@ class Plan:
     # the slow part, run in the background; None means the change is already complete
     steps: Steps | None = None
     # more fields for the answer, next to "action" (e.g. a new root password)
-    extra: dict = field(default_factory=dict)
+    extra: dict[str, object] = field(default_factory=dict)
     # the server whose status the steps change: `act()` keeps it locked while they run
-    # (423 if another action runs); if they fail, it leaves its in-between status
+    # (423 if another action runs); if they fail, it leaves its in-between status.
+    # A plan that names another server than the resource leaves the state alone: that
+    # server is claimed only after the plan, and a 423 then must not leave a change.
+    # record: act() compares it by identity at once; run_action() reads its ID only
     server: Server | None = None
     # (id, type) of more resources the action is about (e.g. the target server)
     resources: list[tuple[int, str]] = field(default_factory=list)
@@ -149,8 +154,21 @@ class ActionSpec[R: ActionRecord]:
     answer: Literal["action", "actions"] = "action"
 
 
-# a resource's action table: {Hetzner's command: what `act()` runs for it}
-type ActionTable[R: ActionRecord] = dict[str, ActionSpec[R]]
+@dataclass(frozen=True)
+class ActionTable[R: ActionRecord]:
+    """A resource's actions, as `act()` runs them, and what they share.
+
+    A row's action holds `flag` on the resource while it runs (unless its row says
+    `flag=False`), and a second one gets 423 with `busy`. A table without a flag runs
+    its actions side by side.
+    """
+
+    # how actions name the resource (Hetzner's "server", "storage_box", ...)
+    resource_type: str
+    # {Hetzner's command: what `act()` runs for it}
+    actions: dict[str, ActionSpec[R]]
+    flag: Flag | None = None
+    busy: str = ""
 
 
 class PictureLock:
@@ -210,10 +228,30 @@ class HeldFlags:
         return flags
 
 
+@dataclass
+class Readings:
+    """What the lab reads off its VMs and load balancers while it runs.
+
+    The metrics and the targets' health come from here. It is kept in memory only,
+    not in the state: after a restart the metrics start anew. Like the state, only the
+    event loop uses it.
+    """
+
+    # each running server's counters over time (api/metrics.py)
+    vms: dict[int, deque[tuple[float, VMCounters]]] = field(default_factory=dict)
+    # each load balancer's HAProxy counters over time (api/metrics.py)
+    balancers: dict[int, deque[tuple[float, BalancerCounters]]] = field(
+        default_factory=dict
+    )
+    # each load balancer's HAProxy check status per (backend, member)
+    # (api/load_balancers.py)
+    health: dict[int, dict[tuple[str, str], str]] = field(default_factory=dict)
+
+
 class Lab:
     """The core of the lab: configuration, state, fabric, and the running actions."""
 
-    def __init__(self, cfg: dict, state: State, fabric: Fabric):
+    def __init__(self, cfg: Config, state: State, fabric: Fabric):
         """Set up the lab from its configuration, state and fabric."""
         self.cfg, self.state, self.fabric = cfg, state, fabric
         # factor on Hetzner's timings (0 = instant)
@@ -227,17 +265,14 @@ class Lab:
         # here because asyncio keeps only weak references to tasks. They are not in
         # `tasks`, so a reset does not cancel them
         self.jobs: set[asyncio.Task] = set()
+        # set while /_lab/reset empties the lab: the APIs answer 503 and the jobs
+        # skip their turn, so nothing new appears while the old is torn down
+        self.resetting = False
         # the running threads of `blocking` (a thread cannot be cancelled), each with
         # the name of its work for the log
         self.threads: dict[asyncio.Future, str] = {}
-        # each running server's counters over time (api/metrics.py): only in memory, so
-        # the metrics start anew when the lab restarts
-        self.samples: dict[int, deque[tuple[float, VMCounters]]] = {}
-        # the same for each load balancer's HAProxy
-        self.balancer_samples: dict[int, deque[tuple[float, BalancerCounters]]] = {}
-        # each load balancer's HAProxy check status per (backend, member), read by
-        # api/load_balancers.py; only in memory, like the samples
-        self.balancer_health: dict[int, dict[tuple[str, str], str]] = {}
+        # what the lab measures of its VMs and load balancers (not part of the state)
+        self.readings = Readings()
         # system image name → its file (loaded at start)
         self.images: dict[str, str] = {}
         # held while a whole picture of the system (fault sets, latency, firewall, DHCP,
@@ -371,7 +406,7 @@ class Lab:
             # the state stays small: the oldest finished actions are removed
             if len(actions) > MAX_ACTIONS:
                 finished = [
-                    aid for aid, x in actions.items() if x["status"] != "running"
+                    aid for aid, kept in actions.items() if kept["status"] != "running"
                 ]
                 for aid in finished[: len(actions) - KEPT_ACTIONS]:
                     del actions[aid]
@@ -430,6 +465,10 @@ class Lab:
         status (starting, rebuilding, ...) and gets the status its VM really has:
         running or off.
         """
+        # The flow: take the flags over; start run_steps as a task. It awaits the
+        # steps; on an error it fails the next actions and the server's in-between
+        # status; in any case end() takes the flags off and finishes the action. If
+        # the task cannot even start, end() runs here.
         flags = holding.take() if holding else []
         sid = server["id"] if server is not None else None
 
@@ -443,8 +482,7 @@ class Lab:
             message = None
             try:
                 await steps()
-            # Hetzner reports a failure through the action, and so does the lab
-            except Exception as error:
+            except Exception as error:  # reported through the action, as on Hetzner
                 log.exception("action %s failed", action["command"])
                 message = str(error)
                 for next_action in next_actions or []:
@@ -467,22 +505,15 @@ class Lab:
             raise
 
     async def act[R: ActionRecord](
-        self,
-        actions: ActionTable[R],
-        command: str,
-        item: R,
-        item_type: str,
-        body: dict,
-        flag: Flag | None = None,
-        busy_message: str = "",
+        self, table: ActionTable[R], command: str, item: R, body: dict
     ) -> dict:
         """Run one action of a resource from its table and return the answer.
 
-        The table's function (`async def`) checks the request and returns a `Plan`.
-        While the action runs, the resource holds `flag` (423 with `busy_message` if
-        the flag is set already), unless its row says `flag=False` or no `flag` is
-        given. If the plan names another server, that server holds its `_locked` flag
-        too (423 if another action runs on it).
+        The row's function (`async def`) checks the request and returns a `Plan`.
+        While the action runs, the resource holds the table's flag (423 with its
+        `busy` text if the flag is set already), unless the row says `flag=False` or
+        the table has none. If the plan names another server, that server holds its
+        `_locked` flag too (423 if another action runs on it).
 
         The flags are held through `holding()`. If the function refuses the request,
         or a flag is set already, they come off when the block ends. If the plan has no
@@ -493,17 +524,19 @@ class Lab:
         it has the action and the plan's `finished` actions under "actions" instead.
         The plan's `extra` fields follow.
         """
-        if command not in actions:
+        if command not in table.actions:
             raise unsupported(f"the action {command!r}")
-        spec = actions[command]
+        spec = table.actions[command]
         with self.holding() as held:
-            if flag and spec.flag:
-                held.claim(item, flag, busy_message)
+            if table.flag and spec.flag:
+                held.claim(item, table.flag, table.busy)
             plan = await spec.plan(self, item, body)
-            # record: compared by identity only, to the plan's server
+            # the server is known only from the plan, so it is claimed now; such a
+            # plan changes nothing yet (Plan.server)
+            # record: compared to the plan's server only; then only its ID is read
             if plan.server is not None and plan.server is not item:
                 held.claim(plan.server, "_locked", SERVER_LOCKED)
-            resources = [(item["id"], item_type), *plan.resources]
+            resources = [(item["id"], table.resource_type), *plan.resources]
             if plan.steps is None:
                 with self.state.change():  # saved once: flags off, action finished
                     held.release()
@@ -511,11 +544,41 @@ class Lab:
             else:
                 action = self.new_action(spec.name, resources)
                 self.run_action(action, plan.steps, plan.server, holding=held)
-        if spec.answer == "actions":
+        if spec.answer == "actions":  # only tables without a flag: no flag to wait for
             with self.state.change():
                 finished = [self.finished_action(*more) for more in plan.finished]
             return {"actions": [action, *finished], **plan.extra}
         return {"action": action, **plan.extra}
+
+    @staticmethod
+    @asynccontextmanager
+    async def undo_on_failure(
+        undo: Callable[[], Awaitable[None]],
+    ) -> AsyncIterator[None]:
+        """Run a block; if it fails, await `undo`, then let the error go on.
+
+        It is the one way to take back what a failed step left half done: a record
+        made before the system work, or a field changed before a sync. Only errors
+        undo. A cancelled step undoes nothing: only a lab reset (which tears everything
+        down) or the daemon stopping (which keeps the state as it is) cancels steps.
+        """
+        try:
+            yield
+        except Exception:  # only errors undo (see above)
+            await undo()
+            raise
+
+    async def put_back[R: Record](
+        self, kind: Kind[R], rid: int, field: str, old: object
+    ) -> None:
+        """Put a record's field back to `old`; for `undo_on_failure`.
+
+        A record that is gone has nothing to put back.
+        """
+        record = self.state.get(kind, rid)
+        if record is not None:
+            with self.state.change():
+                fields_of(record)[field] = old
 
     @contextmanager
     def holding(self) -> Iterator[HeldFlags]:
@@ -538,7 +601,7 @@ class Lab:
         two requests come at the same time, exactly one of them wins. Code outside
         this module claims flags through `holding()`.
         """
-        fields = flag_fields(item)
+        fields = fields_of(item)
         if fields.get(flag):
             raise locked(message)
         with self.state.change():
@@ -547,7 +610,7 @@ class Lab:
     def release(self, item: Record, flag: Flag) -> None:
         """Take a flag off a resource."""
         with self.state.change():
-            flag_fields(item).pop(flag, None)
+            fields_of(item).pop(flag, None)
 
     def clear_flags(self) -> None:
         """Take every action flag off every resource (a lab restart).
@@ -558,7 +621,7 @@ class Lab:
             for kind in RECORD_KINDS:
                 for item in self.state[kind].values():
                     for flag in FLAGS:
-                        flag_fields(item).pop(flag, None)
+                        fields_of(item).pop(flag, None)
 
     async def leave_in_between(self, sid: int) -> None:
         """Give a server whose action failed the status its VM really has.

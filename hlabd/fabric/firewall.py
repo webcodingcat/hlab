@@ -16,7 +16,7 @@ The lab's admin access (`hlab ssh` from 198.18.0.2 / 2001:db8:fffe::3) always pa
 like Hetzner's console.
 
 The API has already checked the rules (api/firewalls.py) and collected the rules of
-each server (api/desired.py). This module is a part of the fabric (see __init__.py).
+each server (api/desired/). This module is a part of the fabric (see __init__.py).
 """
 
 import ipaddress
@@ -53,7 +53,7 @@ def nft_port(port: str | None) -> str:
     return "1-65535" if port == "any" else str(port)
 
 
-def _rule_lines(rule: Rule, verdict: str) -> list[str]:
+def rule_lines(rule: Rule, verdict: str) -> list[str]:
     """Turn one Hetzner rule into nft rules (one per address family present)."""
     addrs = rule.source_ips if rule.direction == "in" else rule.destination_ips
     side = "saddr" if rule.direction == "in" else "daddr"
@@ -95,7 +95,7 @@ def ruleset(servers: list[ServerRules]) -> str:
         outbound = [r for r in rules if r.direction == "out"]
         body = [f"ip saddr {config.ADMIN} accept", f"ip6 saddr {config.ADMIN6} accept"]
         for r in inbound:
-            body += _rule_lines(r, "accept")
+            body += rule_lines(r, "accept")
         chains.append(chain(f"in_{sid}", [*body, "drop"]))
         forward.append(f'oifname "{tap}" jump in_{sid}')
         output.append(f'oifname "{tap}" jump in_{sid}')
@@ -107,7 +107,7 @@ def ruleset(servers: list[ServerRules]) -> str:
                 f"ip6 daddr {config.ADMIN6} return",
             ]
             for r in outbound:
-                body += _rule_lines(r, "return")
+                body += rule_lines(r, "return")
             chains.append(chain(f"out_{sid}", [*body, "drop"]))
             forward.insert(0, f'iifname "{tap}" jump out_{sid}')
             input_rules.append(f'iifname "{tap}" jump out_{sid}')

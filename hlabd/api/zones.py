@@ -35,7 +35,8 @@ from ..lab import ActionSpec, ActionTable, Lab, Plan, now
 from ..records import DnsRecord, RRSet, Zone
 from ..state import RRSETS, ZONES
 from . import desired, hetzner, system
-from .web import change_delete_protection, filtered, paginate, read_body, update_fields
+from .resources import change_delete_protection, update_fields
+from .web import filtered, paginate, read_body
 
 log = logging.getLogger(__name__)
 
@@ -427,17 +428,22 @@ async def change_primary_nameservers(lab: Lab, zone: Zone, body: dict) -> Plan:
 
 
 # the zone actions: Hetzner's name of the action and the function that plans it
-ZONE_ACTIONS: ActionTable[Zone] = {
-    "change_protection": ActionSpec("change_protection", change_delete_protection),
-    "change_ttl": ActionSpec("change_ttl", change_ttl),
-    "import_zonefile": ActionSpec("import_zonefile", import_zonefile),
-    "change_primary_nameservers": ActionSpec(
-        "change_primary_nameservers", change_primary_nameservers
-    ),
-}
+ZONE_ACTIONS = ActionTable[Zone](
+    "zone",
+    {
+        "change_protection": ActionSpec("change_protection", change_delete_protection),
+        "change_ttl": ActionSpec("change_ttl", change_ttl),
+        "import_zonefile": ActionSpec("import_zonefile", import_zonefile),
+        "change_primary_nameservers": ActionSpec(
+            "change_primary_nameservers", change_primary_nameservers
+        ),
+    },
+)
 
 
 # --- RRSet actions: the route puts the RRSet's (name, type) into body["rrset"] -------
+# They act on the zone (its flag, its serial) and find the RRSet in the body. Their
+# functions start with rrset_, since the zone has the same commands in this module.
 
 
 def target(lab: Lab, zone: Zone, body: dict) -> RRSet:
@@ -448,7 +454,11 @@ def target(lab: Lab, zone: Zone, body: dict) -> RRSet:
 
 
 async def rrset_change_protection(lab: Lab, zone: Zone, body: dict) -> Plan:
-    """Set or clear the RRSet's change protection."""
+    """Set or clear the RRSet's change protection.
+
+    Not through `target()`: a protected RRSet must stay changeable here, or its
+    protection could never be cleared.
+    """
     rrset = rrset_or_404(lab, zone, *body["rrset"])
     with lab.state.change():
         rrset["protection"]["change"] = bool(body["change"])
@@ -533,14 +543,19 @@ async def update_records(lab: Lab, zone: Zone, body: dict) -> Plan:
 
 
 # the RRSet actions, run on their zone
-RRSET_ACTIONS: ActionTable[Zone] = {
-    "change_protection": ActionSpec("change_rrset_protection", rrset_change_protection),
-    "change_ttl": ActionSpec("change_rrset_ttl", rrset_change_ttl),
-    "set_records": ActionSpec("set_rrset_records", set_records),
-    "add_records": ActionSpec("add_rrset_records", add_records),
-    "remove_records": ActionSpec("remove_rrset_records", remove_records),
-    "update_records": ActionSpec("update_rrset_records", update_records),
-}
+RRSET_ACTIONS = ActionTable[Zone](
+    "zone",
+    {
+        "change_protection": ActionSpec(
+            "change_rrset_protection", rrset_change_protection
+        ),
+        "change_ttl": ActionSpec("change_rrset_ttl", rrset_change_ttl),
+        "set_records": ActionSpec("set_rrset_records", set_records),
+        "add_records": ActionSpec("add_rrset_records", add_records),
+        "remove_records": ActionSpec("remove_rrset_records", remove_records),
+        "update_records": ActionSpec("update_rrset_records", update_records),
+    },
+)
 
 
 # --- routes ---------------------------------------------------------------------------
@@ -600,7 +615,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     async def zone_action(id_or_name: str, cmd: str, request: Request):
         body = await read_body(request)
         zone = zone_or_404(lab, id_or_name)
-        answer = await lab.act(ZONE_ACTIONS, cmd, zone, "zone", body)
+        answer = await lab.act(ZONE_ACTIONS, cmd, zone, body)
         await system.apply_dns(lab)
         return answer
 
@@ -674,7 +689,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     ):
         body = {**await read_body(request), "rrset": (rr_name, rr_type)}
         zone = zone_or_404(lab, id_or_name)
-        answer = await lab.act(RRSET_ACTIONS, cmd, zone, "zone", body)
+        answer = await lab.act(RRSET_ACTIONS, cmd, zone, body)
         await system.apply_dns(lab)
         # Hetzner answers update_records with 200, the other actions with 201
         return JSONResponse(answer, status_code=200 if cmd == "update_records" else 201)

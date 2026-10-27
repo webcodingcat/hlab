@@ -27,17 +27,11 @@ from ..lab import (
     now,
 )
 from ..records import Server, Volume
-from ..state import SERVERS, VOLUMES, server_by_id
+from ..state import SERVERS, VOLUMES
 from . import hetzner
 from .catalogue import catalogue_name
-from .web import (
-    change_delete_protection,
-    filtered,
-    paginate,
-    read_body,
-    ref_id,
-    update_resource,
-)
+from .resources import change_delete_protection, update_resource
+from .web import filtered, paginate, read_body, ref_id
 
 MIN_GB, MAX_GB = 10, 10240
 VOLUMES_PER_SERVER = 16
@@ -60,7 +54,9 @@ def check_room(lab: Lab, location: str, server: Server) -> None:
             422, "location_mismatch", "server and volume must be in the same location"
         )
     attached = sum(
-        1 for x in lab.state[VOLUMES].values() if x.get("server") == server["id"]
+        1
+        for other in lab.state[VOLUMES].values()
+        if other.get("server") == server["id"]
     )
     if attached >= VOLUMES_PER_SERVER:
         raise limit_exceeded(
@@ -159,18 +155,18 @@ def create_volume(lab: Lab, body: dict) -> dict:
                 lab.current(VOLUMES, vid)["status"] = "available"
 
         async def steps():
-            current = lab.current(VOLUMES, vid)
-            try:
+            async def undo():
+                # no volume stays "creating" (or attached) without its disk
+                drop_volume()
+
+            async with lab.undo_on_failure(undo):
+                current = lab.current(VOLUMES, vid)
                 await lab.blocking(
                     lab.fabric.volumes.create,
                     vid,
                     current["size"],
                     current.get("format"),
                 )
-            except Exception:  # whatever failed: undo, then re-raise
-                # no volume stays "creating" (or attached) without its disk
-                drop_volume()
-                raise
             try:
                 make_available()
             except RecordGoneError:
@@ -254,13 +250,14 @@ async def attach(lab: Lab, volume: Volume, body: dict) -> Plan:
     async def steps():
         save_attachment()
         if await lab.blocking(lab.fabric.vms.is_alive, sid):
-            try:
-                await lab.blocking(lab.fabric.volumes.attach, sid, vid)
-            except Exception:  # not attached: record that in the volume
+
+            async def undo():  # not attached: record that in the volume
                 volume_now = lab.state.get(VOLUMES, vid)  # nothing to undo if gone
                 if volume_now is not None:
                     save_detached(lab, volume_now)
-                raise
+
+            async with lab.undo_on_failure(undo):
+                await lab.blocking(lab.fabric.volumes.attach, sid, vid)
         await lab.sleep(VOLUME_SECONDS)
 
     return Plan(steps, server=server, resources=[(server["id"], "server")])
@@ -271,7 +268,7 @@ async def detach(lab: Lab, volume: Volume, body: dict) -> Plan:
     require_available(volume)
     if not volume.get("server"):
         raise invalid("the volume is not attached", "volume")
-    server = server_by_id(lab.state, volume["server"])
+    server = lab.state.get(SERVERS, volume["server"])
     vid, sid = volume["id"], server["id"] if server is not None else None
 
     async def steps():
@@ -297,7 +294,7 @@ async def resize(lab: Lab, volume: Volume, body: dict) -> Plan:
         raise invalid(
             f"must be larger than {volume['size']} and at most {MAX_GB}", "size"
         )
-    server = server_by_id(lab.state, volume["server"])
+    server = lab.state.get(SERVERS, volume["server"])
     vid, sid = volume["id"], server["id"] if server is not None else None
 
     def save_size() -> None:
@@ -314,22 +311,25 @@ async def resize(lab: Lab, volume: Volume, body: dict) -> Plan:
 
 
 # the volume actions: Hetzner's name of the action and the function that plans it
-VOLUME_ACTIONS: ActionTable[Volume] = {
-    "change_protection": ActionSpec(
-        "change_protection", change_delete_protection, flag=False
-    ),
-    "attach": ActionSpec("attach_volume", attach),
-    "detach": ActionSpec("detach_volume", detach),
-    "resize": ActionSpec("resize_volume", resize),
-}
+VOLUME_ACTIONS = ActionTable[Volume](
+    "volume",
+    {
+        "change_protection": ActionSpec(
+            "change_protection", change_delete_protection, flag=False
+        ),
+        "attach": ActionSpec("attach_volume", attach),
+        "detach": ActionSpec("detach_volume", detach),
+        "resize": ActionSpec("resize_volume", resize),
+    },
+    flag="_busy",
+    busy=VOLUME_BUSY,
+)
 
 
 async def run_volume_action(lab: Lab, vid: int, cmd: str, body: dict) -> dict:
     """Run a volume action: one at a time per volume (423 otherwise)."""
     volume = lab.get_or_404(VOLUMES, vid, "volume")
-    return await lab.act(
-        VOLUME_ACTIONS, cmd, volume, "volume", body, "_busy", VOLUME_BUSY
-    )
+    return await lab.act(VOLUME_ACTIONS, cmd, volume, body)
 
 
 # --- routes ---------------------------------------------------------------------------

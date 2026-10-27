@@ -1,9 +1,107 @@
-"""Lab configuration (hlab.yaml) with defaults."""
+"""Lab configuration (hlab.yaml) with defaults.
+
+`load()` returns a `Config`: one TypedDict per section, so mypy knows every key the
+lab reads. examples/hlab.yaml shows every setting with its default.
+"""
 
 import copy
 from pathlib import Path
+from typing import NotRequired, TypedDict, cast
 
 import yaml
+
+
+class ApiSettings(TypedDict):
+    """How the fake APIs behave: token, speed of the cloud timings, rate limit."""
+
+    token: str | None  # None: any token
+    time_scale: float
+    rate_limit: int | None  # requests per hour and token; None: no limit
+
+
+class ServerTypeEntry(TypedDict):
+    """A server type of the catalogue."""
+
+    category: str  # a key of SERVER_CATEGORIES
+    cores: int
+    memory_gb: int
+    disk_gb: int
+    traffic_tb: int
+    price_monthly: float  # EUR without VAT and IPv4
+
+
+class LocationEntry(TypedDict):
+    """A location of the catalogue; what it leaves out has Hetzner's value for fsn1."""
+
+    city: NotRequired[str]
+    country: NotRequired[str]
+    network_zone: NotRequired[str]
+
+
+class ImageEntry(TypedDict):
+    """A system image: the current release and its checksum file."""
+
+    url: str
+    checksums: str
+
+
+class StorageBoxSettings(TypedDict):
+    """The lab's Storage Box: on or off, and the space all boxes share."""
+
+    enabled: bool
+    size_gb: int
+
+
+class BoxTypeEntry(TypedDict):
+    """A Storage Box type of the catalogue."""
+
+    size_tb: int
+    snapshots: int
+    automatic_snapshots: int
+    subaccounts: int
+    price_monthly: float
+
+
+class LoadBalancerTypeEntry(TypedDict):
+    """A load balancer type of the catalogue."""
+
+    max_connections: int
+    max_services: int
+    max_targets: int
+    max_certificates: int
+    traffic_tb: int
+    price_monthly: float
+
+
+class Pricing(TypedDict):
+    """The prices of /v1/pricing besides the types', in EUR without VAT."""
+
+    vat_rate: float
+    traffic_per_tb: float
+    primary_ipv4_monthly: float
+    primary_ipv6_monthly: float
+    floating_ipv4_monthly: float
+    floating_ipv6_monthly: float
+    volume_per_gb_monthly: float
+    image_per_gb_monthly: float
+    backup_percent: float
+
+
+class Config(TypedDict):
+    """The whole configuration: hlab.yaml over the defaults."""
+
+    name: str
+    api: ApiSettings
+    memory_scale: float
+    server_types: dict[str, ServerTypeEntry]
+    locations: dict[str, LocationEntry]
+    latency_ms: dict[str, int]  # "fsn1-nbg1": round-trip time in ms
+    images: dict[str, ImageEntry]
+    load_balancer_types: dict[str, LoadBalancerTypeEntry]
+    storage_box: StorageBoxSettings
+    storage_box_types: dict[str, BoxTypeEntry]
+    pricing: Pricing
+
 
 # Hetzner's server categories and the kind of vCPU each has
 SERVER_CATEGORIES = {
@@ -12,35 +110,15 @@ SERVER_CATEGORIES = {
     "general_purpose": "dedicated",
 }
 
-# the keys every entry of a catalogue in hlab.yaml needs
-ENTRY_KEYS = {
-    "server_types": (
-        "category",
-        "cores",
-        "memory_gb",
-        "disk_gb",
-        "traffic_tb",
-        "price_monthly",
-    ),
-    "storage_box_types": (
-        "size_tb",
-        "snapshots",
-        "automatic_snapshots",
-        "subaccounts",
-        "price_monthly",
-    ),
-    "load_balancer_types": (
-        "max_connections",
-        "max_services",
-        "max_targets",
-        "max_certificates",
-        "traffic_tb",
-        "price_monthly",
-    ),
+# the TypedDict of each catalogue's entries: their keys are what an entry needs
+ENTRY_TYPES: dict[str, type] = {
+    "server_types": ServerTypeEntry,
+    "storage_box_types": BoxTypeEntry,
+    "load_balancer_types": LoadBalancerTypeEntry,
 }
 
 
-def _server_type(
+def server_type_entry(
     category: str,
     cores: int,
     memory_gb: int,
@@ -59,7 +137,7 @@ def _server_type(
     }
 
 
-def _load_balancer_type(
+def load_balancer_type_entry(
     max_connections: int,
     max_services: int,
     max_targets: int,
@@ -77,7 +155,7 @@ def _load_balancer_type(
     }
 
 
-def _box_type(size_tb: int, snapshots: int, price_monthly: float) -> dict:
+def box_type_entry(size_tb: int, snapshots: int, price_monthly: float) -> dict:
     """Return a Storage Box type entry of the defaults.
 
     On Hetzner every type allows as many automatic snapshots as manual ones, and 100
@@ -99,23 +177,23 @@ DEFAULTS: dict = {
     # Hetzner's server types in eu-central (category, cores, memory GB, disk GB,
     # included traffic TB, EUR per month without VAT and IPv4)
     "server_types": {
-        "cx23": _server_type("cost_optimized", 2, 4, 40, 20, 5.49),
-        "cx33": _server_type("cost_optimized", 4, 8, 80, 20, 8.49),
-        "cx43": _server_type("cost_optimized", 8, 16, 160, 20, 15.99),
-        "cx53": _server_type("cost_optimized", 16, 32, 320, 20, 29.49),
-        "cpx02": _server_type("regular_purpose", 1, 1, 20, 20, 5.99),
-        "cpx12": _server_type("regular_purpose", 1, 2, 40, 20, 11.49),
-        "cpx22": _server_type("regular_purpose", 2, 4, 80, 20, 19.49),
-        "cpx32": _server_type("regular_purpose", 4, 8, 160, 20, 35.49),
-        "cpx42": _server_type("regular_purpose", 8, 16, 320, 20, 69.49),
-        "cpx52": _server_type("regular_purpose", 12, 24, 480, 20, 100.49),
-        "cpx62": _server_type("regular_purpose", 16, 32, 640, 20, 129.99),
-        "ccx13": _server_type("general_purpose", 2, 8, 80, 20, 42.99),
-        "ccx23": _server_type("general_purpose", 4, 16, 160, 20, 85.99),
-        "ccx33": _server_type("general_purpose", 8, 32, 240, 30, 138.49),
-        "ccx43": _server_type("general_purpose", 16, 64, 360, 40, 275.99),
-        "ccx53": _server_type("general_purpose", 32, 128, 600, 50, 533.49),
-        "ccx63": _server_type("general_purpose", 48, 192, 960, 60, 853.49),
+        "cx23": server_type_entry("cost_optimized", 2, 4, 40, 20, 5.49),
+        "cx33": server_type_entry("cost_optimized", 4, 8, 80, 20, 8.49),
+        "cx43": server_type_entry("cost_optimized", 8, 16, 160, 20, 15.99),
+        "cx53": server_type_entry("cost_optimized", 16, 32, 320, 20, 29.49),
+        "cpx02": server_type_entry("regular_purpose", 1, 1, 20, 20, 5.99),
+        "cpx12": server_type_entry("regular_purpose", 1, 2, 40, 20, 11.49),
+        "cpx22": server_type_entry("regular_purpose", 2, 4, 80, 20, 19.49),
+        "cpx32": server_type_entry("regular_purpose", 4, 8, 160, 20, 35.49),
+        "cpx42": server_type_entry("regular_purpose", 8, 16, 320, 20, 69.49),
+        "cpx52": server_type_entry("regular_purpose", 12, 24, 480, 20, 100.49),
+        "cpx62": server_type_entry("regular_purpose", 16, 32, 640, 20, 129.99),
+        "ccx13": server_type_entry("general_purpose", 2, 8, 80, 20, 42.99),
+        "ccx23": server_type_entry("general_purpose", 4, 16, 160, 20, 85.99),
+        "ccx33": server_type_entry("general_purpose", 8, 32, 240, 30, 138.49),
+        "ccx43": server_type_entry("general_purpose", 16, 64, 360, 40, 275.99),
+        "ccx53": server_type_entry("general_purpose", 32, 128, 600, 50, 533.49),
+        "ccx63": server_type_entry("general_purpose", 48, 192, 960, 60, 853.49),
     },
     "locations": {
         "fsn1": {"city": "Falkenstein", "country": "DE", "network_zone": "eu-central"},
@@ -148,19 +226,19 @@ DEFAULTS: dict = {
     # Hetzner's load balancer types (max connections, services, targets and assigned
     # certificates, EUR per month without VAT)
     "load_balancer_types": {
-        "lb11": _load_balancer_type(10_000, 5, 25, 10, 7.49),
-        "lb21": _load_balancer_type(20_000, 15, 75, 25, 21.49),
-        "lb31": _load_balancer_type(40_000, 30, 150, 50, 42.99),
+        "lb11": load_balancer_type_entry(10_000, 5, 25, 10, 7.49),
+        "lb21": load_balancer_type_entry(20_000, 15, 75, 25, 21.49),
+        "lb31": load_balancer_type_entry(40_000, 30, 150, 50, 42.99),
     },
     "storage_box": {"enabled": True, "size_gb": 10},
     # Storage Box types of the Storage Box API (size TB, snapshots, EUR per month
     # without VAT); the API reports their size, the lab's box really holds
     # storage_box.size_gb
     "storage_box_types": {
-        "bx11": _box_type(1, 10, 3.20),
-        "bx21": _box_type(5, 20, 10.90),
-        "bx31": _box_type(10, 30, 20.80),
-        "bx41": _box_type(20, 40, 40.60),
+        "bx11": box_type_entry(1, 10, 3.20),
+        "bx21": box_type_entry(5, 20, 10.90),
+        "bx31": box_type_entry(10, 30, 20.80),
+        "bx41": box_type_entry(20, 40, 40.60),
     },
     # what /v1/pricing reports besides the types; EUR without VAT
     "pricing": {
@@ -241,7 +319,7 @@ def script_env() -> dict[str, str]:
     }
 
 
-def _merge(base: dict, over: dict) -> dict:
+def merged(base: dict, over: dict) -> dict:
     """Return `base` updated with `over`; only the settings groups merge by key."""
     out = copy.deepcopy(base)
     for k, v in (over or {}).items():
@@ -252,13 +330,13 @@ def _merge(base: dict, over: dict) -> dict:
             and isinstance(out.get(k), dict)
             and k in ("api", "storage_box", "pricing")
         ):
-            out[k] = _merge(out[k], v)
+            out[k] = merged(out[k], v)
         else:
             out[k] = copy.deepcopy(v)
     return out
 
 
-def load(path: str | Path | None) -> dict:
+def load(path: str | Path | None) -> Config:
     """Load hlab.yaml from `path` (if it exists) over the defaults.
 
     Raise ValueError on unknown settings, on a mapping where a value belongs (or the
@@ -291,10 +369,12 @@ def load(path: str | Path | None) -> dict:
                 f"{path}: {key} must be "
                 f"{'a mapping' if isinstance(default, dict) else 'a value'}"
             )
-    cfg = _merge(DEFAULTS, data)
-    for catalogue, keys in ENTRY_KEYS.items():
+    cfg = merged(DEFAULTS, data)
+    for catalogue, entry_type in ENTRY_TYPES.items():
         for name, entry in cfg[catalogue].items():
-            missing = [key for key in keys if key not in (entry or {})]
+            missing = [
+                key for key in entry_type.__annotations__ if key not in (entry or {})
+            ]
             if missing:  # older files lack the prices, for example
                 raise ValueError(
                     f"{path}: {catalogue}.{name} lacks {', '.join(missing)}"
@@ -305,7 +385,7 @@ def load(path: str | Path | None) -> dict:
                 f"{path}: server_types.{name}: unknown category {entry['category']!r} "
                 f"(known: {', '.join(SERVER_CATEGORIES)})"
             )
-    return cfg
+    return cast(Config, cfg)  # its keys and catalogue entries are checked above
 
 
 def location_pair(first: str, second: str) -> str:

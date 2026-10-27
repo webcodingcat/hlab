@@ -4,14 +4,16 @@ The lab CLI and test harnesses use it, also from inside the VMs through
 http://198.18.0.1/_lab/...
 """
 
+import logging
 import pwd
 import re
+from collections.abc import Awaitable
 
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
 
 from .. import config
-from ..errors import invalid, not_found
+from ..errors import ApiError, invalid, not_found
 from ..lab import Lab
 from ..records import Client, Fault, TargetRef
 from ..state import (
@@ -31,6 +33,8 @@ from . import desired, hetzner, system
 from .faults import drop_faults, fault_json
 from .storagebox.base import set_up_box_user, username
 from .web import read_body
+
+log = logging.getLogger(__name__)
 
 # the fields of each fault type, with their defaults (None: required). The field "vm"
 # names a server or a client.
@@ -350,55 +354,90 @@ async def add_box_user(lab: Lab, body: dict) -> dict:
 
 
 async def reset_lab(lab: Lab) -> dict:
-    """Remove everything the APIs created.
+    """Remove everything the APIs created; answer which teardown steps failed.
 
     That is servers (VMs and disks), networks, keys, firewalls, Floating IPs, volumes,
     images, DNS zones, certificates, load balancers, Storage Boxes with their data,
-    clients and faults. System images, the lab key and
-    the Storage Box accounts made through /_lab/box/users stay. IDs keep counting up,
-    as on Hetzner, so no old ID matches a new resource.
+    clients and faults. System images, the lab key and the Storage Box accounts made
+    through /_lab/box/users stay. IDs keep counting up, as on Hetzner, so no old ID
+    matches a new resource.
+
+    While it runs, the APIs answer 503 and the background jobs pause, and a second
+    reset is refused. A step that fails is logged and the others go on, so the lab
+    ends empty anyway; "failed" names those steps.
     """
+    if lab.resetting:
+        raise ApiError(409, "conflict", "the lab is being reset already")
+    lab.resetting = True
+    try:
+        failed = await tear_down(lab)
+    finally:
+        lab.resetting = False
+    return {"ok": not failed, "failed": failed}
+
+
+async def tear_down(lab: Lab) -> list[str]:
+    """Tear down what the state holds, then empty it; return the steps that failed."""
     state, fabric = lab.state, lab.fabric
+    failed: list[str] = []
+
+    async def step(what: str, work: Awaitable[object]) -> None:
+        try:
+            await work
+        except Exception as error:  # the reset goes on; the step is reported
+            log.exception("reset: %s", what)
+            failed.append(f"{what}: {error}")
+
     # no old action may start a VM or change the state while the lab is emptied
     await lab.stop_actions()
-    # copies: the loops below run scripts, so the state may change in between; what
-    # was there is torn down as it was last seen, gone from the state or not
+    # copies: the loops below run scripts; what was there is torn down as it was
+    # last seen, gone from the state or not
     servers = list(state[SERVERS].values())  # record: torn down as last seen
     volumes = list(state[VOLUMES].values())  # record: torn down as last seen
     subaccounts = list(state[SUBACCOUNTS].values())  # record: torn down as last seen
     boxes = list(state[STORAGE_BOXES].values())  # record: torn down as last seen
     routed = [f["ip"] for f in state[FLOATING_IPS].values() if f.get("server")]
-    clients = list(state[CLIENTS].values())
+    clients = list(state[CLIENTS].values())  # record: torn down as last seen
     images = list(state[IMAGES])
     networks = list(state[NETWORKS])
     for server in servers:
-        await system.delete_vm(lab, server)
+        await step(f"server {server['id']}", system.delete_vm(lab, server))
     for volume in volumes:
-        await lab.blocking(fabric.volumes.delete, volume["id"])
+        await step(
+            f"volume {volume['id']}", lab.blocking(fabric.volumes.delete, volume["id"])
+        )
     for subaccount in subaccounts:
-        await lab.blocking(fabric.box.remove_account, subaccount["username"])
+        user = subaccount["username"]
+        await step(f"account {user}", lab.blocking(fabric.box.remove_account, user))
     for box in boxes:
-        await lab.blocking(fabric.box.remove_account, username(box["id"]))
-        await lab.blocking(fabric.box.remove_box_data, box["id"])
+        user = username(box["id"])
+        await step(f"account {user}", lab.blocking(fabric.box.remove_account, user))
+        await step(
+            f"Storage Box {box['id']}",
+            lab.blocking(fabric.box.remove_box_data, box["id"]),
+        )
     for ip in routed:
-        await system.route_floating_ip(lab, ip, None)
+        await step(f"route of {ip}", system.route_floating_ip(lab, ip, None))
     for client in clients:
-        await system.remove_client(lab, client)
+        await step(f"client {client['name']}", system.remove_client(lab, client))
     for iid in images:
-        await lab.blocking(fabric.vms.delete_image, iid)
+        await step(f"image {iid}", lab.blocking(fabric.vms.delete_image, iid))
     state.clear()
     await lab.blocking(state.flush)  # the empty lab is on disk before the answer
     lab.clear_api_fault()
     # a VM the state no longer knows (e.g. one whose server's creation was cut short)
-    await lab.blocking(fabric.vms.kill_all)
+    await step("VMs", lab.blocking(fabric.vms.kill_all))
     for nid in networks:  # clear the tables of the deleted networks
-        await system.drop_cloud_network(lab, nid)
-    await system.write_dhcp(lab)
-    await system.apply_dns(lab)
-    await system.apply_load_balancers(lab)  # stops them all
-    await system.apply_faults(lab)
-    await system.apply_firewall(lab)
-    return {"ok": True}
+        await step(f"network {nid}", system.drop_cloud_network(lab, nid))
+    for what, picture in (
+        ("DHCP", system.write_dhcp),
+        ("DNS", system.apply_dns),
+        ("load balancers", system.apply_load_balancers),  # stops them all
+        ("faults", system.apply_faults),
+        ("firewall", system.apply_firewall),
+    ):
+        await step(what, picture(lab))
+    return failed
 
 
 # --- routes ---------------------------------------------------------------------------

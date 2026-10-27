@@ -16,12 +16,14 @@ the API endpoints differ.
 | Lab control (faults, clients, ...) | `http://198.18.0.1/_lab/...` |
 | Network namespace to reach VMs | `docker run --network container:hlab-<name> ...` |
 
-`hlab env` prints these as shell variables (`HCLOUD_ENDPOINT`, `HCLOUD_TOKEN`, `HETZNER_ENDPOINT`, ...).
+`hlab env` prints these as shell variables (`HCLOUD_ENDPOINT`, `HCLOUD_TOKEN`, `HETZNER_ENDPOINT`,
+`HLAB_ACME_DIRECTORY`, `HLAB_ACME_CA`, ...).
 
 ## Requirements
 
 Docker with `/dev/kvm` (Linux, or Docker Desktop on Windows with WSL2). Check:
-`docker run --rm --device /dev/kvm alpine ls -l /dev/kvm`.
+`docker run --rm --device /dev/kvm alpine ls -l /dev/kvm`. On Windows run `bin/hlab` from Git Bash or WSL; the unit
+tests run there through Docker (`bin/hlab test`), not from a local venv.
 
 ## Use
 
@@ -31,16 +33,15 @@ bin/hlab -c examples/hlab.yaml status    # servers, Floating IPs, clients, fault
 bin/hlab -c examples/hlab.yaml logs      # what the lab does: requests, actions, VMs
 bin/hlab -c examples/hlab.yaml down      # stop; disks and state stay in the volume hlab-demo
 bin/hlab -c examples/hlab.yaml purge     # stop and delete the volume
-bin/hlab test                           # style checks (STYLE.md) and unit tests (no VMs)
+bin/hlab lint                           # style checks (STYLE.md)
+bin/hlab test                           # style checks and unit tests (no VMs)
 bin/hlab format                         # apply what the formatters can fix
 bin/hlab -c examples/hlab.yaml itest     # live tests with VMs (resets the lab, ~15 min)
-tests/tofu-smoke/run.sh                # OpenTofu with the hcloud provider against a running lab
+tests/tofu-smoke/run.sh                # OpenTofu with the hcloud provider against the running lab
 ```
 
-On Windows run `bin/hlab` from Git Bash or WSL.
-
-The OS images are those listed in `hlab.yaml` (URL and checksum file); the lab loads them when it starts. Servers
-are created through the API, for example with OpenTofu:
+`examples/hlab.yaml` shows every setting: the catalogue (types, locations, OS images, prices), timings, the Storage
+Box. Servers are created through the API, for example with OpenTofu:
 
 ```bash
 eval "$(bin/hlab env)"
@@ -70,57 +71,36 @@ bin/hlab reset                            # delete everything the APIs created
 
 ## What it does
 
-- **Servers** boot through cloud-init's Hetzner datasource (SMBIOS, metadata, DHCP on `eth0`, IPv6 from the
-  metadata), with Hetzner's timings for power actions and `locked` (423) while an action runs. Rebuild,
-  `change_type`, `reset_password` (guest agent), reverse DNS, primary IPs, SSH keys. Placement groups (`spread`,
-  Hetzner's limits; the lab has one host, so they place nothing).
-- **Images**: snapshots and backups of a server's disk (`create_image`, also of a running server: shut it down for a
-  consistent image, as on Hetzner), servers created or rebuilt from them, daily backups at 22:00 UTC with seven
-  slots while enabled, backups converted to snapshots, delete protection.
-- **Metrics**: CPU, disk and public network of running servers (`/servers/{id}/metrics`) and the metrics of load
-  balancers, sampled every 15 seconds.
-  The lab keeps them for a day and in memory only: they start anew when the lab restarts (Hetzner keeps 30 days).
-- **DNS zones**: zones and RRSets of the DNS API (all record types, zone file export and import, protection, Hetzner's
-  SOA and nameservers, the serial counted on). The lab's resolver answers for them inside the lab, so servers,
-  clients and tools see a change at once.
-- **ACME**: Pebble, Let's Encrypt's test server, issues certificates inside the lab. It checks DNS-01 against the DNS
-  zones and HTTP-01 (port 80) and TLS-ALPN-01 (port 443) on the servers; those checks come from `192.0.2.2`, so a
-  Cloud firewall must let them in. `HLAB_ACME_DIRECTORY` and `HLAB_ACME_CA` (`hlab env`) tell clients where it is
-  and what to trust: the lab CA, which signs the directory's HTTPS and stays, and Pebble's root, which is new after
-  every start of the lab.
-- **Certificates and load balancers**: uploaded certificates, and managed ones that the lab issues at its ACME
-  server through DNS-01 in the DNS zones (as on Hetzner, each domain needs a zone). Load balancers (lb11, lb21, lb31)
-  with TCP, HTTP and HTTPS services, servers, label selectors and IPs as targets, health checks, sticky sessions and
-  the redirect to HTTPS: HAProxy runs each one in a network namespace of its own with public IPv4 and IPv6. The
-  targets see the load balancer's address; the client's address reaches them through the PROXY protocol or in
-  `X-Forwarded-For` (with `-Proto` and `-Port`). A load balancer joins a cloud network like a server (targets with
-  `use_private_ip`), can switch its public interface off, and has Hetzner's metrics (open connections, connections
-  and requests per second, bandwidth).
-- **Networks**: cloud networks with subnets and routes (pushed by DHCP, forwarded to the gateway server), alias IPs,
-  hot-plugged NICs, overlapping networks; Floating IPs routed to their server; firewalls with Hetzner's semantics;
-  latency between locations. A server sends only from its own public addresses, so the source a server sees is the
-  real client IP.
-- **Volumes**: SCSI disks as `/dev/disk/by-id/scsi-0HC_Volume_<id>`, hot-plugged, formatted on request, resized,
-  automounted.
-- **Storage Box**: boxes, sub-accounts, snapshots and plans, rollback and access settings through the API; SFTP on
-  port 22 (always on, keys in RFC4716 format), SFTP and commands (`rsync`, `scp`, `borg`, ...) on port 23 (with
-  `ssh_enabled`, keys in OpenSSH format); snapshots under `/home/.zfs/snapshot`. A plain SFTP rename never overwrites.
-- **Catalogue and prices**: Hetzner's x86 server types of `eu-central` (CX, CPX, CCX) and Storage Box types with
-  their prices from `hlab.yaml`, and `/v1/pricing`.
+- **Servers**: boot through cloud-init's Hetzner datasource, Hetzner's timings and `locked` (423), rebuild, type
+  change, password reset, reverse DNS, primary IPs, SSH keys, placement groups.
+- **Images**: snapshots and backups (daily, seven slots), servers created or rebuilt from them.
+- **Networks**: cloud networks with subnets, routes and alias IPs, hot-plugged NICs, Floating IPs, firewalls with
+  Hetzner's semantics, latency between locations. Servers see the real client IP.
+- **Volumes**: hot-plugged SCSI disks, formatted, resized, automounted.
+- **Load balancers**: TCP, HTTP and HTTPS on HAProxy, servers, label selectors and IPs as targets, health checks,
+  private networks; the real client IP through the PROXY protocol or `X-Forwarded-For`.
+- **Certificates**: uploaded, or managed: issued by the lab's ACME server (Pebble) through DNS-01 in the DNS zones.
+- **DNS zones**: zones and RRSets, zone files, served by the lab's resolver inside the lab.
+- **Storage Box**: boxes, sub-accounts, snapshots and plans through the API; SFTP on port 22, SSH commands (`rsync`,
+  `borg`, ...) on port 23.
+- **Metrics** of servers and load balancers, **prices** and the **catalogue** of Hetzner's x86 types in
+  `eu-central`.
 - **Compatibility** is checked by the tests: every API response against Hetzner's OpenAPI specification, and the
-  OpenTofu smoke test with Hetzner's own provider (an empty second plan, a clean destroy).
+  OpenTofu smoke test with Hetzner's own provider.
 
 ### Not like Hetzner
 
-- Not offered: rescue, ISOs, console. Samba and WebDAV of Storage Boxes are only reported.
-- Managed certificates are not renewed (Pebble's last five years). A load balancer is in one cloud network at most.
-- Only the network zone `eu-central` and x86: no locations in the US or Asia, no Arm types (CAX), not even in the
-  catalogue. Every server type is offered in every location.
-- DNS zones in primary mode only (secondary zones are refused). As on Hetzner, a zone is a domain right below a
-  well-known public suffix (`example.com`, not `example.test`); inside the lab it hides the real domain. Nothing
-  delegates to the lab, so `delegation_status` stays `unknown`.
-- No IPv6 to the real Internet, no vSwitch. All Storage Boxes share `storage_box.size_gb`; SCP on port 22 only
-  through SFTP (OpenSSH's default).
+- Not offered: rescue, ISOs, console, vSwitch, IPv6 to the real Internet. Samba and WebDAV of Storage Boxes are only
+  reported.
+- Only the network zone `eu-central` and x86 (no CAX), not even in the catalogue; every server type is offered in
+  every location.
+- DNS zones in primary mode only. A zone is a domain right below a well-known public suffix (`example.com`, not
+  `example.test`) and hides the real domain inside the lab.
+- ACME: checks come from `192.0.2.2`, so a Cloud firewall must let them in; Pebble's root is new after every start
+  of the lab (`HLAB_ACME_CA` has the current one). Managed certificates are not renewed (they last five years).
+- A load balancer is in one cloud network at most.
+- Metrics reach back one day and start anew when the lab restarts (Hetzner keeps 30 days).
+- All Storage Boxes share `storage_box.size_gb`; SCP on port 22 only through SFTP (OpenSSH's default).
 - A server's `locked` is true while one of its actions runs; on Hetzner it marks an administrative lock. Wait for the
   action instead.
 - A test lab, not a hosting platform: the guests run your own code. The lab keeps the Docker host and its network

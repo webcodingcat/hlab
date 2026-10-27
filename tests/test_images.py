@@ -2,7 +2,7 @@
 
 from conftest import change_state, create_server, state_of, wait_action
 
-from hlabd.api import images
+from hlabd.api import images, servers
 from hlabd.state import IMAGES
 
 
@@ -107,7 +107,7 @@ def test_daily_backups_are_taken_for_servers_with_backups(api):
     with_backups = create_server(api, "a")["server"]["id"]
     create_server(api, "b")
     server_action(api, with_backups, "enable_backup")
-    api.on_loop(images.take_daily_backups, api.lab)
+    api.on_loop(servers.take_daily_backups, api.lab)
     taken = api.get("/v1/images", params={"type": "backup"}).json()["images"]
     wait_action(
         api,

@@ -11,7 +11,8 @@ from ..lab import Lab, now
 from ..records import SSHKey
 from ..state import SSH_KEYS
 from . import hetzner
-from .web import filtered, paginate, read_body, update_resource
+from .resources import update_resource
+from .web import filtered, paginate, read_body
 
 
 def ssh_fingerprint(public_key: str) -> str:
@@ -31,16 +32,21 @@ def ssh_fingerprint(public_key: str) -> str:
     return ":".join(digest[i : i + 2] for i in range(0, 32, 2))
 
 
+def checked_public_key(public_key: str, field: str) -> str:
+    """Return the fingerprint of a public key, or raise invalid_input for `field`."""
+    try:
+        return ssh_fingerprint(public_key)
+    # binascii.Error, ValueError, ...: whatever a broken key raises, it is invalid
+    except Exception:  # noqa: BLE001
+        raise invalid("invalid public key", field) from None
+
+
 def create_ssh_key(lab: Lab, body: dict) -> dict:
     """Create an SSH key; as on Hetzner, names and fingerprints must be unique."""
     state = lab.state
     if not body.get("name") or not body.get("public_key"):
         raise invalid("name and public_key are required")
-    try:
-        fingerprint = ssh_fingerprint(body["public_key"])
-    # binascii.Error, ValueError, ...: whatever a broken key raises, it is invalid
-    except Exception:  # noqa: BLE001
-        raise invalid("invalid public key") from None
+    fingerprint = checked_public_key(body["public_key"], "public_key")
     with state.change():
         ssh_keys = state[SSH_KEYS].values()
         check_unique_name(

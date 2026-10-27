@@ -6,7 +6,7 @@ is a part of the fabric (see __init__.py). It asks the VMs (vm.py) whether a ser
 runs.
 
 The API computes from the state what the sets hold and how each tap is shaped
-(api/desired.py). This part only puts that in place.
+(api/desired/). This part only puts that in place.
 """
 
 import logging

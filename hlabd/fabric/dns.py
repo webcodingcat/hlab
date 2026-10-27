@@ -3,7 +3,7 @@
 A part of the fabric (see __init__.py). The resolver (dnsmasq on the services
 address, handed to every server by DHCP) answers the lab's own names and sends
 questions about a zone to NSD, which serves the zone files the API renders
-(api/desired.py, `zone_files`). Other names go to the Docker host's resolver.
+(api/desired/, `zone_files`). Other names go to the Docker host's resolver.
 """
 
 import threading

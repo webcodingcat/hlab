@@ -13,8 +13,9 @@
 #                                      live tests with VMs in the running lab
 #                                      (resets it first)
 #   bin/hlab [-c hlab.yaml] box <arguments>
-#                                      the Storage Box inside the lab; "box user
-#                                      <name> <key file>" reads the key file here
+#                                      the Storage Box inside the lab; "box
+#                                      user <name> <key file>" reads the key
+#                                      file here
 #   bin/hlab [-c hlab.yaml] <command>  any other command runs inside the lab:
 #                                      status, env, ssh, fault, client, ...
 # The configuration defaults to $HLAB_CONFIG or ./hlab.yaml; without a file

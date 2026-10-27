@@ -23,14 +23,15 @@ from ..labels import firewall_servers
 from ..records import Firewall, FirewallRule
 from ..state import FIREWALLS, SERVERS, primary_address_of
 from . import hetzner, system
-from .web import filtered, paginate, read_body, update_resource
+from .resources import update_resource
+from .web import filtered, paginate, read_body
 
 FIREWALLS_PER_SERVER = 5
 PROTOCOLS = ("tcp", "udp", "icmp", "esp", "gre")
 MAX_RULES = 50  # per firewall (Hetzner: 50 entries, 500 effective rules)
 
 
-def checked_rules(rules) -> list[FirewallRule]:
+def checked_rules(rules: object) -> list[FirewallRule]:
     """Check rules like Hetzner's API (422 if one is wrong); return them normalised.
 
     Normalised rules have exactly Hetzner's fields. No rules give an empty list.
@@ -282,21 +283,24 @@ async def remove_from_resources(lab: Lab, firewall: Firewall, body: dict) -> Pla
     return Plan(resources=server_resources(removed))
 
 
-FIREWALL_ACTIONS: ActionTable[Firewall] = {
-    "set_rules": ActionSpec("set_firewall_rules", set_rules, answer="actions"),
-    "apply_to_resources": ActionSpec(
-        "apply_firewall", apply_to_resources, answer="actions"
-    ),
-    "remove_from_resources": ActionSpec(
-        "remove_firewall", remove_from_resources, answer="actions"
-    ),
-}
+FIREWALL_ACTIONS = ActionTable[Firewall](
+    "firewall",
+    {
+        "set_rules": ActionSpec("set_firewall_rules", set_rules, answer="actions"),
+        "apply_to_resources": ActionSpec(
+            "apply_firewall", apply_to_resources, answer="actions"
+        ),
+        "remove_from_resources": ActionSpec(
+            "remove_firewall", remove_from_resources, answer="actions"
+        ),
+    },
+)
 
 
 async def run_firewall_action(lab: Lab, fid: int, cmd: str, body: dict) -> dict:
     """Run a firewall action, then rewrite the firewall rules; return the actions."""
     firewall = lab.get_or_404(FIREWALLS, fid, "firewall")
-    answer = await lab.act(FIREWALL_ACTIONS, cmd, firewall, "firewall", body)
+    answer = await lab.act(FIREWALL_ACTIONS, cmd, firewall, body)
     await system.apply_firewall(lab)
     return answer
 
