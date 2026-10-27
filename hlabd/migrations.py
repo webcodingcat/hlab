@@ -72,12 +72,19 @@ def migrate_3_to_4(data: dict[str, Any]) -> None:
         snapshot.setdefault("size", 0)
 
 
+def migrate_4_to_5(data: dict[str, Any]) -> None:
+    """Give every server `placement_group`; placement groups did not exist before."""
+    for server in data.get("servers", {}).values():
+        server.setdefault("placement_group", None)
+
+
 # the migrations in order: MIGRATIONS[n] takes the state from version n to n + 1
 MIGRATIONS: tuple[Migration, ...] = (
     migrate_0_to_1,
     migrate_1_to_2,
     migrate_2_to_3,
     migrate_3_to_4,
+    migrate_4_to_5,
 )
 # the version that this hlabd writes
 STATE_VERSION = len(MIGRATIONS)

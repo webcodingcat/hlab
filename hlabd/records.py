@@ -74,6 +74,7 @@ class Server(TypedDict):
     protection: ServerProtection
     user_data: str | None
     public_keys: list[str]  # the SSH keys it was made with
+    placement_group: int | None  # the ID of its placement group
     _lab: ServerLab
     # its primary IPs (IDs); set right after it is made, None when it has none
     ipv4_id: NotRequired[int | None]
@@ -109,6 +110,16 @@ class SSHKey(TypedDict):
     name: str
     fingerprint: str  # MD5, unique in the project
     public_key: str
+    labels: dict[str, str]
+    created: str
+
+
+class PlacementGroup(TypedDict):
+    """A placement group; its servers name it (`Server.placement_group`)."""
+
+    id: int
+    name: str
+    type: str  # "spread", the only type Hetzner has
     labels: dict[str, str]
     created: str
 
@@ -289,6 +300,7 @@ Record = (
     | CloudNetwork
     | Firewall
     | SSHKey
+    | PlacementGroup
     | StorageBox
     | Subaccount
     | BoxSnapshot

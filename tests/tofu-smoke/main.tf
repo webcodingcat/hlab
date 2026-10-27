@@ -46,6 +46,12 @@ resource "hcloud_firewall" "web" {
   }
 }
 
+resource "hcloud_placement_group" "spread" {
+  name   = "smoke-spread"
+  type   = "spread"
+  labels = { cluster = "smoke" }
+}
+
 resource "hcloud_server" "node" {
   for_each = { a = "fsn1", b = "nbg1" }
 
@@ -56,6 +62,8 @@ resource "hcloud_server" "node" {
   ssh_keys    = [hcloud_ssh_key.admin.id]
   labels      = { cluster = "smoke" }
   user_data   = "#cloud-config\nwrite_files:\n  - path: /etc/smoke\n    content: ok\n"
+
+  placement_group_id = hcloud_placement_group.spread.id
 
   network {
     network_id = hcloud_network.net.id

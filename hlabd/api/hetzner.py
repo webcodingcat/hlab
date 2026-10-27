@@ -13,12 +13,21 @@ from ..records import (
     DnsPtr,
     Firewall,
     FloatingIP,
+    PlacementGroup,
     PrimaryIP,
     Server,
     SSHKey,
     Volume,
 )
-from ..state import FIREWALLS, FLOATING_IPS, VOLUMES, nics_in, primary_ip_of
+from ..state import (
+    FIREWALLS,
+    FLOATING_IPS,
+    PLACEMENT_GROUPS,
+    SERVERS,
+    VOLUMES,
+    nics_in,
+    primary_ip_of,
+)
 
 CREATED = "2026-01-01T00:00:00+00:00"  # catalogue entries
 TB = 1024**4  # Hetzner counts traffic in binary terabytes
@@ -288,7 +297,11 @@ def server_json(lab: Lab, server: Server) -> dict:
         "volumes": volumes,
         "load_balancers": [],
         "primary_disk_size": server["_lab"]["disk_gb"],
-        "placement_group": None,
+        "placement_group": placement_group_json(
+            lab, lab.state[PLACEMENT_GROUPS][server["placement_group"]]
+        )
+        if server["placement_group"]
+        else None,
     }
 
 
@@ -320,6 +333,22 @@ def ssh_key_json(lab: Lab, ssh_key: SSHKey) -> dict:
         "public_key": ssh_key["public_key"],
         "labels": ssh_key["labels"],
         "created": ssh_key["created"],
+    }
+
+
+def placement_group_json(lab: Lab, group: PlacementGroup) -> dict:
+    """Return the API object of a placement group, with the IDs of its servers."""
+    return {
+        "id": group["id"],
+        "name": group["name"],
+        "labels": group["labels"],
+        "type": group["type"],
+        "created": group["created"],
+        "servers": [
+            sid
+            for sid, server in sorted(lab.state[SERVERS].items())
+            if server["placement_group"] == group["id"]
+        ],
     }
 
 

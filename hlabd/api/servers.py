@@ -43,7 +43,7 @@ from ..lab import (
 )
 from ..records import Action, Server, Volume
 from ..state import FIREWALLS, FLOATING_IPS, MAX_SERVERS, SERVERS, SSH_KEYS, VOLUMES
-from . import hetzner, nics, primary_ips, system, volumes
+from . import hetzner, nics, placement_groups, primary_ips, system, volumes
 from .catalogue import by_name_or_id, catalogue_name, image_path
 from .faults import drop_faults
 from .spec import hostname_ok
@@ -86,6 +86,7 @@ class ServerRequest:
     firewall_ids: list[int]
     volumes: list[Volume]
     network_ids: list[int]
+    placement_group: int | None
     automount: bool
     start: bool
 
@@ -162,6 +163,7 @@ def checked_server_request(lab: Lab, body: dict) -> ServerRequest:
             f"at most {volumes.VOLUMES_PER_SERVER} volumes per server",
             "volumes_per_server",
         )
+    group = body.get("placement_group")
     return ServerRequest(
         name=name,
         server_type=stype,
@@ -174,6 +176,9 @@ def checked_server_request(lab: Lab, body: dict) -> ServerRequest:
         firewall_ids=firewall_ids,
         volumes=given_volumes,
         network_ids=[ref_id(n, "networks") for n in body.get("networks") or []],
+        placement_group=None
+        if group is None
+        else placement_groups.checked_group(lab, group, "placement_group"),
         automount=bool(body.get("automount", False)),
         start=bool(body.get("start_after_create", True)),
     )
@@ -200,6 +205,10 @@ def record_server(
         for fid in request.firewall_ids:
             if fid not in state[FIREWALLS]:
                 raise invalid(f"firewall {fid} not found", "firewalls")
+        if request.placement_group:  # check again: it may have filled up or gone
+            placement_groups.checked_group(
+                lab, request.placement_group, "placement_group"
+            )
         server = new_server(lab, request, state.new_id(SERVERS), index)
         for volume in request.volumes:
             # check again: a volume action may have started since the first check,
@@ -241,6 +250,7 @@ def new_server(lab: Lab, request: ServerRequest, sid: int, index: int) -> Server
         "protection": {"delete": False, "rebuild": False},
         "user_data": request.user_data,
         "public_keys": request.public_keys,
+        "placement_group": request.placement_group,
         "_lab": {
             "index": index,
             "tap": f"pub{index}",
@@ -596,6 +606,12 @@ SERVER_ACTIONS: ActionTable[Server] = {
     "attach_to_network": ActionSpec("attach_to_network", nics.attach_to_network),
     "detach_from_network": ActionSpec("detach_from_network", nics.detach_from_network),
     "change_alias_ips": ActionSpec("change_alias_ips", nics.change_alias_ips),
+    "add_to_placement_group": ActionSpec(
+        "add_to_placement_group", placement_groups.add_to_placement_group
+    ),
+    "remove_from_placement_group": ActionSpec(
+        "remove_from_placement_group", placement_groups.remove_from_placement_group
+    ),
 }
 
 

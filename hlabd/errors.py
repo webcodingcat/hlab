@@ -107,6 +107,20 @@ def resource_in_use(message: str) -> ApiError:
     return ApiError(422, "resource_in_use", message)
 
 
+def placement_error(message: str) -> ApiError:
+    """Return a 422 placement_error (the placement group cannot take the server)."""
+    return ApiError(422, "placement_error", message)
+
+
+def already_in_placement_group() -> ApiError:
+    """Return a 422 already_in_placement_group error."""
+    return ApiError(
+        422,
+        "already_in_placement_group",
+        "the server is already part of a placement group",
+    )
+
+
 def firewall_resource_not_found(sid, status: int) -> ApiError:
     """Return a firewall_resource_not_found error for a server.
 

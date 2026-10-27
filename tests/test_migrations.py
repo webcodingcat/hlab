@@ -14,6 +14,7 @@ from hlabd.migrations import (
     migrate_1_to_2,
     migrate_2_to_3,
     migrate_3_to_4,
+    migrate_4_to_5,
 )
 from hlabd.state import BOX_SNAPSHOTS, SERVERS, State
 
@@ -87,6 +88,12 @@ def test_3_to_4_fills_in_public_keys_and_snapshot_sizes():
     assert data["box_snapshots"]["16000001"]["size"] == 0
 
 
+def test_4_to_5_puts_old_servers_in_no_placement_group():
+    data = old_state()
+    migrate_4_to_5(data)
+    assert data["servers"]["1000001"]["placement_group"] is None
+
+
 def test_the_steps_take_a_file_without_the_kinds_they_change():
     data: dict = {}
     for step in MIGRATIONS:
@@ -102,6 +109,7 @@ def test_a_file_without_a_version_is_migrated_from_0_to_now(tmp_path):
     assert "locked" not in server
     assert server["_lab"]["target"] == "running"
     assert server["public_keys"] == []
+    assert server["placement_group"] is None
     assert state[BOX_SNAPSHOTS][16000001]["size"] == 0
     assert state.data["faults"][0]["first_ref"] == {"server": 1000001}
     assert state.data["version"] == STATE_VERSION
