@@ -147,4 +147,8 @@ resource "hcloud_load_balancer_service" "https" {
     certificates  = [hcloud_managed_certificate.smoke.id]
     redirect_http = true
   }
+
+  # One action at a time per load balancer: a second one gets "locked" (423),
+  # which the hcloud provider does not retry.
+  depends_on = [hcloud_load_balancer_target.nodes]
 }
