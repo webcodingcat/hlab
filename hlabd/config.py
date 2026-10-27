@@ -150,8 +150,11 @@ ROOT = Path("/hlab")
 GATEWAY = "172.31.1.1"  # Hetzner's public gateway, on-link on every server
 # the lab's services use the benchmarking range 198.18.0.0/15
 SERVICES_NET = "198.18.0.0/15"
-SERVICES = "198.18.0.1"  # fake Cloud API (port 80), Storage Box (ports 22, 23), DNS
+SERVICES = "198.18.0.1"  # Cloud API (80), Storage Box (22, 23), DNS, ACME (14000)
 HETZNER_API = "198.18.0.3"  # fake api.hetzner.com (Storage Boxes), port 80
+# the ACME server (Pebble) on the services address, under this name of the lab resolver
+ACME_NAME = "acme.hlab"
+ACME_PORT = 14000
 METADATA = "169.254.169.254"
 # where fe80::a9fe:a9fe is DNATed to: the metadata service only
 METADATA6 = "2001:db8:fffe::a9fe"

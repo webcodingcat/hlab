@@ -21,6 +21,7 @@ constructor:
 | `firewall` (`Firewall`) | firewall.py | shell |
 | `box` (`Box`) | storagebox.py | shell (the Storage Box) |
 | `dns` (`Dns`) | dns.py | shell (the lab resolver, NSD for the DNS zones) |
+| `acme` (`Acme`) | acme.py | shell (Pebble, the lab CA) |
 
 The address rules (MACs, gateways, routing tables) are plain functions in addresses.py.
 Work that spans several parts, such as a VM's start and stop with its taps, volumes,
@@ -30,6 +31,7 @@ routes and faults, is put together by the API (api/system.py).
 import threading
 from pathlib import Path
 
+from .acme import Acme
 from .dns import Dns
 from .faults import Faults
 from .firewall import Firewall
@@ -63,3 +65,4 @@ class Fabric:
         self.firewall = Firewall(root, self.shell, self.net_lock)
         self.box = Box(self.shell)
         self.dns = Dns(root, self.shell)
+        self.acme = Acme(root, self.shell)

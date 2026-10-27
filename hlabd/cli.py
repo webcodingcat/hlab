@@ -67,6 +67,9 @@ def env() -> None:
         ("HLAB_METADATA", f"http://{config.METADATA}/hetzner/v1/metadata"),
         ("HLAB_SERVICES6", config.SERVICES6),
         ("HETZNER_ENDPOINT", f"http://{config.HETZNER_API}/v1"),
+        # the lab's ACME server, and the certificates that clients of it trust
+        ("HLAB_ACME_DIRECTORY", f"https://{config.ACME_NAME}:{config.ACME_PORT}/dir"),
+        ("HLAB_ACME_CA", f"{CONTROL}/acme/ca.pem"),
     ):
         print(f"export {k}={shlex.quote(str(v))}")
 

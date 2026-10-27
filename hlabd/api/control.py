@@ -8,6 +8,7 @@ import pwd
 import re
 
 from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse
 
 from .. import config
 from ..errors import invalid, not_found
@@ -402,6 +403,12 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     @app.get("/_lab/status")
     async def status_get():
         return await status(lab)
+
+    @app.get("/_lab/acme/ca.pem")
+    async def acme_ca():
+        # the lab CA (Pebble's HTTPS) and Pebble's current root and intermediate
+        bundle = await lab.blocking(lab.fabric.acme.ca_bundle)
+        return PlainTextResponse(bundle, media_type="application/x-pem-file")
 
     @app.post("/_lab/faults")
     async def fault_create(request: Request):

@@ -395,6 +395,19 @@ start_nsd() {
   nsd -c "${conf_file}"
 }
 
+# start_pebble <config file> <dns server>: (Re)start Pebble, the lab's ACME
+# server, in the background. It never sleeps before a validation and never
+# rejects a nonce at random (both are on in Pebble's defaults, to test clients).
+# Its log goes to the container's log.
+start_pebble() {
+  local conf_file="$1" dns_server="$2" pid_file=/run/pebble.pid
+  stop_pid "${pid_file}" pebble
+  PEBBLE_VA_NOSLEEP=1 PEBBLE_WFE_NONCEREJECT=0 \
+    setsid pebble -config "${conf_file}" -dnsserver "${dns_server}" \
+    >/proc/1/fd/1 2>&1 </dev/null &
+  echo "$!" >"${pid_file}"
+}
+
 # start_dns <conf file>: Start the lab resolver on the services address.
 start_dns() {
   local conf_file="$1" upstream
@@ -678,6 +691,7 @@ main() {
     restart-dhcp) restart_dhcp "$@" ;;
     start-dns) start_dns "$@" ;;
     start-nsd) start_nsd "$@" ;;
+    start-pebble) start_pebble "$@" ;;
     start-box | stop-box | set-account | set-access | set-home | set-zfs-view | \
       remove-account | add-key | write-authorized-keys | take-snapshot | \
       roll-back | remove-tree | print-bytes-used | list-folders)

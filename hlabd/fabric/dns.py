@@ -55,6 +55,8 @@ def resolver_config(zones: list[ZoneFile]) -> str:
         f"address=/hetzner-api.hlab/{address}"
         for address in (config.HETZNER_API, config.HETZNER_API6)
     ]
+    # Pebble listens on IPv4 only
+    lines.append(f"address=/{config.ACME_NAME}/{config.SERVICES}")
     lines += [f"server=/{zone.name}/{NSD_ADDRESS}#{NSD_PORT}" for zone in zones]
     return "\n".join(lines) + "\n"
 

@@ -12,6 +12,7 @@ the API endpoints differ.
 | Metadata service (from a VM) | `http://169.254.169.254/hetzner/v1/metadata` |
 | Storage Boxes (SFTP 22, SSH 23) | `u<id>.your-storagebox.de` → `198.18.0.1` |
 | DNS resolver (lab names, the DNS zones) | `198.18.0.1` |
+| ACME server (Pebble) and the certificates to trust | `https://acme.hlab:14000/dir`, `http://198.18.0.1/_lab/acme/ca.pem` |
 | Lab control (faults, clients, ...) | `http://198.18.0.1/_lab/...` |
 | Network namespace to reach VMs | `docker run --network container:hlab-<name> ...` |
 
@@ -81,6 +82,11 @@ bin/hlab reset                            # delete everything the APIs created
 - **DNS zones**: zones and RRSets of the DNS API (all record types, zone file export and import, protection, Hetzner's
   SOA and nameservers, the serial counted on). The lab's resolver answers for them inside the lab, so servers,
   clients and tools see a change at once.
+- **ACME**: Pebble, Let's Encrypt's test server, issues certificates inside the lab. It checks DNS-01 against the DNS
+  zones and HTTP-01 (port 80) and TLS-ALPN-01 (port 443) on the servers; those checks come from `192.0.2.2`, so a
+  Cloud firewall must let them in. `HLAB_ACME_DIRECTORY` and `HLAB_ACME_CA` (`hlab env`) tell clients where it is
+  and what to trust: the lab CA, which signs the directory's HTTPS and stays, and Pebble's root, which is new after
+  every start of the lab.
 - **Networks**: cloud networks with subnets and routes (pushed by DHCP, forwarded to the gateway server), alias IPs,
   hot-plugged NICs, overlapping networks; Floating IPs routed to their server; firewalls with Hetzner's semantics;
   latency between locations. A server sends only from its own public addresses, so the source a server sees is the
