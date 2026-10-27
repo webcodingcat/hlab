@@ -37,6 +37,11 @@ _DNS_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
 # "required" still counts the key as present.
 BASE_TYPE_CHECKER = Draft202012Validator.TYPE_CHECKER
 
+# Request fields the specification marks as required but Hetzner's API fills in when
+# they are missing: a load balancer service's proxyprotocol and health_check (the
+# hcloud provider leaves them out unless they are set).
+OPTIONAL_IN_REQUESTS = {"proxyprotocol", "health_check"}
+
 
 def null_or(type_name: str):
     """Return a type check that passes null and what the base check passes."""
@@ -105,6 +110,7 @@ class Spec:
             )
             for method, op in methods.items():
                 if method in ("get", "post", "put", "delete", "patch"):
+                    relax_required(op.get("requestBody") or {})
                     self.ops.append((method.upper(), pattern, template, op))
         # literal segments win over parameters
         self.ops.sort(key=lambda o: o[2].count("{"))
@@ -196,6 +202,20 @@ def is_nullable(schema: dict) -> bool:
             is_nullable(s) for s in schema.get("anyOf", []) + schema.get("oneOf", [])
         )
     )
+
+
+def relax_required(schema: object) -> None:
+    """Drop the fields of OPTIONAL_IN_REQUESTS from every "required" in a schema."""
+    if isinstance(schema, dict):
+        if isinstance(schema.get("required"), list):
+            schema["required"] = [
+                name for name in schema["required"] if name not in OPTIONAL_IN_REQUESTS
+            ]
+        for value in schema.values():
+            relax_required(value)
+    elif isinstance(schema, list):
+        for value in schema:
+            relax_required(value)
 
 
 def null_required(schema: dict, value, path: str = "") -> list[str]:

@@ -131,7 +131,10 @@ async def restore_lab(lab: Lab) -> None:
     await images.drop_half_created_images(lab)
     finish_box_setup(lab)
     await system.apply_dns(lab)
-    await system.apply_load_balancers(lab)
+    try:
+        await system.apply_load_balancers(lab)
+    except Exception:  # the lab comes up; the next load balancer change tries again
+        log.exception("load balancers not restored")
     # firewalls and faults before any VM runs, so no server ever runs unfiltered
     await system.apply_firewall(lab)
     await system.apply_faults(lab)

@@ -88,8 +88,12 @@ class Balancers:
         self.directory.mkdir(parents=True, exist_ok=True)
         wanted = {str(spec.lid) for spec in specs}
         for old in self.directory.iterdir():
-            if old.name not in wanted:
+            if old.name in wanted:
+                continue
+            if old.name.isdigit():
                 self.remove(int(old.name))
+            else:  # no load balancer's: left by an older lab
+                shutil.rmtree(old, ignore_errors=True)
         for spec in specs:
             self.run(spec)
 

@@ -1,10 +1,19 @@
 """Load balancers: services and targets, HAProxy's configuration, health, limits."""
 
-from conftest import create_network, create_server, state_of, wait_action
+import threading
+
+from conftest import (
+    FakeShell,
+    create_network,
+    create_server,
+    state_of,
+    wait_action,
+)
 from test_certificates import upload
 
 from hlabd import config
 from hlabd.api import desired
+from hlabd.fabric.balancers import Balancers
 
 
 def service(protocol="http", listen=80, destination=80, proxyprotocol=False, http=None):
@@ -77,6 +86,17 @@ def test_balancer_gets_hetzners_defaults_and_its_own_addresses(api, tmp_path):
     assert f"server s{server['id']} {server_ip}:80" in text
     # the client's address reaches the target
     assert "option forwardfor" in text
+
+
+def test_a_service_without_proxyprotocol_and_health_check_gets_the_defaults(api):
+    # Hetzner's spec requires both, but the API fills them in, and the hcloud
+    # provider leaves them out
+    balancer = create_balancer(api)
+    body = {"protocol": "http", "listen_port": 80, "destination_port": 80}
+    assert action(api, balancer, "add_service", body).status_code == 201
+    shown = api.get(f"/v1/load_balancers/{balancer['id']}").json()["load_balancer"]
+    assert shown["services"][0]["proxyprotocol"] is False
+    assert shown["services"][0]["health_check"]["protocol"] == "http"
 
 
 def test_proxy_protocol_label_selectors_and_algorithm_reach_haproxy(api, tmp_path):
@@ -289,3 +309,10 @@ def test_deleting_the_network_takes_the_balancer_out(api):
     assert api.delete(f"/v1/networks/{network['id']}").status_code == 204
     got = api.get(f"/v1/load_balancers/{balancer['id']}").json()["load_balancer"]
     assert got["private_net"] == []
+
+
+def test_a_foreign_entry_among_the_balancers_does_not_stop_the_lab(tmp_path):
+    # an older lab left a directory that belongs to no load balancer
+    (tmp_path / "lb" / "certs").mkdir(parents=True)
+    Balancers(tmp_path, FakeShell(), threading.RLock()).apply([])
+    assert list((tmp_path / "lb").iterdir()) == []
