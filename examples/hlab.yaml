@@ -8,6 +8,10 @@
 # below repeat in every lab).
 name: demo
 
+# Port of the web UI on this host's localhost (http://localhost:8480). Labs that
+# run side by side need different ports.
+ui_port: 8480
+
 api:
   # Token the fake Cloud API accepts (Authorization: Bearer <token>). null
   # accepts any token. The hcloud provider and CLI insist on 64 characters.

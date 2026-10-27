@@ -1,7 +1,8 @@
 # The lab's nftables table. It handles anti-spoofing, the isolation of the cloud
 # networks, faults (the sets that hlabd fills, see fabric/faults.py), the metadata
 # service over IPv6, and NAT to the Internet. init_net in hlab.sh loads it. Before
-# that, print_ruleset replaces each ${NAME} with the uplink or a lab address.
+# that, print_ruleset replaces each ${NAME} with the uplink, the Docker host's
+# address, a lab address or the web UI's port.
 table inet hlab
 delete table inet hlab
 table inet hlab {
@@ -52,8 +53,13 @@ table inet hlab {
     chain input {
         type filter hook input priority 0;
         iifname "${uplink}" ct state established,related accept
-        # neighbour containers and the Docker host get nothing of the lab
+        # the operator's browser, through the port Docker publishes on the host's
+        # localhost: the web UI
+        iifname "${uplink}" ip saddr ${docker_host} tcp dport ${UI_PORT} accept
+        # neighbour containers and the Docker host get nothing else of the lab
         iifname "${uplink}" drop
+        # nor do guests and clients get the web UI (the lab itself may: lo)
+        iifname != "lo" tcp dport ${UI_PORT} drop
         iifname @isolated drop
         ip daddr { ${SERVICES}, ${HETZNER_API} } iifname . tcp dport @blocked_svc drop
         ip6 daddr { ${SERVICES6}, ${HETZNER_API6} } iifname . tcp dport @blocked_svc drop

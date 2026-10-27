@@ -14,10 +14,12 @@ the API endpoints differ.
 | DNS resolver (lab names, the DNS zones) | `198.18.0.1` |
 | ACME server (Pebble) and the certificates to trust | `https://acme.hlab:14000/dir`, `http://198.18.0.1/_lab/acme/ca.pem` |
 | Lab control (faults, clients, ...) | `http://198.18.0.1/_lab/...` |
+| Web UI (from the host's browser) | `http://localhost:8480` (`ui_port`) |
 | Network namespace to reach VMs | `docker run --network container:hlab-<name> ...` |
 
 `hlab env` prints these as shell variables (`HCLOUD_ENDPOINT`, `HCLOUD_TOKEN`, `HETZNER_ENDPOINT`,
-`HLAB_ACME_DIRECTORY`, `HLAB_ACME_CA`, ...).
+`HLAB_ACME_DIRECTORY`, `HLAB_ACME_CA`, `HLAB_UI`, ...). The web UI shows everything the lab holds and refreshes
+every two seconds; Docker publishes it on the host's localhost only.
 
 ## Requirements
 

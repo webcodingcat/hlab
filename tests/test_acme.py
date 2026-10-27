@@ -55,7 +55,9 @@ def test_the_ca_bundle_is_served_to_clients(api, monkeypatch):
 
 def test_env_names_the_acme_directory_and_its_ca(capsys, monkeypatch):
     monkeypatch.setattr(
-        cli.config, "load", lambda _: {"name": "demo", "api": {"token": None}}
+        cli.config,
+        "load",
+        lambda _: {"name": "demo", "ui_port": 8480, "api": {"token": None}},
     )
     cli.env()
     out = capsys.readouterr().out

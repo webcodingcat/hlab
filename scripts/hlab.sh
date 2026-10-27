@@ -40,6 +40,10 @@ readonly PUBLIC_NET="${HLAB_PUBLIC_NET:?}"
 readonly FLOATING_NET="${HLAB_FLOATING_NET:?}"
 readonly CLIENT_NET="${HLAB_CLIENT_NET:?}"
 readonly IPV6_PREFIX="${HLAB_IPV6_PREFIX:?}"
+# The web UI's port; Docker publishes it on the host's localhost. Only
+# print_ruleset reads it, by name.
+# shellcheck disable=SC2034
+readonly UI_PORT="${HLAB_UI_PORT:?}"
 
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=lib.sh
@@ -131,13 +135,14 @@ send_hmp() {
     '{execute: "human-monitor-command", arguments: {"command-line": $c}}')"
 }
 
-# print_ruleset <uplink>: Print the nftables table of hlab.nft, with the uplink
-# and the lab's addresses put in for its ${NAME} placeholders.
+# print_ruleset <uplink> <docker host>: Print the nftables table of hlab.nft,
+# with the uplink, the Docker host's address and the lab's addresses put in
+# for its ${NAME} placeholders.
 print_ruleset() {
-  local uplink="$1" ruleset name
+  local uplink="$1" docker_host="$2" ruleset name
   ruleset="$(<"$(dirname "$0")/hlab.nft")"
-  for name in uplink SERVICES SERVICES6 HETZNER_API HETZNER_API6 METADATA \
-    METADATA6 PUBLIC_NET FLOATING_NET CLIENT_NET; do
+  for name in uplink docker_host SERVICES SERVICES6 HETZNER_API HETZNER_API6 \
+    METADATA METADATA6 PUBLIC_NET FLOATING_NET CLIENT_NET UI_PORT; do
     ruleset="${ruleset//"\${${name}}"/${!name}}"
   done
   printf '%s\n' "${ruleset}"
@@ -146,8 +151,10 @@ print_ruleset() {
 # init_net: Set up the gateway's addresses, the unreachable ends of the lab's
 # ranges and the nftables ruleset.
 init_net() {
-  local uplink address
+  local uplink docker_host address
   uplink="$(ip -4 route show default | awk '{print $5; exit}')"
+  # The default gateway is the Docker host: published ports come from there.
+  docker_host="$(ip -4 route show default | awk '{print $3; exit}')"
   link_exists hlabgw || ip link add hlabgw type dummy
   for address in "${GATEWAY}" "${SERVICES}" "${METADATA}" "${OPERATOR}" \
     "${ADMIN}" "${HETZNER_API}"; do
@@ -174,7 +181,7 @@ init_net() {
   ip route replace unreachable "${CLIENT_NET}.0/24"
   # The lab's services (local addresses win).
   ip route replace unreachable "${SERVICES_NET}"
-  print_ruleset "${uplink}" | nft -f -
+  print_ruleset "${uplink}" "${docker_host}" | nft -f -
 }
 
 # set_up_tap <tap> <gateway cidr> [guest ip] [noprefixroute]: Create a tap

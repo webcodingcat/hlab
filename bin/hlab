@@ -32,11 +32,14 @@ readonly IMAGE=hlab:latest
 # The development tools (STYLE.md), built on top of the lab image.
 readonly DEV_IMAGE=hlab-dev:latest
 readonly TOFU_IMAGE=ghcr.io/opentofu/opentofu:1
+# The web UI's port inside the container (UI_PORT in hlabd/config.py).
+readonly UI_PORT=8480
 
 # Set by load_config.
 lab_name=demo
 container=hlab-demo
 config_mount=()
+ui_port="${UI_PORT}" # on the host's localhost
 # Set by main.
 tty_flags=(-i)
 
@@ -45,24 +48,32 @@ print_usage() {
   awk 'NR > 1 && !/^#/ { exit } NR > 1' "$0"
 }
 
-# read_lab_name <file>: Print the top-level "name:" of a configuration file,
-# plain or quoted, a comment after it allowed; nothing if it has none. The
-# name becomes part of Docker names, so other characters stop the wrapper
-# instead of being cut off.
-read_lab_name() {
-  local file="$1" line name
-  local key='^name[[:space:]]*:[[:space:]]*'
-  # "name", 'name' or name
+# read_setting <file> <key>: Print a top-level "<key>:" value of a
+# configuration file, plain or quoted, a comment after it allowed; nothing if
+# it has none, "?" if its line holds no such value.
+read_setting() {
+  local file="$1" key_name="$2" line
+  local key="^${key_name}[[:space:]]*:[[:space:]]*"
+  # "value", 'value' or value
   local value='("([^"]*)"|'\''([^'\'']*)'\''|([^[:space:]]*))'
   local pattern="${key}${value}([[:space:]]+#.*)?[[:space:]]*\$"
   line="$(grep -m 1 -E "${key}" "${file}" | tr -d '\r')" || true
   if [[ -z "${line}" ]]; then
     return 0
   fi
-  name="?" # a line that does not match has no valid name
   if [[ "${line}" =~ ${pattern} ]]; then
-    name="${BASH_REMATCH[2]}${BASH_REMATCH[3]}${BASH_REMATCH[4]}"
+    echo "${BASH_REMATCH[2]}${BASH_REMATCH[3]}${BASH_REMATCH[4]}"
+  else
+    echo "?"
   fi
+}
+
+# read_lab_name <file>: Print the top-level "name:" of a configuration file;
+# nothing if it has none. The name becomes part of Docker names, so other
+# characters stop the wrapper instead of being cut off.
+read_lab_name() {
+  local file="$1" name
+  name="$(read_setting "${file}" name)"
   if [[ ! "${name}" =~ ^[A-Za-z0-9_-]*$ ]]; then
     echo "hlab: ${file}: the name may only have letters, digits, - and _" >&2
     exit 2
@@ -70,15 +81,27 @@ read_lab_name() {
   echo "${name}"
 }
 
-# load_config <file> <explicit>: Take the lab's name from the configuration
-# file and mount its directory into the container. Without the file the lab
-# "demo" runs with defaults, unless the file was named explicitly: a mistyped
-# path must not mean the lab "demo".
+# read_ui_port <file>: Print the top-level "ui_port:" of a configuration file;
+# nothing if it has none. Anything but a port number stops the wrapper.
+read_ui_port() {
+  local file="$1" port
+  port="$(read_setting "${file}" ui_port)"
+  if [[ -n "${port}" ]] && [[ ! "${port}" =~ ^[0-9]{1,5}$ ]]; then
+    echo "hlab: ${file}: ui_port must be a port number" >&2
+    exit 2
+  fi
+  echo "${port}"
+}
+
+# load_config <file> <explicit>: Take the lab's name and web UI port from the
+# configuration file and mount its directory into the container. Without the
+# file the lab "demo" runs with defaults, unless the file was named
+# explicitly: a mistyped path must not mean the lab "demo".
 # Globals:
-#   lab_name, container, config_mount (set)
+#   lab_name, container, config_mount, ui_port (set)
 load_config() {
   local config="$1" explicit="$2"
-  local configured_name config_dir
+  local configured_name configured_port config_dir
   if [[ ! -f "${config}" ]]; then
     if [[ -n "${explicit}" ]]; then
       echo "hlab: no such configuration: ${config}" >&2
@@ -90,6 +113,10 @@ load_config() {
   if [[ -n "${configured_name}" ]]; then
     lab_name="${configured_name}"
     container="hlab-${lab_name}"
+  fi
+  configured_port="$(read_ui_port "${config}")"
+  if [[ -n "${configured_port}" ]]; then
+    ui_port="${configured_port}"
   fi
   config_dir="$(cd "$(dirname "${config}")" && (pwd -W 2>/dev/null || pwd))"
   config_mount=(-v "${config_dir}:/config:ro"
@@ -139,7 +166,7 @@ stop_lab() {
 # start_lab: Start the lab container afresh and show its log until the lab
 # is ready (or the container ends). Loading the OS images takes a while.
 # Globals:
-#   lab_name, container, config_mount (read)
+#   lab_name, container, config_mount, ui_port (read)
 start_lab() {
   local log running shown=0
   build_image lab "${IMAGE}"
@@ -148,6 +175,7 @@ start_lab() {
   docker run -d --name "${container}" --init --privileged \
     --device /dev/kvm --device /dev/net/tun \
     --stop-timeout 20 -e "HLAB_NAME=${lab_name}" -v "${container}:/hlab" \
+    -p "127.0.0.1:${ui_port}:${UI_PORT}" \
     ${config_mount[@]+"${config_mount[@]}"} "${IMAGE}" serve >/dev/null
   # The old container is gone, and with it the last user of an old image.
   prune_images

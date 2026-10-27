@@ -60,7 +60,8 @@ One path shows most of the ideas: `lab.py` (`Plan`, `act`, `run_action`), the ac
 ```text
 HTTP request
   → daemon.py               one server; the address picks the app (Cloud API, Storage
-                            Box API, metadata service); every request is logged
+                            Box API, metadata service; the web UI by its port);
+                            every request is logged
   → api/web.py              auth, rate limit, injected faults, OpenAPI request check
   → api/<resource>.py       the route checks the request, changes the state, starts
                             an action
@@ -99,6 +100,7 @@ Inside `hlabd/`:
 | `api/storagebox/` | the Storage Box API, a separate app |
 | `api/restart.py`, `api/watcher.py` | what happens when the lab starts again; a VM that ended by itself |
 | `api/control.py`, `api/faults.py` | lab control under `/_lab/`; the faults in the state |
+| `api/ui.py`, `ui/` | the web UI: an app on its own port (`config.UI_PORT`), its JSON overview, and the page (plain HTML, CSS and JavaScript, no build step) |
 | `api/desired/`, `api/system.py` | see desired and system |
 | `fabric/` | changes the system, with plain data as arguments (parts listed in `fabric/__init__.py`) |
 | `daemon.py`, `cli.py` | the container's main process; `hlab` inside the container |
@@ -109,7 +111,7 @@ Inside `hlabd/`:
   reaches the system only through `lab.fabric`, always in a thread
   (`await lab.blocking(...)`). The few files it reads itself (the lab key, `/etc/passwd`)
   are read in a thread too; only at start, before serving, does it read the OpenAPI
-  specs, the Public Suffix List and the image files.
+  specs, the Public Suffix List, the image files and the web UI's page.
 - **`fabric/` does the work.** It knows nothing about HTTP and never sees the state; it
   gets IDs, plain values and its own small dataclasses (`tests/test_layers.py` checks
   that it does not touch `records.py`).

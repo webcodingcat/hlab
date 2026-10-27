@@ -400,6 +400,13 @@ def rulesets(api, tmp_path) -> dict[str, str]:
 @NEEDS_BASH
 def test_the_rendered_rulesets_fill_what_they_should(rulesets):
     assert 'iifname "eth0" drop' in rulesets["init"]
+    # the web UI: only the Docker host (the default gateway) reaches it from outside
+    ui_port = config.UI_PORT
+    assert (
+        f'iifname "eth0" ip saddr 172.17.0.1 tcp dport {ui_port} accept'
+        in rulesets["init"]
+    )
+    assert f'iifname != "lo" tcp dport {ui_port} drop' in rulesets["init"]
     rules = [x for x in rulesets["init"].splitlines() if not x.lstrip().startswith("#")]
     assert not [x for x in rules if "${" in x], "a placeholder of hlab.nft is left"
     assert f"ip saddr {config.METADATA} tcp sport 80" in rulesets["init"]

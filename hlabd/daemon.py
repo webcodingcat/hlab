@@ -1,10 +1,10 @@
 """The lab daemon: the container's main process (`hlab serve`).
 
 It sets up the lab (state, fabric, images) and brings back what ran before
-(api/restart.py). Then it serves three apps on one HTTP server. The address that a
+(api/restart.py). Then it serves four apps on one HTTP server. The address that a
 request arrives at picks the app: the Cloud API (with lab control under /_lab/), the
-Storage Box API (the stand-in for api.hetzner.com), or the metadata service. On
-`docker stop` the guests are powered down.
+Storage Box API (the stand-in for api.hetzner.com), or the metadata service; the web
+UI has a port of its own. On `docker stop` the guests are powered down.
 """
 
 import asyncio
@@ -23,6 +23,7 @@ from .api.app import create_app
 from .api.catalogue import load_images
 from .api.metadata import create_metadata_app
 from .api.restart import restore_lab
+from .api.ui import create_ui_app
 from .fabric import Fabric, Shell
 from .lab import Lab
 from .state import SERVERS, State
@@ -68,9 +69,12 @@ def http_app(lab: Lab):
     cloud_api = create_app(lab)
     box_api = storagebox.create_app(lab)
     metadata = create_metadata_app(lab)
+    ui = create_ui_app(lab)
 
     async def dispatch(scope, receive, send):
-        host = (scope.get("server") or ("",))[0]
+        host, port = scope.get("server") or ("", 0)
+        if port == config.UI_PORT:
+            return await ui(scope, receive, send)
         # the metadata service: on its own addresses (fe80::a9fe:a9fe is DNATed to
         # METADATA6), nothing else there
         if host in (config.METADATA, config.METADATA6):
@@ -105,13 +109,17 @@ def http_app(lab: Lab):
 
 
 def listeners() -> list[socket.socket]:
-    """Return sockets bound to the lab's service addresses (port 80)."""
+    """Return sockets bound to the lab's service addresses (port 80) and the web UI.
+
+    The web UI listens on every address of the container; hlab.nft lets only the
+    Docker host reach it, through the port that bin/hlab publishes.
+    """
     sockets = []
-    for address in LISTEN:
+    for address, port in [*((a, 80) for a in LISTEN), ("0.0.0.0", config.UI_PORT)]:
         family = socket.AF_INET6 if ":" in address else socket.AF_INET
         listener = socket.socket(family, socket.SOCK_STREAM)
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        listener.bind((address, 80))
+        listener.bind((address, port))
         sockets.append(listener)
     return sockets
 
@@ -139,7 +147,8 @@ async def run(lab: Lab) -> None:
         while not server.started:
             await asyncio.sleep(0.1)
         print(
-            f"hlab ready: {lab.cfg['name']}, API http://{config.SERVICES}/v1",
+            f"hlab ready: {lab.cfg['name']}, API http://{config.SERVICES}/v1, "
+            f"web UI http://localhost:{lab.cfg['ui_port']}",
             flush=True,
         )
 
