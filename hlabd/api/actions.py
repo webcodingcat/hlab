@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from ..errors import invalid, not_found
 from ..lab import Lab
 from ..records import Action
+from ..state import ACTIONS, KIND_TYPES
 from .web import paginate
 
 # the resource types of actions, by the API path of their resources
@@ -47,7 +48,8 @@ def resource_type_of(kind: str) -> str:
 def resource_of(lab: Lab, kind: str, rid: str) -> tuple[str, int]:
     """Return the resource type and ID of /v1/<kind>/<rid>, or raise 404."""
     resource_type = resource_type_of(kind)
-    if not rid.isdigit() or int(rid) not in lab.state[kind]:
+    # a kind named by the path: typed as any kind of record
+    if not rid.isdigit() or int(rid) not in lab.state[KIND_TYPES[kind]]:
         raise not_found(resource_type)
     return resource_type, int(rid)
 
@@ -64,7 +66,7 @@ def action_or_404(
     lab: Lab, aid: int, resource_type: str | None = None, rid: int | None = None
 ) -> Action:
     """Return an action, or raise 404 (also if it is not about the resource)."""
-    action = lab.state["actions"].get(aid)
+    action = lab.state[ACTIONS].get(aid)
     if not action or (resource_type and not touches(action, resource_type, rid)):
         raise not_found("action")
     return action
@@ -84,7 +86,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     async def action_list(request: Request):
         if not request.query_params.getlist("id"):
             raise invalid("id is required", "id")
-        return listed(request, list(state["actions"].values()))
+        return listed(request, list(state[ACTIONS].values()))
 
     @app.get("/v1/actions/{aid}")
     async def action_get(aid: int):
@@ -95,7 +97,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
         request: Request, kind: str
     ):  # the actions of a resource kind
         resource_type = resource_type_of(kind)
-        mine = [a for a in state["actions"].values() if touches(a, resource_type)]
+        mine = [a for a in state[ACTIONS].values() if touches(a, resource_type)]
         return listed(request, mine)
 
     @app.get("/v1/{kind}/actions/{aid}")
@@ -106,9 +108,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     async def resource_actions(request: Request, kind: str, rid: str):
         resource_type, resource_id = resource_of(lab, kind, rid)
         mine = [
-            a
-            for a in state["actions"].values()
-            if touches(a, resource_type, resource_id)
+            a for a in state[ACTIONS].values() if touches(a, resource_type, resource_id)
         ]
         return listed(request, mine)
 

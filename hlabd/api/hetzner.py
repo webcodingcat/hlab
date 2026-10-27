@@ -15,7 +15,7 @@ from ..records import (
     SSHKey,
     Volume,
 )
-from ..state import nics_in, primary_ip_of
+from ..state import FIREWALLS, FLOATING_IPS, VOLUMES, nics_in, primary_ip_of
 
 CREATED = "2026-01-01T00:00:00+00:00"  # catalogue entries
 TRAFFIC = 21990232555520  # 20 TB included traffic
@@ -155,11 +155,11 @@ def server_json(lab: Lab, server: Server) -> dict:
     ipv6 = primary_ip_of(state, server, "ipv6")
     firewalls = [
         {"id": fid, "status": "applied"}
-        for fid, firewall in state["firewalls"].items()
+        for fid, firewall in state[FIREWALLS].items()
         if server["id"] in firewall_servers(state, firewall)
     ]
     floating_ips = [
-        f["id"] for f in state["floating_ips"].values() if f["server"] == server["id"]
+        f["id"] for f in state[FLOATING_IPS].values() if f["server"] == server["id"]
     ]
     private_net = [
         {
@@ -171,7 +171,7 @@ def server_json(lab: Lab, server: Server) -> dict:
         for nic in server["_lab"]["nics"]
     ]
     volumes = sorted(
-        v["id"] for v in state["volumes"].values() if v.get("server") == server["id"]
+        v["id"] for v in state[VOLUMES].values() if v.get("server") == server["id"]
     )
     return {
         "id": server["id"],

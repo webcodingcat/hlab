@@ -17,6 +17,7 @@ from conftest import (
 
 from hlabd.api import servers, watcher
 from hlabd.api.restart import restore_lab
+from hlabd.state import SERVERS
 
 
 def test_server_is_created_powered_off_and_on_and_deleted(api):
@@ -451,3 +452,29 @@ def test_a_delete_that_cannot_start_leaves_the_server_as_it_was(api, monkeypatch
         api.on_loop(servers.delete_server, api.lab, server["id"])
     assert server["status"] == "running"
     assert "_locked" not in server
+
+
+@pytest.mark.parametrize("command", ["poweroff", "poweron", "reboot", "rebuild"])
+def test_a_server_deleted_while_its_action_waits_ends_the_action_with_an_error(
+    api, monkeypatch, command
+):
+    server = create_server(api, "a")["server"]
+    sid, lab = server["id"], api.lab
+    if command == "poweron":
+        power_off(api, sid)
+
+    async def sleep_and_delete(seconds):
+        # someone else removes the record while the steps wait (a lab reset, say)
+        with lab.state.change():
+            lab.state[SERVERS].pop(sid, None)
+
+    monkeypatch.setattr(lab, "sleep", sleep_and_delete)
+    body = {"image": "debian-13"} if command == "rebuild" else {}
+    answer = api.post(f"/v1/servers/{sid}/actions/{command}", json=body)
+    assert answer.status_code == 201, answer.text
+    done = wait_action(api, answer.json()["action"])
+    assert done["status"] == "error"
+    assert done["error"]["message"] == (
+        f"the server {sid} was deleted while the action ran"
+    )
+    assert sid not in state_of(api, "servers")  # nothing brought it back

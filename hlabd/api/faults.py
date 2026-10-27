@@ -35,22 +35,6 @@ def fault_json(fault: Fault) -> dict:
     return shown
 
 
-def upgrade_faults(lab: Lab) -> None:
-    """Turn the text references of faults saved by older labs into typed ones.
-
-    Older labs stored s:<id> and c:<name>; the lab start converts them once.
-    """
-    with lab.state.change():
-        for fault in lab.state.data["faults"]:
-            for ref_field in REF_FIELDS.values():
-                ref = fault.get(ref_field)
-                if isinstance(ref, str):
-                    kind, key = ref.split(":", 1)
-                    fault[ref_field] = (
-                        {"server": int(key)} if kind == "s" else {"client": key}
-                    )
-
-
 def drop_netem(lab: Lab, links: list[str]) -> None:
     """Drop the netem faults of links that are gone (a new link may reuse the name)."""
     for link in links:

@@ -9,6 +9,7 @@ import posixpath
 from ...errors import invalid, locked, not_found
 from ...lab import Lab
 from ...records import StorageBox, Subaccount
+from ...state import BOX_SNAPSHOTS, STORAGE_BOXES, SUBACCOUNTS
 
 PASSWORD_SPECIAL = set("^°!§$%/()=?+#-.,;:~*@{}_&")
 PASSWORD_CHARS = (
@@ -38,11 +39,11 @@ def box_busy(lab: Lab, box: StorageBox, for_delete: bool = False) -> bool:
     state = lab.state
     copying = any(
         s["box"] == box["id"] and s.get("_copying")
-        for s in state["box_snapshots"].values()
+        for s in state[BOX_SNAPSHOTS].values()
     )
     creating = any(
         a["box"] == box["id"] and a.get("_creating")
-        for a in state["subaccounts"].values()
+        for a in state[SUBACCOUNTS].values()
     )
     return copying or creating
 
@@ -52,7 +53,7 @@ def box_or_404(lab: Lab, bid: int, ready: bool = False) -> StorageBox:
 
     With `ready`, the box must not be busy (Hetzner: 423 locked).
     """
-    box = lab.state["storage_boxes"].get(bid)
+    box = lab.state[STORAGE_BOXES].get(bid)
     if not box:
         raise not_found("Storage Box")
     if ready and box_busy(lab, box):

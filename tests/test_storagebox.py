@@ -8,6 +8,7 @@ import pytest
 from conftest import change_state, state_of, wait_action
 
 from hlabd.api import storagebox
+from hlabd.state import STORAGE_BOXES
 
 # the Storage Box API keeps its actions under /v1/storage_boxes/actions
 BOX_ACTIONS_PREFIX = "/storage_boxes"
@@ -244,7 +245,7 @@ def test_snapshot_plan_due_while_the_box_is_busy_is_caught_up_once(monkeypatch):
     }
     box = {"id": 7, "status": "active", "plan": plan, "_busy": True}
 
-    lab = SimpleNamespace(state={"storage_boxes": {7: box}})
+    lab = SimpleNamespace(state={STORAGE_BOXES: {7: box}})
     taken = []
 
     async def take_automatic_snapshot(lab, box):

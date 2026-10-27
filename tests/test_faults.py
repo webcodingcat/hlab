@@ -6,7 +6,6 @@ import threading
 from conftest import create_server, nft_set, state_of, wait_action
 
 from hlabd.api import desired, system
-from hlabd.api.faults import upgrade_faults
 
 
 def test_injected_api_faults_answer_until_used_up(api):
@@ -141,7 +140,7 @@ def test_pictures_are_put_in_place_in_the_order_they_were_computed(lab, monkeypa
     assert applied == [0, 1]
 
 
-def test_faults_show_their_targets_as_text_and_old_text_targets_are_upgraded(api):
+def test_faults_show_their_targets_as_text_and_store_typed_references(api):
     sid = create_server(api, "a")["server"]["id"]
     assert api.post("/_lab/clients", json={"name": "c1"}).status_code == 200
     answer = api.post(
@@ -157,15 +156,6 @@ def test_faults_show_their_targets_as_text_and_old_text_targets_are_upgraded(api
     }
     assert answer.json()["faults"] == [shown]
     assert api.get("/_lab/status").json()["faults"] == [shown]
-    assert state_of(api, "faults")[0]["first_ref"] == {"server": sid}
-
-    # older labs stored the text; the lab start turns it into typed references
-    def store_old_text(lab):
-        with lab.state.change():
-            lab.state.data["faults"][0]["first_ref"] = f"s:{sid}"
-        upgrade_faults(lab)
-
-    api.on_loop(store_old_text, api.lab)
     assert state_of(api, "faults")[0]["first_ref"] == {"server": sid}
     remove = {"type": "cut", "first_ref": f"s:{sid}"}  # matched as the API shows it
     assert api.post("/_lab/faults/remove", json=remove).json()["faults"] == []

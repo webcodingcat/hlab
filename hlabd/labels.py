@@ -4,7 +4,7 @@ Used by the API (and by api/desired.py for the firewall rules).
 """
 
 from .records import Firewall, Server
-from .state import State
+from .state import SERVERS, State
 
 
 def firewall_servers(state: State, firewall: Firewall) -> set[int]:
@@ -21,7 +21,7 @@ def firewall_servers(state: State, firewall: Firewall) -> set[int]:
 
 def selector_servers(state: State, selector: str) -> list[Server]:
     """Return the servers whose labels match a label selector, in the state's order."""
-    return [s for s in state["servers"].values() if match_labels(s["labels"], selector)]
+    return [s for s in state[SERVERS].values() if match_labels(s["labels"], selector)]
 
 
 def match_labels(labels: dict, selector: str) -> bool:

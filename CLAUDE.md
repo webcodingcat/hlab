@@ -45,6 +45,10 @@ DEVELOPING.md explains each one in the section named in parentheses.
   runs).
 - Every state change is inside a `with state.change():` block, which never awaits
   (The state).
+- Across an await, code keeps a record's ID, not the record: steps look it up again
+  with `lab.current(KIND, id)` (The state, Awaits).
+- The state is indexed by `Kind` constants (`lab.state[SERVERS]`), not by strings
+  (The state, Kinds).
 - New actions are `ActionSpec` rows run by `lab.act()`; other code holds flags only
   through `with lab.holding() as held:` (How flags flow).
 - A new flag goes into `Flag` and `FLAGS` in `lab.py`, or a restart keeps it (Recipes).
@@ -59,5 +63,5 @@ DEVELOPING.md explains each one in the section named in parentheses.
 
 - Do not run `bin/hlab up`, `down`, `purge`, `itest` or `/_lab/reset` while someone else
   is using the lab, and never delete Docker volumes or images by hand.
-- Old lab state may not fit a changed record shape. Then `hlab reset` (or `purge`) the
-  lab and say so in the commit message.
+- A changed record shape bumps the state's version with a migration and its test,
+  so old lab state keeps loading (DEVELOPING.md, Recipes: changing a record's shape).

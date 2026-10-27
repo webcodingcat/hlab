@@ -13,7 +13,18 @@ from .. import config
 from ..errors import invalid, not_found
 from ..lab import Lab
 from ..records import Client, Fault, TargetRef
-from ..state import client_by_name, primary_address_of, server_by_name
+from ..state import (
+    CLIENTS,
+    FLOATING_IPS,
+    NETWORKS,
+    SERVERS,
+    STORAGE_BOXES,
+    SUBACCOUNTS,
+    VOLUMES,
+    client_by_name,
+    primary_address_of,
+    server_by_name,
+)
 from . import desired, hetzner, system
 from .faults import drop_faults, fault_json
 from .storagebox.base import set_up_box_user, username
@@ -46,7 +57,7 @@ async def status(lab: Lab) -> dict:
     """Return the lab's status: servers, Floating IPs, clients, faults, API faults."""
     state, fabric = lab.state, lab.fabric
     # a copy: checking whether a VM runs calls a script
-    servers = sorted(state["servers"].values(), key=lambda s: s["id"])
+    servers = sorted(state[SERVERS].values(), key=lambda s: s["id"])
     entries: list[dict] = [
         {
             "id": s["id"],
@@ -67,9 +78,9 @@ async def status(lab: Lab) -> dict:
     report = {
         "servers": entries,
         "floating_ips": [
-            hetzner.floating_ip_json(lab, f) for f in state["floating_ips"].values()
+            hetzner.floating_ip_json(lab, f) for f in state[FLOATING_IPS].values()
         ],
-        "clients": list(state["clients"].values()),
+        "clients": list(state[CLIENTS].values()),
         "faults": [fault_json(fault) for fault in state.data["faults"]],
         "netem": dict(state.data["netem"]),
         "api_fault": dict(lab.api_fault),
@@ -187,7 +198,7 @@ async def clear_faults(lab: Lab) -> dict:
     with state.change():
         state.data["faults"] = []
         state.data["netem"] = {}
-        for server in state["servers"].values():
+        for server in state[SERVERS].values():
             server.pop("_dead", None)
     await system.apply_faults(lab)
     await system.apply_latency(lab)
@@ -274,9 +285,9 @@ async def add_client(lab: Lab, body: dict) -> dict:
     with state.change():
         client = client_by_name(state, name)
         if not client:
-            used = {c["number"] for c in state["clients"].values()}
+            used = {c["number"] for c in state[CLIENTS].values()}
             number = next(i for i in range(1, 200) if i not in used)
-            cid = state.new_id("clients")
+            cid = state.new_id(CLIENTS)
             client = {
                 "id": cid,
                 "name": name,
@@ -285,7 +296,7 @@ async def add_client(lab: Lab, body: dict) -> dict:
                 "ip": f"{config.CLIENT_NET}.{10 + number}",
                 "ip6": f"{config.CLIENT6}::{10 + number:x}",
             }
-            state["clients"][cid] = client
+            state[CLIENTS][cid] = client
     await system.add_client(lab, client)
     return {"client": client}
 
@@ -295,7 +306,7 @@ async def remove_client(lab: Lab, name: str) -> dict:
     state = lab.state
     with state.change():
         client = client_or_404(lab, name)
-        del state["clients"][client["id"]]
+        del state[CLIENTS][client["id"]]
         drop_faults(lab, {"client": client["name"]}, [client["veth"]])
     await system.remove_client(lab, client)
     return {"ok": True}
@@ -348,13 +359,13 @@ async def reset_lab(lab: Lab) -> dict:
     # no old action may start a VM or change the state while the lab is emptied
     await lab.stop_actions()
     # copies: the loops below run scripts, so the state may change in between
-    servers = list(state["servers"].values())
-    volumes = list(state["volumes"].values())
-    subaccounts = list(state["subaccounts"].values())
-    boxes = list(state["storage_boxes"].values())
-    routed = [f["ip"] for f in state["floating_ips"].values() if f.get("server")]
-    clients = list(state["clients"].values())
-    networks = list(state["networks"])
+    servers = list(state[SERVERS].values())
+    volumes = list(state[VOLUMES].values())
+    subaccounts = list(state[SUBACCOUNTS].values())
+    boxes = list(state[STORAGE_BOXES].values())
+    routed = [f["ip"] for f in state[FLOATING_IPS].values() if f.get("server")]
+    clients = list(state[CLIENTS].values())
+    networks = list(state[NETWORKS])
     for server in servers:
         await system.delete_vm(lab, server)
     for volume in volumes:

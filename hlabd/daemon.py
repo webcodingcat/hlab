@@ -25,7 +25,7 @@ from .api.metadata import create_metadata_app
 from .api.restart import restore_lab
 from .fabric import Fabric, Shell
 from .lab import Lab
-from .state import State
+from .state import SERVERS, State
 
 # the addresses the HTTP server listens on (port 80)
 LISTEN = (
@@ -162,7 +162,7 @@ def shut_down(lab: Lab) -> None:
     """
     fabric = lab.fabric
     lab.state.flush()
-    servers = list(lab.state["servers"].values())
+    servers = list(lab.state[SERVERS].values())
     running = [s["id"] for s in servers if fabric.vms.is_alive(s["id"])]
     for sid in running:
         try:

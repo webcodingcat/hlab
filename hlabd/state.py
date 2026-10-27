@@ -1,8 +1,10 @@
 """The lab's state: everything the fake API knows.
 
 The state is saved as JSON in the state volume. Resources are stored by kind and ID;
-`KIND_TYPES` lists the kinds with their record types (records.py) and ID ranges.
-Besides the resources and `next_id`, the state holds records that only the lab uses:
+`ALL_KINDS` lists the kinds (`Kind`: name, record type in records.py, ID range), and
+`state[SERVERS]` returns the servers by ID. Besides the resources, `next_id` and the
+`version` of the saved shape (migrations.py), the state holds records that only the
+lab uses:
 
 - `faults`: the faults set through /_lab/faults (`Fault` in records.py, api/faults.py)
 - `netem`: netem options per tap or client link (/_lab/netem)
@@ -23,8 +25,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, overload
+from typing import Any, Literal
 
+from .migrations import STATE_VERSION, migrate
 from .records import (
     Action,
     BoxSnapshot,
@@ -34,6 +37,7 @@ from .records import (
     FloatingIP,
     Nic,
     PrimaryIP,
+    Record,
     Server,
     SSHKey,
     StorageBox,
@@ -45,41 +49,71 @@ log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class KindType:
-    """What the lab knows about a kind of resource in general."""
+class Kind[R]:
+    """A kind of resource: its key in the state, its record type and its IDs.
 
-    record: type  # its TypedDict in records.py
+    The module constants below (`SERVERS`, ...) are the typed keys of the state:
+    `state[SERVERS]` is a `dict[int, Server]`, so mypy knows the fields.
+    """
+
+    name: str  # its key in the state and in the saved file ("servers")
+    record: type[R]  # its TypedDict in records.py
     # Its first ID, so that an ID in a log shows its kind (server 1000001, network
     # 2000001, ...). Each kind has a million IDs before the next kind's range starts.
     # Actions grow fastest, so their range starts far above the others.
     id_base: int
+    noun: str  # how messages name one of them ("server", "SSH key")
 
 
-# Every kind of resource the state keeps. A new kind starts here; the recipe in
-# DEVELOPING.md lists the other places, and tests/test_state.py finds those missed.
-KIND_TYPES: dict[str, KindType] = {
-    "servers": KindType(Server, 1_000_000),
-    "networks": KindType(CloudNetwork, 2_000_000),
-    "ssh_keys": KindType(SSHKey, 3_000_000),
-    "firewalls": KindType(Firewall, 4_000_000),
-    "floating_ips": KindType(FloatingIP, 5_000_000),
-    "primary_ips": KindType(PrimaryIP, 6_000_000),
-    "volumes": KindType(Volume, 10_000_000),
-    "storage_boxes": KindType(StorageBox, 14_000_000),
-    "subaccounts": KindType(Subaccount, 15_000_000),
-    "box_snapshots": KindType(BoxSnapshot, 16_000_000),
-    "actions": KindType(Action, 100_000_000),
-    "clients": KindType(Client, 0),
-}
+SERVERS: Kind[Server] = Kind("servers", Server, 1_000_000, "server")
+NETWORKS: Kind[CloudNetwork] = Kind("networks", CloudNetwork, 2_000_000, "network")
+SSH_KEYS: Kind[SSHKey] = Kind("ssh_keys", SSHKey, 3_000_000, "SSH key")
+FIREWALLS: Kind[Firewall] = Kind("firewalls", Firewall, 4_000_000, "firewall")
+FLOATING_IPS: Kind[FloatingIP] = Kind(
+    "floating_ips", FloatingIP, 5_000_000, "Floating IP"
+)
+PRIMARY_IPS: Kind[PrimaryIP] = Kind("primary_ips", PrimaryIP, 6_000_000, "primary IP")
+VOLUMES: Kind[Volume] = Kind("volumes", Volume, 10_000_000, "volume")
+STORAGE_BOXES: Kind[StorageBox] = Kind(
+    "storage_boxes", StorageBox, 14_000_000, "Storage Box"
+)
+SUBACCOUNTS: Kind[Subaccount] = Kind(
+    "subaccounts", Subaccount, 15_000_000, "sub-account"
+)
+BOX_SNAPSHOTS: Kind[BoxSnapshot] = Kind(
+    "box_snapshots", BoxSnapshot, 16_000_000, "snapshot"
+)
+ACTIONS: Kind[Action] = Kind("actions", Action, 100_000_000, "action")
+CLIENTS: Kind[Client] = Kind("clients", Client, 0, "client")
+
+# Every kind of resource the state keeps: the one registry. A new kind starts here;
+# the recipe in DEVELOPING.md lists the other places, and tests/test_state.py finds
+# those missed. The kinds of `Record` (records.py), then the actions.
+RECORD_KINDS: tuple[Kind[Record], ...] = (
+    SERVERS,
+    NETWORKS,
+    SSH_KEYS,
+    FIREWALLS,
+    FLOATING_IPS,
+    PRIMARY_IPS,
+    VOLUMES,
+    STORAGE_BOXES,
+    SUBACCOUNTS,
+    BOX_SNAPSHOTS,
+    CLIENTS,
+)
+ALL_KINDS: tuple[Kind[Record | Action], ...] = (*RECORD_KINDS, ACTIONS)
+# the kinds by name, for code that gets a kind's name at runtime (an API path)
+KIND_TYPES: dict[str, Kind[Record | Action]] = {kind.name: kind for kind in ALL_KINDS}
 KINDS = tuple(KIND_TYPES)
-ID_BASE = {kind: kind_type.id_base for kind, kind_type in KIND_TYPES.items()}
+ID_BASE = {kind.name: kind.id_base for kind in ALL_KINDS}
 
 
 def nics_in(state: "State", nid: int) -> list[tuple[Server, Nic]]:
     """Return (server, NIC) for every NIC in the cloud network with this ID."""
     return [
         (server, nic)
-        for server in state["servers"].values()
+        for server in state[SERVERS].values()
         for nic in server["_lab"]["nics"]
         if nic["network"] == nid
     ]
@@ -92,17 +126,17 @@ def nic_addresses(nic: Nic) -> list[str]:
 
 def client_by_name(state: "State", name: str) -> Client | None:
     """Return the Internet client with this name, or None."""
-    return next((c for c in state["clients"].values() if c["name"] == name), None)
+    return next((c for c in state[CLIENTS].values() if c["name"] == name), None)
 
 
 def server_by_id(state: "State", sid: int | None) -> Server | None:
     """Return the server with this ID, or None (also without an ID)."""
-    return state["servers"].get(sid) if sid is not None else None
+    return state.get(SERVERS, sid)
 
 
 def server_by_name(state: "State", name: str) -> Server | None:
     """Return the server with this name, or None."""
-    return next((s for s in state["servers"].values() if s["name"] == name), None)
+    return next((s for s in state[SERVERS].values() if s["name"] == name), None)
 
 
 def primary_ip_field(ip_type: str) -> Literal["ipv4_id", "ipv6_id"]:
@@ -112,8 +146,7 @@ def primary_ip_field(ip_type: str) -> Literal["ipv4_id", "ipv6_id"]:
 
 def primary_ip_of(state: "State", server: Server, ip_type: str) -> PrimaryIP | None:
     """Return the server's primary IP of a type ("ipv4", "ipv6"), or None."""
-    pid = server.get(primary_ip_field(ip_type))
-    return state["primary_ips"].get(pid) if pid is not None else None
+    return state.get(PRIMARY_IPS, server.get(primary_ip_field(ip_type)))
 
 
 def primary_address_of(state: "State", server: Server, ip_type: str) -> str | None:
@@ -258,8 +291,14 @@ class State:
         self._data: dict[str, Any] = {k: {} for k in KINDS}
         self._data["next_id"] = dict(ID_BASE)
         self._data.update(lab_records())
+        self._data["version"] = STATE_VERSION
         if path and path.is_file():
             loaded = json.loads(path.read_text())
+            # older shapes are brought up to date before anything reads them; a
+            # newer file refuses to load (StateVersionError)
+            migrate(loaded, path)
+            # a kind or lab-only record newer than the file starts empty: adding
+            # one needs no migration
             self._data.update(loaded)
             # kinds that are newer than the file start at their base ID
             self._data["next_id"] = {
@@ -298,45 +337,21 @@ class State:
         self.check_owner()
         return self._data
 
-    def new_id(self, kind: str) -> int:
+    def new_id(self, kind: Kind[object]) -> int:
         """Return the next free ID for a kind."""
         self.check_owner()
-        self._data["next_id"][kind] += 1
-        return self._data["next_id"][kind]
+        self._data["next_id"][kind.name] += 1
+        return self._data["next_id"][kind.name]
 
-    # each kind with its record type (`KIND_TYPES`), so the type checker knows the
-    # fields; overloads cannot be generated, so tests/test_state.py compares them
-    @overload
-    def __getitem__(self, kind: Literal["servers"]) -> dict[int, Server]: ...
-    @overload
-    def __getitem__(self, kind: Literal["networks"]) -> dict[int, CloudNetwork]: ...
-    @overload
-    def __getitem__(self, kind: Literal["ssh_keys"]) -> dict[int, SSHKey]: ...
-    @overload
-    def __getitem__(self, kind: Literal["firewalls"]) -> dict[int, Firewall]: ...
-    @overload
-    def __getitem__(self, kind: Literal["floating_ips"]) -> dict[int, FloatingIP]: ...
-    @overload
-    def __getitem__(self, kind: Literal["primary_ips"]) -> dict[int, PrimaryIP]: ...
-    @overload
-    def __getitem__(self, kind: Literal["actions"]) -> dict[int, Action]: ...
-    @overload
-    def __getitem__(self, kind: Literal["volumes"]) -> dict[int, Volume]: ...
-    @overload
-    def __getitem__(self, kind: Literal["storage_boxes"]) -> dict[int, StorageBox]: ...
-    @overload
-    def __getitem__(self, kind: Literal["subaccounts"]) -> dict[int, Subaccount]: ...
-    @overload
-    def __getitem__(self, kind: Literal["box_snapshots"]) -> dict[int, BoxSnapshot]: ...
-    @overload
-    def __getitem__(self, kind: Literal["clients"]) -> dict[int, Client]: ...
-    @overload
-    def __getitem__(self, kind: str) -> dict[int, Any]: ...
-
-    def __getitem__(self, kind: str) -> dict[int, Any]:
-        """Return the resources of a kind, by ID."""
+    def __getitem__[R](self, kind: Kind[R]) -> dict[int, R]:
+        """Return the resources of a kind, by ID (`state[SERVERS]`)."""
         self.check_owner()
-        return self._data[kind]
+        records: dict[int, R] = self._data[kind.name]
+        return records
+
+    def get[R](self, kind: Kind[R], item_id: int | None) -> R | None:
+        """Return the resource of a kind with this ID, or None (gone, or no ID)."""
+        return self[kind].get(item_id) if item_id is not None else None
 
     def clear(self) -> None:
         """Remove every resource and the lab's records (a lab reset).
@@ -437,5 +452,5 @@ class State:
 
         Returns 0 when the lab is full.
         """
-        used = {s["_lab"]["index"] for s in self["servers"].values()}
+        used = {s["_lab"]["index"] for s in self[SERVERS].values()}
         return next((i for i in range(1, 240) if i not in used), 0)

@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from ...errors import limit_exceeded, locked, not_found, not_unique
 from ...lab import ActionSpec, ActionTable, Lab, Plan, now
 from ...records import StorageBox, Subaccount
+from ...state import STORAGE_BOXES, SUBACCOUNTS
 from ..web import filtered, read_body, sort_items, update_fields
 from .base import (
     BUSY,
@@ -40,7 +41,7 @@ def subaccount_json(lab: Lab, subaccount: Subaccount) -> dict:
 
 def subaccount_or_404(lab: Lab, box: StorageBox, subaccount_id: int) -> Subaccount:
     """Return a sub-account of the box by ID, or raise 404."""
-    subaccount = lab.state["subaccounts"].get(subaccount_id)
+    subaccount = lab.state[SUBACCOUNTS].get(subaccount_id)
     if not subaccount or subaccount["box"] != box["id"]:
         raise not_found("subaccount")
     return subaccount
@@ -55,7 +56,7 @@ def check_unique_subaccount_name(
     """
     others = [
         x
-        for x in lab.state["subaccounts"].values()
+        for x in lab.state[SUBACCOUNTS].values()
         if x["box"] == box["id"] and x is not current
     ]
     if name and any((x.get("name") or x["username"]) == name for x in others):
@@ -64,7 +65,7 @@ def check_unique_subaccount_name(
 
 def box_of(lab: Lab, subaccount: Subaccount) -> StorageBox:
     """Return a sub-account's box."""
-    return lab.state["storage_boxes"][subaccount["box"]]
+    return lab.state[STORAGE_BOXES][subaccount["box"]]
 
 
 def box_plan(subaccount: Subaccount) -> Plan:
@@ -161,7 +162,7 @@ async def create_subaccount(lab: Lab, bid: int, body: dict) -> dict:
     password = checked_password(body.get("password"))
     with lab.holding() as held:
         check_unique_subaccount_name(lab, box, body.get("name"), None)
-        mine = [a for a in state["subaccounts"].values() if a["box"] == box["id"]]
+        mine = [a for a in state[SUBACCOUNTS].values() if a["box"] == box["id"]]
         if len(mine) >= lab.cfg["storage_box_types"][box["type"]]["subaccounts"]:
             raise limit_exceeded(
                 "sub-account limit of the Storage Box type reached", "subaccounts"
@@ -170,7 +171,7 @@ async def create_subaccount(lab: Lab, bid: int, body: dict) -> dict:
             raise locked(BUSY)
         number = 1 + max([a["number"] for a in mine], default=0)
         with state.change():
-            subaccount_id = state.new_id("subaccounts")
+            subaccount_id = state.new_id(SUBACCOUNTS)
             subaccount: Subaccount = {
                 "id": subaccount_id,
                 "box": box["id"],
@@ -184,7 +185,7 @@ async def create_subaccount(lab: Lab, bid: int, body: dict) -> dict:
                 "created": now(),
                 "_password": password,
             }
-            state["subaccounts"][subaccount_id] = subaccount
+            state[SUBACCOUNTS][subaccount_id] = subaccount
             held.claim(subaccount, "_creating", BUSY)  # new: nobody holds it yet
         try:
             await sync_subaccount(lab, box, subaccount, password)
@@ -193,7 +194,7 @@ async def create_subaccount(lab: Lab, bid: int, body: dict) -> dict:
                 lab.fabric.box.remove_account, subaccount["username"], check=False
             )
             with state.change():
-                state["subaccounts"].pop(subaccount_id, None)
+                state[SUBACCOUNTS].pop(subaccount_id, None)
             raise
         with state.change():  # the sub-account is ready
             held.release()
@@ -220,7 +221,7 @@ async def delete_subaccount(lab: Lab, bid: int, subaccount_id: int) -> dict:
     subaccount = subaccount_or_404(lab, box, subaccount_id)
     await lab.blocking(lab.fabric.box.remove_account, subaccount["username"])
     with lab.state.change():
-        del lab.state["subaccounts"][subaccount_id]
+        del lab.state[SUBACCOUNTS][subaccount_id]
     return {
         "action": lab.finished_action(
             "delete_subaccount",
@@ -252,7 +253,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
         box_or_404(lab, bid)
         items = filtered(
             request,
-            [a for a in state["subaccounts"].values() if a["box"] == bid],
+            [a for a in state[SUBACCOUNTS].values() if a["box"] == bid],
             {
                 "username": lambda subaccount, value: subaccount["username"] == value,
                 # a sub-account without a name goes by its username

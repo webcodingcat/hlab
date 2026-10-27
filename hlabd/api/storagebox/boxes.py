@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from ...errors import check_unique_name, invalid, locked, protected
 from ...lab import BOX_CREATE_SECONDS, ActionSpec, ActionTable, Lab, Plan, now
 from ...records import StorageBox
+from ...state import ACTIONS, BOX_SNAPSHOTS, STORAGE_BOXES, SUBACCOUNTS
 from .. import hetzner
 from ..actions import action_or_404, listed, touches
 from ..catalogue import catalogue_entry_or_404, catalogue_name
@@ -124,30 +125,30 @@ async def set_up_box_account(
             await lab.blocking(
                 fabric_box.write_authorized_keys, username(box["id"]), keys
             )
-        await sync_box(lab, box)
+        await sync_box(lab, lab.current(STORAGE_BOXES, box["id"]))
     except Exception:  # undo the partial change, then raise
         await lab.blocking(fabric_box.remove_account, username(box["id"]), check=False)
         await lab.blocking(fabric_box.remove_box_data, box["id"], check=False)
         with lab.state.change():
-            lab.state["storage_boxes"].pop(box["id"], None)
+            lab.state[STORAGE_BOXES].pop(box["id"], None)
         raise
 
 
 async def remove_box(lab: Lab, box: StorageBox) -> None:
     """Remove the box with its sub-accounts, snapshots and data."""
     state, fabric_box = lab.state, lab.fabric.box
-    mine = [x for x in state["subaccounts"].values() if x["box"] == box["id"]]
+    mine = [x for x in state[SUBACCOUNTS].values() if x["box"] == box["id"]]
     for subaccount in mine:
         await lab.blocking(fabric_box.remove_account, subaccount["username"])
         with state.change():
-            del state["subaccounts"][subaccount["id"]]
+            del state[SUBACCOUNTS][subaccount["id"]]
     with state.change():
-        for s in [s for s in state["box_snapshots"].values() if s["box"] == box["id"]]:
-            del state["box_snapshots"][s["id"]]
+        for s in [s for s in state[BOX_SNAPSHOTS].values() if s["box"] == box["id"]]:
+            del state[BOX_SNAPSHOTS][s["id"]]
     await lab.blocking(fabric_box.remove_account, username(box["id"]))
     await lab.blocking(fabric_box.remove_box_data, box["id"])
     with state.change():
-        state["storage_boxes"].pop(box["id"], None)
+        state[STORAGE_BOXES].pop(box["id"], None)
 
 
 # --- box actions ----------------------------------------------------------------------
@@ -166,7 +167,7 @@ async def change_type(lab: Lab, box: StorageBox, body: dict) -> Plan:
         box["type"] = type_name
     await sync_box(lab, box)
     # sub-accounts share the quota
-    mine = [a for a in lab.state["subaccounts"].values() if a["box"] == box["id"]]
+    mine = [a for a in lab.state[SUBACCOUNTS].values() if a["box"] == box["id"]]
     for subaccount in mine:
         await lab.blocking(
             lab.fabric.box.set_access,
@@ -248,9 +249,7 @@ async def create_box(lab: Lab, body: dict) -> dict:
     state = lab.state
     type_name = catalogue_name(lab, "storage_box_type", body["storage_box_type"])
     location = catalogue_name(lab, "location", body["location"])
-    check_unique_name(
-        state["storage_boxes"].values(), body["name"], None, "Storage Box"
-    )
+    check_unique_name(state[STORAGE_BOXES].values(), body["name"], None, "Storage Box")
     access_settings = {
         "reachable_externally": False,
         "samba_enabled": False,
@@ -264,7 +263,7 @@ async def create_box(lab: Lab, body: dict) -> dict:
     keys = checked_ssh_keys(body.get("ssh_keys") or [])
     password = checked_password(body.get("password"))
     with state.change():
-        bid = state.new_id("storage_boxes")
+        bid = state.new_id(STORAGE_BOXES)
         box: StorageBox = {
             "id": bid,
             "name": body["name"],
@@ -278,15 +277,15 @@ async def create_box(lab: Lab, body: dict) -> dict:
             "created": now(),
             "_password": password,
         }
-        state["storage_boxes"][bid] = box
+        state[STORAGE_BOXES][bid] = box
     action = lab.new_action("create", [(bid, "storage_box")])
 
     def activate() -> None:
         with state.change():
-            box["status"] = "active"
+            lab.current(STORAGE_BOXES, bid)["status"] = "active"
 
     async def steps():
-        await set_up_box_account(lab, box, password, keys)
+        await set_up_box_account(lab, lab.current(STORAGE_BOXES, bid), password, keys)
         await lab.sleep(BOX_CREATE_SECONDS)
         activate()
 
@@ -297,7 +296,7 @@ async def create_box(lab: Lab, body: dict) -> dict:
 async def update_box(lab: Lab, bid: int, body: dict) -> dict:
     """Change a box's name and labels (names are unique)."""
     box = box_or_404(lab, bid)
-    update_resource(lab, "storage_boxes", box, body, ("name", "labels"), "Storage Box")
+    update_resource(lab, STORAGE_BOXES, box, body, ("name", "labels"), "Storage Box")
     return {"storage_box": await box_json(lab, box)}
 
 
@@ -358,7 +357,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     # registered before /v1/storage_boxes/{bid}
     @app.get("/v1/storage_boxes/actions")
     async def box_action_list(request: Request):
-        mine = [a for a in state["actions"].values() if touches(a, "storage_box")]
+        mine = [a for a in state[ACTIONS].values() if touches(a, "storage_box")]
         return listed(request, mine)
 
     @app.get("/v1/storage_boxes/actions/{aid}")
@@ -369,13 +368,13 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     @app.get("/v1/storage_boxes/{bid}/actions")
     async def box_actions(request: Request, bid: int):
         box_or_404(lab, bid)
-        mine = [a for a in state["actions"].values() if touches(a, "storage_box", bid)]
+        mine = [a for a in state[ACTIONS].values() if touches(a, "storage_box", bid)]
         return listed(request, mine)
 
     # boxes
     @app.get("/v1/storage_boxes")
     async def box_list(request: Request):
-        items = filtered(request, list(state["storage_boxes"].values()))
+        items = filtered(request, list(state[STORAGE_BOXES].values()))
         shapes = [await box_json(lab, box) for box in items]
         return paginate(request, shapes, "storage_boxes")
 

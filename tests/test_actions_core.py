@@ -15,7 +15,8 @@ import pytest
 
 from hlabd import lab as lab_module
 from hlabd.errors import ApiError, invalid
-from hlabd.lab import SERVER_LOCKED, ActionSpec, Plan
+from hlabd.lab import SERVER_LOCKED, ActionSpec, Plan, RecordGoneError
+from hlabd.state import SERVERS, VOLUMES
 
 
 def make_server(lab, sid=1001, status="running"):
@@ -27,7 +28,7 @@ def make_server(lab, sid=1001, status="running"):
         "_lab": {"index": sid - 1000, "tap": f"pub{sid - 1000}", "nics": []},
     }
     with lab.state.change():
-        lab.state["servers"][sid] = server
+        lab.state[SERVERS][sid] = server
     return server
 
 
@@ -35,7 +36,7 @@ def make_volume(lab, vid=10001):
     """Put a bare volume into the state and return it."""
     volume = {"id": vid, "name": f"v{vid}", "status": "available", "server": None}
     with lab.state.change():
-        lab.state["volumes"][vid] = volume
+        lab.state[VOLUMES][vid] = volume
     return volume
 
 
@@ -90,15 +91,12 @@ def test_release_takes_a_flag_off_and_leaves_a_server_unlocked(lab):
     lab.claim(volume, "_busy", "busy")  # free again
 
 
-def test_a_restart_clears_every_flag_and_the_old_locked_field(lab):
+def test_a_restart_clears_every_flag(lab):
     volume, server = make_volume(lab), make_server(lab)
     lab.claim(volume, "_busy", "busy")
     lab.claim(server, "_locked", "locked")
-    with lab.state.change():  # a state file from before `_locked`
-        server["locked"] = True
     lab.clear_flags()
-    assert "_busy" not in volume
-    assert "_locked" not in server and "locked" not in server
+    assert "_busy" not in volume and "_locked" not in server
 
 
 def test_holding_takes_off_what_it_holds_when_the_block_ends(lab):
@@ -468,3 +466,32 @@ def test_the_core_imports_nothing_from_the_api():
         if isinstance(node, ast.ImportFrom) and node.level
     ]
     assert not [module for module in imported if module.startswith("api")]
+
+
+def test_current_returns_a_record_by_id_or_raises_when_it_is_gone(lab):
+    server = make_server(lab)
+    assert lab.current(SERVERS, 1001) is server
+    with lab.state.change():
+        del lab.state[SERVERS][1001]
+    with pytest.raises(RecordGoneError, match="the server 1001 was deleted"):
+        lab.current(SERVERS, 1001)
+
+
+def test_a_failed_action_leaves_a_deleted_server_alone(lab):
+    server = make_server(lab, status="starting")
+
+    async def steps():
+        with lab.state.change():
+            del lab.state[SERVERS][1001]
+        lab.current(SERVERS, 1001)
+
+    async def main():
+        action = lab.new_action("start_server", [(1001, "server")])
+        lab.run_action(action, steps, server)
+        await settle(lab)
+        return action
+
+    action = run(main())
+    assert action["status"] == "error" and "deleted" in action["error"]["message"]
+    assert server["status"] == "starting"  # gone: not changed, nothing asked
+    assert lab.fabric.shell.calls == []

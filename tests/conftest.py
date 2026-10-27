@@ -167,7 +167,7 @@ def use_client_loop(lab: Lab, client: TestClient) -> None:
 
     A test client runs the app on a loop of its own, in a thread. The test reads and
     changes the state on that loop with `client.on_loop(work, *args)` (`work` may be
-    async): `client.on_loop(lambda: lab.state["servers"][sid]["status"])`.
+    async): `client.on_loop(lambda: lab.state[SERVERS][sid]["status"])`.
     """
     client.portal.call(lab.own_state)
     client.on_loop = client.portal.call

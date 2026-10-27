@@ -17,6 +17,7 @@ from ..errors import (
 from ..fabric.addresses import network_gateway, private_mac
 from ..lab import ALIAS_IPS_SECONDS, NIC_ATTACH_SECONDS, NIC_DETACH_SECONDS, Lab, Plan
 from ..records import CloudNetwork, Nic, Server
+from ..state import NETWORKS, SERVERS
 from . import system
 from .faults import drop_netem
 from .networks import addresses_in
@@ -33,7 +34,7 @@ def lab_addresses(lab: Lab, local_addresses: set[str]) -> set[str]:
     a thread, since that runs a script:
     `await lab.blocking(lab.fabric.network.read_local_addresses)`.
     """
-    gateways = {network_gateway(n["ip_range"]) for n in lab.state["networks"].values()}
+    gateways = {network_gateway(n["ip_range"]) for n in lab.state[NETWORKS].values()}
     return gateways | {config.GATEWAY} | local_addresses
 
 
@@ -101,7 +102,7 @@ def checked_alias_ips(lab: Lab, nic: Nic, ips, local_addresses: set[str]) -> lis
         return []
     if not isinstance(ips, list):
         raise invalid("alias_ips is a list of IPs", "alias_ips")
-    net = lab.state["networks"][nic["network"]]
+    net = lab.state[NETWORKS][nic["network"]]
     subnets = [ipaddress.ip_network(x["ip_range"]) for x in net["subnets"]]
     taken = (
         addresses_in(lab, net["id"], except_nic=nic)
@@ -139,7 +140,7 @@ def add_nic(
     NIC must not get (`lab_addresses`).
     """
     state = lab.state
-    net = state["networks"].get(nid)
+    net = state[NETWORKS].get(nid)
     if not net or net.get("_deleting"):
         raise invalid(f"network {nid} not found")
     nics = server["_lab"]["nics"]
@@ -154,7 +155,7 @@ def add_nic(
     joined_range = ipaddress.ip_network(net["ip_range"])
     if any(
         joined_range.overlaps(
-            ipaddress.ip_network(state["networks"][n["network"]]["ip_range"])
+            ipaddress.ip_network(state[NETWORKS][n["network"]]["ip_range"])
         )
         for n in nics
     ):
@@ -218,13 +219,19 @@ async def attach_to_network(lab: Lab, server: Server, body: dict) -> Plan:
             lab, nic, body.get("alias_ips"), local_addresses
         )
 
+    sid, nid, tap = server["id"], nic["network"], nic["tap"]
+
     async def steps():
         try:
-            await system.attach_nic(lab, server, nic)
+            await system.attach_nic(
+                lab, lab.current(SERVERS, sid), system.current_nic(lab, sid, nid)
+            )
         except Exception:  # whatever failed: undo, then re-raise
             # remove the NIC again, so the API reports no network the VM does not have
-            await lab.blocking(lab.fabric.network.detach_nic, server["id"], nic["tap"])
-            remove_nic(lab, server, nic)
+            await lab.blocking(lab.fabric.network.detach_nic, sid, tap)
+            server_now = lab.state.get(SERVERS, sid)  # nothing to undo if gone
+            if server_now is not None:
+                remove_nic(lab, server_now, nic)
             await system.write_dhcp(lab)
             raise
         await lab.sleep(NIC_ATTACH_SECONDS)
@@ -235,10 +242,11 @@ async def attach_to_network(lab: Lab, server: Server, body: dict) -> Plan:
 async def detach_from_network(lab: Lab, server: Server, body: dict) -> Plan:
     """Plan a detach from a network."""
     nic = server_nic(lab, server, body)
+    sid, nid, tap = server["id"], nic["network"], nic["tap"]
 
     async def steps():
-        await lab.blocking(lab.fabric.network.detach_nic, server["id"], nic["tap"])
-        remove_nic(lab, server, nic)
+        await lab.blocking(lab.fabric.network.detach_nic, sid, tap)
+        remove_nic(lab, lab.current(SERVERS, sid), system.current_nic(lab, sid, nid))
         await system.write_dhcp(lab)
         await system.apply_faults(lab)
         await lab.sleep(NIC_DETACH_SECONDS)
@@ -259,9 +267,11 @@ async def change_alias_ips(lab: Lab, server: Server, body: dict) -> Plan:
             lab, nic, body.get("alias_ips"), local_addresses
         )
 
+    sid, nid = server["id"], nic["network"]
+
     async def steps():
-        if await lab.blocking(lab.fabric.vms.is_alive, server["id"]):
-            await system.nic_up(lab, nic)
+        if await lab.blocking(lab.fabric.vms.is_alive, sid):
+            await system.nic_up(lab, system.current_nic(lab, sid, nid))
         # an alias IP may be the gateway of a route
         await system.apply_routes(lab)
         await lab.sleep(ALIAS_IPS_SECONDS)

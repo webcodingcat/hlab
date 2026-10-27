@@ -9,9 +9,9 @@ The functions that put a whole picture in place hold `lab.picture_lock`, which i
 re-entrant (DEVELOPING.md, Where code runs).
 """
 
-from ..lab import Lab
+from ..lab import Lab, RecordGoneError
 from ..records import Client, Nic, Server
-from ..state import nics_in
+from ..state import FLOATING_IPS, SERVERS, nics_in
 from . import desired
 
 # --- whole pictures -------------------------------------------------------------------
@@ -70,7 +70,12 @@ async def route_floating_ip(lab: Lab, ip: str, server: Server | None) -> None:
     (`reroute_floating_ips`).
     """
     async with lab.picture_lock:
-        target = desired.public_tap(server) if server is not None else None
+        # looked up again: taking the lock may have waited
+        target = (
+            desired.public_tap(lab.current(SERVERS, server["id"]))
+            if server is not None
+            else None
+        )
         await lab.blocking(lab.fabric.network.route_floating_ip, ip, target)
 
 
@@ -81,12 +86,14 @@ async def start_vm(lab: Lab, server: Server) -> None:
     """Start the server's VM, with everything the system needs for it.
 
     That is its taps, DHCP, boot volumes, and the routes, faults and latency that
-    involve the server. A VM that fails to start leaves no taps behind.
+    involve the server. A VM that fails to start leaves no taps behind. The server is
+    looked up again after each await (`lab.current`).
     """
-    state, fabric = lab.state, lab.fabric
-    if await lab.blocking(fabric.vms.is_alive, server["id"]):
+    state, fabric, sid = lab.state, lab.fabric, server["id"]
+    if await lab.blocking(fabric.vms.is_alive, sid):
         return
     try:
+        server = lab.current(SERVERS, sid)
         taps = desired.server_taps(state, server)
         # at boot each network NIC gets its own root port (bp<n>); hp1..hp4 are free
         with state.change():
@@ -94,16 +101,15 @@ async def start_vm(lab: Lab, server: Server) -> None:
                 nic.pop("port", None)
         nics = await lab.blocking(fabric.network.taps_up, taps)
         await write_dhcp(lab)
+        server = lab.current(SERVERS, sid)
         volumes = desired.boot_volumes(state, server)
-        await lab.blocking(fabric.volumes.write_boot_list, server["id"], volumes)
+        await lab.blocking(fabric.volumes.write_boot_list, sid, volumes)
+        server = lab.current(SERVERS, sid)
         await lab.blocking(
-            fabric.vms.launch,
-            server["id"],
-            server["name"],
-            server["server_type"],
-            nics,
+            fabric.vms.launch, sid, server["name"], server["server_type"], nics
         )
     except Exception:  # whatever failed: remove the half-started VM, then re-raise
+        # the last record seen: the VM and its taps go even if the server is gone
         await kill_vm(lab, server)
         raise
     await reroute_floating_ips(lab, server)
@@ -113,10 +119,14 @@ async def start_vm(lab: Lab, server: Server) -> None:
 
 
 async def kill_vm(lab: Lab, server: Server) -> None:
-    """Stop the server's VM and take its taps and DHCP down."""
-    await lab.blocking(lab.fabric.vms.kill, server["id"], server["name"])
+    """Stop the server's VM and take its taps and DHCP down.
+
+    Everything is read from the record before the first await, so this also cleans up
+    after a server that is gone meanwhile.
+    """
     server_lab = server["_lab"]
     taps = [server_lab["tap"], *(nic["tap"] for nic in server_lab["nics"])]
+    await lab.blocking(lab.fabric.vms.kill, server["id"], server["name"])
     await lab.blocking(lab.fabric.network.taps_down, taps)
     await write_dhcp(lab)  # this also stops the dnsmasq of each removed tap
 
@@ -136,9 +146,10 @@ async def reroute_floating_ips(lab: Lab, server: Server) -> None:
     (`route_floating_ip`) comes before or after this, never in between.
     """
     async with lab.picture_lock:
+        server = lab.current(SERVERS, server["id"])  # taking the lock may have waited
         ips = [
             f["ip"]
-            for f in lab.state["floating_ips"].values()
+            for f in lab.state[FLOATING_IPS].values()
             if f.get("server") == server["id"]
         ]
         target = desired.public_tap(server)
@@ -147,6 +158,18 @@ async def reroute_floating_ips(lab: Lab, server: Server) -> None:
 
 
 # --- NICs, networks, clients ----------------------------------------------------------
+
+
+def current_nic(lab: Lab, sid: int, nid: int) -> Nic:
+    """Return the server's NIC in a network as it is now, or raise RecordGoneError.
+
+    A NIC has no ID of its own: a server has one NIC per network.
+    """
+    nics = lab.current(SERVERS, sid)["_lab"]["nics"]
+    nic = next((n for n in nics if n["network"] == nid), None)
+    if nic is None:
+        raise RecordGoneError(f"the NIC of server {sid} in network {nid} is gone")
+    return nic
 
 
 async def nic_up(lab: Lab, nic: Nic) -> None:
@@ -159,21 +182,23 @@ async def attach_nic(lab: Lab, server: Server, nic: Nic) -> None:
     """Put a NIC that is already in the state in place: hot-plugged if the VM runs.
 
     A VM that is off gets the NIC at its next start. Either way, the faults, routes
-    and latency take the new NIC into account.
+    and latency take the new NIC into account. The server and the NIC are looked up
+    again after each await (`current_nic`).
     """
     state, fabric = lab.state, lab.fabric
-    if await lab.blocking(fabric.vms.is_alive, server["id"]):
-        tap = desired.private_tap(state, nic)
+    sid, nid = server["id"], nic["network"]
+    if await lab.blocking(fabric.vms.is_alive, sid):
+        tap = desired.private_tap(state, current_nic(lab, sid, nid))
         await lab.blocking(fabric.network.nic_up, tap)
-        port = desired.free_hot_plug_port(server)
+        port = desired.free_hot_plug_port(lab.current(SERVERS, sid))
         if port is None:
             raise RuntimeError(
                 "no free hot-plug port (the lab hot-plugs 4 NICs per boot)"
             )
         with state.change():
-            nic["port"] = port
+            current_nic(lab, sid, nid)["port"] = port
         await write_dhcp(lab)  # the tap exists now: its dnsmasq binds to it
-        await lab.blocking(fabric.network.hot_plug_nic, server["id"], tap, port)
+        await lab.blocking(fabric.network.hot_plug_nic, sid, tap, port)
     else:
         await write_dhcp(lab)
     await apply_faults(lab)

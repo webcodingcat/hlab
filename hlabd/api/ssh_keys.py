@@ -9,6 +9,7 @@ from fastapi.responses import Response
 from ..errors import check_unique_name, invalid, not_unique
 from ..lab import Lab, now
 from ..records import SSHKey
+from ..state import SSH_KEYS
 from . import hetzner
 from .web import filtered, paginate, read_body, update_resource
 
@@ -41,7 +42,7 @@ def create_ssh_key(lab: Lab, body: dict) -> dict:
     except Exception:  # noqa: BLE001
         raise invalid("invalid public key") from None
     with state.change():
-        ssh_keys = state["ssh_keys"].values()
+        ssh_keys = state[SSH_KEYS].values()
         check_unique_name(
             ssh_keys, body["name"], message="SSH key with the same name already exists"
         )
@@ -49,7 +50,7 @@ def create_ssh_key(lab: Lab, body: dict) -> dict:
             raise not_unique(
                 "SSH key with the same fingerprint already exists", "public_key"
             )
-        kid = state.new_id("ssh_keys")
+        kid = state.new_id(SSH_KEYS)
         ssh_key: SSHKey = {
             "id": kid,
             "name": body["name"],
@@ -58,22 +59,22 @@ def create_ssh_key(lab: Lab, body: dict) -> dict:
             "labels": body.get("labels") or {},
             "created": now(),
         }
-        state["ssh_keys"][kid] = ssh_key
+        state[SSH_KEYS][kid] = ssh_key
     return {"ssh_key": hetzner.ssh_key_json(lab, ssh_key)}
 
 
 def update_ssh_key(lab: Lab, kid: int, body: dict) -> dict:
     """Change an SSH key's name or labels."""
-    ssh_key = lab.get_or_404("ssh_keys", kid, "SSH key")
-    update_resource(lab, "ssh_keys", ssh_key, body, ("name", "labels"), "SSH key")
+    ssh_key = lab.get_or_404(SSH_KEYS, kid, "SSH key")
+    update_resource(lab, SSH_KEYS, ssh_key, body, ("name", "labels"), "SSH key")
     return {"ssh_key": hetzner.ssh_key_json(lab, ssh_key)}
 
 
 def delete_ssh_key(lab: Lab, kid: int) -> None:
     """Delete an SSH key (servers keep the keys they were made with)."""
     with lab.state.change():
-        lab.get_or_404("ssh_keys", kid, "SSH key")
-        del lab.state["ssh_keys"][kid]
+        lab.get_or_404(SSH_KEYS, kid, "SSH key")
+        del lab.state[SSH_KEYS][kid]
 
 
 # --- routes ---------------------------------------------------------------------------
@@ -87,7 +88,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     async def ssh_key_list(request: Request):
         items = filtered(
             request,
-            list(state["ssh_keys"].values()),
+            list(state[SSH_KEYS].values()),
             {"fingerprint": lambda ssh_key, value: ssh_key["fingerprint"] == value},
         )
         return paginate(
@@ -100,7 +101,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
 
     @app.get("/v1/ssh_keys/{kid}")
     async def ssh_key_get(kid: int):
-        ssh_key = lab.get_or_404("ssh_keys", kid, "SSH key")
+        ssh_key = lab.get_or_404(SSH_KEYS, kid, "SSH key")
         return {"ssh_key": hetzner.ssh_key_json(lab, ssh_key)}
 
     @app.put("/v1/ssh_keys/{kid}")

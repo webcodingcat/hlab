@@ -10,6 +10,7 @@ import logging
 from fastapi import FastAPI
 
 from ...lab import Lab
+from ...state import BOX_SNAPSHOTS, STORAGE_BOXES, SUBACCOUNTS
 from ..web import install
 from . import boxes, snapshots, subaccounts
 from .base import box_account, sync_box, sync_subaccount
@@ -42,16 +43,16 @@ async def restore(lab: Lab) -> None:
     """
     state, fabric = lab.state, lab.fabric
     # copies: the loops below run scripts, so the state may change in between
-    cut_off = [s for s in state["box_snapshots"].values() if s.get("_copying")]
-    boxes = list(state["storage_boxes"].values())
+    cut_off = [s for s in state[BOX_SNAPSHOTS].values() if s.get("_copying")]
+    boxes = list(state[STORAGE_BOXES].values())
     for s in cut_off:
-        box = state["storage_boxes"].get(s["box"])
+        box = state[STORAGE_BOXES].get(s["box"])
         if box:
             await lab.blocking(
                 fabric.box.remove_snapshot, box["id"], s["name"], check=False
             )
         with state.change():
-            del state["box_snapshots"][s["id"]]
+            del state[BOX_SNAPSHOTS][s["id"]]
     # snapshots whose copy was not finished
     await lab.blocking(fabric.box.clear_snapshot_work)
     for box in boxes:
@@ -62,7 +63,7 @@ async def restore(lab: Lab) -> None:
         except Exception:
             log.exception("Storage Box %s not restored", box["id"])
             continue
-        accounts = [a for a in state["subaccounts"].values() if a["box"] == box["id"]]
+        accounts = [a for a in state[SUBACCOUNTS].values() if a["box"] == box["id"]]
         for account in accounts:
             try:
                 await sync_subaccount(lab, box, account, account.get("_password"))

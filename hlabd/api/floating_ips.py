@@ -13,6 +13,7 @@ from ..errors import (
 )
 from ..lab import FLOATING_IP_MOVE_SECONDS, ActionSpec, ActionTable, Lab, Plan, now
 from ..records import FloatingIP, Server
+from ..state import FLOATING_IPS, SERVERS
 from . import hetzner, system
 from .catalogue import catalogue_name
 from .public_addresses import first_free, record_dns_ptr
@@ -32,7 +33,7 @@ def free_floating_ip(lab: Lab, ip_type: str) -> str:
     IPv6 uses 2001:db8:ff01::/64 to ...:fffd::/64; the lab uses fffe and ffff for its
     services and clients. The caller stores the new record in the same `change()`.
     """
-    used = {x["ip"] for x in lab.state["floating_ips"].values()}
+    used = {x["ip"] for x in lab.state[FLOATING_IPS].values()}
     if ip_type == "ipv4":
         candidates = (f"{config.FLOATING_NET}.{10 + n}" for n in range(1, 241))
     else:
@@ -56,10 +57,10 @@ async def create_floating_ip(lab: Lab, body: dict) -> dict:
     home = catalogue_name(lab, "location", home, "home_location")
     with state.change():
         check_unique_name(
-            state["floating_ips"].values(), body.get("name"), None, "Floating IP"
+            state[FLOATING_IPS].values(), body.get("name"), None, "Floating IP"
         )
         ip = free_floating_ip(lab, ip_type)
-        fid = state.new_id("floating_ips")
+        fid = state.new_id(FLOATING_IPS)
         floating_ip: FloatingIP = {
             "id": fid,
             "name": body.get("name") or f"floating-ip-{fid}",
@@ -73,7 +74,7 @@ async def create_floating_ip(lab: Lab, body: dict) -> dict:
             "dns_ptr": [],
             "created": now(),
         }
-        state["floating_ips"][fid] = floating_ip
+        state[FLOATING_IPS][fid] = floating_ip
     out = {
         "floating_ip": hetzner.floating_ip_json(lab, floating_ip),
         "action": None,
@@ -88,21 +89,21 @@ async def create_floating_ip(lab: Lab, body: dict) -> dict:
 
 def update_floating_ip(lab: Lab, fid: int, body: dict) -> dict:
     """Change a Floating IP's name, description or labels."""
-    floating_ip = lab.get_or_404("floating_ips", fid, "Floating IP")
+    floating_ip = lab.get_or_404(FLOATING_IPS, fid, "Floating IP")
     keys = ("name", "description", "labels")
-    update_resource(lab, "floating_ips", floating_ip, body, keys, "Floating IP")
+    update_resource(lab, FLOATING_IPS, floating_ip, body, keys, "Floating IP")
     return {"floating_ip": hetzner.floating_ip_json(lab, floating_ip)}
 
 
 def delete_floating_ip(lab: Lab, fid: int) -> None:
     """Delete a Floating IP that is not protected and not assigned."""
-    floating_ip = lab.get_or_404("floating_ips", fid, "Floating IP")
+    floating_ip = lab.get_or_404(FLOATING_IPS, fid, "Floating IP")
     if floating_ip["protection"]["delete"]:
         raise protected("Floating IP is delete protected")
     if floating_ip.get("server"):  # Hetzner refuses this since 1 May 2026
         raise must_be_unassigned("the Floating IP is assigned; unassign it first")
     with lab.state.change():
-        del lab.state["floating_ips"][fid]
+        del lab.state[FLOATING_IPS][fid]
 
 
 # Each Floating IP action below checks the request and returns its plan (lab.Plan).
@@ -123,24 +124,22 @@ def move_floating_ip(lab: Lab, floating_ip: FloatingIP, target: Server | None) -
     As on Hetzner, the route moves after about 3 s. From then on, the server may send
     from the IP.
     """
-    state = lab.state
+    fid, ip = floating_ip["id"], floating_ip["ip"]
+    target_id = target["id"] if target else None
 
-    def save_move() -> None:
-        with state.change():
-            deleted = floating_ip["id"] not in state["floating_ips"] or (
-                target and target["id"] not in state["servers"]
-            )
-            if deleted:
-                raise RuntimeError(
-                    "the Floating IP or the server was deleted meanwhile"
-                )
-            floating_ip["server"] = target["id"] if target else None
+    def save_move() -> Server | None:
+        """Store the new assignment; return the target as it is now."""
+        with lab.state.change():
+            moved = lab.current(FLOATING_IPS, fid)
+            target_now = lab.current(SERVERS, target_id) if target_id else None
+            moved["server"] = target_id
+        return target_now
 
     async def steps():
         if target:
             await lab.sleep(FLOATING_IP_MOVE_SECONDS)
-        save_move()
-        await system.route_floating_ip(lab, floating_ip["ip"], target)
+        target_now = save_move()
+        await system.route_floating_ip(lab, ip, target_now)
         await system.apply_faults(lab)
         if target:
             await system.apply_latency(lab)
@@ -174,7 +173,7 @@ FLOATING_IP_ACTIONS: ActionTable[FloatingIP] = {
 
 async def run_floating_ip_action(lab: Lab, fid: int, cmd: str, body: dict) -> dict:
     """Run a Floating IP action: one at a time per Floating IP (423 otherwise)."""
-    floating_ip = lab.get_or_404("floating_ips", fid, "Floating IP")
+    floating_ip = lab.get_or_404(FLOATING_IPS, fid, "Floating IP")
     busy = "the Floating IP is being moved"
     return await lab.act(
         FLOATING_IP_ACTIONS, cmd, floating_ip, "floating_ip", body, "_moving", busy
@@ -190,7 +189,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
 
     @app.get("/v1/floating_ips")
     async def floating_ip_list(request: Request):
-        items = filtered(request, list(state["floating_ips"].values()))
+        items = filtered(request, list(state[FLOATING_IPS].values()))
         return paginate(
             request,
             [hetzner.floating_ip_json(lab, f) for f in items],
@@ -203,7 +202,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
 
     @app.get("/v1/floating_ips/{fid}")
     async def floating_ip_get(fid: int):
-        floating_ip = lab.get_or_404("floating_ips", fid, "Floating IP")
+        floating_ip = lab.get_or_404(FLOATING_IPS, fid, "Floating IP")
         return {"floating_ip": hetzner.floating_ip_json(lab, floating_ip)}
 
     @app.put("/v1/floating_ips/{fid}")

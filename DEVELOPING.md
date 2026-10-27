@@ -53,7 +53,8 @@ The project's own words, in alphabetical order.
 - **plan**: a `Plan` (`lab.py`), returned by an action's function. It says what the
   action will do (`steps`, `server`, `extra`, ...).
 - **state**: everything the fake API knows, in memory and saved as JSON in the lab's
-  volume (`State` in `state.py`). Resources are kept by kind (`KIND_TYPES`) and ID.
+  volume (`State` in `state.py`). Resources are kept by kind (a `Kind`, such as
+  `SERVERS`) and ID; the saved file has a version (`migrations.py`).
 - **steps**: `Plan.steps`, the slow part of an action: an async function that runs in
   the background after the answer has gone out.
 - **system**: `api/system.py`, which puts the state in place. It reads the state on
@@ -103,7 +104,8 @@ Inside `hlabd/`:
 | Module | Job |
 |---|---|
 | `lab.py` | the core: actions (`Plan`, `act`, `run_action`), flags, Hetzner's timings, `blocking` for threads; it imports nothing from `api/` |
-| `state.py` | the state and the lab-only records; the owner check, `change()`, the writer thread |
+| `state.py` | the state and the lab-only records; the kinds (`Kind`, `ALL_KINDS`); the owner check, `change()`, the writer thread |
+| `migrations.py` | the version of the saved state and the migrations from older versions |
 | `records.py` | one TypedDict per kind with the fields of the resource, including the lab-only fields (a server's `_lab`, its NICs); mypy checks them |
 | `api/hetzner.py` | the JSON shapes of the Cloud API (`<thing>_json(lab, thing)`) |
 | `api/<resource>.py` | one resource each: checks, its action table, routes |
@@ -296,17 +298,19 @@ in a thread. The details:
 This is `system.kill_vm`, which the power-off steps above await, step by step:
 
 ```text
-event loop   the poweroff steps call `await system.kill_vm(lab, server)`
+event loop   the poweroff steps call
+             `await system.kill_vm(lab, lab.current(SERVERS, sid))`;
+             kill_vm reads the server's taps from the record (a plain list)
 thread       `await lab.blocking(fabric.vms.kill, server["id"], server["name"])`
                the ID and name are read on the loop and passed as plain data;
                hlab.sh kill-vm runs; the loop serves other requests meanwhile
-event loop   kill_vm reads the server's taps from the state (a plain list)
 thread       `await lab.blocking(fabric.network.taps_down, taps)`
 event loop   `system.write_dhcp`: under `lab.picture_lock`, `desired.dhcp_hosts`
              computes the DHCP hosts from the state
 thread       `await lab.blocking(fabric.network.write_dhcp, hosts)`
-event loop   back in the steps: `lab.set_status(server, "stopping")` changes the
-             state in a `with state.change():` block; the block's end commits
+event loop   back in the steps: `lab.set_status(lab.current(SERVERS, sid),
+             "stopping")` looks the server up again and changes the state in a
+             `with state.change():` block; the block's end commits
              (`State.save()` serializes the state on the loop)
 writer       the writer thread writes the file and fsyncs it
 ```
@@ -350,7 +354,7 @@ block: records, flags, actions, the lab-only records.
 
 ```python
 with lab.state.change():
-    check_unique_name(lab.state["volumes"].values(), name, volume, "volume")
+    check_unique_name(lab.state[VOLUMES].values(), name, volume, "volume")
     volume["name"] = name
 ```
 
@@ -383,11 +387,39 @@ disk, only the newest is written. `state.flush()` waits until everything saved i
 disk. The daemon flushes when it stops, a lab reset flushes before it answers, and the
 unit tests flush before they read the file.
 
+**Kinds.** Resources are kept by kind and ID. A kind is a typed key, a `Kind` constant
+of `state.py` (`SERVERS`, `VOLUMES`, ...): `lab.state[SERVERS]` is a
+`dict[int, Server]`, `lab.state.get(SERVERS, sid)` a server or None, and
+`lab.get_or_404(VOLUMES, vid, "volume")` a volume or 404. `ALL_KINDS` is the one list
+of kinds; `KIND_TYPES` finds a kind by its name, for code that gets the name at
+runtime (the path of `/v1/{kind}/{id}/actions`). The file keeps the names as keys.
+
+**Versions.** The saved state has a `version` (`STATE_VERSION` in `migrations.py`).
+`State` brings an older file up to date when it loads it: `MIGRATIONS[n]` takes the
+data from version n to n + 1, and the steps run in order. A file without a version is
+version 0, from before the state had one. A file of a newer version refuses to load
+(`StateVersionError`): this code does not know its shapes, and saving would lose
+them. A new kind or lab-only record needs no migration; it starts empty.
+
 **Awaits.** Across an await, other tasks run, so what was read before may have
-changed. Flags (`lab.holding()`) keep other actions off a resource across awaits. A
-loop that awaits for each item (a script per server) iterates over a copy
-(`list(...)`). Where it matters, the code checks again after the await
-(`stop_if_ended`, `make_available`).
+changed, and a record may be gone. Flags (`lab.holding()`) keep other actions off a
+resource across awaits, but not every change: a lab reset, or code that ignores the
+flags. So code keeps a record's ID across an await, never the record, and looks it up
+again after the await before it reads or changes it. IDs never change and are never
+reused; other fields that never change (a tap's name) may be read from the record
+held before the await.
+
+- **Steps** of an action use `lab.current(KIND, id)`. If the record is gone, it raises
+  `RecordGoneError`, and the action ends with an error ("the server 1000001 was
+  deleted while the action ran"). Before that, a step removes what it made on the
+  system for the record (`copy_snapshot` removes the copy, a volume's create deletes
+  the disk). Cleanup after a failure looks up with `lab.state.get(KIND, id)` and
+  skips what is gone, so it never hides the first error. `run_action` leaves a gone
+  server alone.
+- **Other background work** (the VM watcher) uses `lab.state.get(KIND, id)` and
+  leaves a record that is gone alone.
+- A loop that awaits for each item (a script per server) iterates over a copy
+  (`list(...)`); the VM watcher copies the IDs and looks each server up again.
 
 ## Recipes
 
@@ -402,7 +434,21 @@ with a list of actions. If it gives the server a new in-between status (like
 **A new field on a resource**: add it to the resource's TypedDict (`records.py`), to
 the code that creates the resource (`create_*`), to its JSON shape (`api/hetzner.py`,
 or the Storage Box modules), and to its PUT keys if it can change. The spec check in
-the unit tests tells you if the shape is wrong.
+the unit tests tells you if the shape is wrong. If old state files lack the field,
+change the record's shape as below.
+
+**Changing a record's shape** (a field added, renamed, moved or dropped, a value
+stored differently): saved state files still have the old shape, so the lab migrates
+them (The state, Versions).
+
+1. `migrations.py`: write `migrate_<n>_to_<n+1>(data)` for the current version n, a
+   plain function that changes the loaded JSON data in place (IDs are still strings),
+   with a docstring saying what changed and why. It uses literal field names, not the
+   current code's constants: those describe the newest shape. A kind may be missing
+   in old files (`data.get("servers", {})`).
+2. Append it to `MIGRATIONS`; `STATE_VERSION` follows from it.
+3. `tests/test_migrations.py`: a test of the step on data of the old shape, and the
+   old shape in `old_state()` if the chain test should cover it.
 
 **Something new on the system** (a tap, a route, a file): add a function with a header
 comment to `scripts/hlab.sh` and its verb to `main`. The verb is the function's name
@@ -417,16 +463,15 @@ reads it on the loop and passes it to the method in a thread
 them, so that a restart clears it (`lab.clear_flags`). Add it to the record's
 TypedDict as `NotRequired[bool]`.
 
-**A new resource kind**: `tests/test_state.py` fails until the first three steps are
+**A new resource kind**: `tests/test_state.py` fails until the first two steps are
 done.
 
 1. `records.py`: its TypedDict, added to `Record` (and to `ActionRecord` if it has
    actions, to `ProtectedRecord` if it has a plain delete protection).
-2. `state.py`: a row in `KIND_TYPES` (record type, a free ID range); `KINDS` and
-   `ID_BASE` follow from it.
-3. The `@overload`s of `State.__getitem__` (`state.py`) and `Lab.get_or_404`
-   (`lab.py`): mypy needs them written out.
-4. Its module `api/<kind>.py` (checks, action table, routes), added to
+2. `state.py`: its `Kind` constant (name, record type, a free ID range, its noun for
+   messages), added to `RECORD_KINDS`; `ALL_KINDS`, `KIND_TYPES`, `KINDS` and
+   `ID_BASE` follow from it. Old state files need no migration: the kind starts empty.
+3. Its module `api/<kind>.py` (checks, action table, routes), added to
    `create_app` (`api/app.py`); its JSON shape in `api/hetzner.py`; its flag, if new
    (above).
 

@@ -10,8 +10,8 @@ import logging
 
 from ..lab import Lab
 from ..records import Server
+from ..state import ACTIONS, CLIENTS, SERVERS, STORAGE_BOXES, VOLUMES
 from . import storagebox, system
-from .faults import upgrade_faults
 from .servers import ensure_disk, remove_server
 from .storagebox.base import set_up_box_user
 
@@ -37,7 +37,7 @@ async def restore_storage_box(lab: Lab) -> None:
 def fail_running_actions(lab: Lab) -> None:
     """Fail the actions that were running: the restart cut them off."""
     with lab.state.change():  # saved once
-        for action in lab.state["actions"].values():
+        for action in lab.state[ACTIONS].values():
             if action["status"] == "running":
                 lab.finish(action, "lab restarted")
 
@@ -49,22 +49,22 @@ async def drop_half_created_volumes(lab: Lab) -> None:
     """
     state = lab.state
     # a copy: other tasks may change the state while the scripts run
-    creating = [v for v in state["volumes"].values() if v["status"] == "creating"]
+    creating = [v for v in state[VOLUMES].values() if v["status"] == "creating"]
     for volume in creating:
         await lab.blocking(lab.fabric.volumes.delete, volume["id"])
         with state.change():
             # checked again after the await: only this very record, still creating
             if (
-                state["volumes"].get(volume["id"]) is volume
+                state[VOLUMES].get(volume["id"]) is volume
                 and volume["status"] == "creating"
             ):
-                del state["volumes"][volume["id"]]
+                del state[VOLUMES][volume["id"]]
 
 
 def finish_box_setup(lab: Lab) -> None:
     """Mark Storage Boxes that were being set up as active; the restart set them up."""
     with lab.state.change():
-        for box in lab.state["storage_boxes"].values():
+        for box in lab.state[STORAGE_BOXES].values():
             if box["status"] == "initializing":
                 box["status"] = "active"
 
@@ -77,7 +77,7 @@ def status_after_restart(server: Server) -> str:
     starting runs again.
     """
     if server["status"] in ("initializing", "rebuilding"):
-        return server["_lab"].get("target", "running")
+        return server["_lab"]["target"]
     return "running" if server["status"] in ("running", "starting") else "off"
 
 
@@ -87,7 +87,7 @@ async def restart_servers(lab: Lab) -> None:
     A server that cannot be started stays off; the lab comes up anyway.
     """
     # a copy: other tasks may change the state while the scripts run
-    servers = list(lab.state["servers"].values())
+    servers = list(lab.state[SERVERS].values())
     for server in servers:
         try:
             if server["status"] == "deleting":
@@ -109,7 +109,7 @@ async def restart_servers(lab: Lab) -> None:
 async def restore_clients(lab: Lab) -> None:
     """Bring the Internet clients back; one that fails is left out (see the log)."""
     # a copy: other tasks may change the state while the scripts run
-    clients = list(lab.state["clients"].values())
+    clients = list(lab.state[CLIENTS].values())
     for client in clients:
         try:
             await system.add_client(lab, client)
@@ -120,7 +120,6 @@ async def restore_clients(lab: Lab) -> None:
 async def restore_lab(lab: Lab) -> None:
     """Restore the Storage Box, state, network, servers and clients after a start."""
     lab.clear_flags()
-    upgrade_faults(lab)
     await restore_storage_box(lab)
     fail_running_actions(lab)
     await drop_half_created_volumes(lab)

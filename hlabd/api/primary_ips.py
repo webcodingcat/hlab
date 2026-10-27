@@ -22,7 +22,7 @@ from ..errors import (
 )
 from ..lab import SERVER_LOCKED, ActionSpec, ActionTable, Lab, Plan, now
 from ..records import PrimaryIP, Server
-from ..state import primary_ip_field, primary_ip_of, server_by_id
+from ..state import PRIMARY_IPS, SERVERS, primary_ip_field, primary_ip_of, server_by_id
 from . import hetzner, system
 from .catalogue import catalogue_name
 from .public_addresses import contains, first_free, record_dns_ptr, set_dns_ptr
@@ -69,7 +69,7 @@ def free_ipv4(lab: Lab) -> str:
 
     The caller stores the new record in the same `change()`.
     """
-    used = {p["ip"] for p in lab.state["primary_ips"].values()}
+    used = {p["ip"] for p in lab.state[PRIMARY_IPS].values()}
     candidates = (f"{config.PUBLIC_NET}.{n}" for n in range(11, 251))
     error = limit_exceeded("the lab has no public IPv4 left", "primary_ips")
     return first_free(candidates, used, error)
@@ -80,7 +80,7 @@ def free_ipv6(lab: Lab) -> str:
 
     The caller stores the new record in the same `change()`.
     """
-    used = {p["ip"] for p in lab.state["primary_ips"].values()}
+    used = {p["ip"] for p in lab.state[PRIMARY_IPS].values()}
     candidates = (server_ipv6_net(n) for n in range(1, 0xFF00))
     error = limit_exceeded("the lab has no public IPv6 network left", "primary_ips")
     return first_free(candidates, used, error)
@@ -101,7 +101,7 @@ def new_primary_ip(
     the record is saved.
     """
     state = lab.state
-    pid = state.new_id("primary_ips")
+    pid = state.new_id(PRIMARY_IPS)
     primary_ip: PrimaryIP = {
         "id": pid,
         "name": name or f"primary_ip-{pid}",
@@ -115,7 +115,7 @@ def new_primary_ip(
         "dns_ptr": [],
         "created": now(),
     }
-    state["primary_ips"][pid] = primary_ip
+    state[PRIMARY_IPS][pid] = primary_ip
     return primary_ip
 
 
@@ -129,7 +129,7 @@ def check_server_ips(lab: Lab, server: Server, public_net: dict) -> None:
         ref = public_net.get(kind)
         if ref is None:
             continue
-        primary_ip = lab.state["primary_ips"].get(ref_id(ref, f"public_net.{kind}"))
+        primary_ip = lab.state[PRIMARY_IPS].get(ref_id(ref, f"public_net.{kind}"))
         if not primary_ip:
             raise invalid(f"primary IP {ref} not found", f"public_net.{kind}")
         if primary_ip["type"] != kind:
@@ -158,7 +158,7 @@ def setup_server_ips(lab: Lab, server: Server, public_net: dict) -> None:
     for kind in ("ipv4", "ipv6"):
         ref = public_net.get(kind)
         if ref is not None:
-            primary_ip = lab.state["primary_ips"][int(ref)]
+            primary_ip = lab.state[PRIMARY_IPS][int(ref)]
             primary_ip["assignee_id"] = server["id"]
             server[primary_ip_field(kind)] = primary_ip["id"]
         elif public_net.get(f"enable_{kind}", True):
@@ -178,7 +178,7 @@ def release_server_ips(lab: Lab, server: Server) -> None:
         if not primary_ip:
             continue
         if primary_ip.get("auto_delete"):
-            del lab.state["primary_ips"][primary_ip["id"]]
+            del lab.state[PRIMARY_IPS][primary_ip["id"]]
         else:
             primary_ip["assignee_id"] = None
 
@@ -203,12 +203,12 @@ async def create_primary_ip(lab: Lab, body: dict) -> dict:
     Hetzner returns an action only when the IP is assigned on creation.
     """
     state = lab.state
-    check_unique_name(state["primary_ips"].values(), body["name"], None, "primary IP")
+    check_unique_name(state[PRIMARY_IPS].values(), body["name"], None, "primary IP")
     if body.get("location") and body.get("assignee_id"):
         raise invalid("location and assignee_id are mutually exclusive", "location")
     assignee = None
     if body.get("assignee_id"):
-        assignee = state["servers"].get(ref_id(body["assignee_id"], "assignee_id"))
+        assignee = state[SERVERS].get(ref_id(body["assignee_id"], "assignee_id"))
         if not assignee:
             raise invalid("server not found", "assignee_id")
     location = body.get("location") or (assignee["location"] if assignee else None)
@@ -234,7 +234,7 @@ async def create_primary_ip(lab: Lab, body: dict) -> dict:
             await primary_ip_assign(lab, primary_ip, {"assignee_id": assignee["id"]})
         except ApiError:  # the server changed in the meantime: delete the new IP again
             with state.change():
-                del state["primary_ips"][primary_ip["id"]]
+                del state[PRIMARY_IPS][primary_ip["id"]]
             raise
         resources = [(primary_ip["id"], "primary_ip"), (assignee["id"], "server")]
         action = lab.finished_action("assign_primary_ip", resources)
@@ -243,19 +243,19 @@ async def create_primary_ip(lab: Lab, body: dict) -> dict:
 
 def update_primary_ip(lab: Lab, pid: int, body: dict) -> dict:
     """Change a primary IP's name, labels or auto_delete."""
-    primary_ip = lab.get_or_404("primary_ips", pid, "primary IP")
+    primary_ip = lab.get_or_404(PRIMARY_IPS, pid, "primary IP")
     if body.get("auto_delete") and primary_ip["protection"]["delete"]:
         raise invalid(
             "a delete protected primary IP cannot be auto_delete", "auto_delete"
         )
     keys = ("name", "labels", "auto_delete")
-    update_resource(lab, "primary_ips", primary_ip, body, keys, "primary IP")
+    update_resource(lab, PRIMARY_IPS, primary_ip, body, keys, "primary IP")
     return {"primary_ip": hetzner.primary_ip_json(lab, primary_ip)}
 
 
 def delete_primary_ip(lab: Lab, pid: int) -> None:
     """Delete a primary IP; as on Hetzner, refuse a protected or assigned one."""
-    primary_ip = lab.get_or_404("primary_ips", pid, "primary IP")
+    primary_ip = lab.get_or_404(PRIMARY_IPS, pid, "primary IP")
     if primary_ip["protection"]["delete"]:
         raise protected("primary IP is delete protected")
     if primary_ip.get("assignee_id"):
@@ -263,7 +263,7 @@ def delete_primary_ip(lab: Lab, pid: int) -> None:
             "primary IP is assigned to a server; unassign it first"
         )
     with lab.state.change():
-        del lab.state["primary_ips"][pid]
+        del lab.state[PRIMARY_IPS][pid]
 
 
 # Each primary IP action below changes only the state (in its own `change()` block)
@@ -275,7 +275,7 @@ async def primary_ip_assign(lab: Lab, primary_ip: PrimaryIP, body: dict) -> Plan
     """Assign a primary IP to a server that is off, in its location."""
     state = lab.state
     with state.change():  # saved here: create_primary_ip calls this without act()
-        server = state["servers"].get(ref_id(body.get("assignee_id"), "assignee_id"))
+        server = state[SERVERS].get(ref_id(body.get("assignee_id"), "assignee_id"))
         if not server:
             raise invalid("server not found", "assignee_id")
         if primary_ip.get("assignee_id"):
@@ -338,7 +338,7 @@ PRIMARY_IP_ACTIONS: ActionTable[PrimaryIP] = {
 
 async def run_primary_ip_action(lab: Lab, pid: int, cmd: str, body: dict) -> dict:
     """Run a primary IP action; every one of them finishes right away."""
-    primary_ip = lab.get_or_404("primary_ips", pid, "primary IP")
+    primary_ip = lab.get_or_404(PRIMARY_IPS, pid, "primary IP")
     return await lab.act(PRIMARY_IP_ACTIONS, cmd, primary_ip, "primary_ip", body)
 
 
@@ -353,7 +353,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     async def primary_ip_list(request: Request):
         items = filtered(
             request,
-            list(state["primary_ips"].values()),
+            list(state[PRIMARY_IPS].values()),
             {"ip": lambda primary_ip, value: primary_ip["ip"] == value},
         )
         return paginate(
@@ -366,7 +366,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
 
     @app.get("/v1/primary_ips/{pid}")
     async def primary_ip_get(pid: int):
-        primary_ip = lab.get_or_404("primary_ips", pid, "primary IP")
+        primary_ip = lab.get_or_404(PRIMARY_IPS, pid, "primary IP")
         return {"primary_ip": hetzner.primary_ip_json(lab, primary_ip)}
 
     @app.put("/v1/primary_ips/{pid}")

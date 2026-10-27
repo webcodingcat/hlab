@@ -14,7 +14,7 @@ from ..errors import check_unique_name, invalid, protected
 from ..fabric.addresses import network_gateway
 from ..lab import SERVER_LOCKED, ActionSpec, ActionTable, Lab, Plan, now
 from ..records import CloudNetwork, Nic, Route, Subnet
-from ..state import nic_addresses, nics_in
+from ..state import NETWORKS, nic_addresses, nics_in
 from . import hetzner, system
 from .faults import drop_netem
 from .web import (
@@ -192,20 +192,20 @@ async def create_network(lab: Lab, body: dict) -> dict:
         lab.fabric.network.read_local_addresses, fresh=True
     )
     with state.change():
-        check_unique_name(state["networks"].values(), network["name"], None, "network")
+        check_unique_name(state[NETWORKS].values(), network["name"], None, "network")
         # the first address becomes the lab's gateway in the network, so it must not be
         # in use elsewhere; another network's gateway is fine (overlapping networks
         # share it)
-        used = {ip for x in state["networks"] for ip in addresses_in(lab, x)}
-        shared = {network_gateway(x["ip_range"]) for x in state["networks"].values()}
+        used = {ip for x in state[NETWORKS] for ip in addresses_in(lab, x)}
+        shared = {network_gateway(x["ip_range"]) for x in state[NETWORKS].values()}
         if gateway in used or (gateway in local_addresses and gateway not in shared):
             raise invalid(
                 f"the network's first address {gateway} "
                 "(the lab's gateway in it) is in use",
                 "ip_range",
             )
-        network["id"] = state.new_id("networks")
-        state["networks"][network["id"]] = network
+        network["id"] = state.new_id(NETWORKS)
+        state[NETWORKS][network["id"]] = network
     return {"network": hetzner.network_json(lab, network)}
 
 
@@ -294,7 +294,7 @@ NETWORK_ACTIONS: ActionTable[CloudNetwork] = {
 
 async def run_network_action(lab: Lab, nid: int, cmd: str, body: dict) -> dict:
     """Run a network action; every one of them finishes right away."""
-    network = lab.get_or_404("networks", nid, "network")
+    network = lab.get_or_404(NETWORKS, nid, "network")
     return await lab.act(NETWORK_ACTIONS, cmd, network, "network", body)
 
 
@@ -307,7 +307,7 @@ async def delete_network(lab: Lab, nid: int) -> None:
     continues from there.
     """
     state = lab.state
-    network = lab.get_or_404("networks", nid, "network")
+    network = lab.get_or_404(NETWORKS, nid, "network")
     if network["protection"]["delete"]:
         raise protected("network is delete protected")
     with lab.holding() as held:
@@ -330,15 +330,15 @@ async def delete_network(lab: Lab, nid: int) -> None:
             await system.apply_faults(lab)
             raise
         with state.change():
-            del state["networks"][nid]
+            del state[NETWORKS][nid]
     await system.drop_cloud_network(lab, nid)
 
 
 def update_network(lab: Lab, nid: int, body: dict) -> dict:
     """Change a network's name, labels or expose_routes_to_vswitch."""
-    network = lab.get_or_404("networks", nid, "network")
+    network = lab.get_or_404(NETWORKS, nid, "network")
     keys = ("name", "labels", "expose_routes_to_vswitch")
-    update_resource(lab, "networks", network, body, keys, "network")
+    update_resource(lab, NETWORKS, network, body, keys, "network")
     return {"network": hetzner.network_json(lab, network)}
 
 
@@ -371,7 +371,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
 
     @app.get("/v1/networks")
     async def network_list(request: Request):
-        items = filtered(request, list(state["networks"].values()))
+        items = filtered(request, list(state[NETWORKS].values()))
         return paginate(
             request, [hetzner.network_json(lab, n) for n in items], "networks"
         )
@@ -382,7 +382,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
 
     @app.get("/v1/networks/{nid}/members")
     async def network_member_list(request: Request, nid: int):
-        network = lab.get_or_404("networks", nid, "network")
+        network = lab.get_or_404(NETWORKS, nid, "network")
         members = network_members(lab, network, request.query_params)
         return paginate(request, members, "members")
 
@@ -390,7 +390,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     async def network_get(nid: int):
         return {
             "network": hetzner.network_json(
-                lab, lab.get_or_404("networks", nid, "network")
+                lab, lab.get_or_404(NETWORKS, nid, "network")
             )
         }
 

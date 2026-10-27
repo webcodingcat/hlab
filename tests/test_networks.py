@@ -9,6 +9,7 @@ import pytest
 from conftest import create_network, create_server, dhcp, nft_set, state_of, wait_action
 
 from hlabd.api import desired, networks, nics
+from hlabd.state import NETWORKS
 
 
 def test_servers_in_a_network_get_their_address_by_dhcp(api, tmp_path):
@@ -585,7 +586,7 @@ def test_a_free_address_skips_the_local_addresses_it_is_given(api):
     network = create_network(api, "10.0.1.0/24")
 
     def pick(local_addresses):
-        record = api.lab.state["networks"][network["id"]]
+        record = api.lab.state[NETWORKS][network["id"]]
         return nics.network_ip(api.lab, record, None, local_addresses)
 
     assert api.on_loop(pick, set()) == "10.0.1.1"

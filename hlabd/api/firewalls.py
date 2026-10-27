@@ -21,7 +21,7 @@ from ..errors import (
 from ..lab import ActionSpec, ActionTable, Lab, Plan, now
 from ..labels import firewall_servers
 from ..records import Firewall, FirewallRule
-from ..state import primary_address_of
+from ..state import FIREWALLS, SERVERS, primary_address_of
 from . import hetzner, system
 from .web import filtered, paginate, read_body, update_resource
 
@@ -112,7 +112,7 @@ def checked_apply_to(lab: Lab, entry: dict, missing_status: int = 422) -> dict:
     """
     entry_type, sid, selector = apply_to_key(entry)
     if entry_type == "server":
-        server = lab.state["servers"].get(sid)
+        server = lab.state[SERVERS].get(sid)
         if not server:
             raise firewall_resource_not_found(sid, missing_status)
         public = [
@@ -133,11 +133,11 @@ def checked_apply_to(lab: Lab, entry: dict, missing_status: int = 422) -> dict:
 def check_limit(lab: Lab) -> None:
     """Check that no server has more firewalls than Hetzner allows."""
     state = lab.state
-    for sid in state["servers"]:
+    for sid in state[SERVERS]:
         if (
             sum(
                 1
-                for f in state["firewalls"].values()
+                for f in state[FIREWALLS].values()
                 if sid in firewall_servers(state, f)
             )
             > FIREWALLS_PER_SERVER
@@ -171,8 +171,8 @@ async def create_firewall(lab: Lab, body: dict) -> dict:
             422, "server_already_added", "a server is in apply_to more than once"
         )
     with state.change():
-        check_unique_name(state["firewalls"].values(), body["name"], None, "firewall")
-        fid = state.new_id("firewalls")
+        check_unique_name(state[FIREWALLS].values(), body["name"], None, "firewall")
+        fid = state.new_id(FIREWALLS)
         firewall: Firewall = {
             "id": fid,
             "name": body["name"],
@@ -181,7 +181,7 @@ async def create_firewall(lab: Lab, body: dict) -> dict:
             "rules": rules,
             "applied_to": applied,
         }
-        state["firewalls"][fid] = firewall
+        state[FIREWALLS][fid] = firewall
         check_limit(lab)  # over the limit: the block undoes the new firewall
     await system.apply_firewall(lab)
     resource = (fid, "firewall")
@@ -198,18 +198,18 @@ async def create_firewall(lab: Lab, body: dict) -> dict:
 
 def update_firewall(lab: Lab, fid: int, body: dict) -> dict:
     """Change a firewall's name or labels."""
-    firewall = lab.get_or_404("firewalls", fid, "firewall")
-    update_resource(lab, "firewalls", firewall, body, ("name", "labels"), "firewall")
+    firewall = lab.get_or_404(FIREWALLS, fid, "firewall")
+    update_resource(lab, FIREWALLS, firewall, body, ("name", "labels"), "firewall")
     return {"firewall": hetzner.firewall_json(lab, firewall)}
 
 
 def delete_firewall(lab: Lab, fid: int) -> None:
     """Delete a firewall; as on Hetzner, refuse one that still applies to anything."""
-    firewall = lab.get_or_404("firewalls", fid, "firewall")
+    firewall = lab.get_or_404(FIREWALLS, fid, "firewall")
     if firewall["applied_to"]:
         raise resource_in_use("firewall is still applied to resources")
     with lab.state.change():
-        del lab.state["firewalls"][fid]
+        del lab.state[FIREWALLS][fid]
 
 
 # --- firewall actions -----------------------------------------------------------------
@@ -262,7 +262,7 @@ async def remove_from_resources(lab: Lab, firewall: Firewall, body: dict) -> Pla
     for entry_type, sid, _ in remove:
         if entry_type != "server":
             continue
-        if sid not in state["servers"]:
+        if sid not in state[SERVERS]:
             raise firewall_resource_not_found(sid, 404)
         explicit = ("server", sid, None) in {
             apply_to_key(r) for r in firewall["applied_to"]
@@ -295,7 +295,7 @@ FIREWALL_ACTIONS: ActionTable[Firewall] = {
 
 async def run_firewall_action(lab: Lab, fid: int, cmd: str, body: dict) -> dict:
     """Run a firewall action, then rewrite the firewall rules; return the actions."""
-    firewall = lab.get_or_404("firewalls", fid, "firewall")
+    firewall = lab.get_or_404(FIREWALLS, fid, "firewall")
     answer = await lab.act(FIREWALL_ACTIONS, cmd, firewall, "firewall", body)
     await system.apply_firewall(lab)
     return answer
@@ -310,7 +310,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
 
     @app.get("/v1/firewalls")
     async def firewall_list(request: Request):
-        items = filtered(request, list(state["firewalls"].values()))
+        items = filtered(request, list(state[FIREWALLS].values()))
         return paginate(
             request, [hetzner.firewall_json(lab, f) for f in items], "firewalls"
         )
@@ -323,7 +323,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     async def firewall_get(fid: int):
         return {
             "firewall": hetzner.firewall_json(
-                lab, lab.get_or_404("firewalls", fid, "firewall")
+                lab, lab.get_or_404(FIREWALLS, fid, "firewall")
             )
         }
 

@@ -16,7 +16,7 @@ from .. import config
 from ..fabric.addresses import link_local, network_gateway, public_mac
 from ..lab import Lab
 from ..records import Server
-from ..state import nic_addresses, primary_address_of
+from ..state import NETWORKS, SERVERS, VOLUMES, nic_addresses, primary_address_of
 from .networks import subnet_of
 from .public_addresses import contains
 
@@ -98,7 +98,7 @@ async def calling_server(lab: Lab, request: Request) -> Server | None:
     """Return the server a request comes from, or None."""
     state, fabric = lab.state, lab.fabric
     ip = request.client.host if request.client else ""
-    servers = list(state["servers"].values())
+    servers = list(state[SERVERS].values())
     holders = {
         nic["tap"]: server
         for server in servers
@@ -132,7 +132,7 @@ def private_networks(lab: Lab, server: Server) -> list[dict]:
     state = lab.state
     out = []
     for number, nic in enumerate(server["_lab"]["nics"], start=1):
-        network = state["networks"][nic["network"]]
+        network = state[NETWORKS][nic["network"]]
         out.append(
             {
                 "ip": nic["ip"],
@@ -188,7 +188,7 @@ async def metadata_values(lab: Lab, server: Server) -> dict:
     """Return the metadata of a server, by key."""
     cfg = lab.cfg
     lab_key = await lab.blocking(read_lab_key, lab.fabric.lab_key)
-    keys = list(server.get("public_keys", []))
+    keys = list(server["public_keys"])
     if lab_key:  # the lab's admin access (hlab ssh)
         keys.append(lab_key)
     vendor = VENDOR_DATA
@@ -254,7 +254,7 @@ def create_metadata_app(lab: Lab) -> FastAPI:
         server = await calling_server(lab, request)
         ids = sorted(
             v["id"]
-            for v in state["volumes"].values()
+            for v in state[VOLUMES].values()
             if server and v.get("server") == server["id"] and v.get("automount")
         )
         return PlainTextResponse(" ".join(map(str, ids)))

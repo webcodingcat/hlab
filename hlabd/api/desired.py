@@ -23,6 +23,12 @@ from ..fabric.network import (
 from ..labels import firewall_servers
 from ..records import Client, Fault, FirewallRule, Nic, Server, TargetRef, Which
 from ..state import (
+    CLIENTS,
+    FIREWALLS,
+    FLOATING_IPS,
+    NETWORKS,
+    SERVERS,
+    VOLUMES,
     State,
     client_by_name,
     nic_addresses,
@@ -55,7 +61,7 @@ def target_ifaces(state: State, ref: TargetRef, which: Which = "all") -> list[st
     Raise KeyError when the server or client is gone.
     """
     if "server" in ref:
-        server = state["servers"].get(ref["server"])
+        server = state[SERVERS].get(ref["server"])
         if not server:
             raise KeyError(f"{ref} is gone")
         public = [server["_lab"]["tap"]]
@@ -89,7 +95,7 @@ def source_prefixes(state: State, server: Server, network: int | None) -> list[s
     ips = [prefix(ipv4)] if ipv4 else []
     ips += [
         prefix(f["ip"])
-        for f in state["floating_ips"].values()
+        for f in state[FLOATING_IPS].values()
         if f.get("server") == server["id"]
     ]
     if ipv6_net:
@@ -104,7 +110,7 @@ def fault_sets(state: State) -> dict[str, list[str]]:
     and client may send from (anti-spoofing).
     """
     sets: dict[str, list[str]] = {name: [] for name in FAULT_SETS}
-    servers = list(state["servers"].values())
+    servers = list(state[SERVERS].values())
     # cloud network → private taps of its servers
     members: dict[int, list[str]] = {}
     for server in servers:
@@ -126,7 +132,7 @@ def fault_sets(state: State) -> dict[str, list[str]]:
                 sets["src6"].append(f'"{tap}" . {ip}')
             else:
                 sets["src4"].append(f'"{tap}" . {ip.split("/")[0]}')
-    for client in state["clients"].values():
+    for client in state[CLIENTS].values():
         sets["src4"].append(f'"{client["veth"]}" . {client["ip"]}')
         sets["src6"].append(f'"{client["veth"]}" . {client["ip6"]}/128')
     faults: list[Fault] = state.data["faults"]
@@ -160,7 +166,7 @@ def tap_networks(state: State) -> list[tuple[str, int]]:
     """Return (tap, network ID) for every NIC in a cloud network."""
     return [
         (nic["tap"], nic["network"])
-        for server in state["servers"].values()
+        for server in state[SERVERS].values()
         for nic in server["_lab"]["nics"]
     ]
 
@@ -196,7 +202,7 @@ def latency(state: State, cfg: dict) -> Latency:
     round-trip time to the other servers' locations (`latency_ms` of `cfg`).
     """
     netem = state.data["netem"]
-    servers = list(state["servers"].values())
+    servers = list(state[SERVERS].values())
     shaped = []
     for server in servers:
         server_lab = server["_lab"]
@@ -213,7 +219,7 @@ def latency(state: State, cfg: dict) -> Latency:
         shaped.append((server["id"], shapings))
     clients = [
         Shaping(client["veth"], netem.get(client["veth"]))
-        for client in state["clients"].values()
+        for client in state[CLIENTS].values()
     ]
     return Latency(shaped, clients)
 
@@ -238,7 +244,7 @@ def private_tap(state: State, nic: Nic) -> PrivateTap:
         nic["mac"],
         nic["ip"],
         nic["network"],
-        state["networks"][nic["network"]]["ip_range"],
+        state[NETWORKS][nic["network"]]["ip_range"],
         list(nic["alias_ips"]),
     )
 
@@ -267,7 +273,7 @@ def dhcp_hosts(state: State) -> list[DhcpHost]:
     range.
     """
     hosts = []
-    for server in state["servers"].values():
+    for server in state[SERVERS].values():
         server_lab = server["_lab"]
         ipv4 = primary_address_of(state, server, "ipv4")
         if ipv4:
@@ -289,7 +295,7 @@ def dhcp_hosts(state: State) -> list[DhcpHost]:
                 )
             )
         for nic in server_lab["nics"]:
-            network = state["networks"].get(nic["network"])
+            network = state[NETWORKS].get(nic["network"])
             if not network:  # its network was deleted in the meantime
                 continue
             ip_range = ipaddress.ip_network(network["ip_range"])
@@ -330,7 +336,7 @@ def wanted_routes(state: State) -> list[WantedRoute]:
                 if route["gateway"] in nic_addresses(nic)
             ],
         )
-        for network in state["networks"].values()
+        for network in state[NETWORKS].values()
         for route in network["routes"]
     ]
 
@@ -355,9 +361,9 @@ def firewall_rules(state: State) -> list[ServerRules]:
     A server's rules are the rules of all its firewalls.
     """
     out = []
-    for sid, server in sorted(state["servers"].items()):
+    for sid, server in sorted(state[SERVERS].items()):
         firewalls = [
-            f for f in state["firewalls"].values() if sid in firewall_servers(state, f)
+            f for f in state[FIREWALLS].values() if sid in firewall_servers(state, f)
         ]
         if firewalls:
             rules = [firewall_rule(r) for f in firewalls for r in f["rules"]]
@@ -372,6 +378,6 @@ def boot_volumes(state: State, server: Server) -> list[int]:
     """
     return [
         v["id"]
-        for v in state["volumes"].values()
+        for v in state[VOLUMES].values()
         if v.get("server") == server["id"] and v["status"] == "available"
     ]

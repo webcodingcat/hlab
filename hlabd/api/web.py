@@ -30,6 +30,7 @@ from ..errors import (
 from ..lab import Lab, Plan
 from ..labels import match_labels
 from ..records import ProtectedRecord, Record
+from ..state import Kind
 from . import hetzner
 from . import spec as openapi
 
@@ -82,8 +83,8 @@ def update_fields(lab: Lab, item: Record, body: dict, keys: tuple[str, ...]) -> 
             fields[key] = (body[key] or {}) if key == "labels" else body[key]
 
 
-def update_resource(
-    lab: Lab, kind: str, item: Record, body: dict, keys: tuple[str, ...], what: str
+def update_resource[R: Record](
+    lab: Lab, kind: Kind[R], item: R, body: dict, keys: tuple[str, ...], what: str
 ) -> None:
     """Apply a PUT to a resource of a kind: names stay unique within the kind."""
     with lab.state.change():

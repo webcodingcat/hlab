@@ -9,6 +9,7 @@ import pytest
 from conftest import create_server, make_key, power_off, wait_action
 
 from hlabd.lab import MAX_ACTIONS
+from hlabd.state import ACTIONS
 
 
 def test_requests_without_a_valid_token_are_unauthorized(api):
@@ -113,8 +114,8 @@ def test_actions_do_not_pile_up(lab):
     with lab.state.change():  # one block: the state is saved once
         for _ in range(MAX_ACTIONS + 50):
             lab.new_action("x", [])["status"] = "success"  # finished
-    assert len(lab.state["actions"]) <= MAX_ACTIONS
-    assert running["id"] in lab.state["actions"]  # a running action stays
+    assert len(lab.state[ACTIONS]) <= MAX_ACTIONS
+    assert running["id"] in lab.state[ACTIONS]  # a running action stays
 
 
 def test_cancelled_action_is_an_error(lab):

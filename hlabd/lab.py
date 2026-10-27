@@ -15,27 +15,12 @@ from collections.abc import Awaitable, Callable, Coroutine, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Literal, cast, overload
+from typing import Any, Literal, cast
 
 from .errors import locked, not_found, unsupported
 from .fabric import Fabric
-from .records import (
-    Action,
-    ActionRecord,
-    BoxSnapshot,
-    Client,
-    CloudNetwork,
-    Firewall,
-    FloatingIP,
-    PrimaryIP,
-    Record,
-    Server,
-    SSHKey,
-    StorageBox,
-    Subaccount,
-    Volume,
-)
-from .state import KINDS, State, server_by_name
+from .records import Action, ActionRecord, Record, Server
+from .state import ACTIONS, RECORD_KINDS, SERVERS, Kind, State, server_by_name
 
 log = logging.getLogger(__name__)
 
@@ -97,6 +82,13 @@ BOX_CREATE_SECONDS = 5  # a Storage Box: its account is set up → active
 # How long a lab reset waits for the threads of `blocking` (`stop_actions`). A script
 # ends after its timeout (fabric/shell.py), so normally every thread has ended by then.
 THREADS_WAIT_SECONDS = 150
+
+
+class RecordGoneError(RuntimeError):
+    """A record that an action's steps work on was deleted while they awaited.
+
+    `Lab.current` raises it; the action then ends with an error (`run_action`).
+    """
 
 
 def now() -> str:
@@ -288,67 +280,31 @@ class Lab:
 
     # --- lookups ----------------------------------------------------------------------
 
-    # one overload per kind, so a lookup returns the kind's record type (as in
-    # `State.__getitem__`; tests/test_state.py compares them with `KIND_TYPES`)
-    @overload
-    def get_or_404(
-        self, kind: Literal["servers"], item_id: int, what: str
-    ) -> Server: ...
-    @overload
-    def get_or_404(
-        self, kind: Literal["volumes"], item_id: int, what: str
-    ) -> Volume: ...
-    @overload
-    def get_or_404(
-        self, kind: Literal["primary_ips"], item_id: int, what: str
-    ) -> PrimaryIP: ...
-    @overload
-    def get_or_404(
-        self, kind: Literal["floating_ips"], item_id: int, what: str
-    ) -> FloatingIP: ...
-    @overload
-    def get_or_404(
-        self, kind: Literal["networks"], item_id: int, what: str
-    ) -> CloudNetwork: ...
-    @overload
-    def get_or_404(
-        self, kind: Literal["firewalls"], item_id: int, what: str
-    ) -> Firewall: ...
-    @overload
-    def get_or_404(
-        self, kind: Literal["ssh_keys"], item_id: int, what: str
-    ) -> SSHKey: ...
-    @overload
-    def get_or_404(
-        self, kind: Literal["actions"], item_id: int, what: str
-    ) -> Action: ...
-    @overload
-    def get_or_404(
-        self, kind: Literal["storage_boxes"], item_id: int, what: str
-    ) -> StorageBox: ...
-    @overload
-    def get_or_404(
-        self, kind: Literal["subaccounts"], item_id: int, what: str
-    ) -> Subaccount: ...
-    @overload
-    def get_or_404(
-        self, kind: Literal["box_snapshots"], item_id: int, what: str
-    ) -> BoxSnapshot: ...
-    @overload
-    def get_or_404(
-        self, kind: Literal["clients"], item_id: int, what: str
-    ) -> Client: ...
-
-    def get_or_404(self, kind: str, item_id: int, what: str) -> Record | Action:
-        """Return a resource of a kind (e.g. "volumes") by ID, or raise 404 (`what`)."""
-        item = self.state[kind].get(item_id)
+    def get_or_404[R](self, kind: Kind[R], item_id: int, what: str) -> R:
+        """Return a resource of a kind (e.g. `VOLUMES`) by ID, or raise 404 (`what`)."""
+        item = self.state.get(kind, item_id)
         if not item:
             raise not_found(what)
         return item
 
+    def current[R](self, kind: Kind[R], item_id: int) -> R:
+        """Return a record by ID as it is now; raise RecordGoneError if it is gone.
+
+        Steps call this after every await before they read or change a record: a
+        record they held before the await may have been deleted meanwhile
+        (DEVELOPING.md, The state, Awaits). IDs never change and are never reused, so
+        the ID is what a step keeps across awaits.
+        """
+        item = self.state.get(kind, item_id)
+        if item is None:
+            raise RecordGoneError(
+                f"the {kind.noun} {item_id} was deleted while the action ran"
+            )
+        return item
+
     def server_or_404(self, sid: int) -> Server:
         """Return the server with this ID, or raise 404."""
-        return self.get_or_404("servers", sid, "server")
+        return self.get_or_404(SERVERS, sid, "server")
 
     def server_by_name_or_404(self, name: str) -> Server:
         """Return the server with this name, or raise 404."""
@@ -363,7 +319,7 @@ class Lab:
         """Create a new action in status running, for the given (id, type) resources."""
         with self.state.change():
             action: Action = {
-                "id": self.state.new_id("actions"),
+                "id": self.state.new_id(ACTIONS),
                 "command": command,
                 "status": "running",
                 "progress": 0,
@@ -372,7 +328,7 @@ class Lab:
                 "error": None,
                 "resources": [{"id": i, "type": t} for i, t in resources],
             }
-            actions = self.state["actions"]
+            actions = self.state[ACTIONS]
             actions[action["id"]] = action
             # the state stays small: the oldest finished actions are removed
             if len(actions) > MAX_ACTIONS:
@@ -446,6 +402,7 @@ class Lab:
         # From here on only this function holds the flags (`holding.take()`); the
         # caller's `holding()` block no longer frees them.
         flags = holding.take() if holding else []
+        sid = server["id"] if server is not None else None
 
         def end(message: str | None) -> None:
             with self.state.change():  # saved once: flags off, action finished
@@ -464,9 +421,8 @@ class Lab:
                 for next_action in next_actions or []:
                     if next_action["status"] == "running":
                         self.finish(next_action, message)
-                if server is not None and server["status"] in IN_BETWEEN:
-                    alive = await self.blocking(self.fabric.vms.is_alive, server["id"])
-                    self.set_status(server, "running" if alive else "off")
+                if sid is not None:
+                    await self.leave_in_between(sid)
             except asyncio.CancelledError:
                 message = "the action was cancelled (lab stopped or reset)"
                 raise
@@ -566,14 +522,27 @@ class Lab:
     def clear_flags(self) -> None:
         """Take every action flag off every resource (a lab restart).
 
-        No action survives a restart. State files written before `_locked` existed
-        have a server field `locked` (True or False); this removes it too.
+        No action survives a restart.
         """
         with self.state.change():
-            for kind in KINDS:
+            for kind in RECORD_KINDS:
                 for item in self.state[kind].values():
-                    for flag in (*FLAGS, "locked"):
+                    for flag in FLAGS:
                         flag_fields(item).pop(flag, None)
+
+    async def leave_in_between(self, sid: int) -> None:
+        """Give a server whose action failed the status its VM really has.
+
+        Only a server in an in-between status (starting, ...) changes. A server that
+        is gone needs nothing.
+        """
+        server = self.state.get(SERVERS, sid)
+        if server is None or server["status"] not in IN_BETWEEN:
+            return
+        alive = await self.blocking(self.fabric.vms.is_alive, sid)
+        server = self.state.get(SERVERS, sid)  # looked up again after the await
+        if server is not None:
+            self.set_status(server, "running" if alive else "off")
 
     def set_status(self, server: Server, status: str) -> None:
         """Set a server's status and save the state."""
