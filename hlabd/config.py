@@ -92,6 +92,7 @@ class Config(TypedDict):
 
     name: str
     ui_port: int
+    socks_port: int
     api: ApiSettings
     memory_scale: float
     server_types: dict[str, ServerTypeEntry]
@@ -175,6 +176,8 @@ DEFAULTS: dict = {
     "name": "demo",
     # the web UI's port on the host's localhost (read by bin/hlab, which publishes it)
     "ui_port": 8480,
+    # the SOCKS5 proxy's port on the host's localhost (read by bin/hlab, too)
+    "socks_port": 1080,
     "api": {"token": None, "time_scale": 1.0, "rate_limit": 3600},
     "memory_scale": 1.0,
     # Hetzner's server types in eu-central (category, cores, memory GB, disk GB,
@@ -272,6 +275,9 @@ ACME_PORT = 14000
 # the web UI's port in the container; bin/hlab publishes it on the host's localhost,
 # as the configured ui_port
 UI_PORT = 8480
+# the SOCKS5 proxy into the lab's network, for the operator's host; published like the
+# web UI, as the configured socks_port
+SOCKS_PORT = 1080
 METADATA = "169.254.169.254"
 # where fe80::a9fe:a9fe is DNATed to: the metadata service only
 METADATA6 = "2001:db8:fffe::a9fe"
@@ -323,6 +329,7 @@ def script_env() -> dict[str, str]:
         "HLAB_IPV6_PREFIX": IPV6_PREFIX,
         "HLAB_CLIENT6": CLIENT6,
         "HLAB_UI_PORT": str(UI_PORT),
+        "HLAB_SOCKS_PORT": str(SOCKS_PORT),
     }
 
 

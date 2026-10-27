@@ -70,8 +70,9 @@ def env() -> None:
         # the lab's ACME server, and the certificates that clients of it trust
         ("HLAB_ACME_DIRECTORY", f"https://{config.ACME_NAME}:{config.ACME_PORT}/dir"),
         ("HLAB_ACME_CA", f"{CONTROL}/acme/ca.pem"),
-        # the web UI, from the host's browser
+        # the web UI, and the SOCKS5 proxy into the lab: both for the host
         ("HLAB_UI", f"http://localhost:{cfg['ui_port']}"),
+        ("HLAB_SOCKS", f"socks5h://localhost:{cfg['socks_port']}"),
     ):
         print(f"export {k}={shlex.quote(str(v))}")
 

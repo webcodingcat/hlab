@@ -162,6 +162,10 @@ class Network:
                 *nic.alias_ips,
             )
 
+    def start_socks(self) -> None:
+        """Start the SOCKS5 proxy into the lab's network for the operator's host."""
+        self.shell.run("start-socks")
+
     def read_local_addresses(self, fresh: bool = False) -> set[str]:
         """Return the IPv4 addresses the lab container itself has; no server gets them.
 

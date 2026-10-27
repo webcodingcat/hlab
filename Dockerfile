@@ -27,7 +27,7 @@ RUN set -eux; \
         python3-pytest \
         python3-paramiko python3-jsonschema iputils-ping rsync \
         borgbackup xfsprogs nsd publicsuffix python3-dnspython pebble \
-        haproxy python3-acme; \
+        haproxy python3-acme microsocks; \
     rm -rf /var/lib/apt/lists/*
 
 # Hetzner's OpenAPI specifications, for the conformance tests. Not pinned on

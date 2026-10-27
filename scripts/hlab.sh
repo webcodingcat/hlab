@@ -44,6 +44,8 @@ readonly IPV6_PREFIX="${HLAB_IPV6_PREFIX:?}"
 # print_ruleset reads it, by name.
 # shellcheck disable=SC2034
 readonly UI_PORT="${HLAB_UI_PORT:?}"
+# The SOCKS5 proxy's port for the operator's host, published the same way.
+readonly SOCKS_PORT="${HLAB_SOCKS_PORT:?}"
 
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=lib.sh
@@ -142,7 +144,7 @@ print_ruleset() {
   local uplink="$1" docker_host="$2" ruleset name
   ruleset="$(<"$(dirname "$0")/hlab.nft")"
   for name in uplink docker_host SERVICES SERVICES6 HETZNER_API HETZNER_API6 \
-    METADATA METADATA6 PUBLIC_NET FLOATING_NET CLIENT_NET UI_PORT; do
+    METADATA METADATA6 PUBLIC_NET FLOATING_NET CLIENT_NET UI_PORT SOCKS_PORT; do
     ruleset="${ruleset//"\${${name}}"/${!name}}"
   done
   printf '%s\n' "${ruleset}"
@@ -463,6 +465,21 @@ start_pebble() {
   echo "$!" >"${pid_file}"
 }
 
+# start_socks: (Re)start the SOCKS5 proxy (microsocks) for the operator's
+# host. It runs in a mount namespace of its own whose /etc/resolv.conf names
+# the lab resolver, so names of the DNS zones resolve as inside the lab.
+start_socks() {
+  local pid_file=/run/microsocks.pid resolv=/run/hlab-socks-resolv.conf
+  stop_pid "${pid_file}" microsocks
+  echo "nameserver ${SERVICES}" >"${resolv}"
+  # the inner shell expands $1 and $2: the file and the port, its arguments
+  # shellcheck disable=SC2016
+  setsid unshare --mount sh -c 'mount --bind "$1" /etc/resolv.conf &&
+    exec microsocks -q -i 0.0.0.0 -p "$2"' - "${resolv}" "${SOCKS_PORT}" \
+    >/proc/1/fd/1 2>&1 </dev/null &
+  echo "$!" >"${pid_file}"
+}
+
 # start_balancer <namespace> <dir>: Start HAProxy in a load balancer's
 # namespace with <dir>/haproxy.cfg, or reload it: the new process takes over
 # the listeners, the old one finishes its connections.
@@ -776,6 +793,7 @@ main() {
     start-dns) start_dns "$@" ;;
     start-nsd) start_nsd "$@" ;;
     start-pebble) start_pebble "$@" ;;
+    start-socks) start_socks "$@" ;;
     start-balancer) start_balancer "$@" ;;
     is-balancer-alive) is_balancer_alive "$@" ;;
     stop-balancer) stop_balancer "$@" ;;

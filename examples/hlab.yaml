@@ -8,9 +8,11 @@
 # below repeat in every lab).
 name: demo
 
-# Port of the web UI on this host's localhost (http://localhost:8480). Labs that
-# run side by side need different ports.
+# Ports on this host's localhost: the web UI (http://localhost:8480) and the
+# SOCKS5 proxy into the lab's network (socks5h://localhost:1080). Labs that run
+# side by side need different ports.
 ui_port: 8480
+socks_port: 1080
 
 api:
   # Token the fake Cloud API accepts (Authorization: Bearer <token>). null

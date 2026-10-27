@@ -138,11 +138,12 @@ def test_bin_hlab_refuses_a_name_it_would_cut_off(text, tmp_path):
 
 
 def bash_ui_port(text: str, tmp_path: Path) -> subprocess.CompletedProcess:
-    """Run bin/hlab's read_ui_port on a configuration with the given text."""
+    """Run bin/hlab's read_port for ui_port on a configuration with the given text."""
     config = tmp_path / "hlab.yaml"
     config.write_text(text)
+    command = 'source "$1" && read_port "$2" ui_port'
     return subprocess.run(
-        ["bash", "-c", 'source "$1" && read_ui_port "$2"', "-", BIN / "hlab", config],
+        ["bash", "-c", command, "-", BIN / "hlab", config],
         capture_output=True,
         text=True,
         check=False,
@@ -170,7 +171,9 @@ def test_bin_hlab_refuses_a_web_ui_port_that_is_no_number(tmp_path):
     assert process.returncode == 2 and "port number" in process.stderr
 
 
-def test_bin_hlab_publishes_the_port_the_web_ui_listens_on():
-    # bin/hlab cannot import config.py, so the port is written twice
-    match = re.search(r"^readonly UI_PORT=(\d+)$", (BIN / "hlab").read_text(), re.M)
-    assert match and int(match.group(1)) == config.UI_PORT
+def test_bin_hlab_publishes_the_ports_the_lab_listens_on():
+    # bin/hlab cannot import config.py, so the ports are written twice
+    text = (BIN / "hlab").read_text()
+    for name, port in [("UI_PORT", config.UI_PORT), ("SOCKS_PORT", config.SOCKS_PORT)]:
+        match = re.search(rf"^readonly {name}=(\d+)$", text, re.M)
+        assert match and int(match.group(1)) == port, name

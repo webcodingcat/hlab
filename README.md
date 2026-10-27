@@ -15,10 +15,11 @@ the API endpoints differ.
 | ACME server (Pebble) and the certificates to trust | `https://acme.hlab:14000/dir`, `http://198.18.0.1/_lab/acme/ca.pem` |
 | Lab control (faults, clients, ...) | `http://198.18.0.1/_lab/...` |
 | Web UI (from the host's browser) | `http://localhost:8480` (`ui_port`) |
+| SOCKS5 proxy into the lab (from the host) | `socks5h://localhost:1080` (`socks_port`) |
 | Network namespace to reach VMs | `docker run --network container:hlab-<name> ...` |
 
 `hlab env` prints these as shell variables (`HCLOUD_ENDPOINT`, `HCLOUD_TOKEN`, `HETZNER_ENDPOINT`,
-`HLAB_ACME_DIRECTORY`, `HLAB_ACME_CA`, `HLAB_UI`, ...). The web UI shows everything the lab holds, refreshed every
+`HLAB_ACME_DIRECTORY`, `HLAB_ACME_CA`, `HLAB_UI`, `HLAB_SOCKS`, ...). The web UI shows everything the lab holds, refreshed every
 two seconds, and the log as it grows; it sets faults, adds clients and resets the lab like `bin/hlab fault`,
 `client` and `reset`. Docker publishes it on the host's localhost only.
 
@@ -52,6 +53,37 @@ tofu() { docker run --rm -i --network "$HLAB_NETWORK" -e HCLOUD_ENDPOINT -e HCLO
     -v "$(pwd -W 2>/dev/null || pwd):/work" -w /work ghcr.io/opentofu/opentofu:1 "$@"; }
 tofu init && tofu apply
 ```
+
+### From the host
+
+The lab's addresses exist only in the lab's network. Two ways lead there from this host; in the lab, both come
+from `192.0.2.2`, like any tool in the lab's namespace, so a Cloud firewall must let them in.
+
+SSH, and with it scp, rsync and Ansible, through `bin/hlab proxy`:
+
+```bash
+ssh -o ProxyCommand="bin/hlab proxy %h %p" -i ~/.ssh/id_ed25519 root@198.51.100.11
+```
+
+```ini
+# Ansible inventory: the addresses from `tofu output`, the key the servers got through OpenTofu
+[lab]
+198.51.100.11
+198.51.100.12
+
+[lab:vars]
+ansible_user=root
+ansible_ssh_common_args='-o ProxyCommand="/path/to/hlab/bin/hlab -c /path/to/hlab.yaml proxy %h %p"'
+```
+
+Everything else (a browser, curl) through the SOCKS5 proxy. With `socks5h` the lab resolves the names, so the
+names of its DNS zones work as inside the lab; for HTTPS with managed certificates, trust `HLAB_ACME_CA`.
+
+```bash
+curl --proxy socks5h://localhost:1080 http://198.51.100.11/
+```
+
+Ansible does not run on Windows itself; there it runs in WSL, where `docker` and `bin/hlab` work alike.
 
 ### Faults and clients
 

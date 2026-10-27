@@ -2,7 +2,7 @@
 # networks, faults (the sets that hlabd fills, see fabric/faults.py), the metadata
 # service over IPv6, and NAT to the Internet. init_net in hlab.sh loads it. Before
 # that, print_ruleset replaces each ${NAME} with the uplink, the Docker host's
-# address, a lab address or the web UI's port.
+# address, a lab address, or the port of the web UI or the SOCKS5 proxy.
 table inet hlab
 delete table inet hlab
 table inet hlab {
@@ -53,13 +53,13 @@ table inet hlab {
     chain input {
         type filter hook input priority 0;
         iifname "${uplink}" ct state established,related accept
-        # the operator's browser, through the port Docker publishes on the host's
-        # localhost: the web UI
-        iifname "${uplink}" ip saddr ${docker_host} tcp dport ${UI_PORT} accept
+        # the operator's host, through the ports Docker publishes on its localhost:
+        # the web UI and the SOCKS5 proxy
+        iifname "${uplink}" ip saddr ${docker_host} tcp dport { ${UI_PORT}, ${SOCKS_PORT} } accept
         # neighbour containers and the Docker host get nothing else of the lab
         iifname "${uplink}" drop
-        # nor do guests and clients get the web UI (the lab itself may: lo)
-        iifname != "lo" tcp dport ${UI_PORT} drop
+        # nor do guests and clients get them (the lab itself may: lo)
+        iifname != "lo" tcp dport { ${UI_PORT}, ${SOCKS_PORT} } drop
         iifname @isolated drop
         ip daddr { ${SERVICES}, ${HETZNER_API} } iifname . tcp dport @blocked_svc drop
         ip6 daddr { ${SERVICES6}, ${HETZNER_API6} } iifname . tcp dport @blocked_svc drop

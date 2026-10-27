@@ -58,6 +58,7 @@ def set_up(cfg: config.Config) -> Lab:
     fabric = Fabric(cfg, config.ROOT, shell)
     fabric.dns.start()
     fabric.acme.start()
+    fabric.network.start_socks()
     return Lab(cfg, state, fabric)
 
 
@@ -155,7 +156,8 @@ async def run(lab: Lab, log_buffer: LogBuffer) -> None:
             await asyncio.sleep(0.1)
         print(
             f"hlab ready: {lab.cfg['name']}, API http://{config.SERVICES}/v1, "
-            f"web UI http://localhost:{lab.cfg['ui_port']}",
+            f"web UI http://localhost:{lab.cfg['ui_port']}, "
+            f"SOCKS5 localhost:{lab.cfg['socks_port']}",
             flush=True,
         )
 

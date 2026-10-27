@@ -57,7 +57,12 @@ def test_env_names_the_acme_directory_and_its_ca(capsys, monkeypatch):
     monkeypatch.setattr(
         cli.config,
         "load",
-        lambda _: {"name": "demo", "ui_port": 8480, "api": {"token": None}},
+        lambda _: {
+            "name": "demo",
+            "ui_port": 8480,
+            "socks_port": 1080,
+            "api": {"token": None},
+        },
     )
     cli.env()
     out = capsys.readouterr().out

@@ -79,7 +79,7 @@ The unit tests check every answer against Hetzner's OpenAPI specification
 
 | Path | What |
 |---|---|
-| `Dockerfile` | the lab image (Debian 13 packages: QEMU, dnsmasq, NSD, nftables, HAProxy, Pebble, OpenSSH, Python) and the development image on top (linters, unit tests) |
+| `Dockerfile` | the lab image (Debian 13 packages: QEMU, dnsmasq, NSD, nftables, HAProxy, Pebble, microsocks, OpenSSH, Python) and the development image on top (linters, unit tests) |
 | `bin/hlab` | the host side, in Bash: build, start, stop, pass commands into the container |
 | `scripts/hlab.sh`, `hlab.nft` | the verbs (taps, QEMU, nftables, tc, DHCP, DNS, volumes, images, namespaces) and the table `inet hlab` |
 | `scripts/box.sh` | the Storage Box: sshd, chrooted accounts, snapshots |

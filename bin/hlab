@@ -12,6 +12,10 @@
 #   bin/hlab [-c hlab.yaml] itest [pytest args]
 #                                      live tests with VMs in the running lab
 #                                      (resets it first)
+#   bin/hlab [-c hlab.yaml] proxy <host> <port>
+#                                      stdin and stdout to a TCP port in the
+#                                      lab's network: ssh -o ProxyCommand=
+#                                      "bin/hlab proxy %h %p" root@<server>
 #   bin/hlab [-c hlab.yaml] box <arguments>
 #                                      the Storage Box inside the lab; "box
 #                                      user <name> <key file>" reads the key
@@ -32,14 +36,18 @@ readonly IMAGE=hlab:latest
 # The development tools (STYLE.md), built on top of the lab image.
 readonly DEV_IMAGE=hlab-dev:latest
 readonly TOFU_IMAGE=ghcr.io/opentofu/opentofu:1
-# The web UI's port inside the container (UI_PORT in hlabd/config.py).
+# The ports of the web UI and the SOCKS5 proxy inside the container (UI_PORT
+# and SOCKS_PORT in hlabd/config.py).
 readonly UI_PORT=8480
+readonly SOCKS_PORT=1080
 
 # Set by load_config.
 lab_name=demo
 container=hlab-demo
 config_mount=()
-ui_port="${UI_PORT}" # on the host's localhost
+# on the host's localhost
+ui_port="${UI_PORT}"
+socks_port="${SOCKS_PORT}"
 # Set by main.
 tty_flags=(-i)
 
@@ -81,24 +89,24 @@ read_lab_name() {
   echo "${name}"
 }
 
-# read_ui_port <file>: Print the top-level "ui_port:" of a configuration file;
-# nothing if it has none. Anything but a port number stops the wrapper.
-read_ui_port() {
-  local file="$1" port
-  port="$(read_setting "${file}" ui_port)"
+# read_port <file> <key>: Print a top-level port setting of a configuration
+# file; nothing if it has none. Anything but a port number stops the wrapper.
+read_port() {
+  local file="$1" key="$2" port
+  port="$(read_setting "${file}" "${key}")"
   if [[ -n "${port}" ]] && [[ ! "${port}" =~ ^[0-9]{1,5}$ ]]; then
-    echo "hlab: ${file}: ui_port must be a port number" >&2
+    echo "hlab: ${file}: ${key} must be a port number" >&2
     exit 2
   fi
   echo "${port}"
 }
 
-# load_config <file> <explicit>: Take the lab's name and web UI port from the
+# load_config <file> <explicit>: Take the lab's name and ports from the
 # configuration file and mount its directory into the container. Without the
 # file the lab "demo" runs with defaults, unless the file was named
 # explicitly: a mistyped path must not mean the lab "demo".
 # Globals:
-#   lab_name, container, config_mount, ui_port (set)
+#   lab_name, container, config_mount, ui_port, socks_port (set)
 load_config() {
   local config="$1" explicit="$2"
   local configured_name configured_port config_dir
@@ -114,10 +122,10 @@ load_config() {
     lab_name="${configured_name}"
     container="hlab-${lab_name}"
   fi
-  configured_port="$(read_ui_port "${config}")"
-  if [[ -n "${configured_port}" ]]; then
-    ui_port="${configured_port}"
-  fi
+  configured_port="$(read_port "${config}" ui_port)"
+  ui_port="${configured_port:-${ui_port}}"
+  configured_port="$(read_port "${config}" socks_port)"
+  socks_port="${configured_port:-${socks_port}}"
   config_dir="$(cd "$(dirname "${config}")" && (pwd -W 2>/dev/null || pwd))"
   config_mount=(-v "${config_dir}:/config:ro"
     -e "HLAB_CONFIG=/config/$(basename "${config}")")
@@ -166,7 +174,7 @@ stop_lab() {
 # start_lab: Start the lab container afresh and show its log until the lab
 # is ready (or the container ends). Loading the OS images takes a while.
 # Globals:
-#   lab_name, container, config_mount, ui_port (read)
+#   lab_name, container, config_mount, ui_port, socks_port (read)
 start_lab() {
   local log running shown=0
   build_image lab "${IMAGE}"
@@ -176,6 +184,7 @@ start_lab() {
     --device /dev/kvm --device /dev/net/tun \
     --stop-timeout 20 -e "HLAB_NAME=${lab_name}" -v "${container}:/hlab" \
     -p "127.0.0.1:${ui_port}:${UI_PORT}" \
+    -p "127.0.0.1:${socks_port}:${SOCKS_PORT}" \
     ${config_mount[@]+"${config_mount[@]}"} "${IMAGE}" serve >/dev/null
   # The old container is gone, and with it the last user of an old image.
   prune_images
@@ -193,6 +202,23 @@ start_lab() {
     fi
     sleep 1
   done
+}
+
+# run_proxy <host> <port>: Connect stdin and stdout to a TCP port in the lab's
+# network, from the container (source 192.0.2.2, like any tool in the lab's
+# namespace). SSH uses it as its ProxyCommand.
+# Globals:
+#   container (read)
+run_proxy() {
+  if (($# != 2)); then
+    echo "usage: hlab proxy <host> <port>" >&2
+    exit 2
+  fi
+  local host="$1" port="$2"
+  if [[ "${host}" == *:* ]]; then
+    host="[${host}]" # socat wants an IPv6 address in brackets
+  fi
+  exec docker exec -i "${container}" socat - "TCP:${host}:${port}"
 }
 
 # run_box <box arguments>: Run "hlab box" in the container. For "box user
@@ -258,6 +284,7 @@ main() {
         -w /opt/hlab/itests "${container}" \
         python3 -m pytest -p no:cacheprovider -v "${@:2}"
       ;;
+    proxy) run_proxy "${@:2}" ;;
     box) run_box "${@:2}" ;;
     "")
       print_usage >&2
