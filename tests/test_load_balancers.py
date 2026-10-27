@@ -1,9 +1,10 @@
 """Load balancers: services and targets, HAProxy's configuration, health, limits."""
 
-from conftest import create_server, wait_action
+from conftest import create_network, create_server, state_of, wait_action
 from test_certificates import upload
 
 from hlabd import config
+from hlabd.api import desired
 
 
 def service(protocol="http", listen=80, destination=80, proxyprotocol=False, http=None):
@@ -130,7 +131,6 @@ def test_services_and_targets_are_checked_like_on_hetzner(api):
             "add_target",
             {"type": "ip", "ip": {"ip": server["public_net"]["ipv4"]["ip"]}},
         ),
-        "unsupported": ("attach_to_network", {"network": 1}),
     }
     for code, (cmd, body) in errors.items():
         response = action(api, balancer, cmd, body)
@@ -215,3 +215,77 @@ def test_reverse_dns_and_type_change(api):
     got = api.get(f"/v1/load_balancers/{balancer['id']}").json()["load_balancer"]
     assert got["public_net"]["ipv4"]["dns_ptr"] == "lb.example.com"
     assert got["load_balancer_type"]["name"] == "lb21"
+
+
+def test_balancer_in_a_network_reaches_targets_at_their_private_ip(api, tmp_path):
+    network = create_network(api, "10.0.1.0/24")
+    inside = create_server(api, "in", networks=[network["id"]])["server"]
+    outside = create_server(api, "out")["server"]
+    balancer = create_balancer(
+        api,
+        network=network["id"],
+        services=[service("tcp", 22, 22)],
+        targets=[
+            {"type": "server", "server": {"id": inside["id"]}, "use_private_ip": True}
+        ],
+    )
+    link = balancer["private_net"][0]
+    assert link["network"] == network["id"] and link["ip"].startswith("10.0.1.")
+    veth = f"prvl{balancer['id']}"
+    assert any(
+        call[:3] == ("add-namespace-nic", f"lb{balancer['id']}", veth)
+        for call in api.sh.calls
+    )
+    private_ip = inside["private_net"][0]["ip"]
+    assert f"server s{inside['id']} {private_ip}:22" in haproxy_config(
+        tmp_path, balancer
+    )
+    # Hetzner: a private target must be in the load balancer's network
+    response = action(
+        api,
+        balancer,
+        "add_target",
+        {"type": "server", "server": {"id": outside["id"]}, "use_private_ip": True},
+    )
+    assert response.json()["error"]["code"] == "resolve_cloud_private_targets_error"
+    # the cloud network carries the balancer like a server's NIC
+    sets = api.on_loop(lambda: desired.fault_sets(api.lab.state))
+    inside_tap = state_of(api, "servers")[inside["id"]]["_lab"]["nics"][0]["tap"]
+    assert f'"{veth}" . "{inside_tap}"' in sets["private_pairs"]
+
+
+def test_public_interface_is_switched_off_only_in_a_network(api):
+    network = create_network(api, "10.0.1.0/24")
+    balancer = create_balancer(api)
+    response = action(api, balancer, "disable_public_interface", {})
+    assert response.json()["error"]["code"] == "invalid_input"
+    assert (
+        action(
+            api, balancer, "attach_to_network", {"network": network["id"]}
+        ).status_code
+        == 201
+    )
+    assert action(api, balancer, "disable_public_interface", {}).status_code == 201
+    got = api.get(f"/v1/load_balancers/{balancer['id']}").json()["load_balancer"]
+    assert got["public_net"]["enabled"] is False
+    ipv4 = got["public_net"]["ipv4"]["ip"]
+    assert ("set-route", f"{ipv4}/32") in api.sh.calls
+    # without its public interface it keeps its network
+    response = action(api, balancer, "detach_from_network", {"network": network["id"]})
+    assert response.json()["error"]["code"] == "invalid_input"
+    action(api, balancer, "enable_public_interface", {})
+    assert (
+        action(
+            api, balancer, "detach_from_network", {"network": network["id"]}
+        ).status_code
+        == 201
+    )
+    assert ("delete-namespace-nic", f"prvl{balancer['id']}") in api.sh.calls
+
+
+def test_deleting_the_network_takes_the_balancer_out(api):
+    network = create_network(api, "10.0.1.0/24")
+    balancer = create_balancer(api, network=network["id"])
+    assert api.delete(f"/v1/networks/{network['id']}").status_code == 204
+    got = api.get(f"/v1/load_balancers/{balancer['id']}").json()["load_balancer"]
+    assert got["private_net"] == []

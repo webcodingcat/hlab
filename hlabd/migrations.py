@@ -84,6 +84,16 @@ def migrate_5_to_6(data: dict[str, Any]) -> None:
         server.setdefault("backup_window", None)
 
 
+def migrate_6_to_7(data: dict[str, Any]) -> None:
+    """Give every load balancer `private_net` and `public_interface`.
+
+    Load balancers came without private networks; their public interface was on.
+    """
+    for balancer in data.get("load_balancers", {}).values():
+        balancer.setdefault("private_net", [])
+        balancer.setdefault("public_interface", True)
+
+
 # the migrations in order: MIGRATIONS[n] takes the state from version n to n + 1
 MIGRATIONS: tuple[Migration, ...] = (
     migrate_0_to_1,
@@ -92,6 +102,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     migrate_3_to_4,
     migrate_4_to_5,
     migrate_5_to_6,
+    migrate_6_to_7,
 )
 # the version that this hlabd writes
 STATE_VERSION = len(MIGRATIONS)

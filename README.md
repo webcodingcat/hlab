@@ -77,7 +77,8 @@ bin/hlab reset                            # delete everything the APIs created
 - **Images**: snapshots and backups of a server's disk (`create_image`, also of a running server: shut it down for a
   consistent image, as on Hetzner), servers created or rebuilt from them, daily backups at 22:00 UTC with seven
   slots while enabled, backups converted to snapshots, delete protection.
-- **Metrics**: CPU, disk and public network of running servers (`/servers/{id}/metrics`), sampled every 15 seconds.
+- **Metrics**: CPU, disk and public network of running servers (`/servers/{id}/metrics`) and the metrics of load
+  balancers, sampled every 15 seconds.
   The lab keeps them for a day and in memory only: they start anew when the lab restarts (Hetzner keeps 30 days).
 - **DNS zones**: zones and RRSets of the DNS API (all record types, zone file export and import, protection, Hetzner's
   SOA and nameservers, the serial counted on). The lab's resolver answers for them inside the lab, so servers,
@@ -92,7 +93,9 @@ bin/hlab reset                            # delete everything the APIs created
   with TCP, HTTP and HTTPS services, servers, label selectors and IPs as targets, health checks, sticky sessions and
   the redirect to HTTPS: HAProxy runs each one in a network namespace of its own with public IPv4 and IPv6. The
   targets see the load balancer's address; the client's address reaches them through the PROXY protocol or in
-  `X-Forwarded-For` (with `-Proto` and `-Port`).
+  `X-Forwarded-For` (with `-Proto` and `-Port`). A load balancer joins a cloud network like a server (targets with
+  `use_private_ip`), can switch its public interface off, and has Hetzner's metrics (open connections, connections
+  and requests per second, bandwidth).
 - **Networks**: cloud networks with subnets and routes (pushed by DHCP, forwarded to the gateway server), alias IPs,
   hot-plugged NICs, overlapping networks; Floating IPs routed to their server; firewalls with Hetzner's semantics;
   latency between locations. A server sends only from its own public addresses, so the source a server sees is the
@@ -110,8 +113,7 @@ bin/hlab reset                            # delete everything the APIs created
 ### Not like Hetzner
 
 - Not offered: rescue, ISOs, console. Samba and WebDAV of Storage Boxes are only reported.
-- Load balancers in private networks (`use_private_ip`, attach, detach), without a public interface, and their
-  metrics are not there yet. Managed certificates are not renewed (Pebble's last five years).
+- Managed certificates are not renewed (Pebble's last five years). A load balancer is in one cloud network at most.
 - Only the network zone `eu-central` and x86: no locations in the US or Asia, no Arm types (CAX), not even in the
   catalogue. Every server type is offered in every location.
 - DNS zones in primary mode only (secondary zones are refused). As on Hetzner, a zone is a domain right below a

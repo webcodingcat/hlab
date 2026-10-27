@@ -68,4 +68,4 @@ class Fabric:
         self.box = Box(self.shell)
         self.dns = Dns(root, self.shell)
         self.acme = Acme(root, self.shell)
-        self.balancers = Balancers(root, self.shell)
+        self.balancers = Balancers(root, self.shell, self.net_lock)

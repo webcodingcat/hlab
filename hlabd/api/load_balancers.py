@@ -5,8 +5,9 @@ The API keeps services and targets in Hetzner's shape and fills in Hetzner's def
 HAProxy configuration that api/desired.py renders; a background job reads HAProxy's
 checks into `lab.balancer_health` for the targets' health status.
 
-Not yet in the lab: private networks (`use_private_ip`, attach and detach), turning
-the public interface off, and the metrics of load balancers.
+A load balancer joins one cloud network at most, like a server with a NIC (a veth
+whose name starts with "prv"); with `use_private_ip` it reaches its targets there.
+Without its public interface, nothing routes its public addresses to it.
 """
 
 import asyncio
@@ -18,15 +19,16 @@ from fastapi import FastAPI, Request
 
 from ..errors import ApiError, check_unique_name, invalid, limit_exceeded, protected
 from ..lab import ActionSpec, ActionTable, Lab, Plan, now
-from ..records import LoadBalancer
-from ..state import CERTIFICATES, LOAD_BALANCERS, SERVERS
-from . import desired, hetzner, primary_ips, system
+from ..records import BalancerNic, LoadBalancer
+from ..state import CERTIFICATES, LOAD_BALANCERS, NETWORKS, SERVERS
+from . import desired, hetzner, nics, primary_ips, system
 from .catalogue import catalogue_name
 from .web import (
     change_delete_protection,
     filtered,
     paginate,
     read_body,
+    ref_id,
     update_resource,
 )
 
@@ -41,11 +43,6 @@ DEFAULT_PORTS = {"http": 80, "https": 443}
 def failed(code: str, message: str, status: int = 422) -> ApiError:
     """Return one of the load balancer's own errors (Hetzner's codes)."""
     return ApiError(status, code, message)
-
-
-def not_yet(what: str) -> ApiError:
-    """Return the error for a part of load balancers the lab does not offer yet."""
-    return ApiError(422, "unsupported", f"the lab has no {what} for load balancers yet")
 
 
 # --- services -------------------------------------------------------------------------
@@ -143,9 +140,13 @@ def check_services(lab: Lab, balancer_type: str, services: list[dict]) -> None:
 # --- targets --------------------------------------------------------------------------
 
 
-def target_of(lab: Lab, body: dict) -> dict:
-    """Return a target as Hetzner shows it (without its health), after checks."""
-    if body.get("use_private_ip"):
+def target_of(lab: Lab, body: dict, network: int | None) -> dict:
+    """Return a target as Hetzner shows it (without its health), after checks.
+
+    `network` is the load balancer's cloud network, which `use_private_ip` needs.
+    """
+    private = bool(body.get("use_private_ip"))
+    if private and network is None:
         raise failed(
             "load_balancer_not_attached_to_network",
             "the load balancer is not attached to a network",
@@ -153,11 +154,15 @@ def target_of(lab: Lab, body: dict) -> dict:
     kind = body.get("type")
     if kind == "server":
         sid = (body.get("server") or {}).get("id")
-        server = lab.state.get(SERVERS, sid)
-        if server is None:
+        if lab.state.get(SERVERS, sid) is None:
             raise invalid(f"server {sid} not found", "server")
-        target = {"type": "server", "server": {"id": sid}, "use_private_ip": False}
-        if not desired.target_members(lab.state, target):
+        target = {"type": "server", "server": {"id": sid}, "use_private_ip": private}
+        if not desired.target_members(lab.state, target, network):
+            if private:
+                raise failed(
+                    "resolve_cloud_private_targets_error",
+                    "the server is not in the load balancer's network",
+                )
             raise failed(
                 "resolve_cloud_public_targets_error",
                 "the server has no public IPv4 address",
@@ -168,7 +173,7 @@ def target_of(lab: Lab, body: dict) -> dict:
         return {
             "type": "label_selector",
             "label_selector": {"selector": selector},
-            "use_private_ip": False,
+            "use_private_ip": private,
         }
     if kind == "ip":
         ip = (body.get("ip") or {}).get("ip") or ""
@@ -188,26 +193,54 @@ def same_target(first: dict, second: dict) -> bool:
     }
 
 
-def check_targets(lab: Lab, balancer_type: str, targets: list[dict]) -> None:
+def check_targets(
+    lab: Lab, balancer_type: str, targets: list[dict], network: int | None
+) -> None:
     """Refuse a target given twice, and more members than the type allows."""
     for index, target in enumerate(targets):
         if any(same_target(target, other) for other in targets[:index]):
             raise failed("target_already_defined", "the target is already defined")
-    members = sum(len(desired.target_members(lab.state, t)) for t in targets)
+    members = sum(len(desired.target_members(lab.state, t, network)) for t in targets)
     limit = lab.cfg["load_balancer_types"][balancer_type]["max_targets"]
     if members > limit:
         raise limit_exceeded(f"{balancer_type} has at most {limit} targets", "targets")
 
 
+# --- networks -------------------------------------------------------------------------
+
+
+def private_link(
+    lab: Lab, body: dict, location: str, local_addresses: set[str]
+) -> BalancerNic:
+    """Return a load balancer's NIC in the network a request names, with a free IP.
+
+    `local_addresses` are the container's own addresses, which no NIC may get.
+    """
+    nid = ref_id(body.get("network"), "network")
+    network = lab.state.get(NETWORKS, nid)
+    if network is None or network.get("_deleting"):
+        raise invalid(f"network {nid} not found", "network")
+    zone = lab.cfg["locations"][location].get("network_zone", "eu-central")
+    ip = nics.network_ip(
+        lab, network, body.get("ip"), local_addresses, zone, body.get("ip_range")
+    )
+    return {"network": nid, "ip": ip}
+
+
 # --- create and delete ----------------------------------------------------------------
 
 
-def create_load_balancer(lab: Lab, body: dict) -> dict:
-    """Create a load balancer with its services and targets, and start it."""
-    if body.get("network"):
-        raise not_yet("private networks")
-    if body.get("public_interface") is False:
-        raise not_yet("load balancers without a public interface")
+async def create_load_balancer(lab: Lab, body: dict) -> dict:
+    """Create a load balancer with its services, targets and network, and start it."""
+    public = body.get("public_interface") is not False
+    if not public and not body.get("network"):
+        raise invalid("without a public interface it needs a network", "network")
+    local_addresses = (  # runs a script: the addresses that no NIC may get
+        await lab.blocking(lab.fabric.network.read_local_addresses)
+        if body.get("network")
+        else set()
+    )
+    network = ref_id(body["network"], "network") if body.get("network") else None
     balancer_type = catalogue_name(
         lab, "load_balancer_type", body.get("load_balancer_type")
     )
@@ -224,9 +257,9 @@ def create_load_balancer(lab: Lab, body: dict) -> dict:
         )
     location = catalogue_name(lab, "location", location)
     services = [service_of(s) for s in body.get("services") or []]
-    targets = [target_of(lab, t) for t in body.get("targets") or []]
+    targets = [target_of(lab, t, network) for t in body.get("targets") or []]
     check_services(lab, balancer_type, services)
-    check_targets(lab, balancer_type, targets)
+    check_targets(lab, balancer_type, targets, network)
     state = lab.state
     with state.change():
         check_unique_name(
@@ -247,6 +280,10 @@ def create_load_balancer(lab: Lab, body: dict) -> dict:
             "dns_ptr": {},
             "services": services,
             "targets": targets,
+            "private_net": [private_link(lab, body, location, local_addresses)]
+            if network
+            else [],
+            "public_interface": public,
         }
         state[LOAD_BALANCERS][lid] = balancer
         action = lab.new_action("create_load_balancer", [(lid, "load_balancer")])
@@ -282,13 +319,13 @@ def delete_load_balancer(lab: Lab, lid: int) -> dict:
 # --- actions --------------------------------------------------------------------------
 
 
-def apply_plan(lab: Lab) -> Plan:
+def apply_plan(lab: Lab, resources: list[tuple[int, str]] | None = None) -> Plan:
     """Return the plan of an action whose change is in the record: run it anew."""
 
     async def steps():
         await system.apply_load_balancers(lab)
 
-    return Plan(steps)
+    return Plan(steps, resources=resources or [])
 
 
 async def add_service(lab: Lab, balancer: LoadBalancer, body: dict) -> Plan:
@@ -327,8 +364,9 @@ async def delete_service(lab: Lab, balancer: LoadBalancer, body: dict) -> Plan:
 
 async def add_target(lab: Lab, balancer: LoadBalancer, body: dict) -> Plan:
     """Add a target: a server, the servers of a label selector, or an address."""
-    targets = [*balancer["targets"], target_of(lab, body)]
-    check_targets(lab, balancer["type"], targets)
+    network = desired.balancer_network(balancer)
+    targets = [*balancer["targets"], target_of(lab, body, network)]
+    check_targets(lab, balancer["type"], targets, network)
     with lab.state.change():
         balancer["targets"] = targets
     return apply_plan(lab)
@@ -358,7 +396,8 @@ async def change_type(lab: Lab, balancer: LoadBalancer, body: dict) -> Plan:
     """Change the type, if the services and targets fit into the new one."""
     new_type = catalogue_name(lab, "load_balancer_type", body.get("load_balancer_type"))
     check_services(lab, new_type, balancer["services"])
-    check_targets(lab, new_type, balancer["targets"])
+    network = desired.balancer_network(balancer)
+    check_targets(lab, new_type, balancer["targets"], network)
     with lab.state.change():
         balancer["type"] = new_type
     return apply_plan(lab)
@@ -377,9 +416,50 @@ async def change_dns_ptr(lab: Lab, balancer: LoadBalancer, body: dict) -> Plan:
     return Plan()
 
 
-async def network_action(lab: Lab, balancer: LoadBalancer, body: dict) -> Plan:
-    """Refuse the actions of private networks and the public interface (not yet)."""
-    raise not_yet("private networks or public interface switching")
+async def attach_to_network(lab: Lab, balancer: LoadBalancer, body: dict) -> Plan:
+    """Put the load balancer into a cloud network, with a free or the given IP."""
+    if balancer["private_net"]:
+        raise invalid("the load balancer is in a network already", "network")
+    lid = balancer["id"]
+    # runs a script: the addresses that no NIC may get
+    local_addresses = await lab.blocking(lab.fabric.network.read_local_addresses)
+    balancer = lab.get_or_404(LOAD_BALANCERS, lid, "load balancer")  # looked up again
+    link = private_link(lab, body, balancer["location"], local_addresses)
+    with lab.state.change():
+        balancer["private_net"] = [link]
+    return apply_plan(lab, [(link["network"], "network")])
+
+
+async def detach_from_network(lab: Lab, balancer: LoadBalancer, body: dict) -> Plan:
+    """Take the load balancer out of its network, if it does without it."""
+    nid = ref_id(body.get("network"), "network")
+    if desired.balancer_network(balancer) != nid:
+        raise invalid("the load balancer is not in this network", "network")
+    if not balancer["public_interface"]:
+        raise invalid("without its public interface it needs its network", "network")
+    if any(t.get("use_private_ip") for t in balancer["targets"]):
+        raise invalid("targets use the private network", "network")
+    with lab.state.change():
+        balancer["private_net"] = []
+    return apply_plan(lab, [(nid, "network")])
+
+
+async def enable_public_interface(lab: Lab, balancer: LoadBalancer, body: dict) -> Plan:
+    """Route the load balancer's public addresses to it again."""
+    with lab.state.change():
+        balancer["public_interface"] = True
+    return apply_plan(lab)
+
+
+async def disable_public_interface(
+    lab: Lab, balancer: LoadBalancer, body: dict
+) -> Plan:
+    """Stop routing the public addresses to it; it needs a network for that."""
+    if not balancer["private_net"]:
+        raise invalid("without a network it needs its public interface", "network")
+    with lab.state.change():
+        balancer["public_interface"] = False
+    return apply_plan(lab)
 
 
 # the load balancer actions: Hetzner's name of the action and the function that plans it
@@ -395,10 +475,14 @@ LOAD_BALANCER_ACTIONS: ActionTable[LoadBalancer] = {
         "change_protection", change_delete_protection, flag=False
     ),
     "change_dns_ptr": ActionSpec("change_dns_ptr", change_dns_ptr, flag=False),
-    "attach_to_network": ActionSpec("attach_to_network", network_action),
-    "detach_from_network": ActionSpec("detach_from_network", network_action),
-    "enable_public_interface": ActionSpec("enable_public_interface", network_action),
-    "disable_public_interface": ActionSpec("disable_public_interface", network_action),
+    "attach_to_network": ActionSpec("attach_to_network", attach_to_network),
+    "detach_from_network": ActionSpec("detach_from_network", detach_from_network),
+    "enable_public_interface": ActionSpec(
+        "enable_public_interface", enable_public_interface
+    ),
+    "disable_public_interface": ActionSpec(
+        "disable_public_interface", disable_public_interface
+    ),
 }
 
 
@@ -442,7 +526,7 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
 
     @app.post("/v1/load_balancers", status_code=201)
     async def load_balancer_create(request: Request):
-        return create_load_balancer(lab, await read_body(request))
+        return await create_load_balancer(lab, await read_body(request))
 
     @app.get("/v1/load_balancers/{lid}")
     async def load_balancer_get(lid: int):

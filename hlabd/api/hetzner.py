@@ -627,7 +627,9 @@ def target_json(lab: Lab, balancer: LoadBalancer, target: dict) -> dict:
     """
     health = lab.balancer_health.get(balancer["id"], {})
     ports = [s["listen_port"] for s in balancer["services"]]
-    members = desired.target_members(lab.state, target)
+    members = desired.target_members(
+        lab.state, target, desired.balancer_network(balancer)
+    )
     if target["type"] == "label_selector":
         return {
             **target,
@@ -656,7 +658,7 @@ def load_balancer_json(lab: Lab, balancer: LoadBalancer) -> dict:
         "id": balancer["id"],
         "name": balancer["name"],
         "public_net": {
-            "enabled": True,
+            "enabled": balancer["public_interface"],
             "ipv4": {
                 "id": None,
                 "ip": ipv4,
@@ -670,7 +672,7 @@ def load_balancer_json(lab: Lab, balancer: LoadBalancer) -> dict:
                 "dns_ptr": balancer["dns_ptr"].get(ipv6),
             },
         },
-        "private_net": [],
+        "private_net": balancer["private_net"],
         "location": location_json(lab, balancer["location"]),
         "load_balancer_type": load_balancer_type_json(lab, balancer["type"]),
         "protection": balancer["protection"],

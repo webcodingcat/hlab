@@ -216,6 +216,13 @@ class TlsCertificate(TypedDict):
     _key: str | None  # the PEM private key
 
 
+class BalancerNic(TypedDict):
+    """A load balancer's NIC in a cloud network (the API's private_net entry)."""
+
+    network: int
+    ip: str
+
+
 class LoadBalancer(TypedDict):
     """A load balancer: HAProxy in a network namespace of its own (fabric/balancers.py).
 
@@ -236,6 +243,8 @@ class LoadBalancer(TypedDict):
     dns_ptr: dict[str, str]  # address → reverse DNS entry set through the API
     services: list[dict]
     targets: list[dict]
+    private_net: list[BalancerNic]  # one network at most
+    public_interface: bool  # off: its public addresses are not routed to it
     _busy: NotRequired[bool]  # an action runs
 
 

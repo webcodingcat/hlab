@@ -14,7 +14,7 @@ from ..errors import check_unique_name, invalid, protected
 from ..fabric.addresses import network_gateway
 from ..lab import SERVER_LOCKED, ActionSpec, ActionTable, Lab, Plan, now
 from ..records import CloudNetwork, Nic, Route, Subnet
-from ..state import NETWORKS, nic_addresses, nics_in
+from ..state import LOAD_BALANCERS, NETWORKS, nic_addresses, nics_in
 from . import hetzner, system
 from .faults import drop_netem
 from .web import (
@@ -62,16 +62,23 @@ def network_range(value) -> ipaddress.IPv4Network:
 
 
 def addresses_in(lab: Lab, nid: int, except_nic: Nic | None = None) -> set[str]:
-    """Return the private and alias IPs servers have in a network.
+    """Return the private and alias IPs servers and load balancers have in a network.
 
     The addresses of except_nic are left out.
     """
-    return {
+    servers = {
         ip
         for _, nic in nics_in(lab.state, nid)
         if nic is not except_nic
         for ip in nic_addresses(nic)
     }
+    balancers = {
+        nic["ip"]
+        for balancer in lab.state[LOAD_BALANCERS].values()
+        for nic in balancer["private_net"]
+        if nic["network"] == nid
+    }
+    return servers | balancers
 
 
 def subnet_of(network: CloudNetwork, ip: str) -> str:
@@ -299,7 +306,7 @@ async def run_network_action(lab: Lab, nid: int, cmd: str, body: dict) -> dict:
 
 
 async def delete_network(lab: Lab, nid: int) -> None:
-    """Delete a network and detach its servers, as on Hetzner.
+    """Delete a network and detach its servers and load balancers, as on Hetzner.
 
     Each of the servers is locked while this runs. A NIC is removed from the state only
     after its detach worked, and the state is saved after each one. So if a detach
@@ -330,7 +337,13 @@ async def delete_network(lab: Lab, nid: int) -> None:
             await system.apply_faults(lab)
             raise
         with state.change():
+            # load balancers leave it too; their targets there have no members now
+            for balancer in state[LOAD_BALANCERS].values():
+                balancer["private_net"] = [
+                    link for link in balancer["private_net"] if link["network"] != nid
+                ]
             del state[NETWORKS][nid]
+    await system.apply_load_balancers(lab)
     await system.drop_cloud_network(lab, nid)
 
 

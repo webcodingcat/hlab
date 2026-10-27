@@ -10,7 +10,7 @@ import ipaddress
 
 from .. import config
 from ..fabric.addresses import link_local, network_gateway, prefix, public_mac
-from ..fabric.balancers import BalancerSpec, namespace
+from ..fabric.balancers import BalancerLink, BalancerSpec, namespace, private_veth
 from ..fabric.dns import ZoneFile
 from ..fabric.faults import Latency, Shaping
 from ..fabric.firewall import Rule, ServerRules
@@ -132,6 +132,9 @@ def fault_sets(state: State) -> dict[str, list[str]]:
     for server in servers:
         for nic in server["_lab"]["nics"]:
             members.setdefault(nic["network"], []).append(nic["tap"])
+    for balancer in state[LOAD_BALANCERS].values():
+        for link in balancer["private_net"]:
+            members.setdefault(link["network"], []).append(private_veth(balancer["id"]))
     sets["private_pairs"] = [
         f'"{a}" . "{b}"'
         for taps in members.values()
@@ -183,12 +186,18 @@ def fault_sets(state: State) -> dict[str, list[str]]:
 
 
 def tap_networks(state: State) -> list[tuple[str, int]]:
-    """Return (tap, network ID) for every NIC in a cloud network."""
-    return [
+    """Return (tap or veth, network ID) for every NIC in a cloud network."""
+    servers = [
         (nic["tap"], nic["network"])
         for server in state[SERVERS].values()
         for nic in server["_lab"]["nics"]
     ]
+    balancers = [
+        (private_veth(balancer["id"]), link["network"])
+        for balancer in state[LOAD_BALANCERS].values()
+        for link in balancer["private_net"]
+    ]
+    return servers + balancers
 
 
 def tap_delays(
@@ -447,11 +456,32 @@ def member_name(target: dict, sid: int | None = None) -> str:
     return f"s{sid if sid is not None else target['server']['id']}"
 
 
-def target_members(state: State, target: dict) -> list[tuple[str, str]]:
+def balancer_network(balancer: LoadBalancer) -> int | None:
+    """Return the ID of the cloud network a load balancer is in, or None."""
+    return balancer["private_net"][0]["network"] if balancer["private_net"] else None
+
+
+def server_target_address(
+    state: State, server: Server, network: int | None, private: bool
+) -> str | None:
+    """Return where a load balancer reaches a server, or None if it cannot.
+
+    As on Hetzner: at its primary IPv4, or with `use_private_ip` at its address in
+    the load balancer's network.
+    """
+    if not private:
+        return primary_address_of(state, server, "ipv4")
+    nic = next((n for n in server["_lab"]["nics"] if n["network"] == network), None)
+    return nic["ip"] if nic else None
+
+
+def target_members(
+    state: State, target: dict, network: int | None
+) -> list[tuple[str, str]]:
     """Return a target's members as (HAProxy name, address).
 
-    Servers are reached at their primary IPv4, as on Hetzner; a server without one
-    is left out.
+    `network` is the load balancer's cloud network. A server that cannot be reached
+    (no public IPv4, or not in the network) is left out.
     """
     if target["type"] == "ip":
         return [(member_name(target), target["ip"]["ip"])]
@@ -459,10 +489,11 @@ def target_members(state: State, target: dict) -> list[tuple[str, str]]:
         servers = [s for s in [state.get(SERVERS, target["server"]["id"])] if s]
     else:
         servers = selector_servers(state, target["label_selector"]["selector"])
+    private = target["use_private_ip"]
     return [
         (member_name(target, server["id"]), ip)
         for server in servers
-        if (ip := primary_address_of(state, server, "ipv4"))
+        if (ip := server_target_address(state, server, network, private))
     ]
 
 
@@ -558,7 +589,7 @@ def haproxy_config(state: State, cfg: dict, balancer: LoadBalancer) -> str:
         if service["proxyprotocol"]:
             options += " send-proxy"
         for target in balancer["targets"]:
-            for name, ip in target_members(state, target):
+            for name, ip in target_members(state, target, balancer_network(balancer)):
                 address = f"[{ip}]" if ":" in ip else ip
                 cookie = f" cookie {name}" if sticky else ""
                 lines.append(
@@ -589,6 +620,16 @@ def balancer_specs(state: State, cfg: dict) -> list[BalancerSpec]:
                 balancer_ipv6(balancer),
                 haproxy_config(state, cfg, balancer),
                 certificates,
+                balancer["public_interface"],
+                [
+                    BalancerLink(
+                        link["ip"],
+                        link["network"],
+                        state[NETWORKS][link["network"]]["ip_range"],
+                    )
+                    for link in balancer["private_net"]
+                    if link["network"] in state[NETWORKS]
+                ],
             )
         )
     return specs

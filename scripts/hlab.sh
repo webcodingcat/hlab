@@ -343,6 +343,31 @@ add_namespace() {
   echo "nameserver ${SERVICES}" >"/etc/netns/${name}/resolv.conf"
 }
 
+# add_namespace_nic <namespace> <veth> <ip> <gateway cidr> <table> <range>:
+# Put a namespace of add_namespace (a load balancer) into a cloud network: a
+# veth set up like a server's NIC (set_up_private_tap), and inside its address
+# with a route to the network through the gateway.
+add_namespace_nic() {
+  local name="$1" veth="$2" ip="$3" gateway_cidr="$4" table="$5" range="$6"
+  local gateway="${gateway_cidr%/*}"
+  link_exists "${veth}" \
+    || ip link add "${veth}" type veth peer name eth1 netns "${name}"
+  set_up_private_tap "${veth}" "${gateway_cidr}" "${ip}" "${table}" "${range}"
+  ip -n "${name}" link set eth1 mtu 1450 up
+  ip -n "${name}" addr replace "${ip}/32" dev eth1
+  ip -n "${name}" route replace "${gateway}/32" dev eth1 scope link
+  ip -n "${name}" route replace "${range}" via "${gateway}" dev eth1 onlink
+}
+
+# delete_namespace_nic <veth>: Take a namespace out of its cloud network; its
+# end inside goes with the veth.
+delete_namespace_nic() {
+  local veth="$1"
+  if link_exists "${veth}"; then
+    ip link del "${veth}"
+  fi
+}
+
 # delete_namespace <name> <veth>: Remove a namespace of add_namespace.
 delete_namespace() {
   local name="$1" veth="$2"
@@ -710,6 +735,8 @@ main() {
     tc) tc "$@" ;;
     add-namespace) add_namespace "$@" ;;
     delete-namespace) delete_namespace "$@" ;;
+    add-namespace-nic) add_namespace_nic "$@" ;;
+    delete-namespace-nic) delete_namespace_nic "$@" ;;
     stop-dhcp) stop_dhcp "$@" ;;
     restart-dhcp) restart_dhcp "$@" ;;
     start-dns) start_dns "$@" ;;

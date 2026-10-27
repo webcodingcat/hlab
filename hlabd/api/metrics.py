@@ -1,10 +1,10 @@
-"""Server metrics: CPU, disk and network of the running servers over time.
+"""Metrics of servers and load balancers over time.
 
-A sampler reads the counters of every running VM each `SAMPLE_SECONDS` (the fabric's
-`VMCounters`) and keeps them in memory for `KEEP_SECONDS` (`lab.samples`). A request
-turns them into rates and averages those per step, as Hetzner's
-/servers/{id}/metrics does. Hetzner keeps 30 days; the lab keeps one, and none across
-a restart.
+A sampler reads the counters of every running VM (the fabric's `VMCounters`) and of
+every load balancer's HAProxy (`BalancerCounters`) each `SAMPLE_SECONDS`, and keeps
+them in memory for `KEEP_SECONDS` (`lab.samples`, `lab.balancer_samples`). A request
+turns them into rates and averages those per step, as Hetzner's /metrics endpoints
+do. Hetzner keeps 30 days; the lab keeps one, and none across a restart.
 """
 
 import asyncio
@@ -12,14 +12,14 @@ import logging
 import math
 import time
 from collections import deque
+from collections.abc import Sequence
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request
 
 from ..errors import invalid
-from ..fabric.vm import VMCounters
 from ..lab import Lab
-from ..state import SERVERS
+from ..state import LOAD_BALANCERS, SERVERS
 
 log = logging.getLogger(__name__)
 
@@ -29,9 +29,11 @@ KEEP_SECONDS = 24 * 3600
 DEFAULT_POINTS = 200
 MAX_POINTS = 500
 
-# Hetzner's time series per metric type: name → (counter, factor on its rate). The CPU
-# counts per vCPU: 100 is one busy vCPU.
-SERIES: dict[str, dict[str, tuple[str, float]]] = {
+# Hetzner's time series per metric type: name → (counter, factor on its rate); no
+# factor: the counter is a level, shown as it is. The CPU counts per vCPU: 100 is one
+# busy vCPU.
+type Series = dict[str, dict[str, tuple[str, float | None]]]
+SERVER_SERIES: Series = {
     "cpu": {"cpu": ("cpu_seconds", 100)},
     "disk": {
         "disk.0.iops.read": ("disk_reads", 1),
@@ -46,13 +48,19 @@ SERIES: dict[str, dict[str, tuple[str, float]]] = {
         "network.0.bandwidth.out": ("bytes_out", 1),
     },
 }
+BALANCER_SERIES: Series = {
+    "open_connections": {"open_connections": ("open_connections", None)},
+    "connections_per_second": {"connections_per_second": ("connections", 1)},
+    "requests_per_second": {"requests_per_second": ("requests", 1)},
+    "bandwidth": {"bandwidth.in": ("bytes_in", 1), "bandwidth.out": ("bytes_out", 1)},
+}
 
 
 # --- sampling -------------------------------------------------------------------------
 
 
 async def sampler(lab: Lab) -> None:
-    """Take samples of the running servers as long as the lab runs."""
+    """Take samples of the running servers and the load balancers while the lab runs."""
     while True:
         await asyncio.sleep(SAMPLE_SECONDS)
         try:
@@ -62,7 +70,10 @@ async def sampler(lab: Lab) -> None:
 
 
 async def take_samples(lab: Lab) -> None:
-    """Read the counters of every running server; forget deleted servers."""
+    """Read the counters of every running server and every load balancer.
+
+    Deleted ones are forgotten.
+    """
     servers = lab.state[SERVERS]
     for sid in [sid for sid in lab.samples if sid not in servers]:
         del lab.samples[sid]
@@ -79,6 +90,16 @@ async def take_samples(lab: Lab) -> None:
                 sid, deque(maxlen=KEEP_SECONDS // SAMPLE_SECONDS)
             )
             kept.append((time.time(), counters))
+    balancers = lab.state[LOAD_BALANCERS]
+    for lid in [lid for lid in lab.balancer_samples if lid not in balancers]:
+        del lab.balancer_samples[lid]
+    for lid in list(balancers):
+        totals = await lab.blocking(lab.fabric.balancers.counters, lid)
+        if totals is not None and lid in lab.state[LOAD_BALANCERS]:
+            kept_totals = lab.balancer_samples.setdefault(
+                lid, deque(maxlen=KEEP_SECONDS // SAMPLE_SECONDS)
+            )
+            kept_totals.append((time.time(), totals))
 
 
 # --- the API --------------------------------------------------------------------------
@@ -118,12 +139,15 @@ def chosen_step(start: float, end: float, step: str | None) -> int:
 
 
 def rates(
-    samples: list[tuple[float, VMCounters]], counter: str, factor: float
+    samples: Sequence[tuple[float, object]], counter: str, factor: float | None
 ) -> list[tuple[float, float]]:
     """Return a counter's rate between consecutive samples, at the later one's time.
 
-    A counter that went down belongs to a VM that started again: that pair is left out.
+    A counter that went down belongs to a VM or HAProxy that started again: that pair
+    is left out. Without a factor the counter is a level: each sample as it is.
     """
+    if factor is None:
+        return [(moment, float(getattr(totals, counter))) for moment, totals in samples]
     out = []
     for (before, old), (after, new) in zip(samples, samples[1:], strict=False):
         delta = getattr(new, counter) - getattr(old, counter)
@@ -150,14 +174,22 @@ def averaged(
 
 
 def metrics_json(
-    lab: Lab, sid: int, types: list[str], start: float, end: float, step: int
+    samples: Sequence[tuple[float, object]], series: Series, request: Request
 ) -> dict:
-    """Return the metrics of a server for the types between start and end."""
-    samples = list(lab.samples.get(sid, ()))
+    """Return the metrics a request asks for, from a server's or balancer's samples."""
+    query = request.query_params
+    types = [t for value in query.getlist("type") for t in value.split(",") if t]
+    if not types or any(t not in series for t in types):
+        raise invalid(f"type must be one of {', '.join(series)}", "type")
+    start = parse_time(query.get("start"), "start")
+    end = parse_time(query.get("end"), "end")
+    if end < start:
+        raise invalid("end is before start", "end")
+    step = chosen_step(start, end, query.get("step"))
     time_series = {
         name: {"values": averaged(rates(samples, counter, factor), start, end, step)}
         for kind in types
-        for name, (counter, factor) in SERIES[kind].items()
+        for name, (counter, factor) in series[kind].items()
     }
     return {
         "start": iso(start),
@@ -168,19 +200,16 @@ def metrics_json(
 
 
 def add_routes(app: FastAPI, lab: Lab) -> None:
-    """Add the metrics route of servers to the app."""
+    """Add the metrics routes of servers and load balancers to the app."""
 
     @app.get("/v1/servers/{sid}/metrics")
     async def server_metrics(sid: int, request: Request):
         lab.server_or_404(sid)
-        query = request.query_params
-        types = [t for value in query.getlist("type") for t in value.split(",") if t]
-        unknown = [t for t in types if t not in SERIES]
-        if not types or unknown:
-            raise invalid("type must be cpu, disk or network", "type")
-        start = parse_time(query.get("start"), "start")
-        end = parse_time(query.get("end"), "end")
-        if end < start:
-            raise invalid("end is before start", "end")
-        step = chosen_step(start, end, query.get("step"))
-        return {"metrics": metrics_json(lab, sid, types, start, end, step)}
+        samples = list(lab.samples.get(sid, ()))
+        return {"metrics": metrics_json(samples, SERVER_SERIES, request)}
+
+    @app.get("/v1/load_balancers/{lid}/metrics")
+    async def load_balancer_metrics(lid: int, request: Request):
+        lab.get_or_404(LOAD_BALANCERS, lid, "load balancer")
+        samples = list(lab.balancer_samples.get(lid, ()))
+        return {"metrics": metrics_json(samples, BALANCER_SERIES, request)}

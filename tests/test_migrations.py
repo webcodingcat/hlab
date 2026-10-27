@@ -16,6 +16,7 @@ from hlabd.migrations import (
     migrate_3_to_4,
     migrate_4_to_5,
     migrate_5_to_6,
+    migrate_6_to_7,
 )
 from hlabd.state import BOX_SNAPSHOTS, SERVERS, State
 
@@ -99,6 +100,13 @@ def test_5_to_6_gives_old_servers_no_backup_window():
     data = old_state()
     migrate_5_to_6(data)
     assert data["servers"]["1000001"]["backup_window"] is None
+
+
+def test_6_to_7_gives_load_balancers_no_network_and_a_public_interface():
+    data = {"load_balancers": {"12000001": {"id": 12000001, "name": "lb"}}}
+    migrate_6_to_7(data)
+    balancer = data["load_balancers"]["12000001"]
+    assert (balancer["private_net"], balancer["public_interface"]) == ([], True)
 
 
 def test_the_steps_take_a_file_without_the_kinds_they_change():

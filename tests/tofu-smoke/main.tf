@@ -121,10 +121,20 @@ resource "hcloud_load_balancer" "smoke" {
   labels             = { cluster = "smoke" }
 }
 
+resource "hcloud_load_balancer_network" "smoke" {
+  load_balancer_id = hcloud_load_balancer.smoke.id
+  network_id       = hcloud_network.net.id
+
+  depends_on = [hcloud_network_subnet.net]
+}
+
 resource "hcloud_load_balancer_target" "nodes" {
   load_balancer_id = hcloud_load_balancer.smoke.id
   type             = "label_selector"
   label_selector   = "cluster=smoke"
+  use_private_ip   = true
+
+  depends_on = [hcloud_load_balancer_network.smoke]
 }
 
 resource "hcloud_load_balancer_service" "https" {

@@ -20,6 +20,7 @@ from typing import Any, Literal, cast
 
 from .errors import locked, not_found, unsupported
 from .fabric import Fabric
+from .fabric.balancers import BalancerCounters
 from .fabric.vm import VMCounters
 from .records import Action, ActionRecord, Record, Server
 from .state import ACTIONS, RECORD_KINDS, SERVERS, Kind, State, server_by_name
@@ -232,6 +233,8 @@ class Lab:
         # each running server's counters over time (api/metrics.py): only in memory, so
         # the metrics start anew when the lab restarts
         self.samples: dict[int, deque[tuple[float, VMCounters]]] = {}
+        # the same for each load balancer's HAProxy
+        self.balancer_samples: dict[int, deque[tuple[float, BalancerCounters]]] = {}
         # each load balancer's HAProxy check status per (backend, member), read by
         # api/load_balancers.py; only in memory, like the samples
         self.balancer_health: dict[int, dict[tuple[str, str], str]] = {}

@@ -6,6 +6,7 @@ from dataclasses import replace
 from conftest import create_server
 
 from hlabd.api import metrics
+from hlabd.fabric.balancers import BalancerCounters
 from hlabd.fabric.vm import VMCounters, VMs
 
 START = 1_800_000_000  # a Unix time in 2027, on a whole minute
@@ -129,3 +130,36 @@ def test_counters_are_read_from_the_verb_and_missing_ones_count_as_none(tmp_path
     vms = VMs({}, tmp_path, AnsweringShell(answer.replace("1,", "null,", 1)))
     assert vms.counters(1, "pub1") is None
     assert VMs({}, tmp_path, AnsweringShell("")).counters(1, "pub1") is None
+
+
+def test_balancer_metrics_show_connections_requests_and_bandwidth(api):
+    balancer = api.post(
+        "/v1/load_balancers",
+        json={"name": "lb", "load_balancer_type": "lb11", "location": "fsn1"},
+    ).json()["load_balancer"]
+    start = metrics.parse_time("2027-01-15T08:00:00Z", "start")
+
+    def put():
+        api.lab.balancer_samples[balancer["id"]] = deque(
+            [
+                (start, BalancerCounters(4, 100, 50, 0, 0)),
+                (start + 10, BalancerCounters(6, 200, 150, 10_000, 40_000)),
+            ]
+        )
+
+    api.on_loop(put)
+    response = api.get(
+        f"/v1/load_balancers/{balancer['id']}/metrics",
+        params={
+            "type": "open_connections,requests_per_second,bandwidth",
+            "start": "2027-01-15T08:00:00Z",
+            "end": "2027-01-15T08:01:00Z",
+            "step": "60",
+        },
+    )
+    assert response.status_code == 200, response.text
+    series = response.json()["metrics"]["time_series"]
+    # a level is averaged as it is; counters become rates per second
+    assert series["open_connections"]["values"] == [[start, "5"]]
+    assert series["requests_per_second"]["values"] == [[start, "10"]]
+    assert series["bandwidth.out"]["values"] == [[start, "4000"]]
