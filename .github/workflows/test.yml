@@ -1,0 +1,34 @@
+---
+# Runs what a developer runs: `bin/hlab test` (the style checks, then the unit
+# tests in the development image with NET_ADMIN). The live tests (`bin/hlab
+# itest`) and the OpenTofu smoke test stay manual: they need a running lab,
+# which is a privileged container with /dev/kvm, and GitHub's runners offer
+# neither.
+name: test
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# a newer push to the same branch or pull request makes the older run pointless
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # actions/checkout v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      # plain `docker build` as on a developer's machine, so no layer cache
+      # between runs: the images build from scratch each time
+      - run: bin/hlab test
