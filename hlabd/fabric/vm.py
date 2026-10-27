@@ -1,4 +1,4 @@
-"""VMs: a server's disk, its QEMU process and its console, and the system images.
+"""VMs: a server's disk, its QEMU process and its console; the images' files.
 
 A part of the fabric (see __init__.py). The taps belong to network.py. A server's
 whole start and stop, taps included, is put together in api/system.py (`start_vm`,
@@ -43,6 +43,38 @@ class VMs:
         directory = self.directory(sid)
         directory.mkdir(parents=True, exist_ok=True)
         self.shell.run("create-vm-disk", str(directory), base, str(size_gb))
+
+    def create_disk_from_image(self, sid: int, iid: int, size_gb: int) -> None:
+        """Create the disk of a server as a copy of an image of the project."""
+        directory = self.directory(sid)
+        directory.mkdir(parents=True, exist_ok=True)
+        self.shell.run(
+            "create-vm-disk-from-image",
+            str(directory),
+            str(self.image_file(iid)),
+            str(size_gb),
+            timeout=LONG_TIMEOUT,
+        )
+
+    def image_file(self, iid: int) -> Path:
+        """Return the file of an image of the project (a snapshot or a backup)."""
+        return self.root / "images" / "own" / f"{iid}.qcow2"
+
+    def create_image(self, sid: int, iid: int) -> int:
+        """Copy a server's disk into an image of the project; return its file size."""
+        out = self.shell.run(
+            "create-image",
+            str(self.directory(sid) / "disk.qcow2"),
+            str(self.image_file(iid)),
+            timeout=LONG_TIMEOUT,
+        )
+        return int(out.strip() or 0)
+
+    def delete_image(self, iid: int) -> None:
+        """Delete the file of an image of the project, and a copy cut off half way."""
+        image = self.image_file(iid)
+        image.unlink(missing_ok=True)
+        image.with_name(f"{image.name}.part").unlink(missing_ok=True)
 
     def has_disk(self, sid: int) -> bool:
         """Tell whether the server's disk exists."""

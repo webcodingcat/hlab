@@ -13,6 +13,7 @@ from ..records import (
     DnsPtr,
     Firewall,
     FloatingIP,
+    Image,
     PlacementGroup,
     PrimaryIP,
     Server,
@@ -22,6 +23,7 @@ from ..records import (
 from ..state import (
     FIREWALLS,
     FLOATING_IPS,
+    IMAGES,
     PLACEMENT_GROUPS,
     SERVERS,
     VOLUMES,
@@ -227,6 +229,44 @@ def image_json(lab: Lab, name: str) -> dict:
     }
 
 
+def own_image_json(lab: Lab, image: Image) -> dict:
+    """Return the API object of an image of the project (a snapshot or a backup)."""
+    flavor, version = _flavor(image["os_image"])
+    return {
+        "id": image["id"],
+        "type": image["type"],
+        "status": image["status"],
+        "name": None,  # Hetzner names only system images
+        "description": image["description"],
+        "image_size": image["image_size"],
+        "disk_size": image["disk_size"],
+        "created": image["created"],
+        "created_from": {
+            "id": image["created_from_id"],
+            "name": image["created_from_name"],
+        },
+        "bound_to": image["bound_to"],
+        "os_flavor": flavor,
+        "os_version": version,
+        "rapid_deploy": False,
+        "protection": image["protection"],
+        "deprecated": None,
+        "deprecation": None,
+        "deleted": None,
+        "labels": image["labels"],
+        "architecture": "x86",
+    }
+
+
+def server_image_json(lab: Lab, server: Server) -> dict | None:
+    """Return the image a server was made from, or None if it is gone."""
+    image = server["image"]
+    if isinstance(image, int):
+        own = lab.state.get(IMAGES, image)
+        return own_image_json(lab, own) if own is not None else None
+    return image_json(lab, image) if image in lab.cfg["images"] else None
+
+
 def server_json(lab: Lab, server: Server) -> dict:
     """Return the API object of a server."""
     cfg, state = lab.cfg, lab.state
@@ -282,13 +322,11 @@ def server_json(lab: Lab, server: Server) -> dict:
         "private_net": private_net,
         "server_type": server_type_json(lab, server["server_type"]),
         "location": location_json(lab, server["location"]),
-        "image": image_json(lab, server["image"])
-        if server["image"] in cfg["images"]
-        else None,
+        "image": server_image_json(lab, server),
         "iso": None,
         "rescue_enabled": False,
         "locked": server.get("_locked", False),
-        "backup_window": None,
+        "backup_window": server["backup_window"],
         "outgoing_traffic": 0,
         "ingoing_traffic": 0,
         "included_traffic": cfg["server_types"][server["server_type"]]["traffic_tb"]

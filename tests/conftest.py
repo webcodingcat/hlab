@@ -56,6 +56,8 @@ class FakeShell:
             return self.neigh.get(args[1], "")
         elif args[0] == "kill-vm":
             self.running.discard(args[1])
+        elif args[0] == "create-image":
+            return f"{3 * 2**30}\n"  # the file's size: 3 GiB
         return ""
 
     def ok(self, *args, timeout=None):

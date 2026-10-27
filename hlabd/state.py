@@ -35,6 +35,7 @@ from .records import (
     CloudNetwork,
     Firewall,
     FloatingIP,
+    Image,
     Nic,
     PlacementGroup,
     PrimaryIP,
@@ -81,6 +82,7 @@ PRIMARY_IPS: Kind[PrimaryIP] = Kind("primary_ips", PrimaryIP, 6_000_000, "primar
 PLACEMENT_GROUPS: Kind[PlacementGroup] = Kind(
     "placement_groups", PlacementGroup, 7_000_000, "placement group"
 )
+IMAGES: Kind[Image] = Kind("images", Image, 8_000_000, "image")
 VOLUMES: Kind[Volume] = Kind("volumes", Volume, 10_000_000, "volume")
 STORAGE_BOXES: Kind[StorageBox] = Kind(
     "storage_boxes", StorageBox, 14_000_000, "Storage Box"
@@ -105,6 +107,7 @@ RECORD_KINDS: tuple[Kind[Record], ...] = (
     FLOATING_IPS,
     PRIMARY_IPS,
     PLACEMENT_GROUPS,
+    IMAGES,
     VOLUMES,
     STORAGE_BOXES,
     SUBACCOUNTS,

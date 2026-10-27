@@ -85,3 +85,9 @@ resource "hcloud_floating_ip_assignment" "entry" {
   floating_ip_id = hcloud_floating_ip.entry.id
   server_id      = hcloud_server.node["a"].id
 }
+
+resource "hcloud_snapshot" "node_a" {
+  server_id   = hcloud_server.node["a"].id
+  description = "smoke snapshot"
+  labels      = { cluster = "smoke" }
+}

@@ -78,6 +78,12 @@ def migrate_4_to_5(data: dict[str, Any]) -> None:
         server.setdefault("placement_group", None)
 
 
+def migrate_5_to_6(data: dict[str, Any]) -> None:
+    """Give every server `backup_window`; backups did not exist before."""
+    for server in data.get("servers", {}).values():
+        server.setdefault("backup_window", None)
+
+
 # the migrations in order: MIGRATIONS[n] takes the state from version n to n + 1
 MIGRATIONS: tuple[Migration, ...] = (
     migrate_0_to_1,
@@ -85,6 +91,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     migrate_2_to_3,
     migrate_3_to_4,
     migrate_4_to_5,
+    migrate_5_to_6,
 )
 # the version that this hlabd writes
 STATE_VERSION = len(MIGRATIONS)

@@ -11,7 +11,7 @@ import logging
 from ..lab import Lab
 from ..records import Server
 from ..state import ACTIONS, CLIENTS, SERVERS, STORAGE_BOXES, VOLUMES
-from . import storagebox, system
+from . import images, storagebox, system
 from .servers import ensure_disk, remove_server
 from .storagebox.base import set_up_box_user
 
@@ -128,6 +128,7 @@ async def restore_lab(lab: Lab) -> None:
     await restore_storage_box(lab)
     fail_running_actions(lab)
     await drop_half_created_volumes(lab)
+    await images.drop_half_created_images(lab)
     finish_box_setup(lab)
     # firewalls and faults before any VM runs, so no server ever runs unfiltered
     await system.apply_firewall(lab)

@@ -1,6 +1,7 @@
 """The catalogue: server types, locations, system images, Storage Box types, prices.
 
-All of them come from the configuration. The images are loaded when the lab starts.
+All of them come from the configuration. The images are loaded when the lab starts;
+their routes are in api/images.py, next to the project's own images.
 There are no datacenters: Hetzner removed them in 2026.
 """
 
@@ -103,7 +104,7 @@ def load_images(lab: Lab) -> None:
 
 
 def add_routes(app: FastAPI, lab: Lab) -> None:
-    """Add the routes of server types, prices, locations, images and datacenters."""
+    """Add the routes of server types, prices, locations and datacenters."""
     cfg = lab.cfg
 
     @app.get("/v1/server_types")
@@ -134,26 +135,6 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     async def location_get(lid: int):
         name = catalogue_entry_or_404(lab, "location", lid, "location")
         return {"location": hetzner.location_json(lab, name)}
-
-    @app.get("/v1/images")
-    async def image_list(request: Request):
-        items = filtered(
-            request,
-            [hetzner.image_json(lab, n) for n in cfg["images"]],
-            {
-                "type": lambda image, value: image["type"] in value.split(","),
-                # an empty architecture filters nothing
-                "architecture": lambda image, value: (
-                    not value or image["architecture"] in value.split(",")
-                ),
-            },
-        )
-        return paginate(request, items, "images")
-
-    @app.get("/v1/images/{iid}")
-    async def image_get(iid: int):
-        name = catalogue_entry_or_404(lab, "image", iid, "image")
-        return {"image": hetzner.image_json(lab, name)}
 
     # removed by Hetzner on 1 Oct. 2026 (the "datacenter" properties of servers and
     # primary IPs on 1 July 2026)

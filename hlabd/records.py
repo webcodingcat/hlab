@@ -69,8 +69,11 @@ class Server(TypedDict):
     created: str
     labels: dict[str, str]
     server_type: str  # names of catalogue entries (hlab.yaml)
-    image: str
+    # what its disk came from: a system image (its name in hlab.yaml) or an image of
+    # the project (its ID), which may be deleted since
+    image: str | int
     location: str
+    backup_window: str | None  # set while backups are enabled ("22-02")
     protection: ServerProtection
     user_data: str | None
     public_keys: list[str]  # the SSH keys it was made with
@@ -112,6 +115,28 @@ class SSHKey(TypedDict):
     public_key: str
     labels: dict[str, str]
     created: str
+
+
+class Image(TypedDict):
+    """An image of the project: a snapshot or a backup of a server's disk.
+
+    The system images are not records: they come from hlab.yaml (api/catalogue.py).
+    """
+
+    id: int
+    type: str  # "snapshot", or "backup" (bound to its server)
+    status: str  # creating, available
+    description: str
+    labels: dict[str, str]
+    created: str
+    # the server it was taken from, by ID and by its name then
+    created_from_id: int
+    created_from_name: str
+    bound_to: int | None  # a backup's server; None for a snapshot
+    os_image: str  # the system image the disk came from in the end (os_flavor)
+    disk_size: int  # GB: the server's disk
+    image_size: float | None  # GB: the file, once taken
+    protection: Protection
 
 
 class PlacementGroup(TypedDict):
@@ -301,6 +326,7 @@ Record = (
     | Firewall
     | SSHKey
     | PlacementGroup
+    | Image
     | StorageBox
     | Subaccount
     | BoxSnapshot
@@ -317,10 +343,11 @@ ActionRecord = (
     | Firewall
     | StorageBox
     | Subaccount
+    | Image
 )
 
 # The resources with a plain delete protection (`api/web.py`: change_delete_protection).
-ProtectedRecord = Volume | PrimaryIP | FloatingIP | CloudNetwork | StorageBox
+ProtectedRecord = Volume | PrimaryIP | FloatingIP | CloudNetwork | StorageBox | Image
 
 
 # --- faults (/_lab/faults; state.py: `faults`) ---------------------------------------

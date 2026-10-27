@@ -400,6 +400,28 @@ create_vm_disk() {
     "${size_gb}G"
 }
 
+# create_vm_disk_from_image <dir> <image> <size gb>: Create the server's disk
+# as a copy of an image of the project, so the image can be deleted any time;
+# keep the disk when it is there.
+create_vm_disk_from_image() {
+  local dir="$1" image="$2" size_gb="$3"
+  [[ -f "${dir}/disk.qcow2" ]] && return 0
+  cp --sparse=always "${image}" "${dir}/disk.qcow2.part"
+  qemu-img resize -q "${dir}/disk.qcow2.part" "${size_gb}G"
+  mv "${dir}/disk.qcow2.part" "${dir}/disk.qcow2"
+}
+
+# create_image <disk> <image>: Copy a server's disk into a standalone image
+# file and print the file's size in bytes. It also copies the disk of a
+# running VM (-U); as on Hetzner, such an image may be inconsistent.
+create_image() {
+  local disk="$1" image="$2"
+  mkdir -p "$(dirname "${image}")"
+  qemu-img convert -U -q -O qcow2 "${disk}" "${image}.part"
+  mv "${image}.part" "${image}"
+  stat -c %s "${image}"
+}
+
 # resize_vm_disk <dir> <size gb>: Grow the server's disk (qemu-img grows
 # only).
 resize_vm_disk() {
@@ -586,6 +608,8 @@ main() {
     resize-volume) resize_volume "$@" ;;
     fetch-image) fetch_image "$@" ;;
     create-vm-disk) create_vm_disk "$@" ;;
+    create-vm-disk-from-image) create_vm_disk_from_image "$@" ;;
+    create-image) create_image "$@" ;;
     resize-vm-disk) resize_vm_disk "$@" ;;
     start-vm) start_vm "$@" ;;
     kill-vm) kill_vm "$@" ;;

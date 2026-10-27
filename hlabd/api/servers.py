@@ -43,8 +43,8 @@ from ..lab import (
 )
 from ..records import Action, Server, Volume
 from ..state import FIREWALLS, FLOATING_IPS, MAX_SERVERS, SERVERS, SSH_KEYS, VOLUMES
-from . import hetzner, nics, placement_groups, primary_ips, system, volumes
-from .catalogue import by_name_or_id, catalogue_name, image_path
+from . import hetzner, images, nics, placement_groups, primary_ips, system, volumes
+from .catalogue import by_name_or_id, catalogue_name
 from .faults import drop_faults
 from .spec import hostname_ok
 from .web import filtered, paginate, read_body, ref_id, update_resource
@@ -77,7 +77,7 @@ class ServerRequest:
 
     name: str
     server_type: str
-    image: str
+    image: str | int
     location: str
     public_keys: list[str]
     public_net: dict
@@ -132,7 +132,8 @@ def checked_server_request(lab: Lab, body: dict) -> ServerRequest:
     name = body.get("name") or ""  # check_hostname refuses an empty name
     check_hostname(name)
     stype = catalogue_name(lab, "server_type", body.get("server_type"))
-    image = catalogue_name(lab, "image", body.get("image"))
+    image = images.image_ref(lab, body.get("image"))
+    images.check_disk_fits(lab, image, lab.cfg["server_types"][stype]["disk_gb"])
     location = catalogue_name(lab, "location", body.get("location") or "fsn1")
     keys = []
     for ref in body.get("ssh_keys") or []:
@@ -247,6 +248,7 @@ def new_server(lab: Lab, request: ServerRequest, sid: int, index: int) -> Server
         "server_type": request.server_type,
         "image": request.image,
         "location": request.location,
+        "backup_window": None,
         "protection": {"delete": False, "rebuild": False},
         "user_data": request.user_data,
         "public_keys": request.public_keys,
@@ -272,9 +274,8 @@ def create_steps(
 
     async def steps():
         await system.apply_firewall(lab)
-        base = image_path(lab, request.image)
         disk_gb = lab.current(SERVERS, sid)["_lab"]["disk_gb"]
-        await lab.blocking(lab.fabric.vms.create_disk, sid, base, disk_gb)
+        await images.create_disk(lab, sid, request.image, disk_gb)
         if request.start:
             server = lab.current(SERVERS, sid)
             lab.set_status(server, "starting")
@@ -333,15 +334,13 @@ async def ensure_disk(lab: Lab, server: Server) -> None:
     sid = server["id"]
     if not await lab.blocking(lab.fabric.vms.has_disk, sid):
         server = lab.current(SERVERS, sid)  # looked up again after the await
-        base = image_path(lab, server["image"])
-        disk_gb = server["_lab"]["disk_gb"]
-        await lab.blocking(lab.fabric.vms.create_disk, sid, base, disk_gb)
+        await images.create_disk(lab, sid, server["image"], server["_lab"]["disk_gb"])
 
 
 async def remove_server(lab: Lab, server: Server) -> None:
     """Remove a server: its VM, its addresses and every reference to it.
 
-    Its volumes stay, detached.
+    Its volumes stay, detached; its snapshots stay, its backups go.
     """
     state, sid = lab.state, server["id"]
     await system.delete_vm(lab, server)
@@ -373,6 +372,7 @@ async def remove_server(lab: Lab, server: Server) -> None:
     await system.write_dhcp(lab)
     await system.apply_faults(lab)
     await system.apply_firewall(lab)
+    await images.drop_server_backups(lab, sid)
 
 
 # --- server actions -------------------------------------------------------------------
@@ -491,7 +491,8 @@ async def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
     """
     if server["protection"]["rebuild"]:
         raise protected("server is rebuild protected")
-    image = catalogue_name(lab, "image", body.get("image"))
+    image = images.image_ref(lab, body.get("image"))
+    images.check_disk_fits(lab, image, server["_lab"]["disk_gb"])
     check_user_data(body.get("user_data"))
     # made while planning, because Hetzner's answer carries it at once; stored only
     # when the steps start, so a refused or failed act() keeps the old one
@@ -506,14 +507,13 @@ async def rebuild(lab: Lab, server: Server, body: dict) -> Plan:
             if password is not None:
                 server["_lab"]["root_password"] = password
             server["_lab"]["target"] = target
-        base = image_path(lab, image)  # before the old disk is gone
+        images.check_usable(lab, image)  # before the old disk is gone
         await system.delete_vm(lab, server)
         server = lab.current(SERVERS, sid)
         with lab.state.change():
             server["image"] = image
             server["status"] = "rebuilding"
-        disk_gb = server["_lab"]["disk_gb"]
-        await lab.blocking(lab.fabric.vms.create_disk, sid, base, disk_gb)
+        await images.create_disk(lab, sid, image, server["_lab"]["disk_gb"])
         if "user_data" in body:
             with lab.state.change():
                 lab.current(SERVERS, sid)["user_data"] = body["user_data"]
@@ -606,6 +606,7 @@ SERVER_ACTIONS: ActionTable[Server] = {
     "attach_to_network": ActionSpec("attach_to_network", nics.attach_to_network),
     "detach_from_network": ActionSpec("detach_from_network", nics.detach_from_network),
     "change_alias_ips": ActionSpec("change_alias_ips", nics.change_alias_ips),
+    **images.IMAGE_SERVER_ACTIONS,
     "add_to_placement_group": ActionSpec(
         "add_to_placement_group", placement_groups.add_to_placement_group
     ),
