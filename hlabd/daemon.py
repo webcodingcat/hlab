@@ -23,7 +23,7 @@ from .api.app import create_app
 from .api.catalogue import load_images
 from .api.metadata import create_metadata_app
 from .api.restart import restore_lab
-from .api.ui import create_ui_app
+from .api.ui import LogBuffer, create_ui_app
 from .fabric import Fabric, Shell
 from .lab import Lab
 from .state import SERVERS, State
@@ -61,15 +61,16 @@ def set_up(cfg: config.Config) -> Lab:
     return Lab(cfg, state, fabric)
 
 
-def http_app(lab: Lab):
+def http_app(lab: Lab, log_buffer: LogBuffer):
     """Return the ASGI app of the lab: each request goes to the app of its address.
 
-    Every request is logged: who, what, answer, how long.
+    Every request is logged: who, what, answer, how long. The web UI's GET requests
+    are not: the page polls every two seconds.
     """
     cloud_api = create_app(lab)
     box_api = storagebox.create_app(lab)
     metadata = create_metadata_app(lab)
-    ui = create_ui_app(lab)
+    ui = create_ui_app(lab, log_buffer)
 
     async def dispatch(scope, receive, send):
         host, port = scope.get("server") or ("", 0)
@@ -85,6 +86,9 @@ def http_app(lab: Lab):
 
     async def logged(scope, receive, send):
         if scope["type"] != "http":
+            return await dispatch(scope, receive, send)
+        _, port = scope.get("server") or ("", 0)
+        if port == config.UI_PORT and scope["method"] == "GET":
             return await dispatch(scope, receive, send)
         start, answer = time.monotonic(), {}
 
@@ -124,7 +128,7 @@ def listeners() -> list[socket.socket]:
     return sockets
 
 
-async def run(lab: Lab) -> None:
+async def run(lab: Lab, log_buffer: LogBuffer) -> None:
     """Bring the lab back (DHCP, images, state), then serve until stopped.
 
     The background jobs run as long as the server does.
@@ -139,7 +143,10 @@ async def run(lab: Lab) -> None:
     await restore_lab(lab)
     server = uvicorn.Server(
         uvicorn.Config(
-            http_app(lab), log_level="warning", access_log=False, lifespan="off"
+            http_app(lab, log_buffer),
+            log_level="warning",
+            access_log=False,
+            lifespan="off",
         )
     )
 
@@ -192,14 +199,16 @@ def shut_down(lab: Lab) -> None:
 def serve(cfg_path: str | None) -> None:
     """Run the lab until the container stops."""
     # one line per event on stdout (docker logs): time, level, part of the lab, message
+    log_format = "%(asctime)s %(levelname)s %(name)s: %(message)s"
     logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        stream=sys.stdout,
-        force=True,
+        level=logging.INFO, format=log_format, stream=sys.stdout, force=True
     )
+    # and the newest lines for the web UI's live log
+    log_buffer = LogBuffer()
+    log_buffer.setFormatter(logging.Formatter(log_format))
+    logging.getLogger().addHandler(log_buffer)
     lab = set_up(config.load(cfg_path))
     try:
-        asyncio.run(run(lab))
+        asyncio.run(run(lab, log_buffer))
     finally:
         shut_down(lab)

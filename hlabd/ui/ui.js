@@ -41,6 +41,66 @@ function time(iso) {
   return iso ? new Date(iso).toLocaleString() : "";
 }
 
+// --- controls: the lab's /_lab routes, as the hlab command uses them -------------------
+
+// notice(text, failed): a short message in the header about the last control.
+function notice(text, failed) {
+  const node = document.getElementById("notice");
+  node.textContent = text;
+  node.classList.toggle("failed", failed);
+}
+
+// send(what, method, path, body): call a /_lab route, report how it went and poll at
+// once, so the page shows the change.
+async function send(what, method, path, body) {
+  notice(`${what} …`, false);
+  try {
+    const response = await fetch(path, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const answer = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(answer.error?.message || `HTTP ${response.status}`);
+    notice(`${what}: done`, false);
+  } catch (error) {
+    notice(`${what}: ${error.message}`, true);
+  }
+  poll();
+}
+
+function button(text, onclick, className) {
+  return el("button", { type: "button", className: className || "", onclick }, text);
+}
+
+// field(label, input): a labelled input of a form.
+function field(label, input) {
+  return el("label", {}, el("span", {}, label), input);
+}
+
+// input(name, props): an input; `list` (a datalist's ID) is set as an attribute, the
+// only way the DOM takes it.
+function input(name, props) {
+  const { list, ...rest } = props || {};
+  const node = el("input", { name, autocomplete: "off", ...rest });
+  if (list) node.setAttribute("list", list);
+  return node;
+}
+
+function select(name, options) {
+  return el("select", { name }, options.map((option) => el("option", { value: option }, option)));
+}
+
+// form(title, fields, submit, onsubmit): a form whose values onsubmit gets by name.
+function form(title, fields, submit, onsubmit) {
+  const node = el("form", { className: "control" }, el("h3", {}, title), el("div", { className: "fields" }, fields, el("button", { type: "submit" }, submit)));
+  node.onsubmit = (event) => {
+    event.preventDefault();
+    onsubmit(Object.fromEntries(new FormData(node)), node);
+  };
+  return node;
+}
+
 // table(columns, rows): columns are [heading, row => cell] pairs.
 function table(columns, rows) {
   if (!rows.length) return el("div", { className: "table-wrap" }, el("p", { className: "empty" }, "none"));
@@ -80,21 +140,34 @@ function serverState(server) {
   return parts;
 }
 
-function serversTable(data) {
-  return table(
-    [
-      ["Name", (s) => [el("strong", {}, s.name), " ", mono(s.id)]],
-      ["Status", serverState],
-      ["Type", (s) => s.server_type.name],
-      ["Location", (s) => s.location.name],
-      ["IPv4", (s) => mono(s.public_net.ipv4?.ip ?? "–")],
-      ["IPv6", (s) => mono(s.public_net.ipv6?.ip ?? "–")],
-      ["Private", (s) => s.private_net.map((n) => chip(`${networkName(n.network)} ${n.ip}`))],
-      ["Image", (s) => s.image?.name ?? s.image?.description ?? ""],
-      ["Labels", labels],
-    ],
-    data.servers,
+// serverControls(server): what `hlab fault pause|cont|dead|alive|isolate` does.
+function serverControls(server) {
+  const vm = (cmd, what) => button(what, () => send(`${what} ${server.name}`, "POST", `/_lab/vm/${encodeURIComponent(server.name)}/${cmd}`));
+  return el(
+    "div",
+    { className: "buttons" },
+    vm("pause", "Pause"),
+    vm("cont", "Continue"),
+    server.dead ? vm("alive", "Alive") : vm("dead", "Dead"),
+    button("Isolate", () => send(`Isolate ${server.name}`, "POST", "/_lab/faults", { type: "isolate", vm: server.name })),
   );
+}
+
+// serversTable(data, controls): the servers, with their control buttons if asked.
+function serversTable(data, controls) {
+  const columns = [
+    ["Name", (s) => [el("strong", {}, s.name), " ", mono(s.id)]],
+    ["Status", serverState],
+    ["Type", (s) => s.server_type.name],
+    ["Location", (s) => s.location.name],
+    ["IPv4", (s) => mono(s.public_net.ipv4?.ip ?? "–")],
+    ["IPv6", (s) => mono(s.public_net.ipv6?.ip ?? "–")],
+    ["Private", (s) => s.private_net.map((n) => chip(`${networkName(n.network)} ${n.ip}`))],
+    ["Image", (s) => s.image?.name ?? s.image?.description ?? ""],
+    ["Labels", labels],
+  ];
+  if (controls) columns.splice(2, 0, ["Control", serverControls]); // next to the status
+  return table(columns, data.servers);
 }
 
 function actionsTable(actions) {
@@ -119,15 +192,90 @@ function faultText(fault) {
     .join(" ");
 }
 
-function faultsTable(data) {
+// faultsTable(data, controls): every fault; with controls, a button that removes it.
+// netem is set per server and network, not per tap: the form below clears it.
+function faultsTable(data, controls) {
+  const api = data.api_fault;
   const rows = [
-    ...data.faults.map((f) => ({ kind: f.type, what: faultText(f) })),
+    ...data.faults.map((f) => ({ kind: f.type, what: faultText(f), remove: () => send("Remove fault", "POST", "/_lab/faults/remove", f) })),
     ...Object.entries(data.netem).map(([link, args]) => ({ kind: "netem", what: `${link}: ${args}` })),
   ];
-  const api = data.api_fault;
-  if (api.status && api.count) rows.push({ kind: "api", what: `the next ${api.count} requests answer ${api.status}` });
-  if (api.delay_ms) rows.push({ kind: "api", what: `every request waits ${api.delay_ms} ms` });
-  return table([["Fault", (f) => chip(f.kind)], ["What", (f) => mono(f.what)]], rows);
+  if (api.status && api.count) {
+    const remove = () => send("Remove API fault", "POST", "/_lab/api-fault", { ...api, status: 0, count: 0 });
+    rows.push({ kind: "api", what: `the next ${api.count} requests answer ${api.status}`, remove });
+  }
+  if (api.delay_ms) {
+    const remove = () => send("Remove API delay", "POST", "/_lab/api-fault", { ...api, delay_ms: 0 });
+    rows.push({ kind: "api", what: `every request waits ${api.delay_ms} ms`, remove });
+  }
+  const columns = [
+    ["Fault", (f) => chip(f.kind)],
+    ["What", (f) => mono(f.what)],
+  ];
+  if (controls) columns.push(["", (f) => (f.remove ? button("Remove", f.remove) : "")]);
+  return table(columns, rows);
+}
+
+// faultControls(): the forms of `hlab fault`, `hlab client add` and `hlab reset`.
+function faultControls() {
+  const target = (name, placeholder) => input(name, { list: "targets", placeholder, required: true, size: 12 });
+  const type = select("type", ["cut", "isolate", "block"]);
+  const second = field("and", target("second", "server or client"));
+  const net = field("network", select("net", ["all", "public", "private"]));
+  const what = field("from", select("what", ["api", "box", "internet"]));
+  // only the fields of the chosen type are shown (and sent)
+  const showFields = () => {
+    second.hidden = net.hidden = type.value !== "cut";
+    what.hidden = type.value !== "block";
+    second.querySelector("input").required = type.value === "cut";
+  };
+  type.onchange = showFields;
+  const faultForm = form("Add a fault", [field("type", type), field("server or client", target("first", "name")), second, net, what], "Add", (values) => {
+    const body = { type: values.type };
+    if (values.type === "cut") Object.assign(body, { first: values.first, second: values.second, net: values.net });
+    else body.vm = values.first;
+    if (values.type === "block") body.what = values.what;
+    send(`Add ${values.type}`, "POST", "/_lab/faults", body);
+  });
+  showFields();
+  return el(
+    "div",
+    { className: "control-grid" },
+    faultForm,
+    form(
+      "Network quality (netem)",
+      [field("server or client", target("vm", "name")), field("network", select("net", ["all", "public", "private"])), field("options", input("args", { placeholder: "delay 100ms loss 5% (empty: normal)", size: 28 }))],
+      "Set",
+      (values) => send(`netem ${values.vm}`, "POST", "/_lab/netem", values),
+    ),
+    form(
+      "API faults",
+      [field("status", input("status", { type: "number", min: 0, placeholder: "503" })), field("requests", input("count", { type: "number", min: 0, placeholder: "3" })), field("delay ms", input("delay_ms", { type: "number", min: 0, placeholder: "0" }))],
+      "Set",
+      (values) => send("API faults", "POST", "/_lab/api-fault", values),
+    ),
+    form("Internet client", [field("name", input("name", { required: true, placeholder: "alice", maxLength: 12 }))], "Add", (values, node) => {
+      send(`Add client ${values.name}`, "POST", "/_lab/clients", values);
+      node.reset();
+    }),
+    el(
+      "div",
+      { className: "control" },
+      el("h3", {}, "Everything"),
+      el(
+        "div",
+        { className: "buttons" },
+        button("Clear all faults", () => send("Clear faults", "POST", "/_lab/faults/clear")),
+        button(
+          "Reset the lab …",
+          () => {
+            if (confirm("Reset the lab? This deletes everything the APIs created: servers, networks, volumes, Storage Boxes, …")) send("Reset", "POST", "/_lab/reset");
+          },
+          "danger",
+        ),
+      ),
+    ),
+  );
 }
 
 const SECTIONS = [
@@ -151,7 +299,7 @@ const SECTIONS = [
       faultsTable(data),
     ],
   },
-  { id: "servers", title: "Servers", count: (d) => d.servers.length, render: (d) => serversTable(d) },
+  { id: "servers", title: "Servers", count: (d) => d.servers.length, render: (d) => serversTable(d, true) },
   {
     id: "networks",
     title: "Networks",
@@ -357,22 +505,26 @@ const SECTIONS = [
     id: "clients",
     title: "Clients and faults",
     count: (d) => d.clients.length + d.faults.length + Object.keys(d.netem).length,
+    controls: faultControls,
     render: (d) => [
+      el("h3", {}, "Faults"),
+      faultsTable(d, true),
       el("h3", {}, "Internet clients"),
       table(
         [
           ["Name", (c) => el("strong", {}, c.name)],
           ["IPv4", (c) => mono(c.ip)],
           ["IPv6", (c) => mono(c.ip6)],
+          ["", (c) => button("Remove", () => send(`Remove client ${c.name}`, "DELETE", `/_lab/clients/${encodeURIComponent(c.name)}`))],
         ],
         d.clients,
       ),
-      el("h3", {}, "Faults"),
-      faultsTable(d),
     ],
   },
   // the count: the running actions
   { id: "actions", title: "Actions", count: (d) => d.actions.filter((a) => a.status === "running").length, render: (d) => actionsTable(d.actions) },
+  // the live log: not built anew with every poll, new lines are added (appendLog)
+  { id: "log", title: "Log", count: () => "", live: true, render: () => logView },
 ];
 
 function targetEntries(target) {
@@ -396,23 +548,61 @@ function certificateState(certificate) {
 
 // --- the page ------------------------------------------------------------------------
 
+// --- the live log ----------------------------------------------------------------------
+
+const LOG_KEEP = 1000; // lines the page keeps
+const logView = el("pre", { className: "log" });
+let lastLine = 0; // the number of the newest line shown
+
+// appendLog(log): add the new lines; follow them if the view was at its end. The lab
+// numbers its lines anew when it restarts; then the page starts again from its first.
+function appendLog(log) {
+  if (log.newest < lastLine) {
+    logView.append(el("div", { className: "muted" }, "— the lab restarted —"));
+    lastLine = 0;
+  }
+  const lines = log.lines.filter((line) => line.n > lastLine); // two polls may overlap
+  if (!lines.length) return;
+  const atEnd = logView.scrollTop + logView.clientHeight >= logView.scrollHeight - 4;
+  for (const line of lines) {
+    const tone = / (ERROR|CRITICAL) /.test(line.text) ? "bad" : / WARNING /.test(line.text) ? "warn" : "";
+    logView.append(el("div", { className: tone }, line.text));
+  }
+  while (logView.childElementCount > LOG_KEEP) logView.firstElementChild.remove();
+  lastLine = lines[lines.length - 1].n;
+  if (atEnd) logView.scrollTop = logView.scrollHeight;
+}
+
+// --- the page ------------------------------------------------------------------------
+
 let latest = null;
+let shownSection = null;
 
 function currentSection() {
   const id = location.hash.slice(1);
   return SECTIONS.find((s) => s.id === id) || SECTIONS[0];
 }
 
+// render(): the navigation and the current section. A section's forms are built only
+// when it is entered, so a poll never loses what is typed; a live section stays as it is.
 function render() {
   if (!latest) return;
   const section = currentSection();
+  const entered = section !== shownSection;
   document.getElementById("lab-name").textContent = latest.lab.name;
   document.getElementById("sections").replaceChildren(
     ...SECTIONS.map((s) =>
       el("a", { href: `#${s.id}`, className: s === section ? "current" : "" }, el("span", {}, s.title), el("span", { className: "count" }, s.count(latest))),
     ),
   );
-  document.getElementById("content").replaceChildren(el("h2", {}, section.title), ...[section.render(latest)].flat());
+  document.getElementById("targets").replaceChildren(...[...latest.servers, ...latest.clients].map((t) => el("option", { value: t.name })));
+  if (entered) {
+    document.getElementById("title").textContent = section.title;
+    document.getElementById("controls").replaceChildren(...(section.controls ? [section.controls()] : []));
+    shownSection = section; // only now: if the forms failed, the next poll tries again
+  }
+  if (entered || !section.live) document.getElementById("view").replaceChildren(...[section.render(latest)].flat());
+  if (entered && section.live) logView.scrollTop = logView.scrollHeight;
 }
 
 function connection(text, lost) {
@@ -421,23 +611,32 @@ function connection(text, lost) {
   node.classList.toggle("lost", lost);
 }
 
+async function fetchJson(path) {
+  const response = await fetch(path, { cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+let pollTimer = null;
+
 async function poll() {
+  clearTimeout(pollTimer);
   try {
-    const response = await fetch("/ui/api/overview", { cache: "no-store" });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    latest = await response.json();
+    const [overview, log] = await Promise.all([fetchJson("/ui/api/overview"), fetchJson(`/ui/api/log?after=${lastLine}`)]);
+    latest = overview;
     names = {
       servers: Object.fromEntries(latest.servers.map((s) => [s.id, s.name])),
       networks: Object.fromEntries(latest.networks.map((n) => [n.id, n.name])),
       load_balancers: Object.fromEntries(latest.load_balancers.map((b) => [b.id, b.name])),
     };
+    appendLog(log);
     const resetting = latest.lab.resetting ? " · resetting" : "";
     connection(`updated ${new Date().toLocaleTimeString()}${resetting}`, false);
     render();
   } catch (error) {
     connection(`lab not reachable (${error.message}) – is it up?`, true);
   } finally {
-    setTimeout(poll, POLL_MS);
+    pollTimer = setTimeout(poll, POLL_MS);
   }
 }
 

@@ -1,11 +1,14 @@
-"""The web UI: the lab at a glance, in the operator's browser.
+"""The web UI: the lab at a glance, in the operator's browser, and its controls.
 
 An app of its own, on its own port (config.UI_PORT), which bin/hlab publishes only on
-the host's localhost. It serves one page (hlabd/ui/) and the JSON that the page polls.
-The JSON reuses the Cloud API's shapes and adds what only the lab knows: whether a
-VM runs, the clients, the faults.
+the host's localhost. It serves one page (hlabd/ui/), the JSON that the page polls,
+and the lab's log. The JSON reuses the Cloud API's shapes and adds what only the lab
+knows: whether a VM runs, the clients, the faults. The page controls the lab through
+the same /_lab routes as the `hlab` command (api/control.py).
 """
 
+import logging
+from collections import deque
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -33,11 +36,12 @@ from ..state import (
     ZONES,
     Kind,
 )
-from . import hetzner
+from . import control, hetzner
 from .faults import fault_json
 from .storagebox.boxes import username
 from .storagebox.snapshots import snapshot_json
 from .storagebox.subaccounts import subaccount_json
+from .web import install_error_handlers
 
 PAGES = Path(__file__).parents[1] / "ui"
 # the page's files: path → (file in PAGES, media type)
@@ -47,6 +51,34 @@ FILES = {
     "/ui.js": ("ui.js", "text/javascript; charset=utf-8"),
 }
 RECENT_ACTIONS = 30  # the newest actions the overview shows
+LOG_LINES = 500  # the newest lines of the log the page can get
+
+
+class LogBuffer(logging.Handler):
+    """The newest lines of the lab's log, numbered, for the page's live log.
+
+    Any thread may log. Logging holds the handler's lock while it emits a line, and
+    `since` takes the same lock, so the loop reads a whole copy.
+    """
+
+    def __init__(self, size: int = LOG_LINES):
+        """Start empty; keep at most `size` lines."""
+        super().__init__()
+        self.lines: deque[tuple[int, str]] = deque(maxlen=size)
+        self.count = 0  # the number of the newest line
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Keep a formatted line under the next number."""
+        self.count += 1
+        self.lines.append((self.count, self.format(record)))
+
+    def since(self, after: int) -> list[dict]:
+        """Return the kept lines numbered after `after`, oldest first."""
+        self.acquire()
+        try:
+            return [{"n": n, "text": text} for n, text in self.lines if n > after]
+        finally:
+            self.release()
 
 
 def ordered[R](lab: Lab, kind: Kind[R]) -> list[R]:
@@ -135,18 +167,22 @@ def page_route(body: bytes, media_type: str):
     """Return a route that answers with one of the page's files."""
 
     async def route() -> Response:
-        return Response(body, media_type=media_type)
+        # asked anew every time: a lab update brings new files under the same names
+        headers = {"Cache-Control": "no-cache"}
+        return Response(body, media_type=media_type, headers=headers)
 
     return route
 
 
-def create_ui_app(lab: Lab) -> FastAPI:
-    """Build the app of the web UI: its page and the overview it polls.
+def create_ui_app(lab: Lab, log_buffer: LogBuffer) -> FastAPI:
+    """Build the app of the web UI: its page, the overview, the log, the lab control.
 
     The page's files are read here, at start: once the lab serves, code on the loop
     reads no files.
     """
     app = FastAPI(title="hlab: web UI", docs_url=None, redoc_url=None, openapi_url=None)
+    install_error_handlers(app)
+    control.add_routes(app, lab)
     for path, (file_name, media_type) in FILES.items():
         body = (PAGES / file_name).read_bytes()
         app.add_api_route(path, page_route(body, media_type), methods=["GET"])
@@ -154,5 +190,9 @@ def create_ui_app(lab: Lab) -> FastAPI:
     @app.get("/ui/api/overview")
     async def overview_get():
         return await overview(lab)
+
+    @app.get("/ui/api/log")
+    async def log_get(after: int = 0):
+        return {"lines": log_buffer.since(after), "newest": log_buffer.count}
 
     return app

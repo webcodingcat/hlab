@@ -100,7 +100,7 @@ Inside `hlabd/`:
 | `api/storagebox/` | the Storage Box API, a separate app |
 | `api/restart.py`, `api/watcher.py` | what happens when the lab starts again; a VM that ended by itself |
 | `api/control.py`, `api/faults.py` | lab control under `/_lab/`; the faults in the state |
-| `api/ui.py`, `ui/` | the web UI: an app on its own port (`config.UI_PORT`), its JSON overview, and the page (plain HTML, CSS and JavaScript, no build step) |
+| `api/ui.py`, `ui/` | the web UI: an app on its own port (`config.UI_PORT`) with the JSON overview, the newest log lines and the `/_lab` routes of `api/control.py`; the page is plain HTML, CSS and JavaScript, no build step |
 | `api/desired/`, `api/system.py` | see desired and system |
 | `fabric/` | changes the system, with plain data as arguments (parts listed in `fabric/__init__.py`) |
 | `daemon.py`, `cli.py` | the container's main process; `hlab` inside the container |

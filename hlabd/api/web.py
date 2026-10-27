@@ -277,14 +277,8 @@ async def check_request(spec: openapi.Spec, request: Request) -> None:
             raise invalid(f"must be one of {', '.join(allowed)}", "sort")
 
 
-def install(app: FastAPI, lab: Lab, spec_name: str, prefix: str) -> None:
-    """Install the error handlers and the request middleware for an API under prefix.
-
-    The prefix is e.g. /v1; the middleware does auth, rate limit, injected faults and
-    spec checks.
-    """
-    spec = openapi.load(spec_name)
-    limiter = RateLimit(lab.cfg["api"].get("rate_limit", 3600))
+def install_error_handlers(app: FastAPI) -> None:
+    """Answer every error as JSON in Hetzner's shape ({"error": {"code", ...}})."""
 
     @app.exception_handler(ApiError)
     async def api_error(_: Request, error: ApiError):
@@ -314,6 +308,17 @@ def install(app: FastAPI, lab: Lab, spec_name: str, prefix: str) -> None:
         if any(err.get("loc", [None])[0] == "path" for err in error.errors()):
             return error_response(not_found("resource"))
         return error_response(invalid(str(error.errors()[0].get("msg")), "query"))
+
+
+def install(app: FastAPI, lab: Lab, spec_name: str, prefix: str) -> None:
+    """Install the error handlers and the request middleware for an API under prefix.
+
+    The prefix is e.g. /v1; the middleware does auth, rate limit, injected faults and
+    spec checks.
+    """
+    spec = openapi.load(spec_name)
+    limiter = RateLimit(lab.cfg["api"].get("rate_limit", 3600))
+    install_error_handlers(app)
 
     @app.middleware("http")
     async def middleware(request: Request, call_next):

@@ -18,8 +18,9 @@ the API endpoints differ.
 | Network namespace to reach VMs | `docker run --network container:hlab-<name> ...` |
 
 `hlab env` prints these as shell variables (`HCLOUD_ENDPOINT`, `HCLOUD_TOKEN`, `HETZNER_ENDPOINT`,
-`HLAB_ACME_DIRECTORY`, `HLAB_ACME_CA`, `HLAB_UI`, ...). The web UI shows everything the lab holds and refreshes
-every two seconds; Docker publishes it on the host's localhost only.
+`HLAB_ACME_DIRECTORY`, `HLAB_ACME_CA`, `HLAB_UI`, ...). The web UI shows everything the lab holds, refreshed every
+two seconds, and the log as it grows; it sets faults, adds clients and resets the lab like `bin/hlab fault`,
+`client` and `reset`. Docker publishes it on the host's localhost only.
 
 ## Requirements
 
