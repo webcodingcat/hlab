@@ -5,6 +5,7 @@ The three server actions here are part of the server's action table
 """
 
 import ipaddress
+from contextlib import suppress
 
 from .. import config
 from ..errors import (
@@ -15,7 +16,14 @@ from ..errors import (
     no_subnet_available,
 )
 from ..fabric.addresses import network_gateway, private_mac
-from ..lab import ALIAS_IPS_SECONDS, NIC_ATTACH_SECONDS, NIC_DETACH_SECONDS, Lab, Plan
+from ..lab import (
+    ALIAS_IPS_SECONDS,
+    NIC_ATTACH_SECONDS,
+    NIC_DETACH_SECONDS,
+    Lab,
+    Plan,
+    RecordGoneError,
+)
 from ..records import CloudNetwork, Nic, Server
 from ..state import NETWORKS, SERVERS
 from . import system
@@ -204,8 +212,10 @@ async def attach_to_network(lab: Lab, server: Server, body: dict) -> Plan:
     A running server gets the NIC hot-plugged. A server that is off gets it at its
     next start.
     """
+    sid = server["id"]
     # runs a script: the addresses that no NIC may get
     local_addresses = await lab.blocking(lab.fabric.network.read_local_addresses)
+    server = lab.server_or_404(sid)  # looked up again after the await
     with lab.state.change():
         nic = add_nic(
             lab,
@@ -219,7 +229,7 @@ async def attach_to_network(lab: Lab, server: Server, body: dict) -> Plan:
             lab, nic, body.get("alias_ips"), local_addresses
         )
 
-    sid, nid, tap = server["id"], nic["network"], nic["tap"]
+    nid, tap = nic["network"], nic["tap"]
 
     async def steps():
         try:
@@ -229,9 +239,10 @@ async def attach_to_network(lab: Lab, server: Server, body: dict) -> Plan:
         except Exception:  # whatever failed: undo, then re-raise
             # remove the NIC again, so the API reports no network the VM does not have
             await lab.blocking(lab.fabric.network.detach_nic, sid, tap)
-            server_now = lab.state.get(SERVERS, sid)  # nothing to undo if gone
-            if server_now is not None:
-                remove_nic(lab, server_now, nic)
+            with suppress(RecordGoneError):  # nothing to undo if it is gone
+                remove_nic(
+                    lab, lab.current(SERVERS, sid), system.current_nic(lab, sid, nid)
+                )
             await system.write_dhcp(lab)
             raise
         await lab.sleep(NIC_ATTACH_SECONDS)
@@ -259,15 +270,18 @@ async def change_alias_ips(lab: Lab, server: Server, body: dict) -> Plan:
 
     The lab routes the alias IPs to the server; the guest sets them up itself.
     """
-    nic = server_nic(lab, server, body)
+    sid = server["id"]
+    server_nic(lab, server, body)  # checked before the script runs
     # runs a script: the addresses that no NIC may get
     local_addresses = await lab.blocking(lab.fabric.network.read_local_addresses)
+    server = lab.server_or_404(sid)  # looked up again after the await
+    nic = server_nic(lab, server, body)
     with lab.state.change():
         nic["alias_ips"] = checked_alias_ips(
             lab, nic, body.get("alias_ips"), local_addresses
         )
 
-    sid, nid = server["id"], nic["network"]
+    nid = nic["network"]
 
     async def steps():
         if await lab.blocking(lab.fabric.vms.is_alive, sid):

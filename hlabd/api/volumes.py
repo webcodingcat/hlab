@@ -85,13 +85,6 @@ def save_detached(lab: Lab, volume: Volume) -> None:
         volume["server"], volume["automount"] = None, False
 
 
-async def vm_running(lab: Lab, server: Server | None) -> bool:
-    """Return whether there is a server and its VM runs (runs a script in a thread)."""
-    return server is not None and await lab.blocking(
-        lab.fabric.vms.is_alive, server["id"]
-    )
-
-
 def create_volume(lab: Lab, body: dict) -> dict:
     """Create a volume, attached to a server if the body names one.
 
@@ -150,6 +143,8 @@ def create_volume(lab: Lab, body: dict) -> dict:
             else []
         )
 
+        sid = server["id"] if server else None
+
         def drop_volume() -> None:
             with state.change():
                 state[VOLUMES].pop(vid, None)
@@ -182,10 +177,8 @@ def create_volume(lab: Lab, body: dict) -> dict:
                 # removed from the state while its disk was made: delete the disk too
                 await lab.blocking(lab.fabric.volumes.delete, vid)
                 raise
-            if server is not None and await vm_running(lab, server):
-                await lab.blocking(
-                    lab.fabric.volumes.attach, server["id"], volume["id"]
-                )
+            if sid is not None and await lab.blocking(lab.fabric.vms.is_alive, sid):
+                await lab.blocking(lab.fabric.volumes.attach, sid, vid)
             for next_action in next_actions:
                 lab.finish(next_action)
             await lab.sleep(VOLUME_SECONDS)
@@ -260,7 +253,7 @@ async def attach(lab: Lab, volume: Volume, body: dict) -> Plan:
 
     async def steps():
         save_attachment()
-        if await vm_running(lab, server):
+        if await lab.blocking(lab.fabric.vms.is_alive, sid):
             try:
                 await lab.blocking(lab.fabric.volumes.attach, sid, vid)
             except Exception:  # not attached: record that in the volume
@@ -279,11 +272,11 @@ async def detach(lab: Lab, volume: Volume, body: dict) -> Plan:
     if not volume.get("server"):
         raise invalid("the volume is not attached", "volume")
     server = server_by_id(lab.state, volume["server"])
-    vid = volume["id"]
+    vid, sid = volume["id"], server["id"] if server is not None else None
 
     async def steps():
-        if server is not None and await vm_running(lab, server):
-            await lab.blocking(lab.fabric.volumes.detach, server["id"], vid)
+        if sid is not None and await lab.blocking(lab.fabric.vms.is_alive, sid):
+            await lab.blocking(lab.fabric.volumes.detach, sid, vid)
         save_detached(lab, lab.current(VOLUMES, vid))
         await lab.sleep(VOLUME_SECONDS)
 
@@ -305,20 +298,15 @@ async def resize(lab: Lab, volume: Volume, body: dict) -> Plan:
             f"must be larger than {volume['size']} and at most {MAX_GB}", "size"
         )
     server = server_by_id(lab.state, volume["server"])
-    vid = volume["id"]
+    vid, sid = volume["id"], server["id"] if server is not None else None
 
     def save_size() -> None:
         with lab.state.change():
             lab.current(VOLUMES, vid)["size"] = size
 
     async def steps():
-        live = await vm_running(lab, server)
-        await lab.blocking(
-            lab.fabric.volumes.resize,
-            vid,
-            size,
-            server["id"] if live and server is not None else None,
-        )
+        live = sid is not None and await lab.blocking(lab.fabric.vms.is_alive, sid)
+        await lab.blocking(lab.fabric.volumes.resize, vid, size, sid if live else None)
         save_size()
         await lab.sleep(VOLUME_SECONDS)
 

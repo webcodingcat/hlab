@@ -48,17 +48,15 @@ async def drop_half_created_volumes(lab: Lab) -> None:
     Their create action has failed already.
     """
     state = lab.state
-    # a copy: other tasks may change the state while the scripts run
-    creating = [v for v in state[VOLUMES].values() if v["status"] == "creating"]
-    for volume in creating:
-        await lab.blocking(lab.fabric.volumes.delete, volume["id"])
+    # the IDs: other tasks may change the state while the scripts run
+    creating = [vid for vid, v in state[VOLUMES].items() if v["status"] == "creating"]
+    for vid in creating:
+        await lab.blocking(lab.fabric.volumes.delete, vid)
         with state.change():
-            # checked again after the await: only this very record, still creating
-            if (
-                state[VOLUMES].get(volume["id"]) is volume
-                and volume["status"] == "creating"
-            ):
-                del state[VOLUMES][volume["id"]]
+            # looked up again after the await: only a volume still creating goes
+            volume = state.get(VOLUMES, vid)
+            if volume is not None and volume["status"] == "creating":
+                del state[VOLUMES][vid]
 
 
 def finish_box_setup(lab: Lab) -> None:
@@ -86,9 +84,14 @@ async def restart_servers(lab: Lab) -> None:
 
     A server that cannot be started stays off; the lab comes up anyway.
     """
-    # a copy: other tasks may change the state while the scripts run
-    servers = list(lab.state[SERVERS].values())
-    for server in servers:
+    # the IDs: other tasks may change the state while the scripts run; each server is
+    # looked up again after every await
+    sids = list(lab.state[SERVERS])
+    for sid in sids:
+        server = lab.state.get(SERVERS, sid)
+        if server is None:  # deleted meanwhile
+            continue
+        name = server["name"]
         try:
             if server["status"] == "deleting":
                 await remove_server(lab, server)
@@ -96,14 +99,16 @@ async def restart_servers(lab: Lab) -> None:
             target = status_after_restart(server)
             if target == "running":
                 await ensure_disk(lab, server)
-                await system.start_vm(lab, server)
+                await system.start_vm(lab, lab.current(SERVERS, sid))
             elif server["status"] in ("initializing", "rebuilding"):
                 # the restart cut off the disk: create it; the server stays off
                 await ensure_disk(lab, server)
-            lab.set_status(server, target)
+            lab.set_status(lab.current(SERVERS, sid), target)
         except Exception:  # the server stays off, the lab comes up
-            log.exception("server %s could not be started again", server["name"])
-            lab.set_status(server, "off")
+            log.exception("server %s could not be started again", name)
+            server = lab.state.get(SERVERS, sid)
+            if server is not None:
+                lab.set_status(server, "off")
 
 
 async def restore_clients(lab: Lab) -> None:

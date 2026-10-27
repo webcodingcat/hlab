@@ -234,10 +234,12 @@ async def create_primary_ip(lab: Lab, body: dict) -> dict:
             await primary_ip_assign(lab, primary_ip, {"assignee_id": assignee["id"]})
         except ApiError:  # the server changed in the meantime: delete the new IP again
             with state.change():
-                del state[PRIMARY_IPS][primary_ip["id"]]
+                state[PRIMARY_IPS].pop(primary_ip["id"], None)
             raise
         resources = [(primary_ip["id"], "primary_ip"), (assignee["id"], "server")]
         action = lab.finished_action("assign_primary_ip", resources)
+        # looked up again after the await
+        primary_ip = lab.get_or_404(PRIMARY_IPS, primary_ip["id"], "primary IP")
     return {"primary_ip": hetzner.primary_ip_json(lab, primary_ip), "action": action}
 
 

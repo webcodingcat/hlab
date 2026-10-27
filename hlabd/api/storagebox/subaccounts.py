@@ -3,6 +3,8 @@
 Each one is a separate account (u<box>-sub<n>) with a home directory inside the box.
 """
 
+from typing import cast
+
 from fastapi import FastAPI, Request
 
 from ...errors import limit_exceeded, locked, not_found, not_unique
@@ -73,52 +75,59 @@ def box_plan(subaccount: Subaccount) -> Plan:
     return Plan(resources=[(subaccount["box"], "storage_box")])
 
 
+def undo(lab: Lab, aid: int, field: str, old: object) -> None:
+    """Put a sub-account's field back after a failed sync; nothing to undo if gone."""
+    subaccount = lab.state.get(SUBACCOUNTS, aid)
+    if subaccount is not None:
+        with lab.state.change():
+            cast(dict[str, object], subaccount)[field] = old  # the field is a variable
+
+
 # --- sub-account actions --------------------------------------------------------------
 # Each function gets the sub-account and the request and returns a plan without steps.
+# The sync awaits, so the plan is made before it, from the sub-account as it was.
 
 
 async def change_home_directory(lab: Lab, subaccount: Subaccount, body: dict) -> Plan:
     """Change a sub-account's home; on failure the old one stays."""
-    box = box_of(lab, subaccount)
-    old = subaccount["home_directory"]
+    box, plan = box_of(lab, subaccount), box_plan(subaccount)
+    aid, old = subaccount["id"], subaccount["home_directory"]
     home = normalized_box_path(body["home_directory"], "home_directory")
     with lab.state.change():
         subaccount["home_directory"] = home
     try:
         await sync_subaccount(lab, box, subaccount)
     except Exception:  # undo the partial change, then raise
-        with lab.state.change():
-            subaccount["home_directory"] = old
+        undo(lab, aid, "home_directory", old)
         raise
-    return box_plan(subaccount)
+    return plan
 
 
 async def reset_subaccount_password(
     lab: Lab, subaccount: Subaccount, body: dict
 ) -> Plan:
     """Set a new password for a sub-account."""
-    box = box_of(lab, subaccount)
+    box, plan = box_of(lab, subaccount), box_plan(subaccount)
     password = checked_password(body.get("password"))
     with lab.state.change():
         subaccount["_password"] = password
     await sync_subaccount(lab, box, subaccount, password)
-    return box_plan(subaccount)
+    return plan
 
 
 async def update_access_settings(lab: Lab, subaccount: Subaccount, body: dict) -> Plan:
     """Change a sub-account's access settings; on failure the old ones stay."""
-    box = box_of(lab, subaccount)
-    old = dict(subaccount["access"])
+    box, plan = box_of(lab, subaccount), box_plan(subaccount)
+    aid, old = subaccount["id"], dict(subaccount["access"])
     access = checked_access_settings(body, subaccount["access"])
     with lab.state.change():
         subaccount["access"].update(access)
     try:
         await sync_subaccount(lab, box, subaccount)
     except Exception:  # the settings did not take effect, so do not store them
-        with lab.state.change():
-            subaccount["access"] = old
+        undo(lab, aid, "access", old)
         raise
-    return box_plan(subaccount)
+    return plan
 
 
 # the sub-account actions: Hetzner's name of the action and the function that plans it
@@ -211,7 +220,7 @@ def update_subaccount(lab: Lab, bid: int, subaccount_id: int, body: dict) -> dic
     subaccount = subaccount_or_404(lab, box, subaccount_id)
     with lab.state.change():
         check_unique_subaccount_name(lab, box, body.get("name"), subaccount)
-        update_fields(lab, subaccount, body, ("name", "description", "labels"))
+        update_fields(subaccount, body, ("name", "description", "labels"))
     return {"subaccount": subaccount_json(lab, subaccount)}
 
 

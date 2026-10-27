@@ -42,8 +42,8 @@ KEPT_ACTIONS = 500
 # - `_moving`: a Floating IP that is being moved
 # - `_deleting`: a network or Storage Box that is being deleted
 # - `_creating`: a sub-account that is being set up
-# A lab restart removes all of them (`Lab.clear_flags`). Add a new flag here, so that
-# the restart clears it. `_copying` on a Storage Box snapshot is not an action flag.
+# A lab restart removes the flags listed here (`Lab.clear_flags`); a new flag:
+# DEVELOPING.md, Recipes. `_copying` on a Storage Box snapshot is not an action flag.
 # The restart removes such a snapshot, because its copy was cut off (`restore()` in
 # `api/storagebox/__init__.py`).
 type Flag = Literal["_locked", "_busy", "_moving", "_deleting", "_creating"]
@@ -150,6 +150,33 @@ class ActionSpec[R: ActionRecord]:
 type ActionTable[R: ActionRecord] = dict[str, ActionSpec[R]]
 
 
+class PictureLock:
+    """`Lab.picture_lock`: an asyncio lock that refuses to be taken twice by one task.
+
+    asyncio.Lock is not re-entrant: a task that takes it again while it holds it would
+    wait for itself forever, and the lab's pictures would stop silently. This lock
+    raises RuntimeError instead.
+    """
+
+    def __init__(self) -> None:
+        """Start free."""
+        self.lock = asyncio.Lock()
+        self.holder: asyncio.Task | None = None
+
+    async def __aenter__(self) -> None:
+        """Wait for the lock and take it, unless this task holds it already."""
+        task = asyncio.current_task()
+        if task is not None and task is self.holder:
+            raise RuntimeError("picture_lock is already held by this task")
+        await self.lock.acquire()
+        self.holder = task
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        """Give the lock back."""
+        self.holder = None
+        self.lock.release()
+
+
 class HeldFlags:
     """The flags one piece of work holds, given out by `Lab.holding()`."""
 
@@ -205,7 +232,7 @@ class Lab:
         # held while a whole picture of the system (fault sets, latency, firewall, DHCP,
         # routes) is computed and put in place, so that the newest picture always
         # comes last (api/system.py)
-        self.picture_lock = asyncio.Lock()
+        self.picture_lock = PictureLock()
 
     def own_state(self) -> None:
         """Make the running event loop the state's owner (daemon.run, test clients)."""
@@ -373,34 +400,25 @@ class Lab:
 
     def run_action(
         self,
+        # record: a running action stays in the state until it is finished
         action: Action,
         steps: Steps,
         server: Server | None = None,
+        # record: the same holds for the next actions
         next_actions: list[Action] | None = None,
         holding: HeldFlags | None = None,
     ) -> None:
         """Run an action's steps in the background, then finish the action.
 
-        This function takes over the flags that `holding` holds. They stay set while
-        the steps run, and this function takes them off when the steps end, however
-        they end: success, failure, or cancelled (a lab reset). When the steps fail,
-        the action ends with an error, and its next actions fail with it. The server,
-        if there is one, then leaves its in-between status (starting, rebuilding, ...)
-        and gets the status its VM really has: running or off.
+        This function takes over the flags that `holding` holds; the caller's
+        `holding()` block no longer frees them. They stay set while the steps run, and
+        this function takes them off when the steps end, however they end: success,
+        failure, or cancelled (a lab reset), and also if the steps cannot even be
+        started. When the steps fail, the action ends with an error, and its next
+        actions fail with it. The server, if there is one, then leaves its in-between
+        status (starting, rebuilding, ...) and gets the status its VM really has:
+        running or off.
         """
-        # The exit paths, and who finishes the action and frees the flags in each:
-        # - the steps succeed: `run_steps`' finally block frees the flags and
-        #   finishes the action (success), in one change block.
-        # - the steps fail (Exception): the except block fails the next actions and
-        #   moves the server out of its in-between status; then the same finally
-        #   block frees the flags and finishes the action with the error.
-        # - the steps are cancelled (a lab stop or reset, `stop_actions`): the
-        #   finally block frees the flags and finishes the action with an error, and
-        #   the cancellation goes on to the task.
-        # - the task never starts (`spawn` raises): no finally block will run, so the
-        #   except block below frees the flags and fails the action, then re-raises.
-        # From here on only this function holds the flags (`holding.take()`); the
-        # caller's `holding()` block no longer frees them.
         flags = holding.take() if holding else []
         sid = server["id"] if server is not None else None
 
@@ -471,6 +489,7 @@ class Lab:
             if flag and spec.flag:
                 held.claim(item, flag, busy_message)
             plan = await spec.plan(self, item, body)
+            # record: compared by identity only, to the plan's server
             if plan.server is not None and plan.server is not item:
                 held.claim(plan.server, "_locked", SERVER_LOCKED)
             resources = [(item["id"], item_type), *plan.resources]

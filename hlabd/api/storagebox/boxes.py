@@ -69,9 +69,12 @@ async def box_stats(lab: Lab, box: StorageBox) -> dict:
 async def box_json(lab: Lab, box: StorageBox) -> dict:
     """Return the API object of a box, with its disk usage.
 
-    The usage is read (in threads) before the record, so the record is current.
+    The usage is read (in threads) first, and the record is looked up again after it,
+    so the record is current. A box deleted meanwhile is shown as it was.
     """
+    bid = box["id"]
     stats = await box_stats(lab, box)
+    box = lab.state.get(STORAGE_BOXES, bid) or box  # record: a deleted box as it was
     ready = box["status"] != "initializing"
     return {
         "id": box["id"],
@@ -137,11 +140,15 @@ async def set_up_box_account(
 async def remove_box(lab: Lab, box: StorageBox) -> None:
     """Remove the box with its sub-accounts, snapshots and data."""
     state, fabric_box = lab.state, lab.fabric.box
-    mine = [x for x in state[SUBACCOUNTS].values() if x["box"] == box["id"]]
-    for subaccount in mine:
+    # the IDs: each sub-account is looked up again after the previous one's script
+    mine = [aid for aid, x in state[SUBACCOUNTS].items() if x["box"] == box["id"]]
+    for account_id in mine:
+        subaccount = state.get(SUBACCOUNTS, account_id)
+        if subaccount is None:  # removed meanwhile
+            continue
         await lab.blocking(fabric_box.remove_account, subaccount["username"])
         with state.change():
-            del state[SUBACCOUNTS][subaccount["id"]]
+            state[SUBACCOUNTS].pop(account_id, None)
     with state.change():
         for s in [s for s in state[BOX_SNAPSHOTS].values() if s["box"] == box["id"]]:
             del state[BOX_SNAPSHOTS][s["id"]]
@@ -157,31 +164,39 @@ async def remove_box(lab: Lab, box: StorageBox) -> None:
 
 async def change_type(lab: Lab, box: StorageBox, body: dict) -> Plan:
     """Change the box's type, if the new one has room for what the box uses."""
+    bid = box["id"]
     type_name = catalogue_name(lab, "storage_box_type", body.get("storage_box_type"))
     used = (await box_stats(lab, box))["size"]
     if lab.cfg["storage_box_types"][type_name]["size_tb"] * TB < used:
         raise invalid(
             "the type offers less space than the box uses", "storage_box_type"
         )
+    box = box_or_404(lab, bid)  # looked up again after the await
     with lab.state.change():
         box["type"] = type_name
+    quota = quota_bytes(lab, box)
     await sync_box(lab, box)
-    # sub-accounts share the quota
-    mine = [a for a in lab.state[SUBACCOUNTS].values() if a["box"] == box["id"]]
-    for subaccount in mine:
+    # sub-accounts share the quota; each is looked up again after the previous script
+    mine = [aid for aid, a in lab.state[SUBACCOUNTS].items() if a["box"] == bid]
+    for account_id in mine:
+        subaccount = lab.state.get(SUBACCOUNTS, account_id)
+        if subaccount is None:  # removed meanwhile
+            continue
         await lab.blocking(
             lab.fabric.box.set_access,
             subaccount["username"],
             dict(subaccount["access"]),
-            quota_bytes(lab, box),
+            quota,
         )
     return Plan()
 
 
 async def reset_password(lab: Lab, box: StorageBox, body: dict) -> Plan:
     """Set a new password for the box's main account."""
+    bid = box["id"]
     password = checked_password(body.get("password"))
     await box_account(lab, box, password)
+    box = box_or_404(lab, bid)  # looked up again after the await
     # stored only after it is set; a lab start sets the stored password again
     with lab.state.change():
         box["_password"] = password
@@ -191,6 +206,7 @@ async def reset_password(lab: Lab, box: StorageBox, body: dict) -> Plan:
 
 async def update_access_settings(lab: Lab, box: StorageBox, body: dict) -> Plan:
     """Change the box's access settings; on failure the old ones stay."""
+    bid = box["id"]
     old = dict(box["access"])
     access = checked_access_settings(body, box["access"])
     with lab.state.change():
@@ -198,8 +214,10 @@ async def update_access_settings(lab: Lab, box: StorageBox, body: dict) -> Plan:
     try:
         await sync_box(lab, box)
     except Exception:  # the settings did not take effect, so do not store them
-        with lab.state.change():
-            box["access"] = old
+        box_now = lab.state.get(STORAGE_BOXES, bid)  # nothing to undo if it is gone
+        if box_now is not None:
+            with lab.state.change():
+                box_now["access"] = old
         raise
     return Plan()
 
@@ -278,6 +296,7 @@ async def create_box(lab: Lab, body: dict) -> dict:
             "_password": password,
         }
         state[STORAGE_BOXES][bid] = box
+    # record: a running action stays in the state until it ends
     action = lab.new_action("create", [(bid, "storage_box")])
 
     def activate() -> None:
@@ -312,7 +331,7 @@ def delete_box(lab: Lab, bid: int) -> dict:
         raise protected("Storage Box is delete protected")
 
     async def steps():
-        await remove_box(lab, box)
+        await remove_box(lab, lab.current(STORAGE_BOXES, bid))
 
     with lab.holding() as held:
         if box_busy(lab, box, for_delete=True):

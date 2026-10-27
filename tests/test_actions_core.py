@@ -495,3 +495,25 @@ def test_a_failed_action_leaves_a_deleted_server_alone(lab):
     assert action["status"] == "error" and "deleted" in action["error"]["message"]
     assert server["status"] == "starting"  # gone: not changed, nothing asked
     assert lab.fabric.shell.calls == []
+
+
+def test_the_picture_lock_refuses_a_nested_take_but_lets_other_tasks_wait(lab):
+    # asyncio.Lock is not re-entrant: taken twice by one task, it would wait forever
+    order = []
+
+    async def other():
+        async with lab.picture_lock:
+            order.append("other")
+
+    async def main():
+        async with lab.picture_lock:
+            waiting = asyncio.create_task(other())
+            await asyncio.sleep(0)  # the other task waits for the lock
+            with pytest.raises(RuntimeError, match="already held by this task"):
+                async with lab.picture_lock:
+                    pass
+            order.append("main")
+        await waiting
+
+    run(main())
+    assert order == ["main", "other"]

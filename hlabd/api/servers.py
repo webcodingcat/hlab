@@ -42,7 +42,7 @@ from ..lab import (
     now,
 )
 from ..records import Action, Server, Volume
-from ..state import FIREWALLS, FLOATING_IPS, SERVERS, SSH_KEYS, VOLUMES
+from ..state import FIREWALLS, FLOATING_IPS, MAX_SERVERS, SERVERS, SSH_KEYS, VOLUMES
 from . import hetzner, nics, primary_ips, system, volumes
 from .catalogue import by_name_or_id, catalogue_name, image_path
 from .faults import drop_faults
@@ -194,7 +194,9 @@ def record_server(
         check_unique_name(state[SERVERS].values(), request.name, None, "server")
         index = state.free_index()
         if not index:
-            raise limit_exceeded("the lab runs at most 239 servers", "servers")
+            raise limit_exceeded(
+                f"the lab runs at most {MAX_SERVERS} servers", "servers"
+            )
         for fid in request.firewall_ids:
             if fid not in state[FIREWALLS]:
                 raise invalid(f"firewall {fid} not found", "firewalls")
@@ -250,7 +252,10 @@ def new_server(lab: Lab, request: ServerRequest, sid: int, index: int) -> Server
 
 
 def create_steps(
-    lab: Lab, server: Server, request: ServerRequest, next_actions: list[Action]
+    lab: Lab,
+    server: Server,
+    request: ServerRequest,
+    next_actions: list[Action],  # record: a running action stays until it ends
 ) -> Steps:
     """Return the background steps of a create action: disk, then start or off."""
     sid = server["id"]
@@ -280,9 +285,10 @@ async def update_server(lab: Lab, sid: int, body: dict) -> dict:
     if "name" in body:
         check_hostname(body["name"])
     update_resource(lab, SERVERS, server, body, ("name", "labels"), "server")
+    answer = {"server": hetzner.server_json(lab, server)}  # before the await
     if "labels" in body:  # label selectors of firewalls may match differently now
         await system.apply_firewall(lab)
-    return {"server": hetzner.server_json(lab, server)}
+    return answer
 
 
 def delete_server(lab: Lab, sid: int) -> dict:
@@ -298,17 +304,14 @@ def delete_server(lab: Lab, sid: int) -> dict:
         await remove_server(lab, lab.current(SERVERS, sid))
         await lab.sleep(DELETE_SECONDS)
 
-    with lab.holding() as held:
+    # one transaction: if the steps cannot start, the flag, the action and the status
+    # are undone together
+    with lab.holding() as held, lab.state.change():
         held.claim(server, "_locked", SERVER_LOCKED)
-        previous_status = server["status"]
-        try:
-            action = lab.new_action("delete_server", [(sid, "server")])
-            # if the lab restarts, it finishes this delete (status deleting)
-            lab.set_status(server, "deleting")
-            lab.run_action(action, steps, server, holding=held)
-        except BaseException:  # nothing runs: restore the status; the flag comes off
-            lab.set_status(server, previous_status)
-            raise
+        action = lab.new_action("delete_server", [(sid, "server")])
+        # if the lab restarts, it finishes this delete (status deleting)
+        lab.set_status(server, "deleting")
+        lab.run_action(action, steps, server, holding=held)
     return {"action": action}
 
 
@@ -554,10 +557,11 @@ async def reset_password(lab: Lab, server: Server, body: dict) -> Plan:
 
     As on Hetzner, the password is set in the guest through the QEMU guest agent.
     """
-    if not await lab.blocking(lab.fabric.vms.is_alive, server["id"]):
-        raise ApiError(409, "server_not_running", "the server is not running")
-    password = secrets.token_urlsafe(15)
     sid = server["id"]
+    if not await lab.blocking(lab.fabric.vms.is_alive, sid):
+        raise ApiError(409, "server_not_running", "the server is not running")
+    server = lab.server_or_404(sid)  # looked up again after the await
+    password = secrets.token_urlsafe(15)
 
     async def steps():
         cmd = {

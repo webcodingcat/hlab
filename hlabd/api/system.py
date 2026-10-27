@@ -69,12 +69,11 @@ async def route_floating_ip(lab: Lab, ip: str, server: Server | None) -> None:
     assignment then puts its route in place before this one, never after
     (`reroute_floating_ips`).
     """
+    sid = server["id"] if server is not None else None
     async with lab.picture_lock:
         # looked up again: taking the lock may have waited
         target = (
-            desired.public_tap(lab.current(SERVERS, server["id"]))
-            if server is not None
-            else None
+            desired.public_tap(lab.current(SERVERS, sid)) if sid is not None else None
         )
         await lab.blocking(lab.fabric.network.route_floating_ip, ip, target)
 
@@ -109,10 +108,10 @@ async def start_vm(lab: Lab, server: Server) -> None:
             fabric.vms.launch, sid, server["name"], server["server_type"], nics
         )
     except Exception:  # whatever failed: remove the half-started VM, then re-raise
-        # the last record seen: the VM and its taps go even if the server is gone
-        await kill_vm(lab, server)
+        # the VM and its taps go even if the server is gone
+        await kill_vm(lab, server)  # record: the last one seen
         raise
-    await reroute_floating_ips(lab, server)
+    await reroute_floating_ips(lab, lab.current(SERVERS, sid))
     await apply_faults(lab)
     await apply_latency(lab)
     await apply_routes(lab)

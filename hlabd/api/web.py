@@ -74,7 +74,7 @@ def ref_id(value, field: str) -> int:
         raise invalid(f"{field} must be an ID", field) from None
 
 
-def update_fields(lab: Lab, item: Record, body: dict, keys: tuple[str, ...]) -> None:
+def update_fields(item: Record, body: dict, keys: tuple[str, ...]) -> None:
     """Change the given fields of an item on PUT (null labels mean no labels)."""
     # the keys come from the caller's list, more than mypy can match to the record type
     fields = cast(dict[str, object], item)
@@ -89,7 +89,7 @@ def update_resource[R: Record](
     """Apply a PUT to a resource of a kind: names stay unique within the kind."""
     with lab.state.change():
         check_unique_name(lab.state[kind].values(), body.get("name"), item, what)
-        update_fields(lab, item, body, keys)
+        update_fields(item, body, keys)
 
 
 async def change_delete_protection(lab: Lab, item: ProtectedRecord, body: dict) -> Plan:

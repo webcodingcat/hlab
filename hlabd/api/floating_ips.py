@@ -136,12 +136,12 @@ def move_floating_ip(lab: Lab, floating_ip: FloatingIP, target: Server | None) -
         return target_now
 
     async def steps():
-        if target:
+        if target_id is not None:
             await lab.sleep(FLOATING_IP_MOVE_SECONDS)
         target_now = save_move()
         await system.route_floating_ip(lab, ip, target_now)
         await system.apply_faults(lab)
-        if target:
+        if target_id is not None:
             await system.apply_latency(lab)
 
     return Plan(steps, resources=[(target["id"], "server")] if target else [])

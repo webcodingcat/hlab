@@ -190,9 +190,9 @@ take effect right away and take no flag, because `run_firewall_action` passes no
 ### How flags flow
 
 A flag on a resource means that an action is working on it, so a second action gets
-423, as on Hetzner. The comment above `FLAGS` in `lab.py` lists the flags and what
-each one means. Code holds flags only through `lab.holding()`, and `act()` uses it
-too:
+423, as on Hetzner. The comment above `FLAGS` in `lab.py` lists the flags, what each
+one means, and how they are set and cleared. Code holds flags only through
+`lab.holding()`, and `act()` uses it too:
 
 ```text
 request
@@ -211,9 +211,7 @@ request
 ```
 
 `act()` claims the resource's flag. If the plan names a different server, it also
-claims that server's `_locked`. A flag is set to True and later removed, never set to
-False. The API shows a server's `_locked` as its `locked` field (`server_json` in
-`api/hetzner.py`). A lab restart removes every flag (`lab.clear_flags`).
+claims that server's `_locked`.
 
 New actions go through `act()`. Work that is not a Hetzner action on an existing
 resource, such as creating or deleting a server, holds its flags through
@@ -284,7 +282,8 @@ in a thread. The details:
   over while `lab.picture_lock` is held, so they are put in place in the order they
   were computed (`api/system.py`). Routing a Floating IP takes the lock too
   (`system.route_floating_ip`). The lock is not re-entrant: a function that holds it
-  must not call another function of `api/system.py` that takes it.
+  must not call another function of `api/system.py` that takes it (that raises
+  RuntimeError instead of waiting forever).
 - **The fabric's lock.** Fabric methods run in threads side by side, for example when
   two servers start at once. `net_lock` (a thread lock) keeps them apart where it
   matters: taps are torn down, and nft, tc and dnsmasq are changed, only while it is
@@ -418,8 +417,14 @@ held before the await.
   server alone.
 - **Other background work** (the VM watcher) uses `lab.state.get(KIND, id)` and
   leaves a record that is gone alone.
-- A loop that awaits for each item (a script per server) iterates over a copy
-  (`list(...)`); the VM watcher copies the IDs and looks each server up again.
+- A loop that awaits for each item (a script per server) iterates over a copy of
+  the IDs (`list(lab.state[SERVERS])`) and looks each record up again.
+
+`tests/test_await_rule.py` checks this in `api/` and `lab.py`: a record held in a
+local name may not be used after an await unless the name was bound again. Its
+docstring says what counts as a record. A deliberate exception carries a comment
+`# record: <why>` on the line of the use or of the binding (or on its own line just
+above), for example a running action, which stays in the state until it is finished.
 
 ## Recipes
 

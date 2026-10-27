@@ -47,6 +47,10 @@ from .records import (
 
 log = logging.getLogger(__name__)
 
+# how many servers the lab runs at most: a server's index (1 to MAX_SERVERS) names
+# its tap and is part of its MACs and IPv6 link-local address (`State.free_index`)
+MAX_SERVERS = 239
+
 
 @dataclass(frozen=True)
 class Kind[R]:
@@ -453,4 +457,4 @@ class State:
         Returns 0 when the lab is full.
         """
         used = {s["_lab"]["index"] for s in self[SERVERS].values()}
-        return next((i for i in range(1, 240) if i not in used), 0)
+        return next((i for i in range(1, MAX_SERVERS + 1) if i not in used), 0)

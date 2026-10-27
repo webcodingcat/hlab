@@ -42,31 +42,49 @@ async def restore(lab: Lab) -> None:
     restart cut off are removed.
     """
     state, fabric = lab.state, lab.fabric
-    # copies: the loops below run scripts, so the state may change in between
-    cut_off = [s for s in state[BOX_SNAPSHOTS].values() if s.get("_copying")]
-    boxes = list(state[STORAGE_BOXES].values())
-    for s in cut_off:
-        box = state[STORAGE_BOXES].get(s["box"])
-        if box:
+    # the IDs: the loops below run scripts, so the state may change in between; each
+    # record is looked up again after every await
+    cut_off = [sid for sid, s in state[BOX_SNAPSHOTS].items() if s.get("_copying")]
+    bids = list(state[STORAGE_BOXES])
+    for snapshot_id in cut_off:
+        snapshot = state.get(BOX_SNAPSHOTS, snapshot_id)
+        if snapshot is None:
+            continue
+        if snapshot["box"] in state[STORAGE_BOXES]:
             await lab.blocking(
-                fabric.box.remove_snapshot, box["id"], s["name"], check=False
+                fabric.box.remove_snapshot,
+                snapshot["box"],
+                snapshot["name"],
+                check=False,
             )
         with state.change():
-            del state[BOX_SNAPSHOTS][s["id"]]
+            state[BOX_SNAPSHOTS].pop(snapshot_id, None)
     # snapshots whose copy was not finished
     await lab.blocking(fabric.box.clear_snapshot_work)
-    for box in boxes:
+    for bid in bids:
+        box = state.get(STORAGE_BOXES, bid)
+        if box is None:
+            continue
         try:
             await box_account(lab, box, box.get("_password"))
-            await sync_box(lab, box)
+            await sync_box(lab, lab.current(STORAGE_BOXES, bid))
         # one box that fails must not keep the lab from coming up
         except Exception:
-            log.exception("Storage Box %s not restored", box["id"])
+            log.exception("Storage Box %s not restored", bid)
             continue
-        accounts = [a for a in state[SUBACCOUNTS].values() if a["box"] == box["id"]]
-        for account in accounts:
+        accounts = [aid for aid, a in state[SUBACCOUNTS].items() if a["box"] == bid]
+        for account_id in accounts:
+            account = state.get(SUBACCOUNTS, account_id)
+            if account is None:
+                continue
+            name = account["username"]
             try:
-                await sync_subaccount(lab, box, account, account.get("_password"))
+                await sync_subaccount(
+                    lab,
+                    lab.current(STORAGE_BOXES, bid),
+                    account,
+                    account.get("_password"),
+                )
             # nor one sub-account that fails
             except Exception:
-                log.exception("sub-account %s not restored", account["username"])
+                log.exception("sub-account %s not restored", name)

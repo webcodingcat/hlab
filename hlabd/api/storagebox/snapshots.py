@@ -105,30 +105,36 @@ async def copy_snapshot(lab: Lab, box: StorageBox, snapshot: BoxSnapshot) -> Non
         copied.pop("_copying", None)
 
 
-async def take_automatic_snapshot(lab: Lab, box: StorageBox) -> BoxSnapshot:
-    """Take a snapshot of the box for its plan, which keeps max_snapshots of them."""
-    state = lab.state
+async def take_automatic_snapshot(lab: Lab, box: StorageBox) -> None:
+    """Take a snapshot of the box for its plan, which keeps max_snapshots of them.
+
+    A plan disabled while the snapshot was copied prunes nothing.
+    """
+    state, bid = lab.state, box["id"]
     snapshot = new_snapshot(lab, box, automatic=True)
     await copy_snapshot(lab, box, snapshot)
+    plan = lab.current(STORAGE_BOXES, bid)["plan"]  # looked up again after the await
+    if plan is None:
+        return
     automatic = sorted(
-        (
-            s
-            for s in state[BOX_SNAPSHOTS].values()
-            if s["box"] == box["id"] and s["is_automatic"]
-        ),
-        key=lambda s: s["id"],
+        sid
+        for sid, s in state[BOX_SNAPSHOTS].items()
+        if s["box"] == bid and s["is_automatic"]
     )
-    assert box["plan"] is not None  # called only for boxes with a plan
-    for old in automatic[: -max(1, box["plan"]["max_snapshots"])]:
-        await remove_snapshot(lab, box, old)
-    return snapshot
+    for old_id in automatic[: -max(1, plan["max_snapshots"])]:
+        await remove_snapshot(lab, old_id)
 
 
-async def remove_snapshot(lab: Lab, box: StorageBox, snapshot: BoxSnapshot) -> None:
-    """Remove a snapshot's copy and its record."""
-    await lab.blocking(lab.fabric.box.remove_snapshot, box["id"], snapshot["name"])
+async def remove_snapshot(lab: Lab, snapshot_id: int) -> None:
+    """Remove a snapshot's copy and its record; one that is gone needs nothing."""
+    snapshot = lab.state.get(BOX_SNAPSHOTS, snapshot_id)
+    if snapshot is None:
+        return
+    await lab.blocking(
+        lab.fabric.box.remove_snapshot, snapshot["box"], snapshot["name"]
+    )
     with lab.state.change():
-        del lab.state[BOX_SNAPSHOTS][snapshot["id"]]
+        lab.state[BOX_SNAPSHOTS].pop(snapshot_id, None)
 
 
 def create_snapshot(lab: Lab, bid: int, body: dict) -> dict:
@@ -156,7 +162,11 @@ def create_snapshot(lab: Lab, bid: int, body: dict) -> dict:
     )
 
     async def steps():
-        await copy_snapshot(lab, box, snapshot)
+        await copy_snapshot(
+            lab,
+            lab.current(STORAGE_BOXES, bid),
+            lab.current(BOX_SNAPSHOTS, snapshot["id"]),
+        )
 
     lab.run_action(action, steps)
     return {"snapshot": snapshot_json(lab, snapshot), "action": action}
@@ -166,7 +176,7 @@ def update_snapshot(lab: Lab, bid: int, ref: str, body: dict) -> dict:
     """Change a snapshot's description and labels."""
     snapshot = snapshot_or_404(lab, box_or_404(lab, bid), ref)
     with lab.state.change():
-        update_fields(lab, snapshot, body, ("description", "labels"))
+        update_fields(snapshot, body, ("description", "labels"))
     return {"snapshot": snapshot_json(lab, snapshot)}
 
 
@@ -174,7 +184,7 @@ async def delete_snapshot(lab: Lab, bid: int, ref: str) -> dict:
     """Delete a snapshot at once; not while the box is busy."""
     box = box_or_404(lab, bid, ready=True)
     snapshot = snapshot_or_404(lab, box, ref)
-    await remove_snapshot(lab, box, snapshot)
+    await remove_snapshot(lab, snapshot["id"])
     return {
         "action": lab.finished_action(
             "delete_snapshot",
@@ -195,35 +205,34 @@ async def rollback_snapshot(lab: Lab, box: StorageBox, body: dict) -> Plan:
     if snapshot.get("_copying"):
         raise locked("the snapshot is still being taken")
 
-    bid = box["id"]
+    bid, snapshot_id, name = box["id"], snapshot["id"], snapshot["name"]
 
     async def steps():
-        await lab.blocking(lab.fabric.box.roll_back, bid, snapshot["name"])
-        # sub-account homes are paths: they follow what the snapshot has there
-        subaccounts = [x for x in state[SUBACCOUNTS].values() if x["box"] == bid]
-        for subaccount in subaccounts:
+        await lab.blocking(lab.fabric.box.roll_back, bid, name)
+        # sub-account homes are paths: they follow what the snapshot has there; the
+        # IDs, because each sync awaits
+        subaccounts = [aid for aid, x in state[SUBACCOUNTS].items() if x["box"] == bid]
+        for account_id in subaccounts:
+            subaccount = state.get(SUBACCOUNTS, account_id)
+            if subaccount is None:  # deleted meanwhile
+                continue
+            username = subaccount["username"]
             try:
-                # looked up again: the previous sub-account's sync awaited
-                await sync_subaccount(
-                    lab,
-                    lab.current(STORAGE_BOXES, bid),
-                    lab.current(SUBACCOUNTS, subaccount["id"]),
-                )
+                await sync_subaccount(lab, lab.current(STORAGE_BOXES, bid), subaccount)
             # a home the snapshot does not have stays as it was
             except Exception:
                 log.exception(
-                    "sub-account %s keeps its home after the rollback",
-                    subaccount["username"],
+                    "sub-account %s keeps its home after the rollback", username
                 )
         newer_snapshots = [
-            x
-            for x in state[BOX_SNAPSHOTS].values()
-            if x["box"] == bid and x["id"] > snapshot["id"]
+            sid
+            for sid, x in state[BOX_SNAPSHOTS].items()
+            if x["box"] == bid and sid > snapshot_id
         ]
-        for newer in newer_snapshots:
-            await remove_snapshot(lab, box, newer)
+        for newer_id in newer_snapshots:
+            await remove_snapshot(lab, newer_id)
 
-    return Plan(steps, resources=[(snapshot["id"], "storage_box_snapshot")])
+    return Plan(steps, resources=[(snapshot_id, "storage_box_snapshot")])
 
 
 # --- snapshot plans -------------------------------------------------------------------
@@ -269,26 +278,29 @@ async def run_snapshot_plans(
     `waiting` holds the IDs of boxes whose plan came due while a rollback or delete
     ran. Such a box gets one snapshot once it is free, however many times it missed.
     """
-    boxes = list(lab.state[STORAGE_BOXES].values())
+    boxes = lab.state[STORAGE_BOXES]
+    # the IDs: each box is looked up again after the previous box's snapshot
+    planned = [bid for bid, box in boxes.items() if box.get("plan")]
     # a box that is gone or lost its plan waits for nothing
-    waiting.intersection_update(box["id"] for box in boxes if box.get("plan"))
-    for box in boxes:
-        plan = box.get("plan")
-        if not plan:
+    waiting.intersection_update(planned)
+    for bid in planned:
+        box = lab.state[STORAGE_BOXES].get(bid)
+        plan = box.get("plan") if box is not None else None
+        if box is None or not plan:
             continue
-        if box["id"] not in waiting and not any(
+        if bid not in waiting and not any(
             snapshot_plan_due(plan, minute) for minute in minutes
         ):
             continue
         if box_busy(lab, box):
-            waiting.add(box["id"])
+            waiting.add(bid)
             continue
-        waiting.discard(box["id"])
+        waiting.discard(bid)
         try:
             await take_automatic_snapshot(lab, box)
         # one failed snapshot must not end the plans of all boxes
         except Exception:
-            log.exception("automatic snapshot of box %s failed", box["id"])
+            log.exception("automatic snapshot of box %s failed", bid)
 
 
 # --- routes ---------------------------------------------------------------------------

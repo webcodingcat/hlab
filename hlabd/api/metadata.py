@@ -100,7 +100,7 @@ async def calling_server(lab: Lab, request: Request) -> Server | None:
     ip = request.client.host if request.client else ""
     servers = list(state[SERVERS].values())
     holders = {
-        nic["tap"]: server
+        nic["tap"]: server["id"]
         for server in servers
         for nic in server["_lab"]["nics"]
         if ip in nic_addresses(nic)
@@ -114,7 +114,8 @@ async def calling_server(lab: Lab, request: Request) -> Server | None:
         # because any guest can add entries to the neighbour table. And it counts only
         # if there is exactly one such tap.
         taps = await lab.blocking(fabric.network.neighbour_taps, ip) & set(holders)
-        return holders[taps.pop()] if len(taps) == 1 else None
+        # looked up again after the await: the server may be gone
+        return state.get(SERVERS, holders[taps.pop()]) if len(taps) == 1 else None
     for server in servers:
         ipv6 = primary_address_of(state, server, "ipv6")
         if ip == primary_address_of(state, server, "ipv4") or (
@@ -184,10 +185,17 @@ def read_lab_key(lab_key: Path) -> str | None:
     return public_key.read_text().strip() if public_key.is_file() else None
 
 
-async def metadata_values(lab: Lab, server: Server) -> dict:
-    """Return the metadata of a server, by key."""
-    cfg = lab.cfg
+async def caller_metadata(lab: Lab, request: Request) -> dict | None:
+    """Return the metadata of the calling server, by key; None for an unknown caller."""
+    # read first: the server is looked up after the last await
     lab_key = await lab.blocking(read_lab_key, lab.fabric.lab_key)
+    server = await calling_server(lab, request)
+    return metadata_values(lab, server, lab_key) if server else None
+
+
+def metadata_values(lab: Lab, server: Server, lab_key: str | None) -> dict:
+    """Return the metadata of a server, by key, with the lab's public key if any."""
+    cfg = lab.cfg
     keys = list(server["public_keys"])
     if lab_key:  # the lab's admin access (hlab ssh)
         keys.append(lab_key)
@@ -239,10 +247,10 @@ def create_metadata_app(lab: Lab) -> FastAPI:
 
     @app.get("/hetzner/v1/metadata")
     async def metadata_get(request: Request):
-        server = await calling_server(lab, request)
-        if not server:
+        values = await caller_metadata(lab, request)
+        if values is None:
             return PlainTextResponse("not found", status_code=404)
-        return text_response(await metadata_values(lab, server))
+        return text_response(values)
 
     @app.get("/hetzner/v1/metadata/hlab-automount")
     async def automount_get(request: Request):
@@ -262,8 +270,8 @@ def create_metadata_app(lab: Lab) -> FastAPI:
     # every key, also private-networks (which cloud-init reads on its own path)
     @app.get("/hetzner/v1/metadata/{key}")
     async def metadata_key_get(key: str, request: Request):
-        server = await calling_server(lab, request)
-        value = (await metadata_values(lab, server)).get(key) if server else None
+        values = await caller_metadata(lab, request)
+        value = values.get(key) if values is not None else None
         if value is None:
             return PlainTextResponse("not found", status_code=404)
         return text_response(value)

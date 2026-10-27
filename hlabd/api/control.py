@@ -358,11 +358,12 @@ async def reset_lab(lab: Lab) -> dict:
     state, fabric = lab.state, lab.fabric
     # no old action may start a VM or change the state while the lab is emptied
     await lab.stop_actions()
-    # copies: the loops below run scripts, so the state may change in between
-    servers = list(state[SERVERS].values())
-    volumes = list(state[VOLUMES].values())
-    subaccounts = list(state[SUBACCOUNTS].values())
-    boxes = list(state[STORAGE_BOXES].values())
+    # copies: the loops below run scripts, so the state may change in between; what
+    # was there is torn down as it was last seen, gone from the state or not
+    servers = list(state[SERVERS].values())  # record: torn down as last seen
+    volumes = list(state[VOLUMES].values())  # record: torn down as last seen
+    subaccounts = list(state[SUBACCOUNTS].values())  # record: torn down as last seen
+    boxes = list(state[STORAGE_BOXES].values())  # record: torn down as last seen
     routed = [f["ip"] for f in state[FLOATING_IPS].values() if f.get("server")]
     clients = list(state[CLIENTS].values())
     networks = list(state[NETWORKS])

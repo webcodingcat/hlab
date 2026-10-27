@@ -50,7 +50,7 @@ class Nic(TypedDict):
 class ServerLab(TypedDict):
     """The lab-only fields of a server (`server["_lab"]`, set by `create_server`)."""
 
-    index: int  # its number in the lab (1-239): tap pub<index>, MACs, IPv6 link-local
+    index: int  # 1 to state.MAX_SERVERS: tap pub<index>, MACs, IPv6 link-local
     tap: str  # its public tap
     nics: list[Nic]  # its NICs in cloud networks, in the order they were attached
     disk_gb: int  # the size of its disk (a type change without upgrade_disk keeps it)
