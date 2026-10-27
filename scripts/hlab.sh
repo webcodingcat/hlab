@@ -72,6 +72,34 @@ send_qmp() {
   fi
 }
 
+# print_vm_counters <vm dir> <tap>: Print the VM's counters as one line of
+# JSON: the CPU seconds of its QEMU process, the I/O of its root disk and the
+# traffic of its public tap (the tap receives what the guest sends). Fail when
+# the VM does not run.
+print_vm_counters() {
+  local vm_dir="$1" tap="$2" pid cpu_ticks disk stats
+  pid="$(cat "${vm_dir}/qemu.pid")"
+  # utime and stime: fields 14 and 15, counted after the name in parentheses
+  cpu_ticks="$(sed 's/.*) //' "/proc/${pid}/stat" | awk '{print $12 + $13}')"
+  disk="$(printf '{"execute":"qmp_capabilities"}\n{"execute":"query-blockstats"}\n' \
+    | socat -t1 - "UNIX-CONNECT:${vm_dir}/qmp.sock" \
+    | jq -cs '[.[] | .return? | arrays | .[] | select(.device == "root")
+      | .stats][0]')"
+  stats="/sys/class/net/${tap}/statistics"
+  jq -cn \
+    --argjson ticks "${cpu_ticks}" --argjson hz "$(getconf CLK_TCK)" \
+    --argjson disk "${disk}" \
+    --argjson packets_in "$(<"${stats}/tx_packets")" \
+    --argjson packets_out "$(<"${stats}/rx_packets")" \
+    --argjson bytes_in "$(<"${stats}/tx_bytes")" \
+    --argjson bytes_out "$(<"${stats}/rx_bytes")" \
+    '{cpu_seconds: ($ticks / $hz),
+      disk_reads: $disk.rd_operations, disk_writes: $disk.wr_operations,
+      disk_read_bytes: $disk.rd_bytes, disk_write_bytes: $disk.wr_bytes,
+      packets_in: $packets_in, packets_out: $packets_out,
+      bytes_in: $bytes_in, bytes_out: $bytes_out}'
+}
+
 # send_hmp <vm dir> <monitor command>: Send a human monitor command through
 # QMP.
 send_hmp() {
@@ -615,6 +643,7 @@ main() {
     kill-vm) kill_vm "$@" ;;
     is-vm-alive) is_vm_alive "$@" ;;
     send-qmp) send_qmp "$@" ;;
+    print-vm-counters) print_vm_counters "$@" ;;
     send-hmp) send_hmp "$@" ;;
     add-nic) add_nic "$@" ;;
     delete-nic) delete_nic "$@" ;;

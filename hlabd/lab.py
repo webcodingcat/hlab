@@ -11,6 +11,7 @@ Where code runs, The state).
 
 import asyncio
 import logging
+from collections import deque
 from collections.abc import Awaitable, Callable, Coroutine, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -19,6 +20,7 @@ from typing import Any, Literal, cast
 
 from .errors import locked, not_found, unsupported
 from .fabric import Fabric
+from .fabric.vm import VMCounters
 from .records import Action, ActionRecord, Record, Server
 from .state import ACTIONS, RECORD_KINDS, SERVERS, Kind, State, server_by_name
 
@@ -227,6 +229,9 @@ class Lab:
         # the running threads of `blocking` (a thread cannot be cancelled), each with
         # the name of its work for the log
         self.threads: dict[asyncio.Future, str] = {}
+        # each running server's counters over time (api/metrics.py): only in memory, so
+        # the metrics start anew when the lab restarts
+        self.samples: dict[int, deque[tuple[float, VMCounters]]] = {}
         # system image name → its file (loaded at start)
         self.images: dict[str, str] = {}
         # held while a whole picture of the system (fault sets, latency, firewall, DHCP,

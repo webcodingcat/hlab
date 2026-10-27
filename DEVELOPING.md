@@ -257,8 +257,9 @@ Everything that touches the state runs on the event loop; everything that blocks
 in a thread. The details:
 
 - **The loop.** Every route is `async def`, so FastAPI's worker threads are not used.
-  The steps of actions, the VM watcher, the snapshot plans and the restart are tasks
-  on the loop too.
+  The steps of actions, the VM watcher, the snapshot plans, the daily backups, the
+  metrics sampler and the restart are tasks on the loop too. The sampler keeps its
+  samples in `lab.samples`, in memory only and not part of the state.
 - **Threads.** Blocking work (scripts, files, guest agents) runs in a thread through
   `await lab.blocking(work, *args)`, so the API keeps answering meanwhile. `work` gets
   plain data and returns plain data, never the state. Usually it is a fabric method

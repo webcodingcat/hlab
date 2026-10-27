@@ -76,6 +76,8 @@ bin/hlab reset                            # delete everything the APIs created
 - **Images**: snapshots and backups of a server's disk (`create_image`, also of a running server: shut it down for a
   consistent image, as on Hetzner), servers created or rebuilt from them, daily backups at 22:00 UTC with seven
   slots while enabled, backups converted to snapshots, delete protection.
+- **Metrics**: CPU, disk and public network of running servers (`/servers/{id}/metrics`), sampled every 15 seconds.
+  The lab keeps them for a day and in memory only: they start anew when the lab restarts (Hetzner keeps 30 days).
 - **Networks**: cloud networks with subnets and routes (pushed by DHCP, forwarded to the gateway server), alias IPs,
   hot-plugged NICs, overlapping networks; Floating IPs routed to their server; firewalls with Hetzner's semantics;
   latency between locations. A server sends only from its own public addresses, so the source a server sees is the
@@ -92,7 +94,7 @@ bin/hlab reset                            # delete everything the APIs created
 
 ### Not like Hetzner
 
-- Not offered: load balancers, certificates, DNS zones, rescue, ISOs, console, metrics. Samba and WebDAV of Storage Boxes are only reported.
+- Not offered: load balancers, certificates, DNS zones, rescue, ISOs, console. Samba and WebDAV of Storage Boxes are only reported.
 - Only the network zone `eu-central` and x86: no locations in the US or Asia, no Arm types (CAX), not even in the
   catalogue. Every server type is offered in every location.
 - No IPv6 to the real Internet, no vSwitch. All Storage Boxes share `storage_box.size_gb`; SCP on port 22 only

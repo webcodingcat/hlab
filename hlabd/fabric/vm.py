@@ -5,13 +5,31 @@ whole start and stop, taps included, is put together in api/system.py (`start_vm
 `kill_vm`). A VM is named by its server's ID (`sid`), which never changes.
 """
 
+import json
 import logging
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 
 from .shell import LONG_TIMEOUT, Shell
 
 log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class VMCounters:
+    """A VM's counters since its start; the metrics are their rates."""
+
+    cpu_seconds: float  # CPU time of the QEMU process, all vCPUs together
+    disk_reads: int
+    disk_writes: int
+    disk_read_bytes: int
+    disk_write_bytes: int
+    packets_in: int  # the public interface, as the guest sees it
+    packets_out: int
+    bytes_in: int
+    bytes_out: int
+
 
 # a console log above this size is cut down to its last MiB
 CONSOLE_LIMIT = 8 << 20
@@ -169,6 +187,19 @@ class VMs:
     def resume(self, sid: int) -> None:
         """Let a paused VM run again."""
         self.qmp(sid, "cont")
+
+    def counters(self, sid: int, tap: str) -> VMCounters | None:
+        """Read the VM's counters (its public tap is `tap`); None if it does not run."""
+        out = self.shell.run(
+            "print-vm-counters", str(self.directory(sid)), tap, check=False
+        )
+        try:
+            values = json.loads(out)
+        except ValueError:  # no VM
+            return None
+        if not isinstance(values, dict) or None in values.values():
+            return None  # QEMU did not answer in time
+        return VMCounters(**values)
 
     def qga(self, sid: int, command: dict) -> dict | None:
         """Send a command to the QEMU guest agent; None when no agent answers."""
