@@ -118,8 +118,3 @@ pricing:
   volume_per_gb_monthly: 0.044
   image_per_gb_monthly: 0.0119
   backup_percent: 20
-
-# Extra DNS answers of the lab resolver (198.18.0.1), e.g. test domains
-# pointing at a Floating IP. A name covers its subdomains too.
-dns: {}
-#  example.test: 203.0.113.10

@@ -55,7 +55,7 @@ def set_up(cfg: dict) -> Lab:
     shell.run("init-net")
     state = State(config.ROOT / "state.json")
     fabric = Fabric(cfg, config.ROOT, shell)
-    fabric.network.write_dns()
+    fabric.dns.start()
     return Lab(cfg, state, fabric)
 
 

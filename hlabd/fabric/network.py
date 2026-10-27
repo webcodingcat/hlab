@@ -1,4 +1,4 @@
-"""Networks: taps, DHCP, DNS, routes of cloud networks, Floating IPs, Internet clients.
+"""Networks: taps, DHCP, routes of cloud networks, Floating IPs, Internet clients.
 
 A part of the fabric (see __init__.py). It asks the VMs (vm.py) whether a server runs.
 The API computes from the state what each tap, DHCP server and route should look like
@@ -12,7 +12,6 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from .. import config
 from .addresses import link_local, network_gateway, prefix, public_mac, route_table
 from .shell import Shell
 from .vm import VMs
@@ -100,7 +99,7 @@ def dnsmasq_config(host: DhcpHost) -> str:
 
 
 class Network:
-    """The lab's network: taps, DHCP, DNS, routes, Floating IPs, Internet clients."""
+    """The lab's network: taps, DHCP, routes, Floating IPs, Internet clients."""
 
     def __init__(
         self,
@@ -284,24 +283,6 @@ class Network:
                     )
                     applied.append([route.destination, table])
             return applied
-
-    def write_dns(self) -> None:
-        """Start the DNS resolver with the lab's names and the hlab.yaml records."""
-        lines = [
-            f"address=/{n}/{a}"
-            for a in (config.SERVICES, config.SERVICES6)
-            for n in ("api.hlab", "box.hlab", "your-storagebox.de")
-        ]
-        lines += [
-            f"address=/hetzner-api.hlab/{a}"
-            for a in (config.HETZNER_API, config.HETZNER_API6)
-        ]
-        lines += [
-            f"address=/{name}/{ip}" for name, ip in (self.cfg.get("dns") or {}).items()
-        ]
-        with self.net_lock:
-            (self.root / "dns.conf").write_text("\n".join(lines) + "\n")
-            self.shell.run("start-dns", str(self.root / "dns.conf"))
 
     def route_floating_ip(self, ip: str, server: PublicTap | None) -> None:
         """Route a Floating IP to the server it is assigned to, or nowhere.

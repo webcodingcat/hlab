@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from ..errors import invalid, not_found
 from ..lab import Lab
 from ..records import Action
-from ..state import ACTIONS, KIND_TYPES
+from ..state import ACTIONS, KIND_TYPES, ZONES
 from .web import paginate
 
 # the resource types of actions, by the API path of their resources
@@ -20,6 +20,8 @@ RESOURCE_TYPES = {
     "volumes": "volume",
     "firewalls": "firewall",
     "primary_ips": "primary_ip",
+    "images": "image",
+    "zones": "zone",
 }
 
 
@@ -46,8 +48,14 @@ def resource_type_of(kind: str) -> str:
 
 
 def resource_of(lab: Lab, kind: str, rid: str) -> tuple[str, int]:
-    """Return the resource type and ID of /v1/<kind>/<rid>, or raise 404."""
+    """Return the resource type and ID of /v1/<kind>/<rid>, or raise 404.
+
+    Zones are named by ID or by name.
+    """
     resource_type = resource_type_of(kind)
+    if kind == "zones" and not rid.isdigit():
+        names = {z["name"]: z["id"] for z in lab.state[ZONES].values()}
+        rid = str(names.get(rid, rid))
     # a kind named by the path: typed as any kind of record
     if not rid.isdigit() or int(rid) not in lab.state[KIND_TYPES[kind]]:
         raise not_found(resource_type)

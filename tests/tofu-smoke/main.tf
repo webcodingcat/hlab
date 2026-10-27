@@ -91,3 +91,16 @@ resource "hcloud_snapshot" "node_a" {
   description = "smoke snapshot"
   labels      = { cluster = "smoke" }
 }
+
+resource "hcloud_zone" "smoke" {
+  name   = "example.com"
+  mode   = "primary"
+  labels = { cluster = "smoke" }
+}
+
+resource "hcloud_zone_rrset" "entry" {
+  zone    = hcloud_zone.smoke.name
+  name    = "www"
+  type    = "A"
+  records = [{ value = hcloud_floating_ip.entry.ip_address, comment = "entry" }]
+}

@@ -22,6 +22,7 @@ from . import (
     servers,
     ssh_keys,
     volumes,
+    zones,
 )
 from .web import install
 
@@ -49,6 +50,7 @@ def create_app(lab: Lab) -> FastAPI:
         floating_ips,
         firewalls,
         volumes,
+        zones,
         control,
     ):
         module.add_routes(app, lab)

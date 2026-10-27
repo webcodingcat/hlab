@@ -11,7 +11,7 @@ the API endpoints differ.
 | Storage Box API (api.hetzner.com) | `http://198.18.0.3/v1` |
 | Metadata service (from a VM) | `http://169.254.169.254/hetzner/v1/metadata` |
 | Storage Boxes (SFTP 22, SSH 23) | `u<id>.your-storagebox.de` → `198.18.0.1` |
-| DNS resolver (lab names) | `198.18.0.1` |
+| DNS resolver (lab names, the DNS zones) | `198.18.0.1` |
 | Lab control (faults, clients, ...) | `http://198.18.0.1/_lab/...` |
 | Network namespace to reach VMs | `docker run --network container:hlab-<name> ...` |
 
@@ -78,6 +78,9 @@ bin/hlab reset                            # delete everything the APIs created
   slots while enabled, backups converted to snapshots, delete protection.
 - **Metrics**: CPU, disk and public network of running servers (`/servers/{id}/metrics`), sampled every 15 seconds.
   The lab keeps them for a day and in memory only: they start anew when the lab restarts (Hetzner keeps 30 days).
+- **DNS zones**: zones and RRSets of the DNS API (all record types, zone file export and import, protection, Hetzner's
+  SOA and nameservers, the serial counted on). The lab's resolver answers for them inside the lab, so servers,
+  clients and tools see a change at once.
 - **Networks**: cloud networks with subnets and routes (pushed by DHCP, forwarded to the gateway server), alias IPs,
   hot-plugged NICs, overlapping networks; Floating IPs routed to their server; firewalls with Hetzner's semantics;
   latency between locations. A server sends only from its own public addresses, so the source a server sees is the
@@ -94,9 +97,12 @@ bin/hlab reset                            # delete everything the APIs created
 
 ### Not like Hetzner
 
-- Not offered: load balancers, certificates, DNS zones, rescue, ISOs, console. Samba and WebDAV of Storage Boxes are only reported.
+- Not offered: load balancers, certificates, rescue, ISOs, console. Samba and WebDAV of Storage Boxes are only reported.
 - Only the network zone `eu-central` and x86: no locations in the US or Asia, no Arm types (CAX), not even in the
   catalogue. Every server type is offered in every location.
+- DNS zones in primary mode only (secondary zones are refused). As on Hetzner, a zone is a domain right below a
+  well-known public suffix (`example.com`, not `example.test`); inside the lab it hides the real domain. Nothing
+  delegates to the lab, so `delegation_status` stays `unknown`.
 - No IPv6 to the real Internet, no vSwitch. All Storage Boxes share `storage_box.size_gb`; SCP on port 22 only
   through SFTP (OpenSSH's default).
 - A server's `locked` is true while one of its actions runs; on Hetzner it marks an administrative lock. Wait for the

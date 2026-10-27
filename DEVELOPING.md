@@ -88,7 +88,7 @@ The repository:
 
 | Path | What |
 |---|---|
-| `Dockerfile` | the lab image (Debian 13 packages: QEMU, dnsmasq, nftables, OpenSSH, Python/FastAPI; the live tests) and the development image on top of it (linters, unit tests) |
+| `Dockerfile` | the lab image (Debian 13 packages: QEMU, dnsmasq, NSD, nftables, OpenSSH, Python/FastAPI; the live tests) and the development image on top of it (linters, unit tests) |
 | `bin/hlab` | the host side, in Bash (Linux, macOS, Git Bash or WSL on Windows): build, start, stop, pass commands into the container |
 | `scripts/hlab.sh` | low-level commands: taps, QEMU, nftables, tc, DHCP, DNS, volumes, images |
 | `scripts/hlab.nft` | the nftables table `inet hlab`; `hlab.sh init-net` fills in the addresses and loads it |

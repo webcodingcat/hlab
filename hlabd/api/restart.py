@@ -130,6 +130,7 @@ async def restore_lab(lab: Lab) -> None:
     await drop_half_created_volumes(lab)
     await images.drop_half_created_images(lab)
     finish_box_setup(lab)
+    await system.apply_dns(lab)
     # firewalls and faults before any VM runs, so no server ever runs unfiltered
     await system.apply_firewall(lab)
     await system.apply_faults(lab)

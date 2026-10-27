@@ -53,8 +53,8 @@ def test_routes_match_the_specification(lab, which):
         want = codes.get((method, path))
         if want is None and path.endswith("/actions/{}") and method == "POST":
             # one lab route for all actions of a resource: every specified action must
-            # answer like it; update_records of an RRSet is left out: the spec's DNS
-            # action answers 200, and the lab offers no DNS
+            # answer like it; update_records of an RRSet is left out: Hetzner answers
+            # it with 200 (api/zones.py answers so), the other RRSet actions with 201
             prefix = path[: -len("{}")]
             actions = {
                 p: c

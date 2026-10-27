@@ -141,7 +141,6 @@ DEFAULTS: dict = {
         "image_per_gb_monthly": 0.0119,
         "backup_percent": 20,
     },
-    "dns": {},
 }
 
 # the lab's volume: state, VM disks, images, keys
@@ -210,7 +209,7 @@ def _merge(base: dict, over: dict) -> dict:
     """Return `base` updated with `over`; only the settings groups merge by key."""
     out = copy.deepcopy(base)
     for k, v in (over or {}).items():
-        # Catalogue-like maps (types, locations, images, dns) are replaced, not merged,
+        # Catalogue-like maps (types, locations, images) are replaced, not merged,
         # so a lab can drop entries.
         if (
             isinstance(v, dict)
@@ -235,6 +234,11 @@ def load(path: str | Path | None) -> dict:
         data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     if not isinstance(data, dict):
         raise ValueError(f"{path}: expected a mapping at the top level")
+    if "dns" in data:  # removed: zones of the DNS API took its place
+        raise ValueError(
+            f"{path}: the setting dns is gone; create a DNS zone through the API "
+            "(/v1/zones) instead"
+        )
     unknown = sorted(set(data) - set(DEFAULTS))
     if unknown:  # a typo would otherwise be ignored silently
         raise ValueError(

@@ -139,6 +139,47 @@ class Image(TypedDict):
     protection: Protection
 
 
+class DnsRecord(TypedDict):
+    """One resource record of an RRSet: its value in zone file syntax."""
+
+    value: str
+    comment: str
+
+
+class Zone(TypedDict):
+    """A DNS zone in primary mode; the lab's nameserver serves it (fabric/dns.py)."""
+
+    id: int
+    name: str  # without the final dot
+    created: str
+    ttl: int  # the default of RRSets without their own
+    labels: dict[str, str]
+    protection: Protection
+
+
+class RRSetProtection(TypedDict):
+    """An RRSet's protection: it cannot be changed (nor deleted) while set."""
+
+    change: bool
+
+
+class RRSet(TypedDict):
+    """A resource record set of a zone: the records of one name and type.
+
+    The API names it "<name>/<type>"; the lab's ID only keys it in the state.
+    """
+
+    id: int
+    zone: int
+    name: str  # relative to the zone, "@" for the zone itself
+    type: str
+    ttl: int | None  # None: the zone's TTL
+    labels: dict[str, str]
+    protection: RRSetProtection
+    records: list[DnsRecord]
+    created: str
+
+
 class PlacementGroup(TypedDict):
     """A placement group; its servers name it (`Server.placement_group`)."""
 
@@ -327,6 +368,8 @@ Record = (
     | SSHKey
     | PlacementGroup
     | Image
+    | Zone
+    | RRSet
     | StorageBox
     | Subaccount
     | BoxSnapshot
@@ -344,10 +387,13 @@ ActionRecord = (
     | StorageBox
     | Subaccount
     | Image
+    | Zone
 )
 
 # The resources with a plain delete protection (`api/web.py`: change_delete_protection).
-ProtectedRecord = Volume | PrimaryIP | FloatingIP | CloudNetwork | StorageBox | Image
+ProtectedRecord = (
+    Volume | PrimaryIP | FloatingIP | CloudNetwork | StorageBox | Image | Zone
+)
 
 
 # --- faults (/_lab/faults; state.py: `faults`) ---------------------------------------

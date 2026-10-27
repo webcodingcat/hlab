@@ -378,6 +378,23 @@ restart_dhcp() {
   dnsmasq --conf-file="${conf}"
 }
 
+# start_nsd <conf file>: (Re)start NSD, the nameserver of the DNS zones, with
+# the configuration hlabd wrote. The old one ends first, so the new one gets
+# its port.
+start_nsd() {
+  local conf_file="$1" pid_file=/run/nsd-hlab.pid pid i
+  if is_alive "${pid_file}" nsd; then
+    pid="$(cat "${pid_file}")"
+    kill "${pid}"
+    for ((i = 0; i < 50; i++)); do
+      [[ -d "/proc/${pid}" ]] || break
+      sleep 0.1
+    done
+  fi
+  rm -f "${pid_file}"
+  nsd -c "${conf_file}"
+}
+
 # start_dns <conf file>: Start the lab resolver on the services address.
 start_dns() {
   local conf_file="$1" upstream
@@ -660,6 +677,7 @@ main() {
     stop-dhcp) stop_dhcp "$@" ;;
     restart-dhcp) restart_dhcp "$@" ;;
     start-dns) start_dns "$@" ;;
+    start-nsd) start_nsd "$@" ;;
     start-box | stop-box | set-account | set-access | set-home | set-zfs-view | \
       remove-account | add-key | write-authorized-keys | take-snapshot | \
       roll-back | remove-tree | print-bytes-used | list-folders)

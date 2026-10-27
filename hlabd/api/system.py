@@ -39,6 +39,13 @@ async def apply_firewall(lab: Lab) -> None:
         await lab.blocking(lab.fabric.firewall.apply, servers)
 
 
+async def apply_dns(lab: Lab) -> None:
+    """Serve the DNS zones of the API as they are now (NSD and the lab resolver)."""
+    async with lab.picture_lock:
+        zones = desired.zone_files(lab.state)
+        await lab.blocking(lab.fabric.dns.apply, zones)
+
+
 async def write_dhcp(lab: Lab) -> None:
     """Hand every tap that exists its DHCP configuration."""
     async with lab.picture_lock:

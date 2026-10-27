@@ -1,4 +1,4 @@
-"""The work on the system: VMs, taps, routes, nftables, tc, DHCP, the Storage Box.
+"""The work on the system: VMs, taps, routes, nftables, tc, DHCP, DNS, the Storage Box.
 
 Most of it runs as verbs of scripts/hlab.sh. The lab's own files under its directory
 are handled here in Python: VM directories, console logs, volume files, and the files
@@ -20,6 +20,7 @@ constructor:
 | `network` (`Network`) | network.py | shell, vms |
 | `firewall` (`Firewall`) | firewall.py | shell |
 | `box` (`Box`) | storagebox.py | shell (the Storage Box) |
+| `dns` (`Dns`) | dns.py | shell (the lab resolver, NSD for the DNS zones) |
 
 The address rules (MACs, gateways, routing tables) are plain functions in addresses.py.
 Work that spans several parts, such as a VM's start and stop with its taps, volumes,
@@ -29,6 +30,7 @@ routes and faults, is put together by the API (api/system.py).
 import threading
 from pathlib import Path
 
+from .dns import Dns
 from .faults import Faults
 from .firewall import Firewall
 from .network import Network
@@ -60,3 +62,4 @@ class Fabric:
         self.network = Network(cfg, root, self.shell, self.net_lock, self.vms)
         self.firewall = Firewall(root, self.shell, self.net_lock)
         self.box = Box(self.shell)
+        self.dns = Dns(root, self.shell)

@@ -40,11 +40,13 @@ from .records import (
     PlacementGroup,
     PrimaryIP,
     Record,
+    RRSet,
     Server,
     SSHKey,
     StorageBox,
     Subaccount,
     Volume,
+    Zone,
 )
 
 log = logging.getLogger(__name__)
@@ -83,6 +85,8 @@ PLACEMENT_GROUPS: Kind[PlacementGroup] = Kind(
     "placement_groups", PlacementGroup, 7_000_000, "placement group"
 )
 IMAGES: Kind[Image] = Kind("images", Image, 8_000_000, "image")
+ZONES: Kind[Zone] = Kind("zones", Zone, 9_000_000, "zone")
+RRSETS: Kind[RRSet] = Kind("rrsets", RRSet, 11_000_000, "RRSet")
 VOLUMES: Kind[Volume] = Kind("volumes", Volume, 10_000_000, "volume")
 STORAGE_BOXES: Kind[StorageBox] = Kind(
     "storage_boxes", StorageBox, 14_000_000, "Storage Box"
@@ -108,6 +112,8 @@ RECORD_KINDS: tuple[Kind[Record], ...] = (
     PRIMARY_IPS,
     PLACEMENT_GROUPS,
     IMAGES,
+    ZONES,
+    RRSETS,
     VOLUMES,
     STORAGE_BOXES,
     SUBACCOUNTS,
