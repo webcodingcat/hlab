@@ -126,7 +126,8 @@ bin/hlab reset                            # delete everything the APIs created
 ### Not like Hetzner
 
 - Not offered: rescue, ISOs, console, vSwitch, IPv6 to the real Internet. Samba and WebDAV of Storage Boxes are only
-  reported.
+  reported. IPv6 packets to the Internet are refused at once (ICMPv6 no route), so clients fall back to IPv4; a
+  client that waits on UDP, such as systemd-timesyncd with the Debian NTP pool, takes about a minute to get there.
 - Only the network zone `eu-central` and x86 (no CAX), not even in the catalogue; every server type is offered in
   every location.
 - DNS zones in primary mode only. A zone is a domain right below a well-known public suffix (`example.com`, not

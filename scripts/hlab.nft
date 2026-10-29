@@ -80,8 +80,10 @@ table inet hlab {
         iifname "${uplink}" ct state established,related accept
         # no packets (with any source) from outside to the guests
         iifname "${uplink}" drop
-        # the lab's IPv6 is its own: none of it leaves
-        oifname "${uplink}" meta nfproto ipv6 drop
+        # the lab's IPv6 is its own: none of it leaves. Refused at once, as on a host
+        # without an IPv6 route, so clients fall back to IPv4 instead of timing out
+        # (an NTP pool name resolves to IPv6 addresses first)
+        oifname "${uplink}" meta nfproto ipv6 reject with icmpv6 no-route
         iifname @isolated drop
         oifname @isolated drop
         iifname . oifname @cuts drop
