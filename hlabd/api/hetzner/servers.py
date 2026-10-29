@@ -209,7 +209,11 @@ def volume_json(lab: Lab, volume: Volume) -> dict:
         "id": volume["id"],
         "name": volume["name"],
         "created": volume["created"],
+        # server is deprecated in favour of assignee; Hetzner still sends both
         "server": volume["server"],
+        "assignee": {"id": volume["server"], "type": "server"}
+        if volume["server"]
+        else None,
         "location": location_json(lab, volume["location"]),
         "size": volume["size"],
         "linux_device": f"/dev/disk/by-id/scsi-0HC_Volume_{volume['id']}",

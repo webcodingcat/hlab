@@ -37,10 +37,12 @@ _DNS_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
 # "required" still counts the key as present.
 BASE_TYPE_CHECKER = Draft202012Validator.TYPE_CHECKER
 
-# Request fields the specification marks as required but Hetzner's API fills in when
-# they are missing: a load balancer service's proxyprotocol and health_check (the
-# hcloud provider leaves them out unless they are set).
-OPTIONAL_IN_REQUESTS = {"proxyprotocol", "health_check"}
+# Request fields the specification marks as required but Hetzner's API does without:
+# a load balancer service's proxyprotocol and health_check, which it fills in when
+# they are missing (the hcloud provider leaves them out unless they are set), and an
+# attach's assignee, which the deprecated server field still stands in for (the hcloud
+# provider sends server).
+OPTIONAL_IN_REQUESTS = {"proxyprotocol", "health_check", "assignee"}
 
 
 def null_or(type_name: str):

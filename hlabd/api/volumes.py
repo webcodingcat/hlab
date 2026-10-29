@@ -38,6 +38,23 @@ VOLUMES_PER_SERVER = 16
 VOLUME_BUSY = "the volume is busy"
 
 
+def named_server(lab: Lab, body: dict) -> Server | None:
+    """Return the server a create or an attach names, or None.
+
+    Hetzner's current requests name it as assignee ({"id", "type": "server"}); the
+    deprecated server field still works on the real API, and the hcloud provider sends
+    it.
+    """
+    assignee = body.get("assignee")
+    if assignee:
+        if assignee.get("type") != "server":
+            raise invalid("must be server", "assignee.type")
+        return lab.server_or_404(ref_id(assignee.get("id"), "assignee.id"))
+    if body.get("server"):
+        return lab.server_or_404(ref_id(body["server"], "server"))
+    return None
+
+
 def check_attach(lab: Lab, volume: Volume, server: Server) -> None:
     """Check that the volume can be attached to the server (Hetzner's errors)."""
     if volume.get("server"):
@@ -94,9 +111,7 @@ def create_volume(lab: Lab, body: dict) -> dict:
         raise invalid(f"must be between {MIN_GB} and {MAX_GB}", "size")
     if body.get("format") not in (None, "ext4", "xfs"):
         raise invalid("must be ext4 or xfs", "format")
-    server = None
-    if body.get("server"):
-        server = lab.server_or_404(ref_id(body["server"], "server"))
+    server = named_server(lab, body)
     if not (body.get("location") or server):
         raise invalid("location or server is required", "location")
     location = catalogue_name(
@@ -236,7 +251,9 @@ async def attach(lab: Lab, volume: Volume, body: dict) -> Plan:
     again.
     """
     require_available(volume)
-    server = lab.server_or_404(ref_id(body.get("server"), "server"))
+    server = named_server(lab, body)
+    if server is None:
+        raise invalid("is required", "assignee")
     check_attach(lab, volume, server)
     automount = body.get("automount", False)
     vid, sid = volume["id"], server["id"]

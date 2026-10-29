@@ -344,3 +344,28 @@ def test_a_deleted_volume_stays_claimed(api):
     assert api.delete(f"/v1/volumes/{record['id']}").status_code == 204
     # a request that looked the volume up before the delete gets 423, no action
     assert record["_busy"] is True
+
+
+def test_an_attach_names_the_server_as_assignee_or_as_server(api):
+    # Hetzner: the current spec wants assignee; the deprecated server field still
+    # works, and the hcloud provider sends it
+    server = create_server(api, "a")["server"]
+    for name, body in (
+        ("new", {"assignee": {"id": server["id"], "type": "server"}}),
+        ("old", {"server": server["id"]}),
+    ):
+        volume = api.post(
+            "/v1/volumes", json={"name": name, "size": 10, "location": "fsn1"}
+        ).json()
+        wait_action(api, volume["action"])
+        response = api.post(
+            f"/v1/volumes/{volume['volume']['id']}/actions/attach", json=body
+        )
+        assert wait_action(api, response.json()["action"])["status"] == "success"
+        volume = api.get(f"/v1/volumes/{volume['volume']['id']}").json()["volume"]
+        assert volume["server"] == server["id"]
+    response = api.post(
+        f"/v1/volumes/{volume['id']}/actions/attach",
+        json={"assignee": {"id": server["id"], "type": "load_balancer"}},
+    )
+    assert response.status_code == 422
