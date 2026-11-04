@@ -1,5 +1,6 @@
 """Images of the project: snapshots and backups, servers made from them."""
 
+import pytest
 from conftest import change_state, create_server, state_of, wait_action
 
 from hlabd.api import images, servers
@@ -145,3 +146,83 @@ def test_a_restart_drops_images_whose_copy_was_cut_off(api):
     change_state(api, image.update, {"status": "creating"})
     api.on_loop(images.drop_half_created_images, api.lab)
     assert state_of(api, "images") == {}
+
+
+# --- images in files of the container (the lab control) -------------------------------
+
+
+def test_an_imported_file_is_a_snapshot_servers_are_made_from(api, tmp_path):
+    answer = api.post(
+        "/_lab/images",
+        json={
+            "file": "/hlab/transfer/base.qcow2",
+            "description": "prepared",
+            "labels": {"role": "host"},
+        },
+    )
+    assert answer.status_code == 200, answer.text
+    iid = answer.json()["image"]["id"]
+    file = str(tmp_path / "images" / "own" / f"{iid}.qcow2")
+    assert ("copy-image", "/hlab/transfer/base.qcow2", file) in api.sh.calls
+    # Hetzner knows no images of one's own: the file is a snapshot of no server
+    listed = api.get(
+        "/v1/images", params={"type": "snapshot", "label_selector": "role=host"}
+    ).json()["images"]
+    assert [i["id"] for i in listed] == [iid]
+    image = listed[0]
+    assert (image["status"], image["description"], image["created_from"]) == (
+        "available",
+        "prepared",
+        None,
+    )
+    assert (image["disk_size"], image["image_size"]) == (10, 3.0)
+    assert image["os_flavor"] == "unknown"
+
+    server = create_server(api, "a", image=iid)["server"]
+    assert server["image"]["id"] == iid
+    assert api.sh.commands("create-vm-disk-from-image")[-1][2] == file
+
+
+def test_an_import_refuses_what_is_no_standalone_qcow2_image(api):
+    for info in (
+        {"format": "raw", "virtual-size": 2**30},
+        {"format": "qcow2", "virtual-size": 2**30, "backing-filename": "/base"},
+        {
+            "format": "qcow2",
+            "virtual-size": 2**30,
+            "format-specific": {"type": "qcow2", "data": {"data-file": "/raw"}},
+        },
+    ):
+        api.sh.image_info = info
+        response = api.post("/_lab/images", json={"file": "/hlab/transfer/x"})
+        assert response.json()["error"]["code"] == "invalid_input", info
+    response = api.post("/_lab/images", json={"file": "relative.qcow2"})
+    assert response.json()["error"]["code"] == "invalid_input"
+    assert state_of(api, "images") == {}
+    assert not api.sh.commands("copy-image")
+
+
+def test_a_failed_import_leaves_no_image(api):
+    api.sh.fail.add("copy-image")
+    # the API answers 500 (the test client passes the error on)
+    with pytest.raises(RuntimeError):
+        api.post("/_lab/images", json={"file": "/hlab/transfer/x.qcow2"})
+    assert state_of(api, "images") == {}
+
+
+def test_an_image_is_exported_once_it_is_whole(api, tmp_path):
+    sid = create_server(api, "a")["server"]["id"]
+    iid = take_image(api, sid)["id"]
+    response = api.post(
+        f"/_lab/images/{iid}/export", json={"file": "/hlab/transfer/out"}
+    )
+    assert response.json() == {"file": "/hlab/transfer/out"}
+    file = str(tmp_path / "images" / "own" / f"{iid}.qcow2")
+    assert ("copy-image", file, "/hlab/transfer/out") in api.sh.calls
+
+    image = api.on_loop(lambda: api.lab.state[IMAGES][iid])
+    change_state(api, image.update, {"status": "creating"})
+    response = api.post(f"/_lab/images/{iid}/export", json={"file": "/x"})
+    assert response.json()["error"]["code"] == "locked"
+    response = api.post("/_lab/images/999/export", json={"file": "/x"})
+    assert response.status_code == 404

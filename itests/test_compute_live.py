@@ -1,8 +1,9 @@
 """Live tests of servers and what surrounds them.
 
-Boot like Hetzner, primary IPs, rebuild, volumes, password reset, other system
-images: these bring their own servers (x*) and leave a, b and c alone. The power tests
-at the end power b off, reset a and delete c; conftest.py runs them after all others.
+Boot like Hetzner, primary IPs, rebuild, snapshots in files, volumes, password reset,
+other system images: these bring their own servers (x*) and leave a, b and c alone.
+The power tests at the end power b off, reset a and delete c; conftest.py runs them
+after all others.
 """
 
 import subprocess
@@ -98,6 +99,37 @@ def test_rebuild_gives_a_fresh_system(lab: LiveLab):
         assert lab.run("x3", "test -e /root/marker").returncode == 1  # a fresh system
     finally:
         lab.delete("x3")
+
+
+def test_snapshot_survives_export_delete_and_import(lab: LiveLab, tmp_path):
+    lab.create("x4")
+    file = str(tmp_path / "x4.qcow2")
+    try:
+        lab.check_output("x4", "echo from-x4 > /root/marker; sync")
+        answer = lab.api(
+            "POST",
+            f"/servers/{lab.server('x4')['id']}/actions/create_image",
+            {"description": "x4"},
+        )
+        lab.wait_action(answer["action"], timeout=300)
+        snapshot_id = answer["image"]["id"]
+        subprocess.run(["hlab", "image", "export", str(snapshot_id), file], check=True)
+        lab.api("DELETE", f"/images/{snapshot_id}")
+        imported = subprocess.run(
+            ["hlab", "image", "import", file, "--label", "role=prepared"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        image_id = int(imported.stdout)
+        listed = lab.api("GET", "/images?type=snapshot&label_selector=role=prepared")
+        assert [image["id"] for image in listed["images"]] == [image_id]
+        lab.create("x5", image=image_id)
+        assert lab.check_output("x5", "cat /root/marker") == "from-x4"
+        lab.delete("x5")
+        lab.api("DELETE", f"/images/{image_id}")
+    finally:
+        lab.delete("x4")
 
 
 def test_volume_automounts_hot_plugs_moves_and_grows(lab: LiveLab):

@@ -5,6 +5,7 @@ the test clients is checked against Hetzner's OpenAPI specification.
 """
 
 import base64
+import json
 import os
 import re
 import time
@@ -38,6 +39,8 @@ class FakeShell:
         self.neigh: dict[str, str] = {}  # address → taps it was seen on (neigh-dev)
         self.fail: set[str] = set()  # commands that fail (error paths)
         self.stdin: list[tuple] = []  # (command, what it got on stdin): passwords
+        # what qemu-img reads from any image file (print-image-info): a 10 GiB disk
+        self.image_info: dict = {"format": "qcow2", "virtual-size": 10 * 2**30}
 
     def run(self, *args, check=True, stdin_text=None, timeout=None):
         """Record a command and play its effect on the fake VMs.
@@ -56,8 +59,10 @@ class FakeShell:
             return self.neigh.get(args[1], "")
         elif args[0] == "kill-vm":
             self.running.discard(args[1])
-        elif args[0] == "create-image":
+        elif args[0] in ("create-image", "copy-image"):
             return f"{3 * 2**30}\n"  # the file's size: 3 GiB
+        elif args[0] == "print-image-info":
+            return json.dumps(self.image_info)
         return ""
 
     def ok(self, *args, timeout=None):

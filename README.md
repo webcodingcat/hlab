@@ -100,6 +100,8 @@ bin/hlab fault clear
 bin/hlab client add alice                 # an Internet client with its own addresses, no NAT
 bin/hlab client exec alice curl -s http://203.0.113.11/
 bin/hlab box user lab1 key.pub            # a Storage Box account outside the API
+bin/hlab image export 7 base.qcow2        # an image of the project (snapshot or backup) to a file here
+bin/hlab image import base.qcow2 --label role=base   # a qcow2 file as a new snapshot; prints its ID
 bin/hlab ssh a uptime                     # root on a server with the lab's SSH key
 bin/hlab reset                            # delete everything the APIs created
 ```
@@ -108,7 +110,8 @@ bin/hlab reset                            # delete everything the APIs created
 
 - **Servers**: boot through cloud-init's Hetzner datasource, Hetzner's timings and `locked` (423), rebuild, type
   change, password reset, reverse DNS, primary IPs, SSH keys, placement groups.
-- **Images**: snapshots and backups (daily, seven slots), servers created or rebuilt from them.
+- **Images**: snapshots and backups (daily, seven slots), servers created or rebuilt from them. `image export`
+  and `image import` move an image between labs as a qcow2 file, so a prepared image outlives its lab.
 - **Networks**: cloud networks with subnets, routes and alias IPs, hot-plugged NICs, Floating IPs, firewalls with
   Hetzner's semantics, latency between locations. Servers see the real client IP.
 - **Volumes**: hot-plugged SCSI disks, formatted, resized, automounted.
@@ -134,6 +137,7 @@ bin/hlab reset                            # delete everything the APIs created
   `example.test`) and hides the real domain inside the lab.
 - ACME: checks come from `192.0.2.2`, so a Cloud firewall must let them in; Pebble's root is new after every start
   of the lab (`HLAB_ACME_CA` has the current one). Managed certificates are not renewed (they last five years).
+- An imported image is a snapshot without `created_from` and with `os_flavor` `unknown`; Hetzner has no import.
 - A load balancer is in one cloud network at most.
 - Metrics reach back one day and start anew when the lab restarts (Hetzner keeps 30 days).
 - All Storage Boxes share `storage_box.size_gb`; SCP on port 22 only through SFTP (OpenSSH's default).

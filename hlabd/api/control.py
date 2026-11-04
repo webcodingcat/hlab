@@ -1,4 +1,4 @@
-"""Lab control under /_lab/: faults, Internet clients, Storage Box accounts, reset.
+"""Lab control under /_lab/: faults, clients, Storage Box accounts, images, reset.
 
 The lab CLI and test harnesses use it, also from inside the VMs through
 http://198.18.0.1/_lab/...
@@ -29,7 +29,7 @@ from ..state import (
     primary_address_of,
     server_by_name,
 )
-from . import desired, hetzner, system
+from . import desired, hetzner, images, system
 from .faults import drop_faults, fault_json
 from .storagebox.base import set_up_box_user, username
 from .web import read_body
@@ -398,7 +398,7 @@ async def tear_down(lab: Lab) -> list[str]:
     boxes = list(state[STORAGE_BOXES].values())  # record: torn down as last seen
     routed = [f["ip"] for f in state[FLOATING_IPS].values() if f.get("server")]
     clients = list(state[CLIENTS].values())  # record: torn down as last seen
-    images = list(state[IMAGES])
+    image_ids = list(state[IMAGES])
     networks = list(state[NETWORKS])
     for server in servers:
         await step(f"server {server['id']}", system.delete_vm(lab, server))
@@ -420,7 +420,7 @@ async def tear_down(lab: Lab) -> list[str]:
         await step(f"route of {ip}", system.route_floating_ip(lab, ip, None))
     for client in clients:
         await step(f"client {client['name']}", system.remove_client(lab, client))
-    for iid in images:
+    for iid in image_ids:
         await step(f"image {iid}", lab.blocking(fabric.vms.delete_image, iid))
     state.clear()
     await lab.blocking(state.flush)  # the empty lab is on disk before the answer
@@ -492,6 +492,14 @@ def add_routes(app: FastAPI, lab: Lab) -> None:
     @app.post("/_lab/box/users")
     async def box_user_create(request: Request):
         return await add_box_user(lab, await read_body(request))
+
+    @app.post("/_lab/images")
+    async def image_import(request: Request):
+        return await images.import_image(lab, await read_body(request))
+
+    @app.post("/_lab/images/{iid}/export")
+    async def image_export(iid: int, request: Request):
+        return await images.export_image(lab, iid, await read_body(request))
 
     @app.post("/_lab/reset")
     async def reset_action():

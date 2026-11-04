@@ -121,6 +121,7 @@ class Image(TypedDict):
     """An image of the project: a snapshot or a backup of a server's disk.
 
     The system images are not records: they come from hlab.yaml (api/catalogue.py).
+    An imported image (`hlab image import`) is a snapshot taken from no server.
     """
 
     id: int
@@ -129,12 +130,14 @@ class Image(TypedDict):
     description: str
     labels: dict[str, str]
     created: str
-    # the server it was taken from, by ID and by its name then
-    created_from_id: int
-    created_from_name: str
+    # the server it was taken from, by ID and by its name then; None if imported
+    created_from_id: int | None
+    created_from_name: str | None
     bound_to: int | None  # a backup's server; None for a snapshot
-    os_image: str  # the system image the disk came from in the end (os_flavor)
-    disk_size: int  # GB: the server's disk
+    # the system image the disk came from in the end (os_flavor); "unknown" if
+    # imported
+    os_image: str
+    disk_size: int  # GB: the server's disk, or the imported file's
     image_size: float | None  # GB: the file, once taken
     protection: Protection
 

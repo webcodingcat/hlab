@@ -5,9 +5,13 @@ keeps it). A server made from one gets a copy of that file, so the image can be
 deleted any time, as on Hetzner. Backups belong to their server: it keeps at most
 `BACKUP_SLOTS`, they are taken once a day while backups are enabled, and they go with
 the server or with `disable_backup`. Converting one to a snapshot keeps it.
+
+The lab control copies an image to a qcow2 file and adds a qcow2 file as a snapshot
+(`hlab image export|import`), so a prepared image can outlive its lab.
 """
 
 import logging
+import math
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
@@ -237,6 +241,84 @@ async def drop_half_created_images(lab: Lab) -> None:
         iid for iid, i in lab.state[IMAGES].items() if i["status"] == "creating"
     ]
     await delete_images(lab, creating)
+
+
+# --- images in files of the container (the lab control, api/control.py) --------------
+
+
+def checked_file(body: dict) -> str:
+    """Return the request's `file`, a path in the container."""
+    file = body.get("file")
+    if not isinstance(file, str) or not file.startswith("/"):
+        raise invalid("file must be an absolute path in the container", "file")
+    return file
+
+
+async def import_image(lab: Lab, body: dict) -> dict:
+    """Add a qcow2 file of the container to the project as a snapshot; return it.
+
+    Hetzner has no images of one's own, only snapshots, so an imported image is a
+    snapshot taken from no server: `created_from` is null and the OS is unknown. The
+    lab copies the file, which stays where it is. Body: {"file": "/path.qcow2",
+    "description": "...", "labels": {"key": "value"}}.
+
+    Like the other lab control routes, it answers when the work is done: the caller
+    waits for the copy anyway, and there is no Hetzner action to poll.
+    """
+    file = checked_file(body)
+    description = body.get("description") or "imported image"
+    labels = body.get("labels") or {}
+    # /_lab has no OpenAPI request check (api/web.py), so the body is checked here
+    if not isinstance(description, str):
+        raise invalid("description must be a string", "description")
+    if not isinstance(labels, dict) or not all(
+        isinstance(key, str) and isinstance(value, str) for key, value in labels.items()
+    ):
+        raise invalid("labels must map strings to strings", "labels")
+    info = await lab.blocking(lab.fabric.vms.inspect_image_file, file)
+    if info is None or info.format != "qcow2" or not info.standalone:
+        raise invalid(f"{file} is no qcow2 image that stands alone", "file")
+    # the image exists at once, still being created, like a snapshot: it cannot be
+    # deleted half way, and a lab restart drops it (drop_half_created_images)
+    with lab.state.change():
+        iid = lab.state.new_id(IMAGES)
+        lab.state[IMAGES][iid] = {
+            "id": iid,
+            "type": "snapshot",
+            "status": "creating",
+            "description": description,
+            "labels": labels,
+            "created": now(),
+            "created_from_id": None,
+            "created_from_name": None,
+            "bound_to": None,
+            "os_image": "unknown",
+            "disk_size": math.ceil(info.virtual_size / GB),
+            "image_size": None,
+            "protection": {"delete": False},
+        }
+    async with lab.undo_on_failure(lambda: delete_images(lab, [iid])):
+        size = await lab.blocking(lab.fabric.vms.import_image, file, iid)
+    # a route, not an action's steps: a reset meanwhile makes this a 404
+    with lab.state.change():
+        image = own_image_or_404(lab, iid)
+        image["status"] = "available"
+        image["image_size"] = round(size / GB, 2)
+    return {"image": hetzner.own_image_json(lab, image)}
+
+
+async def export_image(lab: Lab, iid: int, body: dict) -> dict:
+    """Copy an image of the project (a snapshot or backup) to a file of the container.
+
+    The file is written whole or not at all. Body: {"file": "/path.qcow2"}. No flag
+    keeps the image while it is copied: a copy that has begun reads on from the
+    deleted file, and image files never change once they are whole.
+    """
+    file = checked_file(body)
+    if own_image_or_404(lab, iid)["status"] == "creating":
+        raise locked("image is being created")
+    await lab.blocking(lab.fabric.vms.export_image, iid, file)
+    return {"file": file}
 
 
 # --- routes ---------------------------------------------------------------------------

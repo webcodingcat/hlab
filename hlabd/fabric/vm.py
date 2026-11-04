@@ -32,6 +32,16 @@ class VMCounters:
     bytes_out: int
 
 
+@dataclass(frozen=True)
+class ImageFileInfo:
+    """What qemu-img reads from an image file."""
+
+    format: str  # "qcow2", "raw", ...
+    virtual_size: int  # bytes: the size of the disk the image holds
+    # no backing file and no external data file: the image is useful on its own
+    standalone: bool
+
+
 # a console log above this size is cut down to its last MiB
 CONSOLE_LIMIT = 8 << 20
 
@@ -88,6 +98,30 @@ class VMs:
             timeout=LONG_TIMEOUT,
         )
         return int(out.strip() or 0)
+
+    def inspect_image_file(self, file: str) -> ImageFileInfo | None:
+        """Return what qemu-img reads from an image file; None if it reads no image."""
+        out = self.shell.run("print-image-info", file, check=False)
+        try:
+            info = json.loads(out)
+        except ValueError:  # no file, or no image in it
+            return None
+        qcow2_data = info.get("format-specific", {}).get("data", {})
+        standalone = "backing-filename" not in info and "data-file" not in qcow2_data
+        return ImageFileInfo(info["format"], info["virtual-size"], standalone)
+
+    def import_image(self, file: str, iid: int) -> int:
+        """Copy an image file into an image of the project; return the copy's size."""
+        out = self.shell.run(
+            "copy-image", file, str(self.image_file(iid)), timeout=LONG_TIMEOUT
+        )
+        return int(out.strip() or 0)
+
+    def export_image(self, iid: int, file: str) -> None:
+        """Copy an image of the project to a file, whole or not at all."""
+        self.shell.run(
+            "copy-image", str(self.image_file(iid)), file, timeout=LONG_TIMEOUT
+        )
 
     def delete_image(self, iid: int) -> None:
         """Delete the file of an image of the project, and a copy cut off half way."""

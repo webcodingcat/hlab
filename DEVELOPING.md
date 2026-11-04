@@ -100,7 +100,7 @@ Inside `hlabd/`:
 | `api/nics.py`, `api/public_addresses.py` | a server's NICs in cloud networks; what primary and Floating IPs share |
 | `api/storagebox/` | the Storage Box API, a separate app |
 | `api/restart.py`, `api/watcher.py` | what happens when the lab starts again; a VM that ended by itself |
-| `api/control.py`, `api/faults.py` | lab control under `/_lab/`; the faults in the state |
+| `api/control.py`, `api/faults.py` | lab control under `/_lab/` (images in files: below); the faults in the state |
 | `api/ui.py`, `ui/` | the web UI: an app on its own port (`config.UI_PORT`) with the JSON overview, the newest log lines and the `/_lab` routes of `api/control.py`; the page is plain HTML, CSS and JavaScript, no build step |
 | `api/desired/`, `api/system.py` | see desired and system |
 | `fabric/` | changes the system, with plain data as arguments (parts listed in `fabric/__init__.py`) |
@@ -120,6 +120,29 @@ Inside `hlabd/`:
   lab's own files under `/hlab` (VM directories, console logs, volume files, the files
   a verb loads). Outside it, only `daemon.set_up` before the loop starts and the
   state's writer thread (`state.json`).
+
+### Images in files
+
+A project's images can leave a lab and come back as qcow2 files (`api/images.py`,
+`import_image` and `export_image`):
+
+```text
+bin/hlab image export|import      on the Docker host: a transfer file in
+                                  /hlab/transfer, filled or read through docker
+                                  exec's stdin or stdout, removed at the end
+  → hlab image export|import      in the container (cli.py), on container paths
+  → POST /_lab/images[/{id}/export]
+  → fabric.vms                    print-image-info, copy-image (whole or not at all)
+```
+
+Hetzner has no import, so an imported file becomes a snapshot taken from no server
+(`created_from_id` None, `os_image` "unknown"). Like a snapshot taken through the API,
+it is `creating` while its file is copied: it cannot be deleted then, and a restart
+drops it. The routes answer when the copy is done, like the other lab control
+routes: the caller waits for it anyway, and there is no Hetzner action to poll. An
+export holds no flag: a copy that has begun reads on from a deleted file, and image
+files never change once they are whole. A wrapper killed half way leaves its transfer
+file in `/hlab/transfer`.
 
 ## Actions and flags
 
@@ -370,7 +393,8 @@ resource, its JSON shape (`api/hetzner/`), its PUT keys if it can change. The sp
 check tells you if the shape is wrong. Old state files without it need a migration.
 
 **Changing a record's shape** (a field added, renamed, moved, dropped, stored
-differently):
+differently; a field that only takes a further value, such as None, needs no migration,
+as old files still fit):
 
 1. `migrations.py`: `migrate_<n>_to_<n+1>(data)`, which changes the loaded JSON in
    place (IDs are strings there). It uses literal field names, not the current

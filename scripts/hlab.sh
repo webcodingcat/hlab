@@ -577,6 +577,24 @@ create_image() {
   stat -c %s "${image}"
 }
 
+# print_image_info <file>: Print qemu-img's view of an image file as JSON
+# (format, virtual size, backing file); fail if it reads no image there.
+print_image_info() {
+  local file="$1"
+  qemu-img info --output=json "${file}"
+}
+
+# copy_image <from> <to>: Copy an image file whole or not at all and print the
+# copy's size in bytes. Image files are never changed in place, so a plain
+# copy is a consistent one.
+copy_image() {
+  local from="$1" to="$2"
+  mkdir -p "$(dirname "${to}")"
+  cp --sparse=always "${from}" "${to}.part"
+  mv "${to}.part" "${to}"
+  stat -c %s "${to}"
+}
+
 # resize_vm_disk <dir> <size gb>: Grow the server's disk (qemu-img grows
 # only).
 resize_vm_disk() {
@@ -767,6 +785,8 @@ main() {
     create-vm-disk) create_vm_disk "$@" ;;
     create-vm-disk-from-image) create_vm_disk_from_image "$@" ;;
     create-image) create_image "$@" ;;
+    print-image-info) print_image_info "$@" ;;
+    copy-image) copy_image "$@" ;;
     resize-vm-disk) resize_vm_disk "$@" ;;
     start-vm) start_vm "$@" ;;
     kill-vm) kill_vm "$@" ;;

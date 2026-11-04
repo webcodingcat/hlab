@@ -5,6 +5,7 @@ of the file, both read as text; formatting (indentation, line breaks, alignment)
 change, the names must match. The reading of the lab name runs in Bash.
 """
 
+import os
 import re
 import shutil
 import subprocess
@@ -177,3 +178,82 @@ def test_bin_hlab_publishes_the_ports_the_lab_listens_on():
     for name, port in [("UI_PORT", config.UI_PORT), ("SOCKS_PORT", config.SOCKS_PORT)]:
         match = re.search(rf"^readonly {name}=(\d+)$", text, re.M)
         assert match and int(match.group(1)) == port, name
+
+
+# a stand-in for docker in run_image's tests: the container's files live under $BOX,
+# and "hlab image" copies files there as the lab would
+FAKE_DOCKER = r"""
+docker() {
+  shift  # exec
+  [[ "$1" == -i ]] && shift
+  shift  # the container
+  # what runs in the container, and its last argument: a path there, mostly
+  local cmd="$1" path="${!#}"
+  case "${cmd}" in
+    mkdir) mkdir -p "${BOX}${path}" ;;
+    rm) rm -f "${BOX}${path}" ;;
+    mktemp) touch "${BOX}${path}/transfer" && echo "${path}/transfer" ;;
+    cat) cat "${BOX}${path}" ;;
+    cp) cat >"${BOX}${path}" ;;  # cp /dev/stdin <path>
+    hlab)
+      local subcommand="$3"
+      if [[ "${subcommand}" == export ]]; then  # hlab image export <id> <path>
+        local image_id="$4" transfer="$5"
+        [[ "${image_id}" == 7 ]] || return 1
+        echo "image 7" >"${BOX}${transfer}"
+      else  # hlab image import <path> <options ...>
+        local transfer="$4"
+        echo "imported $(cat "${BOX}${transfer}"):${*:5}"
+      fi
+      ;;
+  esac
+}
+"""
+
+
+def bash_image(tmp_path: Path, *args: str) -> subprocess.CompletedProcess:
+    """Run bin/hlab's run_image with a fake docker; the container's files are BOX."""
+    (tmp_path / "box").mkdir(exist_ok=True)
+    command = f'source "$1" && {FAKE_DOCKER} run_image "${{@:2}}"'
+    return subprocess.run(
+        ["bash", "-c", command, "-", BIN / "hlab", *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=tmp_path,
+        env={**os.environ, "BOX": str(tmp_path / "box")},
+    )
+
+
+@NEEDS_BASH
+def test_bin_hlab_exports_an_image_to_a_file_here(tmp_path):
+    process = bash_image(tmp_path, "export", "7", "out.qcow2")
+    assert process.returncode == 0, process.stderr
+    assert (tmp_path / "out.qcow2").read_text() == "image 7\n"
+    # the transfer file in the container is gone
+    assert not list((tmp_path / "box" / "hlab" / "transfer").iterdir())
+
+
+@NEEDS_BASH
+def test_bin_hlab_leaves_no_file_when_an_export_fails(tmp_path):
+    process = bash_image(tmp_path, "export", "8", "out.qcow2")
+    assert process.returncode != 0
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["box"]
+    assert not list((tmp_path / "box" / "hlab" / "transfer").iterdir())
+
+
+@NEEDS_BASH
+def test_bin_hlab_imports_a_file_here(tmp_path):
+    (tmp_path / "in.qcow2").write_text("prepared")
+    process = bash_image(
+        tmp_path, "import", "in.qcow2", "--label", "role=host", "--description", "x"
+    )
+    assert process.returncode == 0, process.stderr
+    assert process.stdout == "imported prepared:--label role=host --description x\n"
+    assert not list((tmp_path / "box" / "hlab" / "transfer").iterdir())
+
+
+@NEEDS_BASH
+def test_bin_hlab_refuses_to_import_a_missing_file(tmp_path):
+    process = bash_image(tmp_path, "import", "missing.qcow2")
+    assert process.returncode == 2 and "no such file" in process.stderr

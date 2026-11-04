@@ -36,10 +36,11 @@ def own_image_json(lab: Lab, image: Image) -> dict:
         "image_size": image["image_size"],
         "disk_size": image["disk_size"],
         "created": image["created"],
-        "created_from": {
-            "id": image["created_from_id"],
-            "name": image["created_from_name"],
-        },
+        "created_from": (
+            None
+            if image["created_from_id"] is None
+            else {"id": image["created_from_id"], "name": image["created_from_name"]}
+        ),
         "bound_to": image["bound_to"],
         "os_flavor": flavor,
         "os_version": version,

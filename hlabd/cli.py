@@ -18,11 +18,16 @@ from . import config
 
 CONTROL = f"http://{config.SERVICES}/_lab"
 NOBODY = 65534
+# seconds to wait for the copy of an image (`hlab image`): a minute longer than the
+# copy may take (LONG_TIMEOUT in fabric/shell.py), so its own error comes through
+IMAGE_TIMEOUT = 3660
 # the unprivileged client's home with its copy of the lab key
 SSH_HOME = Path("/run/hlab-ssh")
 
 
-def call(method: str, path: str, body: dict | None = None) -> dict:
+def call(
+    method: str, path: str, body: dict | None = None, timeout: float = 120
+) -> dict:
     """Send a request to the control API and return its JSON answer.
 
     Exit with the error message if the request fails.
@@ -35,7 +40,7 @@ def call(method: str, path: str, body: dict | None = None) -> dict:
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read() or b"{}")
     except urllib.error.HTTPError as error:
         try:
@@ -273,6 +278,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     user_parser.add_argument("name")
     user_parser.add_argument("key_file")
+
+    image_parser = commands.add_parser(
+        "image", help="images of the project in qcow2 files of the container"
+    )
+    image_commands = image_parser.add_subparsers(dest="image", required=True)
+    export_parser = image_commands.add_parser(
+        "export", help="copy an image (a snapshot or backup) to a file"
+    )
+    export_parser.add_argument("id", type=int)
+    export_parser.add_argument("file")
+    import_parser = image_commands.add_parser(
+        "import", help="add a file as a snapshot and print its ID"
+    )
+    import_parser.add_argument("file")
+    import_parser.add_argument("--description")
+    import_parser.add_argument(
+        "--label", action="append", default=[], metavar="KEY=VALUE"
+    )
     return parser
 
 
@@ -304,6 +327,8 @@ def main(argv: list[str] | None = None) -> None:
             run_client_command(args)
         case "box":
             add_box_user(args)
+        case "image":
+            run_image_command(args)
 
 
 def add_box_user(args) -> None:
@@ -313,6 +338,26 @@ def add_box_user(args) -> None:
         "POST", "/box/users", {"name": args.name, "public_key": key.strip()}
     )
     print(f"sftp -P {response['port']} {args.name}@{response['host']}")
+
+
+def run_image_command(args) -> None:
+    """Run an `hlab image` subcommand on files of the container.
+
+    Copying a large image takes a while, so these requests wait longer.
+    """
+    file = os.path.abspath(args.file)  # the daemon has another working directory
+    match args.image:
+        case "export":
+            call("POST", f"/images/{args.id}/export", {"file": file}, IMAGE_TIMEOUT)
+        case "import":
+            labels = {}
+            for label in args.label:
+                key, separator, value = label.partition("=")
+                if not separator:
+                    sys.exit(f"hlab: a label is KEY=VALUE, not {label!r}")
+                labels[key] = value
+            body = {"file": file, "description": args.description, "labels": labels}
+            print(call("POST", "/images", body, IMAGE_TIMEOUT)["image"]["id"])
 
 
 def cut_fault_body(first: str, second: str, net: str) -> dict:

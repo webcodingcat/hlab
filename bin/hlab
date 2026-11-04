@@ -20,6 +20,13 @@
 #                                      the Storage Box inside the lab; "box
 #                                      user <name> <key file>" reads the key
 #                                      file here
+#   bin/hlab [-c hlab.yaml] image export <id> <file>
+#                                      write an image of the project (a
+#                                      snapshot or backup) to a qcow2 file here
+#   bin/hlab [-c hlab.yaml] image import <file> [--description <text>]
+#                            [--label <key>=<value> ...]
+#                                      add a qcow2 file here to the project as
+#                                      a snapshot; prints its ID
 #   bin/hlab [-c hlab.yaml] <command>  any other command runs inside the lab:
 #                                      status, env, ssh, fault, client, ...
 # The configuration defaults to $HLAB_CONFIG or ./hlab.yaml; without a file
@@ -40,6 +47,9 @@ readonly TOFU_IMAGE=ghcr.io/opentofu/opentofu:1
 # and SOCKS_PORT in hlabd/config.py).
 readonly UI_PORT=8480
 readonly SOCKS_PORT=1080
+# Where run_image puts its transfer files: in the lab's volume, beside the
+# images.
+readonly TRANSFER_DIR=/hlab/transfer
 
 # Set by load_config.
 lab_name=demo
@@ -50,6 +60,9 @@ ui_port="${UI_PORT}"
 socks_port="${SOCKS_PORT}"
 # Set by main.
 tty_flags=(-i)
+# Set by run_image, removed when the wrapper ends (remove_image_copies).
+transfer_file=""
+partial_file=""
 
 # print_usage: Print the comment block at the top of this file.
 print_usage() {
@@ -237,6 +250,71 @@ run_box() {
   exec docker exec "${tty_flags[@]}" "${container}" hlab box "$@"
 }
 
+# remove_image_copies: Remove run_image's transfer file in the container and
+# an export cut off half way here.
+# Globals:
+#   container, transfer_file, partial_file (read)
+remove_image_copies() {
+  if [[ -n "${transfer_file}" ]]; then
+    docker exec "${container}" rm -f "${transfer_file}" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "${partial_file}" ]]; then
+    rm -f "${partial_file}"
+  fi
+}
+
+# run_image <export|import> <arguments>: Move an image of the project between
+# the lab and a qcow2 file on this host. The file passes through a transfer
+# file in the container on docker exec's stdin or stdout (no host paths for
+# docker to translate), and "hlab image" there copies it into or out of the
+# project. An export gets its name only once it is whole.
+# Globals:
+#   container (read)
+#   transfer_file, partial_file (set)
+run_image() {
+  local subcommand="${1:-}" image_id file
+  case "${subcommand}" in
+    export)
+      if (($# != 3)); then
+        echo "usage: hlab image export <id> <file>" >&2
+        exit 2
+      fi
+      image_id="$2"
+      file="$3"
+      ;;
+    import)
+      file="${2:-}"
+      if (($# < 2)); then
+        echo "usage: hlab image import <file> [--description <text>]" \
+          "[--label <key>=<value> ...]" >&2
+        exit 2
+      fi
+      if [[ ! -f "${file}" ]]; then
+        echo "hlab: no such file: ${file}" >&2
+        exit 2
+      fi
+      ;;
+    *)
+      echo "usage: hlab image export|import ..." >&2
+      exit 2
+      ;;
+  esac
+  trap remove_image_copies EXIT
+  docker exec "${container}" mkdir -p "${TRANSFER_DIR}"
+  transfer_file="$(docker exec "${container}" mktemp -p "${TRANSFER_DIR}")"
+  if [[ "${subcommand}" == export ]]; then
+    docker exec "${container}" \
+      hlab image export "${image_id}" "${transfer_file}"
+    partial_file="${file}.part"
+    docker exec "${container}" cat "${transfer_file}" >"${partial_file}"
+    mv -f "${partial_file}" "${file}"
+    partial_file=""
+  else
+    docker exec -i "${container}" cp /dev/stdin "${transfer_file}" <"${file}"
+    docker exec "${container}" hlab image import "${transfer_file}" "${@:3}"
+  fi
+}
+
 # main [-c <file>] <command> [arguments]: Run the command; see the comment
 # block at the top.
 # Globals:
@@ -286,6 +364,7 @@ main() {
       ;;
     proxy) run_proxy "${@:2}" ;;
     box) run_box "${@:2}" ;;
+    image) run_image "${@:2}" ;;
     "")
       print_usage >&2
       exit 2
