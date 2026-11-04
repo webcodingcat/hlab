@@ -192,6 +192,52 @@ def test_volume_automounts_hot_plugs_moves_and_grows(lab: LiveLab):
         lab.delete("x7")
 
 
+def test_volumes_attached_while_the_server_boots_appear(lab: LiveLab):
+    # As OpenTofu does: the volumes are attached as soon as the server's create
+    # action is done, while the guest still boots. On Hetzner they all appear.
+    volumes = [
+        lab.api(
+            "POST", "/volumes", {"name": f"boot{n}", "size": 10, "location": "fsn1"}
+        )
+        for n in range(3)
+    ]
+    for response in volumes:
+        lab.wait_action(response["action"])
+    created = lab.api(
+        "POST",
+        "/servers",
+        {
+            "name": "x11",
+            "server_type": "cx23",
+            "image": "debian-13",
+            "location": "fsn1",
+            "labels": {"lab": "live"},
+        },
+    )
+    lab.wait_action(created["action"], timeout=600)
+    try:
+        for response in volumes:
+            lab.wait_action(
+                lab.api(
+                    "POST",
+                    f"/volumes/{response['volume']['id']}/actions/attach",
+                    {"server": created["server"]["id"]},
+                )["action"]
+            )
+        lab.wait_ssh("x11")
+        for response in volumes:
+            lab.check_output("x11", f"test -b {response['volume']['linux_device']}")
+    finally:
+        for response in volumes:
+            vid = response["volume"]["id"]
+            if lab.api("GET", f"/volumes/{vid}")["volume"]["server"] is not None:
+                lab.wait_action(
+                    lab.api("POST", f"/volumes/{vid}/actions/detach")["action"]
+                )
+            lab.api("DELETE", f"/volumes/{vid}")
+        lab.delete("x11")
+
+
 def test_reset_password_changes_the_root_password(lab: LiveLab):
     lab.check_output(
         "a",

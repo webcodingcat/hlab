@@ -51,29 +51,25 @@ readonly SOCKS_PORT="${HLAB_SOCKS_PORT:?}"
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
+# How long QEMU may take to answer a QMP command, in seconds. A VM that boots
+# on a busy host can take seconds; hlabd's own timeout for a command is
+# longer.
+readonly QMP_TIMEOUT=30
+
 # send_qmp <vm dir> <json command>: Send a QMP command to the VM's QEMU. Fail
 # when QEMU does not answer or answers with an error, also when an HMP command
 # (device_add, netdev_add, ...) returns an error text. QEMU's error goes to
 # stderr.
 send_qmp() {
-  local vm_dir="$1" qmp_command="$2" answer errors
-  answer="$(query_qmp "${vm_dir}" "${qmp_command}")" \
-    || {
-      echo "hlab.sh: qmp: no answer from ${vm_dir}" >&2
-      return 1
-    }
-  # Print QMP errors; if there are none, print the string results of HMP
-  # commands when one of them is an error text. An answer that is not JSON
-  # counts as no error.
-  errors="$(printf '%s\n' "${answer}" | jq -rs '
-    def error_text: (.return | type) == "string"
-      and (.return | test("^Error|error:"; "i"));
-    if any(.[]; .error) then .[] | select(.error) | .error.desc
-    elif any(.[]; error_text) then
-      .[] | select((.return | type) == "string") | .return
-    else empty end' 2>/dev/null)" || true
-  if [[ -n "${errors}" ]]; then
-    printf '%s\n' "${errors}" >&2
+  local vm_dir="$1" qmp_command="$2" answer error
+  answer="$(query_qmp "${vm_dir}" "${qmp_command}")" || return 1
+  error="$(jq -r '
+    if .error then .error.desc
+    elif (.return | type) == "string"
+      and (.return | test("^Error|error:"; "i")) then .return
+    else empty end' <<<"${answer}")"
+  if [[ -n "${error}" ]]; then
+    printf '%s\n' "${error}" >&2
     return 1
   fi
 }
@@ -88,8 +84,7 @@ print_vm_counters() {
   # utime and stime: fields 14 and 15, counted after the name in parentheses
   cpu_ticks="$(sed 's/.*) //' "/proc/${pid}/stat" | awk '{print $12 + $13}')"
   disk="$(query_qmp "${vm_dir}" '{"execute":"query-blockstats"}' \
-    | jq -cs '[.[] | .return? | arrays | .[] | select(.device == "root")
-      | .stats][0]')"
+    | jq -c '[.return[] | select(.device == "root") | .stats][0]')"
   stats="/sys/class/net/${tap}/statistics"
   jq -cn \
     --argjson ticks "${cpu_ticks}" --argjson hz "$(getconf CLK_TCK)" \
@@ -105,13 +100,46 @@ print_vm_counters() {
       bytes_in: $bytes_in, bytes_out: $bytes_out}'
 }
 
-# query_qmp <vm dir> <json command>: Print QEMU's answers to a QMP command,
-# one JSON document per line (the greeting and the capabilities answer
-# first).
+# query_qmp <vm dir> <json command>: Print QEMU's answer to a QMP command, one
+# line of JSON ({"return": ...} or {"error": ...}). Fail when QEMU gives none
+# within QMP_TIMEOUT seconds.
+#
+# The connection stays open until the answer is there: QEMU queues commands
+# and runs them later in its main loop, and drops those still queued when the
+# client hangs up. So a client that hangs up early loses its command, most
+# often while the VM boots or the host is busy.
 query_qmp() {
-  local vm_dir="$1" qmp_command="$2"
-  printf '{"execute":"qmp_capabilities"}\n%s\n' "${qmp_command}" \
-    | socat -t1 - "UNIX-CONNECT:${vm_dir}/qmp.sock"
+  local vm_dir="$1" qmp_command="$2" request line deadline answered=1
+  local to_qemu from_qemu qmp_pid
+  request="$(jq -c '. + {id: "hlab"}' <<<"${qmp_command}")"
+  coproc QMP { exec socat - "UNIX-CONNECT:${vm_dir}/qmp.sock" 2>/dev/null; }
+  # copies of the coproc's pipes: bash closes its own when socat ends and
+  # keeps them from subshells
+  qmp_pid="$!"
+  exec {to_qemu}>&"${QMP[1]}" {from_qemu}<&"${QMP[0]}"
+  # if socat could not connect, the write fails (no SIGPIPE ends the script)
+  # and the read below finds no answer
+  (
+    trap '' PIPE
+    printf '{"execute":"qmp_capabilities"}\n%s\n' "${request}" >&"${to_qemu}"
+  ) 2>/dev/null || true
+  deadline=$((SECONDS + QMP_TIMEOUT))
+  # skip the greeting, the capabilities' answer and events
+  while ((SECONDS < deadline)) \
+    && read -r -t "$((deadline - SECONDS))" line <&"${from_qemu}"; do
+    if jq -e '.id? == "hlab"' <<<"${line}" >/dev/null 2>&1; then
+      printf '%s\n' "${line}"
+      answered=0
+      break
+    fi
+  done
+  exec {to_qemu}>&- {from_qemu}<&-
+  kill "${qmp_pid}" 2>/dev/null || true
+  wait "${qmp_pid}" 2>/dev/null || true
+  if ((answered != 0)); then
+    echo "hlab.sh: qmp: no answer from ${vm_dir}" >&2
+  fi
+  return "${answered}"
 }
 
 # wait_device_gone <vm dir> <device id>: Wait until QEMU has removed a device,
@@ -121,9 +149,8 @@ wait_device_gone() {
   local vm_dir="$1" device="$2" i
   local list='{"execute":"qom-list","arguments":{"path":"/machine/peripheral"}}'
   for ((i = 0; i < 100; i++)); do
-    query_qmp "${vm_dir}" "${list}" \
-      | jq -se --arg device "${device}" \
-        '[.[] | .return? | arrays | .[].name] | any(. == $device)' \
+    query_qmp "${vm_dir}" "${list}" 2>/dev/null \
+      | jq -e --arg device "${device}" '[.return[].name] | any(. == $device)' \
         >/dev/null || return 0
     sleep 0.1
   done
@@ -737,11 +764,16 @@ create_volume() {
   esac
 }
 
-# attach_volume <vm dir> <id> <file>: Hot-plug a volume.
+# attach_volume <vm dir> <id> <file>: Hot-plug a volume. If QEMU does not add
+# the disk, its drive goes again, so that another attach can add both.
 attach_volume() {
   local vm_dir="$1" id="$2" file="$3"
   send_hmp "${vm_dir}" "drive_add 0 $(print_volume_drive "${id}" "${file}")"
-  send_hmp "${vm_dir}" "device_add $(print_volume_device "${id}")"
+  send_hmp "${vm_dir}" "device_add $(print_volume_device "${id}")" \
+    || {
+      send_hmp "${vm_dir}" "drive_del vol${id}" 2>/dev/null || true
+      return 1
+    }
 }
 
 # detach_volume <vm dir> <id>: Unplug a volume.

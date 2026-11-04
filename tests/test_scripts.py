@@ -17,17 +17,25 @@ Covered here:
   full check runs there;
 - box-shell.sh's decisions (SFTP, read-only, rsync, scp, borg, df, who may connect),
   table-driven with stubbed commands on PATH;
-- lib.sh's is_alive and stop_pid with a real process and a PID file.
+- lib.sh's is_alive and stop_pid with a real process and a PID file;
+- hlab.sh's QMP client against a fake QEMU that answers late and drops the commands
+  of a client that hung up, as QEMU does.
 
 Only the live tests (itests/) show that the commands really do their work: taps,
 routes, rules, tc, QEMU, dnsmasq, the Storage Box's sshd, chroots and mounts.
 """
 
 import ast
+import json
 import os
+import queue
 import re
 import shutil
+import socket
 import subprocess
+import tempfile
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -751,6 +759,163 @@ def test_box_shell_df_reports_the_usage_against_the_quota(box_shell):
     assert stdout.splitlines() == [
         "Filesystem 1B-blocks Used Available Use% Mounted on",
         "storagebox 100000 1000 99000 1% /home",
+    ]
+
+
+# --- QMP ------------------------------------------------------------------------------
+
+NEEDS_QMP_TOOLS = pytest.mark.skipif(
+    not all(shutil.which(tool) for tool in ("bash", "socat", "jq")),
+    reason="the QMP client needs bash, socat and jq",
+)
+
+
+class FakeQemu:
+    """A QMP socket that answers like QEMU's monitor.
+
+    QEMU reads commands in one thread and runs them later in its main loop; when the
+    client hangs up, it drops the commands still waiting. Here each command waits
+    `delay` seconds (a VM that boots on a busy host) and runs only if the client is
+    still connected then. An event comes before each answer.
+    """
+
+    def __init__(self, vm_dir: Path, delay: float, hmp_answers: dict[str, str]):
+        """Listen on the VM directory's qmp.sock.
+
+        `hmp_answers` gives the text an HMP command answers by its first word (an
+        error text such as QEMU's "Error: ..."); others answer "".
+        """
+        self.delay = delay
+        self.hmp_answers = hmp_answers
+        self.ran: list[str] = []  # the HMP command lines run, in order
+        self.listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.listener.bind(str(vm_dir / "qmp.sock"))
+        self.listener.listen()
+        threading.Thread(target=self.serve, daemon=True).start()
+
+    def serve(self) -> None:
+        """Take one client after the other."""
+        while True:
+            try:
+                connection, _ = self.listener.accept()
+            except OSError:  # closed
+                return
+            with connection:
+                self.talk(connection)
+
+    def talk(self, connection: socket.socket) -> None:
+        """Greet the client, then run its commands until it hangs up."""
+        connection.sendall(b'{"QMP": {"version": {}, "capabilities": []}}\n')
+        requests: queue.Queue[dict] = queue.Queue()
+        hung_up = threading.Event()
+
+        def read() -> None:
+            for line in connection.makefile("rb"):
+                requests.put(json.loads(line))
+            hung_up.set()
+
+        threading.Thread(target=read, daemon=True).start()
+        while not hung_up.is_set() or not requests.empty():
+            try:
+                request = requests.get(timeout=0.05)
+            except queue.Empty:
+                continue
+            time.sleep(self.delay)
+            if hung_up.is_set():
+                return  # dropped, as QEMU drops it
+            answer: dict = {"return": {}}
+            if request["execute"] == "human-monitor-command":
+                command_line = request["arguments"]["command-line"]
+                self.ran.append(command_line)
+                answer["return"] = self.hmp_answers.get(command_line.split()[0], "")
+            if "id" in request:
+                answer["id"] = request["id"]
+            connection.sendall(
+                b'{"event": "RTC_CHANGE", "data": {}}\n'
+                + json.dumps(answer).encode()
+                + b"\n"
+            )
+
+    def close(self) -> None:
+        """Stop listening."""
+        self.listener.close()
+
+
+@pytest.fixture
+def fake_qemu():
+    """Return a function that starts a fake QEMU in a VM directory of its own.
+
+    The directory is short: a Unix socket's path has at most 107 bytes.
+    """
+    started: list[FakeQemu] = []
+    with tempfile.TemporaryDirectory(prefix="vm") as vm_dir:
+
+        def start(delay: float = 0.0, **hmp_answers: str) -> tuple[FakeQemu, Path]:
+            qemu = FakeQemu(Path(vm_dir), delay, hmp_answers)
+            started.append(qemu)
+            return qemu, Path(vm_dir)
+
+        yield start
+        for qemu in started:
+            qemu.close()
+
+
+def hlab_sh(*args: str) -> subprocess.CompletedProcess[str]:
+    """Run an hlab.sh verb with the lab's environment."""
+    return subprocess.run(
+        ["bash", str(HLAB_SH), *args],
+        capture_output=True,
+        text=True,
+        env={**os.environ, **config.script_env()},
+        timeout=60,
+    )
+
+
+@NEEDS_QMP_TOOLS
+def test_a_command_waits_for_an_answer_that_takes_seconds(fake_qemu):
+    # the old client hung up after a second, and QEMU dropped its command
+    qemu, vm_dir = fake_qemu(delay=1.5)
+    process = hlab_sh("send-hmp", str(vm_dir), "device_add scsi-hd,id=dvol7")
+    assert process.returncode == 0, process.stderr
+    assert qemu.ran == ["device_add scsi-hd,id=dvol7"]
+
+
+@NEEDS_QMP_TOOLS
+def test_an_error_text_of_qemu_fails_the_command(fake_qemu):
+    _, vm_dir = fake_qemu(device_del="Error: Device 'dvol7' not found")
+    process = hlab_sh("send-hmp", str(vm_dir), "device_del dvol7")
+    assert process.returncode == 1
+    assert "Device 'dvol7' not found" in process.stderr
+
+
+@NEEDS_QMP_TOOLS
+def test_a_qemu_that_gives_no_answer_fails_the_command(tmp_path):
+    process = hlab_sh("send-hmp", str(tmp_path), "device_add scsi-hd,id=dvol7")
+    assert process.returncode == 1
+    assert "qmp: no answer" in process.stderr
+
+
+@NEEDS_QMP_TOOLS
+def test_an_attach_qemu_refuses_removes_the_drive_again(fake_qemu):
+    qemu, vm_dir = fake_qemu(device_add="Error: Bus 'scsi0.0' not found")
+    process = hlab_sh("attach-volume", str(vm_dir), "7", "/volumes/7.raw")
+    assert process.returncode == 1
+    assert [line.split()[0] for line in qemu.ran] == [
+        "drive_add",
+        "device_add",
+        "drive_del",
+    ]
+
+
+@NEEDS_QMP_TOOLS
+def test_an_attach_adds_drive_and_disk(fake_qemu):
+    qemu, vm_dir = fake_qemu(delay=0.2)
+    process = hlab_sh("attach-volume", str(vm_dir), "7", "/volumes/7.raw")
+    assert process.returncode == 0, process.stderr
+    assert qemu.ran == [
+        "drive_add 0 file=/volumes/7.raw,format=raw,if=none,id=vol7,cache=none",
+        "device_add scsi-hd,drive=vol7,id=dvol7,bus=scsi0.0,"
+        "vendor=HC,product=Volume,serial=7",
     ]
 
 
