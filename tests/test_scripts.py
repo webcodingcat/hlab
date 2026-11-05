@@ -17,7 +17,8 @@ Covered here:
   full check runs there;
 - box-shell.sh's decisions (SFTP, read-only, rsync, scp, borg, df, who may connect),
   table-driven with stubbed commands on PATH;
-- lib.sh's is_alive and stop_pid with a real process and a PID file;
+- lib.sh's is_alive and stop_pid with a real process and a PID file: zombies count
+  as gone, and stop_pid waits until the process is gone (KILL after 5 seconds);
 - hlab.sh's QMP client against a fake QEMU that answers late and drops the commands
   of a client that hung up, as QEMU does.
 
@@ -969,6 +970,49 @@ def test_stop_pid_terminates_the_process_and_removes_the_file(sleeper):
     assert lib("stop_pid", str(pid_file), "sleep") == 0
     assert process.wait(timeout=5) == -15
     assert not pid_file.exists()
+
+
+@NEEDS_BASH_AND_PROC
+def test_is_alive_fails_for_a_zombie(tmp_path):
+    # ended, but its parent (this test) has not reaped it yet
+    process = subprocess.Popen(["sleep", "0"])
+    pid_file = tmp_path / "zombie.pid"
+    pid_file.write_text(f"{process.pid}\n")
+    stat = Path(f"/proc/{process.pid}/stat")
+    deadline = time.monotonic() + 5
+    while stat.read_text().rsplit(") ", 1)[1][0] != "Z":
+        assert time.monotonic() < deadline
+        time.sleep(0.05)
+    assert lib("is_alive", str(pid_file), "sleep") == 1
+    process.wait()
+
+
+def slow_quitter(tmp_path: Path, on_term: str) -> tuple[subprocess.Popen, Path]:
+    """Start a bash that runs `on_term` on TERM; return it and its PID file."""
+    process = subprocess.Popen(
+        ["bash", "-c", f"trap '{on_term}' TERM; while :; do sleep 0.1; done"]
+    )
+    pid_file = tmp_path / "bash.pid"
+    pid_file.write_text(f"{process.pid}\n")
+    time.sleep(0.2)  # the trap is set
+    return process, pid_file
+
+
+@NEEDS_BASH_AND_PROC
+def test_stop_pid_returns_only_when_the_process_is_gone(tmp_path):
+    # a new process binds the old one's addresses right after (start-dns)
+    process, pid_file = slow_quitter(tmp_path, "sleep 1; exit 0")
+    assert lib("stop_pid", str(pid_file), "bash") == 0
+    assert process.poll() == 0
+
+
+@NEEDS_BASH_AND_PROC
+def test_stop_pid_kills_a_process_that_ignores_the_signal(tmp_path):
+    process, pid_file = slow_quitter(tmp_path, "")
+    started = time.monotonic()
+    assert lib("stop_pid", str(pid_file), "bash") == 0
+    assert process.wait(timeout=1) == -9
+    assert 5 <= time.monotonic() - started < 7
 
 
 @NEEDS_BASH_AND_PROC

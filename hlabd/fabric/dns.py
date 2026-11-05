@@ -71,9 +71,11 @@ class Dns:
         self.shell = shell
         # apply() may run in two threads at once: one writes and restarts at a time
         self.lock = threading.Lock()
-        # NSD runs only once apply() started it in this process: the files under
-        # /hlab outlive the container, NSD does not
-        self.nsd_started = False
+        # True while NSD and the resolver run with the files as written. Not before
+        # apply() started them in this process (the files under /hlab outlive the
+        # container, the processes do not), and not after a restart failed: the
+        # files are new then, so only this flag makes the next apply() try again.
+        self.serving = False
 
     def apply(self, zones: list[ZoneFile]) -> None:
         """Serve exactly these zones, and restart what their change touches.
@@ -99,10 +101,11 @@ class Dns:
             changed |= write_if_changed(
                 directory / "resolver.conf", resolver_config(zones)
             )
-            if changed or not self.nsd_started:
+            if changed or not self.serving:
+                self.serving = False
                 self.shell.run("start-nsd", str(directory / "nsd.conf"))
                 self.shell.run("start-dns", str(directory / "resolver.conf"))
-                self.nsd_started = True
+                self.serving = True
 
     def start(self) -> None:
         """Start the resolver with the lab's own names, before any zone is known."""

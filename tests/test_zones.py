@@ -1,9 +1,11 @@
 """DNS zones and RRSets, and the files the lab's nameserver serves them from."""
 
 import pytest
+from conftest import FakeShell
 
 from hlabd import config
 from hlabd.api.zones import PublicSuffixes
+from hlabd.fabric.dns import Dns, ZoneFile
 
 
 def create_zone(api, name="example.com", **extra):
@@ -220,3 +222,21 @@ def test_public_suffix_rules_with_wildcards_and_exceptions():
     assert suffixes.is_registrable("www.ck")  # the exception
     # Hetzner takes well-known suffixes only, not the list's default rule
     assert not suffixes.is_registrable("example.unlisted")
+
+
+def test_a_failed_restart_of_the_resolver_is_tried_again_by_the_next_apply(tmp_path):
+    # the files are written before the restart: without a retry the lab would stay
+    # without a resolver until the next change of a zone
+    shell = FakeShell()
+    dns = Dns(tmp_path, shell)
+    zones = [ZoneFile("example.com", "@ IN SOA a. b. 1 2 3 4 5\n")]
+    dns.apply(zones)
+    shell.fail.add("start-dns")
+    with pytest.raises(RuntimeError):
+        dns.apply([])
+    shell.fail.clear()
+    shell.calls.clear()
+    dns.apply([])
+    assert [call[0] for call in shell.calls] == ["start-nsd", "start-dns"]
+    dns.apply([])
+    assert len(shell.commands("start-dns")) == 1

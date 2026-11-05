@@ -466,16 +466,8 @@ restart_dhcp() {
 # the configuration hlabd wrote. The old one ends first, so the new one gets
 # its port.
 start_nsd() {
-  local conf_file="$1" pid_file=/run/nsd-hlab.pid pid i
-  if is_alive "${pid_file}" nsd; then
-    pid="$(cat "${pid_file}")"
-    kill "${pid}"
-    for ((i = 0; i < 50; i++)); do
-      [[ -d "/proc/${pid}" ]] || break
-      sleep 0.1
-    done
-  fi
-  rm -f "${pid_file}"
+  local conf_file="$1"
+  stop_pid /run/nsd-hlab.pid nsd
   nsd -c "${conf_file}"
 }
 
@@ -532,7 +524,8 @@ stop_balancer() {
   stop_pid "${dir}/haproxy.pid" haproxy
 }
 
-# start_dns <conf file>: Start the lab resolver on the services address.
+# start_dns <conf file>: (Re)start the lab resolver on the services address.
+# The old one ends first, so the new one gets the address.
 start_dns() {
   local conf_file="$1" upstream
   stop_pid /run/dnsmasq-dns.pid dnsmasq
