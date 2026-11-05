@@ -124,12 +124,14 @@ Inside `hlabd/`:
 ### Images in files
 
 A project's images can leave a lab and come back as qcow2 files (`api/images.py`,
-`import_image` and `export_image`):
+`import_image` and `export_image`), on the Docker host or in a Docker volume:
 
 ```text
 bin/hlab image export|import      on the Docker host: a transfer file in
                                   /hlab/transfer, filled or read through docker
-                                  exec's stdin or stdout, removed at the end
+                                  exec's stdin or stdout, or with --volume by a
+                                  short-lived container that mounts the lab's
+                                  volume and the other one; removed at the end
   → hlab image export|import      in the container (cli.py), on container paths
   → POST /_lab/images[/{id}/export]
   → fabric.vms                    print-image-info, copy-image (whole or not at all)
@@ -143,6 +145,14 @@ routes: the caller waits for it anyway, and there is no Hetzner action to poll. 
 export holds no flag: a copy that has begun reads on from a deleted file, and image
 files never change once they are whole. A wrapper killed half way leaves its transfer
 file in `/hlab/transfer`.
+
+`--volume` keeps a big image inside Docker: through the host's stdin or stdout it
+crosses Docker Desktop's file sharing, which is slow on Windows and macOS (a 3 GB image
+takes minutes instead of seconds). The lab container gets no mount of its own for it,
+so any volume works without a restart. The helper container runs the lab image (built
+before the lab starts) as root, so an exported file belongs to root; the directory it
+goes to must exist. A wrapper killed during that copy may leave `<path>.part` in the
+volume.
 
 ## Actions and flags
 

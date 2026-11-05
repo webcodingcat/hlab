@@ -102,6 +102,8 @@ bin/hlab client exec alice curl -s http://203.0.113.11/
 bin/hlab box user lab1 key.pub            # a Storage Box account outside the API
 bin/hlab image export 7 base.qcow2        # an image of the project (snapshot or backup) to a file here
 bin/hlab image import base.qcow2 --label role=base   # a qcow2 file as a new snapshot; prints its ID
+bin/hlab image export 7 --volume images:base.qcow2   # into a file in the Docker volume images
+bin/hlab image import --volume images:base.qcow2     # and from there, without crossing the host's file system
 bin/hlab ssh a uptime                     # root on a server with the lab's SSH key
 bin/hlab reset                            # delete everything the APIs created
 ```
@@ -111,7 +113,8 @@ bin/hlab reset                            # delete everything the APIs created
 - **Servers**: boot through cloud-init's Hetzner datasource, Hetzner's timings and `locked` (423), rebuild, type
   change, password reset, reverse DNS, primary IPs, SSH keys, placement groups.
 - **Images**: snapshots and backups (daily, seven slots), servers created or rebuilt from them. `image export`
-  and `image import` move an image between labs as a qcow2 file, so a prepared image outlives its lab.
+  and `image import` move an image between labs as a qcow2 file, here or in a Docker volume (`--volume`, which
+  keeps the copy inside Docker), so a prepared image outlives its lab.
 - **Networks**: cloud networks with subnets, routes and alias IPs, hot-plugged NICs, Floating IPs, firewalls with
   Hetzner's semantics, latency between locations. Servers see the real client IP.
 - **Volumes**: hot-plugged SCSI disks, formatted, resized, automounted.

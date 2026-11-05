@@ -181,9 +181,15 @@ def test_bin_hlab_publishes_the_ports_the_lab_listens_on():
 
 
 # a stand-in for docker in run_image's tests: the container's files live under $BOX,
-# and "hlab image" copies files there as the lab would
+# and "hlab image" copies files there as the lab would; Docker volumes are the
+# directories under $VOLUMES, the lab's own is $BOX/hlab (hlab-demo: the
+# container's name before load_config, which these tests do not call)
 FAKE_DOCKER = r"""
 docker() {
+  case "$1" in
+    volume) [[ -d "${VOLUMES}/$3" ]]; return ;;  # volume inspect <name>
+    run) docker_run "${@:2}"; return ;;
+  esac
   shift  # exec
   [[ "$1" == -i ]] && shift
   shift  # the container
@@ -208,11 +214,41 @@ docker() {
       ;;
   esac
 }
+
+# docker run --rm -v <volume>:<mount>[:ro] ... --entrypoint <cmd> <image> <args>:
+# run <cmd> here with the mounts' paths in <args> turned into their directories
+docker_run() {
+  local mounts=() entrypoint="" arg mount volume dir
+  while (($#)); do
+    case "$1" in
+      --rm) shift ;;
+      -v) mounts+=("$2") && shift 2 ;;
+      --entrypoint) entrypoint="$2" && shift 2 ;;
+      *) shift && break ;;  # the image
+    esac
+  done
+  local args=()
+  for arg in "$@"; do
+    for mount in "${mounts[@]}"; do
+      volume="${mount%%:*}"
+      mount="${mount#*:}"
+      mount="${mount%:ro}"
+      dir="${VOLUMES}/${volume}"
+      [[ "${volume}" == hlab-demo ]] && dir="${BOX}/hlab"
+      [[ "${arg}" == "${mount}"/* ]] && arg="${dir}${arg#"${mount}"}"
+    done
+    args+=("${arg}")
+  done
+  "${entrypoint}" "${args[@]}"
+}
 """
 
 
 def bash_image(tmp_path: Path, *args: str) -> subprocess.CompletedProcess:
-    """Run bin/hlab's run_image with a fake docker; the container's files are BOX."""
+    """Run bin/hlab's run_image with a fake docker.
+
+    The container's files are BOX, the Docker volumes the directories in VOLUMES.
+    """
     (tmp_path / "box").mkdir(exist_ok=True)
     command = f'source "$1" && {FAKE_DOCKER} run_image "${{@:2}}"'
     return subprocess.run(
@@ -221,7 +257,11 @@ def bash_image(tmp_path: Path, *args: str) -> subprocess.CompletedProcess:
         text=True,
         check=False,
         cwd=tmp_path,
-        env={**os.environ, "BOX": str(tmp_path / "box")},
+        env={
+            **os.environ,
+            "BOX": str(tmp_path / "box"),
+            "VOLUMES": str(tmp_path / "volumes"),
+        },
     )
 
 
@@ -257,3 +297,58 @@ def test_bin_hlab_imports_a_file_here(tmp_path):
 def test_bin_hlab_refuses_to_import_a_missing_file(tmp_path):
     process = bash_image(tmp_path, "import", "missing.qcow2")
     assert process.returncode == 2 and "no such file" in process.stderr
+
+
+@NEEDS_BASH
+def test_bin_hlab_exports_an_image_into_a_docker_volume(tmp_path):
+    (tmp_path / "volumes" / "images").mkdir(parents=True)
+    process = bash_image(tmp_path, "export", "7", "--volume", "images:base.qcow2")
+    assert process.returncode == 0, process.stderr
+    assert sorted(p.name for p in (tmp_path / "volumes" / "images").iterdir()) == [
+        "base.qcow2"
+    ]
+    assert (tmp_path / "volumes" / "images" / "base.qcow2").read_text() == "image 7\n"
+    assert not list((tmp_path / "box" / "hlab" / "transfer").iterdir())
+
+
+@NEEDS_BASH
+def test_bin_hlab_leaves_no_file_in_the_volume_when_the_copy_fails(tmp_path):
+    (tmp_path / "volumes" / "images").mkdir(parents=True)
+    # the export is made, but its directory in the volume is missing
+    process = bash_image(tmp_path, "export", "7", "--volume", "images:dir/base.qcow2")
+    assert process.returncode != 0
+    assert not list((tmp_path / "volumes" / "images").iterdir())
+    assert not list((tmp_path / "box" / "hlab" / "transfer").iterdir())
+
+
+@NEEDS_BASH
+def test_bin_hlab_refuses_to_import_a_missing_file_from_a_volume(tmp_path):
+    (tmp_path / "volumes" / "images").mkdir(parents=True)
+    process = bash_image(tmp_path, "import", "--volume", "images:host.qcow2")
+    assert process.returncode == 2
+    assert "no such file: images:host.qcow2" in process.stderr
+
+
+@NEEDS_BASH
+def test_bin_hlab_imports_a_file_from_a_docker_volume(tmp_path):
+    (tmp_path / "volumes" / "images").mkdir(parents=True)
+    (tmp_path / "volumes" / "images" / "host.qcow2").write_text("prepared")
+    process = bash_image(
+        tmp_path, "import", "--volume", "images:host.qcow2", "--label", "role=host"
+    )
+    assert process.returncode == 0, process.stderr
+    assert process.stdout == "imported prepared:--label role=host\n"
+    assert not list((tmp_path / "box" / "hlab" / "transfer").iterdir())
+
+
+@NEEDS_BASH
+def test_bin_hlab_refuses_a_missing_docker_volume(tmp_path):
+    process = bash_image(tmp_path, "import", "--volume", "images:host.qcow2")
+    assert process.returncode == 2 and "no such Docker volume" in process.stderr
+
+
+@NEEDS_BASH
+@pytest.mark.parametrize("volume_file", ["images", "images:", ":host.qcow2"])
+def test_bin_hlab_refuses_a_volume_without_a_path(tmp_path, volume_file):
+    process = bash_image(tmp_path, "import", "--volume", volume_file)
+    assert process.returncode == 2 and "<volume>:<path>" in process.stderr

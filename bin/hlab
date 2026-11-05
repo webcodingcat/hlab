@@ -23,10 +23,14 @@
 #   bin/hlab [-c hlab.yaml] image export <id> <file>
 #                                      write an image of the project (a
 #                                      snapshot or backup) to a qcow2 file here
+#   bin/hlab [-c hlab.yaml] image export <id> --volume <volume>:<path>
+#                                      the same into a file in a Docker volume
 #   bin/hlab [-c hlab.yaml] image import <file> [--description <text>]
 #                            [--label <key>=<value> ...]
 #                                      add a qcow2 file here to the project as
 #                                      a snapshot; prints its ID
+#   bin/hlab [-c hlab.yaml] image import --volume <volume>:<path> [...]
+#                                      the same from a file in a Docker volume
 #   bin/hlab [-c hlab.yaml] <command>  any other command runs inside the lab:
 #                                      status, env, ssh, fault, client, ...
 # The configuration defaults to $HLAB_CONFIG or ./hlab.yaml; without a file
@@ -60,6 +64,10 @@ ui_port="${UI_PORT}"
 socks_port="${SOCKS_PORT}"
 # Set by main.
 tty_flags=(-i)
+# Set by read_volume_file: the Docker volume and the path in it of
+# run_image's --volume.
+volume_name=""
+volume_path=""
 # Set by run_image, removed when the wrapper ends (remove_image_copies).
 transfer_file=""
 partial_file=""
@@ -263,34 +271,95 @@ remove_image_copies() {
   fi
 }
 
+# read_volume_file <volume>:<path>: Split run_image's --volume into the
+# volume and the path in it; fail unless both are given and the volume
+# exists.
+# Globals:
+#   volume_name, volume_path (set)
+read_volume_file() {
+  local volume_file="$1"
+  volume_name="${volume_file%%:*}"
+  # from the volume's root, with or without a leading /
+  volume_path="${volume_file#*:}"
+  volume_path="${volume_path#/}"
+  if [[ "${volume_file}" != *:* || -z "${volume_name}" ||
+    -z "${volume_path}" ]]; then
+    echo "hlab: --volume takes <volume>:<path>, not ${volume_file}" >&2
+    exit 2
+  fi
+  if ! docker volume inspect "${volume_name}" >/dev/null 2>&1; then
+    echo "hlab: no such Docker volume: ${volume_name}" >&2
+    exit 2
+  fi
+}
+
+# copy_volume_file <export|import>: Copy between the transfer file and the
+# file of read_volume_file in a short-lived container that mounts both
+# volumes, so the image stays inside Docker (a bind mount or docker cp would
+# take it through this host's file system). The lab's volume is named like
+# its container (start_lab). An export gets its name only once it is whole;
+# its directory must exist in the volume.
+# Globals:
+#   IMAGE, container, transfer_file, volume_name, volume_path (read)
+# sh -c <script> <$0> <$1> ...: the scripts' $1 to $3 are the arguments after
+# "copy", expanded by the sh in the container, not here
+# shellcheck disable=SC2016
+copy_volume_file() {
+  # 0644: the transfer file has mktemp's 0600
+  local export_script='part="$2.part"; cp "$1" "$part" && chmod 644 "$part"'
+  export_script+=' && mv -f "$part" "$2" || { rm -f "$part"; exit 1; }'
+  local import_script='[ -f "$1" ] || { echo "hlab: no such file: $3" >&2'
+  import_script+='; exit 2; }; cp "$1" "$2"'
+  if [[ "$1" == export ]]; then
+    docker run --rm -v "${container}:/hlab:ro" -v "${volume_name}:/target" \
+      --entrypoint sh "${IMAGE}" -c "${export_script}" \
+      copy "${transfer_file}" "/target/${volume_path}"
+  else
+    docker run --rm -v "${container}:/hlab" -v "${volume_name}:/source:ro" \
+      --entrypoint sh "${IMAGE}" -c "${import_script}" \
+      copy "/source/${volume_path}" "${transfer_file}" \
+      "${volume_name}:${volume_path}"
+  fi
+}
+
 # run_image <export|import> <arguments>: Move an image of the project between
-# the lab and a qcow2 file on this host. The file passes through a transfer
-# file in the container on docker exec's stdin or stdout (no host paths for
-# docker to translate), and "hlab image" there copies it into or out of the
+# the lab and a qcow2 file on this host or in a Docker volume (--volume). The
+# file passes through a transfer file in the container, on docker exec's
+# stdin or stdout (no host paths for docker to translate) or through
+# copy_volume_file, and "hlab image" there copies it into or out of the
 # project. An export gets its name only once it is whole.
 # Globals:
-#   container (read)
+#   container, volume_name (read)
 #   transfer_file, partial_file (set)
 run_image() {
-  local subcommand="${1:-}" image_id file
+  local subcommand="${1:-}" image_id file="" options=()
   case "${subcommand}" in
     export)
-      if (($# != 3)); then
-        echo "usage: hlab image export <id> <file>" >&2
+      if (($# == 4)) && [[ "$3" == --volume ]]; then
+        read_volume_file "$4"
+      elif (($# == 3)) && [[ "$3" != --volume ]]; then
+        file="$3"
+      else
+        echo "usage: hlab image export <id>" \
+          "(<file> | --volume <volume>:<path>)" >&2
         exit 2
       fi
       image_id="$2"
-      file="$3"
       ;;
     import)
-      file="${2:-}"
-      if (($# < 2)); then
-        echo "usage: hlab image import <file> [--description <text>]" \
-          "[--label <key>=<value> ...]" >&2
-        exit 2
-      fi
-      if [[ ! -f "${file}" ]]; then
-        echo "hlab: no such file: ${file}" >&2
+      if [[ "${2:-}" == --volume ]] && (($# >= 3)); then
+        read_volume_file "$3"
+        options=("${@:4}")
+      elif (($# >= 2)) && [[ "$2" != --volume ]]; then
+        file="$2"
+        options=("${@:3}")
+        if [[ ! -f "${file}" ]]; then
+          echo "hlab: no such file: ${file}" >&2
+          exit 2
+        fi
+      else
+        echo "usage: hlab image import (<file> | --volume <volume>:<path>)" \
+          "[--description <text>] [--label <key>=<value> ...]" >&2
         exit 2
       fi
       ;;
@@ -305,13 +374,22 @@ run_image() {
   if [[ "${subcommand}" == export ]]; then
     docker exec "${container}" \
       hlab image export "${image_id}" "${transfer_file}"
-    partial_file="${file}.part"
-    docker exec "${container}" cat "${transfer_file}" >"${partial_file}"
-    mv -f "${partial_file}" "${file}"
-    partial_file=""
+    if [[ -n "${volume_name}" ]]; then
+      copy_volume_file export
+    else
+      partial_file="${file}.part"
+      docker exec "${container}" cat "${transfer_file}" >"${partial_file}"
+      mv -f "${partial_file}" "${file}"
+      partial_file=""
+    fi
   else
-    docker exec -i "${container}" cp /dev/stdin "${transfer_file}" <"${file}"
-    docker exec "${container}" hlab image import "${transfer_file}" "${@:3}"
+    if [[ -n "${volume_name}" ]]; then
+      copy_volume_file import
+    else
+      docker exec -i "${container}" cp /dev/stdin "${transfer_file}" <"${file}"
+    fi
+    docker exec "${container}" hlab image import "${transfer_file}" \
+      ${options[@]+"${options[@]}"}
   fi
 }
 
