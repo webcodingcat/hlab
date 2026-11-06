@@ -26,8 +26,8 @@ two seconds, and the log as it grows; it sets faults, adds clients and resets th
 ## Requirements
 
 Docker with `/dev/kvm` (Linux, or Docker Desktop on Windows with WSL2). Check:
-`docker run --rm --device /dev/kvm alpine ls -l /dev/kvm`. On Windows run `bin/hlab` from Git Bash or WSL; the unit
-tests run there through Docker (`bin/hlab test`), not from a local venv.
+`docker run --rm --device /dev/kvm alpine ls -l /dev/kvm`. On Windows run `bin/hlab` in WSL, with the repository on
+its Linux file system (not under `/mnt/c`).
 
 ## Use
 
@@ -50,7 +50,7 @@ Box. Servers are created through the API, for example with OpenTofu:
 ```bash
 eval "$(bin/hlab env)"
 tofu() { docker run --rm -i --network "$HLAB_NETWORK" -e HCLOUD_ENDPOINT -e HCLOUD_TOKEN -e HETZNER_ENDPOINT \
-    -v "$(pwd -W 2>/dev/null || pwd):/work" -w /work ghcr.io/opentofu/opentofu:1 "$@"; }
+    -v "$(pwd):/work" -w /work ghcr.io/opentofu/opentofu:1 "$@"; }
 tofu init && tofu apply
 ```
 
@@ -82,8 +82,6 @@ names of its DNS zones work as inside the lab; for HTTPS with managed certificat
 ```bash
 curl --proxy socks5h://localhost:1080 http://198.51.100.11/
 ```
-
-Ansible does not run on Windows itself; there it runs in WSL, where `docker` and `bin/hlab` work alike.
 
 ### Faults and clients
 

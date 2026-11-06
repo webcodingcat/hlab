@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The lab from the Docker host (Linux, macOS; Git Bash or WSL on Windows):
+# The lab from the Docker host (Linux, macOS; WSL on Windows):
 #   bin/hlab [-c hlab.yaml] up         build the image (cached), start the lab
 #                                      container hlab-<name>
 #   bin/hlab [-c hlab.yaml] down       stop it (VM disks and state stay in the
@@ -36,12 +36,9 @@
 # The configuration defaults to $HLAB_CONFIG or ./hlab.yaml; without a file
 # the lab "demo" runs with defaults.
 set -euo pipefail
-# Git Bash must not turn the container paths in docker's arguments into
-# Windows paths.
-export MSYS_NO_PATHCONV=1
 
-# The repository as Docker sees it (a Windows path under Git Bash).
-SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && (pwd -W 2>/dev/null || pwd))"
+# The repository, mounted into the development containers.
+SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly SRC
 readonly IMAGE=hlab:latest
 # The development tools (STYLE.md), built on top of the lab image.
@@ -147,7 +144,7 @@ load_config() {
   ui_port="${configured_port:-${ui_port}}"
   configured_port="$(read_port "${config}" socks_port)"
   socks_port="${configured_port:-${socks_port}}"
-  config_dir="$(cd "$(dirname "${config}")" && (pwd -W 2>/dev/null || pwd))"
+  config_dir="$(cd "$(dirname "${config}")" && pwd)"
   config_mount=(-v "${config_dir}:/config:ro"
     -e "HLAB_CONFIG=/config/$(basename "${config}")")
 }

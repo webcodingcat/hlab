@@ -4,10 +4,9 @@
 # must let SSH through and drop port 80, destroy. Usage:
 #   tests/tofu-smoke/run.sh [lab name]   (default: demo)
 set -euo pipefail
-export MSYS_NO_PATHCONV=1
 
-# This directory as Docker sees it (a Windows path under Git Bash).
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && (pwd -W 2>/dev/null || pwd))"
+# This directory, mounted into OpenTofu's container.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly HERE
 # The newest OpenTofu 1.x.
 readonly TOFU_IMAGE=ghcr.io/opentofu/opentofu:1

@@ -13,7 +13,7 @@ Everything in this repo is English. Read these before changing code:
 
 ## Commands
 
-All of them run from the host through Docker (Linux, macOS; Git Bash or WSL on Windows).
+All of them run from the host through Docker (Linux, macOS; WSL on Windows).
 Python, pytest and the linters are not needed on the host.
 
 | Command | What it does |
