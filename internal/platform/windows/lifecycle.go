@@ -86,11 +86,11 @@ func (l *Lifecycle) Lock(dataDir string) (func(), error) {
 	return unlock, nil
 }
 
-// WriteToken writes the control token with its own ACL (tokenSDDL), so that
+// WriteSecret writes a secret file with its own ACL (tokenSDDL), so that
 // local users may read it whatever the data folder allows. The file is
 // created with the ACL and then renamed over the old one: a rename keeps a
 // file's ACL, and a reader never sees half a token.
-func (l *Lifecycle) WriteToken(path string, token []byte) error {
+func (l *Lifecycle) WriteSecret(path string, token []byte) error {
 	descriptor, err := securityDescriptor(tokenSDDL)
 	if err != nil {
 		return err

@@ -67,10 +67,10 @@ func (l *Lifecycle) Lock(dataDir string) (func(), error) {
 	return unlock, nil
 }
 
-// WriteToken writes the control token readable by its owner and the group
-// hlab, if the machine has it. It writes a new file and renames it over the
-// old one, so that a reader never sees half a token.
-func (l *Lifecycle) WriteToken(path string, token []byte) error {
+// WriteSecret writes a secret file readable by its owner and the group hlab,
+// if the machine has it. It writes a new file and renames it over the old
+// one, so that a reader never sees half a token.
+func (l *Lifecycle) WriteSecret(path string, token []byte) error {
 	temporary := path + ".tmp"
 	if err := os.WriteFile(temporary, token, 0o640); err != nil {
 		return err

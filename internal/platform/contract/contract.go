@@ -264,10 +264,10 @@ func Lifecycle(t *testing.T, lifecycle platform.Lifecycle, requestStop func()) {
 		unlock()
 	})
 
-	t.Run("WriteToken", func(t *testing.T) {
+	t.Run("WriteSecret", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "control.token")
-		expect(t, "WriteToken", lifecycle.WriteToken(path, []byte("secret")), nil)
-		expect(t, "WriteToken again", lifecycle.WriteToken(path, []byte("newer")), nil)
+		expect(t, "WriteSecret", lifecycle.WriteSecret(path, []byte("secret")), nil)
+		expect(t, "WriteSecret again", lifecycle.WriteSecret(path, []byte("newer")), nil)
 		written, err := os.ReadFile(path)
 		expect(t, "reading the token", err, nil)
 		if string(written) != "newer" {

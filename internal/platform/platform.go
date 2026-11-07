@@ -122,9 +122,9 @@ type Lifecycle interface {
 	// Lock makes this process the only HLab on the machine, for its data
 	// folder; ErrLocked if another one runs.
 	Lock(dataDir string) (unlock func(), err error)
-	// WriteToken writes the control token so that local users may read it
-	// (Windows: Users; Linux: the group hlab).
-	WriteToken(path string, token []byte) error
+	// WriteSecret writes a secret file that local users may read (Windows:
+	// Users; Linux: the group hlab): the control token and the env tokens.
+	WriteSecret(path string, data []byte) error
 	// StopRequests is closed when the machine asks HLab to stop (tray, sign
 	// out, SIGTERM).
 	StopRequests() <-chan struct{}

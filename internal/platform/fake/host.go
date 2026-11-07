@@ -166,9 +166,9 @@ func (l *Lifecycle) Lock(dataDir string) (func(), error) {
 	return unlock, nil
 }
 
-// WriteToken writes the token as a real file, readable by its owner only.
-func (l *Lifecycle) WriteToken(path string, token []byte) error {
-	if err := l.fake.enter(context.Background(), "WriteToken", path); err != nil {
+// WriteSecret writes the secret as a real file, readable by its owner only.
+func (l *Lifecycle) WriteSecret(path string, token []byte) error {
+	if err := l.fake.enter(context.Background(), "WriteSecret", path); err != nil {
 		return err
 	}
 	return os.WriteFile(path, token, 0o600)

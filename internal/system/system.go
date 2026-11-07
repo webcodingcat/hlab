@@ -57,13 +57,15 @@ func (s *System) ReadSecrets(path string) (map[int64]string, error) {
 }
 
 // WriteSecrets writes secrets by ID as JSON, so that local users may read
-// them, as they may read the control token.
+// them, as they may read the control token. Lifecycle.WriteSecret sets those
+// rights (an ACL on Windows, 0640 and the group hlab on Linux); reading needs
+// no platform.
 func (s *System) WriteSecrets(path string, secrets map[int64]string) error {
 	data, err := json.MarshalIndent(secrets, "", "  ")
 	if err != nil {
 		return err
 	}
-	return s.platform.Lifecycle.WriteToken(path, append(data, '\n'))
+	return s.platform.Lifecycle.WriteSecret(path, append(data, '\n'))
 }
 
 // VMRunning tells whether a VM is on; a paused VM counts as on: the lab

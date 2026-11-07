@@ -84,24 +84,23 @@ func start(opts serviceOptions) (*service, error) {
 
 // serve listens on the ports, creates the default project of a new lab,
 // writes the control token and starts the servers. The ports come first, so
-// that a start that fails on a taken port leaves a new lab as it was.
+// that a start that fails on a taken port, the common case, leaves a new lab
+// new.
 func (s *service) serve(cfg config.Config) error {
 	// in the order of the handlers: Cloud API, Hetzner API, control
 	var listeners []net.Listener
-	for _, port := range []int{cfg.Ports.Cloud, cfg.Ports.Hetzner, cfg.Ports.Control} {
-		listener, err := net.Listen("tcp", net.JoinHostPort(s.opts.Host, strconv.Itoa(port)))
-		if err != nil {
-			for _, open := range listeners {
-				_ = open.Close()
-			}
-			return err
-		}
-		listeners = append(listeners, listener)
-	}
 	closeListeners := func() {
 		for _, open := range listeners {
 			_ = open.Close()
 		}
+	}
+	for _, port := range []int{cfg.Ports.Cloud, cfg.Ports.Hetzner, cfg.Ports.Control} {
+		listener, err := net.Listen("tcp", net.JoinHostPort(s.opts.Host, strconv.Itoa(port)))
+		if err != nil {
+			closeListeners()
+			return err
+		}
+		listeners = append(listeners, listener)
 	}
 	if s.lab.Fresh() {
 		if _, err := s.lab.CreateProject(defaultProject, state.Limits{}); err != nil {
@@ -110,7 +109,7 @@ func (s *service) serve(cfg config.Config) error {
 		}
 	}
 	token := newControlToken()
-	if err := s.opts.Parts.Lifecycle.WriteToken(s.tokenFile, []byte(token)); err != nil {
+	if err := s.opts.Parts.Lifecycle.WriteSecret(s.tokenFile, []byte(token)); err != nil {
 		closeListeners()
 		return fmt.Errorf("writing the control token: %w", err)
 	}

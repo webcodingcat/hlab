@@ -39,11 +39,11 @@ func TestASecondLockNamesTheRunningDataFolder(t *testing.T) {
 	unlockAgain()
 }
 
-func TestWriteTokenReplacesTheToken(t *testing.T) {
+func TestWriteSecretReplacesTheToken(t *testing.T) {
 	lifecycle := newLifecycle(t)
 	path := filepath.Join(t.TempDir(), "control.token")
 	for _, token := range []string{"first", "second"} {
-		if err := lifecycle.WriteToken(path, []byte(token)); err != nil {
+		if err := lifecycle.WriteSecret(path, []byte(token)); err != nil {
 			t.Fatal(err)
 		}
 		written, err := os.ReadFile(path)
