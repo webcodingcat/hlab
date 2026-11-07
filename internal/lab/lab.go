@@ -9,8 +9,11 @@ package lab
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -48,6 +51,9 @@ type Lab struct {
 	writer    *state.Writer
 	release   func() // gives the data folder up
 	dataDir   string
+	fresh     bool // Open found no state file
+	closeOnce sync.Once
+	closeErr  error // of the first Close
 
 	// envMu makes EnvToken one at a time, across its read and write of the
 	// env token file; it is not the state's mutex, so it may be held across
@@ -80,6 +86,7 @@ func Open(opts Options, sys *system.System) (*Lab, error) {
 		return nil, err
 	}
 	path := filepath.Join(opts.DataDir, StateFile)
+	_, statErr := os.Stat(path)
 	loaded, err := state.Load(path)
 	if err != nil {
 		release()
@@ -93,6 +100,7 @@ func Open(opts Options, sys *system.System) (*Lab, error) {
 		catalog:   opts.Catalog,
 		release:   release,
 		dataDir:   opts.DataDir,
+		fresh:     errors.Is(statErr, fs.ErrNotExist),
 		state:     loaded,
 		flags:     map[state.ResourceRef]bool{},
 		running:   map[int64]*runningAction{},
@@ -127,13 +135,22 @@ func (l *Lab) endInterruptedActions(tx *state.Tx) error {
 }
 
 // Close stops the lab: it cancels the running actions, waits until they have
-// ended, writes the state and gives the data folder up.
+// ended, writes the state and gives the data folder up. Later calls return
+// the first one's result, so that every way to stop may call it.
 func (l *Lab) Close() error {
-	l.cancel()
-	l.actions.Wait()
-	err := l.writer.Close()
-	l.release()
-	return err
+	l.closeOnce.Do(func() {
+		l.cancel()
+		l.actions.Wait()
+		l.closeErr = l.writer.Close()
+		l.release()
+	})
+	return l.closeErr
+}
+
+// Fresh tells whether Open found no state file: the lab is new, and the
+// service sets it up (the project default).
+func (l *Lab) Fresh() bool {
+	return l.fresh
 }
 
 // System returns the system, for the actions' steps.
@@ -161,8 +178,8 @@ func (l *Lab) changeLocked(change func(tx *state.Tx) error) error {
 	if err := change(tx); err != nil {
 		return err
 	}
-	if !tx.Touched() {
-		return nil
+	if !tx.Changed() {
+		return nil // only read, or changed back: nothing to save
 	}
 	next := tx.Result()
 	data, err := state.Encode(next, l.Now())
@@ -174,17 +191,18 @@ func (l *Lab) changeLocked(change func(tx *state.Tx) error) error {
 	return nil
 }
 
-// View runs read on the state; nothing it changes is kept.
+// View runs read on the state. Its Tx copies nothing (state.Read): read must
+// not change a record, and Put, Delete and NewID panic.
 func (l *Lab) View(read func(tx *state.Tx) error) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return read(state.Begin(l.state))
+	return read(state.Read(l.state))
 }
 
 // Current returns a record as it is now, after a call to the system: the
 // record may have changed or gone meanwhile, so code keeps only its ID across
 // such a call. It fails with state.ErrNotFound when the record is gone. The
-// record is a copy: to change it, use Change.
+// record is the state's, to read only: to change it, use Change.
 //
 // It is a function, not a method, because Go methods take no type parameters.
 func Current[R state.Record](l *Lab, kind state.Kind[R], id int64) (*R, error) {

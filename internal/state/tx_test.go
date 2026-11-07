@@ -92,10 +92,40 @@ func TestAllIsSortedByID(t *testing.T) {
 	}
 }
 
-func TestATxThatTouchesNothingHasNothingToSave(t *testing.T) {
-	if Begin(New()).Touched() {
-		t.Error("an empty Tx counts as touched")
+func TestATxThatOnlyReadsHasNothingToSave(t *testing.T) {
+	s := New()
+	tx := Begin(s)
+	Put(tx, Projects, &Project{ID: NewID(tx, Projects), Name: "default"})
+	s = tx.Result()
+
+	tx = Begin(s)
+	All(tx, Projects)
+	_ = tx.Lab()
+	if tx.Changed() {
+		t.Error("a Tx that only read counts as changed")
 	}
+	All(tx, Projects)[0].Name = "other"
+	if !tx.Changed() {
+		t.Error("a Tx that renamed a project counts as unchanged")
+	}
+}
+
+func TestReadSharesTheRecordsAndRefusesChanges(t *testing.T) {
+	s := New()
+	tx := Begin(s)
+	Put(tx, Projects, &Project{ID: NewID(tx, Projects), Name: "default"})
+	s = tx.Result()
+
+	read := Read(s)
+	if All(read, Projects)[0] != All(Read(s), Projects)[0] {
+		t.Error("two reads got different copies of a record")
+	}
+	defer func() {
+		if recover() == nil {
+			t.Error("Put in a Tx that only reads did not panic")
+		}
+	}()
+	Put(read, Projects, &Project{ID: 99, Name: "other"})
 }
 
 func TestDeepCopySharesNothing(t *testing.T) {

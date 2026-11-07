@@ -3,6 +3,7 @@ package state
 import (
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 )
 
@@ -14,24 +15,58 @@ import (
 // Put needed. Once the Tx ends they may still be read, such as to build an
 // answer, but never changed: the lab's state shares the records of a Tx it
 // took (DEVELOPING.md, Concurrency).
+//
+// A Tx from Read copies nothing: its records are the state's own, to read only.
 type Tx struct {
-	work    State
-	touched map[string]bool // the kinds copied so far, and "next_ids" and "lab"
+	base     *State
+	work     State
+	touched  map[string]bool // the kinds copied so far, and "next_ids" and "lab"
+	readOnly bool
 }
 
 // Begin starts a change of s.
 func Begin(s *State) *Tx {
 	return &Tx{
+		base:    s,
 		work:    State{nextIDs: s.nextIDs, tables: maps.Clone(s.tables), lab: s.lab},
 		touched: map[string]bool{},
 	}
 }
 
-// Touched tells whether the Tx copied any part of the state; one that did not
-// has nothing to save. A Tx that only read counts as touched too: records are
-// changed in place, so a read cannot be told from a change.
-func (tx *Tx) Touched() bool {
-	return len(tx.touched) > 0
+// Read starts a Tx that only reads s. It copies nothing, which makes reads
+// cheap (the API's token check reads on every request); Put, Delete and NewID
+// in it panic, and nothing may change its records or its Lab.
+func Read(s *State) *Tx {
+	return &Tx{base: s, work: *s, readOnly: true}
+}
+
+// Changed tells whether the Tx changed the state it began from. Records are
+// changed in place, so it compares each part the Tx copied with the original;
+// a part that is equal again counts as unchanged.
+func (tx *Tx) Changed() bool {
+	for name := range tx.touched {
+		var equal bool
+		switch name {
+		case "next_ids":
+			equal = maps.Equal(tx.work.nextIDs, tx.base.nextIDs)
+		case "lab":
+			equal = reflect.DeepEqual(tx.work.lab, tx.base.lab)
+		default:
+			equal = reflect.DeepEqual(tx.work.tables[name], tx.base.tables[name])
+		}
+		if !equal {
+			return true
+		}
+	}
+	return false
+}
+
+// mustWrite panics in a Tx from Read: a change there would change the state
+// behind the lab's back.
+func (tx *Tx) mustWrite() {
+	if tx.readOnly {
+		panic("state: a change in a Tx that only reads")
+	}
 }
 
 // Result returns the state with the Tx's changes.
@@ -40,9 +75,10 @@ func (tx *Tx) Result() *State {
 	return &result
 }
 
-// Lab returns the lab's own records, to read or change.
+// Lab returns the lab's own records, to read or change (only to read in a Tx
+// from Read).
 func (tx *Tx) Lab() *Lab {
-	if !tx.touched["lab"] {
+	if !tx.readOnly && !tx.touched["lab"] {
 		tx.work.lab = deepCopy(tx.work.lab)
 		tx.touched["lab"] = true
 	}
@@ -51,7 +87,7 @@ func (tx *Tx) Lab() *Lab {
 
 // table returns the Tx's copy of a kind's table.
 func table[R Record](tx *Tx, kind Kind[R]) map[int64]*R {
-	if !tx.touched[kind.name] {
+	if !tx.readOnly && !tx.touched[kind.name] {
 		tx.work.tables[kind.name] = deepCopy(records(&tx.work, kind))
 		tx.touched[kind.name] = true
 	}
@@ -60,6 +96,7 @@ func table[R Record](tx *Tx, kind Kind[R]) map[int64]*R {
 
 // NewID returns the next ID of a kind; it is never handed out again.
 func NewID[R Record](tx *Tx, kind Kind[R]) int64 {
+	tx.mustWrite()
 	if !tx.touched["next_ids"] {
 		tx.work.nextIDs = maps.Clone(tx.work.nextIDs)
 		tx.touched["next_ids"] = true
@@ -91,10 +128,12 @@ func All[R Record](tx *Tx, kind Kind[R]) []*R {
 // Put adds a record or replaces the one with its ID. A new record takes its ID
 // from NewID.
 func Put[R Record](tx *Tx, kind Kind[R], record *R) {
+	tx.mustWrite()
 	table(tx, kind)[(*record).RecordID()] = record
 }
 
 // Delete removes a record; a record that is gone needs nothing.
 func Delete[R Record](tx *Tx, kind Kind[R], id int64) {
+	tx.mustWrite()
 	delete(table(tx, kind), id)
 }

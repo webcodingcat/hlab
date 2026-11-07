@@ -40,9 +40,8 @@ func (l *Lab) SetAPIFault(projectID int64, fault state.APIFault) error {
 func (l *Lab) TakeAPIFault(projectID int64) (state.APIFault, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	// most calls find no fault: they read in a Tx of their own, which is
-	// dropped, so that they do not save the state
-	if state.Begin(l.state).Lab().Faults[projectID].API.Count == 0 {
+	// most calls find no fault: a read copies nothing
+	if state.Read(l.state).Lab().Faults[projectID].API.Count == 0 {
 		return state.APIFault{}, false
 	}
 	var fault state.APIFault

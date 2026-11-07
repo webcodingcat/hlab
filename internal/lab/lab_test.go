@@ -3,6 +3,7 @@ package lab_test
 import (
 	"errors"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -80,6 +81,52 @@ func TestChangeSavesTheNewState(t *testing.T) {
 	}
 	if project, err := state.Get(loadFile(t, dataDir), state.Projects, id); err != nil || project.Name != "default" {
 		t.Fatalf("the file holds %+v, %v", project, err)
+	}
+}
+
+func TestOpenTellsANewLab(t *testing.T) {
+	dataDir := t.TempDir()
+	machine := fake.New()
+	l := start(t, machine, lab.Options{DataDir: dataDir})
+	if !l.Fresh() {
+		t.Error("a lab without a state file is not fresh")
+	}
+	putProject(t, l, "default")
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	l, _ = open(t, lab.Options{DataDir: dataDir})
+	if l.Fresh() {
+		t.Error("a lab with a state file is fresh")
+	}
+}
+
+func TestChangeThatOnlyReadsWritesNothing(t *testing.T) {
+	dataDir := t.TempDir()
+	l, _ := open(t, lab.Options{DataDir: dataDir})
+	putProject(t, l, "default")
+	if err := l.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dataDir, lab.StateFile)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+
+	err := l.Change(func(tx *state.Tx) error {
+		state.All(tx, state.Projects)[0].Name = "default" // the same value again
+		return nil
+	})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the state was written again: %v", err)
 	}
 }
 
