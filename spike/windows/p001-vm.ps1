@@ -17,7 +17,7 @@ Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $dir | Out-Null
 Copy-Item "C:\HLabSpike\seeds\$Name\cidata.$Seed" $dir
 New-VHD -Path "$dir\disk.vhdx" -ParentPath "C:\HLabSpike\images\$Base.vhdx" -Differencing | Out-Null
-Resize-VHD -Path "$dir\disk.vhdx" -SizeBytes 20GB
+if ((Get-VHD -Path "$dir\disk.vhdx").Size -lt 20GB) { Resize-VHD -Path "$dir\disk.vhdx" -SizeBytes 20GB }
 $vm = New-VM -Name $Name -Generation 2 -MemoryStartupBytes 2GB -VHDPath "$dir\disk.vhdx" -Path $dir -SwitchName $Switch
 Set-VM -VM $vm -ProcessorCount 2 -StaticMemory -AutomaticCheckpointsEnabled $false -Notes 'hlab-spike'
 Set-VMNetworkAdapter -VMName $Name -StaticMacAddress ($Mac -replace ':', '')
