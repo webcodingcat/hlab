@@ -22,7 +22,8 @@
         <tbody id="projects"></tbody>
       </table>
       <form id="create-project">
-        <input name="name" placeholder="new project" required pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?">
+        <input name="name" placeholder="new project" required maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?"
+               title="lowercase letters, digits and dashes, not at the start or end">
         <button>Create</button>
       </form>
     </section>
