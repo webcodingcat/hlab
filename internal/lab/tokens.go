@@ -35,27 +35,41 @@ func (l *Lab) CreateToken(projectID int64, name string, permission state.Permiss
 		if _, err := state.Get(tx, state.Projects, projectID); err != nil {
 			return err
 		}
-		for _, other := range state.All(tx, state.Tokens) {
-			if other.ProjectID == projectID && other.Name == name {
-				return fmt.Errorf("token %q: %w", name, ErrExists)
-			}
+		if _, found := tokenByName(tx, projectID, name); found {
+			return fmt.Errorf("token %q: %w", name, ErrExists)
 		}
-		token = state.Token{
-			ID:         state.NewID(tx, state.Tokens),
-			ProjectID:  projectID,
-			Name:       name,
-			Created:    l.Now(),
-			Permission: permission,
-			Hash:       state.HashToken(secret),
-			Prefix:     secret[:tokenPrefixLength],
-		}
-		state.Put(tx, state.Tokens, &token)
+		token = l.putToken(tx, projectID, name, permission, secret)
 		return nil
 	})
 	if err != nil {
 		return state.Token{}, "", err
 	}
 	return token, secret, nil
+}
+
+// putToken adds the record of a token to the state and returns it.
+func (l *Lab) putToken(tx *state.Tx, projectID int64, name string, permission state.Permission, secret string) state.Token {
+	token := state.Token{
+		ID:         state.NewID(tx, state.Tokens),
+		ProjectID:  projectID,
+		Name:       name,
+		Created:    l.Now(),
+		Permission: permission,
+		Hash:       state.HashToken(secret),
+		Prefix:     secret[:tokenPrefixLength],
+	}
+	state.Put(tx, state.Tokens, &token)
+	return token
+}
+
+// tokenByName returns a project's token of that name, if there is one.
+func tokenByName(tx *state.Tx, projectID int64, name string) (*state.Token, bool) {
+	for _, token := range state.All(tx, state.Tokens) {
+		if token.ProjectID == projectID && token.Name == name {
+			return token, true
+		}
+	}
+	return nil, false
 }
 
 // newSecret returns a new random token.

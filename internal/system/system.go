@@ -8,6 +8,8 @@ package system
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -35,6 +37,33 @@ func (s *System) ClaimDataDir(dataDir string) (release func(), err error) {
 		return nil, fmt.Errorf("claiming the data folder %s: %w", dataDir, err)
 	}
 	return release, nil
+}
+
+// ReadSecrets reads a file that WriteSecrets wrote: secrets by ID. A missing
+// file has none.
+func (s *System) ReadSecrets(path string) (map[int64]string, error) {
+	secrets := map[int64]string{}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return secrets, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(data, &secrets); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return secrets, nil
+}
+
+// WriteSecrets writes secrets by ID as JSON, so that local users may read
+// them, as they may read the control token.
+func (s *System) WriteSecrets(path string, secrets map[int64]string) error {
+	data, err := json.MarshalIndent(secrets, "", "  ")
+	if err != nil {
+		return err
+	}
+	return s.platform.Lifecycle.WriteToken(path, append(data, '\n'))
 }
 
 // VMRunning tells whether a VM is on; a paused VM counts as on: the lab

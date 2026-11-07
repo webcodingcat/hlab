@@ -165,6 +165,14 @@ lab control (`/_lab/...`) and the CLI call them. They report `lab.ErrInvalid`,
   names are unique per project so that the CLI can name one. `Lab.CreateToken`
   returns the token once; the state keeps its SHA-256 (`state.HashToken`) and its
   first four characters to tell tokens apart.
+- **The env token:** `Lab.EnvToken` returns a project's `read_write` token named
+  `hlab-env`, the same on every call, so that `hlab env` gives every shell (WSL2
+  and Windows alike) the same token, also after a restart. The state cannot give
+  a token twice, so its clear text is in `env-tokens.json` in the data folder
+  (`lab.EnvTokenFile`), written like the control token and readable for the same
+  users: who can read the control token can make tokens anyway. A token that is
+  gone (deleted, or the file lost) is made anew; the file keeps only projects
+  that are still there.
 - **API faults:** `Lab.SetAPIFault` makes a project's next n API calls fail with a
   status, each after a delay; `Lab.TakeAPIFault` counts a call against it. The
   counter is in the state (`state.Lab.Faults`), so a restart keeps it; a call that
@@ -258,8 +266,9 @@ packages below it follow the layers.
 - **The lab control** (`internal/api/control`, its types in `internal/labapi`):
   `GET /_lab/status`, `POST /_lab/shutdown`, projects
   (`GET|POST /_lab/projects`, `DELETE /_lab/projects/{name}`), tokens
-  (`GET|POST /_lab/projects/{name}/tokens`, `DELETE …/tokens/{token}`; tokens by
-  name, `replace` deletes one of the same name first) and the Cloud API for a
+  (`GET|POST /_lab/projects/{name}/tokens`, `DELETE …/tokens/{token}`, tokens by
+  name), the env token (`POST /_lab/projects/{name}/env-token`, a POST because
+  the first call makes it) and the Cloud API for a
   project, `/_lab/projects/{name}/cloud/v1/...`, which runs the Cloud API's
   handlers through `API.ServeAs` with `read_write`. It admits the control token
   (`Authorization: Bearer`) or what `Options.Admit` vouches for (the web UI's
@@ -273,10 +282,8 @@ packages below it follow the layers.
   `http://198.18.0.1:8090`, the host link that Windows and WSL2 share. No token
   file or no answer is `client.ErrNotRunning`.
 - **The CLI** (`internal/cli`, cobra): one file per group of commands; each command
-  calls the client. `hlab env` makes a new `read_write` token named `hlab-env` in
-  the project each time and replaces the one before, since the lab keeps only
-  hashes; it writes sh (`export`) or PowerShell (`$env:`), quoted in single
-  quotes.
+  calls the client. `hlab env` prints the endpoints and the project's env token
+  for sh (`export`) or PowerShell (`$env:`), quoted in single quotes.
 - **The web UI** (`internal/webui`): `index.html`, `ui.js` and `ui.css` in
   `files/`, built in with `go:embed`, without a build step. `UI.Guard` stands
   before everything on port 8090: the Host must be one of the port's addresses

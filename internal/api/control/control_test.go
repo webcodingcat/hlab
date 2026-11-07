@@ -185,38 +185,47 @@ func TestControlAnswersTheLabsErrors(t *testing.T) {
 	}
 }
 
-func TestTokensAreCreatedReplacedListedAndDeleted(t *testing.T) {
+func TestTokensAreCreatedListedAndDeleted(t *testing.T) {
 	tc := newTestControl(t)
 	tc.do(http.MethodPost, "/_lab/projects", labapi.ProjectRequest{Name: "web"}, nil)
 	request := labapi.TokenRequest{Name: "ci", Permission: "read"}
-	var first labapi.CreatedToken
-	if got := tc.do(http.MethodPost, "/_lab/projects/web/tokens", request, &first); got != http.StatusCreated {
+	var created labapi.CreatedToken
+	if got := tc.do(http.MethodPost, "/_lab/projects/web/tokens", request, &created); got != http.StatusCreated {
 		t.Fatalf("create: got %d, want 201", got)
 	}
-	if len(first.Secret) != 64 || first.Token.Prefix != first.Secret[:4] || first.Token.Permission != "read" {
-		t.Errorf("got %+v", first)
+	if len(created.Secret) != 64 || created.Token.Prefix != created.Secret[:4] || created.Token.Permission != "read" {
+		t.Errorf("got %+v", created)
 	}
 	if got := tc.do(http.MethodPost, "/_lab/projects/web/tokens", request, nil); got != http.StatusConflict {
 		t.Errorf("the same name again: got %d, want 409", got)
 	}
-	request.Replace = true
-	var second labapi.CreatedToken
-	if got := tc.do(http.MethodPost, "/_lab/projects/web/tokens", request, &second); got != http.StatusCreated {
-		t.Fatalf("replace: got %d, want 201", got)
-	}
-	if _, found := tc.lab.TokenByHash(state.HashToken(first.Secret)); found {
-		t.Error("the replaced token still works")
-	}
 	var tokens []labapi.Token
 	tc.do(http.MethodGet, "/_lab/projects/web/tokens", nil, &tokens)
-	if len(tokens) != 1 || tokens[0] != second.Token {
-		t.Errorf("got %+v, want [%+v]", tokens, second.Token)
+	if len(tokens) != 1 || tokens[0] != created.Token {
+		t.Errorf("got %+v, want [%+v]", tokens, created.Token)
 	}
 	if got := tc.do(http.MethodDelete, "/_lab/projects/web/tokens/ci", nil, nil); got != http.StatusNoContent {
 		t.Errorf("delete: got %d, want 204", got)
 	}
-	if _, found := tc.lab.TokenByHash(state.HashToken(second.Secret)); found {
+	if _, found := tc.lab.TokenByHash(state.HashToken(created.Secret)); found {
 		t.Error("the deleted token still works")
+	}
+}
+
+func TestEnvTokenIsTheSameOnEveryCall(t *testing.T) {
+	tc := newTestControl(t)
+	tc.do(http.MethodPost, "/_lab/projects", labapi.ProjectRequest{Name: "web"}, nil)
+	var first, second labapi.EnvToken
+	if got := tc.do(http.MethodPost, "/_lab/projects/web/env-token", nil, &first); got != http.StatusOK {
+		t.Fatalf("got %d, want 200", got)
+	}
+	tc.do(http.MethodPost, "/_lab/projects/web/env-token", nil, &second)
+	if len(first.Secret) != 64 || second != first {
+		t.Errorf("got %q and %q, want the same token twice", first.Secret, second.Secret)
+	}
+	var failure labapi.Error
+	if got := tc.do(http.MethodPost, "/_lab/projects/db/env-token", nil, &failure); got != http.StatusNotFound {
+		t.Errorf("another project: got %d, want 404", got)
 	}
 }
 

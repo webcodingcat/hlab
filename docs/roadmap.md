@@ -73,16 +73,18 @@ in a new lab, the Cloud API on 8080, the Hetzner API on 8081 (no routes yet), th
 lab control and the web UI on 8090, all on `127.0.0.1`. One `hlabd` per machine
 (the mutex `Global\HLab` on Windows, an flock on `/run/lock/hlab.lock` on Linux;
 `internal/platform/linux` has only this life cycle so far). The CLI `hlab` has
-`env` (sh and PowerShell), `status`, `stop`, `project` and `token`; it finds the
+`env` (sh and PowerShell; the project's token `hlab-env` stays the same, kept in
+`env-tokens.json`), `status`, `stop`, `project` and `token`; it finds the
 token as the Windows HLab will write it, also from WSL2 through `/mnt/c`, and
 calls `198.18.0.1:8090` unless `HLAB_CONTROL` says otherwise. The web UI is a
 skeleton: projects, tokens, locations and server types; Host and Origin checks, a
 cookie instead of a token. Checked by hand in WSL2 with hcloud 1.70.2:
 `server-type list`, `location list`, `ssh-key create/list/delete` after
-`eval "$(hlab env)"`. Not yet: the other platforms (`hlabd` without `--platform
-fake` says so), `hlab start` (1b), 503 for requests that arrive while the lab
-stops (no slow stop yet: the ports close at once), the OpenTofu smoke test with
-`examples/opentofu` (1-L), stop requests from signing out and the tray (6b).
+`eval "$(hlab env)"`, and OpenTofu 1.13.9 with `examples/opentofu` (apply, an
+empty plan after it, destroy). Not yet: the other platforms (`hlabd` without
+`--platform fake` says so), `hlab start` (1b), 503 for requests that arrive while
+the lab stops (no slow stop yet: the ports close at once), the formal smoke tests
+(1-L), stop requests from signing out and the tray (6b).
 
 Not there yet: `bin/dev test --agent` (it reports "not yet implemented"), `deploy`,
 `itest` and `smoke`.

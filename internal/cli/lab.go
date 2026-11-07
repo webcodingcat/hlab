@@ -9,10 +9,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// envTokenName is the name of the token that `hlab env` makes in a project;
-// each call replaces it, so that the tokens do not pile up.
-const envTokenName = "hlab-env"
-
 // The shells `hlab env` writes for.
 const (
 	shellSh         = "sh"
@@ -25,13 +21,13 @@ func newEnv() *cobra.Command {
 		Use:   "env",
 		Short: "Print the variables that point the tools at HLab",
 		Long: `Print the variables that point the tools (hcloud, OpenTofu, Ansible) at HLab:
-the endpoints, a new read_write token of the project and the web UI.
+the endpoints, the project's read_write token named hlab-env and the web UI.
 
   eval "$(hlab env)"                      sh, bash, zsh
   hlab env --shell powershell | iex       PowerShell
 
-Each call makes a new token named ` + envTokenName + ` and deletes the one before:
-a shell that got the earlier token needs to run hlab env again.`,
+The token stays the same across calls, shells and restarts of HLab; deleting
+it (hlab token delete hlab-env) makes the next call create a new one.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if shell != shellSh && shell != shellPowerShell {
@@ -45,14 +41,14 @@ a shell that got the earlier token needs to run hlab env again.`,
 			if err != nil {
 				return err
 			}
-			created, err := lab.CreateToken(project, envTokenName, "read_write", true)
+			token, err := lab.EnvToken(project)
 			if err != nil {
 				return err
 			}
 			for _, variable := range [][2]string{
 				{"HCLOUD_ENDPOINT", status.Endpoints.Cloud},
 				{"HETZNER_ENDPOINT", status.Endpoints.Hetzner},
-				{"HCLOUD_TOKEN", created.Secret},
+				{"HCLOUD_TOKEN", token},
 				{"HLAB_UI", status.Endpoints.WebUI},
 			} {
 				cmd.Println(exportLine(shell, variable[0], variable[1]))

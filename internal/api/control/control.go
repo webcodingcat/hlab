@@ -60,6 +60,7 @@ func New(opts Options) *Control {
 	c.handle("GET /projects/{project}/tokens", c.listTokens)
 	c.handle("POST /projects/{project}/tokens", c.createToken)
 	c.handle("DELETE /projects/{project}/tokens/{token}", c.deleteToken)
+	c.handle("POST /projects/{project}/env-token", c.envToken)
 	c.mux.HandleFunc(labapi.Prefix+"/projects/{project}/cloud/", c.cloud)
 	return c
 }

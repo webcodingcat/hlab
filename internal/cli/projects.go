@@ -83,7 +83,7 @@ func newToken() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			created, err := lab.CreateToken(project, args[0], permission, false)
+			created, err := lab.CreateToken(project, args[0], permission)
 			if err != nil {
 				return err
 			}

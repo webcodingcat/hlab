@@ -29,7 +29,7 @@ export HLAB_CONTROL=http://127.0.0.1:8090 HLAB_TOKEN_FILE=~/hlab-data/control.to
 
 | Command | What it does |
 |---|---|
-| `eval "$(hlab env)"` | point hcloud, OpenTofu and Ansible at the lab: endpoints and a new token of the project `default` (`--project`; `hlab env --shell powershell \| iex` on Windows) |
+| `eval "$(hlab env)"` | point hcloud, OpenTofu and Ansible at the lab: endpoints and the token `hlab-env` of the project `default`, the same in every shell (`--project`; `hlab env --shell powershell \| iex` on Windows) |
 | `hlab status` | whether the lab runs, its endpoints and data folder |
 | `hlab stop` | stop the lab |
 | `hlab project create\|list\|delete` | projects; a new lab has `default` |

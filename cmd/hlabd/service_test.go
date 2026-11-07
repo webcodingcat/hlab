@@ -128,8 +128,10 @@ func TestEnvPointsTheToolsAtTheLab(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&answer); err != nil || response.StatusCode != http.StatusOK || len(answer.ServerTypes) == 0 {
 		t.Errorf("GET /server_types with the env token: %d, %v, %d types", response.StatusCode, err, len(answer.ServerTypes))
 	}
-	// a second call replaces the token
-	hlab(t, "env")
+	// a second call, as from another shell, gives the same token
+	if out := hlab(t, "env", "--shell", "sh"); !strings.Contains(out, "HCLOUD_TOKEN='"+variables["HCLOUD_TOKEN"]+"'") {
+		t.Errorf("the second call gave another token: %q", out)
+	}
 	if out := hlab(t, "token", "list"); strings.Count(out, "hlab-env") != 1 {
 		t.Errorf("got %q, want one hlab-env token", out)
 	}

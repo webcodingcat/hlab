@@ -53,9 +53,6 @@ func (c *Control) listTokens(r *http.Request) (int, any, error) {
 	return http.StatusOK, tokens, nil
 }
 
-// createToken adds a token. With Replace, a token of the same name goes
-// first: two calls at once may still find the name taken, which is fine for
-// hlab env, the only caller that replaces.
 func (c *Control) createToken(r *http.Request) (int, any, error) {
 	var request labapi.TokenRequest
 	if err := web.DecodeJSON(&web.Request{Request: r}, &request); err != nil {
@@ -65,18 +62,25 @@ func (c *Control) createToken(r *http.Request) (int, any, error) {
 	if err != nil {
 		return 0, nil, err
 	}
-	if request.Replace {
-		if old, err := c.tokenByName(project.ID, request.Name); err == nil {
-			if err := c.opts.Lab.DeleteToken(old.ID); err != nil {
-				return 0, nil, err
-			}
-		}
-	}
 	token, secret, err := c.opts.Lab.CreateToken(project.ID, request.Name, state.Permission(request.Permission))
 	if err != nil {
 		return 0, nil, err
 	}
 	return http.StatusCreated, labapi.CreatedToken{Token: tokenJSON(token), Secret: secret}, nil
+}
+
+// envToken answers the project's env token, which the lab makes on the first
+// call; it is a POST because that call creates a token.
+func (c *Control) envToken(r *http.Request) (int, any, error) {
+	project, err := c.opts.Lab.ProjectByName(r.PathValue("project"))
+	if err != nil {
+		return 0, nil, err
+	}
+	secret, err := c.opts.Lab.EnvToken(project.ID)
+	if err != nil {
+		return 0, nil, err
+	}
+	return http.StatusOK, labapi.EnvToken{Secret: secret}, nil
 }
 
 func (c *Control) deleteToken(r *http.Request) (int, any, error) {

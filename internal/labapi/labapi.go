@@ -73,9 +73,12 @@ type Token struct {
 type TokenRequest struct {
 	Name       string `json:"name"`
 	Permission string `json:"permission"` // "read" or "read_write"
-	// Replace deletes a token of the same name first, instead of refusing
-	// the name (hlab env makes a new token each time).
-	Replace bool `json:"replace,omitempty"`
+}
+
+// EnvToken is the answer of POST /_lab/projects/{name}/env-token: the
+// project's env token, the same on every call (hlab env).
+type EnvToken struct {
+	Secret string `json:"secret"`
 }
 
 // CreatedToken is the answer of POST /_lab/projects/{name}/tokens: the only

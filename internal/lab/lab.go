@@ -47,6 +47,12 @@ type Lab struct {
 	catalog   *catalog.Catalog
 	writer    *state.Writer
 	release   func() // gives the data folder up
+	dataDir   string
+
+	// envMu makes EnvToken one at a time, across its read and write of the
+	// env token file; it is not the state's mutex, so it may be held across
+	// calls to the system
+	envMu sync.Mutex
 
 	// mu guards everything below: the state, the flags and the running actions
 	mu      sync.Mutex
@@ -86,6 +92,7 @@ func Open(opts Options, sys *system.System) (*Lab, error) {
 		logger:    opts.Logger,
 		catalog:   opts.Catalog,
 		release:   release,
+		dataDir:   opts.DataDir,
 		state:     loaded,
 		flags:     map[state.ResourceRef]bool{},
 		running:   map[int64]*runningAction{},

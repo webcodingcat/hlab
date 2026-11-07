@@ -125,10 +125,16 @@ func (c *Client) Tokens(project string) ([]labapi.Token, error) {
 	return tokens, err
 }
 
-// CreateToken adds a token to a project and returns it with the token itself;
-// with replace, a token of the same name goes first.
-func (c *Client) CreateToken(project, name, permission string, replace bool) (labapi.CreatedToken, error) {
-	request := labapi.TokenRequest{Name: name, Permission: permission, Replace: replace}
+// EnvToken returns the project's env token, the same on every call.
+func (c *Client) EnvToken(project string) (string, error) {
+	var answer labapi.EnvToken
+	err := c.call(http.MethodPost, "/projects/"+url.PathEscape(project)+"/env-token", nil, &answer)
+	return answer.Secret, err
+}
+
+// CreateToken adds a token to a project and returns it with the token itself.
+func (c *Client) CreateToken(project, name, permission string) (labapi.CreatedToken, error) {
+	request := labapi.TokenRequest{Name: name, Permission: permission}
 	var created labapi.CreatedToken
 	err := c.call(http.MethodPost, "/projects/"+url.PathEscape(project)+"/tokens", request, &created)
 	return created, err
