@@ -92,6 +92,19 @@ func TestAllIsSortedByID(t *testing.T) {
 	}
 }
 
+func TestFindReturnsTheMatchingRecord(t *testing.T) {
+	tx := Begin(New())
+	for _, name := range []string{"a", "b", "c"} {
+		Put(tx, Projects, &Project{ID: NewID(tx, Projects), Name: name})
+	}
+	if project, found := Find(tx, Projects, func(p *Project) bool { return p.Name == "b" }); !found || project.Name != "b" {
+		t.Errorf("found %+v, %v", project, found)
+	}
+	if _, found := Find(tx, Projects, func(p *Project) bool { return p.Name == "x" }); found {
+		t.Error("found a project that is not there")
+	}
+}
+
 func TestATxThatOnlyReadsHasNothingToSave(t *testing.T) {
 	s := New()
 	tx := Begin(s)

@@ -167,7 +167,7 @@ func (api *API) admit(w http.ResponseWriter, r *http.Request) (Caller, bool) {
 		}
 		token, found := api.backend.TokenByHash(state.HashToken(secret))
 		if !found {
-			WriteError(w, api.logger, unauthorized("the token you have provided is invalid"))
+			WriteError(w, api.logger, TokenInvalid())
 			return Caller{}, false
 		}
 		caller = Caller{ProjectID: token.ProjectID, Permission: token.Permission}

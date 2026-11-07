@@ -62,6 +62,9 @@ type Plan struct {
 	// Undo takes back the quick changes when the steps fail. A canceled
 	// action undoes nothing: a reset removes everything anyway, and a stopping
 	// lab keeps the state as it is. Undo runs under the mutex, like a Change.
+	// Its records may be gone (the project was deleted while steps that did
+	// not watch the context failed): Undo then treats state.ErrNotFound as
+	// nothing left to undo.
 	Undo func(tx *state.Tx) error
 	// Resources are more resources the action names (a target server).
 	Resources []state.ResourceRef
@@ -87,6 +90,9 @@ func (l *Lab) Act(table ActionTable, command string, req Request) (state.Action,
 	var plan Plan
 	var action *state.Action
 	err := l.changeLocked(func(tx *state.Tx) error {
+		if err := CheckProject(tx, req.ProjectID); err != nil {
+			return err
+		}
 		var err error
 		if plan, err = spec.Plan(tx, req); err != nil {
 			return err

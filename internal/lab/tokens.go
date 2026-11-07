@@ -124,11 +124,10 @@ func (l *Lab) TokenByHash(hash string) (state.Token, bool) {
 	var token state.Token
 	var found bool
 	_ = l.View(func(tx *state.Tx) error {
-		for _, candidate := range state.All(tx, state.Tokens) {
-			if candidate.Hash == hash {
-				token, found = *candidate, true
-				return nil
-			}
+		// hashes are unique: a token is 64 random characters
+		match, ok := state.Find(tx, state.Tokens, func(candidate *state.Token) bool { return candidate.Hash == hash })
+		if ok {
+			token, found = *match, true
 		}
 		return nil
 	})

@@ -11,8 +11,8 @@ import (
 )
 
 // postJSON returns a POST request with a body, as a handler gets it.
-func postJSON(body string) *web.Request {
-	return &web.Request{Request: httptest.NewRequest("POST", "/v1/ssh_keys", strings.NewReader(body)), Header: http.Header{}}
+func postJSON(body string) *http.Request {
+	return httptest.NewRequest(http.MethodPost, "/v1/ssh_keys", strings.NewReader(body))
 }
 
 func TestDecodeJSON(t *testing.T) {
@@ -24,6 +24,19 @@ func TestDecodeJSON(t *testing.T) {
 	}
 	if err := web.DecodeJSON(postJSON(""), &body); err != nil {
 		t.Errorf("an empty body: %v", err)
+	}
+}
+
+// Hetzner's API (measured 2026-11-07) ignores what follows the first JSON
+// value, even a second object.
+func TestDecodeJSONIgnoresWhatFollowsTheFirstValue(t *testing.T) {
+	for _, data := range []string{`{"name":"admin"} garbage`, `{"name":"admin"} {"name":"other"}`} {
+		var body struct {
+			Name string `json:"name"`
+		}
+		if err := web.DecodeJSON(postJSON(data), &body); err != nil || body.Name != "admin" {
+			t.Errorf("%s: decoded %+v, %v", data, body, err)
+		}
 	}
 }
 

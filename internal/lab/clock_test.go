@@ -73,7 +73,7 @@ func (c *testClock) WaitForSleepers(n int) {
 
 func TestActionTakesHetznersTimeTimesTheTimeScale(t *testing.T) {
 	clock := newTestClock()
-	l, _ := open(t, lab.Options{TimeScale: 2, Clock: clock})
+	l, _ := openWithProject(t, lab.Options{TimeScale: 2, Clock: clock})
 	table := tableWith(lab.ActionSpec{Name: "stop_server", Plan: func(*state.Tx, lab.Request) (lab.Plan, error) {
 		return lab.Plan{Steps: func(ctx context.Context) error { return l.Sleep(ctx, lab.PowerOff) }}, nil
 	}})

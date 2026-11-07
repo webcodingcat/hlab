@@ -15,6 +15,21 @@ var (
 	ErrExists  = errors.New("already exists")
 )
 
+// ErrProjectGone is CheckProject's error: the caller's project was deleted
+// after its request was admitted. The API answers it as a deleted token.
+var ErrProjectGone = errors.New("the project is gone")
+
+// CheckProject makes sure that the project of a new record still exists,
+// inside the Change that creates the record: a request admitted just before
+// DeleteProject would otherwise leave a record of a gone project behind.
+// Every create calls it; Act does so itself.
+func CheckProject(tx *state.Tx, projectID int64) error {
+	if _, err := state.Get(tx, state.Projects, projectID); err != nil {
+		return fmt.Errorf("project %d: %w", projectID, ErrProjectGone)
+	}
+	return nil
+}
+
 // projectName is what a project may be called: a DNS label, because the name
 // appears in URLs of the lab control and in file names of its logs.
 var projectName = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
@@ -124,9 +139,8 @@ func checkLimits(limits state.Limits) error {
 //
 // The records go first, so that no new request of the project is admitted
 // (its tokens are gone); then the running actions are canceled, and they find
-// their actions gone when they end. A request admitted just before may still
-// create a record of the gone project, which then stays: a narrow window that
-// a test lab accepts (docs/roadmap.md).
+// their actions gone when they end. A request admitted just before finds the
+// project gone when it creates its record (CheckProject).
 func (l *Lab) DeleteProject(projectID int64) error {
 	err := l.Change(func(tx *state.Tx) error {
 		if _, err := state.Get(tx, state.Projects, projectID); err != nil {

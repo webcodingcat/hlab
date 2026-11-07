@@ -53,5 +53,11 @@ func (l *Lab) TakeAPIFault(projectID int64) (state.APIFault, bool) {
 		faults[projectID] = project
 		return nil
 	})
-	return fault, err == nil
+	if err != nil {
+		// only encoding the state can fail here; the call then runs without
+		// its fault rather than failing as a lab error
+		l.logger.Error("taking an API fault failed; the call runs without it", "project", projectID, "error", err)
+		return state.APIFault{}, false
+	}
+	return fault, true
 }

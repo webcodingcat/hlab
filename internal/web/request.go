@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
 	"strconv"
 )
 
@@ -18,8 +19,11 @@ const maxBody = 64 << 20
 // fields, as Hetzner's API does: a body that is not valid JSON is a
 // json_error with the decoder's message; valid JSON that is no object, or a
 // field of the wrong type, is "failed to parse json". An empty body leaves
-// body as it is. Fields that body lacks are ignored, as Hetzner ignores them.
-func DecodeJSON(req *Request, body any) error {
+// body as it is. Fields that body lacks are ignored, as Hetzner ignores them,
+// and so is whatever follows the first JSON value (measured 2026-11-07:
+// `{…} garbage` and `{…} {…}` created the key of the first object). It takes
+// an http.Request, so that the lab control decodes its bodies the same way.
+func DecodeJSON(req *http.Request, body any) error {
 	data, err := io.ReadAll(io.LimitReader(req.Body, maxBody+1))
 	if err != nil {
 		return JSONError(err.Error())

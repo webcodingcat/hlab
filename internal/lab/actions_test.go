@@ -3,6 +3,7 @@ package lab_test
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -22,6 +23,34 @@ func tableWith(spec lab.ActionSpec) lab.ActionTable {
 		ResourceType: "server",
 		Busy:         busy,
 		Actions:      map[string]lab.ActionSpec{"poweroff": spec},
+	}
+}
+
+// openWithProject opens a lab as open does, with the tests' project in it:
+// Act refuses an action of a project that is not there.
+func openWithProject(t *testing.T, opts lab.Options) (*lab.Lab, *fake.Fake) {
+	t.Helper()
+	l, machine := open(t, opts)
+	putTestProject(t, l)
+	return l, machine
+}
+
+// putTestProject adds the tests' project, with the ID projectID.
+func putTestProject(t *testing.T, l *lab.Lab) {
+	t.Helper()
+	putProjectWithID(t, l, projectID)
+}
+
+// putProjectWithID adds a project with a given ID, which CreateProject does
+// not take.
+func putProjectWithID(t *testing.T, l *lab.Lab, id int64) {
+	t.Helper()
+	err := l.Change(func(tx *state.Tx) error {
+		state.Put(tx, state.Projects, &state.Project{ID: id, Name: "test" + strconv.FormatInt(id, 10)})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -80,7 +109,7 @@ func waitForStatus(t *testing.T, l *lab.Lab, id int64, want state.ActionStatus) 
 }
 
 func TestActionWithoutStepsFinishesAtOnce(t *testing.T) {
-	l, _ := open(t, lab.Options{})
+	l, _ := openWithProject(t, lab.Options{})
 	action, err := l.Act(tableWith(instant), "poweroff", request(7))
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +123,7 @@ func TestActionWithoutStepsFinishesAtOnce(t *testing.T) {
 }
 
 func TestUnknownCommandIsAnError(t *testing.T) {
-	l, _ := open(t, lab.Options{})
+	l, _ := openWithProject(t, lab.Options{})
 	if _, err := l.Act(tableWith(instant), "explode", request(7)); !errors.Is(err, lab.ErrUnknownCommand) {
 		t.Fatalf("got %v, want ErrUnknownCommand", err)
 	}
@@ -102,7 +131,7 @@ func TestUnknownCommandIsAnError(t *testing.T) {
 
 // Hetzner answers 423 "locked" while another action runs on the resource.
 func TestSecondActionOnABusyResourceIsLocked(t *testing.T) {
-	l, _ := open(t, lab.Options{})
+	l, _ := openWithProject(t, lab.Options{})
 	release := make(chan struct{})
 	table := tableWith(blocking(release))
 	table.Actions["protect"] = instant
@@ -130,7 +159,7 @@ func TestSecondActionOnABusyResourceIsLocked(t *testing.T) {
 }
 
 func TestUnflaggedActionRunsAlongside(t *testing.T) {
-	l, _ := open(t, lab.Options{})
+	l, _ := openWithProject(t, lab.Options{})
 	release := make(chan struct{})
 	defer close(release)
 	table := tableWith(blocking(release))
@@ -147,7 +176,7 @@ func TestUnflaggedActionRunsAlongside(t *testing.T) {
 }
 
 func TestPlanLocksMoreResources(t *testing.T) {
-	l, _ := open(t, lab.Options{})
+	l, _ := openWithProject(t, lab.Options{})
 	release := make(chan struct{})
 	defer close(release)
 	servers := tableWith(blocking(release))
@@ -167,7 +196,7 @@ func TestPlanLocksMoreResources(t *testing.T) {
 }
 
 func TestRefusedActionChangesNothing(t *testing.T) {
-	l, _ := open(t, lab.Options{})
+	l, _ := openWithProject(t, lab.Options{})
 	refused := errors.New("invalid input")
 	spec := lab.ActionSpec{Name: "stop_server", Plan: func(tx *state.Tx, _ lab.Request) (lab.Plan, error) {
 		state.Put(tx, state.Projects, &state.Project{ID: state.NewID(tx, state.Projects)})
@@ -178,7 +207,8 @@ func TestRefusedActionChangesNothing(t *testing.T) {
 		t.Fatalf("got %v, want the plan's error", err)
 	}
 	err := l.View(func(tx *state.Tx) error {
-		if projects, actions := state.All(tx, state.Projects), state.All(tx, state.Actions); len(projects)+len(actions) > 0 {
+		// the tests' project only
+		if projects, actions := state.All(tx, state.Projects), state.All(tx, state.Actions); len(projects) > 1 || len(actions) > 0 {
 			t.Errorf("the refused action left %d projects and %d actions", len(projects), len(actions))
 		}
 		return nil
@@ -189,7 +219,7 @@ func TestRefusedActionChangesNothing(t *testing.T) {
 }
 
 func TestUndoRunsWhenThePlatformFails(t *testing.T) {
-	l, machine := open(t, lab.Options{})
+	l, machine := openWithProject(t, lab.Options{})
 	machine.FailNext("VMState", errors.New("Hyper-V refused"))
 	var keyID int64
 	spec := lab.ActionSpec{Name: "stop_server", Plan: func(tx *state.Tx, _ lab.Request) (lab.Plan, error) {
@@ -226,6 +256,7 @@ func TestUndoRunsWhenThePlatformFails(t *testing.T) {
 func TestCloseCancelsRunningActionsWithoutUndo(t *testing.T) {
 	dataDir := t.TempDir()
 	l := start(t, fake.New(), lab.Options{DataDir: dataDir})
+	putTestProject(t, l)
 	undone := false
 	spec := blocking(nil) // runs until canceled
 	plan := spec.Plan
@@ -255,7 +286,8 @@ func TestCloseCancelsRunningActionsWithoutUndo(t *testing.T) {
 }
 
 func TestStopProjectActionsCancelsOnlyThatProject(t *testing.T) {
-	l, _ := open(t, lab.Options{})
+	l, _ := openWithProject(t, lab.Options{})
+	putProjectWithID(t, l, 2)
 	release := make(chan struct{})
 	table := tableWith(blocking(release))
 	ours, err := l.Act(table, "poweroff", lab.Request{ProjectID: 1, ID: 7})
@@ -279,7 +311,7 @@ func TestStopProjectActionsCancelsOnlyThatProject(t *testing.T) {
 }
 
 func TestOnlyTheNewestFinishedActionsAreKept(t *testing.T) {
-	l, _ := open(t, lab.Options{})
+	l, _ := openWithProject(t, lab.Options{})
 	var oldest int64
 	err := l.Change(func(tx *state.Tx) error {
 		for i := range lab.MaxFinishedActions {
@@ -312,7 +344,7 @@ func TestOnlyTheNewestFinishedActionsAreKept(t *testing.T) {
 }
 
 func TestOfTwoActionsAtOnceOneWins(t *testing.T) {
-	l, _ := open(t, lab.Options{})
+	l, _ := openWithProject(t, lab.Options{})
 	release := make(chan struct{})
 	defer close(release)
 	table := tableWith(blocking(release))

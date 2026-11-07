@@ -94,7 +94,7 @@ func registerSSHKeys(api *web.API, l *lab.Lab) {
 
 	api.Handle("POST /ssh_keys", func(req *web.Request) (int, any, error) {
 		var body sshKeyCreateRequest
-		if err := web.DecodeJSON(req, &body); err != nil {
+		if err := web.DecodeJSON(req.Request, &body); err != nil {
 			return 0, nil, err
 		}
 		var check web.Check
@@ -128,6 +128,9 @@ func registerSSHKeys(api *web.API, l *lab.Lab) {
 			key.Labels = *body.Labels
 		}
 		err := l.Change(func(tx *state.Tx) error {
+			if err := lab.CheckProject(tx, key.ProjectID); err != nil {
+				return web.TokenInvalid()
+			}
 			// the name first: a key whose name and fingerprint are both
 			// taken is refused for its name
 			for _, other := range state.All(tx, state.SSHKeys) {
@@ -165,7 +168,7 @@ func registerSSHKeys(api *web.API, l *lab.Lab) {
 
 	api.Handle("PUT /ssh_keys/{id}", func(req *web.Request) (int, any, error) {
 		var body sshKeyUpdateRequest
-		if err := web.DecodeJSON(req, &body); err != nil {
+		if err := web.DecodeJSON(req.Request, &body); err != nil {
 			return 0, nil, err
 		}
 		check := web.Check{Update: true}

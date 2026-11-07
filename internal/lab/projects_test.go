@@ -79,9 +79,10 @@ func TestDeleteProjectCancelsItsActionsAndRemovesItsRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// the steps have ended: the server is no longer flagged
-	if _, err := l.Act(tableWith(instant), "poweroff", lab.Request{ProjectID: project.ID, ID: 7}); err != nil {
-		t.Errorf("the server is still flagged: %v", err)
+	// the steps have ended: the server is no longer flagged, and a new action
+	// of the gone project is refused for its project, not for a flag
+	if _, err := l.Act(tableWith(instant), "poweroff", lab.Request{ProjectID: project.ID, ID: 7}); !errors.Is(err, lab.ErrProjectGone) {
+		t.Errorf("a new action: %v, want ErrProjectGone", err)
 	}
 	for name, err := range map[string]error{
 		"project": errOf(lab.Current(l, state.Projects, project.ID)),

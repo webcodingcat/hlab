@@ -136,6 +136,12 @@ func unauthorized(message string) *Error {
 	return &Error{Status: http.StatusUnauthorized, Code: "unauthorized", Message: message, noDetails: true}
 }
 
+// TokenInvalid returns Hetzner's 401 for a token it does not know; handlers
+// answer it when the caller's project went away after its token was checked.
+func TokenInvalid() *Error {
+	return unauthorized("the token you have provided is invalid")
+}
+
 // Forbidden returns Hetzner's 403 forbidden: a read token asks for a change.
 func Forbidden() *Error {
 	return &Error{Status: http.StatusForbidden, Code: "forbidden", Message: "permission denied", Details: map[string]any{}}

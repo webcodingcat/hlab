@@ -125,6 +125,18 @@ func All[R Record](tx *Tx, kind Kind[R]) []*R {
 	return list
 }
 
+// Find returns a record that match accepts, if there is one. Unlike All it
+// does not sort, so it suits a lookup on every request (the API's token
+// check); with several matches it returns any one of them.
+func Find[R Record](tx *Tx, kind Kind[R], match func(*R) bool) (*R, bool) {
+	for _, record := range table(tx, kind) {
+		if match(record) {
+			return record, true
+		}
+	}
+	return nil, false
+}
+
 // Put adds a record or replaces the one with its ID. A new record takes its ID
 // from NewID.
 func Put[R Record](tx *Tx, kind Kind[R], record *R) {

@@ -105,6 +105,7 @@ these answers.
 | labels on POST / on PUT | `"invalid label key"`, `"invalid label value"` / `"key contains invalid characters or is malformed"`, `"value contains invalid characters or is malformed"` |
 | a field of the wrong type (`"name": 5`, a label value `5`), or `[1]` | 422 `invalid_input`, `"failed to parse json"`, `details` `{}` |
 | a body cut off (`{"name": `) | 422 `json_error`, `"unexpected EOF"`, `details` `{}` |
+| data after the JSON (`{…} garbage`, `{…} {…}`; read-write token, 2026-11-07, 1a-R) | 201, the key of the first object; the rest ignored (`TestDecodeJSONIgnoresWhatFollowsTheFirstValue`) |
 | `PUT` with `{}` or `"labels": null` | 200, nothing changed |
 
 ### Label selectors, bodies and servers (1a-6)

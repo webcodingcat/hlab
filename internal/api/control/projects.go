@@ -19,7 +19,7 @@ func (c *Control) listProjects(*http.Request) (int, any, error) {
 
 func (c *Control) createProject(r *http.Request) (int, any, error) {
 	var request labapi.ProjectRequest
-	if err := web.DecodeJSON(&web.Request{Request: r}, &request); err != nil {
+	if err := web.DecodeJSON(r, &request); err != nil {
 		return 0, nil, err
 	}
 	project, err := c.opts.Lab.CreateProject(request.Name, state.Limits{})
@@ -55,7 +55,7 @@ func (c *Control) listTokens(r *http.Request) (int, any, error) {
 
 func (c *Control) createToken(r *http.Request) (int, any, error) {
 	var request labapi.TokenRequest
-	if err := web.DecodeJSON(&web.Request{Request: r}, &request); err != nil {
+	if err := web.DecodeJSON(r, &request); err != nil {
 		return 0, nil, err
 	}
 	project, err := c.opts.Lab.ProjectByName(r.PathValue("project"))
