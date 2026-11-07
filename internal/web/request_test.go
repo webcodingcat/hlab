@@ -25,10 +25,18 @@ func TestDecodeJSON(t *testing.T) {
 	if err := web.DecodeJSON(postJSON(""), &body); err != nil {
 		t.Errorf("an empty body: %v", err)
 	}
-	for body, want := range map[string]string{
-		`{"name":5}`:              `{"fields":[{"name":"name","messages":["must be of type string"]}]}`,
-		`{"labels":["a"]}`:        `{"fields":[{"name":"labels","messages":["must be of type object"]}]}`,
-		`{"labels":{"env":true}}`: `{"fields":[{"name":"labels.env","messages":["must be of type string"]}]}`,
+}
+
+// Hetzner's API (measured 2026-11-07): JSON that does not fit the request is
+// "failed to parse json" without fields; JSON that is broken is a json_error
+// with the decoder's message. Both are 422 with the details {}.
+func TestDecodeJSONErrors(t *testing.T) {
+	for body, want := range map[string]struct{ code, message string }{
+		`{"name":5}`:              {"invalid_input", "failed to parse json"},
+		`{"labels":["a"]}`:        {"invalid_input", "failed to parse json"},
+		`{"labels":{"env":true}}`: {"invalid_input", "failed to parse json"},
+		`[1]`:                     {"invalid_input", "failed to parse json"},
+		`{"name":`:                {"json_error", "unexpected EOF"},
 	} {
 		var typed struct {
 			Name   string            `json:"name"`
@@ -36,15 +44,14 @@ func TestDecodeJSON(t *testing.T) {
 		}
 		err := web.DecodeJSON(postJSON(body), &typed)
 		var apiErr *web.Error
-		if !errors.As(err, &apiErr) || apiErr.Status != 422 || details(t, err) != want {
-			t.Errorf("%s: %v, want invalid_input with %s", body, err, want)
+		if !errors.As(err, &apiErr) || apiErr.Status != 422 || apiErr.Code != want.code || apiErr.Message != want.message || details(t, err) != "{}" {
+			t.Errorf("%s: %+v, want %s %q", body, err, want.code, want.message)
 		}
 	}
-	for _, broken := range []string{`{"name":`, `[1]`, strings.Repeat(" ", 1<<20+1)} {
-		err := web.DecodeJSON(postJSON(broken), &body)
-		var apiErr *web.Error
-		if !errors.As(err, &apiErr) || apiErr.Code != "json_error" || apiErr.Status != 400 {
-			t.Errorf("a body of %d bytes: %v, want json_error", len(broken), err)
-		}
+	var body struct{}
+	err := web.DecodeJSON(postJSON(strings.Repeat(" ", 1<<20+1)), &body)
+	var apiErr *web.Error
+	if !errors.As(err, &apiErr) || apiErr.Code != "json_error" {
+		t.Errorf("a body over 1 MiB: %v, want json_error", err)
 	}
 }

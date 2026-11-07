@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud/schema"
 
@@ -18,12 +20,42 @@ import (
 	"github.com/webcodingcat/hlab/internal/web"
 )
 
-// Hetzner's answers to an SSH key whose name or fingerprint the project has
-// already; the second is the example of Hetzner's documentation.
+// Hetzner's texts about SSH keys (measured 2026-11-07). The message of an
+// invalid key lacks its closing bracket on Hetzner's side too.
 const (
-	sshKeyNameTaken        = "SSH key with the same name already exists"
-	sshKeyFingerprintTaken = "SSH key with the same fingerprint already exists"
+	sshKeyNotUnique    = "SSH key not unique"
+	sshKeyLeadingSpace = "Must not begin with a whitespace character."
+	sshKeyInvalid      = "SSH key type is invalid (supported types: ssh-ed25519, ssh-rsa, ecdsa-sha2-nistp256, ecdsa-sha2-nistp384, ecdsa-sha2-nistp521, ssh-dss, sk-ssh-ed25519@openssh.com, sk-ecdsa-sha2-nistp256@openssh.com, sk-ssh-ed25519, sk-ecdsa-sha2-nistp256, sk-ecdsa-sha2-nistp384, sk-ecdsa-sha2-nistp521"
 )
+
+// sshKeyTypes are the key types Hetzner takes, as its message lists them.
+var sshKeyTypes = []string{
+	"ssh-ed25519", "ssh-rsa", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521", "ssh-dss",
+	"sk-ssh-ed25519@openssh.com", "sk-ecdsa-sha2-nistp256@openssh.com",
+	"sk-ssh-ed25519", "sk-ecdsa-sha2-nistp256", "sk-ecdsa-sha2-nistp384", "sk-ecdsa-sha2-nistp521",
+}
+
+// The bounds of an SSH key's name (measured 2026-11-07).
+const (
+	sshKeyNameMin = 1
+	sshKeyNameMax = 128
+)
+
+// sshKeyCreateRequest is the body of POST /ssh_keys. It is HLab's own type
+// because schema.SSHKeyCreateRequest cannot tell a missing name from an
+// empty one, which Hetzner answers differently.
+type sshKeyCreateRequest struct {
+	Name      *string            `json:"name"`
+	PublicKey *string            `json:"public_key"`
+	Labels    *map[string]string `json:"labels"`
+}
+
+// sshKeyUpdateRequest is the body of PUT /ssh_keys/{id}; HLab's own type for
+// the same reason. A field that is missing or null stays as it is.
+type sshKeyUpdateRequest struct {
+	Name   *string            `json:"name"`
+	Labels *map[string]string `json:"labels"`
+}
 
 // sshKeySortKeys are the sort values of GET /ssh_keys.
 var sshKeySortKeys = web.SortKeys[*state.SSHKey]{
@@ -61,16 +93,22 @@ func registerSSHKeys(api *web.API, l *lab.Lab) {
 	})
 
 	api.Handle("POST /ssh_keys", func(req *web.Request) (int, any, error) {
-		var body schema.SSHKeyCreateRequest
+		var body sshKeyCreateRequest
 		if err := web.DecodeJSON(req, &body); err != nil {
 			return 0, nil, err
 		}
 		var check web.Check
-		check.Required("name", body.Name != "")
-		check.Required("public_key", body.PublicKey != "")
-		fingerprint, keyErr := sshFingerprint(body.PublicKey)
-		if body.PublicKey != "" && keyErr != nil {
-			check.Fail("public_key", "invalid public key")
+		check.Required("name", body.Name != nil)
+		if body.Name != nil {
+			check.Length("name", *body.Name, sshKeyNameMin, sshKeyNameMax)
+		}
+		check.Required("public_key", body.PublicKey != nil)
+		var fingerprint string
+		if body.PublicKey != nil {
+			var message string
+			if fingerprint, message = sshFingerprint(*body.PublicKey); message != "" {
+				check.Fail("public_key", message)
+			}
 		}
 		if body.Labels != nil {
 			check.Labels(*body.Labels)
@@ -80,23 +118,26 @@ func registerSSHKeys(api *web.API, l *lab.Lab) {
 		}
 		key := &state.SSHKey{
 			ProjectID:   req.Caller.ProjectID,
-			Name:        body.Name,
+			Name:        *body.Name,
 			Labels:      map[string]string{},
 			Created:     l.Now(),
 			Fingerprint: fingerprint,
-			PublicKey:   strings.TrimRight(body.PublicKey, " \t\r\n"),
+			PublicKey:   *body.PublicKey, // as given: Hetzner keeps comment and line end
 		}
 		if body.Labels != nil {
 			key.Labels = *body.Labels
 		}
 		err := l.Change(func(tx *state.Tx) error {
+			// the name first: a key whose name and fingerprint are both
+			// taken is refused for its name
 			for _, other := range state.All(tx, state.SSHKeys) {
-				switch {
-				case other.ProjectID != key.ProjectID:
-				case other.Name == key.Name:
-					return web.Uniqueness(sshKeyNameTaken, "name")
-				case other.Fingerprint == key.Fingerprint:
-					return web.Uniqueness(sshKeyFingerprintTaken, "public_key")
+				if other.ProjectID == key.ProjectID && other.Name == key.Name {
+					return web.Uniqueness(sshKeyNotUnique, "name")
+				}
+			}
+			for _, other := range state.All(tx, state.SSHKeys) {
+				if other.ProjectID == key.ProjectID && other.Fingerprint == key.Fingerprint {
+					return web.Uniqueness(sshKeyNotUnique, "public_key")
 				}
 			}
 			key.ID = state.NewID(tx, state.SSHKeys)
@@ -123,16 +164,19 @@ func registerSSHKeys(api *web.API, l *lab.Lab) {
 	})
 
 	api.Handle("PUT /ssh_keys/{id}", func(req *web.Request) (int, any, error) {
-		var body schema.SSHKeyUpdateRequest
+		var body sshKeyUpdateRequest
 		if err := web.DecodeJSON(req, &body); err != nil {
 			return 0, nil, err
 		}
+		check := web.Check{Update: true}
+		if body.Name != nil {
+			check.Length("name", *body.Name, sshKeyNameMin, sshKeyNameMax)
+		}
 		if body.Labels != nil {
-			var check web.Check
 			check.Labels(*body.Labels)
-			if err := check.Err(); err != nil {
-				return 0, nil, err
-			}
+		}
+		if err := check.Err(); err != nil {
+			return 0, nil, err
 		}
 		var updated *state.SSHKey
 		err := l.Change(func(tx *state.Tx) error {
@@ -140,13 +184,13 @@ func registerSSHKeys(api *web.API, l *lab.Lab) {
 			if err != nil {
 				return err
 			}
-			if body.Name != "" && body.Name != key.Name {
+			if body.Name != nil && *body.Name != key.Name {
 				for _, other := range state.All(tx, state.SSHKeys) {
-					if other.ProjectID == key.ProjectID && other.Name == body.Name {
-						return web.Uniqueness(sshKeyNameTaken, "name")
+					if other.ProjectID == key.ProjectID && other.Name == *body.Name {
+						return web.Uniqueness(sshKeyNotUnique, "name")
 					}
 				}
-				key.Name = body.Name
+				key.Name = *body.Name
 			}
 			if body.Labels != nil {
 				key.Labels = *body.Labels
@@ -202,26 +246,29 @@ func sshKeyJSON(key *state.SSHKey) schema.SSHKey {
 
 // sshFingerprint returns the MD5 fingerprint of an OpenSSH public key
 // ("ssh-ed25519 AAAA… comment") as Hetzner shows it: hex pairs joined by
-// colons. A key is invalid when its blob is not base64 or does not start
-// with the key's type, or when it has leading whitespace, which Hetzner
-// refuses.
-func sshFingerprint(publicKey string) (string, error) {
+// colons. For a key Hetzner refuses, it returns Hetzner's message instead:
+// leading whitespace, a type Hetzner does not take, or a blob that is not
+// base64 of a key of that type.
+func sshFingerprint(publicKey string) (fingerprint, message string) {
+	if publicKey != strings.TrimLeftFunc(publicKey, unicode.IsSpace) {
+		return "", sshKeyLeadingSpace
+	}
 	parts := strings.Fields(publicKey)
-	if len(parts) < 2 || publicKey != strings.TrimLeft(publicKey, " \t\r\n") {
-		return "", errors.New("invalid public key")
+	if len(parts) < 2 || !slices.Contains(sshKeyTypes, parts[0]) {
+		return "", sshKeyInvalid
 	}
 	blob, err := base64.StdEncoding.DecodeString(parts[1])
 	if err != nil || len(blob) < 4 {
-		return "", errors.New("invalid public key")
+		return "", sshKeyInvalid
 	}
 	length := binary.BigEndian.Uint32(blob)
 	if uint64(len(blob)) < 4+uint64(length) || !bytes.Equal(blob[4:4+length], []byte(parts[0])) {
-		return "", errors.New("invalid public key")
+		return "", sshKeyInvalid
 	}
 	digest := md5.Sum(blob)
 	pairs := make([]string, len(digest))
 	for i, b := range digest {
 		pairs[i] = fmt.Sprintf("%02x", b)
 	}
-	return strings.Join(pairs, ":"), nil
+	return strings.Join(pairs, ":"), ""
 }

@@ -184,3 +184,89 @@ func TestNoAnswerNamesADatacenter(t *testing.T) {
 		}
 	}
 }
+
+// Hetzner's API (measured 2026-11-07): each resource answers a missing ID
+// with its own message, and some with details {}, others null.
+func TestCatalogNotFoundAsHetzner(t *testing.T) {
+	test := newTestLab(t)
+	for path, want := range map[string]struct{ message, details string }{
+		"/v1/server_types/999":        {"server type not found", "{}"},
+		"/v1/locations/999":           {"location with ID 999 not found", "null"},
+		"/v1/load_balancer_types/999": {"load balancer type not found", "null"},
+		"/v1/images/1":                {"image not found", "{}"},
+		"/v1/isos/1":                  {"iso not found", "{}"},
+		"/v1/ssh_keys/1":              {"SSH key not found", "{}"},
+	} {
+		response := test.client.Get(path)
+		got := errorOf(t, response)
+		if response.Status != http.StatusNotFound || got.Code != "not_found" || got.Message != want.message || string(got.Details) != want.details {
+			t.Errorf("GET %s answered %d %s", path, response.Status, response.Body)
+		}
+	}
+}
+
+// Hetzner's API (measured 2026-11-07): sort values are taken differently by
+// each list.
+func TestCatalogSortsAsHetzner(t *testing.T) {
+	test := newTestLab(t)
+	for query, want := range map[string]struct {
+		status int
+		code   string
+	}{
+		"/v1/server_types?sort=name:desc":         {200, ""},
+		"/v1/server_types?sort=bogus":             {422, "service_error"},
+		"/v1/load_balancer_types?sort=bogus":      {200, ""},
+		"/v1/locations?sort=bogus":                {200, ""},
+		"/v1/isos?sort=name:desc":                 {200, ""},
+		"/v1/isos?sort=created":                   {422, "invalid_input"},
+		"/v1/images?sort=bogus":                   {422, "invalid_input"},
+		"/v1/images?type=bogus":                   {422, "invalid_input"},
+		"/v1/images?status=bogus":                 {422, "invalid_input"},
+		"/v1/images?architecture=bogus":           {422, "invalid_input"},
+		"/v1/images?type=system&architecture=x86": {200, ""},
+	} {
+		response := test.client.Get(query)
+		if response.Status != want.status || (want.code != "" && errorOf(t, response).Code != want.code) {
+			t.Errorf("GET %s answered %d %s", query, response.Status, response.Body)
+		}
+	}
+	var serverTypes struct {
+		ServerTypes []entry `json:"server_types"`
+	}
+	test.client.Get("/v1/server_types?sort=name:desc&per_page=50").Decode(t, &serverTypes)
+	for i := 1; i < len(serverTypes.ServerTypes); i++ {
+		if serverTypes.ServerTypes[i-1].Name < serverTypes.ServerTypes[i].Name {
+			t.Fatalf("the server types are not sorted by name: %+v", serverTypes.ServerTypes)
+		}
+	}
+	if got := errorOf(t, test.client.Get("/v1/images?type=bogus")); got.Message != "invalid type value" || string(got.Details) != "{}" {
+		t.Errorf("an unknown image type answered %+v", got)
+	}
+}
+
+// Hetzner's API (measured 2026-11-07): the old fields "deprecated" and
+// "included_traffic" are gone; load balancer types show their prices with
+// four decimals, GET /pricing with ten.
+func TestCatalogFieldsAsHetzner(t *testing.T) {
+	test := newTestLab(t)
+	for _, path := range []string{"/v1/server_types/109", "/v1/load_balancer_types/1", "/v1/images?name=debian-13"} {
+		body := string(test.client.Get(path).Body)
+		if strings.Contains(body, `"deprecated"`) || strings.Contains(body, `"included_traffic":0`) {
+			t.Errorf("GET %s sends an old field: %s", path, body)
+		}
+	}
+	var balancerType struct {
+		LoadBalancerType struct {
+			Prices []schema.PricingLoadBalancerTypePrice `json:"prices"`
+		} `json:"load_balancer_type"`
+	}
+	test.client.Get("/v1/load_balancer_types/1").Decode(t, &balancerType)
+	if price := balancerType.LoadBalancerType.Prices[0].PriceHourly; price != (schema.Price{Net: "0.0112", Gross: "0.0133"}) {
+		t.Errorf("lb11's hourly price is %+v", price)
+	}
+	var pricing schema.PricingGetResponse
+	test.client.Get("/v1/pricing").Decode(t, &pricing)
+	if price := pricing.Pricing.LoadBalancerTypes[0].Prices[0].PriceHourly; price != (schema.Price{Net: "0.0112000000", Gross: "0.0133280000000000"}) {
+		t.Errorf("lb11's hourly price in the pricing is %+v", price)
+	}
+}

@@ -3,6 +3,7 @@ package cloud_test
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud/schema"
@@ -32,9 +33,10 @@ func createSSHKey(t *testing.T, test *testLab, body map[string]any) schema.SSHKe
 
 func TestSSHKeyLifeCycle(t *testing.T) {
 	test := newTestLab(t)
+	// Hetzner keeps the key as given, line end included (measured 2026-11-07)
 	key := createSSHKey(t, test, map[string]any{"name": "admin", "public_key": adminKey + "\n", "labels": map[string]string{"env": "dev"}})
 	if key.ID < 1_000_000 || key.Name != "admin" || key.Fingerprint != adminFingerprint ||
-		key.PublicKey != adminKey || key.Labels["env"] != "dev" || key.Created.IsZero() {
+		key.PublicKey != adminKey+"\n" || key.Labels["env"] != "dev" || key.Created.IsZero() {
 		t.Errorf("created %+v", key)
 	}
 
@@ -113,9 +115,9 @@ func TestSSHKeyFilters(t *testing.T) {
 	}
 }
 
-// Hetzner's API: a name or fingerprint the project has already is a
-// uniqueness_error naming the field; the fingerprint's message is the error
-// example of Hetzner's documentation.
+// Hetzner's API (measured 2026-11-07): a name or fingerprint the project has
+// already is "SSH key not unique", naming the field; the name is checked
+// first.
 func TestSSHKeyNamesAndFingerprintsAreUnique(t *testing.T) {
 	test := newTestLab(t)
 	createSSHKey(t, test, map[string]any{"name": "admin", "public_key": adminKey})
@@ -123,47 +125,78 @@ func TestSSHKeyNamesAndFingerprintsAreUnique(t *testing.T) {
 	for name, request := range map[string]struct {
 		method, path string
 		body         map[string]any
-		message      string
 		field        string
 	}{
-		"the same name":        {http.MethodPost, "/v1/ssh_keys", map[string]any{"name": "admin", "public_key": otherKey}, "SSH key with the same name already exists", "name"},
-		"the same fingerprint": {http.MethodPost, "/v1/ssh_keys", map[string]any{"name": "other", "public_key": adminKey + " another comment"}, "SSH key with the same fingerprint already exists", "public_key"},
-		"a rename to a name":   {http.MethodPut, fmt.Sprintf("/v1/ssh_keys/%d", backup.ID), map[string]any{"name": "admin"}, "SSH key with the same name already exists", "name"},
+		"the same name":        {http.MethodPost, "/v1/ssh_keys", map[string]any{"name": "admin", "public_key": otherKey + " x"}, "name"},
+		"the same fingerprint": {http.MethodPost, "/v1/ssh_keys", map[string]any{"name": "other", "public_key": adminKey + " another comment"}, "public_key"},
+		"a rename to a name":   {http.MethodPut, fmt.Sprintf("/v1/ssh_keys/%d", backup.ID), map[string]any{"name": "admin"}, "name"},
 	} {
 		response := test.client.Do(request.method, request.path, request.body)
 		got := errorOf(t, response)
-		if response.Status != http.StatusConflict || got.Code != "uniqueness_error" || got.Message != request.message ||
+		if response.Status != http.StatusConflict || got.Code != "uniqueness_error" || got.Message != "SSH key not unique" ||
 			string(got.Details) != `{"fields":[{"name":"`+request.field+`"}]}` {
 			t.Errorf("%s: answered %d %s", name, response.Status, response.Body)
 		}
 	}
 }
 
-// Hetzner's API: invalid fields are invalid_input, the message names the
-// first field and its first message, the details list every field, as the
-// error example of Hetzner's documentation shows.
+// keyTypesMessage is Hetzner's message for a key it cannot read.
+const keyTypesMessage = "SSH key type is invalid (supported types: ssh-ed25519, ssh-rsa, ecdsa-sha2-nistp256, ecdsa-sha2-nistp384, ecdsa-sha2-nistp521, ssh-dss, sk-ssh-ed25519@openssh.com, sk-ecdsa-sha2-nistp256@openssh.com, sk-ssh-ed25519, sk-ecdsa-sha2-nistp256, sk-ecdsa-sha2-nistp384, sk-ecdsa-sha2-nistp521"
+
+// Hetzner's API (measured 2026-11-07): the answers to invalid bodies of
+// POST and PUT.
 func TestSSHKeyRequestsAreChecked(t *testing.T) {
 	test := newTestLab(t)
+	backup := createSSHKey(t, test, map[string]any{"name": "backup", "public_key": otherKey})
+	put := fmt.Sprintf("/v1/ssh_keys/%d", backup.ID)
+	field := func(name, message string) string {
+		return `{"fields":[{"name":"` + name + `","messages":["` + message + `"]}]}`
+	}
 	for name, request := range map[string]struct {
-		body    any
-		message string
-		details string
+		method, path  string
+		body          any
+		code, message string
+		details       string
 	}{
-		"an empty body": {map[string]any{}, "invalid input in field 'name': is required",
-			`{"fields":[{"name":"name","messages":["is required"]},{"name":"public_key","messages":["is required"]}]}`},
-		"a broken key": {map[string]any{"name": "admin", "public_key": "ssh-ed25519 AAAA"}, "invalid input in field 'public_key': invalid public key",
-			`{"fields":[{"name":"public_key","messages":["invalid public key"]}]}`},
-		"leading whitespace": {map[string]any{"name": "admin", "public_key": " " + adminKey}, "invalid input in field 'public_key': invalid public key",
-			`{"fields":[{"name":"public_key","messages":["invalid public key"]}]}`},
-		"a number for a name": {map[string]any{"name": 5, "public_key": adminKey}, "invalid input in field 'name': must be of type string",
-			`{"fields":[{"name":"name","messages":["must be of type string"]}]}`},
-		"an invalid label": {map[string]any{"name": "admin", "public_key": adminKey, "labels": map[string]string{"bad key": "x"}}, "invalid input in field 'labels': label key 'bad key' is invalid",
-			`{"fields":[{"name":"labels","messages":["label key 'bad key' is invalid"]}]}`},
+		"an empty body": {http.MethodPost, "/v1/ssh_keys", map[string]any{}, "invalid_input", "invalid input in fields 'name', 'public_key'",
+			`{"fields":[{"name":"name","messages":["Missing data for required field."]},{"name":"public_key","messages":["Missing data for required field."]}]}`},
+		"null fields": {http.MethodPost, "/v1/ssh_keys", map[string]any{"name": nil, "public_key": nil}, "invalid_input", "invalid input in fields 'name', 'public_key'",
+			`{"fields":[{"name":"name","messages":["Missing data for required field."]},{"name":"public_key","messages":["Missing data for required field."]}]}`},
+		"an empty name": {http.MethodPost, "/v1/ssh_keys", map[string]any{"name": "", "public_key": adminKey}, "invalid_input", "invalid input in fields 'name'",
+			field("name", "Length must be between 1 and 128.")},
+		"a broken key": {http.MethodPost, "/v1/ssh_keys", map[string]any{"name": "admin", "public_key": "ssh-ed25519 AAAA"}, "invalid_input", "invalid input in fields 'public_key'",
+			field("public_key", keyTypesMessage)},
+		"an unknown key type": {http.MethodPost, "/v1/ssh_keys", map[string]any{"name": "admin", "public_key": "ssh-foo AAAA"}, "invalid_input", "invalid input in fields 'public_key'",
+			field("public_key", keyTypesMessage)},
+		"leading whitespace": {http.MethodPost, "/v1/ssh_keys", map[string]any{"name": "admin", "public_key": " " + adminKey}, "invalid_input", "invalid input in fields 'public_key'",
+			field("public_key", "Must not begin with a whitespace character.")},
+		"an invalid label": {http.MethodPost, "/v1/ssh_keys", map[string]any{"name": "admin", "public_key": adminKey, "labels": map[string]string{"bad key": "x"}}, "invalid_input", "invalid input in fields 'labels'",
+			field("labels", "invalid label key")},
+		"a number for a name": {http.MethodPost, "/v1/ssh_keys", map[string]any{"name": 5, "public_key": adminKey}, "invalid_input", "failed to parse json", `{}`},
+		"no object":           {http.MethodPost, "/v1/ssh_keys", []int{1}, "invalid_input", "failed to parse json", `{}`},
+		"a long name": {http.MethodPut, put, map[string]any{"name": strings.Repeat("x", 129)}, "invalid_input", "invalid input in field 'name'",
+			field("name", "Length must be between 1 and 128.")},
+		"an invalid label value": {http.MethodPut, put, map[string]any{"labels": map[string]string{"env": "bad value!"}}, "invalid_input", "invalid input in field 'labels'",
+			field("labels", "value contains invalid characters or is malformed")},
 	} {
-		response := test.client.Do(http.MethodPost, "/v1/ssh_keys", request.body)
+		response := test.client.Do(request.method, request.path, request.body)
 		got := errorOf(t, response)
-		if response.Status != http.StatusUnprocessableEntity || got.Code != "invalid_input" || got.Message != request.message || string(got.Details) != request.details {
+		if response.Status != http.StatusUnprocessableEntity || got.Code != request.code || got.Message != request.message || string(got.Details) != request.details {
 			t.Errorf("%s: answered %d %s", name, response.Status, response.Body)
+		}
+	}
+}
+
+// Hetzner's API (measured 2026-11-07): a PUT whose fields are missing or
+// null changes nothing.
+func TestSSHKeyUpdateWithoutFieldsKeepsTheKey(t *testing.T) {
+	test := newTestLab(t)
+	key := createSSHKey(t, test, map[string]any{"name": "admin", "public_key": adminKey, "labels": map[string]string{"env": "dev"}})
+	for _, body := range []map[string]any{{}, {"name": nil, "labels": nil}} {
+		var updated schema.SSHKeyUpdateResponse
+		test.client.Do(http.MethodPut, fmt.Sprintf("/v1/ssh_keys/%d", key.ID), body).Decode(t, &updated)
+		if updated.SSHKey.Name != "admin" || updated.SSHKey.Labels["env"] != "dev" {
+			t.Errorf("%v changed the key to %+v", body, updated.SSHKey)
 		}
 	}
 }

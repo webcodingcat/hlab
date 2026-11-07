@@ -9,10 +9,10 @@ import (
 	"github.com/webcodingcat/hlab/internal/web"
 )
 
-// pricingJSON is Hetzner's GET /pricing. It is HLab's own type because
+// pricingAnswer is Hetzner's GET /pricing. It is HLab's own type because
 // schema.Pricing also sends the removed "traffic" and a "datacenter" in each
 // Primary IP price, which the real API no longer sends.
-type pricingJSON struct {
+type pricingAnswer struct {
 	Currency          string                           `json:"currency"`
 	VATRate           string                           `json:"vat_rate"`
 	Image             schema.PricingImage              `json:"image"`
@@ -20,19 +20,19 @@ type pricingJSON struct {
 	ServerBackup      schema.PricingServerBackup       `json:"server_backup"`
 	FloatingIP        schema.PricingFloatingIP         `json:"floating_ip"`
 	FloatingIPs       []schema.PricingFloatingIPType   `json:"floating_ips"`
-	PrimaryIPs        []primaryIPPricesJSON            `json:"primary_ips"`
+	PrimaryIPs        []primaryIPPricesAnswer          `json:"primary_ips"`
 	ServerTypes       []schema.PricingServerType       `json:"server_types"`
 	LoadBalancerTypes []schema.PricingLoadBalancerType `json:"load_balancer_types"`
 }
 
-// primaryIPPricesJSON are the prices of one type of Primary IP.
-type primaryIPPricesJSON struct {
-	Type   string               `json:"type"`
-	Prices []primaryIPPriceJSON `json:"prices"`
+// primaryIPPricesAnswer are the prices of one type of Primary IP.
+type primaryIPPricesAnswer struct {
+	Type   string                 `json:"type"`
+	Prices []primaryIPPriceAnswer `json:"prices"`
 }
 
-// primaryIPPriceJSON is the price of a Primary IP in a location.
-type primaryIPPriceJSON struct {
+// primaryIPPriceAnswer is the price of a Primary IP in a location.
+type primaryIPPriceAnswer struct {
 	Location     string       `json:"location"`
 	PriceHourly  schema.Price `json:"price_hourly"`
 	PriceMonthly schema.Price `json:"price_monthly"`
@@ -41,14 +41,14 @@ type primaryIPPriceJSON struct {
 // registerPricing adds the route of the prices, from the catalog.
 func registerPricing(api *web.API, cat *catalog.Catalog) {
 	api.Handle("GET /pricing", func(*web.Request) (int, any, error) {
-		return http.StatusOK, map[string]pricingJSON{"pricing": pricesJSON(cat)}, nil
+		return http.StatusOK, map[string]pricingAnswer{"pricing": pricingJSON(cat)}, nil
 	})
 }
 
-// pricesJSON returns the catalog's prices as GET /pricing shows them.
-func pricesJSON(cat *catalog.Catalog) pricingJSON {
+// pricingJSON returns the catalog's prices as GET /pricing shows them.
+func pricingJSON(cat *catalog.Catalog) pricingAnswer {
 	pricing := cat.Pricing
-	out := pricingJSON{
+	out := pricingAnswer{
 		Currency:          pricing.Currency,
 		VATRate:           pricing.VATRate,
 		Image:             schema.PricingImage{PricePerGBMonth: priceJSON(pricing.Image.PricePerGBMonth)},
@@ -56,7 +56,7 @@ func pricesJSON(cat *catalog.Catalog) pricingJSON {
 		ServerBackup:      schema.PricingServerBackup{Percentage: pricing.ServerBackup.Percentage},
 		FloatingIP:        schema.PricingFloatingIP{PriceMonthly: priceJSON(pricing.FloatingIP.PriceMonthly)},
 		FloatingIPs:       []schema.PricingFloatingIPType{},
-		PrimaryIPs:        []primaryIPPricesJSON{},
+		PrimaryIPs:        []primaryIPPricesAnswer{},
 		ServerTypes:       []schema.PricingServerType{},
 		LoadBalancerTypes: []schema.PricingLoadBalancerType{},
 	}
@@ -68,9 +68,9 @@ func pricesJSON(cat *catalog.Catalog) pricingJSON {
 		out.FloatingIPs = append(out.FloatingIPs, prices)
 	}
 	for _, ipType := range pricing.PrimaryIPs {
-		prices := primaryIPPricesJSON{Type: ipType.Type, Prices: []primaryIPPriceJSON{}}
+		prices := primaryIPPricesAnswer{Type: ipType.Type, Prices: []primaryIPPriceAnswer{}}
 		for _, price := range ipType.Prices {
-			prices.Prices = append(prices.Prices, primaryIPPriceJSON{
+			prices.Prices = append(prices.Prices, primaryIPPriceAnswer{
 				Location:     price.Location,
 				PriceHourly:  priceJSON(*price.PriceHourly), // the catalog's check found it
 				PriceMonthly: priceJSON(price.PriceMonthly),

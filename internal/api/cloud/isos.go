@@ -1,6 +1,7 @@
 package cloud
 
 import (
+	"cmp"
 	"net/http"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud/schema"
@@ -8,6 +9,13 @@ import (
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/web"
 )
+
+// isoSortKeys are the sort values of GET /isos, which the spec does not list
+// but hcloud-go sends and the real API takes (measured 2026-11-07).
+var isoSortKeys = web.SortKeys[schema.ISO]{
+	"id":   func(a, b schema.ISO) int { return cmp.Compare(a.ID, b.ID) },
+	"name": func(a, b schema.ISO) int { return cmp.Compare(a.Name, b.Name) },
+}
 
 // registerISOs adds the routes of the ISOs, from the catalog. Mounting one
 // comes with its phase.
@@ -24,6 +32,9 @@ func registerISOs(api *web.API, cat *catalog.Catalog) {
 				isos = append(isos, isoJSON(iso))
 			}
 		}
+		if err := web.Sort(req, isos, isoSortKeys); err != nil {
+			return 0, nil, err
+		}
 		return listJSON(req, "isos", isos)
 	})
 
@@ -33,7 +44,7 @@ func registerISOs(api *web.API, cat *catalog.Catalog) {
 				return http.StatusOK, schema.ISOGetResponse{ISO: isoJSON(iso)}, nil
 			}
 		}
-		return 0, nil, web.NotFound("ISO")
+		return 0, nil, web.NotFound("iso")
 	})
 }
 

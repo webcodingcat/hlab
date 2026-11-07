@@ -2,6 +2,7 @@ package cloud
 
 import (
 	"cmp"
+	"fmt"
 	"net/http"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud/schema"
@@ -23,19 +24,20 @@ func registerLocations(api *web.API, cat *catalog.Catalog) {
 		for _, location := range byName(req, cat.Locations, func(l catalog.Location) string { return l.Name }) {
 			locations = append(locations, locationJSON(location))
 		}
-		if err := web.Sort(req, locations, locationSortKeys); err != nil {
-			return 0, nil, err
-		}
+		// Hetzner answers an unknown sort value here with the list by ID
+		// (measured 2026-11-07); web.Sort then leaves it as it is
+		_ = web.Sort(req, locations, locationSortKeys)
 		return listJSON(req, "locations", locations)
 	})
 
 	api.Handle("GET /locations/{id}", func(req *web.Request) (int, any, error) {
+		id := web.PathID(req, "id")
 		for _, location := range cat.Locations {
-			if location.ID == web.PathID(req, "id") {
+			if location.ID == id {
 				return http.StatusOK, schema.LocationGetResponse{Location: locationJSON(location)}, nil
 			}
 		}
-		return 0, nil, web.NotFound("location")
+		return 0, nil, web.NotFoundNull(fmt.Sprintf("location with ID %d not found", id))
 	})
 }
 

@@ -1,9 +1,10 @@
 ---
-# Hetzner's catalog, as the Cloud API showed it on 2026-11-07, with Hetzner's
-# real IDs and the prices of a German account (EUR, 19 % VAT). The keys are
-# those of Hetzner's JSON; how to update it: DEVELOPING.md, Recipes.
-# Values marked "to check" come from public sources only and are compared
-# with the real API in 1a-6 (compat/requirements.md).
+# Hetzner's catalog as the real API answered on 2026-11-07 (a German
+# account: EUR, 19 % VAT), with Hetzner's IDs. The keys are those of
+# Hetzner's JSON; how to update it: DEVELOPING.md, Recipes. Left out: ARM
+# server types and ISOs, and every system image but the newest of each
+# system the lab runs. A type is available wherever it is not deprecated:
+# Hetzner's "available" also tells its capacity at the moment.
 locations:
   - id: 1
     name: fsn1
@@ -31,17 +32,17 @@ locations:
     network_zone: eu-central
   - id: 4
     name: ash
-    description: Ashburn, VA
+    description: "Ashburn, VA"
     country: US
-    city: Ashburn, VA
+    city: "Ashburn, VA"
     latitude: 39.045821
     longitude: -77.487073
     network_zone: us-east
   - id: 5
     name: hil
-    description: Hillsboro, OR
+    description: "Hillsboro, OR"
     country: US
-    city: Hillsboro, OR
+    city: "Hillsboro, OR"
     latitude: 45.54222
     longitude: -122.951924
     network_zone: us-west
@@ -54,7 +55,6 @@ locations:
     longitude: 103.833333
     network_zone: ap-southeast
 server_types:
-  # the old CPX: only in ash and hil; prices outside them to check
   - id: 22
     name: cpx11
     description: "CPX 11"
@@ -85,8 +85,8 @@ server_types:
         deprecation:
           announced: 2025-10-16T06:00:00Z
           unavailable_after: 2025-12-31T23:59:59Z
-      - {name: ash, available: true, recommended: true}
-      - {name: hil, available: true, recommended: true}
+      - {name: ash, available: true, recommended: false}
+      - {name: hil, available: true, recommended: false}
       - name: sin
         available: false
         recommended: false
@@ -99,11 +99,31 @@ server_types:
         price_monthly: {net: "17.4900000000", gross: "20.8131000000000000"}
         included_traffic: 1099511627776
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: fsn1
+        price_hourly: {net: "0.0088000000", gross: "0.0104720000000000"}
+        price_monthly: {net: "5.4900000000", gross: "6.5331000000000000"}
+        included_traffic: 21990232555520
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: hel1
+        price_hourly: {net: "0.0088000000", gross: "0.0104720000000000"}
+        price_monthly: {net: "5.4900000000", gross: "6.5331000000000000"}
+        included_traffic: 21990232555520
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
       - location: hil
         price_hourly: {net: "0.0280000000", gross: "0.0333200000000000"}
         price_monthly: {net: "17.4900000000", gross: "20.8131000000000000"}
         included_traffic: 1099511627776
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: nbg1
+        price_hourly: {net: "0.0088000000", gross: "0.0104720000000000"}
+        price_monthly: {net: "5.4900000000", gross: "6.5331000000000000"}
+        included_traffic: 21990232555520
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: sin
+        price_hourly: {net: "0.0160000000", gross: "0.0190400000000000"}
+        price_monthly: {net: "9.9900000000", gross: "11.8881000000000000"}
+        included_traffic: 1099511627776
+        price_per_tb_traffic: {net: "7.4000000000", gross: "8.8060000000000000"}
   - id: 23
     name: cpx21
     description: "CPX 21"
@@ -134,8 +154,8 @@ server_types:
         deprecation:
           announced: 2025-10-16T06:00:00Z
           unavailable_after: 2025-12-31T23:59:59Z
-      - {name: ash, available: true, recommended: true}
-      - {name: hil, available: true, recommended: true}
+      - {name: ash, available: true, recommended: false}
+      - {name: hil, available: true, recommended: false}
       - name: sin
         available: false
         recommended: false
@@ -148,11 +168,31 @@ server_types:
         price_monthly: {net: "31.9900000000", gross: "38.0681000000000000"}
         included_traffic: 2199023255552
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: fsn1
+        price_hourly: {net: "0.0152000000", gross: "0.0180880000000000"}
+        price_monthly: {net: "9.4900000000", gross: "11.2931000000000000"}
+        included_traffic: 21990232555520
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: hel1
+        price_hourly: {net: "0.0152000000", gross: "0.0180880000000000"}
+        price_monthly: {net: "9.4900000000", gross: "11.2931000000000000"}
+        included_traffic: 21990232555520
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
       - location: hil
         price_hourly: {net: "0.0513000000", gross: "0.0610470000000000"}
         price_monthly: {net: "31.9900000000", gross: "38.0681000000000000"}
         included_traffic: 2199023255552
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: nbg1
+        price_hourly: {net: "0.0152000000", gross: "0.0180880000000000"}
+        price_monthly: {net: "9.4900000000", gross: "11.2931000000000000"}
+        included_traffic: 21990232555520
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: sin
+        price_hourly: {net: "0.0296000000", gross: "0.0352240000000000"}
+        price_monthly: {net: "18.4900000000", gross: "22.0031000000000000"}
+        included_traffic: 2199023255552
+        price_per_tb_traffic: {net: "7.4000000000", gross: "8.8060000000000000"}
   - id: 24
     name: cpx31
     description: "CPX 31"
@@ -183,8 +223,8 @@ server_types:
         deprecation:
           announced: 2025-10-16T06:00:00Z
           unavailable_after: 2025-12-31T23:59:59Z
-      - {name: ash, available: true, recommended: true}
-      - {name: hil, available: true, recommended: true}
+      - {name: ash, available: true, recommended: false}
+      - {name: hil, available: true, recommended: false}
       - name: sin
         available: false
         recommended: false
@@ -197,11 +237,31 @@ server_types:
         price_monthly: {net: "62.4900000000", gross: "74.3631000000000000"}
         included_traffic: 3298534883328
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: fsn1
+        price_hourly: {net: "0.0280000000", gross: "0.0333200000000000"}
+        price_monthly: {net: "17.4900000000", gross: "20.8131000000000000"}
+        included_traffic: 21990232555520
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: hel1
+        price_hourly: {net: "0.0280000000", gross: "0.0333200000000000"}
+        price_monthly: {net: "17.4900000000", gross: "20.8131000000000000"}
+        included_traffic: 21990232555520
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
       - location: hil
         price_hourly: {net: "0.1001000000", gross: "0.1191190000000000"}
         price_monthly: {net: "62.4900000000", gross: "74.3631000000000000"}
         included_traffic: 3298534883328
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: nbg1
+        price_hourly: {net: "0.0280000000", gross: "0.0333200000000000"}
+        price_monthly: {net: "17.4900000000", gross: "20.8131000000000000"}
+        included_traffic: 21990232555520
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: sin
+        price_hourly: {net: "0.0521000000", gross: "0.0619990000000000"}
+        price_monthly: {net: "32.4900000000", gross: "38.6631000000000000"}
+        included_traffic: 3298534883328
+        price_per_tb_traffic: {net: "7.4000000000", gross: "8.8060000000000000"}
   - id: 25
     name: cpx41
     description: "CPX 41"
@@ -232,8 +292,8 @@ server_types:
         deprecation:
           announced: 2025-10-16T06:00:00Z
           unavailable_after: 2025-12-31T23:59:59Z
-      - {name: ash, available: true, recommended: true}
-      - {name: hil, available: true, recommended: true}
+      - {name: ash, available: true, recommended: false}
+      - {name: hil, available: true, recommended: false}
       - name: sin
         available: false
         recommended: false
@@ -246,11 +306,31 @@ server_types:
         price_monthly: {net: "120.4900000000", gross: "143.3831000000000000"}
         included_traffic: 4398046511104
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: fsn1
+        price_hourly: {net: "0.0521000000", gross: "0.0619990000000000"}
+        price_monthly: {net: "32.4900000000", gross: "38.6631000000000000"}
+        included_traffic: 21990232555520
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: hel1
+        price_hourly: {net: "0.0521000000", gross: "0.0619990000000000"}
+        price_monthly: {net: "32.4900000000", gross: "38.6631000000000000"}
+        included_traffic: 21990232555520
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
       - location: hil
         price_hourly: {net: "0.1931000000", gross: "0.2297890000000000"}
         price_monthly: {net: "120.4900000000", gross: "143.3831000000000000"}
         included_traffic: 4398046511104
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: nbg1
+        price_hourly: {net: "0.0521000000", gross: "0.0619990000000000"}
+        price_monthly: {net: "32.4900000000", gross: "38.6631000000000000"}
+        included_traffic: 21990232555520
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: sin
+        price_hourly: {net: "0.0889000000", gross: "0.1057910000000000"}
+        price_monthly: {net: "55.4900000000", gross: "66.0331000000000000"}
+        included_traffic: 4398046511104
+        price_per_tb_traffic: {net: "7.4000000000", gross: "8.8060000000000000"}
   - id: 26
     name: cpx51
     description: "CPX 51"
@@ -281,8 +361,8 @@ server_types:
         deprecation:
           announced: 2025-10-16T06:00:00Z
           unavailable_after: 2025-12-31T23:59:59Z
-      - {name: ash, available: true, recommended: true}
-      - {name: hil, available: true, recommended: true}
+      - {name: ash, available: true, recommended: false}
+      - {name: hil, available: true, recommended: false}
       - name: sin
         available: false
         recommended: false
@@ -295,11 +375,31 @@ server_types:
         price_monthly: {net: "237.9900000000", gross: "283.2081000000000000"}
         included_traffic: 5497558138880
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: fsn1
+        price_hourly: {net: "0.1138000000", gross: "0.1354220000000000"}
+        price_monthly: {net: "70.9900000000", gross: "84.4781000000000000"}
+        included_traffic: 21990232555520
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: hel1
+        price_hourly: {net: "0.1138000000", gross: "0.1354220000000000"}
+        price_monthly: {net: "70.9900000000", gross: "84.4781000000000000"}
+        included_traffic: 21990232555520
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
       - location: hil
         price_hourly: {net: "0.3814000000", gross: "0.4538660000000000"}
         price_monthly: {net: "237.9900000000", gross: "283.2081000000000000"}
         included_traffic: 5497558138880
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: nbg1
+        price_hourly: {net: "0.1138000000", gross: "0.1354220000000000"}
+        price_monthly: {net: "70.9900000000", gross: "84.4781000000000000"}
+        included_traffic: 21990232555520
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: sin
+        price_hourly: {net: "0.1602000000", gross: "0.1906380000000000"}
+        price_monthly: {net: "99.9900000000", gross: "118.9881000000000000"}
+        included_traffic: 5497558138880
+        price_per_tb_traffic: {net: "7.4000000000", gross: "8.8060000000000000"}
   - id: 96
     name: ccx13
     description: "CCX13 Dedicated CPU"
@@ -312,19 +412,19 @@ server_types:
     architecture: x86
     deprecation: null
     locations:
-      - {name: fsn1, available: true, recommended: true}
-      - {name: nbg1, available: true, recommended: true}
+      - {name: fsn1, available: true, recommended: false}
+      - {name: nbg1, available: true, recommended: false}
       - {name: hel1, available: true, recommended: true}
-      - {name: ash, available: true, recommended: true}
-      - {name: hil, available: true, recommended: true}
-      - {name: sin, available: true, recommended: true}
+      - {name: ash, available: true, recommended: false}
+      - {name: hil, available: true, recommended: false}
+      - {name: sin, available: true, recommended: false}
     prices:
-      - location: fsn1
-        price_hourly: {net: "0.0689000000", gross: "0.0819910000000000"}
-        price_monthly: {net: "42.9900000000", gross: "51.1581000000000000"}
-        included_traffic: 21990232555520
+      - location: ash
+        price_hourly: {net: "0.0697000000", gross: "0.0829430000000000"}
+        price_monthly: {net: "43.4900000000", gross: "51.7531000000000000"}
+        included_traffic: 1099511627776
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: nbg1
+      - location: fsn1
         price_hourly: {net: "0.0689000000", gross: "0.0819910000000000"}
         price_monthly: {net: "42.9900000000", gross: "51.1581000000000000"}
         included_traffic: 21990232555520
@@ -334,15 +434,15 @@ server_types:
         price_monthly: {net: "42.9900000000", gross: "51.1581000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: ash
-        price_hourly: {net: "0.0697000000", gross: "0.0829430000000000"}
-        price_monthly: {net: "43.4900000000", gross: "51.7531000000000000"}
-        included_traffic: 1099511627776
-        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
       - location: hil
         price_hourly: {net: "0.0697000000", gross: "0.0829430000000000"}
         price_monthly: {net: "43.4900000000", gross: "51.7531000000000000"}
         included_traffic: 1099511627776
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: nbg1
+        price_hourly: {net: "0.0689000000", gross: "0.0819910000000000"}
+        price_monthly: {net: "42.9900000000", gross: "51.1581000000000000"}
+        included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
       - location: sin
         price_hourly: {net: "0.0865000000", gross: "0.1029350000000000"}
@@ -361,19 +461,19 @@ server_types:
     architecture: x86
     deprecation: null
     locations:
-      - {name: fsn1, available: true, recommended: true}
-      - {name: nbg1, available: true, recommended: true}
+      - {name: fsn1, available: true, recommended: false}
+      - {name: nbg1, available: true, recommended: false}
       - {name: hel1, available: true, recommended: true}
-      - {name: ash, available: true, recommended: true}
-      - {name: hil, available: true, recommended: true}
-      - {name: sin, available: true, recommended: true}
+      - {name: ash, available: true, recommended: false}
+      - {name: hil, available: true, recommended: false}
+      - {name: sin, available: true, recommended: false}
     prices:
-      - location: fsn1
-        price_hourly: {net: "0.1378000000", gross: "0.1639820000000000"}
-        price_monthly: {net: "85.9900000000", gross: "102.3281000000000000"}
-        included_traffic: 21990232555520
+      - location: ash
+        price_hourly: {net: "0.1402000000", gross: "0.1668380000000000"}
+        price_monthly: {net: "87.4900000000", gross: "104.1131000000000000"}
+        included_traffic: 2199023255552
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: nbg1
+      - location: fsn1
         price_hourly: {net: "0.1378000000", gross: "0.1639820000000000"}
         price_monthly: {net: "85.9900000000", gross: "102.3281000000000000"}
         included_traffic: 21990232555520
@@ -383,15 +483,15 @@ server_types:
         price_monthly: {net: "85.9900000000", gross: "102.3281000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: ash
-        price_hourly: {net: "0.1402000000", gross: "0.1668380000000000"}
-        price_monthly: {net: "87.4900000000", gross: "104.1131000000000000"}
-        included_traffic: 2199023255552
-        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
       - location: hil
         price_hourly: {net: "0.1402000000", gross: "0.1668380000000000"}
         price_monthly: {net: "87.4900000000", gross: "104.1131000000000000"}
         included_traffic: 2199023255552
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: nbg1
+        price_hourly: {net: "0.1378000000", gross: "0.1639820000000000"}
+        price_monthly: {net: "85.9900000000", gross: "102.3281000000000000"}
+        included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
       - location: sin
         price_hourly: {net: "0.1739000000", gross: "0.2069410000000000"}
@@ -410,19 +510,19 @@ server_types:
     architecture: x86
     deprecation: null
     locations:
-      - {name: fsn1, available: true, recommended: true}
-      - {name: nbg1, available: true, recommended: true}
+      - {name: fsn1, available: true, recommended: false}
+      - {name: nbg1, available: true, recommended: false}
       - {name: hel1, available: true, recommended: true}
-      - {name: ash, available: true, recommended: true}
-      - {name: hil, available: true, recommended: true}
-      - {name: sin, available: true, recommended: true}
+      - {name: ash, available: true, recommended: false}
+      - {name: hil, available: true, recommended: false}
+      - {name: sin, available: true, recommended: false}
     prices:
-      - location: fsn1
-        price_hourly: {net: "0.2219000000", gross: "0.2640610000000000"}
-        price_monthly: {net: "138.4900000000", gross: "164.8031000000000000"}
-        included_traffic: 32985348833280
+      - location: ash
+        price_hourly: {net: "0.2259000000", gross: "0.2688210000000000"}
+        price_monthly: {net: "140.9900000000", gross: "167.7781000000000000"}
+        included_traffic: 3298534883328
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: nbg1
+      - location: fsn1
         price_hourly: {net: "0.2219000000", gross: "0.2640610000000000"}
         price_monthly: {net: "138.4900000000", gross: "164.8031000000000000"}
         included_traffic: 32985348833280
@@ -432,15 +532,15 @@ server_types:
         price_monthly: {net: "138.4900000000", gross: "164.8031000000000000"}
         included_traffic: 32985348833280
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: ash
-        price_hourly: {net: "0.2259000000", gross: "0.2688210000000000"}
-        price_monthly: {net: "140.9900000000", gross: "167.7781000000000000"}
-        included_traffic: 3298534883328
-        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
       - location: hil
         price_hourly: {net: "0.2259000000", gross: "0.2688210000000000"}
         price_monthly: {net: "140.9900000000", gross: "167.7781000000000000"}
         included_traffic: 3298534883328
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: nbg1
+        price_hourly: {net: "0.2219000000", gross: "0.2640610000000000"}
+        price_monthly: {net: "138.4900000000", gross: "164.8031000000000000"}
+        included_traffic: 32985348833280
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
       - location: sin
         price_hourly: {net: "0.2796000000", gross: "0.3327240000000000"}
@@ -459,19 +559,19 @@ server_types:
     architecture: x86
     deprecation: null
     locations:
-      - {name: fsn1, available: true, recommended: true}
-      - {name: nbg1, available: true, recommended: true}
+      - {name: fsn1, available: true, recommended: false}
+      - {name: nbg1, available: true, recommended: false}
       - {name: hel1, available: true, recommended: true}
-      - {name: ash, available: true, recommended: true}
-      - {name: hil, available: true, recommended: true}
-      - {name: sin, available: true, recommended: true}
+      - {name: ash, available: true, recommended: false}
+      - {name: hil, available: true, recommended: false}
+      - {name: sin, available: true, recommended: false}
     prices:
-      - location: fsn1
-        price_hourly: {net: "0.4423000000", gross: "0.5263370000000000"}
-        price_monthly: {net: "275.9900000000", gross: "328.4281000000000000"}
-        included_traffic: 43980465111040
+      - location: ash
+        price_hourly: {net: "0.4479000000", gross: "0.5330010000000000"}
+        price_monthly: {net: "279.4900000000", gross: "332.5931000000000000"}
+        included_traffic: 4398046511104
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: nbg1
+      - location: fsn1
         price_hourly: {net: "0.4423000000", gross: "0.5263370000000000"}
         price_monthly: {net: "275.9900000000", gross: "328.4281000000000000"}
         included_traffic: 43980465111040
@@ -481,15 +581,15 @@ server_types:
         price_monthly: {net: "275.9900000000", gross: "328.4281000000000000"}
         included_traffic: 43980465111040
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: ash
-        price_hourly: {net: "0.4479000000", gross: "0.5330010000000000"}
-        price_monthly: {net: "279.4900000000", gross: "332.5931000000000000"}
-        included_traffic: 4398046511104
-        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
       - location: hil
         price_hourly: {net: "0.4479000000", gross: "0.5330010000000000"}
         price_monthly: {net: "279.4900000000", gross: "332.5931000000000000"}
         included_traffic: 4398046511104
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: nbg1
+        price_hourly: {net: "0.4423000000", gross: "0.5263370000000000"}
+        price_monthly: {net: "275.9900000000", gross: "328.4281000000000000"}
+        included_traffic: 43980465111040
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
       - location: sin
         price_hourly: {net: "0.5465000000", gross: "0.6503350000000000"}
@@ -508,19 +608,19 @@ server_types:
     architecture: x86
     deprecation: null
     locations:
-      - {name: fsn1, available: true, recommended: true}
-      - {name: nbg1, available: true, recommended: true}
+      - {name: fsn1, available: true, recommended: false}
+      - {name: nbg1, available: true, recommended: false}
       - {name: hel1, available: true, recommended: true}
-      - {name: ash, available: true, recommended: true}
-      - {name: hil, available: true, recommended: true}
-      - {name: sin, available: true, recommended: true}
+      - {name: ash, available: true, recommended: false}
+      - {name: hil, available: true, recommended: false}
+      - {name: sin, available: true, recommended: false}
     prices:
-      - location: fsn1
-        price_hourly: {net: "0.8550000000", gross: "1.0174500000000000"}
-        price_monthly: {net: "533.4900000000", gross: "634.8531000000000000"}
-        included_traffic: 54975581388800
+      - location: ash
+        price_hourly: {net: "0.8630000000", gross: "1.0269700000000000"}
+        price_monthly: {net: "538.4900000000", gross: "640.8031000000000000"}
+        included_traffic: 6597069766656
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: nbg1
+      - location: fsn1
         price_hourly: {net: "0.8550000000", gross: "1.0174500000000000"}
         price_monthly: {net: "533.4900000000", gross: "634.8531000000000000"}
         included_traffic: 54975581388800
@@ -530,15 +630,15 @@ server_types:
         price_monthly: {net: "533.4900000000", gross: "634.8531000000000000"}
         included_traffic: 54975581388800
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: ash
-        price_hourly: {net: "0.8630000000", gross: "1.0269700000000000"}
-        price_monthly: {net: "538.4900000000", gross: "640.8031000000000000"}
-        included_traffic: 6597069766656
-        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
       - location: hil
         price_hourly: {net: "0.8630000000", gross: "1.0269700000000000"}
         price_monthly: {net: "538.4900000000", gross: "640.8031000000000000"}
         included_traffic: 6597069766656
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: nbg1
+        price_hourly: {net: "0.8550000000", gross: "1.0174500000000000"}
+        price_monthly: {net: "533.4900000000", gross: "634.8531000000000000"}
+        included_traffic: 54975581388800
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
       - location: sin
         price_hourly: {net: "1.0449000000", gross: "1.2434310000000000"}
@@ -557,19 +657,19 @@ server_types:
     architecture: x86
     deprecation: null
     locations:
-      - {name: fsn1, available: true, recommended: true}
-      - {name: nbg1, available: true, recommended: true}
+      - {name: fsn1, available: true, recommended: false}
+      - {name: nbg1, available: true, recommended: false}
       - {name: hel1, available: true, recommended: true}
-      - {name: ash, available: true, recommended: true}
-      - {name: hil, available: true, recommended: true}
-      - {name: sin, available: true, recommended: true}
+      - {name: ash, available: true, recommended: false}
+      - {name: hil, available: true, recommended: false}
+      - {name: sin, available: true, recommended: false}
     prices:
-      - location: fsn1
-        price_hourly: {net: "1.3678000000", gross: "1.6276820000000000"}
-        price_monthly: {net: "853.4900000000", gross: "1015.6531000000000000"}
-        included_traffic: 65970697666560
+      - location: ash
+        price_hourly: {net: "1.3782000000", gross: "1.6400580000000000"}
+        price_monthly: {net: "859.9900000000", gross: "1023.3881000000000000"}
+        included_traffic: 8796093022208
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: nbg1
+      - location: fsn1
         price_hourly: {net: "1.3678000000", gross: "1.6276820000000000"}
         price_monthly: {net: "853.4900000000", gross: "1015.6531000000000000"}
         included_traffic: 65970697666560
@@ -579,15 +679,15 @@ server_types:
         price_monthly: {net: "853.4900000000", gross: "1015.6531000000000000"}
         included_traffic: 65970697666560
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: ash
-        price_hourly: {net: "1.3782000000", gross: "1.6400580000000000"}
-        price_monthly: {net: "859.9900000000", gross: "1023.3881000000000000"}
-        included_traffic: 8796093022208
-        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
       - location: hil
         price_hourly: {net: "1.3782000000", gross: "1.6400580000000000"}
         price_monthly: {net: "859.9900000000", gross: "1023.3881000000000000"}
         included_traffic: 8796093022208
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: nbg1
+        price_hourly: {net: "1.3678000000", gross: "1.6276820000000000"}
+        price_monthly: {net: "853.4900000000", gross: "1015.6531000000000000"}
+        included_traffic: 65970697666560
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
       - location: sin
         price_hourly: {net: "1.6610000000", gross: "1.9765900000000000"}
@@ -606,22 +706,22 @@ server_types:
     architecture: x86
     deprecation: null
     locations:
-      - {name: fsn1, available: true, recommended: true}
-      - {name: nbg1, available: true, recommended: true}
+      - {name: fsn1, available: true, recommended: false}
+      - {name: nbg1, available: true, recommended: false}
       - {name: hel1, available: true, recommended: true}
-      - {name: sin, available: true, recommended: true}
+      - {name: sin, available: true, recommended: false}
     prices:
       - location: fsn1
         price_hourly: {net: "0.0184000000", gross: "0.0218960000000000"}
         price_monthly: {net: "11.4900000000", gross: "13.6731000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: nbg1
+      - location: hel1
         price_hourly: {net: "0.0184000000", gross: "0.0218960000000000"}
         price_monthly: {net: "11.4900000000", gross: "13.6731000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: hel1
+      - location: nbg1
         price_hourly: {net: "0.0184000000", gross: "0.0218960000000000"}
         price_monthly: {net: "11.4900000000", gross: "13.6731000000000000"}
         included_traffic: 21990232555520
@@ -643,22 +743,22 @@ server_types:
     architecture: x86
     deprecation: null
     locations:
-      - {name: fsn1, available: true, recommended: true}
-      - {name: nbg1, available: true, recommended: true}
+      - {name: fsn1, available: true, recommended: false}
+      - {name: nbg1, available: true, recommended: false}
       - {name: hel1, available: true, recommended: true}
-      - {name: sin, available: true, recommended: true}
+      - {name: sin, available: true, recommended: false}
     prices:
       - location: fsn1
         price_hourly: {net: "0.0312000000", gross: "0.0371280000000000"}
         price_monthly: {net: "19.4900000000", gross: "23.1931000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: nbg1
+      - location: hel1
         price_hourly: {net: "0.0312000000", gross: "0.0371280000000000"}
         price_monthly: {net: "19.4900000000", gross: "23.1931000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: hel1
+      - location: nbg1
         price_hourly: {net: "0.0312000000", gross: "0.0371280000000000"}
         price_monthly: {net: "19.4900000000", gross: "23.1931000000000000"}
         included_traffic: 21990232555520
@@ -680,22 +780,22 @@ server_types:
     architecture: x86
     deprecation: null
     locations:
-      - {name: fsn1, available: true, recommended: true}
-      - {name: nbg1, available: true, recommended: true}
+      - {name: fsn1, available: true, recommended: false}
+      - {name: nbg1, available: true, recommended: false}
       - {name: hel1, available: true, recommended: true}
-      - {name: sin, available: true, recommended: true}
+      - {name: sin, available: true, recommended: false}
     prices:
       - location: fsn1
         price_hourly: {net: "0.0569000000", gross: "0.0677110000000000"}
         price_monthly: {net: "35.4900000000", gross: "42.2331000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: nbg1
+      - location: hel1
         price_hourly: {net: "0.0569000000", gross: "0.0677110000000000"}
         price_monthly: {net: "35.4900000000", gross: "42.2331000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: hel1
+      - location: nbg1
         price_hourly: {net: "0.0569000000", gross: "0.0677110000000000"}
         price_monthly: {net: "35.4900000000", gross: "42.2331000000000000"}
         included_traffic: 21990232555520
@@ -717,22 +817,22 @@ server_types:
     architecture: x86
     deprecation: null
     locations:
-      - {name: fsn1, available: true, recommended: true}
-      - {name: nbg1, available: true, recommended: true}
+      - {name: fsn1, available: true, recommended: false}
+      - {name: nbg1, available: true, recommended: false}
       - {name: hel1, available: true, recommended: true}
-      - {name: sin, available: true, recommended: true}
+      - {name: sin, available: true, recommended: false}
     prices:
       - location: fsn1
         price_hourly: {net: "0.1114000000", gross: "0.1325660000000000"}
         price_monthly: {net: "69.4900000000", gross: "82.6931000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: nbg1
+      - location: hel1
         price_hourly: {net: "0.1114000000", gross: "0.1325660000000000"}
         price_monthly: {net: "69.4900000000", gross: "82.6931000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: hel1
+      - location: nbg1
         price_hourly: {net: "0.1114000000", gross: "0.1325660000000000"}
         price_monthly: {net: "69.4900000000", gross: "82.6931000000000000"}
         included_traffic: 21990232555520
@@ -754,22 +854,22 @@ server_types:
     architecture: x86
     deprecation: null
     locations:
-      - {name: fsn1, available: true, recommended: true}
-      - {name: nbg1, available: true, recommended: true}
+      - {name: fsn1, available: true, recommended: false}
+      - {name: nbg1, available: true, recommended: false}
       - {name: hel1, available: true, recommended: true}
-      - {name: sin, available: true, recommended: true}
+      - {name: sin, available: true, recommended: false}
     prices:
       - location: fsn1
         price_hourly: {net: "0.1610000000", gross: "0.1915900000000000"}
         price_monthly: {net: "100.4900000000", gross: "119.5831000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: nbg1
+      - location: hel1
         price_hourly: {net: "0.1610000000", gross: "0.1915900000000000"}
         price_monthly: {net: "100.4900000000", gross: "119.5831000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: hel1
+      - location: nbg1
         price_hourly: {net: "0.1610000000", gross: "0.1915900000000000"}
         price_monthly: {net: "100.4900000000", gross: "119.5831000000000000"}
         included_traffic: 21990232555520
@@ -791,17 +891,12 @@ server_types:
     architecture: x86
     deprecation: null
     locations:
-      - {name: fsn1, available: true, recommended: true}
-      - {name: nbg1, available: true, recommended: true}
+      - {name: fsn1, available: true, recommended: false}
+      - {name: nbg1, available: true, recommended: false}
       - {name: hel1, available: true, recommended: true}
-      - {name: sin, available: true, recommended: true}
+      - {name: sin, available: true, recommended: false}
     prices:
       - location: fsn1
-        price_hourly: {net: "0.2083000000", gross: "0.2478770000000000"}
-        price_monthly: {net: "129.9900000000", gross: "154.6881000000000000"}
-        included_traffic: 21990232555520
-        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: nbg1
         price_hourly: {net: "0.2083000000", gross: "0.2478770000000000"}
         price_monthly: {net: "129.9900000000", gross: "154.6881000000000000"}
         included_traffic: 21990232555520
@@ -811,12 +906,16 @@ server_types:
         price_monthly: {net: "129.9900000000", gross: "154.6881000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
+      - location: nbg1
+        price_hourly: {net: "0.2083000000", gross: "0.2478770000000000"}
+        price_monthly: {net: "129.9900000000", gross: "154.6881000000000000"}
+        included_traffic: 21990232555520
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
       - location: sin
         price_hourly: {net: "0.2756000000", gross: "0.3279640000000000"}
         price_monthly: {net: "171.9900000000", gross: "204.6681000000000000"}
         included_traffic: 5497558138880
         price_per_tb_traffic: {net: "7.4000000000", gross: "8.8060000000000000"}
-  # CX: prices and traffic to check
   - id: 114
     name: cx23
     description: "CX 23"
@@ -829,8 +928,8 @@ server_types:
     architecture: x86
     deprecation: null
     locations:
-      - {name: fsn1, available: true, recommended: true}
-      - {name: nbg1, available: true, recommended: true}
+      - {name: fsn1, available: true, recommended: false}
+      - {name: nbg1, available: true, recommended: false}
       - {name: hel1, available: true, recommended: true}
     prices:
       - location: fsn1
@@ -838,12 +937,12 @@ server_types:
         price_monthly: {net: "5.4900000000", gross: "6.5331000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: nbg1
+      - location: hel1
         price_hourly: {net: "0.0088000000", gross: "0.0104720000000000"}
         price_monthly: {net: "5.4900000000", gross: "6.5331000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: hel1
+      - location: nbg1
         price_hourly: {net: "0.0088000000", gross: "0.0104720000000000"}
         price_monthly: {net: "5.4900000000", gross: "6.5331000000000000"}
         included_traffic: 21990232555520
@@ -860,21 +959,21 @@ server_types:
     architecture: x86
     deprecation: null
     locations:
-      - {name: fsn1, available: true, recommended: true}
-      - {name: nbg1, available: true, recommended: true}
-      - {name: hel1, available: true, recommended: true}
+      - {name: fsn1, available: true, recommended: false}
+      - {name: nbg1, available: true, recommended: false}
+      - {name: hel1, available: true, recommended: false}
     prices:
       - location: fsn1
         price_hourly: {net: "0.0136000000", gross: "0.0161840000000000"}
         price_monthly: {net: "8.4900000000", gross: "10.1031000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: nbg1
+      - location: hel1
         price_hourly: {net: "0.0136000000", gross: "0.0161840000000000"}
         price_monthly: {net: "8.4900000000", gross: "10.1031000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: hel1
+      - location: nbg1
         price_hourly: {net: "0.0136000000", gross: "0.0161840000000000"}
         price_monthly: {net: "8.4900000000", gross: "10.1031000000000000"}
         included_traffic: 21990232555520
@@ -891,21 +990,21 @@ server_types:
     architecture: x86
     deprecation: null
     locations:
-      - {name: fsn1, available: true, recommended: true}
-      - {name: nbg1, available: true, recommended: true}
-      - {name: hel1, available: true, recommended: true}
+      - {name: fsn1, available: true, recommended: false}
+      - {name: nbg1, available: true, recommended: false}
+      - {name: hel1, available: true, recommended: false}
     prices:
       - location: fsn1
         price_hourly: {net: "0.0256000000", gross: "0.0304640000000000"}
         price_monthly: {net: "15.9900000000", gross: "19.0281000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: nbg1
+      - location: hel1
         price_hourly: {net: "0.0256000000", gross: "0.0304640000000000"}
         price_monthly: {net: "15.9900000000", gross: "19.0281000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: hel1
+      - location: nbg1
         price_hourly: {net: "0.0256000000", gross: "0.0304640000000000"}
         price_monthly: {net: "15.9900000000", gross: "19.0281000000000000"}
         included_traffic: 21990232555520
@@ -922,16 +1021,11 @@ server_types:
     architecture: x86
     deprecation: null
     locations:
-      - {name: fsn1, available: true, recommended: true}
-      - {name: nbg1, available: true, recommended: true}
-      - {name: hel1, available: true, recommended: true}
+      - {name: fsn1, available: true, recommended: false}
+      - {name: nbg1, available: true, recommended: false}
+      - {name: hel1, available: true, recommended: false}
     prices:
       - location: fsn1
-        price_hourly: {net: "0.0473000000", gross: "0.0562870000000000"}
-        price_monthly: {net: "29.4900000000", gross: "35.0931000000000000"}
-        included_traffic: 21990232555520
-        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: nbg1
         price_hourly: {net: "0.0473000000", gross: "0.0562870000000000"}
         price_monthly: {net: "29.4900000000", gross: "35.0931000000000000"}
         included_traffic: 21990232555520
@@ -941,7 +1035,11 @@ server_types:
         price_monthly: {net: "29.4900000000", gross: "35.0931000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-  # new in 2026-10; its fields to check
+      - location: nbg1
+        price_hourly: {net: "0.0473000000", gross: "0.0562870000000000"}
+        price_monthly: {net: "29.4900000000", gross: "35.0931000000000000"}
+        included_traffic: 21990232555520
+        price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
   - id: 118
     name: cpx02
     description: "CPX 02"
@@ -954,22 +1052,22 @@ server_types:
     architecture: x86
     deprecation: null
     locations:
-      - {name: fsn1, available: true, recommended: true}
-      - {name: nbg1, available: true, recommended: true}
+      - {name: fsn1, available: true, recommended: false}
+      - {name: nbg1, available: true, recommended: false}
       - {name: hel1, available: true, recommended: true}
-      - {name: sin, available: true, recommended: true}
+      - {name: sin, available: true, recommended: false}
     prices:
       - location: fsn1
         price_hourly: {net: "0.0096000000", gross: "0.0114240000000000"}
         price_monthly: {net: "5.9900000000", gross: "7.1281000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: nbg1
+      - location: hel1
         price_hourly: {net: "0.0096000000", gross: "0.0114240000000000"}
         price_monthly: {net: "5.9900000000", gross: "7.1281000000000000"}
         included_traffic: 21990232555520
         price_per_tb_traffic: {net: "1.0000000000", gross: "1.1900000000000000"}
-      - location: hel1
+      - location: nbg1
         price_hourly: {net: "0.0096000000", gross: "0.0114240000000000"}
         price_monthly: {net: "5.9900000000", gross: "7.1281000000000000"}
         included_traffic: 21990232555520
@@ -980,7 +1078,7 @@ server_types:
         included_traffic: 549755813888
         price_per_tb_traffic: {net: "7.4000000000", gross: "8.8060000000000000"}
 load_balancer_types:
-  # IDs and connections of lb21 and lb31 to check
+  # prices as GET /pricing shows them; GET /load_balancer_types rounds them
   - id: 1
     name: lb11
     description: LB11
@@ -1099,7 +1197,6 @@ load_balancer_types:
         included_traffic: 3298534883328
         price_per_tb_traffic: {net: "7.4000000000", gross: "8.8060000000000000"}
 storage_box_types:
-  # IDs of bx21 to bx41 and the setup fee to check
   - id: 1333
     name: bx11
     description: BX11
@@ -1110,13 +1207,13 @@ storage_box_types:
     deprecation: null
     prices:
       - location: fsn1
-        price_hourly: {net: "0.0051000000", gross: "0.0060690000000000"}
-        price_monthly: {net: "3.2000000000", gross: "3.8080000000000000"}
-        setup_fee: {net: "0.0000000000", gross: "0.0000000000000000"}
+        price_hourly: {net: "0.0051", gross: "0.0061"}
+        price_monthly: {net: "3.2000", gross: "3.8080"}
+        setup_fee: {net: "0.0000", gross: "0.0000"}
       - location: hel1
-        price_hourly: {net: "0.0051000000", gross: "0.0060690000000000"}
-        price_monthly: {net: "3.2000000000", gross: "3.8080000000000000"}
-        setup_fee: {net: "0.0000000000", gross: "0.0000000000000000"}
+        price_hourly: {net: "0.0051", gross: "0.0061"}
+        price_monthly: {net: "3.2000", gross: "3.8080"}
+        setup_fee: {net: "0.0000", gross: "0.0000"}
   - id: 1334
     name: bx21
     description: BX21
@@ -1127,13 +1224,13 @@ storage_box_types:
     deprecation: null
     prices:
       - location: fsn1
-        price_hourly: {net: "0.0175000000", gross: "0.0208250000000000"}
-        price_monthly: {net: "10.9000000000", gross: "12.9710000000000000"}
-        setup_fee: {net: "0.0000000000", gross: "0.0000000000000000"}
+        price_hourly: {net: "0.0175", gross: "0.0208"}
+        price_monthly: {net: "10.9000", gross: "12.9710"}
+        setup_fee: {net: "0.0000", gross: "0.0000"}
       - location: hel1
-        price_hourly: {net: "0.0175000000", gross: "0.0208250000000000"}
-        price_monthly: {net: "10.9000000000", gross: "12.9710000000000000"}
-        setup_fee: {net: "0.0000000000", gross: "0.0000000000000000"}
+        price_hourly: {net: "0.0175", gross: "0.0208"}
+        price_monthly: {net: "10.9000", gross: "12.9710"}
+        setup_fee: {net: "0.0000", gross: "0.0000"}
   - id: 1335
     name: bx31
     description: BX31
@@ -1144,13 +1241,13 @@ storage_box_types:
     deprecation: null
     prices:
       - location: fsn1
-        price_hourly: {net: "0.0333000000", gross: "0.0396270000000000"}
-        price_monthly: {net: "20.8000000000", gross: "24.7520000000000000"}
-        setup_fee: {net: "0.0000000000", gross: "0.0000000000000000"}
+        price_hourly: {net: "0.0333", gross: "0.0396"}
+        price_monthly: {net: "20.8000", gross: "24.7520"}
+        setup_fee: {net: "0.0000", gross: "0.0000"}
       - location: hel1
-        price_hourly: {net: "0.0333000000", gross: "0.0396270000000000"}
-        price_monthly: {net: "20.8000000000", gross: "24.7520000000000000"}
-        setup_fee: {net: "0.0000000000", gross: "0.0000000000000000"}
+        price_hourly: {net: "0.0333", gross: "0.0396"}
+        price_monthly: {net: "20.8000", gross: "24.7520"}
+        setup_fee: {net: "0.0000", gross: "0.0000"}
   - id: 1336
     name: bx41
     description: BX41
@@ -1161,24 +1258,22 @@ storage_box_types:
     deprecation: null
     prices:
       - location: fsn1
-        price_hourly: {net: "0.0651000000", gross: "0.0774690000000000"}
-        price_monthly: {net: "40.6000000000", gross: "48.3140000000000000"}
-        setup_fee: {net: "0.0000000000", gross: "0.0000000000000000"}
+        price_hourly: {net: "0.0651", gross: "0.0775"}
+        price_monthly: {net: "40.6000", gross: "48.3140"}
+        setup_fee: {net: "0.0000", gross: "0.0000"}
       - location: hel1
-        price_hourly: {net: "0.0651000000", gross: "0.0774690000000000"}
-        price_monthly: {net: "40.6000000000", gross: "48.3140000000000000"}
-        setup_fee: {net: "0.0000000000", gross: "0.0000000000000000"}
+        price_hourly: {net: "0.0651", gross: "0.0775"}
+        price_monthly: {net: "40.6000", gross: "48.3140"}
+        setup_fee: {net: "0.0000", gross: "0.0000"}
 images:
-  # the ID, size and date of debian-13 and the size and date of ubuntu-26.04
-  # to check
-  - id: 999000013
+  - id: 310554929
     name: debian-13
     description: Debian 13
     os_flavor: debian
     os_version: "13"
     architecture: x86
     disk_size: 5
-    created: 2025-08-11T00:00:00Z
+    created: 2025-08-18T06:15:25Z
     rapid_deploy: true
     deprecation: null
   - id: 387894169
@@ -1188,43 +1283,255 @@ images:
     os_version: "26.04"
     architecture: x86
     disk_size: 5
-    created: 2026-05-18T00:00:00Z
+    created: 2026-05-18T11:00:39Z
     rapid_deploy: true
     deprecation: null
 isos:
-  # IDs and descriptions from Hetzner's changelog; the names to check
-  - id: 119405
-    name: ipfire-2.29-core192.iso
-    description: IPFire 2.29-core192
+  - id: 1210
+    name: "SW_DVD9_Win_Server_STD_CORE_2019_64Bit_English_DC_STD_MLF_X21-96581.iso"
+    description: "Windows Server 2019 English"
     architecture: x86
     deprecation: null
-  - id: 119702
-    name: talos-v1.9.5-amd64.iso
-    description: Talos Linux 1.9.5
+  - id: 1211
+    name: "SW_DVD9_Win_Server_STD_CORE_2019_64Bit_German_DC_STD_MLF_X21-96583.iso"
+    description: "Windows Server 2019 German"
+    architecture: x86
+    deprecation: null
+  - id: 6338
+    name: "SW_DVD9_Win_Server_STD_CORE_2019_1809.11_64Bit_Russian_DC_STD_MLF_X22-51054.iso"
+    description: "Windows Server 2019 Russian"
+    architecture: x86
+    deprecation: null
+  - id: 8637
+    name: "SW_DVD9_Win_Server_STD_CORE_2022__64Bit_English_DC_STD_MLF_X22-74290.iso"
+    description: "Windows Server 2022 English"
+    architecture: x86
+    deprecation: null
+  - id: 8638
+    name: "SW_DVD9_Win_Server_STD_CORE_2022__64Bit_German_DC_STD_MLF_X22-74292.iso"
+    description: "Windows Server 2022 German"
+    architecture: x86
+    deprecation: null
+  - id: 8639
+    name: "SW_DVD9_Win_Server_STD_CORE_2022__64Bit_Russian_DC_STD_MLF_X22-74303.iso"
+    description: "Windows Server 2022 Russian"
+    architecture: x86
+    deprecation: null
+  - id: 103333
+    name: "pfSense-CE-2.7.2-RELEASE-amd64.iso"
+    description: "pfSense CE 2.7.2 (amd64)"
+    architecture: x86
+    deprecation: null
+  - id: 106066
+    name: "debian-amd64-netinst-3cx-v20.iso"
+    description: "3CX v20 Debian12 (amd64)"
+    architecture: x86
+    deprecation: null
+  - id: 111990
+    name: "Rocky-8.10-x86_64-boot.iso"
+    description: "Rocky 8.10 (amd64/boot)"
+    architecture: x86
+    deprecation: null
+  - id: 115603
+    name: "SW_DVD9_Win_Server_STD_CORE_2025_24H2_64Bit_English_DC_STD_MLF_X23-81891.iso"
+    description: "Windows Server 2025 English"
+    architecture: x86
+    deprecation: null
+  - id: 115604
+    name: "SW_DVD9_NTRL_Server_Languages_and_Optional_Features_24H2_64bit_Multilang_X23-69975.iso"
+    description: "Windows Server 2025 Language Pack"
+    architecture: x86
+    deprecation: null
+  - id: 116716
+    name: "virtio-win-0.1.266.iso"
+    description: "VirtIO Windows Drivers 0.1.266"
+    architecture: x86
+    deprecation: null
+  - id: 116910
+    name: "CentOS-Stream-10-latest-x86_64-dvd1.iso"
+    description: "CentOS Stream 10"
+    architecture: x86
+    deprecation: null
+  - id: 117886
+    name: "ubuntu-22.04.5-live-server-amd64.iso"
+    description: "Ubuntu 22.04.5 Live Server (amd64)"
+    architecture: x86
+    deprecation: null
+  - id: 118669
+    name: "SW_DVD9_Win_Server_STD_CORE_2025_24H2_64Bit_German_DC_STD_MLF_X23-81893.iso"
+    description: "Windows Server 2025 German"
+    architecture: x86
+    deprecation: null
+  - id: 118993
+    name: "debian-12.10.0-amd64-netinst.iso"
+    description: "Debian 12.10 (amd64/netinstall)"
     architecture: x86
     deprecation: null
   - id: 119712
-    name: opensuse-microos-20250422-x86_64.iso
-    description: openSUSE MicroOS Snapshot 2025-04-22
+    name: "openSUSE-MicroOS-DVD-x86_64-Snapshot20250422-Media.iso"
+    description: "openSUSE MicroOS (amd64 / snapshot 2025-04-22)"
     architecture: x86
     deprecation: null
-  - id: 122629
-    name: hcloud-v1-11-2-arm64.iso
-    description: Talos Linux 1.11.2
-    architecture: arm
-    deprecation:
-      announced: 2025-09-30T00:00:00Z
-      unavailable_after: 2026-03-18T00:00:00Z
-  - id: 122630
-    name: hcloud-v1-11-2-amd64.iso
-    description: Talos Linux 1.11.2
+  - id: 119917
+    name: "virtio-win-0.1.271.iso"
+    description: "virtio-win-0.1.271.iso"
+    architecture: x86
+    deprecation: null
+  - id: 120407
+    name: "FreeBSD-14.3-RELEASE-amd64-bootonly.iso"
+    description: "FreeBSD 14.3 (amd64/bootonly)"
+    architecture: x86
+    deprecation: null
+  - id: 120838
+    name: "Rocky-10.0-x86_64-boot.iso"
+    description: "Rocky 10.0 (amd64/boot)"
+    architecture: x86
+    deprecation: null
+  - id: 122286
+    name: "securepoint-utm-v14.0.7.1.iso"
+    description: "Securepoint UTM v14.0.7.1 Installer x86_64"
+    architecture: x86
+    deprecation: null
+  - id: 122546
+    name: "Leap-16.0-offline-installer-x86_64.install.iso"
+    description: "openSUSE Leap 16 (amd64)"
+    architecture: x86
+    deprecation: null
+  - id: 122609
+    name: "virtio-win-0.1.285.iso"
+    description: "virtio-win-0.1.285.iso"
+    architecture: x86
+    deprecation: null
+  - id: 122685
+    name: "proxmox-mail-gateway_9.0-1.iso"
+    description: "Proxmox Mail Gateway 9.0-1"
+    architecture: x86
+    deprecation: null
+  - id: 122881
+    name: "alpine-virt-3.22.2-x86_64.iso"
+    description: "Alpine Virtual 3.22.2 (x86_64)"
+    architecture: x86
+    deprecation: null
+  - id: 122885
+    name: "clonezilla-live-3.3.0-33-amd64.iso"
+    description: "Clonezilla 3.3.0-33 (amd64/live)"
+    architecture: x86
+    deprecation: null
+  - id: 122894
+    name: "kali-linux-2025.3-installer-amd64.iso"
+    description: "Kali Linux 2025.3 installer (amd64)"
+    architecture: x86
+    deprecation: null
+  - id: 122896
+    name: "Rocky-9.6-x86_64-boot.iso"
+    description: "Rocky 9.6 (amd64/boot)"
+    architecture: x86
+    deprecation: null
+  - id: 122898
+    name: "systemrescue-12.02-amd64.iso"
+    description: "SystemRescueCD 12.02 (amd64)"
+    architecture: x86
+    deprecation: null
+  - id: 122900
+    name: "ubuntu-24.04.3-live-server-amd64.iso"
+    description: "Ubuntu 24.04.3 Live Server (amd64)"
+    architecture: x86
+    deprecation: null
+  - id: 122902
+    name: "TrueNAS-SCALE-25.04.2.5.iso"
+    description: "TrueNAS SCALE 25.04.2.5"
+    architecture: x86
+    deprecation: null
+  - id: 123164
+    name: "Fedora-Everything-netinst-x86_64-43-1.6.iso"
+    description: "Fedora 43 (netinst/amd64)"
+    architecture: x86
+    deprecation: null
+  - id: 124009
+    name: "proxmox-ve_9.1-1.iso"
+    description: "Proxmox VE 9.1-1"
+    architecture: x86
+    deprecation: null
+  - id: 124010
+    name: "proxmox-datacenter-manager_1.0-1.iso"
+    description: "Proxmox Datacenter Manager 1.0-1"
+    architecture: x86
+    deprecation: null
+  - id: 124011
+    name: "proxmox-backup-server_4.1-1.iso"
+    description: "Proxmox Backup Server 4.1-1"
+    architecture: x86
+    deprecation: null
+  - id: 124646
+    name: "AlmaLinux-9.7-x86_64-boot.iso"
+    description: "AlmaLinux 9.7 (amd64/boot)"
+    architecture: x86
+    deprecation: null
+  - id: 124648
+    name: "debian-13.3.0-amd64-netinst.iso"
+    description: "Debian 13.3.0 (amd64/netinstall)"
+    architecture: x86
+    deprecation: null
+  - id: 124737
+    name: "AlmaLinux-10.1-x86_64-boot.iso"
+    description: "AlmaLinux 10.1 (amd64/boot)"
+    architecture: x86
+    deprecation: null
+  - id: 124878
+    name: "archlinux-2026.02.01-x86_64.iso"
+    description: "Archlinux 2026.02.01 (amd64)"
+    architecture: x86
+    deprecation: null
+  - id: 125127
+    name: "hcloud-v1-12-4.amd64.iso"
+    description: "Talos Linux 1.12.4 (amd64 / Hetzner + qemu-guest-agent)"
+    architecture: x86
+    deprecation: null
+  - id: 125373
+    name: "ipfire-2.29-core200-x86_64.iso"
+    description: "IPFire 2.29-core200 (amd64)"
+    architecture: x86
+    deprecation: null
+  - id: 126400
+    name: "ubuntu-26.04-live-server-amd64.iso"
+    description: "Ubuntu 26.04 Live Server (amd64)"
+    architecture: x86
+    deprecation: null
+  - id: 126766
+    name: "openbsd79-amd64-install.iso"
+    description: "OpenBSD 7.9 (amd64)"
     architecture: x86
     deprecation:
-      announced: 2025-09-30T00:00:00Z
-      unavailable_after: 2026-03-18T00:00:00Z
+      announced: 2026-10-23T05:47:58Z
+      unavailable_after: 2026-11-23T05:47:58Z
+  - id: 127527
+    name: "nixos-minimal-26.05.4364.0ad6f47ea4fe-x86_64-linux.iso"
+    description: "NixOS 26.05 (x86)"
+    architecture: x86
+    deprecation: null
+  - id: 127850
+    name: "FreeBSD-15.1-RELEASE-amd64-bootonly.iso"
+    description: "FreeBSD 15.1 (amd64/bootonly)"
+    architecture: x86
+    deprecation: null
+  - id: 127902
+    name: "proxmox-ve_9.2-1.iso"
+    description: "Proxmox VE 9.2"
+    architecture: x86
+    deprecation: null
+  - id: 128240
+    name: "OPNsense-26.7-dvd-amd64.iso"
+    description: "OPNsense 26.7 (amd64)"
+    architecture: x86
+    deprecation: null
+  - id: 128472
+    name: "OpenBSD-8.0-amd64-install.iso"
+    description: "OpenBSD 8.0 (amd64)"
+    architecture: x86
+    deprecation: null
 pricing:
   currency: EUR
-  vat_rate: "19.00"
+  vat_rate: "19.000000"
   image:
     price_per_gb_month: {net: "0.0143000000", gross: "0.0170170000000000"}
   volume:
@@ -1283,23 +1590,3 @@ pricing:
         - location: sin
           price_hourly: {net: "0.0008000000", gross: "0.0009520000000000"}
           price_monthly: {net: "0.5000000000", gross: "0.5950000000000000"}
-    - type: ipv6
-      prices:
-        - location: fsn1
-          price_hourly: {net: "0.0000000000", gross: "0.0000000000000000"}
-          price_monthly: {net: "0.0000000000", gross: "0.0000000000000000"}
-        - location: nbg1
-          price_hourly: {net: "0.0000000000", gross: "0.0000000000000000"}
-          price_monthly: {net: "0.0000000000", gross: "0.0000000000000000"}
-        - location: hel1
-          price_hourly: {net: "0.0000000000", gross: "0.0000000000000000"}
-          price_monthly: {net: "0.0000000000", gross: "0.0000000000000000"}
-        - location: ash
-          price_hourly: {net: "0.0000000000", gross: "0.0000000000000000"}
-          price_monthly: {net: "0.0000000000", gross: "0.0000000000000000"}
-        - location: hil
-          price_hourly: {net: "0.0000000000", gross: "0.0000000000000000"}
-          price_monthly: {net: "0.0000000000", gross: "0.0000000000000000"}
-        - location: sin
-          price_hourly: {net: "0.0000000000", gross: "0.0000000000000000"}
-          price_monthly: {net: "0.0000000000", gross: "0.0000000000000000"}

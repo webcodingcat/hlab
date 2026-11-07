@@ -4,6 +4,7 @@
 package cloud
 
 import (
+	"math/big"
 	"net/http"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud/schema"
@@ -63,6 +64,20 @@ func deprecationJSON(deprecation *catalog.Deprecation) *schema.DeprecationInfo {
 // priceJSON returns a price as the API shows it.
 func priceJSON(price catalog.Price) schema.Price {
 	return schema.Price{Net: price.Net, Gross: price.Gross}
+}
+
+// roundPrice returns a price with its net and gross rounded to that many
+// decimals, as some of Hetzner's answers show prices. The catalog's prices
+// are decimals in strings, so a Rat rounds them exactly.
+func roundPrice(price schema.Price, decimals int) schema.Price {
+	round := func(value string) string {
+		number, ok := new(big.Rat).SetString(value)
+		if !ok {
+			return value // the catalog's check lets only decimals through
+		}
+		return number.FloatString(decimals)
+	}
+	return schema.Price{Net: round(price.Net), Gross: round(price.Gross)}
 }
 
 // typePricesJSON returns the prices of a server or load balancer type per

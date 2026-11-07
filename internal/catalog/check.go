@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 )
 
@@ -34,8 +35,14 @@ func (c *Catalog) check() error {
 			if err := checkLocation(what+" price", price.Location); err != nil {
 				return err
 			}
+			if err := decimals(what+" price in "+price.Location, price.PriceHourly, price.PriceMonthly, price.PricePerTBTraffic); err != nil {
+				return err
+			}
 		}
 		return nil
+	}
+	if err := decimals("pricing", c.Pricing.Image.PricePerGBMonth, c.Pricing.Volume.PricePerGBMonth, c.Pricing.FloatingIP.PriceMonthly); err != nil {
+		return err
 	}
 
 	if err := uniqueIDsAndNames("locations", c.Locations, func(l Location) (int64, string) { return l.ID, l.Name }); err != nil {
@@ -77,7 +84,11 @@ func (c *Catalog) check() error {
 	}
 	for _, boxType := range c.StorageBoxTypes {
 		for _, price := range boxType.Prices {
-			if err := checkLocation("storage box type "+boxType.Name+" price", price.Location); err != nil {
+			what := "storage box type " + boxType.Name + " price"
+			if err := checkLocation(what, price.Location); err != nil {
+				return err
+			}
+			if err := decimals(what+" in "+price.Location, price.PriceHourly, price.PriceMonthly, price.SetupFee); err != nil {
 				return err
 			}
 		}
@@ -118,6 +129,13 @@ func (c *Catalog) check() error {
 			if err := checkLocation("pricing "+ipPrices.Type, price.Location); err != nil {
 				return err
 			}
+			prices := []Price{price.PriceMonthly}
+			if price.PriceHourly != nil {
+				prices = append(prices, *price.PriceHourly)
+			}
+			if err := decimals("pricing "+ipPrices.Type+" in "+price.Location, prices...); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -138,6 +156,20 @@ func uniqueIDsAndNames[T any](list string, entries []T, idAndName func(T) (int64
 			return fmt.Errorf("%s: the name %q is there twice", list, name)
 		}
 		ids[id], names[name] = true, true
+	}
+	return nil
+}
+
+// decimal is how Hetzner writes an amount: digits with an optional
+// fraction, no sign or exponent ("5.4900000000").
+var decimal = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?$`)
+
+// decimals tells which of the prices has a net or gross that is no decimal.
+func decimals(what string, prices ...Price) error {
+	for _, price := range prices {
+		if !decimal.MatchString(price.Net) || !decimal.MatchString(price.Gross) {
+			return fmt.Errorf("%s: %q and %q must be decimals such as \"5.4900\"", what, price.Net, price.Gross)
+		}
 	}
 	return nil
 }

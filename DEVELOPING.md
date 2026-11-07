@@ -202,20 +202,26 @@ later `api/hetzner`) registers its handlers on a `web.API`, one file per resourc
   pages that are not there, and the `Link` header, which Hetzner announced to drop
   but still sends), `web.Sort` with the fields a resource allows (`web.SortKeys`),
   `web.ParseSelector` for `label_selector`.
-- **Request bodies** are decoded into the request types of `schema`
-  (`schema.SSHKeyCreateRequest`) with `web.DecodeJSON`: a body that is no JSON object
-  is 400 `json_error`, a field of the wrong type 422 `invalid_input` for that field,
-  unknown fields are ignored as Hetzner ignores them. The handler then checks its
-  fields with a `web.Check` (`Required`, `Labels` with Hetzner's label rules, `Fail`)
-  and returns `check.Err()`: one `invalid_input` that lists every field, its message
-  naming the first ("invalid input in field 'name': is required"), as in Hetzner's
-  documentation. A value another resource of the project has already is
-  `web.Uniqueness` (409 `uniqueness_error`). The request schemas of the spec are not
-  used at run time: the spec check is for tests only.
+- **Request bodies** are decoded with `web.DecodeJSON` into a request type with
+  pointer fields, so that a missing or null field differs from an empty one: broken
+  JSON is 422 `json_error` with the decoder's message, JSON of the wrong shape 422
+  `"failed to parse json"`; unknown fields are ignored as Hetzner ignores them. The
+  handler then checks the fields with a `web.Check` (`Required`, `Length`, `Labels`,
+  `Fail`; `web.Check{Update: true}` for a PUT, whose texts differ) and returns
+  `check.Err()`: one `invalid_input` that lists every field with Hetzner's messages.
+  A value another resource of the project has already is `web.Uniqueness` (409
+  `uniqueness_error`). The texts were measured on the real API
+  (`compat/requirements.md`). The request schemas of the spec are not used at run
+  time: the spec check is for tests only.
 - **JSON types** come from `hcloud-go/v2/hcloud/schema`, the types the CLI and the
   provider decode with; HLab has its own where `schema` cannot say what the real API
-  sends (`web.Pagination`, whose pages may be `null`; the pricing, where `schema`
-  still has `traffic` and a `datacenter` per Primary IP price).
+  sends, named `<thing>Answer` or `<thing>Request`: `web.Pagination` (pages may be
+  `null`), the pricing (`schema` still has `traffic` and a `datacenter` per Primary
+  IP price), server types, load balancer types and images (`schema` still sends
+  `deprecated`), and the SSH key requests (missing against empty).
+- **Lists differ** in what they do with `sort`, as measured: most refuse an unknown
+  value (`web.Sort`), locations ignore it, server types answer `service_error`, load
+  balancer types ignore `sort` altogether. Each handler says which it follows.
 - **Datacenters** are gone from Hetzner's API: their endpoints answer 410
   `deprecated_api_endpoint`, and no answer names a datacenter.
 
@@ -235,10 +241,13 @@ name, because the tools check them (`compat/requirements.md`).
   real API become catalog entries (Recipes). The differences: a server type's
   locations name the location only (the ID comes from `locations`); an ISO without
   `architecture` fits every architecture; images are system images, always
-  `available`, without labels.
-- **Only what the lab runs:** x86 server types (Hyper-V on an x86 host runs no ARM
-  guests), and each system image only in its newest version (Debian 13, Ubuntu
-  26.04).
+  `available`, without labels. Prices are kept with all decimals, as `GET /pricing`
+  shows them; `GET /load_balancer_types` rounds them to four, as Hetzner's does.
+- **Only what the lab runs:** x86 server types and ISOs (Hyper-V on an x86 host runs
+  no ARM guests), and each system image only in its newest version (Debian 13,
+  Ubuntu 26.04). A server type is `available` wherever it is not deprecated:
+  Hetzner's flag also tells its capacity at the moment, which the lab does not
+  copy.
 - **The lab owns it.** `lab.Options.Catalog` takes a loaded catalog (nil is the
   built-in one); `Lab.Catalog()` returns it. It does not change while the lab runs,
   so reading it needs no lock. Lists are sorted by ID, as Hetzner lists them.
@@ -371,13 +380,13 @@ and a `<thing>JSON` that builds the `schema` type. Add it to
 version): with a read token of a real project, fetch the lists
 (`curl -H "Authorization: Bearer $HCLOUD_TOKEN"
 "https://api.hetzner.cloud/v1/server_types?per_page=50"`, likewise `locations`,
-`load_balancer_types`, `isos`, `images?type=system&architecture=x86`, `pricing`) and
-take the values into `internal/catalog/catalog.yaml`: the same keys; x86 types only;
-a server type's locations by name, without `id`; the price lists of
-`server_types` and `load_balancer_types` from the types themselves, not from
-`pricing`; of the images only the newest version of each system. Storage Box types
-come from `https://api.hetzner.com/v1/storage_box_types`. Run `bin/dev test`; the
-catalog's check names what does not fit.
+`load_balancer_types`, `isos` (all pages), `images?type=system&architecture=x86`,
+`pricing`, and `https://api.hetzner.com/v1/storage_box_types`) and take the values
+into `internal/catalog/catalog.yaml`: the same keys; x86 server types and ISOs
+only; a server type's locations by name, without `id`, `available` wherever not
+deprecated; the prices of server types from `server_types`, those of load balancer
+types from `pricing` (all decimals); of the images only the newest version of each
+system. Run `bin/dev test`; the catalog's check names what does not fit.
 
 **A spec deviation** (the real API answers what the spec does not allow): add an
 entry to `compat/spec-deviations.yaml` with the pointer into the spec, the value if

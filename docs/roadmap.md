@@ -60,9 +60,10 @@ changed by a `catalog.yaml` in the data folder); the lab takes it in
 1a-5 wires it. The Cloud API answers locations, server types, load balancer types,
 pricing, images (the catalog's system images, Debian 13 and Ubuntu 26.04) and ISOs,
 and the SSH keys in full; the datacenter endpoints answer 410 as Hetzner's do.
-Request bodies are checked (`web.DecodeJSON`, `web.Check`). The catalog's values
-come from public sources and are compared with the real API in 1a-6, together with
-the open points at the end of `compat/requirements.md`. Not yet: `PUT` and `DELETE`
+Request bodies are checked (`web.DecodeJSON`, `web.Check`). The catalog comes from
+the real API's answers, and the error texts, sorting and filters of these endpoints
+and of the SSH keys were measured on it (2026-11-07, `compat/requirements.md`);
+1a-6 is left with what that file lists as still open. Not yet: `PUT` and `DELETE`
 of images and their actions (with snapshots, 3a); the catalog's image sources for
 the image cache (1b).
 

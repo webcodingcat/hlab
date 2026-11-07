@@ -44,9 +44,10 @@ it; "open" means the phase has not come yet. What never works is in
 |---|---|---|---|
 | Create, read, update (name, labels; a missing field stays), delete (204); keys of another project are `not_found` | hcloud-go `hcloud/ssh_key.go` (`Create`, `GetByID`, `Update`, `Delete`) | 1a | `internal/api/cloud`: `TestSSHKeyLifeCycle`, `TestSSHKeysOfOtherProjectsAreNotFound` |
 | The fingerprint is the MD5 of the key, hex pairs with colons; lists filter by `name`, `fingerprint`, `label_selector` and sort by `id`, `name` | hcloud-go `hcloud/ssh_key.go` (`GetByFingerprint`, `SSHKeyListOpts`) | 1a | `internal/api/cloud`: `TestSSHKeyFilters`, `TestSSHKeyLifeCycle` |
-| A name or fingerprint the project has already: 409 `uniqueness_error`, `details.fields` `[{"name": …}]`; `"SSH key with the same fingerprint already exists"` | Hetzner's documentation (the error example); hcloud-go `ErrorCodeUniquenessError` | 1a | `internal/api/cloud`: `TestSSHKeyNamesAndFingerprintsAreUnique` |
-| Invalid fields: 422 `invalid_input`, `"invalid input in field '<first>': <its first message>"`, `details.fields` with every field and its messages; a body that is no JSON object: 400 `json_error` | Hetzner's documentation (the error example); hcloud-go `hcloud/error.go` (`ErrorDetailsInvalidInput`) | 1a | `internal/api/cloud`: `TestSSHKeyRequestsAreChecked`; `internal/web`: `TestCheckCollectsEveryField`, `TestDecodeJSON` |
-| Labels follow Hetzner's rules: key with an optional DNS prefix, name and value up to 63 characters of letters, digits, `-_.`, starting and ending alphanumeric; the prefix `hetzner.cloud/` is Hetzner's | Hetzner's documentation ("Labels") | 1a | `internal/web`: `TestCheckLabels` |
+| A name or fingerprint the project has already: 409 `uniqueness_error`, `"SSH key not unique"`, `details.fields` `[{"name": "name"}]` or `[{"name": "public_key"}]`; the name is checked first | measured; hcloud-go `ErrorCodeUniquenessError` | 1a | `internal/api/cloud`: `TestSSHKeyNamesAndFingerprintsAreUnique` |
+| Invalid fields: 422 `invalid_input` with `details.fields` (every field, its messages); the texts below | measured; hcloud-go `hcloud/error.go` (`ErrorDetailsInvalidInput`) | 1a | `internal/api/cloud`: `TestSSHKeyRequestsAreChecked`; `internal/web`: `TestCheckCollectsEveryField`, `TestDecodeJSONErrors` |
+| Labels follow Hetzner's rules: key with an optional DNS prefix, name and value up to 63 characters of letters, digits, `-_.`, starting and ending alphanumeric; the prefix `hetzner.cloud/` is accepted | Hetzner's documentation ("Labels"); measured | 1a | `internal/web`: `TestCheckLabels`, `TestCheckLabelMessages` |
+| `public_key` is kept as given, comment and line end included | measured | 1a | `internal/api/cloud`: `TestSSHKeyLifeCycle` |
 
 ## Gaps of the old HLab
 
@@ -75,6 +76,37 @@ answers the same (`internal/web`, `internal/api/cloud`).
 | `?page=0&per_page=1000` | page 1, `per_page` 50; `Link` header with the rest of the query |
 | `?page=99` (one page in all) | page 99, `previous_page` and `next_page` `null`, `last_page` 1 |
 
+### Catalog and SSH keys
+
+Measured on 2026-11-07 with a read token and, for the bodies, a read-write token of
+an empty test project. The catalog (`internal/catalog/catalog.yaml`) is taken from
+these answers.
+
+| Request | Answer |
+|---|---|
+| `GET /ssh_keys/1`, `PUT` or `DELETE` of a missing key | 404 `not_found`, `"SSH key not found"`, `details` `{}` |
+| `GET /server_types/999`, `/images/1`, `/isos/1` | 404 `not_found`, `"server type not found"`, `"image not found"`, `"iso not found"`, `details` `{}` |
+| `GET /locations/999`, `/load_balancer_types/999` | 404 `not_found`, `"location with ID 999 not found"`, `"load balancer type not found"`, `details` `null` |
+| `GET /server_types/1` (cx11, gone from the list) | 200: removed types stay readable by ID; the lab knows only the listed ones |
+| server types, load balancer types, images | no `deprecated` and no top-level `included_traffic` any more; `deprecation` only |
+| `GET /load_balancer_types` | prices with four decimals (`"0.0112"`); in `GET /pricing` ten (`"0.0112000000"`), gross sixteen |
+| `GET /pricing` | `vat_rate` `"19.000000"`; no `traffic`, no `datacenter` |
+| `GET /server_types?sort=name:desc` / `?sort=bogus` | sorted / 422 `service_error`, `"internal error"`, `details` `{}` |
+| `GET /load_balancer_types?sort=…` | any sort value ignored, the list by ID |
+| `GET /locations?sort=bogus` | 200, the list by ID |
+| `GET /isos?sort=name:desc` / `?sort=created` | sorted / 422 `"invalid sort value"` (`id` and `name` only) |
+| `GET /images?type=bogus` (also `status`, `architecture`) | 422 `invalid_input`, `"invalid type value"`, `details` `{}` |
+| `GET /images?name=debian-11` (deprecated) | empty without `include_deprecated=true` |
+| `POST /ssh_keys` `{}` or with `null` fields | 422 `invalid_input`, `"invalid input in fields 'name', 'public_key'"`, each `"Missing data for required field."` |
+| `POST /ssh_keys` with one invalid field | `"invalid input in fields 'public_key'"` (plural even for one) |
+| `PUT /ssh_keys/{id}` with an invalid field | `"invalid input in field 'name'"` (singular) |
+| name `""` or longer than 128 | `"Length must be between 1 and 128."` |
+| `public_key` with a leading space / unreadable / unknown type | `"Must not begin with a whitespace character."` / `"SSH key type is invalid (supported types: ssh-ed25519, …"` (the bracket is not closed) |
+| labels on POST / on PUT | `"invalid label key"`, `"invalid label value"` / `"key contains invalid characters or is malformed"`, `"value contains invalid characters or is malformed"` |
+| a field of the wrong type (`"name": 5`, a label value `5`), or `[1]` | 422 `invalid_input`, `"failed to parse json"`, `details` `{}` |
+| a body cut off (`{"name": `) | 422 `json_error`, `"unexpected EOF"`, `details` `{}` |
+| `PUT` with `{}` or `"labels": null` | 200, nothing changed |
+
 Still open:
 
 - The messages of HLab's other label selector errors are its own; Hetzner's are known
@@ -82,31 +114,6 @@ Still open:
 - Whether the action endpoints of each resource (`/servers/{id}/actions/…`,
   `/servers/actions`) count against the budget of `/actions` too; HLab counts only
   `/actions` there. To measure when the first of them comes (1b).
-- What `not_found` of a resource looks like (`GET /ssh_keys/1`, `/server_types/1`,
-  `/images/1`): HLab answers JSON `not_found`, `"<resource> not found"`, `details`
-  `null`; GET `/actions/{id}` showed that Hetzner may answer plain text instead. To
-  measure in 1a-6.
-- The messages of `invalid_input` for single fields ("is required", "must be of type
-  string", "invalid public key", the label messages) are HLab's own; only the shape
-  of the message is Hetzner's. The message for a duplicate name ("SSH key with the
-  same name already exists") follows the one for the fingerprint. To measure in 1a-6.
-- Whether Hetzner refuses an SSH key with leading whitespace (the old HLab said so,
-  since 2026-04) and whether it trims the trailing newline of `public_key`.
-- `hcloud-go/schema`'s types send fields that the spec no longer lists:
-  `included_traffic` (0) and `deprecated` of server types, `deprecated` of load
-  balancer types and images. Whether the real API still sends them; if not, HLab
-  needs its own types there, as for the pricing.
-- hcloud-go sends `sort` to server types, load balancer types and ISOs, whose spec
-  has no `sort`; HLab ignores it there. Whether the real API sorts or refuses.
-- Values of the filters that the spec limits (`type=bogus`, `architecture=bogus` on
-  `/images`): HLab finds nothing; Hetzner may answer `invalid_input`.
-- The catalog's values against `GET /server_types`, `/locations`,
-  `/load_balancer_types`, `/pricing`, `/images?type=system&architecture=x86`,
-  `/isos` and the Hetzner API's `/storage_box_types`, with a read token. They come
-  from public sources (Hetzner's changelog and price data, recorded API answers);
-  `internal/catalog/catalog.yaml` marks the uncertain ones "to check". Above all:
-  the ID of `debian-13` (no public source names it; the catalog has the stand-in
-  999000013), size and date of both images, the names of the ISOs, the IDs of
-  `lb21`, `lb31` and `bx21` to `bx41`, the prices of the old CPX outside `ash` and
-  `hil`, the image and volume prices, and whether `cx23` to `cx53` are available
-  everywhere (the lab offers them in all three EU locations).
+- Whether a PUT with several invalid fields names them all ("fields") like a POST;
+  HLab names the first, as measured with one.
+- The message of a body over 1 MiB; HLab answers `json_error`.

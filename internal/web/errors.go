@@ -58,10 +58,33 @@ func InvalidInput(message string, fields ...Field) *Error {
 	return err
 }
 
-// NotFound returns a 404 not_found error for a resource that is not there
-// ("server").
+// NotFound returns Hetzner's 404 not_found for a resource that is not there
+// ("SSH key not found"), with the details {} that most resources send
+// (measured 2026-11-07).
 func NotFound(what string) *Error {
-	return &Error{Status: http.StatusNotFound, Code: "not_found", Message: what + " not found"}
+	return &Error{Status: http.StatusNotFound, Code: "not_found", Message: what + " not found", Details: map[string]any{}}
+}
+
+// NotFoundNull returns the 404 not_found of the resources whose details are
+// null; their messages differ ("location with ID 9 not found", "load
+// balancer type not found"), so the caller gives the whole message (measured
+// 2026-11-07).
+func NotFoundNull(message string) *Error {
+	return &Error{Status: http.StatusNotFound, Code: "not_found", Message: message}
+}
+
+// InvalidValue returns Hetzner's 422 for a query parameter whose value the
+// endpoint does not know ("invalid type value"), details {} (measured
+// 2026-11-07 on GET /images).
+func InvalidValue(parameter string) *Error {
+	return &Error{Status: http.StatusUnprocessableEntity, Code: "invalid_input", Message: "invalid " + parameter + " value", Details: map[string]any{}}
+}
+
+// ServiceError returns Hetzner's 422 service_error, which it answers where
+// its own code fails on a request it should refuse (GET /server_types with
+// an unknown sort value: "internal error", measured 2026-11-07).
+func ServiceError(message string) *Error {
+	return &Error{Status: http.StatusUnprocessableEntity, Code: "service_error", Message: message, Details: map[string]any{}}
 }
 
 // PlainNotFound returns the 404 that Hetzner's actions endpoints answer for
@@ -94,9 +117,18 @@ func Deprecated(announcement string) *Error {
 	}
 }
 
-// JSONError returns a 400 json_error: the request body is not valid JSON.
-func JSONError() *Error {
-	return &Error{Status: http.StatusBadRequest, Code: "json_error", Message: "request body is not valid JSON"}
+// JSONError returns Hetzner's answer to a body that is not valid JSON: 422
+// json_error with the decoder's message ("unexpected EOF"), details {}
+// (measured 2026-11-07; Hetzner's API decodes with Go too).
+func JSONError(message string) *Error {
+	return &Error{Status: http.StatusUnprocessableEntity, Code: "json_error", Message: message, Details: map[string]any{}}
+}
+
+// ParseFailed returns Hetzner's answer to valid JSON that does not fit the
+// request: no object, or a field of the wrong type. It names no field
+// (measured 2026-11-07).
+func ParseFailed() *Error {
+	return &Error{Status: http.StatusUnprocessableEntity, Code: "invalid_input", Message: "failed to parse json", Details: map[string]any{}}
 }
 
 // unauthorized returns a 401 unauthorized error; Hetzner's has no details.
