@@ -13,6 +13,9 @@ Nothing is usable yet; the earlier implementation (Docker and QEMU) is on the br
 
 - Windows 11 with Hyper-V, used from WSL2 (Ubuntu) or Windows.
 - Linux follows in a later phase.
+- The tools and versions HLab is built for (hcloud CLI, the hcloud provider for
+  Terraform and OpenTofu, the Ansible collection, Packer) are in
+  [compat/versions.yaml](compat/versions.yaml).
 
 ## Development
 

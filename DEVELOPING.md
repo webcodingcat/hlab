@@ -77,6 +77,10 @@ The layer test checks production code only: tests may import fakes and helpers.
   `state.Actions`) is a `state.Kind[R]` with its record type `R` and its name in the
   file. The lab's own records, which the API does not show, are `state.Lab`
   (`tx.Lab()`). Records hold plain data: no interfaces, no unexported fields.
+- **Projects.** A record that belongs to a project has a `RecordProject` method
+  (`state.Owned`); `state.DeleteProject` removes the project, every such record of
+  every kind and the project's faults, so that a new kind goes with its project
+  without anyone remembering to.
 - **IDs.** One counter per kind, global over all projects as on Hetzner, starting at
   `state.FirstID` (1 000 000) so that no record shares an ID with a catalog entry,
   which carries Hetzner's real ID. An ID is never reused and never changes.
@@ -146,6 +150,77 @@ The pattern Hetzner's API shows, as the lab runs it (`internal/lab/actions.go`):
 - **Size.** Each project keeps its newest `lab.MaxFinishedActions` (1 000) finished
   actions.
 
+## Projects, tokens, faults
+
+The lab's own requests (`internal/lab/projects.go`, `tokens.go`, `faults.go`); the
+lab control (`/_lab/...`) and the CLI call them. They report `lab.ErrInvalid`,
+`lab.ErrExists` and `state.ErrNotFound`.
+
+- **Projects** have a name that is a DNS label (it appears in URLs of the lab control
+  and in log file names), limits (zero is no limit, negative is refused) and
+  Internet access, on by default. `Lab.DeleteProject` removes the records first, so
+  that no new action can start (its tokens are gone), then cancels the running
+  actions, which find their actions gone.
+- **Tokens** are 64 letters and digits, like Hetzner's, with `read` or `read_write`;
+  names are unique per project so that the CLI can name one. `Lab.CreateToken`
+  returns the token once; the state keeps its SHA-256 (`state.HashToken`) and its
+  first four characters to tell tokens apart.
+- **API faults:** `Lab.SetAPIFault` makes a project's next n API calls fail with a
+  status, each after a delay; `Lab.TakeAPIFault` counts a call against it. The
+  counter is in the state (`state.Lab.Faults`), so a restart keeps it; a call that
+  finds no fault saves nothing.
+
+## The APIs
+
+`internal/web` holds what both of Hetzner's APIs share; `internal/api/cloud` (and
+later `api/hetzner`) registers its handlers on a `web.API`, one file per resource.
+
+- **Order of the checks** (`API.ServeHTTP`), as Hetzner's API: an `X-Correlation-Id`
+  on every answer, the bearer token (401 `unauthorized`), the rate limit (per
+  project, `RateLimit-*` headers, 429), the permission (a `read` token gets 403
+  `forbidden` for anything but GET and HEAD), an injected fault, then the route
+  (404 `not_found`, 405 `method_not_allowed`).
+- **Handlers** are `web.HandlerFunc`: they get the request and the `web.Caller`
+  (project and permission) and return a status and a body, which the API writes as
+  JSON, or an error. A `*web.Error` is answered as it is, with Hetzner's code;
+  any other error is a failure of the lab, logged and answered as 500
+  `server_error`. Errors have the shape `{"error": {"code", "message", "details"}}`,
+  `details` `null` when there are none, as in the spec's example.
+- **The web package reaches the lab** only through `web.Backend` (`TokenByHash`,
+  `TakeAPIFault`), which `*lab.Lab` implements: `web` may import only `state`.
+- **Lists:** `web.Paginate` (`page`, `per_page`, `meta.pagination` with `null` for
+  pages that are not there), `web.Sort` with the fields a resource allows
+  (`web.SortKeys`), `web.ParseSelector` for `label_selector`.
+- **JSON types** come from `hcloud-go/v2/hcloud/schema`, the types the CLI and the
+  provider decode with; HLab has its own where `schema` cannot say what the real API
+  sends (`web.Pagination`, whose pages may be `null`).
+
+## Spec check and compat/
+
+`compat/` holds what HLab must be compatible with:
+
+| File | What |
+|---|---|
+| `versions.yaml` | the tools and their versions; the specs and when they were fetched |
+| `specs/cloud.spec.json`, `specs/hetzner.spec.json` | Hetzner's OpenAPI specs |
+| `spec-deviations.yaml` | where the real API differs from the spec, with the reason |
+| `requirements.md` | what the tools need, from their source code, each with its phase and test |
+| `exceptions.yaml` | what never works against HLab, with the reason |
+
+- **Every answer of every API test is checked** against the spec:
+  `spectest.New(t, api, spectest.Cloud)` returns a client that sends requests to the
+  handler in the test's process and fails the test on an answer the spec does not
+  allow (status or body; errors of paths the spec lacks must still have Hetzner's
+  error format). It uses `kin-openapi` with JSON Schema 2020-12, as the specs are
+  OpenAPI 3.1.
+- **Deviations** change the spec before the check: each replaces the schema at a JSON
+  pointer (`*` matches any key) with `{}` or a given value, and takes a replaced
+  property out of `required`. A pointer that matches nothing fails the tests.
+- **Hetzner before the spec:** where the real API and the spec differ, HLab follows
+  the API and records a deviation; what the tools need is in `requirements.md`.
+- `bin/dev spec-diff` compares the specs with Hetzner's current ones; CI runs it
+  weekly (`.github/workflows/spec-diff.yml`).
+
 ## Platform
 
 `internal/platform` holds four interfaces: `Hypervisor`, `HostNet`, `HostDNS` and
@@ -167,6 +242,9 @@ As few as possible, each with its reason here.
 | Module | Why |
 |---|---|
 | `golang.org/x/tools` (only `go/packages`) | the layer test reads the imports of every package, for Linux and Windows |
+| `github.com/hetznercloud/hcloud-go/v2` (only `hcloud/schema`) | the JSON types of the APIs, as the CLI and the provider decode them |
+| `github.com/getkin/kin-openapi` (only `openapi3`, in `spectest`) | checks the answers against Hetzner's OpenAPI 3.1 specs |
+| `go.yaml.in/yaml/v4` | reads the YAML files of `compat/`; `kin-openapi` needs it anyway |
 
 Tools, in the separate module `tools/go.mod` so their dependencies stay out of
 `go.mod` (run with `go tool -modfile=tools/go.mod <tool>`):
@@ -216,8 +294,35 @@ table. A developer tool goes into `tools/go.mod` (`go get -tool`, run there).
 
 **A new kind**: add its record type with a `RecordID` method to
 `internal/state/records.go` (JSON names in `snake_case`, timestamps as `time.Time`),
-a `Kind` variable to `state.go` and the variable to `kinds`. An older state file
-without the kind loads as before; no migration is needed.
+a `Kind` variable to `state.go` and the variable to `kinds`. A record that belongs
+to a project gets a `RecordProject` method too, so that it goes with its project.
+An older state file without the kind loads as before; no migration is needed.
+
+**A new endpoint**: add its handler to the resource's file in `internal/api/cloud`
+(a new resource: a new file, registered in `cloud.Register`) with
+`api.Handle("GET /things/{id}", ...)`; the path is the spec's, without `/v1`. Build
+the answer from `hcloud-go`'s `schema` types; refuse with the `web` errors
+(`web.NotFound`, `web.InvalidField`, …) and Hetzner's codes. Its tests send every
+request through a `spectest` client, and a comment notes where a test checks
+Hetzner's behaviour.
+
+**A spec deviation** (the real API answers what the spec does not allow): add an
+entry to `compat/spec-deviations.yaml` with the pointer into the spec, the value if
+not `{}`, and the reason: how the real API behaves and how that was found out.
+
+**A requirement** (a tool needs something of the API): add a row to
+`compat/requirements.md` with the source (a file in the tool), the phase and the
+unit test that checks it; something that never works goes into
+`compat/exceptions.yaml` instead.
+
+**A new version of a tool**: raise it in `compat/versions.yaml`; read the tool's
+diff (`hcloud-go/schema`, tests, examples) for new requirements and exceptions; take
+the specs over (below); run the smoke tests.
+
+**New specs from Hetzner**: `bin/dev spec-diff --update` replaces `compat/specs`;
+set the date in `compat/versions.yaml`, read `git diff compat/specs`, fix the
+deviations that no longer match (the tests say which) and the API where the spec
+shows a change of the real API.
 
 **A new migration** (any change that an older state file does not load into as it
 is: a renamed or moved field, a new meaning): raise `currentVersion` in

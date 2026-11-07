@@ -26,6 +26,13 @@ type Record interface {
 	RecordID() int64
 }
 
+// Owned is a record that belongs to a project; it goes with its project
+// (DeleteProject).
+type Owned interface {
+	Record
+	RecordProject() int64
+}
+
 // Kind is a kind of record, such as Projects; R is its record type. Its name is
 // the key in the state file and the counter of its IDs.
 type Kind[R Record] struct {
@@ -52,6 +59,7 @@ type kind interface {
 	emptyTable() any
 	encodeTable(table any) ([]byte, error)
 	decodeTable(data []byte) (any, error)
+	deleteProject(tx *Tx, projectID int64)
 }
 
 // State is the lab's records: one table per kind, the next ID per kind, and the
@@ -105,4 +113,29 @@ func (k Kind[R]) decodeTable(data []byte) (any, error) {
 		byID[id] = record
 	}
 	return byID, nil
+}
+
+// deleteProject removes the records of a project, if the kind's records
+// belong to projects.
+func (k Kind[R]) deleteProject(tx *Tx, projectID int64) {
+	var zero R
+	if _, owned := any(zero).(Owned); !owned {
+		return // a kind of no project: copying it would be for nothing
+	}
+	byID := table(tx, k)
+	for id, record := range byID {
+		if any(*record).(Owned).RecordProject() == projectID {
+			delete(byID, id)
+		}
+	}
+}
+
+// DeleteProject removes a project, every record that belongs to it and its
+// faults. A project that is gone needs nothing.
+func DeleteProject(tx *Tx, projectID int64) {
+	Delete(tx, Projects, projectID)
+	for _, k := range kinds {
+		k.deleteProject(tx, projectID)
+	}
+	delete(tx.Lab().Faults, projectID)
 }

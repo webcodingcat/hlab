@@ -12,8 +12,10 @@ The same commands as bin/dev:
   bin/dev.ps1 test --windows   the same as test
   bin/dev.ps1 test --agent     the agent's tests (not yet implemented)
   bin/dev.ps1 build            the binaries for Linux and Windows into build/
-  bin/dev.ps1 spec-diff        Hetzner's current specs against compat/
-                               (not yet implemented)
+  bin/dev.ps1 spec-diff        Hetzner's current specs against compat/specs;
+                               fails if they differ
+  bin/dev.ps1 spec-diff --update
+                               replace compat/specs with Hetzner's current ones
 #>
 param(
     [Parameter(Position = 0)]
@@ -28,6 +30,8 @@ $ErrorActionPreference = 'Stop'
 $Repo = Split-Path -Parent $PSScriptRoot
 $Tools = @('tool', "-modfile=$Repo/tools/go.mod")
 $ShfmtFlags = @('-i', '2', '-ci', '-bn')
+$Specs = @('cloud', 'hetzner')
+$SpecUrl = 'https://docs.hetzner.cloud'
 
 function Invoke-Native {
     <#
@@ -122,6 +126,42 @@ function Invoke-Build {
     Write-Output "built $version into build/linux and build/windows"
 }
 
+function Compare-Spec {
+    <#
+    .SYNOPSIS
+    Compare Hetzner's current specs with those in compat/specs, and replace
+    them when asked to. Fails if a spec differs and is not replaced.
+    #>
+    param(
+        [switch]$Update
+    )
+    $dir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
+    New-Item -ItemType Directory -Path $dir | Out-Null
+    $changed = $false
+    try {
+        foreach ($name in $Specs) {
+            $kept = "compat/specs/$name.spec.json"
+            $fetched = Join-Path $dir "$name.spec.json"
+            Invoke-WebRequest -UseBasicParsing -Uri "$SpecUrl/$name.spec.json" -OutFile $fetched
+            if ((Get-FileHash $kept).Hash -eq (Get-FileHash $fetched).Hash) {
+                Write-Output "${name}: unchanged"
+                continue
+            }
+            $changed = $true
+            Write-Output "${name}: changed"
+            git diff --no-index --stat $kept $fetched | Write-Output
+            if ($Update) {
+                Copy-Item $fetched $kept
+            }
+        }
+    } finally {
+        Remove-Item -Recurse -Force $dir
+    }
+    if ($changed -and -not $Update) {
+        throw 'the specs differ: bin/dev.ps1 spec-diff --update takes them over (DEVELOPING.md)'
+    }
+}
+
 function Get-Usage {
     <#
     .SYNOPSIS
@@ -145,7 +185,13 @@ try {
             }
         }
         'build' { Invoke-Build }
-        'spec-diff' { throw 'spec-diff is not yet implemented (docs/roadmap.md)' }
+        'spec-diff' {
+            switch ($Option) {
+                '' { Compare-Spec }
+                '--update' { Compare-Spec -Update }
+                default { throw "unknown option: $Option" }
+            }
+        }
         default {
             Get-Usage | Write-Output
             exit 2

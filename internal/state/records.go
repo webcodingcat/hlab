@@ -1,6 +1,10 @@
 package state
 
-import "time"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"time"
+)
 
 // Project is a project of the lab, as on Hetzner: it holds resources, and its
 // tokens reach only them.
@@ -52,6 +56,15 @@ type Token struct {
 // RecordID returns the token's ID.
 func (t Token) RecordID() int64 { return t.ID }
 
+// RecordProject returns the token's project.
+func (t Token) RecordProject() int64 { return t.ProjectID }
+
+// HashToken returns what the state keeps of a token: its SHA-256, hex.
+func HashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
 // SSHKey is an SSH key of a project.
 type SSHKey struct {
 	ID          int64             `json:"id"`
@@ -65,6 +78,9 @@ type SSHKey struct {
 
 // RecordID returns the key's ID.
 func (k SSHKey) RecordID() int64 { return k.ID }
+
+// RecordProject returns the key's project.
+func (k SSHKey) RecordProject() int64 { return k.ProjectID }
 
 // ActionStatus is how far an action is.
 type ActionStatus string
@@ -92,6 +108,9 @@ type Action struct {
 
 // RecordID returns the action's ID.
 func (a Action) RecordID() int64 { return a.ID }
+
+// RecordProject returns the action's project.
+func (a Action) RecordProject() int64 { return a.ProjectID }
 
 // Failure is why an action failed: Hetzner's "error" of an action.
 type Failure struct {

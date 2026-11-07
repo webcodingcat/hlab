@@ -1,0 +1,46 @@
+---
+# What never works against HLab, with the reason. Each entry names the tests
+# or features of the tools (compat/versions.yaml) it covers. "permanent"
+# entries stay; an entry that a later phase removes names that phase instead.
+exceptions:
+  - what: datacenters
+    covers:
+      - the datacenter tests of the provider, the CLI and the collection
+      - "terraform-provider-hcloud: *_RemoveDatacenter"
+    until: permanent
+    reason: >-
+      Hetzner removed datacenters on 2026-07-01; HLab follows the current
+      API, so the datacenter endpoints and fields are not there.
+  - what: unavailable server type cx11
+    covers:
+      - "terraform-provider-hcloud: UnavailableServerType"
+    until: permanent
+    reason: >-
+      The test relies on a server type that Hetzner no longer sells; the
+      catalog holds only current types.
+  - what: Hetzner's ISO catalog
+    covers:
+      - "terraform-provider-hcloud: TestAccServerResource_ISO"
+      - "hcloud CLI: TestISO"
+      - "hetzner.hcloud: iso_info"
+    until: permanent
+    reason: >-
+      The tests expect Hetzner's ISOs by their IDs; HLab cannot serve
+      Hetzner's ISO images.
+  - what: ARM image filters
+    covers:
+      - tests that filter images by the architecture arm
+    until: permanent
+    reason: HLab runs x86 guests only.
+  - what: Robot vSwitch and dedicated servers
+    covers:
+      - tests that couple a network to a Robot vSwitch
+    until: permanent
+    reason: HLab does not imitate Robot or dedicated servers.
+  - what: managed certificates for a real domain
+    covers:
+      - tests that request a managed certificate for a public domain
+    until: permanent
+    reason: >-
+      HLab's ACME server signs names of its own zones only; a public domain
+      cannot be validated from the lab.

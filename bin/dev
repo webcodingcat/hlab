@@ -8,14 +8,18 @@
 #   bin/dev test --agent     the agent's tests in a network namespace
 #                            (not yet implemented)
 #   bin/dev build            the binaries for Linux and Windows into build/
-#   bin/dev spec-diff        Hetzner's current specs against compat/
-#                            (not yet implemented)
+#   bin/dev spec-diff        Hetzner's current specs against compat/specs;
+#                            fails if they differ
+#   bin/dev spec-diff --update
+#                            replace compat/specs with Hetzner's current ones
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly REPO
 readonly TOOLS=(go tool "-modfile=${REPO}/tools/go.mod")
 readonly SHFMT_FLAGS=(-i 2 -ci -bn)
+readonly SPECS=(cloud hetzner)
+readonly SPEC_URL="https://docs.hetzner.cloud"
 
 #######################################
 # Print an error and exit.
@@ -155,6 +159,39 @@ build() {
 }
 
 #######################################
+# Compare Hetzner's current specs with those in compat/specs, and replace
+# them when asked to. Returns 1 if a spec differs and is not replaced.
+# Arguments:
+#   Optional --update.
+#######################################
+spec_diff() {
+  local update="${1:-}"
+  [[ -z "${update}" || "${update}" == "--update" ]] \
+    || die "unknown option: ${update}"
+  need curl "sudo apt install curl"
+  local dir name kept fetched changed=0
+  dir="$(mktemp -d)"
+  for name in "${SPECS[@]}"; do
+    kept="compat/specs/${name}.spec.json"
+    fetched="${dir}/${name}.spec.json"
+    curl -fsSL -o "${fetched}" "${SPEC_URL}/${name}.spec.json"
+    if cmp -s "${kept}" "${fetched}"; then
+      echo "${name}: unchanged"
+      continue
+    fi
+    changed=1
+    echo "${name}: changed"
+    git diff --no-index --stat "${kept}" "${fetched}" || true
+    [[ -z "${update}" ]] || cp "${fetched}" "${kept}"
+  done
+  rm -rf "${dir}"
+  if ((changed)) && [[ -z "${update}" ]]; then
+    echo "bin/dev spec-diff --update takes them over (DEVELOPING.md)" >&2
+    return 1
+  fi
+}
+
+#######################################
 # Report a command that a later phase brings (docs/roadmap.md).
 # Arguments:
 #   The command.
@@ -182,7 +219,7 @@ main() {
       esac
       ;;
     build) build ;;
-    spec-diff) not_yet spec-diff ;;
+    spec-diff) spec_diff "${2:-}" ;;
     *)
       sed -n '2,/^set /p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//' >&2
       exit 2

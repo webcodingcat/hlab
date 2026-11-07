@@ -1,0 +1,15 @@
+---
+# Where Hetzner's real API differs from its spec, HLab follows the API, and
+# the spec check of the unit tests (internal/spectest) must not hold the spec
+# against it. Each entry changes the spec before the check:
+#
+#   spec:    cloud or hetzner (compat/specs/<spec>.spec.json)
+#   pointer: a JSON pointer (RFC 6901) into the spec; a segment "*" stands for
+#            any key or index, so one entry can cover every operation
+#   value:   what replaces the schema there; left out, it is {} (anything)
+#   reason:  how the real API behaves, and how that was found out
+#
+# A replaced schema that is a property is also taken out of its object's
+# "required". An entry whose pointer matches nothing fails the tests: the
+# spec has changed, and the entry is checked again. Recipe: DEVELOPING.md.
+deviations: []

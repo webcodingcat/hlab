@@ -25,9 +25,11 @@ From Linux or WSL2 (`bin/dev.ps1` takes the same commands on Windows):
 | `bin/dev test` | the unit tests with the race detector (seconds) |
 | `bin/dev test --windows` | the unit tests built for Windows, run through WSL interop |
 | `bin/dev build` | `hlabd`, `hlab`, `hlab-agent` for Linux and `hlabd.exe`, `hlab.exe` into `build/` |
+| `bin/dev spec-diff` | Hetzner's current specs against `compat/specs` (`--update` takes them over) |
 
-`bin/dev test --agent` and `bin/dev spec-diff` come with later phases and say so.
-CI runs lint and the unit tests on Linux and Windows for every push and pull request.
+`bin/dev test --agent` comes with a later phase and says so. CI runs lint and the
+unit tests on Linux and Windows for every push and pull request, and `spec-diff`
+weekly.
 
 ## Rules that are easy to break
 
@@ -41,4 +43,7 @@ DEVELOPING.md explains each one in the section named in parentheses.
   it keeps IDs, not records (Concurrency).
 - No cgo in the binaries: everything builds in WSL2 for Windows (Tools).
 - A new dependency needs a reason in the dependency table (Dependencies).
-- Hetzner behaviour first: answers, status codes and error codes follow the real API.
+- Hetzner behaviour first: answers, status codes and error codes follow the real API;
+  where the spec differs, record a deviation in `compat/` (Spec check and compat/).
+- Every API test sends its requests through a `spectest` client, so that every
+  answer is checked against the spec (Spec check and compat/).

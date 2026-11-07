@@ -1,0 +1,36 @@
+---
+# The tools HLab must serve without any change to them: only the endpoints and
+# the token are set (HCLOUD_ENDPOINT, HETZNER_ENDPOINT, HCLOUD_TOKEN). The
+# requirements in requirements.md come from their source code at these
+# versions; the smoke tests run them. A new version: DEVELOPING.md, Recipes.
+tools:
+  - name: terraform-provider-hcloud
+    source: https://github.com/hetznercloud/terraform-provider-hcloud
+    version: v1.70.2
+    used_with: Terraform and OpenTofu
+  - name: hcloud CLI
+    source: https://github.com/hetznercloud/cli
+    version: v1.70.2
+  - name: hetzner.hcloud (Ansible collection)
+    source: https://github.com/ansible-collections/hetzner.hcloud
+    version: 7.2.0
+  - name: hcloud-python
+    source: https://github.com/hetznercloud/hcloud-python
+    version: the copy vendored in hetzner.hcloud 7.2.0
+  - name: hcloud-go
+    source: https://github.com/hetznercloud/hcloud-go
+    version: v2.53.0
+    note: the version of the CLI and the provider; go.mod pins the same one
+  - name: packer-plugin-hcloud
+    source: https://github.com/hetznercloud/packer-plugin-hcloud
+    version: v1.8.2
+
+# Hetzner's OpenAPI specifications in specs/, as fetched on the date given;
+# `bin/dev spec-diff` compares them with Hetzner's current ones.
+specs:
+  - file: specs/cloud.spec.json
+    source: https://docs.hetzner.cloud/cloud.spec.json
+    fetched: 2026-11-07
+  - file: specs/hetzner.spec.json
+    source: https://docs.hetzner.cloud/hetzner.spec.json
+    fetched: 2026-11-07
