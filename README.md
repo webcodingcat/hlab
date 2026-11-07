@@ -6,8 +6,44 @@ such as OpenTofu (hcloud provider), the hcloud CLI and Ansible are meant to work
 against it without changes.
 
 **Status:** being rebuilt in Go, phase 1a (see [docs/roadmap.md](docs/roadmap.md)).
-Nothing is usable yet; the earlier implementation (Docker and QEMU) is on the branch
-`legacy`.
+Without VMs so far: `hlabd --platform fake` answers the catalog (locations, server
+and load balancer types, pricing, images, ISOs) and SSH keys. The earlier
+implementation (Docker and QEMU) is on the branch `legacy`.
+
+## Usage
+
+Start the service without a hypervisor, on `127.0.0.1` (Linux, WSL2 or Windows):
+
+```bash
+hlabd --platform fake --data ~/hlab-data
+```
+
+`hlabd` keeps its state, `hlab.yaml` and `catalog.yaml` in the data folder (default
+`C:\ProgramData\HLab`, on Linux `/var/lib/hlab`) and writes a new control token
+there at each start; only one `hlabd` runs per machine. The CLI finds a lab in the
+default folder by itself; for another one, point it there:
+
+```bash
+export HLAB_CONTROL=http://127.0.0.1:8090 HLAB_TOKEN_FILE=~/hlab-data/control.token
+```
+
+| Command | What it does |
+|---|---|
+| `eval "$(hlab env)"` | point hcloud, OpenTofu and Ansible at the lab: endpoints and a new token of the project `default` (`--project`; `hlab env --shell powershell \| iex` on Windows) |
+| `hlab status` | whether the lab runs, its endpoints and data folder |
+| `hlab stop` | stop the lab |
+| `hlab project create\|list\|delete` | projects; a new lab has `default` |
+| `hlab token create\|list\|delete --project NAME` | a project's API tokens; `create` prints the token once |
+
+The web UI is at `http://127.0.0.1:8090` (`HLAB_UI`): projects, their tokens and the
+catalog. `hlab.yaml` sets the ports and the time scale:
+
+```yaml
+time_scale: 1   # 1 is Hetzner's speed, 0.5 twice as fast, 0 does not wait
+ports: {cloud: 8080, hetzner: 8081, control: 8090}
+```
+
+`examples/opentofu` is a small OpenTofu configuration to try against the lab.
 
 ## Compatibility
 

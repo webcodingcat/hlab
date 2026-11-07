@@ -45,7 +45,7 @@ and for Windows files, and on a package that is missing from it.
 | `internal/platform` | the platform interfaces and their data types | – |
 | `internal/platform/windows` | Hyper-V through `pshost`, host network, NRPT, life cycle | `platform`, `pshost` |
 | `internal/platform/windows/pshost` | the long-running PowerShell process: JSON over stdin and stdout | – |
-| `internal/platform/linux` | the Linux platform (later) | `platform` |
+| `internal/platform/linux` | the Linux platform; for now only its life cycle | `platform` |
 | `internal/platform/fake` | fakes for unit tests and `--platform fake` | `platform` |
 | `internal/platform/contract` | tests only: the contract tests of the platform interfaces, run against the fake and the real platforms | `platform` |
 | `internal/agentproto` | the wire format between service and agent, picture types | – |
@@ -224,6 +224,68 @@ later `api/hetzner`) registers its handlers on a `web.API`, one file per resourc
   balancer types ignore `sort` altogether. Each handler says which it follows.
 - **Datacenters** are gone from Hetzner's API: their endpoints answer 410
   `deprecated_api_endpoint`, and no answer names a datacenter.
+- **Without a token:** `API.ServeAs(caller)` answers as a caller the lab control
+  vouches for (the web UI acting for a project); every check after the token's
+  still applies.
+
+## The service
+
+`cmd/hlabd` puts the parts together (`service.go`); it may import anything, the
+packages below it follow the layers.
+
+- **Start** (`start`): `hlab.yaml` (`internal/config`; a missing file or key takes
+  the default, an unknown key or a value out of range stops the start, naming the
+  file), the catalog, `lab.Open` (it claims the data folder through
+  `Lifecycle.Lock`: one HLab per machine), the project `default` in a new lab, the
+  three ports, then a new control token through `Lifecycle.WriteToken`. The ports
+  listen on the host link's address; `--platform fake` listens on `127.0.0.1`. A
+  port of 0 takes any free one (the tests); the status reports the ports in use.
+- **Ports:** the Cloud API (8080), the Hetzner API (8081, routes with the Storage
+  Boxes) and 8090 for the lab control under `/_lab` and the web UI.
+- **Stop:** `POST /_lab/shutdown`, `Lifecycle.StopRequests` (Ctrl+C, SIGTERM) or a
+  failed server: the servers let running requests finish (10 s), the control token
+  goes, so that the CLI knows the lab is gone, and `Lab.Close` writes the state.
+- **`--platform fake`** is the fake machine with this machine's life cycle: the
+  lock, the token file and the signals are real, so that only one HLab runs and the
+  CLI finds it. The life cycles: Windows holds the mutex `Global\HLab` and names
+  its data folder in `%ProgramData%\HLab\instance` for the message of a second
+  start, and writes the token with its own ACL (read for local users); Linux holds
+  an flock on `/run/lock/hlab.lock`, which names the data folder, and writes the
+  token `0640` with the group `hlab`, if the machine has it.
+
+## Lab control, CLI and web UI
+
+- **The lab control** (`internal/api/control`, its types in `internal/labapi`):
+  `GET /_lab/status`, `POST /_lab/shutdown`, projects
+  (`GET|POST /_lab/projects`, `DELETE /_lab/projects/{name}`), tokens
+  (`GET|POST /_lab/projects/{name}/tokens`, `DELETE …/tokens/{token}`; tokens by
+  name, `replace` deletes one of the same name first) and the Cloud API for a
+  project, `/_lab/projects/{name}/cloud/v1/...`, which runs the Cloud API's
+  handlers through `API.ServeAs` with `read_write`. It admits the control token
+  (`Authorization: Bearer`) or what `Options.Admit` vouches for (the web UI's
+  cookie). Errors have Hetzner's format (`web.WriteError`): the lab's
+  `ErrInvalid` is 422 `invalid_input`, `ErrExists` 409 `uniqueness_error`,
+  `state.ErrNotFound` 404 `not_found`.
+- **The client** (`internal/client`) finds the token: `HLAB_TOKEN_FILE`, else
+  `control.token` in the default data folder (`C:\ProgramData\HLab`;
+  `/mnt/c/ProgramData/HLab` in WSL2, which `WSL_DISTRO_NAME` tells;
+  `/var/lib/hlab` on Linux). It calls `HLAB_CONTROL`, else
+  `http://198.18.0.1:8090`, the host link that Windows and WSL2 share. No token
+  file or no answer is `client.ErrNotRunning`.
+- **The CLI** (`internal/cli`, cobra): one file per group of commands; each command
+  calls the client. `hlab env` makes a new `read_write` token named `hlab-env` in
+  the project each time and replaces the one before, since the lab keeps only
+  hashes; it writes sh (`export`) or PowerShell (`$env:`), quoted in single
+  quotes.
+- **The web UI** (`internal/webui`): `index.html`, `ui.js` and `ui.css` in
+  `files/`, built in with `go:embed`, without a build step. `UI.Guard` stands
+  before everything on port 8090: the Host must be one of the port's addresses
+  (and `localhost` for a loopback one), against DNS rebinding; a change (anything
+  but GET, HEAD, OPTIONS) needs an `Origin` of the page itself or, without
+  `Origin`, a token, against CSRF. The page comes with a random cookie
+  (`HttpOnly`, `SameSite=Strict`, new at each start), which the lab control
+  takes instead of the token (`UI.Admits`): the browser holds no token. The page
+  reads the catalog through the project's Cloud API route.
 
 ## The catalog
 
@@ -289,8 +351,9 @@ name, because the tools check them (`compat/requirements.md`).
   against `internal/platform/fake`, the live tests against the real platform.
 - The fake keeps everything in memory. Tests make calls fail (`FailNext`) or wait
   (`Delay`) and read the calls it got (`Calls`).
-- `internal/platform/windows` builds for Windows only; for now each method reports
-  `platform.ErrNotImplemented`.
+- `internal/platform/windows` builds for Windows only; for now its life cycle is
+  there (The service) and every other method reports `platform.ErrNotImplemented`.
+  `internal/platform/linux` holds only the Linux life cycle so far.
 - `lab` reaches the platform only through `system`, which never sees the state.
 
 ## Dependencies
@@ -302,7 +365,8 @@ As few as possible, each with its reason here.
 | `golang.org/x/tools` (only `go/packages`) | the layer test reads the imports of every package, for Linux and Windows |
 | `github.com/hetznercloud/hcloud-go/v2` (only `hcloud/schema`) | the JSON types of the APIs, as the CLI and the provider decode them |
 | `github.com/getkin/kin-openapi` (only `openapi3`, in `spectest`) | checks the answers against Hetzner's OpenAPI 3.1 specs |
-| `go.yaml.in/yaml/v4` | reads the catalog and the YAML files of `compat/`; `kin-openapi` needs it anyway |
+| `go.yaml.in/yaml/v4` | reads `hlab.yaml`, the catalog and the YAML files of `compat/`; `kin-openapi` needs it anyway |
+| `github.com/spf13/cobra` | the CLI's commands, flags and help, as the hcloud CLI has them |
 
 Tools, in the separate module `tools/go.mod` so their dependencies stay out of
 `go.mod` (run with `go tool -modfile=tools/go.mod <tool>`):
@@ -417,6 +481,17 @@ does the slow part through `l.System()`, keeps IDs across those calls and waits 
 `l.Sleep` (a timing from `internal/lab/clock.go`, measured on Hetzner); `Undo` takes
 back the quick changes. Its tests use the fake platform and, for timings, a test
 clock.
+
+**A new route of the lab control**: its request and answer types go into
+`internal/labapi`, the handler into `internal/api/control` (`c.handle("GET
+/things", ...)`, returning a status and a body), a method into `internal/client`
+and, if users need it, a command into `internal/cli`. Its tests: one in
+`internal/api/control` and, for a command, one in `cmd/hlabd/service_test.go`,
+which runs the CLI against `hlabd` in the test's process.
+
+**A new setting in `hlab.yaml`**: a field with its YAML key in `config.Config`, its
+default in `config.Default`, its range in `check`, and a row in README's example if
+users set it.
 
 **A new platform method**: add it to the interface in `internal/platform`, to the
 contract tests, to the fake and to every platform (`ErrNotImplemented` until it is

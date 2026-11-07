@@ -17,7 +17,7 @@ func New() platform.Platform {
 		Hypervisor: hypervisor{},
 		HostNet:    hostNet{},
 		HostDNS:    hostDNS{},
-		Lifecycle:  lifecycle{},
+		Lifecycle:  NewLifecycle(MutexName, InstanceFile()),
 	}
 }
 
@@ -98,16 +98,6 @@ type hostDNS struct{}
 
 func (hostDNS) Apply(context.Context, []platform.DNSRule) error { return platform.ErrNotImplemented }
 func (hostDNS) Clear(context.Context) error                     { return platform.ErrNotImplemented }
-
-// lifecycle is the process's life cycle on Windows (phase 1a-5 and 1b).
-type lifecycle struct{}
-
-func (lifecycle) Lock(string) (func(), error)       { return nil, platform.ErrNotImplemented }
-func (lifecycle) WriteToken(string, []byte) error   { return platform.ErrNotImplemented }
-func (lifecycle) AgentDialer() platform.AgentDialer { return agentDialer{} }
-func (lifecycle) StopRequests() <-chan struct{} {
-	return nil // a nil channel never delivers: no stop is ever requested
-}
 
 // agentDialer is hv_sock (phase 1b).
 type agentDialer struct{}

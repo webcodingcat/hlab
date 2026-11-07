@@ -1,25 +1,16 @@
-// Command hlab is the HLab command line for users.
-//
-// For now it only reports its version; the parts follow phase by phase
-// (docs/roadmap.md).
+// Command hlab is the HLab command line for users: it controls the running
+// hlabd through its lab control.
 package main
 
 import (
-	"flag"
-	"fmt"
 	"os"
+
+	"github.com/webcodingcat/hlab/internal/cli"
 )
 
 // version is set at build time by bin/dev build (-ldflags -X main.version=...).
 var version = "dev"
 
 func main() {
-	showVersion := flag.Bool("version", false, "print the version and exit")
-	flag.Parse()
-	if *showVersion {
-		fmt.Println("hlab", version)
-		return
-	}
-	fmt.Fprintln(os.Stderr, "hlab: not yet implemented; try --version")
-	os.Exit(2)
+	os.Exit(cli.Execute(os.Args[1:], os.Stdout, os.Stderr, version))
 }

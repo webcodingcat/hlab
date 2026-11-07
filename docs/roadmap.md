@@ -35,8 +35,8 @@ the tests. Look there before writing such a part anew.
 | 1a-2 | `internal/state` and `internal/lab` with tests: transactions, saving, migrations, actions with a test clock; platform interfaces, fake, contract tests, Windows stubs | done |
 | 1a-3 | `internal/web` and `internal/spectest`; projects, tokens | done |
 | 1a-4 | catalog and the reading resources; SSH keys | done |
-| 1a-5 | lab control, CLI, `hlab env`; web UI skeleton | **next** |
-| 1a-6 | checks against the real API (read only) | open |
+| 1a-5 | lab control, CLI, `hlab env`; web UI skeleton | done |
+| 1a-6 | checks against the real API (read only) | **next** |
 
 After 1a-2: `hlabd` does not start the lab yet (1a-5). There is no `internal/config`
 yet; `lab.Options` takes the data folder and the time scale directly, and
@@ -66,6 +66,23 @@ and of the SSH keys were measured on it (2026-11-07, `compat/requirements.md`);
 1a-6 is left with what that file lists as still open. Not yet: `PUT` and `DELETE`
 of images and their actions (with snapshots, 3a); the catalog's image sources for
 the image cache (1b).
+
+After 1a-5: `hlabd --platform fake` runs on Linux, WSL2 and Windows: `hlab.yaml`
+(`internal/config`: ports, time scale), the user's catalog, the project `default`
+in a new lab, the Cloud API on 8080, the Hetzner API on 8081 (no routes yet), the
+lab control and the web UI on 8090, all on `127.0.0.1`. One `hlabd` per machine
+(the mutex `Global\HLab` on Windows, an flock on `/run/lock/hlab.lock` on Linux;
+`internal/platform/linux` has only this life cycle so far). The CLI `hlab` has
+`env` (sh and PowerShell), `status`, `stop`, `project` and `token`; it finds the
+token as the Windows HLab will write it, also from WSL2 through `/mnt/c`, and
+calls `198.18.0.1:8090` unless `HLAB_CONTROL` says otherwise. The web UI is a
+skeleton: projects, tokens, locations and server types; Host and Origin checks, a
+cookie instead of a token. Checked by hand in WSL2 with hcloud 1.70.2:
+`server-type list`, `location list`, `ssh-key create/list/delete` after
+`eval "$(hlab env)"`. Not yet: the other platforms (`hlabd` without `--platform
+fake` says so), `hlab start` (1b), 503 for requests that arrive while the lab
+stops (no slow stop yet: the ports close at once), the OpenTofu smoke test with
+`examples/opentofu` (1-L), stop requests from signing out and the tray (6b).
 
 Not there yet: `bin/dev test --agent` (it reports "not yet implemented"), `deploy`,
 `itest` and `smoke`.

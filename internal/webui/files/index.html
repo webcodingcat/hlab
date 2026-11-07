@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HLab</title>
+  <link rel="stylesheet" href="ui.css">
+  <script src="ui.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1>HLab</h1>
+    <p id="status">connecting…</p>
+  </header>
+  <p id="error" class="error" hidden></p>
+
+  <main>
+    <section>
+      <h2>Projects</h2>
+      <table>
+        <thead><tr><th>Name</th><th>ID</th><th>Internet</th><th>Created</th><th></th></tr></thead>
+        <tbody id="projects"></tbody>
+      </table>
+      <form id="create-project">
+        <input name="name" placeholder="new project" required pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?">
+        <button>Create</button>
+      </form>
+    </section>
+
+    <section id="project" hidden>
+      <h2>Tokens of <span class="project-name"></span></h2>
+      <table>
+        <thead><tr><th>Name</th><th>Permission</th><th>Starts with</th><th>Created</th><th></th></tr></thead>
+        <tbody id="tokens"></tbody>
+      </table>
+      <form id="create-token">
+        <input name="name" placeholder="new token" required maxlength="64">
+        <select name="permission">
+          <option value="read_write">read_write</option>
+          <option value="read">read</option>
+        </select>
+        <button>Create</button>
+      </form>
+      <p id="secret" class="secret" hidden>
+        The new token, shown only now: <code></code>
+      </p>
+
+      <h2>Catalog</h2>
+      <h3>Locations</h3>
+      <table>
+        <thead><tr><th>Name</th><th>City</th><th>Network zone</th></tr></thead>
+        <tbody id="locations"></tbody>
+      </table>
+      <h3>Server types</h3>
+      <table>
+        <thead><tr><th>Name</th><th>Cores</th><th>Memory</th><th>Disk</th><th>CPU</th></tr></thead>
+        <tbody id="server-types"></tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,74 @@
+:root {
+  --text: #1d2125;
+  --muted: #5d6670;
+  --line: #d9dee3;
+  --background: #ffffff;
+  --accent: #d50c2d;
+  --error: #b00020;
+  font-family: system-ui, sans-serif;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #e6e9ec;
+    --muted: #9aa4ae;
+    --line: #3a4148;
+    --background: #16191c;
+    --error: #ff6b81;
+  }
+}
+
+body {
+  margin: 0 auto;
+  max-width: 60rem;
+  padding: 1rem;
+  background: var(--background);
+  color: var(--text);
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  border-bottom: 2px solid var(--accent);
+}
+
+header p {
+  color: var(--muted);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.5rem;
+}
+
+th, td {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+tbody tr.selected {
+  font-weight: 600;
+}
+
+tbody tr[data-project] {
+  cursor: pointer;
+}
+
+form {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.error {
+  color: var(--error);
+}
+
+.secret code {
+  user-select: all;
+  word-break: break-all;
+}

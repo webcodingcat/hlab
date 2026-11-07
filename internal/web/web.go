@@ -113,7 +113,7 @@ func (api *API) Handle(pattern string, handler HandlerFunc) {
 	api.mux.HandleFunc(method+" "+Prefix+path, func(w http.ResponseWriter, r *http.Request) {
 		for _, name := range ids {
 			if id, err := strconv.ParseInt(r.PathValue(name), 10, 64); err != nil || id < 1 {
-				writeError(w, api.logger, RouteNotFound())
+				WriteError(w, api.logger, RouteNotFound())
 				return
 			}
 		}
@@ -123,10 +123,10 @@ func (api *API) Handle(pattern string, handler HandlerFunc) {
 		}
 		status, body, err := handler(&Request{Request: r, Caller: caller, Header: w.Header()})
 		if err != nil {
-			writeError(w, api.logger, err)
+			WriteError(w, api.logger, err)
 			return
 		}
-		writeJSON(w, status, body)
+		WriteJSON(w, status, body)
 	})
 }
 
@@ -144,46 +144,62 @@ func (api *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	recorder := &statusRecorder{header: http.Header{}}
 	muxHandler.ServeHTTP(recorder, r)
 	if recorder.status != http.StatusMethodNotAllowed {
-		writeError(w, api.logger, RouteNotFound())
+		WriteError(w, api.logger, RouteNotFound())
 		return
 	}
 	if _, admitted := api.admit(w, r); !admitted {
 		return
 	}
 	w.Header().Set("Allow", recorder.header.Get("Allow"))
-	writeError(w, api.logger, MethodNotAllowed())
+	WriteError(w, api.logger, MethodNotAllowed())
 }
 
 // admit checks a request of a known route: the token, the rate limit, the
 // token's permission and an injected fault. It answers a request that fails
 // and returns the caller of one that passes.
 func (api *API) admit(w http.ResponseWriter, r *http.Request) (Caller, bool) {
-	secret, found := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if !found || secret == "" {
-		writeError(w, api.logger, unauthorized("token is required"))
-		return Caller{}, false
-	}
-	token, found := api.backend.TokenByHash(state.HashToken(secret))
-	if !found {
-		writeError(w, api.logger, unauthorized("the token you have provided is invalid"))
-		return Caller{}, false
+	caller, vouched := r.Context().Value(callerKey{}).(Caller)
+	if !vouched {
+		secret, found := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if !found || secret == "" {
+			WriteError(w, api.logger, unauthorized("token is required"))
+			return Caller{}, false
+		}
+		token, found := api.backend.TokenByHash(state.HashToken(secret))
+		if !found {
+			WriteError(w, api.logger, unauthorized("the token you have provided is invalid"))
+			return Caller{}, false
+		}
+		caller = Caller{ProjectID: token.ProjectID, Permission: token.Permission}
 	}
 	// Hetzner's answers carry one from here on; those above, and to unknown
 	// routes, do not. hcloud-go adds it to its error texts.
 	w.Header().Set("X-Correlation-Id", correlationID())
-	if !api.limiter.take(w.Header(), token.ProjectID, r.URL.Path) {
-		writeError(w, api.logger, RateLimitExceeded())
+	if !api.limiter.take(w.Header(), caller.ProjectID, r.URL.Path) {
+		WriteError(w, api.logger, RateLimitExceeded())
 		return Caller{}, false
 	}
-	if token.Permission != state.PermissionReadWrite && r.Method != http.MethodGet && r.Method != http.MethodHead {
-		writeError(w, api.logger, Forbidden())
+	if caller.Permission != state.PermissionReadWrite && r.Method != http.MethodGet && r.Method != http.MethodHead {
+		WriteError(w, api.logger, Forbidden())
 		return Caller{}, false
 	}
-	if err := injectFault(r.Context(), api.backend, token.ProjectID); err != nil {
-		writeError(w, api.logger, err)
+	if err := injectFault(r.Context(), api.backend, caller.ProjectID); err != nil {
+		WriteError(w, api.logger, err)
 		return Caller{}, false
 	}
-	return Caller{ProjectID: token.ProjectID, Permission: token.Permission}, true
+	return caller, true
+}
+
+// callerKey is the context key of a caller that ServeAs vouches for.
+type callerKey struct{}
+
+// ServeAs answers requests as the given caller, without a token: the lab
+// control vouches for the caller (the web UI acts for a project and keeps no
+// token in the browser). Every check after the token's still applies.
+func (api *API) ServeAs(caller Caller) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		api.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), callerKey{}, caller)))
+	})
 }
 
 // injectFault waits and fails as the project's injected API fault says, if
@@ -218,9 +234,10 @@ func correlationID() string {
 	return hex.EncodeToString(random)
 }
 
-// writeError writes an error as Hetzner does. An error that is not an *Error
-// is a failure of the lab: it is logged and answered as a server_error.
-func writeError(w http.ResponseWriter, logger *slog.Logger, err error) {
+// WriteError writes an error as Hetzner does. An error that is not an *Error
+// is a failure of the lab: it is logged and answered as a server_error. The
+// lab control and the web UI answer their errors in the same format.
+func WriteError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	var apiErr *Error
 	if !errors.As(err, &apiErr) {
 		logger.Error("a request failed", "error", err)
@@ -232,11 +249,11 @@ func writeError(w http.ResponseWriter, logger *slog.Logger, err error) {
 		_, _ = w.Write([]byte(apiErr.Message + "\n"))
 		return
 	}
-	writeJSON(w, apiErr.Status, apiErr.body())
+	WriteJSON(w, apiErr.Status, apiErr.body())
 }
 
-// writeJSON writes a status and a body as JSON; a nil body writes none.
-func writeJSON(w http.ResponseWriter, status int, body any) {
+// WriteJSON writes a status and a body as JSON; a nil body writes none.
+func WriteJSON(w http.ResponseWriter, status int, body any) {
 	if body == nil {
 		w.WriteHeader(status)
 		return
