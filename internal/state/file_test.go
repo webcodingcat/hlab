@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -73,6 +74,80 @@ func TestStateFileListsRecordsSortedByID(t *testing.T) {
 	if _, listed := out.Kinds["actions"]; !listed {
 		t.Error("an empty kind is left out of the file")
 	}
+}
+
+// marshalFile encodes s the plain way, with json.MarshalIndent on the whole
+// file: Encode must write the same, byte for byte.
+func marshalFile(t *testing.T, s *State, saved time.Time) []byte {
+	t.Helper()
+	lists := map[string]json.RawMessage{
+		Projects.Name(): marshalList(t, s, Projects),
+		Tokens.Name():   marshalList(t, s, Tokens),
+		SSHKeys.Name():  marshalList(t, s, SSHKeys),
+		Actions.Name():  marshalList(t, s, Actions),
+	}
+	if len(lists) != len(kinds) {
+		t.Fatalf("marshalFile knows %d kinds, the state has %d", len(lists), len(kinds))
+	}
+	data, err := json.MarshalIndent(file{
+		Version: currentVersion, Saved: saved.UTC(), NextIDs: s.nextIDs, Kinds: lists, Lab: s.lab,
+	}, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func marshalList[R Record](t *testing.T, s *State, kind Kind[R]) json.RawMessage {
+	t.Helper()
+	data, err := json.Marshal(All(Read(s), kind))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+// encodeAsMarshalIndent fails the test unless Encode writes s as
+// marshalFile does.
+func encodeAsMarshalIndent(t *testing.T, s *State) {
+	t.Helper()
+	saved := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	got, err := Encode(s, saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := marshalFile(t, s, saved); !bytes.Equal(got, want) {
+		t.Errorf("Encode wrote\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestEncodeWritesWhatMarshalIndentWrites(t *testing.T) {
+	encodeAsMarshalIndent(t, New())
+
+	tx := Begin(New())
+	projectID := NewID(tx, Projects)
+	Put(tx, Projects, &Project{ID: projectID, Name: "default", Internet: true})
+	Put(tx, SSHKeys, &SSHKey{ID: NewID(tx, SSHKeys), ProjectID: projectID, Name: "a<b>", Labels: map[string]string{"z": "1", "a": "2"}})
+	Put(tx, Actions, &Action{ID: NewID(tx, Actions), ProjectID: projectID, Command: "start_server", Resources: []ResourceRef{{Type: "server", ID: 1}}})
+	tx.Lab().Faults = map[int64]ProjectFaults{projectID: {API: APIFault{Status: 503, Count: 2}}}
+	encodeAsMarshalIndent(t, tx.Result())
+}
+
+func TestEncodeWritesAChangedRecordAnew(t *testing.T) {
+	base, id := withKey(t)
+	encodeAsMarshalIndent(t, base) // keeps the key's JSON in base
+
+	tx := Begin(base)
+	key, _ := Get(tx, SSHKeys, id)
+	key.Name = "renamed"
+	changed := tx.Result()
+	encodeAsMarshalIndent(t, changed)
+
+	tx = Begin(changed)
+	Delete(tx, SSHKeys, id)
+	Put(tx, SSHKeys, &SSHKey{ID: id + 1, Name: "new"})
+	encodeAsMarshalIndent(t, tx.Result())
+	encodeAsMarshalIndent(t, base) // the old state still writes its own key
 }
 
 func TestMissingStateFileIsAnEmptyState(t *testing.T) {

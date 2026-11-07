@@ -115,16 +115,15 @@ the tests. Look there before writing such a part anew.
   Administrators. The hypervisor's contract tests pass against Hyper-V in about
   30 s and leave nothing behind.
 - `BenchmarkChangeWithManyActions` (`internal/lab`): with five projects of 1000
-  actions, one `Change` that sets an action's progress takes about 17 ms, a
-  `Change` that only reads 7 ms (Ryzen AI Max+ 395). Encoding the whole state is
-  about 45 %, copying the kind of actions about 20 %, comparing the rest.
+  actions, one `Change` that sets an action's progress takes about 1.3 ms
+  (before: 17 ms), a `Change` that only reads 0.05 ms (before: 7 ms), an
+  action without steps (created, finished, the oldest dropped) 1.5 ms, on a
+  Ryzen AI Max+ 395. A Tx copies and compares single records instead of whole
+  kinds, and `state.Encode` reuses the JSON of the records that did not change;
+  the file stays the same, byte for byte.
 
 ### Open for 1b-2 and later
 
-- `Change` holds the mutex for 17 ms at 5000 actions: encode only the kinds
-  that changed, or copy and compare actions per record instead of per kind.
-  This runs as its own step next to 1b-2, in `internal/state` and
-  `internal/lab` only.
 - Live tests that need administrator rights (HostNet, NRPT) come with 1b-3.
   They run through a task "HLab itest" in the Task Scheduler (highest rights,
   created once as administrator): `bin/dev itest` copies the test `.exe` to

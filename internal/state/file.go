@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -27,7 +29,8 @@ var migrations = map[int]Migration{}
 // what this code does not know, so the lab does not start.
 var ErrNewerVersion = errors.New("the state file is newer than this HLab")
 
-// file is the state file's layout.
+// file is the state file's layout. decode reads it; Encode writes the same
+// by hand.
 type file struct {
 	Version int                        `json:"version"`
 	Saved   time.Time                  `json:"saved"`
@@ -36,23 +39,69 @@ type file struct {
 	Lab     Lab                        `json:"lab"`
 }
 
+// The indents of the state file, as json.MarshalIndent writes it: two spaces
+// per level; a kind's name and the end of its list on level 2, its records on
+// level 3.
+const (
+	fileIndent   = "  "
+	listIndent   = "    "
+	recordIndent = "      "
+)
+
 // Encode returns the state file's content for s, saved at the given time.
+//
+// It writes what json.MarshalIndent writes for a file, but by hand: each
+// record's JSON stays in s (State.encoded) and is written again as it is, so
+// a change of one action does not encode the thousands of others. Encode
+// fills s.encoded, so it runs under the same lock as the changes of s.
 func Encode(s *State, saved time.Time) ([]byte, error) {
-	out := file{
-		Version: currentVersion,
-		Saved:   saved.UTC(),
-		NextIDs: s.nextIDs,
-		Kinds:   map[string]json.RawMessage{},
-		Lab:     s.lab,
+	var out bytes.Buffer
+	out.Grow(s.fileSize + 4096) // a little more than last time: a change rarely adds more
+	out.WriteString("{\n")
+	head := []struct {
+		name  string
+		value any
+	}{
+		{"version", currentVersion},
+		{"saved", saved.UTC()},
+		{"next_ids", s.nextIDs},
 	}
-	for _, k := range kinds {
-		list, err := k.encodeTable(s.tables[k.Name()])
-		if err != nil {
+	for _, field := range head {
+		if err := writeField(&out, field.name, field.value); err != nil {
 			return nil, err
 		}
-		out.Kinds[k.Name()] = list
+		out.WriteString(",\n")
 	}
-	return json.MarshalIndent(out, "", "  ")
+	out.WriteString(fileIndent + `"kinds": {`)
+	byName := slices.SortedFunc(slices.Values(kinds), func(a, b kind) int {
+		return strings.Compare(a.Name(), b.Name()) // as MarshalIndent sorts a map
+	})
+	for i, k := range byName {
+		if i > 0 {
+			out.WriteString(",")
+		}
+		fmt.Fprintf(&out, "\n%s%q: ", listIndent, k.Name())
+		if err := k.writeList(&out, s); err != nil {
+			return nil, err
+		}
+	}
+	out.WriteString("\n" + fileIndent + "},\n")
+	if err := writeField(&out, "lab", s.lab); err != nil {
+		return nil, err
+	}
+	out.WriteString("\n}")
+	s.fileSize = out.Len()
+	return out.Bytes(), nil
+}
+
+// writeField writes one field of the file's top level, without the comma.
+func writeField(out *bytes.Buffer, name string, value any) error {
+	data, err := json.MarshalIndent(value, fileIndent, fileIndent)
+	if err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	fmt.Fprintf(out, "%s%q: %s", fileIndent, name, data)
+	return nil
 }
 
 // Load reads the state file at path; without one the state is empty. An older

@@ -150,12 +150,9 @@ func (l *Lab) finishAction(tx *state.Tx, action *state.Action, message string) {
 		l.logger.Warn("action failed", "id", action.ID, "command", action.Command, "error", message)
 	}
 
-	var done []int64
-	for _, kept := range state.All(tx, state.Actions) {
-		if kept.ProjectID == action.ProjectID && kept.Status != state.ActionRunning {
-			done = append(done, kept.ID)
-		}
-	}
+	done := state.IDs(tx, state.Actions, func(kept *state.Action) bool {
+		return kept.ProjectID == action.ProjectID && kept.Status != state.ActionRunning
+	})
 	for _, id := range done[:max(len(done)-MaxFinishedActions, 0)] {
 		state.Delete(tx, state.Actions, id)
 	}

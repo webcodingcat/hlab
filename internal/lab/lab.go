@@ -126,10 +126,15 @@ func Open(opts Options, sys *system.System) (*Lab, error) {
 // endInterruptedActions ends the actions that were running when HLab stopped:
 // no goroutine runs them any more, and clients would poll them forever.
 func (l *Lab) endInterruptedActions(tx *state.Tx) error {
-	for _, action := range state.All(tx, state.Actions) {
-		if action.Status == state.ActionRunning {
-			l.finishAction(tx, action, "HLab was restarted while the action ran")
+	running := state.IDs(tx, state.Actions, func(action *state.Action) bool {
+		return action.Status == state.ActionRunning
+	})
+	for _, id := range running {
+		action, err := state.Get(tx, state.Actions, id)
+		if err != nil {
+			return err
 		}
+		l.finishAction(tx, action, "HLab was restarted while the action ran")
 	}
 	return nil
 }

@@ -215,8 +215,8 @@ func TestOpenEndsActionsThatRanBeforeARestart(t *testing.T) {
 
 // BenchmarkChangeWithManyActions measures one Change on a lab with five
 // projects of a thousand actions each, as when servers poll their actions:
-// a real change compares the kinds it copied and encodes the whole state
-// under the lab's mutex.
+// a real change copies and compares the records it touched and encodes the
+// whole state under the lab's mutex, reusing the JSON of the others.
 func BenchmarkChangeWithManyActions(b *testing.B) {
 	l, _ := open(b, lab.Options{})
 	err := l.Change(func(tx *state.Tx) error {
@@ -250,6 +250,15 @@ func BenchmarkChangeWithManyActions(b *testing.B) {
 				return nil
 			})
 			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("ActionWithoutSteps", func(b *testing.B) {
+		// creates and finishes an action, which drops the project's oldest;
+		// the last project's, so that the actions the others read stay
+		for b.Loop() {
+			if _, err := l.Act(tableWith(instant), "poweroff", lab.Request{ProjectID: state.FirstID + 4, ID: 1}); err != nil {
 				b.Fatal(err)
 			}
 		}

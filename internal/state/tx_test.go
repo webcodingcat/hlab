@@ -123,6 +123,70 @@ func TestATxThatOnlyReadsHasNothingToSave(t *testing.T) {
 	}
 }
 
+func TestChangedSeesEveryKindOfChangeToARecord(t *testing.T) {
+	base, id := withKey(t)
+	tests := map[string]func(tx *Tx){
+		"in place": func(tx *Tx) {
+			key, _ := Get(tx, SSHKeys, id)
+			key.Labels["team"] = "b"
+		},
+		"put":    func(tx *Tx) { Put(tx, SSHKeys, &SSHKey{ID: id, Name: "other"}) },
+		"add":    func(tx *Tx) { Put(tx, SSHKeys, &SSHKey{ID: id + 1, Name: "new"}) },
+		"delete": func(tx *Tx) { Delete(tx, SSHKeys, id) },
+		"found":  func(tx *Tx) { record, _ := Find(tx, SSHKeys, func(*SSHKey) bool { return true }); record.Name = "x" },
+	}
+	for name, change := range tests {
+		t.Run(name, func(t *testing.T) {
+			tx := Begin(base)
+			change(tx)
+			if !tx.Changed() {
+				t.Error("the change counts as unchanged")
+			}
+		})
+	}
+
+	tx := Begin(base)
+	key, _ := Get(tx, SSHKeys, id)
+	Put(tx, SSHKeys, &SSHKey{ID: id, Name: key.Name, Labels: map[string]string{"team": "a"}})
+	Delete(tx, SSHKeys, id+5)
+	if tx.Changed() {
+		t.Error("a Put of an equal record and a Delete of a missing one count as changed")
+	}
+}
+
+func TestIDsListsTheMatchesSortedAndCopiesNothing(t *testing.T) {
+	tx := Begin(New())
+	for _, id := range []int64{3, 1, 2, 4} {
+		Put(tx, Projects, &Project{ID: id, Internet: id != 2})
+	}
+	base := tx.Result()
+
+	tx = Begin(base)
+	ids := IDs(tx, Projects, func(project *Project) bool { return project.Internet })
+	if len(ids) != 3 || ids[0] != 1 || ids[1] != 3 || ids[2] != 4 {
+		t.Errorf("IDs returned %v, want [1 3 4]", ids)
+	}
+	if len(tx.touched[Projects.Name()]) != 0 || tx.Changed() {
+		t.Error("IDs copied a record")
+	}
+}
+
+func TestATxCopiesOnlyTheRecordsItHandsOut(t *testing.T) {
+	tx := Begin(New())
+	first, second := NewID(tx, Projects), NewID(tx, Projects)
+	Put(tx, Projects, &Project{ID: first, Name: "a"})
+	Put(tx, Projects, &Project{ID: second, Name: "b"})
+	base := tx.Result()
+
+	tx = Begin(base)
+	if _, err := Get(tx, Projects, first); err != nil {
+		t.Fatal(err)
+	}
+	if len(tx.touched[Projects.Name()]) != 1 {
+		t.Errorf("a Get touched the projects %v, want only %d", tx.touched[Projects.Name()], first)
+	}
+}
+
 func TestReadSharesTheRecordsAndRefusesChanges(t *testing.T) {
 	s := New()
 	tx := Begin(s)

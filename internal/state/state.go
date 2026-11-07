@@ -7,10 +7,12 @@
 package state
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 )
 
@@ -57,8 +59,9 @@ var kinds = []kind{Projects, Tokens, SSHKeys, Actions}
 type kind interface {
 	Name() string
 	emptyTable() any
-	encodeTable(table any) ([]byte, error)
 	decodeTable(data []byte) (any, error)
+	writeList(out *bytes.Buffer, s *State) error
+	changed(tx *Tx) bool
 	deleteProject(tx *Tx, projectID int64)
 }
 
@@ -68,13 +71,22 @@ type State struct {
 	nextIDs map[string]int64
 	tables  map[string]any // kind name → map[int64]*R
 	lab     Lab
+	// encoded keeps each record's JSON as Encode wrote it, by kind name and
+	// ID; Tx.Result drops the records a Tx touched. It is right only as long
+	// as a state's records never change (DEVELOPING.md, Concurrency), and
+	// states share it (Tx.Result)
+	encoded map[string]map[int64][]byte
+	// fileSize is the length of the file Encode wrote last, so that the
+	// next one grows its buffer once
+	fileSize int
 }
 
 // New returns an empty state.
 func New() *State {
-	s := &State{nextIDs: map[string]int64{}, tables: map[string]any{}}
+	s := &State{nextIDs: map[string]int64{}, tables: map[string]any{}, encoded: map[string]map[int64][]byte{}}
 	for _, k := range kinds {
 		s.tables[k.Name()] = k.emptyTable()
+		s.encoded[k.Name()] = map[int64][]byte{}
 	}
 	return s
 }
@@ -88,15 +100,51 @@ func (k Kind[R]) emptyTable() any {
 	return map[int64]*R{}
 }
 
-// encodeTable writes the records as a list sorted by ID, so that diffs of the
-// state file stay readable.
-func (k Kind[R]) encodeTable(table any) ([]byte, error) {
-	byID := table.(map[int64]*R)
-	list := make([]*R, 0, len(byID))
-	for _, id := range slices.Sorted(maps.Keys(byID)) {
-		list = append(list, byID[id])
+// writeList writes the records as a list sorted by ID, so that diffs of the
+// state file stay readable, indented as the kind's value in the file. A
+// record's JSON comes from s.encoded if it is there, and goes there if not.
+func (k Kind[R]) writeList(out *bytes.Buffer, s *State) error {
+	byID := records(s, k)
+	if len(byID) == 0 {
+		out.WriteString("[]")
+		return nil
 	}
-	return json.Marshal(list)
+	cache := s.encoded[k.name]
+	out.WriteString("[")
+	for i, id := range slices.Sorted(maps.Keys(byID)) {
+		data, found := cache[id]
+		if !found {
+			var err error
+			if data, err = json.MarshalIndent(byID[id], recordIndent, fileIndent); err != nil {
+				return fmt.Errorf("%s %d: %w", k.name, id, err)
+			}
+			cache[id] = data
+		}
+		if i > 0 {
+			out.WriteString(",")
+		}
+		out.WriteString("\n" + recordIndent)
+		out.Write(data)
+	}
+	out.WriteString("\n" + listIndent + "]")
+	return nil
+}
+
+// changed tells whether a Tx changed a record of the kind: it compares the
+// records the Tx touched with the state's.
+func (k Kind[R]) changed(tx *Tx) bool {
+	before, after := records(tx.base, k), records(&tx.work, k)
+	for id := range tx.touched[k.name] {
+		old, was := before[id]
+		current, is := after[id]
+		if was != is {
+			return true // added or deleted
+		}
+		if is && !reflect.DeepEqual(*old, *current) {
+			return true
+		}
+	}
+	return false
 }
 
 func (k Kind[R]) decodeTable(data []byte) (any, error) {
@@ -122,10 +170,9 @@ func (k Kind[R]) deleteProject(tx *Tx, projectID int64) {
 	if _, owned := any(zero).(Owned); !owned {
 		return // a kind of no project: copying it would be for nothing
 	}
-	byID := table(tx, k)
-	for id, record := range byID {
+	for id, record := range table(tx, k) {
 		if any(*record).(Owned).RecordProject() == projectID {
-			delete(byID, id)
+			Delete(tx, k, id)
 		}
 	}
 }

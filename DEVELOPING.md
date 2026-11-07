@@ -129,22 +129,33 @@ The layer test checks production code only. Tests may import fakes and helpers.
   starts at `state.FirstID` (1 000 000). Catalog entries carry Hetzner's real IDs,
   which are lower, so no record shares an ID with a catalog entry. An ID is never
   reused and never changes.
-- **Transactions.** A `state.Tx` makes a deep copy of a kind the first time it uses
-  it (`state.Get`, `All`, `Put`, `Delete`, `NewID`). The records you get from a Tx
-  are its copies, so changing one in place changes the Tx. The changes become part
-  of a state only through `tx.Result()`; a Tx that is dropped changes nothing.
-  Copying a kind with a thousand actions takes about a millisecond
-  (`BenchmarkTxOnAThousandActions`).
+- **Transactions.** A `state.Tx` makes a deep copy of a record the first time it
+  hands it out (`state.Get`, `All`, `Find`); of the kind's table it copies only the
+  map from IDs to records. The records you get from a Tx are its copies, so
+  changing one in place changes the Tx. The Tx notes the ID of every record it
+  copied, put or deleted. The changes become part of a state only through
+  `tx.Result()`; a Tx that is dropped changes nothing. A Tx that changes one of a
+  thousand actions takes about 20 µs (`BenchmarkTxOnAThousandActions`); the
+  copied map grows with the kind.
+- **`All` copies every record of the kind**, and the change then compares and
+  encodes all of them anew. To scan a large kind such as actions in a `Change`,
+  use `state.IDs`, which copies nothing, and `state.Get` for the records it
+  changes.
 - **Reads copy nothing.** `state.Read` starts a read-only Tx. Its records are the
   state's own, and calling Put, Delete or NewID on it panics. `lab.View` uses it, so
   the token check on every request copies nothing. That check uses `state.Find`,
   which does not sort as `state.All` does.
 - **Only a real change is saved.** Because records can change in place,
-  `tx.Changed()` compares each kind the Tx copied with the state the Tx started from
-  (`reflect.DeepEqual`). A `Change` that only read, or set a value to what it
+  `tx.Changed()` compares each record the Tx noted with the state the Tx started
+  from (`reflect.DeepEqual`). A `Change` that only read, or set a value to what it
   already was, saves nothing. A real change encodes the whole state while holding
-  the mutex and passes it to the writer. If that ever shows up in a profile, encode
-  only the kinds that changed.
+  the mutex and passes it to the writer.
+- **Encoding reuses each record's JSON.** `state.Encode` keeps the JSON of every
+  record in the state it encoded; `tx.Result()` drops it for the records the Tx
+  noted. So a change encodes only its own records, and `Encode` puts the file
+  together from the rest. It writes by hand what `json.MarshalIndent` would write
+  for the whole file, which `TestEncodeWritesWhatMarshalIndentWrites` checks. This
+  relies on the rule that a state's records never change.
 - **The file.** The state is `state.json` in the data folder. Its keys are
   `version`, `saved`, `next_ids`, `kinds` and `lab`. Each kind is a list sorted by
   ID, so diffs stay readable. Names are `snake_case`, times are RFC 3339 in UTC.
