@@ -34,8 +34,8 @@ the tests. Look there before writing such a part anew.
 | 1a-1 | repo skeleton: Go module, minimal commands, layer test, `bin/dev`, `bin/dev.ps1`, CI, docs | done |
 | 1a-2 | `internal/state` and `internal/lab` with tests: transactions, saving, migrations, actions with a test clock; platform interfaces, fake, contract tests, Windows stubs | done |
 | 1a-3 | `internal/web` and `internal/spectest`; projects, tokens | done |
-| 1a-4 | catalog and the reading resources; SSH keys | **next** |
-| 1a-5 | lab control, CLI, `hlab env`; web UI skeleton | open |
+| 1a-4 | catalog and the reading resources; SSH keys | done |
+| 1a-5 | lab control, CLI, `hlab env`; web UI skeleton | **next** |
 | 1a-6 | checks against the real API (read only) | open |
 
 After 1a-2: `hlabd` does not start the lab yet (1a-5). There is no `internal/config`
@@ -53,6 +53,18 @@ first state. The order of the checks, the error texts and details, pagination an
 the `Link` header were measured on the real API (2026-11-07) and follow it; what is
 still open for 1a-6 is at the end of `compat/requirements.md`. Requests are not yet checked against the spec's request
 schemas (the old HLab did; it comes with the first endpoint that takes a body).
+
+After 1a-4: `internal/catalog` holds Hetzner's catalog with its real IDs (built in,
+changed by a `catalog.yaml` in the data folder); the lab takes it in
+`lab.Options.Catalog`, but nothing loads the user's file yet: `hlabd` does that when
+1a-5 wires it. The Cloud API answers locations, server types, load balancer types,
+pricing, images (the catalog's system images, Debian 13 and Ubuntu 26.04) and ISOs,
+and the SSH keys in full; the datacenter endpoints answer 410 as Hetzner's do.
+Request bodies are checked (`web.DecodeJSON`, `web.Check`). The catalog's values
+come from public sources and are compared with the real API in 1a-6, together with
+the open points at the end of `compat/requirements.md`. Not yet: `PUT` and `DELETE`
+of images and their actions (with snapshots, 3a); the catalog's image sources for
+the image cache (1b).
 
 Not there yet: `bin/dev test --agent` (it reports "not yet implemented"), `deploy`,
 `itest` and `smoke`.

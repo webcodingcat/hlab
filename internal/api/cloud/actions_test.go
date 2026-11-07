@@ -3,60 +3,13 @@ package cloud_test
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"testing"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud/schema"
 
-	"github.com/webcodingcat/hlab/internal/api/cloud"
 	"github.com/webcodingcat/hlab/internal/lab"
-	"github.com/webcodingcat/hlab/internal/platform/fake"
-	"github.com/webcodingcat/hlab/internal/spectest"
 	"github.com/webcodingcat/hlab/internal/state"
-	"github.com/webcodingcat/hlab/internal/system"
-	"github.com/webcodingcat/hlab/internal/web"
 )
-
-// testLab is a lab on a fake machine with the Cloud API in front of it.
-type testLab struct {
-	lab    *lab.Lab
-	client *spectest.Client // with a read_write token of the project "default"
-}
-
-// newTestLab opens a lab with the project "default" and the Cloud API; every
-// answer of its client is checked against the spec.
-func newTestLab(t *testing.T) *testLab {
-	t.Helper()
-	logger := slog.New(slog.DiscardHandler)
-	l, err := lab.Open(lab.Options{DataDir: t.TempDir(), Logger: logger}, system.New(fake.New().Platform()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := l.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	api := web.NewAPI(web.Options{Backend: l, RateLimit: web.HetznerRateLimit, Logger: logger})
-	cloud.Register(api, l)
-	client := spectest.New(t, api, spectest.Cloud)
-	client.Token = newToken(t, l, "default")
-	return &testLab{lab: l, client: client}
-}
-
-// newToken creates a project and a read_write token of it.
-func newToken(t *testing.T, l *lab.Lab, project string) string {
-	t.Helper()
-	created, err := l.CreateProject(project, state.Limits{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, secret, err := l.CreateToken(created.ID, "test", state.PermissionReadWrite)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return secret
-}
 
 // act runs an action on a server of a project; with release, its steps run
 // until release is closed.

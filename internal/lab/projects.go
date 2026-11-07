@@ -36,7 +36,7 @@ func (l *Lab) CreateProject(name string, limits state.Limits) (state.Project, er
 		project = state.Project{
 			ID:       state.NewID(tx, state.Projects),
 			Name:     name,
-			Created:  l.now(),
+			Created:  l.Now(),
 			Limits:   limits,
 			Internet: true,
 		}

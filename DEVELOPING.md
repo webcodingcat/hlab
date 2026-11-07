@@ -202,9 +202,46 @@ later `api/hetzner`) registers its handlers on a `web.API`, one file per resourc
   pages that are not there, and the `Link` header, which Hetzner announced to drop
   but still sends), `web.Sort` with the fields a resource allows (`web.SortKeys`),
   `web.ParseSelector` for `label_selector`.
+- **Request bodies** are decoded into the request types of `schema`
+  (`schema.SSHKeyCreateRequest`) with `web.DecodeJSON`: a body that is no JSON object
+  is 400 `json_error`, a field of the wrong type 422 `invalid_input` for that field,
+  unknown fields are ignored as Hetzner ignores them. The handler then checks its
+  fields with a `web.Check` (`Required`, `Labels` with Hetzner's label rules, `Fail`)
+  and returns `check.Err()`: one `invalid_input` that lists every field, its message
+  naming the first ("invalid input in field 'name': is required"), as in Hetzner's
+  documentation. A value another resource of the project has already is
+  `web.Uniqueness` (409 `uniqueness_error`). The request schemas of the spec are not
+  used at run time: the spec check is for tests only.
 - **JSON types** come from `hcloud-go/v2/hcloud/schema`, the types the CLI and the
   provider decode with; HLab has its own where `schema` cannot say what the real API
-  sends (`web.Pagination`, whose pages may be `null`).
+  sends (`web.Pagination`, whose pages may be `null`; the pricing, where `schema`
+  still has `traffic` and a `datacenter` per Primary IP price).
+- **Datacenters** are gone from Hetzner's API: their endpoints answer 410
+  `deprecated_api_endpoint`, and no answer names a datacenter.
+
+## The catalog
+
+`internal/catalog` holds what Hetzner offers: locations, server, load balancer and
+Storage Box types, prices, system images and ISOs, each with Hetzner's real ID and
+name, because the tools check them (`compat/requirements.md`).
+
+- **Built in and changed by the user.** The built-in catalog is
+  `internal/catalog/catalog.yaml`, compiled in with `go:embed`. `catalog.Load`
+  reads a `catalog.yaml` in the data folder over it: each key the user's file names
+  replaces the built-in value, a list as a whole. Unknown keys, doubled IDs or
+  names, values the API does not allow and unknown locations stop the start, naming
+  the file.
+- **Hetzner's shape.** The keys are those of Hetzner's JSON, so that answers of the
+  real API become catalog entries (Recipes). The differences: a server type's
+  locations name the location only (the ID comes from `locations`); an ISO without
+  `architecture` fits every architecture; images are system images, always
+  `available`, without labels.
+- **Only what the lab runs:** x86 server types (Hyper-V on an x86 host runs no ARM
+  guests), and each system image only in its newest version (Debian 13, Ubuntu
+  26.04).
+- **The lab owns it.** `lab.Options.Catalog` takes a loaded catalog (nil is the
+  built-in one); `Lab.Catalog()` returns it. It does not change while the lab runs,
+  so reading it needs no lock. Lists are sorted by ID, as Hetzner lists them.
 
 ## Spec check and compat/
 
@@ -256,7 +293,7 @@ As few as possible, each with its reason here.
 | `golang.org/x/tools` (only `go/packages`) | the layer test reads the imports of every package, for Linux and Windows |
 | `github.com/hetznercloud/hcloud-go/v2` (only `hcloud/schema`) | the JSON types of the APIs, as the CLI and the provider decode them |
 | `github.com/getkin/kin-openapi` (only `openapi3`, in `spectest`) | checks the answers against Hetzner's OpenAPI 3.1 specs |
-| `go.yaml.in/yaml/v4` | reads the YAML files of `compat/`; `kin-openapi` needs it anyway |
+| `go.yaml.in/yaml/v4` | reads the catalog and the YAML files of `compat/`; `kin-openapi` needs it anyway |
 
 Tools, in the separate module `tools/go.mod` so their dependencies stay out of
 `go.mod` (run with `go tool -modfile=tools/go.mod <tool>`):
@@ -314,10 +351,33 @@ An older state file without the kind loads as before; no migration is needed.
 (a new resource: a new file, registered in `cloud.Register`) with
 `api.Handle("GET /things/{id}", ...)`; the path is the spec's, without `/v1`, and
 `web.PathID(req, "id")` reads an ID of it. Build the answer from `hcloud-go`'s
-`schema` types; refuse with the `web` errors (`web.NotFound`, `web.InvalidInput`,
-…) and Hetzner's codes and messages. Its tests send every request through a
+`schema` types; read a body with `web.DecodeJSON` and check it with a `web.Check`;
+refuse with the `web` errors (`web.NotFound`, `web.Uniqueness`, …) and Hetzner's
+codes and messages. A list filters, sorts (`web.Sort` with the spec's sort values)
+and answers with `listJSON`, which paginates. Its tests send every request through a
 `spectest` client, and a comment notes where a test checks Hetzner's behaviour;
 an answer measured on the real API goes into `compat/requirements.md`.
+
+**A new reading resource from the catalog** (such as `storage_box_types` in the
+Hetzner API): the catalog has its entries already, or gets a list and a type in
+`internal/catalog/catalog.go` with the keys of Hetzner's JSON, checks in `check.go`
+(unique IDs and names, enums of the spec, known locations) and its entries in
+`catalog.yaml`. The API gets a file with `register<Things>(api, l.Catalog())`, a
+list with `byName` and `listJSON`, a single endpoint that answers `web.NotFound`,
+and a `<thing>JSON` that builds the `schema` type. Add it to
+`TestCatalogResourcesListAndGet`.
+
+**Updating the catalog** (Hetzner changes prices, adds a type or a new image
+version): with a read token of a real project, fetch the lists
+(`curl -H "Authorization: Bearer $HCLOUD_TOKEN"
+"https://api.hetzner.cloud/v1/server_types?per_page=50"`, likewise `locations`,
+`load_balancer_types`, `isos`, `images?type=system&architecture=x86`, `pricing`) and
+take the values into `internal/catalog/catalog.yaml`: the same keys; x86 types only;
+a server type's locations by name, without `id`; the price lists of
+`server_types` and `load_balancer_types` from the types themselves, not from
+`pricing`; of the images only the newest version of each system. Storage Box types
+come from `https://api.hetzner.com/v1/storage_box_types`. Run `bin/dev test`; the
+catalog's check names what does not fit.
 
 **A spec deviation** (the real API answers what the spec does not allow): add an
 entry to `compat/spec-deviations.yaml` with the pointer into the spec, the value if

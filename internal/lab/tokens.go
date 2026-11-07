@@ -44,7 +44,7 @@ func (l *Lab) CreateToken(projectID int64, name string, permission state.Permiss
 			ID:         state.NewID(tx, state.Tokens),
 			ProjectID:  projectID,
 			Name:       name,
-			Created:    l.now(),
+			Created:    l.Now(),
 			Permission: permission,
 			Hash:       state.HashToken(secret),
 			Prefix:     secret[:tokenPrefixLength],

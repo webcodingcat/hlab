@@ -25,7 +25,22 @@ func TestDecodeJSON(t *testing.T) {
 	if err := web.DecodeJSON(postJSON(""), &body); err != nil {
 		t.Errorf("an empty body: %v", err)
 	}
-	for _, broken := range []string{`{"name":`, strings.Repeat(" ", 1<<20+1)} {
+	for body, want := range map[string]string{
+		`{"name":5}`:              `{"fields":[{"name":"name","messages":["must be of type string"]}]}`,
+		`{"labels":["a"]}`:        `{"fields":[{"name":"labels","messages":["must be of type object"]}]}`,
+		`{"labels":{"env":true}}`: `{"fields":[{"name":"labels.env","messages":["must be of type string"]}]}`,
+	} {
+		var typed struct {
+			Name   string            `json:"name"`
+			Labels map[string]string `json:"labels"`
+		}
+		err := web.DecodeJSON(postJSON(body), &typed)
+		var apiErr *web.Error
+		if !errors.As(err, &apiErr) || apiErr.Status != 422 || details(t, err) != want {
+			t.Errorf("%s: %v, want invalid_input with %s", body, err, want)
+		}
+	}
+	for _, broken := range []string{`{"name":`, `[1]`, strings.Repeat(" ", 1<<20+1)} {
 		err := web.DecodeJSON(postJSON(broken), &body)
 		var apiErr *web.Error
 		if !errors.As(err, &apiErr) || apiErr.Code != "json_error" || apiErr.Status != 400 {

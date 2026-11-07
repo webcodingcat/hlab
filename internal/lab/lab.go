@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/state"
 	"github.com/webcodingcat/hlab/internal/system"
 )
@@ -32,6 +33,9 @@ type Options struct {
 	Clock Clock
 	// Logger gets the lab's log; nil is slog.Default().
 	Logger *slog.Logger
+	// Catalog is what the lab offers (catalog.Load); nil is the built-in
+	// catalog.
+	Catalog *catalog.Catalog
 }
 
 // Lab is the running lab.
@@ -40,6 +44,7 @@ type Lab struct {
 	clock     Clock
 	timeScale float64
 	logger    *slog.Logger
+	catalog   *catalog.Catalog
 	writer    *state.Writer
 	release   func() // gives the data folder up
 
@@ -79,6 +84,7 @@ func Open(opts Options, sys *system.System) (*Lab, error) {
 		clock:     opts.Clock,
 		timeScale: opts.TimeScale,
 		logger:    opts.Logger,
+		catalog:   opts.Catalog,
 		release:   release,
 		state:     loaded,
 		flags:     map[state.ResourceRef]bool{},
@@ -89,6 +95,9 @@ func Open(opts Options, sys *system.System) (*Lab, error) {
 	}
 	if l.logger == nil {
 		l.logger = slog.Default()
+	}
+	if l.catalog == nil {
+		l.catalog = catalog.Builtin()
 	}
 	l.writer = state.NewWriter(path, l.logger)
 	l.ctx, l.cancel = context.WithCancel(context.Background())
@@ -146,7 +155,7 @@ func (l *Lab) changeLocked(change func(tx *state.Tx) error) error {
 		return nil
 	}
 	next := tx.Result()
-	data, err := state.Encode(next, l.now())
+	data, err := state.Encode(next, l.Now())
 	if err != nil {
 		return fmt.Errorf("encoding the state: %w", err)
 	}
@@ -183,7 +192,14 @@ func (l *Lab) Flush() error {
 	return l.writer.Flush()
 }
 
-// now returns the time as the API shows it: UTC, in whole seconds.
-func (l *Lab) now() time.Time {
+// Now returns the time as the API shows it: UTC, in whole seconds. Records
+// that the api packages create take it as their time of creation.
+func (l *Lab) Now() time.Time {
 	return l.clock.Now().UTC().Truncate(time.Second)
+}
+
+// Catalog returns what the lab offers. It does not change while the lab
+// runs, so it needs no lock.
+func (l *Lab) Catalog() *catalog.Catalog {
+	return l.catalog
 }

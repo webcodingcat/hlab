@@ -123,7 +123,7 @@ func (l *Lab) newAction(tx *state.Tx, projectID int64, command string, resources
 		ProjectID: projectID,
 		Command:   command,
 		Status:    state.ActionRunning,
-		Started:   l.now(),
+		Started:   l.Now(),
 		Resources: resources,
 	}
 	state.Put(tx, state.Actions, action)
@@ -134,7 +134,7 @@ func (l *Lab) newAction(tx *state.Tx, projectID int64, command string, resources
 // finishAction ends an action: success, or an error with message. Then the
 // project's oldest finished actions go, beyond MaxFinishedActions.
 func (l *Lab) finishAction(tx *state.Tx, action *state.Action, message string) {
-	finished := l.now()
+	finished := l.Now()
 	action.Progress = 100
 	action.Finished = &finished
 	action.Status = state.ActionSuccess
