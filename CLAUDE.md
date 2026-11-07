@@ -26,11 +26,12 @@ From Linux or WSL2 (`bin/dev.ps1` takes the same commands on Windows):
 | `bin/dev test --windows` | the unit tests built for Windows, run through WSL interop |
 | `bin/dev build` | `hlabd`, `hlab`, `hlab-agent` for Linux and `hlabd.exe`, `hlab.exe` into `build/` |
 | `bin/dev spec-diff` | Hetzner's current specs against `compat/specs` (`--update` takes them over) |
+| `bin/dev itest [--run <pattern>]` | the live tests against Hyper-V: built for Windows, run through WSL interop (needs the group Hyper-V Administrators) |
 | `bin/dev smoke` | the smoke tests: hcloud CLI and OpenTofu against `hlabd --platform fake` (WSL2 or Linux, end of a phase) |
 
 `bin/dev test --agent` comes with a later phase and says so. CI runs lint and the
 unit tests on Linux and Windows for every push and pull request, and `spec-diff`
-weekly.
+weekly; the live tests stay out of CI.
 
 ## Rules that are easy to break
 

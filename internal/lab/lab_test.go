@@ -2,6 +2,7 @@ package lab_test
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -20,7 +21,7 @@ import (
 const projectID = 1
 
 // start opens a lab on a fake machine; the test closes it.
-func start(t *testing.T, machine *fake.Fake, opts lab.Options) *lab.Lab {
+func start(t testing.TB, machine *fake.Fake, opts lab.Options) *lab.Lab {
 	t.Helper()
 	opts.Logger = slog.New(slog.DiscardHandler)
 	l, err := lab.Open(opts, system.New(machine.Platform()))
@@ -31,7 +32,7 @@ func start(t *testing.T, machine *fake.Fake, opts lab.Options) *lab.Lab {
 }
 
 // open opens a lab on a new fake machine and closes it after the test.
-func open(t *testing.T, opts lab.Options) (*lab.Lab, *fake.Fake) {
+func open(t testing.TB, opts lab.Options) (*lab.Lab, *fake.Fake) {
 	t.Helper()
 	machine := fake.New()
 	if opts.DataDir == "" {
@@ -210,4 +211,58 @@ func TestOpenEndsActionsThatRanBeforeARestart(t *testing.T) {
 	if action.Status != state.ActionError || !strings.Contains(action.Error.Message, "restarted") {
 		t.Errorf("the action is %s with %+v, want an error about the restart", action.Status, action.Error)
 	}
+}
+
+// BenchmarkChangeWithManyActions measures one Change on a lab with five
+// projects of a thousand actions each, as when servers poll their actions:
+// a real change compares the kinds it copied and encodes the whole state
+// under the lab's mutex.
+func BenchmarkChangeWithManyActions(b *testing.B) {
+	l, _ := open(b, lab.Options{})
+	err := l.Change(func(tx *state.Tx) error {
+		for range 5 {
+			projectID := state.NewID(tx, state.Projects)
+			state.Put(tx, state.Projects, &state.Project{ID: projectID, Name: fmt.Sprintf("p%d", projectID)})
+			for range lab.MaxFinishedActions {
+				id := state.NewID(tx, state.Actions)
+				state.Put(tx, state.Actions, &state.Action{
+					ID: id, ProjectID: projectID, Command: "start_server", Status: state.ActionSuccess,
+					Resources: []state.ResourceRef{{Type: "server", ID: 1}},
+				})
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.Run("ProgressOfOneAction", func(b *testing.B) {
+		progress := 0
+		for b.Loop() {
+			progress++
+			err := l.Change(func(tx *state.Tx) error {
+				action, err := state.Get(tx, state.Actions, state.FirstID+1)
+				if err != nil {
+					return err
+				}
+				action.Progress = progress
+				return nil
+			})
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("OnlyRead", func(b *testing.B) {
+		for b.Loop() {
+			err := l.Change(func(tx *state.Tx) error {
+				_, err := state.Get(tx, state.Actions, state.FirstID+1)
+				return err
+			})
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 }

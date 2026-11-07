@@ -218,17 +218,15 @@ func TestRefusedActionChangesNothing(t *testing.T) {
 	}
 }
 
-func TestUndoRunsWhenThePlatformFails(t *testing.T) {
-	l, machine := openWithProject(t, lab.Options{})
-	machine.FailNext("VMState", errors.New("Hyper-V refused"))
+func TestUndoRunsWhenTheStepsFail(t *testing.T) {
+	l, _ := openWithProject(t, lab.Options{})
 	var keyID int64
 	spec := lab.ActionSpec{Name: "stop_server", Plan: func(tx *state.Tx, _ lab.Request) (lab.Plan, error) {
 		keyID = state.NewID(tx, state.SSHKeys)
 		state.Put(tx, state.SSHKeys, &state.SSHKey{ID: keyID, Name: "made by the quick part"})
 		return lab.Plan{
-			Steps: func(ctx context.Context) error {
-				_, err := l.System().VMRunning(ctx, "server-7")
-				return err
+			Steps: func(context.Context) error {
+				return errors.New("Hyper-V refused")
 			},
 			Undo: func(tx *state.Tx) error {
 				state.Delete(tx, state.SSHKeys, keyID)

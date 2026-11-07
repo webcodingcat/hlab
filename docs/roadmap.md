@@ -14,7 +14,7 @@ the tests. Look there before writing such a part anew.
 | Phase | What | State |
 |---|---|---|
 | 1a | core without VMs: state, lab, web basics, catalog, reading resources, SSH keys, lab control, `--platform fake` | done |
-| 1b | servers, host link, reachability | **next: 1b-1** |
+| 1b | servers, host link, reachability | **in progress: next 1b-2** |
 | 2a | Floating IPs, firewalls, private networks | open |
 | 2b | volumes, placement groups, DNS | open |
 | 2c | tools for tests | open |
@@ -65,13 +65,8 @@ the tests. Look there before writing such a part anew.
 
 ### Open for 1b
 
-- Trim the platform interfaces and the fake hypervisor to what 1b-1 calls;
-  `system.VMRunning` has no caller yet. The first real `ActionTable` comes with
-  the server actions.
-- Measure `Change` on a state with several projects and 1000 actions each
-  before servers poll actions: every real change compares the kinds it touched
-  and encodes the whole state under the lab's mutex. `endInterruptedActions`
-  trims the finished actions once per action.
+- The first real `ActionTable` comes with the server actions.
+- `endInterruptedActions` trims the finished actions once per action.
 - Give the resources one helper for "unique within the project" (SSH keys scan
   every key twice today).
 - Hetzner ran a reboot while a poweroff was running, where `Lab.Act` answers 423.
@@ -90,7 +85,53 @@ the tests. Look there before writing such a part anew.
   (2c).
 - Stop requests from signing out and the tray (6b).
 
-Next: 1b-1, `pshost` and the Hyper-V hypervisor with the contract tests.
+## Phase 1b
+
+| Step | What | State |
+|---|---|---|
+| 1b-1 | `pshost`, the Hyper-V hypervisor, the live tests (`bin/dev itest`) with the hypervisor's contract tests | done |
+| 1b-2 | the appliance's build and the agent; agent tests in a namespace | next |
+| 1b-3 | HostNet, the appliance's start and watchdog, the life cycle | open |
+| 1b-4 | image cache, `seed`, servers and Primary IPs | open |
+| 1b-5 | dev loop, `install.ps1`, the CLI from WSL2 | open |
+| 1b-6 | appliance update (A/B) with running servers | open |
+
+### What is there after 1b-1
+
+- `internal/platform/windows/pshost`: up to four long-running `powershell.exe`,
+  JSON over stdin and stdout, kill and restart on cancel or crash. Its unit tests
+  run against a real `powershell.exe` (`bin/dev test --windows`, CI on Windows).
+- The Hyper-V hypervisor: VMs (Gen2, Secure Boot, static memory, NICs with MAC
+  and port mode, empty DVD drive), power, state and heartbeat, `FindVMs` by
+  notes, disks (dynamic, differencing, grow, flatten, attach and detach while
+  running), seed ISO with IMAPI2. `windows.New` returns it; `hlabd` still runs
+  only `--platform fake`.
+- The platform interfaces lost what no phase before 3a calls:
+  `CheckpointDisk` (3a), `Counters` (4), `Console` (6a), and
+  `HostNet.SetPortVLAN` (a NIC's port mode comes with the NIC);
+  `system.VMRunning` is gone.
+- `bin/dev itest` builds `itest/` for Windows (tag `live`) and runs it through
+  interop, without elevation: the developer is in the group Hyper-V
+  Administrators. The hypervisor's contract tests pass against Hyper-V in about
+  30 s and leave nothing behind.
+- `BenchmarkChangeWithManyActions` (`internal/lab`): with five projects of 1000
+  actions, one `Change` that sets an action's progress takes about 17 ms, a
+  `Change` that only reads 7 ms (Ryzen AI Max+ 395). Encoding the whole state is
+  about 45 %, copying the kind of actions about 20 %, comparing the rest.
+
+### Open for 1b-2 and later
+
+- `Change` holds the mutex for 17 ms at 5000 actions. Before servers report
+  progress often: encode only the kinds that changed, or copy and compare
+  actions per record instead of per kind (1b-4 at the latest).
+- Live tests that need administrator rights (HostNet, NRPT) come with 1b-3; the
+  task "HLab dev" (1b-5) or a similar one is the way to elevation without UAC.
+- The seed's contents (with name servers) come with `internal/seed` (1b-4); the
+  ISO's format is checked: label `cidata`, Joliet names.
+- `ShutdownVM` against a real guest (shutdown service) is checked with the first
+  server (1b-4); the contract tests have VMs without an OS.
+
+Next: 1b-2, the appliance's build and the agent.
 
 Not there yet: `bin/dev test --agent` (it reports "not yet implemented") and
 the commands of later phases.

@@ -17,6 +17,8 @@ The same commands as bin/dev:
   bin/dev.ps1 spec-diff --update
                                replace compat/specs with Hetzner's current ones
   bin/dev.ps1 smoke            the smoke tests run from WSL2 (bin/dev smoke)
+  bin/dev.ps1 itest [--run <pattern>]
+                               the live tests against Hyper-V
 #>
 param(
     [Parameter(Position = 0)]
@@ -195,6 +197,15 @@ try {
         }
         # the smoke tests use the tools as users do, from WSL2 (DEVELOPING.md, Tools)
         'smoke' { throw 'smoke runs from WSL2: bin/dev smoke' }
+        'itest' {
+            $arguments = @('test', '-tags', 'live', '-v', '-count=1', '-timeout', '30m')
+            if ($Option -match '^--run (.+)$') {
+                $arguments += @('-run', $Matches[1])
+            } elseif ($Option) {
+                throw "unknown option: $Option"
+            }
+            Invoke-Native go ($arguments + @('./itest'))
+        }
         default {
             Get-Usage | Write-Output
             exit 2

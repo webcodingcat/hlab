@@ -94,26 +94,6 @@ func (n *HostNet) TearDown(ctx context.Context) error {
 	return nil
 }
 
-// SetPortVLAN sets the port mode of an existing NIC.
-func (n *HostNet) SetPortVLAN(ctx context.Context, vm, mac string, port platform.PortMode) error {
-	if err := n.fake.enter(ctx, "SetPortVLAN", vm, mac, port.Kind, port.VLAN); err != nil {
-		return err
-	}
-	n.fake.mu.Lock()
-	defer n.fake.mu.Unlock()
-	machine, found := n.fake.vms[vm]
-	if !found {
-		return fmt.Errorf("VM %q: %w", vm, platform.ErrNotFound)
-	}
-	nic, found := machine.nics[mac]
-	if !found {
-		return fmt.Errorf("NIC %s of VM %q: %w", mac, vm, platform.ErrNotFound)
-	}
-	nic.Port = port
-	machine.nics[mac] = nic
-	return nil
-}
-
 // HostDNS is the fake machine's DNS rules.
 type HostDNS struct {
 	fake *Fake

@@ -3,7 +3,6 @@ package fake
 import (
 	"context"
 	"fmt"
-	"io"
 	"slices"
 	"strings"
 
@@ -286,6 +285,9 @@ func (h *Hypervisor) SetISO(ctx context.Context, name string, path string) error
 	if err != nil {
 		return err
 	}
+	if _, found := h.fake.disks[path]; path != "" && !found {
+		return fmt.Errorf("ISO %q: %w", path, platform.ErrNotFound)
+	}
 	machine.iso = path
 	return nil
 }
@@ -345,25 +347,6 @@ func (h *Hypervisor) FlattenDisk(ctx context.Context, src, dst string) error {
 	return nil
 }
 
-// CheckpointDisk returns the system disk itself as frozen: nothing writes to
-// the fake's disks.
-func (h *Hypervisor) CheckpointDisk(ctx context.Context, name string) (string, func() error, error) {
-	if err := h.fake.enter(ctx, "CheckpointDisk", name); err != nil {
-		return "", nil, err
-	}
-	h.fake.mu.Lock()
-	defer h.fake.mu.Unlock()
-	machine, err := h.vm(name)
-	if err != nil {
-		return "", nil, err
-	}
-	path, found := machine.disks[0]
-	if !found {
-		return "", nil, fmt.Errorf("system disk of VM %q: %w", name, platform.ErrNotFound)
-	}
-	return path, func() error { return nil }, nil
-}
-
 // CreateSeed keeps the seed's files in memory.
 func (h *Hypervisor) CreateSeed(ctx context.Context, path string, files map[string][]byte) error {
 	if err := h.fake.enter(ctx, "CreateSeed", path); err != nil {
@@ -374,28 +357,4 @@ func (h *Hypervisor) CreateSeed(ctx context.Context, path string, files map[stri
 	h.fake.seeds[path] = files
 	h.fake.disks[path] = &disk{}
 	return nil
-}
-
-// Counters returns zero counters for the named VMs that exist.
-func (h *Hypervisor) Counters(ctx context.Context, names []string) (map[string]platform.VMCounters, error) {
-	if err := h.fake.enter(ctx, "Counters", names); err != nil {
-		return nil, err
-	}
-	h.fake.mu.Lock()
-	defer h.fake.mu.Unlock()
-	counters := map[string]platform.VMCounters{}
-	for _, name := range names {
-		if _, found := h.fake.vms[name]; found {
-			counters[name] = platform.VMCounters{}
-		}
-	}
-	return counters, nil
-}
-
-// Console is not there yet (phase 6a).
-func (h *Hypervisor) Console(ctx context.Context, name string) (io.ReadWriteCloser, error) {
-	if err := h.fake.enter(ctx, "Console", name); err != nil {
-		return nil, err
-	}
-	return nil, platform.ErrNotImplemented
 }

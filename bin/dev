@@ -14,6 +14,9 @@
 #                            replace compat/specs with Hetzner's current ones
 #   bin/dev smoke            the smoke tests with the hcloud CLI and OpenTofu
 #                            against `hlabd --platform fake`
+#   bin/dev itest [--run <pattern>]
+#                            the live tests against Hyper-V, built for
+#                            Windows and run through WSL interop
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -143,6 +146,34 @@ test_windows() {
     ./...)
   rm -rf "${out_dir}"
   return "${failed}"
+}
+
+#######################################
+# Build the live tests for Windows and run them through WSL interop. They
+# drive Hyper-V, so the user must be in the group Hyper-V Administrators.
+# Arguments:
+#   Optional: --run and a pattern of test names.
+#######################################
+itest() {
+  [[ -e /proc/sys/fs/binfmt_misc/WSLInterop ]] \
+    || die "itest needs WSL2 with interop"
+  local run=()
+  case "${1:-}" in
+    "") ;;
+    --run)
+      [[ -n "${2:-}" ]] || die "--run needs a pattern"
+      run=("-test.run" "$2")
+      ;;
+    *) die "unknown option: $1" ;;
+  esac
+  local out_dir status=0
+  out_dir="$(mktemp -d)"
+  GOOS=windows CGO_ENABLED=0 go test -c -tags live \
+    -o "${out_dir}/itest.test.exe" ./itest
+  "${out_dir}/itest.test.exe" -test.v -test.timeout 30m "${run[@]}" \
+    </dev/null || status=$?
+  rm -rf "${out_dir}"
+  return "${status}"
 }
 
 #######################################
@@ -282,6 +313,7 @@ main() {
     build) build ;;
     spec-diff) spec_diff "${2:-}" ;;
     smoke) smoke ;;
+    itest) itest "${2:-}" "${3:-}" ;;
     *)
       sed -n '2,/^set /p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//' >&2
       exit 2

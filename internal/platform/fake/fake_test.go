@@ -22,7 +22,7 @@ func TestFakeKeepsTheContracts(t *testing.T) {
 	dir := t.TempDir() // the fake's disks are names only; nothing is written there
 
 	t.Run("Hypervisor", func(t *testing.T) { contract.Hypervisor(t, parts.Hypervisor, dir) })
-	t.Run("HostNet", func(t *testing.T) { contract.HostNet(t, parts.HostNet, parts.Hypervisor, dir, used) })
+	t.Run("HostNet", func(t *testing.T) { contract.HostNet(t, parts.HostNet, used) })
 	t.Run("HostDNS", func(t *testing.T) { contract.HostDNS(t, parts.HostDNS) })
 	t.Run("Lifecycle", func(t *testing.T) { contract.Lifecycle(t, parts.Lifecycle, machine.RequestStop) })
 }

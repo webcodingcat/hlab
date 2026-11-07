@@ -11,7 +11,6 @@ package platform
 import (
 	"context"
 	"errors"
-	"io"
 	"net"
 	"net/netip"
 )
@@ -50,7 +49,10 @@ type Hypervisor interface {
 	CreateVM(ctx context.Context, spec VMSpec) error
 	// StartVM starts a VM; a running VM stays as it is.
 	StartVM(ctx context.Context, name string) error
-	// ShutdownVM presses the power button (ACPI); an off VM stays as it is.
+	// ShutdownVM asks the guest to shut down (ACPI, or Hyper-V's shutdown
+	// service) and does not wait; a guest may ignore it. An off VM stays as it
+	// is. The deadline (shut down, then StopVM) is the caller's: lab and
+	// system decide how long to wait.
 	ShutdownVM(ctx context.Context, name string) error
 	// StopVM turns a VM off at once; an off VM stays as it is.
 	StopVM(ctx context.Context, name string) error
@@ -67,15 +69,16 @@ type Hypervisor interface {
 	FindVMs(ctx context.Context, tag string) ([]FoundVM, error)
 	// SetCPUMemory changes the CPUs and memory of a VM that is off.
 	SetCPUMemory(ctx context.Context, name string, cpus int, memoryMB int) error
-	// AttachDisk puts a disk into a free slot of a VM.
+	// AttachDisk puts a disk into a free slot of a VM, also while it runs.
 	AttachDisk(ctx context.Context, name string, disk DiskSlot) error
-	// DetachDisk takes the disk out of a slot.
+	// DetachDisk takes the disk out of a slot, also while the VM runs.
 	DetachDisk(ctx context.Context, name string, slot int) error
-	// AttachNIC adds a NIC to a VM.
+	// AttachNIC adds a NIC to a VM, also while it runs.
 	AttachNIC(ctx context.Context, name string, nic NICSpec) error
 	// DetachNIC removes the NIC with this MAC address.
 	DetachNIC(ctx context.Context, name string, mac string) error
-	// SetISO inserts an ISO into the VM's drive; "" ejects it.
+	// SetISO inserts an ISO into the VM's drive, also while it runs; ""
+	// ejects it.
 	SetISO(ctx context.Context, name string, path string) error
 	// CreateDisk creates a disk; with a parent it is a differencing disk on it.
 	CreateDisk(ctx context.Context, path string, sizeGB int, parent string) error
@@ -83,16 +86,8 @@ type Hypervisor interface {
 	ResizeDisk(ctx context.Context, path string, sizeGB int) error
 	// FlattenDisk writes src with all its parents into one disk dst.
 	FlattenDisk(ctx context.Context, src, dst string) error
-	// CheckpointDisk freezes the system disk of a VM, also while it runs: frozen
-	// is a disk that does not change until done is called.
-	CheckpointDisk(ctx context.Context, name string) (frozen string, done func() error, err error)
 	// CreateSeed writes the cloud-init seed: an ISO labeled "cidata".
 	CreateSeed(ctx context.Context, path string, files map[string][]byte) error
-	// Counters reads the counters of the named VMs; VMs that are gone are left
-	// out.
-	Counters(ctx context.Context, names []string) (map[string]VMCounters, error)
-	// Console opens the serial console of a VM (phase 6a).
-	Console(ctx context.Context, name string) (io.ReadWriteCloser, error)
 }
 
 // HostNet sets up the link between the host and the lab's networks.
@@ -105,8 +100,6 @@ type HostNet interface {
 	SetUp(ctx context.Context, link LinkSpec) error
 	// TearDown removes what SetUp created.
 	TearDown(ctx context.Context) error
-	// SetPortVLAN sets how the switch port of a VM's NIC sees VLANs.
-	SetPortVLAN(ctx context.Context, vm, mac string, port PortMode) error
 }
 
 // HostDNS sends the host's lookups of the lab's names to the lab.
@@ -153,7 +146,8 @@ type DiskSlot struct {
 	Path string
 }
 
-// NICSpec is a NIC of a VM on a switch.
+// NICSpec is a NIC of a VM on a switch. Its port mode is set with the NIC
+// and never changes; a NIC without a switch is not connected.
 type NICSpec struct {
 	MAC    string
 	Switch string
@@ -180,15 +174,6 @@ type VMState struct {
 type FoundVM struct {
 	Name  string
 	Power PowerState
-}
-
-// VMCounters are a VM's running totals since it started.
-type VMCounters struct {
-	CPUNanoseconds uint64
-	DiskReadBytes  uint64
-	DiskWriteBytes uint64
-	NetRxBytes     uint64
-	NetTxBytes     uint64
 }
 
 // LinkSpec is the host's side of the lab: its switch, its addresses and the

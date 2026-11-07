@@ -7,7 +7,6 @@
 package system
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -66,14 +65,4 @@ func (s *System) WriteSecrets(path string, secrets map[int64]string) error {
 		return err
 	}
 	return s.platform.Lifecycle.WriteSecret(path, append(data, '\n'))
-}
-
-// VMRunning tells whether a VM is on; a paused VM counts as on: the lab
-// pauses VMs only to freeze them for a while.
-func (s *System) VMRunning(ctx context.Context, vm string) (bool, error) {
-	state, err := s.platform.Hypervisor.VMState(ctx, vm)
-	if err != nil {
-		return false, err
-	}
-	return state.Power != platform.PowerOff, nil
 }

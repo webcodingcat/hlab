@@ -52,7 +52,7 @@ At most one `hlabd` runs on a machine.
 
 ## Layers
 
-Everything except `cmd/` lives under `internal/`. The table below goes from the user
+Everything except `cmd/` and the live tests in `itest/` lives under `internal/`. The table below goes from the user
 at the top to the system at the bottom.
 
 The table also lists packages that do not exist yet; their Job says "(later)". That
@@ -86,7 +86,7 @@ means the row has no limit.
 | `internal/system` | does the work and never sees the state: VMs, disks, images, host link, host DNS, appliance, agent client | `platform`, `agentproto`, `vhdx`, `imagefmt` |
 | `internal/platform` | the platform interfaces and their data types | – |
 | `internal/platform/windows` | Hyper-V through `pshost`, host network, NRPT, life cycle | `platform`, `platform/windows/pshost` |
-| `internal/platform/windows/pshost` | (later) the long-running PowerShell process: JSON over stdin and stdout | – |
+| `internal/platform/windows/pshost` | long-running PowerShell processes: JSON over stdin and stdout | – |
 | `internal/platform/linux` | the Linux platform; for now only its life cycle | `platform` |
 | `internal/platform/fake` | fakes for unit tests and `--platform fake` | `platform` |
 | `internal/platform/contract` | tests only: the contract tests of the platform interfaces, run against the fake and the real platforms | `platform` |
@@ -98,6 +98,7 @@ means the row has no limit.
 | `internal/config` | `hlab.yaml`: ranges, time scale, overcommit, deadlines, ports | – |
 | `internal/schema` | (later) models generated from Hetzner's spec where `hcloud-go/schema` has gaps | – |
 | `internal/spectest` | tests only: checking answers against Hetzner's spec | – |
+| `itest` | tests only: the live tests (build tag `live`) | – |
 
 What the layers mean:
 
@@ -502,10 +503,90 @@ real ID and name, because the tools check them (`compat/requirements.md`).
   platform.
 - The fake keeps everything in memory. Tests can make calls fail (`FailNext`) or
   wait (`Delay`), and read the calls it received (`Calls`).
-- `internal/platform/windows` builds only for Windows. For now it has the life cycle
-  (The service); every other method returns `platform.ErrNotImplemented`.
-  `internal/platform/linux` has only the Linux life cycle so far.
+- `internal/platform/windows` builds only for Windows. It has the life cycle (The
+  service) and the hypervisor (Hyper-V, below); `HostNet`, `HostDNS` and the agent
+  dialer return `platform.ErrNotImplemented` for now. `internal/platform/linux` has
+  only the Linux life cycle so far.
+- A method joins an interface with the phase that first calls it. Still to come:
+  freezing a running VM's disk for snapshots (phase 3a), counters for metrics
+  (phase 4), the serial console (phase 6a).
+- A NIC's port mode (isolated, promiscuous, access VLAN, trunk) is set only through
+  `NICSpec.Port`, when `CreateVM` or `AttachNIC` adds the NIC, and never changes;
+  the Linux platform (phase 8) must set it there too. If a later phase needs to
+  change a port, the method comes back through the recipe "A new platform method".
 - `lab` reaches the platform only through `system`, which never sees the state.
+
+## Hyper-V
+
+The Windows hypervisor (`internal/platform/windows/hyperv.go`) runs the commands of
+`hyperv.ps1` in long-running PowerShell processes (`pshost`). It needs administrator
+rights, which `hlabd` has, or the group Hyper-V Administrators, which the live tests
+use.
+
+**pshost** keeps up to four `powershell.exe` (Windows PowerShell 5.1, which every
+Windows 11 has and which loads the Hyper-V module natively). Starting one and
+loading the module takes most of a second; a command then takes about 30 ms.
+
+Why a pool of a fixed size and not one process: commands of one process run one
+after another, and some take minutes. While `Convert-VHD` flattens a 40 GB disk for
+a snapshot, a single process would hold up every `VMState`, `StartVM` and
+`CreateVM` of the lab. The pool stays simple: a fixed size, no priorities; a call
+waits only when all four are busy.
+
+- The processes start on demand; commands in one process run one after another, so
+  a slow command (`Convert-VHD`) holds up only its own process.
+- The loop (`pshost/host.ps1`) gets the caller's script as its first line. The
+  script returns a hashtable from command names to script blocks, so only those
+  commands can run.
+- A command fails with a kind by throwing `"<kind>: <message>"`, such as
+  `"not_found: VM web"`. `hyperv.go` turns the kinds `not_found`, `exists`,
+  `running` and `not_running` into the platform's errors; a cmdlet's error has no
+  kind.
+- A command returns a list with a leading comma (`, @(...)`); PowerShell would turn
+  a list of one into the item, and an empty list into nothing.
+- Answers start with the character 0x1E. Anything else on stdout (`Write-Host`,
+  `[Console]::WriteLine`) is logged at debug level and skipped.
+- A canceled call kills its process, and so does a process that ends by itself
+  (`pshost.ErrCrashed`, with the end of its error output). The next call starts a
+  new one. Hyper-V may still finish what the killed command had started, so a
+  caller looks at the VM again rather than assume nothing happened.
+- The processes run with `CREATE_NO_WINDOW`, so `hlabd` without a console opens no
+  window.
+
+**What Hyper-V does differently**, and how `hyperv.ps1` deals with it:
+
+- A VM is generation 2 with Secure Boot and the template "Microsoft UEFI
+  Certificate Authority"; the official cloud images boot with it unchanged.
+- Memory is static, as on Hetzner: with dynamic memory the guest would see only the
+  start value.
+- At every VM, `AutomaticStopAction` is `ShutDown` and `AutomaticStartAction` is
+  `Nothing`: a stopping host shuts the guests down, and HLab starts them itself.
+- Disks sit on SCSI controller 0, a slot is its location; the system disk is slot
+  0 and the first boot device, so the guest sees it as `sda`. A Gen2 VM takes a DVD
+  drive only while it is off, so every VM gets an empty one on controller 1 when it
+  is created; `SetISO` only fills or empties it.
+- `New-VM` adds a NIC of its own; `CreateVM` removes it and adds the spec's NICs
+  with their MAC addresses.
+- Ports: servers' public NICs are isolated in the private VLAN 10/11 and see only
+  the appliance, which is promiscuous; private NICs are access ports, the
+  appliance's private NIC a trunk for VLANs 2–4094.
+- Hyper-V has no ACPI button. `ShutdownVM` asks the guest's shutdown service
+  (`Msvm_ShutdownComponent.InitiateShutdown`) and does not wait; a guest without
+  it ignores the request, as a guest without ACPI does on Hetzner. `ResetVM` is
+  `Restart-VM -Type Reset`.
+- States: `Saved` and `Hibernated` count as off, `Pausing` and `Resuming` as
+  paused, everything else that is not off as running. The heartbeat counts when
+  Hyper-V reports `Ok…`.
+- `Get-VM -Name` takes wildcards, so names are escaped. `Get-VM` without a name
+  reads every VM (about 10 ms each); only `FindVMs` does that, when HLab starts.
+- Disks are dynamic VHDX with 1 MB blocks, as Microsoft advises for Linux guests,
+  or differencing VHDX on a parent. Hyper-V cannot use files in WSL2's file system.
+- `qemu-img` cannot open a differencing VHDX; `FlattenDisk` (`Convert-VHD`) writes
+  one with its parents into a plain one first.
+- The seed is an ISO 9660 with Joliet, labeled `cidata`, written with IMAPI2.
+  Joliet keeps the long names `meta-data` and `network-config`. PowerShell cannot
+  read the IStream that IMAPI2 returns, so a few lines of C# (`Add-Type`, once per
+  process) write it to the file.
 
 ## Dependencies
 
@@ -543,6 +624,7 @@ What a developer installs:
 | shellcheck, yamllint | Linux, WSL2 (`apt install shellcheck yamllint`) | `bin/dev lint` |
 | PSScriptAnalyzer | Windows PowerShell or pwsh: `Install-Module PSScriptAnalyzer -Scope CurrentUser` | `bin/dev lint`, `bin/dev.ps1 lint` |
 | hcloud CLI, OpenTofu | Linux, WSL2, in the versions of `compat/versions.yaml` | `bin/dev smoke` |
+| Hyper-V, the group Hyper-V Administrators | Windows 11 Pro (Live tests) | `bin/dev itest` |
 
 golangci-lint and shfmt need no install: `go tool` builds them from `tools/go.mod`
 the first time they run. In WSL2, `bin/dev lint` runs PSScriptAnalyzer in pwsh if it
@@ -554,6 +636,27 @@ with `GOOS=windows go test -c`. It runs the resulting `.exe` through WSL interop
 the package's directory, and the exit code and output come back to WSL2. Windows
 needs no Go for this. Tests that need the go command, such as the layer test, are
 skipped there; CI's Windows job has Go and runs them.
+
+**Live tests.** `bin/dev itest [--run <pattern>]` runs the tests in `itest/`, which
+build only with the tag `live`, against the real platform. For now that is the
+contract test of the hypervisor against Hyper-V (`internal/platform/contract`).
+
+- It compiles them with `GOOS=windows go test -c -tags live` and runs the `.exe`
+  through WSL interop, as `test --windows` does; `bin/dev.ps1 itest` runs them on
+  Windows with Go.
+- Hyper-V needs administrator rights or the group Hyper-V Administrators (SID
+  `S-1-5-32-578`; its name depends on the language of Windows). The live tests run
+  without elevation, so the developer is in that group. Once, as administrator:
+  `Add-LocalGroupMember -SID S-1-5-32-578 -Member $env:USERNAME`, then sign out and
+  in again. `whoami /groups` shows the group.
+- Disks go to a temporary folder on the Windows disk: Hyper-V cannot use files in
+  WSL2's file system.
+- The tests remove what they create. Their VMs and disks are named
+  `hlab-contract-…` and their VMs carry the notes `hlab-contract`; after an aborted
+  run, `Get-VM hlab-contract-* | Stop-VM -TurnOff -Force -Passthru | Remove-VM
+  -Force` removes the VMs.
+- The live tests stay out of CI: GitHub's Windows runners have no nested Hyper-V.
+  The contract test of the hypervisor takes about 30 s.
 
 **Smoke tests.** At the end of a phase, `bin/dev smoke` runs the real tools against
 the lab, from Linux or WSL2:
@@ -698,8 +801,9 @@ its default to `config.Default` and its range to `check`. If users are meant to 
 it, add it to the example in the README.
 
 **A new platform method.** Add it to the interface in `internal/platform`, to the
-contract tests, to the fake and to every platform. A platform that does not have it
-yet returns `ErrNotImplemented`.
+contract tests, to the fake and to every platform; on Windows, its command goes into
+`hyperv.ps1`. A platform that does not have it yet returns `ErrNotImplemented`. Run
+the contract tests live (`bin/dev itest`).
 
 **A command for later phases.** `bin/dev` and `bin/dev.ps1` list every command in
 their usage text. A command that does not exist yet says "not yet implemented".

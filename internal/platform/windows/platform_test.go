@@ -4,6 +4,7 @@ package windows_test
 
 import (
 	"errors"
+	"log/slog"
 	"testing"
 
 	"github.com/webcodingcat/hlab/internal/platform"
@@ -11,16 +12,13 @@ import (
 )
 
 func TestThePartsWithoutHyperVReportNotImplemented(t *testing.T) {
-	parts := windows.New()
+	parts := windows.New(slog.New(slog.DiscardHandler))
 	ctx := t.Context()
 	_, dialErr := parts.Lifecycle.AgentDialer().Dial(ctx, "appliance", 1)
-	_, stateErr := parts.Hypervisor.VMState(ctx, "web")
 	calls := map[string]error{
-		"Hypervisor.StartVM": parts.Hypervisor.StartVM(ctx, "web"),
-		"Hypervisor.VMState": stateErr,
-		"HostNet.SetUp":      parts.HostNet.SetUp(ctx, platform.LinkSpec{}),
-		"HostDNS.Apply":      parts.HostDNS.Apply(ctx, nil),
-		"AgentDialer.Dial":   dialErr,
+		"HostNet.SetUp":    parts.HostNet.SetUp(ctx, platform.LinkSpec{}),
+		"HostDNS.Apply":    parts.HostDNS.Apply(ctx, nil),
+		"AgentDialer.Dial": dialErr,
 	}
 	for name, err := range calls {
 		if !errors.Is(err, platform.ErrNotImplemented) {
