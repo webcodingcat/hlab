@@ -178,6 +178,10 @@ func TestSSHKeyRequestsAreChecked(t *testing.T) {
 			field("name", "Length must be between 1 and 128.")},
 		"an invalid label value": {http.MethodPut, put, map[string]any{"labels": map[string]string{"env": "bad value!"}}, "invalid_input", "invalid input in field 'labels'",
 			field("labels", "value contains invalid characters or is malformed")},
+		"two invalid fields of a PUT": {http.MethodPut, put, map[string]any{"name": "", "labels": map[string]string{"bad key": "x"}}, "invalid_input", "invalid input in field 'name'",
+			field("name", "Length must be between 1 and 128.")},
+		"a PUT of a missing key": {http.MethodPut, "/v1/ssh_keys/999999999", map[string]any{"name": ""}, "invalid_input", "invalid input in field 'name'",
+			field("name", "Length must be between 1 and 128.")},
 	} {
 		response := test.client.Do(request.method, request.path, request.body)
 		got := errorOf(t, response)

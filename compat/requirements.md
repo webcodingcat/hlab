@@ -107,13 +107,59 @@ these answers.
 | a body cut off (`{"name": `) | 422 `json_error`, `"unexpected EOF"`, `details` `{}` |
 | `PUT` with `{}` or `"labels": null` | 200, nothing changed |
 
-Still open:
+### Label selectors, bodies and servers (1a-6)
 
-- The messages of HLab's other label selector errors are its own; Hetzner's are known
-  only for missing brackets.
+Measured on 2026-11-07 with a read token on `GET /ssh_keys?label_selector=…` and, for
+the bodies, a read-write token of an empty test project (no request could create
+anything). Every selector error is 422 `invalid_input`, `details` `{}`, with the
+message `"invalid label_selector: "` and the reason below; HLab gives the same
+(`internal/web`: `TestSelectorRefusesWhatItCannotParse`,
+`TestSelectorTakesWhatHetznerTakes`; `internal/api/cloud`:
+`TestSSHKeyRequestsAreChecked`; `internal/web`: `TestDecodeJSONErrors`).
+
+| Request | Answer |
+|---|---|
+| `=`, `=x` | `invalid syntax: '=' operator requires value before` |
+| `k=`, `k==`, `k!=`, `k=v=` | `invalid syntax: '=' (or '==', '!=') operator requires value afterwards`: an empty value is no value |
+| `!` / `k!`, `k=v!` | `invalid syntax: '!' operator requires value afterwards` / `… must be in front of value` |
+| `a b`, `kin (a)` | `invalid syntax: only one key allowed` |
+| `,`, `a,,b`, `k=v,,` | `invalid syntax: no key given`; one comma at the end (`k=v,`) is taken |
+| `k in a`, `k notin a`, `k in (a,b`, `k in (a,(b))` | `invalid syntax: missing brackets for group` |
+| a key against the label rules (`k$=v`, `-k=v`, `a/b/c=d`, 70 characters, `(k)`, `env)`), and `k in ()` | `key contains invalid characters or is malformed` |
+| a value against the label rules (`k=-v`, `k=(v)`, 70 characters), an empty value in a group (`k in (a,)`), `k in (a b)` | `value contains invalid characters or is malformed` |
+| `k = v`, `! k`, `k in ( a , b )`, `k in (a),j`, `k=a,b`, `a.b/c=d`, `hetzner.cloud/x=y` | 200 |
+| `PUT /ssh_keys/{id}` with `name` and `labels` both invalid, in either order in the JSON | only the first field in the check's order (`name`, then `labels`): `"invalid input in field 'name'"`, `details.fields` with `name` alone |
+| `PUT /ssh_keys/999999999` (missing) with an invalid body / a valid one | 422 as above: the body is checked before the key is looked up / 404 |
+| `POST /ssh_keys` with a body of 1 MiB + 1, 2, 11, 32 and 64 MiB (`{` spaces `}`) | 422 for the missing fields: no limit up to 64 MiB; with a read token 403 first |
+| `GET /servers` in both projects | no servers: `locked` could not be seen on the real API |
+
+Where HLab differs, knowingly:
+
+- Hetzner takes some selectors whose meaning could not be measured without labelled
+  resources: `!k=v`, `!k!=v`, `k=a=b`, `k=!v`, `k!=!v`. HLab refuses them
+  (`'!' operator must be in front of value` or a malformed key or value).
+- `k in(a)` is a malformed key on Hetzner, `only one key allowed` in HLab.
+- HLab reads bodies up to 64 MiB, the largest measured, and answers `json_error`
+  `"http: request body too large"` above it; Hetzner's limit, if any, is higher.
+
+**Servers, from the spec and `hcloud-go`.** Neither project has a server, and none
+was created. The spec (fetched 2026-11-07) and `hcloud-go/v2` 2.53.0
+(`hcloud/schema/server.go`) agree: `locked` is a required boolean, "True if Server
+has been locked and is not available to user" (an administrative lock by Hetzner,
+not a running action, which answers 423 `locked` instead); a server has no
+`datacenter` any more, only `location` (also inside the schema of `GET
+/servers/{id}`). The fields: `id`, `name`, `status`, `created`, `public_net`
+(`ipv4`, `ipv6`, `floating_ips`, `firewalls`), `private_net`, `server_type`,
+`location`, `image`, `iso`, `rescue_enabled`, `locked`, `backup_window`,
+`outgoing_traffic`, `ingoing_traffic`, `included_traffic`, `protection`, `labels`,
+`primary_disk_size`, and the optional `volumes`, `load_balancers`,
+`placement_group`.
+
+Still open, for 1b (they need servers):
+
+- A real server's JSON: whether it has fields the spec lacks, and `locked` `false` as
+  the spec says.
 - Whether the action endpoints of each resource (`/servers/{id}/actions/…`,
   `/servers/actions`) count against the budget of `/actions` too; HLab counts only
-  `/actions` there. To measure when the first of them comes (1b).
-- Whether a PUT with several invalid fields names them all ("fields") like a POST;
-  HLab names the first, as measured with one.
-- The message of a body over 1 MiB; HLab answers `json_error`.
+  `/actions` there.
+- What the selectors Hetzner takes but HLab refuses (above) select.

@@ -8,9 +8,11 @@ import (
 	"strconv"
 )
 
-// maxBody is the largest request body the API reads; Hetzner's largest
-// bodies (user data, certificates) are far smaller.
-const maxBody = 1 << 20
+// maxBody is the largest request body the API reads, so that one request
+// cannot fill the memory. Hetzner took a body of 64 MiB (measured
+// 2026-11-07) and named no limit; its largest real bodies (user data,
+// certificates) are far smaller.
+const maxBody = 64 << 20
 
 // DecodeJSON decodes the request body into body, a struct of the request's
 // fields, as Hetzner's API does: a body that is not valid JSON is a

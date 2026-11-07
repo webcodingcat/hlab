@@ -39,10 +39,14 @@ func TestCheckCollectsEveryField(t *testing.T) {
 		t.Errorf("the error is %q with %s", err, details(t, err))
 	}
 
+	// Hetzner's PUT names only the first invalid field (measured 2026-11-07).
 	update := web.Check{Update: true}
 	update.Length("name", strings.Repeat("x", 129), 1, 128)
-	if err := update.Err(); err.Error() != "invalid input in field 'name'" {
-		t.Errorf("the error of a PUT is %q", err)
+	update.Labels(map[string]string{"bad key": "x"})
+	err = update.Err()
+	if err.Error() != "invalid input in field 'name'" ||
+		details(t, err) != `{"fields":[{"name":"name","messages":["Length must be between 1 and 128."]}]}` {
+		t.Errorf("the error of a PUT is %q with %s", err, details(t, err))
 	}
 }
 

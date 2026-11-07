@@ -13,7 +13,7 @@ the tests. Look there before writing such a part anew.
 
 | Phase | What | State |
 |---|---|---|
-| 1a | core without VMs: state, lab, web basics, catalog, reading resources, SSH keys, lab control, `--platform fake` | in progress |
+| 1a | core without VMs: state, lab, web basics, catalog, reading resources, SSH keys, lab control, `--platform fake` | steps done; review 1a-R next |
 | 1b | servers, host link, reachability | open |
 | 2a | Floating IPs, firewalls, private networks | open |
 | 2b | volumes, placement groups, DNS | open |
@@ -36,7 +36,8 @@ the tests. Look there before writing such a part anew.
 | 1a-3 | `internal/web` and `internal/spectest`; projects, tokens | done |
 | 1a-4 | catalog and the reading resources; SSH keys | done |
 | 1a-5 | lab control, CLI, `hlab env`; web UI skeleton | done |
-| 1a-6 | checks against the real API (read only) | **next** |
+| 1a-6 | checks against the real API (read only) | done |
+| 1a-R | review of phase 1a | **next** |
 
 After 1a-2: `hlabd` does not start the lab yet (1a-5). There is no `internal/config`
 yet; `lab.Options` takes the data folder and the time scale directly, and
@@ -88,6 +89,15 @@ the lab stops (no slow stop yet: the ports close at once), the formal smoke test
 state writer wrote the same content twice when a change came while it woke up;
 on Windows the second write failed when a reader held `state.json`
 ("access denied"), which made `TestChangeSavesTheNewState` fail now and then.
+
+After 1a-6: the rest of `compat/requirements.md` was measured on the real API
+(2026-11-07, "Label selectors, bodies and servers"). HLab now gives Hetzner's
+reasons for every label selector error and refuses an empty value (`k=`); a PUT
+names only its first invalid field, in the details too; bodies may be up to
+64 MiB (Hetzner took that much). Neither test project has a server, so `locked`
+and a server's fields come from the spec and `hcloud-go`; a real server's JSON
+and the rate budget of the servers' action endpoints are left for 1b, listed
+there under "Still open". Phase 1a is ready for its review (1a-R).
 
 Not there yet: `bin/dev test --agent` (it reports "not yet implemented"), `deploy`,
 `itest` and `smoke`.

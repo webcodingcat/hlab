@@ -68,30 +68,41 @@ func (c *Check) Labels(labels map[string]string) {
 		keyMessage, valueMessage = "key contains invalid characters or is malformed", "value contains invalid characters or is malformed"
 	}
 	for key, value := range labels {
-		prefix, name, hasPrefix := strings.Cut(key, "/")
-		if !hasPrefix {
-			prefix, name = "", key
-		}
-		if (hasPrefix && (len(prefix) > 253 || !labelPrefix.MatchString(prefix))) || !labelName.MatchString(name) {
+		if !validLabelKey(key) {
 			c.Fail("labels", keyMessage)
 		}
-		if !labelValue.MatchString(value) {
+		if !validLabelValue(value) {
 			c.Fail("labels", valueMessage)
 		}
 	}
 }
 
-// Err returns Hetzner's 422 invalid_input for the fields noted, or nil. The
-// details list every field with its messages; the message names the fields,
-// as a POST does ("invalid input in fields 'name', 'public_key'", even for
-// one field) or as a PUT does ("invalid input in field 'name'", measured
-// with one field).
+// validLabelKey tells whether key follows Hetzner's rules for label keys.
+func validLabelKey(key string) bool {
+	prefix, name, hasPrefix := strings.Cut(key, "/")
+	if !hasPrefix {
+		return labelName.MatchString(key)
+	}
+	return len(prefix) <= 253 && labelPrefix.MatchString(prefix) && labelName.MatchString(name)
+}
+
+// validLabelValue tells whether value follows Hetzner's rules for label
+// values; an empty value is one.
+func validLabelValue(value string) bool {
+	return labelValue.MatchString(value)
+}
+
+// Err returns Hetzner's 422 invalid_input for the fields noted, or nil. A
+// POST names every field with its messages ("invalid input in fields 'name',
+// 'public_key'", even for one field); a PUT names only the first field it
+// checks, in the message and the details ("invalid input in field 'name'",
+// measured 2026-11-07 with name and labels both invalid).
 func (c *Check) Err() error {
 	if len(c.fields) == 0 {
 		return nil
 	}
 	if c.Update {
-		return InvalidInput("invalid input in field '"+c.fields[0].Name+"'", c.fields...)
+		return InvalidInput("invalid input in field '"+c.fields[0].Name+"'", c.fields[0])
 	}
 	names := make([]string, len(c.fields))
 	for i, field := range c.fields {

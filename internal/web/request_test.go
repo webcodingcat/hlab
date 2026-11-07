@@ -49,9 +49,13 @@ func TestDecodeJSONErrors(t *testing.T) {
 		}
 	}
 	var body struct{}
-	err := web.DecodeJSON(postJSON(strings.Repeat(" ", 1<<20+1)), &body)
+	// Hetzner took 64 MiB (measured 2026-11-07); HLab stops above it.
+	if err := web.DecodeJSON(postJSON("{"+strings.Repeat(" ", 64<<20-2)+"}"), &body); err != nil {
+		t.Errorf("a body of 64 MiB: %v", err)
+	}
+	err := web.DecodeJSON(postJSON(strings.Repeat(" ", 64<<20+1)), &body)
 	var apiErr *web.Error
 	if !errors.As(err, &apiErr) || apiErr.Code != "json_error" {
-		t.Errorf("a body over 1 MiB: %v, want json_error", err)
+		t.Errorf("a body over 64 MiB: %v, want json_error", err)
 	}
 }
