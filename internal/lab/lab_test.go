@@ -148,7 +148,7 @@ func TestOpenEndsActionsThatRanBeforeARestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writer := state.NewWriter(filepath.Join(dataDir, lab.StateFile))
+	writer := state.NewWriter(filepath.Join(dataDir, lab.StateFile), slog.New(slog.DiscardHandler))
 	writer.Put(data)
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)

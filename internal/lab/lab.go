@@ -79,7 +79,6 @@ func Open(opts Options, sys *system.System) (*Lab, error) {
 		clock:     opts.Clock,
 		timeScale: opts.TimeScale,
 		logger:    opts.Logger,
-		writer:    state.NewWriter(path),
 		release:   release,
 		state:     loaded,
 		flags:     map[state.ResourceRef]bool{},
@@ -91,6 +90,7 @@ func Open(opts Options, sys *system.System) (*Lab, error) {
 	if l.logger == nil {
 		l.logger = slog.Default()
 	}
+	l.writer = state.NewWriter(path, l.logger)
 	l.ctx, l.cancel = context.WithCancel(context.Background())
 	if err := l.Change(l.endInterruptedActions); err != nil {
 		_ = l.Close()

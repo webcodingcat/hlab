@@ -16,6 +16,8 @@ type Project struct {
 func (p Project) RecordID() int64 { return p.ID }
 
 // Limits are a project's resource limits, as Hetzner sets them per project.
+// Zero means no limit: a field added later loads from older state files as
+// zero, so it needs no migration.
 type Limits struct {
 	Servers       int `json:"servers"`
 	Cores         int `json:"cores"`
