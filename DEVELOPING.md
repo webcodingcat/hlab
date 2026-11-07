@@ -4,6 +4,31 @@ This file explains how the code is laid out, which rules hold it together and ho
 work on it. CLAUDE.md lists the rules that are easy to break, [STYLE.md](STYLE.md) the
 coding standards, [docs/roadmap.md](docs/roadmap.md) what is done and what comes next.
 
+## A request's path
+
+`hcloud ssh-key create` against the lab, from top to bottom:
+
+1. `internal/web` takes the request on port 8080: route, token, rate limit,
+   permission, faults (The APIs).
+2. The handler in `internal/api/cloud/ssh_keys.go` checks the body and calls
+   `lab.Change`, which runs it as one transaction on the state (The state,
+   Concurrency).
+3. `lab` encodes the new state and hands it to `state.Writer`, which saves
+   `state.json` in the background; the handler answers with Hetzner's JSON.
+4. A command that takes time (a server's `poweroff`, from phase 1b) runs as an
+   action instead: `lab.Act` checks and plans it, its steps call `internal/system`,
+   which drives the machine through `internal/platform` (Actions, Platform).
+
+Words this file uses:
+
+| Word | Meaning |
+|---|---|
+| appliance | a small Linux VM (from phase 1b) that runs `hlab-agent`: the lab's network, DNS, metadata service and more |
+| data plane | what the appliance does for the guests: links, routes, firewall rules, NAT, DHCP, DNS |
+| picture | a complete wanted configuration of one part of the data plane, built from the state by `internal/picture`; the agent puts each in place as a whole, never as a change |
+| host link | the network between the host and the appliance, `198.18.0.0/29` (`.1` the host, `.2` the appliance); WSL2 reaches `hlabd` on `198.18.0.1` |
+| flag | the in-memory mark of a resource that an action is busy with (Actions) |
+
 ## Binaries
 
 One Go module, `github.com/webcodingcat/hlab`, built without cgo, so that WSL2 builds
@@ -21,9 +46,10 @@ At most one `hlabd` runs per machine.
 
 Everything except `cmd/` lives under `internal/`. The table runs from the user (top)
 to the system (bottom). Packages that do not exist yet are listed, so that their rule
-holds from their first line. `internal/layers_test.go` holds the same table and fails
+holds from their first line. `internal/layers_test.go` reads this table and fails
 on every import of this module that the column "may import" does not allow, for Linux
-and for Windows files, and on a package that is missing from it.
+and for Windows files, and on a package that is missing from it. The column names
+packages by their path below `internal/`; "anything" frees a row.
 
 | Package | Job | May import |
 |---|---|---|
@@ -32,7 +58,7 @@ and for Windows files, and on a package that is missing from it.
 | `internal/cli` | the CLI's commands | `client`, `config` |
 | `internal/client` | Go client of the lab control: finding the token, TCP, upload, download | `labapi` |
 | `internal/api/cloud` | Cloud API: one file per resource, action tables | `lab`, `web`, `state`, `catalog`, `schema` |
-| `internal/api/hetzner` | Hetzner API (Storage Boxes) | as `api/cloud` |
+| `internal/api/hetzner` | Hetzner API (Storage Boxes) | `lab`, `web`, `state`, `catalog`, `schema` |
 | `internal/api/control` | lab control `/_lab/...` | `lab`, `web`, `state`, `labapi` |
 | `internal/labapi` | request and answer types of the lab control, shared with `client` | – |
 | `internal/webui` | web UI: files through `go:embed`, Host and Origin checks | `web` |
@@ -43,7 +69,7 @@ and for Windows files, and on a package that is missing from it.
 | `internal/seed` | pure functions for the cloud-init data | – |
 | `internal/system` | does the work and never sees the state: VMs, disks, images, host link, host DNS, appliance, agent client | `platform`, `agentproto`, `vhdx`, `imagefmt` |
 | `internal/platform` | the platform interfaces and their data types | – |
-| `internal/platform/windows` | Hyper-V through `pshost`, host network, NRPT, life cycle | `platform`, `pshost` |
+| `internal/platform/windows` | Hyper-V through `pshost`, host network, NRPT, life cycle | `platform`, `platform/windows/pshost` |
 | `internal/platform/windows/pshost` | the long-running PowerShell process: JSON over stdin and stdout | – |
 | `internal/platform/linux` | the Linux platform; for now only its life cycle | `platform` |
 | `internal/platform/fake` | fakes for unit tests and `--platform fake` | `platform` |
@@ -85,18 +111,26 @@ The layer test checks production code only: tests may import fakes and helpers.
   `state.FirstID` (1 000 000) so that no record shares an ID with a catalog entry,
   which carries Hetzner's real ID. An ID is never reused and never changes.
 - **Transactions.** A `state.Tx` copies each kind deeply on first use (`state.Get`,
-  `All`, `Put`, `Delete`, `NewID`); records from a Tx are its copies. Only
-  `tx.Result()` makes the changes part of a state, so a Tx that is dropped changes
-  nothing. Copying a kind of a thousand actions takes about a millisecond
-  (`BenchmarkTxOnAThousandActions`).
+  `All`, `Put`, `Delete`, `NewID`); records from a Tx are its copies, and changing
+  one in place changes the Tx. Only `tx.Result()` makes the changes part of a
+  state, so a Tx that is dropped changes nothing. Copying a kind of a thousand
+  actions takes about a millisecond (`BenchmarkTxOnAThousandActions`).
+- **Every change saves the whole state.** A Tx that touched a kind, even only to
+  read it, counts as a change: records change in place, so a read cannot be told
+  from a change. `lab.Change` then encodes the whole state under the mutex and
+  hands it to the writer; reads that need not save go through `lab.View`. This is
+  cheap at today's sizes; if it shows up in a profile, the Tx has to learn which
+  kinds really changed.
 - **The file.** `state.json` in the data folder: `version`, `saved`, `next_ids`,
   `kinds` (each a list sorted by ID, so that diffs stay readable) and `lab`;
   `snake_case` names and RFC 3339 times in UTC. `state.Writer` writes it in the
   background, only the newest content: `state.json.tmp`, fsync, then over
   `state.json` (on Windows `MoveFileExW` with `MOVEFILE_WRITE_THROUGH`, which
   `os.Rename` leaves out). A file cut off halfway is never `state.json`. Content
-  that is on disk already is not written again: on Windows, replacing a file that
-  someone reads fails with "access denied". A failed write is logged and tried
+  that was handed over once is written once, even when a second wake-up follows
+  it: on Windows, replacing a file that someone reads fails with "access
+  denied". After `Lab.Close`, a change (from a request that outlived the stop) is
+  logged and dropped. A failed write is logged and tried
   again on its own, after 1 s and then twice as long each time, up to 30 s (a
   virus scanner or a reader may hold the file for a moment); `Flush` reports the
   error of the last try.
@@ -112,11 +146,14 @@ The layer test checks production code only: tests may import fakes and helpers.
 ## Concurrency
 
 - A mutex in `lab` guards the state, the flags and the running actions. Only code
-  that holds it reads or changes records. It is never held across a call into
+  that holds it takes records from the state. It is never held across a call into
   `system`.
 - Every change runs in `lab.Change(func(tx *state.Tx) error)`: if the function returns
   an error, the old state stays; otherwise the new one is saved. Reads run in
   `lab.View`, which keeps nothing.
+- **Records outlive their Tx only to be read.** A handler may build its answer
+  from a record after `Change` or `View` returned, without the mutex; it never
+  changes such a record, because the state shares the records of a Tx it took.
 - **Across a call into the system, code keeps IDs, not records**, and looks them up
   again afterwards: `lab.Current(l, kind, id)` (a function: Go methods take no type
   parameters) returns a copy, or `state.ErrNotFound` when the record is gone.
@@ -206,7 +243,9 @@ later `api/hetzner`) registers its handlers on a `web.API`, one file per resourc
   logged and answered as 500 `server_error`. Errors have the shape
   `{"error": {"code", "message", "details"}}`. Hetzner's `details` differ by error
   (none, `null` or `{}`); the constructors in `internal/web/errors.go` send what
-  Hetzner sends, so handlers use them rather than building an `Error`.
+  Hetzner sends, so handlers use them rather than building an `Error`. The lab
+  control is the exception: its errors carry the lab's own texts, so it builds
+  them itself.
 - **The web package reaches the lab** only through `web.Backend` (`TokenByHash`,
   `TakeAPIFault`), which `*lab.Lab` implements: `web` may import only `state`.
 - **Lists:** `web.Paginate` (`page`, `per_page`, `meta.pagination` with `null` for
@@ -401,6 +440,7 @@ What a developer installs:
 | gcc | Linux, WSL2 (`apt install gcc`) | only for the race detector of `bin/dev test`; the binaries use no cgo |
 | shellcheck, yamllint | Linux, WSL2 (`apt install shellcheck yamllint`) | `bin/dev lint` |
 | PSScriptAnalyzer | Windows PowerShell or pwsh: `Install-Module PSScriptAnalyzer -Scope CurrentUser` | `bin/dev lint`, `bin/dev.ps1 lint` |
+| hcloud CLI, OpenTofu | Linux, WSL2, in the versions of `compat/versions.yaml` | `bin/dev smoke` |
 
 golangci-lint and shfmt need no install: `go tool` builds them from `tools/go.mod` on
 first use. In WSL2, `bin/dev lint` runs PSScriptAnalyzer in pwsh if it is installed,
@@ -413,13 +453,22 @@ package's directory; exit code and output come back to WSL2. Windows needs no Go
 that. Tests that need the go command (the layer test) skip there; CI's Windows job
 has Go and runs them.
 
+**Smoke tests.** At the end of a phase, `bin/dev smoke` runs the real tools
+against the lab, from Linux or WSL2: it starts `hlabd --platform fake` with a fresh
+data folder on free ports, runs the hcloud CLI with the commands of the phases so
+far, and OpenTofu with every `examples/tofu-<phase>` (`apply`, `plan`, `destroy`).
+They pass when nothing fails and the `plan` after `apply` has no changes. A phase
+adds its commands to `smoke` in `bin/dev` and its configuration as
+`examples/tofu-<phase>`. They need the provider from the OpenTofu registry, so
+they stay out of CI.
+
 **Builds.** `bin/dev build` builds with `CGO_ENABLED=0` and `-trimpath`, and sets
 `main.version` from `git describe`. `hlabd --version` (and the others) print it.
 
 ## Recipes
 
-**A new package**: add its row to the layer table above and to `allowedImports` in
-`internal/layers_test.go`, with the same "may import" column, before its first import.
+**A new package**: add its row to the layer table above before its first import;
+`internal/layers_test.go` reads the table from this file.
 
 **A new dependency**: `go get` it, and add a row with the reason to the dependency
 table. A developer tool goes into `tools/go.mod` (`go get -tool`, run there).

@@ -10,8 +10,10 @@ import (
 // each kind on first use, so that what the change does stays in the Tx until
 // the lab takes its result. A Tx that is dropped leaves the state as it was.
 //
-// Records from a Tx belong to it: they are copies, and they must not be kept
-// once the Tx ends (DEVELOPING.md, Concurrency).
+// Records from a Tx are its copies: changing one in place changes the Tx, no
+// Put needed. Once the Tx ends they may still be read, such as to build an
+// answer, but never changed: the lab's state shares the records of a Tx it
+// took (DEVELOPING.md, Concurrency).
 type Tx struct {
 	work    State
 	touched map[string]bool // the kinds copied so far, and "next_ids" and "lab"
@@ -26,8 +28,8 @@ func Begin(s *State) *Tx {
 }
 
 // Touched tells whether the Tx copied any part of the state; one that did not
-// has nothing to save. A Tx that only read counts as touched too: telling a
-// read from a change would cost more than saving once more.
+// has nothing to save. A Tx that only read counts as touched too: records are
+// changed in place, so a read cannot be told from a change.
 func (tx *Tx) Touched() bool {
 	return len(tx.touched) > 0
 }

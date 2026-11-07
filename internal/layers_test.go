@@ -3,6 +3,7 @@ package internal_test
 import (
 	"os"
 	"os/exec"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -12,45 +13,67 @@ import (
 
 const module = "github.com/webcodingcat/hlab/"
 
-// allowedImports is the "may import" column of DEVELOPING.md, Layers: for each
-// package below internal/, the packages of this module it may import. Packages
-// that do not exist yet are listed too, so the rule holds from their first
-// line. The commands under cmd/ may import anything.
-var allowedImports = map[string][]string{
-	"internal/tray":                    {"internal/lab"},
-	"internal/cli":                     {"internal/client", "internal/config"},
-	"internal/client":                  {"internal/labapi"},
-	"internal/api/cloud":               {"internal/lab", "internal/web", "internal/state", "internal/catalog", "internal/schema"},
-	"internal/api/hetzner":             {"internal/lab", "internal/web", "internal/state", "internal/catalog", "internal/schema"},
-	"internal/api/control":             {"internal/lab", "internal/web", "internal/state", "internal/labapi"},
-	"internal/labapi":                  {},
-	"internal/webui":                   {"internal/web"},
-	"internal/web":                     {"internal/state"},
-	"internal/lab":                     {"internal/state", "internal/picture", "internal/system", "internal/catalog", "internal/config"},
-	"internal/state":                   {},
-	"internal/picture":                 {"internal/state", "internal/agentproto", "internal/catalog"},
-	"internal/seed":                    {},
-	"internal/system":                  {"internal/platform", "internal/agentproto", "internal/vhdx", "internal/imagefmt"},
-	"internal/platform":                {},
-	"internal/platform/windows":        {"internal/platform", "internal/platform/windows/pshost"},
-	"internal/platform/windows/pshost": {},
-	"internal/platform/linux":          {"internal/platform"},
-	"internal/platform/fake":           {"internal/platform"},
-	"internal/platform/contract":       {"internal/platform"},
-	"internal/agentproto":              {},
-	"internal/agent":                   {"internal/agentproto"},
-	"internal/vhdx":                    {},
-	"internal/imagefmt":                {},
-	"internal/catalog":                 {},
-	"internal/config":                  {},
-	"internal/schema":                  {},
-	"internal/spectest":                {},
+// layerHeader starts the layer table in DEVELOPING.md, Layers.
+const layerHeader = "| Package | Job | May import |"
+
+// quoted finds the names in backticks in a cell of the table.
+var quoted = regexp.MustCompile("`([^`]+)`")
+
+// allowedImports reads the layer table of DEVELOPING.md, the one place it is
+// kept: for each package below internal/, the packages of this module it may
+// import. Rows that may import "anything" (the commands) are left out, and so
+// is every package of cmd/.
+func allowedImports(t *testing.T) map[string][]string {
+	t.Helper()
+	text, err := os.ReadFile("../DEVELOPING.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, table, found := strings.Cut(string(text), layerHeader+"\n")
+	if !found {
+		t.Fatalf("DEVELOPING.md has no line %q", layerHeader)
+	}
+	allowed := map[string][]string{}
+	for _, row := range strings.Split(table, "\n")[1:] { // [0] is the |---| line
+		cells := strings.Split(row, "|")
+		if len(cells) != 5 {
+			break // the table ends
+		}
+		if strings.TrimSpace(cells[3]) == "anything" {
+			continue
+		}
+		var imports []string
+		for _, match := range quoted.FindAllStringSubmatch(cells[3], -1) {
+			imports = append(imports, "internal/"+match[1])
+		}
+		pkg := quoted.FindStringSubmatch(cells[1])
+		if pkg == nil {
+			t.Fatalf("a row of the layer table names no package: %s", row)
+		}
+		allowed[pkg[1]] = imports
+	}
+	if len(allowed) == 0 {
+		t.Fatal("the layer table in DEVELOPING.md is empty")
+	}
+	return allowed
+}
+
+func TestLayerTableHasEveryPackage(t *testing.T) {
+	// a check of the parser: a change of the table's format must not leave
+	// the test with only part of the rows
+	table := allowedImports(t)
+	for _, pkg := range []string{"internal/tray", "internal/state", "internal/spectest"} {
+		if _, found := table[pkg]; !found {
+			t.Errorf("the layer table read from DEVELOPING.md lacks %s", pkg)
+		}
+	}
 }
 
 func TestEveryAllowedImportIsAPackageOfTheTable(t *testing.T) {
-	for pkg, allowed := range allowedImports {
+	table := allowedImports(t)
+	for pkg, allowed := range table {
 		for _, imported := range allowed {
-			if _, known := allowedImports[imported]; !known {
+			if _, known := table[imported]; !known {
 				t.Errorf("%s may import %s, which is not in the table", pkg, imported)
 			}
 		}
@@ -63,6 +86,7 @@ func TestPackagesImportOnlyWhatTheirLayerAllows(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("the go command is not on PATH")
 	}
+	table := allowedImports(t)
 	// both targets, so files for the other system are checked as well
 	for _, goos := range []string{"linux", "windows"} {
 		t.Run(goos, func(t *testing.T) {
@@ -80,7 +104,7 @@ func TestPackagesImportOnlyWhatTheirLayerAllows(t *testing.T) {
 				t.Fatal("the packages do not load")
 			}
 			for _, pkg := range loaded {
-				checkImports(t, pkg)
+				checkImports(t, table, pkg)
 			}
 		})
 	}
@@ -88,15 +112,15 @@ func TestPackagesImportOnlyWhatTheirLayerAllows(t *testing.T) {
 
 // checkImports reports every import of a package of this module that the
 // table does not allow, and a package under internal/ that is not in it.
-func checkImports(t *testing.T, pkg *packages.Package) {
+func checkImports(t *testing.T, table map[string][]string, pkg *packages.Package) {
 	t.Helper()
 	name := strings.TrimPrefix(pkg.PkgPath, module)
 	if strings.HasPrefix(name, "cmd/") || len(pkg.GoFiles) == 0 {
 		return // commands wire everything; test-only packages import nothing
 	}
-	allowed, known := allowedImports[name]
+	allowed, known := table[name]
 	if !known {
-		t.Errorf("%s is not in the layer table of layers_test.go and DEVELOPING.md", name)
+		t.Errorf("%s is not in the layer table of DEVELOPING.md", name)
 		return
 	}
 	for path := range pkg.Imports {

@@ -195,7 +195,6 @@ func registerSSHKeys(api *web.API, l *lab.Lab) {
 			if body.Labels != nil {
 				key.Labels = *body.Labels
 			}
-			state.Put(tx, state.SSHKeys, key)
 			updated = key
 			return nil
 		})

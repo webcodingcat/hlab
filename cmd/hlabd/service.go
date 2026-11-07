@@ -92,6 +92,7 @@ func (s *service) serve(cfg config.Config, newLab bool) error {
 			return err
 		}
 	}
+	// in the order of the handlers: Cloud API, Hetzner API, control
 	var listeners []net.Listener
 	for _, port := range []int{cfg.Ports.Cloud, cfg.Ports.Hetzner, cfg.Ports.Control} {
 		listener, err := net.Listen("tcp", net.JoinHostPort(s.opts.Host, strconv.Itoa(port)))
@@ -110,20 +111,23 @@ func (s *service) serve(cfg config.Config, newLab bool) error {
 		}
 		return fmt.Errorf("writing the control token: %w", err)
 	}
-	controlURL := "http://" + listeners[2].Addr().String()
+	cloudAddress := listeners[0].Addr().String()
+	hetznerAddress := listeners[1].Addr().String()
+	controlAddress := listeners[2].Addr().String()
+	controlURL := "http://" + controlAddress
 	s.status = labapi.Status{
 		Version:  s.opts.Version,
 		Platform: s.opts.Platform,
 		DataDir:  s.opts.DataDir,
 		Started:  s.lab.Now(),
 		Endpoints: labapi.Endpoints{
-			Cloud:   "http://" + listeners[0].Addr().String() + web.Prefix,
-			Hetzner: "http://" + listeners[1].Addr().String() + web.Prefix,
+			Cloud:   "http://" + cloudAddress + web.Prefix,
+			Hetzner: "http://" + hetznerAddress + web.Prefix,
 			Control: controlURL + labapi.Prefix,
 			WebUI:   controlURL,
 		},
 	}
-	handlers := s.handlers(token, listeners[2].Addr().String())
+	handlers := s.handlers(token, controlAddress)
 	for i, listener := range listeners {
 		server := &http.Server{Handler: handlers[i], ReadHeaderTimeout: 10 * time.Second}
 		s.servers = append(s.servers, server)

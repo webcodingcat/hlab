@@ -37,7 +37,12 @@ func registerActions(api *web.API, l *lab.Lab) {
 	})
 
 	api.Handle("GET /actions/{id}", func(req *web.Request) (int, any, error) {
-		action, err := lab.Current(l, state.Actions, web.PathID(req, "id"))
+		var action *state.Action
+		err := l.View(func(tx *state.Tx) error {
+			var err error
+			action, err = state.Get(tx, state.Actions, web.PathID(req, "id"))
+			return err
+		})
 		if errors.Is(err, state.ErrNotFound) || (err == nil && action.ProjectID != req.Caller.ProjectID) {
 			return 0, nil, web.PlainNotFound()
 		}

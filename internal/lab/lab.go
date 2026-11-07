@@ -152,7 +152,10 @@ func (l *Lab) Change(change func(tx *state.Tx) error) error {
 	return l.changeLocked(change)
 }
 
-// changeLocked is Change for a caller that holds the mutex.
+// changeLocked is Change for a caller that holds the mutex already, because
+// it must check or change more than one transaction's worth without letting
+// go: Act checks the flags with the state, the end of an action's steps undoes
+// and finishes, TakeAPIFault reads before it changes.
 func (l *Lab) changeLocked(change func(tx *state.Tx) error) error {
 	tx := state.Begin(l.state)
 	if err := change(tx); err != nil {

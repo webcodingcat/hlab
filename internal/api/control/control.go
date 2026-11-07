@@ -110,7 +110,9 @@ func (c *Control) admitted(r *http.Request) bool {
 }
 
 // answer turns the lab's errors into the control's error answers; other
-// errors are failures of the lab.
+// errors are failures of the lab. The control builds its errors itself
+// rather than with web's constructors: those carry Hetzner's texts, the
+// control's carry the lab's own.
 func answer(err error) error {
 	switch {
 	case errors.Is(err, state.ErrNotFound):

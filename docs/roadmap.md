@@ -13,8 +13,8 @@ the tests. Look there before writing such a part anew.
 
 | Phase | What | State |
 |---|---|---|
-| 1a | core without VMs: state, lab, web basics, catalog, reading resources, SSH keys, lab control, `--platform fake` | steps done; review 1a-R next |
-| 1b | servers, host link, reachability | open |
+| 1a | core without VMs: state, lab, web basics, catalog, reading resources, SSH keys, lab control, `--platform fake` | done |
+| 1b | servers, host link, reachability | **next: 1b-1** |
 | 2a | Floating IPs, firewalls, private networks | open |
 | 2b | volumes, placement groups, DNS | open |
 | 2c | tools for tests | open |
@@ -37,7 +37,7 @@ the tests. Look there before writing such a part anew.
 | 1a-4 | catalog and the reading resources; SSH keys | done |
 | 1a-5 | lab control, CLI, `hlab env`; web UI skeleton | done |
 | 1a-6 | checks against the real API (read only) | done |
-| 1a-R | review of phase 1a | **next** |
+| 1a-R | review of phase 1a, smoke tests | done |
 
 After 1a-2: `hlabd` does not start the lab yet (1a-5). There is no `internal/config`
 yet; `lab.Options` takes the data folder and the time scale directly, and
@@ -81,11 +81,11 @@ calls `198.18.0.1:8090` unless `HLAB_CONTROL` says otherwise. The web UI is a
 skeleton: projects, tokens, locations and server types; Host and Origin checks, a
 cookie instead of a token. Checked by hand in WSL2 with hcloud 1.70.2:
 `server-type list`, `location list`, `ssh-key create/list/delete` after
-`eval "$(hlab env)"`, and OpenTofu 1.13.9 with `examples/opentofu` (apply, an
+`eval "$(hlab env)"`, and OpenTofu 1.13.9 with `examples/tofu-1a` (apply, an
 empty plan after it, destroy). Not yet: the other platforms (`hlabd` without
 `--platform fake` says so), `hlab start` (1b), 503 for requests that arrive while
 the lab stops (no slow stop yet: the ports close at once), the formal smoke tests
-(1-L), stop requests from signing out and the tray (6b). Also fixed in 1a-5: the
+(1a-R), stop requests from signing out and the tray (6b). Also fixed in 1a-5: the
 state writer wrote the same content twice when a change came while it woke up;
 on Windows the second write failed when a reader held `state.json`
 ("access denied"), which made `TestChangeSavesTheNewState` fail now and then.
@@ -101,5 +101,33 @@ took that much); every resource's action endpoints share the budget of
 for 1b. Open for 1b: Hetzner ran a reboot while a poweroff was running, where
 HLab's `Lab.Act` answers 423. Phase 1a is ready for its review (1a-R).
 
-Not there yet: `bin/dev test --agent` (it reports "not yet implemented"), `deploy`,
-`itest` and `smoke`.
+After 1a-R: two review rounds (a junior and a senior developer, 8/10 each
+round, both satisfied). Fixed: a change after `Lab.Close` (a request that
+outlived the stop timeout) panicked on the writer's closed channel and is now
+logged and dropped; a huge `page` overflowed in `web.Paginate`; label errors
+come in a fixed order. The layer test reads the table of DEVELOPING.md, its
+one copy. DEVELOPING.md says when records may outlive their Tx (to be read
+only) and that every `Change` saves the whole state, and has a request's path
+and a glossary. `bin/dev smoke` runs the smoke tests (DEVELOPING.md, Tools);
+the OpenTofu example is `examples/tofu-1a`. The smoke tests passed in WSL2
+with hcloud 1.70.2 and OpenTofu 1.13.9.
+
+Open for 1b, from the review:
+
+- Reads copy whole kinds (`lab.View`, `TokenByHash` on every request,
+  `TakeAPIFault`), and a Tx that only read saves the whole state. Cheap now;
+  with servers and actions polled in 1b it may need a read path without copies
+  and a Tx that knows which kinds changed. Decide before the hot paths grow.
+- Once `hlabd` listens on the host link, settle who may reach port 8090: the
+  web UI's cookie gives what the control token gives.
+- The web UI's calls through `ServeAs` count against the project's rate limit
+  and take its injected faults; the `Link` header behind `ServeAs` names the
+  control port with a Cloud API path.
+- Smaller: `lab.Open` could report a new lab instead of `cmd/hlabd` checking
+  `state.json` itself; the default project is made before the ports listen;
+  rate limit buckets of deleted projects stay.
+
+Next: 1b-1, `pshost` and the Hyper-V hypervisor with the contract tests.
+
+Not there yet: `bin/dev test --agent` (it reports "not yet implemented") and
+the commands of later phases.

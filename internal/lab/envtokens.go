@@ -31,6 +31,7 @@ func (l *Lab) EnvToken(projectID int64) (string, error) {
 		return secret, nil
 	}
 	secret := newSecret()
+	var gone []int64
 	err = l.Change(func(tx *state.Tx) error {
 		if _, err := state.Get(tx, state.Projects, projectID); err != nil {
 			return err
@@ -39,16 +40,19 @@ func (l *Lab) EnvToken(projectID int64) (string, error) {
 			state.Delete(tx, state.Tokens, old.ID)
 		}
 		l.putToken(tx, projectID, EnvTokenName, state.PermissionReadWrite, secret)
-		// the file keeps only projects that are still there
 		for kept := range secrets {
 			if _, err := state.Get(tx, state.Projects, kept); err != nil {
-				delete(secrets, kept)
+				gone = append(gone, kept)
 			}
 		}
 		return nil
 	})
 	if err != nil {
 		return "", err
+	}
+	// the file keeps only projects that are still there
+	for _, projectGone := range gone {
+		delete(secrets, projectGone)
 	}
 	secrets[projectID] = secret
 	if err := l.system.WriteSecrets(path, secrets); err != nil {

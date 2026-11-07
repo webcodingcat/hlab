@@ -235,8 +235,9 @@ func correlationID() string {
 }
 
 // WriteError writes an error as Hetzner does. An error that is not an *Error
-// is a failure of the lab: it is logged and answered as a server_error. The
-// lab control and the web UI answer their errors in the same format.
+// is a failure of the lab: it is logged and answered as a server_error with
+// its text, which in a test lab helps more than it reveals. The lab control
+// and the web UI answer their errors in the same format.
 func WriteError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	var apiErr *Error
 	if !errors.As(err, &apiErr) {
