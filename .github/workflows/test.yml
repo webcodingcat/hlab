@@ -1,12 +1,13 @@
 ---
 # Runs what a developer runs: the checks and the unit tests, on Linux (with
-# the race detector) and on Windows. The live tests and the smoke tests stay
-# manual: they need Hyper-V, which GitHub's runners do not offer.
+# the race detector) and on Windows, for a push to any branch, so that a
+# phase branch is checked before it is merged. The live tests need Hyper-V,
+# which GitHub's runners do not offer; the smoke tests run at a phase's end
+# (DEVELOPING.md, Tools).
 name: test
 
 "on":
   push:
-    branches: [main]
   pull_request:
     branches: [main]
 
