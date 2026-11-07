@@ -16,6 +16,7 @@ The same commands as bin/dev:
                                fails if they differ
   bin/dev.ps1 spec-diff --update
                                replace compat/specs with Hetzner's current ones
+  bin/dev.ps1 smoke            the smoke tests run from WSL2 (bin/dev smoke)
 #>
 param(
     [Parameter(Position = 0)]
@@ -192,6 +193,8 @@ try {
                 default { throw "unknown option: $Option" }
             }
         }
+        # the smoke tests use the tools as users do, from WSL2 (DEVELOPING.md, Tools)
+        'smoke' { throw 'smoke runs from WSL2: bin/dev smoke' }
         default {
             Get-Usage | Write-Output
             exit 2

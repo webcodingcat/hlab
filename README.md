@@ -43,7 +43,7 @@ time_scale: 1   # 1 is Hetzner's speed, 0.5 twice as fast, 0 does not wait
 ports: {cloud: 8080, hetzner: 8081, control: 8090}
 ```
 
-`examples/opentofu` is a small OpenTofu configuration to try against the lab.
+`examples/tofu-1a` is a small OpenTofu configuration to try against the lab.
 
 ## Compatibility
 

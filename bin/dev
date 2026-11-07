@@ -12,6 +12,8 @@
 #                            fails if they differ
 #   bin/dev spec-diff --update
 #                            replace compat/specs with Hetzner's current ones
+#   bin/dev smoke            the smoke tests with the hcloud CLI and OpenTofu
+#                            against `hlabd --platform fake`
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -192,6 +194,65 @@ spec_diff() {
 }
 
 #######################################
+# Run the smoke tests (DEVELOPING.md, Tools) against `hlabd --platform fake`
+# in a fresh data folder: the hcloud CLI with the commands of the phases so
+# far, and OpenTofu with every examples/tofu-* (apply, an empty plan,
+# destroy). Runs in a subshell, so that its trap cleans up on any exit.
+#######################################
+smoke() (
+  need hcloud "the version in compat/versions.yaml"
+  need tofu "the version in compat/versions.yaml"
+  need ssh-keygen "sudo apt install openssh-client"
+  local dir hlabd_pid="" control="" example
+  dir="$(mktemp -d)"
+  trap '[[ -z "${hlabd_pid}" ]] || kill "${hlabd_pid}" 2>/dev/null
+    rm -rf "${dir}"' EXIT
+  mkdir "${dir}/data"
+  # any free ports and no waiting, so that it runs beside a lab in use
+  printf 'time_scale: 0\nports: {cloud: 0, hetzner: 0, control: 0}\n' \
+    >"${dir}/data/hlab.yaml"
+  CGO_ENABLED=0 go build -o "${dir}/bin/" ./cmd/hlabd ./cmd/hlab
+  "${dir}/bin/hlabd" --platform fake --data "${dir}/data" \
+    2>"${dir}/hlabd.log" &
+  hlabd_pid=$!
+  for _ in {1..100}; do
+    control="$(grep -o 'HLAB_CONTROL=[^ "]*' "${dir}/hlabd.log")" && break
+    kill -0 "${hlabd_pid}" 2>/dev/null || break
+    sleep 0.1
+  done
+  [[ -n "${control}" ]] || die "hlabd did not start: $(cat "${dir}/hlabd.log")"
+  export "${control?}" HLAB_TOKEN_FILE="${dir}/data/control.token"
+  # the CLI's own config would hold the user's contexts
+  export HCLOUD_CONFIG="${dir}/hcloud.toml"
+  eval "$("${dir}/bin/hlab" env)"
+  ssh-keygen -q -t ed25519 -N "" -C smoke -f "${dir}/id_ed25519"
+  TF_VAR_public_key="$(cat "${dir}/id_ed25519.pub")"
+  export TF_VAR_public_key
+
+  set -x
+  hcloud server-type list
+  hcloud location list
+  hcloud ssh-key create --name smoke \
+    --public-key-from-file "${dir}/id_ed25519.pub"
+  hcloud ssh-key list
+  hcloud ssh-key delete smoke
+  for example in examples/tofu-*; do
+    cp -r "${example}" "${dir}/tofu"
+    tofu -chdir="${dir}/tofu" init -input=false
+    tofu -chdir="${dir}/tofu" apply -input=false -auto-approve
+    # exit code 2 means the plan has changes
+    tofu -chdir="${dir}/tofu" plan -input=false -detailed-exitcode
+    tofu -chdir="${dir}/tofu" destroy -input=false -auto-approve
+    rm -rf "${dir}/tofu"
+  done
+  "${dir}/bin/hlab" stop
+  set +x
+  wait "${hlabd_pid}"
+  hlabd_pid=""
+  echo "smoke tests passed"
+)
+
+#######################################
 # Report a command that a later phase brings (docs/roadmap.md).
 # Arguments:
 #   The command.
@@ -220,6 +281,7 @@ main() {
       ;;
     build) build ;;
     spec-diff) spec_diff "${2:-}" ;;
+    smoke) smoke ;;
     *)
       sed -n '2,/^set /p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//' >&2
       exit 2
