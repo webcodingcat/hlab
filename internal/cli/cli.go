@@ -5,6 +5,7 @@ package cli
 import (
 	"errors"
 	"io"
+	"net/http"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -28,9 +29,15 @@ func Execute(args []string, stdout, stderr io.Writer, version string) int {
 	root.SetErr(stderr)
 	if err := root.Execute(); err != nil {
 		root.PrintErrln("hlab:", err)
-		if errors.Is(err, client.ErrNotRunning) {
+		var answerErr *client.Error
+		switch {
+		case errors.Is(err, client.ErrNotRunning):
 			root.PrintErrln("hlab: start hlabd first; with another data folder or address, set",
 				client.TokenFileVar, "and", client.ControlVar)
+		case errors.As(err, &answerErr) && answerErr.Status == http.StatusUnauthorized:
+			// the token file belongs to another hlabd than the one that answered
+			root.PrintErrln("hlab: the control token does not fit this hlabd; set",
+				client.TokenFileVar, "to the token of the hlabd at", client.ControlVar)
 		}
 		return 1
 	}

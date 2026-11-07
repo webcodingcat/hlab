@@ -145,9 +145,19 @@ func (c *Client) DeleteToken(project, name string) error {
 	return c.call(http.MethodDelete, "/projects/"+url.PathEscape(project)+"/tokens/"+url.PathEscape(name), nil, nil)
 }
 
+// Error is an error answer of the lab control, so that the CLI can tell them
+// apart (errors.As): its status, its code (such as "not_found") and message.
+type Error struct {
+	Status  int
+	Code    string
+	Message string
+}
+
+func (e *Error) Error() string { return e.Message }
+
 // call sends a request below /_lab and decodes the answer into answer, if
-// given. An error answer becomes an error with the lab's message; no answer
-// at all is ErrNotRunning.
+// given. An error answer becomes an *Error; no answer at all is
+// ErrNotRunning.
 func (c *Client) call(method, path string, body, answer any) error {
 	var reader io.Reader
 	if body != nil {
@@ -175,11 +185,12 @@ func (c *Client) call(method, path string, body, answer any) error {
 		return err
 	}
 	if response.StatusCode >= http.StatusBadRequest {
+		answerErr := &Error{Status: response.StatusCode, Message: "the lab control answered " + response.Status}
 		var failure labapi.Error
-		if json.Unmarshal(data, &failure) != nil || failure.Error.Message == "" {
-			return fmt.Errorf("the lab control answered %s", response.Status)
+		if json.Unmarshal(data, &failure) == nil && failure.Error.Message != "" {
+			answerErr.Code, answerErr.Message = failure.Error.Code, failure.Error.Message
 		}
-		return errors.New(failure.Error.Message)
+		return answerErr
 	}
 	if answer == nil || len(data) == 0 {
 		return nil

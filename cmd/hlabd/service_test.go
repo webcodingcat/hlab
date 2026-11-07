@@ -82,6 +82,24 @@ func TestANewLabHasTheDefaultProject(t *testing.T) {
 	}
 }
 
+func TestTheCLISaysWhenTheTokenDoesNotFit(t *testing.T) {
+	svc := startService(t)
+	defer stopService(t, svc)
+	wrong := filepath.Join(t.TempDir(), "control.token")
+	if err := os.WriteFile(wrong, []byte("not-the-token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(client.TokenFileVar, wrong)
+
+	var stdout, stderr bytes.Buffer
+	code := cli.Execute([]string{"status"}, &stdout, &stderr, "test")
+
+	if code != 1 || !strings.Contains(stderr.String(), "does not fit this hlabd") {
+		t.Errorf("exit code %d, stderr %q; want 1 and the hint", code, stderr.String())
+	}
+	t.Setenv(client.TokenFileVar, svc.tokenFile) // for stopService
+}
+
 func TestTheCLIManagesProjectsAndTokens(t *testing.T) {
 	svc := startService(t)
 	defer stopService(t, svc)
