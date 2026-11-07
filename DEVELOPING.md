@@ -181,7 +181,8 @@ later `api/hetzner`) registers its handlers on a `web.API`, one file per resourc
      whose value is no ID;
   2. the bearer token (`API.admit`): 401 `unauthorized`, without details;
   3. from here on every answer has an `X-Correlation-Id`;
-  4. the rate limit (per project, `RateLimit-*` headers, 429);
+  4. the rate limit (per project, `RateLimit-*` headers, 429); the actions endpoints
+     (`/v1/actions…`) have a budget of their own, twice the size;
   5. the permission: a `read` token gets 403 `forbidden` for anything but GET and
      HEAD;
   6. an injected fault;
@@ -220,12 +221,13 @@ later `api/hetzner`) registers its handlers on a `web.API`, one file per resourc
 - **Every answer of every API test is checked** against the spec:
   `spectest.New(t, api, spectest.Cloud)` returns a client that sends requests to the
   handler in the test's process and fails the test on an answer the spec does not
-  allow (status or body; errors of paths the spec lacks must still have Hetzner's
-  error format). It uses `kin-openapi` with JSON Schema 2020-12, as the specs are
-  OpenAPI 3.1.
+  allow (status, content type or JSON body; errors of paths the spec lacks must
+  still have Hetzner's error format). It uses `kin-openapi` with JSON Schema
+  2020-12, as the specs are OpenAPI 3.1.
 - **Deviations** change the spec before the check: each replaces the schema at a JSON
-  pointer (`*` matches any key) with `{}` or a given value, and takes a replaced
-  property out of `required`. A pointer that matches nothing fails the tests.
+  pointer (`*` matches any key) with `{}` or a given value, or adds a key the spec
+  lacks (a media type such as `text/plain`), and takes a replaced property out of
+  `required`. A pointer that matches nothing fails the tests.
 - **Hetzner before the spec:** where the real API and the spec differ, HLab follows
   the API and records a deviation; what the tools need is in `requirements.md`.
 - `bin/dev spec-diff` compares the specs with Hetzner's current ones; CI runs it

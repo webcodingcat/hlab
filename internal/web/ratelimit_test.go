@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"net/http"
 	"strconv"
 	"sync"
 	"testing"
@@ -34,15 +35,15 @@ func TestRateLimit(t *testing.T) {
 	client, _ := newAPI(t, web.Options{RateLimit: 3, Now: clock.Now})
 
 	for want := 2; want >= 0; want-- {
-		response := client.Get("/v1/actions/1000000")
-		if response.Status != 200 {
+		response := client.Do(http.MethodDelete, "/v1/ssh_keys/1000000", nil)
+		if response.Status != 204 {
 			t.Fatalf("request %d answered %d", 3-want, response.Status)
 		}
 		if got := response.Header.Get("RateLimit-Remaining"); got != strconv.Itoa(want) {
 			t.Errorf("RateLimit-Remaining is %s, want %d", got, want)
 		}
 	}
-	refused := client.Get("/v1/actions/1000000")
+	refused := client.Do(http.MethodDelete, "/v1/ssh_keys/1000000", nil)
 	if code, _, _ := errorOf(t, refused); refused.Status != 429 || code != "rate_limit_exceeded" {
 		t.Fatalf("the fourth request answered %d %s", refused.Status, refused.Body)
 	}
@@ -56,8 +57,24 @@ func TestRateLimit(t *testing.T) {
 	}
 
 	clock.Advance(20 * time.Minute)
-	if again := client.Get("/v1/actions/1000000"); again.Status != 200 {
+	if again := client.Do(http.MethodDelete, "/v1/ssh_keys/1000000", nil); again.Status != 204 {
 		t.Errorf("after 20 minutes the request answered %d", again.Status)
+	}
+}
+
+// Hetzner's actions endpoints have a budget of their own, twice as large
+// (measured 2026-11-07: 7200 against 3600 an hour, counted apart).
+func TestActionsHaveTheirOwnRateLimit(t *testing.T) {
+	clock := &testTime{now: time.Date(2026, 11, 7, 10, 0, 0, 0, time.UTC)}
+	client, _ := newAPI(t, web.Options{RateLimit: 3, Now: clock.Now})
+	for range 3 {
+		client.Do(http.MethodDelete, "/v1/ssh_keys/1000000", nil)
+	}
+
+	response := client.Get("/v1/actions/1000000")
+	if response.Status != 200 || response.Header.Get("RateLimit-Limit") != "6" || response.Header.Get("RateLimit-Remaining") != "5" {
+		t.Errorf("answered %d with RateLimit-Limit %s and -Remaining %s", response.Status,
+			response.Header.Get("RateLimit-Limit"), response.Header.Get("RateLimit-Remaining"))
 	}
 }
 

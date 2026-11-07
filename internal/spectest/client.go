@@ -65,7 +65,7 @@ func (c *Client) Do(method, path string, body any) *Response {
 	if err != nil {
 		c.t.Fatal(err)
 	}
-	if err := c.spec.Check(method, target.Path, response.Status, response.Body); err != nil {
+	if err := c.spec.Check(method, target.Path, response.Status, response.Header.Get("Content-Type"), response.Body); err != nil {
 		c.t.Errorf("the answer does not match the spec: %v", err)
 	}
 	return response

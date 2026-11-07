@@ -55,7 +55,7 @@ func TestCheckFindsWhatTheSpecDoesNotAllow(t *testing.T) {
 		"an unknown 404":       {"GET", "/v1/nothing", 404, `{"error":{"code":"not_found","message":"x","details":null}}`, ""},
 		"a broken error":       {"GET", "/v1/nothing", 404, `{"message":"x"}`, "lacks"},
 	} {
-		err := spec.Check(test.method, test.path, test.status, []byte(test.body))
+		err := spec.Check(test.method, test.path, test.status, "application/json", []byte(test.body))
 		switch {
 		case test.wantError == "" && err != nil:
 			t.Errorf("%s: %v", name, err)
@@ -71,10 +71,10 @@ func TestDeviationReplacesASchemaAndItsRequired(t *testing.T) {
 		Pointer: "/paths/*/get/responses/200/content/application~1json/schema/properties/thing/properties/datacenter",
 		Reason:  "Hetzner removed datacenters",
 	})
-	if err := spec.Check("GET", "/v1/things/1", 200, []byte(`{"thing":{"id":1}}`)); err != nil {
+	if err := spec.Check("GET", "/v1/things/1", 200, "application/json", []byte(`{"thing":{"id":1}}`)); err != nil {
 		t.Errorf("the deviation does not hold: %v", err)
 	}
-	if err := spec.Check("GET", "/v1/things/1", 200, []byte(`{"thing":{"id":"one"}}`)); err == nil {
+	if err := spec.Check("GET", "/v1/things/1", 200, "application/json", []byte(`{"thing":{"id":"one"}}`)); err == nil {
 		t.Error("the deviation turned off the rest of the schema")
 	}
 }
@@ -86,8 +86,23 @@ func TestDeviationWithAValue(t *testing.T) {
 		Value:   map[string]any{"type": "string"},
 		Reason:  "the real API sends IDs as strings here",
 	})
-	if err := spec.Check("GET", "/v1/things/1", 200, []byte(`{"thing":{"id":"one","datacenter":"x"}}`)); err != nil {
+	if err := spec.Check("GET", "/v1/things/1", 200, "application/json", []byte(`{"thing":{"id":"one","datacenter":"x"}}`)); err != nil {
 		t.Errorf("the value does not hold: %v", err)
+	}
+}
+
+func TestPlainTextNeedsItsMediaTypeInTheSpec(t *testing.T) {
+	plain := "text/plain; charset=utf-8"
+	if err := parseTestSpec(t).Check("GET", "/v1/things/1", 404, plain, []byte("Not Found\n")); err == nil {
+		t.Error("a plain-text answer passes, though the spec lists only JSON")
+	}
+	spec := parseTestSpec(t, Deviation{
+		Spec:    Cloud,
+		Pointer: "/paths/~1things~1{id}/get/responses/4xx/content/text~1plain",
+		Reason:  "the real API answers plain text",
+	})
+	if err := spec.Check("GET", "/v1/things/1", 404, plain, []byte("Not Found\n")); err != nil {
+		t.Errorf("the added media type does not hold: %v", err)
 	}
 }
 

@@ -10,6 +10,14 @@
 #   reason:  how the real API behaves, and how that was found out
 #
 # A replaced schema that is a property is also taken out of its object's
-# "required". An entry whose pointer matches nothing fails the tests: the
-# spec has changed, and the entry is checked again. Recipe: DEVELOPING.md.
-deviations: []
+# "required". A last segment that names a key the object lacks adds it (a
+# media type the spec does not list). An entry whose pointer matches nothing
+# fails the tests: the spec has changed, and the entry is checked again.
+# Recipe: DEVELOPING.md.
+deviations:
+  - spec: cloud
+    pointer: /paths/~1actions~1{id}/get/responses/4xx/content/text~1plain
+    reason: >-
+      GET /actions/{id} answers an action that is not there with 404 and the
+      plain text "Not Found" (text/plain), not with the JSON error format;
+      measured on 2026-11-07 with a read token.

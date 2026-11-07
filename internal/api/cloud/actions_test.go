@@ -123,19 +123,24 @@ func TestActions(t *testing.T) {
 	}
 }
 
+// Hetzner's API (measured 2026-11-07): an action of no project of the token
+// is 404 with the plain text "Not Found", not JSON.
 func TestActionsOfOtherProjectsAreNotFound(t *testing.T) {
 	test := newTestLab(t)
 	newToken(t, test.lab, "other")
 	foreign := act(t, test.lab, "other", 44, nil)
 	for _, path := range []string{fmt.Sprintf("/v1/actions/%d", foreign.ID), "/v1/actions/999999999"} {
-		if response := test.client.Get(path); response.Status != 404 {
-			t.Errorf("GET %s answered %d %s", path, response.Status, response.Body)
+		response := test.client.Get(path)
+		if response.Status != 404 || string(response.Body) != "Not Found\n" ||
+			response.Header.Get("Content-Type") != "text/plain; charset=utf-8" {
+			t.Errorf("GET %s answered %d %q (%s)", path, response.Status, response.Body, response.Header.Get("Content-Type"))
 		}
 	}
 }
 
 // Hetzner's API (measured 2026-11-07): without IDs, listing actions is a
-// removed functionality (410); an ID that is no number is invalid input.
+// removed functionality (410); an ID that is no number is invalid input, but
+// with the status 406.
 func TestActionsNeedIDs(t *testing.T) {
 	test := newTestLab(t)
 	for query, want := range map[string]struct {
@@ -143,7 +148,7 @@ func TestActionsNeedIDs(t *testing.T) {
 		code, message string
 	}{
 		"":        {410, "deprecated_api_endpoint", "API functionality was removed"},
-		"?id=abc": {422, "invalid_input", "invalid integer value"},
+		"?id=abc": {406, "invalid_input", "invalid integer value"},
 	} {
 		response := test.client.Get("/v1/actions" + query)
 		var body schema.ErrorResponse

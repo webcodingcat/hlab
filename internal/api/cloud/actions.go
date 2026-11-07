@@ -39,7 +39,7 @@ func registerActions(api *web.API, l *lab.Lab) {
 	api.Handle("GET /actions/{id}", func(req *web.Request) (int, any, error) {
 		action, err := lab.Current(l, state.Actions, web.PathID(req, "id"))
 		if errors.Is(err, state.ErrNotFound) || (err == nil && action.ProjectID != req.Caller.ProjectID) {
-			return 0, nil, web.NotFound("action")
+			return 0, nil, web.PlainNotFound()
 		}
 		if err != nil {
 			return 0, nil, err
@@ -59,7 +59,7 @@ func queryIDs(req *web.Request) ([]int64, error) {
 	for _, value := range values {
 		id, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
-			return nil, web.InvalidInput("invalid integer value")
+			return nil, web.InvalidInteger()
 		}
 		ids = append(ids, id)
 	}

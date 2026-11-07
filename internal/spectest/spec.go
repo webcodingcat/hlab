@@ -171,10 +171,10 @@ func (s *Spec) find(method, path string) *operation {
 }
 
 // Check checks an answer against the spec: its status must be one the
-// operation lists, and its body must match the schema. An error answer of a
-// path the spec lacks (404 for an unknown route) must still be in Hetzner's
-// error format.
-func (s *Spec) Check(method, path string, status int, body []byte) error {
+// operation lists, its content type one the status lists, and a JSON body
+// must match the schema. An error answer of a path the spec lacks (404 for an
+// unknown route) must still be in Hetzner's error format.
+func (s *Spec) Check(method, path string, status int, contentType string, body []byte) error {
 	op := s.find(method, path)
 	if op == nil {
 		if status < 400 {
@@ -190,6 +190,14 @@ func (s *Spec) Check(method, path string, status int, body []byte) error {
 	}
 	if response == nil {
 		return fmt.Errorf("%s %s: the status %d is not in the spec", method, path, status)
+	}
+	mediaType, _, _ := strings.Cut(contentType, ";")
+	if mediaType = strings.TrimSpace(mediaType); len(body) > 0 && mediaType != "application/json" {
+		// a body that is not JSON has no schema to match, only its type
+		if response.Value.Content.Get(mediaType) == nil {
+			return fmt.Errorf("%s %s %d: the content type %q is not in the spec", method, path, status, contentType)
+		}
+		return nil
 	}
 	media := response.Value.Content.Get("application/json")
 	if media == nil || media.Schema == nil {

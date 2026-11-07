@@ -39,7 +39,8 @@ type Backend interface {
 type Options struct {
 	Backend Backend
 	// RateLimit is the number of requests per hour and project
-	// (HetznerRateLimit); 0 turns the limit off.
+	// (HetznerRateLimit); the actions endpoints have twice as many of their
+	// own. 0 turns the limit off.
 	RateLimit int
 	// Logger gets the failures of handlers; nil is slog.Default().
 	Logger *slog.Logger
@@ -170,7 +171,7 @@ func (api *API) admit(w http.ResponseWriter, r *http.Request) (Caller, bool) {
 	// Hetzner's answers carry one from here on; those above, and to unknown
 	// routes, do not. hcloud-go adds it to its error texts.
 	w.Header().Set("X-Correlation-Id", correlationID())
-	if !api.limiter.take(w.Header(), token.ProjectID) {
+	if !api.limiter.take(w.Header(), token.ProjectID, r.URL.Path) {
 		writeError(w, api.logger, RateLimitExceeded())
 		return Caller{}, false
 	}
@@ -224,6 +225,12 @@ func writeError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	if !errors.As(err, &apiErr) {
 		logger.Error("a request failed", "error", err)
 		apiErr = ServerError("the lab failed: " + err.Error())
+	}
+	if apiErr.plain {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(apiErr.Status)
+		_, _ = w.Write([]byte(apiErr.Message + "\n"))
+		return
 	}
 	writeJSON(w, apiErr.Status, apiErr.body())
 }

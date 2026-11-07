@@ -44,9 +44,10 @@ func readDeviations(path string) ([]Deviation, error) {
 }
 
 // apply replaces what the deviation's pointer matches in the raw spec with
-// its value ({} when it has none). A replaced property also leaves its
-// object's "required". A pointer that matches nothing is an error: the spec
-// has changed under the deviation.
+// its value ({} when it has none); a last token that names a key an object
+// lacks adds it (a media type the spec does not list). A replaced property
+// also leaves its object's "required". A pointer that matches nothing is an
+// error: the spec has changed under the deviation.
 func (d Deviation) apply(spec map[string]any) error {
 	value := d.Value
 	if value == nil {
@@ -64,14 +65,18 @@ func (d Deviation) apply(spec map[string]any) error {
 }
 
 // replace walks node along tokens ("*" matches every key or index) and
-// replaces what the last token names with value. It returns the keys it
-// replaced, so that the schema holding "properties" can drop them from its
+// replaces or adds what the last token names with value. It returns the keys
+// it replaced, so that the schema holding "properties" can drop them from its
 // "required".
 func replace(node any, tokens []string, value any) []string {
 	token, last := tokens[0], len(tokens) == 1
 	var replaced []string
 	switch container := node.(type) {
 	case map[string]any:
+		if _, found := container[token]; last && token != "*" && !found {
+			container[token] = value
+			return []string{token}
+		}
 		for key, child := range container {
 			if token != "*" && token != key {
 				continue

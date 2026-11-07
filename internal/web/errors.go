@@ -17,6 +17,8 @@ type Error struct {
 	Details any
 	// noDetails leaves the details out, as Hetzner's 401 answers do.
 	noDetails bool
+	// plain sends the message as plain text instead of the JSON format.
+	plain bool
 }
 
 func (e *Error) Error() string { return e.Message }
@@ -60,6 +62,20 @@ func InvalidInput(message string, fields ...Field) *Error {
 // ("server").
 func NotFound(what string) *Error {
 	return &Error{Status: http.StatusNotFound, Code: "not_found", Message: what + " not found"}
+}
+
+// PlainNotFound returns the 404 that Hetzner's actions endpoints answer for
+// an action that is not there: the plain text "Not Found", not JSON
+// (measured 2026-11-07).
+func PlainNotFound() *Error {
+	return &Error{Status: http.StatusNotFound, Code: "not_found", Message: "Not Found", plain: true}
+}
+
+// InvalidInteger returns Hetzner's answer to a query value that should be an
+// integer and is not: invalid_input, but with the status 406 (measured
+// 2026-11-07).
+func InvalidInteger() *Error {
+	return &Error{Status: http.StatusNotAcceptable, Code: "invalid_input", Message: "invalid integer value"}
 }
 
 // RouteNotFound returns Hetzner's 404 for a path that no route takes.
