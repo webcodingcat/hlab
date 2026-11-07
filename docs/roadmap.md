@@ -2,7 +2,7 @@
 
 HLab is rebuilt in Go. Phases 1 to 7 target Windows 11 with Hyper-V, used from WSL2;
 Linux follows in phase 8. Each step ends with its state recorded here, so the next
-one starts from this file.
+one starts from this file. How a step got there is in its commit messages.
 
 The earlier Python implementation (Docker, QEMU) is on the branch `legacy`, tagged
 `v1-python`. It is the reference for behaviour the rebuild takes over: Hetzner's
@@ -36,114 +36,59 @@ the tests. Look there before writing such a part anew.
 | 1a-3 | `internal/web` and `internal/spectest`; projects, tokens | done |
 | 1a-4 | catalog and the reading resources; SSH keys | done |
 | 1a-5 | lab control, CLI, `hlab env`; web UI skeleton | done |
-| 1a-6 | checks against the real API (read only) | done |
-| 1a-R | review of phase 1a, smoke tests | done |
+| 1a-6 | checks against the real API | done |
+| 1a-R | review of phase 1a, smoke tests, CI on every push | done |
 
-After 1a-2: `hlabd` does not start the lab yet (1a-5). There is no `internal/config`
-yet; `lab.Options` takes the data folder and the time scale directly, and
-`hlab.yaml` comes when the service reads it. `internal/system` holds only what the
-life cycle needs.
+### What is there
 
-After 1a-3: `internal/web` checks tokens, rate limit, permission and injected
-faults and answers in Hetzner's error format; `internal/api/cloud` has its first
-endpoints, `GET /actions?id=…` and `GET /actions/{id}`, and every API test checks
-its answers against the spec (`internal/spectest`). Projects, tokens, limits and API
-faults are in the lab's core; nobody calls them yet but tests: the lab control and
-the CLI come in 1a-5, which also wires the Cloud API into `hlabd`. `compat/` has its
-first state. The order of the checks, the error texts and details, pagination and
-the `Link` header were measured on the real API (2026-11-07) and follow it; what is
-still open for 1a-6 is at the end of `compat/requirements.md`. Requests are not yet checked against the spec's request
-schemas (the old HLab did; it comes with the first endpoint that takes a body).
+- `hlabd --platform fake` runs on Linux, WSL2 and Windows: `hlab.yaml` (ports,
+  time scale), the user's `catalog.yaml`, the project `default` in a new lab, the
+  Cloud API on 8080, the Hetzner API on 8081 (no routes yet), the lab control and
+  the web UI on 8090, all on `127.0.0.1`. One `hlabd` per machine (the mutex
+  `Global\HLab` on Windows, an flock on `/run/lock/hlab.lock` on Linux).
+- The Cloud API: actions, locations, server types, load balancer types, pricing,
+  images (Debian 13, Ubuntu 26.04), ISOs, SSH keys in full; the datacenter
+  endpoints answer 410. Order of the checks, error texts, pagination, sorting,
+  filters, label selectors, bodies and rate limits follow the real API, measured
+  on 2026-11-07 (`compat/requirements.md`). Every API test checks its answers
+  against the spec.
+- The state: transactions that copy on first use, reads without copies, saving
+  only real changes in the background; migrations with a sample file of
+  version 1.
+- The CLI `hlab`: `env` (sh and PowerShell; the token `hlab-env` stays the same),
+  `status`, `stop`, `project`, `token`. The web UI is a skeleton: projects,
+  tokens, locations and server types.
+- Tests: `bin/dev test` (Linux, race detector), `bin/dev test --windows`, and
+  `bin/dev smoke` with hcloud 1.70.2 and OpenTofu 1.13.9 (`examples/tofu-1a`).
+  CI runs lint and the unit tests on Linux and Windows for every push.
+- Reviews: four rounds, junior and senior 8/10 each time and satisfied.
 
-After 1a-4: `internal/catalog` holds Hetzner's catalog with its real IDs (built in,
-changed by a `catalog.yaml` in the data folder); the lab takes it in
-`lab.Options.Catalog`, but nothing loads the user's file yet: `hlabd` does that when
-1a-5 wires it. The Cloud API answers locations, server types, load balancer types,
-pricing, images (the catalog's system images, Debian 13 and Ubuntu 26.04) and ISOs,
-and the SSH keys in full; the datacenter endpoints answer 410 as Hetzner's do.
-Request bodies are checked (`web.DecodeJSON`, `web.Check`). The catalog comes from
-the real API's answers, and the error texts, sorting and filters of these endpoints
-and of the SSH keys were measured on it (2026-11-07, `compat/requirements.md`);
-1a-6 is left with what that file lists as still open. Not yet: `PUT` and `DELETE`
-of images and their actions (with snapshots, 3a); the catalog's image sources for
-the image cache (1b).
+### Open for 1b
 
-After 1a-5: `hlabd --platform fake` runs on Linux, WSL2 and Windows: `hlab.yaml`
-(`internal/config`: ports, time scale), the user's catalog, the project `default`
-in a new lab, the Cloud API on 8080, the Hetzner API on 8081 (no routes yet), the
-lab control and the web UI on 8090, all on `127.0.0.1`. One `hlabd` per machine
-(the mutex `Global\HLab` on Windows, an flock on `/run/lock/hlab.lock` on Linux;
-`internal/platform/linux` has only this life cycle so far). The CLI `hlab` has
-`env` (sh and PowerShell; the project's token `hlab-env` stays the same, kept in
-`env-tokens.json`), `status`, `stop`, `project` and `token`; it finds the
-token as the Windows HLab will write it, also from WSL2 through `/mnt/c`, and
-calls `198.18.0.1:8090` unless `HLAB_CONTROL` says otherwise. The web UI is a
-skeleton: projects, tokens, locations and server types; Host and Origin checks, a
-cookie instead of a token. Checked by hand in WSL2 with hcloud 1.70.2:
-`server-type list`, `location list`, `ssh-key create/list/delete` after
-`eval "$(hlab env)"`, and OpenTofu 1.13.9 with `examples/tofu-1a` (apply, an
-empty plan after it, destroy). Not yet: the other platforms (`hlabd` without
-`--platform fake` says so), `hlab start` (1b), 503 for requests that arrive while
-the lab stops (no slow stop yet: the ports close at once), the formal smoke tests
-(1a-R), stop requests from signing out and the tray (6b). Also fixed in 1a-5: the
-state writer wrote the same content twice when a change came while it woke up;
-on Windows the second write failed when a reader held `state.json`
-("access denied"), which made `TestChangeSavesTheNewState` fail now and then.
+- Trim the platform interfaces and the fake hypervisor to what 1b-1 calls;
+  `system.VMRunning` has no caller yet. The first real `ActionTable` comes with
+  the server actions.
+- Measure `Change` on a state with several projects and 1000 actions each
+  before servers poll actions: every real change compares the kinds it touched
+  and encodes the whole state under the lab's mutex. `endInterruptedActions`
+  trims the finished actions once per action.
+- Give the resources one helper for "unique within the project" (SSH keys scan
+  every key twice today).
+- Hetzner ran a reboot while a poweroff was running, where `Lab.Act` answers 423.
+  The real server's JSON (no `datacenter`, `locked` `false`) is recorded in
+  `compat/requirements.md`.
+- `hlabd --platform fake` listens on `127.0.0.1`, the CLI's default is
+  `198.18.0.1`: until the host link exists, take `HLAB_CONTROL` from hlabd's log
+  (`bin/dev smoke` does).
+- Not yet: the other platforms (`hlabd` without `--platform fake` says so),
+  `hlab start`, 503 for requests that arrive while the lab stops, `PUT` and
+  `DELETE` of images (3a), the catalog's image sources for the image cache.
 
-After 1a-6: the rest of `compat/requirements.md` was measured on the real API
-(2026-11-07, "Label selectors, bodies and servers"), with SSH keys and one short-
-lived server in the empty test project. HLab now gives Hetzner's reasons for every
-label selector error, refuses an empty value (`k=`), and selects as Hetzner does
-(`k!=v` needs the label; the odd forms `!k=v`, `k=!v`, `k=a=b`); a PUT names only
-its first invalid field, in the details too; bodies may be up to 64 MiB (Hetzner
-took that much); every resource's action endpoints share the budget of
-`/actions`. The real server's JSON (no `datacenter`, `locked` `false`) is recorded
-for 1b. Open for 1b: Hetzner ran a reboot while a poweroff was running, where
-HLab's `Lab.Act` answers 423. Phase 1a is ready for its review (1a-R).
+### Later phases
 
-After 1a-R: two review rounds (a junior and a senior developer, 8/10 each
-round, both satisfied). Fixed: a change after `Lab.Close` (a request that
-outlived the stop timeout) panicked on the writer's closed channel and is now
-logged and dropped; a huge `page` overflowed in `web.Paginate`; label errors
-come in a fixed order. The layer test reads the table of DEVELOPING.md, its
-one copy. DEVELOPING.md says when records may outlive their Tx (to be read
-only) and that every `Change` saves the whole state, and has a request's path
-and a glossary. `bin/dev smoke` runs the smoke tests (DEVELOPING.md, Tools);
-the OpenTofu example is `examples/tofu-1a`. The smoke tests passed in WSL2
-with hcloud 1.70.2 and OpenTofu 1.13.9.
-
-CI now runs on every push; on `phase-1` both jobs passed, `bin/dev.ps1` for
-the first time on a real Windows machine.
-
-Settled after the review, with the operator: `lab.View` reads through
-`state.Read`, which copies nothing, and `Change` saves only when
-`tx.Changed()` finds a real change (the whole state is still encoded then).
-The web UI's calls through `ServeAs` skip the project's rate limit and
-injected faults, and their `Link` header names the path the client sent.
-DEVELOPING.md says who reaches port 8090 (host and WSL2; guests only 8080 and
-8081, by the appliance's ruleset in 1b). `Lab.Fresh` tells a new lab, whose
-project `default` comes after the ports listen; the rate limiter drops buckets
-that are full again. A third review round (8/10 each, both satisfied) found
-only older spots; fixed: `Lab.Close` and `Writer.Close` may be called twice,
-limit errors name the first negative limit in a fixed order, the SSH key list
-filters names with `byName`.
-
-Left for later:
-
-- A request admitted just before `DeleteProject` may still create a record of
-  the gone project (comment in `lab/projects.go`); when 1b brings more creates,
-  check the project inside their `Change` with one helper.
-- The token check scans and sorts every token on each request; a map by hash
-  would be cheaper once there are many.
-- `web.DecodeJSON` takes a `web.Request`, so the lab control builds one with a
-  zero caller; it accepts trailing data after the JSON (Hetzner's behaviour
-  unmeasured).
-- The client turns error answers into plain errors, so the CLI cannot tell
-  404 from 409.
 - The injected fault's delay runs on the wall clock, not the lab's time scale
-  (2c); `TakeAPIFault` skips the fault when the state cannot be encoded.
-- The platform interfaces for 1b have no caller yet: trim them to what 1b-1
-  needs when it starts.
+  (2c).
+- Stop requests from signing out and the tray (6b).
 
 Next: 1b-1, `pshost` and the Hyper-V hypervisor with the contract tests.
 

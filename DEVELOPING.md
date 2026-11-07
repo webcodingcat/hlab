@@ -136,7 +136,8 @@ The layer test checks production code only. Tests may import fakes and helpers.
   (`BenchmarkTxOnAThousandActions`).
 - **Reads copy nothing.** `state.Read` starts a read-only Tx. Its records are the
   state's own, and calling Put, Delete or NewID on it panics. `lab.View` uses it, so
-  the token check on every request copies nothing.
+  the token check on every request copies nothing. That check uses `state.Find`,
+  which does not sort as `state.All` does.
 - **Only a real change is saved.** Because records can change in place,
   `tx.Changed()` compares each kind the Tx copied with the state the Tx started from
   (`reflect.DeepEqual`). A `Change` that only read, or set a value to what it
@@ -236,8 +237,12 @@ errors as `lab.ErrInvalid`, `lab.ErrExists` and `state.ErrNotFound`.
   - A limit of zero means no limit; a negative limit is refused.
   - Internet access is on by default.
   - `Lab.DeleteProject` first removes the records. Its tokens are gone then, so no
-    new action can start. Then it cancels the running actions, which find their
+    new request is admitted. Then it cancels the running actions, which find their
     actions gone.
+  - A request admitted just before the delete may still try to create something.
+    So every create calls `lab.CheckProject` inside its `Change` (`Lab.Act` does
+    so itself); the API answers `lab.ErrProjectGone` as a deleted token
+    (`web.TokenInvalid`).
 - **Tokens** are 64 letters and digits, like Hetzner's, with the permission `read`
   or `read_write`. Names are unique per project, so the CLI can refer to a token by
   name. `Lab.CreateToken` returns the token only once. The state keeps its SHA-256
@@ -305,7 +310,8 @@ the same later.
     missing or null field can be told apart from an empty one.
   - Broken JSON is 422 `json_error` with the decoder's message. JSON of the wrong
     shape is 422 `"failed to parse json"`. Unknown fields are ignored, as Hetzner
-    ignores them.
+    ignores them, and so is anything after the first JSON value. `DecodeJSON`
+    takes an `http.Request`, so the lab control uses it too.
   - The handler then checks the fields with a `web.Check` (`Required`, `Length`,
     `Labels`, `Fail`). A PUT uses `web.Check{Update: true}`, because Hetzner's texts
     differ there. The handler returns `check.Err()`: one `invalid_input` error that
@@ -351,7 +357,7 @@ packages below it follow the layers.
   5. Create the project `default` if the lab is new (`Lab.Fresh`: there was no state
      file). This comes after the ports, so a port that is already taken leaves a new
      lab untouched.
-  6. Write a new control token through `Lifecycle.WriteToken`.
+  6. Write a new control token through `Lifecycle.WriteSecret`.
 
   The ports listen on the host link's address; with `--platform fake` they listen
   on `127.0.0.1`. A port of 0 takes any free port (the tests do that), and the status
@@ -400,7 +406,9 @@ packages below it follow the layers.
 
   It calls the address in `HLAB_CONTROL`, or else `http://198.18.0.1:8090`, the host
   link that Windows and WSL2 share. If there is no token file or no answer, it
-  returns `client.ErrNotRunning`.
+  returns `client.ErrNotRunning`. An error answer becomes a `*client.Error` with
+  its status and code, so the CLI can give a hint (for 401: the token file
+  belongs to another `hlabd`).
 - **The CLI** (`internal/cli`, cobra) has one file per group of commands; each
   command calls the client. `hlab env` prints the endpoints and the project's env
   token for sh (`export`) or PowerShell (`$env:`), in single quotes.
@@ -588,7 +596,9 @@ An older state file without the kind still loads; no migration is needed.
 2. Register it with `api.Handle("GET /things/{id}", ...)`. The path is the spec's
    path without `/v1`. `web.PathID(req, "id")` reads an ID from it.
 3. Build the answer from `hcloud-go`'s `schema` types. Read a body with
-   `web.DecodeJSON` and check it with a `web.Check`.
+   `web.DecodeJSON` and check it with a `web.Check`. A create calls
+   `lab.CheckProject` in its `Change` and answers its error with
+   `web.TokenInvalid()`.
 4. Refuse requests with the `web` errors (`web.NotFound`, `web.Uniqueness`, …), with
    Hetzner's codes and messages.
 5. A list filters, sorts (`web.Sort` with the spec's sort values) and answers with
