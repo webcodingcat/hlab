@@ -75,13 +75,13 @@ func registerSSHKeys(api *web.API, l *lab.Lab) {
 		_ = l.View(func(tx *state.Tx) error {
 			for _, key := range state.All(tx, state.SSHKeys) {
 				if key.ProjectID == req.Caller.ProjectID && selector.Matches(key.Labels) &&
-					(!query.Has("name") || key.Name == query.Get("name")) &&
 					(!query.Has("fingerprint") || key.Fingerprint == query.Get("fingerprint")) {
 					keys = append(keys, key)
 				}
 			}
 			return nil
 		})
+		keys = byName(req, keys, func(key *state.SSHKey) string { return key.Name })
 		if err := web.Sort(req, keys, sshKeySortKeys); err != nil {
 			return 0, nil, err
 		}

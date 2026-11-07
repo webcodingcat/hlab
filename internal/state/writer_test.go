@@ -37,8 +37,9 @@ func TestWriterWritesTheNewestContent(t *testing.T) {
 }
 
 // A request that outlives the service's stop timeout may still change the
-// lab after it closed; that must not panic on the closed wake-up channel.
-func TestPutAfterCloseIsDropped(t *testing.T) {
+// lab after it closed, and every way to stop may close it; neither must panic
+// on the closed wake-up channel.
+func TestPutAndCloseAfterCloseAreHarmless(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	writer := NewWriter(path, quiet)
 	writer.Put([]byte("before"))
@@ -50,6 +51,9 @@ func TestPutAfterCloseIsDropped(t *testing.T) {
 
 	if got := readFile(t, path); got != "before" {
 		t.Errorf("the file holds %q, want before", got)
+	}
+	if err := writer.Close(); err != nil {
+		t.Errorf("a second Close failed: %v", err)
 	}
 }
 

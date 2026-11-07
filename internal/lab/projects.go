@@ -98,17 +98,22 @@ func (l *Lab) SetProjectLimits(projectID int64, limits state.Limits) error {
 
 // checkLimits refuses negative limits: zero already means no limit.
 func checkLimits(limits state.Limits) error {
-	for name, value := range map[string]int{
-		"servers":        limits.Servers,
-		"cores":          limits.Cores,
-		"primary_ips":    limits.PrimaryIPs,
-		"floating_ips":   limits.FloatingIPs,
-		"volume_gb":      limits.VolumeGB,
-		"networks":       limits.Networks,
-		"load_balancers": limits.LoadBalancers,
+	// a list, not a map, so that the first negative limit is named the same
+	// on every call
+	for _, limit := range []struct {
+		name  string
+		value int
+	}{
+		{"servers", limits.Servers},
+		{"cores", limits.Cores},
+		{"primary_ips", limits.PrimaryIPs},
+		{"floating_ips", limits.FloatingIPs},
+		{"volume_gb", limits.VolumeGB},
+		{"networks", limits.Networks},
+		{"load_balancers", limits.LoadBalancers},
 	} {
-		if value < 0 {
-			return fmt.Errorf("limit %s is %d: %w: use 0 for no limit", name, value, ErrInvalid)
+		if limit.value < 0 {
+			return fmt.Errorf("limit %s is %d: %w: use 0 for no limit", limit.name, limit.value, ErrInvalid)
 		}
 	}
 	return nil
@@ -117,9 +122,11 @@ func checkLimits(limits state.Limits) error {
 // DeleteProject removes a project with everything that belongs to it: its
 // tokens, resources, actions and faults. Its running actions are canceled.
 //
-// The records go first, so that no new action of the project can start (its
-// tokens are gone); then the running ones are canceled, and they find their
-// actions gone when they end.
+// The records go first, so that no new request of the project is admitted
+// (its tokens are gone); then the running actions are canceled, and they find
+// their actions gone when they end. A request admitted just before may still
+// create a record of the gone project, which then stays: a narrow window that
+// a test lab accepts (docs/roadmap.md).
 func (l *Lab) DeleteProject(projectID int64) error {
 	err := l.Change(func(tx *state.Tx) error {
 		if _, err := state.Get(tx, state.Projects, projectID); err != nil {

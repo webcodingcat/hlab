@@ -170,6 +170,8 @@ func (l *Lab) start(actionID, projectID int64, plan Plan, flagged []state.Resour
 		defer close(run.done)
 		defer cancel()
 		err := plan.Steps(ctx)
+		// canceled only when the steps gave up: steps that finished despite
+		// the cancel have done their work, and the action succeeded
 		l.end(actionID, plan.Undo, flagged, err, err != nil && ctx.Err() != nil)
 	}()
 }

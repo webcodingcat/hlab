@@ -112,20 +112,38 @@ and a glossary. `bin/dev smoke` runs the smoke tests (DEVELOPING.md, Tools);
 the OpenTofu example is `examples/tofu-1a`. The smoke tests passed in WSL2
 with hcloud 1.70.2 and OpenTofu 1.13.9.
 
-Open for 1b, from the review:
+CI now runs on every push; on `phase-1` both jobs passed, `bin/dev.ps1` for
+the first time on a real Windows machine.
 
-- Reads copy whole kinds (`lab.View`, `TokenByHash` on every request,
-  `TakeAPIFault`), and a Tx that only read saves the whole state. Cheap now;
-  with servers and actions polled in 1b it may need a read path without copies
-  and a Tx that knows which kinds changed. Decide before the hot paths grow.
-- Once `hlabd` listens on the host link, settle who may reach port 8090: the
-  web UI's cookie gives what the control token gives.
-- The web UI's calls through `ServeAs` count against the project's rate limit
-  and take its injected faults; the `Link` header behind `ServeAs` names the
-  control port with a Cloud API path.
-- Smaller: `lab.Open` could report a new lab instead of `cmd/hlabd` checking
-  `state.json` itself; the default project is made before the ports listen;
-  rate limit buckets of deleted projects stay.
+Settled after the review, with the operator: `lab.View` reads through
+`state.Read`, which copies nothing, and `Change` saves only when
+`tx.Changed()` finds a real change (the whole state is still encoded then).
+The web UI's calls through `ServeAs` skip the project's rate limit and
+injected faults, and their `Link` header names the path the client sent.
+DEVELOPING.md says who reaches port 8090 (host and WSL2; guests only 8080 and
+8081, by the appliance's ruleset in 1b). `Lab.Fresh` tells a new lab, whose
+project `default` comes after the ports listen; the rate limiter drops buckets
+that are full again. A third review round (8/10 each, both satisfied) found
+only older spots; fixed: `Lab.Close` and `Writer.Close` may be called twice,
+limit errors name the first negative limit in a fixed order, the SSH key list
+filters names with `byName`.
+
+Left for later:
+
+- A request admitted just before `DeleteProject` may still create a record of
+  the gone project (comment in `lab/projects.go`); when 1b brings more creates,
+  check the project inside their `Change` with one helper.
+- The token check scans and sorts every token on each request; a map by hash
+  would be cheaper once there are many.
+- `web.DecodeJSON` takes a `web.Request`, so the lab control builds one with a
+  zero caller; it accepts trailing data after the JSON (Hetzner's behaviour
+  unmeasured).
+- The client turns error answers into plain errors, so the CLI cannot tell
+  404 from 409.
+- The injected fault's delay runs on the wall clock, not the lab's time scale
+  (2c); `TakeAPIFault` skips the fault when the state cannot be encoded.
+- The platform interfaces for 1b have no caller yet: trim them to what 1b-1
+  needs when it starts.
 
 Next: 1b-1, `pshost` and the Hyper-V hypervisor with the contract tests.
 

@@ -115,12 +115,15 @@ The layer test checks production code only: tests may import fakes and helpers.
   one in place changes the Tx. Only `tx.Result()` makes the changes part of a
   state, so a Tx that is dropped changes nothing. Copying a kind of a thousand
   actions takes about a millisecond (`BenchmarkTxOnAThousandActions`).
-- **Every change saves the whole state.** A Tx that touched a kind, even only to
-  read it, counts as a change: records change in place, so a read cannot be told
-  from a change. `lab.Change` then encodes the whole state under the mutex and
-  hands it to the writer; reads that need not save go through `lab.View`. This is
-  cheap at today's sizes; if it shows up in a profile, the Tx has to learn which
-  kinds really changed.
+- **Reads copy nothing.** `state.Read` starts a Tx that only reads: its records
+  are the state's own, and Put, Delete and NewID in it panic. `lab.View` uses it,
+  so the token check on every request copies nothing.
+- **Only a real change is saved.** Records change in place, so `tx.Changed()`
+  compares each part the Tx copied with the state it began from
+  (`reflect.DeepEqual`); a `Change` that only read, or set a value to what it
+  was, saves nothing. A real change encodes the whole state under the mutex and
+  hands it to the writer; if that shows up in a profile, encode only the kinds
+  that changed.
 - **The file.** `state.json` in the data folder: `version`, `saved`, `next_ids`,
   `kinds` (each a list sorted by ID, so that diffs stay readable) and `lab`;
   `snake_case` names and RFC 3339 times in UTC. `state.Writer` writes it in the
@@ -150,13 +153,14 @@ The layer test checks production code only: tests may import fakes and helpers.
   `system`.
 - Every change runs in `lab.Change(func(tx *state.Tx) error)`: if the function returns
   an error, the old state stays; otherwise the new one is saved. Reads run in
-  `lab.View`, which keeps nothing.
+  `lab.View`, which changes nothing.
 - **Records outlive their Tx only to be read.** A handler may build its answer
   from a record after `Change` or `View` returned, without the mutex; it never
-  changes such a record, because the state shares the records of a Tx it took.
+  changes such a record, because it is the state's own (from `View`) or the
+  state shares it (from `Change`).
 - **Across a call into the system, code keeps IDs, not records**, and looks them up
   again afterwards: `lab.Current(l, kind, id)` (a function: Go methods take no type
-  parameters) returns a copy, or `state.ErrNotFound` when the record is gone.
+  parameters) returns the record to read, or `state.ErrNotFound` when it is gone.
 - The slow part of an action runs as a goroutine with a `context.Context`, which
   closing the lab (`Lab.Close`) and resetting a project (`Lab.StopProjectActions`)
   cancel.
@@ -275,8 +279,9 @@ later `api/hetzner`) registers its handlers on a `web.API`, one file per resourc
 - **Datacenters** are gone from Hetzner's API: their endpoints answer 410
   `deprecated_api_endpoint`, and no answer names a datacenter.
 - **Without a token:** `API.ServeAs(caller)` answers as a caller the lab control
-  vouches for (the web UI acting for a project); every check after the token's
-  still applies.
+  vouches for (the web UI acting for a project). The permission still applies;
+  the rate limit and injected faults do not: they are for the tools under
+  test, and the web UI's polling would use them up.
 
 ## The service
 
@@ -286,8 +291,10 @@ packages below it follow the layers.
 - **Start** (`start`): `hlab.yaml` (`internal/config`; a missing file or key takes
   the default, an unknown key or a value out of range stops the start, naming the
   file), the catalog, `lab.Open` (it claims the data folder through
-  `Lifecycle.Lock`: one HLab per machine), the project `default` in a new lab, the
-  three ports, then a new control token through `Lifecycle.WriteToken`. The ports
+  `Lifecycle.Lock`: one HLab per machine), the three ports, the project `default`
+  if the lab is new (`Lab.Fresh`: no state file), then a new control token
+  through `Lifecycle.WriteToken`. The ports come before the project, so that a
+  taken port leaves a new lab new. The ports
   listen on the host link's address; `--platform fake` listens on `127.0.0.1`. A
   port of 0 takes any free one (the tests); the status reports the ports in use.
 - **Ports:** the Cloud API (8080), the Hetzner API (8081, routes with the Storage
@@ -335,6 +342,12 @@ packages below it follow the layers.
   (`HttpOnly`, `SameSite=Strict`, new at each start), which the lab control
   takes instead of the token (`UI.Admits`): the browser holds no token. The page
   reads the catalog through the project's Cloud API route.
+- **Who reaches port 8090.** The cookie gives what the control token gives, to
+  anyone who loads the page. That is the same circle: port 8090 listens on
+  `127.0.0.1` and the host link, which only the host and WSL2 reach, and the
+  token is readable for the host's local users anyway. Guests never reach it:
+  the appliance's ruleset lets them reach the host link only on 8080 and 8081
+  (phase 1b).
 
 ## The catalog
 

@@ -80,9 +80,13 @@ func (w *Writer) Flush() error {
 }
 
 // Close writes what is left and stops the writer, also when that write failed
-// (it returns the error then).
+// (it returns the error then). A second Close returns the last error at once.
 func (w *Writer) Close() error {
 	w.mu.Lock()
+	if w.closed {
+		defer w.mu.Unlock()
+		return w.err
+	}
 	w.closed = true
 	w.mu.Unlock()
 	err := w.Flush()

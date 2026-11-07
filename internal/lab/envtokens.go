@@ -30,6 +30,8 @@ func (l *Lab) EnvToken(projectID int64) (string, error) {
 	if secret, found := secrets[projectID]; found && l.isEnvToken(projectID, secret) {
 		return secret, nil
 	}
+	// the state first, the file after: if the file cannot be written, the
+	// token in the state is not in the file, and the next call makes a new one
 	secret := newSecret()
 	var gone []int64
 	err = l.Change(func(tx *state.Tx) error {
