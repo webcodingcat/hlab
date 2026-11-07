@@ -1,15 +1,24 @@
 package main
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"testing"
+)
 
-func TestListenAddrDefault(t *testing.T) {
-	if got := listenAddr(); got != "198.18.0.1:8090" {
-		t.Fatalf("listenAddr() = %q", got)
+func TestAuthorizedRejectsWrongToken(t *testing.T) {
+	handler := authorized("secret", func(w http.ResponseWriter, _ *http.Request) {})
+	recorder := httptest.NewRecorder()
+	handler(recorder, httptest.NewRequest("POST", "/_lab/shutdown", nil))
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("code = %d", recorder.Code)
 	}
 }
 
-func TestFailsOnPurpose(t *testing.T) {
-	if testingFail := false; testingFail {
-		t.Fatal("never")
+// TestFailWhenAsked lets the loop check that a failing test's exit code reaches WSL.
+func TestFailWhenAsked(t *testing.T) {
+	if os.Getenv("SPIKE_FAIL") == "1" {
+		t.Fatal("failing on purpose (SPIKE_FAIL=1)")
 	}
 }
