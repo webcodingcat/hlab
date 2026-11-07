@@ -1,0 +1,138 @@
+table inet hlab
+delete table inet hlab
+table inet hlab {
+  chain fw0_in {
+    ct state established,related accept
+    icmp type echo-request accept
+    meta l4proto ipv6-icmp accept
+    tcp dport 22 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 80 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 443 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 8000 ip saddr { 0.0.0.0/0 } accept
+    udp dport 53 accept
+    counter drop
+  }
+  chain fw1_in {
+    ct state established,related accept
+    icmp type echo-request accept
+    meta l4proto ipv6-icmp accept
+    tcp dport 22 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 80 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 443 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 8001 ip saddr { 0.0.0.0/0 } accept
+    udp dport 53 accept
+    counter drop
+  }
+  chain fw2_in {
+    ct state established,related accept
+    icmp type echo-request accept
+    meta l4proto ipv6-icmp accept
+    tcp dport 22 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 80 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 443 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 8002 ip saddr { 0.0.0.0/0 } accept
+    udp dport 53 accept
+    counter drop
+  }
+  chain fw3_in {
+    ct state established,related accept
+    icmp type echo-request accept
+    meta l4proto ipv6-icmp accept
+    tcp dport 22 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 80 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 443 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 8003 ip saddr { 0.0.0.0/0 } accept
+    udp dport 53 accept
+    counter drop
+  }
+  chain fw4_in {
+    ct state established,related accept
+    icmp type echo-request accept
+    meta l4proto ipv6-icmp accept
+    tcp dport 22 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 80 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 443 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 8004 ip saddr { 0.0.0.0/0 } accept
+    udp dport 53 accept
+    counter drop
+  }
+  chain fw5_in {
+    ct state established,related accept
+    icmp type echo-request accept
+    meta l4proto ipv6-icmp accept
+    tcp dport 22 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 80 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 443 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 8005 ip saddr { 0.0.0.0/0 } accept
+    udp dport 53 accept
+    counter drop
+  }
+  chain fw6_in {
+    ct state established,related accept
+    icmp type echo-request accept
+    meta l4proto ipv6-icmp accept
+    tcp dport 22 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 80 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 443 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 8006 ip saddr { 0.0.0.0/0 } accept
+    udp dport 53 accept
+    counter drop
+  }
+  chain fw7_in {
+    ct state established,related accept
+    icmp type echo-request accept
+    meta l4proto ipv6-icmp accept
+    tcp dport 22 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 80 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 443 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 8007 ip saddr { 0.0.0.0/0 } accept
+    udp dport 53 accept
+    counter drop
+  }
+  chain fw8_in {
+    ct state established,related accept
+    icmp type echo-request accept
+    meta l4proto ipv6-icmp accept
+    tcp dport 22 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 80 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 443 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 8008 ip saddr { 0.0.0.0/0 } accept
+    udp dport 53 accept
+    counter drop
+  }
+  chain fw9_in {
+    ct state established,related accept
+    icmp type echo-request accept
+    meta l4proto ipv6-icmp accept
+    tcp dport 22 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 80 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 443 ip saddr { 0.0.0.0/0 } accept
+    tcp dport 8009 ip saddr { 0.0.0.0/0 } accept
+    udp dport 53 accept
+    counter drop
+  }
+  chain forward {
+    type filter hook forward priority filter; policy accept;
+    iifname "eth1" ip daddr 198.18.0.1 tcp dport != { 8080, 8081 } counter drop
+    ip daddr 198.18.16.10 counter jump fw0_in
+    ip daddr 198.18.16.11 counter jump fw1_in
+    ip daddr 198.18.16.12 counter jump fw2_in
+    ip daddr 198.18.16.13 counter jump fw3_in
+    ip daddr 198.18.16.14 counter jump fw4_in
+    ip daddr 198.18.16.15 counter jump fw5_in
+    ip daddr 198.18.16.16 counter jump fw6_in
+    ip daddr 198.18.16.17 counter jump fw7_in
+    ip daddr 198.18.16.18 counter jump fw8_in
+    ip daddr 198.18.16.19 counter jump fw9_in
+    ip daddr 198.18.16.20 counter jump fw0_in
+    ip daddr 198.18.16.21 counter jump fw1_in
+    ip daddr 198.18.16.22 counter jump fw2_in
+    ip daddr 198.18.16.23 counter jump fw3_in
+    ip daddr 198.18.16.24 counter jump fw4_in
+    ip daddr 198.18.16.25 counter jump fw5_in
+    ip daddr 198.18.16.26 counter jump fw6_in
+    ip daddr 198.18.16.27 counter jump fw7_in
+    ip daddr 198.18.16.28 counter jump fw8_in
+    ip daddr 198.18.16.29 counter jump fw9_in
+  }
+}

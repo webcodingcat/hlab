@@ -1,0 +1,29 @@
+link set eth0 up
+link set eth1 up
+address replace 198.18.0.2/29 dev eth0
+address replace 2001:db8:0:ffff::2/64 dev eth0
+address replace 172.31.1.1/32 dev eth1
+address replace fe80::1/64 dev eth1
+address replace 169.254.169.254/32 dev lo
+address replace 198.18.17.1/32 dev lo
+route replace 198.18.16.10/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.11/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.12/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.13/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.14/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.15/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.16/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.17/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.18/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.19/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.20/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.21/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.22/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.23/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.24/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.25/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.26/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.27/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.28/32 dev eth1 src 172.31.1.1
+route replace 198.18.16.29/32 dev eth1 src 172.31.1.1
+route replace 2001:db8:1::/64 dev eth1

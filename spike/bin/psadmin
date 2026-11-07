@@ -1,0 +1,16 @@
+#!/bin/bash
+# Run a PowerShell script elevated through the spike runner: psadmin <name> < script
+# Prints the output and exits with the job's exit code.
+set -euo pipefail
+name="$(date +%H%M%S%N)-$1"
+queue=/mnt/c/HLabSpike/queue
+done=/mnt/c/HLabSpike/done
+{ echo '$ErrorActionPreference = "Stop"'; cat; } > "$queue/$name.tmp"
+mv "$queue/$name.tmp" "$queue/$name.ps1"
+for _ in $(seq 1 3000); do
+  [[ -f "$done/$name.rc" ]] && break
+  sleep 0.2
+done
+[[ -f "$done/$name.rc" ]] || { echo "psadmin: timeout ($name)" >&2; exit 124; }
+cat "$done/$name.out" "$done/$name.err" 2>/dev/null | tr -d '\r'
+exit "$(tr -dc 0-9 < "$done/$name.rc")"

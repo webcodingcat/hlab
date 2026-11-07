@@ -1,0 +1,16 @@
+[Unit]
+Description=HLab spike agent (hv_sock)
+# The agent sets up the network, so it must not wait for it: start right after the
+# local file systems, before cloud-init and networkd-wait-online.
+DefaultDependencies=no
+After=local-fs.target systemd-modules-load.service
+Before=sysinit.target
+
+[Service]
+ExecStartPre=/usr/sbin/modprobe hv_sock
+ExecStart=/usr/local/sbin/hlab-agent
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=sysinit.target

@@ -1,0 +1,3 @@
+#!/bin/bash
+# Run a PowerShell command as the normal user: wps '<command>'
+exec /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -NonInteractive -Command "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $1" 2>&1 | tr -d '\r'

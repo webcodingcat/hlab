@@ -1,0 +1,10 @@
+#!/usr/sbin/nft -f
+# Spike: guests reach the Internet through the uplink (eth2); lab traffic stays routed.
+table inet hlab_nat
+delete table inet hlab_nat
+table inet hlab_nat {
+    chain postrouting {
+        type nat hook postrouting priority srcnat; policy accept;
+        oifname "eth2" ip saddr 198.18.0.0/15 counter masquerade
+    }
+}
