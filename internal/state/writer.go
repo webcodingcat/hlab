@@ -95,7 +95,14 @@ func (w *Writer) run() {
 		}
 		w.mu.Lock()
 		data, queued := w.latest, w.queued
+		// a Put that comes while the writer wakes up leaves a second wake-up
+		// for content the writer then writes at once; writing it again would
+		// replace a file that a reader may hold open, which Windows refuses
+		upToDate := queued == w.saved && w.err == nil
 		w.mu.Unlock()
+		if upToDate {
+			continue
+		}
 		err := writeFile(w.path, data)
 		w.mu.Lock()
 		w.saved, w.err = queued, err

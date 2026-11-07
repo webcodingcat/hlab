@@ -36,6 +36,28 @@ func TestWriterWritesTheNewestContent(t *testing.T) {
 	}
 }
 
+// A Put that comes while the writer wakes up leaves a wake-up behind for
+// content that is on disk already. Writing it again would replace the file
+// under a reader, which fails on Windows ("access denied").
+func TestAWakeUpWithoutNewContentWritesNothing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	writer := NewWriter(path, quiet)
+	writer.Put([]byte("first"))
+	if err := writer.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	writer.wake <- struct{}{} // the wake-up a Put left behind
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("the writer wrote the same content again: %v", err)
+	}
+}
+
 func TestFailedWriteLeavesTheOldFileAndIsTriedAgain(t *testing.T) {
 	retryFirst, retryLongest = time.Millisecond, time.Millisecond
 	t.Cleanup(func() { retryFirst, retryLongest = time.Second, 30*time.Second })

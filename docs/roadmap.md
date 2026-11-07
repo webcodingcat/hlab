@@ -84,7 +84,10 @@ cookie instead of a token. Checked by hand in WSL2 with hcloud 1.70.2:
 empty plan after it, destroy). Not yet: the other platforms (`hlabd` without
 `--platform fake` says so), `hlab start` (1b), 503 for requests that arrive while
 the lab stops (no slow stop yet: the ports close at once), the formal smoke tests
-(1-L), stop requests from signing out and the tray (6b).
+(1-L), stop requests from signing out and the tray (6b). Also fixed in 1a-5: the
+state writer wrote the same content twice when a change came while it woke up;
+on Windows the second write failed when a reader held `state.json`
+("access denied"), which made `TestChangeSavesTheNewState` fail now and then.
 
 Not there yet: `bin/dev test --agent` (it reports "not yet implemented"), `deploy`,
 `itest` and `smoke`.

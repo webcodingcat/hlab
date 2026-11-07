@@ -94,10 +94,12 @@ The layer test checks production code only: tests may import fakes and helpers.
   `snake_case` names and RFC 3339 times in UTC. `state.Writer` writes it in the
   background, only the newest content: `state.json.tmp`, fsync, then over
   `state.json` (on Windows `MoveFileExW` with `MOVEFILE_WRITE_THROUGH`, which
-  `os.Rename` leaves out). A file cut off halfway is never `state.json`. A failed
-  write is logged and tried again on its own, after 1 s and then twice as long each
-  time, up to 30 s (a virus scanner may hold the file for a moment); `Flush`
-  reports the error of the last try.
+  `os.Rename` leaves out). A file cut off halfway is never `state.json`. Content
+  that is on disk already is not written again: on Windows, replacing a file that
+  someone reads fails with "access denied". A failed write is logged and tried
+  again on its own, after 1 s and then twice as long each time, up to 30 s (a
+  virus scanner or a reader may hold the file for a moment); `Flush` reports the
+  error of the last try.
 - **Limits.** A project's `Limits` field of zero means no limit, so that a limit
   added later needs no migration.
 - **Versions.** The file has a version (`currentVersion` in `file.go`). An older file
