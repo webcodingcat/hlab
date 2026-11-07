@@ -29,6 +29,8 @@ func main() {
 	http.HandleFunc("/nft", runWithBody("nft", "-f", "-"))
 	// Addresses and routes; -force keeps going over entries that already exist.
 	http.HandleFunc("/ip", runWithBody("ip", "-force", "-batch", "-"))
+	// Tell neighbours that an address moved to this appliance (new MAC after an update).
+	http.HandleFunc("/announce", runWithBody("/usr/local/sbin/hlab-announce"))
 	log.Fatal(http.Serve(listener, nil))
 }
 

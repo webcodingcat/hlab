@@ -1,0 +1,11 @@
+#!/bin/sh
+# Read "<interface> <address>" lines on stdin and announce each address on its link:
+# gratuitous ARP for IPv4, unsolicited neighbour advertisement for IPv6. Spike only.
+status=0
+while read -r iface address; do
+  case "$address" in
+    *:*) ndsend "$address" "$iface" >/dev/null || status=1 ;;
+    *) arping -q -U -c 2 -w 1 -I "$iface" "$address" || true ;;
+  esac
+done
+exit $status
