@@ -12,11 +12,12 @@ import (
 
 // newServeAsClient returns a client without a token of an API that serves
 // as the caller.
-func newServeAsClient(t *testing.T, caller web.Caller) *spectest.Client {
+func newServeAsClient(t *testing.T, caller web.Caller, fakeLab *backend, rateLimit int) *spectest.Client {
 	t.Helper()
 	api := web.NewAPI(web.Options{
-		Backend: &backend{faults: map[int64]state.APIFault{}},
-		Logger:  slog.New(slog.DiscardHandler),
+		Backend:   fakeLab,
+		RateLimit: rateLimit,
+		Logger:    slog.New(slog.DiscardHandler),
 	})
 	api.Handle("DELETE /ssh_keys/{id}", func(req *web.Request) (int, any, error) {
 		if req.Caller != caller {
@@ -28,7 +29,8 @@ func newServeAsClient(t *testing.T, caller web.Caller) *spectest.Client {
 }
 
 func TestServeAsAdmitsTheCallerWithoutAToken(t *testing.T) {
-	client := newServeAsClient(t, web.Caller{ProjectID: project, Permission: state.PermissionReadWrite})
+	client := newServeAsClient(t, web.Caller{ProjectID: project, Permission: state.PermissionReadWrite},
+		&backend{faults: map[int64]state.APIFault{}}, 0)
 	response := client.Do(http.MethodDelete, "/v1/ssh_keys/1", nil)
 	if response.Status != http.StatusNoContent {
 		t.Errorf("got %d, want 204", response.Status)
@@ -39,8 +41,24 @@ func TestServeAsAdmitsTheCallerWithoutAToken(t *testing.T) {
 }
 
 func TestServeAsStillChecksThePermission(t *testing.T) {
-	client := newServeAsClient(t, web.Caller{ProjectID: project, Permission: state.PermissionRead})
+	client := newServeAsClient(t, web.Caller{ProjectID: project, Permission: state.PermissionRead},
+		&backend{faults: map[int64]state.APIFault{}}, 0)
 	if response := client.Do(http.MethodDelete, "/v1/ssh_keys/1", nil); response.Status != http.StatusForbidden {
 		t.Errorf("got %d, want 403", response.Status)
+	}
+}
+
+// The web UI polls: it must neither use up the project's rate limit nor
+// take the faults a test injected for the tools.
+func TestServeAsSkipsTheRateLimitAndInjectedFaults(t *testing.T) {
+	fakeLab := &backend{faults: map[int64]state.APIFault{project: {Status: 503, Count: 1}}}
+	client := newServeAsClient(t, web.Caller{ProjectID: project, Permission: state.PermissionReadWrite}, fakeLab, 1)
+	for range 3 {
+		if response := client.Do(http.MethodDelete, "/v1/ssh_keys/1", nil); response.Status != http.StatusNoContent {
+			t.Fatalf("got %d, want 204", response.Status)
+		}
+	}
+	if fakeLab.faults[project].Count != 1 {
+		t.Errorf("the fault has %d calls left, want 1", fakeLab.faults[project].Count)
 	}
 }

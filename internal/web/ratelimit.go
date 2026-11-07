@@ -30,6 +30,7 @@ type rateLimiter struct {
 
 	mu      sync.Mutex
 	buckets map[budget]bucket
+	pruned  time.Time // when full buckets were last dropped
 }
 
 // budget names one budget of a project.
@@ -55,14 +56,12 @@ func (r *rateLimiter) take(header http.Header, projectID int64, path string) boo
 		return true
 	}
 	key := budget{projectID: projectID, actions: isActionsPath(path)}
-	perHour := float64(r.perHour)
-	if key.actions {
-		perHour *= 2
-	}
+	perHour := r.budgetPerHour(key)
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	now := r.now()
+	r.prune(now)
 	perSecond := perHour / time.Hour.Seconds()
 	current, found := r.buckets[key]
 	if !found {
@@ -81,4 +80,30 @@ func (r *rateLimiter) take(header http.Header, projectID int64, path string) boo
 	header.Set("RateLimit-Remaining", strconv.Itoa(int(math.Floor(current.left))))
 	header.Set("RateLimit-Reset", strconv.FormatInt(now.Unix()+int64(untilFull), 10))
 	return allowed
+}
+
+// budgetPerHour returns the size of a budget: the actions endpoints have
+// twice that of the other routes.
+func (r *rateLimiter) budgetPerHour(key budget) float64 {
+	if key.actions {
+		return 2 * float64(r.perHour)
+	}
+	return float64(r.perHour)
+}
+
+// prune drops, at most once an hour, the buckets that are full again: a
+// missing bucket starts full, so nothing changes, and the buckets of deleted
+// projects do not pile up. The caller holds the mutex.
+func (r *rateLimiter) prune(now time.Time) {
+	if now.Sub(r.pruned) < time.Hour {
+		return
+	}
+	r.pruned = now
+	for key, current := range r.buckets {
+		perHour := r.budgetPerHour(key)
+		refilled := current.left + now.Sub(current.at).Seconds()*perHour/time.Hour.Seconds()
+		if refilled >= perHour {
+			delete(r.buckets, key)
+		}
+	}
 }

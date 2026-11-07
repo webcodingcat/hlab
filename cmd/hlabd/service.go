@@ -59,8 +59,6 @@ func start(opts serviceOptions) (*service, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, err = os.Stat(filepath.Join(opts.DataDir, lab.StateFile))
-	newLab := errors.Is(err, os.ErrNotExist)
 	l, err := lab.Open(lab.Options{
 		DataDir:   opts.DataDir,
 		TimeScale: cfg.TimeScale,
@@ -77,21 +75,17 @@ func start(opts serviceOptions) (*service, error) {
 		shutdown:  make(chan struct{}),
 		failed:    make(chan error, 3),
 	}
-	if err := svc.serve(cfg, newLab); err != nil {
+	if err := svc.serve(cfg); err != nil {
 		_ = svc.close() // the error that stopped the start says more
 		return nil, err
 	}
 	return svc, nil
 }
 
-// serve creates the default project of a new lab, listens on the ports,
-// writes the control token and starts the servers.
-func (s *service) serve(cfg config.Config, newLab bool) error {
-	if newLab {
-		if _, err := s.lab.CreateProject(defaultProject, state.Limits{}); err != nil {
-			return err
-		}
-	}
+// serve listens on the ports, creates the default project of a new lab,
+// writes the control token and starts the servers. The ports come first, so
+// that a start that fails on a taken port leaves a new lab as it was.
+func (s *service) serve(cfg config.Config) error {
 	// in the order of the handlers: Cloud API, Hetzner API, control
 	var listeners []net.Listener
 	for _, port := range []int{cfg.Ports.Cloud, cfg.Ports.Hetzner, cfg.Ports.Control} {
@@ -104,11 +98,20 @@ func (s *service) serve(cfg config.Config, newLab bool) error {
 		}
 		listeners = append(listeners, listener)
 	}
-	token := newControlToken()
-	if err := s.opts.Parts.Lifecycle.WriteToken(s.tokenFile, []byte(token)); err != nil {
+	closeListeners := func() {
 		for _, open := range listeners {
 			_ = open.Close()
 		}
+	}
+	if s.lab.Fresh() {
+		if _, err := s.lab.CreateProject(defaultProject, state.Limits{}); err != nil {
+			closeListeners()
+			return err
+		}
+	}
+	token := newControlToken()
+	if err := s.opts.Parts.Lifecycle.WriteToken(s.tokenFile, []byte(token)); err != nil {
+		closeListeners()
 		return fmt.Errorf("writing the control token: %w", err)
 	}
 	cloudAddress := listeners[0].Addr().String()

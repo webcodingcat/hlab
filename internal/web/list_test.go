@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/webcodingcat/hlab/internal/web"
@@ -48,6 +49,18 @@ func TestPaginateAnEmptyList(t *testing.T) {
 	page, meta := web.Paginate(newRequest("/v1/servers"), []int{})
 	if len(page) != 0 || meta.Pagination.LastPage != 1 || meta.Pagination.NextPage != nil {
 		t.Errorf("the page is %v, the pagination %+v", page, meta.Pagination)
+	}
+}
+
+// Behind the lab control, http.StripPrefix cuts the path; the links keep
+// the path the client sent.
+func TestPaginateLinksThePathTheClientSent(t *testing.T) {
+	req := newRequest("/_lab/projects/default/cloud/v1/servers?page=2")
+	req.URL.Path = "/v1/servers" // as http.StripPrefix leaves it
+	web.Paginate(req, make([]int, 60))
+	want := `<http://example.com/_lab/projects/default/cloud/v1/servers?page=1>; rel="prev"`
+	if link := req.Header.Get("Link"); !strings.HasPrefix(link, want) {
+		t.Errorf("Link is\n%s\nwant it to start with\n%s", link, want)
 	}
 }
 

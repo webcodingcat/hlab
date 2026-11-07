@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -67,12 +68,18 @@ func Paginate[T any](req *Request, items []T) ([]T, Meta) {
 func linkHeader(req *Request, pagination Pagination) string {
 	rest := req.URL.Query()
 	rest.Del("page")
+	// the path as the client sent it: behind the lab control (ServeAs),
+	// http.StripPrefix has cut URL.Path, but not RequestURI
+	path := req.URL.Path
+	if sent, err := url.ParseRequestURI(req.RequestURI); err == nil {
+		path = sent.Path
+	}
 	pageURL := func(page int) string {
 		query := "page=" + strconv.Itoa(page)
 		if encoded := rest.Encode(); encoded != "" {
 			query += "&" + encoded
 		}
-		return fmt.Sprintf("<http://%s%s?%s>", req.Host, req.URL.Path, query)
+		return fmt.Sprintf("<http://%s%s?%s>", req.Host, path, query)
 	}
 	var links []string
 	if pagination.PreviousPage != nil {

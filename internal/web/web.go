@@ -175,7 +175,10 @@ func (api *API) admit(w http.ResponseWriter, r *http.Request) (Caller, bool) {
 	// Hetzner's answers carry one from here on; those above, and to unknown
 	// routes, do not. hcloud-go adds it to its error texts.
 	w.Header().Set("X-Correlation-Id", correlationID())
-	if !api.limiter.take(w.Header(), caller.ProjectID, r.URL.Path) {
+	// a vouched caller (the web UI) neither counts against the project's rate
+	// limit nor takes its injected faults: those are for the tools under test,
+	// and a page that polls would use them up
+	if !vouched && !api.limiter.take(w.Header(), caller.ProjectID, r.URL.Path) {
 		WriteError(w, api.logger, RateLimitExceeded())
 		return Caller{}, false
 	}
@@ -183,9 +186,11 @@ func (api *API) admit(w http.ResponseWriter, r *http.Request) (Caller, bool) {
 		WriteError(w, api.logger, Forbidden())
 		return Caller{}, false
 	}
-	if err := injectFault(r.Context(), api.backend, caller.ProjectID); err != nil {
-		WriteError(w, api.logger, err)
-		return Caller{}, false
+	if !vouched {
+		if err := injectFault(r.Context(), api.backend, caller.ProjectID); err != nil {
+			WriteError(w, api.logger, err)
+			return Caller{}, false
+		}
 	}
 	return caller, true
 }
@@ -195,7 +200,8 @@ type callerKey struct{}
 
 // ServeAs answers requests as the given caller, without a token: the lab
 // control vouches for the caller (the web UI acts for a project and keeps no
-// token in the browser). Every check after the token's still applies.
+// token in the browser). The permission still applies; the rate limit and
+// injected faults do not (admit).
 func (api *API) ServeAs(caller Caller) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		api.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), callerKey{}, caller)))
