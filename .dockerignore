@@ -1,8 +1,0 @@
-.git
-**/__pycache__
-**/.pytest_cache
-tests/tofu-smoke/.terraform
-tests/tofu-smoke/*.tfstate*
-.cache
-.venv
-**/*.egg-info

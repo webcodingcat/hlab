@@ -1,9 +1,7 @@
 ---
-# Runs what a developer runs: `bin/hlab test` (the style checks, then the unit
-# tests in the development image with NET_ADMIN). The live tests (`bin/hlab
-# itest`) and the OpenTofu smoke test stay manual: they need a running lab,
-# which is a privileged container with /dev/kvm, and GitHub's runners offer
-# neither.
+# Runs what a developer runs: the checks and the unit tests, on Linux (with
+# the race detector) and on Windows. The live tests and the smoke tests stay
+# manual: they need Hyper-V, which GitHub's runners do not offer.
 name: test
 
 "on":
@@ -21,14 +19,53 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  linux:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       # actions/checkout v7.0.1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      # plain `docker build` as on a developer's machine, so no layer cache
-      # between runs: the images build from scratch each time
-      - run: bin/hlab test
+      # actions/setup-go v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+      - run: sudo apt-get install -y shellcheck yamllint
+      # pwsh comes with the runner, PSScriptAnalyzer not always
+      - shell: pwsh
+        run: |
+          if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) {
+            Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          }
+      - run: bin/dev lint
+      - run: bin/dev test
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      # actions/checkout v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      # actions/setup-go v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+      - run: |
+          if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) {
+            Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          }
+      # shellcheck and yamllint run in the Linux job only
+      - run: ./bin/dev.ps1 lint
+      - run: ./bin/dev.ps1 test

@@ -1,2 +1,3 @@
-# Scripts run inside the Linux container: never check them out with CRLF on Windows.
+# LF everywhere: shell scripts must not get CRLF on a Windows checkout, and
+# gofmt and shfmt then see the same files on both systems.
 * text=auto eol=lf

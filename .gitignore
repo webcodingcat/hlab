@@ -1,8 +1,1 @@
-__pycache__/
-.pytest_cache/
-.terraform/
-*.tfstate
-*.tfstate.*
-.cache/
-.venv/
-*.egg-info/
+/build/

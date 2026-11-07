@@ -1,41 +1,35 @@
 # Style
 
-Official standards first, checked by `bin/hlab lint` (also part of `bin/hlab test`);
-`bin/hlab format` applies what the formatters can fix.
+Official standards first, checked by `bin/dev lint` (CI runs it);
+`bin/dev format` applies what the formatters can fix.
 
 | Files | Standard | Tool |
 |---|---|---|
-| Python | [PEP 8](https://peps.python.org/pep-0008/), [PEP 257](https://peps.python.org/pep-0257/) | `ruff format`, `ruff check` (`pyproject.toml`) |
-| Python types | [typing](https://typing.python.org/) | `mypy hlabd` (`pyproject.toml`) |
-| Bash | [Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html) | `shfmt -i 2 -ci -bn`, `shellcheck` |
-| Terraform | [OpenTofu/Terraform style conventions](https://developer.hashicorp.com/terraform/language/style) | `tofu fmt` |
-| YAML | yamllint defaults | `yamllint` (`.yamllint`) |
+| Go | [Effective Go](https://go.dev/doc/effective_go), [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments) | `gofmt`, `go vet`, `golangci-lint` (`.golangci.yml`) |
+| Bash | [Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html) | `shfmt -i 2 -ci -bn`, `shellcheck`, 80 characters per line |
+| PowerShell | [PowerShell Practice and Style](https://poshcode.gitbook.io/powershell-practice-and-style) | `PSScriptAnalyzer` (default rules) |
+| YAML | yamllint defaults | `yamllint --strict` (`.yamllint`) |
 | Commits | [Git's conventions](https://git-scm.com/docs/SubmittingPatches#describe-changes): imperative subject (~50 characters), blank line, why | by review |
+
+golangci-lint runs its standard linters (errcheck, govet, ineffassign, staticcheck,
+unused) plus errorlint, misspell, revive, unconvert and unparam, and checks gofmt
+and goimports; both `bin/dev lint` and `bin/dev.ps1 lint` run it for Linux and for
+Windows.
 
 ## Rules on top of the standards
 
 - English throughout.
-- Readable for developers before short: descriptive names; no single letters
-  except loop variables and one-line lambdas; understandable abbreviations
-  (`cfg`, `ip`, `cmd`, IDs like `sid`) are fine.
-- One job per function; no `name()` that only calls `_name()`.
-- Comments and docstrings say why (Hetzner's behaviour, caveats); the code says
-  what. Docstrings and shell function headers are sentences; other comments
-  (Python and shell) may be short lowercase fragments (a deliberate deviation
-  from PEP 8), one style per comment.
-- Wrappers (`bin/`): functions may read the script's read-only constants
-  (image names, the repository path) instead of taking them as parameters.
-- Layout of `hlabd/` (the layers are in DEVELOPING.md, The pieces):
-  API modules are module-level functions taking `lab` first, with thin routes;
-  every resource's actions are a table of `ActionSpec` rows run by `lab.act()`;
-  errors come from `errors.py`; lookups go through `lab.get_or_404()` or a
-  `<thing>_or_404()` helper; JSON shapes are `<thing>_json(lab, thing)`.
-- Types where they help reading: `lab: Lab`, `state: State`, and the records of
-  `records.py` (`server: Server`, `nic: Nic`, ...), so mypy catches a mistyped field;
-  code that treats every kind of record alike takes `Record` (or a type variable bound
-  to it), never `Any`; only helpers that also take catalogue entries or JSON shapes, such as
-  `filtered` and `sort_items` in `api/web.py`, are typed over `Mapping[str, Any]`;
-  where a field is picked by a variable key, one commented `cast` says why.
-  Annotating everything is not the goal.
-- Tests: one file per feature; test names are sentences; a comment notes where
-  a test checks Hetzner's behaviour.
+- Readable for developers before short: descriptive names (`server`, `volume`, not
+  `s`, `v`); single letters only for loop variables, receivers and short closures;
+  understandable abbreviations (`cfg`, `ip`, `cmd`, IDs like `sid`) are fine.
+- One job per function; no function that only passes its arguments on to another.
+- One way per thing: the same thing is done the same way everywhere; an exception
+  says why next to it.
+- Comments and doc comments say why (Hetzner's behaviour, caveats); the code says
+  what. Doc comments and shell function headers are sentences; other comments may be
+  short lowercase fragments.
+- Scripts in `bin/`: functions may read the script's read-only constants (the
+  repository path, tool flags) instead of taking them as parameters.
+- Tests: one file per feature; test names say what they check
+  (`TestPackagesImportOnlyWhatTheirLayerAllows`); a comment notes where a test checks
+  Hetzner's behaviour.

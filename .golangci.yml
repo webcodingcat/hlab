@@ -1,0 +1,19 @@
+---
+# The linters of STYLE.md: golangci-lint's standard set (errcheck, govet,
+# ineffassign, staticcheck, unused) and a few that check Go Code Review
+# Comments and Effective Go.
+version: "2"
+linters:
+  enable:
+    - errorlint
+    - misspell
+    - revive
+    - unconvert
+    - unparam
+  settings:
+    misspell:
+      locale: US
+formatters:
+  enable:
+    - gofmt
+    - goimports

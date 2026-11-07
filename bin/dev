@@ -1,0 +1,192 @@
+#!/usr/bin/env bash
+# Development commands for HLab on Linux and WSL2 (DEVELOPING.md, Tools):
+#   bin/dev lint             check formatting and style (STYLE.md)
+#   bin/dev format           apply what the formatters can fix
+#   bin/dev test             the unit tests, with the race detector
+#   bin/dev test --windows   the unit tests built for Windows, run through
+#                            WSL interop
+#   bin/dev test --agent     the agent's tests in a network namespace
+#                            (not yet implemented)
+#   bin/dev build            the binaries for Linux and Windows into build/
+#   bin/dev spec-diff        Hetzner's current specs against compat/
+#                            (not yet implemented)
+set -euo pipefail
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly REPO
+readonly TOOLS=(go tool "-modfile=${REPO}/tools/go.mod")
+readonly SHFMT_FLAGS=(-i 2 -ci -bn)
+
+#######################################
+# Print an error and exit.
+# Arguments:
+#   The message.
+#######################################
+die() {
+  echo "bin/dev: $*" >&2
+  exit 1
+}
+
+#######################################
+# Exit with an install hint unless a command is on PATH.
+# Arguments:
+#   The command, the hint.
+#######################################
+need() {
+  command -v "$1" >/dev/null || die "$1 is missing: $2"
+}
+
+#######################################
+# Print the shell scripts of the repository, one per line.
+#######################################
+shell_files() {
+  echo bin/dev
+  git ls-files --cached --others --exclude-standard '*.sh'
+}
+
+#######################################
+# Report every line of the shell scripts longer than 80 characters, which
+# the Google Shell Style Guide forbids and shfmt does not check.
+#######################################
+check_line_length() {
+  local files
+  mapfile -t files < <(shell_files)
+  ! awk 'length > 80 { print FILENAME ":" FNR ": " length " characters"
+    found = 1 } END { exit !found }' "${files[@]}" >&2
+}
+
+#######################################
+# Run PSScriptAnalyzer on every PowerShell file. In WSL2 it uses Windows
+# PowerShell when pwsh is not installed.
+#######################################
+check_powershell() {
+  local shell="pwsh" root="${REPO}"
+  if ! command -v pwsh >/dev/null; then
+    need powershell.exe "install PowerShell (pwsh) or run from WSL2"
+    shell="powershell.exe"
+    root="$(wslpath -w "${REPO}")"
+  fi
+  "${shell}" -NoProfile -NonInteractive -Command "
+    \$ErrorActionPreference = 'Stop'
+    if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) {
+      Write-Error 'Install-Module PSScriptAnalyzer -Scope CurrentUser'
+    }
+    \$found = @(Invoke-ScriptAnalyzer -Path '${root}' -Recurse)
+    \$found | Format-Table -AutoSize | Out-String -Width 160
+    exit [int](\$found.Count -gt 0)"
+}
+
+#######################################
+# Check formatting and style of everything in the repository.
+#######################################
+lint() {
+  need shellcheck "sudo apt install shellcheck"
+  need yamllint "sudo apt install yamllint"
+  local unformatted goos golangci_lint
+  unformatted="$(gofmt -l cmd internal)"
+  [[ -z "${unformatted}" ]] || die "gofmt would change: ${unformatted}"
+  # `go tool` would build the linter for GOOS; -n builds it for this machine
+  # and prints its path
+  golangci_lint="$("${TOOLS[@]}" -n golangci-lint)"
+  # both targets, so files for the other system are checked as well
+  for goos in linux windows; do
+    GOOS="${goos}" go vet ./...
+    GOOS="${goos}" "${golangci_lint}" run ./...
+  done
+  local shell_list
+  mapfile -t shell_list < <(shell_files)
+  "${TOOLS[@]}" shfmt "${SHFMT_FLAGS[@]}" -d "${shell_list[@]}"
+  shellcheck "${shell_list[@]}"
+  check_line_length
+  check_powershell
+  yamllint --strict .
+}
+
+#######################################
+# Apply what the formatters can fix; `lint` reports the rest.
+#######################################
+format() {
+  local shell_list
+  mapfile -t shell_list < <(shell_files)
+  gofmt -w cmd internal
+  "${TOOLS[@]}" golangci-lint fmt ./...
+  "${TOOLS[@]}" shfmt "${SHFMT_FLAGS[@]}" -w "${shell_list[@]}"
+}
+
+#######################################
+# Build the unit tests for Windows and run them through WSL interop, each
+# in its package's directory as `go test` would. Windows needs no Go.
+#######################################
+test_windows() {
+  [[ -e /proc/sys/fs/binfmt_misc/WSLInterop ]] \
+    || die "test --windows needs WSL2 with interop"
+  local out_dir failed=0 pkg dir exe
+  out_dir="$(mktemp -d)"
+  while read -r pkg dir; do
+    exe="${out_dir}/${pkg//\//_}.test.exe"
+    GOOS=windows CGO_ENABLED=0 go test -c -o "${exe}" "${pkg}"
+    if (cd "${dir}" && "${exe}"); then
+      echo "ok      ${pkg} (windows)"
+    else
+      echo "FAIL    ${pkg} (windows)"
+      failed=1
+    fi
+  done < <(GOOS=windows go list \
+    -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}} {{.Dir}}{{end}}' \
+    ./...)
+  rm -rf "${out_dir}"
+  return "${failed}"
+}
+
+#######################################
+# Build the binaries without cgo: everything for Linux, the service and the
+# CLI for Windows.
+#######################################
+build() {
+  local version
+  version="$(git describe --always --dirty --match 'v[0-9]*.[0-9]*')"
+  local flags=(-trimpath -ldflags "-X main.version=${version}")
+  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build "${flags[@]}" -o build/linux/ ./cmd/...
+  CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+    go build "${flags[@]}" -o build/windows/ ./cmd/hlabd ./cmd/hlab
+  echo "built ${version} into build/linux and build/windows"
+}
+
+#######################################
+# Report a command that a later phase brings (docs/roadmap.md).
+# Arguments:
+#   The command.
+#######################################
+not_yet() {
+  die "$1 is not yet implemented (docs/roadmap.md)"
+}
+
+main() {
+  cd "${REPO}"
+  case "${1:-}" in
+    lint) lint ;;
+    format) format ;;
+    test)
+      case "${2:-}" in
+        "")
+          need gcc "sudo apt install gcc (the race detector needs cgo)"
+          # -count=1: the layer test reads packages through the go command,
+          # which the test cache does not see
+          CGO_ENABLED=1 go test -race -count=1 ./...
+          ;;
+        --windows) test_windows ;;
+        --agent) not_yet "test --agent" ;;
+        *) die "unknown option: $2" ;;
+      esac
+      ;;
+    build) build ;;
+    spec-diff) not_yet spec-diff ;;
+    *)
+      sed -n '2,/^set /p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//' >&2
+      exit 2
+      ;;
+  esac
+}
+
+main "$@"
