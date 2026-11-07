@@ -36,6 +36,23 @@ func TestWriterWritesTheNewestContent(t *testing.T) {
 	}
 }
 
+// A request that outlives the service's stop timeout may still change the
+// lab after it closed; that must not panic on the closed wake-up channel.
+func TestPutAfterCloseIsDropped(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	writer := NewWriter(path, quiet)
+	writer.Put([]byte("before"))
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	writer.Put([]byte("after"))
+
+	if got := readFile(t, path); got != "before" {
+		t.Errorf("the file holds %q, want before", got)
+	}
+}
+
 // A Put that comes while the writer wakes up leaves a wake-up behind for
 // content that is on disk already. Writing it again would replace the file
 // under a reader, which fails on Windows ("access denied").

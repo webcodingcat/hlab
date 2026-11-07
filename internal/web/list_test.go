@@ -28,6 +28,8 @@ func TestPaginate(t *testing.T) {
 		"?page=0&per_page=-5":     {1, 25, 1, 25, 3, nil, ptr(2)},
 		"?page=abc&per_page=1000": {1, 50, 1, 50, 2, nil, ptr(2)},
 		"?page=9":                 {0, 0, 9, 25, 3, nil, nil},
+		// not measured: the lab only must not overflow
+		"?page=9223372036854775807": {0, 0, 9223372036854775807, 25, 3, nil, nil},
 	} {
 		page, meta := web.Paginate(newRequest("/v1/servers"+query), items)
 		pagination := meta.Pagination

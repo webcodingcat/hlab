@@ -51,7 +51,12 @@ func Paginate[T any](req *Request, items []T) ([]T, Meta) {
 		pagination.NextPage = &next
 	}
 	req.Header.Set("Link", linkHeader(req, pagination))
-	start := min((page-1)*perPage, total)
+	// a page beyond the last is empty; checked first, so that a huge page
+	// cannot overflow the multiplication
+	start := total
+	if page <= last {
+		start = min((page-1)*perPage, total)
+	}
 	end := min(start+perPage, total)
 	return items[start:end], Meta{Pagination: pagination}
 }

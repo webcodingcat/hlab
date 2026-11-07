@@ -31,6 +31,7 @@ type Writer struct {
 	queued  int   // contents handed over so far
 	saved   int   // contents tried so far, on disk or failed
 	err     error // of the last try
+	closed  bool
 }
 
 // NewWriter starts a writer for the file at path; it logs failed writes.
@@ -46,12 +47,20 @@ func NewWriter(path string, logger *slog.Logger) *Writer {
 	return w
 }
 
-// Put hands over the newest content of the file; it does not wait.
+// Put hands over the newest content of the file; it does not wait. After
+// Close it logs and drops the content: a request that outlived the service's
+// stop timeout may still change the lab, and that change is lost.
 func (w *Writer) Put(data []byte) {
 	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.closed {
+		w.logger.Error("a change came after the state was closed; it is lost", "path", w.path)
+		return
+	}
 	w.latest = data
 	w.queued++
-	w.mu.Unlock()
+	// under the mutex, so that Close cannot close the channel in between;
+	// the send never blocks
 	select {
 	case w.wake <- struct{}{}:
 	default: // a wake-up is pending already; it will write the newest content
@@ -71,8 +80,11 @@ func (w *Writer) Flush() error {
 }
 
 // Close writes what is left and stops the writer, also when that write failed
-// (it returns the error then); Put must not follow.
+// (it returns the error then).
 func (w *Writer) Close() error {
+	w.mu.Lock()
+	w.closed = true
+	w.mu.Unlock()
 	err := w.Flush()
 	close(w.wake)
 	<-w.done

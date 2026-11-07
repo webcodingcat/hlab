@@ -1,6 +1,7 @@
 package web
 
 import (
+	"maps"
 	"net/http"
 	"regexp"
 	"slices"
@@ -67,11 +68,12 @@ func (c *Check) Labels(labels map[string]string) {
 	if c.Update {
 		keyMessage, valueMessage = "key contains invalid characters or is malformed", "value contains invalid characters or is malformed"
 	}
-	for key, value := range labels {
+	// sorted, so that the messages come in the same order on every call
+	for _, key := range slices.Sorted(maps.Keys(labels)) {
 		if !validLabelKey(key) {
 			c.Fail("labels", keyMessage)
 		}
-		if !validLabelValue(value) {
+		if !validLabelValue(labels[key]) {
 			c.Fail("labels", valueMessage)
 		}
 	}
