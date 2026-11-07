@@ -121,11 +121,17 @@ the tests. Look there before writing such a part anew.
 
 ### Open for 1b-2 and later
 
-- `Change` holds the mutex for 17 ms at 5000 actions. Before servers report
-  progress often: encode only the kinds that changed, or copy and compare
-  actions per record instead of per kind (1b-4 at the latest).
-- Live tests that need administrator rights (HostNet, NRPT) come with 1b-3; the
-  task "HLab dev" (1b-5) or a similar one is the way to elevation without UAC.
+- `Change` holds the mutex for 17 ms at 5000 actions: encode only the kinds
+  that changed, or copy and compare actions per record instead of per kind.
+  This runs as its own step next to 1b-2, in `internal/state` and
+  `internal/lab` only.
+- Live tests that need administrator rights (HostNet, NRPT) come with 1b-3.
+  They run through a task "HLab itest" in the Task Scheduler (highest rights,
+  created once as administrator): `bin/dev itest` copies the test `.exe` to
+  `C:\HLabDev\itest`, starts the task with `schtasks /run` and reads the
+  output and exit code, without UAC. Only the developer and administrators may
+  write that folder. 1b-3 brings forward the part of `dev-install` (1b-5) that
+  creates the task.
 - The seed's contents (with name servers) come with `internal/seed` (1b-4); the
   ISO's format is checked: label `cidata`, Joliet names.
 - `ShutdownVM` against a real guest (shutdown service) is checked with the first
