@@ -36,6 +36,7 @@ var allowedImports = map[string][]string{
 	"internal/platform/windows/pshost": {},
 	"internal/platform/linux":          {"internal/platform"},
 	"internal/platform/fake":           {"internal/platform"},
+	"internal/platform/contract":       {"internal/platform"},
 	"internal/agentproto":              {},
 	"internal/agent":                   {"internal/agentproto"},
 	"internal/vhdx":                    {},

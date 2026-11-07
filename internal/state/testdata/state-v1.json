@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "saved": "2026-11-07T18:00:00Z",
+  "next_ids": {
+    "actions": 1000005,
+    "projects": 1000002,
+    "ssh_keys": 1000004,
+    "tokens": 1000003
+  },
+  "kinds": {
+    "actions": [
+      {
+        "id": 1000004,
+        "project_id": 1000001,
+        "command": "create_ssh_key",
+        "status": "success",
+        "progress": 100,
+        "started": "2026-11-07T17:59:00Z",
+        "finished": "2026-11-07T17:59:00Z",
+        "error": null,
+        "resources": [{"type": "ssh_key", "id": 1000003}]
+      }
+    ],
+    "projects": [
+      {
+        "id": 1000001,
+        "name": "default",
+        "created": "2026-11-07T17:58:00Z",
+        "limits": {"servers": 10, "cores": 40, "primary_ips": 20, "floating_ips": 10, "volume_gb": 1000, "networks": 10, "load_balancers": 5}
+      }
+    ],
+    "ssh_keys": [
+      {
+        "id": 1000003,
+        "project_id": 1000001,
+        "name": "admin",
+        "labels": {},
+        "created": "2026-11-07T17:59:00Z",
+        "fingerprint": "b7:2f:30:a0:2f:6c:58:6c:21:04:58:61:ba:06:3b:2f",
+        "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC0Xm6pQ4tMSJqgw3F4gnxH9dqKZ1e4m1bxEuPQ8xWzD admin@example"
+      }
+    ],
+    "tokens": [
+      {
+        "id": 1000002,
+        "project_id": 1000001,
+        "name": "ci",
+        "created": "2026-11-07T17:58:30Z",
+        "permission": "read_write",
+        "hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "prefix": "hlab_1a2b"
+      }
+    ]
+  },
+  "lab": {"faults": {}}
+}

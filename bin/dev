@@ -125,7 +125,8 @@ test_windows() {
   while read -r pkg dir; do
     exe="${out_dir}/${pkg//\//_}.test.exe"
     GOOS=windows CGO_ENABLED=0 go test -c -o "${exe}" "${pkg}"
-    if (cd "${dir}" && "${exe}"); then
+    # stdin from /dev/null: the test would read the list of packages
+    if (cd "${dir}" && "${exe}" </dev/null); then
       echo "ok      ${pkg} (windows)"
     else
       echo "FAIL    ${pkg} (windows)"

@@ -32,11 +32,16 @@ the tests. Look there before writing such a part anew.
 | Step | What | State |
 |---|---|---|
 | 1a-1 | repo skeleton: Go module, minimal commands, layer test, `bin/dev`, `bin/dev.ps1`, CI, docs | done |
-| 1a-2 | `internal/state` and `internal/lab` with tests: transactions, saving, migrations, actions with a test clock | **next** |
-| 1a-3 | `internal/web` and `internal/spectest`; projects, tokens | open |
+| 1a-2 | `internal/state` and `internal/lab` with tests: transactions, saving, migrations, actions with a test clock; platform interfaces, fake, contract tests, Windows stubs | done |
+| 1a-3 | `internal/web` and `internal/spectest`; projects, tokens | **next** |
 | 1a-4 | catalog and the reading resources; SSH keys | open |
 | 1a-5 | lab control, CLI, `hlab env`; web UI skeleton | open |
 | 1a-6 | checks against the real API (read only) | open |
+
+After 1a-2: `hlabd` does not start the lab yet (1a-5). There is no `internal/config`
+yet; `lab.Options` takes the data folder and the time scale directly, and
+`hlab.yaml` comes when the service reads it. `internal/system` holds only what the
+life cycle needs.
 
 Not there yet: `bin/dev test --agent` and `bin/dev spec-diff` (they report "not yet
 implemented"), `deploy`, `itest` and `smoke`.
