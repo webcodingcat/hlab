@@ -1,0 +1,13 @@
+link set eth3 up
+link add vrf-a type vrf table 101
+link add vrf-b type vrf table 102
+link set vrf-a up
+link set vrf-b up
+link add link eth3 name eth3.100 type vlan id 100
+link add link eth3 name eth3.200 type vlan id 200
+link set eth3.100 master vrf-a
+link set eth3.200 master vrf-b
+link set eth3.100 up
+link set eth3.200 up
+address replace 10.0.0.1/16 dev eth3.100
+address replace 10.0.0.1/16 dev eth3.200

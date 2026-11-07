@@ -1,0 +1,10 @@
+#!/usr/sbin/nft -f
+# Spike: guests never reach the host or its networks through the uplink; Internet stays.
+table inet hlab_guard
+delete table inet hlab_guard
+table inet hlab_guard {
+    chain forward {
+        type filter hook forward priority filter - 10; policy accept;
+        iifname "eth1" oifname "eth2" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 } counter reject
+    }
+}

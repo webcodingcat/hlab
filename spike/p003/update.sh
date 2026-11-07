@@ -32,6 +32,9 @@ order=${ORDER:-disconnect-first}
   Mark 'new connected'
   if ('$order' -ne 'disconnect-first') { \$oldNics | Disconnect-VMNetworkAdapter; Mark 'old disconnected' }
   if ('${STOP_OLD:-yes}' -eq 'yes') { Stop-VM $old -TurnOff -Force; Mark 'old stopped' }" | tr -d '\r')
+if [[ ${ANNOUNCE:-yes} == yes ]]; then
+  (cd /mnt/c/HLabSpike && $HC "$new_id" post /announce 'C:\HLabSpike\announce.txt' | tr -d '\r' | head -1)
+fi
 t_done=$(date +%s.%N)
 sleep 8
 # The end of probing counts as an answer, so "never came back" shows as a long gap.

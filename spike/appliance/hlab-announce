@@ -1,11 +1,22 @@
 #!/bin/sh
-# Read "<interface> <address>" lines on stdin and announce each address on its link:
-# gratuitous ARP for IPv4, unsolicited neighbour advertisement for IPv6. Spike only.
-status=0
+# Read "<interface> <address>" lines on stdin and announce each address on its link once
+# the link has carrier: gratuitous ARP for IPv4; for IPv6 the address is added again with
+# ndisc_notify on, so the kernel sends an unsolicited neighbour advertisement.
+# IPv6 addresses carry their prefix length (fe80::1/64). Spike only.
 while read -r iface address; do
-  case "$address" in
-    *:*) ndsend "$address" "$iface" >/dev/null || status=1 ;;
-    *) arping -q -U -c 2 -w 1 -I "$iface" "$address" || true ;;
-  esac
+  (
+    for _ in $(seq 50); do
+      [ "$(cat "/sys/class/net/$iface/carrier" 2>/dev/null)" = 1 ] && break
+      sleep 0.1
+    done
+    case "$address" in
+      *:*)
+        sysctl -qw "net.ipv6.conf.$iface.ndisc_notify=1"
+        ip -6 address del "$address" dev "$iface" 2>/dev/null
+        ip -6 address add "$address" dev "$iface" nodad
+        ;;
+      *) arping -q -U -c 2 -I "$iface" "$address" ;;
+    esac
+  ) &
 done
-exit $status
+wait
