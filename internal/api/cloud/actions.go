@@ -12,12 +12,14 @@ import (
 	"github.com/webcodingcat/hlab/internal/web"
 )
 
-// registerActions adds the routes of actions. Listing all actions of a
-// project is gone from Hetzner's API since 2025-01-30: GET /actions returns
-// only the actions whose IDs it is given.
+// actionsListRemoved is the changelog entry of Hetzner's answer to GET
+// /actions without IDs: listing all actions was removed on 2025-01-30.
+const actionsListRemoved = "https://docs.hetzner.cloud/changelog#2025-01-30-listing-arbitrary-actions-in-the-actions-list-endpoint-is-removed"
+
+// registerActions adds the routes of actions.
 func registerActions(api *web.API, l *lab.Lab) {
-	api.Handle("GET /actions", func(r *http.Request, caller web.Caller) (int, any, error) {
-		ids, err := queryIDs(r, "id")
+	api.Handle("GET /actions", func(req *web.Request) (int, any, error) {
+		ids, err := queryIDs(req)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -25,7 +27,7 @@ func registerActions(api *web.API, l *lab.Lab) {
 		err = l.View(func(tx *state.Tx) error {
 			for _, id := range ids {
 				action, err := state.Get(tx, state.Actions, id)
-				if err == nil && action.ProjectID == caller.ProjectID {
+				if err == nil && action.ProjectID == req.Caller.ProjectID {
 					actions = append(actions, actionJSON(action))
 				}
 			}
@@ -34,13 +36,9 @@ func registerActions(api *web.API, l *lab.Lab) {
 		return http.StatusOK, schema.ActionListResponse{Actions: actions}, err
 	})
 
-	api.Handle("GET /actions/{id}", func(r *http.Request, caller web.Caller) (int, any, error) {
-		id, err := web.PathID(r, "action")
-		if err != nil {
-			return 0, nil, err
-		}
-		action, err := lab.Current(l, state.Actions, id)
-		if errors.Is(err, state.ErrNotFound) || (err == nil && action.ProjectID != caller.ProjectID) {
+	api.Handle("GET /actions/{id}", func(req *web.Request) (int, any, error) {
+		action, err := lab.Current(l, state.Actions, web.PathID(req, "id"))
+		if errors.Is(err, state.ErrNotFound) || (err == nil && action.ProjectID != req.Caller.ProjectID) {
 			return 0, nil, web.NotFound("action")
 		}
 		if err != nil {
@@ -50,18 +48,18 @@ func registerActions(api *web.API, l *lab.Lab) {
 	})
 }
 
-// queryIDs returns the IDs of a query parameter given once or more; it must
-// be given at least once.
-func queryIDs(r *http.Request, name string) ([]int64, error) {
-	values := r.URL.Query()[name]
+// queryIDs returns the IDs of the query parameter id, given once or more, as
+// Hetzner's API reads them.
+func queryIDs(req *web.Request) ([]int64, error) {
+	values := req.URL.Query()["id"]
 	if len(values) == 0 {
-		return nil, web.InvalidField(name, "is required")
+		return nil, web.Deprecated(actionsListRemoved)
 	}
 	ids := make([]int64, 0, len(values))
 	for _, value := range values {
 		id, err := strconv.ParseInt(value, 10, 64)
-		if err != nil || id < 1 {
-			return nil, web.InvalidField(name, "must be an ID")
+		if err != nil {
+			return nil, web.InvalidInput("invalid integer value")
 		}
 		ids = append(ids, id)
 	}

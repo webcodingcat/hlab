@@ -43,7 +43,7 @@ func TestRateLimit(t *testing.T) {
 		}
 	}
 	refused := client.Get("/v1/actions/1000000")
-	if refused.Status != 429 || errorCode(t, refused) != "rate_limit_exceeded" {
+	if code, _, _ := errorOf(t, refused); refused.Status != 429 || code != "rate_limit_exceeded" {
 		t.Fatalf("the fourth request answered %d %s", refused.Status, refused.Body)
 	}
 	if refused.Header.Get("RateLimit-Limit") != "3" {

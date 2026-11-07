@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net/http"
 	"regexp"
 	"slices"
 	"strings"
@@ -33,16 +34,28 @@ func ParseSelector(text string) (Selector, error) {
 	}
 	parts, ok := splitTerms(text)
 	if !ok {
-		return Selector{}, InvalidField("label_selector", "unbalanced parentheses")
+		return Selector{}, invalidSelector("missing brackets for group")
 	}
 	for _, part := range parts {
 		parsed, ok := parseTerm(strings.TrimSpace(part))
 		if !ok {
-			return Selector{}, InvalidField("label_selector", "invalid expression '"+strings.TrimSpace(part)+"'")
+			return Selector{}, invalidSelector("invalid expression '" + strings.TrimSpace(part) + "'")
 		}
 		selector.terms = append(selector.terms, parsed)
 	}
 	return selector, nil
+}
+
+// invalidSelector returns Hetzner's error for a selector it cannot parse.
+// Hetzner's reason for unbalanced brackets is known ("missing brackets for
+// group"); the others are HLab's own.
+func invalidSelector(reason string) *Error {
+	return &Error{
+		Status:  http.StatusUnprocessableEntity,
+		Code:    "invalid_input",
+		Message: "invalid label_selector: invalid syntax: " + reason,
+		Details: map[string]any{},
+	}
 }
 
 // splitTerms splits a selector at the commas outside parentheses.

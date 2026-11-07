@@ -175,22 +175,32 @@ lab control (`/_lab/...`) and the CLI call them. They report `lab.ErrInvalid`,
 `internal/web` holds what both of Hetzner's APIs share; `internal/api/cloud` (and
 later `api/hetzner`) registers its handlers on a `web.API`, one file per resource.
 
-- **Order of the checks** (`API.ServeHTTP`), as Hetzner's API: an `X-Correlation-Id`
-  on every answer, the bearer token (401 `unauthorized`), the rate limit (per
-  project, `RateLimit-*` headers, 429), the permission (a `read` token gets 403
-  `forbidden` for anything but GET and HEAD), an injected fault, then the route
-  (404 `not_found`, 405 `method_not_allowed`).
-- **Handlers** are `web.HandlerFunc`: they get the request and the `web.Caller`
-  (project and permission) and return a status and a body, which the API writes as
-  JSON, or an error. A `*web.Error` is answered as it is, with Hetzner's code;
-  any other error is a failure of the lab, logged and answered as 500
-  `server_error`. Errors have the shape `{"error": {"code", "message", "details"}}`,
-  `details` `null` when there are none, as in the spec's example.
+- **Order of the checks**, as measured on Hetzner's API (`compat/requirements.md`):
+  1. the route (`API.ServeHTTP`): a path no route takes is 404 `not_found` "api
+     route not found", before the token; so is a wildcard named `id` or `*_id`
+     whose value is no ID;
+  2. the bearer token (`API.admit`): 401 `unauthorized`, without details;
+  3. from here on every answer has an `X-Correlation-Id`;
+  4. the rate limit (per project, `RateLimit-*` headers, 429);
+  5. the permission: a `read` token gets 403 `forbidden` for anything but GET and
+     HEAD;
+  6. an injected fault;
+  7. a known path with another method is 405 `method_not_allowed` with `Allow`;
+     else the handler runs.
+- **Handlers** are `web.HandlerFunc`: they get a `*web.Request` (the request, the
+  `Caller` with project and permission, and the answer's `Header`) and return a
+  status and a body, which the API writes as JSON, or an error. A `*web.Error` is
+  answered as it is, with Hetzner's code; any other error is a failure of the lab,
+  logged and answered as 500 `server_error`. Errors have the shape
+  `{"error": {"code", "message", "details"}}`. Hetzner's `details` differ by error
+  (none, `null` or `{}`); the constructors in `internal/web/errors.go` send what
+  Hetzner sends, so handlers use them rather than building an `Error`.
 - **The web package reaches the lab** only through `web.Backend` (`TokenByHash`,
   `TakeAPIFault`), which `*lab.Lab` implements: `web` may import only `state`.
 - **Lists:** `web.Paginate` (`page`, `per_page`, `meta.pagination` with `null` for
-  pages that are not there), `web.Sort` with the fields a resource allows
-  (`web.SortKeys`), `web.ParseSelector` for `label_selector`.
+  pages that are not there, and the `Link` header, which Hetzner announced to drop
+  but still sends), `web.Sort` with the fields a resource allows (`web.SortKeys`),
+  `web.ParseSelector` for `label_selector`.
 - **JSON types** come from `hcloud-go/v2/hcloud/schema`, the types the CLI and the
   provider decode with; HLab has its own where `schema` cannot say what the real API
   sends (`web.Pagination`, whose pages may be `null`).
@@ -300,11 +310,12 @@ An older state file without the kind loads as before; no migration is needed.
 
 **A new endpoint**: add its handler to the resource's file in `internal/api/cloud`
 (a new resource: a new file, registered in `cloud.Register`) with
-`api.Handle("GET /things/{id}", ...)`; the path is the spec's, without `/v1`. Build
-the answer from `hcloud-go`'s `schema` types; refuse with the `web` errors
-(`web.NotFound`, `web.InvalidField`, …) and Hetzner's codes. Its tests send every
-request through a `spectest` client, and a comment notes where a test checks
-Hetzner's behaviour.
+`api.Handle("GET /things/{id}", ...)`; the path is the spec's, without `/v1`, and
+`web.PathID(req, "id")` reads an ID of it. Build the answer from `hcloud-go`'s
+`schema` types; refuse with the `web` errors (`web.NotFound`, `web.InvalidInput`,
+…) and Hetzner's codes and messages. Its tests send every request through a
+`spectest` client, and a comment notes where a test checks Hetzner's behaviour;
+an answer measured on the real API goes into `compat/requirements.md`.
 
 **A spec deviation** (the real API answers what the spec does not allow): add an
 entry to `compat/spec-deviations.yaml` with the pointer into the spec, the value if

@@ -134,10 +134,21 @@ func TestActionsOfOtherProjectsAreNotFound(t *testing.T) {
 	}
 }
 
+// Hetzner's API (measured 2026-11-07): without IDs, listing actions is a
+// removed functionality (410); an ID that is no number is invalid input.
 func TestActionsNeedIDs(t *testing.T) {
 	test := newTestLab(t)
-	for _, query := range []string{"", "?id=abc"} {
-		if response := test.client.Get("/v1/actions" + query); response.Status != 422 {
+	for query, want := range map[string]struct {
+		status        int
+		code, message string
+	}{
+		"":        {410, "deprecated_api_endpoint", "API functionality was removed"},
+		"?id=abc": {422, "invalid_input", "invalid integer value"},
+	} {
+		response := test.client.Get("/v1/actions" + query)
+		var body schema.ErrorResponse
+		response.Decode(t, &body)
+		if response.Status != want.status || body.Error.Code != want.code || body.Error.Message != want.message {
 			t.Errorf("GET /v1/actions%s answered %d %s", query, response.Status, response.Body)
 		}
 	}

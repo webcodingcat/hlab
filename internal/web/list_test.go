@@ -2,16 +2,17 @@ package web_test
 
 import (
 	"cmp"
+	"encoding/json"
 	"errors"
-	"net/http/httptest"
 	"slices"
 	"testing"
 
 	"github.com/webcodingcat/hlab/internal/web"
 )
 
-// Hetzner's pagination: page 1 and 25 per page by default and for invalid
-// values, at most 50 per page, null where there is no page.
+// Hetzner's pagination (measured 2026-11-07): page 1 and 25 per page by
+// default and for invalid values, at most 50 per page, null where there is no
+// page, and a page beyond the last has no previous page either.
 func TestPaginate(t *testing.T) {
 	items := make([]int, 60)
 	for i := range items {
@@ -26,9 +27,9 @@ func TestPaginate(t *testing.T) {
 		"?page=3":                 {51, 10, 3, 25, 3, ptr(2), nil},
 		"?page=0&per_page=-5":     {1, 25, 1, 25, 3, nil, ptr(2)},
 		"?page=abc&per_page=1000": {1, 50, 1, 50, 2, nil, ptr(2)},
-		"?page=9":                 {0, 0, 9, 25, 3, ptr(8), nil},
+		"?page=9":                 {0, 0, 9, 25, 3, nil, nil},
 	} {
-		page, meta := web.Paginate(httptest.NewRequest("GET", "/v1/servers"+query, nil), items)
+		page, meta := web.Paginate(newRequest("/v1/servers"+query), items)
 		pagination := meta.Pagination
 		if len(page) != want.length || (want.length > 0 && page[0] != want.first) {
 			t.Errorf("%q: the page is %v", query, page)
@@ -42,9 +43,28 @@ func TestPaginate(t *testing.T) {
 }
 
 func TestPaginateAnEmptyList(t *testing.T) {
-	page, meta := web.Paginate(httptest.NewRequest("GET", "/v1/servers", nil), []int{})
+	page, meta := web.Paginate(newRequest("/v1/servers"), []int{})
 	if len(page) != 0 || meta.Pagination.LastPage != 1 || meta.Pagination.NextPage != nil {
 		t.Errorf("the page is %v, the pagination %+v", page, meta.Pagination)
+	}
+}
+
+// Hetzner still sends the Link header it announced to drop: the previous,
+// next and last page, with the rest of the query.
+func TestPaginateSetsTheLinkHeader(t *testing.T) {
+	for query, want := range map[string]string{
+		"?page=2&per_page=20&sort=id%3Adesc": `<http://example.com/v1/servers?page=1&per_page=20&sort=id%3Adesc>; rel="prev", ` +
+			`<http://example.com/v1/servers?page=3&per_page=20&sort=id%3Adesc>; rel="next", ` +
+			`<http://example.com/v1/servers?page=3&per_page=20&sort=id%3Adesc>; rel="last"`,
+		"?page=0&per_page=1000": `<http://example.com/v1/servers?page=2&per_page=1000>; rel="next", ` +
+			`<http://example.com/v1/servers?page=2&per_page=1000>; rel="last"`,
+		"?page=99": `<http://example.com/v1/servers?page=3>; rel="last"`,
+	} {
+		req := newRequest("/v1/servers" + query)
+		web.Paginate(req, make([]int, 60))
+		if link := req.Header.Get("Link"); link != want {
+			t.Errorf("%q: Link is\n%s\nwant\n%s", query, link, want)
+		}
 	}
 }
 
@@ -77,7 +97,7 @@ func TestSort(t *testing.T) {
 		"?sort=name&sort=name&sort=id:desc": {4, 2, 3, 1},
 	} {
 		items := []item{{1, "web"}, {2, "db"}, {3, "web"}, {4, "db"}}
-		if err := web.Sort(httptest.NewRequest("GET", "/v1/servers"+query, nil), items, sortKeys); err != nil {
+		if err := web.Sort(newRequest("/v1/servers"+query), items, sortKeys); err != nil {
 			t.Fatalf("%q: %v", query, err)
 		}
 		var ids []int
@@ -90,12 +110,17 @@ func TestSort(t *testing.T) {
 	}
 }
 
+// Hetzner's answer to a sort value it does not know (measured 2026-11-07).
 func TestSortRefusesUnknownFields(t *testing.T) {
-	for _, query := range []string{"?sort=created", "?sort=name:up"} {
-		err := web.Sort(httptest.NewRequest("GET", "/v1/servers"+query, nil), []item{}, sortKeys)
+	for query, value := range map[string]string{"?sort=created": "created", "?sort=name:up": "name:up"} {
+		err := web.Sort(newRequest("/v1/servers"+query), []item{}, sortKeys)
 		var apiErr *web.Error
-		if !errors.As(err, &apiErr) || apiErr.Code != "invalid_input" {
-			t.Errorf("%q: %v, want invalid_input", query, err)
+		if !errors.As(err, &apiErr) || apiErr.Code != "invalid_input" || apiErr.Message != "invalid sort value" {
+			t.Fatalf("%q: %v, want invalid_input", query, err)
+		}
+		details, _ := json.Marshal(apiErr.Details)
+		if want := `{"fields":[{"name":"sort","messages":["value '` + value + `' is not allowed"]}]}`; string(details) != want {
+			t.Errorf("%q: the details are %s, want %s", query, details, want)
 		}
 	}
 }

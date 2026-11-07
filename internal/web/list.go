@@ -1,9 +1,8 @@
 package web
 
 import (
-	"net/http"
+	"fmt"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -32,17 +31,18 @@ type Pagination struct {
 }
 
 // Paginate returns the page of items that the query's page and per_page ask
-// for, and the meta of the answer. As on Hetzner, invalid values fall back to
-// page 1 and 25 per page, and per_page is at most 50.
-func Paginate[T any](r *http.Request, items []T) ([]T, Meta) {
-	query := r.URL.Query()
+// for, and the meta of the answer, and sets the Link header. As on Hetzner,
+// invalid values fall back to page 1 and 25 per page, per_page is at most 50,
+// and a page beyond the last has neither a previous nor a next page.
+func Paginate[T any](req *Request, items []T) ([]T, Meta) {
+	query := req.URL.Query()
 	page := positiveOr(query.Get("page"), 1)
 	perPage := min(positiveOr(query.Get("per_page"), defaultPerPage), maxPerPage)
 	total := len(items)
 	last := max(1, (total+perPage-1)/perPage)
 
 	pagination := Pagination{Page: page, PerPage: perPage, LastPage: last, TotalEntries: total}
-	if page > 1 {
+	if page > 1 && page <= last {
 		previous := page - 1
 		pagination.PreviousPage = &previous
 	}
@@ -50,9 +50,34 @@ func Paginate[T any](r *http.Request, items []T) ([]T, Meta) {
 		next := page + 1
 		pagination.NextPage = &next
 	}
+	req.Header.Set("Link", linkHeader(req, pagination))
 	start := min((page-1)*perPage, total)
 	end := min(start+perPage, total)
 	return items[start:end], Meta{Pagination: pagination}
+}
+
+// linkHeader returns the Link header of a page: the previous, next and last
+// page as URLs that keep the rest of the query. Hetzner has announced to
+// drop the header, but still sends it.
+func linkHeader(req *Request, pagination Pagination) string {
+	rest := req.URL.Query()
+	rest.Del("page")
+	pageURL := func(page int) string {
+		query := "page=" + strconv.Itoa(page)
+		if encoded := rest.Encode(); encoded != "" {
+			query += "&" + encoded
+		}
+		return fmt.Sprintf("<http://%s%s?%s>", req.Host, req.URL.Path, query)
+	}
+	var links []string
+	if pagination.PreviousPage != nil {
+		links = append(links, pageURL(*pagination.PreviousPage)+`; rel="prev"`)
+	}
+	if pagination.NextPage != nil {
+		links = append(links, pageURL(*pagination.NextPage)+`; rel="next"`)
+	}
+	links = append(links, pageURL(pagination.LastPage)+`; rel="last"`)
+	return strings.Join(links, ", ")
 }
 
 // positiveOr returns a query value as a number of at least 1, else fallback.
@@ -71,23 +96,23 @@ type SortKeys[T any] map[string]func(a, b T) int
 
 // Sort sorts items by the query's sort parameters ("name", "id:desc"),
 // several in the order given. A field asked for in both directions is
-// ignored, as Hetzner ignores contrary orders. A field that keys lacks is an
-// invalid_input error. Items that are equal keep their order, so a list
-// sorted by ID stays so among equals.
-func Sort[T any](r *http.Request, items []T, keys SortKeys[T]) error {
+// ignored, as Hetzner ignores contrary orders. A value that keys do not allow
+// is Hetzner's invalid_input "invalid sort value". Items that are equal keep
+// their order, so a list sorted by ID stays so among equals.
+func Sort[T any](req *Request, items []T, keys SortKeys[T]) error {
 	type order struct {
 		compare    func(a, b T) int
 		descending bool
 	}
 	var fields []string
 	directions := map[string]string{}
-	for _, value := range r.URL.Query()["sort"] {
+	for _, value := range req.URL.Query()["sort"] {
 		field, direction, _ := strings.Cut(value, ":")
 		if direction == "" {
 			direction = "asc"
 		}
 		if _, known := keys[field]; !known || (direction != "asc" && direction != "desc") {
-			return InvalidField("sort", "must be one of "+strings.Join(sortValues(keys), ", "))
+			return InvalidInput("invalid sort value", Field{Name: "sort", Messages: []string{"value '" + value + "' is not allowed"}})
 		}
 		switch previous, seen := directions[field]; {
 		case !seen:
@@ -116,14 +141,4 @@ func Sort[T any](r *http.Request, items []T, keys SortKeys[T]) error {
 		return 0
 	})
 	return nil
-}
-
-// sortValues returns the sort values that keys allow, as the spec lists them.
-func sortValues[T any](keys SortKeys[T]) []string {
-	var values []string
-	for field := range keys {
-		values = append(values, field, field+":asc", field+":desc")
-	}
-	sort.Strings(values)
-	return values
 }

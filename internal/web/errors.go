@@ -2,27 +2,42 @@ package web
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
-
-	"github.com/hetznercloud/hcloud-go/v2/hcloud/schema"
 )
 
 // Error is an error answer of the API: its status, Hetzner's error code, the
-// message and the details, whose shape depends on the code.
+// message and the details, whose shape depends on the code. The messages and
+// details follow what Hetzner's API answers (compat/requirements.md).
 type Error struct {
 	Status  int
 	Code    string
 	Message string
-	Details any // nil is sent as null, as in the spec's example
+	// Details is sent as it is: nil as null, an empty map as {}; Hetzner
+	// answers either, depending on the error.
+	Details any
+	// noDetails leaves the details out, as Hetzner's 401 answers do.
+	noDetails bool
 }
 
 func (e *Error) Error() string { return e.Message }
 
+// errorBody is an error as the API sends it.
+type errorBody struct {
+	Error struct {
+		Code    string          `json:"code"`
+		Message string          `json:"message"`
+		Details json.RawMessage `json:"details,omitempty"`
+	} `json:"error"`
+}
+
 // body returns the error as the API sends it.
-func (e *Error) body() schema.ErrorResponse {
-	details, _ := json.Marshal(e.Details) // details are plain data: they encode
-	return schema.ErrorResponse{Error: schema.Error{Code: e.Code, Message: e.Message, DetailsRaw: details}}
+func (e *Error) body() errorBody {
+	var body errorBody
+	body.Error.Code, body.Error.Message = e.Code, e.Message
+	if !e.noDetails {
+		body.Error.Details, _ = json.Marshal(e.Details) // details are plain data: they encode
+	}
+	return body
 }
 
 // Field is one field of an invalid_input error, with what is wrong with it.
@@ -31,26 +46,36 @@ type Field struct {
 	Messages []string `json:"messages"`
 }
 
-// InvalidInput returns a 422 invalid_input error for fields; the message
-// names the first field and its first message, as Hetzner's does.
-func InvalidInput(fields ...Field) *Error {
-	first := fields[0]
-	return &Error{
-		Status:  http.StatusUnprocessableEntity,
-		Code:    "invalid_input",
-		Message: fmt.Sprintf("invalid input in field '%s': %s", first.Name, first.Messages[0]),
-		Details: map[string][]Field{"fields": fields},
+// InvalidInput returns a 422 invalid_input error. With fields, the details
+// list them; without, they are null, as Hetzner's "invalid integer value".
+func InvalidInput(message string, fields ...Field) *Error {
+	err := &Error{Status: http.StatusUnprocessableEntity, Code: "invalid_input", Message: message}
+	if len(fields) > 0 {
+		err.Details = map[string][]Field{"fields": fields}
 	}
+	return err
 }
 
-// InvalidField returns a 422 invalid_input error for one field.
-func InvalidField(name, message string) *Error {
-	return InvalidInput(Field{Name: name, Messages: []string{message}})
-}
-
-// NotFound returns a 404 not_found error for what is not there ("action").
+// NotFound returns a 404 not_found error for a resource that is not there
+// ("server").
 func NotFound(what string) *Error {
 	return &Error{Status: http.StatusNotFound, Code: "not_found", Message: what + " not found"}
+}
+
+// RouteNotFound returns Hetzner's 404 for a path that no route takes.
+func RouteNotFound() *Error {
+	return &Error{Status: http.StatusNotFound, Code: "not_found", Message: "api route not found"}
+}
+
+// Deprecated returns Hetzner's 410 for functionality it removed, with the
+// changelog entry that announced it.
+func Deprecated(announcement string) *Error {
+	return &Error{
+		Status:  http.StatusGone,
+		Code:    "deprecated_api_endpoint",
+		Message: "API functionality was removed",
+		Details: map[string]string{"announcement": announcement},
+	}
 }
 
 // JSONError returns a 400 json_error: the request body is not valid JSON.
@@ -58,19 +83,19 @@ func JSONError() *Error {
 	return &Error{Status: http.StatusBadRequest, Code: "json_error", Message: "request body is not valid JSON"}
 }
 
-// Unauthorized returns a 401 unauthorized error with Hetzner's message.
-func Unauthorized() *Error {
-	return &Error{Status: http.StatusUnauthorized, Code: "unauthorized", Message: "unable to authenticate"}
+// unauthorized returns a 401 unauthorized error; Hetzner's has no details.
+func unauthorized(message string) *Error {
+	return &Error{Status: http.StatusUnauthorized, Code: "unauthorized", Message: message, noDetails: true}
 }
 
-// Forbidden returns a 403 forbidden error: a read token asks for a change.
+// Forbidden returns Hetzner's 403 forbidden: a read token asks for a change.
 func Forbidden() *Error {
-	return &Error{Status: http.StatusForbidden, Code: "forbidden", Message: "insufficient permissions for this request"}
+	return &Error{Status: http.StatusForbidden, Code: "forbidden", Message: "permission denied", Details: map[string]any{}}
 }
 
-// MethodNotAllowed returns a 405 method_not_allowed error.
+// MethodNotAllowed returns Hetzner's 405 method_not_allowed.
 func MethodNotAllowed() *Error {
-	return &Error{Status: http.StatusMethodNotAllowed, Code: "method_not_allowed", Message: "the request method is not allowed"}
+	return &Error{Status: http.StatusMethodNotAllowed, Code: "method_not_allowed", Message: "method not allowed"}
 }
 
 // Locked returns a 423 locked error: an action already works on the resource.

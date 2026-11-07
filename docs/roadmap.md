@@ -49,8 +49,9 @@ endpoints, `GET /actions?id=…` and `GET /actions/{id}`, and every API test che
 its answers against the spec (`internal/spectest`). Projects, tokens, limits and API
 faults are in the lab's core; nobody calls them yet but tests: the lab control and
 the CLI come in 1a-5, which also wires the Cloud API into `hlabd`. `compat/` has its
-first state; the points to check against the real API in 1a-6 are at the end of
-`compat/requirements.md`. Requests are not yet checked against the spec's request
+first state. The order of the checks, the error texts and details, pagination and
+the `Link` header were measured on the real API (2026-11-07) and follow it; what is
+still open for 1a-6 is at the end of `compat/requirements.md`. Requests are not yet checked against the spec's request
 schemas (the old HLab did; it comes with the first endpoint that takes a body).
 
 Not there yet: `bin/dev test --agent` (it reports "not yet implemented"), `deploy`,

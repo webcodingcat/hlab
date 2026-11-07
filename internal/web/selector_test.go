@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -54,5 +55,17 @@ func TestSelectorRefusesWhatItCannotParse(t *testing.T) {
 		if !errors.As(err, &apiErr) || apiErr.Code != "invalid_input" {
 			t.Errorf("%q: %v, want invalid_input", selector, err)
 		}
+	}
+}
+
+// Hetzner's answer to unbalanced brackets (measured 2026-11-07).
+func TestSelectorWithoutClosingBracket(t *testing.T) {
+	_, err := web.ParseSelector("env in (a")
+	var apiErr *web.Error
+	if !errors.As(err, &apiErr) || apiErr.Message != "invalid label_selector: invalid syntax: missing brackets for group" {
+		t.Fatalf("the error is %v", err)
+	}
+	if details, _ := json.Marshal(apiErr.Details); string(details) != "{}" {
+		t.Errorf("the details are %s, want {}", details)
 	}
 }
