@@ -9,10 +9,16 @@ import (
 	"time"
 )
 
-// actionsPath is where Hetzner's actions endpoints answer. They have a budget
-// of their own, twice the size of the one of all other routes (measured
-// 2026-11-07: 7200 against 3600 an hour, counted apart).
-const actionsPath = Prefix + "/actions"
+// isActionsPath tells whether a path is one of Hetzner's actions endpoints:
+// /actions…, /servers/actions…, /servers/{id}/actions…, likewise for every
+// resource. They share a budget of their own, twice the size of the one of
+// all other routes (measured 2026-11-07: 7200 against 3600 an hour, counted
+// apart; /actions, /servers/actions, /servers/{id}/actions/… and
+// /floating_ips/actions took from the same 7200). The route was checked
+// before, so no other path has a segment "actions".
+func isActionsPath(path string) bool {
+	return strings.Contains(path+"/", "/actions/")
+}
 
 // rateLimiter is Hetzner's rate limit: requests per hour and project, given
 // back gradually (one a second for 3600 an hour), with bursts allowed up to
@@ -48,7 +54,7 @@ func (r *rateLimiter) take(header http.Header, projectID int64, path string) boo
 	if r.perHour == 0 {
 		return true
 	}
-	key := budget{projectID: projectID, actions: path == actionsPath || strings.HasPrefix(path, actionsPath+"/")}
+	key := budget{projectID: projectID, actions: isActionsPath(path)}
 	perHour := float64(r.perHour)
 	if key.actions {
 		perHour *= 2

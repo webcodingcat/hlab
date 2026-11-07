@@ -192,7 +192,8 @@ later `api/hetzner`) registers its handlers on a `web.API`, one file per resourc
   2. the bearer token (`API.admit`): 401 `unauthorized`, without details;
   3. from here on every answer has an `X-Correlation-Id`;
   4. the rate limit (per project, `RateLimit-*` headers, 429); the actions endpoints
-     (`/v1/actions…`) have a budget of their own, twice the size;
+     (`/v1/actions…`, `/v1/servers/actions…`, `/v1/servers/{id}/actions…`, likewise
+     for every resource) share a budget of their own, twice the size;
   5. the permission: a `read` token gets 403 `forbidden` for anything but GET and
      HEAD;
   6. an injected fault;

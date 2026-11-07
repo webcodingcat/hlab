@@ -14,13 +14,24 @@ import (
 func TestSelector(t *testing.T) {
 	labels := map[string]string{"env": "production", "type": "web", "example.com/my": "label", "empty": ""}
 	for selector, want := range map[string]bool{
-		"":                            true,
-		"env=production":              true,
-		"env==production":             true,
-		"env=testing":                 false,
-		"env!=testing":                true,
-		"env!=production":             false,
-		"missing!=x":                  true,
+		"":                true,
+		"env=production":  true,
+		"env==production": true,
+		"env=testing":     false,
+		"env!=testing":    true,
+		"env!=production": false,
+		"missing!=x":      false, // != needs the label, unlike notin (measured)
+		// Hetzner's selections of forms its docs do not name (measured 2026-11-07)
+		"!env=production":             true,
+		"!env!=production":            false,
+		"!!type":                      false,
+		"!!missing":                   true,
+		"env=production=x":            false,
+		"env=!testing":                true,
+		"missing=!x":                  true,
+		"env!=!production":            true,
+		"env=production,":             true,
+		"env!=testing,!env":           false,
 		"type":                        true,
 		"missing":                     false,
 		"!missing":                    true,

@@ -17,7 +17,7 @@ type Selector struct {
 // term is one expression of a selector.
 type term struct {
 	key    string
-	op     string // "=", "!=", "exists", "!exists", "in", "notin"
+	op     string // "=", "!=", "exists", "!exists", "in", "notin", "any"
 	values []string
 }
 
@@ -89,23 +89,37 @@ func parseTerm(text string) (term, error) {
 	if match := setTerm.FindStringSubmatch(text); match != nil {
 		return parseSetTerm(match[1], match[2], strings.TrimSpace(match[3]))
 	}
-	if strings.Contains(strings.ReplaceAll(text[1:], "!=", ""), "!") {
+	if bangAfterWord(text) {
 		return term{}, invalidSyntax("'!' operator must be in front of value")
 	}
-	if key, found := strings.CutPrefix(text, "!"); found {
-		key = strings.TrimSpace(key)
-		if key == "" {
+	rest := strings.TrimSpace(strings.TrimLeft(text, "!"))
+	if op, at := firstOperator(rest); at >= 0 {
+		// Hetzner ignores a "!" in front of a comparison: "!k=v" selects
+		// what "k=v" selects (measured).
+		return parseComparison(rest, op, at)
+	}
+	if rest != text {
+		if rest == "" {
 			return term{}, invalidSyntax("'!' operator requires value afterwards")
 		}
-		return term{key: key, op: "!exists"}, checkSelectorKey(key)
-	}
-	if op, at := firstOperator(text); at >= 0 {
-		return parseComparison(text, op, at)
+		// "!!k" is "!k" (measured)
+		return term{key: rest, op: "!exists"}, checkSelectorKey(rest)
 	}
 	if strings.ContainsFunc(text, unicode.IsSpace) {
 		return term{}, invalidSyntax("only one key allowed")
 	}
 	return term{key: text, op: "exists"}, checkSelectorKey(text)
+}
+
+// bangAfterWord tells whether a "!" ends a word ("k!", "k=v!"), which
+// Hetzner refuses; a "!" in front of a word or of "=" is taken.
+func bangAfterWord(text string) bool {
+	for i := 1; i < len(text); i++ {
+		if text[i] == '!' && (i == len(text)-1 || text[i+1] == ' ' || text[i+1] == ',') {
+			return true
+		}
+	}
+	return false
 }
 
 // parseComparison parses "k=v", "k==v" or "k!=v", where op is found at the
@@ -125,11 +139,19 @@ func parseComparison(text, op string, at int) (term, error) {
 	if err := checkSelectorKey(key); err != nil {
 		return term{}, err
 	}
-	if !validLabelValue(value) {
-		return term{}, malformedValue()
-	}
 	if op == "==" {
 		op = "="
+	}
+	switch {
+	case strings.HasPrefix(value, "!"):
+		// Hetzner selects everything for "k=!v" and "k!=!v" (measured).
+		return term{key: key, op: "any"}, nil
+	case strings.Contains(value, "="):
+		// Hetzner takes "k=a=b" and selects nothing (measured): no label
+		// value has a "=", so the value is kept as it is.
+		return term{key: key, op: op, values: []string{value}}, nil
+	case !validLabelValue(value):
+		return term{}, malformedValue()
 	}
 	return term{key: key, op: op, values: []string{value}}, nil
 }
@@ -216,7 +238,10 @@ func (s Selector) Matches(labels map[string]string) bool {
 		case "=":
 			matches = has && value == t.values[0]
 		case "!=":
-			matches = !has || value != t.values[0]
+			// unlike notin, != needs the label (measured 2026-11-07)
+			matches = has && value != t.values[0]
+		case "any":
+			matches = true
 		case "exists":
 			matches = has
 		case "!exists":

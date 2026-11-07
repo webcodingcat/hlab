@@ -91,13 +91,15 @@ on Windows the second write failed when a reader held `state.json`
 ("access denied"), which made `TestChangeSavesTheNewState` fail now and then.
 
 After 1a-6: the rest of `compat/requirements.md` was measured on the real API
-(2026-11-07, "Label selectors, bodies and servers"). HLab now gives Hetzner's
-reasons for every label selector error and refuses an empty value (`k=`); a PUT
-names only its first invalid field, in the details too; bodies may be up to
-64 MiB (Hetzner took that much). Neither test project has a server, so `locked`
-and a server's fields come from the spec and `hcloud-go`; a real server's JSON
-and the rate budget of the servers' action endpoints are left for 1b, listed
-there under "Still open". Phase 1a is ready for its review (1a-R).
+(2026-11-07, "Label selectors, bodies and servers"), with SSH keys and one short-
+lived server in the empty test project. HLab now gives Hetzner's reasons for every
+label selector error, refuses an empty value (`k=`), and selects as Hetzner does
+(`k!=v` needs the label; the odd forms `!k=v`, `k=!v`, `k=a=b`); a PUT names only
+its first invalid field, in the details too; bodies may be up to 64 MiB (Hetzner
+took that much); every resource's action endpoints share the budget of
+`/actions`. The real server's JSON (no `datacenter`, `locked` `false`) is recorded
+for 1b. Open for 1b: Hetzner ran a reboot while a poweroff was running, where
+HLab's `Lab.Act` answers 423. Phase 1a is ready for its review (1a-R).
 
 Not there yet: `bin/dev test --agent` (it reports "not yet implemented"), `deploy`,
 `itest` and `smoke`.

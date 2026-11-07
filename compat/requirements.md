@@ -69,7 +69,7 @@ answers the same (`internal/web`, `internal/api/cloud`).
 | `GET /v1/actions` | 410 `deprecated_api_endpoint`, `"API functionality was removed"`, `details.announcement` the changelog entry |
 | `GET /v1/actions?id=abc` | **406** `invalid_input`, `"invalid integer value"`, `details` `null` |
 | `GET /v1/actions/1` (an action of no project of the token) | 404, `Content-Type: text/plain; charset=utf-8`, body `Not Found`; with `X-Correlation-Id` and `RateLimit-*` (a spec deviation) |
-| `RateLimit-*` with a token | `/v1/actions…`: limit 7200; `/v1/ssh_keys…` and the rest: 3600; the two count apart (remaining 7199 and 3599 side by side); `RateLimit-Reset` is when the budget is full again |
+| `RateLimit-*` with a token | `/v1/actions…` and every resource's action endpoints (below): limit 7200; `/v1/ssh_keys…` and the rest: 3600; the two count apart (remaining 7199 and 3599 side by side); `RateLimit-Reset` is when the budget is full again |
 | `?sort=bogus` | 422 `invalid_input`, `"invalid sort value"`, `details.fields` `[{"name": "sort", "messages": ["value 'bogus' is not allowed"]}]` |
 | `?sort=id:asc&sort=id:desc` | 200, the order ignored |
 | `?label_selector=env in (a` | 422 `invalid_input`, `"invalid label_selector: invalid syntax: missing brackets for group"`, `details` `{}` |
@@ -110,8 +110,7 @@ these answers.
 ### Label selectors, bodies and servers (1a-6)
 
 Measured on 2026-11-07 with a read token on `GET /ssh_keys?label_selector=…` and, for
-the bodies, a read-write token of an empty test project (no request could create
-anything). Every selector error is 422 `invalid_input`, `details` `{}`, with the
+the bodies, a read-write token of an empty test project. Every selector error is 422 `invalid_input`, `details` `{}`, with the
 message `"invalid label_selector: "` and the reason below; HLab gives the same
 (`internal/web`: `TestSelectorRefusesWhatItCannotParse`,
 `TestSelectorTakesWhatHetznerTakes`; `internal/api/cloud`:
@@ -131,35 +130,42 @@ message `"invalid label_selector: "` and the reason below; HLab gives the same
 | `PUT /ssh_keys/{id}` with `name` and `labels` both invalid, in either order in the JSON | only the first field in the check's order (`name`, then `labels`): `"invalid input in field 'name'"`, `details.fields` with `name` alone |
 | `PUT /ssh_keys/999999999` (missing) with an invalid body / a valid one | 422 as above: the body is checked before the key is looked up / 404 |
 | `POST /ssh_keys` with a body of 1 MiB + 1, 2, 11, 32 and 64 MiB (`{` spaces `}`) | 422 for the missing fields: no limit up to 64 MiB; with a read token 403 first |
-| `GET /servers` in both projects | no servers: `locked` could not be seen on the real API |
+| `GET /actions`, `/servers/actions`, `/servers/{id}/actions`, `POST /servers/{id}/actions/poweroff`, `/floating_ips/actions` | one budget of 7200 for all of them (remaining counts down across them); `/servers`, `POST /servers` and the rest take from the 3600 |
+| `GET /servers/actions` without `id` | 200, a paginated list (unlike `GET /actions`, not removed); `?status=bogus` 422 `"invalid status value"` with `details.fields` |
+| `GET /servers/999999999/actions` (missing server) | 200, empty list; `…/actions/1` 404 `"action not found"`, `details` `{}` |
+| `POST /servers/999999999/actions/poweroff` | read token 403; read-write 404 `"server not found"`; an unknown command (`…/actions/bogus`) is 404 `"api route not found"` before the token |
+| `GET /servers/999999999` | 404 `"server not found"`, `details` `{}` |
 
-Where HLab differs, knowingly:
+**What the selectors select.** Four SSH keys of the test project with the labels
+`k=v`, `k=w`, none and `k=a`, deleted afterwards (`internal/web`: `TestSelector`):
 
-- Hetzner takes some selectors whose meaning could not be measured without labelled
-  resources: `!k=v`, `!k!=v`, `k=a=b`, `k=!v`, `k!=!v`. HLab refuses them
-  (`'!' operator must be in front of value` or a malformed key or value).
-- `k in(a)` is a malformed key on Hetzner, `only one key allowed` in HLab.
-- HLab reads bodies up to 64 MiB, the largest measured, and answers `json_error`
-  `"http: request body too large"` above it; Hetzner's limit, if any, is higher.
+| Selector | Selects |
+|---|---|
+| `k!=v` | `k=w`, `k=a`: **`!=` needs the label**; `k notin (v)` selects the key without it too |
+| `!k=v`, `!k!=v`, `!!k` | as `k=v`, `k!=v`, `!k`: a `!` in front is ignored before a comparison |
+| `k=!v`, `k!=!v`, `k=!w` | every key, also the one without `k` |
+| `k=a=b`, `k=a=v` | none |
+| `!k,k` | none |
 
-**Servers, from the spec and `hcloud-go`.** Neither project has a server, and none
-was created. The spec (fetched 2026-11-07) and `hcloud-go/v2` 2.53.0
-(`hcloud/schema/server.go`) agree: `locked` is a required boolean, "True if Server
-has been locked and is not available to user" (an administrative lock by Hetzner,
-not a running action, which answers 423 `locked` instead); a server has no
-`datacenter` any more, only `location` (also inside the schema of `GET
-/servers/{id}`). The fields: `id`, `name`, `status`, `created`, `public_net`
-(`ipv4`, `ipv6`, `floating_ips`, `firewalls`), `private_net`, `server_type`,
-`location`, `image`, `iso`, `rescue_enabled`, `locked`, `backup_window`,
-`outgoing_traffic`, `ingoing_traffic`, `included_traffic`, `protection`, `labels`,
-`primary_disk_size`, and the optional `volumes`, `load_balancers`,
-`placement_group`.
+HLab selects the same. Where it differs, knowingly: `k in(a)` is a malformed key on
+Hetzner, `only one key allowed` in HLab. HLab reads bodies up to 64 MiB, the largest
+measured, and answers `json_error` `"http: request body too large"` above it.
 
-Still open, for 1b (they need servers):
+**A real server.** With the operator's consent, one `cx23` in `hel1` (the cheapest
+x86 type), `debian-13`, IPv6 only, created, read, powered off and deleted within a
+minute; nothing is left in the project. The checks belong to phase 1b:
 
-- A real server's JSON: whether it has fields the spec lacks, and `locked` `false` as
-  the spec says.
-- Whether the action endpoints of each resource (`/servers/{id}/actions/…`,
-  `/servers/actions`) count against the budget of `/actions` too; HLab counts only
-  `/actions` there.
-- What the selectors Hetzner takes but HLab refuses (above) select.
+| Request | Answer |
+|---|---|
+| `POST /servers` | 201 with `server`, `action` (`create_server`, resources server and image), `next_actions` (`start_server`) and `root_password` (no SSH key given); the server `initializing`, `included_traffic` 0 |
+| `GET /servers/{id}`, running | exactly the fields of the spec, in this order: `id`, `name`, `status`, `server_type`, `location`, `image`, `iso`, `primary_disk_size`, `labels`, `protection`, `backup_window`, `rescue_enabled`, `locked`, `placement_group`, `public_net`, `private_net`, `load_balancers`, `volumes`, `included_traffic`, `ingoing_traffic`, `outgoing_traffic`, `created`; **no `datacenter`**; `locked` `false`; `included_traffic` 21990232555520 (20 TiB); `ingoing_traffic`/`outgoing_traffic` 0; `backup_window`, `iso`, `placement_group` `null`; `volumes`, `load_balancers`, `private_net` `[]` |
+| `public_net` without IPv4 | `ipv4` `null`; `ipv6` with `id`, `ip`, `blocked` `false`, `dns_ptr` `[]`; `floating_ips`, `firewalls` `[]` |
+| `server_type` inside the server | the full type with `locations` and `prices` (both locations), `deprecation` `null` |
+| `POST …/actions/poweroff`, then at once `…/actions/reboot` | both 201: **the second action starts while the first runs**, no 423; the server stays `running`, `locked` `false`; both `running` in `GET /servers/{id}/actions` |
+| action IDs | far above 2^32 (15 digits) |
+
+Still open, for 1b:
+
+- HLab's `Lab.Act` answers 423 `locked` while an action of the resource runs;
+  Hetzner started a reboot during a running poweroff. Which commands Hetzner
+  refuses with 423, and when, is to measure and to settle with the server actions.

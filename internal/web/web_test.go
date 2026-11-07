@@ -66,6 +66,9 @@ func newAPI(t *testing.T, opts web.Options) (*spectest.Client, *backend) {
 			"resources": []any{}, "error": nil,
 		}}, nil
 	})
+	api.Handle("POST /servers/{id}/actions/poweroff", func(*web.Request) (int, any, error) {
+		return 0, nil, web.NotFound("server")
+	})
 	api.Handle("DELETE /ssh_keys/{id}", func(*web.Request) (int, any, error) {
 		return http.StatusNoContent, nil, nil
 	})

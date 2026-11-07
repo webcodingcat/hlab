@@ -76,6 +76,14 @@ func TestActionsHaveTheirOwnRateLimit(t *testing.T) {
 		t.Errorf("answered %d with RateLimit-Limit %s and -Remaining %s", response.Status,
 			response.Header.Get("RateLimit-Limit"), response.Header.Get("RateLimit-Remaining"))
 	}
+
+	// Hetzner (measured 2026-11-07): a resource's action endpoints take from
+	// the same budget as /actions.
+	response = client.Do(http.MethodPost, "/v1/servers/1000000/actions/poweroff", nil)
+	if response.Status != 404 || response.Header.Get("RateLimit-Limit") != "6" || response.Header.Get("RateLimit-Remaining") != "4" {
+		t.Errorf("a server action answered %d with RateLimit-Limit %s and -Remaining %s", response.Status,
+			response.Header.Get("RateLimit-Limit"), response.Header.Get("RateLimit-Remaining"))
+	}
 }
 
 func TestRateLimitZeroIsNoLimit(t *testing.T) {
