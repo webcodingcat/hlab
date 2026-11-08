@@ -56,7 +56,9 @@ packages below it follow the layers.
 - **The life cycles:**
   - Windows holds the mutex `Global\HLab`. It writes the path of its data folder to
     `%ProgramData%\HLab\instance`, so a second start can say in its error message
-    which folder is in use and the CLI finds the lab's token. It writes the token
+    which folder is in use and the CLI finds the lab's token; it removes the
+    file when it ends (a crash leaves it until the next start). The live tests
+    write their own. It writes the token
     with its own ACL: local users may read it.
   - Linux holds an flock on `/run/lock/hlab.lock`; that file contains the path of
     the data folder. It writes the token with mode `0640` and the group `hlab`, if

@@ -13,9 +13,9 @@ import (
 
 // hvsockDialer reaches the agent inside a VM over hv_sock: Hyper-V addresses
 // the VM by its ID and the agent's vsock port by a service ID made from the
-// port (winio.VsockServiceID). The service ID must be registered once, as
-// administrator (bin/dev.ps1 dev-install, later the installer); then any
-// member of Hyper-V Administrators may dial.
+// port (winio.VsockServiceID). Only a service that listens on the host
+// needs its ID registered under GuestCommunicationServices; dialing into a
+// VM needs none.
 type hvsockDialer struct {
 	hypervisor *Hypervisor
 }

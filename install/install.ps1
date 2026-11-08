@@ -13,13 +13,15 @@ Run as administrator, from the folder that bin/dev package fills
 
 Installing turns on Hyper-V (Windows may want a restart), copies the files
 to C:\Program Files\HLab, adds the start menu entry "HLab" (runs hlabd as
-administrator), puts hlab.exe on the PATH, registers the agent's hv_sock
-service, adds the firewall rule "HLab" (hlabd.exe, TCP 8080, 8081 and 8090
-on 198.18.0.1), creates the data folder and copies the Linux CLI to
-~/.local/bin of the default WSL distribution, if there is one.
+administrator), puts hlab.exe on the PATH, adds the firewall rule "HLab"
+(hlabd.exe, TCP 8080, 8081 and 8090 on 198.18.0.1), creates the data folder
+and copies the Linux CLI to ~/.local/bin of the default WSL distribution, if
+there is one. An update ends a running HLab as a crash would: its servers
+and the appliance run on, and the next start takes them over and updates
+the appliance.
 
 Uninstalling stops HLab if it runs and removes the lab's VMs, its switches,
-NRPT rules, the hv_sock service, the firewall rule, the start menu entry,
+NRPT rules, the firewall rule, the start menu entry,
 the PATH entry, the program folder and the Linux CLI in WSL; the data folder
 goes unless -KeepData, and with it the servers' disks.
 #>
@@ -44,8 +46,6 @@ $Hlabd = Join-Path $ProgramDir 'hlabd.exe'
 $Files = @('hlabd.exe', 'hlab.exe', 'hlab', 'hlab-appliance.vhdx')
 $Shortcut = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\HLab.lnk'
 $FirewallRule = 'hlab'
-# hlabd reaches the agent's vsock port 5000 through this service ID
-$ServiceKey = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization\GuestCommunicationServices\00001388-facb-11e6-bd58-64006a7986d3'
 # what the lab marks its VMs, switches and NRPT rules with
 $VMTag = 'hlab'
 $SwitchPattern = 'HLab-*'
@@ -54,10 +54,14 @@ $NrptComment = 'hlab'
 function Close-HLab {
     <#
     .SYNOPSIS
-    Stop the installed HLab if it runs, and wait until it has stopped. Fail
-    if an hlabd from another folder runs: it owns the lab's switches and
-    names now.
+    Stop the installed HLab if it runs, and wait until it has stopped; with
+    KeepVMs end it as a crash would, so that its servers and the appliance
+    run on. Fail if an hlabd from another folder runs: it owns the lab's
+    switches and names now.
     #>
+    param(
+        [switch]$KeepVMs
+    )
     $running = @(Get-Process -Name hlabd -ErrorAction SilentlyContinue)
     $others = @($running | Where-Object Path -NE $Hlabd)
     if ($others.Count -gt 0) {
@@ -66,10 +70,15 @@ function Close-HLab {
     if ($running.Count -eq 0) {
         return
     }
-    Write-Output 'stopping HLab'
-    & (Join-Path $ProgramDir 'hlab.exe') stop
-    if ($LASTEXITCODE -ne 0) {
-        throw 'hlab stop failed'
+    if ($KeepVMs) {
+        Write-Output 'ending HLab; its servers run on'
+        $running | Stop-Process -Force
+    } else {
+        Write-Output 'stopping HLab'
+        & (Join-Path $ProgramDir 'hlab.exe') stop
+        if ($LASTEXITCODE -ne 0) {
+            throw 'hlab stop failed'
+        }
     }
     $running | Wait-Process -Timeout 60
 }
@@ -158,8 +167,11 @@ function Install-HLab {
         $result = Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V-All -All -NoRestart
         $restart = $result.RestartNeeded
     }
+    $wasRunning = @(Get-Process -Name hlabd -ErrorAction SilentlyContinue).Count -gt 0
     if (Test-Path $Hlabd) {
-        Close-HLab
+        # the servers run on through an update; the next start takes them
+        # over and updates the appliance without stopping them
+        Close-HLab -KeepVMs
     }
     New-Item -ItemType Directory -Force -Path $ProgramDir, $DataDir | Out-Null
     foreach ($file in $Files) {
@@ -167,8 +179,6 @@ function Install-HLab {
     }
     Add-StartMenuEntry
     Edit-MachinePath
-    New-Item -Path $ServiceKey -Force | Out-Null
-    Set-ItemProperty -Path $ServiceKey -Name ElementName -Value 'HLab agent'
     Remove-NetFirewallRule -Name $FirewallRule -ErrorAction SilentlyContinue
     # the guests reach 8080 and 8081 through the appliance, WSL2 all three;
     # the appliance keeps the guests off 8090
@@ -177,6 +187,9 @@ function Install-HLab {
         -Profile Any | Out-Null
     Invoke-WslCommand 'mkdir -p $HOME/.local/bin && cp hlab $HOME/.local/bin/hlab && chmod 755 $HOME/.local/bin/hlab' $ProgramDir
     Write-Output "installed HLab into $ProgramDir; start it with the start menu entry HLab or hlab start"
+    if ($wasRunning) {
+        Write-Output 'its servers ran on: the next start takes them over'
+    }
     if ($restart) {
         Write-Warning 'Hyper-V was turned on: restart Windows before starting HLab'
     }
@@ -209,7 +222,6 @@ function Uninstall-HLab {
     Get-DnsClientNrptRule | Where-Object Comment -EQ $NrptComment | ForEach-Object {
         Remove-DnsClientNrptRule -Name $_.Name -Force
     }
-    Remove-Item -Path $ServiceKey -Recurse -ErrorAction SilentlyContinue
     Remove-NetFirewallRule -Name $FirewallRule -ErrorAction SilentlyContinue
     Remove-Item -Path $Shortcut -ErrorAction SilentlyContinue
     Edit-MachinePath -Remove

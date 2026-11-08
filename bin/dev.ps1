@@ -29,8 +29,7 @@ The same commands as bin/dev:
                                (bin/dev package)
   bin/dev.ps1 dev-install      once, as administrator: the folder
                                C:\HLabDev, the tasks "HLab itest" and
-                               "HLab dev", the firewall rule "HLab dev" and
-                               the agent's hv_sock service
+                               "HLab dev" and the firewall rule "HLab dev"
 #>
 param(
     [Parameter(Position = 0)]
@@ -192,8 +191,8 @@ function Install-DevMachine {
     administrator: the folder C:\HLabDev, which only this user, the
     administrators and SYSTEM may write; the task "HLab itest" that runs
     itest\run.cmd and the task "HLab dev" that runs bin\hlabd.exe, both with
-    the highest rights and without a window; the firewall rule "HLab dev";
-    and the agent's hv_sock service.
+    the highest rights and without a window; and the firewall rule
+    "HLab dev".
     #>
     $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -243,11 +242,7 @@ function Install-DevMachine {
     New-NetFirewallRule -Name $DevFirewallRule -DisplayName 'HLab dev' -Direction Inbound -Action Allow `
         -Program "$DevBin\hlabd.exe" -Protocol TCP -LocalPort 8080, 8081, 8090 -LocalAddress 198.18.0.1 `
         -Profile Any | Out-Null
-    # hlabd reaches the agent's vsock port 5000 through this service ID
-    $service = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization\GuestCommunicationServices\00001388-facb-11e6-bd58-64006a7986d3'
-    New-Item -Path $service -Force | Out-Null
-    Set-ItemProperty -Path $service -Name ElementName -Value 'HLab agent'
-    Write-Output "set up $DevDir, the tasks `"$ItestTask`" and `"$DevTask`", the firewall rule and the agent's hv_sock service"
+    Write-Output "set up $DevDir, the tasks `"$ItestTask`" and `"$DevTask`" and the firewall rule"
 }
 
 function Invoke-LiveTest {

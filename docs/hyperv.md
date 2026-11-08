@@ -99,7 +99,7 @@ process each for `HostNet` and `HostDNS`; it needs administrator rights.
   cache, which would answer from before the rule. A domain `example.com` becomes
   the namespace `.example.com`, which covers the domain and every name below.
 - The agent dialer finds the VM's ID through `hyperv.ps1` and dials hv_sock with
-  go-winio; the service ID is `VsockServiceID(port)`, which must be registered
-  once (`bin/dev.ps1 dev-install`, later the installer). A connection to a VM
+  go-winio; the service ID is `VsockServiceID(port)`, which needs no entry in
+  the registry: only a service that listens on the host does. A connection to a VM
   whose agent does not listen yet hangs for seconds, so the appliance's start
   gives each try one second.

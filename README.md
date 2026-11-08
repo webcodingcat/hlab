@@ -25,7 +25,9 @@ build\package\install.ps1
 It turns Hyper-V on (Windows may want a restart), installs into
 `C:\Program Files\HLab`, adds the start menu entry "HLab", puts `hlab.exe` on the
 PATH and the Linux CLI into `~/.local/bin` of the default WSL distribution, and
-adds the firewall rule "HLab". `install.ps1 -Uninstall` removes all of it with the
+adds the firewall rule "HLab". Run again with a newer package, it updates HLab:
+a running HLab ends, its servers run on, and the next start takes them over
+and updates the appliance. `install.ps1 -Uninstall` removes all of it with the
 lab's VMs, switches and data (`-KeepData` keeps `C:\ProgramData\HLab`; the next
 start gives the servers new VMs with their disks). Smart App
 Control blocks HLab's unsigned programs; it has to be off.

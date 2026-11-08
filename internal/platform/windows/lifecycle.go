@@ -61,7 +61,8 @@ func NewLifecycle(mutexName, instanceFile string, dialer platform.AgentDialer) *
 }
 
 // Lock makes this process the only HLab on the machine: it holds the named
-// mutex, which Windows closes when the process ends, also when it crashes.
+// mutex, which Windows closes when the process ends, also when it crashes,
+// and names its data folder in the instance file until unlock.
 func (l *Lifecycle) Lock(dataDir string) (func(), error) {
 	name, err := syscall.UTF16PtrFromString(l.mutexName)
 	if err != nil {
@@ -85,7 +86,13 @@ func (l *Lifecycle) Lock(dataDir string) (func(), error) {
 	if os.MkdirAll(filepath.Dir(l.instanceFile), 0o755) == nil {
 		_ = os.WriteFile(l.instanceFile, []byte(absolute+"\r\n"), 0o644)
 	}
-	unlock := func() { _ = syscall.CloseHandle(syscall.Handle(handle)) }
+	unlock := func() {
+		// removed while the mutex is held, so that no other start has
+		// written its folder there yet; after a crash it stays until the
+		// next start writes it anew
+		_ = os.Remove(l.instanceFile)
+		_ = syscall.CloseHandle(syscall.Handle(handle))
+	}
 	return unlock, nil
 }
 

@@ -44,7 +44,9 @@ the Cloud API in the test's process creates a Debian and an Ubuntu server.
    out without WSL or its ssh). It reaches 8080, 8081 and the Internet, not
    8090, and the private ranges behind the uplink answer EHOSTUNREACH
    (admin-prohibited). A ping from one server to the other has TTL 63: the
-   isolated ports let them meet only through the appliance.
+   isolated ports let them meet only through the appliance. After 45 s
+   without IPv6, a connection over IPv6 comes within 1 s, as over IPv4 (the
+   appliance must solicit the host from a link-local address).
 3. The lab stops (the host keeps no switch, address, route or NRPT rule of
    it) and starts: the same servers on the same addresses with their disks
    (a mark written before), booted again; the Ubuntu server's VM is removed
@@ -58,9 +60,11 @@ the Cloud API in the test's process creates a Debian and an Ubuntu server.
    the release disk that differs only in the VHDX's creator field, so it is
    another release. The new appliance (MAC set B) replaces the old one while
    the Debian server runs: it must take new TCP connections again within 5 s
-   (tried every 100 ms), an SSH session that prints every 100 ms must live
-   through it, the server must not boot, and the appliance's folder must hold
-   only the new release and `system-B.vhdx`.
+   (tried every 100 ms), two SSH sessions must live through it: one prints
+   every 100 ms, the other is quiet until after the update and then prints,
+   so that the guest sends first through the new appliance. The server must
+   not boot, and the appliance's folder must hold only the new release and
+   `system-B.vhdx`.
 7. A reset, the guest's shutdown, the deletes, and the host is clean.
 
 The test keeps the system images in `C:\HLabDev\itest\image-cache`, so that
@@ -77,9 +81,8 @@ only its first run loads them.
 - Once, as administrator: `bin/dev.ps1 dev-install` creates `C:\HLabDev`,
   which only the developer, the administrators and SYSTEM may write (whatever
   lands there runs elevated; Hyper-V's VMs may read it), the tasks "HLab itest"
-  and "HLab dev" (dev loop, below), the firewall rule "HLab dev" and the
-  agent's hv_sock service (the registry key of `VsockServiceID(5000)` under
-  `GuestCommunicationServices`). From WSL2: `powershell.exe -ExecutionPolicy
+  and "HLab dev" (dev loop, below) and the firewall rule "HLab dev". From
+  WSL2: `powershell.exe -ExecutionPolicy
   Bypass -File \\wsl.localhost\<distribution>\<repo>\bin\dev.ps1 dev-install`
   in a PowerShell run as administrator. Running it again is safe.
 - HLab must not run meanwhile: the tests take its switches, ranges and VM name.
@@ -150,8 +153,11 @@ the README), from the folder that `bin/dev package` fills (`build/package`:
 `hlabd.exe`, `hlab.exe`, the Linux `hlab`, the appliance's disk, the script).
 There is no Windows service and no autostart: HLab runs when the user starts
 it (the start menu's link, whose "Run as administrator" flag the script sets
-in the `.lnk`, or `hlab start`). `-Uninstall` first stops the installed
-`hlabd` (`hlab stop`) and refuses while one from another folder runs. It
+in the `.lnk`, or `hlab start`). An update ends a running `hlabd` as a crash
+would (`Stop-Process -Force`, as `bin/dev deploy --keep-vms`): the servers and
+the appliance run on, and the next start takes them over and updates the
+appliance (docs/service.md). `-Uninstall` first stops the installed `hlabd`
+(`hlab stop`). Both refuse while one from another folder runs. `-Uninstall`
 removes the VMs with the notes `hlab` (with `-KeepData` their disks stay, and
 the next start gives each server a new VM with its disk), the switches `HLab-*` with the host's NIC, the NRPT rules
 with the comment `hlab`, and the rest the install added; the Hyper-V feature
