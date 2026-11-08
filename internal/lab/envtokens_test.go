@@ -92,3 +92,21 @@ func TestTheEnvTokenFileKeepsOnlyProjectsThatAreThere(t *testing.T) {
 		t.Errorf("a deleted project: got %v, want state.ErrNotFound", err)
 	}
 }
+
+// An env token file of null, as an editor might leave it, counts as no
+// tokens: the project gets a new one.
+func TestEnvTokenTakesAFileOfNullAsNoTokens(t *testing.T) {
+	dataDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dataDir, lab.EnvTokenFile), []byte("null\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	l := start(t, fake.New(), lab.Options{DataDir: dataDir})
+	project, err := l.CreateProject("web", state.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret := envToken(t, l, project.ID)
+	if token, found := l.TokenByHash(state.HashToken(secret)); !found || token.ProjectID != project.ID || token.Name != lab.EnvTokenName {
+		t.Errorf("got %+v, %v, want the project's env token", token, found)
+	}
+}

@@ -39,7 +39,8 @@ func (s *System) ClaimDataDir(dataDir string) (release func(), err error) {
 }
 
 // ReadSecrets reads a file that WriteSecrets wrote: secrets by ID. A missing
-// file has none.
+// file has none, and so has a file of `null`; the map it returns is never
+// nil, so the caller may add to it.
 func (s *System) ReadSecrets(path string) (map[int64]string, error) {
 	secrets := map[int64]string{}
 	data, err := os.ReadFile(path)
@@ -51,6 +52,9 @@ func (s *System) ReadSecrets(path string) (map[int64]string, error) {
 	}
 	if err := json.Unmarshal(data, &secrets); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	if secrets == nil { // json.Unmarshal sets the map to nil for null
+		secrets = map[int64]string{}
 	}
 	return secrets, nil
 }
