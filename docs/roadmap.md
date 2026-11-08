@@ -14,7 +14,7 @@ the tests. Look there before writing such a part anew.
 | Phase | What | State |
 |---|---|---|
 | 1a | core without VMs: state, lab, web basics, catalog, reading resources, SSH keys, lab control, `--platform fake` | done |
-| 1b | servers, host link, reachability | **in progress: next 1-L** |
+| 1b | servers, host link, reachability | done |
 | 2a | Floating IPs, firewalls, private networks | open |
 | 2b | volumes, placement groups, DNS | open |
 | 2c | tools for tests | open |
@@ -82,7 +82,7 @@ the tests. Look there before writing such a part anew.
 | 1b-5 | dev loop, `install.ps1`, the CLI from WSL2 | done |
 | 1b-6 | appliance update (A/B) with running servers | done |
 | 1b-R | review of phase 1b | done |
-| 1-L | the live tests of phase 1 on the finished state | next: check its findings again |
+| 1-L | the live tests of phase 1 on the finished state | done |
 
 ### What is there
 
@@ -153,6 +153,16 @@ each part; this is the list.
   `--keep-vms`; all live tests about 5 minutes.
 
 ### Found by 1-L and fixed
+
+The second run of 1-L on the finished state passed every check: lint,
+the unit tests, the agent's tests, the live tests and the smoke tests,
+and by hand an installed HLab (create, SSH, isolation, stop, start, a
+hard end, an update of HLab over a running one, deleting a project,
+`-KeepData`, the uninstall), the host clean at the end. An update over
+a running HLab: the servers ran on, a session in which only the guest
+sent stalled for 0.36 s at most, new connections failed for 1.2 s at
+most; after 45 s without traffic, IPv6 from Windows connected in 40 ms
+at most.
 
 - A TCP connection from the host in which only the guest sent hung after
   the appliance's update: the new appliance took its first packet as `new`
@@ -248,6 +258,6 @@ that found it (must, should, optional) and the phase that closes it.
   again.
 - The uninstall is played through by hand, not in a live test.
 
-Next: 1-L checks its findings again on the finished state.
+Next: phase 1 goes into `main`; then phase 2a.
 
 Not there yet: the commands of later phases.
