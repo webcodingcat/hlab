@@ -113,7 +113,10 @@ list.
   transaction (`Lab.Create`); a start reserves its room in its plan, so
   starts sent at once cannot overcommit the host's memory (412
   `resource_unavailable`); a create also needs a tenth of the data folder's
-  drive free.
+  drive free. `want_running` changes only in the actions' plans, so queued
+  actions keep the order they were sent in. A failed create removes its VM
+  and files; the watchdog gives a server that a failed action left
+  `starting` or `stopping` its VM's status.
 - **Primary IPs** (create, get, update, delete, lists, `assign`, `unassign`,
   `change_protection`), addresses from `198.19.0.0/16` and `2001:db8:1::/48`
   in order, the errors as measured.
@@ -121,7 +124,8 @@ list.
   and keeps `want_running`; a start takes over running VMs, reconnects and
   starts the others as they want, gives a server without a VM one with its
   disk, or builds it anew without a disk; a server that cannot come back
-  stays off, and the rest start. A crash of hlabd leaves everything running.
+  stays off, and the rest start. A start removes the disks and seeds of
+  servers that are gone. A crash of hlabd leaves everything running.
 - **For users and developers:** `install/install.ps1` (from `bin/dev
   package`; `-Uninstall`, `-KeepData`), the start menu entry, `hlab start`,
   `hlab stop`, `hlab ssh` with the lab's key, the CLI from WSL2 finding the
@@ -160,6 +164,11 @@ list.
 - `boxes.vhdx` moves to the new appliance at an update with the Storage
   Boxes (5); the pictures' generations stay in memory, so a start sends
   every picture again.
+
+- Raised in the reviews, left open: DEVELOPING.md still restates much of
+  what the code's comments say, and its style is dense; a rename waits for
+  the pictures to reach the appliance; the reserves of the room check are
+  constants, not settings in `hlab.yaml`.
 
 ### Later phases
 
