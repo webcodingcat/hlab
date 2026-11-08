@@ -1,13 +1,17 @@
 # Developing HLab
 
+**Reading order:** CLAUDE.md, then "A request's path" and "Layers" below, then the
+recipe for what you add (Recipes, at the end); the other sections and the files
+under `docs/` are reference, read when you work on their part.
+
 This file explains how the code is laid out, which rules hold it together and how to
 work on it (Recipes). CLAUDE.md lists the rules that are easy to break,
 [STYLE.md](STYLE.md) has the coding standards, and
 [docs/roadmap.md](docs/roadmap.md) says what is done and what comes next. What
 each part does in detail is in the files under `docs/`:
 
-- [docs/servers.md](docs/servers.md): servers, Primary IPs, projects, tokens,
-  faults.
+- [docs/servers.md](docs/servers.md): servers, Primary and Floating IPs,
+  projects, tokens, faults.
 - [docs/service.md](docs/service.md): the service's start and stop, the
   machine's side, the lab control, the CLI, the web UI.
 - [docs/catalog.md](docs/catalog.md): what the lab offers.
@@ -21,10 +25,6 @@ each part does in detail is in the files under `docs/`:
 
 Section names in parentheses, such as (The state), point to the section of this file
 that explains more; a file name in them, such as (docs/tools.md), to that file.
-
-**Start here.** For a first change, read "A request's path" and "Layers", then
-the recipe for what you add (Recipes, at the end). The other sections and
-files are reference: read one when you work on its part.
 
 ## A request's path
 
@@ -209,6 +209,9 @@ The layer test checks production code only. Tests may import fakes and helpers.
   in `lab.View`, which changes nothing. A `View` whose function always returns
   nil is called as `_ = l.View(...)`; one whose function can fail returns its
   error.
+  Code in `lab` that holds the mutex already, because it reads the state
+  together with the flags or the machine's fields, reads it with the
+  private `l.read()`, which `View` uses too.
 - **A record may outlive its Tx, but only to be read.** A handler may build its
   answer from a record after `Change` or `View` returned, without the mutex. It must
   never change that record: from `View` it is the state's own record, and from
@@ -277,6 +280,11 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
     action ends with `error`, both in one change. A plan marked `UndoIfLast`
     undoes only if no action was queued behind it on the resource: the later
     plans have set again what it would take back (`want_running`).
+  - **After an undo the appliance gets new pictures,** before the action
+    counts as done for a queue (`Machine.updatePicturesAfterUndo`): the
+    steps may have sent pictures with the quick changes already (a
+    server's create, an assign). So every plan whose quick changes reach a
+    picture has an `Undo`, and nothing else sends pictures for it.
   - The watchdog looks at a VM without the mutex, so it acts only if no
     action flagged the server meanwhile: each round notes the servers it
     looks at, an action's flag marks them, and the notes go with the round
@@ -328,9 +336,8 @@ catalog in [docs/catalog.md](docs/catalog.md). These rules hold across them:
 - **Creates are whole.** A create records its resource and plans its first
   actions in one `Lab.Create`; every create checks its project
   (`lab.CheckProject`, which `Lab.Act` and `Lab.Create` call). A failed
-  create removes what its steps made. Known gap until phase 2a-1: a
-  server whose create fails stays in the appliance's pictures until the
-  next change sends them (docs/roadmap.md, Known gaps).
+  create removes what its steps made, and its undo sends the pictures
+  without it (Actions, Steps).
 - **Names are unique per project**, looked up with `state.ByName`.
 - **`want_running` changes only in an action's plan** (and in the create's
   record, and by the watchdog for a guest that shut itself down); steps

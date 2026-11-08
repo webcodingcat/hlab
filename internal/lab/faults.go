@@ -41,7 +41,7 @@ func (l *Lab) TakeAPIFault(projectID int64) (state.APIFault, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	// most calls find no fault: a read copies nothing
-	if state.Read(l.state).Lab().Faults[projectID].API.Count == 0 {
+	if l.read().Lab().Faults[projectID].API.Count == 0 {
 		return state.APIFault{}, false
 	}
 	var fault state.APIFault

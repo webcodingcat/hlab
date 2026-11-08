@@ -445,7 +445,7 @@ func (m *Machine) stop() error {
 	appliance, watching, shutdown := m.appliance, m.watching, m.serverShutdown
 	m.appliance, m.watching = nil, nil
 	var vms []string
-	for _, id := range state.IDs(state.Read(m.lab.state), state.Servers, func(*state.Server) bool { return true }) {
+	for _, id := range state.IDs(m.lab.read(), state.Servers, func(*state.Server) bool { return true }) {
 		vms = append(vms, ServerVM(id))
 	}
 	m.lab.mu.Unlock()
@@ -477,6 +477,20 @@ func (m *Machine) UpdatePictures(ctx context.Context) error {
 		return nil
 	}
 	return appliance.Update(ctx, m.pictures(m.pictureLab()))
+}
+
+// updatePicturesAfterUndo sends the pictures after an action's undo,
+// which took quick changes back that the steps may have sent already: a
+// server whose create failed, an assign that did not finish. It runs in
+// the action's goroutine before the action counts as done, so that an
+// action queued behind it finds the appliance as the state is. The action
+// is finished already; a failure is logged, as the appliance's watchdog
+// sends the newest pictures again. A closing lab sends nothing: its next
+// start sends every picture.
+func (m *Machine) updatePicturesAfterUndo() {
+	if err := m.UpdatePictures(m.lab.ctx); err != nil && m.lab.ctx.Err() == nil {
+		m.lab.logger.Warn("sending the pictures after an undo; the watchdog sends them again", "error", err)
+	}
 }
 
 // UpdatePicturesLater sends the pictures as UpdatePictures does, but in the

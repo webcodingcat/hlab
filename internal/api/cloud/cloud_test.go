@@ -74,10 +74,12 @@ func (c *steppingClock) After(d time.Duration) <-chan time.Time { return time.Af
 
 // startMachine starts the lab's machine with the host's resources, so that
 // the room check counts: an agent answers in the appliance's VM, and the
-// release disk is a small file.
-func startMachine(t *testing.T, test *testLab, host platform.HostResources) {
+// release disk is a small file. It returns the agent, whose pictures a
+// test can read.
+func startMachine(t *testing.T, test *testLab, host platform.HostResources) *fake.Agent {
 	t.Helper()
-	test.machine.ServeAgent(system.ApplianceVM("A"), fake.NewAgent().Serve)
+	agent := fake.NewAgent()
+	test.machine.ServeAgent(system.ApplianceVM("A"), agent.Serve)
 	test.machine.SetHostResources(host)
 	release := filepath.Join(t.TempDir(), "hlab-appliance.vhdx")
 	if err := os.WriteFile(release, []byte("the appliance's release"), 0o644); err != nil {
@@ -90,6 +92,7 @@ func startMachine(t *testing.T, test *testLab, host platform.HostResources) {
 	if err := test.lab.Machine().Start(t.Context(), opts); err != nil {
 		t.Fatal(err)
 	}
+	return agent
 }
 
 // localImages returns the built-in catalog with its images' sources on a

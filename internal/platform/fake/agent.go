@@ -22,6 +22,7 @@ type Agent struct {
 	generations map[string]uint64
 	pictures    map[string][]byte
 	holds       map[string]*hold // by picture: the next put waits (HoldNext)
+	failures    map[string]bool  // by picture: the next put fails (FailNext)
 }
 
 // hold makes a put wait: waiting closes when it arrives, the put goes on
@@ -32,7 +33,7 @@ type hold struct {
 
 // NewAgent returns an agent that has applied no picture yet.
 func NewAgent() *Agent {
-	a := &Agent{generations: map[string]uint64{}, pictures: map[string][]byte{}, holds: map[string]*hold{}}
+	a := &Agent{generations: map[string]uint64{}, pictures: map[string][]byte{}, holds: map[string]*hold{}, failures: map[string]bool{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+agentproto.PathStatus, a.status)
 	mux.HandleFunc("PUT "+agentproto.PathPictures+"{name}", a.putPicture)
@@ -79,6 +80,16 @@ func (a *Agent) HoldNext(name string) (waiting <-chan struct{}, release func()) 
 	}
 }
 
+// FailNext makes the next put of the named picture fail with 503, as an
+// agent that cannot apply it now; a refused picture (422) would not fail
+// the sender. A test uses it to make an action's steps fail after the
+// pictures before it were applied.
+func (a *Agent) FailNext(name string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.failures[name] = true
+}
+
 // status answers with the generations applied.
 func (a *Agent) status(w http.ResponseWriter, _ *http.Request) {
 	a.mu.Lock()
@@ -111,6 +122,14 @@ func (a *Agent) putPicture(w http.ResponseWriter, r *http.Request) {
 		generation, err = check[agentproto.Metadata](body.Bytes())
 	default:
 		http.Error(w, "no such picture", http.StatusNotFound)
+		return
+	}
+	a.mu.Lock()
+	failing := a.failures[name]
+	delete(a.failures, name)
+	a.mu.Unlock()
+	if failing {
+		http.Error(w, "failing as the test asked", http.StatusServiceUnavailable)
 		return
 	}
 	var refusal *refusedError

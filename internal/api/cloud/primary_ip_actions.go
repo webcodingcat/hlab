@@ -3,6 +3,7 @@ package cloud
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -19,8 +20,8 @@ func primaryIPActions(l *lab.Lab) lab.ActionTable {
 		ResourceType: primaryIPResource,
 		Busy:         primaryIPBusy,
 		Actions: map[string]lab.ActionSpec{
-			"assign":            {Name: "assign_primary_ip", Plan: planAssign(l)},
-			"unassign":          {Name: "unassign_primary_ip", Plan: planUnassign(l)},
+			"assign":            {Name: "assign_primary_ip", Plan: planPrimaryIPAssign(l)},
+			"unassign":          {Name: "unassign_primary_ip", Plan: planPrimaryIPUnassign(l)},
 			"change_protection": {Name: "change_protection", Plan: planPrimaryIPProtection, Unflagged: true},
 		},
 	}
@@ -32,9 +33,9 @@ type primaryIPAssignRequest struct {
 	AssigneeType *string `json:"assignee_type"`
 }
 
-// planAssign assigns the IP to a server that is off and has no Primary IP
+// planPrimaryIPAssign assigns the IP to a server that is off and has no Primary IP
 // of its type; the appliance learns of it in the steps.
-func planAssign(l *lab.Lab) func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+func planPrimaryIPAssign(l *lab.Lab) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		var body primaryIPAssignRequest
 		if err := json.Unmarshal(req.Body, &body); err != nil {
@@ -56,10 +57,7 @@ func planAssign(l *lab.Lab) func(tx *state.Tx, req lab.Request) (lab.Plan, error
 		if server.Status != state.ServerOff {
 			return lab.Plan{}, web.RefusalNull(http.StatusUnprocessableEntity, "server_not_stopped", primaryIPServerRunning)
 		}
-		field := &server.IPv4
-		if ip.Type == state.IPv6 {
-			field = &server.IPv6
-		}
+		field := primaryIPField(server, ip.Type)
 		if *field != 0 {
 			return lab.Plan{}, web.RefusalNull(http.StatusForbidden, "resource_limit_exceeded", primaryIPLimitReached)
 		}
@@ -70,13 +68,15 @@ func planAssign(l *lab.Lab) func(tx *state.Tx, req lab.Request) (lab.Plan, error
 			return lab.Plan{}, web.RefusalNull(http.StatusUnprocessableEntity, "service_error", assignIPLocationMismatch)
 		}
 		ip.AssigneeID, *field = server.ID, ip.ID
-		return primaryIPChangePlan(l, server.ID), nil
+		plan := primaryIPChangePlan(l, server.ID)
+		plan.Undo = undoPrimaryIPChange(ip.ID, 0, ip.AutoDelete)
+		return plan, nil
 	}
 }
 
-// planUnassign takes the IP from its server, which must be off. Hetzner
+// planPrimaryIPUnassign takes the IP from its server, which must be off. Hetzner
 // clears auto_delete then (measured 2026-11-08).
-func planUnassign(l *lab.Lab) func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+func planPrimaryIPUnassign(l *lab.Lab) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		ip, err := callerPrimaryIP(tx, req.ProjectID, req.ID)
 		if err != nil {
@@ -97,8 +97,11 @@ func planUnassign(l *lab.Lab) func(tx *state.Tx, req lab.Request) (lab.Plan, err
 		if server.IPv6 == ip.ID {
 			server.IPv6 = 0
 		}
+		autoDelete := ip.AutoDelete
 		ip.AssigneeID, ip.AutoDelete = 0, false
-		return primaryIPChangePlan(l, server.ID), nil
+		plan := primaryIPChangePlan(l, server.ID)
+		plan.Undo = undoPrimaryIPChange(ip.ID, server.ID, autoDelete)
+		return plan, nil
 	}
 }
 
@@ -112,6 +115,43 @@ func primaryIPChangePlan(l *lab.Lab, serverID int64) lab.Plan {
 		Locks:     []state.ResourceRef{server},
 		Steps:     l.Machine().ChangePrimaryIP,
 	}
+}
+
+// undoPrimaryIPChange returns the undo of an assign or unassign: the IP
+// goes back to the server it had before (0: none), with its auto_delete,
+// as far as nothing changed meanwhile. The IP's flag and the server's lock
+// keep other actions off both while the steps run, but a project's reset
+// may have removed either.
+func undoPrimaryIPChange(id, serverID int64, autoDelete bool) func(tx *state.Tx) error {
+	return func(tx *state.Tx) error {
+		ip, err := state.Get(tx, state.PrimaryIPs, id)
+		if errors.Is(err, state.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if ip.AssigneeID != 0 {
+			if server, err := state.Get(tx, state.Servers, ip.AssigneeID); err == nil {
+				*primaryIPField(server, ip.Type) = 0
+			}
+		}
+		ip.AssigneeID, ip.AutoDelete = 0, autoDelete
+		if server, err := state.Get(tx, state.Servers, serverID); err == nil {
+			*primaryIPField(server, ip.Type) = ip.ID
+			ip.AssigneeID = server.ID
+		}
+		return nil
+	}
+}
+
+// primaryIPField returns the server's field that holds its Primary IP of
+// a type.
+func primaryIPField(server *state.Server, ipType state.IPType) *int64 {
+	if ipType == state.IPv6 {
+		return &server.IPv6
+	}
+	return &server.IPv4
 }
 
 // primaryIPProtectionRequest is the body of change_protection.

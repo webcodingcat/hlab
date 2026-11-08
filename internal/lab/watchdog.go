@@ -39,7 +39,7 @@ func (m *Machine) watchRound(ctx context.Context) {
 	var ids []int64
 	m.lab.mu.Lock()
 	m.looks = map[state.ResourceRef]bool{}
-	for _, server := range state.All(state.Read(m.lab.state), state.Servers) {
+	for _, server := range state.All(m.lab.read(), state.Servers) {
 		if ref := serverRef(server.ID); watched(server.Status) && m.lab.flags[ref] == 0 {
 			m.looks[ref] = false
 			ids = append(ids, server.ID)

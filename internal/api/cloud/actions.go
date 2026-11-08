@@ -20,6 +20,10 @@ import (
 // /actions without IDs: listing all actions was removed on 2025-01-30.
 const actionsListRemoved = "https://docs.hetzner.cloud/changelog#2025-01-30-listing-arbitrary-actions-in-the-actions-list-endpoint-is-removed"
 
+// planFunc is the plan of one row of an action table (lab.ActionSpec.Plan):
+// it checks the request, makes the quick changes and returns the slow part.
+type planFunc func(tx *state.Tx, req lab.Request) (lab.Plan, error)
+
 // registerActions adds the routes of actions.
 func registerActions(api *web.API, l *lab.Lab) {
 	api.Handle("GET /actions", func(req *web.Request) (int, any, error) {

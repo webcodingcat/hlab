@@ -39,7 +39,7 @@ func serverActions(l *lab.Lab) lab.ActionTable {
 
 // planSteps returns the plan of a power action without quick changes: it
 // checks that the caller has the server, and its steps call run with it.
-func planSteps(run func(ctx context.Context, id int64) error) func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+func planSteps(run func(ctx context.Context, id int64) error) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		if _, err := callerServer(tx, req.ProjectID, req.ID); err != nil {
 			return lab.Plan{}, err
@@ -53,7 +53,7 @@ func planSteps(run func(ctx context.Context, id int64) error) func(tx *state.Tx,
 // behind the poweroff then sees a server that does not want to run, so it
 // checks the room and sets want_running again (planStart); the poweroff's
 // steps leave it so. If the steps fail, want_running is as before.
-func planStop(run func(ctx context.Context, id int64) error) func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+func planStop(run func(ctx context.Context, id int64) error) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		server, err := callerServer(tx, req.ProjectID, req.ID)
 		if err != nil {
@@ -75,7 +75,7 @@ func planStop(run func(ctx context.Context, id int64) error) func(tx *state.Tx, 
 // room on the host and sets want_running at once, so that the room check
 // of every later action counts the server even before these steps run. If
 // the steps fail, the server is off and does not want to run.
-func planStart(l *lab.Lab, run func(ctx context.Context, id int64) error) func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+func planStart(l *lab.Lab, run func(ctx context.Context, id int64) error) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		server, err := callerServer(tx, req.ProjectID, req.ID)
 		if err != nil {
@@ -102,7 +102,7 @@ func planStart(l *lab.Lab, run func(ctx context.Context, id int64) error) func(t
 // planCreateServer builds the new server's VM; the action names the image
 // too. If the steps fail, the server is deleted with its VM, its files and
 // its new Primary IPs.
-func planCreateServer(l *lab.Lab) func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+func planCreateServer(l *lab.Lab) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		server, err := callerServer(tx, req.ProjectID, req.ID)
 		if err != nil {
@@ -121,7 +121,7 @@ func planCreateServer(l *lab.Lab) func(tx *state.Tx, req lab.Request) (lab.Plan,
 // running then fails and cleans up, Machine.CreateServer), as Hetzner's API
 // does, and its VM, disk and seed in the steps. Its Primary IPs with
 // auto_delete go with it, the others stay unassigned.
-func planDeleteServer(l *lab.Lab) func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+func planDeleteServer(l *lab.Lab) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		server, err := callerServer(tx, req.ProjectID, req.ID)
 		if err != nil {

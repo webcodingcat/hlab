@@ -243,7 +243,14 @@ func (l *Lab) changeLocked(change func(tx *state.Tx) error) error {
 func (l *Lab) View(read func(tx *state.Tx) error) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return read(state.Read(l.state))
+	return read(l.read())
+}
+
+// read returns the state to read for a caller that holds the mutex, such as
+// one that reads it together with the flags or the machine's fields. Its Tx
+// copies nothing (state.Read): Put, Delete and NewID panic.
+func (l *Lab) read() *state.Tx {
+	return state.Read(l.state)
 }
 
 // Current returns a record as it is now, after a call to the system: the

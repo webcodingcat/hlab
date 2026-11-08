@@ -78,6 +78,10 @@ type Plan struct {
 	// Its records may be gone (the project was deleted while steps that did
 	// not watch the context failed): Undo then treats state.ErrNotFound as
 	// nothing left to undo.
+	// After an undo the appliance gets new pictures, before the action's
+	// goroutine ends (Machine.updatePicturesAfterUndo): the steps may have
+	// sent pictures with the quick changes, and an undo takes them back
+	// from the state only.
 	Undo func(tx *state.Tx) error
 	// Resources are more resources the action names (a target server).
 	Resources []state.ResourceRef
@@ -301,7 +305,9 @@ func (l *Lab) start(planned plannedAction) {
 		}
 		// canceled only when the steps gave up: steps that finished despite
 		// the cancel have done their work, and the action succeeded
-		l.end(run, err, err != nil && ctx.Err() != nil)
+		if undone := l.end(run, err, err != nil && ctx.Err() != nil); undone {
+			l.machine.updatePicturesAfterUndo()
+		}
 	}()
 }
 
@@ -320,7 +326,8 @@ func waitFor(ctx context.Context, done chan struct{}) error {
 
 // end finishes an action whose steps have returned: it takes the flags off,
 // undoes the quick changes if the steps failed, and finishes the action.
-func (l *Lab) end(run *runningAction, err error, canceled bool) {
+// It tells whether it undid: the caller then sends the pictures.
+func (l *Lab) end(run *runningAction, err error, canceled bool) (undone bool) {
 	message := ""
 	switch {
 	case canceled:
@@ -368,13 +375,14 @@ func (l *Lab) end(run *runningAction, err error, canceled bool) {
 			return finish(tx)
 		})
 		if undoErr == nil {
-			return
+			return true
 		}
 		l.logger.Error("undoing a failed action failed", "id", run.id, "error", undoErr)
 	}
 	if finishErr := l.changeLocked(finish); finishErr != nil {
 		l.logger.Error("finishing an action failed", "id", run.id, "error", finishErr)
 	}
+	return false
 }
 
 // StopProjectActions cancels the running actions of a project and waits until
