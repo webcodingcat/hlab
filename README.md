@@ -5,7 +5,7 @@ a service that answers like Hetzner's APIs, with servers that are real VMs. Tool
 such as OpenTofu (hcloud provider), the hcloud CLI and Ansible are meant to work
 against it without changes.
 
-**Status:** being rebuilt in Go, phase 1b (see [docs/roadmap.md](docs/roadmap.md)).
+**Status:** being rebuilt in Go, phase 2a (see [docs/roadmap.md](docs/roadmap.md)).
 `hlabd` answers the catalog (locations, server and load balancer types, pricing,
 images, ISOs), SSH keys, servers (Debian 13, Ubuntu 26.04; power actions) and
 Primary IPs. On Windows 11 the servers are Hyper-V VMs that the host and WSL2

@@ -15,7 +15,7 @@ the tests. Look there before writing such a part anew.
 |---|---|---|
 | 1a | core without VMs: state, lab, web basics, catalog, reading resources, SSH keys, lab control, `--platform fake` | done |
 | 1b | servers, host link, reachability | done |
-| 2a | Floating IPs, firewalls, private networks | open |
+| 2a | Floating IPs, firewalls, private networks | in progress |
 | 2b | volumes, placement groups, DNS | open |
 | 2c | tools for tests | open |
 | 3a | snapshots, backups, rebuild, type change | open |
@@ -207,11 +207,46 @@ that found it (must, should, optional) and the phase that closes it.
 - **should, 2a:** a Primary IP's assign and unassign have no `Undo`: when
   their pictures fail, the action ends with an error but the IP stays
   assigned or unassigned.
+- **must, 2a-1:** a server whose create fails stays in the appliance's
+  pictures: its steps send them while the record is still there, and the
+  undo that removes it (and its Primary IPs with auto_delete) sends none.
+  Solved together with the missing `Undo` of a Primary IP's assign and
+  unassign: after an undo, the pictures go out again.
+- **should, 2c:** `TestQueuedActionsWaitBehindAnActionThatLocksTheirResource`
+  checks that an action still waits with `time.Sleep(20ms)`
+  (`internal/lab/actions_test.go`), so it can pass by mistake; a step
+  that signals when it starts would make them exact.
+- **should, with the next change there:** `sshFingerprint`
+  (`internal/api/cloud/ssh_keys.go`) reports a failure as a second string
+  instead of an `error`; the key types are written out twice
+  (`sshKeyInvalid`, `sshKeyTypes`); `registerSSHKeys` holds every handler
+  as a closure, over 80 lines.
+- **should, 2c:** DEVELOPING.md does not say that the lab control's and
+  `web`'s own tests send requests without `spectest` (there is no Hetzner
+  spec for them); it uses words it does not explain (NRPT, hv_sock, VRF,
+  conntrack, watchdog, room check); "Transactions" needs one plain
+  sentence first: a Tx changes only its copies, a state never changes.
+- **should, 2c:** DEVELOPING.md's layer table lists `schema` under
+  `api/cloud` as HLab's own package, which does not exist yet, without
+  saying that `api/cloud` uses `hcloud-go`'s until then; the table of
+  flags is hard to map to `planAction` and `start`, and `Lab.start` (flags,
+  queue, lock queues) wants either a worked example in "Actions" or a
+  split in two.
+- **should, 6b:** the README describes the installer as there, while the
+  roadmap lists 6b (tray, installer) as open; say what 6b still lacks, and
+  that `bin/dev package` copies `install/install.ps1` to `build/package`.
+- **should, 2a:** a server's create accepts any location of the catalog,
+  also one its server type does not offer; Hetzner refuses that (text and
+  code not measured yet).
+- **should, with the next change there:** `Lab.DeleteProject` sends every
+  picture once per server it removes (`deleteServerVM`); removing the VMs
+  first and sending the pictures once would do.
+- **should, 6b:** after the first Ctrl+C or stop signal, a second one does
+  not end a stop that hangs (`signal.Notify` stays active in both
+  platforms' life cycles); `signal.Stop` after the first would let it.
 - **should, with the next change there:** the comment on the requests that
   `refuseWhileStopping` lets through (`cmd/hlabd/service.go`) does not
   read.
-- **should, 2a:** `Lab.flagged` keeps an entry for every resource that
-  ever had a flag, also for deleted ones.
 - **should, 2c:** the servers' watchdog runs every 2 s on the wall clock
   (`serverWatchInterval`, `time.NewTicker`, not the lab's clock), so its
   unit tests wait seconds.
@@ -230,14 +265,6 @@ that found it (must, should, optional) and the phase that closes it.
 
 ### Comes with phase X
 
-- **2a, first step:**
-  - a type of its own for the machine's side (servers, image cache,
-    appliance update, watchdog), so that `Lab` stays narrow before
-    networks and firewalls come;
-  - a fixed rule for where a resource's plans and steps live (today plans
-    in `api/cloud`, steps in `lab`);
-  - `system.ReadSecrets` returns a nil map for an `env-tokens.json` of
-    `null`, and the next env token panics: fix it.
 - **2a:** volumes, networks, firewalls and placement groups in a server's
   create request are ignored until then.
 - **2b:** `change_dns_ptr` (DNS); unbound's configuration and the uplink's
@@ -261,6 +288,14 @@ that found it (must, should, optional) and the phase that closes it.
   again.
 - The uninstall is played through by hand, not in a live test.
 
-Next: phase 1 goes into `main`; then phase 2a.
+## Phase 2a
+
+### Steps
+
+| Step | What | State |
+|---|---|---|
+| 2a-0 | `lab.Machine` for the machine's side; the rule where an action's plans and steps live (DEVELOPING.md, Actions); `ReadSecrets` takes a file of `null`; the watchdog's notes live only for a round | done |
+
+Next: the next step of phase 2a.
 
 Not there yet: the commands of later phases.
