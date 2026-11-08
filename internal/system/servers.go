@@ -148,6 +148,15 @@ func (s *System) PowerServer(ctx context.Context, vm string, power Power) error 
 	return nil
 }
 
+// ServerExists tells whether a server's VM is there.
+func (s *System) ServerExists(ctx context.Context, vm string) (bool, error) {
+	_, err := s.platform.Hypervisor.VMState(ctx, vm)
+	if errors.Is(err, platform.ErrNotFound) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 // ServerRuns tells whether a server's VM runs (a paused VM counts as
 // running); a VM that is gone does not.
 func (s *System) ServerRuns(ctx context.Context, vm string) (bool, error) {

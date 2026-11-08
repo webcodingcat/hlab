@@ -15,10 +15,12 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/imagefmt"
+	"github.com/webcodingcat/hlab/internal/platform"
 )
 
 // ImageSource is an official cloud image: its qcow2 file and the list of
@@ -70,6 +72,40 @@ func (s *System) LoadImage(ctx context.Context, source ImageSource, cacheDir str
 		return LoadedImage{}, fmt.Errorf("converting %s to VHDX: %w", source.URL, err)
 	}
 	return loaded, nil
+}
+
+// CleanImageCache removes from the cache folder what keep does not name:
+// images that no cache entry and no server's disk needs any more (an image
+// whose source changed in the catalog was loaded anew), and the folders of
+// loads that HLab's end cut short. It returns what it removed. A disk that
+// a VM still uses stays (the hypervisor refuses to delete it).
+func (s *System) CleanImageCache(ctx context.Context, cacheDir string, keep []string) ([]string, error) {
+	entries, err := os.ReadDir(cacheDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var removed []string
+	var errs []error
+	for _, entry := range entries {
+		file := filepath.Join(cacheDir, entry.Name())
+		if slices.Contains(keep, file) {
+			continue
+		}
+		if entry.IsDir() {
+			err = os.RemoveAll(file)
+		} else if err = s.platform.Hypervisor.DeleteDisk(ctx, file); errors.Is(err, platform.ErrNotFound) {
+			err = os.Remove(file) // a file the hypervisor does not know as a disk
+		}
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		removed = append(removed, file)
+	}
+	return removed, errors.Join(errs...)
 }
 
 // checksum is a file's expected checksum and the hash that computes it.

@@ -107,9 +107,11 @@ func networkConfig(lab Lab, server Server) map[string]any {
 	return map[string]any{
 		"version": 1,
 		"config": []any{map[string]any{
-			"type":        "physical",
-			"name":        "eth0",
-			"mac_address": server.MAC,
+			"type": "physical",
+			"name": "eth0",
+			// quoted: a YAML 1.1 parser, cloud-init's among them, reads
+			// an unquoted MAC of digits (96:00:00:10:00:00) as a number
+			"mac_address": &yaml.Node{Kind: yaml.ScalarNode, Style: yaml.DoubleQuotedStyle, Value: server.MAC},
 			"subnets":     subnets,
 		}},
 	}

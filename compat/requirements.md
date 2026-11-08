@@ -68,7 +68,7 @@ it; "open" means the phase has not come yet. What never works is in
 | An unassigned IP has `assignee_id` `null` and `assignee_type` `"unassigned"`; an IPv4's `dns_ptr` lists Hetzner's default name | measured; Hetzner's changelog 2026-04-27 | 1b | `internal/api/cloud`: `TestPrimaryIPLifeCycle` |
 | A server's own IPs are named `primary_ip-<id>`, with `auto_delete` true; `unassign` clears `auto_delete` | measured | 1b | `internal/api/cloud`: `TestPrimaryIPLifeCycle` |
 | Lists filter by `name`, `ip`, `label_selector` and sort by `id`, `created`; `/primary_ips/actions` and `/primary_ips/{id}/actions` | hcloud-go `hcloud/primary_ip.go` (`PrimaryIPListOpts`) | 1b | `internal/api/cloud`: `TestPrimaryIPAssignedOnCreate` |
-| Errors with Hetzner's codes and texts, details `null` (below) | measured | 1b | `internal/api/cloud`: `TestPrimaryIPLifeCycle`, `TestPrimaryIPCreateErrors` |
+| Errors with Hetzner's codes and texts, details `null` (below); a new server's IP that it cannot take has codes and texts of its own, details `{}` | measured | 1b | `internal/api/cloud`: `TestPrimaryIPLifeCycle`, `TestPrimaryIPCreateErrors`, `TestPrimaryIPsAServerCannotTake` |
 
 ## Gaps of the old HLab
 
@@ -195,7 +195,7 @@ queued.
 Measured on 2026-11-08 with the read-write token of the empty test project
 (`cx23` in `fsn1`, `debian-13`; `cx23` in `hel1` had no room: 412
 `resource_unavailable`, `"error during placement"`). Everything was deleted
-afterwards. HLab answers the same, but where a row says "not measured".
+afterwards. HLab answers the same.
 
 | Request | Answer |
 |---|---|
@@ -220,7 +220,8 @@ afterwards. HLab answers the same, but where a row says "not measured".
 | `DELETE` while the IP's unassign runs / assigned / protected | 423 `locked` `"cannot perform operation because primary_ip is locked"` / 422 `must_be_unassigned` `"Primary IP must be unassigned"` / 423 `protected` `"Primary IP deletion is protected"`, all `details` `null` |
 | `PUT /primary_ips/{id}` with `auto_delete` true on a protected IP | 200 |
 | an IP that is gone | 404 `not_found`, `"Primary IP with ID <id> not found"`, `details` `null` |
-| not measured | a Primary IP that another server holds, or of another location, given to a new server or to `assign`: HLab answers 422 `primary_ip_assigned` / `primary_ip_location_mismatch`; one of the other type: 412 `primary_ip_version_mismatch` |
+| `POST /servers` with a Primary IP of the other type (held by another server too) / held by another server / of another location | 412 `primary_ip_version_mismatch` `"primary ip has a wrong ip version"` / 422 `primary_ip_assigned` `"primary ip already assigned to another server"` / 422 `primary_ip_location_mismatch` `"primary ip and server located in different locations"`, all `details` `{}`; the type is checked first |
+| `assign` of an IP held by another server / of another location / to a missing server | 422 `primary_ip_already_assigned` `"Primary IP with ID <id> is already assigned to a Resource"` / 422 `service_error` `"Resource and Primary IP are in different locations"` / 404 `not_found` `"resource not found"`, all `details` `null` |
 
 ### Metadata service (1b-2)
 

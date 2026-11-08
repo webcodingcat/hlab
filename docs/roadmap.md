@@ -263,19 +263,15 @@ the tests. Look there before writing such a part anew.
 ### Open for 1b-5 and later
 
 - The free disk space of the room check (plan, 5 no. 18: 10 % free) is not
-  checked yet.
-- Not measured on Hetzner: a Primary IP that another server holds or of
-  another location given to a server, and one of the other type; HLab's codes
-  for them are guesses (`compat/requirements.md`).
-- A cached image whose source changes in the catalog is loaded anew; the old
-  file stays until a later step removes images no disk depends on.
+  checked yet; the operator left it for later.
 - Volumes, networks, firewalls and placement groups in a server's create
   request are ignored until their phase (2a, 2b).
-- `change_dns_ptr` of servers and Primary IPs comes with DNS (2b); the
-  metadata picture's YAML would read an all-digit MAC as a number in a YAML
-  1.1 parser (the seed is JSON; the servers' own cloud-init reads the seed).
-- A server whose create HLab's end cut short has no VM: the next start marks
-  it `off`, and its poweron fails until it is deleted.
+- `change_dns_ptr` of servers and Primary IPs comes with DNS (2b).
+- Settled after 1b-4: the errors of a Primary IP a server cannot take
+  (another server's, another location's, the other type) are measured and
+  taken over; a server whose create HLab's end cut short is built anew at the
+  next start; a start removes the cached images that no entry and no disk
+  needs; the metadata's MAC addresses are quoted in its YAML.
 
 Next: 1b-5, dev loop, `install.ps1`, the CLI from WSL2.
 

@@ -1,7 +1,14 @@
 package lab_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -157,6 +164,107 @@ func TestStartMachineResumesTheServers(t *testing.T) {
 	}
 	if strings.Contains(calls, "DetachNIC "+lab.ServerVM(running)) {
 		t.Error("the NIC of the running server was touched")
+	}
+}
+
+// localImages returns the built-in catalog with its images on a local HTTP
+// server: a small qcow2 file and its SHA256SUMS.
+func localImages(t *testing.T) *catalog.Catalog {
+	t.Helper()
+	disk, err := os.ReadFile(filepath.Join("..", "imagefmt", "testdata", "plain.qcow2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(disk)
+	files := http.NewServeMux()
+	files.HandleFunc("GET /image.qcow2", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(disk) })
+	files.HandleFunc("GET /SHA256SUMS", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(w, "%s  image.qcow2\n", hex.EncodeToString(sum[:]))
+	})
+	server := httptest.NewServer(files)
+	t.Cleanup(server.Close)
+	offer := *catalog.Builtin()
+	offer.Images = slices.Clone(offer.Images)
+	for i := range offer.Images {
+		offer.Images[i].Source = catalog.ImageSource{URL: server.URL + "/image.qcow2", Checksums: server.URL + "/SHA256SUMS"}
+	}
+	return &offer
+}
+
+// A server whose create HLab's end cut short has no VM: the next start
+// builds it anew and starts it, as it wants to run.
+func TestStartMachineBuildsAServerWithoutAVM(t *testing.T) {
+	machine := fake.New()
+	withAppliance(machine)
+	offer := localImages(t)
+	l := start(t, machine, lab.Options{DataDir: t.TempDir(), Catalog: offer})
+	t.Cleanup(func() { _ = l.Close() })
+	var id int64
+	err := l.Change(func(tx *state.Tx) error {
+		project := &state.Project{ID: state.NewID(tx, state.Projects), Name: "default"}
+		state.Put(tx, state.Projects, project)
+		id = state.NewID(tx, state.Servers)
+		state.Put(tx, state.Servers, &state.Server{
+			ID: id, ProjectID: project.ID, Name: "web", Type: "cpx22", Location: "fsn1", ImageID: offer.Images[0].ID,
+			Status: state.ServerInitializing, WantRunning: true, MAC: lab.ServerMAC(id), DiskGB: 80,
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+		t.Fatal(err)
+	}
+	if status, _ := serverStatus(t, l, id); status != state.ServerRunning {
+		t.Errorf("the server is %s, want running", status)
+	}
+	vm, err := machine.Platform().Hypervisor.VMState(t.Context(), lab.ServerVM(id))
+	if err != nil || vm.Power != platform.PowerRunning {
+		t.Errorf("the server's VM is %+v, %v; want it running", vm, err)
+	}
+}
+
+// A start removes from the image cache what no cache entry and no server
+// needs, and what a load cut short left.
+func TestStartMachineCleansTheImageCache(t *testing.T) {
+	machine := fake.New()
+	withAppliance(machine)
+	dataDir := t.TempDir()
+	cache := filepath.Join(dataDir, lab.ImageCacheDir)
+	if err := os.MkdirAll(filepath.Join(cache, "load-1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	kept, used, stale := filepath.Join(cache, "kept.vhdx"), filepath.Join(cache, "used.vhdx"), filepath.Join(cache, "stale.vhdx")
+	for _, file := range []string{kept, used, stale} {
+		if err := os.WriteFile(file, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	l := start(t, machine, lab.Options{DataDir: dataDir})
+	t.Cleanup(func() { _ = l.Close() })
+	id := putServer(t, l, machine, "web", false, false)
+	err := l.Change(func(tx *state.Tx) error {
+		tx.Lab().Images = map[string]state.CachedImage{"debian-13": {File: kept}}
+		server, err := state.Get(tx, state.Servers, id)
+		if err == nil {
+			server.BaseImage = used // an image whose source changed since
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+		t.Fatal(err)
+	}
+	entries, _ := os.ReadDir(cache)
+	var left []string
+	for _, entry := range entries {
+		left = append(left, entry.Name())
+	}
+	if !slices.Equal(left, []string{"kept.vhdx", "used.vhdx"}) {
+		t.Errorf("left in the cache: %v", left)
 	}
 }
 

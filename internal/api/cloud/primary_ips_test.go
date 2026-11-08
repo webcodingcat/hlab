@@ -126,6 +126,49 @@ func TestPrimaryIPLifeCycle(t *testing.T) {
 	expectError(t, "a deleted IP", &responseOf{response}, http.StatusNotFound, "not_found", fmt.Sprintf("Primary IP with ID %d not found", own))
 }
 
+// A Primary IP a server cannot take: another server holds it, it is in
+// another location, it has the other type. Hetzner answers a create and an
+// assign with other codes and texts (measured 2026-11-08).
+func TestPrimaryIPsAServerCannotTake(t *testing.T) {
+	test := newTestLab(t)
+	off := map[string]any{"server_type": "cpx22", "image": "debian-13", "location": "fsn1", "start_after_create": false}
+	with := func(name string, publicNet map[string]any) map[string]any {
+		body := map[string]any{"name": name, "public_net": publicNet}
+		for key, value := range off {
+			body[key] = value
+		}
+		return body
+	}
+	holder := createServer(t, test, with("holder", nil))
+	other := createServer(t, test, with("other", map[string]any{"enable_ipv4": false}))
+	waitActions(t, test, holder.Action, other.Action)
+	held := holder.Server.PublicNet.IPv4.ID
+	six := holder.Server.PublicNet.IPv6.ID
+	far := createPrimaryIP(t, test, map[string]any{"name": "far", "type": "ipv4", "location": "nbg1"}).PrimaryIP.ID
+
+	for name, test2 := range map[string]struct {
+		publicNet     map[string]any
+		status        int
+		code, message string
+	}{
+		"held by another":  {map[string]any{"ipv4": held}, 422, "primary_ip_assigned", "primary ip already assigned to another server"},
+		"another location": {map[string]any{"ipv4": far}, 422, "primary_ip_location_mismatch", "primary ip and server located in different locations"},
+		"the other type":   {map[string]any{"ipv4": six}, 412, "primary_ip_version_mismatch", "primary ip has a wrong ip version"},
+	} {
+		expectError(t, "a create with an IP "+name, &responseOf{test.client.Do(http.MethodPost, "/v1/servers", with("new", test2.publicNet))},
+			test2.status, test2.code, test2.message)
+	}
+	assign := func(ip, server int64) *responseOf {
+		return primaryIPAction(test, ip, "assign", map[string]any{"assignee_id": server, "assignee_type": "server"})
+	}
+	expectError(t, "assigning an IP held by another", assign(held, other.Server.ID),
+		http.StatusUnprocessableEntity, "primary_ip_already_assigned", fmt.Sprintf("Primary IP with ID %d is already assigned to a Resource", held))
+	expectError(t, "assigning an IP of another location", assign(far, other.Server.ID),
+		http.StatusUnprocessableEntity, "service_error", "Resource and Primary IP are in different locations")
+	expectError(t, "assigning to a missing server", assign(far, 999999999),
+		http.StatusNotFound, "not_found", "resource not found")
+}
+
 func TestPrimaryIPCreateErrors(t *testing.T) {
 	test := newTestLab(t)
 	// measured 2026-11-08: neither or both of assignee_id and location

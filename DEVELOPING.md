@@ -267,7 +267,8 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
 - **`want_running`** is what a start of the lab follows: a server whose VM
   runs is taken over (hlabd had crashed); one whose VM is off gets its NIC on
   `HLab-Public` again (detached and attached, as a stop of the lab removed the
-  switch) and starts if it wants to run. A stop shuts every server down, all
+  switch) and starts if it wants to run. A server without a VM, whose create
+  hlabd's end cut short, is built anew first. A stop shuts every server down, all
   at once, and turns it off after `shutdown_timeout` (`hlab.yaml`, 60 s);
   `want_running` stays.
 - **Room.** Memory is static, so the servers that want to run may take the
@@ -300,7 +301,9 @@ footer), and `FlattenDisk` (`Convert-VHD`) makes it a dynamic VHDX,
 `images/cache/<sha256>.vhdx`. `state.Lab.Images` records it by the image's
 name; one load per image runs at a time. Converting through the appliance
 (`qemu-img`) is for imports and exports (3b). A cached image whose source in
-the catalog changed is loaded anew; the old file stays.
+the catalog changed is loaded anew; each start of the lab removes the files
+that neither a cache entry nor a server's disk needs, and what a load cut
+short left.
 
 ## Projects, tokens, faults
 

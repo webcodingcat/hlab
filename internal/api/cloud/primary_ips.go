@@ -31,12 +31,17 @@ const (
 	primaryIPBusy          = "cannot perform operation because primary_ip is locked"
 	primaryIPServerRunning = "Server must be offline for this action"
 	primaryIPLimitReached  = "assignment limit reached"
-	// not measured: a server's Primary IP that another server holds, and
-	// one of another location
-	primaryIPAssigned         = "primary IP is already assigned"
-	primaryIPLocationMismatch = "primary IP is in another location"
-	primaryIPTypeMismatch     = "primary IP has another type"
-	primaryIPNameMax          = 255
+	primaryIPNameMax       = 255
+	// a new server's Primary IP that another server holds, of another
+	// location or of the other type; these carry the details {}
+	serverIPAssigned         = "primary ip already assigned to another server"
+	serverIPLocationMismatch = "primary ip and server located in different locations"
+	serverIPTypeMismatch     = "primary ip has a wrong ip version"
+	// the same on assign: other codes and texts (the location's is
+	// Hetzner's service_error)
+	assignIPAssigned         = "Primary IP with ID %d is already assigned to a Resource"
+	assignIPLocationMismatch = "Resource and Primary IP are in different locations"
+	assignServerMissing      = "resource not found"
 )
 
 // primaryIPCreateRequest is the body of POST /primary_ips. It is HLab's own
@@ -306,11 +311,15 @@ func assignNewServerIPs(tx *state.Tx, server *state.Server, publicNet *serverPub
 			if err != nil || ip.ProjectID != server.ProjectID {
 				return web.Refusal(http.StatusNotFound, "primary_ip_not_found", "primary ip not found")
 			}
-			if err := checkAssignable(ip, server); err != nil {
-				return err
-			}
-			if ip.Type != family.ipType {
-				return web.Refusal(http.StatusPreconditionFailed, "primary_ip_version_mismatch", primaryIPTypeMismatch)
+			// the type first: Hetzner refused another server's IPv6 given
+			// as ipv4 for its type (measured 2026-11-08)
+			switch {
+			case ip.Type != family.ipType:
+				return web.Refusal(http.StatusPreconditionFailed, "primary_ip_version_mismatch", serverIPTypeMismatch)
+			case ip.AssigneeID != 0:
+				return web.Refusal(http.StatusUnprocessableEntity, "primary_ip_assigned", serverIPAssigned)
+			case ip.Location != server.Location:
+				return web.Refusal(http.StatusUnprocessableEntity, "primary_ip_location_mismatch", serverIPLocationMismatch)
 			}
 			ip.AssigneeID, *family.field = server.ID, ip.ID
 		case family.enabled == nil || *family.enabled:
@@ -334,18 +343,6 @@ func assignNewServerIPs(tx *state.Tx, server *state.Server, publicNet *serverPub
 			state.Put(tx, state.PrimaryIPs, ip)
 			*family.field = ip.ID
 		}
-	}
-	return nil
-}
-
-// checkAssignable refuses a Primary IP that a server cannot take: one that
-// another server holds, or one of another location.
-func checkAssignable(ip *state.PrimaryIP, server *state.Server) error {
-	if ip.AssigneeID != 0 {
-		return web.RefusalNull(http.StatusUnprocessableEntity, "primary_ip_assigned", primaryIPAssigned)
-	}
-	if ip.Location != server.Location {
-		return web.RefusalNull(http.StatusUnprocessableEntity, "primary_ip_location_mismatch", primaryIPLocationMismatch)
 	}
 	return nil
 }
@@ -388,9 +385,9 @@ func planAssign(l *lab.Lab) func(tx *state.Tx, req lab.Request) (lab.Plan, error
 		if err != nil {
 			return lab.Plan{}, err
 		}
-		server, err := callerServer(tx, req.ProjectID, *body.AssigneeID)
-		if err != nil {
-			return lab.Plan{}, err
+		server, err := state.Get(tx, state.Servers, *body.AssigneeID)
+		if err != nil || server.ProjectID != req.ProjectID {
+			return lab.Plan{}, web.RefusalNull(http.StatusNotFound, "not_found", assignServerMissing)
 		}
 		if server.Status != state.ServerOff {
 			return lab.Plan{}, web.RefusalNull(http.StatusUnprocessableEntity, "server_not_stopped", primaryIPServerRunning)
@@ -402,8 +399,11 @@ func planAssign(l *lab.Lab) func(tx *state.Tx, req lab.Request) (lab.Plan, error
 		if *field != 0 {
 			return lab.Plan{}, web.RefusalNull(http.StatusForbidden, "resource_limit_exceeded", primaryIPLimitReached)
 		}
-		if err := checkAssignable(ip, server); err != nil {
-			return lab.Plan{}, err
+		switch {
+		case ip.AssigneeID != 0:
+			return lab.Plan{}, web.RefusalNull(http.StatusUnprocessableEntity, "primary_ip_already_assigned", fmt.Sprintf(assignIPAssigned, ip.ID))
+		case ip.Location != server.Location:
+			return lab.Plan{}, web.RefusalNull(http.StatusUnprocessableEntity, "service_error", assignIPLocationMismatch)
 		}
 		ip.AssigneeID, *field = server.ID, ip.ID
 		return primaryIPChangePlan(l, server.ID), nil

@@ -86,8 +86,9 @@ func (l *Lab) StartMachine(ctx context.Context, opts MachineOptions) error {
 // resumeServers brings the servers back after the lab started (13.1): a
 // VM that runs is taken over (hlabd had crashed); one that is off gets its
 // NIC on the public switch again, and starts if its server wants to run.
+// A server without a VM, whose create HLab's end cut short, is built anew.
 // The servers' statuses follow their VMs, also for actions that HLab's end
-// cut short.
+// cut short. Then the image cache loses what no server needs.
 func (l *Lab) resumeServers(ctx context.Context) error {
 	var servers []*state.Server
 	_ = l.View(func(tx *state.Tx) error {
@@ -95,29 +96,78 @@ func (l *Lab) resumeServers(ctx context.Context) error {
 		return nil
 	})
 	for _, server := range servers {
-		vm := ServerVM(server.ID)
-		runs, err := l.system.ServerRuns(ctx, vm)
-		if err != nil {
-			return err
+		if err := l.resumeServer(ctx, server); err != nil {
+			return fmt.Errorf("server %d: %w", server.ID, err)
 		}
-		status := state.ServerRunning
-		if !runs {
-			if err := l.system.ReconnectServer(ctx, vm, server.MAC); err != nil {
-				// a server whose create HLab's end cut short has no VM
-				l.logger.Warn("a server's VM could not be reconnected", "server", server.ID, "error", err)
-				status = state.ServerOff
-			} else if status = state.ServerOff; server.WantRunning {
-				if err := l.system.PowerServer(ctx, vm, system.PowerOn); err != nil {
-					return err
-				}
-				status = state.ServerRunning
-			}
+	}
+	l.cleanImageCache(ctx)
+	return nil
+}
+
+// resumeServer brings one server back; it gets the server's record as it
+// was when the start began.
+func (l *Lab) resumeServer(ctx context.Context, server *state.Server) error {
+	vm := ServerVM(server.ID)
+	exists, err := l.system.ServerExists(ctx, vm)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		l.logger.Warn("a server has no VM, as HLab ended during its create; building it anew", "server", server.ID)
+		disk, seedISO := l.serverFiles(server.ID)
+		if err := l.system.DeleteServer(ctx, vm, disk, seedISO); err != nil {
+			return err // what the cut-short create left
 		}
-		if err := l.SetServerStatus(server.ID, status); err != nil && !errors.Is(err, state.ErrNotFound) {
+		if err := l.BuildServer(ctx, server.ID); err != nil {
 			return err
 		}
 	}
+	runs, err := l.system.ServerRuns(ctx, vm)
+	if err != nil {
+		return err
+	}
+	status := state.ServerRunning
+	if !runs {
+		if exists {
+			if err := l.system.ReconnectServer(ctx, vm, server.MAC); err != nil {
+				return err
+			}
+		}
+		status = state.ServerOff
+		if server.WantRunning {
+			if err := l.system.PowerServer(ctx, vm, system.PowerOn); err != nil {
+				return err
+			}
+			status = state.ServerRunning
+		}
+	}
+	if err := l.SetServerStatus(server.ID, status); err != nil && !errors.Is(err, state.ErrNotFound) {
+		return err
+	}
 	return nil
+}
+
+// cleanImageCache removes the cached images that neither a cache entry nor
+// a server's disk needs, and what loads cut short left. A failure only
+// costs disk space, so it is logged.
+func (l *Lab) cleanImageCache(ctx context.Context) {
+	var keep []string
+	_ = l.View(func(tx *state.Tx) error {
+		for _, cached := range tx.Lab().Images {
+			keep = append(keep, cached.File)
+		}
+		for _, server := range state.All(tx, state.Servers) {
+			keep = append(keep, server.BaseImage)
+		}
+		return nil
+	})
+	removed, err := l.system.CleanImageCache(ctx, filepath.Join(l.dataDir, ImageCacheDir), keep)
+	if len(removed) > 0 {
+		l.logger.Info("removed from the image cache what no server needs", "files", removed)
+	}
+	if err != nil {
+		l.logger.Warn("cleaning the image cache", "error", err)
+	}
 }
 
 // startAppliance removes stray VMs, starts the appliance and sets the host's
