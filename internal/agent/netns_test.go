@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -20,6 +21,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -86,29 +88,69 @@ func setUp(t *testing.T) *Agent {
 		setLink(t, wires[device], true)
 	}
 	dir := t.TempDir()
-	config := filepath.Join(dir, dhcpFile)
-	t.Cleanup(func() { stopDNSMasq(config) })
+	t.Cleanup(func() { stopAllDNSMasq(dir) })
 	return New(Options{
-		Version:     "test",
-		Dir:         dir,
-		RestartDHCP: []string{"sh", "-c", restartDNSMasq, config},
-		Log:         slog.New(slog.NewTextHandler(t.Output(), nil)),
+		Version: "test",
+		Dir:     dir,
+		RestartDHCP: func(device string) []string {
+			return []string{"sh", "-c", stopDNSMasq + "\n" + startDNSMasq, filepath.Join(dir, dhcpFile(device))}
+		},
+		StopDHCP: func(device string) []string {
+			return []string{"sh", "-c", stopDNSMasq, filepath.Join(dir, dhcpFile(device))}
+		},
+		Log: testLog(t),
 	})
 }
 
-// restartDNSMasq stands in for systemd: it stops the dnsmasq of the
-// configuration in $0 and starts it again.
-const restartDNSMasq = `pid="$0.pid"
+// testLog returns a logger that writes to the test's output until the test
+// ends: the agent announces its addresses in goroutines a second after a
+// links picture, often after the test, whose output then refuses writes.
+func testLog(t *testing.T) *slog.Logger {
+	out := &endingWriter{out: t.Output()}
+	t.Cleanup(func() {
+		out.mu.Lock()
+		defer out.mu.Unlock()
+		out.ended = true
+	})
+	return slog.New(slog.NewTextHandler(out, nil))
+}
+
+// endingWriter writes to out until it has ended, and drops what comes
+// after.
+type endingWriter struct {
+	mu    sync.Mutex
+	out   io.Writer
+	ended bool
+}
+
+func (w *endingWriter) Write(data []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.ended {
+		return len(data), nil
+	}
+	return w.out.Write(data)
+}
+
+// stopDNSMasq and startDNSMasq stand in for systemd: they stop and start
+// the dnsmasq of the configuration in $0.
+const (
+	stopDNSMasq = `pid="$0.pid"
 if [ -f "$pid" ]; then
   kill "$(cat "$pid")"
   while kill -0 "$(cat "$pid")" 2>/dev/null; do sleep 0.05; done
-fi
-dnsmasq --conf-file="$0" --pid-file="$pid"`
+  rm "$pid"
+fi`
+	startDNSMasq = `dnsmasq --conf-file="$0" --pid-file="$0.pid"`
+)
 
-// stopDNSMasq stops the dnsmasq that restartDNSMasq started, if any.
-func stopDNSMasq(config string) {
-	if pid, err := os.ReadFile(config + ".pid"); err == nil {
-		_ = exec.Command("kill", strings.TrimSpace(string(pid))).Run()
+// stopAllDNSMasq stops the dnsmasq instances that a test started.
+func stopAllDNSMasq(dir string) {
+	pids, _ := filepath.Glob(filepath.Join(dir, "*.pid"))
+	for _, pid := range pids {
+		if text, err := os.ReadFile(pid); err == nil {
+			_ = exec.Command("kill", strings.TrimSpace(string(text))).Run()
+		}
 	}
 }
 
@@ -326,7 +368,7 @@ func TestDHCPPictureGivesAServerItsAddress(t *testing.T) {
 		t.Errorf("udhcpc: %v\n%s", err, output)
 	}
 	broken := picture.DHCP(lab)
-	broken.Config += "no-such-option\n"
+	broken.Instances[0].Config += "no-such-option\n"
 	if answer := put(t, agent, agentproto.PictureDHCP, mustJSON(t, broken)); answer.StatusCode != 422 {
 		t.Errorf("a broken configuration got %d, want 422", answer.StatusCode)
 	}

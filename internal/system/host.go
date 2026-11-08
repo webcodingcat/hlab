@@ -19,6 +19,9 @@ const (
 	// PublicSwitch connects the servers' public NICs with the appliance,
 	// through a private VLAN.
 	PublicSwitch = platform.SwitchPrefix + "Public"
+	// PrivateSwitch carries the private networks: a VLAN each, a trunk to
+	// the appliance and an access port for each server's NIC in a network.
+	PrivateSwitch = platform.SwitchPrefix + "Private"
 	// UplinkSwitch is Hyper-V's own switch with NAT to the host's network:
 	// the appliance's way to the Internet.
 	UplinkSwitch = "Default Switch"
@@ -50,7 +53,7 @@ func (s *System) ConnectHost(ctx context.Context, link HostLink) error {
 		Addresses:       link.Addresses,
 		Routes:          link.Ranges,
 		Gateways:        link.Gateways,
-		PrivateSwitches: []string{PublicSwitch},
+		PrivateSwitches: []string{PublicSwitch, PrivateSwitch},
 	}
 	if err := s.platform.HostNet.SetUp(ctx, spec); err != nil {
 		return fmt.Errorf("setting up the host link: %w", err)

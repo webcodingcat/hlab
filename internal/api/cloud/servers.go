@@ -260,7 +260,8 @@ func registerServers(api *web.API, l *lab.Lab) {
 		return http.StatusOK, map[string]schema.Action{"action": actionJSON(&action)}, nil
 	})
 
-	for _, command := range []string{"poweron", "poweroff", "shutdown", "reboot", "reset", "change_protection"} {
+	for _, command := range []string{"poweron", "poweroff", "shutdown", "reboot", "reset", "change_protection",
+		"attach_to_network", "detach_from_network", "change_alias_ips"} {
 		api.Handle("POST /servers/{id}/actions/"+command, func(req *web.Request) (int, any, error) {
 			action, err := act(l, table, command, req)
 			if err != nil {
@@ -528,6 +529,12 @@ func serverJSON(tx *state.Tx, cat *catalog.Catalog, server *state.Server) server
 	}
 	if ip, err := state.Get(tx, state.PrimaryIPs, server.IPv6); err == nil {
 		out.PublicNet.IPv6 = &schema.ServerPublicNetIPv6{ID: ip.ID, IP: ip.IP, DNSPtr: []schema.ServerPublicNetIPv6DNSPtr{}}
+	}
+	for _, attached := range server.PrivateNets {
+		aliases := append([]string{}, attached.AliasIPs...)
+		out.PrivateNet = append(out.PrivateNet, schema.ServerPrivateNet{
+			Network: attached.NetworkID, IP: attached.IP, AliasIPs: aliases, MACAddress: attached.MAC,
+		})
 	}
 	out.PublicNet.Firewalls = serverFirewallsJSON(tx, server)
 	floating := state.IDs(tx, state.FloatingIPs, func(ip *state.FloatingIP) bool { return ip.ServerID == server.ID })

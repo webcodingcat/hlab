@@ -35,13 +35,21 @@ type testLab struct {
 
 // newTestLab opens a lab with the built-in catalog, the project "default"
 // and the Cloud API; every answer of its client is checked against the spec.
-// Its system images come from a local server, as a small qcow2 file.
+// Its system images come from a local server, as a small qcow2 file. Its
+// clock steps a second each time it tells the time, and Hetzner's times
+// take none (time scale 0).
 func newTestLab(t *testing.T) *testLab {
+	t.Helper()
+	return newTimedTestLab(t, &steppingClock{start: time.Now()}, 0)
+}
+
+// newTimedTestLab is newTestLab with a clock and a time scale of the
+// test's own.
+func newTimedTestLab(t *testing.T, clock lab.Clock, timeScale float64) *testLab {
 	t.Helper()
 	logger := slog.New(slog.DiscardHandler)
 	machine := fake.New()
-	clock := &steppingClock{start: time.Now()}
-	l, err := lab.Open(lab.Options{DataDir: t.TempDir(), Logger: logger, Catalog: localImages(t), Clock: clock},
+	l, err := lab.Open(lab.Options{DataDir: t.TempDir(), Logger: logger, Catalog: localImages(t), Clock: clock, TimeScale: timeScale},
 		system.New(machine.Platform()))
 	if err != nil {
 		t.Fatal(err)

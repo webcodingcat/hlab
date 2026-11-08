@@ -1,0 +1,11 @@
+[Unit]
+Description=HLab DHCP for the servers on %i (dnsmasq)
+# One instance per device it serves: the public NIC and each private
+# network's VLAN, whose addresses may overlap another network's. The agent
+# writes an instance's configuration from the dhcp picture and restarts it;
+# none is started at boot.
+ConditionPathExists=/run/hlab/dnsmasq-%i.conf
+
+[Service]
+ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file=/run/hlab/dnsmasq-%i.conf --pid-file=
+Restart=on-failure

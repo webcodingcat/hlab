@@ -51,9 +51,12 @@ waits only when all four are busy.
   is created; `SetISO` only fills or empties it.
 - `New-VM` adds a NIC of its own; `CreateVM` removes it and adds the spec's NICs
   with their MAC addresses.
-- Ports: servers' public NICs are isolated in the private VLAN 10/11 and see only
-  the appliance, which is promiscuous; private NICs are access ports, the
-  appliance's private NIC a trunk for VLANs 2–4094.
+- Ports: servers' public NICs are isolated in the private VLAN 10/11 of
+  `HLab-Public` and see only the appliance, which is promiscuous; a server's
+  NIC in a private network is an access port of `HLab-Private` in the
+  network's VLAN, the appliance's private NIC a trunk there for VLANs
+  2–4094. A server's private NIC comes and goes while the VM runs
+  (`AttachNIC`, `DetachNIC`), as Hetzner's attach and detach do.
 - Hyper-V has no ACPI button. `ShutdownVM` asks the guest's shutdown service
   (`Msvm_ShutdownComponent.InitiateShutdown`) and does not wait; a guest without
   it ignores the request, as a guest without ACPI does on Hetzner. `ResetVM` is

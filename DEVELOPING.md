@@ -11,7 +11,7 @@ work on it (Recipes). CLAUDE.md lists the rules that are easy to break,
 each part does in detail is in the files under `docs/`:
 
 - [docs/servers.md](docs/servers.md): servers, Primary and Floating IPs,
-  firewalls, projects, tokens, faults.
+  firewalls, private networks, projects, tokens, faults.
 - [docs/service.md](docs/service.md): the service's start and stop, the
   machine's side, the lab control, the CLI, the web UI.
 - [docs/catalog.md](docs/catalog.md): what the lab offers.
@@ -139,7 +139,7 @@ The layer test checks production code only. Tests may import fakes and helpers.
 
 - **Kinds.** Each kind of record (`state.Projects`, `state.Tokens`,
   `state.SSHKeys`, `state.Actions`, `state.Servers`, `state.PrimaryIPs`,
-  `state.FloatingIPs`, `state.Firewalls`) is a `state.Kind[R]`. It knows its record type `R`
+  `state.FloatingIPs`, `state.Firewalls`, `state.Networks`) is a `state.Kind[R]`. It knows its record type `R`
   and its name in the file.
   The lab's own records, which the API does not show, are in `state.Lab`
   (read them with `tx.Lab()`). Records hold plain data: no interfaces and no
@@ -205,6 +205,11 @@ The layer test checks production code only. Tests may import fakes and helpers.
   therefore separate: `Machine.pictureMu`, which keeps the pictures in order,
   and the image cache's load lock per image (`Machine.imageLoads`). Neither
   is ever taken while holding the lab's mutex.
+- **Notes** (`Lab.AddNote`, `Lab.Notes`): statuses the API shows for a
+  while after a change, as Hetzner shows a server that left a network as
+  `detaching` for seconds. They live in memory, under a mutex of their
+  own, `notesMu`, which is taken alone or while holding the lab's mutex
+  (plans and views call them) and is never held across a call.
 - Every change runs in `lab.Change(func(tx *state.Tx) error)`. If the function
   returns an error, the old state stays; otherwise the new state is saved. Reads run
   in `lab.View`, which changes nothing. A `View` whose function always returns
@@ -325,6 +330,17 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   - `Lab` keeps the state, the actions and their flags, projects, tokens,
     faults and the time; `Machine` has everything that calls `system` for
     VMs, files, the appliance and its pictures.
+- **Statuses that last a while.** Hetzner shows some statuses for
+  seconds after the change that caused them, also after its action ended:
+  a server that left a network stays among the members as `detaching`
+  for 5 s, the others show `updating` from 2 s on. The plan records such
+  a status with `Lab.AddNote(key, note, after, lasting)`, both times
+  Hetzner's from `clock.go`, scaled by the time scale; the handler reads
+  the notes that show now with `Lab.Notes(kind, owner)` and lets a note
+  win over the status the records give. A note may carry what the API
+  needs to show a resource that is gone (the member that left). A
+  firewall's `pending` after a label selector takes a server is meant to
+  be one too. Tests use a clock of their own and a time scale above 0.
 - **Restart.** Actions that were running when HLab stopped end with an error when it
   starts again.
 - **Size.** Each project keeps its newest `lab.MaxFinishedActions` (1 000) finished
@@ -435,10 +451,12 @@ the same later.
     IP price;
   - server types, load balancer types and images, because `schema` still sends
     `deprecated`;
-  - the SSH key, server, Primary IP, Floating IP and firewall requests, to
+  - the SSH key, server, Primary IP, Floating IP, firewall and network requests, to
     tell a missing field from an empty one;
   - the firewall answer, because `schema` leaves out an empty
     `applied_to_resources`, which Hetzner sends as `[]`;
+  - the network answer, because `schema` leaves out a subnet's
+    `vswitch_id`, which Hetzner sends as `null`;
   - the server answer, to keep Hetzner's order of fields and what `schema`
     lacks.
 - **Lists handle `sort` differently** on Hetzner, as measured. Most refuse an

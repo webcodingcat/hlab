@@ -262,12 +262,10 @@ func (a *Appliance) create(ctx context.Context) error {
 		CPUs:     applianceCPUs,
 		MemoryMB: ApplianceMemoryMB,
 		Disks:    []platform.DiskSlot{{Slot: 0, Path: a.spec.SystemDisk}},
-		// the private networks' switch comes with phase 2a; until then the
-		// trunk is not connected
 		NICs: []platform.NICSpec{
 			{MAC: a.spec.MACs[0], Switch: LinkSwitch, Port: platform.Plain()},
 			{MAC: a.spec.MACs[1], Switch: PublicSwitch, Port: platform.Promiscuous()},
-			{MAC: a.spec.MACs[2], Port: platform.Trunk()},
+			{MAC: a.spec.MACs[2], Switch: PrivateSwitch, Port: platform.Trunk()},
 			{MAC: a.spec.MACs[3], Switch: UplinkSwitch, Port: platform.Plain()},
 		},
 	}

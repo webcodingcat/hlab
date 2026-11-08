@@ -85,6 +85,8 @@ type Lab struct {
 	// Firewalls are the Cloud Firewalls that apply to at least one of
 	// Servers.
 	Firewalls []Firewall
+	// Networks are the private networks, each with the servers in it.
+	Networks []Network
 }
 
 // FloatingIP is what the pictures need of an assigned Floating IP.

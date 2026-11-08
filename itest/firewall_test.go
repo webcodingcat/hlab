@@ -54,7 +54,7 @@ func TestFirewallsFilterServersFloatingIPsAndTheHost(t *testing.T) {
 		run.close(t, l)
 		run.removeVMs(t)
 	})
-	api := newCloudAPI(t, l)
+	api := newCloudAPI(t, l, "itest")
 
 	client := createServer(ctx, t, api, "itest-client", "debian-13")
 	target := createServer(ctx, t, api, "itest-target", "debian-13")

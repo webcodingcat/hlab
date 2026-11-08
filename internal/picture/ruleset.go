@@ -21,13 +21,14 @@ var rulesetTemplate = template.Must(template.New("ruleset").
 
 // rulesetValues fills the template.
 type rulesetValues struct {
-	Link, Public, Uplink string
-	Host4, Host6         string
-	Resolver4, Resolver6 string
-	Metadata             string
-	Range4               string
-	NoInternet           []string
-	FirewallMaps         []firewallMap
+	Link, Public, Private, Uplink string
+	VRFs                          string // a pattern of the networks' VRFs
+	Host4, Host6                  string
+	Resolver4, Resolver6          string
+	Metadata                      string
+	Range4                        string
+	NoInternet                    []string
+	FirewallMaps                  []firewallMap
 	// FirewallChains are the servers' chains, then the firewalls'.
 	FirewallChains []chainValues
 }
@@ -45,6 +46,8 @@ func Ruleset(lab Lab) agentproto.Ruleset {
 	values := rulesetValues{
 		Link:      DeviceLink,
 		Public:    DevicePublic,
+		Private:   DevicePrivate,
+		VRFs:      vrfPrefix + "*",
 		Uplink:    DeviceUplink,
 		Host4:     hostAddress(lab.HostLink4, hostNumber).String(),
 		Host6:     hostAddress(lab.HostLink6, hostNumber).String(),

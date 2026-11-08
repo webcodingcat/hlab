@@ -35,19 +35,66 @@ type Server struct {
 var Gateway6 = netip.MustParseAddr("fe80::1")
 
 // Files returns the seed's files by name: meta-data, user-data,
-// vendor-data and network-config (version 2).
+// vendor-data and network-config (version 2). The vendor-data is
+// Hetzner's (VendorData) with the lab's private NICs (seedVendorData).
 func Files(server Server) map[string][]byte {
 	return map[string][]byte{
 		"meta-data":      yamlText(metaData(server)),
 		"user-data":      []byte(server.UserData),
-		"vendor-data":    []byte(VendorData(server.RootPassword)),
+		"vendor-data":    []byte(seedVendorData(server.RootPassword)),
 		"network-config": yamlText(networkConfig(server)),
 	}
 }
 
+// privateNICsScript configures the NICs in private networks, MAC 86:00:…,
+// by DHCP, also those attached later while the guest runs. Hetzner's
+// images do that with their hc-utils: a udev rule starts a unit per NIC,
+// which runs dhcpcd for IPv4 without hooks (measured 2026-11-08 on
+// Hetzner's Debian 13). The official cloud images lack it, and cloud-init
+// configures only the NICs its network-config names. The script does the
+// same, so that it works beside ifupdown (Debian) and networkd (Ubuntu).
+// Hetzner's NIC brings the MTU 1450 itself, which a Hyper-V NIC does not,
+// and dhcpcd without hooks does not take it from the lease: the unit sets
+// it. A trigger catches the NICs that are there at the first boot.
+const privateNICsScript = `#!/bin/sh
+cat > /etc/systemd/system/hlab-private-net@.service <<'UNIT'
+[Unit]
+Description=HLab private network on %i
+BindsTo=sys-subsystem-net-devices-%i.device
+After=sys-subsystem-net-devices-%i.device
+
+[Service]
+Type=forking
+ExecStartPre=ip link set dev %i mtu 1450
+ExecStart=/usr/sbin/dhcpcd --quiet --waitip --ipv4only --noarp --script=/bin/true %i
+ExecStop=/usr/sbin/dhcpcd --exit %i
+UNIT
+cat > /etc/udev/rules.d/90-hlab-private-net.rules <<'RULE'
+SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="86:00:*", TAG+="systemd", ENV{SYSTEMD_WANTS}+="hlab-private-net@%k.service"
+RULE
+systemctl daemon-reload
+udevadm control --reload
+udevadm trigger --subsystem-match=net --action=add
+`
+
+// seedVendorData returns the seed's vendor-data: Hetzner's cloud-config
+// and the script for the private NICs, as a MIME multipart, so that the
+// user-data's runcmd does not replace the script, as it would replace a
+// runcmd of the vendor-data's cloud-config.
+func seedVendorData(rootPassword string) string {
+	const boundary = "==HLAB=="
+	return "Content-Type: multipart/mixed; boundary=\"" + boundary + "\"\nMIME-Version: 1.0\n\n" +
+		"--" + boundary + "\nContent-Type: text/cloud-config; charset=\"us-ascii\"\n\n" +
+		VendorData(rootPassword) + "\n" +
+		"--" + boundary + "\nContent-Type: text/x-shellscript; charset=\"us-ascii\"\n\n" +
+		privateNICsScript + "\n" +
+		"--" + boundary + "--\n"
+}
+
 // VendorData returns the cloud-config that lets root log in, as Hetzner's
 // images do: with the SSH keys, or with the root password for a server
-// without keys. The metadata service answers the same.
+// without keys. The metadata service answers it as Hetzner's vendor_data;
+// the seed adds the private NICs (seedVendorData).
 func VendorData(rootPassword string) string {
 	if rootPassword == "" {
 		return "#cloud-config\ndisable_root: false\nssh_pwauth: false\n"

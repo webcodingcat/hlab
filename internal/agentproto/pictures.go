@@ -68,8 +68,12 @@ type Route struct {
 	Blackhole   bool         `json:"blackhole,omitempty"`
 	Device      string       `json:"device,omitempty"`
 	Gateway     netip.Addr   `json:"gateway,omitzero"` // none: on-link
-	Source      netip.Addr   `json:"source,omitzero"`
-	Table       uint32       `json:"table,omitempty"`
+	// OnLink takes the gateway as reachable on the device, though no
+	// route leads to it (a private network's route to a gateway that no
+	// server holds yet).
+	OnLink bool       `json:"on_link,omitempty"`
+	Source netip.Addr `json:"source,omitzero"`
+	Table  uint32     `json:"table,omitempty"`
 }
 
 // Sysctl is a kernel setting below /proc/sys/net, such as
@@ -86,11 +90,20 @@ type Ruleset struct {
 	Text       string `json:"text"`
 }
 
-// DHCP is dnsmasq's whole configuration, which hands out the servers'
-// addresses.
+// DHCP is the configuration of the dnsmasq instances that hand out the
+// servers' addresses: one per device it serves, the public NIC and each
+// private network's VLAN. An instance of its own per network keeps the
+// leases of two networks apart, which may hold the same addresses.
 type DHCP struct {
-	Generation uint64 `json:"generation"`
-	Config     string `json:"config"`
+	Generation uint64         `json:"generation"`
+	Instances  []DHCPInstance `json:"instances"`
+}
+
+// DHCPInstance is one dnsmasq: the device it serves and its whole
+// configuration.
+type DHCPInstance struct {
+	Device string `json:"device"`
+	Config string `json:"config"`
 }
 
 // Metadata holds what the metadata service answers each server.
@@ -197,6 +210,8 @@ func checkRoute(route Route, devices map[string]string, tables map[uint32]bool) 
 		return fmt.Errorf("route %s: a blackhole has no device, gateway or source", destination)
 	case !route.Blackhole && devices[route.Device] == "":
 		return fmt.Errorf("route %s: no device %q", destination, route.Device)
+	case route.OnLink && !route.Gateway.IsValid():
+		return fmt.Errorf("route %s: on-link without a gateway", destination)
 	case route.Gateway.IsValid() && route.Gateway.Is4() != destination.Addr().Is4():
 		return fmt.Errorf("route %s: gateway %s is of the other family", destination, route.Gateway)
 	case route.Source.IsValid() && route.Source.Is4() != destination.Addr().Is4():
@@ -224,12 +239,27 @@ func (r Ruleset) Check() error {
 	return nil
 }
 
-// Check refuses an empty configuration.
+// Check refuses a picture without instances (the public NIC always has
+// one), an instance without a configuration, and a device that is no
+// device name or has two instances.
 func (d DHCP) Check() error {
-	if strings.TrimSpace(d.Config) == "" {
-		return errors.New("the DHCP configuration is empty")
+	if len(d.Instances) == 0 {
+		return errors.New("the DHCP picture has no instance")
 	}
-	return nil
+	var problems []error
+	devices := map[string]bool{}
+	for _, instance := range d.Instances {
+		if err := checkDeviceName(instance.Device); err != nil {
+			problems = append(problems, fmt.Errorf("DHCP instance %q: %w", instance.Device, err))
+		} else if devices[instance.Device] {
+			problems = append(problems, fmt.Errorf("DHCP instance %q: the device has two", instance.Device))
+		}
+		devices[instance.Device] = true
+		if strings.TrimSpace(instance.Config) == "" {
+			problems = append(problems, fmt.Errorf("DHCP instance %q: the configuration is empty", instance.Device))
+		}
+	}
+	return errors.Join(problems...)
 }
 
 // Check refuses a source that two servers share: the agent could not tell

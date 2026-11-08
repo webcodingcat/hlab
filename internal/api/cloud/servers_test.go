@@ -35,7 +35,8 @@ type serverAnswer struct {
 		FloatingIPs []int64                     `json:"floating_ips"`
 		Firewalls   []schema.ServerFirewall     `json:"firewalls"`
 	} `json:"public_net"`
-	IncludedTraffic uint64 `json:"included_traffic"`
+	PrivateNet      []schema.ServerPrivateNet `json:"private_net"`
+	IncludedTraffic uint64                    `json:"included_traffic"`
 }
 
 // createAnswer is the answer of POST /servers.

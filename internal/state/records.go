@@ -180,6 +180,18 @@ type Server struct {
 	DiskGB       int      `json:"disk_gb"`
 	// BaseImage is the cached system image its disk differs from.
 	BaseImage string `json:"base_image"`
+	// PrivateNets are its NICs in private networks, in the order they were
+	// attached.
+	PrivateNets []ServerPrivateNet `json:"private_nets"`
+}
+
+// ServerPrivateNet is a server's NIC in a private network: its address,
+// its alias IPs and the NIC's MAC address.
+type ServerPrivateNet struct {
+	NetworkID int64    `json:"network_id"`
+	IP        string   `json:"ip"`
+	AliasIPs  []string `json:"alias_ips"`
+	MAC       string   `json:"mac"`
 }
 
 // RecordID returns the server's ID.
@@ -300,6 +312,48 @@ type FirewallTarget struct {
 	Servers []int64 `json:"servers"`
 }
 
+// Network is a private network of a project: its range with subnets, in
+// which servers get their addresses, and its routes.
+type Network struct {
+	ID         int64             `json:"id"`
+	ProjectID  int64             `json:"project_id"`
+	Name       string            `json:"name"`
+	Labels     map[string]string `json:"labels"`
+	Created    time.Time         `json:"created"`
+	Protection Protection        `json:"protection"` // only Delete counts
+	IPRange    string            `json:"ip_range"`
+	Subnets    []NetworkSubnet   `json:"subnets"`
+	Routes     []NetworkRoute    `json:"routes"`
+	// ExposeRoutesToVSwitch is kept and shown; the lab has no vSwitch.
+	ExposeRoutesToVSwitch bool `json:"expose_routes_to_vswitch"`
+	// VLAN is the lab's own: the VLAN that carries the network between the
+	// appliance and the servers' NICs.
+	VLAN int `json:"vlan"`
+}
+
+// RecordID returns the network's ID.
+func (n Network) RecordID() int64 { return n.ID }
+
+// RecordProject returns the network's project.
+func (n Network) RecordProject() int64 { return n.ProjectID }
+
+// RecordName implements Named.
+func (n Network) RecordName() string { return n.Name }
+
+// NetworkSubnet is a subnet of a network, with Hetzner's fields.
+type NetworkSubnet struct {
+	Type        string `json:"type"` // "cloud" or "server"
+	IPRange     string `json:"ip_range"`
+	NetworkZone string `json:"network_zone"`
+}
+
+// NetworkRoute is a route of a network: what goes to Destination goes to
+// Gateway, an address in the network.
+type NetworkRoute struct {
+	Destination string `json:"destination"`
+	Gateway     string `json:"gateway"`
+}
+
 // Lab is the lab's own records, which the API does not show. Later phases add
 // the Internet clients and the ACME keys.
 type Lab struct {
@@ -335,6 +389,11 @@ type CachedImage struct {
 type Pools struct {
 	NextIPv4 int `json:"next_ipv4"`
 	NextIPv6 int `json:"next_ipv6"`
+	// NextVLAN is the next private network's VLAN, as an offset into the
+	// VLANs the lab hands out; NextPrivateMAC counts the servers' private
+	// NICs, each of which gets a MAC address of its own.
+	NextVLAN       int    `json:"next_vlan"`
+	NextPrivateMAC uint32 `json:"next_private_mac"`
 }
 
 // ProjectFaults are the faults injected into a project.

@@ -29,10 +29,15 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
 	hlabAgent := agent.New(agent.Options{
-		Version:     version,
-		Dir:         stateDir,
-		RestartDHCP: []string{"systemctl", "restart", "hlab-dnsmasq.service"},
-		Log:         log,
+		Version: version,
+		Dir:     stateDir,
+		RestartDHCP: func(device string) []string {
+			return []string{"systemctl", "restart", "hlab-dnsmasq@" + device + ".service"}
+		},
+		StopDHCP: func(device string) []string {
+			return []string{"systemctl", "stop", "hlab-dnsmasq@" + device + ".service"}
+		},
+		Log: log,
 	})
 	control, err := vsock.Listen(agentproto.Port, nil)
 	if err != nil {

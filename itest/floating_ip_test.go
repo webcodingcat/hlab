@@ -52,7 +52,7 @@ func TestFloatingIPsReachTheirServerAndMove(t *testing.T) {
 		run.close(t, l)
 		run.removeVMs(t)
 	})
-	api := newCloudAPI(t, l)
+	api := newCloudAPI(t, l, "itest")
 
 	first := createServer(ctx, t, api, "itest-first", "debian-13")
 	second := createServer(ctx, t, api, "itest-second", "debian-13")

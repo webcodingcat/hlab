@@ -22,7 +22,7 @@ and the diff shows what changed.
 |---|---|---|
 | `links` | the four NICs by MAC (`link`, `public`, `private`, `uplink`), VRFs, VLANs, addresses, routes, sysctls | netlink: adds what is missing, removes what the picture lacks |
 | `ruleset` | the whole nftables ruleset as text | `nft -f`: all or nothing |
-| `dhcp` | dnsmasq's whole configuration | writes it, checks it with `dnsmasq --test`, restarts `hlab-dnsmasq` if it changed |
+| `dhcp` | a dnsmasq configuration per device it serves: `public` and each private network's VLAN | writes each, checks them all with `dnsmasq --test`, restarts `hlab-dnsmasq@<device>` for each that changed and stops those of devices the picture lacks |
 | `metadata` | the metadata service's answers per server, with the server's addresses | serves them on `169.254.169.254:80` |
 
 **The address plan** as the pictures use it: the host link `198.18.0.0/29` and
@@ -85,6 +85,23 @@ picture ends the lab's ranges (`198.18.0.0/15`, `2001:db8::/32`) in a
 blackhole route of the main table. The routes of the servers, their
 Floating IPs and the host link are more specific, the appliance's own
 addresses are local.
+
+**Private networks** (`internal/picture/networks.go`): each network is a
+VLAN `private.<vlan>` on the `private` NIC, the trunk, in a VRF of its own
+`vrf-net-<network-id>` (table 10000 + VLAN). The VLAN holds the
+network's first address, the gateway, as a `/32`. The VRF's table routes
+each address and alias IP a server holds (`/32`, on-link), the network's
+routes through their gateways (on-link, as Hetzner takes a gateway no
+server holds yet) and ends in a blackhole, so that nothing leaves the VRF
+for the main table and an address nobody holds answers nothing. Two
+networks with the same range stay apart in their VRFs; a packet that
+comes in on a VRF's VLAN shows the VRF as its interface in nftables, so
+the ruleset accepts DHCP from `vrf-net-*` and forwards `vrf-net-*` to
+`private.*` without any firewall. Each network has a dnsmasq instance of
+its own, bound to its VLAN (one instance's leases would mix two networks
+with the same addresses): a server's address as a `/32` for a day, option
+121 with the gateway on-link and the range through it, MTU 1450, and
+neither a router nor name servers, as on Hetzner.
 
 **Redirects stay off** on every interface (sysctl in the image and per interface in
 the `links` picture): a router that sends ICMP redirects teaches servers to reach

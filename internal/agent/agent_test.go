@@ -23,7 +23,8 @@ func newTestAgent(t *testing.T) *Agent {
 	return New(Options{
 		Version:     "test",
 		Dir:         t.TempDir(),
-		RestartDHCP: []string{"true"},
+		RestartDHCP: func(string) []string { return []string{"true"} },
+		StopDHCP:    func(string) []string { return []string{"true"} },
 		Log:         slog.New(slog.DiscardHandler),
 	})
 }

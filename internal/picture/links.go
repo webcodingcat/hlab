@@ -7,8 +7,9 @@ import (
 )
 
 // Links returns the picture of the appliance's links: its four NICs, their
-// addresses, a route to each server's addresses through the public NIC,
-// and a route to each assigned Floating IP through its server.
+// addresses, a route to each server's addresses through the public NIC, a
+// route to each assigned Floating IP through its server, and a VRF with a
+// VLAN for each private network.
 func Links(lab Lab) agentproto.Links {
 	links := agentproto.Links{
 		Generation: lab.Generation,
@@ -16,7 +17,7 @@ func Links(lab Lab) agentproto.Links {
 			{Name: DeviceLink, MAC: lab.MACSet.MAC(1)},
 			{Name: DevicePublic, MAC: lab.MACSet.MAC(2)},
 			// without addresses: it carries the VLANs of the private
-			// networks (phase 2a)
+			// networks
 			{Name: DevicePrivate, MAC: lab.MACSet.MAC(3)},
 			// networkd runs DHCP on it
 			{Name: DeviceUplink, MAC: lab.MACSet.MAC(4), Networkd: true},
@@ -75,6 +76,7 @@ func Links(lab Lab) agentproto.Links {
 	for _, labRange := range []netip.Prefix{lab.Range4, lab.Range6} {
 		links.Routes = append(links.Routes, agentproto.Route{Destination: labRange.Masked(), Blackhole: true})
 	}
+	addNetworkLinks(&links, lab)
 	return links
 }
 

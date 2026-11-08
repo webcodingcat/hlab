@@ -341,6 +341,9 @@ func toRoute(route agentproto.Route, linkIndex, table int) netlink.Route {
 	}
 	if route.Gateway.IsValid() {
 		result.Gw = route.Gateway.AsSlice()
+		if route.OnLink {
+			result.Flags = int(netlink.FLAG_ONLINK)
+		}
 	} else if route.Destination.Addr().Is4() {
 		result.Scope = netlink.SCOPE_LINK
 	}

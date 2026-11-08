@@ -24,7 +24,7 @@ func TestConnectHostRoutesTheLabsRangesToTheAppliance(t *testing.T) {
 	}
 	link, up := machine.Link()
 	if !up || link.Switch != system.LinkSwitch || !slices.Equal(link.Routes, testLink.Ranges) ||
-		!slices.Equal(link.PrivateSwitches, []string{system.PublicSwitch}) {
+		!slices.Equal(link.PrivateSwitches, []string{system.PublicSwitch, system.PrivateSwitch}) {
 		t.Errorf("Link() = %+v, %v; want the lab's switches and its ranges as routes", link, up)
 	}
 }

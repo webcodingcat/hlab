@@ -97,7 +97,7 @@ func registerResourceActions(api *web.API, l *lab.Lab, path, resourceType string
 		var actions []schema.Action
 		_ = l.View(func(tx *state.Tx) error {
 			for _, action := range state.All(tx, state.Actions) {
-				if action.ProjectID == req.Caller.ProjectID && namesResource(action, resourceType, resourceID) &&
+				if action.ProjectID == req.Caller.ProjectID && listedUnder(action, resourceType, resourceID) &&
 					(!filtered || slices.Contains(statuses, string(action.Status))) &&
 					(len(ids) == 0 || slices.Contains(ids, action.ID)) {
 					actions = append(actions, actionJSON(action))
@@ -114,7 +114,7 @@ func registerResourceActions(api *web.API, l *lab.Lab, path, resourceType string
 		var out schema.Action
 		err := l.View(func(tx *state.Tx) error {
 			action, err := state.Get(tx, state.Actions, web.PathID(req, "action_id"))
-			if err != nil || action.ProjectID != req.Caller.ProjectID || !namesResource(action, resourceType, resourceID) {
+			if err != nil || action.ProjectID != req.Caller.ProjectID || !listedUnder(action, resourceType, resourceID) {
 				return web.NotFound("action")
 			}
 			out = actionJSON(action)
@@ -156,6 +156,20 @@ func namesResource(action *state.Action, resourceType string, id int64) bool {
 	return slices.ContainsFunc(action.Resources, func(ref state.ResourceRef) bool {
 		return ref.Type == resourceType && (id == 0 || ref.ID == id)
 	})
+}
+
+// networkCommands are the server's actions in a network. Hetzner lists
+// them among the network's actions only, though they name the server too
+// (measured 2026-11-08).
+var networkCommands = []string{"attach_to_network", "detach_from_network", "change_alias_ips"}
+
+// listedUnder tells whether a resource's action lists show an action that
+// names it.
+func listedUnder(action *state.Action, resourceType string, id int64) bool {
+	if resourceType == lab.ServerResource && slices.Contains(networkCommands, action.Command) {
+		return false
+	}
+	return namesResource(action, resourceType, id)
 }
 
 // timeOrZero returns the time a pointer holds, or the zero time.

@@ -53,7 +53,7 @@ func testPictures(generation uint64) system.Pictures {
 	return system.Pictures{
 		Links:    agentproto.Links{Generation: generation},
 		Ruleset:  agentproto.Ruleset{Generation: generation, Text: "flush ruleset\n"},
-		DHCP:     agentproto.DHCP{Generation: generation, Config: "port=0\n"},
+		DHCP:     agentproto.DHCP{Generation: generation, Instances: []agentproto.DHCPInstance{{Device: "public", Config: "port=0\n"}}},
 		Metadata: agentproto.Metadata{Generation: generation},
 	}
 }
@@ -220,7 +220,7 @@ func TestWatchdogNeverSendsAnOlderPictureAfterANewerOne(t *testing.T) {
 func TestWatchdogDoesNotSendARefusedPictureAgain(t *testing.T) {
 	_, agent, appliance := newAppliance(t)
 	pictures := testPictures(5)
-	pictures.DHCP.Config = "" // the check refuses it
+	pictures.DHCP.Instances[0].Config = "" // the check refuses it
 	if _, err := appliance.Start(t.Context(), pictures); err != nil {
 		t.Fatalf("a refused picture failed the start: %v", err)
 	}

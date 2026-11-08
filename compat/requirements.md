@@ -95,6 +95,20 @@ it; "open" means the phase has not come yet. What never works is in
 | The rules work on the servers' public addresses: `in` closed but for the rules, `out` open until a rule names it, answers pass, Floating IPs too, also between servers of a project | Hetzner's documentation | 2a | `internal/picture`: `TestFirewallRulesetsMatchGoldenFiles`; live: `TestFirewallsFilterServersFloatingIPsAndTheHost` |
 | `firewalls` in a server's create request | hcloud-go `hcloud/server.go` (`ServerCreateOpts.Firewalls`) | 2a (with networks) | open |
 
+## Networks
+
+| Requirement | Source | Phase | Test |
+|---|---|---|---|
+| Create with subnets and routes (no action), read, update (name, labels, `expose_routes_to_vswitch`), delete (also with servers in it); `add_subnet`, `delete_subnet`, `add_route`, `delete_route`, `change_ip_range`, `change_protection` | hcloud-go `hcloud/network.go`; provider `hcloud_network`, `hcloud_network_subnet`, `hcloud_network_route` | 2a | `internal/api/cloud`: `TestNetworkLifeCycle`, `TestNetworkSubnetsRoutesAndRange` |
+| The JSON: subnets in the order of their ranges, each with the network's first address as `gateway` and `vswitch_id` `null`; `servers` and `load_balancers` as lists | hcloud-go `hcloud/schema/network.go`; measured | 2a | `internal/api/cloud`: `TestNetworkLifeCycle` |
+| `attach_to_network` (with `ip`, `ip_range`, `alias_ips`), `detach_from_network`, `change_alias_ips`; a server's `private_net` with `network`, `ip`, `alias_ips`, `mac_address` | hcloud-go `hcloud/server.go`; provider `hcloud_server_network` | 2a | `internal/api/cloud`: `TestServerJoinsAndLeavesANetwork`, `TestAttachToNetworkErrors` |
+| `GET /networks/{id}/members`: servers and load balancers with `ip`, `alias_ips`, `subnet`, `status`; filters `type`, `status`, `subnet`; sort `id`, `type`, `status`, `ip` | measured; the spec | 2a (load balancers: 4) | `internal/api/cloud`: `TestServerJoinsAndLeavesANetwork`, `TestMembersShowAServerLeavingAsHetznerDoes` |
+| Limits: 50 subnets and 100 routes per network, 3 networks per server, 5 alias IPs per network | measured | 2a | `internal/api/cloud`: `TestNetworkCreateErrors`, `TestAttachToNetworkErrors` |
+| Errors with Hetzner's codes and texts (below) | measured | 2a | `internal/api/cloud`: `TestNetworkCreateErrors`, `TestNetworkSubnetsRoutesAndRange`, `TestAttachToNetworkErrors`, `TestServerJoinsAndLeavesANetwork` |
+| In the guest: the address as a `/32` by DHCP, the gateway on-link and the network's range through it, MTU 1450, no router and no name servers; a NIC attached to a running server works without a reboot | measured in a Hetzner guest | 2a | `internal/agent`: `TestPrivateNetworkDHCPGivesTheAddressAsHetznerDoes`; live: `TestPrivateNetworksConnectServersAndStayApart` |
+| Two networks with the same range, also of two projects, stay apart; no Cloud Firewall filters a private network | Hetzner's documentation | 2a | `internal/agent`: `TestPrivateNetworksWithTheSameRangeStayApart`; live: `TestPrivateNetworksConnectServersAndStayApart` |
+| `networks` in a server's create request; the metadata's `private-networks` | hcloud-go `hcloud/server.go` (`ServerCreateOpts.Networks`); measured | 2a-4 | open |
+
 ## Gaps of the old HLab
 
 The dry run of the hcloud CLI against the Python HLab found 58 gaps in fidelity. Each
@@ -333,6 +347,64 @@ Not measured: a server that is neither applied directly nor matched, in
 the selector's text for a server); a server relabelled out of a selector
 while nothing else applies the firewall (HLab: it leaves without an
 action); the limit of 50 firewalls per account.
+
+### Private networks (2a-3)
+
+Measured on 2026-11-08 with the read-write token of the empty test project:
+networks, two servers `cx23` in `nbg1` without public addresses (one
+started for two minutes), a load balancer `lb11` in a network; then one
+Debian 13 server with a Primary IPv4, read over SSH. Everything was
+deleted afterwards. HLab answers the same, except where noted.
+
+| Request | Answer |
+|---|---|
+| `POST /networks` without `name` or with `""` / 129 characters / `a b` | 422 `"invalid input in field 'name'"`, `"'name' is required"` / `"value required to be smaller"` / 201 |
+| … without `ip_range` / `nope`, `10.0.0.0` | `"'ip_range' is required"` / `"must be a valid IP prefix"` |
+| … `8.8.0.0/16`, `100.64.0.0/16`, `10.0.0.0/25`, `10.0.0.1/16`, `fd00::/48`, `10.0.0.0/7` | 422 `invalid_input`, `"invalid ip range"`, `details` `null` |
+| … `name` `""` and `8.8.0.0/16` | only the name's error |
+| … a subnet outside, `/31`, with host bits / a `/30` | `"invalid subnetwork"` / 201 |
+| … two subnets that overlap, a route over a subnet, a route twice, two routes that overlap | `"ip ranges of subnetworks or routes overlap"` |
+| … a subnet without `network_zone`, `type`, `ip_range` | `subnets[0].network_zone`: `"'subnets[0].network_zone' is required"` (the same for the others) |
+| … `type` `foo` / zone `mars` / `vswitch` without `vswitch_id` / with `vswitch_id` 1000 / `cloud` with `vswitch_id` | `"field contains invalid value"` / `"network zone does not exist"` / `subnets[0].vswitch_id`: `"Field must not be empty"` / 422 `service_error`, `"vswitch not found"` / 201, `vswitch_id` `null` |
+| … subnets in `us-east` and `eu-central` / of the type `server` | `"subnetwork zones are not aligned"` / 201, the type kept |
+| … a route to `8.8.8.0/24`, with host bits / its gateway the network's first address, outside, `172.31.1.1` / to `172.31.1.1/32` | `"invalid route"` / `"invalid gateway"` / `"invalid gateway"` |
+| … a route without `gateway` / to `0.0.0.0/0` / inside the range / through a subnet's first address | `routes[0].gateway`: `"'routes[0].gateway' is required"` / 201 / 201 / 201 |
+| … labels with the key `bad key!` | `labels`: `"key contains invalid characters or is malformed"` |
+| … 51 subnets / 101 routes (50 and 100 pass) | 403 `resource_limit_exceeded`, `"subnet limit reached"` / `"route limit reached"`, `details` `null` |
+| … a taken name; the same range as another network of the project | 409 `uniqueness_error`, `"name is already used"`, `details` `null`; 201 |
+| `GET /networks/1`; `?sort=ip_range` | 404 `not_found`, `"entity not found"`, `details` `null`; 200, the unknown value ignored |
+| `PUT` with `name` `""` / a taken name / `expose_routes_to_vswitch` `true` / `{}` | `"field value is too short"` / 409 as above / 200, kept / 200 |
+| `add_subnet` without `ip_range` / the same, an overlapping / outside / without `type` and zone / `vswitch` | the first free `/24` / `"ip range overlaps with existing subnetwork or route"` / `"invalid subnetwork"` / `"invalid input in fields 'network_zone', 'type'"` / `service_error` `"vswitch not found"` |
+| `delete_subnet` unknown / without `ip_range` / `nope` / holding a server's address | 422 `service_error`, `"subnet not found"` / `"'ip_range' is required"` / `"cidrv4 violated"` / `service_error`, `"network has attached resources"` |
+| `add_route` with a taken destination, over a subnet / a gateway in no subnet | `"ip range overlaps with existing subnetwork or route"` / 201 |
+| `delete_route` unknown, with another gateway / without `gateway` | `service_error`, `"route not found"` / `"'gateway' is required"` |
+| `change_ip_range` to `10.0.0.0/15` / smaller, the same, elsewhere, public, `/7` / with servers in it | 201 / `"invalid ip range"` / `service_error`, `"network has attached resources"` |
+| the network's actions | `resources` the network; subnets and range end at once, routes too without servers and after 4.6 to 6.4 s with; two `add_route` and a `delete_route` sent at once: 201 each, run one after another |
+| `DELETE` protected / with subnets and routes / with a server in it | 423 `protected`, `"network is delete protected"` / 204 / 204, the server's `private_net` loses it at once, no action of the server's |
+| `attach_to_network` without `network` / an unknown one / without a subnet | `"'network' is required"` / 404 `"entity not found"` / 422 `no_subnet_available`, `"no subnet or IP available"` |
+| … `ip` outside the subnets, the network's first address / a subnet's own or last address, taken, another's alias IP | `no_subnet_available` / 422 `ip_not_available`, `"IP not available"` |
+| … `ip` `nope` / `ip_range` `nope` / an `alias_ips` entry `nope` | `"must be a valid IP address"` / `"cidrv4 violated"` / `alias_ips[0]`: `"must be a valid IP address"` |
+| … `ip_range` that is no subnet / `ip` outside `ip_range` | 422 `service_error`, `"subnet not found"` / `"ip not in ip range"` |
+| … an alias IP outside, in no subnet, twice, the gateway / taken, the own `ip` / in another subnet | `no_subnet_available` / `ip_not_available` / 201 |
+| … six alias IPs (also when attached already) / attached already / a range that overlaps one of the server's networks / a fourth network | 403 `invalid_input`, `"alias ips limit reached"` / 422 `server_already_attached`, `"server already attached"` / 422 `networks_overlap`, `"network IP range overlaps with one of the resource networks"` / 403 `resource_limit_exceeded`, `"networks per resource limit reached"` |
+| … a network whose subnet is in `us-east`, from `nbg1` | 201: the zone is not checked |
+| … without `ip` | the first free address of the last subnet (`.1`), or of the `ip_range` given |
+| … the action | `attach_to_network`, resources the server and the network; ends after 1.8 to 7.6 s (2.4 s on a running server); listed under `/networks/{id}/actions`, not under `/servers/{id}/actions` |
+| `change_alias_ips` with six / without `alias_ips` / a network it is not in, with alias IPs / with `[]` | 422 `invalid_input`, `"alias ips limit reached"` / `"'alias_ips' is required"` / `service_error`, `"resource not found"` / 201, ends at once |
+| … twice the same, outside / taken, its own address / an unknown network | `no_subnet_available` / `ip_not_available` / 404 `"entity not found"`; else it ends after 5.8 to 8.1 s |
+| `detach_from_network` without `network` / unknown / not attached | `"'network' is required"` / 404 `"entity not found"` / `service_error`, `"resource not found"`; else it ends at once on a running server, after 4.1 to 5.3 s on one that is off |
+| `GET /networks/{id}/members` | servers and load balancers (`type` `load_balancer`); `?type=foo`, `?status=foo` / `?subnet=nope`: `"value not allowed"` / field `filters.subnets[0]`, `"must be a valid IP prefix"`; an unknown `sort` is ignored |
+| … the statuses | `attaching` while the server's attach runs; after a detach or the server's delete `detaching` for 5.3 s; the other members `updating` from 1.8 to 2.9 s after another server joins or leaves, still after 6 s (HLab: for 4 s) |
+| the guest (Hetzner's Debian 13, attached at the create) | `enp7s0`, MTU 1450, `10.0.1.1/32`, routes `10.0.0.1` on-link and `10.0.0.0/16` via `10.0.0.1`; no route of the network's routes; `10.0.0.1` answers ping, an address nobody holds does not |
+| … its lease (dhcpcd, started by hc-utils' udev rule) | address `/32`, options 121 and 249 `10.0.0.1/32 0.0.0.0 10.0.0.0/16 10.0.0.1`, MTU 1450, a day; no router, no name servers |
+| … a network attached while it runs | its address in the guest 7.8 s after the attach was sent; after the detach it is gone 4.3 s later |
+| … the metadata's `private-networks` | a list of `ip`, `alias_ips`, `interface_num`, `mac_address`, `network_id`, `network_name`, `network`, `subnet`, `gateway` (for 2a-4) |
+
+Deviations, all named in docs/servers.md: the guest's private NICs are
+`eth1` to `eth3` under Hyper-V; the seed's vendor-data brings a script
+that does what hc-utils does; load balancers come with phase 4. Not
+measured: `add_subnet` without a free `/24`, the delete of a network
+while an action works on it, a limit of networks per project (2a-4).
 
 ### Metadata service (1b-2)
 

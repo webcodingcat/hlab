@@ -26,9 +26,13 @@ const (
 	RestartEnd        = 2 * time.Second         // reboot or reset: running → the action ends
 	Rebuild           = 10 * time.Second        // rebuild: the new disk is there → the action ends
 	ChangeType        = 30 * time.Second        // change_type: the new type is set → the action ends
-	NICAttach         = 3 * time.Second         // attach_to_network: the NIC is in → the action ends
-	NICDetach         = 2 * time.Second         // detach_from_network: the NIC is out → the action ends
-	AliasIPs          = 2 * time.Second         // change_alias_ips: routed → the action ends
+	NICAttach         = 3 * time.Second         // attach_to_network: the NIC is in → the action ends (measured 2026-11-08: 1.8 to 7.6 s, 2.4 s on a running server)
+	NICDetachOff      = 4 * time.Second         // detach_from_network on a server that is off: the NIC is out → the action ends (measured 2026-11-08: 4.1 to 5.3 s; on a running server it ends at once)
+	AliasIPs          = 6 * time.Second         // change_alias_ips: routed → the action ends (measured 2026-11-08: 5.8 to 8.1 s)
+	MemberDetaching   = 5 * time.Second         // a server that left a network: shown as "detaching" among its members (measured 2026-11-08: 5.3 s after a detach, also after a delete of the server)
+	MemberUpdating    = 2 * time.Second         // another server joins or leaves a network: the members show "updating" after this (measured 2026-11-08: 1.8 to 2.9 s)
+	MemberUpdated     = 4 * time.Second         // and as long as this (not measured: still so 6 s after a server's delete)
+	NetworkRoutes     = 5 * time.Second         // add_route, delete_route with servers in the network: routed → the action ends (measured 2026-11-08: 4.6 to 6.4 s; without servers at once)
 	VolumeChange      = 2 * time.Second         // a volume's create, attach, detach, resize: done → the action ends
 	FloatingIPMove    = 3 * time.Second         // a Floating IP's route moves to its new server
 	BoxCreate         = 5 * time.Second         // a Storage Box: its account is set up → active
@@ -51,7 +55,7 @@ func (realClock) After(d time.Duration) <-chan time.Time { return time.After(d) 
 // above), scaled by the time scale. It returns early with the context's error
 // when the action is canceled.
 func (l *Lab) Sleep(ctx context.Context, hetzner time.Duration) error {
-	wait := time.Duration(float64(hetzner) * l.timeScale)
+	wait := l.scaled(hetzner)
 	if wait <= 0 {
 		return ctx.Err()
 	}

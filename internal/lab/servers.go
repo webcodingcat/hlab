@@ -184,12 +184,13 @@ func (m *Machine) BuildServer(ctx context.Context, id int64) error {
 func (m *Machine) makeServerVM(ctx context.Context, id int64) (keptDisk bool, err error) {
 	var facts picture.Server
 	var server *state.Server
+	var private []system.PrivateNIC
 	err = m.lab.View(func(tx *state.Tx) error {
 		found, getErr := state.Get(tx, state.Servers, id)
 		if getErr != nil {
 			return getErr
 		}
-		server, facts = found, serverFacts(tx, found)
+		server, facts, private = found, serverFacts(tx, found), systemNICs(tx, found)
 		return nil
 	})
 	if err != nil {
@@ -210,6 +211,7 @@ func (m *Machine) makeServerVM(ctx context.Context, id int64) (keptDisk bool, er
 		Seed:      seedISO,
 		SeedFiles: seed.Files(seedServer(facts, m.basePictureLab())),
 		MAC:       server.MAC,
+		Private:   private,
 	}
 	return m.system.CreateServer(ctx, spec)
 }

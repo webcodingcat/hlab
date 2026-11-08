@@ -43,7 +43,7 @@ func (s *System) DiskSpace(ctx context.Context, path string) (DiskSpace, error) 
 }
 
 // ServerSpec is a server's VM: its size, its disk on a cached image, its
-// seed and its public NIC.
+// seed, its public NIC and its NICs in private networks.
 type ServerSpec struct {
 	VM        string
 	CPUs      int
@@ -54,11 +54,24 @@ type ServerSpec struct {
 	Seed      string // the seed ISO
 	SeedFiles map[string][]byte
 	MAC       string // of the public NIC
+	Private   []PrivateNIC
+}
+
+// PrivateNIC is a server's NIC in a private network: on the private switch,
+// in the network's VLAN.
+type PrivateNIC struct {
+	MAC  string
+	VLAN int
+}
+
+// spec returns the NIC for the platform.
+func (nic PrivateNIC) spec() platform.NICSpec {
+	return platform.NICSpec{MAC: nic.MAC, Switch: PrivateSwitch, Port: platform.Access(nic.VLAN)}
 }
 
 // CreateServer makes a server's VM, off: its disk on the base image, its
-// seed in the DVD drive and its public NIC on the public switch, isolated
-// in the private VLAN. A disk that is there already is kept as it is, and
+// seed in the DVD drive, its public NIC on the public switch, isolated
+// in the private VLAN, and its NICs in private networks. A disk that is there already is kept as it is, and
 // keptDisk says so: the server lost its VM but not its disk (an uninstall
 // that kept the data). The seed is always made anew. If a step fails, what
 // it made is removed again; a kept disk stays.
@@ -93,6 +106,9 @@ func (s *System) CreateServer(ctx context.Context, spec ServerSpec) (keptDisk bo
 		Disks:    []platform.DiskSlot{{Slot: 0, Path: spec.Disk}},
 		NICs:     []platform.NICSpec{publicNIC(spec.MAC)},
 	}
+	for _, nic := range spec.Private {
+		vm.NICs = append(vm.NICs, nic.spec())
+	}
 	if err := hypervisor.CreateVM(ctx, vm); err != nil {
 		return keptDisk, fmt.Errorf("creating the VM %s: %w", spec.VM, err)
 	}
@@ -124,17 +140,42 @@ func (s *System) DeleteServer(ctx context.Context, vm string, files ...string) e
 	return errors.Join(errs...)
 }
 
-// ReconnectServer puts a server's public NIC on the public switch again:
-// a stop of the lab removes the switch, and the VMs keep their NICs without
-// one. A NIC's port is set only when it is added, so it goes and
-// comes back with the same MAC and port.
-func (s *System) ReconnectServer(ctx context.Context, vm, mac string) error {
+// ReconnectServer puts a server's NICs on their switches again, the
+// public one and those in private networks: a stop of the lab removes the
+// switches, and the VMs keep their NICs without one. A NIC's port is set
+// only when it is added, so each goes and comes back with the same MAC and
+// port.
+func (s *System) ReconnectServer(ctx context.Context, vm, mac string, private []PrivateNIC) error {
 	hypervisor := s.platform.Hypervisor
-	if err := hypervisor.DetachNIC(ctx, vm, mac); err != nil && !errors.Is(err, platform.ErrNotFound) {
-		return fmt.Errorf("reconnecting %s: %w", vm, err)
+	nics := []platform.NICSpec{publicNIC(mac)}
+	for _, nic := range private {
+		nics = append(nics, nic.spec())
 	}
-	if err := hypervisor.AttachNIC(ctx, vm, publicNIC(mac)); err != nil {
-		return fmt.Errorf("reconnecting %s: %w", vm, err)
+	for _, nic := range nics {
+		if err := hypervisor.DetachNIC(ctx, vm, nic.MAC); err != nil && !errors.Is(err, platform.ErrNotFound) {
+			return fmt.Errorf("reconnecting %s: %w", vm, err)
+		}
+		if err := hypervisor.AttachNIC(ctx, vm, nic); err != nil {
+			return fmt.Errorf("reconnecting %s: %w", vm, err)
+		}
+	}
+	return nil
+}
+
+// AttachPrivateNIC adds a NIC in a private network to a server's VM, also
+// while it runs.
+func (s *System) AttachPrivateNIC(ctx context.Context, vm string, nic PrivateNIC) error {
+	if err := s.platform.Hypervisor.AttachNIC(ctx, vm, nic.spec()); err != nil {
+		return fmt.Errorf("attaching %s's NIC %s: %w", vm, nic.MAC, err)
+	}
+	return nil
+}
+
+// DetachPrivateNIC removes a server's NIC from a private network, also
+// while the VM runs; a NIC that is gone counts as removed.
+func (s *System) DetachPrivateNIC(ctx context.Context, vm, mac string) error {
+	if err := s.platform.Hypervisor.DetachNIC(ctx, vm, mac); err != nil && !errors.Is(err, platform.ErrNotFound) {
+		return fmt.Errorf("detaching %s's NIC %s: %w", vm, mac, err)
 	}
 	return nil
 }

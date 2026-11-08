@@ -27,9 +27,11 @@ type Options struct {
 	// Dir holds the files the agent writes, such as dnsmasq's
 	// configuration.
 	Dir string
-	// RestartDHCP is the command that restarts dnsmasq after its
-	// configuration changed.
-	RestartDHCP []string
+	// RestartDHCP returns the command that restarts the dnsmasq instance
+	// of a device after its configuration changed; StopDHCP the one that
+	// stops it.
+	RestartDHCP func(device string) []string
+	StopDHCP    func(device string) []string
 	Log         *slog.Logger
 }
 

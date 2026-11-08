@@ -65,6 +65,12 @@ type Lab struct {
 
 	machine *Machine
 
+	// notesMu guards notes, the statuses the API shows for a while
+	// (AddNote); it is taken alone or while holding mu, never the other
+	// way round, and never across a call
+	notesMu sync.Mutex
+	notes   map[NoteKey]Note
+
 	// envMu makes EnvToken one at a time, across its read and write of the
 	// env token file; it is not the state's mutex, so it may be held across
 	// calls to the system

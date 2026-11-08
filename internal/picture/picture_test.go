@@ -50,6 +50,23 @@ func testLab() Lab {
 		{Prefix: netip.MustParsePrefix("2001:db8:1:4::/64"), ServerID: 1000001},
 		{Prefix: netip.MustParsePrefix("198.19.0.5/32"), ServerID: 1000002},
 	}
+	// two networks of the same range, listed out of order: one with two
+	// servers, an alias IP and two routes, one through a gateway that no
+	// server holds; one with a default route and no server
+	lab.Networks = []Network{
+		{ID: 1000021, VLAN: 3, IPRange: netip.MustParsePrefix("10.0.0.0/16"),
+			Routes: []NetworkRoute{{Destination: netip.MustParsePrefix("0.0.0.0/0"), Gateway: netip.MustParseAddr("10.0.0.5")}}},
+		{ID: 1000020, VLAN: 2, IPRange: netip.MustParsePrefix("10.0.0.0/16"),
+			Routes: []NetworkRoute{
+				{Destination: netip.MustParsePrefix("10.100.0.0/24"), Gateway: netip.MustParseAddr("10.0.1.2")},
+				{Destination: netip.MustParsePrefix("192.168.0.0/16"), Gateway: netip.MustParseAddr("10.0.9.9")},
+			},
+			Members: []NetworkMember{
+				{ServerID: 1000001, MAC: "86:00:00:00:00:01", IP: netip.MustParseAddr("10.0.1.2"),
+					AliasIPs: []netip.Addr{netip.MustParseAddr("10.0.1.20"), netip.MustParseAddr("10.0.2.20")}},
+				{ServerID: 1000002, MAC: "86:00:00:00:00:02", IP: netip.MustParseAddr("10.0.1.3")},
+			}},
+	}
 	return lab
 }
 
@@ -101,7 +118,15 @@ func TestRulesetWithoutServersHasAnEmptySet(t *testing.T) {
 }
 
 func TestDHCPMatchesGoldenFile(t *testing.T) {
-	checkGolden(t, "dhcp", DHCP(testLab()).Config)
+	dhcp := DHCP(testLab())
+	if err := dhcp.Check(); err != nil {
+		t.Fatalf("the picture fails its own check: %v", err)
+	}
+	var text strings.Builder
+	for _, instance := range dhcp.Instances {
+		fmt.Fprintf(&text, "### %s\n%s", instance.Device, instance.Config)
+	}
+	checkGolden(t, "dhcp", text.String())
 }
 
 func TestMetadataMatchesGoldenFile(t *testing.T) {
@@ -118,16 +143,20 @@ func TestMetadataMatchesGoldenFile(t *testing.T) {
 	checkGolden(t, "metadata", text.String())
 }
 
-func TestPicturesDoNotDependOnTheOrderOfServersAndFloatingIPs(t *testing.T) {
+func TestPicturesDoNotDependOnTheOrderOfServersFloatingIPsAndNetworks(t *testing.T) {
 	lab := testLab()
 	reversed := testLab()
 	slices.Reverse(reversed.Servers)
 	slices.Reverse(reversed.FloatingIPs)
-	if Ruleset(lab) != Ruleset(reversed) || DHCP(lab) != DHCP(reversed) {
-		t.Error("the order of the servers changes the ruleset or DHCP")
+	slices.Reverse(reversed.Networks)
+	for i := range reversed.Networks {
+		slices.Reverse(reversed.Networks[i].Members)
+	}
+	if Ruleset(lab) != Ruleset(reversed) || !reflect.DeepEqual(DHCP(lab), DHCP(reversed)) {
+		t.Error("the order of the servers or networks changes the ruleset or DHCP")
 	}
 	if !reflect.DeepEqual(Links(lab), Links(reversed)) {
-		t.Error("the order of the servers or Floating IPs changes the links")
+		t.Error("the order of the servers, Floating IPs or networks changes the links")
 	}
 }
 

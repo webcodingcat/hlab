@@ -78,7 +78,8 @@ it. `system` does each step, `lab` only builds the pictures.
    `2001:db8::/32`, naming the range and the interface. Then `HostNet.SetUp`
    creates or takes over the switches `HLab-Link` (internal, with the host's NIC:
    `198.18.0.1/29`, `2001:db8:0:ffff::1/64`, routes of both ranges through the
-   appliance) and `HLab-Public` (private).
+   appliance), `HLab-Public` (private) and `HLab-Private` (private, the
+   private networks' VLANs).
 2. `system.StageApplianceRelease`: the release disk into the data folder (above).
 3. `system.RemoveStrayVMs`: the lab's VMs (notes `hlab`) that are neither the
    appliance of the state's MAC set nor a server of the state go; their disks

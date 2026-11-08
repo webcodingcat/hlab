@@ -26,6 +26,9 @@ table inet hlab {
 		iifname "{{.Public}}" ip daddr {{.Metadata}} tcp dport 80 accept
 		iifname "{{.Public}}" ip daddr {{.Resolver4}} meta l4proto { tcp, udp } th dport 53 accept
 		iifname "{{.Public}}" ip6 daddr {{.Resolver6}} meta l4proto { tcp, udp } th dport 53 accept
+		# DHCP in the private networks: what comes in on a VRF's VLAN shows
+		# the VRF as its interface
+		iifname "{{.VRFs}}" udp dport 67 accept
 	}
 
 	# what goes through the appliance
@@ -55,6 +58,11 @@ table inet hlab {
 		# the host to the servers, and the servers among each other; without
 		# conntrack, so that connections survive an update of the appliance
 		iifname { "{{.Link}}", "{{.Public}}" } oifname "{{.Public}}" accept
+		# the servers in a private network among each other and to its
+		# routes' gateways, without a Cloud Firewall, as on Hetzner; each
+		# network's VRF keeps it apart from the others, and shows as the
+		# interface a packet comes in on
+		iifname "{{.VRFs}}" oifname "{{.Private}}.*" accept
 	}
 
 	# the Cloud Firewalls, after the chain forward: what it lets through

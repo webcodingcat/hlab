@@ -29,6 +29,7 @@ func Register(api *web.API, l *lab.Lab) {
 	registerPrimaryIPs(api, l)
 	registerFloatingIPs(api, l)
 	registerFirewalls(api, l)
+	registerNetworks(api, l)
 }
 
 // listJSON answers a list request: the page of items the query asks for

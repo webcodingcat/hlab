@@ -19,8 +19,30 @@
       "networkd": true
     }
   ],
-  "vrfs": null,
-  "vlans": null,
+  "vrfs": [
+    {
+      "name": "vrf-net-1000020",
+      "table": 10002
+    },
+    {
+      "name": "vrf-net-1000021",
+      "table": 10003
+    }
+  ],
+  "vlans": [
+    {
+      "name": "private.2",
+      "parent": "private",
+      "id": 2,
+      "vrf": "vrf-net-1000020"
+    },
+    {
+      "name": "private.3",
+      "parent": "private",
+      "id": 3,
+      "vrf": "vrf-net-1000021"
+    }
+  ],
   "addresses": [
     {
       "device": "link",
@@ -54,6 +76,16 @@
     {
       "device": "lo",
       "prefix": "169.254.169.254/32"
+    },
+    {
+      "device": "private.2",
+      "prefix": "10.0.0.1/32",
+      "announce": true
+    },
+    {
+      "device": "private.3",
+      "prefix": "10.0.0.1/32",
+      "announce": true
     }
   ],
   "routes": [
@@ -108,6 +140,56 @@
     {
       "destination": "2001:db8::/32",
       "blackhole": true
+    },
+    {
+      "destination": "10.0.1.2/32",
+      "device": "private.2",
+      "source": "10.0.0.1",
+      "table": 10002
+    },
+    {
+      "destination": "10.0.1.20/32",
+      "device": "private.2",
+      "source": "10.0.0.1",
+      "table": 10002
+    },
+    {
+      "destination": "10.0.2.20/32",
+      "device": "private.2",
+      "source": "10.0.0.1",
+      "table": 10002
+    },
+    {
+      "destination": "10.0.1.3/32",
+      "device": "private.2",
+      "source": "10.0.0.1",
+      "table": 10002
+    },
+    {
+      "destination": "10.100.0.0/24",
+      "device": "private.2",
+      "gateway": "10.0.1.2",
+      "on_link": true,
+      "table": 10002
+    },
+    {
+      "destination": "192.168.0.0/16",
+      "device": "private.2",
+      "gateway": "10.0.9.9",
+      "on_link": true,
+      "table": 10002
+    },
+    {
+      "destination": "0.0.0.0/0",
+      "blackhole": true,
+      "table": 10002
+    },
+    {
+      "destination": "0.0.0.0/0",
+      "device": "private.3",
+      "gateway": "10.0.0.5",
+      "on_link": true,
+      "table": 10003
     }
   ],
   "sysctls": [
@@ -137,6 +219,22 @@
     },
     {
       "key": "net/ipv6/conf/private/addr_gen_mode",
+      "value": "1"
+    },
+    {
+      "key": "net/ipv4/conf/private.2/send_redirects",
+      "value": "0"
+    },
+    {
+      "key": "net/ipv6/conf/private.2/disable_ipv6",
+      "value": "1"
+    },
+    {
+      "key": "net/ipv4/conf/private.3/send_redirects",
+      "value": "0"
+    },
+    {
+      "key": "net/ipv6/conf/private.3/disable_ipv6",
       "value": "1"
     }
   ]

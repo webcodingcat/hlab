@@ -1,4 +1,4 @@
-# Servers, Primary and Floating IPs, firewalls and the lab's own resources
+# Servers, Primary and Floating IPs, firewalls, networks and the lab's own resources
 
 How servers, Primary IPs, Floating IPs and firewalls behave, and the lab's own operations on
 projects, tokens and faults. The rules they keep are in DEVELOPING.md
@@ -48,9 +48,9 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
   `want_running`: the create, the plans of the power actions, the watchdog
   for a guest that shut itself down.
 - **`want_running`** is what a start of the lab follows: a server whose VM
-  runs is taken over (hlabd had crashed); one whose VM is off gets its NIC on
-  `HLab-Public` again (detached and attached, as a stop of the lab removed the
-  switch) and starts if it wants to run. A server without a VM gets a new one
+  runs is taken over (hlabd had crashed); one whose VM is off gets its NICs on
+  `HLab-Public` and `HLab-Private` again (detached and attached, as a stop of
+  the lab removed the switches) and starts if it wants to run. A server without a VM gets a new one
   first (`Machine.restoreServer`): with its disk as it is, if the disk is there
   (an uninstall kept the data folder but removed the VMs); built anew if
   there is no disk (hlabd's end cut its create short). `system.CreateServer`
@@ -201,6 +201,86 @@ pictures and wait Hetzner's 3 s and 1 s. What Hetzner answers is measured
   cut a server off from it.
 - **Not yet:** `firewalls` in a server's create request (with networks,
   2a).
+
+## Private networks
+
+The handlers in `internal/api/cloud/networks.go` and
+`network_actions.go` decide, the server's side in `server_actions.go`;
+the steps are in `internal/lab/networks.go`. What Hetzner answers is
+measured (`compat/requirements.md`, Networks).
+
+- **Create** checks as Hetzner does: first the fields (name, `ip_range`
+  as a prefix, each subnet's type, zone and range, each route's
+  destination and gateway, labels), then the range (RFC 1918, at least a
+  `/24`, no host bits), the subnets (inside the range, at most a `/30`,
+  one zone, no overlap), the routes (RFC 1918 or `0.0.0.0/0`, never
+  `172.31.1.1`; a gateway in the range other than its first address and
+  `172.31.1.1`; no overlap but the default route), then the limits (50
+  subnets, 100 routes) and the name. It answers no action. Two networks
+  may have the same range, also in one project. Each network gets a VLAN
+  of the lab's own (2 to 4094, from a pool that goes round).
+- **Subnets** are listed in the order of their ranges; each one's gateway
+  is the network's first address. A subnet of the type `vswitch` is 422
+  `vswitch not found`, as Hetzner answers a vSwitch it does not know: the
+  lab has no Robot. `expose_routes_to_vswitch` is kept and has no effect.
+- **Actions** (`add_subnet`, `delete_subnet`, `add_route`,
+  `delete_route`, `change_ip_range`, `change_protection`) are queued per
+  network: Hetzner takes a second one while the first runs and runs it
+  after. `add_subnet` without a range takes the first free `/24`;
+  `delete_subnet` refuses a subnet that holds a server's address;
+  `change_ip_range` only extends (the same first address, a shorter
+  prefix) a network without servers. Subnet and range actions end at
+  once; route actions take Hetzner's 5 s when servers are in the network.
+- **A server's actions** in a network are rows of the servers' table,
+  queued with its other actions. Hetzner lists them only among the
+  network's actions (`/networks/{id}/actions`), not the server's.
+  - `attach_to_network` takes the address asked for, or the first free
+    one of the subnet named by `ip_range` or of the last subnet with room,
+    and up to five alias IPs. It refuses, in Hetzner's order: the fields,
+    the network, more than five alias IPs (403), a network the server is
+    in already, a network whose range overlaps one of the server's, a
+    fourth network (403), then the addresses: one in no subnet (the
+    network's gateway among them) has no subnet, a subnet's own and last
+    address and one another server holds are not available. It does not
+    check the network zone, as Hetzner does not. The plan records the
+    NIC with a MAC `86:00:` and 32 bits of a counter; the steps put the
+    NIC into the VM (also one that runs) on the private switch, in the
+    network's VLAN, and send the pictures.
+  - `detach_from_network` takes the NIC out of the record at once; the
+    steps send the pictures, then remove the NIC from the VM.
+  - `change_alias_ips` replaces the alias IPs (at most five, 422 here);
+    an empty list for a network the server is not in changes nothing and
+    succeeds, as on Hetzner.
+- **Members** (`GET /networks/{id}/members`) are the servers in the
+  network with their subnet; a server whose attach runs is `attaching`,
+  one whose alias IPs change `updating`. As on Hetzner, a server that
+  leaves (a detach, its delete) stays as `detaching` for 5 s, and the
+  other servers show `updating` from 2 s after a server joins or leaves,
+  for 4 s: `Lab.AddNote` keeps such statuses in memory for a while. Load
+  balancers come with phase 4.
+- **Delete** refuses a protected network (423) and deletes one with
+  servers in it, as Hetzner does: they leave it at once, without an
+  action of theirs, and their NICs leave the VMs in the background
+  (`Machine.DetachNICsLater`).
+- **In the data plane** (docs/appliance.md) each network is a VLAN on
+  the private switch and a VRF in the appliance with the gateway; a
+  guest gets its address by DHCP as a `/32`, the gateway on-link and the
+  network's range through it, MTU 1450, as on Hetzner. Only the addresses
+  and alias IPs handed out, and the network's routes, are routed; an
+  address nobody holds answers nothing. Private networks pass no Cloud
+  Firewall, as on Hetzner. Two networks with the same range stay apart.
+- **In the guest** the seed's vendor-data does what Hetzner's images do
+  with hc-utils: a udev rule starts dhcpcd on each NIC with a MAC
+  `86:00:…`, also one hot-plugged into a running server. Three deviations
+  from Hetzner: the seed's vendor-data has this script, where Hetzner's
+  images bring hc-utils (the metadata service's `vendor_data` stays
+  Hetzner's); under Hyper-V the private NICs are `eth1` to `eth3`, where
+  Hetzner's KVM names them `enp7s0` and up; and two guests in one VLAN
+  could reach each other directly if one set that up by hand, which
+  Hetzner's network does not allow (the lab's DHCP routes everything
+  through the gateway).
+- **Not yet:** networks in a server's create request and the metadata's
+  `private-networks` (2a-4).
 
 ## Projects, tokens, faults
 

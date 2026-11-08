@@ -95,7 +95,7 @@ func TestServersBootAnswerAndOutliveTheLab(t *testing.T) {
 		run.close(t, l)
 		run.removeVMs(t)
 	})
-	api := newCloudAPI(t, l)
+	api := newCloudAPI(t, l, "itest")
 
 	debian := createServer(ctx, t, api, "itest-debian", "debian-13")
 	ubuntu := createServer(ctx, t, api, "itest-ubuntu", "ubuntu-26.04")
@@ -160,7 +160,7 @@ func TestServersBootAnswerAndOutliveTheLab(t *testing.T) {
 		booted[server.name] = keys.bootID(t, server)
 	}
 	l = run.open(ctx, t)
-	api = newCloudAPI(t, l) // the project and its token came through the restarts
+	api = newCloudAPI(t, l, "itest") // the project and its token came through the restarts
 	for _, server := range []guest{debian, ubuntu} {
 		if id := keys.bootID(t, server); id != booted[server.name] {
 			t.Errorf("%s booted again after the crash; the start should have taken it over", server.name)
@@ -211,7 +211,7 @@ func TestServersBootAnswerAndOutliveTheLab(t *testing.T) {
 	if !quietLived {
 		t.Error("the SSH session that was quiet during the update hung when the guest spoke first")
 	}
-	api = newCloudAPI(t, l)
+	api = newCloudAPI(t, l, "itest")
 	if id := keys.bootID(t, debian); id != booted[debian.name] {
 		t.Errorf("%s booted again during the appliance's update", debian.name)
 	}
@@ -378,13 +378,13 @@ type cloudAPI struct {
 	token string
 }
 
-// newCloudAPI serves the lab's Cloud API on a local port, with a token of the
-// project "itest", which it creates if the lab has none.
-func newCloudAPI(t *testing.T, l *lab.Lab) cloudAPI {
+// newCloudAPI serves the lab's Cloud API on a local port, with a token of a
+// project, which it creates if the lab has none of that name.
+func newCloudAPI(t *testing.T, l *lab.Lab, projectName string) cloudAPI {
 	t.Helper()
-	project, err := l.ProjectByName("itest")
+	project, err := l.ProjectByName(projectName)
 	if errors.Is(err, state.ErrNotFound) {
-		project, err = l.CreateProject("itest", state.Limits{})
+		project, err = l.CreateProject(projectName, state.Limits{})
 	}
 	if err != nil {
 		t.Fatal(err)

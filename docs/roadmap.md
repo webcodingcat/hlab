@@ -297,8 +297,47 @@ that found it (must, should, optional) and the phase that closes it.
 | 2a-0 | `lab.Machine` for the machine's side; the rule where an action's plans and steps live (DEVELOPING.md, Actions); `ReadSecrets` takes a file of `null`; the watchdog's notes live only for a round | done |
 | 2a-1 | Floating IPs (IPv4, IPv6 `/64`) with Hetzner's actions, routes in the `links` picture; new pictures after every undo (a failed server create, a Primary IP's assign and unassign); a server's create checks its location against its type; `l.read()`, `planFunc` | done |
 | 2a-2 | firewalls with Hetzner's actions, limits, texts and label selectors that follow the servers, in the `ruleset` picture (a chain per server and direction, a chain per firewall and direction, verdict maps); `Lab.ActAll`, `lab.Row`, `Lab.RecordAction`; a lab address nobody holds answers nothing, as on Hetzner (blackhole route in the `links` picture) | done |
+| 2a-3 | private networks with Hetzner's actions, limits, texts and members; `attach_to_network`, `detach_from_network`, `change_alias_ips` with NIC hot-plug; the switch `HLab-Private`, a VLAN and a VRF per network, DHCP per network; the guest's private NICs by the seed's vendor-data; `Lab.AddNote` for statuses Hetzner shows for a while | done |
 
-Next: 2a-3, private networks.
+Next: 2a-4, networks, firewalls and Floating IPs in a server's create, the
+metadata's `private-networks`.
+
+### What 2a-3 brought
+
+- **Networks** (create, get, update, delete, lists, members, action lists;
+  `add_subnet`, `delete_subnet`, `add_route`, `delete_route`,
+  `change_ip_range`, `change_protection`) and a server's
+  `attach_to_network`, `detach_from_network` and `change_alias_ips`,
+  measured on 2026-11-08 (`compat/requirements.md`, Private networks):
+  50 subnets and 100 routes per network, 3 networks and 5 alias IPs per
+  server, Hetzner's order of checks, the address from the last subnet,
+  a network's actions queued, a network deleted with servers in it, the
+  server's network actions only among the network's. The members show
+  `attaching`, `detaching` for 5 s after a server left, and `updating`
+  from 2 s after another joined or left (`Lab.AddNote`, which 2a-4 can
+  use for a firewall's `pending`).
+- **On Hyper-V** the switch `HLab-Private` (private) carries a VLAN per
+  network: the appliance's `private` NIC is a trunk, a server's NIC an
+  access port, hot-plugged into a running VM. A server's private MAC is
+  `86:00:` and a counter.
+- **In the appliance** each network is a VLAN `private.<vlan>` in a VRF
+  `vrf-net-<id>` with the gateway; only the addresses handed out and the
+  network's routes are routed, the rest is dropped silently. A dnsmasq
+  instance per network (`hlab-dnsmasq@<device>`) gives Hetzner's lease:
+  a `/32`, options 121 and 249, MTU 1450, a day, no router, no name
+  servers. Two networks with the same range stay apart; no firewall
+  touches a private network.
+- **In the guest** the seed's vendor-data does what Hetzner's hc-utils
+  does: a udev rule starts dhcpcd on each private NIC, also a hot-plugged
+  one. Deviations, named in docs/servers.md: that script, the NIC names
+  `eth1` to `eth3`, a direct way between two guests of a VLAN if set up by
+  hand.
+- **Measured live:** the attach's address is in a running guest 1.4 to
+  3.5 s after the attach was sent (Hetzner: 7.8 s), and a ping between two
+  servers gets through after 6.4 to 7.4 s.
+- The appliance changed (agent, units): `bin/dev appliance` before `bin/dev
+  itest`; an installed HLab updates its appliance at the next start and
+  creates the switch `HLab-Private`.
 
 ### What 2a-2 brought
 
