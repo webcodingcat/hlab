@@ -50,6 +50,9 @@ appliance's MAC addresses are `02:48:4c:0a:00:0<n>` (set A) or `02:48:4c:0b:00:0
   TCP connection after an update of the appliance, but calls its first packet
   `new`, and a server that sends first would hang. Such a packet opens no
   connection.
+- Connections to the Internet do not live through an update or a restart
+  of the appliance: their NAT state is in the old one, and an update's
+  appliance gets another uplink address (docs/roadmap.md, Known gaps).
 - The servers reach DHCP, the metadata service and DNS on the appliance; the host
   reaches all of it.
 

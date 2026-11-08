@@ -68,10 +68,8 @@ the tests. Look there before writing such a part anew.
 - `hlabd --platform fake` listens on `127.0.0.1`, the CLI's default is
   `198.18.0.1`: with the fake platform, take `HLAB_CONTROL` from hlabd's log
   (`bin/dev smoke` does).
-- Not yet: `PUT` and `DELETE` of images (3a).
-- Raised in the last review, for before phase 2: decide where a resource's
-  plans and steps live as `lab` grows (today plans in `api/cloud`, steps in
-  `lab`); `CheckRoom` copies every server in its transaction.
+- `CheckRoom` copies every server in its transaction (raised in the last
+  review of 1a; fine for the few servers of a lab).
 
 ## Phase 1b
 
@@ -168,45 +166,72 @@ each part; this is the list.
   (hlabd only dials into VMs) and is gone from `install.ps1` and
   `dev-install`; tests for the Primary IPs' lists and action lists, the
   servers' sorting and Hetzner's texts per field.
+- Deleting a project left its servers' VMs running until the next start;
+  `Lab.DeleteProject` now removes them with their disks and seeds and
+  sends the pictures.
+- `Lab.Act` and `Lab.Create` started actions after `Lab.Close`; the lab
+  now has a closed state, and `Close` waits for every goroutine.
 
-### Open for later phases
+### Known gaps
 
-- Raised in the review after 1-L, for before phase 2: deleting a project
-  leaves its servers' VMs running until the next start (`Lab.DeleteProject`
-  removes only records), and `Lab.Act` and `Lab.Create` still start actions
-  after `Lab.Close` (no closed state; `UpdatePicturesLater`'s goroutines are
-  not awaited).
-- The servers' connections to the Internet do not live through an update
-  of the appliance: the new one has none of the old one's NAT.
-- An update with `install.ps1` fails while an `hlab ssh` runs: `hlab.exe`
-  waits for `ssh.exe` and holds its file, so the copy fails (hlabd has
-  already ended by then; its servers run on).
+Faults and deviations from Hetzner, each with its level from the review
+that found it (must, should, optional) and the phase that closes it.
 
-- Volumes, networks, firewalls and placement groups in a server's create
-  request are ignored until their phase (2a, 2b); `change_dns_ptr` comes
-  with DNS (2b). The metadata summary says `private-networks: []` on a
-  server without a network, where Hetzner leaves it out (2a).
-- unbound's configuration and the uplink's unreachable route name the default
-  ranges; when the ranges become settings, they come with a picture (2b).
-- Still to test: the ruleset's counters for traffic between servers (the
-  agent has counters from phase 4); the uninstall in a live test (played
-  through by hand).
+- **Accepted for now:** the servers' connections to the Internet break at
+  an update of the appliance, and at the watchdog's restart of it: the new
+  appliance has none of the old one's NAT state, and after an update
+  another uplink address too. Connections to the host and among the
+  servers live on. Updates are rare and started by the operator; taking
+  the connections over would need one uplink MAC for both sets, a NIC
+  connected at run time and conntrack's state handed over.
+- **should, 6b:** an update with `install.ps1` fails while an `hlab ssh`
+  runs: `hlab.exe` waits for `ssh.exe` and holds its file, so the copy
+  fails. hlabd has ended by then and its servers run on; the install
+  works again once the session ends.
+- **should, 2a:** the watchdog's check and restart send the appliance a
+  snapshot of the pictures outside `pictureMu`, so after a failed update
+  an older generation can follow a newer one for one check (2 s); the
+  agent takes any generation.
+- **should, 2a:** `Lab.flagged` keeps an entry for every resource that
+  ever had a flag, also for deleted ones.
+- **should, 2c:** the servers' watchdog runs every 2 s on the wall clock
+  (`serverWatchInterval`, `time.NewTicker`, not the lab's clock), so its
+  unit tests wait seconds.
+- **should, with each timing's phase:** `internal/lab/clock.go` holds
+  timings of later phases and `ServerCreateStart`, which nothing uses (the
+  start after a create waits `PowerOn`); not every timing says when it
+  was measured.
+- **2a:** the metadata summary says `private-networks: []` on a server
+  without a network, where Hetzner leaves it out.
+- The firewall rules do not block the lab's own range as a source on
+  8090; the appliance's ruleset keeps the servers off it.
+- **optional, before 2a:** decide where a resource's plans and steps live
+  as `lab` grows (today plans in `api/cloud`, steps in `lab`).
+
+### Comes with phase X
+
+- **2a:** volumes, networks, firewalls and placement groups in a server's
+  create request are ignored until then.
+- **2b:** `change_dns_ptr` (DNS); unbound's configuration and the uplink's
+  unreachable route name the default ranges, and the ranges become
+  settings with a picture.
+- **2c:** the injected fault's delay runs on the wall clock, not the lab's
+  time scale.
+- **3a:** `PUT` and `DELETE` of images.
+- **4:** tests of the ruleset's counters for traffic between servers (the
+  agent's counters).
+- **5:** `boxes.vhdx` moves to the new appliance at an update.
+- **6b:** stop requests from signing out and the tray; the tray replaces
+  the start menu entry's window, whose closing ends hlabd as a crash
+  would.
+
+### Notes
+
 - A start of the dev loop takes 20 s: 9 s for the host link's switches, 11 s
   for the appliance from nothing.
-- Closing the start menu entry's window ends hlabd as a crash would; the
-  tray (6b) replaces the window.
-- The firewall rules do not block the lab's own range as a source on 8090;
-  the appliance's ruleset keeps the servers off it.
-- `boxes.vhdx` moves to the new appliance at an update with the Storage
-  Boxes (5); the pictures' generations stay in memory, so a start sends
-  every picture again.
-
-
-### Later phases
-
-- The injected fault's delay runs on the wall clock, not the lab's time scale
-  (2c).
-- Stop requests from signing out and the tray (6b).
+- The pictures' generations stay in memory, so a start sends every picture
+  again.
+- The uninstall is played through by hand, not in a live test.
 
 Next: 1-L checks its findings again on the finished state.
 

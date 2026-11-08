@@ -120,6 +120,11 @@ MAC set; its VM is `hlab-appliance-a` or `hlab-appliance-b`.
 4. The new one gets `links` again and announces once more: the old one had
    answered ARP and ND too while both ran.
 
+The servers' connections to the host and to each other live through it;
+those to the Internet break, because the new appliance has another uplink
+address and none of the old one's NAT state; the watchdog's restart
+loses that state as well.
+
 If the new appliance does not come up, it is deleted and the old one runs on; the
 next start tries again. HLab's end during an update leaves both appliances
 running; the next start keeps the one the state names (the old one before step
