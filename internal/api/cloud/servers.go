@@ -29,6 +29,9 @@ const (
 	serverDeleteProtected = "server deletion is protected"
 	serverNoRoom          = "error during placement"
 	serverBusy            = "server is locked by another action"
+	// a location that the type does not offer or no longer has available;
+	// the details {}
+	serverLocationUnsupported = "unsupported location for server type"
 )
 
 // userDataMax is the most user data a server takes, in bytes (measured
@@ -299,10 +302,9 @@ func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any
 	if !found {
 		return 0, nil, web.NotFound("server type")
 	}
-	location, found := serverLocation(cat, serverType, body.Location)
-	if !found {
-		// Hetzner still names the datacenter here (measured 2026-11-08)
-		return 0, nil, web.NotFound("datacenter")
+	location, err := serverLocation(cat, serverType, body.Location)
+	if err != nil {
+		return 0, nil, err
 	}
 	image, found := findImage(cat, *body.Image)
 	if !found {
@@ -407,21 +409,34 @@ func findImage(cat *catalog.Catalog, ref idOrName) (catalog.Image, bool) {
 }
 
 // serverLocation returns the location a new server asks for: by name or
-// ID, or without one the first location of its type, where Hetzner picks
-// one with room.
-func serverLocation(cat *catalog.Catalog, serverType catalog.ServerType, name *string) (catalog.Location, bool) {
+// ID, or without one the first location where its type is available, where
+// Hetzner picks one with room. A location the type does not offer, or no
+// longer has available, is Hetzner's 422 (measured 2026-11-08); an unknown
+// one is not found.
+func serverLocation(cat *catalog.Catalog, serverType catalog.ServerType, name *string) (catalog.Location, error) {
 	if name == nil {
-		if len(serverType.Locations) == 0 {
-			return catalog.Location{}, false
+		for _, offered := range serverType.Locations {
+			if offered.Available {
+				if location, found := cat.LocationByName(offered.Name); found {
+					return location, nil
+				}
+			}
 		}
-		return cat.LocationByName(serverType.Locations[0].Name)
+		return catalog.Location{}, web.Refusal(http.StatusUnprocessableEntity, "invalid_input", serverLocationUnsupported)
 	}
 	for _, location := range cat.Locations {
-		if location.Name == *name || strconv.FormatInt(location.ID, 10) == *name {
-			return location, true
+		if location.Name != *name && strconv.FormatInt(location.ID, 10) != *name {
+			continue
 		}
+		if !slices.ContainsFunc(serverType.Locations, func(offered catalog.TypeLocation) bool {
+			return offered.Name == location.Name && offered.Available
+		}) {
+			return catalog.Location{}, web.Refusal(http.StatusUnprocessableEntity, "invalid_input", serverLocationUnsupported)
+		}
+		return location, nil
 	}
-	return catalog.Location{}, false
+	// Hetzner still names the datacenter here (measured 2026-11-08)
+	return catalog.Location{}, web.NotFound("datacenter")
 }
 
 // serverKeys returns the public keys of the SSH keys a request names, by

@@ -346,12 +346,15 @@ func TestServerCreateErrors(t *testing.T) {
 		"an unknown image":    {[]any{"image", "bogus-99"}, 422, "invalid_input", "image not found", "", ""},
 		"an unknown type":     {[]any{"server_type", "bogus"}, 404, "not_found", "server type not found", "", ""},
 		"an unknown location": {[]any{"location", "bogus"}, 404, "not_found", "datacenter not found", "", ""},
-		"a bad name":          {[]any{"name", "bad_name"}, 422, "invalid_input", "invalid input in field 'name'", "name", "name must be a valid hostname"},
-		"an empty name":       {[]any{"name", ""}, 422, "invalid_input", "invalid input in field 'name'", "name", "name must be a valid hostname"},
-		"no image":            {[]any{"image", nil}, 422, "invalid_input", "invalid input in field 'image'", "image", "Missing data for required field."},
-		"an unknown SSH key":  {[]any{"ssh_keys", []any{999999999}}, 404, "not_found", "SSH key not found", "", ""},
-		"too much user data":  {[]any{"user_data", strings.Repeat("x", 32769)}, 422, "invalid_input", "invalid input in field 'user_data'", "user_data", "Length must be between 0 and 32768."},
-		"an unknown IPv4":     {[]any{"public_net", map[string]any{"ipv4": 999999999}}, 404, "primary_ip_not_found", "primary ip not found", "", ""},
+		// cpx22 is not offered in ash, by name or by ID
+		"a location the type lacks":       {[]any{"location", "ash"}, 422, "invalid_input", "unsupported location for server type", "", ""},
+		"a location the type lacks by ID": {[]any{"location", "4"}, 422, "invalid_input", "unsupported location for server type", "", ""},
+		"a bad name":                      {[]any{"name", "bad_name"}, 422, "invalid_input", "invalid input in field 'name'", "name", "name must be a valid hostname"},
+		"an empty name":                   {[]any{"name", ""}, 422, "invalid_input", "invalid input in field 'name'", "name", "name must be a valid hostname"},
+		"no image":                        {[]any{"image", nil}, 422, "invalid_input", "invalid input in field 'image'", "image", "Missing data for required field."},
+		"an unknown SSH key":              {[]any{"ssh_keys", []any{999999999}}, 404, "not_found", "SSH key not found", "", ""},
+		"too much user data":              {[]any{"user_data", strings.Repeat("x", 32769)}, 422, "invalid_input", "invalid input in field 'user_data'", "user_data", "Length must be between 0 and 32768."},
+		"an unknown IPv4":                 {[]any{"public_net", map[string]any{"ipv4": 999999999}}, 404, "primary_ip_not_found", "primary ip not found", "", ""},
 	} {
 		response := test.client.Do(http.MethodPost, "/v1/servers", with(test2.body[0].(string), test2.body[1]))
 		got := errorOf(t, response)
@@ -365,8 +368,17 @@ func TestServerCreateErrors(t *testing.T) {
 			t.Errorf("%s: the field %s has %q, want %q", name, test2.field, messages, test2.fieldMessage)
 		}
 	}
+	// cpx11 is offered in fsn1 but no longer available there
+	response := test.client.Do(http.MethodPost, "/v1/servers", map[string]any{"name": "old", "server_type": "cpx11", "image": "debian-13", "location": "fsn1"})
+	if got := errorOf(t, response); response.Status != http.StatusUnprocessableEntity || got.Message != "unsupported location for server type" {
+		t.Errorf("a location where the type is unavailable: %d %+v", response.Status, got)
+	}
+	// without a location, a type goes where it is available
+	if created := createServer(t, test, map[string]any{"name": "old", "server_type": "cpx11", "image": "debian-13"}); created.Server.Location.Name != "ash" {
+		t.Errorf("a cpx11 without a location went to %s, want ash", created.Server.Location.Name)
+	}
 	createServer(t, test, base)
-	response := test.client.Do(http.MethodPost, "/v1/servers", base)
+	response = test.client.Do(http.MethodPost, "/v1/servers", base)
 	if got := errorOf(t, response); response.Status != http.StatusConflict || got.Message != "server name is already used" {
 		t.Errorf("a taken name: %d %+v", response.Status, got)
 	}
