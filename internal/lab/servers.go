@@ -140,6 +140,31 @@ func (l *Lab) SetServerStatus(id int64, status state.ServerStatus) error {
 	return l.setServer(id, func(server *state.Server) { server.Status = status })
 }
 
+// CreateServer is the create action's steps: it builds the server
+// (BuildServer) and waits Hetzner's time; a server that is not to start
+// is off then, one that is to start is left to the poweron queued behind.
+// If it fails, it removes the VM, the disk and the seed, and the action's
+// undo removes the record. If it is canceled, it leaves them: a stopping
+// lab keeps the record, and its next start builds the server anew; a
+// project reset removes the record, and the next start removes the files.
+// A delete queued during the create removes the record at once; the build
+// then fails on the missing record and cleans up the same way.
+func (l *Lab) CreateServer(ctx context.Context, id int64, start bool) error {
+	err := l.BuildServer(ctx, id)
+	if err == nil {
+		err = l.Sleep(ctx, ServerCreate)
+	}
+	switch {
+	case err != nil && ctx.Err() == nil:
+		return errors.Join(err, l.DeleteServerVM(ctx, id))
+	case err != nil:
+		return err
+	case !start:
+		return l.SetServerStatus(id, state.ServerOff)
+	}
+	return nil
+}
+
 // BuildServer makes a new server's VM, off: the system image in the
 // cache, the disk, the seed, the VM; then the appliance gets the pictures
 // with the server.
@@ -270,9 +295,7 @@ func (l *Lab) PowerOnServer(ctx context.Context, id int64) error {
 	if runs && server.Status == state.ServerRunning {
 		return nil
 	}
-	if err := l.setServer(id, func(server *state.Server) {
-		server.Status, server.WantRunning = state.ServerStarting, true
-	}); err != nil {
+	if err := l.SetServerStatus(id, state.ServerStarting); err != nil {
 		return err
 	}
 	if !runs { // a VM that runs while its status says otherwise only needs the status
@@ -290,9 +313,9 @@ func (l *Lab) PowerOnServer(ctx context.Context, id int64) error {
 }
 
 // PowerOffServer turns a server off at once, as Hetzner's poweroff:
-// stopping, then off. It does not touch want_running: the poweroff's plan
-// cleared it already, and a start queued behind the poweroff may have set
-// it again since.
+// stopping, then off. Like every power action's steps it leaves
+// want_running alone: the action's plan set it when the action was asked
+// for, and an action queued behind may have changed it since.
 func (l *Lab) PowerOffServer(ctx context.Context, id int64) error {
 	if err := l.SetServerStatus(id, state.ServerStopping); err != nil {
 		return err
@@ -328,9 +351,7 @@ func (l *Lab) RebootServer(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	if err := l.setServer(id, func(server *state.Server) {
-		server.Status, server.WantRunning = state.ServerStarting, true
-	}); err != nil {
+	if err := l.SetServerStatus(id, state.ServerStarting); err != nil {
 		return err
 	}
 	if runs {
@@ -354,9 +375,7 @@ func (l *Lab) RebootServer(ctx context.Context, id int64) error {
 // ResetServer resets a server, as Hetzner's reset; one that is off starts
 // (measured 2026-11-08).
 func (l *Lab) ResetServer(ctx context.Context, id int64) error {
-	if err := l.setServer(id, func(server *state.Server) {
-		server.Status, server.WantRunning = state.ServerStarting, true
-	}); err != nil {
+	if err := l.SetServerStatus(id, state.ServerStarting); err != nil {
 		return err
 	}
 	return l.finishRestart(ctx, id, system.PowerReset)
@@ -448,7 +467,7 @@ func (l *Lab) watchServers(ctx context.Context) {
 		var ids []int64
 		l.mu.Lock()
 		for _, server := range state.All(state.Read(l.state), state.Servers) {
-			if server.Status == state.ServerRunning && l.flags[serverRef(server.ID)] == 0 {
+			if watched(server.Status) && l.flags[serverRef(server.ID)] == 0 {
 				ids = append(ids, server.ID)
 			}
 		}
@@ -461,35 +480,53 @@ func (l *Lab) watchServers(ctx context.Context) {
 				}
 				continue
 			}
-			if !runs {
-				l.markShutDown(id)
-			}
+			l.settleServer(id, runs)
 		}
 	}
 }
 
-// markShutDown sets a server off whose guest shut down, unless an action
-// took it over meanwhile.
-func (l *Lab) markShutDown(id int64) {
+// watched tells whether the watchdog looks at a server of the status: a
+// running one, whose guest may shut down, and one that a failed power
+// action left starting or stopping.
+func watched(status state.ServerStatus) bool {
+	return status == state.ServerRunning || status == state.ServerStarting || status == state.ServerStopping
+}
+
+// settleServer makes a server's status follow its VM, unless an action took
+// the server over meanwhile. A running server whose VM is off shut itself
+// down, so it no longer wants to run, as on Hetzner. A server that a failed
+// power action left starting or stopping gets the status of its VM, and
+// want_running stays as the action's plan set it.
+func (l *Lab) settleServer(id int64, runs bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.flags[serverRef(id)] > 0 {
 		return
 	}
-	marked := false
+	var before state.ServerStatus
 	err := l.changeLocked(func(tx *state.Tx) error {
 		server, err := state.Get(tx, state.Servers, id)
-		if err != nil || server.Status != state.ServerRunning {
+		if err != nil || !watched(server.Status) {
 			return err
 		}
-		server.Status, server.WantRunning = state.ServerOff, false
-		marked = true
+		before = server.Status
+		switch {
+		case server.Status == state.ServerRunning && !runs:
+			server.Status, server.WantRunning = state.ServerOff, false
+		case server.Status != state.ServerRunning && runs:
+			server.Status = state.ServerRunning
+		case server.Status != state.ServerRunning:
+			server.Status = state.ServerOff
+		}
 		return nil
 	})
 	switch {
 	case err != nil && !errors.Is(err, state.ErrNotFound):
-		l.logger.Warn("marking a server off failed", "server", id, "error", err)
-	case err == nil && marked:
+		l.logger.Warn("settling a server's status failed", "server", id, "error", err)
+	case err == nil && before == state.ServerRunning && !runs:
 		l.logger.Info("the server shut down", "server", id)
+	case err == nil && before != "" && before != state.ServerRunning:
+		l.logger.Warn("a server's status was left by a failed action; it follows its VM", "server", id,
+			"was", before, "running", runs)
 	}
 }

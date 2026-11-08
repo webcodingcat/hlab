@@ -16,6 +16,9 @@ import (
 // during another waits instead of 423 (measured 2026-11-08). "create" and
 // "delete" are no routes of their own: POST and DELETE /servers run them.
 func serverActions(l *lab.Lab) lab.ActionTable {
+	// want_running changes only in the plans (planStop, planStart; the
+	// create records it), when an action is asked for: queued actions then
+	// leave it in the order they were sent
 	return lab.ActionTable{
 		ResourceType: lab.ServerResource,
 		Busy:         serverBusy,
@@ -104,30 +107,15 @@ func planCreateServer(l *lab.Lab) func(tx *state.Tx, req lab.Request) (lab.Plan,
 		}
 		start := server.WantRunning
 		return lab.Plan{
-			Resources: []state.ResourceRef{{Type: "image", ID: server.ImageID}},
-			Steps: func(ctx context.Context) error {
-				err := l.BuildServer(ctx, req.ID)
-				if err == nil {
-					err = l.Sleep(ctx, lab.ServerCreate)
-				}
-				switch {
-				case err != nil && ctx.Err() == nil:
-					// the undo removes the record, and only the steps may call
-					// the system: the VM, the disk and the seed go here
-					return errors.Join(err, l.DeleteServerVM(ctx, req.ID))
-				case err != nil:
-					return err // canceled: the next start builds the server anew
-				case !start:
-					return l.SetServerStatus(req.ID, state.ServerOff)
-				}
-				return nil // the start that follows takes over
-			},
-			Undo: undoServer(req.ID, releaseServer),
+			Resources: []state.ResourceRef{{Type: imageResource, ID: server.ImageID}},
+			Steps:     func(ctx context.Context) error { return l.CreateServer(ctx, req.ID, start) },
+			Undo:      undoServer(req.ID, releaseServer),
 		}, nil
 	}
 }
 
-// planDeleteServer removes the server's record at once, as Hetzner's API
+// planDeleteServer removes the server's record at once (a create still
+// running then fails and cleans up, Lab.CreateServer), as Hetzner's API
 // does, and its VM, disk and seed in the steps. Its Primary IPs with
 // auto_delete go with it, the others stay unassigned.
 func planDeleteServer(l *lab.Lab) func(tx *state.Tx, req lab.Request) (lab.Plan, error) {

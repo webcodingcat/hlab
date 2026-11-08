@@ -425,3 +425,36 @@ func TestCloseShutsTheServersDown(t *testing.T) {
 		t.Error("the guest was not asked to shut down")
 	}
 }
+
+// A server that a failed power action left starting or stopping gets the
+// status of its VM from the watchdog; want_running stays as it was.
+func TestWatchdogSettlesAStatusThatAFailedActionLeft(t *testing.T) {
+	machine := fake.New()
+	withAppliance(machine)
+	l := start(t, machine, lab.Options{DataDir: t.TempDir()})
+	t.Cleanup(func() { _ = l.Close() })
+	running := putServer(t, l, machine, "running", true, true)
+	resting := putServer(t, l, machine, "resting", false, false)
+	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+		t.Fatal(err)
+	}
+	for id, status := range map[int64]state.ServerStatus{running: state.ServerStopping, resting: state.ServerStarting} {
+		if err := l.SetServerStatus(id, status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := map[int64]state.ServerStatus{running: state.ServerRunning, resting: state.ServerOff}
+	deadline := time.Now().Add(10 * time.Second)
+	for id, wantStatus := range want {
+		for {
+			status, wants := serverStatus(t, l, id)
+			if status == wantStatus && wants == (id == running) {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("server %d is %s (wants to run: %v), want %s", id, status, wants, wantStatus)
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+}

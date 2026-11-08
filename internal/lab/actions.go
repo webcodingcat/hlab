@@ -104,7 +104,8 @@ func (l *Lab) Act(table ActionTable, command string, req Request) (state.Action,
 // makes it: create puts the record and returns its ID, then each command
 // runs on it in order, a later one queued behind an earlier one if the
 // table is Queued. req gives the project and the body; its ID is create's.
-// If anything fails, nothing changes.
+// If anything fails, nothing changes. The rows' flags are set only when all
+// are planned, so a row's Locks are not checked against an earlier row's.
 func (l *Lab) Create(table ActionTable, req Request, create func(tx *state.Tx) (int64, error), commands ...string) ([]state.Action, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

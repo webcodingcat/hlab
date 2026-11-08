@@ -13,6 +13,9 @@ import (
 	"github.com/webcodingcat/hlab/internal/web"
 )
 
+// imageResource is how actions name an image.
+const imageResource = "image"
+
 // imageAnswer is an image as Hetzner's API sends it. It is HLab's own type
 // because schema.Image also sends "deprecated", which the real API no longer
 // sends (measured 2026-11-07).

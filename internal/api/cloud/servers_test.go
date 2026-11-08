@@ -13,6 +13,7 @@ import (
 
 	"github.com/webcodingcat/hlab/internal/lab"
 	"github.com/webcodingcat/hlab/internal/platform"
+	"github.com/webcodingcat/hlab/internal/state"
 )
 
 // serverAnswer is what the tests read of a server.
@@ -265,6 +266,25 @@ func TestStartQueuedBehindAPoweroffChecksTheRoom(t *testing.T) {
 	expectError(t, "a start behind the poweroff", again, http.StatusPreconditionFailed, "resource_unavailable",
 		"error during placement")
 	waitActions(t, test, stopped, started)
+}
+
+// A poweroff sent during the create, behind its poweron, leaves the server
+// off and not wanting to run: the actions' plans set want_running in the
+// order they were sent, and their steps leave it.
+func TestPoweroffDuringTheCreateWins(t *testing.T) {
+	test := newTestLab(t)
+	// the create's steps wait, so that the poweroff is queued behind them
+	test.machine.Delay("CreateVM", 200*time.Millisecond)
+	created := createServer(t, test, map[string]any{"name": "web", "server_type": "cpx22", "image": "debian-13"})
+	stopped := serverAction(t, test, created.Server.ID, "poweroff", nil)
+	waitActions(t, test, created.Action, created.NextActions[0], stopped)
+	server, err := lab.Current(test.lab, state.Servers, created.Server.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if server.Status != state.ServerOff || server.WantRunning {
+		t.Errorf("the server is %s, wanting to run %v; want off, not wanting to run", server.Status, server.WantRunning)
+	}
 }
 
 // A create needs a tenth of the data folder's drive free, counted as it is

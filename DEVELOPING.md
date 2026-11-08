@@ -282,8 +282,9 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
 - **Create**: the handler records the server with its Primary IPs (status
   `initializing`) and runs the table's rows `create` (`create_server`) and,
   unless `start_after_create` is false, `poweron` (`start_server`, the
-  answer's `next_actions`), all in one `Lab.Create`. `Lab.BuildServer`
-  takes the system image from the cache, makes the differencing disk, the
+  answer's `next_actions`), all in one `Lab.Create`. The create's steps are
+  `Lab.CreateServer`; its `Lab.BuildServer` takes the system image from the
+  cache, makes the differencing disk, the
   seed and the VM, and sends the appliance the pictures with the server. If
   it fails, the steps remove the VM, the disk and the seed, and the
   action's undo removes the record and its new Primary IPs. A create that
@@ -300,10 +301,20 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
     shows the new status as soon as the action runs. If the call fails, the
     status stays as the steps left it; only a start of an off server sets it
     back to `off` (Room).
-  - `want_running` changes in the plan, when the action is asked for: a
-    start sets it, a `poweroff` clears it (Room).
-- **The watchdog** looks at the running servers' VMs every 2 s: a guest that
-  shut itself down leaves its server `off`, and it no longer wants to run.
+  - `want_running` changes only in the plan, when the action is asked for:
+    a start sets it, a `poweroff` clears it (Room). The steps leave it, so
+    queued actions leave it in the order they were sent: a `poweroff` sent
+    during the create ends with the server off and not wanting to run.
+- **The watchdog** looks every 2 s at the VMs of the servers that no action
+  works on and that are `running`, `starting` or `stopping`. A running
+  server whose guest shut itself down is `off` and no longer wants to run.
+  A server that a failed action left `starting` or `stopping` gets its VM's
+  status, `running` or `off`; `want_running` stays.
+- **Who sets a server's status:** the steps of its actions while they run
+  (flagged); the watchdog for a server no action works on; the start of the
+  lab, which makes every status follow its VM (`resumeServers`). Who sets
+  `want_running`: the create, the plans of the power actions, the watchdog
+  for a guest that shut itself down.
 - **`want_running`** is what a start of the lab follows: a server whose VM
   runs is taken over (hlabd had crashed); one whose VM is off gets its NIC on
   `HLab-Public` again (detached and attached, as a stop of the lab removed the

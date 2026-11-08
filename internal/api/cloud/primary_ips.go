@@ -138,7 +138,7 @@ func registerPrimaryIPs(api *web.API, l *lab.Lab) {
 			}
 			if body.Name != nil && *body.Name != ip.Name {
 				if _, taken := state.ByName(tx, state.PrimaryIPs, ip.ProjectID, *body.Name); taken {
-					return web.RefusalNull(http.StatusConflict, "uniqueness_error", primaryIPNameTaken)
+					return web.RefusalNull(http.StatusConflict, "uniqueness_error", primaryIPNameTaken) // details null
 				}
 				ip.Name = *body.Name
 			}
@@ -249,7 +249,7 @@ func createPrimaryIP(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, 
 	var out schema.PrimaryIP
 	actions, err := l.Create(table, request, func(tx *state.Tx) (int64, error) {
 		if _, taken := state.ByName(tx, state.PrimaryIPs, ip.ProjectID, ip.Name); taken {
-			return 0, web.RefusalNull(http.StatusConflict, "uniqueness_error", primaryIPNameTaken)
+			return 0, web.RefusalNull(http.StatusConflict, "uniqueness_error", primaryIPNameTaken) // details null
 		}
 		if body.AssigneeID != nil {
 			server, err := callerServer(tx, ip.ProjectID, *body.AssigneeID)

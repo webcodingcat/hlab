@@ -220,7 +220,7 @@ func registerServers(api *web.API, l *lab.Lab) {
 			}
 			if body.Name != nil && *body.Name != server.Name {
 				if _, taken := state.ByName(tx, state.Servers, server.ProjectID, *body.Name); taken {
-					return web.Refusal(http.StatusConflict, "uniqueness_error", serverNameTaken)
+					return web.Refusal(http.StatusConflict, "uniqueness_error", serverNameTaken) // details {}, not web.Uniqueness's fields
 				}
 				server.Name = *body.Name
 			}
@@ -322,6 +322,8 @@ func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any
 	if body.UserData != nil {
 		server.UserData = *body.UserData
 	}
+	// the disk is checked before the transaction, as it asks the system;
+	// memory and cores are checked in it (CheckRoom), against the records
 	if err := l.CheckDisk(req.Context()); err != nil {
 		return 0, nil, actError(err)
 	}
@@ -341,7 +343,7 @@ func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any
 			server.RootPassword = rootPassword() // shown once, as on Hetzner
 		}
 		if _, taken := state.ByName(tx, state.Servers, server.ProjectID, server.Name); taken {
-			return 0, web.Refusal(http.StatusConflict, "uniqueness_error", serverNameTaken)
+			return 0, web.Refusal(http.StatusConflict, "uniqueness_error", serverNameTaken) // details {}, not web.Uniqueness's fields
 		}
 		// the record wants to run from its start, so its room is checked
 		// here: the poweron's plan (planStart) sees it wanting to run
