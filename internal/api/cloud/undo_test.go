@@ -16,7 +16,10 @@ import (
 // The tests in this file make an action's steps fail after the appliance
 // took the first pictures with the quick changes: the agent fails the
 // metadata picture, which goes last. The action's undo takes the changes
-// back, and the appliance must then have pictures as the state is.
+// back, and the appliance must then have pictures as the state is. The
+// appliance's watchdog stays quiet (quietMachine): it would send the
+// pictures itself, meet the failure in place of the steps, and later send
+// what the undo forgot.
 
 // waitForPicture waits until the agent's picture of a name has (or lacks,
 // with has false) a text.
@@ -31,6 +34,13 @@ func waitForPicture(t *testing.T, agent *fake.Agent, name, text string, has bool
 	}
 }
 
+// quietMachine starts the lab's machine with a watchdog that does not
+// check within the test.
+func quietMachine(t *testing.T, test *testLab) *fake.Agent {
+	t.Helper()
+	return startMachineWatched(t, test, platform.HostResources{Threads: 8, MemoryMB: 16 * 1024}, time.Hour)
+}
+
 // expectFailed fails the test unless the action ended with an error.
 func expectFailed(t *testing.T, test *testLab, action schema.Action) {
 	t.Helper()
@@ -41,7 +51,7 @@ func expectFailed(t *testing.T, test *testLab, action schema.Action) {
 
 func TestFailedServerCreateLeavesNoTraceInThePictures(t *testing.T) {
 	test := newTestLab(t)
-	agent := startMachine(t, test, platform.HostResources{Threads: 8, MemoryMB: 16 * 1024})
+	agent := quietMachine(t, test)
 	agent.FailNext(agentproto.PictureMetadata)
 	created := createServer(t, test, map[string]any{"name": "web", "server_type": "cpx22", "image": "debian-13", "start_after_create": false})
 	expectFailed(t, test, created.Action)
@@ -52,7 +62,7 @@ func TestFailedServerCreateLeavesNoTraceInThePictures(t *testing.T) {
 
 func TestFailedPrimaryIPAssignAndUnassignLeaveThePicturesAsBefore(t *testing.T) {
 	test := newTestLab(t)
-	agent := startMachine(t, test, platform.HostResources{Threads: 8, MemoryMB: 16 * 1024})
+	agent := quietMachine(t, test)
 	server := createServer(t, test, map[string]any{
 		"name": "web", "server_type": "cpx22", "image": "debian-13", "start_after_create": false,
 		"public_net": map[string]any{"enable_ipv4": false},
@@ -92,7 +102,7 @@ func TestFailedPrimaryIPAssignAndUnassignLeaveThePicturesAsBefore(t *testing.T) 
 
 func TestFailedFloatingIPAssignLeavesThePicturesAsBefore(t *testing.T) {
 	test := newTestLab(t)
-	agent := startMachine(t, test, platform.HostResources{Threads: 8, MemoryMB: 16 * 1024})
+	agent := quietMachine(t, test)
 	first := createServer(t, test, map[string]any{"name": "web", "server_type": "cpx22", "image": "debian-13", "start_after_create": false})
 	second := createServer(t, test, map[string]any{"name": "db", "server_type": "cpx22", "image": "debian-13", "start_after_create": false})
 	waitActions(t, test, first.Action, second.Action)

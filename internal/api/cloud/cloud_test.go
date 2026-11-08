@@ -75,8 +75,17 @@ func (c *steppingClock) After(d time.Duration) <-chan time.Time { return time.Af
 // startMachine starts the lab's machine with the host's resources, so that
 // the room check counts: an agent answers in the appliance's VM, and the
 // release disk is a small file. It returns the agent, whose pictures a
-// test can read.
+// test can read. The appliance's watchdog checks every 5 ms.
 func startMachine(t *testing.T, test *testLab, host platform.HostResources) *fake.Agent {
+	t.Helper()
+	return startMachineWatched(t, test, host, 5*time.Millisecond)
+}
+
+// startMachineWatched is startMachine with the interval of the appliance's
+// watchdog. A test that makes the agent fail a picture once gives it an
+// hour: the watchdog sends the pictures the agent lacks too, and could
+// meet the failure in place of the action's steps.
+func startMachineWatched(t *testing.T, test *testLab, host platform.HostResources, interval time.Duration) *fake.Agent {
 	t.Helper()
 	agent := fake.NewAgent()
 	test.machine.ServeAgent(system.ApplianceVM("A"), agent.Serve)
@@ -87,7 +96,7 @@ func startMachine(t *testing.T, test *testLab, host platform.HostResources) *fak
 	}
 	opts := lab.MachineOptions{
 		ApplianceRelease: release,
-		Timings:          system.ApplianceTimings{Interval: 5 * time.Millisecond, Failures: 3, Boot: 5 * time.Second, Shutdown: time.Second},
+		Timings:          system.ApplianceTimings{Interval: interval, Failures: 3, Boot: 5 * time.Second, Shutdown: time.Second},
 	}
 	if err := test.lab.Machine().Start(t.Context(), opts); err != nil {
 		t.Fatal(err)
