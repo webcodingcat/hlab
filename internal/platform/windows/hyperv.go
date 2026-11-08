@@ -33,18 +33,20 @@ func (h *Hypervisor) Close() error {
 	return h.host.Close()
 }
 
-// kinds maps the kinds of failures in hyperv.ps1 to the platform's errors.
+// kinds maps the kinds of failures in hyperv.ps1 and hostnet.ps1 to the
+// platform's errors.
 var kinds = map[string]error{
 	"not_found":   platform.ErrNotFound,
 	"exists":      platform.ErrExists,
 	"running":     platform.ErrRunning,
 	"not_running": platform.ErrNotRunning,
+	"in_use":      platform.ErrInUse,
 }
 
-// call runs a command of hyperv.ps1 and turns its failure into the
+// call runs a command of a script in host and turns its failure into the
 // platform's error.
-func (h *Hypervisor) call(ctx context.Context, command string, args, result any) error {
-	err := h.host.Call(ctx, command, args, result)
+func call(ctx context.Context, host *pshost.Host, command string, args, result any) error {
+	err := host.Call(ctx, command, args, result)
 	var failure *pshost.Error
 	if errors.As(err, &failure) {
 		if known, found := kinds[failure.Kind]; found {
@@ -52,6 +54,11 @@ func (h *Hypervisor) call(ctx context.Context, command string, args, result any)
 		}
 	}
 	return err
+}
+
+// call runs a command of hyperv.ps1.
+func (h *Hypervisor) call(ctx context.Context, command string, args, result any) error {
+	return call(ctx, h.host, command, args, result)
 }
 
 // vmArgs names a VM.
@@ -206,6 +213,18 @@ func (h *Hypervisor) ResizeDisk(ctx context.Context, path string, sizeGB int) er
 // (Convert-VHD).
 func (h *Hypervisor) FlattenDisk(ctx context.Context, src, dst string) error {
 	return h.call(ctx, "flatten-disk", map[string]any{"src": src, "dst": dst}, nil)
+}
+
+// DeleteDisk deletes a VHDX that no VM uses.
+func (h *Hypervisor) DeleteDisk(ctx context.Context, path string) error {
+	return h.call(ctx, "delete-disk", map[string]any{"path": path}, nil)
+}
+
+// vmID returns the ID of a VM, which hv_sock addresses it by.
+func (h *Hypervisor) vmID(ctx context.Context, name string) (string, error) {
+	var id string
+	err := h.call(ctx, "vm-id", vmArgs{Name: name}, &id)
+	return id, err
 }
 
 // CreateSeed writes an ISO labeled "cidata" with the files (IMAPI2).

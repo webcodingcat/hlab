@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/api/cloud"
@@ -35,21 +34,27 @@ const defaultProject = "default"
 // stops.
 const stopTimeout = 10 * time.Second
 
-// service is the running hlabd: the lab and its three HTTP servers.
+// service is the running hlabd: the lab and its HTTP servers.
 type service struct {
 	opts      serviceOptions
 	lab       *lab.Lab
 	servers   []*http.Server
 	tokenFile string
 	status    labapi.Status
-	stopping  atomic.Bool
+
+	// stoppingMu makes setting stopping and counting a request one step,
+	// so that close waits for every request it let through
+	stoppingMu sync.RWMutex
+	stopping   bool
+	requests   sync.WaitGroup // the requests that reach the lab
 
 	shutdownOnce sync.Once
 	shutdown     chan struct{} // closed by POST /_lab/shutdown
 	failed       chan error    // a server that stopped on its own
 }
 
-// start opens the lab, writes the control token and starts serving.
+// start opens the lab, starts the machine's side, writes the control token
+// and starts serving.
 func start(opts serviceOptions) (*service, error) {
 	cfg, err := config.Load(opts.DataDir)
 	if err != nil {
@@ -68,12 +73,19 @@ func start(opts serviceOptions) (*service, error) {
 	if err != nil {
 		return nil, err
 	}
+	// the host link comes first: the APIs listen on it
+	ctx, cancel := stopContext(opts.Parts.Lifecycle)
+	defer cancel()
+	if err := l.StartMachine(ctx, opts.Machine); err != nil {
+		_ = l.Close() // the error that stopped the start says more
+		return nil, err
+	}
 	svc := &service{
 		opts:      opts,
 		lab:       l,
 		tokenFile: filepath.Join(opts.DataDir, labapi.TokenFile),
 		shutdown:  make(chan struct{}),
-		failed:    make(chan error, 3),
+		failed:    make(chan error, 2+len(opts.Hosts)), // one per server
 	}
 	if err := svc.serve(cfg); err != nil {
 		_ = svc.close() // the error that stopped the start says more
@@ -87,15 +99,23 @@ func start(opts serviceOptions) (*service, error) {
 // that a start that fails on a taken port, the common case, leaves a new lab
 // new.
 func (s *service) serve(cfg config.Config) error {
-	// in the order of the handlers: Cloud API, Hetzner API, control
+	// in the order of the handlers: Cloud API, Hetzner API, control; then
+	// the control on the other hosts
 	var listeners []net.Listener
 	closeListeners := func() {
 		for _, open := range listeners {
 			_ = open.Close()
 		}
 	}
+	addresses := []string{}
 	for _, port := range []int{cfg.Ports.Cloud, cfg.Ports.Hetzner, cfg.Ports.Control} {
-		listener, err := net.Listen("tcp", net.JoinHostPort(s.opts.Host, strconv.Itoa(port)))
+		addresses = append(addresses, net.JoinHostPort(s.opts.Hosts[0], strconv.Itoa(port)))
+	}
+	for _, host := range s.opts.Hosts[1:] {
+		addresses = append(addresses, net.JoinHostPort(host, strconv.Itoa(cfg.Ports.Control)))
+	}
+	for _, address := range addresses {
+		listener, err := net.Listen("tcp", address)
 		if err != nil {
 			closeListeners()
 			return err
@@ -129,9 +149,14 @@ func (s *service) serve(cfg config.Config) error {
 			WebUI:   controlURL,
 		},
 	}
-	handlers := s.handlers(token, controlAddress)
+	controlAddresses := []string{}
+	for _, listener := range listeners[2:] {
+		controlAddresses = append(controlAddresses, listener.Addr().String())
+	}
+	handlers := s.handlers(token, controlAddresses)
 	for i, listener := range listeners {
-		server := &http.Server{Handler: handlers[i], ReadHeaderTimeout: 10 * time.Second}
+		handler := handlers[min(i, len(handlers)-1)] // the control's on the other hosts
+		server := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 		s.servers = append(s.servers, server)
 		go func() {
 			if err := server.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
@@ -147,12 +172,13 @@ func (s *service) serve(cfg config.Config) error {
 
 // handlers returns the handlers of the three ports: the Cloud API, the
 // Hetzner API (its routes come with the Storage Boxes) and the lab control
-// with the web UI.
-func (s *service) handlers(token, controlAddress string) []http.Handler {
+// with the web UI. While the lab stops, they answer 503, but for the lab
+// control's status and shutdown.
+func (s *service) handlers(token string, controlAddresses []string) []http.Handler {
 	cloudAPI := web.NewAPI(web.Options{Backend: s.lab, RateLimit: web.HetznerRateLimit, Logger: s.opts.Logger})
 	cloud.Register(cloudAPI, s.lab)
 	hetznerAPI := web.NewAPI(web.Options{Backend: s.lab, RateLimit: web.HetznerRateLimit, Logger: s.opts.Logger})
-	ui := webui.New([]string{controlAddress}, s.opts.Logger)
+	ui := webui.New(controlAddresses, s.opts.Logger)
 	labControl := control.New(control.Options{
 		Lab:      s.lab,
 		Cloud:    cloudAPI,
@@ -163,16 +189,50 @@ func (s *service) handlers(token, controlAddress string) []http.Handler {
 		Logger:   s.opts.Logger,
 	})
 	mux := http.NewServeMux()
-	mux.Handle(labapi.Prefix+"/", labControl)
+	mux.Handle(labapi.Prefix+"/", s.refuseWhileStopping(labControl, func(r *http.Request) bool {
+		return r.URL.Path == labapi.Prefix+"/status" || r.URL.Path == labapi.Prefix+"/shutdown"
+	}))
 	mux.Handle("/", ui.Handler())
-	return []http.Handler{cloudAPI, hetznerAPI, ui.Guard(mux)}
+	return []http.Handler{
+		s.refuseWhileStopping(cloudAPI, nil),
+		s.refuseWhileStopping(hetznerAPI, nil),
+		ui.Guard(mux),
+	}
+}
+
+// refuseWhileStopping answers 503 unavailable once the lab stops, as
+// Hetzner's API does while it is down, and counts the requests it lets
+// through, so that close waits for them before it closes the lab. Requests
+// that always passes go through even then, uncounted: they do not change
+// the lab.
+func (s *service) refuseWhileStopping(next http.Handler, always func(*http.Request) bool) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if always != nil && always(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		s.stoppingMu.RLock()
+		if s.stopping {
+			s.stoppingMu.RUnlock()
+			web.WriteError(w, s.opts.Logger, &web.Error{
+				Status: http.StatusServiceUnavailable, Code: "unavailable", Message: "HLab is stopping",
+			})
+			return
+		}
+		s.requests.Add(1)
+		s.stoppingMu.RUnlock()
+		defer s.requests.Done()
+		next.ServeHTTP(w, r)
+	})
 }
 
 // currentStatus returns the status for GET /_lab/status.
 func (s *service) currentStatus() labapi.Status {
 	status := s.status
 	status.State = labapi.StateRunning
-	if s.stopping.Load() {
+	s.stoppingMu.RLock()
+	defer s.stoppingMu.RUnlock()
+	if s.stopping {
 		status.State = labapi.StateStopping
 	}
 	return status
@@ -201,10 +261,26 @@ func (s *service) wait() error {
 	return failure
 }
 
-// close stops the servers, letting running requests finish, removes the
-// control token, so that the CLI knows the lab is gone, and closes the lab.
+// close stops the lab (13.2): new requests get 503 while the running ones
+// finish (up to stopTimeout); the lab closes, with the appliance and the
+// host link, while the lab control still reports "stopping"; then the
+// servers stop and the control token goes, so that the CLI knows the lab is
+// gone.
 func (s *service) close() error {
-	s.stopping.Store(true)
+	s.stoppingMu.Lock()
+	s.stopping = true
+	s.stoppingMu.Unlock()
+	finished := make(chan struct{})
+	go func() {
+		s.requests.Wait()
+		close(finished)
+	}()
+	select {
+	case <-finished:
+	case <-time.After(stopTimeout):
+		s.opts.Logger.Warn("closing the lab with requests still running", "waited", stopTimeout)
+	}
+	labErr := s.lab.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), stopTimeout)
 	defer cancel()
 	for _, server := range s.servers {
@@ -213,7 +289,7 @@ func (s *service) close() error {
 	if err := os.Remove(s.tokenFile); err != nil && !errors.Is(err, os.ErrNotExist) {
 		s.opts.Logger.Warn("removing the control token", "error", err)
 	}
-	return s.lab.Close()
+	return labErr
 }
 
 // newControlToken returns a new random control token.

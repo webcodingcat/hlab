@@ -1,6 +1,11 @@
 # The uplink is the only link networkd manages: DHCP from Hyper-V's Default
 # Switch. It matches by the MAC addresses of both sets (A and B), so that it
 # does not matter when the agent renames the NIC.
+#
+# Its default route goes to a table of its own, "uplink": the main table has
+# none, so a lab address that nobody holds is unreachable instead of leaving
+# through the uplink. Only the servers' traffic (from public) and the
+# appliance's own (unbound, from lo) look the table up, after the main one.
 [Match]
 MACAddress=02:48:4c:0a:00:04 02:48:4c:0b:00:04
 
@@ -16,3 +21,20 @@ IPv6AcceptRA=no
 # the appliance resolves with its own unbound
 UseDNS=no
 UseHostname=no
+RouteTable=uplink
+
+[RoutingPolicyRule]
+IncomingInterface=public
+Table=uplink
+Priority=32770
+
+[RoutingPolicyRule]
+IncomingInterface=lo
+Table=uplink
+Priority=32770
+
+# the lab's range (picture.Lab.Range4) never leaves through the uplink
+[Route]
+Destination=198.18.0.0/15
+Type=unreachable
+Table=uplink

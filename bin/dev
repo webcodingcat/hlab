@@ -17,7 +17,8 @@
 #                            against `hlabd --platform fake`
 #   bin/dev itest [--run <pattern>]
 #                            the live tests against Hyper-V, built for
-#                            Windows and run through WSL interop
+#                            Windows and run with administrator rights by the
+#                            task "HLab itest" (bin/dev.ps1 dev-install)
 #   bin/dev appliance        the appliance's disk (VHDX) into build/appliance
 set -euo pipefail
 
@@ -179,31 +180,65 @@ test_agent() {
 }
 
 #######################################
-# Build the live tests for Windows and run them through WSL interop. They
-# drive Hyper-V, so the user must be in the group Hyper-V Administrators.
+# Build the live tests for Windows and run them with administrator rights,
+# through the task "HLab itest" that bin/dev.ps1 dev-install created: the
+# test, the appliance's disk (if built) and run.cmd go to C:\HLabDev\itest,
+# the task runs run.cmd, and its output appears here as it comes.
 # Arguments:
 #   Optional: --run and a pattern of test names.
 #######################################
 itest() {
   [[ -e /proc/sys/fs/binfmt_misc/WSLInterop ]] \
     || die "itest needs WSL2 with interop"
-  local run=()
+  local run=""
   case "${1:-}" in
     "") ;;
     --run)
       [[ -n "${2:-}" ]] || die "--run needs a pattern"
-      run=("-test.run" "$2")
+      run=" -test.run \"$2\""
       ;;
     *) die "unknown option: $1" ;;
   esac
-  local out_dir status=0
-  out_dir="$(mktemp -d)"
+  local dir="/mnt/c/HLabDev/itest"
+  [[ -d "${dir}" && -w "${dir}" ]] \
+    || die "${dir} is missing: bin/dev.ps1 dev-install, once as administrator"
   GOOS=windows CGO_ENABLED=0 go test -c -tags live \
-    -o "${out_dir}/itest.test.exe" ./itest
-  "${out_dir}/itest.test.exe" -test.v -test.timeout 30m "${run[@]}" \
-    </dev/null || status=$?
-  rm -rf "${out_dir}"
-  return "${status}"
+    -o "${dir}/itest.test.exe" ./itest
+  # Hyper-V keeps the disk open while a test's appliance runs on it
+  if [[ -e "${APPLIANCE}" ]]; then
+    cp --update "${APPLIANCE}" "${dir}/"
+  fi
+  rm -f "${dir}/itest.out" "${dir}/itest.rc"
+  printf '%s\r\n' '@echo off' 'cd /d C:\HLabDev\itest' \
+    "itest.test.exe -test.v -test.timeout 30m${run} > itest.out 2>&1" \
+    'echo %ERRORLEVEL% > itest.rc' >"${dir}/run.cmd"
+  schtasks.exe /run /tn "HLab itest" >/dev/null \
+    || die "the task \"HLab itest\" did not start: bin/dev.ps1 dev-install"
+  follow_itest "${dir}"
+}
+
+#######################################
+# Print the live tests' output as it grows, until the task writes the exit
+# code (at most 40 minutes), and return it.
+# Arguments:
+#   The folder of the live tests.
+#######################################
+follow_itest() {
+  local dir="$1" printed=0 size waited=0
+  while [[ ! -e "${dir}/itest.rc" ]]; do
+    ((waited < 2400)) || die "the live tests did not finish in 40 minutes"
+    sleep 1
+    ((++waited))
+    [[ -e "${dir}/itest.out" ]] || continue
+    size="$(stat -c %s "${dir}/itest.out")"
+    if ((size > printed)); then
+      tail -c "+$((printed + 1))" "${dir}/itest.out" \
+        | head -c "$((size - printed))"
+      printed="${size}"
+    fi
+  done
+  tail -c "+$((printed + 1))" "${dir}/itest.out" 2>/dev/null || true
+  return "$(tr -dc '0-9' <"${dir}/itest.rc")"
 }
 
 #######################################

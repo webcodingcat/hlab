@@ -171,8 +171,12 @@ func Hypervisor(t *testing.T, hypervisor platform.Hypervisor, dir string) {
 		expect(t, "AttachDisk to a taken slot", hypervisor.AttachDisk(ctx, name, platform.DiskSlot{Slot: 1, Path: child}), platform.ErrExists)
 		expect(t, "AttachDisk of a missing disk", hypervisor.AttachDisk(ctx, name, platform.DiskSlot{Slot: 2, Path: filepath.Join(dir, "missing.vhdx")}), platform.ErrNotFound)
 		expect(t, "ResizeDisk of an attached disk", hypervisor.ResizeDisk(ctx, flat, 4), nil)
+		expect(t, "DeleteDisk of an attached disk", hypervisor.DeleteDisk(ctx, flat), platform.ErrInUse)
 		expect(t, "DetachDisk", hypervisor.DetachDisk(ctx, name, 1), nil)
 		expect(t, "DetachDisk of an empty slot", hypervisor.DetachDisk(ctx, name, 1), platform.ErrNotFound)
+		expect(t, "DeleteDisk", hypervisor.DeleteDisk(ctx, flat), nil)
+		expect(t, "DeleteDisk twice", hypervisor.DeleteDisk(ctx, flat), platform.ErrNotFound)
+		expect(t, "CreateDisk where a deleted disk was", hypervisor.CreateDisk(ctx, flat, 1, ""), nil)
 
 		seed := filepath.Join(dir, "seeds", prefix+"seed.iso")
 		files := map[string][]byte{"meta-data": []byte("instance-id: contract\n"), "network-config": []byte("version: 2\n")}
@@ -188,7 +192,7 @@ func Hypervisor(t *testing.T, hypervisor platform.Hypervisor, dir string) {
 		name := prefix + "nics"
 		newVM(t, hypervisor, dir, name)
 		expect(t, "StartVM", hypervisor.StartVM(ctx, name), nil)
-		for _, port := range []platform.PortMode{platform.Isolated(), platform.Promiscuous(), platform.Access(10), platform.Trunk()} {
+		for _, port := range []platform.PortMode{platform.Plain(), platform.Isolated(), platform.Promiscuous(), platform.Access(10), platform.Trunk()} {
 			nic := platform.NICSpec{MAC: "02:00:00:00:00:01", Port: port}
 			expect(t, "AttachNIC "+string(port.Kind), hypervisor.AttachNIC(ctx, name, nic), nil)
 			expect(t, "AttachNIC twice", hypervisor.AttachNIC(ctx, name, nic), platform.ErrExists)
@@ -209,21 +213,35 @@ func containsVM(found []platform.FoundVM, name string) bool {
 }
 
 // HostNet checks a host network; used is a range the machine uses already.
+// The link's switches start with platform.SwitchPrefix, as the lab's do.
 func HostNet(t *testing.T, hostNet platform.HostNet, used netip.Prefix) {
 	ctx := testContext(t)
-	// 198.18.0.0/15 is for benchmarks (RFC 2544): no machine uses it
-	free := netip.MustParsePrefix("198.18.0.0/24")
-	expect(t, "CheckRanges on a free range", hostNet.CheckRanges(ctx, []netip.Prefix{free}), nil)
-	expect(t, "CheckRanges on a used range", hostNet.CheckRanges(ctx, []netip.Prefix{free, used}), platform.ErrInUse)
+	// 198.18.0.0/15 and 2001:db8::/32 are for benchmarks and documentation
+	// (RFC 2544, RFC 3849): no machine uses them
+	free := []netip.Prefix{netip.MustParsePrefix("198.18.0.0/16"), netip.MustParsePrefix("2001:db8::/32")}
+	expect(t, "CheckRanges on free ranges", hostNet.CheckRanges(ctx, free), nil)
+	expect(t, "CheckRanges on a used range", hostNet.CheckRanges(ctx, append(free, used)), platform.ErrInUse)
 
 	link := platform.LinkSpec{
-		Switch:    prefix + "switch",
-		Addresses: []netip.Prefix{netip.MustParsePrefix("198.18.0.1/24")},
-		Routes:    []netip.Prefix{netip.MustParsePrefix("198.18.1.0/24")},
-		Gateway:   netip.MustParseAddr("198.18.0.2"),
+		Switch: platform.SwitchPrefix + "contract-link",
+		Addresses: []netip.Prefix{
+			netip.MustParsePrefix("198.18.0.1/29"),
+			netip.MustParsePrefix("2001:db8:0:ffff::1/64"),
+		},
+		Routes: []netip.Prefix{
+			netip.MustParsePrefix("198.18.0.0/16"),
+			netip.MustParsePrefix("2001:db8::/32"),
+		},
+		Gateways: []netip.Addr{
+			netip.MustParseAddr("198.18.0.2"),
+			netip.MustParseAddr("2001:db8:0:ffff::2"),
+		},
+		PrivateSwitches: []string{platform.SwitchPrefix + "contract-public"},
 	}
 	t.Cleanup(func() { _ = hostNet.TearDown(context.Background()) })
 	expect(t, "SetUp", hostNet.SetUp(ctx, link), nil)
+	// the link's own addresses and routes are the lab's, not in use
+	expect(t, "CheckRanges with the link set up", hostNet.CheckRanges(ctx, free), nil)
 	expect(t, "SetUp over a link that is there", hostNet.SetUp(ctx, link), nil)
 	expect(t, "TearDown", hostNet.TearDown(ctx), nil)
 	expect(t, "TearDown without a link", hostNet.TearDown(ctx), nil)

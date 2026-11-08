@@ -56,6 +56,10 @@ type Lab struct {
 	// carries it.
 	Generation uint64
 	MACSet     MACSet
+	// Range4 and Range6 are the lab's whole address ranges: the host routes
+	// them to the appliance, and they never leave the lab.
+	Range4 netip.Prefix
+	Range6 netip.Prefix
 	// HostLink4 and HostLink6 are the host link's networks: the host is the
 	// first address, the appliance the second; the third address of
 	// HostLink4 is the appliance's source for ACME checks.
@@ -86,6 +90,8 @@ type Server struct {
 func DefaultLab() Lab {
 	return Lab{
 		MACSet:    MACSetA,
+		Range4:    netip.MustParsePrefix("198.18.0.0/15"),
+		Range6:    netip.MustParsePrefix("2001:db8::/32"),
 		HostLink4: netip.MustParsePrefix("198.18.0.0/29"),
 		HostLink6: netip.MustParsePrefix("2001:db8:0:ffff::/64"),
 	}
@@ -117,6 +123,21 @@ func (l Lab) servers() []Server {
 
 // resolvers returns the lab's DNS resolvers: the appliance's addresses.
 func (l Lab) resolvers() []netip.Addr {
+	return l.ApplianceAddresses()
+}
+
+// HostAddresses returns the host's addresses on the host link, with the
+// link's prefix length: IPv4 first.
+func (l Lab) HostAddresses() []netip.Prefix {
+	return []netip.Prefix{
+		netip.PrefixFrom(hostAddress(l.HostLink4, hostNumber), l.HostLink4.Bits()),
+		netip.PrefixFrom(hostAddress(l.HostLink6, hostNumber), l.HostLink6.Bits()),
+	}
+}
+
+// ApplianceAddresses returns the appliance's addresses on the host link, the
+// host's gateways into the lab: IPv4 first.
+func (l Lab) ApplianceAddresses() []netip.Addr {
 	return []netip.Addr{
 		hostAddress(l.HostLink4, applianceNumber),
 		hostAddress(l.HostLink6, applianceNumber),

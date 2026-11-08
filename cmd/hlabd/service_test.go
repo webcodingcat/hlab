@@ -14,6 +14,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/cli"
 	"github.com/webcodingcat/hlab/internal/client"
 	"github.com/webcodingcat/hlab/internal/config"
+	"github.com/webcodingcat/hlab/internal/lab"
 	"github.com/webcodingcat/hlab/internal/labapi"
 	"github.com/webcodingcat/hlab/internal/platform/fake"
 )
@@ -22,16 +23,25 @@ import (
 // 127.0.0.1, and points the CLI at it.
 func startService(t *testing.T) *service {
 	t.Helper()
+	return startServiceOn(t, fake.New())
+}
+
+// startServiceOn starts hlabd as startService does, on the given fake
+// machine.
+func startServiceOn(t *testing.T, machine *fake.Fake) *service {
+	t.Helper()
 	dataDir := t.TempDir()
 	ports := "ports: {cloud: 0, hetzner: 0, control: 0}\ntime_scale: 0\n"
 	if err := os.WriteFile(filepath.Join(dataDir, config.File), []byte(ports), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	appliance := filepath.Join(dataDir, applianceFile)
 	svc, err := start(serviceOptions{
 		DataDir:  dataDir,
 		Platform: fakePlatform,
-		Parts:    fake.New().Platform(),
-		Host:     "127.0.0.1",
+		Parts:    fakeMachine(machine, appliance),
+		Machine:  lab.MachineOptions{ApplianceRelease: appliance},
+		Hosts:    []string{loopback},
 		Version:  "test",
 		Logger:   slog.New(slog.DiscardHandler),
 	})
@@ -196,5 +206,42 @@ func TestTheWebUIIsOnTheControlPort(t *testing.T) {
 	defer func() { _ = projects.Body.Close() }()
 	if projects.StatusCode != http.StatusOK {
 		t.Errorf("GET %s/projects with the page's cookie: %d, want 200", labapi.Prefix, projects.StatusCode)
+	}
+}
+
+func TestTheAPIsAnswer503WhileTheLabStops(t *testing.T) {
+	machine := fake.New()
+	svc := startServiceOn(t, machine)
+	// the appliance takes its time to shut down, as a real one does
+	machine.Delay("ShutdownVM", 300*time.Millisecond)
+	stopped := make(chan error, 1)
+	go func() { stopped <- svc.wait() }()
+	hlab(t, "stop")
+
+	// the stop begins right after the answer to hlab stop
+	deadline := time.Now().Add(5 * time.Second)
+	out := hlab(t, "status")
+	for !strings.Contains(out, string(labapi.StateStopping)) && time.Now().Before(deadline) {
+		out = hlab(t, "status")
+	}
+	if !strings.Contains(out, string(labapi.StateStopping)) {
+		t.Fatalf("hlab status says %q, want stopping", out)
+	}
+	response, err := http.Get(svc.status.Endpoints.Cloud + "/locations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	var answer struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	_ = json.NewDecoder(response.Body).Decode(&answer)
+	if response.StatusCode != http.StatusServiceUnavailable || answer.Error.Code != "unavailable" {
+		t.Errorf("GET /locations while stopping: %d %q, want 503 unavailable", response.StatusCode, answer.Error.Code)
+	}
+	if err := <-stopped; err != nil {
+		t.Fatal(err)
 	}
 }

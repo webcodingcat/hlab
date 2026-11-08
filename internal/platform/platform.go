@@ -28,11 +28,17 @@ var (
 	ErrRunning = errors.New("the VM is running")
 	// ErrNotRunning: the VM must be running for this.
 	ErrNotRunning = errors.New("the VM is not running")
-	// ErrInUse: an address range is used on the machine already.
+	// ErrInUse: an address range is used on the machine already, or a VM
+	// uses the disk.
 	ErrInUse = errors.New("in use")
 	// ErrLocked: another HLab holds the data folder.
 	ErrLocked = errors.New("locked by another process")
 )
+
+// SwitchPrefix starts the name of every switch of the lab, in any case. Host
+// NICs on such switches are the lab's own: CheckRanges does not count their
+// addresses and routes as used.
+const SwitchPrefix = "HLab-"
 
 // Platform puts the four parts of a platform together.
 type Platform struct {
@@ -86,6 +92,8 @@ type Hypervisor interface {
 	ResizeDisk(ctx context.Context, path string, sizeGB int) error
 	// FlattenDisk writes src with all its parents into one disk dst.
 	FlattenDisk(ctx context.Context, src, dst string) error
+	// DeleteDisk deletes a disk that no VM uses.
+	DeleteDisk(ctx context.Context, path string) error
 	// CreateSeed writes the cloud-init seed: an ISO labeled "cidata".
 	CreateSeed(ctx context.Context, path string, files map[string][]byte) error
 }
@@ -93,10 +101,11 @@ type Hypervisor interface {
 // HostNet sets up the link between the host and the lab's networks.
 type HostNet interface {
 	// CheckRanges fails with ErrInUse if one of the ranges is used on the
-	// machine already.
+	// machine already, by a route or an address outside the lab's own
+	// switches.
 	CheckRanges(ctx context.Context, ranges []netip.Prefix) error
 	// SetUp creates the switches, host addresses and routes, and takes over
-	// what an earlier run left.
+	// what an earlier run left: a crashed HLab leaves its link standing.
 	SetUp(ctx context.Context, link LinkSpec) error
 	// TearDown removes what SetUp created.
 	TearDown(ctx context.Context) error
@@ -177,12 +186,19 @@ type FoundVM struct {
 }
 
 // LinkSpec is the host's side of the lab: its switch, its addresses and the
-// routes into the lab through the appliance.
+// routes into the lab through the appliance, and the switches the host has no
+// NIC on.
 type LinkSpec struct {
+	// Switch connects the host and the appliance; the host has a NIC on it
+	// with the Addresses.
 	Switch    string
 	Addresses []netip.Prefix
-	Routes    []netip.Prefix
-	Gateway   netip.Addr
+	// Routes go through the gateway of their address family.
+	Routes   []netip.Prefix
+	Gateways []netip.Addr
+	// PrivateSwitches connect only VMs, such as the servers' public NICs
+	// with the appliance.
+	PrivateSwitches []string
 }
 
 // PortKind is how a switch port treats VLANs.
@@ -190,18 +206,22 @@ type PortKind string
 
 // The kinds of switch ports.
 const (
+	PortPlain       PortKind = "plain"       // no VLANs
 	PortIsolated    PortKind = "isolated"    // sees only promiscuous ports
 	PortPromiscuous PortKind = "promiscuous" // sees every port
 	PortAccess      PortKind = "access"      // in one VLAN, untagged
 	PortTrunk       PortKind = "trunk"       // every VLAN, tagged
 )
 
-// PortMode is the VLAN setting of a switch port; build it with Isolated,
-// Promiscuous, Access or Trunk.
+// PortMode is the VLAN setting of a switch port; build it with Plain,
+// Isolated, Promiscuous, Access or Trunk.
 type PortMode struct {
 	Kind PortKind
 	VLAN int // only for PortAccess
 }
+
+// Plain is a port without VLANs (the appliance's link and uplink).
+func Plain() PortMode { return PortMode{Kind: PortPlain} }
 
 // Isolated is a port that sees only promiscuous ports (a server's public NIC).
 func Isolated() PortMode { return PortMode{Kind: PortIsolated} }

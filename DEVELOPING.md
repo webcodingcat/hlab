@@ -88,7 +88,7 @@ means the row has no limit.
 | `internal/platform/windows` | Hyper-V through `pshost`, host network, NRPT, life cycle | `platform`, `platform/windows/pshost` |
 | `internal/platform/windows/pshost` | long-running PowerShell processes: JSON over stdin and stdout | – |
 | `internal/platform/linux` | the Linux platform; for now only its life cycle | `platform` |
-| `internal/platform/fake` | fakes for unit tests and `--platform fake` | `platform` |
+| `internal/platform/fake` | fakes for unit tests and `--platform fake`, with a fake agent | `platform`, `agentproto` |
 | `internal/platform/contract` | tests only: the contract tests of the platform interfaces, run against the fake and the real platforms | `platform` |
 | `internal/agentproto` | the wire format between service and agent, picture types | – |
 | `internal/agent` | the agent (Linux only): applies pictures, announces its addresses, metadata service; counters (later) | `agentproto` |
@@ -365,25 +365,67 @@ packages below it follow the layers.
   2. Load the catalog.
   3. `lab.Open`. It takes the data folder for itself through `Lifecycle.Lock`, so
      only one HLab runs on a machine.
-  4. Open the three ports.
-  5. Create the project `default` if the lab is new (`Lab.Fresh`: there was no state
+  4. `Lab.StartMachine` (The machine's side, below): the host link, the
+     appliance and its pictures. Ctrl+C ends a start that waits for them.
+  5. Open the ports.
+  6. Create the project `default` if the lab is new (`Lab.Fresh`: there was no state
      file). This comes after the ports, so a port that is already taken leaves a new
      lab untouched.
-  6. Write a new control token through `Lifecycle.WriteSecret`.
+  7. Write a new control token through `Lifecycle.WriteSecret`.
 
-  The ports listen on the host link's address; with `--platform fake` they listen
-  on `127.0.0.1`. A port of 0 takes any free port (the tests do that), and the status
+  On Windows the three ports listen on the host link's address `198.18.0.1`, and
+  the lab control also on `127.0.0.1:8090`; with `--platform fake` all listen on
+  `127.0.0.1`. A port of 0 takes any free port (the tests do that), and the status
   reports the ports in use.
 - **Ports:** the Cloud API on 8080, the Hetzner API on 8081 (with the Storage Box
   routes), and 8090 for the lab control under `/_lab` and the web UI.
-- **Stop.** The service stops on `POST /_lab/shutdown`, on
+- **Stop** (`close`). The service stops on `POST /_lab/shutdown`, on
   `Lifecycle.StopRequests` (Ctrl+C, SIGTERM) or when a server fails. Then:
-  1. The servers let running requests finish (up to 10 s).
-  2. The control token file is removed, so the CLI knows the lab is gone.
-  3. `Lab.Close` writes the state.
+  1. The status says `stopping`; every new request gets 503 `unavailable`, as
+     Hetzner's API answers while it is down, but for the lab control's status and
+     shutdown. The requests that came before finish (up to 10 s).
+  2. `Lab.Close`: the actions end, the appliance shuts down (30 s, then off), the
+     host's DNS rules and its link go, and the state is written. The lab control
+     still answers meanwhile.
+  3. The servers stop, and the control token file is removed, so the CLI knows
+     the lab is gone.
 - **`--platform fake`** uses the fake machine but this machine's real life cycle:
   the lock, the token file and the signals are real. So only one HLab runs, and the
-  CLI finds it.
+  CLI finds it. The fake machine has the appliance's release disk and a fake agent
+  (`fake.Agent`), so `StartMachine` runs there as well.
+- **The appliance's release disk** is `hlab-appliance.vhdx` next to `hlabd`, or
+  `--appliance <path>`. It stays as it is: the appliance runs on a differencing
+  disk of its own in `<data>/appliance`.
+
+### The machine's side
+
+`Lab.StartMachine` does what 13.1 of the plan calls the start on the machine;
+`Lab.Close` undoes it. `system` does each step, `lab` only builds the pictures.
+
+1. `system.ConnectHost`: `HostNet.CheckRanges` refuses to start if a route or an
+   address outside the lab's switches overlaps `198.18.0.0/15` or
+   `2001:db8::/32`, naming the range and the interface. Then `HostNet.SetUp`
+   creates or takes over the switches `HLab-Link` (internal, with the host's NIC:
+   `198.18.0.1/29`, `2001:db8:0:ffff::1/64`, routes of both ranges through the
+   appliance) and `HLab-Public` (private).
+2. `system.RemoveStrayVMs`: the lab's VMs (notes `hlab`) that the state does not
+   know go; their disks stay.
+3. `Appliance.Start`: an appliance that runs and whose agent answers is taken
+   over (after a crash of hlabd); otherwise its VM and its differencing disk
+   are made anew and started. Then every picture goes to the agent, and the
+   watchdog starts.
+4. `system.SetHostDNS`: the host's DNS rules; until the zones (2b) only the
+   rules of an earlier run go.
+
+If a step fails, the host link goes again. A crash of hlabd leaves everything
+running (13.3); the next start takes it over.
+
+**The watchdog** checks every 2 s that the appliance's VM runs, its heartbeat
+answers and its agent answers; on the way it sends the pictures that the agent
+lacks (an agent that restarted alone). After three failed checks in a row, or
+at once when the VM is off or gone, it turns the VM off and on again with the
+same MAC set and sends every picture. A picture that the agent refused (422) is
+not sent again until its generation changes.
 - **The life cycles:**
   - Windows holds the mutex `Global\HLab`. It writes the path of its data folder to
     `%ProgramData%\HLab\instance`, so a second start can say in its error message
@@ -515,13 +557,13 @@ real ID and name, because the tools check them (`compat/requirements.md`).
 - The fake keeps everything in memory. Tests can make calls fail (`FailNext`) or
   wait (`Delay`), and read the calls it received (`Calls`).
 - `internal/platform/windows` builds only for Windows. It has the life cycle (The
-  service) and the hypervisor (Hyper-V, below); `HostNet`, `HostDNS` and the agent
-  dialer return `platform.ErrNotImplemented` for now. `internal/platform/linux` has
-  only the Linux life cycle so far.
+  service), the hypervisor (Hyper-V, below), the host network and the NRPT
+  rules (`hostnet.ps1`, Hyper-V, below) and the agent dialer (hv_sock).
+  `internal/platform/linux` has only the Linux life cycle so far.
 - A method joins an interface with the phase that first calls it. Still to come:
   freezing a running VM's disk for snapshots (phase 3a), counters for metrics
   (phase 4), the serial console (phase 6a).
-- A NIC's port mode (isolated, promiscuous, access VLAN, trunk) is set only through
+- A NIC's port mode (plain, isolated, promiscuous, access VLAN, trunk) is set only through
   `NICSpec.Port`, when `CreateVM` or `AttachNIC` adds the NIC, and never changes;
   the Linux platform (phase 8) must set it there too. If a later phase needs to
   change a port, the method comes back through the recipe "A new platform method".
@@ -531,8 +573,7 @@ real ID and name, because the tools check them (`compat/requirements.md`).
 
 The Windows hypervisor (`internal/platform/windows/hyperv.go`) runs the commands of
 `hyperv.ps1` in long-running PowerShell processes (`pshost`). It needs administrator
-rights, which `hlabd` has, or the group Hyper-V Administrators, which the live tests
-use.
+rights, which `hlabd` and the live tests have, or the group Hyper-V Administrators.
 
 **pshost** keeps up to four `powershell.exe` (Windows PowerShell 5.1, which every
 Windows 11 has and which loads the Hyper-V module natively). Starting one and
@@ -598,6 +639,33 @@ waits only when all four are busy.
   Joliet keeps the long names `meta-data` and `network-config`. PowerShell cannot
   read the IStream that IMAPI2 returns, so a few lines of C# (`Add-Type`, once per
   process) write it to the file.
+- `DeleteDisk` asks Hyper-V which VM uses the disk: an off VM does not hold its
+  disks open, so the file alone would not tell.
+
+**The host's side** (`hostnet.go`, `hostnet.ps1`) runs in a `pshost` of one
+process each for `HostNet` and `HostDNS`; it needs administrator rights.
+
+- `SetUp` creates the internal switch (Windows adds the host's NIC `vEthernet
+  (<switch>)`) and the private ones, or takes them over, and makes the NIC's
+  addresses and routes exactly those of the link: what is missing is added,
+  what is too much goes, Windows' own link-local addresses stay. DHCP is off on
+  that NIC.
+- Addresses and routes go to the active store only: a restart of Windows clears
+  them, and the next start of HLab sets them again. The switches stay until
+  `TearDown`, which removes the switches of the last `SetUp`; with the internal
+  one go its NIC, addresses and routes.
+- `CheckRanges` lists every route and address of the active store, but those of
+  NICs on the lab's own switches (`platform.SwitchPrefix`), and Go finds the
+  overlaps; default routes do not count.
+- The NRPT rules carry the comment `hlab`, so a start finds those of a crashed
+  HLab. `Apply` adds and removes only what differs and then empties the DNS
+  cache, which would answer from before the rule. A domain `example.com` becomes
+  the namespace `.example.com`, which covers the domain and every name below.
+- The agent dialer finds the VM's ID through `hyperv.ps1` and dials hv_sock with
+  go-winio; the service ID is `VsockServiceID(port)`, which must be registered
+  once (`bin/dev.ps1 dev-install`, later the installer). A connection to a VM
+  whose agent does not listen yet hangs for seconds, so the appliance's start
+  gives each try one second.
 
 ## Pictures and the agent
 
@@ -631,11 +699,10 @@ appliance's MAC addresses are `02:48:4c:0a:00:0<n>` (set A) or `02:48:4c:0b:00:0
   and 8081; the lab control on 8090 stays closed to them.
 - The uplink reaches the Internet only: private and link-local ranges, the
   Default Switch's and the LAN's among them, are rejected, so no server reaches the
-  Windows host or its LAN. So is the lab's own range `198.18.0.0/15`: an address
-  nobody holds would otherwise match the uplink's default route and leave the lab.
-  The appliance needs no routing table of its own for the uplink: only `public`
-  may forward to it. IPv6 to the uplink is rejected (the Default Switch has none),
-  and so is IPv4 from servers without Internet.
+  Windows host or its LAN. So is the lab's own range `198.18.0.0/15`, which the
+  uplink's routing table already makes unreachable (The appliance). IPv6 to the
+  uplink is rejected (the Default Switch has none), and so is IPv4 from servers
+  without Internet.
 - No rule depends on conntrack seeing a connection start. Between host and servers
   and among servers nothing is tracked; the answers to the host's connections are
   `established`, which conntrack also gives a running TCP connection after an
@@ -689,13 +756,20 @@ the working tree (`appliance/build.sh`). It needs no root:
 What is in it:
 
 - **Packages:** the cloud kernel (Hyper-V's drivers, signed), systemd, nftables,
-  dnsmasq (only `dnsmasq-base`: the agent runs it), knot, unbound, haproxy, pebble,
-  openssh-server, rsync, borgbackup, btrfs-progs, qemu-utils.
+  dnsmasq (only `dnsmasq-base`: the agent runs it), knot, unbound with its trust
+  anchor (`dns-root-data`), haproxy, pebble, openssh-server, rsync, borgbackup,
+  btrfs-progs, qemu-utils. `--variant=apt` installs no Recommends: a package
+  that the appliance needs from them is named.
 - **Running:** `hlab-agent` before `sysinit.target`, after the modules (`hv_sock`,
   `vrf`, `8021q`) and the boot ruleset; it must not wait for the network, which it
   sets up itself. networkd only for the uplink (DHCP, matched by both MAC sets,
   `ManageForeignRoutes=no`). unbound as the lab's resolver on `198.18.0.2` and
   `2001:db8:0:ffff::2`. `hlab-dnsmasq` once the agent has its configuration.
+- **The uplink's own routing table** (`uplink`, 200): networkd puts the DHCP
+  default route there, not into the main table. Rules after the main table
+  send only the servers' traffic (from `public`) and the appliance's own (from
+  `lo`) to it, and `198.18.0.0/15` is unreachable in it: a lab address that
+  nobody holds never leaves through the uplink, and nothing else reaches it.
 - **Off until their phase:** knot, haproxy, sshd (its host keys are removed;
   each appliance makes its own in phase 5), and `systemd-networkd-wait-online`.
   pebble has no unit of its own.
@@ -716,6 +790,7 @@ As few as possible, each with its reason here.
 | `github.com/spf13/cobra` | the CLI's commands, flags and help, as the hcloud CLI has them |
 | `github.com/vishvananda/netlink` | the agent sets links, VLANs, VRFs, addresses and routes, and watches the carrier |
 | `github.com/mdlayher/vsock` | the agent listens on AF_VSOCK, which hv_sock reaches from Windows |
+| `github.com/Microsoft/go-winio` | hlabd dials the agent over hv_sock on Windows, without cgo |
 
 Developer tools live in a separate module, `tools/go.mod`, so their dependencies
 stay out of `go.mod`. Run them with `go tool -modfile=tools/go.mod <tool>`.
@@ -743,7 +818,7 @@ What a developer installs:
 | hcloud CLI, OpenTofu | Linux, WSL2, in the versions of `compat/versions.yaml` | `bin/dev smoke` |
 | Docker | WSL2 (Docker Desktop with WSL integration) or Linux | `bin/dev test --agent` |
 | mmdebstrap, uidmap, debian-archive-keyring, e2fsprogs (1.47.1 or newer) with libarchive (`libarchive13t64`), dosfstools, mtools, fdisk, qemu-utils | WSL2, Linux (`apt install …`); an entry for the user in `/etc/subuid` and `/etc/subgid` (Ubuntu creates it) | `bin/dev appliance` |
-| Hyper-V, the group Hyper-V Administrators | Windows 11 Pro (Live tests) | `bin/dev itest` |
+| Hyper-V; once as administrator `bin/dev.ps1 dev-install` | Windows 11 Pro (Live tests) | `bin/dev itest` |
 
 golangci-lint and shfmt need no install: `go tool` builds them from `tools/go.mod`
 the first time they run. In WSL2, `bin/dev lint` runs PSScriptAnalyzer in pwsh if it
@@ -757,25 +832,37 @@ needs no Go for this. Tests that need the go command, such as the layer test, ar
 skipped there; CI's Windows job has Go and runs them.
 
 **Live tests.** `bin/dev itest [--run <pattern>]` runs the tests in `itest/`, which
-build only with the tag `live`, against the real platform. For now that is the
-contract test of the hypervisor against Hyper-V (`internal/platform/contract`).
+build only with the tag `live`, against the real platform: the contract tests of
+the hypervisor, the host network and the NRPT rules
+(`internal/platform/contract`), and the appliance's boot with its watchdog.
 
-- It compiles them with `GOOS=windows go test -c -tags live` and runs the `.exe`
-  through WSL interop, as `test --windows` does; `bin/dev.ps1 itest` runs them on
-  Windows with Go.
-- Hyper-V needs administrator rights or the group Hyper-V Administrators (SID
-  `S-1-5-32-578`; its name depends on the language of Windows). The live tests run
-  without elevation, so the developer is in that group. Once, as administrator:
-  `Add-LocalGroupMember -SID S-1-5-32-578 -Member $env:USERNAME`, then sign out and
-  in again. `whoami /groups` shows the group.
+- The host network and the NRPT need administrator rights, without UAC. So the
+  tests run through the task "HLab itest" of the Task Scheduler (highest rights,
+  S4U: no window, no stored password). `bin/dev itest` compiles them with
+  `GOOS=windows go test -c -tags live` into `C:\HLabDev\itest`, copies the
+  appliance's disk there if `bin/dev appliance` built a newer one, writes
+  `run.cmd` with the test's flags, starts the task with `schtasks /run`, and
+  prints `itest.out` as it grows until `itest.rc` holds the exit code.
+  `bin/dev.ps1 itest` does the same on Windows with Go.
+- Once, as administrator: `bin/dev.ps1 dev-install` creates `C:\HLabDev\itest`,
+  which only the developer, the administrators and SYSTEM may write (whatever
+  lands there runs elevated; Hyper-V's VMs may read it), the task, and the
+  agent's hv_sock service (the registry key of `VsockServiceID(5000)` under
+  `GuestCommunicationServices`). From WSL2: `powershell.exe -ExecutionPolicy
+  Bypass -File \\wsl.localhost\<distribution>\<repo>\bin\dev.ps1 dev-install`
+  in a PowerShell run as administrator. The task of `hlabd` itself (`HLab dev`)
+  and its firewall rule come with the dev loop (1b-5).
+- HLab must not run meanwhile: the tests take its switches, ranges and VM name.
 - Disks go to a temporary folder on the Windows disk: Hyper-V cannot use files in
   WSL2's file system.
 - The tests remove what they create. Their VMs and disks are named
   `hlab-contract-…` and their VMs carry the notes `hlab-contract`; after an aborted
   run, `Get-VM hlab-contract-* | Stop-VM -TurnOff -Force -Passthru | Remove-VM
-  -Force` removes the VMs.
+  -Force` removes the VMs. The appliance test uses the lab's own names
+  (`hlab-appliance`, `HLab-Link`, `HLab-Public`).
 - The live tests stay out of CI: GitHub's Windows runners have no nested Hyper-V.
-  The contract test of the hypervisor takes about 30 s.
+  All of them take about 90 s: the hypervisor's 30 s, the host network's 7 s, the
+  appliance's 30 s (it skips without the appliance's disk).
 
 **Agent tests.** The tests of `internal/agent` with the build tag `netns` change
 links, addresses, routes, nftables and sysctls for real, so they run in a network

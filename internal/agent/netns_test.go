@@ -201,6 +201,16 @@ func TestNewLinksPictureRemovesWhatItLacks(t *testing.T) {
 	}
 }
 
+func TestRenamingKeepsNetworkdsUplinkUp(t *testing.T) {
+	agent := setUp(t)
+	setLink(t, "eth3", true) // networkd brought it up before the agent's first picture
+	putPicture(t, agent, agentproto.PictureLinks, testLabPicture(web))
+
+	if link := mustLink(t, "uplink"); link.Attrs().Flags&net.FlagUp == 0 {
+		t.Error("the uplink is down after the agent renamed it; networkd would leave it so")
+	}
+}
+
 func TestLinksPictureWithAnUnknownMACChangesNothing(t *testing.T) {
 	agent := setUp(t)
 	links := testLabPicture(web)

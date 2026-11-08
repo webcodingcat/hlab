@@ -78,6 +78,7 @@ function Add-NIC {
     $adapter = Add-VMNetworkAdapter @options
     # how the switch port sees VLANs
     switch ($NIC.port.kind) {
+        'plain' {}
         'isolated' {
             Set-VMNetworkAdapterVlan -VMNetworkAdapter $adapter -Isolated `
                 -PrimaryVlanId $pvlanPrimary -SecondaryVlanId $pvlanSecondary
@@ -376,6 +377,23 @@ namespace HLab {
         }
         Add-Folder $Arguments.dst
         Convert-VHD -Path $Arguments.src -DestinationPath $Arguments.dst -VHDType Dynamic
+    }
+
+    'delete-disk'    = {
+        param($Arguments)
+        Assert-Path $Arguments.path 'disk'
+        # an off VM does not hold its disks open, so ask Hyper-V who uses it
+        $user = Get-VM | Get-VMHardDiskDrive | Where-Object Path -EQ $Arguments.path |
+            Select-Object -First 1
+        if ($null -ne $user) {
+            throw "in_use: disk $($Arguments.path) of VM $($user.VMName)"
+        }
+        Remove-Item -LiteralPath $Arguments.path -Force
+    }
+
+    'vm-id'          = {
+        param($Arguments)
+        (Get-LabVM $Arguments.name).Id.Guid
     }
 
     'create-seed'    = {

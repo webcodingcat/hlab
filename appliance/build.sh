@@ -25,6 +25,9 @@ readonly PACKAGES=(
   shim-signed grub-efi-amd64-signed
   # the data plane
   nftables dnsmasq-base iproute2 knot unbound haproxy pebble
+  # unbound's DNSSEC trust anchor: without it unbound does not start (a
+  # Recommends, which --variant=apt leaves out)
+  dns-root-data
   # Storage Boxes and image conversion (later phases)
   openssh-server rsync borgbackup btrfs-progs qemu-utils
   # to look around on the console

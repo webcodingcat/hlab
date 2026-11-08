@@ -47,14 +47,16 @@ func InstanceFile() string {
 type Lifecycle struct {
 	mutexName    string
 	instanceFile string
+	dialer       platform.AgentDialer
 	stopOnce     sync.Once
 	stop         chan struct{}
 }
 
 // NewLifecycle returns the life cycle with its mutex and instance file
-// (MutexName and InstanceFile; tests take their own).
-func NewLifecycle(mutexName, instanceFile string) *Lifecycle {
-	return &Lifecycle{mutexName: mutexName, instanceFile: instanceFile}
+// (MutexName and InstanceFile; tests take their own) and the dialer of the
+// agents (NewAgentDialer).
+func NewLifecycle(mutexName, instanceFile string, dialer platform.AgentDialer) *Lifecycle {
+	return &Lifecycle{mutexName: mutexName, instanceFile: instanceFile, dialer: dialer}
 }
 
 // Lock makes this process the only HLab on the machine: it holds the named
@@ -154,7 +156,7 @@ func (l *Lifecycle) StopRequests() <-chan struct{} {
 	return l.stop
 }
 
-// AgentDialer reaches the appliance's agent over hv_sock (phase 1b).
+// AgentDialer reaches the appliance's agent over hv_sock.
 func (l *Lifecycle) AgentDialer() platform.AgentDialer {
-	return agentDialer{}
+	return l.dialer
 }

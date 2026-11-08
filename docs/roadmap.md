@@ -14,7 +14,7 @@ the tests. Look there before writing such a part anew.
 | Phase | What | State |
 |---|---|---|
 | 1a | core without VMs: state, lab, web basics, catalog, reading resources, SSH keys, lab control, `--platform fake` | done |
-| 1b | servers, host link, reachability | **in progress: next 1b-3** |
+| 1b | servers, host link, reachability | **in progress: next 1b-4** |
 | 2a | Floating IPs, firewalls, private networks | open |
 | 2b | volumes, placement groups, DNS | open |
 | 2c | tools for tests | open |
@@ -73,11 +73,11 @@ the tests. Look there before writing such a part anew.
   The real server's JSON (no `datacenter`, `locked` `false`) is recorded in
   `compat/requirements.md`.
 - `hlabd --platform fake` listens on `127.0.0.1`, the CLI's default is
-  `198.18.0.1`: until the host link exists, take `HLAB_CONTROL` from hlabd's log
+  `198.18.0.1`: with the fake platform, take `HLAB_CONTROL` from hlabd's log
   (`bin/dev smoke` does).
-- Not yet: the other platforms (`hlabd` without `--platform fake` says so),
-  `hlab start`, 503 for requests that arrive while the lab stops, `PUT` and
-  `DELETE` of images (3a), the catalog's image sources for the image cache.
+- Not yet: `hlab start` (1b-5), `PUT` and `DELETE` of images (3a), the
+  catalog's image sources for the image cache. (The Windows platform and 503
+  while the lab stops came with 1b-3.)
 
 ### Later phases
 
@@ -91,8 +91,8 @@ the tests. Look there before writing such a part anew.
 |---|---|---|
 | 1b-1 | `pshost`, the Hyper-V hypervisor, the live tests (`bin/dev itest`) with the hypervisor's contract tests | done |
 | 1b-2 | the appliance's build and the agent; agent tests in a namespace | done |
-| 1b-3 | HostNet, the appliance's start and watchdog, the life cycle | next |
-| 1b-4 | image cache, `seed`, servers and Primary IPs | open |
+| 1b-3 | HostNet, the appliance's start and watchdog, the life cycle | done |
+| 1b-4 | image cache, `seed`, servers and Primary IPs | next |
 | 1b-5 | dev loop, `install.ps1`, the CLI from WSL2 | open |
 | 1b-6 | appliance update (A/B) with running servers | open |
 
@@ -124,13 +124,6 @@ the tests. Look there before writing such a part anew.
 
 ### Open for 1b-2 and later
 
-- Live tests that need administrator rights (HostNet, NRPT) come with 1b-3.
-  They run through a task "HLab itest" in the Task Scheduler (highest rights,
-  created once as administrator): `bin/dev itest` copies the test `.exe` to
-  `C:\HLabDev\itest`, starts the task with `schtasks /run` and reads the
-  output and exit code, without UAC. Only the developer and administrators may
-  write that folder. 1b-3 brings forward the part of `dev-install` (1b-5) that
-  creates the task.
 - The seed's contents (with name servers) come with `internal/seed` (1b-4); the
   ISO's format is checked: label `cidata`, Joliet names.
 - `ShutdownVM` against a real guest (shutdown service) is checked with the first
@@ -154,23 +147,75 @@ the tests. Look there before writing such a part anew.
   before `sysinit.target`, networkd only for the uplink, unbound as the lab's
   resolver, a boot ruleset that forwards nothing.
 
-### Open for 1b-3 and later
+### Open for 1b-3 and later (from 1b-2)
 
-- Boot the appliance under Hyper-V (1b-3): the VHDX is built but has not
-  started in a VM yet. hlabd still pushes no pictures; `system` gets the agent
-  client (hv_sock, `go-winio`) and `lab` builds `picture.Lab` from its state.
 - The servers in `picture.Lab` come from the server records (1b-4).
-- unbound's fixed config names the default host link addresses; when the
-  ranges become settings, its addresses come with a picture (phase 2b `dns`).
+- unbound's fixed config and the uplink's unreachable route name the default
+  ranges; when the ranges become settings, they come with a picture (phase 2b
+  `dns`).
 - dnsmasq is restarted when its configuration changes, not sent SIGHUP: it reads
   its ranges and interfaces only at its start. Its leases are static, so a
   restart loses nothing.
-- The uplink has no routing table of its own: only `public` forwards to it, and
-  the uplink lock rejects the lab's range `198.18.0.0/15`, so an address nobody
-  holds never leaves the lab through the default route.
 - The metadata summary leaves out `private-networks` on a server without a
   network, HLab's says `[]` (2a, `compat/requirements.md`).
 
-Next: 1b-3, HostNet, the appliance's start and watchdog, the life cycle.
+### What is there after 1b-3
+
+- `hlabd` runs on Windows (`--platform windows`, the default there) with
+  administrator rights: the host link, the appliance, the APIs on `198.18.0.1`
+  and the lab control also on `127.0.0.1:8090`. The appliance's release disk is
+  `hlab-appliance.vhdx` next to `hlabd` or `--appliance`.
+- `HostNet` and `HostDNS` for Windows (`hostnet.ps1`): the switches `HLab-Link`
+  (internal, host `198.18.0.1/29` and `2001:db8:0:ffff::1/64`, routes of
+  `198.18.0.0/15` and `2001:db8::/32` through the appliance) and `HLab-Public`
+  (private), addresses and routes in the active store only; `CheckRanges`
+  names the range and the interface that collide; NRPT rules with the comment
+  `hlab`. `HLab-Private` follows in 2a.
+- The agent dialer over hv_sock (`go-winio`, `VsockServiceID(5000)`).
+- New in the platform: `Hypervisor.DeleteDisk`, the port mode `Plain` (the
+  appliance's link and uplink), `LinkSpec.Gateways` (one per address family) and
+  `LinkSpec.PrivateSwitches`, `platform.SwitchPrefix` (`HLab-`).
+- The life cycle (13.1–13.3): `Lab.StartMachine` checks the ranges, connects
+  the host, removes stray VMs, starts or takes over the appliance, sends every
+  picture and clears old NRPT rules; `Lab.Close` shuts the appliance down and
+  removes the host link and the NRPT rules. While the lab stops, the APIs and
+  the lab control answer 503 `unavailable` (but for status and shutdown). A
+  crash of hlabd leaves the appliance and the link running; the next start
+  takes them over without a restart.
+- The appliance boots under Hyper-V: Secure Boot, the agent over hv_sock, the
+  four pictures, unbound resolving through the uplink, IPv4 and IPv6 on the host
+  link. The watchdog checks every 2 s (VM, heartbeat, agent) and restarts it after
+  three failures, or at once when the VM is off; it sends the pictures an agent
+  lacks.
+- The uplink has its own routing table (`uplink`, 200, networkd): only traffic
+  from `public` and the appliance's own looks it up, after the main table, and
+  `198.18.0.0/15` is unreachable in it.
+- Fixed in the appliance: unbound did not start without its trust anchor
+  (`dns-root-data`, a Recommends that `--variant=apt` leaves out); the agent
+  left networkd's uplink down after renaming it, so it got no DHCP lease.
+- The admin live tests run through the task "HLab itest" (`bin/dev.ps1
+  dev-install`, once as administrator; `bin/dev itest`), without UAC.
+- `--platform fake` runs the same start on the fake machine, with a fake agent
+  (`fake.Agent`).
+- Measured on a Ryzen AI Max+ 395 (Windows 11, Hyper-V): the appliance from
+  nothing (disk, VM, boot, every picture) 11.8 s; after it was turned off hard,
+  back with its pictures after 6.0 s (before the immediate restart: 17.6 s);
+  `hlabd` cold 18.9 s until the lab control answers, taking over a running
+  appliance after a crash 4.3 s, stopping 5.2 s. All live tests: 90 s
+  (hypervisor 30 s, host network 6 s, NRPT 1 s, appliance 30 s).
+
+### Open for 1b-4 and later
+
+- The servers' VMs keep their NICs without a switch after a stop (13.2); the
+  start must connect them again. The appliance is made anew instead, so it
+  needs no such method yet.
+- Hyper-V's RTC holds local time; the appliance's clock is off by the time zone
+  until Hyper-V's time sync corrects it during the boot.
+- `serial-getty@ttyS0` restarts every 10 s in the appliance: its VM has no COM
+  port. The console comes with phase 6a.
+- `hlab start` and the dev loop (`HLab dev`, firewall rule for WSL2) come with
+  1b-5; until then `hlabd` is started by hand as administrator.
+
+Next: 1b-4, image cache, `seed`, servers and Primary IPs.
 
 Not there yet: the commands of later phases.

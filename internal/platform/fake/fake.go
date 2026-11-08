@@ -85,6 +85,14 @@ func (f *Fake) Calls() []string {
 	return append([]string(nil), f.calls...)
 }
 
+// AddDisk puts a disk on the machine that HLab did not create, such as the
+// appliance's release disk that the installer brings.
+func (f *Fake) AddDisk(path string, sizeGB int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.disks[path] = &disk{sizeGB: sizeGB}
+}
+
 // Seed returns the files of the seed that CreateSeed wrote to path.
 func (f *Fake) Seed(path string) map[string][]byte {
 	f.mu.Lock()

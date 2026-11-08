@@ -17,7 +17,7 @@ import (
 // a running HLab does not get in the way.
 func newLifecycle(t *testing.T) *windows.Lifecycle {
 	t.Helper()
-	return windows.NewLifecycle(`Local\HLabTest-`+filepath.Base(t.TempDir()), filepath.Join(t.TempDir(), "instance"))
+	return windows.NewLifecycle(`Local\HLabTest-`+filepath.Base(t.TempDir()), filepath.Join(t.TempDir(), "instance"), nil)
 }
 
 func TestASecondLockNamesTheRunningDataFolder(t *testing.T) {

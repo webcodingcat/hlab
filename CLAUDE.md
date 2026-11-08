@@ -27,7 +27,8 @@ From Linux or WSL2 (`bin/dev.ps1` takes the same commands on Windows):
 | `bin/dev test --agent [--host]` | the agent's tests in a network namespace: in Docker, or with `--host` through sudo (CI) |
 | `bin/dev build` | `hlabd`, `hlab`, `hlab-agent` for Linux and `hlabd.exe`, `hlab.exe` into `build/` |
 | `bin/dev spec-diff` | Hetzner's current specs against `compat/specs` (`--update` takes them over) |
-| `bin/dev itest [--run <pattern>]` | the live tests against Hyper-V: built for Windows, run through WSL interop (needs the group Hyper-V Administrators) |
+| `bin/dev itest [--run <pattern>]` | the live tests against Hyper-V: built for Windows, run with administrator rights by the task "HLab itest" |
+| `bin/dev.ps1 dev-install` | once, as administrator: `C:\HLabDev\itest`, the task "HLab itest", the agent's hv_sock service |
 | `bin/dev smoke` | the smoke tests: hcloud CLI and OpenTofu against `hlabd --platform fake` (WSL2 or Linux, end of a phase) |
 | `bin/dev appliance` | the appliance's disk, `build/appliance/hlab-appliance.vhdx` (WSL2 or Linux, without root) |
 

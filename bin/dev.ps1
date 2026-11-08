@@ -21,7 +21,12 @@ The same commands as bin/dev:
   bin/dev.ps1 appliance        the appliance is built in WSL2
                                (bin/dev appliance)
   bin/dev.ps1 itest [--run <pattern>]
-                               the live tests against Hyper-V
+                               the live tests against Hyper-V, with
+                               administrator rights through the task
+                               "HLab itest"
+  bin/dev.ps1 dev-install      once, as administrator: the folder
+                               C:\HLabDev\itest, the task "HLab itest" and
+                               the agent's hv_sock service
 #>
 param(
     [Parameter(Position = 0)]
@@ -38,6 +43,9 @@ $Tools = @('tool', "-modfile=$Repo/tools/go.mod")
 $ShfmtFlags = @('-i', '2', '-ci', '-bn')
 $Specs = @('cloud', 'hetzner')
 $SpecUrl = 'https://docs.hetzner.cloud'
+# the live tests run elevated from here, through the task (dev-install)
+$ItestDir = 'C:\HLabDev\itest'
+$ItestTask = 'HLab itest'
 
 function Invoke-Native {
     <#
@@ -168,6 +176,112 @@ function Compare-Spec {
     }
 }
 
+function Install-DevMachine {
+    <#
+    .SYNOPSIS
+    Prepare this machine for the live tests, once, as administrator: the
+    folder C:\HLabDev\itest, which only this user, the administrators and
+    SYSTEM may write, the task "HLab itest" that runs its run.cmd with the
+    highest rights and without a window, and the agent's hv_sock service.
+    #>
+    $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        throw 'dev-install needs an elevated PowerShell (Run as administrator)'
+    }
+    $user = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+    New-Item -ItemType Directory -Force -Path $ItestDir | Out-Null
+    # whatever lands in the folder runs elevated: no inherited rights
+    $acl = New-Object Security.AccessControl.DirectorySecurity
+    $acl.SetAccessRuleProtection($true, $false)
+    $rights = @(
+        @($user, 'FullControl'),
+        @('S-1-5-32-544', 'FullControl'), # Administrators
+        @('S-1-5-18', 'FullControl'), # SYSTEM
+        @('S-1-5-83-0', 'ReadAndExecute') # Hyper-V's VMs read the appliance's disk
+    )
+    foreach ($right in $rights) {
+        $identity = if ($right[0] -like 'S-1-*') {
+            New-Object Security.Principal.SecurityIdentifier $right[0]
+        } else {
+            New-Object Security.Principal.NTAccount $right[0]
+        }
+        $rule = New-Object Security.AccessControl.FileSystemAccessRule(
+            $identity, $right[1], 'ContainerInherit,ObjectInherit', 'None', 'Allow')
+        $acl.AddAccessRule($rule)
+    }
+    Set-Acl -Path $ItestDir -AclObject $acl
+    # S4U: runs whether the user is signed in or not, without a window and
+    # without a stored password
+    $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c $ItestDir\run.cmd" -WorkingDirectory $ItestDir
+    $taskPrincipal = New-ScheduledTaskPrincipal -UserId $user -LogonType S4U -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 1) `
+        -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    Register-ScheduledTask -TaskName $ItestTask -Action $action -Principal $taskPrincipal `
+        -Settings $settings -Force | Out-Null
+    # hlabd reaches the agent's vsock port 5000 through this service ID
+    $service = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization\GuestCommunicationServices\00001388-facb-11e6-bd58-64006a7986d3'
+    New-Item -Path $service -Force | Out-Null
+    Set-ItemProperty -Path $service -Name ElementName -Value 'HLab agent'
+    Write-Output "set up $ItestDir, the task `"$ItestTask`" and the agent's hv_sock service"
+}
+
+function Invoke-LiveTest {
+    <#
+    .SYNOPSIS
+    Build the live tests and run them through the task "HLab itest", with
+    administrator rights, as bin/dev itest does; print their output as it
+    comes and fail as they do.
+    #>
+    param(
+        [string]$Pattern
+    )
+    if (-not (Test-Path $ItestDir)) {
+        throw "$ItestDir is missing: run bin/dev.ps1 dev-install once as administrator"
+    }
+    Invoke-Native go @('test', '-c', '-tags', 'live', '-o', "$ItestDir\itest.test.exe", './itest')
+    $appliance = 'build/appliance/hlab-appliance.vhdx'
+    $copy = "$ItestDir\hlab-appliance.vhdx"
+    # Hyper-V keeps the disk open while a test's appliance runs on it
+    if ((Test-Path $appliance) -and
+        (-not (Test-Path $copy) -or (Get-Item $appliance).LastWriteTime -gt (Get-Item $copy).LastWriteTime)) {
+        Copy-Item $appliance $copy
+    }
+    $output = "$ItestDir\itest.out"
+    $code = "$ItestDir\itest.rc"
+    Remove-Item $output, $code -ErrorAction SilentlyContinue
+    $run = if ($Pattern) { " -test.run `"$Pattern`"" } else { '' }
+    Set-Content -Path "$ItestDir\run.cmd" -Encoding ascii -Value @(
+        '@echo off', "cd /d $ItestDir",
+        "itest.test.exe -test.v -test.timeout 30m$run > itest.out 2>&1",
+        'echo %ERRORLEVEL% > itest.rc')
+    Invoke-Native schtasks.exe @('/run', '/tn', $ItestTask)
+    $printed = 0
+    $deadline = (Get-Date).AddMinutes(40)
+    while ($true) {
+        $finished = Test-Path $code
+        if (Test-Path $output) {
+            $text = [IO.File]::ReadAllText($output)
+            # whole lines only: Write-Output ends each piece with one
+            $end = if ($finished) { $text.Length } else { $text.LastIndexOf("`n") + 1 }
+            if ($end -gt $printed) {
+                Write-Output $text.Substring($printed, $end - $printed).TrimEnd("`r", "`n")
+                $printed = $end
+            }
+        }
+        if ($finished) {
+            break
+        }
+        if ((Get-Date) -gt $deadline) {
+            throw 'the live tests did not finish in 40 minutes'
+        }
+        Start-Sleep -Seconds 1
+    }
+    $exitCode = [int](Get-Content $code -Raw).Trim()
+    if ($exitCode -ne 0) {
+        throw "the live tests failed with exit code $exitCode"
+    }
+}
+
 function Get-Usage {
     <#
     .SYNOPSIS
@@ -204,14 +318,15 @@ try {
         # mmdebstrap is a Linux tool
         'appliance' { throw 'appliance runs from WSL2: bin/dev appliance' }
         'itest' {
-            $arguments = @('test', '-tags', 'live', '-v', '-count=1', '-timeout', '30m')
             if ($Option -match '^--run (.+)$') {
-                $arguments += @('-run', $Matches[1])
+                Invoke-LiveTest -Pattern $Matches[1]
             } elseif ($Option) {
                 throw "unknown option: $Option"
+            } else {
+                Invoke-LiveTest
             }
-            Invoke-Native go ($arguments + @('./itest'))
         }
+        'dev-install' { Install-DevMachine }
         default {
             Get-Usage | Write-Output
             exit 2

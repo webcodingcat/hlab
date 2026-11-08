@@ -3,6 +3,7 @@ package fake
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -344,6 +345,25 @@ func (h *Hypervisor) FlattenDisk(ctx context.Context, src, dst string) error {
 		return fmt.Errorf("disk %q: %w", dst, platform.ErrExists)
 	}
 	h.fake.disks[dst] = &disk{sizeGB: file.sizeGB}
+	return nil
+}
+
+// DeleteDisk deletes a disk that no VM uses.
+func (h *Hypervisor) DeleteDisk(ctx context.Context, path string) error {
+	if err := h.fake.enter(ctx, "DeleteDisk", path); err != nil {
+		return err
+	}
+	h.fake.mu.Lock()
+	defer h.fake.mu.Unlock()
+	if _, found := h.fake.disks[path]; !found {
+		return fmt.Errorf("disk %q: %w", path, platform.ErrNotFound)
+	}
+	for name, machine := range h.fake.vms {
+		if slices.Contains(slices.Collect(maps.Values(machine.disks)), path) {
+			return fmt.Errorf("disk %q of VM %q: %w", path, name, platform.ErrInUse)
+		}
+	}
+	delete(h.fake.disks, path)
 	return nil
 }
 

@@ -25,6 +25,7 @@ type rulesetValues struct {
 	Host4, Host6         string
 	Resolver4, Resolver6 string
 	Metadata             string
+	Range4               string
 	NoInternet           []string
 }
 
@@ -40,6 +41,7 @@ func Ruleset(lab Lab) agentproto.Ruleset {
 		Resolver4: resolvers[0].String(),
 		Resolver6: resolvers[1].String(),
 		Metadata:  MetadataAddress.String(),
+		Range4:    lab.Range4.String(),
 	}
 	for _, server := range lab.servers() {
 		if !server.Internet && server.IPv4.IsValid() {

@@ -60,11 +60,16 @@ type Lab struct {
 	// calls to the system
 	envMu sync.Mutex
 
-	// mu guards everything below: the state, the flags and the running actions
+	// mu guards everything below: the state, the flags, the running actions
+	// and the machine's side of the lab
 	mu      sync.Mutex
 	state   *state.State
 	flags   map[state.ResourceRef]bool // resources that an action works on
 	running map[int64]*runningAction   // by action ID
+	// appliance runs between StartMachine and Close; nil without the machine
+	// (the unit tests of the API)
+	appliance  *system.Appliance
+	generation uint64 // of the newest pictures
 
 	ctx     context.Context    // ends when the lab closes; the actions' contexts derive from it
 	cancel  context.CancelFunc // ends ctx
@@ -140,13 +145,18 @@ func (l *Lab) endInterruptedActions(tx *state.Tx) error {
 }
 
 // Close stops the lab: it cancels the running actions, waits until they have
-// ended, writes the state and gives the data folder up. Later calls return
-// the first one's result, so that every way to stop may call it.
+// ended, stops the machine's side (StartMachine), writes the state and gives
+// the data folder up. Later calls return the first one's result, so that
+// every way to stop may call it.
 func (l *Lab) Close() error {
 	l.closeOnce.Do(func() {
 		l.cancel()
 		l.actions.Wait()
-		l.closeErr = l.writer.Close()
+		machineErr := l.stopMachine()
+		if machineErr != nil {
+			machineErr = fmt.Errorf("stopping the machine's side: %w", machineErr)
+		}
+		l.closeErr = errors.Join(machineErr, l.writer.Close())
 		l.release()
 	})
 	return l.closeErr

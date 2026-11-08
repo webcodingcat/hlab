@@ -3,6 +3,7 @@ module github.com/webcodingcat/hlab
 go 1.27.3
 
 require (
+	github.com/Microsoft/go-winio v0.6.4
 	github.com/getkin/kin-openapi v0.153.0
 	github.com/hetznercloud/hcloud-go/v2 v2.53.0
 	github.com/mdlayher/vsock v1.4.0

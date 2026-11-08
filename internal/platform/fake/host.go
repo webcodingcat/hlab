@@ -41,8 +41,8 @@ func (f *Fake) RequestStop() {
 	f.stopOnce.Do(func() { close(f.stop) })
 }
 
-// ServeAgent makes the agent of a VM answer: every dial to it hands serve the
-// other end of the connection.
+// ServeAgent makes the agent of a VM answer while the VM runs: every dial to
+// it hands serve the other end of the connection.
 func (f *Fake) ServeAgent(vm string, serve func(conn net.Conn)) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -169,16 +169,24 @@ type agentDialer struct {
 	fake *Fake
 }
 
-// Dial hands one end of a pipe to the VM's agent and returns the other.
+// Dial hands one end of a pipe to the VM's agent and returns the other. As
+// with hv_sock, only a running VM answers.
 func (a *agentDialer) Dial(ctx context.Context, vm string, port uint32) (net.Conn, error) {
 	if err := a.fake.enter(ctx, "Dial", vm, port); err != nil {
 		return nil, err
 	}
 	a.fake.mu.Lock()
-	serve, found := a.fake.agents[vm]
+	serve, served := a.fake.agents[vm]
+	machine, found := a.fake.vms[vm]
+	running := found && machine.power == platform.PowerRunning
 	a.fake.mu.Unlock()
-	if !found {
-		return nil, fmt.Errorf("agent of VM %q: %w", vm, platform.ErrNotFound)
+	switch {
+	case !found:
+		return nil, fmt.Errorf("VM %q: %w", vm, platform.ErrNotFound)
+	case !running:
+		return nil, fmt.Errorf("VM %q: %w", vm, platform.ErrNotRunning)
+	case !served:
+		return nil, fmt.Errorf("no agent in VM %q answers on port %d", vm, port)
 	}
 	ours, theirs := net.Pipe()
 	go serve(theirs)

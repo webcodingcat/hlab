@@ -84,14 +84,24 @@ func TestHostPartsKeepWhatTheyWereGiven(t *testing.T) {
 	}
 }
 
-func TestServedAgentAnswersADial(t *testing.T) {
+func TestServedAgentAnswersADialWhileItsVMRuns(t *testing.T) {
 	machine := fake.New()
+	parts := machine.Platform()
 	machine.ServeAgent("appliance", func(conn net.Conn) {
 		_, _ = conn.Write([]byte("hello"))
 		_ = conn.Close()
 	})
+	if err := parts.Hypervisor.CreateVM(t.Context(), platform.VMSpec{Name: "appliance", CPUs: 1, MemoryMB: 512}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parts.Lifecycle.AgentDialer().Dial(t.Context(), "appliance", 1); !errors.Is(err, platform.ErrNotRunning) {
+		t.Fatalf("Dial to a VM that is off: %v, want ErrNotRunning", err)
+	}
+	if err := parts.Hypervisor.StartVM(t.Context(), "appliance"); err != nil {
+		t.Fatal(err)
+	}
 
-	conn, err := machine.Platform().Lifecycle.AgentDialer().Dial(t.Context(), "appliance", 1)
+	conn, err := parts.Lifecycle.AgentDialer().Dial(t.Context(), "appliance", 1)
 	if err != nil {
 		t.Fatal(err)
 	}

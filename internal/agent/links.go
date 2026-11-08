@@ -75,7 +75,9 @@ func (a *Agent) applyLinks(links agentproto.Links) error {
 }
 
 // renameInterfaces finds each NIC by its MAC address and gives it its name.
-// A NIC must be down to be renamed; it goes up again with the other links.
+// A NIC must be down to be renamed; one that was up goes up again at once.
+// The agent's own NICs go up with the other links anyway, but networkd's
+// uplink would stay down: networkd does not undo what another process did.
 func renameInterfaces(nics []agentproto.Interface) error {
 	links, err := netlink.LinkList()
 	if err != nil {
@@ -107,6 +109,12 @@ func renameInterfaces(nics []agentproto.Interface) error {
 		}
 		if err := netlink.LinkSetName(link, nic.Name); err != nil {
 			return fmt.Errorf("renaming %s to %s: %w", link.Attrs().Name, nic.Name, err)
+		}
+		if link.Attrs().Flags&net.FlagUp == 0 {
+			continue
+		}
+		if err := netlink.LinkSetUp(link); err != nil {
+			return fmt.Errorf("setting %s up again after renaming it: %w", nic.Name, err)
 		}
 	}
 	return nil
