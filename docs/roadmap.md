@@ -69,6 +69,9 @@ the tests. Look there before writing such a part anew.
   `198.18.0.1`: with the fake platform, take `HLAB_CONTROL` from hlabd's log
   (`bin/dev smoke` does).
 - Not yet: `PUT` and `DELETE` of images (3a).
+- Raised in the last review, for before phase 2: decide where a resource's
+  plans and steps live as `lab` grows (today plans in `api/cloud`, steps in
+  `lab`); `CheckRoom` copies every server in its transaction.
 
 ## Phase 1b
 
@@ -117,7 +120,9 @@ each part; this is the list.
   answers at once and sends the pictures in the background. `want_running` changes only in the actions' plans, so queued
   actions keep the order they were sent in. A failed create removes its VM
   and files; the watchdog gives a server that a failed action left
-  `starting` or `stopping` its VM's status.
+  `starting` or `stopping` its VM's status, and ignores a look that an
+  action overtook. A failed action's undo leaves alone what a later queued
+  plan set.
 - **Primary IPs** (create, get, update, delete, lists, `assign`, `unassign`,
   `change_protection`), addresses from `198.19.0.0/16` and `2001:db8:1::/48`
   in order, the errors as measured.
