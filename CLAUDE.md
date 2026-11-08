@@ -11,8 +11,8 @@ earlier Python implementation lives on the branch `legacy` (tag `v1-python`).
 
 Everything in this repo is English. Read these before changing code:
 
-- @DEVELOPING.md – how the code fits together and its rules; it names the files
-  under `docs/` on Hyper-V, the appliance and the tools.
+- @DEVELOPING.md – how the code fits together, its rules and recipes; it links
+  the files under `docs/` that explain each part in detail.
 - @STYLE.md – the standards, and the rules this project adds to them.
 
 ## Commands

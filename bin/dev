@@ -312,7 +312,7 @@ deploy() {
   cp build/windows/hlabd.exe build/windows/hlab.exe "${DEV_DIR}/bin/"
   if [[ -e "${APPLIANCE}" ]]; then
     # the appliance runs on a copy in the data folder; a newer disk makes
-    # the start update a running appliance (DEVELOPING.md, The service).
+    # the start update a running appliance (docs/service.md).
     # An appliance that runs on this disk itself (named hlab-appliance)
     # holds it open; the start replaces it, and the next deploy copies.
     cp --update "${APPLIANCE}" "${DEV_DIR}/bin/" \

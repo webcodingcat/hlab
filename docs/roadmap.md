@@ -85,8 +85,8 @@ the tests. Look there before writing such a part anew.
 
 ### What is there
 
-DEVELOPING.md and the files under `docs/` explain each part; this is the
-list.
+DEVELOPING.md holds the rules and recipes, the files under `docs/` explain
+each part; this is the list.
 
 - **hlabd on Windows** (`--platform windows`, the default there), with
   administrator rights: the host link `HLab-Link` (`198.18.0.1/29`,
@@ -113,7 +113,8 @@ list.
   transaction (`Lab.Create`); a start reserves its room in its plan, so
   starts sent at once cannot overcommit the host's memory (412
   `resource_unavailable`); a create also needs a tenth of the data folder's
-  drive free. `want_running` changes only in the actions' plans, so queued
+  drive free; the reserves are settings (`room` in `hlab.yaml`). A rename
+  answers at once and sends the pictures in the background. `want_running` changes only in the actions' plans, so queued
   actions keep the order they were sent in. A failed create removes its VM
   and files; the watchdog gives a server that a failed action left
   `starting` or `stopping` its VM's status.
@@ -165,10 +166,6 @@ list.
   Boxes (5); the pictures' generations stay in memory, so a start sends
   every picture again.
 
-- Raised in the reviews, left open: DEVELOPING.md still restates much of
-  what the code's comments say, and its style is dense; a rename waits for
-  the pictures to reach the appliance; the reserves of the room check are
-  constants, not settings in `hlab.yaml`.
 
 ### Later phases
 
