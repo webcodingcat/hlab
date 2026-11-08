@@ -305,8 +305,12 @@ func (h *Hypervisor) CreateDisk(ctx context.Context, path string, sizeGB int, pa
 		return fmt.Errorf("disk %q: %w", path, platform.ErrExists)
 	}
 	if parent != "" {
+		// a parent the system wrote itself, such as the appliance's
+		// release in the data folder, the fake knows from the file system
 		if _, found := h.fake.disks[parent]; !found {
-			return fmt.Errorf("parent disk %q: %w", parent, platform.ErrNotFound)
+			if _, err := os.Stat(parent); err != nil {
+				return fmt.Errorf("parent disk %q: %w", parent, platform.ErrNotFound)
+			}
 		}
 	}
 	h.fake.disks[path] = &disk{sizeGB: sizeGB, parent: parent}

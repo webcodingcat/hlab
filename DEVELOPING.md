@@ -469,11 +469,16 @@ packages below it follow the layers.
      the lab is gone.
 - **`--platform fake`** uses the fake machine but this machine's real life cycle:
   the lock, the token file and the signals are real. So only one HLab runs, and the
-  CLI finds it. The fake machine has the appliance's release disk and a fake agent
-  (`fake.Agent`), so `StartMachine` runs there as well.
+  CLI finds it. The fake machine has a fake agent (`fake.Agent`) in each of the
+  appliance's VMs, and a stand-in release disk in the data folder when there is
+  no real one, so `StartMachine` runs there as well.
 - **The appliance's release disk** is `hlab-appliance.vhdx` next to `hlabd`, or
-  `--appliance <path>`. It stays as it is: the appliance runs on a differencing
-  disk of its own in `<data>/appliance`.
+  `--appliance <path>`. A start copies it to `<data>/appliance/<sha256>.vhdx`
+  unless that is there; its SHA-256 is the release's ID. The appliance runs on a
+  differencing disk of its own on the copy, `<data>/appliance/system-<A|B>.vhdx`.
+  So the release disk next to `hlabd` is never held open (Hyper-V holds a
+  differencing disk's parent), and an update of HLab can replace it while the
+  appliance runs on.
 
 ### The machine's side
 
@@ -486,15 +491,19 @@ packages below it follow the layers.
    creates or takes over the switches `HLab-Link` (internal, with the host's NIC:
    `198.18.0.1/29`, `2001:db8:0:ffff::1/64`, routes of both ranges through the
    appliance) and `HLab-Public` (private).
-2. `system.RemoveStrayVMs`: the lab's VMs (notes `hlab`) that are neither the
-   appliance nor a server of the state go; their disks stay.
-3. `Appliance.Start`: an appliance that runs and whose agent answers is taken
+2. `system.StageApplianceRelease`: the release disk into the data folder (above).
+3. `system.RemoveStrayVMs`: the lab's VMs (notes `hlab`) that are neither the
+   appliance of the state's MAC set nor a server of the state go; their disks
+   stay.
+4. `Appliance.Start`: an appliance that runs and whose agent answers is taken
    over (after a crash of hlabd); otherwise its VM and its differencing disk
-   are made anew and started. Then every picture goes to the agent, and the
-   watchdog starts.
-4. `system.SetHostDNS`: the host's DNS rules; until the zones (2b) only the
-   rules of an earlier run go.
-5. The servers come back as they want (Servers and Primary IPs), and their
+   are made anew on the new release and started. Then every picture goes to the
+   agent, and the watchdog starts. A taken-over appliance of another release
+   than the new one is updated (below).
+5. `system.SetHostDNS`: the host's DNS rules; until the zones (2b) only the
+   rules of an earlier run go. Then the appliance's folder loses what the
+   running appliance and the new release do not need.
+6. The servers come back as they want (Servers and Primary IPs), and their
    watchdog starts.
 
 If a step fails, the host link goes again. A crash of hlabd leaves everything
@@ -506,6 +515,28 @@ lacks (an agent that restarted alone). After three failed checks in a row, or
 at once when the VM is off or gone, it turns the VM off and on again with the
 same MAC set and sends every picture. A picture that the agent refused (422) is
 not sent again until its generation changes.
+
+**The update** (`Lab.updateAppliance`, 13.6 of the plan) replaces a running
+appliance of an older release, which a start took over, without stopping the
+servers. The state (`Lab.Appliance`) names the running appliance's release and
+MAC set; its VM is `hlab-appliance-a` or `hlab-appliance-b`.
+
+1. The new appliance starts beside the old one with the other MAC set, its NICs
+   on the same switches, and gets every picture, built for its set. Its agent
+   announces the addresses after the `links` picture, so the neighbors move to
+   it while the old one still answers.
+2. The state names the new appliance.
+3. The old one goes: VM turned off and deleted, system disk deleted.
+4. The new one gets `links` again and announces once more: the old one had
+   answered ARP and ND too while both ran.
+
+If the new appliance does not come up, it goes and the old one runs on; the
+next start tries again. HLab's end during an update leaves both appliances
+running; the next start keeps the one the state names (the old one before step
+2, the new one after it), removes the other as a stray VM and announces again
+with the pictures. Measured on a Ryzen AI Max+ 395: the update takes 11 s
+(the new appliance boots in 9 s); a server took no new connection for 0.5 s
+at most, and an open SSH session did not stall.
 - **The life cycles:**
   - Windows holds the mutex `Global\HLab`. It writes the path of its data folder to
     `%ProgramData%\HLab\instance`, so a second start can say in its error message
@@ -974,7 +1005,14 @@ the Cloud API in the test's process creates a Debian and an Ubuntu server.
    them over without a boot.
 5. The appliance is turned off hard; the Debian server answers again within
    10 s.
-6. A reset, the guest's shutdown, the deletes, and the host is clean.
+6. The appliance's update: another crash, and the lab starts with a copy of
+   the release disk that differs only in the VHDX's creator field, so it is
+   another release. The new appliance (MAC set B) replaces the old one while
+   the Debian server runs: it must take new TCP connections again within 5 s
+   (tried every 100 ms), an SSH session that prints every 100 ms must live
+   through it, the server must not boot, and the appliance's folder must hold
+   only the new release and `system-B.vhdx`.
+7. A reset, the guest's shutdown, the deletes, and the host is clean.
 
 The test keeps the system images in `C:\HLabDev\itest\image-cache`, so that
 only its first run loads them.
@@ -1002,10 +1040,10 @@ only its first run loads them.
   `hlab-contract-…` and their VMs carry the notes `hlab-contract`; after an aborted
   run, `Get-VM hlab-contract-* | Stop-VM -TurnOff -Force -Passthru | Remove-VM
   -Force` removes the VMs. The appliance test uses the lab's own names
-  (`hlab-appliance`, `HLab-Link`, `HLab-Public`).
+  (`hlab-appliance-a`, `HLab-Link`, `HLab-Public`).
 - The live tests stay out of CI: GitHub's Windows runners have no nested Hyper-V.
-  All of them take about 4 minutes: the hypervisor's 30 s, the host network's 6 s,
-  the appliance's 30 s, the servers' 170 s with the images cached (the
+  All of them take about 5 minutes: the hypervisor's 30 s, the host network's 6 s,
+  the appliance's 30 s, the servers' 240 s with the images cached (the
   appliance and the servers skip without the appliance's disk).
 
 **Agent tests.** The tests of `internal/agent` with the build tag `netns` change

@@ -14,7 +14,7 @@ the tests. Look there before writing such a part anew.
 | Phase | What | State |
 |---|---|---|
 | 1a | core without VMs: state, lab, web basics, catalog, reading resources, SSH keys, lab control, `--platform fake` | done |
-| 1b | servers, host link, reachability | **in progress: next 1b-6** |
+| 1b | servers, host link, reachability | **in progress: next 1b-R** |
 | 2a | Floating IPs, firewalls, private networks | open |
 | 2b | volumes, placement groups, DNS | open |
 | 2c | tools for tests | open |
@@ -91,7 +91,8 @@ the tests. Look there before writing such a part anew.
 | 1b-3 | HostNet, the appliance's start and watchdog, the life cycle | done |
 | 1b-4 | image cache, `seed`, servers and Primary IPs | done |
 | 1b-5 | dev loop, `install.ps1`, the CLI from WSL2 | done |
-| 1b-6 | appliance update (A/B) with running servers | next |
+| 1b-6 | appliance update (A/B) with running servers | done |
+| 1b-R | review of phase 1b | next |
 
 ### What is there after 1b-1
 
@@ -343,7 +344,7 @@ the tests. Look there before writing such a part anew.
 
 ### Open for 1b-6 and later (from 1b-5)
 
-- Still to test: the appliance's update with an outage < 5 s (1b-6); the
+- Still to test: the
   ruleset's counters for traffic between servers (the agent has no counters
   before phase 4; the TTL shows the way for now); the uninstall in a live
   test (played through by hand, see above).
@@ -356,6 +357,46 @@ the tests. Look there before writing such a part anew.
 - The firewall rules have no extra block of the lab's own range as source on
   8090; the appliance's ruleset keeps the servers off it.
 
-Next: 1b-6, appliance update (A/B) with running servers.
+### What is there after 1b-6
+
+- **The appliance's update** (`Lab.updateAppliance`): a start that takes over
+  a running appliance of another release than the one that came with HLab
+  replaces it without stopping the servers. The new appliance starts beside
+  the old one with the other MAC set (`hlab-appliance-a` and
+  `hlab-appliance-b`), its NICs on the same switches, and gets every picture;
+  then the state names it (`lab.appliance`: release and MAC set), the old one
+  is turned off and deleted with its system disk, and the new one sends its
+  announcements again. If the new one does not come up, the old one runs on
+  and the next start tries again. The triggers: `bin/dev deploy --keep-vms`
+  after `bin/dev appliance`, and a crashed HLab started again after an
+  update; after a normal stop the appliance is off, and the start makes it
+  anew on the new release with the state's MAC set.
+- **Releases in the data folder:** a start copies the release disk to
+  `<data>/appliance/<sha256>.vhdx` (its SHA-256 is the release's ID) and the
+  appliance runs on a differencing disk on the copy, so the disk next to
+  `hlabd` is never held open. After the start the folder keeps only the
+  running appliance's release and system disk and the newest release.
+- **HLab's end during an update:** the next start keeps the appliance the
+  state names (the old one until the new one has every picture, then the new
+  one), removes the other as a stray VM and announces again with the
+  pictures; an old one still of another release is updated anew. Unit tests
+  with the fake cover the update, a new appliance that does not come up, and
+  both cut-short cases.
+- **The live test** (`TestServersBootAnswerAndOutliveTheLab`, now 240 s)
+  updates the appliance with a running server: a copy of the release disk
+  with another VHDX creator field is a new release. Measured on a Ryzen AI
+  Max+ 395: the update takes 11 s (the new appliance's agent answers after
+  9 s, its pictures 0.3 s, the switch 1.3 s); the server took no new TCP
+  connection for 0.5 s at most (tried every 100 ms, so mostly the tries'
+  spacing), and an SSH session printing every 100 ms stalled for 110 ms at
+  most and lived on. Afterwards only the new appliance (set B) is left, and
+  the appliance's folder holds only its release and `system-B.vhdx`.
+- **Not in 1b-6:** `boxes.vhdx` moves to the new appliance with the Storage
+  Boxes (phase 5); the generations of the pictures stay in memory, as before
+  (the agent reports what it has, so a start sends everything again).
+- An appliance VM of an HLab before 1b-6 (`hlab-appliance`) counts as stray
+  and goes at the next start.
+
+Next: 1b-R, the review of phase 1b.
 
 Not there yet: the commands of later phases.

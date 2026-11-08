@@ -82,7 +82,12 @@ func run(dataDir, platformName, appliance string, logger *slog.Logger) error {
 	case fakePlatform:
 		// the fake machine, with this machine's life cycle: one HLab per
 		// machine, the control token for the CLI, Ctrl+C
-		opts.Parts = fakeMachine(fake.New(), appliance)
+		release, err := fakeRelease(appliance, dataDir)
+		if err != nil {
+			return err
+		}
+		opts.Machine.ApplianceRelease = release
+		opts.Parts = fakeMachine(fake.New())
 		opts.Parts.Lifecycle = withAgents{Lifecycle: nativeLifecycle(), dialer: opts.Parts.Lifecycle.AgentDialer()}
 		opts.Hosts = []string{loopback}
 	case runtime.GOOS:
@@ -105,12 +110,26 @@ func run(dataDir, platformName, appliance string, logger *slog.Logger) error {
 	return svc.wait()
 }
 
-// fakeMachine gives a machine in memory the appliance's release disk and an
-// agent in the appliance, and returns its parts.
-func fakeMachine(machine *fake.Fake, appliance string) platform.Platform {
-	machine.AddDisk(appliance, 4)
-	machine.ServeAgent(system.ApplianceVM, fake.NewAgent().Serve)
+// fakeMachine gives a machine in memory an agent in each of the
+// appliance's VMs (MAC sets A and B), and returns its parts.
+func fakeMachine(machine *fake.Fake) platform.Platform {
+	machine.ServeAgent(system.ApplianceVM("A"), fake.NewAgent().Serve)
+	machine.ServeAgent(system.ApplianceVM("B"), fake.NewAgent().Serve)
 	return machine.Platform()
+}
+
+// fakeRelease returns the appliance's release disk for the fake machine:
+// the one given if it is there, or else a stand-in in the data folder, as
+// the fake machine boots nothing from it.
+func fakeRelease(appliance, dataDir string) (string, error) {
+	if _, err := os.Stat(appliance); err == nil {
+		return appliance, nil
+	}
+	standIn := filepath.Join(dataDir, "fake-appliance.vhdx")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		return "", err
+	}
+	return standIn, os.WriteFile(standIn, []byte("the fake machine's appliance\n"), 0o644)
 }
 
 // withAgents is a life cycle whose agents are another's: this machine's

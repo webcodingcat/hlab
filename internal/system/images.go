@@ -74,13 +74,15 @@ func (s *System) LoadImage(ctx context.Context, source ImageSource, cacheDir str
 	return loaded, nil
 }
 
-// CleanImageCache removes from the cache folder what keep does not name:
-// images that no cache entry and no server's disk needs any more (an image
-// whose source changed in the catalog was loaded anew), and the folders of
-// loads that HLab's end cut short. It returns what it removed. A disk that
-// a VM still uses stays (the hypervisor refuses to delete it).
-func (s *System) CleanImageCache(ctx context.Context, cacheDir string, keep []string) ([]string, error) {
-	entries, err := os.ReadDir(cacheDir)
+// CleanDir removes from a folder of disks what keep does not name: from
+// the image cache the images that no cache entry and no server's disk needs
+// any more (an image whose source changed in the catalog was loaded anew),
+// from the appliance's folder the releases and system disks of earlier
+// appliances; and what work HLab's end cut short left. It returns what it
+// removed. A disk that a VM still uses stays (the hypervisor refuses to
+// delete it).
+func (s *System) CleanDir(ctx context.Context, dir string, keep []string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -90,7 +92,7 @@ func (s *System) CleanImageCache(ctx context.Context, cacheDir string, keep []st
 	var removed []string
 	var errs []error
 	for _, entry := range entries {
-		file := filepath.Join(cacheDir, entry.Name())
+		file := filepath.Join(dir, entry.Name())
 		if slices.Contains(keep, file) {
 			continue
 		}

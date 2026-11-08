@@ -56,7 +56,9 @@ runcmd:
 // stops and starts again: the same servers with the same addresses and
 // disks, also a server whose VM was removed; HLab crashes and the next
 // start takes everything over; the appliance is turned off hard and comes
-// back. Last come a reset, the guest's shutdown and the deletes, and the
+// back. HLab crashes again and comes back with a new release of the
+// appliance: the new appliance replaces the old one while a server runs,
+// with an outage under 5 s and an SSH session that lives on. Last come a reset, the guest's shutdown and the deletes, and the
 // host must be as before. It needs administrator rights, ssh.exe and the
 // appliance's disk next to the test (bin/dev itest copies it); HLab must
 // not run. The system images stay in image-cache next to the test, so that
@@ -164,16 +166,53 @@ func TestServersBootAnswerAndOutliveTheLab(t *testing.T) {
 
 	// the appliance turned off hard: the watchdog brings it back
 	turnedOff := time.Now()
-	if err := parts.Hypervisor.StopVM(ctx, system.ApplianceVM); err != nil {
+	if err := parts.Hypervisor.StopVM(ctx, system.ApplianceVM("A")); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("the appliance was off %s after the call", time.Since(turnedOff).Round(10*time.Millisecond))
 	waitForPort(ctx, t, debian.ipv4, 22)
-	outage := time.Since(turnedOff)
-	t.Logf("the server answered again %s after the appliance was turned off", outage.Round(10*time.Millisecond))
-	if outage > 10*time.Second {
-		t.Errorf("the outage took %s, want less than 10 s", outage.Round(100*time.Millisecond))
+	restored := time.Since(turnedOff)
+	t.Logf("the server answered again %s after the appliance was turned off", restored.Round(10*time.Millisecond))
+	if restored > 10*time.Second {
+		t.Errorf("the outage took %s, want less than 10 s", restored.Round(100*time.Millisecond))
 	}
+
+	// the appliance's update: HLab crashes and comes back with a new
+	// release, which replaces the running appliance (MAC set A) by one with
+	// the set B while the servers run on
+	run.close(t, l)
+	run.crash(ctx, t)
+	waitForSSH(ctx, t, debian.ipv4)
+	booted[debian.name] = keys.bootID(t, debian)
+	run.release = newRelease(t, release)
+	outages := watchOutage(debian.ipv4, 22)
+	session := keys.watchSession(t, debian.ipv4)
+	updated := time.Now()
+	l = run.open(ctx, t)
+	t.Logf("the lab started with the appliance updated in %s", time.Since(updated).Round(100*time.Millisecond))
+	time.Sleep(2 * time.Second) // an outage right after the switch would show now
+	outage := outages.end()
+	stalled, lived := session.end()
+	t.Logf("during the update the server took no new connection for %s at most, and the SSH session stalled for %s at most",
+		outage.Round(10*time.Millisecond), stalled.Round(10*time.Millisecond))
+	if outage > 5*time.Second {
+		t.Errorf("the update's outage took %s, want less than 5 s", outage.Round(100*time.Millisecond))
+	}
+	if !lived {
+		t.Error("the SSH session through the appliance did not live through the update")
+	}
+	api = newCloudAPI(t, l)
+	if id := keys.bootID(t, debian); id != booted[debian.name] {
+		t.Errorf("%s booted again during the appliance's update", debian.name)
+	}
+	waitForStatus(ctx, t, api, debian.id, "running")
+	if state, err := parts.Hypervisor.VMState(ctx, system.ApplianceVM("A")); !errors.Is(err, platform.ErrNotFound) {
+		t.Errorf("the old appliance: %+v, %v; want it gone", state, err)
+	}
+	if state, err := parts.Hypervisor.VMState(ctx, system.ApplianceVM("B")); err != nil || state.Power != platform.PowerRunning {
+		t.Errorf("the new appliance: %+v, %v; want it running", state, err)
+	}
+	checkApplianceFolder(t, run.dataDir, run.release, "B")
 
 	reset := time.Now()
 	api.action(t, debian.id, "reset")
@@ -200,7 +239,7 @@ func TestServersBootAnswerAndOutliveTheLab(t *testing.T) {
 	}
 	// the appliance's VM stays off for the next start, as after every stop
 	found, err := parts.Hypervisor.FindVMs(ctx, system.VMTag)
-	if err != nil || len(found) != 1 || found[0].Name != system.ApplianceVM || found[0].Power != platform.PowerOff {
+	if err != nil || len(found) != 1 || found[0].Name != system.ApplianceVM("B") || found[0].Power != platform.PowerOff {
 		t.Errorf("the lab's VMs left: %v, %v; want only the appliance's, off", found, err)
 	}
 	checkHostIsClean(t)

@@ -58,7 +58,9 @@ func TestApplianceBootsAnswersAndComesBackAfterItDies(t *testing.T) {
 			t.Errorf("DisconnectHost: %v", err)
 		}
 	})
+	vm := system.ApplianceVM(string(lab.MACSet))
 	spec := system.ApplianceSpec{
+		VM:         vm,
 		Release:    release,
 		SystemDisk: filepath.Join(t.TempDir(), "system-A.vhdx"),
 		MACs:       [4]string{lab.MACSet.MAC(1), lab.MACSet.MAC(2), lab.MACSet.MAC(3), lab.MACSet.MAC(4)},
@@ -68,7 +70,7 @@ func TestApplianceBootsAnswersAndComesBackAfterItDies(t *testing.T) {
 		if err := appliance.Stop(context.Background()); err != nil {
 			t.Errorf("stopping the appliance: %v", err)
 		}
-		if err := parts.Hypervisor.DeleteVM(context.Background(), system.ApplianceVM); err != nil && !errors.Is(err, platform.ErrNotFound) {
+		if err := parts.Hypervisor.DeleteVM(context.Background(), vm); err != nil && !errors.Is(err, platform.ErrNotFound) {
 			t.Errorf("DeleteVM: %v", err)
 		}
 	})
@@ -80,15 +82,15 @@ func TestApplianceBootsAnswersAndComesBackAfterItDies(t *testing.T) {
 	}
 
 	started := time.Now()
-	if err := appliance.Start(ctx, pictures); err != nil {
+	if _, err := appliance.Start(ctx, pictures); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("the appliance booted and took every picture in %s", time.Since(started).Round(time.Millisecond))
-	agent := agentClient(parts.Lifecycle.AgentDialer())
+	agent := agentClient(parts.Lifecycle.AgentDialer(), vm)
 	if missing := missingPictures(ctx, agent, 1); len(missing) > 0 {
 		t.Fatalf("the agent lacks the pictures %v", missing)
 	}
-	state, err := parts.Hypervisor.VMState(ctx, system.ApplianceVM)
+	state, err := parts.Hypervisor.VMState(ctx, vm)
 	if err != nil || !state.Heartbeat {
 		t.Errorf("the appliance's state is %+v, %v; want its heartbeat", state, err)
 	}
@@ -97,7 +99,7 @@ func TestApplianceBootsAnswersAndComesBackAfterItDies(t *testing.T) {
 
 	// the appliance dies; the watchdog notices within three checks
 	killed := time.Now()
-	if err := parts.Hypervisor.StopVM(ctx, system.ApplianceVM); err != nil {
+	if err := parts.Hypervisor.StopVM(ctx, vm); err != nil {
 		t.Fatal(err)
 	}
 	for len(missingPictures(ctx, agent, 1)) > 0 {
@@ -109,14 +111,14 @@ func TestApplianceBootsAnswersAndComesBackAfterItDies(t *testing.T) {
 	t.Logf("the appliance was back with its pictures %s after it died", time.Since(killed).Round(time.Millisecond))
 }
 
-// agentClient returns an HTTP client of the appliance's agent.
-func agentClient(dialer platform.AgentDialer) *http.Client {
+// agentClient returns an HTTP client of the agent in the appliance's VM.
+func agentClient(dialer platform.AgentDialer, vm string) *http.Client {
 	return &http.Client{
 		Timeout: 2 * time.Second,
 		Transport: &http.Transport{
 			DisableKeepAlives: true,
 			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				return dialer.Dial(ctx, system.ApplianceVM, agentproto.Port)
+				return dialer.Dial(ctx, vm, agentproto.Port)
 			},
 		},
 	}

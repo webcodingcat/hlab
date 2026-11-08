@@ -311,9 +311,9 @@ deploy() {
   stopped="$(date +%s%N)"
   cp build/windows/hlabd.exe build/windows/hlab.exe "${DEV_DIR}/bin/"
   if [[ -e "${APPLIANCE}" ]]; then
-    # Hyper-V holds the disk while an appliance that kept running uses it
-    cp --update "${APPLIANCE}" "${DEV_DIR}/bin/" \
-      || echo "bin/dev: the running appliance keeps the old disk" >&2
+    # the appliance runs on a copy in the data folder; a newer disk makes
+    # the start update a running appliance (DEVELOPING.md, The service)
+    cp --update "${APPLIANCE}" "${DEV_DIR}/bin/"
   fi
   schtasks.exe /run /tn "${DEV_TASK}" >/dev/null \
     || die "the task \"${DEV_TASK}\" did not start: bin/dev.ps1 dev-install"

@@ -50,6 +50,14 @@ func (s MACSet) MAC(nic int) string {
 	return "02:48:4c:" + set + ":00:0" + string(rune('0'+nic))
 }
 
+// Other returns the other set, the one the next update takes.
+func (s MACSet) Other() MACSet {
+	if s == MACSetB {
+		return MACSetA
+	}
+	return MACSetB
+}
+
 // Lab is what the pictures are built from: plain values that the lab takes
 // from its state and settings. The servers come with phase 1b-4; until
 // then the lab has none.

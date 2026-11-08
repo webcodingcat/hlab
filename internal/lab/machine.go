@@ -51,7 +51,7 @@ func (l *Lab) StartMachine(ctx context.Context, opts MachineOptions) error {
 	if err != nil {
 		return err
 	}
-	lab := l.pictureLab()
+	lab := l.basePictureLab()
 	link := system.HostLink{
 		Ranges:    []netip.Prefix{lab.Range4, lab.Range6},
 		Addresses: lab.HostAddresses(),
@@ -60,7 +60,7 @@ func (l *Lab) StartMachine(ctx context.Context, opts MachineOptions) error {
 	if err := l.system.ConnectHost(ctx, link); err != nil {
 		return err
 	}
-	appliance, err := l.startAppliance(ctx, lab, opts)
+	appliance, err := l.startAppliance(ctx, opts)
 	if err != nil {
 		if disconnectErr := l.system.DisconnectHost(context.WithoutCancel(ctx)); disconnectErr != nil {
 			l.logger.Warn("removing the host link after a failed start", "error", disconnectErr)
@@ -183,7 +183,7 @@ func (l *Lab) cleanImageCache(ctx context.Context) {
 		}
 		return nil
 	})
-	removed, err := l.system.CleanImageCache(ctx, filepath.Join(l.dataDir, ImageCacheDir), keep)
+	removed, err := l.system.CleanDir(ctx, filepath.Join(l.dataDir, ImageCacheDir), keep)
 	if len(removed) > 0 {
 		l.logger.Info("removed from the image cache what no server needs", "files", removed)
 	}
@@ -192,17 +192,30 @@ func (l *Lab) cleanImageCache(ctx context.Context) {
 	}
 }
 
-// startAppliance removes stray VMs, starts the appliance and sets the host's
-// DNS rules; the zones' rules come with phase 2b, until then it only
-// removes the rules of an earlier run.
-func (l *Lab) startAppliance(ctx context.Context, lab picture.Lab, opts MachineOptions) (*system.Appliance, error) {
-	keep := []string{system.ApplianceVM}
+// startAppliance stages the appliance's release, removes stray VMs, starts
+// the appliance or takes it over and updates it if it runs an older release
+// (13.6); then it sets the host's DNS rules and cleans the appliance's
+// folder. The zones' rules come with phase 2b; until then it only removes
+// the rules of an earlier run.
+func (l *Lab) startAppliance(ctx context.Context, opts MachineOptions) (*system.Appliance, error) {
+	dir := filepath.Join(l.dataDir, ApplianceDir)
+	release, err := l.system.StageApplianceRelease(opts.ApplianceRelease, dir)
+	if err != nil {
+		return nil, err
+	}
+	var running state.Appliance
+	keep := []string{}
 	_ = l.View(func(tx *state.Tx) error {
+		running = tx.Lab().Appliance
+		running.MACSet = string(macSet(tx))
 		for _, id := range state.IDs(tx, state.Servers, func(*state.Server) bool { return true }) {
 			keep = append(keep, ServerVM(id))
 		}
 		return nil
 	})
+	// the other set's appliance is what an update that HLab's end cut short
+	// left: the state names the new one only once it has every picture
+	keep = append(keep, system.ApplianceVM(running.MACSet))
 	removed, err := l.system.RemoveStrayVMs(ctx, keep)
 	if err != nil {
 		return nil, err
@@ -210,24 +223,118 @@ func (l *Lab) startAppliance(ctx context.Context, lab picture.Lab, opts MachineO
 	if len(removed) > 0 {
 		l.logger.Info("removed VMs that an earlier run left", "vms", removed)
 	}
-	spec := system.ApplianceSpec{
-		Release:    opts.ApplianceRelease,
-		SystemDisk: filepath.Join(l.dataDir, ApplianceDir, "system-"+string(lab.MACSet)+".vhdx"),
-		MACs:       [4]string{lab.MACSet.MAC(1), lab.MACSet.MAC(2), lab.MACSet.MAC(3), lab.MACSet.MAC(4)},
-	}
-	appliance := l.system.NewAppliance(spec, opts.Timings, l.logger.With("part", "appliance"))
-	if err := appliance.Start(ctx, l.pictures(lab)); err != nil {
+	appliance := l.newAppliance(picture.MACSet(running.MACSet), release, opts.Timings)
+	takenOver, err := appliance.Start(ctx, l.pictures(l.pictureLab()))
+	if err != nil {
 		return nil, fmt.Errorf("starting the appliance: %w", err)
+	}
+	switch {
+	case !takenOver:
+		running.Release = release.ID
+		if err := l.Change(func(tx *state.Tx) error { tx.Lab().Appliance = running; return nil }); err != nil {
+			return nil, errors.Join(err, appliance.Stop(context.WithoutCancel(ctx)))
+		}
+	case running.Release != release.ID:
+		if appliance, err = l.updateAppliance(ctx, appliance, running, release, opts.Timings); err != nil {
+			return nil, err
+		}
 	}
 	if err := l.system.SetHostDNS(ctx, nil); err != nil {
 		return nil, errors.Join(err, appliance.Stop(context.WithoutCancel(ctx)))
 	}
+	l.cleanApplianceDir(ctx, release)
 	return appliance, nil
 }
 
+// updateAppliance replaces the running appliance, taken over from a
+// crashed hlabd, by one of the new release with the other MAC set (13.6):
+// the new one starts beside the old one on the same switches and gets every
+// picture; then the state names it, the old one goes, and the new one
+// announces its addresses again. If the new one does not come up, the old
+// one runs on and the next start tries again.
+func (l *Lab) updateAppliance(ctx context.Context, old *system.Appliance, from state.Appliance, release system.ApplianceRelease, timings system.ApplianceTimings) (*system.Appliance, error) {
+	started := time.Now()
+	set := picture.MACSet(from.MACSet).Other()
+	l.logger.Info("updating the appliance", "from", from.Release, "to", release.ID, "mac_set", set)
+	lab := l.pictureLab()
+	lab.MACSet = set
+	next := l.newAppliance(set, release, timings)
+	if _, err := next.Start(ctx, l.pictures(lab)); err != nil {
+		err = errors.Join(err, next.Remove(context.WithoutCancel(ctx)))
+		if ctx.Err() != nil {
+			return nil, errors.Join(err, old.Stop(context.WithoutCancel(ctx)))
+		}
+		l.logger.Error("the appliance's update failed; the old one runs on", "error", err)
+		return old, nil
+	}
+	err := l.Change(func(tx *state.Tx) error {
+		tx.Lab().Appliance = state.Appliance{Release: release.ID, MACSet: string(set)}
+		return nil
+	})
+	if err == nil {
+		err = old.Remove(ctx)
+	}
+	if err != nil {
+		// the next start removes what is left of either
+		return nil, errors.Join(err, next.Stop(context.WithoutCancel(ctx)))
+	}
+	if err := next.Announce(ctx); err != nil {
+		l.logger.Warn("announcing the new appliance's addresses", "error", err)
+	}
+	l.logger.Info("the appliance is updated", "took", time.Since(started).Round(time.Millisecond))
+	return next, nil
+}
+
+// newAppliance returns the appliance with a MAC set on a release; it does
+// not start it yet.
+func (l *Lab) newAppliance(set picture.MACSet, release system.ApplianceRelease, timings system.ApplianceTimings) *system.Appliance {
+	spec := system.ApplianceSpec{
+		VM:         system.ApplianceVM(string(set)),
+		Release:    release.Disk,
+		SystemDisk: filepath.Join(l.dataDir, ApplianceDir, "system-"+string(set)+".vhdx"),
+		MACs:       [4]string{set.MAC(1), set.MAC(2), set.MAC(3), set.MAC(4)},
+	}
+	return l.system.NewAppliance(spec, timings, l.logger.With("part", "appliance"))
+}
+
+// cleanApplianceDir removes from the appliance's folder what the running
+// appliance and the newest release do not need: earlier releases, the
+// other set's system disk, copies cut short. A failure only costs disk
+// space, so it is logged.
+func (l *Lab) cleanApplianceDir(ctx context.Context, release system.ApplianceRelease) {
+	var running state.Appliance
+	_ = l.View(func(tx *state.Tx) error {
+		running = tx.Lab().Appliance
+		running.MACSet = string(macSet(tx))
+		return nil
+	})
+	dir := filepath.Join(l.dataDir, ApplianceDir)
+	keep := []string{
+		release.Disk,
+		filepath.Join(dir, running.Release+".vhdx"),
+		filepath.Join(dir, "system-"+running.MACSet+".vhdx"),
+	}
+	removed, err := l.system.CleanDir(ctx, dir, keep)
+	if len(removed) > 0 {
+		l.logger.Info("removed from the appliance's folder what it no longer needs", "files", removed)
+	}
+	if err != nil {
+		l.logger.Warn("cleaning the appliance's folder", "error", err)
+	}
+}
+
+// macSet returns the running appliance's MAC set, A before its first
+// start.
+func macSet(tx *state.Tx) picture.MACSet {
+	if set := picture.MACSet(tx.Lab().Appliance.MACSet); set == picture.MACSetB {
+		return set
+	}
+	return picture.MACSetA
+}
+
 // pictureLab returns what the pictures are built from, with a new
-// generation: the servers that have a VM or are getting one. The MAC set's
-// switch comes with the appliance's update (1b-6).
+// generation: the running appliance's MAC set and the servers that have a
+// VM or are getting one.
 func (l *Lab) pictureLab() picture.Lab {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -235,6 +342,7 @@ func (l *Lab) pictureLab() picture.Lab {
 	lab := l.basePictureLab()
 	lab.Generation = l.generation
 	tx := state.Read(l.state)
+	lab.MACSet = macSet(tx)
 	for _, server := range state.All(tx, state.Servers) {
 		lab.Servers = append(lab.Servers, serverFacts(tx, server))
 	}

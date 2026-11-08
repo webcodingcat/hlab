@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,8 +13,11 @@ import (
 	"github.com/webcodingcat/hlab/internal/platform"
 )
 
-// ApplianceVM is the appliance's VM.
-const ApplianceVM = "hlab-appliance"
+// ApplianceVM returns the name of the appliance's VM with a MAC set ("A"
+// or "B"): during an update the old and the new appliance run side by side.
+func ApplianceVM(macSet string) string {
+	return "hlab-appliance-" + strings.ToLower(macSet)
+}
 
 // The appliance's size: Phase 0 measured 371 MB in use under load, with 20
 // servers, 10 firewalls and HAProxy.
@@ -24,8 +28,10 @@ const (
 
 // ApplianceSpec is what the appliance is made of.
 type ApplianceSpec struct {
-	// Release is the disk of the appliance's release, which bin/dev appliance
-	// builds; it stays as it is.
+	// VM is the name of its VM (ApplianceVM).
+	VM string
+	// Release is the disk of the appliance's release in the data folder
+	// (StageApplianceRelease); it stays as it is.
 	Release string
 	// SystemDisk is the appliance's own disk, a differencing disk on Release.
 	// Each start that does not take a running appliance over makes it anew:
@@ -107,7 +113,7 @@ func (s *System) NewAppliance(spec ApplianceSpec, timings ApplianceTimings, logg
 		system:  s,
 		spec:    spec,
 		timings: timings,
-		agent:   newAgentClient(s.platform.Lifecycle.AgentDialer(), ApplianceVM),
+		agent:   newAgentClient(s.platform.Lifecycle.AgentDialer(), spec.VM),
 		logger:  logger,
 		refused: map[string]uint64{},
 	}
@@ -115,31 +121,33 @@ func (s *System) NewAppliance(spec ApplianceSpec, timings ApplianceTimings, logg
 
 // Start takes over the appliance if it runs and its agent answers, as after
 // a crash of hlabd; otherwise it starts it anew. Then it sends every
-// picture and starts the watchdog.
-func (a *Appliance) Start(ctx context.Context, pictures Pictures) error {
+// picture and starts the watchdog. It reports whether it took the
+// appliance over: that one may run an older release.
+func (a *Appliance) Start(ctx context.Context, pictures Pictures) (takenOver bool, err error) {
 	a.mu.Lock()
 	a.pictures = pictures
 	a.mu.Unlock()
 	started := time.Now()
-	if a.answers(ctx) {
-		a.logger.Info("taking over the running appliance")
+	takenOver = a.answers(ctx)
+	if takenOver {
+		a.logger.Info("taking over the running appliance", "vm", a.spec.VM)
 	} else {
 		if err := a.create(ctx); err != nil {
-			return err
+			return false, err
 		}
 		if err := a.waitForAgent(ctx); err != nil {
-			return err
+			return false, err
 		}
-		a.logger.Info("the appliance's agent answers", "took", time.Since(started).Round(time.Millisecond))
+		a.logger.Info("the appliance's agent answers", "vm", a.spec.VM, "took", time.Since(started).Round(time.Millisecond))
 	}
 	if err := a.sendAll(ctx); err != nil {
-		return err
+		return takenOver, err
 	}
-	a.logger.Info("the appliance is ready", "took", time.Since(started).Round(time.Millisecond))
+	a.logger.Info("the appliance is ready", "vm", a.spec.VM, "took", time.Since(started).Round(time.Millisecond))
 	watchdogCtx, cancel := context.WithCancel(context.Background())
 	a.stopWatchdog = cancel
 	a.watchdog.Go(func() { a.watch(watchdogCtx) })
-	return nil
+	return takenOver, nil
 }
 
 // Update makes pictures the newest and sends them all, in order. If
@@ -152,16 +160,47 @@ func (a *Appliance) Update(ctx context.Context, pictures Pictures) error {
 	return a.sendAll(ctx)
 }
 
-// Stop ends the watchdog and shuts the appliance down: the guest first,
-// turned off after the deadline. The VM stays, for the next start.
-func (a *Appliance) Stop(ctx context.Context) error {
+// Announce sends the links picture again, after which the agent announces
+// the appliance's addresses. After an update the old appliance answered
+// too while both ran, so some neighbors may still hold its MAC addresses.
+func (a *Appliance) Announce(ctx context.Context) error {
+	a.mu.Lock()
+	links := a.pictures.inOrder()[0]
+	a.mu.Unlock()
+	return a.send(ctx, links)
+}
+
+// Remove ends the watchdog and deletes the appliance's VM, turned off at
+// once, and its system disk: the old appliance after an update, or a new
+// one whose start failed.
+func (a *Appliance) Remove(ctx context.Context) error {
+	a.endWatchdog()
+	hypervisor := a.system.platform.Hypervisor
+	if err := hypervisor.DeleteVM(ctx, a.spec.VM); err != nil && !errors.Is(err, platform.ErrNotFound) {
+		return fmt.Errorf("removing the appliance %s: %w", a.spec.VM, err)
+	}
+	if err := hypervisor.DeleteDisk(ctx, a.spec.SystemDisk); err != nil && !errors.Is(err, platform.ErrNotFound) {
+		return fmt.Errorf("removing the disk of the appliance %s: %w", a.spec.VM, err)
+	}
+	return nil
+}
+
+// endWatchdog stops the watchdog, if it runs, and waits until it is done.
+func (a *Appliance) endWatchdog() {
 	if a.stopWatchdog != nil {
 		a.stopWatchdog()
 		a.watchdog.Wait()
+		a.stopWatchdog = nil
 	}
 	a.agent.close()
+}
+
+// Stop ends the watchdog and shuts the appliance down: the guest first,
+// turned off after the deadline. The VM stays, for the next start.
+func (a *Appliance) Stop(ctx context.Context) error {
+	a.endWatchdog()
 	hypervisor := a.system.platform.Hypervisor
-	if err := hypervisor.ShutdownVM(ctx, ApplianceVM); err != nil {
+	if err := hypervisor.ShutdownVM(ctx, a.spec.VM); err != nil {
 		if errors.Is(err, platform.ErrNotFound) {
 			return nil
 		}
@@ -170,7 +209,7 @@ func (a *Appliance) Stop(ctx context.Context) error {
 	started := time.Now()
 	deadline := started.Add(a.timings.Shutdown)
 	for time.Now().Before(deadline) {
-		state, err := hypervisor.VMState(ctx, ApplianceVM)
+		state, err := hypervisor.VMState(ctx, a.spec.VM)
 		if err == nil && state.Power == platform.PowerOff {
 			a.logger.Info("the appliance shut down", "took", time.Since(started).Round(time.Millisecond))
 			return nil
@@ -180,12 +219,12 @@ func (a *Appliance) Stop(ctx context.Context) error {
 		}
 	}
 	a.logger.Warn("the appliance did not shut down in time; turning it off", "deadline", a.timings.Shutdown)
-	return hypervisor.StopVM(context.WithoutCancel(ctx), ApplianceVM)
+	return hypervisor.StopVM(context.WithoutCancel(ctx), a.spec.VM)
 }
 
 // answers tells whether the appliance runs and its agent answers.
 func (a *Appliance) answers(ctx context.Context) bool {
-	state, err := a.system.platform.Hypervisor.VMState(ctx, ApplianceVM)
+	state, err := a.system.platform.Hypervisor.VMState(ctx, a.spec.VM)
 	if err != nil || state.Power != platform.PowerRunning {
 		return false
 	}
@@ -198,7 +237,7 @@ func (a *Appliance) answers(ctx context.Context) bool {
 // release.
 func (a *Appliance) create(ctx context.Context) error {
 	hypervisor := a.system.platform.Hypervisor
-	if err := hypervisor.DeleteVM(ctx, ApplianceVM); err != nil && !errors.Is(err, platform.ErrNotFound) {
+	if err := hypervisor.DeleteVM(ctx, a.spec.VM); err != nil && !errors.Is(err, platform.ErrNotFound) {
 		return fmt.Errorf("removing the old appliance: %w", err)
 	}
 	if err := hypervisor.DeleteDisk(ctx, a.spec.SystemDisk); err != nil && !errors.Is(err, platform.ErrNotFound) {
@@ -208,7 +247,7 @@ func (a *Appliance) create(ctx context.Context) error {
 		return fmt.Errorf("creating the appliance's disk on %s: %w", a.spec.Release, err)
 	}
 	spec := platform.VMSpec{
-		Name:     ApplianceVM,
+		Name:     a.spec.VM,
 		Tag:      VMTag,
 		CPUs:     applianceCPUs,
 		MemoryMB: applianceMemoryMB,
@@ -225,7 +264,7 @@ func (a *Appliance) create(ctx context.Context) error {
 	if err := hypervisor.CreateVM(ctx, spec); err != nil {
 		return fmt.Errorf("creating the appliance: %w", err)
 	}
-	if err := hypervisor.StartVM(ctx, ApplianceVM); err != nil {
+	if err := hypervisor.StartVM(ctx, a.spec.VM); err != nil {
 		return fmt.Errorf("starting the appliance: %w", err)
 	}
 	return nil
@@ -235,9 +274,9 @@ func (a *Appliance) create(ctx context.Context) error {
 // makes it anew if its VM is gone.
 func (a *Appliance) restart(ctx context.Context) error {
 	hypervisor := a.system.platform.Hypervisor
-	err := hypervisor.StopVM(ctx, ApplianceVM)
+	err := hypervisor.StopVM(ctx, a.spec.VM)
 	if err == nil {
-		err = hypervisor.StartVM(ctx, ApplianceVM)
+		err = hypervisor.StartVM(ctx, a.spec.VM)
 	}
 	if errors.Is(err, platform.ErrNotFound) {
 		err = a.create(ctx)
@@ -342,7 +381,7 @@ func (a *Appliance) watch(ctx context.Context) {
 // answers. It sends the pictures the agent lacks, as after a restart of the
 // agent alone.
 func (a *Appliance) check(ctx context.Context) error {
-	state, err := a.system.platform.Hypervisor.VMState(ctx, ApplianceVM)
+	state, err := a.system.platform.Hypervisor.VMState(ctx, a.spec.VM)
 	switch {
 	case errors.Is(err, platform.ErrNotFound):
 		return fmt.Errorf("%w: its VM is gone", errOff)

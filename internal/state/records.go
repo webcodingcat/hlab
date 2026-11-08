@@ -214,14 +214,23 @@ func (p PrimaryIP) RecordID() int64 { return p.ID }
 func (p PrimaryIP) RecordProject() int64 { return p.ProjectID }
 
 // Lab is the lab's own records, which the API does not show. Later phases add
-// the appliance, the Internet clients and the ACME keys.
+// the Internet clients and the ACME keys.
 type Lab struct {
-	Faults map[int64]ProjectFaults `json:"faults"` // by project ID
+	// Appliance is the appliance that runs, or ran last.
+	Appliance Appliance               `json:"appliance"`
+	Faults    map[int64]ProjectFaults `json:"faults"` // by project ID
 	// Images is the image cache: the system images on the disk, by the
 	// image's name ("debian-13").
 	Images map[string]CachedImage `json:"images"`
 	// Pools are where the next search for a free public address starts.
 	Pools Pools `json:"pools"`
+}
+
+// Appliance is the appliance that runs: its release and its MAC set. Both
+// are empty before its first start; the first start takes the set A.
+type Appliance struct {
+	Release string `json:"release"` // the release disk's SHA-256, hex
+	MACSet  string `json:"mac_set"` // "A" or "B"
 }
 
 // CachedImage is a system image in the cache.

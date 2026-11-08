@@ -3,6 +3,7 @@ package system_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"slices"
 	"strings"
@@ -16,6 +17,9 @@ import (
 )
 
 const release = "release.vhdx"
+
+// applianceVM is the appliance's VM with the MAC set A.
+var applianceVM = system.ApplianceVM("A")
 
 // fastTimings checks often and gives up quickly, so the tests take
 // milliseconds.
@@ -31,8 +35,9 @@ func newAppliance(t *testing.T, timings ...system.ApplianceTimings) (*fake.Fake,
 	machine := fake.New()
 	machine.AddDisk(release, 4)
 	agent := fake.NewAgent()
-	machine.ServeAgent(system.ApplianceVM, agent.Serve)
+	machine.ServeAgent(applianceVM, agent.Serve)
 	spec := system.ApplianceSpec{
+		VM:         applianceVM,
 		Release:    release,
 		SystemDisk: "appliance/system-A.vhdx",
 		MACs:       [4]string{"02:48:4c:0a:00:01", "02:48:4c:0a:00:02", "02:48:4c:0a:00:03", "02:48:4c:0a:00:04"},
@@ -88,13 +93,13 @@ func calls(machine *fake.Fake, method string) []string {
 
 func TestApplianceStartsOnADiskOfItsOwnAndGetsEveryPicture(t *testing.T) {
 	machine, agent, appliance := newAppliance(t)
-	if err := appliance.Start(t.Context(), testPictures(1)); err != nil {
+	if _, err := appliance.Start(t.Context(), testPictures(1)); err != nil {
 		t.Fatal(err)
 	}
 	if got := calls(machine, "CreateDisk"); !slices.Equal(got, []string{"CreateDisk appliance/system-A.vhdx 0 " + release}) {
 		t.Errorf("CreateDisk calls %q, want a differencing disk on the release", got)
 	}
-	state, err := machine.Platform().Hypervisor.VMState(t.Context(), system.ApplianceVM)
+	state, err := machine.Platform().Hypervisor.VMState(t.Context(), applianceVM)
 	if err != nil || state.Power != platform.PowerRunning {
 		t.Fatalf("the appliance is %v, %v; want running", state, err)
 	}
@@ -107,15 +112,16 @@ func TestApplianceStartsOnADiskOfItsOwnAndGetsEveryPicture(t *testing.T) {
 
 func TestApplianceStartTakesOverARunningApplianceWhoseAgentAnswers(t *testing.T) {
 	machine, _, first := newAppliance(t)
-	if err := first.Start(t.Context(), testPictures(1)); err != nil {
+	if _, err := first.Start(t.Context(), testPictures(1)); err != nil {
 		t.Fatal(err)
 	}
 	// hlabd crashed: the appliance runs on, a new hlabd finds it
-	spec := system.ApplianceSpec{Release: release, SystemDisk: "appliance/system-A.vhdx"}
+	spec := system.ApplianceSpec{VM: applianceVM, Release: release, SystemDisk: "appliance/system-A.vhdx"}
 	second := system.New(machine.Platform()).NewAppliance(spec, fastTimings, slog.New(slog.DiscardHandler))
 	t.Cleanup(func() { _ = second.Stop(context.Background()) })
-	if err := second.Start(t.Context(), testPictures(1)); err != nil {
-		t.Fatal(err)
+	takenOver, err := second.Start(t.Context(), testPictures(1))
+	if err != nil || !takenOver {
+		t.Fatalf("Start() = %v, %v; want the appliance taken over", takenOver, err)
 	}
 	if got := calls(machine, "CreateVM"); len(got) != 1 {
 		t.Errorf("CreateVM calls %q, want only the first start's", got)
@@ -124,16 +130,16 @@ func TestApplianceStartTakesOverARunningApplianceWhoseAgentAnswers(t *testing.T)
 
 func TestApplianceStartMakesAStoppedApplianceAnew(t *testing.T) {
 	machine, _, appliance := newAppliance(t)
-	if err := appliance.Start(t.Context(), testPictures(1)); err != nil {
+	if _, err := appliance.Start(t.Context(), testPictures(1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := appliance.Stop(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := appliance.Start(t.Context(), testPictures(2)); err != nil {
+	if _, err := appliance.Start(t.Context(), testPictures(2)); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"DeleteVM " + system.ApplianceVM, "DeleteDisk appliance/system-A.vhdx", "CreateDisk appliance/system-A.vhdx 0 " + release}
+	want := []string{"DeleteVM " + applianceVM, "DeleteDisk appliance/system-A.vhdx", "CreateDisk appliance/system-A.vhdx 0 " + release}
 	var got []string
 	for _, call := range machine.Calls() {
 		if strings.HasPrefix(call, "Delete") || strings.HasPrefix(call, "CreateDisk") {
@@ -151,17 +157,17 @@ func TestWatchdogRestartsADeadApplianceAtOnceAndSendsThePicturesAgain(t *testing
 	timings := fastTimings
 	timings.Failures = 1000
 	machine, agent, appliance := newAppliance(t, timings)
-	if err := appliance.Start(t.Context(), testPictures(3)); err != nil {
+	if _, err := appliance.Start(t.Context(), testPictures(3)); err != nil {
 		t.Fatal(err)
 	}
 	// the appliance dies: off, and its agent forgets everything
-	if err := machine.Platform().Hypervisor.StopVM(t.Context(), system.ApplianceVM); err != nil {
+	if err := machine.Platform().Hypervisor.StopVM(t.Context(), applianceVM); err != nil {
 		t.Fatal(err)
 	}
 	agent.Restart()
 
 	eventually(t, "the restart", func() bool { return generationOf(agent, agentproto.PictureMetadata) == 3 })
-	state, err := machine.Platform().Hypervisor.VMState(t.Context(), system.ApplianceVM)
+	state, err := machine.Platform().Hypervisor.VMState(t.Context(), applianceVM)
 	if err != nil || state.Power != platform.PowerRunning {
 		t.Errorf("after the restart the appliance is %v, %v; want running", state, err)
 	}
@@ -172,7 +178,7 @@ func TestWatchdogRestartsADeadApplianceAtOnceAndSendsThePicturesAgain(t *testing
 
 func TestWatchdogSendsThePicturesARestartedAgentLacks(t *testing.T) {
 	machine, agent, appliance := newAppliance(t)
-	if err := appliance.Start(t.Context(), testPictures(4)); err != nil {
+	if _, err := appliance.Start(t.Context(), testPictures(4)); err != nil {
 		t.Fatal(err)
 	}
 	agent.Restart() // the agent alone restarted; the VM ran on
@@ -187,7 +193,7 @@ func TestWatchdogDoesNotSendARefusedPictureAgain(t *testing.T) {
 	_, agent, appliance := newAppliance(t)
 	pictures := testPictures(5)
 	pictures.DHCP.Config = "" // the check refuses it
-	if err := appliance.Start(t.Context(), pictures); err != nil {
+	if _, err := appliance.Start(t.Context(), pictures); err != nil {
 		t.Fatalf("a refused picture failed the start: %v", err)
 	}
 	if got := generationOf(agent, agentproto.PictureDHCP); got != 0 {
@@ -201,17 +207,52 @@ func TestWatchdogDoesNotSendARefusedPictureAgain(t *testing.T) {
 
 func TestApplianceStopShutsItDownAndKeepsTheVM(t *testing.T) {
 	machine, _, appliance := newAppliance(t)
-	if err := appliance.Start(t.Context(), testPictures(1)); err != nil {
+	if _, err := appliance.Start(t.Context(), testPictures(1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := appliance.Stop(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	state, err := machine.Platform().Hypervisor.VMState(t.Context(), system.ApplianceVM)
+	state, err := machine.Platform().Hypervisor.VMState(t.Context(), applianceVM)
 	if err != nil || state.Power != platform.PowerOff {
 		t.Errorf("after Stop the appliance is %v, %v; want off and still there", state, err)
 	}
 	if got := calls(machine, "ShutdownVM"); len(got) != 1 {
 		t.Errorf("ShutdownVM calls %q, want one", got)
+	}
+}
+
+func TestApplianceRemoveDeletesItsVMAndItsDisk(t *testing.T) {
+	machine, _, appliance := newAppliance(t)
+	if _, err := appliance.Start(t.Context(), testPictures(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := appliance.Remove(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := machine.Platform().Hypervisor.VMState(t.Context(), applianceVM); !errors.Is(err, platform.ErrNotFound) {
+		t.Errorf("after Remove the appliance's VM: %v, want it gone", err)
+	}
+	if got := calls(machine, "DeleteDisk"); !slices.Contains(got, "DeleteDisk appliance/system-A.vhdx") {
+		t.Errorf("DeleteDisk calls %q, want the system disk deleted", got)
+	}
+	// the watchdog ended with it: nothing makes the appliance anew
+	time.Sleep(10 * fastTimings.Interval)
+	if got := calls(machine, "CreateVM"); len(got) != 1 {
+		t.Errorf("CreateVM calls %q after Remove, want only the start's", got)
+	}
+}
+
+func TestApplianceAnnounceSendsTheLinksAgain(t *testing.T) {
+	_, agent, appliance := newAppliance(t)
+	if _, err := appliance.Start(t.Context(), testPictures(2)); err != nil {
+		t.Fatal(err)
+	}
+	agent.Restart() // forgets the pictures; the watchdog is slower than the check below
+	if err := appliance.Announce(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if got := generationOf(agent, agentproto.PictureLinks); got != 2 {
+		t.Errorf("the agent has links of generation %d after Announce, want 2", got)
 	}
 }

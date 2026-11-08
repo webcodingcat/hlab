@@ -1,8 +1,12 @@
 package lab_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -14,21 +18,49 @@ import (
 	"github.com/webcodingcat/hlab/internal/system"
 )
 
-const release = "release.vhdx"
-
-// machineOptions are the machine's options with a quick watchdog.
+// machineOptions are the machine's options with a quick watchdog; TestMain
+// gives them a release disk.
 var machineOptions = lab.MachineOptions{
-	ApplianceRelease: release,
-	Timings:          system.ApplianceTimings{Interval: 5 * time.Millisecond, Failures: 3, Boot: 5 * time.Second, Shutdown: time.Second},
+	Timings: system.ApplianceTimings{Interval: 5 * time.Millisecond, Failures: 3, Boot: 5 * time.Second, Shutdown: time.Second},
 }
 
-// withAppliance gives the fake machine the appliance's release disk and an
-// agent.
+// releaseContent is what the release disk of machineOptions holds.
+const releaseContent = "the appliance's release"
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "hlab-lab-test-")
+	if err != nil {
+		panic(err)
+	}
+	machineOptions.ApplianceRelease = filepath.Join(dir, "hlab-appliance.vhdx")
+	if err := os.WriteFile(machineOptions.ApplianceRelease, []byte(releaseContent), 0o644); err != nil {
+		panic(err)
+	}
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+// releaseID is the ID of the release disk of machineOptions.
+func releaseID() string {
+	sum := sha256.Sum256([]byte(releaseContent))
+	return hex.EncodeToString(sum[:])
+}
+
+// withAppliance gives the fake machine an agent in the appliance's VM of
+// each MAC set and returns the one of set A, which a first start takes.
 func withAppliance(machine *fake.Fake) *fake.Agent {
-	machine.AddDisk(release, 4)
-	agent := fake.NewAgent()
-	machine.ServeAgent(system.ApplianceVM, agent.Serve)
+	agent, _ := withAppliances(machine)
 	return agent
+}
+
+// withAppliances gives the fake machine an agent in the appliance's VM of
+// each MAC set and returns both.
+func withAppliances(machine *fake.Fake) (setA, setB *fake.Agent) {
+	setA, setB = fake.NewAgent(), fake.NewAgent()
+	machine.ServeAgent(system.ApplianceVM("A"), setA.Serve)
+	machine.ServeAgent(system.ApplianceVM("B"), setB.Serve)
+	return setA, setB
 }
 
 func TestStartMachineConnectsTheHostAndStartsTheAppliance(t *testing.T) {
@@ -61,20 +93,22 @@ func TestStartMachineConnectsTheHostAndStartsTheAppliance(t *testing.T) {
 	if _, up := machine.Link(); up {
 		t.Error("the host link is still there after Close")
 	}
-	state, err := machine.Platform().Hypervisor.VMState(t.Context(), system.ApplianceVM)
+	state, err := machine.Platform().Hypervisor.VMState(t.Context(), system.ApplianceVM("A"))
 	if err != nil || state.Power != platform.PowerOff {
 		t.Errorf("after Close the appliance is %v, %v; want off", state, err)
 	}
 }
 
 func TestStartMachineRemovesTheHostLinkWhenTheApplianceFails(t *testing.T) {
-	machine := fake.New() // without the release disk
+	machine := fake.New()
 	l := start(t, machine, lab.Options{DataDir: t.TempDir()})
 	t.Cleanup(func() { _ = l.Close() })
+	opts := machineOptions
+	opts.ApplianceRelease = filepath.Join(t.TempDir(), "missing.vhdx")
 
-	err := l.StartMachine(t.Context(), machineOptions)
+	err := l.StartMachine(t.Context(), opts)
 
-	if !errors.Is(err, platform.ErrNotFound) || !strings.Contains(err.Error(), "appliance") {
+	if !errors.Is(err, os.ErrNotExist) || !strings.Contains(err.Error(), "appliance") {
 		t.Fatalf("got %v, want the missing release disk", err)
 	}
 	if _, up := machine.Link(); up {

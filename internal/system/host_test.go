@@ -45,7 +45,7 @@ func TestRemoveStrayVMsKeepsTheNamedAndOthersVMs(t *testing.T) {
 	machine := fake.New()
 	hypervisor := machine.Platform().Hypervisor
 	for _, vm := range []platform.VMSpec{
-		{Name: system.ApplianceVM, Tag: system.VMTag},
+		{Name: system.ApplianceVM("A"), Tag: system.VMTag},
 		{Name: "left-behind", Tag: system.VMTag},
 		{Name: "not-ours", Tag: "someone else"},
 	} {
@@ -54,11 +54,11 @@ func TestRemoveStrayVMsKeepsTheNamedAndOthersVMs(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	removed, err := system.New(machine.Platform()).RemoveStrayVMs(t.Context(), []string{system.ApplianceVM})
+	removed, err := system.New(machine.Platform()).RemoveStrayVMs(t.Context(), []string{system.ApplianceVM("A")})
 	if err != nil || !slices.Equal(removed, []string{"left-behind"}) {
 		t.Fatalf("got %v, %v; want left-behind removed", removed, err)
 	}
-	for _, name := range []string{system.ApplianceVM, "not-ours"} {
+	for _, name := range []string{system.ApplianceVM("A"), "not-ours"} {
 		if _, err := hypervisor.VMState(t.Context(), name); err != nil {
 			t.Errorf("%s: %v, want it kept", name, err)
 		}

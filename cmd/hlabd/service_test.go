@@ -35,11 +35,14 @@ func startServiceOn(t *testing.T, machine *fake.Fake) *service {
 	if err := os.WriteFile(filepath.Join(dataDir, config.File), []byte(ports), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	appliance := filepath.Join(dataDir, applianceFile)
+	appliance, err := fakeRelease(filepath.Join(dataDir, applianceFile), dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	svc, err := start(serviceOptions{
 		DataDir:  dataDir,
 		Platform: fakePlatform,
-		Parts:    fakeMachine(machine, appliance),
+		Parts:    fakeMachine(machine),
 		Machine:  lab.MachineOptions{ApplianceRelease: appliance},
 		Hosts:    []string{loopback},
 		Version:  "test",
