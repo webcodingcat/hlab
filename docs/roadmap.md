@@ -327,6 +327,7 @@ metadata's `private-networks`.
   a `/32`, options 121 and 249, MTU 1450, a day, no router, no name
   servers. Two networks with the same range stay apart; no firewall
   touches a private network.
+- **The public lease** lasts a day, as Hetzner's (before: infinite).
 - **In the guest** the seed's vendor-data does what Hetzner's hc-utils
   does: a udev rule starts dhcpcd on each private NIC, also a hot-plugged
   one. Deviations, named in docs/servers.md: that script, the NIC names

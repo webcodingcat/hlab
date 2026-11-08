@@ -32,7 +32,8 @@ func DHCP(lab Lab) agentproto.DHCP {
 		// already when dnsmasq reads the file.
 		fmt.Fprintf(&config, "# server %d\n", server.ID)
 		fmt.Fprintf(&config, "shared-network=%s,%s\n", Gateway4, server.IPv4)
-		fmt.Fprintf(&config, "dhcp-range=%s,static,255.255.255.255,infinite\n", server.IPv4)
+		// Hetzner's lease lasts a day (measured 2026-11-08)
+		fmt.Fprintf(&config, "dhcp-range=%s,static,255.255.255.255,1d\n", server.IPv4)
 		fmt.Fprintf(&config, "dhcp-host=%s,%s\n", server.MAC, server.IPv4)
 	}
 	dhcp := agentproto.DHCP{

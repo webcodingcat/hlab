@@ -397,6 +397,7 @@ deleted afterwards. HLab answers the same, except where noted.
 | … the statuses | `attaching` while the server's attach runs; after a detach or the server's delete `detaching` for 5.3 s; the other members `updating` from 1.8 to 2.9 s after another server joins or leaves, still after 6 s (HLab: for 4 s) |
 | the guest (Hetzner's Debian 13, attached at the create) | `enp7s0`, MTU 1450, `10.0.1.1/32`, routes `10.0.0.1` on-link and `10.0.0.0/16` via `10.0.0.1`; no route of the network's routes; `10.0.0.1` answers ping, an address nobody holds does not |
 | … its lease (dhcpcd, started by hc-utils' udev rule) | address `/32`, options 121 and 249 `10.0.0.1/32 0.0.0.0 10.0.0.0/16 10.0.0.1`, MTU 1450, a day; no router, no name servers |
+| … its public lease (`eth0`) | a day too (HLab before 2a-3: infinite) |
 | … a network attached while it runs | its address in the guest 7.8 s after the attach was sent; after the detach it is gone 4.3 s later |
 | … the metadata's `private-networks` | a list of `ip`, `alias_ips`, `interface_num`, `mac_address`, `network_id`, `network_name`, `network`, `subnet`, `gateway` (for 2a-4) |
 
