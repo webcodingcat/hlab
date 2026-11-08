@@ -67,6 +67,10 @@ func setUp(t *testing.T) *Agent {
 		}
 	}
 	mustRun(t, "nft", "flush", "ruleset")
+	// lo as a fresh namespace has it (CI's unshare): down, without
+	// addresses; Docker's comes up with them
+	mustRun(t, "ip", "link", "set", "lo", "down")
+	mustRun(t, "ip", "address", "flush", "dev", "lo")
 	for nic, device := range []string{picture.DeviceLink, picture.DevicePublic, picture.DevicePrivate, picture.DeviceUplink} {
 		mac, _ := net.ParseMAC(picture.MACSetA.MAC(nic + 1))
 		veth := &netlink.Veth{

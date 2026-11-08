@@ -70,7 +70,7 @@ each other past the firewalls.
   that applying failed part way, and hlabd sends the picture again.
 - `links` is not atomic, but every step makes a state the next picture can start
   from. Its order: rename the NICs (a NIC must be down for that), VRFs, VLANs,
-  sysctls, links up, addresses, routes. Its routes carry the protocol number 72, so
+  sysctls, links up (`lo` among them), addresses, routes. Its routes carry the protocol number 72, so
   the agent removes only its own. The `uplink` is networkd's: the agent only names
   it.
 - **Announcing.** Whenever a device's carrier comes up, and after each `links`

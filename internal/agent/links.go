@@ -41,9 +41,11 @@ func (a *Agent) applyLinks(links agentproto.Links) error {
 			return fmt.Errorf("sysctl %s: %w", sysctl.Key, err)
 		}
 	}
-	// the devices the agent manages, which it sets up: all but lo, which
-	// is up anyway, and the NICs of networkd
-	var managed []string
+	// the devices the agent manages, which it sets up: all but the NICs of
+	// networkd, and lo too. systemd sets lo up before the agent starts, but
+	// a fresh network namespace has it down, and the kernel gives lo its
+	// loopback addresses only when it comes up, before any other address
+	managed := []string{"lo"}
 	for _, nic := range links.Interfaces {
 		if !nic.Networkd {
 			managed = append(managed, nic.Name)
@@ -64,7 +66,7 @@ func (a *Agent) applyLinks(links agentproto.Links) error {
 			return fmt.Errorf("setting %s up: %w", name, err)
 		}
 	}
-	if err := applyAddresses(append(managed, "lo"), links.Addresses); err != nil {
+	if err := applyAddresses(managed, links.Addresses); err != nil {
 		return err
 	}
 	if err := applyRoutes(links.Routes); err != nil {
