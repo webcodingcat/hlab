@@ -22,7 +22,24 @@ type Config struct {
 	Ports     Ports   `yaml:"ports"`
 	// ShutdownTimeout is how many seconds the servers' guests may take to
 	// shut down when the lab stops, before they are turned off.
-	ShutdownTimeout int `yaml:"shutdown_timeout"`
+	ShutdownTimeout int  `yaml:"shutdown_timeout"`
+	Room            Room `yaml:"room"`
+}
+
+// Room bounds what the servers may take of the host; a create or a start
+// beyond it is Hetzner's 412 resource_unavailable. A small host may lower
+// the reserves.
+type Room struct {
+	// MemoryReservePercent and MemoryReserveMinMB are the host's memory that
+	// the servers leave free: the share, but at least the minimum.
+	MemoryReservePercent int `yaml:"memory_reserve_percent"`
+	MemoryReserveMinMB   int `yaml:"memory_reserve_min_mb"`
+	// CoresPerThread is how many virtual cores the servers may have per
+	// thread of the host.
+	CoresPerThread int `yaml:"cores_per_thread"`
+	// DiskFreePercent is the share of the data folder's drive that a create
+	// leaves free.
+	DiskFreePercent int `yaml:"disk_free_percent"`
 }
 
 // Ports are the TCP ports the service listens on. A port of 0 takes any free
@@ -39,6 +56,7 @@ func Default() Config {
 		TimeScale:       1,
 		Ports:           Ports{Cloud: 8080, Hetzner: 8081, Control: 8090},
 		ShutdownTimeout: 60,
+		Room:            Room{MemoryReservePercent: 25, MemoryReserveMinMB: 6 * 1024, CoresPerThread: 4, DiskFreePercent: 10},
 	}
 }
 
@@ -71,6 +89,20 @@ func (c Config) check() error {
 	}
 	if c.ShutdownTimeout < 1 {
 		return fmt.Errorf("shutdown_timeout is %d: use 1 or more seconds", c.ShutdownTimeout)
+	}
+	for _, percent := range []struct {
+		name  string
+		value int
+	}{{"memory_reserve_percent", c.Room.MemoryReservePercent}, {"disk_free_percent", c.Room.DiskFreePercent}} {
+		if percent.value < 0 || percent.value > 90 {
+			return fmt.Errorf("room.%s is %d: use 0 to 90", percent.name, percent.value)
+		}
+	}
+	if c.Room.MemoryReserveMinMB < 0 {
+		return fmt.Errorf("room.memory_reserve_min_mb is %d: use 0 or more", c.Room.MemoryReserveMinMB)
+	}
+	if c.Room.CoresPerThread < 1 {
+		return fmt.Errorf("room.cores_per_thread is %d: use 1 or more", c.Room.CoresPerThread)
 	}
 	seen := map[int]string{}
 	for _, port := range []struct {

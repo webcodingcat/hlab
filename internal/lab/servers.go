@@ -28,18 +28,6 @@ const (
 // with Hetzner's 412 resource_unavailable.
 var ErrNoRoom = errors.New("the host has no room for the server")
 
-// The bounds of the room the servers may take: memory is
-// not overcommitted, the host keeps a reserve and the appliance its own;
-// virtual cores may be four times the host's threads.
-const (
-	memoryReservePercent = 25
-	memoryReserveMinMB   = 6 * 1024
-	coresPerThread       = 4
-	// a new server's disk grows on the data folder's drive, which keeps
-	// this share free
-	diskReservePercent = 10
-)
-
 // serverWatchInterval is how often the watchdog looks at the servers' VMs.
 const serverWatchInterval = 2 * time.Second
 
@@ -48,7 +36,7 @@ const serverWatchInterval = 2 * time.Second
 const rebootTimeout = time.Minute
 
 // CheckDisk fails with ErrNoRoom if the data folder's drive has less than
-// diskReservePercent of its size free. It counts the space free now, not
+// room.disk_free_percent of its size free (hlab.yaml). It counts the space free now, not
 // the servers' disks at their full size: dynamic disks take only what the
 // guests wrote, so the disks may be larger together than the drive. It
 // calls the system, so the API calls it before its Change.
@@ -57,7 +45,7 @@ func (l *Lab) CheckDisk(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if space.FreeMB*100 < space.TotalMB*diskReservePercent {
+	if space.FreeMB*100 < space.TotalMB*int64(l.room.DiskFreePercent) {
 		return fmt.Errorf("%w: %d MB of %d MB free on the data folder's drive", ErrNoRoom, space.FreeMB, space.TotalMB)
 	}
 	return nil
@@ -116,8 +104,9 @@ func (l *Lab) CheckRoom(tx *state.Tx, serverID int64, serverType catalog.ServerT
 		memoryMB += int(other.Memory * 1024)
 		cores += other.Cores
 	}
-	reserve := max(l.host.MemoryMB*memoryReservePercent/100, memoryReserveMinMB)
-	if memoryMB > l.host.MemoryMB-reserve-system.ApplianceMemoryMB || cores > l.host.Threads*coresPerThread {
+	// memory is static, so it is never overcommitted; the appliance takes its own
+	reserve := max(l.host.MemoryMB*l.room.MemoryReservePercent/100, l.room.MemoryReserveMinMB)
+	if memoryMB > l.host.MemoryMB-reserve-system.ApplianceMemoryMB || cores > l.host.Threads*l.room.CoresPerThread {
 		return fmt.Errorf("%w: %d MB and %d cores wanted", ErrNoRoom, memoryMB, cores)
 	}
 	return nil
@@ -410,6 +399,18 @@ func (l *Lab) UpdatePictures(ctx context.Context) error {
 		return nil
 	}
 	return appliance.Update(ctx, l.pictures(l.pictureLab()))
+}
+
+// UpdatePicturesLater sends the pictures as UpdatePictures does, but in the
+// background, for a change whose answer need not wait for the appliance (a
+// rename). It ends with the lab's context; a failure is logged, and the
+// appliance's watchdog sends the newest pictures again anyway.
+func (l *Lab) UpdatePicturesLater() {
+	go func() {
+		if err := l.UpdatePictures(l.ctx); err != nil && l.ctx.Err() == nil {
+			l.logger.Warn("sending the pictures after a change; the watchdog sends them again", "error", err)
+		}
+	}()
 }
 
 // serverFacts returns what the pictures need of a server: its addresses

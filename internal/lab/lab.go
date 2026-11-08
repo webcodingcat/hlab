@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/config"
 	"github.com/webcodingcat/hlab/internal/state"
 	"github.com/webcodingcat/hlab/internal/system"
 )
@@ -42,6 +43,9 @@ type Options struct {
 	// LabKey is the lab's public SSH key, which every server's root takes
 	// for `hlab ssh`; "" for none.
 	LabKey string
+	// Room bounds what the servers may take of the host (hlab.yaml); the
+	// zero value takes config.Default's.
+	Room config.Room
 }
 
 // Lab is the running lab.
@@ -52,6 +56,7 @@ type Lab struct {
 	logger    *slog.Logger
 	catalog   *catalog.Catalog
 	labKey    string
+	room      config.Room
 	writer    *state.Writer
 	release   func() // gives the data folder up
 	dataDir   string
@@ -130,6 +135,7 @@ func Open(opts Options, sys *system.System) (*Lab, error) {
 		logger:     opts.Logger,
 		catalog:    opts.Catalog,
 		labKey:     opts.LabKey,
+		room:       opts.Room,
 		release:    release,
 		dataDir:    opts.DataDir,
 		fresh:      errors.Is(statErr, fs.ErrNotExist),
@@ -147,6 +153,9 @@ func Open(opts Options, sys *system.System) (*Lab, error) {
 	}
 	if l.catalog == nil {
 		l.catalog = catalog.Builtin()
+	}
+	if l.room == (config.Room{}) {
+		l.room = config.Default().Room
 	}
 	l.writer = state.NewWriter(path, l.logger)
 	l.ctx, l.cancel = context.WithCancel(context.Background())

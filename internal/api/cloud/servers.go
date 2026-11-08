@@ -3,7 +3,6 @@ package cloud
 import (
 	"bytes"
 	"cmp"
-	"context"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
@@ -234,11 +233,10 @@ func registerServers(api *web.API, l *lab.Lab) {
 			return 0, nil, err
 		}
 		if body.Name != nil {
-			// the metadata's hostname, also if the client goes away; if
-			// sending fails, the appliance's watchdog sends the newest
-			// pictures again. The seed keeps the old name: cloud-init reads
-			// it only at the first boot.
-			_ = l.UpdatePictures(context.WithoutCancel(req.Context()))
+			// the metadata's hostname, sent without holding up the answer,
+			// as Hetzner answers a PUT at once. The seed keeps the old name:
+			// cloud-init reads it only at the first boot.
+			l.UpdatePicturesLater()
 		}
 		return http.StatusOK, map[string]serverAnswer{"server": out}, nil
 	})

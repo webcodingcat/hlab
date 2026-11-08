@@ -71,6 +71,11 @@ take to shut down when the lab stops:
 time_scale: 1   # 1 is Hetzner's speed, 0.5 twice as fast, 0 does not wait
 ports: {cloud: 8080, hetzner: 8081, control: 8090}
 shutdown_timeout: 60   # seconds, then the servers are turned off
+room:                  # what the servers may take of the host
+  memory_reserve_percent: 25   # memory left free: this share,
+  memory_reserve_min_mb: 6144  # but at least this much
+  cores_per_thread: 4          # virtual cores per thread of the host
+  disk_free_percent: 10        # share of the data folder's drive a create leaves free
 ```
 
 `examples/tofu-1a` is a small OpenTofu configuration to try against the lab;

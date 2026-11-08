@@ -30,13 +30,14 @@ func TestLoadWithoutAFileGivesTheDefaults(t *testing.T) {
 }
 
 func TestLoadKeepsTheDefaultsTheFileLeavesOut(t *testing.T) {
-	cfg, err := config.Load(writeConfig(t, "time_scale: 0.5\nports:\n  cloud: 9080\n"))
+	cfg, err := config.Load(writeConfig(t, "time_scale: 0.5\nports:\n  cloud: 9080\nroom:\n  memory_reserve_min_mb: 2048\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := config.Default()
 	want.TimeScale = 0.5
 	want.Ports.Cloud = 9080
+	want.Room.MemoryReserveMinMB = 2048
 	if cfg != want {
 		t.Errorf("got %+v, want %+v", cfg, want)
 	}
@@ -48,6 +49,8 @@ func TestLoadRefusesWhatTheLabCannotRunWith(t *testing.T) {
 		"a negative time scale": "time_scale: -1\n",
 		"a port out of range":   "ports:\n  control: 70000\n",
 		"a port taken twice":    "ports:\n  cloud: 8090\n",
+		"a reserve above 90 %":  "room:\n  memory_reserve_percent: 95\n",
+		"no cores per thread":   "room:\n  cores_per_thread: 0\n",
 		"no YAML":               "ports: [\n",
 	} {
 		t.Run(name, func(t *testing.T) {

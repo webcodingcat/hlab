@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/config"
 	"github.com/webcodingcat/hlab/internal/lab"
 	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/platform/fake"
@@ -134,6 +135,34 @@ func TestCheckRoomKeepsTheReserve(t *testing.T) {
 	putServer(t, l, machine, "b", true, true)
 	if err := check(); !errors.Is(err, lab.ErrNoRoom) {
 		t.Errorf("a third server: %v, want ErrNoRoom", err)
+	}
+}
+
+// hlab.yaml's room lowers the reserve on a small host: without one, the
+// memory takes a third cpx22 that the default reserve leaves out.
+func TestCheckRoomTakesTheSettings(t *testing.T) {
+	machine := fake.New()
+	withAppliance(machine)
+	machine.SetHostResources(platform.HostResources{Threads: 8, MemoryMB: 16 * 1024})
+	room := config.Room{MemoryReservePercent: 0, MemoryReserveMinMB: 0, CoresPerThread: 4, DiskFreePercent: 10}
+	l := start(t, machine, lab.Options{DataDir: t.TempDir(), Room: room})
+	t.Cleanup(func() { _ = l.Close() })
+	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+		t.Fatal(err)
+	}
+	cpx22, _ := catalog.Builtin().ServerTypeByName("cpx22") // 4 GB
+	// 16 GB - 1 GB appliance = 15 GB: three cpx22 fit, not four
+	putServer(t, l, machine, "a", true, true)
+	putServer(t, l, machine, "b", true, true)
+	check := func() error {
+		return l.View(func(tx *state.Tx) error { return l.CheckRoom(tx, 0, cpx22) })
+	}
+	if err := check(); err != nil {
+		t.Fatalf("a third server: %v", err)
+	}
+	putServer(t, l, machine, "c", true, true)
+	if err := check(); !errors.Is(err, lab.ErrNoRoom) {
+		t.Errorf("a fourth server: %v, want ErrNoRoom", err)
 	}
 }
 

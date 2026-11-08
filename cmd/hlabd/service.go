@@ -75,6 +75,7 @@ func start(opts serviceOptions) (*service, error) {
 		Logger:    opts.Logger,
 		Catalog:   offer,
 		LabKey:    labKeyPublic,
+		Room:      cfg.Room,
 	}, system.New(opts.Parts))
 	if err != nil {
 		return nil, err
