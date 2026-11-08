@@ -137,7 +137,9 @@ func (l *Lab) SetServerStatus(id int64, status state.ServerStatus) error {
 // lab keeps the record, and its next start builds the server anew; a
 // project reset removes the record, and the next start removes the files.
 // A delete queued during the create removes the record at once; the build
-// then fails on the missing record and cleans up the same way.
+// then fails on the missing record and cleans up the same way, and the
+// delete's steps find nothing left to delete (system.DeleteServer takes
+// what is there).
 func (l *Lab) CreateServer(ctx context.Context, id int64, start bool) error {
 	err := l.BuildServer(ctx, id)
 	if err == nil {
@@ -186,11 +188,11 @@ func (l *Lab) makeServerVM(ctx context.Context, id int64) (keptDisk bool, err er
 	var facts picture.Server
 	var server *state.Server
 	err = l.View(func(tx *state.Tx) error {
-		server, err = state.Get(tx, state.Servers, id)
-		if err != nil {
-			return err
+		found, getErr := state.Get(tx, state.Servers, id)
+		if getErr != nil {
+			return getErr
 		}
-		facts = serverFacts(tx, server)
+		server, facts = found, serverFacts(tx, found)
 		return nil
 	})
 	if err != nil {
@@ -465,15 +467,15 @@ func (l *Lab) watchServers(ctx context.Context) {
 			return
 		case <-ticker.C:
 		}
-		var ids []int64
+		seen := map[int64]uint64{} // each server's flag count before the look
 		l.mu.Lock()
 		for _, server := range state.All(state.Read(l.state), state.Servers) {
-			if watched(server.Status) && l.flags[serverRef(server.ID)] == 0 {
-				ids = append(ids, server.ID)
+			if ref := serverRef(server.ID); watched(server.Status) && l.flags[ref] == 0 {
+				seen[server.ID] = l.flagged[ref]
 			}
 		}
 		l.mu.Unlock()
-		for _, id := range ids {
+		for id, flagged := range seen {
 			runs, err := l.system.ServerRuns(ctx, ServerVM(id))
 			if err != nil {
 				if ctx.Err() == nil {
@@ -481,7 +483,7 @@ func (l *Lab) watchServers(ctx context.Context) {
 				}
 				continue
 			}
-			l.settleServer(id, runs)
+			l.settleServer(id, runs, flagged)
 		}
 	}
 }
@@ -497,11 +499,14 @@ func watched(status state.ServerStatus) bool {
 // the server over meanwhile. A running server whose VM is off shut itself
 // down, so it no longer wants to run, as on Hetzner. A server that a failed
 // power action left starting or stopping gets the status of its VM, and
-// want_running stays as the action's plan set it.
-func (l *Lab) settleServer(id int64, runs bool) {
+// want_running stays as the action's plan set it. flagged is the server's
+// flag count when the watchdog began to look at its VM: if an action has
+// flagged it since, even one that has ended already, what the watchdog saw
+// is out of date.
+func (l *Lab) settleServer(id int64, runs bool, flagged uint64) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.flags[serverRef(id)] > 0 {
+	if ref := serverRef(id); l.flags[ref] > 0 || l.flagged[ref] != flagged {
 		return
 	}
 	var before state.ServerStatus

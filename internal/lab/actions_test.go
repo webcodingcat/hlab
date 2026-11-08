@@ -302,6 +302,54 @@ func TestUndoRunsWhenTheStepsFail(t *testing.T) {
 	}
 }
 
+// An undo marked UndoIfLast leaves alone what an action queued behind it
+// has planned since.
+func TestUndoIfLastSkipsWhenAnActionIsQueuedBehind(t *testing.T) {
+	l, _ := openWithProject(t, lab.Options{})
+	release := make(chan struct{})
+	failing := lab.ActionSpec{Name: "stop_server", Plan: func(*state.Tx, lab.Request) (lab.Plan, error) {
+		return lab.Plan{
+			Steps: func(ctx context.Context) error {
+				select {
+				case <-release:
+				case <-ctx.Done():
+				}
+				return errors.New("Hyper-V refused")
+			},
+			Undo: func(tx *state.Tx) error {
+				state.Put(tx, state.SSHKeys, &state.SSHKey{ID: state.NewID(tx, state.SSHKeys), Name: "undone"})
+				return nil
+			},
+			UndoIfLast: true,
+		}, nil
+	}}
+	table := tableWith(failing)
+	table.Queued = true
+	table.Actions["poweron"] = lab.ActionSpec{Name: "start_server", Plan: func(*state.Tx, lab.Request) (lab.Plan, error) {
+		return lab.Plan{Steps: func(context.Context) error { return nil }}, nil
+	}}
+	first, err := l.Act(table, "poweroff", request(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := l.Act(table, "poweron", request(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	waitForStatus(t, l, first.ID, state.ActionError)
+	waitForStatus(t, l, second.ID, state.ActionSuccess)
+	err = l.View(func(tx *state.Tx) error {
+		if keys := state.All(tx, state.SSHKeys); len(keys) > 0 {
+			t.Error("the undo ran although an action was queued behind")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCloseCancelsRunningActionsWithoutUndo(t *testing.T) {
 	dataDir := t.TempDir()
 	l := start(t, fake.New(), lab.Options{DataDir: dataDir})

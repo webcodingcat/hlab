@@ -61,8 +61,9 @@ func planStop(run func(ctx context.Context, id int64) error) func(tx *state.Tx, 
 		wanted := server.WantRunning
 		server.WantRunning = false
 		return lab.Plan{
-			Steps: func(ctx context.Context) error { return run(ctx, req.ID) },
-			Undo:  undoServer(req.ID, func(_ *state.Tx, server *state.Server) { server.WantRunning = wanted }),
+			Steps:      func(ctx context.Context) error { return run(ctx, req.ID) },
+			Undo:       undoServer(req.ID, func(_ *state.Tx, server *state.Server) { server.WantRunning = wanted }),
+			UndoIfLast: true, // a later plan's want_running stands
 		}, nil
 	}
 }
@@ -92,6 +93,7 @@ func planStart(l *lab.Lab, run func(ctx context.Context, id int64) error) func(t
 		plan.Undo = undoServer(req.ID, func(_ *state.Tx, server *state.Server) {
 			server.Status, server.WantRunning = state.ServerOff, false
 		})
+		plan.UndoIfLast = true // a later plan's want_running stands
 		return plan, nil
 	}
 }

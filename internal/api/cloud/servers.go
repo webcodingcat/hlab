@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
 	"net/http"
 	"regexp"
@@ -263,14 +264,9 @@ func registerServers(api *web.API, l *lab.Lab) {
 	registerResourceActions(api, l, "servers", lab.ServerResource)
 }
 
-// createServer checks a create request, records the server with its
-// Primary IPs and starts its create action, and its start unless
-// start_after_create is false, all in one transaction.
-func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any, error) {
-	var body serverCreateRequest
-	if err := web.DecodeJSON(req.Request, &body); err != nil {
-		return 0, nil, err
-	}
+// checkServerCreate checks a create request's fields, as Hetzner does
+// before it looks at the catalog.
+func checkServerCreate(body serverCreateRequest) error {
 	check := web.Check{Singular: true}
 	check.Required("name", body.Name != nil)
 	if body.Name != nil && !validHostname(*body.Name) {
@@ -284,7 +280,18 @@ func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any
 	if body.Labels != nil {
 		check.Labels(*body.Labels)
 	}
-	if err := check.Err(); err != nil {
+	return check.Err()
+}
+
+// createServer checks a create request, records the server with its
+// Primary IPs and starts its create action, and its start unless
+// start_after_create is false, all in one transaction.
+func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any, error) {
+	var body serverCreateRequest
+	if err := web.DecodeJSON(req.Request, &body); err != nil {
+		return 0, nil, err
+	}
+	if err := checkServerCreate(body); err != nil {
 		return 0, nil, err
 	}
 	cat := l.Catalog()
@@ -299,6 +306,7 @@ func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any
 	}
 	image, found := findImage(cat, *body.Image)
 	if !found {
+		// 422, not 404 as for the type (measured 2026-11-08)
 		return 0, nil, web.Refusal(http.StatusUnprocessableEntity, "invalid_input", "image not found")
 	}
 	start := body.StartAfterCreate == nil || *body.StartAfterCreate
@@ -438,7 +446,10 @@ func rootPassword() string {
 	const characters = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	password := make([]byte, 20)
 	for i := range password {
-		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(characters)))) // crypto/rand does not fail on supported systems
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(characters))))
+		if err != nil {
+			panic(fmt.Sprintf("crypto/rand failed: %v", err)) // it does not on supported systems
+		}
 		password[i] = characters[n.Int64()]
 	}
 	return string(password)
@@ -475,9 +486,11 @@ func serverJSON(tx *state.Tx, cat *catalog.Catalog, server *state.Server) server
 	if serverType, found := cat.ServerTypeByName(server.Type); found {
 		out.ServerType = serverTypeJSON(cat, serverType)
 		// a new server shows no traffic yet (measured 2026-11-08)
-		for _, price := range serverType.Prices {
-			if price.Location == server.Location && server.Status != state.ServerInitializing {
-				out.IncludedTraffic = price.IncludedTraffic
+		if server.Status != state.ServerInitializing {
+			for _, price := range serverType.Prices {
+				if price.Location == server.Location {
+					out.IncludedTraffic = price.IncludedTraffic
+				}
 			}
 		}
 	}

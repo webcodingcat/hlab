@@ -256,7 +256,11 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   `Lab.Sleep(ctx, lab.PowerOff)`, scaled by the time scale. The time scale is 0 in
   unit tests; tests that check timings use their own `lab.Clock`.
   - If the steps fail, the plan's `Undo` takes back the quick changes and the
-    action ends with `error`.
+    action ends with `error`, both in one change. A plan marked `UndoIfLast`
+    undoes only if no action was queued behind it on the resource: the later
+    plans have set again what it would take back (`want_running`).
+  - The watchdog looks at a VM without the mutex, so it acts only if no
+    action flagged the server meanwhile (`Lab.flagged` counts every flag).
   - If the steps are cancelled, nothing is undone: a reset removes everything
     anyway, and a stopping lab keeps its state.
 - **Restart.** Actions that were running when HLab stopped end with an error when it
@@ -368,7 +372,10 @@ the same later.
     IP price;
   - server types, load balancer types and images, because `schema` still sends
     `deprecated`;
-  - the SSH key requests, to tell a missing field from an empty one.
+  - the SSH key, server and Primary IP requests, to tell a missing field from
+    an empty one;
+  - the server answer, to keep Hetzner's order of fields and what `schema`
+    lacks.
 - **Lists handle `sort` differently** on Hetzner, as measured. Most refuse an
   unknown value (`web.Sort`). Locations ignore an unknown value. Server types answer
   it with `service_error`. Load balancer types ignore `sort` completely. Each
@@ -483,9 +490,10 @@ An older state file without the kind still loads; no migration is needed.
 2. Register it with `api.Handle("GET /things/{id}", ...)`. The path is the spec's
    path without `/v1`. `web.PathID(req, "id")` reads an ID from it.
 3. Build the answer from `hcloud-go`'s `schema` types. Read a body with
-   `web.DecodeJSON` and check it with a `web.Check`. A create calls
-   `lab.CheckProject` in its `Change` and answers its error with
-   `web.TokenInvalid()`.
+   `web.DecodeJSON` and check it with a `web.Check`. A create without an
+   action calls `lab.CheckProject` in its `Change` and answers its error with
+   `web.TokenInvalid()`; a create with actions runs `Lab.Create`, which checks
+   the project itself, and maps its errors with `actError`.
 4. Refuse requests with the `web` errors (`web.NotFound`, `web.Uniqueness`, …), with
    Hetzner's codes and messages.
 5. A list filters, sorts (`web.Sort` with the spec's sort values) and answers with

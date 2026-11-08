@@ -64,6 +64,10 @@ type Plan struct {
 	// (the lab closes, the project is reset). Across its calls to the system
 	// it keeps IDs and looks records up again with Current.
 	Steps func(ctx context.Context) error
+	// UndoIfLast runs Undo only if no action was queued behind this one on
+	// its resource: the later plans have set again what Undo would take
+	// back (want_running), and Undo must not overwrite them.
+	UndoIfLast bool
 	// Undo takes back the quick changes when the steps fail. A canceled
 	// action undoes nothing: a reset removes everything anyway, and a stopping
 	// lab keeps the state as it is. Undo runs under the mutex, like a Change.
@@ -257,11 +261,12 @@ func (l *Lab) start(planned plannedAction) {
 	ctx, cancel := context.WithCancel(l.ctx)
 	run := &runningAction{
 		id: planned.action.ID, projectID: planned.action.ProjectID, cancel: cancel, done: make(chan struct{}),
-		undo: planned.plan.Undo, flagged: flagged, queue: queue,
+		undo: planned.plan.Undo, undoIfLast: planned.plan.UndoIfLast, flagged: flagged, queue: queue,
 	}
 	l.running[run.id] = run
 	for _, ref := range flagged {
 		l.flags[ref]++
+		l.flagged[ref]++
 	}
 	var before chan struct{}
 	if queue != nil {
@@ -314,17 +319,12 @@ func (l *Lab) end(run *runningAction, err error, canceled bool) {
 			delete(l.flags, ref)
 		}
 	}
-	if run.queue != nil && l.queues[*run.queue] == run.done {
+	last := run.queue == nil || l.queues[*run.queue] == run.done
+	if run.queue != nil && last {
 		delete(l.queues, *run.queue) // the last of its queue
 	}
 	delete(l.running, run.id)
-	if err != nil && !canceled && run.undo != nil {
-		// its own change: a failing undo must not keep the action running
-		if undoErr := l.changeLocked(run.undo); undoErr != nil {
-			l.logger.Error("undoing a failed action failed", "id", run.id, "error", undoErr)
-		}
-	}
-	finishErr := l.changeLocked(func(tx *state.Tx) error {
+	finish := func(tx *state.Tx) error {
 		action, err := state.Get(tx, state.Actions, run.id)
 		if errors.Is(err, state.ErrNotFound) {
 			return nil // its project was reset meanwhile
@@ -334,8 +334,23 @@ func (l *Lab) end(run *runningAction, err error, canceled bool) {
 		}
 		l.finishAction(tx, action, message)
 		return nil
-	})
-	if finishErr != nil {
+	}
+	undo := err != nil && !canceled && run.undo != nil && (last || !run.undoIfLast)
+	if undo {
+		// the undo and the end in one change; a failing undo must not keep
+		// the action running, so the end then goes alone
+		undoErr := l.changeLocked(func(tx *state.Tx) error {
+			if err := run.undo(tx); err != nil {
+				return err
+			}
+			return finish(tx)
+		})
+		if undoErr == nil {
+			return
+		}
+		l.logger.Error("undoing a failed action failed", "id", run.id, "error", undoErr)
+	}
+	if finishErr := l.changeLocked(finish); finishErr != nil {
 		l.logger.Error("finishing an action failed", "id", run.id, "error", finishErr)
 	}
 }

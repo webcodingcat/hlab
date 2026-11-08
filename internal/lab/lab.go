@@ -79,6 +79,9 @@ type Lab struct {
 	state *state.State
 	// flags count the actions that work on or wait for a resource
 	flags map[state.ResourceRef]int
+	// flagged counts every flag a resource ever got, so that the watchdog
+	// sees whether an action came and went while it looked at a VM
+	flagged map[state.ResourceRef]uint64
 	// queues hold the last action queued on a resource (ActionTable.Queued):
 	// the next one waits until it is done
 	queues  map[state.ResourceRef]chan struct{}
@@ -105,13 +108,14 @@ type Lab struct {
 
 // runningAction is an action whose steps run in a goroutine.
 type runningAction struct {
-	id        int64
-	projectID int64
-	cancel    context.CancelFunc
-	done      chan struct{} // closed when the action has ended
-	undo      func(tx *state.Tx) error
-	flagged   []state.ResourceRef // the flags it holds until it ends
-	queue     *state.ResourceRef  // the resource it queued on, if any
+	id         int64
+	projectID  int64
+	cancel     context.CancelFunc
+	done       chan struct{} // closed when the action has ended
+	undo       func(tx *state.Tx) error
+	undoIfLast bool
+	flagged    []state.ResourceRef // the flags it holds until it ends
+	queue      *state.ResourceRef  // the resource it queued on, if any
 }
 
 // Open starts the lab: it claims the data folder, loads the state and ends the
@@ -141,6 +145,7 @@ func Open(opts Options, sys *system.System) (*Lab, error) {
 		fresh:      errors.Is(statErr, fs.ErrNotExist),
 		state:      loaded,
 		flags:      map[state.ResourceRef]int{},
+		flagged:    map[state.ResourceRef]uint64{},
 		queues:     map[state.ResourceRef]chan struct{}{},
 		running:    map[int64]*runningAction{},
 		imageLoads: map[string]*sync.Mutex{},
