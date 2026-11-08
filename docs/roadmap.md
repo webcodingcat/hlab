@@ -171,6 +171,12 @@ each part; this is the list.
   sends the pictures.
 - `Lab.Act` and `Lab.Create` started actions after `Lab.Close`; the lab
   now has a closed state, and `Close` waits for every goroutine.
+- The appliance's watchdog sent a snapshot of the pictures without a lock,
+  so an older generation could follow a newer one for one check; every
+  sender now reads and sends the newest pictures under one lock.
+- `Locks` did not hold off a server's own queued actions: a `poweron` or a
+  delete ran beside a Primary IP's assign. They now wait behind it
+  (Hetzner's answer is not measured).
 
 ### Known gaps
 
@@ -188,15 +194,6 @@ that found it (must, should, optional) and the phase that closes it.
   runs: `hlab.exe` waits for `ssh.exe` and holds its file, so the copy
   fails. hlabd has ended by then and its servers run on; the install
   works again once the session ends.
-- **must, open (reported, not decided):** the appliance's watchdog
-  (`Appliance.check`, `restart`) sends a snapshot of the pictures without
-  a lock, so an older generation can follow a newer one that
-  `Lab.UpdatePictures` sent meanwhile, for one check (2 s); the agent
-  takes any generation.
-- **must, open (reported, not decided):** `Locks` do not hold off the
-  server's own actions: the server table is `Queued`, so `planAction`
-  does not check the server's flags, and a `poweron` or delete runs beside
-  a Primary IP's assign that locks the server.
 - **should, 2a:** a Primary IP's assign and unassign have no `Undo`: when
   their pictures fail, the action ends with an error but the IP stays
   assigned or unassigned.

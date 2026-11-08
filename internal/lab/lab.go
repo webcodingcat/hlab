@@ -119,6 +119,7 @@ type runningAction struct {
 	undoIfLast bool
 	flagged    []state.ResourceRef // the flags it holds until it ends
 	queue      *state.ResourceRef  // the resource it queued on, if any
+	lockQueues []state.ResourceRef // the resources it locks, whose queues wait for it
 }
 
 // Open starts the lab: it claims the data folder, loads the state and ends the

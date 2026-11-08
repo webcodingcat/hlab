@@ -254,6 +254,11 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   | plain table | yes | 423 `locked` | 423 `locked` |
   | `Queued` table | yes | waits behind the action before it | 423 `locked` |
   | `Unflagged` row | no | runs alongside | 423 `locked` |
+
+  An action that locks a resource of a `Queued` table (a Primary IP's
+  assign locks its server) also heads that resource's queue: the
+  resource's own actions sent meanwhile wait behind it. Hetzner's answer
+  there is not measured.
 - **Steps.** The slow part runs in a goroutine. It waits Hetzner's timings with
   `Lab.Sleep(ctx, lab.PowerOff)`, scaled by the time scale. The time scale is 0 in
   unit tests; tests that check timings use their own `lab.Clock`.

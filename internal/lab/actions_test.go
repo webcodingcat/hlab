@@ -302,6 +302,46 @@ func TestUndoRunsWhenTheStepsFail(t *testing.T) {
 	}
 }
 
+// A queued resource's own action waits behind an action of another table
+// that locks the resource (a server's poweron behind a Primary IP's
+// assign); Hetzner's answer here is not measured, and the lab waits as
+// for the resource's own actions.
+func TestQueuedActionsWaitBehindAnActionThatLocksTheirResource(t *testing.T) {
+	l, _ := openWithProject(t, lab.Options{})
+	release := make(chan struct{})
+	server := state.ResourceRef{Type: "server", ID: 7}
+	assign := lab.ActionTable{ResourceType: "primary_ip", Busy: "primary ip is locked", Actions: map[string]lab.ActionSpec{
+		"assign": {Name: "assign_primary_ip", Plan: func(*state.Tx, lab.Request) (lab.Plan, error) {
+			plan, err := blocking(release).Plan(nil, lab.Request{})
+			plan.Locks = []state.ResourceRef{server}
+			return plan, err
+		}},
+	}}
+	servers := tableWith(lab.ActionSpec{Name: "stop_server", Plan: func(*state.Tx, lab.Request) (lab.Plan, error) {
+		return lab.Plan{Steps: func(context.Context) error { return nil }}, nil
+	}})
+	servers.Queued = true
+
+	locking, err := l.Act(assign, "assign", lab.Request{ProjectID: projectID, ID: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queued, err := l.Act(servers, "poweroff", request(server.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond) // a poweroff that does not wait has ended by now
+	if got := actionStatus(t, l, queued.ID); got != state.ActionRunning {
+		t.Errorf("the server's action is %s while the assign runs, want running (waiting)", got)
+	}
+	close(release)
+	waitForStatus(t, l, locking.ID, state.ActionSuccess)
+	waitForStatus(t, l, queued.ID, state.ActionSuccess)
+	if _, err := l.Act(servers, "poweroff", request(server.ID)); err != nil {
+		t.Errorf("an action after both: %v", err)
+	}
+}
+
 // An undo marked UndoIfLast leaves alone what an action queued behind it
 // has planned since.
 func TestUndoIfLastSkipsWhenAnActionIsQueuedBehind(t *testing.T) {
