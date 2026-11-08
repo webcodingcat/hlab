@@ -108,8 +108,8 @@ name; one load per image runs at a time. Converting through the appliance
 (`qemu-img`) is for imports and exports (3b). A cached image whose source in
 the catalog changed is loaded anew. Each start of the lab removes the files
 that neither a cache entry nor a server's disk needs, what a load cut short
-left, and the disks and seeds of servers that are gone (a project reset
-during a create).
+left, and the disks and seeds of servers that are gone (a delete that
+HLab's end cut short).
 
 ## Projects, tokens, faults
 
@@ -124,7 +124,9 @@ errors as `lab.ErrInvalid`, `lab.ErrExists` and `state.ErrNotFound`.
   - Internet access is on by default.
   - `Lab.DeleteProject` first removes the records. Its tokens are gone then, so no
     new request is admitted. Then it cancels the running actions, which find their
-    actions gone.
+    actions gone, and last removes its servers' VMs, disks and seeds and sends
+    the pictures without them, as a server's delete does. What it fails to
+    remove, the next start removes.
   - A request admitted just before the delete may still try to create something.
     So every create calls `lab.CheckProject` inside its `Change` (`Lab.Act` does
     so itself); the API answers `lab.ErrProjectGone` as a deleted token

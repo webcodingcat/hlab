@@ -187,7 +187,7 @@ func (l *Lab) restoreServer(ctx context.Context, server *state.Server) error {
 // cleanDataFiles removes what no record needs from the data folder: the
 // cached images that neither a cache entry nor a server's disk needs, what
 // loads cut short left, and the disks and seeds of servers that are gone
-// (a project reset during a create, a delete that HLab's end cut short).
+// (a delete that HLab's end cut short, also a project's).
 // A failure only costs disk space, so it is logged.
 func (l *Lab) cleanDataFiles(ctx context.Context) {
 	var images, disks, seeds []string

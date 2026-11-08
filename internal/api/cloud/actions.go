@@ -230,6 +230,9 @@ func actError(err error) error {
 		return web.TokenInvalid()
 	case errors.Is(err, lab.ErrNoRoom):
 		return web.Refusal(http.StatusPreconditionFailed, "resource_unavailable", serverNoRoom)
+	case errors.Is(err, lab.ErrClosed):
+		// as the service answers every request once it stops
+		return web.Refusal(http.StatusServiceUnavailable, "unavailable", "HLab is stopping")
 	}
 	return err
 }

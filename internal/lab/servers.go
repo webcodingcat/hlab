@@ -135,7 +135,7 @@ func (l *Lab) SetServerStatus(id int64, status state.ServerStatus) error {
 // If it fails, it removes the VM, the disk and the seed, and the action's
 // undo removes the record. If it is canceled, it leaves them: a stopping
 // lab keeps the record, and its next start builds the server anew; a
-// project reset removes the record, and the next start removes the files.
+// deleted project's servers go with it (DeleteProject).
 // A delete queued during the create removes the record at once; the build
 // then fails on the missing record and cleans up the same way, and the
 // delete's steps find nothing left to delete (system.DeleteServer takes
@@ -405,10 +405,18 @@ func (l *Lab) UpdatePictures(ctx context.Context) error {
 
 // UpdatePicturesLater sends the pictures as UpdatePictures does, but in the
 // background, for a change whose answer need not wait for the appliance (a
-// rename). It ends with the lab's context; a failure is logged, and the
-// appliance's watchdog sends the newest pictures again anyway.
+// rename). It ends with the lab's context, and Close waits for it; a closing
+// lab sends nothing. A failure is logged, and the appliance's watchdog
+// sends the newest pictures again anyway.
 func (l *Lab) UpdatePicturesLater() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed {
+		return
+	}
+	l.actions.Add(1)
 	go func() {
+		defer l.actions.Done()
 		if err := l.UpdatePictures(l.ctx); err != nil && l.ctx.Err() == nil {
 			l.logger.Warn("sending the pictures after a change; the watchdog sends them again", "error", err)
 		}

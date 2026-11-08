@@ -77,6 +77,9 @@ type Lab struct {
 	// and the machine's side of the lab
 	mu    sync.Mutex
 	state *state.State
+	// closed is set when Close begins: no action and no background work
+	// starts after it, so that Close waits for all of them
+	closed bool
 	// flags count the actions that work on or wait for a resource
 	flags map[state.ResourceRef]int
 	// flagged counts every flag a resource ever got, so that the watchdog
@@ -103,7 +106,7 @@ type Lab struct {
 
 	ctx     context.Context    // ends when the lab closes; the actions' contexts derive from it
 	cancel  context.CancelFunc // ends ctx
-	actions sync.WaitGroup     // the running actions' goroutines
+	actions sync.WaitGroup     // the goroutines of the actions and of UpdatePicturesLater; added to only under mu while not closed
 }
 
 // runningAction is an action whose steps run in a goroutine.
@@ -199,6 +202,9 @@ func (l *Lab) endInterruptedActions(tx *state.Tx) error {
 // every way to stop may call it.
 func (l *Lab) Close() error {
 	l.closeOnce.Do(func() {
+		l.mu.Lock()
+		l.closed = true
+		l.mu.Unlock()
 		l.cancel()
 		l.actions.Wait()
 		machineErr := l.stopMachine()

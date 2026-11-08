@@ -16,6 +16,9 @@ const MaxFinishedActions = 1000
 // ErrUnknownCommand reports a command that the resource's action table lacks.
 var ErrUnknownCommand = errors.New("unknown action command")
 
+// ErrClosed reports that the lab closes: it starts no action any more.
+var ErrClosed = errors.New("the lab is closing")
+
 // LockedError reports that another action works on a resource; the API
 // answers it with 423 and the code "locked", as Hetzner does.
 type LockedError struct {
@@ -61,7 +64,7 @@ type Request struct {
 type Plan struct {
 	// Steps is the slow part, run in a goroutine; nil means the change is
 	// complete and the action finishes at once. It ends early when ctx ends
-	// (the lab closes, the project is reset). Across its calls to the system
+	// (the lab closes, the project is deleted). Across its calls to the system
 	// it keeps IDs and looks records up again with Current.
 	Steps func(ctx context.Context) error
 	// UndoIfLast runs Undo only if no action was queued behind this one on
@@ -87,6 +90,9 @@ type Plan struct {
 func (l *Lab) Act(table ActionTable, command string, req Request) (state.Action, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.closed {
+		return state.Action{}, ErrClosed
+	}
 	var planned plannedAction
 	err := l.changeLocked(func(tx *state.Tx) error {
 		if err := CheckProject(tx, req.ProjectID); err != nil {
@@ -113,6 +119,9 @@ func (l *Lab) Act(table ActionTable, command string, req Request) (state.Action,
 func (l *Lab) Create(table ActionTable, req Request, create func(tx *state.Tx) (int64, error), commands ...string) ([]state.Action, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.closed {
+		return nil, ErrClosed
+	}
 	var planned []plannedAction
 	err := l.changeLocked(func(tx *state.Tx) error {
 		if err := CheckProject(tx, req.ProjectID); err != nil {
@@ -307,7 +316,7 @@ func (l *Lab) end(run *runningAction, err error, canceled bool) {
 	message := ""
 	switch {
 	case canceled:
-		message = "the action was canceled: HLab stopped or the project was reset"
+		message = "the action was canceled: HLab stopped or the project was deleted"
 	case err != nil:
 		message = err.Error()
 	}
@@ -327,7 +336,7 @@ func (l *Lab) end(run *runningAction, err error, canceled bool) {
 	finish := func(tx *state.Tx) error {
 		action, err := state.Get(tx, state.Actions, run.id)
 		if errors.Is(err, state.ErrNotFound) {
-			return nil // its project was reset meanwhile
+			return nil // its project was deleted meanwhile
 		}
 		if err != nil {
 			return err
@@ -356,8 +365,8 @@ func (l *Lab) end(run *runningAction, err error, canceled bool) {
 }
 
 // StopProjectActions cancels the running actions of a project and waits until
-// they have ended; a project reset calls it before it removes the project's
-// resources.
+// they have ended; DeleteProject calls it before it removes the project's
+// servers from the machine.
 func (l *Lab) StopProjectActions(projectID int64) {
 	l.mu.Lock()
 	var waits []chan struct{}

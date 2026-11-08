@@ -1,10 +1,17 @@
 package lab_test
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
+	"path/filepath"
+	"slices"
 	"testing"
 
+	"github.com/webcodingcat/hlab/internal/agentproto"
 	"github.com/webcodingcat/hlab/internal/lab"
+	"github.com/webcodingcat/hlab/internal/platform"
+	"github.com/webcodingcat/hlab/internal/platform/fake"
 	"github.com/webcodingcat/hlab/internal/state"
 )
 
@@ -101,4 +108,40 @@ func TestDeleteProjectCancelsItsActionsAndRemovesItsRecords(t *testing.T) {
 // errOf returns the error of a call that returns a value too.
 func errOf[T any](_ T, err error) error {
 	return err
+}
+
+// A deleted project's servers leave the machine: their VMs, disks and
+// seeds go, and the appliance gets pictures without them.
+func TestDeleteProjectRemovesItsServersFromTheMachine(t *testing.T) {
+	machine := fake.New()
+	agent := withAppliance(machine)
+	dataDir := t.TempDir()
+	l := start(t, machine, lab.Options{DataDir: dataDir})
+	t.Cleanup(func() { _ = l.Close() })
+	id := putServer(t, l, machine, "web", true, true)
+	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+		t.Fatal(err)
+	}
+	server, err := lab.Current(l, state.Servers, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	disk := filepath.Join(dataDir, lab.ServerDiskDir, fmt.Sprint(id)+".vhdx")
+	before := agent.Picture(agentproto.PictureLinks)
+
+	if err := l.DeleteProject(server.ProjectID); err != nil {
+		t.Fatal(err)
+	}
+
+	if state, err := machine.Platform().Hypervisor.VMState(t.Context(), lab.ServerVM(id)); !errors.Is(err, platform.ErrNotFound) {
+		t.Errorf("the server's VM is %+v, %v; want it gone", state, err)
+	}
+	for _, file := range []string{disk, l.ServerSeed(id)} {
+		if !slices.Contains(machine.Calls(), "DeleteDisk "+file) {
+			t.Errorf("%s was not removed", file)
+		}
+	}
+	if bytes.Equal(agent.Picture(agentproto.PictureLinks), before) {
+		t.Error("the appliance got no new pictures")
+	}
 }

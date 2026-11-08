@@ -135,17 +135,23 @@ func checkLimits(limits state.Limits) error {
 }
 
 // DeleteProject removes a project with everything that belongs to it: its
-// tokens, resources, actions and faults. Its running actions are canceled.
+// tokens, resources, actions and faults, and its servers' VMs, disks and
+// seeds. Its running actions are canceled.
 //
 // The records go first, so that no new request of the project is admitted
 // (its tokens are gone); then the running actions are canceled, and they find
 // their actions gone when they end. A request admitted just before finds the
-// project gone when it creates its record (CheckProject).
+// project gone when it creates its record (CheckProject). Last, the servers
+// go from the machine, as a server's delete does, now that no action of the
+// project makes a VM any more. A server that the machine fails to remove
+// is logged: the next start removes it as a stray VM.
 func (l *Lab) DeleteProject(projectID int64) error {
+	var servers []int64
 	err := l.Change(func(tx *state.Tx) error {
 		if _, err := state.Get(tx, state.Projects, projectID); err != nil {
 			return err
 		}
+		servers = state.IDs(tx, state.Servers, func(server *state.Server) bool { return server.ProjectID == projectID })
 		state.DeleteProject(tx, projectID)
 		return nil
 	})
@@ -153,5 +159,10 @@ func (l *Lab) DeleteProject(projectID int64) error {
 		return err
 	}
 	l.StopProjectActions(projectID)
+	for _, id := range servers {
+		if err := l.DeleteServerVM(l.ctx, id); err != nil {
+			l.logger.Warn("removing a server of a deleted project; the next start removes what is left", "server", id, "error", err)
+		}
+	}
 	return nil
 }

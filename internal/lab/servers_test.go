@@ -369,7 +369,7 @@ func TestStartMachineCleansTheImageCache(t *testing.T) {
 }
 
 // A start removes the disks and seeds of servers that are gone, as a
-// project reset during a create leaves them, and keeps those of the others.
+// delete that HLab's end cut short leaves them, and keeps those of the others.
 func TestStartMachineRemovesTheFilesOfServersThatAreGone(t *testing.T) {
 	machine := fake.New()
 	withAppliance(machine)

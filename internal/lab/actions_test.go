@@ -382,6 +382,23 @@ func TestCloseCancelsRunningActionsWithoutUndo(t *testing.T) {
 	}
 }
 
+// A closed lab starts no action, so that none runs past Close.
+func TestCloseRefusesNewActions(t *testing.T) {
+	l := start(t, fake.New(), lab.Options{DataDir: t.TempDir()})
+	putTestProject(t, l)
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.Act(tableWith(instant), "poweroff", request(7)); !errors.Is(err, lab.ErrClosed) {
+		t.Errorf("an action after Close: %v, want ErrClosed", err)
+	}
+	created := func(*state.Tx) (int64, error) { return 8, nil }
+	if _, err := l.Create(tableWith(instant), request(0), created, "poweroff"); !errors.Is(err, lab.ErrClosed) {
+		t.Errorf("a create after Close: %v, want ErrClosed", err)
+	}
+	l.UpdatePicturesLater() // starts nothing that would outlive Close
+}
+
 func TestStopProjectActionsCancelsOnlyThatProject(t *testing.T) {
 	l, _ := openWithProject(t, lab.Options{})
 	putProjectWithID(t, l, 2)
