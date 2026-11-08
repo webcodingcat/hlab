@@ -100,7 +100,7 @@ func TestEnvTokenTakesAFileOfNullAsNoTokens(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dataDir, lab.EnvTokenFile), []byte("null\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	l := start(t, fake.New(), lab.Options{DataDir: dataDir})
+	l, _ := open(t, lab.Options{DataDir: dataDir})
 	project, err := l.CreateProject("web", state.Limits{})
 	if err != nil {
 		t.Fatal(err)
