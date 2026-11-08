@@ -188,10 +188,28 @@ that found it (must, should, optional) and the phase that closes it.
   runs: `hlab.exe` waits for `ssh.exe` and holds its file, so the copy
   fails. hlabd has ended by then and its servers run on; the install
   works again once the session ends.
-- **should, 2a:** the watchdog's check and restart send the appliance a
-  snapshot of the pictures outside `pictureMu`, so after a failed update
-  an older generation can follow a newer one for one check (2 s); the
-  agent takes any generation.
+- **must, open (reported, not decided):** the appliance's watchdog
+  (`Appliance.check`, `restart`) sends a snapshot of the pictures without
+  a lock, so an older generation can follow a newer one that
+  `Lab.UpdatePictures` sent meanwhile, for one check (2 s); the agent
+  takes any generation.
+- **must, open (reported, not decided):** `Locks` do not hold off the
+  server's own actions: the server table is `Queued`, so `planAction`
+  does not check the server's flags, and a `poweron` or delete runs beside
+  a Primary IP's assign that locks the server.
+- **should, 2a:** a Primary IP's assign and unassign have no `Undo`: when
+  their pictures fail, the action ends with an error but the IP stays
+  assigned or unassigned.
+- **should, 2c:** `system.ReadSecrets` returns a nil map for an
+  `env-tokens.json` of `null`, and the next env token panics.
+- **should, with the next change there:** the comment on the requests that
+  `refuseWhileStopping` lets through (`cmd/hlabd/service.go`) does not
+  read.
+- **optional, 2a:** the agent could refuse a generation older than the one
+  it applied (per hlabd run), so that the pictures' order holds end to end.
+- **optional, before 2a:** `lab` grows wide (servers, image cache,
+  appliance update, watchdog); a type of its own for the machine's side
+  would keep `Lab` narrow before networks and firewalls come.
 - **should, 2a:** `Lab.flagged` keeps an entry for every resource that
   ever had a flag, also for deleted ones.
 - **should, 2c:** the servers' watchdog runs every 2 s on the wall clock

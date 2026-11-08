@@ -211,8 +211,8 @@ The layer test checks production code only. Tests may import fakes and helpers.
 - The slow part of an action runs in a goroutine with a `context.Context`. Closing
   the lab (`Lab.Close`) and deleting a project (`Lab.StopProjectActions`) cancel
   that context. A closed lab starts no action (`lab.ErrClosed`, 503), and
-  `Close` waits for every goroutine of the actions and of
-  `Lab.UpdatePicturesLater`.
+  `Close` waits for every goroutine of the actions, of
+  `Lab.UpdatePicturesLater` and of `Lab.DeleteProject`'s removals.
 - `lab.Flush()` waits until the newest state is on disk. `Lab.Close` calls it.
 - `go test -race` runs on Linux, in `bin/dev test` and in CI.
 

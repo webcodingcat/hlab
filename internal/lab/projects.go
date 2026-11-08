@@ -144,7 +144,8 @@ func checkLimits(limits state.Limits) error {
 // project gone when it creates its record (CheckProject). Last, the servers
 // go from the machine, as a server's delete does, now that no action of the
 // project makes a VM any more. A server that the machine fails to remove
-// is logged: the next start removes it as a stray VM.
+// is logged, and a closing lab removes none: the next start removes them
+// as stray VMs.
 func (l *Lab) DeleteProject(projectID int64) error {
 	var servers []int64
 	err := l.Change(func(tx *state.Tx) error {
@@ -158,6 +159,16 @@ func (l *Lab) DeleteProject(projectID int64) error {
 	if err != nil {
 		return err
 	}
+	// the removal is the lab's work like an action's, so that Close waits
+	// for it; a closing lab leaves it to the next start
+	l.mu.Lock()
+	if l.closed {
+		l.mu.Unlock()
+		return nil
+	}
+	l.actions.Add(1)
+	l.mu.Unlock()
+	defer l.actions.Done()
 	l.StopProjectActions(projectID)
 	for _, id := range servers {
 		if err := l.DeleteServerVM(l.ctx, id); err != nil {

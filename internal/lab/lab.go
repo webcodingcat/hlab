@@ -106,7 +106,7 @@ type Lab struct {
 
 	ctx     context.Context    // ends when the lab closes; the actions' contexts derive from it
 	cancel  context.CancelFunc // ends ctx
-	actions sync.WaitGroup     // the goroutines of the actions and of UpdatePicturesLater; added to only under mu while not closed
+	actions sync.WaitGroup     // the actions' goroutines, UpdatePicturesLater's and DeleteProject's removals; added to only under mu while not closed
 }
 
 // runningAction is an action whose steps run in a goroutine.
