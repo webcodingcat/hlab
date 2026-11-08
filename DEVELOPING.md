@@ -772,7 +772,12 @@ What is in it:
   nobody holds never leaves through the uplink, and nothing else reaches it.
 - **Off until their phase:** knot, haproxy, sshd (its host keys are removed;
   each appliance makes its own in phase 5), and `systemd-networkd-wait-online`.
-  pebble has no unit of its own.
+  pebble has no unit of its own. `serial-getty@ttyS0` is masked: the VM has no
+  COM port until the console (6a).
+- **The clock:** Hyper-V gives a VM the host's local time as its RTC, which
+  Linux reads as UTC, so the appliance starts off by the time zone. Hyper-V's
+  time sync (`hv_utils`) corrects it within a second of the boot; the journal
+  shows the jump.
 - **Boot ruleset** (`/etc/nftables.conf`): forwards nothing until the first
   `ruleset` picture.
 - Nobody logs in: root is locked, hlabd reaches the agent over hv_sock.

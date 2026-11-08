@@ -192,7 +192,11 @@ the tests. Look there before writing such a part anew.
   `198.18.0.0/15` is unreachable in it.
 - Fixed in the appliance: unbound did not start without its trust anchor
   (`dns-root-data`, a Recommends that `--variant=apt` leaves out); the agent
-  left networkd's uplink down after renaming it, so it got no DHCP lease.
+  left networkd's uplink down after renaming it, so it got no DHCP lease;
+  `serial-getty@ttyS0` restarted every 10 s without a COM port (masked).
+- Accepted deviations from the plan: the watchdog restarts an appliance that
+  is off at once; after a stop the appliance is made anew (`DeleteDisk`)
+  instead of reconnecting its NICs.
 - The admin live tests run through the task "HLab itest" (`bin/dev.ps1
   dev-install`, once as administrator; `bin/dev itest`), without UAC.
 - `--platform fake` runs the same start on the fake machine, with a fake agent
@@ -209,10 +213,6 @@ the tests. Look there before writing such a part anew.
 - The servers' VMs keep their NICs without a switch after a stop (13.2); the
   start must connect them again. The appliance is made anew instead, so it
   needs no such method yet.
-- Hyper-V's RTC holds local time; the appliance's clock is off by the time zone
-  until Hyper-V's time sync corrects it during the boot.
-- `serial-getty@ttyS0` restarts every 10 s in the appliance: its VM has no COM
-  port. The console comes with phase 6a.
 - `hlab start` and the dev loop (`HLab dev`, firewall rule for WSL2) come with
   1b-5; until then `hlabd` is started by hand as administrator.
 

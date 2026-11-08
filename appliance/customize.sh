@@ -24,6 +24,9 @@ main() {
   # must not hold up the boot waiting for the uplink
   systemctl disable --quiet haproxy.service knot.service ssh.service \
     systemd-networkd-wait-online.service
+  # the VM has no COM port, so a getty on the kernel's console=ttyS0 would
+  # fail and restart every 10 s; nobody logs in anyway (the console: 6a)
+  systemctl mask --quiet serial-getty@ttyS0.service
   # the kernel and its initrd, where the boot loader's grub.cfg finds them
   test -e /vmlinuz -a -e /initrd.img
 }
