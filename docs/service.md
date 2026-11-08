@@ -104,7 +104,9 @@ answers and its agent answers; on the way it sends the pictures that the agent
 lacks (an agent that restarted alone). After three failed checks in a row, or
 at once when the VM is off or gone, it turns the VM off and on again with the
 same MAC set and sends every picture. A picture that the agent refused (422) is
-not sent again until its generation changes.
+not sent again until its generation changes. Every sender (an update, the
+watchdog, the announcing) reads the newest pictures and sends them under one
+lock of the appliance's, so an older picture never follows a newer one.
 
 **The update** (`Lab.updateAppliance`) replaces a running
 appliance of an older release, which a start took over, without stopping the

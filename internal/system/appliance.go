@@ -101,6 +101,12 @@ type Appliance struct {
 	agent   agentClient
 	logger  *slog.Logger
 
+	// sendMu is held by every sender (Update, Announce, the watchdog's
+	// check and restart) while it reads the newest pictures and sends
+	// them, so that an older picture never follows a newer one; it is
+	// taken before mu
+	sendMu sync.Mutex
+
 	mu       sync.Mutex
 	pictures Pictures          // the newest; sent again after every restart
 	refused  map[string]uint64 // generations the agent refused, by picture
@@ -152,9 +158,9 @@ func (a *Appliance) Start(ctx context.Context, pictures Pictures) (takenOver boo
 	return takenOver, nil
 }
 
-// Update makes pictures the newest and sends them all, in order. If
-// sending fails, the watchdog sends them again on its next check: the agent
-// reports the generations it has.
+// Update makes pictures the newest and sends them all, in order, after
+// what a sender sends meanwhile. If sending fails, the watchdog sends them
+// again on its next check: the agent reports the generations it has.
 func (a *Appliance) Update(ctx context.Context, pictures Pictures) error {
 	a.mu.Lock()
 	a.pictures = pictures
@@ -166,6 +172,8 @@ func (a *Appliance) Update(ctx context.Context, pictures Pictures) error {
 // the appliance's addresses. After an update the old appliance answered
 // too while both ran, so some neighbors may still hold its MAC addresses.
 func (a *Appliance) Announce(ctx context.Context) error {
+	a.sendMu.Lock()
+	defer a.sendMu.Unlock()
 	a.mu.Lock()
 	links := a.pictures.inOrder()[0]
 	a.mu.Unlock()
@@ -314,8 +322,10 @@ func (a *Appliance) waitForAgent(ctx context.Context) error {
 	}
 }
 
-// sendAll sends every picture, in order.
+// sendAll sends every picture, the newest, in order.
 func (a *Appliance) sendAll(ctx context.Context) error {
+	a.sendMu.Lock()
+	defer a.sendMu.Unlock()
 	a.mu.Lock()
 	pictures := a.pictures.inOrder()
 	a.mu.Unlock()
@@ -396,6 +406,10 @@ func (a *Appliance) check(ctx context.Context) error {
 	case !state.Heartbeat:
 		return errors.New("the appliance's heartbeat does not answer")
 	}
+	// the status and the sends under sendMu: what the agent lacks is
+	// measured against the pictures that are newest while they go out
+	a.sendMu.Lock()
+	defer a.sendMu.Unlock()
 	pingCtx, cancel := context.WithTimeout(ctx, a.timings.Interval)
 	defer cancel()
 	status, err := a.agent.status(pingCtx)

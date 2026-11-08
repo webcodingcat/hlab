@@ -189,6 +189,34 @@ func TestWatchdogSendsThePicturesARestartedAgentLacks(t *testing.T) {
 	}
 }
 
+// A picture that the watchdog sends never follows a newer one that an
+// update sent meanwhile: the update waits until the watchdog is done.
+func TestWatchdogNeverSendsAnOlderPictureAfterANewerOne(t *testing.T) {
+	slow := fastTimings
+	slow.Interval = 50 * time.Millisecond // no check comes between the update and the look
+	_, agent, appliance := newAppliance(t, slow)
+	if _, err := appliance.Start(t.Context(), testPictures(1)); err != nil {
+		t.Fatal(err)
+	}
+	waiting, release := agent.HoldNext(agentproto.PictureLinks)
+	agent.Restart() // the watchdog sends generation 1 again, and its links wait
+	select {
+	case <-waiting:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the watchdog sent no links")
+	}
+	updated := make(chan error, 1)
+	go func() { updated <- appliance.Update(t.Context(), testPictures(2)) }()
+	time.Sleep(20 * time.Millisecond) // an update that does not wait has sent its links by now
+	release()
+	if err := <-updated; err != nil {
+		t.Fatal(err)
+	}
+	if got := generationOf(agent, agentproto.PictureLinks); got != 2 {
+		t.Errorf("the agent has the links of generation %d, want 2", got)
+	}
+}
+
 func TestWatchdogDoesNotSendARefusedPictureAgain(t *testing.T) {
 	_, agent, appliance := newAppliance(t)
 	pictures := testPictures(5)

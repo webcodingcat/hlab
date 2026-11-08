@@ -21,11 +21,18 @@ type Agent struct {
 	mu          sync.Mutex
 	generations map[string]uint64
 	pictures    map[string][]byte
+	holds       map[string]*hold // by picture: the next put waits (HoldNext)
+}
+
+// hold makes a put wait: waiting closes when it arrives, the put goes on
+// when release closes, and applied closes when it is done.
+type hold struct {
+	waiting, release, applied chan struct{}
 }
 
 // NewAgent returns an agent that has applied no picture yet.
 func NewAgent() *Agent {
-	a := &Agent{generations: map[string]uint64{}, pictures: map[string][]byte{}}
+	a := &Agent{generations: map[string]uint64{}, pictures: map[string][]byte{}, holds: map[string]*hold{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+agentproto.PathStatus, a.status)
 	mux.HandleFunc("PUT "+agentproto.PathPictures+"{name}", a.putPicture)
@@ -56,6 +63,20 @@ func (a *Agent) Picture(name string) []byte {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.pictures[name]
+}
+
+// HoldNext makes the next put of the named picture wait. waiting closes
+// when it arrives; release lets it go on and returns once it is applied.
+// A test uses it to send another picture while the first is on its way.
+func (a *Agent) HoldNext(name string) (waiting <-chan struct{}, release func()) {
+	next := &hold{waiting: make(chan struct{}), release: make(chan struct{}), applied: make(chan struct{})}
+	a.mu.Lock()
+	a.holds[name] = next
+	a.mu.Unlock()
+	return next.waiting, func() {
+		close(next.release)
+		<-next.applied
+	}
 }
 
 // status answers with the generations applied.
@@ -100,6 +121,15 @@ func (a *Agent) putPicture(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	a.mu.Lock()
+	held := a.holds[name]
+	delete(a.holds, name)
+	a.mu.Unlock()
+	if held != nil {
+		close(held.waiting)
+		<-held.release
+		defer close(held.applied)
 	}
 	a.mu.Lock()
 	a.generations[name] = generation
