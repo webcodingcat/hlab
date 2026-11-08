@@ -1,0 +1,105 @@
+{
+  "generation": 7,
+  "interfaces": [
+    {
+      "name": "link",
+      "mac": "02:48:4c:0b:00:01"
+    },
+    {
+      "name": "public",
+      "mac": "02:48:4c:0b:00:02"
+    },
+    {
+      "name": "private",
+      "mac": "02:48:4c:0b:00:03"
+    },
+    {
+      "name": "uplink",
+      "mac": "02:48:4c:0b:00:04",
+      "networkd": true
+    }
+  ],
+  "vrfs": null,
+  "vlans": null,
+  "addresses": [
+    {
+      "device": "link",
+      "prefix": "198.18.0.2/29",
+      "announce": true
+    },
+    {
+      "device": "link",
+      "prefix": "198.18.0.3/32",
+      "announce": true
+    },
+    {
+      "device": "link",
+      "prefix": "2001:db8:0:ffff::2/64",
+      "announce": true
+    },
+    {
+      "device": "public",
+      "prefix": "172.31.1.1/32",
+      "announce": true
+    },
+    {
+      "device": "public",
+      "prefix": "fe80::1/64",
+      "announce": true
+    },
+    {
+      "device": "lo",
+      "prefix": "169.254.169.254/32"
+    }
+  ],
+  "routes": [
+    {
+      "destination": "198.19.0.1/32",
+      "device": "public",
+      "source": "172.31.1.1"
+    },
+    {
+      "destination": "2001:db8:1:1::/64",
+      "device": "public"
+    },
+    {
+      "destination": "198.19.0.2/32",
+      "device": "public",
+      "source": "172.31.1.1"
+    },
+    {
+      "destination": "2001:db8:1:3::/64",
+      "device": "public"
+    }
+  ],
+  "sysctls": [
+    {
+      "key": "net/ipv4/conf/link/send_redirects",
+      "value": "0"
+    },
+    {
+      "key": "net/ipv4/conf/public/send_redirects",
+      "value": "0"
+    },
+    {
+      "key": "net/ipv4/conf/private/send_redirects",
+      "value": "0"
+    },
+    {
+      "key": "net/ipv4/conf/uplink/send_redirects",
+      "value": "0"
+    },
+    {
+      "key": "net/ipv6/conf/link/addr_gen_mode",
+      "value": "1"
+    },
+    {
+      "key": "net/ipv6/conf/public/addr_gen_mode",
+      "value": "1"
+    },
+    {
+      "key": "net/ipv6/conf/private/addr_gen_mode",
+      "value": "1"
+    }
+  ]
+}

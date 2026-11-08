@@ -14,7 +14,7 @@ the tests. Look there before writing such a part anew.
 | Phase | What | State |
 |---|---|---|
 | 1a | core without VMs: state, lab, web basics, catalog, reading resources, SSH keys, lab control, `--platform fake` | done |
-| 1b | servers, host link, reachability | **in progress: next 1b-2** |
+| 1b | servers, host link, reachability | **in progress: next 1b-3** |
 | 2a | Floating IPs, firewalls, private networks | open |
 | 2b | volumes, placement groups, DNS | open |
 | 2c | tools for tests | open |
@@ -90,8 +90,8 @@ the tests. Look there before writing such a part anew.
 | Step | What | State |
 |---|---|---|
 | 1b-1 | `pshost`, the Hyper-V hypervisor, the live tests (`bin/dev itest`) with the hypervisor's contract tests | done |
-| 1b-2 | the appliance's build and the agent; agent tests in a namespace | next |
-| 1b-3 | HostNet, the appliance's start and watchdog, the life cycle | open |
+| 1b-2 | the appliance's build and the agent; agent tests in a namespace | done |
+| 1b-3 | HostNet, the appliance's start and watchdog, the life cycle | next |
 | 1b-4 | image cache, `seed`, servers and Primary IPs | open |
 | 1b-5 | dev loop, `install.ps1`, the CLI from WSL2 | open |
 | 1b-6 | appliance update (A/B) with running servers | open |
@@ -136,7 +136,36 @@ the tests. Look there before writing such a part anew.
 - `ShutdownVM` against a real guest (shutdown service) is checked with the first
   server (1b-4); the contract tests have VMs without an OS.
 
-Next: 1b-2, the appliance's build and the agent.
+### What is there after 1b-2
 
-Not there yet: `bin/dev test --agent` (it reports "not yet implemented") and
-the commands of later phases.
+- `internal/agentproto`: HTTP and JSON between hlabd and the agent (vsock port
+  5000), the pictures `links`, `ruleset`, `dhcp`, `metadata` with their checks.
+- `internal/picture`: the four pictures as pure functions of a `picture.Lab`
+  (host link, MAC set, servers), with golden files. The fixed ruleset: servers
+  reach the host only on 8080 and 8081, the uplink only the Internet, no IPv6
+  to the uplink, no rule that needs conntrack to see a connection start.
+- `internal/agent` and `cmd/hlab-agent`: applies whole pictures (netlink, `nft
+  -f`, dnsmasq, the metadata service on `169.254.169.254`), announces its
+  addresses when a carrier comes up (gratuitous ARP and neighbor
+  advertisements, built in Go), leaves the uplink to networkd. Its tests run in
+  a network namespace: `bin/dev test --agent` (Docker), CI job `agent` with sudo.
+- `bin/dev appliance`: Debian 13 with mmdebstrap, without root, as a dynamic
+  VHDX for Gen2 with Secure Boot (Debian's signed shim and grub), with the agent
+  before `sysinit.target`, networkd only for the uplink, unbound as the lab's
+  resolver, a boot ruleset that forwards nothing.
+
+### Open for 1b-3 and later
+
+- Boot the appliance under Hyper-V (1b-3): the VHDX is built but has not
+  started in a VM yet. hlabd still pushes no pictures; `system` gets the agent
+  client (hv_sock, `go-winio`) and `lab` builds `picture.Lab` from its state.
+- The servers in `picture.Lab` come from the server records (1b-4).
+- unbound's fixed config names the default host link addresses; when the
+  ranges become settings, its addresses come with a picture (phase 2b `dns`).
+- dnsmasq is restarted when its configuration changes, not sent SIGHUP: it reads
+  its ranges and interfaces only at its start. Its leases are static, so a
+  restart loses nothing.
+
+Next: 1b-3, HostNet, the appliance's start and watchdog, the life cycle.
+
+Not there yet: the commands of later phases.

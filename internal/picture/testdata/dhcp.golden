@@ -1,0 +1,18 @@
+# dnsmasq for the servers' public NICs, built by hlabd.
+port=0
+interface=public
+bind-dynamic
+dhcp-authoritative
+leasefile-ro
+dhcp-option=option:netmask,255.255.255.255
+dhcp-option=option:router,172.31.1.1
+dhcp-option=121,172.31.1.1/32,0.0.0.0,0.0.0.0/0,172.31.1.1
+dhcp-option=option:dns-server,198.18.0.2
+# server 1000001
+shared-network=172.31.1.1,198.19.0.1
+dhcp-range=198.19.0.1,static,255.255.255.255,infinite
+dhcp-host=96:00:00:0f:42:41,198.19.0.1
+# server 1000002
+shared-network=172.31.1.1,198.19.0.2
+dhcp-range=198.19.0.2,static,255.255.255.255,infinite
+dhcp-host=96:00:00:0f:42:42,198.19.0.2

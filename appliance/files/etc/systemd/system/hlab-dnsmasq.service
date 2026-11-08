@@ -1,0 +1,9 @@
+[Unit]
+Description=HLab DHCP for the servers (dnsmasq)
+# The agent writes the configuration from the dhcp picture and restarts this
+# unit; it is not started at boot.
+ConditionPathExists=/run/hlab/dnsmasq.conf
+
+[Service]
+ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file=/run/hlab/dnsmasq.conf --pid-file=
+Restart=on-failure

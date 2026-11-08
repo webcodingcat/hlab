@@ -1,7 +1,6 @@
-// Command hlab-agent is the agent inside the HLab appliance.
-//
-// For now it only reports its version; the parts follow phase by phase
-// (docs/roadmap.md).
+// Command hlab-agent is the agent inside the HLab appliance: it applies the
+// pictures hlabd sends over vsock and runs the metadata service
+// (internal/agent). It runs on Linux only.
 package main
 
 import (
@@ -20,6 +19,8 @@ func main() {
 		fmt.Println("hlab-agent", version)
 		return
 	}
-	fmt.Fprintln(os.Stderr, "hlab-agent: not yet implemented; try --version")
-	os.Exit(2)
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, "hlab-agent:", err)
+		os.Exit(1)
+	}
 }

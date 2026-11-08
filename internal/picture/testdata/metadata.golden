@@ -1,0 +1,96 @@
+### sources [198.19.0.1/32 2001:db8:1:1::/64]
+availability-zone: fsn1-dc14
+hostname: web
+instance-id: 1000001
+local-ipv4: ''
+network-config:
+  config:
+  - mac_address: 96:00:00:0f:42:41
+    name: eth0
+    subnets:
+    - dns_nameservers:
+      - 198.18.0.2
+      ipv4: true
+      type: dhcp
+    - address: 2001:db8:1:1::1/64
+      dns_nameservers:
+      - 2001:db8:0:ffff::2
+      gateway: fe80::1
+      ipv6: true
+      type: static
+    type: physical
+  version: 1
+private-networks: []
+public-ipv4: 198.19.0.1
+public-keys:
+- ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIUser user@example
+- ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILabKey hlab
+region: eu-central
+vendor_data: |
+  #cloud-config
+  disable_root: false
+  ssh_pwauth: false
+### hostname: web
+### userdata
+### sources [198.19.0.2/32]
+availability-zone: hel1-dc2
+hostname: db
+instance-id: 1000002
+local-ipv4: ''
+network-config:
+  config:
+  - mac_address: 96:00:00:0f:42:42
+    name: eth0
+    subnets:
+    - dns_nameservers:
+      - 198.18.0.2
+      ipv4: true
+      type: dhcp
+    type: physical
+  version: 1
+private-networks: []
+public-ipv4: 198.19.0.2
+public-keys:
+- ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILabKey hlab
+region: eu-central
+vendor_data: |
+  #cloud-config
+  disable_root: false
+  ssh_pwauth: true
+  chpasswd:
+    expire: false
+    users:
+    - {name: root, password: "p\"ss", type: text}
+### hostname: db
+### userdata
+#cloud-config
+packages: [nginx]
+### sources [2001:db8:1:3::/64]
+availability-zone: ash-dc1
+hostname: only-six
+instance-id: 1000003
+local-ipv4: ''
+network-config:
+  config:
+  - mac_address: 96:00:00:0f:42:43
+    name: eth0
+    subnets:
+    - address: 2001:db8:1:3::1/64
+      dns_nameservers:
+      - 2001:db8:0:ffff::2
+      gateway: fe80::1
+      ipv6: true
+      type: static
+    type: physical
+  version: 1
+private-networks: []
+public-ipv4: ''
+public-keys:
+- ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILabKey hlab
+region: us-east
+vendor_data: |
+  #cloud-config
+  disable_root: false
+  ssh_pwauth: false
+### hostname: only-six
+### userdata

@@ -10,13 +10,16 @@ The same commands as bin/dev:
   bin/dev.ps1 test             the unit tests (on Windows, without the race
                                detector, which needs cgo)
   bin/dev.ps1 test --windows   the same as test
-  bin/dev.ps1 test --agent     the agent's tests (not yet implemented)
+  bin/dev.ps1 test --agent     the agent's tests run from WSL2
+                               (bin/dev test --agent)
   bin/dev.ps1 build            the binaries for Linux and Windows into build/
   bin/dev.ps1 spec-diff        Hetzner's current specs against compat/specs;
                                fails if they differ
   bin/dev.ps1 spec-diff --update
                                replace compat/specs with Hetzner's current ones
   bin/dev.ps1 smoke            the smoke tests run from WSL2 (bin/dev smoke)
+  bin/dev.ps1 appliance        the appliance is built in WSL2
+                               (bin/dev appliance)
   bin/dev.ps1 itest [--run <pattern>]
                                the live tests against Hyper-V
 #>
@@ -183,7 +186,8 @@ try {
                 # -count=1: the layer test reads packages through the go
                 # command, which the test cache does not see
                 { $_ -in '', '--windows' } { Invoke-Native go @('test', '-count=1', './...') }
-                '--agent' { throw 'test --agent is not yet implemented (docs/roadmap.md)' }
+                # they need Linux network namespaces (DEVELOPING.md, Tools)
+                '--agent' { throw 'test --agent runs from WSL2 or Linux: bin/dev test --agent' }
                 default { throw "unknown option: $Option" }
             }
         }
@@ -197,6 +201,8 @@ try {
         }
         # the smoke tests use the tools as users do, from WSL2 (DEVELOPING.md, Tools)
         'smoke' { throw 'smoke runs from WSL2: bin/dev smoke' }
+        # mmdebstrap is a Linux tool
+        'appliance' { throw 'appliance runs from WSL2: bin/dev appliance' }
         'itest' {
             $arguments = @('test', '-tags', 'live', '-v', '-count=1', '-timeout', '30m')
             if ($Option -match '^--run (.+)$') {

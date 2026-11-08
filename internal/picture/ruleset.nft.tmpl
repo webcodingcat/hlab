@@ -1,0 +1,59 @@
+# The appliance's whole ruleset, built by hlabd. nft -f applies the file as
+# one transaction: all of it or nothing.
+flush ruleset
+
+table inet hlab {
+	# the servers that may not reach the Internet
+	set no_internet {
+		type ipv4_addr
+{{- if .NoInternet}}
+		elements = { {{join .NoInternet ", "}} }
+{{- end}}
+	}
+
+	# what reaches the appliance itself
+	chain input {
+		type filter hook input priority filter; policy drop;
+		iif "lo" accept
+		meta l4proto { icmp, icmpv6 } accept
+		# the host reaches all of the appliance
+		iifname "{{.Link}}" accept
+		# networkd's DHCP, and the answers to the appliance's own requests
+		iifname "{{.Uplink}}" udp dport 68 accept
+		iifname "{{.Uplink}}" ct state established,related accept
+		# the lab's endpoints for the servers: DHCP, metadata, DNS
+		iifname "{{.Public}}" udp dport 67 accept
+		iifname "{{.Public}}" ip daddr {{.Metadata}} tcp dport 80 accept
+		iifname "{{.Public}}" ip daddr {{.Resolver4}} meta l4proto { tcp, udp } th dport 53 accept
+		iifname "{{.Public}}" ip6 daddr {{.Resolver6}} meta l4proto { tcp, udp } th dport 53 accept
+	}
+
+	# what goes through the appliance
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+		# servers reach the host only on the APIs, never the lab control
+		iifname "{{.Public}}" ip daddr {{.Host4}} tcp dport { 8080, 8081 } accept
+		iifname "{{.Public}}" ip6 daddr {{.Host6}} tcp dport { 8080, 8081 } accept
+		# answers to the host's connections; conntrack takes up a running
+		# TCP connection as established, also after an update of the
+		# appliance
+		iifname "{{.Public}}" oifname "{{.Link}}" ct state established,related accept
+		iifname "{{.Public}}" oifname "{{.Link}}" reject
+		# the uplink leads to the Internet only, never to the host or its LAN
+		oifname "{{.Uplink}}" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 } reject with icmpx admin-prohibited
+		# the Default Switch has no IPv6
+		oifname "{{.Uplink}}" meta nfproto ipv6 reject with icmpx admin-prohibited
+		oifname "{{.Uplink}}" ip saddr @no_internet reject with icmpx admin-prohibited
+		iifname "{{.Public}}" oifname "{{.Uplink}}" accept
+		iifname "{{.Uplink}}" oifname "{{.Public}}" ct state established,related accept
+		# the host to the servers, and the servers among each other; without
+		# conntrack, so that connections survive an update of the appliance
+		iifname { "{{.Link}}", "{{.Public}}" } oifname "{{.Public}}" accept
+	}
+
+	# the servers reach the Internet with the address of the uplink
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+		oifname "{{.Uplink}}" masquerade
+	}
+}

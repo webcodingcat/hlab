@@ -5,8 +5,9 @@
 #   bin/dev test             the unit tests, with the race detector
 #   bin/dev test --windows   the unit tests built for Windows, run through
 #                            WSL interop
-#   bin/dev test --agent     the agent's tests in a network namespace
-#                            (not yet implemented)
+#   bin/dev test --agent [--host]
+#                            the agent's tests in a network namespace: in
+#                            Docker, or with --host through sudo (CI)
 #   bin/dev build            the binaries for Linux and Windows into build/
 #   bin/dev spec-diff        Hetzner's current specs against compat/specs;
 #                            fails if they differ
@@ -17,6 +18,7 @@
 #   bin/dev itest [--run <pattern>]
 #                            the live tests against Hyper-V, built for
 #                            Windows and run through WSL interop
+#   bin/dev appliance        the appliance's disk (VHDX) into build/appliance
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -25,6 +27,7 @@ readonly TOOLS=(go tool "-modfile=${REPO}/tools/go.mod")
 readonly SHFMT_FLAGS=(-i 2 -ci -bn)
 readonly SPECS=(cloud hetzner)
 readonly SPEC_URL="https://docs.hetzner.cloud"
+readonly APPLIANCE="build/appliance/hlab-appliance.vhdx"
 
 #######################################
 # Print an error and exit.
@@ -146,6 +149,33 @@ test_windows() {
     ./...)
   rm -rf "${out_dir}"
   return "${failed}"
+}
+
+#######################################
+# Run the agent's tests (tag netns), which change links, routes and
+# nftables, in a network namespace of their own: in a container without
+# network, or with --host in a new namespace through sudo (CI).
+# Arguments:
+#   Optional --host.
+#######################################
+test_agent() {
+  local mode="${1:-}" dir status=0
+  [[ -z "${mode}" || "${mode}" == "--host" ]] || die "unknown option: ${mode}"
+  dir="$(mktemp -d)"
+  CGO_ENABLED=0 go test -c -tags netns -o "${dir}/agent.test" ./internal/agent
+  if [[ "${mode}" == "--host" ]]; then
+    sudo unshare --net -- "${dir}/agent.test" || status=$?
+  else
+    need docker "Docker Desktop with WSL integration, or Docker Engine"
+    docker build -q -t hlab-agent-test internal/agent/testdata >/dev/null
+    # /proc/sys stays read-only in a container unless systempaths allows
+    # it; NET_ADMIN then limits writes to the container's own net.*
+    docker run --rm --network none --cap-add NET_ADMIN --cap-add NET_RAW \
+      --security-opt systempaths=unconfined -v "${dir}:/test:ro" \
+      hlab-agent-test /test/agent.test || status=$?
+  fi
+  rm -rf "${dir}"
+  return "${status}"
 }
 
 #######################################
@@ -284,12 +314,15 @@ smoke() (
 )
 
 #######################################
-# Report a command that a later phase brings (docs/roadmap.md).
-# Arguments:
-#   The command.
+# Build the appliance's disk with the agent of this working tree
+# (DEVELOPING.md, Appliance).
 #######################################
-not_yet() {
-  die "$1 is not yet implemented (docs/roadmap.md)"
+appliance() {
+  local started=${SECONDS}
+  build
+  appliance/build.sh build/linux/hlab-agent "${APPLIANCE}"
+  echo "built ${APPLIANCE} ($(du -h "${APPLIANCE}" | cut -f1)) in" \
+    "$((SECONDS - started)) s"
 }
 
 main() {
@@ -306,7 +339,7 @@ main() {
           CGO_ENABLED=1 go test -race -count=1 ./...
           ;;
         --windows) test_windows ;;
-        --agent) not_yet "test --agent" ;;
+        --agent) test_agent "${3:-}" ;;
         *) die "unknown option: $2" ;;
       esac
       ;;
@@ -314,6 +347,7 @@ main() {
     spec-diff) spec_diff "${2:-}" ;;
     smoke) smoke ;;
     itest) itest "${2:-}" "${3:-}" ;;
+    appliance) appliance ;;
     *)
       sed -n '2,/^set /p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//' >&2
       exit 2

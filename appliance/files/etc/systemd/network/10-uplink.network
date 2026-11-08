@@ -1,0 +1,18 @@
+# The uplink is the only link networkd manages: DHCP from Hyper-V's Default
+# Switch. It matches by the MAC addresses of both sets (A and B), so that it
+# does not matter when the agent renames the NIC.
+[Match]
+MACAddress=02:48:4c:0a:00:04 02:48:4c:0b:00:04
+
+[Link]
+RequiredForOnline=no
+
+[Network]
+DHCP=ipv4
+LinkLocalAddressing=no
+IPv6AcceptRA=no
+
+[DHCPv4]
+# the appliance resolves with its own unbound
+UseDNS=no
+UseHostname=no
