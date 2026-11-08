@@ -3,6 +3,8 @@ package cloud_test
 import (
 	"fmt"
 	"net/http"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud/schema"
@@ -55,6 +57,10 @@ func TestPrimaryIPLifeCycle(t *testing.T) {
 		"name": "spare", "type": "ipv4", "location": "fsn1", "assignee_type": "server", "labels": map[string]string{"env": "dev"},
 	})
 	ip := created.PrimaryIP
+	// Hetzner's default name of an IPv4 (measured 2026-11-08)
+	if want := "static." + reversed(ip.IP) + ".clients.your-server.de"; len(ip.DNSPtr) != 1 || ip.DNSPtr[0].DNSPtr != want {
+		t.Errorf("dns_ptr %+v, want %s", ip.DNSPtr, want)
+	}
 	if created.Action != nil || ip.AssigneeID != nil || ip.AssigneeType != "unassigned" || ip.AutoDelete ||
 		len(ip.DNSPtr) != 1 || ip.DNSPtr[0].IP != ip.IP || ip.Location.Name != "fsn1" {
 		t.Errorf("created %+v, action %+v", ip, created.Action)
@@ -172,16 +178,90 @@ func TestPrimaryIPsAServerCannotTake(t *testing.T) {
 func TestPrimaryIPCreateErrors(t *testing.T) {
 	test := newTestLab(t)
 	// measured 2026-11-08: neither or both of assignee_id and location
+	place := "either assignee_id or location must be provided"
 	for name, body := range map[string]map[string]any{
 		"no place":    {"name": "x", "type": "ipv4", "assignee_type": "server"},
 		"both places": {"name": "x", "type": "ipv4", "assignee_type": "server", "location": "fsn1", "assignee_id": 1},
 	} {
-		expectError(t, name, &responseOf{test.client.Do(http.MethodPost, "/v1/primary_ips", body)},
-			http.StatusUnprocessableEntity, "invalid_input", "invalid input in fields 'assignee_id', 'location'")
+		response := &responseOf{test.client.Do(http.MethodPost, "/v1/primary_ips", body)}
+		expectError(t, name, response, http.StatusUnprocessableEntity, "invalid_input", "invalid input in fields 'assignee_id', 'location'")
+		messages := fieldMessages(t, errorOf(t, response.Response))
+		for _, field := range []string{"assignee_id", "location"} {
+			if got := messages[field]; len(got) != 1 || got[0] != place {
+				t.Errorf("%s: the field %s has %q, want %q", name, field, got, place)
+			}
+		}
 	}
-	expectError(t, "an unknown type", &responseOf{test.client.Do(http.MethodPost, "/v1/primary_ips",
-		map[string]any{"name": "x", "type": "bogus", "assignee_type": "server", "location": "fsn1"})},
-		http.StatusUnprocessableEntity, "invalid_input", "invalid input in field 'type'")
+	response := &responseOf{test.client.Do(http.MethodPost, "/v1/primary_ips",
+		map[string]any{"name": "x", "type": "bogus", "assignee_type": "server", "location": "fsn1"})}
+	expectError(t, "an unknown type", response, http.StatusUnprocessableEntity, "invalid_input", "invalid input in field 'type'")
+	if got := fieldMessages(t, errorOf(t, response.Response))["type"]; len(got) != 1 || got[0] != "value required to be smaller" {
+		t.Errorf("an unknown type: the field type has %q", got)
+	}
+}
+
+// The lists of Primary IPs and of their actions, as hcloud-go asks for
+// them (PrimaryIPListOpts, the action lists).
+func TestPrimaryIPLists(t *testing.T) {
+	test := newTestLab(t)
+	first := createPrimaryIP(t, test, map[string]any{
+		"name": "first", "type": "ipv4", "location": "fsn1", "assignee_type": "server", "labels": map[string]string{"env": "dev"},
+	}).PrimaryIP
+	second := createPrimaryIP(t, test, map[string]any{"name": "second", "type": "ipv6", "location": "fsn1", "assignee_type": "server"}).PrimaryIP
+
+	listed := func(query string) []schema.PrimaryIP {
+		var list schema.PrimaryIPListResponse
+		test.client.Get("/v1/primary_ips?"+query).Decode(t, &list)
+		return list.PrimaryIPs
+	}
+	if got := listed("label_selector=env%3Ddev"); len(got) != 1 || got[0].ID != first.ID {
+		t.Errorf("selected by env=dev %+v", got)
+	}
+	if got := listed("label_selector=!env"); len(got) != 1 || got[0].ID != second.ID {
+		t.Errorf("selected by !env %+v", got)
+	}
+	for sort, want := range map[string]int64{"id": first.ID, "id:desc": second.ID, "created": first.ID, "created:desc": second.ID} {
+		if got := listed("sort=" + sort); len(got) != 2 || got[0].ID != want {
+			t.Errorf("sorted by %s: %+v, want %d first", sort, got, want)
+		}
+	}
+	if response := test.client.Get("/v1/primary_ips?sort=name"); response.Status != http.StatusUnprocessableEntity {
+		t.Errorf("an unknown sort: %d", response.Status)
+	}
+
+	change := primaryIPAction(test, first.ID, "change_protection", map[string]bool{"delete": true})
+	var changed schema.ActionGetResponse
+	change.Decode(t, &changed)
+	var actions schema.ActionListResponse
+	test.client.Get("/v1/primary_ips/actions").Decode(t, &actions)
+	if len(actions.Actions) != 1 || actions.Actions[0].ID != changed.Action.ID {
+		t.Errorf("the Primary IPs' actions are %+v", actions.Actions)
+	}
+	test.client.Get(fmt.Sprintf("/v1/primary_ips/%d/actions", first.ID)).Decode(t, &actions)
+	if len(actions.Actions) != 1 || actions.Actions[0].Command != "change_protection" {
+		t.Errorf("the first IP's actions are %+v", actions.Actions)
+	}
+	test.client.Get(fmt.Sprintf("/v1/primary_ips/%d/actions", second.ID)).Decode(t, &actions)
+	if len(actions.Actions) != 0 {
+		t.Errorf("the second IP has actions %+v", actions.Actions)
+	}
+	var one schema.ActionGetResponse
+	test.client.Get(fmt.Sprintf("/v1/primary_ips/actions/%d", changed.Action.ID)).Decode(t, &one)
+	if one.Action.ID != changed.Action.ID {
+		t.Errorf("GET /primary_ips/actions/{id} answered %+v", one.Action)
+	}
+	test.client.Get(fmt.Sprintf("/v1/primary_ips/%d/actions/%d", first.ID, changed.Action.ID)).Decode(t, &one)
+	if one.Action.ID != changed.Action.ID {
+		t.Errorf("GET /primary_ips/{id}/actions/{id} answered %+v", one.Action)
+	}
+}
+
+// reversed returns an IPv4 address with its octets backwards, as in its
+// reverse DNS name.
+func reversed(ip string) string {
+	octets := strings.Split(ip, ".")
+	slices.Reverse(octets)
+	return strings.Join(octets, ".")
 }
 
 // A Primary IP created for a server that is off is assigned at once, with

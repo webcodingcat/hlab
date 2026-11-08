@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -39,7 +40,9 @@ func newTestLab(t *testing.T) *testLab {
 	t.Helper()
 	logger := slog.New(slog.DiscardHandler)
 	machine := fake.New()
-	l, err := lab.Open(lab.Options{DataDir: t.TempDir(), Logger: logger, Catalog: localImages(t)}, system.New(machine.Platform()))
+	clock := &steppingClock{start: time.Now()}
+	l, err := lab.Open(lab.Options{DataDir: t.TempDir(), Logger: logger, Catalog: localImages(t), Clock: clock},
+		system.New(machine.Platform()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,6 +57,20 @@ func newTestLab(t *testing.T) *testLab {
 	client.Token = newToken(t, l, "default")
 	return &testLab{lab: l, client: client, machine: machine}
 }
+
+// steppingClock moves a second forward each time it tells the time, so
+// that resources created one after another differ in their created time,
+// which Hetzner gives in seconds; it waits as the real clock does.
+type steppingClock struct {
+	start time.Time
+	ticks atomic.Int64
+}
+
+func (c *steppingClock) Now() time.Time {
+	return c.start.Add(time.Duration(c.ticks.Add(1)) * time.Second)
+}
+
+func (c *steppingClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
 
 // startMachine starts the lab's machine with the host's resources, so that
 // the room check counts: an agent answers in the appliance's VM, and the
@@ -118,6 +135,25 @@ type apiError struct {
 	Code    string          `json:"code"`
 	Message string          `json:"message"`
 	Details json.RawMessage `json:"details"`
+}
+
+// fieldMessages returns the messages per field of an invalid_input error.
+func fieldMessages(t *testing.T, got apiError) map[string][]string {
+	t.Helper()
+	var details struct {
+		Fields []struct {
+			Name     string   `json:"name"`
+			Messages []string `json:"messages"`
+		} `json:"fields"`
+	}
+	if err := json.Unmarshal(got.Details, &details); err != nil {
+		t.Fatalf("details %s: %v", got.Details, err)
+	}
+	messages := map[string][]string{}
+	for _, field := range details.Fields {
+		messages[field.Name] = field.Messages
+	}
+	return messages
 }
 
 // errorOf returns the error of an answer.

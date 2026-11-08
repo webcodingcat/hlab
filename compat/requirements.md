@@ -67,7 +67,7 @@ it; "open" means the phase has not come yet. What never works is in
 | Create in a location (no action) or for a server that is off (`assign_primary_ip`); read, update (name, labels, `auto_delete`), delete (204); `assign`, `unassign`, `change_protection` | hcloud-go `hcloud/primary_ip.go`; provider `hcloud_primary_ip` | 1b | `internal/api/cloud`: `TestPrimaryIPLifeCycle`, `TestPrimaryIPAssignedOnCreate` |
 | An unassigned IP has `assignee_id` `null` and `assignee_type` `"unassigned"`; an IPv4's `dns_ptr` lists Hetzner's default name | measured; Hetzner's changelog 2026-04-27 | 1b | `internal/api/cloud`: `TestPrimaryIPLifeCycle` |
 | A server's own IPs are named `primary_ip-<id>`, with `auto_delete` true; `unassign` clears `auto_delete` | measured | 1b | `internal/api/cloud`: `TestPrimaryIPLifeCycle` |
-| Lists filter by `name`, `ip`, `label_selector` and sort by `id`, `created`; `/primary_ips/actions` and `/primary_ips/{id}/actions` | hcloud-go `hcloud/primary_ip.go` (`PrimaryIPListOpts`) | 1b | `internal/api/cloud`: `TestPrimaryIPAssignedOnCreate` |
+| Lists filter by `name`, `ip`, `label_selector` and sort by `id`, `created`; `/primary_ips/actions` and `/primary_ips/{id}/actions` | hcloud-go `hcloud/primary_ip.go` (`PrimaryIPListOpts`) | 1b | `internal/api/cloud`: `TestPrimaryIPAssignedOnCreate`, `TestPrimaryIPLists` |
 | Errors with Hetzner's codes and texts, details `null` (below); a new server's IP that it cannot take has codes and texts of its own, details `{}` | measured | 1b | `internal/api/cloud`: `TestPrimaryIPLifeCycle`, `TestPrimaryIPCreateErrors`, `TestPrimaryIPsAServerCannotTake` |
 
 ## Gaps of the old HLab

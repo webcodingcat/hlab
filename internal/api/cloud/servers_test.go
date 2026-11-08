@@ -335,25 +335,34 @@ func TestServerCreateErrors(t *testing.T) {
 		}
 		return body
 	}
+	// measured 2026-11-08; field is the field whose message the answer
+	// names, with fieldMessage
 	for name, test2 := range map[string]struct {
-		body           map[string]any
-		status         int
-		code, message  string
-		detailsAreNull bool
+		body                []any
+		status              int
+		code, message       string
+		field, fieldMessage string
 	}{
-		"an unknown image":    {with("image", "bogus-99"), 422, "invalid_input", "image not found", false},
-		"an unknown type":     {with("server_type", "bogus"), 404, "not_found", "server type not found", false},
-		"an unknown location": {with("location", "bogus"), 404, "not_found", "datacenter not found", false},
-		"a bad name":          {with("name", "bad_name"), 422, "invalid_input", "invalid input in field 'name'", false},
-		"no image":            {with("image", nil), 422, "invalid_input", "invalid input in field 'image'", false},
-		"an unknown SSH key":  {with("ssh_keys", []any{999999999}), 404, "not_found", "SSH key not found", false},
-		"too much user data":  {with("user_data", strings.Repeat("x", 32769)), 422, "invalid_input", "invalid input in field 'user_data'", false},
-		"an unknown IPv4":     {with("public_net", map[string]any{"ipv4": 999999999}), 404, "primary_ip_not_found", "primary ip not found", false},
+		"an unknown image":    {[]any{"image", "bogus-99"}, 422, "invalid_input", "image not found", "", ""},
+		"an unknown type":     {[]any{"server_type", "bogus"}, 404, "not_found", "server type not found", "", ""},
+		"an unknown location": {[]any{"location", "bogus"}, 404, "not_found", "datacenter not found", "", ""},
+		"a bad name":          {[]any{"name", "bad_name"}, 422, "invalid_input", "invalid input in field 'name'", "name", "name must be a valid hostname"},
+		"an empty name":       {[]any{"name", ""}, 422, "invalid_input", "invalid input in field 'name'", "name", "name must be a valid hostname"},
+		"no image":            {[]any{"image", nil}, 422, "invalid_input", "invalid input in field 'image'", "image", "Missing data for required field."},
+		"an unknown SSH key":  {[]any{"ssh_keys", []any{999999999}}, 404, "not_found", "SSH key not found", "", ""},
+		"too much user data":  {[]any{"user_data", strings.Repeat("x", 32769)}, 422, "invalid_input", "invalid input in field 'user_data'", "user_data", "Length must be between 0 and 32768."},
+		"an unknown IPv4":     {[]any{"public_net", map[string]any{"ipv4": 999999999}}, 404, "primary_ip_not_found", "primary ip not found", "", ""},
 	} {
-		response := test.client.Do(http.MethodPost, "/v1/servers", test2.body)
+		response := test.client.Do(http.MethodPost, "/v1/servers", with(test2.body[0].(string), test2.body[1]))
 		got := errorOf(t, response)
 		if response.Status != test2.status || got.Code != test2.code || got.Message != test2.message {
 			t.Errorf("%s: %d %+v, want %d %s %q", name, response.Status, got, test2.status, test2.code, test2.message)
+		}
+		if test2.field == "" {
+			continue
+		}
+		if messages := fieldMessages(t, got)[test2.field]; len(messages) != 1 || messages[0] != test2.fieldMessage {
+			t.Errorf("%s: the field %s has %q, want %q", name, test2.field, messages, test2.fieldMessage)
 		}
 	}
 	createServer(t, test, base)
@@ -400,9 +409,16 @@ func TestServerUpdateAndList(t *testing.T) {
 	if len(list.Servers) != 1 || list.Servers[0].Name != "www" {
 		t.Errorf("selected %+v", list.Servers)
 	}
-	test.client.Get("/v1/servers?sort=name").Decode(t, &list)
-	if len(list.Servers) != 2 || list.Servers[0].Name != "db" {
-		t.Errorf("sorted %+v", list.Servers)
+	for sort, first := range map[string]string{
+		"name": "db", "name:desc": "www", "id": "www", "id:desc": "db", "created": "www", "created:desc": "db",
+	} {
+		var sorted struct {
+			Servers []serverAnswer `json:"servers"`
+		}
+		test.client.Get("/v1/servers?sort="+sort).Decode(t, &sorted)
+		if len(sorted.Servers) != 2 || sorted.Servers[0].Name != first {
+			t.Errorf("sorted by %s: %+v, want %s first", sort, sorted.Servers, first)
+		}
 	}
 	if response := test.client.Get("/v1/servers?status=bogus"); response.Status != http.StatusUnprocessableEntity {
 		t.Errorf("an unknown status: %d", response.Status)
