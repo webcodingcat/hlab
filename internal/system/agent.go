@@ -16,7 +16,7 @@ import (
 )
 
 // agentTimeout bounds one request to the agent. The longest is a ruleset
-// picture: Phase 0 measured up to 84 ms for 20 servers.
+// picture: up to 84 ms for 20 servers, measured on Hyper-V.
 const agentTimeout = 10 * time.Second
 
 // errRefused is a picture the agent refused (422): sending it again does not

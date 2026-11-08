@@ -54,7 +54,7 @@ func TestFilesMatchTheGoldenFiles(t *testing.T) {
 }
 
 // TestNameServersAreAlwaysInTheSeed: without them Ubuntu's cloud-init
-// waits 120 s (Phase 0, P0-01).
+// waits 120 s (measured on Hyper-V).
 func TestNameServersAreAlwaysInTheSeed(t *testing.T) {
 	config := string(Files(Server{ID: 1, Name: "x", MAC: "96:00:00:00:00:01", IPv4: true, Resolvers: resolvers})["network-config"])
 	if !strings.Contains(config, "198.18.0.2") || !strings.Contains(config, "2001:db8:0:ffff::2") {

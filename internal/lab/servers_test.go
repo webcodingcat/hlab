@@ -22,8 +22,8 @@ import (
 	"github.com/webcodingcat/hlab/internal/system"
 )
 
-// putServer records a server of the project "default" and gives it a VM on
-// the fake machine, running or off.
+// putServer records a server in a new project of its own and gives it a VM
+// on the fake machine, running or off.
 func putServer(t *testing.T, l *lab.Lab, machine *fake.Fake, name string, running, wantRunning bool) int64 {
 	t.Helper()
 	var id int64

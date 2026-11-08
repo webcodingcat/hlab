@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"math/big"
 	"net/http"
 	"regexp"
 	"slices"
@@ -233,10 +234,11 @@ func registerServers(api *web.API, l *lab.Lab) {
 			return 0, nil, err
 		}
 		if body.Name != nil {
-			// the metadata's hostname; if sending fails, the appliance's
-			// watchdog sends the newest pictures again. The seed keeps the
-			// old name: cloud-init reads it only at the first boot.
-			_ = l.UpdatePictures(req.Context())
+			// the metadata's hostname, also if the client goes away; if
+			// sending fails, the appliance's watchdog sends the newest
+			// pictures again. The seed keeps the old name: cloud-init reads
+			// it only at the first boot.
+			_ = l.UpdatePictures(context.WithoutCancel(req.Context()))
 		}
 		return http.StatusOK, map[string]serverAnswer{"server": out}, nil
 	})
@@ -477,13 +479,14 @@ func serverNameUsed(tx *state.Tx, projectID int64, name string) bool {
 	return false
 }
 
-// rootPassword returns a new root password: 20 letters and digits.
+// rootPassword returns a new root password: 20 letters and digits, each
+// as likely as the others.
 func rootPassword() string {
-	const letters = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	const characters = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	password := make([]byte, 20)
-	_, _ = rand.Read(password)
-	for i, b := range password {
-		password[i] = letters[int(b)%len(letters)]
+	for i := range password {
+		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(characters))))
+		password[i] = characters[n.Int64()]
 	}
 	return string(password)
 }
@@ -564,7 +567,7 @@ func serverActions(l *lab.Lab) lab.ActionTable {
 }
 
 // planSteps returns the plan of a power action without quick changes: it
-// checks that the caller has the server, and the steps run run on it.
+// checks that the caller has the server, and its steps call run with it.
 func planSteps(run func(ctx context.Context, id int64) error) func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		if _, err := callerServer(tx, req.ProjectID, req.ID); err != nil {

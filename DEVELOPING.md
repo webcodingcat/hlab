@@ -10,6 +10,10 @@ work on it. Other files cover the rest:
 Section names in parentheses, such as (The state), point to the section of this file
 that explains more.
 
+**Start here.** For a first change, read "A request's path" and "Layers", then
+the recipe for what you add (Recipes, at the end). The other sections are
+reference: read one when you work on its part.
+
 ## A request's path
 
 This is what happens when you run `hcloud ssh-key create` against the lab:
@@ -65,7 +69,8 @@ way their rule applies from their first line of code.
 - a package is missing from the table.
 
 The "May import" column names packages by their path below `internal/`. "anything"
-means the row has no limit.
+means the row has no limit. Outside modules are not in it (Dependencies): so
+`schema` there is HLab's own `internal/schema`, not `hcloud-go`'s.
 
 | Package | Job | May import |
 |---|---|---|
@@ -181,6 +186,8 @@ The layer test checks production code only. Tests may import fakes and helpers.
   would lose data.
 - **Not in the state:** disks, images, metrics and logs (they have their own files);
   action flags (memory only); tokens in clear text (only their hash is kept).
+  A server's root password is in it, in clear text: Hetzner shows it only
+  once, but the lab's metadata service and seed hand it to the guest.
 
 ## Concurrency
 
@@ -416,8 +423,10 @@ the same later.
     `Labels`, `Fail`). A PUT uses `web.Check{Update: true}`, because Hetzner's texts
     differ there. The handler returns `check.Err()`: one `invalid_input` error that
     lists every bad field with Hetzner's messages.
-  - A value that another resource of the project already has is `web.Uniqueness`
-    (409 `uniqueness_error`).
+  - A value that another resource of the project already has is 409
+    `uniqueness_error`. Its details differ as measured: SSH keys name the field
+    (`web.Uniqueness`), servers send `{}` (`web.Refusal`), Primary IPs `null`
+    (`web.RefusalNull`).
   - All these texts were measured on the real API (`compat/requirements.md`).
   - The request schemas of the spec are not used at run time. The spec check is for
     tests only.

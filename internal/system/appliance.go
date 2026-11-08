@@ -19,11 +19,12 @@ func ApplianceVM(macSet string) string {
 	return "hlab-appliance-" + strings.ToLower(macSet)
 }
 
-// The appliance's size: Phase 0 measured 371 MB in use under load, with 20
-// servers, 10 firewalls and HAProxy.
+// The appliance's size: 371 MB were in use under load, with 20 servers, 10
+// firewalls and HAProxy (measured on Hyper-V). The room check keeps
+// ApplianceMemoryMB free for it.
 const (
 	applianceCPUs     = 2
-	applianceMemoryMB = 1024
+	ApplianceMemoryMB = 1024
 )
 
 // ApplianceSpec is what the appliance is made of.
@@ -57,9 +58,10 @@ type ApplianceTimings struct {
 	Shutdown time.Duration
 }
 
-// DefaultApplianceTimings returns the plan's times: a check every 2 s, a
-// restart after three failures (Phase 0: down for 6 s), or after one that
-// finds the appliance off; the agent answered 5.1 s after the start.
+// DefaultApplianceTimings returns the watchdog's times: a check every 2 s,
+// a restart after three failures (the appliance is down for 6 s then), or
+// after one that finds the appliance off; the agent answered 5.1 s after
+// the start.
 func DefaultApplianceTimings() ApplianceTimings {
 	return ApplianceTimings{Interval: 2 * time.Second, Failures: 3, Boot: 2 * time.Minute, Shutdown: 30 * time.Second}
 }
@@ -250,7 +252,7 @@ func (a *Appliance) create(ctx context.Context) error {
 		Name:     a.spec.VM,
 		Tag:      VMTag,
 		CPUs:     applianceCPUs,
-		MemoryMB: applianceMemoryMB,
+		MemoryMB: ApplianceMemoryMB,
 		Disks:    []platform.DiskSlot{{Slot: 0, Path: a.spec.SystemDisk}},
 		// the private networks' switch comes with phase 2a; until then the
 		// trunk is not connected

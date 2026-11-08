@@ -34,7 +34,6 @@ var ErrNoRoom = errors.New("the host has no room for the server")
 const (
 	memoryReservePercent = 25
 	memoryReserveMinMB   = 6 * 1024
-	applianceMemoryMB    = 1024
 	coresPerThread       = 4
 )
 
@@ -59,7 +58,8 @@ func ServerVM(id int64) string {
 }
 
 // ServerMAC returns the MAC address of a server's public NIC: 96:00 and the
-// server's ID in 32 bits, like Hetzner's 96:00:… addresses.
+// server's ID in 32 bits, like Hetzner's 96:00:… addresses. IDs count up
+// from state.FirstID, so they stay far below 2^32, where MACs would repeat.
 func ServerMAC(id int64) string {
 	return fmt.Sprintf("96:00:%02x:%02x:%02x:%02x", byte(id>>24), byte(id>>16), byte(id>>8), byte(id))
 }
@@ -93,7 +93,7 @@ func (l *Lab) CheckRoom(tx *state.Tx, serverID int64, serverType catalog.ServerT
 		}
 	}
 	reserve := max(l.host.MemoryMB*memoryReservePercent/100, memoryReserveMinMB)
-	if memoryMB > l.host.MemoryMB-reserve-applianceMemoryMB || cores > l.host.Threads*coresPerThread {
+	if memoryMB > l.host.MemoryMB-reserve-system.ApplianceMemoryMB || cores > l.host.Threads*coresPerThread {
 		return fmt.Errorf("%w: %d MB and %d cores wanted", ErrNoRoom, memoryMB, cores)
 	}
 	return nil
