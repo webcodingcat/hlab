@@ -192,6 +192,15 @@ func queryIDs(req *web.Request) ([]int64, error) {
 	return ids, nil
 }
 
+// actionsJSON returns actions as the API shows them.
+func actionsJSON(actions []state.Action) []schema.Action {
+	out := make([]schema.Action, 0, len(actions))
+	for i := range actions {
+		out = append(out, actionJSON(&actions[i]))
+	}
+	return out
+}
+
 // actionJSON returns an action as the API shows it.
 func actionJSON(action *state.Action) schema.Action {
 	out := schema.Action{

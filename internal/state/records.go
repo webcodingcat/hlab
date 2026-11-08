@@ -252,6 +252,54 @@ func (f FloatingIP) RecordProject() int64 { return f.ProjectID }
 // RecordName implements Named.
 func (f FloatingIP) RecordName() string { return f.Name }
 
+// Firewall is a Cloud Firewall of a project: rules that filter the public
+// addresses of the servers it applies to.
+type Firewall struct {
+	ID        int64             `json:"id"`
+	ProjectID int64             `json:"project_id"`
+	Name      string            `json:"name"`
+	Labels    map[string]string `json:"labels"`
+	Created   time.Time         `json:"created"`
+	Rules     []FirewallRule    `json:"rules"`
+	// AppliedTo are the servers and label selectors it applies to, in the
+	// order they were added.
+	AppliedTo []FirewallTarget `json:"applied_to"`
+}
+
+// RecordID returns the firewall's ID.
+func (f Firewall) RecordID() int64 { return f.ID }
+
+// RecordProject returns the firewall's project.
+func (f Firewall) RecordProject() int64 { return f.ProjectID }
+
+// RecordName implements Named.
+func (f Firewall) RecordName() string { return f.Name }
+
+// FirewallRule is a rule of a firewall, with Hetzner's fields: an "in"
+// rule names source IPs, an "out" rule destination IPs.
+type FirewallRule struct {
+	Description    *string  `json:"description"`
+	Direction      string   `json:"direction"`
+	Protocol       string   `json:"protocol"`
+	Port           string   `json:"port"` // "" for icmp, esp and gre
+	SourceIPs      []string `json:"source_ips"`
+	DestinationIPs []string `json:"destination_ips"`
+}
+
+// FirewallTarget is what a firewall applies to: a server, or the servers
+// of the project that a label selector matches.
+type FirewallTarget struct {
+	// ID is a label selector's own ID, which its actions name (Hetzner
+	// gives each one an ID); 0 for a server.
+	ID       int64  `json:"id"`
+	ServerID int64  `json:"server_id"` // 0 for a label selector
+	Selector string `json:"selector"`  // "" for a server
+	// Servers are the servers the selector matches and the firewall
+	// applies to, by ID; the API keeps them up to date when servers or
+	// their labels change.
+	Servers []int64 `json:"servers"`
+}
+
 // Lab is the lab's own records, which the API does not show. Later phases add
 // the Internet clients and the ACME keys.
 type Lab struct {

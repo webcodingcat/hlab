@@ -227,7 +227,7 @@ func TestCreateRecordsTheResourceWithItsActions(t *testing.T) {
 		state.Put(tx, state.Servers, &state.Server{ID: id, ProjectID: projectID, Name: "web"})
 		return id, nil
 	}
-	actions, err := l.Create(table, request(0), create, "poweroff", "poweron")
+	actions, err := l.Create(table, request(0), create, lab.Row{Command: "poweroff"}, lab.Row{Command: "poweron"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestRefusedCreateRecordsNothing(t *testing.T) {
 		state.Put(tx, state.Servers, &state.Server{ID: id, ProjectID: projectID, Name: "web"})
 		return id, nil
 	}
-	if _, err := l.Create(table, request(0), create, "poweroff", "poweron"); !errors.Is(err, refused) {
+	if _, err := l.Create(table, request(0), create, lab.Row{Command: "poweroff"}, lab.Row{Command: "poweron"}); !errors.Is(err, refused) {
 		t.Fatalf("got %v, want the second plan's error", err)
 	}
 	err := l.View(func(tx *state.Tx) error {
@@ -433,7 +433,7 @@ func TestCloseRefusesNewActions(t *testing.T) {
 		t.Errorf("an action after Close: %v, want ErrClosed", err)
 	}
 	created := func(*state.Tx) (int64, error) { return 8, nil }
-	if _, err := l.Create(tableWith(instant), request(0), created, "poweroff"); !errors.Is(err, lab.ErrClosed) {
+	if _, err := l.Create(tableWith(instant), request(0), created, lab.Row{Command: "poweroff"}); !errors.Is(err, lab.ErrClosed) {
 		t.Errorf("a create after Close: %v, want ErrClosed", err)
 	}
 	l.Machine().UpdatePicturesLater() // starts nothing that would outlive Close

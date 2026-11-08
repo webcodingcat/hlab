@@ -59,10 +59,11 @@ var (
 	Servers     = Kind[Server]{name: "servers"}
 	PrimaryIPs  = Kind[PrimaryIP]{name: "primary_ips"}
 	FloatingIPs = Kind[FloatingIP]{name: "floating_ips"}
+	Firewalls   = Kind[Firewall]{name: "firewalls"}
 )
 
 // kinds lists every kind, so that loading, saving and copying reach them all.
-var kinds = []kind{Projects, Tokens, SSHKeys, Actions, Servers, PrimaryIPs, FloatingIPs}
+var kinds = []kind{Projects, Tokens, SSHKeys, Actions, Servers, PrimaryIPs, FloatingIPs, Firewalls}
 
 // kind is what the state needs of a Kind without knowing its record type.
 type kind interface {

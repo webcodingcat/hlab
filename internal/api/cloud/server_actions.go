@@ -136,9 +136,11 @@ func planDeleteServer(l *lab.Lab) planFunc {
 }
 
 // releaseServer deletes a server's record and its Primary IPs with
-// auto_delete; the others stay, unassigned, and so do its Floating IPs.
+// auto_delete; the others stay, unassigned, and so do its Floating IPs
+// and its firewalls.
 func releaseServer(tx *state.Tx, server *state.Server) {
 	unassignFloatingIPs(tx, server.ID)
+	releaseFirewalls(tx, server.ID)
 	for _, id := range []int64{server.IPv4, server.IPv6} {
 		ip, err := state.Get(tx, state.PrimaryIPs, id)
 		if err != nil {

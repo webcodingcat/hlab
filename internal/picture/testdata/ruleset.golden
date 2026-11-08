@@ -41,8 +41,9 @@ table inet hlab {
 		iifname "public" oifname "link" tcp flags & (syn | ack) == ack accept
 		iifname "public" oifname "link" reject
 		# the uplink leads to the Internet only, never to the host or its LAN,
-		# nor to a lab address that nobody holds (the uplink's table sends
-		# them nowhere; this holds even if it did)
+		# nor to a lab address that nobody holds (the links picture's
+		# blackhole drops those silently, as Hetzner does; this holds even
+		# if it did not)
 		oifname "uplink" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10, 198.18.0.0/15 } reject with icmpx admin-prohibited
 		# the Default Switch has no IPv6
 		oifname "uplink" meta nfproto ipv6 reject with icmpx admin-prohibited
@@ -52,6 +53,41 @@ table inet hlab {
 		# the host to the servers, and the servers among each other; without
 		# conntrack, so that connections survive an update of the appliance
 		iifname { "link", "public" } oifname "public" accept
+	}
+
+	# the Cloud Firewalls, after the chain forward: what it lets through
+	# passes the firewalls of its sender (firewall_out), then those of its
+	# receiver (firewall_in); each is a base chain of its own, so that an
+	# accept in one leaves the packet to the next. They filter only the
+	# servers' public addresses, never the host link's way to the host's
+	# APIs, nor the lab's endpoints in the chain input.
+	map firewall_in4 {
+		type ipv4_addr : verdict
+		flags interval
+	}
+	map firewall_in6 {
+		type ipv6_addr : verdict
+		flags interval
+	}
+	map firewall_out4 {
+		type ipv4_addr : verdict
+		flags interval
+	}
+	map firewall_out6 {
+		type ipv6_addr : verdict
+		flags interval
+	}
+
+	chain firewall_out {
+		type filter hook forward priority filter + 10; policy accept;
+		iifname "public" oifname { "public", "uplink" } ip saddr vmap @firewall_out4
+		iifname "public" oifname { "public", "uplink" } ip6 saddr vmap @firewall_out6
+	}
+
+	chain firewall_in {
+		type filter hook forward priority filter + 20; policy accept;
+		oifname "public" ip daddr vmap @firewall_in4
+		oifname "public" ip6 daddr vmap @firewall_in6
 	}
 
 	# the servers reach the Internet with the address of the uplink

@@ -60,6 +60,7 @@ func TestLinksCheckNamesEachProblem(t *testing.T) {
 		{"address on networkd's NIC", func(l *Links) { l.Addresses[0].Device = "uplink" }, `networkd manages "uplink"`},
 		{"gateway family", func(l *Links) { l.Routes[1].Gateway = netip.MustParseAddr("fe80::1") }, "other family"},
 		{"route table", func(l *Links) { l.Routes[1].Table = 7 }, "no VRF has table 7"},
+		{"blackhole with a device", func(l *Links) { l.Routes[0].Blackhole = true }, "a blackhole has no device"},
 		{"sysctl", func(l *Links) { l.Sysctls[0].Key = "net/../kernel/panic" }, "not below net/"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

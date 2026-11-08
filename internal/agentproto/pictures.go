@@ -61,9 +61,12 @@ type Address struct {
 }
 
 // Route is a route through a device, in the main table (Table 0) or a VRF's.
+// A blackhole route has no device: the kernel drops what it takes, without
+// an answer.
 type Route struct {
 	Destination netip.Prefix `json:"destination"`
-	Device      string       `json:"device"`
+	Blackhole   bool         `json:"blackhole,omitempty"`
+	Device      string       `json:"device,omitempty"`
 	Gateway     netip.Addr   `json:"gateway,omitzero"` // none: on-link
 	Source      netip.Addr   `json:"source,omitzero"`
 	Table       uint32       `json:"table,omitempty"`
@@ -190,7 +193,9 @@ func checkRoute(route Route, devices map[string]string, tables map[uint32]bool) 
 		return errors.New("a route is missing its destination")
 	case destination != destination.Masked():
 		return fmt.Errorf("route %s: host bits are set", destination)
-	case devices[route.Device] == "":
+	case route.Blackhole && (route.Device != "" || route.Gateway.IsValid() || route.Source.IsValid()):
+		return fmt.Errorf("route %s: a blackhole has no device, gateway or source", destination)
+	case !route.Blackhole && devices[route.Device] == "":
 		return fmt.Errorf("route %s: no device %q", destination, route.Device)
 	case route.Gateway.IsValid() && route.Gateway.Is4() != destination.Addr().Is4():
 		return fmt.Errorf("route %s: gateway %s is of the other family", destination, route.Gateway)

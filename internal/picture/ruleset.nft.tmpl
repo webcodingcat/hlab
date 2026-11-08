@@ -43,8 +43,9 @@ table inet hlab {
 		iifname "{{.Public}}" oifname "{{.Link}}" tcp flags & (syn | ack) == ack accept
 		iifname "{{.Public}}" oifname "{{.Link}}" reject
 		# the uplink leads to the Internet only, never to the host or its LAN,
-		# nor to a lab address that nobody holds (the uplink's table sends
-		# them nowhere; this holds even if it did)
+		# nor to a lab address that nobody holds (the links picture's
+		# blackhole drops those silently, as Hetzner does; this holds even
+		# if it did not)
 		oifname "{{.Uplink}}" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10, {{.Range4}} } reject with icmpx admin-prohibited
 		# the Default Switch has no IPv6
 		oifname "{{.Uplink}}" meta nfproto ipv6 reject with icmpx admin-prohibited
@@ -55,6 +56,42 @@ table inet hlab {
 		# conntrack, so that connections survive an update of the appliance
 		iifname { "{{.Link}}", "{{.Public}}" } oifname "{{.Public}}" accept
 	}
+
+	# the Cloud Firewalls, after the chain forward: what it lets through
+	# passes the firewalls of its sender (firewall_out), then those of its
+	# receiver (firewall_in); each is a base chain of its own, so that an
+	# accept in one leaves the packet to the next. They filter only the
+	# servers' public addresses, never the host link's way to the host's
+	# APIs, nor the lab's endpoints in the chain input.
+{{- range $map := .FirewallMaps}}
+	map {{$map.Name}} {
+		type {{$map.Type}} : verdict
+		flags interval
+{{- if $map.Elements}}
+		elements = { {{join $map.Elements ", "}} }
+{{- end}}
+	}
+{{- end}}
+
+	chain firewall_out {
+		type filter hook forward priority filter + 10; policy accept;
+		iifname "{{.Public}}" oifname { "{{.Public}}", "{{.Uplink}}" } ip saddr vmap @firewall_out4
+		iifname "{{.Public}}" oifname { "{{.Public}}", "{{.Uplink}}" } ip6 saddr vmap @firewall_out6
+	}
+
+	chain firewall_in {
+		type filter hook forward priority filter + 20; policy accept;
+		oifname "{{.Public}}" ip daddr vmap @firewall_in4
+		oifname "{{.Public}}" ip6 daddr vmap @firewall_in6
+	}
+{{- range $chain := .FirewallChains}}
+
+	chain {{$chain.Name}} {
+{{- range $rule := $chain.Rules}}
+		{{$rule}}
+{{- end}}
+	}
+{{- end}}
 
 	# the servers reach the Internet with the address of the uplink
 	chain postrouting {

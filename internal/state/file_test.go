@@ -88,6 +88,7 @@ func marshalFile(t *testing.T, s *State, saved time.Time) []byte {
 		Servers.Name():     marshalList(t, s, Servers),
 		PrimaryIPs.Name():  marshalList(t, s, PrimaryIPs),
 		FloatingIPs.Name(): marshalList(t, s, FloatingIPs),
+		Firewalls.Name():   marshalList(t, s, Firewalls),
 	}
 	if len(lists) != len(kinds) {
 		t.Fatalf("marshalFile knows %d kinds, the state has %d", len(lists), len(kinds))

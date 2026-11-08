@@ -90,38 +90,45 @@ type Plan struct {
 	Locks []state.ResourceRef
 }
 
+// Row is one row of an action table to run, with the body its plan reads;
+// a nil Body takes the Request's.
+type Row struct {
+	Command string
+	Body    []byte
+}
+
 // Act runs one action of a resource from its table and returns the action as
 // the API shows it right after.
 func (l *Lab) Act(table ActionTable, command string, req Request) (state.Action, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.closed {
-		return state.Action{}, ErrClosed
-	}
-	var planned plannedAction
-	err := l.changeLocked(func(tx *state.Tx) error {
-		if err := CheckProject(tx, req.ProjectID); err != nil {
-			return err
-		}
-		var err error
-		planned, err = l.planAction(tx, table, command, req)
-		return err
-	})
+	actions, err := l.run(table, req, nil, []Row{{Command: command}})
 	if err != nil {
 		return state.Action{}, err
 	}
-	l.start(planned)
-	return *planned.action, nil
+	return actions[0], nil
+}
+
+// ActAll runs several actions of a resource in one transaction, in order,
+// each with its own body, as a firewall's apply_to_resources does for each
+// resource it names. If one fails, nothing changes.
+func (l *Lab) ActAll(table ActionTable, req Request, rows ...Row) ([]state.Action, error) {
+	return l.run(table, req, nil, rows)
 }
 
 // Create records a new resource and runs its first actions in one
 // transaction, so that a resource never stays without the action that
-// makes it: create puts the record and returns its ID, then each command
+// makes it: create puts the record and returns its ID, then each row
 // runs on it in order, a later one queued behind an earlier one if the
 // table is Queued. req gives the project and the body; its ID is create's.
 // If anything fails, nothing changes. The rows' flags are set only when all
 // are planned, so a row's Locks are not checked against an earlier row's.
-func (l *Lab) Create(table ActionTable, req Request, create func(tx *state.Tx) (int64, error), commands ...string) ([]state.Action, error) {
+func (l *Lab) Create(table ActionTable, req Request, create func(tx *state.Tx) (int64, error), rows ...Row) ([]state.Action, error) {
+	return l.run(table, req, create, rows)
+}
+
+// run is Act, ActAll and Create: it checks the project, runs create if
+// there is one, plans the rows in one transaction and starts them once
+// the transaction is saved.
+func (l *Lab) run(table ActionTable, req Request, create func(tx *state.Tx) (int64, error), rows []Row) ([]state.Action, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.closed {
@@ -132,12 +139,18 @@ func (l *Lab) Create(table ActionTable, req Request, create func(tx *state.Tx) (
 		if err := CheckProject(tx, req.ProjectID); err != nil {
 			return err
 		}
-		var err error
-		if req.ID, err = create(tx); err != nil {
-			return err
+		if create != nil {
+			var err error
+			if req.ID, err = create(tx); err != nil {
+				return err
+			}
 		}
-		for _, command := range commands {
-			action, err := l.planAction(tx, table, command, req)
+		for _, row := range rows {
+			rowReq := req
+			if row.Body != nil {
+				rowReq.Body = row.Body
+			}
+			action, err := l.planAction(tx, table, row.Command, rowReq)
 			if err != nil {
 				return err
 			}
@@ -154,6 +167,13 @@ func (l *Lab) Create(table ActionTable, req Request, create func(tx *state.Tx) (
 		actions = append(actions, *action.action)
 	}
 	return actions, nil
+}
+
+// RecordAction records an action that is finished already, in a change
+// that is no action: Hetzner's apply_firewall for a server that comes
+// under a firewall's label selector when it is created or relabelled.
+func (l *Lab) RecordAction(tx *state.Tx, projectID int64, command string, resources []state.ResourceRef) {
+	l.finishAction(tx, l.newAction(tx, projectID, command, resources), "")
 }
 
 // plannedAction is an action that its transaction has recorded and whose

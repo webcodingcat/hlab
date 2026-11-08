@@ -216,6 +216,7 @@ func registerServers(api *web.API, l *lab.Lab) {
 			return 0, nil, err
 		}
 		var out serverAnswer
+		firewallsChanged := false
 		err := l.Change(func(tx *state.Tx) error {
 			server, err := callerServer(tx, req.Caller.ProjectID, web.PathID(req, "id"))
 			if err != nil {
@@ -229,6 +230,9 @@ func registerServers(api *web.API, l *lab.Lab) {
 			}
 			if body.Labels != nil {
 				server.Labels = *body.Labels
+				// new labels may bring the server under a firewall's label
+				// selector, or take it out
+				firewallsChanged = refreshFirewallSelectors(l, tx, server.ProjectID)
 			}
 			out = serverJSON(tx, l.Catalog(), server)
 			return nil
@@ -236,10 +240,11 @@ func registerServers(api *web.API, l *lab.Lab) {
 		if err != nil {
 			return 0, nil, err
 		}
-		if body.Name != nil {
-			// the metadata's hostname, sent without holding up the answer,
-			// as Hetzner answers a PUT at once. The seed keeps the old name:
-			// cloud-init reads it only at the first boot.
+		if body.Name != nil || firewallsChanged {
+			// the metadata's hostname and the firewalls, sent without
+			// holding up the answer, as Hetzner answers a PUT at once. The
+			// seed keeps the old name: cloud-init reads it only at the
+			// first boot.
 			l.Machine().UpdatePicturesLater()
 		}
 		return http.StatusOK, map[string]serverAnswer{"server": out}, nil
@@ -335,9 +340,9 @@ func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any
 	if err := l.Machine().CheckDisk(req.Context()); err != nil {
 		return 0, nil, actError(err)
 	}
-	commands := []string{"create"}
+	rows := []lab.Row{{Command: "create"}}
 	if start {
-		commands = append(commands, "poweron")
+		rows = append(rows, lab.Row{Command: "poweron"})
 	}
 	var out serverAnswer
 	// Create takes the ID from the function below
@@ -366,9 +371,11 @@ func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any
 			return 0, err
 		}
 		state.Put(tx, state.Servers, server)
+		// the create's steps send the pictures with the firewalls
+		refreshFirewallSelectors(l, tx, server.ProjectID)
 		out = serverJSON(tx, cat, server)
 		return server.ID, nil
-	}, commands...)
+	}, rows...)
 	if err != nil {
 		return 0, nil, actError(err)
 	}
@@ -489,7 +496,7 @@ func serverJSON(tx *state.Tx, cat *catalog.Catalog, server *state.Server) server
 		PrimaryDiskSize: server.DiskGB,
 		Labels:          server.Labels,
 		Protection:      schema.ServerProtection{Delete: server.Protection.Delete, Rebuild: server.Protection.Rebuild},
-		PublicNet:       serverPublicNetAnswer{Firewalls: []schema.ServerFirewall{}, FloatingIPs: []int64{}},
+		PublicNet:       serverPublicNetAnswer{FloatingIPs: []int64{}},
 		PrivateNet:      []schema.ServerPrivateNet{},
 		LoadBalancers:   []int64{},
 		Volumes:         []int64{},
@@ -522,6 +529,7 @@ func serverJSON(tx *state.Tx, cat *catalog.Catalog, server *state.Server) server
 	if ip, err := state.Get(tx, state.PrimaryIPs, server.IPv6); err == nil {
 		out.PublicNet.IPv6 = &schema.ServerPublicNetIPv6{ID: ip.ID, IP: ip.IP, DNSPtr: []schema.ServerPublicNetIPv6DNSPtr{}}
 	}
+	out.PublicNet.Firewalls = serverFirewallsJSON(tx, server)
 	floating := state.IDs(tx, state.FloatingIPs, func(ip *state.FloatingIP) bool { return ip.ServerID == server.ID })
 	out.PublicNet.FloatingIPs = append(out.PublicNet.FloatingIPs, floating...)
 	return out

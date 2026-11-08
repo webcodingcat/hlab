@@ -281,6 +281,27 @@ for target in sys.argv[1:]:
     print(target, outcome)
 `
 
+// checkProbes connects from a guest to each host:port and checks the
+// outcome (probeScript's words).
+func checkProbes(t *testing.T, keys labKey, from string, want map[string]string) {
+	t.Helper()
+	var targets []string
+	for target := range want {
+		targets = append(targets, target)
+	}
+	output := keys.run(t, from, probeScript, "python3 - "+strings.Join(targets, " "))
+	got := map[string]string{}
+	for line := range strings.Lines(output) {
+		target, outcome, _ := strings.Cut(strings.TrimSpace(line), " ")
+		got[target] = outcome
+	}
+	for target, outcome := range want {
+		if got[target] != outcome {
+			t.Errorf("from %s, %s is %q, want %q", from, target, got[target], outcome)
+		}
+	}
+}
+
 // checkUplink checks from a guest that the appliance lets it through to
 // the host's APIs and the Internet, but neither to the lab control, which
 // it rejects as a closed port (ECONNREFUSED), nor to the private ranges
@@ -301,21 +322,7 @@ func checkUplink(t *testing.T, keys labKey, address string) {
 		"169.254.1.1:80":    "EHOSTUNREACH",
 		"100.64.0.1:80":     "EHOSTUNREACH",
 	}
-	var targets []string
-	for target := range want {
-		targets = append(targets, target)
-	}
-	output := keys.run(t, address, probeScript, "python3 - "+strings.Join(targets, " "))
-	got := map[string]string{}
-	for line := range strings.Lines(output) {
-		target, outcome, _ := strings.Cut(strings.TrimSpace(line), " ")
-		got[target] = outcome
-	}
-	for target, outcome := range want {
-		if got[target] != outcome {
-			t.Errorf("from a guest, %s is %q, want %q", target, got[target], outcome)
-		}
-	}
+	checkProbes(t, keys, address, want)
 }
 
 // checkHostIsClean checks that the host has nothing of the lab's network

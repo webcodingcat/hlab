@@ -48,7 +48,7 @@ Floating IP.
 - The uplink reaches the Internet only: private and link-local ranges, the
   Default Switch's and the LAN's among them, are rejected, so no server reaches the
   Windows host or its LAN. So is the lab's own range `198.18.0.0/15`, which the
-  uplink's routing table already makes unreachable (The appliance). IPv6 to the
+  `links` picture's blackhole route already keeps from it. IPv6 to the
   uplink is rejected (the Default Switch has none), and so is IPv4 from servers
   without Internet, from their Floating IPs too.
 - No rule depends on conntrack seeing a connection start. Between host and servers
@@ -62,6 +62,29 @@ Floating IP.
   appliance gets another uplink address (docs/roadmap.md, Known gaps).
 - The servers reach DHCP, the metadata service and DNS on the appliance; the host
   reaches all of it.
+
+**The firewalls** (`internal/picture/firewalls.go`, golden files
+`firewall-*.golden`) come after the fixed part, in two base chains of
+their own on the forward hook: `firewall_out` (priority filter + 10)
+filters what a server sends to another server or the uplink, then
+`firewall_in` (filter + 20) what reaches a server. An `accept` in one
+leaves the packet to the next, so a packet between two servers passes the
+sender's `out` and the receiver's `in` rules. Verdict maps send a server's
+public addresses (Primary IPs and Floating IPs) to its chains
+`server_<id>_in` and `server_<id>_out`; those let answers pass
+(`established`, or TCP with ACK and without SYN, as in the fixed part),
+jump to the chains `firewall_<id>_in` and `firewall_<id>_out` of each of
+its firewalls, which hold the rules, and drop the rest. A server without
+an outbound rule has no `out` chain: everything goes out, as on Hetzner.
+What the fixed part allows of its own accord is never filtered: the lab's
+endpoints in the chain `input`, and the host link's way to the host's APIs
+(docs/servers.md, Firewalls).
+
+**An address nobody holds** answers nothing, as on Hetzner: the `links`
+picture ends the lab's ranges (`198.18.0.0/15`, `2001:db8::/32`) in a
+blackhole route of the main table. The routes of the servers, their
+Floating IPs and the host link are more specific, the appliance's own
+addresses are local.
 
 **Redirects stay off** on every interface (sysctl in the image and per interface in
 the `links` picture): a router that sends ICMP redirects teaches servers to reach
@@ -124,7 +147,8 @@ What is in it:
   default route there, not into the main table. Rules after the main table
   send only the servers' traffic (from `public`) and the appliance's own (from
   `lo`) to it, and `198.18.0.0/15` is unreachable in it: a lab address that
-  nobody holds never leaves through the uplink, and nothing else reaches it.
+  nobody holds, which the main table's blackhole takes first, could not
+  leave through the uplink either, and nothing else reaches it.
 - **Off until their phase:** knot, haproxy, sshd (its host keys are removed;
   each appliance makes its own in phase 5), and `systemd-networkd-wait-online`.
   pebble has no unit of its own. `serial-getty@ttyS0` is masked: the VM has no

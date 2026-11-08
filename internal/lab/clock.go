@@ -14,6 +14,8 @@ const (
 	ServerCreateStart = 5 * time.Second         // a new server: starting → running
 	PrimaryIPChange   = 3 * time.Second         // a Primary IP's assign or unassign: running → the action ends (measured 2026-11-08: over 3 s)
 	FloatingIPChange  = 3 * time.Second         // a Floating IP's assign or unassign: running → the action ends (measured 2026-11-08: 3 to 4 s)
+	FirewallChange    = 3 * time.Second         // a firewall's apply or remove on a server: running → the action ends (measured 2026-11-08: 2.9 to 3.5 s)
+	FirewallSelector  = 1 * time.Second         // a firewall's apply or remove on a label selector: running → the action ends (measured 2026-11-08: 0.6 to 1.2 s)
 	ServerDelete      = 2 * time.Second         // the server's VM is gone → its delete action ends
 	PowerOff          = 8700 * time.Millisecond // power off: stopping → off
 	PowerOffEnd       = 1200 * time.Millisecond // power off: off → the action ends

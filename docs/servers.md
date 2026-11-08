@@ -1,6 +1,6 @@
-# Servers, Primary and Floating IPs and the lab's own resources
+# Servers, Primary and Floating IPs, firewalls and the lab's own resources
 
-How servers, Primary IPs and Floating IPs behave, and the lab's own operations on
+How servers, Primary IPs, Floating IPs and firewalls behave, and the lab's own operations on
 projects, tokens and faults. The rules they keep are in DEVELOPING.md
 (Actions, Behaviour that changes must keep); section names in parentheses
 point to this file unless they name another.
@@ -149,6 +149,58 @@ The handlers in `internal/api/cloud/floating_ips.go` and
   `created`; Hetzner ignores an unknown sort value and the filter `ip`.
 - **`dns_ptr`** is Hetzner's default name for an IPv4 and empty for an
   IPv6 until `change_dns_ptr` comes with DNS (phase 2b).
+
+## Firewalls
+
+The handlers in `internal/api/cloud/firewalls.go` and
+`firewall_actions.go` decide; `Machine.ChangeFirewall` and
+`Machine.ChangeFirewallSelector` (`internal/lab/firewalls.go`) send the
+pictures and wait Hetzner's 3 s and 1 s. What Hetzner answers is measured
+(`compat/requirements.md`, Firewalls).
+
+- **Rules** are checked as Hetzner checks them: first the fields with
+  their index (direction, description, at most 100 addresses), then each
+  rule's protocol (tcp, udp, icmp, esp, gre), addresses (CIDRs without
+  host bits) and port (`80` or `80-85`). The firewall keeps them in
+  Hetzner's form: tcp and udp without a port take `any`, the other
+  protocols drop a port, a rule keeps only the addresses of its
+  direction, IPv6 in its canonical form. There is no limit of 50 rules,
+  only of 500 effective rules: each address of a direction counts once.
+- **Actions** answer as a list, from one transaction (`Lab.ActAll`, or
+  `Lab.Create` for a create): `set_firewall_rules` ends at once; each entry
+  of `apply_to` and `remove_from` gets an `apply_firewall` or
+  `remove_firewall` that names the firewall and the server, or the label
+  selector by an ID of its own; after `set_rules`, an `apply_firewall`
+  names the servers. They take no flag. The steps send the `ruleset`
+  picture; meanwhile a server's `public_net.firewalls` shows the firewall
+  `pending`, then `applied`.
+- **Label selectors** follow the servers: after a server's create, its
+  relabel, a remove or a firewall's delete, `refreshFirewallSelectors`
+  brings the servers a selector holds (`applied_to_resources`) up to date
+  in the same transaction, and records an `apply_firewall`, ended, for
+  each server that comes under it. A server applied directly is not held
+  by the firewall's selector: an apply to a selected server moves it, with
+  a `remove_firewall` naming the selector first.
+- **Limits:** 5 firewalls per server. An apply or create beyond it is 403;
+  a selector skips a server that has five, and takes it once one goes.
+- **Delete** refuses a firewall applied to a server directly (422
+  `resource_in_use`) and deletes one applied only through selectors. A
+  server's delete takes it out of every firewall, without an action.
+- **Lists** filter by `name` and `label_selector` and sort by `id`, `name`
+  and `created`; Hetzner ignores an unknown sort value.
+- **In the data plane** (docs/appliance.md, the ruleset) a firewall works
+  on a server's public addresses, its Floating IPs among them, also
+  between servers of the project: `in` is closed but for the rules, `out`
+  is open until a rule names it, answers pass.
+- **A deviation from Hetzner:** the lab's endpoints (DHCP, metadata, DNS)
+  and the host's APIs (`198.18.0.1` and `2001:db8:0:ffff::1`, TCP 8080 and
+  8081) pass any firewall. Hetzner too lets DHCP, the metadata service and
+  its DNS resolvers through; its API, though, is on the Internet on port
+  443, where an `out` rule such as "only TCP 443" lets it through. In the
+  lab the API is on 8080 and 8081 of the host, and such a rule must not
+  cut a server off from it.
+- **Not yet:** `firewalls` in a server's create request (with networks,
+  2a).
 
 ## Projects, tokens, faults
 

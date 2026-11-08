@@ -240,10 +240,10 @@ func createPrimaryIP(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, 
 		ip.Location = location.Name
 	}
 	request := lab.Request{ProjectID: ip.ProjectID}
-	var commands []string
+	var rows []lab.Row
 	if body.AssigneeID != nil {
 		request.Body, _ = json.Marshal(map[string]any{"assignee_id": *body.AssigneeID, "assignee_type": "server"})
-		commands = append(commands, "assign")
+		rows = append(rows, lab.Row{Command: "assign"})
 	}
 	var out schema.PrimaryIP
 	actions, err := l.Create(table, request, func(tx *state.Tx) (int64, error) {
@@ -265,7 +265,7 @@ func createPrimaryIP(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, 
 		state.Put(tx, state.PrimaryIPs, ip)
 		out = primaryIPJSON(l.Catalog(), ip)
 		return ip.ID, nil
-	}, commands...)
+	}, rows...)
 	if err != nil {
 		return 0, nil, actError(err)
 	}

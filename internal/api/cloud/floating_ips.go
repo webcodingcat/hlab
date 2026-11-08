@@ -204,10 +204,10 @@ func createFloatingIP(req *web.Request, l *lab.Lab, table lab.ActionTable) (int,
 	}
 	ip.HomeLocation = location.Name
 	request := lab.Request{ProjectID: ip.ProjectID}
-	var commands []string
+	var rows []lab.Row
 	if body.Server != nil {
 		request.Body, _ = json.Marshal(map[string]any{"server": *body.Server})
-		commands = append(commands, "assign")
+		rows = append(rows, lab.Row{Command: "assign"})
 	}
 	var out schema.FloatingIP
 	actions, err := l.Create(table, request, func(tx *state.Tx) (int64, error) {
@@ -235,7 +235,7 @@ func createFloatingIP(req *web.Request, l *lab.Lab, table lab.ActionTable) (int,
 		state.Put(tx, state.FloatingIPs, ip)
 		out = floatingIPJSON(l.Catalog(), ip)
 		return ip.ID, nil
-	}, commands...)
+	}, rows...)
 	if err != nil {
 		return 0, nil, actError(err)
 	}

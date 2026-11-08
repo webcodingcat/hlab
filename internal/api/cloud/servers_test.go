@@ -33,6 +33,7 @@ type serverAnswer struct {
 		IPv4        *schema.ServerPublicNetIPv4 `json:"ipv4"`
 		IPv6        *schema.ServerPublicNetIPv6 `json:"ipv6"`
 		FloatingIPs []int64                     `json:"floating_ips"`
+		Firewalls   []schema.ServerFirewall     `json:"firewalls"`
 	} `json:"public_net"`
 	IncludedTraffic uint64 `json:"included_traffic"`
 }

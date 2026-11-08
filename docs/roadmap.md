@@ -246,6 +246,15 @@ that found it (must, should, optional) and the phase that closes it.
 - **optional, 2c:** a Floating IP's move does not add the
   `unassign_floating_ip` of the old server that Hetzner lists among the
   IP's actions; no tool reads it.
+- **optional, 2c:** Hetzner shows a firewall `pending` on a server for 3
+  to 9 s after a label selector takes it, and for 4 to 5 s after a
+  `set_rules` whose actions have ended; the lab shows `pending` only while
+  its own action runs, and a selector's server `applied` at once. No tool
+  reads `pending`.
+- **optional, 2c:** not measured: what Hetzner answers for removing a
+  server that the firewall does not reach at all, and whether it records
+  an action when a relabel takes a server out of a selector; the limit of
+  50 firewalls per account (the lab has none).
 - **optional, 2a:** a type `holds` that sets and frees an action's flags
   and queues in one place (`Lab.start`, `Lab.end`); worth it once `start`
   grows.
@@ -253,10 +262,6 @@ that found it (must, should, optional) and the phase that closes it.
   without a network, where Hetzner leaves it out.
 - The firewall rules do not block the lab's own range as a source on
   8090; the appliance's ruleset keeps the servers off it.
-- **should, 2a:** a connection from a server to a lab address that nobody
-  holds runs into a timeout (4 s), though the ruleset's comment says it is
-  rejected; 2a makes the behaviour and the comment agree, as Hetzner does
-  it.
 
 ### Comes with phase X
 
@@ -291,7 +296,30 @@ that found it (must, should, optional) and the phase that closes it.
 |---|---|---|
 | 2a-0 | `lab.Machine` for the machine's side; the rule where an action's plans and steps live (DEVELOPING.md, Actions); `ReadSecrets` takes a file of `null`; the watchdog's notes live only for a round | done |
 | 2a-1 | Floating IPs (IPv4, IPv6 `/64`) with Hetzner's actions, routes in the `links` picture; new pictures after every undo (a failed server create, a Primary IP's assign and unassign); a server's create checks its location against its type; `l.read()`, `planFunc` | done |
+| 2a-2 | firewalls with Hetzner's actions, limits, texts and label selectors that follow the servers, in the `ruleset` picture (a chain per server and direction, a chain per firewall and direction, verdict maps); `Lab.ActAll`, `lab.Row`, `Lab.RecordAction`; a lab address nobody holds answers nothing, as on Hetzner (blackhole route in the `links` picture) | done |
 
-Next: 2a-2, firewalls.
+Next: 2a-3, private networks.
+
+### What 2a-2 brought
+
+- **Firewalls** (create, get, update, delete, lists, `set_rules`,
+  `apply_to_resources`, `remove_from_resources`, action lists), measured
+  on 2026-11-08 (`compat/requirements.md`): the rules in Hetzner's form,
+  500 effective rules, 5 firewalls per server (also through selectors),
+  label selectors that follow new and relabelled servers, `pending` and
+  `applied` in a server's `public_net.firewalls`, a firewall applied only
+  through selectors can be deleted.
+- **In the data plane** a firewall filters a server's Primary and
+  Floating IPs, also between servers of a project; answers pass without
+  conntrack (TCP with ACK and without SYN, as in the fixed part). The
+  lab's endpoints and the host's APIs pass any firewall: a deviation for
+  the API, named in docs/servers.md.
+- **An address nobody holds** answers nothing (Hetzner: no answer to ping
+  or TCP); before, the ruleset's comment said it was rejected.
+- **Measured live:** a new connection gets through 0.4 s after a
+  `set_rules` that opens its port.
+- The appliance changed (the agent sets blackhole routes): `bin/dev
+  appliance` before `bin/dev itest`; an installed HLab updates its
+  appliance at the next start.
 
 Not there yet: the commands of later phases.

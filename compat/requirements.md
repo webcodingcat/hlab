@@ -82,6 +82,19 @@ it; "open" means the phase has not come yet. What never works is in
 | Errors with Hetzner's codes and texts, mostly details `null` (below) | measured | 2a | `internal/api/cloud`: `TestFloatingIPCreateErrors`, `TestFloatingIPLifeCycle`, `TestFloatingIPAssignHoldsOffAnotherAssign`, `TestFloatingIPUpdateChecksLabels` |
 | `change_dns_ptr` | hcloud-go `hcloud/floating_ip.go` (`ChangeDNSPtr`) | 2b | open |
 
+## Firewalls
+
+| Requirement | Source | Phase | Test |
+|---|---|---|---|
+| Create with rules and `apply_to` (servers, label selectors), read, update (name, labels), delete (204; 422 while applied to a server directly); `set_rules`, `apply_to_resources`, `remove_from_resources`, each answering a list of actions | hcloud-go `hcloud/firewall.go`; provider `hcloud_firewall`, `hcloud_firewall_attachment` | 2a | `internal/api/cloud`: `TestFirewallLifeCycle`, `TestFirewallAppliedToAServer` |
+| The JSON: rules with `port` `null` for icmp, esp and gre, `description` `null`, the other direction's addresses `[]`; `applied_to` with `applied_to_resources` (`[]` too) for a label selector; a server's `public_net.firewalls` with `status` `pending` while an action applies it, `applied` after | hcloud-go `hcloud/schema/firewall.go`, `server.go`; measured | 2a | `internal/api/cloud`: `TestFirewallRulesAreKeptAsHetznerKeepsThem`, `TestFirewallAppliedToAServer` |
+| A label selector applies the firewall to matching servers, also new and relabelled ones, each with an `apply_firewall` | measured | 2a | `internal/api/cloud`: `TestFirewallLabelSelectorFollowsTheServers` |
+| Limits: 500 effective rules per firewall, 5 firewalls per server (also through a selector) | Hetzner's documentation; measured | 2a | `internal/api/cloud`: `TestFirewallLimits` |
+| Lists filter by `name`, `label_selector` and sort by `id`, `name`, `created`; `/firewalls/actions` and `/firewalls/{id}/actions` | hcloud-go `hcloud/firewall.go` (`FirewallListOpts`) | 2a | `internal/api/cloud`: `TestFirewallLifeCycle` |
+| Errors with Hetzner's codes and texts (below) | measured | 2a | `internal/api/cloud`: `TestFirewallCreateErrors`, `TestFirewallAppliedToAServer`, `TestFirewallLabelSelectorFollowsTheServers` |
+| The rules work on the servers' public addresses: `in` closed but for the rules, `out` open until a rule names it, answers pass, Floating IPs too, also between servers of a project | Hetzner's documentation | 2a | `internal/picture`: `TestFirewallRulesetsMatchGoldenFiles`; live: `TestFirewallsFilterServersFloatingIPsAndTheHost` |
+| `firewalls` in a server's create request | hcloud-go `hcloud/server.go` (`ServerCreateOpts.Firewalls`) | 2a (with networks) | open |
+
 ## Gaps of the old HLab
 
 The dry run of the hcloud CLI against the Python HLab found 58 gaps in fidelity. Each
@@ -268,6 +281,58 @@ HLab answers the same, except where noted.
 | a move (`assign` of an assigned IP) | Hetzner adds an `unassign_floating_ip` of the old server to the IP's actions (HLab does not) |
 | `unassign` | 201, resources the IP and its server; ends after 1 to 3 s |
 | `DELETE /servers/{id}` with Floating IPs | they stay, `server` `null` once the server is gone |
+
+### Firewalls and addresses nobody holds (2a-2)
+
+Measured on 2026-11-08 with the read-write token of the empty test project
+(two servers `cx23` in `nbg1`, never started; firewalls; one Primary IPv4,
+unassigned). Everything was deleted afterwards. HLab answers the same,
+except where noted.
+
+| Request | Answer |
+|---|---|
+| ping and TCP 22, 80, 443 to an unassigned Primary IPv4, from the Internet | no answer at all: ping lost, each connect times out (HLab: the lab's ranges end in a blackhole route) |
+| `POST /firewalls` without `name`, with `""` / 129 characters | 422 `"invalid input in field 'name'"`, `"value required to be larger"` / `"value required to be smaller"`; 128 pass |
+| … a rule with `direction` `both` | `rules[0].direction`: `"'rules[0].direction' value not allowed"` |
+| … `protocol` `sctp` | `"invalid input in field 'rules[].protocol_l4'"`, `"field contains invalid value"` |
+| … tcp without `port`, with `""` or `any` / icmp, esp with a port / `80-80` | 201, port `any` / 201, port `null` / 201, port `80` |
+| … port `0` / `65536`, `abc`, `" 80"` / `90-80` | `"invalid input in fields 'rules[].port', 'rules[].port'"`, `"value is out of range"` twice / `"invalid input in field 'port'"`, `"invalid port"` / `rules[].port`: `"field value is too small"` |
+| … `in` without `source_ips` or with `[]`; `out` without `destination_ips` | `"invalid input in field 'rules'"`, field `rules[0].source_ips`: `"source_ips needs to have at least one entry"` (the same for `destination_ips`) |
+| … `in` with `destination_ips`, `out` with `source_ips` | 201, the other direction's list kept as `[]` |
+| … `10.0.0.300/32`, `10.0.0.1` / `10.0.0.1/24` | `rules[].source_ips`: `"IP not in cidr notation: <ip>"` / `"IP has host bit(s) set, did you mean 10.0.0.0/24?"` |
+| … `2001:0db8:0000::0/32`, `2001:DB8:1::1/128` | kept as `2001:db8::/32`, `2001:db8:1::1/128` |
+| … 101 addresses in a rule / a description of 256 characters | `rules[0].source_ips` / `rules[0].description`: `"value required to be smaller"`; 100 pass |
+| … 51 rules (on the same two addresses) | 201: no limit of 50 rules |
+| … 500 effective rules in / 501 / 300 in and 300 out / 60 rules on the same 10 addresses | 201 / 403 `resource_limit_exceeded`, `"firewall limit exceeded"`, `details.limits` `[{"name": "firewall_effective_rules"}]` / 403 the same / 201 |
+| … `rules` `null` / a rule that is a string | 201, rules `[]` / 400 `json_error`, `"A valid JSON document is required."` |
+| … a label key `bad key!` | `labels`: `"invalid label value: key contains invalid characters or is malformed"` (also on `PUT`) |
+| … `apply_to` a missing server | 404 `firewall_resource_not_found`, `"server with ID <id> not found"`, `details` `null` (also `apply_to_resources`) |
+| … `apply_to` `{"server": {"id": 1}}` without `type` / type `volume` | `apply_to[0].server.id` `"value required to be larger"` and `apply_to[0].type` `"'apply_to[0].type' value not allowed"` / only the type's |
+| … type `label_selector` without `label_selector` / with `a=b=c,,` | `apply_to[0].label_selector`: `"parameter label_selector needs to be specified if type is label_selector"` / `apply_to[].label_selector`: `"invalid label_selector: invalid syntax"` |
+| … a taken name; `PUT` with a taken name | 409 `uniqueness_error`, `"name is already used"`, `details` `null` |
+| `POST /firewalls` | 201 with `actions`: `set_firewall_rules` (the firewall, ended), for each `apply_to` entry an `apply_firewall` naming the firewall and the server, or the label selector by an ID of its own |
+| `GET /firewalls/{id}` of a firewall that is not there; its actions | 404 `not_found`, `"firewall with ID '<id>' not found"` / `"firewall with ID <id> not found"` (no quotes), `details` `null` |
+| `GET /firewalls?sort=bogus` | 200, sorted by ID |
+| `PUT` with `name` `""` / with `rules` | 422 `"value required to be larger"` / 200, the rules unchanged |
+| `set_rules` without servers / with a server / without `rules` | `set_firewall_rules`, ended / and an `apply_firewall` naming the firewall and the server; the server shows the firewall `pending` for 4 to 5 s / 201, the rules cleared |
+| `apply_to_resources` to a server | `apply_firewall` (firewall, server), running, ends after 2.9 to 3.5 s; the server shows the firewall `pending` meanwhile (HLab: as long as the action runs) |
+| … to a label selector | `apply_firewall` (firewall, label selector), ends after 0.6 to 1.2 s |
+| … twice / without `apply_to` / `[]` | 422 `firewall_already_applied`, `"firewall has already been applied to resource"` / 422 `"'apply_to' is required"` / 201, `actions` `[]` |
+| … a sixth firewall to a server (also on create) | 403 `resource_limit_exceeded`, `"firewall limit exceeded"`, `details.limits` `[{"name": "firewalls_per_server"}]` |
+| … a label selector that matches a server with five | 201; the server keeps its five, `applied_to_resources` stays `[]` |
+| … a server the firewall's label selector holds | `remove_firewall` (firewall, server, label selector) and `apply_firewall` (firewall, server), both ended at once; the server moves to a direct entry |
+| a server created with labels a selector matches / relabelled to match | `apply_firewall` (firewall, server) in the firewall's actions; the server shows `[]`, then `pending`, then `applied` after 3 to 9 s (HLab: the action ended, `applied` at once) |
+| `remove_from_resources` a server / a label selector | `remove_firewall` (firewall, server), the server shows `pending` for 3 s / `remove_firewall` (firewall, label selector), ends after 0.6 s |
+| … a server the firewall reaches through a selector / a missing server / a selector it does not have / without `remove_from` / `[]` | 422 `firewall_managed_by_label_selector`, `"firewall has been applied via label selector."` / 404 `firewall_resource_not_found`, `"resource not found"` / 404 `firewall_resource_not_found`, `"firewall with ID <id> cannot be removed from label_selector: resource not found"` / 422 `"'remove_from' is required"` / 201, `actions` `[]` |
+| `DELETE /firewalls/{id}` applied to a server / only to a label selector | 422 `resource_in_use`, `"firewall with ID <id> is still in use"`, `details` `null` / 204 |
+| `DELETE /servers/{id}` with firewalls | the server leaves `applied_to` and `applied_to_resources`, without an action |
+| `POST /firewalls/{id}/actions/bogus` | 405, no body (HLab: 404 `not_found`, as for any unknown route) |
+
+Not measured: a server that is neither applied directly nor matched, in
+`remove_from_resources` (HLab: 404 `firewall_resource_not_found`, with
+the selector's text for a server); a server relabelled out of a selector
+while nothing else applies the firewall (HLab: it leaves without an
+action); the limit of 50 firewalls per account.
 
 ### Metadata service (1b-2)
 

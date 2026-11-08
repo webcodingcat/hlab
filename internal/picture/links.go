@@ -68,6 +68,13 @@ func Links(lab Lab) agentproto.Links {
 			links.Routes = append(links.Routes, floatingIPRoute(floating, server))
 		}
 	}
+	// a lab address that nobody holds answers nothing, as on Hetzner
+	// (measured 2026-11-08: an unassigned Primary IPv4 answers neither
+	// ping nor TCP); the routes of what is held are more specific and
+	// win, the appliance's own addresses are local
+	for _, labRange := range []netip.Prefix{lab.Range4, lab.Range6} {
+		links.Routes = append(links.Routes, agentproto.Route{Destination: labRange.Masked(), Blackhole: true})
+	}
 	return links
 }
 

@@ -277,15 +277,19 @@ func applyRoutes(routes []agentproto.Route) error {
 	}
 	wanted := map[key]netlink.Route{}
 	for _, route := range routes {
-		link, err := netlink.LinkByName(route.Device)
-		if err != nil {
-			return fmt.Errorf("route %s: %w", route.Destination, err)
+		linkIndex := 0
+		if !route.Blackhole {
+			link, err := netlink.LinkByName(route.Device)
+			if err != nil {
+				return fmt.Errorf("route %s: %w", route.Destination, err)
+			}
+			linkIndex = link.Attrs().Index
 		}
 		table := int(route.Table)
 		if table == 0 {
 			table = syscall.RT_TABLE_MAIN
 		}
-		wanted[key{table, route.Destination}] = toRoute(route, link.Attrs().Index, table)
+		wanted[key{table, route.Destination}] = toRoute(route, linkIndex, table)
 	}
 	filter := &netlink.Route{Protocol: routeProtocol}
 	current, err := netlink.RouteListFiltered(netlink.FAMILY_ALL, filter,
@@ -330,6 +334,10 @@ func toRoute(route agentproto.Route, linkIndex, table int) netlink.Route {
 		Dst:       toIPNet(route.Destination),
 		Table:     table,
 		Protocol:  routeProtocol,
+	}
+	if route.Blackhole {
+		result.Type = syscall.RTN_BLACKHOLE
+		return result
 	}
 	if route.Gateway.IsValid() {
 		result.Gw = route.Gateway.AsSlice()

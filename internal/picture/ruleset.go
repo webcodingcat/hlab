@@ -27,6 +27,16 @@ type rulesetValues struct {
 	Metadata             string
 	Range4               string
 	NoInternet           []string
+	FirewallMaps         []firewallMap
+	// FirewallChains are the servers' chains, then the firewalls'.
+	FirewallChains []chainValues
+}
+
+// firewallMap is one of the verdict maps that send a server's packets to
+// its chain.
+type firewallMap struct {
+	Name, Type string
+	Elements   []string
 }
 
 // Ruleset returns the appliance's whole nftables ruleset.
@@ -54,6 +64,14 @@ func Ruleset(lab Lab) agentproto.Ruleset {
 			values.NoInternet = append(values.NoInternet, floating.Prefix.Addr().String())
 		}
 	}
+	firewalls := firewallParts(lab)
+	values.FirewallMaps = []firewallMap{
+		{Name: "firewall_in4", Type: "ipv4_addr", Elements: firewalls.In4},
+		{Name: "firewall_in6", Type: "ipv6_addr", Elements: firewalls.In6},
+		{Name: "firewall_out4", Type: "ipv4_addr", Elements: firewalls.Out4},
+		{Name: "firewall_out6", Type: "ipv6_addr", Elements: firewalls.Out6},
+	}
+	values.FirewallChains = append(firewalls.Servers, firewalls.Firewalls...)
 	var text strings.Builder
 	// the template and its values are fixed, so it cannot fail
 	if err := rulesetTemplate.Execute(&text, values); err != nil {

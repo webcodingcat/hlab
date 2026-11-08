@@ -159,6 +159,14 @@ func TestLinksPictureSetsNamesAddressesRoutesAndVRFs(t *testing.T) {
 	checkRoutes(t, 0, "198.19.0.1/32 public src 172.31.1.1", "198.19.0.2/32 public src 172.31.1.1",
 		"2001:db8:1:1::/64 public")
 	checkRoutes(t, 1007, "10.1.0.0/16 private.100 via 10.0.0.2")
+	// the lab's ranges end in a blackhole: an address nobody holds
+	// answers nothing
+	for _, family := range []string{"-4", "-6"} {
+		output := mustRun(t, "ip", family, "route", "show", "type", "blackhole")
+		if !strings.Contains(output, "198.18.0.0/15") && !strings.Contains(output, "2001:db8::/32") {
+			t.Errorf("ip %s route show type blackhole: %q, want the lab's range", family, output)
+		}
+	}
 	for _, key := range []string{"net/ipv4/conf/public/send_redirects", "net/ipv4/conf/uplink/send_redirects"} {
 		if value := readSysctl(t, key); value != "0" {
 			t.Errorf("%s is %s", key, value)
@@ -268,6 +276,39 @@ func TestRulesetPictureIsLoadedWholeOrNotAtAll(t *testing.T) {
 	}
 	if listed := mustRun(t, "nft", "list", "set", "inet", "hlab", "no_internet"); !strings.Contains(listed, "198.19.0.2") {
 		t.Errorf("the broken ruleset replaced the old one:\n%s", listed)
+	}
+}
+
+// TestRulesetWithFirewallsLoads applies a ruleset with every kind of
+// firewall rule: nft must take the maps, the servers' chains and the
+// firewalls' chains as the picture writes them.
+func TestRulesetWithFirewallsLoads(t *testing.T) {
+	agent := setUp(t)
+	lab := picture.DefaultLab()
+	lab.Servers = []picture.Server{web, db}
+	lab.FloatingIPs = []picture.FloatingIP{{Prefix: netip.MustParsePrefix("2001:db8:1:5::/64"), ServerID: db.ID}}
+	everywhere := []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")}
+	some := []netip.Prefix{netip.MustParsePrefix("192.0.2.0/24"), netip.MustParsePrefix("2001:db8::/32")}
+	lab.Firewalls = []picture.Firewall{
+		{ID: 1000010, ServerIDs: []int64{web.ID, db.ID}, Rules: []picture.FirewallRule{
+			{Direction: picture.DirectionIn, Protocol: "tcp", Port: "22", Addresses: everywhere},
+			{Direction: picture.DirectionIn, Protocol: "udp", Port: "1000-2000", Addresses: some},
+			{Direction: picture.DirectionIn, Protocol: "icmp", Addresses: everywhere},
+			{Direction: picture.DirectionIn, Protocol: "esp", Addresses: some},
+			{Direction: picture.DirectionIn, Protocol: "gre", Addresses: some},
+			{Direction: picture.DirectionOut, Protocol: "tcp", Port: "443", Addresses: some},
+			{Direction: picture.DirectionOut, Protocol: "gre", Addresses: []netip.Prefix{netip.MustParsePrefix("2001:db8::/32")}},
+		}},
+		{ID: 1000011, ServerIDs: []int64{db.ID}},
+	}
+	putPicture(t, agent, agentproto.PictureRuleset, picture.Ruleset(lab))
+	listed := mustRun(t, "nft", "list", "chain", "inet", "hlab", "server_1000002_in")
+	if !strings.Contains(listed, "jump firewall_1000010_in") || !strings.Contains(listed, "drop") {
+		t.Errorf("db's inbound chain:\n%s", listed)
+	}
+	listed = mustRun(t, "nft", "list", "map", "inet", "hlab", "firewall_in6")
+	if !strings.Contains(listed, "2001:db8:1:5::/64") {
+		t.Errorf("db's Floating IP is missing from the inbound map:\n%s", listed)
 	}
 }
 
@@ -386,6 +427,9 @@ func checkRoutes(t *testing.T, table int, want ...string) {
 	}
 	var got []string
 	for _, route := range routes {
+		if route.Type == syscall.RTN_BLACKHOLE {
+			continue // TestLinksPictureSetsNamesAddressesRoutesAndVRFs checks them
+		}
 		link, err := netlink.LinkByIndex(route.LinkIndex)
 		if err != nil {
 			t.Fatal(err)

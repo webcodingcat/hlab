@@ -11,7 +11,7 @@ work on it (Recipes). CLAUDE.md lists the rules that are easy to break,
 each part does in detail is in the files under `docs/`:
 
 - [docs/servers.md](docs/servers.md): servers, Primary and Floating IPs,
-  projects, tokens, faults.
+  firewalls, projects, tokens, faults.
 - [docs/service.md](docs/service.md): the service's start and stop, the
   machine's side, the lab control, the CLI, the web UI.
 - [docs/catalog.md](docs/catalog.md): what the lab offers.
@@ -139,7 +139,7 @@ The layer test checks production code only. Tests may import fakes and helpers.
 
 - **Kinds.** Each kind of record (`state.Projects`, `state.Tokens`,
   `state.SSHKeys`, `state.Actions`, `state.Servers`, `state.PrimaryIPs`,
-  `state.FloatingIPs`) is a `state.Kind[R]`. It knows its record type `R`
+  `state.FloatingIPs`, `state.Firewalls`) is a `state.Kind[R]`. It knows its record type `R`
   and its name in the file.
   The lab's own records, which the API does not show, are in `state.Lab`
   (read them with `tx.Lab()`). Records hold plain data: no interfaces and no
@@ -250,6 +250,12 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   3. It creates the action. An action without steps is finished at once.
 
   If any of this fails, nothing changes.
+- **`Lab.ActAll`** runs several rows on one resource in one transaction,
+  each with its own body (`lab.Row`), for a command that answers a list of
+  actions (a firewall's `apply_to_resources`: one action per resource it
+  names). `Lab.RecordAction` records an action that is finished already,
+  in a change that is no action (a server that comes under a firewall's
+  label selector when it is relabelled).
 - **`Lab.Create`** records a new resource and runs its first rows in the same
   transaction (a server's `create` and `poweron`, a Primary IP's `assign`),
   so a resource never stays without the action that makes it. If the record
@@ -429,8 +435,10 @@ the same later.
     IP price;
   - server types, load balancer types and images, because `schema` still sends
     `deprecated`;
-  - the SSH key, server, Primary IP and Floating IP requests, to tell a
-    missing field from an empty one;
+  - the SSH key, server, Primary IP, Floating IP and firewall requests, to
+    tell a missing field from an empty one;
+  - the firewall answer, because `schema` leaves out an empty
+    `applied_to_resources`, which Hetzner sends as `[]`;
   - the server answer, to keep Hetzner's order of fields and what `schema`
     lacks.
 - **Lists handle `sort` differently** on Hetzner, as measured. Most refuse an

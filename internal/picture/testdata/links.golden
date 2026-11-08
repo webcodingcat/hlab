@@ -100,6 +100,14 @@
     {
       "destination": "2001:db8:1:5::/64",
       "device": "public"
+    },
+    {
+      "destination": "198.18.0.0/15",
+      "blackhole": true
+    },
+    {
+      "destination": "2001:db8::/32",
+      "blackhole": true
     }
   ],
   "sysctls": [

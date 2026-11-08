@@ -8,7 +8,7 @@ against it without changes.
 **Status:** being rebuilt in Go, phase 2a (see [docs/roadmap.md](docs/roadmap.md)).
 `hlabd` answers the catalog (locations, server and load balancer types, pricing,
 images, ISOs), SSH keys, servers (Debian 13, Ubuntu 26.04; power actions),
-Primary IPs and Floating IPs. On Windows 11 the servers are Hyper-V VMs that the host and WSL2
+Primary IPs, Floating IPs and firewalls. On Windows 11 the servers are Hyper-V VMs that the host and WSL2
 reach on their addresses; `hlabd --platform fake` runs the same API without VMs.
 The earlier implementation (Docker and QEMU) is on the branch `legacy`.
 

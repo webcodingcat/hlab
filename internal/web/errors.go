@@ -179,6 +179,18 @@ func RefusalNull(status int, code, message string) *Error {
 	return &Error{Status: status, Code: code, Message: message}
 }
 
+// LimitExceeded returns Hetzner's 403 resource_limit_exceeded whose
+// details name the limit, as the firewalls' limits send it ("firewall
+// limit exceeded", limit "firewalls_per_server"; measured 2026-11-08).
+func LimitExceeded(message, limit string) *Error {
+	return &Error{
+		Status:  http.StatusForbidden,
+		Code:    "resource_limit_exceeded",
+		Message: message,
+		Details: map[string][]map[string]string{"limits": {{"name": limit}}},
+	}
+}
+
 // RateLimitExceeded returns a 429 rate_limit_exceeded error.
 func RateLimitExceeded() *Error {
 	return &Error{Status: http.StatusTooManyRequests, Code: "rate_limit_exceeded", Message: "limit of requests per hour reached"}
