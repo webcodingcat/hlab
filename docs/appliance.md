@@ -33,6 +33,13 @@ comes from the appliance itself); the servers see Hetzner's gateways `172.31.1.1
 `/32`) and `fe80::1`, and the resolvers `198.18.0.2` and `2001:db8:0:ffff::2`. The
 appliance's MAC addresses are `02:48:4c:0a:00:0<n>` (set A) or `02:48:4c:0b:00:0<n>`
 (set B), n = NIC 1 to 4; an update starts the new appliance with the other set.
+A Floating IP's route (`/32` or `/64`) goes through its server's Primary IP
+of the same family (IPv6: `::1` of the server's `/64`), where the guest
+answers ARP and neighbor solicitations already: a move changes only the
+route, and no neighbor cache holds the old server. The guest configures
+the Floating IP itself, as on Hetzner. A server without a Primary IP of
+that family gets the route on-link, and its guest must answer for the
+Floating IP.
 
 **The ruleset's fixed part**, before any firewall (`ruleset.nft.tmpl`):
 
@@ -43,7 +50,7 @@ appliance's MAC addresses are `02:48:4c:0a:00:0<n>` (set A) or `02:48:4c:0b:00:0
   Windows host or its LAN. So is the lab's own range `198.18.0.0/15`, which the
   uplink's routing table already makes unreachable (The appliance). IPv6 to the
   uplink is rejected (the Default Switch has none), and so is IPv4 from servers
-  without Internet.
+  without Internet, from their Floating IPs too.
 - No rule depends on conntrack seeing a connection start. Between host and servers
   and among servers nothing is tracked; the answers to the host's connections are
   `established`, or TCP with ACK and without SYN: conntrack takes up a running
@@ -70,8 +77,10 @@ each other past the firewalls.
   that applying failed part way, and hlabd sends the picture again.
 - `links` is not atomic, but every step makes a state the next picture can start
   from. Its order: rename the NICs (a NIC must be down for that), VRFs, VLANs,
-  sysctls, links up (`lo` among them), addresses, routes. Its routes carry the protocol number 72, so
-  the agent removes only its own. The `uplink` is networkd's: the agent only names
+  sysctls, links up (`lo` among them), addresses, routes: the on-link ones
+  first, then those through a gateway (a Floating IP's, through its server's
+  Primary IP), which the kernel takes only once it reaches the gateway. Its
+  routes carry the protocol number 72, so the agent removes only its own. The `uplink` is networkd's: the agent only names
   it.
 - **Announcing.** Whenever a device's carrier comes up, and after each `links`
   picture, the agent sends each of the device's announced addresses twice: a

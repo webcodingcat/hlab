@@ -124,6 +124,14 @@ func JSONError(message string) *Error {
 	return &Error{Status: http.StatusUnprocessableEntity, Code: "json_error", Message: message, Details: map[string]any{}}
 }
 
+// JSONDocumentRequired returns the 400 json_error without details that
+// some actions answer for a field of the wrong type, where others answer
+// ParseFailed (measured 2026-11-08 on a Floating IP's assign with the server
+// as a string).
+func JSONDocumentRequired() *Error {
+	return &Error{Status: http.StatusBadRequest, Code: "json_error", Message: "A valid JSON document is required.", noDetails: true}
+}
+
 // ParseFailed returns Hetzner's answer to valid JSON that does not fit the
 // request: no object, or a field of the wrong type. It names no field
 // (measured 2026-11-07).

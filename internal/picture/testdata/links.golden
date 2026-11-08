@@ -74,6 +74,32 @@
     {
       "destination": "2001:db8:1:3::/64",
       "device": "public"
+    },
+    {
+      "destination": "198.19.0.3/32",
+      "device": "public",
+      "gateway": "198.19.0.1",
+      "source": "172.31.1.1"
+    },
+    {
+      "destination": "198.19.0.4/32",
+      "device": "public",
+      "source": "172.31.1.1"
+    },
+    {
+      "destination": "198.19.0.5/32",
+      "device": "public",
+      "gateway": "198.19.0.2",
+      "source": "172.31.1.1"
+    },
+    {
+      "destination": "2001:db8:1:4::/64",
+      "device": "public",
+      "gateway": "2001:db8:1:1::1"
+    },
+    {
+      "destination": "2001:db8:1:5::/64",
+      "device": "public"
     }
   ],
   "sysctls": [

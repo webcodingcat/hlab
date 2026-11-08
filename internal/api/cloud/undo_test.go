@@ -89,3 +89,25 @@ func TestFailedPrimaryIPAssignAndUnassignLeaveThePicturesAsBefore(t *testing.T) 
 	// route back
 	waitForPicture(t, agent, agentproto.PictureLinks, `"`+ip.IP+`/32"`, true)
 }
+
+func TestFailedFloatingIPAssignLeavesThePicturesAsBefore(t *testing.T) {
+	test := newTestLab(t)
+	agent := startMachine(t, test, platform.HostResources{Threads: 8, MemoryMB: 16 * 1024})
+	first := createServer(t, test, map[string]any{"name": "web", "server_type": "cpx22", "image": "debian-13", "start_after_create": false})
+	second := createServer(t, test, map[string]any{"name": "db", "server_type": "cpx22", "image": "debian-13", "start_after_create": false})
+	waitActions(t, test, first.Action, second.Action)
+	floating := createFloatingIP(t, test, map[string]any{"type": "ipv4", "server": first.Server.ID})
+	waitActions(t, test, *floating.Action)
+	toFirst := `"gateway":"` + first.Server.PublicNet.IPv4.IP + `"`
+	waitForPicture(t, agent, agentproto.PictureLinks, toFirst, true)
+
+	agent.FailNext(agentproto.PictureMetadata)
+	var moved schema.ActionGetResponse
+	floatingIPAction(test, floating.FloatingIP.ID, "assign", map[string]any{"server": second.Server.ID}).Decode(t, &moved)
+	expectFailed(t, test, moved.Action)
+	if got := getFloatingIP(t, test, floating.FloatingIP.ID); got.Server == nil || *got.Server != first.Server.ID {
+		t.Errorf("after the failed move the IP is %+v", got)
+	}
+	waitForPicture(t, agent, agentproto.PictureLinks, toFirst, true)
+	waitForPicture(t, agent, agentproto.PictureLinks, `"gateway":"`+second.Server.PublicNet.IPv4.IP+`"`, false)
+}

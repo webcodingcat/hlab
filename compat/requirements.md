@@ -59,6 +59,7 @@ it; "open" means the phase has not come yet. What never works is in
 | `DELETE /servers/{id}` answers 200 with `delete_server`; the server is gone at once; Primary IPs with `auto_delete` go with it | hcloud-go `hcloud/server.go` (`DeleteWithResult`); measured | 1b | `internal/api/cloud`: `TestServerLifeCycle`, `TestPrimaryIPLifeCycle` |
 | Lists filter by `name`, `label_selector`, `status` and sort by `id`, `name`, `created`; `/servers/actions`, `/servers/{id}/actions` and their single actions | hcloud-go `hcloud/server.go` (`ServerListOpts`), `hcloud/action.go` | 1b | `internal/api/cloud`: `TestServerUpdateAndList`, `TestServerActionLists` |
 | Create errors with Hetzner's codes and texts (below) | measured | 1b | `internal/api/cloud`: `TestServerCreateErrors`, `TestServerDeleteProtection` |
+| A location the server type does not offer, or no longer has available, is refused; without a location the server goes where its type is available | measured | 2a | `internal/api/cloud`: `TestServerCreateErrors` |
 
 ## Primary IPs
 
@@ -69,6 +70,17 @@ it; "open" means the phase has not come yet. What never works is in
 | A server's own IPs are named `primary_ip-<id>`, with `auto_delete` true; `unassign` clears `auto_delete` | measured | 1b | `internal/api/cloud`: `TestPrimaryIPLifeCycle` |
 | Lists filter by `name`, `ip`, `label_selector` and sort by `id`, `created`; `/primary_ips/actions` and `/primary_ips/{id}/actions` | hcloud-go `hcloud/primary_ip.go` (`PrimaryIPListOpts`) | 1b | `internal/api/cloud`: `TestPrimaryIPAssignedOnCreate`, `TestPrimaryIPLists` |
 | Errors with Hetzner's codes and texts, details `null` (below); a new server's IP that it cannot take has codes and texts of its own, details `{}` | measured | 1b | `internal/api/cloud`: `TestPrimaryIPLifeCycle`, `TestPrimaryIPCreateErrors`, `TestPrimaryIPsAServerCannotTake` |
+
+## Floating IPs
+
+| Requirement | Source | Phase | Test |
+|---|---|---|---|
+| Create in a `home_location` (no action) or for a server (`assign_floating_ip`, the server's location as home); read, update (name, description, labels), delete (204); `assign`, `unassign`, `change_protection` | hcloud-go `hcloud/floating_ip.go`; provider `hcloud_floating_ip`, `hcloud_floating_ip_assignment` | 2a | `internal/api/cloud`: `TestFloatingIPLifeCycle`, `TestFloatingIPAssignMoveAndUnassign` |
+| The JSON: `description` `null` when empty, `server` `null` when unassigned, `blocked` `false`, an IPv4's `dns_ptr` with Hetzner's default name, an IPv6's `[]`; a server's `public_net.floating_ips` lists its IPs | hcloud-go `hcloud/schema/floating_ip.go`; measured | 2a | `internal/api/cloud`: `TestFloatingIPLifeCycle`, `TestFloatingIPAssignMoveAndUnassign` |
+| `assign` to any server of the IP's network zone, running or not; on an assigned IP it is a move; the record names the server as soon as the action runs | measured | 2a | `internal/api/cloud`: `TestFloatingIPAssignMoveAndUnassign` |
+| Lists filter by `name`, `label_selector` and sort by `id`, `created`; `/floating_ips/actions` and `/floating_ips/{id}/actions` | hcloud-go `hcloud/floating_ip.go` (`FloatingIPListOpts`) | 2a | `internal/api/cloud`: `TestFloatingIPLists` |
+| Errors with Hetzner's codes and texts, mostly details `null` (below) | measured | 2a | `internal/api/cloud`: `TestFloatingIPCreateErrors`, `TestFloatingIPLifeCycle`, `TestFloatingIPAssignHoldsOffAnotherAssign`, `TestFloatingIPUpdateChecksLabels` |
+| `change_dns_ptr` | hcloud-go `hcloud/floating_ip.go` (`ChangeDNSPtr`) | 2b | open |
 
 ## Gaps of the old HLab
 
@@ -222,6 +234,40 @@ afterwards. HLab answers the same.
 | an IP that is gone | 404 `not_found`, `"Primary IP with ID <id> not found"`, `details` `null` |
 | `POST /servers` with a Primary IP of the other type (held by another server too) / held by another server / of another location | 412 `primary_ip_version_mismatch` `"primary ip has a wrong ip version"` / 422 `primary_ip_assigned` `"primary ip already assigned to another server"` / 422 `primary_ip_location_mismatch` `"primary ip and server located in different locations"`, all `details` `{}`; the type is checked first |
 | `assign` of an IP held by another server / of another location / to a missing server | 422 `primary_ip_already_assigned` `"Primary IP with ID <id> is already assigned to a Resource"` / 422 `service_error` `"Resource and Primary IP are in different locations"` / 404 `not_found` `"resource not found"`, all `details` `null` |
+
+### Floating IPs and the server's location (2a-1)
+
+Measured on 2026-11-08 with the read-write token of the empty test project
+(servers `cx23` in `fsn1` and `nbg1`, `cpx12` in `sin`, never started;
+Floating IPs in `fsn1` and `nbg1`). Everything was deleted afterwards.
+HLab answers the same, except where noted.
+
+| Request | Answer |
+|---|---|
+| `POST /servers` with a location the type does not offer (`cx23` in `ash`, by name or ID) or no longer has available (`cpx11` in `fsn1`, `hel1`) | 422 `invalid_input`, `"unsupported location for server type"`, `details` `{}` |
+| `POST /floating_ips` without `type` (also `{}`) | 422 `"invalid input in field 'type'"`, `"'type' is required"`; nothing else is checked |
+| … with `type` `ipv5` / without `server` and `home_location` / `home_location` `bogus` or `"1"` (an ID) | `"invalid"` / `"invalid input in fields 'server', 'home_location'"`, each `"either server or home_location must be provided"` / `"invalid input in field 'home_location'"`, `"invalid"` |
+| … with a name of 300 characters / name `""` / a label key `bad key!` | `"value required to be smaller"` / 201, named `floating_ip-<id>` / 201, the label kept |
+| … with an unknown `server` | 404 `not_found`, `"server not found"`, `details` `null` |
+| … with a taken name; `PUT` with a taken name | 409 `uniqueness_error`, `"Floating IP name is already used"`, `details` `null` |
+| `POST /floating_ips` | 201, `action` `null`, `description` `null` without one, `server` `null`, `blocked` `false`, `dns_ptr` as for Primary IPs (IPv6: `[]`, the IP a `/64`) |
+| … with `server` | 201 with `assign_floating_ip`; `home_location` is the server's |
+| `GET /floating_ips/{id}` of an IP that is not there | 404 `not_found`, `"Floating IP with ID <id> not found"`, `details` `null` |
+| `GET /floating_ips?sort=bogus` / `?ip=<address>` | 200, unsorted / 200, unfiltered (no filter `ip`) |
+| `PUT` with `name` `""` / `description` `null` | 200, the name / description stays |
+| `PUT` with a label key `bad key!` | 422 `"invalid input in field 'labels'"`, `"invalid label value: key contains invalid characters or is malformed"` |
+| `change_protection` (also `{}`) | 201, finished at once |
+| `DELETE` protected / assigned (also while its assign runs) | 423 `protected` `"Floating IP deletion is protected"` / 422 `must_be_unassigned` `"IP must be unassigned"`, `details` `null`; once, during an assign to the server it had, 423 `locked` `"cannot perform operation because floating_ip is locked"` (HLab: always that one while an assign runs) |
+| `unassign` of an unassigned IP | 422 `service_error`, `"Floating IP with ID <id> is not assigned to any resource"`, `details` `null` |
+| `assign` without `server` / with an unknown one / with `"x"` | 422 `"invalid input in field 'server'"`, `"value required to be larger"` / 404 `not_found` `"server not found"`, `details` `null` / **400** `json_error` `"A valid JSON document is required."`, no `details` |
+| `assign` to a server in another network zone | 422 `service_error`, `"assigning Floating IP to a Server in another network_zone is not supported"`, `details` `null`; another location of the zone is taken |
+| `assign` to a server whose create runs | 423 `locked`, `"resource is locked"` |
+| `assign` | 201, `progress` 10, resources the IP and the server; the record names the server at once; the action ends after 3 to 4 s |
+| `assign` while an assign runs / `unassign` while an assign runs / `poweroff` of the server while an assign runs | 423 `locked` `"cannot assign Floating IP because it is already being assigned"` / 201, both run / 201: the server is not locked |
+| `assign` to the server the IP has | 201, ends at once |
+| a move (`assign` of an assigned IP) | Hetzner adds an `unassign_floating_ip` of the old server to the IP's actions (HLab does not) |
+| `unassign` | 201, resources the IP and its server; ends after 1 to 3 s |
+| `DELETE /servers/{id}` with Floating IPs | they stay, `server` `null` once the server is gone |
 
 ### Metadata service (1b-2)
 

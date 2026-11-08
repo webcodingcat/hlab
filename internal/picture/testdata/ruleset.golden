@@ -6,7 +6,7 @@ table inet hlab {
 	# the servers that may not reach the Internet
 	set no_internet {
 		type ipv4_addr
-		elements = { 198.19.0.2 }
+		elements = { 198.19.0.2, 198.19.0.5 }
 	}
 
 	# what reaches the appliance itself

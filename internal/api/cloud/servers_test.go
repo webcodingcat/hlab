@@ -30,8 +30,9 @@ type serverAnswer struct {
 	} `json:"location"`
 	PrimaryDiskSize int `json:"primary_disk_size"`
 	PublicNet       struct {
-		IPv4 *schema.ServerPublicNetIPv4 `json:"ipv4"`
-		IPv6 *schema.ServerPublicNetIPv6 `json:"ipv6"`
+		IPv4        *schema.ServerPublicNetIPv4 `json:"ipv4"`
+		IPv6        *schema.ServerPublicNetIPv6 `json:"ipv6"`
+		FloatingIPs []int64                     `json:"floating_ips"`
 	} `json:"public_net"`
 	IncludedTraffic uint64 `json:"included_traffic"`
 }

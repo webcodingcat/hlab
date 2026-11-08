@@ -8,7 +8,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/state"
 )
 
-// The ranges of the Primary IPs: IPv4 addresses from
+// The ranges of the Primary and Floating IPs, which share them: IPv4 addresses from
 // 198.19.0.0/16, and one /64 per IPv6 from 2001:db8:1::/48.
 var (
 	publicIPv4Range = netip.MustParsePrefix("198.19.0.0/16")
@@ -23,10 +23,13 @@ var ErrNoAddress = errors.New("the lab has no free public address left")
 // order; one that was released comes back only once the pool has gone
 // round. IPv4 addresses ending in .0 or .255 are left out, which some
 // tools take for a network or broadcast address. The caller puts the
-// Primary IP that holds it in the same Tx.
+// Primary or Floating IP that holds it in the same Tx.
 func NewAddress(tx *state.Tx, ipType state.IPType) (string, error) {
 	used := map[string]bool{}
 	for _, ip := range state.All(tx, state.PrimaryIPs) {
+		used[ip.IP] = true
+	}
+	for _, ip := range state.All(tx, state.FloatingIPs) {
 		used[ip.IP] = true
 	}
 	pools := &tx.Lab().Pools

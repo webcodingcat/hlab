@@ -371,7 +371,7 @@ func primaryIPJSON(cat *catalog.Catalog, ip *state.PrimaryIP) schema.PrimaryIP {
 		out.AssigneeID, out.AssigneeType = new(ip.AssigneeID), "server"
 	}
 	if ip.Type == state.IPv4 {
-		out.DNSPtr = append(out.DNSPtr, schema.PrimaryIPDNSPTR{IP: ip.IP, DNSPtr: dnsPtr(ip)})
+		out.DNSPtr = append(out.DNSPtr, schema.PrimaryIPDNSPTR{IP: ip.IP, DNSPtr: reverseDNS(ip.IP)})
 	}
 	if location, found := cat.LocationByName(ip.Location); found {
 		out.Location = locationJSON(location)
@@ -379,11 +379,12 @@ func primaryIPJSON(cat *catalog.Catalog, ip *state.PrimaryIP) schema.PrimaryIP {
 	return out
 }
 
-// dnsPtr returns the reverse DNS of an IPv4, as Hetzner sets it until it is
-// changed: static.<the address backwards>.clients.your-server.de (measured
-// 2026-11-08). An IPv6 has none.
-func dnsPtr(ip *state.PrimaryIP) string {
-	address, err := netip.ParseAddr(ip.IP)
+// reverseDNS returns the reverse DNS of a Primary or Floating IPv4, as
+// Hetzner sets it until it is changed: static.<the address
+// backwards>.clients.your-server.de (measured 2026-11-08). An IPv6 has
+// none.
+func reverseDNS(ip string) string {
+	address, err := netip.ParseAddr(ip)
 	if err != nil || !address.Is4() {
 		return ""
 	}

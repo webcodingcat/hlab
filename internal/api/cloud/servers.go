@@ -517,10 +517,12 @@ func serverJSON(tx *state.Tx, cat *catalog.Catalog, server *state.Server) server
 		out.Image = &answer
 	}
 	if ip, err := state.Get(tx, state.PrimaryIPs, server.IPv4); err == nil {
-		out.PublicNet.IPv4 = &schema.ServerPublicNetIPv4{ID: ip.ID, IP: ip.IP, DNSPtr: dnsPtr(ip)}
+		out.PublicNet.IPv4 = &schema.ServerPublicNetIPv4{ID: ip.ID, IP: ip.IP, DNSPtr: reverseDNS(ip.IP)}
 	}
 	if ip, err := state.Get(tx, state.PrimaryIPs, server.IPv6); err == nil {
 		out.PublicNet.IPv6 = &schema.ServerPublicNetIPv6{ID: ip.ID, IP: ip.IP, DNSPtr: []schema.ServerPublicNetIPv6DNSPtr{}}
 	}
+	floating := state.IDs(tx, state.FloatingIPs, func(ip *state.FloatingIP) bool { return ip.ServerID == server.ID })
+	out.PublicNet.FloatingIPs = append(out.PublicNet.FloatingIPs, floating...)
 	return out
 }

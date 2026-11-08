@@ -205,6 +205,30 @@ func TestNewLinksPictureRemovesWhatItLacks(t *testing.T) {
 	}
 }
 
+func TestFloatingIPRoutesGoThroughTheirServerAndMove(t *testing.T) {
+	agent := setUp(t)
+	floating := func(serverID int64) agentproto.Links {
+		lab := picture.DefaultLab()
+		lab.Servers = []picture.Server{web, db}
+		lab.FloatingIPs = []picture.FloatingIP{
+			{Prefix: netip.MustParsePrefix("198.19.0.9/32"), ServerID: serverID},
+			{Prefix: netip.MustParsePrefix("2001:db8:1:9::/64"), ServerID: web.ID},
+		}
+		return picture.Links(lab)
+	}
+	// a fresh namespace: the routes through a gateway need the on-link
+	// routes to their servers first, which the same picture brings
+	putPicture(t, agent, agentproto.PictureLinks, floating(web.ID))
+	checkRoutes(t, 0, "198.19.0.1/32 public src 172.31.1.1", "198.19.0.2/32 public src 172.31.1.1",
+		"2001:db8:1:1::/64 public", "198.19.0.9/32 public via 198.19.0.1 src 172.31.1.1",
+		"2001:db8:1:9::/64 public via 2001:db8:1:1::1")
+
+	putPicture(t, agent, agentproto.PictureLinks, floating(db.ID))
+	checkRoutes(t, 0, "198.19.0.1/32 public src 172.31.1.1", "198.19.0.2/32 public src 172.31.1.1",
+		"2001:db8:1:1::/64 public", "198.19.0.9/32 public via 198.19.0.2 src 172.31.1.1",
+		"2001:db8:1:9::/64 public via 2001:db8:1:1::1")
+}
+
 func TestRenamingKeepsNetworkdsUplinkUp(t *testing.T) {
 	agent := setUp(t)
 	setLink(t, "eth3", true) // networkd brought it up before the agent's first picture

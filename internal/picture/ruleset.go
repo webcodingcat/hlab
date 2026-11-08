@@ -48,6 +48,12 @@ func Ruleset(lab Lab) agentproto.Ruleset {
 			values.NoInternet = append(values.NoInternet, server.IPv4.String())
 		}
 	}
+	// a guest may send from its Floating IPs too
+	for _, floating := range lab.floatingIPs() {
+		if server, ok := lab.server(floating.ServerID); ok && !server.Internet && floating.Prefix.Addr().Is4() {
+			values.NoInternet = append(values.NoInternet, floating.Prefix.Addr().String())
+		}
+	}
 	var text strings.Builder
 	// the template and its values are fixed, so it cannot fail
 	if err := rulesetTemplate.Execute(&text, values); err != nil {

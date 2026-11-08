@@ -7,7 +7,8 @@ import (
 )
 
 // Links returns the picture of the appliance's links: its four NICs, their
-// addresses, and a route to each server's addresses through the public NIC.
+// addresses, a route to each server's addresses through the public NIC,
+// and a route to each assigned Floating IP through its server.
 func Links(lab Lab) agentproto.Links {
 	links := agentproto.Links{
 		Generation: lab.Generation,
@@ -62,7 +63,33 @@ func Links(lab Lab) agentproto.Links {
 			})
 		}
 	}
+	for _, floating := range lab.floatingIPs() {
+		if server, ok := lab.server(floating.ServerID); ok {
+			links.Routes = append(links.Routes, floatingIPRoute(floating, server))
+		}
+	}
 	return links
+}
+
+// floatingIPRoute returns the route to a Floating IP: through its server's
+// Primary IP of the same family, where the guest answers ARP or neighbor
+// solicitations already, so that a move only changes the route and no
+// neighbor's cache holds the old server. The guest configures the Floating
+// IP itself, as on Hetzner. A server without a Primary IP of that family
+// gets the route on-link, and its guest must answer for the Floating IP.
+func floatingIPRoute(floating FloatingIP, server Server) agentproto.Route {
+	route := agentproto.Route{Destination: floating.Prefix.Masked(), Device: DevicePublic}
+	switch {
+	case floating.Prefix.Addr().Is4():
+		route.Source = Gateway4
+		if server.IPv4.IsValid() {
+			route.Gateway = server.IPv4
+		}
+	case server.IPv6.IsValid():
+		// the guest's address in its /64, as Hetzner's guests configure it
+		route.Gateway = server.IPv6.Masked().Addr().Next()
+	}
+	return route
 }
 
 // prefixOf returns an address with the prefix length of its network.

@@ -191,10 +191,10 @@ func (s Server) RecordProject() int64 { return s.ProjectID }
 // RecordName implements Named.
 func (s Server) RecordName() string { return s.Name }
 
-// IPType is the address family of a Primary IP.
+// IPType is the address family of a Primary or Floating IP.
 type IPType string
 
-// The types of Primary IPs.
+// The types of Primary and Floating IPs.
 const (
 	IPv4 IPType = "ipv4"
 	IPv6 IPType = "ipv6"
@@ -224,6 +224,33 @@ func (p PrimaryIP) RecordProject() int64 { return p.ProjectID }
 
 // RecordName implements Named.
 func (p PrimaryIP) RecordName() string { return p.Name }
+
+// FloatingIP is a Floating IP of a project: an IPv4 address or an IPv6 /64
+// that moves between servers. It comes from the same pool as the Primary
+// IPs.
+type FloatingIP struct {
+	ID          int64             `json:"id"`
+	ProjectID   int64             `json:"project_id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Labels      map[string]string `json:"labels"`
+	Created     time.Time         `json:"created"`
+	Protection  Protection        `json:"protection"` // only Delete counts
+	Type        IPType            `json:"type"`
+	// IP is the address, or for IPv6 the /64 as "2001:db8:1:1::/64".
+	IP           string `json:"ip"`
+	HomeLocation string `json:"home_location"` // the location's name
+	ServerID     int64  `json:"server_id"`     // the server it is assigned to, 0 for none
+}
+
+// RecordID returns the Floating IP's ID.
+func (f FloatingIP) RecordID() int64 { return f.ID }
+
+// RecordProject returns the Floating IP's project.
+func (f FloatingIP) RecordProject() int64 { return f.ProjectID }
+
+// RecordName implements Named.
+func (f FloatingIP) RecordName() string { return f.Name }
 
 // Lab is the lab's own records, which the API does not show. Later phases add
 // the Internet clients and the ACME keys.

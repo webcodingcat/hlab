@@ -72,6 +72,12 @@ func (c *Check) Labels(labels map[string]string) {
 	if c.Update {
 		keyMessage, valueMessage = "key contains invalid characters or is malformed", "value contains invalid characters or is malformed"
 	}
+	c.LabelsWith(labels, keyMessage, valueMessage)
+}
+
+// LabelsWith is Labels with the messages of a resource whose texts differ
+// (a Floating IP's PUT).
+func (c *Check) LabelsWith(labels map[string]string, keyMessage, valueMessage string) {
 	// sorted, so that the messages come in the same order on every call
 	for _, key := range slices.Sorted(maps.Keys(labels)) {
 		if !validLabelKey(key) {

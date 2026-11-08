@@ -403,19 +403,20 @@ func macSet(tx *state.Tx) picture.MACSet {
 }
 
 // pictureLab returns what the pictures are built from, with a new
-// generation: the running appliance's MAC set and every server of the
-// state, also one whose VM is still being made.
+// generation: the running appliance's MAC set, every server of the state,
+// also one whose VM is still being made, and the assigned Floating IPs.
 func (m *Machine) pictureLab() picture.Lab {
 	m.lab.mu.Lock()
 	defer m.lab.mu.Unlock()
 	m.generation++
 	facts := m.basePictureLab()
 	facts.Generation = m.generation
-	tx := state.Read(m.lab.state)
+	tx := m.lab.read()
 	facts.MACSet = macSet(tx)
 	for _, server := range state.All(tx, state.Servers) {
 		facts.Servers = append(facts.Servers, serverFacts(tx, server))
 	}
+	facts.FloatingIPs = floatingIPFacts(tx)
 	return facts
 }
 

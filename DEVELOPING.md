@@ -138,8 +138,9 @@ The layer test checks production code only. Tests may import fakes and helpers.
 `internal/state` holds the records. `internal/lab` owns them.
 
 - **Kinds.** Each kind of record (`state.Projects`, `state.Tokens`,
-  `state.SSHKeys`, `state.Actions`, `state.Servers`, `state.PrimaryIPs`) is a
-  `state.Kind[R]`. It knows its record type `R` and its name in the file.
+  `state.SSHKeys`, `state.Actions`, `state.Servers`, `state.PrimaryIPs`,
+  `state.FloatingIPs`) is a `state.Kind[R]`. It knows its record type `R`
+  and its name in the file.
   The lab's own records, which the API does not show, are in `state.Lab`
   (read them with `tx.Lab()`). Records hold plain data: no interfaces and no
   unexported fields.
@@ -428,8 +429,8 @@ the same later.
     IP price;
   - server types, load balancer types and images, because `schema` still sends
     `deprecated`;
-  - the SSH key, server and Primary IP requests, to tell a missing field from
-    an empty one;
+  - the SSH key, server, Primary IP and Floating IP requests, to tell a
+    missing field from an empty one;
   - the server answer, to keep Hetzner's order of fields and what `schema`
     lacks.
 - **Lists handle `sort` differently** on Hetzner, as measured. Most refuse an

@@ -80,6 +80,14 @@ type Lab struct {
 	// LabKey is the lab's public SSH key for `hlab ssh`; "" without one.
 	LabKey  string
 	Servers []Server
+	// FloatingIPs are the Floating IPs assigned to one of Servers.
+	FloatingIPs []FloatingIP
+}
+
+// FloatingIP is what the pictures need of an assigned Floating IP.
+type FloatingIP struct {
+	Prefix   netip.Prefix // an IPv4 /32 or an IPv6 /64
+	ServerID int64
 }
 
 // Server is what the pictures need of a server.
@@ -123,6 +131,23 @@ func hostAddress(network netip.Prefix, n int) netip.Addr {
 		address = address.Next()
 	}
 	return address
+}
+
+// floatingIPs returns the Floating IPs sorted by prefix, so that a picture
+// does not depend on the order the lab lists them in.
+func (l Lab) floatingIPs() []FloatingIP {
+	floating := slices.Clone(l.FloatingIPs)
+	slices.SortFunc(floating, func(a, b FloatingIP) int { return a.Prefix.Addr().Compare(b.Prefix.Addr()) })
+	return floating
+}
+
+// server returns the server of an ID; ok is false if Servers lacks it.
+func (l Lab) server(id int64) (server Server, ok bool) {
+	index := slices.IndexFunc(l.Servers, func(server Server) bool { return server.ID == id })
+	if index < 0 {
+		return Server{}, false
+	}
+	return l.Servers[index], true
 }
 
 // servers returns the servers sorted by ID, so that a picture does not

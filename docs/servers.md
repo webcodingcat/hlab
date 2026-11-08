@@ -1,6 +1,6 @@
-# Servers, Primary IPs and the lab's own resources
+# Servers, Primary and Floating IPs and the lab's own resources
 
-How servers and Primary IPs behave, and the lab's own operations on
+How servers, Primary IPs and Floating IPs behave, and the lab's own operations on
 projects, tokens and faults. The rules they keep are in DEVELOPING.md
 (Actions, Behaviour that changes must keep); section names in parentheses
 point to this file unless they name another.
@@ -77,8 +77,9 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
     then finds `a` not wanting to run, checks the room and gets 412.
   - Without the machine started (the API's unit tests) there is always room
     for memory, and the fake reports a drive of 1 TB, half free.
-- **Addresses** come from `198.19.0.0/16` (IPv4, without `.0` and `.255`) and
-  `2001:db8:1::/48` (one `/64` per IPv6), in order: `state.Lab.Pools` holds
+- **Addresses** of Primary and Floating IPs come from one pool,
+  `198.19.0.0/16` (IPv4, without `.0` and `.255`) and `2001:db8:1::/48`
+  (one `/64` per IPv6), in order: `state.Lab.Pools` holds
   where the next search starts, so a released address comes back only once the
   pool has gone round (`lab.NewAddress`).
 - **Names and MACs.** A server's VM is `hlab-server-<id>`, its public NIC has
@@ -111,6 +112,43 @@ the catalog changed is loaded anew. Each start of the lab removes the files
 that neither a cache entry nor a server's disk needs, what a load cut short
 left, and the disks and seeds of servers that are gone (a delete that
 HLab's end cut short).
+
+## Floating IPs
+
+The handlers in `internal/api/cloud/floating_ips.go` and
+`floating_ip_actions.go` decide; `Machine.ChangeFloatingIP`
+(`internal/lab/floating_ips.go`) sends the pictures and waits Hetzner's 3 s.
+
+- **Create** takes a `home_location` (by name only; Hetzner refuses an ID)
+  or a `server`, whose location is then the home, and runs the row
+  `assign` in the same `Lab.Create` for the second. An empty name is none:
+  the IP is named `floating_ip-<id>`. Hetzner takes labels whose keys its
+  rules refuse elsewhere, so the lab does not check them.
+- **Assign** (`assign_floating_ip`, resources the IP and the server) goes
+  to any server of the project in the IP's network zone, running or not;
+  another zone is Hetzner's 422 `service_error`, a server whose create
+  runs 423. On an assigned IP it is a move; to the IP's own server it ends
+  at once. It flags the IP: a second assign meanwhile is 423 with
+  Hetzner's own text, but it does not lock the server.
+- **Unassign** (`unassign_floating_ip`) takes no flag, as Hetzner runs it
+  beside an assign; of an unassigned IP it is 422 `service_error`.
+- Both change the record in the plan, so the IP names its new server at
+  once, as on Hetzner, and the steps send the pictures: the route moves.
+  If the steps fail, the undo puts the IP back on its server, and the
+  pictures follow (DEVELOPING.md, Actions).
+- **In the data plane** an assigned IP is a route on the appliance's
+  `public` NIC through the server's Primary IP of its family
+  (docs/appliance.md). The guest configures the address itself, as on
+  Hetzner: `ip address add <ip>/32 dev eth0`, or an address of the `/64`.
+  A connection open during a move breaks, as the new server knows nothing
+  of it; the next one reaches the new server.
+- **Delete** refuses an assigned IP (422 `must_be_unassigned`) and a
+  protected one (423 `protected`). A server's delete leaves its Floating
+  IPs, unassigned.
+- **Lists** filter by `name` and `label_selector` and sort by `id` and
+  `created`; Hetzner ignores an unknown sort value and the filter `ip`.
+- **`dns_ptr`** is Hetzner's default name for an IPv4 and empty for an
+  IPv6 until `change_dns_ptr` comes with DNS (phase 2b).
 
 ## Projects, tokens, faults
 

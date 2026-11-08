@@ -7,6 +7,8 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -17,7 +19,9 @@ var update = flag.Bool("update", false, "write the golden files anew")
 
 // testLab returns a lab with three servers that cover the cases: both
 // addresses with SSH keys, IPv4 only without Internet and with a password
-// and user data, IPv6 only. They are listed out of order on purpose.
+// and user data, IPv6 only. Its Floating IPs cover a server with a Primary
+// IP of their family, one without (on-link), and one without Internet.
+// Both are listed out of order on purpose.
 func testLab() Lab {
 	lab := DefaultLab()
 	lab.Generation = 7
@@ -38,6 +42,13 @@ func testLab() Lab {
 			IPv4: netip.MustParseAddr("198.19.0.2"), RootPassword: `p"ss`,
 			UserData: "#cloud-config\npackages: [nginx]\n",
 		},
+	}
+	lab.FloatingIPs = []FloatingIP{
+		{Prefix: netip.MustParsePrefix("2001:db8:1:5::/64"), ServerID: 1000002},
+		{Prefix: netip.MustParsePrefix("198.19.0.4/32"), ServerID: 1000003},
+		{Prefix: netip.MustParsePrefix("198.19.0.3/32"), ServerID: 1000001},
+		{Prefix: netip.MustParsePrefix("2001:db8:1:4::/64"), ServerID: 1000001},
+		{Prefix: netip.MustParsePrefix("198.19.0.5/32"), ServerID: 1000002},
 	}
 	return lab
 }
@@ -107,14 +118,16 @@ func TestMetadataMatchesGoldenFile(t *testing.T) {
 	checkGolden(t, "metadata", text.String())
 }
 
-func TestPicturesDoNotDependOnTheOrderOfTheServers(t *testing.T) {
+func TestPicturesDoNotDependOnTheOrderOfServersAndFloatingIPs(t *testing.T) {
 	lab := testLab()
 	reversed := testLab()
-	for i, j := 0, len(reversed.Servers)-1; i < j; i, j = i+1, j-1 {
-		reversed.Servers[i], reversed.Servers[j] = reversed.Servers[j], reversed.Servers[i]
-	}
+	slices.Reverse(reversed.Servers)
+	slices.Reverse(reversed.FloatingIPs)
 	if Ruleset(lab) != Ruleset(reversed) || DHCP(lab) != DHCP(reversed) {
 		t.Error("the order of the servers changes the ruleset or DHCP")
+	}
+	if !reflect.DeepEqual(Links(lab), Links(reversed)) {
+		t.Error("the order of the servers or Floating IPs changes the links")
 	}
 }
 

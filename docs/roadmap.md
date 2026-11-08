@@ -204,14 +204,6 @@ that found it (must, should, optional) and the phase that closes it.
   runs: `hlab.exe` waits for `ssh.exe` and holds its file, so the copy
   fails. hlabd has ended by then and its servers run on; the install
   works again once the session ends.
-- **should, 2a:** a Primary IP's assign and unassign have no `Undo`: when
-  their pictures fail, the action ends with an error but the IP stays
-  assigned or unassigned.
-- **must, 2a-1:** a server whose create fails stays in the appliance's
-  pictures: its steps send them while the record is still there, and the
-  undo that removes it (and its Primary IPs with auto_delete) sends none.
-  Solved together with the missing `Undo` of a Primary IP's assign and
-  unassign: after an undo, the pictures go out again.
 - **should, 2c:** `TestQueuedActionsWaitBehindAnActionThatLocksTheirResource`
   checks that an action still waits with `time.Sleep(20ms)`
   (`internal/lab/actions_test.go`), so it can pass by mistake; a step
@@ -235,9 +227,6 @@ that found it (must, should, optional) and the phase that closes it.
 - **should, 6b:** the README describes the installer as there, while the
   roadmap lists 6b (tray, installer) as open; say what 6b still lacks, and
   that `bin/dev package` copies `install/install.ps1` to `build/package`.
-- **should, 2a:** a server's create accepts any location of the catalog,
-  also one its server type does not offer; Hetzner refuses that (text and
-  code not measured yet).
 - **should, with the next change there:** `Lab.DeleteProject` sends every
   picture once per server it removes (`deleteServerVM`); removing the VMs
   first and sending the pictures once would do.
@@ -254,6 +243,12 @@ that found it (must, should, optional) and the phase that closes it.
   timings of later phases and `ServerCreateStart`, which nothing uses (the
   start after a create waits `PowerOn`); not every timing says when it
   was measured.
+- **optional, 2c:** a Floating IP's move does not add the
+  `unassign_floating_ip` of the old server that Hetzner lists among the
+  IP's actions; no tool reads it.
+- **optional, 2a:** a type `holds` that sets and frees an action's flags
+  and queues in one place (`Lab.start`, `Lab.end`); worth it once `start`
+  grows.
 - **2a:** the metadata summary says `private-networks: []` on a server
   without a network, where Hetzner leaves it out.
 - The firewall rules do not block the lab's own range as a source on
@@ -295,7 +290,8 @@ that found it (must, should, optional) and the phase that closes it.
 | Step | What | State |
 |---|---|---|
 | 2a-0 | `lab.Machine` for the machine's side; the rule where an action's plans and steps live (DEVELOPING.md, Actions); `ReadSecrets` takes a file of `null`; the watchdog's notes live only for a round | done |
+| 2a-1 | Floating IPs (IPv4, IPv6 `/64`) with Hetzner's actions, routes in the `links` picture; new pictures after every undo (a failed server create, a Primary IP's assign and unassign); a server's create checks its location against its type; `l.read()`, `planFunc` | done |
 
-Next: the next step of phase 2a.
+Next: 2a-2, firewalls.
 
 Not there yet: the commands of later phases.

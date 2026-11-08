@@ -308,9 +308,16 @@ func applyRoutes(routes []agentproto.Route) error {
 			return fmt.Errorf("removing route %s: %w", route.Dst, err)
 		}
 	}
-	for _, route := range wanted {
-		if err := netlink.RouteReplace(&route); err != nil {
-			return fmt.Errorf("route %s: %w", route.Dst, err)
+	// on-link routes first: the kernel takes a route through a gateway (a
+	// Floating IP's, through its server) only once it reaches the gateway
+	for _, throughGateway := range []bool{false, true} {
+		for _, route := range wanted {
+			if (route.Gw != nil) != throughGateway {
+				continue
+			}
+			if err := netlink.RouteReplace(&route); err != nil {
+				return fmt.Errorf("route %s: %w", route.Dst, err)
+			}
 		}
 	}
 	return nil
