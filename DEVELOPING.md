@@ -71,7 +71,7 @@ means the row has no limit.
 |---|---|---|
 | `cmd/hlabd`, `cmd/hlab`, `cmd/hlab-agent` | wiring only: flags, configuration, putting the parts together | anything |
 | `internal/tray` (Windows only) | (later) tray icon and menu | `lab` |
-| `internal/cli` | the CLI's commands | `client`, `config` |
+| `internal/cli` | the CLI's commands | `client`, `config`, `labapi` |
 | `internal/client` | Go client of the lab control: finds the token, TCP, upload, download | `labapi` |
 | `internal/api/cloud` | Cloud API: one file per resource, action tables | `lab`, `web`, `state`, `catalog`, `schema` |
 | `internal/api/hetzner` | (later) Hetzner API (Storage Boxes) | `lab`, `web`, `state`, `catalog`, `schema` |
@@ -499,11 +499,15 @@ not sent again until its generation changes.
 - **The life cycles:**
   - Windows holds the mutex `Global\HLab`. It writes the path of its data folder to
     `%ProgramData%\HLab\instance`, so a second start can say in its error message
-    which folder is in use. It writes the token with its own ACL: local users may
-    read it.
+    which folder is in use and the CLI finds the lab's token. It writes the token
+    with its own ACL: local users may read it.
   - Linux holds an flock on `/run/lock/hlab.lock`; that file contains the path of
     the data folder. It writes the token with mode `0640` and the group `hlab`, if
     the machine has that group.
+- **The log** goes to stderr as text and to `logs/hlabd.log` in the data folder
+  as JSON lines (`cmd/hlabd/logfile.go`): hlabd mostly runs without a console
+  (the start menu's minimized window, `hlab start`, the dev loop's task). A
+  start moves a log of 10 MB or more to `hlabd.log.1`.
 
 ## Lab control, CLI and web UI
 
@@ -523,19 +527,33 @@ not sent again until its generation changes.
   (`web.WriteError`): the lab's `ErrInvalid` is 422 `invalid_input`, `ErrExists` is
   409 `uniqueness_error`, `state.ErrNotFound` is 404 `not_found`.
 - **The client** (`internal/client`) finds the token in `HLAB_TOKEN_FILE`. Without
-  it, it reads `control.token` in the default data folder:
-  - `C:\ProgramData\HLab` on Windows;
-  - `/mnt/c/ProgramData/HLab` in WSL2 (detected through `WSL_DISTRO_NAME`);
-  - `/var/lib/hlab` on Linux.
+  it, it reads `control.token` in the data folder that the instance file names
+  (`client.DataDir`), so it finds the dev loop's lab in `C:\HLabDev\data` as
+  well as an installed one:
+  - `C:\ProgramData\HLab\instance` on Windows;
+  - `/mnt/c/ProgramData/HLab/instance` in WSL2 (detected through
+    `WSL_DISTRO_NAME`), with the folder turned into its `/mnt/<drive>` path;
+  - without the file, or for a folder not on a drive, the default folder;
+    on Linux always `/var/lib/hlab`.
 
   It calls the address in `HLAB_CONTROL`, or else `http://198.18.0.1:8090`, the host
   link that Windows and WSL2 share. If there is no token file or no answer, it
-  returns `client.ErrNotRunning`. An error answer becomes a `*client.Error` with
+  returns `client.ErrNotRunning`. A connection gives up after 2 s: once the lab
+  has stopped, `198.18.0.1` is gone, and from WSL2 a connection to it would hang
+  until the request's timeout of 30 s. An error answer becomes a `*client.Error` with
   its status and code, so the CLI can give a hint (for 401: the token file
   belongs to another `hlabd`).
 - **The CLI** (`internal/cli`, cobra) has one file per group of commands; each
   command calls the client. `hlab env` prints the endpoints and the project's env
   token for sh (`export`) or PowerShell (`$env:`), in single quotes.
+  - `hlab start` runs `hlabd.exe` with administrator rights and without a window
+    (`Start-Process -Verb RunAs -WindowStyle Hidden` in `powershell.exe`, which
+    WSL2 reaches through interop): on Windows the one next to `hlab.exe`, in
+    WSL2 the installed one in `C:\Program Files\HLab`. Then it asks the status
+    every half second, reading the token file anew each time, until the lab
+    runs (at most 3 minutes).
+  - `hlab stop` sends `POST /_lab/shutdown` and waits the same way until the
+    lab no longer answers (`--no-wait` does not).
 - **The web UI** (`internal/webui`) is `index.html`, `ui.js` and `ui.css` in
   `files/`, built in with `go:embed`, without a build step.
   - `UI.Guard` runs before everything else on port 8090. The Host header must be
@@ -895,7 +913,7 @@ What a developer installs:
 | hcloud CLI, OpenTofu | Linux, WSL2, in the versions of `compat/versions.yaml` | `bin/dev smoke` |
 | Docker | WSL2 (Docker Desktop with WSL integration) or Linux | `bin/dev test --agent` |
 | mmdebstrap, uidmap, debian-archive-keyring, e2fsprogs (1.47.1 or newer) with libarchive (`libarchive13t64`), dosfstools, mtools, fdisk, qemu-utils | WSL2, Linux (`apt install …`); an entry for the user in `/etc/subuid` and `/etc/subgid` (Ubuntu creates it) | `bin/dev appliance` |
-| Hyper-V; once as administrator `bin/dev.ps1 dev-install` | Windows 11 Pro (Live tests) | `bin/dev itest` |
+| Hyper-V; once as administrator `bin/dev.ps1 dev-install`; Smart App Control off (it blocks self-built programs unpredictably) | Windows 11 Pro | `bin/dev itest`, `bin/dev deploy` |
 
 golangci-lint and shfmt need no install: `go tool` builds them from `tools/go.mod`
 the first time they run. In WSL2, `bin/dev lint` runs PSScriptAnalyzer in pwsh if it
@@ -927,14 +945,14 @@ and go with its delete. The server test keeps the Debian image in
   `run.cmd` with the test's flags, starts the task with `schtasks /run`, and
   prints `itest.out` as it grows until `itest.rc` holds the exit code.
   `bin/dev.ps1 itest` does the same on Windows with Go.
-- Once, as administrator: `bin/dev.ps1 dev-install` creates `C:\HLabDev\itest`,
+- Once, as administrator: `bin/dev.ps1 dev-install` creates `C:\HLabDev`,
   which only the developer, the administrators and SYSTEM may write (whatever
-  lands there runs elevated; Hyper-V's VMs may read it), the task, and the
+  lands there runs elevated; Hyper-V's VMs may read it), the tasks "HLab itest"
+  and "HLab dev" (dev loop, below), the firewall rule "HLab dev" and the
   agent's hv_sock service (the registry key of `VsockServiceID(5000)` under
   `GuestCommunicationServices`). From WSL2: `powershell.exe -ExecutionPolicy
   Bypass -File \\wsl.localhost\<distribution>\<repo>\bin\dev.ps1 dev-install`
-  in a PowerShell run as administrator. The task of `hlabd` itself (`HLab dev`)
-  and its firewall rule come with the dev loop (1b-5).
+  in a PowerShell run as administrator. Running it again is safe.
 - HLab must not run meanwhile: the tests take its switches, ranges and VM name.
 - Disks go to a temporary folder on the Windows disk: Hyper-V cannot use files in
   WSL2's file system.
@@ -977,6 +995,39 @@ The smoke tests pass when nothing fails and the `plan` after `apply` shows no
 changes. Each phase adds its commands to `smoke` in `bin/dev` and its configuration
 as `examples/tofu-<phase>`. The smoke tests need the provider from the OpenTofu
 registry, so they stay out of CI.
+
+**The dev loop.** `bin/dev deploy` runs a freshly built `hlabd` on Windows from
+WSL2, without UAC:
+
+1. It builds everything (`bin/dev build`).
+2. If an `hlabd.exe` runs, it stops it with `hlab stop` (the servers shut
+   down, as at every stop) or, with `--keep-vms`, ends the task with `schtasks
+   /end` as a crash would end it: the servers and the appliance keep running,
+   and the start takes them over. Then it waits until the process is gone.
+3. It copies `hlabd.exe`, `hlab.exe` and a newer appliance's disk to
+   `C:\HLabDev\bin`, starts the task "HLab dev" (`hlabd.exe --data
+   C:\HLabDev\data`, highest rights, S4U as "HLab itest": no window, so its log
+   is `C:\HLabDev\data\logs\hlabd.log`) and waits until `hlab status`
+   answers.
+
+It prints how long that took. Measured on a Ryzen AI Max+ 395: about 29 s
+with the appliance made anew (stop 9 s, start 20 s), 9 s with `--keep-vms`.
+The CLI in WSL2 finds the dev loop's lab by itself (instance file). The task's
+firewall rule lets WSL2 reach 8080, 8081 and 8090 on `198.18.0.1`, the servers
+8080 and 8081 through the appliance. An installed HLab must not run meanwhile.
+
+**Installing.** `install/install.ps1` installs HLab for users (see its help and
+the README), from the folder that `bin/dev package` fills (`build/package`:
+`hlabd.exe`, `hlab.exe`, the Linux `hlab`, the appliance's disk, the script).
+There is no Windows service and no autostart: HLab runs when the user starts
+it (the start menu's link, whose "Run as administrator" flag the script sets
+in the `.lnk`, or `hlab start`). `-Uninstall` first stops the installed
+`hlabd` (`hlab stop`) and refuses while one from another folder runs. It
+removes the VMs with the notes `hlab` (not with `-KeepData`: their disks stay
+in the data folder), the switches `HLab-*` with the host's NIC, the NRPT rules
+with the comment `hlab`, and the rest the install added; the Hyper-V feature
+stays on. The firewall rule "HLab" is separate from the dev loop's, so both
+can be there.
 
 **Builds.** `bin/dev build` builds with `CGO_ENABLED=0` and `-trimpath`, and sets
 `main.version` from `git describe`. `hlabd --version` (and the same flag of the other

@@ -45,9 +45,18 @@ func main() {
 		fmt.Println("hlabd", version)
 		return
 	}
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	if err := run(*dataDir, *platformName, *appliance, logger); err != nil {
-		fmt.Fprintln(os.Stderr, "hlabd:", err)
+	logger, closeLog, err := openLog(*dataDir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "hlabd: opening the log:", err)
+		os.Exit(1)
+	}
+	err = run(*dataDir, *platformName, *appliance, logger)
+	if err != nil {
+		// also into the file: without a console it is the only trace
+		logger.Error("hlabd stopped", "error", err)
+	}
+	_ = closeLog.Close()
+	if err != nil {
 		os.Exit(1)
 	}
 }

@@ -32,7 +32,7 @@ func Execute(args []string, stdout, stderr io.Writer, version string) int {
 		var answerErr *client.Error
 		switch {
 		case errors.Is(err, client.ErrNotRunning):
-			root.PrintErrln("hlab: start hlabd first; with another data folder or address, set",
+			root.PrintErrln("hlab: start it with hlab start; for a lab with another address, set",
 				client.TokenFileVar, "and", client.ControlVar)
 		case errors.As(err, &answerErr) && answerErr.Status == http.StatusUnauthorized:
 			// the token file belongs to another hlabd than the one that answered
@@ -65,7 +65,7 @@ func newRoot(version string) *cobra.Command {
 		SilenceUsage:  true,
 	}
 	root.SetVersionTemplate("hlab {{.Version}}\n") // as hlabd --version prints it
-	root.AddCommand(newEnv(), newStatus(), newStop(), newProject(), newToken())
+	root.AddCommand(newEnv(), newStart(), newStatus(), newStop(), newProject(), newToken())
 	return root
 }
 

@@ -28,9 +28,11 @@ From Linux or WSL2 (`bin/dev.ps1` takes the same commands on Windows):
 | `bin/dev build` | `hlabd`, `hlab`, `hlab-agent` for Linux and `hlabd.exe`, `hlab.exe` into `build/` |
 | `bin/dev spec-diff` | Hetzner's current specs against `compat/specs` (`--update` takes them over) |
 | `bin/dev itest [--run <pattern>]` | the live tests against Hyper-V: built for Windows, run with administrator rights by the task "HLab itest" |
-| `bin/dev.ps1 dev-install` | once, as administrator: `C:\HLabDev\itest`, the task "HLab itest", the agent's hv_sock service |
+| `bin/dev deploy [--keep-vms]` | the dev loop: build `hlabd`, restart it on Windows through the task "HLab dev" (data `C:\HLabDev\data`), wait until it answers; `--keep-vms` ends it as a crash would |
+| `bin/dev.ps1 dev-install` | once, as administrator: `C:\HLabDev`, the tasks "HLab itest" and "HLab dev", the firewall rule "HLab dev", the agent's hv_sock service |
 | `bin/dev smoke` | the smoke tests: hcloud CLI and OpenTofu against `hlabd --platform fake` (WSL2 or Linux, end of a phase) |
 | `bin/dev appliance` | the appliance's disk, `build/appliance/hlab-appliance.vhdx` (WSL2 or Linux, without root) |
+| `bin/dev package` | the folder `install/install.ps1` installs from, `build/package` (after `bin/dev appliance`) |
 
 CI runs lint, the unit tests on Linux and Windows and the agent's tests for every
 push and pull request, and `spec-diff` weekly; the live tests stay out of CI.

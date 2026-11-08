@@ -14,7 +14,7 @@ the tests. Look there before writing such a part anew.
 | Phase | What | State |
 |---|---|---|
 | 1a | core without VMs: state, lab, web basics, catalog, reading resources, SSH keys, lab control, `--platform fake` | done |
-| 1b | servers, host link, reachability | **in progress: next 1b-5** |
+| 1b | servers, host link, reachability | **in progress: next 1b-6** |
 | 2a | Floating IPs, firewalls, private networks | open |
 | 2b | volumes, placement groups, DNS | open |
 | 2c | tools for tests | open |
@@ -71,8 +71,8 @@ the tests. Look there before writing such a part anew.
 - `hlabd --platform fake` listens on `127.0.0.1`, the CLI's default is
   `198.18.0.1`: with the fake platform, take `HLAB_CONTROL` from hlabd's log
   (`bin/dev smoke` does).
-- Not yet: `hlab start` (1b-5), `PUT` and `DELETE` of images (3a). (The
-  Windows platform and 503 while the lab stops came with 1b-3; the first
+- Not yet: `PUT` and `DELETE` of images (3a). (`hlab start` came with
+  1b-5; the Windows platform and 503 while the lab stops with 1b-3; the first
   action tables, the server JSON, the queue instead of 423 and the catalog's
   image sources with 1b-4.)
 
@@ -90,8 +90,8 @@ the tests. Look there before writing such a part anew.
 | 1b-2 | the appliance's build and the agent; agent tests in a namespace | done |
 | 1b-3 | HostNet, the appliance's start and watchdog, the life cycle | done |
 | 1b-4 | image cache, `seed`, servers and Primary IPs | done |
-| 1b-5 | dev loop, `install.ps1`, the CLI from WSL2 | next |
-| 1b-6 | appliance update (A/B) with running servers | open |
+| 1b-5 | dev loop, `install.ps1`, the CLI from WSL2 | done |
+| 1b-6 | appliance update (A/B) with running servers | next |
 
 ### What is there after 1b-1
 
@@ -209,8 +209,8 @@ the tests. Look there before writing such a part anew.
 - Settled in 1b-4: a start detaches and attaches the public NIC of every
   server VM that is off, so it is on `HLab-Public` again; no new platform
   method.
-- `hlab start` and the dev loop (`HLab dev`, firewall rule for WSL2) come with
-  1b-5; until then `hlabd` is started by hand as administrator.
+- Done in 1b-5: `hlab start` and the dev loop (`HLab dev`, firewall rule for
+  WSL2).
 
 ### What is there after 1b-4
 
@@ -273,6 +273,55 @@ the tests. Look there before writing such a part anew.
   next start; a start removes the cached images that no entry and no disk
   needs; the metadata's MAC addresses are quoted in its YAML.
 
-Next: 1b-5, dev loop, `install.ps1`, the CLI from WSL2.
+### What is there after 1b-5
+
+- **The dev loop:** `bin/dev deploy [--keep-vms]` builds in WSL2, stops the
+  dev loop's `hlabd` (`hlab stop`, or `schtasks /end` as a crash), copies it to
+  `C:\HLabDev\bin` and starts it through the task "HLab dev" (`--data
+  C:\HLabDev\data`, highest rights, S4U, normal priority), without UAC.
+  `bin/dev.ps1 dev-install` adds the task and the firewall rule "HLab dev" and
+  protects all of `C:\HLabDev`. Measured on a Ryzen AI Max+ 395: 29 s with the
+  appliance made anew (stop 9 s, start 20 s), 9 s with `--keep-vms` (stop 2 s,
+  takeover 7 s).
+- **`install/install.ps1`** (as administrator), from `build/package` (`bin/dev
+  package`): Hyper-V on, `C:\Program Files\HLab`, the start menu entry "HLab"
+  (as administrator, minimized), `hlab.exe` on the machine's PATH, the hv_sock
+  service, the firewall rule "HLab" (hlabd.exe, TCP 8080, 8081, 8090 on
+  `198.18.0.1`), `C:\ProgramData\HLab`, the Linux CLI in `~/.local/bin` of the
+  default WSL distribution. `-Uninstall` stops HLab and removes VMs,
+  switches, NRPT rules and everything it added; `-KeepData` keeps the data
+  folder and the VMs. Played through on the
+  operator's machine (through the task "HLab itest"): install, update,
+  `hlab start` from WSL2 with UAC (24 s until it answered), `hlab stop`,
+  uninstall with HLab stopped and with HLab running; nothing of HLab was left
+  on the host. No Windows service and no autostart.
+- **The CLI from WSL2:** the client finds the running lab's data folder in
+  `%ProgramData%\HLab\instance` (in WSL2 through `/mnt/c`), so `hlab` finds the
+  dev loop's lab and an installed one without `HLAB_TOKEN_FILE`; a connection
+  gives up after 2 s (the host link's address is gone after a stop). `hlab
+  start` (UAC through `Start-Process -Verb RunAs`, waits until the lab runs);
+  `hlab stop` waits until the lab has stopped (`--no-wait`). From WSL2 with
+  `hlab env`: `hcloud server create --image debian-13 --type cpx22`, SSH to its
+  IPv4 (the guest sees `198.18.0.1`), delete.
+- **The log:** `logs/hlabd.log` in the data folder (JSON lines, moved to
+  `hlabd.log.1` at a start from 10 MB), also text on stderr.
+
+### Open for 1b-6 and later (from 1b-5)
+
+- A dev loop start takes 20 s: about 9 s for the host link (switches) and 11 s
+  for the appliance from nothing. The 1.7 s of the plan were measured without
+  an appliance. `--keep-vms` keeps it at 9 s.
+- `hlab ssh <server>` with a lab key is not there yet.
+- `install.ps1 -Uninstall -KeepData` keeps the lab's VMs with the data folder
+  (the plan removes them): a server whose VM is gone would be built anew at
+  the next start, and `CreateDisk` would fail on its kept disk. A start could
+  instead attach a disk that is there; until then the VMs stay.
+- Closing the start menu entry's window ends hlabd as a crash would (Windows
+  allows a few seconds); the next start takes over. The tray (6b) replaces the
+  window.
+- The firewall rules have no extra block of the lab's own range as source on
+  8090; the appliance's ruleset keeps the servers off it.
+
+Next: 1b-6, appliance update (A/B) with running servers.
 
 Not there yet: the commands of later phases.

@@ -24,8 +24,12 @@ The same commands as bin/dev:
                                the live tests against Hyper-V, with
                                administrator rights through the task
                                "HLab itest"
+  bin/dev.ps1 deploy           the dev loop runs from WSL2 (bin/dev deploy)
+  bin/dev.ps1 package          the installer's folder is built in WSL2
+                               (bin/dev package)
   bin/dev.ps1 dev-install      once, as administrator: the folder
-                               C:\HLabDev\itest, the task "HLab itest" and
+                               C:\HLabDev, the tasks "HLab itest" and
+                               "HLab dev", the firewall rule "HLab dev" and
                                the agent's hv_sock service
 #>
 param(
@@ -43,8 +47,13 @@ $Tools = @('tool', "-modfile=$Repo/tools/go.mod")
 $ShfmtFlags = @('-i', '2', '-ci', '-bn')
 $Specs = @('cloud', 'hetzner')
 $SpecUrl = 'https://docs.hetzner.cloud'
-# the live tests run elevated from here, through the task (dev-install)
-$ItestDir = 'C:\HLabDev\itest'
+# the dev loop's hlabd and the live tests run elevated from here, through
+# the tasks (dev-install)
+$DevDir = 'C:\HLabDev'
+$DevBin = "$DevDir\bin"
+$DevTask = 'HLab dev'
+$DevFirewallRule = 'hlab-dev'
+$ItestDir = "$DevDir\itest"
 $ItestTask = 'HLab itest'
 
 function Invoke-Native {
@@ -179,17 +188,19 @@ function Compare-Spec {
 function Install-DevMachine {
     <#
     .SYNOPSIS
-    Prepare this machine for the live tests, once, as administrator: the
-    folder C:\HLabDev\itest, which only this user, the administrators and
-    SYSTEM may write, the task "HLab itest" that runs its run.cmd with the
-    highest rights and without a window, and the agent's hv_sock service.
+    Prepare this machine for the dev loop and the live tests, once, as
+    administrator: the folder C:\HLabDev, which only this user, the
+    administrators and SYSTEM may write; the task "HLab itest" that runs
+    itest\run.cmd and the task "HLab dev" that runs bin\hlabd.exe, both with
+    the highest rights and without a window; the firewall rule "HLab dev";
+    and the agent's hv_sock service.
     #>
     $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
         throw 'dev-install needs an elevated PowerShell (Run as administrator)'
     }
     $user = [Security.Principal.WindowsIdentity]::GetCurrent().Name
-    New-Item -ItemType Directory -Force -Path $ItestDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $DevDir | Out-Null
     # whatever lands in the folder runs elevated: no inherited rights
     $acl = New-Object Security.AccessControl.DirectorySecurity
     $acl.SetAccessRuleProtection($true, $false)
@@ -209,20 +220,34 @@ function Install-DevMachine {
             $identity, $right[1], 'ContainerInherit,ObjectInherit', 'None', 'Allow')
         $acl.AddAccessRule($rule)
     }
-    Set-Acl -Path $ItestDir -AclObject $acl
+    Set-Acl -Path $DevDir -AclObject $acl
+    New-Item -ItemType Directory -Force -Path $ItestDir, $DevBin | Out-Null
     # S4U: runs whether the user is signed in or not, without a window and
     # without a stored password
-    $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c $ItestDir\run.cmd" -WorkingDirectory $ItestDir
     $taskPrincipal = New-ScheduledTaskPrincipal -UserId $user -LogonType S4U -RunLevel Highest
-    $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 1) `
+    $itestAction = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c $ItestDir\run.cmd" -WorkingDirectory $ItestDir
+    $itestSettings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 1) `
         -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-    Register-ScheduledTask -TaskName $ItestTask -Action $action -Principal $taskPrincipal `
-        -Settings $settings -Force | Out-Null
+    Register-ScheduledTask -TaskName $ItestTask -Action $itestAction -Principal $taskPrincipal `
+        -Settings $itestSettings -Force | Out-Null
+    # hlabd itself, so that bin/dev deploy can end it (schtasks /end) as a
+    # crash would; normal priority, not the tasks' default below it
+    $devAction = New-ScheduledTaskAction -Execute "$DevBin\hlabd.exe" -Argument "--data $DevDir\data" -WorkingDirectory $DevBin
+    $devSettings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -Priority 4 `
+        -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    Register-ScheduledTask -TaskName $DevTask -Action $devAction -Principal $taskPrincipal `
+        -Settings $devSettings -Force | Out-Null
+    # WSL2 reaches all three ports, the guests 8080 and 8081 through the
+    # appliance
+    Remove-NetFirewallRule -Name $DevFirewallRule -ErrorAction SilentlyContinue
+    New-NetFirewallRule -Name $DevFirewallRule -DisplayName 'HLab dev' -Direction Inbound -Action Allow `
+        -Program "$DevBin\hlabd.exe" -Protocol TCP -LocalPort 8080, 8081, 8090 -LocalAddress 198.18.0.1 `
+        -Profile Any | Out-Null
     # hlabd reaches the agent's vsock port 5000 through this service ID
     $service = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization\GuestCommunicationServices\00001388-facb-11e6-bd58-64006a7986d3'
     New-Item -Path $service -Force | Out-Null
     Set-ItemProperty -Path $service -Name ElementName -Value 'HLab agent'
-    Write-Output "set up $ItestDir, the task `"$ItestTask`" and the agent's hv_sock service"
+    Write-Output "set up $DevDir, the tasks `"$ItestTask`" and `"$DevTask`", the firewall rule and the agent's hv_sock service"
 }
 
 function Invoke-LiveTest {
@@ -326,6 +351,10 @@ try {
                 Invoke-LiveTest
             }
         }
+        # it builds the Linux CLI and copies into C:\HLabDev through /mnt/c
+        'deploy' { throw 'deploy runs from WSL2: bin/dev deploy' }
+        # the package holds the appliance, which is built in WSL2
+        'package' { throw 'package runs from WSL2: bin/dev package' }
         'dev-install' { Install-DevMachine }
         default {
             Get-Usage | Write-Output

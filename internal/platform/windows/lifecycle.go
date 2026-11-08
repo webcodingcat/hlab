@@ -38,7 +38,8 @@ var (
 )
 
 // InstanceFile is where the running HLab names its data folder, for the
-// message of a second start: the mutex cannot carry it.
+// message of a second start (the mutex cannot carry it) and for the CLI,
+// which finds the control token there (labapi.InstanceFile).
 func InstanceFile() string {
 	return filepath.Join(os.Getenv("ProgramData"), "HLab", "instance")
 }
@@ -79,8 +80,8 @@ func (l *Lifecycle) Lock(dataDir string) (func(), error) {
 	if err != nil {
 		absolute = dataDir
 	}
-	// only for the message above: a folder that cannot be written loses
-	// just that
+	// a folder that cannot be written loses only the message above and
+	// the CLI's way to a data folder other than the default
 	if os.MkdirAll(filepath.Dir(l.instanceFile), 0o755) == nil {
 		_ = os.WriteFile(l.instanceFile, []byte(absolute+"\r\n"), 0o644)
 	}

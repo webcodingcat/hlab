@@ -216,7 +216,7 @@ func TestTheAPIsAnswer503WhileTheLabStops(t *testing.T) {
 	machine.Delay("ShutdownVM", 300*time.Millisecond)
 	stopped := make(chan error, 1)
 	go func() { stopped <- svc.wait() }()
-	hlab(t, "stop")
+	hlab(t, "stop", "--no-wait")
 
 	// the stop begins right after the answer to hlab stop
 	deadline := time.Now().Add(5 * time.Second)

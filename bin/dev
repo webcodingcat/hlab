@@ -20,6 +20,13 @@
 #                            Windows and run with administrator rights by the
 #                            task "HLab itest" (bin/dev.ps1 dev-install)
 #   bin/dev appliance        the appliance's disk (VHDX) into build/appliance
+#   bin/dev deploy [--keep-vms]
+#                            build hlabd and restart it on Windows through
+#                            the task "HLab dev" (bin/dev.ps1 dev-install);
+#                            --keep-vms ends it as a crash would, so the
+#                            servers keep running
+#   bin/dev package          the folder install.ps1 installs from, in
+#                            build/package
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,6 +36,10 @@ readonly SHFMT_FLAGS=(-i 2 -ci -bn)
 readonly SPECS=(cloud hetzner)
 readonly SPEC_URL="https://docs.hetzner.cloud"
 readonly APPLIANCE="build/appliance/hlab-appliance.vhdx"
+# the dev loop's hlabd runs elevated from here, through the task
+# (bin/dev.ps1 dev-install)
+readonly DEV_DIR="/mnt/c/HLabDev"
+readonly DEV_TASK="HLab dev"
 
 #######################################
 # Print an error and exit.
@@ -199,7 +210,7 @@ itest() {
       ;;
     *) die "unknown option: $1" ;;
   esac
-  local dir="/mnt/c/HLabDev/itest"
+  local dir="${DEV_DIR}/itest"
   [[ -d "${dir}" && -w "${dir}" ]] \
     || die "${dir} is missing: bin/dev.ps1 dev-install, once as administrator"
   GOOS=windows CGO_ENABLED=0 go test -c -tags live \
@@ -239,6 +250,105 @@ follow_itest() {
   done
   tail -c "+$((printed + 1))" "${dir}/itest.out" 2>/dev/null || true
   return "$(tr -dc '0-9' <"${dir}/itest.rc")"
+}
+
+#######################################
+# Tell whether an hlabd.exe runs on Windows. tasklist's own messages are in
+# Windows' language; a running one prints its image name.
+#######################################
+hlabd_runs() {
+  tasklist.exe /fi "IMAGENAME eq hlabd.exe" /fo csv /nh | grep -q hlabd.exe
+}
+
+#######################################
+# Wait until no hlabd.exe runs, at most a minute.
+#######################################
+wait_for_hlabd_end() {
+  local waited=0
+  while hlabd_runs; do
+    ((waited < 300)) || die "hlabd.exe still runs after a minute"
+    sleep 0.2
+    ((++waited))
+  done
+}
+
+#######################################
+# Build hlabd and the CLI, stop the dev loop's hlabd, copy the new one to
+# C:\HLabDev\bin with the appliance's disk, start it through the task
+# "HLab dev" and wait until it answers (13.11 of the dev loop).
+# Arguments:
+#   Optional --keep-vms: end hlabd as a crash would (schtasks /end), so that
+#   the servers and the appliance keep running and the start takes them over.
+#######################################
+deploy() {
+  [[ -e /proc/sys/fs/binfmt_misc/WSLInterop ]] \
+    || die "deploy needs WSL2 with interop"
+  local keep_vms=false
+  case "${1:-}" in
+    "") ;;
+    --keep-vms) keep_vms=true ;;
+    *) die "unknown option: $1" ;;
+  esac
+  [[ -d "${DEV_DIR}/bin" && -w "${DEV_DIR}/bin" ]] \
+    || die "${DEV_DIR}/bin is missing: bin/dev.ps1 dev-install, once as" \
+      "administrator"
+  [[ -e "${APPLIANCE}" || -e "${DEV_DIR}/bin/hlab-appliance.vhdx" ]] \
+    || die "the appliance's disk is missing: bin/dev appliance"
+  local started stopped
+  started="$(date +%s%N)"
+  build >/dev/null
+  # the CLI finds the dev loop's lab through the instance file; naming its
+  # token keeps deploy right after an installed HLab ran
+  export HLAB_TOKEN_FILE="${DEV_DIR}/data/control.token"
+  if hlabd_runs; then
+    if [[ "${keep_vms}" == true ]]; then
+      schtasks.exe /end /tn "${DEV_TASK}" >/dev/null
+    else
+      build/linux/hlab stop >/dev/null
+    fi
+    wait_for_hlabd_end
+  fi
+  stopped="$(date +%s%N)"
+  cp build/windows/hlabd.exe build/windows/hlab.exe "${DEV_DIR}/bin/"
+  if [[ -e "${APPLIANCE}" ]]; then
+    # Hyper-V holds the disk while an appliance that kept running uses it
+    cp --update "${APPLIANCE}" "${DEV_DIR}/bin/" \
+      || echo "bin/dev: the running appliance keeps the old disk" >&2
+  fi
+  schtasks.exe /run /tn "${DEV_TASK}" >/dev/null \
+    || die "the task \"${DEV_TASK}\" did not start: bin/dev.ps1 dev-install"
+  local waited=0
+  until build/linux/hlab status >/dev/null 2>&1; do
+    # the task takes a moment to start hlabd; after that, an hlabd that
+    # ended will not answer
+    if ((waited >= 900)) || { ((waited >= 25)) && ! hlabd_runs; }; then
+      tail -n 20 "${DEV_DIR}/data/logs/hlabd.log" >&2 || true
+      die "hlabd did not come up; its log: ${DEV_DIR}/data/logs/hlabd.log"
+    fi
+    sleep 0.2
+    ((++waited))
+  done
+  local ended
+  ended="$(date +%s%N)"
+  build/linux/hlab status
+  echo "deployed in $(((ended - started) / 1000000)) ms (stop" \
+    "$(((stopped - started) / 1000000)) ms, start" \
+    "$(((ended - stopped) / 1000000)) ms)"
+}
+
+#######################################
+# Fill build/package with what install.ps1 installs: hlabd and the CLI for
+# Windows, the CLI for Linux, the appliance's disk and install.ps1 itself.
+#######################################
+package() {
+  [[ -e "${APPLIANCE}" ]] || die "the appliance's disk is missing:" \
+    "bin/dev appliance"
+  build
+  rm -rf build/package
+  mkdir -p build/package
+  cp build/windows/hlabd.exe build/windows/hlab.exe build/linux/hlab \
+    "${APPLIANCE}" install/install.ps1 build/package/
+  echo "built build/package: run install.ps1 there as administrator"
 }
 
 #######################################
@@ -429,6 +539,8 @@ main() {
     smoke) smoke ;;
     itest) itest "${2:-}" "${3:-}" ;;
     appliance) appliance ;;
+    deploy) deploy "${2:-}" ;;
+    package) package ;;
     *)
       sed -n '2,/^set /p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//' >&2
       exit 2

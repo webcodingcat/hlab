@@ -11,6 +11,10 @@ const Prefix = "/_lab"
 // TokenFile is the name of the control token's file in the data folder.
 const TokenFile = "control.token"
 
+// InstanceFile is the file in the default data folder on Windows where the
+// running hlabd names its data folder; it stays after the stop.
+const InstanceFile = "instance"
+
 // The default data folders, where the service writes the control token and
 // the CLI looks for it.
 const (

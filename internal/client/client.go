@@ -9,9 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -36,12 +38,20 @@ type Client struct {
 	http  *http.Client
 }
 
+// connectTimeout bounds a connection to the lab control. It is on this
+// machine, so it answers at once; when the lab has stopped, its address on
+// the host link is gone, and from WSL2 a connection to it would hang until
+// the request's timeout.
+const connectTimeout = 2 * time.Second
+
 // New returns a client of the control at base, with the control token.
 func New(base, token string) *Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = (&net.Dialer{Timeout: connectTimeout}).DialContext
 	return &Client{
 		base:  strings.TrimSuffix(base, "/"),
 		token: token,
-		http:  &http.Client{Timeout: 30 * time.Second},
+		http:  &http.Client{Timeout: 30 * time.Second, Transport: transport},
 	}
 }
 
@@ -65,25 +75,59 @@ func FromEnvironment(defaultURL string) (*Client, error) {
 }
 
 // FindTokenFile returns where the control token is: HLAB_TOKEN_FILE, else
-// the default data folder of this system. In WSL2 that is the folder of the
-// HLab that runs on Windows, through /mnt/c.
+// in the data folder of the HLab that ran last on this machine (DataDir).
 func FindTokenFile() string {
 	if path := os.Getenv(TokenFileVar); path != "" {
 		return path
 	}
+	return filepath.Join(DataDir(), labapi.TokenFile)
+}
+
+// DataDir returns the data folder of the HLab that runs or ran last on this
+// machine, as this system sees it. On Windows, and in WSL2 through /mnt/c,
+// hlabd names it in the instance file of the default folder, so the CLI
+// finds a lab with another folder, such as the dev loop's, by itself; on
+// Linux it is the default folder.
+func DataDir() string {
 	switch {
 	case runtime.GOOS == "windows":
-		return labapi.WindowsDataDir + `\` + labapi.TokenFile
-	case inWSL():
-		return labapi.WSLDataDir + "/" + labapi.TokenFile
+		return instanceDataDir(labapi.WindowsDataDir, func(path string) string { return path })
+	case InWSL():
+		return instanceDataDir(labapi.WSLDataDir, wslPath)
 	default:
-		return labapi.LinuxDataDir + "/" + labapi.TokenFile
+		return labapi.LinuxDataDir
 	}
 }
 
-// inWSL tells whether this Linux runs in WSL, whose interop sets
+// instanceDataDir returns the folder that the instance file in defaultDir
+// names, turned into a local path, or defaultDir if there is none.
+func instanceDataDir(defaultDir string, local func(windowsPath string) string) string {
+	data, err := os.ReadFile(filepath.Join(defaultDir, labapi.InstanceFile))
+	if err != nil {
+		return defaultDir
+	}
+	if dir := local(strings.TrimSpace(string(data))); dir != "" {
+		return dir
+	}
+	return defaultDir
+}
+
+// wslPath turns a Windows path on a drive (C:\HLabDev\data) into the path
+// WSL2 mounts it at (/mnt/c/HLabDev/data); any other path becomes "".
+func wslPath(windowsPath string) string {
+	if len(windowsPath) < 3 || windowsPath[1] != ':' || windowsPath[2] != '\\' {
+		return ""
+	}
+	drive := strings.ToLower(windowsPath[:1])
+	if drive < "a" || drive > "z" {
+		return ""
+	}
+	return "/mnt/" + drive + "/" + strings.ReplaceAll(windowsPath[3:], `\`, "/")
+}
+
+// InWSL tells whether this Linux runs in WSL, whose interop sets
 // WSL_DISTRO_NAME in every process.
-func inWSL() bool {
+func InWSL() bool {
 	return os.Getenv("WSL_DISTRO_NAME") != ""
 }
 
