@@ -205,17 +205,19 @@ The layer test checks production code only. Tests may import fakes and helpers.
   a call into `system`.
 - Every change runs in `lab.Change(func(tx *state.Tx) error)`. If the function
   returns an error, the old state stays; otherwise the new state is saved. Reads run
-  in `lab.View`, which changes nothing.
+  in `lab.View`, which changes nothing. A `View` whose function always returns
+  nil is called as `_ = l.View(...)`; one whose function can fail returns its
+  error.
 - **A record may outlive its Tx, but only to be read.** A handler may build its
   answer from a record after `Change` or `View` returned, without the mutex. It must
   never change that record: from `View` it is the state's own record, and from
   `Change` the state shares it.
 - **Across a call into the system, keep IDs, not records.** Look the records up
-  again afterwards with `lab.Current(l, kind, id)`. The one exception is
-  `resumeServers` at the start, which reads the records it took once and
-  says why next to it. It returns the record to read,
-  or `state.ErrNotFound` if it is gone. It is a function, not a method, because Go
-  methods cannot have type parameters.
+  again afterwards with `lab.Current(l, kind, id)`. `Current` returns the record
+  to read, or `state.ErrNotFound` if it is gone. It is a function, not a method,
+  because Go methods cannot have type parameters. The one exception to the rule
+  is `resumeServers` at the start, which reads the records it took once and
+  says why next to it.
 - The slow part of an action runs in a goroutine with a `context.Context`. Closing
   the lab (`Lab.Close`) and resetting a project (`Lab.StopProjectActions`) cancel
   that context.
@@ -254,6 +256,12 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   flagged resource, for changes that are no action (deleting a Primary IP
   while it is assigned). Note that `locked` in Hetzner's server JSON is an
   administrative lock, not a flag.
+
+  | Row or table | Its resource flagged? | Busy resource | `Locks` busy |
+  |---|---|---|---|
+  | plain table | yes | 423 `locked` | 423 `locked` |
+  | `Queued` table | yes | waits behind the action before it | 423 `locked` |
+  | `Unflagged` row | no | runs alongside | 423 `locked` |
 - **Steps.** The slow part runs in a goroutine. It waits Hetzner's timings with
   `Lab.Sleep(ctx, lab.PowerOff)`, scaled by the time scale. The time scale is 0 in
   unit tests; tests that check timings use their own `lab.Clock`.
@@ -277,7 +285,9 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
   answer's `next_actions`), all in one `Lab.Create`. `Lab.BuildServer`
   takes the system image from the cache, makes the differencing disk, the
   seed and the VM, and sends the appliance the pictures with the server. If
-  it fails, the action's undo removes the record and its new Primary IPs.
+  it fails, the steps remove the VM, the disk and the seed, and the
+  action's undo removes the record and its new Primary IPs. A create that
+  HLab's end cut short is built anew at the next start.
 - **Delete** is the row `delete` (`delete_server`): the record goes at once,
   as on Hetzner, with its Primary IPs that have `auto_delete`; the others
   stay, unassigned. The steps remove the VM, the disk and the seed.
@@ -317,7 +327,11 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
   - The room counts the servers whose `want_running` is set. A start sets it
     in its plan and a `poweroff` clears it there, so actions sent at once, or
     queued behind each other, count each other before their steps run. If a
-    start's steps fail, the server is off again.
+    start's steps fail, the server is off again. An example on a host with
+    room for two servers, `a` and `b` running, `c` off: a `poweroff` of `a`
+    clears its `want_running` at once, so a `poweron` of `c` right after it
+    fits and sets `c`'s; a `poweron` of `a`, queued behind its `poweroff`,
+    then finds `a` not wanting to run, checks the room and gets 412.
   - Without the machine started (the API's unit tests) there is always room
     for memory, and the fake reports a drive of 1 TB, half free.
 - **Addresses** come from `198.19.0.0/16` (IPv4, without `.0` and `.255`) and
@@ -350,9 +364,10 @@ footer), and `FlattenDisk` (`Convert-VHD`) makes it a dynamic VHDX,
 `images/cache/<sha256>.vhdx`. `state.Lab.Images` records it by the image's
 name; one load per image runs at a time. Converting through the appliance
 (`qemu-img`) is for imports and exports (3b). A cached image whose source in
-the catalog changed is loaded anew; each start of the lab removes the files
-that neither a cache entry nor a server's disk needs, and what a load cut
-short left.
+the catalog changed is loaded anew. Each start of the lab removes the files
+that neither a cache entry nor a server's disk needs, what a load cut short
+left, and the disks and seeds of servers that are gone (a project reset
+during a create).
 
 ## Projects, tokens, faults
 
@@ -496,8 +511,8 @@ packages below it follow the layers.
   the lab control also on `127.0.0.1:8090`; with `--platform fake` all listen on
   `127.0.0.1`. A port of 0 takes any free port (the tests do that), and the status
   reports the ports in use.
-- **Ports:** the Cloud API on 8080, the Hetzner API on 8081 (with the Storage Box
-  routes), and 8090 for the lab control under `/_lab` and the web UI.
+- **Ports:** the Cloud API on 8080, the Hetzner API on 8081 (no routes until the
+  Storage Boxes, phase 5), and 8090 for the lab control under `/_lab` and the web UI.
 - **Stop** (`close`). The service stops on `POST /_lab/shutdown`, on
   `Lifecycle.StopRequests` (Ctrl+C, SIGTERM) or when a server fails. Then:
   1. The status says `stopping`; every new request gets 503 `unavailable`, as

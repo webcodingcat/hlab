@@ -343,6 +343,8 @@ func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any
 		if _, taken := state.ByName(tx, state.Servers, server.ProjectID, server.Name); taken {
 			return 0, web.Refusal(http.StatusConflict, "uniqueness_error", serverNameTaken)
 		}
+		// the record wants to run from its start, so its room is checked
+		// here: the poweron's plan (planStart) sees it wanting to run
 		if start {
 			if err := l.CheckRoom(tx, 0, serverType); err != nil {
 				return 0, err
@@ -436,7 +438,7 @@ func rootPassword() string {
 	const characters = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	password := make([]byte, 20)
 	for i := range password {
-		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(characters))))
+		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(characters)))) // crypto/rand does not fail on supported systems
 		password[i] = characters[n.Int64()]
 	}
 	return string(password)

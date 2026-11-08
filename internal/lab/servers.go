@@ -93,9 +93,10 @@ func (l *Lab) ServerSeed(id int64) string {
 	return filepath.Join(l.dataDir, SeedDir, fmt.Sprint(id)+".iso")
 }
 
-// CheckRoom fails with ErrNoRoom if the servers that want to run, with one
-// more of serverType, would take more than the host can give; serverID is
-// the server that is to start, which the sum leaves out (0 for a new one).
+// CheckRoom fails with ErrNoRoom if the host cannot give the servers that
+// want to run and one more server of serverType. serverID is the server
+// that is to start: the sum leaves it out, so that it is not counted twice.
+// A new server, which has no ID yet, passes 0.
 // Without the machine (the API's unit tests) there is always room.
 func (l *Lab) CheckRoom(tx *state.Tx, serverID int64, serverType catalog.ServerType) error {
 	if l.host.MemoryMB == 0 {
@@ -289,9 +290,9 @@ func (l *Lab) PowerOnServer(ctx context.Context, id int64) error {
 }
 
 // PowerOffServer turns a server off at once, as Hetzner's poweroff:
-// stopping, then off. It leaves want_running to the action's plan, which
-// cleared it when the action was asked for: a start queued behind this one
-// has set it again since.
+// stopping, then off. It does not touch want_running: the poweroff's plan
+// cleared it already, and a start queued behind the poweroff may have set
+// it again since.
 func (l *Lab) PowerOffServer(ctx context.Context, id int64) error {
 	if err := l.SetServerStatus(id, state.ServerStopping); err != nil {
 		return err
@@ -454,10 +455,15 @@ func (l *Lab) watchServers(ctx context.Context) {
 		l.mu.Unlock()
 		for _, id := range ids {
 			runs, err := l.system.ServerRuns(ctx, ServerVM(id))
-			if err != nil || runs {
+			if err != nil {
+				if ctx.Err() == nil {
+					l.logger.Warn("the watchdog could not look at a server's VM", "server", id, "error", err)
+				}
 				continue
 			}
-			l.markShutDown(id)
+			if !runs {
+				l.markShutDown(id)
+			}
 		}
 	}
 }

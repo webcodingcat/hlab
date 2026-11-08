@@ -44,10 +44,11 @@ func planSteps(run func(ctx context.Context, id int64) error) func(tx *state.Tx,
 	}
 }
 
-// planStop returns the plan of poweroff: the server no longer wants to run
-// from the plan on, so that a start queued behind it checks the room
-// (planStart) and its steps keep what that start reserved. If the steps
-// fail, the server wants to run as before.
+// planStop returns the plan of poweroff. It clears want_running at once,
+// when the poweroff is asked for, not when its steps run. A start queued
+// behind the poweroff then sees a server that does not want to run, so it
+// checks the room and sets want_running again (planStart); the poweroff's
+// steps leave it so. If the steps fail, want_running is as before.
 func planStop(run func(ctx context.Context, id int64) error) func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		server, err := callerServer(tx, req.ProjectID, req.ID)
@@ -58,26 +59,17 @@ func planStop(run func(ctx context.Context, id int64) error) func(tx *state.Tx, 
 		server.WantRunning = false
 		return lab.Plan{
 			Steps: func(ctx context.Context) error { return run(ctx, req.ID) },
-			Undo: func(tx *state.Tx) error {
-				server, err := state.Get(tx, state.Servers, req.ID)
-				if errors.Is(err, state.ErrNotFound) {
-					return nil
-				}
-				if err != nil {
-					return err
-				}
-				server.WantRunning = wanted
-				return nil
-			},
+			Undo:  undoServer(req.ID, func(_ *state.Tx, server *state.Server) { server.WantRunning = wanted }),
 		}, nil
 	}
 }
 
 // planStart returns the plan of an action that starts the server:
 // poweron, and reboot and reset, which start a server that is off, as on
-// Hetzner. A server that does not want to run yet needs room on the host,
-// and wants to run from the plan on, so that the next start's room check
-// counts it before these steps run. If the steps fail, it is off again.
+// Hetzner. If the server does not want to run yet, the plan checks the
+// room on the host and sets want_running at once, so that the room check
+// of every later action counts the server even before these steps run. If
+// the steps fail, the server is off and does not want to run.
 func planStart(l *lab.Lab, run func(ctx context.Context, id int64) error) func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		server, err := callerServer(tx, req.ProjectID, req.ID)
@@ -94,23 +86,16 @@ func planStart(l *lab.Lab, run func(ctx context.Context, id int64) error) func(t
 			return lab.Plan{}, err
 		}
 		server.WantRunning = true
-		plan.Undo = func(tx *state.Tx) error {
-			server, err := state.Get(tx, state.Servers, req.ID)
-			if errors.Is(err, state.ErrNotFound) {
-				return nil
-			}
-			if err != nil {
-				return err
-			}
+		plan.Undo = undoServer(req.ID, func(_ *state.Tx, server *state.Server) {
 			server.Status, server.WantRunning = state.ServerOff, false
-			return nil
-		}
+		})
 		return plan, nil
 	}
 }
 
 // planCreateServer builds the new server's VM; the action names the image
-// too. If the steps fail, the server goes, with its new Primary IPs.
+// too. If the steps fail, the server is deleted with its VM, its files and
+// its new Primary IPs.
 func planCreateServer(l *lab.Lab) func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		server, err := callerServer(tx, req.ProjectID, req.ID)
@@ -121,28 +106,23 @@ func planCreateServer(l *lab.Lab) func(tx *state.Tx, req lab.Request) (lab.Plan,
 		return lab.Plan{
 			Resources: []state.ResourceRef{{Type: "image", ID: server.ImageID}},
 			Steps: func(ctx context.Context) error {
-				if err := l.BuildServer(ctx, req.ID); err != nil {
-					return err
+				err := l.BuildServer(ctx, req.ID)
+				if err == nil {
+					err = l.Sleep(ctx, lab.ServerCreate)
 				}
-				if err := l.Sleep(ctx, lab.ServerCreate); err != nil {
-					return err
-				}
-				if !start {
+				switch {
+				case err != nil && ctx.Err() == nil:
+					// the undo removes the record, and only the steps may call
+					// the system: the VM, the disk and the seed go here
+					return errors.Join(err, l.DeleteServerVM(ctx, req.ID))
+				case err != nil:
+					return err // canceled: the next start builds the server anew
+				case !start:
 					return l.SetServerStatus(req.ID, state.ServerOff)
 				}
 				return nil // the start that follows takes over
 			},
-			Undo: func(tx *state.Tx) error {
-				server, err := state.Get(tx, state.Servers, req.ID)
-				if errors.Is(err, state.ErrNotFound) {
-					return nil
-				}
-				if err != nil {
-					return err
-				}
-				releaseServer(tx, server)
-				return nil
-			},
+			Undo: undoServer(req.ID, releaseServer),
 		}, nil
 	}
 }
@@ -210,4 +190,20 @@ func planServerProtection(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		server.Protection.Rebuild = *body.Rebuild
 	}
 	return lab.Plan{}, nil
+}
+
+// undoServer returns an undo that makes change to the server, if it is still
+// there: a reset of its project may have removed it meanwhile.
+func undoServer(id int64, change func(tx *state.Tx, server *state.Server)) func(tx *state.Tx) error {
+	return func(tx *state.Tx) error {
+		server, err := state.Get(tx, state.Servers, id)
+		if errors.Is(err, state.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		change(tx, server)
+		return nil
+	}
 }

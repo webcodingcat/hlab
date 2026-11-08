@@ -89,10 +89,10 @@ func registerResourceActions(api *web.API, l *lab.Lab, path, resourceType string
 		if err != nil {
 			return 0, nil, err
 		}
+		statuses, filtered := query["status"]
 		var actions []schema.Action
 		_ = l.View(func(tx *state.Tx) error {
 			for _, action := range state.All(tx, state.Actions) {
-				statuses, filtered := query["status"]
 				if action.ProjectID == req.Caller.ProjectID && namesResource(action, resourceType, resourceID) &&
 					(!filtered || slices.Contains(statuses, string(action.Status))) &&
 					(len(ids) == 0 || slices.Contains(ids, action.ID)) {

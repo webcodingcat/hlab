@@ -339,6 +339,44 @@ func TestStartMachineCleansTheImageCache(t *testing.T) {
 	}
 }
 
+// A start removes the disks and seeds of servers that are gone, as a
+// project reset during a create leaves them, and keeps those of the others.
+func TestStartMachineRemovesTheFilesOfServersThatAreGone(t *testing.T) {
+	machine := fake.New()
+	withAppliance(machine)
+	dataDir := t.TempDir()
+	l := start(t, machine, lab.Options{DataDir: dataDir})
+	t.Cleanup(func() { _ = l.Close() })
+	id := putServer(t, l, machine, "web", false, false)
+	files := map[string][]string{
+		lab.ServerDiskDir: {fmt.Sprint(id) + ".vhdx", "999.vhdx"},
+		lab.SeedDir:       {fmt.Sprint(id) + ".iso", "999.iso"},
+	}
+	for dir, names := range files {
+		if err := os.MkdirAll(filepath.Join(dataDir, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range names {
+			if err := os.WriteFile(filepath.Join(dataDir, dir, name), nil, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+		t.Fatal(err)
+	}
+	for dir, names := range files {
+		entries, _ := os.ReadDir(filepath.Join(dataDir, dir))
+		var left []string
+		for _, entry := range entries {
+			left = append(left, entry.Name())
+		}
+		if !slices.Equal(left, names[:1]) {
+			t.Errorf("left in %s: %v, want %v", dir, left, names[:1])
+		}
+	}
+}
+
 // A guest that shuts itself down leaves its server off, and it no longer
 // wants to run, as on Hetzner.
 func TestWatchdogSeesAServerShutItselfDown(t *testing.T) {

@@ -89,7 +89,7 @@ func (l *Lab) StartMachine(ctx context.Context, opts MachineOptions) error {
 // A server without a VM gets one (restoreServer).
 // The servers' statuses follow their VMs, also for actions that HLab's end
 // cut short; a server that cannot be brought back stays off. Then the
-// image cache loses what no server needs. It gets the servers' records
+// data folder loses the files that no server needs. It gets the servers' records
 // once and reads them only, so keeping them across the calls to the
 // system is safe: a server deleted meanwhile is skipped where its status
 // is set.
@@ -115,7 +115,7 @@ func (l *Lab) resumeServers(ctx context.Context) error {
 			l.logger.Warn("setting the server off", "server", server.ID, "error", err)
 		}
 	}
-	l.cleanImageCache(ctx)
+	l.cleanDataFiles(ctx)
 	return nil
 }
 
@@ -184,26 +184,35 @@ func (l *Lab) restoreServer(ctx context.Context, server *state.Server) error {
 	return l.BuildServer(ctx, server.ID)
 }
 
-// cleanImageCache removes the cached images that neither a cache entry nor
-// a server's disk needs, and what loads cut short left. A failure only
-// costs disk space, so it is logged.
-func (l *Lab) cleanImageCache(ctx context.Context) {
-	var keep []string
+// cleanDataFiles removes what no record needs from the data folder: the
+// cached images that neither a cache entry nor a server's disk needs, what
+// loads cut short left, and the disks and seeds of servers that are gone
+// (a project reset during a create, a delete that HLab's end cut short).
+// A failure only costs disk space, so it is logged.
+func (l *Lab) cleanDataFiles(ctx context.Context) {
+	var images, disks, seeds []string
 	_ = l.View(func(tx *state.Tx) error {
 		for _, cached := range tx.Lab().Images {
-			keep = append(keep, cached.File)
+			images = append(images, cached.File)
 		}
 		for _, server := range state.All(tx, state.Servers) {
-			keep = append(keep, server.BaseImage)
+			images = append(images, server.BaseImage)
+			disk, seedISO := l.serverFiles(server.ID)
+			disks, seeds = append(disks, disk), append(seeds, seedISO)
 		}
 		return nil
 	})
-	removed, err := l.system.CleanDir(ctx, filepath.Join(l.dataDir, ImageCacheDir), keep)
-	if len(removed) > 0 {
-		l.logger.Info("removed from the image cache what no server needs", "files", removed)
-	}
-	if err != nil {
-		l.logger.Warn("cleaning the image cache", "error", err)
+	for _, clean := range []struct {
+		dir  string
+		keep []string
+	}{{ImageCacheDir, images}, {ServerDiskDir, disks}, {SeedDir, seeds}} {
+		removed, err := l.system.CleanDir(ctx, filepath.Join(l.dataDir, clean.dir), clean.keep)
+		if len(removed) > 0 {
+			l.logger.Info("removed files that no server needs", "files", removed)
+		}
+		if err != nil {
+			l.logger.Warn("cleaning the data folder", "folder", clean.dir, "error", err)
+		}
 	}
 }
 
