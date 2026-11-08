@@ -63,7 +63,15 @@ func TestLoadWithoutUserFileIsTheBuiltinCatalog(t *testing.T) {
 func TestUserFileReplacesWhatItNames(t *testing.T) {
 	loaded, err := catalog.Load(writeUserFile(t, `
 images:
-  - {id: 7, name: debian-13, description: Debian 13, os_flavor: debian, os_version: "13", architecture: x86, disk_size: 5, created: 2025-08-09T00:00:00Z}
+  - id: 7
+    name: debian-13
+    description: Debian 13
+    os_flavor: debian
+    os_version: "13"
+    architecture: x86
+    disk_size: 5
+    created: 2025-08-09T00:00:00Z
+    source: {url: "http://mirror.test/debian.qcow2", checksums: "http://mirror.test/SHA512SUMS"}
 pricing:
   currency: USD
 `))
@@ -84,13 +92,14 @@ pricing:
 
 func TestUserFileErrors(t *testing.T) {
 	for name, content := range map[string]string{
-		"an unknown key":      "server_typos: []",
-		"a doubled ID":        "isos: [{id: 1, name: a.iso}, {id: 1, name: b.iso}]",
-		"a doubled name":      "isos: [{id: 1, name: a.iso}, {id: 2, name: a.iso}]",
-		"an entry without ID": "isos: [{name: a.iso}]",
-		"an unknown location": "locations: [{id: 1, name: fsn1}]", // the server types still name others
-		"an unknown flavor":   "images: [{id: 1, name: arch, os_flavor: arch, architecture: x86}]",
-		"no YAML":             "images: [",
+		"an unknown key":          "server_typos: []",
+		"a doubled ID":            "isos: [{id: 1, name: a.iso}, {id: 1, name: b.iso}]",
+		"a doubled name":          "isos: [{id: 1, name: a.iso}, {id: 2, name: a.iso}]",
+		"an entry without ID":     "isos: [{name: a.iso}]",
+		"an unknown location":     "locations: [{id: 1, name: fsn1}]", // the server types still name others
+		"an unknown flavor":       "images: [{id: 1, name: arch, os_flavor: arch, architecture: x86}]",
+		"no YAML":                 "images: [",
+		"an image without source": "images: [{id: 1, name: debian-13, os_flavor: debian, architecture: x86}]",
 	} {
 		if _, err := catalog.Load(writeUserFile(t, content)); err == nil {
 			t.Errorf("%s: loaded", name)

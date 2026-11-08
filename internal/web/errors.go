@@ -157,6 +157,20 @@ func Locked(message string) *Error {
 	return &Error{Status: http.StatusLocked, Code: "locked", Message: message}
 }
 
+// Refusal returns one of Hetzner's errors that refuse a request for a
+// reason of its own, such as 423 protected or 412 resource_unavailable,
+// with the details {} that the server endpoints send. The caller names
+// Hetzner's status, code and message as measured.
+func Refusal(status int, code, message string) *Error {
+	return &Error{Status: status, Code: code, Message: message, Details: map[string]any{}}
+}
+
+// RefusalNull is Refusal with the details null, as the Primary IP
+// endpoints send them (measured 2026-11-08).
+func RefusalNull(status int, code, message string) *Error {
+	return &Error{Status: status, Code: code, Message: message}
+}
+
 // RateLimitExceeded returns a 429 rate_limit_exceeded error.
 func RateLimitExceeded() *Error {
 	return &Error{Status: http.StatusTooManyRequests, Code: "rate_limit_exceeded", Message: "limit of requests per hour reached"}

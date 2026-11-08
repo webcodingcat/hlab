@@ -227,6 +227,18 @@ func (h *Hypervisor) vmID(ctx context.Context, name string) (string, error) {
 	return id, err
 }
 
+// HostResources reports the host's logical processors and physical memory.
+func (h *Hypervisor) HostResources(ctx context.Context) (platform.HostResources, error) {
+	var resources struct {
+		Threads  int `json:"threads"`
+		MemoryMB int `json:"memory_mb"`
+	}
+	if err := h.call(ctx, "host-resources", map[string]any{}, &resources); err != nil {
+		return platform.HostResources{}, err
+	}
+	return platform.HostResources{Threads: resources.Threads, MemoryMB: resources.MemoryMB}, nil
+}
+
 // CreateSeed writes an ISO labeled "cidata" with the files (IMAPI2).
 func (h *Hypervisor) CreateSeed(ctx context.Context, path string, files map[string][]byte) error {
 	return h.call(ctx, "create-seed", map[string]any{"path": path, "files": files}, nil)

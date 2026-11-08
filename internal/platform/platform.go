@@ -96,6 +96,16 @@ type Hypervisor interface {
 	DeleteDisk(ctx context.Context, path string) error
 	// CreateSeed writes the cloud-init seed: an ISO labeled "cidata".
 	CreateSeed(ctx context.Context, path string, files map[string][]byte) error
+	// HostResources reports what the host has for VMs: its logical
+	// processors and its memory.
+	HostResources(ctx context.Context) (HostResources, error)
+}
+
+// HostResources are the host's logical processors and memory, which bound
+// what the lab's VMs may take.
+type HostResources struct {
+	Threads  int
+	MemoryMB int
 }
 
 // HostNet sets up the link between the host and the lab's networks.

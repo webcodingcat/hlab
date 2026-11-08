@@ -1,0 +1,42 @@
+### meta-data
+{
+  "instance-id": "1000001",
+  "local-hostname": "web",
+  "public-keys": [
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIUser user@example"
+  ]
+}
+### network-config
+{
+  "ethernets": {
+    "eth0": {
+      "addresses": [
+        "2001:db8:1:1::1/64"
+      ],
+      "dhcp4": true,
+      "dhcp6": false,
+      "match": {
+        "macaddress": "96:00:00:0f:42:41"
+      },
+      "nameservers": {
+        "addresses": [
+          "198.18.0.2",
+          "2001:db8:0:ffff::2"
+        ]
+      },
+      "routes": [
+        {
+          "to": "::/0",
+          "via": "fe80::1"
+        }
+      ],
+      "set-name": "eth0"
+    }
+  },
+  "version": 2
+}
+### user-data
+### vendor-data
+#cloud-config
+disable_root: false
+ssh_pwauth: false

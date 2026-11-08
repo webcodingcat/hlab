@@ -142,6 +142,16 @@ func (a *Appliance) Start(ctx context.Context, pictures Pictures) error {
 	return nil
 }
 
+// Update makes pictures the newest and sends them all, in order. If
+// sending fails, the watchdog sends them again on its next check: the agent
+// reports the generations it has.
+func (a *Appliance) Update(ctx context.Context, pictures Pictures) error {
+	a.mu.Lock()
+	a.pictures = pictures
+	a.mu.Unlock()
+	return a.sendAll(ctx)
+}
+
 // Stop ends the watchdog and shuts the appliance down: the guest first,
 // turned off after the deadline. The VM stays, for the next start.
 func (a *Appliance) Stop(ctx context.Context) error {

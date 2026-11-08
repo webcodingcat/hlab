@@ -14,7 +14,7 @@ the tests. Look there before writing such a part anew.
 | Phase | What | State |
 |---|---|---|
 | 1a | core without VMs: state, lab, web basics, catalog, reading resources, SSH keys, lab control, `--platform fake` | done |
-| 1b | servers, host link, reachability | **in progress: next 1b-4** |
+| 1b | servers, host link, reachability | **in progress: next 1b-5** |
 | 2a | Floating IPs, firewalls, private networks | open |
 | 2b | volumes, placement groups, DNS | open |
 | 2c | tools for tests | open |
@@ -65,19 +65,16 @@ the tests. Look there before writing such a part anew.
 
 ### Open for 1b
 
-- The first real `ActionTable` comes with the server actions.
 - `endInterruptedActions` trims the finished actions once per action.
-- Give the resources one helper for "unique within the project" (SSH keys scan
-  every key twice today).
-- Hetzner ran a reboot while a poweroff was running, where `Lab.Act` answers 423.
-  The real server's JSON (no `datacenter`, `locked` `false`) is recorded in
-  `compat/requirements.md`.
+- Give the resources one helper for "unique within the project" (SSH keys,
+  servers and Primary IPs each scan their kind today).
 - `hlabd --platform fake` listens on `127.0.0.1`, the CLI's default is
   `198.18.0.1`: with the fake platform, take `HLAB_CONTROL` from hlabd's log
   (`bin/dev smoke` does).
-- Not yet: `hlab start` (1b-5), `PUT` and `DELETE` of images (3a), the
-  catalog's image sources for the image cache. (The Windows platform and 503
-  while the lab stops came with 1b-3.)
+- Not yet: `hlab start` (1b-5), `PUT` and `DELETE` of images (3a). (The
+  Windows platform and 503 while the lab stops came with 1b-3; the first
+  action tables, the server JSON, the queue instead of 423 and the catalog's
+  image sources with 1b-4.)
 
 ### Later phases
 
@@ -92,8 +89,8 @@ the tests. Look there before writing such a part anew.
 | 1b-1 | `pshost`, the Hyper-V hypervisor, the live tests (`bin/dev itest`) with the hypervisor's contract tests | done |
 | 1b-2 | the appliance's build and the agent; agent tests in a namespace | done |
 | 1b-3 | HostNet, the appliance's start and watchdog, the life cycle | done |
-| 1b-4 | image cache, `seed`, servers and Primary IPs | next |
-| 1b-5 | dev loop, `install.ps1`, the CLI from WSL2 | open |
+| 1b-4 | image cache, `seed`, servers and Primary IPs | done |
+| 1b-5 | dev loop, `install.ps1`, the CLI from WSL2 | next |
 | 1b-6 | appliance update (A/B) with running servers | open |
 
 ### What is there after 1b-1
@@ -124,10 +121,9 @@ the tests. Look there before writing such a part anew.
 
 ### Open for 1b-2 and later
 
-- The seed's contents (with name servers) come with `internal/seed` (1b-4); the
-  ISO's format is checked: label `cidata`, Joliet names.
-- `ShutdownVM` against a real guest (shutdown service) is checked with the first
-  server (1b-4); the contract tests have VMs without an OS.
+- Done in 1b-4: the seed's contents (with name servers) in `internal/seed`;
+  `ShutdownVM` against a real guest (the server live test: off 8 s after the
+  shutdown).
 
 ### What is there after 1b-2
 
@@ -149,7 +145,7 @@ the tests. Look there before writing such a part anew.
 
 ### Open for 1b-3 and later (from 1b-2)
 
-- The servers in `picture.Lab` come from the server records (1b-4).
+- Done in 1b-4: the servers in `picture.Lab` come from the server records.
 - unbound's fixed config and the uplink's unreachable route name the default
   ranges; when the ranges become settings, they come with a picture (phase 2b
   `dns`).
@@ -208,14 +204,79 @@ the tests. Look there before writing such a part anew.
   appliance after a crash 4.3 s, stopping 5.2 s. All live tests: 90 s
   (hypervisor 30 s, host network 6 s, NRPT 1 s, appliance 30 s).
 
-### Open for 1b-4 and later
+### Open for 1b-4 and later (from 1b-3)
 
-- The servers' VMs keep their NICs without a switch after a stop (13.2); the
-  start must connect them again. The appliance is made anew instead, so it
-  needs no such method yet.
+- Settled in 1b-4: a start detaches and attaches the public NIC of every
+  server VM that is off, so it is on `HLab-Public` again; no new platform
+  method.
 - `hlab start` and the dev loop (`HLab dev`, firewall rule for WSL2) come with
   1b-5; until then `hlabd` is started by hand as administrator.
 
-Next: 1b-4, image cache, `seed`, servers and Primary IPs.
+### What is there after 1b-4
+
+- **Servers** (`POST`, `GET`, `PUT`, `DELETE /servers`, the lists, `poweron`,
+  `poweroff`, `shutdown`, `reboot`, `reset`, `change_protection`, the action
+  lists): Debian 13 and Ubuntu 26.04 as Gen2 VMs with Secure Boot, static
+  memory, a differencing disk of the type's size on the cached image, the
+  seed in the DVD drive and the public NIC isolated on `HLab-Public`.
+  Statuses and times as Hetzner's; the JSON in Hetzner's order of fields,
+  `locked` always `false`.
+- **Hetzner's queue, not 423.** Measured on 2026-11-08: a power action sent
+  during another (also during the create) gets 201 and runs when the one
+  before has ended. The server table is `Queued`; `reboot` and `reset` start
+  a server that is off, as on Hetzner. Primary IP actions still lock the IP
+  (423 `locked` for a delete meanwhile, measured).
+- **Primary IPs** (`POST`, `GET`, `PUT`, `DELETE`, the lists, `assign`,
+  `unassign`, `change_protection`): a server's own ones (`primary_ip-<id>`,
+  `auto_delete`) or given ones; `assignee_type` `"unassigned"`, the default
+  `dns_ptr`, `unassign` clearing `auto_delete`, the errors with their details
+  `null`, all as measured. Addresses from `198.19.0.0/16` and one `/64` per
+  IPv6 from `2001:db8:1::/48`, handed out in order.
+- **The image cache:** the catalog names each image's qcow2 and checksums;
+  the first server of an image loads it, `internal/imagefmt` converts it in
+  Go to a fixed VHD, and `Convert-VHD` makes the dynamic VHDX
+  `images/cache/<sha256>.vhdx`. Debian's genericcloud image loads in 25 s.
+- **`internal/seed`:** NoCloud `meta-data`, `user-data`, `vendor-data` and
+  `network-config` v2 (IPv4 by DHCP, IPv6 `::1` with `fe80::1`, always the
+  lab's resolvers), written as JSON. The metadata service's pictures come
+  from the server records.
+- **The life cycle with servers:** a start takes over running server VMs,
+  reconnects and starts those that want to run; a stop shuts them all down
+  (`shutdown_timeout` in `hlab.yaml`, 60 s), `want_running` stays; a watchdog
+  sets a server whose guest shut down `off`. A create or poweron beyond the
+  host's room (memory static, reserve 25 % or 6 GB, the appliance's 1 GB,
+  4 vCPUs per thread; `Hypervisor.HostResources`) is 412
+  `resource_unavailable`.
+- **Tests:** API tests with spec checks for servers, Primary IPs and their
+  actions (`compat/requirements.md`); the lab's queue, room, takeover,
+  watchdog and stop with the fake; `imagefmt` against qcow2 files of
+  `qemu-img`; the seed's golden files. The live test creates a Debian server
+  through the Cloud API and checks SSH, the metadata over IPv4 and IPv6, reset,
+  the guest's shutdown and the delete. `bin/dev smoke` runs the hcloud CLI on
+  servers and Primary IPs, and `examples/tofu-1b` has a server with a Primary
+  IP.
+- Measured on a Ryzen AI Max+ 395 (Windows 11, Hyper-V), with the image
+  cached: create until SSH answers 13 s, after a reset 7 s, a shutdown until
+  `off` 8 s. All live tests: 130 s (hypervisor 30 s, host network 6 s, NRPT
+  1 s, appliance 31 s, server 62 s).
+
+### Open for 1b-5 and later
+
+- The free disk space of the room check (plan, 5 no. 18: 10 % free) is not
+  checked yet.
+- Not measured on Hetzner: a Primary IP that another server holds or of
+  another location given to a server, and one of the other type; HLab's codes
+  for them are guesses (`compat/requirements.md`).
+- A cached image whose source changes in the catalog is loaded anew; the old
+  file stays until a later step removes images no disk depends on.
+- Volumes, networks, firewalls and placement groups in a server's create
+  request are ignored until their phase (2a, 2b).
+- `change_dns_ptr` of servers and Primary IPs comes with DNS (2b); the
+  metadata picture's YAML would read an all-digit MAC as a number in a YAML
+  1.1 parser (the seed is JSON; the servers' own cloud-init reads the seed).
+- A server whose create HLab's end cut short has no VM: the next start marks
+  it `off`, and its poweron fails until it is deleted.
+
+Next: 1b-5, dev loop, `install.ps1`, the CLI from WSL2.
 
 Not there yet: the commands of later phases.

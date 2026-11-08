@@ -1,11 +1,20 @@
 package cloud_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/webcodingcat/hlab/internal/api/cloud"
+	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/lab"
 	"github.com/webcodingcat/hlab/internal/platform/fake"
 	"github.com/webcodingcat/hlab/internal/spectest"
@@ -16,16 +25,19 @@ import (
 
 // testLab is a lab on a fake machine with the Cloud API in front of it.
 type testLab struct {
-	lab    *lab.Lab
-	client *spectest.Client // with a read_write token of the project "default"
+	lab     *lab.Lab
+	client  *spectest.Client // with a read_write token of the project "default"
+	machine *fake.Fake
 }
 
 // newTestLab opens a lab with the built-in catalog, the project "default"
 // and the Cloud API; every answer of its client is checked against the spec.
+// Its system images come from a local server, as a small qcow2 file.
 func newTestLab(t *testing.T) *testLab {
 	t.Helper()
 	logger := slog.New(slog.DiscardHandler)
-	l, err := lab.Open(lab.Options{DataDir: t.TempDir(), Logger: logger}, system.New(fake.New().Platform()))
+	machine := fake.New()
+	l, err := lab.Open(lab.Options{DataDir: t.TempDir(), Logger: logger, Catalog: localImages(t)}, system.New(machine.Platform()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +50,31 @@ func newTestLab(t *testing.T) *testLab {
 	cloud.Register(api, l)
 	client := spectest.New(t, api, spectest.Cloud)
 	client.Token = newToken(t, l, "default")
-	return &testLab{lab: l, client: client}
+	return &testLab{lab: l, client: client, machine: machine}
+}
+
+// localImages returns the built-in catalog with its images' sources on a
+// local HTTP server: a small qcow2 file and its SHA256SUMS.
+func localImages(t *testing.T) *catalog.Catalog {
+	t.Helper()
+	disk, err := os.ReadFile(filepath.Join("..", "..", "imagefmt", "testdata", "plain.qcow2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(disk)
+	files := http.NewServeMux()
+	files.HandleFunc("GET /image.qcow2", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(disk) })
+	files.HandleFunc("GET /SHA256SUMS", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(w, "%s *image.qcow2\n", hex.EncodeToString(sum[:]))
+	})
+	server := httptest.NewServer(files)
+	t.Cleanup(server.Close)
+	offer := *catalog.Builtin()
+	offer.Images = slices.Clone(offer.Images)
+	for i := range offer.Images {
+		offer.Images[i].Source = catalog.ImageSource{URL: server.URL + "/image.qcow2", Checksums: server.URL + "/SHA256SUMS"}
+	}
+	return &offer
 }
 
 // newToken creates a project and a read_write token of it.

@@ -26,11 +26,16 @@ func (e *LockedError) Error() string { return e.Message }
 
 // ActionTable is a resource's actions and what they share. While an action
 // runs, it holds the resource's flag, and a second action gets a LockedError
-// with the message Busy.
+// with the message Busy, unless the table is Queued.
 type ActionTable struct {
 	ResourceType string                // how actions name the resource: "server"
 	Busy         string                // the 423 message: "server is locked by another action"
 	Actions      map[string]ActionSpec // by Hetzner's command: "poweroff"
+	// Queued: a second action waits until the first is done, as Hetzner
+	// runs a server's actions one after another (measured 2026-11-08: a
+	// poweron, reset, shutdown and reboot sent during a poweroff all got
+	// 201 and ran in order).
+	Queued bool
 }
 
 // ActionSpec is one row of an action table.
@@ -84,7 +89,7 @@ func (l *Lab) Act(table ActionTable, command string, req Request) (state.Action,
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if !spec.Unflagged && l.flags[target] {
+	if !spec.Unflagged && !table.Queued && l.flags[target] > 0 {
 		return state.Action{}, &LockedError{Message: table.Busy}
 	}
 	var plan Plan
@@ -98,7 +103,7 @@ func (l *Lab) Act(table ActionTable, command string, req Request) (state.Action,
 			return err
 		}
 		for _, ref := range plan.Locks {
-			if l.flags[ref] {
+			if l.flags[ref] > 0 {
 				return &LockedError{Message: fmt.Sprintf("%s is locked by another action", ref.Type)}
 			}
 		}
@@ -114,12 +119,29 @@ func (l *Lab) Act(table ActionTable, command string, req Request) (state.Action,
 	}
 	if plan.Steps != nil {
 		flagged := plan.Locks
+		var queue *state.ResourceRef
 		if !spec.Unflagged {
 			flagged = append([]state.ResourceRef{target}, flagged...)
+			if table.Queued {
+				queue = &target
+			}
 		}
-		l.start(action.ID, req.ProjectID, plan, flagged)
+		l.start(action.ID, req.ProjectID, plan, flagged, queue)
 	}
 	return *action, nil
+}
+
+// ChangeIdle runs change as Change does, unless an action works on the
+// resource: then it fails with a LockedError with the message busy. It is
+// for changes that are no actions but must not run beside one, such as
+// deleting a Primary IP while it is being assigned.
+func (l *Lab) ChangeIdle(ref state.ResourceRef, busy string, change func(tx *state.Tx) error) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.flags[ref] > 0 {
+		return &LockedError{Message: busy}
+	}
+	return l.changeLocked(change)
 }
 
 // newAction adds a running action.
@@ -159,29 +181,52 @@ func (l *Lab) finishAction(tx *state.Tx, action *state.Action, message string) {
 }
 
 // start runs an action's steps in a goroutine; it holds the flagged resources
-// until the steps end. The caller holds the mutex.
-func (l *Lab) start(actionID, projectID int64, plan Plan, flagged []state.ResourceRef) {
+// until the steps end. With a queue, the steps wait until the action queued
+// before on that resource is done. The caller holds the mutex.
+func (l *Lab) start(actionID, projectID int64, plan Plan, flagged []state.ResourceRef, queue *state.ResourceRef) {
 	ctx, cancel := context.WithCancel(l.ctx)
 	run := &runningAction{projectID: projectID, cancel: cancel, done: make(chan struct{})}
 	l.running[actionID] = run
 	for _, ref := range flagged {
-		l.flags[ref] = true
+		l.flags[ref]++
+	}
+	var before chan struct{}
+	if queue != nil {
+		before = l.queues[*queue]
+		l.queues[*queue] = run.done
 	}
 	l.actions.Add(1)
 	go func() {
 		defer l.actions.Done()
 		defer close(run.done)
 		defer cancel()
-		err := plan.Steps(ctx)
+		err := waitFor(ctx, before)
+		if err == nil {
+			err = plan.Steps(ctx)
+		}
 		// canceled only when the steps gave up: steps that finished despite
 		// the cancel have done their work, and the action succeeded
-		l.end(actionID, plan.Undo, flagged, err, err != nil && ctx.Err() != nil)
+		l.end(actionID, run.done, plan.Undo, flagged, queue, err, err != nil && ctx.Err() != nil)
 	}()
+}
+
+// waitFor waits until done is closed (nil is done already) or ctx ends.
+func waitFor(ctx context.Context, done chan struct{}) error {
+	if done == nil {
+		return nil
+	}
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // end finishes an action whose steps have returned: it takes the flags off,
 // undoes the quick changes if the steps failed, and finishes the action.
-func (l *Lab) end(actionID int64, undo func(tx *state.Tx) error, flagged []state.ResourceRef, err error, canceled bool) {
+func (l *Lab) end(actionID int64, done chan struct{}, undo func(tx *state.Tx) error, flagged []state.ResourceRef,
+	queue *state.ResourceRef, err error, canceled bool) {
 	message := ""
 	switch {
 	case canceled:
@@ -193,7 +238,12 @@ func (l *Lab) end(actionID int64, undo func(tx *state.Tx) error, flagged []state
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	for _, ref := range flagged {
-		delete(l.flags, ref)
+		if l.flags[ref]--; l.flags[ref] <= 0 {
+			delete(l.flags, ref)
+		}
+	}
+	if queue != nil && l.queues[*queue] == done {
+		delete(l.queues, *queue) // the last of its queue
 	}
 	delete(l.running, actionID)
 	if err != nil && !canceled && undo != nil {

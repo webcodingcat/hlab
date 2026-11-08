@@ -55,6 +55,10 @@ type Lab struct {
 	closeOnce sync.Once
 	closeErr  error // of the first Close
 
+	// pictureMu makes UpdatePictures one at a time, across its calls to the
+	// appliance, so that pictures arrive in the order of their generations
+	pictureMu sync.Mutex
+
 	// envMu makes EnvToken one at a time, across its read and write of the
 	// env token file; it is not the state's mutex, so it may be held across
 	// calls to the system
@@ -62,14 +66,28 @@ type Lab struct {
 
 	// mu guards everything below: the state, the flags, the running actions
 	// and the machine's side of the lab
-	mu      sync.Mutex
-	state   *state.State
-	flags   map[state.ResourceRef]bool // resources that an action works on
-	running map[int64]*runningAction   // by action ID
+	mu    sync.Mutex
+	state *state.State
+	// flags count the actions that work on or wait for a resource
+	flags map[state.ResourceRef]int
+	// queues hold the last action queued on a resource (ActionTable.Queued):
+	// the next one waits until it is done
+	queues  map[state.ResourceRef]chan struct{}
+	running map[int64]*runningAction // by action ID
 	// appliance runs between StartMachine and Close; nil without the machine
 	// (the unit tests of the API)
 	appliance  *system.Appliance
 	generation uint64 // of the newest pictures
+	// host is what the machine has for VMs; zero without the machine, and
+	// then nothing is refused for lack of room
+	host system.HostResources
+	// imageLoads are the image cache's loads by image name: one load per
+	// image at a time, held across the system's calls
+	imageLoads map[string]*sync.Mutex
+	// watching ends the servers' watchdog (StartMachine)
+	watching       context.CancelFunc
+	serverShutdown time.Duration // MachineOptions.ServerShutdown
+	watchers       sync.WaitGroup
 
 	ctx     context.Context    // ends when the lab closes; the actions' contexts derive from it
 	cancel  context.CancelFunc // ends ctx
@@ -98,17 +116,19 @@ func Open(opts Options, sys *system.System) (*Lab, error) {
 		return nil, err
 	}
 	l := &Lab{
-		system:    sys,
-		clock:     opts.Clock,
-		timeScale: opts.TimeScale,
-		logger:    opts.Logger,
-		catalog:   opts.Catalog,
-		release:   release,
-		dataDir:   opts.DataDir,
-		fresh:     errors.Is(statErr, fs.ErrNotExist),
-		state:     loaded,
-		flags:     map[state.ResourceRef]bool{},
-		running:   map[int64]*runningAction{},
+		system:     sys,
+		clock:      opts.Clock,
+		timeScale:  opts.TimeScale,
+		logger:     opts.Logger,
+		catalog:    opts.Catalog,
+		release:    release,
+		dataDir:    opts.DataDir,
+		fresh:      errors.Is(statErr, fs.ErrNotExist),
+		state:      loaded,
+		flags:      map[state.ResourceRef]int{},
+		queues:     map[state.ResourceRef]chan struct{}{},
+		running:    map[int64]*runningAction{},
+		imageLoads: map[string]*sync.Mutex{},
 	}
 	if l.clock == nil {
 		l.clock = realClock{}

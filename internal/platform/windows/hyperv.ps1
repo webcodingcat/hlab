@@ -396,6 +396,14 @@ namespace HLab {
         (Get-LabVM $Arguments.name).Id.Guid
     }
 
+    'host-resources' = {
+        $computer = Get-CimInstance -ClassName Win32_ComputerSystem
+        @{
+            threads   = [int]$computer.NumberOfLogicalProcessors
+            memory_mb = [int64]($computer.TotalPhysicalMemory / 1MB)
+        }
+    }
+
     'create-seed'    = {
         param($Arguments)
         # IMAPI2 writes ISO 9660 with Joliet, whose long names cloud-init

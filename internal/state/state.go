@@ -46,14 +46,16 @@ func (k Kind[R]) Name() string { return k.name }
 
 // The kinds of records. A new kind: DEVELOPING.md, Recipes.
 var (
-	Projects = Kind[Project]{name: "projects"}
-	Tokens   = Kind[Token]{name: "tokens"}
-	SSHKeys  = Kind[SSHKey]{name: "ssh_keys"}
-	Actions  = Kind[Action]{name: "actions"}
+	Projects   = Kind[Project]{name: "projects"}
+	Tokens     = Kind[Token]{name: "tokens"}
+	SSHKeys    = Kind[SSHKey]{name: "ssh_keys"}
+	Actions    = Kind[Action]{name: "actions"}
+	Servers    = Kind[Server]{name: "servers"}
+	PrimaryIPs = Kind[PrimaryIP]{name: "primary_ips"}
 )
 
 // kinds lists every kind, so that loading, saving and copying reach them all.
-var kinds = []kind{Projects, Tokens, SSHKeys, Actions}
+var kinds = []kind{Projects, Tokens, SSHKeys, Actions, Servers, PrimaryIPs}
 
 // kind is what the state needs of a Kind without knowing its record type.
 type kind interface {

@@ -76,7 +76,9 @@ func start(opts serviceOptions) (*service, error) {
 	// the host link comes first: the APIs listen on it
 	ctx, cancel := stopContext(opts.Parts.Lifecycle)
 	defer cancel()
-	if err := l.StartMachine(ctx, opts.Machine); err != nil {
+	machine := opts.Machine
+	machine.ServerShutdown = time.Duration(cfg.ShutdownTimeout) * time.Second
+	if err := l.StartMachine(ctx, machine); err != nil {
 		_ = l.Close() // the error that stopped the start says more
 		return nil, err
 	}

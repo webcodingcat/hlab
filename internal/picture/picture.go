@@ -8,14 +8,16 @@ import (
 	"cmp"
 	"net/netip"
 	"slices"
+
+	"github.com/webcodingcat/hlab/internal/seed"
 )
 
 // Hetzner's fixed addresses, which every server sees.
 var (
 	// Gateway4 is the on-link gateway of the public IPv4 /32.
 	Gateway4 = netip.MustParseAddr("172.31.1.1")
-	// Gateway6 is the gateway of the public IPv6 /64.
-	Gateway6 = netip.MustParseAddr("fe80::1")
+	// Gateway6 is the gateway of the public IPv6 /64, as the seed names it.
+	Gateway6 = seed.Gateway6
 	// MetadataAddress is the metadata service.
 	MetadataAddress = netip.MustParseAddr("169.254.169.254")
 )

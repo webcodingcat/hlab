@@ -8,6 +8,7 @@ import (
 
 	"github.com/webcodingcat/hlab/internal/agentproto"
 	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/seed"
 )
 
 // availabilityZones are the zones Hetzner's metadata service reports for
@@ -75,22 +76,11 @@ func metadataValues(lab Lab, cat *catalog.Catalog, server Server) map[string]any
 		"availability-zone": zone,
 		"region":            region,
 		"public-keys":       keys,
-		"vendor_data":       vendorData(server),
+		"vendor_data":       seed.VendorData(server.RootPassword),
 		"network-config":    networkConfig(lab, server),
 		// private networks come with phase 2a
 		"private-networks": []any{},
 	}
-}
-
-// vendorData lets root log in, as Hetzner's images do, with the SSH keys or,
-// for a server without keys, with its root password.
-func vendorData(server Server) string {
-	if server.RootPassword == "" {
-		return "#cloud-config\ndisable_root: false\nssh_pwauth: false\n"
-	}
-	return "#cloud-config\ndisable_root: false\nssh_pwauth: true\n" +
-		"chpasswd:\n  expire: false\n  users:\n" +
-		"  - {name: root, password: " + strconv.Quote(server.RootPassword) + ", type: text}\n"
 }
 
 // networkConfig returns the public NIC's configuration (cloud-init's

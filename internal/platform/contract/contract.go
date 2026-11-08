@@ -146,6 +146,14 @@ func Hypervisor(t *testing.T, hypervisor platform.Hypervisor, dir string) {
 		expect(t, "SetCPUMemory on a running VM", hypervisor.SetCPUMemory(ctx, name, 1, 512), platform.ErrRunning)
 	})
 
+	t.Run("HostResources", func(t *testing.T) {
+		resources, err := hypervisor.HostResources(testContext(t))
+		expect(t, "HostResources", err, nil)
+		if resources.Threads < 1 || resources.MemoryMB < 1024 {
+			t.Errorf("HostResources = %+v, want threads and at least 1 GB", resources)
+		}
+	})
+
 	t.Run("Disks", func(t *testing.T) {
 		ctx := testContext(t)
 		name := prefix + "disks"

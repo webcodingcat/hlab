@@ -141,6 +141,17 @@ type Image struct {
 	Created      time.Time    `yaml:"created"`
 	RapidDeploy  bool         `yaml:"rapid_deploy"`
 	Deprecation  *Deprecation `yaml:"deprecation"`
+	// Source is the lab's own key, not Hetzner's: where the image cache
+	// loads the image from.
+	Source ImageSource `yaml:"source"`
+}
+
+// ImageSource is an official cloud image: a qcow2 file and the list of
+// checksums that names it (SHA256SUMS or SHA512SUMS, as `sha256sum`
+// writes them).
+type ImageSource struct {
+	URL       string `yaml:"url"`
+	Checksums string `yaml:"checksums"`
 }
 
 // ISO is a public ISO that servers can mount.
@@ -262,4 +273,24 @@ func (c *Catalog) LocationByName(name string) (Location, bool) {
 		}
 	}
 	return Location{}, false
+}
+
+// ServerTypeByName returns the server type of that name.
+func (c *Catalog) ServerTypeByName(name string) (ServerType, bool) {
+	for _, serverType := range c.ServerTypes {
+		if serverType.Name == name {
+			return serverType, true
+		}
+	}
+	return ServerType{}, false
+}
+
+// ImageByID returns the system image of that ID.
+func (c *Catalog) ImageByID(id int64) (Image, bool) {
+	for _, image := range c.Images {
+		if image.ID == id {
+			return image, true
+		}
+	}
+	return Image{}, false
 }

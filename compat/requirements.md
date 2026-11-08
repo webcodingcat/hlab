@@ -35,7 +35,7 @@ it; "open" means the phase has not come yet. What never works is in
 | Images filter by `type`, `status`, `bound_to` (each repeatable), `name`, `architecture`, `label_selector`; deprecated ones only with `include_deprecated=true`; `sort` by `id`, `name`, `created` | hcloud-go `hcloud/image.go` (`ImageListOpts`, `GetByNameAndArchitecture`) | 1a | `internal/api/cloud`: `TestImageFilters` |
 | ISOs filter by `architecture`; with `include_architecture_wildcard=true` also the ISOs without one | hcloud-go `hcloud/iso.go` (`ISOListOpts`) | 1a | `internal/api/cloud`: `TestISOArchitectureFilter` |
 | Server types with their locations (ID, name, `available`, `recommended`, `deprecation`) and prices per location | hcloud-go `hcloud/schema/server_type.go`, `hcloud/server_type.go` | 1a | `internal/api/cloud`: `TestServerTypesNameTheirLocations` |
-| Default images of the tools are older (`ubuntu-24.04`, `debian-12`); the lab has only the newest ones, the smoke tests set `debian-13`, unknown images get Hetzner's error | provider and CLI defaults; `hetzner.hcloud` `tests/integration/targets/*/defaults` | 1b | open |
+| Default images of the tools are older (`ubuntu-24.04`, `debian-12`); the lab has only the newest ones, the smoke tests set `debian-13`, unknown images get Hetzner's error | provider and CLI defaults; `hetzner.hcloud` `tests/integration/targets/*/defaults` | 1b | `internal/api/cloud`: `TestServerCreateErrors` |
 | Load balancer types with all fields; required fields of `update_service` | provider `internal/loadbalancer` | 4 | open |
 
 ## SSH keys
@@ -48,6 +48,27 @@ it; "open" means the phase has not come yet. What never works is in
 | Invalid fields: 422 `invalid_input` with `details.fields` (every field, its messages); the texts below | measured; hcloud-go `hcloud/error.go` (`ErrorDetailsInvalidInput`) | 1a | `internal/api/cloud`: `TestSSHKeyRequestsAreChecked`; `internal/web`: `TestCheckCollectsEveryField`, `TestDecodeJSONErrors` |
 | Labels follow Hetzner's rules: key with an optional DNS prefix, name and value up to 63 characters of letters, digits, `-_.`, starting and ending alphanumeric; the prefix `hetzner.cloud/` is accepted | Hetzner's documentation ("Labels"); measured | 1a | `internal/web`: `TestCheckLabels`, `TestCheckLabelMessages` |
 | `public_key` is kept as given, comment and line end included | measured | 1a | `internal/api/cloud`: `TestSSHKeyLifeCycle` |
+
+## Servers
+
+| Requirement | Source | Phase | Test |
+|---|---|---|---|
+| Create, read, update (name, labels), delete; `POST /servers` answers 201 with `server` (`initializing`, `included_traffic` 0), `action` (`create_server`, resources server and image), `next_actions` (`start_server`, none with `start_after_create` false) and `root_password` (null with SSH keys) | hcloud-go `hcloud/server.go` (`Create`, `ServerCreateResult`); measured | 1b | `internal/api/cloud`: `TestServerLifeCycle`, `TestServerWithoutKeysGetsARootPassword` |
+| The server's JSON: the spec's fields in the real API's order, no `datacenter`, `locked` `false`, `public_net.ipv4`/`ipv6` `null` when missing | hcloud-go `hcloud/schema/server.go`; measured | 1b | `internal/api/cloud`: `TestServerJSONHasHetznersFields`, `TestPrimaryIPAssignedOnCreate` |
+| `poweron`, `poweroff`, `shutdown`, `reboot`, `reset`, `change_protection` with Hetzner's action names; actions sent while another runs wait their turn instead of 423 | hcloud-go `hcloud/server.go`; measured | 1b | `internal/api/cloud`: `TestServerLifeCycle`, `TestServerActionsWaitForEachOther` |
+| `DELETE /servers/{id}` answers 200 with `delete_server`; the server is gone at once; Primary IPs with `auto_delete` go with it | hcloud-go `hcloud/server.go` (`DeleteWithResult`); measured | 1b | `internal/api/cloud`: `TestServerLifeCycle`, `TestPrimaryIPLifeCycle` |
+| Lists filter by `name`, `label_selector`, `status` and sort by `id`, `name`, `created`; `/servers/actions`, `/servers/{id}/actions` and their single actions | hcloud-go `hcloud/server.go` (`ServerListOpts`), `hcloud/action.go` | 1b | `internal/api/cloud`: `TestServerUpdateAndList`, `TestServerActionLists` |
+| Create errors with Hetzner's codes and texts (below) | measured | 1b | `internal/api/cloud`: `TestServerCreateErrors`, `TestServerDeleteProtection` |
+
+## Primary IPs
+
+| Requirement | Source | Phase | Test |
+|---|---|---|---|
+| Create in a location (no action) or for a server that is off (`assign_primary_ip`); read, update (name, labels, `auto_delete`), delete (204); `assign`, `unassign`, `change_protection` | hcloud-go `hcloud/primary_ip.go`; provider `hcloud_primary_ip` | 1b | `internal/api/cloud`: `TestPrimaryIPLifeCycle`, `TestPrimaryIPAssignedOnCreate` |
+| An unassigned IP has `assignee_id` `null` and `assignee_type` `"unassigned"`; an IPv4's `dns_ptr` lists Hetzner's default name | measured; Hetzner's changelog 2026-04-27 | 1b | `internal/api/cloud`: `TestPrimaryIPLifeCycle` |
+| A server's own IPs are named `primary_ip-<id>`, with `auto_delete` true; `unassign` clears `auto_delete` | measured | 1b | `internal/api/cloud`: `TestPrimaryIPLifeCycle` |
+| Lists filter by `name`, `ip`, `label_selector` and sort by `id`, `created`; `/primary_ips/actions` and `/primary_ips/{id}/actions` | hcloud-go `hcloud/primary_ip.go` (`PrimaryIPListOpts`) | 1b | `internal/api/cloud`: `TestPrimaryIPAssignedOnCreate` |
+| Errors with Hetzner's codes and texts, details `null` (below) | measured | 1b | `internal/api/cloud`: `TestPrimaryIPLifeCycle`, `TestPrimaryIPCreateErrors` |
 
 ## Gaps of the old HLab
 
@@ -165,11 +186,41 @@ minute; nothing is left in the project. The checks belong to phase 1b:
 | `POST …/actions/poweroff`, then at once `…/actions/reboot` | both 201: **the second action starts while the first runs**, no 423; the server stays `running`, `locked` `false`; both `running` in `GET /servers/{id}/actions` |
 | action IDs | far above 2^32 (15 digits) |
 
-Still open, for 1b:
+Settled in 1b-4 (below): Hetzner runs a server's actions one after another
+and answers none of the power actions with 423; HLab's server table is
+queued.
 
-- HLab's `Lab.Act` answers 423 `locked` while an action of the resource runs;
-  Hetzner started a reboot during a running poweroff. Which commands Hetzner
-  refuses with 423, and when, is to measure and to settle with the server actions.
+### Servers and Primary IPs (1b-4)
+
+Measured on 2026-11-08 with the read-write token of the empty test project
+(`cx23` in `fsn1`, `debian-13`; `cx23` in `hel1` had no room: 412
+`resource_unavailable`, `"error during placement"`). Everything was deleted
+afterwards. HLab answers the same, but where a row says "not measured".
+
+| Request | Answer |
+|---|---|
+| `POST /servers` with an unknown image / type / location | 422 `invalid_input` `"image not found"` / 404 `"server type not found"` / 404 `"datacenter not found"`, each `details` `{}` |
+| `POST /servers` with name `bad_name` or `""` | 422 `"invalid input in field 'name'"`, `"name must be a valid hostname"` (singular "field", unlike SSH keys) |
+| `POST /servers` without `image`; `user_data` of 32769 bytes | `"Missing data for required field."`; `"Length must be between 0 and 32768."` |
+| `POST /servers` with an unknown SSH key / Primary IP | 404 `not_found` `"SSH key not found"` / 404 `primary_ip_not_found` `"primary ip not found"` |
+| `POST /servers` with a taken name | 409 `uniqueness_error`, `"server name is already used"`, `details` `{}` |
+| `POST /servers` with `enable_ipv4` and `enable_ipv6` false, no network | 201: a server without public addresses |
+| status after the create | `initializing` ~4 s, `starting`, `running`; `create_server` ends after 4 s |
+| `poweroff`, `change_protection` during the create; `poweron`, `reset`, `shutdown`, `reboot` during a `poweroff` | all 201; they run in order (each starts when the one before ended) and the server ends as the last one leaves it |
+| `reboot` or `reset` of a server that is off | 201, the server starts |
+| `shutdown` of a running Debian | `shutdown_server` ends after 1 s; the server is `off` 12 s later |
+| `DELETE /servers/{id}` (protected) | 423 `protected`, `"server deletion is protected"`, `details` `{}` |
+| `DELETE /servers/{id}` | 200 with `delete_server`; `GET` answers 404 at once |
+| `POST /primary_ips` | 201, `action` `null`; `assignee_type` `"unassigned"`, `dns_ptr` `[{"ip", "dns_ptr": "static.<reversed>.clients.your-server.de"}]` (IPv6: `[]`) |
+| `POST /primary_ips` without or with both `assignee_id` and `location` | 422 `"invalid input in fields 'assignee_id', 'location'"`, each `"either assignee_id or location must be provided"` |
+| `POST /primary_ips` with `type` `bogus` / a taken name | 422 `"invalid input in field 'type'"`, `"value required to be smaller"` / 409 `uniqueness_error` `"name is already used"`, `details` `null` |
+| `assign` / `unassign` on a running server | 422 `server_not_stopped`, `"Server must be offline for this action"`, `details` `null` |
+| `assign` to a server that has an IP of the type | 403 `resource_limit_exceeded`, `"assignment limit reached"`, `details` `null` |
+| `unassign` | 201, `unassign_primary_ip` (resources IP and server), running for some seconds; then `auto_delete` is `false` |
+| `DELETE` while the IP's unassign runs / assigned / protected | 423 `locked` `"cannot perform operation because primary_ip is locked"` / 422 `must_be_unassigned` `"Primary IP must be unassigned"` / 423 `protected` `"Primary IP deletion is protected"`, all `details` `null` |
+| `PUT /primary_ips/{id}` with `auto_delete` true on a protected IP | 200 |
+| an IP that is gone | 404 `not_found`, `"Primary IP with ID <id> not found"`, `details` `null` |
+| not measured | a Primary IP that another server holds, or of another location, given to a new server or to `assign`: HLab answers 422 `primary_ip_assigned` / `primary_ip_location_mismatch`; one of the other type: 412 `primary_ip_version_mismatch` |
 
 ### Metadata service (1b-2)
 

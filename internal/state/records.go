@@ -125,11 +125,120 @@ type ResourceRef struct {
 	ID   int64  `json:"id"`
 }
 
+// ServerStatus is a server's status, as Hetzner shows it.
+type ServerStatus string
+
+// The statuses of a server that the lab uses, as on Hetzner.
+const (
+	ServerInitializing ServerStatus = "initializing"
+	ServerStarting     ServerStatus = "starting"
+	ServerRunning      ServerStatus = "running"
+	ServerStopping     ServerStatus = "stopping"
+	ServerOff          ServerStatus = "off"
+	ServerDeleting     ServerStatus = "deleting"
+)
+
+// Protection is a resource's protection against delete (and, for servers,
+// rebuild).
+type Protection struct {
+	Delete  bool `json:"delete"`
+	Rebuild bool `json:"rebuild"`
+}
+
+// Server is a server of a project: its record holds what was asked for
+// (WantRunning, its addresses); the VM is the system's.
+type Server struct {
+	ID         int64             `json:"id"`
+	ProjectID  int64             `json:"project_id"`
+	Name       string            `json:"name"`
+	Labels     map[string]string `json:"labels"`
+	Created    time.Time         `json:"created"`
+	Protection Protection        `json:"protection"`
+	Type       string            `json:"type"`     // the server type's name, such as "cpx22"
+	Location   string            `json:"location"` // the location's name
+	ImageID    int64             `json:"image_id"` // the image it was created from
+	Status     ServerStatus      `json:"status"`
+	// WantRunning is whether the server should run: a start of the lab
+	// starts it, a guest that shuts down clears it.
+	WantRunning bool `json:"want_running"`
+	// IPv4 and IPv6 are its Primary IPs, 0 for none.
+	IPv4 int64  `json:"ipv4"`
+	IPv6 int64  `json:"ipv6"`
+	MAC  string `json:"mac"` // of its public NIC
+	// PublicKeys are the SSH keys it was created with; RootPassword is set
+	// for a server created without keys, as on Hetzner, and the guest gets
+	// it through the seed.
+	PublicKeys   []string `json:"public_keys"`
+	RootPassword string   `json:"root_password"`
+	UserData     string   `json:"user_data"`
+	DiskGB       int      `json:"disk_gb"`
+	// BaseImage is the cached system image its disk differs from.
+	BaseImage string `json:"base_image"`
+}
+
+// RecordID returns the server's ID.
+func (s Server) RecordID() int64 { return s.ID }
+
+// RecordProject returns the server's project.
+func (s Server) RecordProject() int64 { return s.ProjectID }
+
+// IPType is the address family of a Primary IP.
+type IPType string
+
+// The types of Primary IPs.
+const (
+	IPv4 IPType = "ipv4"
+	IPv6 IPType = "ipv6"
+)
+
+// PrimaryIP is a Primary IP of a project: an IPv4 address or an IPv6 /64.
+type PrimaryIP struct {
+	ID         int64             `json:"id"`
+	ProjectID  int64             `json:"project_id"`
+	Name       string            `json:"name"`
+	Labels     map[string]string `json:"labels"`
+	Created    time.Time         `json:"created"`
+	Protection Protection        `json:"protection"` // only Delete counts
+	Type       IPType            `json:"type"`
+	// IP is the address, or for IPv6 the /64 as "2001:db8:1:1::/64".
+	IP         string `json:"ip"`
+	Location   string `json:"location"`
+	AssigneeID int64  `json:"assignee_id"` // the server, 0 for none
+	AutoDelete bool   `json:"auto_delete"` // deleted with its server
+}
+
+// RecordID returns the Primary IP's ID.
+func (p PrimaryIP) RecordID() int64 { return p.ID }
+
+// RecordProject returns the Primary IP's project.
+func (p PrimaryIP) RecordProject() int64 { return p.ProjectID }
+
 // Lab is the lab's own records, which the API does not show. Later phases add
-// the appliance, the address pools, the image cache, the Internet clients and
-// the ACME keys.
+// the appliance, the Internet clients and the ACME keys.
 type Lab struct {
 	Faults map[int64]ProjectFaults `json:"faults"` // by project ID
+	// Images is the image cache: the system images on the disk, by the
+	// image's name ("debian-13").
+	Images map[string]CachedImage `json:"images"`
+	// Pools are where the next search for a free public address starts.
+	Pools Pools `json:"pools"`
+}
+
+// CachedImage is a system image in the cache.
+type CachedImage struct {
+	Source string    `json:"source"` // the URL it was loaded from
+	SHA256 string    `json:"sha256"` // of the file loaded, hex
+	File   string    `json:"file"`   // the VHDX, a server disk's parent
+	Loaded time.Time `json:"loaded"`
+}
+
+// Pools hold the next free public address of each family, as an offset
+// into its range: addresses are handed out in order, and a released one
+// comes back only once the pool has gone round, so that an address does not
+// pass from one server to the next at once.
+type Pools struct {
+	NextIPv4 int `json:"next_ipv4"`
+	NextIPv6 int `json:"next_ipv6"`
 }
 
 // ProjectFaults are the faults injected into a project.

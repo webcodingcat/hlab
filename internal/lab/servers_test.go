@@ -1,0 +1,210 @@
+package lab_test
+
+import (
+	"errors"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/lab"
+	"github.com/webcodingcat/hlab/internal/platform"
+	"github.com/webcodingcat/hlab/internal/platform/fake"
+	"github.com/webcodingcat/hlab/internal/state"
+	"github.com/webcodingcat/hlab/internal/system"
+)
+
+// putServer records a server of the project "default" and gives it a VM on
+// the fake machine, running or off.
+func putServer(t *testing.T, l *lab.Lab, machine *fake.Fake, name string, running, wantRunning bool) int64 {
+	t.Helper()
+	var id int64
+	err := l.Change(func(tx *state.Tx) error {
+		project := &state.Project{ID: state.NewID(tx, state.Projects), Name: name + "-project", Internet: true}
+		state.Put(tx, state.Projects, project)
+		id = state.NewID(tx, state.Servers)
+		status := state.ServerOff
+		if running {
+			status = state.ServerRunning
+		}
+		state.Put(tx, state.Servers, &state.Server{
+			ID: id, ProjectID: project.ID, Name: name, Type: "cpx22", Location: "fsn1",
+			Status: status, WantRunning: wantRunning, MAC: lab.ServerMAC(id),
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hypervisor := machine.Platform().Hypervisor
+	spec := platform.VMSpec{
+		Name: lab.ServerVM(id), Tag: system.VMTag, CPUs: 2, MemoryMB: 4096,
+		NICs: []platform.NICSpec{{MAC: lab.ServerMAC(id), Switch: system.PublicSwitch, Port: platform.Isolated()}},
+	}
+	if err := hypervisor.CreateVM(t.Context(), spec); err != nil {
+		t.Fatal(err)
+	}
+	if running {
+		if err := hypervisor.StartVM(t.Context(), spec.Name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return id
+}
+
+// serverStatus returns a server's status and whether it wants to run.
+func serverStatus(t *testing.T, l *lab.Lab, id int64) (state.ServerStatus, bool) {
+	t.Helper()
+	server, err := lab.Current(l, state.Servers, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return server.Status, server.WantRunning
+}
+
+func TestServerMACIsHetznersPrefixAndTheID(t *testing.T) {
+	if mac := lab.ServerMAC(1_000_001); mac != "96:00:00:0f:42:41" {
+		t.Errorf("ServerMAC(1000001) = %s", mac)
+	}
+}
+
+// Addresses go out in order, without .0 and .255; a released one comes back
+// only once the pool has gone round.
+func TestNewAddressGoesRoundThePool(t *testing.T) {
+	l, _ := open(t, lab.Options{})
+	var got []string
+	err := l.Change(func(tx *state.Tx) error {
+		for range 3 {
+			address, err := lab.NewAddress(tx, state.IPv4)
+			if err != nil {
+				return err
+			}
+			got = append(got, address)
+			state.Put(tx, state.PrimaryIPs, &state.PrimaryIP{ID: state.NewID(tx, state.PrimaryIPs), IP: address})
+		}
+		six, err := lab.NewAddress(tx, state.IPv6)
+		got = append(got, six)
+		tx.Lab().Pools.NextIPv4 = 254 // near the end of 198.19.0.x
+		for range 2 {
+			address, err := lab.NewAddress(tx, state.IPv4)
+			if err != nil {
+				return err
+			}
+			got = append(got, address)
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"198.19.0.1", "198.19.0.2", "198.19.0.3", "2001:db8:1:1::/64", "198.19.0.254", "198.19.1.1"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+// The servers that want to run may take the host's memory but a reserve
+// (25 %, at least 6 GB) and the appliance's 1 GB (plan, 5 no. 18).
+func TestCheckRoomKeepsTheReserve(t *testing.T) {
+	machine := fake.New()
+	withAppliance(machine)
+	machine.SetHostResources(platform.HostResources{Threads: 8, MemoryMB: 16 * 1024})
+	l := start(t, machine, lab.Options{DataDir: t.TempDir()})
+	t.Cleanup(func() { _ = l.Close() })
+	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+		t.Fatal(err)
+	}
+	cpx22, _ := catalog.Builtin().ServerTypeByName("cpx22") // 4 GB
+	// 16 GB - 6 GB reserve - 1 GB appliance = 9 GB: two cpx22 fit, not three
+	putServer(t, l, machine, "a", true, true)
+	check := func() error {
+		return l.View(func(tx *state.Tx) error { return l.CheckRoom(tx, 0, cpx22) })
+	}
+	if err := check(); err != nil {
+		t.Fatalf("a second server: %v", err)
+	}
+	putServer(t, l, machine, "b", true, true)
+	if err := check(); !errors.Is(err, lab.ErrNoRoom) {
+		t.Errorf("a third server: %v, want ErrNoRoom", err)
+	}
+}
+
+// A start takes over the servers that run, connects those that are off
+// again and starts those that want to run (13.1, 13.2).
+func TestStartMachineResumesTheServers(t *testing.T) {
+	machine := fake.New()
+	withAppliance(machine)
+	l := start(t, machine, lab.Options{DataDir: t.TempDir()})
+	t.Cleanup(func() { _ = l.Close() })
+	running := putServer(t, l, machine, "running", true, true)
+	wanted := putServer(t, l, machine, "wanted", false, true)
+	resting := putServer(t, l, machine, "resting", false, false)
+
+	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[int64]state.ServerStatus{running: state.ServerRunning, wanted: state.ServerRunning, resting: state.ServerOff} {
+		if status, _ := serverStatus(t, l, id); status != want {
+			t.Errorf("server %d is %s, want %s", id, status, want)
+		}
+	}
+	calls := strings.Join(machine.Calls(), "\n")
+	for _, id := range []int64{wanted, resting} {
+		if !strings.Contains(calls, "AttachNIC "+lab.ServerVM(id)) {
+			t.Errorf("the NIC of %s was not connected again", lab.ServerVM(id))
+		}
+	}
+	if strings.Contains(calls, "DetachNIC "+lab.ServerVM(running)) {
+		t.Error("the NIC of the running server was touched")
+	}
+}
+
+// A guest that shuts itself down leaves its server off, and it no longer
+// wants to run, as on Hetzner (13.5).
+func TestWatchdogSeesAServerShutItselfDown(t *testing.T) {
+	machine := fake.New()
+	withAppliance(machine)
+	l := start(t, machine, lab.Options{DataDir: t.TempDir()})
+	t.Cleanup(func() { _ = l.Close() })
+	id := putServer(t, l, machine, "web", true, true)
+	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+		t.Fatal(err)
+	}
+	if err := machine.Platform().Hypervisor.ShutdownVM(t.Context(), lab.ServerVM(id)); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		status, wants := serverStatus(t, l, id)
+		if status == state.ServerOff && !wants {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the server is %s (wants to run: %v), want off", status, wants)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// Stopping the lab shuts the servers down; they keep wanting to run, so
+// the next start starts them (13.2).
+func TestCloseShutsTheServersDown(t *testing.T) {
+	machine := fake.New()
+	withAppliance(machine)
+	l := start(t, machine, lab.Options{DataDir: t.TempDir()})
+	id := putServer(t, l, machine, "web", true, true)
+	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	state, err := machine.Platform().Hypervisor.VMState(t.Context(), lab.ServerVM(id))
+	if err != nil || state.Power != platform.PowerOff {
+		t.Errorf("the server's VM is %+v, %v; want off", state, err)
+	}
+	if !slices.Contains(machine.Calls(), "ShutdownVM "+lab.ServerVM(id)) {
+		t.Error("the guest was not asked to shut down")
+	}
+}

@@ -81,10 +81,12 @@ func TestStateFileListsRecordsSortedByID(t *testing.T) {
 func marshalFile(t *testing.T, s *State, saved time.Time) []byte {
 	t.Helper()
 	lists := map[string]json.RawMessage{
-		Projects.Name(): marshalList(t, s, Projects),
-		Tokens.Name():   marshalList(t, s, Tokens),
-		SSHKeys.Name():  marshalList(t, s, SSHKeys),
-		Actions.Name():  marshalList(t, s, Actions),
+		Projects.Name():   marshalList(t, s, Projects),
+		Tokens.Name():     marshalList(t, s, Tokens),
+		SSHKeys.Name():    marshalList(t, s, SSHKeys),
+		Actions.Name():    marshalList(t, s, Actions),
+		Servers.Name():    marshalList(t, s, Servers),
+		PrimaryIPs.Name(): marshalList(t, s, PrimaryIPs),
 	}
 	if len(lists) != len(kinds) {
 		t.Fatalf("marshalFile knows %d kinds, the state has %d", len(lists), len(kinds))
@@ -171,12 +173,12 @@ func TestNewerStateFileIsRefused(t *testing.T) {
 
 func TestUnknownKindIsRefused(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	data := `{"version": 1, "kinds": {"servers": []}}`
+	data := `{"version": 1, "kinds": {"floating_ips": []}}`
 	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), `unknown kind "servers"`) {
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), `unknown kind "floating_ips"`) {
 		t.Fatalf("got %v, want an error about the unknown kind", err)
 	}
 }

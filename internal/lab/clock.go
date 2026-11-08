@@ -10,7 +10,9 @@ import (
 // the server shows off after ~9 s and the action ends ~1 s later; after a reset
 // or reboot the server runs again after ~15 s.
 const (
+	ServerCreate      = 4 * time.Second         // a new server: initializing → its create action ends (measured 2026-11-08)
 	ServerCreateStart = 5 * time.Second         // a new server: starting → running
+	PrimaryIPChange   = 3 * time.Second         // a Primary IP's assign or unassign: running → the action ends (measured 2026-11-08: over 3 s)
 	ServerDelete      = 2 * time.Second         // the server's VM is gone → its delete action ends
 	PowerOff          = 8700 * time.Millisecond // power off: stopping → off
 	PowerOffEnd       = 1200 * time.Millisecond // power off: off → the action ends

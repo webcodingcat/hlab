@@ -20,6 +20,9 @@ type Config struct {
 	// 0.5 twice as fast, 0 does not wait at all.
 	TimeScale float64 `yaml:"time_scale"`
 	Ports     Ports   `yaml:"ports"`
+	// ShutdownTimeout is how many seconds the servers' guests may take to
+	// shut down when the lab stops, before they are turned off.
+	ShutdownTimeout int `yaml:"shutdown_timeout"`
 }
 
 // Ports are the TCP ports the service listens on. A port of 0 takes any free
@@ -33,8 +36,9 @@ type Ports struct {
 // Default returns the settings without a file.
 func Default() Config {
 	return Config{
-		TimeScale: 1,
-		Ports:     Ports{Cloud: 8080, Hetzner: 8081, Control: 8090},
+		TimeScale:       1,
+		Ports:           Ports{Cloud: 8080, Hetzner: 8081, Control: 8090},
+		ShutdownTimeout: 60,
 	}
 }
 
@@ -64,6 +68,9 @@ func Load(dataDir string) (Config, error) {
 func (c Config) check() error {
 	if c.TimeScale < 0 {
 		return fmt.Errorf("time_scale is %g: use 0 or more", c.TimeScale)
+	}
+	if c.ShutdownTimeout < 1 {
+		return fmt.Errorf("shutdown_timeout is %d: use 1 or more seconds", c.ShutdownTimeout)
 	}
 	seen := map[int]string{}
 	for _, port := range []struct {

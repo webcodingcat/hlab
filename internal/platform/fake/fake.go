@@ -25,9 +25,10 @@ type Fake struct {
 	failures map[string][]error
 	delays   map[string]time.Duration
 
-	vms   map[string]*vm
-	disks map[string]*disk
-	seeds map[string]map[string][]byte
+	vms       map[string]*vm
+	disks     map[string]*disk
+	seeds     map[string]map[string][]byte
+	resources platform.HostResources
 
 	usedRanges []netip.Prefix
 	link       *platform.LinkSpec
@@ -47,9 +48,11 @@ func New() *Fake {
 		vms:      map[string]*vm{},
 		disks:    map[string]*disk{},
 		seeds:    map[string]map[string][]byte{},
-		locked:   map[string]bool{},
-		stop:     make(chan struct{}),
-		agents:   map[string]func(conn net.Conn){},
+		// a developer's machine: 16 threads, 32 GB
+		resources: platform.HostResources{Threads: 16, MemoryMB: 32 * 1024},
+		locked:    map[string]bool{},
+		stop:      make(chan struct{}),
+		agents:    map[string]func(conn net.Conn){},
 	}
 }
 
@@ -91,6 +94,13 @@ func (f *Fake) AddDisk(path string, sizeGB int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.disks[path] = &disk{sizeGB: sizeGB}
+}
+
+// SetHostResources sets what HostResources reports.
+func (f *Fake) SetHostResources(resources platform.HostResources) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.resources = resources
 }
 
 // Seed returns the files of the seed that CreateSeed wrote to path.

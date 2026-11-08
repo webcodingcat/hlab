@@ -79,10 +79,10 @@ means the row has no limit.
 | `internal/labapi` | request and answer types of the lab control, shared with `client` | – |
 | `internal/webui` | web UI: files through `go:embed`, Host and Origin checks | `web` |
 | `internal/web` | HTTP basics: routes (`net/http`), Hetzner's error format, pagination, sorting, label selectors, rate limit headers, token check, `X-Correlation-Id` | `state` |
-| `internal/lab` | the core: owns the state; transactions, actions, flags, timings, triggering pictures, life cycle | `state`, `picture`, `system`, `catalog`, `config` |
+| `internal/lab` | the core: owns the state; transactions, actions, flags, timings, triggering pictures, life cycle | `state`, `picture`, `seed`, `system`, `catalog`, `config` |
 | `internal/state` | records, kinds, loading, saving, migrations | – |
-| `internal/picture` | pure functions from the state to the data plane's pictures and the host's DNS rules | `state`, `agentproto`, `catalog` |
-| `internal/seed` | (later) pure functions for the cloud-init data | – |
+| `internal/picture` | pure functions from the state to the data plane's pictures and the host's DNS rules | `state`, `agentproto`, `catalog`, `seed` |
+| `internal/seed` | pure functions for the cloud-init seed (NoCloud) | – |
 | `internal/system` | does the work and never sees the state: VMs, disks, images, host link, host DNS, appliance, agent client | `platform`, `agentproto`, `vhdx`, `imagefmt` |
 | `internal/platform` | the platform interfaces and their data types | – |
 | `internal/platform/windows` | Hyper-V through `pshost`, host network, NRPT, life cycle | `platform`, `platform/windows/pshost` |
@@ -93,7 +93,7 @@ means the row has no limit.
 | `internal/agentproto` | the wire format between service and agent, picture types | – |
 | `internal/agent` | the agent (Linux only): applies pictures, announces its addresses, metadata service; counters (later) | `agentproto` |
 | `internal/vhdx` | (later) the page 83 disk ID in a VHDX's metadata | – |
-| `internal/imagefmt` | (later) detecting image formats, unpacking | – |
+| `internal/imagefmt` | disk image formats without outside tools: reading qcow2, the footer of a fixed VHD; (later) detecting formats, unpacking | – |
 | `internal/catalog` | server types, locations, load balancer and box types, prices, ISOs, system images; built in, a user file overrides | – |
 | `internal/config` | `hlab.yaml`: ranges, time scale, overcommit, deadlines, ports | – |
 | `internal/schema` | (later) models generated from Hetzner's spec where `hcloud-go/schema` has gaps | – |
@@ -214,17 +214,22 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   (`stop_server`).
 - **`Lab.Act`** runs one row of a table in one transaction:
   1. If the resource is busy, it refuses with `lab.LockedError`; the API answers
-     that with 423 `locked`.
+     that with 423 `locked`. A table marked `Queued` (the servers') refuses
+     nothing: the new action waits until the one queued before it on the
+     resource is done, as Hetzner runs a server's actions one after another.
   2. It calls the row's `Plan`, which checks the request and makes the quick
      changes.
   3. It creates the action. An action without steps is finished at once.
 
   If any of this fails, nothing changes.
-- **Flags.** While an action's steps run, the action flags its resource and the
-  resources in the plan's `Locks`. Flags live in memory only, because after a
-  restart no action is running. A resource has at most one flag. A row marked
-  `Unflagged` (such as `change_protection`) neither sets nor checks flags. Note that
-  `locked` in Hetzner's server JSON is an administrative lock, not a flag.
+- **Flags.** While an action's steps run or wait in a queue, the action flags
+  its resource and the resources in the plan's `Locks`. Flags live in memory
+  only, because after a restart no action is running; they count the actions
+  that hold them. A row marked `Unflagged` (such as `change_protection`)
+  neither sets nor checks flags. `Lab.ChangeIdle` is a `Change` that refuses a
+  flagged resource, for changes that are no action (deleting a Primary IP
+  while it is assigned). Note that `locked` in Hetzner's server JSON is an
+  administrative lock, not a flag.
 - **Steps.** The slow part runs in a goroutine. It waits Hetzner's timings with
   `Lab.Sleep(ctx, lab.PowerOff)`, scaled by the time scale. The time scale is 0 in
   unit tests; tests that check timings use their own `lab.Clock`.
@@ -236,6 +241,66 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   starts again.
 - **Size.** Each project keeps its newest `lab.MaxFinishedActions` (1 000) finished
   actions.
+
+## Servers and Primary IPs
+
+The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
+`internal/lab/servers.go` does the slow part with IDs, through `system`.
+
+- **Create** (13.4 of the plan): the handler records the server with its
+  Primary IPs (status `initializing`) in one `Change`, then runs the table's
+  rows `create` (`create_server`) and, unless `start_after_create` is false,
+  `poweron` (`start_server`, the answer's `next_actions`). `Lab.BuildServer`
+  takes the system image from the cache, makes the differencing disk, the
+  seed and the VM, and sends the appliance the pictures with the server. If
+  it fails, the action's undo removes the record and its new Primary IPs.
+- **Delete** is the row `delete` (`delete_server`): the record goes at once,
+  as on Hetzner, with its Primary IPs that have `auto_delete`; the others
+  stay, unassigned. The steps remove the VM, the disk and the seed.
+- **Power.** `poweron`, `poweroff`, `shutdown`, `reboot` and `reset` set the
+  statuses Hetzner shows (`starting`, `stopping`, …) and wait its times. A
+  reboot asks the guest to shut down (Hyper-V has no ACPI reboot), turns it
+  off after a minute and starts it; a reboot or reset of an off server starts
+  it, as on Hetzner.
+- **The watchdog** looks at the running servers' VMs every 2 s: a guest that
+  shut itself down leaves its server `off`, and it no longer wants to run.
+- **`want_running`** is what a start of the lab follows: a server whose VM
+  runs is taken over (hlabd had crashed); one whose VM is off gets its NIC on
+  `HLab-Public` again (detached and attached, as a stop of the lab removed the
+  switch) and starts if it wants to run. A stop shuts every server down, all
+  at once, and turns it off after `shutdown_timeout` (`hlab.yaml`, 60 s);
+  `want_running` stays.
+- **Room.** Memory is static, so the servers that want to run may take the
+  host's memory but a reserve (25 %, at least 6 GB) and the appliance's 1 GB,
+  and four virtual cores per thread (`Lab.CheckRoom`, from
+  `Hypervisor.HostResources`). Beyond that, a create or a poweron is Hetzner's
+  412 `resource_unavailable`. Without the machine (the API's unit tests)
+  there is always room.
+- **Addresses** come from `198.19.0.0/16` (IPv4, without `.0` and `.255`) and
+  `2001:db8:1::/48` (one `/64` per IPv6), in order: `state.Lab.Pools` holds
+  where the next search starts, so a released address comes back only once the
+  pool has gone round (`lab.NewAddress`).
+- **Names and MACs.** A server's VM is `hlab-server-<id>`, its public NIC has
+  the MAC `96:00:` and its ID in 32 bits; its disk is
+  `disks/servers/<id>.vhdx`, its seed `disks/seeds/<id>.iso`.
+- **The seed** (`internal/seed`) is what cloud-init reads on Hyper-V, where the
+  SMBIOS vendor cannot say "Hetzner": `meta-data` (instance ID, host name,
+  keys), `user-data`, `vendor-data` (root's login, the same text the metadata
+  service answers) and `network-config` version 2: IPv4 by DHCP and IPv6 as
+  `::1` of the `/64` with `fe80::1`, as on Hetzner, always with the lab's
+  resolvers. Its files are JSON, which is YAML too: cloud-init's YAML 1.1
+  parser reads an unquoted MAC of digits as a number.
+
+**The image cache.** The catalog names each system image's source: the
+official qcow2 file (Debian's genericcloud, Ubuntu's cloud image) and its
+list of checksums. The first server of an image loads it
+(`system.LoadImage`): download, checksum, `internal/imagefmt` reads the
+qcow2 in Go and writes the disk as a fixed VHD (the raw disk and a 512-byte
+footer), and `FlattenDisk` (`Convert-VHD`) makes it a dynamic VHDX,
+`images/cache/<sha256>.vhdx`. `state.Lab.Images` records it by the image's
+name; one load per image runs at a time. Converting through the appliance
+(`qemu-img`) is for imports and exports (3b). A cached image whose source in
+the catalog changed is loaded anew; the old file stays.
 
 ## Projects, tokens, faults
 
@@ -408,14 +473,16 @@ packages below it follow the layers.
    creates or takes over the switches `HLab-Link` (internal, with the host's NIC:
    `198.18.0.1/29`, `2001:db8:0:ffff::1/64`, routes of both ranges through the
    appliance) and `HLab-Public` (private).
-2. `system.RemoveStrayVMs`: the lab's VMs (notes `hlab`) that the state does not
-   know go; their disks stay.
+2. `system.RemoveStrayVMs`: the lab's VMs (notes `hlab`) that are neither the
+   appliance nor a server of the state go; their disks stay.
 3. `Appliance.Start`: an appliance that runs and whose agent answers is taken
    over (after a crash of hlabd); otherwise its VM and its differencing disk
    are made anew and started. Then every picture goes to the agent, and the
    watchdog starts.
 4. `system.SetHostDNS`: the host's DNS rules; until the zones (2b) only the
    rules of an earlier run go.
+5. The servers come back as they want (Servers and Primary IPs), and their
+   watchdog starts.
 
 If a step fails, the host link goes again. A crash of hlabd leaves everything
 running (13.3); the next start takes it over.
@@ -674,8 +741,10 @@ change, only whole pictures; the agent inside makes the appliance match each one
 
 **Pictures** (`internal/picture`) are pure functions of a `picture.Lab`: plain
 values the lab takes from its state and settings (the host link, the MAC set, the
-servers). Until the servers come (1b-4) the lab has none. Each picture carries the
-Lab's generation. Their output is compared with golden files in
+servers with their Primary IPs). Each picture carries the Lab's generation; a
+change of the servers or their addresses sends every picture anew
+(`Lab.UpdatePictures`, one at a time, so that an older one never follows a
+newer one). Their output is compared with golden files in
 `internal/picture/testdata`; `go test ./internal/picture -update` writes them anew,
 and the diff shows what changed.
 
@@ -839,7 +908,13 @@ skipped there; CI's Windows job has Go and runs them.
 **Live tests.** `bin/dev itest [--run <pattern>]` runs the tests in `itest/`, which
 build only with the tag `live`, against the real platform: the contract tests of
 the hypervisor, the host network and the NRPT rules
-(`internal/platform/contract`), and the appliance's boot with its watchdog.
+(`internal/platform/contract`), the appliance's boot with its watchdog, and a
+server: the whole lab with the Cloud API in the test's process creates a
+Debian server, which must answer SSH on its Primary IPv4, serve what its
+metadata service told it (its user data starts a small HTTP server on port
+8000) over IPv4 and IPv6, come back after a reset, shut down through its guest
+and go with its delete. The server test keeps the Debian image in
+`C:\HLabDev\itest\image-cache`, so that only its first run loads it.
 
 - The host network and the NRPT need administrator rights, without UAC. So the
   tests run through the task "HLab itest" of the Task Scheduler (highest rights,
@@ -866,8 +941,9 @@ the hypervisor, the host network and the NRPT rules
   -Force` removes the VMs. The appliance test uses the lab's own names
   (`hlab-appliance`, `HLab-Link`, `HLab-Public`).
 - The live tests stay out of CI: GitHub's Windows runners have no nested Hyper-V.
-  All of them take about 90 s: the hypervisor's 30 s, the host network's 7 s, the
-  appliance's 30 s (it skips without the appliance's disk).
+  All of them take about 130 s: the hypervisor's 30 s, the host network's 7 s,
+  the appliance's 30 s, the server's 60 s with the image cached (the appliance
+  and the server skip without the appliance's disk).
 
 **Agent tests.** The tests of `internal/agent` with the build tag `netns` change
 links, addresses, routes, nftables and sysctls for real, so they run in a network
@@ -888,7 +964,9 @@ namespace of their own, never on the developer's machine as it is:
 **Smoke tests.** At the end of a phase, `bin/dev smoke` runs the real tools against
 the lab, from Linux or WSL2:
 
-1. It starts `hlabd --platform fake` with a fresh data folder on free ports.
+1. It starts `hlabd --platform fake` with a fresh data folder on free ports. Its
+   catalog takes `debian-13` from a local HTTP server (python3), as a small
+   qcow2 of the tests: the fake machine's servers need no real image.
 2. It runs the hcloud CLI with the commands of the phases so far.
 3. It runs OpenTofu (`apply`, `plan`, `destroy`) on every `examples/tofu-<phase>`.
 

@@ -20,7 +20,11 @@ type Check struct {
 	// Update gives the texts of Hetzner's PUT requests, which differ from
 	// those of its POST requests (measured 2026-11-07 on SSH keys).
 	Update bool
-	fields []Field
+	// Singular says "field" for one field, as the POSTs of servers and
+	// Primary IPs do; SSH keys say "fields" even for one (measured
+	// 2026-11-08).
+	Singular bool
+	fields   []Field
 }
 
 // Fail notes that a field is invalid, with Hetzner's message.
@@ -109,6 +113,9 @@ func (c *Check) Err() error {
 	names := make([]string, len(c.fields))
 	for i, field := range c.fields {
 		names[i] = "'" + field.Name + "'"
+	}
+	if c.Singular && len(c.fields) == 1 {
+		return InvalidInput("invalid input in field "+names[0], c.fields...)
 	}
 	return InvalidInput("invalid input in fields "+strings.Join(names, ", "), c.fields...)
 }

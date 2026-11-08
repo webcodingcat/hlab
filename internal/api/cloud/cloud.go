@@ -25,6 +25,8 @@ func Register(api *web.API, l *lab.Lab) {
 	registerImages(api, l.Catalog())
 	registerISOs(api, l.Catalog())
 	registerSSHKeys(api, l)
+	registerServers(api, l)
+	registerPrimaryIPs(api, l)
 }
 
 // listJSON answers a list request: the page of items the query asks for

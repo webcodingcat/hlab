@@ -299,14 +299,43 @@ smoke() (
   need hcloud "the version in compat/versions.yaml"
   need tofu "the version in compat/versions.yaml"
   need ssh-keygen "sudo apt install openssh-client"
-  local dir hlabd_pid="" control="" example
+  need python3 "sudo apt install python3"
+  local dir hlabd_pid="" images_pid="" control="" images="" own_ip example
   dir="$(mktemp -d)"
   trap '[[ -z "${hlabd_pid}" ]] || kill "${hlabd_pid}" 2>/dev/null
+    [[ -z "${images_pid}" ]] || kill "${images_pid}" 2>/dev/null
     rm -rf "${dir}"' EXIT
-  mkdir "${dir}/data"
+  mkdir "${dir}/data" "${dir}/images"
   # any free ports and no waiting, so that it runs beside a lab in use
   printf 'time_scale: 0\nports: {cloud: 0, hetzner: 0, control: 0}\n' \
     >"${dir}/data/hlab.yaml"
+  # the fake machine's servers need an image, but not a real one: a small
+  # qcow2 from a local server stands in for Debian's
+  cp internal/imagefmt/testdata/plain.qcow2 "${dir}/images/debian.qcow2"
+  (cd "${dir}/images" && sha256sum debian.qcow2 >SHA256SUMS)
+  python3 -u -m http.server 0 --bind 127.0.0.1 --directory "${dir}/images" \
+    >"${dir}/images.log" 2>&1 &
+  images_pid=$!
+  for _ in {1..50}; do
+    images="$(grep -o 'port [0-9]*' "${dir}/images.log" | cut -d' ' -f2)" \
+      && break
+    sleep 0.1
+  done
+  [[ -n "${images}" ]] || die "the image server did not start"
+  images="http://127.0.0.1:${images}"
+  cat >"${dir}/data/catalog.yaml" <<EOF
+images:
+  - id: 310554929
+    name: debian-13
+    description: Debian 13
+    os_flavor: debian
+    os_version: "13"
+    architecture: x86
+    disk_size: 5
+    created: 2025-08-18T06:15:25Z
+    rapid_deploy: true
+    source: {url: "${images}/debian.qcow2", checksums: "${images}/SHA256SUMS"}
+EOF
   CGO_ENABLED=0 go build -o "${dir}/bin/" ./cmd/hlabd ./cmd/hlab
   "${dir}/bin/hlabd" --platform fake --data "${dir}/data" \
     2>"${dir}/hlabd.log" &
@@ -331,6 +360,23 @@ smoke() (
   hcloud ssh-key create --name smoke \
     --public-key-from-file "${dir}/id_ed25519.pub"
   hcloud ssh-key list
+  hcloud primary-ip create --name smoke-ip --type ipv4 --location fsn1
+  hcloud server create --name smoke --type cpx22 --image debian-13 \
+    --location fsn1 --ssh-key smoke
+  hcloud server list
+  hcloud server describe smoke
+  hcloud server poweroff smoke
+  own_ip="$(hcloud server ip smoke)"
+  hcloud primary-ip unassign "$(hcloud primary-ip list -o noheader \
+    -o columns=id,ip | awk -v ip="${own_ip}" '$2 == ip {print $1}')"
+  hcloud primary-ip assign --server smoke smoke-ip
+  hcloud server poweron smoke
+  hcloud server reboot smoke
+  hcloud server reset smoke
+  hcloud server shutdown smoke
+  hcloud primary-ip list
+  hcloud server delete smoke
+  hcloud primary-ip delete smoke-ip
   hcloud ssh-key delete smoke
   for example in examples/tofu-*; do
     cp -r "${example}" "${dir}/tofu"

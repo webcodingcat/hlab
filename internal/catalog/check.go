@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 )
 
 // The values Hetzner's API allows (its spec's enums), so that a catalog
@@ -102,6 +103,11 @@ func (c *Catalog) check() error {
 		}
 		if err := oneOf("image "+image.Name+" architecture", image.Architecture, architectures); err != nil {
 			return err
+		}
+		for key, value := range map[string]string{"url": image.Source.URL, "checksums": image.Source.Checksums} {
+			if !strings.HasPrefix(value, "http://") && !strings.HasPrefix(value, "https://") {
+				return fmt.Errorf("image %s: source.%s must be an http or https URL", image.Name, key)
+			}
 		}
 	}
 	if err := uniqueIDsAndNames("isos", c.ISOs, func(i ISO) (int64, string) { return i.ID, i.Name }); err != nil {

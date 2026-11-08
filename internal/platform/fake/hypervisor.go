@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"os"
 	"slices"
 	"strings"
 
@@ -339,7 +340,12 @@ func (h *Hypervisor) FlattenDisk(ctx context.Context, src, dst string) error {
 	defer h.fake.mu.Unlock()
 	file, found := h.fake.disks[src]
 	if !found {
-		return fmt.Errorf("disk %q: %w", src, platform.ErrNotFound)
+		// a disk file the system wrote itself, such as the image cache's
+		// VHD: the fake knows it only from the file system
+		if _, err := os.Stat(src); err != nil {
+			return fmt.Errorf("disk %q: %w", src, platform.ErrNotFound)
+		}
+		file = &disk{}
 	}
 	if _, found := h.fake.disks[dst]; found {
 		return fmt.Errorf("disk %q: %w", dst, platform.ErrExists)
@@ -365,6 +371,17 @@ func (h *Hypervisor) DeleteDisk(ctx context.Context, path string) error {
 	}
 	delete(h.fake.disks, path)
 	return nil
+}
+
+// HostResources reports the fake host's threads and memory
+// (SetHostResources).
+func (h *Hypervisor) HostResources(ctx context.Context) (platform.HostResources, error) {
+	if err := h.fake.enter(ctx, "HostResources"); err != nil {
+		return platform.HostResources{}, err
+	}
+	h.fake.mu.Lock()
+	defer h.fake.mu.Unlock()
+	return h.fake.resources, nil
 }
 
 // CreateSeed keeps the seed's files in memory.
