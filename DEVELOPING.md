@@ -631,8 +631,11 @@ appliance's MAC addresses are `02:48:4c:0a:00:0<n>` (set A) or `02:48:4c:0b:00:0
   and 8081; the lab control on 8090 stays closed to them.
 - The uplink reaches the Internet only: private and link-local ranges, the
   Default Switch's and the LAN's among them, are rejected, so no server reaches the
-  Windows host or its LAN. IPv6 to the uplink is rejected (the Default Switch has
-  none), and so is IPv4 from servers without Internet.
+  Windows host or its LAN. So is the lab's own range `198.18.0.0/15`: an address
+  nobody holds would otherwise match the uplink's default route and leave the lab.
+  The appliance needs no routing table of its own for the uplink: only `public`
+  may forward to it. IPv6 to the uplink is rejected (the Default Switch has none),
+  and so is IPv4 from servers without Internet.
 - No rule depends on conntrack seeing a connection start. Between host and servers
   and among servers nothing is tracked; the answers to the host's connections are
   `established`, which conntrack also gives a running TCP connection after an

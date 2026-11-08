@@ -170,3 +170,18 @@ Still open, for 1b:
 - HLab's `Lab.Act` answers 423 `locked` while an action of the resource runs;
   Hetzner started a reboot during a running poweroff. Which commands Hetzner
   refuses with 423, and when, is to measure and to settle with the server actions.
+
+### Metadata service (1b-2)
+
+Read with `curl` on one fresh Debian 13 server per location, on 2026-11-08,
+after the datacenters' removal (`GET /datacenters` answers 410).
+
+| What | Answer |
+|---|---|
+| `availability-zone` | `fsn1-dc14`, `nbg1-dc3`, `hel1-dc2`, `ash-dc1`, `hil-dc1`, `sin-dc1`: the old datacenter names stay |
+| `region` | the location's network zone: `eu-central`, `us-east`, `us-west`, `ap-southeast` |
+| `/hetzner/v1/metadata`, keys | `instance-id`, `hostname`, `region`, `availability-zone`, `local-ipv4` (`""`), `network-config`, `vendor_data`, `public-ipv4`, `public-keys`; **no `private-networks`** on a server without a network |
+| `network-config` | version 1, `eth0` with its MAC: `dhcp` for IPv4, the `::1` of the server's `/64` with gateway `fe80::1` and the IPv6 name servers |
+
+Still open, for 2a: HLab's summary carries `private-networks: []` on a server
+without a network, Hetzner's leaves the key out.

@@ -165,6 +165,11 @@ the tests. Look there before writing such a part anew.
 - dnsmasq is restarted when its configuration changes, not sent SIGHUP: it reads
   its ranges and interfaces only at its start. Its leases are static, so a
   restart loses nothing.
+- The uplink has no routing table of its own: only `public` forwards to it, and
+  the uplink lock rejects the lab's range `198.18.0.0/15`, so an address nobody
+  holds never leaves the lab through the default route.
+- The metadata summary leaves out `private-networks` on a server without a
+  network, HLab's says `[]` (2a, `compat/requirements.md`).
 
 Next: 1b-3, HostNet, the appliance's start and watchdog, the life cycle.
 

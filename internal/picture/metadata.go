@@ -11,7 +11,8 @@ import (
 )
 
 // availabilityZones are the zones Hetzner's metadata service reports for
-// its locations; other locations report "<location>-dc1".
+// its locations; other locations report "<location>-dc1". Measured on real
+// servers after the datacenters' removal (compat/requirements.md).
 var availabilityZones = map[string]string{
 	"fsn1": "fsn1-dc14",
 	"nbg1": "nbg1-dc3",

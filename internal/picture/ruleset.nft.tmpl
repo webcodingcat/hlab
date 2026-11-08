@@ -39,8 +39,10 @@ table inet hlab {
 		# appliance
 		iifname "{{.Public}}" oifname "{{.Link}}" ct state established,related accept
 		iifname "{{.Public}}" oifname "{{.Link}}" reject
-		# the uplink leads to the Internet only, never to the host or its LAN
-		oifname "{{.Uplink}}" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 } reject with icmpx admin-prohibited
+		# the uplink leads to the Internet only, never to the host or its LAN,
+		# nor to a lab address that nobody holds (it would match the default
+		# route)
+		oifname "{{.Uplink}}" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10, 198.18.0.0/15 } reject with icmpx admin-prohibited
 		# the Default Switch has no IPv6
 		oifname "{{.Uplink}}" meta nfproto ipv6 reject with icmpx admin-prohibited
 		oifname "{{.Uplink}}" ip saddr @no_internet reject with icmpx admin-prohibited
