@@ -133,15 +133,14 @@ func registerSSHKeys(api *web.API, l *lab.Lab) {
 			}
 			// the name first: a key whose name and fingerprint are both
 			// taken is refused for its name
-			for _, other := range state.All(tx, state.SSHKeys) {
-				if other.ProjectID == key.ProjectID && other.Name == key.Name {
-					return web.Uniqueness(sshKeyNotUnique, "name")
-				}
+			if _, taken := state.ByName(tx, state.SSHKeys, key.ProjectID, key.Name); taken {
+				return web.Uniqueness(sshKeyNotUnique, "name")
 			}
-			for _, other := range state.All(tx, state.SSHKeys) {
-				if other.ProjectID == key.ProjectID && other.Fingerprint == key.Fingerprint {
-					return web.Uniqueness(sshKeyNotUnique, "public_key")
-				}
+			_, taken := state.Find(tx, state.SSHKeys, func(other *state.SSHKey) bool {
+				return other.ProjectID == key.ProjectID && other.Fingerprint == key.Fingerprint
+			})
+			if taken {
+				return web.Uniqueness(sshKeyNotUnique, "public_key")
 			}
 			key.ID = state.NewID(tx, state.SSHKeys)
 			state.Put(tx, state.SSHKeys, key)
@@ -188,10 +187,8 @@ func registerSSHKeys(api *web.API, l *lab.Lab) {
 				return err
 			}
 			if body.Name != nil && *body.Name != key.Name {
-				for _, other := range state.All(tx, state.SSHKeys) {
-					if other.ProjectID == key.ProjectID && other.Name == *body.Name {
-						return web.Uniqueness(sshKeyNotUnique, "name")
-					}
+				if _, taken := state.ByName(tx, state.SSHKeys, key.ProjectID, *body.Name); taken {
+					return web.Uniqueness(sshKeyNotUnique, "name")
 				}
 				key.Name = *body.Name
 			}

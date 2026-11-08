@@ -239,6 +239,19 @@ func (h *Hypervisor) HostResources(ctx context.Context) (platform.HostResources,
 	return platform.HostResources{Threads: resources.Threads, MemoryMB: resources.MemoryMB}, nil
 }
 
+// DiskSpace reports the size of the drive that holds path and the space
+// free on it for the caller (which a quota may make less than the drive's).
+func (h *Hypervisor) DiskSpace(ctx context.Context, path string) (platform.DiskSpace, error) {
+	var space struct {
+		TotalMB int64 `json:"total_mb"`
+		FreeMB  int64 `json:"free_mb"`
+	}
+	if err := h.call(ctx, "disk-space", map[string]string{"path": path}, &space); err != nil {
+		return platform.DiskSpace{}, err
+	}
+	return platform.DiskSpace{TotalMB: space.TotalMB, FreeMB: space.FreeMB}, nil
+}
+
 // CreateSeed writes an ISO labeled "cidata" with the files (IMAPI2).
 func (h *Hypervisor) CreateSeed(ctx context.Context, path string, files map[string][]byte) error {
 	return h.call(ctx, "create-seed", map[string]any{"path": path, "files": files}, nil)

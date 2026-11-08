@@ -241,6 +241,19 @@ func TestStartsSentAtOnceKeepToTheRoom(t *testing.T) {
 	waitActions(t, test, first, second)
 }
 
+// A create needs a tenth of the data folder's drive free, counted as it is
+// now; below that it is Hetzner's 412 resource_unavailable.
+func TestCreateKeepsATenthOfTheDiskFree(t *testing.T) {
+	test := newTestLab(t)
+	body := map[string]any{"name": "web", "server_type": "cpx22", "image": "debian-13", "start_after_create": false}
+	test.machine.SetDiskSpace(platform.DiskSpace{TotalMB: 100_000, FreeMB: 9_999})
+	full := &responseOf{test.client.Do(http.MethodPost, "/v1/servers", body)}
+	expectError(t, "a create on a full drive", full, http.StatusPreconditionFailed, "resource_unavailable", "error during placement")
+	test.machine.SetDiskSpace(platform.DiskSpace{TotalMB: 100_000, FreeMB: 10_000})
+	created := createServer(t, test, body)
+	waitActions(t, test, created.Action)
+}
+
 func TestServerWithoutKeysGetsARootPassword(t *testing.T) {
 	test := newTestLab(t)
 	created := createServer(t, test, map[string]any{"name": "web", "server_type": "cpx22", "image": "debian-13", "start_after_create": false})

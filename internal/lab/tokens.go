@@ -35,7 +35,7 @@ func (l *Lab) CreateToken(projectID int64, name string, permission state.Permiss
 		if _, err := state.Get(tx, state.Projects, projectID); err != nil {
 			return err
 		}
-		if _, found := tokenByName(tx, projectID, name); found {
+		if _, found := state.ByName(tx, state.Tokens, projectID, name); found {
 			return fmt.Errorf("token %q: %w", name, ErrExists)
 		}
 		token = l.putToken(tx, projectID, name, permission, secret)
@@ -60,16 +60,6 @@ func (l *Lab) putToken(tx *state.Tx, projectID int64, name string, permission st
 	}
 	state.Put(tx, state.Tokens, &token)
 	return token
-}
-
-// tokenByName returns a project's token of that name, if there is one.
-func tokenByName(tx *state.Tx, projectID int64, name string) (*state.Token, bool) {
-	for _, token := range state.All(tx, state.Tokens) {
-		if token.ProjectID == projectID && token.Name == name {
-			return token, true
-		}
-	}
-	return nil, false
 }
 
 // newSecret returns a new random token.

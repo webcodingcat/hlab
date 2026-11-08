@@ -91,5 +91,5 @@ shutdown_timeout: 60   # seconds, then the servers are turned off
 bin/dev test
 ```
 
-[DEVELOPING.md](DEVELOPING.md) explains the code and the tools, [STYLE.md](STYLE.md)
-the standards.
+[DEVELOPING.md](DEVELOPING.md) explains the code, [docs/tools.md](docs/tools.md)
+the tools, [STYLE.md](STYLE.md) the standards.

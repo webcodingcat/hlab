@@ -6,13 +6,19 @@ work on it. Other files cover the rest:
 - CLAUDE.md lists the rules that are easy to break.
 - [STYLE.md](STYLE.md) has the coding standards.
 - [docs/roadmap.md](docs/roadmap.md) says what is done and what comes next.
+- [docs/hyperv.md](docs/hyperv.md): how HLab drives Hyper-V and the host's
+  network on Windows.
+- [docs/appliance.md](docs/appliance.md): the pictures, the agent and the
+  appliance's build.
+- [docs/tools.md](docs/tools.md): what a developer installs; lint, the tests,
+  the live tests, the dev loop, the installer, the builds.
 
 Section names in parentheses, such as (The state), point to the section of this file
-that explains more.
+that explains more; a file name in them, such as (docs/tools.md), to that file.
 
 **Start here.** For a first change, read "A request's path" and "Layers", then
-the recipe for what you add (Recipes, at the end). The other sections are
-reference: read one when you work on its part.
+the recipe for what you add (Recipes, at the end). The other sections and
+files are reference: read one when you work on its part.
 
 ## A request's path
 
@@ -296,8 +302,12 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
   and `reboot` or `reset` of an off server) is Hetzner's 412
   `resource_unavailable`. A start sets `want_running` in its plan, so starts
   sent at once count each other before their steps run; if the steps fail,
-  the server is off again. Without the machine (the API's unit tests) there
-  is always room.
+  the server is off again. A create also needs a tenth of the data folder's
+  drive free (`Lab.CheckDisk`, from `Hypervisor.DiskSpace`), counted as it is
+  now: dynamic disks take only what the guests wrote, so the servers' disks
+  may be larger together than the drive. Without the machine started (the
+  API's unit tests) there is always room for memory, and the fake reports a
+  drive of 1 TB, half free.
 - **Addresses** come from `198.19.0.0/16` (IPv4, without `.0` and `.255`) and
   `2001:db8:1::/48` (one `/64` per IPv6), in order: `state.Lab.Pools` holds
   where the next search starts, so a released address comes back only once the
@@ -716,8 +726,8 @@ real ID and name, because the tools check them (`compat/requirements.md`).
 - The fake keeps everything in memory. Tests can make calls fail (`FailNext`) or
   wait (`Delay`), and read the calls it received (`Calls`).
 - `internal/platform/windows` builds only for Windows. It has the life cycle (The
-  service), the hypervisor (Hyper-V, below), the host network and the NRPT
-  rules (`hostnet.ps1`, Hyper-V, below) and the agent dialer (hv_sock).
+  service), the hypervisor, the host network and the NRPT rules
+  (docs/hyperv.md) and the agent dialer (hv_sock).
   `internal/platform/linux` has only the Linux life cycle so far.
 - A method joins an interface with the phase that first calls it. Still to come:
   freezing a running VM's disk for snapshots (phase 3a), counters for metrics
@@ -727,226 +737,6 @@ real ID and name, because the tools check them (`compat/requirements.md`).
   the Linux platform (phase 8) must set it there too. If a later phase needs to
   change a port, the method comes back through the recipe "A new platform method".
 - `lab` reaches the platform only through `system`, which never sees the state.
-
-## Hyper-V
-
-The Windows hypervisor (`internal/platform/windows/hyperv.go`) runs the commands of
-`hyperv.ps1` in long-running PowerShell processes (`pshost`). It needs administrator
-rights, which `hlabd` and the live tests have, or the group Hyper-V Administrators.
-
-**pshost** keeps up to four `powershell.exe` (Windows PowerShell 5.1, which every
-Windows 11 has and which loads the Hyper-V module natively). Starting one and
-loading the module takes most of a second; a command then takes about 30 ms.
-
-Why a pool of a fixed size and not one process: commands of one process run one
-after another, and some take minutes. While `Convert-VHD` flattens a 40 GB disk for
-a snapshot, a single process would hold up every `VMState`, `StartVM` and
-`CreateVM` of the lab. The pool stays simple: a fixed size, no priorities; a call
-waits only when all four are busy.
-
-- The processes start on demand; commands in one process run one after another, so
-  a slow command (`Convert-VHD`) holds up only its own process.
-- The loop (`pshost/host.ps1`) gets the caller's script as its first line. The
-  script returns a hashtable from command names to script blocks, so only those
-  commands can run.
-- A command fails with a kind by throwing `"<kind>: <message>"`, such as
-  `"not_found: VM web"`. `hyperv.go` turns the kinds `not_found`, `exists`,
-  `running` and `not_running` into the platform's errors; a cmdlet's error has no
-  kind.
-- A command returns a list with a leading comma (`, @(...)`); PowerShell would turn
-  a list of one into the item, and an empty list into nothing.
-- Answers start with the character 0x1E. Anything else on stdout (`Write-Host`,
-  `[Console]::WriteLine`) is logged at debug level and skipped.
-- A canceled call kills its process, and so does a process that ends by itself
-  (`pshost.ErrCrashed`, with the end of its error output). The next call starts a
-  new one. Hyper-V may still finish what the killed command had started, so a
-  caller looks at the VM again rather than assume nothing happened.
-- The processes run with `CREATE_NO_WINDOW`, so `hlabd` without a console opens no
-  window.
-
-**What Hyper-V does differently**, and how `hyperv.ps1` deals with it:
-
-- A VM is generation 2 with Secure Boot and the template "Microsoft UEFI
-  Certificate Authority"; the official cloud images boot with it unchanged.
-- Memory is static, as on Hetzner: with dynamic memory the guest would see only the
-  start value.
-- At every VM, `AutomaticStopAction` is `ShutDown` and `AutomaticStartAction` is
-  `Nothing`: a stopping host shuts the guests down, and HLab starts them itself.
-- Disks sit on SCSI controller 0, a slot is its location; the system disk is slot
-  0 and the first boot device, so the guest sees it as `sda`. A Gen2 VM takes a DVD
-  drive only while it is off, so every VM gets an empty one on controller 1 when it
-  is created; `SetISO` only fills or empties it.
-- `New-VM` adds a NIC of its own; `CreateVM` removes it and adds the spec's NICs
-  with their MAC addresses.
-- Ports: servers' public NICs are isolated in the private VLAN 10/11 and see only
-  the appliance, which is promiscuous; private NICs are access ports, the
-  appliance's private NIC a trunk for VLANs 2–4094.
-- Hyper-V has no ACPI button. `ShutdownVM` asks the guest's shutdown service
-  (`Msvm_ShutdownComponent.InitiateShutdown`) and does not wait; a guest without
-  it ignores the request, as a guest without ACPI does on Hetzner. `ResetVM` is
-  `Restart-VM -Type Reset`.
-- States: `Saved` and `Hibernated` count as off, `Pausing` and `Resuming` as
-  paused, everything else that is not off as running. The heartbeat counts when
-  Hyper-V reports `Ok…`.
-- A VM's power state and heartbeat come from WMI (`Msvm_ComputerSystem`,
-  `Msvm_HeartbeatComponent`), not from `Get-VM`: in a long-running process,
-  `Get-VM` shows a VM as it was up to seconds ago when another process of
-  the pool changed it, so the watchdog took a server that had just started
-  for one that had shut down, and an appliance turned off for one running.
-- `Get-VM -Name` takes wildcards, so names are escaped. `Get-VM` without a name
-  reads every VM (about 10 ms each); only `FindVMs` does that, when HLab starts.
-- Disks are dynamic VHDX with 1 MB blocks, as Microsoft advises for Linux guests,
-  or differencing VHDX on a parent. Hyper-V cannot use files in WSL2's file system.
-- `qemu-img` cannot open a differencing VHDX; `FlattenDisk` (`Convert-VHD`) writes
-  one with its parents into a plain one first.
-- The seed is an ISO 9660 with Joliet, labeled `cidata`, written with IMAPI2.
-  Joliet keeps the long names `meta-data` and `network-config`. PowerShell cannot
-  read the IStream that IMAPI2 returns, so a few lines of C# (`Add-Type`, once per
-  process) write it to the file.
-- `DeleteDisk` asks Hyper-V which VM uses the disk: an off VM does not hold its
-  disks open, so the file alone would not tell.
-
-**The host's side** (`hostnet.go`, `hostnet.ps1`) runs in a `pshost` of one
-process each for `HostNet` and `HostDNS`; it needs administrator rights.
-
-- `SetUp` creates the internal switch (Windows adds the host's NIC `vEthernet
-  (<switch>)`) and the private ones, or takes them over, and makes the NIC's
-  addresses and routes exactly those of the link: what is missing is added,
-  what is too much goes, Windows' own link-local addresses stay. DHCP is off on
-  that NIC.
-- Addresses and routes go to the active store only: a restart of Windows clears
-  them, and the next start of HLab sets them again. The switches stay until
-  `TearDown`, which removes the switches of the last `SetUp`; with the internal
-  one go its NIC, addresses and routes.
-- `CheckRanges` lists every route and address of the active store, but those of
-  NICs on the lab's own switches (`platform.SwitchPrefix`), and Go finds the
-  overlaps; default routes do not count.
-- The NRPT rules carry the comment `hlab`, so a start finds those of a crashed
-  HLab. `Apply` adds and removes only what differs and then empties the DNS
-  cache, which would answer from before the rule. A domain `example.com` becomes
-  the namespace `.example.com`, which covers the domain and every name below.
-- The agent dialer finds the VM's ID through `hyperv.ps1` and dials hv_sock with
-  go-winio; the service ID is `VsockServiceID(port)`, which must be registered
-  once (`bin/dev.ps1 dev-install`, later the installer). A connection to a VM
-  whose agent does not listen yet hangs for seconds, so the appliance's start
-  gives each try one second.
-
-## Pictures and the agent
-
-The data plane lives in the appliance, a small Debian 13 VM. hlabd never sends it a
-change, only whole pictures; the agent inside makes the appliance match each one.
-
-**Pictures** (`internal/picture`) are pure functions of a `picture.Lab`: plain
-values the lab takes from its state and settings (the host link, the MAC set, the
-servers with their Primary IPs). Each picture carries the Lab's generation; a
-change of the servers or their addresses sends every picture anew
-(`Lab.UpdatePictures`, one at a time, so that an older one never follows a
-newer one). Their output is compared with golden files in
-`internal/picture/testdata`; `go test ./internal/picture -update` writes them anew,
-and the diff shows what changed.
-
-| Picture | What | The agent |
-|---|---|---|
-| `links` | the four NICs by MAC (`link`, `public`, `private`, `uplink`), VRFs, VLANs, addresses, routes, sysctls | netlink: adds what is missing, removes what the picture lacks |
-| `ruleset` | the whole nftables ruleset as text | `nft -f`: all or nothing |
-| `dhcp` | dnsmasq's whole configuration | writes it, checks it with `dnsmasq --test`, restarts `hlab-dnsmasq` if it changed |
-| `metadata` | the metadata service's answers per server, with the server's addresses | serves them on `169.254.169.254:80` |
-
-**The address plan** as the pictures use it: the host link `198.18.0.0/29` and
-`2001:db8:0:ffff::/64` (host `.1`/`::1`, appliance `.2`/`::2`, `.3` the source for
-ACME checks); the servers see Hetzner's gateways `172.31.1.1` (on-link to their
-`/32`) and `fe80::1`, and the resolvers `198.18.0.2` and `2001:db8:0:ffff::2`. The
-appliance's MAC addresses are `02:48:4c:0a:00:0<n>` (set A) or `02:48:4c:0b:00:0<n>`
-(set B), n = NIC 1 to 4; an update starts the new appliance with the other set.
-
-**The ruleset's fixed part**, before any firewall (`ruleset.nft.tmpl`):
-
-- Servers reach the host (`198.18.0.1`, `2001:db8:0:ffff::1`) only on TCP 8080
-  and 8081; the lab control on 8090 stays closed to them.
-- The uplink reaches the Internet only: private and link-local ranges, the
-  Default Switch's and the LAN's among them, are rejected, so no server reaches the
-  Windows host or its LAN. So is the lab's own range `198.18.0.0/15`, which the
-  uplink's routing table already makes unreachable (The appliance). IPv6 to the
-  uplink is rejected (the Default Switch has none), and so is IPv4 from servers
-  without Internet.
-- No rule depends on conntrack seeing a connection start. Between host and servers
-  and among servers nothing is tracked; the answers to the host's connections are
-  `established`, which conntrack also gives a running TCP connection after an
-  update of the appliance.
-- The servers reach DHCP, the metadata service and DNS on the appliance; the host
-  reaches all of it.
-
-**Redirects stay off** on every interface (sysctl in the image and per interface in
-the `links` picture): a router that sends ICMP redirects teaches servers to reach
-each other past the firewalls.
-
-**The agent** (`internal/agent`, Linux only):
-
-- It answers hlabd on vsock port 5000 (`agentproto.Port`): `GET /v1/status` (version
-  and the generation of each picture applied) and `PUT /v1/pictures/<name>`. It
-  applies one picture at a time. 204 means applied; 400 a body that is not the
-  picture (also unknown fields, which come from a newer hlabd); 422 that it refused
-  the picture and nothing changed (its own `Check`, nft or dnsmasq refused it); 500
-  that applying failed part way, and hlabd sends the picture again.
-- `links` is not atomic, but every step makes a state the next picture can start
-  from. Its order: rename the NICs (a NIC must be down for that), VRFs, VLANs,
-  sysctls, links up, addresses, routes. Its routes carry the protocol number 72, so
-  the agent removes only its own. The `uplink` is networkd's: the agent only names
-  it.
-- **Announcing.** Whenever a device's carrier comes up, and after each `links`
-  picture, the agent sends each of the device's announced addresses twice: a
-  gratuitous ARP for IPv4, an unsolicited neighbor advertisement (override) for
-  IPv6. After an update the new appliance has new MAC addresses; without this the
-  neighbors keep the old ones for seconds.
-- **The metadata service** tells servers apart by the request's source address.
-  It listens with `IP_FREEBIND`, because `169.254.169.254` on `lo` comes with the
-  first `links` picture.
-- It decides nothing: what the appliance does comes from the pictures. After a
-  restart it has none and reports none; hlabd sends all of them again.
-
-## The appliance
-
-`bin/dev appliance` builds `build/appliance/hlab-appliance.vhdx` with the agent of
-the working tree (`appliance/build.sh`). It needs no root:
-
-1. `mmdebstrap --mode=unshare` builds Debian 13 (trixie with its updates and
-   security updates) as a tarball. It installs only Debian packages, puts in
-   `appliance/files` and the agent, and runs `appliance/customize.sh`.
-2. `mkfs.ext4 -d` fills the root file system from the tarball; `mkfs.vfat` and
-   mtools build the EFI partition with Debian's shim and grub, signed for the
-   "Microsoft UEFI Certificate Authority", which the VMs' Secure Boot template
-   trusts. grub boots `/vmlinuz` of the root file system.
-3. `sfdisk` puts both into a 4 GB disk with a GPT, and `qemu-img` writes it as a
-   dynamic VHDX with 1 MB blocks.
-
-What is in it:
-
-- **Packages:** the cloud kernel (Hyper-V's drivers, signed), systemd, nftables,
-  dnsmasq (only `dnsmasq-base`: the agent runs it), knot, unbound with its trust
-  anchor (`dns-root-data`), haproxy, pebble, openssh-server, rsync, borgbackup,
-  btrfs-progs, qemu-utils. `--variant=apt` installs no Recommends: a package
-  that the appliance needs from them is named.
-- **Running:** `hlab-agent` before `sysinit.target`, after the modules (`hv_sock`,
-  `vrf`, `8021q`) and the boot ruleset; it must not wait for the network, which it
-  sets up itself. networkd only for the uplink (DHCP, matched by both MAC sets,
-  `ManageForeignRoutes=no`). unbound as the lab's resolver on `198.18.0.2` and
-  `2001:db8:0:ffff::2`. `hlab-dnsmasq` once the agent has its configuration.
-- **The uplink's own routing table** (`uplink`, 200): networkd puts the DHCP
-  default route there, not into the main table. Rules after the main table
-  send only the servers' traffic (from `public`) and the appliance's own (from
-  `lo`) to it, and `198.18.0.0/15` is unreachable in it: a lab address that
-  nobody holds never leaves through the uplink, and nothing else reaches it.
-- **Off until their phase:** knot, haproxy, sshd (its host keys are removed;
-  each appliance makes its own in phase 5), and `systemd-networkd-wait-online`.
-  pebble has no unit of its own. `serial-getty@ttyS0` is masked: the VM has no
-  COM port until the console (6a).
-- **The clock:** Hyper-V gives a VM the host's local time as its RTC, which
-  Linux reads as UTC, so the appliance starts off by the time zone. Hyper-V's
-  time sync (`hv_utils`) corrects it within a second of the boot; the journal
-  shows the jump.
-- **Boot ruleset** (`/etc/nftables.conf`): forwards nothing until the first
-  `ruleset` picture.
-- Nobody logs in: root is locked, hlabd reaches the agent over hv_sock.
 
 ## Dependencies
 
@@ -972,167 +762,6 @@ stay out of `go.mod`. Run them with `go tool -modfile=tools/go.mod <tool>`.
 | `mvdan.cc/sh/v3` (`shfmt`) | formats the shell scripts |
 
 No HTTP router (the patterns of `net/http` are enough), no ORM, no database.
-
-## Tools
-
-`bin/dev` (Bash, for Linux and WSL2) and `bin/dev.ps1` (PowerShell, for Windows) are
-the only entry points. CI runs them the same way a developer does.
-
-What a developer installs:
-
-| What | Where | Why |
-|---|---|---|
-| Go | `go.mod` names the version; with `GOTOOLCHAIN=auto` (the default) any newer Go fetches it | building, testing |
-| gcc | Linux, WSL2 (`apt install gcc`) | only for the race detector of `bin/dev test`; the binaries use no cgo |
-| shellcheck, yamllint | Linux, WSL2 (`apt install shellcheck yamllint`) | `bin/dev lint` |
-| PSScriptAnalyzer | Windows PowerShell or pwsh: `Install-Module PSScriptAnalyzer -Scope CurrentUser` | `bin/dev lint`, `bin/dev.ps1 lint` |
-| hcloud CLI, OpenTofu | Linux, WSL2, in the versions of `compat/versions.yaml` | `bin/dev smoke` |
-| Docker | WSL2 (Docker Desktop with WSL integration) or Linux | `bin/dev test --agent` |
-| mmdebstrap, uidmap, debian-archive-keyring, e2fsprogs (1.47.1 or newer) with libarchive (`libarchive13t64`), dosfstools, mtools, fdisk, qemu-utils | WSL2, Linux (`apt install …`); an entry for the user in `/etc/subuid` and `/etc/subgid` (Ubuntu creates it) | `bin/dev appliance` |
-| Hyper-V; once as administrator `bin/dev.ps1 dev-install`; Smart App Control off (it blocks self-built programs unpredictably) | Windows 11 Pro | `bin/dev itest`, `bin/dev deploy` |
-
-golangci-lint and shfmt need no install: `go tool` builds them from `tools/go.mod`
-the first time they run. In WSL2, `bin/dev lint` runs PSScriptAnalyzer in pwsh if it
-is installed, otherwise in Windows PowerShell through WSL interop. `bin/dev.ps1 lint`
-skips shellcheck and yamllint; they are Linux tools, and CI's Linux job runs them.
-
-**Windows tests from WSL2.** `bin/dev test --windows` compiles each package's tests
-with `GOOS=windows go test -c`. It runs the resulting `.exe` through WSL interop in
-the package's directory, and the exit code and output come back to WSL2. Windows
-needs no Go for this. Tests that need the go command, such as the layer test, are
-skipped there; CI's Windows job has Go and runs them.
-
-**Live tests.** `bin/dev itest [--run <pattern>]` runs the tests in `itest/`, which
-build only with the tag `live`, against the real platform: the contract tests of
-the hypervisor, the host network and the NRPT rules
-(`internal/platform/contract`), the appliance's boot with its watchdog, and
-the servers (`TestServersBootAnswerAndOutliveTheLab`): the whole lab with
-the Cloud API in the test's process creates a Debian and an Ubuntu server.
-
-1. Both answer SSH and serve what their metadata service told them (their
-   user data starts a small HTTP server on port 8000) over IPv4 and IPv6.
-2. With the lab's key (`ssh.exe`), the guest sees the host as `198.18.0.1`
-   and `2001:db8:0:ffff::1`, and as `198.18.0.1` from WSL2 (`wsl.exe`, left
-   out without WSL or its ssh). It reaches 8080, 8081 and the Internet, not
-   8090, and the private ranges behind the uplink answer EHOSTUNREACH
-   (admin-prohibited). A ping from one server to the other has TTL 63: the
-   isolated ports let them meet only through the appliance.
-3. The lab stops (the host keeps no switch, address, route or NRPT rule of
-   it) and starts: the same servers on the same addresses with their disks
-   (a mark written before), booted again; the Ubuntu server's VM is removed
-   meanwhile and comes back with its disk.
-4. A crash: another process of the test binary (`TestLabForACrash`) runs the
-   lab and is killed; the servers keep running, and the next start takes
-   them over without a boot.
-5. The appliance is turned off hard; the Debian server answers again within
-   10 s.
-6. The appliance's update: another crash, and the lab starts with a copy of
-   the release disk that differs only in the VHDX's creator field, so it is
-   another release. The new appliance (MAC set B) replaces the old one while
-   the Debian server runs: it must take new TCP connections again within 5 s
-   (tried every 100 ms), an SSH session that prints every 100 ms must live
-   through it, the server must not boot, and the appliance's folder must hold
-   only the new release and `system-B.vhdx`.
-7. A reset, the guest's shutdown, the deletes, and the host is clean.
-
-The test keeps the system images in `C:\HLabDev\itest\image-cache`, so that
-only its first run loads them.
-
-- The host network and the NRPT need administrator rights, without UAC. So the
-  tests run through the task "HLab itest" of the Task Scheduler (highest rights,
-  S4U: no window, no stored password). `bin/dev itest` compiles them with
-  `GOOS=windows go test -c -tags live` into `C:\HLabDev\itest`, copies the
-  appliance's disk there if `bin/dev appliance` built a newer one, writes
-  `run.cmd` with the test's flags, starts the task with `schtasks /run`, and
-  prints `itest.out` as it grows until `itest.rc` holds the exit code.
-  `bin/dev.ps1 itest` does the same on Windows with Go.
-- Once, as administrator: `bin/dev.ps1 dev-install` creates `C:\HLabDev`,
-  which only the developer, the administrators and SYSTEM may write (whatever
-  lands there runs elevated; Hyper-V's VMs may read it), the tasks "HLab itest"
-  and "HLab dev" (dev loop, below), the firewall rule "HLab dev" and the
-  agent's hv_sock service (the registry key of `VsockServiceID(5000)` under
-  `GuestCommunicationServices`). From WSL2: `powershell.exe -ExecutionPolicy
-  Bypass -File \\wsl.localhost\<distribution>\<repo>\bin\dev.ps1 dev-install`
-  in a PowerShell run as administrator. Running it again is safe.
-- HLab must not run meanwhile: the tests take its switches, ranges and VM name.
-- Disks go to a temporary folder on the Windows disk: Hyper-V cannot use files in
-  WSL2's file system.
-- The tests remove what they create. Their VMs and disks are named
-  `hlab-contract-…` and their VMs carry the notes `hlab-contract`; after an aborted
-  run, `Get-VM hlab-contract-* | Stop-VM -TurnOff -Force -Passthru | Remove-VM
-  -Force` removes the VMs. The appliance test uses the lab's own names
-  (`hlab-appliance-a`, `HLab-Link`, `HLab-Public`).
-- The live tests stay out of CI: GitHub's Windows runners have no nested Hyper-V.
-  All of them take about 5 minutes: the hypervisor's 30 s, the host network's 6 s,
-  the appliance's 30 s, the servers' 240 s with the images cached (the
-  appliance and the servers skip without the appliance's disk).
-
-**Agent tests.** The tests of `internal/agent` with the build tag `netns` change
-links, addresses, routes, nftables and sysctls for real, so they run in a network
-namespace of their own, never on the developer's machine as it is:
-
-- `bin/dev test --agent` builds them and runs them in a container without network
-  (`--network none`) with `NET_ADMIN` and `NET_RAW`. `/proc/sys` is read-only in a
-  container unless `systempaths=unconfined`; `NET_ADMIN` still limits writes to the
-  container's own `net.*`. The image (`internal/agent/testdata/Dockerfile`) has
-  nft, dnsmasq, ip and busybox's `udhcpc`, which plays a server asking for its
-  address.
-- `bin/dev test --agent --host` runs them with sudo in a new namespace
-  (`unshare --net`); CI's job `agent` does that on `ubuntu-latest`.
-- They take a few seconds. The NICs are veth pairs: the agent renames one end by its
-  MAC address, the test watches the other.
-- The tests without the tag (the API, the metadata service) run with `bin/dev test`.
-
-**Smoke tests.** At the end of a phase, `bin/dev smoke` runs the real tools against
-the lab, from Linux or WSL2:
-
-1. It starts `hlabd --platform fake` with a fresh data folder on free ports. Its
-   catalog takes `debian-13` from a local HTTP server (python3), as a small
-   qcow2 of the tests: the fake machine's servers need no real image.
-2. It runs the hcloud CLI with the commands of the phases so far.
-3. It runs OpenTofu (`apply`, `plan`, `destroy`) on every `examples/tofu-<phase>`.
-
-The smoke tests pass when nothing fails and the `plan` after `apply` shows no
-changes. Each phase adds its commands to `smoke` in `bin/dev` and its configuration
-as `examples/tofu-<phase>`. The smoke tests need the provider from the OpenTofu
-registry, so they stay out of CI.
-
-**The dev loop.** `bin/dev deploy` runs a freshly built `hlabd` on Windows from
-WSL2, without UAC:
-
-1. It builds everything (`bin/dev build`).
-2. If an `hlabd.exe` runs, it stops it with `hlab stop` (the servers shut
-   down, as at every stop) or, with `--keep-vms`, ends the task with `schtasks
-   /end` as a crash would end it: the servers and the appliance keep running,
-   and the start takes them over. Then it waits until the process is gone.
-3. It copies `hlabd.exe`, `hlab.exe` and a newer appliance's disk to
-   `C:\HLabDev\bin`, starts the task "HLab dev" (`hlabd.exe --data
-   C:\HLabDev\data`, highest rights, S4U as "HLab itest": no window, so its log
-   is `C:\HLabDev\data\logs\hlabd.log`) and waits until `hlab status`
-   answers.
-
-It prints how long that took. Measured on a Ryzen AI Max+ 395: about 29 s
-with the appliance made anew (stop 9 s, start 20 s), 9 s with `--keep-vms`.
-The CLI in WSL2 finds the dev loop's lab by itself (instance file). The task's
-firewall rule lets WSL2 reach 8080, 8081 and 8090 on `198.18.0.1`, the servers
-8080 and 8081 through the appliance. An installed HLab must not run meanwhile.
-
-**Installing.** `install/install.ps1` installs HLab for users (see its help and
-the README), from the folder that `bin/dev package` fills (`build/package`:
-`hlabd.exe`, `hlab.exe`, the Linux `hlab`, the appliance's disk, the script).
-There is no Windows service and no autostart: HLab runs when the user starts
-it (the start menu's link, whose "Run as administrator" flag the script sets
-in the `.lnk`, or `hlab start`). `-Uninstall` first stops the installed
-`hlabd` (`hlab stop`) and refuses while one from another folder runs. It
-removes the VMs with the notes `hlab` (with `-KeepData` their disks stay, and
-the next start gives each server a new VM with its disk), the switches `HLab-*` with the host's NIC, the NRPT rules
-with the comment `hlab`, and the rest the install added; the Hyper-V feature
-stays on. The firewall rule "HLab" is separate from the dev loop's, so both
-can be there.
-
-**Builds.** `bin/dev build` builds with `CGO_ENABLED=0` and `-trimpath`, and sets
-`main.version` from `git describe`. `hlabd --version` (and the same flag of the other
-binaries) prints it.
 
 ## Recipes
 

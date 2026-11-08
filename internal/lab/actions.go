@@ -204,9 +204,15 @@ func (l *Lab) newAction(tx *state.Tx, projectID int64, command string, resources
 	return action
 }
 
-// finishAction ends an action: success, or an error with message. Then the
-// project's oldest finished actions go, beyond MaxFinishedActions.
+// finishAction ends an action (endAction) and then drops the project's
+// oldest finished actions (trimActions).
 func (l *Lab) finishAction(tx *state.Tx, action *state.Action, message string) {
+	l.endAction(action, message)
+	trimActions(tx, action.ProjectID)
+}
+
+// endAction sets an action finished: success, or an error with message.
+func (l *Lab) endAction(action *state.Action, message string) {
 	finished := l.Now()
 	action.Progress = 100
 	action.Finished = &finished
@@ -216,9 +222,13 @@ func (l *Lab) finishAction(tx *state.Tx, action *state.Action, message string) {
 		action.Error = &state.Failure{Code: "action_failed", Message: message}
 		l.logger.Warn("action failed", "id", action.ID, "command", action.Command, "error", message)
 	}
+}
 
+// trimActions drops a project's oldest finished actions beyond
+// MaxFinishedActions.
+func trimActions(tx *state.Tx, projectID int64) {
 	done := state.IDs(tx, state.Actions, func(kept *state.Action) bool {
-		return kept.ProjectID == action.ProjectID && kept.Status != state.ActionRunning
+		return kept.ProjectID == projectID && kept.Status != state.ActionRunning
 	})
 	for _, id := range done[:max(len(done)-MaxFinishedActions, 0)] {
 		state.Delete(tx, state.Actions, id)

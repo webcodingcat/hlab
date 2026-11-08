@@ -35,6 +35,12 @@ type Owned interface {
 	RecordProject() int64
 }
 
+// Named is a record whose name is unique within its project (ByName).
+type Named interface {
+	Owned
+	RecordName() string
+}
+
 // Kind is a kind of record, such as Projects; R is its record type. Its name is
 // the key in the state file and the counter of its IDs.
 type Kind[R Record] struct {

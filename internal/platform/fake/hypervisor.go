@@ -388,6 +388,17 @@ func (h *Hypervisor) HostResources(ctx context.Context) (platform.HostResources,
 	return h.fake.resources, nil
 }
 
+// DiskSpace reports the fake drive's size and free space (SetDiskSpace),
+// whatever the path.
+func (h *Hypervisor) DiskSpace(ctx context.Context, _ string) (platform.DiskSpace, error) {
+	if err := h.fake.enter(ctx, "DiskSpace"); err != nil {
+		return platform.DiskSpace{}, err
+	}
+	h.fake.mu.Lock()
+	defer h.fake.mu.Unlock()
+	return h.fake.space, nil
+}
+
 // CreateSeed keeps the seed's files in memory.
 func (h *Hypervisor) CreateSeed(ctx context.Context, path string, files map[string][]byte) error {
 	if err := h.fake.enter(ctx, "CreateSeed", path); err != nil {

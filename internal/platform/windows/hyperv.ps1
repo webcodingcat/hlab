@@ -418,6 +418,15 @@ namespace HLab {
         }
     }
 
+    'disk-space'     = {
+        param($Arguments)
+        $drive = [IO.DriveInfo]::new([IO.Path]::GetPathRoot($Arguments.path))
+        @{
+            total_mb = [int64]($drive.TotalSize / 1MB)
+            free_mb  = [int64]($drive.AvailableFreeSpace / 1MB)
+        }
+    }
+
     'create-seed'    = {
         param($Arguments)
         # IMAPI2 writes ISO 9660 with Joliet, whose long names cloud-init

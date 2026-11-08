@@ -99,6 +99,15 @@ type Hypervisor interface {
 	// HostResources reports what the host has for VMs: its logical
 	// processors and its memory.
 	HostResources(ctx context.Context) (HostResources, error)
+	// DiskSpace reports the size of the drive that holds path and the space
+	// free on it.
+	DiskSpace(ctx context.Context, path string) (DiskSpace, error)
+}
+
+// DiskSpace is a drive's size and the space free on it, in MB.
+type DiskSpace struct {
+	TotalMB int64
+	FreeMB  int64
 }
 
 // HostResources are the host's logical processors and memory, which bound

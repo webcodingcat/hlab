@@ -11,7 +11,8 @@ earlier Python implementation lives on the branch `legacy` (tag `v1-python`).
 
 Everything in this repo is English. Read these before changing code:
 
-- @DEVELOPING.md – how the code fits together, its rules, the tools.
+- @DEVELOPING.md – how the code fits together and its rules; it names the files
+  under `docs/` on Hyper-V, the appliance and the tools.
 - @STYLE.md – the standards, and the rules this project adds to them.
 
 ## Commands
@@ -39,18 +40,19 @@ push and pull request, and `spec-diff` weekly; the live tests stay out of CI.
 
 ## Rules that are easy to break
 
-DEVELOPING.md explains each one in the section named in parentheses.
+DEVELOPING.md explains each one in the section named in parentheses, or the
+file named there.
 
 - A package imports only what its row in the layer table allows; a new package gets a
   row in the table first, which `internal/layers_test.go` reads (Layers).
 - `api/*` reaches the system only through `lab`, never through `platform` (Layers).
 - `system` never sees the state: it gets IDs, values and pictures (Layers).
 - The agent applies whole pictures and decides nothing; a picture changes only
-  through `internal/picture` and its golden files (Pictures and the agent).
-- The appliance holds only Debian packages and the agent (The appliance).
+  through `internal/picture` and its golden files (docs/appliance.md).
+- The appliance holds only Debian packages and the agent (docs/appliance.md).
 - Code holds the lab's mutex only between calls to the system, and across such a call
   it keeps IDs, not records (Concurrency).
-- No cgo in the binaries: everything builds in WSL2 for Windows (Tools).
+- No cgo in the binaries: everything builds in WSL2 for Windows (docs/tools.md).
 - A new dependency needs a reason in the dependency table (Dependencies).
 - Hetzner behaviour first: answers, status codes and error codes follow the real API;
   where the spec differs, record a deviation in `compat/` (Spec check and compat/).

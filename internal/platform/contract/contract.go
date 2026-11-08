@@ -154,6 +154,14 @@ func Hypervisor(t *testing.T, hypervisor platform.Hypervisor, dir string) {
 		}
 	})
 
+	t.Run("DiskSpace", func(t *testing.T) {
+		space, err := hypervisor.DiskSpace(testContext(t), dir)
+		expect(t, "DiskSpace", err, nil)
+		if space.TotalMB < 1024 || space.FreeMB < 0 || space.FreeMB > space.TotalMB {
+			t.Errorf("DiskSpace = %+v, want a drive of at least 1 GB with free space within it", space)
+		}
+	})
+
 	t.Run("Disks", func(t *testing.T) {
 		ctx := testContext(t)
 		name := prefix + "disks"

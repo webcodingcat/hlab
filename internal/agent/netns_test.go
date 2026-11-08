@@ -4,7 +4,7 @@
 // addresses, routes, nftables and sysctls for real, so they need
 // CAP_NET_ADMIN and must never run on a developer's machine as it is.
 // `bin/dev test --agent` runs them in a container without network; CI runs
-// them with sudo in a new namespace (DEVELOPING.md, Tools).
+// them with sudo in a new namespace (docs/tools.md).
 
 package agent
 

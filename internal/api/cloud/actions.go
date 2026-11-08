@@ -2,6 +2,7 @@ package cloud
 
 import (
 	"cmp"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"slices"
@@ -205,4 +206,43 @@ func actionJSON(action *state.Action) schema.Action {
 		out.Resources = append(out.Resources, schema.ActionResourceReference{ID: ref.ID, Type: ref.Type})
 	}
 	return out
+}
+
+// act runs an action of the request's resource and turns the lab's errors
+// into Hetzner's.
+func act(l *lab.Lab, table lab.ActionTable, command string, req *web.Request) (state.Action, error) {
+	body, err := readBody(req)
+	if err != nil {
+		return state.Action{}, err
+	}
+	action, err := l.Act(table, command, lab.Request{ProjectID: req.Caller.ProjectID, ID: web.PathID(req, "id"), Body: body})
+	return action, actError(err)
+}
+
+// actError turns the errors of Lab.Act and Lab.Create into Hetzner's; it
+// passes the others on.
+func actError(err error) error {
+	var locked *lab.LockedError
+	switch {
+	case errors.As(err, &locked):
+		return web.Locked(locked.Message)
+	case errors.Is(err, lab.ErrProjectGone):
+		return web.TokenInvalid()
+	case errors.Is(err, lab.ErrNoRoom):
+		return web.Refusal(http.StatusPreconditionFailed, "resource_unavailable", serverNoRoom)
+	}
+	return err
+}
+
+// readBody reads a request's body for an action's plan; an empty body is
+// an empty object.
+func readBody(req *web.Request) ([]byte, error) {
+	var raw json.RawMessage
+	if req.ContentLength == 0 {
+		return []byte("{}"), nil
+	}
+	if err := web.DecodeJSON(req.Request, &raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
 }

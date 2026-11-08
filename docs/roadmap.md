@@ -65,9 +65,6 @@ the tests. Look there before writing such a part anew.
 
 ### Open from 1a
 
-- `endInterruptedActions` trims the finished actions once per action.
-- Give the resources one helper for "unique within the project" (SSH keys,
-  servers and Primary IPs each scan their kind with `state.All` today).
 - `hlabd --platform fake` listens on `127.0.0.1`, the CLI's default is
   `198.18.0.1`: with the fake platform, take `HLAB_CONTROL` from hlabd's log
   (`bin/dev smoke` does).
@@ -88,7 +85,8 @@ the tests. Look there before writing such a part anew.
 
 ### What is there
 
-DEVELOPING.md explains each part; this is the list.
+DEVELOPING.md and the files under `docs/` explain each part; this is the
+list.
 
 - **hlabd on Windows** (`--platform windows`, the default there), with
   administrator rights: the host link `HLab-Link` (`198.18.0.1/29`,
@@ -114,7 +112,8 @@ DEVELOPING.md explains each part; this is the list.
   instead of 423). A create records the server and plans its actions in one
   transaction (`Lab.Create`); a start reserves its room in its plan, so
   starts sent at once cannot overcommit the host's memory (412
-  `resource_unavailable`).
+  `resource_unavailable`); a create also needs a tenth of the data folder's
+  drive free.
 - **Primary IPs** (create, get, update, delete, lists, `assign`, `unassign`,
   `change_protection`), addresses from `198.19.0.0/16` and `2001:db8:1::/48`
   in order, the errors as measured.
@@ -143,7 +142,6 @@ DEVELOPING.md explains each part; this is the list.
 
 ### Open for later phases
 
-- The free disk space of the room check (10 % free) is not checked yet.
 - Volumes, networks, firewalls and placement groups in a server's create
   request are ignored until their phase (2a, 2b); `change_dns_ptr` comes
   with DNS (2b). The metadata summary says `private-networks: []` on a
@@ -162,10 +160,6 @@ DEVELOPING.md explains each part; this is the list.
 - `boxes.vhdx` moves to the new appliance at an update with the Storage
   Boxes (5); the pictures' generations stay in memory, so a start sends
   every picture again.
-- `internal/api/cloud/servers.go` holds handlers, types and action plans;
-  split it when 3a adds rebuild and type change.
-- DEVELOPING.md is long (about 1 300 lines); moving the parts on Hyper-V,
-  the appliance and the tools into files of their own is open.
 
 ### Later phases
 

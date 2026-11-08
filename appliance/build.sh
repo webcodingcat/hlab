@@ -3,7 +3,7 @@
 # plane and hlab-agent, as a dynamic VHDX for a generation 2 VM with Secure
 # Boot (shim and grub signed for the Microsoft UEFI CA). Runs without root:
 # mmdebstrap works in a user namespace, mkfs.ext4 fills the file system from
-# a tarball, mtools fill the EFI partition (DEVELOPING.md, Appliance).
+# a tarball, mtools fill the EFI partition (docs/appliance.md).
 #   appliance/build.sh <hlab-agent binary> <output .vhdx>
 set -euo pipefail
 
@@ -18,7 +18,7 @@ readonly ESP_MB=64
 # partition types of the GPT: EFI system, Linux file system
 readonly ESP_TYPE="C12A7328-F81F-11D2-BA4B-00A0C93EC93B"
 readonly LINUX_TYPE="0FC63DAF-8483-4772-8E79-3D69D8477DE4"
-# what the appliance needs, all from Debian 13 (DEVELOPING.md, Appliance)
+# what the appliance needs, all from Debian 13 (docs/appliance.md)
 readonly PACKAGES=(
   # boot: the cloud kernel has Hyper-V's drivers and is signed
   linux-image-cloud-amd64 initramfs-tools systemd-sysv dbus
@@ -131,7 +131,7 @@ main() {
   local tool
   for tool in mmdebstrap mkfs.vfat mmd mkfs.ext4 sfdisk qemu-img; do
     command -v "${tool}" >/dev/null \
-      || die "${tool} is missing (DEVELOPING.md, Appliance)"
+      || die "${tool} is missing (docs/appliance.md)"
   done
   work="$(mktemp -d)"
   # shellcheck disable=SC2064 # work is fixed now

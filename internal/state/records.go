@@ -59,6 +59,9 @@ func (t Token) RecordID() int64 { return t.ID }
 // RecordProject returns the token's project.
 func (t Token) RecordProject() int64 { return t.ProjectID }
 
+// RecordName implements Named.
+func (t Token) RecordName() string { return t.Name }
+
 // HashToken returns what the state keeps of a token: its SHA-256, hex.
 func HashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
@@ -81,6 +84,9 @@ func (k SSHKey) RecordID() int64 { return k.ID }
 
 // RecordProject returns the key's project.
 func (k SSHKey) RecordProject() int64 { return k.ProjectID }
+
+// RecordName implements Named.
+func (k SSHKey) RecordName() string { return k.Name }
 
 // ActionStatus is how far an action is.
 type ActionStatus string
@@ -182,6 +188,9 @@ func (s Server) RecordID() int64 { return s.ID }
 // RecordProject returns the server's project.
 func (s Server) RecordProject() int64 { return s.ProjectID }
 
+// RecordName implements Named.
+func (s Server) RecordName() string { return s.Name }
+
 // IPType is the address family of a Primary IP.
 type IPType string
 
@@ -212,6 +221,9 @@ func (p PrimaryIP) RecordID() int64 { return p.ID }
 
 // RecordProject returns the Primary IP's project.
 func (p PrimaryIP) RecordProject() int64 { return p.ProjectID }
+
+// RecordName implements Named.
+func (p PrimaryIP) RecordName() string { return p.Name }
 
 // Lab is the lab's own records, which the API does not show. Later phases add
 // the Internet clients and the ACME keys.

@@ -154,17 +154,23 @@ func Open(opts Options, sys *system.System) (*Lab, error) {
 }
 
 // endInterruptedActions ends the actions that were running when HLab stopped:
-// no goroutine runs them any more, and clients would poll them forever.
+// no goroutine runs them any more, and clients would poll them forever. Each
+// project's finished actions are trimmed once, after all of them ended.
 func (l *Lab) endInterruptedActions(tx *state.Tx) error {
 	running := state.IDs(tx, state.Actions, func(action *state.Action) bool {
 		return action.Status == state.ActionRunning
 	})
+	projects := map[int64]bool{}
 	for _, id := range running {
 		action, err := state.Get(tx, state.Actions, id)
 		if err != nil {
 			return err
 		}
-		l.finishAction(tx, action, "HLab was restarted while the action ran")
+		l.endAction(action, "HLab was restarted while the action ran")
+		projects[action.ProjectID] = true
+	}
+	for projectID := range projects {
+		trimActions(tx, projectID)
 	}
 	return nil
 }

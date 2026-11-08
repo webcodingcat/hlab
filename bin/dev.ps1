@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Development commands for HLab on Windows (DEVELOPING.md, Tools).
+Development commands for HLab on Windows (docs/tools.md).
 
 .DESCRIPTION
 The same commands as bin/dev:
@@ -325,7 +325,7 @@ try {
                 # -count=1: the layer test reads packages through the go
                 # command, which the test cache does not see
                 { $_ -in '', '--windows' } { Invoke-Native go @('test', '-count=1', './...') }
-                # they need Linux network namespaces (DEVELOPING.md, Tools)
+                # they need Linux network namespaces (docs/tools.md)
                 '--agent' { throw 'test --agent runs from WSL2 or Linux: bin/dev test --agent' }
                 default { throw "unknown option: $Option" }
             }
@@ -338,7 +338,7 @@ try {
                 default { throw "unknown option: $Option" }
             }
         }
-        # the smoke tests use the tools as users do, from WSL2 (DEVELOPING.md, Tools)
+        # the smoke tests use the tools as users do, from WSL2 (docs/tools.md)
         'smoke' { throw 'smoke runs from WSL2: bin/dev smoke' }
         # mmdebstrap is a Linux tool
         'appliance' { throw 'appliance runs from WSL2: bin/dev appliance' }

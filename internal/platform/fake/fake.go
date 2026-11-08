@@ -29,6 +29,7 @@ type Fake struct {
 	disks     map[string]*disk
 	seeds     map[string]map[string][]byte
 	resources platform.HostResources
+	space     platform.DiskSpace
 
 	usedRanges []netip.Prefix
 	link       *platform.LinkSpec
@@ -50,6 +51,7 @@ func New() *Fake {
 		seeds:    map[string]map[string][]byte{},
 		// a developer's machine: 16 threads, 32 GB
 		resources: platform.HostResources{Threads: 16, MemoryMB: 32 * 1024},
+		space:     platform.DiskSpace{TotalMB: 1024 * 1024, FreeMB: 512 * 1024}, // 1 TB, half free
 		locked:    map[string]bool{},
 		stop:      make(chan struct{}),
 		agents:    map[string]func(conn net.Conn){},
@@ -101,6 +103,13 @@ func (f *Fake) SetHostResources(resources platform.HostResources) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.resources = resources
+}
+
+// SetDiskSpace sets what DiskSpace reports, for every path.
+func (f *Fake) SetDiskSpace(space platform.DiskSpace) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.space = space
 }
 
 // Seed returns the files of the seed that CreateSeed wrote to path.

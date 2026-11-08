@@ -38,7 +38,7 @@ func (l *Lab) EnvToken(projectID int64) (string, error) {
 		if _, err := state.Get(tx, state.Projects, projectID); err != nil {
 			return err
 		}
-		if old, found := tokenByName(tx, projectID, EnvTokenName); found {
+		if old, found := state.ByName(tx, state.Tokens, projectID, EnvTokenName); found {
 			state.Delete(tx, state.Tokens, old.ID)
 		}
 		l.putToken(tx, projectID, EnvTokenName, state.PermissionReadWrite, secret)

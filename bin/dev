@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Development commands for HLab on Linux and WSL2 (DEVELOPING.md, Tools):
+# Development commands for HLab on Linux and WSL2 (docs/tools.md):
 #   bin/dev lint             check formatting and style (STYLE.md)
 #   bin/dev format           apply what the formatters can fix
 #   bin/dev test             the unit tests, with the race detector
@@ -404,7 +404,7 @@ spec_diff() {
 }
 
 #######################################
-# Run the smoke tests (DEVELOPING.md, Tools) against `hlabd --platform fake`
+# Run the smoke tests (docs/tools.md) against `hlabd --platform fake`
 # in a fresh data folder: the hcloud CLI with the commands of the phases so
 # far, and OpenTofu with every examples/tofu-* (apply, an empty plan,
 # destroy). Runs in a subshell, so that its trap cleans up on any exit.
@@ -510,7 +510,7 @@ EOF
 
 #######################################
 # Build the appliance's disk with the agent of this working tree
-# (DEVELOPING.md, Appliance).
+# (docs/appliance.md).
 #######################################
 appliance() {
   local started=${SECONDS}

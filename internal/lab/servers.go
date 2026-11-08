@@ -35,6 +35,9 @@ const (
 	memoryReservePercent = 25
 	memoryReserveMinMB   = 6 * 1024
 	coresPerThread       = 4
+	// a new server's disk grows on the data folder's drive, which keeps
+	// this share free
+	diskReservePercent = 10
 )
 
 // serverWatchInterval is how often the watchdog looks at the servers' VMs.
@@ -43,6 +46,22 @@ const serverWatchInterval = 2 * time.Second
 // rebootTimeout bounds how long a reboot waits for the guest to shut down
 // before it turns the VM off.
 const rebootTimeout = time.Minute
+
+// CheckDisk fails with ErrNoRoom if the data folder's drive has less than
+// diskReservePercent of its size free. It counts the space free now, not
+// the servers' disks at their full size: dynamic disks take only what the
+// guests wrote, so the disks may be larger together than the drive. It
+// calls the system, so the API calls it before its Change.
+func (l *Lab) CheckDisk(ctx context.Context) error {
+	space, err := l.system.DiskSpace(ctx, l.dataDir)
+	if err != nil {
+		return err
+	}
+	if space.FreeMB*100 < space.TotalMB*diskReservePercent {
+		return fmt.Errorf("%w: %d MB of %d MB free on the data folder's drive", ErrNoRoom, space.FreeMB, space.TotalMB)
+	}
+	return nil
+}
 
 // ServerResource is how actions name a server.
 const ServerResource = "server"

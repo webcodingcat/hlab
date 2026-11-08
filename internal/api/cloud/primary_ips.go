@@ -137,7 +137,7 @@ func registerPrimaryIPs(api *web.API, l *lab.Lab) {
 				return err
 			}
 			if body.Name != nil && *body.Name != ip.Name {
-				if primaryIPNameUsed(tx, ip.ProjectID, *body.Name) {
+				if _, taken := state.ByName(tx, state.PrimaryIPs, ip.ProjectID, *body.Name); taken {
 					return web.RefusalNull(http.StatusConflict, "uniqueness_error", primaryIPNameTaken)
 				}
 				ip.Name = *body.Name
@@ -248,7 +248,7 @@ func createPrimaryIP(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, 
 	}
 	var out schema.PrimaryIP
 	actions, err := l.Create(table, request, func(tx *state.Tx) (int64, error) {
-		if primaryIPNameUsed(tx, ip.ProjectID, ip.Name) {
+		if _, taken := state.ByName(tx, state.PrimaryIPs, ip.ProjectID, ip.Name); taken {
 			return 0, web.RefusalNull(http.StatusConflict, "uniqueness_error", primaryIPNameTaken)
 		}
 		if body.AssigneeID != nil {
@@ -465,16 +465,6 @@ func planPrimaryIPProtection(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		ip.Protection.Delete = *body.Delete
 	}
 	return lab.Plan{}, nil
-}
-
-// primaryIPNameUsed tells whether a Primary IP of the project has the name.
-func primaryIPNameUsed(tx *state.Tx, projectID int64, name string) bool {
-	for _, ip := range state.All(tx, state.PrimaryIPs) {
-		if ip.ProjectID == projectID && ip.Name == name {
-			return true
-		}
-	}
-	return false
 }
 
 // callerPrimaryIP returns the Primary IP of an ID if it belongs to the

@@ -168,6 +168,15 @@ func Find[R Record](tx *Tx, kind Kind[R], match func(*R) bool) (*R, bool) {
 	return nil, false
 }
 
+// ByName returns the project's record of the name, if there is one: the
+// one way to look up a name or to tell whether it is taken. Like Find it
+// copies only the record it returns.
+func ByName[R Named](tx *Tx, kind Kind[R], projectID int64, name string) (*R, bool) {
+	return Find(tx, kind, func(record *R) bool {
+		return (*record).RecordProject() == projectID && (*record).RecordName() == name
+	})
+}
+
 // IDs returns the IDs of the records that match accepts, sorted. Unlike All
 // it copies no record, so it suits a scan of a large kind in a Tx that changes
 // only a few of its records: All copies them all, which Changed then compares

@@ -26,6 +26,22 @@ func (s *System) HostResources(ctx context.Context) (HostResources, error) {
 	return HostResources{Threads: resources.Threads, MemoryMB: resources.MemoryMB}, nil
 }
 
+// DiskSpace is a drive's size and the space free on it, in MB.
+type DiskSpace struct {
+	TotalMB int64
+	FreeMB  int64
+}
+
+// DiskSpace asks the hypervisor how large the drive of path is and how
+// much of it is free.
+func (s *System) DiskSpace(ctx context.Context, path string) (DiskSpace, error) {
+	space, err := s.platform.Hypervisor.DiskSpace(ctx, path)
+	if err != nil {
+		return DiskSpace{}, fmt.Errorf("reading the free space of %s: %w", path, err)
+	}
+	return DiskSpace{TotalMB: space.TotalMB, FreeMB: space.FreeMB}, nil
+}
+
 // ServerSpec is a server's VM: its size, its disk on a cached image, its
 // seed and its public NIC.
 type ServerSpec struct {
