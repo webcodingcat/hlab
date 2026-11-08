@@ -241,6 +241,32 @@ func TestStartsSentAtOnceKeepToTheRoom(t *testing.T) {
 	waitActions(t, test, first, second)
 }
 
+// A poweroff frees its room when it is asked for, and a start queued behind
+// it checks the room again: the host's memory is never overcommitted.
+func TestStartQueuedBehindAPoweroffChecksTheRoom(t *testing.T) {
+	test := newTestLab(t)
+	// 9 GB for servers: two cpx22 (4 GB)
+	startMachine(t, test, platform.HostResources{Threads: 8, MemoryMB: 16 * 1024})
+	var ids []int64
+	for _, name := range []string{"a", "b"} {
+		created := createServer(t, test, map[string]any{"name": name, "server_type": "cpx22", "image": "debian-13"})
+		waitActions(t, test, created.Action, created.NextActions[0])
+		ids = append(ids, created.Server.ID)
+	}
+	resting := createServer(t, test, map[string]any{
+		"name": "c", "server_type": "cpx22", "image": "debian-13", "start_after_create": false,
+	})
+	waitActions(t, test, resting.Action)
+	// the steps wait, so that the poweroff has not run yet
+	test.machine.Delay("VMState", 200*time.Millisecond)
+	stopped := serverAction(t, test, ids[0], "poweroff", nil)
+	started := serverAction(t, test, resting.Server.ID, "poweron", nil)
+	again := &responseOf{test.client.Do(http.MethodPost, fmt.Sprintf("/v1/servers/%d/actions/poweron", ids[0]), nil)}
+	expectError(t, "a start behind the poweroff", again, http.StatusPreconditionFailed, "resource_unavailable",
+		"error during placement")
+	waitActions(t, test, stopped, started)
+}
+
 // A create needs a tenth of the data folder's drive free, counted as it is
 // now; below that it is Hetzner's 412 resource_unavailable.
 func TestCreateKeepsATenthOfTheDiskFree(t *testing.T) {

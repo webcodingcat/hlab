@@ -106,10 +106,14 @@ func (l *Lab) CheckRoom(tx *state.Tx, serverID int64, serverType catalog.ServerT
 		if server.ID == serverID || !server.WantRunning {
 			continue
 		}
-		if other, found := l.catalog.ServerTypeByName(server.Type); found {
-			memoryMB += int(other.Memory * 1024)
-			cores += other.Cores
+		other, found := l.catalog.ServerTypeByName(server.Type)
+		if !found {
+			l.logger.Warn("the catalog lacks a server's type; the room check counts the server as nothing",
+				"server", server.ID, "type", server.Type)
+			continue
 		}
+		memoryMB += int(other.Memory * 1024)
+		cores += other.Cores
 	}
 	reserve := max(l.host.MemoryMB*memoryReservePercent/100, memoryReserveMinMB)
 	if memoryMB > l.host.MemoryMB-reserve-system.ApplianceMemoryMB || cores > l.host.Threads*coresPerThread {
@@ -212,11 +216,12 @@ func (l *Lab) cachedImage(ctx context.Context, image catalog.Image) (string, err
 	defer load.Unlock()
 
 	var cached state.CachedImage
+	var inCache bool
 	_ = l.View(func(tx *state.Tx) error {
-		cached, found = tx.Lab().Images[image.Name]
+		cached, inCache = tx.Lab().Images[image.Name]
 		return nil
 	})
-	if found && cached.Source == image.Source.URL {
+	if inCache && cached.Source == image.Source.URL {
 		return cached.File, nil
 	}
 	started := time.Now()
@@ -269,8 +274,10 @@ func (l *Lab) PowerOnServer(ctx context.Context, id int64) error {
 	}); err != nil {
 		return err
 	}
-	if err := l.system.PowerServer(ctx, ServerVM(id), system.PowerOn); err != nil {
-		return err
+	if !runs { // a VM that runs while its status says otherwise only needs the status
+		if err := l.system.PowerServer(ctx, ServerVM(id), system.PowerOn); err != nil {
+			return err
+		}
 	}
 	if err := l.Sleep(ctx, PowerOn); err != nil {
 		return err
@@ -282,11 +289,11 @@ func (l *Lab) PowerOnServer(ctx context.Context, id int64) error {
 }
 
 // PowerOffServer turns a server off at once, as Hetzner's poweroff:
-// stopping, then off.
+// stopping, then off. It leaves want_running to the action's plan, which
+// cleared it when the action was asked for: a start queued behind this one
+// has set it again since.
 func (l *Lab) PowerOffServer(ctx context.Context, id int64) error {
-	if err := l.setServer(id, func(server *state.Server) {
-		server.Status, server.WantRunning = state.ServerStopping, false
-	}); err != nil {
+	if err := l.SetServerStatus(id, state.ServerStopping); err != nil {
 		return err
 	}
 	if err := l.system.PowerServer(ctx, ServerVM(id), system.PowerOff); err != nil {

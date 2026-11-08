@@ -61,7 +61,7 @@ type ServerSpec struct {
 // in the private VLAN. A disk that is there already is kept as it is, and
 // keptDisk says so: the server lost its VM but not its disk (an uninstall
 // that kept the data). The seed is always made anew. If a step fails, what
-// was made goes again; a kept disk stays.
+// it made is removed again; a kept disk stays.
 func (s *System) CreateServer(ctx context.Context, spec ServerSpec) (keptDisk bool, err error) {
 	hypervisor := s.platform.Hypervisor
 	err = hypervisor.CreateDisk(ctx, spec.Disk, spec.DiskGB, spec.BaseImage)

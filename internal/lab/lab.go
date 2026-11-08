@@ -100,9 +100,13 @@ type Lab struct {
 
 // runningAction is an action whose steps run in a goroutine.
 type runningAction struct {
+	id        int64
 	projectID int64
 	cancel    context.CancelFunc
 	done      chan struct{} // closed when the action has ended
+	undo      func(tx *state.Tx) error
+	flagged   []state.ResourceRef // the flags it holds until it ends
+	queue     *state.ResourceRef  // the resource it queued on, if any
 }
 
 // Open starts the lab: it claims the data folder, loads the state and ends the

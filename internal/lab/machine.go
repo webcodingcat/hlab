@@ -39,7 +39,7 @@ const defaultServerShutdown = time.Minute
 // left, starts or takes over the appliance, sends it the pictures and sets
 // the host's DNS rules. The service calls it after Open and before it
 // listens on the host link; Close stops it again. If a step fails, the host
-// link goes again.
+// link is removed again.
 func (l *Lab) StartMachine(ctx context.Context, opts MachineOptions) error {
 	if opts.Timings == (system.ApplianceTimings{}) {
 		opts.Timings = system.DefaultApplianceTimings()
@@ -387,7 +387,7 @@ func (l *Lab) pictures(facts picture.Lab) system.Pictures {
 // possible stays behind.
 func (l *Lab) stopMachine() error {
 	l.mu.Lock()
-	appliance, watching := l.appliance, l.watching
+	appliance, watching, shutdown := l.appliance, l.watching, l.serverShutdown
 	l.appliance, l.watching = nil, nil
 	var vms []string
 	for _, id := range state.IDs(state.Read(l.state), state.Servers, func(*state.Server) bool { return true }) {
@@ -401,9 +401,9 @@ func (l *Lab) stopMachine() error {
 	if appliance == nil {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), machineStopTimeout+l.serverShutdown)
+	ctx, cancel := context.WithTimeout(context.Background(), machineStopTimeout+shutdown)
 	defer cancel()
 	// want_running stays as it is: the next start starts them again
-	serversErr := l.system.ShutdownServers(ctx, vms, l.serverShutdown)
+	serversErr := l.system.ShutdownServers(ctx, vms, shutdown)
 	return errors.Join(serversErr, appliance.Stop(ctx), l.system.DisconnectHost(ctx))
 }

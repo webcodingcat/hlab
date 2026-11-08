@@ -235,10 +235,12 @@ func trimActions(tx *state.Tx, projectID int64) {
 	}
 }
 
-// start runs a planned action's steps in a goroutine, if it has any; the
-// action holds its flagged resources until the steps end. With a queue, the
-// steps wait until the action queued before on that resource is done. The
-// caller holds the mutex.
+// start runs a planned action's steps in a goroutine, if it has any. An
+// action's life: Act or Create plans it and records it (planAction); start
+// flags its resources and, with a queue, puts it behind the action queued
+// before on its resource; the goroutine waits for that one, runs the steps
+// and calls end, which takes the flags off, undoes the plan's quick changes
+// if the steps failed and finishes the action. The caller holds the mutex.
 func (l *Lab) start(planned plannedAction) {
 	if planned.plan.Steps == nil {
 		return
@@ -251,10 +253,12 @@ func (l *Lab) start(planned plannedAction) {
 			queue = &planned.target
 		}
 	}
-	actionID, plan := planned.action.ID, planned.plan
 	ctx, cancel := context.WithCancel(l.ctx)
-	run := &runningAction{projectID: planned.action.ProjectID, cancel: cancel, done: make(chan struct{})}
-	l.running[actionID] = run
+	run := &runningAction{
+		id: planned.action.ID, projectID: planned.action.ProjectID, cancel: cancel, done: make(chan struct{}),
+		undo: planned.plan.Undo, flagged: flagged, queue: queue,
+	}
+	l.running[run.id] = run
 	for _, ref := range flagged {
 		l.flags[ref]++
 	}
@@ -270,11 +274,11 @@ func (l *Lab) start(planned plannedAction) {
 		defer cancel()
 		err := waitFor(ctx, before)
 		if err == nil {
-			err = plan.Steps(ctx)
+			err = planned.plan.Steps(ctx)
 		}
 		// canceled only when the steps gave up: steps that finished despite
 		// the cancel have done their work, and the action succeeded
-		l.end(actionID, run.done, plan.Undo, flagged, queue, err, err != nil && ctx.Err() != nil)
+		l.end(run, err, err != nil && ctx.Err() != nil)
 	}()
 }
 
@@ -293,8 +297,7 @@ func waitFor(ctx context.Context, done chan struct{}) error {
 
 // end finishes an action whose steps have returned: it takes the flags off,
 // undoes the quick changes if the steps failed, and finishes the action.
-func (l *Lab) end(actionID int64, done chan struct{}, undo func(tx *state.Tx) error, flagged []state.ResourceRef,
-	queue *state.ResourceRef, err error, canceled bool) {
+func (l *Lab) end(run *runningAction, err error, canceled bool) {
 	message := ""
 	switch {
 	case canceled:
@@ -305,23 +308,23 @@ func (l *Lab) end(actionID int64, done chan struct{}, undo func(tx *state.Tx) er
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	for _, ref := range flagged {
+	for _, ref := range run.flagged {
 		if l.flags[ref]--; l.flags[ref] <= 0 {
 			delete(l.flags, ref)
 		}
 	}
-	if queue != nil && l.queues[*queue] == done {
-		delete(l.queues, *queue) // the last of its queue
+	if run.queue != nil && l.queues[*run.queue] == run.done {
+		delete(l.queues, *run.queue) // the last of its queue
 	}
-	delete(l.running, actionID)
-	if err != nil && !canceled && undo != nil {
+	delete(l.running, run.id)
+	if err != nil && !canceled && run.undo != nil {
 		// its own change: a failing undo must not keep the action running
-		if undoErr := l.changeLocked(undo); undoErr != nil {
-			l.logger.Error("undoing a failed action failed", "id", actionID, "error", undoErr)
+		if undoErr := l.changeLocked(run.undo); undoErr != nil {
+			l.logger.Error("undoing a failed action failed", "id", run.id, "error", undoErr)
 		}
 	}
 	finishErr := l.changeLocked(func(tx *state.Tx) error {
-		action, err := state.Get(tx, state.Actions, actionID)
+		action, err := state.Get(tx, state.Actions, run.id)
 		if errors.Is(err, state.ErrNotFound) {
 			return nil // its project was reset meanwhile
 		}
@@ -332,7 +335,7 @@ func (l *Lab) end(actionID int64, done chan struct{}, undo func(tx *state.Tx) er
 		return nil
 	})
 	if finishErr != nil {
-		l.logger.Error("finishing an action failed", "id", actionID, "error", finishErr)
+		l.logger.Error("finishing an action failed", "id", run.id, "error", finishErr)
 	}
 }
 

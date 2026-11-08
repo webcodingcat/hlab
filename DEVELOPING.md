@@ -32,7 +32,7 @@ This is what happens when you run `hcloud ssh-key create` against the lab:
    state (The state, Concurrency).
 3. `lab` encodes the new state and passes it to `state.Writer`, which saves
    `state.json` in the background. The handler answers with Hetzner's JSON.
-4. Some commands take time, such as a server's `poweroff` (from phase 1b). They run
+4. Some commands take time, such as a server's `poweroff`. They run
    as an action instead. `lab.Act` checks and plans the action. The action's steps
    call `internal/system`, which drives the machine through `internal/platform`
    (Actions, Platform).
@@ -41,11 +41,13 @@ Words this file uses:
 
 | Word | Meaning |
 |---|---|
-| appliance | a small Linux VM (from phase 1b) that runs `hlab-agent`; it provides the lab's network, DNS, metadata service and more |
+| appliance | a small Linux VM that runs `hlab-agent`; it provides the lab's network, DNS, metadata service and more |
 | data plane | what the appliance does for the guests: links, routes, firewall rules, NAT, DHCP, DNS |
 | picture | the complete wanted configuration of one part of the data plane; `internal/picture` builds it from the state, and the agent always applies a whole picture, never a single change |
 | host link | the network between the host and the appliance, `198.18.0.0/29`; the host is `.1`, the appliance `.2`; WSL2 reaches `hlabd` on `198.18.0.1` |
 | flag | an in-memory mark on a resource that an action is working on (Actions) |
+| MAC set | `A` or `B`: the appliance's four MAC addresses; an update starts the new appliance with the other set (The machine's side) |
+| `want_running` | whether a server should run; a start of the lab follows it (Servers and Primary IPs) |
 
 ## Binaries
 
@@ -95,7 +97,7 @@ means the row has no limit. Outside modules are not in it (Dependencies): so
 | `internal/picture` | pure functions from the state to the data plane's pictures and the host's DNS rules | `state`, `agentproto`, `catalog`, `seed` |
 | `internal/seed` | pure functions for the cloud-init seed (NoCloud) | – |
 | `internal/sshkey` | the lab's SSH key (Ed25519) in OpenSSH's private key format and as a line of authorized_keys | – |
-| `internal/system` | does the work and never sees the state: VMs, disks, images, host link, host DNS, appliance, agent client | `platform`, `agentproto`, `vhdx`, `imagefmt` |
+| `internal/system` | does the work and never sees the state: VMs, disks, images, host link, host DNS, appliance with its watchdog, agent client | `platform`, `agentproto`, `vhdx`, `imagefmt` |
 | `internal/platform` | the platform interfaces and their data types | – |
 | `internal/platform/windows` | Hyper-V through `pshost`, host network, NRPT, life cycle | `platform`, `platform/windows/pshost` |
 | `internal/platform/windows/pshost` | long-running PowerShell processes: JSON over stdin and stdout | – |
@@ -129,7 +131,7 @@ The layer test checks production code only. Tests may import fakes and helpers.
 `internal/state` holds the records. `internal/lab` owns them.
 
 - **Kinds.** Each kind of record (`state.Projects`, `state.Tokens`, `state.SSHKeys`,
-  `state.Actions`) is a `state.Kind[R]`. It knows its record type `R` and its name in
+  `state.Actions`, `state.Servers`, `state.PrimaryIPs`) is a `state.Kind[R]`. It knows its record type `R` and its name in
   the file. The lab's own records, which the API does not show, are in `state.Lab`
   (read them with `tx.Lab()`). Records hold plain data: no interfaces and no
   unexported fields.
@@ -152,7 +154,8 @@ The layer test checks production code only. Tests may import fakes and helpers.
 - **`All` copies every record of the kind**, and the change then compares and
   encodes all of them anew. To scan a large kind such as actions in a `Change`,
   use `state.IDs`, which copies nothing, and `state.Get` for the records it
-  changes.
+  changes; to look up one record, `state.Find` or `state.ByName`. A small kind
+  (servers in the room check) may use `All`.
 - **Reads copy nothing.** `state.Read` starts a read-only Tx. Its records are the
   state's own, and calling Put, Delete or NewID on it panics. `lab.View` uses it, so
   the token check on every request copies nothing. That check uses `state.Find`,
@@ -208,7 +211,9 @@ The layer test checks production code only. Tests may import fakes and helpers.
   never change that record: from `View` it is the state's own record, and from
   `Change` the state shares it.
 - **Across a call into the system, keep IDs, not records.** Look the records up
-  again afterwards with `lab.Current(l, kind, id)`. It returns the record to read,
+  again afterwards with `lab.Current(l, kind, id)`. The one exception is
+  `resumeServers` at the start, which reads the records it took once and
+  says why next to it. It returns the record to read,
   or `state.ErrNotFound` if it is gone. It is a function, not a method, because Go
   methods cannot have type parameters.
 - The slow part of an action runs in a goroutine with a `context.Context`. Closing
@@ -277,12 +282,16 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
   as on Hetzner, with its Primary IPs that have `auto_delete`; the others
   stay, unassigned. The steps remove the VM, the disk and the seed.
 - **Power.** `poweron`, `poweroff`, `shutdown`, `reboot` and `reset` set the
-  statuses Hetzner shows (`starting`, `stopping`, …) and wait its times. A
-  reboot asks the guest to shut down (Hyper-V has no ACPI reboot), turns it
-  off after a minute and starts it; a reboot or reset of an off server starts
-  it, as on Hetzner. Each sets the status before it calls the system, as
-  Hetzner shows it once the action runs; if the call fails, the status stays
-  where the steps got to, but a start of an off server is off again (Room).
+  statuses Hetzner shows (`starting`, `stopping`, …) and wait its times.
+  - A reboot asks the guest to shut down (Hyper-V has no ACPI reboot), turns
+    it off after a minute and starts it.
+  - A reboot or reset of an off server starts it, as on Hetzner.
+  - Each sets the status first and then calls the system, because Hetzner
+    shows the new status as soon as the action runs. If the call fails, the
+    status stays as the steps left it; only a start of an off server sets it
+    back to `off` (Room).
+  - `want_running` changes in the plan, when the action is asked for: a
+    start sets it, a `poweroff` clears it (Room).
 - **The watchdog** looks at the running servers' VMs every 2 s: a guest that
   shut itself down leaves its server `off`, and it no longer wants to run.
 - **`want_running`** is what a start of the lab follows: a server whose VM
@@ -295,19 +304,22 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
   keeps a disk that is there and never removes it on a failure. A stop shuts
   every server down, all at once, and turns it off after `shutdown_timeout`
   (`hlab.yaml`, 60 s); `want_running` stays.
-- **Room.** Memory is static, so the servers that want to run may take the
-  host's memory but a reserve (25 %, at least 6 GB) and the appliance's 1 GB,
-  and four virtual cores per thread (`Lab.CheckRoom`, from
-  `Hypervisor.HostResources`). Beyond that, a create or a start (`poweron`,
-  and `reboot` or `reset` of an off server) is Hetzner's 412
-  `resource_unavailable`. A start sets `want_running` in its plan, so starts
-  sent at once count each other before their steps run; if the steps fail,
-  the server is off again. A create also needs a tenth of the data folder's
-  drive free (`Lab.CheckDisk`, from `Hypervisor.DiskSpace`), counted as it is
-  now: dynamic disks take only what the guests wrote, so the servers' disks
-  may be larger together than the drive. Without the machine started (the
-  API's unit tests) there is always room for memory, and the fake reports a
-  drive of 1 TB, half free.
+- **Room.** A create or a start (`poweron`, and `reboot` or `reset` of an off
+  server) beyond the host's room is Hetzner's 412 `resource_unavailable`.
+  - Memory (`Lab.CheckRoom`, from `Hypervisor.HostResources`): memory is
+    static, so the servers that want to run may take all of the host's memory
+    except a reserve (25 %, at least 6 GB) and the appliance's 1 GB.
+  - Cores: four virtual cores per thread of the host.
+  - Disk, for a create (`Lab.CheckDisk`, from `Hypervisor.DiskSpace`): a
+    tenth of the data folder's drive stays free, counted as it is now.
+    Dynamic disks take only what the guests wrote, so the servers' disks may
+    be larger together than the drive.
+  - The room counts the servers whose `want_running` is set. A start sets it
+    in its plan and a `poweroff` clears it there, so actions sent at once, or
+    queued behind each other, count each other before their steps run. If a
+    start's steps fail, the server is off again.
+  - Without the machine started (the API's unit tests) there is always room
+    for memory, and the fake reports a drive of 1 TB, half free.
 - **Addresses** come from `198.19.0.0/16` (IPv4, without `.0` and `.255`) and
   `2001:db8:1::/48` (one `/64` per IPv6), in order: `state.Lab.Pools` holds
   where the next search starts, so a released address comes back only once the
@@ -508,6 +520,18 @@ packages below it follow the layers.
   So the release disk next to `hlabd` is never held open (Hyper-V holds a
   differencing disk's parent), and an update of HLab can replace it while the
   appliance runs on.
+- **The life cycles:**
+  - Windows holds the mutex `Global\HLab`. It writes the path of its data folder to
+    `%ProgramData%\HLab\instance`, so a second start can say in its error message
+    which folder is in use and the CLI finds the lab's token. It writes the token
+    with its own ACL: local users may read it.
+  - Linux holds an flock on `/run/lock/hlab.lock`; that file contains the path of
+    the data folder. It writes the token with mode `0640` and the group `hlab`, if
+    the machine has that group.
+- **The log** goes to stderr as text and to `logs/hlabd.log` in the data folder
+  as JSON lines (`cmd/hlabd/logfile.go`): hlabd mostly runs without a console
+  (the start menu's minimized window, `hlab start`, the dev loop's task). A
+  start moves a log of 10 MB or more to `hlabd.log.1`.
 
 ### The machine's side
 
@@ -537,7 +561,7 @@ it. `system` does each step, `lab` only builds the pictures.
    that does not load) is logged and stays off; it still wants to run, so the
    next start tries again.
 
-If a step fails, the host link goes again. A crash of hlabd leaves everything
+If a step fails, the host link is removed again. A crash of hlabd leaves everything
 running; the next start takes it over.
 
 **The watchdog** checks every 2 s that the appliance's VM runs, its heartbeat
@@ -557,29 +581,17 @@ MAC set; its VM is `hlab-appliance-a` or `hlab-appliance-b`.
    announces the addresses after the `links` picture, so the neighbors move to
    it while the old one still answers.
 2. The state names the new appliance.
-3. The old one goes: VM turned off and deleted, system disk deleted.
+3. The old one is turned off and deleted, with its system disk.
 4. The new one gets `links` again and announces once more: the old one had
    answered ARP and ND too while both ran.
 
-If the new appliance does not come up, it goes and the old one runs on; the
+If the new appliance does not come up, it is deleted and the old one runs on; the
 next start tries again. HLab's end during an update leaves both appliances
 running; the next start keeps the one the state names (the old one before step
 2, the new one after it), removes the other as a stray VM and announces again
 with the pictures. Measured on a Ryzen AI Max+ 395: the update takes 11 s
 (the new appliance boots in 9 s); a server took no new connection for 0.5 s
 at most, and an open SSH session did not stall.
-- **The life cycles:**
-  - Windows holds the mutex `Global\HLab`. It writes the path of its data folder to
-    `%ProgramData%\HLab\instance`, so a second start can say in its error message
-    which folder is in use and the CLI finds the lab's token. It writes the token
-    with its own ACL: local users may read it.
-  - Linux holds an flock on `/run/lock/hlab.lock`; that file contains the path of
-    the data folder. It writes the token with mode `0640` and the group `hlab`, if
-    the machine has that group.
-- **The log** goes to stderr as text and to `logs/hlabd.log` in the data folder
-  as JSON lines (`cmd/hlabd/logfile.go`): hlabd mostly runs without a console
-  (the start menu's minimized window, `hlab start`, the dev loop's task). A
-  start moves a log of 10 MB or more to `hlabd.log.1`.
 
 ## Lab control, CLI and web UI
 
@@ -652,7 +664,7 @@ at most, and an open SSH session did not stall.
     WSL2 reach.
   - The control token is readable for the host's local users anyway.
   - Guests never reach the port: the appliance's ruleset lets them reach the host
-    link only on 8080 and 8081 (phase 1b).
+    link only on 8080 and 8081.
 
 ## The catalog
 

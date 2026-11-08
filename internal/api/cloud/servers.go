@@ -330,6 +330,7 @@ func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any
 		commands = append(commands, "poweron")
 	}
 	var out serverAnswer
+	// Create takes the ID from the function below
 	actions, err := l.Create(table, lab.Request{ProjectID: server.ProjectID}, func(tx *state.Tx) (int64, error) {
 		keys, err := serverKeys(tx, server.ProjectID, body.SSHKeys)
 		if err != nil {

@@ -24,7 +24,7 @@ func serverActions(l *lab.Lab) lab.ActionTable {
 			"create":            {Name: "create_server", Plan: planCreateServer(l)},
 			"delete":            {Name: "delete_server", Plan: planDeleteServer(l)},
 			"poweron":           {Name: "start_server", Plan: planStart(l, l.PowerOnServer)},
-			"poweroff":          {Name: "stop_server", Plan: planSteps(l.PowerOffServer)},
+			"poweroff":          {Name: "stop_server", Plan: planStop(l.PowerOffServer)},
 			"shutdown":          {Name: "shutdown_server", Plan: planSteps(l.ShutdownServer)},
 			"reboot":            {Name: "reboot_server", Plan: planStart(l, l.RebootServer)},
 			"reset":             {Name: "reset_server", Plan: planStart(l, l.ResetServer)},
@@ -41,6 +41,35 @@ func planSteps(run func(ctx context.Context, id int64) error) func(tx *state.Tx,
 			return lab.Plan{}, err
 		}
 		return lab.Plan{Steps: func(ctx context.Context) error { return run(ctx, req.ID) }}, nil
+	}
+}
+
+// planStop returns the plan of poweroff: the server no longer wants to run
+// from the plan on, so that a start queued behind it checks the room
+// (planStart) and its steps keep what that start reserved. If the steps
+// fail, the server wants to run as before.
+func planStop(run func(ctx context.Context, id int64) error) func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+		server, err := callerServer(tx, req.ProjectID, req.ID)
+		if err != nil {
+			return lab.Plan{}, err
+		}
+		wanted := server.WantRunning
+		server.WantRunning = false
+		return lab.Plan{
+			Steps: func(ctx context.Context) error { return run(ctx, req.ID) },
+			Undo: func(tx *state.Tx) error {
+				server, err := state.Get(tx, state.Servers, req.ID)
+				if errors.Is(err, state.ErrNotFound) {
+					return nil
+				}
+				if err != nil {
+					return err
+				}
+				server.WantRunning = wanted
+				return nil
+			},
+		}, nil
 	}
 }
 
