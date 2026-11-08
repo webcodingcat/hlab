@@ -85,7 +85,7 @@ func start(opts serviceOptions) (*service, error) {
 	defer cancel()
 	machine := opts.Machine
 	machine.ServerShutdown = time.Duration(cfg.ShutdownTimeout) * time.Second
-	if err := l.StartMachine(ctx, machine); err != nil {
+	if err := l.Machine().Start(ctx, machine); err != nil {
 		_ = l.Close() // the error that stopped the start says more
 		return nil, err
 	}

@@ -57,7 +57,7 @@ func (r *labRun) open(ctx context.Context, t *testing.T) *lab.Lab {
 	for _, cache := range r.caches {
 		cache.lend(t, l)
 	}
-	if err := l.StartMachine(ctx, lab.MachineOptions{ApplianceRelease: r.release, ServerShutdown: 30 * time.Second}); err != nil {
+	if err := l.Machine().Start(ctx, lab.MachineOptions{ApplianceRelease: r.release, ServerShutdown: 30 * time.Second}); err != nil {
 		_ = l.Close()
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestLabForACrash(t *testing.T) {
 		t.Fatal(err)
 	}
 	machine := lab.MachineOptions{ApplianceRelease: os.Getenv(crashReleaseVar), ServerShutdown: 30 * time.Second}
-	if err := l.StartMachine(t.Context(), machine); err != nil {
+	if err := l.Machine().Start(t.Context(), machine); err != nil {
 		t.Fatal(err)
 	}
 	fmt.Println(crashLabRunsLine)

@@ -87,7 +87,7 @@ func startMachine(t *testing.T, test *testLab, host platform.HostResources) {
 		ApplianceRelease: release,
 		Timings:          system.ApplianceTimings{Interval: 5 * time.Millisecond, Failures: 3, Boot: 5 * time.Second, Shutdown: time.Second},
 	}
-	if err := test.lab.StartMachine(t.Context(), opts); err != nil {
+	if err := test.lab.Machine().Start(t.Context(), opts); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -237,7 +237,7 @@ func registerServers(api *web.API, l *lab.Lab) {
 			// the metadata's hostname, sent without holding up the answer,
 			// as Hetzner answers a PUT at once. The seed keeps the old name:
 			// cloud-init reads it only at the first boot.
-			l.UpdatePicturesLater()
+			l.Machine().UpdatePicturesLater()
 		}
 		return http.StatusOK, map[string]serverAnswer{"server": out}, nil
 	})
@@ -330,7 +330,7 @@ func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any
 	}
 	// the disk is checked before the transaction, as it asks the system;
 	// memory and cores are checked in it (CheckRoom), against the records
-	if err := l.CheckDisk(req.Context()); err != nil {
+	if err := l.Machine().CheckDisk(req.Context()); err != nil {
 		return 0, nil, actError(err)
 	}
 	commands := []string{"create"}
@@ -354,7 +354,7 @@ func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any
 		// the record wants to run from its start, so its room is checked
 		// here: the poweron's plan (planStart) sees it wanting to run
 		if start {
-			if err := l.CheckRoom(tx, 0, serverType); err != nil {
+			if err := l.Machine().CheckRoom(tx, 0, serverType); err != nil {
 				return 0, err
 			}
 		}

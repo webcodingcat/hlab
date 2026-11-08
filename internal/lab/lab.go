@@ -3,8 +3,9 @@
 // starts and stops the lab.
 //
 // The api packages decide what to change and call Change and Act; the slow
-// work goes to the system (package system) from the actions' goroutines. The
-// rules are in DEVELOPING.md, Concurrency.
+// work goes to the system (package system) from the actions' goroutines,
+// through the methods of Machine, the lab's side on the machine. The rules
+// are in DEVELOPING.md, Concurrency and Actions.
 package lab
 
 import (
@@ -55,8 +56,6 @@ type Lab struct {
 	timeScale float64
 	logger    *slog.Logger
 	catalog   *catalog.Catalog
-	labKey    string
-	room      config.Room
 	writer    *state.Writer
 	release   func() // gives the data folder up
 	dataDir   string
@@ -64,17 +63,15 @@ type Lab struct {
 	closeOnce sync.Once
 	closeErr  error // of the first Close
 
-	// pictureMu makes UpdatePictures one at a time, across its calls to the
-	// appliance, so that pictures arrive in the order of their generations
-	pictureMu sync.Mutex
+	machine *Machine
 
 	// envMu makes EnvToken one at a time, across its read and write of the
 	// env token file; it is not the state's mutex, so it may be held across
 	// calls to the system
 	envMu sync.Mutex
 
-	// mu guards everything below: the state, the flags, the running actions
-	// and the machine's side of the lab
+	// mu guards everything below: the state, the flags and the running
+	// actions; and the machine's fields (Machine says why)
 	mu    sync.Mutex
 	state *state.State
 	// closed is set when Close begins: no action and no background work
@@ -82,31 +79,17 @@ type Lab struct {
 	closed bool
 	// flags count the actions that work on or wait for a resource
 	flags map[state.ResourceRef]int
-	// flagged counts every flag a resource ever got, so that the watchdog
-	// sees whether an action came and went while it looked at a VM
-	flagged map[state.ResourceRef]uint64
 	// queues hold the last action queued on a resource (ActionTable.Queued):
 	// the next one waits until it is done
 	queues  map[state.ResourceRef]chan struct{}
 	running map[int64]*runningAction // by action ID
-	// appliance runs between StartMachine and Close; nil without the machine
-	// (the unit tests of the API)
-	appliance  *system.Appliance
-	generation uint64 // of the newest pictures
-	// host is what the machine has for VMs; zero without the machine, and
-	// then nothing is refused for lack of room
-	host system.HostResources
-	// imageLoads are the image cache's loads by image name: one load per
-	// image at a time, held across the system's calls
-	imageLoads map[string]*sync.Mutex
-	// watching ends the servers' watchdog (StartMachine)
-	watching       context.CancelFunc
-	serverShutdown time.Duration // MachineOptions.ServerShutdown
-	watchers       sync.WaitGroup
 
-	ctx     context.Context    // ends when the lab closes; the actions' contexts derive from it
-	cancel  context.CancelFunc // ends ctx
-	actions sync.WaitGroup     // the actions' goroutines, UpdatePicturesLater's and DeleteProject's removals; added to only under mu while not closed
+	ctx    context.Context    // ends when the lab closes; the actions' contexts derive from it
+	cancel context.CancelFunc // ends ctx
+	// background counts the lab's goroutines that Close waits for: the
+	// actions', UpdatePicturesLater's and DeleteProject's removals; it is
+	// added to only under mu while the lab is not closed
+	background sync.WaitGroup
 }
 
 // runningAction is an action whose steps run in a goroutine.
@@ -137,22 +120,18 @@ func Open(opts Options, sys *system.System) (*Lab, error) {
 		return nil, err
 	}
 	l := &Lab{
-		system:     sys,
-		clock:      opts.Clock,
-		timeScale:  opts.TimeScale,
-		logger:     opts.Logger,
-		catalog:    opts.Catalog,
-		labKey:     opts.LabKey,
-		room:       opts.Room,
-		release:    release,
-		dataDir:    opts.DataDir,
-		fresh:      errors.Is(statErr, fs.ErrNotExist),
-		state:      loaded,
-		flags:      map[state.ResourceRef]int{},
-		flagged:    map[state.ResourceRef]uint64{},
-		queues:     map[state.ResourceRef]chan struct{}{},
-		running:    map[int64]*runningAction{},
-		imageLoads: map[string]*sync.Mutex{},
+		system:    sys,
+		clock:     opts.Clock,
+		timeScale: opts.TimeScale,
+		logger:    opts.Logger,
+		catalog:   opts.Catalog,
+		release:   release,
+		dataDir:   opts.DataDir,
+		fresh:     errors.Is(statErr, fs.ErrNotExist),
+		state:     loaded,
+		flags:     map[state.ResourceRef]int{},
+		queues:    map[state.ResourceRef]chan struct{}{},
+		running:   map[int64]*runningAction{},
 	}
 	if l.clock == nil {
 		l.clock = realClock{}
@@ -163,9 +142,11 @@ func Open(opts Options, sys *system.System) (*Lab, error) {
 	if l.catalog == nil {
 		l.catalog = catalog.Builtin()
 	}
-	if l.room == (config.Room{}) {
-		l.room = config.Default().Room
+	room := opts.Room
+	if room == (config.Room{}) {
+		room = config.Default().Room
 	}
+	l.machine = &Machine{lab: l, system: sys, labKey: opts.LabKey, room: room, imageLoads: map[string]*sync.Mutex{}}
 	l.writer = state.NewWriter(path, l.logger)
 	l.ctx, l.cancel = context.WithCancel(context.Background())
 	if err := l.Change(l.endInterruptedActions); err != nil {
@@ -198,7 +179,7 @@ func (l *Lab) endInterruptedActions(tx *state.Tx) error {
 }
 
 // Close stops the lab: it cancels the running actions, waits until they have
-// ended, stops the machine's side (StartMachine), writes the state and gives
+// ended, stops what Machine.Start started (Machine.stop), writes the state and gives
 // the data folder up. Later calls return the first one's result, so that
 // every way to stop may call it.
 func (l *Lab) Close() error {
@@ -207,8 +188,8 @@ func (l *Lab) Close() error {
 		l.closed = true
 		l.mu.Unlock()
 		l.cancel()
-		l.actions.Wait()
-		machineErr := l.stopMachine()
+		l.background.Wait()
+		machineErr := l.machine.stop()
 		if machineErr != nil {
 			machineErr = fmt.Errorf("stopping the machine's side: %w", machineErr)
 		}
@@ -296,4 +277,10 @@ func (l *Lab) Now() time.Time {
 // runs, so it needs no lock.
 func (l *Lab) Catalog() *catalog.Catalog {
 	return l.catalog
+}
+
+// Machine returns the lab's side on the machine, whose methods are the
+// actions' steps.
+func (l *Lab) Machine() *Machine {
+	return l.machine
 }

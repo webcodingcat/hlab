@@ -119,7 +119,7 @@ func TestDeleteProjectRemovesItsServersFromTheMachine(t *testing.T) {
 	l := start(t, machine, lab.Options{DataDir: dataDir})
 	t.Cleanup(func() { _ = l.Close() })
 	id := putServer(t, l, machine, "web", true, true)
-	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
 		t.Fatal(err)
 	}
 	server, err := lab.Current(l, state.Servers, id)
@@ -136,7 +136,7 @@ func TestDeleteProjectRemovesItsServersFromTheMachine(t *testing.T) {
 	if state, err := machine.Platform().Hypervisor.VMState(t.Context(), lab.ServerVM(id)); !errors.Is(err, platform.ErrNotFound) {
 		t.Errorf("the server's VM is %+v, %v; want it gone", state, err)
 	}
-	for _, file := range []string{disk, l.ServerSeed(id)} {
+	for _, file := range []string{disk, l.Machine().ServerSeed(id)} {
 		if !slices.Contains(machine.Calls(), "DeleteDisk "+file) {
 			t.Errorf("%s was not removed", file)
 		}

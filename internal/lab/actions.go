@@ -72,8 +72,9 @@ type Plan struct {
 	// back (want_running), and Undo must not overwrite them.
 	UndoIfLast bool
 	// Undo takes back the quick changes when the steps fail. A canceled
-	// action undoes nothing: a deleted project's records are gone anyway, and a stopping
-	// lab keeps the state as it is. Undo runs under the mutex, like a Change.
+	// action undoes nothing: a deleted project's records are gone anyway,
+	// and a stopping lab keeps the state as it is. Undo runs under the
+	// mutex, like a Change.
 	// Its records may be gone (the project was deleted while steps that did
 	// not watch the context failed): Undo then treats state.ErrNotFound as
 	// nothing left to undo.
@@ -275,7 +276,7 @@ func (l *Lab) start(planned plannedAction) {
 	l.running[run.id] = run
 	for _, ref := range flagged {
 		l.flags[ref]++
-		l.flagged[ref]++
+		l.machine.noteFlag(ref)
 	}
 	var before chan struct{}
 	if queue != nil {
@@ -289,9 +290,9 @@ func (l *Lab) start(planned plannedAction) {
 		l.queues[ref] = run.done
 	}
 	run.lockQueues = planned.plan.Locks
-	l.actions.Add(1)
+	l.background.Add(1)
 	go func() {
-		defer l.actions.Done()
+		defer l.background.Done()
 		defer close(run.done)
 		defer cancel()
 		err := waitFor(ctx, before)

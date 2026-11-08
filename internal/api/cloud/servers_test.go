@@ -144,7 +144,7 @@ func TestServerLifeCycle(t *testing.T) {
 	if power := vmPower(t, test, server.ID); power != platform.PowerRunning {
 		t.Errorf("the VM is %s", power)
 	}
-	seed := test.machine.Seed(test.lab.ServerSeed(server.ID))
+	seed := test.machine.Seed(test.lab.Machine().ServerSeed(server.ID))
 	if !strings.Contains(string(seed["network-config"]), lab.ServerMAC(server.ID)) ||
 		!strings.Contains(string(seed["meta-data"]), adminKey) {
 		t.Errorf("the seed is %s / %s", seed["network-config"], seed["meta-data"])
@@ -313,7 +313,7 @@ func TestServerWithoutKeysGetsARootPassword(t *testing.T) {
 	if got := getServer(t, test, created.Server.ID); got.Status != "off" {
 		t.Errorf("the server is %s, want off", got.Status)
 	}
-	vendorData := string(test.machine.Seed(test.lab.ServerSeed(created.Server.ID))["vendor-data"])
+	vendorData := string(test.machine.Seed(test.lab.Machine().ServerSeed(created.Server.ID))["vendor-data"])
 	if !strings.Contains(vendorData, *created.RootPassword) {
 		t.Errorf("the vendor data lacks the password: %s", vendorData)
 	}

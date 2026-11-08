@@ -70,8 +70,9 @@ At most one `hlabd` runs on a machine.
 
 ## Layers
 
-Everything except `cmd/` and the live tests in `itest/` lives under `internal/`. The table below goes from the user
-at the top to the system at the bottom.
+Everything except `cmd/` and the live tests in `itest/` lives under
+`internal/`. The table below goes from the user at the top to the system at
+the bottom.
 
 The table also lists packages that do not exist yet; their Job says "(later)". That
 way their rule applies from their first line of code.
@@ -136,9 +137,10 @@ The layer test checks production code only. Tests may import fakes and helpers.
 
 `internal/state` holds the records. `internal/lab` owns them.
 
-- **Kinds.** Each kind of record (`state.Projects`, `state.Tokens`, `state.SSHKeys`,
-  `state.Actions`, `state.Servers`, `state.PrimaryIPs`) is a `state.Kind[R]`. It knows its record type `R` and its name in
-  the file. The lab's own records, which the API does not show, are in `state.Lab`
+- **Kinds.** Each kind of record (`state.Projects`, `state.Tokens`,
+  `state.SSHKeys`, `state.Actions`, `state.Servers`, `state.PrimaryIPs`) is a
+  `state.Kind[R]`. It knows its record type `R` and its name in the file.
+  The lab's own records, which the API does not show, are in `state.Lab`
   (read them with `tx.Lab()`). Records hold plain data: no interfaces and no
   unexported fields.
 - **Projects.** A record that belongs to a project has a `RecordProject` method
@@ -193,6 +195,15 @@ The layer test checks production code only. Tests may import fakes and helpers.
 - A mutex in `lab` guards the state, the flags and the running actions. Only code
   that holds the mutex takes records from the state. The mutex is never held during
   a call into `system`.
+- **The machine's fields share the lab's mutex.** `lab.Machine` (Actions) has
+  no mutex of its own: its fields (the appliance, the host's resources, the
+  image loads, the watchdog's notes) are read and changed only while holding
+  the lab's mutex. The watchdog and the room check read them together with
+  the state and the flags, and a second mutex would add a lock order to
+  keep. Two kinds of lock are held across calls to the system and are
+  therefore separate: `Machine.pictureMu`, which keeps the pictures in order,
+  and the image cache's load lock per image (`Machine.imageLoads`). Neither
+  is ever taken while holding the lab's mutex.
 - Every change runs in `lab.Change(func(tx *state.Tx) error)`. If the function
   returns an error, the old state stays; otherwise the new state is saved. Reads run
   in `lab.View`, which changes nothing. A `View` whose function always returns
@@ -212,7 +223,7 @@ The layer test checks production code only. Tests may import fakes and helpers.
   the lab (`Lab.Close`) and deleting a project (`Lab.StopProjectActions`) cancel
   that context. A closed lab starts no action (`lab.ErrClosed`, 503), and
   `Close` waits for every goroutine of the actions, of
-  `Lab.UpdatePicturesLater` and of `Lab.DeleteProject`'s removals.
+  `Machine.UpdatePicturesLater` and of `Lab.DeleteProject`'s removals.
 - `lab.Flush()` waits until the newest state is on disk. `Lab.Close` calls it.
 - `go test -race` runs on Linux, in `bin/dev test` and in CI.
 
@@ -267,9 +278,38 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
     undoes only if no action was queued behind it on the resource: the later
     plans have set again what it would take back (`want_running`).
   - The watchdog looks at a VM without the mutex, so it acts only if no
-    action flagged the server meanwhile (`Lab.flagged` counts every flag).
+    action flagged the server meanwhile: each round notes the servers it
+    looks at, an action's flag marks them, and the notes go with the round
+    (`Machine.watchRound`).
   - If the steps are cancelled, nothing is undone: a reset removes everything
     anyway, and a stopping lab keeps its state.
+- **Where an action's parts live.** `api/*` decides and `lab` does the work
+  (Layers), so for a resource `thing` (a Primary IP: `primary_ip`):
+
+  | File | What |
+  |---|---|
+  | `internal/api/cloud/things.go` | the endpoints and the JSON |
+  | `internal/api/cloud/thing_actions.go` | the action table `thingActions(l)` and each row's `plan<Command>`: its checks, quick changes and `Undo` |
+  | `internal/lab/things.go` | the steps: methods of `*lab.Machine` |
+
+  - A step method is named after what it does (`PowerOnServer`,
+    `ChangePrimaryIP`), takes the context and IDs, and does the whole slow
+    part, Hetzner's wait (`Lab.Sleep`) included, so that the timing sits
+    with the work.
+  - **Every step is a `Machine` method,** also one that only sends the
+    pictures and waits, as for Floating IPs, firewalls and networks: the
+    pictures go through the machine (`Machine.UpdatePictures`).
+  - A plan's `Steps` calls exactly one step method and nothing else
+    (`Steps: l.Machine().ChangePrimaryIP` or a closure that passes the
+    IDs). The one exception is an action that changes nothing on the
+    machine and only waits Hetzner's time: its `Steps` calls `l.Sleep`
+    itself (an unassign of a Primary IP that has no server) and says so.
+  - What the plans of several resources share stays in `api/cloud`, with the
+    resource whose records it changes (`releaseServer` in
+    `server_actions.go`).
+  - `Lab` keeps the state, the actions and their flags, projects, tokens,
+    faults and the time; `Machine` has everything that calls `system` for
+    VMs, files, the appliance and its pictures.
 - **Restart.** Actions that were running when HLab stopped end with an error when it
   starts again.
 - **Size.** Each project keeps its newest `lab.MaxFinishedActions` (1 000) finished
@@ -288,13 +328,15 @@ catalog in [docs/catalog.md](docs/catalog.md). These rules hold across them:
 - **Creates are whole.** A create records its resource and plans its first
   actions in one `Lab.Create`; every create checks its project
   (`lab.CheckProject`, which `Lab.Act` and `Lab.Create` call). A failed
-  create removes what its steps made.
+  create removes what its steps made. Known gap until phase 2a-1: a
+  server whose create fails stays in the appliance's pictures until the
+  next change sends them (docs/roadmap.md, Known gaps).
 - **Names are unique per project**, looked up with `state.ByName`.
 - **`want_running` changes only in an action's plan** (and in the create's
   record, and by the watchdog for a guest that shut itself down); steps
   leave it, so queued actions keep the order they were sent in.
 - **Room is checked where the records are:** memory and cores in the
-  transaction (`Lab.CheckRoom`), the disk before it (`Lab.CheckDisk`, which
+  transaction (`Machine.CheckRoom`), the disk before it (`Machine.CheckDisk`, which
   asks the system). The reserves come from `hlab.yaml` (`room`).
 - **A server's status** is set by its actions' steps while they run, by the
   watchdog when no action works on it, and by the lab's start, which makes
@@ -573,14 +615,19 @@ into as it is, such as a renamed or moved field, or a field with a new meaning:
 2. Add `migrations[old]`, which lifts the raw JSON by one version.
 3. Add a test that loads a sample file of the old version from `testdata/`.
 
-**A new action.** Add a row to the resource's `lab.ActionTable` with Hetzner's
-command and action name.
+**A new action.** Its parts go where the rule says (Actions, Where an
+action's parts live). Add a row to the resource's `lab.ActionTable` in
+`internal/api/cloud/<thing>_actions.go` with Hetzner's command and action name.
 
-- `Plan` checks the request and makes the quick changes.
-- `Steps` does the slow part through a method of `lab` (such as
-  `Lab.PowerOffServer`), which calls `system`; `api/*` never reaches `system`
-  itself. It keeps IDs across those calls and waits with `l.Sleep`, using a
-  timing from `internal/lab/clock.go` that was measured on Hetzner.
+- `Plan` (`plan<Command>`, in the same file) checks the request and makes the
+  quick changes.
+- `Steps` calls one step method of `*lab.Machine` in `internal/lab/<thing>s.go`
+  (such as `Machine.PowerOffServer`), which calls `system` and waits with
+  `m.lab.Sleep`, using a timing from `internal/lab/clock.go` that was
+  measured on Hetzner; `api/*` never reaches `system` itself. The method keeps
+  IDs across its calls and looks records up again with `lab.Current`. A
+  resource whose steps only change the data plane calls
+  `m.UpdatePictures(ctx)` and then sleeps (`Machine.ChangePrimaryIP`).
 - `Undo` takes back the quick changes.
 
 Its tests use the fake platform and, for timings, a test clock.

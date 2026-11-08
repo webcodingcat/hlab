@@ -14,7 +14,7 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
   `initializing`) and runs the table's rows `create` (`create_server`) and,
   unless `start_after_create` is false, `poweron` (`start_server`, the
   answer's `next_actions`), all in one `Lab.Create`. The create's steps are
-  `Lab.CreateServer`; its `Lab.BuildServer` takes the system image from the
+  `Machine.CreateServer`; its `Machine.BuildServer` takes the system image from the
   cache, makes the differencing disk, the
   seed and the VM, and sends the appliance the pictures with the server. If
   it fails, the steps remove the VM, the disk and the seed, and the
@@ -28,10 +28,11 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
   - A reboot asks the guest to shut down (Hyper-V has no ACPI reboot), turns
     it off after a minute and starts it.
   - A reboot or reset of an off server starts it, as on Hetzner.
-  - Each sets the status first and then calls the system, because Hetzner
-    shows the new status as soon as the action runs. If the call fails, the
-    status stays as the steps left it; only a start of an off server sets it
-    back to `off` (Room).
+  - Each sets the status before its first call that changes the VM, because
+    Hetzner shows the new status as soon as the action runs; a `shutdown`
+    leaves the status to the watchdog, which sees the guest go off. If the
+    call fails, the status stays as the steps left it; only a start of an
+    off server sets it back to `off` (Room).
   - `want_running` changes only in the plan, when the action is asked for:
     a start sets it, a `poweroff` clears it (Room). The steps leave it, so
     queued actions leave it in the order they were sent: a `poweroff` sent
@@ -50,7 +51,7 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
   runs is taken over (hlabd had crashed); one whose VM is off gets its NIC on
   `HLab-Public` again (detached and attached, as a stop of the lab removed the
   switch) and starts if it wants to run. A server without a VM gets a new one
-  first (`Lab.restoreServer`): with its disk as it is, if the disk is there
+  first (`Machine.restoreServer`): with its disk as it is, if the disk is there
   (an uninstall kept the data folder but removed the VMs); built anew if
   there is no disk (hlabd's end cut its create short). `system.CreateServer`
   keeps a disk that is there and never removes it on a failure. A stop shuts
@@ -58,11 +59,11 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
   (`hlab.yaml`, 60 s); `want_running` stays.
 - **Room.** A create or a start (`poweron`, and `reboot` or `reset` of an off
   server) beyond the host's room is Hetzner's 412 `resource_unavailable`.
-  - Memory (`Lab.CheckRoom`, from `Hypervisor.HostResources`): memory is
+  - Memory (`Machine.CheckRoom`, from `Hypervisor.HostResources`): memory is
     static, so the servers that want to run may take all of the host's memory
     except a reserve (25 %, at least 6 GB) and the appliance's 1 GB.
   - Cores: four virtual cores per thread of the host.
-  - Disk, for a create (`Lab.CheckDisk`, from `Hypervisor.DiskSpace`): a
+  - Disk, for a create (`Machine.CheckDisk`, from `Hypervisor.DiskSpace`): a
     tenth of the data folder's drive stays free, counted as it is now.
     Dynamic disks take only what the guests wrote, so the servers' disks may
     be larger together than the drive.

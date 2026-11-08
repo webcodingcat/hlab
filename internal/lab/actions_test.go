@@ -436,7 +436,7 @@ func TestCloseRefusesNewActions(t *testing.T) {
 	if _, err := l.Create(tableWith(instant), request(0), created, "poweroff"); !errors.Is(err, lab.ErrClosed) {
 		t.Errorf("a create after Close: %v, want ErrClosed", err)
 	}
-	l.UpdatePicturesLater() // starts nothing that would outlive Close
+	l.Machine().UpdatePicturesLater() // starts nothing that would outlive Close
 }
 
 func TestStopProjectActionsCancelsOnlyThatProject(t *testing.T) {

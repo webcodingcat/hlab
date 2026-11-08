@@ -17,7 +17,7 @@ packages below it follow the layers.
   2. Load the catalog.
   3. `lab.Open`. It takes the data folder for itself through `Lifecycle.Lock`, so
      only one HLab runs on a machine.
-  4. `Lab.StartMachine` (The machine's side, below): the host link, the
+  4. `Machine.Start` (The machine's side, below): the host link, the
      appliance and its pictures. Ctrl+C ends a start that waits for them.
   5. Open the ports.
   6. Create the project `default` if the lab is new (`Lab.Fresh`: there was no state
@@ -45,7 +45,7 @@ packages below it follow the layers.
   the lock, the token file and the signals are real. So only one HLab runs, and the
   CLI finds it. The fake machine has a fake agent (`fake.Agent`) in each of the
   appliance's VMs, and a stand-in release disk in the data folder when there is
-  no real one, so `StartMachine` runs there as well.
+  no real one, so `Machine.Start` runs there as well.
 - **The appliance's release disk** is `hlab-appliance.vhdx` next to `hlabd`, or
   `--appliance <path>`. A start copies it to `<data>/appliance/<sha256>.vhdx`
   unless that is there; its SHA-256 is the release's ID. The appliance runs on a
@@ -70,7 +70,7 @@ packages below it follow the layers.
 
 ### The machine's side
 
-`Lab.StartMachine` starts the lab's side on the machine; `Lab.Close` undoes
+`Machine.Start` starts the lab's side on the machine; `Lab.Close` undoes
 it. `system` does each step, `lab` only builds the pictures.
 
 1. `system.ConnectHost`: `HostNet.CheckRanges` refuses to start if a route or an
@@ -108,7 +108,7 @@ not sent again until its generation changes. Every sender (an update, the
 watchdog, the announcing) reads the newest pictures and sends them under one
 lock of the appliance's, so an older picture never follows a newer one.
 
-**The update** (`Lab.updateAppliance`) replaces a running
+**The update** (`Machine.updateAppliance`) replaces a running
 appliance of an older release, which a start took over, without stopping the
 servers. The state (`Lab.Appliance`) names the running appliance's release and
 MAC set; its VM is `hlab-appliance-a` or `hlab-appliance-b`.

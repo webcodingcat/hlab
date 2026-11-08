@@ -166,12 +166,12 @@ func (l *Lab) DeleteProject(projectID int64) error {
 		l.mu.Unlock()
 		return nil
 	}
-	l.actions.Add(1)
+	l.background.Add(1)
 	l.mu.Unlock()
-	defer l.actions.Done()
+	defer l.background.Done()
 	l.StopProjectActions(projectID)
 	for _, id := range servers {
-		if err := l.DeleteServerVM(l.ctx, id); err != nil {
+		if err := l.machine.deleteServerVM(l.ctx, id); err != nil {
 			l.logger.Warn("removing a server of a deleted project; the next start removes what is left", "server", id, "error", err)
 		}
 	}

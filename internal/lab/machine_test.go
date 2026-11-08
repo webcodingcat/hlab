@@ -73,7 +73,7 @@ func TestStartMachineConnectsTheHostAndStartsTheAppliance(t *testing.T) {
 	}
 	l := start(t, machine, lab.Options{DataDir: t.TempDir()})
 
-	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
 		t.Fatal(err)
 	}
 	link, up := machine.Link()
@@ -106,7 +106,7 @@ func TestStartMachineRemovesTheHostLinkWhenTheApplianceFails(t *testing.T) {
 	opts := machineOptions
 	opts.ApplianceRelease = filepath.Join(t.TempDir(), "missing.vhdx")
 
-	err := l.StartMachine(t.Context(), opts)
+	err := l.Machine().Start(t.Context(), opts)
 
 	if !errors.Is(err, os.ErrNotExist) || !strings.Contains(err.Error(), "appliance") {
 		t.Fatalf("got %v, want the missing release disk", err)
@@ -123,7 +123,7 @@ func TestStartMachineChecksTheRangesFirst(t *testing.T) {
 	l := start(t, machine, lab.Options{DataDir: t.TempDir()})
 	t.Cleanup(func() { _ = l.Close() })
 
-	if err := l.StartMachine(t.Context(), machineOptions); !errors.Is(err, platform.ErrInUse) {
+	if err := l.Machine().Start(t.Context(), machineOptions); !errors.Is(err, platform.ErrInUse) {
 		t.Fatalf("got %v, want ErrInUse", err)
 	}
 	if created := slices.ContainsFunc(machine.Calls(), func(call string) bool { return strings.HasPrefix(call, "CreateVM") }); created {

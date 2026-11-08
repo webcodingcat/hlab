@@ -13,7 +13,7 @@ change, only whole pictures; the agent inside makes the appliance match each one
 values the lab takes from its state and settings (the host link, the MAC set, the
 servers with their Primary IPs). Each picture carries the Lab's generation; a
 change of the servers or their addresses sends every picture anew
-(`Lab.UpdatePictures`, one at a time, so that an older one never follows a
+(`Machine.UpdatePictures`, one at a time, so that an older one never follows a
 newer one). Their output is compared with golden files in
 `internal/picture/testdata`; `go test ./internal/picture -update` writes them anew,
 and the diff shows what changed.

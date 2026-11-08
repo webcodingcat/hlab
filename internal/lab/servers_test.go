@@ -120,14 +120,14 @@ func TestCheckRoomKeepsTheReserve(t *testing.T) {
 	machine.SetHostResources(platform.HostResources{Threads: 8, MemoryMB: 16 * 1024})
 	l := start(t, machine, lab.Options{DataDir: t.TempDir()})
 	t.Cleanup(func() { _ = l.Close() })
-	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
 		t.Fatal(err)
 	}
 	cpx22, _ := catalog.Builtin().ServerTypeByName("cpx22") // 4 GB
 	// 16 GB - 6 GB reserve - 1 GB appliance = 9 GB: two cpx22 fit, not three
 	putServer(t, l, machine, "a", true, true)
 	check := func() error {
-		return l.View(func(tx *state.Tx) error { return l.CheckRoom(tx, 0, cpx22) })
+		return l.View(func(tx *state.Tx) error { return l.Machine().CheckRoom(tx, 0, cpx22) })
 	}
 	if err := check(); err != nil {
 		t.Fatalf("a second server: %v", err)
@@ -147,7 +147,7 @@ func TestCheckRoomTakesTheSettings(t *testing.T) {
 	room := config.Room{MemoryReservePercent: 0, MemoryReserveMinMB: 0, CoresPerThread: 4, DiskFreePercent: 10}
 	l := start(t, machine, lab.Options{DataDir: t.TempDir(), Room: room})
 	t.Cleanup(func() { _ = l.Close() })
-	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
 		t.Fatal(err)
 	}
 	cpx22, _ := catalog.Builtin().ServerTypeByName("cpx22") // 4 GB
@@ -155,7 +155,7 @@ func TestCheckRoomTakesTheSettings(t *testing.T) {
 	putServer(t, l, machine, "a", true, true)
 	putServer(t, l, machine, "b", true, true)
 	check := func() error {
-		return l.View(func(tx *state.Tx) error { return l.CheckRoom(tx, 0, cpx22) })
+		return l.View(func(tx *state.Tx) error { return l.Machine().CheckRoom(tx, 0, cpx22) })
 	}
 	if err := check(); err != nil {
 		t.Fatalf("a third server: %v", err)
@@ -177,7 +177,7 @@ func TestStartMachineResumesTheServers(t *testing.T) {
 	wanted := putServer(t, l, machine, "wanted", false, true)
 	resting := putServer(t, l, machine, "resting", false, false)
 
-	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
 		t.Fatal(err)
 	}
 	for id, want := range map[int64]state.ServerStatus{running: state.ServerRunning, wanted: state.ServerRunning, resting: state.ServerOff} {
@@ -207,7 +207,7 @@ func TestStartMachineGoesOnPastABrokenServer(t *testing.T) {
 	sound := putServer(t, l, machine, "sound", false, true)
 	machine.FailNext("AttachNIC", errors.New("the switch is gone"))
 
-	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
 		t.Fatal(err)
 	}
 	if status, wants := serverStatus(t, l, broken); status != state.ServerOff || !wants {
@@ -264,7 +264,7 @@ func TestStartMachineBuildsAServerWithoutAVM(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
 		t.Fatal(err)
 	}
 	if status, _ := serverStatus(t, l, id); status != state.ServerRunning {
@@ -305,7 +305,7 @@ func TestStartMachineGivesAServerWithoutAVMItsDiskAgain(t *testing.T) {
 	disk := filepath.Join(dataDir, lab.ServerDiskDir, fmt.Sprint(id)+".vhdx")
 	machine.AddDisk(disk, 80)
 
-	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
 		t.Fatal(err)
 	}
 	if status, _ := serverStatus(t, l, id); status != state.ServerRunning {
@@ -320,7 +320,7 @@ func TestStartMachineGivesAServerWithoutAVMItsDiskAgain(t *testing.T) {
 			t.Errorf("the start removed the server's disk")
 		}
 	}
-	if !strings.Contains(string(machine.Seed(l.ServerSeed(id))["meta-data"]), "ILabKey") {
+	if !strings.Contains(string(machine.Seed(l.Machine().ServerSeed(id))["meta-data"]), "ILabKey") {
 		t.Error("the new seed lacks the lab's key")
 	}
 }
@@ -355,7 +355,7 @@ func TestStartMachineCleansTheImageCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
 		t.Fatal(err)
 	}
 	entries, _ := os.ReadDir(cache)
@@ -391,7 +391,7 @@ func TestStartMachineRemovesTheFilesOfServersThatAreGone(t *testing.T) {
 			}
 		}
 	}
-	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
 		t.Fatal(err)
 	}
 	for dir, names := range files {
@@ -414,7 +414,7 @@ func TestWatchdogSeesAServerShutItselfDown(t *testing.T) {
 	l := start(t, machine, lab.Options{DataDir: t.TempDir()})
 	t.Cleanup(func() { _ = l.Close() })
 	id := putServer(t, l, machine, "web", true, true)
-	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
 		t.Fatal(err)
 	}
 	if err := machine.Platform().Hypervisor.ShutdownVM(t.Context(), lab.ServerVM(id)); err != nil {
@@ -440,7 +440,7 @@ func TestCloseShutsTheServersDown(t *testing.T) {
 	withAppliance(machine)
 	l := start(t, machine, lab.Options{DataDir: t.TempDir()})
 	id := putServer(t, l, machine, "web", true, true)
-	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
 		t.Fatal(err)
 	}
 	if err := l.Close(); err != nil {
@@ -464,7 +464,7 @@ func TestWatchdogSettlesAStatusThatAFailedActionLeft(t *testing.T) {
 	t.Cleanup(func() { _ = l.Close() })
 	running := putServer(t, l, machine, "running", true, true)
 	resting := putServer(t, l, machine, "resting", false, false)
-	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
 		t.Fatal(err)
 	}
 	for id, status := range map[int64]state.ServerStatus{running: state.ServerStopping, resting: state.ServerStarting} {

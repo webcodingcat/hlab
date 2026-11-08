@@ -16,6 +16,7 @@ import (
 // during another waits instead of 423 (measured 2026-11-08). "create" and
 // "delete" are no routes of their own: POST and DELETE /servers run them.
 func serverActions(l *lab.Lab) lab.ActionTable {
+	machine := l.Machine()
 	// want_running changes only in the plans (planStop, planStart; the
 	// create records it), when an action is asked for: queued actions then
 	// leave it in the order they were sent
@@ -26,11 +27,11 @@ func serverActions(l *lab.Lab) lab.ActionTable {
 		Actions: map[string]lab.ActionSpec{
 			"create":            {Name: "create_server", Plan: planCreateServer(l)},
 			"delete":            {Name: "delete_server", Plan: planDeleteServer(l)},
-			"poweron":           {Name: "start_server", Plan: planStart(l, l.PowerOnServer)},
-			"poweroff":          {Name: "stop_server", Plan: planStop(l.PowerOffServer)},
-			"shutdown":          {Name: "shutdown_server", Plan: planSteps(l.ShutdownServer)},
-			"reboot":            {Name: "reboot_server", Plan: planStart(l, l.RebootServer)},
-			"reset":             {Name: "reset_server", Plan: planStart(l, l.ResetServer)},
+			"poweron":           {Name: "start_server", Plan: planStart(l, machine.PowerOnServer)},
+			"poweroff":          {Name: "stop_server", Plan: planStop(machine.PowerOffServer)},
+			"shutdown":          {Name: "shutdown_server", Plan: planSteps(machine.ShutdownServer)},
+			"reboot":            {Name: "reboot_server", Plan: planStart(l, machine.RebootServer)},
+			"reset":             {Name: "reset_server", Plan: planStart(l, machine.ResetServer)},
 			"change_protection": {Name: "change_protection", Plan: planServerProtection, Unflagged: true},
 		},
 	}
@@ -86,7 +87,7 @@ func planStart(l *lab.Lab, run func(ctx context.Context, id int64) error) func(t
 		}
 		// a type that the user's catalog dropped counts nothing, as in CheckRoom
 		serverType, _ := l.Catalog().ServerTypeByName(server.Type)
-		if err := l.CheckRoom(tx, server.ID, serverType); err != nil {
+		if err := l.Machine().CheckRoom(tx, server.ID, serverType); err != nil {
 			return lab.Plan{}, err
 		}
 		server.WantRunning = true
@@ -110,14 +111,14 @@ func planCreateServer(l *lab.Lab) func(tx *state.Tx, req lab.Request) (lab.Plan,
 		start := server.WantRunning
 		return lab.Plan{
 			Resources: []state.ResourceRef{{Type: imageResource, ID: server.ImageID}},
-			Steps:     func(ctx context.Context) error { return l.CreateServer(ctx, req.ID, start) },
+			Steps:     func(ctx context.Context) error { return l.Machine().CreateServer(ctx, req.ID, start) },
 			Undo:      undoServer(req.ID, releaseServer),
 		}, nil
 	}
 }
 
 // planDeleteServer removes the server's record at once (a create still
-// running then fails and cleans up, Lab.CreateServer), as Hetzner's API
+// running then fails and cleans up, Machine.CreateServer), as Hetzner's API
 // does, and its VM, disk and seed in the steps. Its Primary IPs with
 // auto_delete go with it, the others stay unassigned.
 func planDeleteServer(l *lab.Lab) func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
@@ -130,12 +131,7 @@ func planDeleteServer(l *lab.Lab) func(tx *state.Tx, req lab.Request) (lab.Plan,
 			return lab.Plan{}, web.Refusal(http.StatusLocked, "protected", serverDeleteProtected)
 		}
 		releaseServer(tx, server)
-		return lab.Plan{Steps: func(ctx context.Context) error {
-			if err := l.DeleteServerVM(ctx, req.ID); err != nil {
-				return err
-			}
-			return l.Sleep(ctx, lab.ServerDelete)
-		}}, nil
+		return lab.Plan{Steps: func(ctx context.Context) error { return l.Machine().DeleteServer(ctx, req.ID) }}, nil
 	}
 }
 

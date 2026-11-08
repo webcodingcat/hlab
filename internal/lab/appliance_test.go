@@ -81,7 +81,7 @@ func TestStartMachineNamesTheReleaseAndTheSetOfANewAppliance(t *testing.T) {
 		}
 	}
 
-	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
 		t.Fatal(err)
 	}
 
@@ -106,7 +106,7 @@ func TestStartMachineUpdatesATakenOverApplianceOfAnOlderRelease(t *testing.T) {
 	runningAppliance(t, l, machine, state.Appliance{Release: "older", MACSet: "A"}, "A")
 
 	skipped := len(machine.Calls())
-	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
 		t.Fatal(err)
 	}
 
@@ -138,7 +138,7 @@ func TestStartMachineKeepsTheOldApplianceWhenTheNewOneDoesNotComeUp(t *testing.T
 	opts := machineOptions
 	opts.Timings.Boot = 50 * time.Millisecond
 
-	if err := l.StartMachine(t.Context(), opts); err != nil {
+	if err := l.Machine().Start(t.Context(), opts); err != nil {
 		t.Fatal(err)
 	}
 
@@ -163,7 +163,7 @@ func TestStartMachineRepeatsAnUpdateThatHLabsEndCutShort(t *testing.T) {
 	runningAppliance(t, l, machine, state.Appliance{Release: "older", MACSet: "A"}, "A", "B")
 
 	skipped := len(machine.Calls())
-	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
 		t.Fatal(err)
 	}
 
@@ -189,7 +189,7 @@ func TestStartMachineTakesOverTheNewApplianceOfAnUpdateThatHLabsEndCutShort(t *t
 	runningAppliance(t, l, machine, updated, "A", "B")
 
 	skipped := len(machine.Calls())
-	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
 		t.Fatal(err)
 	}
 
