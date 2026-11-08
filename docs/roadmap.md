@@ -84,7 +84,7 @@ the tests. Look there before writing such a part anew.
 | 1b-5 | dev loop, `install.ps1`, the CLI from WSL2 | done |
 | 1b-6 | appliance update (A/B) with running servers | done |
 | 1b-R | review of phase 1b | done |
-| 1-L | the live tests of phase 1 on the finished state | next |
+| 1-L | the live tests of phase 1 on the finished state | next: check its findings again |
 
 ### What is there
 
@@ -133,7 +133,9 @@ each part; this is the list.
   stays off, and the rest start. A start removes the disks and seeds of
   servers that are gone. A crash of hlabd leaves everything running.
 - **For users and developers:** `install/install.ps1` (from `bin/dev
-  package`; `-Uninstall`, `-KeepData`), the start menu entry, `hlab start`,
+  package`; `-Uninstall`, `-KeepData`; an update ends a running HLab as a
+  crash would, so its servers run on and the next start updates the
+  appliance), the start menu entry, `hlab start`,
   `hlab stop`, `hlab ssh` with the lab's key, the CLI from WSL2 finding the
   lab by itself; the dev loop `bin/dev deploy [--keep-vms]` through the task
   "HLab dev"; the log in `logs/hlabd.log`.
@@ -143,14 +145,42 @@ each part; this is the list.
   two servers through the Cloud API, SSH and metadata over IPv4 and IPv6,
   reachability from Windows and WSL2, isolation, stop and start, crash and
   takeover, the appliance turned off hard and updated with a running
-  server); `bin/dev smoke` with `examples/tofu-1b`.
+  server and two SSH sessions, one of them quiet until the guest sends
+  first after the update; a connection over IPv6 after 45 s without
+  IPv6); `bin/dev smoke` with `examples/tofu-1b`.
 - **Measured** on a Ryzen AI Max+ 395: a create until SSH answers 13 s (image
   cached); the appliance from nothing 11.8 s; after it was turned off hard,
   a server answers again within 5.4 s; the appliance's update 11 s, during which a server took no
   new connection for 0.5 s at most; the dev loop 29 s, 9 s with
   `--keep-vms`; all live tests about 5 minutes.
 
+### Found by 1-L and fixed
+
+- A TCP connection from the host in which only the guest sent hung after
+  the appliance's update: the new appliance took its first packet as `new`
+  and rejected it. The ruleset now lets TCP with ACK and without SYN from
+  the servers to the host through.
+- IPv6 from the host to a guest took 5 s after a pause: the appliance had
+  no link-local address on `link`, so the kernel could not solicit the
+  host for the guests' answers. It has `fe80::2` now.
+- `C:\ProgramData\HLab\instance` stays no longer after HLab ends, and the
+  live tests write their own; the hv_sock registry key was never needed
+  (hlabd only dials into VMs) and is gone from `install.ps1` and
+  `dev-install`; tests for the Primary IPs' lists and action lists, the
+  servers' sorting and Hetzner's texts per field.
+
 ### Open for later phases
+
+- Raised in the review after 1-L, for before phase 2: deleting a project
+  leaves its servers' VMs running until the next start (`Lab.DeleteProject`
+  removes only records), and `Lab.Act` and `Lab.Create` still start actions
+  after `Lab.Close` (no closed state; `UpdatePicturesLater`'s goroutines are
+  not awaited).
+- The servers' connections to the Internet do not live through an update
+  of the appliance: the new one has none of the old one's NAT.
+- An update with `install.ps1` fails while an `hlab ssh` runs: `hlab.exe`
+  waits for `ssh.exe` and holds its file, so the copy fails (hlabd has
+  already ended by then; its servers run on).
 
 - Volumes, networks, firewalls and placement groups in a server's create
   request are ignored until their phase (2a, 2b); `change_dns_ptr` comes
@@ -178,6 +208,6 @@ each part; this is the list.
   (2c).
 - Stop requests from signing out and the tray (6b).
 
-Next: 1-L, the live tests of phase 1 on the finished state.
+Next: 1-L checks its findings again on the finished state.
 
 Not there yet: the commands of later phases.
