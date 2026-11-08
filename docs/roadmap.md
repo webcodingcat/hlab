@@ -207,16 +207,9 @@ that found it (must, should, optional) and the phase that closes it.
 - **should, 2a:** a Primary IP's assign and unassign have no `Undo`: when
   their pictures fail, the action ends with an error but the IP stays
   assigned or unassigned.
-- **should, 2c:** `system.ReadSecrets` returns a nil map for an
-  `env-tokens.json` of `null`, and the next env token panics.
 - **should, with the next change there:** the comment on the requests that
   `refuseWhileStopping` lets through (`cmd/hlabd/service.go`) does not
   read.
-- **optional, 2a:** the agent could refuse a generation older than the one
-  it applied (per hlabd run), so that the pictures' order holds end to end.
-- **optional, before 2a:** `lab` grows wide (servers, image cache,
-  appliance update, watchdog); a type of its own for the machine's side
-  would keep `Lab` narrow before networks and firewalls come.
 - **should, 2a:** `Lab.flagged` keeps an entry for every resource that
   ever had a flag, also for deleted ones.
 - **should, 2c:** the servers' watchdog runs every 2 s on the wall clock
@@ -230,11 +223,21 @@ that found it (must, should, optional) and the phase that closes it.
   without a network, where Hetzner leaves it out.
 - The firewall rules do not block the lab's own range as a source on
   8090; the appliance's ruleset keeps the servers off it.
-- **optional, before 2a:** decide where a resource's plans and steps live
-  as `lab` grows (today plans in `api/cloud`, steps in `lab`).
+- **should, 2a:** a connection from a server to a lab address that nobody
+  holds runs into a timeout (4 s), though the ruleset's comment says it is
+  rejected; 2a makes the behaviour and the comment agree, as Hetzner does
+  it.
 
 ### Comes with phase X
 
+- **2a, first step:**
+  - a type of its own for the machine's side (servers, image cache,
+    appliance update, watchdog), so that `Lab` stays narrow before
+    networks and firewalls come;
+  - a fixed rule for where a resource's plans and steps live (today plans
+    in `api/cloud`, steps in `lab`);
+  - `system.ReadSecrets` returns a nil map for an `env-tokens.json` of
+    `null`, and the next env token panics: fix it.
 - **2a:** volumes, networks, firewalls and placement groups in a server's
   create request are ignored until then.
 - **2b:** `change_dns_ptr` (DNS); unbound's configuration and the uplink's
