@@ -27,7 +27,9 @@ and the diff shows what changed.
 
 **The address plan** as the pictures use it: the host link `198.18.0.0/29` and
 `2001:db8:0:ffff::/64` (host `.1`/`::1`, appliance `.2`/`::2`, `.3` the source for
-ACME checks); the servers see Hetzner's gateways `172.31.1.1` (on-link to their
+ACME checks; the appliance's link-local address there is `fe80::2`: the kernel
+solicits a neighbor only from a link-local address, unless the waiting packet
+comes from the appliance itself); the servers see Hetzner's gateways `172.31.1.1` (on-link to their
 `/32`) and `fe80::1`, and the resolvers `198.18.0.2` and `2001:db8:0:ffff::2`. The
 appliance's MAC addresses are `02:48:4c:0a:00:0<n>` (set A) or `02:48:4c:0b:00:0<n>`
 (set B), n = NIC 1 to 4; an update starts the new appliance with the other set.
@@ -44,8 +46,10 @@ appliance's MAC addresses are `02:48:4c:0a:00:0<n>` (set A) or `02:48:4c:0b:00:0
   without Internet.
 - No rule depends on conntrack seeing a connection start. Between host and servers
   and among servers nothing is tracked; the answers to the host's connections are
-  `established`, which conntrack also gives a running TCP connection after an
-  update of the appliance.
+  `established`, or TCP with ACK and without SYN: conntrack takes up a running
+  TCP connection after an update of the appliance, but calls its first packet
+  `new`, and a server that sends first would hang. Such a packet opens no
+  connection.
 - The servers reach DHCP, the metadata service and DNS on the appliance; the host
   reaches all of it.
 

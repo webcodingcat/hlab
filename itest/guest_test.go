@@ -147,7 +147,7 @@ func TestLabForACrash(t *testing.T) {
 	if dataDir == "" {
 		t.Skip("runs only in the process of labRun.crash")
 	}
-	parts := windows.New(quietLogger())
+	parts := newParts(dataDir) // the parent removes it
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	l, err := lab.Open(lab.Options{DataDir: dataDir, Logger: logger, LabKey: os.Getenv(crashLabKeyVar)}, system.New(parts.Platform))
 	if err != nil {

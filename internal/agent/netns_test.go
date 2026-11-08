@@ -138,7 +138,7 @@ func TestLinksPictureSetsNamesAddressesRoutesAndVRFs(t *testing.T) {
 	if link := mustLink(t, "uplink"); link.Attrs().Flags&net.FlagUp != 0 {
 		t.Error("the agent set the uplink up, which is networkd's job")
 	}
-	checkAddresses(t, "link", "198.18.0.2/29", "198.18.0.3/32", "2001:db8:0:ffff::2/64")
+	checkAddresses(t, "link", "198.18.0.2/29", "198.18.0.3/32", "2001:db8:0:ffff::2/64", "fe80::2/64")
 	checkAddresses(t, "public", "172.31.1.1/32", "fe80::1/64")
 	checkAddresses(t, "lo", "127.0.0.1/8", "169.254.169.254/32", "::1/128")
 	checkAddresses(t, "private.100", "10.0.0.1/16")
@@ -186,7 +186,7 @@ func TestNewLinksPictureRemovesWhatItLacks(t *testing.T) {
 	})
 	putPicture(t, agent, agentproto.PictureLinks, smaller)
 
-	checkAddresses(t, "link", "198.18.0.2/29", "2001:db8:0:ffff::2/64")
+	checkAddresses(t, "link", "198.18.0.2/29", "2001:db8:0:ffff::2/64", "fe80::2/64")
 	// the uplink keeps its addresses, the kernel's link-local one too
 	checkAddresses(t, "uplink", "172.23.240.5/20", "fe80::48:4cff:fe0a:4/64")
 	checkRoutes(t, 0, "198.19.0.1/32 public src 172.31.1.1", "2001:db8:1:1::/64 public")

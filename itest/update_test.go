@@ -97,9 +97,9 @@ func (w *outageWatch) end() time.Duration {
 	return <-w.longest
 }
 
-// sessionWatch is an SSH session to a guest that prints a line every
-// 100 ms: it shows whether a TCP connection through the appliance lives
-// on, and how long no line came.
+// sessionWatch is an SSH session to a guest whose command prints lines:
+// it shows whether a TCP connection through the appliance lives on, and
+// how long no line came.
 type sessionWatch struct {
 	ssh    *exec.Cmd
 	exited chan struct{}
@@ -109,11 +109,21 @@ type sessionWatch struct {
 	longest  time.Duration
 }
 
-// watchSession logs into the guest and waits for the session's first line.
-func (k labKey) watchSession(t *testing.T, address string) *sessionWatch {
+// The commands of the sessions: the first prints a line every 100 ms; the
+// second prints one line and then waits silently for a mark, so that the
+// guest sends first after the update, before the host says anything.
+const (
+	tickingSession = "while sleep 0.1; do echo tick; done"
+	quietMark      = "/run/itest-go"
+	quietSession   = "echo waiting; while [ ! -e " + quietMark + " ]; do sleep 0.1; done; " + tickingSession
+)
+
+// watchSession logs into the guest, runs the command and waits for its
+// first line.
+func (k labKey) watchSession(t *testing.T, address, command string) *sessionWatch {
 	t.Helper()
 	args := append([]string{"-i", k.file}, sshOptions(os.DevNull)...)
-	args = append(args, "root@"+address, "while sleep 0.1; do echo tick; done")
+	args = append(args, "root@"+address, command)
 	watch := &sessionWatch{ssh: exec.Command(k.ssh, args...), exited: make(chan struct{})}
 	stdout, err := watch.ssh.StdoutPipe()
 	if err != nil {
@@ -148,26 +158,26 @@ func (k labKey) watchSession(t *testing.T, address string) *sessionWatch {
 	return watch
 }
 
-// end waits for one more line, ends the session and returns the longest
-// time without a line, and whether the session lived until now.
+// end waits up to 10 s for one more line, ends the session and returns the
+// longest time without a line, and whether the session lived until now: it
+// still ran and printed that line. A session that hangs runs on, so the
+// line is what tells.
 func (w *sessionWatch) end() (longest time.Duration, lived bool) {
 	w.mu.Lock()
 	seen := w.lastLine
 	w.mu.Unlock()
 	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		w.mu.Lock()
-		newer := w.lastLine.After(seen)
-		w.mu.Unlock()
-		if newer {
-			break
-		}
+	newer := false
+	for !newer && time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
+		w.mu.Lock()
+		newer = w.lastLine.After(seen)
+		w.mu.Unlock()
 	}
 	select {
 	case <-w.exited:
 	default:
-		lived = true
+		lived = newer
 		_ = w.ssh.Process.Kill()
 		<-w.exited
 	}

@@ -18,6 +18,8 @@ var (
 	Gateway4 = netip.MustParseAddr("172.31.1.1")
 	// Gateway6 is the gateway of the public IPv6 /64, as the seed names it.
 	Gateway6 = seed.Gateway6
+	// linkLocal is the appliance's link-local address on the host link.
+	linkLocal = netip.MustParseAddr("fe80::2")
 	// MetadataAddress is the metadata service.
 	MetadataAddress = netip.MustParseAddr("169.254.169.254")
 )

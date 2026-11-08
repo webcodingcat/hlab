@@ -34,10 +34,13 @@ table inet hlab {
 		# servers reach the host only on the APIs, never the lab control
 		iifname "{{.Public}}" ip daddr {{.Host4}} tcp dport { 8080, 8081 } accept
 		iifname "{{.Public}}" ip6 daddr {{.Host6}} tcp dport { 8080, 8081 } accept
-		# answers to the host's connections; conntrack takes up a running
-		# TCP connection as established, also after an update of the
-		# appliance
+		# answers to the host's connections
 		iifname "{{.Public}}" oifname "{{.Link}}" ct state established,related accept
+		# and to those that ran before an update of the appliance: conntrack
+		# takes up a running TCP connection, but its first packet is new, and
+		# a server that sends before the host does would hang; a packet with
+		# ACK and without SYN opens no connection
+		iifname "{{.Public}}" oifname "{{.Link}}" tcp flags & (syn | ack) == ack accept
 		iifname "{{.Public}}" oifname "{{.Link}}" reject
 		# the uplink leads to the Internet only, never to the host or its LAN,
 		# nor to a lab address that nobody holds (the uplink's table sends

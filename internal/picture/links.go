@@ -24,6 +24,11 @@ func Links(lab Lab) agentproto.Links {
 			{Device: DeviceLink, Prefix: prefixOf(hostAddress(lab.HostLink4, applianceNumber), lab.HostLink4), Announce: true},
 			{Device: DeviceLink, Prefix: netip.PrefixFrom(hostAddress(lab.HostLink4, acmeNumber), 32), Announce: true},
 			{Device: DeviceLink, Prefix: prefixOf(hostAddress(lab.HostLink6, applianceNumber), lab.HostLink6), Announce: true},
+			// the kernel sends a neighbor solicitation only from a link-local
+			// address, unless the packet that waits for it comes from the
+			// appliance itself; without one, the answers of the servers to
+			// the host waited until the host solicited the appliance (5 s)
+			{Device: DeviceLink, Prefix: netip.PrefixFrom(linkLocal, 64)},
 			{Device: DevicePublic, Prefix: netip.PrefixFrom(Gateway4, 32), Announce: true},
 			{Device: DevicePublic, Prefix: netip.PrefixFrom(Gateway6, 64), Announce: true},
 			{Device: "lo", Prefix: netip.PrefixFrom(MetadataAddress, 32)},
@@ -37,9 +42,9 @@ func Links(lab Lab) agentproto.Links {
 	}
 	for _, device := range []string{DeviceLink, DevicePublic, DevicePrivate} {
 		links.Sysctls = append(links.Sysctls,
-			// no link-local addresses of the kernel's: fe80::1 is the only
-			// one the servers need, and the agent removes what the picture
-			// does not have
+			// no link-local addresses of the kernel's: the picture names
+			// its own, the same in both MAC sets, and the agent removes
+			// what the picture does not have
 			agentproto.Sysctl{Key: "net/ipv6/conf/" + device + "/addr_gen_mode", Value: "1"})
 	}
 	for _, server := range lab.servers() {

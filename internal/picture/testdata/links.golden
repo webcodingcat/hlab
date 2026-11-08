@@ -38,6 +38,10 @@
       "announce": true
     },
     {
+      "device": "link",
+      "prefix": "fe80::2/64"
+    },
+    {
       "device": "public",
       "prefix": "172.31.1.1/32",
       "announce": true

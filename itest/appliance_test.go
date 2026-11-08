@@ -18,7 +18,6 @@ import (
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/picture"
 	"github.com/webcodingcat/hlab/internal/platform"
-	"github.com/webcodingcat/hlab/internal/platform/windows"
 	"github.com/webcodingcat/hlab/internal/system"
 )
 
@@ -37,7 +36,7 @@ func TestApplianceBootsAnswersAndComesBackAfterItDies(t *testing.T) {
 	if _, err := os.Stat(release); err != nil {
 		t.Skipf("no appliance to boot: %v (bin/dev appliance)", err)
 	}
-	parts := windows.New(quietLogger())
+	parts := newParts(t.TempDir())
 	t.Cleanup(func() { _ = parts.Close() })
 	sys := system.New(parts.Platform)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Minute)

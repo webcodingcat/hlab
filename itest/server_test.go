@@ -22,7 +22,6 @@ import (
 	"github.com/webcodingcat/hlab/internal/api/cloud"
 	"github.com/webcodingcat/hlab/internal/lab"
 	"github.com/webcodingcat/hlab/internal/platform"
-	"github.com/webcodingcat/hlab/internal/platform/windows"
 	"github.com/webcodingcat/hlab/internal/state"
 	"github.com/webcodingcat/hlab/internal/system"
 	"github.com/webcodingcat/hlab/internal/web"
@@ -52,13 +51,16 @@ runcmd:
 // metadata service told them (back on port 8000) over IPv4 and IPv6, take
 // the lab's key, see the host as 198.18.0.1 (also from WSL2), reach the
 // Internet but neither the lab control nor private ranges through the
-// uplink, and reach each other only through the appliance. Then the lab
+// uplink, reach each other only through the appliance, and take a
+// connection over IPv6 at once after 45 s without IPv6. Then the lab
 // stops and starts again: the same servers with the same addresses and
 // disks, also a server whose VM was removed; HLab crashes and the next
 // start takes everything over; the appliance is turned off hard and comes
 // back. HLab crashes again and comes back with a new release of the
 // appliance: the new appliance replaces the old one while a server runs,
-// with an outage under 5 s and an SSH session that lives on. Last come a reset, the guest's shutdown and the deletes, and the
+// with an outage under 5 s and two SSH sessions that live on: one prints
+// all the time, the other is quiet until after the update and then sends
+// first. Last come a reset, the guest's shutdown and the deletes, and the
 // host must be as before. It needs administrator rights, ssh.exe and the
 // appliance's disk next to the test (bin/dev itest copies it); HLab must
 // not run. The system images stay in image-cache next to the test, so that
@@ -75,7 +77,7 @@ func TestServersBootAnswerAndOutliveTheLab(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Minute)
 	defer cancel()
-	parts := windows.New(quietLogger())
+	parts := newParts(t.TempDir())
 	t.Cleanup(func() { _ = parts.Close() })
 	keys := newLabKey(t)
 	run := labRun{
@@ -115,6 +117,7 @@ func TestServersBootAnswerAndOutliveTheLab(t *testing.T) {
 	if got := keys.run(t, debian.ipv6, "", "echo $SSH_CLIENT"); !strings.HasPrefix(got, "2001:db8:0:ffff::1 ") {
 		t.Errorf("the guest sees an SSH connection over IPv6 from %q, want 2001:db8:0:ffff::1", got)
 	}
+	idleSince := time.Now() // the next checks use IPv4 only
 	keys.fromWSL(t, debian.ipv4)
 	checkUplink(t, keys, debian.ipv4)
 	// isolated ports: the servers reach each other only through the
@@ -122,6 +125,7 @@ func TestServersBootAnswerAndOutliveTheLab(t *testing.T) {
 	if got := keys.run(t, ubuntu.ipv4, "", "ping -c 1 -W 3 "+debian.ipv4); !strings.Contains(got, "ttl=63") {
 		t.Errorf("ping from %s to %s: %q, want ttl=63 (one router between them)", ubuntu.name, debian.name, got)
 	}
+	checkConnectAfterIdle(ctx, t, debian.ipv6, idleSince)
 
 	// a stop and a start: the same servers, addresses and disks; the
 	// Ubuntu server loses its VM meanwhile and gets a new one with its disk
@@ -186,13 +190,16 @@ func TestServersBootAnswerAndOutliveTheLab(t *testing.T) {
 	booted[debian.name] = keys.bootID(t, debian)
 	run.release = newRelease(t, release)
 	outages := watchOutage(debian.ipv4, 22)
-	session := keys.watchSession(t, debian.ipv4)
+	session := keys.watchSession(t, debian.ipv4, tickingSession)
+	quiet := keys.watchSession(t, debian.ipv4, quietSession)
 	updated := time.Now()
 	l = run.open(ctx, t)
 	t.Logf("the lab started with the appliance updated in %s", time.Since(updated).Round(100*time.Millisecond))
 	time.Sleep(2 * time.Second) // an outage right after the switch would show now
 	outage := outages.end()
+	keys.run(t, debian.ipv4, "", "touch "+quietMark)
 	stalled, lived := session.end()
+	_, quietLived := quiet.end()
 	t.Logf("during the update the server took no new connection for %s at most, and the SSH session stalled for %s at most",
 		outage.Round(10*time.Millisecond), stalled.Round(10*time.Millisecond))
 	if outage > 5*time.Second {
@@ -200,6 +207,9 @@ func TestServersBootAnswerAndOutliveTheLab(t *testing.T) {
 	}
 	if !lived {
 		t.Error("the SSH session through the appliance did not live through the update")
+	}
+	if !quietLived {
+		t.Error("the SSH session that was quiet during the update hung when the guest spoke first")
 	}
 	api = newCloudAPI(t, l)
 	if id := keys.bootID(t, debian); id != booted[debian.name] {
@@ -260,6 +270,28 @@ func waitForPort(ctx context.Context, t *testing.T, address string, port int) {
 			t.Fatalf("%s:%d took no connection within 2 minutes: %v", address, port, err)
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// checkConnectAfterIdle waits until the host has not used IPv6 with the
+// lab for 45 s, so that the neighbor entries of the host and the appliance
+// went stale, and then connects to the guest's SSH port over IPv6. The
+// connection must come as quickly as one over IPv4, not after the 5 s the
+// host waits before it asks a stale neighbor again.
+func checkConnectAfterIdle(ctx context.Context, t *testing.T, address string, idleSince time.Time) {
+	t.Helper()
+	time.Sleep(time.Until(idleSince.Add(45 * time.Second)))
+	started := time.Now()
+	conn, err := (&net.Dialer{Timeout: 3 * time.Second}).DialContext(ctx, "tcp", net.JoinHostPort(address, "22"))
+	took := time.Since(started)
+	if err != nil {
+		t.Errorf("after 45 s without IPv6, a connection to %s failed after %s: %v", address, took.Round(time.Millisecond), err)
+		return
+	}
+	_ = conn.Close()
+	t.Logf("after 45 s without IPv6, a connection to %s took %s", address, took.Round(time.Millisecond))
+	if took > time.Second {
+		t.Errorf("after 45 s without IPv6, a connection to %s took %s, want less than 1 s", address, took.Round(time.Millisecond))
 	}
 }
 
