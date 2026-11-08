@@ -26,8 +26,8 @@ It turns Hyper-V on (Windows may want a restart), installs into
 `C:\Program Files\HLab`, adds the start menu entry "HLab", puts `hlab.exe` on the
 PATH and the Linux CLI into `~/.local/bin` of the default WSL distribution, and
 adds the firewall rule "HLab". `install.ps1 -Uninstall` removes all of it with the
-lab's VMs, switches and data (`-KeepData` keeps `C:\ProgramData\HLab` and the
-VMs). Smart App
+lab's VMs, switches and data (`-KeepData` keeps `C:\ProgramData\HLab`; the next
+start gives the servers new VMs with their disks). Smart App
 Control blocks HLab's unsigned programs; it has to be off.
 
 ## Usage
@@ -43,6 +43,7 @@ start. The log is `logs\hlabd.log` in the data folder (`C:\ProgramData\HLab`).
 | `eval "$(hlab env)"` | point hcloud, OpenTofu and Ansible at the lab: endpoints and the token `hlab-env` of the project `default`, the same in every shell (`--project`; `hlab env --shell powershell \| iex` on Windows) |
 | `hlab status` | whether the lab runs, its endpoints and data folder |
 | `hlab stop` | stop the lab and wait until it has stopped (`--no-wait`) |
+| `hlab ssh SERVER [COMMAND...]` | log into a server as root with the lab's own key (`--project`; needs `ssh`) |
 | `hlab project create\|list\|delete` | projects; a new lab has `default` |
 | `hlab token create\|list\|delete --project NAME` | a project's API tokens; `create` prints the token once |
 

@@ -86,7 +86,7 @@ func (l *Lab) StartMachine(ctx context.Context, opts MachineOptions) error {
 // resumeServers brings the servers back after the lab started (13.1): a
 // VM that runs is taken over (hlabd had crashed); one that is off gets its
 // NIC on the public switch again, and starts if its server wants to run.
-// A server without a VM, whose create HLab's end cut short, is built anew.
+// A server without a VM gets one (restoreServer).
 // The servers' statuses follow their VMs, also for actions that HLab's end
 // cut short. Then the image cache loses what no server needs.
 func (l *Lab) resumeServers(ctx context.Context) error {
@@ -113,12 +113,7 @@ func (l *Lab) resumeServer(ctx context.Context, server *state.Server) error {
 		return err
 	}
 	if !exists {
-		l.logger.Warn("a server has no VM, as HLab ended during its create; building it anew", "server", server.ID)
-		disk, seedISO := l.serverFiles(server.ID)
-		if err := l.system.DeleteServer(ctx, vm, disk, seedISO); err != nil {
-			return err // what the cut-short create left
-		}
-		if err := l.BuildServer(ctx, server.ID); err != nil {
+		if err := l.restoreServer(ctx, server); err != nil {
 			return err
 		}
 	}
@@ -145,6 +140,33 @@ func (l *Lab) resumeServer(ctx context.Context, server *state.Server) error {
 		return err
 	}
 	return nil
+}
+
+// restoreServer makes a VM for a server that has none. If its disk is
+// there (an uninstall kept the data but removed the VMs), the new VM gets
+// it as it is. Without a disk, as when HLab ended during the create, the
+// server is built anew; so is one whose base image is gone.
+func (l *Lab) restoreServer(ctx context.Context, server *state.Server) error {
+	if server.BaseImage != "" {
+		kept, err := l.makeServerVM(ctx, server.ID)
+		switch {
+		case kept && err != nil:
+			return err // never build anew over the server's own disk
+		case kept:
+			l.logger.Info("a server had no VM; it has a new one with its disk", "server", server.ID)
+			return nil
+		case err == nil:
+			l.logger.Warn("a server had no VM and no disk; it has a new disk on its image", "server", server.ID)
+			return nil
+		}
+		l.logger.Warn("a server without a VM and a disk cannot get one on its image", "server", server.ID, "error", err)
+	}
+	l.logger.Warn("a server has no VM, as HLab ended during its create; building it anew", "server", server.ID)
+	disk, seedISO := l.serverFiles(server.ID)
+	if err := l.system.DeleteServer(ctx, ServerVM(server.ID), disk, seedISO); err != nil {
+		return err // what the cut-short create left
+	}
+	return l.BuildServer(ctx, server.ID)
 }
 
 // cleanImageCache removes the cached images that neither a cache entry nor
@@ -210,12 +232,20 @@ func (l *Lab) pictureLab() picture.Lab {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.generation++
-	lab := picture.DefaultLab()
+	lab := l.basePictureLab()
 	lab.Generation = l.generation
 	tx := state.Read(l.state)
 	for _, server := range state.All(tx, state.Servers) {
 		lab.Servers = append(lab.Servers, serverFacts(tx, server))
 	}
+	return lab
+}
+
+// basePictureLab returns the lab's settings for pictures and seeds, without
+// servers.
+func (l *Lab) basePictureLab() picture.Lab {
+	lab := picture.DefaultLab()
+	lab.LabKey = l.labKey
 	return lab
 }
 

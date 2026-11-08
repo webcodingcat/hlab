@@ -176,6 +176,14 @@ func (c *Client) EnvToken(project string) (string, error) {
 	return answer.Secret, err
 }
 
+// SSHAccess returns where and how `hlab ssh` logs into a project's server,
+// named by its name or ID, with the lab's private key.
+func (c *Client) SSHAccess(project, server string) (labapi.SSHAccess, error) {
+	var access labapi.SSHAccess
+	err := c.call(http.MethodGet, "/projects/"+url.PathEscape(project)+"/servers/"+url.PathEscape(server)+"/ssh", nil, &access)
+	return access, err
+}
+
 // CreateToken adds a token to a project and returns it with the token itself.
 func (c *Client) CreateToken(project, name, permission string) (labapi.CreatedToken, error) {
 	request := labapi.TokenRequest{Name: name, Permission: permission}

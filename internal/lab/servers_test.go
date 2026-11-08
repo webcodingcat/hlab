@@ -225,6 +225,55 @@ func TestStartMachineBuildsAServerWithoutAVM(t *testing.T) {
 	}
 }
 
+// A server whose VM is gone but whose disk is there (an uninstall that kept
+// the data) gets a new VM with that disk at the next start; it is not built
+// anew. Its new seed carries the lab's key.
+func TestStartMachineGivesAServerWithoutAVMItsDiskAgain(t *testing.T) {
+	machine := fake.New()
+	withAppliance(machine)
+	dataDir := t.TempDir()
+	labKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILabKey hlab"
+	l := start(t, machine, lab.Options{DataDir: dataDir, LabKey: labKey})
+	t.Cleanup(func() { _ = l.Close() })
+	base := filepath.Join(dataDir, lab.ImageCacheDir, "base.vhdx")
+	machine.AddDisk(base, 3)
+	var id int64
+	err := l.Change(func(tx *state.Tx) error {
+		project := &state.Project{ID: state.NewID(tx, state.Projects), Name: "default"}
+		state.Put(tx, state.Projects, project)
+		id = state.NewID(tx, state.Servers)
+		state.Put(tx, state.Servers, &state.Server{
+			ID: id, ProjectID: project.ID, Name: "web", Type: "cpx22", Location: "fsn1", ImageID: 114690387,
+			Status: state.ServerRunning, WantRunning: true, MAC: lab.ServerMAC(id), DiskGB: 80, BaseImage: base,
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	disk := filepath.Join(dataDir, lab.ServerDiskDir, fmt.Sprint(id)+".vhdx")
+	machine.AddDisk(disk, 80)
+
+	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+		t.Fatal(err)
+	}
+	if status, _ := serverStatus(t, l, id); status != state.ServerRunning {
+		t.Errorf("the server is %s, want running", status)
+	}
+	vm, err := machine.Platform().Hypervisor.VMState(t.Context(), lab.ServerVM(id))
+	if err != nil || vm.Power != platform.PowerRunning {
+		t.Errorf("the server's VM is %+v, %v; want it running", vm, err)
+	}
+	for _, call := range machine.Calls() {
+		if call == "DeleteDisk "+disk {
+			t.Errorf("the start removed the server's disk")
+		}
+	}
+	if !strings.Contains(string(machine.Seed(l.ServerSeed(id))["meta-data"]), "ILabKey") {
+		t.Error("the new seed lacks the lab's key")
+	}
+}
+
 // A start removes from the image cache what no cache entry and no server
 // needs, and what a load cut short left.
 func TestStartMachineCleansTheImageCache(t *testing.T) {

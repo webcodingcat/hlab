@@ -10,7 +10,6 @@ Run as administrator, from the folder that bin/dev package fills
   install.ps1                       install, or update an installed HLab
   install.ps1 -Uninstall            remove HLab with its data
   install.ps1 -Uninstall -KeepData  remove HLab, keep C:\ProgramData\HLab
-                                    and the lab's VMs
 
 Installing turns on Hyper-V (Windows may want a restart), copies the files
 to C:\Program Files\HLab, adds the start menu entry "HLab" (runs hlabd as
@@ -19,10 +18,10 @@ service, adds the firewall rule "HLab" (hlabd.exe, TCP 8080, 8081 and 8090
 on 198.18.0.1), creates the data folder and copies the Linux CLI to
 ~/.local/bin of the default WSL distribution, if there is one.
 
-Uninstalling stops HLab if it runs and removes the lab's switches, NRPT
-rules, the hv_sock service, the firewall rule, the start menu entry, the PATH
-entry, the program folder and the Linux CLI in WSL; the lab's VMs and the
-data folder go unless -KeepData.
+Uninstalling stops HLab if it runs and removes the lab's VMs, its switches,
+NRPT rules, the hv_sock service, the firewall rule, the start menu entry,
+the PATH entry, the program folder and the Linux CLI in WSL; the data folder
+goes unless -KeepData, and with it the servers' disks.
 #>
 [CmdletBinding()]
 param(
@@ -78,12 +77,15 @@ function Close-HLab {
 function Invoke-WslCommand {
     <#
     .SYNOPSIS
-    Run a shell command in the default WSL distribution, in the program
-    folder; warn instead of failing, since WSL is optional.
+    Run a shell command in the default WSL distribution, in a Windows
+    folder or ~ (the user's home in WSL); warn instead of failing, since WSL
+    is optional.
     #>
     param(
         [Parameter(Mandatory)]
-        [string]$Command
+        [string]$Command,
+
+        [string]$Directory = '~'
     )
     if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
         return
@@ -91,8 +93,9 @@ function Invoke-WslCommand {
     # a native program's error output must not stop the script
     $ErrorActionPreference = 'Continue'
     # Windows PowerShell passes no double quotes inside arguments, and the
-    # path has a space: so the command runs in the folder and quotes nothing
-    $output = & wsl.exe --cd $ProgramDir -e sh -c $Command 2>&1
+    # program folder's path has a space: so the command runs in the folder
+    # and quotes nothing
+    $output = & wsl.exe --cd $Directory -e sh -c $Command 2>&1
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "WSL: '$Command' failed: $output"
     }
@@ -172,7 +175,7 @@ function Install-HLab {
     New-NetFirewallRule -Name $FirewallRule -DisplayName 'HLab' -Direction Inbound -Action Allow `
         -Program $Hlabd -Protocol TCP -LocalPort 8080, 8081, 8090 -LocalAddress 198.18.0.1 `
         -Profile Any | Out-Null
-    Invoke-WslCommand 'mkdir -p $HOME/.local/bin && cp hlab $HOME/.local/bin/hlab && chmod 755 $HOME/.local/bin/hlab'
+    Invoke-WslCommand 'mkdir -p $HOME/.local/bin && cp hlab $HOME/.local/bin/hlab && chmod 755 $HOME/.local/bin/hlab' $ProgramDir
     Write-Output "installed HLab into $ProgramDir; start it with the start menu entry HLab or hlab start"
     if ($restart) {
         Write-Warning 'Hyper-V was turned on: restart Windows before starting HLab'
@@ -190,10 +193,9 @@ function Uninstall-HLab {
     )
     Close-HLab
     if (Get-Module -ListAvailable Hyper-V) {
-        # kept data keeps the VMs: their disks are in the data folder, and a
-        # server without its VM would be built anew over its disk
-        $vms = if ($KeepData) { @() } else { @(Get-VM | Where-Object Notes -EQ $VMTag) }
-        foreach ($vm in $vms) {
+        # with kept data, the next start gives each server a new VM with its
+        # disk
+        foreach ($vm in @(Get-VM | Where-Object Notes -EQ $VMTag)) {
             Write-Output "removing the VM $($vm.Name)"
             if ($vm.State -ne 'Off') {
                 $vm | Stop-VM -TurnOff -Force

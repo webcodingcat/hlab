@@ -50,6 +50,15 @@ type Endpoints struct {
 	WebUI   string `json:"web_ui"`
 }
 
+// SSHAccess is the answer of GET /_lab/projects/{name}/servers/{server}/ssh:
+// where `hlab ssh` logs in, as whom and with which key.
+type SSHAccess struct {
+	Server     string `json:"server"`
+	Address    string `json:"address"`
+	User       string `json:"user"`
+	PrivateKey string `json:"private_key"`
+}
+
 // Project is a project as the lab control shows it.
 type Project struct {
 	ID       int64     `json:"id"`

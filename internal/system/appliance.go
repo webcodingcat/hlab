@@ -167,10 +167,12 @@ func (a *Appliance) Stop(ctx context.Context) error {
 		}
 		return fmt.Errorf("shutting the appliance down: %w", err)
 	}
-	deadline := time.Now().Add(a.timings.Shutdown)
+	started := time.Now()
+	deadline := started.Add(a.timings.Shutdown)
 	for time.Now().Before(deadline) {
 		state, err := hypervisor.VMState(ctx, ApplianceVM)
 		if err == nil && state.Power == platform.PowerOff {
+			a.logger.Info("the appliance shut down", "took", time.Since(started).Round(time.Millisecond))
 			return nil
 		}
 		if err := sleep(ctx, a.timings.Shutdown/60); err != nil {

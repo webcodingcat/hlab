@@ -36,6 +36,8 @@ type Options struct {
 	Status func() labapi.Status
 	// Shutdown asks the service to stop; the control answers before it does.
 	Shutdown func()
+	// LabKey is the lab's private SSH key, for `hlab ssh`.
+	LabKey []byte
 	// Logger gets the failures of handlers; nil is slog.Default().
 	Logger *slog.Logger
 }
@@ -61,6 +63,7 @@ func New(opts Options) *Control {
 	c.handle("POST /projects/{project}/tokens", c.createToken)
 	c.handle("DELETE /projects/{project}/tokens/{token}", c.deleteToken)
 	c.handle("POST /projects/{project}/env-token", c.envToken)
+	c.handle("GET /projects/{project}/servers/{server}/ssh", c.sshAccess)
 	c.mux.HandleFunc(labapi.Prefix+"/projects/{project}/cloud/", c.cloud)
 	return c
 }

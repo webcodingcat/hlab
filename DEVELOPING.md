@@ -83,6 +83,7 @@ means the row has no limit.
 | `internal/state` | records, kinds, loading, saving, migrations | – |
 | `internal/picture` | pure functions from the state to the data plane's pictures and the host's DNS rules | `state`, `agentproto`, `catalog`, `seed` |
 | `internal/seed` | pure functions for the cloud-init seed (NoCloud) | – |
+| `internal/sshkey` | the lab's SSH key (Ed25519) in OpenSSH's private key format and as a line of authorized_keys | – |
 | `internal/system` | does the work and never sees the state: VMs, disks, images, host link, host DNS, appliance, agent client | `platform`, `agentproto`, `vhdx`, `imagefmt` |
 | `internal/platform` | the platform interfaces and their data types | – |
 | `internal/platform/windows` | Hyper-V through `pshost`, host network, NRPT, life cycle | `platform`, `platform/windows/pshost` |
@@ -267,10 +268,13 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
 - **`want_running`** is what a start of the lab follows: a server whose VM
   runs is taken over (hlabd had crashed); one whose VM is off gets its NIC on
   `HLab-Public` again (detached and attached, as a stop of the lab removed the
-  switch) and starts if it wants to run. A server without a VM, whose create
-  hlabd's end cut short, is built anew first. A stop shuts every server down, all
-  at once, and turns it off after `shutdown_timeout` (`hlab.yaml`, 60 s);
-  `want_running` stays.
+  switch) and starts if it wants to run. A server without a VM gets a new one
+  first (`Lab.restoreServer`): with its disk as it is, if the disk is there
+  (an uninstall kept the data folder but removed the VMs); built anew if
+  there is no disk (hlabd's end cut its create short). `system.CreateServer`
+  keeps a disk that is there and never removes it on a failure. A stop shuts
+  every server down, all at once, and turns it off after `shutdown_timeout`
+  (`hlab.yaml`, 60 s); `want_running` stays.
 - **Room.** Memory is static, so the servers that want to run may take the
   host's memory but a reserve (25 %, at least 6 GB) and the appliance's 1 GB,
   and four virtual cores per thread (`Lab.CheckRoom`, from
@@ -284,6 +288,12 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
 - **Names and MACs.** A server's VM is `hlab-server-<id>`, its public NIC has
   the MAC `96:00:` and its ID in 32 bits; its disk is
   `disks/servers/<id>.vhdx`, its seed `disks/seeds/<id>.iso`.
+- **The lab's key.** `hlabd` keeps an SSH key in the data folder, `lab-key`
+  (Ed25519 in OpenSSH's format, `internal/sshkey`, made at the first start,
+  readable like the control token). Every server's root takes its public key
+  besides the server's own keys, from the seed and the metadata service
+  (`picture.ServerKeys`); `hlab ssh` logs in with it. A server created
+  before the key existed does not have it.
 - **The seed** (`internal/seed`) is what cloud-init reads on Hyper-V, where the
   SMBIOS vendor cannot say "Hetzner": `meta-data` (instance ID, host name,
   keys), `user-data`, `vendor-data` (root's login, the same text the metadata
@@ -519,6 +529,9 @@ not sent again until its generation changes.
     where `{token}` is the token's name;
   - the env token: `POST /_lab/projects/{name}/env-token`. It is a POST because the
     first call creates the token;
+  - `GET /_lab/projects/{name}/servers/{server}/ssh`, for `hlab ssh`: the
+    server's address (Primary IPv4, else the `::1` of its IPv6 network), the
+    user `root` and the lab's private key;
   - the Cloud API for a project: `/_lab/projects/{name}/cloud/v1/...`. It runs the
     Cloud API's handlers through `API.ServeAs` with `read_write`.
 
@@ -554,6 +567,12 @@ not sent again until its generation changes.
     runs (at most 3 minutes).
   - `hlab stop` sends `POST /_lab/shutdown` and waits the same way until the
     lab no longer answers (`--no-wait` does not).
+  - `hlab ssh SERVER [COMMAND...]` gets the address and the lab's key from the
+    lab control, writes the key to a temporary file of its own (ssh refuses a
+    key that others may read, as the data folder's copy is) and runs `ssh`
+    (OpenSSH, also Windows' own) without known hosts: a server's address
+    comes back with a new host key after each create. Its exit code is
+    ssh's.
 - **The web UI** (`internal/webui`) is `index.html`, `ui.js` and `ui.css` in
   `files/`, built in with `go:embed`, without a build step.
   - `UI.Guard` runs before everything else on port 8090. The Host header must be
@@ -717,6 +736,11 @@ waits only when all four are busy.
 - States: `Saved` and `Hibernated` count as off, `Pausing` and `Resuming` as
   paused, everything else that is not off as running. The heartbeat counts when
   Hyper-V reports `Ok…`.
+- A VM's power state and heartbeat come from WMI (`Msvm_ComputerSystem`,
+  `Msvm_HeartbeatComponent`), not from `Get-VM`: in a long-running process,
+  `Get-VM` shows a VM as it was up to seconds ago when another process of
+  the pool changed it, so the watchdog took a server that had just started
+  for one that had shut down, and an appliance turned off for one running.
 - `Get-VM -Name` takes wildcards, so names are escaped. `Get-VM` without a name
   reads every VM (about 10 ms each); only `FindVMs` does that, when HLab starts.
 - Disks are dynamic VHDX with 1 MB blocks, as Microsoft advises for Linux guests,
@@ -929,13 +953,31 @@ skipped there; CI's Windows job has Go and runs them.
 **Live tests.** `bin/dev itest [--run <pattern>]` runs the tests in `itest/`, which
 build only with the tag `live`, against the real platform: the contract tests of
 the hypervisor, the host network and the NRPT rules
-(`internal/platform/contract`), the appliance's boot with its watchdog, and a
-server: the whole lab with the Cloud API in the test's process creates a
-Debian server, which must answer SSH on its Primary IPv4, serve what its
-metadata service told it (its user data starts a small HTTP server on port
-8000) over IPv4 and IPv6, come back after a reset, shut down through its guest
-and go with its delete. The server test keeps the Debian image in
-`C:\HLabDev\itest\image-cache`, so that only its first run loads it.
+(`internal/platform/contract`), the appliance's boot with its watchdog, and
+the servers (`TestServersBootAnswerAndOutliveTheLab`): the whole lab with
+the Cloud API in the test's process creates a Debian and an Ubuntu server.
+
+1. Both answer SSH and serve what their metadata service told them (their
+   user data starts a small HTTP server on port 8000) over IPv4 and IPv6.
+2. With the lab's key (`ssh.exe`), the guest sees the host as `198.18.0.1`
+   and `2001:db8:0:ffff::1`, and as `198.18.0.1` from WSL2 (`wsl.exe`, left
+   out without WSL or its ssh). It reaches 8080, 8081 and the Internet, not
+   8090, and the private ranges behind the uplink answer EHOSTUNREACH
+   (admin-prohibited). A ping from one server to the other has TTL 63: the
+   isolated ports let them meet only through the appliance.
+3. The lab stops (the host keeps no switch, address, route or NRPT rule of
+   it) and starts: the same servers on the same addresses with their disks
+   (a mark written before), booted again; the Ubuntu server's VM is removed
+   meanwhile and comes back with its disk.
+4. A crash: another process of the test binary (`TestLabForACrash`) runs the
+   lab and is killed; the servers keep running, and the next start takes
+   them over without a boot.
+5. The appliance is turned off hard; the Debian server answers again within
+   10 s.
+6. A reset, the guest's shutdown, the deletes, and the host is clean.
+
+The test keeps the system images in `C:\HLabDev\itest\image-cache`, so that
+only its first run loads them.
 
 - The host network and the NRPT need administrator rights, without UAC. So the
   tests run through the task "HLab itest" of the Task Scheduler (highest rights,
@@ -962,9 +1004,9 @@ and go with its delete. The server test keeps the Debian image in
   -Force` removes the VMs. The appliance test uses the lab's own names
   (`hlab-appliance`, `HLab-Link`, `HLab-Public`).
 - The live tests stay out of CI: GitHub's Windows runners have no nested Hyper-V.
-  All of them take about 130 s: the hypervisor's 30 s, the host network's 7 s,
-  the appliance's 30 s, the server's 60 s with the image cached (the appliance
-  and the server skip without the appliance's disk).
+  All of them take about 4 minutes: the hypervisor's 30 s, the host network's 6 s,
+  the appliance's 30 s, the servers' 170 s with the images cached (the
+  appliance and the servers skip without the appliance's disk).
 
 **Agent tests.** The tests of `internal/agent` with the build tag `netns` change
 links, addresses, routes, nftables and sysctls for real, so they run in a network
@@ -1023,8 +1065,8 @@ There is no Windows service and no autostart: HLab runs when the user starts
 it (the start menu's link, whose "Run as administrator" flag the script sets
 in the `.lnk`, or `hlab start`). `-Uninstall` first stops the installed
 `hlabd` (`hlab stop`) and refuses while one from another folder runs. It
-removes the VMs with the notes `hlab` (not with `-KeepData`: their disks stay
-in the data folder), the switches `HLab-*` with the host's NIC, the NRPT rules
+removes the VMs with the notes `hlab` (with `-KeepData` their disks stay, and
+the next start gives each server a new VM with its disk), the switches `HLab-*` with the host's NIC, the NRPT rules
 with the comment `hlab`, and the rest the install added; the Hyper-V feature
 stays on. The firewall rule "HLab" is separate from the dev loop's, so both
 can be there.

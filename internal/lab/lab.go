@@ -39,6 +39,9 @@ type Options struct {
 	// Catalog is what the lab offers (catalog.Load); nil is the built-in
 	// catalog.
 	Catalog *catalog.Catalog
+	// LabKey is the lab's public SSH key, which every server's root takes
+	// for `hlab ssh`; "" for none.
+	LabKey string
 }
 
 // Lab is the running lab.
@@ -48,6 +51,7 @@ type Lab struct {
 	timeScale float64
 	logger    *slog.Logger
 	catalog   *catalog.Catalog
+	labKey    string
 	writer    *state.Writer
 	release   func() // gives the data folder up
 	dataDir   string
@@ -121,6 +125,7 @@ func Open(opts Options, sys *system.System) (*Lab, error) {
 		timeScale:  opts.TimeScale,
 		logger:     opts.Logger,
 		catalog:    opts.Catalog,
+		labKey:     opts.LabKey,
 		release:    release,
 		dataDir:    opts.DataDir,
 		fresh:      errors.Is(statErr, fs.ErrNotExist),

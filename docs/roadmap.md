@@ -290,7 +290,7 @@ the tests. Look there before writing such a part anew.
   `198.18.0.1`), `C:\ProgramData\HLab`, the Linux CLI in `~/.local/bin` of the
   default WSL distribution. `-Uninstall` stops HLab and removes VMs,
   switches, NRPT rules and everything it added; `-KeepData` keeps the data
-  folder and the VMs. Played through on the
+  folder. Played through on the
   operator's machine (through the task "HLab itest"): install, update,
   `hlab start` from WSL2 with UAC (24 s until it answered), `hlab stop`,
   uninstall with HLab stopped and with HLab running; nothing of HLab was left
@@ -306,16 +306,50 @@ the tests. Look there before writing such a part anew.
 - **The log:** `logs/hlabd.log` in the data folder (JSON lines, moved to
   `hlabd.log.1` at a start from 10 MB), also text on stderr.
 
+### After 1b-5 (review of the step)
+
+- **A server without a VM gets one with its disk.** A start gives a server
+  whose VM is gone but whose disk is there a new VM around that disk
+  (`Lab.restoreServer`, `system.CreateServer` keeps a disk that is there);
+  only a server without a disk is built anew. So `install.ps1 -Uninstall
+  -KeepData` removes the VMs, as the plan has it, and the next start brings
+  the servers back.
+- **`hlab ssh SERVER [COMMAND...]`** logs in as root with the lab's key: `hlabd`
+  makes an Ed25519 key in the data folder (`lab-key`, `internal/sshkey`) and
+  every server takes its public key from the seed and the metadata service;
+  the lab control hands out address and key
+  (`GET /_lab/projects/{name}/servers/{server}/ssh`). Servers created before
+  the key existed do not have it.
+- **Fixed: the VMs' state came late.** `Get-VM` in a long-running PowerShell
+  process showed a VM's state up to seconds old when another process of the
+  pool had changed it: the watchdog took a server that had just started for
+  one that had shut down (it stopped wanting to run), and an appliance that
+  was turned off for one running without heartbeat. Power and heartbeat now
+  come from WMI (`Msvm_ComputerSystem`, `Msvm_HeartbeatComponent`). Measured
+  since: the appliance turned off hard, the server answers again after 5.4 s
+  (before 10 s); a guest's shutdown until `off` 4 s (before 8 to 11 s); the
+  appliance shuts down in 1 s.
+- **Fixed: two deletes at once.** `delete-disk` read the drives of every VM and
+  failed on a VM that another delete was removing meanwhile.
+- **The live tests** (`TestServersBootAnswerAndOutliveTheLab`, 170 s with
+  the images cached) now cover the plan's 1b list as far as 1b-5 goes: Debian
+  and Ubuntu until SSH; IPv4 and IPv6 from Windows, IPv4 from WSL2; the
+  guest sees `198.18.0.1` (and `2001:db8:0:ffff::1`); Internet yes, 8090 and
+  the private ranges behind the uplink no; servers meet only through the
+  appliance (TTL 63); stop and start with the same servers, addresses and
+  disks, also with a VM removed; a crash (another process killed) and the
+  takeover without a boot; the appliance turned off hard (< 10 s); after the
+  stop no switch, address, route or NRPT rule is left.
+
 ### Open for 1b-6 and later (from 1b-5)
 
+- Still to test: the appliance's update with an outage < 5 s (1b-6); the
+  ruleset's counters for traffic between servers (the agent has no counters
+  before phase 4; the TTL shows the way for now); the uninstall in a live
+  test (played through by hand, see above).
 - A dev loop start takes 20 s: about 9 s for the host link (switches) and 11 s
   for the appliance from nothing. The 1.7 s of the plan were measured without
   an appliance. `--keep-vms` keeps it at 9 s.
-- `hlab ssh <server>` with a lab key is not there yet.
-- `install.ps1 -Uninstall -KeepData` keeps the lab's VMs with the data folder
-  (the plan removes them): a server whose VM is gone would be built anew at
-  the next start, and `CreateDisk` would fail on its kept disk. A start could
-  instead attach a disk that is there; until then the VMs stay.
 - Closing the start menu entry's window ends hlabd as a crash would (Windows
   allows a few seconds); the next start takes over. The tray (6b) replaces the
   window.

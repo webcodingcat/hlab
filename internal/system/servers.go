@@ -42,19 +42,32 @@ type ServerSpec struct {
 
 // CreateServer makes a server's VM, off: its disk on the base image, its
 // seed in the DVD drive and its public NIC on the public switch, isolated
-// in the private VLAN. If a step fails, what was made goes again.
-func (s *System) CreateServer(ctx context.Context, spec ServerSpec) (err error) {
+// in the private VLAN. A disk that is there already is kept as it is, and
+// keptDisk says so: the server lost its VM but not its disk (an uninstall
+// that kept the data). The seed is always made anew. If a step fails, what
+// was made goes again; a kept disk stays.
+func (s *System) CreateServer(ctx context.Context, spec ServerSpec) (keptDisk bool, err error) {
 	hypervisor := s.platform.Hypervisor
+	err = hypervisor.CreateDisk(ctx, spec.Disk, spec.DiskGB, spec.BaseImage)
+	keptDisk = errors.Is(err, platform.ErrExists)
+	if err != nil && !keptDisk {
+		return false, fmt.Errorf("creating the disk of %s: %w", spec.VM, err)
+	}
+	made := []string{spec.Seed}
+	if !keptDisk {
+		made = append(made, spec.Disk)
+	}
 	defer func() {
 		if err != nil {
-			err = errors.Join(err, s.DeleteServer(context.WithoutCancel(ctx), spec.VM, spec.Disk, spec.Seed))
+			err = errors.Join(err, s.DeleteServer(context.WithoutCancel(ctx), spec.VM, made...))
 		}
 	}()
-	if err := hypervisor.CreateDisk(ctx, spec.Disk, spec.DiskGB, spec.BaseImage); err != nil {
-		return fmt.Errorf("creating the disk of %s: %w", spec.VM, err)
+	// a seed of an earlier VM, or what a create cut short left
+	if err := hypervisor.DeleteDisk(ctx, spec.Seed); err != nil && !errors.Is(err, platform.ErrNotFound) {
+		return keptDisk, fmt.Errorf("removing the old seed of %s: %w", spec.VM, err)
 	}
 	if err := hypervisor.CreateSeed(ctx, spec.Seed, spec.SeedFiles); err != nil {
-		return fmt.Errorf("creating the seed of %s: %w", spec.VM, err)
+		return keptDisk, fmt.Errorf("creating the seed of %s: %w", spec.VM, err)
 	}
 	vm := platform.VMSpec{
 		Name:     spec.VM,
@@ -65,12 +78,12 @@ func (s *System) CreateServer(ctx context.Context, spec ServerSpec) (err error) 
 		NICs:     []platform.NICSpec{publicNIC(spec.MAC)},
 	}
 	if err := hypervisor.CreateVM(ctx, vm); err != nil {
-		return fmt.Errorf("creating the VM %s: %w", spec.VM, err)
+		return keptDisk, fmt.Errorf("creating the VM %s: %w", spec.VM, err)
 	}
 	if err := hypervisor.SetISO(ctx, spec.VM, spec.Seed); err != nil {
-		return fmt.Errorf("inserting the seed of %s: %w", spec.VM, err)
+		return keptDisk, fmt.Errorf("inserting the seed of %s: %w", spec.VM, err)
 	}
-	return nil
+	return keptDisk, nil
 }
 
 // publicNIC is a server's public NIC: on the public switch, where it sees
@@ -79,15 +92,15 @@ func publicNIC(mac string) platform.NICSpec {
 	return platform.NICSpec{MAC: mac, Switch: PublicSwitch, Port: platform.Isolated()}
 }
 
-// DeleteServer removes a server's VM (turned off first), its disk and its
-// seed; what is gone already counts as removed.
-func (s *System) DeleteServer(ctx context.Context, vm, disk, seed string) error {
+// DeleteServer removes a server's VM (turned off first) and its files, its
+// disk and its seed; what is gone already counts as removed.
+func (s *System) DeleteServer(ctx context.Context, vm string, files ...string) error {
 	hypervisor := s.platform.Hypervisor
 	var errs []error
 	if err := hypervisor.DeleteVM(ctx, vm); err != nil && !errors.Is(err, platform.ErrNotFound) {
 		errs = append(errs, fmt.Errorf("removing the VM %s: %w", vm, err))
 	}
-	for _, file := range []string{disk, seed} {
+	for _, file := range files {
 		if err := hypervisor.DeleteDisk(ctx, file); err != nil && !errors.Is(err, platform.ErrNotFound) {
 			errs = append(errs, fmt.Errorf("removing %s: %w", file, err))
 		}

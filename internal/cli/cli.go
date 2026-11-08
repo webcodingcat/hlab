@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os/exec"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -28,6 +29,10 @@ func Execute(args []string, stdout, stderr io.Writer, version string) int {
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 	if err := root.Execute(); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return exitErr.ExitCode() // ssh's, which said why itself
+		}
 		root.PrintErrln("hlab:", err)
 		var answerErr *client.Error
 		switch {
@@ -65,7 +70,7 @@ func newRoot(version string) *cobra.Command {
 		SilenceUsage:  true,
 	}
 	root.SetVersionTemplate("hlab {{.Version}}\n") // as hlabd --version prints it
-	root.AddCommand(newEnv(), newStart(), newStatus(), newStop(), newProject(), newToken())
+	root.AddCommand(newEnv(), newStart(), newStatus(), newStop(), newSSH(), newProject(), newToken())
 	return root
 }
 

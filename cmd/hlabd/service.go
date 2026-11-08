@@ -40,6 +40,7 @@ type service struct {
 	lab       *lab.Lab
 	servers   []*http.Server
 	tokenFile string
+	labKey    []byte // the private one, for the lab control
 	status    labapi.Status
 
 	// stoppingMu makes setting stopping and counting a request one step,
@@ -64,11 +65,16 @@ func start(opts serviceOptions) (*service, error) {
 	if err != nil {
 		return nil, err
 	}
+	labKey, labKeyPublic, err := loadLabKey(opts.DataDir, opts.Parts.Lifecycle)
+	if err != nil {
+		return nil, err
+	}
 	l, err := lab.Open(lab.Options{
 		DataDir:   opts.DataDir,
 		TimeScale: cfg.TimeScale,
 		Logger:    opts.Logger,
 		Catalog:   offer,
+		LabKey:    labKeyPublic,
 	}, system.New(opts.Parts))
 	if err != nil {
 		return nil, err
@@ -85,6 +91,7 @@ func start(opts serviceOptions) (*service, error) {
 	svc := &service{
 		opts:      opts,
 		lab:       l,
+		labKey:    labKey,
 		tokenFile: filepath.Join(opts.DataDir, labapi.TokenFile),
 		shutdown:  make(chan struct{}),
 		failed:    make(chan error, 2+len(opts.Hosts)), // one per server
@@ -188,6 +195,7 @@ func (s *service) handlers(token string, controlAddresses []string) []http.Handl
 		Admit:    ui.Admits,
 		Status:   s.currentStatus,
 		Shutdown: s.requestShutdown,
+		LabKey:   s.labKey,
 		Logger:   s.opts.Logger,
 	})
 	mux := http.NewServeMux()

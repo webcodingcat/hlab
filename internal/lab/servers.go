@@ -128,10 +128,6 @@ func (l *Lab) BuildServer(ctx context.Context, id int64) error {
 	if !found {
 		return fmt.Errorf("server %d: image %d is not in the catalog", id, server.ImageID)
 	}
-	serverType, found := l.catalog.ServerTypeByName(server.Type)
-	if !found {
-		return fmt.Errorf("server %d: server type %s is not in the catalog", id, server.Type)
-	}
 	base, err := l.cachedImage(ctx, image)
 	if err != nil {
 		return err
@@ -139,9 +135,20 @@ func (l *Lab) BuildServer(ctx context.Context, id int64) error {
 	if err := l.setServer(id, func(server *state.Server) { server.BaseImage = base }); err != nil {
 		return err
 	}
+	if _, err := l.makeServerVM(ctx, id); err != nil {
+		return err
+	}
+	return l.UpdatePictures(ctx)
+}
+
+// makeServerVM makes a server's VM, off, with its disk on the base image
+// its record names, and its seed. A disk that is there already is kept, and
+// keptDisk says so (system.CreateServer).
+func (l *Lab) makeServerVM(ctx context.Context, id int64) (keptDisk bool, err error) {
 	var facts picture.Server
+	var server *state.Server
 	err = l.View(func(tx *state.Tx) error {
-		server, err := state.Get(tx, state.Servers, id)
+		server, err = state.Get(tx, state.Servers, id)
 		if err != nil {
 			return err
 		}
@@ -149,7 +156,11 @@ func (l *Lab) BuildServer(ctx context.Context, id int64) error {
 		return nil
 	})
 	if err != nil {
-		return err
+		return false, err
+	}
+	serverType, found := l.catalog.ServerTypeByName(server.Type)
+	if !found {
+		return false, fmt.Errorf("server %d: server type %s is not in the catalog", id, server.Type)
 	}
 	disk, seedISO := l.serverFiles(id)
 	spec := system.ServerSpec{
@@ -158,15 +169,12 @@ func (l *Lab) BuildServer(ctx context.Context, id int64) error {
 		MemoryMB:  int(serverType.Memory * 1024),
 		Disk:      disk,
 		DiskGB:    server.DiskGB,
-		BaseImage: base,
+		BaseImage: server.BaseImage,
 		Seed:      seedISO,
-		SeedFiles: seed.Files(seedServer(facts, picture.DefaultLab())),
+		SeedFiles: seed.Files(seedServer(facts, l.basePictureLab())),
 		MAC:       server.MAC,
 	}
-	if err := l.system.CreateServer(ctx, spec); err != nil {
-		return err
-	}
-	return l.UpdatePictures(ctx)
+	return l.system.CreateServer(ctx, spec)
 }
 
 // cachedImage returns the cached file of a system image, and loads it
@@ -391,7 +399,7 @@ func seedServer(facts picture.Server, lab picture.Lab) seed.Server {
 		IPv4:         facts.IPv4.IsValid(),
 		IPv6:         facts.IPv6,
 		Resolvers:    lab.ApplianceAddresses(),
-		PublicKeys:   facts.PublicKeys,
+		PublicKeys:   picture.ServerKeys(lab, facts),
 		RootPassword: facts.RootPassword,
 		UserData:     facts.UserData,
 	}

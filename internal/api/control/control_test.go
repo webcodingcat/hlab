@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/webcodingcat/hlab/internal/api/cloud"
@@ -24,6 +25,9 @@ const controlToken = "control-token"
 // uiHeader marks a request as the web UI's, which the tests' Admit vouches
 // for.
 const uiHeader = "X-Test-Web-UI"
+
+// testLabKey stands for the lab's private SSH key.
+const testLabKey = "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n"
 
 // testControl is a lab with its control in front of it.
 type testControl struct {
@@ -55,6 +59,7 @@ func newTestControl(t *testing.T) *testControl {
 		Admit:    func(r *http.Request) bool { return r.Header.Get(uiHeader) != "" },
 		Status:   func() labapi.Status { return labapi.Status{Version: "test", State: labapi.StateRunning} },
 		Shutdown: func() { tc.shutdown++ },
+		LabKey:   []byte(testLabKey),
 		Logger:   logger,
 	})
 	return tc
@@ -251,5 +256,39 @@ func TestTheWebUIReachesTheCloudAPIOfAProject(t *testing.T) {
 	tc.send(http.MethodGet, "/_lab/projects/web/cloud/v1/ssh_keys", nil, &listed, ui)
 	if len(listed.SSHKeys) != 1 || listed.SSHKeys[0].ID != created.SSHKey.ID {
 		t.Errorf("got %+v, want the key %d", listed, created.SSHKey.ID)
+	}
+}
+
+func TestSSHAccessNamesTheServersAddressAndTheLabsKey(t *testing.T) {
+	tc := newTestControl(t)
+	project, err := tc.lab.CreateProject("default", state.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var webID int64
+	err = tc.lab.Change(func(tx *state.Tx) error {
+		ipv4 := &state.PrimaryIP{ID: state.NewID(tx, state.PrimaryIPs), ProjectID: project.ID, Type: "ipv4", IP: "198.19.0.7"}
+		ipv6 := &state.PrimaryIP{ID: state.NewID(tx, state.PrimaryIPs), ProjectID: project.ID, Type: "ipv6", IP: "2001:db8:1:7::/64"}
+		state.Put(tx, state.PrimaryIPs, ipv4)
+		state.Put(tx, state.PrimaryIPs, ipv6)
+		webID = state.NewID(tx, state.Servers)
+		state.Put(tx, state.Servers, &state.Server{ID: webID, ProjectID: project.ID, Name: "web", IPv4: ipv4.ID, IPv6: ipv6.ID})
+		state.Put(tx, state.Servers, &state.Server{ID: state.NewID(tx, state.Servers), ProjectID: project.ID, Name: "v6", IPv6: ipv6.ID})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for nameOrID, want := range map[string]string{"web": "198.19.0.7", strconv.FormatInt(webID, 10): "198.19.0.7", "v6": "2001:db8:1:7::1"} {
+		var access labapi.SSHAccess
+		if got := tc.do(http.MethodGet, "/_lab/projects/default/servers/"+nameOrID+"/ssh", nil, &access); got != http.StatusOK {
+			t.Fatalf("%s: got %d, want 200", nameOrID, got)
+		}
+		if access.Address != want || access.User != "root" || access.PrivateKey != testLabKey {
+			t.Errorf("%s: got %+v, want root@%s with the lab's key", nameOrID, access, want)
+		}
+	}
+	if got := tc.do(http.MethodGet, "/_lab/projects/default/servers/db/ssh", nil, nil); got != http.StatusNotFound {
+		t.Errorf("an unknown server: got %d, want 404", got)
 	}
 }

@@ -31,16 +31,27 @@ function Get-LabVM {
     $vm
 }
 
-function Get-Power {
-    # The platform's power state of a VM: off, running or paused.
+function Get-VMSystem {
+    # The VM's Msvm_ComputerSystem, or a not_found failure. Its state is
+    # Hyper-V's own of this moment: the State and Heartbeat of Get-VM lag
+    # by seconds in a process that runs long while another process (the
+    # pool's others) changed the VM.
     param($VM)
-    switch -Wildcard ($VM.State.ToString()) {
-        'Off*' { 'off' }
-        'Saved*' { 'off' }
-        'FastSaved*' { 'off' }
-        'Hibernated*' { 'off' }
-        'Paus*' { 'paused' }
-        'Resuming*' { 'paused' }
+    $system = Get-CimInstance -Namespace root\virtualization\v2 -ClassName Msvm_ComputerSystem `
+        -Filter "Name='$($VM.Id)'"
+    if ($null -eq $system) {
+        throw "not_found: VM $($VM.Name)"
+    }
+    $system
+}
+
+function Get-Power {
+    # The platform's power state of a VM: off, running or paused, from its
+    # EnabledState; saved counts as off, pausing and resuming as paused.
+    param($VM, $System = (Get-VMSystem $VM))
+    switch ([int]$System.EnabledState) {
+        { $_ -in 3, 6, 32769 } { 'off' } # off, saved, suspended
+        { $_ -in 9, 32768, 32776, 32777 } { 'paused' } # quiesced, paused, pausing, resuming
         default { 'running' }
     }
 }
@@ -212,8 +223,7 @@ namespace HLab {
                 # the nearest thing. A guest without it ignores the request,
                 # as a guest ignores ACPI on Hetzner. InitiateShutdown returns
                 # once the guest took the request, without waiting for off.
-                $system = Get-CimInstance -Namespace root\virtualization\v2 `
-                    -ClassName Msvm_ComputerSystem -Filter "Name='$($vm.Id)'"
+                $system = Get-VMSystem $vm
                 $service = Get-CimAssociatedInstance -InputObject $system `
                     -ResultClassName Msvm_ShutdownComponent
                 if ($null -ne $service) {
@@ -267,10 +277,13 @@ namespace HLab {
     'vm-state'       = {
         param($Arguments)
         $vm = Get-LabVM $Arguments.name
-        $power = Get-Power $vm
+        $system = Get-VMSystem $vm
+        $power = Get-Power $vm $system
+        $heartbeat = Get-CimAssociatedInstance -InputObject $system -ResultClassName Msvm_HeartbeatComponent
         @{
             power     = $power
-            heartbeat = $power -eq 'running' -and $vm.Heartbeat.ToString() -like 'Ok*'
+            # OperationalStatus 2 is OK, whatever the applications report
+            heartbeat = $power -eq 'running' -and $null -ne $heartbeat -and $heartbeat.OperationalStatus[0] -eq 2
         }
     }
 
@@ -382,9 +395,10 @@ namespace HLab {
     'delete-disk'    = {
         param($Arguments)
         Assert-Path $Arguments.path 'disk'
-        # an off VM does not hold its disks open, so ask Hyper-V who uses it
-        $user = Get-VM | Get-VMHardDiskDrive | Where-Object Path -EQ $Arguments.path |
-            Select-Object -First 1
+        # an off VM does not hold its disks open, so ask Hyper-V who uses it;
+        # a VM that another command removes meanwhile has no drives to read
+        $user = Get-VM | ForEach-Object { Get-VMHardDiskDrive -VM $_ -ErrorAction SilentlyContinue } |
+            Where-Object Path -EQ $Arguments.path | Select-Object -First 1
         if ($null -ne $user) {
             throw "in_use: disk $($Arguments.path) of VM $($user.VMName)"
         }

@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -47,15 +46,22 @@ runcmd:
       (nohup python3 -m http.server 8000 --bind :: > /dev/null 2>&1 &)
 `
 
-// TestServerBootsAndAnswersOnItsAddresses runs the whole lab as hlabd does,
-// with the Cloud API in the test's process, and creates a Debian server
-// through it. The server must answer SSH on its Primary IPv4, see its
-// metadata (served back on port 8000, over IPv4 and IPv6), come back after
-// a reset, shut down through its guest and go with its delete. It needs
-// administrator rights and the appliance's disk next to the test (bin/dev
-// itest copies it); HLab must not run. The system image stays in
-// image-cache next to the test, so that later runs need not load it.
-func TestServerBootsAndAnswersOnItsAddresses(t *testing.T) {
+// TestServersBootAnswerAndOutliveTheLab runs the whole lab as hlabd does,
+// with the Cloud API in the test's process, and creates a Debian and an
+// Ubuntu server through it. They must answer SSH and serve what their
+// metadata service told them (back on port 8000) over IPv4 and IPv6, take
+// the lab's key, see the host as 198.18.0.1 (also from WSL2), reach the
+// Internet but neither the lab control nor private ranges through the
+// uplink, and reach each other only through the appliance. Then the lab
+// stops and starts again: the same servers with the same addresses and
+// disks, also a server whose VM was removed; HLab crashes and the next
+// start takes everything over; the appliance is turned off hard and comes
+// back. Last come a reset, the guest's shutdown and the deletes, and the
+// host must be as before. It needs administrator rights, ssh.exe and the
+// appliance's disk next to the test (bin/dev itest copies it); HLab must
+// not run. The system images stay in image-cache next to the test, so that
+// later runs need not load them.
+func TestServersBootAnswerAndOutliveTheLab(t *testing.T) {
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -65,42 +71,170 @@ func TestServerBootsAndAnswersOnItsAddresses(t *testing.T) {
 	if _, err := os.Stat(release); err != nil {
 		t.Skipf("no appliance to boot: %v (bin/dev appliance)", err)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Minute)
 	defer cancel()
 	parts := windows.New(quietLogger())
 	t.Cleanup(func() { _ = parts.Close() })
-	dataDir := t.TempDir()
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	l, err := lab.Open(lab.Options{DataDir: dataDir, TimeScale: 0, Logger: logger}, system.New(parts.Platform))
-	if err != nil {
-		t.Fatal(err)
+	keys := newLabKey(t)
+	run := labRun{
+		dataDir: t.TempDir(),
+		release: release,
+		labKey:  keys.public,
+		parts:   parts,
+		caches: []*imageCache{
+			{dir: filepath.Join(here, "image-cache"), name: "debian-13"},
+			{dir: filepath.Join(here, "image-cache"), name: "ubuntu-26.04"},
+		},
 	}
-	cache := imageCache{dir: filepath.Join(here, "image-cache"), name: "debian-13"}
-	cache.lend(t, l)
-	closed := false
-	closeLab := func() {
-		if closed {
-			return
-		}
-		closed = true
-		if err := l.Close(); err != nil {
-			t.Errorf("closing the lab: %v", err)
-		}
-		// the appliance, and the server of a test that failed before its
-		// delete
-		found, _ := parts.Hypervisor.FindVMs(context.Background(), system.VMTag)
-		for _, vm := range found {
-			if err := parts.Hypervisor.DeleteVM(context.Background(), vm.Name); err != nil && !errors.Is(err, platform.ErrNotFound) {
-				t.Errorf("removing %s: %v", vm.Name, err)
-			}
-		}
-	}
-	t.Cleanup(closeLab)
-	if err := l.StartMachine(ctx, lab.MachineOptions{ApplianceRelease: release, ServerShutdown: 30 * time.Second}); err != nil {
-		t.Fatal(err)
-	}
+	l := run.open(ctx, t)
+	t.Cleanup(func() {
+		run.close(t, l)
+		run.removeVMs(t)
+	})
 	api := newCloudAPI(t, l)
 
+	debian := createServer(ctx, t, api, "itest-debian", "debian-13")
+	ubuntu := createServer(ctx, t, api, "itest-ubuntu", "ubuntu-26.04")
+	for _, cache := range run.caches {
+		cache.keep(t, l)
+	}
+	for _, server := range []guest{debian, ubuntu} {
+		for _, address := range []string{server.ipv4, server.ipv6} {
+			checkMetadata(ctx, t, address, map[string]string{
+				"instance-id": fmt.Sprint(server.id), "hostname": server.name, "public-ipv4": server.ipv4, "region": "eu-central",
+			})
+		}
+	}
+
+	// the lab's key logs in, and the guest sees the host's address
+	if got := keys.run(t, debian.ipv4, "", "echo $SSH_CLIENT"); !strings.HasPrefix(got, "198.18.0.1 ") {
+		t.Errorf("the guest sees an SSH connection over IPv4 from %q, want 198.18.0.1", got)
+	}
+	if got := keys.run(t, debian.ipv6, "", "echo $SSH_CLIENT"); !strings.HasPrefix(got, "2001:db8:0:ffff::1 ") {
+		t.Errorf("the guest sees an SSH connection over IPv6 from %q, want 2001:db8:0:ffff::1", got)
+	}
+	keys.fromWSL(t, debian.ipv4)
+	checkUplink(t, keys, debian.ipv4)
+	// isolated ports: the servers reach each other only through the
+	// appliance, which takes one off the TTL
+	if got := keys.run(t, ubuntu.ipv4, "", "ping -c 1 -W 3 "+debian.ipv4); !strings.Contains(got, "ttl=63") {
+		t.Errorf("ping from %s to %s: %q, want ttl=63 (one router between them)", ubuntu.name, debian.name, got)
+	}
+
+	// a stop and a start: the same servers, addresses and disks; the
+	// Ubuntu server loses its VM meanwhile and gets a new one with its disk
+	for _, server := range []guest{debian, ubuntu} {
+		keys.run(t, server.ipv4, "", "echo "+server.name+" > /root/itest-mark && sync")
+	}
+	booted := map[string]string{debian.name: keys.bootID(t, debian), ubuntu.name: keys.bootID(t, ubuntu)}
+	run.close(t, l)
+	checkHostIsClean(t)
+	if err := parts.Hypervisor.DeleteVM(ctx, lab.ServerVM(ubuntu.id)); err != nil {
+		t.Fatal(err)
+	}
+	restarted := time.Now()
+	l = run.open(ctx, t)
+	for _, server := range []guest{debian, ubuntu} {
+		waitForSSH(ctx, t, server.ipv4)
+		if got := keys.run(t, server.ipv4, "", "cat /root/itest-mark"); got != server.name {
+			t.Errorf("%s after the restart: the mark on its disk is %q, want %q", server.name, got, server.name)
+		}
+		if id := keys.bootID(t, server); id == booted[server.name] {
+			t.Errorf("%s did not boot again with the lab", server.name)
+		}
+	}
+	t.Logf("both servers answered %s after the lab's start", time.Since(restarted).Round(100*time.Millisecond))
+
+	// a crash: another process runs the lab and is killed; the servers keep
+	// running, and the next start takes them over without a restart
+	run.close(t, l)
+	run.crash(ctx, t)
+	for _, server := range []guest{debian, ubuntu} {
+		waitForSSH(ctx, t, server.ipv4)
+		booted[server.name] = keys.bootID(t, server)
+	}
+	l = run.open(ctx, t)
+	api = newCloudAPI(t, l) // the project and its token came through the restarts
+	for _, server := range []guest{debian, ubuntu} {
+		if id := keys.bootID(t, server); id != booted[server.name] {
+			t.Errorf("%s booted again after the crash; the start should have taken it over", server.name)
+		}
+		waitForStatus(ctx, t, api, server.id, "running")
+	}
+
+	// the appliance turned off hard: the watchdog brings it back
+	turnedOff := time.Now()
+	if err := parts.Hypervisor.StopVM(ctx, system.ApplianceVM); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("the appliance was off %s after the call", time.Since(turnedOff).Round(10*time.Millisecond))
+	waitForPort(ctx, t, debian.ipv4, 22)
+	outage := time.Since(turnedOff)
+	t.Logf("the server answered again %s after the appliance was turned off", outage.Round(10*time.Millisecond))
+	if outage > 10*time.Second {
+		t.Errorf("the outage took %s, want less than 10 s", outage.Round(100*time.Millisecond))
+	}
+
+	reset := time.Now()
+	api.action(t, debian.id, "reset")
+	time.Sleep(2 * time.Second) // the reset takes the guest down at once; SSH may answer from before
+	waitForSSH(ctx, t, debian.ipv4)
+	t.Logf("SSH answered again %s after the reset", time.Since(reset).Round(100*time.Millisecond))
+
+	shutdown := time.Now()
+	api.action(t, debian.id, "shutdown")
+	waitForStatus(ctx, t, api, debian.id, "off")
+	t.Logf("the guest shut down and the server was off %s after the shutdown", time.Since(shutdown).Round(100*time.Millisecond))
+
+	for _, server := range []guest{debian, ubuntu} {
+		var deleted struct {
+			Action struct{ ID int64 } `json:"action"`
+		}
+		api.do(t, http.MethodDelete, fmt.Sprintf("/servers/%d", server.id), nil, http.StatusOK, &deleted)
+		waitForAction(ctx, t, api, deleted.Action.ID)
+		waitForVMGone(ctx, t, parts.Hypervisor, lab.ServerVM(server.id))
+	}
+	run.close(t, l)
+	for _, cache := range run.caches {
+		cache.store(t)
+	}
+	// the appliance's VM stays off for the next start, as after every stop
+	found, err := parts.Hypervisor.FindVMs(ctx, system.VMTag)
+	if err != nil || len(found) != 1 || found[0].Name != system.ApplianceVM || found[0].Power != platform.PowerOff {
+		t.Errorf("the lab's VMs left: %v, %v; want only the appliance's, off", found, err)
+	}
+	checkHostIsClean(t)
+}
+
+// waitForPort waits until a TCP port of the address takes connections; it
+// tries every 100 ms, so that it measures an outage to a tenth of a second.
+func waitForPort(ctx context.Context, t *testing.T, address string, port int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Minute)
+	for {
+		conn, err := (&net.Dialer{Timeout: 300 * time.Millisecond}).DialContext(ctx, "tcp", net.JoinHostPort(address, fmt.Sprint(port)))
+		if err == nil {
+			_ = conn.Close()
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s:%d took no connection within 2 minutes: %v", address, port, err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// guest is a server the test created.
+type guest struct {
+	name       string
+	id         int64
+	ipv4, ipv6 string
+}
+
+// createServer creates a server of the image with the user data that serves
+// its metadata on port 8000, and waits until it answers SSH.
+func createServer(ctx context.Context, t *testing.T, api cloudAPI, name, image string) guest {
+	t.Helper()
 	started := time.Now()
 	var created struct {
 		Server struct {
@@ -112,50 +246,58 @@ func TestServerBootsAndAnswersOnItsAddresses(t *testing.T) {
 		} `json:"server"`
 	}
 	api.do(t, http.MethodPost, "/servers", map[string]any{
-		"name": "itest-web", "server_type": "cpx22", "image": "debian-13", "location": "fsn1", "user_data": checkUserData,
+		"name": name, "server_type": "cpx22", "image": image, "location": "fsn1", "user_data": checkUserData,
 	}, http.StatusCreated, &created)
-	id := created.Server.ID
-	ipv4 := created.Server.PublicNet.IPv4.IP
-	ipv6 := strings.TrimSuffix(created.Server.PublicNet.IPv6.IP, "/64") + "1"
-	t.Logf("server %d: %s and %s", id, ipv4, ipv6)
-	waitForSSH(ctx, t, ipv4)
-	t.Logf("SSH answered on %s %s after the create", ipv4, time.Since(started).Round(100*time.Millisecond))
-	cache.keep(t, l)
-
-	for _, address := range []string{ipv4, ipv6} {
-		checkMetadata(ctx, t, address, map[string]string{
-			"instance-id": fmt.Sprint(id), "hostname": "itest-web", "public-ipv4": ipv4, "region": "eu-central",
-		})
+	server := guest{
+		name: name,
+		id:   created.Server.ID,
+		ipv4: created.Server.PublicNet.IPv4.IP,
+		ipv6: strings.TrimSuffix(created.Server.PublicNet.IPv6.IP, "/64") + "1",
 	}
+	waitForSSH(ctx, t, server.ipv4)
+	t.Logf("%s (%d, %s, %s): SSH answered %s after the create", name, server.id, server.ipv4, server.ipv6,
+		time.Since(started).Round(100*time.Millisecond))
+	return server
+}
 
-	reset := time.Now()
-	api.action(t, id, "reset")
-	time.Sleep(2 * time.Second) // the reset takes the guest down at once; SSH may answer from before
-	waitForSSH(ctx, t, ipv4)
-	t.Logf("SSH answered again %s after the reset", time.Since(reset).Round(100*time.Millisecond))
+// waitForAction waits until an action has ended and fails the test unless
+// it succeeded.
+func waitForAction(ctx context.Context, t *testing.T, api cloudAPI, id int64) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Minute)
+	for {
+		var answer struct {
+			Action struct {
+				Status string
+				Error  *struct{ Message string }
+			} `json:"action"`
+		}
+		api.do(t, http.MethodGet, fmt.Sprintf("/actions/%d", id), nil, http.StatusOK, &answer)
+		switch answer.Action.Status {
+		case "success":
+			return
+		case "error":
+			t.Fatalf("action %d failed: %+v", id, answer.Action.Error)
+		}
+		if time.Now().After(deadline) || ctx.Err() != nil {
+			t.Fatalf("action %d is still %s after 2 minutes", id, answer.Action.Status)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
 
-	shutdown := time.Now()
-	api.action(t, id, "shutdown")
-	waitForStatus(ctx, t, api, id, "off")
-	t.Logf("the guest shut down and the server was off %s after the shutdown", time.Since(shutdown).Round(100*time.Millisecond))
-
-	api.do(t, http.MethodDelete, fmt.Sprintf("/servers/%d", id), nil, http.StatusOK, nil)
+// waitForVMGone waits until a deleted server's VM is gone.
+func waitForVMGone(ctx context.Context, t *testing.T, hypervisor platform.Hypervisor, vm string) {
+	t.Helper()
 	deadline := time.Now().Add(time.Minute)
 	for {
-		if _, err := parts.Hypervisor.VMState(ctx, lab.ServerVM(id)); errors.Is(err, platform.ErrNotFound) {
-			break
+		if _, err := hypervisor.VMState(ctx, vm); errors.Is(err, platform.ErrNotFound) {
+			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("the server's VM is still there a minute after the delete")
+			t.Fatalf("%s is still there a minute after the delete", vm)
 		}
 		time.Sleep(200 * time.Millisecond)
-	}
-
-	closeLab()
-	cache.store(t)
-	found, err := parts.Hypervisor.FindVMs(ctx, system.VMTag)
-	if err != nil || len(found) > 0 {
-		t.Errorf("the lab's VMs left: %v, %v", found, err)
 	}
 }
 
@@ -165,15 +307,18 @@ type cloudAPI struct {
 	token string
 }
 
-// newCloudAPI serves the lab's Cloud API on a local port, with a token of a
-// new project.
+// newCloudAPI serves the lab's Cloud API on a local port, with a token of the
+// project "itest", which it creates if the lab has none.
 func newCloudAPI(t *testing.T, l *lab.Lab) cloudAPI {
 	t.Helper()
-	project, err := l.CreateProject("itest", state.Limits{})
+	project, err := l.ProjectByName("itest")
+	if errors.Is(err, state.ErrNotFound) {
+		project, err = l.CreateProject("itest", state.Limits{})
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, token, err := l.CreateToken(project.ID, "itest", state.PermissionReadWrite)
+	_, token, err := l.CreateToken(project.ID, fmt.Sprint("itest-", time.Now().UnixNano()), state.PermissionReadWrite)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,7 +452,10 @@ func (c *imageCache) lend(t *testing.T, l *lab.Lab) {
 		t.Fatal(err)
 	}
 	if err := l.Change(func(tx *state.Tx) error {
-		tx.Lab().Images = map[string]state.CachedImage{c.name: kept}
+		if tx.Lab().Images == nil {
+			tx.Lab().Images = map[string]state.CachedImage{}
+		}
+		tx.Lab().Images[c.name] = kept
 		return nil
 	}); err != nil {
 		t.Fatal(err)

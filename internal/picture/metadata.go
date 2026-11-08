@@ -50,12 +50,19 @@ func Metadata(lab Lab, cat *catalog.Catalog) agentproto.Metadata {
 	return metadata
 }
 
-// metadataValues returns the metadata of a server by key.
-func metadataValues(lab Lab, cat *catalog.Catalog, server Server) map[string]any {
+// ServerKeys returns the SSH keys a server's root takes: its own and the
+// lab's, for `hlab ssh`. The metadata service and the seed both give them.
+func ServerKeys(lab Lab, server Server) []string {
 	keys := append([]string{}, server.PublicKeys...)
 	if lab.LabKey != "" {
-		keys = append(keys, lab.LabKey) // the lab's own access, `hlab ssh`
+		keys = append(keys, lab.LabKey)
 	}
+	return keys
+}
+
+// metadataValues returns the metadata of a server by key.
+func metadataValues(lab Lab, cat *catalog.Catalog, server Server) map[string]any {
+	keys := ServerKeys(lab, server)
 	zone, found := availabilityZones[server.Location]
 	if !found {
 		zone = server.Location + "-dc1"
