@@ -8,7 +8,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/state"
 )
 
-// The ranges of the Primary IPs (plan 12.1): IPv4 addresses from
+// The ranges of the Primary IPs: IPv4 addresses from
 // 198.19.0.0/16, and one /64 per IPv6 from 2001:db8:1::/48.
 var (
 	publicIPv4Range = netip.MustParsePrefix("198.19.0.0/16")

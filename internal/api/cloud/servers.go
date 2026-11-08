@@ -159,10 +159,10 @@ func registerServers(api *web.API, l *lab.Lab) {
 		if err != nil {
 			return 0, nil, err
 		}
+		statuses, filtered := query["status"]
 		var servers []serverAnswer
 		_ = l.View(func(tx *state.Tx) error {
 			for _, server := range state.All(tx, state.Servers) {
-				statuses, filtered := query["status"]
 				if server.ProjectID == req.Caller.ProjectID && selector.Matches(server.Labels) &&
 					(!filtered || slices.Contains(statuses, string(server.Status))) {
 					servers = append(servers, serverJSON(tx, l.Catalog(), server))
@@ -234,7 +234,8 @@ func registerServers(api *web.API, l *lab.Lab) {
 		}
 		if body.Name != nil {
 			// the metadata's hostname; if sending fails, the appliance's
-			// watchdog sends the newest pictures again
+			// watchdog sends the newest pictures again. The seed keeps the
+			// old name: cloud-init reads it only at the first boot.
 			_ = l.UpdatePictures(req.Context())
 		}
 		return http.StatusOK, map[string]serverAnswer{"server": out}, nil
@@ -270,16 +271,22 @@ func act(l *lab.Lab, table lab.ActionTable, command string, req *web.Request) (s
 		return state.Action{}, err
 	}
 	action, err := l.Act(table, command, lab.Request{ProjectID: req.Caller.ProjectID, ID: web.PathID(req, "id"), Body: body})
+	return action, actError(err)
+}
+
+// actError turns the errors of Lab.Act and Lab.Create into Hetzner's; it
+// passes the others on.
+func actError(err error) error {
 	var locked *lab.LockedError
 	switch {
 	case errors.As(err, &locked):
-		return state.Action{}, web.Locked(locked.Message)
+		return web.Locked(locked.Message)
 	case errors.Is(err, lab.ErrProjectGone):
-		return state.Action{}, web.TokenInvalid()
+		return web.TokenInvalid()
 	case errors.Is(err, lab.ErrNoRoom):
-		return state.Action{}, web.Refusal(http.StatusPreconditionFailed, "resource_unavailable", serverNoRoom)
+		return web.Refusal(http.StatusPreconditionFailed, "resource_unavailable", serverNoRoom)
 	}
-	return action, err
+	return err
 }
 
 // readBody reads a request's body for an action's plan; an empty body is
@@ -297,7 +304,7 @@ func readBody(req *web.Request) ([]byte, error) {
 
 // createServer checks a create request, records the server with its
 // Primary IPs and starts its create action, and its start unless
-// start_after_create is false (13.4).
+// start_after_create is false, all in one transaction.
 func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any, error) {
 	var body serverCreateRequest
 	if err := web.DecodeJSON(req.Request, &body); err != nil {
@@ -352,58 +359,50 @@ func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any
 	if body.UserData != nil {
 		server.UserData = *body.UserData
 	}
+	commands := []string{"create"}
+	if start {
+		commands = append(commands, "poweron")
+	}
 	var out serverAnswer
-	err := l.Change(func(tx *state.Tx) error {
-		if err := lab.CheckProject(tx, server.ProjectID); err != nil {
-			return web.TokenInvalid()
-		}
+	actions, err := l.Create(table, lab.Request{ProjectID: server.ProjectID}, func(tx *state.Tx) (int64, error) {
 		keys, err := serverKeys(tx, server.ProjectID, body.SSHKeys)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		server.PublicKeys = keys
 		if len(keys) == 0 {
 			server.RootPassword = rootPassword() // shown once, as on Hetzner
 		}
 		if serverNameUsed(tx, server.ProjectID, server.Name) {
-			return web.Refusal(http.StatusConflict, "uniqueness_error", serverNameTaken)
+			return 0, web.Refusal(http.StatusConflict, "uniqueness_error", serverNameTaken)
 		}
 		if start {
 			if err := l.CheckRoom(tx, 0, serverType); err != nil {
-				return web.Refusal(http.StatusPreconditionFailed, "resource_unavailable", serverNoRoom)
+				return 0, err
 			}
 		}
 		server.ID = state.NewID(tx, state.Servers)
 		server.MAC = lab.ServerMAC(server.ID)
 		if err := assignNewServerIPs(tx, server, body.PublicNet); err != nil {
-			return err
+			return 0, err
 		}
 		state.Put(tx, state.Servers, server)
 		out = serverJSON(tx, cat, server)
-		return nil
-	})
+		return server.ID, nil
+	}, commands...)
 	if err != nil {
-		return 0, nil, err
-	}
-	request := lab.Request{ProjectID: server.ProjectID, ID: server.ID}
-	created, err := l.Act(table, "create", request)
-	if err != nil {
-		return 0, nil, err
+		return 0, nil, actError(err)
 	}
 	next := []schema.Action{}
-	if start {
-		started, err := l.Act(table, "poweron", request)
-		if err != nil {
-			return 0, nil, err
-		}
-		next = append(next, actionJSON(&started))
+	for i := 1; i < len(actions); i++ {
+		next = append(next, actionJSON(&actions[i]))
 	}
 	answer := struct {
 		Server       serverAnswer    `json:"server"`
 		Action       schema.Action   `json:"action"`
 		NextActions  []schema.Action `json:"next_actions"`
 		RootPassword *string         `json:"root_password"`
-	}{Server: out, Action: actionJSON(&created), NextActions: next}
+	}{Server: out, Action: actionJSON(&actions[0]), NextActions: next}
 	if server.RootPassword != "" {
 		answer.RootPassword = &server.RootPassword
 	}
@@ -547,14 +546,6 @@ func serverJSON(tx *state.Tx, cat *catalog.Catalog, server *state.Server) server
 // during another waits instead of 423 (measured 2026-11-08). "create" and
 // "delete" are no routes of their own: POST and DELETE /servers run them.
 func serverActions(l *lab.Lab) lab.ActionTable {
-	steps := func(run func(ctx context.Context, id int64) error) func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
-		return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
-			if _, err := callerServer(tx, req.ProjectID, req.ID); err != nil {
-				return lab.Plan{}, err
-			}
-			return lab.Plan{Steps: func(ctx context.Context) error { return run(ctx, req.ID) }}, nil
-		}
-	}
 	return lab.ActionTable{
 		ResourceType: lab.ServerResource,
 		Busy:         serverBusy,
@@ -562,13 +553,60 @@ func serverActions(l *lab.Lab) lab.ActionTable {
 		Actions: map[string]lab.ActionSpec{
 			"create":            {Name: "create_server", Plan: planCreateServer(l)},
 			"delete":            {Name: "delete_server", Plan: planDeleteServer(l)},
-			"poweron":           {Name: "start_server", Plan: planPowerOn(l)},
-			"poweroff":          {Name: "stop_server", Plan: steps(l.PowerOffServer)},
-			"shutdown":          {Name: "shutdown_server", Plan: steps(l.ShutdownServer)},
-			"reboot":            {Name: "reboot_server", Plan: steps(l.RebootServer)},
-			"reset":             {Name: "reset_server", Plan: steps(l.ResetServer)},
+			"poweron":           {Name: "start_server", Plan: planStart(l, l.PowerOnServer)},
+			"poweroff":          {Name: "stop_server", Plan: planSteps(l.PowerOffServer)},
+			"shutdown":          {Name: "shutdown_server", Plan: planSteps(l.ShutdownServer)},
+			"reboot":            {Name: "reboot_server", Plan: planStart(l, l.RebootServer)},
+			"reset":             {Name: "reset_server", Plan: planStart(l, l.ResetServer)},
 			"change_protection": {Name: "change_protection", Plan: planServerProtection, Unflagged: true},
 		},
+	}
+}
+
+// planSteps returns the plan of a power action without quick changes: it
+// checks that the caller has the server, and the steps run run on it.
+func planSteps(run func(ctx context.Context, id int64) error) func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+		if _, err := callerServer(tx, req.ProjectID, req.ID); err != nil {
+			return lab.Plan{}, err
+		}
+		return lab.Plan{Steps: func(ctx context.Context) error { return run(ctx, req.ID) }}, nil
+	}
+}
+
+// planStart returns the plan of an action that starts the server:
+// poweron, and reboot and reset, which start a server that is off, as on
+// Hetzner. A server that does not want to run yet needs room on the host,
+// and wants to run from the plan on, so that the next start's room check
+// counts it before these steps run. If the steps fail, it is off again.
+func planStart(l *lab.Lab, run func(ctx context.Context, id int64) error) func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+		server, err := callerServer(tx, req.ProjectID, req.ID)
+		if err != nil {
+			return lab.Plan{}, err
+		}
+		plan := lab.Plan{Steps: func(ctx context.Context) error { return run(ctx, req.ID) }}
+		if server.WantRunning {
+			return plan, nil
+		}
+		// a type that the user's catalog dropped counts nothing, as in CheckRoom
+		serverType, _ := l.Catalog().ServerTypeByName(server.Type)
+		if err := l.CheckRoom(tx, server.ID, serverType); err != nil {
+			return lab.Plan{}, err
+		}
+		server.WantRunning = true
+		plan.Undo = func(tx *state.Tx) error {
+			server, err := state.Get(tx, state.Servers, req.ID)
+			if errors.Is(err, state.ErrNotFound) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			server.Status, server.WantRunning = state.ServerOff, false
+			return nil
+		}
+		return plan, nil
 	}
 }
 
@@ -647,23 +685,6 @@ func releaseServer(tx *state.Tx, server *state.Server) {
 		}
 	}
 	state.Delete(tx, state.Servers, server.ID)
-}
-
-// planPowerOn starts the server; one that does not run yet needs room on
-// the host.
-func planPowerOn(l *lab.Lab) func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
-	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
-		server, err := callerServer(tx, req.ProjectID, req.ID)
-		if err != nil {
-			return lab.Plan{}, err
-		}
-		if serverType, found := l.Catalog().ServerTypeByName(server.Type); found && !server.WantRunning {
-			if err := l.CheckRoom(tx, server.ID, serverType); err != nil {
-				return lab.Plan{}, err
-			}
-		}
-		return lab.Plan{Steps: func(ctx context.Context) error { return l.PowerOnServer(ctx, req.ID) }}, nil
-	}
 }
 
 // serverProtectionRequest is the body of change_protection; a missing

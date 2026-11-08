@@ -193,11 +193,6 @@ func (l *Lab) Fresh() bool {
 	return l.fresh
 }
 
-// System returns the system, for the actions' steps.
-func (l *Lab) System() *system.System {
-	return l.system
-}
-
 // Change runs change on the state as one transaction. If change returns an
 // error, the state stays as it was and Change returns that error; otherwise
 // the new state is saved.

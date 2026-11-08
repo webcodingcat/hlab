@@ -12,10 +12,12 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/webcodingcat/hlab/internal/api/cloud"
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/lab"
+	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/platform/fake"
 	"github.com/webcodingcat/hlab/internal/spectest"
 	"github.com/webcodingcat/hlab/internal/state"
@@ -51,6 +53,26 @@ func newTestLab(t *testing.T) *testLab {
 	client := spectest.New(t, api, spectest.Cloud)
 	client.Token = newToken(t, l, "default")
 	return &testLab{lab: l, client: client, machine: machine}
+}
+
+// startMachine starts the lab's machine with the host's resources, so that
+// the room check counts: an agent answers in the appliance's VM, and the
+// release disk is a small file.
+func startMachine(t *testing.T, test *testLab, host platform.HostResources) {
+	t.Helper()
+	test.machine.ServeAgent(system.ApplianceVM("A"), fake.NewAgent().Serve)
+	test.machine.SetHostResources(host)
+	release := filepath.Join(t.TempDir(), "hlab-appliance.vhdx")
+	if err := os.WriteFile(release, []byte("the appliance's release"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	opts := lab.MachineOptions{
+		ApplianceRelease: release,
+		Timings:          system.ApplianceTimings{Interval: 5 * time.Millisecond, Failures: 3, Boot: 5 * time.Second, Shutdown: time.Second},
+	}
+	if err := test.lab.StartMachine(t.Context(), opts); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // localImages returns the built-in catalog with its images' sources on a

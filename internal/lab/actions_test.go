@@ -218,6 +218,57 @@ func TestRefusedActionChangesNothing(t *testing.T) {
 	}
 }
 
+func TestCreateRecordsTheResourceWithItsActions(t *testing.T) {
+	l, _ := openWithProject(t, lab.Options{})
+	table := tableWith(instant)
+	table.Actions["poweron"] = instant
+	create := func(tx *state.Tx) (int64, error) {
+		id := state.NewID(tx, state.Servers)
+		state.Put(tx, state.Servers, &state.Server{ID: id, ProjectID: projectID, Name: "web"})
+		return id, nil
+	}
+	actions, err := l.Create(table, request(0), create, "poweroff", "poweron")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(actions) != 2 {
+		t.Fatalf("got %d actions, want 2", len(actions))
+	}
+	server, err := lab.Current(l, state.Servers, actions[0].Resources[0].ID)
+	if err != nil {
+		t.Fatalf("the actions name no server: %v", err)
+	}
+	if actions[1].Resources[0].ID != server.ID {
+		t.Errorf("the second action names %v, want server %d", actions[1].Resources, server.ID)
+	}
+}
+
+func TestRefusedCreateRecordsNothing(t *testing.T) {
+	l, _ := openWithProject(t, lab.Options{})
+	refused := errors.New("invalid input")
+	table := tableWith(instant)
+	table.Actions["poweron"] = lab.ActionSpec{Name: "start_server", Plan: func(*state.Tx, lab.Request) (lab.Plan, error) {
+		return lab.Plan{}, refused
+	}}
+	create := func(tx *state.Tx) (int64, error) {
+		id := state.NewID(tx, state.Servers)
+		state.Put(tx, state.Servers, &state.Server{ID: id, ProjectID: projectID, Name: "web"})
+		return id, nil
+	}
+	if _, err := l.Create(table, request(0), create, "poweroff", "poweron"); !errors.Is(err, refused) {
+		t.Fatalf("got %v, want the second plan's error", err)
+	}
+	err := l.View(func(tx *state.Tx) error {
+		if servers, actions := state.All(tx, state.Servers), state.All(tx, state.Actions); len(servers) > 0 || len(actions) > 0 {
+			t.Errorf("the refused create left %d servers and %d actions", len(servers), len(actions))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestUndoRunsWhenTheStepsFail(t *testing.T) {
 	l, _ := openWithProject(t, lab.Options{})
 	var keyID int64

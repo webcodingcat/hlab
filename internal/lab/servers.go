@@ -28,7 +28,7 @@ const (
 // with Hetzner's 412 resource_unavailable.
 var ErrNoRoom = errors.New("the host has no room for the server")
 
-// The bounds of the room the servers may take (plan, 5 no. 18): memory is
+// The bounds of the room the servers may take: memory is
 // not overcommitted, the host keeps a reserve and the appliance its own;
 // virtual cores may be four times the host's threads.
 const (
@@ -116,7 +116,7 @@ func (l *Lab) SetServerStatus(id int64, status state.ServerStatus) error {
 	return l.setServer(id, func(server *state.Server) { server.Status = status })
 }
 
-// BuildServer makes a new server's VM, off (13.4): the system image in the
+// BuildServer makes a new server's VM, off: the system image in the
 // cache, the disk, the seed, the VM; then the appliance gets the pictures
 // with the server.
 func (l *Lab) BuildServer(ctx context.Context, id int64) error {
@@ -265,12 +265,12 @@ func (l *Lab) PowerOnServer(ctx context.Context, id int64) error {
 // PowerOffServer turns a server off at once, as Hetzner's poweroff:
 // stopping, then off.
 func (l *Lab) PowerOffServer(ctx context.Context, id int64) error {
-	if err := l.system.PowerServer(ctx, ServerVM(id), system.PowerOff); err != nil {
-		return err
-	}
 	if err := l.setServer(id, func(server *state.Server) {
 		server.Status, server.WantRunning = state.ServerStopping, false
 	}); err != nil {
+		return err
+	}
+	if err := l.system.PowerServer(ctx, ServerVM(id), system.PowerOff); err != nil {
 		return err
 	}
 	if err := l.Sleep(ctx, PowerOff); err != nil {
@@ -407,7 +407,7 @@ func seedServer(facts picture.Server, lab picture.Lab) seed.Server {
 
 // watchServers looks at the servers' VMs every interval until ctx ends: a
 // server that runs in the record but whose VM is off has shut itself down,
-// so it is off and no longer wants to run, as on Hetzner (13.5). Servers
+// so it is off and no longer wants to run, as on Hetzner. Servers
 // that an action works on are left to it.
 func (l *Lab) watchServers(ctx context.Context) {
 	ticker := time.NewTicker(serverWatchInterval)
@@ -444,16 +444,20 @@ func (l *Lab) markShutDown(id int64) {
 	if l.flags[serverRef(id)] > 0 {
 		return
 	}
+	marked := false
 	err := l.changeLocked(func(tx *state.Tx) error {
 		server, err := state.Get(tx, state.Servers, id)
 		if err != nil || server.Status != state.ServerRunning {
 			return err
 		}
 		server.Status, server.WantRunning = state.ServerOff, false
-		l.logger.Info("the server shut down", "server", id)
+		marked = true
 		return nil
 	})
-	if err != nil && !errors.Is(err, state.ErrNotFound) {
+	switch {
+	case err != nil && !errors.Is(err, state.ErrNotFound):
 		l.logger.Warn("marking a server off failed", "server", id, "error", err)
+	case err == nil && marked:
+		l.logger.Info("the server shut down", "server", id)
 	}
 }

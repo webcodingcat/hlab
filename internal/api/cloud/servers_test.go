@@ -217,6 +217,30 @@ func TestServerActionsWaitForEachOther(t *testing.T) {
 	}
 }
 
+// A start reserves its room when it is asked for, not when it runs:
+// starts of off servers that are sent at once cannot take more memory
+// than the host has; Hetzner answers 412 resource_unavailable.
+func TestStartsSentAtOnceKeepToTheRoom(t *testing.T) {
+	test := newTestLab(t)
+	// 16 GB - 6 GB reserve - 1 GB appliance = 9 GB: two cpx22 (4 GB) fit
+	startMachine(t, test, platform.HostResources{Threads: 8, MemoryMB: 16 * 1024})
+	var ids []int64
+	for _, name := range []string{"a", "b", "c"} {
+		created := createServer(t, test, map[string]any{
+			"name": name, "server_type": "cpx22", "image": "debian-13", "start_after_create": false,
+		})
+		ids = append(ids, created.Server.ID)
+	}
+	// the starts' steps wait, so that none of them has run yet
+	test.machine.Delay("VMState", 200*time.Millisecond)
+	first := serverAction(t, test, ids[0], "poweron", nil)
+	second := serverAction(t, test, ids[1], "poweron", nil)
+	third := &responseOf{test.client.Do(http.MethodPost, fmt.Sprintf("/v1/servers/%d/actions/poweron", ids[2]), nil)}
+	expectError(t, "a third start", third, http.StatusPreconditionFailed, "resource_unavailable",
+		"error during placement")
+	waitActions(t, test, first, second)
+}
+
 func TestServerWithoutKeysGetsARootPassword(t *testing.T) {
 	test := newTestLab(t)
 	created := createServer(t, test, map[string]any{"name": "web", "server_type": "cpx22", "image": "debian-13", "start_after_create": false})

@@ -240,46 +240,39 @@ func createPrimaryIP(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, 
 		}
 		ip.Location = location.Name
 	}
+	request := lab.Request{ProjectID: ip.ProjectID}
+	var commands []string
+	if body.AssigneeID != nil {
+		request.Body, _ = json.Marshal(map[string]any{"assignee_id": *body.AssigneeID, "assignee_type": "server"})
+		commands = append(commands, "assign")
+	}
 	var out schema.PrimaryIP
-	err := l.Change(func(tx *state.Tx) error {
-		if err := lab.CheckProject(tx, ip.ProjectID); err != nil {
-			return web.TokenInvalid()
-		}
+	actions, err := l.Create(table, request, func(tx *state.Tx) (int64, error) {
 		if primaryIPNameUsed(tx, ip.ProjectID, ip.Name) {
-			return web.RefusalNull(http.StatusConflict, "uniqueness_error", primaryIPNameTaken)
+			return 0, web.RefusalNull(http.StatusConflict, "uniqueness_error", primaryIPNameTaken)
 		}
 		if body.AssigneeID != nil {
 			server, err := callerServer(tx, ip.ProjectID, *body.AssigneeID)
 			if err != nil {
-				return err
+				return 0, err
 			}
 			ip.Location = server.Location // the assign below checks the rest
 		}
 		address, err := lab.NewAddress(tx, ip.Type)
 		if err != nil {
-			return web.RefusalNull(http.StatusPreconditionFailed, "resource_unavailable", err.Error())
+			return 0, web.RefusalNull(http.StatusPreconditionFailed, "resource_unavailable", err.Error())
 		}
 		ip.ID, ip.IP = state.NewID(tx, state.PrimaryIPs), address
 		state.Put(tx, state.PrimaryIPs, ip)
 		out = primaryIPJSON(l.Catalog(), ip)
-		return nil
-	})
+		return ip.ID, nil
+	}, commands...)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, actError(err)
 	}
 	answer := schema.PrimaryIPCreateResponse{PrimaryIP: out}
-	if body.AssigneeID != nil {
-		assignBody, _ := json.Marshal(map[string]any{"assignee_id": *body.AssigneeID, "assignee_type": "server"})
-		action, err := l.Act(table, "assign", lab.Request{ProjectID: ip.ProjectID, ID: ip.ID, Body: assignBody})
-		if err != nil {
-			// the server cannot take it: the new IP goes again
-			_ = l.Change(func(tx *state.Tx) error {
-				state.Delete(tx, state.PrimaryIPs, ip.ID)
-				return nil
-			})
-			return 0, nil, err
-		}
-		answer.Action = new(actionJSON(&action))
+	if len(actions) > 0 {
+		answer.Action = new(actionJSON(&actions[0]))
 		_ = l.View(func(tx *state.Tx) error {
 			if current, err := state.Get(tx, state.PrimaryIPs, ip.ID); err == nil {
 				answer.PrimaryIP = primaryIPJSON(l.Catalog(), current)

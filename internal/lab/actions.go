@@ -81,54 +81,99 @@ type Plan struct {
 // Act runs one action of a resource from its table and returns the action as
 // the API shows it right after.
 func (l *Lab) Act(table ActionTable, command string, req Request) (state.Action, error) {
-	spec, found := table.Actions[command]
-	if !found {
-		return state.Action{}, fmt.Errorf("%s %q: %w", table.ResourceType, command, ErrUnknownCommand)
-	}
-	target := state.ResourceRef{Type: table.ResourceType, ID: req.ID}
-
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if !spec.Unflagged && !table.Queued && l.flags[target] > 0 {
-		return state.Action{}, &LockedError{Message: table.Busy}
-	}
-	var plan Plan
-	var action *state.Action
+	var planned plannedAction
 	err := l.changeLocked(func(tx *state.Tx) error {
 		if err := CheckProject(tx, req.ProjectID); err != nil {
 			return err
 		}
 		var err error
-		if plan, err = spec.Plan(tx, req); err != nil {
-			return err
-		}
-		for _, ref := range plan.Locks {
-			if l.flags[ref] > 0 {
-				return &LockedError{Message: fmt.Sprintf("%s is locked by another action", ref.Type)}
-			}
-		}
-		resources := append([]state.ResourceRef{target}, plan.Resources...)
-		action = l.newAction(tx, req.ProjectID, spec.Name, resources)
-		if plan.Steps == nil {
-			l.finishAction(tx, action, "")
-		}
-		return nil
+		planned, err = l.planAction(tx, table, command, req)
+		return err
 	})
 	if err != nil {
 		return state.Action{}, err
 	}
-	if plan.Steps != nil {
-		flagged := plan.Locks
-		var queue *state.ResourceRef
-		if !spec.Unflagged {
-			flagged = append([]state.ResourceRef{target}, flagged...)
-			if table.Queued {
-				queue = &target
-			}
+	l.start(planned)
+	return *planned.action, nil
+}
+
+// Create records a new resource and runs its first actions in one
+// transaction, so that a resource never stays without the action that
+// makes it: create puts the record and returns its ID, then each command
+// runs on it in order, a later one queued behind an earlier one if the
+// table is Queued. req gives the project and the body; its ID is create's.
+// If anything fails, nothing changes.
+func (l *Lab) Create(table ActionTable, req Request, create func(tx *state.Tx) (int64, error), commands ...string) ([]state.Action, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var planned []plannedAction
+	err := l.changeLocked(func(tx *state.Tx) error {
+		if err := CheckProject(tx, req.ProjectID); err != nil {
+			return err
 		}
-		l.start(action.ID, req.ProjectID, plan, flagged, queue)
+		var err error
+		if req.ID, err = create(tx); err != nil {
+			return err
+		}
+		for _, command := range commands {
+			action, err := l.planAction(tx, table, command, req)
+			if err != nil {
+				return err
+			}
+			planned = append(planned, action)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return *action, nil
+	actions := make([]state.Action, 0, len(planned))
+	for _, action := range planned {
+		l.start(action)
+		actions = append(actions, *action.action)
+	}
+	return actions, nil
+}
+
+// plannedAction is an action that its transaction has recorded and whose
+// steps start once the transaction is saved.
+type plannedAction struct {
+	action *state.Action
+	plan   Plan
+	target state.ResourceRef
+	spec   ActionSpec
+	queued bool
+}
+
+// planAction checks the flags, runs the row's Plan and records the action,
+// finished at once if it has no steps. The caller holds the mutex and saves
+// tx.
+func (l *Lab) planAction(tx *state.Tx, table ActionTable, command string, req Request) (plannedAction, error) {
+	spec, found := table.Actions[command]
+	if !found {
+		return plannedAction{}, fmt.Errorf("%s %q: %w", table.ResourceType, command, ErrUnknownCommand)
+	}
+	target := state.ResourceRef{Type: table.ResourceType, ID: req.ID}
+	if !spec.Unflagged && !table.Queued && l.flags[target] > 0 {
+		return plannedAction{}, &LockedError{Message: table.Busy}
+	}
+	plan, err := spec.Plan(tx, req)
+	if err != nil {
+		return plannedAction{}, err
+	}
+	for _, ref := range plan.Locks {
+		if l.flags[ref] > 0 {
+			return plannedAction{}, &LockedError{Message: fmt.Sprintf("%s is locked by another action", ref.Type)}
+		}
+	}
+	resources := append([]state.ResourceRef{target}, plan.Resources...)
+	action := l.newAction(tx, req.ProjectID, spec.Name, resources)
+	if plan.Steps == nil {
+		l.finishAction(tx, action, "")
+	}
+	return plannedAction{action: action, plan: plan, target: target, spec: spec, queued: table.Queued}, nil
 }
 
 // ChangeIdle runs change as Change does, unless an action works on the
@@ -180,12 +225,25 @@ func (l *Lab) finishAction(tx *state.Tx, action *state.Action, message string) {
 	}
 }
 
-// start runs an action's steps in a goroutine; it holds the flagged resources
-// until the steps end. With a queue, the steps wait until the action queued
-// before on that resource is done. The caller holds the mutex.
-func (l *Lab) start(actionID, projectID int64, plan Plan, flagged []state.ResourceRef, queue *state.ResourceRef) {
+// start runs a planned action's steps in a goroutine, if it has any; the
+// action holds its flagged resources until the steps end. With a queue, the
+// steps wait until the action queued before on that resource is done. The
+// caller holds the mutex.
+func (l *Lab) start(planned plannedAction) {
+	if planned.plan.Steps == nil {
+		return
+	}
+	flagged := planned.plan.Locks
+	var queue *state.ResourceRef
+	if !planned.spec.Unflagged {
+		flagged = append([]state.ResourceRef{planned.target}, flagged...)
+		if planned.queued {
+			queue = &planned.target
+		}
+	}
+	actionID, plan := planned.action.ID, planned.plan
 	ctx, cancel := context.WithCancel(l.ctx)
-	run := &runningAction{projectID: projectID, cancel: cancel, done: make(chan struct{})}
+	run := &runningAction{projectID: planned.action.ProjectID, cancel: cancel, done: make(chan struct{})}
 	l.running[actionID] = run
 	for _, ref := range flagged {
 		l.flags[ref]++

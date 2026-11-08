@@ -223,6 +223,11 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   3. It creates the action. An action without steps is finished at once.
 
   If any of this fails, nothing changes.
+- **`Lab.Create`** records a new resource and runs its first rows in the same
+  transaction (a server's `create` and `poweron`, a Primary IP's `assign`),
+  so a resource never stays without the action that makes it. If the record
+  or a row's plan fails, nothing changes. The API maps the errors of both
+  with `actError`.
 - **Flags.** While an action's steps run or wait in a queue, the action flags
   its resource and the resources in the plan's `Locks`. Flags live in memory
   only, because after a restart no action is running; they count the actions
@@ -248,10 +253,10 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
 The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
 `internal/lab/servers.go` does the slow part with IDs, through `system`.
 
-- **Create** (13.4 of the plan): the handler records the server with its
-  Primary IPs (status `initializing`) in one `Change`, then runs the table's
-  rows `create` (`create_server`) and, unless `start_after_create` is false,
-  `poweron` (`start_server`, the answer's `next_actions`). `Lab.BuildServer`
+- **Create**: the handler records the server with its Primary IPs (status
+  `initializing`) and runs the table's rows `create` (`create_server`) and,
+  unless `start_after_create` is false, `poweron` (`start_server`, the
+  answer's `next_actions`), all in one `Lab.Create`. `Lab.BuildServer`
   takes the system image from the cache, makes the differencing disk, the
   seed and the VM, and sends the appliance the pictures with the server. If
   it fails, the action's undo removes the record and its new Primary IPs.
@@ -262,7 +267,9 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
   statuses Hetzner shows (`starting`, `stopping`, …) and wait its times. A
   reboot asks the guest to shut down (Hyper-V has no ACPI reboot), turns it
   off after a minute and starts it; a reboot or reset of an off server starts
-  it, as on Hetzner.
+  it, as on Hetzner. Each sets the status before it calls the system, as
+  Hetzner shows it once the action runs; if the call fails, the status stays
+  where the steps got to, but a start of an off server is off again (Room).
 - **The watchdog** looks at the running servers' VMs every 2 s: a guest that
   shut itself down leaves its server `off`, and it no longer wants to run.
 - **`want_running`** is what a start of the lab follows: a server whose VM
@@ -278,9 +285,12 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
 - **Room.** Memory is static, so the servers that want to run may take the
   host's memory but a reserve (25 %, at least 6 GB) and the appliance's 1 GB,
   and four virtual cores per thread (`Lab.CheckRoom`, from
-  `Hypervisor.HostResources`). Beyond that, a create or a poweron is Hetzner's
-  412 `resource_unavailable`. Without the machine (the API's unit tests)
-  there is always room.
+  `Hypervisor.HostResources`). Beyond that, a create or a start (`poweron`,
+  and `reboot` or `reset` of an off server) is Hetzner's 412
+  `resource_unavailable`. A start sets `want_running` in its plan, so starts
+  sent at once count each other before their steps run; if the steps fail,
+  the server is off again. Without the machine (the API's unit tests) there
+  is always room.
 - **Addresses** come from `198.19.0.0/16` (IPv4, without `.0` and `.255`) and
   `2001:db8:1::/48` (one `/64` per IPv6), in order: `state.Lab.Pools` holds
   where the next search starts, so a released address comes back only once the
@@ -482,8 +492,8 @@ packages below it follow the layers.
 
 ### The machine's side
 
-`Lab.StartMachine` does what 13.1 of the plan calls the start on the machine;
-`Lab.Close` undoes it. `system` does each step, `lab` only builds the pictures.
+`Lab.StartMachine` starts the lab's side on the machine; `Lab.Close` undoes
+it. `system` does each step, `lab` only builds the pictures.
 
 1. `system.ConnectHost`: `HostNet.CheckRanges` refuses to start if a route or an
    address outside the lab's switches overlaps `198.18.0.0/15` or
@@ -504,10 +514,12 @@ packages below it follow the layers.
    rules of an earlier run go. Then the appliance's folder loses what the
    running appliance and the new release do not need.
 6. The servers come back as they want (Servers and Primary IPs), and their
-   watchdog starts.
+   watchdog starts. A server that cannot come back (a broken disk, an image
+   that does not load) is logged and stays off; it still wants to run, so the
+   next start tries again.
 
 If a step fails, the host link goes again. A crash of hlabd leaves everything
-running (13.3); the next start takes it over.
+running; the next start takes it over.
 
 **The watchdog** checks every 2 s that the appliance's VM runs, its heartbeat
 answers and its agent answers; on the way it sends the pictures that the agent
@@ -516,7 +528,7 @@ at once when the VM is off or gone, it turns the VM off and on again with the
 same MAC set and sends every picture. A picture that the agent refused (422) is
 not sent again until its generation changes.
 
-**The update** (`Lab.updateAppliance`, 13.6 of the plan) replaces a running
+**The update** (`Lab.updateAppliance`) replaces a running
 appliance of an older release, which a start took over, without stopping the
 servers. The state (`Lab.Appliance`) names the running appliance's release and
 MAC set; its VM is `hlab-appliance-a` or `hlab-appliance-b`.
@@ -1217,9 +1229,10 @@ into as it is, such as a renamed or moved field, or a field with a new meaning:
 command and action name.
 
 - `Plan` checks the request and makes the quick changes.
-- `Steps` does the slow part through `l.System()`. It keeps IDs across those calls
-  and waits with `l.Sleep`, using a timing from `internal/lab/clock.go` that was
-  measured on Hetzner.
+- `Steps` does the slow part through a method of `lab` (such as
+  `Lab.PowerOffServer`), which calls `system`; `api/*` never reaches `system`
+  itself. It keeps IDs across those calls and waits with `l.Sleep`, using a
+  timing from `internal/lab/clock.go` that was measured on Hetzner.
 - `Undo` takes back the quick changes.
 
 Its tests use the fake platform and, for timings, a test clock.

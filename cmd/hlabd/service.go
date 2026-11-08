@@ -271,7 +271,7 @@ func (s *service) wait() error {
 	return failure
 }
 
-// close stops the lab (13.2): new requests get 503 while the running ones
+// close stops the lab: new requests get 503 while the running ones
 // finish (up to stopTimeout); the lab closes, with the appliance and the
 // host link, while the lab control still reports "stopping"; then the
 // servers stop and the control token goes, so that the CLI knows the lab is

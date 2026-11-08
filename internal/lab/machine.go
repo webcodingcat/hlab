@@ -31,10 +31,10 @@ type MachineOptions struct {
 	ServerShutdown time.Duration
 }
 
-// defaultServerShutdown is MachineOptions.ServerShutdown's default (13.2).
+// defaultServerShutdown is MachineOptions.ServerShutdown's default.
 const defaultServerShutdown = time.Minute
 
-// StartMachine starts the lab's side on the machine (13.1): it checks the
+// StartMachine starts the lab's side on the machine: it checks the
 // address ranges and connects the host, removes the VMs that an earlier run
 // left, starts or takes over the appliance, sends it the pictures and sets
 // the host's DNS rules. The service calls it after Open and before it
@@ -51,11 +51,11 @@ func (l *Lab) StartMachine(ctx context.Context, opts MachineOptions) error {
 	if err != nil {
 		return err
 	}
-	lab := l.basePictureLab()
+	facts := l.basePictureLab()
 	link := system.HostLink{
-		Ranges:    []netip.Prefix{lab.Range4, lab.Range6},
-		Addresses: lab.HostAddresses(),
-		Gateways:  lab.ApplianceAddresses(),
+		Ranges:    []netip.Prefix{facts.Range4, facts.Range6},
+		Addresses: facts.HostAddresses(),
+		Gateways:  facts.ApplianceAddresses(),
 	}
 	if err := l.system.ConnectHost(ctx, link); err != nil {
 		return err
@@ -83,12 +83,16 @@ func (l *Lab) StartMachine(ctx context.Context, opts MachineOptions) error {
 	return nil
 }
 
-// resumeServers brings the servers back after the lab started (13.1): a
+// resumeServers brings the servers back after the lab started: a
 // VM that runs is taken over (hlabd had crashed); one that is off gets its
 // NIC on the public switch again, and starts if its server wants to run.
 // A server without a VM gets one (restoreServer).
 // The servers' statuses follow their VMs, also for actions that HLab's end
-// cut short. Then the image cache loses what no server needs.
+// cut short; a server that cannot be brought back stays off. Then the
+// image cache loses what no server needs. It gets the servers' records
+// once and reads them only, so keeping them across the calls to the
+// system is safe: a server deleted meanwhile is skipped where its status
+// is set.
 func (l *Lab) resumeServers(ctx context.Context) error {
 	var servers []*state.Server
 	_ = l.View(func(tx *state.Tx) error {
@@ -96,8 +100,19 @@ func (l *Lab) resumeServers(ctx context.Context) error {
 		return nil
 	})
 	for _, server := range servers {
-		if err := l.resumeServer(ctx, server); err != nil {
-			return fmt.Errorf("server %d: %w", server.ID, err)
+		err := l.resumeServer(ctx, server)
+		if ctx.Err() != nil {
+			return ctx.Err() // the start was called off
+		}
+		if err == nil {
+			continue
+		}
+		// one server's trouble (a broken disk, an image that does not
+		// load) must not keep the lab and the other servers from running;
+		// it wants to run still, so the next start tries again
+		l.logger.Error("a server could not be brought back; it stays off", "server", server.ID, "error", err)
+		if err := l.SetServerStatus(server.ID, state.ServerOff); err != nil && !errors.Is(err, state.ErrNotFound) {
+			l.logger.Warn("setting the server off", "server", server.ID, "error", err)
 		}
 	}
 	l.cleanImageCache(ctx)
@@ -194,7 +209,7 @@ func (l *Lab) cleanImageCache(ctx context.Context) {
 
 // startAppliance stages the appliance's release, removes stray VMs, starts
 // the appliance or takes it over and updates it if it runs an older release
-// (13.6); then it sets the host's DNS rules and cleans the appliance's
+// (updateAppliance); then it sets the host's DNS rules and cleans the appliance's
 // folder. The zones' rules come with phase 2b; until then it only removes
 // the rules of an earlier run.
 func (l *Lab) startAppliance(ctx context.Context, opts MachineOptions) (*system.Appliance, error) {
@@ -247,7 +262,7 @@ func (l *Lab) startAppliance(ctx context.Context, opts MachineOptions) (*system.
 }
 
 // updateAppliance replaces the running appliance, taken over from a
-// crashed hlabd, by one of the new release with the other MAC set (13.6):
+// crashed hlabd, by one of the new release with the other MAC set:
 // the new one starts beside the old one on the same switches and gets every
 // picture; then the state names it, the old one goes, and the new one
 // announces its addresses again. If the new one does not come up, the old
@@ -256,10 +271,10 @@ func (l *Lab) updateAppliance(ctx context.Context, old *system.Appliance, from s
 	started := time.Now()
 	set := picture.MACSet(from.MACSet).Other()
 	l.logger.Info("updating the appliance", "from", from.Release, "to", release.ID, "mac_set", set)
-	lab := l.pictureLab()
-	lab.MACSet = set
+	facts := l.pictureLab()
+	facts.MACSet = set
 	next := l.newAppliance(set, release, timings)
-	if _, err := next.Start(ctx, l.pictures(lab)); err != nil {
+	if _, err := next.Start(ctx, l.pictures(facts)); err != nil {
 		err = errors.Join(err, next.Remove(context.WithoutCancel(ctx)))
 		if ctx.Err() != nil {
 			return nil, errors.Join(err, old.Stop(context.WithoutCancel(ctx)))
@@ -333,42 +348,42 @@ func macSet(tx *state.Tx) picture.MACSet {
 }
 
 // pictureLab returns what the pictures are built from, with a new
-// generation: the running appliance's MAC set and the servers that have a
-// VM or are getting one.
+// generation: the running appliance's MAC set and every server of the
+// state, also one whose VM is still being made.
 func (l *Lab) pictureLab() picture.Lab {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.generation++
-	lab := l.basePictureLab()
-	lab.Generation = l.generation
+	facts := l.basePictureLab()
+	facts.Generation = l.generation
 	tx := state.Read(l.state)
-	lab.MACSet = macSet(tx)
+	facts.MACSet = macSet(tx)
 	for _, server := range state.All(tx, state.Servers) {
-		lab.Servers = append(lab.Servers, serverFacts(tx, server))
+		facts.Servers = append(facts.Servers, serverFacts(tx, server))
 	}
-	return lab
+	return facts
 }
 
 // basePictureLab returns the lab's settings for pictures and seeds, without
 // servers.
 func (l *Lab) basePictureLab() picture.Lab {
-	lab := picture.DefaultLab()
-	lab.LabKey = l.labKey
-	return lab
+	facts := picture.DefaultLab()
+	facts.LabKey = l.labKey
+	return facts
 }
 
-// pictures builds every picture of the data plane from lab.
-func (l *Lab) pictures(lab picture.Lab) system.Pictures {
+// pictures builds every picture of the data plane from facts.
+func (l *Lab) pictures(facts picture.Lab) system.Pictures {
 	return system.Pictures{
-		Links:    picture.Links(lab),
-		Ruleset:  picture.Ruleset(lab),
-		DHCP:     picture.DHCP(lab),
-		Metadata: picture.Metadata(lab, l.catalog),
+		Links:    picture.Links(facts),
+		Ruleset:  picture.Ruleset(facts),
+		DHCP:     picture.DHCP(facts),
+		Metadata: picture.Metadata(facts, l.catalog),
 	}
 }
 
 // stopMachine shuts the appliance down and removes the host's DNS rules and
-// its link (13.2). It goes on after a failure, so that as little as
+// its link. It goes on after a failure, so that as little as
 // possible stays behind.
 func (l *Lab) stopMachine() error {
 	l.mu.Lock()

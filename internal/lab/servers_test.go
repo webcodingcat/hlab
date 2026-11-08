@@ -112,7 +112,7 @@ func TestNewAddressGoesRoundThePool(t *testing.T) {
 }
 
 // The servers that want to run may take the host's memory but a reserve
-// (25 %, at least 6 GB) and the appliance's 1 GB (plan, 5 no. 18).
+// (25 %, at least 6 GB) and the appliance's 1 GB.
 func TestCheckRoomKeepsTheReserve(t *testing.T) {
 	machine := fake.New()
 	withAppliance(machine)
@@ -138,7 +138,7 @@ func TestCheckRoomKeepsTheReserve(t *testing.T) {
 }
 
 // A start takes over the servers that run, connects those that are off
-// again and starts those that want to run (13.1, 13.2).
+// again and starts those that want to run.
 func TestStartMachineResumesTheServers(t *testing.T) {
 	machine := fake.New()
 	withAppliance(machine)
@@ -164,6 +164,28 @@ func TestStartMachineResumesTheServers(t *testing.T) {
 	}
 	if strings.Contains(calls, "DetachNIC "+lab.ServerVM(running)) {
 		t.Error("the NIC of the running server was touched")
+	}
+}
+
+// A server that cannot be brought back stays off and keeps wanting to run;
+// the lab and the other servers start all the same.
+func TestStartMachineGoesOnPastABrokenServer(t *testing.T) {
+	machine := fake.New()
+	withAppliance(machine)
+	l := start(t, machine, lab.Options{DataDir: t.TempDir()})
+	t.Cleanup(func() { _ = l.Close() })
+	broken := putServer(t, l, machine, "broken", false, true)
+	sound := putServer(t, l, machine, "sound", false, true)
+	machine.FailNext("AttachNIC", errors.New("the switch is gone"))
+
+	if err := l.StartMachine(t.Context(), machineOptions); err != nil {
+		t.Fatal(err)
+	}
+	if status, wants := serverStatus(t, l, broken); status != state.ServerOff || !wants {
+		t.Errorf("the broken server is %s, wanting to run %v; want off, wanting to run", status, wants)
+	}
+	if status, _ := serverStatus(t, l, sound); status != state.ServerRunning {
+		t.Errorf("the sound server is %s, want running", status)
 	}
 }
 
@@ -318,7 +340,7 @@ func TestStartMachineCleansTheImageCache(t *testing.T) {
 }
 
 // A guest that shuts itself down leaves its server off, and it no longer
-// wants to run, as on Hetzner (13.5).
+// wants to run, as on Hetzner.
 func TestWatchdogSeesAServerShutItselfDown(t *testing.T) {
 	machine := fake.New()
 	withAppliance(machine)
@@ -345,7 +367,7 @@ func TestWatchdogSeesAServerShutItselfDown(t *testing.T) {
 }
 
 // Stopping the lab shuts the servers down; they keep wanting to run, so
-// the next start starts them (13.2).
+// the next start starts them.
 func TestCloseShutsTheServersDown(t *testing.T) {
 	machine := fake.New()
 	withAppliance(machine)

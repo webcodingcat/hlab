@@ -110,7 +110,7 @@ func (s *System) DeleteServer(ctx context.Context, vm string, files ...string) e
 
 // ReconnectServer puts a server's public NIC on the public switch again:
 // a stop of the lab removes the switch, and the VMs keep their NICs without
-// one (13.2). A NIC's port is set only when it is added, so it goes and
+// one. A NIC's port is set only when it is added, so it goes and
 // comes back with the same MAC and port.
 func (s *System) ReconnectServer(ctx context.Context, vm, mac string) error {
 	hypervisor := s.platform.Hypervisor
@@ -205,7 +205,7 @@ func (s *System) WaitServerOff(ctx context.Context, vm string, timeout time.Dura
 const serverPoll = 250 * time.Millisecond
 
 // ShutdownServers shuts the servers' VMs down, all at once: the guest
-// first, turned off after the timeout (13.2).
+// first, turned off after the timeout.
 func (s *System) ShutdownServers(ctx context.Context, vms []string, timeout time.Duration) error {
 	var wg sync.WaitGroup
 	errs := make([]error, len(vms))

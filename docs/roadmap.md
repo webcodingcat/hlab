@@ -172,7 +172,7 @@ the tests. Look there before writing such a part anew.
 - New in the platform: `Hypervisor.DeleteDisk`, the port mode `Plain` (the
   appliance's link and uplink), `LinkSpec.Gateways` (one per address family) and
   `LinkSpec.PrivateSwitches`, `platform.SwitchPrefix` (`HLab-`).
-- The life cycle (13.1–13.3): `Lab.StartMachine` checks the ranges, connects
+- The life cycle: `Lab.StartMachine` checks the ranges, connects
   the host, removes stray VMs, starts or takes over the appliance, sends every
   picture and clears old NRPT rules; `Lab.Close` shuts the appliance down and
   removes the host link and the NRPT rules. While the lab stops, the APIs and
@@ -263,7 +263,7 @@ the tests. Look there before writing such a part anew.
 
 ### Open for 1b-5 and later
 
-- The free disk space of the room check (plan, 5 no. 18: 10 % free) is not
+- The free disk space of the room check (10 % free) is not
   checked yet; the operator left it for later.
 - Volumes, networks, firewalls and placement groups in a server's create
   request are ignored until their phase (2a, 2b).
@@ -313,7 +313,7 @@ the tests. Look there before writing such a part anew.
   whose VM is gone but whose disk is there a new VM around that disk
   (`Lab.restoreServer`, `system.CreateServer` keeps a disk that is there);
   only a server without a disk is built anew. So `install.ps1 -Uninstall
-  -KeepData` removes the VMs, as the plan has it, and the next start brings
+  -KeepData` removes the VMs, and the next start brings
   the servers back.
 - **`hlab ssh SERVER [COMMAND...]`** logs in as root with the lab's key: `hlabd`
   makes an Ed25519 key in the data folder (`lab-key`, `internal/sshkey`) and
@@ -349,8 +349,8 @@ the tests. Look there before writing such a part anew.
   before phase 4; the TTL shows the way for now); the uninstall in a live
   test (played through by hand, see above).
 - A dev loop start takes 20 s: about 9 s for the host link (switches) and 11 s
-  for the appliance from nothing. The 1.7 s of the plan were measured without
-  an appliance. `--keep-vms` keeps it at 9 s.
+  for the appliance from nothing. An earlier estimate of 1.7 s was measured
+  without an appliance. `--keep-vms` keeps it at 9 s.
 - Closing the start menu entry's window ends hlabd as a crash would (Windows
   allows a few seconds); the next start takes over. The tray (6b) replaces the
   window.

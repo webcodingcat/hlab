@@ -42,8 +42,8 @@ type ApplianceSpec struct {
 	MACs [4]string
 }
 
-// ApplianceTimings are the watchdog's times; DefaultApplianceTimings are
-// those of the plan, tests take shorter ones.
+// ApplianceTimings are the watchdog's times; tests take shorter ones than
+// DefaultApplianceTimings.
 type ApplianceTimings struct {
 	// Interval is the time between two checks.
 	Interval time.Duration
