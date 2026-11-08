@@ -374,7 +374,10 @@ the tests. Look there before writing such a part anew.
 - **Releases in the data folder:** a start copies the release disk to
   `<data>/appliance/<sha256>.vhdx` (its SHA-256 is the release's ID) and the
   appliance runs on a differencing disk on the copy, so the disk next to
-  `hlabd` is never held open. After the start the folder keeps only the
+  `hlabd` is never held open. Hyper-V gives the VMs access to the copy
+  itself: the live tests' data folder in the user's Temp, which only
+  SYSTEM, the administrators and the user may read (stricter than
+  `C:\ProgramData`), boots the appliance. After the start the folder keeps only the
   running appliance's release and system disk and the newest release.
 - **HLab's end during an update:** the next start keeps the appliance the
   state names (the old one until the new one has every picture, then the new

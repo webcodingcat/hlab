@@ -312,8 +312,12 @@ deploy() {
   cp build/windows/hlabd.exe build/windows/hlab.exe "${DEV_DIR}/bin/"
   if [[ -e "${APPLIANCE}" ]]; then
     # the appliance runs on a copy in the data folder; a newer disk makes
-    # the start update a running appliance (DEVELOPING.md, The service)
-    cp --update "${APPLIANCE}" "${DEV_DIR}/bin/"
+    # the start update a running appliance (DEVELOPING.md, The service).
+    # An appliance that runs on this disk itself (named hlab-appliance)
+    # holds it open; the start replaces it, and the next deploy copies.
+    cp --update "${APPLIANCE}" "${DEV_DIR}/bin/" \
+      || echo "bin/dev: a running appliance holds the old disk;" \
+        "deploy again to take the new one" >&2
   fi
   schtasks.exe /run /tn "${DEV_TASK}" >/dev/null \
     || die "the task \"${DEV_TASK}\" did not start: bin/dev.ps1 dev-install"
