@@ -8,13 +8,10 @@ import (
 	"github.com/webcodingcat/hlab/internal/state"
 )
 
-// serverWatchInterval is how often the watchdog looks at the servers' VMs.
-const serverWatchInterval = 2 * time.Second
-
 // watchServers looks at the servers' VMs every interval until ctx ends
 // (watchRound).
-func (m *Machine) watchServers(ctx context.Context) {
-	ticker := time.NewTicker(serverWatchInterval)
+func (m *Machine) watchServers(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		select {

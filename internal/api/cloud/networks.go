@@ -484,12 +484,17 @@ func listNetworkMembers(req *web.Request, l *lab.Lab) (int, any, error) {
 			return err
 		}
 		var all []schema.NetworkMember
+		statuses := memberStatuses(tx, network.ID)
 		for _, member := range networkMembers(tx, network) {
+			status := statuses[member.serverID]
+			if status == "" {
+				status = networkMemberOK
+			}
 			all = append(all, schema.NetworkMember{
 				Type:     networkMemberServer,
 				ID:       member.serverID,
 				IP:       member.address.String(),
-				Status:   memberStatus(tx, network.ID, member.serverID),
+				Status:   status,
 				AliasIPs: append([]string{}, member.aliases...),
 				Subnet:   memberSubnet(network, member.address),
 			})
@@ -532,24 +537,35 @@ func memberSubnet(network *state.Network, address netip.Addr) string {
 	return network.IPRange
 }
 
-// memberStatus returns a server's status in a network: "attaching" while
-// its attach runs, "updating" while its alias IPs change, else "ok".
-func memberStatus(tx *state.Tx, networkID, serverID int64) string {
+// memberStatuses returns the statuses of a network's members that are not
+// "ok": "attaching" while a server's attach runs, "updating" while its
+// alias IPs change (not measured). It looks through the actions once for
+// all members.
+func memberStatuses(tx *state.Tx, networkID int64) map[int64]string {
+	statuses := map[int64]string{}
 	running := state.IDs(tx, state.Actions, func(action *state.Action) bool {
-		return action.Status == state.ActionRunning && namesResource(action, networkResource, networkID) &&
-			namesResource(action, lab.ServerResource, serverID)
+		return action.Status == state.ActionRunning && namesResource(action, networkResource, networkID)
 	})
 	for _, id := range running {
-		if action, err := state.Get(tx, state.Actions, id); err == nil {
+		action, err := state.Get(tx, state.Actions, id)
+		if err != nil {
+			continue
+		}
+		for _, resource := range action.Resources {
+			if resource.Type != lab.ServerResource {
+				continue
+			}
 			switch action.Command {
 			case "attach_to_network":
-				return networkMemberAttaching
+				statuses[resource.ID] = networkMemberAttaching
 			case "change_alias_ips":
-				return networkMemberUpdating // not measured
+				if statuses[resource.ID] == "" {
+					statuses[resource.ID] = networkMemberUpdating
+				}
 			}
 		}
 	}
-	return networkMemberOK
+	return statuses
 }
 
 // deleteNetwork deletes a network, also one that servers are in: as on

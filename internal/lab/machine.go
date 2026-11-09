@@ -75,10 +75,17 @@ type MachineOptions struct {
 	// ServerShutdown is how long the servers' guests may take to shut down
 	// when the lab stops, before they are turned off; zero takes 60 s.
 	ServerShutdown time.Duration
+	// ServerWatchInterval is how often the servers' watchdog looks at their
+	// VMs (watchRound); zero takes 2 s. Tests set it short.
+	ServerWatchInterval time.Duration
 }
 
-// defaultServerShutdown is MachineOptions.ServerShutdown's default.
-const defaultServerShutdown = time.Minute
+// defaultServerShutdown and defaultServerWatchInterval are the defaults of
+// MachineOptions.ServerShutdown and ServerWatchInterval.
+const (
+	defaultServerShutdown      = time.Minute
+	defaultServerWatchInterval = 2 * time.Second
+)
 
 // Start starts the lab's side on the machine: it checks the address ranges
 // and connects the host, removes the VMs that an earlier run left, starts or
@@ -92,6 +99,9 @@ func (m *Machine) Start(ctx context.Context, opts MachineOptions) error {
 	}
 	if opts.ServerShutdown == 0 {
 		opts.ServerShutdown = defaultServerShutdown
+	}
+	if opts.ServerWatchInterval == 0 {
+		opts.ServerWatchInterval = defaultServerWatchInterval
 	}
 	host, err := m.system.HostResources(ctx)
 	if err != nil {
@@ -125,7 +135,7 @@ func (m *Machine) Start(ctx context.Context, opts MachineOptions) error {
 	m.lab.mu.Lock()
 	m.watching = cancel
 	m.lab.mu.Unlock()
-	m.watchers.Go(func() { m.watchServers(watchCtx) })
+	m.watchers.Go(func() { m.watchServers(watchCtx, opts.ServerWatchInterval) })
 	return nil
 }
 

@@ -21,7 +21,8 @@ import (
 // machineOptions are the machine's options with a quick watchdog; TestMain
 // gives them a release disk.
 var machineOptions = lab.MachineOptions{
-	Timings: system.ApplianceTimings{Interval: 5 * time.Millisecond, Failures: 3, Boot: 5 * time.Second, Shutdown: time.Second},
+	Timings:             system.ApplianceTimings{Interval: 5 * time.Millisecond, Failures: 3, Boot: 5 * time.Second, Shutdown: time.Second},
+	ServerWatchInterval: 10 * time.Millisecond,
 }
 
 // releaseContent is what the release disk of machineOptions holds.

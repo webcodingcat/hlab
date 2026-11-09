@@ -398,7 +398,7 @@ What a plan and a row can say (`lab.Plan`, `lab.ActionSpec`):
     (`firewallActions` says why), and a server's detach, whose NIC leaves
     the VM even when the pictures fail (`planDetachFromNetwork`).
   - The servers' watchdog looks at every VM each round (every 2 s,
-    `serverWatchInterval`) without the mutex, so it acts only if no
+    `MachineOptions.ServerWatchInterval`) without the mutex, so it acts only if no
     action flagged the server meanwhile: each round notes the servers it
     looks at, an action's flag marks them, and the notes go with the round
     (`Machine.watchRound`, `internal/lab/watchdog.go`).
