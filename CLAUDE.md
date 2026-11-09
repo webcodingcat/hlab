@@ -47,8 +47,9 @@ file named there.
   row in the table first, which `internal/layers_test.go` reads (Layers).
 - `api/*` reaches the system only through `lab`, never through `platform` (Layers).
 - `system` never sees the state: it gets IDs, values and pictures (Layers).
-- The agent applies whole pictures and decides nothing; a picture changes only
-  through `internal/picture` and its golden files (docs/appliance.md).
+- The agent applies whole pictures and decides nothing (its one command
+  formats a volume); a picture changes only through `internal/picture`
+  and its golden files (docs/appliance.md).
 - The appliance holds only Debian packages and the agent (docs/appliance.md).
 - Code holds the lab's mutex only between calls to the system, so that no request
   waits behind a VM's slow call, and across such a call it keeps IDs, not records

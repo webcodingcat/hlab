@@ -333,10 +333,24 @@ func (l *Lab) endAction(action *state.Action, failure *state.Failure) {
 	}
 }
 
-// actionFailed is the failure of an action whose steps failed.
-func actionFailed(message string) *state.Failure {
-	return &state.Failure{Code: "action_failed", Message: message}
+// actionFailed is the failure of an action whose steps failed: Hetzner's
+// own failure if the steps return one (*Failure), else action_failed.
+func actionFailed(err error) *state.Failure {
+	if failure, ok := errors.AsType[*Failure](err); ok {
+		return &state.Failure{Code: failure.Code, Message: failure.Message}
+	}
+	return &state.Failure{Code: "action_failed", Message: err.Error()}
 }
+
+// Failure is an error of an action's steps with Hetzner's code and
+// message, which the action shows as its error (a volume's attach to a
+// server in another location: "unknown_error").
+type Failure struct {
+	Code    string
+	Message string
+}
+
+func (f *Failure) Error() string { return f.Code + ": " + f.Message }
 
 // actionAborted is Hetzner's failure of an action whose resource was
 // deleted while it ran (measured 2026-11-09: a network's add_route).
@@ -479,9 +493,9 @@ func (l *Lab) end(run *runningAction, err error, canceled bool) (undone bool) {
 		failure = new(actionAborted)
 		canceled = true // nothing to undo: its resource is gone
 	case canceled:
-		failure = actionFailed("the action was canceled: HLab stopped or the project was deleted")
+		failure = actionFailed(errors.New("the action was canceled: HLab stopped or the project was deleted"))
 	case err != nil:
-		failure = actionFailed(err.Error())
+		failure = actionFailed(err)
 	}
 	for _, ref := range run.flagged {
 		if l.flags[ref]--; l.flags[ref] <= 0 {

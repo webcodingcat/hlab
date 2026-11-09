@@ -163,3 +163,14 @@ func (f *Fake) enter(ctx context.Context, method string, args ...any) error {
 	}
 	return ctx.Err()
 }
+
+// Disks returns a VM's disks by slot; nil if there is no such VM.
+func (f *Fake) Disks(vm string) map[int]string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	machine, found := f.vms[vm]
+	if !found {
+		return nil
+	}
+	return maps.Clone(machine.disks)
+}

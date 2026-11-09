@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 
 	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/platform/windows/pshost"
+	"github.com/webcodingcat/hlab/internal/vhdx"
 )
 
 //go:embed hyperv.ps1
@@ -89,6 +91,20 @@ type diskArgs struct {
 	Path string `json:"path"`
 }
 
+// toDisk sets a disk's ID, if the slot has one, and returns the disk as
+// hyperv.ps1 takes it. The disk is in no VM yet, so its VHDX may change;
+// Hyper-V offers no command for it (Set-VHD only makes a random one).
+func toDisk(disk platform.DiskSlot) (diskArgs, error) {
+	if disk.ID != [16]byte{} {
+		if err := vhdx.SetDiskID(disk.Path, disk.ID); errors.Is(err, os.ErrNotExist) {
+			return diskArgs{}, fmt.Errorf("disk %s: %w", disk.Path, platform.ErrNotFound)
+		} else if err != nil {
+			return diskArgs{}, fmt.Errorf("setting the ID of %s: %w", disk.Path, err)
+		}
+	}
+	return diskArgs{Slot: disk.Slot, Path: disk.Path}, nil
+}
+
 // CreateVM creates a VM that is off: generation 2 with Secure Boot (Microsoft
 // UEFI CA), static memory, the disks on SCSI controller 0 at their slots, an
 // empty DVD drive on controller 1 and the NICs. If a step fails, the VM is
@@ -96,7 +112,11 @@ type diskArgs struct {
 func (h *Hypervisor) CreateVM(ctx context.Context, spec platform.VMSpec) error {
 	disks := []diskArgs{}
 	for _, disk := range spec.Disks {
-		disks = append(disks, diskArgs(disk))
+		args, err := toDisk(disk)
+		if err != nil {
+			return err
+		}
+		disks = append(disks, args)
 	}
 	nics := []nicArgs{}
 	for _, nic := range spec.NICs {
@@ -175,7 +195,11 @@ func (h *Hypervisor) SetCPUMemory(ctx context.Context, name string, cpus int, me
 
 // AttachDisk puts a disk into a free slot, also while the VM runs.
 func (h *Hypervisor) AttachDisk(ctx context.Context, name string, disk platform.DiskSlot) error {
-	return h.call(ctx, "attach-disk", map[string]any{"name": name, "disk": diskArgs(disk)}, nil)
+	args, err := toDisk(disk)
+	if err != nil {
+		return err
+	}
+	return h.call(ctx, "attach-disk", map[string]any{"name": name, "disk": args}, nil)
 }
 
 // DetachDisk takes the disk out of a slot, also while the VM runs.

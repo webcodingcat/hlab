@@ -170,7 +170,7 @@ func (l *Lab) endInterruptedActions(tx *state.Tx) error {
 		if err != nil {
 			return err
 		}
-		l.endAction(action, actionFailed("HLab was restarted while the action ran"))
+		l.endAction(action, actionFailed(errors.New("HLab was restarted while the action ran")))
 		projects[action.ProjectID] = true
 	}
 	for projectID := range projects {

@@ -74,4 +74,48 @@ for nic in /sys/class/net/*; do
   esac
 done
 
+--==HLAB==
+Content-Type: text/x-shellscript; charset="us-ascii"
+
+#!/bin/sh
+mkdir -p /usr/local/lib/hlab
+cat > /usr/local/lib/hlab/hc-volume <<'SCRIPT'
+#!/bin/sh
+# prints the udev properties of an HLab volume from its WWN ($1):
+# 0x60022480, "HLAB", the flags, 00, the volume's ID in 12 digits
+rest=${1#0x60022480484c4142}
+[ "$rest" != "$1" ] && [ ${#rest} -eq 16 ] || exit 0
+flags=$(printf '%.2s' "$rest")
+id=$(expr "${rest#????}" + 0) || exit 0
+echo "HC_VOLUME_ID=$id"
+echo "HC_VOLUME_AUTOMOUNT=$((0x$flags & 1))"
+SCRIPT
+cat > /usr/local/lib/hlab/hc-volume-mount <<'SCRIPT'
+#!/bin/sh
+# mounts the volume $1 with the file system $2, as Hetzner's hc-utils do
+dir=/mnt/HC_Volume_$1
+mkdir -p "$dir"
+if ! grep -qs " $dir " /etc/fstab; then
+  echo "/dev/disk/by-id/scsi-0HC_Volume_$1 $dir $2 discard,nofail,defaults 0 0" >> /etc/fstab
+  systemctl daemon-reload
+fi
+mountpoint -q "$dir" || mount "$dir"
+SCRIPT
+chmod 755 /usr/local/lib/hlab/hc-volume /usr/local/lib/hlab/hc-volume-mount
+cat > /etc/udev/rules.d/61-hlab-volume.rules <<'RULE'
+SUBSYSTEM!="block", GOTO="hlab_volume_end"
+ENV{DEVTYPE}!="disk", GOTO="hlab_volume_end"
+ACTION=="remove", GOTO="hlab_volume_end"
+ENV{ID_WWN}!="0x60022480484c4142", GOTO="hlab_volume_end"
+IMPORT{program}="/usr/local/lib/hlab/hc-volume %E{ID_WWN_WITH_EXTENSION}"
+ENV{HC_VOLUME_ID}!="?*", GOTO="hlab_volume_end"
+ENV{ID_VENDOR}="HC", ENV{ID_MODEL}="Volume", ENV{ID_SERIAL}="0HC_Volume_$env{HC_VOLUME_ID}", ENV{ID_SERIAL_SHORT}="$env{HC_VOLUME_ID}"
+SYMLINK+="disk/by-id/scsi-0HC_Volume_$env{HC_VOLUME_ID}"
+ACTION=="add", ENV{HC_VOLUME_AUTOMOUNT}=="1", ENV{ID_FS_TYPE}=="ext4|xfs", RUN+="/usr/bin/systemd-run --no-block --collect /usr/local/lib/hlab/hc-volume-mount $env{HC_VOLUME_ID} $env{ID_FS_TYPE}"
+LABEL="hlab_volume_end"
+RULE
+udevadm control --reload
+udevadm trigger -c add -s block -p ID_WWN=0x60022480484c4142
+udevadm settle --timeout=30 || true
+
 --==HLAB==--

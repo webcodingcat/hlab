@@ -30,9 +30,10 @@ the tests. Look there before writing such a part anew.
 ## Now
 
 Phase 2a is done with its review, 2a-R; 2b-0 measured on the real API
-what phase 2b needs (`compat/requirements.md`, 2b-0). Next is 2b-1
-"disk ID, volumes, placement groups", with the network deviations below,
-then 2b-2 "DNS, rDNS, host DNS", then 2b-R.
+what phase 2b needs (`compat/requirements.md`, 2b-0); 2b-1 brought
+volumes, placement groups and the deviations 2b-0 found in 2a. Next is
+2b-2 "DNS, rDNS, host DNS", then 2b-3 "VMs and records agree" (Known
+gaps below), then 2b-R.
 
 ## Open
 
@@ -42,11 +43,13 @@ Faults and deviations from Hetzner, each as "level, phase: finding": the
 level from the review that found it (must, should, optional; accepted
 for what the operator keeps), the phase or step that closes it.
 
-- **should, 2b (own step):** a NIC that Hyper-V fails to remove (a
-  detach, a network's delete) stays in the VM without a record; the VLAN
-  pool's rotation keeps it out of new networks for a while. A check that
-  compares a VM's NICs with the record closes this and any other such
-  rest (new platform method, contract test).
+- **should, 2b-3:** a NIC that Hyper-V fails to remove (a detach, a
+  network's delete) stays in the VM without a record; the VLAN pool's
+  rotation keeps it out of new networks for a while. The same holds for
+  a volume's disk, and an attach or detach that HLab's end cut short
+  leaves the VM and the record apart. A check that compares a VM's NICs
+  and disks with the records closes this and any other such rest (new
+  platform method, contract test; operator 2026-11-09: a step of its own).
 - **accepted:** the servers' connections to the Internet break at
   an update of the appliance, and at the watchdog's restart of it: the new
   appliance has none of the old one's NAT state, and after an update
@@ -66,16 +69,17 @@ for what the operator keeps), the phase or step that closes it.
 - **should, 6b:** after the first Ctrl+C or stop signal, a second one does
   not end a stop that hangs (`signal.Notify` stays active in both
   platforms' life cycles); `signal.Stop` after the first would let it.
-- **optional, 2b (with volumes):** a type `holds` that takes and frees an
-  action's flags, queue and lock queues in one place (`Lab.start`,
-  `Lab.releaseQueues`, `Lab.end`); volumes bring more `Locks`.
+- **optional, 2b-R:** a type `holds` that takes and frees an action's
+  flags and queue in one place (`Lab.start`, `Lab.releaseQueues`,
+  `Lab.end`); 2b-1 removed the lock queues (operator 2026-11-09: to the
+  review).
 - **optional, 2c:** one step
   `Machine.SendPictures` for the actions that only send pictures
   (`ChangeFirewall`, `ChangeNetwork`, `ChangeAliasIPs`), at the cost of
   their names; `planSteps` and `planStop` build the same closure.
 - **optional, 8:** sync the data folder after `state.json`'s rename
   (`state.Writer`), so that the rename outlives a power cut on Linux.
-- **optional, 2b (with `holds`):** `Lab.Create` and `run` take a small
+- **optional, 2b-R (with `holds`):** `Lab.Create` and `run` take a small
   struct instead of two functions that may be nil; the section Actions
   moves from DEVELOPING.md to `docs/actions.md`.
 - **should, 2c:** one helper for the tests' waiting loops (a deadline and
@@ -99,8 +103,6 @@ for what the operator keeps), the phase or step that closes it.
 
 ### Comes with phase X
 
-- **2b:** volumes and placement groups in a server's create request are
-  ignored until then.
 - **2b:** `change_dns_ptr` (DNS); unbound's configuration and the uplink's
   unreachable route name the default ranges, and the ranges become
   settings with a picture.
@@ -412,5 +414,48 @@ at most.
 - The appliance changed (the agent sets blackhole routes): `bin/dev
   appliance` before `bin/dev itest`; an installed HLab updates its
   appliance at the next start.
+
+## Phase 2b
+
+### Steps
+
+| Step | What | State |
+|---|---|---|
+| 2b-0 | measurements on the real API for 2b | done |
+| 2b-1 | disk ID, volumes, placement groups; the deviations of 2a | done |
+| 2b-2 | DNS, rDNS, host DNS | open |
+| 2b-3 | VMs and records agree (NICs, volumes) | open |
+| 2b-R | review of phase 2b | open |
+
+### What 2b-1 brought
+
+- **The disk ID (risk R17):** `internal/vhdx` sets the page 83 disk ID
+  in a VHDX's metadata (with a new FileWriteGuid, refusing a log to
+  replay); Hyper-V shows the guest bytes 0 to 5 and 10 to 15 of it as
+  the disk's WWN (measured live). A volume's ID is `HLAB`, the flags and
+  the volume's ID in decimal digits (`system.VolumeDiskID`); the
+  platform sets it before `CreateVM` and `AttachDisk` (`DiskSlot.ID`).
+- **Volumes** (docs/servers.md, Volumes): every endpoint and action, a
+  server's create with `volumes` and `automount`, formats in the
+  appliance (`agentproto.PathFormat`, e2fsprogs and xfsprogs), hotplug,
+  resize while attached; in the guest the seed's udev rule names the
+  disk `scsi-0HC_Volume_<id>` and mounts it as hc-utils does. A
+  volume's actions wait for each other; a server's delete keeps its
+  volumes until its VM is gone.
+- **Placement groups** (docs/servers.md): recorded only, Hetzner's
+  limits, servers in and out, also at their create.
+- **From 2b-0:** `delete_subnet` counts alias IPs and wants a range's
+  first address; the public lease carries option 249; a server's
+  actions run beside a Primary IP's assign (the lock queues are gone).
+- **An action's own error:** steps may fail with Hetzner's code and
+  message (`lab.Failure`), as a volume's attach to a server in another
+  location does (`unknown_error`).
+- **Measured live:** a volume created with ext4 for a running server is
+  formatted and attached in 3 s and mounted in the guest 0.6 s later; a
+  mounted volume shows its new size right after a resize.
+- The appliance changed (packages, the agent's format): `bin/dev
+  appliance` before `bin/dev itest`; an installed HLab updates its
+  appliance at the next start. The state has two new kinds; an older
+  hlabd refuses the file once it holds them.
 
 Not there yet: the commands of later phases.

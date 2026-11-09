@@ -18,7 +18,8 @@ work on it (Recipes). CLAUDE.md lists the rules that are easy to break,
 each part does in detail is in the files under `docs/`:
 
 - [docs/servers.md](docs/servers.md): servers, Primary and Floating IPs,
-  firewalls, private networks, projects, tokens, faults.
+  firewalls, private networks, volumes, placement groups, projects,
+  tokens, faults.
 - [docs/service.md](docs/service.md): the service's start and stop, the
   machine's side, the lab control, the CLI, the web UI.
 - [docs/catalog.md](docs/catalog.md): what the lab offers.
@@ -128,14 +129,14 @@ means the row has no limit.
 | `internal/sshkey` | the lab's SSH key (Ed25519) in OpenSSH's private key format and as a line of authorized_keys | – |
 | `internal/system` | does the work and never sees the state: VMs, disks, images, host link, host DNS, appliance with its watchdog, agent client | `platform`, `agentproto`, `vhdx`, `imagefmt` |
 | `internal/platform` | the platform interfaces and their data types | – |
-| `internal/platform/windows` | Hyper-V through `pshost`, host network, NRPT, life cycle | `platform`, `platform/windows/pshost` |
+| `internal/platform/windows` | Hyper-V through `pshost`, host network, NRPT, life cycle; a disk's ID in its VHDX | `platform`, `platform/windows/pshost`, `vhdx` |
 | `internal/platform/windows/pshost` | long-running PowerShell processes: JSON over stdin and stdout | – |
 | `internal/platform/linux` | the Linux platform; for now only its life cycle | `platform` |
 | `internal/platform/fake` | fakes for unit tests and `--platform fake`, with a fake agent | `platform`, `agentproto` |
 | `internal/platform/contract` | tests only: the contract tests of the platform interfaces, run against the fake and the real platforms | `platform` |
 | `internal/agentproto` | the wire format between service and agent, picture types | – |
 | `internal/agent` | the agent (Linux only): applies pictures, announces its addresses, metadata service; counters (later) | `agentproto` |
-| `internal/vhdx` | (later) the page 83 disk ID in a VHDX's metadata | – |
+| `internal/vhdx` | the page 83 disk ID in a VHDX's metadata, and the WWN Hyper-V makes of it | – |
 | `internal/imagefmt` | disk image formats without outside tools: reading qcow2, the footer of a fixed VHD; (later) detecting formats, unpacking | – |
 | `internal/catalog` | server types, locations, load balancer and box types, prices, ISOs, system images; built in, a user file overrides | – |
 | `internal/config` | `hlab.yaml`: ports, the shutdown timeout, the room's reserves | – |
@@ -156,7 +157,9 @@ What the layers mean:
   pictures.
 - **`picture` and `seed` are pure functions.** The same state always gives the same
   output, and the output can be compared as text (golden files).
-- **`agent` decides nothing.** It applies whole pictures and reports states.
+- **`agent` decides nothing.** It applies whole pictures and reports states;
+  its one command, a volume's format, makes what hlabd names
+  (docs/appliance.md).
 
 The layer test checks production code only. Tests may import fakes and helpers.
 

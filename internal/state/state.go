@@ -52,19 +52,21 @@ func (k Kind[R]) Name() string { return k.name }
 
 // The kinds of records. A new kind: DEVELOPING.md, Recipes.
 var (
-	Projects    = Kind[Project]{name: "projects"}
-	Tokens      = Kind[Token]{name: "tokens"}
-	SSHKeys     = Kind[SSHKey]{name: "ssh_keys"}
-	Actions     = Kind[Action]{name: "actions"}
-	Servers     = Kind[Server]{name: "servers"}
-	PrimaryIPs  = Kind[PrimaryIP]{name: "primary_ips"}
-	FloatingIPs = Kind[FloatingIP]{name: "floating_ips"}
-	Firewalls   = Kind[Firewall]{name: "firewalls"}
-	Networks    = Kind[Network]{name: "networks"}
+	Projects        = Kind[Project]{name: "projects"}
+	Tokens          = Kind[Token]{name: "tokens"}
+	SSHKeys         = Kind[SSHKey]{name: "ssh_keys"}
+	Actions         = Kind[Action]{name: "actions"}
+	Servers         = Kind[Server]{name: "servers"}
+	PrimaryIPs      = Kind[PrimaryIP]{name: "primary_ips"}
+	FloatingIPs     = Kind[FloatingIP]{name: "floating_ips"}
+	Firewalls       = Kind[Firewall]{name: "firewalls"}
+	Networks        = Kind[Network]{name: "networks"}
+	Volumes         = Kind[Volume]{name: "volumes"}
+	PlacementGroups = Kind[PlacementGroup]{name: "placement_groups"}
 )
 
 // kinds lists every kind, so that loading, saving and copying reach them all.
-var kinds = []kind{Projects, Tokens, SSHKeys, Actions, Servers, PrimaryIPs, FloatingIPs, Firewalls, Networks}
+var kinds = []kind{Projects, Tokens, SSHKeys, Actions, Servers, PrimaryIPs, FloatingIPs, Firewalls, Networks, Volumes, PlacementGroups}
 
 // kind is what the state needs of a Kind without knowing its record type.
 type kind interface {

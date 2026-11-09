@@ -152,6 +152,13 @@ each other past the firewalls.
   address in two networks.
 - It decides nothing: what the appliance does comes from the pictures. After a
   restart it has none and reports none; hlabd sends all of them again.
+- **Formats** are its one command besides the pictures
+  (`agentproto.PathFormat`): a file system is made once, so there is no
+  state to picture. hlabd attaches a new volume's disk to the appliance
+  (slot 63, one at a time) and names it by the WWN its disk ID gives
+  (`vhdx.WWN`); the agent finds the disk whose `device/wwid` in sysfs
+  matches, makes the file system without discarding (`mkfs.ext4 -E
+  nodiscard`, `mkfs.xfs -K`), and hlabd detaches the disk again.
 
 ## The appliance
 
@@ -172,8 +179,9 @@ What is in it:
 
 - **Packages:** the cloud kernel (Hyper-V's drivers, signed), systemd, nftables,
   dnsmasq (only `dnsmasq-base`: the agent runs it), knot, unbound with its trust
-  anchor (`dns-root-data`), haproxy, pebble, openssh-server, rsync, borgbackup,
-  btrfs-progs, qemu-utils. `--variant=apt` installs no Recommends: a package
+  anchor (`dns-root-data`), haproxy, pebble, e2fsprogs and xfsprogs (the
+  volumes' formats), openssh-server, rsync, borgbackup, btrfs-progs,
+  qemu-utils. `--variant=apt` installs no Recommends: a package
   that the appliance needs from them is named.
 - **Running:** `hlab-agent` before `sysinit.target`, after the modules (`hv_sock`,
   `vrf`, `8021q`) and the boot ruleset; it must not wait for the network, which it

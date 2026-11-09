@@ -149,12 +149,13 @@ func checkLimits(limits state.Limits) error {
 // and a closing lab removes none: the next start removes them as stray
 // VMs.
 func (l *Lab) DeleteProject(projectID int64) error {
-	var servers []int64
+	var servers, volumes []int64
 	err := l.Change(func(tx *state.Tx) error {
 		if _, err := state.Get(tx, state.Projects, projectID); err != nil {
 			return err
 		}
 		servers = state.IDs(tx, state.Servers, func(server *state.Server) bool { return server.ProjectID == projectID })
+		volumes = state.IDs(tx, state.Volumes, func(volume *state.Volume) bool { return volume.ProjectID == projectID })
 		state.DeleteProject(tx, projectID)
 		return nil
 	})
@@ -176,6 +177,10 @@ func (l *Lab) DeleteProject(projectID int64) error {
 		if err := l.machine.removeServerVM(l.ctx, id); err != nil {
 			l.logger.Warn("removing a server of a deleted project; the next start removes what is left", "server", id, "error", err)
 		}
+	}
+	// after the VMs, which may still hold the volumes' disks
+	for _, id := range volumes {
+		l.machine.DeleteVolumeFile(l.ctx, id)
 	}
 	if err := l.machine.UpdatePictures(l.ctx); err != nil && l.ctx.Err() == nil {
 		l.logger.Warn("sending the pictures after a project's delete; the watchdog sends them again", "error", err)

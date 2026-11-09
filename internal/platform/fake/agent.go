@@ -24,6 +24,7 @@ type Agent struct {
 	holds       map[string]*hold // by picture: the next put waits (HoldNext)
 	failures    map[string]bool  // by picture: the next put fails (FailNext)
 	puts        map[string]int   // by picture: the puts that arrived, refused ones too
+	formats     []agentproto.Format
 }
 
 // hold makes a put wait: waiting closes when it arrives, the put goes on
@@ -38,6 +39,7 @@ func NewAgent() *Agent {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+agentproto.PathStatus, a.status)
 	mux.HandleFunc("PUT "+agentproto.PathPictures+"{name}", a.putPicture)
+	mux.HandleFunc("POST "+agentproto.PathFormat, a.format)
 	a.handler = mux
 	return a
 }
@@ -97,6 +99,26 @@ func (a *Agent) FailNext(name string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.failures[name] = true
+}
+
+// format takes a Format that passes its check and notes it.
+func (a *Agent) format(w http.ResponseWriter, r *http.Request) {
+	var wanted agentproto.Format
+	if err := json.NewDecoder(r.Body).Decode(&wanted); err != nil || wanted.Check() != nil {
+		http.Error(w, "a bad format", http.StatusUnprocessableEntity)
+		return
+	}
+	a.mu.Lock()
+	a.formats = append(a.formats, wanted)
+	a.mu.Unlock()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Formats returns the formats the agent took, in order.
+func (a *Agent) Formats() []agentproto.Format {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]agentproto.Format(nil), a.formats...)
 }
 
 // status answers with the generations applied.

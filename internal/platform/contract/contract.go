@@ -186,6 +186,13 @@ func Hypervisor(t *testing.T, hypervisor platform.Hypervisor, dir string) {
 		expect(t, "AttachDisk", hypervisor.AttachDisk(ctx, name, platform.DiskSlot{Slot: 1, Path: flat}), nil)
 		expect(t, "AttachDisk to a taken slot", hypervisor.AttachDisk(ctx, name, platform.DiskSlot{Slot: 1, Path: child}), platform.ErrExists)
 		expect(t, "AttachDisk of a missing disk", hypervisor.AttachDisk(ctx, name, platform.DiskSlot{Slot: 2, Path: filepath.Join(dir, "missing.vhdx")}), platform.ErrNotFound)
+		volume := platform.DiskSlot{Slot: 2, Path: filepath.Join(dir, prefix+"volume.vhdx"), ID: [16]byte{0x48, 0x4c, 0x41, 0x42, 15: 1}}
+		expect(t, "CreateDisk of a volume", hypervisor.CreateDisk(ctx, volume.Path, 1, ""), nil)
+		expect(t, "AttachDisk with an ID", hypervisor.AttachDisk(ctx, name, volume), nil)
+		expect(t, "DetachDisk of the volume", hypervisor.DetachDisk(ctx, name, 2), nil)
+		expect(t, "AttachDisk with an ID again", hypervisor.AttachDisk(ctx, name, volume), nil)
+		expect(t, "DetachDisk of the volume again", hypervisor.DetachDisk(ctx, name, 2), nil)
+		expect(t, "DeleteDisk of the volume", hypervisor.DeleteDisk(ctx, volume.Path), nil)
 		expect(t, "ResizeDisk of an attached disk", hypervisor.ResizeDisk(ctx, flat, 4), nil)
 		expect(t, "DeleteDisk of an attached disk", hypervisor.DeleteDisk(ctx, flat), platform.ErrInUse)
 		expect(t, "DetachDisk", hypervisor.DetachDisk(ctx, name, 1), nil)

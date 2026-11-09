@@ -3,6 +3,7 @@ package cloud
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/netip"
 	"slices"
@@ -40,6 +41,9 @@ func serverActions(l *lab.Lab) lab.ActionTable {
 			"attach_at_create":    {Name: "attach_to_network", Plan: planAttachAtCreate, Unflagged: true},
 			"detach_from_network": {Name: "detach_from_network", Plan: planDetachFromNetwork(l)},
 			"change_alias_ips":    {Name: "change_alias_ips", Plan: planChangeAliasIPs(l)},
+			// placement groups are only recorded: one host spreads nothing
+			"add_to_placement_group":      {Name: "add_to_placement_group", Plan: planAddToPlacementGroup},
+			"remove_from_placement_group": {Name: "remove_from_placement_group", Plan: planRemoveFromPlacementGroup},
 		},
 	}
 }
@@ -641,4 +645,50 @@ func planChangeAliasIPs(l *lab.Lab) planFunc {
 		plan.UndoIfLast = true // any later action of the server was planned on the new alias IPs
 		return plan, nil
 	}
+}
+
+// addToPlacementGroupRequest is the body of add_to_placement_group.
+type addToPlacementGroupRequest struct {
+	PlacementGroup *int64 `json:"placement_group"`
+}
+
+// planAddToPlacementGroup puts a server that is off into a placement
+// group, also one whose servers are in another location; a server in a
+// group already is refused (measured 2026-11-09). It changes only the
+// record, so it ends at once.
+func planAddToPlacementGroup(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+	var body addToPlacementGroupRequest
+	if err := json.Unmarshal(req.Body, &body); err != nil {
+		return lab.Plan{}, web.ParseFailed()
+	}
+	if body.PlacementGroup == nil {
+		check := web.Check{Singular: true}
+		check.Fail("placement_group", placementGroupMissingBody)
+		return lab.Plan{}, check.Err()
+	}
+	server, err := callerServer(tx, req.ProjectID, req.ID)
+	if err != nil {
+		return lab.Plan{}, err
+	}
+	if server.PlacementGroupID != 0 {
+		return lab.Plan{}, web.Refusal(http.StatusUnprocessableEntity, "already_in_placement_group", fmt.Sprintf(serverInPlacementGroup, server.ID))
+	}
+	if _, err := callerPlacementGroup(tx, req.ProjectID, *body.PlacementGroup); err != nil {
+		return lab.Plan{}, err
+	}
+	if server.Status != state.ServerOff {
+		return lab.Plan{}, web.Refusal(http.StatusUnprocessableEntity, "server_not_stopped", serverNotStopped)
+	}
+	return lab.Plan{}, joinPlacementGroup(tx, server, *body.PlacementGroup)
+}
+
+// planRemoveFromPlacementGroup takes a server out of its placement group,
+// also a running one or one in no group (measured 2026-11-09).
+func planRemoveFromPlacementGroup(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+	server, err := callerServer(tx, req.ProjectID, req.ID)
+	if err != nil {
+		return lab.Plan{}, err
+	}
+	server.PlacementGroupID = 0
+	return lab.Plan{}, nil
 }

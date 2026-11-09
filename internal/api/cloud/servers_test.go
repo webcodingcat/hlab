@@ -37,6 +37,8 @@ type serverAnswer struct {
 	} `json:"public_net"`
 	PrivateNet      []schema.ServerPrivateNet `json:"private_net"`
 	IncludedTraffic uint64                    `json:"included_traffic"`
+	Volumes         []int64                   `json:"volumes"`
+	PlacementGroup  *schema.PlacementGroup    `json:"placement_group"`
 }
 
 // createAnswer is the answer of POST /servers.

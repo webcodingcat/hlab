@@ -84,8 +84,7 @@ func (r idOrName) matches(id int64, name string) bool {
 
 // serverCreateRequest is the body of POST /servers. It is HLab's own type
 // because schema.ServerCreateRequest cannot tell a missing field from an
-// empty one. Volumes and placement groups come with phase 2b; until then
-// the lab ignores them, as Hetzner ignores fields it does not know
+// empty one. The lab ignores fields it does not know, as Hetzner does
 // (floating_ips, measured 2026-11-09).
 type serverCreateRequest struct {
 	Name             *string                 `json:"name"`
@@ -99,6 +98,9 @@ type serverCreateRequest struct {
 	PublicNet        *serverPublicNetRequest `json:"public_net"`
 	Networks         []int64                 `json:"networks"`
 	Firewalls        []serverFirewallRequest `json:"firewalls"`
+	Volumes          []int64                 `json:"volumes"`
+	Automount        *bool                   `json:"automount"`
+	PlacementGroup   *int64                  `json:"placement_group"`
 }
 
 // serverFirewallRequest is one entry of a create request's firewalls.
@@ -281,7 +283,7 @@ func registerServers(api *web.API, l *lab.Lab) {
 	})
 
 	for _, command := range []string{"poweron", "poweroff", "shutdown", "reboot", "reset", "change_protection",
-		"attach_to_network", "detach_from_network", "change_alias_ips"} {
+		"attach_to_network", "detach_from_network", "change_alias_ips", "add_to_placement_group", "remove_from_placement_group"} {
 		api.Handle("POST /servers/{id}/actions/"+command, func(req *web.Request) (int, any, error) {
 			action, err := act(l, table, command, req)
 			if err != nil {
@@ -436,11 +438,18 @@ func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any
 		return 0, nil, actError(err)
 	}
 	// Hetzner's next_actions: an attach_to_network per network, an
-	// apply_firewall per firewall, then the start (measured 2026-11-09)
+	// apply_firewall per firewall, then the start (measured 2026-11-09);
+	// an attach_volume per volume after the networks (assumed, not
+	// measured)
 	rows := []lab.Row{{Command: "create"}}
 	for _, id := range body.Networks {
 		raw, _ := json.Marshal(map[string]int64{"network": id})
 		rows = append(rows, lab.Row{Command: "attach_at_create", Body: raw})
+	}
+	volumeTable := volumeActions(l)
+	automount, _ := json.Marshal(map[string]bool{"automount": body.Automount != nil && *body.Automount})
+	for _, id := range uniqueIDs(body.Volumes) {
+		rows = append(rows, lab.Row{Command: "attach_at_create", Table: &volumeTable, ID: id, Body: automount})
 	}
 	firewallTable := firewallActions(l)
 	for _, entry := range body.Firewalls {
@@ -478,6 +487,12 @@ func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any
 		}
 		server.ID = state.NewID(tx, state.Servers)
 		server.MAC = lab.ServerMAC(server.ID)
+		// a group that is missing is 404 (measured 2026-11-09)
+		if body.PlacementGroup != nil {
+			if err := joinPlacementGroup(tx, server, *body.PlacementGroup); err != nil {
+				return 0, err
+			}
+		}
 		if err := assignNewServerIPs(tx, server, body.PublicNet); err != nil {
 			return 0, err
 		}
@@ -658,6 +673,11 @@ func serverJSON(l *lab.Lab, tx *state.Tx, server *state.Server) serverAnswer {
 		})
 	}
 	out.PublicNet.Firewalls = serverFirewallsJSON(tx, server)
+	out.Volumes = append(out.Volumes, serverVolumeIDs(tx, server.ID)...)
+	if group, err := state.Get(tx, state.PlacementGroups, server.PlacementGroupID); err == nil {
+		answer := placementGroupJSON(tx, group)
+		out.PlacementGroup = &answer
+	}
 	floating := state.IDs(tx, state.FloatingIPs, func(ip *state.FloatingIP) bool { return ip.ServerID == server.ID })
 	out.PublicNet.FloatingIPs = append(out.PublicNet.FloatingIPs, floating...)
 	return out

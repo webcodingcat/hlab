@@ -28,6 +28,8 @@ readonly PACKAGES=(
   # unbound's DNSSEC trust anchor: without it unbound does not start (a
   # Recommends, which --variant=apt leaves out)
   dns-root-data
+  # the volumes' file systems (agentproto.PathFormat)
+  e2fsprogs xfsprogs
   # Storage Boxes and image conversion (later phases)
   openssh-server rsync borgbackup btrfs-progs qemu-utils
   # to look around on the console

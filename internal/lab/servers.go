@@ -175,18 +175,20 @@ func (m *Machine) BuildServer(ctx context.Context, id int64) error {
 }
 
 // makeServerVM makes a server's VM, off, with its disk on the base image
-// its record names, and its seed. A disk that is there already is kept, and
+// its record names, its volumes and its seed. A disk that is there already is kept, and
 // keptDisk says so (system.CreateServer).
 func (m *Machine) makeServerVM(ctx context.Context, id int64) (keptDisk bool, err error) {
 	var facts picture.Server
 	var server *state.Server
 	var private []system.PrivateNIC
+	var volumes []system.VolumeSlot
 	err = m.lab.View(func(tx *state.Tx) error {
 		found, getErr := state.Get(tx, state.Servers, id)
 		if getErr != nil {
 			return getErr
 		}
 		server, facts, private = found, serverFacts(tx, found), systemNICs(tx, found)
+		volumes = m.serverVolumes(tx, id)
 		return nil
 	})
 	if err != nil {
@@ -208,6 +210,7 @@ func (m *Machine) makeServerVM(ctx context.Context, id int64) (keptDisk bool, er
 		SeedFiles: seed.Files(seedServer(facts, m.basePictureLab())),
 		MAC:       server.MAC,
 		Private:   private,
+		Volumes:   volumes,
 	}
 	return m.system.CreateServer(ctx, spec)
 }
@@ -258,12 +261,13 @@ func (m *Machine) cachedImage(ctx context.Context, image catalog.Image) (string,
 }
 
 // DeleteServer removes what a deleted server had on the machine (its VM,
-// disk and seed); then the appliance gets the pictures without it. It is
+// disk and seed) and detaches its volumes; then the appliance gets the
+// pictures without it. It is
 // the delete action's steps (its plan removed the record), and a failed
 // create calls it too. The pictures go even when the VM's removal fails:
 // the record is gone either way.
 func (m *Machine) DeleteServer(ctx context.Context, id int64) error {
-	return errors.Join(m.removeServerVM(ctx, id), m.UpdatePictures(ctx))
+	return errors.Join(m.removeServerVM(ctx, id), m.releaseVolumes(id), m.UpdatePictures(ctx))
 }
 
 // removeServerVM removes a deleted server's VM, disk and seed, without

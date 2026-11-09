@@ -1,6 +1,7 @@
-# Servers, Primary and Floating IPs, firewalls, networks and the lab's own resources
+# Servers, IPs, firewalls, networks, volumes and the lab's own resources
 
-How servers, Primary IPs, Floating IPs and firewalls behave, and the lab's own operations on
+How servers, Primary IPs, Floating IPs, firewalls, private networks,
+volumes and placement groups behave, and the lab's own operations on
 projects, tokens and faults. The rules they keep are in DEVELOPING.md
 (Actions, Behaviour that changes must keep); section names in parentheses
 point to this file unless they name another.
@@ -13,7 +14,8 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
 - **Create**: the handler records the server with its Primary IPs (status
   `initializing`), puts it into the firewalls its request names and runs
   the table's rows `create` (`create_server`), an `attach_at_create`
-  (`attach_to_network`) per network, an `apply_at_create` of the
+  (`attach_to_network`) per network, an `attach_at_create` of the
+  volumes' table (`attach_volume`) per volume, an `apply_at_create` of the
   firewalls' table (`apply_firewall`) per firewall and, unless
   `start_after_create` is false, `poweron` (`start_server`), all in one
   `Lab.Create`; the answer's `next_actions` lists them in this order, as
@@ -22,10 +24,12 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
   (the network ID 0 fails Hetzner with a 500, and the lab's too); then the
   firewalls: each the project's, at most five; a label selector's
   firewall takes a place only where those leave one. A field
-  `floating_ips` is ignored, as Hetzner has none. The attach and the
-  apply run beside the create and have no steps of their own: the create's
-  VM gets the NICs, and its pictures the firewalls, before the first
-  start, so they end at once. The create's steps are
+  `floating_ips` is ignored, as Hetzner has none. The volumes (Volumes)
+  take `automount`; a `placement_group` puts the server into the group
+  (Placement groups). The attaches and the apply run beside the create
+  and have no steps of their own: the create's VM gets the NICs and the
+  volumes' disks, and its pictures the firewalls, before the first start,
+  so they end at once. The create's steps are
   `Machine.CreateServer`; its `Machine.BuildServer` takes the system image from the
   cache, makes the differencing disk, the
   seed and the VM, and sends the appliance the pictures with the server. If
@@ -34,7 +38,8 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
   HLab's end cut short is built anew at the next start.
 - **Delete** is the row `delete` (`delete_server`): the record goes at once,
   as on Hetzner, with its Primary IPs that have `auto_delete`; the others
-  stay, unassigned. The steps remove the VM, the disk and the seed.
+  stay, unassigned. The steps remove the VM, the disk and the seed; then
+  the volumes are detached in their records (Volumes).
 - **Power.** `poweron`, `poweroff`, `shutdown`, `reboot` and `reset` set the
   statuses Hetzner shows (`starting`, `stopping`, …) and wait its times.
   - A reboot asks the guest to shut down (Hyper-V has no ACPI reboot), turns
@@ -338,6 +343,80 @@ measured (`compat/requirements.md`, Networks).
   `2001:db8:1::/48` counted into `100.64.0.0/10` (`lab.serviceAddress`):
   no record, and it follows the `/64`. It reaches only DHCP and the
   metadata service (docs/appliance.md, the ruleset).
+
+## Volumes
+
+The handlers in `internal/api/cloud/volumes.go` and `volume_actions.go`
+decide; `internal/lab/volumes.go` makes, attaches, grows and removes the
+disks through `system`. A volume is a dynamic VHDX,
+`disks/volumes/<id>.vhdx` in the data folder. Hetzner's answers as
+measured on 2026-11-09 (`compat/requirements.md`, 2b-0).
+
+- **Create** (`create_volume`) records the volume `creating`; the steps
+  make the disk and, with a `format` (`ext4`, `xfs`), let the appliance
+  make the file system: the disk goes into the appliance's slot 63 for a
+  moment, and the agent formats it, found by its WWN (docs/appliance.md).
+  Then the volume is `available`. With a server (`assignee`, or the
+  deprecated `server`) the create takes the server's location, and the
+  row `attach_after_create` (`attach_volume`) waits behind it in the
+  volume's queue; the answer shows the volume without a server, as
+  Hetzner's does. A server in another location fails that attach with
+  Hetzner's `unknown_error`; a server that is not there is Hetzner's 500.
+  If the steps fail, the disk goes and the undo removes the record; a
+  create that HLab's end cut short makes the disk anew at the next start.
+- **Attach** (`attach_volume`, resources the volume and the server) puts
+  the disk into the server's lowest free slot (1 to 16, Hetzner's limit
+  of 16 volumes per server), also while it runs; the slot is in the
+  record. To the server it has, the attach ends at once. Another
+  location is 422, a volume attached elsewhere 422
+  `volume_already_attached` (assumed, not measured), a server whose
+  create runs 423.
+- **Detach** (`detach_volume`) takes the disk out, also while the server
+  runs. **Resize** (`resize_volume`) grows the disk while it is attached;
+  its action names the server too. **`change_protection`** takes no flag;
+  a body without `delete` turns the protection off, as on Hetzner.
+- **The queue.** A volume's actions wait for each other, as Hetzner runs
+  a detach sent during a resize: the table is `Queued`. Only a second
+  resize is 423, from the running actions in the state. Volume actions
+  do not lock the server: two volumes attach at once, and a reboot runs
+  beside an attach.
+- **A server's delete** keeps its volumes attached in the records until
+  its steps have removed the VM, which held the disks; meanwhile their
+  attach, detach and delete are 423, as Hetzner's are for some seconds.
+  Then the volumes are detached. A start detaches the volumes of servers
+  that are gone.
+- **Delete** has no action, as on Hetzner: the record goes, then the
+  disk. A protected volume is 423, an attached one 422; a second delete
+  is 404 `"volume does not exist"`.
+- **In the guest.** Hyper-V cannot set a disk's vendor, model or serial,
+  which name a volume on Hetzner (`HC`, `Volume`, the ID). It sets the
+  disk's page 83 ID, which the guest sees as its WWN: hlabd writes
+  `HLAB`, the flags (bit 0: automount) and the volume's ID in decimal
+  digits into it before every attach (`system.VolumeDiskID`,
+  `internal/vhdx`). The seed's vendor-data brings a udev rule and two
+  small scripts that do what Hetzner's image does with hc-utils: the
+  properties `ID_VENDOR=HC`, `ID_MODEL=Volume`, the link
+  `/dev/disk/by-id/scsi-0HC_Volume_<id>` and, with the flag and a file
+  system, the mount at `/mnt/HC_Volume_<id>` with Hetzner's line in
+  `/etc/fstab` (`discard,nofail,defaults`), which stays after a detach.
+  Deviations: a guest without the seed's vendor-data (or without
+  cloud-init) gets no names; the disk also has udev's own `wwn-…` and
+  `scsi-3…` links; the guest sees a new size at its next access to the
+  disk, which a mounted file system makes within seconds, while
+  Hetzner's guest sees it at once (assumed, not measured).
+
+## Placement groups
+
+`internal/api/cloud/placement_groups.go`. The lab runs on one host, where
+`spread` always holds: a group only records its servers
+(`Server.PlacementGroupID`). As measured on 2026-11-09: no actions (their
+paths answer `"404 Not Found"`), 50 groups per project, only `spread`; a
+server joins at its create or with `add_to_placement_group` while it is
+off, also from another location, and leaves with
+`remove_from_placement_group`, also while it runs; both are actions of
+the server that end at once. A group's delete takes its servers out.
+Hetzner's documentation allows 10 servers per group; the lab refuses an
+11th with 412 `placement_error` (assumed, not measured).
 
 ## Projects, tokens, faults
 

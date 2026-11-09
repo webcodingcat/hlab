@@ -183,6 +183,8 @@ type Server struct {
 	// PrivateNets are its NICs in private networks, in the order they were
 	// attached.
 	PrivateNets []ServerPrivateNet `json:"private_nets"`
+	// PlacementGroupID is the placement group it is in, 0 for none.
+	PlacementGroupID int64 `json:"placement_group_id"`
 }
 
 // ServerPrivateNet is a server's NIC in a private network: its address,
@@ -355,6 +357,66 @@ type NetworkRoute struct {
 	Destination string `json:"destination"`
 	Gateway     string `json:"gateway"`
 }
+
+// VolumeStatus is a volume's status, as Hetzner shows it.
+type VolumeStatus string
+
+// The statuses of a volume, as on Hetzner.
+const (
+	VolumeCreating  VolumeStatus = "creating"
+	VolumeAvailable VolumeStatus = "available"
+)
+
+// Volume is a volume of a project: a disk of its own, which is attached
+// to at most one server of its location. Its file is the lab's
+// (lab.VolumeFile).
+type Volume struct {
+	ID         int64             `json:"id"`
+	ProjectID  int64             `json:"project_id"`
+	Name       string            `json:"name"`
+	Labels     map[string]string `json:"labels"`
+	Created    time.Time         `json:"created"`
+	Protection Protection        `json:"protection"` // only Delete counts
+	SizeGB     int               `json:"size_gb"`
+	Location   string            `json:"location"`
+	Format     string            `json:"format"` // "ext4", "xfs" or "" for none
+	Status     VolumeStatus      `json:"status"`
+	// ServerID is the server it is attached to, 0 for none; Slot is its
+	// place in the server's VM while attached.
+	ServerID int64 `json:"server_id"`
+	Slot     int   `json:"slot"`
+	// Automount is what its last attach asked for: the guest mounts it.
+	Automount bool `json:"automount"`
+}
+
+// RecordID returns the volume's ID.
+func (v Volume) RecordID() int64 { return v.ID }
+
+// RecordProject returns the volume's project.
+func (v Volume) RecordProject() int64 { return v.ProjectID }
+
+// RecordName implements Named.
+func (v Volume) RecordName() string { return v.Name }
+
+// PlacementGroup is a placement group of a project. The lab runs on one
+// host, so a group only holds its servers (Server.PlacementGroupID).
+type PlacementGroup struct {
+	ID        int64             `json:"id"`
+	ProjectID int64             `json:"project_id"`
+	Name      string            `json:"name"`
+	Labels    map[string]string `json:"labels"`
+	Created   time.Time         `json:"created"`
+	Type      string            `json:"type"` // "spread"
+}
+
+// RecordID returns the placement group's ID.
+func (g PlacementGroup) RecordID() int64 { return g.ID }
+
+// RecordProject returns the placement group's project.
+func (g PlacementGroup) RecordProject() int64 { return g.ProjectID }
+
+// RecordName implements Named.
+func (g PlacementGroup) RecordName() string { return g.Name }
 
 // Lab is the lab's own records, which the API does not show. Later phases add
 // the Internet clients and the ACME keys.

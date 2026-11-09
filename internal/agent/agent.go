@@ -60,6 +60,7 @@ func (a *Agent) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+agentproto.PathStatus, a.status)
 	mux.HandleFunc("PUT "+agentproto.PathPictures+"{name}", a.putPicture)
+	mux.HandleFunc("POST "+agentproto.PathFormat, a.format)
 	return mux
 }
 

@@ -16,8 +16,12 @@ import (
 )
 
 // agentTimeout bounds one request to the agent. The longest is a ruleset
-// picture: up to 84 ms for 20 servers, measured on Hyper-V.
-const agentTimeout = 10 * time.Second
+// picture: up to 84 ms for 20 servers, measured on Hyper-V. A format has
+// its own bound, which covers the agent's wait for the disk and mkfs.
+const (
+	agentTimeout  = 10 * time.Second
+	formatTimeout = 6 * time.Minute
+)
 
 // errRefused is a picture the agent refused (422): sending it again does not
 // help.
@@ -38,13 +42,13 @@ func newAgentClient(dialer platform.AgentDialer, vm string) agentClient {
 		MaxIdleConnsPerHost: 1,
 		IdleConnTimeout:     time.Minute,
 	}
-	return agentClient{http: &http.Client{Transport: transport, Timeout: agentTimeout}}
+	return agentClient{http: &http.Client{Transport: transport}}
 }
 
 // status asks the agent for its status; it is also the watchdog's ping.
 func (c agentClient) status(ctx context.Context) (agentproto.Status, error) {
 	var status agentproto.Status
-	body, err := c.do(ctx, http.MethodGet, agentproto.PathStatus, nil, http.StatusOK)
+	body, err := c.do(ctx, http.MethodGet, agentproto.PathStatus, nil, http.StatusOK, agentTimeout)
 	if err != nil {
 		return status, err
 	}
@@ -60,13 +64,26 @@ func (c agentClient) put(ctx context.Context, name string, picture any) error {
 	if err != nil {
 		return err
 	}
-	_, err = c.do(ctx, http.MethodPut, agentproto.PathPictures+name, body, http.StatusNoContent)
+	_, err = c.do(ctx, http.MethodPut, agentproto.PathPictures+name, body, http.StatusNoContent, agentTimeout)
+	return err
+}
+
+// format asks the agent to make a file system on a disk.
+func (c agentClient) format(ctx context.Context, format agentproto.Format) error {
+	body, err := json.Marshal(format)
+	if err != nil {
+		return err
+	}
+	_, err = c.do(ctx, http.MethodPost, agentproto.PathFormat, body, http.StatusNoContent, formatTimeout)
 	return err
 }
 
 // do sends a request and returns the answer's body if its status is want;
-// otherwise it fails with the agent's message.
-func (c agentClient) do(ctx context.Context, method, path string, body []byte, want int) ([]byte, error) {
+// otherwise it fails with the agent's message. The request ends after
+// timeout.
+func (c agentClient) do(ctx context.Context, method, path string, body []byte, want int, timeout time.Duration) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, method, "http://agent"+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err

@@ -121,6 +121,24 @@ done, and a status such as `pending` shows only while an action's work runs.
 | The metadata's `private-networks` (a key of its own, `[]` without a network, not in the summary); a server without public addresses reaches the metadata service through its network (DHCP route `169.254.169.254/32`) | measured in Hetzner guests | 2a | `internal/picture`: `TestMetadataMatchesGoldenFile`, `TestDHCPMatchesGoldenFile`; `internal/agent`: `TestServerWithoutPublicAddressesGetsMetadataThroughItsNetwork`; live: `TestServersJoinNetworksAndFirewallsAtTheirCreate` |
 | `add_subnet` without `ip_range` when no `/24` is free; a network deleted while its action runs | measured | 2a | `internal/api/cloud`: `TestAddSubnetWithoutRangeTakesWhatIsFree`, `TestNetworkDeletedDuringItsActionAbortsIt` |
 
+## Volumes
+
+| Requirement | Source | Phase | Test |
+|---|---|---|---|
+| Create (with or without a server, `format`, `automount`, `labels`), read, update (name, labels), delete without an action; `attach`, `detach`, `resize`, `change_protection` with Hetzner's action names and resources | hcloud-go `hcloud/volume.go`; provider `hcloud_volume`, `hcloud_volume_attachment`; Ansible `hetzner.hcloud.volume`; measured | 2b | `internal/api/cloud`: `TestVolumeLifeCycle`, `TestVolumeAttachAndDetach` |
+| The JSON: `assignee` beside `server`, `format` `null` without one, `linux_device` also while detached; `status` `creating`, then `available` | the spec; measured | 2b | `internal/api/cloud`: `TestVolumeLifeCycle`, `TestVolumeAttachAndDetach` |
+| Errors and limits with Hetzner's codes and texts (2b-0 below): 10 to 10240 GB, 16 volumes per server, the location, a second resize 423, a detach during a resize 201 | measured | 2b | `internal/api/cloud`: `TestVolumeCreateErrors`, `TestVolumeAttachLimits`, `TestVolumeActionsQueue` |
+| `volumes` and `automount` in a server's create request; a server's `volumes`; a server's delete keeps its volumes, detached | hcloud-go `hcloud/server.go` (`ServerCreateOpts.Volumes`); measured | 2b | `internal/api/cloud`: `TestServerCreateWithVolumesAndPlacementGroup`, `TestVolumeAttachAndDetach` |
+| In the guest: `/dev/disk/by-id/scsi-0HC_Volume_<id>`, `ID_VENDOR` `HC`, `ID_MODEL` `Volume`; with `automount` mounted at `/mnt/HC_Volume_<id>` with Hetzner's fstab line; a resize while mounted | measured in a Hetzner guest; the provider's docs name `linux_device` | 2b | `internal/seed`: `TestVolumeHelperReadsTheWWN`; `internal/system`: `TestVolumeDiskIDShowsTheIDInTheWWN`; `internal/vhdx`; live: `TestVolumesAttachMountGrowAndDetach` |
+
+## Placement groups
+
+| Requirement | Source | Phase | Test |
+|---|---|---|---|
+| Create, read, update (name, labels), delete (its servers leave it), lists; no actions; `spread` only, 50 per project | hcloud-go `hcloud/placement_group.go`; provider `hcloud_placement_group`; measured | 2b | `internal/api/cloud`: `TestPlacementGroupLifeCycle`, `TestPlacementGroupErrors` |
+| `placement_group` in a server's create request; `add_to_placement_group` (only when off), `remove_from_placement_group`; a server's `placement_group` | hcloud-go `hcloud/server.go`; provider `hcloud_server.placement_group_id`; measured | 2b | `internal/api/cloud`: `TestPlacementGroupLifeCycle`, `TestServerCreateWithVolumesAndPlacementGroup` |
+| 10 servers per group | Hetzner's documentation; the answer to an 11th assumed | 2b | `internal/api/cloud`: `TestPlacementGroupTakesTenServers` |
+
 ## Gaps of the old HLab
 
 The dry run of the hcloud CLI against the Python HLab found 58 gaps in fidelity. Each
@@ -529,8 +547,9 @@ Measured on 2026-11-09 with the read-write token of the empty test project:
 one server `cx23` (Debian 13, `nbg1`, IPv4 and IPv6) started for 11
 minutes, with up to 16 volumes of 10 GB; servers never started for the
 networks and placement groups; Primary and Floating IPs (IPv4 and IPv6);
-zones under `.de`. Everything was deleted afterwards. Nothing of this is
-built yet (2b-1, 2b-2) unless a row says so; the times are observations.
+zones under `.de`. Everything was deleted afterwards. 2b-1 built the
+volumes, the placement groups and what 2a left open; zones and rDNS come
+with 2b-2. The times are observations.
 
 #### A server's public lease
 

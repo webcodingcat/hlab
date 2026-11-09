@@ -172,6 +172,11 @@ type VMSpec struct {
 type DiskSlot struct {
 	Slot int
 	Path string
+	// ID, unless zero, is the disk ID (SCSI page 83) that the guest sees
+	// as the disk's WWN: CreateVM and AttachDisk give it to the disk
+	// first. Hyper-V keeps it in the VHDX (internal/vhdx); its WWN
+	// shows bytes 0 to 5 and 10 to 15.
+	ID [16]byte
 }
 
 // NICSpec is a NIC of a VM on a switch. Its port mode is set with the NIC

@@ -26,6 +26,7 @@ type vm struct {
 type disk struct {
 	sizeGB int
 	parent string
+	id     [16]byte // the disk ID a VM gave it last
 }
 
 // Hypervisor is the fake machine's hypervisor.
@@ -61,10 +62,9 @@ func (h *Hypervisor) CreateVM(ctx context.Context, spec platform.VMSpec) error {
 		nics:     map[string]platform.NICSpec{},
 	}
 	for _, slot := range spec.Disks {
-		if _, found := h.fake.disks[slot.Path]; !found {
-			return fmt.Errorf("disk %q: %w", slot.Path, platform.ErrNotFound)
+		if err := h.fake.putDisk(machine, slot); err != nil {
+			return err
 		}
-		machine.disks[slot.Slot] = slot.Path
 	}
 	for _, nic := range spec.NICs {
 		machine.nics[nic.MAC] = nic
@@ -215,11 +215,31 @@ func (h *Hypervisor) AttachDisk(ctx context.Context, name string, slot platform.
 	if _, taken := machine.disks[slot.Slot]; taken {
 		return fmt.Errorf("slot %d of VM %q: %w", slot.Slot, name, platform.ErrExists)
 	}
-	if _, found := h.fake.disks[slot.Path]; !found {
+	return h.fake.putDisk(machine, slot)
+}
+
+// putDisk puts a disk into a VM's slot and gives it the slot's ID; the
+// caller holds the mutex.
+func (f *Fake) putDisk(machine *vm, slot platform.DiskSlot) error {
+	file, found := f.disks[slot.Path]
+	if !found {
 		return fmt.Errorf("disk %q: %w", slot.Path, platform.ErrNotFound)
+	}
+	if slot.ID != [16]byte{} {
+		file.id = slot.ID
 	}
 	machine.disks[slot.Slot] = slot.Path
 	return nil
+}
+
+// DiskID returns the disk ID a disk got last, for tests.
+func (f *Fake) DiskID(path string) [16]byte {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if file, found := f.disks[path]; found {
+		return file.id
+	}
+	return [16]byte{}
 }
 
 // DetachDisk empties a slot.

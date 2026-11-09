@@ -7,6 +7,12 @@
 // then stays.
 package agentproto
 
+import (
+	"encoding/hex"
+	"fmt"
+	"strings"
+)
+
 // Port is the vsock port the agent listens on. Hyper-V reaches it through
 // hv_sock with a service GUID made from the port, which the installer
 // registers.
@@ -21,7 +27,40 @@ const (
 	// picture, 422 that the agent refused it and nothing changed, 500 that
 	// applying it failed part way; hlabd then sends it again.
 	PathPictures = "/v1/pictures/"
+	// PathFormat takes a Format with POST: the agent makes a file system
+	// on a disk that hlabd attached to the appliance for it, a volume
+	// created with a format. It is the agent's one command besides the
+	// pictures: a file system is made once, so there is no state to
+	// picture. The answer is 204 when it is made, 422 for a Format its
+	// check refuses or a disk it does not find.
+	PathFormat = "/v1/format"
 )
+
+// Format names the disk to format by the WWN it shows the appliance, and
+// the file system to make on it.
+type Format struct {
+	WWN        string `json:"wwn"` // as udev writes it: "0x6002248…"
+	FileSystem string `json:"file_system"`
+}
+
+// The file systems a volume may have, as on Hetzner.
+const (
+	FileSystemExt4 = "ext4"
+	FileSystemXFS  = "xfs"
+)
+
+// Check refuses a file system other than ext4 and xfs, and a WWN that is
+// not "0x" and 32 hex digits.
+func (f Format) Check() error {
+	if f.FileSystem != FileSystemExt4 && f.FileSystem != FileSystemXFS {
+		return fmt.Errorf("unknown file system %q", f.FileSystem)
+	}
+	digits, found := strings.CutPrefix(f.WWN, "0x")
+	if _, err := hex.DecodeString(digits); !found || err != nil || len(digits) != 32 {
+		return fmt.Errorf("bad WWN %q", f.WWN)
+	}
+	return nil
+}
 
 // The names of the pictures, in PathPictures and Status.Generations.
 const (

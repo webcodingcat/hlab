@@ -152,6 +152,8 @@ func (m *Machine) Start(ctx context.Context, opts MachineOptions) error {
 // system is safe: a server deleted meanwhile is skipped where its status
 // is set.
 func (m *Machine) resumeServers(ctx context.Context) error {
+	// a server's new VM takes its volumes' disks, so they come first
+	m.resumeVolumes(ctx)
 	var servers []*state.Server
 	_ = m.lab.View(func(tx *state.Tx) error {
 		servers = state.All(tx, state.Servers)
@@ -255,11 +257,12 @@ func (m *Machine) restoreServer(ctx context.Context, server *state.Server) error
 
 // cleanDataFiles removes what no record needs from the data folder: the
 // cached images that neither a cache entry nor a server's disk needs, what
-// loads cut short left, and the disks and seeds of servers that are gone
-// (a delete that HLab's end cut short, also a project's).
+// loads cut short left, the disks and seeds of servers that are gone and
+// the disks of volumes that are gone (a delete that HLab's end cut short,
+// also a project's).
 // A failure only costs disk space, so it is logged.
 func (m *Machine) cleanDataFiles(ctx context.Context) {
-	var images, disks, seeds []string
+	var images, disks, seeds, volumes []string
 	_ = m.lab.View(func(tx *state.Tx) error {
 		for _, cached := range tx.Lab().Images {
 			images = append(images, cached.File)
@@ -269,12 +272,15 @@ func (m *Machine) cleanDataFiles(ctx context.Context) {
 			disk, seedISO := m.serverFiles(server.ID)
 			disks, seeds = append(disks, disk), append(seeds, seedISO)
 		}
+		for _, id := range state.IDs(tx, state.Volumes, func(*state.Volume) bool { return true }) {
+			volumes = append(volumes, m.volumeFile(id))
+		}
 		return nil
 	})
 	for _, clean := range []struct {
 		dir  string
 		keep []string
-	}{{ImageCacheDir, images}, {ServerDiskDir, disks}, {SeedDir, seeds}} {
+	}{{ImageCacheDir, images}, {ServerDiskDir, disks}, {SeedDir, seeds}, {VolumeDir, volumes}} {
 		removed, err := m.system.CleanDir(ctx, filepath.Join(m.lab.dataDir, clean.dir), clean.keep)
 		if len(removed) > 0 {
 			m.lab.logger.Info("removed files that no server needs", "files", removed)

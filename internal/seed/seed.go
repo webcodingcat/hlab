@@ -89,17 +89,74 @@ for nic in /sys/class/net/*; do
 done
 `
 
+// volumesScript names the volumes as Hetzner's images do and mounts
+// those that ask for it. On Hetzner the disk itself says "HC Volume" and
+// its serial is the volume's ID, so udev's own rules make
+// /dev/disk/by-id/scsi-0HC_Volume_<id>, and hc-utils' rule mounts it
+// (measured 2026-11-09). Hyper-V cannot set a disk's vendor, model or
+// serial, only its page 83 ID, which the guest sees as its WWN: hlabd
+// writes "HLAB", the flags and the volume's ID in decimal digits into it
+// (system.VolumeDiskID). The rule reads them back with a small helper,
+// sets the properties Hetzner's disk has, the link and, with the flag
+// automount, starts the mount as hc-utils does: at /mnt/HC_Volume_<id>,
+// with a line in /etc/fstab that stays after a detach. It runs after
+// udev's rule 60, which sets the WWN and the file system's type. The
+// trigger at the end names the volumes attached at the create, as
+// Hetzner's vendor-data does with its own trigger.
+const volumesScript = `#!/bin/sh
+mkdir -p /usr/local/lib/hlab
+cat > /usr/local/lib/hlab/hc-volume <<'SCRIPT'
+#!/bin/sh
+# prints the udev properties of an HLab volume from its WWN ($1):
+# 0x60022480, "HLAB", the flags, 00, the volume's ID in 12 digits
+rest=${1#0x60022480484c4142}
+[ "$rest" != "$1" ] && [ ${#rest} -eq 16 ] || exit 0
+flags=$(printf '%.2s' "$rest")
+id=$(expr "${rest#????}" + 0) || exit 0
+echo "HC_VOLUME_ID=$id"
+echo "HC_VOLUME_AUTOMOUNT=$((0x$flags & 1))"
+SCRIPT
+cat > /usr/local/lib/hlab/hc-volume-mount <<'SCRIPT'
+#!/bin/sh
+# mounts the volume $1 with the file system $2, as Hetzner's hc-utils do
+dir=/mnt/HC_Volume_$1
+mkdir -p "$dir"
+if ! grep -qs " $dir " /etc/fstab; then
+  echo "/dev/disk/by-id/scsi-0HC_Volume_$1 $dir $2 discard,nofail,defaults 0 0" >> /etc/fstab
+  systemctl daemon-reload
+fi
+mountpoint -q "$dir" || mount "$dir"
+SCRIPT
+chmod 755 /usr/local/lib/hlab/hc-volume /usr/local/lib/hlab/hc-volume-mount
+cat > /etc/udev/rules.d/61-hlab-volume.rules <<'RULE'
+SUBSYSTEM!="block", GOTO="hlab_volume_end"
+ENV{DEVTYPE}!="disk", GOTO="hlab_volume_end"
+ACTION=="remove", GOTO="hlab_volume_end"
+ENV{ID_WWN}!="0x60022480484c4142", GOTO="hlab_volume_end"
+IMPORT{program}="/usr/local/lib/hlab/hc-volume %E{ID_WWN_WITH_EXTENSION}"
+ENV{HC_VOLUME_ID}!="?*", GOTO="hlab_volume_end"
+ENV{ID_VENDOR}="HC", ENV{ID_MODEL}="Volume", ENV{ID_SERIAL}="0HC_Volume_$env{HC_VOLUME_ID}", ENV{ID_SERIAL_SHORT}="$env{HC_VOLUME_ID}"
+SYMLINK+="disk/by-id/scsi-0HC_Volume_$env{HC_VOLUME_ID}"
+ACTION=="add", ENV{HC_VOLUME_AUTOMOUNT}=="1", ENV{ID_FS_TYPE}=="ext4|xfs", RUN+="/usr/bin/systemd-run --no-block --collect /usr/local/lib/hlab/hc-volume-mount $env{HC_VOLUME_ID} $env{ID_FS_TYPE}"
+LABEL="hlab_volume_end"
+RULE
+udevadm control --reload
+udevadm trigger -c add -s block -p ID_WWN=0x60022480484c4142
+udevadm settle --timeout=30 || true
+`
+
 // seedVendorData returns the seed's vendor-data: Hetzner's cloud-config
-// and the script for the private NICs, as a MIME multipart, so that the
-// user-data's runcmd does not replace the script, as it would replace a
-// runcmd of the vendor-data's cloud-config.
+// and the scripts for the private NICs and the volumes, as a MIME
+// multipart, so that the user-data's runcmd does not replace the scripts,
+// as it would replace a runcmd of the vendor-data's cloud-config.
 func seedVendorData(rootPassword string) string {
 	const boundary = "==HLAB=="
+	script := "--" + boundary + "\nContent-Type: text/x-shellscript; charset=\"us-ascii\"\n\n"
 	return "Content-Type: multipart/mixed; boundary=\"" + boundary + "\"\nMIME-Version: 1.0\n\n" +
 		"--" + boundary + "\nContent-Type: text/cloud-config; charset=\"us-ascii\"\n\n" +
 		VendorData(rootPassword) + "\n" +
-		"--" + boundary + "\nContent-Type: text/x-shellscript; charset=\"us-ascii\"\n\n" +
-		privateNICsScript + "\n" +
+		script + privateNICsScript + "\n" +
+		script + volumesScript + "\n" +
 		"--" + boundary + "--\n"
 }
 

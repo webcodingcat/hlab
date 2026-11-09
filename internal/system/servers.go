@@ -55,6 +55,8 @@ type ServerSpec struct {
 	SeedFiles map[string][]byte
 	MAC       string // of the public NIC
 	Private   []PrivateNIC
+	// Volumes are the volumes attached to it, in their slots.
+	Volumes []VolumeSlot
 }
 
 // PrivateNIC is a server's NIC in a private network: on the private switch,
@@ -70,8 +72,8 @@ func (nic PrivateNIC) spec() platform.NICSpec {
 }
 
 // CreateServer makes a server's VM, off: its disk on the base image, its
-// seed in the DVD drive, its public NIC on the public switch, isolated
-// in the private VLAN, and its NICs in private networks. A disk that is there already is kept as it is, and
+// volumes, its seed in the DVD drive, its public NIC on the public
+// switch, isolated in the private VLAN, and its NICs in private networks. A disk that is there already is kept as it is, and
 // keptDisk says so: the server lost its VM but not its disk (an uninstall
 // that kept the data). The seed is always made anew. If a step fails, what
 // it made is removed again; a kept disk stays.
@@ -105,6 +107,9 @@ func (s *System) CreateServer(ctx context.Context, spec ServerSpec) (keptDisk bo
 		MemoryMB: spec.MemoryMB,
 		Disks:    []platform.DiskSlot{{Slot: 0, Path: spec.Disk}},
 		NICs:     []platform.NICSpec{publicNIC(spec.MAC)},
+	}
+	for _, volume := range spec.Volumes {
+		vm.Disks = append(vm.Disks, volume.disk())
 	}
 	for _, nic := range spec.Private {
 		vm.NICs = append(vm.NICs, nic.spec())

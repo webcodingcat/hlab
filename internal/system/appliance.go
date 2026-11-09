@@ -113,6 +113,10 @@ type Appliance struct {
 
 	stopWatchdog context.CancelFunc
 	watchdog     sync.WaitGroup
+
+	// formatMu lets one volume at a time take the appliance's slot for
+	// formats (FormatDisk)
+	formatMu sync.Mutex
 }
 
 // NewAppliance returns the appliance of the spec; it does not start it yet.
