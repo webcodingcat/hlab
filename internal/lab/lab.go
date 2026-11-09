@@ -96,7 +96,8 @@ type runningAction struct {
 	id         int64
 	projectID  int64
 	cancel     context.CancelFunc
-	done       chan struct{} // closed when the action has ended
+	done       chan struct{} // closed when the action and the one queued before it have ended
+	before     chan struct{} // the done of the action queued before it, nil if none
 	undo       func(tx *state.Tx) error
 	undoIfLast bool
 	flagged    []state.ResourceRef // the flags it holds until it ends

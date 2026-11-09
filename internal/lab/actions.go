@@ -119,7 +119,9 @@ func (l *Lab) Act(table ActionTable, command string, req Request) (state.Action,
 
 // ActAll runs several actions of a resource in one transaction, in order,
 // each with its own body, as a firewall's apply_to_resources does for each
-// resource it names. If one fails, nothing changes.
+// resource it names. If one fails, nothing changes. Act, ActAll and
+// Create share run and differ only in what they pass it: each is the
+// name its callers read, for one of the three ways an API starts actions.
 func (l *Lab) ActAll(table ActionTable, req Request, rows ...Row) ([]state.Action, error) {
 	return l.run(table, req, nil, nil, rows)
 }
@@ -365,6 +367,7 @@ func (l *Lab) start(planned plannedAction) {
 		before = l.queues[*queue]
 		l.queues[*queue] = run.done
 	}
+	run.before = before
 	// a resource's own queued actions wait behind an action that locks it
 	// (a server's poweron behind a Primary IP's assign); the lock check
 	// found nothing flagged on it, so nothing waits in its queue yet
@@ -373,7 +376,14 @@ func (l *Lab) start(planned plannedAction) {
 	}
 	run.lockQueues = planned.plan.Locks
 	l.background.Go(func() {
-		defer close(run.done)
+		defer func() {
+			// an action aborted while it waits ends at once, but the one
+			// behind it must still wait for the one before it
+			if before != nil {
+				<-before
+			}
+			close(run.done)
+		}()
 		defer cancel()
 		err := waitFor(ctx, before)
 		if err == nil {
@@ -400,6 +410,20 @@ func waitFor(ctx context.Context, done <-chan struct{}) error {
 	}
 }
 
+// stillRunning reports whether the action whose done this is has not
+// ended yet.
+func stillRunning(done <-chan struct{}) bool {
+	if done == nil {
+		return false
+	}
+	select {
+	case <-done:
+		return false
+	default:
+		return true
+	}
+}
+
 // end finishes an action whose steps have returned: it takes the flags off,
 // undoes the quick changes if the steps failed, and finishes the action.
 // It tells whether it undid: the caller then sends the pictures.
@@ -423,7 +447,13 @@ func (l *Lab) end(run *runningAction, err error, canceled bool) (undone bool) {
 	}
 	last := run.queue == nil || l.queues[*run.queue] == run.done
 	if run.queue != nil && last {
-		delete(l.queues, *run.queue) // the last of its queue
+		// the last of its queue; one that ends before the action it waited
+		// for (aborted) hands the queue back to that one
+		if stillRunning(run.before) {
+			l.queues[*run.queue] = run.before
+		} else {
+			delete(l.queues, *run.queue)
+		}
 	}
 	for _, ref := range run.lockQueues {
 		if l.queues[ref] == run.done {

@@ -101,16 +101,16 @@ func (m *Machine) AttachServerToNetwork(ctx context.Context, serverID, networkID
 // DetachServerFromNetwork is the steps of detach_from_network: the plan has
 // taken the server's NIC out of the record; the appliance gets the pictures
 // without it first, then the NIC leaves the VM. If that fails, the action's
-// undo puts the record back, and the pictures after it the routes.
+// undo puts the record back, and the pictures after it the routes. The
+// NIC leaves the VM even when the action is canceled: the record no longer
+// has it, so nothing else would take it out (a network's delete aborts the
+// detach and removes only the NICs it still finds); Close waits for this
+// one call.
 func (m *Machine) DetachServerFromNetwork(ctx context.Context, serverID int64, mac string) error {
-	if err := m.UpdatePictures(ctx); err != nil {
+	if err := m.UpdatePictures(ctx); err != nil && ctx.Err() == nil {
 		return err
 	}
-	vm := ServerVM(serverID)
-	if err := m.system.DetachPrivateNIC(ctx, vm, mac); err != nil {
-		return err
-	}
-	return nil
+	return m.system.DetachPrivateNIC(context.WithoutCancel(ctx), ServerVM(serverID), mac)
 }
 
 // ServerNIC is a server's NIC in a private network, by its MAC.
@@ -123,9 +123,10 @@ type ServerNIC struct {
 // the background: the network's delete has taken them out of the records
 // and answers at once, as Hetzner does. It waits for the actions the
 // delete aborted (ChangeAborting), as an attach's steps may still add
-// the NIC, and the appliance gets the pictures without the network first. It ends with the lab's context, and Close
-// waits for it; a failure is logged: the NIC stays in the VM, without a
-// network, until the server goes.
+// the NIC, and the appliance gets the pictures without the network
+// first. It ends with the lab's context, and Close waits for it; a
+// failure is logged: the NIC stays in the VM, without a network, until
+// the server goes.
 func (m *Machine) DetachNICsLater(nics []ServerNIC, aborted []<-chan struct{}) {
 	m.lab.mu.Lock()
 	defer m.lab.mu.Unlock()

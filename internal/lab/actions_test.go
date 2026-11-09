@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -317,8 +318,16 @@ func TestQueuedActionsWaitBehindAnActionThatLocksTheirResource(t *testing.T) {
 			return plan, err
 		}},
 	}}
+	var overtaken atomic.Bool
 	servers := tableWith(lab.ActionSpec{Name: "stop_server", Plan: func(*state.Tx, lab.Request) (lab.Plan, error) {
-		return lab.Plan{Steps: func(context.Context) error { return nil }}, nil
+		return lab.Plan{Steps: func(context.Context) error {
+			select {
+			case <-release:
+			default:
+				overtaken.Store(true)
+			}
+			return nil
+		}}, nil
 	}})
 	servers.Queued = true
 
@@ -330,15 +339,89 @@ func TestQueuedActionsWaitBehindAnActionThatLocksTheirResource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(20 * time.Millisecond) // a poweroff that does not wait has ended by now
-	if got := actionStatus(t, l, queued.ID); got != state.ActionRunning {
-		t.Errorf("the server's action is %s while the assign runs, want running (waiting)", got)
+	// a poweroff that does not wait ends within this window; the window
+	// only lets a wrong order show and never fails a right one
+	deadline := time.Now().Add(50 * time.Millisecond)
+	for actionStatus(t, l, queued.ID) == state.ActionRunning && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
 	}
 	close(release)
 	waitForStatus(t, l, locking.ID, state.ActionSuccess)
 	waitForStatus(t, l, queued.ID, state.ActionSuccess)
+	if overtaken.Load() {
+		t.Error("the server's action ran while the assign ran")
+	}
 	if _, err := l.Act(servers, "poweroff", request(server.ID)); err != nil {
 		t.Errorf("an action after both: %v", err)
+	}
+}
+
+// An action of a queue that is aborted while it waits (its network was
+// deleted) keeps the queue's order: an action behind it, or sent after
+// it ended, still waits for the one that runs.
+func TestAbortedQueuedActionKeepsTheQueueInOrder(t *testing.T) {
+	for _, behind := range []bool{true, false} {
+		l, _ := openWithProject(t)
+		network := state.ResourceRef{Type: "network", ID: 9}
+		release, ran := make(chan struct{}), make(chan struct{})
+		var overtaken atomic.Bool
+		servers := lab.ActionTable{ResourceType: "server", Busy: "server is locked", Queued: true, Actions: map[string]lab.ActionSpec{
+			"poweron": {Name: "start_server", Plan: func(*state.Tx, lab.Request) (lab.Plan, error) {
+				return lab.Plan{Steps: func(context.Context) error {
+					<-release
+					return nil
+				}}, nil
+			}},
+			"attach_to_network": {Name: "attach_to_network", Plan: func(*state.Tx, lab.Request) (lab.Plan, error) {
+				plan, err := blocking(nil).Plan(nil, lab.Request{})
+				plan.Resources = []state.ResourceRef{network}
+				return plan, err
+			}},
+			"poweroff": {Name: "stop_server", Plan: func(*state.Tx, lab.Request) (lab.Plan, error) {
+				return lab.Plan{Steps: func(context.Context) error {
+					select {
+					case <-release:
+					default:
+						overtaken.Store(true)
+					}
+					close(ran)
+					return nil
+				}}, nil
+			}},
+		}}
+		act := func(command string) state.Action {
+			action, err := l.Act(servers, command, request(7))
+			if err != nil {
+				t.Fatal(err)
+			}
+			return action
+		}
+		running := act("poweron")
+		aborted := act("attach_to_network")
+		var last state.Action
+		if behind {
+			last = act("poweroff")
+		}
+		if _, err := l.ChangeAborting(network, func(*state.Tx) error { return nil }); err != nil {
+			t.Fatal(err)
+		}
+		waitForStatus(t, l, aborted.ID, state.ActionError)
+		if !behind {
+			last = act("poweroff")
+		}
+		// a poweroff that does not wait runs within this window; the window
+		// only lets a wrong order show and never fails a right one
+		select {
+		case <-ran:
+		case <-time.After(50 * time.Millisecond):
+		}
+		close(release)
+		waitForStatus(t, l, running.ID, state.ActionSuccess)
+		waitForStatus(t, l, last.ID, state.ActionSuccess)
+		<-ran
+		if overtaken.Load() {
+			t.Errorf("behind %v: the poweroff ran while the poweron still ran", behind)
+		}
 	}
 }
 
