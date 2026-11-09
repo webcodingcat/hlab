@@ -192,9 +192,10 @@ const volumeSlots = 63
 // free slot from where the last attach left off: a slot whose detach
 // still runs comes back only after the others.
 func attachVolume(tx *state.Tx, volume *state.Volume, server *state.Server, automount bool) error {
+	// IDs and Get, not All: a plan's Change would copy every volume
 	var slots []int
-	for _, attached := range state.All(tx, state.Volumes) {
-		if attached.ServerID == server.ID {
+	for _, id := range serverVolumeIDs(tx, server.ID) {
+		if attached, err := state.Get(tx, state.Volumes, id); err == nil {
 			slots = append(slots, attached.Slot)
 		}
 	}
@@ -242,9 +243,9 @@ func planDetachVolume(l *lab.Lab) planFunc {
 		}
 		plan.Undo = undoRecord(state.Volumes, volume.ID, func(tx *state.Tx, volume *state.Volume) {
 			_, err := state.Get(tx, state.Servers, serverID)
-			taken := slices.ContainsFunc(state.All(tx, state.Volumes), func(other *state.Volume) bool {
+			taken := len(state.IDs(tx, state.Volumes, func(other *state.Volume) bool {
 				return other.ServerID == serverID && other.Slot == slot
-			})
+			})) > 0
 			if volume.ServerID == 0 && err == nil && !taken {
 				volume.ServerID, volume.Slot = serverID, slot
 			}

@@ -91,6 +91,14 @@ for what the operator keeps), the phase or step that closes it.
   (a struct, not a closure over IDs), so that "values from the plan, not
   the record" is checked, not kept by hand (with `holds`).
 - **optional, 2b-R:** the Known gaps grouped by phase.
+- **optional, 2b-R:** `Machine.volumesRead` narrower (cleared after the
+  create) or gone: the create waits for its volumes' queues and an attach
+  or detach during it always has steps (review of 2b-1).
+- **optional, 2b-R** (review of 2b-1, outside the step): one helper for
+  the warnings of `updatePicturesAfterUndo` and `UpdatePicturesLater`;
+  `Lab.Create`'s comment as a list of its parameters; a link to the
+  section from each recipe in DEVELOPING.md; a test that no `Change`
+  calls into `system`, if one can be written.
 - **optional, 2b-R:** a type `holds` that takes and frees an action's
   flags and queue in one place (`Lab.start`, `Lab.releaseQueues`,
   `Lab.end`); 2b-1 removed the lock queues (operator 2026-11-09: to the
