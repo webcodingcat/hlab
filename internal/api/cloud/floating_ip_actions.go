@@ -61,7 +61,7 @@ func planFloatingIPAssign(l *lab.Lab) planFunc {
 		}
 		if server.Status == state.ServerInitializing {
 			// the server's create runs (measured 2026-11-08)
-			return lab.Plan{}, web.Locked(floatingIPServerCreating)
+			return lab.Plan{}, web.Locked(serverCreatingLocked)
 		}
 		if zone(l.Catalog(), server.Location) != zone(l.Catalog(), ip.HomeLocation) {
 			return lab.Plan{}, web.RefusalNull(http.StatusUnprocessableEntity, "service_error", floatingIPOtherZone)

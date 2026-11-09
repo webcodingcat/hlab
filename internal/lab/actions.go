@@ -80,22 +80,17 @@ type Plan struct {
 	// its resource: the later plans have set again what Undo would take
 	// back (want_running), and Undo must not overwrite them.
 	UndoIfLast bool
-	// Undo takes back the quick changes when the steps fail. A canceled
-	// action undoes nothing: a deleted project's records are gone anyway,
-	// and a stopping lab keeps the state as it is. Undo runs under the
-	// mutex, like a Change.
-	// Its records may be gone (the project was deleted while steps that did
-	// not watch the context failed): Undo then treats state.ErrNotFound as
-	// nothing left to undo.
-	// After an undo the appliance gets new pictures, before the action's
-	// goroutine ends (Machine.updatePicturesAfterUndo): the steps may have
-	// sent pictures with the quick changes, and an undo takes them back
-	// from the state only.
+	// Undo takes back the quick changes when the steps fail, in a
+	// transaction like a Change's. Its records may be gone: it treats
+	// state.ErrNotFound as nothing left to undo. A canceled action undoes
+	// nothing, and the lab sends the pictures after an undo itself
+	// (DEVELOPING.md, Actions).
 	Undo func(tx *state.Tx) error
 	// Resources are more resources the action names (a target server).
 	Resources []state.ResourceRef
-	// Locks are more resources the steps work on (the server a volume
-	// attaches to): they are flagged too, and a LockedError if busy.
+	// Locks are more resources the steps work on (the server a Primary
+	// IP's assign changes): they are flagged too, and a LockedError if
+	// busy.
 	Locks []state.ResourceRef
 }
 

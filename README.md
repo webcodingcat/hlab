@@ -6,8 +6,8 @@ such as OpenTofu (hcloud provider), the hcloud CLI and Ansible are meant to work
 against it without changes.
 
 **Status:** being rebuilt in Go; `hlabd` answers the catalog, SSH keys,
-servers (Debian 13, Ubuntu 26.04), Primary and Floating IPs, firewalls and
-private networks so far. [docs/roadmap.md](docs/roadmap.md) has the phases. On Windows 11 the
+servers (Debian 13, Ubuntu 26.04), Primary and Floating IPs, firewalls,
+private networks, volumes and placement groups so far. [docs/roadmap.md](docs/roadmap.md) has the phases. On Windows 11 the
 servers are Hyper-V VMs that the host and WSL2 reach on their addresses;
 `hlabd --platform fake` runs the same API without VMs.
 

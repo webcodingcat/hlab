@@ -27,9 +27,11 @@ func (m *Machine) volumeFile(id int64) string {
 	return filepath.Join(m.lab.dataDir, VolumeDir, fmt.Sprint(id)+".vhdx")
 }
 
-// volumeSlot returns a volume's disk in its slot of its server's VM.
-func (m *Machine) volumeSlot(volume *state.Volume) system.VolumeSlot {
-	return system.VolumeSlot{Slot: volume.Slot, Path: m.volumeFile(volume.ID), VolumeID: volume.ID, Automount: volume.Automount}
+// VolumeSlot returns a volume's disk in a slot of a server's VM; the
+// plans take it with their values, so that the steps do not read a
+// record that a plan queued behind has changed (DEVELOPING.md, Actions).
+func (m *Machine) VolumeSlot(id int64, slot int, automount bool) system.VolumeSlot {
+	return system.VolumeSlot{Slot: slot, Path: m.volumeFile(id), VolumeID: id, Automount: automount}
 }
 
 // serverVolumes returns the volumes attached to a server, in their slots,
@@ -38,22 +40,17 @@ func (m *Machine) serverVolumes(tx *state.Tx, serverID int64) []system.VolumeSlo
 	var slots []system.VolumeSlot
 	for _, volume := range state.All(tx, state.Volumes) {
 		if volume.ServerID == serverID {
-			slots = append(slots, m.volumeSlot(volume))
+			slots = append(slots, m.VolumeSlot(volume.ID, volume.Slot, volume.Automount))
 		}
 	}
 	return slots
 }
 
-// CreateVolume is the create action's steps: it makes the volume's disk,
-// formatted in the appliance if the volume has a format, and the volume
-// is available then. If the steps fail, the disk is gone again
+// CreateVolume is the create action's steps: it makes the volume's disk
+// of the size, formatted in the appliance if the volume has a format, and
+// the volume is available then. If the steps fail, the disk is gone again
 // (system.CreateVolume) and the action's undo removes the record.
-func (m *Machine) CreateVolume(ctx context.Context, id int64) error {
-	volume, err := Current(m.lab, state.Volumes, id)
-	if err != nil {
-		return err
-	}
-	sizeGB, format := volume.SizeGB, volume.Format // not kept across the system's call
+func (m *Machine) CreateVolume(ctx context.Context, id int64, sizeGB int, format string) error {
 	m.lab.mu.Lock()
 	appliance := m.appliance
 	m.lab.mu.Unlock()
@@ -73,12 +70,8 @@ func (m *Machine) CreateVolume(ctx context.Context, id int64) error {
 // AttachVolume is the attach action's steps: the volume's disk goes into
 // its slot of the server's VM, also while it runs, with the disk ID that
 // names it in the guest (and asks for the mount if the attach did).
-func (m *Machine) AttachVolume(ctx context.Context, id int64) error {
-	volume, err := Current(m.lab, state.Volumes, id)
-	if err != nil {
-		return err
-	}
-	return m.system.AttachVolume(ctx, ServerVM(volume.ServerID), m.volumeSlot(volume))
+func (m *Machine) AttachVolume(ctx context.Context, serverID int64, volume system.VolumeSlot) error {
+	return m.system.AttachVolume(ctx, ServerVM(serverID), volume)
 }
 
 // DetachVolume is the detach action's steps: the disk leaves the slot of
@@ -87,19 +80,11 @@ func (m *Machine) DetachVolume(ctx context.Context, serverID int64, slot int) er
 	return m.system.DetachVolume(ctx, ServerVM(serverID), slot)
 }
 
-// releaseVolumes detaches in the records the volumes of a server that is
-// gone. A server's delete keeps its volumes attached until its VM is
-// gone, which held their disks; meanwhile their actions are 423, as on
-// Hetzner (measured 2026-11-09).
-func (m *Machine) releaseVolumes(serverID int64) error {
-	return m.lab.Change(func(tx *state.Tx) error {
-		releaseVolumes(tx, serverID)
-		return nil
-	})
-}
-
-// releaseVolumes detaches the volumes of a server in the records.
-func releaseVolumes(tx *state.Tx, serverID int64) {
+// detachServerVolumes detaches in the records the volumes of a server
+// whose VM is gone. A server's delete keeps its volumes attached until
+// then, as the VM held their disks; meanwhile their actions are 423, as
+// on Hetzner (measured 2026-11-09).
+func detachServerVolumes(tx *state.Tx, serverID int64) {
 	for _, id := range state.IDs(tx, state.Volumes, func(volume *state.Volume) bool { return volume.ServerID == serverID }) {
 		if volume, err := state.Get(tx, state.Volumes, id); err == nil {
 			volume.ServerID, volume.Slot = 0, 0
@@ -109,21 +94,28 @@ func releaseVolumes(tx *state.Tx, serverID int64) {
 
 // ResizeVolume is the resize action's steps: the disk grows to the size
 // the plan set, also while a VM uses it. The guest sees the new size at
-// its next access to the disk (measured with Hyper-V); Hetzner's guest
-// sees it at once (assumed, not measured).
-func (m *Machine) ResizeVolume(ctx context.Context, id int64) error {
-	volume, err := Current(m.lab, state.Volumes, id)
-	if err != nil {
-		return err
-	}
-	return m.system.ResizeVolume(ctx, m.volumeFile(id), volume.SizeGB)
+// its next access to the disk, which a mounted file system makes within
+// seconds (measured with Hyper-V); Hetzner's guest sees it at once
+// (assumed, not measured).
+func (m *Machine) ResizeVolume(ctx context.Context, id int64, sizeGB int) error {
+	return m.system.ResizeVolume(ctx, m.volumeFile(id), sizeGB)
 }
 
-// DeleteVolumeFile removes a deleted volume's disk. The API's delete
-// calls it after the change, as Hetzner deletes a volume without an
-// action; a failure is logged, and the next start removes what is left
-// (cleanDataFiles).
-func (m *Machine) DeleteVolumeFile(ctx context.Context, id int64) {
+// DeleteVolumeFileLater removes a deleted volume's disk in the background,
+// as Hetzner deletes a volume without an action. It is the lab's work, so
+// that Close waits for it; a closing lab leaves it, and a failure is
+// logged: the next start removes what is left (cleanDataFiles).
+func (m *Machine) DeleteVolumeFileLater(id int64) {
+	m.lab.mu.Lock()
+	defer m.lab.mu.Unlock()
+	if m.lab.closed {
+		return
+	}
+	m.lab.background.Go(func() { m.deleteVolumeFile(m.lab.ctx, id) })
+}
+
+// deleteVolumeFile removes a deleted volume's disk; a failure is logged.
+func (m *Machine) deleteVolumeFile(ctx context.Context, id int64) {
 	if err := m.system.DeleteVolume(ctx, m.volumeFile(id)); err != nil {
 		m.lab.logger.Warn("removing a deleted volume's disk; the next start removes it", "volume", id, "error", err)
 	}
@@ -135,13 +127,25 @@ func (m *Machine) DeleteVolumeFile(ctx context.Context, id int64) {
 // Hetzner a volume does not vanish. A failure leaves the volume creating;
 // the next start tries again.
 func (m *Machine) resumeVolumes(ctx context.Context) {
-	var creating []int64
+	// what a create needs, not the records: they are kept across the
+	// calls to the system
+	type create struct {
+		id     int64
+		sizeGB int
+		format string
+	}
+	var creating []create
 	err := m.lab.Change(func(tx *state.Tx) error {
-		creating = state.IDs(tx, state.Volumes, func(volume *state.Volume) bool { return volume.Status == state.VolumeCreating })
-		// the servers whose delete HLab's end cut short
 		for _, volume := range state.All(tx, state.Volumes) {
-			if _, err := state.Get(tx, state.Servers, volume.ServerID); volume.ServerID != 0 && err != nil {
-				releaseVolumes(tx, volume.ServerID)
+			if volume.Status == state.VolumeCreating {
+				creating = append(creating, create{volume.ID, volume.SizeGB, volume.Format})
+			}
+			if volume.ServerID == 0 {
+				continue
+			}
+			// a server whose delete HLab's end cut short
+			if _, err := state.Get(tx, state.Servers, volume.ServerID); errors.Is(err, state.ErrNotFound) {
+				detachServerVolumes(tx, volume.ServerID)
 			}
 		}
 		return nil
@@ -149,10 +153,10 @@ func (m *Machine) resumeVolumes(ctx context.Context) {
 	if err != nil {
 		m.lab.logger.Warn("detaching the volumes of deleted servers", "error", err)
 	}
-	for _, id := range creating {
-		m.lab.logger.Warn("a volume has no disk, as HLab ended during its create; making it anew", "volume", id)
-		if err := m.CreateVolume(ctx, id); err != nil && !errors.Is(err, state.ErrNotFound) {
-			m.lab.logger.Error("a volume's disk could not be made; the next start tries again", "volume", id, "error", err)
+	for _, volume := range creating {
+		m.lab.logger.Warn("a volume has no disk, as HLab ended during its create; making it anew", "volume", volume.id)
+		if err := m.CreateVolume(ctx, volume.id, volume.sizeGB, volume.format); err != nil && !errors.Is(err, state.ErrNotFound) {
+			m.lab.logger.Error("a volume's disk could not be made; the next start tries again", "volume", volume.id, "error", err)
 		}
 	}
 }

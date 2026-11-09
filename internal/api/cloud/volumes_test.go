@@ -285,6 +285,35 @@ func TestVolumeActionsQueue(t *testing.T) {
 	}
 }
 
+// An attach's steps take the server and the slot its plan chose: a detach
+// queued behind it changes the record first, and both end well, the disk
+// out of the VM again. A detach while the server's create runs is 423.
+func TestVolumeAttachAndDetachInTheQueue(t *testing.T) {
+	test := newTestLab(t)
+	quietMachine(t, test)
+	server := offServer(t, test, "web")
+	created := createVolume(t, test, map[string]any{"name": "data", "size": 10, "location": "fsn1"})
+	waitActions(t, test, created.Action)
+	test.machine.Delay("AttachDisk", 200*time.Millisecond)
+	attach := actionOf(t, "attach", volumeAction(test, created.Volume.ID, "attach", map[string]any{"server": server.Server.ID}))
+	detach := actionOf(t, "detach behind the attach", volumeAction(test, created.Volume.ID, "detach", nil))
+	for _, action := range waitActions(t, test, attach, detach) {
+		if action.Status != "success" {
+			t.Errorf("%s ended %s: %+v", action.Command, action.Status, action.Error)
+		}
+	}
+	if disks := test.machine.Disks(lab.ServerVM(server.Server.ID)); len(disks) != 1 {
+		t.Errorf("the VM's disks after the attach and the detach: %v", disks)
+	}
+
+	test.machine.Delay("CreateVM", 200*time.Millisecond)
+	creating := createServer(t, test, map[string]any{"name": "db", "server_type": "cpx22", "image": "debian-13",
+		"location": "fsn1", "start_after_create": false, "volumes": []int64{created.Volume.ID}})
+	expectError(t, "a detach during the server's create", volumeAction(test, created.Volume.ID, "detach", nil),
+		http.StatusLocked, "locked", "resource is locked")
+	waitActions(t, test, creating.Action)
+}
+
 // A server's create attaches its volumes before the VM is made and puts
 // it into its placement group (measured 2026-11-09; the volumes' order
 // among next_actions is assumed).

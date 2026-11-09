@@ -19,21 +19,20 @@ import (
 // Hetzner's texts about Floating IPs (measured 2026-11-08). Their errors
 // carry the details null.
 const (
-	floatingIPResource       = "floating_ip"
-	floatingIPNameTaken      = "Floating IP name is already used"
-	floatingIPPlaceMissing   = "either server or home_location must be provided"
-	floatingIPTypeMissing    = "'type' is required"
-	floatingIPInvalid        = "invalid" // an unknown type or home_location
-	floatingIPNameTooLong    = "value required to be smaller"
-	floatingIPServerMissing  = "value required to be larger" // an assign without a server
-	floatingIPNotFound       = "Floating IP with ID %d not found"
-	floatingIPProtected      = "Floating IP deletion is protected"
-	floatingIPMustUnassign   = "IP must be unassigned"
-	floatingIPNotAssigned    = "Floating IP with ID %d is not assigned to any resource"
-	floatingIPBusy           = "cannot perform operation because floating_ip is locked"
-	floatingIPServerCreating = "resource is locked"
-	floatingIPAssigning      = "cannot assign Floating IP because it is already being assigned"
-	floatingIPOtherZone      = "assigning Floating IP to a Server in another network_zone is not supported"
+	floatingIPResource      = "floating_ip"
+	floatingIPNameTaken     = "Floating IP name is already used"
+	floatingIPPlaceMissing  = "either server or home_location must be provided"
+	floatingIPTypeMissing   = "'type' is required"
+	floatingIPInvalid       = "invalid" // an unknown type or home_location
+	floatingIPNameTooLong   = "value required to be smaller"
+	floatingIPServerMissing = "value required to be larger" // an assign without a server
+	floatingIPNotFound      = "Floating IP with ID %d not found"
+	floatingIPProtected     = "Floating IP deletion is protected"
+	floatingIPMustUnassign  = "IP must be unassigned"
+	floatingIPNotAssigned   = "Floating IP with ID %d is not assigned to any resource"
+	floatingIPBusy          = "cannot perform operation because floating_ip is locked"
+	floatingIPAssigning     = "cannot assign Floating IP because it is already being assigned"
+	floatingIPOtherZone     = "assigning Floating IP to a Server in another network_zone is not supported"
 	// a PUT's labels; the value's text is not measured, it follows the key's
 	floatingIPLabelKey   = "invalid label value: key contains invalid characters or is malformed"
 	floatingIPLabelValue = "invalid label value: value contains invalid characters or is malformed"

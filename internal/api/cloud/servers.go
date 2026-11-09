@@ -30,6 +30,10 @@ const (
 	serverDeleteProtected = "server deletion is protected"
 	serverNoRoom          = "error during placement"
 	serverBusy            = "server is locked by another action"
+	// an action of another resource on a server whose create runs: a
+	// Floating IP's assign (measured 2026-11-08), a volume's attach and
+	// detach (assumed, not measured)
+	serverCreatingLocked = "resource is locked"
 	// a location that the type does not offer or no longer has available;
 	// the details {}
 	serverLocationUnsupported = "unsupported location for server type"

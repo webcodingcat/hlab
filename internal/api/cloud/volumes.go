@@ -388,7 +388,7 @@ func deleteVolume(req *web.Request, l *lab.Lab) (int, any, error) {
 	if err != nil {
 		return 0, nil, err
 	}
-	l.Machine().DeleteVolumeFile(req.Context(), id)
+	l.Machine().DeleteVolumeFileLater(id)
 	return http.StatusNoContent, nil, nil
 }
 

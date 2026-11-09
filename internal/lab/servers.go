@@ -262,12 +262,17 @@ func (m *Machine) cachedImage(ctx context.Context, image catalog.Image) (string,
 
 // DeleteServer removes what a deleted server had on the machine (its VM,
 // disk and seed) and detaches its volumes; then the appliance gets the
-// pictures without it. It is
-// the delete action's steps (its plan removed the record), and a failed
-// create calls it too. The pictures go even when the VM's removal fails:
+// pictures without it. It is the delete action's steps (its plan removed
+// the record), and a failed create calls it too. The pictures go even when the VM's removal fails:
 // the record is gone either way.
 func (m *Machine) DeleteServer(ctx context.Context, id int64) error {
-	return errors.Join(m.removeServerVM(ctx, id), m.releaseVolumes(id), m.UpdatePictures(ctx))
+	vmErr := m.removeServerVM(ctx, id)
+	// after the VM, which held the volumes' disks
+	volumesErr := m.lab.Change(func(tx *state.Tx) error {
+		detachServerVolumes(tx, id)
+		return nil
+	})
+	return errors.Join(vmErr, volumesErr, m.UpdatePictures(ctx))
 }
 
 // removeServerVM removes a deleted server's VM, disk and seed, without

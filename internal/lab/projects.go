@@ -180,7 +180,7 @@ func (l *Lab) DeleteProject(projectID int64) error {
 	}
 	// after the VMs, which may still hold the volumes' disks
 	for _, id := range volumes {
-		l.machine.DeleteVolumeFile(l.ctx, id)
+		l.machine.deleteVolumeFile(l.ctx, id)
 	}
 	if err := l.machine.UpdatePictures(l.ctx); err != nil && l.ctx.Err() == nil {
 		l.logger.Warn("sending the pictures after a project's delete; the watchdog sends them again", "error", err)

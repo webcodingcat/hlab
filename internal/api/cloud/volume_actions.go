@@ -26,8 +26,10 @@ func volumeActions(l *lab.Lab) lab.ActionTable {
 			"create":              {Name: "create_volume", Plan: planCreateVolume(l)},
 			"attach":              {Name: "attach_volume", Plan: planAttachVolume(l, false)},
 			"attach_after_create": {Name: "attach_volume", Plan: planAttachVolume(l, true)},
-			// a server's create attaches the volume: its steps build the
-			// VM with the disk, so the action has none and runs beside
+			// a server's create names the volume: this row only attaches it
+			// in the records (it runs on the volumes' table, with the new
+			// server in Request.Created); the create's steps build the VM
+			// with the disk, so the row has no steps and takes no flag
 			"attach_at_create":  {Name: "attach_volume", Plan: planAttachAtServerCreate, Unflagged: true},
 			"detach":            {Name: "detach_volume", Plan: planDetachVolume(l)},
 			"resize":            {Name: "resize_volume", Plan: planResizeVolume(l)},
@@ -36,12 +38,18 @@ func volumeActions(l *lab.Lab) lab.ActionTable {
 	}
 }
 
-// planCreateVolume makes the volume's disk in the steps; if they fail, the
-// undo removes the record, by its ID.
+// planCreateVolume makes the volume's disk in the steps, of the size and
+// format the plan reads: a resize queued behind changes the record before
+// the steps run. If they fail, the undo removes the record, by its ID.
 func planCreateVolume(l *lab.Lab) planFunc {
-	return func(_ *state.Tx, req lab.Request) (lab.Plan, error) {
+	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+		volume, err := state.Get(tx, state.Volumes, req.ID)
+		if err != nil {
+			return lab.Plan{}, err
+		}
+		sizeGB, format := volume.SizeGB, volume.Format
 		return lab.Plan{
-			Steps: func(ctx context.Context) error { return l.Machine().CreateVolume(ctx, req.ID) },
+			Steps: func(ctx context.Context) error { return l.Machine().CreateVolume(ctx, req.ID, sizeGB, format) },
 			Undo: func(tx *state.Tx) error {
 				state.Delete(tx, state.Volumes, req.ID)
 				return nil
@@ -105,12 +113,15 @@ func planAttachVolume(l *lab.Lab, afterCreate bool) planFunc {
 		if server.Status == state.ServerInitializing {
 			// the server's create runs (assumed as measured for Floating
 			// IPs; not measured for volumes)
-			return lab.Plan{}, web.Locked(floatingIPServerCreating)
+			return lab.Plan{}, web.Locked(serverCreatingLocked)
 		}
 		if err := attachVolume(tx, volume, server, body.Automount != nil && *body.Automount); err != nil {
 			return lab.Plan{}, err
 		}
-		plan.Steps = func(ctx context.Context) error { return l.Machine().AttachVolume(ctx, volume.ID) }
+		// the steps take the plan's server and slot: a detach queued behind
+		// changes the record before they run
+		target, disk := server.ID, l.Machine().VolumeSlot(volume.ID, volume.Slot, volume.Automount)
+		plan.Steps = func(ctx context.Context) error { return l.Machine().AttachVolume(ctx, target, disk) }
 		plan.Undo = undoRecord(state.Volumes, volume.ID, func(_ *state.Tx, volume *state.Volume) {
 			if volume.ServerID == server.ID {
 				volume.ServerID, volume.Slot = 0, 0
@@ -186,8 +197,14 @@ func planDetachVolume(l *lab.Lab) planFunc {
 		if volume.ServerID == 0 {
 			return lab.Plan{}, web.Refusal(http.StatusUnprocessableEntity, "service_error", volumeNotAttached)
 		}
-		if _, err := state.Get(tx, state.Servers, volume.ServerID); err != nil {
-			return lab.Plan{}, web.Locked(volumeBusy)
+		server, err := state.Get(tx, state.Servers, volume.ServerID)
+		switch {
+		case err != nil:
+			return lab.Plan{}, web.Locked(volumeBusy) // its server's delete runs
+		case server.Status == state.ServerInitializing:
+			// the server's create builds the VM with the disk (assumed as
+			// for an attach, not measured)
+			return lab.Plan{}, web.Locked(serverCreatingLocked)
 		}
 		serverID, slot := volume.ServerID, volume.Slot
 		volume.ServerID, volume.Slot = 0, 0
@@ -240,8 +257,9 @@ func planResizeVolume(l *lab.Lab) planFunc {
 		if resizing(tx, volume.ID) {
 			return lab.Plan{}, web.Locked(volumeBusy)
 		}
+		sizeGB := *body.Size
 		plan := lab.Plan{
-			Steps:      func(ctx context.Context) error { return l.Machine().ResizeVolume(ctx, volume.ID) },
+			Steps:      func(ctx context.Context) error { return l.Machine().ResizeVolume(ctx, volume.ID, sizeGB) },
 			Undo:       undoVolumeSize(volume.ID, volume.SizeGB),
 			UndoIfLast: true,
 		}
