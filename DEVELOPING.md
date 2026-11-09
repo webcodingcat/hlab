@@ -2,7 +2,9 @@
 
 **Reading order:** CLAUDE.md, then "Words", "A request's path" and "Layers" below, then the
 recipe for what you add (Recipes, at the end); the other sections and the files
-under `docs/` are reference, read when you work on their part.
+under `docs/` are reference, read when you work on their part. Before a
+recipe, read the sections it names: "A new endpoint" needs The APIs and
+Spec check, "A new action" needs Actions.
 
 Section names in parentheses, such as (The state), point to the section of this file
 that explains more; a file name in them, such as (docs/tools.md), to that file.
@@ -50,7 +52,7 @@ Words this file uses; the sections in parentheses explain more.
 | steps | an action's slow part, in a goroutine: the work on the machine (VMs, pictures) |
 | undo | what takes a plan's quick changes back when the steps fail |
 | Tx, Kind | a transaction on the state (`state.Tx`) and a kind of record in it (`state.Kind`, The state) |
-| `Lab`, `Machine` | `Lab` owns the state, the actions and their flags; `Machine` (`Lab.Machine()`) does the work on the machine through `system` (Actions) |
+| `Lab`, `Machine` | `Lab` owns the state, the actions and their flags; `Machine` (`Lab.Machine()`) does the work on the machine through `system` (Actions); both are in `internal/lab` |
 
 ## A request's path
 
@@ -188,15 +190,14 @@ The layer test checks production code only. Tests may import fakes and helpers.
   the token check on every request copies nothing. That check uses `state.Find`,
   which does not sort as `state.All` does.
 - **Only a real change is saved.** Because a Tx's copies can change in
-  place (a state's own records never do), `tx.Changed()` compares each record the Tx noted with the state the Tx started
-  from (`reflect.DeepEqual`). A `Change` that only read, or set a value to what it
-  already was, saves nothing. A real change encodes the whole state while holding
-  the mutex and passes it to the writer.
+  place (a state's own records never do), `tx.Changed()` compares each
+  record the Tx noted with the state the Tx started from
+  (`reflect.DeepEqual`). A `Change` that only read, or set a value to what
+  it already was, saves nothing.
 - **Saving.** A real change encodes the state under the mutex, reusing the
-  JSON of the records it did not touch, and `state.Writer` writes
-  `state.json` in the background, atomically, retrying on failure
-  ([docs/state.md](docs/state.md)). This relies on the rule that a state's
-  records never change.
+  JSON of the records it did not touch (a state's records never change),
+  and `state.Writer` writes `state.json` in the background, atomically,
+  retrying on failure ([docs/state.md](docs/state.md)).
 - **Limits.** A project's `Limits` field set to zero means "no limit". So a limit
   added later needs no migration.
 - **Versions.** The file has a version (`currentVersion` in `file.go`). An older
@@ -257,6 +258,13 @@ The layer test checks production code only. Tests may import fakes and helpers.
 
 Hetzner's API runs slow commands as actions. This is how the lab does it
 (`internal/lab/actions.go`):
+
+In short: an action's plan makes the quick changes in the request's
+transaction; its steps do the slow work in a goroutine; if they fail, the
+plan's undo takes the quick changes back; while the action runs, flags
+keep other actions off its resources or queue them. The types (`Plan`,
+`ActionSpec`, `ActionTable`, `Request`, `Row`) are in
+`internal/lab/actions.go`.
 
 - **Tables.** Each resource has a `lab.ActionTable`. It holds the resource's type as
   actions name it (`server`), the message for 423 answers, and one `lab.ActionSpec`
@@ -358,17 +366,18 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   Hetzner.
 - **Steps.** The slow part runs in a goroutine.
   - If the steps fail, the plan's `Undo` takes back the quick changes and the
-    action ends with `error`, both in one change. A plan marked `UndoIfLast`
-    undoes only if no action was queued behind it on the resource: the later
-    plans were made on top of its quick changes (`want_running`, a
-    network's subnets, a server's alias IPs), and taking those back would
-    undo theirs too. A plan of a `Queued` table whose `Undo` takes back a
-    change to what was there before is marked so; one whose `Undo` only
-    removes what the plan made, found by its own key (a server's create,
-    an attach's NIC by its MAC), is not, and says so next to it. An `Undo`
-    also leaves what another resource's actions built on meanwhile: a
-    server's attach runs in the server's queue, so the undo of an
-    `add_subnet` keeps a subnet in which a server now has an address.
+    action ends with `error`, both in one change.
+  - **`UndoIfLast`.** In a `Queued` table, later plans run before the
+    earlier steps and build on their quick changes. So a plan whose `Undo`
+    sets back what was there before (`want_running`, a network's subnets,
+    a server's alias IPs) is marked `UndoIfLast`: it undoes only if no
+    action waits behind it on the resource. A plan whose `Undo` only
+    removes what it made, by its own key (a server's create, an attach's
+    NIC by its MAC), is not marked, and says so next to it.
+  - **Other queues.** An `Undo` leaves what another resource's actions
+    built on meanwhile: a server's attach runs in the server's queue, so
+    the undo of an `add_subnet` keeps a subnet in which a server now has
+    an address.
   - **After an undo the appliance gets new pictures,** before the action
     counts as done for an action already queued behind it
     (`Machine.updatePicturesAfterUndo`): the

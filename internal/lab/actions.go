@@ -144,13 +144,10 @@ func (l *Lab) Create(table ActionTable, req Request, create func(tx *state.Tx) (
 	return l.run(table, req, create, answer, rows)
 }
 
-// run is Act, ActAll and Create, which differ only in what they pass it
-// (nil for no create and no answer): each is the name its callers read
-// for one of the three ways an API starts actions, an exception to the
-// rule against functions that only pass their arguments on. It checks
-// the project, runs create if
-// there is one, plans the rows in one transaction and starts them once
-// the transaction is saved.
+// run checks the project, runs create if there is one, plans the rows in
+// one transaction and starts them once the transaction is saved. Act,
+// ActAll and Create only pass it their arguments (DEVELOPING.md, Actions,
+// says why they exist anyway).
 func (l *Lab) run(table ActionTable, req Request, create func(tx *state.Tx) (int64, error),
 	answer func(tx *state.Tx, id int64), rows []Row) ([]state.Action, error) {
 	l.mu.Lock()
@@ -377,8 +374,9 @@ func (l *Lab) start(planned plannedAction) {
 		l.queues[*queue] = run.done
 	}
 	// a resource's own queued actions wait behind an action that locks it
-	// (a server's poweron behind a Primary IP's assign); the lock check
-	// found nothing flagged on it, so nothing waits in its queue yet
+	// (a server's poweron behind a Primary IP's assign; assumed, not
+	// measured on Hetzner); the lock check found nothing flagged on it, so
+	// nothing waits in its queue yet
 	for _, ref := range planned.plan.Locks {
 		l.queues[ref] = run.done
 	}

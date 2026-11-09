@@ -268,6 +268,8 @@ func parseAliasIPs(check *web.Check, aliases []string) []netip.Addr {
 // overlap with the server's other networks and its three networks, then
 // the addresses; it does not check the network zone (measured
 // 2026-11-08).
+// It runs in the server's queue and does not lock the network, so it may
+// run beside the network's own actions (assumed, not measured on Hetzner).
 func planAttachToNetwork(l *lab.Lab) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		var body attachToNetworkRequest
@@ -643,7 +645,8 @@ func planChangeAliasIPs(l *lab.Lab) planFunc {
 				return
 			}
 			// another server's attach runs in its own queue and may have
-			// taken an alias IP this change gave up
+			// taken an alias IP this change gave up: all or none, so if one
+			// is taken, the new alias IPs stay
 			var old []netip.Addr
 			for _, alias := range before {
 				old = append(old, netip.MustParseAddr(alias))

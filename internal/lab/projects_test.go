@@ -145,3 +145,36 @@ func TestDeleteProjectRemovesItsServersFromTheMachine(t *testing.T) {
 		t.Error("the appliance got no new pictures")
 	}
 }
+
+// A deleted project without servers still leaves the appliance's
+// pictures: its networks go from them.
+func TestDeleteProjectWithoutServersSendsThePictures(t *testing.T) {
+	machine := fake.New()
+	agent := withAppliance(machine)
+	l := start(t, machine, lab.Options{DataDir: t.TempDir()})
+	t.Cleanup(func() { _ = l.Close() })
+	putTestProject(t, l)
+	err := l.Change(func(tx *state.Tx) error {
+		state.Put(tx, state.Networks, &state.Network{
+			ID: state.NewID(tx, state.Networks), ProjectID: projectID, Name: "net", IPRange: "10.0.0.0/16", VLAN: 2,
+			Subnets: []state.NetworkSubnet{{Type: "cloud", IPRange: "10.0.1.0/24", NetworkZone: "eu-central"}},
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(agent.Picture(agentproto.PictureDHCP), []byte("private network")) {
+		t.Fatalf("the network is not in the DHCP picture:\n%s", agent.Picture(agentproto.PictureDHCP))
+	}
+
+	if err := l.DeleteProject(projectID); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(agent.Picture(agentproto.PictureDHCP), []byte("private network")) {
+		t.Errorf("the deleted project's network is still in the DHCP picture:\n%s", agent.Picture(agentproto.PictureDHCP))
+	}
+}

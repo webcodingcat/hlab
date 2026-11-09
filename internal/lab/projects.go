@@ -143,9 +143,11 @@ func checkLimits(limits state.Limits) error {
 // their actions gone when they end. A request admitted just before finds the
 // project gone when it creates its record (CheckProject). Last, the servers
 // go from the machine, as a server's delete does, now that no action of the
-// project makes a VM any more. A server that the machine fails to remove
-// is logged, and a closing lab removes none: the next start removes them
-// as stray VMs.
+// project makes a VM any more, and the appliance gets the pictures without
+// the project's servers, networks and firewalls, once, also for a project
+// without servers. A server that the machine fails to remove is logged,
+// and a closing lab removes none: the next start removes them as stray
+// VMs.
 func (l *Lab) DeleteProject(projectID int64) error {
 	var servers []int64
 	err := l.Change(func(tx *state.Tx) error {
@@ -171,9 +173,12 @@ func (l *Lab) DeleteProject(projectID int64) error {
 	defer l.background.Done()
 	l.StopProjectActions(projectID)
 	for _, id := range servers {
-		if err := l.machine.DeleteServer(l.ctx, id); err != nil {
+		if err := l.machine.removeServerVM(l.ctx, id); err != nil {
 			l.logger.Warn("removing a server of a deleted project; the next start removes what is left", "server", id, "error", err)
 		}
+	}
+	if err := l.machine.UpdatePictures(l.ctx); err != nil && l.ctx.Err() == nil {
+		l.logger.Warn("sending the pictures after a project's delete; the watchdog sends them again", "error", err)
 	}
 	return nil
 }
