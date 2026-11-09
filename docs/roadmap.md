@@ -72,9 +72,13 @@ for what the operator keeps), the phase or step that closes it.
 - **accepted:** a guest sees a volume's new size at its next access to
   the disk (Hyper-V), which a mounted file system makes within seconds;
   Hetzner's guest sees it at once (assumed; operator 2026-11-09).
-- **should, 2b-R:** the 10 servers of a `spread` group and the 412
-  `placement_error` for an 11th are assumed: Hetzner's capacity refused
-  a sixth server at 2b-1's probe. Measure when capacity allows.
+- **accepted:** the 10 servers of a `spread` group (Hetzner's
+  documentation) and the 412 `placement_error` for an 11th are assumed:
+  Hetzner's capacity refused a sixth server at 2b-1's probe (operator
+  2026-11-09).
+- **must, 2b-R:** a server's create that names a volume whose own create
+  or detach still runs waits for the volume (201); Hetzner's answer is
+  not measured (operator 2026-11-09: measure in 2b-R).
 - **should, 2b-R** (review of 2b-1, outside the step): DEVELOPING.md's
   Actions want an overview before the rules (with `docs/actions.md`); a
   pointer from `cachedImage` to the mutex rule's exception; the words'
