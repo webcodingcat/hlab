@@ -24,6 +24,9 @@ it; "open" means the phase has not come yet. What never works is in
 | Requirement | Source | Phase | Test |
 |---|---|---|---|
 | `GET /actions?id=…` returns the actions of the IDs; without IDs it is 410 `deprecated_api_endpoint` (listing all actions is gone since 2025-01-30); `GET /actions/{id}` | hcloud-go `hcloud/action.go` (`AllWithOpts`, `GetByID`), `hcloud/action_waiter.go`; measured | 1a | `internal/api/cloud`: `TestActions`, `TestActionsNeedIDs` |
+| Another method than GET on a single action or an unknown command: networks, firewalls, Floating IPs, Primary IPs 405 without a body, `Allow: GET, HEAD`; servers 404 (`DELETE` and `PATCH` not measured) | measured | 2a | `internal/api/cloud`: `TestUnknownActionsAnswerAsHetznerDoes` |
+| `GET` of a single action that is not there, or of an action ID that is no number: each resource's own text (below) | measured | 2a | `internal/api/cloud`: `TestMissingActionsAnswerAsHetznerDoes` |
+| `GET` of a network, Floating IP, firewall or Primary IP whose ID is no number: each resource's own answer (below; other methods not measured) | measured | 2a | `internal/api/cloud`: `TestResourceIDsThatAreNoNumberAnswerAsHetznerDoes` |
 
 ## Catalog and images
 
@@ -60,6 +63,7 @@ it; "open" means the phase has not come yet. What never works is in
 | Lists filter by `name`, `label_selector`, `status` and sort by `id`, `name`, `created`; `/servers/actions`, `/servers/{id}/actions` and their single actions | hcloud-go `hcloud/server.go` (`ServerListOpts`), `hcloud/action.go` | 1b | `internal/api/cloud`: `TestServerUpdateAndList`, `TestServerActionLists` |
 | Create errors with Hetzner's codes and texts (below) | measured | 1b | `internal/api/cloud`: `TestServerCreateErrors`, `TestServerDeleteProtection` |
 | A location the server type does not offer, or no longer has available, is refused; without a location the server goes where its type is available | measured | 2a | `internal/api/cloud`: `TestServerCreateErrors` |
+| `networks` and `firewalls` in a create: `next_actions` an `attach_to_network` per network, an `apply_firewall` per firewall, then `start_server`; the answer's server in its networks, its firewalls `pending`; Hetzner's errors (below); `floating_ips` ignored | hcloud-go `hcloud/server.go` (`ServerCreateOpts.Networks`, `.Firewalls`); hcloud CLI `server create --network --firewall`; measured | 2a | `internal/api/cloud`: `TestServerCreateJoinsNetworksAndFirewalls`, `TestServerCreateNetworkAndFirewallErrors`, `TestCreatedMemberAttachesForAMoment`; live: `TestServersJoinNetworksAndFirewallsAtTheirCreate` |
 
 ## Primary IPs
 
@@ -77,7 +81,7 @@ it; "open" means the phase has not come yet. What never works is in
 |---|---|---|---|
 | Create in a `home_location` (no action) or for a server (`assign_floating_ip`, the server's location as home); read, update (name, description, labels), delete (204); `assign`, `unassign`, `change_protection` | hcloud-go `hcloud/floating_ip.go`; provider `hcloud_floating_ip`, `hcloud_floating_ip_assignment` | 2a | `internal/api/cloud`: `TestFloatingIPLifeCycle`, `TestFloatingIPAssignMoveAndUnassign` |
 | The JSON: `description` `null` when empty, `server` `null` when unassigned, `blocked` `false`, an IPv4's `dns_ptr` with Hetzner's default name, an IPv6's `[]`; a server's `public_net.floating_ips` lists its IPs | hcloud-go `hcloud/schema/floating_ip.go`; measured | 2a | `internal/api/cloud`: `TestFloatingIPLifeCycle`, `TestFloatingIPAssignMoveAndUnassign` |
-| `assign` to any server of the IP's network zone, running or not; on an assigned IP it is a move; the record names the server as soon as the action runs | measured | 2a | `internal/api/cloud`: `TestFloatingIPAssignMoveAndUnassign` |
+| `assign` to any server of the IP's network zone, running or not; on an assigned IP it is a move, with an `unassign_floating_ip` of the old server first; the record names the server as soon as the action runs | measured | 2a | `internal/api/cloud`: `TestFloatingIPAssignMoveAndUnassign` |
 | Lists filter by `name`, `label_selector` and sort by `id`, `created`; `/floating_ips/actions` and `/floating_ips/{id}/actions` | hcloud-go `hcloud/floating_ip.go` (`FloatingIPListOpts`) | 2a | `internal/api/cloud`: `TestFloatingIPLists` |
 | Errors with Hetzner's codes and texts, mostly details `null` (below) | measured | 2a | `internal/api/cloud`: `TestFloatingIPCreateErrors`, `TestFloatingIPLifeCycle`, `TestFloatingIPAssignHoldsOffAnotherAssign`, `TestFloatingIPUpdateChecksLabels` |
 | `change_dns_ptr` | hcloud-go `hcloud/floating_ip.go` (`ChangeDNSPtr`) | 2b | open |
@@ -93,7 +97,9 @@ it; "open" means the phase has not come yet. What never works is in
 | Lists filter by `name`, `label_selector` and sort by `id`, `name`, `created`; `/firewalls/actions` and `/firewalls/{id}/actions` | hcloud-go `hcloud/firewall.go` (`FirewallListOpts`) | 2a | `internal/api/cloud`: `TestFirewallLifeCycle` |
 | Errors with Hetzner's codes and texts (below) | measured | 2a | `internal/api/cloud`: `TestFirewallCreateErrors`, `TestFirewallAppliedToAServer`, `TestFirewallLabelSelectorFollowsTheServers` |
 | The rules work on the servers' public addresses: `in` closed but for the rules, `out` open until a rule names it, answers pass, Floating IPs too, also between servers of a project | Hetzner's documentation | 2a | `internal/picture`: `TestFirewallRulesetsMatchGoldenFiles`; live: `TestFirewallsFilterServersFloatingIPsAndTheHost` |
-| `firewalls` in a server's create request | hcloud-go `hcloud/server.go` (`ServerCreateOpts.Firewalls`) | 2a (with networks) | open |
+| `firewalls` in a server's create request | hcloud-go `hcloud/server.go` (`ServerCreateOpts.Firewalls`) | 2a | see Servers |
+| `pending` while an `apply_firewall` or `remove_firewall` naming the server runs; a label selector that takes a server (relabel, create) or lets it go records such an action after a while | measured | 2a | `internal/api/cloud`: `TestFirewallSelectorShowsPendingAsHetznerDoes`, `TestFirewallAppliedToAServer`; `internal/lab`: `TestRecordedActionAppearsLaterAndEnds` |
+| 50 firewalls per project (Hetzner: per account, its documentation; the error is not measured) | Hetzner's documentation | 2a | `internal/api/cloud`: `TestFirewallsPerProjectAreLimited` |
 
 ## Networks
 
@@ -107,7 +113,9 @@ it; "open" means the phase has not come yet. What never works is in
 | Errors with Hetzner's codes and texts (below) | measured | 2a | `internal/api/cloud`: `TestNetworkCreateErrors`, `TestNetworkSubnetsRoutesAndRange`, `TestAttachToNetworkErrors`, `TestServerJoinsAndLeavesANetwork` |
 | In the guest: the address as a `/32` by DHCP, the gateway on-link and the network's range through it, MTU 1450, no router and no name servers; a NIC attached to a running server works without a reboot | measured in a Hetzner guest | 2a | `internal/agent`: `TestPrivateNetworkDHCPGivesTheAddressAsHetznerDoes`; live: `TestPrivateNetworksConnectServersAndStayApart` |
 | Two networks with the same range, also of two projects, stay apart; no Cloud Firewall filters a private network | Hetzner's documentation | 2a | `internal/agent`: `TestPrivateNetworksWithTheSameRangeStayApart`; live: `TestPrivateNetworksConnectServersAndStayApart` |
-| `networks` in a server's create request; the metadata's `private-networks` | hcloud-go `hcloud/server.go` (`ServerCreateOpts.Networks`); measured | 2a-4 | open |
+| `networks` in a server's create request | hcloud-go `hcloud/server.go` (`ServerCreateOpts.Networks`); measured | 2a | see Servers |
+| The metadata's `private-networks` (a key of its own, `[]` without a network, not in the summary); a server without public addresses reaches the metadata service through its network (DHCP route `169.254.169.254/32`) | measured in Hetzner guests | 2a | `internal/picture`: `TestMetadataMatchesGoldenFile`, `TestDHCPMatchesGoldenFile`; `internal/agent`: `TestServerWithoutPublicAddressesGetsMetadataThroughItsNetwork`; live: `TestServersJoinNetworksAndFirewallsAtTheirCreate` |
+| `add_subnet` without `ip_range` when no `/24` is free; a network deleted while its action runs | measured | 2a | `internal/api/cloud`: `TestAddSubnetWithoutRangeTakesWhatIsFree`, `TestNetworkDeletedDuringItsActionAbortsIt` |
 
 ## Gaps of the old HLab
 
@@ -342,11 +350,10 @@ except where noted.
 | `DELETE /servers/{id}` with firewalls | the server leaves `applied_to` and `applied_to_resources`, without an action |
 | `POST /firewalls/{id}/actions/bogus` | 405, no body (HLab: 404 `not_found`, as for any unknown route) |
 
-Not measured: a server that is neither applied directly nor matched, in
-`remove_from_resources` (HLab: 404 `firewall_resource_not_found`, with
-the selector's text for a server); a server relabelled out of a selector
-while nothing else applies the firewall (HLab: it leaves without an
-action); the limit of 50 firewalls per account.
+A server that is neither applied directly nor matched, in
+`remove_from_resources`, and a server relabelled out of a selector were
+measured in 2a-4 (below); the limit of 50 firewalls per account is not
+measured.
 
 ### Private networks (2a-3)
 
@@ -403,9 +410,11 @@ deleted afterwards. HLab answers the same, except where noted.
 
 Deviations, all named in docs/servers.md: the guest's private NICs are
 `eth1` to `eth3` under Hyper-V; the seed's vendor-data brings a script
-that does what hc-utils does; load balancers come with phase 4. Not
-measured: `add_subnet` without a free `/24`, the delete of a network
-while an action works on it, a limit of networks per project (2a-4).
+that does what hc-utils does; load balancers come with phase 4. The
+first two of what was not measured then, `add_subnet` without a free
+`/24` and the delete of a network while an action works on it, were
+measured in 2a-4 (below); Hetzner's documentation names no limit of
+networks per project, and the lab has none.
 
 ### Metadata service (1b-2)
 
@@ -419,5 +428,83 @@ after the datacenters' removal (`GET /datacenters` answers 410).
 | `/hetzner/v1/metadata`, keys | `instance-id`, `hostname`, `region`, `availability-zone`, `local-ipv4` (`""`), `network-config`, `vendor_data`, `public-ipv4`, `public-keys`; **no `private-networks`** on a server without a network |
 | `network-config` | version 1, `eth0` with its MAC: `dhcp` for IPv4, the `::1` of the server's `/64` with gateway `fe80::1` and the IPv6 name servers |
 
-Still open, for 2a: HLab's summary carries `private-networks: []` on a server
-without a network, Hetzner's leaves the key out.
+The summary leaves `private-networks` out also for a server in networks
+(measured 2026-11-09, below).
+
+### Creates with networks and firewalls, and what 2a left open (2a-4)
+
+Measured on 2026-11-09 with the read-write token of the empty test project
+(servers `cx23` in `nbg1` and `fsn1`, most never started; two started for
+minutes, one of them without public addresses; networks, firewalls, a
+Floating IPv6). Everything was deleted afterwards. Hetzner answered 412
+`resource_unavailable` `"error during placement"` for `cx23` in `nbg1`
+for a while; the probe went to `fsn1`. HLab answers the same, except
+where noted.
+
+| Request | Answer |
+|---|---|
+| `POST /servers` with `networks` and `firewalls` | `next_actions`: `attach_to_network` (server, network) per network, `apply_firewall` (firewall, server, progress 10) per firewall, then `start_server`; the server has `private_net` (the first address of the last subnet) and its firewalls `pending` |
+| … the actions | attach and apply end 2 to 4 s before `create_server`, which took 12 to 29 s that day, also 13 to 20 s without networks (1b: 4 s; HLab keeps 4 s, and the attach and apply end after 3 s) |
+| … the members | the new server `attaching` for 1.2 s, then `ok` while its attach still runs |
+| … with labels a firewall's selector matches | its `apply_firewall` (firewall, server) starts when `create_server` ends (HLab: 4 s after the request) |
+| … `networks` `[1]` / `[n, n]` / a network without subnet / four / two that overlap / `[0]` / `["x"]` | 404 `not_found` `"unknown network with ID 1"` `{}` / 422 field `networks` `"Networks must be unique."` / field `networks` `"networks must have at least one subnetwork"` / 403 `resource_limit_exceeded` `"networks per resource limit reached"` `{}` / 422 `networks_overlap` `"network IP range overlaps with one of the server networks"` `{}` / 500 `server_error` `"internal server error"` / 422 `"failed to parse json"` |
+| … `firewalls` `[{"firewall": 1}]` / `[{}]`, `[{"firewall": 0}]` / twice / six / `[12]` | 404 `firewall_not_found` `"firewall not found"` `{}` / field `firewalls` `"Missing data for required field firewalls.firewall."` / `"Firewalls must be unique."` / 403 `resource_limit_exceeded` `"firewall limit on server exceeded"`, limit `firewalls_per_server_limit` / `"failed to parse json"` |
+| … five firewalls and labels a sixth's selector matches / a firewall without public addresses / `floating_ips` | 201, the selector gets no place / 201 / 201, ignored |
+| … the order | name and fields, type, image, SSH keys, networks, firewalls |
+| a relabel into a firewall's selector | for 2 s the server lists the firewall not at all, then an `apply_firewall` (firewall, server) runs 14 s and the server shows it `pending` |
+| a relabel out of the selector | for 1.7 s still `applied`, then a `remove_firewall` (firewall, server) runs 8 s, `pending`, then gone |
+| `set_rules`, `apply_to_resources` to a server / `remove_from_resources` | `pending` while the `apply_firewall` runs: 10 s and 8 s that day (2a-2: 4 to 5 s and 2.9 to 3.5 s; HLab keeps 3 s) / while the `remove_firewall` runs, 3.4 s |
+| `remove_from_resources` a server the firewall does not reach / the server ID 1 | 404 `firewall_resource_not_found` `"resource not found"`, `details` `null` / 422 field `remove_from[0].server.id` `"value required to be larger"` (HLab: 404 as for any missing server, a deviation the operator accepted: Hetzner seems to check a least ID) |
+| `POST`/`PUT /networks/{id}/actions/bogus`, `/123`, `/networks/actions/bogus`; the same for `firewalls`, `floating_ips`, `primary_ips` | 405, no body, `Allow: GET, HEAD` (HLab takes `DELETE` and `PATCH` to go the same way) |
+| `POST`/`PUT /servers/{id}/actions/bogus` / `POST /servers/{id}/actions/123` | 404 `"api route not found"` `null` / 404 `"404 Not Found"` `{}` |
+| `POST /load_balancers/1/actions/123`, `/certificates/1/actions/123` / `…/bogus`; volumes, images, placement groups | 405 / 404 `"api route not found"`; 404 (with their phases) |
+| a Floating IP moved to another server | an `unassign_floating_ip` (IP, old server) with the ID before the assign, running as long as the assign (6 s), not in the answer |
+| `add_subnet` without `ip_range` in a `/24` with a `/25` / a `/23` with a `/24` and a `/25` / a `/22` of four `/24` | 201, the free `/25` / 201, `10.71.1.128/25` / 422 `no_subnet_available` `"no subnet or IP available"` `null` |
+| `DELETE /networks/{id}` while its `add_route` runs | 204; the action ends with error `{"code": "aborted", "message": ""}` |
+| the members after another server's attach | `updating` from 3.5 s to 13.9 s (2a-3: from 1.8 to 2.9 s) |
+| the guest's `/hetzner/v1/metadata` with networks | no `private-networks` |
+| … `/hetzner/v1/metadata/private-networks` | a list as in 2a-3, `interface_num` 1 and 2 by the NICs; the order changes from one read to the next; without networks 200 `[]` |
+| a server without public addresses (Debian 13) | its lease adds `169.254.169.254/32` through the gateway to options 121 and 249; the metadata service answers it there; `network-config` `config: []`, `public-ipv4` `""`; cloud-init's Hetzner data source reads it so |
+
+Not measured, built as assumed: whether a selector applied anew, or a
+place that frees up, records an `apply_firewall` per server (HLab does,
+as for a relabel); `DELETE` and `PATCH` on an action (HLab answers them
+as `POST`).
+
+Measured afterwards on 2026-11-09 with the same token (a server never
+started; two started for minutes, one with IPv6 only; networks, a
+firewall, a Primary and a Floating IPv6, the Floating IP at Hetzner's
+monthly price of 1.00 € net). Everything was deleted afterwards.
+
+| Request | Answer |
+|---|---|
+| `DELETE /networks/{id}` while a server's `attach_to_network` to it runs | 204; the attach ends with error `{"code": "aborted", "message": ""}`; the server has no `private_net` |
+| a server in networks a and b, a detached, c attached, a attached again | `interface_num` a 1, b 2; then c 1, b 2; then a 3: each NIC keeps its number, a new one takes the lowest free |
+| a server with IPv6 only in a network (started) | its private lease has no route to `169.254.169.254`; it reaches the metadata service through its public NIC (below; HLab: not at all, roadmap 2a-6) |
+| `GET /servers/{id}/actions/999`, `/servers/1/actions/999`, `/servers/actions/999` / `…/bogus` | 404 `"action not found"` `{}` / 404 `"api route not found"` `null` |
+| `GET /networks/{id}/actions/999`, an action of another resource / `…/bogus` / `/networks/1/actions/999` (no such network) / `/networks/actions/bogus` | `"action with ID '999' not found"` / `"action with ID 'bogus' for network with ID '<id>' not found"` / `"network with ID 1 not found"` / `"action with ID 'bogus' not found"`, all `details` `null` |
+| `GET /firewalls/{id}/actions/999` / `…/bogus` (also under a missing firewall) / `/firewalls/1/actions/999` | `"action with ID '999' not found"` / `"action with ID 'bogus' not found"` / `"firewall with ID 1 not found"`, `null` |
+| `GET /floating_ips/{id}/actions/999` / `…/bogus`, `/floating_ips/actions/bogus` / `/floating_ips/1/actions/999`; the same for `primary_ips` | `"action with ID '999' not found"` / `"invalid action ID: 'bogus'"` / `"Floating IP with ID 1 not found"`, `"Primary IP with ID 1 not found"`, `null` |
+| `GET /networks/bogus`, `/floating_ips/bogus` / `/firewalls/bogus` / `/primary_ips/bogus` / `/servers/bogus` | 405, no body, `Allow: PUT, DELETE` / 404 `"firewall with ID 'bogus' not found"` / 404 `"404 Not Found"` `null` / 404 `"api route not found"` |
+
+### A server with IPv6 only (2a-4, for 2a-6)
+
+Read on 2026-11-09 in a Hetzner guest (`cx23`, Debian 13, `nbg1`, created
+with `enable_ipv4` false, IPv6 on, in a network; cloud-init's data source
+`DataSourceHetzner`). Hetzner gives such a server an IPv4 lease on its
+public NIC, only to reach Hetzner's own services; HLab gives it none, so
+it does not reach the metadata service (roadmap, must, 2a-6).
+
+| What | Answer |
+|---|---|
+| the public NIC's DHCPv4 lease (dhcpcd) | `ip_address=100.64.245.166`, `subnet_cidr=32`, `routers=172.31.1.1`, `dhcp_server_identifier=172.31.1.1`, `dhcp_lease_time=86400`; options 121 and 249 `172.31.1.1/32 0.0.0.0 169.254.169.254/32 172.31.1.1 188.40.24.200/32 172.31.1.1`; no MTU, no name servers |
+| `188.40.24.200` | `dhcp2.your-server.de` by its reverse name: Hetzner's DHCP server |
+| the guest's IPv4 routes | `169.254.169.254 via 172.31.1.1 dev eth0`, `172.31.1.1 dev eth0 scope link`, `188.40.24.200 via 172.31.1.1 dev eth0`, all with the source `100.64.245.166`; no default route (the classless routes win over `routers`, RFC 3442); the private network's routes as usual |
+| the guest's addresses | `eth0` `100.64.245.166/32` and the `::1` of its `/64`; the private NIC its `/32` |
+| `/hetzner/v1/metadata` | `public-ipv4: ""`, `local-ipv4: ""`; `network-config` version 1 with `eth0` (its MAC): `type: dhcp`, `ipv4: true`, and `type: static`, the `::1/64`, `ipv6: true`, `gateway: fe80::1`, `dns_nameservers` Hetzner's two IPv6 resolvers |
+| `/hetzner/v1/metadata/private-networks` | its network, as for any server |
+| the private lease | no route to `169.254.169.254`, unlike a server without public addresses |
+
+Not read: whether `100.64.245.166` reaches anything but these routes
+(the guest has no route for it), and whether the address stays the same
+across reboots.

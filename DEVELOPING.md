@@ -258,22 +258,32 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
 - **`Lab.ActAll`** runs several rows on one resource in one transaction,
   each with its own body (`lab.Row`), for a command that answers a list of
   actions (a firewall's `apply_to_resources`: one action per resource it
-  names). `Lab.RecordAction` records an action that is finished already,
-  in a change that is no action (a server that comes under a firewall's
-  label selector when it is relabelled).
+  names). `Lab.RecordActionLater` records, from a change that is no
+  action, an action that appears after a while, runs for a while and
+  changes nothing on the machine (a server that a firewall's label
+  selector takes when it is relabelled: Hetzner's `apply_firewall`).
 - **`Lab.Create`** records a new resource and runs its first rows in the same
   transaction (a server's `create` and `poweron`, a Primary IP's `assign`),
   so a resource never stays without the action that makes it. If the record
-  or a row's plan fails, nothing changes. The API maps the errors of both
-  with `actError`.
+  or a row's plan fails, nothing changes. Its `answer` reads the records as
+  the rows left them, still in the transaction, for the API's answer (a new
+  server's networks and `pending` firewalls); once the transaction ends,
+  the steps may change them. A row may name another resource's table and
+  ID (`Row.Table`, `Row.ID`): a server's create applies its firewalls, whose
+  actions name the firewall first; the row's plan finds the new resource
+  in `Request.Created`. The API maps the errors with `actError`.
 - **Flags.** While an action's steps run or wait in a queue, the action flags
   its resource and the resources in the plan's `Locks`. Flags live in memory
   only, because after a restart no action is running; they count the actions
   that hold them. A row marked `Unflagged` (such as `change_protection`)
   neither sets nor checks flags. `Lab.ChangeIdle` is a `Change` that refuses a
   flagged resource, for changes that are no action (deleting a Primary IP
-  while it is assigned). Note that `locked` in Hetzner's server JSON is an
-  administrative lock, not a flag.
+  while it is assigned). `Lab.ChangeAborting` is a `Change` that deletes a
+  resource and then cancels the actions that flag or name it, which end
+  with Hetzner's error `aborted` (a network deleted while a route is
+  added or a server attached).
+  Note that `locked` in Hetzner's server JSON is an administrative lock,
+  not a flag.
 
   | Row or table | Its resource flagged? | Busy resource | `Locks` busy |
   |---|---|---|---|
@@ -338,9 +348,11 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   Hetzner's from `clock.go`, scaled by the time scale; the handler reads
   the notes that show now with `Lab.Notes(kind, owner)` and lets a note
   win over the status the records give. A note may carry what the API
-  needs to show a resource that is gone (the member that left). A
-  firewall's `pending` after a label selector takes a server is meant to
-  be one too. Tests use a clock of their own and a time scale above 0.
+  needs to show a resource that is gone (the member that left), or that
+  hides one for a while (a firewall that a label selector takes, before
+  its `apply_firewall` appears). Notes keep fractions of a second, which
+  `Lab.Now` does not. Tests use a clock of their own and a time scale
+  above 0.
 - **Restart.** Actions that were running when HLab stopped end with an error when it
   starts again.
 - **Size.** Each project keeps its newest `lab.MaxFinishedActions` (1 000) finished
@@ -391,7 +403,11 @@ the same later.
   on the real API (`compat/requirements.md`). The lab does the same:
   1. The route (`API.ServeHTTP`). A path that no route takes is 404 `not_found`
      "api route not found", even without a token. The same happens when a path
-     segment named `id` or `*_id` is not a valid ID.
+     segment named `id` or `*_id` is not a valid ID, unless the route has an
+     answer of its own for that (`API.AnswerInvalidID`, after the token):
+     Hetzner answers `GET /networks/x` and `/floating_ips/x` with a 405
+     without a body, `/firewalls/x` and `/primary_ips/x` with texts of
+     their own (measured 2026-11-09).
   2. The bearer token (`API.admit`). A missing or unknown token is 401
      `unauthorized`, without details.
   3. From here on, every answer has an `X-Correlation-Id` header.
@@ -404,6 +420,13 @@ the same later.
   6. An injected fault, if the project has one.
   7. The method. A known path with a method it does not take is 405
      `method_not_allowed`, with an `Allow` header. Otherwise the handler runs.
+     Another method than GET on a resource's single action, which is also
+     a command the resource lacks, differs per resource on Hetzner
+     (measured 2026-11-09, `registerOtherActionMethods`): networks,
+     firewalls, Floating IPs and Primary IPs answer 405 without a body and
+     with `Allow: GET, HEAD`, also under `/<things>/actions/…`; servers 404
+     `"404 Not Found"` for an ID and `"api route not found"` for anything
+     else.
 - **Handlers** are `web.HandlerFunc`. A handler gets a `*web.Request`, which holds
   the HTTP request, the `Caller` (project and permission) and the answer's `Header`.
   It returns a status and a body, which the API writes as JSON, or an error.

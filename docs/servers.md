@@ -11,9 +11,22 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
 `internal/lab/servers.go` does the slow part with IDs, through `system`.
 
 - **Create**: the handler records the server with its Primary IPs (status
-  `initializing`) and runs the table's rows `create` (`create_server`) and,
-  unless `start_after_create` is false, `poweron` (`start_server`, the
-  answer's `next_actions`), all in one `Lab.Create`. The create's steps are
+  `initializing`), puts it into the firewalls its request names and runs
+  the table's rows `create` (`create_server`), an `attach_at_create`
+  (`attach_to_network`) per network, an `apply_at_create` of the
+  firewalls' table (`apply_firewall`) per firewall and, unless
+  `start_after_create` is false, `poweron` (`start_server`), all in one
+  `Lab.Create`; the answer's `next_actions` lists them in this order, as
+  Hetzner's does, and its server shows the networks and the firewalls
+  `pending`. Hetzner checks the networks after the SSH keys: each must be
+  the project's and have a subnet, at most three, their ranges apart
+  (the network ID 0 fails Hetzner with a 500, and the lab's too); then the
+  firewalls: each the project's, at most five; a label selector's
+  firewall takes a place only where those leave one. A field
+  `floating_ips` is ignored, as Hetzner has none. The attach and the
+  apply run beside the create and only wait Hetzner's time: the create's
+  VM gets the NICs, and its pictures the firewalls, before the first
+  start. A member that joins in the create is `attaching` for 1.2 s. The create's steps are
   `Machine.CreateServer`; its `Machine.BuildServer` takes the system image from the
   cache, makes the differencing disk, the
   seed and the VM, and sends the appliance the pictures with the server. If
@@ -96,7 +109,8 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
   keys), `user-data`, `vendor-data` (root's login, the same text the metadata
   service answers) and `network-config` version 2: IPv4 by DHCP and IPv6 as
   `::1` of the `/64` with `fe80::1`, as on Hetzner, always with the lab's
-  resolvers. Its files are JSON, which is YAML too: cloud-init's YAML 1.1
+  resolvers; none for a server without public addresses, as Hetzner's
+  metadata has none for it. Its files are JSON, which is YAML too: cloud-init's YAML 1.1
   parser reads an unquoted MAC of digits as a number.
 
 **The image cache.** The catalog names each system image's source: the
@@ -127,8 +141,10 @@ The handlers in `internal/api/cloud/floating_ips.go` and
 - **Assign** (`assign_floating_ip`, resources the IP and the server) goes
   to any server of the project in the IP's network zone, running or not;
   another zone is Hetzner's 422 `service_error`, a server whose create
-  runs 423. On an assigned IP it is a move; to the IP's own server it ends
-  at once. It flags the IP: a second assign meanwhile is 423 with
+  runs 423. On an assigned IP it is a move: as on Hetzner, an
+  `unassign_floating_ip` of the old server comes first, runs as long as the
+  assign and is not in the answer (row `unassign_for_move`). To the IP's
+  own server it ends at once. It flags the IP: a second assign meanwhile is 423 with
   Hetzner's own text, but it does not lock the server.
 - **Unassign** (`unassign_floating_ip`) takes no flag, as Hetzner runs it
   beside an assign; of an unassigned IP it is 422 `service_error`.
@@ -172,17 +188,31 @@ pictures and wait Hetzner's 3 s and 1 s. What Hetzner answers is measured
   `remove_firewall` that names the firewall and the server, or the label
   selector by an ID of its own; after `set_rules`, an `apply_firewall`
   names the servers. They take no flag. The steps send the `ruleset`
-  picture; meanwhile a server's `public_net.firewalls` shows the firewall
-  `pending`, then `applied`.
+  picture; a server's `public_net.firewalls` shows a firewall `pending`
+  while an `apply_firewall` or `remove_firewall` that names both runs,
+  as on Hetzner, also one that takes it away, then `applied` or nothing.
+  `remove_from_resources` of a server the firewall does not reach is 404
+  `"resource not found"`.
 - **Label selectors** follow the servers: after a server's create, its
   relabel, a remove or a firewall's delete, `refreshFirewallSelectors`
   brings the servers a selector holds (`applied_to_resources`) up to date
-  in the same transaction, and records an `apply_firewall`, ended, for
-  each server that comes under it. A server applied directly is not held
+  in the same transaction; the data plane has the change at once. A
+  server that comes or leaves shows it as Hetzner does
+  (`noteSelectorChange`): for 2 s the firewall is not listed yet (one
+  that leaves: for 1.7 s still `applied`), then an `apply_firewall` (a
+  `remove_firewall`) naming the firewall and the server runs for 14 s
+  (8 s) and the server shows it `pending`; a server in its create gets it
+  after the create's 4 s. Notes (`Lab.AddNote`) give the statuses and
+  `Lab.RecordActionLater` the action. A server applied directly is not held
   by the firewall's selector: an apply to a selected server moves it, with
   a `remove_firewall` naming the selector first.
 - **Limits:** 5 firewalls per server. An apply or create beyond it is 403;
   a selector skips a server that has five, and takes it once one goes.
+  50 firewalls per project: **a deviation from Hetzner**, which allows 50
+  per account across its projects (its documentation); in the lab each
+  project is a fresh account, so that projects run side by side. The
+  51st is 403 `resource_limit_exceeded`, `"firewall limit exceeded"`,
+  limit `firewalls` (Hetzner's error is not measured).
 - **Delete** refuses a firewall applied to a server directly (422
   `resource_in_use`) and deletes one applied only through selectors. A
   server's delete takes it out of every firewall, without an action.
@@ -199,8 +229,6 @@ pictures and wait Hetzner's 3 s and 1 s. What Hetzner answers is measured
   443, where an `out` rule such as "only TCP 443" lets it through. In the
   lab the API is on 8080 and 8081 of the host, and such a rule must not
   cut a server off from it.
-- **Not yet:** `firewalls` in a server's create request (with networks,
-  2a).
 
 ## Private networks
 
@@ -226,7 +254,9 @@ measured (`compat/requirements.md`, Networks).
 - **Actions** (`add_subnet`, `delete_subnet`, `add_route`,
   `delete_route`, `change_ip_range`, `change_protection`) are queued per
   network: Hetzner takes a second one while the first runs and runs it
-  after. `add_subnet` without a range takes the first free `/24`;
+  after. `add_subnet` without a range takes the first free `/24`, else
+  the first free block of the next size down (Hetzner gave the free `/25`
+  of a full `/24`), else 422 `no_subnet_available`;
   `delete_subnet` refuses a subnet that holds a server's address;
   `change_ip_range` only extends (the same first address, a shorter
   prefix) a network without servers. Subnet and range actions end at
@@ -256,12 +286,14 @@ measured (`compat/requirements.md`, Networks).
   one whose alias IPs change `updating`. As on Hetzner, a server that
   leaves (a detach, its delete) stays as `detaching` for 5 s, and the
   other servers show `updating` from 2 s after a server joins or leaves,
-  for 4 s: `Lab.AddNote` keeps such statuses in memory for a while. Load
+  for 10 s: `Lab.AddNote` keeps such statuses in memory for a while. Load
   balancers come with phase 4.
 - **Delete** refuses a protected network (423) and deletes one with
   servers in it, as Hetzner does: they leave it at once, without an
   action of theirs, and their NICs leave the VMs in the background
-  (`Machine.DetachNICsLater`).
+  (`Machine.DetachNICsLater`). An action that runs on the network, a
+  server's attach among them, ends with Hetzner's error `aborted`
+  (`Lab.ChangeAborting`).
 - **In the data plane** (docs/appliance.md) each network is a VLAN on
   the private switch and a VRF in the appliance with the gateway; a
   guest gets its address by DHCP as a `/32`, the gateway on-link and the
@@ -278,9 +310,28 @@ measured (`compat/requirements.md`, Networks).
   Hetzner's KVM names them `enp7s0` and up; and two guests in one VLAN
   could reach each other directly if one set that up by hand, which
   Hetzner's network does not allow (the lab's DHCP routes everything
-  through the gateway).
-- **Not yet:** networks in a server's create request and the metadata's
-  `private-networks` (2a-4).
+  through the gateway). The script waits up to 30 s for the leases of the
+  NICs a server boots with, so that the user-data's commands find the
+  networks up, as hc-utils has them on Hetzner.
+- **The metadata** (`picture.Metadata`): `/hetzner/v1/metadata/private-networks`
+  lists the server's networks with Hetzner's keys in Hetzner's order (`ip`,
+  `alias_ips`, `interface_num`, `mac_address`, `network_id`,
+  `network_name`, `network`, `subnet`, `gateway`), `[]` without one; the
+  summary `/hetzner/v1/metadata` leaves it out, as Hetzner's does. Each NIC
+  keeps its `interface_num` while others come and go, and a new one takes
+  the lowest free number, as on Hetzner (`ServerPrivateNet.Interface`).
+  Two deviations: the lab sorts the list by that number, where Hetzner's
+  order changes from one read to the next; and a MAC of digits only is
+  quoted in the YAML, as in `network-config`, because YAML 1.1 (cloud-init
+  among its readers) reads it as a number.
+- **A server without public addresses** reaches the metadata service
+  through its networks, as on Hetzner: its lease has the route
+  `169.254.169.254/32` through the gateway, the service listens in each
+  network's VRF and knows the server by the VRF and its address, and
+  `network-config` has no NIC. The lab gives the route only to a server
+  without IPv4 and IPv6, as measured: Hetzner's server with IPv6 only
+  has none in its private lease either (it reaches the service through a
+  public IPv4 lease of its own, which the lab lacks: roadmap, 2a-6).
 
 ## Projects, tokens, faults
 

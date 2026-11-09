@@ -243,30 +243,34 @@ that found it (must, should, optional) and the phase that closes it.
   timings of later phases and `ServerCreateStart`, which nothing uses (the
   start after a create waits `PowerOn`); not every timing says when it
   was measured.
-- **optional, 2c:** a Floating IP's move does not add the
-  `unassign_floating_ip` of the old server that Hetzner lists among the
-  IP's actions; no tool reads it.
-- **optional, 2c:** Hetzner shows a firewall `pending` on a server for 3
-  to 9 s after a label selector takes it, and for 4 to 5 s after a
-  `set_rules` whose actions have ended; the lab shows `pending` only while
-  its own action runs, and a selector's server `applied` at once. No tool
-  reads `pending`.
-- **optional, 2c:** not measured: what Hetzner answers for removing a
-  server that the firewall does not reach at all, and whether it records
-  an action when a relabel takes a server out of a selector; the limit of
-  50 firewalls per account (the lab has none).
 - **optional, 2a:** a type `holds` that sets and frees an action's flags
   and queues in one place (`Lab.start`, `Lab.end`); worth it once `start`
   grows.
-- **2a:** the metadata summary says `private-networks: []` on a server
-  without a network, where Hetzner leaves it out.
 - The firewall rules do not block the lab's own range as a source on
   8090; the appliance's ruleset keeps the servers off it.
+- **Accepted** (deviations from Hetzner the operator kept, 2a-4): 50
+  firewalls per project, where Hetzner allows 50 per account; a
+  `remove_from_resources` of the server ID 1 is 404 as for any missing
+  server, where Hetzner answers 422 "value required to be larger"; a MAC
+  of digits only is quoted in the metadata's YAML; the metadata's
+  `private-networks` sorted by `interface_num`; `DELETE` and `PATCH` on
+  an action and a selector's per-server actions on a new selector, built
+  as assumed (not measured).
+- **must, 2a-6:** a server with IPv6 only reaches no metadata service.
+  Hetzner gives it a DHCPv4 lease on its public NIC, an address of
+  `100.64.0.0/10` with routes only to `169.254.169.254` and its DHCP
+  server, and names that DHCP in the server's `network-config`; the lab
+  gives it no IPv4 at all (measured 2026-11-09, `compat/requirements.md`,
+  "A server with IPv6 only").
+- **2a-5:** the lab waits Hetzner's times (`clock.go`, `Lab.Sleep`,
+  `time_scale`) and shows statuses for a while after a change (notes:
+  members, a selector's firewall); 2a-5 takes the waits out, so that an
+  action ends when its work is done.
 
 ### Comes with phase X
 
-- **2a:** volumes, networks, firewalls and placement groups in a server's
-  create request are ignored until then.
+- **2b:** volumes and placement groups in a server's create request are
+  ignored until then.
 - **2b:** `change_dns_ptr` (DNS); unbound's configuration and the uplink's
   unreachable route name the default ranges, and the ranges become
   settings with a picture.
@@ -298,9 +302,57 @@ that found it (must, should, optional) and the phase that closes it.
 | 2a-1 | Floating IPs (IPv4, IPv6 `/64`) with Hetzner's actions, routes in the `links` picture; new pictures after every undo (a failed server create, a Primary IP's assign and unassign); a server's create checks its location against its type; `l.read()`, `planFunc` | done |
 | 2a-2 | firewalls with Hetzner's actions, limits, texts and label selectors that follow the servers, in the `ruleset` picture (a chain per server and direction, a chain per firewall and direction, verdict maps); `Lab.ActAll`, `lab.Row`, `Lab.RecordAction`; a lab address nobody holds answers nothing, as on Hetzner (blackhole route in the `links` picture) | done |
 | 2a-3 | private networks with Hetzner's actions, limits, texts and members; `attach_to_network`, `detach_from_network`, `change_alias_ips` with NIC hot-plug; the switch `HLab-Private`, a VLAN and a VRF per network, DHCP per network; the guest's private NICs by the seed's vendor-data; `Lab.AddNote` for statuses Hetzner shows for a while | done |
+| 2a-4 | networks and firewalls in a server's create; the metadata's `private-networks`, and the metadata service for a server without public addresses; a firewall's `pending` and a selector's actions as Hetzner shows them; Hetzner's answers to unknown actions and to IDs that are no number; the unassign of a Floating IP's move; `add_subnet` without a free `/24`; a network's delete aborts its actions; a private NIC keeps its number (state version 2); 50 firewalls per project; the smoke test `examples/tofu-2a` | done |
 
-Next: 2a-4, networks, firewalls and Floating IPs in a server's create, the
-metadata's `private-networks`.
+Next: 2a-5, the lab without Hetzner's waits; 2a-6, IPv4 for a server
+with IPv6 only; then 2a-R, the review of phase 2a.
+
+### What 2a-4 brought
+
+- **A server's create** takes `networks` and `firewalls` as Hetzner does,
+  measured on 2026-11-09 (`compat/requirements.md`, 2a-4): its checks and
+  texts, `next_actions` with an `attach_to_network` per network and an
+  `apply_firewall` per firewall before the start, the answer's server in
+  its networks with its firewalls `pending`; the VM has its NICs and the
+  firewalls hold from the first boot. Floating IPs have no field in the
+  create, also on Hetzner. `Lab.Create` has an `answer` that reads the
+  records in its transaction, and a row may run on another resource's
+  table (`Row.Table`).
+- **The metadata:** `private-networks` with Hetzner's keys, `[]` without a
+  network, never in the summary; a server without public addresses
+  reaches the service through its network: a DHCP route to
+  `169.254.169.254`, the service in each VRF (`tcp_l3mdev_accept`), no
+  public NIC in its `network-config`. The seed's script waits for the
+  private leases, so that the user-data's commands find them.
+- **Firewalls:** `pending` while an apply or remove that names the server
+  runs, also a remove; a label selector that takes a server or lets it go
+  records an `apply_firewall` or `remove_firewall` after Hetzner's delay
+  (`Lab.RecordActionLater`, notes for the time before); 50 firewalls per
+  project; a remove of a server the firewall does not reach answers
+  Hetzner's text.
+- **Unknown actions** answer per resource as Hetzner does: another
+  method than GET 405 without a body for networks, firewalls, Floating
+  IPs and Primary IPs, 404 for servers; a GET of a missing action, or of
+  an ID that is no number, each resource's own text; a GET of a
+  resource whose ID is no number too (`API.AnswerInvalidID`).
+- **The state** is version 2: a private NIC keeps its number
+  (`interface_num`) while others come and go, as on Hetzner; the
+  migration numbers older NICs in their order.
+- **Floating IPs:** a move records the `unassign_floating_ip` of the old
+  server, as Hetzner does.
+- **Networks:** `add_subnet` without a range takes a smaller free block
+  when no `/24` is free; a delete while an action runs on it, a server's
+  attach among them, aborts it (`Lab.ChangeAborting`); other members show
+  `updating` for 10 s.
+- **Smoke tests:** `examples/tofu-2a` (network, subnet, firewall, Floating
+  IP, two servers) and the hcloud CLI's commands of 2a.
+- **Measured live:** both servers of the new live test joined their
+  network at the create; the one without public addresses read its
+  metadata through the network.
+- The appliance changed (the agent, the ruleset): `bin/dev appliance`
+  before `bin/dev itest`; an installed HLab updates its appliance at the
+  next start. `state.json` moves to version 2: an older hlabd refuses it
+  (`state.json.v1` stays).
 
 ### What 2a-3 brought
 

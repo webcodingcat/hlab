@@ -23,7 +23,7 @@ and the diff shows what changed.
 | `links` | the four NICs by MAC (`link`, `public`, `private`, `uplink`), VRFs, VLANs, addresses, routes, sysctls | netlink: adds what is missing, removes what the picture lacks |
 | `ruleset` | the whole nftables ruleset as text | `nft -f`: all or nothing |
 | `dhcp` | a dnsmasq configuration per device it serves: `public` and each private network's VLAN | writes each, checks them all with `dnsmasq --test`, restarts `hlab-dnsmasq@<device>` for each that changed and stops those of devices the picture lacks |
-| `metadata` | the metadata service's answers per server, with the server's addresses | serves them on `169.254.169.254:80` |
+| `metadata` | the metadata service's answers per server, with the server's public addresses and its private ones with their VRFs | serves them on `169.254.169.254:80` |
 
 **The address plan** as the pictures use it: the host link `198.18.0.0/29` and
 `2001:db8:0:ffff::/64` (host `.1`/`::1`, appliance `.2`/`::2`, `.3` the source for
@@ -101,7 +101,10 @@ the ruleset accepts DHCP from `vrf-net-*` and forwards `vrf-net-*` to
 its own, bound to its VLAN (one instance's leases would mix two networks
 with the same addresses): a server's address as a `/32` for a day, option
 121 with the gateway on-link and the range through it, MTU 1450, and
-neither a router nor name servers, as on Hetzner.
+neither a router nor name servers, as on Hetzner. A server without
+public addresses (the dnsmasq tag `private-only`) also gets the route
+`169.254.169.254/32` through the gateway: the VLAN holds that address
+too, and the ruleset lets TCP 80 to it in from `vrf-net-*`.
 
 **Redirects stay off** on every interface (sysctl in the image and per interface in
 the `links` picture): a router that sends ICMP redirects teaches servers to reach
@@ -129,7 +132,11 @@ each other past the firewalls.
   neighbors keep the old ones for seconds.
 - **The metadata service** tells servers apart by the request's source address.
   It listens with `IP_FREEBIND`, because `169.254.169.254` on `lo` comes with the
-  first `links` picture.
+  first `links` picture. With `net.ipv4.tcp_l3mdev_accept` (the `links`
+  picture) its listener in the main VRF takes connections from the
+  networks' VRFs too; the kernel binds each to its VRF, which the service
+  reads (`SO_BINDTOIFINDEX`) to tell apart two servers with the same
+  address in two networks.
 - It decides nothing: what the appliance does comes from the pictures. After a
   restart it has none and reports none; hlabd sends all of them again.
 
