@@ -50,8 +50,9 @@ file named there.
 - The agent applies whole pictures and decides nothing; a picture changes only
   through `internal/picture` and its golden files (docs/appliance.md).
 - The appliance holds only Debian packages and the agent (docs/appliance.md).
-- Code holds the lab's mutex only between calls to the system, and across such a call
-  it keeps IDs, not records (Concurrency).
+- Code holds the lab's mutex only between calls to the system, so that no request
+  waits behind a VM's slow call, and across such a call it keeps IDs, not records
+  (Concurrency).
 - No cgo in the binaries: everything builds in WSL2 for Windows (docs/tools.md).
 - A new dependency needs a reason in the dependency table (Dependencies).
 - Hetzner behaviour first: answers, status codes and error codes follow the real API;

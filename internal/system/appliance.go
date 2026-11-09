@@ -130,7 +130,9 @@ func (s *System) NewAppliance(spec ApplianceSpec, timings ApplianceTimings, logg
 // Start takes over the appliance if it runs and its agent answers, as after
 // a crash of hlabd; otherwise it starts it anew. Then it sends every
 // picture and starts the watchdog. It reports whether it took the
-// appliance over: that one may run an older release.
+// appliance over: that one may run an older release. An appliance it
+// started anew and that then fails is shut down again, so that no VM is
+// left running that nobody stops.
 func (a *Appliance) Start(ctx context.Context, pictures Pictures) (takenOver bool, err error) {
 	a.mu.Lock()
 	a.pictures = pictures
@@ -144,11 +146,14 @@ func (a *Appliance) Start(ctx context.Context, pictures Pictures) (takenOver boo
 			return false, err
 		}
 		if err := a.waitForAgent(ctx); err != nil {
-			return false, err
+			return false, errors.Join(err, a.Stop(context.WithoutCancel(ctx)))
 		}
 		a.logger.Info("the appliance's agent answers", "vm", a.spec.VM, "took", time.Since(started).Round(time.Millisecond))
 	}
 	if err := a.sendAll(ctx); err != nil {
+		if !takenOver {
+			err = errors.Join(err, a.Stop(context.WithoutCancel(ctx)))
+		}
 		return takenOver, err
 	}
 	a.logger.Info("the appliance is ready", "vm", a.spec.VM, "took", time.Since(started).Round(time.Millisecond))

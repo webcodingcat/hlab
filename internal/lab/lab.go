@@ -276,7 +276,8 @@ func (l *Lab) Flush() error {
 }
 
 // Now returns the time as the API shows it: UTC, in whole seconds. Records
-// that the api packages create take it as their time of creation.
+// that the api packages create take it as their time of creation; it is
+// for timestamps only, never for waiting.
 func (l *Lab) Now() time.Time {
 	return l.now().UTC().Truncate(time.Second)
 }

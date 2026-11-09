@@ -4,6 +4,9 @@
 recipe for what you add (Recipes, at the end); the other sections and the files
 under `docs/` are reference, read when you work on their part.
 
+Section names in parentheses, such as (The state), point to the section of this file
+that explains more; a file name in them, such as (docs/tools.md), to that file.
+
 This file explains how the code is laid out, which rules hold it together and how to
 work on it (Recipes). CLAUDE.md lists the rules that are easy to break,
 [STYLE.md](STYLE.md) has the coding standards, and
@@ -22,9 +25,6 @@ each part does in detail is in the files under `docs/`:
   appliance's build.
 - [docs/tools.md](docs/tools.md): what a developer installs; lint, the tests,
   the live tests, the dev loop, the installer, the builds.
-
-Section names in parentheses, such as (The state), point to the section of this file
-that explains more; a file name in them, such as (docs/tools.md), to that file.
 
 ## Words
 
@@ -45,6 +45,12 @@ Words this file uses; the sections in parentheses explain more.
 | NRPT | Windows' Name Resolution Policy Table: sends the lab's DNS names from the host to the appliance (docs/hyperv.md) |
 | VLAN, VRF | a private network is a VLAN on the switch `HLab-Private` and a VRF (a routing table of its own) in the appliance, so networks never see each other |
 | conntrack | the Linux kernel's table of connections; the firewall pictures let answers through by it |
+| action | Hetzner's record of a slow command (`stop_server`), with its status; the lab runs one as a plan and steps (Actions) |
+| plan | an action's quick part, in the request's transaction: it checks the request and changes the records |
+| steps | an action's slow part, in a goroutine: the work on the machine (VMs, pictures) |
+| undo | what takes a plan's quick changes back when the steps fail |
+| Tx, Kind | a transaction on the state (`state.Tx`) and a kind of record in it (`state.Kind`, The state) |
+| `Lab`, `Machine` | `Lab` owns the state, the actions and their flags; `Machine` (`Lab.Machine()`) does the work on the machine through `system` (Actions) |
 
 ## A request's path
 
@@ -92,11 +98,7 @@ way their rule applies from their first line of code.
 - a package is missing from the table.
 
 The "May import" column names packages by their path below `internal/`. "anything"
-means the row has no limit. Outside modules are not in it (Dependencies): so
-`schema` there is HLab's own `internal/schema`, not `hcloud-go`'s. The layer
-test checks only this module's packages, so importing `hcloud-go`'s `schema`
-needs no row; it is what the API uses until `internal/schema` exists (The
-APIs, JSON types).
+means the row has no limit.
 
 | Package | Job | May import |
 |---|---|---|
@@ -127,10 +129,15 @@ APIs, JSON types).
 | `internal/vhdx` | (later) the page 83 disk ID in a VHDX's metadata | – |
 | `internal/imagefmt` | disk image formats without outside tools: reading qcow2, the footer of a fixed VHD; (later) detecting formats, unpacking | – |
 | `internal/catalog` | server types, locations, load balancer and box types, prices, ISOs, system images; built in, a user file overrides | – |
-| `internal/config` | `hlab.yaml`: ranges, overcommit, deadlines, ports | – |
+| `internal/config` | `hlab.yaml`: ports, the shutdown timeout, the room's reserves | – |
 | `internal/schema` | (later) models generated from Hetzner's spec where `hcloud-go/schema` has gaps | – |
 | `internal/spectest` | tests only: checking answers against Hetzner's spec | – |
 | `itest` | tests only: the live tests (build tag `live`) | – |
+
+**`schema`, twice.** Outside modules are not in the table (Dependencies), so
+`schema` in it is HLab's own `internal/schema`, which does not exist yet.
+The API uses `hcloud-go`'s `schema` until then (The APIs, JSON types); the
+layer test checks only this module's packages, so that needs no row.
 
 What the layers mean:
 
@@ -148,10 +155,9 @@ The layer test checks production code only. Tests may import fakes and helpers.
 
 `internal/state` holds the records. `internal/lab` owns them.
 
-- **Kinds.** Each kind of record (`state.Projects`, `state.Tokens`,
-  `state.SSHKeys`, `state.Actions`, `state.Servers`, `state.PrimaryIPs`,
-  `state.FloatingIPs`, `state.Firewalls`, `state.Networks`) is a `state.Kind[R]`. It knows its record type `R`
-  and its name in the file.
+- **Kinds.** Each kind of record (`state.Servers`, `state.Networks`; the
+  list `kinds` in `internal/state/state.go` has them all) is a
+  `state.Kind[R]`. It knows its record type `R` and its name in the file.
   The lab's own records, which the API does not show, are in `state.Lab`
   (read them with `tx.Lab()`). Records hold plain data: no interfaces and no
   unexported fields.
@@ -213,10 +219,13 @@ The layer test checks production code only. Tests may import fakes and helpers.
   image loads, the watchdog's notes) are read and changed only while holding
   the lab's mutex. The watchdog and the room check read them together with
   the state and the flags, and a second mutex would add a lock order to
-  keep. Two kinds of lock are held across calls to the system and are
-  therefore separate: `Machine.pictureMu`, which keeps the pictures in order,
-  and the image cache's load lock per image (`Machine.imageLoads`). Neither
-  is ever taken while holding the lab's mutex.
+  keep.
+- **Two locks are held across calls to the system,** so they are separate
+  from the lab's mutex and never taken while holding it:
+  - `Machine.pictureMu` keeps the pictures in order: the newest state's
+    pictures go out one after another;
+  - the image cache's load lock per image (`Machine.imageLoads`) lets one
+    request load an image while others wait for it.
 - Every change runs in `lab.Change(func(tx *state.Tx) error)`. If the function
   returns an error, the old state stays; otherwise the new state is saved. Reads run
   in `lab.View`, which changes nothing. A `View` whose function always returns
@@ -331,12 +340,14 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   quick change, `want_running` false, is in the state) and waits in the
   server's queue; its steps start when the `poweron` ends. A Primary IP's
   `assign` to that server meanwhile locks the server: it is 423 while
-  the server is flagged.
+  the server is flagged. If the `poweron`'s steps fail, its `Undo`
+  (`want_running` false) is skipped, as it is marked `UndoIfLast` and the
+  `poweroff` waits behind it: that plan has set what it needs already.
 
   An action that locks a resource of a `Queued` table (a Primary IP's
   assign locks its server) also heads that resource's queue: the
   resource's own actions sent meanwhile wait behind it. Hetzner's answer
-  there is not measured.
+  there is not measured (docs/roadmap.md, Known gaps).
 - **No made-up times.** An action ends as soon as its work is done (the
   VM, the disk, the pictures sent to the appliance); the lab never waits
   to copy a time that Hetzner takes, and a status such as `pending`,
@@ -359,7 +370,8 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
     server's attach runs in the server's queue, so the undo of an
     `add_subnet` keeps a subnet in which a server now has an address.
   - **After an undo the appliance gets new pictures,** before the action
-    counts as done for a queue (`Machine.updatePicturesAfterUndo`): the
+    counts as done for an action already queued behind it
+    (`Machine.updatePicturesAfterUndo`): the
     steps may have sent pictures with the quick changes already (a
     server's create, an assign). So every plan whose quick changes reach a
     picture has an `Undo`, and nothing else sends pictures for it. The

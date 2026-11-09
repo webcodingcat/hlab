@@ -492,7 +492,9 @@ func (m *Machine) UpdatePictures(ctx context.Context) error {
 // which took quick changes back that the steps may have sent already: a
 // server whose create failed, an assign that did not finish. It runs in
 // the action's goroutine before the action counts as done, so that an
-// action queued behind it finds the appliance as the state is. The action
+// action already queued behind it finds the appliance as the state is (an
+// action sent after the action's end may start meanwhile; the pictures
+// stay in order through pictureMu). The action
 // is finished already; a failure is logged, as the appliance's watchdog
 // sends the newest pictures again. A closing lab sends nothing: its next
 // start sends every picture.

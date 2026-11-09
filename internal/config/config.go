@@ -21,18 +21,6 @@ type Config struct {
 	// shut down when the lab stops, before they are turned off.
 	ShutdownTimeout int  `yaml:"shutdown_timeout"`
 	Room            Room `yaml:"room"`
-	// TimeScaleIgnored tells that the file still sets time_scale, which the
-	// lab no longer has: actions end as soon as their work is done. Load
-	// accepts the key so that an old file still loads; the service says
-	// that it was ignored.
-	TimeScaleIgnored bool `yaml:"-"`
-}
-
-// file is hlab.yaml as Load reads it: the settings and the one key that
-// has gone.
-type file struct {
-	Config    `yaml:",inline"`
-	TimeScale *float64 `yaml:"time_scale"`
 }
 
 // Room bounds what the servers may take of the host; a create or a start
@@ -81,12 +69,9 @@ func Load(dataDir string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	settings := file{Config: cfg}
-	if err := yaml.Load(data, &settings, yaml.WithKnownFields()); err != nil {
+	if err := yaml.Load(data, &cfg, yaml.WithKnownFields()); err != nil {
 		return Config{}, fmt.Errorf("%s: %w", path, err)
 	}
-	cfg = settings.Config
-	cfg.TimeScaleIgnored = settings.TimeScale != nil
 	if err := cfg.check(); err != nil {
 		return Config{}, fmt.Errorf("%s: %w", path, err)
 	}

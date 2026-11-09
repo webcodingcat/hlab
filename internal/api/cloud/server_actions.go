@@ -82,7 +82,9 @@ func planStop(run func(ctx context.Context, id int64) error) planFunc {
 // Hetzner. If the server does not want to run yet, the plan checks the
 // room on the host and sets want_running at once, so that the room check
 // of every later action counts the server even before these steps run. If
-// the steps fail, the server is off and does not want to run.
+// the steps fail, the server no longer wants to run; its status stays as
+// the steps left it, and the watchdog makes it follow the VM, which may
+// run already.
 func planStart(l *lab.Lab, run func(ctx context.Context, id int64) error) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		server, err := callerServer(tx, req.ProjectID, req.ID)
@@ -100,7 +102,7 @@ func planStart(l *lab.Lab, run func(ctx context.Context, id int64) error) planFu
 		}
 		server.WantRunning = true
 		plan.Undo = undoServer(req.ID, func(_ *state.Tx, server *state.Server) {
-			server.Status, server.WantRunning = state.ServerOff, false
+			server.WantRunning = false
 		})
 		plan.UndoIfLast = true // a later plan's want_running stands
 		return plan, nil

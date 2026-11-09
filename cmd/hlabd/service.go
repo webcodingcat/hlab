@@ -61,9 +61,6 @@ func start(opts serviceOptions) (*service, error) {
 	if err != nil {
 		return nil, err
 	}
-	if cfg.TimeScaleIgnored {
-		opts.Logger.Warn("hlab.yaml: time_scale is gone and ignored: actions end as soon as their work is done")
-	}
 	offer, err := catalog.Load(filepath.Join(opts.DataDir, catalog.UserFile))
 	if err != nil {
 		return nil, err

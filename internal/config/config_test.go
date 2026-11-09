@@ -66,12 +66,8 @@ func TestLoadAllowsAnyFreePortMoreThanOnce(t *testing.T) {
 	}
 }
 
-func TestLoadIgnoresTheGoneTimeScale(t *testing.T) {
-	cfg, err := config.Load(writeConfig(t, "time_scale: 0.5\nports: {cloud: 0, hetzner: 0, control: 0}\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !cfg.TimeScaleIgnored {
-		t.Error("got no note that time_scale was ignored")
+func TestLoadRefusesTheGoneTimeScale(t *testing.T) {
+	if _, err := config.Load(writeConfig(t, "time_scale: 0.5\n")); err == nil || !strings.Contains(err.Error(), "time_scale") {
+		t.Errorf("got %v, want an error that names time_scale", err)
 	}
 }

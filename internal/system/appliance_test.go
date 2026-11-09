@@ -233,6 +233,20 @@ func TestWatchdogDoesNotSendARefusedPictureAgain(t *testing.T) {
 	}
 }
 
+// An appliance that Start made anew and that then fails is shut down
+// again: nothing else would stop it.
+func TestFailedApplianceStartShutsItDown(t *testing.T) {
+	machine, agent, appliance := newAppliance(t)
+	agent.FailNext(agentproto.PictureLinks)
+	if _, err := appliance.Start(t.Context(), testPictures(1)); err == nil {
+		t.Fatal("the start succeeded although the agent refused the links")
+	}
+	state, err := machine.Platform().Hypervisor.VMState(t.Context(), applianceVM)
+	if err != nil || state.Power != platform.PowerOff {
+		t.Errorf("after the failed start the appliance is %v, %v; want off", state, err)
+	}
+}
+
 func TestApplianceStopShutsItDownAndKeepsTheVM(t *testing.T) {
 	machine, _, appliance := newAppliance(t)
 	if _, err := appliance.Start(t.Context(), testPictures(1)); err != nil {

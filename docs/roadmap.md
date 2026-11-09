@@ -15,7 +15,7 @@ the tests. Look there before writing such a part anew.
 |---|---|---|
 | 1a | core without VMs: state, lab, web basics, catalog, reading resources, SSH keys, lab control, `--platform fake` | done |
 | 1b | servers, host link, reachability | done |
-| 2a | Floating IPs, firewalls, private networks | in progress |
+| 2a | Floating IPs, firewalls, private networks | done |
 | 2b | volumes, placement groups, DNS | open |
 | 2c | tools for tests | open |
 | 3a | snapshots, backups, rebuild, type change | open |
@@ -26,6 +26,98 @@ the tests. Look there before writing such a part anew.
 | 6b | tray, installer | open |
 | 7 | benchmark and switch-over | open |
 | 8 | Linux | open |
+
+## Now
+
+Phase 2a is done with its review, 2a-R. Next is phase 2b: first 2b-0,
+which measures against the real API what 2b and the open points below
+need, then "disk ID, volumes, placement groups" and "DNS, rDNS, host DNS",
+then 2b-R.
+
+## Open
+
+### Known gaps
+
+Faults and deviations from Hetzner, each as "level, phase: finding": the
+level from the review that found it (must, should, optional; accepted
+for what the operator keeps), the phase or step that closes it.
+
+- **must, 2b-0:** not measured on Hetzner, built as assumed: whether
+  `delete_subnet` refuses a subnet that holds only a member's alias IPs
+  (`planDeleteSubnet` looks at the members' own addresses); whether a
+  server's attach while the network runs an `add_subnet` is 423 (the lab
+  runs it, in the server's queue); a server's actions sent while a
+  Primary IP's assign locks it wait behind it (DEVELOPING.md, Actions).
+- **should, 2b (own step):** a NIC that Hyper-V fails to remove (a
+  detach, a network's delete) stays in the VM without a record; the VLAN
+  pool's rotation keeps it out of new networks for a while. A check that
+  compares a VM's NICs with the record closes this and any other such
+  rest (new platform method, contract test).
+- **accepted:** the servers' connections to the Internet break at
+  an update of the appliance, and at the watchdog's restart of it: the new
+  appliance has none of the old one's NAT state, and after an update
+  another uplink address too. Connections to the host and among the
+  servers live on. Updates are rare and started by the operator; taking
+  the connections over would need one uplink MAC for both sets, a NIC
+  connected at run time and conntrack's state handed over.
+- **should, 6b:** an update with `install.ps1` fails while an `hlab ssh`
+  runs: `hlab.exe` waits for `ssh.exe` and holds its file, so the copy
+  fails. hlabd has ended by then and its servers run on; the install
+  works again once the session ends.
+- **should, with the next change there:** `sshFingerprint`
+  (`internal/api/cloud/ssh_keys.go`) reports a failure as a second string
+  instead of an `error`; the key types are written out twice
+  (`sshKeyInvalid`, `sshKeyTypes`); `registerSSHKeys` holds every handler
+  as a closure, over 80 lines.
+- **should, 2c:** DEVELOPING.md does not say that the lab control's and
+  `web`'s own tests send requests without `spectest` (there is no Hetzner
+  spec for them).
+- **should, with the next change there:** `Lab.DeleteProject` sends every
+  picture once per server it removes (`Machine.DeleteServer`); removing the VMs
+  first and sending the pictures once would do.
+- **should, 6b:** after the first Ctrl+C or stop signal, a second one does
+  not end a stop that hangs (`signal.Notify` stays active in both
+  platforms' life cycles); `signal.Stop` after the first would let it.
+- **should, 2c:** the servers' watchdog runs every 2 s on the wall clock
+  (`serverWatchInterval`, `time.NewTicker`, not the lab's clock), so its
+  unit tests wait seconds.
+- **optional, 2b (with volumes):** a type `holds` that takes and frees an
+  action's flags, queue and lock queues in one place (`Lab.start`,
+  `Lab.releaseQueues`, `Lab.end`); volumes bring more `Locks`.
+- **optional, with the next change there:** one step
+  `Machine.SendPictures` for the actions that only send pictures
+  (`ChangeFirewall`, `ChangeNetwork`, `ChangeAliasIPs`), at the cost of
+  their names; `planSteps` and `planStop` build the same closure.
+- **optional, 2c:** a random ID per start of hlabd in the pictures'
+  header, so that an old generation never equals a new one.
+- **accepted, 2a-4:** 50
+  firewalls per project, where Hetzner allows 50 per account; a
+  `remove_from_resources` of the server ID 1 is 404 as for any missing
+  server, where Hetzner answers 422 "value required to be larger"; a MAC
+  of digits only is quoted in the metadata's YAML; the metadata's
+  `private-networks` sorted by `interface_num`; `DELETE` and `PATCH` on
+  an action and a selector's per-server actions on a new selector, built
+  as assumed (not measured).
+- **note:** the firewall rules do not block the lab's own range as a
+  source on 8090; the appliance's ruleset keeps the servers off it.
+
+### Comes with phase X
+
+- **2b:** volumes and placement groups in a server's create request are
+  ignored until then.
+- **2b:** `change_dns_ptr` (DNS); unbound's configuration and the uplink's
+  unreachable route name the default ranges, and the ranges become
+  settings with a picture.
+- **2c:** an injected fault's delay is the user's parameter (`delay_ms`),
+  no Hetzner time, and runs on the wall clock as set; the lab has no
+  time scale any more. Only its test waits for real.
+- **3a:** `PUT` and `DELETE` of images.
+- **4:** tests of the ruleset's counters for traffic between servers (the
+  agent's counters).
+- **5:** `boxes.vhdx` moves to the new appliance at an update.
+- **6b:** stop requests from signing out and the tray; the tray replaces
+  the start menu entry's window, whose closing ends hlabd as a crash
+  would.
 
 ## Phase 1a
 
@@ -188,80 +280,6 @@ at most.
   delete ran beside a Primary IP's assign. They now wait behind it
   (Hetzner's answer is not measured).
 
-### Known gaps
-
-- **2b-0 (measure):** `delete_subnet` refuses a subnet that holds a
-  member's own address, not one that holds only its alias IPs; Hetzner's
-  answer is not measured (`planDeleteSubnet`).
-- **should, 2b:** a NIC that Hyper-V fails to remove (a detach, a
-  network's delete) stays in the VM without a record; the VLAN pool's
-  rotation keeps it out of new networks for a while. A check that
-  compares a VM's NICs with the record would close this and any other
-  such rest.
-
-Faults and deviations from Hetzner, each with its level from the review
-that found it (must, should, optional) and the phase that closes it.
-
-- **Accepted for now:** the servers' connections to the Internet break at
-  an update of the appliance, and at the watchdog's restart of it: the new
-  appliance has none of the old one's NAT state, and after an update
-  another uplink address too. Connections to the host and among the
-  servers live on. Updates are rare and started by the operator; taking
-  the connections over would need one uplink MAC for both sets, a NIC
-  connected at run time and conntrack's state handed over.
-- **should, 6b:** an update with `install.ps1` fails while an `hlab ssh`
-  runs: `hlab.exe` waits for `ssh.exe` and holds its file, so the copy
-  fails. hlabd has ended by then and its servers run on; the install
-  works again once the session ends.
-- **should, with the next change there:** `sshFingerprint`
-  (`internal/api/cloud/ssh_keys.go`) reports a failure as a second string
-  instead of an `error`; the key types are written out twice
-  (`sshKeyInvalid`, `sshKeyTypes`); `registerSSHKeys` holds every handler
-  as a closure, over 80 lines.
-- **should, 2c:** DEVELOPING.md does not say that the lab control's and
-  `web`'s own tests send requests without `spectest` (there is no Hetzner
-  spec for them).
-- **should, with the next change there:** `Lab.DeleteProject` sends every
-  picture once per server it removes (`Machine.DeleteServer`); removing the VMs
-  first and sending the pictures once would do.
-- **should, 6b:** after the first Ctrl+C or stop signal, a second one does
-  not end a stop that hangs (`signal.Notify` stays active in both
-  platforms' life cycles); `signal.Stop` after the first would let it.
-- **should, 2c:** the servers' watchdog runs every 2 s on the wall clock
-  (`serverWatchInterval`, `time.NewTicker`, not the lab's clock), so its
-  unit tests wait seconds.
-- **optional, 2a:** a type `holds` that sets and frees an action's flags
-  and queues in one place (`Lab.start`, `Lab.end`); worth it once `start`
-  grows.
-- The firewall rules do not block the lab's own range as a source on
-  8090; the appliance's ruleset keeps the servers off it.
-- **Accepted** (deviations from Hetzner the operator kept, 2a-4): 50
-  firewalls per project, where Hetzner allows 50 per account; a
-  `remove_from_resources` of the server ID 1 is 404 as for any missing
-  server, where Hetzner answers 422 "value required to be larger"; a MAC
-  of digits only is quoted in the metadata's YAML; the metadata's
-  `private-networks` sorted by `interface_num`; `DELETE` and `PATCH` on
-  an action and a selector's per-server actions on a new selector, built
-  as assumed (not measured).
-
-### Comes with phase X
-
-- **2b:** volumes and placement groups in a server's create request are
-  ignored until then.
-- **2b:** `change_dns_ptr` (DNS); unbound's configuration and the uplink's
-  unreachable route name the default ranges, and the ranges become
-  settings with a picture.
-- **2c:** an injected fault's delay is the user's parameter (`delay_ms`),
-  no Hetzner time, and runs on the wall clock as set; the lab has no
-  time scale any more. Only its test waits for real.
-- **3a:** `PUT` and `DELETE` of images.
-- **4:** tests of the ruleset's counters for traffic between servers (the
-  agent's counters).
-- **5:** `boxes.vhdx` moves to the new appliance at an update.
-- **6b:** stop requests from signing out and the tray; the tray replaces
-  the start menu entry's window, whose closing ends hlabd as a crash
-  would.
-
 ### Notes
 
 - A start of the dev loop takes 20 s: 9 s for the host link's switches, 11 s
@@ -276,16 +294,26 @@ that found it (must, should, optional) and the phase that closes it.
 
 | Step | What | State |
 |---|---|---|
-| 2a-0 | `lab.Machine` for the machine's side; the rule where an action's plans and steps live (DEVELOPING.md, Actions); `ReadSecrets` takes a file of `null`; the watchdog's notes live only for a round | done |
-| 2a-1 | Floating IPs (IPv4, IPv6 `/64`) with Hetzner's actions, routes in the `links` picture; new pictures after every undo (a failed server create, a Primary IP's assign and unassign); a server's create checks its location against its type; `l.read()`, `planFunc` | done |
-| 2a-2 | firewalls with Hetzner's actions, limits, texts and label selectors that follow the servers, in the `ruleset` picture (a chain per server and direction, a chain per firewall and direction, verdict maps); `Lab.ActAll`, `lab.Row`, `Lab.RecordAction`; a lab address nobody holds answers nothing, as on Hetzner (blackhole route in the `links` picture) | done |
-| 2a-3 | private networks with Hetzner's actions, limits, texts and members; `attach_to_network`, `detach_from_network`, `change_alias_ips` with NIC hot-plug; the switch `HLab-Private`, a VLAN and a VRF per network, DHCP per network; the guest's private NICs by the seed's vendor-data; `Lab.AddNote` for statuses Hetzner shows for a while | done |
-| 2a-4 | networks and firewalls in a server's create; the metadata's `private-networks`, and the metadata service for a server without public addresses; a firewall's `pending` and a selector's actions as Hetzner shows them; Hetzner's answers to unknown actions and to IDs that are no number; the unassign of a Floating IP's move; `add_subnet` without a free `/24`; a network's delete aborts its actions; a private NIC keeps its number (state version 2); 50 firewalls per project; the smoke test `examples/tofu-2a` | done |
-| 2a-5 | no made-up times: actions end as soon as their work is done; `clock.go`, `Lab.Sleep`, `Lab.AddNote`, `Lab.RecordActionLater` and `time_scale` are gone (an old `hlab.yaml` with the key still loads); a selector's `apply_firewall` or `remove_firewall` is recorded finished at once (`Lab.RecordAction`); statuses such as `pending` and `attaching` show only while an action's work runs; `bin/dev itest` no longer ends with 141 when the output grows | done |
-| 2a-6 | a server with IPv6 only gets a service address of `100.64.0.0/10` by DHCP, with Hetzner's routes (options 121 and 249) to `172.31.1.1`, the metadata service and `188.40.24.200`, and reaches the metadata service with it, nothing else; `network-config` with `dhcp` for IPv4; a private network's DHCP names its gateway as the server (the agent adds addresses in the picture's order); the agent's tests stop their dnsmasq | done |
-| 2a-R | review of phase 2a: a failed action of a queued table undoes only if nothing was queued behind it (`UndoIfLast` on the networks' rows, a server's detach and `change_alias_ips`), and a detach takes its NIC out of the VM even when the pictures fail (no undo); a failed `add_subnet` keeps a subnet a server took an address in meanwhile; a network's delete removes the NICs only after the actions it aborted ended, and an aborted detach still takes its NIC out; an action aborted while it waits in a queue keeps the queue's order, and a waiting detach still takes its NIC out (`Plan.RunIfCanceled`); a failed `change_alias_ips` gives back only alias IPs still free; why the firewalls' rows have no undo; the docs after 2a-5 (no times left in the roadmap, a glossary) | in progress |
+| 2a-0 | `lab.Machine`, where an action's parts live | done |
+| 2a-1 | Floating IPs | done |
+| 2a-2 | firewalls | done |
+| 2a-3 | private networks | done |
+| 2a-4 | networks and firewalls in a create, metadata, state version 2 | done |
+| 2a-5 | no made-up times | done |
+| 2a-6 | IPv4 by DHCP for a server with IPv6 only | done |
+| 2a-R | review of phase 2a | done |
 
-Next: 2a-R, the review of phase 2a.
+### What each step brought
+
+- **2a-0:** `lab.Machine` for the machine's side; the rule where an action's plans and steps live (DEVELOPING.md, Actions); `ReadSecrets` takes a file of `null`; the watchdog's notes live only for a round.
+- **2a-1:** Floating IPs (IPv4, IPv6 `/64`) with Hetzner's actions, routes in the `links` picture; new pictures after every undo (a failed server create, a Primary IP's assign and unassign); a server's create checks its location against its type; `l.read()`, `planFunc`.
+- **2a-2:** firewalls with Hetzner's actions, limits, texts and label selectors that follow the servers, in the `ruleset` picture (a chain per server and direction, a chain per firewall and direction, verdict maps); `Lab.ActAll`, `lab.Row`, `Lab.RecordAction`; a lab address nobody holds answers nothing, as on Hetzner (blackhole route in the `links` picture).
+- **2a-3:** private networks with Hetzner's actions, limits, texts and members; `attach_to_network`, `detach_from_network`, `change_alias_ips` with NIC hot-plug; the switch `HLab-Private`, a VLAN and a VRF per network, DHCP per network; the guest's private NICs by the seed's vendor-data; `Lab.AddNote` for statuses Hetzner shows for a while.
+- **2a-4:** networks and firewalls in a server's create; the metadata's `private-networks`, and the metadata service for a server without public addresses; a firewall's `pending` and a selector's actions as Hetzner shows them; Hetzner's answers to unknown actions and to IDs that are no number; the unassign of a Floating IP's move; `add_subnet` without a free `/24`; a network's delete aborts its actions; a private NIC keeps its number (state version 2); 50 firewalls per project; the smoke test `examples/tofu-2a`.
+- **2a-5:** no made-up times: actions end as soon as their work is done; `clock.go`, `Lab.Sleep`, `Lab.AddNote`, `Lab.RecordActionLater` and `time_scale` are gone (2a-R removed the key: an `hlab.yaml` that still sets it does not load); a selector's `apply_firewall` or `remove_firewall` is recorded finished at once (`Lab.RecordAction`); statuses such as `pending` and `attaching` show only while an action's work runs; `bin/dev itest` no longer ends with 141 when the output grows.
+- **2a-6:** a server with IPv6 only gets a service address of `100.64.0.0/10` by DHCP, with Hetzner's routes (options 121 and 249) to `172.31.1.1`, the metadata service and `188.40.24.200`, and reaches the metadata service with it, nothing else; `network-config` with `dhcp` for IPv4; a private network's DHCP names its gateway as the server (the agent adds addresses in the picture's order); the agent's tests stop their dnsmasq.
+- **2a-R:** review of phase 2a: a failed action of a queued table undoes only if nothing was queued behind it (`UndoIfLast` on the networks' rows, a server's detach and `change_alias_ips`), and a detach takes its NIC out of the VM even when the pictures fail (no undo); a failed `add_subnet` keeps a subnet a server took an address in meanwhile; a network's delete removes the NICs only after the actions it aborted ended, and an aborted detach still takes its NIC out; an action aborted while it waits in a queue keeps the queue's order, and a waiting detach still takes its NIC out (`Plan.RunIfCanceled`); a failed `change_alias_ips` gives back only alias IPs still free; why the firewalls' rows have no undo; an appliance that a start made anew and that then fails is shut down; a failed start leaves the server's status to the watchdog; `time_scale` is gone from `hlab.yaml` (a file that sets it does not load); the docs after 2a-5 (no times left, a glossary, a table of a plan's fields, this file's "Now" and "Open").
+
 
 ### What 2a-4 brought
 

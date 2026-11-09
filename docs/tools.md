@@ -164,6 +164,18 @@ with the comment `hlab`, and the rest the install added; the Hyper-V feature
 stays on. The firewall rule "HLab" is separate from the dev loop's, so both
 can be there.
 
+What the install does, in full: it turns Hyper-V on (Windows may want a
+restart), installs into `C:\Program Files\HLab`, adds the start menu entry
+"HLab", puts `hlab.exe` on the PATH and the Linux CLI into `~/.local/bin` of
+the default WSL distribution, and adds the firewall rule "HLab". An update
+ends a running HLab; its servers run on, and the next start takes them over
+and updates the appliance. `-Uninstall` removes all of it with the lab's VMs,
+switches and data (`-KeepData` keeps `C:\ProgramData\HLab`; the next start
+gives the servers new VMs with their disks). Smart App Control blocks HLab's
+unsigned programs, so it has to be off. Phase 6b adds a tray icon in place of
+the start menu entry's window and stops the lab when Windows signs out
+(docs/roadmap.md).
+
 **Builds.** `bin/dev build` builds with `CGO_ENABLED=0` and `-trimpath`, and sets
 `main.version` from `git describe`. `hlabd --version` (and the same flag of the other
 binaries) prints it.

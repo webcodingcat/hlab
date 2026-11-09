@@ -124,9 +124,7 @@ func (l *Lab) Act(table ActionTable, command string, req Request) (state.Action,
 
 // ActAll runs several actions of a resource in one transaction, in order,
 // each with its own body, as a firewall's apply_to_resources does for each
-// resource it names. If one fails, nothing changes. Act, ActAll and
-// Create share run and differ only in what they pass it: each is the
-// name its callers read, for one of the three ways an API starts actions.
+// resource it names. If one fails, nothing changes.
 func (l *Lab) ActAll(table ActionTable, req Request, rows ...Row) ([]state.Action, error) {
 	return l.run(table, req, nil, nil, rows)
 }
@@ -146,7 +144,11 @@ func (l *Lab) Create(table ActionTable, req Request, create func(tx *state.Tx) (
 	return l.run(table, req, create, answer, rows)
 }
 
-// run is Act, ActAll and Create: it checks the project, runs create if
+// run is Act, ActAll and Create, which differ only in what they pass it
+// (nil for no create and no answer): each is the name its callers read
+// for one of the three ways an API starts actions, an exception to the
+// rule against functions that only pass their arguments on. It checks
+// the project, runs create if
 // there is one, plans the rows in one transaction and starts them once
 // the transaction is saved.
 func (l *Lab) run(table ActionTable, req Request, create func(tx *state.Tx) (int64, error),
