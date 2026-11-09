@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -388,7 +389,7 @@ func checkActionsDuringCreate(t *testing.T, test *testLab, creating createAnswer
 	}
 	disks := test.machine.Disks(lab.ServerVM(creating.Server.ID))
 	found := slices.ContainsFunc(slices.Collect(maps.Values(disks)), func(path string) bool {
-		return strings.HasSuffix(path, fmt.Sprintf("volumes/%d.vhdx", attached))
+		return strings.HasSuffix(path, filepath.Join("volumes", fmt.Sprintf("%d.vhdx", attached)))
 	})
 	if len(disks) != 2 || !found {
 		t.Errorf("the VM's disks %v, want the system disk and volume %d", disks, attached)

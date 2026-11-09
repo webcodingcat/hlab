@@ -77,6 +77,9 @@ func TestNameServersAreAlwaysInTheSeed(t *testing.T) {
 // The guest's helper reads a volume's ID and its automount flag from the
 // WWN that hlabd made (system.VolumeDiskID); other disks get nothing.
 func TestVolumeHelperReadsTheWWN(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("no sh here; the guest's helper is a shell script")
+	}
 	_, rest, _ := strings.Cut(volumesScript, "cat > /usr/local/lib/hlab/hc-volume <<'SCRIPT'\n")
 	helper, _, _ := strings.Cut(rest, "SCRIPT\n")
 	path := filepath.Join(t.TempDir(), "hc-volume")
