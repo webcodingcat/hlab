@@ -190,6 +190,15 @@ at most.
 
 ### Known gaps
 
+- **2b-0 (measure):** `delete_subnet` refuses a subnet that holds a
+  member's own address, not one that holds only its alias IPs; Hetzner's
+  answer is not measured (`planDeleteSubnet`).
+- **should, 2b:** a detach whose steps fail when its addresses were
+  taken meanwhile leaves its NIC in the VM without a record (`canRejoin`);
+  the VLAN pool's rotation keeps it out of new networks for a while. A
+  check that compares a VM's NICs with the record would close this and
+  any other such rest.
+
 Faults and deviations from Hetzner, each with its level from the review
 that found it (must, should, optional) and the phase that closes it.
 
@@ -281,7 +290,7 @@ that found it (must, should, optional) and the phase that closes it.
 | 2a-4 | networks and firewalls in a server's create; the metadata's `private-networks`, and the metadata service for a server without public addresses; a firewall's `pending` and a selector's actions as Hetzner shows them; Hetzner's answers to unknown actions and to IDs that are no number; the unassign of a Floating IP's move; `add_subnet` without a free `/24`; a network's delete aborts its actions; a private NIC keeps its number (state version 2); 50 firewalls per project; the smoke test `examples/tofu-2a` | done |
 | 2a-5 | no made-up times: actions end as soon as their work is done; `clock.go`, `Lab.Sleep`, `Lab.AddNote`, `Lab.RecordActionLater` and `time_scale` are gone (an old `hlab.yaml` with the key still loads); a selector's `apply_firewall` or `remove_firewall` is recorded finished at once (`Lab.RecordAction`); statuses such as `pending` and `attaching` show only while an action's work runs; `bin/dev itest` no longer ends with 141 when the output grows | done |
 | 2a-6 | a server with IPv6 only gets a service address of `100.64.0.0/10` by DHCP, with Hetzner's routes (options 121 and 249) to `172.31.1.1`, the metadata service and `188.40.24.200`, and reaches the metadata service with it, nothing else; `network-config` with `dhcp` for IPv4; a private network's DHCP names its gateway as the server (the agent adds addresses in the picture's order); the agent's tests stop their dnsmasq | done |
-| 2a-R | review of phase 2a: a failed action of a queued table undoes only if nothing was queued behind it (`UndoIfLast` on the networks' rows, a server's detach and `change_alias_ips`), and a detached NIC comes back only to addresses still free; a failed `add_subnet` keeps a subnet a server took an address in meanwhile; a network's delete removes the NICs only after the actions it aborted ended, and an aborted detach still takes its NIC out; an action aborted while it waits in a queue keeps the queue's order; why the firewalls' rows have no undo; the docs after 2a-5 (no times left in the roadmap, a glossary) | in progress |
+| 2a-R | review of phase 2a: a failed action of a queued table undoes only if nothing was queued behind it (`UndoIfLast` on the networks' rows, a server's detach and `change_alias_ips`), and a detached NIC comes back only to addresses still free; a failed `add_subnet` keeps a subnet a server took an address in meanwhile; a network's delete removes the NICs only after the actions it aborted ended, and an aborted detach still takes its NIC out; an action aborted while it waits in a queue keeps the queue's order, and a waiting detach still takes its NIC out (`Plan.RunIfCanceled`); a failed `change_alias_ips` gives back only alias IPs still free; why the firewalls' rows have no undo; the docs after 2a-5 (no times left in the roadmap, a glossary) | in progress |
 
 Next: 2a-R, the review of phase 2a.
 

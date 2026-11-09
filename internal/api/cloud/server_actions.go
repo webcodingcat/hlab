@@ -543,7 +543,9 @@ func serverNetwork(server *state.Server, networkID int64) (state.ServerPrivateNe
 // planDetachFromNetwork takes the server's NIC out of a network: the
 // record at once, the routes and then the NIC in the steps. If the steps
 // fail and nothing was queued behind, the NIC comes back into the record
-// where it was, as long as its addresses are still free (canRejoin).
+// where it was, as long as its addresses are still free (canRejoin); if
+// they are not, the NIC the steps failed to remove stays in the VM without
+// a record (docs/roadmap.md, Known gaps).
 func planDetachFromNetwork(l *lab.Lab) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		var body changeAliasIPsRequest
@@ -574,6 +576,7 @@ func planDetachFromNetwork(l *lab.Lab) planFunc {
 			Steps: func(ctx context.Context) error {
 				return l.Machine().DetachServerFromNetwork(ctx, serverID, attached.MAC)
 			},
+			RunIfCanceled: true, // the NIC must leave the VM, as the record lost it
 			Undo: undoServer(serverID, func(tx *state.Tx, server *state.Server) {
 				network, err := state.Get(tx, state.Networks, networkID)
 				if err != nil || !canRejoin(tx, server, network, attached) {
@@ -656,8 +659,19 @@ func planChangeAliasIPs(l *lab.Lab) planFunc {
 		server.PrivateNets[index].AliasIPs = addressStrings(aliases)
 		serverID, networkID := server.ID, network.ID
 		plan.Steps = l.Machine().ChangeAliasIPs
-		plan.Undo = undoServer(serverID, func(_ *state.Tx, server *state.Server) {
-			if _, index := serverNetwork(server, networkID); index >= 0 {
+		plan.Undo = undoServer(serverID, func(tx *state.Tx, server *state.Server) {
+			attached, index := serverNetwork(server, networkID)
+			network, err := state.Get(tx, state.Networks, networkID)
+			if index < 0 || err != nil {
+				return
+			}
+			// another server's attach runs in its own queue and may have
+			// taken an alias IP this change gave up
+			var old []netip.Addr
+			for _, alias := range before {
+				old = append(old, netip.MustParseAddr(alias))
+			}
+			if aliasRefusal(network, netip.MustParseAddr(attached.IP), old, takenAddresses(tx, network, server.ID)) == nil {
 				server.PrivateNets[index].AliasIPs = before
 			}
 		})

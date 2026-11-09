@@ -180,8 +180,8 @@ The layer test checks production code only. Tests may import fakes and helpers.
   state's own, and calling Put, Delete or NewID on it panics. `lab.View` uses it, so
   the token check on every request copies nothing. That check uses `state.Find`,
   which does not sort as `state.All` does.
-- **Only a real change is saved.** Because records can change in place,
-  `tx.Changed()` compares each record the Tx noted with the state the Tx started
+- **Only a real change is saved.** Because a Tx's copies can change in
+  place (a state's own records never do), `tx.Changed()` compares each record the Tx noted with the state the Tx started
   from (`reflect.DeepEqual`). A `Change` that only read, or set a value to what it
   already was, saves nothing. A real change encodes the whole state while holding
   the mutex and passes it to the writer.
@@ -255,7 +255,21 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
 - **`Lab.Act`, `Lab.ActAll` and `Lab.Create`** all go through the private
   `Lab.run`: it checks the project, records the new resource (only
   `Create`), plans each row (`planAction`: the busy check and the plan,
-  below) and starts the rows once the transaction is saved.
+  below) and starts the rows once the transaction is saved. They are an
+  exception to "no function that only passes its arguments on" (STYLE.md):
+  each is the name its callers read for one way to start actions.
+- **What a plan and a row can say** (`lab.Plan`, `lab.ActionSpec`):
+
+  | Field | Effect |
+  |---|---|
+  | `Steps` | the slow part, in a goroutine; nil ends the action at once |
+  | `Undo` | takes back the quick changes when the steps fail |
+  | `UndoIfLast` | the `Undo` runs only if nothing was queued behind |
+  | `RunIfCanceled` | the steps run even when the action is canceled while it waits (a detach's NIC) |
+  | `Resources` | more resources the action names; a delete of one aborts it |
+  | `Locks` | more resources the action flags; busy ones are 423 |
+  | `Unflagged` (row) | no flag: runs alongside, changes only records |
+  | `Queued` (table) | a busy resource's actions wait in line instead of 423 |
 - **`Lab.Act`** runs one row of a table in one transaction:
   1. If the resource is busy, it refuses with `lab.LockedError`; the API answers
      that with 423 `locked`. A table marked `Queued` (the servers') refuses

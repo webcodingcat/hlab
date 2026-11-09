@@ -105,7 +105,8 @@ func (m *Machine) AttachServerToNetwork(ctx context.Context, serverID, networkID
 // NIC leaves the VM even when the action is canceled: the record no longer
 // has it, so nothing else would take it out (a network's delete aborts the
 // detach and removes only the NICs it still finds); Close waits for this
-// one call.
+// one call. The steps run even when the detach is canceled while it waits
+// (Plan.RunIfCanceled).
 func (m *Machine) DetachServerFromNetwork(ctx context.Context, serverID int64, mac string) error {
 	if err := m.UpdatePictures(ctx); err != nil && ctx.Err() == nil {
 		return err

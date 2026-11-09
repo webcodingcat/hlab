@@ -50,7 +50,7 @@ type ActionSpec struct {
 	// part. It runs in the Act's transaction: if it fails, nothing changes.
 	Plan func(tx *state.Tx, req Request) (Plan, error)
 	// Unflagged actions change only the record: they take no flag and may run
-	// alongside another action (change_protection, change_dns_ptr).
+	// alongside another action (change_protection, a firewall's rows).
 	Unflagged bool
 }
 
@@ -71,6 +71,11 @@ type Plan struct {
 	// (the lab closes, the project is deleted). Across its calls to the system
 	// it keeps IDs and looks records up again with Current.
 	Steps func(ctx context.Context) error
+	// RunIfCanceled runs the steps, with the canceled context, also when
+	// the action is canceled while it waits in its queue: they do work
+	// nothing else would do (a detach has taken its NIC out of the record,
+	// so a network's delete does not find the NIC in the VM).
+	RunIfCanceled bool
 	// UndoIfLast runs Undo only if no action was queued behind this one on
 	// its resource: the later plans have set again what Undo would take
 	// back (want_running), and Undo must not overwrite them.
@@ -351,30 +356,30 @@ func (l *Lab) start(planned plannedAction) {
 			queue = &planned.target
 		}
 	}
+	var before chan struct{}
+	if queue != nil {
+		before = l.queues[*queue]
+	}
 	ctx, cancel := context.WithCancel(l.ctx)
 	run := &runningAction{
 		id: planned.action.ID, projectID: planned.action.ProjectID, cancel: cancel, done: make(chan struct{}),
-		undo: planned.plan.Undo, undoIfLast: planned.plan.UndoIfLast, flagged: flagged, queue: queue,
-		names: planned.action.Resources,
+		before: before, undo: planned.plan.Undo, undoIfLast: planned.plan.UndoIfLast, flagged: flagged,
+		queue: queue, lockQueues: planned.plan.Locks, names: planned.action.Resources,
 	}
 	l.running[run.id] = run
 	for _, ref := range flagged {
 		l.flags[ref]++
 		l.machine.noteFlag(ref)
 	}
-	var before chan struct{}
 	if queue != nil {
-		before = l.queues[*queue]
 		l.queues[*queue] = run.done
 	}
-	run.before = before
 	// a resource's own queued actions wait behind an action that locks it
 	// (a server's poweron behind a Primary IP's assign); the lock check
 	// found nothing flagged on it, so nothing waits in its queue yet
 	for _, ref := range planned.plan.Locks {
 		l.queues[ref] = run.done
 	}
-	run.lockQueues = planned.plan.Locks
 	l.background.Go(func() {
 		defer func() {
 			// an action aborted while it waits ends at once, but the one
@@ -386,7 +391,7 @@ func (l *Lab) start(planned plannedAction) {
 		}()
 		defer cancel()
 		err := waitFor(ctx, before)
-		if err == nil {
+		if err == nil || planned.plan.RunIfCanceled {
 			err = planned.plan.Steps(ctx)
 		}
 		// canceled only when the steps gave up: steps that finished despite

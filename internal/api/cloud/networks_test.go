@@ -764,6 +764,36 @@ func TestNetworkDeletedDuringItsActionAbortsIt(t *testing.T) {
 	}
 }
 
+// A detach that waits in the server's queue when its network is deleted
+// is aborted, and its NIC still leaves the VM: the record no longer has
+// it, so the delete does not find it.
+func TestWaitingDetachOfADeletedNetworkTakesItsNICOut(t *testing.T) {
+	test := newTestLab(t)
+	agent := startMachine(t, test, platform.HostResources{Threads: 8, MemoryMB: 16 * 1024})
+	server := offServer(t, test, "web")
+	first, second := networkWithSubnet(t, test, "first", "10.1"), networkWithSubnet(t, test, "second", "10.2")
+	waitActions(t, test, actionOf(t, "attach", serverNetworkAction(test, server.Server.ID, "attach_to_network", map[string]any{"network": first})))
+	waiting, release := agent.HoldNext(agentproto.PictureLinks)
+	attach := actionOf(t, "attach", serverNetworkAction(test, server.Server.ID, "attach_to_network", map[string]any{"network": second}))
+	<-waiting
+	detach := actionOf(t, "detach", serverNetworkAction(test, server.Server.ID, "detach_from_network", map[string]any{"network": first}))
+	if response := test.client.Do(http.MethodDelete, fmt.Sprintf("/v1/networks/%d", first), nil); response.Status != http.StatusNoContent {
+		t.Fatalf("the delete answered %d %s", response.Status, response.Body)
+	}
+	release()
+	if ended := waitActions(t, test, detach)[0]; ended.Status != "error" || ended.Error.Code != "aborted" {
+		t.Errorf("the detach ended %s with %+v, want aborted", ended.Status, ended.Error)
+	}
+	waitActions(t, test, attach)
+	deadline := time.Now().Add(5 * time.Second)
+	for vmNICs(test, server.Server.ID) != 1 {
+		if time.Now().After(deadline) {
+			t.Fatalf("the VM has %d NICs, want the second network's only: %v", vmNICs(test, server.Server.ID), test.machine.Calls())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 // vmNICs counts the private NICs the server's VM has: those attached less
 // those detached.
 func vmNICs(test *testLab, serverID int64) int {

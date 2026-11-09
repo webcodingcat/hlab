@@ -216,3 +216,22 @@ func TestFailedDetachLeavesAnAddressAnotherServerTook(t *testing.T) {
 		t.Errorf("the first server's private_net is %+v, want none: the second holds its address", got)
 	}
 }
+
+// A failed change_alias_ips does not bring back an alias IP that another
+// server took meanwhile.
+func TestFailedAliasChangeLeavesAnAddressAnotherServerTook(t *testing.T) {
+	test := newTestLab(t)
+	agent := quietMachine(t, test)
+	first, second := offServer(t, test, "first"), offServer(t, test, "second")
+	network := networkWithSubnet(t, test, "net", "10.1")
+	waitActions(t, test, actionOf(t, "attach", serverNetworkAction(test, first.Server.ID, "attach_to_network",
+		map[string]any{"network": network, "ip": "10.1.1.5", "alias_ips": []string{"10.1.1.10"}})))
+	failQueued(t, test, agent, func() schema.Action {
+		return actionOf(t, "change_alias_ips", serverNetworkAction(test, first.Server.ID, "change_alias_ips", map[string]any{"network": network, "alias_ips": []string{}}))
+	}, func() schema.Action {
+		return actionOf(t, "attach", serverNetworkAction(test, second.Server.ID, "attach_to_network", map[string]any{"network": network, "ip": "10.1.1.10"}))
+	})
+	if got := getServer(t, test, first.Server.ID).PrivateNet[0].AliasIPs; len(got) != 0 {
+		t.Errorf("the first server's alias IPs are %v, want none: the second holds 10.1.1.10", got)
+	}
+}

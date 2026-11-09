@@ -133,6 +133,8 @@ func planDeleteSubnet(l *lab.Lab) planFunc {
 		if index < 0 {
 			return lab.Plan{}, web.RefusalNull(http.StatusUnprocessableEntity, "service_error", networkSubnetNotFound)
 		}
+		// only the members' own addresses count; whether Hetzner also refuses
+		// a subnet that holds a member's alias IP is not measured
 		for _, member := range networkMembers(tx, network) {
 			if subnetRange.Contains(member.address) {
 				return lab.Plan{}, web.RefusalNull(http.StatusUnprocessableEntity, "service_error", networkHasMembers)

@@ -5,10 +5,9 @@ a service that answers like Hetzner's APIs, with servers that are real VMs. Tool
 such as OpenTofu (hcloud provider), the hcloud CLI and Ansible are meant to work
 against it without changes.
 
-**Status:** being rebuilt in Go, phase 2a (see [docs/roadmap.md](docs/roadmap.md)).
-`hlabd` answers the catalog (locations, server and load balancer types, pricing,
-images, ISOs), SSH keys, servers (Debian 13, Ubuntu 26.04; power actions),
-Primary IPs, Floating IPs, firewalls and private networks. On Windows 11 the
+**Status:** being rebuilt in Go; [docs/roadmap.md](docs/roadmap.md) lists what
+`hlabd` answers so far: the catalog, SSH keys, servers (Debian 13, Ubuntu
+26.04), Primary and Floating IPs, firewalls and private networks. On Windows 11 the
 servers are Hyper-V VMs that the host and WSL2 reach on their addresses;
 `hlabd --platform fake` runs the same API without VMs.
 
@@ -84,7 +83,8 @@ room:                  # what the servers may take of the host
 `examples/tofu-1a` is a small OpenTofu configuration to try against the lab;
 `examples/tofu-1b` adds a Debian server with a Primary IP of its own;
 `examples/tofu-2a` a private network, a firewall, a Floating IP and two
-servers.
+servers. `bin/dev smoke` applies each of them against `hlabd --platform fake`
+(docs/tools.md).
 
 ## Compatibility
 
