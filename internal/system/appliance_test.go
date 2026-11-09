@@ -227,9 +227,12 @@ func TestWatchdogDoesNotSendARefusedPictureAgain(t *testing.T) {
 	if got := generationOf(agent, agentproto.PictureDHCP); got != 0 {
 		t.Fatalf("the agent took the broken picture (generation %d)", got)
 	}
-	time.Sleep(10 * fastTimings.Interval)
 	if got := generationOf(agent, agentproto.PictureMetadata); got != 5 {
 		t.Errorf("the other pictures did not arrive: metadata generation %d", got)
+	}
+	time.Sleep(10 * fastTimings.Interval) // ten rounds of the watchdog
+	if puts := agent.Puts(agentproto.PictureDHCP); puts != 1 {
+		t.Errorf("the refused DHCP picture was sent %d times, want once", puts)
 	}
 }
 

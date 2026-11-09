@@ -57,5 +57,6 @@ file named there.
 - A new dependency needs a reason in the dependency table (Dependencies).
 - Hetzner behaviour first: answers, status codes and error codes follow the real API;
   where the spec differs, record a deviation in `compat/` (Spec check and compat/).
-- Every API test sends its requests through a `spectest` client, so that every
-  answer is checked against the spec (Spec check and compat/).
+- Every test of the Cloud API sends its requests through a `spectest` client, so
+  that every answer is checked against the spec (Spec check and compat/); the lab
+  control's and `web`'s own tests do not, as Hetzner has no spec for them.

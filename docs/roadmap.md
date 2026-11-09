@@ -69,15 +69,12 @@ for what the operator keeps), the phase or step that closes it.
   instead of an `error`; the key types are written out twice
   (`sshKeyInvalid`, `sshKeyTypes`); `registerSSHKeys` holds every handler
   as a closure, over 80 lines.
-- **should, 2c:** DEVELOPING.md does not say that the lab control's and
-  `web`'s own tests send requests without `spectest` (there is no Hetzner
-  spec for them).
 - **should, 6b:** after the first Ctrl+C or stop signal, a second one does
   not end a stop that hangs (`signal.Notify` stays active in both
   platforms' life cycles); `signal.Stop` after the first would let it.
-- **should, 2c:** the servers' watchdog runs every 2 s on the wall clock
-  (`serverWatchInterval`, `time.NewTicker`, not the lab's clock), so its
-  unit tests wait seconds.
+- **should, 2c:** the servers' watchdog runs every 2 s
+  (`serverWatchInterval`, a constant), so its unit tests wait seconds; an
+  option for the interval would make them fast.
 - **optional, 2b (with volumes):** a type `holds` that takes and frees an
   action's flags, queue and lock queues in one place (`Lab.start`,
   `Lab.releaseQueues`, `Lab.end`); volumes bring more `Locks`.
@@ -85,6 +82,11 @@ for what the operator keeps), the phase or step that closes it.
   `Machine.SendPictures` for the actions that only send pictures
   (`ChangeFirewall`, `ChangeNetwork`, `ChangeAliasIPs`), at the cost of
   their names; `planSteps` and `planStop` build the same closure.
+- **optional, 8:** sync the data folder after `state.json`'s rename
+  (`state.Writer`), so that the rename outlives a power cut on Linux.
+- **optional, 2b (with `holds`):** `Lab.Create` and `run` take a small
+  struct instead of two functions that may be nil; the section Actions
+  moves from DEVELOPING.md to `docs/actions.md`.
 - **optional, 2c:** a random ID per start of hlabd in the pictures'
   header, so that an old generation never equals a new one.
 - **accepted, 2a-4:** 50
@@ -309,7 +311,7 @@ at most.
 - **2a-4:** networks and firewalls in a server's create; the metadata's `private-networks`, and the metadata service for a server without public addresses; a firewall's `pending` and a selector's actions as Hetzner shows them; Hetzner's answers to unknown actions and to IDs that are no number; the unassign of a Floating IP's move; `add_subnet` without a free `/24`; a network's delete aborts its actions; a private NIC keeps its number (state version 2); 50 firewalls per project; the smoke test `examples/tofu-2a`.
 - **2a-5:** no made-up times: actions end as soon as their work is done; `clock.go`, `Lab.Sleep`, `Lab.AddNote`, `Lab.RecordActionLater` and `time_scale` are gone (2a-R removed the key: an `hlab.yaml` that still sets it does not load); a selector's `apply_firewall` or `remove_firewall` is recorded finished at once (`Lab.RecordAction`); statuses such as `pending` and `attaching` show only while an action's work runs; `bin/dev itest` no longer ends with 141 when the output grows.
 - **2a-6:** a server with IPv6 only gets a service address of `100.64.0.0/10` by DHCP, with Hetzner's routes (options 121 and 249) to `172.31.1.1`, the metadata service and `188.40.24.200`, and reaches the metadata service with it, nothing else; `network-config` with `dhcp` for IPv4; a private network's DHCP names its gateway as the server (the agent adds addresses in the picture's order); the agent's tests stop their dnsmasq.
-- **2a-R:** review of phase 2a: a failed action of a queued table undoes only if nothing was queued behind it (`UndoIfLast` on the networks' rows, a server's detach and `change_alias_ips`), and a detach takes its NIC out of the VM even when the pictures fail (no undo); a failed `add_subnet` keeps a subnet a server took an address in meanwhile; a network's delete removes the NICs only after the actions it aborted ended, and an aborted detach still takes its NIC out; an action aborted while it waits in a queue keeps the queue's order, and a waiting detach still takes its NIC out (`Plan.RunIfCanceled`); a failed `change_alias_ips` gives back its old alias IPs only if all are still free; why the firewalls' rows have no undo; a project's delete sends the pictures once, also without servers; an appliance that a start made anew and that then fails is shut down; a failed start leaves the server's status to the watchdog; `time_scale` is gone from `hlab.yaml` (a file that sets it does not load); the docs after 2a-5 (no times left, a glossary, a table of a plan's fields, this file's "Now" and "Open").
+- **2a-R:** review of phase 2a: a failed action of a queued table undoes only if nothing was queued behind it (`UndoIfLast` on the networks' rows, a server's detach and `change_alias_ips`), and a detach takes its NIC out of the VM even when the pictures fail (no undo); a failed `add_subnet` keeps a subnet a server took an address in meanwhile; a network's delete removes the NICs only after the actions it aborted ended, and an aborted detach still takes its NIC out; an action aborted while it waits in a queue keeps the queue's order, and a waiting detach still takes its NIC out (`Plan.RunIfCanceled`); a failed `change_alias_ips` gives back its old alias IPs only if all are still free; why the firewalls' rows have no undo; a project's delete sends the pictures once, also without servers; an appliance that a start made anew and that then fails is shut down; a failed start leaves the server's status to the watchdog; a start of the lab turns off a server's VM that runs although the server does not want to run (hlabd ended during its poweroff); `time_scale` is gone from `hlab.yaml` (a file that sets it does not load); the docs after 2a-5 (no times left, a glossary, a table of a plan's fields, this file's "Now" and "Open").
 
 
 ### What 2a-4 brought

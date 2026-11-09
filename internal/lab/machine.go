@@ -130,8 +130,10 @@ func (m *Machine) Start(ctx context.Context, opts MachineOptions) error {
 }
 
 // resumeServers brings the servers back after the lab started: a
-// VM that runs is taken over (hlabd had crashed); one that is off gets its
-// NIC on the public switch again, and starts if its server wants to run.
+// VM that runs is taken over (hlabd had crashed), or turned off if its
+// server does not want to run (HLab ended during a poweroff, whose plan
+// had set want_running); one that is off gets its NIC on the public
+// switch again, and starts if its server wants to run.
 // A server without a VM gets one (restoreServer).
 // The servers' statuses follow their VMs, also for actions that HLab's end
 // cut short; a server that cannot be brought back stays off. Then the
@@ -187,6 +189,12 @@ func (m *Machine) resumeServer(ctx context.Context, server *state.Server) error 
 		private = systemNICs(tx, server)
 		return nil
 	})
+	if runs && !server.WantRunning {
+		if err := m.system.PowerServer(ctx, vm, system.PowerOff); err != nil {
+			return err
+		}
+		runs = false
+	}
 	status := state.ServerRunning
 	if !runs {
 		if exists {

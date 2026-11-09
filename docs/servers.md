@@ -60,7 +60,8 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
   `want_running`: the create, the plans of the power actions, the watchdog
   for a guest that shut itself down.
 - **`want_running`** is what a start of the lab follows: a server whose VM
-  runs is taken over (hlabd had crashed); one whose VM is off gets its NICs on
+  runs is taken over (hlabd had crashed), or turned off if it does not want
+  to run (hlabd ended during its poweroff); one whose VM is off gets its NICs on
   `HLab-Public` and `HLab-Private` again (detached and attached, as a stop of
   the lab removed the switches) and starts if it wants to run. A server without a VM gets a new one
   first (`Machine.restoreServer`): with its disk as it is, if the disk is there

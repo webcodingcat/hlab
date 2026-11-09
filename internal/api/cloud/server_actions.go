@@ -3,7 +3,6 @@ package cloud
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/netip"
 	"slices"
@@ -71,7 +70,7 @@ func planStop(run func(ctx context.Context, id int64) error) planFunc {
 		server.WantRunning = false
 		return lab.Plan{
 			Steps:      func(ctx context.Context) error { return run(ctx, req.ID) },
-			Undo:       undoServer(req.ID, func(_ *state.Tx, server *state.Server) { server.WantRunning = wanted }),
+			Undo:       undoRecord(state.Servers, req.ID, func(_ *state.Tx, server *state.Server) { server.WantRunning = wanted }),
 			UndoIfLast: true, // a later plan's want_running stands
 		}, nil
 	}
@@ -101,7 +100,7 @@ func planStart(l *lab.Lab, run func(ctx context.Context, id int64) error) planFu
 			return lab.Plan{}, err
 		}
 		server.WantRunning = true
-		plan.Undo = undoServer(req.ID, func(_ *state.Tx, server *state.Server) {
+		plan.Undo = undoRecord(state.Servers, req.ID, func(_ *state.Tx, server *state.Server) {
 			server.WantRunning = false
 		})
 		plan.UndoIfLast = true // a later plan's want_running stands
@@ -124,7 +123,7 @@ func planCreateServer(l *lab.Lab) planFunc {
 			Steps:     func(ctx context.Context) error { return l.Machine().CreateServer(ctx, req.ID, start) },
 			// no UndoIfLast: the undo removes only what this plan made, the
 			// server's VM and addresses
-			Undo: undoServer(req.ID, releaseServer),
+			Undo: undoRecord(state.Servers, req.ID, releaseServer),
 		}, nil
 	}
 }
@@ -194,22 +193,6 @@ func planServerProtection(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		server.Protection.Rebuild = *body.Rebuild
 	}
 	return lab.Plan{}, nil
-}
-
-// undoServer returns an undo that makes change to the server, if it is still
-// there: a reset of its project may have removed it meanwhile.
-func undoServer(id int64, change func(tx *state.Tx, server *state.Server)) func(tx *state.Tx) error {
-	return func(tx *state.Tx) error {
-		server, err := state.Get(tx, state.Servers, id)
-		if errors.Is(err, state.ErrNotFound) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		change(tx, server)
-		return nil
-	}
 }
 
 // Hetzner's texts about a server's networks (measured 2026-11-08). Their
@@ -323,7 +306,7 @@ func planAttachToNetwork(l *lab.Lab) planFunc {
 			},
 			// no UndoIfLast: the undo removes only the NIC this plan made, by
 			// its MAC, so a later plan's NIC stays
-			Undo: undoServer(serverID, func(_ *state.Tx, server *state.Server) {
+			Undo: undoRecord(state.Servers, serverID, func(_ *state.Tx, server *state.Server) {
 				server.PrivateNets = slices.DeleteFunc(server.PrivateNets, func(nic state.ServerPrivateNet) bool {
 					return nic.MAC == attached.MAC
 				})
@@ -638,7 +621,7 @@ func planChangeAliasIPs(l *lab.Lab) planFunc {
 		server.PrivateNets[index].AliasIPs = addressStrings(aliases)
 		serverID, networkID := server.ID, network.ID
 		plan.Steps = l.Machine().ChangeAliasIPs
-		plan.Undo = undoServer(serverID, func(tx *state.Tx, server *state.Server) {
+		plan.Undo = undoRecord(state.Servers, serverID, func(tx *state.Tx, server *state.Server) {
 			attached, index := serverNetwork(server, networkID)
 			network, err := state.Get(tx, state.Networks, networkID)
 			if index < 0 || err != nil {

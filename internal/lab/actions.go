@@ -400,7 +400,9 @@ func (l *Lab) start(planned plannedAction) {
 			err = planned.plan.Steps(ctx)
 		}
 		// canceled only when the steps gave up: steps that finished despite
-		// the cancel have done their work, and the action succeeded
+		// the cancel have done their work, and the action succeeded; an
+		// aborted action ends as aborted all the same (end), as its
+		// resource is gone
 		if undone := l.end(run, err, err != nil && ctx.Err() != nil); undone {
 			l.machine.updatePicturesAfterUndo()
 		}

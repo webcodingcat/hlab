@@ -166,8 +166,9 @@ func TestCheckRoomTakesTheSettings(t *testing.T) {
 	}
 }
 
-// A start takes over the servers that run, connects those that are off
-// again and starts those that want to run.
+// A start takes over the servers that run, turns off one that runs but
+// does not want to (HLab ended during its poweroff), connects those that
+// are off again and starts those that want to run.
 func TestStartMachineResumesTheServers(t *testing.T) {
 	machine := fake.New()
 	withAppliance(machine)
@@ -176,11 +177,12 @@ func TestStartMachineResumesTheServers(t *testing.T) {
 	running := putServer(t, l, machine, "running", true, true)
 	wanted := putServer(t, l, machine, "wanted", false, true)
 	resting := putServer(t, l, machine, "resting", false, false)
+	stopping := putServer(t, l, machine, "stopping", true, false)
 
 	if err := l.Machine().Start(t.Context(), machineOptions); err != nil {
 		t.Fatal(err)
 	}
-	for id, want := range map[int64]state.ServerStatus{running: state.ServerRunning, wanted: state.ServerRunning, resting: state.ServerOff} {
+	for id, want := range map[int64]state.ServerStatus{running: state.ServerRunning, wanted: state.ServerRunning, resting: state.ServerOff, stopping: state.ServerOff} {
 		if status, _ := serverStatus(t, l, id); status != want {
 			t.Errorf("server %d is %s, want %s", id, status, want)
 		}
@@ -193,6 +195,9 @@ func TestStartMachineResumesTheServers(t *testing.T) {
 	}
 	if strings.Contains(calls, "DetachNIC "+lab.ServerVM(running)) {
 		t.Error("the NIC of the running server was touched")
+	}
+	if vmState, err := machine.Platform().Hypervisor.VMState(t.Context(), lab.ServerVM(stopping)); err != nil || vmState.Power != platform.PowerOff {
+		t.Errorf("the VM of the server that does not want to run is %+v, %v; want off", vmState, err)
 	}
 }
 

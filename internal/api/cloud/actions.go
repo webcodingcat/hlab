@@ -25,6 +25,22 @@ const actionsListRemoved = "https://docs.hetzner.cloud/changelog#2025-01-30-list
 // it checks the request, makes the quick changes and returns the slow part.
 type planFunc func(tx *state.Tx, req lab.Request) (lab.Plan, error)
 
+// undoRecord returns an undo that makes change to a record, if it is still
+// there: its project may have been deleted while the steps failed.
+func undoRecord[R state.Record](kind state.Kind[R], id int64, change func(tx *state.Tx, record *R)) func(tx *state.Tx) error {
+	return func(tx *state.Tx) error {
+		record, err := state.Get(tx, kind, id)
+		if errors.Is(err, state.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		change(tx, record)
+		return nil
+	}
+}
+
 // registerActions adds the routes of actions.
 func registerActions(api *web.API, l *lab.Lab) {
 	api.Handle("GET /actions", func(req *web.Request) (int, any, error) {

@@ -217,8 +217,8 @@ The layer test checks production code only. Tests may import fakes and helpers.
   a call into `system`.
 - **The machine's fields share the lab's mutex.** `lab.Machine` (Actions) has
   no mutex of its own: its fields (the appliance, the host's resources, the
-  image loads, the watchdog's notes) are read and changed only while holding
-  the lab's mutex. The watchdog and the room check read them together with
+  image loads, the watchdog's notes; `internal/lab/machine.go`) are read and
+  changed only while holding the lab's mutex. The watchdog and the room check read them together with
   the state and the flags, and a second mutex would add a lock order to
   keep.
 - **Two locks are held across calls to the system,** so they are separate
@@ -279,6 +279,14 @@ keep other actions off its resources or queue them. The types (`Plan`,
   action ends `success`; if they fail, the `Undo` sets the IP back, the
   action ends `error` in the same change, and the appliance gets the
   pictures without the IP. Either way the flags go.
+- **Two actions in a queue:** a server runs a `poweron`, and a `poweroff` arrives. The
+  servers' table is `Queued`, so the `poweroff` is planned at once (its
+  quick change, `want_running` false, is in the state) and waits in the
+  server's queue; its steps start when the `poweron` ends. A Primary IP's
+  `assign` to that server meanwhile locks the server: it is 423 while
+  the server is flagged. If the `poweron`'s steps fail, its `Undo`
+  (`want_running` false) is skipped, as it is marked `UndoIfLast` and the
+  `poweroff` waits behind it: that plan has set what it needs already.
 - **`Lab.Act`, `Lab.ActAll` and `Lab.Create`** all go through the private
   `Lab.run`: it checks the project, records the new resource (only
   `Create`), plans each row (`planAction`: the busy check and the plan,
@@ -343,19 +351,10 @@ keep other actions off its resources or queue them. The types (`Plan`,
   | `Queued` table | yes | waits behind the action before it | 423 `locked` |
   | `Unflagged` row | no | runs alongside | 423 `locked` |
 
-  An example: a server runs a `poweron`, and a `poweroff` arrives. The
-  servers' table is `Queued`, so the `poweroff` is planned at once (its
-  quick change, `want_running` false, is in the state) and waits in the
-  server's queue; its steps start when the `poweron` ends. A Primary IP's
-  `assign` to that server meanwhile locks the server: it is 423 while
-  the server is flagged. If the `poweron`'s steps fail, its `Undo`
-  (`want_running` false) is skipped, as it is marked `UndoIfLast` and the
-  `poweroff` waits behind it: that plan has set what it needs already.
-
   An action that locks a resource of a `Queued` table (a Primary IP's
   assign locks its server) also heads that resource's queue: the
   resource's own actions sent meanwhile wait behind it. Hetzner's answer
-  there is not measured (docs/roadmap.md, Known gaps).
+  there is assumed, not measured (docs/roadmap.md, Known gaps).
 - **No made-up times.** An action ends as soon as its work is done (the
   VM, the disk, the pictures sent to the appliance); the lab never waits
   to copy a time that Hetzner takes, and a status such as `pending`,
@@ -390,7 +389,7 @@ keep other actions off its resources or queue them. The types (`Plan`,
   - The watchdog looks at a VM without the mutex, so it acts only if no
     action flagged the server meanwhile: each round notes the servers it
     looks at, an action's flag marks them, and the notes go with the round
-    (`Machine.watchRound`).
+    (`Machine.watchRound`, `internal/lab/watchdog.go`).
   - If the steps are cancelled, nothing is undone: a reset removes everything
     anyway, and a stopping lab keeps its state.
 - **Where an action's parts live.** `api/*` decides and `lab` does the work
@@ -444,7 +443,7 @@ catalog in [docs/catalog.md](docs/catalog.md). These rules hold across them:
   record, and by the watchdog for a guest that shut itself down); steps
   leave it, so queued actions keep the order they were sent in.
 - **Room is checked where the records are:** memory and cores in the
-  transaction (`Machine.CheckRoom`), the disk before it (`Machine.CheckDisk`, which
+  transaction (`Machine.CheckRoom` in `internal/lab/servers.go`), the disk before it (`Machine.CheckDisk`, which
   asks the system). The reserves come from `hlab.yaml` (`room`).
 - **A server's status** is set by its actions' steps while they run, by the
   watchdog when no action works on it, and by the lab's start, which makes
@@ -571,7 +570,9 @@ the same later.
 | `requirements.md` | what the tools need, from their source code, each with its phase and test |
 | `exceptions.yaml` | what never works against HLab, with the reason |
 
-- **Every answer of every API test is checked against the spec.**
+- **Every answer of every Cloud API test is checked against the spec.** (The
+  lab control's and `web`'s own tests send plain requests: Hetzner has no
+  spec for them.)
   `spectest.New(t, api, spectest.Cloud)` returns a client that sends requests to the
   handler inside the test's process. The client fails the test on an answer the spec
   does not allow: wrong status, content type or JSON body. Errors of paths that the

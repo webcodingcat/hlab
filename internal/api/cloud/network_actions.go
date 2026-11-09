@@ -2,7 +2,6 @@ package cloud
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/netip"
 	"slices"
@@ -32,22 +31,6 @@ func networkActions(l *lab.Lab) lab.ActionTable {
 	}
 }
 
-// undoNetwork returns an undo that makes change to the network, if it is
-// still there.
-func undoNetwork(id int64, change func(tx *state.Tx, network *state.Network)) func(tx *state.Tx) error {
-	return func(tx *state.Tx) error {
-		network, err := state.Get(tx, state.Networks, id)
-		if errors.Is(err, state.ErrNotFound) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		change(tx, network)
-		return nil
-	}
-}
-
 // networkPlan returns the plan of a change to a network's subnets, range or
 // routes: the appliance gets the pictures, and Hetzner's action ends at
 // once (measured 2026-11-08, also with servers in the network). The undo
@@ -55,7 +38,7 @@ func undoNetwork(id int64, change func(tx *state.Tx, network *state.Network)) fu
 // change (a delete_subnet and then an add_subnet of the same range), and
 // taking it back would leave the network with the range twice.
 func networkPlan(l *lab.Lab, id int64, undo func(tx *state.Tx, network *state.Network)) lab.Plan {
-	return lab.Plan{Steps: l.Machine().ChangeNetwork, Undo: undoNetwork(id, undo), UndoIfLast: true}
+	return lab.Plan{Steps: l.Machine().ChangeNetwork, Undo: undoRecord(state.Networks, id, undo), UndoIfLast: true}
 }
 
 // planAddSubnet adds a subnet, checked as in a create but with the

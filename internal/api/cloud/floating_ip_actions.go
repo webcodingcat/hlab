@@ -2,7 +2,6 @@ package cloud
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -151,20 +150,12 @@ func zone(cat *catalog.Catalog, name string) string {
 // goes back to the server it had before (0: none), if that is still
 // there.
 func undoFloatingIPChange(id, serverID int64) func(tx *state.Tx) error {
-	return func(tx *state.Tx) error {
-		ip, err := state.Get(tx, state.FloatingIPs, id)
-		if errors.Is(err, state.ErrNotFound) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
+	return undoRecord(state.FloatingIPs, id, func(tx *state.Tx, ip *state.FloatingIP) {
 		ip.ServerID = 0
 		if _, err := state.Get(tx, state.Servers, serverID); err == nil {
 			ip.ServerID = serverID
 		}
-		return nil
-	}
+	})
 }
 
 // floatingIPProtectionRequest is the body of change_protection.

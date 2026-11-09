@@ -2,7 +2,6 @@ package cloud
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -122,14 +121,7 @@ func primaryIPChangePlan(l *lab.Lab, serverID int64) lab.Plan {
 // keep other actions off both while the steps run, but a project's reset
 // may have removed either.
 func undoPrimaryIPChange(id, serverID int64, autoDelete bool) func(tx *state.Tx) error {
-	return func(tx *state.Tx) error {
-		ip, err := state.Get(tx, state.PrimaryIPs, id)
-		if errors.Is(err, state.ErrNotFound) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
+	return undoRecord(state.PrimaryIPs, id, func(tx *state.Tx, ip *state.PrimaryIP) {
 		if ip.AssigneeID != 0 {
 			if server, err := state.Get(tx, state.Servers, ip.AssigneeID); err == nil {
 				*primaryIPField(server, ip.Type) = 0
@@ -140,8 +132,7 @@ func undoPrimaryIPChange(id, serverID int64, autoDelete bool) func(tx *state.Tx)
 			*primaryIPField(server, ip.Type) = ip.ID
 			ip.AssigneeID = server.ID
 		}
-		return nil
-	}
+	})
 }
 
 // primaryIPField returns the server's field that holds its Primary IP of

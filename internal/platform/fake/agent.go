@@ -23,6 +23,7 @@ type Agent struct {
 	pictures    map[string][]byte
 	holds       map[string]*hold // by picture: the next put waits (HoldNext)
 	failures    map[string]bool  // by picture: the next put fails (FailNext)
+	puts        map[string]int   // by picture: the puts that arrived, refused ones too
 }
 
 // hold makes a put wait: waiting closes when it arrives, the put goes on
@@ -33,7 +34,7 @@ type hold struct {
 
 // NewAgent returns an agent that has applied no picture yet.
 func NewAgent() *Agent {
-	a := &Agent{generations: map[string]uint64{}, pictures: map[string][]byte{}, holds: map[string]*hold{}, failures: map[string]bool{}}
+	a := &Agent{generations: map[string]uint64{}, pictures: map[string][]byte{}, holds: map[string]*hold{}, failures: map[string]bool{}, puts: map[string]int{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+agentproto.PathStatus, a.status)
 	mux.HandleFunc("PUT "+agentproto.PathPictures+"{name}", a.putPicture)
@@ -78,6 +79,14 @@ func (a *Agent) HoldNext(name string) (waiting <-chan struct{}, release func()) 
 		close(next.release)
 		<-next.applied
 	}
+}
+
+// Puts returns how many puts of the named picture arrived, refused and
+// failed ones too.
+func (a *Agent) Puts(name string) int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.puts[name]
 }
 
 // FailNext makes the next put of the named picture fail with 503, as an
@@ -125,6 +134,7 @@ func (a *Agent) putPicture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.mu.Lock()
+	a.puts[name]++
 	failing := a.failures[name]
 	delete(a.failures, name)
 	a.mu.Unlock()
