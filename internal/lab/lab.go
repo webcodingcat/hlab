@@ -103,7 +103,6 @@ type runningAction struct {
 	undoIfLast bool
 	flagged    []state.ResourceRef // the flags it holds until it ends
 	queue      *state.ResourceRef  // the resource it queued on, if any
-	lockQueues []state.ResourceRef // the resources it locks, whose queues wait for it
 	names      []state.ResourceRef // the resources the action names
 	aborted    bool                // its resource was deleted: it ends as Hetzner's "aborted"
 }

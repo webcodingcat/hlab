@@ -19,8 +19,10 @@ func DHCP(lab Lab) agentproto.DHCP {
 	writeLines(&config, dhcpBase(DevicePublic)...)
 	writeLines(&config,
 		"dhcp-option=option:router,"+Gateway4.String(),
-		// the gateway is on-link: a route to it, then the default route
+		// the gateway is on-link: a route to it, then the default route,
+		// in options 121 and 249 alike (measured 2026-11-09)
 		fmt.Sprintf("dhcp-option=121,%s/32,0.0.0.0,0.0.0.0/0,%s", Gateway4, Gateway4),
+		fmt.Sprintf("dhcp-option=249,%s/32,0.0.0.0,0.0.0.0/0,%s", Gateway4, Gateway4),
 		"dhcp-option=option:dns-server,"+resolvers[0].String(),
 	)
 	writeLines(&config, serviceLease()...)

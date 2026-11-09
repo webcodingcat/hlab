@@ -42,18 +42,6 @@ Faults and deviations from Hetzner, each as "level, phase: finding": the
 level from the review that found it (must, should, optional; accepted
 for what the operator keeps), the phase or step that closes it.
 
-- **must, 2b-1:** measured in 2b-0 (`compat/requirements.md`, "What 2a
-  left open"): `delete_subnet` deletes a subnet that holds only a
-  member's alias IPs, which Hetzner refuses with `"network has attached
-  resources"` (`planDeleteSubnet` looks at the members' own addresses
-  only); `delete_subnet` with an `ip_range` that is not the subnet's
-  first address (`10.0.1.5/24`) answers `"subnet not found"`, Hetzner
-  field `ip_range` `"cidrv4 violated"`; a server's actions sent while a
-  Primary IP's assign runs wait behind it, while Hetzner runs them
-  alongside (the assign heads the server's queue, DEVELOPING.md,
-  Actions).
-- **must, 2b-1:** a server's public lease lacks option 249; Hetzner sends
-  121 and 249 alike (`internal/picture/dhcp.go`).
 - **should, 2b (own step):** a NIC that Hyper-V fails to remove (a
   detach, a network's delete) stays in the VM without a record; the VLAN
   pool's rotation keeps it out of new networks for a while. A check that
@@ -285,8 +273,8 @@ at most.
   so an older generation could follow a newer one for one check; every
   sender now reads and sends the newest pictures under one lock.
 - `Locks` did not hold off a server's own queued actions: a `poweron` or a
-  delete ran beside a Primary IP's assign. They now wait behind it
-  (Hetzner's answer is not measured).
+  delete ran beside a Primary IP's assign. They waited behind it until
+  2b-1, as 2b-0 measured Hetzner running them alongside.
 
 ### Notes
 

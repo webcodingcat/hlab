@@ -98,7 +98,9 @@ func planDeleteSubnet(l *lab.Lab) planFunc {
 		var subnetRange netip.Prefix
 		if body.IPRange == nil {
 			check.Fail("ip_range", "'ip_range' is required")
-		} else if prefix, err := netip.ParsePrefix(*body.IPRange); err != nil || !prefix.Addr().Is4() {
+		} else if prefix, err := netip.ParsePrefix(*body.IPRange); err != nil || !prefix.Addr().Is4() || prefix != prefix.Masked() {
+			// a range that does not start at its first address too
+			// (measured 2026-11-09)
 			check.Fail("ip_range", networkCIDRInvalid)
 		} else {
 			subnetRange = prefix
@@ -116,10 +118,14 @@ func planDeleteSubnet(l *lab.Lab) planFunc {
 		if index < 0 {
 			return lab.Plan{}, web.RefusalNull(http.StatusUnprocessableEntity, "service_error", networkSubnetNotFound)
 		}
-		// only the members' own addresses count; Hetzner also refuses a
-		// subnet that holds a member's alias IP (docs/roadmap.md, Known gaps)
+		// a member's alias IP counts as its address does (measured
+		// 2026-11-09)
 		for _, member := range networkMembers(tx, network) {
-			if subnetRange.Contains(member.address) {
+			holds := subnetRange.Contains(member.address) || slices.ContainsFunc(member.aliases, func(alias string) bool {
+				address, err := netip.ParseAddr(alias)
+				return err == nil && subnetRange.Contains(address)
+			})
+			if holds {
 				return lab.Plan{}, web.RefusalNull(http.StatusUnprocessableEntity, "service_error", networkHasMembers)
 			}
 		}

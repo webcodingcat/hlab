@@ -379,22 +379,18 @@ func (l *Lab) start(planned plannedAction) {
 	run := &runningAction{
 		id: planned.action.ID, projectID: planned.action.ProjectID, cancel: cancel, done: make(chan struct{}),
 		before: before, undo: planned.plan.Undo, undoIfLast: planned.plan.UndoIfLast, flagged: flagged,
-		queue: queue, lockQueues: planned.plan.Locks, names: planned.action.Resources,
+		queue: queue, names: planned.action.Resources,
 	}
 	l.running[run.id] = run
 	for _, ref := range flagged {
 		l.flags[ref]++
 		l.machine.noteFlag(ref)
 	}
+	// a resource's own queued actions do not wait behind an action that
+	// locks it: Hetzner runs a server's poweroff beside a Primary IP's
+	// assign to it (measured 2026-11-09)
 	if queue != nil {
 		l.queues[*queue] = run.done
-	}
-	// a resource's own queued actions wait behind an action that locks it
-	// (a server's poweron behind a Primary IP's assign; assumed, not
-	// measured on Hetzner); the lock check found nothing flagged on it, so
-	// nothing waits in its queue yet
-	for _, ref := range planned.plan.Locks {
-		l.queues[ref] = run.done
 	}
 	l.background.Go(func() {
 		defer func() {
@@ -452,10 +448,9 @@ func stillRunning(done <-chan struct{}) bool {
 	}
 }
 
-// releaseQueues takes an ending action out of the queues it heads: its
-// resource's, and those of the resources it locks. It tells whether no
-// action waits behind it on its resource (true without a queue). The
-// caller holds the mutex.
+// releaseQueues takes an ending action out of its resource's queue. It
+// tells whether no action waits behind it there (true without a queue).
+// The caller holds the mutex.
 func (l *Lab) releaseQueues(run *runningAction) (nothingBehind bool) {
 	nothingBehind = run.queue == nil || l.queues[*run.queue] == run.done
 	if run.queue != nil && nothingBehind {
@@ -467,11 +462,6 @@ func (l *Lab) releaseQueues(run *runningAction) (nothingBehind bool) {
 			l.queues[*run.queue] = run.before
 		} else {
 			delete(l.queues, *run.queue)
-		}
-	}
-	for _, ref := range run.lockQueues {
-		if l.queues[ref] == run.done {
-			delete(l.queues, ref)
 		}
 	}
 	return nothingBehind

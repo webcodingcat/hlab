@@ -370,6 +370,9 @@ func TestRulesetWithFirewallsLoads(t *testing.T) {
 	}
 }
 
+// TestDHCPPictureGivesAServerItsAddress checks Hetzner's public lease
+// (measured 2026-11-09): the server's address and the routes to the
+// on-link gateway, then the default route, in options 121 and 249 alike.
 func TestDHCPPictureGivesAServerItsAddress(t *testing.T) {
 	agent := setUp(t)
 	lab := picture.DefaultLab()
@@ -379,9 +382,11 @@ func TestDHCPPictureGivesAServerItsAddress(t *testing.T) {
 
 	// the public wire carries web's MAC: it plays the server
 	output, err := exec.Command("busybox", "udhcpc", "-i", wires[picture.DevicePublic],
-		"-n", "-q", "-f", "-s", "/bin/true", "-t", "5").CombinedOutput()
-	if err != nil || !strings.Contains(string(output), "lease of 198.19.0.1 obtained from 172.31.1.1") {
-		t.Errorf("udhcpc: %v\n%s", err, output)
+		"-n", "-q", "-f", "-s", leaseScript(t), "-t", "5", "-O", "staticroutes", "-O", "msstaticroutes").CombinedOutput()
+	routes := "172.31.1.1/32 0.0.0.0 0.0.0.0/0 172.31.1.1"
+	want := []string{"ip=198.19.0.1 ", " routes=" + routes + " ms=" + routes + "\n"}
+	if err != nil || !strings.Contains(string(output), want[0]) || !strings.Contains(string(output), want[1]) {
+		t.Errorf("udhcpc: %v\n%s\nwant %q", err, output, want)
 	}
 	broken := picture.DHCP(lab)
 	broken.Instances[0].Config += "no-such-option\n"
@@ -404,19 +409,26 @@ func TestDHCPPictureGivesAServerWithIPv6OnlyItsServiceLease(t *testing.T) {
 	putPicture(t, agent, agentproto.PictureLinks, picture.Links(lab))
 	putPicture(t, agent, agentproto.PictureDHCP, picture.DHCP(lab))
 
+	output, err := exec.Command("busybox", "udhcpc", "-i", wires[picture.DevicePublic],
+		"-n", "-q", "-f", "-s", leaseScript(t), "-t", "5", "-O", "staticroutes", "-O", "msstaticroutes").CombinedOutput()
+	routes := "172.31.1.1/32 0.0.0.0 169.254.169.254/32 172.31.1.1 188.40.24.200/32 172.31.1.1"
+	want := "ip=100.64.0.1 dns= routes=" + routes + " ms=" + routes
+	if err != nil || !strings.Contains(string(output), want) {
+		t.Errorf("udhcpc: %v\n%s\nwant %s", err, output, want)
+	}
+}
+
+// leaseScript returns udhcpc's script that prints a lease's address, DNS
+// servers and the routes of options 121 and 249.
+func leaseScript(t *testing.T) string {
+	t.Helper()
 	script := filepath.Join(t.TempDir(), "lease")
 	text := "#!/bin/sh\n" +
 		`[ "$1" = bound ] && echo "ip=$ip dns=$dns routes=$staticroutes ms=$msstaticroutes"` + "\n"
 	if err := os.WriteFile(script, []byte(text), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	output, err := exec.Command("busybox", "udhcpc", "-i", wires[picture.DevicePublic],
-		"-n", "-q", "-f", "-s", script, "-t", "5", "-O", "staticroutes", "-O", "msstaticroutes").CombinedOutput()
-	routes := "172.31.1.1/32 0.0.0.0 169.254.169.254/32 172.31.1.1 188.40.24.200/32 172.31.1.1"
-	want := "ip=100.64.0.1 dns= routes=" + routes + " ms=" + routes
-	if err != nil || !strings.Contains(string(output), want) {
-		t.Errorf("udhcpc: %v\n%s\nwant %s", err, output, want)
-	}
+	return script
 }
 
 func TestAddressesAreAnnouncedWhenTheCarrierComesUp(t *testing.T) {

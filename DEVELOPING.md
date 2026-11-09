@@ -363,10 +363,9 @@ What a plan and a row can say (`lab.Plan`, `lab.ActionSpec`):
   | `Unflagged` row | no | runs alongside | 423 `locked` |
 
   An action that locks a resource of a `Queued` table (a Primary IP's
-  assign locks its server) also heads that resource's queue: the
-  resource's own actions sent meanwhile wait behind it. Hetzner runs
-  them alongside instead (measured 2026-11-09; docs/roadmap.md, Known
-  gaps).
+  assign locks its server) does not join that resource's queue: the
+  resource's own actions sent meanwhile run alongside it, as on Hetzner
+  (measured 2026-11-09).
 - **No made-up times.** An action ends as soon as its work is done (the
   VM, the disk, the pictures sent to the appliance); the lab never waits
   to copy a time that Hetzner takes, and a status such as `pending`,

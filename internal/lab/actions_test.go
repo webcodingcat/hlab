@@ -303,11 +303,10 @@ func TestUndoRunsWhenTheStepsFail(t *testing.T) {
 	}
 }
 
-// A queued resource's own action waits behind an action of another table
-// that locks the resource (a server's poweron behind a Primary IP's
-// assign), as for the resource's own actions; Hetzner runs them
-// alongside (docs/roadmap.md, Known gaps).
-func TestQueuedActionsWaitBehindAnActionThatLocksTheirResource(t *testing.T) {
+// A resource's own queued actions run beside an action that locks it, as
+// a server's poweroff runs beside a Primary IP's assign on Hetzner
+// (measured 2026-11-09); another action that locks it is 423.
+func TestQueuedActionsRunBesideAnActionThatLocksTheirResource(t *testing.T) {
 	l, _ := openWithProject(t)
 	release := make(chan struct{})
 	server := state.ResourceRef{Type: "server", ID: 7}
@@ -318,16 +317,8 @@ func TestQueuedActionsWaitBehindAnActionThatLocksTheirResource(t *testing.T) {
 			return plan, err
 		}},
 	}}
-	var overtaken atomic.Bool
 	servers := tableWith(lab.ActionSpec{Name: "stop_server", Plan: func(*state.Tx, lab.Request) (lab.Plan, error) {
-		return lab.Plan{Steps: func(context.Context) error {
-			select {
-			case <-release:
-			default:
-				overtaken.Store(true)
-			}
-			return nil
-		}}, nil
+		return lab.Plan{Steps: func(context.Context) error { return nil }}, nil
 	}})
 	servers.Queued = true
 
@@ -339,21 +330,13 @@ func TestQueuedActionsWaitBehindAnActionThatLocksTheirResource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// a poweroff that does not wait ends within this window; the window
-	// only lets a wrong order show and never fails a right one
-	deadline := time.Now().Add(50 * time.Millisecond)
-	for actionStatus(t, l, queued.ID) == state.ActionRunning && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
+	waitForStatus(t, l, queued.ID, state.ActionSuccess)
+	var locked *lab.LockedError
+	if _, err := l.Act(assign, "assign", lab.Request{ProjectID: projectID, ID: 4}); !errors.As(err, &locked) {
+		t.Errorf("a second assign to the locked server: %v, want a LockedError", err)
 	}
 	close(release)
 	waitForStatus(t, l, locking.ID, state.ActionSuccess)
-	waitForStatus(t, l, queued.ID, state.ActionSuccess)
-	if overtaken.Load() {
-		t.Error("the server's action ran while the assign ran")
-	}
-	if _, err := l.Act(servers, "poweroff", request(server.ID)); err != nil {
-		t.Errorf("an action after both: %v", err)
-	}
 }
 
 // An action of a queue that is aborted while it waits (its network was

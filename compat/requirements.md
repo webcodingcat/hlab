@@ -543,8 +543,8 @@ Read in the guest (dhcpcd 10.1.0) and from its raw lease file.
 | the guest's routes | `default via 172.31.1.1`, `172.31.1.1 dev eth0 scope link`, both with the server's address as source |
 | `resolv.conf` | Hetzner's two IPv6 resolvers (from `network-config`), then `185.12.64.2` |
 
-HLab sends options 1, 3, 6 (the appliance's resolver) and 121, not 249
-(`internal/picture/dhcp.go`); the deviation is in docs/roadmap.md.
+HLab sends options 1, 3, 6 (the appliance's resolver), 121 and 249 alike
+(`internal/picture/dhcp.go`, since 2b-1).
 
 #### Volumes
 
@@ -689,10 +689,10 @@ during placement"`, as `cx23` in `nbg1` did that day without a group.
 
 | Request | Answer |
 |---|---|
-| `delete_subnet` of a subnet that holds only a member's alias IP | 422 `service_error` `"network has attached resources"` `null`; after `change_alias_ips` to `[]` 201 (HLab: deletes it, a deviation) |
+| `delete_subnet` of a subnet that holds only a member's alias IP | 422 `service_error` `"network has attached resources"` `null`; after `change_alias_ips` to `[]` 201 (HLab the same since 2b-1) |
 | `delete_subnet` of an empty subnet while other subnets have members | 201 |
-| `delete_subnet` `10.90.3.5/24` (not the first address) / `10.90.3.0/25` | 422 field `ip_range` `"cidrv4 violated"` / `service_error` `"subnet not found"` (HLab: `"subnet not found"` for both, a deviation) |
+| `delete_subnet` `10.90.3.5/24` (not the first address) / `10.90.3.0/25` | 422 field `ip_range` `"cidrv4 violated"` / `service_error` `"subnet not found"` (HLab the same since 2b-1) |
 | a server's `attach_to_network` while the network's `add_subnet` runs; two `add_subnet` and an `add_route` at once | 201 each; they run alongside (HLab the same) |
 | `add_subnet` while a server's attach to the network runs | 201 |
-| a Primary IPv4's `assign` to a stopped server, then at once its `poweroff`, `attach_to_network`, `change_dns_ptr` | 201 each, no 423; they run alongside: `stop_server` ended 3 s before the assign (HLab: they wait behind the assign, a deviation) |
+| a Primary IPv4's `assign` to a stopped server, then at once its `poweroff`, `attach_to_network`, `change_dns_ptr` | 201 each, no 423; they run alongside: `stop_server` ended 3 s before the assign (HLab the same since 2b-1) |
 | an `attach_to_network`, then at once the assign | 201 each, alongside |

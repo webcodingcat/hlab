@@ -362,6 +362,8 @@ func TestNetworkSubnetsRoutesAndRange(t *testing.T) {
 		"an unknown subnet": {map[string]any{"ip_range": "10.0.3.0/24"}, refused("service_error", "subnet not found")},
 		"no range":          {map[string]any{}, invalidField("ip_range", "'ip_range' is required")},
 		"no CIDR":           {map[string]any{"ip_range": "nope"}, invalidField("ip_range", "cidrv4 violated")},
+		// not the range's first address (measured 2026-11-09)
+		"not the first address": {map[string]any{"ip_range": "10.0.1.5/24"}, invalidField("ip_range", "cidrv4 violated")},
 	})
 
 	waitActions(t, test, actionOf(t, "add_route", networkAction(test, id, "add_route", map[string]any{"destination": "10.101.0.0/24", "gateway": "10.0.1.11"})),
@@ -614,6 +616,23 @@ func TestServerJoinsAndLeavesANetwork(t *testing.T) {
 		http.StatusUnprocessableEntity, "service_error", "network has attached resources")
 	expectError(t, "deleting the server's subnet", networkAction(test, network.ID, "delete_subnet", map[string]any{"ip_range": "10.0.1.0/24"}),
 		http.StatusUnprocessableEntity, "service_error", "network has attached resources")
+}
+
+// A subnet that holds only a member's alias IP cannot be deleted either;
+// without the alias IP it can (measured 2026-11-09).
+func TestDeleteSubnetCountsAliasIPs(t *testing.T) {
+	test := newTestLab(t)
+	quietMachine(t, test)
+	server := offServer(t, test, "web")
+	network := createNetwork(t, test, map[string]any{"name": "net", "ip_range": "10.0.0.0/16",
+		"subnets": []map[string]any{cloudSubnet("10.0.1.0/24"), cloudSubnet("10.0.2.0/24")}})
+	waitActions(t, test, actionOf(t, "attach", serverNetworkAction(test, server.Server.ID, "attach_to_network",
+		map[string]any{"network": network.ID, "ip": "10.0.1.2", "alias_ips": []string{"10.0.2.5"}})))
+	expectError(t, "deleting the subnet of an alias IP", networkAction(test, network.ID, "delete_subnet", map[string]any{"ip_range": "10.0.2.0/24"}),
+		http.StatusUnprocessableEntity, "service_error", "network has attached resources")
+	waitActions(t, test, actionOf(t, "change_alias_ips", serverNetworkAction(test, server.Server.ID, "change_alias_ips",
+		map[string]any{"network": network.ID, "alias_ips": []string{}})))
+	waitActions(t, test, actionOf(t, "delete_subnet", networkAction(test, network.ID, "delete_subnet", map[string]any{"ip_range": "10.0.2.0/24"})))
 }
 
 // A network's delete takes it from the servers in it at once, without an
