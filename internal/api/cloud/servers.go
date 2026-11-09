@@ -657,7 +657,7 @@ func serverJSON(l *lab.Lab, tx *state.Tx, server *state.Server) serverAnswer {
 			Network: attached.NetworkID, IP: attached.IP, AliasIPs: aliases, MACAddress: attached.MAC,
 		})
 	}
-	out.PublicNet.Firewalls = serverFirewallsJSON(l, tx, server)
+	out.PublicNet.Firewalls = serverFirewallsJSON(tx, server)
 	floating := state.IDs(tx, state.FloatingIPs, func(ip *state.FloatingIP) bool { return ip.ServerID == server.ID })
 	out.PublicNet.FloatingIPs = append(out.PublicNet.FloatingIPs, floating...)
 	return out

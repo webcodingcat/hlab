@@ -1,5 +1,5 @@
 // Package lab is the core of HLab: it owns the state, runs every change as a
-// transaction, runs the actions and their flags, keeps Hetzner's timings, and
+// transaction, runs the actions and their flags, and
 // starts and stops the lab.
 //
 // The api packages decide what to change and call Change and Act; the slow
@@ -31,11 +31,10 @@ const StateFile = "state.json"
 // Options are what the lab needs to start.
 type Options struct {
 	DataDir string
-	// TimeScale is the factor on Hetzner's timings: 1 is as fast as Hetzner, 0
-	// does not wait at all (the unit tests).
-	TimeScale float64
-	// Clock tells the time and waits; nil is the real clock.
-	Clock Clock
+	// Now tells the time; nil is time.Now. A test sets it to give
+	// resources created one after another different times, which Hetzner
+	// gives in whole seconds.
+	Now func() time.Time
 	// Logger gets the lab's log; nil is slog.Default().
 	Logger *slog.Logger
 	// Catalog is what the lab offers (catalog.Load); nil is the built-in
@@ -52,8 +51,7 @@ type Options struct {
 // Lab is the running lab.
 type Lab struct {
 	system    *system.System
-	clock     Clock
-	timeScale float64
+	now       func() time.Time
 	logger    *slog.Logger
 	catalog   *catalog.Catalog
 	writer    *state.Writer
@@ -64,12 +62,6 @@ type Lab struct {
 	closeErr  error // of the first Close
 
 	machine *Machine
-
-	// notesMu guards notes, the statuses the API shows for a while
-	// (AddNote); it is taken alone or while holding mu, never the other
-	// way round, and never across a call
-	notesMu sync.Mutex
-	notes   map[NoteKey]Note
 
 	// envMu makes EnvToken one at a time, across its read and write of the
 	// env token file; it is not the state's mutex, so it may be held across
@@ -128,21 +120,20 @@ func Open(opts Options, sys *system.System) (*Lab, error) {
 		return nil, err
 	}
 	l := &Lab{
-		system:    sys,
-		clock:     opts.Clock,
-		timeScale: opts.TimeScale,
-		logger:    opts.Logger,
-		catalog:   opts.Catalog,
-		release:   release,
-		dataDir:   opts.DataDir,
-		fresh:     errors.Is(statErr, fs.ErrNotExist),
-		state:     loaded,
-		flags:     map[state.ResourceRef]int{},
-		queues:    map[state.ResourceRef]chan struct{}{},
-		running:   map[int64]*runningAction{},
+		system:  sys,
+		now:     opts.Now,
+		logger:  opts.Logger,
+		catalog: opts.Catalog,
+		release: release,
+		dataDir: opts.DataDir,
+		fresh:   errors.Is(statErr, fs.ErrNotExist),
+		state:   loaded,
+		flags:   map[state.ResourceRef]int{},
+		queues:  map[state.ResourceRef]chan struct{}{},
+		running: map[int64]*runningAction{},
 	}
-	if l.clock == nil {
-		l.clock = realClock{}
+	if l.now == nil {
+		l.now = time.Now
 	}
 	if l.logger == nil {
 		l.logger = slog.Default()
@@ -285,7 +276,7 @@ func (l *Lab) Flush() error {
 // Now returns the time as the API shows it: UTC, in whole seconds. Records
 // that the api packages create take it as their time of creation.
 func (l *Lab) Now() time.Time {
-	return l.clock.Now().UTC().Truncate(time.Second)
+	return l.now().UTC().Truncate(time.Second)
 }
 
 // Catalog returns what the lab offers. It does not change while the lab

@@ -1,7 +1,6 @@
 package cloud
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -85,8 +84,8 @@ func planPrimaryIPUnassign(l *lab.Lab) planFunc {
 		server, err := state.Get(tx, state.Servers, ip.AssigneeID)
 		if err != nil {
 			// an IP without a server: nothing changes on the machine, so
-			// the action only waits Hetzner's time
-			return lab.Plan{Steps: func(ctx context.Context) error { return l.Sleep(ctx, lab.PrimaryIPChange) }}, nil
+			// the action has no steps and ends at once
+			return lab.Plan{}, nil
 		}
 		if server.Status != state.ServerOff {
 			return lab.Plan{}, web.RefusalNull(http.StatusUnprocessableEntity, "server_not_stopped", primaryIPServerRunning)

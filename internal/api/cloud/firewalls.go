@@ -495,10 +495,9 @@ func firewallJSON(firewall *state.Firewall) firewallAnswer {
 
 // serverFirewallsJSON returns a server's public_net.firewalls: each
 // firewall that applies to it, applied, or pending while an action that
-// names both runs, as on Hetzner, also a remove (measured 2026-11-09);
-// what a label selector's notes say wins (noteSelectorChange). Sorted by
+// names both runs, as on Hetzner, also a remove (measured 2026-11-09). Sorted by
 // ID, where Hetzner's order changes from one read to the next.
-func serverFirewallsJSON(l *lab.Lab, tx *state.Tx, server *state.Server) []schema.ServerFirewall {
+func serverFirewallsJSON(tx *state.Tx, server *state.Server) []schema.ServerFirewall {
 	statuses := map[int64]string{}
 	for _, id := range state.IDs(tx, state.Firewalls, func(firewall *state.Firewall) bool {
 		return firewall.ProjectID == server.ProjectID && slices.Contains(lab.FirewallServers(firewall), server.ID)
@@ -515,15 +514,6 @@ func serverFirewallsJSON(l *lab.Lab, tx *state.Tx, server *state.Server) []schem
 				if ref.Type == firewallResource {
 					statuses[ref.ID] = firewallStatusPending
 				}
-			}
-		}
-	}
-	for _, kind := range []string{serverFirewallNote, serverFirewallPending} {
-		for id, note := range l.Notes(kind, server.ID) {
-			if note.Status == "" {
-				delete(statuses, id)
-			} else {
-				statuses[id] = note.Status
 			}
 		}
 	}

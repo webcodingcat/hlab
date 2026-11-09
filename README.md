@@ -66,11 +66,11 @@ export HLAB_CONTROL=http://127.0.0.1:8090 HLAB_TOKEN_FILE=~/hlab-data/control.to
 there at each start; only one `hlabd` runs per machine.
 
 The web UI is at `http://127.0.0.1:8090` (`HLAB_UI`): projects, their tokens and the
-catalog. `hlab.yaml` sets the ports, the time scale and how long the servers may
-take to shut down when the lab stops:
+catalog. `hlab.yaml` sets the ports and how long the servers may
+take to shut down when the lab stops (the old key `time_scale` is ignored: actions
+end as soon as their work is done):
 
 ```yaml
-time_scale: 1   # 1 is Hetzner's speed, 0.5 twice as fast, 0 does not wait
 ports: {cloud: 8080, hetzner: 8081, control: 8090}
 shutdown_timeout: 60   # seconds, then the servers are turned off
 room:                  # what the servers may take of the host

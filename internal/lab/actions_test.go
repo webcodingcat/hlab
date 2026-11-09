@@ -28,9 +28,9 @@ func tableWith(spec lab.ActionSpec) lab.ActionTable {
 
 // openWithProject opens a lab as open does, with the tests' project in it:
 // Act refuses an action of a project that is not there.
-func openWithProject(t *testing.T, opts lab.Options) (*lab.Lab, *fake.Fake) {
+func openWithProject(t *testing.T) (*lab.Lab, *fake.Fake) {
 	t.Helper()
-	l, machine := open(t, opts)
+	l, machine := open(t, lab.Options{})
 	putTestProject(t, l)
 	return l, machine
 }
@@ -109,7 +109,7 @@ func waitForStatus(t *testing.T, l *lab.Lab, id int64, want state.ActionStatus) 
 }
 
 func TestActionWithoutStepsFinishesAtOnce(t *testing.T) {
-	l, _ := openWithProject(t, lab.Options{})
+	l, _ := openWithProject(t)
 	action, err := l.Act(tableWith(instant), "poweroff", request(7))
 	if err != nil {
 		t.Fatal(err)
@@ -123,7 +123,7 @@ func TestActionWithoutStepsFinishesAtOnce(t *testing.T) {
 }
 
 func TestUnknownCommandIsAnError(t *testing.T) {
-	l, _ := openWithProject(t, lab.Options{})
+	l, _ := openWithProject(t)
 	if _, err := l.Act(tableWith(instant), "explode", request(7)); !errors.Is(err, lab.ErrUnknownCommand) {
 		t.Fatalf("got %v, want ErrUnknownCommand", err)
 	}
@@ -131,7 +131,7 @@ func TestUnknownCommandIsAnError(t *testing.T) {
 
 // Hetzner answers 423 "locked" while another action runs on the resource.
 func TestSecondActionOnABusyResourceIsLocked(t *testing.T) {
-	l, _ := openWithProject(t, lab.Options{})
+	l, _ := openWithProject(t)
 	release := make(chan struct{})
 	table := tableWith(blocking(release))
 	table.Actions["protect"] = instant
@@ -159,7 +159,7 @@ func TestSecondActionOnABusyResourceIsLocked(t *testing.T) {
 }
 
 func TestUnflaggedActionRunsAlongside(t *testing.T) {
-	l, _ := openWithProject(t, lab.Options{})
+	l, _ := openWithProject(t)
 	release := make(chan struct{})
 	defer close(release)
 	table := tableWith(blocking(release))
@@ -176,7 +176,7 @@ func TestUnflaggedActionRunsAlongside(t *testing.T) {
 }
 
 func TestPlanLocksMoreResources(t *testing.T) {
-	l, _ := openWithProject(t, lab.Options{})
+	l, _ := openWithProject(t)
 	release := make(chan struct{})
 	defer close(release)
 	servers := tableWith(blocking(release))
@@ -196,7 +196,7 @@ func TestPlanLocksMoreResources(t *testing.T) {
 }
 
 func TestRefusedActionChangesNothing(t *testing.T) {
-	l, _ := openWithProject(t, lab.Options{})
+	l, _ := openWithProject(t)
 	refused := errors.New("invalid input")
 	spec := lab.ActionSpec{Name: "stop_server", Plan: func(tx *state.Tx, _ lab.Request) (lab.Plan, error) {
 		state.Put(tx, state.Projects, &state.Project{ID: state.NewID(tx, state.Projects)})
@@ -219,7 +219,7 @@ func TestRefusedActionChangesNothing(t *testing.T) {
 }
 
 func TestCreateRecordsTheResourceWithItsActions(t *testing.T) {
-	l, _ := openWithProject(t, lab.Options{})
+	l, _ := openWithProject(t)
 	table := tableWith(instant)
 	table.Actions["poweron"] = instant
 	create := func(tx *state.Tx) (int64, error) {
@@ -244,7 +244,7 @@ func TestCreateRecordsTheResourceWithItsActions(t *testing.T) {
 }
 
 func TestRefusedCreateRecordsNothing(t *testing.T) {
-	l, _ := openWithProject(t, lab.Options{})
+	l, _ := openWithProject(t)
 	refused := errors.New("invalid input")
 	table := tableWith(instant)
 	table.Actions["poweron"] = lab.ActionSpec{Name: "start_server", Plan: func(*state.Tx, lab.Request) (lab.Plan, error) {
@@ -270,7 +270,7 @@ func TestRefusedCreateRecordsNothing(t *testing.T) {
 }
 
 func TestUndoRunsWhenTheStepsFail(t *testing.T) {
-	l, _ := openWithProject(t, lab.Options{})
+	l, _ := openWithProject(t)
 	var keyID int64
 	spec := lab.ActionSpec{Name: "stop_server", Plan: func(tx *state.Tx, _ lab.Request) (lab.Plan, error) {
 		keyID = state.NewID(tx, state.SSHKeys)
@@ -307,7 +307,7 @@ func TestUndoRunsWhenTheStepsFail(t *testing.T) {
 // assign); Hetzner's answer here is not measured, and the lab waits as
 // for the resource's own actions.
 func TestQueuedActionsWaitBehindAnActionThatLocksTheirResource(t *testing.T) {
-	l, _ := openWithProject(t, lab.Options{})
+	l, _ := openWithProject(t)
 	release := make(chan struct{})
 	server := state.ResourceRef{Type: "server", ID: 7}
 	assign := lab.ActionTable{ResourceType: "primary_ip", Busy: "primary ip is locked", Actions: map[string]lab.ActionSpec{
@@ -345,7 +345,7 @@ func TestQueuedActionsWaitBehindAnActionThatLocksTheirResource(t *testing.T) {
 // An undo marked UndoIfLast leaves alone what an action queued behind it
 // has planned since.
 func TestUndoIfLastSkipsWhenAnActionIsQueuedBehind(t *testing.T) {
-	l, _ := openWithProject(t, lab.Options{})
+	l, _ := openWithProject(t)
 	release := make(chan struct{})
 	failing := lab.ActionSpec{Name: "stop_server", Plan: func(*state.Tx, lab.Request) (lab.Plan, error) {
 		return lab.Plan{
@@ -440,7 +440,7 @@ func TestCloseRefusesNewActions(t *testing.T) {
 }
 
 func TestStopProjectActionsCancelsOnlyThatProject(t *testing.T) {
-	l, _ := openWithProject(t, lab.Options{})
+	l, _ := openWithProject(t)
 	putProjectWithID(t, l, 2)
 	release := make(chan struct{})
 	table := tableWith(blocking(release))
@@ -465,7 +465,7 @@ func TestStopProjectActionsCancelsOnlyThatProject(t *testing.T) {
 }
 
 func TestOnlyTheNewestFinishedActionsAreKept(t *testing.T) {
-	l, _ := openWithProject(t, lab.Options{})
+	l, _ := openWithProject(t)
 	var oldest int64
 	err := l.Change(func(tx *state.Tx) error {
 		for i := range lab.MaxFinishedActions {
@@ -498,7 +498,7 @@ func TestOnlyTheNewestFinishedActionsAreKept(t *testing.T) {
 }
 
 func TestOfTwoActionsAtOnceOneWins(t *testing.T) {
-	l, _ := openWithProject(t, lab.Options{})
+	l, _ := openWithProject(t)
 	release := make(chan struct{})
 	defer close(release)
 	table := tableWith(blocking(release))
@@ -525,47 +525,20 @@ func TestOfTwoActionsAtOnceOneWins(t *testing.T) {
 	}
 }
 
-// An action of a change that is no action appears after its delay,
-// running, and ends after its time, both on the lab's clock: Hetzner's
+// An action of a change that is no action ends at once: Hetzner's
 // apply_firewall when a label selector takes a server.
-func TestRecordedActionAppearsLaterAndEnds(t *testing.T) {
-	clock := newTestClock()
-	l, _ := openWithProject(t, lab.Options{TimeScale: 1, Clock: clock})
+func TestRecordedActionEndsAtOnce(t *testing.T) {
+	l, _ := openWithProject(t)
 	resources := []state.ResourceRef{{Type: "firewall", ID: 7}, {Type: "server", ID: 8}}
-	if err := l.Change(func(*state.Tx) error {
-		l.RecordActionLater(projectID, "apply_firewall", resources, 2*time.Second, 14*time.Second)
+	var id int64
+	if err := l.Change(func(tx *state.Tx) error {
+		l.RecordAction(tx, projectID, "apply_firewall", resources)
+		id = state.IDs(tx, state.Actions, func(*state.Action) bool { return true })[0]
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	actions := func() []int64 {
-		var ids []int64
-		_ = l.View(func(tx *state.Tx) error {
-			ids = state.IDs(tx, state.Actions, func(*state.Action) bool { return true })
-			return nil
-		})
-		return ids
-	}
-	clock.WaitForSleepers(1)
-	clock.Advance(time.Second)
-	if got := actions(); len(got) != 0 {
-		t.Fatalf("after 1 s there are the actions %v", got)
-	}
-	clock.Advance(time.Second)
-	clock.WaitForSleepers(1) // recorded, it waits its time
-	ids := actions()
-	if len(ids) != 1 {
-		t.Fatalf("after 2 s there are the actions %v", ids)
-	}
-	if got := actionStatus(t, l, ids[0]); got != state.ActionRunning {
-		t.Errorf("after 2 s the action is %s", got)
-	}
-	clock.Advance(13 * time.Second)
-	if got := actionStatus(t, l, ids[0]); got != state.ActionRunning {
-		t.Errorf("after 15 s the action is %s", got)
-	}
-	clock.Advance(time.Second)
-	if action := waitForStatus(t, l, ids[0], state.ActionSuccess); action.Command != "apply_firewall" || len(action.Resources) != 2 {
-		t.Errorf("the action is %+v", action)
+	if got := actionStatus(t, l, id); got != state.ActionSuccess {
+		t.Errorf("the action is %s, want success", got)
 	}
 }

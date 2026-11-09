@@ -17,16 +17,15 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
   firewalls' table (`apply_firewall`) per firewall and, unless
   `start_after_create` is false, `poweron` (`start_server`), all in one
   `Lab.Create`; the answer's `next_actions` lists them in this order, as
-  Hetzner's does, and its server shows the networks and the firewalls
-  `pending`. Hetzner checks the networks after the SSH keys: each must be
+  Hetzner's does, and its server shows the networks and the firewalls. Hetzner checks the networks after the SSH keys: each must be
   the project's and have a subnet, at most three, their ranges apart
   (the network ID 0 fails Hetzner with a 500, and the lab's too); then the
   firewalls: each the project's, at most five; a label selector's
   firewall takes a place only where those leave one. A field
   `floating_ips` is ignored, as Hetzner has none. The attach and the
-  apply run beside the create and only wait Hetzner's time: the create's
+  apply run beside the create and have no steps of their own: the create's
   VM gets the NICs, and its pictures the firewalls, before the first
-  start. A member that joins in the create is `attaching` for 1.2 s. The create's steps are
+  start, so they end at once. The create's steps are
   `Machine.CreateServer`; its `Machine.BuildServer` takes the system image from the
   cache, makes the differencing disk, the
   seed and the VM, and sends the appliance the pictures with the server. If
@@ -131,7 +130,7 @@ HLab's end cut short).
 
 The handlers in `internal/api/cloud/floating_ips.go` and
 `floating_ip_actions.go` decide; `Machine.ChangeFloatingIP`
-(`internal/lab/floating_ips.go`) sends the pictures and waits Hetzner's 3 s.
+(`internal/lab/floating_ips.go`) sends the pictures.
 
 - **Create** takes a `home_location` (by name only; Hetzner refuses an ID)
   or a `server`, whose location is then the home, and runs the row
@@ -197,13 +196,11 @@ pictures and wait Hetzner's 3 s and 1 s. What Hetzner answers is measured
   relabel, a remove or a firewall's delete, `refreshFirewallSelectors`
   brings the servers a selector holds (`applied_to_resources`) up to date
   in the same transaction; the data plane has the change at once. A
-  server that comes or leaves shows it as Hetzner does
-  (`noteSelectorChange`): for 2 s the firewall is not listed yet (one
-  that leaves: for 1.7 s still `applied`), then an `apply_firewall` (a
-  `remove_firewall`) naming the firewall and the server runs for 14 s
-  (8 s) and the server shows it `pending`; a server in its create gets it
-  after the create's 4 s. Notes (`Lab.AddNote`) give the statuses and
-  `Lab.RecordActionLater` the action. A server applied directly is not held
+  server that comes or leaves gets an `apply_firewall` (a
+  `remove_firewall`) naming the firewall and the server, as on Hetzner
+  (`recordSelectorChange`, `Lab.RecordAction`); the change is made, so the
+  action ends at once and the server never shows the firewall `pending`
+  for it. A server applied directly is not held
   by the firewall's selector: an apply to a selected server moves it, with
   a `remove_firewall` naming the selector first.
 - **Limits:** 5 firewalls per server. An apply or create beyond it is 403;
@@ -284,9 +281,7 @@ measured (`compat/requirements.md`, Networks).
 - **Members** (`GET /networks/{id}/members`) are the servers in the
   network with their subnet; a server whose attach runs is `attaching`,
   one whose alias IPs change `updating`. As on Hetzner, a server that
-  leaves (a detach, its delete) stays as `detaching` for 5 s, and the
-  other servers show `updating` from 2 s after a server joins or leaves,
-  for 10 s: `Lab.AddNote` keeps such statuses in memory for a while. Load
+  leaves (a detach, its delete) is no member any more at once. Load
   balancers come with phase 4.
 - **Delete** refuses a protected network (423) and deletes one with
   servers in it, as Hetzner does: they leave it at once, without an

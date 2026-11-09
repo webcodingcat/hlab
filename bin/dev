@@ -422,8 +422,8 @@ smoke() (
     [[ -z "${images_pid}" ]] || kill "${images_pid}" 2>/dev/null
     rm -rf "${dir}"' EXIT
   mkdir "${dir}/data" "${dir}/images"
-  # any free ports and no waiting, so that it runs beside a lab in use
-  printf 'time_scale: 0\nports: {cloud: 0, hetzner: 0, control: 0}\n' \
+  # any free ports, so that it runs beside a lab in use
+  printf 'ports: {cloud: 0, hetzner: 0, control: 0}\n' \
     >"${dir}/data/hlab.yaml"
   # the fake machine's servers need an image, but not a real one: a small
   # qcow2 from a local server stands in for Debian's

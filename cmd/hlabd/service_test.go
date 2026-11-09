@@ -31,7 +31,7 @@ func startService(t *testing.T) *service {
 func startServiceOn(t *testing.T, machine *fake.Fake) *service {
 	t.Helper()
 	dataDir := t.TempDir()
-	ports := "ports: {cloud: 0, hetzner: 0, control: 0}\ntime_scale: 0\n"
+	ports := "ports: {cloud: 0, hetzner: 0, control: 0}\n"
 	if err := os.WriteFile(filepath.Join(dataDir, config.File), []byte(ports), 0o600); err != nil {
 		t.Fatal(err)
 	}

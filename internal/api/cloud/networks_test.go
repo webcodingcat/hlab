@@ -3,10 +3,10 @@ package cloud_test
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -675,45 +675,15 @@ func TestFailedAttachLeavesNoTrace(t *testing.T) {
 	}
 }
 
-// handClock is a clock that moves only when the test advances it; its
-// waits end at once, so that actions do not take Hetzner's times.
-type handClock struct {
-	mu  sync.Mutex
-	now time.Time
-}
-
-func (c *handClock) Now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.now
-}
-
-func (c *handClock) After(time.Duration) <-chan time.Time {
-	fire := make(chan time.Time, 1)
-	fire <- c.Now()
-	return fire
-}
-
-// Advance moves the clock forward.
-func (c *handClock) Advance(d time.Duration) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.now = c.now.Add(d)
-}
-
-// A server that leaves a network stays among its members as "detaching"
-// for 5 s, and the other members show "updating" from 2 s after for 10 s,
-// as on Hetzner (measured 2026-11-08 and 2026-11-09).
-func TestMembersShowAServerLeavingAsHetznerDoes(t *testing.T) {
-	clock := &handClock{now: time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)}
-	test := newTimedTestLab(t, clock, 1)
+// A server that leaves a network, by a detach or by its delete, is no member
+// any more at once, and the others stay "ok".
+func TestMembersLoseAServerThatLeaves(t *testing.T) {
+	test := newTestLab(t)
 	first, second := offServer(t, test, "first"), offServer(t, test, "second")
 	network := createNetwork(t, test, map[string]any{"name": "net", "ip_range": "10.0.0.0/16", "subnets": []map[string]any{cloudSubnet("10.0.1.0/24")}})
 	for _, server := range []createAnswer{first, second} {
 		waitActions(t, test, actionOf(t, "attach", serverNetworkAction(test, server.Server.ID, "attach_to_network", map[string]any{"network": network.ID})))
 	}
-	clock.Advance(time.Minute) // the attaches' notes are over
-	waitActions(t, test, actionOf(t, "detach", serverNetworkAction(test, first.Server.ID, "detach_from_network", map[string]any{"network": network.ID})))
 	statuses := func() map[int64]string {
 		var answer struct {
 			Members []schema.NetworkMember `json:"members"`
@@ -725,32 +695,13 @@ func TestMembersShowAServerLeavingAsHetznerDoes(t *testing.T) {
 		}
 		return got
 	}
-	for _, step := range []struct {
-		advance       time.Duration
-		first, second string // "" for not a member
-	}{
-		{0, "detaching", "ok"},
-		{2 * time.Second, "detaching", "updating"},
-		{3 * time.Second, "", "updating"}, // 5 s
-		{6 * time.Second, "", "updating"}, // 11 s
-		{time.Second, "", "ok"},           // 12 s
-	} {
-		clock.Advance(step.advance)
-		got := statuses()
-		if got[first.Server.ID] != step.first || got[second.Server.ID] != step.second {
-			t.Errorf("at %s the members are %v, want first %q and second %q", clock.Now().Format(time.TimeOnly), got, step.first, step.second)
-		}
+	waitActions(t, test, actionOf(t, "detach", serverNetworkAction(test, first.Server.ID, "detach_from_network", map[string]any{"network": network.ID})))
+	if got := statuses(); !maps.Equal(got, map[int64]string{second.Server.ID: "ok"}) {
+		t.Errorf("after the detach the members are %v, want only the second, ok", got)
 	}
-	// a detaching member is listed with its address, and filtered by status
-	waitActions(t, test, actionOf(t, "attach", serverNetworkAction(test, first.Server.ID, "attach_to_network", map[string]any{"network": network.ID})))
-	clock.Advance(time.Minute)
 	test.client.Do(http.MethodDelete, fmt.Sprintf("/v1/servers/%d", second.Server.ID), nil)
-	var detaching struct {
-		Members []schema.NetworkMember `json:"members"`
-	}
-	test.client.Get(fmt.Sprintf("/v1/networks/%d/members?status=detaching", network.ID)).Decode(t, &detaching)
-	if len(detaching.Members) != 1 || detaching.Members[0].ID != second.Server.ID || detaching.Members[0].IP == "" || detaching.Members[0].Subnet != "10.0.1.0/24" {
-		t.Errorf("after the second server's delete the detaching members are %+v", detaching.Members)
+	if got := statuses(); len(got) != 0 {
+		t.Errorf("after the second server's delete the members are %v, want none", got)
 	}
 }
 

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
-	"slices"
 
 	"github.com/webcodingcat/hlab/internal/picture"
 	"github.com/webcodingcat/hlab/internal/state"
@@ -63,26 +62,6 @@ func (m *Machine) ChangeNetwork(ctx context.Context) error {
 	return m.UpdatePictures(ctx)
 }
 
-// ChangeNetworkRoutes is the steps of add_route and delete_route: the
-// appliance gets the pictures with the network's new routes; with servers
-// in the network, Hetzner takes its time to tell them.
-func (m *Machine) ChangeNetworkRoutes(ctx context.Context, networkID int64) error {
-	if err := m.UpdatePictures(ctx); err != nil {
-		return err
-	}
-	members := false
-	_ = m.lab.View(func(tx *state.Tx) error {
-		members = len(state.IDs(tx, state.Servers, func(server *state.Server) bool {
-			return slices.ContainsFunc(server.PrivateNets, func(nic state.ServerPrivateNet) bool { return nic.NetworkID == networkID })
-		})) > 0
-		return nil
-	})
-	if !members {
-		return nil
-	}
-	return m.lab.Sleep(ctx, NetworkRoutes)
-}
-
 // AttachServerToNetwork is the steps of attach_to_network: the plan has
 // recorded the server's NIC in the network; the NIC goes into the VM, also
 // one that runs, and the appliance gets the pictures with the server's
@@ -116,15 +95,13 @@ func (m *Machine) AttachServerToNetwork(ctx context.Context, serverID, networkID
 		}
 		return err
 	}
-	return m.lab.Sleep(ctx, NICAttach)
+	return nil
 }
 
 // DetachServerFromNetwork is the steps of detach_from_network: the plan has
 // taken the server's NIC out of the record; the appliance gets the pictures
 // without it first, then the NIC leaves the VM. If that fails, the action's
-// undo puts the record back, and the pictures after it the routes. Hetzner
-// ends the action at once on a running server and takes its time on one
-// that is off.
+// undo puts the record back, and the pictures after it the routes.
 func (m *Machine) DetachServerFromNetwork(ctx context.Context, serverID int64, mac string) error {
 	if err := m.UpdatePictures(ctx); err != nil {
 		return err
@@ -133,11 +110,7 @@ func (m *Machine) DetachServerFromNetwork(ctx context.Context, serverID int64, m
 	if err := m.system.DetachPrivateNIC(ctx, vm, mac); err != nil {
 		return err
 	}
-	runs, err := m.system.ServerRuns(ctx, vm)
-	if err != nil || runs {
-		return err
-	}
-	return m.lab.Sleep(ctx, NICDetachOff)
+	return nil
 }
 
 // ServerNIC is a server's NIC in a private network, by its MAC.
@@ -172,13 +145,10 @@ func (m *Machine) DetachNICsLater(nics []ServerNIC) {
 }
 
 // ChangeAliasIPs is the steps of change_alias_ips: the plan has changed the
-// record, the appliance routes the new alias IPs to the server, and then it
-// waits Hetzner's time. The guest configures them itself, as on Hetzner.
+// record, and the appliance routes the new alias IPs to the server. The
+// guest configures them itself, as on Hetzner.
 func (m *Machine) ChangeAliasIPs(ctx context.Context) error {
-	if err := m.UpdatePictures(ctx); err != nil {
-		return err
-	}
-	return m.lab.Sleep(ctx, AliasIPs)
+	return m.UpdatePictures(ctx)
 }
 
 // networkNIC is a server's NIC in a network, as the system needs it.

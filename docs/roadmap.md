@@ -239,10 +239,6 @@ that found it (must, should, optional) and the phase that closes it.
 - **should, 2c:** the servers' watchdog runs every 2 s on the wall clock
   (`serverWatchInterval`, `time.NewTicker`, not the lab's clock), so its
   unit tests wait seconds.
-- **should, with each timing's phase:** `internal/lab/clock.go` holds
-  timings of later phases and `ServerCreateStart`, which nothing uses (the
-  start after a create waits `PowerOn`); not every timing says when it
-  was measured.
 - **optional, 2a:** a type `holds` that sets and frees an action's flags
   and queues in one place (`Lab.start`, `Lab.end`); worth it once `start`
   grows.
@@ -262,10 +258,6 @@ that found it (must, should, optional) and the phase that closes it.
   server, and names that DHCP in the server's `network-config`; the lab
   gives it no IPv4 at all (measured 2026-11-09, `compat/requirements.md`,
   "A server with IPv6 only").
-- **2a-5:** the lab waits Hetzner's times (`clock.go`, `Lab.Sleep`,
-  `time_scale`) and shows statuses for a while after a change (notes:
-  members, a selector's firewall); 2a-5 takes the waits out, so that an
-  action ends when its work is done.
 
 ### Comes with phase X
 
@@ -274,8 +266,9 @@ that found it (must, should, optional) and the phase that closes it.
 - **2b:** `change_dns_ptr` (DNS); unbound's configuration and the uplink's
   unreachable route name the default ranges, and the ranges become
   settings with a picture.
-- **2c:** the injected fault's delay runs on the wall clock, not the lab's
-  time scale.
+- **2c:** an injected fault's delay is the user's parameter (`delay_ms`),
+  no Hetzner time, and runs on the wall clock as set; the lab has no
+  time scale any more. Only its test waits for real.
 - **3a:** `PUT` and `DELETE` of images.
 - **4:** tests of the ruleset's counters for traffic between servers (the
   agent's counters).
@@ -303,9 +296,10 @@ that found it (must, should, optional) and the phase that closes it.
 | 2a-2 | firewalls with Hetzner's actions, limits, texts and label selectors that follow the servers, in the `ruleset` picture (a chain per server and direction, a chain per firewall and direction, verdict maps); `Lab.ActAll`, `lab.Row`, `Lab.RecordAction`; a lab address nobody holds answers nothing, as on Hetzner (blackhole route in the `links` picture) | done |
 | 2a-3 | private networks with Hetzner's actions, limits, texts and members; `attach_to_network`, `detach_from_network`, `change_alias_ips` with NIC hot-plug; the switch `HLab-Private`, a VLAN and a VRF per network, DHCP per network; the guest's private NICs by the seed's vendor-data; `Lab.AddNote` for statuses Hetzner shows for a while | done |
 | 2a-4 | networks and firewalls in a server's create; the metadata's `private-networks`, and the metadata service for a server without public addresses; a firewall's `pending` and a selector's actions as Hetzner shows them; Hetzner's answers to unknown actions and to IDs that are no number; the unassign of a Floating IP's move; `add_subnet` without a free `/24`; a network's delete aborts its actions; a private NIC keeps its number (state version 2); 50 firewalls per project; the smoke test `examples/tofu-2a` | done |
+| 2a-5 | no made-up times: actions end as soon as their work is done; `clock.go`, `Lab.Sleep`, `Lab.AddNote`, `Lab.RecordActionLater` and `time_scale` are gone (an old `hlab.yaml` with the key still loads); a selector's `apply_firewall` or `remove_firewall` is recorded finished at once (`Lab.RecordAction`); statuses such as `pending` and `attaching` show only while an action's work runs; `bin/dev itest` no longer ends with 141 when the output grows | done |
 
-Next: 2a-5, the lab without Hetzner's waits; 2a-6, IPv4 for a server
-with IPv6 only; then 2a-R, the review of phase 2a.
+Next: 2a-6, IPv4 for a server with IPv6 only; then 2a-R, the review of
+phase 2a.
 
 ### What 2a-4 brought
 
@@ -326,8 +320,8 @@ with IPv6 only; then 2a-R, the review of phase 2a.
   private leases, so that the user-data's commands find them.
 - **Firewalls:** `pending` while an apply or remove that names the server
   runs, also a remove; a label selector that takes a server or lets it go
-  records an `apply_firewall` or `remove_firewall` after Hetzner's delay
-  (`Lab.RecordActionLater`, notes for the time before); 50 firewalls per
+  records an `apply_firewall` or `remove_firewall` (2a-5 made it end at
+  once); 50 firewalls per
   project; a remove of a server the firewall does not reach answers
   Hetzner's text.
 - **Unknown actions** answer per resource as Hetzner does: another
@@ -365,9 +359,7 @@ with IPv6 only; then 2a-R, the review of phase 2a.
   server, Hetzner's order of checks, the address from the last subnet,
   a network's actions queued, a network deleted with servers in it, the
   server's network actions only among the network's. The members show
-  `attaching`, `detaching` for 5 s after a server left, and `updating`
-  from 2 s after another joined or left (`Lab.AddNote`, which 2a-4 can
-  use for a firewall's `pending`).
+  `attaching` while an attach runs and `updating` while alias IPs change.
 - **On Hyper-V** the switch `HLab-Private` (private) carries a VLAN per
   network: the appliance's `private` NIC is a trunk, a server's NIC an
   access port, hot-plugged into a running VM. A server's private MAC is

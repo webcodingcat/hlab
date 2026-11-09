@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"time"
 
 	"github.com/webcodingcat/hlab/internal/state"
 )
@@ -191,42 +190,12 @@ func (l *Lab) run(table ActionTable, req Request, create func(tx *state.Tx) (int
 	return actions, nil
 }
 
-// RecordActionLater records an action of a change that is no action, as
+// RecordAction records an action of a change that is no action, as
 // Hetzner records one when a label selector takes a server under a
-// firewall or lets it go: after the time after it appears, running, and
-// it ends after lasting more, both Hetzner's times, scaled by the time
-// scale. It changes nothing on the machine. The caller holds the mutex,
-// in the change that causes the action; a project deleted meanwhile gets
-// none. It ends with the lab, and Close waits for it.
-func (l *Lab) RecordActionLater(projectID int64, command string, resources []state.ResourceRef, after, lasting time.Duration) {
-	if l.closed {
-		return
-	}
-	l.background.Go(func() {
-		ctx := l.ctx
-		if l.Sleep(ctx, after) != nil {
-			return
-		}
-		var id int64
-		err := l.Change(func(tx *state.Tx) error {
-			if CheckProject(tx, projectID) == nil {
-				id = l.newAction(tx, projectID, command, resources).ID
-			}
-			return nil
-		})
-		if err != nil || id == 0 || l.Sleep(ctx, lasting) != nil {
-			return
-		}
-		err = l.Change(func(tx *state.Tx) error {
-			if action, err := state.Get(tx, state.Actions, id); err == nil {
-				l.finishAction(tx, action, nil)
-			}
-			return nil
-		})
-		if err != nil {
-			l.logger.Error("finishing a recorded action failed", "id", id, "error", err)
-		}
-	})
+// firewall or lets it go. The change has nothing left to do on the
+// machine, so the action ends at once. The caller is in a transaction.
+func (l *Lab) RecordAction(tx *state.Tx, projectID int64, command string, resources []state.ResourceRef) {
+	l.finishAction(tx, l.newAction(tx, projectID, command, resources), nil)
 }
 
 // plannedAction is an action that its transaction has recorded and whose

@@ -127,8 +127,7 @@ func (l *Lab) SetServerStatus(id int64, status state.ServerStatus) error {
 }
 
 // CreateServer is the create action's steps: it builds the server
-// (BuildServer) and waits Hetzner's time; a server that is not to start
-// is off then, one that is to start is left to the poweron queued behind.
+// (BuildServer); a server that is not to start is off then, one that is to start is left to the poweron queued behind.
 // If it fails, it removes the VM, the disk and the seed, and the action's
 // undo removes the record. If it is canceled, it leaves them: a stopping
 // lab keeps the record, and its next start builds the server anew; a
@@ -139,9 +138,6 @@ func (l *Lab) SetServerStatus(id int64, status state.ServerStatus) error {
 // what is there).
 func (m *Machine) CreateServer(ctx context.Context, id int64, start bool) error {
 	err := m.BuildServer(ctx, id)
-	if err == nil {
-		err = m.lab.Sleep(ctx, ServerCreate)
-	}
 	switch {
 	case err != nil && ctx.Err() == nil:
 		return errors.Join(err, m.deleteServerVM(ctx, id))
@@ -263,12 +259,9 @@ func (m *Machine) cachedImage(ctx context.Context, image catalog.Image) (string,
 
 // DeleteServer is the delete action's steps: the server's record is gone
 // already (its plan removed it), and its VM, disk and seed go now
-// (deleteServerVM); then it waits Hetzner's time.
+// (deleteServerVM).
 func (m *Machine) DeleteServer(ctx context.Context, id int64) error {
-	if err := m.deleteServerVM(ctx, id); err != nil {
-		return err
-	}
-	return m.lab.Sleep(ctx, ServerDelete)
+	return m.deleteServerVM(ctx, id)
 }
 
 // deleteServerVM removes what a deleted server had on the machine: its VM,
@@ -304,13 +297,7 @@ func (m *Machine) PowerOnServer(ctx context.Context, id int64) error {
 			return err
 		}
 	}
-	if err := m.lab.Sleep(ctx, PowerOn); err != nil {
-		return err
-	}
-	if err := m.lab.SetServerStatus(id, state.ServerRunning); err != nil {
-		return err
-	}
-	return m.lab.Sleep(ctx, PowerOnEnd)
+	return m.lab.SetServerStatus(id, state.ServerRunning)
 }
 
 // PowerOffServer turns a server off at once, as Hetzner's poweroff:
@@ -324,22 +311,13 @@ func (m *Machine) PowerOffServer(ctx context.Context, id int64) error {
 	if err := m.system.PowerServer(ctx, ServerVM(id), system.PowerOff); err != nil {
 		return err
 	}
-	if err := m.lab.Sleep(ctx, PowerOff); err != nil {
-		return err
-	}
-	if err := m.lab.SetServerStatus(id, state.ServerOff); err != nil {
-		return err
-	}
-	return m.lab.Sleep(ctx, PowerOffEnd)
+	return m.lab.SetServerStatus(id, state.ServerOff)
 }
 
 // ShutdownServer asks the guest to shut down, as Hetzner's shutdown, which
 // ends once the button is pressed: the watchdog sees the VM go off.
 func (m *Machine) ShutdownServer(ctx context.Context, id int64) error {
-	if err := m.system.PowerServer(ctx, ServerVM(id), system.PowerShutdown); err != nil {
-		return err
-	}
-	return m.lab.Sleep(ctx, Shutdown)
+	return m.system.PowerServer(ctx, ServerVM(id), system.PowerShutdown)
 }
 
 // RebootServer restarts a server through its guest: Hyper-V has no ACPI
@@ -382,19 +360,13 @@ func (m *Machine) ResetServer(ctx context.Context, id int64) error {
 	return m.finishRestart(ctx, id, system.PowerReset)
 }
 
-// finishRestart runs the power command of a reboot or reset and waits
-// Hetzner's times: starting, then running.
+// finishRestart runs the power command of a reboot or reset: starting,
+// then running.
 func (m *Machine) finishRestart(ctx context.Context, id int64, power system.Power) error {
 	if err := m.system.PowerServer(ctx, ServerVM(id), power); err != nil {
 		return err
 	}
-	if err := m.lab.Sleep(ctx, Restart); err != nil {
-		return err
-	}
-	if err := m.lab.SetServerStatus(id, state.ServerRunning); err != nil {
-		return err
-	}
-	return m.lab.Sleep(ctx, RestartEnd)
+	return m.lab.SetServerStatus(id, state.ServerRunning)
 }
 
 // serverFacts returns what the pictures need of a server: its addresses

@@ -99,7 +99,7 @@ means the row has no limit. Outside modules are not in it (Dependencies): so
 | `internal/labapi` | request and answer types of the lab control, shared with `client` | – |
 | `internal/webui` | web UI: files through `go:embed`, Host and Origin checks | `web` |
 | `internal/web` | HTTP basics: routes (`net/http`), Hetzner's error format, pagination, sorting, label selectors, rate limit headers, token check, `X-Correlation-Id` | `state` |
-| `internal/lab` | the core: owns the state; transactions, actions, flags, timings, triggering pictures, life cycle | `state`, `picture`, `seed`, `system`, `catalog`, `config` |
+| `internal/lab` | the core: owns the state; transactions, actions, flags, triggering pictures, life cycle | `state`, `picture`, `seed`, `system`, `catalog`, `config` |
 | `internal/state` | records, kinds, loading, saving, migrations | – |
 | `internal/picture` | pure functions from the state to the data plane's pictures and the host's DNS rules | `state`, `agentproto`, `catalog`, `seed` |
 | `internal/seed` | pure functions for the cloud-init seed (NoCloud) | – |
@@ -116,7 +116,7 @@ means the row has no limit. Outside modules are not in it (Dependencies): so
 | `internal/vhdx` | (later) the page 83 disk ID in a VHDX's metadata | – |
 | `internal/imagefmt` | disk image formats without outside tools: reading qcow2, the footer of a fixed VHD; (later) detecting formats, unpacking | – |
 | `internal/catalog` | server types, locations, load balancer and box types, prices, ISOs, system images; built in, a user file overrides | – |
-| `internal/config` | `hlab.yaml`: ranges, time scale, overcommit, deadlines, ports | – |
+| `internal/config` | `hlab.yaml`: ranges, overcommit, deadlines, ports | – |
 | `internal/schema` | (later) models generated from Hetzner's spec where `hcloud-go/schema` has gaps | – |
 | `internal/spectest` | tests only: checking answers against Hetzner's spec | – |
 | `itest` | tests only: the live tests (build tag `live`) | – |
@@ -205,11 +205,6 @@ The layer test checks production code only. Tests may import fakes and helpers.
   therefore separate: `Machine.pictureMu`, which keeps the pictures in order,
   and the image cache's load lock per image (`Machine.imageLoads`). Neither
   is ever taken while holding the lab's mutex.
-- **Notes** (`Lab.AddNote`, `Lab.Notes`): statuses the API shows for a
-  while after a change, as Hetzner shows a server that left a network as
-  `detaching` for seconds. They live in memory, under a mutex of their
-  own, `notesMu`, which is taken alone or while holding the lab's mutex
-  (plans and views call them) and is never held across a call.
 - Every change runs in `lab.Change(func(tx *state.Tx) error)`. If the function
   returns an error, the old state stays; otherwise the new state is saved. Reads run
   in `lab.View`, which changes nothing. A `View` whose function always returns
@@ -258,16 +253,16 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
 - **`Lab.ActAll`** runs several rows on one resource in one transaction,
   each with its own body (`lab.Row`), for a command that answers a list of
   actions (a firewall's `apply_to_resources`: one action per resource it
-  names). `Lab.RecordActionLater` records, from a change that is no
-  action, an action that appears after a while, runs for a while and
-  changes nothing on the machine (a server that a firewall's label
+  names). `Lab.RecordAction` records, from a change that is no
+  action and inside its transaction, an action that is finished at once
+  and changes nothing on the machine (a server that a firewall's label
   selector takes when it is relabelled: Hetzner's `apply_firewall`).
 - **`Lab.Create`** records a new resource and runs its first rows in the same
   transaction (a server's `create` and `poweron`, a Primary IP's `assign`),
   so a resource never stays without the action that makes it. If the record
   or a row's plan fails, nothing changes. Its `answer` reads the records as
   the rows left them, still in the transaction, for the API's answer (a new
-  server's networks and `pending` firewalls); once the transaction ends,
+  server's networks and firewalls); once the transaction ends,
   the steps may change them. A row may name another resource's table and
   ID (`Row.Table`, `Row.ID`): a server's create applies its firewalls, whose
   actions name the firewall first; the row's plan finds the new resource
@@ -295,9 +290,14 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   assign locks its server) also heads that resource's queue: the
   resource's own actions sent meanwhile wait behind it. Hetzner's answer
   there is not measured.
-- **Steps.** The slow part runs in a goroutine. It waits Hetzner's timings with
-  `Lab.Sleep(ctx, lab.PowerOff)`, scaled by the time scale. The time scale is 0 in
-  unit tests; tests that check timings use their own `lab.Clock`.
+- **No made-up times.** An action ends as soon as its work is done (the
+  VM, the disk, the pictures sent to the appliance); the lab never waits
+  to copy a time that Hetzner takes, and a status such as `pending`,
+  `attaching`, `detaching`, `updating` or `starting` shows only while an
+  action's work runs. Hetzner's times come from load, so tests need no
+  clock. The actions that appear, their order, resources and errors follow
+  Hetzner. (`hlab.yaml`'s old `time_scale` is ignored with a log line.)
+- **Steps.** The slow part runs in a goroutine.
   - If the steps fail, the plan's `Undo` takes back the quick changes and the
     action ends with `error`, both in one change. A plan marked `UndoIfLast`
     undoes only if no action was queued behind it on the resource: the later
@@ -324,35 +324,20 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
 
   - A step method is named after what it does (`PowerOnServer`,
     `ChangePrimaryIP`), takes the context and IDs, and does the whole slow
-    part, Hetzner's wait (`Lab.Sleep`) included, so that the timing sits
-    with the work.
+    part.
   - **Every step is a `Machine` method,** also one that only sends the
-    pictures and waits, as for Floating IPs, firewalls and networks: the
+    pictures, as for Floating IPs, firewalls and networks: the
     pictures go through the machine (`Machine.UpdatePictures`).
   - A plan's `Steps` calls exactly one step method and nothing else
     (`Steps: l.Machine().ChangePrimaryIP` or a closure that passes the
-    IDs). The one exception is an action that changes nothing on the
-    machine and only waits Hetzner's time: its `Steps` calls `l.Sleep`
-    itself (an unassign of a Primary IP that has no server) and says so.
+    IDs). An action that changes nothing on the machine has no steps and
+    ends at once (an unassign of a Primary IP that has no server).
   - What the plans of several resources share stays in `api/cloud`, with the
     resource whose records it changes (`releaseServer` in
     `server_actions.go`).
   - `Lab` keeps the state, the actions and their flags, projects, tokens,
     faults and the time; `Machine` has everything that calls `system` for
     VMs, files, the appliance and its pictures.
-- **Statuses that last a while.** Hetzner shows some statuses for
-  seconds after the change that caused them, also after its action ended:
-  a server that left a network stays among the members as `detaching`
-  for 5 s, the others show `updating` from 2 s on. The plan records such
-  a status with `Lab.AddNote(key, note, after, lasting)`, both times
-  Hetzner's from `clock.go`, scaled by the time scale; the handler reads
-  the notes that show now with `Lab.Notes(kind, owner)` and lets a note
-  win over the status the records give. A note may carry what the API
-  needs to show a resource that is gone (the member that left), or that
-  hides one for a while (a firewall that a label selector takes, before
-  its `apply_firewall` appears). Notes keep fractions of a second, which
-  `Lab.Now` does not. Tests use a clock of their own and a time scale
-  above 0.
 - **Restart.** Actions that were running when HLab stopped end with an error when it
   starts again.
 - **Size.** Each project keeps its newest `lab.MaxFinishedActions` (1 000) finished
@@ -365,8 +350,8 @@ tokens in [docs/servers.md](docs/servers.md); the service, the machine's side,
 the lab control and the CLI in [docs/service.md](docs/service.md); the
 catalog in [docs/catalog.md](docs/catalog.md). These rules hold across them:
 
-- **Hetzner first.** Answers, status codes, error texts and timings follow the
-  real API as measured; each such choice says so next to it ("measured
+- **Hetzner first.** Answers, status codes, error texts and the actions that
+  appear follow the real API as measured (its times do not: Actions); each such choice says so next to it ("measured
   2026-11-08") and in `compat/requirements.md`.
 - **Creates are whole.** A create records its resource and plans its first
   actions in one `Lab.Create`; every create checks its project
@@ -679,15 +664,14 @@ action's parts live). Add a row to the resource's `lab.ActionTable` in
 - `Plan` (`plan<Command>`, in the same file) checks the request and makes the
   quick changes.
 - `Steps` calls one step method of `*lab.Machine` in `internal/lab/<thing>s.go`
-  (such as `Machine.PowerOffServer`), which calls `system` and waits with
-  `m.lab.Sleep`, using a timing from `internal/lab/clock.go` that was
-  measured on Hetzner; `api/*` never reaches `system` itself. The method keeps
-  IDs across its calls and looks records up again with `lab.Current`. A
-  resource whose steps only change the data plane calls
-  `m.UpdatePictures(ctx)` and then sleeps (`Machine.ChangePrimaryIP`).
+  (such as `Machine.PowerOffServer`), which calls `system`; `api/*` never
+  reaches `system` itself. The method keeps IDs across its calls and looks
+  records up again with `lab.Current`. A resource whose steps only change
+  the data plane calls `m.UpdatePictures(ctx)` (`Machine.ChangePrimaryIP`).
+  An action with no work on the machine has no steps.
 - `Undo` takes back the quick changes.
 
-Its tests use the fake platform and, for timings, a test clock.
+Its tests use the fake platform.
 
 **A new route of the lab control.**
 

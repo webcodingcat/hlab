@@ -10,12 +10,9 @@ import (
 
 // ChangeFloatingIP is the steps of a Floating IP's assign and unassign:
 // the plan has changed the record, the appliance gets the pictures with
-// the IP's new route, and then it waits Hetzner's time.
+// the IP's new route.
 func (m *Machine) ChangeFloatingIP(ctx context.Context) error {
-	if err := m.UpdatePictures(ctx); err != nil {
-		return err
-	}
-	return m.lab.Sleep(ctx, FloatingIPChange)
+	return m.UpdatePictures(ctx)
 }
 
 // floatingIPFacts returns what the pictures need of the assigned Floating

@@ -3,6 +3,7 @@ package cloud_test
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -25,8 +26,10 @@ func networkWithSubnet(t *testing.T, test *testLab, name, base string) int64 {
 // A create with networks and firewalls, as Hetzner answers it (measured
 // 2026-11-09): next_actions has an attach_to_network per network, an
 // apply_firewall per firewall, then the start; the answer shows the
-// server in its networks and its firewalls pending; a label selector's
-// firewall comes after the create; the server's first pictures have them.
+// server in its networks and its firewalls; the actions of the networks and
+// firewalls end at once, as their work is the create's; the server's first
+// pictures have them. (Hetzner shows the firewalls pending for a while:
+// the lab does not copy its times.)
 func TestServerCreateJoinsNetworksAndFirewalls(t *testing.T) {
 	test := newTestLab(t)
 	agent := startMachine(t, test, platform.HostResources{Threads: 8, MemoryMB: 16 * 1024})
@@ -50,14 +53,12 @@ func TestServerCreateJoinsNetworksAndFirewalls(t *testing.T) {
 	if len(created.Server.PrivateNet) != 2 || created.Server.PrivateNet[0].IP != "10.1.1.1" || created.Server.PrivateNet[1].IP != "10.2.1.1" {
 		t.Errorf("the answer's private_net is %+v", created.Server.PrivateNet)
 	}
-	// the selector's firewall comes later: with the time scale 0 of the
-	// test at once, applied (TestFirewallSelectorShowsPendingAsHetznerDoes)
 	got := map[int64]string{}
 	for _, firewall := range created.Server.PublicNet.Firewalls {
 		got[firewall.ID] = firewall.Status
 	}
-	if got[web] != "pending" || got[ssh] != "pending" || got[selected] == "pending" {
-		t.Errorf("the answer's firewalls are %v, want web and ssh pending", got)
+	if want := map[int64]string{web: "applied", ssh: "applied", selected: "applied"}; !maps.Equal(got, want) {
+		t.Errorf("the answer's firewalls are %v, want %v", got, want)
 	}
 	waitActions(t, test, append([]schema.Action{created.Action}, created.NextActions...)...)
 	waitForFirewalls(t, test, created.Server.ID, map[int64]string{web: "applied", ssh: "applied", selected: "applied"})
@@ -155,37 +156,4 @@ func TestServerCreateNetworkAndFirewallErrors(t *testing.T) {
 	if len(created.NextActions) != 0 {
 		t.Errorf("a create with floating_ips has the next actions %v", commands(created.NextActions))
 	}
-}
-
-// A server created into a network shows "attaching" among its members only
-// for a moment, while its create and its attach still run (measured
-// 2026-11-09: 1.2 s).
-func TestCreatedMemberAttachesForAMoment(t *testing.T) {
-	clock := &handClock{now: time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)}
-	test := newTimedTestLab(t, clock, 1)
-	agent := startMachine(t, test, platform.HostResources{Threads: 8, MemoryMB: 16 * 1024})
-	network := networkWithSubnet(t, test, "net", "10.1")
-	waiting, release := agent.HoldNext(agentproto.PictureLinks) // the create's pictures
-	created := createServer(t, test, map[string]any{"name": "web", "server_type": "cpx22", "image": "debian-13",
-		"start_after_create": false, "networks": []int64{network}})
-	<-waiting
-	status := func() string {
-		var answer struct {
-			Members []schema.NetworkMember `json:"members"`
-		}
-		test.client.Get(fmt.Sprintf("/v1/networks/%d/members", network)).Decode(t, &answer)
-		if len(answer.Members) != 1 {
-			t.Fatalf("the members are %+v", answer.Members)
-		}
-		return answer.Members[0].Status
-	}
-	if got := status(); got != "attaching" {
-		t.Errorf("right after the create the member is %q, want attaching", got)
-	}
-	clock.Advance(1200 * time.Millisecond)
-	if got := status(); got != "ok" {
-		t.Errorf("after 1.2 s the member is %q, want ok; the server is %s", got, getServer(t, test, created.Server.ID).Status)
-	}
-	release()
-	waitActions(t, test, append([]schema.Action{created.Action}, created.NextActions...)...)
 }

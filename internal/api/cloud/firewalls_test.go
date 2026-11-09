@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud/schema"
 
@@ -518,14 +517,12 @@ func serverDelete(t *testing.T, test *testLab, id int64) schema.Action {
 	return answer.Action
 }
 
-// A label selector that takes a server, or lets it go, shows it as Hetzner
-// does (measured 2026-11-09): a server relabelled into the selector lists
-// the firewall not at all for 2 s, then pending for 14 s while an
-// apply_firewall runs; one relabelled out still shows it applied for
-// 1.7 s, then pending for 8 s while a remove_firewall runs.
-func TestFirewallSelectorShowsPendingAsHetznerDoes(t *testing.T) {
-	clock := &handClock{now: time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)}
-	test := newTimedTestLab(t, clock, 1)
+// A label selector that takes a server, or lets it go, gives the server the
+// firewall, or takes it away, at once, with an apply_firewall or
+// remove_firewall that names both and ends at once (the action's order
+// and resources measured 2026-11-09).
+func TestFirewallSelectorRecordsItsActions(t *testing.T) {
+	test := newTestLab(t)
 	firewall := createFirewall(t, test, map[string]any{"name": "web", "apply_to": []any{selectorTarget("role=web")}}).Firewall.ID
 	server := offServer(t, test, "web").Server.ID
 	relabel := func(labels map[string]string) {
@@ -539,43 +536,20 @@ func TestFirewallSelectorShowsPendingAsHetznerDoes(t *testing.T) {
 		}
 		return ""
 	}
-	// the actions end at once on this clock; a status after a note's end
-	// waits for them
-	settled := func() {
-		deadline := time.Now().Add(10 * time.Second)
-		for len(firewallActionsRunning(t, test, firewall)) > 0 {
-			if time.Now().After(deadline) {
-				t.Fatal("the firewall's actions still run")
-			}
-			time.Sleep(5 * time.Millisecond)
-		}
-	}
 	for _, phase := range []struct {
-		labels map[string]string
-		steps  []struct {
-			advance time.Duration
-			want    string // "" for not listed
-		}
+		labels  map[string]string
+		want    string // "" for not listed
 		command string
 	}{
-		{map[string]string{"role": "web"}, []struct {
-			advance time.Duration
-			want    string
-		}{{0, ""}, {2 * time.Second, "pending"}, {14 * time.Second, "applied"}}, "apply_firewall"},
-		{map[string]string{}, []struct {
-			advance time.Duration
-			want    string
-		}{{0, "applied"}, {1700 * time.Millisecond, "pending"}, {8 * time.Second, ""}}, "remove_firewall"},
+		{map[string]string{"role": "web"}, "applied", "apply_firewall"},
+		{map[string]string{}, "", "remove_firewall"},
 	} {
 		relabel(phase.labels)
-		for i, step := range phase.steps {
-			clock.Advance(step.advance)
-			if i == len(phase.steps)-1 {
-				settled()
-			}
-			if got := shown(); got != step.want {
-				t.Errorf("%s: at %s the server shows the firewall %q, want %q", phase.command, clock.Now().Format(time.StampMilli), got, step.want)
-			}
+		if got := shown(); got != phase.want {
+			t.Errorf("%s: the server shows the firewall %q, want %q", phase.command, got, phase.want)
+		}
+		if got := firewallActionsRunning(t, test, firewall); len(got) != 0 {
+			t.Errorf("%s: the actions %v still run", phase.command, commands(got))
 		}
 		if got := commands(firewallActionList(t, test, firewall)); !slices.Contains(got, phase.command+" firewall,server") {
 			t.Errorf("the firewall's actions are %v, want a %s", got, phase.command)

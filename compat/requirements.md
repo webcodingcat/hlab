@@ -6,6 +6,10 @@ tool, or the measurement), the phase that brings it and the unit test that check
 it; "open" means the phase has not come yet. What never works is in
 [exceptions.yaml](exceptions.yaml). A new entry: DEVELOPING.md, Recipes.
 
+The times in these tables are what the real API was measured to take. They are
+observations: the lab does not copy them, its actions end as soon as their work is
+done, and a status such as `pending` shows only while an action's work runs.
+
 ## Every endpoint
 
 | Requirement | Source | Phase | Test |

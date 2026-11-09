@@ -11,22 +11,9 @@ import (
 
 // ChangeFirewall is the steps of a firewall's actions (set_rules,
 // apply_to_resources, remove_from_resources): the plan has changed the
-// record, the appliance gets the ruleset with it, and then it waits
-// Hetzner's time.
+// record, and the appliance gets the ruleset with it.
 func (m *Machine) ChangeFirewall(ctx context.Context) error {
-	if err := m.UpdatePictures(ctx); err != nil {
-		return err
-	}
-	return m.lab.Sleep(ctx, FirewallChange)
-}
-
-// ChangeFirewallSelector is the steps of a firewall's apply and remove on
-// a label selector: as ChangeFirewall, with Hetzner's shorter time.
-func (m *Machine) ChangeFirewallSelector(ctx context.Context) error {
-	if err := m.UpdatePictures(ctx); err != nil {
-		return err
-	}
-	return m.lab.Sleep(ctx, FirewallSelector)
+	return m.UpdatePictures(ctx)
 }
 
 // FirewallServers returns the servers a firewall applies to: those named

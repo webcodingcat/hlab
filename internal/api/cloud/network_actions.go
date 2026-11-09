@@ -1,7 +1,6 @@
 package cloud
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -49,21 +48,11 @@ func undoNetwork(id int64, change func(network *state.Network)) func(tx *state.T
 	}
 }
 
-// subnetPlan returns the plan of a change to a network's subnets or range:
-// the appliance gets the pictures, and Hetzner's action ends at once
-// (measured 2026-11-08, also with servers in the network).
-func subnetPlan(l *lab.Lab, id int64, undo func(network *state.Network)) lab.Plan {
+// networkPlan returns the plan of a change to a network's subnets, range or
+// routes: the appliance gets the pictures, and Hetzner's action ends at
+// once (measured 2026-11-08, also with servers in the network).
+func networkPlan(l *lab.Lab, id int64, undo func(network *state.Network)) lab.Plan {
 	return lab.Plan{Steps: l.Machine().ChangeNetwork, Undo: undoNetwork(id, undo)}
-}
-
-// routePlan returns the plan of a change to a network's routes: the
-// appliance gets the pictures, and with servers in the network Hetzner
-// takes its time (Machine.ChangeNetworkRoutes).
-func routePlan(l *lab.Lab, id int64, undo func(network *state.Network)) lab.Plan {
-	return lab.Plan{
-		Steps: func(ctx context.Context) error { return l.Machine().ChangeNetworkRoutes(ctx, id) },
-		Undo:  undoNetwork(id, undo),
-	}
 }
 
 // planAddSubnet adds a subnet, checked as in a create but with the
@@ -93,7 +82,7 @@ func planAddSubnet(l *lab.Lab) planFunc {
 		}
 		network.Subnets = append(network.Subnets, subnet)
 		sortSubnets(network)
-		return subnetPlan(l, network.ID, func(network *state.Network) {
+		return networkPlan(l, network.ID, func(network *state.Network) {
 			network.Subnets = slices.DeleteFunc(network.Subnets, func(other state.NetworkSubnet) bool { return other == subnet })
 		}), nil
 	}
@@ -140,7 +129,7 @@ func planDeleteSubnet(l *lab.Lab) planFunc {
 		}
 		subnet := network.Subnets[index]
 		network.Subnets = slices.Delete(network.Subnets, index, index+1)
-		return subnetPlan(l, network.ID, func(network *state.Network) {
+		return networkPlan(l, network.ID, func(network *state.Network) {
 			network.Subnets = append(network.Subnets, subnet)
 			sortSubnets(network)
 		}), nil
@@ -172,7 +161,7 @@ func planAddRoute(l *lab.Lab) planFunc {
 			return lab.Plan{}, web.RefusalNull(http.StatusForbidden, networkLimitResourceErr, networkRouteLimit)
 		}
 		network.Routes = append(network.Routes, route)
-		return routePlan(l, network.ID, func(network *state.Network) {
+		return networkPlan(l, network.ID, func(network *state.Network) {
 			network.Routes = slices.DeleteFunc(network.Routes, func(other state.NetworkRoute) bool { return other == route })
 		}), nil
 	}
@@ -206,7 +195,7 @@ func planDeleteRoute(l *lab.Lab) planFunc {
 		}
 		route := network.Routes[index]
 		network.Routes = slices.Delete(network.Routes, index, index+1)
-		return routePlan(l, network.ID, func(network *state.Network) {
+		return networkPlan(l, network.ID, func(network *state.Network) {
 			network.Routes = append(network.Routes, route)
 		}), nil
 	}
@@ -251,7 +240,7 @@ func planChangeIPRange(l *lab.Lab) planFunc {
 		}
 		before := network.IPRange
 		network.IPRange = ipRange.String()
-		return subnetPlan(l, network.ID, func(network *state.Network) {
+		return networkPlan(l, network.ID, func(network *state.Network) {
 			if network.IPRange == ipRange.String() {
 				network.IPRange = before
 			}

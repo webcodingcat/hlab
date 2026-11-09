@@ -1,7 +1,6 @@
 package cloud
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,7 +24,7 @@ func floatingIPActions(l *lab.Lab) lab.ActionTable {
 		Busy:         floatingIPAssigning,
 		Actions: map[string]lab.ActionSpec{
 			"assign":            {Name: "assign_floating_ip", Plan: planFloatingIPAssign(l)},
-			"unassign_for_move": {Name: "unassign_floating_ip", Plan: planFloatingIPUnassignForMove(l), Unflagged: true},
+			"unassign_for_move": {Name: "unassign_floating_ip", Plan: planFloatingIPUnassignForMove, Unflagged: true},
 			"unassign":          {Name: "unassign_floating_ip", Plan: planFloatingIPUnassign(l), Unflagged: true},
 			"change_protection": {Name: "change_protection", Plan: planFloatingIPProtection, Unflagged: true},
 		},
@@ -111,19 +110,13 @@ func assignFloatingIP(req *web.Request, l *lab.Lab, table lab.ActionTable) (int,
 
 // planFloatingIPUnassignForMove is the unassign_floating_ip of the server
 // a moving IP leaves; the assign after it makes the change. Its steps
-// change nothing on the machine and only wait as long as the assign's, so
-// they call l.Sleep themselves.
-func planFloatingIPUnassignForMove(l *lab.Lab) planFunc {
-	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
-		ip, err := callerFloatingIP(tx, req.ProjectID, req.ID)
-		if err != nil {
-			return lab.Plan{}, err
-		}
-		return lab.Plan{
-			Resources: []state.ResourceRef{{Type: lab.ServerResource, ID: ip.ServerID}},
-			Steps:     func(ctx context.Context) error { return l.Sleep(ctx, lab.FloatingIPChange) },
-		}, nil
+// change nothing on the machine, so it has no steps and ends at once.
+func planFloatingIPUnassignForMove(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+	ip, err := callerFloatingIP(tx, req.ProjectID, req.ID)
+	if err != nil {
+		return lab.Plan{}, err
 	}
+	return lab.Plan{Resources: []state.ResourceRef{{Type: lab.ServerResource, ID: ip.ServerID}}}, nil
 }
 
 // planFloatingIPUnassign takes the IP from its server; the appliance

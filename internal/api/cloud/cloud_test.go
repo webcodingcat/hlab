@@ -36,20 +36,13 @@ type testLab struct {
 // newTestLab opens a lab with the built-in catalog, the project "default"
 // and the Cloud API; every answer of its client is checked against the spec.
 // Its system images come from a local server, as a small qcow2 file. Its
-// clock steps a second each time it tells the time, and Hetzner's times
-// take none (time scale 0).
+// clock steps a second each time it tells the time.
 func newTestLab(t *testing.T) *testLab {
 	t.Helper()
-	return newTimedTestLab(t, &steppingClock{start: time.Now()}, 0)
-}
-
-// newTimedTestLab is newTestLab with a clock and a time scale of the
-// test's own.
-func newTimedTestLab(t *testing.T, clock lab.Clock, timeScale float64) *testLab {
-	t.Helper()
+	clock := &steppingClock{start: time.Now()}
 	logger := slog.New(slog.DiscardHandler)
 	machine := fake.New()
-	l, err := lab.Open(lab.Options{DataDir: t.TempDir(), Logger: logger, Catalog: localImages(t), Clock: clock, TimeScale: timeScale},
+	l, err := lab.Open(lab.Options{DataDir: t.TempDir(), Logger: logger, Catalog: localImages(t), Now: clock.Now},
 		system.New(machine.Platform()))
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +61,7 @@ func newTimedTestLab(t *testing.T, clock lab.Clock, timeScale float64) *testLab 
 
 // steppingClock moves a second forward each time it tells the time, so
 // that resources created one after another differ in their created time,
-// which Hetzner gives in seconds; it waits as the real clock does.
+// which Hetzner gives in seconds.
 type steppingClock struct {
 	start time.Time
 	ticks atomic.Int64
@@ -77,8 +70,6 @@ type steppingClock struct {
 func (c *steppingClock) Now() time.Time {
 	return c.start.Add(time.Duration(c.ticks.Add(1)) * time.Second)
 }
-
-func (c *steppingClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
 
 // startMachine starts the lab's machine with the host's resources, so that
 // the room check counts: an agent answers in the appliance's VM, and the

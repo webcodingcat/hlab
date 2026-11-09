@@ -613,9 +613,8 @@ var networkMemberSortKeys = web.SortKeys[schema.NetworkMember]{
 	},
 }
 
-// listNetworkMembers answers the servers in a network and those that left
-// it lately, each with the subnet its address is in, filtered by type,
-// status and subnet; the lab has no load balancers yet.
+// listNetworkMembers answers the servers in a network, each with the
+// subnet its address is in, filtered by type, status and subnet; the lab has no load balancers yet.
 func listNetworkMembers(req *web.Request, l *lab.Lab) (int, any, error) {
 	query := req.URL.Query()
 	check := web.Check{Singular: true}
@@ -646,24 +645,16 @@ func listNetworkMembers(req *web.Request, l *lab.Lab) (int, any, error) {
 		if err != nil {
 			return err
 		}
-		notes := l.Notes(memberNote, network.ID)
 		var all []schema.NetworkMember
 		for _, member := range networkMembers(tx, network) {
 			all = append(all, schema.NetworkMember{
 				Type:     networkMemberServer,
 				ID:       member.serverID,
 				IP:       member.address.String(),
-				Status:   memberStatus(tx, notes, network.ID, member.serverID),
+				Status:   memberStatus(tx, network.ID, member.serverID),
 				AliasIPs: append([]string{}, member.aliases...),
 				Subnet:   memberSubnet(network, member.address),
 			})
-		}
-		// the servers that left lately, unless one came back meanwhile
-		for _, note := range notes {
-			if left, ok := note.Data.(schema.NetworkMember); ok &&
-				!slices.ContainsFunc(all, func(member schema.NetworkMember) bool { return member.ID == left.ID }) {
-				all = append(all, left)
-			}
 		}
 		for _, member := range all {
 			if matchesMembersQuery(query, subnets, member) {
@@ -703,21 +694,9 @@ func memberSubnet(network *state.Network, address netip.Addr) string {
 	return network.IPRange
 }
 
-// memberNote is the kind of the notes about a network's members.
-const memberNote = "network_member"
-
 // memberStatus returns a server's status in a network: "attaching" while
-// its attach runs and "updating" while its alias IPs change, else what a
-// note says ("updating" while another server joins or leaves, "attaching"
-// for a moment after a create), else "ok". A create's attach runs on
-// while Hetzner shows the new member "ok" already (measured 2026-11-09).
-func memberStatus(tx *state.Tx, notes map[int64]lab.Note, networkID, serverID int64) string {
-	if server, err := state.Get(tx, state.Servers, serverID); err == nil && server.Status == state.ServerInitializing {
-		if note, found := notes[serverID]; found {
-			return note.Status
-		}
-		return networkMemberOK
-	}
+// its attach runs, "updating" while its alias IPs change, else "ok".
+func memberStatus(tx *state.Tx, networkID, serverID int64) string {
 	running := state.IDs(tx, state.Actions, func(action *state.Action) bool {
 		return action.Status == state.ActionRunning && namesResource(action, networkResource, networkID) &&
 			namesResource(action, lab.ServerResource, serverID)
@@ -732,39 +711,7 @@ func memberStatus(tx *state.Tx, notes map[int64]lab.Note, networkID, serverID in
 			}
 		}
 	}
-	if note, found := notes[serverID]; found {
-		return note.Status
-	}
 	return networkMemberOK
-}
-
-// noteMemberChange notes what Hetzner shows among a network's members
-// when a server joins or leaves it: a server that leaves stays as
-// "detaching" for a while, and the other servers show "updating" a
-// little later, for a while (measured 2026-11-08). left is the member
-// that leaves; nil for one that joins.
-func noteMemberChange(l *lab.Lab, tx *state.Tx, network *state.Network, serverID int64, left *schema.NetworkMember) {
-	for _, member := range networkMembers(tx, network) {
-		if member.serverID != serverID {
-			l.AddNote(lab.NoteKey{Kind: memberNote, Owner: network.ID, Subject: member.serverID},
-				lab.Note{Status: networkMemberUpdating}, lab.MemberUpdating, lab.MemberUpdated)
-		}
-	}
-	if left != nil {
-		left.Status = networkMemberDetaching
-		l.AddNote(lab.NoteKey{Kind: memberNote, Owner: network.ID, Subject: serverID},
-			lab.Note{Status: networkMemberDetaching, Data: *left}, 0, lab.MemberDetaching)
-	}
-}
-
-// leavingMember returns a server's NIC in a network as the member that
-// leaves it.
-func leavingMember(network *state.Network, serverID int64, attached state.ServerPrivateNet) *schema.NetworkMember {
-	address := netip.MustParseAddr(attached.IP)
-	return &schema.NetworkMember{
-		Type: networkMemberServer, ID: serverID, IP: attached.IP,
-		AliasIPs: append([]string{}, attached.AliasIPs...), Subnet: memberSubnet(network, address),
-	}
 }
 
 // deleteNetwork deletes a network, also one that servers are in: as on

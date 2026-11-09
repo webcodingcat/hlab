@@ -1,7 +1,6 @@
 package cloud
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -32,7 +31,7 @@ func firewallActions(l *lab.Lab) lab.ActionTable {
 			"unselect_server": {Name: "remove_firewall", Plan: planFirewallUnselectServer, Unflagged: true},
 			"remove_server":   {Name: "remove_firewall", Plan: planFirewallRemoveServer(l), Unflagged: true},
 			"remove_selector": {Name: "remove_firewall", Plan: planFirewallRemoveSelector(l), Unflagged: true},
-			"apply_at_create": {Name: "apply_firewall", Plan: planFirewallApplyAtCreate(l), Unflagged: true},
+			"apply_at_create": {Name: "apply_firewall", Plan: planFirewallApplyAtCreate, Unflagged: true},
 		},
 	}
 }
@@ -385,21 +384,13 @@ func planFirewallApplyServer(l *lab.Lab) planFunc {
 // planFirewallApplyAtCreate is the apply_firewall of a firewall that a
 // create request names for its server (req.Created): createServer has
 // checked it and applied it in the record. The create's steps send the
-// pictures with it before the server first starts, so these steps only
-// wait Hetzner's time; they call l.Sleep themselves, as they change
-// nothing on the machine. Hetzner's apply ends a few
-// seconds before the create (measured 2026-11-09), as an apply's time
-// does before the create's.
-func planFirewallApplyAtCreate(l *lab.Lab) planFunc {
-	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
-		if _, err := callerFirewall(tx, req.ProjectID, req.ID, firewallNotFoundAction); err != nil {
-			return lab.Plan{}, err
-		}
-		return lab.Plan{
-			Resources: []state.ResourceRef{{Type: lab.ServerResource, ID: req.Created}},
-			Steps:     func(ctx context.Context) error { return l.Sleep(ctx, lab.FirewallChange) },
-		}, nil
+// pictures with it before the server first starts, so this action has no
+// steps and ends at once.
+func planFirewallApplyAtCreate(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+	if _, err := callerFirewall(tx, req.ProjectID, req.ID, firewallNotFoundAction); err != nil {
+		return lab.Plan{}, err
 	}
+	return lab.Plan{Resources: []state.ResourceRef{{Type: lab.ServerResource, ID: req.Created}}}, nil
 }
 
 // planFirewallUnselectServer is the remove_firewall that comes before an
@@ -438,7 +429,7 @@ func planFirewallApplySelector(l *lab.Lab) planFunc {
 		refreshFirewallSelectors(l, tx, req.ProjectID)
 		return lab.Plan{
 			Resources: []state.ResourceRef{{Type: labelSelectorResource, ID: target.ID}},
-			Steps:     l.Machine().ChangeFirewallSelector,
+			Steps:     l.Machine().ChangeFirewall,
 		}, nil
 	}
 }
@@ -491,7 +482,7 @@ func planFirewallRemoveSelector(l *lab.Lab) planFunc {
 		refreshFirewallSelectors(l, tx, req.ProjectID)
 		return lab.Plan{
 			Resources: []state.ResourceRef{{Type: labelSelectorResource, ID: target.ID}},
-			Steps:     l.Machine().ChangeFirewallSelector,
+			Steps:     l.Machine().ChangeFirewall,
 		}, nil
 	}
 }
@@ -531,8 +522,8 @@ func firewallsOf(tx *state.Tx, serverID int64) int {
 // a matching server comes under the firewall if it has room for another
 // (Hetzner's limit of 5 per server holds for selectors too: the sixth is
 // not applied, measured 2026-11-08). Firewalls with the lower ID come
-// first. Each server that comes or leaves shows the change as Hetzner does
-// (noteSelectorChange); one that is gone leaves without. It tells
+// first. Each server that comes or leaves gets an action, as on Hetzner
+// (recordSelectorChange); one that is gone leaves without. It tells
 // whether anything changed.
 func refreshFirewallSelectors(l *lab.Lab, tx *state.Tx, projectID int64) bool {
 	ids := state.IDs(tx, state.Firewalls, func(firewall *state.Firewall) bool {
@@ -567,7 +558,7 @@ func refreshFirewallSelectors(l *lab.Lab, tx *state.Tx, projectID int64) bool {
 				case there && selector.Matches(server.Labels):
 					kept = append(kept, id)
 				case there:
-					noteSelectorChange(l, server, firewall.ID, false)
+					recordSelectorChange(l, tx, server, firewall.ID, false)
 				}
 			}
 			if len(kept) != len(target.Servers) {
@@ -588,7 +579,7 @@ func refreshFirewallSelectors(l *lab.Lab, tx *state.Tx, projectID int64) bool {
 					continue
 				}
 				target.Servers = append(target.Servers, id)
-				noteSelectorChange(l, servers[id], firewall.ID, true)
+				recordSelectorChange(l, tx, servers[id], firewall.ID, true)
 				changed = true
 			}
 		}
@@ -596,37 +587,18 @@ func refreshFirewallSelectors(l *lab.Lab, tx *state.Tx, projectID int64) bool {
 	return changed
 }
 
-// serverFirewallNote is the kind of the notes about a firewall on a
-// server that a label selector takes or lets go, before its action
-// appears; serverFirewallPending of those while the action runs.
-const (
-	serverFirewallNote    = "server_firewall"
-	serverFirewallPending = "server_firewall_pending"
-)
-
-// noteSelectorChange shows a server coming under a firewall's label
-// selector, or leaving it, as Hetzner does (measured 2026-11-09): for a
-// while nothing changes on the server (a firewall that comes is not
-// listed yet, one that goes is still applied), then an apply_firewall or
-// remove_firewall naming the firewall and the server runs, and the server
-// shows the firewall pending as long. A server whose create runs gets its
-// selectors' firewalls once its create is done, as on Hetzner. The data
-// plane has the change at once.
-func noteSelectorChange(l *lab.Lab, server *state.Server, firewallID int64, join bool) {
-	command, before, after, lasting := "apply_firewall", "", lab.FirewallJoin, lab.FirewallJoined
+// recordSelectorChange records the apply_firewall or remove_firewall that
+// Hetzner shows when a label selector takes a server under a firewall or
+// lets it go (measured 2026-11-09). The data plane has the change at once
+// and nothing else is left to do, so the action ends at once.
+func recordSelectorChange(l *lab.Lab, tx *state.Tx, server *state.Server, firewallID int64, join bool) {
+	command := "apply_firewall"
 	if !join {
-		command, before, after, lasting = "remove_firewall", firewallStatusApplied, lab.FirewallLeave, lab.FirewallLeft
+		command = "remove_firewall"
 	}
-	if server.Status == state.ServerInitializing {
-		after = lab.ServerCreate
-	}
-	key := lab.NoteKey{Kind: serverFirewallNote, Owner: server.ID, Subject: firewallID}
-	l.AddNote(key, lab.Note{Status: before}, 0, after)
-	key.Kind = serverFirewallPending
-	l.AddNote(key, lab.Note{Status: firewallStatusPending}, after, lasting)
-	l.RecordActionLater(server.ProjectID, command, []state.ResourceRef{
+	l.RecordAction(tx, server.ProjectID, command, []state.ResourceRef{
 		{Type: firewallResource, ID: firewallID}, {Type: lab.ServerResource, ID: server.ID},
-	}, after, lasting)
+	})
 }
 
 // releaseFirewalls takes a server that goes out of the firewalls: its
