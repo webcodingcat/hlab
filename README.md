@@ -8,7 +8,7 @@ against it without changes.
 **Status:** being rebuilt in Go, phase 2a (see [docs/roadmap.md](docs/roadmap.md)).
 `hlabd` answers the catalog (locations, server and load balancer types, pricing,
 images, ISOs), SSH keys, servers (Debian 13, Ubuntu 26.04; power actions),
-Primary IPs, Floating IPs and firewalls. On Windows 11 the servers are Hyper-V VMs that the host and WSL2
+Primary IPs, Floating IPs, firewalls and private networks. On Windows 11 the servers are Hyper-V VMs that the host and WSL2
 reach on their addresses; `hlabd --platform fake` runs the same API without VMs.
 The earlier implementation (Docker and QEMU) is on the branch `legacy`.
 
@@ -81,7 +81,9 @@ room:                  # what the servers may take of the host
 ```
 
 `examples/tofu-1a` is a small OpenTofu configuration to try against the lab;
-`examples/tofu-1b` adds a Debian server with a Primary IP of its own.
+`examples/tofu-1b` adds a Debian server with a Primary IP of its own;
+`examples/tofu-2a` a private network, a firewall, a Floating IP and two
+servers.
 
 ## Compatibility
 

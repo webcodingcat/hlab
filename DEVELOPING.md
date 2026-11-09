@@ -54,6 +54,12 @@ Words this file uses:
 | flag | an in-memory mark on a resource that an action is working on (Actions) |
 | MAC set | `A` or `B`: the appliance's four MAC addresses; an update starts the new appliance with the other set (docs/service.md) |
 | `want_running` | whether a server should run; a start of the lab follows it (docs/servers.md) |
+| watchdog | one of two loops that put right what drifted: the servers' (`lab`, `Machine.watchRound`) notes a guest that shut itself down; the appliance's (`system`) restarts a dead appliance and sends the pictures its agent lacks |
+| room check | before a server starts, whether the host still has the memory and cores for it (`Machine.CheckRoom`, Behaviour that changes must keep) |
+| hv_sock | Hyper-V's socket between the host and a VM without a network; `hlabd` reaches the agent over it (AF_VSOCK inside the VM) |
+| NRPT | Windows' Name Resolution Policy Table: sends the lab's DNS names from the host to the appliance (docs/hyperv.md) |
+| VLAN, VRF | a private network is a VLAN on the switch `HLab-Private` and a VRF (a routing table of its own) in the appliance, so networks never see each other |
+| conntrack | the Linux kernel's table of connections; the firewall pictures let answers through by it |
 
 ## Binaries
 
@@ -85,7 +91,8 @@ way their rule applies from their first line of code.
 
 The "May import" column names packages by their path below `internal/`. "anything"
 means the row has no limit. Outside modules are not in it (Dependencies): so
-`schema` there is HLab's own `internal/schema`, not `hcloud-go`'s.
+`schema` there is HLab's own `internal/schema`, not `hcloud-go`'s. Until it
+exists, the API uses `hcloud-go`'s `schema` (The APIs, JSON types).
 
 | Package | Job | May import |
 |---|---|---|
@@ -240,6 +247,10 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   actions name it (`server`), the message for 423 answers, and one `lab.ActionSpec`
   per Hetzner command. A spec maps the command (`poweroff`) to Hetzner's action name
   (`stop_server`).
+- **`Lab.Act`, `Lab.ActAll` and `Lab.Create`** all go through the private
+  `Lab.run`: it checks the project, records the new resource (only
+  `Create`), plans each row (`planAction`: the busy check and the plan,
+  below) and starts the rows once the transaction is saved.
 - **`Lab.Act`** runs one row of a table in one transaction:
   1. If the resource is busy, it refuses with `lab.LockedError`; the API answers
      that with 423 `locked`. A table marked `Queued` (the servers') refuses
@@ -286,6 +297,13 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   | `Queued` table | yes | waits behind the action before it | 423 `locked` |
   | `Unflagged` row | no | runs alongside | 423 `locked` |
 
+  An example: a server runs a `poweron`, and a `poweroff` arrives. The
+  servers' table is `Queued`, so the `poweroff` is planned at once (its
+  quick change, `want_running` false, is in the state) and waits in the
+  server's queue; its steps start when the `poweron` ends. A Primary IP's
+  `assign` to that server meanwhile locks the server: it is 423 while
+  the server is flagged.
+
   An action that locks a resource of a `Queued` table (a Primary IP's
   assign locks its server) also heads that resource's queue: the
   resource's own actions sent meanwhile wait behind it. Hetzner's answer
@@ -301,12 +319,17 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   - If the steps fail, the plan's `Undo` takes back the quick changes and the
     action ends with `error`, both in one change. A plan marked `UndoIfLast`
     undoes only if no action was queued behind it on the resource: the later
-    plans have set again what it would take back (`want_running`).
+    plans were made on top of its quick changes (`want_running`, a
+    network's subnets, a server's NICs), and taking those back would undo
+    theirs too. Every plan of a `Queued` table that has an `Undo` is
+    marked so.
   - **After an undo the appliance gets new pictures,** before the action
     counts as done for a queue (`Machine.updatePicturesAfterUndo`): the
     steps may have sent pictures with the quick changes already (a
     server's create, an assign). So every plan whose quick changes reach a
-    picture has an `Undo`, and nothing else sends pictures for it.
+    picture has an `Undo`, and nothing else sends pictures for it. The
+    exception are the firewalls' rows, which run alongside each other
+    (`firewallActions` says why).
   - The watchdog looks at a VM without the mutex, so it acts only if no
     action flagged the server meanwhile: each round notes the servers it
     looks at, an action's flag marks them, and the notes go with the round
@@ -335,8 +358,8 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   - What the plans of several resources share stays in `api/cloud`, with the
     resource whose records it changes (`releaseServer` in
     `server_actions.go`).
-  - `Lab` keeps the state, the actions and their flags, projects, tokens,
-    faults and the time; `Machine` has everything that calls `system` for
+  - `Lab` keeps the state, the actions and their flags, projects, tokens
+    and faults; `Machine` has everything that calls `system` for
     VMs, files, the appliance and its pictures.
 - **Restart.** Actions that were running when HLab stopped end with an error when it
   starts again.

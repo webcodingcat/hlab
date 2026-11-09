@@ -2,6 +2,7 @@ package cloud_test
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -120,4 +121,61 @@ func TestFailedFloatingIPAssignLeavesThePicturesAsBefore(t *testing.T) {
 	}
 	waitForPicture(t, agent, agentproto.PictureLinks, toFirst, true)
 	waitForPicture(t, agent, agentproto.PictureLinks, `"gateway":"`+second.Server.PublicNet.IPv4.IP+`"`, false)
+}
+
+// failQueued makes the first action's steps fail while a second waits in
+// the resource's queue behind it: the first holds at the links picture,
+// the second is sent meanwhile, and the first then fails at the metadata.
+func failQueued(t *testing.T, test *testLab, agent *fake.Agent, first, second func() schema.Action) {
+	t.Helper()
+	waiting, release := agent.HoldNext(agentproto.PictureLinks)
+	failed := first()
+	<-waiting
+	agent.FailNext(agentproto.PictureMetadata)
+	queued := second()
+	release()
+	expectFailed(t, test, failed)
+	if ended := waitActions(t, test, queued); ended[0].Status != "success" {
+		t.Fatalf("the queued %s ended as %s", queued.Command, ended[0].Status)
+	}
+}
+
+// A failed delete_subnet does not bring its subnet back when an add_subnet
+// of the same range was queued behind it: the network would have it twice.
+func TestFailedDeleteSubnetKeepsTheAddQueuedBehind(t *testing.T) {
+	test := newTestLab(t)
+	agent := quietMachine(t, test)
+	network := createNetwork(t, test, map[string]any{"name": "net", "ip_range": "10.0.0.0/16",
+		"subnets": []map[string]any{cloudSubnet("10.0.1.0/24"), cloudSubnet("10.0.2.0/24")}})
+	waitForPicture(t, agent, agentproto.PictureDHCP, fmt.Sprint("private network ", network.ID), true)
+	failQueued(t, test, agent, func() schema.Action {
+		return actionOf(t, "delete_subnet", networkAction(test, network.ID, "delete_subnet", map[string]any{"ip_range": "10.0.2.0/24"}))
+	}, func() schema.Action {
+		return actionOf(t, "add_subnet", networkAction(test, network.ID, "add_subnet", map[string]any{"type": "cloud", "network_zone": "eu-central", "ip_range": "10.0.2.0/24"}))
+	})
+	var ranges []string
+	for _, subnet := range getNetwork(t, test, network.ID).Subnets {
+		ranges = append(ranges, subnet.IPRange)
+	}
+	if !slices.Equal(ranges, []string{"10.0.1.0/24", "10.0.2.0/24"}) {
+		t.Errorf("the subnets are %v, want 10.0.1.0/24 and 10.0.2.0/24 once each", ranges)
+	}
+}
+
+// A failed detach does not bring its NIC back when an attach to the same
+// network was queued behind it: the server would be in it twice.
+func TestFailedDetachKeepsTheAttachQueuedBehind(t *testing.T) {
+	test := newTestLab(t)
+	agent := quietMachine(t, test)
+	server := offServer(t, test, "web")
+	network := networkWithSubnet(t, test, "net", "10.1")
+	waitActions(t, test, actionOf(t, "attach", serverNetworkAction(test, server.Server.ID, "attach_to_network", map[string]any{"network": network})))
+	failQueued(t, test, agent, func() schema.Action {
+		return actionOf(t, "detach", serverNetworkAction(test, server.Server.ID, "detach_from_network", map[string]any{"network": network}))
+	}, func() schema.Action {
+		return actionOf(t, "attach", serverNetworkAction(test, server.Server.ID, "attach_to_network", map[string]any{"network": network}))
+	})
+	if got := getServer(t, test, server.Server.ID).PrivateNet; len(got) != 1 {
+		t.Errorf("the server's private_net is %+v, want one NIC", got)
+	}
 }

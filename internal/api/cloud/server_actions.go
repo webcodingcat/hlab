@@ -538,7 +538,8 @@ func serverNetwork(server *state.Server, networkID int64) (state.ServerPrivateNe
 
 // planDetachFromNetwork takes the server's NIC out of a network: the
 // record at once, the routes and then the NIC in the steps. If the steps
-// fail, the NIC comes back into the record where it was.
+// fail and nothing was queued behind, the NIC comes back into the record
+// where it was, as long as its addresses are still free (canRejoin).
 func planDetachFromNetwork(l *lab.Lab) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		var body changeAliasIPsRequest
@@ -570,12 +571,35 @@ func planDetachFromNetwork(l *lab.Lab) planFunc {
 				return l.Machine().DetachServerFromNetwork(ctx, serverID, attached.MAC)
 			},
 			Undo: undoServer(serverID, func(tx *state.Tx, server *state.Server) {
-				if _, err := state.Get(tx, state.Networks, networkID); err == nil {
-					server.PrivateNets = slices.Insert(server.PrivateNets, min(index, len(server.PrivateNets)), attached)
+				network, err := state.Get(tx, state.Networks, networkID)
+				if err != nil || !canRejoin(tx, server, network, attached) {
+					return
 				}
+				server.PrivateNets = slices.Insert(server.PrivateNets, min(index, len(server.PrivateNets)), attached)
 			}),
+			UndoIfLast: true, // a later attach or detach of the server stands
 		}, nil
 	}
+}
+
+// canRejoin reports whether a detached NIC can come back into the record:
+// the server is not in the network again, and its addresses are still in
+// a subnet and free, as another server's attach or a delete_subnet may
+// have taken them while the detach ran.
+func canRejoin(tx *state.Tx, server *state.Server, network *state.Network, nic state.ServerPrivateNet) bool {
+	if _, index := serverNetwork(server, network.ID); index >= 0 {
+		return false
+	}
+	taken := takenAddresses(tx, network, server.ID)
+	ip := netip.MustParseAddr(nic.IP)
+	if addressRefusal(network, ip, taken) != nil {
+		return false
+	}
+	var aliases []netip.Addr
+	for _, alias := range nic.AliasIPs {
+		aliases = append(aliases, netip.MustParseAddr(alias))
+	}
+	return aliasRefusal(network, ip, aliases, taken) == nil
 }
 
 // planChangeAliasIPs replaces the server's alias IPs in a network. An
@@ -633,6 +657,7 @@ func planChangeAliasIPs(l *lab.Lab) planFunc {
 				server.PrivateNets[index].AliasIPs = before
 			}
 		})
+		plan.UndoIfLast = true // a later change_alias_ips stands
 		return plan, nil
 	}
 }

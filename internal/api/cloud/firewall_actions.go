@@ -20,6 +20,12 @@ import (
 // apply_server and apply_selector are both Hetzner's apply_firewall,
 // remove_server and remove_selector its remove_firewall, as each entry of
 // apply_to and remove_from gets an action of its own.
+//
+// Its plans have no Undo, an exception to the rule that a plan whose quick
+// changes reach a picture has one: the rows run alongside each other, so
+// an undo could take back a change sent after it. If sending the pictures
+// fails, the change stays in the state and the appliance's watchdog sends
+// it later; the action ends with an error all the same.
 func firewallActions(l *lab.Lab) lab.ActionTable {
 	return lab.ActionTable{
 		ResourceType: firewallResource,

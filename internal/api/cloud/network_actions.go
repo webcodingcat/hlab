@@ -50,9 +50,12 @@ func undoNetwork(id int64, change func(network *state.Network)) func(tx *state.T
 
 // networkPlan returns the plan of a change to a network's subnets, range or
 // routes: the appliance gets the pictures, and Hetzner's action ends at
-// once (measured 2026-11-08, also with servers in the network).
+// once (measured 2026-11-08, also with servers in the network). The undo
+// runs only if nothing was queued behind: a later plan built on this
+// change (a delete_subnet and then an add_subnet of the same range), and
+// taking it back would leave the network with the range twice.
 func networkPlan(l *lab.Lab, id int64, undo func(network *state.Network)) lab.Plan {
-	return lab.Plan{Steps: l.Machine().ChangeNetwork, Undo: undoNetwork(id, undo)}
+	return lab.Plan{Steps: l.Machine().ChangeNetwork, Undo: undoNetwork(id, undo), UndoIfLast: true}
 }
 
 // planAddSubnet adds a subnet, checked as in a create but with the
@@ -184,11 +187,11 @@ func planDeleteRoute(l *lab.Lab) planFunc {
 		if err != nil {
 			return lab.Plan{}, err
 		}
+		// checkRouteFields has parsed both already
+		destination := netip.MustParsePrefix(*body.Destination).String()
+		gateway := netip.MustParseAddr(*body.Gateway).String()
 		index := slices.IndexFunc(network.Routes, func(route state.NetworkRoute) bool {
-			destination, destErr := netip.ParsePrefix(*body.Destination)
-			gateway, gwErr := netip.ParseAddr(*body.Gateway)
-			return destErr == nil && gwErr == nil &&
-				route.Destination == destination.String() && route.Gateway == gateway.String()
+			return route.Destination == destination && route.Gateway == gateway
 		})
 		if index < 0 {
 			return lab.Plan{}, web.RefusalNull(http.StatusUnprocessableEntity, "service_error", networkRouteNotFound)

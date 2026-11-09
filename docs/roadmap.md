@@ -6,7 +6,7 @@ one starts from this file. How a step got there is in its commit messages.
 
 The earlier Python implementation (Docker, QEMU) is on the branch `legacy`, tagged
 `v1-python`. It is the reference for behaviour the rebuild takes over: Hetzner's
-answers and timings, the rules for actions and flags, the state and its migrations,
+answers, the rules for actions and flags, the state and its migrations,
 the tests. Look there before writing such a part anew.
 
 ## Phases
@@ -32,7 +32,7 @@ the tests. Look there before writing such a part anew.
 | Step | What | State |
 |---|---|---|
 | 1a-1 | repo skeleton: Go module, minimal commands, layer test, `bin/dev`, `bin/dev.ps1`, CI, docs | done |
-| 1a-2 | `internal/state` and `internal/lab` with tests: transactions, saving, migrations, actions with a test clock; platform interfaces, fake, contract tests, Windows stubs | done |
+| 1a-2 | `internal/state` and `internal/lab` with tests: transactions, saving, migrations, actions with a test clock (gone since 2a-5); platform interfaces, fake, contract tests, Windows stubs | done |
 | 1a-3 | `internal/web` and `internal/spectest`; projects, tokens | done |
 | 1a-4 | catalog and the reading resources; SSH keys | done |
 | 1a-5 | lab control, CLI, `hlab env`; web UI skeleton | done |
@@ -41,8 +41,7 @@ the tests. Look there before writing such a part anew.
 
 ### What is there
 
-- `hlabd --platform fake` runs on Linux, WSL2 and Windows: `hlab.yaml` (ports,
-  time scale), the user's `catalog.yaml`, the project `default` in a new lab, the
+- `hlabd --platform fake` runs on Linux, WSL2 and Windows: `hlab.yaml` (ports), the user's `catalog.yaml`, the project `default` in a new lab, the
   Cloud API on 8080, the Hetzner API on 8081 (no routes yet), the lab control and
   the web UI on 8090, all on `127.0.0.1`. One `hlabd` per machine (the mutex
   `Global\HLab` on Windows, an flock on `/run/lock/hlab.lock` on Linux).
@@ -109,7 +108,7 @@ each part; this is the list.
 - **Servers** (create, get, update, delete, lists, `poweron`, `poweroff`,
   `shutdown`, `reboot`, `reset`, `change_protection`, action lists): Debian 13
   and Ubuntu 26.04 on cached images (qcow2 converted in Go), NoCloud seeds,
-  Hetzner's statuses, times and queue (a power action during another waits
+  Hetzner's statuses and queue (a power action during another waits
   instead of 423). A create records the server and plans its actions in one
   transaction (`Lab.Create`); a start reserves its room in its plan, so
   starts sent at once cannot overcommit the host's memory (412
@@ -292,6 +291,7 @@ that found it (must, should, optional) and the phase that closes it.
 | 2a-4 | networks and firewalls in a server's create; the metadata's `private-networks`, and the metadata service for a server without public addresses; a firewall's `pending` and a selector's actions as Hetzner shows them; Hetzner's answers to unknown actions and to IDs that are no number; the unassign of a Floating IP's move; `add_subnet` without a free `/24`; a network's delete aborts its actions; a private NIC keeps its number (state version 2); 50 firewalls per project; the smoke test `examples/tofu-2a` | done |
 | 2a-5 | no made-up times: actions end as soon as their work is done; `clock.go`, `Lab.Sleep`, `Lab.AddNote`, `Lab.RecordActionLater` and `time_scale` are gone (an old `hlab.yaml` with the key still loads); a selector's `apply_firewall` or `remove_firewall` is recorded finished at once (`Lab.RecordAction`); statuses such as `pending` and `attaching` show only while an action's work runs; `bin/dev itest` no longer ends with 141 when the output grows | done |
 | 2a-6 | a server with IPv6 only gets a service address of `100.64.0.0/10` by DHCP, with Hetzner's routes (options 121 and 249) to `172.31.1.1`, the metadata service and `188.40.24.200`, and reaches the metadata service with it, nothing else; `network-config` with `dhcp` for IPv4; a private network's DHCP names its gateway as the server (the agent adds addresses in the picture's order); the agent's tests stop their dnsmasq | done |
+| 2a-R | review of phase 2a: a failed action of a queued table undoes only if nothing was queued behind it (`UndoIfLast` on the networks' rows, a server's detach and `change_alias_ips`), and a detached NIC comes back only to addresses still free; why the firewalls' rows have no undo; the docs after 2a-5 (no times left in the roadmap, a glossary) | in progress |
 
 Next: 2a-R, the review of phase 2a.
 
@@ -331,7 +331,7 @@ Next: 2a-R, the review of phase 2a.
 - **Networks:** `add_subnet` without a range takes a smaller free block
   when no `/24` is free; a delete while an action runs on it, a server's
   attach among them, aborts it (`Lab.ChangeAborting`); other members show
-  `updating` for 10 s.
+  `updating` while the action runs (not measured; 2a-5 removed the 10 s).
 - **Smoke tests:** `examples/tofu-2a` (network, subnet, firewall, Floating
   IP, two servers) and the hcloud CLI's commands of 2a.
 - **Measured live:** both servers of the new live test joined their
