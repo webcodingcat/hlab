@@ -305,8 +305,8 @@ func TestUndoRunsWhenTheStepsFail(t *testing.T) {
 
 // A queued resource's own action waits behind an action of another table
 // that locks the resource (a server's poweron behind a Primary IP's
-// assign); Hetzner's answer here is not measured, and the lab waits as
-// for the resource's own actions.
+// assign), as for the resource's own actions; Hetzner runs them
+// alongside (docs/roadmap.md, Known gaps).
 func TestQueuedActionsWaitBehindAnActionThatLocksTheirResource(t *testing.T) {
 	l, _ := openWithProject(t)
 	release := make(chan struct{})

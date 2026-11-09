@@ -520,8 +520,179 @@ whether the address stays the same across reboots. HLab assumes nothing:
 the appliance drops what goes to `188.40.24.200` and everything from the
 address but DHCP and the metadata service.
 
-Also not read: the options of a server's public lease **with** an IPv4
-(the 2a-3 guests dumped only their private leases). The routes they
-leave in the guest are the lab's: `default via 172.31.1.1` and the host
-route to `172.31.1.1` (read 2026-11-08). Whether Hetzner sends them as
-option 121 (HLab), 249 or `routers` alone is not known.
+The options of a server's public lease **with** an IPv4 were read in 2b-0
+(below, "A server's public lease").
+
+### Volumes, placement groups, zones, rDNS and what 2a left open (2b-0)
+
+Measured on 2026-11-09 with the read-write token of the empty test project:
+one server `cx23` (Debian 13, `nbg1`, IPv4 and IPv6) started for 11
+minutes, with up to 16 volumes of 10 GB; servers never started for the
+networks and placement groups; Primary and Floating IPs (IPv4 and IPv6);
+zones under `.de`. Everything was deleted afterwards. Nothing of this is
+built yet (2b-1, 2b-2) unless a row says so; the times are observations.
+
+#### A server's public lease
+
+Read in the guest (dhcpcd 10.1.0) and from its raw lease file.
+
+| What | Answer |
+|---|---|
+| the options, in the order sent | 53 (ACK), 54 `172.31.1.1`, 51 `86400`, 1 `255.255.255.255`, 3 `172.31.1.1`, 6 `185.12.64.2 185.12.64.1`, 121 and 249 alike: `172.31.1.1/32 0.0.0.0 0.0.0.0/0 172.31.1.1` |
+| the header | `yiaddr` the server's IPv4, `siaddr` `188.40.24.200` (Hetzner's DHCP server, as for IPv6 only) |
+| the guest's routes | `default via 172.31.1.1`, `172.31.1.1 dev eth0 scope link`, both with the server's address as source |
+| `resolv.conf` | Hetzner's two IPv6 resolvers (from `network-config`), then `185.12.64.2` |
+
+HLab sends options 1, 3, 6 (the appliance's resolver) and 121, not 249
+(`internal/picture/dhcp.go`); the deviation is in docs/roadmap.md.
+
+#### Volumes
+
+| Request | Answer |
+|---|---|
+| `POST /volumes` with `assignee` `{"type": "server", "id": …}` (or the deprecated `server`), `format`, `automount` | 201; `volume` with `status` `creating`, `server` and `assignee` `null`; `action` `create_volume` (volume), `next_actions` `[attach_volume]` (volume, server); the create took 1 to 5 s, the attach 13 to 16 s |
+| … without a server | 201, `next_actions` `[]`; `location` is needed |
+| the volume's JSON | `assignee` (`{"id", "type": "server"}` or `null`), `created`, `format` (`null` when not given; `ext4` also without a server), `id`, `labels`, `linux_device` `/dev/disk/by-id/scsi-0HC_Volume_<id>` (also while detached), `location` (full), `name`, `protection`, `server`, `size`, `status` |
+| `size` 9, 10241 or missing / `10.5`, `"10"` | 422 field `size` `"Must be between 10 and 10240."` / 422 `json_error` `"can not read request body"` `{}` |
+| `name` missing or `""` / `has space` / 64 characters | field `name` `"is not allowed to be empty"` / `"Invalid name."` / 201 |
+| a name in use (create and PUT) | 409 `uniqueness_error` `"name is already in use"`, field `name` |
+| no `location` and no server / `mars1` | field `location` `"location is required if no server is given"` / `"this location does not exist or is currently not available"` |
+| `format` `ntfs` / `automount` without `format` and server | field `format` `"unknown value, must be empty or xfs or ext4"` / field `format` `"automount requires format to be provided"` |
+| `server` 1, `assignee` `{"type": "server", "id": 1}`, or both | **500** `server_error` `"internal server error"` `{}` |
+| `location` `fsn1` with a server in `nbg1` | 201, the volume in `fsn1`; its `attach_volume` ends with error `{"code": "unknown_error", "message": "volume attach failed"}` after 64 s |
+| bad label keys | field `labels` `"key contains invalid characters or is malformed"`, message `"invalid input in field 'labels'"` |
+| `PUT` with `size` | 200, ignored |
+| `attach` with `{}` / `assignee.type` `load_balancer` / server 1 | field `assignee` `"is required"` / field `assignee.type` `"unsupported resource type \"load_balancer\""` / 404 `not_found` `"server not found"` `{}` |
+| `attach` to the server it is attached to | 201, an `attach_volume` that ends at once |
+| `attach` to a server in another location | 422 `service_error` `"server and volume must be in the same location"` `{}` |
+| a 17th volume at a server (create with server) | 403 `resource_limit_exceeded` `"number of volumes attached to a single server reached"` `{}` |
+| `detach` of a volume not attached | 422 `service_error` `"volume not attached to a server"` `{}` |
+| `resize` to the size it has or smaller / out of range / `15.5` | 422 `invalid_input` `"volume size is too small"`, field `size` `"size needs to be larger than current volume size"` / as in the create / `json_error` |
+| `resize` while a `resize` runs | 423 `locked` `"cannot perform operation because resource is locked"` `{}` |
+| `detach` or `change_protection` while a `resize` runs; two volumes' `detach` or `attach` at one server at once; a server's `reboot` during an attach | 201 each; they run alongside |
+| `resize` of an attached volume / a detached one | `resize_volume` names the volume and the server / only the volume; 2 s |
+| `DELETE` of an attached volume | 422 `service_error` `"volume with ID '<id>' is still attached to a server"` `{}` |
+| `change_protection` `{"delete": true}` / `{}` / `"yes"` | 201 `change_protection` (volume), ends at once / 201, protection **off** / `json_error` |
+| `DELETE` while protected | 423 `protected` `"volume deletion is protected"` `{}` |
+| `DELETE` | 204, no action; again 404 `not_found` `"volume does not exist"` `{}`; `GET` 404 `"volume not found"` `{}` |
+| `GET /volumes/bogus` / `?status=bogus` | 404 `"api route not found"` `null` / 422 `invalid_input` `"invalid status value"` `{}` |
+| a server's delete with volumes attached | the volumes stay, detached; for some seconds a `detach` is 423 `locked` |
+
+In the guest (Debian 13 of Hetzner's image):
+
+| What | Answer |
+|---|---|
+| the disk | SCSI, vendor `HC`, model `Volume`, serial the volume's ID, no WWN; udev's own rules name it `scsi-0HC_Volume_<id>` |
+| `automount` with `format` | mounted at `/mnt/HC_Volume_<id>` (`ext4` with `discard`) and a line in `/etc/fstab`: `/dev/disk/by-id/scsi-0HC_Volume_<id> /mnt/HC_Volume_<id> ext4 discard,nofail,defaults 0 0`; the line stays after the detach |
+| `automount` false / an attach with `automount` of a volume without a file system | not mounted |
+| how | the image's udev rule `99-hc-volume-automount.rules` (hc-utils); the vendor-data has `runcmd: udevadm trigger -c add -s block -p ID_VENDOR=HC --verbose -p ID_MODEL=Volume` |
+
+Not measured: the new size in the guest after a resize of an attached
+volume (the probe detached it at once).
+
+#### Placement groups
+
+| Request | Answer |
+|---|---|
+| `POST /placement_groups` | 201, no action: `{"id", "type": "spread", "name", "labels", "servers": [], "created"}` |
+| `type` missing or `pack` / `name` missing / `has space`, 64 characters | 422 field `type` `"Not a valid choice"` / field `name` `"Length must be between 1 and 128."` / 201 |
+| a name in use (create and PUT) | 409 `uniqueness_error` `"placement_group not unique"`, field `name` without messages |
+| `PUT` with `type` | 200, ignored |
+| `GET /placement_groups/999999999`, `/bogus` | 404 `not_found` `"placement group not found"` `{}` |
+| `GET /placement_groups/{id}/actions`, `POST …/actions/bogus` | 404 `"404 Not Found"` `{}` (no actions endpoints) |
+| the 51st group | 403 `resource_limit_exceeded` `"placement_group limit exceeded"`, limit `placement_group_limit` |
+| `POST /servers` with `placement_group` / a missing one | 201, no further action, the server's `placement_group` the group's JSON, the group's `servers` lists it / 404 `"placement group not found"` `{}` |
+| `add_to_placement_group` of a stopped server | 201 `add_to_placement_group` (server), 7 s; a server in `fsn1` joins a group of servers in `nbg1` |
+| … again, into another group, into a missing one / `{}` / a running server | 422 `already_in_placement_group` `"server with ID <id> is already part of a placement group"` `{}` / field `placement_group` `"Missing data for required field."` / 422 `server_not_stopped` `"server must be offline for adding it to a placement group"` `{}` |
+| `remove_from_placement_group`, also of a running server or one in no group | 201 `remove_from_placement_group` (server) |
+| `DELETE` of a group with servers | 204; the servers' `placement_group` `null` |
+
+Not measured: the limit of servers in a `spread` group (Hetzner's docs:
+10); the probe's fifth server got 412 `resource_unavailable` `"error
+during placement"`, as `cx23` in `nbg1` did that day without a group.
+
+#### Zones and RRSets
+
+| Request | Answer |
+|---|---|
+| `POST /zones` `{"name", "mode": "primary", "ttl", "labels"}` | 201, `action` `create_zone` (zone), 4 to 24 s; `zone` with `status` `updating`, `primary_nameservers` `[]`, `authoritative_nameservers` `{"assigned": ["hydrogen.ns.hetzner.com.", "oxygen.ns.hetzner.com.", "helium.ns.hetzner.de."], "delegated": [], "delegation_last_check": null, "delegation_status": "unknown"}`, `record_count` 4, `registrar` `"unknown"`, `protection` `{"delete": false}` |
+| a new zone's RRSets | `@/NS` (the three, `ttl` `null`) and `@/SOA` `hydrogen.ns.hetzner.com. dns.hetzner.com. <YYYYMMDD>00 86400 10800 3600000 3600` |
+| an RRSet's JSON | `{"id": "<name>/<type>", "name", "type", "ttl" (null: the zone's), "labels", "protection": {"change"}, "records": [{"value", "comment"}], "zone"}` |
+| `GET /zones/<name>` / upper case, a trailing dot | 200 / 404 `not_found` `"Zone not found"` `null` |
+| a zone that exists, in this or any project (`hetzner.com`), also in upper case | 409 `uniqueness_error` `"Zone already exists"` `null` |
+| a trailing dot / `example.com`, `113.0.203.in-addr.arpa`, an `ip6.arpa` zone | 422 field `name` `"has dot (.) suffix"` / `"is reserved"`; the message is the field's message |
+| a subdomain of a zone (`sub.<zone>`), no TLD, an unknown TLD / `de` / `_` or a non-ASCII name | `"unsupported tld"` / `"is public suffix"` and `"unsupported tld"` / `"invalid syntax"` |
+| `mode` missing or `tertiary`, `name` missing | message `"invalid input in field 'mode'"`, field `"'mode' is required"` / `"'mode' value not allowed"` / `"'name' is required"` |
+| `ttl` 0, 59 / 2^31 | field `ttl` `"value required to be larger"` / `"value required to be smaller"` |
+| `secondary` without `primary_nameservers` / `primary` with them | field `primary_nameservers` `"required_if violated"` / 201, ignored |
+| `zonefile` and `rrsets` together | field `zonefile` `"can't be set alongside rrsets"` |
+| with `rrsets` / with `zonefile` (without SOA and NS too) | 201; the RRSets, and SOA and NS as for a new zone; a zone file's SOA and NS are Hetzner's in the end |
+| a zone file that does not parse | field `zonefile` `"zonefile has invalid format: dns: not a TTL: \"is\" at line: 1:8"` (miekg/dns' texts) |
+| a zone file of another origin | `"(other.de., SOA) is not part of this zone, (other.de., NS) is not part of this zone, …"` |
+| `rrsets` with a bad value | field `rrsets[0].records[0].value` `"invalid value 'bogus'"` |
+| a secondary zone | `status` `ok`, `record_count` 0, `registrar` `"other"`, `primary_nameservers` with `port` (53 by default), assigned `ns1.first-ns.de.`, `robotns2.second-ns.de.`, `robotns3.second-ns.com.`; its `rrsets`, `zonefile`, `import_zonefile` and RRSet creates: 422 `incorrect_zone_mode` `"Request not applicable, incorrect zone mode secondary"` `null` |
+| `change_primary_nameservers` / with `[]` / on a primary zone | 201 / field `primary_nameservers` `"value required to be larger"` / `incorrect_zone_mode` `"… mode primary"` |
+| `PUT /zones/…` with `name` or `ttl` | 200, ignored |
+| `change_ttl` / 10 / `{}` | 201 `change_zone_ttl` (zone) / `"value required to be larger"` / `"'ttl' is required"` |
+| `GET …/zonefile` | `{"zonefile": ";; Exported on <time>\n$ORIGIN\t<zone>.\n$TTL\t<ttl>\n\n@\tIN\tSOA\t…\n\n; NS records\n@\tIN\tNS\t…\n"}`, then `; A records`, `; CNAME records`, `; MX records`, `; TXT records` …, one tab between fields, a TTL only where an RRSet has one, names relative, a relative CNAME target written out |
+| `import_zonefile` | 201 `import_zonefile` (zone); replaces every RRSet; the SOA's values stay Hetzner's, its serial goes up |
+| … without SOA or NS, or of another origin / without `NS` of Hetzner's | `"RRSet(s) cannot be deleted"`, fields `@` `"missing (@, SOA)"`, `"missing (@, NS)"` / `"missing nameserver (@, NS, 'oxygen.ns.hetzner.com.')"` |
+| … a line that does not parse / `A 2001:db8::1` / `SPF` / TTL 30 / a record twice / two TTLs in an RRSet / out of the zone / A and CNAME | `"zonefile has invalid format: dns: not a TTL: \"is\" at line: 7:8"` / `"…: dns: bad A Addr: \"2001:db8::1\" at line: 7:20"` / `"unknown type SPF"` (field `zonefile`) / `"must be at least 60s"` (field `zonefile.ttl`) / `"duplicate value '192.0.2.1'"` / `"(www, A) has differing record TTLs"` / `"(x.example.com., A) is not part of this zone"` / `"(www, CNAME) conflicts with (www, A)"` |
+| … `$ORIGIN` missing, a comment / `""` | 201 / `"'zonefile' is required"` |
+| a zone's `change_protection` `{"delete": true}` / `{}` | 201 `change_protection` (zone) / field `delete_protection` `"is empty"` |
+| `DELETE` while protected / `import_zonefile` while protected | 423 `protected` `"Zone has active deletion protection"` `null` / 201 |
+| `DELETE /zones/…` | **201** with an action `delete_zone`; at once 404 `"Zone not found"`; the name can be created again at once |
+| `change_ttl` and `import_zonefile` at once | 201 each |
+| `POST …/rrsets` | 201, `action` `create_rrset` (zone), 3 to 10 s, `rrset` |
+| `GET …/rrsets/api/A` / `API/a`, a full name, a missing one / `api/BOGUS` | 200 / 404 `"404 Not Found"` `null` / **200, the `api/A` RRSet** |
+| an RRSet that exists, also `@/SOA` and `@/NS` | 409 `uniqueness_error` `"RRSet(s) already exist(s)"`, field `api` `"(api, A) already exists"` |
+| `type` `SPF` | field `rrsets[0].type` `"unsupported"` |
+| an IPv6 in `A`, an IPv4 in `AAAA`, `MX` without priority | field `rrsets[0].records[0].value` `"invalid value '<value>'"` |
+| `records` `[]` / a value twice | field `records` `"value required to be larger"` / field `x` `"duplicate value '192.0.2.1'"` |
+| CNAME beside A / two CNAME records / CNAME at `@` | `"(api, CNAME) conflicts with (api, A)"` / `"(c2, CNAME) has more than 1 record"` / field `rrsets[0].name` `"(@, CNAME) is not allowed"` |
+| a name with a trailing dot / upper case | field `rrsets[0].name` `"has dot (.) suffix"` / `"has uppercase characters"` |
+| TXT without quotes / a string over 255 | `"TXT records must be fully escaped with double quotes"` / `"a TXT string exceeds 255 characters"` |
+| a comment over 255 | field `rrsets[0].records[0].comment` `"too large"` |
+| `ttl` 0, 59 / `null` | `"value required to be larger"` / 201 |
+| `*`, `*.w`, `_acme-challenge` TXT, `NS` below the apex, `PTR`, `CAA`, `SRV`, relative `MX` and `CNAME` targets | 201 |
+| `PUT …/rrsets/api/A` | 200, only `labels` (`ttl` ignored) |
+| `add_records` / a value it has / another TTL / on a missing RRSet | 201 `add_rrset_records` (zone) / `"duplicate value …"` / `"(api, A) has differing record TTLs"` / 201, the RRSet created |
+| `update_records` / a value it lacks | **200** with an action `update_rrset_records` that has ended / 404 `not_found` `"Record(s) not found"`, field `api` `"(api, A) does not have a record with that value"` |
+| `remove_records` of a value it lacks / of the last record | as `update_records` / 201, the RRSet is gone |
+| `set_records` / `[]` | 201 `set_rrset_records` / `"value required to be larger"` |
+| `change_ttl` `null` and a number | 201 `change_rrset_ttl` |
+| `change_protection` `{"change": true}` / `{}` | 201 `change_rrset_protection` (zone) / field `change` `"'change' is required"` |
+| `set_records`, `change_ttl`, `DELETE` while protected | 423 `protected` `"RRSet(s) is/are change protected"`, field `api` `"(api, A) is change protected"` |
+| `DELETE …/rrsets/api/A` | **201** with an action `delete_rrset` |
+| `DELETE` of `@/SOA`, `@/NS`; `remove_records` of one of Hetzner's NS | 422 `"RRSet(s) cannot be deleted"`, `"missing (@, SOA)"` / `"missing nameserver (@, NS, '<name>')"` |
+| `add_records` to `@/NS` / to `@/SOA` | 201 / `"more than one record in (@, SOA)"` |
+
+#### Reverse DNS
+
+| Request | Answer |
+|---|---|
+| a server's `change_dns_ptr` for its IPv4 / an address of its IPv6 `/64` | 201 `change_dns_ptr` naming the **Primary IP** (not the server), 5 to 11 s |
+| the server's JSON after | `ipv4.dns_ptr` the name; `ipv6.dns_ptr` a list `[{"dns_ptr", "ip"}]` |
+| `2a01:…:0:0:0:2` for an address set as `…::2` | the same entry, replaced |
+| `dns_ptr` `null` | IPv4: back to `static.<d>.<c>.<b>.<a>.clients.your-server.de`; IPv6: the entry is gone |
+| for the `/64`'s own address (`…::`) | 201 |
+| an address of no IP of the server | 404 `not_found` `"Server with ID <id> not found"` `null` |
+| for its Floating IP (IPv4 or an address of its IPv6 `/64`) | 201, the action names the Floating IP |
+| `dns_ptr` `"not a name"`, `""`, `nodot`, a label of 64 / `name.` / missing | 422 field `dns_ptr` `"not a valid domain name"`, message `"invalid input in field 'dns_ptr'"` / `"ends with ."` / message `"'dns_ptr' is required"`, field `"is required"` |
+| `ip` missing / `bogus` | field `ip` `"'ip' is required"` / `"IP address is not valid"` |
+| a Primary IP's `change_dns_ptr` / another address | 201, the server's JSON shows it / 422 `service_error` `"IP address does not belong to the subnet"` `null` |
+| a Floating IP's / another address | 201 / 422 `service_error` `"ip address does not belong to the subnet"` `null` (lower case) |
+| a Floating or Primary IPv6's `dns_ptr` before any name / after `null` | `[]` |
+| a Floating IPv4's after `null` | `[{"ip", "dns_ptr": "static.….clients.your-server.de"}]` |
+
+#### What 2a left open
+
+| Request | Answer |
+|---|---|
+| `delete_subnet` of a subnet that holds only a member's alias IP | 422 `service_error` `"network has attached resources"` `null`; after `change_alias_ips` to `[]` 201 (HLab: deletes it, a deviation) |
+| `delete_subnet` of an empty subnet while other subnets have members | 201 |
+| `delete_subnet` `10.90.3.5/24` (not the first address) / `10.90.3.0/25` | 422 field `ip_range` `"cidrv4 violated"` / `service_error` `"subnet not found"` (HLab: `"subnet not found"` for both, a deviation) |
+| a server's `attach_to_network` while the network's `add_subnet` runs; two `add_subnet` and an `add_route` at once | 201 each; they run alongside (HLab the same) |
+| `add_subnet` while a server's attach to the network runs | 201 |
+| a Primary IPv4's `assign` to a stopped server, then at once its `poweroff`, `attach_to_network`, `change_dns_ptr` | 201 each, no 423; they run alongside: `stop_server` ended 3 s before the assign (HLab: they wait behind the assign, a deviation) |
+| an `attach_to_network`, then at once the assign | 201 each, alongside |

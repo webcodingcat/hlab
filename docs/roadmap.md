@@ -29,10 +29,10 @@ the tests. Look there before writing such a part anew.
 
 ## Now
 
-Phase 2a is done with its review, 2a-R. Next is phase 2b: first 2b-0,
-which measures against the real API what 2b and the open points below
-need, then "disk ID, volumes, placement groups" and "DNS, rDNS, host DNS",
-then 2b-R.
+Phase 2a is done with its review, 2a-R; 2b-0 measured on the real API
+what phase 2b needs (`compat/requirements.md`, 2b-0). Next is 2b-1
+"disk ID, volumes, placement groups", with the network deviations below,
+then 2b-2 "DNS, rDNS, host DNS", then 2b-R.
 
 ## Open
 
@@ -42,15 +42,18 @@ Faults and deviations from Hetzner, each as "level, phase: finding": the
 level from the review that found it (must, should, optional; accepted
 for what the operator keeps), the phase or step that closes it.
 
-- **must, 2b-0:** not measured on Hetzner, built as assumed: whether
-  `delete_subnet` refuses a subnet that holds only a member's alias IPs
-  (`planDeleteSubnet` looks at the members' own addresses); whether a
-  server's attach while the network runs an `add_subnet` is 423 (the lab
-  runs it, in the server's queue); a server's actions sent while a
-  Primary IP's assign locks it wait behind it (DEVELOPING.md, Actions);
-  whether `delete_subnet` with an `ip_range` that is not the subnet's
-  first address (`10.0.1.5/24`) finds the subnet (the lab compares the
-  text as given).
+- **must, 2b-1:** measured in 2b-0 (`compat/requirements.md`, "What 2a
+  left open"): `delete_subnet` deletes a subnet that holds only a
+  member's alias IPs, which Hetzner refuses with `"network has attached
+  resources"` (`planDeleteSubnet` looks at the members' own addresses
+  only); `delete_subnet` with an `ip_range` that is not the subnet's
+  first address (`10.0.1.5/24`) answers `"subnet not found"`, Hetzner
+  field `ip_range` `"cidrv4 violated"`; a server's actions sent while a
+  Primary IP's assign runs wait behind it, while Hetzner runs them
+  alongside (the assign heads the server's queue, DEVELOPING.md,
+  Actions).
+- **must, 2b-1:** a server's public lease lacks option 249; Hetzner sends
+  121 and 249 alike (`internal/picture/dhcp.go`).
 - **should, 2b (own step):** a NIC that Hyper-V fails to remove (a
   detach, a network's delete) stays in the VM without a record; the VLAN
   pool's rotation keeps it out of new networks for a while. A check that
