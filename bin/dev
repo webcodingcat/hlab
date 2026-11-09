@@ -491,6 +491,40 @@ EOF
   hcloud primary-ip list
   hcloud server delete smoke
   hcloud primary-ip delete smoke-ip
+  # phase 2a: networks, firewalls and Floating IPs, also in a create
+  hcloud network create --name smoke-net --ip-range 10.0.0.0/16
+  hcloud network add-subnet smoke-net --type cloud \
+    --network-zone eu-central --ip-range 10.0.1.0/24
+  hcloud network add-route smoke-net --destination 10.100.0.0/24 \
+    --gateway 10.0.1.5
+  hcloud firewall create --name smoke-fw
+  hcloud firewall add-rule smoke-fw --direction in --protocol tcp \
+    --port 22 --source-ips 0.0.0.0/0 --source-ips ::/0
+  hcloud server create --name smoke-a --type cpx22 --image debian-13 \
+    --location fsn1 --ssh-key smoke --network smoke-net --firewall smoke-fw
+  hcloud server create --name smoke-b --type cpx22 --image debian-13 \
+    --location fsn1 --ssh-key smoke --label role=db
+  hcloud server attach-to-network smoke-b --network smoke-net \
+    --ip 10.0.1.10
+  hcloud server change-alias-ips smoke-b --network smoke-net \
+    --alias-ips 10.0.1.11
+  hcloud firewall apply-to-resource smoke-fw --type label_selector \
+    --label-selector role=db
+  hcloud firewall describe smoke-fw
+  hcloud floating-ip create --name smoke-fip --type ipv4 \
+    --home-location fsn1
+  hcloud floating-ip assign smoke-fip smoke-a
+  hcloud floating-ip assign smoke-fip smoke-b
+  hcloud floating-ip unassign smoke-fip
+  hcloud floating-ip list
+  hcloud network describe smoke-net
+  hcloud server detach-from-network smoke-b --network smoke-net
+  hcloud firewall remove-from-resource smoke-fw --type label_selector \
+    --label-selector role=db
+  hcloud server delete smoke-a smoke-b
+  hcloud floating-ip delete smoke-fip
+  hcloud firewall delete smoke-fw
+  hcloud network delete smoke-net
   hcloud ssh-key delete smoke
   for example in examples/tofu-*; do
     cp -r "${example}" "${dir}/tofu"
