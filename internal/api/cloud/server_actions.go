@@ -364,6 +364,7 @@ func joinNetwork(l *lab.Lab, tx *state.Tx, server *state.Server, network *state.
 		IP:        ip.String(),
 		AliasIPs:  addressStrings(aliases),
 		MAC:       lab.NewPrivateMAC(tx),
+		Interface: freeInterface(server),
 	}
 	server.PrivateNets = append(server.PrivateNets, attached)
 	return attached, nil
@@ -399,6 +400,17 @@ func planAttachAtCreate(l *lab.Lab) planFunc {
 			Resources: []state.ResourceRef{{Type: networkResource, ID: network.ID}},
 			Steps:     func(ctx context.Context) error { return l.Sleep(ctx, lab.NICAttach) },
 		}, nil
+	}
+}
+
+// freeInterface returns the lowest number that none of the server's private
+// NICs has: Hetzner's interface_num, which a NIC keeps while others come
+// and go (measured 2026-11-09).
+func freeInterface(server *state.Server) int {
+	for number := 1; ; number++ {
+		if !slices.ContainsFunc(server.PrivateNets, func(nic state.ServerPrivateNet) bool { return nic.Interface == number }) {
+			return number
+		}
 	}
 }
 

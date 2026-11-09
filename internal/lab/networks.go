@@ -240,15 +240,13 @@ func networkFacts(tx *state.Tx) []picture.Network {
 	}
 	for _, server := range state.All(tx, state.Servers) {
 		privateOnly := server.IPv4 == 0 && server.IPv6 == 0
-		for n, attached := range server.PrivateNets {
+		for _, attached := range server.PrivateNets {
 			i, found := index[attached.NetworkID]
 			ip, err := netip.ParseAddr(attached.IP)
 			if !found || err != nil {
 				continue
 			}
-			// the NIC's number counts the server's networks in the order
-			// they were attached
-			member := picture.NetworkMember{ServerID: server.ID, Interface: n + 1, MAC: attached.MAC, IP: ip, PrivateOnly: privateOnly}
+			member := picture.NetworkMember{ServerID: server.ID, Interface: attached.Interface, MAC: attached.MAC, IP: ip, PrivateOnly: privateOnly}
 			for _, alias := range attached.AliasIPs {
 				if address, err := netip.ParseAddr(alias); err == nil {
 					member.AliasIPs = append(member.AliasIPs, address)

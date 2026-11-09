@@ -15,7 +15,7 @@ import (
 
 // currentVersion is the version of the state file this code writes. A change
 // of the format raises it and adds a migration (DEVELOPING.md, Recipes).
-var currentVersion = 1
+var currentVersion = 2
 
 // Migration lifts a state file from its version to the next one. It works on
 // the file as plain JSON values: objects are map[string]any, lists []any,
@@ -23,7 +23,31 @@ var currentVersion = 1
 type Migration func(raw map[string]any) error
 
 // migrations lifts version n to n+1, by n.
-var migrations = map[int]Migration{}
+var migrations = map[int]Migration{1: numberPrivateNICs}
+
+// numberPrivateNICs lifts version 1 to 2: a server's private NIC has a
+// number of its own (interface), which version 1 lacks; the NICs there
+// are numbered in the order they were attached, as version 1 counted
+// them.
+func numberPrivateNICs(raw map[string]any) error {
+	kinds, _ := raw["kinds"].(map[string]any)
+	servers, _ := kinds["servers"].([]any)
+	for _, entry := range servers {
+		server, ok := entry.(map[string]any)
+		if !ok {
+			return errors.New("a server is no object")
+		}
+		nics, _ := server["private_nets"].([]any)
+		for i, nic := range nics {
+			fields, ok := nic.(map[string]any)
+			if !ok {
+				return errors.New("a private NIC is no object")
+			}
+			fields["interface"] = json.Number(strconv.Itoa(i + 1))
+		}
+	}
+	return nil
+}
 
 // ErrNewerVersion reports a state file of a newer HLab: saving it would lose
 // what this code does not know, so the lab does not start.

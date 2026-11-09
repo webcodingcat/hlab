@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "saved": "2026-11-08T22:00:00Z",
+  "next_ids": {
+    "networks": 1000003,
+    "projects": 1000001,
+    "servers": 1000004
+  },
+  "kinds": {
+    "networks": [
+      {"id": 1000001, "project_id": 1000000, "name": "app", "labels": {}, "created": "2026-11-08T21:00:00Z",
+       "protection": {"delete": false}, "ip_range": "10.0.0.0/16",
+       "subnets": [{"type": "cloud", "ip_range": "10.0.1.0/24", "network_zone": "eu-central"}],
+       "routes": [], "expose_routes_to_vswitch": false, "vlan": 2},
+      {"id": 1000002, "project_id": 1000000, "name": "db", "labels": {}, "created": "2026-11-08T21:00:00Z",
+       "protection": {"delete": false}, "ip_range": "10.1.0.0/16",
+       "subnets": [{"type": "cloud", "ip_range": "10.1.1.0/24", "network_zone": "eu-central"}],
+       "routes": [], "expose_routes_to_vswitch": false, "vlan": 3}
+    ],
+    "projects": [
+      {"id": 1000000, "name": "default", "created": "2026-11-08T20:00:00Z", "limits": {}}
+    ],
+    "servers": [
+      {"id": 1000003, "project_id": 1000000, "name": "web", "labels": {}, "created": "2026-11-08T21:30:00Z",
+       "protection": {"delete": false, "rebuild": false}, "type": "cpx22", "location": "fsn1", "image_id": 310554929,
+       "status": "running", "want_running": true, "ipv4": 0, "ipv6": 0, "mac": "96:00:00:0f:42:43",
+       "public_keys": [], "root_password": "", "user_data": "", "disk_gb": 80, "base_image": "",
+       "private_nets": [
+         {"network_id": 1000001, "ip": "10.0.1.1", "alias_ips": [], "mac": "86:00:00:00:00:01"},
+         {"network_id": 1000002, "ip": "10.1.1.1", "alias_ips": ["10.1.1.9"], "mac": "86:00:00:00:00:02"}
+       ]}
+    ]
+  }
+}

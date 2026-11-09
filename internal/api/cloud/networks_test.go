@@ -1,6 +1,7 @@
 package cloud_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -809,5 +810,45 @@ func TestNetworkDeletedDuringItsActionAbortsIt(t *testing.T) {
 	}
 	if got := getServer(t, test, server.Server.ID).PrivateNet; len(got) != 0 {
 		t.Errorf("after the delete the server is in %+v", got)
+	}
+}
+
+// Each private NIC keeps its number in the metadata's private-networks
+// while others come and go; a new one takes the lowest free number, as
+// on Hetzner (measured 2026-11-09).
+func TestPrivateNICKeepsItsInterfaceNumber(t *testing.T) {
+	test := newTestLab(t)
+	agent := startMachine(t, test, platform.HostResources{Threads: 8, MemoryMB: 16 * 1024})
+	first, second, third := networkWithSubnet(t, test, "a", "10.1"), networkWithSubnet(t, test, "b", "10.2"), networkWithSubnet(t, test, "c", "10.3")
+	server := offServer(t, test, "web").Server.ID
+	join := func(command string, network int64) {
+		waitActions(t, test, actionOf(t, command, serverNetworkAction(test, server, command, map[string]any{"network": network})))
+	}
+	numbers := func() map[string]string {
+		var metadata agentproto.Metadata
+		if err := json.Unmarshal(agent.Picture(agentproto.PictureMetadata), &metadata); err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]string{}
+		for _, entry := range metadata.Servers {
+			text := entry.Keys["private-networks"]
+			for _, block := range strings.Split(text, "- ip: ")[1:] {
+				name := strings.Fields(block[strings.Index(block, "network_name: "):])[1]
+				number := strings.Fields(block[strings.Index(block, "interface_num: "):])[1]
+				got[name] = number
+			}
+		}
+		return got
+	}
+	join("attach_to_network", first)
+	join("attach_to_network", second)
+	join("detach_from_network", first)
+	join("attach_to_network", third)
+	if got := numbers(); fmt.Sprint(got) != fmt.Sprint(map[string]string{"b": "2", "c": "1"}) {
+		t.Errorf("after a detach and an attach the NICs are %v", got)
+	}
+	join("attach_to_network", first)
+	if got := numbers(); fmt.Sprint(got) != fmt.Sprint(map[string]string{"a": "3", "b": "2", "c": "1"}) {
+		t.Errorf("after attaching the first again the NICs are %v", got)
 	}
 }

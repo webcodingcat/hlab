@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -237,9 +239,41 @@ func TestVersion1LoadsAfterAMigrationToVersion2(t *testing.T) {
 
 func TestMissingMigrationIsAnError(t *testing.T) {
 	path := save(t, New())
-	useVersion(t, 2, map[int]Migration{})
+	next := currentVersion + 1
+	useVersion(t, next, map[int]Migration{})
 
-	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "no migration from version 1") {
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("no migration from version %d", next-1)) {
 		t.Fatalf("got %v, want an error about the missing migration", err)
+	}
+}
+
+// Version 1 has no number for a server's private NICs; the migration to
+// version 2 numbers them in the order they were attached.
+func TestVersion1NumbersThePrivateNICs(t *testing.T) {
+	original, err := os.ReadFile(filepath.Join("testdata", "state-v1-networks.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "state.json")
+	if err := os.WriteFile(path, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := Get(Begin(s), Servers, 1000003)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []int
+	for _, nic := range server.PrivateNets {
+		got = append(got, nic.Interface)
+	}
+	if !slices.Equal(got, []int{1, 2}) || server.PrivateNets[1].AliasIPs[0] != "10.1.1.9" {
+		t.Errorf("the NICs loaded as %+v", server.PrivateNets)
+	}
+	if _, err := os.Stat(path + ".v1"); err != nil {
+		t.Errorf("the old file was not kept: %v", err)
 	}
 }

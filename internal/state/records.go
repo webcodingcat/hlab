@@ -186,12 +186,14 @@ type Server struct {
 }
 
 // ServerPrivateNet is a server's NIC in a private network: its address,
-// its alias IPs and the NIC's MAC address.
+// its alias IPs, the NIC's MAC address and its number among the server's
+// private NICs (1 to 3), which it keeps while others come and go.
 type ServerPrivateNet struct {
 	NetworkID int64    `json:"network_id"`
 	IP        string   `json:"ip"`
 	AliasIPs  []string `json:"alias_ips"`
 	MAC       string   `json:"mac"`
+	Interface int      `json:"interface"`
 }
 
 // RecordID returns the server's ID.
