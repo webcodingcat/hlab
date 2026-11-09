@@ -243,8 +243,10 @@ follow_itest() {
     [[ -e "${dir}/itest.out" ]] || continue
     size="$(stat -c %s "${dir}/itest.out")"
     if ((size > printed)); then
-      tail -c "+$((printed + 1))" "${dir}/itest.out" \
-        | head -c "$((size - printed))"
+      # head stops at the measured size and tail reads all of that, so that
+      # neither gets SIGPIPE when the file grows meanwhile (pipefail would
+      # end the script with 141 while the tests still run)
+      head -c "${size}" "${dir}/itest.out" | tail -c "$((size - printed))"
       printed="${size}"
     fi
   done
