@@ -228,7 +228,10 @@ func setVRF(vlan agentproto.VLAN) error {
 }
 
 // applyAddresses gives each device the picture's addresses and removes
-// every other address from it; lo keeps its loopback addresses.
+// every other address from it; lo keeps its loopback addresses. It adds
+// them in the picture's order, which the kernel keeps: dnsmasq names a
+// device's first address as its DHCP server, and a private network's
+// device holds its gateway first, then the metadata service's address.
 func applyAddresses(devices []string, addresses []agentproto.Address) error {
 	wanted := map[string]map[netip.Prefix]bool{}
 	for _, device := range devices {
@@ -259,9 +262,12 @@ func applyAddresses(devices []string, addresses []agentproto.Address) error {
 				return fmt.Errorf("removing %s from %s: %w", prefix, device, err)
 			}
 		}
-		for prefix := range wanted[device] {
-			if err := netlink.AddrAdd(link, toAddr(prefix)); err != nil {
-				return fmt.Errorf("adding %s to %s: %w", prefix, device, err)
+		for _, address := range addresses {
+			if address.Device != device || !wanted[device][address.Prefix] {
+				continue
+			}
+			if err := netlink.AddrAdd(link, toAddr(address.Prefix)); err != nil {
+				return fmt.Errorf("adding %s to %s: %w", address.Prefix, device, err)
 			}
 		}
 	}

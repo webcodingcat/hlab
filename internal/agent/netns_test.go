@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -144,12 +145,27 @@ fi`
 	startDNSMasq = `dnsmasq --conf-file="$0" --pid-file="$0.pid"`
 )
 
-// stopAllDNSMasq stops the dnsmasq instances that a test started.
+// stopAllDNSMasq stops the dnsmasq instances that a test started and
+// waits until they are gone, so that none answers the next test. A
+// container's first process, the test, reaps no orphans: a stopped
+// dnsmasq stays a zombie there, which counts as gone.
 func stopAllDNSMasq(dir string) {
-	pids, _ := filepath.Glob(filepath.Join(dir, "*.pid"))
-	for _, pid := range pids {
-		if text, err := os.ReadFile(pid); err == nil {
-			_ = exec.Command("kill", strings.TrimSpace(string(text))).Run()
+	pidFiles, _ := filepath.Glob(filepath.Join(dir, "*.pid"))
+	for _, pidFile := range pidFiles {
+		text, err := os.ReadFile(pidFile)
+		if err != nil {
+			continue
+		}
+		pid, err := strconv.Atoi(strings.TrimSpace(string(text)))
+		if err != nil || syscall.Kill(pid, syscall.SIGTERM) != nil {
+			continue
+		}
+		for range 100 {
+			stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+			if err != nil || strings.Contains(string(stat), ") Z ") {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
 		}
 	}
 }

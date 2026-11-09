@@ -163,6 +163,8 @@ func TestPrivateNetworkDHCPGivesTheAddressAsHetznerDoes(t *testing.T) {
 		"-n", "-q", "-f", "-s", script, "-t", "5",
 		"-O", "staticroutes", "-O", "mtu", "-O", "router", "-O", "dns").CombinedOutput()
 	text := string(output)
+	// Hetzner's DHCP server is the gateway (measured 2026-11-08); the
+	// device holds the metadata service's address too
 	if err != nil || !strings.Contains(text, "lease of 10.0.0.2 obtained from 10.0.0.1") {
 		t.Fatalf("udhcpc: %v\n%s", err, text)
 	}
