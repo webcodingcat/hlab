@@ -132,6 +132,10 @@ func registerFirewalls(api *web.API, l *lab.Lab) {
 		return createFirewall(req, l, table)
 	})
 
+	// an ID that is no number: Hetzner names it (measured 2026-11-09)
+	api.AnswerInvalidID("GET /firewalls/{id}", func(req *web.Request) (int, any, error) {
+		return 0, nil, web.NotFoundNull(fmt.Sprintf("firewall with ID '%s' not found", req.PathValue("id")))
+	})
 	api.Handle("GET /firewalls/{id}", func(req *web.Request) (int, any, error) {
 		var out firewallAnswer
 		err := l.View(func(tx *state.Tx) error {

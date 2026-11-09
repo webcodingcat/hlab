@@ -176,16 +176,16 @@ func (s *Spec) find(method, path string) *operation {
 // must match the schema. An error answer of a path the spec lacks (404 for an
 // unknown route) must still be in Hetzner's error format.
 func (s *Spec) Check(method, path string, status int, contentType string, body []byte) error {
+	if status == http.StatusMethodNotAllowed && len(body) == 0 {
+		// Hetzner's 405 without a body, which some of its routes answer
+		// (measured 2026-11-09, web.BareMethodNotAllowed); the spec
+		// knows no such answer
+		return nil
+	}
 	op := s.find(method, path)
 	if op == nil {
 		if status < 400 {
 			return fmt.Errorf("%s %s: answered %d, but the spec has no such operation", method, path, status)
-		}
-		if status == http.StatusMethodNotAllowed && len(body) == 0 {
-			// Hetzner's 405 for another method than GET on a single
-			// action of networks, firewalls, Floating IPs and Primary IPs
-			// has no body (measured 2026-11-09)
-			return nil
 		}
 		return checkErrorFormat(body)
 	}

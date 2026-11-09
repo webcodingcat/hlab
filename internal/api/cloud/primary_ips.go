@@ -99,6 +99,10 @@ func registerPrimaryIPs(api *web.API, l *lab.Lab) {
 		return createPrimaryIP(req, l, table)
 	})
 
+	// an ID that is no number (measured 2026-11-09)
+	api.AnswerInvalidID("GET /primary_ips/{id}", func(*web.Request) (int, any, error) {
+		return 0, nil, web.NotFoundNull("404 Not Found")
+	})
 	api.Handle("GET /primary_ips/{id}", func(req *web.Request) (int, any, error) {
 		var out schema.PrimaryIP
 		err := l.View(func(tx *state.Tx) error {

@@ -75,6 +75,9 @@ type API struct {
 	backend Backend
 	limiter *rateLimiter
 	logger  *slog.Logger
+	// invalidIDs are the routes' own answers to an ID that is no number,
+	// by pattern (AnswerInvalidID)
+	invalidIDs map[string]HandlerFunc
 }
 
 // NewAPI returns an API without routes.
@@ -86,10 +89,11 @@ func NewAPI(opts Options) *API {
 		opts.Now = time.Now
 	}
 	return &API{
-		mux:     http.NewServeMux(),
-		backend: opts.Backend,
-		limiter: newRateLimiter(opts.RateLimit, opts.Now),
-		logger:  opts.Logger,
+		mux:        http.NewServeMux(),
+		backend:    opts.Backend,
+		limiter:    newRateLimiter(opts.RateLimit, opts.Now),
+		logger:     opts.Logger,
+		invalidIDs: map[string]HandlerFunc{},
 	}
 }
 
@@ -111,23 +115,34 @@ func (api *API) Handle(pattern string, handler HandlerFunc) {
 		}
 	}
 	api.mux.HandleFunc(method+" "+Prefix+path, func(w http.ResponseWriter, r *http.Request) {
+		run := handler
 		for _, name := range ids {
 			if id, err := strconv.ParseInt(r.PathValue(name), 10, 64); err != nil || id < 1 {
-				WriteError(w, api.logger, RouteNotFound())
-				return
+				if run = api.invalidIDs[pattern]; run == nil {
+					WriteError(w, api.logger, RouteNotFound())
+					return
+				}
 			}
 		}
 		caller, admitted := api.admit(w, r)
 		if !admitted {
 			return
 		}
-		status, body, err := handler(&Request{Request: r, Caller: caller, Header: w.Header()})
+		status, body, err := run(&Request{Request: r, Caller: caller, Header: w.Header()})
 		if err != nil {
 			WriteError(w, api.logger, err)
 			return
 		}
 		WriteJSON(w, status, body)
 	})
+}
+
+// AnswerInvalidID gives a route of Handle its own answer to an ID that is
+// no number, where Hetzner's is not "api route not found" (a firewall's
+// "firewall with ID 'x' not found"). It comes after the token, as the
+// route's handler would.
+func (api *API) AnswerInvalidID(pattern string, answer HandlerFunc) {
+	api.invalidIDs[pattern] = answer
 }
 
 // ServeHTTP answers a request in the order Hetzner's API checks it: an

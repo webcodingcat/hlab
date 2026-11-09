@@ -94,6 +94,9 @@ func registerFloatingIPs(api *web.API, l *lab.Lab) {
 		return createFloatingIP(req, l, table)
 	})
 
+	// an ID that is no number: Hetzner's 405 without a body (measured
+	// 2026-11-09)
+	api.AnswerInvalidID("GET /floating_ips/{id}", bareMethodNotAllowed("PUT, DELETE"))
 	api.Handle("GET /floating_ips/{id}", func(req *web.Request) (int, any, error) {
 		var out schema.FloatingIP
 		err := l.View(func(tx *state.Tx) error {

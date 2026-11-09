@@ -169,6 +169,9 @@ func registerNetworks(api *web.API, l *lab.Lab) {
 		return createNetwork(req, l)
 	})
 
+	// an ID that is no number: Hetzner's 405 without a body (measured
+	// 2026-11-09)
+	api.AnswerInvalidID("GET /networks/{id}", bareMethodNotAllowed("PUT, DELETE"))
 	api.Handle("GET /networks/{id}", func(req *web.Request) (int, any, error) {
 		var out networkAnswer
 		err := l.View(func(tx *state.Tx) error {

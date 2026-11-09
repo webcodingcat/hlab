@@ -243,12 +243,17 @@ func registerOtherActionMethods(api *web.API, path string) {
 			})
 			continue
 		}
-		notAllowed := func(req *web.Request) (int, any, error) {
-			req.Header.Set("Allow", "GET, HEAD")
-			return 0, nil, web.ActionMethodNotAllowed()
-		}
-		api.Handle(method+" /"+path+"/{id}/actions/{command}", notAllowed)
-		api.Handle(method+" /"+path+"/actions/{command}", notAllowed)
+		api.Handle(method+" /"+path+"/{id}/actions/{command}", bareMethodNotAllowed("GET, HEAD"))
+		api.Handle(method+" /"+path+"/actions/{command}", bareMethodNotAllowed("GET, HEAD"))
+	}
+}
+
+// bareMethodNotAllowed returns a handler of Hetzner's 405 without a body,
+// with the methods its Allow header names (web.BareMethodNotAllowed).
+func bareMethodNotAllowed(allow string) web.HandlerFunc {
+	return func(req *web.Request) (int, any, error) {
+		req.Header.Set("Allow", allow)
+		return 0, nil, web.BareMethodNotAllowed()
 	}
 }
 

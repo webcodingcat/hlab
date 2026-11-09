@@ -180,3 +180,30 @@ func TestMissingActionsAnswerAsHetznerDoes(t *testing.T) {
 		t.Errorf("GET %s: %q", path, got.Message)
 	}
 }
+
+// A GET of a resource whose ID is no number gets each resource's own
+// answer from Hetzner (measured 2026-11-09).
+func TestResourceIDsThatAreNoNumberAnswerAsHetznerDoes(t *testing.T) {
+	test := newTestLab(t)
+	for _, path := range []string{"/v1/networks/bogus", "/v1/floating_ips/bogus"} {
+		response := test.client.Get(path)
+		if response.Status != http.StatusMethodNotAllowed || len(response.Body) != 0 || response.Header.Get("Allow") != "PUT, DELETE" {
+			t.Errorf("GET %s: %d, Allow %q, %q", path, response.Status, response.Header.Get("Allow"), response.Body)
+		}
+	}
+	for path, want := range map[string]string{
+		"/v1/firewalls/bogus":   "firewall with ID 'bogus' not found",
+		"/v1/primary_ips/bogus": "404 Not Found",
+		"/v1/servers/bogus":     "api route not found",
+	} {
+		response := test.client.Get(path)
+		if got := errorOf(t, response); response.Status != http.StatusNotFound || got.Message != want || string(got.Details) != "null" {
+			t.Errorf("GET %s: %d %q %s, want 404 %q null", path, response.Status, got.Message, got.Details, want)
+		}
+	}
+	// without a token, a path the lab knows still asks for one
+	test.client.Token = ""
+	if response := test.client.Get("/v1/firewalls/bogus"); response.Status != http.StatusUnauthorized {
+		t.Errorf("GET /v1/firewalls/bogus without a token: %d", response.Status)
+	}
+}

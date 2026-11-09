@@ -157,11 +157,12 @@ func Forbidden() *Error {
 	return &Error{Status: http.StatusForbidden, Code: "forbidden", Message: "permission denied", Details: map[string]any{}}
 }
 
-// ActionMethodNotAllowed returns the 405 that Hetzner answers for another
-// method than GET on a single action of networks, firewalls, Floating IPs
-// and Primary IPs, which includes a command they do not have: no body,
-// Allow "GET, HEAD" (measured 2026-11-09). The handler sets Allow.
-func ActionMethodNotAllowed() *Error {
+// BareMethodNotAllowed returns the 405 without a body that some of
+// Hetzner's routes answer (measured 2026-11-09): another method than GET
+// on a single action of networks, firewalls, Floating IPs and Primary
+// IPs, which includes a command they lack, and a GET of a network or
+// Floating IP whose ID is no number. The handler sets Allow.
+func BareMethodNotAllowed() *Error {
 	return &Error{Status: http.StatusMethodNotAllowed, Code: "method_not_allowed", Message: "method not allowed", bare: true}
 }
 
