@@ -113,9 +113,14 @@ type Metadata struct {
 }
 
 // MetadataServer is what one server gets from the metadata service. The
-// agent tells the servers apart by the source address of the request.
+// agent tells the servers apart by the source address of the request: a
+// public one, or a private one in a network's VRF, where two networks may
+// have the same addresses.
 type MetadataServer struct {
 	Sources []netip.Prefix `json:"sources"`
+	// Private are its addresses in private networks, each with the VRF
+	// the request comes through.
+	Private []PrivateSource `json:"private"`
 	// Metadata is the answer to /hetzner/v1/metadata.
 	Metadata string `json:"metadata"`
 	// Keys holds the answer to /hetzner/v1/metadata/<key>.
@@ -262,11 +267,28 @@ func (d DHCP) Check() error {
 	return errors.Join(problems...)
 }
 
+// PrivateSource is a server's address in a private network, and the VRF
+// of that network.
+type PrivateSource struct {
+	VRF     string     `json:"vrf"`
+	Address netip.Addr `json:"address"`
+}
+
 // Check refuses a source that two servers share: the agent could not tell
 // them apart.
 func (m Metadata) Check() error {
 	var problems []error
+	private := map[PrivateSource]bool{}
 	for i, server := range m.Servers {
+		for _, source := range server.Private {
+			switch {
+			case source.VRF == "" || !source.Address.IsValid():
+				problems = append(problems, fmt.Errorf("server %d: a private source lacks its VRF or address", i))
+			case private[source]:
+				problems = append(problems, fmt.Errorf("the private source %s in %s is twice", source.Address, source.VRF))
+			}
+			private[source] = true
+		}
 		for _, source := range server.Sources {
 			if !source.IsValid() {
 				problems = append(problems, fmt.Errorf("server %d: a source is missing", i))

@@ -42,6 +42,8 @@ func testLab() Lab {
 			IPv4: netip.MustParseAddr("198.19.0.2"), RootPassword: `p"ss`,
 			UserData: "#cloud-config\npackages: [nginx]\n",
 		},
+		// without public addresses: only in a private network
+		{ID: 1000004, Name: "private", Location: "fsn1", MAC: "96:00:00:0f:42:44"},
 	}
 	lab.FloatingIPs = []FloatingIP{
 		{Prefix: netip.MustParsePrefix("2001:db8:1:5::/64"), ServerID: 1000002},
@@ -52,19 +54,25 @@ func testLab() Lab {
 	}
 	// two networks of the same range, listed out of order: one with two
 	// servers, an alias IP and two routes, one through a gateway that no
-	// server holds; one with a default route and no server
+	// server holds; one with a default route and a server without public
+	// addresses
 	lab.Networks = []Network{
-		{ID: 1000021, VLAN: 3, IPRange: netip.MustParsePrefix("10.0.0.0/16"),
-			Routes: []NetworkRoute{{Destination: netip.MustParsePrefix("0.0.0.0/0"), Gateway: netip.MustParseAddr("10.0.0.5")}}},
-		{ID: 1000020, VLAN: 2, IPRange: netip.MustParsePrefix("10.0.0.0/16"),
+		{ID: 1000021, Name: "backup", VLAN: 3, IPRange: netip.MustParsePrefix("10.0.0.0/16"),
+			Subnets: []netip.Prefix{netip.MustParsePrefix("10.0.1.0/24")},
+			Routes:  []NetworkRoute{{Destination: netip.MustParsePrefix("0.0.0.0/0"), Gateway: netip.MustParseAddr("10.0.0.5")}},
+			Members: []NetworkMember{
+				{ServerID: 1000004, Interface: 1, MAC: "86:00:00:00:00:04", IP: netip.MustParseAddr("10.0.1.2"), PrivateOnly: true},
+			}},
+		{ID: 1000020, Name: "app", VLAN: 2, IPRange: netip.MustParsePrefix("10.0.0.0/16"),
+			Subnets: []netip.Prefix{netip.MustParsePrefix("10.0.1.0/24"), netip.MustParsePrefix("10.0.2.0/24")},
 			Routes: []NetworkRoute{
 				{Destination: netip.MustParsePrefix("10.100.0.0/24"), Gateway: netip.MustParseAddr("10.0.1.2")},
 				{Destination: netip.MustParsePrefix("192.168.0.0/16"), Gateway: netip.MustParseAddr("10.0.9.9")},
 			},
 			Members: []NetworkMember{
-				{ServerID: 1000001, MAC: "86:00:00:00:00:01", IP: netip.MustParseAddr("10.0.1.2"),
+				{ServerID: 1000001, Interface: 1, MAC: "86:00:00:00:00:01", IP: netip.MustParseAddr("10.0.1.2"),
 					AliasIPs: []netip.Addr{netip.MustParseAddr("10.0.1.20"), netip.MustParseAddr("10.0.2.20")}},
-				{ServerID: 1000002, MAC: "86:00:00:00:00:02", IP: netip.MustParseAddr("10.0.1.3")},
+				{ServerID: 1000002, Interface: 1, MAC: "86:00:00:00:00:02", IP: netip.MustParseAddr("10.0.1.3")},
 			}},
 	}
 	return lab
@@ -129,6 +137,9 @@ func TestDHCPMatchesGoldenFile(t *testing.T) {
 	checkGolden(t, "dhcp", text.String())
 }
 
+// The metadata of each server: the summary, a key of it, the private
+// networks (a key of their own, not in the summary, as on Hetzner,
+// measured 2026-11-09) and the user data.
 func TestMetadataMatchesGoldenFile(t *testing.T) {
 	metadata := Metadata(testLab(), catalog.Builtin())
 	if err := metadata.Check(); err != nil {
@@ -136,8 +147,9 @@ func TestMetadataMatchesGoldenFile(t *testing.T) {
 	}
 	var text strings.Builder
 	for _, server := range metadata.Servers {
-		fmt.Fprintf(&text, "### sources %v\n%s", server.Sources, server.Metadata)
+		fmt.Fprintf(&text, "### sources %v private %v\n%s", server.Sources, server.Private, server.Metadata)
 		fmt.Fprintf(&text, "### hostname: %s\n", server.Keys["hostname"])
+		fmt.Fprintf(&text, "### private-networks\n%s", server.Keys["private-networks"])
 		fmt.Fprintf(&text, "### userdata\n%s", server.UserData)
 	}
 	checkGolden(t, "metadata", text.String())

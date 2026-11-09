@@ -50,7 +50,7 @@ func run() error {
 	failed := make(chan error, 3)
 	go func() { failed <- hlabAgent.WatchCarrier(ctx) }()
 	go func() { failed <- http.Serve(control, hlabAgent.Handler()) }()
-	go func() { failed <- http.Serve(metadata, hlabAgent.MetadataHandler()) }()
+	go func() { failed <- hlabAgent.MetadataServer().Serve(metadata) }()
 	log.Info("hlab-agent started", "version", version, "vsock_port", agentproto.Port)
 	select {
 	case <-ctx.Done():

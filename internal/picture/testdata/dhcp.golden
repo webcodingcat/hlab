@@ -28,8 +28,10 @@ dhcp-option=option:netmask,255.255.255.255
 dhcp-option=option:router
 dhcp-option=option:dns-server
 dhcp-option=option:mtu,1450
-dhcp-option=121,10.0.0.1/32,0.0.0.0,10.0.0.0/16,10.0.0.1
-dhcp-option=249,10.0.0.1/32,0.0.0.0,10.0.0.0/16,10.0.0.1
+dhcp-option=tag:!private-only,121,10.0.0.1/32,0.0.0.0,10.0.0.0/16,10.0.0.1
+dhcp-option=tag:!private-only,249,10.0.0.1/32,0.0.0.0,10.0.0.0/16,10.0.0.1
+dhcp-option=tag:private-only,121,10.0.0.1/32,0.0.0.0,10.0.0.0/16,10.0.0.1,169.254.169.254/32,10.0.0.1
+dhcp-option=tag:private-only,249,10.0.0.1/32,0.0.0.0,10.0.0.0/16,10.0.0.1,169.254.169.254/32,10.0.0.1
 # server 1000001
 shared-network=private.2,10.0.1.2
 dhcp-range=10.0.1.2,static,255.255.255.255,1d
@@ -49,5 +51,11 @@ dhcp-option=option:netmask,255.255.255.255
 dhcp-option=option:router
 dhcp-option=option:dns-server
 dhcp-option=option:mtu,1450
-dhcp-option=121,10.0.0.1/32,0.0.0.0,10.0.0.0/16,10.0.0.1
-dhcp-option=249,10.0.0.1/32,0.0.0.0,10.0.0.0/16,10.0.0.1
+dhcp-option=tag:!private-only,121,10.0.0.1/32,0.0.0.0,10.0.0.0/16,10.0.0.1
+dhcp-option=tag:!private-only,249,10.0.0.1/32,0.0.0.0,10.0.0.0/16,10.0.0.1
+dhcp-option=tag:private-only,121,10.0.0.1/32,0.0.0.0,10.0.0.0/16,10.0.0.1,169.254.169.254/32,10.0.0.1
+dhcp-option=tag:private-only,249,10.0.0.1/32,0.0.0.0,10.0.0.0/16,10.0.0.1,169.254.169.254/32,10.0.0.1
+# server 1000004
+shared-network=private.3,10.0.1.2
+dhcp-range=10.0.1.2,static,255.255.255.255,1d
+dhcp-host=86:00:00:00:00:04,set:private-only,10.0.1.2

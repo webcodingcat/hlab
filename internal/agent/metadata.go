@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"slices"
 	"syscall"
 
 	"github.com/webcodingcat/hlab/internal/agentproto"
@@ -28,8 +29,49 @@ func ListenMetadata(address string) (net.Listener, error) {
 	return config.Listen(context.Background(), "tcp", address)
 }
 
+// MetadataServer returns the metadata service's HTTP server: it notes the
+// VRF each connection comes through (metadataConnContext).
+func (a *Agent) MetadataServer() *http.Server {
+	return &http.Server{Handler: a.MetadataHandler(), ConnContext: metadataConnContext}
+}
+
+// vrfKey is the context key of the VRF a request came through.
+type vrfKey struct{}
+
+// metadataConnContext notes the VRF a connection came through, "" for
+// none: with tcp_l3mdev_accept, which the links picture sets, the listener
+// accepts connections from the private networks' VRFs too, and the kernel
+// binds each such connection to its VRF.
+func metadataConnContext(ctx context.Context, conn net.Conn) context.Context {
+	tcp, ok := conn.(*net.TCPConn)
+	if !ok {
+		return ctx
+	}
+	raw, err := tcp.SyscallConn()
+	if err != nil {
+		return ctx
+	}
+	index := 0
+	_ = raw.Control(func(fd uintptr) {
+		index, _ = syscall.GetsockoptInt(int(fd), syscall.SOL_SOCKET, soBindToIfindex)
+	})
+	if index == 0 {
+		return ctx
+	}
+	vrf, err := net.InterfaceByIndex(index)
+	if err != nil {
+		return ctx
+	}
+	return context.WithValue(ctx, vrfKey{}, vrf.Name)
+}
+
+// soBindToIfindex is Linux's SO_BINDTOIFINDEX, which package syscall
+// lacks: the index of the device a socket is bound to, 0 for none.
+const soBindToIfindex = 62
+
 // MetadataHandler returns Hetzner's metadata service. It answers a server
-// by the source address of its request; others get 404, as on Hetzner.
+// by the source address of its request, and in a private network by its
+// VRF too; others get 404, as on Hetzner.
 func (a *Agent) MetadataHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /hetzner/v1/metadata", func(w http.ResponseWriter, r *http.Request) {
@@ -68,10 +110,18 @@ func (a *Agent) caller(r *http.Request) *agentproto.MetadataServer {
 	if err != nil {
 		return nil
 	}
+	address := source.Addr().Unmap()
+	vrf, _ := r.Context().Value(vrfKey{}).(string)
 	metadata := a.metadata.Load()
 	for i, server := range metadata.Servers {
+		if vrf != "" {
+			if slices.Contains(server.Private, agentproto.PrivateSource{VRF: vrf, Address: address}) {
+				return &metadata.Servers[i]
+			}
+			continue
+		}
 		for _, prefix := range server.Sources {
-			if prefix.Contains(source.Addr().Unmap()) {
+			if prefix.Contains(address) {
 				return &metadata.Servers[i]
 			}
 		}

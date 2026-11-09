@@ -3,18 +3,24 @@
 package agent
 
 import (
+	"errors"
+	"io"
 	"net"
+	"net/http"
 	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/vishvananda/netlink"
 
 	"github.com/webcodingcat/hlab/internal/agentproto"
+	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/picture"
 )
 
@@ -105,8 +111,8 @@ func TestPrivateNetworksWithTheSameRangeStayApart(t *testing.T) {
 	lab := twoNetworksLab()
 	putPicture(t, agent, agentproto.PictureLinks, picture.Links(lab))
 	putPicture(t, agent, agentproto.PictureRuleset, picture.Ruleset(lab))
-	checkAddresses(t, "private.2", "10.0.0.1/32")
-	checkAddresses(t, "private.3", "10.0.0.1/32")
+	checkAddresses(t, "private.2", "10.0.0.1/32", "169.254.169.254/32")
+	checkAddresses(t, "private.3", "10.0.0.1/32", "169.254.169.254/32")
 	checkRoutes(t, 10002, "10.0.0.2/32 private.2 src 10.0.0.1", "10.0.0.3/32 private.2 src 10.0.0.1",
 		"10.0.5.5/32 private.2 src 10.0.0.1", "10.100.0.0/24 private.2 via 10.0.0.3")
 	checkRoutes(t, 10003, "10.0.0.2/32 private.3 src 10.0.0.1", "10.0.0.9/32 private.3 src 10.0.0.1")
@@ -151,11 +157,7 @@ func TestPrivateNetworkDHCPGivesTheAddressAsHetznerDoes(t *testing.T) {
 	putPicture(t, agent, agentproto.PictureDHCP, picture.DHCP(lab))
 	addGuest(t, "c", 3, "10.0.0.250", 104)
 
-	// the script prints what udhcpc hands it: the lease's options
-	script := filepath.Join(t.TempDir(), "print")
-	if err := os.WriteFile(script, []byte("#!/bin/sh\nenv | grep -E '^(ip|mask|router|dns|mtu|staticroutes)='\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	script := printScript(t)
 	// a guest asks for these, as networkd does
 	output, err := exec.Command("busybox", "udhcpc", "-i", wires[picture.DevicePrivate]+".3",
 		"-n", "-q", "-f", "-s", script, "-t", "5",
@@ -174,4 +176,94 @@ func TestPrivateNetworkDHCPGivesTheAddressAsHetznerDoes(t *testing.T) {
 			t.Errorf("the lease has %s, which Hetzner's private networks do not send:\n%s", unwanted, text)
 		}
 	}
+}
+
+// A server without public addresses gets the route to the metadata
+// service in its lease, and the service answers it through its network's
+// VRF, as on Hetzner (measured 2026-11-09); a server of the other network
+// with the same address is another server.
+func TestServerWithoutPublicAddressesGetsMetadataThroughItsNetwork(t *testing.T) {
+	agent := setUp(t)
+	mac, _ := net.ParseMAC(guestMAC)
+	if err := netlink.LinkSetHardwareAddr(mustLink(t, wires[picture.DevicePrivate]), mac); err != nil {
+		t.Fatal(err)
+	}
+	lab := twoNetworksLab()
+	lab.Servers = []picture.Server{
+		{ID: 1000001, Name: "first", Location: "fsn1", MAC: "96:00:00:0f:42:41"},
+		{ID: 1000003, Name: "third", Location: "fsn1", MAC: "96:00:00:0f:42:43"},
+	}
+	lab.Networks[0].Members[0].PrivateOnly = true // 10.0.0.2 in network 1000007
+	lab.Networks[1].Members[0].PrivateOnly = true // 10.0.0.2 in network 1000008
+	putPicture(t, agent, agentproto.PictureLinks, picture.Links(lab))
+	putPicture(t, agent, agentproto.PictureRuleset, picture.Ruleset(lab))
+	putPicture(t, agent, agentproto.PictureDHCP, picture.DHCP(lab))
+	putPicture(t, agent, agentproto.PictureMetadata, picture.Metadata(lab, catalog.Builtin()))
+	listener, err := ListenMetadata(picture.MetadataAddress.String() + ":80")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := agent.MetadataServer()
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(func() { _ = server.Close() })
+
+	addGuest(t, "c", 3, "10.0.0.250", 104)
+	output, err := exec.Command("busybox", "udhcpc", "-i", wires[picture.DevicePrivate]+".3",
+		"-n", "-q", "-f", "-s", printScript(t), "-t", "5", "-O", "staticroutes").CombinedOutput()
+	if want := "staticroutes=10.0.0.1/32 0.0.0.0 10.0.0.0/16 10.0.0.1 169.254.169.254/32 10.0.0.1\n"; err != nil || !strings.Contains(string(output), want) {
+		t.Fatalf("udhcpc: %v, want %q in\n%s", err, want, output)
+	}
+
+	// the table local holds the service's address on lo, and in the
+	// shared namespace it would take the guests' requests: it goes after
+	// the VRFs' rule, as Linux's VRF documentation advises
+	mustRun(t, "ip", "rule", "add", "pref", "32765", "lookup", "local")
+	mustRun(t, "ip", "rule", "del", "pref", "0", "lookup", "local")
+	t.Cleanup(func() {
+		_ = exec.Command("ip", "rule", "add", "pref", "0", "lookup", "local").Run()
+		_ = exec.Command("ip", "rule", "del", "pref", "32765", "lookup", "local").Run()
+	})
+	// both ask from 10.0.0.2, each in its own network, as the lease says;
+	// the guests share the namespace with the appliance, whose chain
+	// input would drop the answers they get
+	mustRun(t, "nft", "insert", "rule", "inet", "hlab", "input", "iifname", "{ vrf-a, vrf-c }", "accept")
+	addGuest(t, "a", 2, "10.0.0.2", 102)
+	mustRun(t, "ip", "address", "add", "10.0.0.2/32", "dev", wires[picture.DevicePrivate]+".3")
+	for vrf, want := range map[string]string{"vrf-a": "first", "vrf-c": "third"} {
+		mustRun(t, "ip", "route", "add", "169.254.169.254/32", "via", "10.0.0.1", "src", "10.0.0.2", "vrf", vrf)
+		if got := metadataFrom(t, vrf, "/hetzner/v1/metadata/hostname"); got != want {
+			t.Errorf("the hostname through %s is %q, want %q", vrf, got, want)
+		}
+	}
+}
+
+// printScript returns a udhcpc script that prints what udhcpc hands it:
+// the lease's options.
+func printScript(t *testing.T) string {
+	t.Helper()
+	script := filepath.Join(t.TempDir(), "print")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nenv | grep -E '^(ip|mask|router|dns|mtu|staticroutes)='\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return script
+}
+
+// metadataFrom asks the metadata service from a guest's VRF.
+func metadataFrom(t *testing.T, vrf, path string) string {
+	t.Helper()
+	dialer := &net.Dialer{Timeout: 5 * time.Second, Control: func(_, _ string, conn syscall.RawConn) error {
+		var bindErr error
+		err := conn.Control(func(fd uintptr) {
+			bindErr = syscall.BindToDevice(int(fd), vrf)
+		})
+		return errors.Join(err, bindErr)
+	}}
+	client := &http.Client{Transport: &http.Transport{DialContext: dialer.DialContext}, Timeout: 5 * time.Second}
+	answer, err := client.Get("http://" + picture.MetadataAddress.String() + path)
+	if err != nil {
+		t.Fatalf("GET %s through %s: %v", path, vrf, err)
+	}
+	defer answer.Body.Close()
+	body, _ := io.ReadAll(answer.Body)
+	return string(body)
 }

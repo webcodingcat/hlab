@@ -1,4 +1,4 @@
-### sources [198.19.0.1/32 2001:db8:1:1::/64]
+### sources [198.19.0.1/32 2001:db8:1:1::/64] private []
 availability-zone: fsn1-dc14
 hostname: web
 instance-id: 1000001
@@ -20,7 +20,6 @@ network-config:
       type: static
     type: physical
   version: 1
-private-networks: []
 public-ipv4: 198.19.0.1
 public-keys:
 - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIUser user@example
@@ -31,8 +30,20 @@ vendor_data: |
   disable_root: false
   ssh_pwauth: false
 ### hostname: web
+### private-networks
+- ip: 10.0.1.2
+  alias_ips:
+  - 10.0.1.20
+  - 10.0.2.20
+  interface_num: 1
+  mac_address: '86:00:00:00:00:01'
+  network_id: 1000020
+  network_name: app
+  network: 10.0.0.0/16
+  subnet: 10.0.1.0/24
+  gateway: 10.0.0.1
 ### userdata
-### sources [198.19.0.2/32]
+### sources [198.19.0.2/32] private []
 availability-zone: hel1-dc2
 hostname: db
 instance-id: 1000002
@@ -48,7 +59,6 @@ network-config:
       type: dhcp
     type: physical
   version: 1
-private-networks: []
 public-ipv4: 198.19.0.2
 public-keys:
 - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILabKey hlab
@@ -62,10 +72,20 @@ vendor_data: |
     users:
     - {name: root, password: "p\"ss", type: text}
 ### hostname: db
+### private-networks
+- ip: 10.0.1.3
+  alias_ips: []
+  interface_num: 1
+  mac_address: '86:00:00:00:00:02'
+  network_id: 1000020
+  network_name: app
+  network: 10.0.0.0/16
+  subnet: 10.0.1.0/24
+  gateway: 10.0.0.1
 ### userdata
 #cloud-config
 packages: [nginx]
-### sources [2001:db8:1:3::/64]
+### sources [2001:db8:1:3::/64] private []
 availability-zone: ash-dc1
 hostname: only-six
 instance-id: 1000003
@@ -83,7 +103,6 @@ network-config:
       type: static
     type: physical
   version: 1
-private-networks: []
 public-ipv4: ''
 public-keys:
 - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILabKey hlab
@@ -93,4 +112,34 @@ vendor_data: |
   disable_root: false
   ssh_pwauth: false
 ### hostname: only-six
+### private-networks
+[]
+### userdata
+### sources [] private [{vrf-net-1000021 10.0.1.2}]
+availability-zone: fsn1-dc14
+hostname: private
+instance-id: 1000004
+local-ipv4: ''
+network-config:
+  config: []
+  version: 1
+public-ipv4: ''
+public-keys:
+- ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILabKey hlab
+region: eu-central
+vendor_data: |
+  #cloud-config
+  disable_root: false
+  ssh_pwauth: false
+### hostname: private
+### private-networks
+- ip: 10.0.1.2
+  alias_ips: []
+  interface_num: 1
+  mac_address: '86:00:00:00:00:04'
+  network_id: 1000021
+  network_name: backup
+  network: 10.0.0.0/16
+  subnet: 10.0.1.0/24
+  gateway: 10.0.0.1
 ### userdata

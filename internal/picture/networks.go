@@ -20,11 +20,14 @@ const PrivateMTU = 1450
 const vrfTableBase = 10000
 
 // Network is what the pictures need of a private network: its VLAN, its
-// range, its routes and the servers in it.
+// range, its routes and the servers in it; its name and subnets for the
+// metadata.
 type Network struct {
 	ID      int64
+	Name    string
 	VLAN    int
 	IPRange netip.Prefix
+	Subnets []netip.Prefix
 	Routes  []NetworkRoute
 	Members []NetworkMember
 }
@@ -37,12 +40,17 @@ type NetworkRoute struct {
 }
 
 // NetworkMember is a server's NIC in a network: its MAC, its address and
-// its alias IPs, which the guest configures itself.
+// its alias IPs, which the guest configures itself, and its number among
+// the server's private NICs (1 to 3), which the metadata names.
+// PrivateOnly is set for a server without public addresses: it reaches
+// the metadata service through the network.
 type NetworkMember struct {
-	ServerID int64
-	MAC      string
-	IP       netip.Addr
-	AliasIPs []netip.Addr
+	ServerID    int64
+	Interface   int
+	MAC         string
+	IP          netip.Addr
+	AliasIPs    []netip.Addr
+	PrivateOnly bool
 }
 
 // NetworkDevice returns the name of a network's VLAN device on the
@@ -93,9 +101,11 @@ func addNetworkLinks(links *agentproto.Links, lab Lab) {
 		gateway := NetworkGateway(network.IPRange)
 		links.VRFs = append(links.VRFs, agentproto.VRF{Name: vrf, Table: table})
 		links.VLANs = append(links.VLANs, agentproto.VLAN{Name: device, Parent: DevicePrivate, ID: network.VLAN, VRF: vrf})
-		links.Addresses = append(links.Addresses, agentproto.Address{
-			Device: device, Prefix: netip.PrefixFrom(gateway, 32), Announce: true,
-		})
+		links.Addresses = append(links.Addresses,
+			agentproto.Address{Device: device, Prefix: netip.PrefixFrom(gateway, 32), Announce: true},
+			// the metadata service in the network's VRF, for a server
+			// without public addresses (networkDHCP)
+			agentproto.Address{Device: device, Prefix: netip.PrefixFrom(MetadataAddress, 32)})
 		links.Sysctls = append(links.Sysctls,
 			agentproto.Sysctl{Key: "net/ipv4/conf/" + device + "/send_redirects", Value: "0"},
 			agentproto.Sysctl{Key: "net/ipv6/conf/" + device + "/disable_ipv6", Value: "1"})
@@ -136,20 +146,30 @@ func networkDHCP(lab Lab) []agentproto.DHCPInstance {
 		var config strings.Builder
 		fmt.Fprintf(&config, "# dnsmasq for the private network %d, built by hlabd.\n", network.ID)
 		writeLines(&config, dhcpBase(device)...)
+		routes := fmt.Sprintf("%s/32,0.0.0.0,%s,%s", gateway, network.IPRange.Masked(), gateway)
+		// a server without public addresses reaches the metadata service
+		// through the gateway (measured 2026-11-09)
+		metadataRoutes := fmt.Sprintf("%s,%s/32,%s", routes, MetadataAddress, gateway)
 		writeLines(&config,
 			"dhcp-option=option:router",
 			"dhcp-option=option:dns-server",
 			fmt.Sprintf("dhcp-option=option:mtu,%d", PrivateMTU),
-			fmt.Sprintf("dhcp-option=121,%s/32,0.0.0.0,%s,%s", gateway, network.IPRange.Masked(), gateway),
+			"dhcp-option=tag:!private-only,121,"+routes,
 			// Microsoft's code of the same routes, which Hetzner sends too
-			fmt.Sprintf("dhcp-option=249,%s/32,0.0.0.0,%s,%s", gateway, network.IPRange.Masked(), gateway),
+			"dhcp-option=tag:!private-only,249,"+routes,
+			"dhcp-option=tag:private-only,121,"+metadataRoutes,
+			"dhcp-option=tag:private-only,249,"+metadataRoutes,
 		)
 		for _, member := range network.Members {
 			fmt.Fprintf(&config, "# server %d\n", member.ServerID)
 			fmt.Fprintf(&config, "shared-network=%s,%s\n", device, member.IP)
 			// Hetzner's lease lasts a day (measured 2026-11-08)
 			fmt.Fprintf(&config, "dhcp-range=%s,static,255.255.255.255,1d\n", member.IP)
-			fmt.Fprintf(&config, "dhcp-host=%s,%s\n", member.MAC, member.IP)
+			if member.PrivateOnly {
+				fmt.Fprintf(&config, "dhcp-host=%s,set:private-only,%s\n", member.MAC, member.IP)
+			} else {
+				fmt.Fprintf(&config, "dhcp-host=%s,%s\n", member.MAC, member.IP)
+			}
 		}
 		instances = append(instances, agentproto.DHCPInstance{Device: device, Config: config.String()})
 	}

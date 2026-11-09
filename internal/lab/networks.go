@@ -221,8 +221,13 @@ func networkFacts(tx *state.Tx) []picture.Network {
 	var facts []picture.Network
 	index := map[int64]int{}
 	for _, network := range state.All(tx, state.Networks) {
-		fact := picture.Network{ID: network.ID, VLAN: network.VLAN}
+		fact := picture.Network{ID: network.ID, Name: network.Name, VLAN: network.VLAN}
 		fact.IPRange, _ = netip.ParsePrefix(network.IPRange)
+		for _, subnet := range network.Subnets {
+			if prefix, err := netip.ParsePrefix(subnet.IPRange); err == nil {
+				fact.Subnets = append(fact.Subnets, prefix)
+			}
+		}
 		for _, route := range network.Routes {
 			destination, destErr := netip.ParsePrefix(route.Destination)
 			gateway, gwErr := netip.ParseAddr(route.Gateway)
@@ -234,13 +239,16 @@ func networkFacts(tx *state.Tx) []picture.Network {
 		facts = append(facts, fact)
 	}
 	for _, server := range state.All(tx, state.Servers) {
-		for _, attached := range server.PrivateNets {
+		privateOnly := server.IPv4 == 0 && server.IPv6 == 0
+		for n, attached := range server.PrivateNets {
 			i, found := index[attached.NetworkID]
 			ip, err := netip.ParseAddr(attached.IP)
 			if !found || err != nil {
 				continue
 			}
-			member := picture.NetworkMember{ServerID: server.ID, MAC: attached.MAC, IP: ip}
+			// the NIC's number counts the server's networks in the order
+			// they were attached
+			member := picture.NetworkMember{ServerID: server.ID, Interface: n + 1, MAC: attached.MAC, IP: ip, PrivateOnly: privateOnly}
 			for _, alias := range attached.AliasIPs {
 				if address, err := netip.ParseAddr(alias); err == nil {
 					member.AliasIPs = append(member.AliasIPs, address)

@@ -59,7 +59,10 @@ func Files(server Server) map[string][]byte {
 // comes back about 2 s later, often after dhcpcd has its lease; dhcpcd
 // ignores the carrier, else it would drop the lease's address meanwhile.
 // The NICs that are there when the script runs, at the first boot, get
-// their unit started directly: a udev trigger would touch eth0 too.
+// their unit started directly: a udev trigger would touch eth0 too. The
+// script waits for their leases, up to 30 s each, so that the user-data's
+// commands, which run after it, find the private networks up, as hc-utils
+// has them up on Hetzner before cloud-init's last stage.
 const privateNICsScript = `#!/bin/sh
 cat > /etc/systemd/system/hlab-private-net@.service <<'UNIT'
 [Unit]
@@ -80,7 +83,7 @@ systemctl daemon-reload
 udevadm control --reload
 for nic in /sys/class/net/*; do
   case "$(cat "$nic/address")" in
-    86:00:*) systemctl start --no-block "hlab-private-net@${nic##*/}.service" ;;
+    86:00:*) timeout 30 systemctl start "hlab-private-net@${nic##*/}.service" || true ;;
   esac
 done
 `
@@ -128,8 +131,14 @@ func metaData(server Server) map[string]any {
 
 // networkConfig returns the public NIC's configuration: IPv4 by DHCP (a /32
 // with the on-link gateway 172.31.1.1, from the appliance), IPv6 as the
-// first address of the /64 with the gateway fe80::1, as on Hetzner.
+// first address of the /64 with the gateway fe80::1, as on Hetzner. A
+// server without public addresses gets none, as Hetzner's metadata gives
+// it none (measured 2026-11-09): a public NIC to configure would hold up
+// its boot.
 func networkConfig(server Server) map[string]any {
+	if !server.IPv4 && !server.IPv6.IsValid() {
+		return map[string]any{"version": 2, "ethernets": map[string]any{}}
+	}
 	nic := map[string]any{
 		"match":    map[string]any{"macaddress": server.MAC},
 		"set-name": "eth0",

@@ -1,7 +1,9 @@
 package picture
 
 import (
+	"cmp"
 	"net/netip"
+	"slices"
 	"strconv"
 
 	"go.yaml.in/yaml/v4"
@@ -32,22 +34,43 @@ func Metadata(lab Lab, cat *catalog.Catalog) agentproto.Metadata {
 		if server.IPv6.IsValid() {
 			sources = append(sources, server.IPv6.Masked())
 		}
-		if len(sources) == 0 {
-			continue // it cannot reach the service (private networks: phase 2a)
+		private := privateSources(lab, server)
+		if len(sources) == 0 && len(private) == 0 {
+			continue // it cannot reach the service
 		}
 		values := metadataValues(lab, cat, server)
 		keys := map[string]string{}
 		for key, value := range values {
 			keys[key] = metadataText(value)
 		}
+		// a key of its own, [] without a network, and not in the summary
+		// (measured 2026-11-09)
+		keys["private-networks"] = metadataText(privateNetworks(lab, server))
 		metadata.Servers = append(metadata.Servers, agentproto.MetadataServer{
 			Sources:  sources,
+			Private:  private,
 			Metadata: metadataText(values),
 			Keys:     keys,
 			UserData: server.UserData,
 		})
 	}
 	return metadata
+}
+
+// privateSources returns a server's addresses in the private networks,
+// each with its network's VRF, where a server without public addresses
+// reaches the metadata service (measured 2026-11-09); a server with them
+// has no route there.
+func privateSources(lab Lab, server Server) []agentproto.PrivateSource {
+	var sources []agentproto.PrivateSource
+	for _, network := range lab.networks() {
+		for _, member := range network.Members {
+			if member.ServerID == server.ID && member.PrivateOnly {
+				sources = append(sources, agentproto.PrivateSource{VRF: NetworkVRF(network.ID), Address: member.IP})
+			}
+		}
+	}
+	return sources
 }
 
 // ServerKeys returns the SSH keys a server's root takes: its own and the
@@ -60,7 +83,8 @@ func ServerKeys(lab Lab, server Server) []string {
 	return keys
 }
 
-// metadataValues returns the metadata of a server by key.
+// metadataValues returns the metadata of a server by key, as the summary
+// /hetzner/v1/metadata lists them.
 func metadataValues(lab Lab, cat *catalog.Catalog, server Server) map[string]any {
 	keys := ServerKeys(lab, server)
 	zone, found := availabilityZones[server.Location]
@@ -85,14 +109,65 @@ func metadataValues(lab Lab, cat *catalog.Catalog, server Server) map[string]any
 		"public-keys":       keys,
 		"vendor_data":       seed.VendorData(server.RootPassword),
 		"network-config":    networkConfig(lab, server),
-		// private networks come with phase 2a
-		"private-networks": []any{},
 	}
 }
 
+// privateNetwork is one entry of the metadata's private-networks, with
+// Hetzner's keys in Hetzner's order (measured 2026-11-08).
+type privateNetwork struct {
+	IP           string   `yaml:"ip"`
+	AliasIPs     []string `yaml:"alias_ips"`
+	InterfaceNum int      `yaml:"interface_num"`
+	MACAddress   string   `yaml:"mac_address"`
+	NetworkID    int64    `yaml:"network_id"`
+	NetworkName  string   `yaml:"network_name"`
+	Network      string   `yaml:"network"`
+	Subnet       string   `yaml:"subnet"`
+	Gateway      string   `yaml:"gateway"`
+}
+
+// privateNetworks returns a server's private networks as the metadata
+// lists them, by their interface number. Hetzner's order changes from one
+// read to the next; a fixed one keeps the picture stable.
+func privateNetworks(lab Lab, server Server) []privateNetwork {
+	entries := []privateNetwork{}
+	for _, network := range lab.networks() {
+		for _, member := range network.Members {
+			if member.ServerID != server.ID {
+				continue
+			}
+			entry := privateNetwork{
+				IP:           member.IP.String(),
+				AliasIPs:     []string{},
+				InterfaceNum: member.Interface,
+				MACAddress:   member.MAC,
+				NetworkID:    network.ID,
+				NetworkName:  network.Name,
+				Network:      network.IPRange.String(),
+				Gateway:      NetworkGateway(network.IPRange).String(),
+			}
+			for _, alias := range member.AliasIPs {
+				entry.AliasIPs = append(entry.AliasIPs, alias.String())
+			}
+			for _, subnet := range network.Subnets {
+				if subnet.Contains(member.IP) {
+					entry.Subnet = subnet.String()
+				}
+			}
+			entries = append(entries, entry)
+		}
+	}
+	slices.SortFunc(entries, func(a, b privateNetwork) int { return cmp.Compare(a.InterfaceNum, b.InterfaceNum) })
+	return entries
+}
+
 // networkConfig returns the public NIC's configuration (cloud-init's
-// version 1): IPv4 by DHCP, IPv6 as the first address of the /64.
+// version 1): IPv4 by DHCP, IPv6 as the first address of the /64; none
+// for a server without public addresses (measured 2026-11-09).
 func networkConfig(lab Lab, server Server) map[string]any {
+	if !server.IPv4.IsValid() && !server.IPv6.IsValid() {
+		return map[string]any{"version": 1, "config": []any{}}
+	}
 	resolvers := lab.resolvers()
 	var subnets []any
 	if server.IPv4.IsValid() {

@@ -16,7 +16,8 @@ var update = flag.Bool("update", false, "write the golden files anew")
 var resolvers = []netip.Addr{netip.MustParseAddr("198.18.0.2"), netip.MustParseAddr("2001:db8:0:ffff::2")}
 
 // TestFilesMatchTheGoldenFiles covers a server with both addresses and SSH
-// keys and one with IPv4 only, a password and user data.
+// keys, one with IPv4 only, a password and user data, and one without
+// public addresses.
 func TestFilesMatchTheGoldenFiles(t *testing.T) {
 	servers := map[string]Server{
 		"web": {
@@ -27,6 +28,10 @@ func TestFilesMatchTheGoldenFiles(t *testing.T) {
 		"db": {
 			ID: 1000002, Name: "db", MAC: "96:00:00:0f:42:42", IPv4: true, Resolvers: resolvers,
 			RootPassword: `p"ss`, UserData: "#cloud-config\npackages: [nginx]\n",
+		},
+		"private": {
+			ID: 1000003, Name: "private", MAC: "96:00:00:0f:42:43", Resolvers: resolvers,
+			PublicKeys: []string{"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIUser user@example"},
 		},
 	}
 	for name, server := range servers {

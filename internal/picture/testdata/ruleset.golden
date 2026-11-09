@@ -27,6 +27,8 @@ table inet hlab {
 		# DHCP in the private networks: what comes in on a VRF's VLAN shows
 		# the VRF as its interface
 		iifname "vrf-net-*" udp dport 67 accept
+		# and the metadata service for a server without public addresses
+		iifname "vrf-net-*" ip daddr 169.254.169.254 tcp dport 80 accept
 	}
 
 	# what goes through the appliance

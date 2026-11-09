@@ -65,7 +65,7 @@ systemctl daemon-reload
 udevadm control --reload
 for nic in /sys/class/net/*; do
   case "$(cat "$nic/address")" in
-    86:00:*) systemctl start --no-block "hlab-private-net@${nic##*/}.service" ;;
+    86:00:*) timeout 30 systemctl start "hlab-private-net@${nic##*/}.service" || true ;;
   esac
 done
 

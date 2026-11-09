@@ -42,6 +42,9 @@ func Links(lab Lab) agentproto.Links {
 			// other directly, past the firewalls
 			agentproto.Sysctl{Key: "net/ipv4/conf/" + device + "/send_redirects", Value: "0"})
 	}
+	// the metadata service's listener takes connections from the private
+	// networks' VRFs too, each bound to its VRF
+	links.Sysctls = append(links.Sysctls, agentproto.Sysctl{Key: "net/ipv4/tcp_l3mdev_accept", Value: "1"})
 	for _, device := range []string{DeviceLink, DevicePublic, DevicePrivate} {
 		links.Sysctls = append(links.Sysctls,
 			// no link-local addresses of the kernel's: the picture names
