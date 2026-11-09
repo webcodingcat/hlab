@@ -92,10 +92,10 @@ func (m *Machine) CreateVolume(ctx context.Context, id int64, sizeGB int, format
 // AttachVolume is the attach action's steps: the volume's disk goes into
 // its slot of the server's VM, also while it runs, with the disk ID that
 // names it in the guest (and asks for the mount if the attach did). An
-// attach sent during the server's create (afterCreate) waits for it
-// first (WaitForServer).
-func (m *Machine) AttachVolume(ctx context.Context, serverID int64, volume system.VolumeSlot, afterCreate bool) error {
-	if afterCreate {
+// attach sent during the server's create (duringServerCreate) waits for
+// it first (waitForServer).
+func (m *Machine) AttachVolume(ctx context.Context, serverID int64, volume system.VolumeSlot, duringServerCreate bool) error {
+	if duringServerCreate {
 		if err := m.waitForServer(ctx, serverID); err != nil {
 			return err
 		}
@@ -106,8 +106,8 @@ func (m *Machine) AttachVolume(ctx context.Context, serverID int64, volume syste
 // DetachVolume is the detach action's steps: the disk leaves the slot of
 // the server's VM, also while it runs; after the server's create, as for
 // an attach.
-func (m *Machine) DetachVolume(ctx context.Context, serverID int64, slot int, afterCreate bool) error {
-	if afterCreate {
+func (m *Machine) DetachVolume(ctx context.Context, serverID int64, slot int, duringServerCreate bool) error {
+	if duringServerCreate {
 		if err := m.waitForServer(ctx, serverID); err != nil {
 			return err
 		}

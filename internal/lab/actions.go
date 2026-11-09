@@ -291,6 +291,11 @@ func (l *Lab) ChangeAborting(ref state.ResourceRef, change func(tx *state.Tx) er
 func (l *Lab) RunningOn(refs []state.ResourceRef) []<-chan struct{} {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	return l.runningOnLocked(refs)
+}
+
+// runningOnLocked is RunningOn for a caller that holds the mutex.
+func (l *Lab) runningOnLocked(refs []state.ResourceRef) []<-chan struct{} {
 	var running []<-chan struct{}
 	for _, run := range l.running {
 		if slices.ContainsFunc(refs, func(ref state.ResourceRef) bool { return slices.Contains(run.flagged, ref) }) {

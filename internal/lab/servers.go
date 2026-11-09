@@ -182,18 +182,37 @@ func (m *Machine) makeServerVM(ctx context.Context, id int64) (keptDisk bool, er
 	var server *state.Server
 	var private []system.PrivateNIC
 	var volumes []system.VolumeSlot
-	err = m.lab.View(func(tx *state.Tx) error {
-		found, getErr := state.Get(tx, state.Servers, id)
-		if getErr != nil {
-			return getErr
+	// the VM takes its volumes' disks once no action works on them: a
+	// volume whose create or detach (from another VM) still runs waits
+	// (Hetzner's answer to such a create is assumed, not measured)
+	for busy := true; busy; {
+		var running []<-chan struct{}
+		err = m.lab.View(func(tx *state.Tx) error {
+			found, getErr := state.Get(tx, state.Servers, id)
+			if getErr != nil {
+				return getErr
+			}
+			server, facts, private = found, serverFacts(tx, found), systemNICs(tx, found)
+			volumes = m.serverVolumes(tx, id)
+			var refs []state.ResourceRef
+			for _, volume := range volumes {
+				refs = append(refs, VolumeRef(volume.VolumeID))
+			}
+			// View holds the lab's mutex
+			if running = m.lab.runningOnLocked(refs); len(running) == 0 {
+				m.volumesRead[id] = true
+			}
+			return nil
+		})
+		if err != nil {
+			return false, err
 		}
-		server, facts, private = found, serverFacts(tx, found), systemNICs(tx, found)
-		volumes = m.serverVolumes(tx, id)
-		m.volumesRead[id] = true // View holds the lab's mutex
-		return nil
-	})
-	if err != nil {
-		return false, err
+		for _, done := range running {
+			if err := waitFor(ctx, done); err != nil {
+				return false, err
+			}
+		}
+		busy = len(running) > 0
 	}
 	serverType, found := m.lab.catalog.ServerTypeByName(server.Type)
 	if !found {

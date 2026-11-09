@@ -375,7 +375,10 @@ measured on 2026-11-09 (`compat/requirements.md`, 2b-0).
 - **During a server's create** an attach or a detach is 201, as on
   Hetzner. Until the create has made the VM (`Machine.VolumesRead`) the
   change is only in the records, which the VM is made from; after, the
-  steps wait for the create and change the VM.
+  steps wait for the create and change the VM. The create in turn makes
+  the VM only once no action works on its volumes: a volume whose create
+  or detach from another server still runs is waited for (Hetzner's
+  answer to such a create is assumed, not measured).
 - **Detach** (`detach_volume`) takes the disk out, also while the server
   runs. **Resize** (`resize_volume`) grows the disk while it is attached;
   its action names the server too. **`change_protection`** takes no flag;

@@ -76,32 +76,12 @@ type volumeAttachRequest struct {
 // create runs is 201 and runs after the create.
 func planAttachVolume(l *lab.Lab, afterCreate bool) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
-		var body volumeAttachRequest
-		if err := json.Unmarshal(req.Body, &body); err != nil {
-			return lab.Plan{}, web.JSONError(volumeBadBody)
-		}
-		check := web.Check{Singular: true}
-		serverID := body.Server
-		if body.Assignee != nil {
-			serverID = body.Assignee.ID
-			if body.Assignee.Type != nil && *body.Assignee.Type != volumeAssigneeTypeServer {
-				check.Fail("assignee.type", fmt.Sprintf(volumeAssigneeType, *body.Assignee.Type))
-			}
-		}
-		if serverID == nil {
-			check.Fail("assignee", volumeAssigneeRequired)
-		}
-		if err := check.Err(); err != nil {
-			return lab.Plan{}, err
-		}
-		volume, err := callerVolume(tx, req.ProjectID, req.ID)
+		volume, server, err := attachTarget(tx, req)
 		if err != nil {
 			return lab.Plan{}, err
 		}
-		server, err := state.Get(tx, state.Servers, *serverID)
-		if err != nil || server.ProjectID != req.ProjectID {
-			return lab.Plan{}, web.Refusal(http.StatusNotFound, "not_found", volumeServerNotFound)
-		}
+		var body volumeAttachRequest
+		_ = json.Unmarshal(req.Body, &body) // attachTarget has read it
 		plan := lab.Plan{Resources: []state.ResourceRef{{Type: lab.ServerResource, ID: server.ID}}}
 		failing := func(code, message string) (lab.Plan, error) {
 			plan.Failure = &lab.Failure{Code: code, Message: message}
@@ -140,6 +120,39 @@ func planAttachVolume(l *lab.Lab, afterCreate bool) planFunc {
 		})
 		return plan, nil
 	}
+}
+
+// attachTarget reads an attach's body and returns the volume and the
+// server it names, with Hetzner's answers: the fields first, then the
+// volume, then the server (measured 2026-11-09).
+func attachTarget(tx *state.Tx, req lab.Request) (*state.Volume, *state.Server, error) {
+	var body volumeAttachRequest
+	if err := json.Unmarshal(req.Body, &body); err != nil {
+		return nil, nil, web.JSONError(volumeBadBody)
+	}
+	check := web.Check{Singular: true}
+	serverID := body.Server
+	if body.Assignee != nil {
+		serverID = body.Assignee.ID
+		if body.Assignee.Type != nil && *body.Assignee.Type != volumeAssigneeTypeServer {
+			check.Fail("assignee.type", fmt.Sprintf(volumeAssigneeType, *body.Assignee.Type))
+		}
+	}
+	if serverID == nil {
+		check.Fail("assignee", volumeAssigneeRequired)
+	}
+	if err := check.Err(); err != nil {
+		return nil, nil, err
+	}
+	volume, err := callerVolume(tx, req.ProjectID, req.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	server, err := state.Get(tx, state.Servers, *serverID)
+	if err != nil || server.ProjectID != req.ProjectID {
+		return nil, nil, web.Refusal(http.StatusNotFound, "not_found", volumeServerNotFound)
+	}
+	return volume, server, nil
 }
 
 // planAttachAtServerCreate attaches a volume that a server's create names

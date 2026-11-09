@@ -346,6 +346,30 @@ func TestVolumeActionsBeforeTheServersVM(t *testing.T) {
 	}
 }
 
+// A server's create that names a volume whose own create still runs
+// makes the VM once the volume's disk is there (Hetzner's answer is
+// assumed, not measured).
+func TestServerCreateWaitsForItsVolumes(t *testing.T) {
+	test := newTestLab(t)
+	quietMachine(t, test)
+	offServer(t, test, "web") // loads the image
+	// the format holds the volume's create in the appliance
+	test.machine.Delay("AttachDisk", 200*time.Millisecond)
+	volume := createVolume(t, test, map[string]any{"name": "data", "size": 10, "location": "fsn1", "format": "ext4"})
+	created := createServer(t, test, map[string]any{"name": "db", "server_type": "cpx22", "image": "debian-13",
+		"location": "fsn1", "start_after_create": false, "volumes": []int64{volume.Volume.ID}})
+	for _, action := range waitActions(t, test, volume.Action, created.Action) {
+		if action.Status != "success" {
+			t.Errorf("%s ended %s: %+v", action.Command, action.Status, action.Error)
+		}
+	}
+	calls := test.machine.Calls()
+	formatted := indexOfPrefix(calls, "DetachDisk hlab-appliance-a 63")
+	if vm := indexOfPrefix(calls, "CreateVM "+lab.ServerVM(created.Server.ID)); formatted < 0 || vm < formatted {
+		t.Errorf("the VM came before the volume was formatted: %v", calls)
+	}
+}
+
 // checkActionsDuringCreate detaches one volume from a server whose create
 // runs and attaches another; both end well, and the VM has the second.
 func checkActionsDuringCreate(t *testing.T, test *testLab, creating createAnswer, detached, attached int64) {

@@ -396,11 +396,8 @@ func deleteVolume(req *web.Request, l *lab.Lab) (int, any, error) {
 		state.Delete(tx, state.Volumes, id)
 		return nil
 	})
-	if locked, ok := errors.AsType[*lab.LockedError](err); ok {
-		return 0, nil, web.Locked(locked.Message)
-	}
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, actError(err)
 	}
 	l.Machine().DeleteVolumeFileLater(id)
 	return http.StatusNoContent, nil, nil
