@@ -76,12 +76,10 @@ type volumeAttachRequest struct {
 // create runs is 201 and runs after the create.
 func planAttachVolume(l *lab.Lab, afterCreate bool) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
-		volume, server, err := attachTarget(tx, req)
+		volume, server, automount, err := attachTarget(tx, req)
 		if err != nil {
 			return lab.Plan{}, err
 		}
-		var body volumeAttachRequest
-		_ = json.Unmarshal(req.Body, &body) // attachTarget has read it
 		plan := lab.Plan{Resources: []state.ResourceRef{{Type: lab.ServerResource, ID: server.ID}}}
 		failing := func(code, message string) (lab.Plan, error) {
 			plan.Failure = &lab.Failure{Code: code, Message: message}
@@ -100,7 +98,7 @@ func planAttachVolume(l *lab.Lab, afterCreate bool) planFunc {
 		case server.Location != volume.Location:
 			return lab.Plan{}, web.Refusal(http.StatusUnprocessableEntity, "service_error", volumeOtherLocation)
 		}
-		if err := attachVolume(tx, volume, server, body.Automount != nil && *body.Automount); err != nil {
+		if err := attachVolume(tx, volume, server, automount); err != nil {
 			return lab.Plan{}, err
 		}
 		creating := server.Status == state.ServerInitializing
@@ -111,10 +109,12 @@ func planAttachVolume(l *lab.Lab, afterCreate bool) planFunc {
 		// changes the record before they run. The undo takes the attach back
 		// by its own server and slot (slots go round), so an action queued
 		// behind keeps what it set.
-		target, disk := server.ID, l.Machine().VolumeSlot(volume.ID, volume.Slot, volume.Automount)
-		plan.Steps = func(ctx context.Context) error { return l.Machine().AttachVolume(ctx, target, disk, creating) }
+		volumeID, target, slot := volume.ID, server.ID, volume.Slot
+		plan.Steps = func(ctx context.Context) error {
+			return l.Machine().AttachVolume(ctx, volumeID, target, slot, automount, creating)
+		}
 		plan.Undo = undoRecord(state.Volumes, volume.ID, func(_ *state.Tx, volume *state.Volume) {
-			if volume.ServerID == target && volume.Slot == disk.Slot {
+			if volume.ServerID == target && volume.Slot == slot {
 				volume.ServerID, volume.Slot = 0, 0
 			}
 		})
@@ -123,12 +123,12 @@ func planAttachVolume(l *lab.Lab, afterCreate bool) planFunc {
 }
 
 // attachTarget reads an attach's body and returns the volume and the
-// server it names, with Hetzner's answers: the fields first, then the
-// volume, then the server (measured 2026-11-09).
-func attachTarget(tx *state.Tx, req lab.Request) (*state.Volume, *state.Server, error) {
+// server it names and whether to mount it, with Hetzner's answers: the
+// fields first, then the volume, then the server (measured 2026-11-09).
+func attachTarget(tx *state.Tx, req lab.Request) (*state.Volume, *state.Server, bool, error) {
 	var body volumeAttachRequest
 	if err := json.Unmarshal(req.Body, &body); err != nil {
-		return nil, nil, web.JSONError(volumeBadBody)
+		return nil, nil, false, web.JSONError(volumeBadBody)
 	}
 	check := web.Check{Singular: true}
 	serverID := body.Server
@@ -142,17 +142,17 @@ func attachTarget(tx *state.Tx, req lab.Request) (*state.Volume, *state.Server, 
 		check.Fail("assignee", volumeAssigneeRequired)
 	}
 	if err := check.Err(); err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	volume, err := callerVolume(tx, req.ProjectID, req.ID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	server, err := state.Get(tx, state.Servers, *serverID)
 	if err != nil || server.ProjectID != req.ProjectID {
-		return nil, nil, web.Refusal(http.StatusNotFound, "not_found", volumeServerNotFound)
+		return nil, nil, false, web.Refusal(http.StatusNotFound, "not_found", volumeServerNotFound)
 	}
-	return volume, server, nil
+	return volume, server, body.Automount != nil && *body.Automount, nil
 }
 
 // planAttachAtServerCreate attaches a volume that a server's create names
@@ -237,21 +237,19 @@ func planDetachVolume(l *lab.Lab) planFunc {
 		if creating && !l.Machine().VolumesRead(serverID) {
 			return plan, nil
 		}
-		return lab.Plan{
-			Resources: plan.Resources,
-			Steps: func(ctx context.Context) error {
-				return l.Machine().DetachVolume(ctx, serverID, slot, creating)
-			},
-			Undo: undoRecord(state.Volumes, volume.ID, func(tx *state.Tx, volume *state.Volume) {
-				_, err := state.Get(tx, state.Servers, serverID)
-				taken := slices.ContainsFunc(state.All(tx, state.Volumes), func(other *state.Volume) bool {
-					return other.ServerID == serverID && other.Slot == slot
-				})
-				if volume.ServerID == 0 && err == nil && !taken {
-					volume.ServerID, volume.Slot = serverID, slot
-				}
-			}),
-		}, nil
+		plan.Steps = func(ctx context.Context) error {
+			return l.Machine().DetachVolume(ctx, serverID, slot, creating)
+		}
+		plan.Undo = undoRecord(state.Volumes, volume.ID, func(tx *state.Tx, volume *state.Volume) {
+			_, err := state.Get(tx, state.Servers, serverID)
+			taken := slices.ContainsFunc(state.All(tx, state.Volumes), func(other *state.Volume) bool {
+				return other.ServerID == serverID && other.Slot == slot
+			})
+			if volume.ServerID == 0 && err == nil && !taken {
+				volume.ServerID, volume.Slot = serverID, slot
+			}
+		})
+		return plan, nil
 	}
 }
 

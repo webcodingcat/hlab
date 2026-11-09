@@ -320,11 +320,16 @@ func TestVolumeAttachAndDetachInTheQueue(t *testing.T) {
 	late := createVolume(t, test, map[string]any{"name": "late", "size": 10, "location": "fsn1"})
 	waitActions(t, test, late.Action)
 	// once the create has made the VM, the actions change it after the
-	// create
+	// create; the seed's insert holds the create after the VM
+	test.machine.Delay("SetISO", 300*time.Millisecond)
 	creating := createServer(t, test, map[string]any{"name": "db", "server_type": "cpx22", "image": "debian-13",
 		"location": "fsn1", "start_after_create": false, "volumes": []int64{created.Volume.ID}})
-	waitForCall(t, test, "CreateVM "+lab.ServerVM(creating.Server.ID))
+	vm := lab.ServerVM(creating.Server.ID)
+	waitForCall(t, test, "CreateVM "+vm)
 	checkActionsDuringCreate(t, test, creating, created.Volume.ID, late.Volume.ID)
+	if calls := test.machine.Calls(); !containsPrefix(calls, "DetachDisk "+vm) || !containsPrefix(calls, "AttachDisk "+vm) {
+		t.Errorf("the actions did not change the VM after the create: %v", calls)
+	}
 }
 
 // Before a server's create has made the VM, an attach and a detach are

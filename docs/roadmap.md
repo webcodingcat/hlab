@@ -76,8 +76,7 @@ for what the operator keeps), the phase or step that closes it.
   `placement_error` for an 11th are assumed: Hetzner's capacity refused
   a sixth server at 2b-1's probe. Measure when capacity allows.
 - **should, 2b-R** (review of 2b-1, outside the step): DEVELOPING.md's
-  Actions want an overview before the rules (with `docs/actions.md`);
-  a sentence that the layer rule leaves tests free to use the fakes; a
+  Actions want an overview before the rules (with `docs/actions.md`); a
   pointer from `cachedImage` to the mutex rule's exception; the words'
   table says why each part exists; the Known gaps say which concern
   servers, actions or the CLI and what the step names mean; long lines in

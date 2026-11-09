@@ -228,7 +228,8 @@ The layer test checks production code only. Tests may import fakes and helpers.
   a call into `system`.
 - **The machine's fields share the lab's mutex.** `lab.Machine` (Actions) has
   no mutex of its own: its fields (the appliance, the host's resources, the
-  image loads, the watchdog's notes; `internal/lab/machine.go`) are read and
+  image loads, the watchdog's notes, the servers whose VM has read its
+  volumes, `Machine.VolumesRead`; `internal/lab/machine.go`) are read and
   changed only while holding the lab's mutex. The watchdog and the room check read them together with
   the state and the flags, and a second mutex would add a lock order to
   keep.

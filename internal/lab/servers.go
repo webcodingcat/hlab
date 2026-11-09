@@ -187,23 +187,23 @@ func (m *Machine) makeServerVM(ctx context.Context, id int64) (keptDisk bool, er
 	// (Hetzner's answer to such a create is assumed, not measured)
 	for busy := true; busy; {
 		var running []<-chan struct{}
-		err = m.lab.View(func(tx *state.Tx) error {
-			found, getErr := state.Get(tx, state.Servers, id)
-			if getErr != nil {
-				return getErr
-			}
+		// the records with the actions and the machine's fields, under the
+		// lab's mutex (Concurrency)
+		m.lab.mu.Lock()
+		tx := m.lab.read()
+		found, err := state.Get(tx, state.Servers, id)
+		if err == nil {
 			server, facts, private = found, serverFacts(tx, found), systemNICs(tx, found)
 			volumes = m.serverVolumes(tx, id)
 			var refs []state.ResourceRef
 			for _, volume := range volumes {
 				refs = append(refs, VolumeRef(volume.VolumeID))
 			}
-			// View holds the lab's mutex
 			if running = m.lab.runningOnLocked(refs); len(running) == 0 {
 				m.volumesRead[id] = true
 			}
-			return nil
-		})
+		}
+		m.lab.mu.Unlock()
 		if err != nil {
 			return false, err
 		}
