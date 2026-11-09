@@ -140,7 +140,7 @@ func (m *Machine) CreateServer(ctx context.Context, id int64, start bool) error 
 	err := m.BuildServer(ctx, id)
 	switch {
 	case err != nil && ctx.Err() == nil:
-		return errors.Join(err, m.deleteServerVM(ctx, id))
+		return errors.Join(err, m.DeleteServer(ctx, id))
 	case err != nil:
 		return err
 	case !start:
@@ -257,21 +257,15 @@ func (m *Machine) cachedImage(ctx context.Context, image catalog.Image) (string,
 	return loaded.File, err
 }
 
-// DeleteServer is the delete action's steps: the server's record is gone
-// already (its plan removed it), and its VM, disk and seed go now
-// (deleteServerVM).
+// DeleteServer removes what a deleted server had on the machine: its VM,
+// disk and seed; then the appliance gets the pictures without it. It is
+// the delete action's steps (its plan removed the record), and a failed
+// create and a project's delete call it too. The pictures go even when
+// the VM's removal fails: the record is gone either way.
 func (m *Machine) DeleteServer(ctx context.Context, id int64) error {
-	return m.deleteServerVM(ctx, id)
-}
-
-// deleteServerVM removes what a deleted server had on the machine: its VM,
-// disk and seed; then the appliance gets the pictures without it.
-func (m *Machine) deleteServerVM(ctx context.Context, id int64) error {
 	disk, seedISO := m.serverFiles(id)
-	if err := m.system.DeleteServer(ctx, ServerVM(id), disk, seedISO); err != nil {
-		return err
-	}
-	return m.UpdatePictures(ctx)
+	vmErr := m.system.DeleteServer(ctx, ServerVM(id), disk, seedISO)
+	return errors.Join(vmErr, m.UpdatePictures(ctx))
 }
 
 // PowerOnServer starts a server, as Hetzner's poweron: starting, then

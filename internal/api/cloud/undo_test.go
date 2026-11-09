@@ -163,8 +163,9 @@ func TestFailedDeleteSubnetKeepsTheAddQueuedBehind(t *testing.T) {
 	}
 }
 
-// A failed detach does not bring its NIC back when an attach to the same
-// network was queued behind it: the server would be in it twice.
+// A failed detach keeps the NIC out of the record and the VM, also with an
+// attach to the same network queued behind it: the server is in the
+// network once, with the attach's NIC.
 func TestFailedDetachKeepsTheAttachQueuedBehind(t *testing.T) {
 	test := newTestLab(t)
 	agent := quietMachine(t, test)
@@ -178,6 +179,9 @@ func TestFailedDetachKeepsTheAttachQueuedBehind(t *testing.T) {
 	})
 	if got := getServer(t, test, server.Server.ID).PrivateNet; len(got) != 1 {
 		t.Errorf("the server's private_net is %+v, want one NIC", got)
+	}
+	if nics := vmNICs(test, server.Server.ID); nics != 1 {
+		t.Errorf("the VM has %d NICs, want the attach's only: %v", nics, test.machine.Calls())
 	}
 }
 
@@ -199,8 +203,8 @@ func TestFailedAddSubnetKeepsASubnetAServerUses(t *testing.T) {
 	}
 }
 
-// A failed detach does not bring its NIC back when another server took
-// its address meanwhile.
+// A failed detach does not bring its NIC back, also when another server
+// took its address meanwhile, and the NIC has left the VM.
 func TestFailedDetachLeavesAnAddressAnotherServerTook(t *testing.T) {
 	test := newTestLab(t)
 	agent := quietMachine(t, test)
@@ -214,6 +218,9 @@ func TestFailedDetachLeavesAnAddressAnotherServerTook(t *testing.T) {
 	})
 	if got := getServer(t, test, first.Server.ID).PrivateNet; len(got) != 0 {
 		t.Errorf("the first server's private_net is %+v, want none: the second holds its address", got)
+	}
+	if nics := vmNICs(test, first.Server.ID); nics != 0 {
+		t.Errorf("the first server's VM kept %d NICs: %v", nics, test.machine.Calls())
 	}
 }
 

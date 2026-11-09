@@ -29,7 +29,9 @@ a running HLab ends, its servers run on, and the next start takes them over
 and updates the appliance. `install.ps1 -Uninstall` removes all of it with the
 lab's VMs, switches and data (`-KeepData` keeps `C:\ProgramData\HLab`; the next
 start gives the servers new VMs with their disks). Smart App
-Control blocks HLab's unsigned programs; it has to be off.
+Control blocks HLab's unsigned programs; it has to be off. Phase 6b adds a
+tray icon in place of the start menu entry's window and stops the lab
+when Windows signs out ([docs/roadmap.md](docs/roadmap.md)).
 
 ## Usage
 

@@ -163,7 +163,8 @@ The layer test checks production code only. Tests may import fakes and helpers.
   starts at `state.FirstID` (1 000 000). Catalog entries carry Hetzner's real IDs,
   which are lower, so no record shares an ID with a catalog entry. An ID is never
   reused and never changes.
-- **Transactions.** A `state.Tx` makes a deep copy of a record the first time it
+- **Transactions.** A Tx changes only its own copies; a state, once made,
+  never changes. A `state.Tx` makes a deep copy of a record the first time it
   hands it out (`state.Get`, `All`, `Find`); of the kind's table it copies only the
   map from IDs to records. The records you get from a Tx are its copies, so
   changing one in place changes the Tx. The Tx notes the ID of every record it
@@ -252,6 +253,15 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   actions name it (`server`), the message for 423 answers, and one `lab.ActionSpec`
   per Hetzner command. A spec maps the command (`poweroff`) to Hetzner's action name
   (`stop_server`).
+- **One action, start to end:** a Primary IP's `assign` to an idle server.
+  `Lab.Act` finds neither the IP nor the server flagged; the plan
+  (`planPrimaryIPAssign`) checks the request, sets the IP's server in the
+  state and returns the steps, an `Undo` and the server in `Locks`; the
+  action is recorded `running`, and both resources are flagged. The steps
+  (`Machine.ChangePrimaryIP`) send the pictures. If they succeed, the
+  action ends `success`; if they fail, the `Undo` sets the IP back, the
+  action ends `error` in the same change, and the appliance gets the
+  pictures without the IP. Either way the flags go.
 - **`Lab.Act`, `Lab.ActAll` and `Lab.Create`** all go through the private
   `Lab.run`: it checks the project, records the new resource (only
   `Create`), plans each row (`planAction`: the busy check and the plan,
@@ -323,16 +333,6 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   `assign` to that server meanwhile locks the server: it is 423 while
   the server is flagged.
 
-  The whole way of one action, a Primary IP's `assign` to an idle server:
-  `Lab.Act` finds neither the IP nor the server flagged; the plan
-  (`planPrimaryIPAssign`) checks the request, sets the IP's server in the
-  state and returns the steps, an `Undo` and the server in `Locks`; the
-  action is recorded `running`, and both resources are flagged. The steps
-  (`Machine.ChangePrimaryIP`) send the pictures. If they succeed, the
-  action ends `success`; if they fail, the `Undo` sets the IP back, the
-  action ends `error` in the same change, and the appliance gets the
-  pictures without the IP. Either way the flags go.
-
   An action that locks a resource of a `Queued` table (a Primary IP's
   assign locks its server) also heads that resource's queue: the
   resource's own actions sent meanwhile wait behind it. Hetzner's answer
@@ -341,7 +341,8 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   VM, the disk, the pictures sent to the appliance); the lab never waits
   to copy a time that Hetzner takes, and a status such as `pending`,
   `attaching`, `detaching`, `updating` or `starting` shows only while an
-  action's work runs. Hetzner's times come from load, so tests need no
+  action's work runs (a network member's status also while its action
+  waits in the server's queue). Hetzner's times come from load, so tests need no
   clock. The actions that appear, their order, resources and errors follow
   Hetzner.
 - **Steps.** The slow part runs in a goroutine.
@@ -349,8 +350,8 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
     action ends with `error`, both in one change. A plan marked `UndoIfLast`
     undoes only if no action was queued behind it on the resource: the later
     plans were made on top of its quick changes (`want_running`, a
-    network's subnets, a server's NICs), and taking those back would undo
-    theirs too. A plan of a `Queued` table whose `Undo` takes back a
+    network's subnets, a server's alias IPs), and taking those back would
+    undo theirs too. A plan of a `Queued` table whose `Undo` takes back a
     change to what was there before is marked so; one whose `Undo` only
     removes what the plan made, found by its own key (a server's create,
     an attach's NIC by its MAC), is not, and says so next to it. An `Undo`
@@ -362,8 +363,9 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
     steps may have sent pictures with the quick changes already (a
     server's create, an assign). So every plan whose quick changes reach a
     picture has an `Undo`, and nothing else sends pictures for it. The
-    exception are the firewalls' rows, which run alongside each other
-    (`firewallActions` says why).
+    exceptions are the firewalls' rows, which run alongside each other
+    (`firewallActions` says why), and a server's detach, whose NIC leaves
+    the VM even when the pictures fail (`planDetachFromNetwork`).
   - The watchdog looks at a VM without the mutex, so it acts only if no
     action flagged the server meanwhile: each round notes the servers it
     looks at, an action's flag marks them, and the notes go with the round

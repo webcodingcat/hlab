@@ -130,7 +130,9 @@ func planCreateServer(l *lab.Lab) planFunc {
 // planDeleteServer removes the server's record at once (a create still
 // running then fails and cleans up, Machine.CreateServer), as Hetzner's API
 // does, and its VM, disk and seed in the steps. Its Primary IPs with
-// auto_delete go with it, the others stay unassigned.
+// auto_delete go with it, the others stay unassigned. It has no Undo: a
+// deleted server does not come back, and the steps send the pictures
+// without it even when the VM's removal fails.
 func planDeleteServer(l *lab.Lab) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		server, err := callerServer(tx, req.ProjectID, req.ID)
@@ -541,11 +543,12 @@ func serverNetwork(server *state.Server, networkID int64) (state.ServerPrivateNe
 }
 
 // planDetachFromNetwork takes the server's NIC out of a network: the
-// record at once, the routes and then the NIC in the steps. If the steps
-// fail and nothing was queued behind, the NIC comes back into the record
-// where it was, as long as its addresses are still free (canRejoin); if
-// they are not, the NIC the steps failed to remove stays in the VM without
-// a record (docs/roadmap.md, Known gaps).
+// record at once, the routes and then the NIC in the steps. It has no
+// Undo, an exception to the rule that a plan whose quick changes reach a
+// picture has one: the steps take the NIC out of the VM even when sending
+// the pictures fails, and the appliance's watchdog sends them later, so
+// the record without the NIC is true. An undo would put back a NIC the VM
+// no longer has, or one whose addresses another server took meanwhile.
 func planDetachFromNetwork(l *lab.Lab) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		var body changeAliasIPsRequest
@@ -577,36 +580,8 @@ func planDetachFromNetwork(l *lab.Lab) planFunc {
 				return l.Machine().DetachServerFromNetwork(ctx, serverID, attached.MAC)
 			},
 			RunIfCanceled: true, // the NIC must leave the VM, as the record lost it
-			Undo: undoServer(serverID, func(tx *state.Tx, server *state.Server) {
-				network, err := state.Get(tx, state.Networks, networkID)
-				if err != nil || !canRejoin(tx, server, network, attached) {
-					return
-				}
-				server.PrivateNets = slices.Insert(server.PrivateNets, min(index, len(server.PrivateNets)), attached)
-			}),
-			UndoIfLast: true, // a later attach or detach of the server stands
 		}, nil
 	}
-}
-
-// canRejoin reports whether a detached NIC can come back into the record:
-// the server is not in the network again, and its addresses are still in
-// a subnet and free, as another server's attach or a delete_subnet may
-// have taken them while the detach ran.
-func canRejoin(tx *state.Tx, server *state.Server, network *state.Network, nic state.ServerPrivateNet) bool {
-	if _, index := serverNetwork(server, network.ID); index >= 0 {
-		return false
-	}
-	taken := takenAddresses(tx, network, server.ID)
-	ip := netip.MustParseAddr(nic.IP)
-	if addressRefusal(network, ip, taken) != nil {
-		return false
-	}
-	var aliases []netip.Addr
-	for _, alias := range nic.AliasIPs {
-		aliases = append(aliases, netip.MustParseAddr(alias))
-	}
-	return aliasRefusal(network, ip, aliases, taken) == nil
 }
 
 // planChangeAliasIPs replaces the server's alias IPs in a network. An
@@ -675,7 +650,7 @@ func planChangeAliasIPs(l *lab.Lab) planFunc {
 				server.PrivateNets[index].AliasIPs = before
 			}
 		})
-		plan.UndoIfLast = true // a later change_alias_ips stands
+		plan.UndoIfLast = true // any later action of the server was planned on the new alias IPs
 		return plan, nil
 	}
 }

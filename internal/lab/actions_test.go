@@ -425,6 +425,63 @@ func TestAbortedQueuedActionKeepsTheQueueInOrder(t *testing.T) {
 	}
 }
 
+// The steps of an action marked RunIfCanceled run when it is aborted while
+// it waits in its queue, but only after the action before it has ended:
+// both work on the same resource.
+func TestStepsThatRunIfCanceledWaitForTheActionBefore(t *testing.T) {
+	l, _ := openWithProject(t)
+	network := state.ResourceRef{Type: "network", ID: 9}
+	release, ran := make(chan struct{}), make(chan struct{})
+	var overtaken atomic.Bool
+	servers := lab.ActionTable{ResourceType: "server", Busy: "server is locked", Queued: true, Actions: map[string]lab.ActionSpec{
+		"attach_to_network": {Name: "attach_to_network", Plan: func(*state.Tx, lab.Request) (lab.Plan, error) {
+			return lab.Plan{Steps: func(context.Context) error {
+				<-release
+				return nil
+			}}, nil
+		}},
+		"detach_from_network": {Name: "detach_from_network", Plan: func(*state.Tx, lab.Request) (lab.Plan, error) {
+			return lab.Plan{
+				Resources: []state.ResourceRef{network},
+				Steps: func(context.Context) error {
+					select {
+					case <-release:
+					default:
+						overtaken.Store(true)
+					}
+					close(ran)
+					return nil
+				},
+				RunIfCanceled: true,
+			}, nil
+		}},
+	}}
+	running, err := l.Act(servers, "attach_to_network", request(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	waiting, err := l.Act(servers, "detach_from_network", request(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.ChangeAborting(network, func(*state.Tx) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	// steps that do not wait run within this window; the window only lets
+	// a wrong order show and never fails a right one
+	select {
+	case <-ran:
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	waitForStatus(t, l, running.ID, state.ActionSuccess)
+	waitForStatus(t, l, waiting.ID, state.ActionError)
+	<-ran
+	if overtaken.Load() {
+		t.Error("the aborted detach's steps ran while the attach still ran")
+	}
+}
+
 // An undo marked UndoIfLast leaves alone what an action queued behind it
 // has planned since.
 func TestUndoIfLastSkipsWhenAnActionIsQueuedBehind(t *testing.T) {

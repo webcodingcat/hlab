@@ -391,7 +391,12 @@ func (l *Lab) start(planned plannedAction) {
 		}()
 		defer cancel()
 		err := waitFor(ctx, before)
-		if err == nil || planned.plan.RunIfCanceled {
+		if err != nil && planned.plan.RunIfCanceled {
+			// the steps still run, but after the action before them, as
+			// both work on the same resource
+			err = waitFor(context.WithoutCancel(ctx), before)
+		}
+		if err == nil {
 			err = planned.plan.Steps(ctx)
 		}
 		// canceled only when the steps gave up: steps that finished despite
@@ -429,6 +434,31 @@ func stillRunning(done <-chan struct{}) bool {
 	}
 }
 
+// releaseQueues takes an ending action out of the queues it heads: its
+// resource's, and those of the resources it locks. It tells whether no
+// action waits behind it on its resource (true without a queue). The
+// caller holds the mutex.
+func (l *Lab) releaseQueues(run *runningAction) (nothingBehind bool) {
+	nothingBehind = run.queue == nil || l.queues[*run.queue] == run.done
+	if run.queue != nil && nothingBehind {
+		// the last of its queue; one that ends before the action it waited
+		// for (aborted) hands the queue back to that one; if that one has
+		// ended meanwhile, an action sent later finds its closed done and
+		// does not wait
+		if stillRunning(run.before) {
+			l.queues[*run.queue] = run.before
+		} else {
+			delete(l.queues, *run.queue)
+		}
+	}
+	for _, ref := range run.lockQueues {
+		if l.queues[ref] == run.done {
+			delete(l.queues, ref)
+		}
+	}
+	return nothingBehind
+}
+
 // end finishes an action whose steps have returned: it takes the flags off,
 // undoes the quick changes if the steps failed, and finishes the action.
 // It tells whether it undid: the caller then sends the pictures.
@@ -450,21 +480,7 @@ func (l *Lab) end(run *runningAction, err error, canceled bool) (undone bool) {
 			delete(l.flags, ref)
 		}
 	}
-	last := run.queue == nil || l.queues[*run.queue] == run.done
-	if run.queue != nil && last {
-		// the last of its queue; one that ends before the action it waited
-		// for (aborted) hands the queue back to that one
-		if stillRunning(run.before) {
-			l.queues[*run.queue] = run.before
-		} else {
-			delete(l.queues, *run.queue)
-		}
-	}
-	for _, ref := range run.lockQueues {
-		if l.queues[ref] == run.done {
-			delete(l.queues, ref)
-		}
-	}
+	nothingBehind := l.releaseQueues(run)
 	delete(l.running, run.id)
 	finish := func(tx *state.Tx) error {
 		action, err := state.Get(tx, state.Actions, run.id)
@@ -477,7 +493,9 @@ func (l *Lab) end(run *runningAction, err error, canceled bool) (undone bool) {
 		l.finishAction(tx, action, failure)
 		return nil
 	}
-	undo := err != nil && !canceled && run.undo != nil && (last || !run.undoIfLast)
+	// no undo for steps that succeeded, for a canceled or aborted action,
+	// for a plan without one, and for an UndoIfLast with an action behind
+	undo := err != nil && !canceled && run.undo != nil && (nothingBehind || !run.undoIfLast)
 	if undo {
 		// the undo and the end in one change; a failing undo must not keep
 		// the action running, so the end then goes alone

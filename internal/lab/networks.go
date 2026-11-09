@@ -100,18 +100,18 @@ func (m *Machine) AttachServerToNetwork(ctx context.Context, serverID, networkID
 
 // DetachServerFromNetwork is the steps of detach_from_network: the plan has
 // taken the server's NIC out of the record; the appliance gets the pictures
-// without it first, then the NIC leaves the VM. If that fails, the action's
-// undo puts the record back, and the pictures after it the routes. The
-// NIC leaves the VM even when the action is canceled: the record no longer
-// has it, so nothing else would take it out (a network's delete aborts the
-// detach and removes only the NICs it still finds); Close waits for this
-// one call. The steps run even when the detach is canceled while it waits
-// (Plan.RunIfCanceled).
+// without it first, then the NIC leaves the VM. The NIC leaves even when
+// the pictures fail (the appliance's watchdog sends them later) and when
+// the action is canceled: the record no longer has it, so nothing else
+// would take it out. The steps run even when the detach is canceled while
+// it waits (Plan.RunIfCanceled); Close waits for the one call.
 func (m *Machine) DetachServerFromNetwork(ctx context.Context, serverID int64, mac string) error {
-	if err := m.UpdatePictures(ctx); err != nil && ctx.Err() == nil {
-		return err
+	picturesErr := m.UpdatePictures(ctx)
+	if ctx.Err() != nil {
+		picturesErr = nil // a network's delete or the lab's next start sends them
 	}
-	return m.system.DetachPrivateNIC(context.WithoutCancel(ctx), ServerVM(serverID), mac)
+	nicErr := m.system.DetachPrivateNIC(context.WithoutCancel(ctx), ServerVM(serverID), mac)
+	return errors.Join(nicErr, picturesErr)
 }
 
 // ServerNIC is a server's NIC in a private network, by its MAC.

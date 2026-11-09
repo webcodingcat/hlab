@@ -215,12 +215,13 @@ func (s *service) handlers(token string, controlAddresses []string) []http.Handl
 
 // refuseWhileStopping answers 503 unavailable once the lab stops, as
 // Hetzner's API does while it is down, and counts the requests it lets
-// through, so that close waits for them before it closes the lab. Requests
-// that always passes go through even then, uncounted: they do not change
-// the lab.
-func (s *service) refuseWhileStopping(next http.Handler, always func(*http.Request) bool) http.Handler {
+// through, so that close waits for them before it closes the lab. A
+// request that exempt names (nil: none) always goes through, uncounted:
+// the lab control's status and shutdown must answer while the lab stops,
+// and they change nothing that close would wait for.
+func (s *service) refuseWhileStopping(next http.Handler, exempt func(*http.Request) bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if always != nil && always(r) {
+		if exempt != nil && exempt(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
