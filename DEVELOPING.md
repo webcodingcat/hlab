@@ -1,6 +1,6 @@
 # Developing HLab
 
-**Reading order:** CLAUDE.md, then "A request's path" and "Layers" below, then the
+**Reading order:** CLAUDE.md, then "Words", "A request's path" and "Layers" below, then the
 recipe for what you add (Recipes, at the end); the other sections and the files
 under `docs/` are reference, read when you work on their part.
 
@@ -26,24 +26,9 @@ each part does in detail is in the files under `docs/`:
 Section names in parentheses, such as (The state), point to the section of this file
 that explains more; a file name in them, such as (docs/tools.md), to that file.
 
-## A request's path
+## Words
 
-This is what happens when you run `hcloud ssh-key create` against the lab:
-
-1. `internal/web` receives the request on port 8080. It finds the route and checks
-   the token, the rate limit and the permission. It may also inject a fault
-   (The APIs).
-2. The handler in `internal/api/cloud/ssh_keys.go` checks the body and calls
-   `lab.Change`. `lab.Change` runs the handler's function as one transaction on the
-   state (The state, Concurrency).
-3. `lab` encodes the new state and passes it to `state.Writer`, which saves
-   `state.json` in the background. The handler answers with Hetzner's JSON.
-4. Some commands take time, such as a server's `poweroff`. They run
-   as an action instead. `lab.Act` checks and plans the action. The action's steps
-   call `internal/system`, which drives the machine through `internal/platform`
-   (Actions, Platform).
-
-Words this file uses:
+Words this file uses; the sections in parentheses explain more.
 
 | Word | Meaning |
 |---|---|
@@ -60,6 +45,23 @@ Words this file uses:
 | NRPT | Windows' Name Resolution Policy Table: sends the lab's DNS names from the host to the appliance (docs/hyperv.md) |
 | VLAN, VRF | a private network is a VLAN on the switch `HLab-Private` and a VRF (a routing table of its own) in the appliance, so networks never see each other |
 | conntrack | the Linux kernel's table of connections; the firewall pictures let answers through by it |
+
+## A request's path
+
+This is what happens when you run `hcloud ssh-key create` against the lab:
+
+1. `internal/web` receives the request on port 8080. It finds the route and checks
+   the token, the rate limit and the permission. It may also inject a fault
+   (The APIs).
+2. The handler in `internal/api/cloud/ssh_keys.go` checks the body and calls
+   `lab.Change`. `lab.Change` runs the handler's function as one transaction on the
+   state (The state, Concurrency).
+3. `lab` encodes the new state and passes it to `state.Writer`, which saves
+   `state.json` in the background. The handler answers with Hetzner's JSON.
+4. Some commands take time, such as a server's `poweroff`. They run
+   as an action instead. `lab.Act` checks and plans the action. The action's steps
+   call `internal/system`, which drives the machine through `internal/platform`
+   (Actions, Platform).
 
 ## Binaries
 
@@ -91,8 +93,10 @@ way their rule applies from their first line of code.
 
 The "May import" column names packages by their path below `internal/`. "anything"
 means the row has no limit. Outside modules are not in it (Dependencies): so
-`schema` there is HLab's own `internal/schema`, not `hcloud-go`'s. Until it
-exists, the API uses `hcloud-go`'s `schema` (The APIs, JSON types).
+`schema` there is HLab's own `internal/schema`, not `hcloud-go`'s. The layer
+test checks only this module's packages, so importing `hcloud-go`'s `schema`
+needs no row; it is what the API uses until `internal/schema` exists (The
+APIs, JSON types).
 
 | Package | Job | May import |
 |---|---|---|
@@ -225,7 +229,7 @@ The layer test checks production code only. Tests may import fakes and helpers.
   never change that record: from `View` it is the state's own record, and from
   `Change` the state shares it.
 - **Across a call into the system, keep IDs, not records.** Look the records up
-  again afterwards with `lab.Current(l, kind, id)`. `Current` returns the record
+  again afterwards with `lab.Current(l, kind, id)` (`internal/lab/lab.go`). `Current` returns the record
   to read, or `state.ErrNotFound` if it is gone. It is a function, not a method,
   because Go methods cannot have type parameters. The one exception to the rule
   is `resumeServers` at the start, which reads the records it took once and
@@ -233,8 +237,9 @@ The layer test checks production code only. Tests may import fakes and helpers.
 - The slow part of an action runs in a goroutine with a `context.Context`. Closing
   the lab (`Lab.Close`) and deleting a project (`Lab.StopProjectActions`) cancel
   that context. A closed lab starts no action (`lab.ErrClosed`, 503), and
-  `Close` waits for every goroutine of the actions, of
-  `Machine.UpdatePicturesLater` and of `Lab.DeleteProject`'s removals.
+  `Close` waits for every goroutine the lab starts (`Lab.background`): the
+  actions', `Machine.UpdatePicturesLater`, `Machine.DetachNICsLater` and
+  `Lab.DeleteProject`'s removals.
 - `lab.Flush()` waits until the newest state is on disk. `Lab.Close` calls it.
 - `go test -race` runs on Linux, in `bin/dev test` and in CI.
 
@@ -304,6 +309,16 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   `assign` to that server meanwhile locks the server: it is 423 while
   the server is flagged.
 
+  The whole way of one action, a Primary IP's `assign` to an idle server:
+  `Lab.Act` finds neither the IP nor the server flagged; the plan
+  (`planPrimaryIPAssign`) checks the request, sets the IP's server in the
+  state and returns the steps, an `Undo` and the server in `Locks`; the
+  action is recorded `running`, and both resources are flagged. The steps
+  (`Machine.ChangePrimaryIP`) send the pictures. If they succeed, the
+  action ends `success`; if they fail, the `Undo` sets the IP back, the
+  action ends `error` in the same change, and the appliance gets the
+  pictures without the IP. Either way the flags go.
+
   An action that locks a resource of a `Queued` table (a Primary IP's
   assign locks its server) also heads that resource's queue: the
   resource's own actions sent meanwhile wait behind it. Hetzner's answer
@@ -314,15 +329,20 @@ Hetzner's API runs slow commands as actions. This is how the lab does it
   `attaching`, `detaching`, `updating` or `starting` shows only while an
   action's work runs. Hetzner's times come from load, so tests need no
   clock. The actions that appear, their order, resources and errors follow
-  Hetzner. (`hlab.yaml`'s old `time_scale` is ignored with a log line.)
+  Hetzner.
 - **Steps.** The slow part runs in a goroutine.
   - If the steps fail, the plan's `Undo` takes back the quick changes and the
     action ends with `error`, both in one change. A plan marked `UndoIfLast`
     undoes only if no action was queued behind it on the resource: the later
     plans were made on top of its quick changes (`want_running`, a
     network's subnets, a server's NICs), and taking those back would undo
-    theirs too. Every plan of a `Queued` table that has an `Undo` is
-    marked so.
+    theirs too. A plan of a `Queued` table whose `Undo` takes back a
+    change to what was there before is marked so; one whose `Undo` only
+    removes what the plan made, found by its own key (a server's create,
+    an attach's NIC by its MAC), is not, and says so next to it. An `Undo`
+    also leaves what another resource's actions built on meanwhile: a
+    server's attach runs in the server's queue, so the undo of an
+    `add_subnet` keeps a subnet in which a server now has an address.
   - **After an undo the appliance gets new pictures,** before the action
     counts as done for a queue (`Machine.updatePicturesAfterUndo`): the
     steps may have sent pictures with the quick changes already (a
@@ -374,8 +394,9 @@ the lab control and the CLI in [docs/service.md](docs/service.md); the
 catalog in [docs/catalog.md](docs/catalog.md). These rules hold across them:
 
 - **Hetzner first.** Answers, status codes, error texts and the actions that
-  appear follow the real API as measured (its times do not: Actions); each such choice says so next to it ("measured
-  2026-11-08") and in `compat/requirements.md`.
+  appear follow the real API as measured. Each such choice says so next to
+  it ("measured 2026-11-08") and in `compat/requirements.md`. Hetzner's
+  times are the exception: the lab does not copy them (Actions).
 - **Creates are whole.** A create records its resource and plans its first
   actions in one `Lab.Create`; every create checks its project
   (`lab.CheckProject`, which `Lab.Act` and `Lab.Create` call). A failed
@@ -412,10 +433,10 @@ the same later.
   1. The route (`API.ServeHTTP`). A path that no route takes is 404 `not_found`
      "api route not found", even without a token. The same happens when a path
      segment named `id` or `*_id` is not a valid ID, unless the route has an
-     answer of its own for that (`API.AnswerInvalidID`, after the token):
-     Hetzner answers `GET /networks/x` and `/floating_ips/x` with a 405
-     without a body, `/firewalls/x` and `/primary_ips/x` with texts of
-     their own (measured 2026-11-09).
+     answer of its own for that (`API.AnswerInvalidID`, checked after the
+     token; measured 2026-11-09):
+     - `GET /networks/x` and `/floating_ips/x`: 405 without a body;
+     - `/firewalls/x` and `/primary_ips/x`: texts of their own.
   2. The bearer token (`API.admit`). A missing or unknown token is 401
      `unauthorized`, without details.
   3. From here on, every answer has an `X-Correlation-Id` header.

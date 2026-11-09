@@ -123,9 +123,10 @@ func TestFailedFloatingIPAssignLeavesThePicturesAsBefore(t *testing.T) {
 	waitForPicture(t, agent, agentproto.PictureLinks, `"gateway":"`+second.Server.PublicNet.IPv4.IP+`"`, false)
 }
 
-// failQueued makes the first action's steps fail while a second waits in
-// the resource's queue behind it: the first holds at the links picture,
-// the second is sent meanwhile, and the first then fails at the metadata.
+// failQueued makes the first action's steps fail while a second is sent:
+// the first holds at the links picture, the second is sent meanwhile (in
+// the same queue, or another resource's), and the first then fails at the
+// metadata; the second must succeed.
 func failQueued(t *testing.T, test *testLab, agent *fake.Agent, first, second func() schema.Action) {
 	t.Helper()
 	waiting, release := agent.HoldNext(agentproto.PictureLinks)
@@ -136,7 +137,7 @@ func failQueued(t *testing.T, test *testLab, agent *fake.Agent, first, second fu
 	release()
 	expectFailed(t, test, failed)
 	if ended := waitActions(t, test, queued); ended[0].Status != "success" {
-		t.Fatalf("the queued %s ended as %s", queued.Command, ended[0].Status)
+		t.Fatalf("the %s sent meanwhile ended as %s", queued.Command, ended[0].Status)
 	}
 }
 
@@ -177,5 +178,41 @@ func TestFailedDetachKeepsTheAttachQueuedBehind(t *testing.T) {
 	})
 	if got := getServer(t, test, server.Server.ID).PrivateNet; len(got) != 1 {
 		t.Errorf("the server's private_net is %+v, want one NIC", got)
+	}
+}
+
+// A failed add_subnet keeps its subnet when another server's attach,
+// which runs in the server's queue, took an address in it meanwhile.
+func TestFailedAddSubnetKeepsASubnetAServerUses(t *testing.T) {
+	test := newTestLab(t)
+	agent := quietMachine(t, test)
+	server := offServer(t, test, "web")
+	network := networkWithSubnet(t, test, "net", "10.1")
+	waitForPicture(t, agent, agentproto.PictureDHCP, fmt.Sprint("private network ", network), true)
+	failQueued(t, test, agent, func() schema.Action {
+		return actionOf(t, "add_subnet", networkAction(test, network, "add_subnet", map[string]any{"type": "cloud", "network_zone": "eu-central", "ip_range": "10.1.2.0/24"}))
+	}, func() schema.Action {
+		return actionOf(t, "attach", serverNetworkAction(test, server.Server.ID, "attach_to_network", map[string]any{"network": network, "ip": "10.1.2.5"}))
+	})
+	if got := len(getNetwork(t, test, network).Subnets); got != 2 {
+		t.Errorf("the network has %d subnets, want 2: the server's address is in the second", got)
+	}
+}
+
+// A failed detach does not bring its NIC back when another server took
+// its address meanwhile.
+func TestFailedDetachLeavesAnAddressAnotherServerTook(t *testing.T) {
+	test := newTestLab(t)
+	agent := quietMachine(t, test)
+	first, second := offServer(t, test, "first"), offServer(t, test, "second")
+	network := networkWithSubnet(t, test, "net", "10.1")
+	waitActions(t, test, actionOf(t, "attach", serverNetworkAction(test, first.Server.ID, "attach_to_network", map[string]any{"network": network, "ip": "10.1.1.5"})))
+	failQueued(t, test, agent, func() schema.Action {
+		return actionOf(t, "detach", serverNetworkAction(test, first.Server.ID, "detach_from_network", map[string]any{"network": network}))
+	}, func() schema.Action {
+		return actionOf(t, "attach", serverNetworkAction(test, second.Server.ID, "attach_to_network", map[string]any{"network": network, "ip": "10.1.1.5"}))
+	})
+	if got := getServer(t, test, first.Server.ID).PrivateNet; len(got) != 0 {
+		t.Errorf("the first server's private_net is %+v, want none: the second holds its address", got)
 	}
 }

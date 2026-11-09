@@ -8,9 +8,9 @@ against it without changes.
 **Status:** being rebuilt in Go, phase 2a (see [docs/roadmap.md](docs/roadmap.md)).
 `hlabd` answers the catalog (locations, server and load balancer types, pricing,
 images, ISOs), SSH keys, servers (Debian 13, Ubuntu 26.04; power actions),
-Primary IPs, Floating IPs, firewalls and private networks. On Windows 11 the servers are Hyper-V VMs that the host and WSL2
-reach on their addresses; `hlabd --platform fake` runs the same API without VMs.
-The earlier implementation (Docker and QEMU) is on the branch `legacy`.
+Primary IPs, Floating IPs, firewalls and private networks. On Windows 11 the
+servers are Hyper-V VMs that the host and WSL2 reach on their addresses;
+`hlabd --platform fake` runs the same API without VMs.
 
 ## Installation
 
@@ -66,9 +66,10 @@ export HLAB_CONTROL=http://127.0.0.1:8090 HLAB_TOKEN_FILE=~/hlab-data/control.to
 there at each start; only one `hlabd` runs per machine.
 
 The web UI is at `http://127.0.0.1:8090` (`HLAB_UI`): projects, their tokens and the
-catalog. `hlab.yaml` sets the ports and how long the servers may
-take to shut down when the lab stops (the old key `time_scale` is ignored: actions
-end as soon as their work is done):
+catalog.
+
+`hlab.yaml` sets the ports and how long the servers may take to shut down when
+the lab stops:
 
 ```yaml
 ports: {cloud: 8080, hetzner: 8081, control: 8090}

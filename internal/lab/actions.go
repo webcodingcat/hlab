@@ -255,20 +255,24 @@ func (l *Lab) ChangeIdle(ref state.ResourceRef, busy string, change func(tx *sta
 // that flags or names the resource is canceled and ends with Hetzner's
 // "aborted", as a network's add_route and a server's attach_to_network do
 // when the network is deleted (measured 2026-11-09). Its quick changes
-// are not undone: the resource is gone.
-func (l *Lab) ChangeAborting(ref state.ResourceRef, change func(tx *state.Tx) error) error {
+// are not undone: the resource is gone. It returns the channels that
+// close when those actions have ended, for work that must come after
+// their steps (DetachNICsLater: an attach's NIC may still arrive).
+func (l *Lab) ChangeAborting(ref state.ResourceRef, change func(tx *state.Tx) error) ([]<-chan struct{}, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if err := l.changeLocked(change); err != nil {
-		return err
+		return nil, err
 	}
+	var aborted []<-chan struct{}
 	for _, run := range l.running {
 		if slices.Contains(run.flagged, ref) || slices.Contains(run.names, ref) {
 			run.aborted = true
 			run.cancel()
+			aborted = append(aborted, run.done)
 		}
 	}
-	return nil
+	return aborted, nil
 }
 
 // newAction adds a running action.
@@ -368,9 +372,7 @@ func (l *Lab) start(planned plannedAction) {
 		l.queues[ref] = run.done
 	}
 	run.lockQueues = planned.plan.Locks
-	l.background.Add(1)
-	go func() {
-		defer l.background.Done()
+	l.background.Go(func() {
 		defer close(run.done)
 		defer cancel()
 		err := waitFor(ctx, before)
@@ -382,11 +384,11 @@ func (l *Lab) start(planned plannedAction) {
 		if undone := l.end(run, err, err != nil && ctx.Err() != nil); undone {
 			l.machine.updatePicturesAfterUndo()
 		}
-	}()
+	})
 }
 
 // waitFor waits until done is closed (nil is done already) or ctx ends.
-func waitFor(ctx context.Context, done chan struct{}) error {
+func waitFor(ctx context.Context, done <-chan struct{}) error {
 	if done == nil {
 		return nil
 	}

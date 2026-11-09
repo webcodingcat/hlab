@@ -722,7 +722,7 @@ func deleteNetwork(req *web.Request, l *lab.Lab) (int, any, error) {
 	var nics []lab.ServerNIC
 	// an action that runs on the network ends "aborted", also a server's
 	// attach (measured 2026-11-09)
-	err := l.ChangeAborting(state.ResourceRef{Type: networkResource, ID: id}, func(tx *state.Tx) error {
+	aborted, err := l.ChangeAborting(state.ResourceRef{Type: networkResource, ID: id}, func(tx *state.Tx) error {
 		network, err := callerNetwork(tx, req.Caller.ProjectID, id)
 		if err != nil {
 			return err
@@ -745,6 +745,6 @@ func deleteNetwork(req *web.Request, l *lab.Lab) (int, any, error) {
 	if err != nil {
 		return 0, nil, err
 	}
-	l.Machine().DetachNICsLater(nics)
+	l.Machine().DetachNICsLater(nics, aborted)
 	return http.StatusNoContent, nil, nil
 }

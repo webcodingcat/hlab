@@ -120,7 +120,9 @@ func planCreateServer(l *lab.Lab) planFunc {
 		return lab.Plan{
 			Resources: []state.ResourceRef{{Type: imageResource, ID: server.ImageID}},
 			Steps:     func(ctx context.Context) error { return l.Machine().CreateServer(ctx, req.ID, start) },
-			Undo:      undoServer(req.ID, releaseServer),
+			// no UndoIfLast: the undo removes only what this plan made, the
+			// server's VM and addresses
+			Undo: undoServer(req.ID, releaseServer),
 		}, nil
 	}
 }
@@ -313,6 +315,8 @@ func planAttachToNetwork(l *lab.Lab) planFunc {
 			Steps: func(ctx context.Context) error {
 				return l.Machine().AttachServerToNetwork(ctx, serverID, networkID)
 			},
+			// no UndoIfLast: the undo removes only the NIC this plan made, by
+			// its MAC, so a later plan's NIC stays
 			Undo: undoServer(serverID, func(_ *state.Tx, server *state.Server) {
 				server.PrivateNets = slices.DeleteFunc(server.PrivateNets, func(nic state.ServerPrivateNet) bool {
 					return nic.MAC == attached.MAC

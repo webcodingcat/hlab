@@ -34,7 +34,7 @@ func networkActions(l *lab.Lab) lab.ActionTable {
 
 // undoNetwork returns an undo that makes change to the network, if it is
 // still there.
-func undoNetwork(id int64, change func(network *state.Network)) func(tx *state.Tx) error {
+func undoNetwork(id int64, change func(tx *state.Tx, network *state.Network)) func(tx *state.Tx) error {
 	return func(tx *state.Tx) error {
 		network, err := state.Get(tx, state.Networks, id)
 		if errors.Is(err, state.ErrNotFound) {
@@ -43,7 +43,7 @@ func undoNetwork(id int64, change func(network *state.Network)) func(tx *state.T
 		if err != nil {
 			return err
 		}
-		change(network)
+		change(tx, network)
 		return nil
 	}
 }
@@ -54,7 +54,7 @@ func undoNetwork(id int64, change func(network *state.Network)) func(tx *state.T
 // runs only if nothing was queued behind: a later plan built on this
 // change (a delete_subnet and then an add_subnet of the same range), and
 // taking it back would leave the network with the range twice.
-func networkPlan(l *lab.Lab, id int64, undo func(network *state.Network)) lab.Plan {
+func networkPlan(l *lab.Lab, id int64, undo func(tx *state.Tx, network *state.Network)) lab.Plan {
 	return lab.Plan{Steps: l.Machine().ChangeNetwork, Undo: undoNetwork(id, undo), UndoIfLast: true}
 }
 
@@ -85,7 +85,15 @@ func planAddSubnet(l *lab.Lab) planFunc {
 		}
 		network.Subnets = append(network.Subnets, subnet)
 		sortSubnets(network)
-		return networkPlan(l, network.ID, func(network *state.Network) {
+		subnetRange := netip.MustParsePrefix(subnet.IPRange)
+		return networkPlan(l, network.ID, func(tx *state.Tx, network *state.Network) {
+			// a server's attach runs in the server's queue, not the
+			// network's, and may have taken an address in the new subnet
+			for address := range takenAddresses(tx, network, 0) {
+				if subnetRange.Contains(address) {
+					return
+				}
+			}
 			network.Subnets = slices.DeleteFunc(network.Subnets, func(other state.NetworkSubnet) bool { return other == subnet })
 		}), nil
 	}
@@ -132,7 +140,7 @@ func planDeleteSubnet(l *lab.Lab) planFunc {
 		}
 		subnet := network.Subnets[index]
 		network.Subnets = slices.Delete(network.Subnets, index, index+1)
-		return networkPlan(l, network.ID, func(network *state.Network) {
+		return networkPlan(l, network.ID, func(_ *state.Tx, network *state.Network) {
 			network.Subnets = append(network.Subnets, subnet)
 			sortSubnets(network)
 		}), nil
@@ -164,7 +172,7 @@ func planAddRoute(l *lab.Lab) planFunc {
 			return lab.Plan{}, web.RefusalNull(http.StatusForbidden, networkLimitResourceErr, networkRouteLimit)
 		}
 		network.Routes = append(network.Routes, route)
-		return networkPlan(l, network.ID, func(network *state.Network) {
+		return networkPlan(l, network.ID, func(_ *state.Tx, network *state.Network) {
 			network.Routes = slices.DeleteFunc(network.Routes, func(other state.NetworkRoute) bool { return other == route })
 		}), nil
 	}
@@ -198,7 +206,7 @@ func planDeleteRoute(l *lab.Lab) planFunc {
 		}
 		route := network.Routes[index]
 		network.Routes = slices.Delete(network.Routes, index, index+1)
-		return networkPlan(l, network.ID, func(network *state.Network) {
+		return networkPlan(l, network.ID, func(_ *state.Tx, network *state.Network) {
 			network.Routes = append(network.Routes, route)
 		}), nil
 	}
@@ -243,7 +251,7 @@ func planChangeIPRange(l *lab.Lab) planFunc {
 		}
 		before := network.IPRange
 		network.IPRange = ipRange.String()
-		return networkPlan(l, network.ID, func(network *state.Network) {
+		return networkPlan(l, network.ID, func(_ *state.Tx, network *state.Network) {
 			if network.IPRange == ipRange.String() {
 				network.IPRange = before
 			}

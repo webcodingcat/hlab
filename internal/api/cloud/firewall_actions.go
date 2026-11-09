@@ -532,25 +532,35 @@ func firewallsOf(tx *state.Tx, serverID int64) int {
 // (recordSelectorChange); one that is gone leaves without. It tells
 // whether anything changed.
 func refreshFirewallSelectors(l *lab.Lab, tx *state.Tx, projectID int64) bool {
-	ids := state.IDs(tx, state.Firewalls, func(firewall *state.Firewall) bool {
+	firewallIDs := state.IDs(tx, state.Firewalls, func(firewall *state.Firewall) bool {
 		return firewall.ProjectID == projectID && slices.ContainsFunc(firewall.AppliedTo, func(target state.FirewallTarget) bool { return target.ServerID == 0 })
 	})
 	servers := map[int64]*state.Server{}
 	var serverIDs []int64
-	for _, id := range state.IDs(tx, state.Servers, func(server *state.Server) bool { return server.ProjectID == projectID }) {
-		if server, err := state.Get(tx, state.Servers, id); err == nil {
-			servers[id] = server
-			serverIDs = append(serverIDs, id)
+	for _, serverID := range state.IDs(tx, state.Servers, func(server *state.Server) bool { return server.ProjectID == projectID }) {
+		if server, err := state.Get(tx, state.Servers, serverID); err == nil {
+			servers[serverID] = server
+			serverIDs = append(serverIDs, serverID)
 		}
 	}
-	changed := false
 	var firewalls []*state.Firewall
-	for _, id := range ids {
-		firewall, err := state.Get(tx, state.Firewalls, id)
-		if err != nil {
-			continue
+	for _, firewallID := range firewallIDs {
+		if firewall, err := state.Get(tx, state.Firewalls, firewallID); err == nil {
+			firewalls = append(firewalls, firewall)
 		}
-		firewalls = append(firewalls, firewall)
+	}
+	// all leave first, so that a server's room for another firewall counts
+	// only those that still hold it
+	left := leaveSelectors(l, tx, firewalls, servers)
+	joined := joinSelectors(l, tx, firewalls, servers, serverIDs)
+	return left || joined
+}
+
+// leaveSelectors takes out of each label selector the servers that no
+// longer match it or are gone. It tells whether any left.
+func leaveSelectors(l *lab.Lab, tx *state.Tx, firewalls []*state.Firewall, servers map[int64]*state.Server) bool {
+	changed := false
+	for _, firewall := range firewalls {
 		for i := range firewall.AppliedTo {
 			target := &firewall.AppliedTo[i]
 			if target.ServerID != 0 {
@@ -558,11 +568,11 @@ func refreshFirewallSelectors(l *lab.Lab, tx *state.Tx, projectID int64) bool {
 			}
 			selector, _ := web.ParseSelector(target.Selector)
 			var kept []int64
-			for _, id := range target.Servers {
-				server, there := servers[id]
+			for _, serverID := range target.Servers {
+				server, there := servers[serverID]
 				switch {
 				case there && selector.Matches(server.Labels):
-					kept = append(kept, id)
+					kept = append(kept, serverID)
 				case there:
 					recordSelectorChange(l, tx, server, firewall.ID, false)
 				}
@@ -573,6 +583,14 @@ func refreshFirewallSelectors(l *lab.Lab, tx *state.Tx, projectID int64) bool {
 			target.Servers = kept
 		}
 	}
+	return changed
+}
+
+// joinSelectors puts under each label selector the servers that match it,
+// are not under the firewall yet and have room for another. It tells
+// whether any joined.
+func joinSelectors(l *lab.Lab, tx *state.Tx, firewalls []*state.Firewall, servers map[int64]*state.Server, serverIDs []int64) bool {
+	changed := false
 	for _, firewall := range firewalls {
 		for i := range firewall.AppliedTo {
 			target := &firewall.AppliedTo[i]
@@ -580,12 +598,12 @@ func refreshFirewallSelectors(l *lab.Lab, tx *state.Tx, projectID int64) bool {
 				continue
 			}
 			selector, _ := web.ParseSelector(target.Selector)
-			for _, id := range serverIDs {
-				if !selector.Matches(servers[id].Labels) || slices.Contains(lab.FirewallServers(firewall), id) || firewallsOf(tx, id) >= firewallsPerServer {
+			for _, serverID := range serverIDs {
+				if !selector.Matches(servers[serverID].Labels) || slices.Contains(lab.FirewallServers(firewall), serverID) || firewallsOf(tx, serverID) >= firewallsPerServer {
 					continue
 				}
-				target.Servers = append(target.Servers, id)
-				recordSelectorChange(l, tx, servers[id], firewall.ID, true)
+				target.Servers = append(target.Servers, serverID)
+				recordSelectorChange(l, tx, servers[serverID], firewall.ID, true)
 				changed = true
 			}
 		}

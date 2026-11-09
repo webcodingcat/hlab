@@ -662,15 +662,7 @@ func TestFailedAttachLeavesNoTrace(t *testing.T) {
 		t.Errorf("after the failed attach the private_net is %+v", got)
 	}
 	waitForPicture(t, agent, agentproto.PictureLinks, `"destination":"10.0.1.1/32"`, false)
-	nics := 0
-	for _, call := range test.machine.Calls() {
-		if strings.HasPrefix(call, "AttachNIC "+lab.ServerVM(server.Server.ID)+" 86:00:") {
-			nics++
-		} else if strings.HasPrefix(call, "DetachNIC "+lab.ServerVM(server.Server.ID)+" 86:00:") {
-			nics--
-		}
-	}
-	if nics != 0 {
+	if nics := vmNICs(test, server.Server.ID); nics != 0 {
 		t.Errorf("the VM kept %d NICs of the failed attach: %v", nics, test.machine.Calls())
 	}
 }
@@ -762,6 +754,28 @@ func TestNetworkDeletedDuringItsActionAbortsIt(t *testing.T) {
 	if got := getServer(t, test, server.Server.ID).PrivateNet; len(got) != 0 {
 		t.Errorf("after the delete the server is in %+v", got)
 	}
+	// the NIC the aborted attach added leaves the VM after the attach ended
+	deadline := time.Now().Add(5 * time.Second)
+	for vmNICs(test, server.Server.ID) != 0 {
+		if time.Now().After(deadline) {
+			t.Fatalf("the VM kept the aborted attach's NIC: %v", test.machine.Calls())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// vmNICs counts the private NICs the server's VM has: those attached less
+// those detached.
+func vmNICs(test *testLab, serverID int64) int {
+	nics := 0
+	for _, call := range test.machine.Calls() {
+		if strings.HasPrefix(call, "AttachNIC "+lab.ServerVM(serverID)+" 86:00:") {
+			nics++
+		} else if strings.HasPrefix(call, "DetachNIC "+lab.ServerVM(serverID)+" 86:00:") {
+			nics--
+		}
+	}
+	return nics
 }
 
 // Each private NIC keeps its number in the metadata's private-networks

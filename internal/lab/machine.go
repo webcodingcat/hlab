@@ -513,11 +513,9 @@ func (m *Machine) UpdatePicturesLater() {
 	if m.lab.closed {
 		return
 	}
-	m.lab.background.Add(1)
-	go func() {
-		defer m.lab.background.Done()
+	m.lab.background.Go(func() {
 		if err := m.UpdatePictures(m.lab.ctx); err != nil && m.lab.ctx.Err() == nil {
 			m.lab.logger.Warn("sending the pictures after a change; the watchdog sends them again", "error", err)
 		}
-	}()
+	})
 }
