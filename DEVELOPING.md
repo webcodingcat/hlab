@@ -288,6 +288,7 @@ What a plan and a row can say (`lab.Plan`, `lab.ActionSpec`):
 | `UndoIfLast` | the `Undo` runs only if nothing was queued behind |
 | `RunIfCanceled` | the steps run even when the action is canceled while it waits (a detach's NIC) |
 | `Resources` | more resources the action names; a delete of one aborts it |
+| `Failure` | the action ends at once with Hetzner's error, without steps (a volume's attach while it is attached elsewhere) |
 | `Locks` | more resources the action flags; busy ones are 423 |
 | `Unflagged` (row) | no flag: runs alongside, changes only records |
 | `Queued` (table) | a busy resource's actions wait in line instead of 423 |
@@ -425,7 +426,8 @@ What a plan and a row can say (`lab.Plan`, `lab.ActionSpec`):
   - A plan's `Steps` calls exactly one step method and nothing else
     (`Steps: l.Machine().ChangePrimaryIP` or a closure that passes the
     IDs). An action that changes nothing on the machine has no steps and
-    ends at once (an unassign of a Primary IP that has no server).
+    ends at once (an unassign of a Primary IP that has no server); one that
+    Hetzner fails at once has a `Failure` instead.
   - What the plans of several resources share stays in `api/cloud`, with the
     resource whose records it changes (`releaseServer` in
     `server_actions.go`).

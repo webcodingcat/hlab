@@ -1,6 +1,7 @@
 package cloud_test
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -318,30 +319,100 @@ func TestVolumeAttachAndDetachInTheQueue(t *testing.T) {
 
 	late := createVolume(t, test, map[string]any{"name": "late", "size": 10, "location": "fsn1"})
 	waitActions(t, test, late.Action)
-	for _, vmMade := range []bool{true, false} {
-		// once the create has made the VM, the actions change it after the
-		// create; before, the create makes it as the records then are (the
-		// second round may land either way; both must end alike)
-		creating := createServer(t, test, map[string]any{"name": fmt.Sprintf("db-%v", vmMade), "server_type": "cpx22", "image": "debian-13",
-			"location": "fsn1", "start_after_create": false, "volumes": []int64{created.Volume.ID}})
-		if vmMade {
-			waitForCall(t, test, "CreateVM "+lab.ServerVM(creating.Server.ID))
+	// once the create has made the VM, the actions change it after the
+	// create
+	creating := createServer(t, test, map[string]any{"name": "db", "server_type": "cpx22", "image": "debian-13",
+		"location": "fsn1", "start_after_create": false, "volumes": []int64{created.Volume.ID}})
+	waitForCall(t, test, "CreateVM "+lab.ServerVM(creating.Server.ID))
+	checkActionsDuringCreate(t, test, creating, created.Volume.ID, late.Volume.ID)
+}
+
+// Before a server's create has made the VM, an attach and a detach are
+// only in the records, which the VM is made from (measured 2026-11-09:
+// both 201, and in the end the server has the second volume only). The
+// image's load holds the create before the VM.
+func TestVolumeActionsBeforeTheServersVM(t *testing.T) {
+	test := newTestLab(t)
+	quietMachine(t, test)
+	first := createVolume(t, test, map[string]any{"name": "first", "size": 10, "location": "fsn1"})
+	late := createVolume(t, test, map[string]any{"name": "late", "size": 10, "location": "fsn1"})
+	waitActions(t, test, first.Action, late.Action)
+	test.machine.Delay("FlattenDisk", 300*time.Millisecond)
+	creating := createServer(t, test, map[string]any{"name": "db", "server_type": "cpx22", "image": "debian-13",
+		"location": "fsn1", "start_after_create": false, "volumes": []int64{first.Volume.ID}})
+	checkActionsDuringCreate(t, test, creating, first.Volume.ID, late.Volume.ID)
+	if containsPrefix(test.machine.Calls(), "AttachDisk "+lab.ServerVM(creating.Server.ID)) {
+		t.Errorf("the attach before the VM changed the VM: %v", test.machine.Calls())
+	}
+}
+
+// checkActionsDuringCreate detaches one volume from a server whose create
+// runs and attaches another; both end well, and the VM has the second.
+func checkActionsDuringCreate(t *testing.T, test *testLab, creating createAnswer, detached, attached int64) {
+	t.Helper()
+	detach := actionOf(t, "detach during the create", volumeAction(test, detached, "detach", nil))
+	attach := actionOf(t, "attach during the create", volumeAction(test, attached, "attach", map[string]any{"server": creating.Server.ID}))
+	for _, action := range waitActions(t, test, creating.Action, detach, attach) {
+		if action.Status != "success" {
+			t.Errorf("%s ended %s: %+v", action.Command, action.Status, action.Error)
 		}
-		detach := actionOf(t, "detach during the create", volumeAction(test, created.Volume.ID, "detach", nil))
-		attach := actionOf(t, "attach during the create", volumeAction(test, late.Volume.ID, "attach", map[string]any{"server": creating.Server.ID}))
-		for _, action := range waitActions(t, test, creating.Action, detach, attach) {
-			if action.Status != "success" {
-				t.Errorf("VM made %v: %s ended %s: %+v", vmMade, action.Command, action.Status, action.Error)
-			}
-		}
-		disks := test.machine.Disks(lab.ServerVM(creating.Server.ID))
-		lateSlot := slices.IndexFunc(slices.Collect(maps.Values(disks)), func(path string) bool {
-			return strings.HasSuffix(path, fmt.Sprintf("volumes/%d.vhdx", late.Volume.ID))
-		})
-		if len(disks) != 2 || lateSlot < 0 {
-			t.Errorf("VM made %v: the VM's disks %v, want the system disk and the late volume", vmMade, disks)
-		}
-		waitActions(t, test, serverDelete(t, test, creating.Server.ID))
+	}
+	disks := test.machine.Disks(lab.ServerVM(creating.Server.ID))
+	found := slices.ContainsFunc(slices.Collect(maps.Values(disks)), func(path string) bool {
+		return strings.HasSuffix(path, fmt.Sprintf("volumes/%d.vhdx", attached))
+	})
+	if len(disks) != 2 || !found {
+		t.Errorf("the VM's disks %v, want the system disk and volume %d", disks, attached)
+	}
+}
+
+// A failed resize, attach or detach takes back only what it set itself:
+// an action queued behind keeps what it set (DEVELOPING.md, Actions).
+func TestFailedVolumeActionsUndoWhatTheySet(t *testing.T) {
+	test := newTestLab(t)
+	quietMachine(t, test)
+	server := offServer(t, test, "web")
+	created := createVolume(t, test, map[string]any{"name": "data", "size": 10, "server": server.Server.ID})
+	waitActions(t, test, created.Action, created.NextActions[0])
+	id := created.Volume.ID
+	broken := errors.New("broken")
+
+	test.machine.FailNext("ResizeDisk", broken)
+	expectFailed(t, test, actionOf(t, "resize", volumeAction(test, id, "resize", map[string]any{"size": 20})))
+	if got := getVolume(t, test, id); got.Size != 10 {
+		t.Errorf("after a failed resize the size is %d", got.Size)
+	}
+
+	// a failed resize with a detach behind: the size goes back, the detach
+	// stays
+	test.machine.FailNext("ResizeDisk", broken)
+	test.machine.Delay("ResizeDisk", 100*time.Millisecond)
+	resize := actionOf(t, "resize", volumeAction(test, id, "resize", map[string]any{"size": 20}))
+	detach := actionOf(t, "detach behind", volumeAction(test, id, "detach", nil))
+	waitActions(t, test, resize, detach)
+	test.machine.Delay("ResizeDisk", 0)
+	if got := getVolume(t, test, id); got.Size != 10 || got.Server != nil {
+		t.Errorf("after a failed resize with a detach behind: size %d, server %v", got.Size, got.Server)
+	}
+
+	// a failed attach with a resize behind: the attach goes back, the
+	// size stays
+	test.machine.FailNext("AttachDisk", broken)
+	test.machine.Delay("AttachDisk", 100*time.Millisecond)
+	attach := actionOf(t, "attach", volumeAction(test, id, "attach", map[string]any{"server": server.Server.ID}))
+	resize = actionOf(t, "resize behind", volumeAction(test, id, "resize", map[string]any{"size": 30}))
+	ended := waitActions(t, test, attach, resize)
+	test.machine.Delay("AttachDisk", 0)
+	if got := getVolume(t, test, id); got.Server != nil || got.Size != 30 || ended[0].Status != "error" {
+		t.Errorf("after a failed attach with a resize behind: server %v, size %d, %+v", got.Server, got.Size, ended)
+	}
+
+	// a failed detach gives the volume back to its server
+	waitActions(t, test, actionOf(t, "attach", volumeAction(test, id, "attach", map[string]any{"server": server.Server.ID})))
+	test.machine.FailNext("DetachDisk", broken)
+	expectFailed(t, test, actionOf(t, "detach", volumeAction(test, id, "detach", nil)))
+	if got := getVolume(t, test, id); got.Server == nil || *got.Server != server.Server.ID {
+		t.Errorf("after a failed detach the volume has the server %v", got.Server)
 	}
 }
 

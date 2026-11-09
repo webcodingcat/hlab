@@ -436,8 +436,9 @@ errors as `lab.ErrInvalid`, `lab.ErrExists` and `state.ErrNotFound`.
   - Internet access is on by default.
   - `Lab.DeleteProject` first removes the records. Its tokens are gone then, so no
     new request is admitted. Then it cancels the running actions, which find their
-    actions gone, and last removes its servers' VMs, disks and seeds and sends
-    the pictures without them, as a server's delete does. What it fails to
+    actions gone, and last removes its servers' VMs, disks and seeds, then
+    its volumes' disks, and sends the pictures without them, as a server's
+    delete does. What it fails to
     remove, the next start removes.
   - A request admitted just before the delete may still try to create something.
     So every create calls `lab.CheckProject` inside its `Change` (`Lab.Act` does

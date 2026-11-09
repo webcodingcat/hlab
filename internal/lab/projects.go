@@ -135,8 +135,8 @@ func checkLimits(limits state.Limits) error {
 }
 
 // DeleteProject removes a project with everything that belongs to it: its
-// tokens, resources, actions and faults, and its servers' VMs, disks and
-// seeds. Its running actions are canceled.
+// tokens, resources, actions and faults, its servers' VMs, disks and
+// seeds, and its volumes' disks. Its running actions are canceled.
 //
 // The records go first, so that no new request of the project is admitted
 // (its tokens are gone); then the running actions are canceled, and they find

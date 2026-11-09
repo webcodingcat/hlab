@@ -83,7 +83,9 @@ for what the operator keeps), the phase or step that closes it.
   servers, actions or the CLI and what the step names mean; long lines in
   `internal/lab/servers.go`; a project's `Limits` are stored but not
   enforced, and the docs promise more; `DetachNICsLater`'s parameter
-  `aborted` also takes running actions (`waitFor`).
+  `aborted` also takes running actions (`waitFor`); the lock order
+  (`pictureMu`, then the lab's mutex) written down; the README says
+  what the examples' names `tofu-1a` to `tofu-2a` mean.
 - **optional, 2b-R:** a plan's steps take a fixed input from the plan
   (a struct, not a closure over IDs), so that "values from the plan, not
   the record" is checked, not kept by hand (with `holds`).

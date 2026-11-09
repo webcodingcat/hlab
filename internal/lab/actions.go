@@ -88,6 +88,11 @@ type Plan struct {
 	Undo func(tx *state.Tx) error
 	// Resources are more resources the action names (a target server).
 	Resources []state.ResourceRef
+	// Failure, if set, ends the action at once with Hetzner's error, as
+	// Hetzner records an action that fails before it does anything (a
+	// volume's attach while it is attached elsewhere); the plan has no
+	// steps then and changes nothing.
+	Failure *Failure
 	// Locks are more resources the steps work on (the server a Primary
 	// IP's assign changes): they are flagged too, and a LockedError if
 	// busy.
@@ -232,7 +237,10 @@ func (l *Lab) planAction(tx *state.Tx, table ActionTable, command string, req Re
 	}
 	resources := append([]state.ResourceRef{target}, plan.Resources...)
 	action := l.newAction(tx, req.ProjectID, spec.Name, resources)
-	if plan.Steps == nil {
+	if plan.Failure != nil {
+		l.finishAction(tx, action, &state.Failure{Code: plan.Failure.Code, Message: plan.Failure.Message})
+		plan.Steps = nil
+	} else if plan.Steps == nil {
 		l.finishAction(tx, action, nil)
 	}
 	return plannedAction{action: action, plan: plan, target: target, spec: spec, queued: table.Queued}, nil
@@ -337,9 +345,8 @@ func actionFailed(err error) *state.Failure {
 	return &state.Failure{Code: "action_failed", Message: err.Error()}
 }
 
-// Failure is an error of an action's steps with Hetzner's code and
-// message, which the action shows as its error (a volume's attach to a
-// server in another location: "unknown_error").
+// Failure is Hetzner's code and message of a failed action: a plan's
+// Failure, or an error of its steps that the action shows as its error.
 type Failure struct {
 	Code    string
 	Message string

@@ -100,11 +100,11 @@ func planAttachVolume(l *lab.Lab, afterCreate bool) planFunc {
 		}
 		server, err := state.Get(tx, state.Servers, *serverID)
 		if err != nil || server.ProjectID != req.ProjectID {
-			return lab.Plan{}, web.Refusal(http.StatusNotFound, "not_found", volumeServerNotFoundError)
+			return lab.Plan{}, web.Refusal(http.StatusNotFound, "not_found", volumeServerNotFound)
 		}
 		plan := lab.Plan{Resources: []state.ResourceRef{{Type: lab.ServerResource, ID: server.ID}}}
 		failing := func(code, message string) (lab.Plan, error) {
-			plan.Steps = func(context.Context) error { return &lab.Failure{Code: code, Message: message} }
+			plan.Failure = &lab.Failure{Code: code, Message: message}
 			return plan, nil
 		}
 		switch {
@@ -128,22 +128,16 @@ func planAttachVolume(l *lab.Lab, afterCreate bool) planFunc {
 			return plan, nil // the create makes the VM with the disk
 		}
 		// the steps take the plan's server and slot: a detach queued behind
-		// changes the record before they run
+		// changes the record before they run. The undo takes the attach back
+		// by its own server and slot (slots go round), so an action queued
+		// behind keeps what it set.
 		target, disk := server.ID, l.Machine().VolumeSlot(volume.ID, volume.Slot, volume.Automount)
-		plan.Steps = func(ctx context.Context) error {
-			if creating {
-				if err := l.Machine().WaitForServer(ctx, target); err != nil {
-					return err
-				}
-			}
-			return l.Machine().AttachVolume(ctx, target, disk)
-		}
+		plan.Steps = func(ctx context.Context) error { return l.Machine().AttachVolume(ctx, target, disk, creating) }
 		plan.Undo = undoRecord(state.Volumes, volume.ID, func(_ *state.Tx, volume *state.Volume) {
-			if volume.ServerID == target {
+			if volume.ServerID == target && volume.Slot == disk.Slot {
 				volume.ServerID, volume.Slot = 0, 0
 			}
 		})
-		plan.UndoIfLast = true
 		return plan, nil
 	}
 }
@@ -206,8 +200,9 @@ func attachVolume(tx *state.Tx, volume *state.Volume, server *state.Server, auto
 // planDetachVolume takes a volume from its server; the steps take the
 // disk out of the VM. A volume whose server is being deleted is 423; a
 // detach while the server's create runs is 201 and runs after the create
-// (measured 2026-11-09). If the steps fail, the undo gives the
-// volume back to the server, if it and the slot are still there.
+// (measured 2026-11-09). If the steps fail, the undo gives the volume
+// back only while nothing else attached it and the server and the slot
+// are there, so it needs no UndoIfLast.
 func planDetachVolume(l *lab.Lab) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		volume, err := callerVolume(tx, req.ProjectID, req.ID)
@@ -232,12 +227,7 @@ func planDetachVolume(l *lab.Lab) planFunc {
 		return lab.Plan{
 			Resources: plan.Resources,
 			Steps: func(ctx context.Context) error {
-				if creating {
-					if err := l.Machine().WaitForServer(ctx, serverID); err != nil {
-						return err
-					}
-				}
-				return l.Machine().DetachVolume(ctx, serverID, slot)
+				return l.Machine().DetachVolume(ctx, serverID, slot, creating)
 			},
 			Undo: undoRecord(state.Volumes, volume.ID, func(tx *state.Tx, volume *state.Volume) {
 				_, err := state.Get(tx, state.Servers, serverID)
@@ -248,7 +238,6 @@ func planDetachVolume(l *lab.Lab) planFunc {
 					volume.ServerID, volume.Slot = serverID, slot
 				}
 			}),
-			UndoIfLast: true,
 		}, nil
 	}
 }
@@ -285,9 +274,8 @@ func planResizeVolume(l *lab.Lab) planFunc {
 		}
 		volumeID, sizeGB := volume.ID, *body.Size
 		plan := lab.Plan{
-			Steps:      func(ctx context.Context) error { return l.Machine().ResizeVolume(ctx, volumeID, sizeGB) },
-			Undo:       undoVolumeSize(volume.ID, volume.SizeGB),
-			UndoIfLast: true,
+			Steps: func(ctx context.Context) error { return l.Machine().ResizeVolume(ctx, volumeID, sizeGB) },
+			Undo:  undoVolumeSize(volumeID, volume.SizeGB, sizeGB),
 		}
 		if volume.ServerID != 0 {
 			plan.Resources = []state.ResourceRef{{Type: lab.ServerResource, ID: volume.ServerID}}
@@ -306,9 +294,16 @@ func resizing(tx *state.Tx, volumeID int64) bool {
 	return len(running) > 0
 }
 
-// undoVolumeSize returns the undo of a resize: the size it had.
-func undoVolumeSize(id int64, sizeGB int) func(tx *state.Tx) error {
-	return undoRecord(state.Volumes, id, func(_ *state.Tx, volume *state.Volume) { volume.SizeGB = sizeGB })
+// undoVolumeSize returns the undo of a resize: the size it had, if the
+// volume still has the size the resize set. No second resize is planned
+// while one runs (resizing), so an action queued behind never builds on
+// it.
+func undoVolumeSize(id int64, before, after int) func(tx *state.Tx) error {
+	return undoRecord(state.Volumes, id, func(_ *state.Tx, volume *state.Volume) {
+		if volume.SizeGB == after {
+			volume.SizeGB = before
+		}
+	})
 }
 
 // volumeProtectionRequest is the body of change_protection.

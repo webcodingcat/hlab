@@ -20,40 +20,42 @@ import (
 
 // Hetzner's texts about volumes (measured 2026-11-09).
 const (
-	volumeNameEmpty           = "is not allowed to be empty"
-	volumeNameInvalid         = "Invalid name."
-	volumeNameTaken           = "name is already in use"
-	volumeSizeRange           = "Must be between 10 and 10240."
-	volumeLocationRequired    = "location is required if no server is given"
-	volumeLocationUnknown     = "this location does not exist or is currently not available"
-	volumeFormatUnknown       = "unknown value, must be empty or xfs or ext4"
-	volumeAutomountNoFormat   = "automount requires format to be provided"
-	volumeLabelKey            = "key contains invalid characters or is malformed"
-	volumeLabelValue          = "value contains invalid characters or is malformed"
-	volumeBadBody             = "can not read request body"
-	volumeNotFound            = "volume not found"
-	volumeGone                = "volume does not exist"
-	volumeProtected           = "volume deletion is protected"
-	volumeStillAttached       = "volume with ID '%d' is still attached to a server"
-	volumeBusy                = "cannot perform operation because resource is locked"
-	volumeNotAttached         = "volume not attached to a server"
-	volumeOtherLocation       = "server and volume must be in the same location"
-	volumesPerServerReached   = "number of volumes attached to a single server reached"
-	volumeAssigneeRequired    = "is required"
-	volumeAssigneeType        = "unsupported resource type %q"
-	volumeTooSmall            = "volume size is too small"
-	volumeTooSmallField       = "size needs to be larger than current volume size"
-	volumeAttachFailed        = "volume attach failed"
-	volumeMinGB, volumeMaxGB  = 10, 10240
-	volumesPerServer          = 16
-	volumeLinuxDevice         = "/dev/disk/by-id/scsi-0HC_Volume_%d"
-	volumeAssigneeTypeServer  = "server"
-	volumeAlreadyAttached     = "volume already attached"
-	serverVolumeNotFound      = "volume not found"
-	serverVolumeLocation      = "volume in invalid location"
-	volumeNameMax             = 64
-	volumeNameTooLong         = "Longer than maximum length 64."
-	volumeServerNotFoundError = "server not found"
+	volumeNameEmpty          = "is not allowed to be empty"
+	volumeNameInvalid        = "Invalid name."
+	volumeNameTaken          = "name is already in use"
+	volumeSizeRange          = "Must be between 10 and 10240."
+	volumeLocationRequired   = "location is required if no server is given"
+	volumeLocationUnknown    = "this location does not exist or is currently not available"
+	volumeFormatUnknown      = "unknown value, must be empty or xfs or ext4"
+	volumeAutomountNoFormat  = "automount requires format to be provided"
+	volumeLabelKey           = "key contains invalid characters or is malformed"
+	volumeLabelValue         = "value contains invalid characters or is malformed"
+	volumeBadBody            = "can not read request body"
+	volumeNotFound           = "volume not found"
+	volumeGone               = "volume does not exist"
+	volumeProtected          = "volume deletion is protected"
+	volumeStillAttached      = "volume with ID '%d' is still attached to a server"
+	volumeBusy               = "cannot perform operation because resource is locked"
+	volumeNotAttached        = "volume not attached to a server"
+	volumeOtherLocation      = "server and volume must be in the same location"
+	volumesPerServerReached  = "number of volumes attached to a single server reached"
+	volumeAssigneeRequired   = "is required"
+	volumeAssigneeType       = "unsupported resource type %q"
+	volumeTooSmall           = "volume size is too small"
+	volumeTooSmallField      = "size needs to be larger than current volume size"
+	volumeAttachFailed       = "volume attach failed"
+	volumeMinGB, volumeMaxGB = 10, 10240
+	volumesPerServer         = 16
+	volumeLinuxDevice        = "/dev/disk/by-id/scsi-0HC_Volume_%d"
+	volumeAssigneeTypeServer = "server"
+	volumeAlreadyAttached    = "volume already attached"
+	// a server's create naming a missing volume: 422, the same text as
+	// the volumes' 404
+	serverVolumeNotFound = "volume not found"
+	serverVolumeLocation = "volume in invalid location"
+	volumeNameMax        = 64
+	volumeNameTooLong    = "Longer than maximum length 64."
+	volumeServerNotFound = "server not found"
 )
 
 // volumeName is a name Hetzner takes for a volume: letters, digits, dots,

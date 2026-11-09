@@ -38,16 +38,16 @@ func (m *Machine) VolumeSlot(id int64, slot int, automount bool) system.VolumeSl
 // records. A volume's attach or detach while the server's create runs
 // asks it: before, the create makes the VM as the records then are, and
 // the action has nothing to do; after, it waits for the create
-// (WaitForServer) and changes the VM. The caller holds the lab's mutex,
+// (AttachVolume, DetachVolume) and changes the VM. The caller holds the lab's mutex,
 // as a plan does (Machine's fields).
 func (m *Machine) VolumesRead(serverID int64) bool {
 	return m.volumesRead[serverID]
 }
 
-// WaitForServer waits until the actions that run on a server have ended:
+// waitForServer waits until the actions that run on a server have ended:
 // a volume's attach or detach sent during the server's create runs after
 // it, as on Hetzner (measured 2026-11-09).
-func (m *Machine) WaitForServer(ctx context.Context, serverID int64) error {
+func (m *Machine) waitForServer(ctx context.Context, serverID int64) error {
 	for _, done := range m.lab.RunningOn([]state.ResourceRef{serverRef(serverID)}) {
 		if err := waitFor(ctx, done); err != nil {
 			return err
@@ -91,14 +91,27 @@ func (m *Machine) CreateVolume(ctx context.Context, id int64, sizeGB int, format
 
 // AttachVolume is the attach action's steps: the volume's disk goes into
 // its slot of the server's VM, also while it runs, with the disk ID that
-// names it in the guest (and asks for the mount if the attach did).
-func (m *Machine) AttachVolume(ctx context.Context, serverID int64, volume system.VolumeSlot) error {
+// names it in the guest (and asks for the mount if the attach did). An
+// attach sent during the server's create (afterCreate) waits for it
+// first (WaitForServer).
+func (m *Machine) AttachVolume(ctx context.Context, serverID int64, volume system.VolumeSlot, afterCreate bool) error {
+	if afterCreate {
+		if err := m.waitForServer(ctx, serverID); err != nil {
+			return err
+		}
+	}
 	return m.system.AttachVolume(ctx, ServerVM(serverID), volume)
 }
 
 // DetachVolume is the detach action's steps: the disk leaves the slot of
-// the server's VM, also while it runs.
-func (m *Machine) DetachVolume(ctx context.Context, serverID int64, slot int) error {
+// the server's VM, also while it runs; after the server's create, as for
+// an attach.
+func (m *Machine) DetachVolume(ctx context.Context, serverID int64, slot int, afterCreate bool) error {
+	if afterCreate {
+		if err := m.waitForServer(ctx, serverID); err != nil {
+			return err
+		}
+	}
 	return m.system.DetachVolume(ctx, ServerVM(serverID), slot)
 }
 
