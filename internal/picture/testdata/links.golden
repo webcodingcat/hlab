@@ -112,6 +112,11 @@
       "source": "172.31.1.1"
     },
     {
+      "destination": "100.64.0.3/32",
+      "device": "public",
+      "source": "172.31.1.1"
+    },
+    {
       "destination": "2001:db8:1:3::/64",
       "device": "public"
     },

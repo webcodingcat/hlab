@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 
+	"github.com/webcodingcat/hlab/internal/picture"
 	"github.com/webcodingcat/hlab/internal/state"
 )
 
@@ -65,4 +66,16 @@ func poolAddress(ipType state.IPType, offset int) (address string, ok bool) {
 	bytes := publicIPv4Range.Addr().As4()
 	bytes[2], bytes[3] = byte(offset>>8), byte(offset)
 	return netip.AddrFrom4(bytes).String(), true
+}
+
+// serviceAddress returns the IPv4 address that a server with IPv6 only
+// gets by DHCP: the number of its /64 in the IPv6 range, counted into
+// picture.ServiceRange4. Each /64 has its own number, so the address needs
+// no record and follows the /64 to another server. Hetzner's addresses
+// look random; the guest cannot tell.
+func serviceAddress(ipv6 netip.Prefix) netip.Addr {
+	bytes := ipv6.Addr().As16()
+	address := picture.ServiceRange4.Addr().As4()
+	address[2], address[3] = bytes[6], bytes[7]
+	return netip.AddrFrom4(address)
 }

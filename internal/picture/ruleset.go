@@ -26,6 +26,7 @@ type rulesetValues struct {
 	Host4, Host6                  string
 	Resolver4, Resolver6          string
 	Metadata                      string
+	ServiceRange4                 string
 	Range4                        string
 	NoInternet                    []string
 	FirewallMaps                  []firewallMap
@@ -44,17 +45,18 @@ type firewallMap struct {
 func Ruleset(lab Lab) agentproto.Ruleset {
 	resolvers := lab.resolvers()
 	values := rulesetValues{
-		Link:      DeviceLink,
-		Public:    DevicePublic,
-		Private:   DevicePrivate,
-		VRFs:      vrfPrefix + "*",
-		Uplink:    DeviceUplink,
-		Host4:     hostAddress(lab.HostLink4, hostNumber).String(),
-		Host6:     hostAddress(lab.HostLink6, hostNumber).String(),
-		Resolver4: resolvers[0].String(),
-		Resolver6: resolvers[1].String(),
-		Metadata:  MetadataAddress.String(),
-		Range4:    lab.Range4.String(),
+		Link:          DeviceLink,
+		Public:        DevicePublic,
+		Private:       DevicePrivate,
+		VRFs:          vrfPrefix + "*",
+		Uplink:        DeviceUplink,
+		Host4:         hostAddress(lab.HostLink4, hostNumber).String(),
+		Host6:         hostAddress(lab.HostLink6, hostNumber).String(),
+		Resolver4:     resolvers[0].String(),
+		Resolver6:     resolvers[1].String(),
+		Metadata:      MetadataAddress.String(),
+		ServiceRange4: ServiceRange4.String(),
+		Range4:        lab.Range4.String(),
 	}
 	for _, server := range lab.servers() {
 		if !server.Internet && server.IPv4.IsValid() {

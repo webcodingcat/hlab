@@ -31,6 +31,11 @@ func Metadata(lab Lab, cat *catalog.Catalog) agentproto.Metadata {
 		if server.IPv4.IsValid() {
 			sources = append(sources, netip.PrefixFrom(server.IPv4, 32))
 		}
+		// a server with IPv6 only comes with its service address, as on
+		// Hetzner, where its IPv6 has no route to the service
+		if server.ServiceIPv4.IsValid() {
+			sources = append(sources, netip.PrefixFrom(server.ServiceIPv4, 32))
+		}
 		if server.IPv6.IsValid() {
 			sources = append(sources, server.IPv6.Masked())
 		}
@@ -162,20 +167,26 @@ func privateNetworks(lab Lab, server Server) []privateNetwork {
 }
 
 // networkConfig returns the public NIC's configuration (cloud-init's
-// version 1): IPv4 by DHCP, IPv6 as the first address of the /64; none
-// for a server without public addresses (measured 2026-11-09).
+// version 1): IPv4 by DHCP, also for a server with IPv6 only, IPv6 as the
+// first address of the /64; none for a server without public addresses
+// (measured 2026-11-09).
 func networkConfig(lab Lab, server Server) map[string]any {
 	if !server.IPv4.IsValid() && !server.IPv6.IsValid() {
 		return map[string]any{"version": 1, "config": []any{}}
 	}
 	resolvers := lab.resolvers()
 	var subnets []any
-	if server.IPv4.IsValid() {
+	switch {
+	case server.IPv4.IsValid():
 		subnets = append(subnets, map[string]any{
 			"type":            "dhcp",
 			"ipv4":            true,
 			"dns_nameservers": []string{resolvers[0].String()},
 		})
+	case server.ServiceIPv4.IsValid():
+		// the lease only reaches the metadata service: no DNS server
+		// (measured 2026-11-09)
+		subnets = append(subnets, map[string]any{"type": "dhcp", "ipv4": true})
 	}
 	if server.IPv6.IsValid() {
 		subnets = append(subnets, map[string]any{

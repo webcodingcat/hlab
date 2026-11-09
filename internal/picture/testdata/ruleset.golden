@@ -19,6 +19,12 @@ table inet hlab {
 		# networkd's DHCP, and the answers to the appliance's own requests
 		iifname "uplink" udp dport 68 accept
 		iifname "uplink" ct state established,related accept
+		# a server with IPv6 only reaches DHCP and the metadata service
+		# with its service address, and nothing else (as assumed: what it
+		# reaches on Hetzner is not measured)
+		iifname "public" ip saddr 100.64.0.0/10 udp dport 67 accept
+		iifname "public" ip saddr 100.64.0.0/10 ip daddr 169.254.169.254 tcp dport 80 accept
+		iifname "public" ip saddr 100.64.0.0/10 drop
 		# the lab's endpoints for the servers: DHCP, metadata, DNS
 		iifname "public" udp dport 67 accept
 		iifname "public" ip daddr 169.254.169.254 tcp dport 80 accept
@@ -34,6 +40,11 @@ table inet hlab {
 	# what goes through the appliance
 	chain forward {
 		type filter hook forward priority filter; policy drop;
+		# the service addresses of servers with IPv6 only reach nothing
+		# through the appliance, and nothing reaches them: not the
+		# Internet, Hetzner's DHCP server, the host or other servers
+		iifname "public" ip saddr 100.64.0.0/10 drop
+		oifname "public" ip daddr 100.64.0.0/10 drop
 		# servers reach the host only on the APIs, never the lab control
 		iifname "public" ip daddr 198.18.0.1 tcp dport { 8080, 8081 } accept
 		iifname "public" ip6 daddr 2001:db8:0:ffff::1 tcp dport { 8080, 8081 } accept

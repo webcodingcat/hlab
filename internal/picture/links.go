@@ -7,7 +7,8 @@ import (
 )
 
 // Links returns the picture of the appliance's links: its four NICs, their
-// addresses, a route to each server's addresses through the public NIC, a
+// addresses, a route to each server's addresses (its ServiceIPv4 among
+// them) through the public NIC, a
 // route to each assigned Floating IP through its server, and a VRF with a
 // VLAN for each private network.
 func Links(lab Lab) agentproto.Links {
@@ -53,12 +54,15 @@ func Links(lab Lab) agentproto.Links {
 			agentproto.Sysctl{Key: "net/ipv6/conf/" + device + "/addr_gen_mode", Value: "1"})
 	}
 	for _, server := range lab.servers() {
-		if server.IPv4.IsValid() {
-			links.Routes = append(links.Routes, agentproto.Route{
-				Destination: netip.PrefixFrom(server.IPv4, 32),
-				Device:      DevicePublic,
-				Source:      Gateway4,
-			})
+		// a server has one of the two
+		for _, address := range []netip.Addr{server.IPv4, server.ServiceIPv4} {
+			if address.IsValid() {
+				links.Routes = append(links.Routes, agentproto.Route{
+					Destination: netip.PrefixFrom(address, 32),
+					Device:      DevicePublic,
+					Source:      Gateway4,
+				})
+			}
 		}
 		if server.IPv6.IsValid() {
 			links.Routes = append(links.Routes, agentproto.Route{

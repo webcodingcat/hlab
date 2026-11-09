@@ -252,12 +252,6 @@ that found it (must, should, optional) and the phase that closes it.
   `private-networks` sorted by `interface_num`; `DELETE` and `PATCH` on
   an action and a selector's per-server actions on a new selector, built
   as assumed (not measured).
-- **must, 2a-6:** a server with IPv6 only reaches no metadata service.
-  Hetzner gives it a DHCPv4 lease on its public NIC, an address of
-  `100.64.0.0/10` with routes only to `169.254.169.254` and its DHCP
-  server, and names that DHCP in the server's `network-config`; the lab
-  gives it no IPv4 at all (measured 2026-11-09, `compat/requirements.md`,
-  "A server with IPv6 only").
 
 ### Comes with phase X
 
@@ -297,9 +291,9 @@ that found it (must, should, optional) and the phase that closes it.
 | 2a-3 | private networks with Hetzner's actions, limits, texts and members; `attach_to_network`, `detach_from_network`, `change_alias_ips` with NIC hot-plug; the switch `HLab-Private`, a VLAN and a VRF per network, DHCP per network; the guest's private NICs by the seed's vendor-data; `Lab.AddNote` for statuses Hetzner shows for a while | done |
 | 2a-4 | networks and firewalls in a server's create; the metadata's `private-networks`, and the metadata service for a server without public addresses; a firewall's `pending` and a selector's actions as Hetzner shows them; Hetzner's answers to unknown actions and to IDs that are no number; the unassign of a Floating IP's move; `add_subnet` without a free `/24`; a network's delete aborts its actions; a private NIC keeps its number (state version 2); 50 firewalls per project; the smoke test `examples/tofu-2a` | done |
 | 2a-5 | no made-up times: actions end as soon as their work is done; `clock.go`, `Lab.Sleep`, `Lab.AddNote`, `Lab.RecordActionLater` and `time_scale` are gone (an old `hlab.yaml` with the key still loads); a selector's `apply_firewall` or `remove_firewall` is recorded finished at once (`Lab.RecordAction`); statuses such as `pending` and `attaching` show only while an action's work runs; `bin/dev itest` no longer ends with 141 when the output grows | done |
+| 2a-6 | a server with IPv6 only gets a service address of `100.64.0.0/10` by DHCP, with Hetzner's routes (options 121 and 249) to `172.31.1.1`, the metadata service and `188.40.24.200`, and reaches the metadata service with it, nothing else; `network-config` with `dhcp` for IPv4; a private network's DHCP names its gateway as the server (the agent adds addresses in the picture's order); the agent's tests stop their dnsmasq | done |
 
-Next: 2a-6, IPv4 for a server with IPv6 only; then 2a-R, the review of
-phase 2a.
+Next: 2a-R, the review of phase 2a.
 
 ### What 2a-4 brought
 

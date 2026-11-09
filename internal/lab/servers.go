@@ -390,6 +390,9 @@ func serverFacts(tx *state.Tx, server *state.Server) picture.Server {
 	if ip, err := state.Get(tx, state.PrimaryIPs, server.IPv6); err == nil {
 		facts.IPv6, _ = netip.ParsePrefix(ip.IP)
 	}
+	if !facts.IPv4.IsValid() && facts.IPv6.IsValid() {
+		facts.ServiceIPv4 = serviceAddress(facts.IPv6)
+	}
 	return facts
 }
 
@@ -399,7 +402,7 @@ func seedServer(facts picture.Server, lab picture.Lab) seed.Server {
 		ID:           facts.ID,
 		Name:         facts.Name,
 		MAC:          facts.MAC,
-		IPv4:         facts.IPv4.IsValid(),
+		DHCP4:        facts.IPv4.IsValid() || facts.ServiceIPv4.IsValid(),
 		IPv6:         facts.IPv6,
 		Resolvers:    lab.ApplianceAddresses(),
 		PublicKeys:   picture.ServerKeys(lab, facts),

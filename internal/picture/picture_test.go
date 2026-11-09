@@ -30,7 +30,8 @@ func testLab() Lab {
 	lab.Servers = []Server{
 		{
 			ID: 1000003, Name: "only-six", Location: "ash", MAC: "96:00:00:0f:42:43",
-			IPv6: netip.MustParsePrefix("2001:db8:1:3::/64"), Internet: true,
+			IPv6: netip.MustParsePrefix("2001:db8:1:3::/64"), ServiceIPv4: netip.MustParseAddr("100.64.0.3"),
+			Internet: true,
 		},
 		{
 			ID: 1000001, Name: "web", Location: "fsn1", MAC: "96:00:00:0f:42:41",

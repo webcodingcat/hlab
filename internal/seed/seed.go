@@ -17,10 +17,11 @@ type Server struct {
 	ID   int64
 	Name string
 	MAC  string // of the public NIC
-	// IPv4 tells whether the server has a public IPv4; it gets it by DHCP,
-	// as on Hetzner, so the seed does not name it.
-	IPv4 bool
-	IPv6 netip.Prefix // the /64; the server takes its first address
+	// DHCP4 tells whether the public NIC takes an IPv4 by DHCP: the public
+	// IPv4, or for a server with IPv6 only the address that reaches the
+	// metadata service, as on Hetzner; so the seed names no IPv4.
+	DHCP4 bool
+	IPv6  netip.Prefix // the /64; the server takes its first address
 	// Resolvers are the lab's DNS resolvers. They are always in the seed:
 	// without them Ubuntu waits 120 s for DNS before it runs the rest of
 	// cloud-init.
@@ -130,19 +131,20 @@ func metaData(server Server) map[string]any {
 }
 
 // networkConfig returns the public NIC's configuration: IPv4 by DHCP (a /32
-// with the on-link gateway 172.31.1.1, from the appliance), IPv6 as the
+// with the on-link gateway 172.31.1.1, from the appliance; for a server
+// with IPv6 only one with routes to the metadata service), IPv6 as the
 // first address of the /64 with the gateway fe80::1, as on Hetzner. A
 // server without public addresses gets none, as Hetzner's metadata gives
 // it none (measured 2026-11-09): a public NIC to configure would hold up
 // its boot.
 func networkConfig(server Server) map[string]any {
-	if !server.IPv4 && !server.IPv6.IsValid() {
+	if !server.DHCP4 && !server.IPv6.IsValid() {
 		return map[string]any{"version": 2, "ethernets": map[string]any{}}
 	}
 	nic := map[string]any{
 		"match":    map[string]any{"macaddress": server.MAC},
 		"set-name": "eth0",
-		"dhcp4":    server.IPv4,
+		"dhcp4":    server.DHCP4,
 		"dhcp6":    false,
 	}
 	if server.IPv6.IsValid() {

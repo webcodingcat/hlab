@@ -22,6 +22,13 @@ var (
 	linkLocal = netip.MustParseAddr("fe80::2")
 	// MetadataAddress is the metadata service.
 	MetadataAddress = netip.MustParseAddr("169.254.169.254")
+	// ServiceRange4 holds the IPv4 addresses that a server with IPv6 only
+	// gets by DHCP, only to reach the metadata service and DHCP (measured
+	// 2026-11-09). They live only on the public NIC behind the appliance.
+	ServiceRange4 = netip.MustParsePrefix("100.64.0.0/10")
+	// hetznerDHCP is Hetzner's DHCP server, dhcp2.your-server.de, to which
+	// that lease routes too; nothing in the lab answers there.
+	hetznerDHCP = netip.MustParseAddr("188.40.24.200")
 )
 
 // The appliance's NICs, in the order of the VM's NICs (1 to 4).
@@ -103,6 +110,9 @@ type Server struct {
 	MAC      string // of its public NIC
 	IPv4     netip.Addr
 	IPv6     netip.Prefix // the /64
+	// ServiceIPv4 is the address of ServiceRange4 that a server with IPv6
+	// only gets by DHCP; invalid for any other server.
+	ServiceIPv4 netip.Addr
 	// Internet: the server and its project may reach the Internet.
 	Internet   bool
 	PublicKeys []string

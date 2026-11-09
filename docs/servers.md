@@ -107,8 +107,8 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
   SMBIOS vendor cannot say "Hetzner": `meta-data` (instance ID, host name,
   keys), `user-data`, `vendor-data` (root's login, the same text the metadata
   service answers) and `network-config` version 2: IPv4 by DHCP and IPv6 as
-  `::1` of the `/64` with `fe80::1`, as on Hetzner, always with the lab's
-  resolvers; none for a server without public addresses, as Hetzner's
+  `::1` of the `/64` with `fe80::1`, as on Hetzner (IPv4 by DHCP also for a
+  server with IPv6 only, below), always with the lab's resolvers; none for a server without public addresses, as Hetzner's
   metadata has none for it. Its files are JSON, which is YAML too: cloud-init's YAML 1.1
   parser reads an unquoted MAC of digits as a number.
 
@@ -325,8 +325,18 @@ measured (`compat/requirements.md`, Networks).
   network's VRF and knows the server by the VRF and its address, and
   `network-config` has no NIC. The lab gives the route only to a server
   without IPv4 and IPv6, as measured: Hetzner's server with IPv6 only
-  has none in its private lease either (it reaches the service through a
-  public IPv4 lease of its own, which the lab lacks: roadmap, 2a-6).
+  has none in its private lease either.
+- **A server with IPv6 only** reaches the metadata service through its
+  public NIC, as on Hetzner (measured 2026-11-09): DHCP gives it a `/32`
+  of `100.64.0.0/10`, its service address, with the classless routes
+  (options 121 and 249) `172.31.1.1/32` on-link, `169.254.169.254/32` and
+  `188.40.24.200/32` (Hetzner's DHCP server) through `172.31.1.1`, no
+  default route and no DNS server; `network-config` names `dhcp` for IPv4
+  beside the static IPv6, and the service knows the server by that
+  address. The address is the number of the server's `/64` in
+  `2001:db8:1::/48` counted into `100.64.0.0/10` (`lab.serviceAddress`):
+  no record, and it follows the `/64`. It reaches only DHCP and the
+  metadata service (docs/appliance.md, the ruleset).
 
 ## Projects, tokens, faults
 

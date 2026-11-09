@@ -30,7 +30,12 @@ and the diff shows what changed.
 ACME checks; the appliance's link-local address there is `fe80::2`: the kernel
 solicits a neighbor only from a link-local address, unless the waiting packet
 comes from the appliance itself); the servers see Hetzner's gateways `172.31.1.1` (on-link to their
-`/32`) and `fe80::1`, and the resolvers `198.18.0.2` and `2001:db8:0:ffff::2`. The
+`/32`) and `fe80::1`, and the resolvers `198.18.0.2` and `2001:db8:0:ffff::2`.
+A server with IPv6 only gets a service address of Hetzner's
+`100.64.0.0/10` by DHCP (docs/servers.md), which only the appliance's
+`public` NIC routes, as a `/32` with the source `172.31.1.1`: never the
+host, so a host's Tailscale, whose addresses are of the same range, does
+not meet it, and the uplink rejects the range anyway. The
 appliance's MAC addresses are `02:48:4c:0a:00:0<n>` (set A) or `02:48:4c:0b:00:0<n>`
 (set B), n = NIC 1 to 4; an update starts the new appliance with the other set.
 A Floating IP's route (`/32` or `/64`) goes through its server's Primary IP
@@ -62,6 +67,14 @@ Floating IP.
   appliance gets another uplink address (docs/roadmap.md, Known gaps).
 - The servers reach DHCP, the metadata service and DNS on the appliance; the host
   reaches all of it.
+- A service address (`100.64.0.0/10`, a server with IPv6 only) reaches
+  DHCP and the metadata service on the appliance and nothing else: no
+  DNS, nothing through the appliance (the Internet, Hetzner's DHCP server
+  `188.40.24.200` that its lease routes to, the host, other servers), and
+  nothing reaches it. Cloud Firewalls play no part, as on Hetzner, where
+  they leave DHCP and the metadata service alone. What the address
+  reaches on Hetzner beyond its routes is not measured; dropping the rest
+  is the lab's assumption.
 
 **The firewalls** (`internal/picture/firewalls.go`, golden files
 `firewall-*.golden`) come after the fixed part, in two base chains of

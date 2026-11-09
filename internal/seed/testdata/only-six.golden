@@ -1,0 +1,77 @@
+### meta-data
+{
+  "instance-id": "1000004",
+  "local-hostname": "only-six",
+  "public-keys": [
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIUser user@example"
+  ]
+}
+### network-config
+{
+  "ethernets": {
+    "eth0": {
+      "addresses": [
+        "2001:db8:1:3::1/64"
+      ],
+      "dhcp4": true,
+      "dhcp6": false,
+      "match": {
+        "macaddress": "96:00:00:0f:42:44"
+      },
+      "nameservers": {
+        "addresses": [
+          "198.18.0.2",
+          "2001:db8:0:ffff::2"
+        ]
+      },
+      "routes": [
+        {
+          "to": "::/0",
+          "via": "fe80::1"
+        }
+      ],
+      "set-name": "eth0"
+    }
+  },
+  "version": 2
+}
+### user-data
+### vendor-data
+Content-Type: multipart/mixed; boundary="==HLAB=="
+MIME-Version: 1.0
+
+--==HLAB==
+Content-Type: text/cloud-config; charset="us-ascii"
+
+#cloud-config
+disable_root: false
+ssh_pwauth: false
+
+--==HLAB==
+Content-Type: text/x-shellscript; charset="us-ascii"
+
+#!/bin/sh
+cat > /etc/systemd/system/hlab-private-net@.service <<'UNIT'
+[Unit]
+Description=HLab private network on %i
+BindsTo=sys-subsystem-net-devices-%i.device
+After=sys-subsystem-net-devices-%i.device
+
+[Service]
+Type=forking
+ExecStartPre=ip link set dev %i mtu 1450
+ExecStart=/usr/sbin/dhcpcd --quiet --waitip --ipv4only --noarp --nolink --script=/bin/true %i
+ExecStop=/usr/sbin/dhcpcd --exit %i
+UNIT
+cat > /etc/udev/rules.d/90-hlab-private-net.rules <<'RULE'
+SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="86:00:*", TAG+="systemd", ENV{SYSTEMD_WANTS}+="hlab-private-net@%k.service"
+RULE
+systemctl daemon-reload
+udevadm control --reload
+for nic in /sys/class/net/*; do
+  case "$(cat "$nic/address")" in
+    86:00:*) timeout 30 systemctl start "hlab-private-net@${nic##*/}.service" || true ;;
+  esac
+done
+
+--==HLAB==--

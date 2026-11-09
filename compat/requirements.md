@@ -496,8 +496,13 @@ monthly price of 1.00 € net). Everything was deleted afterwards.
 Read on 2026-11-09 in a Hetzner guest (`cx23`, Debian 13, `nbg1`, created
 with `enable_ipv4` false, IPv6 on, in a network; cloud-init's data source
 `DataSourceHetzner`). Hetzner gives such a server an IPv4 lease on its
-public NIC, only to reach Hetzner's own services; HLab gives it none, so
-it does not reach the metadata service (roadmap, must, 2a-6).
+public NIC, only to reach Hetzner's own services. HLab does the same
+(2a-6): the lease, routes, `network-config` and metadata below, checked by
+the golden files of `internal/picture` and `internal/seed`,
+`TestDHCPPictureGivesAServerWithIPv6OnlyItsServiceLease` (agent) and
+`TestServerWithIPv6OnlyReachesOnlyTheMetadataService` (live). The address
+comes from `100.64.0.0/10` too, counted from the server's `/64` instead of
+Hetzner's random-looking choice, which the guest cannot tell.
 
 | What | Answer |
 |---|---|
@@ -510,5 +515,13 @@ it does not reach the metadata service (roadmap, must, 2a-6).
 | the private lease | no route to `169.254.169.254`, unlike a server without public addresses |
 
 Not read: whether `100.64.245.166` reaches anything but these routes
-(the guest has no route for it), and whether the address stays the same
-across reboots.
+(the guest has no route for it), what answers on `188.40.24.200`, and
+whether the address stays the same across reboots. HLab assumes nothing:
+the appliance drops what goes to `188.40.24.200` and everything from the
+address but DHCP and the metadata service.
+
+Also not read: the options of a server's public lease **with** an IPv4
+(the 2a-3 guests dumped only their private leases). The routes they
+leave in the guest are the lab's: `default via 172.31.1.1` and the host
+route to `172.31.1.1` (read 2026-11-08). Whether Hetzner sends them as
+option 121 (HLab), 249 or `routers` alone is not known.

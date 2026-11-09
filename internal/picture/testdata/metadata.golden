@@ -85,7 +85,7 @@ vendor_data: |
 ### userdata
 #cloud-config
 packages: [nginx]
-### sources [2001:db8:1:3::/64] private []
+### sources [100.64.0.3/32 2001:db8:1:3::/64] private []
 availability-zone: ash-dc1
 hostname: only-six
 instance-id: 1000003
@@ -95,6 +95,8 @@ network-config:
   - mac_address: "96:00:00:0f:42:43"
     name: eth0
     subnets:
+    - ipv4: true
+      type: dhcp
     - address: 2001:db8:1:3::1/64
       dns_nameservers:
       - 2001:db8:0:ffff::2

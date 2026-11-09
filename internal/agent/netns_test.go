@@ -390,6 +390,35 @@ func TestDHCPPictureGivesAServerItsAddress(t *testing.T) {
 	}
 }
 
+// TestDHCPPictureGivesAServerWithIPv6OnlyItsServiceLease checks Hetzner's
+// lease for a server with IPv6 only (measured 2026-11-09): its service
+// address, routes only to the gateway, the metadata service and Hetzner's
+// DHCP server in options 121 and 249, and no DNS server.
+func TestDHCPPictureGivesAServerWithIPv6OnlyItsServiceLease(t *testing.T) {
+	agent := setUp(t)
+	lab := picture.DefaultLab()
+	onlySix := web
+	onlySix.IPv4 = netip.Addr{}
+	onlySix.ServiceIPv4 = netip.MustParseAddr("100.64.0.1")
+	lab.Servers = []picture.Server{onlySix, db}
+	putPicture(t, agent, agentproto.PictureLinks, picture.Links(lab))
+	putPicture(t, agent, agentproto.PictureDHCP, picture.DHCP(lab))
+
+	script := filepath.Join(t.TempDir(), "lease")
+	text := "#!/bin/sh\n" +
+		`[ "$1" = bound ] && echo "ip=$ip dns=$dns routes=$staticroutes ms=$msstaticroutes"` + "\n"
+	if err := os.WriteFile(script, []byte(text), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	output, err := exec.Command("busybox", "udhcpc", "-i", wires[picture.DevicePublic],
+		"-n", "-q", "-f", "-s", script, "-t", "5", "-O", "staticroutes", "-O", "msstaticroutes").CombinedOutput()
+	routes := "172.31.1.1/32 0.0.0.0 169.254.169.254/32 172.31.1.1 188.40.24.200/32 172.31.1.1"
+	want := "ip=100.64.0.1 dns= routes=" + routes + " ms=" + routes
+	if err != nil || !strings.Contains(string(output), want) {
+		t.Errorf("udhcpc: %v\n%s\nwant %s", err, output, want)
+	}
+}
+
 func TestAddressesAreAnnouncedWhenTheCarrierComesUp(t *testing.T) {
 	agent := setUp(t)
 	ctx, cancel := context.WithCancel(context.Background())

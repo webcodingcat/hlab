@@ -9,6 +9,9 @@ dhcp-option=option:netmask,255.255.255.255
 dhcp-option=option:router,172.31.1.1
 dhcp-option=121,172.31.1.1/32,0.0.0.0,0.0.0.0/0,172.31.1.1
 dhcp-option=option:dns-server,198.18.0.2
+dhcp-option=tag:ipv6only,121,172.31.1.1/32,0.0.0.0,169.254.169.254/32,172.31.1.1,188.40.24.200/32,172.31.1.1
+dhcp-option=tag:ipv6only,249,172.31.1.1/32,0.0.0.0,169.254.169.254/32,172.31.1.1,188.40.24.200/32,172.31.1.1
+dhcp-option=tag:ipv6only,option:dns-server
 # server 1000001
 shared-network=172.31.1.1,198.19.0.1
 dhcp-range=198.19.0.1,static,255.255.255.255,1d
@@ -17,6 +20,10 @@ dhcp-host=96:00:00:0f:42:41,198.19.0.1
 shared-network=172.31.1.1,198.19.0.2
 dhcp-range=198.19.0.2,static,255.255.255.255,1d
 dhcp-host=96:00:00:0f:42:42,198.19.0.2
+# server 1000003
+shared-network=172.31.1.1,100.64.0.3
+dhcp-range=100.64.0.3,static,255.255.255.255,1d
+dhcp-host=96:00:00:0f:42:43,set:ipv6only,100.64.0.3
 ### private.2
 # dnsmasq for the private network 1000020, built by hlabd.
 port=0
