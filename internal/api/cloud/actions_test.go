@@ -137,3 +137,46 @@ func TestUnknownActionsAnswerAsHetznerDoes(t *testing.T) {
 		t.Errorf("add_subnet answers %d", response.Status)
 	}
 }
+
+// A single action that is not there, or an action ID that is no number,
+// gets each resource's own answer from Hetzner (measured 2026-11-09).
+func TestMissingActionsAnswerAsHetznerDoes(t *testing.T) {
+	test := newTestLab(t)
+	server := offServer(t, test, "web").Server.ID
+	network := createNetwork(t, test, map[string]any{"name": "net", "ip_range": "10.0.0.0/16"}).ID
+	firewall := createFirewall(t, test, map[string]any{"name": "fw"}).Firewall.ID
+	floating := createFloatingIP(t, test, map[string]any{"type": "ipv4", "home_location": "fsn1"}).FloatingIP.ID
+	primary := createPrimaryIP(t, test, map[string]any{"name": "ip", "type": "ipv4", "location": "fsn1", "assignee_type": "server"}).PrimaryIP.ID
+	for path, want := range map[string]struct {
+		message, details string
+	}{
+		fmt.Sprintf("/v1/servers/%d/actions/999", server):        {"action not found", "{}"},
+		"/v1/servers/1/actions/999":                              {"action not found", "{}"},
+		"/v1/servers/actions/999":                                {"action not found", "{}"},
+		fmt.Sprintf("/v1/servers/%d/actions/bogus", server):      {"api route not found", "null"},
+		fmt.Sprintf("/v1/networks/%d/actions/999", network):      {"action with ID '999' not found", "null"},
+		fmt.Sprintf("/v1/networks/%d/actions/bogus", network):    {fmt.Sprintf("action with ID 'bogus' for network with ID '%d' not found", network), "null"},
+		"/v1/networks/1/actions/999":                             {"network with ID 1 not found", "null"},
+		"/v1/networks/actions/bogus":                             {"action with ID 'bogus' not found", "null"},
+		fmt.Sprintf("/v1/firewalls/%d/actions/bogus", firewall):  {"action with ID 'bogus' not found", "null"},
+		"/v1/firewalls/1/actions/999":                            {"firewall with ID 1 not found", "null"},
+		fmt.Sprintf("/v1/floating_ips/%d/actions/999", floating): {"action with ID '999' not found", "null"},
+		"/v1/floating_ips/1/actions/bogus":                       {"invalid action ID: 'bogus'", "null"},
+		"/v1/floating_ips/1/actions/999":                         {"Floating IP with ID 1 not found", "null"},
+		fmt.Sprintf("/v1/primary_ips/%d/actions/bogus", primary): {"invalid action ID: 'bogus'", "null"},
+		"/v1/primary_ips/1/actions/999":                          {"Primary IP with ID 1 not found", "null"},
+		"/v1/primary_ips/actions/999":                            {"action with ID '999' not found", "null"},
+	} {
+		response := test.client.Get(path)
+		got := errorOf(t, response)
+		if response.Status != http.StatusNotFound || got.Code != "not_found" || got.Message != want.message || string(got.Details) != want.details {
+			t.Errorf("GET %s: %d %s %q %s, want 404 not_found %q %s", path, response.Status, got.Code, got.Message, got.Details, want.message, want.details)
+		}
+	}
+	// an action of another resource is not there either
+	created := createServer(t, test, map[string]any{"name": "db", "server_type": "cpx22", "image": "debian-13", "start_after_create": false})
+	path := fmt.Sprintf("/v1/networks/%d/actions/%d", network, created.Action.ID)
+	if got := errorOf(t, test.client.Get(path)); got.Message != fmt.Sprintf("action with ID '%d' not found", created.Action.ID) {
+		t.Errorf("GET %s: %q", path, got.Message)
+	}
+}
