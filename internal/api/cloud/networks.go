@@ -558,6 +558,7 @@ func memberStatus(tx *state.Tx, networkID, serverID int64) string {
 func deleteNetwork(req *web.Request, l *lab.Lab) (int, any, error) {
 	id := web.PathID(req, "id")
 	var nics []lab.ServerNIC
+	var members []state.ResourceRef
 	// an action that runs on the network ends "aborted", also a server's
 	// attach (measured 2026-11-09)
 	aborted, err := l.ChangeAborting(state.ResourceRef{Type: networkResource, ID: id}, func(tx *state.Tx) error {
@@ -576,6 +577,7 @@ func deleteNetwork(req *web.Request, l *lab.Lab) (int, any, error) {
 			attached, index := serverNetwork(server, id)
 			server.PrivateNets = slices.Delete(server.PrivateNets, index, index+1)
 			nics = append(nics, lab.ServerNIC{ServerID: server.ID, MAC: attached.MAC})
+			members = append(members, state.ResourceRef{Type: lab.ServerResource, ID: server.ID})
 		}
 		state.Delete(tx, state.Networks, id)
 		return nil
@@ -583,6 +585,8 @@ func deleteNetwork(req *web.Request, l *lab.Lab) (int, any, error) {
 	if err != nil {
 		return 0, nil, err
 	}
-	l.Machine().DetachNICsLater(nics, aborted)
+	// a member's running action, such as its create, may still put the
+	// NIC into the VM: the NICs leave after it
+	l.Machine().DetachNICsLater(nics, append(aborted, l.RunningOn(members)...))
 	return http.StatusNoContent, nil, nil
 }

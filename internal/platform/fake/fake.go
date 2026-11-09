@@ -8,8 +8,10 @@ package fake
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -117,6 +119,18 @@ func (f *Fake) Seed(path string) map[string][]byte {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.seeds[path]
+}
+
+// NICs returns the MACs of a VM's NICs, sorted; nil if there is no such VM.
+func (f *Fake) NICs(vm string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	machine, found := f.vms[vm]
+	if !found {
+		return nil
+	}
+	macs := slices.Sorted(maps.Keys(machine.nics))
+	return macs
 }
 
 // enter records a call, waits its delay and returns its injected failure.

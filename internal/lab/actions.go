@@ -281,6 +281,22 @@ func (l *Lab) ChangeAborting(ref state.ResourceRef, change func(tx *state.Tx) er
 	return aborted, nil
 }
 
+// RunningOn returns the channels that close when the running actions
+// that flag one of the resources have ended: work that must come after
+// their steps waits for them (a network's delete waits for a member's
+// create, whose steps may still put the network's NIC into the VM).
+func (l *Lab) RunningOn(refs []state.ResourceRef) []<-chan struct{} {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var running []<-chan struct{}
+	for _, run := range l.running {
+		if slices.ContainsFunc(refs, func(ref state.ResourceRef) bool { return slices.Contains(run.flagged, ref) }) {
+			running = append(running, run.done)
+		}
+	}
+	return running
+}
+
 // newAction adds a running action.
 func (l *Lab) newAction(tx *state.Tx, projectID int64, command string, resources []state.ResourceRef) *state.Action {
 	action := &state.Action{

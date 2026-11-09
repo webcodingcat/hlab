@@ -3,8 +3,10 @@
 **Reading order:** CLAUDE.md, then "Words", "A request's path" and "Layers" below, then the
 recipe for what you add (Recipes, at the end); the other sections and the files
 under `docs/` are reference, read when you work on their part. Before a
-recipe, read the sections it names: "A new endpoint" needs The APIs and
-Spec check, "A new action" needs Actions.
+recipe, read the sections it builds on: a new kind or migration, The
+state; a new endpoint or catalog resource, The APIs and Spec check; a new
+action, Actions, Concurrency and The state; a new platform method,
+Platform; a new picture, docs/appliance.md.
 
 Section names in parentheses, such as (The state), point to the section of this file
 that explains more; a file name in them, such as (docs/tools.md), to that file.
@@ -47,6 +49,11 @@ Words this file uses; the sections in parentheses explain more.
 | NRPT | Windows' Name Resolution Policy Table: sends the lab's DNS names from the host to the appliance (docs/hyperv.md) |
 | VLAN, VRF | a private network is a VLAN on the switch `HLab-Private` and a VRF (a routing table of its own) in the appliance, so networks never see each other |
 | conntrack | the Linux kernel's table of connections; the firewall pictures let answers through by it |
+| fault | an error or a delay that a test injects into the Cloud API's answers for a project (docs/servers.md) |
+| uplink | the appliance's NIC to the outside, through which the servers reach the Internet (docs/appliance.md) |
+| VLAN pool | the VLANs that private networks take; a freed one comes back only after the pool went round (`lab.NewVLAN`) |
+| pshost | the long-running PowerShell process through which `hlabd` drives Hyper-V on Windows (docs/hyperv.md) |
+| golden file | a picture's expected text under `internal/picture/testdata`; its tests compare against it (`-update` writes it) |
 | action | Hetzner's record of a slow command (`stop_server`), with its status; the lab runs one as a plan and steps (Actions) |
 | plan | an action's quick part, in the request's transaction: it checks the request and changes the records |
 | steps | an action's slow part, in a goroutine: the work on the machine (VMs, pictures) |
@@ -205,7 +212,8 @@ The layer test checks production code only. Tests may import fakes and helpers.
   version `n` to `n+1` on the raw JSON. The old file is kept as `state.json.v<n>`.
   A newer file, or a kind this code does not know, stops the start, because saving
   would lose data.
-- **Not in the state:** disks, images, metrics and logs (they have their own files);
+- **Not in the state:** disks, images, metrics and logs (they have their own
+  files in the data folder, docs/state.md);
   action flags (memory only); tokens in clear text (only their hash is kept).
   A server's root password is in it, in clear text: Hetzner shows it only
   once, but the lab's metadata service and seed hand it to the guest.
@@ -252,7 +260,9 @@ The layer test checks production code only. Tests may import fakes and helpers.
   actions', `Machine.UpdatePicturesLater`, `Machine.DetachNICsLater` and
   `Lab.DeleteProject`'s removals.
 - `lab.Flush()` waits until the newest state is on disk. `Lab.Close` calls it.
-- `go test -race` runs on Linux, in `bin/dev test` and in CI.
+- `go test -race` runs on Linux, in `bin/dev test` and in CI. It finds data
+  races, not a mutex held across a call into `system`: that rule is kept by
+  review.
 
 ## Actions
 
@@ -265,6 +275,19 @@ plan's undo takes the quick changes back; while the action runs, flags
 keep other actions off its resources or queue them. The types (`Plan`,
 `ActionSpec`, `ActionTable`, `Request`, `Row`) are in
 `internal/lab/actions.go`.
+
+What a plan and a row can say (`lab.Plan`, `lab.ActionSpec`):
+
+| Field | Effect |
+|---|---|
+| `Steps` | the slow part, in a goroutine; nil ends the action at once |
+| `Undo` | takes back the quick changes when the steps fail |
+| `UndoIfLast` | the `Undo` runs only if nothing was queued behind |
+| `RunIfCanceled` | the steps run even when the action is canceled while it waits (a detach's NIC) |
+| `Resources` | more resources the action names; a delete of one aborts it |
+| `Locks` | more resources the action flags; busy ones are 423 |
+| `Unflagged` (row) | no flag: runs alongside, changes only records |
+| `Queued` (table) | a busy resource's actions wait in line instead of 423 |
 
 - **Tables.** Each resource has a `lab.ActionTable`. It holds the resource's type as
   actions name it (`server`), the message for 423 answers, and one `lab.ActionSpec`
@@ -293,18 +316,6 @@ keep other actions off its resources or queue them. The types (`Plan`,
   below) and starts the rows once the transaction is saved. They are an
   exception to "no function that only passes its arguments on" (STYLE.md):
   each is the name its callers read for one way to start actions.
-- **What a plan and a row can say** (`lab.Plan`, `lab.ActionSpec`):
-
-  | Field | Effect |
-  |---|---|
-  | `Steps` | the slow part, in a goroutine; nil ends the action at once |
-  | `Undo` | takes back the quick changes when the steps fail |
-  | `UndoIfLast` | the `Undo` runs only if nothing was queued behind |
-  | `RunIfCanceled` | the steps run even when the action is canceled while it waits (a detach's NIC) |
-  | `Resources` | more resources the action names; a delete of one aborts it |
-  | `Locks` | more resources the action flags; busy ones are 423 |
-  | `Unflagged` (row) | no flag: runs alongside, changes only records |
-  | `Queued` (table) | a busy resource's actions wait in line instead of 423 |
 - **`Lab.Act`** runs one row of a table in one transaction:
   1. If the resource is busy, it refuses with `lab.LockedError`; the API answers
      that with 423 `locked`. A table marked `Queued` (the servers') refuses
@@ -386,7 +397,8 @@ keep other actions off its resources or queue them. The types (`Plan`,
     exceptions are the firewalls' rows, which run alongside each other
     (`firewallActions` says why), and a server's detach, whose NIC leaves
     the VM even when the pictures fail (`planDetachFromNetwork`).
-  - The watchdog looks at a VM without the mutex, so it acts only if no
+  - The servers' watchdog looks at every VM each round (every 2 s,
+    `serverWatchInterval`) without the mutex, so it acts only if no
     action flagged the server meanwhile: each round notes the servers it
     looks at, an action's flag marks them, and the notes go with the round
     (`Machine.watchRound`, `internal/lab/watchdog.go`).

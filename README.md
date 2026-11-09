@@ -77,6 +77,9 @@ room:                  # what the servers may take of the host
   disk_free_percent: 10        # share of the data folder's drive a create leaves free
 ```
 
+A create or a start that would go beyond the room is refused as Hetzner
+refuses it when a location is full: 412 `resource_unavailable`.
+
 `examples/tofu-1a` is a small OpenTofu configuration to try against the lab;
 `examples/tofu-1b` adds a Debian server with a Primary IP of its own;
 `examples/tofu-2a` a private network, a firewall, a Floating IP and two
@@ -87,7 +90,8 @@ servers. `bin/dev smoke` applies each of them against `hlabd --platform fake`
 
 - Windows 11 with Hyper-V, used from WSL2 (Ubuntu, in its default NAT mode) or
   Windows.
-- Linux follows in a later phase.
+- Linux: `hlabd --platform fake` and the CLI run today; servers as VMs
+  follow in phase 8.
 - The tools and versions HLab is built for (hcloud CLI, the hcloud provider for
   Terraform and OpenTofu, the Ansible collection, Packer) are in
   [compat/versions.yaml](compat/versions.yaml).

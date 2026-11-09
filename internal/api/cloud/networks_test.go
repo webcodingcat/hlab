@@ -794,6 +794,38 @@ func TestWaitingDetachOfADeletedNetworkTakesItsNICOut(t *testing.T) {
 	}
 }
 
+// A network deleted while a server is created into it loses its NIC in
+// the VM after the create: the create's steps may still put it there.
+func TestNetworkDeletedDuringAMembersCreateLeavesNoNIC(t *testing.T) {
+	test := newTestLab(t)
+	startMachine(t, test, platform.HostResources{Threads: 8, MemoryMB: 16 * 1024})
+	network := networkWithSubnet(t, test, "net", "10.1")
+	test.machine.Delay("CreateVM", 200*time.Millisecond)
+	created := createServer(t, test, map[string]any{"name": "web", "server_type": "cpx22", "image": "debian-13",
+		"start_after_create": false, "networks": []int64{network}})
+	vm := lab.ServerVM(created.Server.ID)
+	deadline := time.Now().Add(5 * time.Second)
+	for !slices.Contains(test.machine.Calls(), "CreateVM "+vm) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the create did not reach CreateVM: %v", test.machine.Calls())
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if response := test.client.Do(http.MethodDelete, fmt.Sprintf("/v1/networks/%d", network), nil); response.Status != http.StatusNoContent {
+		t.Fatalf("the delete answered %d %s", response.Status, response.Body)
+	}
+	waitActions(t, test, created.Action)
+	privateNICs := func() int {
+		return len(slices.DeleteFunc(test.machine.NICs(vm), func(mac string) bool { return !strings.HasPrefix(mac, "86:00:") }))
+	}
+	for privateNICs() != 0 {
+		if time.Now().After(deadline) {
+			t.Fatalf("the VM kept the deleted network's NIC: %v", test.machine.NICs(vm))
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 // vmNICs counts the private NICs the server's VM has: those attached less
 // those detached.
 func vmNICs(test *testLab, serverID int64) int {
