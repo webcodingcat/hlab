@@ -31,7 +31,6 @@ const (
 	firewallBySelector        = "firewall has been applied via label selector."
 	firewallRemoveMissing     = "resource not found"
 	firewallSelectorNotThere  = "firewall with ID %d cannot be removed from label_selector: resource not found"
-	firewallServerNotThere    = "firewall with ID %d cannot be removed from server: resource not found" // not measured: follows the selector's
 	firewallTooSmall          = "value required to be larger"
 	firewallTooLarge          = "value required to be smaller"
 	firewallSelectorMissing   = "parameter label_selector needs to be specified if type is label_selector"
@@ -43,7 +42,14 @@ const (
 	firewallIPsMax            = 100 // per rule
 	// FirewallsPerServer and the effective rules are Hetzner's limits:
 	// 5 firewalls on a server, 500 effective rules in a firewall.
-	firewallsPerServer    = 5
+	firewallsPerServer = 5
+	// firewallsPerProject: Hetzner allows 50 firewalls per account,
+	// across its projects (its documentation); the lab counts them per
+	// project, so that each project is a fresh account and projects run
+	// side by side. The error is not measured: it follows the other
+	// firewall limits.
+	firewallsPerProject   = 50
+	firewallLimitProject  = "firewalls"
 	firewallEffectiveMax  = 500
 	firewallLimitServer   = "firewalls_per_server"
 	firewallLimitRules    = "firewall_effective_rules"
@@ -233,26 +239,25 @@ func createFirewall(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, a
 	for _, target := range targets {
 		rows = append(rows, targetRow(target, true))
 	}
-	var id int64
+	var out firewallAnswer
 	actions, err := l.Create(table, lab.Request{ProjectID: firewall.ProjectID}, func(tx *state.Tx) (int64, error) {
 		if _, taken := state.ByName(tx, state.Firewalls, firewall.ProjectID, firewall.Name); taken {
 			return 0, web.RefusalNull(http.StatusConflict, "uniqueness_error", firewallNameTaken)
 		}
+		if len(state.IDs(tx, state.Firewalls, func(other *state.Firewall) bool { return other.ProjectID == firewall.ProjectID })) >= firewallsPerProject {
+			return 0, web.LimitExceeded(firewallLimit, firewallLimitProject)
+		}
 		firewall.ID = state.NewID(tx, state.Firewalls)
 		state.Put(tx, state.Firewalls, firewall)
-		id = firewall.ID
 		return firewall.ID, nil
+	}, func(tx *state.Tx, id int64) {
+		if current, err := state.Get(tx, state.Firewalls, id); err == nil {
+			out = firewallJSON(current)
+		}
 	}, rows...)
 	if err != nil {
 		return 0, nil, actError(err)
 	}
-	var out firewallAnswer
-	_ = l.View(func(tx *state.Tx) error {
-		if current, err := state.Get(tx, state.Firewalls, id); err == nil {
-			out = firewallJSON(current)
-		}
-		return nil
-	})
 	return http.StatusCreated, map[string]any{"firewall": out, "actions": actionsJSON(actions)}, nil
 }
 
@@ -485,22 +490,43 @@ func firewallJSON(firewall *state.Firewall) firewallAnswer {
 }
 
 // serverFirewallsJSON returns a server's public_net.firewalls: each
-// firewall that applies to it, pending while an action that names both
-// runs, applied after.
-func serverFirewallsJSON(tx *state.Tx, server *state.Server) []schema.ServerFirewall {
-	out := []schema.ServerFirewall{}
+// firewall that applies to it, applied, or pending while an action that
+// names both runs, as on Hetzner, also a remove (measured 2026-11-09);
+// what a label selector's notes say wins (noteSelectorChange). Sorted by
+// ID, where Hetzner's order changes from one read to the next.
+func serverFirewallsJSON(l *lab.Lab, tx *state.Tx, server *state.Server) []schema.ServerFirewall {
+	statuses := map[int64]string{}
 	for _, id := range state.IDs(tx, state.Firewalls, func(firewall *state.Firewall) bool {
 		return firewall.ProjectID == server.ProjectID && slices.Contains(lab.FirewallServers(firewall), server.ID)
 	}) {
-		status := firewallStatusApplied
-		running := state.IDs(tx, state.Actions, func(action *state.Action) bool {
-			return action.Status == state.ActionRunning && action.ProjectID == server.ProjectID &&
-				namesResource(action, firewallResource, id) && namesResource(action, lab.ServerResource, server.ID)
-		})
-		if len(running) > 0 {
-			status = firewallStatusPending
+		statuses[id] = firewallStatusApplied
+	}
+	for _, id := range state.IDs(tx, state.Actions, func(action *state.Action) bool {
+		return action.Status == state.ActionRunning && action.ProjectID == server.ProjectID &&
+			(action.Command == "apply_firewall" || action.Command == "remove_firewall") &&
+			namesResource(action, lab.ServerResource, server.ID)
+	}) {
+		if action, err := state.Get(tx, state.Actions, id); err == nil {
+			for _, ref := range action.Resources {
+				if ref.Type == firewallResource {
+					statuses[ref.ID] = firewallStatusPending
+				}
+			}
 		}
+	}
+	for _, kind := range []string{serverFirewallNote, serverFirewallPending} {
+		for id, note := range l.Notes(kind, server.ID) {
+			if note.Status == "" {
+				delete(statuses, id)
+			} else {
+				statuses[id] = note.Status
+			}
+		}
+	}
+	out := []schema.ServerFirewall{}
+	for id, status := range statuses {
 		out = append(out, schema.ServerFirewall{ID: id, Status: status})
 	}
+	slices.SortFunc(out, func(a, b schema.ServerFirewall) int { return cmp.Compare(a.ID, b.ID) })
 	return out
 }

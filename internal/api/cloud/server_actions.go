@@ -28,15 +28,17 @@ func serverActions(l *lab.Lab) lab.ActionTable {
 		Busy:         serverBusy,
 		Queued:       true,
 		Actions: map[string]lab.ActionSpec{
-			"create":              {Name: "create_server", Plan: planCreateServer(l)},
-			"delete":              {Name: "delete_server", Plan: planDeleteServer(l)},
-			"poweron":             {Name: "start_server", Plan: planStart(l, machine.PowerOnServer)},
-			"poweroff":            {Name: "stop_server", Plan: planStop(machine.PowerOffServer)},
-			"shutdown":            {Name: "shutdown_server", Plan: planSteps(machine.ShutdownServer)},
-			"reboot":              {Name: "reboot_server", Plan: planStart(l, machine.RebootServer)},
-			"reset":               {Name: "reset_server", Plan: planStart(l, machine.ResetServer)},
-			"change_protection":   {Name: "change_protection", Plan: planServerProtection, Unflagged: true},
-			"attach_to_network":   {Name: "attach_to_network", Plan: planAttachToNetwork(l)},
+			"create":            {Name: "create_server", Plan: planCreateServer(l)},
+			"delete":            {Name: "delete_server", Plan: planDeleteServer(l)},
+			"poweron":           {Name: "start_server", Plan: planStart(l, machine.PowerOnServer)},
+			"poweroff":          {Name: "stop_server", Plan: planStop(machine.PowerOffServer)},
+			"shutdown":          {Name: "shutdown_server", Plan: planSteps(machine.ShutdownServer)},
+			"reboot":            {Name: "reboot_server", Plan: planStart(l, machine.RebootServer)},
+			"reset":             {Name: "reset_server", Plan: planStart(l, machine.ResetServer)},
+			"change_protection": {Name: "change_protection", Plan: planServerProtection, Unflagged: true},
+			"attach_to_network": {Name: "attach_to_network", Plan: planAttachToNetwork(l)},
+			// a create's network: it runs beside the create, not behind it
+			"attach_at_create":    {Name: "attach_to_network", Plan: planAttachAtCreate(l), Unflagged: true},
 			"detach_from_network": {Name: "detach_from_network", Plan: planDetachFromNetwork(l)},
 			"change_alias_ips":    {Name: "change_alias_ips", Plan: planChangeAliasIPs(l)},
 		},
@@ -307,37 +309,10 @@ func planAttachToNetwork(l *lab.Lab) planFunc {
 		if len(aliases) > serverAliasIPsMax {
 			return lab.Plan{}, web.RefusalNull(http.StatusForbidden, "invalid_input", serverAliasLimit)
 		}
-		if err := checkServerNetworks(tx, server, network); err != nil {
+		attached, err := joinNetwork(l, tx, server, network, ip, ipRange, aliases)
+		if err != nil {
 			return lab.Plan{}, err
 		}
-		if ipRange.IsValid() && !slices.Contains(subnetPrefixes(network), ipRange) {
-			return lab.Plan{}, web.RefusalNull(http.StatusUnprocessableEntity, "service_error", serverSubnetNotFound)
-		}
-		if ipRange.IsValid() && ip.IsValid() && !ipRange.Contains(ip) {
-			return lab.Plan{}, web.RefusalNull(http.StatusUnprocessableEntity, "service_error", serverIPNotInRange)
-		}
-		taken := takenAddresses(tx, network, server.ID)
-		if ip.IsValid() {
-			if err := addressRefusal(network, ip, taken); err != nil {
-				return lab.Plan{}, err
-			}
-		} else {
-			var found bool
-			if ip, found = freeAddress(network, ipRange, taken); !found {
-				return lab.Plan{}, web.RefusalNull(http.StatusUnprocessableEntity, "no_subnet_available", serverNoSubnet)
-			}
-		}
-		if err := aliasRefusal(network, ip, aliases, taken); err != nil {
-			return lab.Plan{}, err
-		}
-		noteMemberChange(l, tx, network, server.ID, nil)
-		attached := state.ServerPrivateNet{
-			NetworkID: network.ID,
-			IP:        ip.String(),
-			AliasIPs:  addressStrings(aliases),
-			MAC:       lab.NewPrivateMAC(tx),
-		}
-		server.PrivateNets = append(server.PrivateNets, attached)
 		serverID, networkID := server.ID, network.ID
 		return lab.Plan{
 			Resources: []state.ResourceRef{{Type: networkResource, ID: networkID}},
@@ -349,6 +324,80 @@ func planAttachToNetwork(l *lab.Lab) planFunc {
 					return nic.MAC == attached.MAC
 				})
 			}),
+		}, nil
+	}
+}
+
+// joinNetwork gives the server a NIC in a network, as an attach does: the
+// address asked for, or the first free one of the subnet named by ipRange
+// or of the last subnet with room, with its alias IPs. It checks what
+// Hetzner checks after the fields, the network and the alias IPs' count,
+// in Hetzner's order, and notes the change among the network's members.
+func joinNetwork(l *lab.Lab, tx *state.Tx, server *state.Server, network *state.Network,
+	ip netip.Addr, ipRange netip.Prefix, aliases []netip.Addr) (state.ServerPrivateNet, error) {
+	if err := checkServerNetworks(tx, server, network); err != nil {
+		return state.ServerPrivateNet{}, err
+	}
+	if ipRange.IsValid() && !slices.Contains(subnetPrefixes(network), ipRange) {
+		return state.ServerPrivateNet{}, web.RefusalNull(http.StatusUnprocessableEntity, "service_error", serverSubnetNotFound)
+	}
+	if ipRange.IsValid() && ip.IsValid() && !ipRange.Contains(ip) {
+		return state.ServerPrivateNet{}, web.RefusalNull(http.StatusUnprocessableEntity, "service_error", serverIPNotInRange)
+	}
+	taken := takenAddresses(tx, network, server.ID)
+	if ip.IsValid() {
+		if err := addressRefusal(network, ip, taken); err != nil {
+			return state.ServerPrivateNet{}, err
+		}
+	} else {
+		var found bool
+		if ip, found = freeAddress(network, ipRange, taken); !found {
+			return state.ServerPrivateNet{}, web.RefusalNull(http.StatusUnprocessableEntity, "no_subnet_available", serverNoSubnet)
+		}
+	}
+	if err := aliasRefusal(network, ip, aliases, taken); err != nil {
+		return state.ServerPrivateNet{}, err
+	}
+	noteMemberChange(l, tx, network, server.ID, nil)
+	attached := state.ServerPrivateNet{
+		NetworkID: network.ID,
+		IP:        ip.String(),
+		AliasIPs:  addressStrings(aliases),
+		MAC:       lab.NewPrivateMAC(tx),
+	}
+	server.PrivateNets = append(server.PrivateNets, attached)
+	return attached, nil
+}
+
+// planAttachAtCreate gives a new server a NIC in a network of its create
+// request, which createServer has checked: the first free address of the
+// last subnet with room. The create makes the VM with the NIC, so the
+// steps only wait Hetzner's time; they call l.Sleep themselves, as they
+// change nothing on the machine. Hetzner's attach ends a few seconds
+// before the create (measured 2026-11-09), as an attach's time does
+// before the create's.
+func planAttachAtCreate(l *lab.Lab) planFunc {
+	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+		var body attachToNetworkRequest
+		if err := json.Unmarshal(req.Body, &body); err != nil || body.Network == nil {
+			return lab.Plan{}, web.ParseFailed()
+		}
+		server, err := callerServer(tx, req.ProjectID, req.ID)
+		if err != nil {
+			return lab.Plan{}, err
+		}
+		network, err := callerNetwork(tx, req.ProjectID, *body.Network)
+		if err != nil {
+			return lab.Plan{}, err
+		}
+		if _, err := joinNetwork(l, tx, server, network, netip.Addr{}, netip.Prefix{}, nil); err != nil {
+			return lab.Plan{}, err
+		}
+		l.AddNote(lab.NoteKey{Kind: memberNote, Owner: network.ID, Subject: server.ID},
+			lab.Note{Status: networkMemberAttaching}, 0, lab.MemberAttachingAtCreate)
+		return lab.Plan{
+			Resources: []state.ResourceRef{{Type: networkResource, ID: network.ID}},
+			Steps:     func(ctx context.Context) error { return l.Sleep(ctx, lab.NICAttach) },
 		}, nil
 	}
 }

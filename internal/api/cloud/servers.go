@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"net/netip"
 	"regexp"
 	"slices"
 	"strconv"
@@ -32,6 +33,17 @@ const (
 	// a location that the type does not offer or no longer has available;
 	// the details {}
 	serverLocationUnsupported = "unsupported location for server type"
+	// networks and firewalls in a create request; the details {} but for
+	// the fields' errors
+	serverNetworksUnique     = "Networks must be unique."
+	serverFirewallsUnique    = "Firewalls must be unique."
+	serverFirewallMissing    = "Missing data for required field firewalls.firewall."
+	serverNetworkUnknown     = "unknown network with ID %d"
+	serverNetworkNoSubnet    = "networks must have at least one subnetwork"
+	serverNetworksOverlapNew = "network IP range overlaps with one of the server networks"
+	serverFirewallUnknown    = "firewall not found"
+	serverFirewallsLimit     = "firewall limit on server exceeded"
+	serverFirewallsLimitName = "firewalls_per_server_limit"
 )
 
 // userDataMax is the most user data a server takes, in bytes (measured
@@ -72,8 +84,9 @@ func (r idOrName) matches(id int64, name string) bool {
 
 // serverCreateRequest is the body of POST /servers. It is HLab's own type
 // because schema.ServerCreateRequest cannot tell a missing field from an
-// empty one. Volumes, networks, firewalls and placement groups come with
-// their phases; until then the lab ignores them.
+// empty one. Volumes and placement groups come with phase 2b; until then
+// the lab ignores them, as Hetzner ignores fields it does not know
+// (floating_ips, measured 2026-11-09).
 type serverCreateRequest struct {
 	Name             *string                 `json:"name"`
 	ServerType       *idOrName               `json:"server_type"`
@@ -84,6 +97,13 @@ type serverCreateRequest struct {
 	StartAfterCreate *bool                   `json:"start_after_create"`
 	Labels           *map[string]string      `json:"labels"`
 	PublicNet        *serverPublicNetRequest `json:"public_net"`
+	Networks         []int64                 `json:"networks"`
+	Firewalls        []serverFirewallRequest `json:"firewalls"`
+}
+
+// serverFirewallRequest is one entry of a create request's firewalls.
+type serverFirewallRequest struct {
+	Firewall *int64 `json:"firewall"`
 }
 
 // serverPublicNetRequest is the public network a new server asks for:
@@ -169,7 +189,7 @@ func registerServers(api *web.API, l *lab.Lab) {
 			for _, server := range state.All(tx, state.Servers) {
 				if server.ProjectID == req.Caller.ProjectID && selector.Matches(server.Labels) &&
 					(!filtered || slices.Contains(statuses, string(server.Status))) {
-					servers = append(servers, serverJSON(tx, l.Catalog(), server))
+					servers = append(servers, serverJSON(l, tx, server))
 				}
 			}
 			return nil
@@ -190,7 +210,7 @@ func registerServers(api *web.API, l *lab.Lab) {
 		err := l.View(func(tx *state.Tx) error {
 			server, err := callerServer(tx, req.Caller.ProjectID, web.PathID(req, "id"))
 			if err == nil {
-				out = serverJSON(tx, l.Catalog(), server)
+				out = serverJSON(l, tx, server)
 			}
 			return err
 		})
@@ -234,7 +254,7 @@ func registerServers(api *web.API, l *lab.Lab) {
 				// selector, or take it out
 				firewallsChanged = refreshFirewallSelectors(l, tx, server.ProjectID)
 			}
-			out = serverJSON(tx, l.Catalog(), server)
+			out = serverJSON(l, tx, server)
 			return nil
 		})
 		if err != nil {
@@ -289,7 +309,81 @@ func checkServerCreate(body serverCreateRequest) error {
 	if body.Labels != nil {
 		check.Labels(*body.Labels)
 	}
+	if len(body.Networks) != len(uniqueIDs(body.Networks)) {
+		check.Fail("networks", serverNetworksUnique)
+	}
+	var firewalls []int64
+	for _, entry := range body.Firewalls {
+		if entry.Firewall == nil || *entry.Firewall <= 0 {
+			check.Fail("firewalls", serverFirewallMissing)
+			break
+		}
+		firewalls = append(firewalls, *entry.Firewall)
+	}
+	if len(firewalls) == len(body.Firewalls) && len(firewalls) != len(uniqueIDs(firewalls)) {
+		check.Fail("firewalls", serverFirewallsUnique)
+	}
 	return check.Err()
+}
+
+// uniqueIDs returns the IDs without repeats, in their order.
+func uniqueIDs(ids []int64) []int64 {
+	var unique []int64
+	for _, id := range ids {
+		if !slices.Contains(unique, id) {
+			unique = append(unique, id)
+		}
+	}
+	return unique
+}
+
+// checkCreateNetworks checks the networks of a create request as Hetzner
+// does (measured 2026-11-09): each must be the project's and have a
+// subnet, at most three, their ranges apart. The ID 0 fails Hetzner
+// itself.
+func checkCreateNetworks(tx *state.Tx, projectID int64, ids []int64) error {
+	var ranges []netip.Prefix
+	for _, id := range ids {
+		if id <= 0 {
+			return web.Refusal(http.StatusInternalServerError, "server_error", "internal server error")
+		}
+		network, err := state.Get(tx, state.Networks, id)
+		if err != nil || network.ProjectID != projectID {
+			return web.Refusal(http.StatusNotFound, "not_found", fmt.Sprintf(serverNetworkUnknown, id))
+		}
+		if len(network.Subnets) == 0 {
+			return web.InvalidInput("invalid input in field 'networks'",
+				web.Field{Name: "networks", Messages: []string{serverNetworkNoSubnet}})
+		}
+		ranges = append(ranges, netip.MustParsePrefix(network.IPRange))
+	}
+	if len(ids) > serverNetworksMax {
+		return web.Refusal(http.StatusForbidden, "resource_limit_exceeded", serverNetworksLimit)
+	}
+	for i, ipRange := range ranges {
+		for _, other := range ranges[i+1:] {
+			if ipRange.Overlaps(other) {
+				return web.Refusal(http.StatusUnprocessableEntity, "networks_overlap", serverNetworksOverlapNew)
+			}
+		}
+	}
+	return nil
+}
+
+// checkCreateFirewalls checks the firewalls of a create request as Hetzner
+// does (measured 2026-11-09): each must be the project's, at most five;
+// those a label selector would add do not count, they wait for room.
+func checkCreateFirewalls(tx *state.Tx, projectID int64, entries []serverFirewallRequest) error {
+	for _, entry := range entries {
+		firewall, err := state.Get(tx, state.Firewalls, *entry.Firewall)
+		if err != nil || firewall.ProjectID != projectID {
+			return web.Refusal(http.StatusNotFound, "firewall_not_found", serverFirewallUnknown)
+		}
+	}
+	if len(entries) > firewallsPerServer {
+		return web.LimitExceeded(serverFirewallsLimit, serverFirewallsLimitName)
+	}
+	return nil
 }
 
 // createServer checks a create request, records the server with its
@@ -341,7 +435,17 @@ func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any
 	if err := l.Machine().CheckDisk(req.Context()); err != nil {
 		return 0, nil, actError(err)
 	}
+	// Hetzner's next_actions: an attach_to_network per network, an
+	// apply_firewall per firewall, then the start (measured 2026-11-09)
 	rows := []lab.Row{{Command: "create"}}
+	for _, id := range body.Networks {
+		raw, _ := json.Marshal(map[string]int64{"network": id})
+		rows = append(rows, lab.Row{Command: "attach_at_create", Body: raw})
+	}
+	firewallTable := firewallActions(l)
+	for _, entry := range body.Firewalls {
+		rows = append(rows, lab.Row{Command: "apply_at_create", Table: &firewallTable, ID: *entry.Firewall})
+	}
 	if start {
 		rows = append(rows, lab.Row{Command: "poweron"})
 	}
@@ -359,6 +463,12 @@ func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any
 		if _, taken := state.ByName(tx, state.Servers, server.ProjectID, server.Name); taken {
 			return 0, web.Refusal(http.StatusConflict, "uniqueness_error", serverNameTaken) // details {}, not web.Uniqueness's fields
 		}
+		if err := checkCreateNetworks(tx, server.ProjectID, body.Networks); err != nil {
+			return 0, err
+		}
+		if err := checkCreateFirewalls(tx, server.ProjectID, body.Firewalls); err != nil {
+			return 0, err
+		}
 		// the record wants to run from its start, so its room is checked
 		// here: the poweron's plan (planStart) sees it wanting to run
 		if start {
@@ -372,10 +482,20 @@ func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any
 			return 0, err
 		}
 		state.Put(tx, state.Servers, server)
-		// the create's steps send the pictures with the firewalls
+		// its own firewalls first: a label selector's firewall takes a
+		// place only where they leave one (measured 2026-11-09). The
+		// create's steps send the pictures with them.
+		for _, entry := range body.Firewalls {
+			if firewall, err := state.Get(tx, state.Firewalls, *entry.Firewall); err == nil {
+				firewall.AppliedTo = append(firewall.AppliedTo, state.FirewallTarget{ServerID: server.ID})
+			}
+		}
 		refreshFirewallSelectors(l, tx, server.ProjectID)
-		out = serverJSON(tx, cat, server)
 		return server.ID, nil
+	}, func(tx *state.Tx, id int64) {
+		if current, err := state.Get(tx, state.Servers, id); err == nil {
+			out = serverJSON(l, tx, current)
+		}
 	}, rows...)
 	if err != nil {
 		return 0, nil, actError(err)
@@ -489,7 +609,8 @@ func callerServer(tx *state.Tx, projectID, id int64) (*state.Server, error) {
 }
 
 // serverJSON returns a server as the API shows it.
-func serverJSON(tx *state.Tx, cat *catalog.Catalog, server *state.Server) serverAnswer {
+func serverJSON(l *lab.Lab, tx *state.Tx, server *state.Server) serverAnswer {
+	cat := l.Catalog()
 	out := serverAnswer{
 		ID:              server.ID,
 		Name:            server.Name,
@@ -536,7 +657,7 @@ func serverJSON(tx *state.Tx, cat *catalog.Catalog, server *state.Server) server
 			Network: attached.NetworkID, IP: attached.IP, AliasIPs: aliases, MACAddress: attached.MAC,
 		})
 	}
-	out.PublicNet.Firewalls = serverFirewallsJSON(tx, server)
+	out.PublicNet.Firewalls = serverFirewallsJSON(l, tx, server)
 	floating := state.IDs(tx, state.FloatingIPs, func(ip *state.FloatingIP) bool { return ip.ServerID == server.ID })
 	out.PublicNet.FloatingIPs = append(out.PublicNet.FloatingIPs, floating...)
 	return out

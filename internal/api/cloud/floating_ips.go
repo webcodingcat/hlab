@@ -139,7 +139,10 @@ func registerFloatingIPs(api *web.API, l *lab.Lab) {
 		return http.StatusNoContent, nil, nil
 	})
 
-	for _, command := range []string{"assign", "unassign", "change_protection"} {
+	api.Handle("POST /floating_ips/{id}/actions/assign", func(req *web.Request) (int, any, error) {
+		return assignFloatingIP(req, l, table)
+	})
+	for _, command := range []string{"unassign", "change_protection"} {
 		api.Handle("POST /floating_ips/{id}/actions/"+command, func(req *web.Request) (int, any, error) {
 			action, err := act(l, table, command, req)
 			if err != nil {
@@ -233,8 +236,11 @@ func createFloatingIP(req *web.Request, l *lab.Lab, table lab.ActionTable) (int,
 		}
 		ip.IP = address
 		state.Put(tx, state.FloatingIPs, ip)
-		out = floatingIPJSON(l.Catalog(), ip)
 		return ip.ID, nil
+	}, func(tx *state.Tx, id int64) {
+		if current, err := state.Get(tx, state.FloatingIPs, id); err == nil {
+			out = floatingIPJSON(l.Catalog(), current)
+		}
 	}, rows...)
 	if err != nil {
 		return 0, nil, actError(err)
@@ -242,12 +248,6 @@ func createFloatingIP(req *web.Request, l *lab.Lab, table lab.ActionTable) (int,
 	answer := schema.FloatingIPCreateResponse{FloatingIP: out}
 	if len(actions) > 0 {
 		answer.Action = new(actionJSON(&actions[0]))
-		_ = l.View(func(tx *state.Tx) error {
-			if current, err := state.Get(tx, state.FloatingIPs, ip.ID); err == nil {
-				answer.FloatingIP = floatingIPJSON(l.Catalog(), current)
-			}
-			return nil
-		})
 	}
 	return http.StatusCreated, answer, nil
 }

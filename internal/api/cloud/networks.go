@@ -423,7 +423,7 @@ func newSubnet(network *state.Network, request subnetRequest, overlap string) (s
 	if request.IPRange == nil {
 		var found bool
 		if subnetRange, found = freeSubnet(ipRange, taken); !found {
-			return state.NetworkSubnet{}, web.InvalidInput(overlap) // not measured
+			return state.NetworkSubnet{}, web.RefusalNull(http.StatusUnprocessableEntity, "no_subnet_available", serverNoSubnet)
 		}
 	} else {
 		prefix, err := netip.ParsePrefix(*request.IPRange)
@@ -446,21 +446,23 @@ func newSubnet(network *state.Network, request subnetRequest, overlap string) (s
 	return state.NetworkSubnet{Type: *request.Type, IPRange: subnetRange.String(), NetworkZone: *request.NetworkZone}, nil
 }
 
-// freeSubnet returns the first /24 of a range that overlaps nothing taken.
+// freeSubnet returns the first /24 of a range that overlaps nothing taken;
+// without one, the first free block of the next size down, to the
+// smallest subnet: Hetzner gave the free /25 of a /24 and of a /23 whose
+// space was taken but for it, and refused a /22 of four /24 subnets with
+// no_subnet_available (measured 2026-11-09).
 func freeSubnet(ipRange netip.Prefix, taken []netip.Prefix) (netip.Prefix, bool) {
-	size := 1 << (32 - networkSmallestRange)
-	for address := ipRange.Addr(); ipRange.Contains(address); {
-		candidate := netip.PrefixFrom(address, networkSmallestRange)
-		if !slices.ContainsFunc(taken, candidate.Overlaps) {
-			return candidate, true
+	for bits := max(networkSmallestRange, ipRange.Bits()); bits <= networkSmallestSubnet; bits++ {
+		size := uint64(1) << (32 - bits)
+		bytes := ipRange.Masked().Addr().As4()
+		first := uint64(bytes[0])<<24 | uint64(bytes[1])<<16 | uint64(bytes[2])<<8 | uint64(bytes[3])
+		last := first + uint64(1)<<(32-ipRange.Bits())
+		for start := first; start < last; start += size {
+			candidate := netip.PrefixFrom(netip.AddrFrom4([4]byte{byte(start >> 24), byte(start >> 16), byte(start >> 8), byte(start)}), bits)
+			if !slices.ContainsFunc(taken, candidate.Overlaps) {
+				return candidate, true
+			}
 		}
-		bytes := address.As4()
-		next := uint32(bytes[0])<<24 | uint32(bytes[1])<<16 | uint32(bytes[2])<<8 | uint32(bytes[3])
-		next += uint32(size)
-		if next == 0 {
-			break
-		}
-		address = netip.AddrFrom4([4]byte{byte(next >> 24), byte(next >> 16), byte(next >> 8), byte(next)})
 	}
 	return netip.Prefix{}, false
 }
@@ -703,8 +705,16 @@ const memberNote = "network_member"
 
 // memberStatus returns a server's status in a network: "attaching" while
 // its attach runs and "updating" while its alias IPs change, else what a
-// note says ("updating" while another server joins or leaves), else "ok".
+// note says ("updating" while another server joins or leaves, "attaching"
+// for a moment after a create), else "ok". A create's attach runs on
+// while Hetzner shows the new member "ok" already (measured 2026-11-09).
 func memberStatus(tx *state.Tx, notes map[int64]lab.Note, networkID, serverID int64) string {
+	if server, err := state.Get(tx, state.Servers, serverID); err == nil && server.Status == state.ServerInitializing {
+		if note, found := notes[serverID]; found {
+			return note.Status
+		}
+		return networkMemberOK
+	}
 	running := state.IDs(tx, state.Actions, func(action *state.Action) bool {
 		return action.Status == state.ActionRunning && namesResource(action, networkResource, networkID) &&
 			namesResource(action, lab.ServerResource, serverID)
@@ -760,7 +770,9 @@ func leavingMember(network *state.Network, serverID int64, attached state.Server
 func deleteNetwork(req *web.Request, l *lab.Lab) (int, any, error) {
 	id := web.PathID(req, "id")
 	var nics []lab.ServerNIC
-	err := l.ChangeIdle(state.ResourceRef{Type: networkResource, ID: id}, networkBusy, func(tx *state.Tx) error {
+	// an action that runs on the network ends "aborted", also a server's
+	// attach (measured 2026-11-09)
+	err := l.ChangeAborting(state.ResourceRef{Type: networkResource, ID: id}, func(tx *state.Tx) error {
 		network, err := callerNetwork(tx, req.Caller.ProjectID, id)
 		if err != nil {
 			return err
@@ -780,9 +792,6 @@ func deleteNetwork(req *web.Request, l *lab.Lab) (int, any, error) {
 		state.Delete(tx, state.Networks, id)
 		return nil
 	})
-	if locked, ok := errors.AsType[*lab.LockedError](err); ok {
-		return 0, nil, web.Locked(locked.Message)
-	}
 	if err != nil {
 		return 0, nil, err
 	}

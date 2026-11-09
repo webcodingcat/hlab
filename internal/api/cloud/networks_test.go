@@ -13,6 +13,7 @@ import (
 
 	"github.com/webcodingcat/hlab/internal/agentproto"
 	"github.com/webcodingcat/hlab/internal/lab"
+	"github.com/webcodingcat/hlab/internal/platform"
 )
 
 // networkAnswer is a network as the API shows it, with the fields
@@ -700,8 +701,8 @@ func (c *handClock) Advance(d time.Duration) {
 }
 
 // A server that leaves a network stays among its members as "detaching"
-// for 5 s, and the other members show "updating" from 2 s after, as on
-// Hetzner (measured 2026-11-08).
+// for 5 s, and the other members show "updating" from 2 s after for 10 s,
+// as on Hetzner (measured 2026-11-08 and 2026-11-09).
 func TestMembersShowAServerLeavingAsHetznerDoes(t *testing.T) {
 	clock := &handClock{now: time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)}
 	test := newTimedTestLab(t, clock, 1)
@@ -730,7 +731,8 @@ func TestMembersShowAServerLeavingAsHetznerDoes(t *testing.T) {
 		{0, "detaching", "ok"},
 		{2 * time.Second, "detaching", "updating"},
 		{3 * time.Second, "", "updating"}, // 5 s
-		{time.Second, "", "ok"},           // 6 s
+		{6 * time.Second, "", "updating"}, // 11 s
+		{time.Second, "", "ok"},           // 12 s
 	} {
 		clock.Advance(step.advance)
 		got := statuses()
@@ -748,5 +750,64 @@ func TestMembersShowAServerLeavingAsHetznerDoes(t *testing.T) {
 	test.client.Get(fmt.Sprintf("/v1/networks/%d/members?status=detaching", network.ID)).Decode(t, &detaching)
 	if len(detaching.Members) != 1 || detaching.Members[0].ID != second.Server.ID || detaching.Members[0].IP == "" || detaching.Members[0].Subnet != "10.0.1.0/24" {
 		t.Errorf("after the second server's delete the detaching members are %+v", detaching.Members)
+	}
+}
+
+// add_subnet without ip_range takes the first free /24, else the first free
+// block of the next size down; a network without one is refused (measured
+// 2026-11-09).
+func TestAddSubnetWithoutRangeTakesWhatIsFree(t *testing.T) {
+	test := newTestLab(t)
+	half := createNetwork(t, test, map[string]any{"name": "half", "ip_range": "10.70.0.0/24",
+		"subnets": []map[string]any{cloudSubnet("10.70.0.0/25")}}).ID
+	actionOf(t, "add_subnet", networkAction(test, half, "add_subnet", map[string]any{"type": "cloud", "network_zone": "eu-central"}))
+	var ranges []string
+	for _, subnet := range getNetwork(t, test, half).Subnets {
+		ranges = append(ranges, subnet.IPRange)
+	}
+	if !slices.Contains(ranges, "10.70.0.128/25") {
+		t.Errorf("the subnets are %v, want 10.70.0.128/25 among them", ranges)
+	}
+	full := createNetwork(t, test, map[string]any{"name": "full", "ip_range": "10.72.0.0/22", "subnets": []map[string]any{
+		cloudSubnet("10.72.0.0/24"), cloudSubnet("10.72.1.0/24"), cloudSubnet("10.72.2.0/24"), cloudSubnet("10.72.3.0/24")}}).ID
+	expectError(t, "a full network", networkAction(test, full, "add_subnet", map[string]any{"type": "cloud", "network_zone": "eu-central"}),
+		http.StatusUnprocessableEntity, "no_subnet_available", "no subnet or IP available")
+}
+
+// A network deleted while an action runs on it is gone at once, and the
+// action ends with Hetzner's "aborted": its add_route, a server's attach
+// (measured 2026-11-09).
+func TestNetworkDeletedDuringItsActionAbortsIt(t *testing.T) {
+	test := newTestLab(t)
+	agent := startMachine(t, test, platform.HostResources{Threads: 8, MemoryMB: 16 * 1024})
+	network := networkWithSubnet(t, test, "net", "10.1")
+	server := offServer(t, test, "web")
+	waitActions(t, test, actionOf(t, "attach", serverNetworkAction(test, server.Server.ID, "attach_to_network", map[string]any{"network": network})))
+	waiting, release := agent.HoldNext(agentproto.PictureLinks)
+	route := actionOf(t, "add_route", networkAction(test, network, "add_route", map[string]any{"destination": "10.100.0.0/24", "gateway": "10.1.1.5"}))
+	<-waiting
+	if response := test.client.Do(http.MethodDelete, fmt.Sprintf("/v1/networks/%d", network), nil); response.Status != http.StatusNoContent {
+		t.Errorf("the delete answered %d %s", response.Status, response.Body)
+	}
+	release()
+	ended := waitActions(t, test, route)[0]
+	if ended.Status != "error" || ended.Error.Code != "aborted" || ended.Error.Message != "" {
+		t.Errorf("the add_route ended %s with %+v, want aborted", ended.Status, ended.Error)
+	}
+
+	// a server's attach too, and the server is in no network after
+	network = networkWithSubnet(t, test, "second", "10.2")
+	waiting, release = agent.HoldNext(agentproto.PictureLinks)
+	attach := actionOf(t, "attach", serverNetworkAction(test, server.Server.ID, "attach_to_network", map[string]any{"network": network}))
+	<-waiting
+	if response := test.client.Do(http.MethodDelete, fmt.Sprintf("/v1/networks/%d", network), nil); response.Status != http.StatusNoContent {
+		t.Errorf("the second delete answered %d %s", response.Status, response.Body)
+	}
+	release()
+	if ended := waitActions(t, test, attach)[0]; ended.Status != "error" || ended.Error.Code != "aborted" {
+		t.Errorf("the attach ended %s with %+v, want aborted", ended.Status, ended.Error)
+	}
+	if got := getServer(t, test, server.Server.ID).PrivateNet; len(got) != 0 {
+		t.Errorf("after the delete the server is in %+v", got)
 	}
 }

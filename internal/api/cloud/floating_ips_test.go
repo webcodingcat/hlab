@@ -231,6 +231,14 @@ func TestFloatingIPAssignMoveAndUnassign(t *testing.T) {
 
 	moved := assignFloatingIP(t, test, ip.ID, second.Server.ID)
 	waitActions(t, test, moved)
+	// a move records an unassign of the old server first, which is not in
+	// the answer (measured 2026-11-09)
+	var ipActions schema.ActionListResponse
+	test.client.Get(fmt.Sprintf("/v1/floating_ips/%d/actions?sort=id", ip.ID)).Decode(t, &ipActions)
+	if n := len(ipActions.Actions); n < 2 || ipActions.Actions[n-1].ID != moved.ID ||
+		ipActions.Actions[n-2].Command != "unassign_floating_ip" || ipActions.Actions[n-2].Resources[1].ID != first.Server.ID {
+		t.Errorf("after the move the IP's actions are %+v", ipActions.Actions)
+	}
 	if got := getFloatingIP(t, test, ip.ID); got.Server == nil || *got.Server != second.Server.ID {
 		t.Errorf("after the move the IP is %+v", got)
 	}

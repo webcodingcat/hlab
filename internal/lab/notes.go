@@ -30,7 +30,7 @@ type Note struct {
 // replaces the older one. It takes its own lock, not the lab's mutex, so
 // that plans and views, which hold the mutex, may call it.
 func (l *Lab) AddNote(key NoteKey, note Note, after, lasting time.Duration) {
-	now := l.Now()
+	now := l.clock.Now() // not Now, which keeps whole seconds: notes last fractions too
 	note.from = now.Add(l.scaled(after))
 	note.until = note.from.Add(l.scaled(lasting))
 	l.notesMu.Lock()
@@ -44,7 +44,7 @@ func (l *Lab) AddNote(key NoteKey, note Note, after, lasting time.Duration) {
 // Notes returns the notes of a kind and owner that show now, by subject,
 // and forgets those whose time is over.
 func (l *Lab) Notes(kind string, owner int64) map[int64]Note {
-	now := l.Now()
+	now := l.clock.Now() // not Now, which keeps whole seconds: notes last fractions too
 	l.notesMu.Lock()
 	defer l.notesMu.Unlock()
 	showing := map[int64]Note{}

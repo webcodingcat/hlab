@@ -68,7 +68,7 @@ func routePlan(l *lab.Lab, id int64, undo func(network *state.Network)) lab.Plan
 
 // planAddSubnet adds a subnet, checked as in a create but with the
 // action's own text for an overlap; without an ip_range it takes the first
-// free /24 (measured 2026-11-08).
+// free /24, or a smaller block (freeSubnet).
 func planAddSubnet(l *lab.Lab) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		var body subnetRequest

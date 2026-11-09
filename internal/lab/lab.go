@@ -109,6 +109,8 @@ type runningAction struct {
 	flagged    []state.ResourceRef // the flags it holds until it ends
 	queue      *state.ResourceRef  // the resource it queued on, if any
 	lockQueues []state.ResourceRef // the resources it locks, whose queues wait for it
+	names      []state.ResourceRef // the resources the action names
+	aborted    bool                // its resource was deleted: it ends as Hetzner's "aborted"
 }
 
 // Open starts the lab: it claims the data folder, loads the state and ends the
@@ -175,7 +177,7 @@ func (l *Lab) endInterruptedActions(tx *state.Tx) error {
 		if err != nil {
 			return err
 		}
-		l.endAction(action, "HLab was restarted while the action ran")
+		l.endAction(action, actionFailed("HLab was restarted while the action ran"))
 		projects[action.ProjectID] = true
 	}
 	for projectID := range projects {

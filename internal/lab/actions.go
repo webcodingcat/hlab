@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"time"
 
 	"github.com/webcodingcat/hlab/internal/state"
 )
@@ -58,6 +60,9 @@ type Request struct {
 	ProjectID int64
 	ID        int64  // the resource's ID
 	Body      []byte // the request's JSON body, which Plan reads
+	// Created is the resource that a Create has just made, for a row of
+	// another resource's table (Row.Table); 0 otherwise.
+	Created int64
 }
 
 // Plan is what an action does besides its quick changes.
@@ -95,12 +100,18 @@ type Plan struct {
 type Row struct {
 	Command string
 	Body    []byte
+	// Table, if set, is another resource's table, and ID that resource:
+	// a create that starts actions of other resources (a server's create
+	// applies firewalls, whose actions name the firewall first). The row's
+	// plan finds the created resource in Request.Created.
+	Table *ActionTable
+	ID    int64
 }
 
 // Act runs one action of a resource from its table and returns the action as
 // the API shows it right after.
 func (l *Lab) Act(table ActionTable, command string, req Request) (state.Action, error) {
-	actions, err := l.run(table, req, nil, []Row{{Command: command}})
+	actions, err := l.run(table, req, nil, nil, []Row{{Command: command}})
 	if err != nil {
 		return state.Action{}, err
 	}
@@ -111,24 +122,29 @@ func (l *Lab) Act(table ActionTable, command string, req Request) (state.Action,
 // each with its own body, as a firewall's apply_to_resources does for each
 // resource it names. If one fails, nothing changes.
 func (l *Lab) ActAll(table ActionTable, req Request, rows ...Row) ([]state.Action, error) {
-	return l.run(table, req, nil, rows)
+	return l.run(table, req, nil, nil, rows)
 }
 
 // Create records a new resource and runs its first actions in one
 // transaction, so that a resource never stays without the action that
 // makes it: create puts the record and returns its ID, then each row
 // runs on it in order, a later one queued behind an earlier one if the
-// table is Queued. req gives the project and the body; its ID is create's.
-// If anything fails, nothing changes. The rows' flags are set only when all
-// are planned, so a row's Locks are not checked against an earlier row's.
-func (l *Lab) Create(table ActionTable, req Request, create func(tx *state.Tx) (int64, error), rows ...Row) ([]state.Action, error) {
-	return l.run(table, req, create, rows)
+// table is Queued. answer, if not nil, then reads the records as the rows
+// left them, still in the transaction, for the API's answer: once it ends,
+// the steps may change them. req gives the project and the body; its ID is
+// create's. If anything fails, nothing changes. The rows' flags are set
+// only when all are planned, so a row's Locks are not checked against an
+// earlier row's.
+func (l *Lab) Create(table ActionTable, req Request, create func(tx *state.Tx) (int64, error),
+	answer func(tx *state.Tx, id int64), rows ...Row) ([]state.Action, error) {
+	return l.run(table, req, create, answer, rows)
 }
 
 // run is Act, ActAll and Create: it checks the project, runs create if
 // there is one, plans the rows in one transaction and starts them once
 // the transaction is saved.
-func (l *Lab) run(table ActionTable, req Request, create func(tx *state.Tx) (int64, error), rows []Row) ([]state.Action, error) {
+func (l *Lab) run(table ActionTable, req Request, create func(tx *state.Tx) (int64, error),
+	answer func(tx *state.Tx, id int64), rows []Row) ([]state.Action, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.closed {
@@ -146,15 +162,21 @@ func (l *Lab) run(table ActionTable, req Request, create func(tx *state.Tx) (int
 			}
 		}
 		for _, row := range rows {
-			rowReq := req
+			rowReq, rowTable := req, table
 			if row.Body != nil {
 				rowReq.Body = row.Body
 			}
-			action, err := l.planAction(tx, table, row.Command, rowReq)
+			if row.Table != nil {
+				rowTable, rowReq.ID, rowReq.Created = *row.Table, row.ID, req.ID
+			}
+			action, err := l.planAction(tx, rowTable, row.Command, rowReq)
 			if err != nil {
 				return err
 			}
 			planned = append(planned, action)
+		}
+		if answer != nil {
+			answer(tx, req.ID)
 		}
 		return nil
 	})
@@ -169,11 +191,42 @@ func (l *Lab) run(table ActionTable, req Request, create func(tx *state.Tx) (int
 	return actions, nil
 }
 
-// RecordAction records an action that is finished already, in a change
-// that is no action: Hetzner's apply_firewall for a server that comes
-// under a firewall's label selector when it is created or relabelled.
-func (l *Lab) RecordAction(tx *state.Tx, projectID int64, command string, resources []state.ResourceRef) {
-	l.finishAction(tx, l.newAction(tx, projectID, command, resources), "")
+// RecordActionLater records an action of a change that is no action, as
+// Hetzner records one when a label selector takes a server under a
+// firewall or lets it go: after the time after it appears, running, and
+// it ends after lasting more, both Hetzner's times, scaled by the time
+// scale. It changes nothing on the machine. The caller holds the mutex,
+// in the change that causes the action; a project deleted meanwhile gets
+// none. It ends with the lab, and Close waits for it.
+func (l *Lab) RecordActionLater(projectID int64, command string, resources []state.ResourceRef, after, lasting time.Duration) {
+	if l.closed {
+		return
+	}
+	l.background.Go(func() {
+		ctx := l.ctx
+		if l.Sleep(ctx, after) != nil {
+			return
+		}
+		var id int64
+		err := l.Change(func(tx *state.Tx) error {
+			if CheckProject(tx, projectID) == nil {
+				id = l.newAction(tx, projectID, command, resources).ID
+			}
+			return nil
+		})
+		if err != nil || id == 0 || l.Sleep(ctx, lasting) != nil {
+			return
+		}
+		err = l.Change(func(tx *state.Tx) error {
+			if action, err := state.Get(tx, state.Actions, id); err == nil {
+				l.finishAction(tx, action, nil)
+			}
+			return nil
+		})
+		if err != nil {
+			l.logger.Error("finishing a recorded action failed", "id", id, "error", err)
+		}
+	})
 }
 
 // plannedAction is an action that its transaction has recorded and whose
@@ -210,7 +263,7 @@ func (l *Lab) planAction(tx *state.Tx, table ActionTable, command string, req Re
 	resources := append([]state.ResourceRef{target}, plan.Resources...)
 	action := l.newAction(tx, req.ProjectID, spec.Name, resources)
 	if plan.Steps == nil {
-		l.finishAction(tx, action, "")
+		l.finishAction(tx, action, nil)
 	}
 	return plannedAction{action: action, plan: plan, target: target, spec: spec, queued: table.Queued}, nil
 }
@@ -226,6 +279,27 @@ func (l *Lab) ChangeIdle(ref state.ResourceRef, busy string, change func(tx *sta
 		return &LockedError{Message: busy}
 	}
 	return l.changeLocked(change)
+}
+
+// ChangeAborting runs change as Change does, for the delete of a resource
+// that actions may work on: once the change is saved, each running action
+// that flags or names the resource is canceled and ends with Hetzner's
+// "aborted", as a network's add_route and a server's attach_to_network do
+// when the network is deleted (measured 2026-11-09). Its quick changes
+// are not undone: the resource is gone.
+func (l *Lab) ChangeAborting(ref state.ResourceRef, change func(tx *state.Tx) error) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if err := l.changeLocked(change); err != nil {
+		return err
+	}
+	for _, run := range l.running {
+		if slices.Contains(run.flagged, ref) || slices.Contains(run.names, ref) {
+			run.aborted = true
+			run.cancel()
+		}
+	}
+	return nil
 }
 
 // newAction adds a running action.
@@ -245,23 +319,33 @@ func (l *Lab) newAction(tx *state.Tx, projectID int64, command string, resources
 
 // finishAction ends an action (endAction) and then drops the project's
 // oldest finished actions (trimActions).
-func (l *Lab) finishAction(tx *state.Tx, action *state.Action, message string) {
-	l.endAction(action, message)
+func (l *Lab) finishAction(tx *state.Tx, action *state.Action, failure *state.Failure) {
+	l.endAction(action, failure)
 	trimActions(tx, action.ProjectID)
 }
 
-// endAction sets an action finished: success, or an error with message.
-func (l *Lab) endAction(action *state.Action, message string) {
+// endAction sets an action finished: success without a failure, else an
+// error.
+func (l *Lab) endAction(action *state.Action, failure *state.Failure) {
 	finished := l.Now()
 	action.Progress = 100
 	action.Finished = &finished
 	action.Status = state.ActionSuccess
-	if message != "" {
+	if failure != nil {
 		action.Status = state.ActionError
-		action.Error = &state.Failure{Code: "action_failed", Message: message}
-		l.logger.Warn("action failed", "id", action.ID, "command", action.Command, "error", message)
+		action.Error = failure
+		l.logger.Warn("action failed", "id", action.ID, "command", action.Command, "code", failure.Code, "error", failure.Message)
 	}
 }
+
+// actionFailed is the failure of an action whose steps failed.
+func actionFailed(message string) *state.Failure {
+	return &state.Failure{Code: "action_failed", Message: message}
+}
+
+// actionAborted is Hetzner's failure of an action whose resource was
+// deleted while it ran (measured 2026-11-09: a network's add_route).
+var actionAborted = state.Failure{Code: "aborted", Message: ""}
 
 // trimActions drops a project's oldest finished actions beyond
 // MaxFinishedActions.
@@ -296,6 +380,7 @@ func (l *Lab) start(planned plannedAction) {
 	run := &runningAction{
 		id: planned.action.ID, projectID: planned.action.ProjectID, cancel: cancel, done: make(chan struct{}),
 		undo: planned.plan.Undo, undoIfLast: planned.plan.UndoIfLast, flagged: flagged, queue: queue,
+		names: planned.action.Resources,
 	}
 	l.running[run.id] = run
 	for _, ref := range flagged {
@@ -348,16 +433,18 @@ func waitFor(ctx context.Context, done chan struct{}) error {
 // undoes the quick changes if the steps failed, and finishes the action.
 // It tells whether it undid: the caller then sends the pictures.
 func (l *Lab) end(run *runningAction, err error, canceled bool) (undone bool) {
-	message := ""
-	switch {
-	case canceled:
-		message = "the action was canceled: HLab stopped or the project was deleted"
-	case err != nil:
-		message = err.Error()
-	}
-
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	var failure *state.Failure
+	switch {
+	case run.aborted:
+		failure = new(actionAborted)
+		canceled = true // nothing to undo: its resource is gone
+	case canceled:
+		failure = actionFailed("the action was canceled: HLab stopped or the project was deleted")
+	case err != nil:
+		failure = actionFailed(err.Error())
+	}
 	for _, ref := range run.flagged {
 		if l.flags[ref]--; l.flags[ref] <= 0 {
 			delete(l.flags, ref)
@@ -381,7 +468,7 @@ func (l *Lab) end(run *runningAction, err error, canceled bool) (undone bool) {
 		if err != nil {
 			return err
 		}
-		l.finishAction(tx, action, message)
+		l.finishAction(tx, action, failure)
 		return nil
 	}
 	undo := err != nil && !canceled && run.undo != nil && (last || !run.undoIfLast)

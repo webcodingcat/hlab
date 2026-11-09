@@ -263,8 +263,11 @@ func createPrimaryIP(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, 
 		}
 		ip.ID, ip.IP = state.NewID(tx, state.PrimaryIPs), address
 		state.Put(tx, state.PrimaryIPs, ip)
-		out = primaryIPJSON(l.Catalog(), ip)
 		return ip.ID, nil
+	}, func(tx *state.Tx, id int64) {
+		if current, err := state.Get(tx, state.PrimaryIPs, id); err == nil {
+			out = primaryIPJSON(l.Catalog(), current)
+		}
 	}, rows...)
 	if err != nil {
 		return 0, nil, actError(err)
@@ -272,12 +275,6 @@ func createPrimaryIP(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, 
 	answer := schema.PrimaryIPCreateResponse{PrimaryIP: out}
 	if len(actions) > 0 {
 		answer.Action = new(actionJSON(&actions[0]))
-		_ = l.View(func(tx *state.Tx) error {
-			if current, err := state.Get(tx, state.PrimaryIPs, ip.ID); err == nil {
-				answer.PrimaryIP = primaryIPJSON(l.Catalog(), current)
-			}
-			return nil
-		})
 	}
 	return http.StatusCreated, answer, nil
 }

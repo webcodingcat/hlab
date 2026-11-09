@@ -1,10 +1,13 @@
 package cloud
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+
+	"github.com/hetznercloud/hcloud-go/v2/hcloud/schema"
 
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/lab"
@@ -22,6 +25,7 @@ func floatingIPActions(l *lab.Lab) lab.ActionTable {
 		Busy:         floatingIPAssigning,
 		Actions: map[string]lab.ActionSpec{
 			"assign":            {Name: "assign_floating_ip", Plan: planFloatingIPAssign(l)},
+			"unassign_for_move": {Name: "unassign_floating_ip", Plan: planFloatingIPUnassignForMove(l), Unflagged: true},
 			"unassign":          {Name: "unassign_floating_ip", Plan: planFloatingIPUnassign(l), Unflagged: true},
 			"change_protection": {Name: "change_protection", Plan: planFloatingIPProtection, Unflagged: true},
 		},
@@ -72,6 +76,53 @@ func planFloatingIPAssign(l *lab.Lab) planFunc {
 		plan.Undo = undoFloatingIPChange(ip.ID, ip.ServerID)
 		ip.ServerID = server.ID
 		return plan, nil
+	}
+}
+
+// assignFloatingIP assigns a Floating IP to a server. A move from another
+// server records an unassign_floating_ip of the old server first, which
+// runs as long as the assign and is not in the answer (measured
+// 2026-11-09). Whether it moves is read before the change: an IP that
+// another request unassigns meanwhile still gets the unassign, which does
+// no harm.
+func assignFloatingIP(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any, error) {
+	body, err := readBody(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	var target floatingIPAssignRequest
+	_ = json.Unmarshal(body, &target) // the assign's plan refuses a bad body
+	id := web.PathID(req, "id")
+	rows := []lab.Row{{Command: "assign"}}
+	_ = l.View(func(tx *state.Tx) error {
+		ip, err := state.Get(tx, state.FloatingIPs, id)
+		if err == nil && ip.ProjectID == req.Caller.ProjectID && ip.ServerID != 0 &&
+			target.Server != nil && *target.Server != ip.ServerID {
+			rows = []lab.Row{{Command: "unassign_for_move"}, {Command: "assign"}}
+		}
+		return nil
+	})
+	actions, err := l.ActAll(table, lab.Request{ProjectID: req.Caller.ProjectID, ID: id, Body: body}, rows...)
+	if err != nil {
+		return 0, nil, actError(err)
+	}
+	return http.StatusCreated, map[string]schema.Action{"action": actionJSON(&actions[len(actions)-1])}, nil
+}
+
+// planFloatingIPUnassignForMove is the unassign_floating_ip of the server
+// a moving IP leaves; the assign after it makes the change. Its steps
+// change nothing on the machine and only wait as long as the assign's, so
+// they call l.Sleep themselves.
+func planFloatingIPUnassignForMove(l *lab.Lab) planFunc {
+	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
+		ip, err := callerFloatingIP(tx, req.ProjectID, req.ID)
+		if err != nil {
+			return lab.Plan{}, err
+		}
+		return lab.Plan{
+			Resources: []state.ResourceRef{{Type: lab.ServerResource, ID: ip.ServerID}},
+			Steps:     func(ctx context.Context) error { return l.Sleep(ctx, lab.FloatingIPChange) },
+		}, nil
 	}
 }
 

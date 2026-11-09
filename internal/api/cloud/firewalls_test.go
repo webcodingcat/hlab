@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud/schema"
 
@@ -348,6 +349,23 @@ func TestFirewallLimits(t *testing.T) {
 	}
 }
 
+// Hetzner allows 50 firewalls per account (its documentation); the lab
+// counts them per project, so another project starts afresh. The error is
+// not measured.
+func TestFirewallsPerProjectAreLimited(t *testing.T) {
+	test := newTestLab(t)
+	for i := range 50 {
+		createFirewall(t, test, map[string]any{"name": fmt.Sprint("fw", i)})
+	}
+	response := &responseOf{test.client.Do(http.MethodPost, "/v1/firewalls", map[string]any{"name": "fw50"})}
+	expectError(t, "the 51st", response, http.StatusForbidden, "resource_limit_exceeded", "firewall limit exceeded")
+	if !strings.Contains(string(response.Body), `"limits":[{"name":"firewalls"}]`) {
+		t.Errorf("the 51st's details are %s", response.Body)
+	}
+	test.client.Token = newToken(t, test.lab, "other")
+	createFirewall(t, test, map[string]any{"name": "fw50"})
+}
+
 // A firewall applied to a server directly, as Hetzner answers (measured
 // 2026-11-08): apply_firewall names the firewall and the server, the
 // server shows the firewall pending until it is applied, set_rules is
@@ -476,8 +494,9 @@ func TestFirewallLabelSelectorFollowsTheServers(t *testing.T) {
 	if got := selected(); len(got) != 0 {
 		t.Errorf("the selector still holds %v", got)
 	}
-	expectError(t, "removing a server held by the selector", firewallAction(test, firewall, "remove_from_resources", map[string]any{"remove_from": []any{serverTarget(other)}}),
-		http.StatusNotFound, "firewall_resource_not_found", fmt.Sprintf("firewall with ID %d cannot be removed from server: resource not found", firewall))
+	// a server the firewall does not reach (measured 2026-11-09)
+	expectError(t, "removing a server the firewall does not reach", firewallAction(test, firewall, "remove_from_resources", map[string]any{"remove_from": []any{serverTarget(other)}}),
+		http.StatusNotFound, "firewall_resource_not_found", "resource not found")
 
 	second := createFirewall(t, test, map[string]any{"name": "second", "apply_to": []any{selectorTarget("role=web")}}).Firewall.ID
 	expectError(t, "removing a server held by a selector", firewallAction(test, second, "remove_from_resources", map[string]any{"remove_from": []any{serverTarget(web)}}),
@@ -497,4 +516,77 @@ func serverDelete(t *testing.T, test *testLab, id int64) schema.Action {
 	var answer schema.ActionGetResponse
 	test.client.Do(http.MethodDelete, fmt.Sprintf("/v1/servers/%d", id), nil).Decode(t, &answer)
 	return answer.Action
+}
+
+// A label selector that takes a server, or lets it go, shows it as Hetzner
+// does (measured 2026-11-09): a server relabelled into the selector lists
+// the firewall not at all for 2 s, then pending for 14 s while an
+// apply_firewall runs; one relabelled out still shows it applied for
+// 1.7 s, then pending for 8 s while a remove_firewall runs.
+func TestFirewallSelectorShowsPendingAsHetznerDoes(t *testing.T) {
+	clock := &handClock{now: time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)}
+	test := newTimedTestLab(t, clock, 1)
+	firewall := createFirewall(t, test, map[string]any{"name": "web", "apply_to": []any{selectorTarget("role=web")}}).Firewall.ID
+	server := offServer(t, test, "web").Server.ID
+	relabel := func(labels map[string]string) {
+		test.client.Do(http.MethodPut, fmt.Sprintf("/v1/servers/%d", server), map[string]any{"labels": labels})
+	}
+	shown := func() string {
+		for _, entry := range getServer(t, test, server).PublicNet.Firewalls {
+			if entry.ID == firewall {
+				return entry.Status
+			}
+		}
+		return ""
+	}
+	// the actions end at once on this clock; a status after a note's end
+	// waits for them
+	settled := func() {
+		deadline := time.Now().Add(10 * time.Second)
+		for len(firewallActionsRunning(t, test, firewall)) > 0 {
+			if time.Now().After(deadline) {
+				t.Fatal("the firewall's actions still run")
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	for _, phase := range []struct {
+		labels map[string]string
+		steps  []struct {
+			advance time.Duration
+			want    string // "" for not listed
+		}
+		command string
+	}{
+		{map[string]string{"role": "web"}, []struct {
+			advance time.Duration
+			want    string
+		}{{0, ""}, {2 * time.Second, "pending"}, {14 * time.Second, "applied"}}, "apply_firewall"},
+		{map[string]string{}, []struct {
+			advance time.Duration
+			want    string
+		}{{0, "applied"}, {1700 * time.Millisecond, "pending"}, {8 * time.Second, ""}}, "remove_firewall"},
+	} {
+		relabel(phase.labels)
+		for i, step := range phase.steps {
+			clock.Advance(step.advance)
+			if i == len(phase.steps)-1 {
+				settled()
+			}
+			if got := shown(); got != step.want {
+				t.Errorf("%s: at %s the server shows the firewall %q, want %q", phase.command, clock.Now().Format(time.StampMilli), got, step.want)
+			}
+		}
+		if got := commands(firewallActionList(t, test, firewall)); !slices.Contains(got, phase.command+" firewall,server") {
+			t.Errorf("the firewall's actions are %v, want a %s", got, phase.command)
+		}
+	}
+}
+
+// firewallActionsRunning returns a firewall's running actions.
+func firewallActionsRunning(t *testing.T, test *testLab, id int64) []schema.Action {
+	t.Helper()
+	var answer schema.ActionListResponse
+	test.client.Get(fmt.Sprintf("/v1/firewalls/%d/actions?status=running", id)).Decode(t, &answer)
+	return answer.Actions
 }

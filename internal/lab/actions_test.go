@@ -227,7 +227,7 @@ func TestCreateRecordsTheResourceWithItsActions(t *testing.T) {
 		state.Put(tx, state.Servers, &state.Server{ID: id, ProjectID: projectID, Name: "web"})
 		return id, nil
 	}
-	actions, err := l.Create(table, request(0), create, lab.Row{Command: "poweroff"}, lab.Row{Command: "poweron"})
+	actions, err := l.Create(table, request(0), create, nil, lab.Row{Command: "poweroff"}, lab.Row{Command: "poweron"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestRefusedCreateRecordsNothing(t *testing.T) {
 		state.Put(tx, state.Servers, &state.Server{ID: id, ProjectID: projectID, Name: "web"})
 		return id, nil
 	}
-	if _, err := l.Create(table, request(0), create, lab.Row{Command: "poweroff"}, lab.Row{Command: "poweron"}); !errors.Is(err, refused) {
+	if _, err := l.Create(table, request(0), create, nil, lab.Row{Command: "poweroff"}, lab.Row{Command: "poweron"}); !errors.Is(err, refused) {
 		t.Fatalf("got %v, want the second plan's error", err)
 	}
 	err := l.View(func(tx *state.Tx) error {
@@ -433,7 +433,7 @@ func TestCloseRefusesNewActions(t *testing.T) {
 		t.Errorf("an action after Close: %v, want ErrClosed", err)
 	}
 	created := func(*state.Tx) (int64, error) { return 8, nil }
-	if _, err := l.Create(tableWith(instant), request(0), created, lab.Row{Command: "poweroff"}); !errors.Is(err, lab.ErrClosed) {
+	if _, err := l.Create(tableWith(instant), request(0), created, nil, lab.Row{Command: "poweroff"}); !errors.Is(err, lab.ErrClosed) {
 		t.Errorf("a create after Close: %v, want ErrClosed", err)
 	}
 	l.Machine().UpdatePicturesLater() // starts nothing that would outlive Close
@@ -522,5 +522,50 @@ func TestOfTwoActionsAtOnceOneWins(t *testing.T) {
 	}
 	if won != 1 {
 		t.Errorf("%d actions started, want 1", won)
+	}
+}
+
+// An action of a change that is no action appears after its delay,
+// running, and ends after its time, both on the lab's clock: Hetzner's
+// apply_firewall when a label selector takes a server.
+func TestRecordedActionAppearsLaterAndEnds(t *testing.T) {
+	clock := newTestClock()
+	l, _ := openWithProject(t, lab.Options{TimeScale: 1, Clock: clock})
+	resources := []state.ResourceRef{{Type: "firewall", ID: 7}, {Type: "server", ID: 8}}
+	if err := l.Change(func(*state.Tx) error {
+		l.RecordActionLater(projectID, "apply_firewall", resources, 2*time.Second, 14*time.Second)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	actions := func() []int64 {
+		var ids []int64
+		_ = l.View(func(tx *state.Tx) error {
+			ids = state.IDs(tx, state.Actions, func(*state.Action) bool { return true })
+			return nil
+		})
+		return ids
+	}
+	clock.WaitForSleepers(1)
+	clock.Advance(time.Second)
+	if got := actions(); len(got) != 0 {
+		t.Fatalf("after 1 s there are the actions %v", got)
+	}
+	clock.Advance(time.Second)
+	clock.WaitForSleepers(1) // recorded, it waits its time
+	ids := actions()
+	if len(ids) != 1 {
+		t.Fatalf("after 2 s there are the actions %v", ids)
+	}
+	if got := actionStatus(t, l, ids[0]); got != state.ActionRunning {
+		t.Errorf("after 2 s the action is %s", got)
+	}
+	clock.Advance(13 * time.Second)
+	if got := actionStatus(t, l, ids[0]); got != state.ActionRunning {
+		t.Errorf("after 15 s the action is %s", got)
+	}
+	clock.Advance(time.Second)
+	if action := waitForStatus(t, l, ids[0], state.ActionSuccess); action.Command != "apply_firewall" || len(action.Resources) != 2 {
+		t.Errorf("the action is %+v", action)
 	}
 }
