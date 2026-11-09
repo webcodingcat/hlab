@@ -55,7 +55,11 @@ func Files(server Server) map[string][]byte {
 // same, so that it works beside ifupdown (Debian) and networkd (Ubuntu).
 // Hetzner's NIC brings the MTU 1450 itself, which a Hyper-V NIC does not,
 // and dhcpcd without hooks does not take it from the lease: the unit sets
-// it. A trigger catches the NICs that are there at the first boot.
+// it. Hyper-V's driver resets the NIC for that, and its carrier goes and
+// comes back about 2 s later, often after dhcpcd has its lease; dhcpcd
+// ignores the carrier, else it would drop the lease's address meanwhile.
+// The NICs that are there when the script runs, at the first boot, get
+// their unit started directly: a udev trigger would touch eth0 too.
 const privateNICsScript = `#!/bin/sh
 cat > /etc/systemd/system/hlab-private-net@.service <<'UNIT'
 [Unit]
@@ -66,7 +70,7 @@ After=sys-subsystem-net-devices-%i.device
 [Service]
 Type=forking
 ExecStartPre=ip link set dev %i mtu 1450
-ExecStart=/usr/sbin/dhcpcd --quiet --waitip --ipv4only --noarp --script=/bin/true %i
+ExecStart=/usr/sbin/dhcpcd --quiet --waitip --ipv4only --noarp --nolink --script=/bin/true %i
 ExecStop=/usr/sbin/dhcpcd --exit %i
 UNIT
 cat > /etc/udev/rules.d/90-hlab-private-net.rules <<'RULE'
@@ -74,7 +78,11 @@ SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="86:00:*", TAG+="systemd", ENV{S
 RULE
 systemctl daemon-reload
 udevadm control --reload
-udevadm trigger --subsystem-match=net --action=add
+for nic in /sys/class/net/*; do
+  case "$(cat "$nic/address")" in
+    86:00:*) systemctl start --no-block "hlab-private-net@${nic##*/}.service" ;;
+  esac
+done
 `
 
 // seedVendorData returns the seed's vendor-data: Hetzner's cloud-config

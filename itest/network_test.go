@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -92,8 +93,11 @@ func TestPrivateNetworksConnectServersAndStayApart(t *testing.T) {
 	}
 	for _, server := range []guest{first, third} {
 		if !privatePings(t, keys, server, "10.0.0.1") {
-			t.Errorf("%s does not reach its network's gateway 10.0.0.1:\n%s", server.name, keys.run(t, server.ipv4, "", privateNetworkState))
+			t.Errorf("%s does not reach its network's gateway 10.0.0.1", server.name)
 		}
+	}
+	if t.Failed() {
+		logPrivateNetworks(t, keys, first, second, third)
 	}
 	for _, server := range []guest{first, second} {
 		if mtu := keys.run(t, server.ipv4, "", "ip -o link show | awk '/86:00:/ {print $5}'"); mtu != "1450" {
@@ -136,10 +140,32 @@ func TestPrivateNetworksConnectServersAndStayApart(t *testing.T) {
 }
 
 // privateNetworkState is a guest's command that shows what a failed check
-// in a private network needs: addresses, routes, neighbors and the units
-// that run dhcpcd.
+// in a private network needs: addresses, routes, neighbors, the units
+// that run dhcpcd, dhcpcd's and the kernel's messages about the NICs.
 const privateNetworkState = "ip address show; ip route show; ip neighbor show; " +
-	"systemctl status --no-pager 'hlab-private-net@*' 2>&1; journalctl --no-pager -b -u 'hlab-private-net@*' 2>&1 | tail -n 40"
+	"systemctl status --no-pager 'hlab-private-net@*' 2>&1; " +
+	"journalctl --no-pager -b -o short-precise -t dhcpcd -t systemd -k 2>&1 | grep -i -E 'dhcpcd|eth[1-3]|hlab-private|hv_netvsc|carrier' | tail -n 80"
+
+// logPrivateNetworks logs, after a failed check, each guest's state in
+// its private networks and the ports of the servers' and the appliance's
+// NICs on Hyper-V.
+func logPrivateNetworks(t *testing.T, keys labKey, servers ...guest) {
+	t.Helper()
+	for _, server := range servers {
+		t.Logf("%s (%d):\n%s", server.name, server.id, keys.run(t, server.ipv4, "", privateNetworkState))
+	}
+	script := `Get-VM -Name 'hlab-*' | ForEach-Object {
+    $vm = $_
+    Get-VMNetworkAdapter -VM $vm | ForEach-Object {
+        $vlan = Get-VMNetworkAdapterVlan -VMNetworkAdapter $_
+        '{0} {1} switch={2} connected={3} status={4} mode={5} access={6} trunk={7} native={8}' -f $vm.Name, $_.MacAddress,
+            $_.SwitchName, $_.Connected, ($_.Status -join ','), $vlan.OperationMode, $vlan.AccessVlanId,
+            $vlan.AllowedVlanIdListString, $vlan.NativeVlanId
+    }
+}`
+	output, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).CombinedOutput()
+	t.Logf("the NICs on Hyper-V (%v):\n%s", err, output)
+}
 
 // createNetwork creates a network 10.0.0.0/16 with the subnet 10.0.1.0/24
 // and returns its ID.

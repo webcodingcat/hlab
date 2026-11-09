@@ -55,7 +55,7 @@ After=sys-subsystem-net-devices-%i.device
 [Service]
 Type=forking
 ExecStartPre=ip link set dev %i mtu 1450
-ExecStart=/usr/sbin/dhcpcd --quiet --waitip --ipv4only --noarp --script=/bin/true %i
+ExecStart=/usr/sbin/dhcpcd --quiet --waitip --ipv4only --noarp --nolink --script=/bin/true %i
 ExecStop=/usr/sbin/dhcpcd --exit %i
 UNIT
 cat > /etc/udev/rules.d/90-hlab-private-net.rules <<'RULE'
@@ -63,6 +63,10 @@ SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="86:00:*", TAG+="systemd", ENV{S
 RULE
 systemctl daemon-reload
 udevadm control --reload
-udevadm trigger --subsystem-match=net --action=add
+for nic in /sys/class/net/*; do
+  case "$(cat "$nic/address")" in
+    86:00:*) systemctl start --no-block "hlab-private-net@${nic##*/}.service" ;;
+  esac
+done
 
 --==HLAB==--
