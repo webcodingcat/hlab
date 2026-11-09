@@ -250,6 +250,10 @@ func WriteError(w http.ResponseWriter, logger *slog.Logger, err error) {
 		logger.Error("a request failed", "error", err)
 		apiErr = ServerError("the lab failed: " + err.Error())
 	}
+	if apiErr.bare {
+		w.WriteHeader(apiErr.Status)
+		return
+	}
 	if apiErr.plain {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(apiErr.Status)

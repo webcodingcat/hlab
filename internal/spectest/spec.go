@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -179,6 +180,12 @@ func (s *Spec) Check(method, path string, status int, contentType string, body [
 	if op == nil {
 		if status < 400 {
 			return fmt.Errorf("%s %s: answered %d, but the spec has no such operation", method, path, status)
+		}
+		if status == http.StatusMethodNotAllowed && len(body) == 0 {
+			// Hetzner's 405 for another method than GET on a single
+			// action of networks, firewalls, Floating IPs and Primary IPs
+			// has no body (measured 2026-11-09)
+			return nil
 		}
 		return checkErrorFormat(body)
 	}

@@ -148,6 +148,31 @@ func registerResourceActions(api *web.API, l *lab.Lab, path, resourceType string
 	api.Handle("GET /"+path+"/{id}/actions/{action_id}", func(req *web.Request) (int, any, error) {
 		return one(req, web.PathID(req, "id"))
 	})
+	registerOtherActionMethods(api, path)
+}
+
+// registerOtherActionMethods answers another method than GET on a single
+// action, which is also a command the resource does not have, as Hetzner
+// does (measured 2026-11-09 with POST and PUT; DELETE and PATCH are taken
+// to go the same way). The servers answer 404 "404 Not Found" for an ID
+// and "api route not found" for anything else; the networks, firewalls,
+// Floating IPs and Primary IPs answer 405 without a body, also under
+// /<path>/actions.
+func registerOtherActionMethods(api *web.API, path string) {
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+		if path == "servers" {
+			api.Handle(method+" /servers/{id}/actions/{action_id}", func(*web.Request) (int, any, error) {
+				return 0, nil, web.Refusal(http.StatusNotFound, "not_found", "404 Not Found")
+			})
+			continue
+		}
+		notAllowed := func(req *web.Request) (int, any, error) {
+			req.Header.Set("Allow", "GET, HEAD")
+			return 0, nil, web.ActionMethodNotAllowed()
+		}
+		api.Handle(method+" /"+path+"/{id}/actions/{command}", notAllowed)
+		api.Handle(method+" /"+path+"/actions/{command}", notAllowed)
+	}
 }
 
 // namesResource tells whether an action names a resource of the type, of

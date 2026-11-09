@@ -3,6 +3,7 @@ package cloud_test
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud/schema"
@@ -109,5 +110,30 @@ func TestActionsNeedIDs(t *testing.T) {
 		if response.Status != want.status || body.Error.Code != want.code || body.Error.Message != want.message {
 			t.Errorf("GET /v1/actions%s answered %d %s", query, response.Status, response.Body)
 		}
+	}
+}
+
+// Another method than GET on a single action, which is also a command the
+// resource does not have, as Hetzner answers it (measured 2026-11-09): the
+// servers 404, the networks, firewalls, Floating IPs and Primary IPs 405
+// without a body.
+func TestUnknownActionsAnswerAsHetznerDoes(t *testing.T) {
+	test := newTestLab(t)
+	for _, path := range []string{"/v1/networks/1/actions/bogus", "/v1/networks/1/actions/123", "/v1/networks/actions/bogus",
+		"/v1/firewalls/1/actions/bogus", "/v1/floating_ips/1/actions/bogus", "/v1/primary_ips/actions/bogus"} {
+		for _, method := range []string{http.MethodPost, http.MethodPut} {
+			response := test.client.Do(method, path, map[string]any{})
+			if response.Status != http.StatusMethodNotAllowed || len(response.Body) != 0 || response.Header.Get("Allow") != "GET, HEAD" {
+				t.Errorf("%s %s: %d, Allow %q, %q", method, path, response.Status, response.Header.Get("Allow"), response.Body)
+			}
+		}
+	}
+	expectError(t, "POST a server's bogus action", &responseOf{test.client.Do(http.MethodPost, "/v1/servers/1/actions/bogus", map[string]any{})},
+		http.StatusNotFound, "not_found", "api route not found")
+	expectError(t, "POST a server's action by ID", &responseOf{test.client.Do(http.MethodPost, "/v1/servers/1/actions/123", map[string]any{})},
+		http.StatusNotFound, "not_found", "404 Not Found")
+	// the commands themselves still answer
+	if response := test.client.Do(http.MethodPost, "/v1/networks/1/actions/add_subnet", map[string]any{}); response.Status == http.StatusMethodNotAllowed {
+		t.Errorf("add_subnet answers %d", response.Status)
 	}
 }

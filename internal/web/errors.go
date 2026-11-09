@@ -19,6 +19,8 @@ type Error struct {
 	noDetails bool
 	// plain sends the message as plain text instead of the JSON format.
 	plain bool
+	// bare sends the status alone, without a body.
+	bare bool
 }
 
 func (e *Error) Error() string { return e.Message }
@@ -153,6 +155,14 @@ func TokenInvalid() *Error {
 // Forbidden returns Hetzner's 403 forbidden: a read token asks for a change.
 func Forbidden() *Error {
 	return &Error{Status: http.StatusForbidden, Code: "forbidden", Message: "permission denied", Details: map[string]any{}}
+}
+
+// ActionMethodNotAllowed returns the 405 that Hetzner answers for another
+// method than GET on a single action of networks, firewalls, Floating IPs
+// and Primary IPs, which includes a command they do not have: no body,
+// Allow "GET, HEAD" (measured 2026-11-09). The handler sets Allow.
+func ActionMethodNotAllowed() *Error {
+	return &Error{Status: http.StatusMethodNotAllowed, Code: "method_not_allowed", Message: "method not allowed", bare: true}
 }
 
 // MethodNotAllowed returns Hetzner's 405 method_not_allowed.
