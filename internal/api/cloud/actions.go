@@ -93,52 +93,40 @@ var actionSortKeys = web.SortKeys[schema.Action]{
 // actionStatuses are the values of an action list's status filter.
 var actionStatuses = []string{string(state.ActionRunning), string(state.ActionSuccess), string(state.ActionError)}
 
-// actionMisses are Hetzner's answers to a GET of a single action that is
-// not there, which differ per resource (measured 2026-11-09). An action ID
-// that is no number gets invalid's answer, with the resource's ID as given
-// ("" under /<things>/actions); a numeric one under a resource the caller
-// does not have gets missing's, if set; else unknown's. A nil invalid is
-// Hetzner's "api route not found", as for a path no route takes.
+// actionMisses are Hetzner's answers to an action that is not there,
+// which differ per resource (measured 2026-11-09); each resource's file
+// gives its own to registerResourceActions. For a GET of a single action,
+// an action ID that is no number gets invalid's answer, with the
+// resource's ID as given ("" under /<things>/actions); a numeric one
+// under a resource the caller does not have gets missing's, if set; else
+// unknown's. A nil invalid is Hetzner's "api route not found", as for a
+// path no route takes. Another method than GET on a single action gets
+// 404 "404 Not Found" on the paths of notFoundMethods (below /<things>/;
+// any other path no route takes), else a 405 without a body.
 type actionMisses struct {
-	invalid func(resource, action string) error
-	missing func(tx *state.Tx, projectID, resource int64) error
-	unknown func(action string) error
+	invalid         func(resource, action string) error
+	missing         func(tx *state.Tx, projectID, resource int64) error
+	unknown         func(action string) error
+	notFoundMethods []string
 }
 
-// actionMissesOf returns Hetzner's answers for the actions of a resource.
-func actionMissesOf(path string) actionMisses {
-	actionNotFound := func(action string) error {
-		return web.NotFoundNull(fmt.Sprintf("action with ID '%s' not found", action))
-	}
-	invalidActionID := func(_, action string) error {
-		return web.NotFoundNull(fmt.Sprintf("invalid action ID: '%s'", action))
-	}
-	switch path {
-	case "networks":
-		return actionMisses{
-			invalid: func(resource, action string) error {
-				if resource == "" {
-					return actionNotFound(action)
-				}
-				return web.NotFoundNull(fmt.Sprintf("action with ID '%s' for network with ID '%s' not found", action, resource))
-			},
-			missing: missingOf(state.Networks, "network with ID %d not found"),
-			unknown: actionNotFound,
-		}
-	case "firewalls":
-		return actionMisses{
-			invalid: func(_, action string) error { return actionNotFound(action) },
-			missing: missingOf(state.Firewalls, "firewall with ID %d not found"),
-			unknown: actionNotFound,
-		}
-	case "floating_ips":
-		return actionMisses{invalid: invalidActionID, missing: missingOf(state.FloatingIPs, "Floating IP with ID %d not found"), unknown: actionNotFound}
-	case "primary_ips":
-		return actionMisses{invalid: invalidActionID, missing: missingOf(state.PrimaryIPs, "Primary IP with ID %d not found"), unknown: actionNotFound}
-	}
-	// the servers: "action not found" with the details {}, also under a
-	// server that is not there
-	return actionMisses{unknown: func(string) error { return web.NotFound("action") }}
+// actionNotFound is the answer of most resources to a single action that
+// is not there: its ID quoted, the details null.
+func actionNotFound(action string) error {
+	return web.NotFoundNull(fmt.Sprintf("action with ID '%s' not found", action))
+}
+
+// invalidActionID is the answer of Floating and Primary IPs to an action
+// ID that is no number.
+func invalidActionID(_, action string) error {
+	return web.NotFoundNull(fmt.Sprintf("invalid action ID: '%s'", action))
+}
+
+// plainActionNotFound is the servers' and volumes' answer to an action
+// that is not there, also under a resource that is not there: "action not
+// found" with the details {}.
+func plainActionNotFound(string) error {
+	return web.NotFound("action")
 }
 
 // missingOf returns a check that refuses a resource of the kind that the
@@ -157,9 +145,8 @@ func missingOf[R state.Owned](kind state.Kind[R], text string) func(tx *state.Tx
 // resource, and one of those. Unlike GET /actions, the lists need no IDs
 // (measured 2026-11-07); a resource that is gone has none, not a 404. A
 // single action that is not there gets the resource's own answer
-// (actionMissesOf).
-func registerResourceActions(api *web.API, l *lab.Lab, path, resourceType string) {
-	misses := actionMissesOf(path)
+// (actionMisses).
+func registerResourceActions(api *web.API, l *lab.Lab, path, resourceType string, misses actionMisses) {
 	list := func(req *web.Request, resourceID int64) (int, any, error) {
 		query := req.URL.Query()
 		for _, status := range query["status"] {
@@ -241,26 +228,27 @@ func registerResourceActions(api *web.API, l *lab.Lab, path, resourceType string
 	api.Handle("GET /"+path+"/{id}/actions/{action}", func(req *web.Request) (int, any, error) {
 		return one(req, req.PathValue("id"), req.PathValue("action"))
 	})
-	registerOtherActionMethods(api, path)
+	registerOtherActionMethods(api, path, misses.notFoundMethods)
 }
 
 // registerOtherActionMethods answers another method than GET on a single
 // action, which is also a command the resource does not have, as Hetzner
-// does (measured 2026-11-09 with POST and PUT; DELETE and PATCH are taken
-// to go the same way). The servers answer 404 "404 Not Found" for an ID
-// and "api route not found" for anything else; the networks, firewalls,
-// Floating IPs and Primary IPs answer 405 without a body, also under
-// /<path>/actions.
-func registerOtherActionMethods(api *web.API, path string) {
+// does (measured 2026-11-09 with POST and PUT, for volumes also DELETE;
+// PATCH is taken to go the same way): on the paths of notFound 404 "404
+// Not Found" (servers, volumes; anything else there is "api route not
+// found"), else 405 without a body (networks, firewalls, Floating IPs and
+// Primary IPs), also under /<path>/actions.
+func registerOtherActionMethods(api *web.API, path string, notFound []string) {
 	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
-		if path == "servers" {
-			api.Handle(method+" /servers/{id}/actions/{action_id}", func(*web.Request) (int, any, error) {
+		for _, pattern := range notFound {
+			api.Handle(method+" /"+path+"/"+pattern, func(*web.Request) (int, any, error) {
 				return 0, nil, web.Refusal(http.StatusNotFound, "not_found", "404 Not Found")
 			})
-			continue
 		}
-		api.Handle(method+" /"+path+"/{id}/actions/{command}", bareMethodNotAllowed("GET, HEAD"))
-		api.Handle(method+" /"+path+"/actions/{command}", bareMethodNotAllowed("GET, HEAD"))
+		if notFound == nil {
+			api.Handle(method+" /"+path+"/{id}/actions/{command}", bareMethodNotAllowed("GET, HEAD"))
+			api.Handle(method+" /"+path+"/actions/{command}", bareMethodNotAllowed("GET, HEAD"))
+		}
 	}
 }
 

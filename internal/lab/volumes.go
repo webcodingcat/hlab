@@ -34,6 +34,28 @@ func (m *Machine) VolumeSlot(id int64, slot int, automount bool) system.VolumeSl
 	return system.VolumeSlot{Slot: slot, Path: m.volumeFile(id), VolumeID: id, Automount: automount}
 }
 
+// VolumesRead tells whether a server's VM has taken its volumes from the
+// records. A volume's attach or detach while the server's create runs
+// asks it: before, the create makes the VM as the records then are, and
+// the action has nothing to do; after, it waits for the create
+// (WaitForServer) and changes the VM. The caller holds the lab's mutex,
+// as a plan does (Machine's fields).
+func (m *Machine) VolumesRead(serverID int64) bool {
+	return m.volumesRead[serverID]
+}
+
+// WaitForServer waits until the actions that run on a server have ended:
+// a volume's attach or detach sent during the server's create runs after
+// it, as on Hetzner (measured 2026-11-09).
+func (m *Machine) WaitForServer(ctx context.Context, serverID int64) error {
+	for _, done := range m.lab.RunningOn([]state.ResourceRef{serverRef(serverID)}) {
+		if err := waitFor(ctx, done); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // serverVolumes returns the volumes attached to a server, in their slots,
 // for its VM.
 func (m *Machine) serverVolumes(tx *state.Tx, serverID int64) []system.VolumeSlot {

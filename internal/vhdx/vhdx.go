@@ -60,7 +60,9 @@ func DiskID(path string) ([16]byte, error) {
 // MS-VHDX asks of a writer, it first gives the file a new FileWriteGuid
 // in its header. It refuses a file whose log holds entries to replay
 // (a VHDX that was not closed cleanly): Hyper-V replays them on its next
-// open and could undo the change.
+// open and could undo the change. The 16 bytes go straight into the
+// metadata, not through the log: a power cut in the middle of the write
+// may leave a wrong ID, which the next attach writes anew.
 func SetDiskID(path string, id [16]byte) error {
 	file, err := os.OpenFile(path, os.O_RDWR, 0)
 	if err != nil {

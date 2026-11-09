@@ -67,11 +67,13 @@ type volumeAttachRequest struct {
 }
 
 // planAttachVolume attaches a volume to a server of its location, also a
-// running one; the steps put the disk into the VM. An attach to the
-// server it has ends at once (measured 2026-11-09). The attach of a
-// volume's create (afterCreate) waits in the volume's queue for the disk;
-// a server in another location fails it only in the steps, with
-// Hetzner's error (measured 2026-11-09: after 64 s).
+// running one; the steps put the disk into the VM. As measured on
+// 2026-11-09: an attach to the server it has ends at once; one to
+// another server while the volume is attached elsewhere is 201 and fails
+// in its action; the attach of a volume's create (afterCreate) to a
+// server in another location fails in its action too (after 64 s on
+// Hetzner, which the lab does not copy); an attach while the server's
+// create runs is 201 and runs after the create.
 func planAttachVolume(l *lab.Lab, afterCreate bool) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 		var body volumeAttachRequest
@@ -101,29 +103,43 @@ func planAttachVolume(l *lab.Lab, afterCreate bool) planFunc {
 			return lab.Plan{}, web.Refusal(http.StatusNotFound, "not_found", volumeServerNotFoundError)
 		}
 		plan := lab.Plan{Resources: []state.ResourceRef{{Type: lab.ServerResource, ID: server.ID}}}
-		if volume.ServerID == server.ID {
+		failing := func(code, message string) (lab.Plan, error) {
+			plan.Steps = func(context.Context) error { return &lab.Failure{Code: code, Message: message} }
 			return plan, nil
 		}
-		if afterCreate && server.Location != volume.Location {
-			plan.Steps = func(context.Context) error {
-				return &lab.Failure{Code: "unknown_error", Message: volumeAttachFailed}
+		switch {
+		case volume.ServerID == server.ID:
+			return plan, nil
+		case volume.ServerID != 0:
+			if _, err := state.Get(tx, state.Servers, volume.ServerID); err != nil {
+				return lab.Plan{}, web.Locked(volumeBusy) // its server's delete runs
 			}
-			return plan, nil
-		}
-		if server.Status == state.ServerInitializing {
-			// the server's create runs (assumed as measured for Floating
-			// IPs; not measured for volumes)
-			return lab.Plan{}, web.Locked(serverCreatingLocked)
+			return failing("volume_already_attached", volumeAlreadyAttached)
+		case server.Location != volume.Location && afterCreate:
+			return failing("unknown_error", volumeAttachFailed)
+		case server.Location != volume.Location:
+			return lab.Plan{}, web.Refusal(http.StatusUnprocessableEntity, "service_error", volumeOtherLocation)
 		}
 		if err := attachVolume(tx, volume, server, body.Automount != nil && *body.Automount); err != nil {
 			return lab.Plan{}, err
 		}
+		creating := server.Status == state.ServerInitializing
+		if creating && !l.Machine().VolumesRead(server.ID) {
+			return plan, nil // the create makes the VM with the disk
+		}
 		// the steps take the plan's server and slot: a detach queued behind
 		// changes the record before they run
 		target, disk := server.ID, l.Machine().VolumeSlot(volume.ID, volume.Slot, volume.Automount)
-		plan.Steps = func(ctx context.Context) error { return l.Machine().AttachVolume(ctx, target, disk) }
+		plan.Steps = func(ctx context.Context) error {
+			if creating {
+				if err := l.Machine().WaitForServer(ctx, target); err != nil {
+					return err
+				}
+			}
+			return l.Machine().AttachVolume(ctx, target, disk)
+		}
 		plan.Undo = undoRecord(state.Volumes, volume.ID, func(_ *state.Tx, volume *state.Volume) {
-			if volume.ServerID == server.ID {
+			if volume.ServerID == target {
 				volume.ServerID, volume.Slot = 0, 0
 			}
 		})
@@ -133,19 +149,26 @@ func planAttachVolume(l *lab.Lab, afterCreate bool) planFunc {
 }
 
 // planAttachAtServerCreate attaches a volume that a server's create names
-// (Request.Created); the create's steps make the VM with its disk.
+// (Request.Created) in the records; the create's steps make the VM with
+// its disk. Hetzner refuses a volume that is missing, attached or in
+// another location with its own texts (measured 2026-11-09).
 func planAttachAtServerCreate(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 	var body volumeAttachRequest
 	if err := json.Unmarshal(req.Body, &body); err != nil {
 		return lab.Plan{}, web.ParseFailed()
 	}
-	volume, err := callerVolume(tx, req.ProjectID, req.ID)
-	if err != nil {
-		return lab.Plan{}, err
-	}
 	server, err := state.Get(tx, state.Servers, req.Created)
 	if err != nil {
 		return lab.Plan{}, err
+	}
+	volume, err := state.Get(tx, state.Volumes, req.ID)
+	switch {
+	case err != nil || volume.ProjectID != req.ProjectID:
+		return lab.Plan{}, web.Refusal(http.StatusUnprocessableEntity, "invalid_input", serverVolumeNotFound)
+	case volume.ServerID != 0:
+		return lab.Plan{}, web.Refusal(http.StatusUnprocessableEntity, "invalid_input", volumeAlreadyAttached)
+	case volume.Location != server.Location:
+		return lab.Plan{}, web.Refusal(http.StatusUnprocessableEntity, "invalid_input", serverVolumeLocation)
 	}
 	if err := attachVolume(tx, volume, server, body.Automount != nil && *body.Automount); err != nil {
 		return lab.Plan{}, err
@@ -153,20 +176,15 @@ func planAttachAtServerCreate(tx *state.Tx, req lab.Request) (lab.Plan, error) {
 	return lab.Plan{Resources: []state.ResourceRef{{Type: lab.ServerResource, ID: server.ID}}}, nil
 }
 
-// attachVolume checks an attach to a server and makes it in the records:
-// the server's location, at most 16 volumes per server (measured
-// 2026-11-09), a volume attached elsewhere (assumed, not measured); the
-// volume takes the server's lowest free slot.
+// volumeSlots is how many slots of a VM's disk controller volumes take
+// (1 to 63; 0 holds the system disk).
+const volumeSlots = 63
+
+// attachVolume attaches a volume to a server in the records, at most 16
+// volumes per server (measured 2026-11-09). The volume takes the next
+// free slot from where the last attach left off: a slot whose detach
+// still runs comes back only after the others.
 func attachVolume(tx *state.Tx, volume *state.Volume, server *state.Server, automount bool) error {
-	if volume.ServerID != 0 {
-		if _, err := state.Get(tx, state.Servers, volume.ServerID); err != nil {
-			return web.Locked(volumeBusy) // its server's delete runs
-		}
-		return web.Refusal(http.StatusUnprocessableEntity, "volume_already_attached", volumeAttachedElsewhere)
-	}
-	if server.Location != volume.Location {
-		return web.Refusal(http.StatusUnprocessableEntity, "service_error", volumeOtherLocation)
-	}
 	var slots []int
 	for _, attached := range state.All(tx, state.Volumes) {
 		if attached.ServerID == server.ID {
@@ -176,17 +194,19 @@ func attachVolume(tx *state.Tx, volume *state.Volume, server *state.Server, auto
 	if len(slots) >= volumesPerServer {
 		return web.Refusal(http.StatusForbidden, "resource_limit_exceeded", volumesPerServerReached)
 	}
-	slot := 1
+	slot := max(server.NextVolumeSlot, 1)
 	for slices.Contains(slots, slot) {
-		slot++
+		slot = slot%volumeSlots + 1
 	}
+	server.NextVolumeSlot = slot%volumeSlots + 1
 	volume.ServerID, volume.Slot, volume.Automount = server.ID, slot, automount
 	return nil
 }
 
 // planDetachVolume takes a volume from its server; the steps take the
-// disk out of the VM. A volume whose server is being deleted is 423, as
-// on Hetzner (measured 2026-11-09). If the steps fail, the undo gives the
+// disk out of the VM. A volume whose server is being deleted is 423; a
+// detach while the server's create runs is 201 and runs after the create
+// (measured 2026-11-09). If the steps fail, the undo gives the
 // volume back to the server, if it and the slot are still there.
 func planDetachVolume(l *lab.Lab) planFunc {
 	return func(tx *state.Tx, req lab.Request) (lab.Plan, error) {
@@ -198,19 +218,25 @@ func planDetachVolume(l *lab.Lab) planFunc {
 			return lab.Plan{}, web.Refusal(http.StatusUnprocessableEntity, "service_error", volumeNotAttached)
 		}
 		server, err := state.Get(tx, state.Servers, volume.ServerID)
-		switch {
-		case err != nil:
+		if err != nil {
 			return lab.Plan{}, web.Locked(volumeBusy) // its server's delete runs
-		case server.Status == state.ServerInitializing:
-			// the server's create builds the VM with the disk (assumed as
-			// for an attach, not measured)
-			return lab.Plan{}, web.Locked(serverCreatingLocked)
 		}
 		serverID, slot := volume.ServerID, volume.Slot
 		volume.ServerID, volume.Slot = 0, 0
+		plan := lab.Plan{Resources: []state.ResourceRef{{Type: lab.ServerResource, ID: serverID}}}
+		// during the server's create: as for an attach (planAttachVolume)
+		creating := server.Status == state.ServerInitializing
+		if creating && !l.Machine().VolumesRead(serverID) {
+			return plan, nil
+		}
 		return lab.Plan{
-			Resources: []state.ResourceRef{{Type: lab.ServerResource, ID: serverID}},
+			Resources: plan.Resources,
 			Steps: func(ctx context.Context) error {
+				if creating {
+					if err := l.Machine().WaitForServer(ctx, serverID); err != nil {
+						return err
+					}
+				}
 				return l.Machine().DetachVolume(ctx, serverID, slot)
 			},
 			Undo: undoRecord(state.Volumes, volume.ID, func(tx *state.Tx, volume *state.Volume) {
@@ -257,9 +283,9 @@ func planResizeVolume(l *lab.Lab) planFunc {
 		if resizing(tx, volume.ID) {
 			return lab.Plan{}, web.Locked(volumeBusy)
 		}
-		sizeGB := *body.Size
+		volumeID, sizeGB := volume.ID, *body.Size
 		plan := lab.Plan{
-			Steps:      func(ctx context.Context) error { return l.Machine().ResizeVolume(ctx, volume.ID, sizeGB) },
+			Steps:      func(ctx context.Context) error { return l.Machine().ResizeVolume(ctx, volumeID, sizeGB) },
 			Undo:       undoVolumeSize(volume.ID, volume.SizeGB),
 			UndoIfLast: true,
 		}

@@ -189,6 +189,7 @@ func (m *Machine) makeServerVM(ctx context.Context, id int64) (keptDisk bool, er
 		}
 		server, facts, private = found, serverFacts(tx, found), systemNICs(tx, found)
 		volumes = m.serverVolumes(tx, id)
+		m.volumesRead[id] = true // View holds the lab's mutex
 		return nil
 	})
 	if err != nil {
@@ -279,6 +280,9 @@ func (m *Machine) DeleteServer(ctx context.Context, id int64) error {
 // the pictures: a project's delete removes several and sends the pictures
 // once.
 func (m *Machine) removeServerVM(ctx context.Context, id int64) error {
+	m.lab.mu.Lock()
+	delete(m.volumesRead, id)
+	m.lab.mu.Unlock()
 	disk, seedISO := m.serverFiles(id)
 	return m.system.DeleteServer(ctx, ServerVM(id), disk, seedISO)
 }

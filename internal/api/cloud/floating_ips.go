@@ -153,7 +153,9 @@ func registerFloatingIPs(api *web.API, l *lab.Lab) {
 			return http.StatusCreated, map[string]schema.Action{"action": actionJSON(&action)}, nil
 		})
 	}
-	registerResourceActions(api, l, "floating_ips", floatingIPResource)
+	registerResourceActions(api, l, "floating_ips", floatingIPResource, actionMisses{
+		invalid: invalidActionID, missing: missingOf(state.FloatingIPs, "Floating IP with ID %d not found"), unknown: actionNotFound,
+	})
 }
 
 // createFloatingIP creates a Floating IP in its home location, or assigned

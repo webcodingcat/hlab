@@ -69,6 +69,25 @@ for what the operator keeps), the phase or step that closes it.
 - **should, 6b:** after the first Ctrl+C or stop signal, a second one does
   not end a stop that hangs (`signal.Notify` stays active in both
   platforms' life cycles); `signal.Stop` after the first would let it.
+- **accepted:** a guest sees a volume's new size at its next access to
+  the disk (Hyper-V), which a mounted file system makes within seconds;
+  Hetzner's guest sees it at once (assumed; operator 2026-11-09).
+- **should, 2b-R:** the 10 servers of a `spread` group and the 412
+  `placement_error` for an 11th are assumed: Hetzner's capacity refused
+  a sixth server at 2b-1's probe. Measure when capacity allows.
+- **should, 2b-R** (review of 2b-1, outside the step): DEVELOPING.md's
+  Actions want an overview before the rules (with `docs/actions.md`);
+  a sentence that the layer rule leaves tests free to use the fakes; a
+  pointer from `cachedImage` to the mutex rule's exception; the words'
+  table says why each part exists; the Known gaps say which concern
+  servers, actions or the CLI and what the step names mean; long lines in
+  `internal/lab/servers.go`; a project's `Limits` are stored but not
+  enforced, and the docs promise more; `DetachNICsLater`'s parameter
+  `aborted` also takes running actions (`waitFor`).
+- **optional, 2b-R:** a plan's steps take a fixed input from the plan
+  (a struct, not a closure over IDs), so that "values from the plan, not
+  the record" is checked, not kept by hand (with `holds`).
+- **optional, 2b-R:** the Known gaps grouped by phase.
 - **optional, 2b-R:** a type `holds` that takes and frees an action's
   flags and queue in one place (`Lab.start`, `Lab.releaseQueues`,
   `Lab.end`); 2b-1 removed the lock queues (operator 2026-11-09: to the
@@ -447,6 +466,14 @@ at most.
 - **From 2b-0:** `delete_subnet` counts alias IPs and wants a range's
   first address; the public lease carries option 249; a server's
   actions run beside a Primary IP's assign (the lock queues are gone).
+- **Measured in 2b-1** (`compat/requirements.md`, "What 2b-1 measured"):
+  what the step had built as assumed. Volume actions that are not there
+  answer as the servers'; an attach of a volume attached elsewhere fails
+  in its action; a server's create refuses its volumes with Hetzner's
+  texts and lists their attaches after the firewalls; an attach or detach
+  during a server's create runs after it; names up to 64 characters. The
+  answers to a missing action are now each resource's own parameter
+  (`actionMisses`), without a default.
 - **An action's own error:** steps may fail with Hetzner's code and
   message (`lab.Failure`), as a volume's attach to a server in another
   location does (`unknown_error`).

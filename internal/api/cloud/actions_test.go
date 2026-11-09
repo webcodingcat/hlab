@@ -132,6 +132,18 @@ func TestUnknownActionsAnswerAsHetznerDoes(t *testing.T) {
 		http.StatusNotFound, "not_found", "api route not found")
 	expectError(t, "POST a server's action by ID", &responseOf{test.client.Do(http.MethodPost, "/v1/servers/1/actions/123", map[string]any{})},
 		http.StatusNotFound, "not_found", "404 Not Found")
+	// volumes as servers, also under /volumes/actions and for PATCH on a
+	// volume (measured 2026-11-09)
+	for _, request := range []struct{ method, path string }{
+		{http.MethodPost, "/v1/volumes/1/actions/123"}, {http.MethodPut, "/v1/volumes/1/actions/123"},
+		{http.MethodDelete, "/v1/volumes/1/actions/123"}, {http.MethodPost, "/v1/volumes/actions/123"},
+		{http.MethodPatch, "/v1/volumes/1"},
+	} {
+		expectError(t, request.method+" "+request.path, &responseOf{test.client.Do(request.method, request.path, map[string]any{})},
+			http.StatusNotFound, "not_found", "404 Not Found")
+	}
+	expectError(t, "POST a volume's bogus action", &responseOf{test.client.Do(http.MethodPost, "/v1/volumes/1/actions/bogus", map[string]any{})},
+		http.StatusNotFound, "not_found", "api route not found")
 	// the commands themselves still answer
 	if response := test.client.Do(http.MethodPost, "/v1/networks/1/actions/add_subnet", map[string]any{}); response.Status == http.StatusMethodNotAllowed {
 		t.Errorf("add_subnet answers %d", response.Status)
@@ -166,6 +178,9 @@ func TestMissingActionsAnswerAsHetznerDoes(t *testing.T) {
 		fmt.Sprintf("/v1/primary_ips/%d/actions/bogus", primary): {"invalid action ID: 'bogus'", "null"},
 		"/v1/primary_ips/1/actions/999":                          {"Primary IP with ID 1 not found", "null"},
 		"/v1/primary_ips/actions/999":                            {"action with ID '999' not found", "null"},
+		"/v1/volumes/1/actions/999":                              {"action not found", "{}"},
+		"/v1/volumes/actions/999":                                {"action not found", "{}"},
+		"/v1/volumes/1/actions/bogus":                            {"api route not found", "null"},
 	} {
 		response := test.client.Get(path)
 		got := errorOf(t, response)

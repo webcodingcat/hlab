@@ -147,7 +147,7 @@ func Open(opts Options, sys *system.System) (*Lab, error) {
 	if room == (config.Room{}) {
 		room = config.Default().Room
 	}
-	l.machine = &Machine{lab: l, system: sys, labKey: opts.LabKey, room: room, imageLoads: map[string]*sync.Mutex{}}
+	l.machine = &Machine{lab: l, system: sys, labKey: opts.LabKey, room: room, imageLoads: map[string]*sync.Mutex{}, volumesRead: map[int64]bool{}}
 	l.writer = state.NewWriter(path, l.logger)
 	l.ctx, l.cancel = context.WithCancel(context.Background())
 	if err := l.Change(l.endInterruptedActions); err != nil {

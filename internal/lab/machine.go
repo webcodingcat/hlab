@@ -55,6 +55,11 @@ type Machine struct {
 	// imageLoads are the image cache's loads by image name: one load per
 	// image at a time, held across the system's calls
 	imageLoads map[string]*sync.Mutex
+	// volumesRead are the servers whose VM took its volumes from the
+	// records (makeServerVM): a volume attached or detached while a
+	// server's create runs needs steps only once the VM has read them
+	// (VolumesRead)
+	volumesRead map[int64]bool
 	// looks are the servers the watchdog looks at in its current round, each
 	// true once an action flagged it during the look; nil between rounds
 	// (watchRound)

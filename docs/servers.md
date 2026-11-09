@@ -14,9 +14,9 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
 - **Create**: the handler records the server with its Primary IPs (status
   `initializing`), puts it into the firewalls its request names and runs
   the table's rows `create` (`create_server`), an `attach_at_create`
-  (`attach_to_network`) per network, an `attach_at_create` of the
-  volumes' table (`attach_volume`) per volume, an `apply_at_create` of the
-  firewalls' table (`apply_firewall`) per firewall and, unless
+  (`attach_to_network`) per network, an `apply_at_create` of the
+  firewalls' table (`apply_firewall`) per firewall, an `attach_at_create`
+  of the volumes' table (`attach_volume`) per volume and, unless
   `start_after_create` is false, `poweron` (`start_server`), all in one
   `Lab.Create`; the answer's `next_actions` lists them in this order, as
   Hetzner's does, and its server shows the networks and the firewalls. Hetzner checks the networks after the SSH keys: each must be
@@ -25,8 +25,9 @@ The handlers in `internal/api/cloud/servers.go` and `primary_ips.go` decide;
   firewalls: each the project's, at most five; a label selector's
   firewall takes a place only where those leave one. A field
   `floating_ips` is ignored, as Hetzner has none. The volumes (Volumes)
-  take `automount`; a `placement_group` puts the server into the group
-  (Placement groups). The attaches and the apply run beside the create
+  take `automount`; one that is missing, attached or in another location
+  is 422 `invalid_input` with Hetzner's own text. A `placement_group` puts
+  the server into the group (Placement groups). The attaches and the apply run beside the create
   and have no steps of their own: the create's VM gets the NICs and the
   volumes' disks, and its pictures the firewalls, before the first start,
   so they end at once. The create's steps are
@@ -365,12 +366,16 @@ measured on 2026-11-09 (`compat/requirements.md`, 2b-0).
   If the steps fail, the disk goes and the undo removes the record; a
   create that HLab's end cut short makes the disk anew at the next start.
 - **Attach** (`attach_volume`, resources the volume and the server) puts
-  the disk into the server's lowest free slot (1 to 16, Hetzner's limit
-  of 16 volumes per server), also while it runs; the slot is in the
-  record. To the server it has, the attach ends at once. Another
-  location is 422, a volume attached elsewhere 422
-  `volume_already_attached` (assumed, not measured), a server whose
-  create runs 423.
+  the disk into a slot of the server's VM (1 to 63, at most 16 volumes,
+  Hetzner's limit), also while it runs; the slot is in the record, and
+  slots go round (`Server.NextVolumeSlot`), so that a slot whose detach
+  still runs is not taken at once. To the server it has, the attach ends
+  at once; another location is 422; a volume attached elsewhere is 201
+  and the action fails with `volume_already_attached`, as on Hetzner.
+- **During a server's create** an attach or a detach is 201, as on
+  Hetzner. Until the create has made the VM (`Machine.VolumesRead`) the
+  change is only in the records, which the VM is made from; after, the
+  steps wait for the create and change the VM.
 - **Detach** (`detach_volume`) takes the disk out, also while the server
   runs. **Resize** (`resize_volume`) grows the disk while it is attached;
   its action names the server too. **`change_protection`** takes no flag;

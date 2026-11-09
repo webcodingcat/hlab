@@ -194,7 +194,9 @@ func registerPrimaryIPs(api *web.API, l *lab.Lab) {
 			return http.StatusCreated, map[string]schema.Action{"action": actionJSON(&action)}, nil
 		})
 	}
-	registerResourceActions(api, l, "primary_ips", primaryIPResource)
+	registerResourceActions(api, l, "primary_ips", primaryIPResource, actionMisses{
+		invalid: invalidActionID, missing: missingOf(state.PrimaryIPs, "Primary IP with ID %d not found"), unknown: actionNotFound,
+	})
 }
 
 // createPrimaryIP creates a Primary IP in a location, or assigned to a

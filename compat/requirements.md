@@ -704,6 +704,24 @@ during placement"`, as `cx23` in `nbg1` did that day without a group.
 | a Floating or Primary IPv6's `dns_ptr` before any name / after `null` | `[]` |
 | a Floating IPv4's after `null` | `[{"ip", "dns_ptr": "static.….clients.your-server.de"}]` |
 
+#### What 2b-1 measured (2026-11-09)
+
+Measured by 2b-1 with the read-write token of the test project, for
+what it had built as assumed: never started servers with IPv6 only, a
+few volumes, a network, a firewall and a placement group, all deleted
+afterwards.
+
+| Request | Answer |
+|---|---|
+| `GET /volumes/{id}/actions/999` (also of a missing volume), `/volumes/actions/999` / an ID that is no number | 404 `"action not found"` `{}` / `"api route not found"` `null`, as for servers |
+| `POST`, `PUT`, `DELETE /volumes/{id}/actions/123`, `POST /volumes/actions/123`, `PATCH /volumes/{id}` / `…/actions/bogus` | 404 `"404 Not Found"` `{}` / `"api route not found"` `null` |
+| `attach` of a volume attached to another server | 201; the action ends at once with error `{"code": "volume_already_attached", "message": "volume already attached"}` |
+| `POST /servers` with `volumes` missing / attached / in another location | 422 `invalid_input` `"volume not found"` / `"volume already attached"` / `"volume in invalid location"` `{}` |
+| … with a network, a firewall and a volume, not started | `next_actions` `attach_to_network`, `apply_firewall`, `attach_volume` |
+| a volume's `detach` / another volume's `attach` while the server's create runs | 201 each; the detach waits for the create (15 s), the attach ends at once; in the end the server has the second volume only |
+| a volume's `name` `a_b`, `a.b`, `Upper`, `1` / `-a`, `a-`, `_a`, `ä` / 65 characters | taken / `"Invalid name."` / `"Longer than maximum length 64."` |
+| a sixth server in a `spread` group (`cx23`, `nbg1`) | 412 `resource_unavailable` `"error during placement"`, as without a group that day: the limit of 10 stays unmeasured |
+
 #### What 2a left open
 
 | Request | Answer |

@@ -3,6 +3,7 @@ package cloud
 import (
 	"cmp"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/netip"
 	"slices"
@@ -208,7 +209,16 @@ func registerNetworks(api *web.API, l *lab.Lab) {
 			return http.StatusCreated, map[string]schema.Action{"action": actionJSON(&action)}, nil
 		})
 	}
-	registerResourceActions(api, l, "networks", networkResource)
+	registerResourceActions(api, l, "networks", networkResource, actionMisses{
+		invalid: func(resource, action string) error {
+			if resource == "" {
+				return actionNotFound(action)
+			}
+			return web.NotFoundNull(fmt.Sprintf("action with ID '%s' for network with ID '%s' not found", action, resource))
+		},
+		missing: missingOf(state.Networks, "network with ID %d not found"),
+		unknown: actionNotFound,
+	})
 }
 
 // createNetwork creates a network with its subnets and routes; Hetzner

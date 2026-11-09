@@ -185,6 +185,10 @@ type Server struct {
 	PrivateNets []ServerPrivateNet `json:"private_nets"`
 	// PlacementGroupID is the placement group it is in, 0 for none.
 	PlacementGroupID int64 `json:"placement_group_id"`
+	// NextVolumeSlot is where the search for its next volume's slot in
+	// the VM starts (0: the first): slots go round, so that a slot whose
+	// detach still runs is not taken at once.
+	NextVolumeSlot int `json:"next_volume_slot"`
 }
 
 // ServerPrivateNet is a server's NIC in a private network: its address,

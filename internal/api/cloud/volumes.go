@@ -48,14 +48,17 @@ const (
 	volumesPerServer          = 16
 	volumeLinuxDevice         = "/dev/disk/by-id/scsi-0HC_Volume_%d"
 	volumeAssigneeTypeServer  = "server"
-	volumeAttachedElsewhere   = "volume is already attached to a server, detach first" // assumed, not measured
+	volumeAlreadyAttached     = "volume already attached"
+	serverVolumeNotFound      = "volume not found"
+	serverVolumeLocation      = "volume in invalid location"
+	volumeNameMax             = 64
+	volumeNameTooLong         = "Longer than maximum length 64."
 	volumeServerNotFoundError = "server not found"
 )
 
 // volumeName is a name Hetzner takes for a volume: letters, digits, dots,
-// dashes and underscores, starting and ending with a letter or a digit
-// (measured: a space is "Invalid name.", 64 characters are fine; the rest
-// is assumed, not measured).
+// dashes and underscores, starting and ending with a letter or a digit,
+// 64 characters at most (measured 2026-11-09).
 var volumeName = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9_.-]*[a-zA-Z0-9])?$`)
 
 // volumeAnswer is a volume as Hetzner's API sends it, with the spec's
@@ -181,7 +184,14 @@ func registerVolumes(api *web.API, l *lab.Lab) {
 			return http.StatusCreated, map[string]schema.Action{"action": actionJSON(&action)}, nil
 		})
 	}
-	registerResourceActions(api, l, "volumes", lab.VolumeResource)
+	// the servers' answers, and the same 404 for other methods also under
+	// /volumes/actions and on a volume (measured 2026-11-09)
+	registerResourceActions(api, l, "volumes", lab.VolumeResource, actionMisses{
+		unknown: plainActionNotFound, notFoundMethods: []string{"{id}/actions/{action_id}", "actions/{action_id}"},
+	})
+	api.Handle("PATCH /volumes/{id}", func(*web.Request) (int, any, error) {
+		return 0, nil, web.Refusal(http.StatusNotFound, "not_found", "404 Not Found")
+	})
 }
 
 // decodeVolumeBody decodes a volume's request body; a field of the wrong
@@ -313,6 +323,8 @@ func checkVolumeName(check *web.Check, name *string) {
 	switch {
 	case name == nil || *name == "":
 		check.Fail("name", volumeNameEmpty)
+	case len(*name) > volumeNameMax:
+		check.Fail("name", volumeNameTooLong)
 	case !volumeName.MatchString(*name):
 		check.Fail("name", volumeNameInvalid)
 	}

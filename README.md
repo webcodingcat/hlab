@@ -7,7 +7,8 @@ against it without changes.
 
 **Status:** being rebuilt in Go; `hlabd` answers the catalog, SSH keys,
 servers (Debian 13, Ubuntu 26.04), Primary and Floating IPs, firewalls,
-private networks, volumes and placement groups so far. [docs/roadmap.md](docs/roadmap.md) has the phases. On Windows 11 the
+private networks, volumes and placement groups so far; DNS comes next.
+[docs/roadmap.md](docs/roadmap.md) has the phases. On Windows 11 the
 servers are Hyper-V VMs that the host and WSL2 reach on their addresses;
 `hlabd --platform fake` runs the same API without VMs.
 
@@ -84,7 +85,7 @@ refuses it when a location is full: 412 `resource_unavailable`.
 `examples/tofu-1b` adds a Debian server with a Primary IP of its own;
 `examples/tofu-2a` a private network, a firewall, a Floating IP and two
 servers. `bin/dev smoke` applies each of them against `hlabd --platform fake`
-(docs/tools.md).
+([docs/tools.md](docs/tools.md)).
 
 ## Compatibility
 
@@ -97,6 +98,9 @@ servers. `bin/dev smoke` applies each of them against `hlabd --platform fake`
   [compat/versions.yaml](compat/versions.yaml).
 
 ## Development
+
+Go, Docker and, for the live tests, Windows with Hyper-V; what to install
+is in [docs/tools.md](docs/tools.md).
 
 ```bash
 bin/dev test

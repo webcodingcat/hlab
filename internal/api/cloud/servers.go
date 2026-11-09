@@ -30,9 +30,8 @@ const (
 	serverDeleteProtected = "server deletion is protected"
 	serverNoRoom          = "error during placement"
 	serverBusy            = "server is locked by another action"
-	// an action of another resource on a server whose create runs: a
-	// Floating IP's assign (measured 2026-11-08), a volume's attach and
-	// detach (assumed, not measured)
+	// a Floating IP's assign to a server whose create runs (measured
+	// 2026-11-08)
 	serverCreatingLocked = "resource is locked"
 	// a location that the type does not offer or no longer has available;
 	// the details {}
@@ -296,7 +295,9 @@ func registerServers(api *web.API, l *lab.Lab) {
 			return http.StatusCreated, map[string]schema.Action{"action": actionJSON(&action)}, nil
 		})
 	}
-	registerResourceActions(api, l, "servers", lab.ServerResource)
+	registerResourceActions(api, l, "servers", lab.ServerResource, actionMisses{
+		unknown: plainActionNotFound, notFoundMethods: []string{"{id}/actions/{action_id}"},
+	})
 }
 
 // checkServerCreate checks a create request's fields, as Hetzner does
@@ -442,22 +443,21 @@ func createServer(req *web.Request, l *lab.Lab, table lab.ActionTable) (int, any
 		return 0, nil, actError(err)
 	}
 	// Hetzner's next_actions: an attach_to_network per network, an
-	// apply_firewall per firewall, then the start (measured 2026-11-09);
-	// an attach_volume per volume after the networks (assumed, not
-	// measured)
+	// apply_firewall per firewall, an attach_volume per volume, then the
+	// start (measured 2026-11-09)
 	rows := []lab.Row{{Command: "create"}}
 	for _, id := range body.Networks {
 		raw, _ := json.Marshal(map[string]int64{"network": id})
 		rows = append(rows, lab.Row{Command: "attach_at_create", Body: raw})
 	}
+	firewallTable := firewallActions(l)
+	for _, entry := range body.Firewalls {
+		rows = append(rows, lab.Row{Command: "apply_at_create", Table: &firewallTable, ID: *entry.Firewall})
+	}
 	volumeTable := volumeActions(l)
 	automount, _ := json.Marshal(map[string]bool{"automount": body.Automount != nil && *body.Automount})
 	for _, id := range uniqueIDs(body.Volumes) {
 		rows = append(rows, lab.Row{Command: "attach_at_create", Table: &volumeTable, ID: id, Body: automount})
-	}
-	firewallTable := firewallActions(l)
-	for _, entry := range body.Firewalls {
-		rows = append(rows, lab.Row{Command: "apply_at_create", Table: &firewallTable, ID: *entry.Firewall})
 	}
 	if start {
 		rows = append(rows, lab.Row{Command: "poweron"})

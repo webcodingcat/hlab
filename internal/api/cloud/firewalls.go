@@ -193,7 +193,11 @@ func registerFirewalls(api *web.API, l *lab.Lab) {
 	api.Handle("POST /firewalls/{id}/actions/remove_from_resources", func(req *web.Request) (int, any, error) {
 		return changeFirewallTargets(req, l, table, "remove_from", firewallRemoveFromMissing, false)
 	})
-	registerResourceActions(api, l, "firewalls", firewallResource)
+	registerResourceActions(api, l, "firewalls", firewallResource, actionMisses{
+		invalid: func(_, action string) error { return actionNotFound(action) },
+		missing: missingOf(state.Firewalls, "firewall with ID %d not found"),
+		unknown: actionNotFound,
+	})
 }
 
 // createFirewall creates a firewall with its rules and the resources it

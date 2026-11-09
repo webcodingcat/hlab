@@ -2,6 +2,7 @@ package cloud_test
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -146,6 +147,8 @@ func TestVolumeCreateErrors(t *testing.T) {
 	}{
 		"no name":         {map[string]any{"size": 10, "location": "fsn1"}, invalidField("name", "is not allowed to be empty")},
 		"a space":         {map[string]any{"name": "has space", "size": 10, "location": "fsn1"}, invalidField("name", "Invalid name.")},
+		"a dash first":    {map[string]any{"name": "-a", "size": 10, "location": "fsn1"}, invalidField("name", "Invalid name.")},
+		"65 characters":   {map[string]any{"name": strings.Repeat("a", 65), "size": 10, "location": "fsn1"}, invalidField("name", "Longer than maximum length 64.")},
 		"too small":       {map[string]any{"name": "v", "size": 9, "location": "fsn1"}, invalidField("size", "Must be between 10 and 10240.")},
 		"too large":       {map[string]any{"name": "v", "size": 10241, "location": "fsn1"}, invalidField("size", "Must be between 10 and 10240.")},
 		"no place":        {map[string]any{"name": "v", "size": 10}, invalidField("location", "location is required if no server is given")},
@@ -199,11 +202,16 @@ func TestVolumeAttachAndDetach(t *testing.T) {
 		body any
 		want networkError
 	}{
-		"nothing":            {map[string]any{}, invalidField("assignee", "is required")},
-		"a load balancer":    {map[string]any{"assignee": map[string]any{"type": "load_balancer", "id": 1}}, invalidField("assignee.type", `unsupported resource type "load_balancer"`)},
-		"a missing server":   {map[string]any{"server": 1}, networkError{http.StatusNotFound, "not_found", "server not found", nil}},
-		"attached elsewhere": {map[string]any{"server": other.Server.ID}, refused("volume_already_attached", "volume is already attached to a server, detach first")},
+		"nothing":          {map[string]any{}, invalidField("assignee", "is required")},
+		"a load balancer":  {map[string]any{"assignee": map[string]any{"type": "load_balancer", "id": 1}}, invalidField("assignee.type", `unsupported resource type "load_balancer"`)},
+		"a missing server": {map[string]any{"server": 1}, networkError{http.StatusNotFound, "not_found", "server not found", nil}},
 	})
+	// attached elsewhere: 201, and the action fails (measured 2026-11-09)
+	elsewhere := actionOf(t, "attach elsewhere", volumeAction(test, id, "attach", map[string]any{"server": other.Server.ID}))
+	if ended := waitActions(t, test, elsewhere); ended[0].Status != "error" || ended[0].Error.Code != "volume_already_attached" ||
+		ended[0].Error.Message != "volume already attached" {
+		t.Errorf("the attach of a volume attached elsewhere: %+v", ended[0])
+	}
 	expectError(t, "deleting an attached volume", &responseOf{test.client.Do(http.MethodDelete, fmt.Sprintf("/v1/volumes/%d", id), nil)},
 		http.StatusUnprocessableEntity, "service_error", fmt.Sprintf("volume with ID '%d' is still attached to a server", id))
 
@@ -287,7 +295,9 @@ func TestVolumeActionsQueue(t *testing.T) {
 
 // An attach's steps take the server and the slot its plan chose: a detach
 // queued behind it changes the record first, and both end well, the disk
-// out of the VM again. A detach while the server's create runs is 423.
+// out of the VM again. A detach and an attach while the server's create
+// runs are 201 and end well; the create's VM has what the records say
+// when it is made, and what comes later follows it (measured 2026-11-09).
 func TestVolumeAttachAndDetachInTheQueue(t *testing.T) {
 	test := newTestLab(t)
 	quietMachine(t, test)
@@ -306,12 +316,46 @@ func TestVolumeAttachAndDetachInTheQueue(t *testing.T) {
 		t.Errorf("the VM's disks after the attach and the detach: %v", disks)
 	}
 
-	test.machine.Delay("CreateVM", 200*time.Millisecond)
-	creating := createServer(t, test, map[string]any{"name": "db", "server_type": "cpx22", "image": "debian-13",
-		"location": "fsn1", "start_after_create": false, "volumes": []int64{created.Volume.ID}})
-	expectError(t, "a detach during the server's create", volumeAction(test, created.Volume.ID, "detach", nil),
-		http.StatusLocked, "locked", "resource is locked")
-	waitActions(t, test, creating.Action)
+	late := createVolume(t, test, map[string]any{"name": "late", "size": 10, "location": "fsn1"})
+	waitActions(t, test, late.Action)
+	for _, vmMade := range []bool{true, false} {
+		// once the create has made the VM, the actions change it after the
+		// create; before, the create makes it as the records then are (the
+		// second round may land either way; both must end alike)
+		creating := createServer(t, test, map[string]any{"name": fmt.Sprintf("db-%v", vmMade), "server_type": "cpx22", "image": "debian-13",
+			"location": "fsn1", "start_after_create": false, "volumes": []int64{created.Volume.ID}})
+		if vmMade {
+			waitForCall(t, test, "CreateVM "+lab.ServerVM(creating.Server.ID))
+		}
+		detach := actionOf(t, "detach during the create", volumeAction(test, created.Volume.ID, "detach", nil))
+		attach := actionOf(t, "attach during the create", volumeAction(test, late.Volume.ID, "attach", map[string]any{"server": creating.Server.ID}))
+		for _, action := range waitActions(t, test, creating.Action, detach, attach) {
+			if action.Status != "success" {
+				t.Errorf("VM made %v: %s ended %s: %+v", vmMade, action.Command, action.Status, action.Error)
+			}
+		}
+		disks := test.machine.Disks(lab.ServerVM(creating.Server.ID))
+		lateSlot := slices.IndexFunc(slices.Collect(maps.Values(disks)), func(path string) bool {
+			return strings.HasSuffix(path, fmt.Sprintf("volumes/%d.vhdx", late.Volume.ID))
+		})
+		if len(disks) != 2 || lateSlot < 0 {
+			t.Errorf("VM made %v: the VM's disks %v, want the system disk and the late volume", vmMade, disks)
+		}
+		waitActions(t, test, serverDelete(t, test, creating.Server.ID))
+	}
+}
+
+// waitForCall waits until the fake machine has had a call that starts
+// with prefix.
+func waitForCall(t *testing.T, test *testLab, prefix string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !containsPrefix(test.machine.Calls(), prefix) {
+		if time.Now().After(deadline) {
+			t.Fatalf("no call %s: %v", prefix, test.machine.Calls())
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 // A server's create attaches its volumes before the VM is made and puts
@@ -340,6 +384,20 @@ func TestServerCreateWithVolumesAndPlacementGroup(t *testing.T) {
 	expectError(t, "a missing group", &responseOf{test.client.Do(http.MethodPost, "/v1/servers", map[string]any{
 		"name": "db", "server_type": "cpx22", "image": "debian-13", "placement_group": 1})},
 		http.StatusNotFound, "not_found", "placement group not found")
+	elsewhere := createVolume(t, test, map[string]any{"name": "elsewhere", "size": 10, "location": "nbg1"})
+	waitActions(t, test, elsewhere.Action)
+	for name, c := range map[string]struct {
+		volume  int64
+		message string
+	}{
+		"a missing volume":             {1, "volume not found"},
+		"an attached volume":           {volume.Volume.ID, "volume already attached"},
+		"a volume in another location": {elsewhere.Volume.ID, "volume in invalid location"},
+	} {
+		expectError(t, name, &responseOf{test.client.Do(http.MethodPost, "/v1/servers", map[string]any{
+			"name": "db", "server_type": "cpx22", "image": "debian-13", "location": "fsn1", "volumes": []int64{c.volume}})},
+			http.StatusUnprocessableEntity, "invalid_input", c.message)
+	}
 }
 
 // containsPrefix tells whether one of the calls starts with prefix.
