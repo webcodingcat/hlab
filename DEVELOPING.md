@@ -51,7 +51,7 @@ Words this file uses; the sections in parentheses explain more.
 | conntrack | the Linux kernel's table of connections; the firewall pictures let answers through by it |
 | fault | an error or a delay that a test injects into the Cloud API's answers for a project (docs/servers.md) |
 | uplink | the appliance's NIC to the outside, through which the servers reach the Internet (docs/appliance.md) |
-| VLAN pool | the VLANs that private networks take; a freed one comes back only after the pool went round (`lab.NewVLAN`) |
+| VLAN pool | the VLANs that private networks take; a freed one comes back only after the pool went round, so that a NIC a failed removal left behind does not land in a new network (`lab.NewVLAN`) |
 | pshost | the long-running PowerShell process through which `hlabd` drives Hyper-V on Windows (docs/hyperv.md) |
 | golden file | a picture's expected text under `internal/picture/testdata`; its tests compare against it (`-update` writes it) |
 | action | Hetzner's record of a slow command (`stop_server`), with its status; the lab runs one as a plan and steps (Actions) |
@@ -256,9 +256,9 @@ The layer test checks production code only. Tests may import fakes and helpers.
 - The slow part of an action runs in a goroutine with a `context.Context`. Closing
   the lab (`Lab.Close`) and deleting a project (`Lab.StopProjectActions`) cancel
   that context. A closed lab starts no action (`lab.ErrClosed`, 503), and
-  `Close` waits for every goroutine the lab starts (`Lab.background`): the
-  actions', `Machine.UpdatePicturesLater`, `Machine.DetachNICsLater` and
-  `Lab.DeleteProject`'s removals.
+  `Close` waits for the lab's work (`Lab.background`): the goroutines of the
+  actions, `Machine.UpdatePicturesLater` and `Machine.DetachNICsLater`, and
+  `Lab.DeleteProject`'s removals, which run in the delete's request.
 - `lab.Flush()` waits until the newest state is on disk. `Lab.Close` calls it.
 - `go test -race` runs on Linux, in `bin/dev test` and in CI. It finds data
   races, not a mutex held across a call into `system`: that rule is kept by

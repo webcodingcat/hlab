@@ -122,11 +122,12 @@ type ServerNIC struct {
 
 // DetachNICsLater takes the NICs of a deleted network out of their VMs in
 // the background: the network's delete has taken them out of the records
-// and answers at once, as Hetzner does. It waits for the actions it is
-// given (those the delete aborted, ChangeAborting, and those running on
-// its members, Lab.RunningOn), as their steps may still add the NIC, and the appliance gets the pictures without the network
-// first. It ends with the lab's context, and Close waits for it; a
-// failure is logged: the NIC stays in the VM, without a network, until
+// and answers at once, as Hetzner does. It first waits for the actions
+// it is given (those the delete aborted, ChangeAborting, and those running
+// on its members, Lab.RunningOn), as their steps may still add a NIC.
+// Then the appliance gets the pictures without the network, and the NICs
+// leave the VMs. It ends with the lab's context, and Close waits for it.
+// A failure is logged: the NIC stays in the VM, without a network, until
 // the server goes.
 func (m *Machine) DetachNICsLater(nics []ServerNIC, aborted []<-chan struct{}) {
 	m.lab.mu.Lock()

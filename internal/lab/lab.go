@@ -84,10 +84,11 @@ type Lab struct {
 
 	ctx    context.Context    // ends when the lab closes; the actions' contexts derive from it
 	cancel context.CancelFunc // ends ctx
-	// background runs every goroutine the lab starts, so Close waits for
-	// them: the actions', UpdatePicturesLater's, DetachNICsLater's and
-	// DeleteProject's removals; it is added to only under mu while the
-	// lab is not closed
+	// background counts the lab's work that Close waits for: the
+	// goroutines of the actions, UpdatePicturesLater and DetachNICsLater,
+	// and DeleteProject's removals, which run in the request's goroutine
+	// (the delete answers once they are done); it is added to only under
+	// mu while the lab is not closed
 	background sync.WaitGroup
 }
 

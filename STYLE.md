@@ -22,7 +22,9 @@ Windows.
 - Readable for developers before short: descriptive names (`server`, `volume`, not
   `s`, `v`); single letters only for loop variables, receivers and short closures;
   understandable abbreviations (`cfg`, `ip`, `cmd`, IDs like `sid`) are fine.
-- One job per function; no function that only passes its arguments on to another.
+- One job per function; no function that only passes its arguments on to another
+  (the one exception, `Lab.Act`, `ActAll` and `Create`, says why in DEVELOPING.md,
+  Actions).
 - One way per thing: the same thing is done the same way everywhere; an exception
   says why next to it.
 - Comments and doc comments say why (Hetzner's behaviour, caveats); the code says

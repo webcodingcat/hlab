@@ -146,7 +146,7 @@ func (l *Lab) Create(table ActionTable, req Request, create func(tx *state.Tx) (
 
 // run checks the project, runs create if there is one, plans the rows in
 // one transaction and starts them once the transaction is saved. Act,
-// ActAll and Create only pass it their arguments (DEVELOPING.md, Actions,
+// ActAll and Create hardly do more than call it (DEVELOPING.md, Actions,
 // says why they exist anyway).
 func (l *Lab) run(table ActionTable, req Request, create func(tx *state.Tx) (int64, error),
 	answer func(tx *state.Tx, id int64), rows []Row) ([]state.Action, error) {

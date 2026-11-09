@@ -482,6 +482,29 @@ func TestStepsThatRunIfCanceledWaitForTheActionBefore(t *testing.T) {
 	}
 }
 
+// An undo that fails does not keep its action running: the action ends
+// with the steps' error, and its flag goes.
+func TestFailedUndoStillEndsTheAction(t *testing.T) {
+	l, _ := openWithProject(t)
+	failing := tableWith(lab.ActionSpec{Name: "stop_server", Plan: func(*state.Tx, lab.Request) (lab.Plan, error) {
+		return lab.Plan{
+			Steps: func(context.Context) error { return errors.New("the steps failed") },
+			Undo:  func(*state.Tx) error { return errors.New("the undo failed") },
+		}, nil
+	}})
+	action, err := l.Act(failing, "poweroff", request(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ended := waitForStatus(t, l, action.ID, state.ActionError)
+	if !strings.Contains(ended.Error.Message, "the steps failed") {
+		t.Errorf("the action failed with %q, want the steps' error", ended.Error.Message)
+	}
+	if _, err := l.Act(tableWith(instant), "poweroff", request(7)); err != nil {
+		t.Errorf("the flag stayed after the failed undo: %v", err)
+	}
+}
+
 // An undo marked UndoIfLast leaves alone what an action queued behind it
 // has planned since.
 func TestUndoIfLastSkipsWhenAnActionIsQueuedBehind(t *testing.T) {
