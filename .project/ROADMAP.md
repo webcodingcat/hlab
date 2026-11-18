@@ -35,6 +35,10 @@
       Requirements: SRV-02, SRV-07, SRV-08, SRV-09, SRV-10, SRV-18, SRV-20,
       SRV-21, META-01.
       Depends on: 02.
+      First plan: the servers module implements `resource.Reconciler` and
+      replaces `servers.Deps.Machines` and `internal/cloud/servers.go`
+      (decisions/resource-reconciler.md); SRV-01 and SRV-16 run again
+      end-to-end after it.
       Success criteria:
       1. hcloud power actions change the VM visibly (SSH drops, comes back).
       2. A rebuilt server keeps its IP and boots the new image.

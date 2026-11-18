@@ -114,8 +114,17 @@ Inside `hlabd` (Go packages under `internal/`):
 
   Handlers validate input, write the desired state in one transaction,
   create an action and enqueue the work; they never call Hyper-V directly.
-- Depends on: api, store, actions, platform (through the action worker),
-  agentapi.
+  A module owning real resources implements `Reconciler` and does the
+  platform work itself: it receives `platform.Platform`, the image store,
+  a function that pushes the agent document and the settings it reads
+  through its `Deps`. `Reconcile` is idempotent (it does only the
+  difference between state and platform), so it can run again after an
+  aborted action and after a cloud restart. Power actions, rebuild and
+  change type stay actions inside the module. `internal/cloud` only wires
+  the modules and calls these interfaces; it holds no logic of a resource
+  type (decisions/resource-reconciler.md).
+- Depends on: api, store, actions, platform and images (through the
+  action worker and the module's `Deps`), agentapi.
 
 #### store
 

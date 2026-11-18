@@ -10,7 +10,7 @@ STATUS: IN_PROGRESS
 - Phase: 02 API conventions, catalog and the three clients
 - Base branch: main
 - Last done: phase 01 walking skeleton merged into main (2026-11-18); the user reruns scripts\dev-setup.ps1 elevated once for the protected data folder ACLs
-- Next: /wcc:phase in a new session (phase 02); /wcc:change takes the answers to Q1 and Q2
+- Next: /wcc:phase in a new session (phase 02); Q1 (Reconciler refactor) is the first plan of phase 03, Q2 approved
 
 ## Open manual checks
 
@@ -28,16 +28,7 @@ STATUS: IN_PROGRESS
      /wcc:phase asks those of its phase at its start, /wcc:change takes
      answers any time. -->
 
-- Q1 (01 verify): Should resource modules that own real resources (VMs, disks) get a `Reconciler` with platform, images and agent push passed in, instead of the `Machines` dependency implemented in `internal/cloud`?
-  - Context: ARCHITECTURE.md "resource" describes an optional `Reconciler` and "one package plus one line" per resource type; phase 01 built `servers.Deps.Machines`, implemented in `internal/cloud/servers.go`, so every later module with real resources (volumes, load balancers, floating IPs) would add code to `internal/cloud`.
-  - Options: 1. Refactor to a `Reconciler` on the module before phase 03 2. Keep the `Machines` pattern and change ARCHITECTURE.md accordingly
-  - Recommendation: 1, because it keeps adding a resource type to one package plus one line before more such modules are built.
-  - Affects: SRV-01, SRV-16, later SRV/VOL/LB/FIP requirements; ARCHITECTURE.md "resource"
-- Q2 (01 verify): Do you approve the guest-visible identifiers phase 01 fixed without asking: server MAC `02:48:4c:1x:xx:xx` (0x1 plus the low 20 bits of the server ID), formal IPv6 `2001:db8:<ID>::/64`, root login via vendor-data `disable_root: false`, and the volume identifier byte order?
-  - Context: DECISIONS.md "Server MACs, IPv6 and root login" and "Volume identifier byte order" (both Cost of change: high); they follow "Guest-visible identifiers" and E6, but guests and scripts see them.
-  - Options: 1. Approve as recorded 2. Change the IPv6 scheme (e.g. a configurable prefix) 3. Change the MAC layout
-  - Recommendation: 1, because the values follow the spec's identifiers and the documentation range.
-  - Affects: SRV-01, SRV-03, SRV-04; DECISIONS.md entries above
+- none
 
 ## If BLOCKED
 

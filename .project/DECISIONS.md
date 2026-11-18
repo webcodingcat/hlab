@@ -22,6 +22,22 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Q1: real resources reconciled by their module
+
+- Type: change
+- Phase: change
+- What: modules owning real resources implement `resource.Reconciler` with platform, image store, agent push and settings in their `Deps`, replacing `servers.Deps.Machines` and `internal/cloud/servers.go` as the first plan of phase 03 (decisions/resource-reconciler.md).
+- Why: a new resource type stays one package plus one line before phases 03, 04, 05 and 08 add more such modules, and phase 09 gets one way to restore every resource.
+- Cost of change: medium
+
+## 2026-11-18 Q2: guest-visible identifiers approved
+
+- Type: approval
+- Phase: change
+- What: the user approves server MAC, formal IPv6, root login via `disable_root: false` and the volume identifier byte order exactly as recorded in phase 01 (decisions/guest-identifiers.md).
+- Why: the values follow the spec's identifiers and the documentation range, and the MAC wrap-around after 2^20 servers is out of reach for a local lab.
+- Cost of change: high
+
 ## 2026-11-18 Server MACs, IPv6 and root login
 
 - Type: decision
