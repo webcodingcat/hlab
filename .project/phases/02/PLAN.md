@@ -171,6 +171,7 @@ func (e *env) wslKey() string                                           // path 
   - Adjusts: -
   - [ ] Distro selection (`HLAB_E2E_WSL_DISTRO`, else the one registered distro whose name starts with `Ubuntu`; fail when none or several), temp key directory in the distro with mode 0600 deleted at teardown, `env.wsl` (test/e2e/main_test.go, test/e2e/clients_test.go)
   - [ ] Version checks for tofu 1.13.9 and ansible-core 2.22.0 with collection 7.2.0 (fail with a clear message, install nothing); `env.tofu` with plugin cache in the user cache folder, `env.ansible` with `HCLOUD_TOKEN`/`HCLOUD_ENDPOINT` through `WSLENV` (test/e2e/clients_test.go, test/e2e/e2e_test.go)
+  - Open: code merged and reviewed; e2e TestE2E/(HOST-03|CLI-03) waits for the dev cloud (dev-setup rerun for the DACL fix)
 
 - [x] 02-03 Catalog with own server types and pricing
   - Wave: 2 | Depends on: 02-01 | Review: alone
@@ -206,7 +207,8 @@ func (e *env) wslKey() string                                           // path 
   - Reads: REQUIREMENTS KEY, API; RESEARCH R1 (`hcloud_ssh_key`), R5 (ssh_keys filters, sort `id`, `name`)
   - Size: ~180 lines in 1 file
   - Adjusts: -
-  - [ ] List through `ListRequest` (name, fingerprint, label_selector, sort id/name); `PUT /ssh_keys/{id}` (name and labels, each only when present); label check; unique name and fingerprint per project (`uniqueness_error`, field `name` or `public_key`) (internal/resources/sshkeys/sshkeys.go)
+  - [x] List through `ListRequest` (name, fingerprint, label_selector, sort id/name); `PUT /ssh_keys/{id}` (name and labels, each only when present); label check; unique name and fingerprint per project (`uniqueness_error`, field `name` or `public_key`) (internal/resources/sshkeys/sshkeys.go)
+  - Open: code merged and reviewed; e2e TestE2E/CLI-02/ssh_keys waits for the dev cloud (dev-setup rerun for the DACL fix)
 
 - [x] 02-09 Catalog lists by the conventions
   - Wave: 3 | Depends on: 02-03, 02-06 | Review: alone
