@@ -137,14 +137,14 @@ func (e *env) wslKey() string                                           // path 
 
 ## Plans
 
-- [ ] 02-01 Error codes from one table
+- [x] 02-01 Error codes from one table
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: API-09, API-14 | Tests: internal/api/errors_test.go, internal/api/router_test.go
   - Reads: REQUIREMENTS API; CONTEXT.md "Corrections"; ARCHITECTURE "api"; E8
   - Size: ~250 lines in 8 files
   - Adjusts: -
-  - [ ] Status table, `Error` without status, `InvalidInput` (422), `FieldError`, `Fail`; the router's own not_found, json_error, unauthorized and token_readonly answers use it (internal/api/response.go, errors.go, path.go, router.go)
-  - [ ] Move the callers to the new `Error`/`Fail` (internal/resources/actions/actions.go, datacenters/datacenters.go, servers/servers.go, sshkeys/sshkeys.go, internal/apitest/probe.go)
+  - [x] Status table, `Error` without status, `InvalidInput` (422), `FieldError`, `Fail`; the router's own not_found, json_error, unauthorized and token_readonly answers use it (internal/api/response.go, errors.go, path.go, router.go)
+  - [x] Move the callers to the new `Error`/`Fail` (internal/resources/actions/actions.go, datacenters/datacenters.go, servers/servers.go, sshkeys/sshkeys.go, internal/apitest/probe.go)
 
 - [x] 02-02 Labels and label selectors
   - Wave: 1 | Depends on: - | Review: alone
