@@ -107,11 +107,11 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
   - Size: ~350 lines in 3 files
   - [ ] CreateDisk (dynamic VHDX, copy of base, new identifier), ResizeDisk, AttachDisk, DetachDisk, AttachNIC (PVLAN, guards, MAC with dashes), DetachNIC, SetDVD, SetBootOrder
 
-- [ ] 01-11 Host networking (Windows)
+- [x] 01-11 Host networking (Windows)
   - Wave: 2 | Depends on: 01-01 | Review: alone
   - Requirements: SRV-06, LIFE-10 | Tests: internal/hostnet/windows/hostnet_test.go
   - Size: ~400 lines in 4 files
-  - [ ] Check (range collision, WinNAT exists, other_instance_running), Up (adapter IP, route ActiveStore, WinNAT, forwarding hlab and WSL, firewall rule, base NRPT), Down, restore file, DNSServers, SetZones
+  - [x] Check (range collision, WinNAT exists, other_instance_running), Up (adapter IP, route ActiveStore, WinNAT, forwarding hlab and WSL, firewall rule, base NRPT), Down, restore file, DNSServers, SetZones
 
 - [ ] 01-12 hlab-agent: config server, routes, API proxy
   - Wave: 2 | Depends on: 01-01 | Review: alone
