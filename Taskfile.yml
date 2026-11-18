@@ -66,6 +66,11 @@ tasks:
     cmds:
       - go run ./tools/openapi
 
+  catalog:
+    desc: Generate the shipped location, server type, load balancer type and pricing catalogs from the real Hetzner API
+    cmds:
+      - go run ./tools/catalog
+
   e2e:
     desc: "Run the end-to-end tests against real Hyper-V and clients; filter with -- -run <regexp>"
     cmds:
