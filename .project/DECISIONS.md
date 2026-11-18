@@ -777,3 +777,19 @@ in ARCHITECTURE.md or the plan.
 - What: vendor-data is multipart MIME: a minimal cloud-config part and a shell-script part that writes and enables the guest hooks and the root sshd drop-in.
 - Why: user cloud-config lists (`runcmd`, `write_files`) replace vendor lists and would silently drop the hooks.
 - Cost of change: low
+
+## 2026-11-18 COM1 pipe served by hlabd with a protected ACL
+
+- Type: decision
+- Phase: 03
+- What: every VM gets COM1 on a named pipe that hlabd creates before each start with a SYSTEM/Administrators/VMs-only SD and drains; starts fail if the pipe cannot be served.
+- Why: Debian 12 panics with `console=ttyS0` when no serial port exists, and a pipe Hyper-V creates is readable by Everyone (console carries user_data output).
+- Cost of change: low
+
+## 2026-11-18 Vendor script syncs before first boot ends
+
+- Type: decision
+- Phase: 03
+- What: the vendor shell part ends with `sync`; poweroff stays a hard cut.
+- Why: a hard poweroff within about 30 s of the first boot left zero-length SSH host keys and hook files, so sshd never came back.
+- Cost of change: low

@@ -230,13 +230,13 @@ func ServersDeps(t *testing.T, cat *catalog.Catalog, p platform.Platform) server
   - [x] Create without SSH keys generates a password, stores only `NewSHA512` of it, returns it once as `root_password` (internal/resources/servers/servers.go)
   - [x] Harness helper for an SSH password login (OpenSSH with `SSH_ASKPASS_REQUIRE=force` and a temporary askpass script, deleted at once; no new module) (test/e2e/main_test.go)
 
-- [ ] 03-11 Rebuild
+- [x] 03-11 Rebuild
   - Wave: 6 | Depends on: 03-10 | Review: alone | e2e
   - Requirements: SRV-08, SRV-20, API-12 (rebuild) | Tests: internal/resources/servers/servers_test.go (SRV-20/rebuild, API-12/rebuild), test/e2e/server_test.go (SRV-08)
   - Reads: REQUIREMENTS SRV-08, API-12; CONTEXT.md rebuild line; RESEARCH R4 (rebuild)
   - Size: ~260 lines in 2 files
   - Adjusts: -
-  - [ ] `rebuild`: `protected` with rebuild protection, image by name (system images; others `invalid_input`), `user_data` stored or the previous one kept, disk check of 03-08, status rebuilding, hard off, new disk from the image with a new identifier, new seed with same instance-id, MAC and IP, power on, running; `root_password` when the server has no SSH keys (internal/resources/servers/rebuild.go, servers.go)
+  - [x] `rebuild`: `protected` with rebuild protection, image by name (system images; others `invalid_input`), `user_data` stored or the previous one kept, disk check of 03-08, status rebuilding, hard off, new disk from the image with a new identifier, new seed with same instance-id, MAC and IP, power on, running; `root_password` when the server has no SSH keys (internal/resources/servers/rebuild.go, servers.go)
 
 - [ ] 03-12 Change type
   - Wave: 7 | Depends on: 03-11 | Review: alone | e2e
