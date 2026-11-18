@@ -110,12 +110,12 @@ func (m *Module) rebuild(w http.ResponseWriter, req *http.Request) {
 	api.JSON(w, http.StatusCreated, map[string]any{"action": action, "root_password": rootPassword})
 }
 
-// rebuildMachine turns the VM of server id off, detaches and deletes its
-// disk and seed, lets reconcile create both again from the stored record
-// (the seed keeps instance-id, MAC and IP), attaches them again (which
-// grants the VM access to the new files) and starts the VM. The image is
-// fetched before the old disk goes, so a failed download leaves the server
-// as it was.
+// rebuildMachine turns the VM of server id off, deletes its disk and seed,
+// lets reconcile create both again at the same paths from the stored record
+// (the seed keeps instance-id, MAC and IP) and starts the VM; the VM keeps
+// its drives, and the new files inherit the data folder's access for VMs.
+// The image is fetched before the old disk goes, so a failed download
+// leaves the server as it was.
 func (m *Module) rebuildMachine(ctx context.Context, stor *store.Store, id int64, image string, check func(context.Context) error) error {
 	if err := check(ctx); err != nil {
 		return err
@@ -127,27 +127,12 @@ func (m *Module) rebuildMachine(ctx context.Context, stor *store.Store, id int64
 	if err := p.Power(ctx, name, platform.PowerStop); err != nil {
 		return err
 	}
-	if err := p.DetachDisk(ctx, name, m.diskPath(id)); err != nil && !isNotFound(err) {
-		return err
-	}
-	if err := p.SetDVD(ctx, name, 0, ""); err != nil {
-		return err
-	}
 	for _, f := range []string{m.diskPath(id), m.seedPath(id)} {
 		if err := os.Remove(f); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 	}
 	if err := m.reconcile(ctx, stor, id); err != nil {
-		return err
-	}
-	if err := p.AttachDisk(ctx, name, m.diskPath(id), 0); err != nil {
-		return err
-	}
-	if err := p.SetDVD(ctx, name, 0, m.seedPath(id)); err != nil {
-		return err
-	}
-	if err := p.SetBootOrder(ctx, name, []platform.BootDevice{{Kind: "disk", Slot: 0}}); err != nil {
 		return err
 	}
 	return p.Power(ctx, name, platform.PowerStart)
