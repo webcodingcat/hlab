@@ -27,6 +27,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/hostnet"
 	hnwin "github.com/webcodingcat/hlab/internal/hostnet/windows"
 	"github.com/webcodingcat/hlab/internal/images"
+	"github.com/webcodingcat/hlab/internal/metrics"
 	"github.com/webcodingcat/hlab/internal/mgmt"
 	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/platform/hyperv"
@@ -293,6 +294,9 @@ func (c *Cloud) startJobs(ctx context.Context) {
 	}
 }
 
+// metricsRetention is how long the samples of the servers' VMs are kept.
+const metricsRetention = 24 * time.Hour
+
 // modules are the resource modules of the Hetzner API. A new resource type
 // is one more entry here; a module implementing resource.NetContributor
 // adds its part to the agent document.
@@ -314,6 +318,7 @@ func (c *Cloud) modules() []resource.Module {
 			Images:      c.images,
 			PushAgent:   c.PushAgent,
 			AgentStatus: func(ctx context.Context) (agentapi.Status, error) { return c.agent.Status(ctx) },
+			Metrics:     metrics.NewStore(metricsRetention),
 			Settings: servers.Settings{
 				DataFolder:    c.set.Storage.DataFolder,
 				StopBehaviour: c.set.Cloud.StopBehaviour,

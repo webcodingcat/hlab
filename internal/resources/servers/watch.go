@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/actions"
+	"github.com/webcodingcat/hlab/internal/metrics"
 	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/scheduler"
 	"github.com/webcodingcat/hlab/internal/store"
@@ -15,9 +16,13 @@ import (
 // watchInterval is how often the status watch reads the VMs' states.
 const watchInterval = 5 * time.Second
 
-// Jobs implements resource.Scheduled: the status watch.
+// Jobs implements resource.Scheduled: the status watch and the metrics
+// sample.
 func (m *Module) Jobs() []scheduler.Job {
-	return []scheduler.Job{{Name: "servers status watch", Every: watchInterval, Run: m.watch}}
+	return []scheduler.Job{
+		{Name: "servers status watch", Every: watchInterval, Run: m.watch},
+		{Name: "servers metrics sample", Every: metrics.Interval, Run: m.sample},
+	}
 }
 
 // statusOf is the server status of a VM state; Saved, Paused and Other

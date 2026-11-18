@@ -18,10 +18,12 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/metrics"
 	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/resource"
 	"github.com/webcodingcat/hlab/internal/resources/servers"
@@ -209,6 +211,7 @@ func ServersDeps(t testing.TB, cat *catalog.Catalog, p platform.Platform) server
 		Platform:    p,
 		Images:      fakeImages{dir: filepath.Join(dir, "images")},
 		PushAgent:   func(context.Context) error { return nil },
+		Metrics:     metrics.NewStore(24 * time.Hour),
 		Settings: servers.Settings{
 			DataFolder:    dir,
 			StopBehaviour: "save",

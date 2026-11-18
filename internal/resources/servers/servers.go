@@ -23,6 +23,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/ipam"
+	"github.com/webcodingcat/hlab/internal/metrics"
 	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
@@ -86,6 +87,8 @@ type Deps struct {
 	ResetTimeout time.Duration
 	// Clock is the module's source of time; nil = scheduler.RealClock().
 	Clock scheduler.Clock
+	// Metrics keeps the samples of the servers' VMs.
+	Metrics *metrics.Store
 }
 
 // Server is a server in Hetzner's API shape.
@@ -208,6 +211,7 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("GET /servers/{id}", http.HandlerFunc(m.get))
 	r.Handle("PUT /servers/{id}", http.HandlerFunc(m.update))
 	r.Handle("DELETE /servers/{id}", http.HandlerFunc(m.delete))
+	r.Handle("GET /servers/{id}/metrics", http.HandlerFunc(m.getMetrics))
 	r.Handle("POST /servers/{id}/actions/change_protection", http.HandlerFunc(m.changeProtection))
 	r.Handle("POST /servers/{id}/actions/poweron", http.HandlerFunc(m.poweron))
 	r.Handle("POST /servers/{id}/actions/poweroff", http.HandlerFunc(m.poweroff))
@@ -764,6 +768,7 @@ func (m *Module) remove(ctx context.Context, stor *store.Store, id int64) error 
 		}
 		return err
 	}
+	m.d.Metrics.Forget(id)
 	return stor.Tx(func(tx store.Tx) error {
 		r, err := Load(tx, id)
 		if err != nil {
