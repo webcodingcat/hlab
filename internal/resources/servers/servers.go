@@ -160,6 +160,9 @@ type Internal struct {
 	// RootHash is the SHA-512 crypt of the root password of a server
 	// created without SSH keys; the clear text is never stored.
 	RootHash string `json:"root_hash,omitempty"`
+	// PasswordReset is the pending root password reset of reset_password,
+	// served to the guest by the agent's metadata service.
+	PasswordReset *agentapi.PasswordReset `json:"password_reset,omitempty"`
 }
 
 // Record is the stored document of a server.
@@ -213,6 +216,7 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("POST /servers/{id}/actions/reset", http.HandlerFunc(m.reset))
 	r.Handle("POST /servers/{id}/actions/rebuild", http.HandlerFunc(m.rebuild))
 	r.Handle("POST /servers/{id}/actions/change_type", http.HandlerFunc(m.changeType))
+	r.Handle("POST /servers/{id}/actions/reset_password", http.HandlerFunc(m.resetPassword))
 	r.Handle("POST /servers/{id}/actions/request_console", http.HandlerFunc(m.requestConsole))
 	r.Handle("POST /servers/{id}/actions/add_to_placement_group", http.HandlerFunc(m.addToPlacementGroup))
 	r.Handle("POST /servers/{id}/actions/remove_from_placement_group", http.HandlerFunc(m.removeFromPlacementGroup))
@@ -228,7 +232,8 @@ func (m *Module) powerOn(ctx context.Context, stor *store.Store, id int64) error
 }
 
 // Contribute implements resource.NetContributor: every server not being
-// deleted, with its public IPv4 and MAC.
+// deleted, with its public IPv4 and MAC, and the metadata of each such
+// server with a public IPv4.
 func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 	recs, err := store.ListAll[Record](tx, Kind)
 	if err != nil {
@@ -238,14 +243,44 @@ func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 		if r.Status == StatusDeleting {
 			continue
 		}
+		ip := r.IPv4()
 		doc.Servers = append(doc.Servers, agentapi.Server{
 			ID:         r.ID,
 			Location:   r.Hlab.Location,
 			MAC:        r.Hlab.MAC,
-			PublicIPv4: r.IPv4(),
+			PublicIPv4: ip,
+		})
+		if !ip.IsValid() {
+			continue
+		}
+		loc, _ := m.d.Catalog.Location(r.Hlab.Location)
+		doc.Metadata = append(doc.Metadata, agentapi.Metadata{
+			IP:               ip,
+			ServerID:         r.ID,
+			Hostname:         r.Name,
+			Region:           loc.NetworkZone,
+			AvailabilityZone: availabilityZone(r.Hlab.Location),
+			PublicIPv4:       ip.String(),
+			PublicKeys:       r.Hlab.SSHKeys,
+			UserData:         r.Hlab.UserData,
+			PasswordReset:    r.Hlab.PasswordReset,
 		})
 	}
 	return nil
+}
+
+// datacenterNumbers are the numbers of Hetzner's datacenters per location
+// (fsn1-dc14 ...); the datacenter catalog itself left the API.
+var datacenterNumbers = map[string]int{"fsn1": 14, "nbg1": 3, "hel1": 2, "ash": 1, "hil": 1, "sin": 1}
+
+// availabilityZone is the metadata availability zone of a location,
+// Hetzner's datacenter name `<location>-dc<n>`; an unknown location gets 1.
+func availabilityZone(location string) string {
+	n, ok := datacenterNumbers[location]
+	if !ok {
+		n = 1
+	}
+	return location + "-dc" + strconv.Itoa(n)
 }
 
 // Load returns the server id of any project, or store.ErrNotFound.

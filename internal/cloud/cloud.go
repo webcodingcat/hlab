@@ -313,6 +313,7 @@ func (c *Cloud) modules() []resource.Module {
 			Platform:    c.plat,
 			Images:      c.images,
 			PushAgent:   c.PushAgent,
+			AgentStatus: func(ctx context.Context) (agentapi.Status, error) { return c.agent.Status(ctx) },
 			Settings: servers.Settings{
 				DataFolder:    c.set.Storage.DataFolder,
 				StopBehaviour: c.set.Cloud.StopBehaviour,

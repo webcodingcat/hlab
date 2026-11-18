@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -52,14 +53,14 @@ func testMETA01(t *testing.T) {
 
 	e, srv := sharedServer(t)
 
+	// The server object has no datacenter since Hetzner removed them; the
+	// availability zone is the location's datacenter name.
 	var info struct {
 		Server struct {
-			Datacenter struct {
-				Name     string `json:"name"`
-				Location struct {
-					NetworkZone string `json:"network_zone"`
-				} `json:"location"`
-			} `json:"datacenter"`
+			Location struct {
+				Name        string `json:"name"`
+				NetworkZone string `json:"network_zone"`
+			} `json:"location"`
 		} `json:"server"`
 	}
 	status, aerr, err := e.apiDo(context.Background(), http.MethodGet, fmt.Sprintf("/servers/%d", srv.ID), nil, &info)
@@ -80,19 +81,22 @@ func testMETA01(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := []struct{ key, value string }{
-		{"hostname", srv.Name},
-		{"instance-id", strconv.FormatInt(srv.ID, 10)},
-		{"public-ipv4", srv.IPv4},
-		{"region", info.Server.Datacenter.Location.NetworkZone},
-		{"availability-zone", info.Server.Datacenter.Name},
-	}
-
 	doc, err := e.metadataGet(srv, "/hetzner/v1/metadata")
 	if err != nil {
 		t.Fatal(err)
 	}
 	top := yamlTopLevel(doc)
+	zone := top["availability-zone"]
+	if !regexp.MustCompile(`^` + regexp.QuoteMeta(info.Server.Location.Name) + `-dc[0-9]+$`).MatchString(zone) {
+		t.Errorf("metadata availability-zone %q, want %s-dc<n>\n%s", zone, info.Server.Location.Name, doc)
+	}
+	want := []struct{ key, value string }{
+		{"hostname", srv.Name},
+		{"instance-id", strconv.FormatInt(srv.ID, 10)},
+		{"public-ipv4", srv.IPv4},
+		{"region", info.Server.Location.NetworkZone},
+		{"availability-zone", zone},
+	}
 	for _, w := range want {
 		if got := top[w.key]; got != w.value {
 			t.Errorf("metadata %s: %q, want %q\n%s", w.key, got, w.value, doc)
