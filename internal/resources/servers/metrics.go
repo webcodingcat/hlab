@@ -30,11 +30,8 @@ func (m *Module) getMetrics(w http.ResponseWriter, req *http.Request) {
 	q, err := metrics.ParseQuery(req.URL.Query())
 	if err != nil {
 		var qerr *metrics.QueryError
-		if errors.As(err, &qerr) {
-			api.Fail(w, &api.FieldError{Field: qerr.Field, Message: qerr.Message})
-			return
-		}
-		api.ServerError(w, err)
+		errors.As(err, &qerr) // ParseQuery returns only *QueryError
+		api.Fail(w, &api.FieldError{Field: qerr.Field, Message: qerr.Message})
 		return
 	}
 	api.JSON(w, http.StatusOK, map[string]any{"metrics": m.d.Metrics.Series(id, q)})
