@@ -86,10 +86,6 @@ func BuildFile(seed Seed, path string) (err error) {
 	if err != nil {
 		return err
 	}
-	if _, statErr := os.Stat(path); statErr == nil {
-		return fmt.Errorf("cidata: %s already exists", path)
-	}
-
 	work, err := os.MkdirTemp("", "hlab-cidata-work-")
 	if err != nil {
 		return fmt.Errorf("cidata: temp dir: %w", err)
