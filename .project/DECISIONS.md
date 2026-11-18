@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Hyper-V VM group in the data folder DACL
+
+- Type: decision
+- Phase: phase 02
+- What: the protected data folder DACL grants "NT VIRTUAL MACHINE\Virtual Machines" (S-1-5-83-0) read and execute on folders and read and write on files, inherited.
+- Why: hlabd creates disks and ISOs itself, so they get only inherited entries, and the appliance could not open cidata.iso.
+- Cost of change: low
+
 ## 2026-11-18 Primary IP prices only for ipv4
 
 - Type: decision
