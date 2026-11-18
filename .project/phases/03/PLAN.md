@@ -183,15 +183,15 @@ func ServersDeps(t *testing.T, cat *catalog.Catalog, p platform.Platform) server
   - [x] `scheduler.Clock`, `RealClock`, `Job`, `Run` (internal/scheduler/scheduler.go); `resource.Scheduled` (internal/resource/resource.go)
   - [x] Cloud start runs the jobs of every module implementing `Scheduled` after the API is up and cancels them first at stop (internal/cloud/cloud.go)
 
-- [ ] 03-06 Servers module reconciles its VMs
+- [x] 03-06 Servers module reconciles its VMs
   - Wave: 2 | Depends on: 03-01, 03-05 | Review: alone | e2e
   - Requirements: SRV-01, SRV-16 (run again) | Tests: test/e2e/server_test.go (SRV-01, SRV-16 unchanged)
   - Reads: decisions/resource-reconciler.md; ARCHITECTURE "resource", "Guest integration"; CONTEXT.md first line
   - Size: ~400 lines in 10 files (code moves; tests change only their constructor)
   - Adjusts: internal/resources/servers/servers_test.go, internal/mgmt/mgmt_test.go, internal/resources/conventions_test.go, internal/resources/openapi_test.go, internal/resources/placementgroups/placementgroups_test.go (NoopMachines/BlockingMachines become the fake platform through `apitest.ServersDeps`; a blocked create uses `Fake.Block("CreateVM")`)
-  - [ ] Move create/delete from internal/cloud/servers.go into `Reconcile`/`Delete` with paths, seed and vendor-data in the module; new `Deps`; create action calls `Reconcile` then powers on; delete `internal/cloud/servers.go`; cloud wires `Deps` (internal/resources/servers/reconcile.go, servers.go, internal/cloud/servers.go, internal/cloud/cloud.go)
-  - [ ] `apitest.ServersDeps` replacing `NoopMachines`/`BlockingMachines`; servers and mgmt tests use it (internal/apitest/apitest.go, internal/resources/servers/servers_test.go, internal/mgmt/mgmt_test.go)
-  - [ ] Resource tests use it (internal/resources/conventions_test.go, internal/resources/openapi_test.go, internal/resources/placementgroups/placementgroups_test.go); `task e2e -- -run 'TestE2E/SRV-0[1-9]|TestE2E/SRV-16'` passes
+  - [x] Move create/delete from internal/cloud/servers.go into `Reconcile`/`Delete` with paths, seed and vendor-data in the module; new `Deps`; create action calls `Reconcile` then powers on; delete `internal/cloud/servers.go`; cloud wires `Deps` (internal/resources/servers/reconcile.go, servers.go, internal/cloud/servers.go, internal/cloud/cloud.go)
+  - [x] `apitest.ServersDeps` replacing `NoopMachines`/`BlockingMachines`; servers and mgmt tests use it (internal/apitest/apitest.go, internal/resources/servers/servers_test.go, internal/mgmt/mgmt_test.go)
+  - [x] Resource tests use it (internal/resources/conventions_test.go, internal/resources/openapi_test.go, internal/resources/placementgroups/placementgroups_test.go); `task e2e -- -run 'TestE2E/SRV-0[1-9]|TestE2E/SRV-16'` passes
 
 - [x] 03-07 Metrics series
   - Wave: 2 | Depends on: 03-03 | Review: alone
