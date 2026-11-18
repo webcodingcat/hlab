@@ -8,6 +8,9 @@ import (
 )
 
 func TestAPI(t *testing.T) {
+	t.Run("API-09", testErrors)
+	t.Run("API-14", testRouter)
+	t.Run("API-05", testList)
 	t.Run("API-02", func(t *testing.T) {
 		env := apitest.New(t, apitest.ProbeModule())
 		other := env.NewToken("q", false)

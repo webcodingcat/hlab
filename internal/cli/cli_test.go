@@ -3,12 +3,14 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -26,12 +28,23 @@ type hlab struct {
 
 func newHlab(t *testing.T) *hlab {
 	t.Helper()
+	return newHlabWith(t, nil)
+}
+
+// newHlabWith is newHlab with the management API's deps adjusted by with.
+func newHlabWith(t *testing.T, with func(*mgmt.Deps)) *hlab {
+	t.Helper()
 	env := apitest.New(t, apitest.ProbeModule())
-	srv := httptest.NewServer(mgmt.New(mgmt.Deps{
-		Store:  env.Store,
-		API:    env.Router,
-		Status: func() mgmt.Status { return mgmt.Status{State: "running"} },
-	}))
+	deps := mgmt.Deps{
+		Store:   env.Store,
+		API:     env.Router,
+		Status:  func() mgmt.Status { return mgmt.Status{State: "running"} },
+		Actions: env.Actions,
+	}
+	if with != nil {
+		with(&deps)
+	}
+	srv := httptest.NewServer(mgmt.New(deps))
 	t.Cleanup(srv.Close)
 	addr := srv.Listener.Addr().String()
 	return &hlab{env: env, dial: func(ctx context.Context) (net.Conn, error) {
@@ -43,15 +56,42 @@ func newHlab(t *testing.T) *hlab {
 // run executes `hlab args...` and returns exit code, stdout and stderr.
 func (h *hlab) run(t *testing.T, args ...string) (int, string, string) {
 	t.Helper()
+	return h.runWith(t, nil, args...)
+}
+
+// runWith is run with the IO adjusted by with.
+func (h *hlab) runWith(t *testing.T, with func(*cli.IO), args ...string) (int, string, string) {
+	t.Helper()
 	var stdout, stderr bytes.Buffer
-	code := cli.Run(context.Background(), args, cli.IO{
+	sys := cli.IO{
 		Stdin:      strings.NewReader(""),
 		Stdout:     &stdout,
 		Stderr:     &stderr,
 		Dial:       h.dial,
 		IsTerminal: func() bool { return false },
-	})
+		Getenv:     func(string) string { return "" },
+		ReadSecret: func(string) (string, error) {
+			t.Errorf("hlab %s read a secret from the terminal", strings.Join(args, " "))
+			return "", errors.New("no terminal")
+		},
+	}
+	if with != nil {
+		with(&sys)
+	}
+	code := cli.Run(context.Background(), args, sys)
 	return code, stdout.String(), stderr.String()
+}
+
+// createToken runs `hlab token create --project p args...` and returns the
+// one token of 64 characters it prints.
+func (h *hlab) createToken(t *testing.T, args ...string) string {
+	t.Helper()
+	out := h.mustRun(t, append([]string{"token", "create", "--project", "p"}, args...)...)
+	runs := regexp.MustCompile(`[A-Za-z0-9]{33,}`).FindAllString(out, -1)
+	if len(runs) != 1 || len(runs[0]) != 64 {
+		t.Fatalf("token create printed %q, want exactly one token of 64 characters [A-Za-z0-9]", out)
+	}
+	return runs[0]
 }
 
 func (h *hlab) mustRun(t *testing.T, args ...string) string {
@@ -113,19 +153,8 @@ func TestCLI(t *testing.T) {
 
 	t.Run("PROJ-02", func(t *testing.T) {
 		h := newHlab(t)
-		alnum := regexp.MustCompile(`[A-Za-z0-9]{33,}`)
-
-		create := func(args ...string) string {
-			t.Helper()
-			out := h.mustRun(t, append([]string{"token", "create", "--project", "p"}, args...)...)
-			runs := alnum.FindAllString(out, -1)
-			if len(runs) != 1 || len(runs[0]) != 64 {
-				t.Fatalf("token create printed %q, want exactly one token of 64 characters [A-Za-z0-9]", out)
-			}
-			return runs[0]
-		}
-		rw := create("--name", "writer")
-		ro := create("--name", "reader", "--read-only")
+		rw := h.createToken(t, "--name", "writer")
+		ro := h.createToken(t, "--name", "reader", "--read-only")
 
 		if out := h.mustRun(t, "token", "list", "--project", "p"); strings.Contains(out, rw) || strings.Contains(out, ro) {
 			t.Errorf("token list shows a token value:\n%s", out)
@@ -150,6 +179,132 @@ func TestCLI(t *testing.T) {
 				if code := apitest.ErrorCode(t, resp); code != "token_readonly" {
 					t.Errorf("read-only token: POST error code %q, want token_readonly", code)
 				}
+			}
+		}
+	})
+
+	t.Run("PROJ-03", func(t *testing.T) {
+		h := newHlab(t)
+		gone := h.createToken(t, "--name", "gone")
+		kept := h.createToken(t, "--name", "kept", "--read-only")
+
+		out := h.mustRun(t, "token", "list", "--project", "p")
+		if !listed(out, "gone") || !listed(out, "kept") {
+			t.Errorf("token list does not show gone and kept:\n%s", out)
+		}
+		jsonOut := h.mustRun(t, "token", "list", "--project", "p", "--output", "json")
+		for _, o := range []string{out, jsonOut} {
+			if strings.Contains(o, gone) || strings.Contains(o, kept) {
+				t.Errorf("token list shows a token value:\n%s", o)
+			}
+		}
+		var list struct {
+			Tokens []struct {
+				Name     string `json:"name"`
+				ReadOnly bool   `json:"read_only"`
+			} `json:"tokens"`
+		}
+		if err := json.Unmarshal([]byte(jsonOut), &list); err != nil {
+			t.Fatalf("token list --output json: %v\n%s", err, jsonOut)
+		}
+		readOnly := map[string]bool{}
+		for _, tok := range list.Tokens {
+			readOnly[tok.Name] = tok.ReadOnly
+		}
+		if ro, ok := readOnly["gone"]; !ok || ro {
+			t.Errorf("token gone: listed %v, read-only %v; want listed read/write", ok, ro)
+		}
+		if ro, ok := readOnly["kept"]; !ok || !ro {
+			t.Errorf("token kept: listed %v, read-only %v; want listed read-only", ok, ro)
+		}
+
+		if resp := h.env.DoAuth("Bearer "+gone, http.MethodGet, "/ssh_keys", nil); resp.StatusCode != http.StatusOK {
+			t.Fatalf("token gone before revoke: status %d, want 200", resp.StatusCode)
+		}
+		h.mustRun(t, "token", "revoke", "--project", "p", "gone")
+		resp := h.env.DoAuth("Bearer "+gone, http.MethodGet, "/ssh_keys", nil)
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("revoked token: status %d, want 401", resp.StatusCode)
+		} else if code := apitest.ErrorCode(t, resp); code != "unauthorized" {
+			t.Errorf("revoked token: error code %q, want unauthorized", code)
+		}
+		if resp := h.env.DoAuth("Bearer "+kept, http.MethodGet, "/ssh_keys", nil); resp.StatusCode != http.StatusOK {
+			t.Errorf("other token of the project after revoke: status %d, want 200", resp.StatusCode)
+		}
+	})
+
+	t.Run("CAT-03", func(t *testing.T) {
+		const secret = "hz-Cl1TokenValue-0123456789abcdefghijklmnopqrstuvwxyz"
+		var mu sync.Mutex
+		var sent []string
+		h := newHlabWith(t, func(d *mgmt.Deps) {
+			d.UpdateCatalog = func(_ context.Context, token string) error {
+				mu.Lock()
+				defer mu.Unlock()
+				sent = append(sent, token)
+				return nil
+			}
+		})
+		takeSent := func() []string {
+			mu.Lock()
+			defer mu.Unlock()
+			s := sent
+			sent = nil
+			return s
+		}
+
+		for _, c := range []struct {
+			name     string
+			args     []string
+			env      string // value of HLAB_TEST_HZ
+			terminal bool
+			prompt   bool // the hidden prompt answers secret
+			wantCode int
+		}{
+			{name: "variable", args: []string{"--hetzner-token-env", "HLAB_TEST_HZ"}, env: secret},
+			{name: "variable on a terminal", args: []string{"--hetzner-token-env", "HLAB_TEST_HZ"}, env: secret, terminal: true},
+			{name: "hidden prompt", terminal: true, prompt: true},
+			{name: "no terminal", wantCode: 2},
+			{name: "empty variable", args: []string{"--hetzner-token-env", "HLAB_TEST_HZ"}, wantCode: 2},
+		} {
+			prompts := 0
+			args := append([]string{"catalog", "update"}, c.args...)
+			code, out, errOut := h.runWith(t, func(sys *cli.IO) {
+				sys.IsTerminal = func() bool { return c.terminal }
+				sys.Getenv = func(name string) string {
+					if name == "HLAB_TEST_HZ" {
+						return c.env
+					}
+					return ""
+				}
+				if c.prompt {
+					sys.ReadSecret = func(string) (string, error) {
+						prompts++
+						return secret, nil
+					}
+				}
+			}, args...)
+			got := takeSent()
+			if code != c.wantCode {
+				t.Errorf("%s: exit %d, want %d; stderr %q", c.name, code, c.wantCode, errOut)
+			}
+			if c.prompt && prompts != 1 {
+				t.Errorf("%s: hidden prompt read %d times, want once", c.name, prompts)
+			}
+			if strings.Contains(out, secret) || strings.Contains(errOut, secret) {
+				t.Errorf("%s: output shows the token", c.name)
+			}
+			if c.wantCode == 0 {
+				if len(got) != 1 || got[0] != secret {
+					t.Errorf("%s: catalog update received %d tokens, want the token once", c.name, len(got))
+				}
+				continue
+			}
+			if len(got) != 0 {
+				t.Errorf("%s: catalog update called %d times, want none", c.name, len(got))
+			}
+			if !strings.Contains(errOut, "--hetzner-token-env") {
+				t.Errorf("%s: stderr %q does not name --hetzner-token-env", c.name, errOut)
 			}
 		}
 	})

@@ -54,14 +54,36 @@ task e2e -- -run 'TestE2E/SRV-01'
 ```
 
 The end-to-end tests drive the development service, real Hyper-V and the
-real hcloud CLI; they take several minutes. They need:
+real clients: hcloud and OpenTofu on Windows, Ansible in WSL2. They take
+several minutes. They need:
 
 - the service `hlab-dev` registered from this working copy
   (see [Developer setup](setup.md#register-the-development-service)),
 - hcloud on `PATH` and OpenSSH from Windows,
-- WSL2 with `curl` in the default distribution (the API is also called
-  from there),
+- OpenTofu 1.13.9 as `tofu` on `PATH`; `tofu init` downloads the provider
+  hetznercloud/hcloud 1.70.2 into `%LocalAppData%\hlab-e2e\tofu-plugins`,
+- one WSL2 distribution with Ubuntu 24.04 or newer, with `curl` and, as in
+  the [README](../../README.md#prerequisites-and-setup), ansible-core
+  2.22.0 with hcloud-python 2.27.0 and the collection hetzner.hcloud 7.2.0,
 - a normal, not elevated, terminal.
+
+The harness checks these versions and installs nothing. It uses the WSL2
+distribution named in `HLAB_E2E_WSL_DISTRO`, or else the only registered
+distribution whose name starts with `Ubuntu`; it never falls back to the
+default distribution. With several Ubuntu distributions, set the variable:
+
+```powershell
+$env:HLAB_E2E_WSL_DISTRO = "Ubuntu-24.04"
+task e2e
+```
+
+It copies the run's SSH key into a temporary folder inside that
+distribution and deletes the folder at the end of the run.
+
+The row `CAT-03` runs `hlab catalog update` with the token of the hcloud
+context for the real API (`HLab`, or the name in `HLAB_HCLOUD_CONTEXT`; see
+[Developer setup](setup.md#optional-access-to-the-real-hetzner-api)); it is
+skipped when there is no such context.
 
 The harness runs `task build`, starts the development cloud if it is
 stopped (and stops it again at the end if it started it), creates one

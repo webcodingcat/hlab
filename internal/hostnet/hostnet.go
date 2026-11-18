@@ -44,6 +44,7 @@ const (
 	ProblemWSLMirrored          = "wsl_mirrored"
 	ProblemWSLVirtioProxy       = "wsl_virtioproxy"
 	ProblemWSLDNSTunnelingOff   = "wsl_dns_tunneling_off"
+	ProblemWSLModeUnsupported   = "wsl_mode_unsupported" // bridged, none
 	ProblemHyperVMissing        = "hyperv_missing"
 )
 

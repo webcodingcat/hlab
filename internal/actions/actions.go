@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/store"
@@ -44,6 +45,10 @@ func (e *Error) Error() string { return e.Code + ": " + e.Message }
 // action. Handlers answer it with Hetzner's 423 "locked".
 var ErrLocked = &Error{Code: "locked", Message: "the resource is locked by a running action"}
 
+// ErrProtected is returned for an operation refused by the resource's
+// protection (change_protection). Handlers answer it with 423 "protected".
+var ErrProtected = &Error{Code: "protected", Message: "the resource is protected"}
+
 // Action is an action in Hetzner's API shape.
 type Action struct {
 	ID        int64      `json:"id"`
@@ -60,13 +65,17 @@ type Action struct {
 type Manager struct {
 	st  *store.Store
 	sem chan struct{}
+
+	mu sync.Mutex
+	// finished is closed and replaced whenever an action finishes.
+	finished chan struct{}
 }
 
 // New returns a manager on st. Its workers need no separate start. Actions
 // still running from a previous run of hlabd end as "error" with code
 // "server_error".
 func New(st *store.Store) *Manager {
-	m := &Manager{st: st, sem: make(chan struct{}, workers)}
+	m := &Manager{st: st, sem: make(chan struct{}, workers), finished: make(chan struct{})}
 	if err := m.failInterrupted(); err != nil {
 		slog.Error("end interrupted actions", "err", err)
 	}
@@ -185,6 +194,32 @@ func (m *Manager) List(projectID int64, ids []int64) ([]Action, error) {
 	return out, err
 }
 
+// ListFor returns the actions of projectID that reference the resource
+// resourceID of refType, ordered by ID; resourceID 0 means every resource
+// of refType.
+func (m *Manager) ListFor(projectID int64, refType string, resourceID int64) ([]Action, error) {
+	out := []Action{}
+	err := m.st.Tx(func(tx store.Tx) error {
+		rows, err := store.ProjectActions(tx, projectID)
+		if err != nil {
+			return err
+		}
+		for _, r := range rows {
+			a, err := fromStore(r)
+			if err != nil {
+				return err
+			}
+			if slices.ContainsFunc(a.Resources, func(ref Ref) bool {
+				return ref.Type == refType && (resourceID == 0 || ref.ID == resourceID)
+			}) {
+				out = append(out, *a)
+			}
+		}
+		return nil
+	})
+	return out, err
+}
+
 // fromStore converts a stored action into the API shape.
 func fromStore(r store.Action) (*Action, error) {
 	a := &Action{
@@ -231,7 +266,38 @@ func (m *Manager) Run(id int64, fn func(ctx context.Context, progress func(int))
 			a.Status = StatusError
 			a.Error = errorJSON(err)
 		})
+		m.mu.Lock()
+		close(m.finished)
+		m.finished = make(chan struct{})
+		m.mu.Unlock()
 	}()
+}
+
+// WaitIdle returns when projectID has no running action, or ctx's error
+// when ctx ends first.
+func (m *Manager) WaitIdle(ctx context.Context, projectID int64) error {
+	for {
+		m.mu.Lock()
+		finished := m.finished
+		m.mu.Unlock()
+		busy := false
+		err := m.st.Tx(func(tx store.Tx) error {
+			running, err := store.RunningActions(tx)
+			busy = slices.ContainsFunc(running, func(a store.Action) bool { return a.ProjectID == projectID })
+			return err
+		})
+		if err != nil {
+			return err
+		}
+		if !busy {
+			return nil
+		}
+		select {
+		case <-finished:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 func (m *Manager) update(id int64, change func(a *store.Action)) {

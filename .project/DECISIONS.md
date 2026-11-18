@@ -22,6 +22,246 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Server public_net carries primary IP IDs
+
+- Type: decision
+- Phase: phase 02
+- What: new servers get `public_net.ipv4.id` and `public_net.ipv6.id` from the `primary_ips` ID sequence (`omitempty`, so older stored servers stay valid).
+- Why: hcloud-python reads these IDs and the Ansible `server_info` module failed without them; phase 05 can turn them into real primary IP records.
+- Cost of change: low
+
+## 2026-11-18 Project deletion waits for running actions
+
+- Type: decision
+- Phase: phase 02
+- What: the project-deletion action first waits (at most 20 minutes, woken when an action ends) until the project has no running action, else it ends in error and the project stays listed.
+- Why: a server create still running could otherwise leave an orphaned VM after the delete (02-14 review).
+- Cost of change: low
+
+## 2026-11-18 Project deletion details
+
+- Type: decision
+- Phase: phase 02
+- What: a running deletion locks the project (action resource type `project`), so a second delete gets 409 `conflict`; `hlab project delete` polls every 200 ms for at most 30 minutes; a failed agent push after the deletion only logs a warning; a server being deleted is `deleting` and goes back to `off` if the VM cannot be deleted.
+- Why: reuses the existing lock check, and the next push rebuilds the whole agent document.
+- Cost of change: low
+
+## 2026-11-18 CAT-03 live check leaves the dev catalog updated
+
+- Type: decision
+- Phase: phase 02
+- What: the CAT-03 e2e live check does not restore the dev profile's `catalog\server-types.json`; after it, the dev cloud serves Hetzner's current server types.
+- Why: the non-elevated test user may only read the protected config root, and a restore endpoint or extra write permission would weaken the product for a test.
+- Cost of change: low
+
+## 2026-11-18 Catalog update CLI details
+
+- Type: decision
+- Phase: phase 02
+- What: the hidden prompt uses `golang.org/x/term` `ReadPassword` in cmd/hlab; `UpdateOptions.DataDir` gets the config root; a usage error raised while a command runs (missing token) also exits with 2.
+- Why: x/term already sets the console mode through x/sys/windows, and ARCHITECTURE puts the updated catalog in the config root.
+- Cost of change: low
+
+## 2026-11-18 Placement group membership stored on the group
+
+- Type: decision
+- Phase: phase 02
+- What: only the group's `servers` list records membership and a server's `placement_group` is derived when read, so deleting a group clears it; an unknown group answers `invalid_input` on `placement_group`; a server in any group gets `already_in_placement_group`; removing a server from no group succeeds.
+- Why: one source of truth, and Hetzner allows one group per server.
+- Cost of change: low
+
+## 2026-11-18 Server protection and console details
+
+- Type: decision
+- Phase: phase 02
+- What: `change_protection` writes the flags in the transaction that starts its action; delete checks protection before the lock (protected and locked answers `protected`); resource action lists accept `id` and `status`; `request_console` answers `unsupported_error` for any server ID.
+- Why: the simplest order that the description allows; the console is unsupported regardless of the server.
+- Cost of change: low
+
+## 2026-11-18 Catalog lists through ListRequest
+
+- Type: decision
+- Phase: phase 02
+- What: `/server_types`, `/locations`, `/images` and `/actions` are sorted by ID and paged by `ListRequest`; `/actions` ignores its old `sort`; `name` takes one exact value.
+- Why: the clients follow `meta.pagination`, and the frozen description gives these lists only these parameters.
+- Cost of change: low
+
+## 2026-11-18 Catalog loading and pricing source
+
+- Type: decision
+- Phase: phase 02
+- What: an unreadable updated `server-types.json` stops loading with an error (a missing one falls back to the shipped file); `/pricing` takes server type prices from each type's own `prices`; catalog problems show in `/status` as `custom_server_types`.
+- Why: updated types are then priced correctly, and a broken file is not silently replaced by older data.
+- Cost of change: low
+
+## 2026-11-18 Placement group membership errors
+
+- Type: decision
+- Phase: phase 02
+- What: adding a server already in the group answers 422 `already_in_placement_group`; a full group answers 422 `placement_error` without `details.fields`; group names are unique per project.
+- Why: keeps the member list free of duplicates; the full-group error concerns no single field.
+- Cost of change: low
+
+## 2026-11-18 List details: sort without keys, last_page, repeats
+
+- Type: decision
+- Phase: phase 02
+- What: endpoints without sort keys ignore `sort`; `last_page` is always a number (at least 1); a repeated sort field is ignored; bad `sort` or `label_selector` answers `invalid_input` on that field.
+- Why: the parameter does not exist on those endpoints, the description allows a number, and Hetzner ignores contrary orders.
+- Cost of change: low
+
+## 2026-11-18 Reading .wslconfig: missing user, unreadable file, defaults
+
+- Type: decision
+- Phase: phase 02
+- What: no console user token means no WSL problem; an unreadable profile or `.wslconfig` counts as an unknown mode and gives no problem (hostnet has no logger); unknown `networkingMode` counts as NAT and only `dnsTunneling=false` as off.
+- Why: WSL falls back to its defaults for unknown values, and `wsl_mode_unsupported` is reserved for bridged and none.
+- Cost of change: low
+
+## 2026-11-18 Status of codes outside the frozen error table
+
+- Type: decision
+- Phase: phase 02
+- What: the status table also lists `token_readonly` 403 and the operation codes `placement_error`, `server_not_stopped`, `already_in_placement_group` 422.
+- Why: API-03 requires 403 `token_readonly`, the description answers the operation codes with 422, and an unknown code would answer 500.
+- Cost of change: low
+
+## 2026-11-18 Negative selectors match absent keys
+
+- Type: decision
+- Phase: phase 02
+- What: `k!=v` and `k notin (...)` also match resources without the key (Kubernetes semantics); selector keys and values are checked only for allowed characters, label prefixes must be lowercase RFC 1123 subdomains.
+- Why: Hetzner's text does not settle these cases and its selectors follow Kubernetes.
+- Cost of change: low
+
+## 2026-11-18 Hyper-V VM group in the data folder DACL
+
+- Type: decision
+- Phase: phase 02
+- What: the protected data folder DACL grants "NT VIRTUAL MACHINE\Virtual Machines" (S-1-5-83-0) read and execute on folders and read and write on files, inherited.
+- Why: hlabd creates disks and ISOs itself, so they get only inherited entries, and the appliance could not open cidata.iso.
+- Cost of change: low
+
+## 2026-11-18 Primary IP prices only for ipv4
+
+- Type: decision
+- Phase: phase 02
+- What: `/pricing` returns the primary IP prices of the shipped catalog, which has only `ipv4`; no `ipv6` entry is invented.
+- Why: the catalog is generated from the real Hetzner API, which lists only ipv4 under `primary_ips`.
+- Cost of change: low
+
+## 2026-11-18 HTTP status of error codes from the OpenAPI error table
+
+- Type: decision
+- Phase: phase 02
+- What: `api.Status(code)` is the one table of HTTP statuses, copied from the error table of the frozen OpenAPI description (`invalid_input` 422, `protected` 423), and `api.Error` takes no status.
+- Why: the user asked for one sourced table; a read-only call against the real API answered `invalid_input` with 422.
+- Cost of change: low
+
+## 2026-11-18 Eleventh server in a spread group gives placement_error
+
+- Type: decision
+- Phase: phase 02
+- What: adding an eleventh server to a spread placement group answers 422 `placement_error`.
+- Why: it is the only related code Hetzner documents; the real one could not be confirmed.
+- Cost of change: low
+
+## 2026-11-18 resource.Deleter embedded in Reconciler
+
+- Type: decision
+- Phase: phase 02
+- What: new interface `resource.Deleter{Delete}`, embedded in `Reconciler`; servers implement only `Deleter` until phase 03 adds `Reconcile`.
+- Why: project deletion needs `Delete` now, and a fake `Reconcile` would lie.
+- Cost of change: low
+
+## 2026-11-18 WSL mode from the console user's .wslconfig
+
+- Type: decision
+- Phase: phase 02
+- What: hostnet reads `networkingMode` and `dnsTunneling` from the console user's `.wslconfig` (injectable for tests), maps consomme/virtioproxy to `wsl_virtioproxy` and bridged/none to the new code `wsl_mode_unsupported`; no console user means no WSL problem.
+- Why: the user took this answer; a LocalSystem service cannot see the user's distros.
+- Cost of change: low
+
+## 2026-11-18 CAT-03 live check as an e2e row
+
+- Type: decision
+- Phase: phase 02
+- What: besides its unit test, CAT-03 gets `TestE2E/CAT-03` using the hcloud context, skipped with a reason without one.
+- Why: SPEC.md "Accounts and secrets" prescribes the live check and success criterion 3 needs it.
+- Cost of change: low
+
+## 2026-11-18 Success criteria 1 and 4 tested as CLI-02 and CLI-03 rows
+
+- Type: decision
+- Phase: phase 02
+- What: the tofu tests for ssh_keys and placement_groups and the Ansible `server_info` test are rows of CLI-02 and CLI-03; both requirements stay open until phase 13.
+- Why: the user took this answer at the start of the phase.
+- Cost of change: low
+
+## 2026-11-18 PUT changes only the fields present
+
+- Type: decision
+- Phase: phase 02
+- What: every PUT changes only the fields in the body; `labels`, when present, replaces the whole set.
+- Why: the OpenTofu provider sends name and labels in separate PUTs.
+- Cost of change: low
+
+## 2026-11-18 Placement group create returns no action
+
+- Type: decision
+- Phase: phase 02
+- What: `POST /placement_groups` answers `action: null`.
+- Why: the description allows it and the clients then have nothing to poll.
+- Cost of change: low
+
+## 2026-11-18 Server types behind an accessor
+
+- Type: decision
+- Phase: phase 02
+- What: `Catalog.ServerTypes` becomes unexported behind `Types()` and `ReplaceServerTypes`.
+- Why: `hlab catalog update` swaps the types while requests run.
+- Cost of change: low
+
+## 2026-11-18 Hidden token prompt through x/sys/windows
+
+- Type: decision
+- Phase: phase 02
+- What: the hidden prompt of `hlab catalog update` uses the console mode of `x/sys/windows`, with new `cli.IO.ReadSecret` and `IO.Getenv`.
+- Why: no new module.
+- Cost of change: low
+
+## 2026-11-18 WSL distro of the e2e harness
+
+- Type: decision
+- Phase: phase 02
+- What: the harness uses `HLAB_E2E_WSL_DISTRO`, else the single registered distro whose name starts with `Ubuntu`, always through `wsl.exe -d`, and fails with none or several; the test key goes to a temporary directory deleted at the end.
+- Why: the user asked for the SPEC.md Ubuntu distro instead of the default distro.
+- Cost of change: low
+
+## 2026-11-18 Page beyond the last is empty
+
+- Type: decision
+- Phase: phase 02
+- What: a page beyond the last returns an empty list with `next_page` null.
+- Why: the description does not say, and the clients' paging loops expect it.
+- Cost of change: low
+
+## 2026-11-18 Pricing built in the catalog plan
+
+- Type: decision
+- Phase: phase 02
+- What: `/pricing` is built in plan 02-03 from the merged server types.
+- Why: it derives from them and needs only one registration line.
+- Cost of change: low
+
+## 2026-11-18 Project deletion waits through a management action endpoint
+
+- Type: decision
+- Phase: phase 02
+- What: `GET /mgmt/v1/actions/{id}` is added and `hlab project delete` waits for it; a second deletion while one runs answers 409 `conflict`.
+- Why: the user took this answer; the CLI must report success or failure.
+- Cost of change: medium
+
 ## 2026-11-18 Q1: real resources reconciled by their module
 
 - Type: change

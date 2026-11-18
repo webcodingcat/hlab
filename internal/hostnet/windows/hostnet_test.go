@@ -3,9 +3,13 @@
 package windows_test
 
 import (
+	"bytes"
 	"context"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -164,6 +168,90 @@ func TestHostNet(t *testing.T) {
 			case !running && found != nil:
 				t.Errorf("other profile stopped: got problem %+v", *found)
 			}
+		}
+	})
+	t.Run("HOST-04", func(t *testing.T) {
+		cases := []struct {
+			name    string
+			content string // "" with missing true: no file or no console user
+			missing bool
+			want    []string
+		}{
+			{name: "no file or no console user", missing: true},
+			{name: "empty file", content: ""},
+			{name: "mirrored", content: "[wsl2]\nnetworkingMode=mirrored\n", want: []string{"wsl_mirrored"}},
+			{name: "consomme", content: "[wsl2]\nnetworkingMode=consomme\n", want: []string{"wsl_virtioproxy"}},
+			{name: "virtioproxy", content: "[wsl2]\nnetworkingMode=virtioproxy\n", want: []string{"wsl_virtioproxy"}},
+			{name: "bridged", content: "[wsl2]\nnetworkingMode=bridged\n", want: []string{"wsl_mode_unsupported"}},
+			{name: "none", content: "[wsl2]\nnetworkingMode=none\n", want: []string{"wsl_mode_unsupported"}},
+			{name: "nat", content: "[wsl2]\nnetworkingMode=nat\n"},
+			{name: "NAT", content: "[wsl2]\nnetworkingMode=NAT\n"},
+			{name: "Nat", content: "[wsl2]\nnetworkingMode=Nat\n"},
+			{name: "dns tunneling off", content: "[wsl2]\ndnsTunneling=false\n", want: []string{"wsl_dns_tunneling_off"}},
+			{name: "dns tunneling on", content: "[wsl2]\ndnsTunneling=true\n"},
+			{name: "mirrored and dns tunneling off", content: "[wsl2]\r\nnetworkingMode=mirrored\r\ndnsTunneling=false\r\n",
+				want: []string{"wsl_dns_tunneling_off", "wsl_mirrored"}},
+			{name: "section and keys in other case", content: "[WSL2]\nNETWORKINGMODE=Mirrored\nDnsTunneling=False\n",
+				want: []string{"wsl_dns_tunneling_off", "wsl_mirrored"}},
+			{name: "other sections ignored", content: "[experimental]\nnetworkingMode=mirrored\ndnsTunneling=false\n[wsl2]\nmemory=8GB\n"},
+			{name: "other section after wsl2", content: "[wsl2]\nnetworkingMode=nat\n[experimental]\nnetworkingMode=mirrored\n"},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), ".wslconfig")
+				if !tc.missing {
+					if err := os.WriteFile(path, []byte(tc.content), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				before, _ := os.Stat(path)
+				hn := windows.New(windows.Options{
+					Run:                  (&recorder{}).run,
+					OtherInstanceRunning: func(context.Context) (bool, error) { return false, nil },
+					StateDir:             t.TempDir(),
+					Program:              program,
+					WSLConfig: func(context.Context) ([]byte, bool, error) {
+						if tc.missing {
+							return nil, false, nil
+						}
+						data, err := os.ReadFile(path)
+						return data, err == nil, err
+					},
+				})
+
+				var got []string
+				for _, p := range hn.Check(context.Background(), config()) {
+					if !strings.HasPrefix(p.Code, "wsl_") {
+						continue
+					}
+					got = append(got, p.Code)
+					if p.Fatal {
+						t.Errorf("problem %s is fatal; WSL problems are non-fatal", p.Code)
+					}
+					if p.Message == "" {
+						t.Errorf("problem %s has no message", p.Code)
+					}
+				}
+				slices.Sort(got)
+				if !slices.Equal(got, tc.want) {
+					t.Errorf("WSL problems %v, want %v", got, tc.want)
+				}
+
+				if tc.missing {
+					if _, err := os.Stat(path); !os.IsNotExist(err) {
+						t.Errorf("Check created %s", path)
+					}
+					return
+				}
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				after, _ := os.Stat(path)
+				if !bytes.Equal(data, []byte(tc.content)) || !after.ModTime().Equal(before.ModTime()) {
+					t.Errorf(".wslconfig changed by Check: %q", data)
+				}
+			})
 		}
 	})
 }

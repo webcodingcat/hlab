@@ -2,7 +2,7 @@
 package servertypes
 
 import (
-	"encoding/json"
+	"cmp"
 	"net/http"
 	"slices"
 
@@ -26,15 +26,22 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("GET /server_types/{id}", http.HandlerFunc(m.get))
 }
 
+// serverType is written as its catalog object.
+type serverType catalog.ServerType
+
+func (st serverType) MarshalJSON() ([]byte, error) { return st.Raw, nil }
+
+// list offers name, page and per_page only, as the description does.
 func (m *Module) list(w http.ResponseWriter, req *http.Request) {
-	names := req.URL.Query()["name"]
-	var out []json.RawMessage
-	for _, st := range m.cat.ServerTypes {
-		if len(names) == 0 || slices.Contains(names, st.Name) {
-			out = append(out, st.Raw)
-		}
+	types := m.cat.Types()
+	items := make([]serverType, 0, len(types))
+	for _, st := range types {
+		items = append(items, serverType(st))
 	}
-	api.List(w, "server_types", out)
+	slices.SortStableFunc(items, func(a, b serverType) int { return cmp.Compare(a.ID, b.ID) })
+	api.ListRequest(w, req, "server_types", items, api.ListOptions[serverType]{
+		Name: func(st serverType) string { return st.Name },
+	})
 }
 
 func (m *Module) get(w http.ResponseWriter, req *http.Request) {
@@ -42,7 +49,7 @@ func (m *Module) get(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	for _, st := range m.cat.ServerTypes {
+	for _, st := range m.cat.Types() {
 		if st.ID == id {
 			api.JSON(w, http.StatusOK, map[string]any{"server_type": st.Raw})
 			return

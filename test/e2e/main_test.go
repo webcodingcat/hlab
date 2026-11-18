@@ -152,6 +152,9 @@ func setup() error {
 
 func teardown() error {
 	var errs []error
+	if err := removeWSLDir(); err != nil {
+		errs = append(errs, err)
+	}
 	if envVal != nil {
 		if err := deleteAllServers(); err != nil {
 			errs = append(errs, err)

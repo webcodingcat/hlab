@@ -4,6 +4,7 @@
 package servers
 
 import (
+	"cmp"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -22,6 +23,8 @@ import (
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/ipam"
 	"github.com/webcodingcat/hlab/internal/resource"
+	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
+	"github.com/webcodingcat/hlab/internal/resources/placementgroups"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
 	"github.com/webcodingcat/hlab/internal/store"
 )
@@ -31,6 +34,10 @@ const Kind = "servers"
 
 // refType is the resource type of a server in actions.
 const refType = "server"
+
+// primaryIPKind is the ID sequence of primary IPs; a server's public
+// addresses take their IDs from it so later primary IPs do not collide.
+const primaryIPKind = "primary_ips"
 
 // Server status values used in this phase.
 const (
@@ -56,6 +63,9 @@ type Deps struct {
 	Catalog     *catalog.Catalog
 	PublicRange netip.Prefix
 	Machines    Machines
+	// Store is what Delete works on outside a request (project deletion);
+	// the handlers use the store of the request.
+	Store *store.Store
 }
 
 // Server is a server in Hetzner's API shape.
@@ -81,7 +91,9 @@ type Server struct {
 	Volumes         []int64           `json:"volumes"`
 	LoadBalancers   []int64           `json:"load_balancers"`
 	PrimaryDiskSize int               `json:"primary_disk_size"`
-	PlacementGroup  json.RawMessage   `json:"placement_group"`
+	// PlacementGroup is filled from the groups when a server is shown;
+	// the groups alone record membership.
+	PlacementGroup *placementgroups.Group `json:"placement_group"`
 }
 
 // PublicNet is the public network part of a server.
@@ -92,15 +104,18 @@ type PublicNet struct {
 	Firewalls   []any   `json:"firewalls"`
 }
 
-// IPv4 is the public IPv4 of a server.
+// IPv4 is the public IPv4 of a server. ID is the ID of its primary IP,
+// which clients such as hcloud-python read.
 type IPv4 struct {
+	ID      int64  `json:"id,omitempty"`
 	IP      string `json:"ip"`
 	Blocked bool   `json:"blocked"`
 	DNSPtr  string `json:"dns_ptr"`
 }
 
-// IPv6 is the formal public IPv6 network of a server.
+// IPv6 is the formal public IPv6 network of a server; ID as for IPv4.
 type IPv6 struct {
+	ID      int64  `json:"id,omitempty"`
 	IP      string `json:"ip"`
 	Blocked bool   `json:"blocked"`
 	DNSPtr  []any  `json:"dns_ptr"`
@@ -153,7 +168,13 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("GET /servers", http.HandlerFunc(m.list))
 	r.Handle("POST /servers", http.HandlerFunc(m.create))
 	r.Handle("GET /servers/{id}", http.HandlerFunc(m.get))
+	r.Handle("PUT /servers/{id}", http.HandlerFunc(m.update))
 	r.Handle("DELETE /servers/{id}", http.HandlerFunc(m.delete))
+	r.Handle("POST /servers/{id}/actions/change_protection", http.HandlerFunc(m.changeProtection))
+	r.Handle("POST /servers/{id}/actions/request_console", http.HandlerFunc(m.requestConsole))
+	r.Handle("POST /servers/{id}/actions/add_to_placement_group", http.HandlerFunc(m.addToPlacementGroup))
+	r.Handle("POST /servers/{id}/actions/remove_from_placement_group", http.HandlerFunc(m.removeFromPlacementGroup))
+	resactions.RoutesFor(r, "servers", refType)
 }
 
 // Contribute implements resource.NetContributor: every server not being
@@ -207,26 +228,74 @@ func put(tx store.Tx, r Record) error {
 	}, r)
 }
 
+// show returns the API shape of r with its placement group.
+func show(tx store.Tx, r Record) (Server, error) {
+	g, ok, err := placementgroups.Of(tx, r.Hlab.ProjectID, r.ID)
+	if err != nil {
+		return Server{}, err
+	}
+	s := r.Server
+	if ok {
+		s.PlacementGroup = &g
+	}
+	return s, nil
+}
+
+// checkName refuses an empty name and one another server of the project has.
+func checkName(tx store.Tx, projectID int64, name string, exceptID int64) error {
+	if strings.TrimSpace(name) == "" {
+		return &api.FieldError{Field: "name", Message: "name is required"}
+	}
+	taken, err := store.NameTaken(tx, Kind, projectID, name, exceptID)
+	if err != nil {
+		return err
+	}
+	if taken {
+		return &api.FieldError{Code: "uniqueness_error", Field: "name", Message: "name is already used"}
+	}
+	return nil
+}
+
+var listOptions = api.ListOptions[Server]{
+	Name:   func(s Server) string { return s.Name },
+	Labels: func(s Server) map[string]string { return s.Labels },
+	Sort: map[string]func(a, b Server) int{
+		"id":      func(a, b Server) int { return cmp.Compare(a.ID, b.ID) },
+		"name":    func(a, b Server) int { return strings.Compare(a.Name, b.Name) },
+		"created": func(a, b Server) int { return a.Created.Compare(b.Created) },
+	},
+	Filters: map[string]func(Server, []string) bool{
+		"status": func(s Server, v []string) bool { return slices.Contains(v, s.Status) },
+	},
+}
+
 func (m *Module) list(w http.ResponseWriter, req *http.Request) {
 	p, _ := api.ProjectFrom(req.Context())
-	names := req.URL.Query()["name"]
-	var recs []Record
+	var out []Server
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
-		var err error
-		recs, err = store.List[Record](tx, Kind, p.ID)
-		return err
+		recs, err := store.List[Record](tx, Kind, p.ID)
+		if err != nil {
+			return err
+		}
+		members, err := placementgroups.Members(tx, p.ID)
+		if err != nil {
+			return err
+		}
+		out = make([]Server, 0, len(recs))
+		for _, r := range recs {
+			s := r.Server
+			if g, ok := members[r.ID]; ok {
+				s.PlacementGroup = &g
+			}
+			out = append(out, s)
+		}
+		return nil
 	})
 	if err != nil {
 		api.ServerError(w, err)
 		return
 	}
-	var out []Server
-	for _, r := range recs {
-		if len(names) == 0 || slices.Contains(names, r.Name) {
-			out = append(out, r.Server)
-		}
-	}
-	api.List(w, "servers", out)
+	api.ListRequest(w, req, Kind, out, listOptions)
 }
 
 func (m *Module) get(w http.ResponseWriter, req *http.Request) {
@@ -235,10 +304,13 @@ func (m *Module) get(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	p, _ := api.ProjectFrom(req.Context())
-	var r Record
+	var s Server
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
-		var err error
-		r, err = store.Get[Record](tx, Kind, p.ID, id)
+		r, err := store.Get[Record](tx, Kind, p.ID, id)
+		if err != nil {
+			return err
+		}
+		s, err = show(tx, r)
 		return err
 	})
 	switch {
@@ -247,7 +319,7 @@ func (m *Module) get(w http.ResponseWriter, req *http.Request) {
 	case err != nil:
 		api.ServerError(w, err)
 	default:
-		api.JSON(w, http.StatusOK, map[string]any{"server": r.Server})
+		api.JSON(w, http.StatusOK, map[string]any{"server": s})
 	}
 }
 
@@ -261,12 +333,8 @@ type createRequest struct {
 	UserData         string            `json:"user_data"`
 	StartAfterCreate *bool             `json:"start_after_create"`
 	Labels           map[string]string `json:"labels"`
+	PlacementGroup   json.RawMessage   `json:"placement_group"`
 }
-
-// inputError is a rejected field of a request.
-type inputError struct{ field, msg string }
-
-func (e *inputError) Error() string { return e.field + ": " + e.msg }
 
 var errNoAddress = errors.New("no free public IPv4 address")
 
@@ -277,7 +345,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	}
 	typ, img, loc, ierr := m.resolve(body)
 	if ierr != nil {
-		api.InvalidInput(w, ierr.field, ierr.msg)
+		api.Fail(w, ierr)
 		return
 	}
 	p, _ := api.ProjectFrom(req.Context())
@@ -289,13 +357,31 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	start := body.StartAfterCreate == nil || *body.StartAfterCreate
 
 	var rec Record
+	var shown Server
 	var action *actions.Action
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
+		if err := checkName(tx, p.ID, body.Name, 0); err != nil {
+			return err
+		}
+		if err := api.CheckLabels(labels); err != nil {
+			return err
+		}
+		var group *placementgroups.Group
+		if ref := refString(body.PlacementGroup); ref != "" {
+			g, err := placementgroups.Find(tx, p.ID, ref)
+			if errors.Is(err, store.ErrNotFound) {
+				return &api.FieldError{Field: "placement_group", Message: "placement group " + ref + " not found"}
+			}
+			if err != nil {
+				return err
+			}
+			group = &g
+		}
 		var keys []string
 		for _, raw := range body.SSHKeys {
 			k, err := sshkeys.Find(tx, p.ID, refString(raw))
 			if errors.Is(err, store.ErrNotFound) {
-				return &inputError{"ssh_keys", "ssh key " + refString(raw) + " not found"}
+				return &api.FieldError{Field: "ssh_keys", Message: "ssh key " + refString(raw) + " not found"}
 			}
 			if err != nil {
 				return err
@@ -313,6 +399,14 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			return err
 		}
+		ipv4ID, err := store.NextID(tx, primaryIPKind)
+		if err != nil {
+			return err
+		}
+		ipv6ID, err := store.NextID(tx, primaryIPKind)
+		if err != nil {
+			return err
+		}
 		rec = Record{
 			Server: Server{
 				ID:      id,
@@ -320,8 +414,8 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 				Status:  StatusInitializing,
 				Created: time.Now().UTC().Truncate(time.Second),
 				PublicNet: PublicNet{
-					IPv4:        &IPv4{IP: ip.String(), DNSPtr: ""},
-					IPv6:        &IPv6{IP: IPv6Net(id).String(), DNSPtr: []any{}},
+					IPv4:        &IPv4{ID: ipv4ID, IP: ip.String(), DNSPtr: ""},
+					IPv6:        &IPv6{ID: ipv6ID, IP: IPv6Net(id).String(), DNSPtr: []any{}},
 					FloatingIPs: []int64{},
 					Firewalls:   []any{},
 				},
@@ -348,29 +442,37 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		if err := put(tx, rec); err != nil {
 			return err
 		}
+		if group != nil {
+			if err := placementgroups.AddServer(tx, p.ID, group.ID, id); err != nil {
+				return err
+			}
+		}
+		if shown, err = show(tx, rec); err != nil {
+			return err
+		}
 		action, err = acts.Start(tx, p.ID, "create_server", []actions.Ref{{ID: id, Type: refType}})
 		return err
 	})
-	var ie *inputError
 	switch {
-	case errors.As(err, &ie):
-		api.InvalidInput(w, ie.field, ie.msg)
-		return
 	case errors.Is(err, errNoAddress):
-		api.Error(w, http.StatusConflict, "resource_unavailable", "no free public IPv4 address in the public range", nil)
+		api.Error(w, "resource_unavailable", "no free public IPv4 address in the public range", nil)
 		return
 	case err != nil:
-		api.ServerError(w, err)
+		api.Fail(w, err)
 		return
 	}
 
 	stor := api.StoreFrom(req.Context())
 	id := rec.ID
-	acts.Run(action.ID, func(ctx context.Context, _ func(int)) error {
+	acts.Run(action.ID, func(ctx context.Context, progress func(int)) error {
+		progress(10)
 		err := m.d.Machines.Create(ctx, id)
 		final := StatusOff
 		if err == nil && start {
 			final = StatusRunning
+		}
+		if err == nil {
+			progress(90)
 		}
 		if serr := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, final) }); serr != nil && err == nil {
 			err = serr
@@ -378,7 +480,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		return err
 	})
 	api.JSON(w, http.StatusCreated, map[string]any{
-		"server":        rec.Server,
+		"server":        shown,
 		"action":        action,
 		"next_actions":  []any{},
 		"root_password": nil,
@@ -386,18 +488,18 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 }
 
 // resolve finds server type, image and location of a create request.
-func (m *Module) resolve(b createRequest) (catalog.ServerType, catalog.Image, catalog.Location, *inputError) {
+func (m *Module) resolve(b createRequest) (catalog.ServerType, catalog.Image, catalog.Location, *api.FieldError) {
 	var none catalog.ServerType
-	if strings.TrimSpace(b.Name) == "" {
-		return none, catalog.Image{}, catalog.Location{}, &inputError{"name", "name is required"}
-	}
 	typ, ok := m.serverType(refString(b.ServerType))
 	if !ok {
-		return none, catalog.Image{}, catalog.Location{}, &inputError{"server_type", "server type " + refString(b.ServerType) + " not found"}
+		return none, catalog.Image{}, catalog.Location{}, &api.FieldError{Field: "server_type", Message: "server type " + refString(b.ServerType) + " not found"}
+	}
+	if typ.Architecture == "arm" {
+		return none, catalog.Image{}, catalog.Location{}, &api.FieldError{Code: "resource_unavailable", Message: "server type " + typ.Name + " is an arm type; hlab runs only x86 servers"}
 	}
 	img, ok := m.image(refString(b.Image))
 	if !ok {
-		return none, catalog.Image{}, catalog.Location{}, &inputError{"image", "image " + refString(b.Image) + " not found"}
+		return none, catalog.Image{}, catalog.Location{}, &api.FieldError{Field: "image", Message: "image " + refString(b.Image) + " not found"}
 	}
 	ref := refString(b.Location)
 	if ref == "" && len(typ.Locations) > 0 {
@@ -405,25 +507,16 @@ func (m *Module) resolve(b createRequest) (catalog.ServerType, catalog.Image, ca
 	}
 	loc, ok := m.location(ref)
 	if !ok {
-		return none, catalog.Image{}, catalog.Location{}, &inputError{"location", "location " + ref + " not found"}
+		return none, catalog.Image{}, catalog.Location{}, &api.FieldError{Field: "location", Message: "location " + ref + " not found"}
 	}
 	if !slices.ContainsFunc(typ.Locations, func(l catalog.ServerTypeLocation) bool { return l.Name == loc.Name }) {
-		return none, catalog.Image{}, catalog.Location{}, &inputError{"location", "server type " + typ.Name + " is not offered in " + loc.Name}
+		return none, catalog.Image{}, catalog.Location{}, &api.FieldError{Field: "location", Message: "server type " + typ.Name + " is not offered in " + loc.Name}
 	}
 	return typ, img, loc, nil
 }
 
 func (m *Module) serverType(ref string) (catalog.ServerType, bool) {
-	if st, ok := m.d.Catalog.ServerType(ref); ok {
-		return st, true
-	}
-	id, err := strconv.ParseInt(ref, 10, 64)
-	for _, st := range m.d.Catalog.ServerTypes {
-		if err == nil && st.ID == id {
-			return st, true
-		}
-	}
-	return catalog.ServerType{}, false
+	return m.d.Catalog.ServerTypeByRef(ref)
 }
 
 func (m *Module) image(ref string) (catalog.Image, bool) {
@@ -452,6 +545,52 @@ func (m *Module) location(ref string) (catalog.Location, bool) {
 	return catalog.Location{}, false
 }
 
+// update changes only the fields present in the body; labels, when
+// present, replace the whole set.
+func (m *Module) update(w http.ResponseWriter, req *http.Request) {
+	id, ok := api.PathID(w, req)
+	if !ok {
+		return
+	}
+	var body struct {
+		Name   *string            `json:"name"`
+		Labels *map[string]string `json:"labels"`
+	}
+	if !api.Decode(w, req, &body) {
+		return
+	}
+	p, _ := api.ProjectFrom(req.Context())
+	var s Server
+	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
+		r, err := store.Get[Record](tx, Kind, p.ID, id)
+		if err != nil {
+			return err
+		}
+		if body.Name != nil {
+			if err := checkName(tx, p.ID, *body.Name, id); err != nil {
+				return err
+			}
+			r.Name = *body.Name
+		}
+		if body.Labels != nil {
+			if err := api.CheckLabels(*body.Labels); err != nil {
+				return err
+			}
+			r.Labels = *body.Labels
+		}
+		if err := put(tx, r); err != nil {
+			return err
+		}
+		s, err = show(tx, r)
+		return err
+	})
+	if err != nil {
+		api.Fail(w, err)
+		return
+	}
+	api.JSON(w, http.StatusOK, map[string]any{"server": s})
+}
+
 func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 	id, ok := api.PathID(w, req)
 	if !ok {
@@ -466,6 +605,9 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			return err
 		}
+		if r.Protection.Delete {
+			return actions.ErrProtected
+		}
 		action, err = acts.Start(tx, p.ID, "delete_server", []actions.Ref{{ID: id, Type: refType}})
 		if err != nil {
 			return err
@@ -473,39 +615,56 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 		r.Status = StatusDeleting
 		return put(tx, r)
 	})
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		api.NotFound(w)
-		return
-	case errors.Is(err, actions.ErrLocked):
-		api.Error(w, http.StatusLocked, actions.ErrLocked.Code, actions.ErrLocked.Message, nil)
-		return
-	case err != nil:
-		api.ServerError(w, err)
+	if err != nil {
+		api.Fail(w, err)
 		return
 	}
 
 	acts.Run(action.ID, func(ctx context.Context, _ func(int)) error {
-		if err := m.d.Machines.Delete(ctx, id); err != nil {
-			if serr := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, StatusOff) }); serr != nil {
-				err = errors.Join(err, serr)
-			}
-			return err
-		}
-		return stor.Tx(func(tx store.Tx) error {
-			r, err := Load(tx, id)
-			if err != nil {
-				return err
-			}
-			if a := r.IPv4(); a.IsValid() {
-				if err := ipam.Release(tx, a); err != nil {
-					return err
-				}
-			}
-			return store.Delete(tx, Kind, r.Hlab.ProjectID, id)
-		})
+		return m.remove(ctx, stor, id)
 	})
 	api.JSON(w, http.StatusOK, map[string]any{"action": action})
+}
+
+// Delete implements resource.Deleter for project deletion: it deletes the
+// server's VM and disk, releases its IPv4, removes it from its placement
+// group and deletes its row. A server already gone is no error.
+func (m *Module) Delete(ctx context.Context, id int64) error {
+	return m.remove(ctx, m.d.Store, id)
+}
+
+// remove marks server id as deleting (the agent document leaves it out),
+// deletes its VM and then its row with its address and group membership.
+// When the VM cannot be deleted, the server stays with status off.
+func (m *Module) remove(ctx context.Context, stor *store.Store, id int64) error {
+	err := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, StatusDeleting) })
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := m.d.Machines.Delete(ctx, id); err != nil {
+		if serr := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, StatusOff) }); serr != nil {
+			err = errors.Join(err, serr)
+		}
+		return err
+	}
+	return stor.Tx(func(tx store.Tx) error {
+		r, err := Load(tx, id)
+		if err != nil {
+			return err
+		}
+		if a := r.IPv4(); a.IsValid() {
+			if err := ipam.Release(tx, a); err != nil {
+				return err
+			}
+		}
+		if err := leaveGroup(tx, r); err != nil {
+			return err
+		}
+		return store.Delete(tx, Kind, r.Hlab.ProjectID, id)
+	})
 }
 
 // MAC is the public adapter's MAC of server id: 02:48:4c, then 0x1 and the

@@ -138,7 +138,15 @@ func setServiceDACL(h xwin.Handle) error {
 // Administrators full control and Interactive Users read and execute, all
 // inherited by files and folders below. No other user can create ca\,
 // logs\, state.db or junctions in the data folder.
-const dataFolderSDDL = "O:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;IU)"
+//
+// The Hyper-V worker processes run as "NT VIRTUAL MACHINE\Virtual Machines"
+// (S-1-5-83-0) and must open the disks and seed ISOs the VMs attach, which
+// hlabd (re)creates below the data folder and which therefore only carry the
+// inherited entries. The group gets read and execute on folders (CI) and
+// read and write on files (OIIO): enough to open and write VHDX disks, but
+// no delete, no change of permissions and no creating files in folders.
+const dataFolderSDDL = "O:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;IU)" +
+	"(A;CI;0x1200a9;;;S-1-5-83-0)(A;OIIO;0x12019f;;;S-1-5-83-0)"
 
 // createDataFolder creates the data folder with its protected DACL (also
 // when it exists already) and settings.toml, which Interactive Users may

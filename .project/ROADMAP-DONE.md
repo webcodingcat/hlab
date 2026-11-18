@@ -6,6 +6,23 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x] 02 API conventions, catalog and the three clients: shared API behaviour,
+      projects and tokens complete, SSH keys, placement groups, pricing,
+      server type catalog, WSL2, OpenTofu and Ansible in the harness.
+      Requirements: API-03, API-04, API-05, API-06, API-07, API-08, API-09,
+      API-11, API-12, API-13, API-14, PROJ-03, PROJ-04, CAT-02, CAT-03,
+      CAT-04, CAT-05, KEY-01, SRV-17, SRV-22, HOST-03, HOST-04.
+      Depends on: 01.
+      Success criteria:
+      1. From WSL2 in NAT mode, `ssh root@<server>` works and Ansible's
+         `hetzner.hcloud.server_info` lists the servers of a project.
+      2. A read-only token can list but not create; a token of another
+         project sees nothing.
+      3. `hlab catalog update` refreshes the server types; own types from the
+         custom file appear in `hcloud server-type list`.
+      4. `tofu apply` creates SSH keys and placement groups; `tofu destroy`
+         removes them.
+
 - [x] 01 Walking skeleton: hlabd as dev service, appliance, one server
       created by hcloud boots and is reachable via SSH from the host;
       end-to-end harness against real Hyper-V and the real hcloud CLI.

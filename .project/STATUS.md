@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 02 API conventions, catalog and the three clients
+- Phase: 03 Server lifecycle
 - Base branch: main
-- Last done: phase 01 walking skeleton merged into main (2026-11-18); the user reruns scripts\dev-setup.ps1 elevated once for the protected data folder ACLs
-- Next: /wcc:phase in a new session (phase 02); Q1 (Reconciler refactor) is the first plan of phase 03, Q2 approved
+- Last done: phase 02 API conventions, catalog and the three clients merged into main (2026-11-18); the data folder DACL now admits Hyper-V VMs (dev-setup rerun done)
+- Next: /wcc:phase in a new session (phase 03; its first plan is the Reconciler refactor, Q1)
 
 ## Open manual checks
 

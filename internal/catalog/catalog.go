@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"sync"
 
 	"github.com/webcodingcat/hlab/internal/images"
 )
@@ -58,18 +60,25 @@ type Image struct {
 	Raw json.RawMessage `json:"-"`
 }
 
-// Catalog holds the loaded catalogs, each list sorted as in its file.
+// Catalog holds the loaded catalogs, each list sorted as in its file. The
+// server types can be replaced at run time (catalog update) and are only
+// reached through the guarded methods.
 type Catalog struct {
 	Locations         []Location
-	ServerTypes       []ServerType
 	Images            []Image
 	LoadBalancerTypes []json.RawMessage
-	Pricing           json.RawMessage
+
+	mu          sync.RWMutex
+	serverTypes []ServerType // catalog types followed by the own types
+	own         []ServerType // own types, merged again after an update
+	ownWarning  string       // why an update dropped the own types
+	pricing     json.RawMessage
 }
 
 // Load reads the catalog files in dir.
 func Load(dir string) (*Catalog, error) {
 	c := &Catalog{}
+	var err error
 
 	var locs []json.RawMessage
 	if err := readList(dir, "locations.json", "locations", &locs); err != nil {
@@ -88,13 +97,8 @@ func Load(dir string) (*Catalog, error) {
 	if err := readList(dir, "server-types.json", "server_types", &types); err != nil {
 		return nil, err
 	}
-	for _, raw := range types {
-		var st ServerType
-		if err := json.Unmarshal(raw, &st); err != nil {
-			return nil, fmt.Errorf("server-types.json: %w", err)
-		}
-		st.Raw = raw
-		c.ServerTypes = append(c.ServerTypes, st)
+	if c.serverTypes, err = serverTypes(types); err != nil {
+		return nil, fmt.Errorf("server-types.json: %w", err)
 	}
 
 	var imgs []json.RawMessage
@@ -118,8 +122,48 @@ func Load(dir string) (*Catalog, error) {
 	if err := readJSON(dir, "pricing.json", &pricing); err != nil {
 		return nil, err
 	}
-	c.Pricing = pricing.Pricing
+	c.pricing = pricing.Pricing
 	return c, nil
+}
+
+// serverTypes decodes the server type objects raw.
+func serverTypes(raw []json.RawMessage) ([]ServerType, error) {
+	out := make([]ServerType, 0, len(raw))
+	for _, r := range raw {
+		var st ServerType
+		if err := json.Unmarshal(r, &st); err != nil {
+			return nil, err
+		}
+		st.Raw = r
+		out = append(out, st)
+	}
+	return out, nil
+}
+
+// Types returns the catalog server types followed by the own types.
+func (c *Catalog) Types() []ServerType {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return append([]ServerType(nil), c.serverTypes...)
+}
+
+// ServerTypeByRef returns the server type with the given name or ID.
+func (c *Catalog) ServerTypeByRef(ref string) (ServerType, bool) {
+	if st, ok := c.ServerType(ref); ok {
+		return st, true
+	}
+	id, err := strconv.ParseInt(ref, 10, 64)
+	if err != nil {
+		return ServerType{}, false
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, st := range c.serverTypes {
+		if st.ID == id {
+			return st, true
+		}
+	}
+	return ServerType{}, false
 }
 
 // image decodes raw and splits off `_hlab`.
@@ -169,7 +213,9 @@ func (c *Catalog) ImageSources() map[string]images.Source {
 
 // ServerType returns the server type with the given name.
 func (c *Catalog) ServerType(name string) (ServerType, bool) {
-	for _, st := range c.ServerTypes {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, st := range c.serverTypes {
 		if st.Name == name {
 			return st, true
 		}

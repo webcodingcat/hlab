@@ -31,17 +31,18 @@ packet of a server passes the appliance.
 |---|---|
 | [internal/cloud](../../internal/cloud) | Start and stop of one cloud: settings, host checks, store, switch, appliance, host network, API, management pipe; the list of resource modules. |
 | [internal/api](../../internal/api) | HTTP layer of the Hetzner API: routing under `/v1`, token authentication, read-only guard, JSON checks, error and list helpers. |
-| [internal/resource](../../internal/resource) | The `Module` interface every resource type implements. |
-| [internal/resources](../../internal/resources) | One package per resource type: actions, locations, datacenters, server types, images, SSH keys, servers. |
+| [internal/resource](../../internal/resource) | The `Module` interface every resource type implements, and the optional `NetContributor` and `Deleter`. |
+| [internal/resources](../../internal/resources) | One package per resource type: actions, locations, datacenters, server types, pricing, images, SSH keys, placement groups, servers. |
 | [internal/actions](../../internal/actions) | Hetzner actions and the worker pool that runs their work. |
 | [internal/store](../../internal/store) | SQLite state: projects, tokens, resources as JSON documents, actions, ID counters. |
-| [internal/mgmt](../../internal/mgmt) | Management API on the named pipe: status, projects, tokens. |
-| [internal/catalog](../../internal/catalog) | Loads the shipped catalogs from [catalog/](../../catalog). |
+| [internal/mgmt](../../internal/mgmt) | Management API on the named pipe: status, projects (deletion as an action with its resources), tokens, catalog update. |
+| [internal/catalog](../../internal/catalog) | Loads the shipped catalogs from [catalog/](../../catalog), an updated server type catalog and the own server types; updates the server types from the real Hetzner API. |
+| [internal/labels](../../internal/labels) | Hetzner's label rules and label selectors. |
 | [internal/images](../../internal/images) | Downloads, verifies and converts system images into cached base disks. |
 | [internal/ipam](../../internal/ipam) | Public IPv4 allocation. |
 | [internal/cidata](../../internal/cidata) | Cloud-init seed ISOs for servers and the appliance. |
 | [internal/platform](../../internal/platform), [internal/platform/hyperv](../../internal/platform/hyperv) | VMs, disks, adapters; Hyper-V implementation through one PowerShell process. |
-| [internal/hostnet](../../internal/hostnet), [internal/hostnet/windows](../../internal/hostnet/windows) | Host IP, route, NAT, NRPT, firewall rule, WSL2 forwarding, collision checks. |
+| [internal/hostnet](../../internal/hostnet), [internal/hostnet/windows](../../internal/hostnet/windows) | Host IP, route, NAT, NRPT, firewall rule, WSL2 forwarding, collision checks, check of the console user's `.wslconfig`. |
 | [internal/agentapi](../../internal/agentapi), [internal/agentclient](../../internal/agentclient) | The document hlabd pushes to hlab-agent, and the client that pushes it. |
 | [internal/sysint](../../internal/sysint) | Service, paths, pipe and installer of the operating system. |
 | [internal/settings](../../internal/settings) | Reads `settings.toml`. |

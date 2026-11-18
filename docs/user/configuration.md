@@ -45,9 +45,47 @@ log `%ProgramData%\hlab-dev\logs\hlabd.log`.
 
 ## Custom server types
 
-`server-types.custom.json` in the data folder is reserved for your own
-server types. This version does not read it yet; only the server types of
-the shipped catalog are offered.
+Your own server types go in `server-types.custom.json` in the data folder
+(`%ProgramData%\hlab-dev\server-types.custom.json` for the development
+service). The file is a JSON array of server type objects in the format of
+Hetzner's API. hlab reads it when the cloud starts and serves the types
+after those of the catalog, in `/server_types` and `/pricing`, and
+`POST /servers` accepts them like any other type:
+
+```json
+[
+  {
+    "id": 100001,
+    "name": "big1",
+    "description": "Big test server",
+    "cores": 8,
+    "memory": 32,
+    "disk": 160,
+    "architecture": "x86",
+    "cpu_type": "dedicated",
+    "category": "regular_purpose",
+    "storage_type": "local",
+    "deprecation": null,
+    "locations": [
+      {"id": 1, "name": "fsn1", "available": true, "recommended": false, "deprecation": null}
+    ]
+  }
+]
+```
+
+- `id` is 100000 or more; `id` and `name` are unique and taken by no
+  catalog type.
+- `cores`, `memory` (GB) and `disk` (GB) are the size of the VM.
+- `locations` names the locations the type is offered in.
+- `architecture` is `x86`; hlab refuses to create servers of `arm` types.
+- Without `prices`, `/pricing` shows zero prices for the type in each of
+  its locations.
+
+A file that cannot be read, or whose types break these rules, is ignored
+as a whole; `hlab cloud status` then names the reason on a `problem:`
+line and only the catalog types are served. The same happens when
+`hlab catalog update` brings a type with the name or ID of one of yours.
+Changes to the file apply at the next `hlab cloud start`.
 
 ## Catalogs
 
@@ -59,8 +97,15 @@ development service reads them from `catalog\` of the working copy.
 | `locations.json` | Locations, as Hetzner's API returns them | `task catalog` |
 | `server-types.json` | Server types, as Hetzner's API returns them | `task catalog` |
 | `load-balancer-types.json` | Load balancer types (not served yet) | `task catalog` |
-| `pricing.json` | Prices (not served yet) | `task catalog` |
+| `pricing.json` | Prices, served at `/pricing` | `task catalog` |
 | `images.json` | The system images ubuntu-22.04, ubuntu-24.04, ubuntu-26.04, debian-12, debian-13, each with its download source in `_hlab.source` | by hand |
+
+`hlab catalog update` writes the current server types from Hetzner to
+`catalog\server-types.json` in the data folder
+(`%ProgramData%\hlab-dev\catalog\server-types.json`). While that file
+exists, hlab serves its server types instead of those of the shipped
+`server-types.json`; delete it to go back to the shipped ones at the next
+start.
 
 hlab downloads an image from the source in `images.json` the first time a
 server uses it, checks it against the checksum file of the source, converts

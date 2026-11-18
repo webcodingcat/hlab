@@ -78,12 +78,19 @@ Inside `hlabd` (Go packages under `internal/`):
   Middleware, in order: request log, token auth (`Authorization: Bearer`,
   SHA-256 hash lookup, sets `Project` and `ReadOnly` in the context), JSON
   decoding (`json_error`), read-only guard (`token_readonly` for every
-  non-GET), handler. Shared helpers: `api.List(w, key, items)` writes a
-  list with `meta.pagination` (phase 02 extends it with the request for
-  `name`, `label_selector`, `sort`, `page` and `per_page`); modules reach
-  store and action manager through `api.StoreFrom(ctx)`/`api.ActionsFrom(ctx)`; `api.Error(code, message, details)` writes Hetzner's
-  error object; `labels.Validate`, `labels.Selector` (parser and matcher for
-  all Hetzner operators).
+  non-GET), handler. Shared helpers: `api.ListRequest(w, req, key, items,
+  ListOptions[T])` filters by `name` and `label_selector`, sorts by the
+  endpoint's keys and pages (`page`, `per_page` 25 by default, at most 50;
+  a page beyond the last is empty with `next_page` null) and writes
+  `meta.pagination`; modules reach store and action manager through
+  `api.StoreFrom(ctx)`/`api.ActionsFrom(ctx)`; `api.Error(code, message,
+  details)` writes Hetzner's error object with the status from
+  `api.Status(code)`, the one table of HTTP statuses (taken from the error
+  table of the frozen OpenAPI description); `api.Fail(w, err)` maps errors
+  (`actions.ErrLocked`, `actions.ErrProtected`, ...) to it;
+  `api.FieldError`, `api.CheckLabels`. Package `internal/labels`:
+  `labels.Validate`, `labels.Selector` (parser and matcher for all Hetzner
+  operators).
 - Depends on: store, resource, actions.
 
 #### resource (one module per resource type)
@@ -103,10 +110,14 @@ Inside `hlabd` (Go packages under `internal/`):
       Routes(r resource.Registrar)      // registers its endpoints and actions (Handle(pattern, handler), ServeMux patterns under /v1)
   }
   // optional interfaces, detected by type assertion:
-  type Reconciler interface {           // modules owning real resources
-      Reconcile(ctx context.Context, id int64) error   // make reality match state
+  type Deleter interface {              // modules whose resources need work to delete (project deletion)
       Delete(ctx context.Context, id int64) error
   }
+  type Reconciler interface {           // modules owning real resources
+      Deleter
+      Reconcile(ctx context.Context, id int64) error   // make reality match state
+  }
+  // phase 02: servers implement only Deleter; phase 03 adds Reconcile.
   type NetContributor interface {       // modules contributing to the agent document
       Contribute(tx store.Tx, doc *agentapi.Config) error
   }
@@ -134,6 +145,8 @@ Inside `hlabd` (Go packages under `internal/`):
   `store.List[T](tx, kind, projectID)`, `store.Put[T](tx, Meta, doc)`,
   `store.Delete(tx, kind, projectID, id)` (projectID 0 = no project),
   `store.ListAll[T](tx, kind)` for hlabd internals only, `store.NextID(tx, kind)`,
+  `store.NameTaken(tx, kind, projectID, name, exceptID)` (unique names per
+  project and kind), `store.IDs(tx, kind, projectID)`, `store.ProjectActions(tx, projectID)`,
   kv, projects, tokens and actions access.
 - Schema (version 1, see "Data schema").
 - Depends on: nothing.
@@ -146,7 +159,11 @@ Inside `hlabd` (Go packages under `internal/`):
   that locks it; `actions.Run(id, func(ctx, progress func(int)) error)` runs
   the work in a worker pool and sets `success` or `error` with Hetzner's
   error object. Actions survive a stop: running actions are marked `error`
-  with code `server_error` at the next start.
+  with code `server_error` at the next start. `Manager.ListFor(projectID, refType, resourceID)` lists
+  the actions of one resource (or of a resource type) for the generic
+  action endpoints; `ErrProtected` is returned for an action refused by
+  `change_protection`. `Manager.WaitIdle(ctx, projectID)` waits until a project
+  has no running action (project deletion waits for it before deleting).
 - Depends on: store.
 
 #### platform (interface) and platform/hyperv
@@ -247,7 +264,7 @@ Inside `hlabd` (Go packages under `internal/`):
       BaseZones     []string       // "hetzner.internal", reverse zones of PublicRange
   }
   type Problem struct {
-      Code    string // "range_collision", "winnat_exists", "other_instance_running", "wsl_mirrored", "wsl_virtioproxy", "wsl_dns_tunneling_off", "hyperv_missing"
+      Code    string // "range_collision", "winnat_exists", "other_instance_running", "wsl_mirrored", "wsl_virtioproxy" (also consomme), "wsl_mode_unsupported" (bridged, none), "wsl_dns_tunneling_off", "hyperv_missing"
       Message string // English, shown as is
       Fatal   bool   // true: the cloud does not start
   }
@@ -422,23 +439,29 @@ HTTP/1.1 over `\\.\pipe\hlab`, JSON. All paths under `/mgmt/v1`:
 
 | Method and path | Purpose |
 |---|---|
-| `GET /status` | `{"state":"running","version":"...","problems":[Problem],"shadowing_zones":[{"zone":"example.com","project":"p"}],"appliance_generation":n}` |
+| `GET /status` | `{"state":"running","version":"...","problems":[Problem],"shadowing_zones":[{"zone":"example.com","project":"p"}],"appliance_generation":n}`; besides the hostnet problems, a non-fatal `custom_server_types` problem when the own server types are invalid or collide and are not served |
 | `GET /projects` | `{"projects":[{"name":"p","created":"RFC3339","resources":n}]}` |
 | `POST /projects` | body `{"name":"p"}` (1-63 chars, `[a-z0-9-]`); `201` with the project; `409` if it exists |
-| `DELETE /projects/{name}` | `202 {"action_id":n}`; deletes all resources, then the project |
+| `DELETE /projects/{name}` | `202 {"action_id":n}`; revokes the project's tokens at once, then in one action deletes every resource through its module's `resource.Deleter`, the rest through the store, then the project; `409 conflict` while a deletion of that project runs; on failure the project stays listed. `hlab project delete` waits for the action |
+| `GET /actions/{id}` | `200 {"action": <Hetzner action object>}`; `404 not_found` for an unknown ID or an action of a project |
 | `GET /projects/{name}/tokens` | `{"tokens":[{"name":"t","read_only":false,"created":"RFC3339"}]}` (never the value) |
 | `POST /projects/{name}/tokens` | body `{"name":"t","read_only":false}`; `201 {"name":"t","read_only":false,"token":"<64 chars [A-Za-z0-9]>"}`, the only time the value is returned |
 | `DELETE /projects/{name}/tokens/{token-name}` | `204` |
-
-Errors: `{"error":{"code":"...","message":"..."}}` with codes
-`invalid_input`, `not_found`, `conflict`, `cloud_not_running`,
-`server_error`.
 | `ANY /projects/{name}/api/v1/{rest}` | forwards to the Hetzner API handlers with that project and read/write rights |
-| `POST /catalog/update` | body `{"hetzner_token": "..."}` (required, used once, never stored or logged) |
+| `POST /catalog/update` | body `{"hetzner_token": "..."}` (required, used once, never stored or logged); `200 {"server_types":n}`; `400 invalid_input` without a token; `502 server_error` with Hetzner's message when the real API refuses |
 | `GET /logs?follow=1` | log lines as newline-delimited JSON |
 | `GET /ca.pem` | the hlab CA certificate |
 | `PUT /trust` | `{"on": bool}` |
 | `POST /settings/reload` | re-read the settings file |
+
+Errors: `{"error":{"code":"...","message":"..."}}` with codes
+`invalid_input`, `not_found`, `conflict`, `cloud_not_running`,
+`server_error`. The handlers get `mgmt.Deps` with, among others,
+`Actions`, `Deleters` (the modules implementing `resource.Deleter`),
+`UpdateCatalog` (nil leaves the route out), `ServerTypes` (the count
+returned by the catalog update) and `PushAgent` (pushes the agent document
+after a project deletion). A running project deletion is an action that
+locks a resource of type `project`.
 
 ### hlab-agent (appliance)
 
@@ -658,8 +681,10 @@ All addresses below derive from the configured public range
   route; NRPT applies inside WSL with dnsTunneling (E4). hostnet records the
   previous forwarding state and restores it in `Down`, and re-applies
   forwarding when WSL recreates its adapter. WSL's fallback mode
-  (VirtioProxy) and mirrored mode are detected with `wslinfo
-  --networking-mode` inside the default distro.
+  (VirtioProxy), mirrored and other modes are detected from the console
+  user's `%UserProfile%\.wslconfig` (`networkingMode`, `dnsTunneling`,
+  read through the WTS user token) plus the host adapters; hlabd runs no
+  `wsl.exe` or `wslinfo`.
 - NRPT: one suffix rule per zone (`.example.net`) also covers the zone
   apex (E5).
 
