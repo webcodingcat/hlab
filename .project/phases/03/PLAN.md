@@ -210,15 +210,15 @@ func ServersDeps(t *testing.T, cat *catalog.Catalog, p platform.Platform) server
   - [x] `checkResources(ctx, cores, ramMB, addDiskBytes)`: cores > logical CPUs, RAM > free RAM minus `reserve_ram_mb`, remaining growth of all existing server disks (nominal minus file size) plus the new disk > free disk minus `reserve_disk_gb`, each `resource_unavailable` with a message naming the resource (internal/resources/servers/limits.go)
   - [x] Create checks synchronously before its transaction (412) and again at the start of its action (internal/resources/servers/servers.go)
 
-- [ ] 03-09 Power actions and status watch
+- [x] 03-09 Power actions and status watch
   - Wave: 4 | Depends on: 03-03, 03-08 | Review: alone | e2e
   - Requirements: SRV-07, SRV-20 | Tests: internal/resources/servers/servers_test.go (SRV-20/power), test/e2e/server_test.go (SRV-07)
   - Reads: REQUIREMENTS SRV-07, SRV-20; CONTEXT.md power and status lines; RESEARCH R1, R4 (command names); ARCHITECTURE "actions"
   - Size: ~350 lines in 4 files
   - Adjusts: -
-  - [ ] `poweron` (resource check, starting, running), `poweroff` (stopping, off), `shutdown` (stopping; action success once sent), `reboot`, `reset` as locking actions with Hetzner's command names; routes (internal/resources/servers/power.go, servers.go)
-  - [ ] Status watch job every 5 s through `Deps.Clock`: servers without a running action take the platform state (Off, Starting, Running, Stopping; Saved, Paused and Other leave it); `Jobs()` (internal/resources/servers/watch.go)
-  - [ ] SRV-07 e2e row registered (test/e2e/e2e_test.go); the BACKLOG reboot item is answered in the summary with the path the probe chose
+  - [x] `poweron` (resource check, starting, running), `poweroff` (stopping, off), `shutdown` (stopping; action success once sent), `reboot`, `reset` as locking actions with Hetzner's command names; routes (internal/resources/servers/power.go, servers.go)
+  - [x] Status watch job every 5 s through `Deps.Clock`: servers without a running action take the platform state (Off, Starting, Running, Stopping; Saved, Paused and Other leave it); `Jobs()` (internal/resources/servers/watch.go)
+  - [x] SRV-07 e2e row registered (test/e2e/e2e_test.go); the BACKLOG reboot item is answered in the summary with the path the probe chose
 
 - [ ] 03-10 Root password and guest hooks
   - Wave: 5 | Depends on: 03-02, 03-09 | Review: alone | e2e
