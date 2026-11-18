@@ -46,8 +46,12 @@ func New(deps Deps) *Router {
 	return r
 }
 
-// Mount registers the endpoints of m.
+// Mount registers the endpoints of m and hands the action manager to a
+// resource.ActionUser.
 func (r *Router) Mount(m resource.Module) {
+	if u, ok := m.(resource.ActionUser); ok {
+		u.UseActions(r.deps.Actions)
+	}
 	m.Routes(registrar{r.mux})
 }
 

@@ -88,9 +88,8 @@ func (m *Module) imagePath(id int64) string {
 	return filepath.Join(m.d.Settings.DataFolder, "images", fmt.Sprintf("image-%d.vhdx", id))
 }
 
-// createImage makes a snapshot of the server's disk as a project image.
-// The image is stored as creating with the action; the action copies the
-// disk and makes it available, or removes record and file on failure.
+// createImage makes a snapshot of the server's disk, or a backup of a
+// server with backups enabled, as a project image.
 func (m *Module) createImage(w http.ResponseWriter, req *http.Request) {
 	id, ok := api.PathID(w, req)
 	if !ok {
@@ -108,12 +107,7 @@ func (m *Module) createImage(w http.ResponseWriter, req *http.Request) {
 	if body.Type != nil {
 		typ = *body.Type
 	}
-	switch typ {
-	case imagesres.TypeSnapshot:
-	case imagesres.TypeBackup:
-		api.Fail(w, &api.FieldError{Field: "type", Message: "backups are not enabled for the server"})
-		return
-	default:
+	if typ != imagesres.TypeSnapshot && typ != imagesres.TypeBackup {
 		api.Fail(w, &api.FieldError{Field: "type", Message: "type must be snapshot or backup"})
 		return
 	}
@@ -126,32 +120,66 @@ func (m *Module) createImage(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	p, _ := api.ProjectFrom(req.Context())
-	acts := api.ActionsFrom(req.Context())
 	stor := api.StoreFrom(req.Context())
-
 	if err := stor.Tx(func(tx store.Tx) error {
-		_, err := store.Get[Record](tx, Kind, p.ID, id)
-		return err
+		r, err := store.Get[Record](tx, Kind, p.ID, id)
+		if err != nil {
+			return err
+		}
+		return checkBackupType(r, typ)
 	}); err != nil {
 		api.Fail(w, err)
 		return
 	}
-	disk := m.diskPath(id)
-	size, err := fileSize(disk)
+	img, action, err := m.startImage(req.Context(), stor, api.ActionsFrom(req.Context()), imageRequest{
+		projectID: p.ID, serverID: id, typ: typ, description: body.Description, labels: labels,
+	})
 	if err != nil {
-		api.ServerError(w, err)
-		return
-	}
-	if err := m.CheckDisk(req.Context(), stor, size); err != nil {
 		api.Fail(w, err)
 		return
+	}
+	api.JSON(w, http.StatusCreated, map[string]any{"image": img.Image, "action": action})
+}
+
+// checkBackupType refuses a backup of a server without backups enabled.
+func checkBackupType(r Record, typ string) error {
+	if typ == imagesres.TypeBackup && !r.Hlab.BackupsEnabled {
+		return &api.FieldError{Field: "type", Message: "backups are not enabled for the server"}
+	}
+	return nil
+}
+
+// imageRequest is what create_image and the backup job ask for.
+type imageRequest struct {
+	projectID, serverID int64
+	typ                 string
+	description         *string // nil = "<server name> <created>"
+	labels              map[string]string
+	automatic           bool // daily backup
+}
+
+// startImage stores the image of q as creating with a create_image action
+// on the server and runs the action: it copies the disk and makes the
+// image available, or removes record and file on failure. A server with a
+// running action gives actions.ErrLocked.
+func (m *Module) startImage(ctx context.Context, stor *store.Store, acts *actions.Manager, q imageRequest) (imagesres.Record, *actions.Action, error) {
+	id := q.serverID
+	size, err := fileSize(m.diskPath(id))
+	if err != nil {
+		return imagesres.Record{}, nil, err
+	}
+	if err := m.CheckDisk(ctx, stor, size); err != nil {
+		return imagesres.Record{}, nil, err
 	}
 
 	var img imagesres.Record
 	var action *actions.Action
 	err = stor.Tx(func(tx store.Tx) error {
-		r, err := store.Get[Record](tx, Kind, p.ID, id)
+		r, err := store.Get[Record](tx, Kind, q.projectID, id)
 		if err != nil {
+			return err
+		}
+		if err := checkBackupType(r, q.typ); err != nil {
 			return err
 		}
 		imgID, err := store.NextID(tx, imagesres.Kind)
@@ -166,34 +194,38 @@ func (m *Module) createImage(w http.ResponseWriter, req *http.Request) {
 		_ = json.Unmarshal(r.Image, &meta) // a field that does not decode stays empty
 		created := m.d.Clock.Now().UTC().Truncate(time.Second)
 		description := r.Name + " " + created.Format(time.RFC3339)
-		if body.Description != nil {
-			description = *body.Description
+		if q.description != nil {
+			description = *q.description
+		}
+		var boundTo *int64
+		if q.typ == imagesres.TypeBackup {
+			boundTo = &r.ID
 		}
 		img = imagesres.Record{
 			Image: imagesres.Image{
 				ID:           imgID,
-				Type:         typ,
+				Type:         q.typ,
 				Status:       imagesres.StatusCreating,
 				Description:  description,
 				DiskSize:     float64(r.PrimaryDiskSize),
 				Created:      created,
 				CreatedFrom:  &imagesres.CreatedFrom{ID: r.ID, Name: r.Name},
+				BoundTo:      boundTo,
 				OSFlavor:     meta.OSFlavor,
 				OSVersion:    meta.OSVersion,
-				Labels:       labels,
+				Labels:       q.labels,
 				Architecture: meta.Architecture,
 			},
-			Hlab: imagesres.Internal{ProjectID: p.ID, Path: m.imagePath(imgID)},
+			Hlab: imagesres.Internal{ProjectID: q.projectID, Path: m.imagePath(imgID), Automatic: q.automatic},
 		}
-		action, err = acts.Start(tx, p.ID, "create_image", []actions.Ref{{ID: id, Type: refType}})
+		action, err = acts.Start(tx, q.projectID, "create_image", []actions.Ref{{ID: id, Type: refType}})
 		if err != nil {
 			return err
 		}
 		return imagesres.Put(tx, img)
 	})
 	if err != nil {
-		api.Fail(w, err)
-		return
+		return imagesres.Record{}, nil, err
 	}
 
 	acts.Run(action.ID, func(ctx context.Context, progress func(int)) error {
@@ -204,11 +236,12 @@ func (m *Module) createImage(w http.ResponseWriter, req *http.Request) {
 		}
 		return err
 	})
-	api.JSON(w, http.StatusCreated, map[string]any{"image": img.Image, "action": action})
+	return img, action, nil
 }
 
 // snapshot copies the disk of server id into the file of img and makes img
-// available with its image_size.
+// available with its image_size. For a backup, the server's oldest backups
+// beyond maxBackups are deleted with their files.
 func (m *Module) snapshot(ctx context.Context, stor *store.Store, id int64, img imagesres.Record) error {
 	if err := os.MkdirAll(filepath.Dir(img.Hlab.Path), 0o750); err != nil {
 		return err
@@ -221,15 +254,37 @@ func (m *Module) snapshot(ctx context.Context, stor *store.Store, id int64, img 
 		return err
 	}
 	gb := float64(size) / (1 << 30)
-	return stor.Tx(func(tx store.Tx) error {
+	var pruned []imagesres.Record
+	if err := stor.Tx(func(tx store.Tx) error {
 		r, err := imagesres.Load(tx, img.Hlab.ProjectID, img.ID)
 		if err != nil {
 			return err
 		}
 		r.Status = imagesres.StatusAvailable
 		r.ImageSize = &gb
-		return imagesres.Put(tx, r)
-	})
+		if err := imagesres.Put(tx, r); err != nil {
+			return err
+		}
+		if r.Type != imagesres.TypeBackup {
+			return nil
+		}
+		backups, err := imagesres.Backups(tx, *r.BoundTo)
+		if err != nil {
+			return err
+		}
+		for len(backups) > maxBackups {
+			if err := imagesres.Remove(tx, backups[0]); err != nil {
+				return err
+			}
+			pruned = append(pruned, backups[0])
+			backups = backups[1:]
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	removeImageFiles(pruned)
+	return nil
 }
 
 // dropImage removes the record of a failed image, if it is still there,

@@ -27,6 +27,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
+	imagesres "github.com/webcodingcat/hlab/internal/resources/images"
 	"github.com/webcodingcat/hlab/internal/resources/placementgroups"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
 	"github.com/webcodingcat/hlab/internal/scheduler"
@@ -236,6 +237,7 @@ func (r Record) IPv4() netip.Addr {
 type Module struct {
 	d       Deps
 	volumes VolumeHooks
+	acts    *actions.Manager // set at mount (UseActions); the backup job starts actions with it
 
 	mu sync.Mutex
 	// changes counts the status changes actions made per server, so the
@@ -288,6 +290,8 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("POST /servers/{id}/actions/add_to_placement_group", http.HandlerFunc(m.addToPlacementGroup))
 	r.Handle("POST /servers/{id}/actions/remove_from_placement_group", http.HandlerFunc(m.removeFromPlacementGroup))
 	r.Handle("POST /servers/{id}/actions/create_image", http.HandlerFunc(m.createImage))
+	r.Handle("POST /servers/{id}/actions/enable_backup", http.HandlerFunc(m.enableBackup))
+	r.Handle("POST /servers/{id}/actions/disable_backup", http.HandlerFunc(m.disableBackup))
 	resactions.RoutesFor(r, "servers", refType)
 }
 
@@ -846,8 +850,9 @@ func (m *Module) Delete(ctx context.Context, id int64) error {
 }
 
 // remove marks server id as deleting (the agent document leaves it out),
-// detaches its volumes, deletes its VM and then its row with its address and group membership.
-// When the VM cannot be deleted, the server stays with status off.
+// detaches its volumes, deletes its VM and then its row with its address,
+// group membership and backups (with their files); snapshots stay. When
+// the VM cannot be deleted, the server stays with status off.
 func (m *Module) remove(ctx context.Context, stor *store.Store, id int64) error {
 	err := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, StatusDeleting) })
 	if errors.Is(err, store.ErrNotFound) {
@@ -869,7 +874,8 @@ func (m *Module) remove(ctx context.Context, stor *store.Store, id int64) error 
 		return err
 	}
 	m.d.Metrics.Forget(id)
-	return stor.Tx(func(tx store.Tx) error {
+	var backups []imagesres.Record
+	if err := stor.Tx(func(tx store.Tx) error {
 		r, err := Load(tx, id)
 		if err != nil {
 			return err
@@ -882,8 +888,15 @@ func (m *Module) remove(ctx context.Context, stor *store.Store, id int64) error 
 		if err := leaveGroup(tx, r); err != nil {
 			return err
 		}
+		if backups, err = dropBackups(tx, id); err != nil {
+			return err
+		}
 		return store.Delete(tx, Kind, r.Hlab.ProjectID, id)
-	})
+	}); err != nil {
+		return err
+	}
+	removeImageFiles(backups)
+	return nil
 }
 
 // MAC is the public adapter's MAC of server id: 02:48:4c, then 0x1 and the
