@@ -190,7 +190,7 @@ The folder of `[storage]` `data_folder` holds:
 |---|---|
 | `vms` | The configuration files of the server VMs. |
 | `disks` | Server disks and their seed ISOs, and the rescue disk of a server in rescue. |
-| `images` | Downloaded system images as base disks, the rescue base `rescue.vhdx`, and the snapshots and backups of all projects as `image-<id>.vhdx`. |
+| `images` | Downloaded system images as base disks, the rescue base `rescue-v2.vhdx`, and the snapshots and backups of all projects as `image-<id>.vhdx`. |
 | `isos` | Downloaded ISOs of `isos.json`. |
 | `volumes` | Volume disks as `volume-<id>.vhdx`. |
 | `cache\debs` | Downloaded packages of `appliance-debs.json`. |

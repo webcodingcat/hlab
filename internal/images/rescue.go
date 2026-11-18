@@ -8,11 +8,14 @@ import (
 	"path/filepath"
 )
 
-// rescueFile is the prepared rescue base in Dir.
-const rescueFile = "rescue.vhdx"
+// rescueFile is the prepared rescue base in Dir. Its name carries the
+// version of the preparation: a changed preparation takes a new name, so
+// existing installs prepare the rescue base again. v2 adds the SCSI order
+// script to the initramfs.
+const rescueFile = "rescue-v2.vhdx"
 
 // EnsureRescue returns the path of the prepared rescue base
-// (<Dir>\rescue.vhdx), preparing it once from the base of RescueImage.
+// (<Dir>\rescue-v2.vhdx), preparing it once from the base of RescueImage.
 // Concurrent calls prepare once.
 func (s *Store) EnsureRescue(ctx context.Context) (string, error) {
 	dst := filepath.Join(s.opts.Dir, rescueFile)

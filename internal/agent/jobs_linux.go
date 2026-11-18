@@ -202,7 +202,8 @@ func newVolumeID() (arg, shown string, err error) {
 // rescuePrepare gives the copy of the Debian image at lun new partition
 // GUIDs, a new root filesystem UUID, a new ESP volume ID and new labels
 // where labels exist, and rewrites fstab and every grub.cfg to them, so
-// no identifier of the rescue disk matches the server's disk.
+// no identifier of the rescue disk matches the server's disk. Its
+// initramfs gets scsiOrderScript, so the server disk is sda in rescue.
 func rescuePrepare(ctx context.Context, lun int) error {
 	dev, err := findDisk(ctx, lun)
 	if err != nil {
@@ -289,8 +290,85 @@ func rescuePrepare(ctx context.Context, lun int) error {
 				return err
 			}
 		}
-		return nil
+		return installSCSIOrder(ctx, rootDir)
 	})
+}
+
+// scsiOrderScript is the initramfs-tools local-top script of the rescue
+// system. The sd driver probes disks in parallel, so the rescue disk at LUN
+// 63 can take sda before the server disk at LUN 0. Before the root
+// filesystem is mounted, the script rebinds the disks to sd one at a time
+// with LUN 0 first; a bind probes synchronously and takes the lowest free
+// name, so the server disk becomes sda.
+const scsiOrderScript = `#!/bin/sh
+# hlab rescue: the server disk at SCSI LUN 0 becomes /dev/sda.
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in
+prereqs) prereqs; exit 0 ;;
+esac
+
+sd=/sys/bus/scsi/drivers/sd
+
+# disk_at prints the SCSI address of the disk bound to sd at LUN $1.
+disk_at() {
+	for d in "$sd"/*:*:*:"$1"; do
+		if [ -d "$d/block" ]; then
+			echo "${d##*/}"
+			return
+		fi
+	done
+}
+
+i=0
+while :; do
+	zero=$(disk_at 0)
+	rescue=$(disk_at 63)
+	[ -n "$zero" ] && [ -n "$rescue" ] && break
+	i=$((i + 1))
+	[ "$i" -ge 30 ] && exit 0
+	sleep 1
+done
+[ -e "$sd/$zero/block/sda" ] && exit 0
+
+echo "hlab: rebinding the SCSI disks so that LUN 0 is sda" > /dev/kmsg
+disks=""
+for d in "$sd"/*:*:*:*; do
+	disks="$disks ${d##*/}"
+done
+for a in $disks; do
+	echo "$a" > "$sd/unbind"
+done
+echo "$zero" > "$sd/bind"
+for a in $disks; do
+	[ "$a" = "$zero" ] || echo "$a" > "$sd/bind"
+done
+udevadm settle || true
+exit 0
+`
+
+// scsiOrderPath is where scsiOrderScript goes in the image.
+const scsiOrderPath = "etc/initramfs-tools/scripts/local-top/hlab-scsi-order"
+
+// installSCSIOrder adds scsiOrderScript to the image mounted at rootDir and
+// rebuilds the image's initramfs with the image's own tools in a chroot.
+func installSCSIOrder(ctx context.Context, rootDir string) (err error) {
+	if err := os.WriteFile(filepath.Join(rootDir, scsiOrderPath), []byte(scsiOrderScript), 0o755); err != nil {
+		return err
+	}
+	for _, d := range []string{"dev", "proc", "sys"} {
+		target := filepath.Join(rootDir, d)
+		if _, err := run(ctx, "mount", "--bind", "/"+d, target); err != nil {
+			return err
+		}
+		defer func() {
+			if _, uerr := run(context.Background(), "umount", target); uerr != nil && err == nil {
+				err = uerr
+			}
+		}()
+	}
+	_, err = run(ctx, "chroot", rootDir, "update-initramfs", "-u", "-k", "all")
+	return err
 }
 
 // imagePartitions returns the partitions of the image disk dev with its
