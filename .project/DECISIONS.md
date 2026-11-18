@@ -22,6 +22,22 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Status of codes outside the frozen error table
+
+- Type: decision
+- Phase: phase 02
+- What: the status table also lists `token_readonly` 403 and the operation codes `placement_error`, `server_not_stopped`, `already_in_placement_group` 422.
+- Why: API-03 requires 403 `token_readonly`, the description answers the operation codes with 422, and an unknown code would answer 500.
+- Cost of change: low
+
+## 2026-11-18 Negative selectors match absent keys
+
+- Type: decision
+- Phase: phase 02
+- What: `k!=v` and `k notin (...)` also match resources without the key (Kubernetes semantics); selector keys and values are checked only for allowed characters, label prefixes must be lowercase RFC 1123 subdomains.
+- Why: Hetzner's text does not settle these cases and its selectors follow Kubernetes.
+- Cost of change: low
+
 ## 2026-11-18 Hyper-V VM group in the data folder DACL
 
 - Type: decision

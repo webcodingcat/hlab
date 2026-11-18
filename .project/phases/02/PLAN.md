@@ -146,13 +146,13 @@ func (e *env) wslKey() string                                           // path 
   - [ ] Status table, `Error` without status, `InvalidInput` (422), `FieldError`, `Fail`; the router's own not_found, json_error, unauthorized and token_readonly answers use it (internal/api/response.go, errors.go, path.go, router.go)
   - [ ] Move the callers to the new `Error`/`Fail` (internal/resources/actions/actions.go, datacenters/datacenters.go, servers/servers.go, sshkeys/sshkeys.go, internal/apitest/probe.go)
 
-- [ ] 02-02 Labels and label selectors
+- [x] 02-02 Labels and label selectors
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: API-06, API-07 | Tests: internal/labels/labels_test.go
   - Reads: REQUIREMENTS API; RESEARCH R5 (labels, selector)
   - Size: ~250 lines in 1 file
   - Adjusts: -
-  - [ ] `Validate`, `ParseSelector`, `Selector.Matches` with every operator (internal/labels/labels.go)
+  - [x] `Validate`, `ParseSelector`, `Selector.Matches` with every operator (internal/labels/labels.go)
 
 - [ ] 02-04 WSL2 mode check
   - Wave: 1 | Depends on: - | Review: alone
