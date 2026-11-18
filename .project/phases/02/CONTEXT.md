@@ -32,3 +32,4 @@ Confirmed with the user at the start of the phase (2026-11-18).
 ## Added during the phase
 
 - 02-12 review: `DELETE /placement_groups/{id}` removes a group that still has members. Plan 02-13 makes the server object show its group and must keep it consistent: deleting a group clears the servers' `placement_group` reference (or refuses, if RESEARCH or the description says Hetzner refuses).
+- 02-03: the updated and custom catalog files live in the config root (`Paths.Config`, `%ProgramData%\hlab[-dev]\catalog\server-types.json` and `server-types.custom.json`), as ARCHITECTURE.md "Files and formats" says, not in the data folder. The CAT-03 e2e row (test/e2e/catalog_test.go) saves and restores `dataFolder()\catalog\server-types.json`, the wrong file; plan 02-07 changes what it uses (the path), not what it checks.
