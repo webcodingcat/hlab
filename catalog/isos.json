@@ -1,0 +1,76 @@
+{
+  "isos": [
+    {
+      "id": 130001,
+      "name": "ubuntu-22.04.5-live-server-amd64.iso",
+      "description": "Ubuntu 22.04.5 Live Server (amd64)",
+      "type": "public",
+      "deprecation": null,
+      "architecture": "x86",
+      "_hlab": {
+        "source": {
+          "url": "https://releases.ubuntu.com/22.04/ubuntu-22.04.5-live-server-amd64.iso",
+          "checksum_url": "https://releases.ubuntu.com/22.04/SHA256SUMS"
+        }
+      }
+    },
+    {
+      "id": 130002,
+      "name": "ubuntu-24.04.5-live-server-amd64.iso",
+      "description": "Ubuntu 24.04.5 Live Server (amd64)",
+      "type": "public",
+      "deprecation": null,
+      "architecture": "x86",
+      "_hlab": {
+        "source": {
+          "url": "https://releases.ubuntu.com/24.04/ubuntu-24.04.5-live-server-amd64.iso",
+          "checksum_url": "https://releases.ubuntu.com/24.04/SHA256SUMS"
+        }
+      }
+    },
+    {
+      "id": 130003,
+      "name": "ubuntu-26.04.1-live-server-amd64.iso",
+      "description": "Ubuntu 26.04.1 Live Server (amd64)",
+      "type": "public",
+      "deprecation": null,
+      "architecture": "x86",
+      "_hlab": {
+        "source": {
+          "url": "https://releases.ubuntu.com/26.04/ubuntu-26.04.1-live-server-amd64.iso",
+          "checksum_url": "https://releases.ubuntu.com/26.04/SHA256SUMS"
+        }
+      }
+    },
+    {
+      "id": 130004,
+      "name": "debian-12.15.0-amd64-netinst.iso",
+      "description": "Debian 12.15.0 netinst (amd64)",
+      "type": "public",
+      "deprecation": null,
+      "architecture": "x86",
+      "_hlab": {
+        "source": {
+          "url": "https://cdimage.debian.org/cdimage/archive/12.15.0/amd64/iso-cd/debian-12.15.0-amd64-netinst.iso",
+          "checksum_url": "https://cdimage.debian.org/cdimage/archive/12.15.0/amd64/iso-cd/SHA256SUMS"
+        }
+      }
+    },
+    {
+      "id": 130005,
+      "name": "debian-13.7.0-amd64-netinst.iso",
+      "description": "Debian 13.7.0 netinst (amd64)",
+      "type": "public",
+      "deprecation": null,
+      "architecture": "x86",
+      "_hlab": {
+        "source": {
+          "url": "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.7.0-amd64-netinst.iso",
+          "checksum_url": "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/SHA256SUMS",
+          "fallback_url": "https://cdimage.debian.org/cdimage/archive/13.7.0/amd64/iso-cd/debian-13.7.0-amd64-netinst.iso",
+          "fallback_checksum_url": "https://cdimage.debian.org/cdimage/archive/13.7.0/amd64/iso-cd/SHA256SUMS"
+        }
+      }
+    }
+  ]
+}
