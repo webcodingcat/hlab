@@ -93,8 +93,8 @@ Inside `hlabd` (Go packages under `internal/`):
   locations, datacenters, ssh_keys, primary_ips, floating_ips, networks,
   firewalls, load_balancers, load_balancer_types, certificates, volumes,
   placement_groups, zones, pricing, actions). A new resource type is a new
-  package plus one line in `internal/resources/all.go`; the core does not
-  change.
+  package plus one line in `Cloud.modules()` (`internal/cloud`); the core
+  does not change.
 - Interface:
 
   ```go

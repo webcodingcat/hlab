@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Server MACs, IPv6 and root login
+
+- Type: decision
+- Phase: 01 (01-16)
+- What: a server's public MAC is `02:48:4c` followed by `0x1` and the low 20 bits of its ID (the appliance has `02:48:4c:00:00:01`), kept in `_hlab`; its formal IPv6 is `2001:db8:<ID as 32 bits>::/64`; server vendor-data sets `disable_root: false` so key logins as root work like at Hetzner.
+- Why: unique MACs without colliding with the appliance; Ubuntu cloud images block root logins by default.
+- Cost of change: high
+
 ## 2026-11-18 Store timestamps and access scoping
 
 - Type: decision

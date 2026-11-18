@@ -141,12 +141,12 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
   - [x] `internal/cloud`: start (settings, Check, store, switch, appliance image/disk/cidata with agent and secret, VM, hostnet.Up, agent push with DNS upstream, API listener on 198.19.0.2:8780, pipe), stop (API, appliance, hostnet.Down, store)
   - [x] `internal/agentclient`; `cmd/hlabd` service entry, `install`, `uninstall-cleanup`; status file; `scripts/dev-setup.ps1` calls `bin\hlabd.exe install --dev` instead of sc.exe/icacls
 
-- [ ] 01-16 SSH keys, servers and IPAM
+- [x] 01-16 SSH keys, servers and IPAM
   - Wave: 5 | Depends on: 01-15 | Review: alone
   - Requirements: API-01, API-10, SRV-01, SRV-03, SRV-04, SRV-05, SRV-16, SRV-19 | Tests: internal/ipam/ipam_test.go, internal/resources/servers/servers_test.go, internal/resources/openapi_test.go, test/e2e
   - Size: ~400 lines in 5 files
-  - [ ] `internal/ipam`; module `ssh_keys` (create, get, list, delete)
-  - [ ] module `servers` (create, get, list, delete; IPv4 /32, IPv6 /64; work: image, disk, cidata, VM, NIC, DVD, start, agent push), API-10 table over all endpoints of the phase
+  - [x] `internal/ipam`; module `ssh_keys` (create, get, list, delete)
+  - [x] module `servers` (create, get, list, delete; IPv4 /32, IPv6 /64; work: image, disk, cidata, VM, NIC, DVD, start, agent push), API-10 table over all endpoints of the phase
 
 - [ ] 01-17 Documentation
   - Wave: 6 | Depends on: all | Review: alone
