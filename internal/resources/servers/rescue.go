@@ -26,11 +26,6 @@ const rescueLUN = 63
 // rescueTimeout disables a rescue no boot used.
 const rescueTimeout = 60 * time.Minute
 
-var (
-	rescueBootOrder = []platform.BootDevice{{Kind: "disk", Slot: rescueLUN}, {Kind: "disk", Slot: 0}}
-	serverBootOrder = []platform.BootDevice{{Kind: "disk", Slot: 0}}
-)
-
 func (m *Module) rescueDiskPath(id int64) string {
 	return filepath.Join(m.d.Settings.DataFolder, "disks", fmt.Sprintf("server-%d-rescue.vhdx", id))
 }
@@ -170,10 +165,10 @@ func (m *Module) startRescue(ctx context.Context, stor *store.Store, id int64, k
 	}
 	err = p.SetDVD(ctx, name, 0, seedPath)
 	if err == nil {
-		err = p.SetBootOrder(ctx, name, rescueBootOrder)
+		err = p.SetBootOrder(ctx, name, bootOrder(true, rec.Hlab.ISO != ""))
 	}
 	if err != nil {
-		return errors.Join(err, m.restoreBoot(ctx, id))
+		return errors.Join(err, m.restoreBoot(ctx, stor, id))
 	}
 	now := m.d.Clock.Now()
 	return m.updateRescue(stor, id, func(r *Record) {
@@ -299,7 +294,7 @@ func (m *Module) clearRescue(ctx context.Context, stor *store.Store, id int64) e
 // endRescue restores LUN 0 first and the server's seed and records rescue
 // as disabled; the rescue disk stays until it can be removed.
 func (m *Module) endRescue(ctx context.Context, stor *store.Store, id int64, booted bool) error {
-	if err := m.restoreBoot(ctx, id); err != nil {
+	if err := m.restoreBoot(ctx, stor, id); err != nil {
 		return err
 	}
 	return m.updateRescue(stor, id, func(r *Record) {
@@ -310,11 +305,15 @@ func (m *Module) endRescue(ctx context.Context, stor *store.Store, id int64, boo
 	})
 }
 
-// restoreBoot puts LUN 0 first and the server's seed in DVD slot 0 and
-// deletes the rescue seed.
-func (m *Module) restoreBoot(ctx context.Context, id int64) error {
+// restoreBoot sets the boot order without rescue (an attached ISO, then
+// LUN 0), puts the server's seed in DVD slot 0 and deletes the rescue seed.
+func (m *Module) restoreBoot(ctx context.Context, stor *store.Store, id int64) error {
+	rec, err := m.load(stor, id)
+	if err != nil {
+		return err
+	}
 	p, name := m.d.Platform, m.vmName(id)
-	if err := p.SetBootOrder(ctx, name, serverBootOrder); err != nil {
+	if err := p.SetBootOrder(ctx, name, bootOrder(false, rec.Hlab.ISO != "")); err != nil {
 		return err
 	}
 	if err := p.SetDVD(ctx, name, 0, m.seedPath(id)); err != nil {
