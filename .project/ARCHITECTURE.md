@@ -577,8 +577,9 @@ locks a resource of type `project`.
   Metadata service (agent, on `169.254.169.254:80`, answers by source
   address and segment): Hetzner's paths under `/hetzner/v1/metadata`
   (`/hostname`, `/instance-id`, `/public-ipv4`, `/private-networks`,
-  `/region`, `/availability-zone`, `/public-keys`, `/userdata`, and the full
-  YAML document at `/hetzner/v1/metadata`). hlab's own paths for the guest
+  `/region`, `/availability-zone`, `/public-keys`, and the full YAML
+  document at `/hetzner/v1/metadata`; user_data raw at
+  `/hetzner/v1/userdata`). hlab's own paths for the guest
   hook: `GET /hlab/v1/password-reset` returns `204` or `200
   {"id":n,"sha512_crypt":"$6$..."}`; `POST /hlab/v1/password-reset/{id}/done`
   confirms, after which hlabd ends the action with `success` (no

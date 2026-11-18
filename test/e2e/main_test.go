@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -502,8 +504,22 @@ func (e *env) describeServer(name string) (*server, error) {
 	return &server{ID: s.ID, Name: s.Name, IPv4: s.PublicNet.IPv4.IP}, nil
 }
 
+// deleteServer deletes the server; while an action of it still runs (a row
+// that failed during the create) the API answers locked, and the delete is
+// tried again until that action is over.
 func (e *env) deleteServer(name string) error {
-	r, err := e.hcloudRun(context.Background(), 15*time.Minute, "server", "delete", name)
+	var r result
+	var derr error
+	err := waitFor(50*time.Minute, 10*time.Second, func() (bool, error) {
+		r, derr = e.hcloudRun(context.Background(), 15*time.Minute, "server", "delete", name)
+		if derr == nil {
+			return true, nil
+		}
+		if strings.Contains(r.Stdout+r.Stderr, "(locked)") {
+			return false, nil
+		}
+		return false, derr
+	})
 	if err != nil {
 		return fmt.Errorf("hcloud server delete %s: %v\n%s", name, err, r)
 	}
@@ -628,4 +644,165 @@ func within(path, dir string) bool {
 func notExist(path string) bool {
 	_, err := os.Stat(path)
 	return errors.Is(err, fs.ErrNotExist)
+}
+
+// apiError is the error object of an API answer that is not 2xx.
+type apiError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// apiDo sends method path to the hlab API with the run's token and an
+// optional JSON body. A 2xx body is decoded into out (nil: ignored); any
+// other body gives its error object. It returns the status code.
+func (e *env) apiDo(ctx context.Context, method, path string, body, out any) (int, apiError, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	var rd io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return 0, apiError{}, err
+		}
+		rd = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, apiEndpoint+path, rd)
+	if err != nil {
+		return 0, apiError{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+e.token)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, apiError{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		var eb struct {
+			Error apiError `json:"error"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&eb)
+		return resp.StatusCode, eb.Error, nil
+	}
+	if out != nil {
+		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+			return resp.StatusCode, apiError{}, fmt.Errorf("%s %s: %w", method, path, err)
+		}
+	}
+	return resp.StatusCode, apiError{}, nil
+}
+
+// waitAction waits until the action is no longer running; an action ending
+// in error is an error.
+func (e *env) waitAction(id int64, timeout time.Duration) error {
+	var last string
+	err := waitFor(timeout, 2*time.Second, func() (bool, error) {
+		var body struct {
+			Action struct {
+				Status string    `json:"status"`
+				Error  *apiError `json:"error"`
+			} `json:"action"`
+		}
+		status, _, err := e.apiDo(context.Background(), http.MethodGet, fmt.Sprintf("/actions/%d", id), nil, &body)
+		if err != nil || status != http.StatusOK {
+			return false, nil
+		}
+		last = body.Action.Status
+		switch body.Action.Status {
+		case "success":
+			return true, nil
+		case "error":
+			if body.Action.Error != nil {
+				return false, fmt.Errorf("action %d ended in error %s: %s", id, body.Action.Error.Code, body.Action.Error.Message)
+			}
+			return false, fmt.Errorf("action %d ended in error", id)
+		}
+		return false, nil
+	})
+	if err != nil {
+		return fmt.Errorf("action %d (last status %q): %w", id, last, err)
+	}
+	return nil
+}
+
+// serverStatus is the status of the server as GET /servers/{id} reports it.
+func (e *env) serverStatus(id int64) (string, error) {
+	var body struct {
+		Server struct {
+			Status string `json:"status"`
+		} `json:"server"`
+	}
+	status, aerr, err := e.apiDo(context.Background(), http.MethodGet, fmt.Sprintf("/servers/%d", id), nil, &body)
+	if err != nil {
+		return "", err
+	}
+	if status != http.StatusOK {
+		return "", fmt.Errorf("GET /servers/%d: status %d %s", id, status, aerr.Code)
+	}
+	return body.Server.Status, nil
+}
+
+// waitStatus waits until the server shows the given status.
+func (e *env) waitStatus(id int64, want string, timeout time.Duration) error {
+	var last string
+	err := waitFor(timeout, 2*time.Second, func() (bool, error) {
+		s, err := e.serverStatus(id)
+		if err != nil {
+			return false, nil
+		}
+		last = s
+		return s == want, nil
+	})
+	if err != nil {
+		return fmt.Errorf("server %d did not reach status %q (last %q): %w", id, want, last, err)
+	}
+	return nil
+}
+
+// sshPassword runs a command as root on the server with a password login
+// only (no key is offered). OpenSSH asks a temporary askpass script, which
+// prints the password from the environment of this one ssh process; the
+// script never holds the password, and it and a fresh known_hosts file (a
+// password login is refused for a host whose key changed) are deleted when
+// the command returns.
+func sshPassword(s *server, password string, timeout time.Duration, remote string) (result, error) {
+	dir, err := os.MkdirTemp(harness.tmp, "askpass-")
+	if err != nil {
+		return result{}, err
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	ps := filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+	script := filepath.Join(dir, "askpass.cmd")
+	content := "@echo off\r\n\"" + ps + "\" -NoProfile -NonInteractive -Command \"[Console]::Out.WriteLine($env:HLAB_E2E_ROOT_PASSWORD)\"\r\n"
+	if err := os.WriteFile(script, []byte(content), 0o600); err != nil {
+		return result{}, err
+	}
+
+	var environ []string
+	for _, kv := range os.Environ() {
+		u := strings.ToUpper(kv)
+		if strings.HasPrefix(u, "SSH_ASKPASS") || strings.HasPrefix(u, "HLAB_E2E_ROOT_PASSWORD=") {
+			continue
+		}
+		environ = append(environ, kv)
+	}
+	environ = append(environ,
+		"SSH_ASKPASS="+script,
+		"SSH_ASKPASS_REQUIRE=force",
+		"DISPLAY=hlab-e2e:0",
+		"HLAB_E2E_ROOT_PASSWORD="+password,
+	)
+	return command(context.Background(), timeout, environ, "", harness.ssh,
+		"-o", "PubkeyAuthentication=no",
+		"-o", "IdentitiesOnly=yes",
+		"-o", "PreferredAuthentications=password,keyboard-interactive",
+		"-o", "NumberOfPasswordPrompts=1",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile="+filepath.Join(dir, "known_hosts"),
+		"-o", "ConnectTimeout=10",
+		"-o", "LogLevel=ERROR",
+		"root@"+s.IPv4, remote)
 }
