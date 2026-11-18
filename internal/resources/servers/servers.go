@@ -213,7 +213,6 @@ func SetStatus(tx store.Tx, id int64, status string) error {
 }
 
 func put(tx store.Tx, r Record) error {
-	r.PlacementGroup = nil
 	return store.Put(tx, store.Meta{
 		Kind: Kind, ID: r.ID, ProjectID: r.Hlab.ProjectID, Name: r.Name, Labels: r.Labels, Created: r.Created,
 	}, r)
@@ -226,7 +225,6 @@ func show(tx store.Tx, r Record) (Server, error) {
 		return Server{}, err
 	}
 	s := r.Server
-	s.PlacementGroup = nil
 	if ok {
 		s.PlacementGroup = &g
 	}
@@ -276,7 +274,6 @@ func (m *Module) list(w http.ResponseWriter, req *http.Request) {
 		out = make([]Server, 0, len(recs))
 		for _, r := range recs {
 			s := r.Server
-			s.PlacementGroup = nil
 			if g, ok := members[r.ID]; ok {
 				s.PlacementGroup = &g
 			}
