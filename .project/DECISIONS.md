@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Placement group membership stored on the group
+
+- Type: decision
+- Phase: phase 02
+- What: only the group's `servers` list records membership and a server's `placement_group` is derived when read, so deleting a group clears it; an unknown group answers `invalid_input` on `placement_group`; a server in any group gets `already_in_placement_group`; removing a server from no group succeeds.
+- Why: one source of truth, and Hetzner allows one group per server.
+- Cost of change: low
+
 ## 2026-11-18 Server protection and console details
 
 - Type: decision
