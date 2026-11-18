@@ -359,32 +359,39 @@ func cloudStatus(c *call) error {
 		}
 	}
 	if state == sysint.StateStopped && c.io.StatusFile != "" {
-		if r, ok := refusedStatus(c.io.StatusFile); ok {
-			return c.out(r, "state: refused\nproblem: "+r.Problem.Message+"\n")
+		if f, ok := readStatusFile(c.io.StatusFile); ok {
+			switch {
+			case f.State == "refused" && f.Problem != nil:
+				return c.out(f, "state: refused\nproblem: "+f.Problem.Message+"\n")
+			case f.State == sysint.StateStopped && f.Error != "":
+				return c.out(f, "state: stopped\nerror: "+f.Error+"\n")
+			}
 		}
 	}
 	return c.out(serviceState{state}, "state: "+state+"\n")
 }
 
-// refused is the status file of a cloud that refused to start.
-type refused struct {
+// statusFile is hlabd's status file: a refused start carries the problem,
+// a failed start the error.
+type statusFile struct {
 	State   string `json:"state"`
-	Problem struct {
+	Problem *struct {
 		Code    string `json:"code"`
 		Message string `json:"message"`
 		Fatal   bool   `json:"fatal"`
-	} `json:"problem"`
+	} `json:"problem,omitempty"`
+	Error string `json:"error,omitempty"`
 }
 
-// refusedStatus reads the status file and reports whether the last start
-// was refused; a missing or unreadable file is no refusal.
-func refusedStatus(path string) (refused, bool) {
-	var r refused
+// readStatusFile reads the status file; a missing or unreadable file
+// reports false.
+func readStatusFile(path string) (statusFile, bool) {
+	var f statusFile
 	data, err := os.ReadFile(path)
-	if err != nil || json.Unmarshal(data, &r) != nil {
-		return refused{}, false
+	if err != nil || json.Unmarshal(data, &f) != nil {
+		return statusFile{}, false
 	}
-	return r, r.State == "refused" && r.Problem.Message != ""
+	return f, true
 }
 
 func projectCreate(c *call) error {

@@ -98,8 +98,9 @@ IPv6 Network: 2001:db8:0:4::/64
 
 The server gets the CPUs, memory and disk of its server type. The first
 server with an image downloads that image from its official source, so it
-takes longer; later servers reuse the cached copy. SSH answers a few
-seconds after `server create` returns, once the guest has booted.
+takes longer; later servers reuse the cached copy. `server create` returns
+when the VM runs; a fresh server needs about a minute more until
+cloud-init has finished and SSH accepts the key.
 
 Clean up with `hcloud server delete web1`, `hcloud ssh-key delete demo`,
 `bin\hlab.exe project delete demo` and `bin\hlab.exe cloud stop`.
@@ -113,8 +114,9 @@ and the differences from the real API in
 
 From a WSL2 distribution in NAT mode with `dnsTunneling` on (the WSL
 defaults), `api.hetzner.internal` and the server addresses work as on
-Windows, so hcloud, OpenTofu and Ansible in WSL2 can use the same endpoint
-and token. hlab enables IPv4 forwarding for the WSL adapter when the cloud
+Windows, so hcloud in WSL2 can use the same endpoint and token. OpenTofu
+and Ansible are not yet tested with hlab; they come with the next version.
+hlab enables IPv4 forwarding for the WSL adapter when the cloud
 starts and restores the previous setting when it stops. It does not yet
 notice when WSL recreates its adapter (after `wsl --shutdown`); stop and
 start the cloud again in that case.
