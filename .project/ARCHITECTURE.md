@@ -78,9 +78,10 @@ Inside `hlabd` (Go packages under `internal/`):
   Middleware, in order: request log, token auth (`Authorization: Bearer`,
   SHA-256 hash lookup, sets `Project` and `ReadOnly` in the context), JSON
   decoding (`json_error`), read-only guard (`token_readonly` for every
-  non-GET), handler. Shared helpers: `api.List(r, items, sortKeys)` does
-  `name`, `label_selector`, `sort`, `page`, `per_page` and
-  `meta.pagination`; `api.Error(code, message, details)` writes Hetzner's
+  non-GET), handler. Shared helpers: `api.List(w, key, items)` writes a
+  list with `meta.pagination` (phase 02 extends it with the request for
+  `name`, `label_selector`, `sort`, `page` and `per_page`); modules reach
+  store and action manager through `api.StoreFrom(ctx)`/`api.ActionsFrom(ctx)`; `api.Error(code, message, details)` writes Hetzner's
   error object; `labels.Validate`, `labels.Selector` (parser and matcher for
   all Hetzner operators).
 - Depends on: store, resource, actions.

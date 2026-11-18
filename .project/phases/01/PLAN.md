@@ -62,18 +62,18 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
   - [ ] `internal/sysint` (Paths, ServiceControl, ServiceHost, Installer interfaces) and `internal/sysint/windows`: Paths per profile, ServiceControl with minimal SCM rights (E10), ServiceHost with preshutdown, pipe listen/dial with ACL (go-winio)
   - [ ] Installer: `hlabd install [--dev]` (service with descriptor, preshutdown 180 s, data folder ACLs; `--dev` refuses if an installed release exists) and `uninstall-cleanup` skeleton; `internal/settings`
 
-- [ ] 01-04 API core and OpenAPI tooling
+- [x] 01-04 API core and OpenAPI tooling
   - Wave: 2 | Depends on: 01-02 | Review: alone
   - Requirements: API-02 | Tests: internal/api/auth_test.go
   - Size: ~400 lines in 5 files
-  - [ ] `task openapi`, `api/openapi.lock`, cache in the user cache folder (`internal/apitest` is written by the test writer)
-  - [ ] `internal/api`: router, request log, token auth, JSON decoding, read-only guard, `Error`, `List`; `internal/resource` (Module, Registrar)
+  - [x] `task openapi`, `api/openapi.lock`, cache in the user cache folder (`internal/apitest` is written by the test writer)
+  - [x] `internal/api`: router, request log, token auth, JSON decoding, read-only guard, `Error`, `List`; `internal/resource` (Module, Registrar)
 
 - [ ] 01-05 Actions
   - Wave: 3 | Depends on: 01-04 | Review: alone
   - Requirements: - | Tests: (API-10 rows of /actions)
   - Size: ~300 lines in 3 files
-  - [ ] `internal/actions` manager and worker pool; `internal/resources/actions` (`GET /actions` with repeated `id` and `sort` as hcloud polls, `/actions/{id}`)
+  - [ ] `internal/actions`: complete the first manager from 01-04 (project_id, locks, `locked`); `internal/resources/actions` (`GET /actions` with repeated `id` and `sort` as hcloud polls, `/actions/{id}`)
 
 - [ ] 01-06 Catalog and catalog resources
   - Wave: 3 | Depends on: 01-04 | Review: alone
