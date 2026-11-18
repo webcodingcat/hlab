@@ -769,3 +769,11 @@ in ARCHITECTURE.md or the plan.
 - What: the metadata availability zone is `<location>-dc<n>` from the catalog.
 - Why: matches Hetzner's datacenter naming.
 - Cost of change: low
+
+## 2026-11-18 Vendor-data as multipart MIME
+
+- Type: decision
+- Phase: 03
+- What: vendor-data is multipart MIME: a minimal cloud-config part and a shell-script part that writes and enables the guest hooks and the root sshd drop-in.
+- Why: user cloud-config lists (`runcmd`, `write_files`) replace vendor lists and would silently drop the hooks.
+- Cost of change: low

@@ -220,15 +220,15 @@ func ServersDeps(t *testing.T, cat *catalog.Catalog, p platform.Platform) server
   - [x] Status watch job every 5 s through `Deps.Clock`: servers without a running action take the platform state (Off, Starting, Running, Stopping; Saved, Paused and Other leave it); `Jobs()` (internal/resources/servers/watch.go)
   - [x] SRV-07 e2e row registered (test/e2e/e2e_test.go); the BACKLOG reboot item is answered in the summary with the path the probe chose
 
-- [ ] 03-10 Root password and guest hooks
+- [x] 03-10 Root password and guest hooks
   - Wave: 5 | Depends on: 03-02, 03-09 | Review: alone | e2e
   - Requirements: SRV-02 | Tests: internal/resources/servers/servers_test.go (SRV-02), test/e2e/server_test.go (SRV-02)
   - Reads: REQUIREMENTS SRV-02; RESEARCH R5 (chpasswd `expire: false`, `ssh_pwauth`, PermitRootLogin drop-in, merge rules, "Probes" 3); ARCHITECTURE "Guest integration"
   - Size: ~330 lines in 4 files
   - Adjusts: -
-  - [ ] Vendor-data builder: `disable_root: false`, `ssh_pwauth: true`, `chpasswd` with `expire: false` and the root hash when there is one, `/etc/ssh/sshd_config.d/00-hlab-root.conf` with `PermitRootLogin yes`, the `hlab-guest` python3 hook with service and 5 s timer (asks the password reset, applies it with `chpasswd -e`, confirms, remembers the last ID) (internal/resources/servers/vendordata.go, reconcile.go)
-  - [ ] Create without SSH keys generates a password, stores only `NewSHA512` of it, returns it once as `root_password` (internal/resources/servers/servers.go)
-  - [ ] Harness helper for an SSH password login (OpenSSH with `SSH_ASKPASS_REQUIRE=force` and a temporary askpass script, deleted at once; no new module) (test/e2e/main_test.go)
+  - [x] Vendor-data builder: `disable_root: false`, `ssh_pwauth: true`, `chpasswd` with `expire: false` and the root hash when there is one, `/etc/ssh/sshd_config.d/00-hlab-root.conf` with `PermitRootLogin yes`, the `hlab-guest` python3 hook with service and 5 s timer (asks the password reset, applies it with `chpasswd -e`, confirms, remembers the last ID) (internal/resources/servers/vendordata.go, reconcile.go)
+  - [x] Create without SSH keys generates a password, stores only `NewSHA512` of it, returns it once as `root_password` (internal/resources/servers/servers.go)
+  - [x] Harness helper for an SSH password login (OpenSSH with `SSH_ASKPASS_REQUIRE=force` and a temporary askpass script, deleted at once; no new module) (test/e2e/main_test.go)
 
 - [ ] 03-11 Rebuild
   - Wave: 6 | Depends on: 03-10 | Review: alone | e2e

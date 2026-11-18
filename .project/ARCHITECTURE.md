@@ -608,6 +608,11 @@ locks a resource of type `project`.
   pending root password reset and applies it with `chpasswd`. Servers whose
   disks were not created by hlab (ISO installs) lack the hooks; listed as a
   deviation.
+- `vendor-data` is a multipart MIME document: a cloud-config part with
+  only `disable_root`, `ssh_pwauth` and `chpasswd`, and a
+  `text/x-shellscript` part (run once per instance) that writes the hooks,
+  their units and the `00-hlab-root.conf` sshd drop-in. User cloud-config
+  keys such as `runcmd` or `write_files` cannot replace the hooks.
 - Volumes with `automount` are mounted by a `user-data` part merged by
   cloud-init at creation, or by the udev rule plus a systemd mount unit when
   attached later.
