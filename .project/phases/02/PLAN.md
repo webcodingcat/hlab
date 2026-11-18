@@ -216,13 +216,13 @@ func (e *env) wslKey() string                                           // path 
   - Adjusts: -
   - [ ] `/server_types`, `/locations`, `/images` and `/actions?id=` through `ListRequest` with exactly the parameters of the frozen description (internal/resources/servertypes/servertypes.go, locations/locations.go, images/images.go, actions/actions.go)
 
-- [ ] 02-10 Servers by the conventions
+- [x] 02-10 Servers by the conventions
   - Wave: 3 | Depends on: 02-03, 02-06 | Review: alone
   - Requirements: CAT-04, API-07, API-11 (servers) | Tests: internal/resources/servers/servers_test.go (CAT-04)
   - Reads: REQUIREMENTS SRV, CAT, API; RESEARCH R5 (servers filters and sort)
   - Size: ~200 lines in 1 file
   - Adjusts: -
-  - [ ] List through `ListRequest` (name, label_selector, status, sort id/name/created); `PUT /servers/{id}` (name, labels); label check on create and update; unique name; an `arm` type answers 412 `resource_unavailable` before anything is stored (internal/resources/servers/servers.go)
+  - [x] List through `ListRequest` (name, label_selector, status, sort id/name/created); `PUT /servers/{id}` (name, labels); label check on create and update; unique name; an `arm` type answers 412 `resource_unavailable` before anything is stored (internal/resources/servers/servers.go)
 
 - [ ] 02-11 Server actions, protection, locks, console
   - Wave: 4 | Depends on: 02-10 | Review: alone
