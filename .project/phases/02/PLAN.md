@@ -250,8 +250,9 @@ func (e *env) wslKey() string                                           // path 
   - Reads: REQUIREMENTS API, SRV-22; RESEARCH R1 (`hcloud_placement_group`), R5 (`add_to_placement_group` errors)
   - Size: ~220 lines in 4 files
   - Adjusts: -
-  - [ ] `placement_group` on server create; `add_to_placement_group` (server must be off: `server_not_stopped`; member already: `already_in_placement_group`) and `remove_from_placement_group` as actions; deleting a server leaves its group; the server object shows its group; register the placement groups module in hlabd (internal/resources/servers/servers.go, servers/actions.go, placementgroups/placementgroups.go, internal/cloud/cloud.go)
-  - [ ] Fix whatever the conventions table finds in the modules of this phase (same files, no new behaviour)
+  - [x] `placement_group` on server create; `add_to_placement_group` (server must be off: `server_not_stopped`; member already: `already_in_placement_group`) and `remove_from_placement_group` as actions; deleting a server leaves its group; the server object shows its group; register the placement groups module in hlabd (internal/resources/servers/servers.go, servers/actions.go, placementgroups/placementgroups.go, internal/cloud/cloud.go)
+  - [x] Fix whatever the conventions table finds in the modules of this phase (same files, no new behaviour)
+  - Open: code merged and reviewed; e2e TestE2E/CLI-02/placement_groups waits for the dev cloud (dev-setup rerun for the DACL fix)
 
 - [ ] 02-14 Project deletion with resources
   - Wave: 6 | Depends on: 02-07, 02-13 | Review: alone
