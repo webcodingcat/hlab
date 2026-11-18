@@ -65,29 +65,31 @@ appear here, only names.
   no environment variables with secrets and no `.env.example`.
 - Optional, development and release only: an hcloud context for the real
   API (`https://api.hetzner.cloud/v1`, a read-only token is enough), named
-  `hetzner` by default; another name is set in the non-secret variable
+  `HLab` by default; another name is set in the non-secret variable
   `HLAB_HCLOUD_CONTEXT`. It is always selected by name
-  (`hcloud --context <name>`), never the active context, which points at
-  hlab during tests. The project never reads hcloud's configuration file
-  itself. It is used:
-  - by `task catalog`, which generates the shipped server type, load
-    balancer type, location and pricing catalogs with
-    `hcloud --context <name> api <path>` (raw API responses, all pages);
-  - by the live check of `hlab catalog update` (CAT-03), whose test harness
-    takes the token through hcloud
+  (`hcloud --context <name>`), never the active context, which may point
+  at hlab during tests. The project never reads hcloud's configuration file
+  itself, and hcloud is never required for it:
+  - `task catalog` generates the shipped server type, load balancer type,
+    location and pricing catalogs from the real API (raw API responses, all
+    pages). With a usable context it calls
+    `hcloud --context <name> api <path>`; without one it says why and asks
+    for a token with a hidden prompt, uses it for this run only and calls
+    the API itself.
+  - The live check of `hlab catalog update` (CAT-03) runs unattended, so it
+    never prompts: with a usable context its test harness takes the token
+    through hcloud
     (`hcloud --context <name> config get token --allow-sensitive`) and
     hands it to `hlab catalog update --hetzner-token-env` in the child
-    process only.
+    process only; without one it is skipped with the reason in the test
+    output, and CAT-03 is still tested against a recorded response.
 
-  Calls to hcloud clear `HCLOUD_TOKEN`, `HCLOUD_ENDPOINT` and
-  `HCLOUD_CONTEXT` in the child environment. The context counts as present
-  only if `hcloud context list` names it and
-  `hcloud --context <name> config get endpoint` returns
+  A context is usable only if hcloud is installed, `hcloud context list`
+  names it and `hcloud --context <name> config get endpoint` returns
   `https://api.hetzner.cloud/v1` (a missing context only gives a warning
-  and the default endpoint, so the list is checked first). If it is
-  missing or points elsewhere, `task catalog` fails with that reason, and
-  the live check is skipped with that reason in the test output; CAT-03 is
-  then still tested against a recorded response.
+  and the default endpoint, so the list is checked first). Calls to hcloud
+  clear `HCLOUD_TOKEN`, `HCLOUD_ENDPOINT` and `HCLOUD_CONTEXT` in the child
+  environment.
 - Operation: the product has no dependency on hcloud. `hlab catalog
   update` and the tray ask the user for a real Hetzner token (ARCHITECTURE.md,
   "hlab"); hlab uses it for that one update and never stores it.

@@ -26,16 +26,16 @@ in ARCHITECTURE.md or the plan.
 
 - Type: change
 - Phase: change
-- What: Development and release reach the real API only through a named hcloud context (default `hetzner`, `HLAB_HCLOUD_CONTEXT`; `task catalog` via `hcloud api`, the CAT-03 live check gets the token through hcloud and skips with a reason without a valid context); in operation `hlab catalog update` and the tray ask for the token (`--hetzner-token-env`, hidden prompt, password field), use it once and never store it; `HLAB_HETZNER_TOKEN` and `.env.example` are gone.
+- What: Development and release reach the real API through a named hcloud context (default name in "Default hcloud context name HLab", `HLAB_HCLOUD_CONTEXT`; `task catalog` via `hcloud api`, the CAT-03 live check gets the token through hcloud and skips with a reason without a valid context); in operation `hlab catalog update` and the tray ask for the token (`--hetzner-token-env`, hidden prompt, password field), use it once and never store it; `HLAB_HETZNER_TOKEN` and `.env.example` are gone.
 - Why: the user's hcloud login already holds the token for development, while the product must not depend on hcloud and must not keep a real Hetzner secret.
 - Cost of change: low
 
-## 2026-11-18 Default hcloud context name hetzner
+## 2026-11-18 Default hcloud context name HLab, token prompt without hcloud
 
-- Type: assumption
+- Type: change
 - Phase: change
-- What: The hcloud context for the real API is named `hetzner` unless `HLAB_HCLOUD_CONTEXT` says otherwise.
-- Why: the user had no preference; a short name that differs from the hlab context.
+- What: The hcloud context for the real API is named `HLab` unless `HLAB_HCLOUD_CONTEXT` says otherwise; without hcloud or a usable context `task catalog` asks for the token with a hidden prompt, and the unattended live check is skipped.
+- Why: `HLab` is the user's existing context; development must not be tied to hcloud.
 - Cost of change: low
 
 ## 2026-11-18 Module path and repository in SPEC.md

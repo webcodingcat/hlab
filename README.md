@@ -36,13 +36,13 @@ Setup:
    interactive users start and stop it. Building, starting and testing then
    need no elevated rights. This setup is for development machines only:
    any process of your account can act with system rights through it.
-   `.\scripts\dev-setup.ps1 unregister` removes it. The development service
-   and an installed hlab cannot exist on the same machine.
+   The development service and an installed hlab cannot exist on the same
+   machine.
 3. Optional: create an hcloud context for the real Hetzner API, named
-   `hetzner` (or set `HLAB_HCLOUD_CONTEXT` to its name), with a read-only
-   token: `hcloud context create hetzner`. It is used by `task catalog` and
-   by the live check of `hlab catalog update`; without it that check is
-   skipped.
+   `HLab` (or set `HLAB_HCLOUD_CONTEXT` to its name), with a read-only
+   token: `hcloud context create HLab`. `task catalog` uses it, and asks for
+   a token instead when hcloud or the context is missing. The live check of
+   `hlab catalog update` uses it too and is skipped without it.
 
 Build and test:
 

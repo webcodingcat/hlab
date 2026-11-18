@@ -1,13 +1,13 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Registers or removes the hlab development service on a developer machine.
+    Registers the hlab development service on a developer machine.
 
 .DESCRIPTION
     Run once per machine in an administrator terminal. Afterwards build,
     tests and the dev service run without elevated rights.
 
-    "register" sets up:
+    It sets up:
       - the Windows service "hlab" (manual start, LocalSystem) running
         bin\hlabd.exe of this working copy
       - the service security descriptor of the installer: Interactive Users
@@ -22,28 +22,21 @@
     SECURITY: the service runs a program from a folder the developer account
     can write to, as LocalSystem. Every process of that account can therefore
     act with system rights through the service. Acceptable on a development
-    machine only. "unregister" takes it back.
+    machine only.
 
     The dev service and an installed hlab cannot exist on the same machine.
 
 .EXAMPLE
-    .\scripts\dev-setup.ps1 register
-
-.EXAMPLE
-    .\scripts\dev-setup.ps1 unregister
+    .\scripts\dev-setup.ps1
 #>
 [CmdletBinding()]
-param(
-    [Parameter(Position = 0)]
-    [ValidateSet('register', 'unregister')]
-    [string]$Action = 'register'
-)
+param()
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $ServiceName = 'hlab'
-$DisplayName = 'hlab (development)'
+$DisplayName = 'hlab'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $ExePath = Join-Path $RepoRoot 'bin\hlabd.exe'
 $DataDir = Join-Path $env:ProgramData 'hlab'
@@ -143,22 +136,5 @@ function Register-DevService {
     Write-Host "Data folder: $DataDir"
 }
 
-function Unregister-DevService {
-    $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-    if ($existing) {
-        if ($existing.Status -ne 'Stopped') {
-            Stop-Service -Name $ServiceName
-        }
-        Invoke-Native 'sc.exe' @('delete', $ServiceName)
-        Write-Host "Service '$ServiceName' removed. $DataDir is kept."
-    }
-    else {
-        Write-Host "Service '$ServiceName' is not registered."
-    }
-}
-
 Assert-Elevated
-switch ($Action) {
-    'register' { Register-DevService }
-    'unregister' { Unregister-DevService }
-}
+Register-DevService

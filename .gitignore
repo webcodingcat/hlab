@@ -4,22 +4,13 @@
 
 # Build output
 /bin/
-/dist/
 *.exe
-*.test
-*.out
-coverage.*
 
 # Frontend
 node_modules/
 ui/frontend/dist/
-ui/frontend/.svelte-kit/
 test-results/
 playwright-report/
-
-# Installer build output and caches
-installer/redist/
-.wix/
 
 # Scratch folder of the wcc feasibility check
 .project/research/experiments/
