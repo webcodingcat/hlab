@@ -250,14 +250,14 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [x] `attach` (`assignee {id, type: server}` or deprecated `server`, `automount`), `detach`; actions lock volume and server; lowest free LUN 1..16 (17th: 422 `invalid_input`); 422 `volume_already_attached` (added to the status table) and `invalid_input` for another location; `servers.SetVolumes`; `POST /volumes` with a server attaches and returns `next_actions`; `Contribute` fills `Metadata.Volumes` (internal/resources/volumes/attach.go, volumes.go, internal/api/errors.go)
   - [x] `VolumeHooks` implementation; servers create takes `volumes` and `automount` (checked in the handler, attached after the VM exists, `AutomountVolumes` recorded); server delete calls `DetachAll` before removing the VM; cloud sets the hooks, volumes' `CheckDisk` to the servers module's and `servers.Deps.ExtraDisks` from `volumes.Disks` (internal/resources/servers/servers.go, internal/cloud/cloud.go)
 
-- [ ] 04-08 Servers: backups
+- [x] 04-08 Servers: backups
   - Wave: 6 | Depends on: 04-07, 04-13 | Review: alone
   - Requirements: SRV-13, SRV-14 | Tests: internal/resources/servers/backup_test.go
   - Reads: REQUIREMENTS SRV-13, SRV-14; ARCHITECTURE "scheduler"; RESEARCH R7 (backups); DECISIONS "Automatic daily backups", "Minimal scheduler for status watch and metrics"
   - Size: ~300 lines in 3 files
   - Adjusts: -
-  - [ ] `enable_backup` (`backup_window` "22-02"), `disable_backup` (deletes every backup), `create_image type=backup` (needs backups enabled, else 422 `invalid_input` on `type`; `bound_to`), 7 slots shared, oldest beyond 7 deleted with its file; server delete deletes its backups and keeps snapshots (internal/resources/servers/backup.go, snapshot.go, servers.go)
-  - [ ] Job `backups` every hour on the module's clock: one backup per server with backups enabled per UTC day as action `create_image`, a locked server waits for the next run (internal/resources/servers/backup.go, watch.go)
+  - [x] `enable_backup` (`backup_window` "22-02"), `disable_backup` (deletes every backup), `create_image type=backup` (needs backups enabled, else 422 `invalid_input` on `type`; `bound_to`), 7 slots shared, oldest beyond 7 deleted with its file; server delete deletes its backups and keeps snapshots (internal/resources/servers/backup.go, snapshot.go, servers.go)
+  - [x] Job `backups` every hour on the module's clock: one backup per server with backups enabled per UTC day as action `create_image`, a locked server waits for the next run (internal/resources/servers/backup.go, watch.go)
 
 - [ ] 04-11 Guest volume hooks and automount
   - Wave: 6 | Depends on: 04-03, 04-13 | Review: alone
