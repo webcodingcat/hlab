@@ -246,14 +246,14 @@ func ServersDeps(t *testing.T, cat *catalog.Catalog, p platform.Platform) server
   - Adjusts: -
   - [x] `change_type`: `server_not_stopped` unless off; `invalid_server_type` for an unknown, deprecated or arm type or a disk below `primary_disk_size`; resource check (cores, RAM, disk growth with `upgrade_disk`); status migrating, `SetVM`, `ResizeDisk` and new `primary_disk_size` with `upgrade_disk`, server type stored, power on, running (internal/resources/servers/changetype.go, servers.go)
 
-- [ ] 03-13 Metadata document and reset password
+- [x] 03-13 Metadata document and reset password
   - Wave: 8 | Depends on: 03-04, 03-12 | Review: alone | e2e
   - Requirements: META-01, SRV-10 | Tests: internal/resources/servers/servers_test.go (SRV-10), test/e2e/metadata_test.go (META-01, META-01/spoof), test/e2e/server_test.go (SRV-10)
   - Reads: REQUIREMENTS META-01, SRV-10; ARCHITECTURE "hlab-agent" (Metadata, PasswordReset); RESEARCH R3, R4 (reset_password); CONTEXT.md reset_password line
   - Size: ~300 lines in 4 files
   - Adjusts: -
-  - [ ] `Contribute` adds one `Metadata` per server with a public IPv4 (hostname, region = network zone, availability zone `<location>-dc<n>` from the catalog, keys, user_data, pending reset) (internal/resources/servers/servers.go)
-  - [ ] `reset_password`: 409 `conflict` unless running; new password, hash into `_hlab.PasswordReset`, push, poll `Deps.AgentStatus` each second until its ID is confirmed (success, reset cleared, push) or `ResetTimeout` (`server_error`, reset cleared); returns `root_password` (internal/resources/servers/password.go); cloud wires `AgentStatus` (internal/cloud/cloud.go)
+  - [x] `Contribute` adds one `Metadata` per server with a public IPv4 (hostname, region = network zone, availability zone `<location>-dc<n>` from the catalog, keys, user_data, pending reset) (internal/resources/servers/servers.go)
+  - [x] `reset_password`: 409 `conflict` unless running; new password, hash into `_hlab.PasswordReset`, push, poll `Deps.AgentStatus` each second until its ID is confirmed (success, reset cleared, push) or `ResetTimeout` (`server_error`, reset cleared); returns `root_password` (internal/resources/servers/password.go); cloud wires `AgentStatus` (internal/cloud/cloud.go)
 
 - [ ] 03-14 Metrics endpoint and sampling
   - Wave: 9 | Depends on: 03-07, 03-13 | Review: alone | e2e
