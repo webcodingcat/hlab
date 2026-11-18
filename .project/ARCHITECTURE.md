@@ -129,7 +129,7 @@ Inside `hlabd` (Go packages under `internal/`):
 #### actions
 
 - Purpose: Hetzner actions, resource locks and the work queue.
-- Interface: `actions.Start(tx, command string, resources []Ref) (*Action,
+- Interface: `actions.Start(tx, projectID int64, command string, resources []Ref) (*Action,
   error)` returns `locked` if a referenced resource has a running action
   that locks it; `actions.Run(id, func(ctx, progress func(int)) error)` runs
   the work in a worker pool and sets `success` or `error` with Hetzner's
