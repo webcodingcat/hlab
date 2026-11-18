@@ -380,11 +380,21 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		labels = map[string]string{}
 	}
 	start := body.StartAfterCreate == nil || *body.StartAfterCreate
+	stor := api.StoreFrom(req.Context())
+	// A server created without starting holds no RAM until poweron.
+	var ramMB int64
+	if start {
+		ramMB = int64(typ.Memory * 1024)
+	}
+	if err := m.checkResources(req.Context(), stor, typ.Cores, ramMB, int64(typ.Disk)<<30); err != nil {
+		api.Fail(w, err)
+		return
+	}
 
 	var rec Record
 	var shown Server
 	var action *actions.Action
-	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
+	err := stor.Tx(func(tx store.Tx) error {
 		if err := checkName(tx, p.ID, body.Name, 0); err != nil {
 			return err
 		}
@@ -487,11 +497,14 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	stor := api.StoreFrom(req.Context())
 	id := rec.ID
 	acts.Run(action.ID, func(ctx context.Context, progress func(int)) error {
 		progress(10)
-		err := m.reconcile(ctx, stor, id)
+		// The new server is stored now, so its disk counts as growth.
+		err := m.checkResources(ctx, stor, typ.Cores, ramMB, 0)
+		if err == nil {
+			err = m.reconcile(ctx, stor, id)
+		}
 		final := StatusOff
 		if err == nil && start {
 			err = m.powerOn(ctx, stor, id)
