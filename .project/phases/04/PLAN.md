@@ -277,13 +277,13 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [x] `enable_rescue` (`type` linux64, `ssh_keys` IDs) returns `root_password`, no reboot: `EnsureRescue`, `CreateChildDisk` at LUN 63, rescue seed in DVD slot 0 (the server's instance-id and network-config, the rescue keys and password hash, no user_data), LUN 63 first in the boot order; `disable_rescue` restores boot order and the server's seed at once (internal/resources/servers/rescue.go, servers.go)
   - [x] Consumption: a poweron, reset or reboot hlab drives while rescue is enabled boots it and then sets `rescue_enabled` false, boot order LUN 0 first and the server's seed back; the job of the status watch disables a rescue unused for 60 min; the rescue disk is detached and deleted at the next hlab-driven boot without rescue or when the VM is seen off; delete and rebuild remove it (internal/resources/servers/rescue.go, power.go, watch.go, rebuild.go)
 
-- [ ] 04-10 Servers: ISOs
+- [x] 04-10 Servers: ISOs
   - Wave: 8 | Depends on: 04-04, 04-05, 04-09 | Review: alone
   - Requirements: SRV-15, CAT-08 | Tests: internal/resources/servers/iso_test.go, test/e2e/iso_test.go
   - Reads: REQUIREMENTS SRV-15, CAT-08; RESEARCH R5, R6 (attach_iso); DECISIONS "Q5 SRV-15 proved by SSH into the live ISO"
   - Size: ~180 lines in 3 files
   - Adjusts: -
-  - [ ] `attach_iso` (`iso` by name or ID; unknown or deprecated: 422 `invalid_input`): `EnsureISO` inside the action, `SetDVD` slot 1, boot order DVD slot 1 then LUN 0, server `iso` object; replaces an attached ISO; `detach_iso` ejects and restores disk-first; a server without ISO answers `detach_iso` with success and no change; rescue boot order keeps LUN 63 first (internal/resources/servers/iso.go, servers.go, reconcile.go)
+  - [x] `attach_iso` (`iso` by name or ID; unknown or deprecated: 422 `invalid_input`): `EnsureISO` inside the action, `SetDVD` slot 1, boot order DVD slot 1 then LUN 0, server `iso` object; replaces an attached ISO; `detach_iso` ejects and restores disk-first; a server without ISO answers `detach_iso` with success and no change; rescue boot order keeps LUN 63 first (internal/resources/servers/iso.go, servers.go, reconcile.go)
 
 - [ ] 04-14 Documentation
   - Wave: 9 | Depends on: 04-10 | Review: alone
