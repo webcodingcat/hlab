@@ -27,6 +27,26 @@ read and write the settings file.
                                      guest VMs (cidata ISO) <-----+ (port ACLs)
 ```
 
+## Profiles
+
+Every binary is built for one profile, set at link time
+(`internal/profile`, `-X ...profile.Name=release|dev`): `task build` builds
+`dev`, the release build `release`. The profile gives every name that could
+collide on one machine; this document writes the `release` names.
+
+| | `release` | `dev` |
+|---|---|---|
+| Service | `hlab` | `hlab-dev` |
+| Management pipe | `\\.\pipe\hlab` | `\\.\pipe\hlab-dev` |
+| Data folder (`%ProgramData%\...`) | `hlab` | `hlab-dev` |
+| Shipped catalogs | `%ProgramFiles%\hlab\catalog` | `catalog\` of the working copy (next to `bin\`) |
+| Switch, VM name prefix, NAT name, NRPT comment, firewall rule group | `hlab` | `hlab-dev` |
+
+Both profiles use the same public range default, addresses and
+`api.hetzner.internal`, so only one cloud runs at a time: at start,
+`hostnet.Check` reports `other_instance_running` (fatal) when the service of
+the other profile runs. Both may be installed side by side.
+
 ## Components
 
 ### hlabd (Windows service)
@@ -213,7 +233,7 @@ Inside `hlabd` (Go packages under `internal/`):
       BaseZones     []string       // "hetzner.internal", reverse zones of PublicRange
   }
   type Problem struct {
-      Code    string // "range_collision", "winnat_exists", "wsl_mirrored", "wsl_virtioproxy", "wsl_dns_tunneling_off", "hyperv_missing"
+      Code    string // "range_collision", "winnat_exists", "other_instance_running", "wsl_mirrored", "wsl_virtioproxy", "wsl_dns_tunneling_off", "hyperv_missing"
       Message string // English, shown as is
       Fatal   bool   // true: the cloud does not start
   }
@@ -221,8 +241,16 @@ Inside `hlabd` (Go packages under `internal/`):
   ```
 
   Every object hostnet creates is tagged (NRPT rule `Comment` = `hlab`, NAT
-  name `hlab`, route via the hlab adapter) so `Down` and the uninstaller
-  find all of them without the state file.
+  name `hlab`, firewall rule group `hlab`, route via the hlab adapter) so
+  `Down` and the uninstaller find all of them without the state file.
+  Before changing a host setting it does not own (IPv4 forwarding on the
+  WSL and hlab adapters), hostnet writes the previous value to
+  `<data folder root>\hostnet-restore.json`; `Up`, `Down` and
+  `hlabd uninstall-cleanup` first restore what that file records and then
+  delete it, so a crash leaves nothing changed after the next start.
+  `Up` also returns the host's DNS servers (those of adapters with a
+  default route, without the hlab, WSL and loopback adapters) for the agent
+  document.
 - Depends on: Windows networking (see SPEC.md).
 
 #### agent client
@@ -425,6 +453,7 @@ Errors: `{"error":{"code":"...","message":"..."}}` with codes
       PTR          map[netip.Addr]string
       Metadata     []Metadata
       API          APIProxy              // listen 198.19.0.1:80, backend 198.19.0.2:8780
+      Upstream     []netip.AddrPort      // DNS forwarders: the host's DNS servers, else 1.1.1.1:53, 9.9.9.9:53
   }
 
   type Server struct {
@@ -565,7 +594,15 @@ All addresses below derive from the configured public range
   proxies port 80 to `198.19.0.2:8780`, so hlabd never needs port 80 on the
   host.
 - Servers get public IPv4 addresses from `.4` upward as `/32` with on-link
-  gateway `172.31.1.1`. The appliance routes each `/32` to the server's
+  gateway `172.31.1.1`. Allocation continues after the last address handed
+  out (counter in `kv`) and wraps to `.4` only at the end of the range,
+  skipping addresses in use, so a freed address is not reused at once (SSH
+  host key conflicts).
+- hlabd listens on `198.19.0.2:8780` only; one inbound Windows Firewall rule
+  (group `hlab`) allows TCP 8780 on `vEthernet (hlab)` from `198.19.0.1`
+  only. Nothing listens on the host's port 80.
+- The agent's DNS server answers hlab zones itself and forwards everything
+  else to `Config.Upstream`. The appliance routes each `/32` to the server's
   adapter. Floating IPs are `/32` routes to the server's public IPv4.
 - Port isolation on the public segment by private VLAN: the appliance's
   public adapter is promiscuous (primary VLAN 4094, secondary 4093), the

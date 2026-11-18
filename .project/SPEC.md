@@ -113,9 +113,9 @@ appear here, only names.
     to start and stop the service and to use the management pipe.
   - Development: once per machine, `/wcc:prepare` asks the user to run
     `scripts/dev-setup.ps1` in an elevated terminal. It runs `hlabd install
-    --dev`, which registers the service `hlab` with `bin\hlabd.exe` of the
-    working copy and the same security descriptor and ACLs as the
-    installer. After that, phases build, start and stop the dev service and
+    --dev`, which registers the service `hlab-dev` (profile `dev`, see
+    ARCHITECTURE.md "Profiles") with `bin\hlabd.exe` of the working copy and
+    the same security descriptor and ACLs as the installer. After that, phases build, start and stop the dev service and
     run all tests **without** elevated rights; Claude Code is not started
     elevated. Until phase 01 has built `hlabd install`, the script does the
     same with `sc.exe` and `icacls`.
@@ -125,8 +125,11 @@ appear here, only names.
   - A dev service that runs a binary from a user-writable folder as SYSTEM
     is acceptable only on a development machine; the developer guide says
     so.
-- The dev service and an installed hlab cannot exist on the same machine at
-  the same time (same service name, switch and addresses).
+- The dev service (profile `dev`) and an installed hlab (profile `release`)
+  may be installed on the same machine; their names, folders and host
+  objects differ (ARCHITECTURE.md "Profiles"). Only one of their clouds runs
+  at a time: each refuses to start while the other runs, and the end-to-end
+  harness refuses to run while the release cloud runs.
 
 ## Documentation
 

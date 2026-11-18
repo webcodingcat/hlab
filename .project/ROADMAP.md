@@ -19,7 +19,7 @@
       ARCHITECTURE.md, no logic), so later plans build in parallel against them.
       Requirements: API-01, API-02, API-10, PROJ-01, PROJ-02, PROJ-05,
       CAT-01, CAT-06, CAT-07, SRV-01, SRV-03, SRV-04, SRV-05, SRV-06,
-      SRV-16, SRV-19, LIFE-01, LIFE-06.
+      SRV-16, SRV-19, LIFE-01, LIFE-06, LIFE-10.
       Success criteria:
       1. `hlab cloud start` as a user without administrator rights starts the cloud
          without an admin prompt; `hlab cloud stop` stops it.

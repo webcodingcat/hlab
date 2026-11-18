@@ -109,4 +109,4 @@ All commands run from the repository root, without elevated rights.
   Ansible in WSL2): `task e2e`; filter by test name with
   `task e2e -- -run <regexp>`, for example `task e2e -- -run 'TestE2E/SRV-01'`.
 - Once per machine, elevated, by the user only: `scripts\dev-setup.ps1`
-  registers the dev service `hlab` running `bin\hlabd.exe`.
+  registers the dev service `hlab-dev` running `bin\hlabd.exe`.

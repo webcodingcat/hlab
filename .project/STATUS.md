@@ -1,4 +1,4 @@
-STATUS: READY
+STATUS: IN_PROGRESS
 
 <!-- Allowed values: IDEA, IDEA_DONE, SPEC_REVIEW, READY, IN_PROGRESS, MANUAL_CHECK, BLOCKED, DONE -->
 
@@ -6,11 +6,11 @@ STATUS: READY
 
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
-- Milestone: -
-- Phase: -
-- Base branch: -
+- Milestone: 1
+- Phase: 01 Walking skeleton
+- Base branch: main
 - Last done: spec approved by the user (2026-11-18)
-- Next: /wcc:prepare, then /wcc:phase
+- Next: phase 01 runs on branch wcc/phase-01
 
 ## Open manual checks
 

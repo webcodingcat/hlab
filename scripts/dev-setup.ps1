@@ -8,13 +8,16 @@
     tests and the dev service run without elevated rights.
 
     It sets up:
-      - the Windows service "hlab" (manual start, LocalSystem) running
-        bin\hlabd.exe of this working copy
+      - the Windows service "hlab-dev" (manual start, LocalSystem) running
+        bin\hlabd.exe of this working copy (profile "dev")
       - the service security descriptor of the installer: Interactive Users
         may query, start and stop the service, never change its configuration
       - the pre-shutdown timeout of 180 seconds
-      - the folder %ProgramData%\hlab and settings.toml in it, which
+      - the folder %ProgramData%\hlab-dev and settings.toml in it, which
         Interactive Users may modify
+      - the removal of an older dev service named "hlab", but only if it
+        runs bin\hlabd.exe of this working copy (an installed hlab is never
+        touched)
 
     Until hlabd implements "hlabd install --dev" (phase 01), this script does
     the same with sc.exe and icacls.
@@ -24,7 +27,8 @@
     act with system rights through the service. Acceptable on a development
     machine only.
 
-    The dev service and an installed hlab cannot exist on the same machine.
+    The dev service and an installed hlab (service "hlab") may both be
+    installed; only one of their clouds runs at a time.
 
 .EXAMPLE
     .\scripts\dev-setup.ps1
@@ -35,11 +39,12 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$ServiceName = 'hlab'
-$DisplayName = 'hlab'
+$ServiceName = 'hlab-dev'
+$DisplayName = 'hlab (dev)'
+$LegacyServiceName = 'hlab'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $ExePath = Join-Path $RepoRoot 'bin\hlabd.exe'
-$DataDir = Join-Path $env:ProgramData 'hlab'
+$DataDir = Join-Path $env:ProgramData 'hlab-dev'
 $SettingsFile = Join-Path $DataDir 'settings.toml'
 $PreshutdownTimeoutMs = 180000
 # Default service rights, with Interactive Users (IU) widened to query (LC and
@@ -136,5 +141,26 @@ function Register-DevService {
     Write-Host "Data folder: $DataDir"
 }
 
+function Remove-LegacyDevService {
+    # Before the release and dev profiles existed, the dev service was named
+    # "hlab", the name of the installed product. Remove it only if it runs
+    # this working copy's binary.
+    $legacy = Get-CimInstance -ClassName Win32_Service -Filter "Name='$LegacyServiceName'"
+    if (-not $legacy) {
+        return
+    }
+    $legacyPath = $legacy.PathName.Trim('"')
+    if ($legacyPath -ne $ExePath) {
+        Write-Host "Service '$LegacyServiceName' runs $legacyPath, not this working copy; left as it is."
+        return
+    }
+    if ($legacy.State -ne 'Stopped') {
+        throw "The old dev service '$LegacyServiceName' is $($legacy.State). Stop it first and run this script again."
+    }
+    Invoke-Native 'sc.exe' @('delete', $LegacyServiceName)
+    Write-Host "Old dev service '$LegacyServiceName' removed."
+}
+
 Assert-Elevated
+Remove-LegacyDevService
 Register-DevService

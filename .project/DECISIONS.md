@@ -22,6 +22,54 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Release and dev profile side by side
+
+- Type: change
+- Phase: 01 (discuss)
+- What: Binaries carry a link-time profile `release` or `dev` that sets service, pipe, data folder, catalog folder, switch, VM prefix and host-object tags (`hlab` / `hlab-dev`); both may be installed, only one cloud runs (`other_instance_running`, LIFE-10); the e2e harness refuses to run while the release cloud runs.
+- Why: the user develops and uses hlab on the same host; a separate running dev cloud would need a second range, API name and a shared WinNAT, which Windows limits to one.
+- Cost of change: high
+
+## 2026-11-18 Public IPv4 allocation continues after the last address
+
+- Type: decision
+- Phase: 01 (discuss)
+- What: Public IPv4s are handed out after the last one given (counter in `kv`), wrapping to `.4` only at the end of the range and skipping used ones.
+- Why: reusing a freed address at once causes SSH host key conflicts when servers are deleted and recreated (user's choice).
+- Cost of change: low
+
+## 2026-11-18 Appliance DNS forwards to the host's DNS servers
+
+- Type: decision
+- Phase: 01 (discuss)
+- What: hlabd collects the host's DNS servers at cloud start and passes them as `Upstream` in the agent document; without any, the agent forwards to 1.1.1.1 and 9.9.9.9.
+- Why: Windows has no resolver on port 53 the appliance could forward to; the host's servers keep LAN and VPN names working (user's choice).
+- Cost of change: low
+
+## 2026-11-18 Firewall rule for the API port
+
+- Type: decision
+- Phase: 01 (discuss)
+- What: hostnet adds one inbound Windows Firewall rule (group `hlab`): TCP 8780 on `vEthernet (hlab)` from 198.19.0.1 only; `Down` and the uninstaller remove it.
+- Why: the appliance's API proxy must reach hlabd, and the host must expose nothing else.
+- Cost of change: low
+
+## 2026-11-18 Host settings restored after a crash
+
+- Type: decision
+- Phase: 01 (discuss)
+- What: hostnet records previous values of settings it does not own (IPv4 forwarding on the WSL and hlab adapters) in `hostnet-restore.json` before changing them, and restores them at the next `Up`, `Down` or uninstall-cleanup.
+- Why: a crash of hlabd must not leave the WSL adapter forwarding (user's wish).
+- Cost of change: low
+
+## 2026-11-18 Unit tests fail without the cached OpenAPI description
+
+- Type: decision
+- Phase: 01 (discuss)
+- What: when the frozen OpenAPI description is missing from the cache, the API tests fail with "run `task openapi`" instead of skipping the validation.
+- Why: a silently skipped API-10 check would pass without proving anything (user's choice).
+- Cost of change: low
+
 ## 2026-11-18 Hetzner token: hcloud context in development, prompt in operation
 
 - Type: change

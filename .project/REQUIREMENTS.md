@@ -173,6 +173,7 @@ resource types.
 - LIFE-07 stopping the cloud removes the host routes, forwarding settings and NRPT rules it added; starting adds them again (goal 4) [e2e]
 - LIFE-08 the state carries a version; an incompatible state is discarded after a warning the user confirms (goal 3) [unit]
 - LIFE-09 the service writes a log with rotation that `hlab logs` shows and follows (goal 3) [unit]
+- LIFE-10 the cloud of one profile (`release` or `dev`) refuses to start while the cloud of the other profile runs, naming it (goal 3) [unit]
 
 ### Tray program (`UI`)
 
@@ -355,6 +356,7 @@ What the target vision in IDEA.md will need, not built yet.
 | LIFE-07 | 09 | |
 | LIFE-08 | 09 | |
 | LIFE-09 | 09 | |
+| LIFE-10 | 01 | |
 | UI-01 | 10 | |
 | UI-02 | 11 | |
 | UI-03 | 10 | |
