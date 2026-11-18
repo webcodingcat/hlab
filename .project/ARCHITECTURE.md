@@ -238,7 +238,7 @@ Inside `hlabd` (Go packages under `internal/`):
   (`Set-VHD -ResetDiskIdentifier`), since copies inherit the parent's.
   VMs are created Gen2, Secure Boot template
   `MicrosoftUEFICertificateAuthority`, static memory, automatic
-  checkpoints off, `AutomaticStartAction Nothing`, `AutomaticStopAction`
+  checkpoints off, checkpoint type Standard, `AutomaticStartAction Nothing`, `AutomaticStopAction`
   matching `stop_behaviour` (Save or ShutDown). The code never parses
   PowerShell text (messages and names are localized); it uses IDs, enums
   and JSON (Shutdown integration service ID
@@ -310,7 +310,7 @@ Inside `hlabd` (Go packages under `internal/`):
   `go-qcow2reader` or raw, to a fixed VHD by appending the footer, then to
   a dynamic VHDX through a `Convert` callback, on Hyper-V
   `hyperv.ConvertToDynamic`, outside the `Platform` interface) and caches; `images.EnsureISO(ctx,
-  isoID)`; `images.EnsureRescue(ctx)`. Snapshots, backups and system
+  name)` (cached as `<data>\isos\<name>`); `images.EnsureRescue(ctx)`. Snapshots, backups and system
   images live as VHDX files in the data folder. The same pipeline creates
   the appliance disk from the Debian 13 `generic` image.
 - Depends on: platform.
@@ -565,6 +565,7 @@ locks a resource of type `project`.
       UserData  string
       PrivateNetworks []MetadataNetwork
       PasswordReset *PasswordReset           // pending root password reset, or nil
+      Volumes   []int64                      // attached volumes with automount
   }
   type MetadataNetwork struct { IP netip.Addr; AliasIPs []netip.Addr; MAC string; NetworkID int64; NetworkName string; Subnet netip.Prefix; Gateway netip.Addr; InterfaceNum int; Network netip.Prefix } // InterfaceNum, Network written only when set
   type PasswordReset struct { ID int64; SHA512Crypt string } // crypt(3) hash, never the clear text
@@ -626,7 +627,7 @@ locks a resource of type `project`.
   closes it on delete; a start fails if the pipe cannot be served, because
   a pipe Hyper-V creates itself is readable by Everyone.
 - Volumes with `automount` are mounted by a `user-data` part merged by
-  cloud-init at creation, or by the udev rule plus a systemd mount unit when
+  cloud-init at creation, or by the udev rule plus the templated unit `hlab-volume@.service` when
   attached later: the unit asks the metadata service `GET /hlab/v1/volumes`
   (the server's attached volumes with `automount`, by ID) and mounts at
   `/mnt/HC_Volume_<id>` with an fstab entry (DECISIONS.md Q4).
@@ -635,8 +636,10 @@ locks a resource of type `project`.
   any image). Enable rescue creates a differencing disk from it at SCSI
   LUN 63 with its own cidata (root password, SSH keys) and puts it first in
   the boot order; the server disk stays at LUN 0 (`/dev/sda`). The rescue
-  disk is discarded when rescue ends (the next boot after
-  `disable_rescue`, or a reset).
+  rescue ends at the first boot hlab drives into it (poweron, reset or
+  reboot; the rescue seed stays 90 s), after 60 minutes without such a
+  boot, or at `disable_rescue`; the rescue disk is detached and deleted at
+  the next hlab-driven boot without rescue or when the VM is seen off.
 
 ### Installer
 
@@ -758,6 +761,7 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 | `%ProgramFiles%\hlab\catalog\server-types.json` | `{"server_types": [...]}` as returned by Hetzner's API | `task catalog` (release) |
 | `%ProgramData%\hlab\catalog\server-types.json` | same; written by `hlab catalog update`, preferred when present | hlabd |
 | `%ProgramFiles%\hlab\catalog\{images,isos,locations,load-balancer-types,pricing}.json` | Hetzner API shapes plus `_hlab.source` (URL, checksum URL, format); locations, load balancer types and pricing from `task catalog`, images and ISOs by hand | release |
+| `%ProgramFiles%\hlab\catalog\appliance-debs.json` | `{"debs":[{"name","urls","sha256"}]}`: Debian packages missing from the appliance image; cached in `<data>\cache\debs\` and put on the appliance cidata as `<name>.deb` | release |
 | `%ProgramData%\hlab\state.db` | SQLite, see "Data schema" | hlabd |
 | `%ProgramData%\hlab\logs\hlabd.log` | JSON lines (`time`, `level`, `msg`, fields), 10 MB x 5 rotated | hlabd |
 | `%ProgramData%\hlab\ca\` | `ca.pem`, `ca.key` (SYSTEM only) | hlabd |
