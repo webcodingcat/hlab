@@ -238,13 +238,13 @@ func ServersDeps(t *testing.T, cat *catalog.Catalog, p platform.Platform) server
   - Adjusts: -
   - [x] `rebuild`: `protected` with rebuild protection, image by name (system images; others `invalid_input`), `user_data` stored or the previous one kept, disk check of 03-08, status rebuilding, hard off, new disk from the image with a new identifier, new seed with same instance-id, MAC and IP, power on, running; `root_password` when the server has no SSH keys (internal/resources/servers/rebuild.go, servers.go)
 
-- [ ] 03-12 Change type
+- [x] 03-12 Change type
   - Wave: 7 | Depends on: 03-11 | Review: alone | e2e
   - Requirements: SRV-09, SRV-20, SRV-18 (wired) | Tests: internal/resources/servers/servers_test.go (SRV-09, SRV-20/change_type, SRV-18/actions), test/e2e/server_test.go (SRV-09)
   - Reads: REQUIREMENTS SRV-09; CONTEXT.md change_type line; RESEARCH R4 (change_type), R5 (growpart)
   - Size: ~240 lines in 2 files
   - Adjusts: -
-  - [ ] `change_type`: `server_not_stopped` unless off; `invalid_server_type` for an unknown, deprecated or arm type or a disk below `primary_disk_size`; resource check (cores, RAM, disk growth with `upgrade_disk`); status migrating, `SetVM`, `ResizeDisk` and new `primary_disk_size` with `upgrade_disk`, server type stored, power on, running (internal/resources/servers/changetype.go, servers.go)
+  - [x] `change_type`: `server_not_stopped` unless off; `invalid_server_type` for an unknown, deprecated or arm type or a disk below `primary_disk_size`; resource check (cores, RAM, disk growth with `upgrade_disk`); status migrating, `SetVM`, `ResizeDisk` and new `primary_disk_size` with `upgrade_disk`, server type stored, power on, running (internal/resources/servers/changetype.go, servers.go)
 
 - [ ] 03-13 Metadata document and reset password
   - Wave: 8 | Depends on: 03-04, 03-12 | Review: alone | e2e
