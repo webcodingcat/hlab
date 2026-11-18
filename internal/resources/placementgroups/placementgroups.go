@@ -76,15 +76,47 @@ func Find(tx store.Tx, projectID int64, ref string) (Group, error) {
 	return Group{}, store.ErrNotFound
 }
 
+// Members maps every member server of projectID's groups to its group.
+// The groups are the only record of membership, so deleting a group
+// leaves no server pointing at it.
+func Members(tx store.Tx, projectID int64) (map[int64]Group, error) {
+	groups, err := store.List[Group](tx, Kind, projectID)
+	if err != nil {
+		return nil, err
+	}
+	out := map[int64]Group{}
+	for _, g := range groups {
+		for _, id := range g.Servers {
+			out[id] = g
+		}
+	}
+	return out, nil
+}
+
+// Of returns the group of projectID that has serverID as a member; ok is
+// false when the server is in none.
+func Of(tx store.Tx, projectID, serverID int64) (g Group, ok bool, err error) {
+	members, err := Members(tx, projectID)
+	if err != nil {
+		return Group{}, false, err
+	}
+	g, ok = members[serverID]
+	return g, ok, nil
+}
+
 // AddServer makes serverID a member of the group groupID of projectID. A
-// full group gives a *api.FieldError placement_error, a member
-// already_in_placement_group, an unknown group store.ErrNotFound.
+// full group gives a *api.FieldError placement_error, a server in any
+// group already_in_placement_group, an unknown group store.ErrNotFound.
 func AddServer(tx store.Tx, projectID, groupID, serverID int64) error {
 	g, err := store.Get[Group](tx, Kind, projectID, groupID)
 	if err != nil {
 		return err
 	}
-	if slices.Contains(g.Servers, serverID) {
+	_, member, err := Of(tx, projectID, serverID)
+	if err != nil {
+		return err
+	}
+	if member {
 		return &api.FieldError{Code: "already_in_placement_group", Message: "the server is already part of a placement group"}
 	}
 	if len(g.Servers) >= MaxServers {

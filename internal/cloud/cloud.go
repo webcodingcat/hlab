@@ -36,6 +36,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/resources/datacenters"
 	imagesres "github.com/webcodingcat/hlab/internal/resources/images"
 	"github.com/webcodingcat/hlab/internal/resources/locations"
+	"github.com/webcodingcat/hlab/internal/resources/placementgroups"
 	"github.com/webcodingcat/hlab/internal/resources/pricing"
 	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/resources/servertypes"
@@ -276,6 +277,7 @@ func (c *Cloud) modules() []resource.Module {
 		pricing.New(c.cat),
 		imagesres.New(c.cat),
 		sshkeys.New(),
+		placementgroups.New(),
 		servers.New(servers.Deps{
 			Catalog:     c.cat,
 			PublicRange: c.set.Network.PublicRange,

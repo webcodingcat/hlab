@@ -24,6 +24,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/ipam"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
+	"github.com/webcodingcat/hlab/internal/resources/placementgroups"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
 	"github.com/webcodingcat/hlab/internal/store"
 )
@@ -83,7 +84,9 @@ type Server struct {
 	Volumes         []int64           `json:"volumes"`
 	LoadBalancers   []int64           `json:"load_balancers"`
 	PrimaryDiskSize int               `json:"primary_disk_size"`
-	PlacementGroup  json.RawMessage   `json:"placement_group"`
+	// PlacementGroup is filled from the groups when a server is shown;
+	// the groups alone record membership.
+	PlacementGroup *placementgroups.Group `json:"placement_group"`
 }
 
 // PublicNet is the public network part of a server.
@@ -159,6 +162,8 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("DELETE /servers/{id}", http.HandlerFunc(m.delete))
 	r.Handle("POST /servers/{id}/actions/change_protection", http.HandlerFunc(m.changeProtection))
 	r.Handle("POST /servers/{id}/actions/request_console", http.HandlerFunc(m.requestConsole))
+	r.Handle("POST /servers/{id}/actions/add_to_placement_group", http.HandlerFunc(m.addToPlacementGroup))
+	r.Handle("POST /servers/{id}/actions/remove_from_placement_group", http.HandlerFunc(m.removeFromPlacementGroup))
 	resactions.RoutesFor(r, "servers", refType)
 }
 
@@ -208,9 +213,24 @@ func SetStatus(tx store.Tx, id int64, status string) error {
 }
 
 func put(tx store.Tx, r Record) error {
+	r.PlacementGroup = nil
 	return store.Put(tx, store.Meta{
 		Kind: Kind, ID: r.ID, ProjectID: r.Hlab.ProjectID, Name: r.Name, Labels: r.Labels, Created: r.Created,
 	}, r)
+}
+
+// show returns the API shape of r with its placement group.
+func show(tx store.Tx, r Record) (Server, error) {
+	g, ok, err := placementgroups.Of(tx, r.Hlab.ProjectID, r.ID)
+	if err != nil {
+		return Server{}, err
+	}
+	s := r.Server
+	s.PlacementGroup = nil
+	if ok {
+		s.PlacementGroup = &g
+	}
+	return s, nil
 }
 
 // checkName refuses an empty name and one another server of the project has.
@@ -243,19 +263,30 @@ var listOptions = api.ListOptions[Server]{
 
 func (m *Module) list(w http.ResponseWriter, req *http.Request) {
 	p, _ := api.ProjectFrom(req.Context())
-	var recs []Record
+	var out []Server
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
-		var err error
-		recs, err = store.List[Record](tx, Kind, p.ID)
-		return err
+		recs, err := store.List[Record](tx, Kind, p.ID)
+		if err != nil {
+			return err
+		}
+		members, err := placementgroups.Members(tx, p.ID)
+		if err != nil {
+			return err
+		}
+		out = make([]Server, 0, len(recs))
+		for _, r := range recs {
+			s := r.Server
+			s.PlacementGroup = nil
+			if g, ok := members[r.ID]; ok {
+				s.PlacementGroup = &g
+			}
+			out = append(out, s)
+		}
+		return nil
 	})
 	if err != nil {
 		api.ServerError(w, err)
 		return
-	}
-	out := make([]Server, 0, len(recs))
-	for _, r := range recs {
-		out = append(out, r.Server)
 	}
 	api.ListRequest(w, req, Kind, out, listOptions)
 }
@@ -266,10 +297,13 @@ func (m *Module) get(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	p, _ := api.ProjectFrom(req.Context())
-	var r Record
+	var s Server
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
-		var err error
-		r, err = store.Get[Record](tx, Kind, p.ID, id)
+		r, err := store.Get[Record](tx, Kind, p.ID, id)
+		if err != nil {
+			return err
+		}
+		s, err = show(tx, r)
 		return err
 	})
 	switch {
@@ -278,7 +312,7 @@ func (m *Module) get(w http.ResponseWriter, req *http.Request) {
 	case err != nil:
 		api.ServerError(w, err)
 	default:
-		api.JSON(w, http.StatusOK, map[string]any{"server": r.Server})
+		api.JSON(w, http.StatusOK, map[string]any{"server": s})
 	}
 }
 
@@ -292,6 +326,7 @@ type createRequest struct {
 	UserData         string            `json:"user_data"`
 	StartAfterCreate *bool             `json:"start_after_create"`
 	Labels           map[string]string `json:"labels"`
+	PlacementGroup   json.RawMessage   `json:"placement_group"`
 }
 
 var errNoAddress = errors.New("no free public IPv4 address")
@@ -315,6 +350,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	start := body.StartAfterCreate == nil || *body.StartAfterCreate
 
 	var rec Record
+	var shown Server
 	var action *actions.Action
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
 		if err := checkName(tx, p.ID, body.Name, 0); err != nil {
@@ -322,6 +358,17 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		}
 		if err := api.CheckLabels(labels); err != nil {
 			return err
+		}
+		var group *placementgroups.Group
+		if ref := refString(body.PlacementGroup); ref != "" {
+			g, err := placementgroups.Find(tx, p.ID, ref)
+			if errors.Is(err, store.ErrNotFound) {
+				return &api.FieldError{Field: "placement_group", Message: "placement group " + ref + " not found"}
+			}
+			if err != nil {
+				return err
+			}
+			group = &g
 		}
 		var keys []string
 		for _, raw := range body.SSHKeys {
@@ -380,6 +427,14 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		if err := put(tx, rec); err != nil {
 			return err
 		}
+		if group != nil {
+			if err := placementgroups.AddServer(tx, p.ID, group.ID, id); err != nil {
+				return err
+			}
+		}
+		if shown, err = show(tx, rec); err != nil {
+			return err
+		}
 		action, err = acts.Start(tx, p.ID, "create_server", []actions.Ref{{ID: id, Type: refType}})
 		return err
 	})
@@ -410,7 +465,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		return err
 	})
 	api.JSON(w, http.StatusCreated, map[string]any{
-		"server":        rec.Server,
+		"server":        shown,
 		"action":        action,
 		"next_actions":  []any{},
 		"root_password": nil,
@@ -490,10 +545,10 @@ func (m *Module) update(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	p, _ := api.ProjectFrom(req.Context())
-	var r Record
+	var s Server
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
-		var err error
-		if r, err = store.Get[Record](tx, Kind, p.ID, id); err != nil {
+		r, err := store.Get[Record](tx, Kind, p.ID, id)
+		if err != nil {
 			return err
 		}
 		if body.Name != nil {
@@ -508,13 +563,17 @@ func (m *Module) update(w http.ResponseWriter, req *http.Request) {
 			}
 			r.Labels = *body.Labels
 		}
-		return put(tx, r)
+		if err := put(tx, r); err != nil {
+			return err
+		}
+		s, err = show(tx, r)
+		return err
 	})
 	if err != nil {
 		api.Fail(w, err)
 		return
 	}
-	api.JSON(w, http.StatusOK, map[string]any{"server": r.Server})
+	api.JSON(w, http.StatusOK, map[string]any{"server": s})
 }
 
 func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
@@ -562,6 +621,9 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 				if err := ipam.Release(tx, a); err != nil {
 					return err
 				}
+			}
+			if err := leaveGroup(tx, r); err != nil {
+				return err
 			}
 			return store.Delete(tx, Kind, r.Hlab.ProjectID, id)
 		})
