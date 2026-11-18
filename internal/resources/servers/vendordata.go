@@ -86,6 +86,19 @@ AccuracySec=1s
 WantedBy=timers.target
 `
 
+// syncService flushes the page cache once cloud-init's final stage has
+// ended, so files written by user_data's runcmd and scripts (which run after
+// the vendor script) survive a hard reset or poweroff soon after the first
+// boot instead of coming back empty.
+const syncService = `[Unit]
+Description=Flush the files of cloud-init's first boot to disk
+After=cloud-final.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sync
+`
+
 // volumeID is the udev helper of the volume rule: it prints the volume ID
 // of the disk named by its argument and fails for other disks. hlab writes
 // the page 83 identifier 484C4142-0000-4000-8000-<id> (DECISIONS "Volume
@@ -270,6 +283,7 @@ func vendorData(rootHash string) string {
 	writeFile(&sh, "/usr/local/sbin/hlab-volume", "0755", volumeHook)
 	writeFile(&sh, "/etc/systemd/system/hlab-volume@.service", "0644", volumeService)
 	writeFile(&sh, "/etc/udev/rules.d/61-hlab-volume.rules", "0644", volumeRule)
+	writeFile(&sh, "/etc/systemd/system/hlab-sync.service", "0644", syncService)
 	sh.WriteString("systemctl daemon-reload\n")
 	sh.WriteString("systemctl enable --now hlab-guest.timer\n")
 	// Disks attached before this script ran get their names now.
@@ -277,10 +291,13 @@ func vendorData(rootHash string) string {
 	sh.WriteString("udevadm trigger --action=change --subsystem-match=block\n")
 	sh.WriteString("udevadm settle || true\n")
 	sh.WriteString("systemctl try-reload-or-restart ssh.service sshd.service || true\n")
-	// poweroff cuts the power: without a sync, the files of the first boot
-	// (SSH host keys, root password, these hooks) can still be only in the
-	// page cache when cloud-init reports done, and come back empty.
-	sh.WriteString("sync\n")
+	// poweroff and reset cut the power: without a sync, the files of the
+	// first boot (SSH host keys, root password, these hooks, user_data's
+	// files) can still be only in the page cache when cloud-init reports
+	// done, and come back empty. user_data's scripts run after this one, so
+	// the sync waits for the end of the final stage; --no-block queues it,
+	// as this script itself runs inside cloud-final.service.
+	sh.WriteString("systemctl start --no-block hlab-sync.service\n")
 
 	var b strings.Builder
 	b.WriteString("Content-Type: multipart/mixed; boundary=\"" + vendorBoundary + "\"\nMIME-Version: 1.0\n\n")
