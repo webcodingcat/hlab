@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -131,9 +130,6 @@ func errorJSON(err error) string {
 	if !errors.As(err, &ae) {
 		ae = &Error{Code: "server_error", Message: err.Error()}
 	}
-	b, merr := json.Marshal(ae)
-	if merr != nil {
-		return fmt.Sprintf(`{"code":"server_error","message":%q}`, err.Error())
-	}
+	b, _ := json.Marshal(ae) // two strings always marshal
 	return string(b)
 }

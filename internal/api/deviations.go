@@ -18,9 +18,5 @@ func Deviations() []Deviation {
 			Endpoint:    "POST /servers",
 			Description: "root_password is always null; password login is not supported yet",
 		},
-		{
-			Endpoint:    "GET /datacenters",
-			Description: "answers 410 Gone like Hetzner since the endpoint was removed",
-		},
 	}
 }
