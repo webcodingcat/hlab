@@ -479,7 +479,51 @@ func projectDelete(c *call) error {
 	if err := c.mgmt(http.MethodDelete, "/projects/"+pathEscape(c.args[0]), nil, &body); err != nil {
 		return err
 	}
+	if err := c.waitAction(body.ActionID, projectDeleteTimeout); err != nil {
+		return fmt.Errorf("deleting project %s failed: %w", c.args[0], err)
+	}
 	return c.out(body, "project "+c.args[0]+" deleted\n")
+}
+
+// projectDeleteTimeout bounds the wait for a project deletion, which
+// deletes VMs and disks one after another.
+const projectDeleteTimeout = 30 * time.Minute
+
+// actionPoll is the interval between two reads of a running action.
+const actionPoll = 200 * time.Millisecond
+
+// waitAction polls the management action id until it is no longer running
+// and returns its error, if any; it gives up after timeout.
+func (c *call) waitAction(id int64, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		var body struct {
+			Action struct {
+				Status string    `json:"status"`
+				Error  *apiError `json:"error"`
+			} `json:"action"`
+		}
+		if err := c.mgmt(http.MethodGet, fmt.Sprintf("/actions/%d", id), nil, &body); err != nil {
+			return err
+		}
+		switch body.Action.Status {
+		case "success":
+			return nil
+		case "error":
+			if body.Action.Error != nil {
+				return body.Action.Error
+			}
+			return errors.New("the action ended with an error")
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("still running after %s (action %d)", timeout, id)
+		}
+		select {
+		case <-c.ctx.Done():
+			return c.ctx.Err()
+		case <-time.After(actionPoll):
+		}
+	}
 }
 
 func tokenCreate(c *call) error {

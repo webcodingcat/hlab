@@ -1,6 +1,6 @@
 // Package mgmt is the management API of hlabd, served over the management
-// pipe under /mgmt/v1: status, projects, tokens and the project proxy to
-// the Hetzner API handlers.
+// pipe under /mgmt/v1: status, projects, tokens, management actions and the
+// project proxy to the Hetzner API handlers.
 package mgmt
 
 import (
@@ -9,14 +9,19 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"maps"
 	"math/big"
 	"net/http"
 	"regexp"
+	"slices"
+	"strconv"
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/api"
+	"github.com/webcodingcat/hlab/internal/resource"
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
@@ -42,6 +47,13 @@ type Deps struct {
 	// API serves the Hetzner API under /v1; the project proxy forwards to it.
 	API    http.Handler
 	Status func() Status
+	// Actions runs project deletions and serves GET /actions/{id}.
+	Actions *actions.Manager
+	// Deleters delete the resources of a deleted project, by store kind.
+	Deleters map[string]resource.Deleter
+	// PushAgent pushes the agent document after a project deletion; nil
+	// pushes nothing.
+	PushAgent func(ctx context.Context) error
 	// UpdateCatalog updates the server type catalog from the real Hetzner
 	// API with hetznerToken, which it must neither store nor log; nil
 	// leaves POST /catalog/update out.
@@ -77,6 +89,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET "+Prefix+"/projects", s.listProjects)
 	mux.HandleFunc("POST "+Prefix+"/projects", s.createProject)
 	mux.HandleFunc("DELETE "+Prefix+"/projects/{name}", s.deleteProject)
+	mux.HandleFunc("GET "+Prefix+"/actions/{id}", s.getAction)
 	mux.HandleFunc("GET "+Prefix+"/projects/{name}/tokens", s.listTokens)
 	mux.HandleFunc("POST "+Prefix+"/projects/{name}/tokens", s.createToken)
 	mux.HandleFunc("DELETE "+Prefix+"/projects/{name}/tokens/{token}", s.deleteToken)
@@ -180,49 +193,106 @@ func (s server) createProject(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusCreated, Project{Name: p.Name, Created: p.Created})
 }
 
-// errHasResources stops the deletion of a project that still has resources.
-var errHasResources = errors.New("project has resources")
+// projectRef is the resource type of a project in the actions of project
+// deletion; a running deletion locks its project.
+const projectRef = "project"
 
-// deleteProject deletes a project without resources and records the
-// deletion as a finished action without a project, whose id it returns.
+// deleteProject revokes the project's tokens at once and starts an action
+// without a project that deletes the project with all its resources.
 func (s server) deleteProject(w http.ResponseWriter, req *http.Request) {
 	name := req.PathValue("name")
-	var actionID int64
+	var p store.Project
+	var action *actions.Action
 	err := s.d.Store.Tx(func(tx store.Tx) error {
-		p, err := store.ProjectByName(tx, name)
+		var err error
+		p, err = store.ProjectByName(tx, name)
 		if err != nil {
 			return err
 		}
-		n, err := store.CountResources(tx, p.ID)
+		action, err = s.d.Actions.Start(tx, 0, "delete_project", []actions.Ref{{ID: p.ID, Type: projectRef}})
 		if err != nil {
 			return err
 		}
-		if n > 0 {
-			return errHasResources
-		}
-		if err := store.DeleteProject(tx, p.ID); err != nil {
+		tokens, err := store.ListTokens(tx, p.ID)
+		if err != nil {
 			return err
 		}
-		now := time.Now().UTC()
-		actionID, err = store.CreateAction(tx, store.Action{
-			Command:   "delete_project",
-			Status:    actions.StatusSuccess,
-			Progress:  100,
-			Started:   now,
-			Finished:  now,
-			Resources: "[]",
-		})
-		return err
+		for _, t := range tokens {
+			if err := store.DeleteToken(tx, p.ID, t.Name); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
-	if errors.Is(err, errHasResources) {
-		writeError(w, http.StatusConflict, "conflict", "project has resources; deleting resources comes in a later version")
+	if errors.Is(err, actions.ErrLocked) {
+		writeError(w, http.StatusConflict, "conflict", "a deletion of project "+name+" is running")
 		return
 	}
 	if err != nil {
 		fail(w, err, "project "+name)
 		return
 	}
-	writeJSON(w, http.StatusAccepted, map[string]int64{"action_id": actionID})
+	s.d.Actions.Run(action.ID, func(ctx context.Context, progress func(int)) error {
+		return s.purge(ctx, p, progress)
+	})
+	writeJSON(w, http.StatusAccepted, map[string]int64{"action_id": action.ID})
+}
+
+// purge deletes every resource of p through its module's Deleter, then the
+// project with the remaining rows, and pushes the agent document. It stops
+// at the first failing Delete and keeps the project.
+func (s server) purge(ctx context.Context, p store.Project, progress func(int)) error {
+	type item struct {
+		kind string
+		id   int64
+	}
+	var items []item
+	err := s.d.Store.Tx(func(tx store.Tx) error {
+		for _, kind := range slices.Sorted(maps.Keys(s.d.Deleters)) {
+			ids, err := store.IDs(tx, kind, p.ID)
+			if err != nil {
+				return err
+			}
+			for _, id := range ids {
+				items = append(items, item{kind, id})
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	for i, it := range items {
+		if err := s.d.Deleters[it.kind].Delete(ctx, it.id); err != nil {
+			return fmt.Errorf("delete %s %d of project %s: %w", it.kind, it.id, p.Name, err)
+		}
+		progress((i + 1) * 90 / len(items))
+	}
+	if err := s.d.Store.Tx(func(tx store.Tx) error { return store.DeleteProject(tx, p.ID) }); err != nil {
+		return err
+	}
+	if s.d.PushAgent != nil {
+		if err := s.d.PushAgent(ctx); err != nil {
+			slog.Warn("push the agent document after deleting a project", "project", p.Name, "err", err)
+		}
+	}
+	slog.Info("project deleted", "project", p.Name, "resources", len(items))
+	return nil
+}
+
+// getAction answers a management action, that is one without a project.
+func (s server) getAction(w http.ResponseWriter, req *http.Request) {
+	id, err := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	if err != nil || id < 1 {
+		writeError(w, http.StatusNotFound, "not_found", "action not found")
+		return
+	}
+	a, err := s.d.Actions.Get(0, id)
+	if err != nil {
+		fail(w, err, "action")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"action": a})
 }
 
 // project looks up the project of the request path and answers not_found

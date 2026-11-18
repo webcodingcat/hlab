@@ -36,9 +36,10 @@ func newHlabWith(t *testing.T, with func(*mgmt.Deps)) *hlab {
 	t.Helper()
 	env := apitest.New(t, apitest.ProbeModule())
 	deps := mgmt.Deps{
-		Store:  env.Store,
-		API:    env.Router,
-		Status: func() mgmt.Status { return mgmt.Status{State: "running"} },
+		Store:   env.Store,
+		API:     env.Router,
+		Status:  func() mgmt.Status { return mgmt.Status{State: "running"} },
+		Actions: env.Actions,
 	}
 	if with != nil {
 		with(&deps)
