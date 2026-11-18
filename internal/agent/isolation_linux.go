@@ -15,13 +15,18 @@ import (
 	"github.com/webcodingcat/hlab/internal/agentapi"
 )
 
+// metadataAddr is the address of the metadata service.
+var metadataAddr = netip.MustParseAddr("169.254.169.254")
+
 // Isolation is the Applier of the isolation backstop in table inet hlab.
 // The private VLAN already keeps guests from talking to each other
 // directly, and guest-to-guest traffic routed by the appliance is
 // legitimate. The backstop drops forwarded IPv4 packets from a known guest
 // MAC whose source address is not one of that guest's addresses (its public
 // IPv4 and the floating IPs assigned to it). Traffic from other MACs (the
-// host, which carries internet and WSL2 traffic) passes. Every apply
+// host, which carries internet and WSL2 traffic) passes. The same check
+// drops TCP to the metadata service (169.254.169.254:80) on the input path,
+// since that service selects the server by source address. Every apply
 // replaces the whole table atomically; other tables are never touched.
 type Isolation struct {
 	Interface string
@@ -84,6 +89,42 @@ func (n *Isolation) Apply(_ context.Context, cfg agentapi.Config) error {
 			&expr.Lookup{SourceRegister: 1, SetName: macSet.Name, SetID: macSet.ID},
 			// The MAC stays in register 1 (32-bit registers 8 and 9, padded);
 			// the address follows in 32-bit register 10.
+			&expr.Payload{DestRegister: 10, Base: expr.PayloadBaseNetworkHeader, Offset: 12, Len: 4},
+			&expr.Lookup{SourceRegister: 1, SetName: pairSet.Name, SetID: pairSet.ID, Invert: true},
+			&expr.Verdict{Kind: expr.VerdictDrop},
+		},
+	})
+
+	// The metadata service answers by source address, so the same binding
+	// holds on its input path:
+	// iifname <iface> meta nfproto ipv4 meta l4proto tcp
+	// ip daddr 169.254.169.254 tcp dport 80 ether saddr @guest_macs
+	// ether saddr . ip saddr != @guest_sources drop
+	input := c.AddChain(&nftables.Chain{
+		Table:    table,
+		Name:     "input",
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookInput,
+		Priority: nftables.ChainPriorityFilter,
+		Policy:   &accept,
+	})
+	c.AddRule(&nftables.Rule{
+		Table: table,
+		Chain: input,
+		Exprs: []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: ifname(n.Interface)},
+			&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV4}},
+			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.IPPROTO_TCP}},
+			&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseNetworkHeader, Offset: 16, Len: 4},
+			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: metadataAddr.AsSlice()},
+			&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2},
+			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{0, 80}},
+			&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseLLHeader, Offset: 6, Len: 6},
+			&expr.Lookup{SourceRegister: 1, SetName: macSet.Name, SetID: macSet.ID},
+			// As in the forward rule: MAC in register 1, address in 10.
 			&expr.Payload{DestRegister: 10, Base: expr.PayloadBaseNetworkHeader, Offset: 12, Len: 4},
 			&expr.Lookup{SourceRegister: 1, SetName: pairSet.Name, SetID: pairSet.ID, Invert: true},
 			&expr.Verdict{Kind: expr.VerdictDrop},

@@ -19,10 +19,12 @@ import (
 	"github.com/webcodingcat/hlab/internal/version"
 )
 
-// listenAddr is the agent interface on the transit address; publicInterface
-// is the appliance adapter on the public segment.
+// listenAddr is the agent interface on the transit address; metadataAddr is
+// the metadata service; publicInterface is the appliance adapter on the
+// public segment.
 const (
 	listenAddr      = "198.19.0.1:9100"
+	metadataAddr    = "169.254.169.254:80"
 	publicInterface = "eth0"
 )
 
@@ -44,10 +46,11 @@ func run() error {
 	proxy := &agent.APIProxy{}
 	dns := &agent.DNS{}
 	defer dns.Close()
+	metadata := agent.NewMetadata()
 	// The network applier adds the addresses the DNS server binds, so it
 	// comes first.
 	a, err := agent.New(bytes.TrimSpace(raw),
-		agent.NewNetwork(publicInterface), agent.NewIsolation(publicInterface), dns, proxy)
+		agent.NewNetwork(publicInterface), agent.NewIsolation(publicInterface), dns, proxy, metadata)
 	if err != nil {
 		return err
 	}
@@ -55,21 +58,33 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// The network applier adds the metadata address with the first
+	// document, so the metadata listener binds before the address exists.
+	mdln, err := listenFreebind(metadataAddr)
+	if err != nil {
+		return fmt.Errorf("metadata service: %w", err)
+	}
+	mdsrv := &http.Server{Handler: metadata, ReadHeaderTimeout: 30 * time.Second}
 	srv := &http.Server{Addr: listenAddr, Handler: a.Handler(), ReadHeaderTimeout: 30 * time.Second}
-	errc := make(chan error, 1)
+	errc := make(chan error, 2)
 	go func() { errc <- srv.ListenAndServe() }()
-	slog.Info("hlab-agent started", "version", version.Version, "listen", listenAddr)
+	go func() { errc <- mdsrv.Serve(mdln) }()
+	slog.Info("hlab-agent started", "version", version.Version, "listen", listenAddr, "metadata", metadataAddr)
 
 	select {
 	case err := <-errc:
+		_ = srv.Close()
+		_ = mdsrv.Close()
 		_ = proxy.Close(context.Background())
 		return err
 	case <-ctx.Done():
 	}
 	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(shutdown); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		slog.Warn("shutdown", "err", err)
+	for _, s := range []*http.Server{srv, mdsrv} {
+		if err := s.Shutdown(shutdown); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Warn("shutdown", "err", err)
+		}
 	}
 	return proxy.Close(shutdown)
 }
