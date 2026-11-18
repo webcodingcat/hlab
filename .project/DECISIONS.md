@@ -689,3 +689,83 @@ in ARCHITECTURE.md or the plan.
 - What: A server fits when its type RAM is at most the host's free physical RAM minus `reserve_ram_mb`, and the remaining growth of all thin disks plus the new disk is at most the free data-folder space minus `reserve_disk_gb`.
 - Why: RAM matches success criterion 4 literally, and disk stays a hard limit although disks are thin.
 - Cost of change: low
+
+## 2026-11-18 reset_password on a stopped server answers 409 conflict
+
+- Type: decision
+- Phase: 03
+- What: `reset_password` on a server that is not running answers 409 `conflict`.
+- Why: the frozen description lists no code for this case.
+- Cost of change: low
+
+## 2026-11-18 platform.Sample only gains counters
+
+- Type: decision
+- Phase: 03
+- What: `platform.Sample` gains disk-op and packet counters; `CPUPercent` stays, computed in hyperv from two reads, and `disk.0` is the sum of all disks of a VM.
+- Why: extends the interface without removing anything.
+- Cost of change: low
+
+## 2026-11-18 Minimal scheduler for status watch and metrics
+
+- Type: decision
+- Phase: 03
+- What: a minimal `internal/scheduler` (Clock, Job, Run) and an optional `resource.Scheduled` interface run the status watch (5 s) and metrics sampling (10 s).
+- Why: the scheduler is already in ARCHITECTURE.md and phase 04 extends it for backups.
+- Cost of change: low
+
+## 2026-11-18 Fake platform replaces NoopMachines in tests
+
+- Type: decision
+- Phase: 03
+- What: `internal/platform/platformtest` and `apitest.ServersDeps` replace NoopMachines/BlockingMachines; five test files change only their constructor.
+- Why: `servers.Machines` goes away with the Reconciler refactor.
+- Cost of change: low
+
+## 2026-11-18 Root password without expiry, root SSH login by drop-in
+
+- Type: decision
+- Phase: 03
+- What: the root password is set with `expire: false`, and a `00-hlab-root.conf` sshd drop-in with `PermitRootLogin yes` plus `ssh_pwauth: true` allows root password login; documented as a deviation.
+- Why: SRV-02's SSH login must work without a forced change; cloud-init alone does not allow root login.
+- Cost of change: low
+
+## 2026-11-18 Guest password hook in python3
+
+- Type: decision
+- Phase: 03
+- What: the guest password hook is a python3 stdlib script run by a 5 s systemd timer.
+- Why: cloud-init guarantees python3, curl is not certain on the Debian images.
+- Cost of change: low
+
+## 2026-11-18 e2e password login through SSH_ASKPASS
+
+- Type: decision
+- Phase: 03
+- What: the e2e harness logs in with a password through OpenSSH `SSH_ASKPASS_REQUIRE=force` and a temporary askpass script; if that fails on Windows OpenSSH, plan 03-10 stops instead of adding `x/crypto/ssh`.
+- Why: no new Go module for a test-only need.
+- Cost of change: low
+
+## 2026-11-18 Metadata service binds IP and MAC on its input path
+
+- Type: decision
+- Phase: 03
+- What: the agent's metadata service on 169.254.169.254:80 applies the IP/MAC binding to its input path, proven by the e2e row META-01/spoof.
+- Why: the metadata carries user_data and password hashes; a spoofing guest must not read them.
+- Cost of change: low
+
+## 2026-11-18 Rebuild from system images only in phase 03
+
+- Type: decision
+- Phase: 03
+- What: rebuild accepts only system images; snapshot and backup images follow in phase 04.
+- Why: images other than system images arrive in phase 04.
+- Cost of change: low
+
+## 2026-11-18 Availability zone in metadata
+
+- Type: decision
+- Phase: 03
+- What: the metadata availability zone is `<location>-dc<n>` from the catalog.
+- Why: matches Hetzner's datacenter naming.
+- Cost of change: low
