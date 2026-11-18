@@ -193,13 +193,13 @@ func ServersDeps(t *testing.T, cat *catalog.Catalog, p platform.Platform) server
   - [ ] `apitest.ServersDeps` replacing `NoopMachines`/`BlockingMachines`; servers and mgmt tests use it (internal/apitest/apitest.go, internal/resources/servers/servers_test.go, internal/mgmt/mgmt_test.go)
   - [ ] Resource tests use it (internal/resources/conventions_test.go, internal/resources/openapi_test.go, internal/resources/placementgroups/placementgroups_test.go); `task e2e -- -run 'TestE2E/SRV-0[1-9]|TestE2E/SRV-16'` passes
 
-- [ ] 03-07 Metrics series
+- [x] 03-07 Metrics series
   - Wave: 2 | Depends on: 03-03 | Review: alone
   - Requirements: SRV-21 | Tests: internal/metrics/metrics_test.go
   - Reads: RESEARCH R2 ("How to use"), R4 (metrics endpoint); CONTEXT.md SRV-21
   - Size: ~280 lines in 1 file
   - Adjusts: -
-  - [ ] `Store` with retention, `ParseQuery`, `Series` with the nine series names, step rules (200 default, 500 max), rates from deltas and counter resets (internal/metrics/metrics.go)
+  - [x] `Store` with retention, `ParseQuery`, `Series` with the nine series names, step rules (200 default, 500 max), rates from deltas and counter resets (internal/metrics/metrics.go)
 
 - [ ] 03-08 Resource limits
   - Wave: 3 | Depends on: 03-06 | Review: alone
