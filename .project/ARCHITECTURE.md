@@ -212,7 +212,7 @@ Inside `hlabd` (Go packages under `internal/`):
       DenyMACs []net.HardwareAddr // other members of the same private network
   }
   type BootDevice struct { Kind string; Slot int } // Kind "disk" (Slot = LUN) or "dvd" (Slot = 0|1)
-  type Sample struct { Time time.Time; CPUPercent float64; DiskReadBytes, DiskWriteBytes, NetRxBytes, NetTxBytes uint64 } // counters cumulative
+  type Sample struct { Time time.Time; CPUPercent float64; DiskReadBytes, DiskWriteBytes, DiskReadOps, DiskWriteOps, NetRxBytes, NetTxBytes, NetRxPackets, NetTxPackets uint64 } // counters cumulative; disks summed over the VM's hard disks; zero while the VM is not running
   type Resources struct { MemoryMB, FreeMemoryMB int64; LogicalCPUs int; FreeDiskBytes int64 }
   ```
 
