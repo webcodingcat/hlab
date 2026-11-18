@@ -237,10 +237,10 @@ func (h *HostNet) WatchWSL(context.Context, func(hostnet.WSLInfo)) {}
 func (h *HostNet) TrustCA(context.Context, []byte, bool) error { return nil }
 
 // DNSServers returns the IPv4 DNS servers of the interfaces with a default
-// route, without vEthernet and loopback adapters.
+// route, without the hlab, WSL and loopback adapters.
 func (h *HostNet) DNSServers(ctx context.Context) ([]netip.Addr, error) {
 	var raw []string
-	if err := h.run(ctx, dnsServersScript(), &raw); err != nil {
+	if err := h.run(ctx, dnsServersScript(alias(h.tag)), &raw); err != nil {
 		return nil, fmt.Errorf("hostnet: DNS servers: %w", err)
 	}
 	var out []netip.Addr

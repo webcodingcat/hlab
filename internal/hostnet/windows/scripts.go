@@ -127,11 +127,11 @@ func downScript(tag, hlabAlias string) string {
 }
 
 // dnsServersScript lists the IPv4 DNS servers of interfaces with a default
-// route, without vEthernet and loopback adapters.
-func dnsServersScript() string {
+// route, without the hlab, WSL and loopback adapters.
+func dnsServersScript(hlabAlias string) string {
 	return script(
 		"$ifs = @(Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ifIndex -Unique)",
-		"$s = @(foreach ($i in $ifs) { Get-DnsClientServerAddress -InterfaceIndex $i -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceAlias -notlike 'vEthernet*' -and $_.InterfaceAlias -notlike 'Loopback*' } | ForEach-Object { $_.ServerAddresses } })",
+		"$s = @(foreach ($i in $ifs) { Get-DnsClientServerAddress -InterfaceIndex $i -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceAlias -ne "+q(hlabAlias)+" -and $_.InterfaceAlias -notlike 'vEthernet (WSL*' -and $_.InterfaceAlias -notlike 'Loopback*' } | ForEach-Object { $_.ServerAddresses } })",
 		"if ($s.Count -gt 0) { ConvertTo-Json -InputObject $s -Compress }",
 	)
 }
