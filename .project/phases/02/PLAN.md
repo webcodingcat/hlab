@@ -163,15 +163,14 @@ func (e *env) wslKey() string                                           // path 
   - [x] `.wslconfig` parser (section `[wsl2]`, `networkingMode`, `dnsTunneling`, case-insensitive) mapped to non-fatal problems; `Check` appends them; new constant (internal/hostnet/hostnet.go, internal/hostnet/windows/wsl.go, hostnet.go)
   - [x] Default `Options.WSLConfig` through `WTSGetActiveConsoleSessionId`, `WTSQueryUserToken`, `GetUserProfileDirectoryW`; no console user means found false; never writes the file (internal/hostnet/windows/wslconfig.go)
 
-- [ ] 02-05 E2E harness: WSL2 distro, OpenTofu and Ansible
+- [x] 02-05 E2E harness: WSL2 distro, OpenTofu and Ansible
   - Wave: 1 | Depends on: - | Review: alone | e2e
   - Requirements: HOST-03, CLI-03 | Tests: test/e2e/wsl_test.go, test/e2e/ansible_test.go
   - Reads: SPEC "Stack" (client versions), "Machine prerequisites"; CONTEXT.md "Corrections" (distro, key); RESEARCH R1, R2; E4
   - Size: ~300 lines in 3 files
   - Adjusts: -
-  - [ ] Distro selection (`HLAB_E2E_WSL_DISTRO`, else the one registered distro whose name starts with `Ubuntu`; fail when none or several), temp key directory in the distro with mode 0600 deleted at teardown, `env.wsl` (test/e2e/main_test.go, test/e2e/clients_test.go)
-  - [ ] Version checks for tofu 1.13.9 and ansible-core 2.22.0 with collection 7.2.0 (fail with a clear message, install nothing); `env.tofu` with plugin cache in the user cache folder, `env.ansible` with `HCLOUD_TOKEN`/`HCLOUD_ENDPOINT` through `WSLENV` (test/e2e/clients_test.go, test/e2e/e2e_test.go)
-  - Open: code merged and reviewed; e2e TestE2E/(HOST-03|CLI-03) waits for the dev cloud (dev-setup rerun for the DACL fix)
+  - [x] Distro selection (`HLAB_E2E_WSL_DISTRO`, else the one registered distro whose name starts with `Ubuntu`; fail when none or several), temp key directory in the distro with mode 0600 deleted at teardown, `env.wsl` (test/e2e/main_test.go, test/e2e/clients_test.go)
+  - [x] Version checks for tofu 1.13.9 and ansible-core 2.22.0 with collection 7.2.0 (fail with a clear message, install nothing); `env.tofu` with plugin cache in the user cache folder, `env.ansible` with `HCLOUD_TOKEN`/`HCLOUD_ENDPOINT` through `WSLENV` (test/e2e/clients_test.go, test/e2e/e2e_test.go)
 
 - [x] 02-03 Catalog with own server types and pricing
   - Wave: 2 | Depends on: 02-01 | Review: alone
@@ -191,7 +190,7 @@ func (e *env) wslKey() string                                           // path 
   - [x] `ListRequest` and `ListOptions`; `api.List` stays for single-page catalog answers until its callers move (internal/api/list.go)
   - [x] `CheckLabels` (internal/api/labels.go); `NameTaken`, `IDs` (internal/store/resources.go)
 
-- [ ] 02-07 Catalog update and token revocation path
+- [x] 02-07 Catalog update and token revocation path
   - Wave: 3 | Depends on: 02-03, 02-05 | Review: alone | e2e
   - Requirements: CAT-03, PROJ-03 | Tests: internal/catalog/update_test.go, internal/cli/cli_test.go (CAT-03, PROJ-03), test/e2e/catalog_test.go
   - Reads: REQUIREMENTS CAT, PROJ; SPEC "Accounts and secrets"; ARCHITECTURE "hlab", "Management API"; RESEARCH R3, R6
@@ -200,16 +199,14 @@ func (e *env) wslKey() string                                           // path 
   - [x] `catalog.Update`: all pages with `per_page=50` until `next_page` is null, Bearer token, atomic write, `ReplaceServerTypes`; old file and types stay on any error; the token is never logged or written (internal/catalog/update.go)
   - [x] `POST /mgmt/v1/catalog/update` and `Deps.UpdateCatalog`, wired in hlabd (internal/mgmt/mgmt.go, internal/cloud/cloud.go)
   - [x] `hlab catalog update [--hetzner-token-env VAR]`: variable, else hidden prompt on a terminal, else exit 2 naming the flag; `IO.Getenv`, `IO.ReadSecret` (internal/cli/cli.go, internal/cli/secret_windows.go, secret_other.go, cmd/hlab/main.go)
-  - Open: code merged and reviewed; e2e TestE2E/CAT-03 waits for the dev cloud (dev-setup rerun for the DACL fix)
 
-- [ ] 02-08 SSH keys complete
+- [x] 02-08 SSH keys complete
   - Wave: 3 | Depends on: 02-05, 02-06 | Review: alone | e2e
   - Requirements: KEY-01 | Tests: internal/resources/sshkeys/sshkeys_test.go, test/e2e/tofu_test.go (CLI-02/ssh_keys)
   - Reads: REQUIREMENTS KEY, API; RESEARCH R1 (`hcloud_ssh_key`), R5 (ssh_keys filters, sort `id`, `name`)
   - Size: ~180 lines in 1 file
   - Adjusts: -
   - [x] List through `ListRequest` (name, fingerprint, label_selector, sort id/name); `PUT /ssh_keys/{id}` (name and labels, each only when present); label check; unique name and fingerprint per project (`uniqueness_error`, field `name` or `public_key`) (internal/resources/sshkeys/sshkeys.go)
-  - Open: code merged and reviewed; e2e TestE2E/CLI-02/ssh_keys waits for the dev cloud (dev-setup rerun for the DACL fix)
 
 - [x] 02-09 Catalog lists by the conventions
   - Wave: 3 | Depends on: 02-03, 02-06 | Review: alone
@@ -245,7 +242,7 @@ func (e *env) wslKey() string                                           // path 
   - Adjusts: -
   - [x] Module: create (type `spread` only, answer with `action: null`), get, list (name, label_selector, type, sort id/name/created), PUT with name or labels alone, delete; `servers` list in the document; `Find`, `AddServer` (11th: 422 `placement_error`), `RemoveServer` (internal/resources/placementgroups/placementgroups.go)
 
-- [ ] 02-13 Servers in placement groups; conventions across resources
+- [x] 02-13 Servers in placement groups; conventions across resources
   - Wave: 5 | Depends on: 02-05, 02-08, 02-09, 02-11, 02-12 | Review: alone | e2e
   - Requirements: SRV-22, API-03, API-04, API-05, API-06, API-07, API-11 | Tests: internal/resources/placementgroups/placementgroups_test.go, internal/resources/conventions_test.go, test/e2e/tofu_test.go (CLI-02/placement_groups)
   - Reads: REQUIREMENTS API, SRV-22; RESEARCH R1 (`hcloud_placement_group`), R5 (`add_to_placement_group` errors)
@@ -253,7 +250,6 @@ func (e *env) wslKey() string                                           // path 
   - Adjusts: -
   - [x] `placement_group` on server create; `add_to_placement_group` (server must be off: `server_not_stopped`; member already: `already_in_placement_group`) and `remove_from_placement_group` as actions; deleting a server leaves its group; the server object shows its group; register the placement groups module in hlabd (internal/resources/servers/servers.go, servers/actions.go, placementgroups/placementgroups.go, internal/cloud/cloud.go)
   - [x] Fix whatever the conventions table finds in the modules of this phase (same files, no new behaviour)
-  - Open: code merged and reviewed; e2e TestE2E/CLI-02/placement_groups waits for the dev cloud (dev-setup rerun for the DACL fix)
 
 - [x] 02-14 Project deletion with resources
   - Wave: 6 | Depends on: 02-07, 02-13 | Review: alone
@@ -265,11 +261,17 @@ func (e *env) wslKey() string                                           // path 
   - [x] `DELETE /projects/{name}`: revoke the tokens in the first transaction, then one action deletes every resource through its module's `Deleter`, then the project with the rest by cascade, pushes the agent document; a failure ends the action with error and keeps the project; a second delete while one runs answers 409; `GET /mgmt/v1/actions/{id}` (internal/mgmt/mgmt.go, internal/cloud/cloud.go)
   - [x] `hlab project delete` waits for the action with a deadline and reports its error (internal/cli/cli.go)
 
-- [ ] 02-15 Documentation
+- [x] 02-15 Documentation
   - Wave: 7 | Depends on: all | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06 | Tests: test/docs/docs_test.go (existing rows)
   - Reads: SPEC "Documentation"; REQUIREMENTS DOC
   - Size: ~250 lines in 6 files
   - Adjusts: -
-  - [ ] commands.md (`catalog update`, `project delete` waiting), configuration.md (`server-types.custom.json` with an example, catalog in the data folder), deviations.md (console, placement groups without physical placement, WSL modes) (docs/user/)
-  - [ ] README (WSL2 prerequisites and detection, endpoint settings for OpenTofu and Ansible); docs/dev/build-and-test.md (`HLAB_E2E_WSL_DISTRO`, tofu and Ansible prerequisites of `task e2e`)
+  - [x] commands.md (`catalog update`, `project delete` waiting), configuration.md (`server-types.custom.json` with an example, catalog in the data folder), deviations.md (console, placement groups without physical placement, WSL modes) (docs/user/)
+  - [x] README (WSL2 prerequisites and detection, endpoint settings for OpenTofu and Ansible); docs/dev/build-and-test.md (`HLAB_E2E_WSL_DISTRO`, tofu and Ansible prerequisites of `task e2e`)
+
+## Close
+
+- Unit suite and lint: `go test -count=1 ./...`, `task lint` (green on dc49a4f).
+- End-to-end selection (e2e rows of the phase plus API-01, whose test changed; product code changed after the first runs): `task e2e -- -run 'TestE2E/^(HOST-03|CLI-02|CLI-03|CAT-03|API-01)$' -v` (green on dc49a4f).
+- Fixes at the close: data folder DACL for Hyper-V (10b8a0c, needed an elevated dev-setup rerun), `public_net` primary IP IDs for hcloud-python and a test decode fix (dc49a4f).

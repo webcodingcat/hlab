@@ -159,7 +159,7 @@ Inside `hlabd` (Go packages under `internal/`):
   that locks it; `actions.Run(id, func(ctx, progress func(int)) error)` runs
   the work in a worker pool and sets `success` or `error` with Hetzner's
   error object. Actions survive a stop: running actions are marked `error`
-  with code `server_error` at the next start. `Manager.ListFor(ref)` lists
+  with code `server_error` at the next start. `Manager.ListFor(projectID, refType, resourceID)` lists
   the actions of one resource (or of a resource type) for the generic
   action endpoints; `ErrProtected` is returned for an action refused by
   `change_protection`. `Manager.WaitIdle(ctx, projectID)` waits until a project

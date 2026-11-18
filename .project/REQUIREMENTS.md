@@ -253,28 +253,28 @@ What the target vision in IDEA.md will need, not built yet.
 |-------------|-------|------|
 | API-01 | 01 | x |
 | API-02 | 01 | x |
-| API-03 | 02 | |
-| API-04 | 02 | |
-| API-05 | 02 | |
-| API-06 | 02 | |
-| API-07 | 02 | |
-| API-08 | 02 | |
-| API-09 | 02 | |
+| API-03 | 02 | x |
+| API-04 | 02 | x |
+| API-05 | 02 | x |
+| API-06 | 02 | x |
+| API-07 | 02 | x |
+| API-08 | 02 | x |
+| API-09 | 02 | x |
 | API-10 | 01 | x |
-| API-11 | 02 | |
-| API-12 | 02 | |
-| API-13 | 02 | |
-| API-14 | 02 | |
+| API-11 | 02 | x |
+| API-12 | 02 | x |
+| API-13 | 02 | x |
+| API-14 | 02 | x |
 | PROJ-01 | 01 | x |
 | PROJ-02 | 01 | x |
-| PROJ-03 | 02 | |
-| PROJ-04 | 02 | |
+| PROJ-03 | 02 | x |
+| PROJ-04 | 02 | x |
 | PROJ-05 | 01 | x |
 | CAT-01 | 01 | x |
-| CAT-02 | 02 | |
-| CAT-03 | 02 | |
-| CAT-04 | 02 | |
-| CAT-05 | 02 | |
+| CAT-02 | 02 | x |
+| CAT-03 | 02 | x |
+| CAT-04 | 02 | x |
+| CAT-05 | 02 | x |
 | CAT-06 | 01 | x |
 | CAT-07 | 01 | x |
 | CAT-08 | 04 | |
@@ -294,13 +294,13 @@ What the target vision in IDEA.md will need, not built yet.
 | SRV-14 | 04 | |
 | SRV-15 | 04 | |
 | SRV-16 | 01 | x |
-| SRV-17 | 02 | |
+| SRV-17 | 02 | x |
 | SRV-18 | 03 | |
 | SRV-19 | 01 | x |
 | SRV-20 | 03 | |
 | SRV-21 | 03 | |
-| SRV-22 | 02 | |
-| KEY-01 | 02 | |
+| SRV-22 | 02 | x |
+| KEY-01 | 02 | x |
 | META-01 | 03 | |
 | NET-01 | 05 | |
 | NET-02 | 05 | |
@@ -345,8 +345,8 @@ What the target vision in IDEA.md will need, not built yet.
 | DNS-05 | 07 | |
 | HOST-01 | 05 | |
 | HOST-02 | 09 | |
-| HOST-03 | 02 | |
-| HOST-04 | 02 | |
+| HOST-03 | 02 | x |
+| HOST-04 | 02 | x |
 | LIFE-01 | 01 | x |
 | LIFE-02 | 09 | |
 | LIFE-03 | 09 | |

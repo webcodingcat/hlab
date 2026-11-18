@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Server public_net carries primary IP IDs
+
+- Type: decision
+- Phase: phase 02
+- What: new servers get `public_net.ipv4.id` and `public_net.ipv6.id` from the `primary_ips` ID sequence (`omitempty`, so older stored servers stay valid).
+- Why: hcloud-python reads these IDs and the Ansible `server_info` module failed without them; phase 05 can turn them into real primary IP records.
+- Cost of change: low
+
 ## 2026-11-18 Project deletion waits for running actions
 
 - Type: decision
