@@ -241,14 +241,14 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [x] `create_image` (type snapshot here; description default, labels): image record `creating`, server locked, `CheckDisk` on the disk file size, `Platform.Snapshot` into `<data>\images\image-<id>.vhdx`, `image_size`, then `available`; a failure removes record and file (internal/resources/servers/snapshot.go)
   - [x] Server create and rebuild accept a snapshot or backup of the project by ID (base = its file, `ImageID`, server `image` = the image object); a type whose disk is below the image's `disk_size` gives 422 `invalid_input` on field `image`/`server_type` (internal/resources/servers/servers.go, rebuild.go, reconcile.go)
 
-- [ ] 04-13 Volumes: attach and detach
+- [x] 04-13 Volumes: attach and detach
   - Wave: 5 | Depends on: 04-03, 04-05, 04-07 | Review: alone
   - Requirements: VOL-05, VOL-02, SRV-18 | Tests: internal/resources/volumes/volumes_test.go
   - Reads: REQUIREMENTS VOL-02, VOL-05; RESEARCH R7 (attach, create with server); CONTEXT "Corrections by the user" (assignee)
   - Size: ~380 lines in 5 files
   - Adjusts: -
-  - [ ] `attach` (`assignee {id, type: server}` or deprecated `server`, `automount`), `detach`; actions lock volume and server; lowest free LUN 1..16 (17th: 422 `invalid_input`); 422 `volume_already_attached` (added to the status table) and `invalid_input` for another location; `servers.SetVolumes`; `POST /volumes` with a server attaches and returns `next_actions`; `Contribute` fills `Metadata.Volumes` (internal/resources/volumes/attach.go, volumes.go, internal/api/errors.go)
-  - [ ] `VolumeHooks` implementation; servers create takes `volumes` and `automount` (checked in the handler, attached after the VM exists, `AutomountVolumes` recorded); server delete calls `DetachAll` before removing the VM; cloud sets the hooks, volumes' `CheckDisk` to the servers module's and `servers.Deps.ExtraDisks` from `volumes.Disks` (internal/resources/servers/servers.go, internal/cloud/cloud.go)
+  - [x] `attach` (`assignee {id, type: server}` or deprecated `server`, `automount`), `detach`; actions lock volume and server; lowest free LUN 1..16 (17th: 422 `invalid_input`); 422 `volume_already_attached` (added to the status table) and `invalid_input` for another location; `servers.SetVolumes`; `POST /volumes` with a server attaches and returns `next_actions`; `Contribute` fills `Metadata.Volumes` (internal/resources/volumes/attach.go, volumes.go, internal/api/errors.go)
+  - [x] `VolumeHooks` implementation; servers create takes `volumes` and `automount` (checked in the handler, attached after the VM exists, `AutomountVolumes` recorded); server delete calls `DetachAll` before removing the VM; cloud sets the hooks, volumes' `CheckDisk` to the servers module's and `servers.Deps.ExtraDisks` from `volumes.Disks` (internal/resources/servers/servers.go, internal/cloud/cloud.go)
 
 - [ ] 04-08 Servers: backups
   - Wave: 6 | Depends on: 04-07, 04-13 | Review: alone
