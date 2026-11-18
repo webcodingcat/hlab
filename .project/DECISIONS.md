@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Project deletion details
+
+- Type: decision
+- Phase: phase 02
+- What: a running deletion locks the project (action resource type `project`), so a second delete gets 409 `conflict`; `hlab project delete` polls every 200 ms for at most 30 minutes; a failed agent push after the deletion only logs a warning; a server being deleted is `deleting` and goes back to `off` if the VM cannot be deleted.
+- Why: reuses the existing lock check, and the next push rebuilds the whole agent document.
+- Cost of change: low
+
 ## 2026-11-18 CAT-03 live check leaves the dev catalog updated
 
 - Type: decision

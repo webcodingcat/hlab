@@ -457,8 +457,10 @@ Errors: `{"error":{"code":"...","message":"..."}}` with codes
 `invalid_input`, `not_found`, `conflict`, `cloud_not_running`,
 `server_error`. The handlers get `mgmt.Deps` with, among others,
 `Actions`, `Deleters` (the modules implementing `resource.Deleter`),
-`UpdateCatalog` (nil leaves the route out) and `ServerTypes` (the count
-returned by the catalog update).
+`UpdateCatalog` (nil leaves the route out), `ServerTypes` (the count
+returned by the catalog update) and `PushAgent` (pushes the agent document
+after a project deletion). A running project deletion is an action that
+locks a resource of type `project`.
 
 ### hlab-agent (appliance)
 
