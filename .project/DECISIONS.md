@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 CAT-03 live check leaves the dev catalog updated
+
+- Type: decision
+- Phase: phase 02
+- What: the CAT-03 e2e live check does not restore the dev profile's `catalog\server-types.json`; after it, the dev cloud serves Hetzner's current server types.
+- Why: the non-elevated test user may only read the protected config root, and a restore endpoint or extra write permission would weaken the product for a test.
+- Cost of change: low
+
 ## 2026-11-18 Catalog update CLI details
 
 - Type: decision
