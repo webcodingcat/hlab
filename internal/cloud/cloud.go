@@ -302,6 +302,10 @@ func (c *Cloud) startJobs(ctx context.Context) {
 	}
 }
 
+// rescueSeedHold covers the first boot of the rescue system up to
+// cloud-init having read its seed.
+const rescueSeedHold = 90 * time.Second
+
 // metricsRetention is how long the samples of the servers' VMs are kept.
 const metricsRetention = 24 * time.Hour
 
@@ -325,7 +329,8 @@ func (c *Cloud) modules() []resource.Module {
 			ReserveDiskGB: int64(c.set.Resources.ReserveDiskGB),
 			VMPrefix:      c.tag,
 		},
-		ExtraDisks: volumeDisks,
+		ExtraDisks:     volumeDisks,
+		RescueSeedHold: rescueSeedHold,
 	})
 	vol := volumes.New(volumes.Deps{
 		Catalog:      c.cat,

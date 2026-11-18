@@ -74,7 +74,7 @@ func testSnapshots(t *testing.T) {
 			t.Errorf("image file %s (snapshot target %s) missing", path, snap.target)
 		}
 
-		p.Fake.FailNext("Snapshot", &platform.Error{Kind: platform.Failed, Op: "Snapshot", Err: errors.New("injected failure")})
+		p.FailNext("Snapshot", &platform.Error{Kind: platform.Failed, Op: "Snapshot", Err: errors.New("injected failure")})
 		failed, act := startCreateImage(t, env, src, nil)
 		if a := env.WaitAction(act); a.Status != "error" {
 			t.Errorf("create_image with a failing Snapshot: action %q, want error", a.Status)
@@ -215,7 +215,7 @@ func (r *recPlatform) AttachDisk(ctx context.Context, vm, path string, lun int) 
 
 func (r *recPlatform) SetDVD(ctx context.Context, vm string, slot int, iso string) error {
 	r.mu.Lock()
-	r.dvds = append(r.dvds, dvdSet{vm: vm, slot: slot, iso: iso, seq: len(r.Fake.Calls())})
+	r.dvds = append(r.dvds, dvdSet{vm: vm, slot: slot, iso: iso, seq: len(r.Calls())})
 	r.mu.Unlock()
 	return r.Fake.SetDVD(ctx, vm, slot, iso)
 }

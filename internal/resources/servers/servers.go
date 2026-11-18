@@ -115,6 +115,10 @@ type Deps struct {
 	// ExtraDisks lists further thin disks for the disk rule (volumes); nil
 	// = none.
 	ExtraDisks func(tx store.Tx) ([]DiskUse, error)
+	// RescueSeedHold is how long the rescue seed stays in the drive after
+	// hlab started the VM into rescue, so the rescue system reads it before
+	// the server's seed returns; 0 = none.
+	RescueSeedHold time.Duration
 }
 
 // Server is a server in Hetzner's API shape.
@@ -292,6 +296,8 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("POST /servers/{id}/actions/create_image", http.HandlerFunc(m.createImage))
 	r.Handle("POST /servers/{id}/actions/enable_backup", http.HandlerFunc(m.enableBackup))
 	r.Handle("POST /servers/{id}/actions/disable_backup", http.HandlerFunc(m.disableBackup))
+	r.Handle("POST /servers/{id}/actions/enable_rescue", http.HandlerFunc(m.enableRescue))
+	r.Handle("POST /servers/{id}/actions/disable_rescue", http.HandlerFunc(m.disableRescue))
 	resactions.RoutesFor(r, "servers", refType)
 }
 

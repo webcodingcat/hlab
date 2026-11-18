@@ -90,19 +90,7 @@ func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) err
 		if err := os.MkdirAll(filepath.Dir(seed), 0o750); err != nil {
 			return err
 		}
-		if err := cidata.BuildFile(cidata.Seed{
-			InstanceID: strconv.FormatInt(id, 10),
-			Hostname:   rec.Name,
-			SSHKeys:    rec.Hlab.SSHKeys,
-			UserData:   seedUserData(rec.Hlab.UserData, rec.Hlab.AutomountVolumes),
-			VendorData: vendorData(rec.Hlab.RootHash),
-			Interfaces: []cidata.Interface{{
-				MAC:         rec.Hlab.MAC,
-				Addresses:   []netip.Prefix{netip.PrefixFrom(ip, 32)},
-				Gateway:     guestGateway,
-				Nameservers: guestNameservers,
-			}},
-		}, seed); err != nil {
+		if err := cidata.BuildFile(m.seed(rec), seed); err != nil {
 			return err
 		}
 	} else if err != nil {
@@ -123,6 +111,23 @@ func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) err
 	}
 	slog.Info("server reconciled", "id", id, "vm", name, "ipv4", ip.String())
 	return nil
+}
+
+// seed is the seed of server rec.
+func (m *Module) seed(rec Record) cidata.Seed {
+	return cidata.Seed{
+		InstanceID: strconv.FormatInt(rec.ID, 10),
+		Hostname:   rec.Name,
+		SSHKeys:    rec.Hlab.SSHKeys,
+		UserData:   seedUserData(rec.Hlab.UserData, rec.Hlab.AutomountVolumes),
+		VendorData: vendorData(rec.Hlab.RootHash),
+		Interfaces: []cidata.Interface{{
+			MAC:         rec.Hlab.MAC,
+			Addresses:   []netip.Prefix{netip.PrefixFrom(rec.IPv4(), 32)},
+			Gateway:     guestGateway,
+			Nameservers: guestNameservers,
+		}},
+	}
 }
 
 // createVM creates the VM with the server's disk, public adapter and seed.
@@ -158,15 +163,16 @@ func (m *Module) vmSpec(name string, id int64, cores int, memoryMB int64) platfo
 	return spec
 }
 
-// deleteMachine turns the VM off, removes it with its disk, seed and
-// folder, and pushes the agent document without the server. Missing parts
-// are skipped, so a half-created server is deleted too.
+// deleteMachine turns the VM off, removes it with its disk, seed, rescue
+// disk, rescue seed and folder, and pushes the agent document without the
+// server. Missing parts are skipped, so a half-created server is deleted
+// too.
 func (m *Module) deleteMachine(ctx context.Context, id int64) error {
 	name := m.vmName(id)
 	if err := m.d.Platform.DeleteVM(ctx, name); err != nil && !isNotFound(err) {
 		return err
 	}
-	for _, p := range []string{m.diskPath(id), m.seedPath(id)} {
+	for _, p := range []string{m.diskPath(id), m.seedPath(id), m.rescueDiskPath(id), m.rescueSeedPath(id)} {
 		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
