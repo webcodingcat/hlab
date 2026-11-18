@@ -105,6 +105,16 @@ func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) err
 		if err := m.createVM(ctx, name, id, typ.Cores, int64(typ.Memory*1024), mac, rec.Hlab.Location); err != nil {
 			return err
 		}
+		// A VM made again keeps the server's ISO.
+		if rec.Hlab.ISO != "" {
+			iso, err := m.d.Images.EnsureISO(ctx, rec.Hlab.ISO)
+			if err != nil {
+				return err
+			}
+			if err := m.setISO(ctx, stor, id, iso, rec.Hlab.ISO, rec.ISO); err != nil {
+				return err
+			}
+		}
 	}
 	if err := m.d.PushAgent(ctx); err != nil {
 		return err
@@ -145,7 +155,7 @@ func (m *Module) createVM(ctx context.Context, name string, id int64, cores int,
 	if err := p.SetDVD(ctx, name, 0, m.seedPath(id)); err != nil {
 		return err
 	}
-	return p.SetBootOrder(ctx, name, []platform.BootDevice{{Kind: "disk", Slot: 0}})
+	return p.SetBootOrder(ctx, name, bootOrder(false, false))
 }
 
 // vmSpec is the VM specification of server id with cores and memoryMB.

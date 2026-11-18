@@ -298,6 +298,8 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("POST /servers/{id}/actions/disable_backup", http.HandlerFunc(m.disableBackup))
 	r.Handle("POST /servers/{id}/actions/enable_rescue", http.HandlerFunc(m.enableRescue))
 	r.Handle("POST /servers/{id}/actions/disable_rescue", http.HandlerFunc(m.disableRescue))
+	r.Handle("POST /servers/{id}/actions/attach_iso", http.HandlerFunc(m.attachISO))
+	r.Handle("POST /servers/{id}/actions/detach_iso", http.HandlerFunc(m.detachISO))
 	resactions.RoutesFor(r, "servers", refType)
 }
 
