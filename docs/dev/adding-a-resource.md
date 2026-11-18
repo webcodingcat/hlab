@@ -93,15 +93,31 @@ func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error
 hlabd rebuilds the whole agent document from the store before every push
 and calls `Contribute` on each module; add your part to `doc`. After a
 change that touches the network, the work calls the cloud's `PushAgent`
-(see how `internal/cloud/servers.go` does it for servers).
+(the servers receive it as `PushAgent` in their `servers.Deps`).
 
-## 4. Register the module
+## 4. Run periodic work (optional)
+
+A module with work that repeats while the cloud runs (polling VM states,
+sampling) implements `resource.Scheduled`:
+
+```go
+func (m *Module) Jobs() []scheduler.Job {
+	return []scheduler.Job{{Name: "widgets watch", Every: 5 * time.Second, Run: m.watch}}
+}
+```
+
+[internal/scheduler](../../internal/scheduler) runs each job once per
+interval after the API is up, never two runs of one job at once, and
+cancels the context at cloud stop. Take the time from a
+`scheduler.Clock` in your dependencies, so tests can drive it.
+
+## 5. Register the module
 
 Add it to `Cloud.modules()` in
 [internal/cloud/cloud.go](../../internal/cloud/cloud.go). The router mounts
 every module of that list.
 
-## 5. Test it
+## 6. Test it
 
 Test with [internal/apitest](../../internal/apitest): `apitest.New(t,
 widgets.New())` runs the handlers in process with a temporary store and a
@@ -123,7 +139,7 @@ it has finished.
   table.
 - Behaviour that needs real Hyper-V goes into [test/e2e](../../test/e2e).
 
-## 6. Document deviations
+## 7. Document deviations
 
 When the resource behaves differently from Hetzner, add an entry to
 `api.Deviations()` in [internal/api/deviations.go](../../internal/api/deviations.go)
