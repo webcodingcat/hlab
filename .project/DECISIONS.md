@@ -673,3 +673,11 @@ in ARCHITECTURE.md or the plan.
 - What: The user installs hcloud, OpenTofu and Ansible (in WSL2) themselves; updates come via a new installer without automatic update check; hlab sends no telemetry.
 - Why: keeps v1 small; hlab must not depend on outside services.
 - Cost of change: low
+
+## 2026-11-18 Upgrade to wcc 0.32.2
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.32.0 to 0.32.2: CLAUDE.md test rule on shared behaviour takes the template wording; version line updated
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
