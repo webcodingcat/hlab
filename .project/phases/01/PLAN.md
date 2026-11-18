@@ -75,12 +75,12 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
   - Size: ~300 lines in 3 files
   - [x] `internal/actions`: complete the first manager from 01-04 (project_id, locks, `locked`); `internal/resources/actions` (`GET /actions` with repeated `id` and `sort` as hcloud polls, `/actions/{id}`)
 
-- [ ] 01-06 Catalog and catalog resources
+- [x] 01-06 Catalog and catalog resources
   - Wave: 3 | Depends on: 01-04 | Review: alone
   - Requirements: CAT-01, CAT-06 | Tests: internal/resources/locations/locations_test.go, internal/resources/images/images_test.go
   - Size: ~400 lines in 8 files (generated JSON not counted)
-  - [ ] `task catalog` (tool in `tools/catalog`, hcloud context or hidden prompt, SPEC.md "Accounts and secrets"); generate `catalog/{locations,server-types,load-balancer-types,pricing}.json`; write `catalog/images.json` by hand
-  - [ ] modules `locations`, `datacenters` (410 as the frozen description), `server_types`, `images` (system images from the catalog)
+  - [x] `task catalog` (tool in `tools/catalog`, hcloud context or hidden prompt, SPEC.md "Accounts and secrets"); generate `catalog/{locations,server-types,load-balancer-types,pricing}.json`; write `catalog/images.json` by hand
+  - [x] modules `locations`, `datacenters` (410 as the frozen description), `server_types`, `images` (system images from the catalog)
 
 - [x] 01-07 cidata
   - Wave: 2 | Depends on: 01-01 | Review: alone
