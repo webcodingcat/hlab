@@ -4,6 +4,7 @@
 package mgmt
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
@@ -41,6 +42,13 @@ type Deps struct {
 	// API serves the Hetzner API under /v1; the project proxy forwards to it.
 	API    http.Handler
 	Status func() Status
+	// UpdateCatalog updates the server type catalog from the real Hetzner
+	// API with hetznerToken, which it must neither store nor log; nil
+	// leaves POST /catalog/update out.
+	UpdateCatalog func(ctx context.Context, hetznerToken string) error
+	// ServerTypes counts the served server types for the answer of
+	// POST /catalog/update; nil answers 0.
+	ServerTypes func() int
 }
 
 // Project is a project as the management API returns it.
@@ -73,6 +81,9 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST "+Prefix+"/projects/{name}/tokens", s.createToken)
 	mux.HandleFunc("DELETE "+Prefix+"/projects/{name}/tokens/{token}", s.deleteToken)
 	mux.HandleFunc(Prefix+"/projects/{name}/api/v1/{rest...}", s.proxy)
+	if d.UpdateCatalog != nil {
+		mux.HandleFunc("POST "+Prefix+"/catalog/update", s.updateCatalog)
+	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "unknown path")
 	})
@@ -295,6 +306,31 @@ func (s server) deleteToken(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// updateCatalog hands the Hetzner token of the body to UpdateCatalog once.
+// The body and the token are never logged.
+func (s server) updateCatalog(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		HetznerToken string `json:"hetzner_token"`
+	}
+	if !decode(w, req, &body) {
+		return
+	}
+	if body.HetznerToken == "" {
+		writeError(w, http.StatusBadRequest, "invalid_input", "hetzner_token is required")
+		return
+	}
+	if err := s.d.UpdateCatalog(req.Context(), body.HetznerToken); err != nil {
+		slog.Warn("catalog update failed", "err", err)
+		writeError(w, http.StatusBadGateway, "server_error", err.Error())
+		return
+	}
+	n := 0
+	if s.d.ServerTypes != nil {
+		n = s.d.ServerTypes()
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"server_types": n})
 }
 
 // proxy forwards a request to the Hetzner API handlers as project name

@@ -35,6 +35,11 @@ type IO struct {
 	// StatusFile is hlabd's status file (status.json), read by
 	// `cloud status` while the service is stopped; "" skips it.
 	StatusFile string
+	// Getenv reads an environment variable (`--hetzner-token-env`).
+	Getenv func(string) string
+	// ReadSecret shows prompt and reads a line from the terminal without
+	// echoing it.
+	ReadSecret func(prompt string) (string, error)
 }
 
 // Command is one command with its flags, for the documentation.
@@ -54,7 +59,8 @@ type command struct {
 	path  string
 	args  string   // positional arguments for the usage text
 	nargs int      // number of positional arguments
-	flags []string // value flags
+	flags []string // value flags, required
+	opts  []string // value flags, optional
 	bools []string // boolean flags
 	run   func(c *call) error
 }
@@ -63,6 +69,7 @@ var commands = []command{
 	{path: "cloud start", run: cloudStart},
 	{path: "cloud stop", run: cloudStop},
 	{path: "cloud status", run: cloudStatus},
+	{path: "catalog update", opts: []string{"hetzner-token-env"}, run: catalogUpdate},
 	{path: "project create", args: "<name>", nargs: 1, run: projectCreate},
 	{path: "project list", run: projectList},
 	{path: "project delete", args: "<name>", nargs: 1, run: projectDelete},
@@ -78,6 +85,9 @@ func Commands() []Command {
 	for _, c := range commands {
 		var flags []string
 		for _, f := range c.flags {
+			flags = append(flags, "--"+f)
+		}
+		for _, f := range c.opts {
 			flags = append(flags, "--"+f)
 		}
 		for _, f := range c.bools {
@@ -117,6 +127,9 @@ func Run(ctx context.Context, args []string, sys IO) int {
 	c.io = sys
 	if err := cmd.run(c); err != nil {
 		_, _ = fmt.Fprintf(sys.Stderr, "hlab: %v\n", err)
+		if errors.As(err, new(usageError)) {
+			return exitUsage
+		}
 		return exitError
 	}
 	return exitOK
@@ -132,6 +145,9 @@ func usage() string {
 		}
 		for _, f := range c.flags {
 			b.WriteString(" --" + f + " <" + f + ">")
+		}
+		for _, f := range c.opts {
+			b.WriteString(" [--" + f + " <" + f + ">]")
 		}
 		for _, f := range c.bools {
 			b.WriteString(" [--" + f + "]")
@@ -195,7 +211,7 @@ func parse(args []string) (*call, command, error) {
 				c.args = append(c.args, rest[i+1])
 				i++
 			}
-		case contains(cmd.flags, name):
+		case contains(cmd.flags, name), contains(cmd.opts, name):
 			if !hasValue {
 				if i+1 >= len(rest) || strings.HasPrefix(rest[i+1], "--") {
 					return nil, command{}, usageError{fmt.Sprintf("--%s needs a value", name)}
@@ -392,6 +408,39 @@ func readStatusFile(path string) (statusFile, bool) {
 		return statusFile{}, false
 	}
 	return f, true
+}
+
+// catalogUpdate sends the Hetzner token once to hlabd, which updates the
+// server type catalog with it. The token comes from the variable named by
+// --hetzner-token-env, else from the hidden prompt on a terminal; it is
+// never printed.
+func catalogUpdate(c *call) error {
+	var token string
+	switch name := c.flags["hetzner-token-env"]; {
+	case name != "":
+		token = strings.TrimSpace(c.io.Getenv(name))
+		if token == "" {
+			return usageError{fmt.Sprintf("the variable %s named by --hetzner-token-env is empty or not set", name)}
+		}
+	case c.io.IsTerminal != nil && c.io.IsTerminal():
+		s, err := c.io.ReadSecret("Hetzner API token: ")
+		if err != nil {
+			return fmt.Errorf("read the token: %w", err)
+		}
+		token = strings.TrimSpace(s)
+		if token == "" {
+			return usageError{"no token entered; pass it in an environment variable named with --hetzner-token-env"}
+		}
+	default:
+		return usageError{"no terminal to ask for the Hetzner token; pass it in an environment variable named with --hetzner-token-env"}
+	}
+	var body struct {
+		ServerTypes int `json:"server_types"`
+	}
+	if err := c.mgmt(http.MethodPost, "/catalog/update", map[string]string{"hetzner_token": token}, &body); err != nil {
+		return err
+	}
+	return c.out(body, fmt.Sprintf("server type catalog updated: %d server types\n", body.ServerTypes))
 }
 
 func projectCreate(c *call) error {

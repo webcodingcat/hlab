@@ -139,6 +139,27 @@ rejected from then on.
 token viewer revoked
 ```
 
+## Catalog
+
+### hlab catalog update
+
+Updates the server type catalog from the real Hetzner Cloud API with a
+Hetzner API token of yours. On a terminal the command asks for the token
+without showing it; in a script, put the token in an environment variable
+and name it with `--hetzner-token-env <variable>`. Without a terminal and
+without that flag the command exits with `2`. hlab uses the token for this
+one update and never stores or logs it. The updated types are served at
+once and kept for later starts; your own server types stay.
+
+```
+> hlab catalog update
+Hetzner API token:
+server type catalog updated: 14 server types
+> $env:HZ_TOKEN = "<your Hetzner token>"
+> hlab catalog update --hetzner-token-env HZ_TOKEN
+server type catalog updated: 14 server types
+```
+
 ## Other
 
 ### hlab version
