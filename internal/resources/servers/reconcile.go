@@ -94,7 +94,7 @@ func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) err
 			InstanceID: strconv.FormatInt(id, 10),
 			Hostname:   rec.Name,
 			SSHKeys:    rec.Hlab.SSHKeys,
-			UserData:   rec.Hlab.UserData,
+			UserData:   seedUserData(rec.Hlab.UserData, rec.Hlab.AutomountVolumes),
 			VendorData: vendorData(rec.Hlab.RootHash),
 			Interfaces: []cidata.Interface{{
 				MAC:         rec.Hlab.MAC,
