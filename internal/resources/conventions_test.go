@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"os"
 	"reflect"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/webcodingcat/hlab/internal/apitest"
 	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/platform/platformtest"
 	actionsres "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/datacenters"
 	imagesres "github.com/webcodingcat/hlab/internal/resources/images"
@@ -56,11 +56,7 @@ func newFullEnv(t *testing.T) *apitest.Env {
 		pricing.New(cat),
 		sshkeys.New(),
 		placementgroups.New(),
-		servers.New(servers.Deps{
-			Catalog:     cat,
-			PublicRange: netip.MustParsePrefix("198.19.0.0/16"),
-			Machines:    apitest.NoopMachines{},
-		}),
+		servers.New(apitest.ServersDeps(t, cat, platformtest.NewFake())),
 	)
 }
 

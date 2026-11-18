@@ -5,11 +5,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net/http"
-	"net/netip"
 	"testing"
 
 	"github.com/webcodingcat/hlab/internal/apitest"
 	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/platform/platformtest"
 	actionsres "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/datacenters"
 	imagesres "github.com/webcodingcat/hlab/internal/resources/images"
@@ -46,11 +46,7 @@ func TestResources(t *testing.T) {
 			servertypes.New(cat),
 			imagesres.New(cat),
 			sshkeys.New(),
-			servers.New(servers.Deps{
-				Catalog:     cat,
-				PublicRange: netip.MustParsePrefix("198.19.0.0/16"),
-				Machines:    apitest.NoopMachines{},
-			}),
+			servers.New(apitest.ServersDeps(t, cat, platformtest.NewFake())),
 		)
 
 		// IDs created by earlier cases and used by later ones.
