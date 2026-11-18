@@ -135,8 +135,11 @@ func (s VMState) String() string {
 
 // Segment is where a network adapter is connected: the public PVLAN
 // (isolated port) or a private network's access VLAN 2..4092.
+// Promiscuous (with PublicPVLAN) makes the adapter the PVLAN's promiscuous
+// port; only the appliance's public adapter uses it.
 type Segment struct {
 	PublicPVLAN bool
+	Promiscuous bool
 	VLAN        int
 }
 

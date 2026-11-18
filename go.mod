@@ -5,6 +5,7 @@ go 1.27
 toolchain go1.27.4
 
 require (
+	github.com/Microsoft/go-winio v0.6.4
 	github.com/pb33f/libopenapi v0.42.5
 	github.com/pb33f/libopenapi-validator v0.16.3
 	modernc.org/sqlite v1.62.0
