@@ -35,6 +35,10 @@ const Kind = "servers"
 // refType is the resource type of a server in actions.
 const refType = "server"
 
+// primaryIPKind is the ID sequence of primary IPs; a server's public
+// addresses take their IDs from it so later primary IPs do not collide.
+const primaryIPKind = "primary_ips"
+
 // Server status values used in this phase.
 const (
 	StatusInitializing = "initializing"
@@ -100,15 +104,18 @@ type PublicNet struct {
 	Firewalls   []any   `json:"firewalls"`
 }
 
-// IPv4 is the public IPv4 of a server.
+// IPv4 is the public IPv4 of a server. ID is the ID of its primary IP,
+// which clients such as hcloud-python read.
 type IPv4 struct {
+	ID      int64  `json:"id,omitempty"`
 	IP      string `json:"ip"`
 	Blocked bool   `json:"blocked"`
 	DNSPtr  string `json:"dns_ptr"`
 }
 
-// IPv6 is the formal public IPv6 network of a server.
+// IPv6 is the formal public IPv6 network of a server; ID as for IPv4.
 type IPv6 struct {
+	ID      int64  `json:"id,omitempty"`
 	IP      string `json:"ip"`
 	Blocked bool   `json:"blocked"`
 	DNSPtr  []any  `json:"dns_ptr"`
@@ -392,6 +399,14 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			return err
 		}
+		ipv4ID, err := store.NextID(tx, primaryIPKind)
+		if err != nil {
+			return err
+		}
+		ipv6ID, err := store.NextID(tx, primaryIPKind)
+		if err != nil {
+			return err
+		}
 		rec = Record{
 			Server: Server{
 				ID:      id,
@@ -399,8 +414,8 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 				Status:  StatusInitializing,
 				Created: time.Now().UTC().Truncate(time.Second),
 				PublicNet: PublicNet{
-					IPv4:        &IPv4{IP: ip.String(), DNSPtr: ""},
-					IPv6:        &IPv6{IP: IPv6Net(id).String(), DNSPtr: []any{}},
+					IPv4:        &IPv4{ID: ipv4ID, IP: ip.String(), DNSPtr: ""},
+					IPv6:        &IPv6{ID: ipv6ID, IP: IPv6Net(id).String(), DNSPtr: []any{}},
 					FloatingIPs: []int64{},
 					Firewalls:   []any{},
 				},

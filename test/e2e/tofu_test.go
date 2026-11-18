@@ -80,6 +80,7 @@ output "id" {
 	if id2 := d.output(t, "id"); id2 != id {
 		t.Errorf("ID changed from %s to %s; want an in-place update", id, id2)
 	}
+	got.SSHKey.Labels = nil // decoding into a non-nil map keeps old keys
 	if status, err := e.apiGet(ctx, "/ssh_keys/"+id, &got); err != nil || status != http.StatusOK {
 		t.Fatalf("GET /ssh_keys/%s after update: status %d, %v", id, status, err)
 	}
