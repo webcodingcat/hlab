@@ -599,8 +599,12 @@ All addresses below derive from the configured public range
   skipping addresses in use, so a freed address is not reused at once (SSH
   host key conflicts).
 - hlabd listens on `198.19.0.2:8780` only; one inbound Windows Firewall rule
-  (group `hlab`) allows TCP 8780 on `vEthernet (hlab)` from `198.19.0.1`
-  only. Nothing listens on the host's port 80.
+  (group `hlab`) allows TCP 8780 for all firewall profiles (the internal
+  adapter is an unidentified network in profile Public), restricted to
+  interface `vEthernet (hlab)`, local address `198.19.0.2`, remote address
+  `198.19.0.1` and the program `hlabd.exe` of the running profile. `Up`
+  removes any rule of the group first and creates it again, so a crash
+  leaves no duplicate or stale rule. Nothing listens on the host's port 80.
 - The agent's DNS server answers hlab zones itself and forwards everything
   else to `Config.Upstream`. The appliance routes each `/32` to the server's
   adapter. Floating IPs are `/32` routes to the server's public IPv4.

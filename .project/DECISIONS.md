@@ -50,7 +50,7 @@ in ARCHITECTURE.md or the plan.
 
 - Type: decision
 - Phase: 01 (discuss)
-- What: hostnet adds one inbound Windows Firewall rule (group `hlab`): TCP 8780 on `vEthernet (hlab)` from 198.19.0.1 only; `Down` and the uninstaller remove it.
+- What: hostnet adds one inbound Windows Firewall rule (group per profile): TCP 8780, all firewall profiles, interface `vEthernet (hlab)`, local 198.19.0.2, remote 198.19.0.1, program `hlabd.exe`; `Up` replaces an existing rule of the group, `Down` and the uninstaller remove it; hlabd listens on 198.19.0.2:8780 only.
 - Why: the appliance's API proxy must reach hlabd, and the host must expose nothing else.
 - Cost of change: low
 

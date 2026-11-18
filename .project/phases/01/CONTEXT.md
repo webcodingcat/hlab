@@ -13,7 +13,7 @@ Confirmed with the user on 2026-11-18, one line each.
 - OpenAPI: `task openapi` downloads the description, checks it against `api/openapi.lock` and caches it in the user cache folder; a shared test helper validates every handler response; a missing cache file fails the tests with "run `task openapi`".
 - WSL2: hostnet enables forwarding on the WSL and hlab adapters already in 01 (API-01 from WSL2); WSL mode detection (HOST-04) is phase 02.
 - Host settings hostnet changes but does not own are recorded in `hostnet-restore.json` and restored at the next Up, Down or uninstall-cleanup.
-- Firewall: one inbound rule (group per profile) for TCP 8780 on the hlab adapter from 198.19.0.1 only; nothing listens on host port 80.
+- Firewall: one inbound rule (group per profile) for TCP 8780, all firewall profiles (the internal adapter is an unidentified network in profile Public), interface hlab adapter, local 198.19.0.2, remote 198.19.0.1, program hlabd.exe; Up replaces an existing rule of the group idempotently; hlabd listens on 198.19.0.2:8780 only; nothing listens on host port 80.
 - Profiles: `release` (service `hlab`) and `dev` (service `hlab-dev`, built by `task build`) differ in every colliding name; only one cloud runs (LIFE-10).
 - E2E harness: uses the dev service and `%ProgramData%\hlab-dev`; `task build` first; refuses to run while the release cloud runs or when `hlab-dev` does not point at this working copy's `bin\hlabd.exe`; starts the dev cloud if stopped and stops it at the end if it started it; one project `e2e-<time>` per run; servers deleted one by one (project delete is phase 02); test image ubuntu-24.04.
 - `hlabd install --dev` is built in 01; the user runs `scripts\dev-setup.ps1` elevated; the run never calls it.
