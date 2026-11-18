@@ -1,0 +1,17 @@
+#cloud-config
+# First boot of the appliance: installs the hlab-agent unit and its install
+# script; the unit installs and starts the agent at every boot.
+# systemd-resolved stays: its stub listens on 127.0.0.53/54 only and the
+# agent's DNS binds specific addresses, so they do not conflict.
+write_files:
+  - path: /usr/local/sbin/hlab-agent-install
+    permissions: "0755"
+    encoding: b64
+    content: @INSTALL_B64@
+  - path: /etc/systemd/system/hlab-agent.service
+    permissions: "0644"
+    encoding: b64
+    content: @UNIT_B64@
+runcmd:
+  - [systemctl, daemon-reload]
+  - [systemctl, enable, --now, hlab-agent.service]

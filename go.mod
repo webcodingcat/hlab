@@ -11,6 +11,7 @@ require (
 	github.com/lima-vm/go-qcow2reader v0.8.0
 	github.com/pb33f/libopenapi v0.42.5
 	github.com/pb33f/libopenapi-validator v0.16.3
+	github.com/vishvananda/netlink v1.3.1
 	golang.org/x/sys v0.50.0
 	modernc.org/sqlite v1.62.0
 )
@@ -37,6 +38,7 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/sirupsen/logrus v1.10.2 // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
+	github.com/vishvananda/netns v0.0.5 // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
