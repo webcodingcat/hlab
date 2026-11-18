@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync/atomic"
 	"text/tabwriter"
@@ -31,6 +32,9 @@ type IO struct {
 	// Service controls the hlabd service of the current profile.
 	Service    sysint.ServiceControl
 	IsTerminal func() bool
+	// StatusFile is hlabd's status file (status.json), read by
+	// `cloud status` while the service is stopped; "" skips it.
+	StatusFile string
 }
 
 // Command is one command with its flags, for the documentation.
@@ -354,7 +358,33 @@ func cloudStatus(c *call) error {
 			return c.out(st, text)
 		}
 	}
+	if state == sysint.StateStopped && c.io.StatusFile != "" {
+		if r, ok := refusedStatus(c.io.StatusFile); ok {
+			return c.out(r, "state: refused\nproblem: "+r.Problem.Message+"\n")
+		}
+	}
 	return c.out(serviceState{state}, "state: "+state+"\n")
+}
+
+// refused is the status file of a cloud that refused to start.
+type refused struct {
+	State   string `json:"state"`
+	Problem struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+		Fatal   bool   `json:"fatal"`
+	} `json:"problem"`
+}
+
+// refusedStatus reads the status file and reports whether the last start
+// was refused; a missing or unreadable file is no refusal.
+func refusedStatus(path string) (refused, bool) {
+	var r refused
+	data, err := os.ReadFile(path)
+	if err != nil || json.Unmarshal(data, &r) != nil {
+		return refused{}, false
+	}
+	return r, r.State == "refused" && r.Problem.Message != ""
 }
 
 func projectCreate(c *call) error {

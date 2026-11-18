@@ -32,22 +32,18 @@ type Options struct {
 	Secret string
 	// Store keeps the generation counter.
 	Store *store.Store
-	// HTTP sends the requests; nil means a client with a 30 s timeout.
-	HTTP *http.Client
 }
 
 // Client talks to one hlab-agent.
 type Client struct {
 	opts Options
+	http *http.Client
 	mu   sync.Mutex // one push at a time, so generations arrive in order
 }
 
 // New returns a Client.
 func New(opts Options) *Client {
-	if opts.HTTP == nil {
-		opts.HTTP = &http.Client{Timeout: 30 * time.Second}
-	}
-	return &Client{opts: opts}
+	return &Client{opts: opts, http: &http.Client{Timeout: 30 * time.Second}}
 }
 
 // Push sends cfg as the full document with the schema of this build and
@@ -127,7 +123,7 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte, out a
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := c.opts.HTTP.Do(req)
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return err
 	}

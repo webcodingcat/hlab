@@ -74,7 +74,7 @@ const (
 type Deps struct {
 	// Paths are the folders of the current profile.
 	Paths sysint.Paths
-	// Level, when set, is set to logging.level of the settings at start.
+	// Level is set to logging.level of the settings at start.
 	Level *slog.LevelVar
 }
 
@@ -110,9 +110,16 @@ func New(d Deps) *Cloud {
 
 // status is the content of the status file.
 type status struct {
-	State   string           `json:"state"` // "starting", "running", "refused", "stopped"
-	Problem *hostnet.Problem `json:"problem,omitempty"`
-	Error   string           `json:"error,omitempty"`
+	State   string   `json:"state"` // "starting", "running", "refused", "stopped"
+	Problem *problem `json:"problem,omitempty"`
+	Error   string   `json:"error,omitempty"`
+}
+
+// problem is a problem of hostnet.Check in the status file.
+type problem struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Fatal   bool   `json:"fatal"`
 }
 
 // refusal is a fatal problem of hostnet.Check.
@@ -133,7 +140,7 @@ func (c *Cloud) Start(ctx context.Context) error {
 	var r *refusal
 	if errors.As(err, &r) {
 		slog.Error("cloud start refused", "code", r.p.Code, "message", r.p.Message)
-		c.writeStatus(status{State: "refused", Problem: &r.p})
+		c.writeStatus(status{State: "refused", Problem: &problem{Code: r.p.Code, Message: r.p.Message, Fatal: r.p.Fatal}})
 		return err
 	}
 	slog.Error("cloud start failed", "err", err)
@@ -150,11 +157,9 @@ func (c *Cloud) start(ctx context.Context) error {
 		return err
 	}
 	c.set = set
-	if c.d.Level != nil {
-		var l slog.Level
-		if err := l.UnmarshalText([]byte(set.Logging.Level)); err == nil {
-			c.d.Level.Set(l)
-		}
+	var l slog.Level
+	if err := l.UnmarshalText([]byte(set.Logging.Level)); err == nil {
+		c.d.Level.Set(l)
 	}
 	slog.Info("cloud starting", "version", version.Version, "profile", profile.Current().Name,
 		"public_range", set.Network.PublicRange.String(), "data_folder", set.Storage.DataFolder)

@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"path/filepath"
 
 	"golang.org/x/term"
 
@@ -24,6 +25,7 @@ func main() {
 		Dial:       windows.DialManagement,
 		Service:    windows.NewServiceControl(profile.Current().ServiceName),
 		IsTerminal: func() bool { return term.IsTerminal(int(os.Stdin.Fd())) },
+		StatusFile: filepath.Join(windows.DataDir(), "status.json"),
 	})
 	stop()
 	os.Exit(code)
