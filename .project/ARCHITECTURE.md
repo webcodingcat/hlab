@@ -555,7 +555,7 @@ locks a resource of type `project`.
       PrivateNetworks []MetadataNetwork
       PasswordReset *PasswordReset           // pending root password reset, or nil
   }
-  type MetadataNetwork struct { IP netip.Addr; AliasIPs []netip.Addr; MAC string; NetworkID int64; NetworkName string; Subnet netip.Prefix; Gateway netip.Addr }
+  type MetadataNetwork struct { IP netip.Addr; AliasIPs []netip.Addr; MAC string; NetworkID int64; NetworkName string; Subnet netip.Prefix; Gateway netip.Addr; InterfaceNum int; Network netip.Prefix } // InterfaceNum, Network written only when set
   type PasswordReset struct { ID int64; SHA512Crypt string } // crypt(3) hash, never the clear text
   type APIProxy struct { Listen netip.AddrPort; Backend netip.AddrPort }
 
@@ -569,6 +569,7 @@ locks a resource of type `project`.
       Generation int
       Targets    map[int64][]TargetHealth   // per load balancer
       LBMetrics  map[int64]LBCounters
+      PasswordResetsDone []int64          // reset IDs the guest hook confirmed
   }
   type TargetHealth struct { Key string; ListenPort int; Status string } // "healthy" | "unhealthy" | "unknown"
   type LBCounters struct { OpenConnections, ConnectionsTotal, RequestsTotal, BytesIn, BytesOut uint64 }
@@ -579,10 +580,13 @@ locks a resource of type `project`.
   (`/hostname`, `/instance-id`, `/public-ipv4`, `/private-networks`,
   `/region`, `/availability-zone`, `/public-keys`, and the full YAML
   document at `/hetzner/v1/metadata`; user_data raw at
-  `/hetzner/v1/userdata`). hlab's own paths for the guest
+  `/hetzner/v1/userdata`). The agent drops TCP to 169.254.169.254:80 from a
+  known guest MAC whose source address is not its own (`input` chain of
+  table `inet hlab`). hlab's own paths for the guest
   hook: `GET /hlab/v1/password-reset` returns `204` or `200
   {"id":n,"sha512_crypt":"$6$..."}`; `POST /hlab/v1/password-reset/{id}/done`
-  confirms, after which hlabd ends the action with `success` (no
+  confirms (accepted only from the server whose pending reset has that ID;
+  afterwards GET answers 204 for it), after which hlabd ends the action with `success` (no
   confirmation within 120 s: `error`, code `server_error`).
 - Depends on: nothing on the host; the Debian packages listed in SPEC.md.
 
