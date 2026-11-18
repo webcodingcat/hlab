@@ -1,6 +1,6 @@
 # Project rules (wcc)
 
-wcc version: 0.31.0
+wcc version: 0.31.2
 
 These rules come from the wcc plugin; `/wcc:upgrade` updates them.
 
@@ -12,6 +12,9 @@ These rules come from the wcc plugin; `/wcc:upgrade` updates them.
   Glob tools search it; a plain `rg` needs `--hidden`). IDEA.md is the only
   source for goals and non-goals; REQUIREMENTS, SPEC, ARCHITECTURE and
   ROADMAP follow from it. `.project/STATUS.md` says where the project stands.
+- Work from this repository only. Other folders on the machine (an older
+  copy, a sibling project) hold decisions nobody approved for this project;
+  do not search, read or copy from them.
 - User and developer documentation lives where "Documentation" in SPEC.md
   says, describes what is built, and is updated at the close of each
   phase.
@@ -56,7 +59,8 @@ conversation, ask when something is unclear.
 ## Secrets
 
 - Secrets live in `.env`, never committed; `.env.example` lists the names.
-  Never read, print or write a secret anywhere.
+  Credentials from a tool's own login stay with that tool; use them only
+  through the tool. Never read, print or write a secret anywhere.
 
 ## Tests
 

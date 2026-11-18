@@ -22,11 +22,27 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Upgrade to wcc 0.31.2
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.31.0 to 0.31.2: project CLAUDE.md gains the rule to work from this repository only and the rule that tool login credentials stay with their tool.
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
+
+## 2026-11-18 Go module path confirmed
+
+- Type: approval
+- Phase: upgrade
+- What: The user confirmed the Go module path `github.com/webcodingcat/hlab`, which /wcc:prepare had taken from a sibling folder before the rule "work from this repository only" existed.
+- Why: user's choice.
+- Cost of change: low
+
 ## 2026-11-18 Go module path and repository layout
 
 - Type: decision
 - Phase: prepare
-- What: Go module `github.com/webcodingcat/hlab` (as the earlier prototype and the owner's other repositories); programs in `cmd/<name>`, tray frontend in `ui/frontend` (Vite, svelte-check as its linter, Playwright as dev dependency), tasks `build`, `lint`, `test`, `e2e` in `Taskfile.yml`.
+- What: Go module `github.com/webcodingcat/hlab` (confirmed by the user, see "Go module path confirmed"); programs in `cmd/<name>`, tray frontend in `ui/frontend` (Vite, svelte-check as its linter, Playwright as dev dependency), tasks `build`, `lint`, `test`, `e2e` in `Taskfile.yml`.
 - Why: SPEC.md names no module path; this matches the owner's GitHub account.
 - Cost of change: low
 
