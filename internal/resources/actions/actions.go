@@ -10,8 +10,6 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
-	"strings"
-	"time"
 
 	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/api"
@@ -35,20 +33,8 @@ func (module) Routes(r resource.Registrar) {
 type compare func(a, b actions.Action) int
 
 var sortFields = map[string]compare{
-	"id":       func(a, b actions.Action) int { return cmp.Compare(a.ID, b.ID) },
-	"status":   func(a, b actions.Action) int { return cmp.Compare(a.Status, b.Status) },
-	"command":  func(a, b actions.Action) int { return cmp.Compare(a.Command, b.Command) },
-	"progress": func(a, b actions.Action) int { return cmp.Compare(a.Progress, b.Progress) },
-	"started":  func(a, b actions.Action) int { return a.Started.Compare(b.Started) },
-	"finished": func(a, b actions.Action) int { return cmp.Compare(unix(a.Finished), unix(b.Finished)) },
-}
-
-// unix orders unfinished actions first.
-func unix(t *time.Time) int64 {
-	if t == nil {
-		return 0
-	}
-	return t.Unix()
+	"id":     func(a, b actions.Action) int { return cmp.Compare(a.ID, b.ID) },
+	"status": func(a, b actions.Action) int { return cmp.Compare(a.Status, b.Status) },
 }
 
 func list(w http.ResponseWriter, req *http.Request) {
@@ -68,24 +54,12 @@ func list(w http.ResponseWriter, req *http.Request) {
 	}
 	var order []compare
 	for _, s := range q["sort"] {
-		field, dir, _ := strings.Cut(s, ":")
-		c, ok := sortFields[field]
-		if !ok || (dir != "" && dir != "asc" && dir != "desc") {
+		c, ok := sortFields[s]
+		if !ok {
 			api.Error(w, http.StatusBadRequest, "invalid_input", "invalid sort: "+s, nil)
 			return
 		}
-		if dir == "desc" {
-			asc := c
-			c = func(a, b actions.Action) int { return asc(b, a) }
-		}
 		order = append(order, c)
-	}
-	statuses := q["status"]
-	for _, s := range statuses {
-		if s != actions.StatusRunning && s != actions.StatusSuccess && s != actions.StatusError {
-			api.Error(w, http.StatusBadRequest, "invalid_input", "invalid status: "+s, nil)
-			return
-		}
 	}
 
 	project, _ := api.ProjectFrom(req.Context())
@@ -93,9 +67,6 @@ func list(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		serverError(w, err)
 		return
-	}
-	if len(statuses) > 0 {
-		found = slices.DeleteFunc(found, func(a actions.Action) bool { return !slices.Contains(statuses, a.Status) })
 	}
 	slices.SortStableFunc(found, func(a, b actions.Action) int {
 		for _, c := range order {
