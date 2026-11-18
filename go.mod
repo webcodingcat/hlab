@@ -7,6 +7,7 @@ toolchain go1.27.4
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/Microsoft/go-winio v0.6.4
+	github.com/lima-vm/go-qcow2reader v0.8.0
 	github.com/pb33f/libopenapi v0.42.5
 	github.com/pb33f/libopenapi-validator v0.16.3
 	golang.org/x/sys v0.50.0
