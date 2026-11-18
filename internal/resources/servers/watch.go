@@ -16,12 +16,13 @@ import (
 // watchInterval is how often the status watch reads the VMs' states.
 const watchInterval = 5 * time.Second
 
-// Jobs implements resource.Scheduled: the status watch and the metrics
-// sample.
+// Jobs implements resource.Scheduled: the status watch, the metrics sample
+// and the daily backups.
 func (m *Module) Jobs() []scheduler.Job {
 	return []scheduler.Job{
 		{Name: "servers status watch", Every: watchInterval, Run: m.watch},
 		{Name: "servers metrics sample", Every: metrics.Interval, Run: m.sample},
+		{Name: "backups", Every: backupEvery, Run: m.backups},
 	}
 }
 

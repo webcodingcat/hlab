@@ -7,6 +7,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/scheduler"
 	"github.com/webcodingcat/hlab/internal/store"
@@ -56,4 +57,11 @@ type Reconciler interface {
 // and cancels them first at stop.
 type Scheduled interface {
 	Jobs() []scheduler.Job
+}
+
+// ActionUser is the optional interface of a module that starts actions
+// outside a request, for example from a job. api.Router.Mount hands it the
+// router's action manager.
+type ActionUser interface {
+	UseActions(m *actions.Manager)
 }
