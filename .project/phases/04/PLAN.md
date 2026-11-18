@@ -185,13 +185,13 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [ ] Linux jobs: find the SCSI disk (type 0) with the LUN in sysfs, never by host number; `mkfs` whole device `mkfs.ext4 -F` / `mkfs.xfs -f`, clear error when `mkfs.xfs` is missing; `rescue-prepare`: read old PARTUUIDs and root FS UUID with blkid, `sgdisk -G`, re-read, `e2fsck -f -p`, `tune2fs -U` with a UUID made in Go, mount root and ESP, `RewriteIDs` on fstab and every grub.cfg found under `/boot/grub` and the ESP, unmount (internal/agent/jobs_linux.go)
   - [ ] `Client.Job` (internal/agentclient/agentclient.go)
 
-- [ ] 04-03 Agent metadata: automount volumes
+- [x] 04-03 Agent metadata: automount volumes
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: VOL-03 | Tests: internal/agent/metadata_test.go
   - Reads: ARCHITECTURE "hlab-agent" (metadata), "Guest integration" (volumes); DECISIONS "Q4 Automount on later attach via a metadata path", "Metadata service binds IP and MAC on its input path"
   - Size: ~60 lines in 2 files
   - Adjusts: -
-  - [ ] `Metadata.Volumes` and `GET /hlab/v1/volumes` on the existing server lookup (internal/agentapi/agentapi.go, internal/agent/metadata.go)
+  - [x] `Metadata.Volumes` and `GET /hlab/v1/volumes` on the existing server lookup (internal/agentapi/agentapi.go, internal/agent/metadata.go)
 
 - [ ] 04-04 ISO catalog and ISO cache
   - Wave: 1 | Depends on: - | Review: alone
