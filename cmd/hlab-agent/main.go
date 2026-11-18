@@ -42,8 +42,12 @@ func run() error {
 		return fmt.Errorf("read secret: %w", err)
 	}
 	proxy := &agent.APIProxy{}
-	// 01-13 adds the DNS server and the nftables backstop to this list.
-	a, err := agent.New(bytes.TrimSpace(raw), agent.NewNetwork(publicInterface), proxy)
+	dns := &agent.DNS{}
+	defer dns.Close()
+	// The network applier adds the addresses the DNS server binds, so it
+	// comes first.
+	a, err := agent.New(bytes.TrimSpace(raw),
+		agent.NewNetwork(publicInterface), agent.NewIsolation(publicInterface), dns, proxy)
 	if err != nil {
 		return err
 	}
