@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/netip"
 	"slices"
 	"sync"
 	"testing"
@@ -17,6 +16,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/apitest"
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/mgmt"
+	"github.com/webcodingcat/hlab/internal/platform/platformtest"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/servers"
@@ -72,11 +72,7 @@ func TestMgmt(t *testing.T) {
 			t.Fatalf("load shipped catalog: %v", err)
 		}
 		env := apitest.New(t,
-			servers.New(servers.Deps{
-				Catalog:     cat,
-				PublicRange: netip.MustParsePrefix("198.19.0.0/16"),
-				Machines:    apitest.NoopMachines{},
-			}),
+			servers.New(apitest.ServersDeps(t, cat, platformtest.NewFake())),
 			sshkeys.New(),
 			resactions.New(),
 		)

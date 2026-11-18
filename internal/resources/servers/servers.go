@@ -1,6 +1,6 @@
 // Package servers serves Hetzner's servers of a project. Handlers write the
-// desired state and start an action; the VM work runs in the action
-// through Machines.
+// desired state and start an action; the VM work runs in the action on
+// the platform (resource.Reconciler).
 package servers
 
 import (
@@ -22,10 +22,12 @@ import (
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/ipam"
+	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/placementgroups"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
+	"github.com/webcodingcat/hlab/internal/scheduler"
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
@@ -48,24 +50,36 @@ const (
 	StatusDeleting     = "deleting"
 )
 
-// Machines creates and deletes the VM of a server. Both run inside an
-// action and read what they need from the store by the server ID.
-type Machines interface {
-	// Create creates the VM with its disk and seed and starts it when the
-	// server asks for it.
-	Create(ctx context.Context, id int64) error
-	// Delete removes the VM and its files; a missing VM is no error.
-	Delete(ctx context.Context, id int64) error
+// Images provides the base disk of an image by name (*images.Store).
+type Images interface {
+	Ensure(ctx context.Context, name string) (string, error)
+}
+
+// Settings are the settings the module reads.
+type Settings struct {
+	DataFolder    string
+	StopBehaviour string // "save" | "shutdown"
+	ReserveRAMMB  int64
+	ReserveDiskGB int64
+	VMPrefix      string // profile tag: "hlab" | "hlab-dev"
 }
 
 // Deps are what the module needs.
 type Deps struct {
 	Catalog     *catalog.Catalog
 	PublicRange netip.Prefix
-	Machines    Machines
-	// Store is what Delete works on outside a request (project deletion);
-	// the handlers use the store of the request.
-	Store *store.Store
+	// Store is what Reconcile and Delete work on outside a request
+	// (project deletion); the handlers use the store of the request.
+	Store    *store.Store
+	Platform platform.Platform
+	Images   Images
+	// PushAgent rebuilds and pushes the agent document.
+	PushAgent func(ctx context.Context) error
+	Settings  Settings
+	// AgentStatus reads the agent's status (reset_password).
+	AgentStatus func(ctx context.Context) (agentapi.Status, error)
+	// ResetTimeout bounds the wait for a password reset; 0 = 120 s.
+	ResetTimeout time.Duration
 }
 
 // Server is a server in Hetzner's API shape.
@@ -176,6 +190,17 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("POST /servers/{id}/actions/remove_from_placement_group", http.HandlerFunc(m.removeFromPlacementGroup))
 	resactions.RoutesFor(r, "servers", refType)
 }
+
+// powerOn marks server id starting and starts its VM.
+func (m *Module) powerOn(ctx context.Context, stor *store.Store, id int64) error {
+	if err := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, StatusStarting) }); err != nil {
+		return err
+	}
+	return m.d.Platform.Power(ctx, m.vmName(id), platform.PowerStart)
+}
+
+// Jobs implements resource.Scheduled; the module has no jobs yet.
+func (m *Module) Jobs() []scheduler.Job { return nil }
 
 // Contribute implements resource.NetContributor: every server not being
 // deleted, with its public IPv4 and MAC.
@@ -466,10 +491,13 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	id := rec.ID
 	acts.Run(action.ID, func(ctx context.Context, progress func(int)) error {
 		progress(10)
-		err := m.d.Machines.Create(ctx, id)
+		err := m.reconcile(ctx, stor, id)
 		final := StatusOff
 		if err == nil && start {
-			final = StatusRunning
+			err = m.powerOn(ctx, stor, id)
+			if err == nil {
+				final = StatusRunning
+			}
 		}
 		if err == nil {
 			progress(90)
@@ -644,7 +672,7 @@ func (m *Module) remove(ctx context.Context, stor *store.Store, id int64) error 
 	if err != nil {
 		return err
 	}
-	if err := m.d.Machines.Delete(ctx, id); err != nil {
+	if err := m.deleteMachine(ctx, id); err != nil {
 		if serr := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, StatusOff) }); serr != nil {
 			err = errors.Join(err, serr)
 		}

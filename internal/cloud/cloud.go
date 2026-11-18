@@ -309,8 +309,17 @@ func (c *Cloud) modules() []resource.Module {
 		servers.New(servers.Deps{
 			Catalog:     c.cat,
 			PublicRange: c.set.Network.PublicRange,
-			Machines:    machines{c},
 			Store:       c.st,
+			Platform:    c.plat,
+			Images:      c.images,
+			PushAgent:   c.PushAgent,
+			Settings: servers.Settings{
+				DataFolder:    c.set.Storage.DataFolder,
+				StopBehaviour: c.set.Cloud.StopBehaviour,
+				ReserveRAMMB:  int64(c.set.Resources.ReserveRAMMB),
+				ReserveDiskGB: int64(c.set.Resources.ReserveDiskGB),
+				VMPrefix:      c.tag,
+			},
 		}),
 	}
 }

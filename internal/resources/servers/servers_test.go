@@ -40,11 +40,7 @@ func TestServers(t *testing.T) {
 		if err != nil {
 			t.Fatalf("load shipped catalog: %v", err)
 		}
-		env := apitest.New(t, servers.New(servers.Deps{
-			Catalog:     cat,
-			PublicRange: netip.MustParsePrefix("198.19.0.0/16"),
-			Machines:    apitest.NoopMachines{},
-		}))
+		env := apitest.New(t, servers.New(apitest.ServersDeps(t, cat, platformtest.NewFake())))
 
 		var nets []netip.Prefix
 		for _, name := range []string{"srv-a", "srv-b"} {
@@ -83,7 +79,7 @@ func TestServers(t *testing.T) {
 	})
 
 	t.Run("CAT-04", func(t *testing.T) {
-		env := newEnv(t, apitest.NoopMachines{})
+		env := newEnv(t, platformtest.NewFake())
 		resp := env.Do(http.MethodPost, "/servers", map[string]any{
 			"name":        "arm",
 			"server_type": "cax11",
@@ -111,8 +107,9 @@ func TestServers(t *testing.T) {
 	})
 
 	t.Run("API-08", func(t *testing.T) {
-		machines := apitest.NewBlockingMachines()
-		env := newEnv(t, machines)
+		fake := platformtest.NewFake()
+		releaseA, releaseB := block(t, fake, "CreateVM"), block(t, fake, "CreateVM")
+		env := newEnv(t, fake)
 		a, actA := createServer(t, env, "act-a", nil)
 		b, actB := createServer(t, env, "act-b", nil)
 
@@ -122,7 +119,8 @@ func TestServers(t *testing.T) {
 				running.Status, running.Progress, running.Finished)
 		}
 
-		machines.Release()
+		releaseA()
+		releaseB()
 		done := env.WaitAction(actA)
 		env.WaitAction(actB)
 		if done.Status != "success" || done.Progress != 100 || done.Finished == nil {
@@ -156,10 +154,12 @@ func TestServers(t *testing.T) {
 			t.Errorf("GET %s: error.code %q, want not_found", path, code)
 		}
 
-		failing := apitest.NewBlockingMachines()
+		failing := platformtest.NewFake()
+		releaseF := block(t, failing, "CreateVM")
 		fenv := newEnv(t, failing)
 		_, actF := createServer(t, fenv, "act-fail", nil)
-		failing.Fail()
+		failing.FailNext("CreateVM", errors.New("machine creation failed (test)"))
+		releaseF()
 		failed := fenv.WaitAction(actF)
 		if failed.Status != "error" || failed.Error == nil || failed.Error.Code == "" || failed.Error.Message == "" {
 			t.Errorf("create action with failing work: status %q, error %+v; want error with code and message",
@@ -168,7 +168,7 @@ func TestServers(t *testing.T) {
 	})
 
 	t.Run("API-12", func(t *testing.T) {
-		env := newEnv(t, apitest.NoopMachines{})
+		env := newEnv(t, platformtest.NewFake())
 		id, act := createServer(t, env, "prot", nil)
 		env.WaitAction(act)
 
@@ -195,8 +195,9 @@ func TestServers(t *testing.T) {
 	})
 
 	t.Run("API-13", func(t *testing.T) {
-		machines := apitest.NewBlockingMachines()
-		env := newEnv(t, machines)
+		fake := platformtest.NewFake()
+		release := block(t, fake, "CreateVM")
+		env := newEnv(t, fake)
 		id, act := createServer(t, env, "lock", nil)
 
 		resp := env.Do(http.MethodDelete, fmt.Sprintf("/servers/%d", id), nil)
@@ -214,14 +215,14 @@ func TestServers(t *testing.T) {
 			t.Errorf("change_protection during create: error.code %q, want locked", code)
 		}
 
-		machines.Release()
+		release()
 		env.WaitAction(act)
 		changeProtection(t, env, id, map[string]any{"rebuild": true})
 		deleteServer(t, env, id)
 	})
 
 	t.Run("SRV-17", func(t *testing.T) {
-		env := newEnv(t, apitest.NoopMachines{})
+		env := newEnv(t, platformtest.NewFake())
 		id, act := createServer(t, env, "console", nil)
 		env.WaitAction(act)
 		path := fmt.Sprintf("/servers/%d/actions", id)
@@ -1132,19 +1133,15 @@ func (r *agentRecorder) currentReset(t *testing.T, id int64) *agentapi.PasswordR
 	return resetOf(&doc, id)
 }
 
-// newEnv mounts the servers module on the shipped catalog with machines,
-// plus the actions module for /actions/{id}.
-func newEnv(t *testing.T, machines servers.Machines) *apitest.Env {
+// newEnv mounts the servers module on the shipped catalog with platform p
+// through apitest.ServersDeps, plus the actions module for /actions/{id}.
+func newEnv(t *testing.T, p platform.Platform) *apitest.Env {
 	t.Helper()
 	cat, err := catalog.Load("../../../catalog")
 	if err != nil {
 		t.Fatalf("load shipped catalog: %v", err)
 	}
-	return apitest.New(t, servers.New(servers.Deps{
-		Catalog:     cat,
-		PublicRange: netip.MustParsePrefix("198.19.0.0/16"),
-		Machines:    machines,
-	}), resactions.New())
+	return apitest.New(t, servers.New(apitest.ServersDeps(t, cat, p)), resactions.New())
 }
 
 // createServer creates a cx23 server with the fields in extra added and
