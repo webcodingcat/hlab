@@ -1,0 +1,328 @@
+{
+  "load_balancer_types": [
+    {
+      "id": 1,
+      "name": "lb11",
+      "description": "LB11",
+      "max_connections": 10000,
+      "max_services": 5,
+      "max_targets": 25,
+      "max_assigned_certificates": 10,
+      "deprecation": null,
+      "prices": [
+        {
+          "location": "fsn1",
+          "price_hourly": {
+            "net": "0.0112",
+            "gross": "0.0133"
+          },
+          "price_monthly": {
+            "net": "6.9900",
+            "gross": "8.3181"
+          },
+          "included_traffic": 21990232555520,
+          "price_per_tb_traffic": {
+            "net": "1.0000",
+            "gross": "1.1900"
+          }
+        },
+        {
+          "location": "nbg1",
+          "price_hourly": {
+            "net": "0.0112",
+            "gross": "0.0133"
+          },
+          "price_monthly": {
+            "net": "6.9900",
+            "gross": "8.3181"
+          },
+          "included_traffic": 21990232555520,
+          "price_per_tb_traffic": {
+            "net": "1.0000",
+            "gross": "1.1900"
+          }
+        },
+        {
+          "location": "hel1",
+          "price_hourly": {
+            "net": "0.0112",
+            "gross": "0.0133"
+          },
+          "price_monthly": {
+            "net": "6.9900",
+            "gross": "8.3181"
+          },
+          "included_traffic": 21990232555520,
+          "price_per_tb_traffic": {
+            "net": "1.0000",
+            "gross": "1.1900"
+          }
+        },
+        {
+          "location": "ash",
+          "price_hourly": {
+            "net": "0.0112",
+            "gross": "0.0133"
+          },
+          "price_monthly": {
+            "net": "6.9900",
+            "gross": "8.3181"
+          },
+          "included_traffic": 1099511627776,
+          "price_per_tb_traffic": {
+            "net": "1.0000",
+            "gross": "1.1900"
+          }
+        },
+        {
+          "location": "hil",
+          "price_hourly": {
+            "net": "0.0112",
+            "gross": "0.0133"
+          },
+          "price_monthly": {
+            "net": "6.9900",
+            "gross": "8.3181"
+          },
+          "included_traffic": 1099511627776,
+          "price_per_tb_traffic": {
+            "net": "1.0000",
+            "gross": "1.1900"
+          }
+        },
+        {
+          "location": "sin",
+          "price_hourly": {
+            "net": "0.0112",
+            "gross": "0.0133"
+          },
+          "price_monthly": {
+            "net": "6.9900",
+            "gross": "8.3181"
+          },
+          "included_traffic": 1099511627776,
+          "price_per_tb_traffic": {
+            "net": "7.4000",
+            "gross": "8.8060"
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "lb21",
+      "description": "LB21",
+      "max_connections": 20000,
+      "max_services": 15,
+      "max_targets": 75,
+      "max_assigned_certificates": 25,
+      "deprecation": null,
+      "prices": [
+        {
+          "location": "fsn1",
+          "price_hourly": {
+            "net": "0.0336",
+            "gross": "0.0400"
+          },
+          "price_monthly": {
+            "net": "20.9900",
+            "gross": "24.9781"
+          },
+          "included_traffic": 21990232555520,
+          "price_per_tb_traffic": {
+            "net": "1.0000",
+            "gross": "1.1900"
+          }
+        },
+        {
+          "location": "nbg1",
+          "price_hourly": {
+            "net": "0.0336",
+            "gross": "0.0400"
+          },
+          "price_monthly": {
+            "net": "20.9900",
+            "gross": "24.9781"
+          },
+          "included_traffic": 21990232555520,
+          "price_per_tb_traffic": {
+            "net": "1.0000",
+            "gross": "1.1900"
+          }
+        },
+        {
+          "location": "hel1",
+          "price_hourly": {
+            "net": "0.0336",
+            "gross": "0.0400"
+          },
+          "price_monthly": {
+            "net": "20.9900",
+            "gross": "24.9781"
+          },
+          "included_traffic": 21990232555520,
+          "price_per_tb_traffic": {
+            "net": "1.0000",
+            "gross": "1.1900"
+          }
+        },
+        {
+          "location": "ash",
+          "price_hourly": {
+            "net": "0.0336",
+            "gross": "0.0400"
+          },
+          "price_monthly": {
+            "net": "20.9900",
+            "gross": "24.9781"
+          },
+          "included_traffic": 2199023255552,
+          "price_per_tb_traffic": {
+            "net": "1.0000",
+            "gross": "1.1900"
+          }
+        },
+        {
+          "location": "hil",
+          "price_hourly": {
+            "net": "0.0336",
+            "gross": "0.0400"
+          },
+          "price_monthly": {
+            "net": "20.9900",
+            "gross": "24.9781"
+          },
+          "included_traffic": 2199023255552,
+          "price_per_tb_traffic": {
+            "net": "1.0000",
+            "gross": "1.1900"
+          }
+        },
+        {
+          "location": "sin",
+          "price_hourly": {
+            "net": "0.0336",
+            "gross": "0.0400"
+          },
+          "price_monthly": {
+            "net": "20.9900",
+            "gross": "24.9781"
+          },
+          "included_traffic": 2199023255552,
+          "price_per_tb_traffic": {
+            "net": "7.4000",
+            "gross": "8.8060"
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "lb31",
+      "description": "LB31",
+      "max_connections": 40000,
+      "max_services": 30,
+      "max_targets": 150,
+      "max_assigned_certificates": 50,
+      "deprecation": null,
+      "prices": [
+        {
+          "location": "fsn1",
+          "price_hourly": {
+            "net": "0.0681",
+            "gross": "0.0810"
+          },
+          "price_monthly": {
+            "net": "42.4900",
+            "gross": "50.5631"
+          },
+          "included_traffic": 21990232555520,
+          "price_per_tb_traffic": {
+            "net": "1.0000",
+            "gross": "1.1900"
+          }
+        },
+        {
+          "location": "nbg1",
+          "price_hourly": {
+            "net": "0.0681",
+            "gross": "0.0810"
+          },
+          "price_monthly": {
+            "net": "42.4900",
+            "gross": "50.5631"
+          },
+          "included_traffic": 21990232555520,
+          "price_per_tb_traffic": {
+            "net": "1.0000",
+            "gross": "1.1900"
+          }
+        },
+        {
+          "location": "hel1",
+          "price_hourly": {
+            "net": "0.0681",
+            "gross": "0.0810"
+          },
+          "price_monthly": {
+            "net": "42.4900",
+            "gross": "50.5631"
+          },
+          "included_traffic": 21990232555520,
+          "price_per_tb_traffic": {
+            "net": "1.0000",
+            "gross": "1.1900"
+          }
+        },
+        {
+          "location": "ash",
+          "price_hourly": {
+            "net": "0.0681",
+            "gross": "0.0810"
+          },
+          "price_monthly": {
+            "net": "42.4900",
+            "gross": "50.5631"
+          },
+          "included_traffic": 3298534883328,
+          "price_per_tb_traffic": {
+            "net": "1.0000",
+            "gross": "1.1900"
+          }
+        },
+        {
+          "location": "hil",
+          "price_hourly": {
+            "net": "0.0681",
+            "gross": "0.0810"
+          },
+          "price_monthly": {
+            "net": "42.4900",
+            "gross": "50.5631"
+          },
+          "included_traffic": 3298534883328,
+          "price_per_tb_traffic": {
+            "net": "1.0000",
+            "gross": "1.1900"
+          }
+        },
+        {
+          "location": "sin",
+          "price_hourly": {
+            "net": "0.0681",
+            "gross": "0.0810"
+          },
+          "price_monthly": {
+            "net": "42.4900",
+            "gross": "50.5631"
+          },
+          "included_traffic": 3298534883328,
+          "price_per_tb_traffic": {
+            "net": "7.4000",
+            "gross": "8.8060"
+          }
+        }
+      ]
+    }
+  ]
+}

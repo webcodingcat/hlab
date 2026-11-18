@@ -13,6 +13,7 @@ require (
 	github.com/pb33f/libopenapi-validator v0.16.3
 	github.com/vishvananda/netlink v1.3.1
 	golang.org/x/sys v0.50.0
+	golang.org/x/term v0.48.0
 	modernc.org/sqlite v1.62.0
 )
 
