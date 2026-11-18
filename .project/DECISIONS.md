@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Server protection and console details
+
+- Type: decision
+- Phase: phase 02
+- What: `change_protection` writes the flags in the transaction that starts its action; delete checks protection before the lock (protected and locked answers `protected`); resource action lists accept `id` and `status`; `request_console` answers `unsupported_error` for any server ID.
+- Why: the simplest order that the description allows; the console is unsupported regardless of the server.
+- Cost of change: low
+
 ## 2026-11-18 Catalog lists through ListRequest
 
 - Type: decision

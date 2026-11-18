@@ -146,7 +146,7 @@ Inside `hlabd` (Go packages under `internal/`):
   `store.Delete(tx, kind, projectID, id)` (projectID 0 = no project),
   `store.ListAll[T](tx, kind)` for hlabd internals only, `store.NextID(tx, kind)`,
   `store.NameTaken(tx, kind, projectID, name, exceptID)` (unique names per
-  project and kind), `store.IDs(tx, kind, projectID)`,
+  project and kind), `store.IDs(tx, kind, projectID)`, `store.ProjectActions(tx, projectID)`,
   kv, projects, tokens and actions access.
 - Schema (version 1, see "Data schema").
 - Depends on: nothing.
