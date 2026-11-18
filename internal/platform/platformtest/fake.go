@@ -5,6 +5,8 @@ package platformtest
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -272,6 +274,23 @@ func (f *Fake) CreateDisk(ctx context.Context, path string, sizeBytes int64, fro
 	}
 	defer f.mu.Unlock()
 	f.disks[path] = sizeBytes
+	return nil
+}
+
+// CreateChildDisk records the call with the parent as Arg, creates an
+// empty file at path and records a disk of the parent's size.
+func (f *Fake) CreateChildDisk(ctx context.Context, path, parent string) error {
+	if err := f.begin(ctx, "CreateChildDisk", "", parent); err != nil {
+		return err
+	}
+	defer f.mu.Unlock()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return errOf(platform.Failed, "CreateChildDisk", "%v", err)
+	}
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		return errOf(platform.Failed, "CreateChildDisk", "%v", err)
+	}
+	f.disks[path] = f.disks[parent]
 	return nil
 }
 

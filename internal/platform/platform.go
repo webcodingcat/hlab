@@ -21,6 +21,9 @@ type Platform interface {
 	DetachNIC(ctx context.Context, vm, mac string) error
 	// CreateDisk creates a thin VHDX, optionally as a copy of the base from.
 	CreateDisk(ctx context.Context, path string, sizeBytes int64, from string, page83 [16]byte) error
+	// CreateChildDisk creates the differencing VHDX path on the VHDX parent
+	// with a new disk identifier.
+	CreateChildDisk(ctx context.Context, path, parent string) error
 	ResizeDisk(ctx context.Context, path string, sizeBytes int64) error
 	AttachDisk(ctx context.Context, vm, path string, lun int) error // hot-add on SCSI controller 0
 	DetachDisk(ctx context.Context, vm, path string) error
@@ -28,7 +31,8 @@ type Platform interface {
 	// user ISO; "" ejects.
 	SetDVD(ctx context.Context, vm string, slot int, iso string) error
 	SetBootOrder(ctx context.Context, vm string, order []BootDevice) error
-	// Snapshot makes a crash-consistent copy of a running or stopped disk.
+	// Snapshot makes a crash-consistent copy of a running or stopped disk:
+	// target becomes a standalone dynamic VHDX with a new disk identifier.
 	Snapshot(ctx context.Context, vm, diskPath, target string) error
 	Metrics(ctx context.Context, vm string) (Sample, error)
 	HostResources(ctx context.Context) (Resources, error)
