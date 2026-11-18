@@ -146,13 +146,13 @@ func ServersDeps(t *testing.T, cat *catalog.Catalog, p platform.Platform) server
   - Adjusts: -
   - [x] `platformtest.Fake` implementing every `platform.Platform` method in memory with the power semantics, call log, `FailNext`, `Block`, `HoldShutdown`, `SetState`, `SetSample`, `SetResources` (internal/platform/platformtest/fake.go)
 
-- [ ] 03-02 SHA-512 crypt
+- [x] 03-02 SHA-512 crypt
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SRV-02, SRV-10 (hash) | Tests: internal/shacrypt/shacrypt_test.go
   - Reads: RESEARCH R6 (re-check every vector against https://www.akkadia.org/drepper/SHA-crypt.txt or `openssl passwd -6` before the test freezes it)
   - Size: ~160 lines in 1 file
   - Adjusts: -
-  - [ ] `SHA512` (rounds clamp 1000..999999999, `rounds=` echoed only when given, salt truncated to 16, Drepper's byte order and alphabet) and `NewSHA512` with a salt from crypto/rand (internal/shacrypt/shacrypt.go)
+  - [x] `SHA512` (rounds clamp 1000..999999999, `rounds=` echoed only when given, salt truncated to 16, Drepper's byte order and alphabet) and `NewSHA512` with a salt from crypto/rand (internal/shacrypt/shacrypt.go)
 
 - [ ] 03-03 Hyper-V reboot and metrics
   - Wave: 1 | Depends on: - | Review: alone
