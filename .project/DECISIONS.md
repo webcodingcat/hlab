@@ -921,3 +921,355 @@ in ARCHITECTURE.md or the plan.
 - What: the test boots that ISO; the indirect proof in the row is the fallback.
 - Why: Smallest Ubuntu ISO; SSH into the live session is unconfirmed.
 - Cost of change: low
+
+## 2026-11-18 Snapshot merge deadline 10 minutes
+
+- Type: decision
+- Phase: 04 (04-01)
+- What: Snapshot waits at most 10 minutes (`mergeTimeout`) for the checkpoint merge, polling every second.
+- Why: No figure is documented; a short snapshot merges quickly.
+- Cost of change: low
+
+## 2026-11-18 Only hlab checkpoints are cleaned up
+
+- Type: decision
+- Phase: 04 (04-01)
+- What: At the start of Snapshot only checkpoints named `hlab-snapshot-*` are removed, in every VM state; the merge wait runs only if one was removed.
+- Why: A leftover checkpoint makes a direct copy miss data; foreign checkpoints are not touched.
+- Cost of change: low
+
+## 2026-11-18 Direct copy only for Off and Saved
+
+- Type: decision
+- Phase: 04 (04-01)
+- What: Off and Saved (with Critical and FastSaved variants) are copied directly; every other state, Paused included, goes through a checkpoint.
+- Why: The plan names off and saved as the direct cases.
+- Cost of change: low
+
+## 2026-11-18 Agent job responses
+
+- Type: decision
+- Phase: 04 (04-02)
+- What: A malformed body, unknown kind, unsupported FS or negative LUN answer 400; a failing job answers 200 with `{ok:false, message}`; `Client.Job` turns both into an error.
+- Why: Input errors stay apart from job failures.
+- Cost of change: low
+
+## 2026-11-18 Agent jobs bounded only by the caller's context
+
+- Type: decision
+- Phase: 04 (04-02)
+- What: `Client.Job` uses its own http.Client without timeout.
+- Why: mkfs of a large volume can exceed the 30 s of config and status requests.
+- Cost of change: low
+
+## 2026-11-18 Agent finds job disks by LUN in sysfs
+
+- Type: decision
+- Phase: 04 (04-02)
+- What: `findDisk` matches L of H:C:T:L with SCSI type 0, ignores the host number, fails on two matches and waits up to 30 s for a hot-added disk.
+- Why: E7: the host number is not stable; hot-added disks appear late.
+- Cost of change: low
+
+## 2026-11-18 Fixed labels for the rescue base
+
+- Type: decision
+- Phase: 04 (04-02)
+- What: Labels present in the image become "hlab-rescue" (ext4) and "HLABRESCUE" (vfat); the ESP gets a new random volume ID; absent labels stay absent.
+- Why: They differ from every image label; all rescue disks come from the one prepared base.
+- Cost of change: low
+
+## 2026-11-18 Only label references are rewritten
+
+- Type: decision
+- Phase: 04 (04-02)
+- What: `LABEL=<old>` and `--label <old>` are rewritten, not the bare label text.
+- Why: A short bare label would match unrelated text in grub.cfg.
+- Cost of change: low
+
+## 2026-11-18 ISO IDs 130001-130005 named by file name
+
+- Type: decision
+- Phase: 04 (04-04)
+- What: Catalog ISOs get IDs 130001 to 130005; `name` is the ISO file name, also the cache file name.
+- Why: Names follow the file names; the description defines no IDs.
+- Cost of change: low
+
+## 2026-11-18 Download fallback only on 404
+
+- Type: decision
+- Phase: 04 (04-04)
+- What: The fallback URL pair is tried only when the primary URL or checksum URL answers 404, for system images and ISOs alike.
+- Why: One shared download path; without a fallback nothing changes.
+- Cost of change: low
+
+## 2026-11-18 Image Deleter removes only the disk file
+
+- Type: decision
+- Phase: 04 (04-06)
+- What: `Module.Delete` removes `<data>\images\image-<id>.vhdx`; project deletion removes the record.
+- Why: `Deps` has no store; project deletion owns the rows.
+- Cost of change: low
+
+## 2026-11-18 Image PUT converts only to snapshot
+
+- Type: decision
+- Phase: 04 (04-06)
+- What: A `type` other than `snapshot` answers 422 `invalid_input` on `type`.
+- Why: The description allows only the conversion to snapshot.
+- Cost of change: low
+
+## 2026-11-18 Image write routes only with NewModule
+
+- Type: decision
+- Phase: 04 (04-06)
+- What: PUT, DELETE, change_protection and actions are registered only by `NewModule`; `New(cat)` stays read-only.
+- Why: Existing users of `New` stay unchanged.
+- Cost of change: low
+
+## 2026-11-18 Disk-size refusal field
+
+- Type: decision
+- Phase: 04 (04-07)
+- What: An image larger than the type's disk gives 422 `invalid_input` on `server_type` at create and on `image` at rebuild.
+- Why: At create the type is the wrong choice, at rebuild the image.
+- Cost of change: low
+
+## 2026-11-18 Default image description
+
+- Type: decision
+- Phase: 04 (04-07)
+- What: `create_image` without description uses "<server name> <created RFC3339>".
+- Why: Hetzner generates one without saying how.
+- Cost of change: low
+
+## 2026-11-18 Deleting a creating image is locked
+
+- Type: decision
+- Phase: 04 (04-07)
+- What: `DELETE /images/{id}` answers 423 `locked` while the image is `creating`.
+- Why: DELETE starts no action, so a ref lock would not be checked.
+- Cost of change: low
+
+## 2026-11-18 image_size unrounded
+
+- Type: decision
+- Phase: 04 (04-07)
+- What: `image_size` is the snapshot file size in GB, not rounded.
+- Why: Simplest.
+- Cost of change: low
+
+## 2026-11-18 Failed volume create is dropped
+
+- Type: decision
+- Phase: 04 (04-12)
+- What: When create fails (CreateDisk or mkfs) the volume record and file are removed and the action ends in error.
+- Why: Same pattern as create_image; nothing half-made stays.
+- Cost of change: low
+
+## 2026-11-18 Resize stores the new size at the start
+
+- Type: decision
+- Phase: 04 (04-12)
+- What: The new size is written with the action and restored on failure; resize needs an integer 10–10240 above the current size.
+- Why: The disk rule counts the growth at once.
+- Cost of change: low
+
+## 2026-11-18 Volume delete refusals
+
+- Type: decision
+- Phase: 04 (04-12)
+- What: Delete protection gives 423 `protected`, an attached volume 422 `invalid_input`, a `creating` volume 423 `locked`.
+- Why: Follows the images module and the test map.
+- Cost of change: low
+
+## 2026-11-18 Volume names non-empty and unique per project
+
+- Type: decision
+- Phase: 04 (04-12)
+- What: Names are checked like server names; Hetzner's character pattern is not.
+- Why: Same rule as servers.
+- Cost of change: low
+
+## 2026-11-18 Missing appliance debs do not stop the cloud
+
+- Type: decision
+- Phase: 04 (04-05)
+- What: If `appliance-debs.json` cannot be read or a download fails, hlabd logs a warning and writes the cidata without debs; a failing `dpkg -i` only logs.
+- Why: ext4 and everything else work without xfsprogs; the xfs job fails with a clear message.
+- Cost of change: low
+
+## 2026-11-18 Appliance debs as `<name>.deb` at the cidata root
+
+- Type: decision
+- Phase: 04 (04-05)
+- What: Debs are `xfsprogs.deb`, `libicu76.deb`, `libinih1.deb` on the ISO root and in `<data>\cache\debs\`; JSON `{"debs":[{"name","urls","sha256"}]}`.
+- Why: cidata takes root files only; plain names avoid ISO9660 problems.
+- Cost of change: low
+
+## 2026-11-18 Rescue base prepared via a partial file
+
+- Type: decision
+- Phase: 04 (04-05)
+- What: The base is copied to `<dst>.partial.vhdx`, prepared, then renamed; a failure or leftover partial file is removed.
+- Why: A crash never leaves a half-prepared rescue.vhdx.
+- Cost of change: low
+
+## 2026-11-18 Appliance instance-id carries a user-data hash
+
+- Type: decision
+- Phase: 04 (04-05)
+- What: The appliance instance-id is `applianceName()-<12 hex of sha256(user-data)>`; a changed script makes cloud-init rerun write_files and runcmd once.
+- Why: An existing appliance picks up the new install script without recreating its disk.
+- Cost of change: low
+
+## 2026-11-18 Volume created with a server: locks
+
+- Type: decision
+- Phase: 04 (04-13)
+- What: POST /volumes with a server starts `create_volume` on the volume and `attach_volume` on the server; the volume is recorded attached at the end of create, then the disk is added in the attach action.
+- Why: `actions.Start` refuses a second action on the same volume in one transaction.
+- Cost of change: low
+
+## 2026-11-18 Attach state in the volume record
+
+- Type: decision
+- Phase: 04 (04-13)
+- What: `_hlab` gets `lun` and `automount`; attach records before adding the disk and undoes on failure, detach records only after `DetachDisk` succeeds.
+- Why: Concurrent attaches get distinct LUNs; a LUN is freed only when the disk is gone.
+- Cost of change: low
+
+## 2026-11-18 Detach from a missing VM succeeds
+
+- Type: decision
+- Phase: 04 (04-13)
+- What: Detach and `DetachAll` treat a missing VM as success; detaching an unattached volume is a successful no-op action.
+- Why: A half-created server must still be deletable.
+- Cost of change: low
+
+## 2026-11-18 Agent push only with automount
+
+- Type: decision
+- Phase: 04 (04-13)
+- What: After attach or detach the agent document is pushed only when automount is involved.
+- Why: Metadata.Volumes changes only then.
+- Cost of change: low
+
+## 2026-11-18 Router hands the action manager to modules
+
+- Type: decision
+- Phase: 04 (04-08)
+- What: New optional `resource.ActionUser { UseActions(*actions.Manager) }`, called by `api.Router.Mount` before Routes.
+- Why: The backup job must start real actions on the router's manager so locks and WaitIdle see them.
+- Cost of change: low
+
+## 2026-11-18 Daily backup done when an automatic backup exists for the UTC day
+
+- Type: decision
+- Phase: 04 (04-08)
+- What: The job skips a server only if an image with `_hlab.automatic` was created that day; manual backups do not count.
+- Why: A failed backup leaves no record, so the next hourly run retries.
+- Cost of change: low
+
+## 2026-11-18 Backup slots trimmed inside create_image
+
+- Type: decision
+- Phase: 04 (04-08)
+- What: Right after a backup becomes available the action deletes the oldest records beyond 7 and their files.
+- Why: Slots stay exact as soon as the action ends.
+- Cost of change: low
+
+## 2026-11-18 Volume hooks in the guest
+
+- Type: decision
+- Phase: 04 (04-11)
+- What: A udev rule calls `hlab-volume-id` (last 6 bytes of the `vpd_pg83` designator holding `42414c480000`), links `scsi-0HC_Volume_<id>` and starts `hlab-volume@<id>.service`, which polls `GET /hlab/v1/volumes` every 2 s for up to 60 s and mounts only a volume with a filesystem, fstab `discard,nofail,defaults`.
+- Why: The volume list is pushed after the hot-add, so the hook must wait for it.
+- Cost of change: medium (guest script in vendor-data of existing servers)
+
+## 2026-11-18 Volumes present at first boot are triggered
+
+- Type: decision
+- Phase: 04 (04-11)
+- What: After writing the hooks the vendor script runs `udevadm control --reload`, `trigger --action=change` and `settle`.
+- Why: Volumes attached at create exist before the rule.
+- Cost of change: low
+
+## 2026-11-18 Automount at create via runcmd
+
+- Type: decision
+- Phase: 04 (04-11)
+- What: Seed user-data is multipart: the user's user_data unchanged plus a cloud-config with `merge_how` append and one `runcmd` per volume; runcmd and the hook share `/run/hlab-volume.lock`.
+- Why: cloud-init's `mounts` runs before the vendor script creates the link; append keeps the user's runcmd.
+- Cost of change: low
+
+## 2026-11-18 Grown volumes picked up by the guest timer
+
+- Type: decision
+- Phase: 04 (04-11)
+- What: The hlab-guest timer writes `1` to `/sys/block/<disk>/device/rescan` for each `scsi-0HC_Volume_*` disk every 5 s.
+- Why: An idle disk learns of a new size only on its next SCSI command; the test itself still does not rescan.
+- Cost of change: low
+
+## 2026-11-18 Rescue seed held 90 s after the boot into rescue
+
+- Type: decision
+- Phase: 04 (04-09)
+- What: After a poweron, reset or reboot into rescue the action waits `Deps.RescueSeedHold` (90 s) before restoring LUN 0 first and the server's seed.
+- Why: The rescue system's cloud-init must read the rescue seed, not the server's.
+- Cost of change: low
+
+## 2026-11-18 One fixed rescue disk path per server
+
+- Type: decision
+- Phase: 04 (04-09)
+- What: The rescue disk is `disks\server-<id>-rescue.vhdx`, the seed `server-<id>-rescue-cidata.iso`; enable_rescue first ends a previous rescue and deletes its disk.
+- Why: LUN 63 holds one disk, and every rescue needs a fresh child disk.
+- Cost of change: low
+
+## 2026-11-18 Rescue disk detach errors after a boot are logged
+
+- Type: decision
+- Phase: 04 (04-09)
+- What: A failed detach of a leftover rescue disk after a boot without rescue logs a warning; the status watch removes the disk once the VM is off.
+- Why: A running or rebooting VM can refuse the hot-remove.
+- Cost of change: low
+
+## 2026-11-18 One boot-order helper for rescue and ISO
+
+- Type: decision
+- Phase: 04 (04-10)
+- What: `bootOrder(rescue, iso)` puts LUN 63 first during rescue, then DVD slot 1 with an ISO, then LUN 0; ending rescue keeps an attached ISO in front of LUN 0.
+- Why: Rescue keeps LUN 63 first and must not drop an attached ISO.
+- Cost of change: low
+
+## 2026-11-18 A failed ISO download leaves the server unchanged
+
+- Type: decision
+- Phase: 04 (04-10)
+- What: `EnsureISO` runs before any VM change; on failure the action ends in error and a previously attached ISO stays.
+- Why: Simplest form, matching the test row.
+- Cost of change: low
+
+## 2026-11-18 Reconcile restores an attached ISO
+
+- Type: decision
+- Phase: 04 (04-10)
+- What: When reconcile recreates a VM with `_hlab.iso`, it re-inserts the ISO into slot 1 with the matching boot order.
+- Why: The server's state stays consistent.
+- Cost of change: low
+
+## 2026-11-18 rescue-prepare waits for the partitions
+
+- Type: decision
+- Phase: 04 (04-09)
+- What: The agent checks every 500 ms up to 30 s for the ext4 root and vfat ESP of the hot-added disk and runs `blockdev --rereadpt` while they are missing.
+- Why: The kernel creates the block device before it reads the partition table.
+- Cost of change: low
+
+## 2026-11-18 Reboot out of a booted rescue via shutdown, detach, start
+
+- Type: decision
+- Phase: 04 (04-09)
+- What: After a booted rescue ends, an hlab reboot shuts the guest down, waits up to 2 min for Off, removes the rescue disk and starts the VM.
+- Why: Detaching the rescue disk while the rescue system runs from it hangs the guest.
+- Cost of change: low
