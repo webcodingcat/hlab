@@ -124,6 +124,9 @@ Inside `hlabd` (Go packages under `internal/`):
   type NetContributor interface {       // modules contributing to the agent document
       Contribute(tx store.Tx, doc *agentapi.Config) error
   }
+  type ActionUser interface {           // modules starting actions outside a handler (daily backups); Mount calls it before Routes
+      UseActions(m *actions.Manager)
+  }
   ```
 
   Handlers validate input, write the desired state in one transaction,
@@ -187,6 +190,7 @@ Inside `hlabd` (Go packages under `internal/`):
       AttachNIC(ctx, vm string, nic NICSpec) error // MAC, segment (public PVLAN or private VLAN), MAC deny-list
       DetachNIC(ctx, vm, mac string) error
       CreateDisk(ctx, path string, sizeBytes int64, from string, page83 [16]byte) error // thin VHDX, optional copy of base
+      CreateChildDisk(ctx, path, parent string) error // differencing VHDX on parent, new disk identifier
       ResizeDisk(ctx, path string, sizeBytes int64) error
       AttachDisk(ctx, vm, path string, lun int) error   // hot-add on SCSI controller 0
       DetachDisk(ctx, vm, path string) error
@@ -234,7 +238,7 @@ Inside `hlabd` (Go packages under `internal/`):
   (`Set-VHD -ResetDiskIdentifier`), since copies inherit the parent's.
   VMs are created Gen2, Secure Boot template
   `MicrosoftUEFICertificateAuthority`, static memory, automatic
-  checkpoints off, `AutomaticStartAction Nothing`, `AutomaticStopAction`
+  checkpoints off, checkpoint type Standard, `AutomaticStartAction Nothing`, `AutomaticStopAction`
   matching `stop_behaviour` (Save or ShutDown). The code never parses
   PowerShell text (messages and names are localized); it uses IDs, enums
   and JSON (Shutdown integration service ID
@@ -306,7 +310,7 @@ Inside `hlabd` (Go packages under `internal/`):
   `go-qcow2reader` or raw, to a fixed VHD by appending the footer, then to
   a dynamic VHDX through a `Convert` callback, on Hyper-V
   `hyperv.ConvertToDynamic`, outside the `Platform` interface) and caches; `images.EnsureISO(ctx,
-  isoID)`; `images.EnsureRescue(ctx)`. Snapshots, backups and system
+  name)` (cached as `<data>\isos\<name>`); `images.EnsureRescue(ctx)`. Snapshots, backups and system
   images live as VHDX files in the data folder. The same pipeline creates
   the appliance disk from the Debian 13 `generic` image.
 - Depends on: platform.
@@ -561,6 +565,7 @@ locks a resource of type `project`.
       UserData  string
       PrivateNetworks []MetadataNetwork
       PasswordReset *PasswordReset           // pending root password reset, or nil
+      Volumes   []int64                      // attached volumes with automount
   }
   type MetadataNetwork struct { IP netip.Addr; AliasIPs []netip.Addr; MAC string; NetworkID int64; NetworkName string; Subnet netip.Prefix; Gateway netip.Addr; InterfaceNum int; Network netip.Prefix } // InterfaceNum, Network written only when set
   type PasswordReset struct { ID int64; SHA512Crypt string } // crypt(3) hash, never the clear text
@@ -605,7 +610,8 @@ locks a resource of type `project`.
   image: a udev rule that creates `/dev/disk/by-id/scsi-0HC_Volume_<id>`
   from the disk's Page 83 identifier (hlab creates volume disks with the identifier `484C4142-0000-4000-8000-<volume ID as 12 hex digits>`; the last 6 bytes survive in both the T10 and the NAA designator the guest sees), and
   `hlab-guest.timer`, which asks the metadata service every 5 seconds for a
-  pending root password reset and applies it with `chpasswd`. Servers whose
+  pending root password reset and applies it with `chpasswd`, and rescans every
+  `scsi-0HC_Volume_*` disk so a grown volume shows its new size. Servers whose
   disks were not created by hlab (ISO installs) lack the hooks; listed as a
   deviation.
 - `vendor-data` is a multipart MIME document: a cloud-config part with
@@ -613,23 +619,28 @@ locks a resource of type `project`.
   `text/x-shellscript` part (run once per instance) that writes the hooks,
   their units and the `00-hlab-root.conf` sshd drop-in. User cloud-config
   keys such as `runcmd` or `write_files` cannot replace the hooks.
-  The script ends with `sync`, so a hard poweroff right after the first
-  boot does not leave empty host keys or hook files.
+  The script installs `hlab-sync.service` (After=cloud-final.service, runs
+  `sync` once) and queues it, so a hard poweroff right after the first boot
+  does not leave empty host keys, hook files or files user_data wrote.
 - Every VM has COM1 on `\\.\pipe\<vm>-com1` (Debian 12 panics without a
   serial port). hlabd serves that pipe itself before every start, with the
   SD `D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;S-1-5-83-0)`, drains it and
   closes it on delete; a start fails if the pipe cannot be served, because
   a pipe Hyper-V creates itself is readable by Everyone.
 - Volumes with `automount` are mounted by a `user-data` part merged by
-  cloud-init at creation, or by the udev rule plus a systemd mount unit when
-  attached later.
+  cloud-init at creation, or by the udev rule plus the templated unit `hlab-volume@.service` when
+  attached later: the unit asks the metadata service `GET /hlab/v1/volumes`
+  (the server's attached volumes with `automount`, by ID) and mounts at
+  `/mnt/HC_Volume_<id>` with an fstab entry (DECISIONS.md Q4).
 - Rescue: hlab keeps one rescue base disk (Debian 13 `generic`, prepared
   once by the agent job `rescue-prepare` so that no UUID or label matches
   any image). Enable rescue creates a differencing disk from it at SCSI
   LUN 63 with its own cidata (root password, SSH keys) and puts it first in
   the boot order; the server disk stays at LUN 0 (`/dev/sda`). The rescue
-  disk is discarded when rescue ends (the next boot after
-  `disable_rescue`, or a reset).
+  rescue ends at the first boot hlab drives into it (poweron, reset or
+  reboot; the rescue seed stays 90 s), after 60 minutes without such a
+  boot, or at `disable_rescue`; the rescue disk is detached and deleted at
+  the next hlab-driven boot without rescue or when the VM is seen off.
 
 ### Installer
 
@@ -751,6 +762,7 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 | `%ProgramFiles%\hlab\catalog\server-types.json` | `{"server_types": [...]}` as returned by Hetzner's API | `task catalog` (release) |
 | `%ProgramData%\hlab\catalog\server-types.json` | same; written by `hlab catalog update`, preferred when present | hlabd |
 | `%ProgramFiles%\hlab\catalog\{images,isos,locations,load-balancer-types,pricing}.json` | Hetzner API shapes plus `_hlab.source` (URL, checksum URL, format); locations, load balancer types and pricing from `task catalog`, images and ISOs by hand | release |
+| `%ProgramFiles%\hlab\catalog\appliance-debs.json` | `{"debs":[{"name","urls","sha256"}]}`: Debian packages missing from the appliance image; cached in `<data>\cache\debs\` and put on the appliance cidata as `<name>.deb` | release |
 | `%ProgramData%\hlab\state.db` | SQLite, see "Data schema" | hlabd |
 | `%ProgramData%\hlab\logs\hlabd.log` | JSON lines (`time`, `level`, `msg`, fields), 10 MB x 5 rotated | hlabd |
 | `%ProgramData%\hlab\ca\` | `ca.pem`, `ca.key` (SYSTEM only) | hlabd |

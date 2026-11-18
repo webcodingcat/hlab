@@ -2,11 +2,13 @@ package hyperv
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/Microsoft/go-winio/pkg/guid"
 	"github.com/Microsoft/go-winio/vhd"
@@ -75,6 +77,140 @@ try {
 		return winErr(op, err)
 	}
 	return nil
+}
+
+// CreateChildDisk creates the differencing VHDX path on the VHDX parent and
+// gives it a new disk identifier (children inherit the parent's, E7).
+func (p *Platform) CreateChildDisk(ctx context.Context, path, parent string) error {
+	const op = "CreateChildDisk"
+	if path == "" || parent == "" {
+		return &platform.Error{Kind: platform.Failed, Op: op, Err: errors.New("path and parent are required")}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return winErr(op, err)
+	}
+	_, err := p.r.run(ctx, op, map[string]any{"path": path, "parent": parent}, `if (Test-Path -LiteralPath $path) { throw [System.InvalidOperationException]::new("disk $path exists") }
+if (-not (Test-Path -LiteralPath $parent)) { throw [System.Management.Automation.ItemNotFoundException]::new("disk $parent not found") }
+try {
+  New-VHD -Path $path -ParentPath $parent -Differencing | Out-Null
+  Set-VHD -Path $path -ResetDiskIdentifier -Force
+} catch {
+  Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+  throw
+}
+`)
+	return err
+}
+
+// checkpointPrefix starts the name of every checkpoint Snapshot takes, so
+// one left behind by a crash can be found and removed.
+const checkpointPrefix = "hlab-snapshot-"
+
+// mergeTimeout bounds the wait for Hyper-V to merge a removed checkpoint
+// back into the VM's disks.
+const mergeTimeout = 10 * time.Minute
+
+// Snapshot copies the VM's disk diskPath to target, a standalone dynamic
+// VHDX with a new disk identifier. Checkpoints hlab left behind are removed
+// first. An off or saved VM's disk is copied directly; for any other state
+// a Standard checkpoint is taken, its read-only parent (diskPath) copied
+// and the checkpoint removed, and Snapshot waits until the merge is done.
+// The copy of a running disk is crash-consistent.
+func (p *Platform) Snapshot(ctx context.Context, vm, diskPath, target string) error {
+	const op = "Snapshot"
+	if diskPath == "" || target == "" {
+		return &platform.Error{Kind: platform.Failed, Op: op, Err: errors.New("disk path and target are required")}
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return winErr(op, err)
+	}
+	data, err := p.r.run(ctx, op, map[string]any{"name": vm, "prefix": checkpointPrefix}, getVM+`$old = @(Get-VMSnapshot -VM $vm | Where-Object { $_.Name -like ($prefix + '*') })
+foreach ($c in $old) { Remove-VMSnapshot -VMSnapshot $c }
+@{ state = [int]$vm.State; removed = $old.Count }
+`)
+	if err != nil {
+		return err
+	}
+	var v struct {
+		State   int `json:"state"`
+		Removed int `json:"removed"`
+	}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return &platform.Error{Kind: platform.Failed, Op: op, Err: err}
+	}
+	if v.Removed > 0 {
+		if err := p.waitMerged(ctx, op, vm); err != nil {
+			return err
+		}
+	}
+	vars := map[string]any{"name": vm, "path": diskPath, "target": target}
+	if st := mapState(v.State); st == platform.StateOff || st == platform.StateSaved {
+		_, err := p.r.run(ctx, op, vars, getVM+snapshotPrelude+`try {
+  Copy-Item -LiteralPath $full -Destination $tgt
+  Set-VHD -Path $tgt -ResetDiskIdentifier -Force
+} catch {
+  Remove-Item -LiteralPath $tgt -Force -ErrorAction SilentlyContinue
+  throw
+}
+`)
+		return err
+	}
+	vars["cpname"] = checkpointPrefix + time.Now().UTC().Format("20060102T150405.000000000Z")
+	_, err = p.r.run(ctx, op, vars, getVM+snapshotPrelude+`$d = Get-VMHardDiskDrive -VM $vm | Where-Object { $_.Path -and [System.IO.Path]::GetFullPath($_.Path) -eq $full } | Select-Object -First 1
+if (-not $d) { throw [System.Management.Automation.ItemNotFoundException]::new("disk $path is not attached to vm $name") }
+Set-VM -VM $vm -CheckpointType Standard
+$cp = Checkpoint-VM -VM $vm -SnapshotName $cpname -Passthru
+try {
+  Copy-Item -LiteralPath $full -Destination $tgt
+  Set-VHD -Path $tgt -ResetDiskIdentifier -Force
+} catch {
+  Remove-Item -LiteralPath $tgt -Force -ErrorAction SilentlyContinue
+  throw
+} finally {
+  Remove-VMSnapshot -VMSnapshot $cp
+}
+`)
+	if werr := p.waitMerged(ctx, op, vm); err == nil && werr != nil {
+		_ = os.Remove(target)
+		err = werr
+	}
+	return err
+}
+
+// snapshotPrelude sets $full and $tgt from $path and $target and refuses an
+// existing target.
+const snapshotPrelude = `$full = [System.IO.Path]::GetFullPath($path)
+$tgt = [System.IO.Path]::GetFullPath($target)
+if (Test-Path -LiteralPath $tgt) { throw [System.InvalidOperationException]::new("disk $target exists") }
+`
+
+// waitMerged waits until no hard disk drive of the VM points at an .avhdx
+// file, that is until Hyper-V merged every removed checkpoint, with
+// mergeTimeout as deadline.
+func (p *Platform) waitMerged(ctx context.Context, op, vm string) error {
+	deadline := time.Now().Add(mergeTimeout)
+	for {
+		data, err := p.r.run(ctx, op, map[string]any{"name": vm}, getVM+`@(Get-VMHardDiskDrive -VM $vm | Where-Object { $_.Path -like '*.avhdx' }).Count
+`)
+		if err != nil {
+			return err
+		}
+		var n int
+		if err := json.Unmarshal(data, &n); err != nil {
+			return &platform.Error{Kind: platform.Failed, Op: op, Err: err}
+		}
+		if n == 0 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return &platform.Error{Kind: platform.Failed, Op: op, Err: fmt.Errorf("checkpoint of vm %s not merged within %s", vm, mergeTimeout)}
+		}
+		select {
+		case <-ctx.Done():
+			return &platform.Error{Kind: platform.Failed, Op: op, Err: ctx.Err()}
+		case <-time.After(time.Second):
+		}
+	}
 }
 
 // ResizeDisk grows the VHDX path to sizeBytes; shrinking is InvalidState.

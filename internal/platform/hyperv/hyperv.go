@@ -108,7 +108,7 @@ func (p *Platform) CreateVM(ctx context.Context, spec platform.VMSpec) error {
 $vm = New-VM -Name $name -Generation 2 -MemoryStartupBytes $memory -Path $folder -NoVHD
 try {
   Get-VMNetworkAdapter -VM $vm | Remove-VMNetworkAdapter
-  Set-VM -VM $vm -ProcessorCount $cpus -StaticMemory -MemoryStartupBytes $memory -AutomaticCheckpointsEnabled $false -AutomaticStartAction Nothing -AutomaticStopAction $stop
+  Set-VM -VM $vm -ProcessorCount $cpus -StaticMemory -MemoryStartupBytes $memory -AutomaticCheckpointsEnabled $false -CheckpointType Standard -AutomaticStartAction Nothing -AutomaticStopAction $stop
   Set-VMFirmware -VM $vm -EnableSecureBoot On -SecureBootTemplate MicrosoftUEFICertificateAuthority
   Set-VMComPort -VM $vm -Number 1 -Path ('\\.\pipe\' + $name + '-com1')
 } catch {

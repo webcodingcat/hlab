@@ -155,6 +155,7 @@ type Metadata struct {
 	UserData                                       string
 	PrivateNetworks                                []MetadataNetwork
 	PasswordReset                                  *PasswordReset // pending root password reset, or nil
+	Volumes                                        []int64        // attached volumes with automount
 }
 
 // MetadataNetwork is a private network as the metadata service shows it.

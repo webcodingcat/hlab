@@ -42,6 +42,7 @@ var statuses = map[string]int{
 	"server_not_stopped":         http.StatusUnprocessableEntity,
 	"invalid_server_type":        http.StatusUnprocessableEntity,
 	"already_in_placement_group": http.StatusUnprocessableEntity,
+	"volume_already_attached":    http.StatusUnprocessableEntity,
 }
 
 // Status returns the HTTP status of an error code; unknown codes give 500.

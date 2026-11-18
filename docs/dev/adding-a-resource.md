@@ -111,6 +111,17 @@ interval after the API is up, never two runs of one job at once, and
 cancels the context at cloud stop. Take the time from a
 `scheduler.Clock` in your dependencies, so tests can drive it.
 
+A job that starts actions has no request context to take `ActionsFrom`
+from. Such a module also implements `resource.ActionUser`:
+
+```go
+func (m *Module) UseActions(am *actions.Manager) { m.actions = am }
+```
+
+The router calls it with its action manager when it mounts the module,
+before `Routes`; the job then calls `m.actions.Start` itself, as the
+servers do for the daily backups.
+
 ## 5. Register the module
 
 Add it to `Cloud.modules()` in

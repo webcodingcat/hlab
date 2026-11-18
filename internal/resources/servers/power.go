@@ -101,7 +101,7 @@ func (m *Module) power(w http.ResponseWriter, req *http.Request, a powerAction) 
 		progress(10)
 		err := check(ctx)
 		if err == nil {
-			err = m.d.Platform.Power(ctx, m.vmName(id), a.op)
+			err = m.bootPower(ctx, stor, id, a.op)
 		}
 		if err != nil {
 			// The status follows what the VM does now.

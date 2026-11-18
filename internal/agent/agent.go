@@ -20,6 +20,9 @@ import (
 // maxConfigBytes limits the size of a pushed document.
 const maxConfigBytes = 64 << 20
 
+// maxJobBytes limits the size of a job request.
+const maxJobBytes = 64 << 10
+
 // Applier brings one part of the appliance to the state of a document. Apply
 // must be idempotent: the same document may be applied again at any time.
 type Applier interface {
@@ -50,6 +53,7 @@ func (a *Agent) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("PUT /v1/config", a.putConfig)
 	mux.HandleFunc("GET /v1/status", a.getStatus)
+	mux.HandleFunc("POST /v1/jobs", a.postJob)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), a.auth) != 1 {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -86,6 +90,29 @@ func (a *Agent) putConfig(w http.ResponseWriter, r *http.Request) {
 	a.generation = cfg.Generation
 	slog.Info("config applied", "generation", cfg.Generation)
 	writeJSON(w, agentapi.Status{Generation: cfg.Generation, PasswordResetsDone: a.resetsDone()})
+}
+
+// postJob runs one job synchronously. A malformed request or an unknown
+// kind answers 400; a job that fails answers 200 with OK false.
+func (a *Agent) postJob(w http.ResponseWriter, r *http.Request) {
+	var job agentapi.Job
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJobBytes)).Decode(&job); err != nil {
+		http.Error(w, "invalid job: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	run, err := jobFunc(job)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	slog.Info("job started", "kind", job.Kind, "lun", job.LUN, "fs", job.FS)
+	if err := run(r.Context()); err != nil {
+		slog.Error("job failed", "kind", job.Kind, "lun", job.LUN, "err", err)
+		writeJSON(w, agentapi.JobResult{Message: fmt.Sprintf("job %s: %v", job.Kind, err)})
+		return
+	}
+	slog.Info("job done", "kind", job.Kind, "lun", job.LUN)
+	writeJSON(w, agentapi.JobResult{OK: true})
 }
 
 func (a *Agent) getStatus(w http.ResponseWriter, _ *http.Request) {

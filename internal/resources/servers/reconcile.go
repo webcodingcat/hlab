@@ -22,9 +22,12 @@ var (
 	guestNameservers = []netip.Addr{netip.MustParseAddr("185.12.64.1"), netip.MustParseAddr("185.12.64.2")}
 )
 
-func (m *Module) vmName(id int64) string {
-	return fmt.Sprintf("%s-server-%d", m.d.Settings.VMPrefix, id)
+// VMName is the VM name of server id under the profile tag prefix.
+func VMName(prefix string, id int64) string {
+	return fmt.Sprintf("%s-server-%d", prefix, id)
 }
+
+func (m *Module) vmName(id int64) string { return VMName(m.d.Settings.VMPrefix, id) }
 
 func (m *Module) diskPath(id int64) string {
 	return filepath.Join(m.d.Settings.DataFolder, "disks", fmt.Sprintf("server-%d.vhdx", id))
@@ -71,7 +74,7 @@ func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) err
 
 	disk := m.diskPath(id)
 	if _, err := os.Stat(disk); errors.Is(err, os.ErrNotExist) {
-		base, err := m.d.Images.Ensure(ctx, rec.Hlab.Image)
+		base, err := m.baseDisk(ctx, stor, rec)
 		if err != nil {
 			return err
 		}
@@ -87,19 +90,7 @@ func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) err
 		if err := os.MkdirAll(filepath.Dir(seed), 0o750); err != nil {
 			return err
 		}
-		if err := cidata.BuildFile(cidata.Seed{
-			InstanceID: strconv.FormatInt(id, 10),
-			Hostname:   rec.Name,
-			SSHKeys:    rec.Hlab.SSHKeys,
-			UserData:   rec.Hlab.UserData,
-			VendorData: vendorData(rec.Hlab.RootHash),
-			Interfaces: []cidata.Interface{{
-				MAC:         rec.Hlab.MAC,
-				Addresses:   []netip.Prefix{netip.PrefixFrom(ip, 32)},
-				Gateway:     guestGateway,
-				Nameservers: guestNameservers,
-			}},
-		}, seed); err != nil {
+		if err := cidata.BuildFile(m.seed(rec), seed); err != nil {
 			return err
 		}
 	} else if err != nil {
@@ -114,12 +105,39 @@ func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) err
 		if err := m.createVM(ctx, name, id, typ.Cores, int64(typ.Memory*1024), mac, rec.Hlab.Location); err != nil {
 			return err
 		}
+		// A VM made again keeps the server's ISO.
+		if rec.Hlab.ISO != "" {
+			iso, err := m.d.Images.EnsureISO(ctx, rec.Hlab.ISO)
+			if err != nil {
+				return err
+			}
+			if err := m.setISO(ctx, stor, id, iso, rec.Hlab.ISO, rec.ISO); err != nil {
+				return err
+			}
+		}
 	}
 	if err := m.d.PushAgent(ctx); err != nil {
 		return err
 	}
 	slog.Info("server reconciled", "id", id, "vm", name, "ipv4", ip.String())
 	return nil
+}
+
+// seed is the seed of server rec.
+func (m *Module) seed(rec Record) cidata.Seed {
+	return cidata.Seed{
+		InstanceID: strconv.FormatInt(rec.ID, 10),
+		Hostname:   rec.Name,
+		SSHKeys:    rec.Hlab.SSHKeys,
+		UserData:   seedUserData(rec.Hlab.UserData, rec.Hlab.AutomountVolumes),
+		VendorData: vendorData(rec.Hlab.RootHash),
+		Interfaces: []cidata.Interface{{
+			MAC:         rec.Hlab.MAC,
+			Addresses:   []netip.Prefix{netip.PrefixFrom(rec.IPv4(), 32)},
+			Gateway:     guestGateway,
+			Nameservers: guestNameservers,
+		}},
+	}
 }
 
 // createVM creates the VM with the server's disk, public adapter and seed.
@@ -137,7 +155,7 @@ func (m *Module) createVM(ctx context.Context, name string, id int64, cores int,
 	if err := p.SetDVD(ctx, name, 0, m.seedPath(id)); err != nil {
 		return err
 	}
-	return p.SetBootOrder(ctx, name, []platform.BootDevice{{Kind: "disk", Slot: 0}})
+	return p.SetBootOrder(ctx, name, bootOrder(false, false))
 }
 
 // vmSpec is the VM specification of server id with cores and memoryMB.
@@ -155,15 +173,16 @@ func (m *Module) vmSpec(name string, id int64, cores int, memoryMB int64) platfo
 	return spec
 }
 
-// deleteMachine turns the VM off, removes it with its disk, seed and
-// folder, and pushes the agent document without the server. Missing parts
-// are skipped, so a half-created server is deleted too.
+// deleteMachine turns the VM off, removes it with its disk, seed, rescue
+// disk, rescue seed and folder, and pushes the agent document without the
+// server. Missing parts are skipped, so a half-created server is deleted
+// too.
 func (m *Module) deleteMachine(ctx context.Context, id int64) error {
 	name := m.vmName(id)
 	if err := m.d.Platform.DeleteVM(ctx, name); err != nil && !isNotFound(err) {
 		return err
 	}
-	for _, p := range []string{m.diskPath(id), m.seedPath(id)} {
+	for _, p := range []string{m.diskPath(id), m.seedPath(id), m.rescueDiskPath(id), m.rescueSeedPath(id)} {
 		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}

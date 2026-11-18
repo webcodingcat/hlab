@@ -1,7 +1,7 @@
 // Package catalog loads the shipped catalogs (locations, server types, load
-// balancer types, pricing, images). The files hold Hetzner's API shapes;
-// images carry their download source in `_hlab.source`, which is never
-// served.
+// balancer types, pricing, images, ISOs). The files hold Hetzner's API
+// shapes; images and ISOs carry their download source in `_hlab.source`,
+// which is never served.
 package catalog
 
 import (
@@ -60,12 +60,24 @@ type Image struct {
 	Raw json.RawMessage `json:"-"`
 }
 
+// ISO is one catalog ISO.
+type ISO struct {
+	ID           int64         `json:"id"`
+	Name         string        `json:"name"`
+	Architecture string        `json:"architecture"` // "" for a wildcard (null)
+	Deprecated   bool          `json:"-"`
+	Source       images.Source `json:"-"` // Format "iso"
+	// Raw is the ISO object as served, without `_hlab`.
+	Raw json.RawMessage `json:"-"`
+}
+
 // Catalog holds the loaded catalogs, each list sorted as in its file. The
 // server types can be replaced at run time (catalog update) and are only
 // reached through the guarded methods.
 type Catalog struct {
 	Locations         []Location
 	Images            []Image
+	ISOs              []ISO
 	LoadBalancerTypes []json.RawMessage
 
 	mu          sync.RWMutex
@@ -111,6 +123,22 @@ func Load(dir string) (*Catalog, error) {
 			return nil, fmt.Errorf("images.json: %w", err)
 		}
 		c.Images = append(c.Images, img)
+	}
+
+	var isos []json.RawMessage
+	if err := readList(dir, "isos.json", "isos", &isos); err != nil {
+		return nil, err
+	}
+	for _, raw := range isos {
+		var iso ISO
+		if err := json.Unmarshal(raw, &iso); err != nil {
+			return nil, fmt.Errorf("isos.json: %w", err)
+		}
+		if iso.Raw, iso.Source, iso.Deprecated, err = splitHlab(raw); err != nil {
+			return nil, fmt.Errorf("isos.json: %s: %w", iso.Name, err)
+		}
+		iso.Source.Format = "iso"
+		c.ISOs = append(c.ISOs, iso)
 	}
 
 	if err := readList(dir, "load-balancer-types.json", "load_balancer_types", &c.LoadBalancerTypes); err != nil {
@@ -172,31 +200,48 @@ func image(raw json.RawMessage) (Image, error) {
 	if err := json.Unmarshal(raw, &img); err != nil {
 		return img, err
 	}
+	var err error
+	if img.Raw, img.Source, img.Deprecated, err = splitHlab(raw); err != nil {
+		return img, fmt.Errorf("%s: %w", img.Name, err)
+	}
+	return img, nil
+}
+
+// splitHlab returns the object raw without `_hlab`, the source in
+// `_hlab.source` and whether the object is deprecated.
+func splitHlab(raw json.RawMessage) (json.RawMessage, images.Source, bool, error) {
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &obj); err != nil {
-		return img, err
+		return nil, images.Source{}, false, err
 	}
 	var extra struct {
 		Source struct {
-			URL         string `json:"url"`
-			ChecksumURL string `json:"checksum_url"`
-			Format      string `json:"format"`
+			URL                 string `json:"url"`
+			ChecksumURL         string `json:"checksum_url"`
+			Format              string `json:"format"`
+			FallbackURL         string `json:"fallback_url"`
+			FallbackChecksumURL string `json:"fallback_checksum_url"`
 		} `json:"source"`
 	}
 	if h, ok := obj["_hlab"]; ok {
 		if err := json.Unmarshal(h, &extra); err != nil {
-			return img, fmt.Errorf("%s: _hlab: %w", img.Name, err)
+			return nil, images.Source{}, false, fmt.Errorf("_hlab: %w", err)
 		}
 		delete(obj, "_hlab")
 	}
-	img.Source = images.Source{URL: extra.Source.URL, ChecksumURL: extra.Source.ChecksumURL, Format: extra.Source.Format}
-	img.Deprecated = string(obj["deprecation"]) != "" && string(obj["deprecation"]) != "null"
+	src := images.Source{
+		URL:                 extra.Source.URL,
+		ChecksumURL:         extra.Source.ChecksumURL,
+		Format:              extra.Source.Format,
+		FallbackURL:         extra.Source.FallbackURL,
+		FallbackChecksumURL: extra.Source.FallbackChecksumURL,
+	}
+	deprecated := string(obj["deprecation"]) != "" && string(obj["deprecation"]) != "null"
 	b, err := json.Marshal(obj)
 	if err != nil {
-		return img, err
+		return nil, images.Source{}, false, err
 	}
-	img.Raw = b
-	return img, nil
+	return b, src, deprecated, nil
 }
 
 // ImageSources maps the name of every image with a source to it, for
@@ -207,6 +252,27 @@ func (c *Catalog) ImageSources() map[string]images.Source {
 		if img.Source.URL != "" {
 			m[img.Name] = img.Source
 		}
+	}
+	return m
+}
+
+// ISO returns the ISO with the given name or ID.
+func (c *Catalog) ISO(ref string) (ISO, bool) {
+	id, err := strconv.ParseInt(ref, 10, 64)
+	for _, iso := range c.ISOs {
+		if iso.Name == ref || (err == nil && iso.ID == id) {
+			return iso, true
+		}
+	}
+	return ISO{}, false
+}
+
+// ISOSources maps the name of every ISO to its source, for
+// images.Options.ISOs.
+func (c *Catalog) ISOSources() map[string]images.Source {
+	m := make(map[string]images.Source, len(c.ISOs))
+	for _, iso := range c.ISOs {
+		m[iso.Name] = iso.Source
 	}
 	return m
 }

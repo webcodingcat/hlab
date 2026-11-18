@@ -1,0 +1,28 @@
+{
+  "debs": [
+    {
+      "name": "xfsprogs",
+      "urls": [
+        "http://deb.debian.org/debian/pool/main/x/xfsprogs/xfsprogs_6.13.0-2+deb13u1_amd64.deb",
+        "https://snapshot.debian.org/archive/debian/20260713T202617Z/pool/main/x/xfsprogs/xfsprogs_6.13.0-2+deb13u1_amd64.deb"
+      ],
+      "sha256": "79e00160bfc45d25a46d2709edd364afb41723d9b96713de8f6c80b6a17f2d74"
+    },
+    {
+      "name": "libicu76",
+      "urls": [
+        "http://deb.debian.org/debian/pool/main/i/icu/libicu76_76.1-4_amd64.deb",
+        "https://snapshot.debian.org/archive/debian/20250531T082741Z/pool/main/i/icu/libicu76_76.1-4_amd64.deb"
+      ],
+      "sha256": "c1bf762996de9ecba9b9d871e4928a8090f023a3e9e7fa3240b3d90f892a01dc"
+    },
+    {
+      "name": "libinih1",
+      "urls": [
+        "http://deb.debian.org/debian/pool/main/libi/libinih/libinih1_59-1_amd64.deb",
+        "https://snapshot.debian.org/archive/debian/20250402T024758Z/pool/main/libi/libinih/libinih1_59-1_amd64.deb"
+      ],
+      "sha256": "22e51939acb45906a57851508290782a2a704fce5208e213e951268b3c799c4a"
+    }
+  ]
+}

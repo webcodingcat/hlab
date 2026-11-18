@@ -17,6 +17,58 @@ import (
 
 func TestAgent(t *testing.T) {
 	t.Run("META-01", testMetadata)
+	t.Run("SRV-11", testRewriteIDs)
+	t.Run("VOL-03", testMetadataVolumes)
+}
+
+func testMetadataVolumes(t *testing.T) {
+	ctx := context.Background()
+	a := agentapi.Metadata{
+		IP:         netip.MustParseAddr("198.19.0.20"),
+		ServerID:   50,
+		Hostname:   "vol-a",
+		PublicIPv4: "198.19.0.20",
+		Volumes:    []int64{101, 103},
+	}
+	b := agentapi.Metadata{
+		IP:         netip.MustParseAddr("198.19.0.21"),
+		ServerID:   51,
+		Hostname:   "vol-b",
+		PublicIPv4: "198.19.0.21",
+	}
+	m := agent.NewMetadata()
+	if err := m.Apply(ctx, agentapi.Config{Schema: agentapi.Schema, Generation: 1, Metadata: []agentapi.Metadata{a, b}}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	for _, c := range []struct {
+		name string
+		from string
+		want []int64
+	}{
+		{"A", a.IP.String(), []int64{101, 103}},
+		{"B", b.IP.String(), []int64{}},
+	} {
+		code, body := request(t, m, http.MethodGet, "/hlab/v1/volumes", c.from)
+		if code != http.StatusOK {
+			t.Errorf("%s: GET /hlab/v1/volumes = %d %q, want 200", c.name, code, body)
+			continue
+		}
+		var doc struct {
+			Volumes []int64 `json:"volumes"`
+		}
+		if err := json.Unmarshal([]byte(body), &doc); err != nil || doc.Volumes == nil {
+			t.Errorf("%s: GET /hlab/v1/volumes body %q (%v), want {\"volumes\":[...]}", c.name, body, err)
+			continue
+		}
+		if !slices.Equal(doc.Volumes, c.want) {
+			t.Errorf("%s: volumes = %v, want %v", c.name, doc.Volumes, c.want)
+		}
+	}
+
+	if code, body := request(t, m, http.MethodGet, "/hlab/v1/volumes", "198.19.0.99"); code != http.StatusNotFound {
+		t.Errorf("unknown address: GET /hlab/v1/volumes = %d %q, want 404", code, body)
+	}
 }
 
 func testMetadata(t *testing.T) {

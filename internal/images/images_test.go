@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -83,7 +84,152 @@ func newStore(t *testing.T, s *source, c *converter) *images.Store {
 	})
 }
 
+// isoSource serves one ISO and its SHA256SUMS file under /current/ and,
+// when archived, only under /archive/ (/current/ answers 404), and counts
+// the downloads of the ISO.
+type isoSource struct {
+	iso       []byte
+	sums      atomic.Value // string
+	archived  atomic.Bool
+	downloads atomic.Int64
+	srv       *httptest.Server
+}
+
+const isoFile = "test-live-amd64.iso"
+
+func newISOSource(t *testing.T) *isoSource {
+	t.Helper()
+	s := &isoSource{iso: bytes.Repeat([]byte{0x5A}, 1<<19)}
+	sum := sha256.Sum256(s.iso)
+	s.setSum(hex.EncodeToString(sum[:]))
+	mux := http.NewServeMux()
+	for _, dir := range []string{"current", "archive"} {
+		gone := func() bool { return (dir == "current") == s.archived.Load() }
+		mux.HandleFunc("GET /"+dir+"/"+isoFile, func(w http.ResponseWriter, r *http.Request) {
+			if gone() {
+				http.NotFound(w, r)
+				return
+			}
+			s.downloads.Add(1)
+			_, _ = w.Write(s.iso)
+		})
+		mux.HandleFunc("GET /"+dir+"/SHA256SUMS", func(w http.ResponseWriter, r *http.Request) {
+			if gone() {
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = io.WriteString(w, s.sums.Load().(string))
+		})
+	}
+	s.srv = httptest.NewServer(mux)
+	t.Cleanup(s.srv.Close)
+	return s
+}
+
+func (s *isoSource) setSum(hexSum string) {
+	s.sums.Store(fmt.Sprintf("%s *%s\n", hexSum, isoFile))
+}
+
+func newISOStore(t *testing.T, s *isoSource) (*images.Store, string) {
+	t.Helper()
+	isoDir := filepath.Join(t.TempDir(), "isos")
+	u := s.srv.URL
+	return images.New(images.Options{
+		Dir: t.TempDir(),
+		ISOs: map[string]images.Source{
+			"test-live": {
+				URL:                 u + "/current/" + isoFile,
+				ChecksumURL:         u + "/current/SHA256SUMS",
+				Format:              "iso",
+				FallbackURL:         u + "/archive/" + isoFile,
+				FallbackChecksumURL: u + "/archive/SHA256SUMS",
+			},
+		},
+		ISODir: isoDir,
+		HTTP:   s.srv.Client(),
+	}), isoDir
+}
+
+// isoDirFiles lists the files in dir; a missing dir has none.
+func isoDirFiles(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		t.Fatalf("read ISO folder: %v", err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	return names
+}
+
 func TestImages(t *testing.T) {
+	t.Run("CAT-08", func(t *testing.T) {
+		ctx := context.Background()
+
+		// First use downloads and verifies, caches under the ISO folder;
+		// the second use downloads nothing.
+		src := newISOSource(t)
+		st, isoDir := newISOStore(t, src)
+		path, err := st.EnsureISO(ctx, "test-live")
+		if err != nil {
+			t.Fatalf("first EnsureISO: %v", err)
+		}
+		if filepath.Dir(path) != isoDir {
+			t.Errorf("EnsureISO = %q, want a file in %q", path, isoDir)
+		}
+		if data, err := os.ReadFile(path); err != nil || !bytes.Equal(data, src.iso) {
+			t.Errorf("cached ISO %q: %d bytes (%v), want the served ISO unchanged (%d bytes)", path, len(data), err, len(src.iso))
+		}
+		if got := src.downloads.Load(); got != 1 {
+			t.Errorf("downloads after first EnsureISO = %d, want 1", got)
+		}
+		again, err := st.EnsureISO(ctx, "test-live")
+		if err != nil {
+			t.Fatalf("second EnsureISO: %v", err)
+		}
+		if again != path {
+			t.Errorf("second EnsureISO = %q, want cached %q", again, path)
+		}
+		if got := src.downloads.Load(); got != 1 {
+			t.Errorf("downloads after second EnsureISO = %d, want 1", got)
+		}
+
+		// A checksum mismatch errors and caches nothing.
+		bad := newISOSource(t)
+		bad.setSum(hex.EncodeToString(make([]byte, sha256.Size)))
+		badStore, badDir := newISOStore(t, bad)
+		if p, err := badStore.EnsureISO(ctx, "test-live"); err == nil {
+			t.Errorf("EnsureISO with checksum mismatch = %q, want an error", p)
+		}
+		if files := isoDirFiles(t, badDir); len(files) != 0 {
+			t.Errorf("ISO folder after checksum mismatch holds %v, want nothing", files)
+		}
+
+		// Primary URLs answering 404 fall back to the archive.
+		moved := newISOSource(t)
+		moved.archived.Store(true)
+		movedStore, _ := newISOStore(t, moved)
+		p, err := movedStore.EnsureISO(ctx, "test-live")
+		if err != nil {
+			t.Fatalf("EnsureISO with primary 404: %v", err)
+		}
+		if data, err := os.ReadFile(p); err != nil || !bytes.Equal(data, moved.iso) {
+			t.Errorf("ISO from the fallback %q: %d bytes (%v), want the served ISO", p, len(data), err)
+		}
+		if got := moved.downloads.Load(); got != 1 {
+			t.Errorf("downloads from the fallback = %d, want 1", got)
+		}
+
+		// An unknown name errors.
+		if p, err := st.EnsureISO(ctx, "no-such-iso"); err == nil {
+			t.Errorf("EnsureISO of an unknown name = %q, want an error", p)
+		}
+	})
 	t.Run("CAT-07", func(t *testing.T) {
 		ctx := context.Background()
 

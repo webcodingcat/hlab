@@ -36,12 +36,14 @@ import (
 	actionsres "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/datacenters"
 	imagesres "github.com/webcodingcat/hlab/internal/resources/images"
+	"github.com/webcodingcat/hlab/internal/resources/isos"
 	"github.com/webcodingcat/hlab/internal/resources/locations"
 	"github.com/webcodingcat/hlab/internal/resources/placementgroups"
 	"github.com/webcodingcat/hlab/internal/resources/pricing"
 	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/resources/servertypes"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
+	"github.com/webcodingcat/hlab/internal/resources/volumes"
 	"github.com/webcodingcat/hlab/internal/scheduler"
 	"github.com/webcodingcat/hlab/internal/settings"
 	"github.com/webcodingcat/hlab/internal/store"
@@ -106,6 +108,8 @@ type Cloud struct {
 	mods   []resource.Module
 	// pushMu keeps agent documents in the order they were built.
 	pushMu sync.Mutex
+	// jobMu runs one appliance job at a time.
+	jobMu sync.Mutex
 
 	applianceOn bool
 	apiSrv      *http.Server
@@ -224,9 +228,13 @@ func (c *Cloud) start(ctx context.Context) error {
 		return errors.New("platform cannot convert images")
 	}
 	c.images = images.New(images.Options{
-		Dir:     filepath.Join(set.Storage.DataFolder, "images"),
-		Catalog: c.cat.ImageSources(),
-		Convert: conv.ConvertToDynamic,
+		Dir:           filepath.Join(set.Storage.DataFolder, "images"),
+		Catalog:       c.cat.ImageSources(),
+		Convert:       conv.ConvertToDynamic,
+		ISOs:          c.cat.ISOSources(),
+		ISODir:        filepath.Join(set.Storage.DataFolder, "isos"),
+		RescueImage:   applianceImage,
+		PrepareRescue: c.prepareRescue,
 	})
 
 	if err := c.plat.EnsureSwitch(ctx, platform.SwitchSpec{Name: c.tag, PVLANPrimary: pvlanPrimary, PVLANSecondary: pvlanSecondary}); err != nil {
@@ -294,6 +302,10 @@ func (c *Cloud) startJobs(ctx context.Context) {
 	}
 }
 
+// rescueSeedHold covers the first boot of the rescue system up to
+// cloud-init having read its seed.
+const rescueSeedHold = 90 * time.Second
+
 // metricsRetention is how long the samples of the servers' VMs are kept.
 const metricsRetention = 24 * time.Hour
 
@@ -301,33 +313,61 @@ const metricsRetention = 24 * time.Hour
 // is one more entry here; a module implementing resource.NetContributor
 // adds its part to the agent document.
 func (c *Cloud) modules() []resource.Module {
+	srv := servers.New(servers.Deps{
+		Catalog:     c.cat,
+		PublicRange: c.set.Network.PublicRange,
+		Store:       c.st,
+		Platform:    c.plat,
+		Images:      c.images,
+		PushAgent:   c.PushAgent,
+		AgentStatus: func(ctx context.Context) (agentapi.Status, error) { return c.agent.Status(ctx) },
+		Metrics:     metrics.NewStore(metricsRetention),
+		Settings: servers.Settings{
+			DataFolder:    c.set.Storage.DataFolder,
+			StopBehaviour: c.set.Cloud.StopBehaviour,
+			ReserveRAMMB:  int64(c.set.Resources.ReserveRAMMB),
+			ReserveDiskGB: int64(c.set.Resources.ReserveDiskGB),
+			VMPrefix:      c.tag,
+		},
+		ExtraDisks:     volumeDisks,
+		RescueSeedHold: rescueSeedHold,
+	})
+	vol := volumes.New(volumes.Deps{
+		Catalog:      c.cat,
+		Store:        c.st,
+		Platform:     c.plat,
+		DataFolder:   c.set.Storage.DataFolder,
+		VMPrefix:     c.tag,
+		CheckDisk:    srv.CheckDisk,
+		ApplianceJob: c.applianceJob,
+		PushAgent:    c.PushAgent,
+	})
+	srv.SetVolumes(vol)
+	// The servers module comes before volumes: volumes adds to the
+	// metadata the servers module writes into the agent document.
 	return []resource.Module{
 		actionsres.New(),
 		locations.New(c.cat),
 		datacenters.New(),
 		servertypes.New(c.cat),
 		pricing.New(c.cat),
-		imagesres.New(c.cat),
+		imagesres.NewModule(imagesres.Deps{Catalog: c.cat, DataFolder: c.set.Storage.DataFolder}),
+		isos.New(c.cat),
 		sshkeys.New(),
 		placementgroups.New(),
-		servers.New(servers.Deps{
-			Catalog:     c.cat,
-			PublicRange: c.set.Network.PublicRange,
-			Store:       c.st,
-			Platform:    c.plat,
-			Images:      c.images,
-			PushAgent:   c.PushAgent,
-			AgentStatus: func(ctx context.Context) (agentapi.Status, error) { return c.agent.Status(ctx) },
-			Metrics:     metrics.NewStore(metricsRetention),
-			Settings: servers.Settings{
-				DataFolder:    c.set.Storage.DataFolder,
-				StopBehaviour: c.set.Cloud.StopBehaviour,
-				ReserveRAMMB:  int64(c.set.Resources.ReserveRAMMB),
-				ReserveDiskGB: int64(c.set.Resources.ReserveDiskGB),
-				VMPrefix:      c.tag,
-			},
-		}),
+		srv,
+		vol,
 	}
+}
+
+// volumeDisks are the volume disks for the servers' disk rule.
+func volumeDisks(tx store.Tx) ([]servers.DiskUse, error) {
+	disks, err := volumes.Disks(tx)
+	out := make([]servers.DiskUse, 0, len(disks))
+	for _, d := range disks {
+		out = append(out, servers.DiskUse{Path: d.Path, NominalBytes: d.NominalBytes})
+	}
+	return out, err
 }
 
 // PushAgent rebuilds the full agent document from the store and pushes it.

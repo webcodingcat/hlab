@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 )
 
@@ -22,24 +24,85 @@ type checksum struct {
 	hash func() hash.Hash
 }
 
+// errNotFound marks a URL that answered 404.
+var errNotFound = errors.New("not found")
+
+// fetchSource downloads the file of src into f and verifies it against its
+// checksum file. When the URL or the checksum URL answers 404, the fallback
+// pair is tried.
+func (s *Store) fetchSource(ctx context.Context, src Source, f *os.File) error {
+	err := s.fetchPair(ctx, src.URL, src.ChecksumURL, f)
+	if errors.Is(err, errNotFound) && src.FallbackURL != "" {
+		err = s.fetchPair(ctx, src.FallbackURL, src.FallbackChecksumURL, f)
+	}
+	return err
+}
+
+// fetchPair downloads fileURL into f and verifies it against the entry for
+// its file name in the checksum file at sumURL. Nothing is written to f
+// unless fileURL answers 200.
+func (s *Store) fetchPair(ctx context.Context, fileURL, sumURL string, f *os.File) error {
+	want, err := s.expectedSum(ctx, fileURL, sumURL)
+	if err != nil {
+		return err
+	}
+	return download(ctx, s.opts.HTTP, fileURL, f, want)
+}
+
 // expectedSum fetches the checksum file and returns the entry for the
-// image's file name.
-func (s *Store) expectedSum(ctx context.Context, src Source) (checksum, error) {
-	u, err := url.Parse(src.URL)
+// file name of fileURL.
+func (s *Store) expectedSum(ctx context.Context, fileURL, sumURL string) (checksum, error) {
+	u, err := url.Parse(fileURL)
 	if err != nil {
 		return checksum{}, fmt.Errorf("image URL: %w", err)
 	}
 	file := path.Base(u.Path)
-	body, err := s.get(ctx, src.ChecksumURL)
+	body, err := get(ctx, s.opts.HTTP, sumURL)
 	if err != nil {
 		return checksum{}, err
 	}
 	defer func() { _ = body.Close() }()
 	sum, err := findSum(body, file)
 	if err != nil {
-		return checksum{}, fmt.Errorf("checksum file %s: %w", src.ChecksumURL, err)
+		return checksum{}, fmt.Errorf("checksum file %s: %w", sumURL, err)
 	}
 	return sum, nil
+}
+
+// Fetch downloads the first of urls that answers 200 to dst and verifies its
+// SHA-256 (hex). On error nothing stays at dst. A nil client means
+// http.DefaultClient.
+func Fetch(ctx context.Context, client *http.Client, urls []string, sha256hex, dst string) error {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	want := checksum{hex: strings.ToLower(sha256hex), hash: sha256.New}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(dst), filepath.Base(dst)+"-*.download")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer func() { _ = os.Remove(tmp) }()
+	err = fmt.Errorf("fetch %s: no URL", filepath.Base(dst))
+	for _, u := range urls {
+		var body io.ReadCloser
+		if body, err = get(ctx, client, u); err != nil {
+			continue
+		}
+		err = copyVerified(body, f, u, want)
+		_ = body.Close()
+		break
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	return os.Rename(tmp, dst)
 }
 
 // findSum reads lines "<hex> *<file>" or "<hex>  <file>" and returns the
@@ -75,14 +138,19 @@ func findSum(r io.Reader, file string) (checksum, error) {
 }
 
 // download streams rawURL into f and verifies its digest.
-func (s *Store) download(ctx context.Context, rawURL string, f *os.File, want checksum) error {
-	body, err := s.get(ctx, rawURL)
+func download(ctx context.Context, client *http.Client, rawURL string, f *os.File, want checksum) error {
+	body, err := get(ctx, client, rawURL)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = body.Close() }()
+	return copyVerified(body, f, rawURL, want)
+}
+
+// copyVerified copies body into w and compares its digest with want.
+func copyVerified(body io.Reader, w io.Writer, rawURL string, want checksum) error {
 	h := want.hash()
-	if _, err := io.Copy(io.MultiWriter(f, h), body); err != nil {
+	if _, err := io.Copy(io.MultiWriter(w, h), body); err != nil {
 		return fmt.Errorf("download %s: %w", rawURL, err)
 	}
 	if got := hex.EncodeToString(h.Sum(nil)); got != want.hex {
@@ -91,17 +159,22 @@ func (s *Store) download(ctx context.Context, rawURL string, f *os.File, want ch
 	return nil
 }
 
-func (s *Store) get(ctx context.Context, rawURL string) (io.ReadCloser, error) {
+// get answers the body of rawURL; any status but 200 is an error, 404 one
+// wrapping errNotFound.
+func get(ctx context.Context, client *http.Client, rawURL string) (io.ReadCloser, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.opts.HTTP.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, fmt.Errorf("GET %s: %s: %w", rawURL, resp.Status, errNotFound)
+		}
 		return nil, fmt.Errorf("GET %s: %s", rawURL, resp.Status)
 	}
 	return resp.Body, nil

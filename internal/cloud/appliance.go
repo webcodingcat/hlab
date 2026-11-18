@@ -5,7 +5,9 @@ package cloud
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -17,6 +19,7 @@ import (
 
 	"github.com/webcodingcat/hlab/appliance"
 	"github.com/webcodingcat/hlab/internal/cidata"
+	"github.com/webcodingcat/hlab/internal/images"
 	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/store"
 )
@@ -103,7 +106,7 @@ func (c *Cloud) startAppliance(ctx context.Context, secret string) error {
 		return err
 	}
 
-	if err := c.writeApplianceISO(secret); err != nil {
+	if err := c.writeApplianceISO(ctx, secret); err != nil {
 		return err
 	}
 	if err := c.plat.SetDVD(ctx, name, 0, c.isoPath()); err != nil {
@@ -160,32 +163,88 @@ func (c *Cloud) createAppliance(ctx context.Context, spec platform.VMSpec) (err 
 	})
 }
 
+// applianceDebs is catalog/appliance-debs.json: packages the appliance
+// image lacks, installed from its cidata ISO.
+type applianceDebs struct {
+	Debs []struct {
+		Name   string   `json:"name"`   // file <name>.deb on the ISO and in the cache
+		URLs   []string `json:"urls"`   // tried in order
+		SHA256 string   `json:"sha256"` // hex
+	} `json:"debs"`
+}
+
+// debsDir caches the appliance's .deb files.
+func (c *Cloud) debsDir() string {
+	return filepath.Join(c.set.Storage.DataFolder, "cache", "debs")
+}
+
+// applianceDebFiles downloads the packages of catalog/appliance-debs.json
+// once into the cache and returns them keyed by their file name on the ISO.
+func (c *Cloud) applianceDebFiles(ctx context.Context) (map[string][]byte, error) {
+	data, err := os.ReadFile(filepath.Join(c.d.Paths.Catalog, "appliance-debs.json"))
+	if err != nil {
+		return nil, err
+	}
+	var list applianceDebs
+	if err := json.Unmarshal(data, &list); err != nil {
+		return nil, fmt.Errorf("appliance-debs.json: %w", err)
+	}
+	files := map[string][]byte{}
+	for _, d := range list.Debs {
+		file := d.Name + ".deb"
+		path := filepath.Join(c.debsDir(), file)
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			slog.Info("downloading an appliance package", "name", d.Name)
+			if err := images.Fetch(ctx, nil, d.URLs, d.SHA256, path); err != nil {
+				return nil, err
+			}
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		files[file] = b
+	}
+	return files, nil
+}
+
 // writeApplianceISO rebuilds the appliance's cidata ISO: transit address,
-// default route via the host, the agent binary next to hlabd and the secret.
-func (c *Cloud) writeApplianceISO(secret string) error {
+// default route via the host, the agent binary next to hlabd, the secret
+// and the cached appliance packages. Without the packages the appliance
+// still starts; formatting with xfs then fails with a clear message.
+func (c *Cloud) writeApplianceISO(ctx context.Context, secret string) error {
 	agentBin, err := os.ReadFile(filepath.Join(c.d.Paths.Programs, appliance.AgentFile))
 	if err != nil {
 		return fmt.Errorf("read the hlab-agent binary: %w", err)
 	}
+	files, err := c.applianceDebFiles(ctx)
+	if err != nil {
+		slog.Warn("appliance packages unavailable; xfs volumes cannot be formatted", "err", err)
+		files = map[string][]byte{}
+	}
+	files[appliance.AgentFile] = agentBin
+	files[appliance.SecretFile] = []byte(secret + "\n")
 	if err := os.MkdirAll(c.applianceDir(), 0o750); err != nil {
 		return err
 	}
 	if err := os.Remove(c.isoPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	// The instance-id carries a hash of the user-data, so cloud-init treats an
+	// existing appliance as a new instance once and writes the changed unit
+	// and install script; the appliance keeps no state that this loses.
+	userData := appliance.UserData()
+	sum := sha256.Sum256(userData)
 	return cidata.BuildFile(cidata.Seed{
-		InstanceID: c.applianceName(),
+		InstanceID: c.applianceName() + "-" + hex.EncodeToString(sum[:6]),
 		Hostname:   c.applianceName(),
-		UserData:   string(appliance.UserData()),
+		UserData:   string(userData),
 		Interfaces: []cidata.Interface{{
 			MAC:       applianceMAC,
 			Addresses: []netip.Prefix{netip.PrefixFrom(applianceAddr, hostAddr.Bits())},
 			Gateway:   hostAddr.Addr(),
 		}},
-		Files: map[string][]byte{
-			appliance.AgentFile:  agentBin,
-			appliance.SecretFile: []byte(secret + "\n"),
-		},
+		Files: files,
 	}, c.isoPath())
 }
 

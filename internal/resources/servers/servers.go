@@ -27,6 +27,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
+	imagesres "github.com/webcodingcat/hlab/internal/resources/images"
 	"github.com/webcodingcat/hlab/internal/resources/placementgroups"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
 	"github.com/webcodingcat/hlab/internal/scheduler"
@@ -55,9 +56,31 @@ const (
 	StatusMigrating    = "migrating"
 )
 
-// Images provides the base disk of an image by name (*images.Store).
+// Images provides the base disk of an image by name, the catalog ISOs and
+// the rescue base (*images.Store).
 type Images interface {
 	Ensure(ctx context.Context, name string) (string, error)
+	EnsureISO(ctx context.Context, name string) (string, error)
+	EnsureRescue(ctx context.Context) (string, error)
+}
+
+// DiskUse is a further thin disk the disk rule counts: it can grow from its
+// file size up to NominalBytes.
+type DiskUse struct {
+	Path         string
+	NominalBytes int64
+}
+
+// VolumeHooks are the volume operations of a server's life; the cloud sets
+// them after both modules exist.
+type VolumeHooks interface {
+	// CheckAttach validates the volume IDs of a server create (exist, same
+	// project and location, not attached) with api field errors.
+	CheckAttach(tx store.Tx, projectID int64, location string, ids []int64) error
+	Attach(ctx context.Context, stor *store.Store, serverID int64, ids []int64, automount bool) error
+	// DetachAll detaches every volume of a server being deleted; the
+	// volume files stay.
+	DetachAll(ctx context.Context, stor *store.Store, serverID int64) error
 }
 
 // Settings are the settings the module reads.
@@ -89,6 +112,13 @@ type Deps struct {
 	Clock scheduler.Clock
 	// Metrics keeps the samples of the servers' VMs.
 	Metrics *metrics.Store
+	// ExtraDisks lists further thin disks for the disk rule (volumes); nil
+	// = none.
+	ExtraDisks func(tx store.Tx) ([]DiskUse, error)
+	// RescueSeedHold is how long the rescue seed stays in the drive after
+	// hlab started the VM into rescue, so the rescue system reads it before
+	// the server's seed returns; 0 = none.
+	RescueSeedHold time.Duration
 }
 
 // Server is a server in Hetzner's API shape.
@@ -166,6 +196,30 @@ type Internal struct {
 	// PasswordReset is the pending root password reset of reset_password,
 	// served to the guest by the agent's metadata service.
 	PasswordReset *agentapi.PasswordReset `json:"password_reset,omitempty"`
+	// ImageID is the project image the server was created or rebuilt
+	// from; Image is then empty.
+	ImageID int64 `json:"image_id,omitempty"`
+	// AutomountVolumes were attached at create with automount.
+	AutomountVolumes []int64 `json:"automount_volumes,omitempty"`
+	Rescue           *Rescue `json:"rescue,omitempty"`
+	// ISO is the name of the attached catalog ISO.
+	ISO            string `json:"iso,omitempty"`
+	BackupsEnabled bool   `json:"backups_enabled,omitempty"`
+}
+
+// Rescue is the rescue state of a server.
+type Rescue struct {
+	Enabled bool `json:"enabled"` // rescue_enabled
+	// Since is the enable time; rescue is disabled after 60 min without a
+	// boot into it.
+	Since time.Time `json:"since"`
+	// Booted is set when hlab started the VM into rescue.
+	Booted bool `json:"booted"`
+	// DiskPath is the LUN 63 child disk, removed at the next hlab-driven
+	// boot or when the VM is seen off.
+	DiskPath string   `json:"disk_path"`
+	RootHash string   `json:"root_hash"`
+	SSHKeys  []string `json:"ssh_keys"`
 }
 
 // Record is the stored document of a server.
@@ -185,7 +239,9 @@ func (r Record) IPv4() netip.Addr {
 
 // Module is the servers resource type.
 type Module struct {
-	d Deps
+	d       Deps
+	volumes VolumeHooks
+	acts    *actions.Manager // set at mount (UseActions); the backup job starts actions with it
 
 	mu sync.Mutex
 	// changes counts the status changes actions made per server, so the
@@ -199,6 +255,19 @@ func New(d Deps) *Module {
 		d.Clock = scheduler.RealClock()
 	}
 	return &Module{d: d}
+}
+
+// SetVolumes sets the volume hooks.
+func (m *Module) SetVolumes(h VolumeHooks) { m.volumes = h }
+
+// SetVolumes sets the volumes field of server serverID.
+func SetVolumes(tx store.Tx, serverID int64, ids []int64) error {
+	r, err := Load(tx, serverID)
+	if err != nil {
+		return err
+	}
+	r.Volumes = append([]int64{}, ids...)
+	return put(tx, r)
 }
 
 // Type implements resource.Module.
@@ -224,6 +293,13 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("POST /servers/{id}/actions/request_console", http.HandlerFunc(m.requestConsole))
 	r.Handle("POST /servers/{id}/actions/add_to_placement_group", http.HandlerFunc(m.addToPlacementGroup))
 	r.Handle("POST /servers/{id}/actions/remove_from_placement_group", http.HandlerFunc(m.removeFromPlacementGroup))
+	r.Handle("POST /servers/{id}/actions/create_image", http.HandlerFunc(m.createImage))
+	r.Handle("POST /servers/{id}/actions/enable_backup", http.HandlerFunc(m.enableBackup))
+	r.Handle("POST /servers/{id}/actions/disable_backup", http.HandlerFunc(m.disableBackup))
+	r.Handle("POST /servers/{id}/actions/enable_rescue", http.HandlerFunc(m.enableRescue))
+	r.Handle("POST /servers/{id}/actions/disable_rescue", http.HandlerFunc(m.disableRescue))
+	r.Handle("POST /servers/{id}/actions/attach_iso", http.HandlerFunc(m.attachISO))
+	r.Handle("POST /servers/{id}/actions/detach_iso", http.HandlerFunc(m.detachISO))
 	resactions.RoutesFor(r, "servers", refType)
 }
 
@@ -423,6 +499,8 @@ type createRequest struct {
 	StartAfterCreate *bool             `json:"start_after_create"`
 	Labels           map[string]string `json:"labels"`
 	PlacementGroup   json.RawMessage   `json:"placement_group"`
+	Volumes          []int64           `json:"volumes"`
+	Automount        *bool             `json:"automount"`
 }
 
 var errNoAddress = errors.New("no free public IPv4 address")
@@ -432,7 +510,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	if !api.Decode(w, req, &body) {
 		return
 	}
-	typ, img, loc, ierr := m.resolve(body)
+	typ, loc, ierr := m.resolve(body)
 	if ierr != nil {
 		api.Fail(w, ierr)
 		return
@@ -444,7 +522,22 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		labels = map[string]string{}
 	}
 	start := body.StartAfterCreate == nil || *body.StartAfterCreate
+	var automountVolumes []int64
+	if body.Automount != nil && *body.Automount {
+		automountVolumes = body.Volumes
+	}
 	stor := api.StoreFrom(req.Context())
+	var img source
+	if err := stor.Tx(func(tx store.Tx) error {
+		var err error
+		if img, err = m.findImage(tx, p.ID, refString(body.Image), false); err != nil {
+			return err
+		}
+		return img.fits(typ.Disk, "server_type")
+	}); err != nil {
+		api.Fail(w, err)
+		return
+	}
 	// A server created without starting holds no RAM until poweron.
 	var ramMB int64
 	if start {
@@ -475,6 +568,9 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 			return err
 		}
 		if err := api.CheckLabels(labels); err != nil {
+			return err
+		}
+		if err := m.checkVolumes(tx, p.ID, loc.Name, body.Volumes); err != nil {
 			return err
 		}
 		var group *placementgroups.Group
@@ -533,7 +629,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 				PrivateNet:      []any{},
 				ServerType:      typ.Raw,
 				Location:        loc.Raw,
-				Image:           img.Raw,
+				Image:           img.raw,
 				Labels:          labels,
 				Volumes:         []int64{},
 				LoadBalancers:   []int64{},
@@ -542,13 +638,15 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 			Hlab: Internal{
 				ProjectID:        p.ID,
 				ServerType:       typ.Name,
-				Image:            img.Name,
+				Image:            img.name,
+				ImageID:          img.imageID,
 				Location:         loc.Name,
 				MAC:              MAC(id).String(),
 				SSHKeys:          keys,
 				UserData:         body.UserData,
 				StartAfterCreate: start,
 				RootHash:         rootHash,
+				AutomountVolumes: automountVolumes,
 			},
 		}
 		if err := put(tx, rec); err != nil {
@@ -582,6 +680,9 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		if err == nil {
 			err = m.reconcile(ctx, stor, id)
 		}
+		if err == nil && len(body.Volumes) > 0 {
+			err = m.volumes.Attach(ctx, stor, id, body.Volumes, len(automountVolumes) > 0)
+		}
 		final := StatusOff
 		if err == nil && start {
 			err = m.powerOn(ctx, stor, id)
@@ -605,19 +706,24 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
-// resolve finds server type, image and location of a create request.
-func (m *Module) resolve(b createRequest) (catalog.ServerType, catalog.Image, catalog.Location, *api.FieldError) {
+// checkVolumes validates the volumes of a create request in location; a
+// create without volumes needs no hooks.
+func (m *Module) checkVolumes(tx store.Tx, projectID int64, location string, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return m.volumes.CheckAttach(tx, projectID, location, ids)
+}
+
+// resolve finds server type and location of a create request.
+func (m *Module) resolve(b createRequest) (catalog.ServerType, catalog.Location, *api.FieldError) {
 	var none catalog.ServerType
 	typ, ok := m.serverType(refString(b.ServerType))
 	if !ok {
-		return none, catalog.Image{}, catalog.Location{}, &api.FieldError{Field: "server_type", Message: "server type " + refString(b.ServerType) + " not found"}
+		return none, catalog.Location{}, &api.FieldError{Field: "server_type", Message: "server type " + refString(b.ServerType) + " not found"}
 	}
 	if typ.Architecture == "arm" {
-		return none, catalog.Image{}, catalog.Location{}, &api.FieldError{Code: "resource_unavailable", Message: "server type " + typ.Name + " is an arm type; hlab runs only x86 servers"}
-	}
-	img, ok := m.image(refString(b.Image))
-	if !ok {
-		return none, catalog.Image{}, catalog.Location{}, &api.FieldError{Field: "image", Message: "image " + refString(b.Image) + " not found"}
+		return none, catalog.Location{}, &api.FieldError{Code: "resource_unavailable", Message: "server type " + typ.Name + " is an arm type; hlab runs only x86 servers"}
 	}
 	ref := refString(b.Location)
 	if ref == "" && len(typ.Locations) > 0 {
@@ -625,12 +731,12 @@ func (m *Module) resolve(b createRequest) (catalog.ServerType, catalog.Image, ca
 	}
 	loc, ok := m.location(ref)
 	if !ok {
-		return none, catalog.Image{}, catalog.Location{}, &api.FieldError{Field: "location", Message: "location " + ref + " not found"}
+		return none, catalog.Location{}, &api.FieldError{Field: "location", Message: "location " + ref + " not found"}
 	}
 	if !slices.ContainsFunc(typ.Locations, func(l catalog.ServerTypeLocation) bool { return l.Name == loc.Name }) {
-		return none, catalog.Image{}, catalog.Location{}, &api.FieldError{Field: "location", Message: "server type " + typ.Name + " is not offered in " + loc.Name}
+		return none, catalog.Location{}, &api.FieldError{Field: "location", Message: "server type " + typ.Name + " is not offered in " + loc.Name}
 	}
-	return typ, img, loc, nil
+	return typ, loc, nil
 }
 
 func (m *Module) serverType(ref string) (catalog.ServerType, bool) {
@@ -752,8 +858,9 @@ func (m *Module) Delete(ctx context.Context, id int64) error {
 }
 
 // remove marks server id as deleting (the agent document leaves it out),
-// deletes its VM and then its row with its address and group membership.
-// When the VM cannot be deleted, the server stays with status off.
+// detaches its volumes, deletes its VM and then its row with its address,
+// group membership and backups (with their files); snapshots stay. When
+// the VM cannot be deleted, the server stays with status off.
 func (m *Module) remove(ctx context.Context, stor *store.Store, id int64) error {
 	err := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, StatusDeleting) })
 	if errors.Is(err, store.ErrNotFound) {
@@ -762,14 +869,21 @@ func (m *Module) remove(ctx context.Context, stor *store.Store, id int64) error 
 	if err != nil {
 		return err
 	}
-	if err := m.deleteMachine(ctx, id); err != nil {
+	if m.volumes != nil {
+		err = m.volumes.DetachAll(ctx, stor, id)
+	}
+	if err == nil {
+		err = m.deleteMachine(ctx, id)
+	}
+	if err != nil {
 		if serr := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, StatusOff) }); serr != nil {
 			err = errors.Join(err, serr)
 		}
 		return err
 	}
 	m.d.Metrics.Forget(id)
-	return stor.Tx(func(tx store.Tx) error {
+	var backups []imagesres.Record
+	if err := stor.Tx(func(tx store.Tx) error {
 		r, err := Load(tx, id)
 		if err != nil {
 			return err
@@ -782,8 +896,15 @@ func (m *Module) remove(ctx context.Context, stor *store.Store, id int64) error 
 		if err := leaveGroup(tx, r); err != nil {
 			return err
 		}
+		if backups, err = dropBackups(tx, id); err != nil {
+			return err
+		}
 		return store.Delete(tx, Kind, r.Hlab.ProjectID, id)
-	})
+	}); err != nil {
+		return err
+	}
+	removeImageFiles(backups)
+	return nil
 }
 
 // MAC is the public adapter's MAC of server id: 02:48:4c, then 0x1 and the

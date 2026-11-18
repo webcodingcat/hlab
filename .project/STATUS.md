@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 04 Images, backups, rescue, ISOs and volumes
+- Phase: 05 Private networks, primary IPs and floating IPs, port isolation
 - Base branch: main
-- Last done: phase 03 Server lifecycle merged into main (2026-11-18): power actions, rebuild, change type, root password and reset, metadata service, resource limits, metrics; also fixed debian-12 boot (COM1 pipe served by hlabd) and first-boot sync
-- Next: /wcc:phase in a new session (phase 04)
+- Last done: phase 04 Images, backups, rescue, ISOs and volumes merged into main (2026-11-19): snapshots and backups (daily job), rescue on its own disk, ISO catalog and attach, volumes with format, automount and online resize
+- Next: /wcc:phase in a new session (phase 05)
 
 ## Open manual checks
 
