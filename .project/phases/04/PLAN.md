@@ -175,15 +175,15 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [x] `CreateChildDisk` in the interface, hyperv (`New-VHD -Differencing`, `Set-VHD -ResetDiskIdentifier`) and the fake (internal/platform/platform.go, hyperv/disks.go, platformtest/fake.go)
   - [x] `Snapshot` in hyperv: off/saved VM direct copy; running VM `Set-VM -CheckpointType Standard`, `Checkpoint-VM -Passthru` with an hlab-prefixed name, copy the parent, reset the identifier, `Remove-VMCheckpoint` by object, wait for the merge (no `.avhdx` path) with a deadline; leftover hlab checkpoints are removed first; `CreateVM` sets CheckpointType Standard; remove the stub (hyperv/disks.go, hyperv/hyperv.go, hyperv/pending.go)
 
-- [ ] 04-02 Agent jobs
+- [x] 04-02 Agent jobs
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SRV-11, VOL-03 | Tests: internal/agent/jobs_test.go
   - Reads: ARCHITECTURE "hlab-agent" (jobs); RESEARCH R3, R4; EXPERIMENTS E7
   - Size: ~330 lines in 5 files
   - Adjusts: -
-  - [ ] `POST /v1/jobs` (same bearer auth, synchronous, `JobResult`), `RewriteIDs`, job dispatch with unknown kind refused (internal/agent/agent.go, agent/jobs.go, agent/jobs_other.go)
-  - [ ] Linux jobs: find the SCSI disk (type 0) with the LUN in sysfs, never by host number; `mkfs` whole device `mkfs.ext4 -F` / `mkfs.xfs -f`, clear error when `mkfs.xfs` is missing; `rescue-prepare`: read old PARTUUIDs and root FS UUID with blkid, `sgdisk -G`, re-read, `e2fsck -f -p`, `tune2fs -U` with a UUID made in Go, mount root and ESP, `RewriteIDs` on fstab and every grub.cfg found under `/boot/grub` and the ESP, unmount (internal/agent/jobs_linux.go)
-  - [ ] `Client.Job` (internal/agentclient/agentclient.go)
+  - [x] `POST /v1/jobs` (same bearer auth, synchronous, `JobResult`), `RewriteIDs`, job dispatch with unknown kind refused (internal/agent/agent.go, agent/jobs.go, agent/jobs_other.go)
+  - [x] Linux jobs: find the SCSI disk (type 0) with the LUN in sysfs, never by host number; `mkfs` whole device `mkfs.ext4 -F` / `mkfs.xfs -f`, clear error when `mkfs.xfs` is missing; `rescue-prepare`: read old PARTUUIDs and root FS UUID with blkid, `sgdisk -G`, re-read, `e2fsck -f -p`, `tune2fs -U` with a UUID made in Go, mount root and ESP, `RewriteIDs` on fstab and every grub.cfg found under `/boot/grub` and the ESP, unmount (internal/agent/jobs_linux.go)
+  - [x] `Client.Job` (internal/agentclient/agentclient.go)
 
 - [x] 04-03 Agent metadata: automount volumes
   - Wave: 1 | Depends on: - | Review: alone
