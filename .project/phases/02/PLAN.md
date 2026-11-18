@@ -197,9 +197,10 @@ func (e *env) wslKey() string                                           // path 
   - Reads: REQUIREMENTS CAT, PROJ; SPEC "Accounts and secrets"; ARCHITECTURE "hlab", "Management API"; RESEARCH R3, R6
   - Size: ~380 lines in 6 files
   - Adjusts: -
-  - [ ] `catalog.Update`: all pages with `per_page=50` until `next_page` is null, Bearer token, atomic write, `ReplaceServerTypes`; old file and types stay on any error; the token is never logged or written (internal/catalog/update.go)
-  - [ ] `POST /mgmt/v1/catalog/update` and `Deps.UpdateCatalog`, wired in hlabd (internal/mgmt/mgmt.go, internal/cloud/cloud.go)
-  - [ ] `hlab catalog update [--hetzner-token-env VAR]`: variable, else hidden prompt on a terminal, else exit 2 naming the flag; `IO.Getenv`, `IO.ReadSecret` (internal/cli/cli.go, internal/cli/secret_windows.go, secret_other.go, cmd/hlab/main.go)
+  - [x] `catalog.Update`: all pages with `per_page=50` until `next_page` is null, Bearer token, atomic write, `ReplaceServerTypes`; old file and types stay on any error; the token is never logged or written (internal/catalog/update.go)
+  - [x] `POST /mgmt/v1/catalog/update` and `Deps.UpdateCatalog`, wired in hlabd (internal/mgmt/mgmt.go, internal/cloud/cloud.go)
+  - [x] `hlab catalog update [--hetzner-token-env VAR]`: variable, else hidden prompt on a terminal, else exit 2 naming the flag; `IO.Getenv`, `IO.ReadSecret` (internal/cli/cli.go, internal/cli/secret_windows.go, secret_other.go, cmd/hlab/main.go)
+  - Open: code merged and reviewed; e2e TestE2E/CAT-03 waits for the dev cloud (dev-setup rerun for the DACL fix)
 
 - [ ] 02-08 SSH keys complete
   - Wave: 3 | Depends on: 02-05, 02-06 | Review: alone | e2e
