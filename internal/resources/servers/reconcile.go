@@ -75,7 +75,7 @@ func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) err
 		if err != nil {
 			return err
 		}
-		if err := m.d.Platform.CreateDisk(ctx, disk, int64(typ.Disk)<<30, base, [16]byte{}); err != nil {
+		if err := m.d.Platform.CreateDisk(ctx, disk, int64(rec.PrimaryDiskSize)<<30, base, [16]byte{}); err != nil {
 			return err
 		}
 	} else if err != nil {

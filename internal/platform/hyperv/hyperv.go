@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
@@ -28,15 +29,16 @@ type Platform struct {
 	opts Options
 	r    *runner
 
-	mu  sync.Mutex
-	cpu map[string]cpuTicks // last CPU counters per VM, for Metrics
+	mu       sync.Mutex
+	cpu      map[string]cpuTicks     // last CPU counters per VM, for Metrics
+	consoles map[string]net.Listener // served COM1 pipes per VM
 }
 
 var _ platform.Platform = (*Platform)(nil)
 
 // New starts the PowerShell process and loads the Hyper-V module.
 func New(opts Options) (platform.Platform, error) {
-	p := &Platform{opts: opts, r: &runner{}, cpu: map[string]cpuTicks{}}
+	p := &Platform{opts: opts, r: &runner{}, cpu: map[string]cpuTicks{}, consoles: map[string]net.Listener{}}
 	if _, err := p.r.run(context.Background(), "New", nil, "Import-Module Hyper-V"); err != nil {
 		_ = p.r.close()
 		return nil, err
@@ -44,8 +46,16 @@ func New(opts Options) (platform.Platform, error) {
 	return p, nil
 }
 
-// Close ends the PowerShell process.
-func (p *Platform) Close() error { return p.r.close() }
+// Close stops serving the console pipes and ends the PowerShell process.
+func (p *Platform) Close() error {
+	p.mu.Lock()
+	for name, l := range p.consoles {
+		_ = l.Close()
+		delete(p.consoles, name)
+	}
+	p.mu.Unlock()
+	return p.r.close()
+}
 
 // getVM is the shared prelude of scripts working on the VM $name: it sets
 // $vm or throws ItemNotFoundException.
@@ -79,7 +89,8 @@ func stopAction(a platform.StopAction) (string, error) {
 // CreateVM creates a stopped Gen2 VM without adapters or disks. COM1 is
 // connected to the named pipe <name>-com1: a Gen2 VM shows the guest no
 // serial port without one, and Debian 12's first boot, whose kernel
-// command line has console=ttyS0, then panics in its initramfs.
+// command line has console=ttyS0, then panics in its initramfs. Power
+// serves the pipe before the VM starts (ensureConsole).
 func (p *Platform) CreateVM(ctx context.Context, spec platform.VMSpec) error {
 	stop, err := stopAction(spec.StopAction)
 	if err != nil {
@@ -133,6 +144,7 @@ Remove-VM -VM $vm -Force
 `)
 	if err == nil {
 		p.forgetCPU(name)
+		p.closeConsole(name)
 	}
 	return err
 }
@@ -205,6 +217,9 @@ func (p *Platform) reboot(ctx context.Context, name string) error {
 		case <-time.After(time.Second):
 		}
 	}
+	if err := p.ensureConsole(name); err != nil {
+		return err
+	}
 	_, err = p.r.run(ctx, "Power", map[string]any{"name": name}, getVM+"Start-VM -VM $vm\n")
 	return err
 }
@@ -233,6 +248,11 @@ func (p *Platform) Power(ctx context.Context, name string, op platform.PowerOp) 
 		body = `Save-VM -VM $vm`
 	default:
 		return &platform.Error{Kind: platform.Failed, Op: "Power", Err: fmt.Errorf("unknown power operation %v", op)}
+	}
+	if op == platform.PowerStart || op == platform.PowerReset {
+		if err := p.ensureConsole(name); err != nil {
+			return err
+		}
 	}
 	_, err := p.r.run(ctx, "Power", vars, getVM+body+"\n")
 	return err
