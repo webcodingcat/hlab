@@ -677,6 +677,12 @@ func TestServers(t *testing.T) {
 			t.Errorf("pending reset after the timeout: %+v, want none", r)
 		}
 	})
+
+	testSnapshots(t)
+	testBackups(t)
+	testRescue(t)
+	testISOs(t)
+	testVendorData(t)
 }
 
 // roomy are host resources far above what any test server needs.

@@ -201,7 +201,7 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - Adjusts: -
   - [ ] `catalog/isos.json` with the five ISOs of R6 (IDs, names as the file names, descriptions, `type: public`, `architecture: x86`, sources; debian-13 with the archive fallback); `Catalog.ISOs`, `ISO`, `ISOSources` (internal/catalog/catalog.go)
   - [ ] `Source` fallback fields, `EnsureISO` (no conversion, same lock and temp handling), `Fetch` (internal/images/images.go, internal/images/download.go)
-  - [ ] Module `isos`: `GET /isos` (name, architecture, include_architecture_wildcard, page, per_page through `api.ListRequest`) and `GET /isos/{id}` (internal/resources/isos/isos.go)
+  - [ ] Module `isos` with `isos.New(cat *catalog.Catalog) *Module` like locations: `GET /isos` (name, architecture, include_architecture_wildcard, page, per_page through `api.ListRequest`) and `GET /isos/{id}` (internal/resources/isos/isos.go)
 
 - [ ] 04-06 Project images
   - Wave: 1 | Depends on: - | Review: alone
@@ -213,8 +213,8 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [ ] `PUT /images/{id}` (description, labels, `type` backup→snapshot clears bound_to), `DELETE /images/{id}` (`protected` with delete protection, removes the file), `POST /images/{id}/actions/change_protection`, action endpoints, `Deleter` (internal/resources/images/images.go, records.go)
 
 - [ ] 04-12 Volumes: create, resize, delete
-  - Wave: 1 | Depends on: - | Review: alone
-  - Requirements: VOL-01 | Tests: internal/resources/volumes/volumes_test.go
+  - Wave: 3 | Depends on: 04-07 | Review: alone
+  - Requirements: VOL-01 | Tests: internal/resources/volumes/volumes_test.go (the test package uses servers interfaces of 04-07; VOL-01's case for deleting an attached volume passes only after 04-13)
   - Reads: REQUIREMENTS VOL-01; ARCHITECTURE "resource", "Guest integration"; RESEARCH R2, R7 (volume create); DECISIONS "Guest-visible identifiers", "Volume identifier byte order"
   - Size: ~400 lines in 2 files
   - Adjusts: -
@@ -222,7 +222,7 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [ ] Reconcile/Delete: create the disk with `Page83`, run `mkfs` through `ApplianceJob` when `format` is set, then status `available` (internal/resources/volumes/disk.go)
 
 - [ ] 04-05 Appliance jobs, rescue base and wiring
-  - Wave: 2 | Depends on: 04-02, 04-04, 04-06, 04-12 | Review: alone
+  - Wave: 4 | Depends on: 04-02, 04-04, 04-06, 04-12 | Review: alone
   - Requirements: SRV-11, VOL-03, CAT-08 | Tests: - (covered by test/e2e/rescue_test.go, volume_test.go)
   - Reads: ARCHITECTURE "hlab-agent", "images", "Cloud start and stop"; RESEARCH R3, R4 (option B); CONTEXT "Corrections by the user"
   - Size: ~330 lines in 5 files
@@ -242,7 +242,7 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [ ] Server create and rebuild accept a snapshot or backup of the project by ID (base = its file, `ImageID`, server `image` = the image object); a type whose disk is below the image's `disk_size` gives 422 `invalid_input` on field `image`/`server_type` (internal/resources/servers/servers.go, rebuild.go, reconcile.go)
 
 - [ ] 04-13 Volumes: attach and detach
-  - Wave: 3 | Depends on: 04-03, 04-05, 04-07 | Review: alone
+  - Wave: 5 | Depends on: 04-03, 04-05, 04-07 | Review: alone
   - Requirements: VOL-05, VOL-02, SRV-18 | Tests: internal/resources/volumes/volumes_test.go
   - Reads: REQUIREMENTS VOL-02, VOL-05; RESEARCH R7 (attach, create with server); CONTEXT "Corrections by the user" (assignee)
   - Size: ~380 lines in 5 files
@@ -251,7 +251,7 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [ ] `VolumeHooks` implementation; servers create takes `volumes` and `automount` (checked in the handler, attached after the VM exists, `AutomountVolumes` recorded); server delete calls `DetachAll` before removing the VM; cloud sets the hooks, volumes' `CheckDisk` to the servers module's and `servers.Deps.ExtraDisks` from `volumes.Disks` (internal/resources/servers/servers.go, internal/cloud/cloud.go)
 
 - [ ] 04-08 Servers: backups
-  - Wave: 4 | Depends on: 04-07, 04-13 | Review: alone
+  - Wave: 6 | Depends on: 04-07, 04-13 | Review: alone
   - Requirements: SRV-13, SRV-14 | Tests: internal/resources/servers/backup_test.go
   - Reads: REQUIREMENTS SRV-13, SRV-14; ARCHITECTURE "scheduler"; RESEARCH R7 (backups); DECISIONS "Automatic daily backups", "Minimal scheduler for status watch and metrics"
   - Size: ~300 lines in 3 files
@@ -260,7 +260,7 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [ ] Job `backups` every hour on the module's clock: one backup per server with backups enabled per UTC day as action `create_image`, a locked server waits for the next run (internal/resources/servers/backup.go, watch.go)
 
 - [ ] 04-11 Guest volume hooks and automount
-  - Wave: 4 | Depends on: 04-03, 04-13 | Review: alone
+  - Wave: 6 | Depends on: 04-03, 04-13 | Review: alone
   - Requirements: VOL-02, VOL-03, VOL-04 | Tests: internal/resources/servers/vendordata_test.go, test/e2e/volume_test.go
   - Reads: ARCHITECTURE "Guest integration"; DECISIONS "Q4 Automount on later attach via a metadata path", "Vendor-data as multipart MIME", "Guest password hook in python3", "Volume identifier byte order"; EXPERIMENTS E6; RESEARCH R2
   - Size: ~260 lines in 2 files
@@ -269,7 +269,7 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [ ] Seed user-data: with `AutomountVolumes` a MIME multipart of the user's user_data unchanged plus a cloud-config part mounting each volume; without, user_data as before; metadata keeps the original (internal/resources/servers/vendordata.go, reconcile.go)
 
 - [ ] 04-09 Servers: rescue
-  - Wave: 5 | Depends on: 04-01, 04-05, 04-08 | Review: alone
+  - Wave: 7 | Depends on: 04-01, 04-05, 04-08 | Review: alone
   - Requirements: SRV-11 | Tests: internal/resources/servers/rescue_test.go, test/e2e/rescue_test.go
   - Reads: REQUIREMENTS SRV-11; ARCHITECTURE "Guest integration" (rescue); CONTEXT "Corrections by the user"; RESEARCH R3, R7 (enable_rescue); DECISIONS "Rescue system from a separate rescue disk"; EXPERIMENTS E7
   - Size: ~380 lines in 5 files
@@ -278,7 +278,7 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [ ] Consumption: a poweron, reset or reboot hlab drives while rescue is enabled boots it and then sets `rescue_enabled` false, boot order LUN 0 first and the server's seed back; the job of the status watch disables a rescue unused for 60 min; the rescue disk is detached and deleted at the next hlab-driven boot without rescue or when the VM is seen off; delete and rebuild remove it (internal/resources/servers/rescue.go, power.go, watch.go, rebuild.go)
 
 - [ ] 04-10 Servers: ISOs
-  - Wave: 6 | Depends on: 04-04, 04-05, 04-09 | Review: alone
+  - Wave: 8 | Depends on: 04-04, 04-05, 04-09 | Review: alone
   - Requirements: SRV-15, CAT-08 | Tests: internal/resources/servers/iso_test.go, test/e2e/iso_test.go
   - Reads: REQUIREMENTS SRV-15, CAT-08; RESEARCH R5, R6 (attach_iso); DECISIONS "Q5 SRV-15 proved by SSH into the live ISO"
   - Size: ~180 lines in 3 files
@@ -286,7 +286,7 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [ ] `attach_iso` (`iso` by name or ID; unknown or deprecated: 422 `invalid_input`): `EnsureISO` inside the action, `SetDVD` slot 1, boot order DVD slot 1 then LUN 0, server `iso` object; replaces an attached ISO; `detach_iso` ejects and restores disk-first; a server without ISO answers `detach_iso` with success and no change; rescue boot order keeps LUN 63 first (internal/resources/servers/iso.go, servers.go, reconcile.go)
 
 - [ ] 04-14 Documentation
-  - Wave: 7 | Depends on: 04-10 | Review: alone
+  - Wave: 9 | Depends on: 04-10 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06 | Tests: test/docs/docs_test.go (existing)
   - Reads: SPEC "Documentation"; REQUIREMENTS DOC; CONTEXT.md "Documentation"; the summaries of 04-01, 04-05, 04-09, 04-10
   - Size: ~160 lines in 4 files
