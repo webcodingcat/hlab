@@ -694,13 +694,11 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
-// checkVolumes validates the volumes of a create request in location.
+// checkVolumes validates the volumes of a create request in location; a
+// create without volumes needs no hooks.
 func (m *Module) checkVolumes(tx store.Tx, projectID int64, location string, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
-	}
-	if m.volumes == nil {
-		return &api.FieldError{Field: "volumes", Message: "volumes are not available"}
 	}
 	return m.volumes.CheckAttach(tx, projectID, location, ids)
 }
