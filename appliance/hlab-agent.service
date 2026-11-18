@@ -1,0 +1,15 @@
+[Unit]
+Description=hlab appliance agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# Installs the current agent binary and secret from the cidata ISO.
+ExecStartPre=/usr/local/sbin/hlab-agent-install
+ExecStart=/usr/local/sbin/hlab-agent -secret /etc/hlab-agent/secret
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

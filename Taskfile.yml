@@ -5,7 +5,7 @@ version: "3"
 
 vars:
   VERSION: '{{.VERSION | default "dev"}}'
-  LDFLAGS: -X github.com/webcodingcat/hlab/internal/version.Version={{.VERSION}}
+  LDFLAGS: -X github.com/webcodingcat/hlab/internal/version.Version={{.VERSION}} -X github.com/webcodingcat/hlab/internal/profile.Name=dev
 
 tasks:
   default:
@@ -60,6 +60,16 @@ tasks:
     desc: "Run the fast tests (default ./..., or the packages after --)"
     cmds:
       - go test {{.CLI_ARGS | default "./..."}}
+
+  openapi:
+    desc: Download the pinned Hetzner OpenAPI description into the user cache folder
+    cmds:
+      - go run ./tools/openapi
+
+  catalog:
+    desc: Generate the shipped location, server type, load balancer type and pricing catalogs from the real Hetzner API
+    cmds:
+      - go run ./tools/catalog
 
   e2e:
     desc: "Run the end-to-end tests against real Hyper-V and clients; filter with -- -run <regexp>"

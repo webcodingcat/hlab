@@ -27,6 +27,26 @@ read and write the settings file.
                                      guest VMs (cidata ISO) <-----+ (port ACLs)
 ```
 
+## Profiles
+
+Every binary is built for one profile, set at link time
+(`internal/profile`, `-X ...profile.Name=release|dev`): `task build` builds
+`dev`, the release build `release`. The profile gives every name that could
+collide on one machine; this document writes the `release` names.
+
+| | `release` | `dev` |
+|---|---|---|
+| Service | `hlab` | `hlab-dev` |
+| Management pipe | `\\.\pipe\hlab` | `\\.\pipe\hlab-dev` |
+| Data folder (`%ProgramData%\...`) | `hlab` | `hlab-dev` |
+| Shipped catalogs | `%ProgramFiles%\hlab\catalog` | `catalog\` of the working copy (next to `bin\`) |
+| Switch, VM name prefix, NAT name, NRPT comment, firewall rule group | `hlab` | `hlab-dev` |
+
+Both profiles use the same public range default, addresses and
+`api.hetzner.internal`, so only one cloud runs at a time: at start,
+`hostnet.Check` reports `other_instance_running` (fatal) when the service of
+the other profile runs. Both may be installed side by side.
+
 ## Components
 
 ### hlabd (Windows service)
@@ -58,9 +78,10 @@ Inside `hlabd` (Go packages under `internal/`):
   Middleware, in order: request log, token auth (`Authorization: Bearer`,
   SHA-256 hash lookup, sets `Project` and `ReadOnly` in the context), JSON
   decoding (`json_error`), read-only guard (`token_readonly` for every
-  non-GET), handler. Shared helpers: `api.List(r, items, sortKeys)` does
-  `name`, `label_selector`, `sort`, `page`, `per_page` and
-  `meta.pagination`; `api.Error(code, message, details)` writes Hetzner's
+  non-GET), handler. Shared helpers: `api.List(w, key, items)` writes a
+  list with `meta.pagination` (phase 02 extends it with the request for
+  `name`, `label_selector`, `sort`, `page` and `per_page`); modules reach
+  store and action manager through `api.StoreFrom(ctx)`/`api.ActionsFrom(ctx)`; `api.Error(code, message, details)` writes Hetzner's
   error object; `labels.Validate`, `labels.Selector` (parser and matcher for
   all Hetzner operators).
 - Depends on: store, resource, actions.
@@ -72,14 +93,14 @@ Inside `hlabd` (Go packages under `internal/`):
   locations, datacenters, ssh_keys, primary_ips, floating_ips, networks,
   firewalls, load_balancers, load_balancer_types, certificates, volumes,
   placement_groups, zones, pricing, actions). A new resource type is a new
-  package plus one line in `internal/resources/all.go`; the core does not
-  change.
+  package plus one line in `Cloud.modules()` (`internal/cloud`); the core
+  does not change.
 - Interface:
 
   ```go
   type Module interface {
       Type() string                     // "servers"
-      Routes(r api.Registrar)           // registers its endpoints and actions
+      Routes(r resource.Registrar)      // registers its endpoints and actions (Handle(pattern, handler), ServeMux patterns under /v1)
   }
   // optional interfaces, detected by type assertion:
   type Reconciler interface {           // modules owning real resources
@@ -100,15 +121,18 @@ Inside `hlabd` (Go packages under `internal/`):
 
 - Purpose: the persistent state, one SQLite file.
 - Interface: `store.Open(path) (*Store, error)`; `Store.Tx(func(tx Tx) error)`;
-  generic typed access `store.Get[T]`, `store.List[T]`, `store.Put[T]`,
-  `store.Delete` over the schema below; `store.NextID(kind)`.
+  generic typed access `store.Get[T](tx, kind, projectID, id)`,
+  `store.List[T](tx, kind, projectID)`, `store.Put[T](tx, Meta, doc)`,
+  `store.Delete(tx, kind, projectID, id)` (projectID 0 = no project),
+  `store.ListAll[T](tx, kind)` for hlabd internals only, `store.NextID(tx, kind)`,
+  kv, projects, tokens and actions access.
 - Schema (version 1, see "Data schema").
 - Depends on: nothing.
 
 #### actions
 
 - Purpose: Hetzner actions, resource locks and the work queue.
-- Interface: `actions.Start(tx, command string, resources []Ref) (*Action,
+- Interface: `actions.Start(tx, projectID int64, command string, resources []Ref) (*Action,
   error)` returns `locked` if a referenced resource has a running action
   that locks it; `actions.Run(id, func(ctx, progress func(int)) error)` runs
   the work in a worker pool and sets `success` or `error` with Hetzner's
@@ -155,7 +179,7 @@ Inside `hlabd` (Go packages under `internal/`):
   type PowerOp int   // PowerStart, PowerStop (hard), PowerShutdown, PowerReboot, PowerReset, PowerSave
   type StopAction int
   type VMState int   // StateOff, StateStarting, StateRunning, StateStopping, StateSaved, StatePaused, StateOther
-  type Segment struct { PublicPVLAN bool; VLAN int } // public: PVLAN isolated port; private: access VLAN 2..4092
+  type Segment struct { PublicPVLAN, Promiscuous bool; VLAN int } // public: PVLAN isolated port (Promiscuous: the appliance's port); private: access VLAN 2..4092
   type NICSpec struct {
       MAC     net.HardwareAddr
       Segment Segment
@@ -201,6 +225,7 @@ Inside `hlabd` (Go packages under `internal/`):
       Up(ctx, cfg Config) error             // adapter IP, route, forwarding, NAT, base NRPT rules
       SetZones(ctx, zones []string) error   // exactly one NRPT rule per zone, idempotent
       Down(ctx) error                        // removes everything Up and SetZones added
+      DNSServers(ctx) ([]netip.Addr, error) // host DNS servers for the agent's Upstream
       WatchWSL(ctx, onChange func(WSLInfo)) // re-applies forwarding when WSL restarts
       TrustCA(ctx, pem []byte, on bool) error // Windows store and WSL2 distros
   }
@@ -213,7 +238,7 @@ Inside `hlabd` (Go packages under `internal/`):
       BaseZones     []string       // "hetzner.internal", reverse zones of PublicRange
   }
   type Problem struct {
-      Code    string // "range_collision", "winnat_exists", "wsl_mirrored", "wsl_virtioproxy", "wsl_dns_tunneling_off", "hyperv_missing"
+      Code    string // "range_collision", "winnat_exists", "other_instance_running", "wsl_mirrored", "wsl_virtioproxy", "wsl_dns_tunneling_off", "hyperv_missing"
       Message string // English, shown as is
       Fatal   bool   // true: the cloud does not start
   }
@@ -221,8 +246,16 @@ Inside `hlabd` (Go packages under `internal/`):
   ```
 
   Every object hostnet creates is tagged (NRPT rule `Comment` = `hlab`, NAT
-  name `hlab`, route via the hlab adapter) so `Down` and the uninstaller
-  find all of them without the state file.
+  name `hlab`, firewall rule group `hlab`, route via the hlab adapter) so
+  `Down` and the uninstaller find all of them without the state file.
+  Before changing a host setting it does not own (IPv4 forwarding on the
+  WSL and hlab adapters), hostnet writes the previous value to
+  `<data folder root>\hostnet-restore.json`; `Up`, `Down` and
+  `hlabd uninstall-cleanup` first restore what that file records and then
+  delete it, so a crash leaves nothing changed after the next start.
+  `DNSServers` returns the host's DNS servers (those of adapters with a
+  default route, without the hlab, WSL and loopback adapters) for the agent
+  document.
 - Depends on: Windows networking (see SPEC.md).
 
 #### agent client
@@ -230,8 +263,8 @@ Inside `hlabd` (Go packages under `internal/`):
 - Purpose: build the agent document and push it.
 - Interface: `agentclient.Push(ctx, cfg agentapi.Config) error` (PUT, full
   document, monotonically increasing `generation`), `Status(ctx)` (applied
-  generation, LB target health, LB metrics), `Job(ctx, job agentapi.Job)`
-  for worker jobs. Every state change that touches the network triggers a
+  generation, LB target health, LB metrics), `WaitReady(ctx)`,
+  `Job(ctx, job agentapi.Job)` for worker jobs (from the phase that needs them). Every state change that touches the network triggers a
   rebuild of the full document from the store and a push; the agent is
   stateless across reboots.
 - Depends on: agentapi, store, resource modules (`NetContributor`).
@@ -242,7 +275,8 @@ Inside `hlabd` (Go packages under `internal/`):
 - Interface: `images.Ensure(ctx, imageID) (basePath string, err error)`
   downloads on the host, verifies the checksum, converts once (qcow2 via
   `go-qcow2reader` or raw, to a fixed VHD by appending the footer, then to
-  a dynamic VHDX through the platform) and caches; `images.EnsureISO(ctx,
+  a dynamic VHDX through a `Convert` callback, on Hyper-V
+  `hyperv.ConvertToDynamic`, outside the `Platform` interface) and caches; `images.EnsureISO(ctx,
   isoID)`; `images.EnsureRescue(ctx)`. Snapshots, backups and system
   images live as VHDX files in the data folder. The same pipeline creates
   the appliance disk from the Debian 13 `generic` image.
@@ -253,8 +287,10 @@ Inside `hlabd` (Go packages under `internal/`):
 - Purpose: per-server NoCloud seed ISO (`meta-data`, `user-data`,
   `vendor-data`, `network-config` v2) written in Go (`go-diskfs`, ISO 9660
   with Rock Ridge, volume label `cidata`).
-- Interface: `cidata.Build(server, keys, networks, rootPassword) ([]byte,
-  error)`. `network-config`: public adapter `/32` with on-link default route
+- Interface: `cidata.Build(Seed) ([]byte, error)` and `cidata.BuildFile(Seed,
+  path)`; `Seed` carries instance ID, hostname, SSH keys, user-data,
+  vendor-data, interfaces (MAC, addresses, gateway, routes, nameservers)
+  and extra files (the appliance's agent binary and secret). `network-config`: public adapter `/32` with on-link default route
   via `172.31.1.1`, nameservers `185.12.64.1` and `185.12.64.2`; one adapter
   per private network with its `/32` and a route to the network's range via
   the network gateway, like Hetzner. `vendor-data` installs the guest hooks
@@ -298,6 +334,7 @@ Inside `hlabd` (Go packages under `internal/`):
       Install(dev bool) error
       Uninstall(keepData bool) error
   }
+  // these two live in the implementation package (sysint/windows):
   func ListenManagement() (net.Listener, error) // Windows: \\.\pipe\hlab with ACL
   func DialManagement(ctx context.Context) (net.Conn, error)
   ```
@@ -327,7 +364,7 @@ Inside `hlabd` (Go packages under `internal/`):
   Exit code 0 on success, 1 on error, 2 on usage error. `cloud start|stop`
   use the service controller (see "System integration"); all other commands
   use the management API and fail with "the cloud is not running" while it
-  is stopped, except `logs`, which then reads the log file.
+  is stopped, except `logs`, which then reads the log file, and `version`.
 - `catalog update`: the token comes from the environment variable named by
   `--hetzner-token-env`, else from a hidden prompt on a terminal; with
   neither, the command fails with exit code 2 and says how to pass it. It
@@ -343,6 +380,7 @@ Inside `hlabd` (Go packages under `internal/`):
   through the start parameter `discard-state` and starts with an empty
   state; VMs and disks of the discarded state are deleted by the tagged
   cleanup of `hlabd uninstall-cleanup --vms-only`.
+- Status file `<data dir>\status.json`: `{"state":"starting"|"running"|"stopped"}`, `{"state":"stopped","error":...}` after a failed start, `{"state":"refused","problem":{"code","message","fatal"}}` after a refusal; `hlab cloud status` reads it while the service is stopped.
 - Depends on: management API.
 
 ### hlab-tray (tray program)
@@ -425,6 +463,7 @@ Errors: `{"error":{"code":"...","message":"..."}}` with codes
       PTR          map[netip.Addr]string
       Metadata     []Metadata
       API          APIProxy              // listen 198.19.0.1:80, backend 198.19.0.2:8780
+      Upstream     []netip.AddrPort      // DNS forwarders: the host's DNS servers, else 1.1.1.1:53, 9.9.9.9:53
   }
 
   type Server struct {
@@ -565,7 +604,19 @@ All addresses below derive from the configured public range
   proxies port 80 to `198.19.0.2:8780`, so hlabd never needs port 80 on the
   host.
 - Servers get public IPv4 addresses from `.4` upward as `/32` with on-link
-  gateway `172.31.1.1`. The appliance routes each `/32` to the server's
+  gateway `172.31.1.1`. Allocation continues after the last address handed
+  out (counter in `kv`) and wraps to `.4` only at the end of the range,
+  skipping addresses in use, so a freed address is not reused at once (SSH
+  host key conflicts).
+- hlabd listens on `198.19.0.2:8780` only; one inbound Windows Firewall rule
+  (group `hlab`) allows TCP 8780 for all firewall profiles (the internal
+  adapter is an unidentified network in profile Public), restricted to
+  interface `vEthernet (hlab)`, local address `198.19.0.2`, remote address
+  `198.19.0.1` and the program `hlabd.exe` of the running profile. `Up`
+  removes any rule of the group first and creates it again, so a crash
+  leaves no duplicate or stale rule. Nothing listens on the host's port 80.
+- The agent's DNS server answers hlab zones itself and forwards everything
+  else to `Config.Upstream`. The appliance routes each `/32` to the server's
   adapter. Floating IPs are `/32` routes to the server's public IPv4.
 - Port isolation on the public segment by private VLAN: the appliance's
   public adapter is promiscuous (primary VLAN 4094, secondary 4093), the
@@ -626,8 +677,9 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 
 - `doc` holds the resource in Hetzner's API shape plus an `_hlab` object for
   internal fields (VM name, disk paths, VLAN, MACs). IDs are global per
-  kind across projects, like Hetzner. Catalog kinds (locations, server
-  types, images of type system, ISOs) have `project_id` NULL.
+  kind across projects, like Hetzner. Catalogs (locations, server
+  types, system images, ISOs) are not stored here; hlabd serves them from
+  the catalog files in memory.
 - An incompatible `user_version` (newer than the binary, or older without a
   migration) leads to the warning of LIFE-08; until a 1.0 the user may
   discard the state.
@@ -644,7 +696,7 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 | `%ProgramData%\hlab\state.db` | SQLite, see "Data schema" | hlabd |
 | `%ProgramData%\hlab\logs\hlabd.log` | JSON lines (`time`, `level`, `msg`, fields), 10 MB x 5 rotated | hlabd |
 | `%ProgramData%\hlab\ca\` | `ca.pem`, `ca.key` (SYSTEM only) | hlabd |
-| `<data folder>\{disks,volumes,images,isos,cache,appliance}\` | VHDX, ISO | hlabd |
+| `<data folder>\{disks,volumes,images,isos,cache,appliance,vms}\` | VHDX, server seed ISOs (in `disks`), VM configuration folders (in `vms`) | hlabd |
 
 Settings (`settings.toml`), all optional with defaults:
 

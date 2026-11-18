@@ -173,6 +173,7 @@ resource types.
 - LIFE-07 stopping the cloud removes the host routes, forwarding settings and NRPT rules it added; starting adds them again (goal 4) [e2e]
 - LIFE-08 the state carries a version; an incompatible state is discarded after a warning the user confirms (goal 3) [unit]
 - LIFE-09 the service writes a log with rotation that `hlab logs` shows and follows (goal 3) [unit]
+- LIFE-10 the cloud of one profile (`release` or `dev`) refuses to start while the cloud of the other profile runs, naming it (goal 3) [unit]
 
 ### Tray program (`UI`)
 
@@ -250,8 +251,8 @@ What the target vision in IDEA.md will need, not built yet.
 
 | Requirement | Phase | Done |
 |-------------|-------|------|
-| API-01 | 01 | |
-| API-02 | 01 | |
+| API-01 | 01 | x |
+| API-02 | 01 | x |
 | API-03 | 02 | |
 | API-04 | 02 | |
 | API-05 | 02 | |
@@ -259,30 +260,30 @@ What the target vision in IDEA.md will need, not built yet.
 | API-07 | 02 | |
 | API-08 | 02 | |
 | API-09 | 02 | |
-| API-10 | 01 | |
+| API-10 | 01 | x |
 | API-11 | 02 | |
 | API-12 | 02 | |
 | API-13 | 02 | |
 | API-14 | 02 | |
-| PROJ-01 | 01 | |
-| PROJ-02 | 01 | |
+| PROJ-01 | 01 | x |
+| PROJ-02 | 01 | x |
 | PROJ-03 | 02 | |
 | PROJ-04 | 02 | |
-| PROJ-05 | 01 | |
-| CAT-01 | 01 | |
+| PROJ-05 | 01 | x |
+| CAT-01 | 01 | x |
 | CAT-02 | 02 | |
 | CAT-03 | 02 | |
 | CAT-04 | 02 | |
 | CAT-05 | 02 | |
-| CAT-06 | 01 | |
-| CAT-07 | 01 | |
+| CAT-06 | 01 | x |
+| CAT-07 | 01 | x |
 | CAT-08 | 04 | |
-| SRV-01 | 01 | |
+| SRV-01 | 01 | x |
 | SRV-02 | 03 | |
-| SRV-03 | 01 | |
-| SRV-04 | 01 | |
-| SRV-05 | 01 | |
-| SRV-06 | 01 | |
+| SRV-03 | 01 | x |
+| SRV-04 | 01 | x |
+| SRV-05 | 01 | x |
+| SRV-06 | 01 | x |
 | SRV-07 | 03 | |
 | SRV-08 | 03 | |
 | SRV-09 | 03 | |
@@ -292,10 +293,10 @@ What the target vision in IDEA.md will need, not built yet.
 | SRV-13 | 04 | |
 | SRV-14 | 04 | |
 | SRV-15 | 04 | |
-| SRV-16 | 01 | |
+| SRV-16 | 01 | x |
 | SRV-17 | 02 | |
 | SRV-18 | 03 | |
-| SRV-19 | 01 | |
+| SRV-19 | 01 | x |
 | SRV-20 | 03 | |
 | SRV-21 | 03 | |
 | SRV-22 | 02 | |
@@ -346,15 +347,16 @@ What the target vision in IDEA.md will need, not built yet.
 | HOST-02 | 09 | |
 | HOST-03 | 02 | |
 | HOST-04 | 02 | |
-| LIFE-01 | 01 | |
+| LIFE-01 | 01 | x |
 | LIFE-02 | 09 | |
 | LIFE-03 | 09 | |
 | LIFE-04 | 09 | |
 | LIFE-05 | 09 | |
-| LIFE-06 | 01 | |
+| LIFE-06 | 01 | x |
 | LIFE-07 | 09 | |
 | LIFE-08 | 09 | |
 | LIFE-09 | 09 | |
+| LIFE-10 | 01 | x |
 | UI-01 | 10 | |
 | UI-02 | 11 | |
 | UI-03 | 10 | |

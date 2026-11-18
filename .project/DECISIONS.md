@@ -22,6 +22,94 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Server MACs, IPv6 and root login
+
+- Type: decision
+- Phase: 01 (01-16)
+- What: a server's public MAC is `02:48:4c` followed by `0x1` and the low 20 bits of its ID (the appliance has `02:48:4c:00:00:01`), kept in `_hlab`; its formal IPv6 is `2001:db8:<ID as 32 bits>::/64`; server vendor-data sets `disable_root: false` so key logins as root work like at Hetzner.
+- Why: unique MACs without colliding with the appliance; Ubuntu cloud images block root logins by default.
+- Cost of change: high
+
+## 2026-11-18 Store timestamps and access scoping
+
+- Type: decision
+- Phase: 01 (01-02)
+- What: timestamps are stored as RFC3339Nano text in UTC; resource access functions take the project ID (0 = catalog, `project_id IS ?`), so one project cannot address another's rows.
+- Why: sortable text that SQLite and Go both read; isolation enforced in the one place every module uses.
+- Cost of change: medium
+
+## 2026-11-18 Volume identifier byte order
+
+- Type: decision
+- Phase: 01 (01-10)
+- What: `CreateDisk` writes `page83` in GUID text byte order, so `484C4142-0000-4000-8000-<id>` reaches the disk with the volume ID in the last 6 bytes.
+- Why: those bytes survive in both designators the guest sees (E6).
+- Cost of change: high
+
+## 2026-11-18 Management API details in phase 01
+
+- Type: decision
+- Phase: 01 (01-14)
+- What: token names are 1-63 characters; `/status` carries state, version and problems until later phases fill `shadowing_zones` and `appliance_generation`; deleting a project with resources answers 409 until PROJ-04 (phase 02).
+- Why: ARCHITECTURE.md sets no rule for token names; the other fields have no data yet.
+- Cost of change: low
+
+## 2026-11-18 Agent document without JSON tags
+
+- Type: decision
+- Phase: 01 (01-01)
+- What: `agentapi` types carry no JSON tags and use Go's field names on the wire, with `const Schema = 1`; `SegmentFor` returns the public PVLAN for network 0 and leaves private VLANs to its caller until phase 05.
+- Why: hlabd and hlab-agent are built from the same package and the agent is replaced at every cloud start, so the two sides never differ in version.
+- Cost of change: low
+
+## 2026-11-18 Release and dev profile side by side
+
+- Type: change
+- Phase: 01 (discuss)
+- What: Binaries carry a link-time profile `release` or `dev` that sets service, pipe, data folder, catalog folder, switch, VM prefix and host-object tags (`hlab` / `hlab-dev`); both may be installed, only one cloud runs (`other_instance_running`, LIFE-10); the e2e harness refuses to run while the release cloud runs.
+- Why: the user develops and uses hlab on the same host; a separate running dev cloud would need a second range, API name and a shared WinNAT, which Windows limits to one.
+- Cost of change: high
+
+## 2026-11-18 Public IPv4 allocation continues after the last address
+
+- Type: decision
+- Phase: 01 (discuss)
+- What: Public IPv4s are handed out after the last one given (counter in `kv`), wrapping to `.4` only at the end of the range and skipping used ones.
+- Why: reusing a freed address at once causes SSH host key conflicts when servers are deleted and recreated (user's choice).
+- Cost of change: low
+
+## 2026-11-18 Appliance DNS forwards to the host's DNS servers
+
+- Type: decision
+- Phase: 01 (discuss)
+- What: hlabd collects the host's DNS servers at cloud start and passes them as `Upstream` in the agent document; without any, the agent forwards to 1.1.1.1 and 9.9.9.9.
+- Why: Windows has no resolver on port 53 the appliance could forward to; the host's servers keep LAN and VPN names working (user's choice).
+- Cost of change: low
+
+## 2026-11-18 Firewall rule for the API port
+
+- Type: decision
+- Phase: 01 (discuss)
+- What: hostnet adds one inbound Windows Firewall rule (group per profile): TCP 8780, all firewall profiles, interface `vEthernet (hlab)`, local 198.19.0.2, remote 198.19.0.1, program `hlabd.exe`; `Up` replaces an existing rule of the group, `Down` and the uninstaller remove it; hlabd listens on 198.19.0.2:8780 only.
+- Why: the appliance's API proxy must reach hlabd, and the host must expose nothing else.
+- Cost of change: low
+
+## 2026-11-18 Host settings restored after a crash
+
+- Type: decision
+- Phase: 01 (discuss)
+- What: hostnet records previous values of settings it does not own (IPv4 forwarding on the WSL and hlab adapters) in `hostnet-restore.json` before changing them, and restores them at the next `Up`, `Down` or uninstall-cleanup.
+- Why: a crash of hlabd must not leave the WSL adapter forwarding (user's wish).
+- Cost of change: low
+
+## 2026-11-18 Unit tests fail without the cached OpenAPI description
+
+- Type: decision
+- Phase: 01 (discuss)
+- What: when the frozen OpenAPI description is missing from the cache, the API tests fail with "run `task openapi`" instead of skipping the validation.
+- Why: a silently skipped API-10 check would pass without proving anything (user's choice).
+- Cost of change: low
+
 ## 2026-11-18 Hetzner token: hcloud context in development, prompt in operation
 
 - Type: change

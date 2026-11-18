@@ -1,0 +1,139 @@
+{
+  "images": [
+    {
+      "id": 67794396,
+      "name": "ubuntu-22.04",
+      "description": "Ubuntu 22.04",
+      "type": "system",
+      "status": "available",
+      "os_flavor": "ubuntu",
+      "os_version": "22.04",
+      "architecture": "x86",
+      "rapid_deploy": true,
+      "disk_size": 5,
+      "image_size": null,
+      "created": "2022-04-21T13:32:38Z",
+      "created_from": null,
+      "bound_to": null,
+      "deprecation": null,
+      "deleted": null,
+      "labels": {},
+      "protection": {"delete": false},
+      "_hlab": {
+        "source": {
+          "url": "https://cloud-images.ubuntu.com/releases/jammy/release/ubuntu-22.04-server-cloudimg-amd64.img",
+          "checksum_url": "https://cloud-images.ubuntu.com/releases/jammy/release/SHA256SUMS",
+          "format": "qcow2"
+        }
+      }
+    },
+    {
+      "id": 161547269,
+      "name": "ubuntu-24.04",
+      "description": "Ubuntu 24.04",
+      "type": "system",
+      "status": "available",
+      "os_flavor": "ubuntu",
+      "os_version": "24.04",
+      "architecture": "x86",
+      "rapid_deploy": true,
+      "disk_size": 5,
+      "image_size": null,
+      "created": "2024-04-25T13:26:27Z",
+      "created_from": null,
+      "bound_to": null,
+      "deprecation": null,
+      "deleted": null,
+      "labels": {},
+      "protection": {"delete": false},
+      "_hlab": {
+        "source": {
+          "url": "https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-amd64.img",
+          "checksum_url": "https://cloud-images.ubuntu.com/releases/noble/release/SHA256SUMS",
+          "format": "qcow2"
+        }
+      }
+    },
+    {
+      "id": 387894169,
+      "name": "ubuntu-26.04",
+      "description": "Ubuntu 26.04",
+      "type": "system",
+      "status": "available",
+      "os_flavor": "ubuntu",
+      "os_version": "26.04",
+      "architecture": "x86",
+      "rapid_deploy": true,
+      "disk_size": 5,
+      "image_size": null,
+      "created": "2026-05-18T11:00:39Z",
+      "created_from": null,
+      "bound_to": null,
+      "deprecation": null,
+      "deleted": null,
+      "labels": {},
+      "protection": {"delete": false},
+      "_hlab": {
+        "source": {
+          "url": "https://cloud-images.ubuntu.com/releases/resolute/release/ubuntu-26.04-server-cloudimg-amd64.img",
+          "checksum_url": "https://cloud-images.ubuntu.com/releases/resolute/release/SHA256SUMS",
+          "format": "qcow2"
+        }
+      }
+    },
+    {
+      "id": 114690387,
+      "name": "debian-12",
+      "description": "Debian 12",
+      "type": "system",
+      "status": "available",
+      "os_flavor": "debian",
+      "os_version": "12",
+      "architecture": "x86",
+      "rapid_deploy": true,
+      "disk_size": 5,
+      "image_size": null,
+      "created": "2023-06-13T06:00:02Z",
+      "created_from": null,
+      "bound_to": null,
+      "deprecation": null,
+      "deleted": null,
+      "labels": {},
+      "protection": {"delete": false},
+      "_hlab": {
+        "source": {
+          "url": "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-generic-amd64.raw",
+          "checksum_url": "https://cloud.debian.org/images/cloud/bookworm/latest/SHA512SUMS",
+          "format": "raw"
+        }
+      }
+    },
+    {
+      "id": 310554929,
+      "name": "debian-13",
+      "description": "Debian 13",
+      "type": "system",
+      "status": "available",
+      "os_flavor": "debian",
+      "os_version": "13",
+      "architecture": "x86",
+      "rapid_deploy": true,
+      "disk_size": 5,
+      "image_size": null,
+      "created": "2025-08-18T06:15:25Z",
+      "created_from": null,
+      "bound_to": null,
+      "deprecation": null,
+      "deleted": null,
+      "labels": {},
+      "protection": {"delete": false},
+      "_hlab": {
+        "source": {
+          "url": "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-amd64.raw",
+          "checksum_url": "https://cloud.debian.org/images/cloud/trixie/latest/SHA512SUMS",
+          "format": "raw"
+        }
+      }
+    }
+  ]
+}
