@@ -50,6 +50,7 @@ const (
 	StatusOff          = "off"
 	StatusStopping     = "stopping"
 	StatusDeleting     = "deleting"
+	StatusRebuilding   = "rebuilding"
 )
 
 // Images provides the base disk of an image by name (*images.Store).
@@ -209,6 +210,7 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("POST /servers/{id}/actions/shutdown", http.HandlerFunc(m.shutdown))
 	r.Handle("POST /servers/{id}/actions/reboot", http.HandlerFunc(m.reboot))
 	r.Handle("POST /servers/{id}/actions/reset", http.HandlerFunc(m.reset))
+	r.Handle("POST /servers/{id}/actions/rebuild", http.HandlerFunc(m.rebuild))
 	r.Handle("POST /servers/{id}/actions/request_console", http.HandlerFunc(m.requestConsole))
 	r.Handle("POST /servers/{id}/actions/add_to_placement_group", http.HandlerFunc(m.addToPlacementGroup))
 	r.Handle("POST /servers/{id}/actions/remove_from_placement_group", http.HandlerFunc(m.removeFromPlacementGroup))
