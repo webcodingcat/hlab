@@ -6,7 +6,6 @@ package actions
 import (
 	"cmp"
 	"errors"
-	"log/slog"
 	"net/http"
 	"slices"
 	"strconv"
@@ -40,14 +39,14 @@ var sortFields = map[string]compare{
 func list(w http.ResponseWriter, req *http.Request) {
 	q := req.URL.Query()
 	if len(q["id"]) == 0 {
-		api.Error(w, http.StatusBadRequest, "invalid_input", "id is required", nil)
+		api.InvalidInput(w, "id", "id is required")
 		return
 	}
 	ids := make([]int64, 0, len(q["id"]))
 	for _, s := range q["id"] {
 		id, err := strconv.ParseInt(s, 10, 64)
 		if err != nil || id < 1 {
-			api.Error(w, http.StatusBadRequest, "invalid_input", "invalid id: "+s, nil)
+			api.InvalidInput(w, "id", "invalid id: "+s)
 			return
 		}
 		ids = append(ids, id)
@@ -56,7 +55,7 @@ func list(w http.ResponseWriter, req *http.Request) {
 	for _, s := range q["sort"] {
 		c, ok := sortFields[s]
 		if !ok {
-			api.Error(w, http.StatusBadRequest, "invalid_input", "invalid sort: "+s, nil)
+			api.InvalidInput(w, "sort", "invalid sort: "+s)
 			return
 		}
 		order = append(order, c)
@@ -99,10 +98,9 @@ func get(w http.ResponseWriter, req *http.Request) {
 }
 
 func notFound(w http.ResponseWriter) {
-	api.Error(w, http.StatusNotFound, "not_found", "action not found", nil)
+	api.Error(w, "not_found", "action not found", nil)
 }
 
 func serverError(w http.ResponseWriter, err error) {
-	slog.Error("actions", "err", err)
-	api.Error(w, http.StatusInternalServerError, "server_error", "internal error", nil)
+	api.ServerError(w, err)
 }

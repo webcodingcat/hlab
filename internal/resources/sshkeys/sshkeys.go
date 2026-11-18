@@ -106,10 +106,8 @@ func (m *Module) get(w http.ResponseWriter, req *http.Request) {
 		return err
 	})
 	switch {
-	case errors.Is(err, store.ErrNotFound):
-		api.NotFound(w)
 	case err != nil:
-		api.ServerError(w, err)
+		api.Fail(w, err)
 	default:
 		api.JSON(w, http.StatusOK, map[string]any{"ssh_key": k})
 	}
@@ -168,10 +166,8 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 		return store.Delete(tx, Kind, p.ID, id)
 	})
 	switch {
-	case errors.Is(err, store.ErrNotFound):
-		api.NotFound(w)
 	case err != nil:
-		api.ServerError(w, err)
+		api.Fail(w, err)
 	default:
 		w.WriteHeader(http.StatusNoContent)
 	}
