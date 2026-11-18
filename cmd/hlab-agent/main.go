@@ -19,6 +19,13 @@ import (
 	"github.com/webcodingcat/hlab/internal/version"
 )
 
+// listenAddr is the agent interface on the transit address; publicInterface
+// is the appliance adapter on the public segment.
+const (
+	listenAddr      = "198.19.0.1:9100"
+	publicInterface = "eth0"
+)
+
 func main() {
 	if err := run(); err != nil {
 		slog.Error("hlab-agent", "err", err)
@@ -27,9 +34,7 @@ func main() {
 }
 
 func run() error {
-	listen := flag.String("listen", "198.19.0.1:9100", "address of the agent interface")
 	secretFile := flag.String("secret", "/etc/hlab-agent/secret", "file holding the bearer secret")
-	iface := flag.String("interface", "eth0", "interface of the public segment")
 	flag.Parse()
 
 	raw, err := os.ReadFile(*secretFile)
@@ -38,7 +43,7 @@ func run() error {
 	}
 	proxy := &agent.APIProxy{}
 	// 01-13 adds the DNS server and the nftables backstop to this list.
-	a, err := agent.New(bytes.TrimSpace(raw), agent.NewNetwork(*iface), proxy)
+	a, err := agent.New(bytes.TrimSpace(raw), agent.NewNetwork(publicInterface), proxy)
 	if err != nil {
 		return err
 	}
@@ -46,10 +51,10 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	srv := &http.Server{Addr: *listen, Handler: a.Handler(), ReadHeaderTimeout: 30 * time.Second}
+	srv := &http.Server{Addr: listenAddr, Handler: a.Handler(), ReadHeaderTimeout: 30 * time.Second}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
-	slog.Info("hlab-agent started", "version", version.Version, "listen", *listen)
+	slog.Info("hlab-agent started", "version", version.Version, "listen", listenAddr)
 
 	select {
 	case err := <-errc:
