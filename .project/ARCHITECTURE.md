@@ -99,7 +99,7 @@ Inside `hlabd` (Go packages under `internal/`):
   ```go
   type Module interface {
       Type() string                     // "servers"
-      Routes(r api.Registrar)           // registers its endpoints and actions
+      Routes(r resource.Registrar)      // registers its endpoints and actions (Handle(pattern, handler), ServeMux patterns under /v1)
   }
   // optional interfaces, detected by type assertion:
   type Reconciler interface {           // modules owning real resources
