@@ -4,10 +4,8 @@
 package actions
 
 import (
-	"cmp"
 	"errors"
 	"net/http"
-	"slices"
 	"strconv"
 
 	"github.com/webcodingcat/hlab/internal/actions"
@@ -28,14 +26,9 @@ func (module) Routes(r resource.Registrar) {
 	r.Handle("GET /actions/{id}", http.HandlerFunc(get))
 }
 
-// compare orders two actions by one sort field, ascending.
-type compare func(a, b actions.Action) int
-
-var sortFields = map[string]compare{
-	"id":     func(a, b actions.Action) int { return cmp.Compare(a.ID, b.ID) },
-	"status": func(a, b actions.Action) int { return cmp.Compare(a.Status, b.Status) },
-}
-
+// list answers GET /actions?id=..: the description offers only the
+// repeated id parameter; the answer is paged like every list so that
+// clients that send page and per_page get every action.
 func list(w http.ResponseWriter, req *http.Request) {
 	q := req.URL.Query()
 	if len(q["id"]) == 0 {
@@ -51,15 +44,6 @@ func list(w http.ResponseWriter, req *http.Request) {
 		}
 		ids = append(ids, id)
 	}
-	var order []compare
-	for _, s := range q["sort"] {
-		c, ok := sortFields[s]
-		if !ok {
-			api.InvalidInput(w, "sort", "invalid sort: "+s)
-			return
-		}
-		order = append(order, c)
-	}
 
 	project, _ := api.ProjectFrom(req.Context())
 	found, err := api.ActionsFrom(req.Context()).List(project.ID, ids)
@@ -67,15 +51,7 @@ func list(w http.ResponseWriter, req *http.Request) {
 		serverError(w, err)
 		return
 	}
-	slices.SortStableFunc(found, func(a, b actions.Action) int {
-		for _, c := range order {
-			if r := c(a, b); r != 0 {
-				return r
-			}
-		}
-		return 0
-	})
-	api.List(w, "actions", found)
+	api.ListRequest(w, req, "actions", found, api.ListOptions[actions.Action]{})
 }
 
 func get(w http.ResponseWriter, req *http.Request) {

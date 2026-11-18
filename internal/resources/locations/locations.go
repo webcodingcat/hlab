@@ -2,7 +2,7 @@
 package locations
 
 import (
-	"encoding/json"
+	"cmp"
 	"net/http"
 	"slices"
 
@@ -26,15 +26,26 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("GET /locations/{id}", http.HandlerFunc(m.get))
 }
 
+// location is written as its catalog object.
+type location catalog.Location
+
+func (l location) MarshalJSON() ([]byte, error) { return l.Raw, nil }
+
+// list offers name, sort (id, name), page and per_page.
 func (m *Module) list(w http.ResponseWriter, req *http.Request) {
-	names := req.URL.Query()["name"]
-	var out []json.RawMessage
+	items := make([]location, 0, len(m.cat.Locations))
 	for _, l := range m.cat.Locations {
-		if len(names) == 0 || slices.Contains(names, l.Name) {
-			out = append(out, l.Raw)
-		}
+		items = append(items, location(l))
 	}
-	api.List(w, "locations", out)
+	byID := func(a, b location) int { return cmp.Compare(a.ID, b.ID) }
+	slices.SortStableFunc(items, byID)
+	api.ListRequest(w, req, "locations", items, api.ListOptions[location]{
+		Name: func(l location) string { return l.Name },
+		Sort: map[string]func(a, b location) int{
+			"id":   byID,
+			"name": func(a, b location) int { return cmp.Compare(a.Name, b.Name) },
+		},
+	})
 }
 
 func (m *Module) get(w http.ResponseWriter, req *http.Request) {
