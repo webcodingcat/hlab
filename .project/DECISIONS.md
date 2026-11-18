@@ -801,3 +801,19 @@ in ARCHITECTURE.md or the plan.
 - What: project files brought from wcc 0.32.2 to 0.32.3: version line updated; CLAUDE.md rules and planning documents already matched the templates
 - Why: the skills of the installed version search for these keys and rules
 - Cost of change: low
+
+## 2026-11-18 Q4 Automount on later attach via a metadata path
+
+- Type: decision
+- Phase: 04
+- What: the agent document and metadata serve a per-server list of automount volumes at `GET /hlab/v1/volumes`; a udev-triggered unit reads it and mounts at `/mnt/HC_Volume_<id>` with an fstab entry.
+- Why: a volume attached after server creation with `automount: true` must be mounted like at Hetzner, and only then.
+- Cost of change: medium (guest-visible path baked into vendor-data of existing servers)
+
+## 2026-11-18 Q5 SRV-15 proved by SSH into the live ISO
+
+- Type: decision
+- Phase: 04
+- What: the SRV-15 e2e test boots an Ubuntu live-server ISO that reads the cidata in DVD slot 0 and checks over SSH that `/` is the live system; the indirect proof (installed system silent, DVD first) is the fallback if research refutes it.
+- Why: a direct login shows the boot source; the indirect check cannot tell a hung boot from an ISO boot.
+- Cost of change: low
