@@ -22,6 +22,118 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 HTTP status of error codes from the OpenAPI error table
+
+- Type: decision
+- Phase: phase 02
+- What: `api.Status(code)` is the one table of HTTP statuses, copied from the error table of the frozen OpenAPI description (`invalid_input` 422, `protected` 423), and `api.Error` takes no status.
+- Why: the user asked for one sourced table; a read-only call against the real API answered `invalid_input` with 422.
+- Cost of change: low
+
+## 2026-11-18 Eleventh server in a spread group gives placement_error
+
+- Type: decision
+- Phase: phase 02
+- What: adding an eleventh server to a spread placement group answers 422 `placement_error`.
+- Why: it is the only related code Hetzner documents; the real one could not be confirmed.
+- Cost of change: low
+
+## 2026-11-18 resource.Deleter embedded in Reconciler
+
+- Type: decision
+- Phase: phase 02
+- What: new interface `resource.Deleter{Delete}`, embedded in `Reconciler`; servers implement only `Deleter` until phase 03 adds `Reconcile`.
+- Why: project deletion needs `Delete` now, and a fake `Reconcile` would lie.
+- Cost of change: low
+
+## 2026-11-18 WSL mode from the console user's .wslconfig
+
+- Type: decision
+- Phase: phase 02
+- What: hostnet reads `networkingMode` and `dnsTunneling` from the console user's `.wslconfig` (injectable for tests), maps consomme/virtioproxy to `wsl_virtioproxy` and bridged/none to the new code `wsl_mode_unsupported`; no console user means no WSL problem.
+- Why: the user took this answer; a LocalSystem service cannot see the user's distros.
+- Cost of change: low
+
+## 2026-11-18 CAT-03 live check as an e2e row
+
+- Type: decision
+- Phase: phase 02
+- What: besides its unit test, CAT-03 gets `TestE2E/CAT-03` using the hcloud context, skipped with a reason without one.
+- Why: SPEC.md "Accounts and secrets" prescribes the live check and success criterion 3 needs it.
+- Cost of change: low
+
+## 2026-11-18 Success criteria 1 and 4 tested as CLI-02 and CLI-03 rows
+
+- Type: decision
+- Phase: phase 02
+- What: the tofu tests for ssh_keys and placement_groups and the Ansible `server_info` test are rows of CLI-02 and CLI-03; both requirements stay open until phase 13.
+- Why: the user took this answer at the start of the phase.
+- Cost of change: low
+
+## 2026-11-18 PUT changes only the fields present
+
+- Type: decision
+- Phase: phase 02
+- What: every PUT changes only the fields in the body; `labels`, when present, replaces the whole set.
+- Why: the OpenTofu provider sends name and labels in separate PUTs.
+- Cost of change: low
+
+## 2026-11-18 Placement group create returns no action
+
+- Type: decision
+- Phase: phase 02
+- What: `POST /placement_groups` answers `action: null`.
+- Why: the description allows it and the clients then have nothing to poll.
+- Cost of change: low
+
+## 2026-11-18 Server types behind an accessor
+
+- Type: decision
+- Phase: phase 02
+- What: `Catalog.ServerTypes` becomes unexported behind `Types()` and `ReplaceServerTypes`.
+- Why: `hlab catalog update` swaps the types while requests run.
+- Cost of change: low
+
+## 2026-11-18 Hidden token prompt through x/sys/windows
+
+- Type: decision
+- Phase: phase 02
+- What: the hidden prompt of `hlab catalog update` uses the console mode of `x/sys/windows`, with new `cli.IO.ReadSecret` and `IO.Getenv`.
+- Why: no new module.
+- Cost of change: low
+
+## 2026-11-18 WSL distro of the e2e harness
+
+- Type: decision
+- Phase: phase 02
+- What: the harness uses `HLAB_E2E_WSL_DISTRO`, else the single registered distro whose name starts with `Ubuntu`, always through `wsl.exe -d`, and fails with none or several; the test key goes to a temporary directory deleted at the end.
+- Why: the user asked for the SPEC.md Ubuntu distro instead of the default distro.
+- Cost of change: low
+
+## 2026-11-18 Page beyond the last is empty
+
+- Type: decision
+- Phase: phase 02
+- What: a page beyond the last returns an empty list with `next_page` null.
+- Why: the description does not say, and the clients' paging loops expect it.
+- Cost of change: low
+
+## 2026-11-18 Pricing built in the catalog plan
+
+- Type: decision
+- Phase: phase 02
+- What: `/pricing` is built in plan 02-03 from the merged server types.
+- Why: it derives from them and needs only one registration line.
+- Cost of change: low
+
+## 2026-11-18 Project deletion waits through a management action endpoint
+
+- Type: decision
+- Phase: phase 02
+- What: `GET /mgmt/v1/actions/{id}` is added and `hlab project delete` waits for it; a second deletion while one runs answers 409 `conflict`.
+- Why: the user took this answer; the CLI must report success or failure.
+- Cost of change: medium
+
 ## 2026-11-18 Q1: real resources reconciled by their module
 
 - Type: change
