@@ -793,3 +793,11 @@ in ARCHITECTURE.md or the plan.
 - What: the vendor shell part ends with `sync`; poweroff stays a hard cut.
 - Why: a hard poweroff within about 30 s of the first boot left zero-length SSH host keys and hook files, so sshd never came back.
 - Cost of change: low
+
+## 2026-11-18 Upgrade to wcc 0.32.3
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.32.2 to 0.32.3: version line updated; CLAUDE.md rules and planning documents already matched the templates
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
