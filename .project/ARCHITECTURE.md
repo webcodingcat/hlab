@@ -124,6 +124,9 @@ Inside `hlabd` (Go packages under `internal/`):
   type NetContributor interface {       // modules contributing to the agent document
       Contribute(tx store.Tx, doc *agentapi.Config) error
   }
+  type ActionUser interface {           // modules starting actions outside a handler (daily backups); Mount calls it before Routes
+      UseActions(m *actions.Manager)
+  }
   ```
 
   Handlers validate input, write the desired state in one transaction,
