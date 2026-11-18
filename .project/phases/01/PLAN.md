@@ -60,7 +60,7 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
   - Requirements: LIFE-01, LIFE-06 | Tests: test/e2e (LIFE-01)
   - Size: ~400 lines in 5 files
   - [ ] `internal/sysint` (Paths, ServiceControl, ServiceHost, Installer interfaces) and `internal/sysint/windows`: Paths per profile, ServiceControl with minimal SCM rights (E10), ServiceHost with preshutdown, pipe listen/dial with ACL (go-winio)
-  - [ ] Installer: `hlabd install [--dev]` (service with descriptor, preshutdown 180 s, data folder ACLs; `--dev` refuses if an installed release exists) and `uninstall-cleanup` skeleton; `internal/settings`
+  - [ ] Installer: `hlabd install [--dev]` (service with descriptor, preshutdown 180 s, protected data folder ACLs; both profiles may be installed side by side) and `uninstall-cleanup` skeleton; `internal/settings`
 
 - [x] 01-04 API core and OpenAPI tooling
   - Wave: 2 | Depends on: 01-02 | Review: alone
@@ -139,7 +139,7 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
   - Requirements: LIFE-01 | Tests: test/e2e (LIFE-01)
   - Size: ~400 lines in 5 files
   - [ ] `internal/cloud`: start (settings, Check, store, switch, appliance image/disk/cidata with agent and secret, VM, hostnet.Up, agent push with DNS upstream, API listener on 198.19.0.2:8780, pipe), stop (API, appliance, hostnet.Down, store)
-  - [ ] `internal/agentclient`; `cmd/hlabd` service entry, `install`, `uninstall-cleanup`; status file
+  - [ ] `internal/agentclient`; `cmd/hlabd` service entry, `install`, `uninstall-cleanup`; status file; `scripts/dev-setup.ps1` calls `bin\hlabd.exe install --dev` instead of sc.exe/icacls
 
 - [ ] 01-16 SSH keys, servers and IPAM
   - Wave: 5 | Depends on: 01-15 | Review: alone
