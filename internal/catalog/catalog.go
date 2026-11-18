@@ -1,14 +1,12 @@
 // Package catalog loads the shipped catalogs (locations, server types, load
-// balancer types, pricing, images) and the user's own server types. The
-// files hold Hetzner's API shapes; images carry their download source in
-// `_hlab.source`, which is never served.
+// balancer types, pricing, images). The files hold Hetzner's API shapes;
+// images carry their download source in `_hlab.source`, which is never
+// served.
 package catalog
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -69,24 +67,8 @@ type Catalog struct {
 	Pricing           json.RawMessage
 }
 
-// Option changes how Load reads the catalogs.
-type Option func(*options)
-
-type options struct{ customServerTypes string }
-
-// WithCustomServerTypes adds the server types of the JSON array in path
-// (server-types.custom.json) to the shipped ones. A missing file is no
-// error.
-func WithCustomServerTypes(path string) Option {
-	return func(o *options) { o.customServerTypes = path }
-}
-
 // Load reads the catalog files in dir.
-func Load(dir string, opts ...Option) (*Catalog, error) {
-	var o options
-	for _, f := range opts {
-		f(&o)
-	}
+func Load(dir string) (*Catalog, error) {
 	c := &Catalog{}
 
 	var locs []json.RawMessage
@@ -106,25 +88,12 @@ func Load(dir string, opts ...Option) (*Catalog, error) {
 	if err := readList(dir, "server-types.json", "server_types", &types); err != nil {
 		return nil, err
 	}
-	if o.customServerTypes != "" {
-		data, err := os.ReadFile(o.customServerTypes)
-		switch {
-		case errors.Is(err, fs.ErrNotExist):
-		case err != nil:
-			return nil, err
-		default:
-			var custom []json.RawMessage
-			if err := json.Unmarshal(data, &custom); err != nil {
-				return nil, fmt.Errorf("%s: %w", o.customServerTypes, err)
-			}
-			types = append(types, custom...)
-		}
-	}
 	for _, raw := range types {
-		st, err := c.serverType(raw)
-		if err != nil {
-			return nil, fmt.Errorf("server types: %w", err)
+		var st ServerType
+		if err := json.Unmarshal(raw, &st); err != nil {
+			return nil, fmt.Errorf("server-types.json: %w", err)
 		}
+		st.Raw = raw
 		c.ServerTypes = append(c.ServerTypes, st)
 	}
 
@@ -151,36 +120,6 @@ func Load(dir string, opts ...Option) (*Catalog, error) {
 	}
 	c.Pricing = pricing.Pricing
 	return c, nil
-}
-
-// serverType decodes raw and adds an entry for every location when the
-// object has no locations list, so clients always find one.
-func (c *Catalog) serverType(raw json.RawMessage) (ServerType, error) {
-	var st ServerType
-	if err := json.Unmarshal(raw, &st); err != nil {
-		return st, err
-	}
-	if st.Locations == nil {
-		var obj map[string]any
-		if err := json.Unmarshal(raw, &obj); err != nil {
-			return st, err
-		}
-		locs := make([]map[string]any, 0, len(c.Locations))
-		for _, l := range c.Locations {
-			st.Locations = append(st.Locations, ServerTypeLocation{ID: l.ID, Name: l.Name, Available: true})
-			locs = append(locs, map[string]any{
-				"id": l.ID, "name": l.Name, "available": true, "recommended": false, "deprecation": nil,
-			})
-		}
-		obj["locations"] = locs
-		b, err := json.Marshal(obj)
-		if err != nil {
-			return st, err
-		}
-		raw = b
-	}
-	st.Raw = raw
-	return st, nil
 }
 
 // image decodes raw and splits off `_hlab`.
