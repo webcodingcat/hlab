@@ -9,11 +9,15 @@ import (
 	"github.com/webcodingcat/hlab/internal/shacrypt"
 )
 
-// guestHook is the hlab-guest script: it asks the metadata service for a
-// pending root password reset, applies its hash with `chpasswd -e`,
-// confirms it and remembers the ID, so a reset is applied once.
+// guestHook is the hlab-guest script. It rescans each hlab volume disk: a
+// volume grown while attached reports its new size only on the disk's next
+// SCSI command, which an idle disk never gets. Then it asks the metadata
+// service for a pending root password reset, applies its hash with
+// `chpasswd -e`, confirms it and remembers the ID, so a reset is applied
+// once.
 const guestHook = `#!/usr/bin/python3
-# hlab guest hook: applies a pending root password reset.
+# hlab guest hook: picks up grown volumes, applies a pending root password reset.
+import glob
 import json
 import os
 import subprocess
@@ -23,7 +27,18 @@ BASE = "http://169.254.169.254/hlab/v1/password-reset"
 STATE = "/var/lib/hlab-guest/last-reset"
 
 
+def rescan_volumes():
+    for link in glob.glob("/dev/disk/by-id/scsi-0HC_Volume_*"):
+        disk = os.path.basename(os.path.realpath(link))
+        try:
+            with open("/sys/block/%s/device/rescan" % disk, "w") as f:
+                f.write("1")
+        except OSError:
+            pass
+
+
 def main():
+    rescan_volumes()
     try:
         with urllib.request.urlopen(BASE, timeout=4) as r:
             if r.status != 200:
@@ -51,7 +66,7 @@ main()
 `
 
 const guestService = `[Unit]
-Description=hlab guest hook (root password reset)
+Description=hlab guest hook (grown volumes, root password reset)
 After=network-online.target
 
 [Service]
