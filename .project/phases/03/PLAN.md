@@ -154,15 +154,15 @@ func ServersDeps(t *testing.T, cat *catalog.Catalog, p platform.Platform) server
   - Adjusts: -
   - [x] `SHA512` (rounds clamp 1000..999999999, `rounds=` echoed only when given, salt truncated to 16, Drepper's byte order and alphabet) and `NewSHA512` with a salt from crypto/rand (internal/shacrypt/shacrypt.go)
 
-- [ ] 03-03 Hyper-V reboot and metrics
+- [x] 03-03 Hyper-V reboot and metrics
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SRV-07 (reboot), SRV-21 (source) | Tests: - (proved by the SRV-07 and SRV-21 e2e rows)
   - Reads: ARCHITECTURE "platform"; RESEARCH R1, R2 ("Probes to run first" 1 and 2); BACKLOG reboot item; E11
   - Size: ~260 lines in 4 files
   - Adjusts: -
-  - [ ] Probe first on the dev host: `Get-CimClass` and `Get-CimInstance` of the three `Win32_PerfRawData_*` classes with a running VM (property names, instance names), and `InitiateReboot` on a running Ubuntu 24.04 and Debian 13 server (return value, time until SSH answers); record the result in the plan's summary
-  - [ ] `Sample` counters (internal/platform/platform.go); `Power(PowerReboot)` falls back to InitiateShutdown, wait for Off (120 s), Start-VM on any return value other than 0 and 4096 (internal/platform/hyperv/hyperv.go)
-  - [ ] `Metrics` from the probed raw classes, matched by exact delimiter on the VM name, CPU percent from the previous call's ticks kept per VM, all of the VM's disks summed, `_Total` skipped; drop it from pending.go (internal/platform/hyperv/metrics.go, internal/platform/hyperv/pending.go)
+  - [x] Probe first on the dev host: `Get-CimClass` and `Get-CimInstance` of the three `Win32_PerfRawData_*` classes with a running VM (property names, instance names), and `InitiateReboot` on a running Ubuntu 24.04 and Debian 13 server (return value, time until SSH answers); record the result in the plan's summary
+  - [x] `Sample` counters (internal/platform/platform.go); `Power(PowerReboot)` falls back to InitiateShutdown, wait for Off (120 s), Start-VM on any return value other than 0 and 4096 (internal/platform/hyperv/hyperv.go)
+  - [x] `Metrics` from the probed raw classes, matched by exact delimiter on the VM name, CPU percent from the previous call's ticks kept per VM, all of the VM's disks summed, `_Total` skipped; drop it from pending.go (internal/platform/hyperv/metrics.go, internal/platform/hyperv/pending.go)
 
 - [x] 03-04 Agent metadata service
   - Wave: 1 | Depends on: - | Review: alone
