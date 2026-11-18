@@ -36,14 +36,15 @@ type Options struct {
 
 // Client talks to one hlab-agent.
 type Client struct {
-	opts Options
-	http *http.Client
-	mu   sync.Mutex // one push at a time, so generations arrive in order
+	opts    Options
+	http    *http.Client
+	jobHTTP *http.Client // no timeout: jobs (mkfs of a large volume) take long
+	mu      sync.Mutex   // one push at a time, so generations arrive in order
 }
 
 // New returns a Client.
 func New(opts Options) *Client {
-	return &Client{opts: opts, http: &http.Client{Timeout: 30 * time.Second}}
+	return &Client{opts: opts, http: &http.Client{Timeout: 30 * time.Second}, jobHTTP: &http.Client{}}
 }
 
 // Push sends cfg as the full document with the schema of this build and
@@ -92,6 +93,24 @@ func (c *Client) Status(ctx context.Context) (agentapi.Status, error) {
 	return st, nil
 }
 
+// Job runs job on the agent and returns when it is done; a job that fails
+// (OK false) is an error carrying the agent's message. The caller's ctx
+// bounds the job, not the client's request timeout.
+func (c *Client) Job(ctx context.Context, job agentapi.Job) (agentapi.JobResult, error) {
+	body, err := json.Marshal(job)
+	if err != nil {
+		return agentapi.JobResult{}, fmt.Errorf("agent job %s: %w", job.Kind, err)
+	}
+	var res agentapi.JobResult
+	if err := c.doWith(ctx, c.jobHTTP, http.MethodPost, "/v1/jobs", body, &res); err != nil {
+		return agentapi.JobResult{}, fmt.Errorf("agent job %s: %w", job.Kind, err)
+	}
+	if !res.OK {
+		return res, fmt.Errorf("agent job %s failed: %s", job.Kind, res.Message)
+	}
+	return res, nil
+}
+
 // WaitReady polls the agent's status until it answers or ctx ends; the
 // caller sets the deadline.
 func (c *Client) WaitReady(ctx context.Context) error {
@@ -111,6 +130,10 @@ func (c *Client) WaitReady(ctx context.Context) error {
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body []byte, out any) error {
+	return c.doWith(ctx, c.http, method, path, body, out)
+}
+
+func (c *Client) doWith(ctx context.Context, hc *http.Client, method, path string, body []byte, out any) error {
 	var rd io.Reader
 	if body != nil {
 		rd = bytes.NewReader(body)
@@ -123,7 +146,7 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte, out a
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := c.http.Do(req)
+	resp, err := hc.Do(req)
 	if err != nil {
 		return err
 	}
