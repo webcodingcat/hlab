@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Primary IP prices only for ipv4
+
+- Type: decision
+- Phase: phase 02
+- What: `/pricing` returns the primary IP prices of the shipped catalog, which has only `ipv4`; no `ipv6` entry is invented.
+- Why: the catalog is generated from the real Hetzner API, which lists only ipv4 under `primary_ips`.
+- Cost of change: low
+
 ## 2026-11-18 HTTP status of error codes from the OpenAPI error table
 
 - Type: decision

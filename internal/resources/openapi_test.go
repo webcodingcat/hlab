@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/netip"
 	"testing"
-	"time"
 
 	"github.com/webcodingcat/hlab/internal/apitest"
 	"github.com/webcodingcat/hlab/internal/catalog"
@@ -34,6 +33,7 @@ func ed25519PublicKey() string {
 }
 
 func TestResources(t *testing.T) {
+	conventionRows(t)
 	t.Run("API-10", func(t *testing.T) {
 		cat, err := catalog.Load("../../catalog")
 		if err != nil {
@@ -126,7 +126,7 @@ func TestResources(t *testing.T) {
 				e := env.For(t)
 				if c.name == "DELETE /servers/{id}" {
 					// The create action locks the server until it finishes.
-					waitAction(t, e, createAction)
+					e.WaitAction(createAction)
 				}
 				var resp *http.Response
 				if c.auth != nil {
@@ -148,25 +148,3 @@ func TestResources(t *testing.T) {
 }
 
 func fixed(p string) func() string { return func() string { return p } }
-
-// waitAction polls GET /actions/{id} until the action is no longer running.
-func waitAction(t *testing.T, e *apitest.Env, id int64) {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		resp := e.Do("GET", fmt.Sprintf("/actions/%d", id), nil)
-		var b struct {
-			Action struct {
-				Status string `json:"status"`
-			} `json:"action"`
-		}
-		apitest.Decode(t, resp, &b)
-		if b.Action.Status != "running" {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("action %d still running after 10 s", id)
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-}

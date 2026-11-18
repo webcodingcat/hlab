@@ -41,7 +41,8 @@ func testAPI01(t *testing.T) {
 	})
 
 	t.Run("wsl", func(t *testing.T) {
-		r, err := command(context.Background(), 2*time.Minute, nil, header, "wsl.exe", "-e", "sh", "-c", curlStatus)
+		_, w := sharedWSL(t)
+		r, err := command(context.Background(), 2*time.Minute, nil, header, "wsl.exe", "-d", w.distro, "-e", "sh", "-c", curlStatus)
 		if err != nil || strings.TrimSpace(r.Stdout) != "200" {
 			t.Errorf("curl from WSL2: %v\n%s", err, r)
 		}

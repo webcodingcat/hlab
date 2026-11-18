@@ -19,6 +19,10 @@ func TestE2E(t *testing.T) {
 	t.Run("SRV-05", parallel(testSRV05))
 	t.Run("SRV-16", parallel(testSRV16))
 	t.Run("SRV-19", parallel(testSRV19))
+	t.Run("HOST-03", parallel(testHOST03))
+	t.Run("CLI-02", parallel(testCLI02))
+	t.Run("CLI-03", parallel(testCLI03))
+	t.Run("CAT-03", parallel(testCAT03))
 }
 
 func parallel(f func(t *testing.T)) func(t *testing.T) {
