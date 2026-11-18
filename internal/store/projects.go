@@ -112,6 +112,13 @@ func DeleteToken(tx Tx, projectID int64, name string) error {
 	return affected(tx.exec(`DELETE FROM tokens WHERE project_id = ? AND name = ?`, projectID, name))
 }
 
+// CountResources returns the number of resources of project projectID.
+func CountResources(tx Tx, projectID int64) (int, error) {
+	var n int
+	err := tx.tx.QueryRow(`SELECT count(*) FROM resources WHERE project_id = ?`, projectID).Scan(&n)
+	return n, mapErr(err)
+}
+
 // TokenByHash returns the token with the given SHA-256 and its project, or
 // ErrNotFound.
 func TokenByHash(tx Tx, sha256 []byte) (Token, Project, error) {

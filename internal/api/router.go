@@ -72,9 +72,14 @@ func (r *Router) underPrefix(next http.Handler) http.Handler {
 	})
 }
 
-// authenticate resolves the bearer token to its project.
+// authenticate resolves the bearer token to its project. A request whose
+// context already carries a project (WithProject) passes unchanged.
 func (r *Router) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if _, ok := ProjectFrom(req.Context()); ok {
+			next.ServeHTTP(w, req)
+			return
+		}
 		token, ok := strings.CutPrefix(req.Header.Get("Authorization"), "Bearer ")
 		if !ok || token == "" {
 			Error(w, http.StatusUnauthorized, "unauthorized", "unable to authenticate", nil)
