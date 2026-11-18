@@ -92,13 +92,13 @@ func (f *Fake) FailNext(op string, err error) {
 }
 
 // Block makes the next call of op wait until release is called or its
-// context ends; release may be called once.
+// context ends; calling release again does nothing.
 func (f *Fake) Block(op string) (release func()) {
 	ch := make(chan struct{})
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.blocks[op] = append(f.blocks[op], ch)
-	return func() { close(ch) }
+	return sync.OnceFunc(func() { close(ch) })
 }
 
 // Calls returns a copy of the recorded calls in order.

@@ -487,6 +487,8 @@ type createRequest struct {
 	StartAfterCreate *bool             `json:"start_after_create"`
 	Labels           map[string]string `json:"labels"`
 	PlacementGroup   json.RawMessage   `json:"placement_group"`
+	Volumes          []int64           `json:"volumes"`
+	Automount        *bool             `json:"automount"`
 }
 
 var errNoAddress = errors.New("no free public IPv4 address")
@@ -508,6 +510,10 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		labels = map[string]string{}
 	}
 	start := body.StartAfterCreate == nil || *body.StartAfterCreate
+	var automountVolumes []int64
+	if body.Automount != nil && *body.Automount {
+		automountVolumes = body.Volumes
+	}
 	stor := api.StoreFrom(req.Context())
 	var img source
 	if err := stor.Tx(func(tx store.Tx) error {
@@ -550,6 +556,9 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 			return err
 		}
 		if err := api.CheckLabels(labels); err != nil {
+			return err
+		}
+		if err := m.checkVolumes(tx, p.ID, loc.Name, body.Volumes); err != nil {
 			return err
 		}
 		var group *placementgroups.Group
@@ -625,6 +634,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 				UserData:         body.UserData,
 				StartAfterCreate: start,
 				RootHash:         rootHash,
+				AutomountVolumes: automountVolumes,
 			},
 		}
 		if err := put(tx, rec); err != nil {
@@ -658,6 +668,9 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		if err == nil {
 			err = m.reconcile(ctx, stor, id)
 		}
+		if err == nil && len(body.Volumes) > 0 {
+			err = m.volumes.Attach(ctx, stor, id, body.Volumes, len(automountVolumes) > 0)
+		}
 		final := StatusOff
 		if err == nil && start {
 			err = m.powerOn(ctx, stor, id)
@@ -679,6 +692,17 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		"next_actions":  []any{},
 		"root_password": rootPassword,
 	})
+}
+
+// checkVolumes validates the volumes of a create request in location.
+func (m *Module) checkVolumes(tx store.Tx, projectID int64, location string, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if m.volumes == nil {
+		return &api.FieldError{Field: "volumes", Message: "volumes are not available"}
+	}
+	return m.volumes.CheckAttach(tx, projectID, location, ids)
 }
 
 // resolve finds server type and location of a create request.
@@ -824,7 +848,7 @@ func (m *Module) Delete(ctx context.Context, id int64) error {
 }
 
 // remove marks server id as deleting (the agent document leaves it out),
-// deletes its VM and then its row with its address and group membership.
+// detaches its volumes, deletes its VM and then its row with its address and group membership.
 // When the VM cannot be deleted, the server stays with status off.
 func (m *Module) remove(ctx context.Context, stor *store.Store, id int64) error {
 	err := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, StatusDeleting) })
@@ -834,7 +858,13 @@ func (m *Module) remove(ctx context.Context, stor *store.Store, id int64) error 
 	if err != nil {
 		return err
 	}
-	if err := m.deleteMachine(ctx, id); err != nil {
+	if m.volumes != nil {
+		err = m.volumes.DetachAll(ctx, stor, id)
+	}
+	if err == nil {
+		err = m.deleteMachine(ctx, id)
+	}
+	if err != nil {
 		if serr := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, StatusOff) }); serr != nil {
 			err = errors.Join(err, serr)
 		}

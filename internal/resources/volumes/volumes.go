@@ -95,6 +95,10 @@ type Internal struct {
 	ProjectID int64  `json:"project_id"`
 	Location  string `json:"location"`
 	Path      string `json:"path"` // <data>\volumes\volume-<id>.vhdx
+	// LUN is the SCSI LUN of the disk in its server's VM while attached.
+	LUN int `json:"lun,omitempty"`
+	// Automount is set while attached with automount.
+	Automount bool `json:"automount,omitempty"`
 }
 
 // Record is the stored document of a volume.
@@ -157,6 +161,8 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("DELETE /volumes/{id}", http.HandlerFunc(m.delete))
 	r.Handle("POST /volumes/{id}/actions/change_protection", http.HandlerFunc(m.changeProtection))
 	r.Handle("POST /volumes/{id}/actions/resize", http.HandlerFunc(m.resize))
+	r.Handle("POST /volumes/{id}/actions/attach", http.HandlerFunc(m.attach))
+	r.Handle("POST /volumes/{id}/actions/detach", http.HandlerFunc(m.detach))
 	resactions.RoutesFor(r, Kind, refType)
 }
 
@@ -393,7 +399,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	}
 
 	var rec Record
-	var action *actions.Action
+	var action, attach *actions.Action
 	err = stor.Tx(func(tx store.Tx) error {
 		if err := checkName(tx, p.ID, body.Name, 0); err != nil {
 			return err
@@ -424,6 +430,11 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 			return err
 		}
 		action, err = acts.Start(tx, p.ID, "create_volume", []actions.Ref{{ID: id, Type: refType}})
+		if err != nil || serverID == 0 {
+			return err
+		}
+		// The volume is locked by its creation; the attach locks the server.
+		attach, err = acts.Start(tx, p.ID, "attach_volume", []actions.Ref{{ID: serverID, Type: serverRefType}})
 		return err
 	})
 	if err != nil {
@@ -431,18 +442,49 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	id := rec.ID
+	automount := body.Automount != nil && *body.Automount
 	acts.Run(action.ID, func(ctx context.Context, progress func(int)) error {
 		progress(10)
 		err := m.reconcile(ctx, stor, id)
 		if err != nil {
 			m.drop(stor, rec)
 		}
+		if attach != nil {
+			m.attachCreated(stor, acts, attach.ID, id, serverID, automount, serverField, err)
+		}
 		return err
 	})
+	next := []any{}
+	if attach != nil {
+		next = append(next, attach)
+	}
 	api.JSON(w, http.StatusCreated, map[string]any{
 		"volume":       rec.Volume,
 		"action":       action,
-		"next_actions": []any{},
+		"next_actions": next,
+	})
+}
+
+// attachCreated runs the attach action of a volume created with a server:
+// the volume is bound while its creation still locks it, then its disk is
+// hot-added. A failed creation fails the attach too.
+func (m *Module) attachCreated(stor *store.Store, acts *actions.Manager, action, id, server int64, automount bool, field string, created error) {
+	var r Record
+	err := created
+	if err == nil {
+		err = stor.Tx(func(tx store.Tx) error {
+			var err error
+			r, err = bind(tx, id, server, automount, field)
+			return err
+		})
+	} else {
+		err = fmt.Errorf("volume %d was not created: %w", id, err)
+	}
+	acts.Run(action, func(ctx context.Context, _ func(int)) error {
+		if err != nil {
+			return err
+		}
+		return m.plug(ctx, stor, r)
 	})
 }
 
@@ -653,26 +695,6 @@ func (m *Module) resize(w http.ResponseWriter, req *http.Request) {
 	})
 	api.JSON(w, http.StatusCreated, map[string]any{"action": action})
 }
-
-// CheckAttach implements servers.VolumeHooks. Attaching arrives with plan
-// 04-13; until then a server create naming volumes is refused.
-func (m *Module) CheckAttach(_ store.Tx, _ int64, _ string, ids []int64) error {
-	if len(ids) == 0 {
-		return nil
-	}
-	return &api.FieldError{Field: "volumes", Message: "attaching volumes is not supported yet"}
-}
-
-// Attach implements servers.VolumeHooks; see CheckAttach.
-func (m *Module) Attach(_ context.Context, _ *store.Store, _ int64, ids []int64, _ bool) error {
-	if len(ids) == 0 {
-		return nil
-	}
-	return errors.New("attaching volumes is not supported yet")
-}
-
-// DetachAll implements servers.VolumeHooks; no volume is attached yet.
-func (m *Module) DetachAll(context.Context, *store.Store, int64) error { return nil }
 
 // refString returns a JSON string or number as text; anything else as "".
 func refString(raw json.RawMessage) string {
