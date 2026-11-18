@@ -208,13 +208,13 @@ func (e *env) wslKey() string                                           // path 
   - Adjusts: -
   - [ ] List through `ListRequest` (name, fingerprint, label_selector, sort id/name); `PUT /ssh_keys/{id}` (name and labels, each only when present); label check; unique name and fingerprint per project (`uniqueness_error`, field `name` or `public_key`) (internal/resources/sshkeys/sshkeys.go)
 
-- [ ] 02-09 Catalog lists by the conventions
+- [x] 02-09 Catalog lists by the conventions
   - Wave: 3 | Depends on: 02-03, 02-06 | Review: alone
   - Requirements: API-05, API-06 (catalog endpoints) | Tests: - (rows in internal/resources/conventions_test.go, plan 02-13)
   - Reads: RESEARCH R5, R6 (server_types: name and paging only)
   - Size: ~100 lines in 4 files
   - Adjusts: -
-  - [ ] `/server_types`, `/locations`, `/images` and `/actions?id=` through `ListRequest` with exactly the parameters of the frozen description (internal/resources/servertypes/servertypes.go, locations/locations.go, images/images.go, actions/actions.go)
+  - [x] `/server_types`, `/locations`, `/images` and `/actions?id=` through `ListRequest` with exactly the parameters of the frozen description (internal/resources/servertypes/servertypes.go, locations/locations.go, images/images.go, actions/actions.go)
 
 - [x] 02-10 Servers by the conventions
   - Wave: 3 | Depends on: 02-03, 02-06 | Review: alone
