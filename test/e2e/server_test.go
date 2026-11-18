@@ -478,10 +478,25 @@ type serverTypeInfo struct {
 	StorageType  string  `json:"storage_type"`
 	Architecture string  `json:"architecture"`
 	Deprecated   bool    `json:"deprecated"`
+	Locations    []struct {
+		Name        string          `json:"name"`
+		Deprecation json.RawMessage `json:"deprecation"`
+	} `json:"locations"`
+}
+
+// usableIn reports whether st is offered and not deprecated in location.
+func (st serverTypeInfo) usableIn(location string) bool {
+	for _, l := range st.Locations {
+		if l.Name == location {
+			return len(l.Deprecation) == 0 || string(l.Deprecation) == "null"
+		}
+	}
+	return false
 }
 
 // largerType returns the run's server type and the smallest x86 type with
-// the same storage type and more cores, RAM and disk.
+// the same storage type and more cores, RAM and disk, offered and not
+// deprecated in the run's location.
 func largerType(t *testing.T, e *env) (small, big serverTypeInfo) {
 	t.Helper()
 	var body struct {
@@ -502,7 +517,7 @@ func largerType(t *testing.T, e *env) (small, big serverTypeInfo) {
 	}
 	var pick *serverTypeInfo
 	for i, st := range body.ServerTypes {
-		if st.Deprecated || st.Architecture != "x86" || st.StorageType != small.StorageType ||
+		if st.Deprecated || !st.usableIn(serverLocation) || st.Architecture != "x86" || st.StorageType != small.StorageType ||
 			st.Cores <= small.Cores || st.Memory <= small.Memory || st.Disk <= small.Disk {
 			continue
 		}
