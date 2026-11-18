@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"encoding/json"
 	"time"
 )
@@ -75,6 +76,21 @@ func List[T any](tx Tx, kind string, projectID int64) ([]T, error) {
 	if err != nil {
 		return nil, err
 	}
+	return scanDocs[T](rows)
+}
+
+// ListAll returns all resources of kind in every project, ordered by ID.
+// It is meant for hlabd itself (agent document, action work), never for a
+// request of one project.
+func ListAll[T any](tx Tx, kind string) ([]T, error) {
+	rows, err := tx.tx.Query(`SELECT doc FROM resources WHERE kind = ? ORDER BY id`, kind)
+	if err != nil {
+		return nil, err
+	}
+	return scanDocs[T](rows)
+}
+
+func scanDocs[T any](rows *sql.Rows) ([]T, error) {
 	defer func() { _ = rows.Close() }()
 	out := []T{}
 	for rows.Next() {

@@ -16,6 +16,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/actions"
@@ -35,7 +36,9 @@ import (
 	"github.com/webcodingcat/hlab/internal/resources/datacenters"
 	imagesres "github.com/webcodingcat/hlab/internal/resources/images"
 	"github.com/webcodingcat/hlab/internal/resources/locations"
+	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/resources/servertypes"
+	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
 	"github.com/webcodingcat/hlab/internal/settings"
 	"github.com/webcodingcat/hlab/internal/store"
 	"github.com/webcodingcat/hlab/internal/sysint"
@@ -97,6 +100,8 @@ type Cloud struct {
 	agent  *agentclient.Client
 	acts   *actions.Manager
 	mods   []resource.Module
+	// pushMu keeps agent documents in the order they were built.
+	pushMu sync.Mutex
 
 	applianceOn bool
 	apiSrv      *http.Server
@@ -257,12 +262,20 @@ func (c *Cloud) modules() []resource.Module {
 		datacenters.New(),
 		servertypes.New(c.cat),
 		imagesres.New(c.cat),
+		sshkeys.New(),
+		servers.New(servers.Deps{
+			Catalog:     c.cat,
+			PublicRange: c.set.Network.PublicRange,
+			Machines:    machines{c},
+		}),
 	}
 }
 
 // PushAgent rebuilds the full agent document from the store and pushes it.
 // Every state change that touches the network calls it.
 func (c *Cloud) PushAgent(ctx context.Context) error {
+	c.pushMu.Lock()
+	defer c.pushMu.Unlock()
 	doc := agentapi.Config{
 		PublicRange: c.set.Network.PublicRange,
 		API:         agentapi.APIProxy{Listen: apiProxy, Backend: apiListen},
