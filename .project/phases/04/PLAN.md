@@ -203,14 +203,14 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [x] `Source` fallback fields, `EnsureISO` (no conversion, same lock and temp handling), `Fetch` (internal/images/images.go, internal/images/download.go)
   - [x] Module `isos` with `isos.New(cat *catalog.Catalog) *Module` like locations: `GET /isos` (name, architecture, include_architecture_wildcard, page, per_page through `api.ListRequest`) and `GET /isos/{id}` (internal/resources/isos/isos.go)
 
-- [ ] 04-06 Project images
+- [x] 04-06 Project images
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SRV-12, SRV-14 | Tests: internal/resources/images/images_test.go
   - Reads: ARCHITECTURE "resource", "Data schema"; RESEARCH R7 (create_image, image fields); DECISIONS "PUT changes only the fields present"
   - Size: ~330 lines in 2 files
   - Adjusts: -
-  - [ ] Record, `NewModule`, `Put`/`Load`/`Backups`/`Remove`; list and get merge catalog images with the project's images (filters type, status, bound_to, architecture, include_deprecated; sorts id, name, created) (internal/resources/images/images.go, records.go)
-  - [ ] `PUT /images/{id}` (description, labels, `type` backup→snapshot clears bound_to), `DELETE /images/{id}` (`protected` with delete protection, removes the file), `POST /images/{id}/actions/change_protection`, action endpoints, `Deleter` (internal/resources/images/images.go, records.go)
+  - [x] Record, `NewModule`, `Put`/`Load`/`Backups`/`Remove`; list and get merge catalog images with the project's images (filters type, status, bound_to, architecture, include_deprecated; sorts id, name, created) (internal/resources/images/images.go, records.go)
+  - [x] `PUT /images/{id}` (description, labels, `type` backup→snapshot clears bound_to), `DELETE /images/{id}` (`protected` with delete protection, removes the file), `POST /images/{id}/actions/change_protection`, action endpoints, `Deleter` (internal/resources/images/images.go, records.go)
 
 - [ ] 04-12 Volumes: create, resize, delete
   - Wave: 3 | Depends on: 04-07 | Review: alone
