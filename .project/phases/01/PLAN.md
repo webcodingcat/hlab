@@ -127,12 +127,12 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
   - [x] DNS server (miekg/dns) on 198.19.0.1 and the resolver addresses: `hetzner.internal` (api -> 198.19.0.1), reverse zone of the public range, forward to `Upstream`
   - [x] nftables forward chain: no guest-to-guest on the public segment except via routing rules of the document
 
-- [ ] 01-14 Management API and hlab command
+- [x] 01-14 Management API and hlab command
   - Wave: 3 | Depends on: 01-02, 01-03, 01-04 | Review: alone
   - Requirements: PROJ-01, PROJ-02, PROJ-05 | Tests: internal/cli/cli_test.go, test/e2e (PROJ-05)
   - Size: ~400 lines in 5 files
-  - [ ] `internal/mgmt`: status, projects, tokens, project API proxy
-  - [ ] `internal/cli` and `cmd/hlab`: `cloud start|stop|status`, `project`, `token`, `version`, `--output json`, exit codes
+  - [x] `internal/mgmt`: status, projects, tokens, project API proxy
+  - [x] `internal/cli` and `cmd/hlab`: `cloud start|stop|status`, `project`, `token`, `version`, `--output json`, exit codes
 
 - [ ] 01-15 Cloud lifecycle in hlabd
   - Wave: 4 | Depends on: 01-05, 01-06, 01-07, 01-08, 01-10, 01-11, 01-13, 01-14 | Review: alone
