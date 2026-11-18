@@ -34,7 +34,7 @@ in ARCHITECTURE.md or the plan.
 
 - Type: decision
 - Phase: phase 02
-- What: no console user token means no WSL problem; an unreadable profile or `.wslconfig` gives no problem, only a logged warning; unknown `networkingMode` counts as NAT and only `dnsTunneling=false` as off.
+- What: no console user token means no WSL problem; an unreadable profile or `.wslconfig` counts as an unknown mode and gives no problem (hostnet has no logger); unknown `networkingMode` counts as NAT and only `dnsTunneling=false` as off.
 - Why: WSL falls back to its defaults for unknown values, and `wsl_mode_unsupported` is reserved for bridged and none.
 - Cost of change: low
 

@@ -154,14 +154,14 @@ func (e *env) wslKey() string                                           // path 
   - Adjusts: -
   - [x] `Validate`, `ParseSelector`, `Selector.Matches` with every operator (internal/labels/labels.go)
 
-- [ ] 02-04 WSL2 mode check
+- [x] 02-04 WSL2 mode check
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: HOST-04 | Tests: internal/hostnet/windows/hostnet_test.go (HOST-04)
   - Reads: REQUIREMENTS HOST; ARCHITECTURE "hostnet", "Network" (WSL2); decisions/wsl2-networking.md; RESEARCH R4; E4
   - Size: ~220 lines in 4 files
   - Adjusts: -
-  - [ ] `.wslconfig` parser (section `[wsl2]`, `networkingMode`, `dnsTunneling`, case-insensitive) mapped to non-fatal problems; `Check` appends them; new constant (internal/hostnet/hostnet.go, internal/hostnet/windows/wsl.go, hostnet.go)
-  - [ ] Default `Options.WSLConfig` through `WTSGetActiveConsoleSessionId`, `WTSQueryUserToken`, `GetUserProfileDirectoryW`; no console user means found false; never writes the file (internal/hostnet/windows/wslconfig.go)
+  - [x] `.wslconfig` parser (section `[wsl2]`, `networkingMode`, `dnsTunneling`, case-insensitive) mapped to non-fatal problems; `Check` appends them; new constant (internal/hostnet/hostnet.go, internal/hostnet/windows/wsl.go, hostnet.go)
+  - [x] Default `Options.WSLConfig` through `WTSGetActiveConsoleSessionId`, `WTSQueryUserToken`, `GetUserProfileDirectoryW`; no console user means found false; never writes the file (internal/hostnet/windows/wslconfig.go)
 
 - [ ] 02-05 E2E harness: WSL2 distro, OpenTofu and Ansible
   - Wave: 1 | Depends on: - | Review: alone | e2e
