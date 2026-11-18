@@ -5,6 +5,7 @@ package cloud
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -229,10 +230,15 @@ func (c *Cloud) writeApplianceISO(ctx context.Context, secret string) error {
 	if err := os.Remove(c.isoPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	// The instance-id carries a hash of the user-data, so cloud-init treats an
+	// existing appliance as a new instance once and writes the changed unit
+	// and install script; the appliance keeps no state that this loses.
+	userData := appliance.UserData()
+	sum := sha256.Sum256(userData)
 	return cidata.BuildFile(cidata.Seed{
-		InstanceID: c.applianceName(),
+		InstanceID: c.applianceName() + "-" + hex.EncodeToString(sum[:6]),
 		Hostname:   c.applianceName(),
-		UserData:   string(appliance.UserData()),
+		UserData:   string(userData),
 		Interfaces: []cidata.Interface{{
 			MAC:       applianceMAC,
 			Addresses: []netip.Prefix{netip.PrefixFrom(applianceAddr, hostAddr.Bits())},

@@ -15,9 +15,6 @@ const rescueFile = "rescue.vhdx"
 // (<Dir>\rescue.vhdx), preparing it once from the base of RescueImage.
 // Concurrent calls prepare once.
 func (s *Store) EnsureRescue(ctx context.Context) (string, error) {
-	if s.opts.PrepareRescue == nil || s.opts.RescueImage == "" {
-		return "", errors.New("images: no rescue image configured")
-	}
 	dst := filepath.Join(s.opts.Dir, rescueFile)
 
 	lock := s.lock("rescue/")
