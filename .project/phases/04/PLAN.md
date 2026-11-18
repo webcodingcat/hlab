@@ -259,14 +259,14 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [x] `enable_backup` (`backup_window` "22-02"), `disable_backup` (deletes every backup), `create_image type=backup` (needs backups enabled, else 422 `invalid_input` on `type`; `bound_to`), 7 slots shared, oldest beyond 7 deleted with its file; server delete deletes its backups and keeps snapshots (internal/resources/servers/backup.go, snapshot.go, servers.go)
   - [x] Job `backups` every hour on the module's clock: one backup per server with backups enabled per UTC day as action `create_image`, a locked server waits for the next run (internal/resources/servers/backup.go, watch.go)
 
-- [ ] 04-11 Guest volume hooks and automount
+- [x] 04-11 Guest volume hooks and automount
   - Wave: 6 | Depends on: 04-03, 04-13 | Review: alone
   - Requirements: VOL-02, VOL-03, VOL-04 | Tests: internal/resources/servers/vendordata_test.go, test/e2e/volume_test.go
   - Reads: ARCHITECTURE "Guest integration"; DECISIONS "Q4 Automount on later attach via a metadata path", "Vendor-data as multipart MIME", "Guest password hook in python3", "Volume identifier byte order"; EXPERIMENTS E6; RESEARCH R2
   - Size: ~260 lines in 2 files
   - Adjusts: -
-  - [ ] vendor-data script part installs the udev rule (`scsi-0HC_Volume_<id>` from the last 6 bytes of the page 83 identifier, E6) and `hlab-volume@.service` with a python3 script: wait for the metadata service with a deadline, mount only volumes listed by `GET /hlab/v1/volumes` that carry a filesystem, at `/mnt/HC_Volume_<id>` with an fstab line `discard,nofail,defaults` (internal/resources/servers/vendordata.go)
-  - [ ] Seed user-data: with `AutomountVolumes` a MIME multipart of the user's user_data unchanged plus a cloud-config part mounting each volume; without, user_data as before; metadata keeps the original (internal/resources/servers/vendordata.go, reconcile.go)
+  - [x] vendor-data script part installs the udev rule (`scsi-0HC_Volume_<id>` from the last 6 bytes of the page 83 identifier, E6) and `hlab-volume@.service` with a python3 script: wait for the metadata service with a deadline, mount only volumes listed by `GET /hlab/v1/volumes` that carry a filesystem, at `/mnt/HC_Volume_<id>` with an fstab line `discard,nofail,defaults` (internal/resources/servers/vendordata.go)
+  - [x] Seed user-data: with `AutomountVolumes` a MIME multipart of the user's user_data unchanged plus a cloud-config part mounting each volume; without, user_data as before; metadata keeps the original (internal/resources/servers/vendordata.go, reconcile.go)
 
 - [ ] 04-09 Servers: rescue
   - Wave: 7 | Depends on: 04-01, 04-05, 04-08 | Review: alone
@@ -291,5 +291,5 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - Reads: SPEC "Documentation"; REQUIREMENTS DOC; CONTEXT.md "Documentation"; the summaries of 04-01, 04-05, 04-09, 04-10
   - Size: ~160 lines in 4 files
   - Adjusts: -
-  - [ ] docs/user/deviations.md: rescue runs from its own disk (not RAM), auto-disable is noticed only for boots hlab drives (a guest-initiated reboot into rescue is ended by the 60 min timeout), ISO catalog instead of Hetzner's ISOs, udev/automount hooks only on hlab-created disks, snapshots of running servers crash-consistent via a checkpoint, backups only while the cloud runs and not made up, the chosen error codes (`volume_already_attached`, `invalid_input` for location, backup and disk-size cases, deleting an attached volume)
+  - [ ] docs/user/deviations.md: rescue runs from its own disk (not RAM), auto-disable is noticed only for boots hlab drives (a guest-initiated reboot into rescue is ended by the 60 min timeout), ISO catalog instead of Hetzner's ISOs, udev/automount hooks only on hlab-created disks, snapshots of running servers crash-consistent via a checkpoint, a grown volume shows its new size only through the hlab guest hook (servers without hooks see it at the next disk I/O), backups only while the cloud runs and not made up, the chosen error codes (`volume_already_attached`, `invalid_input` for location, backup and disk-size cases, deleting an attached volume)
   - [ ] docs/user/configuration.md (`isos.json`, `appliance-debs.json`, data folders `images`, `isos`, `volumes`, `cache\debs`), README.md (snapshots, backups, rescue, ISOs, volumes), docs/dev/components.md (agent jobs, appliance debs)

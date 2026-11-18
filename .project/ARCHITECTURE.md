@@ -609,7 +609,8 @@ locks a resource of type `project`.
   image: a udev rule that creates `/dev/disk/by-id/scsi-0HC_Volume_<id>`
   from the disk's Page 83 identifier (hlab creates volume disks with the identifier `484C4142-0000-4000-8000-<volume ID as 12 hex digits>`; the last 6 bytes survive in both the T10 and the NAA designator the guest sees), and
   `hlab-guest.timer`, which asks the metadata service every 5 seconds for a
-  pending root password reset and applies it with `chpasswd`. Servers whose
+  pending root password reset and applies it with `chpasswd`, and rescans every
+  `scsi-0HC_Volume_*` disk so a grown volume shows its new size. Servers whose
   disks were not created by hlab (ISO installs) lack the hooks; listed as a
   deviation.
 - `vendor-data` is a multipart MIME document: a cloud-config part with

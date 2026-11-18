@@ -911,7 +911,7 @@ in ARCHITECTURE.md or the plan.
 - Type: decision
 - Phase: 04
 - What: the e2e test waits for the new size without writing to the rescan file.
-- Why: The default images have the storvsc fix, so the test proves the promise unaided.
+- Why: The test proves the promise unaided; the product's hlab-guest timer does the rescan (see "Grown volumes picked up by the guest timer"), because an idle disk learns of a new size only on its next SCSI command.
 - Cost of change: low
 
 ## 2026-11-18 SRV-15 uses the ubuntu-22.04 live-server ISO
