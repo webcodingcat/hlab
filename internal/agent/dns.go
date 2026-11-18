@@ -123,7 +123,7 @@ func shutdownAll(servers []*dns.Server) {
 // ServeDNS implements dns.Handler.
 func (d *DNS) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	data := d.data.Load()
-	if len(req.Question) != 1 || data == nil {
+	if len(req.Question) != 1 {
 		m := new(dns.Msg)
 		m.SetRcode(req, dns.RcodeFormatError)
 		writeDNS(w, req, m)
