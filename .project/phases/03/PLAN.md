@@ -255,13 +255,13 @@ func ServersDeps(t *testing.T, cat *catalog.Catalog, p platform.Platform) server
   - [x] `Contribute` adds one `Metadata` per server with a public IPv4 (hostname, region = network zone, availability zone `<location>-dc<n>` from the catalog, keys, user_data, pending reset) (internal/resources/servers/servers.go)
   - [x] `reset_password`: 409 `conflict` unless running; new password, hash into `_hlab.PasswordReset`, push, poll `Deps.AgentStatus` each second until its ID is confirmed (success, reset cleared, push) or `ResetTimeout` (`server_error`, reset cleared); returns `root_password` (internal/resources/servers/password.go); cloud wires `AgentStatus` (internal/cloud/cloud.go)
 
-- [ ] 03-14 Metrics endpoint and sampling
+- [x] 03-14 Metrics endpoint and sampling
   - Wave: 9 | Depends on: 03-07, 03-13 | Review: alone | e2e
   - Requirements: SRV-21 | Tests: test/e2e/server_test.go (SRV-21)
   - Reads: REQUIREMENTS SRV-21; RESEARCH R4 (metrics); CONTEXT.md SRV-21
   - Size: ~150 lines in 3 files
   - Adjusts: -
-  - [ ] `GET /servers/{id}/metrics` through `metrics.ParseQuery` (`invalid_input` on the named field) and `Series`; sample job every 10 s for running servers; delete forgets the series (internal/resources/servers/metrics.go, servers.go); cloud creates the 24 h store (internal/cloud/cloud.go)
+  - [x] `GET /servers/{id}/metrics` through `metrics.ParseQuery` (`invalid_input` on the named field) and `Series`; sample job every 10 s for running servers; delete forgets the series (internal/resources/servers/metrics.go, servers.go); cloud creates the 24 h store (internal/cloud/cloud.go)
 
 - [ ] 03-15 Documentation
   - Wave: 10 | Depends on: 03-14 | Review: alone
