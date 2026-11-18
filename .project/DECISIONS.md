@@ -1273,3 +1273,27 @@ in ARCHITECTURE.md or the plan.
 - What: After a booted rescue ends, an hlab reboot shuts the guest down, waits up to 2 min for Off, removes the rescue disk and starts the VM.
 - Why: Detaching the rescue disk while the rescue system runs from it hangs the guest.
 - Cost of change: low
+
+## 2026-11-19 Disk order fixed in the rescue initramfs
+
+- Type: decision
+- Phase: 04 (04-09)
+- What: rescue-prepare installs an initramfs local-top script that, if LUN 0 is not sda, unbinds the sd disks and binds LUN 0 first, and rebuilds the initramfs in a chroot.
+- Why: Debian probes sd disks in parallel; no kernel parameter makes the order stable.
+- Cost of change: low
+
+## 2026-11-19 Versioned rescue base file
+
+- Type: decision
+- Phase: 04 (04-09)
+- What: The cached base is `<data>\imagesescue-v2.vhdx`; the name is bumped whenever the preparation changes.
+- Why: Existing installs prepare the base again instead of keeping a stale one.
+- Cost of change: low
+
+## 2026-11-19 Guest flushes after cloud-init's final stage
+
+- Type: decision
+- Phase: 04 (04-10)
+- What: The vendor script installs `hlab-sync.service` (After=cloud-final.service, runs sync once) and queues it with --no-block, replacing its own final `sync` (updates "Vendor script syncs before first boot ends").
+- Why: user_data runcmd and scripts run after scripts_vendor; only a flush after cloud-final makes their files survive a hard reset soon after first boot.
+- Cost of change: low
