@@ -176,7 +176,7 @@ Inside `hlabd` (Go packages under `internal/`):
   type PowerOp int   // PowerStart, PowerStop (hard), PowerShutdown, PowerReboot, PowerReset, PowerSave
   type StopAction int
   type VMState int   // StateOff, StateStarting, StateRunning, StateStopping, StateSaved, StatePaused, StateOther
-  type Segment struct { PublicPVLAN bool; VLAN int } // public: PVLAN isolated port; private: access VLAN 2..4092
+  type Segment struct { PublicPVLAN, Promiscuous bool; VLAN int } // public: PVLAN isolated port (Promiscuous: the appliance's port); private: access VLAN 2..4092
   type NICSpec struct {
       MAC     net.HardwareAddr
       Segment Segment

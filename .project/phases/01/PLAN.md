@@ -101,11 +101,11 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
   - [x] persistent PowerShell 5.1 runner (stdin commands, JSON out, mutex, restart)
   - [x] EnsureSwitch (internal, host adapter isolated PVLAN), CreateVM (E2 defaults), SetVM, DeleteVM, Power, State, HostResources
 
-- [ ] 01-10 Hyper-V platform: disks, NICs, DVD, boot
+- [x] 01-10 Hyper-V platform: disks, NICs, DVD, boot
   - Wave: 3 | Depends on: 01-09 | Review: alone
   - Requirements: SRV-19 | Tests: (SRV-19 e2e)
   - Size: ~350 lines in 3 files
-  - [ ] CreateDisk (dynamic VHDX, copy of base, new identifier), ResizeDisk, AttachDisk, DetachDisk, AttachNIC (PVLAN, guards, MAC with dashes), DetachNIC, SetDVD, SetBootOrder
+  - [x] CreateDisk (dynamic VHDX, copy of base, new identifier), ResizeDisk, AttachDisk, DetachDisk, AttachNIC (PVLAN, guards, MAC with dashes), DetachNIC, SetDVD, SetBootOrder
 
 - [x] 01-11 Host networking (Windows)
   - Wave: 2 | Depends on: 01-01 | Review: alone
