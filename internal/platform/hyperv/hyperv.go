@@ -17,6 +17,8 @@ type Options struct {
 	// DataDir is the folder whose free disk space HostResources reports;
 	// empty reports 0.
 	DataDir string
+	// SwitchName is the virtual switch AttachNIC connects adapters to.
+	SwitchName string
 }
 
 // Platform is the Hyper-V implementation of platform.Platform.
