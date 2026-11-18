@@ -47,7 +47,8 @@ func LoadAll(shippedDir, dataDir, customFile string) (*Catalog, []string, error)
 
 // ReplaceServerTypes replaces the catalog server types with raw, for
 // example after an update, and adds the own types again. Own types that
-// now collide with a catalog type are left out with a logged warning.
+// now collide with a catalog type are left out with a logged warning that
+// OwnTypesWarning reports from then on.
 func (c *Catalog) ReplaceServerTypes(raw []json.RawMessage) error {
 	types, err := serverTypes(raw)
 	if err != nil {
@@ -58,9 +59,18 @@ func (c *Catalog) ReplaceServerTypes(raw []json.RawMessage) error {
 	if err := conflicts(types, c.own); err != nil {
 		slog.Warn("own server types are ignored", "err", err)
 		c.own = nil
+		c.ownWarning = fmt.Sprintf("own server types are ignored after the catalog update: %v", err)
 	}
 	c.serverTypes = append(types, c.own...)
 	return nil
+}
+
+// OwnTypesWarning says why ReplaceServerTypes left the own types out, or
+// is "" while they are served.
+func (c *Catalog) OwnTypesWarning() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.ownWarning
 }
 
 // readOwn reads the own server types of file; a missing file has none.

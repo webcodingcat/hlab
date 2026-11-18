@@ -115,7 +115,7 @@ func New(d Deps) *Cloud {
 }
 
 // problemCustomServerTypes is the /status problem of own server types
-// that LoadAll could not add.
+// that LoadAll could not add or a catalog update dropped.
 const problemCustomServerTypes = "custom_server_types"
 
 // status is the content of the status file.
@@ -354,7 +354,15 @@ func (c *Cloud) serveManagement(apiHandler http.Handler) error {
 	if err != nil {
 		return fmt.Errorf("listen on the management pipe: %w", err)
 	}
-	h := mgmt.New(mgmt.Deps{Store: c.st, API: apiHandler, Status: c.mgmtStatus})
+	h := mgmt.New(mgmt.Deps{
+		Store:  c.st,
+		API:    apiHandler,
+		Status: c.mgmtStatus,
+		UpdateCatalog: func(ctx context.Context, hetznerToken string) error {
+			return catalog.Update(ctx, c.cat, catalog.UpdateOptions{DataDir: c.d.Paths.Config}, hetznerToken)
+		},
+		ServerTypes: func() int { return len(c.cat.Types()) },
+	})
 	c.mgmtSrv = &http.Server{Handler: h, ReadHeaderTimeout: 30 * time.Second}
 	go serve(c.mgmtSrv, ln, "management")
 	return nil
@@ -370,6 +378,9 @@ func (c *Cloud) mgmtStatus() mgmt.Status {
 	st := mgmt.Status{State: sysint.StateRunning, Version: version.Version}
 	for _, p := range c.problems {
 		st.Problems = append(st.Problems, mgmt.Problem{Code: p.Code, Message: p.Message})
+	}
+	if w := c.cat.OwnTypesWarning(); w != "" {
+		st.Problems = append(st.Problems, mgmt.Problem{Code: problemCustomServerTypes, Message: w})
 	}
 	return st
 }

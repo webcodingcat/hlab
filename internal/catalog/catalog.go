@@ -71,6 +71,7 @@ type Catalog struct {
 	mu          sync.RWMutex
 	serverTypes []ServerType // catalog types followed by the own types
 	own         []ServerType // own types, merged again after an update
+	ownWarning  string       // why an update dropped the own types
 	pricing     json.RawMessage
 }
 

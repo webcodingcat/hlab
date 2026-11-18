@@ -110,13 +110,13 @@ func testCAT03(t *testing.T) {
 }
 
 // restoreCatalog saves the dev profile's updated server type catalog
-// (catalog\server-types.json in the data folder) or notes its absence, and
+// (catalog\server-types.json in the config root) or notes its absence, and
 // puts it back (or removes the new file) when the test ends. No reload
 // exists: the running hlabd keeps serving the updated types until its next
 // start, which loads the restored file.
 func restoreCatalog(t *testing.T) {
 	t.Helper()
-	path := filepath.Join(dataFolder(), "catalog", "server-types.json")
+	path := filepath.Join(os.Getenv("ProgramData"), "hlab-dev", "catalog", "server-types.json")
 	saved, err := os.ReadFile(path)
 	existed := err == nil
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
