@@ -224,15 +224,15 @@ func (e *env) wslKey() string                                           // path 
   - Adjusts: -
   - [x] List through `ListRequest` (name, label_selector, status, sort id/name/created); `PUT /servers/{id}` (name, labels); label check on create and update; unique name; an `arm` type answers 412 `resource_unavailable` before anything is stored (internal/resources/servers/servers.go)
 
-- [ ] 02-11 Server actions, protection, locks, console
+- [x] 02-11 Server actions, protection, locks, console
   - Wave: 4 | Depends on: 02-10 | Review: alone
   - Requirements: API-08, API-12, API-13, SRV-17 | Tests: internal/resources/servers/servers_test.go (API-08, API-12, API-13, SRV-17)
   - Reads: REQUIREMENTS API, SRV-17; SPEC "Fixed API answers"; ARCHITECTURE "actions"
   - Size: ~330 lines in 5 files
   - Adjusts: -
-  - [ ] `Manager.ListFor`, `ErrProtected`; `RoutesFor` with list conventions (status filter, sort id/command/status/started/finished as documented) (internal/actions/actions.go, internal/resources/actions/actions.go)
-  - [ ] `change_protection` (delete, rebuild) as an action, protected delete refused with 423 `protected`, `request_console` answers `unsupported_error` with the SPEC message, create reports progress; `api.Deviations` gets the console entry (internal/resources/servers/actions.go, servers.go, internal/api/deviations.go)
-  - [ ] `BlockingMachines` for lock and progress tests (internal/apitest/apitest.go)
+  - [x] `Manager.ListFor`, `ErrProtected`; `RoutesFor` with list conventions (status filter, sort id/command/status/started/finished as documented) (internal/actions/actions.go, internal/resources/actions/actions.go)
+  - [x] `change_protection` (delete, rebuild) as an action, protected delete refused with 423 `protected`, `request_console` answers `unsupported_error` with the SPEC message, create reports progress; `api.Deviations` gets the console entry (internal/resources/servers/actions.go, servers.go, internal/api/deviations.go)
+  - [x] `BlockingMachines` for lock and progress tests (internal/apitest/apitest.go)
 
 - [x] 02-12 Placement groups
   - Wave: 3 | Depends on: 02-06 | Review: alone
