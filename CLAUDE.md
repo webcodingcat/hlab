@@ -91,4 +91,18 @@ conversation, ask when something is unclear.
 
 ## Build and test commands
 
-<filled in by /wcc:prepare>
+All commands run from the repository root, without elevated rights.
+
+- Build: `task build` (frontend, `bin/hlabd.exe`, `bin/hlab.exe`,
+  `bin/hlab-tray.exe`, Linux `bin/hlab-agent`).
+- Lint: `task lint` (golangci-lint on `./...` plus svelte-check). One
+  package or directory: `task lint -- ./internal/store/...` (Go only);
+  frontend only: `task lint:frontend`.
+- Fast tests: `task test` (`go test ./...`). One package or directory:
+  `task test -- ./internal/store/...`; by name:
+  `task test -- ./internal/store/... -run <regexp>`.
+- End-to-end tests (slow; real Hyper-V, dev service, hcloud, OpenTofu,
+  Ansible in WSL2): `task e2e`; filter by test name with
+  `task e2e -- -run <regexp>`, for example `task e2e -- -run 'TestE2E/SRV-01'`.
+- Once per machine, elevated, by the user only: `scripts\dev-setup.ps1`
+  registers the dev service `hlab` running `bin\hlabd.exe`.

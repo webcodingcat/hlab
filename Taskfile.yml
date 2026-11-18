@@ -1,0 +1,69 @@
+version: "3"
+
+# Build and test tasks of hlab. Arguments after "--" are passed on, for
+# example: task test -- ./internal/store/...   task e2e -- -run 'TestE2E/SRV-01'
+
+vars:
+  VERSION: '{{.VERSION | default "dev"}}'
+  LDFLAGS: -s -w -X github.com/webcodingcat/hlab/internal/version.Version={{.VERSION}}
+
+tasks:
+  default:
+    cmds:
+      - task: build
+
+  frontend:install:
+    desc: Install the frontend dependencies
+    dir: ui/frontend
+    sources: [package.json, package-lock.json]
+    generates: [node_modules/.package-lock.json]
+    cmds:
+      - npm ci
+
+  frontend:build:
+    desc: Build the tray frontend into ui/frontend/dist
+    dir: ui/frontend
+    deps: [frontend:install]
+    cmds:
+      - npm run build
+
+  build:
+    desc: Build all programs into bin/
+    deps: [frontend:build]
+    cmds:
+      - go build -ldflags "{{.LDFLAGS}}" -o bin/hlabd.exe ./cmd/hlabd
+      - go build -ldflags "{{.LDFLAGS}}" -o bin/hlab.exe ./cmd/hlab
+      - go build -ldflags "{{.LDFLAGS}} -H windowsgui" -o bin/hlab-tray.exe ./cmd/hlab-tray
+      - task: build:agent
+
+  build:agent:
+    desc: Build the static Linux binary of hlab-agent into bin/
+    env:
+      GOOS: linux
+      GOARCH: amd64
+      CGO_ENABLED: "0"
+    cmds:
+      - go build -ldflags "{{.LDFLAGS}}" -o bin/hlab-agent ./cmd/hlab-agent
+
+  lint:
+    desc: "Lint Go code (default ./..., or the packages after --) and type-check the frontend"
+    cmds:
+      - golangci-lint run {{.CLI_ARGS | default "./..."}}
+      - task: lint:frontend
+
+  lint:frontend:
+    desc: Type-check the tray frontend with svelte-check
+    dir: ui/frontend
+    deps: [frontend:install]
+    cmds:
+      - npm run check
+
+  test:
+    desc: "Run the fast tests (default ./..., or the packages after --)"
+    cmds:
+      - go test {{.CLI_ARGS | default "./..."}}
+
+  e2e:
+    desc: "Run the end-to-end tests against real Hyper-V and clients; filter with -- -run <regexp>"
+    cmds:
+      - go test -tags e2e -count=1 -timeout 180m ./test/e2e/... {{.CLI_ARGS}}

@@ -22,6 +22,22 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Go module path and repository layout
+
+- Type: decision
+- Phase: prepare
+- What: Go module `github.com/webcodingcat/hlab` (as the earlier prototype and the owner's other repositories); programs in `cmd/<name>`, tray frontend in `ui/frontend` (Vite, svelte-check as its linter, Playwright as dev dependency), tasks `build`, `lint`, `test`, `e2e` in `Taskfile.yml`.
+- Why: SPEC.md names no module path; this matches the owner's GitHub account.
+- Cost of change: low
+
+## 2026-11-18 Frontend audit finding accepted
+
+- Type: assumption
+- Phase: prepare
+- What: `npm audit` reports a ReDoS advisory in picomatch (via vite, svelte-check); it is accepted because it affects only the local build tools and the fix would downgrade vite below SPEC.md.
+- Why: no untrusted glob patterns reach the build.
+- Cost of change: low
+
 ## 2026-11-18 Spec approved
 
 - Type: approval
