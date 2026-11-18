@@ -88,11 +88,11 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
   - Size: ~200 lines in 2 files
   - [ ] `internal/cidata`: meta-data, user-data, vendor-data (empty hooks for now), network-config v2 (/32, on-link 172.31.1.1, resolvers), extra files (agent binary for the appliance)
 
-- [ ] 01-08 Image pipeline
+- [x] 01-08 Image pipeline
   - Wave: 2 | Depends on: 01-01 | Review: alone
   - Requirements: CAT-07 | Tests: internal/images/images_test.go
   - Size: ~350 lines in 4 files
-  - [ ] `internal/images`: download with checksum file from the source, verify, qcow2/raw to fixed VHD (E2), convert via callback, cache, single conversion under concurrent use
+  - [x] `internal/images`: download with checksum file from the source, verify, qcow2/raw to fixed VHD (E2), convert via callback, cache, single conversion under concurrent use
 
 - [x] 01-09 Hyper-V platform: runner, switch, VMs
   - Wave: 2 | Depends on: 01-01 | Review: alone
