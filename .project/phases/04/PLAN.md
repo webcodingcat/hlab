@@ -268,14 +268,14 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [x] vendor-data script part installs the udev rule (`scsi-0HC_Volume_<id>` from the last 6 bytes of the page 83 identifier, E6) and `hlab-volume@.service` with a python3 script: wait for the metadata service with a deadline, mount only volumes listed by `GET /hlab/v1/volumes` that carry a filesystem, at `/mnt/HC_Volume_<id>` with an fstab line `discard,nofail,defaults` (internal/resources/servers/vendordata.go)
   - [x] Seed user-data: with `AutomountVolumes` a MIME multipart of the user's user_data unchanged plus a cloud-config part mounting each volume; without, user_data as before; metadata keeps the original (internal/resources/servers/vendordata.go, reconcile.go)
 
-- [ ] 04-09 Servers: rescue
+- [x] 04-09 Servers: rescue
   - Wave: 7 | Depends on: 04-01, 04-05, 04-08 | Review: alone
   - Requirements: SRV-11 | Tests: internal/resources/servers/rescue_test.go, test/e2e/rescue_test.go
   - Reads: REQUIREMENTS SRV-11; ARCHITECTURE "Guest integration" (rescue); CONTEXT "Corrections by the user"; RESEARCH R3, R7 (enable_rescue); DECISIONS "Rescue system from a separate rescue disk"; EXPERIMENTS E7
   - Size: ~380 lines in 5 files
   - Adjusts: -
-  - [ ] `enable_rescue` (`type` linux64, `ssh_keys` IDs) returns `root_password`, no reboot: `EnsureRescue`, `CreateChildDisk` at LUN 63, rescue seed in DVD slot 0 (the server's instance-id and network-config, the rescue keys and password hash, no user_data), LUN 63 first in the boot order; `disable_rescue` restores boot order and the server's seed at once (internal/resources/servers/rescue.go, servers.go)
-  - [ ] Consumption: a poweron, reset or reboot hlab drives while rescue is enabled boots it and then sets `rescue_enabled` false, boot order LUN 0 first and the server's seed back; the job of the status watch disables a rescue unused for 60 min; the rescue disk is detached and deleted at the next hlab-driven boot without rescue or when the VM is seen off; delete and rebuild remove it (internal/resources/servers/rescue.go, power.go, watch.go, rebuild.go)
+  - [x] `enable_rescue` (`type` linux64, `ssh_keys` IDs) returns `root_password`, no reboot: `EnsureRescue`, `CreateChildDisk` at LUN 63, rescue seed in DVD slot 0 (the server's instance-id and network-config, the rescue keys and password hash, no user_data), LUN 63 first in the boot order; `disable_rescue` restores boot order and the server's seed at once (internal/resources/servers/rescue.go, servers.go)
+  - [x] Consumption: a poweron, reset or reboot hlab drives while rescue is enabled boots it and then sets `rescue_enabled` false, boot order LUN 0 first and the server's seed back; the job of the status watch disables a rescue unused for 60 min; the rescue disk is detached and deleted at the next hlab-driven boot without rescue or when the VM is seen off; delete and rebuild remove it (internal/resources/servers/rescue.go, power.go, watch.go, rebuild.go)
 
 - [ ] 04-10 Servers: ISOs
   - Wave: 8 | Depends on: 04-04, 04-05, 04-09 | Review: alone
