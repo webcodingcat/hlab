@@ -22,6 +22,30 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Store timestamps and access scoping
+
+- Type: decision
+- Phase: 01 (01-02)
+- What: timestamps are stored as RFC3339Nano text in UTC; resource access functions take the project ID (0 = catalog, `project_id IS ?`), so one project cannot address another's rows.
+- Why: sortable text that SQLite and Go both read; isolation enforced in the one place every module uses.
+- Cost of change: medium
+
+## 2026-11-18 Volume identifier byte order
+
+- Type: decision
+- Phase: 01 (01-10)
+- What: `CreateDisk` writes `page83` in GUID text byte order, so `484C4142-0000-4000-8000-<id>` reaches the disk with the volume ID in the last 6 bytes.
+- Why: those bytes survive in both designators the guest sees (E6).
+- Cost of change: high
+
+## 2026-11-18 Management API details in phase 01
+
+- Type: decision
+- Phase: 01 (01-14)
+- What: token names are 1-63 characters; `/status` carries state, version and problems until later phases fill `shadowing_zones` and `appliance_generation`; deleting a project with resources answers 409 until PROJ-04 (phase 02).
+- Why: ARCHITECTURE.md sets no rule for token names; the other fields have no data yet.
+- Cost of change: low
+
 ## 2026-11-18 Agent document without JSON tags
 
 - Type: decision
