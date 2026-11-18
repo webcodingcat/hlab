@@ -22,6 +22,30 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Hetzner token: hcloud context in development, prompt in operation
+
+- Type: change
+- Phase: change
+- What: Development and release reach the real API only through a named hcloud context (default `hetzner`, `HLAB_HCLOUD_CONTEXT`; `task catalog` via `hcloud api`, the CAT-03 live check gets the token through hcloud and skips with a reason without a valid context); in operation `hlab catalog update` and the tray ask for the token (`--hetzner-token-env`, hidden prompt, password field), use it once and never store it; `HLAB_HETZNER_TOKEN` and `.env.example` are gone.
+- Why: the user's hcloud login already holds the token for development, while the product must not depend on hcloud and must not keep a real Hetzner secret.
+- Cost of change: low
+
+## 2026-11-18 Default hcloud context name hetzner
+
+- Type: assumption
+- Phase: change
+- What: The hcloud context for the real API is named `hetzner` unless `HLAB_HCLOUD_CONTEXT` says otherwise.
+- Why: the user had no preference; a short name that differs from the hlab context.
+- Cost of change: low
+
+## 2026-11-18 Module path and repository in SPEC.md
+
+- Type: change
+- Phase: change
+- What: SPEC.md "Stack" names the Go module path `github.com/webcodingcat/hlab` and the repository `https://github.com/webcodingcat/hlab`, confirmed by the user.
+- Why: the module path was only recorded in DECISIONS.md.
+- Cost of change: low
+
 ## 2026-11-18 Upgrade to wcc 0.31.2
 
 - Type: approval

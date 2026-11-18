@@ -8,6 +8,8 @@ Versions as of 2026-11-18 (reasoning and sources in DECISIONS.md, "Stack").
 
 - Go 1.27.4 (`go.mod`: `go 1.27`, toolchain pinned) for hlabd, hlab,
   hlab-tray (Windows/amd64) and hlab-agent (Linux/amd64).
+- Go module path `github.com/webcodingcat/hlab`; repository
+  `https://github.com/webcodingcat/hlab`.
 - Go modules: `golang.org/x/sys` v0.50.0 (service, SCM, ACLs, virtdisk),
   `github.com/Microsoft/go-winio` v0.6.4 (named pipe, `vhd.CreateVirtualDisk`), `modernc.org/sqlite`
   v1.62.0 (state, WAL, one writer), `github.com/BurntSushi/toml` v1.6.0 (settings),
@@ -59,13 +61,36 @@ Fixed API answers:
 What the user has to provide before the implementation runs. Values never
 appear here, only names.
 
-- No account is needed; API tokens are generated locally.
-- Optional: a real Hetzner Cloud token (read-only is enough) in
-  `HLAB_HETZNER_TOKEN`, used once to generate the shipped server type,
-  load balancer type and pricing catalog from the real API, and by the live
-  check of `hlab catalog update`. Without it the catalog is written by hand
-  from Hetzner's public price list, and the live check is skipped (CAT-03 is
-  tested against a recorded response).
+- No account is needed; API tokens are generated locally. The project has
+  no environment variables with secrets and no `.env.example`.
+- Optional, development and release only: an hcloud context for the real
+  API (`https://api.hetzner.cloud/v1`, a read-only token is enough), named
+  `hetzner` by default; another name is set in the non-secret variable
+  `HLAB_HCLOUD_CONTEXT`. It is always selected by name
+  (`hcloud --context <name>`), never the active context, which points at
+  hlab during tests. The project never reads hcloud's configuration file
+  itself. It is used:
+  - by `task catalog`, which generates the shipped server type, load
+    balancer type, location and pricing catalogs with
+    `hcloud --context <name> api <path>` (raw API responses, all pages);
+  - by the live check of `hlab catalog update` (CAT-03), whose test harness
+    takes the token through hcloud
+    (`hcloud --context <name> config get token --allow-sensitive`) and
+    hands it to `hlab catalog update --hetzner-token-env` in the child
+    process only.
+
+  Calls to hcloud clear `HCLOUD_TOKEN`, `HCLOUD_ENDPOINT` and
+  `HCLOUD_CONTEXT` in the child environment. The context counts as present
+  only if `hcloud context list` names it and
+  `hcloud --context <name> config get endpoint` returns
+  `https://api.hetzner.cloud/v1` (a missing context only gives a warning
+  and the default endpoint, so the list is checked first). If it is
+  missing or points elsewhere, `task catalog` fails with that reason, and
+  the live check is skipped with that reason in the test output; CAT-03 is
+  then still tested against a recorded response.
+- Operation: the product has no dependency on hcloud. `hlab catalog
+  update` and the tray ask the user for a real Hetzner token (ARCHITECTURE.md,
+  "hlab"); hlab uses it for that one update and never stores it.
 
 ## Machine prerequisites
 

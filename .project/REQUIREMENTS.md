@@ -47,7 +47,7 @@ resource types.
 
 - CAT-01 the API lists the six Hetzner locations fsn1, nbg1, hel1, ash, hil and sin with their network zones; datacenter fields and endpoints behave as the frozen OpenAPI description says (`/datacenters` is gone at Hetzner since 2026-10-01) (goal 1) [unit]
 - CAT-02 server types come from the shipped catalog file plus the user's own types file, and appear in `/server_types` with their per-location availability (goal 1) [unit]
-- CAT-03 user updates the server type catalog from the real Hetzner API with a real Hetzner token they provide (goal 1) [unit]
+- CAT-03 user updates the server type catalog from the real Hetzner API with a real Hetzner token they enter (hidden prompt, or an environment variable named with `--hetzner-token-env`, or the token field in the tray); hlab never stores the token and needs no hcloud for it (goal 1) [unit]
 - CAT-04 creating a server of an ARM type (CAX) returns `resource_unavailable` (goal 1) [unit]
 - CAT-05 `/pricing` returns prices for every server type, load balancer type, volume, primary IP and floating IP from the catalog (goal 1) [unit]
 - CAT-06 system images ubuntu-22.04, ubuntu-24.04, ubuntu-26.04, debian-12 and debian-13 are listed under Hetzner's names and attributes (goal 1) [unit]

@@ -90,7 +90,9 @@ everywhere.
 - Projects: table of projects; detail with token table, "Create token"
   dialog that shows the token once in a copy field with a warning.
 - Server Types: table of the catalog with source column (catalog, own),
-  add/remove own types, "Update from Hetzner" with an optional token field.
+  add/remove own types, "Update from Hetzner" with a required password
+  field for the Hetzner token, which is cleared after the update and never
+  stored.
 - Settings: grouped form for every key of `settings.toml`; the trust switch
   shows the risk text from `decisions/managed-certificates.md` and a "Save
   CA certificate" button.

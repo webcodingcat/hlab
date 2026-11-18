@@ -328,6 +328,13 @@ Inside `hlabd` (Go packages under `internal/`):
   use the service controller (see "System integration"); all other commands
   use the management API and fail with "the cloud is not running" while it
   is stopped, except `logs`, which then reads the log file.
+- `catalog update`: the token comes from the environment variable named by
+  `--hetzner-token-env`, else from a hidden prompt on a terminal; with
+  neither, the command fails with exit code 2 and says how to pass it. It
+  is sent once in `POST /mgmt/v1/catalog/update`; hlabd fetches the server
+  types from `https://api.hetzner.cloud/v1` with it, writes the catalog and
+  discards the token. No component stores or logs it, and no component of
+  the product calls hcloud.
 - Incompatible state (LIFE-08): hlabd refuses to start, writes the status
   file `%ProgramData%\hlab\status.json` (`{"state":"refused","problem":
   {"code":"state_incompatible","message":...}}`) and stops. `hlab cloud
@@ -380,7 +387,7 @@ Errors: `{"error":{"code":"...","message":"..."}}` with codes
 `invalid_input`, `not_found`, `conflict`, `cloud_not_running`,
 `server_error`.
 | `ANY /projects/{name}/api/v1/{rest}` | forwards to the Hetzner API handlers with that project and read/write rights |
-| `POST /catalog/update` | body `{"hetzner_token": "..."}` optional |
+| `POST /catalog/update` | body `{"hetzner_token": "..."}` (required, used once, never stored or logged) |
 | `GET /logs?follow=1` | log lines as newline-delimited JSON |
 | `GET /ca.pem` | the hlab CA certificate |
 | `PUT /trust` | `{"on": bool}` |
@@ -631,9 +638,9 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 |---|---|---|
 | `%ProgramData%\hlab\settings.toml` | TOML, keys in "Settings" below; ACL: Interactive Users modify | tray, user |
 | `%ProgramData%\hlab\server-types.custom.json` | JSON array of Hetzner `server_type` objects (IDs from 100000) | tray, user |
-| `%ProgramFiles%\hlab\catalog\server-types.json` | `{"server_types": [...]}` as returned by Hetzner's API | release |
+| `%ProgramFiles%\hlab\catalog\server-types.json` | `{"server_types": [...]}` as returned by Hetzner's API | `task catalog` (release) |
 | `%ProgramData%\hlab\catalog\server-types.json` | same; written by `hlab catalog update`, preferred when present | hlabd |
-| `%ProgramFiles%\hlab\catalog\{images,isos,locations,pricing}.json` | Hetzner API shapes plus `_hlab.source` (URL, checksum URL, format) | release |
+| `%ProgramFiles%\hlab\catalog\{images,isos,locations,load-balancer-types,pricing}.json` | Hetzner API shapes plus `_hlab.source` (URL, checksum URL, format); locations, load balancer types and pricing from `task catalog`, images and ISOs by hand | release |
 | `%ProgramData%\hlab\state.db` | SQLite, see "Data schema" | hlabd |
 | `%ProgramData%\hlab\logs\hlabd.log` | JSON lines (`time`, `level`, `msg`, fields), 10 MB x 5 rotated | hlabd |
 | `%ProgramData%\hlab\ca\` | `ca.pem`, `ca.key` (SYSTEM only) | hlabd |
