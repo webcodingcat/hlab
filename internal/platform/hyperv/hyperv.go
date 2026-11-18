@@ -76,7 +76,10 @@ func stopAction(a platform.StopAction) (string, error) {
 	return "", fmt.Errorf("unknown stop action %v", a)
 }
 
-// CreateVM creates a stopped Gen2 VM without adapters or disks.
+// CreateVM creates a stopped Gen2 VM without adapters or disks. COM1 is
+// connected to the named pipe <name>-com1: a Gen2 VM shows the guest no
+// serial port without one, and Debian 12's first boot, whose kernel
+// command line has console=ttyS0, then panics in its initramfs.
 func (p *Platform) CreateVM(ctx context.Context, spec platform.VMSpec) error {
 	stop, err := stopAction(spec.StopAction)
 	if err != nil {
@@ -96,6 +99,7 @@ try {
   Get-VMNetworkAdapter -VM $vm | Remove-VMNetworkAdapter
   Set-VM -VM $vm -ProcessorCount $cpus -StaticMemory -MemoryStartupBytes $memory -AutomaticCheckpointsEnabled $false -AutomaticStartAction Nothing -AutomaticStopAction $stop
   Set-VMFirmware -VM $vm -EnableSecureBoot On -SecureBootTemplate MicrosoftUEFICertificateAuthority
+  Set-VMComPort -VM $vm -Number 1 -Path ('\\.\pipe\' + $name + '-com1')
 } catch {
   Remove-VM -VM $vm -Force -ErrorAction SilentlyContinue
   throw
