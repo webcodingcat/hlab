@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/webcodingcat/hlab/internal/platform"
 )
@@ -25,13 +27,16 @@ type Options struct {
 type Platform struct {
 	opts Options
 	r    *runner
+
+	mu  sync.Mutex
+	cpu map[string]cpuTicks // last CPU counters per VM, for Metrics
 }
 
 var _ platform.Platform = (*Platform)(nil)
 
 // New starts the PowerShell process and loads the Hyper-V module.
 func New(opts Options) (platform.Platform, error) {
-	p := &Platform{opts: opts, r: &runner{}}
+	p := &Platform{opts: opts, r: &runner{}, cpu: map[string]cpuTicks{}}
 	if _, err := p.r.run(context.Background(), "New", nil, "Import-Module Hyper-V"); err != nil {
 		_ = p.r.close()
 		return nil, err
@@ -122,27 +127,86 @@ func (p *Platform) DeleteVM(ctx context.Context, name string) error {
 	_, err := p.r.run(ctx, "DeleteVM", map[string]any{"name": name}, getVM+`if ([int]$vm.State -ne 3) { Stop-VM -VM $vm -TurnOff -Force }
 Remove-VM -VM $vm -Force
 `)
+	if err == nil {
+		p.forgetCPU(name)
+	}
 	return err
 }
 
 // shutdownIC is the ID of the Shutdown integration service.
 const shutdownIC = "9F8233AC-BE49-4C79-8EE3-E7E1985B2077"
 
-// guestShutdown asks the guest through the Shutdown integration service to
-// shut down or reboot ($method) and returns without waiting.
-const guestShutdown = `if ([int]$vm.State -ne 2) { throw [System.InvalidOperationException]::new("vm $name is not running") }
+// guestRequest asks the guest through the Shutdown integration service to
+// shut down or reboot ($method) and answers the method's return value
+// without waiting.
+const guestRequest = `if ([int]$vm.State -ne 2) { throw [System.InvalidOperationException]::new("vm $name is not running") }
 $ic = Get-VMIntegrationService -VM $vm | Where-Object { $_.Id -like ('*' + $icid) } | Select-Object -First 1
 if (-not $ic -or -not $ic.Enabled) { throw [System.InvalidOperationException]::new("shutdown integration service of vm $name is not enabled") }
 $c = Get-CimInstance -Namespace root\virtualization\v2 -ClassName Msvm_ShutdownComponent -Filter ("SystemName='" + $vm.Id + "'")
 if (-not $c) { throw [System.InvalidOperationException]::new("shutdown integration service of vm $name is not available") }
 $res = Invoke-CimMethod -InputObject $c -MethodName $method -Arguments @{ Force = $true; Reason = 'hlab' }
-if ($res.ReturnValue -ne 0 -and $res.ReturnValue -ne 4096) {
-  throw [System.InvalidOperationException]::new("$method of vm $name returned " + $res.ReturnValue)
-}
+[int64]$res.ReturnValue
 `
 
-// Power runs a power operation; Shutdown and Reboot return once the guest
-// was asked.
+// rebootOffTimeout bounds the wait for the guest to turn off when a reboot
+// falls back to shutdown and start (systemd's default stop timeout is 90 s).
+const rebootOffTimeout = 120 * time.Second
+
+// askGuest runs method (InitiateShutdown or InitiateReboot) of the Shutdown
+// integration service and reports whether the guest accepted it (return
+// value 0 or 4096) along with the return value.
+func (p *Platform) askGuest(ctx context.Context, name, method string) (bool, int64, error) {
+	data, err := p.r.run(ctx, "Power", map[string]any{"name": name, "icid": shutdownIC, "method": method}, getVM+guestRequest)
+	if err != nil {
+		return false, 0, err
+	}
+	var rv int64
+	if err := json.Unmarshal(data, &rv); err != nil {
+		return false, 0, &platform.Error{Kind: platform.Failed, Op: "Power", Err: err}
+	}
+	return rv == 0 || rv == 4096, rv, nil
+}
+
+// reboot asks the guest to reboot. A guest refusing InitiateReboot is shut
+// down instead, awaited until off and started again.
+func (p *Platform) reboot(ctx context.Context, name string) error {
+	ok, _, err := p.askGuest(ctx, name, "InitiateReboot")
+	if err != nil || ok {
+		return err
+	}
+	ok, rv, err := p.askGuest(ctx, name, "InitiateShutdown")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return &platform.Error{Kind: platform.InvalidState, Op: "Power", Err: fmt.Errorf("InitiateShutdown of vm %s returned %d", name, rv)}
+	}
+	wctx, cancel := context.WithTimeout(ctx, rebootOffTimeout)
+	defer cancel()
+	for {
+		st, err := p.State(wctx, name)
+		if err == nil && st == platform.StateOff {
+			break
+		}
+		switch {
+		case ctx.Err() != nil:
+			return &platform.Error{Kind: platform.Failed, Op: "Power", Err: ctx.Err()}
+		case wctx.Err() != nil:
+			return &platform.Error{Kind: platform.Failed, Op: "Power", Err: fmt.Errorf("vm %s did not turn off within %s", name, rebootOffTimeout)}
+		case err != nil:
+			return err
+		}
+		select {
+		case <-wctx.Done():
+		case <-time.After(time.Second):
+		}
+	}
+	_, err = p.r.run(ctx, "Power", map[string]any{"name": name}, getVM+"Start-VM -VM $vm\n")
+	return err
+}
+
+// Power runs a power operation; Shutdown returns once the guest was asked,
+// Reboot once the guest was asked or, in its fallback, started again.
 func (p *Platform) Power(ctx context.Context, name string, op platform.PowerOp) error {
 	var body string
 	vars := map[string]any{"name": name}
@@ -151,13 +215,14 @@ func (p *Platform) Power(ctx context.Context, name string, op platform.PowerOp) 
 		body = `Start-VM -VM $vm`
 	case platform.PowerStop:
 		body = `Stop-VM -VM $vm -TurnOff -Force`
-	case platform.PowerShutdown, platform.PowerReboot:
-		vars["icid"] = shutdownIC
-		vars["method"] = "InitiateShutdown"
-		if op == platform.PowerReboot {
-			vars["method"] = "InitiateReboot"
+	case platform.PowerShutdown:
+		ok, rv, err := p.askGuest(ctx, name, "InitiateShutdown")
+		if err == nil && !ok {
+			err = &platform.Error{Kind: platform.InvalidState, Op: "Power", Err: fmt.Errorf("InitiateShutdown of vm %s returned %d", name, rv)}
 		}
-		body = guestShutdown
+		return err
+	case platform.PowerReboot:
+		return p.reboot(ctx, name)
 	case platform.PowerReset:
 		body = `Restart-VM -VM $vm -Force`
 	case platform.PowerSave:
