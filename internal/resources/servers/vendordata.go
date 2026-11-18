@@ -69,40 +69,53 @@ AccuracySec=1s
 WantedBy=timers.target
 `
 
-// vendorData returns the server's vendor-data: root may log in with its
-// keys and, by the sshd drop-in, with a password, as on Hetzner's images
-// (cloud images lock root and allow no root password login); rootHash, if
-// set, becomes root's password without expiry; the hlab-guest timer applies
-// later password resets. user_data overrides any of it.
+// vendorBoundary separates the parts of the vendor-data MIME document.
+const vendorBoundary = "==hlab-vendor-data=="
+
+// vendorData returns the server's vendor-data, a multipart MIME document.
+// Its cloud-config part lets root log in with its keys, enables password
+// login and, if rootHash is set, makes it root's password without expiry;
+// user_data may override these keys. Its shell script part, run once per
+// instance by cloud-init's scripts_vendor, installs the sshd drop-in that
+// allows root password login (cloud images refuse it) and the hlab-guest
+// timer that applies later password resets; being a script, a user_data
+// with its own write_files or runcmd does not replace it.
 func vendorData(rootHash string) string {
-	var b strings.Builder
-	b.WriteString("#cloud-config\ndisable_root: false\nssh_pwauth: true\n")
+	var cfg strings.Builder
+	cfg.WriteString("#cloud-config\ndisable_root: false\nssh_pwauth: true\n")
 	if rootHash != "" {
-		b.WriteString("chpasswd:\n  expire: false\n  users:\n    - name: root\n      type: hash\n      password: \"" + rootHash + "\"\n")
+		cfg.WriteString("chpasswd:\n  expire: false\n  users:\n    - name: root\n      type: hash\n      password: \"" + rootHash + "\"\n")
 	}
-	b.WriteString("write_files:\n")
-	writeFile(&b, "/etc/ssh/sshd_config.d/00-hlab-root.conf", "0644", "PermitRootLogin yes\n")
-	writeFile(&b, "/usr/local/sbin/hlab-guest", "0755", guestHook)
-	writeFile(&b, "/etc/systemd/system/hlab-guest.service", "0644", guestService)
-	writeFile(&b, "/etc/systemd/system/hlab-guest.timer", "0644", guestTimer)
-	b.WriteString("runcmd:\n")
-	b.WriteString("  - [systemctl, daemon-reload]\n")
-	b.WriteString("  - [systemctl, enable, --now, hlab-guest.timer]\n")
-	b.WriteString("  - [sh, -c, \"systemctl try-reload-or-restart ssh.service sshd.service || true\"]\n")
+
+	var sh strings.Builder
+	sh.WriteString("#!/bin/sh\n# hlab guest hooks: root password login and password resets.\nset -e\n")
+	writeFile(&sh, "/etc/ssh/sshd_config.d/00-hlab-root.conf", "0644", "PermitRootLogin yes\n")
+	writeFile(&sh, "/usr/local/sbin/hlab-guest", "0755", guestHook)
+	writeFile(&sh, "/etc/systemd/system/hlab-guest.service", "0644", guestService)
+	writeFile(&sh, "/etc/systemd/system/hlab-guest.timer", "0644", guestTimer)
+	sh.WriteString("systemctl daemon-reload\n")
+	sh.WriteString("systemctl enable --now hlab-guest.timer\n")
+	sh.WriteString("systemctl try-reload-or-restart ssh.service sshd.service || true\n")
+
+	var b strings.Builder
+	b.WriteString("Content-Type: multipart/mixed; boundary=\"" + vendorBoundary + "\"\nMIME-Version: 1.0\n\n")
+	for _, part := range []struct{ typ, body string }{
+		{"text/cloud-config", cfg.String()},
+		{"text/x-shellscript", sh.String()},
+	} {
+		b.WriteString("--" + vendorBoundary + "\nContent-Type: " + part.typ + "; charset=\"utf-8\"\nMIME-Version: 1.0\n\n")
+		b.WriteString(part.body)
+	}
+	b.WriteString("--" + vendorBoundary + "--\n")
 	return b.String()
 }
 
-// writeFile appends one write_files entry with content as a literal block.
+// writeFile appends shell lines that write content to path with mode; the
+// quoted here-document keeps content literal.
 func writeFile(b *strings.Builder, path, mode, content string) {
-	b.WriteString("  - path: " + path + "\n    permissions: '" + mode + "'\n    owner: root:root\n    content: |\n")
-	for _, line := range strings.SplitAfter(strings.TrimSuffix(content, "\n"), "\n") {
-		if strings.TrimSpace(line) == "" {
-			b.WriteString("\n")
-			continue
-		}
-		b.WriteString("      " + line)
-	}
-	b.WriteString("\n")
+	b.WriteString("mkdir -p \"$(dirname " + path + ")\"\n")
+	b.WriteString("cat > " + path + " <<'HLAB_EOF'\n" + content + "HLAB_EOF\n")
+	b.WriteString("chmod " + mode + " " + path + "\n")
 }
 
 // newRootPassword returns a random root password (26 base32 characters,
