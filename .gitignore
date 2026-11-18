@@ -29,3 +29,6 @@ installer/redist/
 .claude/worktrees/
 .idea/
 .vscode/
+
+# Task checksums
+.task/
