@@ -287,4 +287,3 @@ func (z *dnsZone) add(rr dns.RR) {
 func hdr(name string, t uint16) dns.RR_Header {
 	return dns.RR_Header{Name: name, Rrtype: t, Class: dns.ClassINET, Ttl: dnsTTL}
 }
-

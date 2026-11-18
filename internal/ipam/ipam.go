@@ -7,7 +7,6 @@ package ipam
 
 import (
 	"errors"
-	"fmt"
 	"net/netip"
 
 	"github.com/webcodingcat/hlab/internal/store"
@@ -28,9 +27,6 @@ var ErrFull = errors.New("ipam: no free public IPv4 address")
 // NextPublic marks the next free address of r in use and returns it.
 func NextPublic(tx store.Tx, r netip.Prefix) (netip.Addr, error) {
 	r = r.Masked()
-	if !r.Addr().Is4() {
-		return netip.Addr{}, fmt.Errorf("ipam: %s is not an IPv4 range", r)
-	}
 	first := r.Addr()
 	for range firstOffset {
 		first = first.Next()
