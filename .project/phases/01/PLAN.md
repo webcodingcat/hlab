@@ -148,8 +148,13 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
   - [x] `internal/ipam`; module `ssh_keys` (create, get, list, delete)
   - [x] module `servers` (create, get, list, delete; IPv4 /32, IPv6 /64; work: image, disk, cidata, VM, NIC, DVD, start, agent push), API-10 table over all endpoints of the phase
 
-- [ ] 01-17 Documentation
+- [x] 01-17 Documentation
   - Wave: 6 | Depends on: all | Review: alone
   - Requirements: DOC-01..DOC-06 | Tests: test/docs/docs_test.go
   - Size: doc-writer
-  - [ ] README, commands, configuration, deviations, developer guide (setup with profiles, build-and-test, components, adding-a-resource)
+  - [x] README, commands, configuration, deviations, developer guide (setup with profiles, build-and-test, components, adding-a-resource)
+
+## Close
+
+- Unit suite and lint: `task test -- -count=1 ./...`, `task lint`.
+- End-to-end selection (all e2e rows of the phase, product code changed after their first green runs): `task e2e -- -v -run 'TestE2E/(API-01|PROJ-05|SRV-01|SRV-03|SRV-05|SRV-16|SRV-19|LIFE-01)$'`.

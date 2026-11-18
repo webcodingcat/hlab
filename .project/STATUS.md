@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 01 Walking skeleton
+- Phase: 02 API conventions, catalog and the three clients
 - Base branch: main
-- Last done: spec approved by the user (2026-11-18)
-- Next: phase 01 runs on branch wcc/phase-01
+- Last done: phase 01 walking skeleton merged into main (2026-11-18); the user reruns scripts\dev-setup.ps1 elevated once for the protected data folder ACLs
+- Next: /wcc:phase in a new session (phase 02); /wcc:change takes the answers to Q1 and Q2
 
 ## Open manual checks
 
@@ -18,7 +18,7 @@ STATUS: IN_PROGRESS
      one line each: "- UI-04 (03): <requirement>". The guide is in
      phases/<id>/CHECKS.md. /wcc:feedback walks through them. -->
 
-- none
+- DOC-07 (01): README and guides are understandable for their audience
 
 ## Open decisions
 
