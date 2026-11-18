@@ -327,6 +327,7 @@ Inside `hlabd` (Go packages under `internal/`):
       Install(dev bool) error
       Uninstall(keepData bool) error
   }
+  // these two live in the implementation package (sysint/windows):
   func ListenManagement() (net.Listener, error) // Windows: \\.\pipe\hlab with ACL
   func DialManagement(ctx context.Context) (net.Conn, error)
   ```

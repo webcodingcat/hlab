@@ -55,12 +55,12 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
   - Size: ~350 lines in 3 files
   - [x] `internal/store`: schema v1 (ARCHITECTURE.md "Data schema"), `Open`, `Tx`, `Get/List/Put/Delete[T]`, `NextID`, kv, projects and tokens access (`TokenByHash`)
 
-- [ ] 01-03 System integration and settings
+- [x] 01-03 System integration and settings
   - Wave: 2 | Depends on: 01-01 | Review: alone
   - Requirements: LIFE-01, LIFE-06 | Tests: test/e2e (LIFE-01)
   - Size: ~400 lines in 5 files
-  - [ ] `internal/sysint` (Paths, ServiceControl, ServiceHost, Installer interfaces) and `internal/sysint/windows`: Paths per profile, ServiceControl with minimal SCM rights (E10), ServiceHost with preshutdown, pipe listen/dial with ACL (go-winio)
-  - [ ] Installer: `hlabd install [--dev]` (service with descriptor, preshutdown 180 s, protected data folder ACLs; both profiles may be installed side by side) and `uninstall-cleanup` skeleton; `internal/settings`
+  - [x] `internal/sysint` (Paths, ServiceControl, ServiceHost, Installer interfaces) and `internal/sysint/windows`: Paths per profile, ServiceControl with minimal SCM rights (E10), ServiceHost with preshutdown, pipe listen/dial with ACL (go-winio)
+  - [x] Installer: `hlabd install [--dev]` (service with descriptor, preshutdown 180 s, protected data folder ACLs; both profiles may be installed side by side) and `uninstall-cleanup` skeleton; `internal/settings`
 
 - [x] 01-04 API core and OpenAPI tooling
   - Wave: 2 | Depends on: 01-02 | Review: alone
