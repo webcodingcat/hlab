@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"strings"
 	"time"
 )
 
@@ -32,14 +33,16 @@ func CreateAction(tx Tx, a Action) (int64, error) {
 	return res.LastInsertId()
 }
 
-// GetAction returns the action id, or ErrNotFound.
-func GetAction(tx Tx, id int64) (Action, error) {
+const actionColumns = `id, project_id, command, status, progress, started, finished, error, resources`
+
+type scanner interface{ Scan(dest ...any) error }
+
+func scanAction(row scanner) (Action, error) {
 	var a Action
 	var project sql.NullInt64
 	var started string
 	var finished, errText sql.NullString
-	err := tx.tx.QueryRow(`SELECT id, project_id, command, status, progress, started, finished, error, resources
-		FROM actions WHERE id = ?`, id).Scan(&a.ID, &project, &a.Command, &a.Status, &a.Progress,
+	err := row.Scan(&a.ID, &project, &a.Command, &a.Status, &a.Progress,
 		&started, &finished, &errText, &a.Resources)
 	if err != nil {
 		return Action{}, mapErr(err)
@@ -51,6 +54,48 @@ func GetAction(tx Tx, id int64) (Action, error) {
 	}
 	a.Error = errText.String
 	return a, nil
+}
+
+// GetAction returns the action id, or ErrNotFound.
+func GetAction(tx Tx, id int64) (Action, error) {
+	return scanAction(tx.tx.QueryRow(`SELECT `+actionColumns+` FROM actions WHERE id = ?`, id))
+}
+
+// ListActions returns the actions of projectID with one of ids, ordered by
+// ID. Missing IDs are skipped.
+func ListActions(tx Tx, projectID int64, ids []int64) ([]Action, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	args := []any{projectID}
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	return queryActions(tx, `SELECT `+actionColumns+` FROM actions
+		WHERE project_id = ? AND id IN (`+marks+`) ORDER BY id`, args...)
+}
+
+// RunningActions returns all actions with status "running", ordered by ID.
+func RunningActions(tx Tx) ([]Action, error) {
+	return queryActions(tx, `SELECT `+actionColumns+` FROM actions WHERE status = 'running' ORDER BY id`)
+}
+
+func queryActions(tx Tx, query string, args ...any) ([]Action, error) {
+	rows, err := tx.tx.Query(query, args...)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []Action
+	for rows.Next() {
+		a, err := scanAction(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }
 
 // UpdateAction writes status, progress, finished and error of a, or returns
