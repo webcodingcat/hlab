@@ -162,7 +162,8 @@ Inside `hlabd` (Go packages under `internal/`):
   with code `server_error` at the next start. `Manager.ListFor(ref)` lists
   the actions of one resource (or of a resource type) for the generic
   action endpoints; `ErrProtected` is returned for an action refused by
-  `change_protection`.
+  `change_protection`. `Manager.WaitIdle(ctx, projectID)` waits until a project
+  has no running action (project deletion waits for it before deleting).
 - Depends on: store.
 
 #### platform (interface) and platform/hyperv

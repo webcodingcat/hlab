@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Project deletion waits for running actions
+
+- Type: decision
+- Phase: phase 02
+- What: the project-deletion action first waits (at most 20 minutes, woken when an action ends) until the project has no running action, else it ends in error and the project stays listed.
+- Why: a server create still running could otherwise leave an orphaned VM after the delete (02-14 review).
+- Cost of change: low
+
 ## 2026-11-18 Project deletion details
 
 - Type: decision

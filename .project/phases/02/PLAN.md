@@ -255,15 +255,15 @@ func (e *env) wslKey() string                                           // path 
   - [x] Fix whatever the conventions table finds in the modules of this phase (same files, no new behaviour)
   - Open: code merged and reviewed; e2e TestE2E/CLI-02/placement_groups waits for the dev cloud (dev-setup rerun for the DACL fix)
 
-- [ ] 02-14 Project deletion with resources
+- [x] 02-14 Project deletion with resources
   - Wave: 6 | Depends on: 02-07, 02-13 | Review: alone
   - Requirements: PROJ-04 | Tests: internal/mgmt/mgmt_test.go
   - Reads: REQUIREMENTS PROJ; ARCHITECTURE "resource", "Management API"; decisions/resource-reconciler.md; CONTEXT.md "Answers"
   - Size: ~300 lines in 5 files
   - Adjusts: internal/cli/cli_test.go (`newHlab` passes `mgmt.Deps.Actions`)
-  - [ ] `resource.Deleter` and `Reconciler` (internal/resource/resource.go); servers implement `Delete` (VM, disk, IP release, group membership, row), used by the delete handler too (internal/resources/servers/servers.go)
-  - [ ] `DELETE /projects/{name}`: revoke the tokens in the first transaction, then one action deletes every resource through its module's `Deleter`, then the project with the rest by cascade, pushes the agent document; a failure ends the action with error and keeps the project; a second delete while one runs answers 409; `GET /mgmt/v1/actions/{id}` (internal/mgmt/mgmt.go, internal/cloud/cloud.go)
-  - [ ] `hlab project delete` waits for the action with a deadline and reports its error (internal/cli/cli.go)
+  - [x] `resource.Deleter` and `Reconciler` (internal/resource/resource.go); servers implement `Delete` (VM, disk, IP release, group membership, row), used by the delete handler too (internal/resources/servers/servers.go)
+  - [x] `DELETE /projects/{name}`: revoke the tokens in the first transaction, then one action deletes every resource through its module's `Deleter`, then the project with the rest by cascade, pushes the agent document; a failure ends the action with error and keeps the project; a second delete while one runs answers 409; `GET /mgmt/v1/actions/{id}` (internal/mgmt/mgmt.go, internal/cloud/cloud.go)
+  - [x] `hlab project delete` waits for the action with a deadline and reports its error (internal/cli/cli.go)
 
 - [ ] 02-15 Documentation
   - Wave: 7 | Depends on: all | Review: alone
