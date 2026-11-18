@@ -201,14 +201,14 @@ func ServersDeps(t *testing.T, cat *catalog.Catalog, p platform.Platform) server
   - Adjusts: -
   - [x] `Store` with retention, `ParseQuery`, `Series` with the nine series names, step rules (200 default, 500 max), rates from deltas and counter resets (internal/metrics/metrics.go)
 
-- [ ] 03-08 Resource limits
+- [x] 03-08 Resource limits
   - Wave: 3 | Depends on: 03-06 | Review: alone
   - Requirements: SRV-18 | Tests: internal/resources/servers/servers_test.go (SRV-18/create)
   - Reads: REQUIREMENTS SRV-18; CONTEXT.md "Q3 answer"; DECISIONS "Resource limits"; ARCHITECTURE "Files and formats" (resources settings)
   - Size: ~180 lines in 2 files
   - Adjusts: -
-  - [ ] `checkResources(ctx, cores, ramMB, addDiskBytes)`: cores > logical CPUs, RAM > free RAM minus `reserve_ram_mb`, remaining growth of all existing server disks (nominal minus file size) plus the new disk > free disk minus `reserve_disk_gb`, each `resource_unavailable` with a message naming the resource (internal/resources/servers/limits.go)
-  - [ ] Create checks synchronously before its transaction (412) and again at the start of its action (internal/resources/servers/servers.go)
+  - [x] `checkResources(ctx, cores, ramMB, addDiskBytes)`: cores > logical CPUs, RAM > free RAM minus `reserve_ram_mb`, remaining growth of all existing server disks (nominal minus file size) plus the new disk > free disk minus `reserve_disk_gb`, each `resource_unavailable` with a message naming the resource (internal/resources/servers/limits.go)
+  - [x] Create checks synchronously before its transaction (412) and again at the start of its action (internal/resources/servers/servers.go)
 
 - [ ] 03-09 Power actions and status watch
   - Wave: 4 | Depends on: 03-03, 03-08 | Review: alone | e2e
