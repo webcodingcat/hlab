@@ -42,12 +42,12 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
 
 ## Plans
 
-- [ ] 01-01 Shared type packages
+- [x] 01-01 Shared type packages
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: - | Tests: -
   - Size: ~350 lines in 6 files
-  - [ ] `internal/agentapi` (Config incl. `Upstream`, Job, Status), `internal/platform` (interface, types, `Error`, `SegmentFor`), `internal/hostnet` (interface incl. `DNSServers`, Config, Problem, WSLInfo)
-  - [ ] `internal/profile` with `Current`/`Other`; `Taskfile.yml` build passes `-X .../profile.Name=dev`
+  - [x] `internal/agentapi` (Config incl. `Upstream`, Job, Status), `internal/platform` (interface, types, `Error`, `SegmentFor`), `internal/hostnet` (interface incl. `DNSServers`, Config, Problem, WSLInfo)
+  - [x] `internal/profile` with `Current`/`Other`; `Taskfile.yml` build passes `-X .../profile.Name=dev`
 
 - [ ] 01-02 Store
   - Wave: 1 | Depends on: - | Review: alone

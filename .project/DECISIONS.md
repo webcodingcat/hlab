@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Agent document without JSON tags
+
+- Type: decision
+- Phase: 01 (01-01)
+- What: `agentapi` types carry no JSON tags and use Go's field names on the wire, with `const Schema = 1`; `SegmentFor` returns the public PVLAN for network 0 and leaves private VLANs to its caller until phase 05.
+- Why: hlabd and hlab-agent are built from the same package and the agent is replaced at every cloud start, so the two sides never differ in version.
+- Cost of change: low
+
 ## 2026-11-18 Release and dev profile side by side
 
 - Type: change
