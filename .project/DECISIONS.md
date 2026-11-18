@@ -817,3 +817,107 @@ in ARCHITECTURE.md or the plan.
 - What: the SRV-15 e2e test boots an Ubuntu live-server ISO that reads the cidata in DVD slot 0 and checks over SSH that `/` is the live system; the indirect proof (installed system silent, DVD first) is the fallback if research refutes it.
 - Why: a direct login shows the boot source; the indirect check cannot tell a hung boot from an ISO boot.
 - Cost of change: low
+
+## 2026-11-18 xfsprogs from cached .debs on the appliance seed
+
+- Type: decision
+- Phase: 04
+- What: `catalog/appliance-debs.json` lists xfsprogs, libicu76, libinih1 (pool URL, snapshot.debian.org URL, sha256); hlabd caches them in `<data>\cache\debs\`, puts them on the appliance cidata, and the script runs `dpkg -i` only when `mkfs.xfs` is missing.
+- Why: The user ruled out installing at every boot; building into the image needs a Linux builder.
+- Cost of change: low
+
+## 2026-11-18 Rescue counts as booted when hlab starts the server
+
+- Type: decision
+- Phase: 04
+- What: a poweron, reset or reboot hlab drives while rescue is enabled ends rescue (`rescue_enabled` false, LUN 0 first, own seed back); a guest-initiated reboot is ended only by the 60-minute timeout (deviation).
+- Why: Hyper-V gives no signal for a boot the guest starts itself.
+- Cost of change: low
+
+## 2026-11-18 Rescue seed reuses the server's instance-id and network-config
+
+- Type: decision
+- Phase: 04
+- What: the rescue seed carries the server's instance-id and network-config, the rescue keys and password hash, and no user_data.
+- Why: The installed system sees no new instance if it boots before the seed is restored, and rescue never runs user_data.
+- Cost of change: medium (guest-visible)
+
+## 2026-11-18 Rescue disk is a differencing disk via Platform.CreateChildDisk
+
+- Type: decision
+- Phase: 04
+- What: `Platform` gains `CreateChildDisk`; the rescue disk is a differencing disk at LUN 63.
+- Why: ARCHITECTURE names a differencing disk; adding a method extends the interface.
+- Cost of change: low
+
+## 2026-11-18 Checkpoint type Standard on every VM
+
+- Type: decision
+- Phase: 04
+- What: VMs get CheckpointType Standard; a running server's snapshot takes a Standard checkpoint, copies the parent, removes the checkpoint and waits for the merge; leftover hlab checkpoints are removed first.
+- Why: The guest images have no VSS daemon, so Production falls back to Standard anyway.
+- Cost of change: low
+
+## 2026-11-18 Error codes the frozen description leaves open
+
+- Type: decision
+- Phase: 04
+- What: a volume attached elsewhere gives 422 `volume_already_attached`; another location, a backup without backups enabled, an image larger than the type's disk, deleting an attached volume and a 17th volume give 422 `invalid_input`.
+- Why: The description names no code for these; hcloud-go knows `volume_already_attached`.
+- Cost of change: low
+
+## 2026-11-18 Appliance jobs run one at a time at LUN 1
+
+- Type: decision
+- Phase: 04
+- What: appliance jobs are serialized and the job disk always sits at the appliance's LUN 1.
+- Why: One job at a time needs no LUN bookkeeping.
+- Cost of change: low
+
+## 2026-11-18 Volume LUNs 1 to 16
+
+- Type: decision
+- Phase: 04
+- What: a volume gets the lowest free LUN from 1 to 16; LUN 63 stays reserved for rescue.
+- Why: Hetzner allows 16 volumes per server.
+- Cost of change: low
+
+## 2026-11-18 backup_window fixed and daily backups as create_image
+
+- Type: decision
+- Phase: 04
+- What: `backup_window` is "22-02" while backups are enabled, null otherwise; a daily backup is a `create_image` action and a locked server waits for the next hourly run.
+- Why: Hetzner's field shape, and locking without a second mechanism.
+- Cost of change: low
+
+## 2026-11-18 Images module keeps its old constructor
+
+- Type: decision
+- Phase: 04
+- What: `imagesres.New(cat)` stays; `NewModule(Deps)` serves catalog plus project images.
+- Why: Existing conventions and OpenAPI tests stay unchanged.
+- Cost of change: low
+
+## 2026-11-18 Volume disks join the disk rule through the cloud
+
+- Type: decision
+- Phase: 04
+- What: `servers.Deps.ExtraDisks` gets volume disks from `volumes.Disks` (wired in internal/cloud); volumes call the servers module's `CheckDisk`.
+- Why: servers cannot import volumes; wiring stays in the cloud.
+- Cost of change: low
+
+## 2026-11-18 VOL-04 tested without a guest rescan
+
+- Type: decision
+- Phase: 04
+- What: the e2e test waits for the new size without writing to the rescan file.
+- Why: The default images have the storvsc fix, so the test proves the promise unaided.
+- Cost of change: low
+
+## 2026-11-18 SRV-15 uses the ubuntu-22.04 live-server ISO
+
+- Type: decision
+- Phase: 04
+- What: the test boots that ISO; the indirect proof in the row is the fallback.
+- Why: Smallest Ubuntu ISO; SSH into the live session is unconfirmed.
+- Cost of change: low
