@@ -66,14 +66,14 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
   - Wave: 2 | Depends on: 01-02 | Review: alone
   - Requirements: API-02 | Tests: internal/api/auth_test.go
   - Size: ~400 lines in 5 files
-  - [ ] `task openapi`, `api/openapi.lock`, cache in the user cache folder; `internal/apitest`
+  - [ ] `task openapi`, `api/openapi.lock`, cache in the user cache folder (`internal/apitest` is written by the test writer)
   - [ ] `internal/api`: router, request log, token auth, JSON decoding, read-only guard, `Error`, `List`; `internal/resource` (Module, Registrar)
 
 - [ ] 01-05 Actions
   - Wave: 3 | Depends on: 01-04 | Review: alone
   - Requirements: - | Tests: (API-10 rows of /actions)
   - Size: ~300 lines in 3 files
-  - [ ] `internal/actions` manager and worker pool; `internal/resources/actions` (`GET /actions`, `/actions/{id}`)
+  - [ ] `internal/actions` manager and worker pool; `internal/resources/actions` (`GET /actions` with repeated `id` and `sort` as hcloud polls, `/actions/{id}`)
 
 - [ ] 01-06 Catalog and catalog resources
   - Wave: 3 | Depends on: 01-04 | Review: alone
