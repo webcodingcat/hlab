@@ -110,9 +110,6 @@ func removeImageFiles(imgs []imagesres.Record) {
 // enabled and no daily backup of the current UTC day gets one as action
 // create_image. A server with a running action waits for the next run.
 func (m *Module) backups(ctx context.Context) {
-	if m.acts == nil {
-		return
-	}
 	stor := m.d.Store
 	now := m.d.Clock.Now().UTC()
 	var due []Record

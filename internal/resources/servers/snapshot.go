@@ -256,7 +256,6 @@ func (m *Module) snapshot(ctx context.Context, stor *store.Store, id int64, img 
 	gb := float64(size) / (1 << 30)
 	var pruned []imagesres.Record
 	if err := stor.Tx(func(tx store.Tx) error {
-		pruned = nil
 		r, err := imagesres.Load(tx, img.Hlab.ProjectID, img.ID)
 		if err != nil {
 			return err
@@ -266,7 +265,7 @@ func (m *Module) snapshot(ctx context.Context, stor *store.Store, id int64, img 
 		if err := imagesres.Put(tx, r); err != nil {
 			return err
 		}
-		if r.Type != imagesres.TypeBackup || r.BoundTo == nil {
+		if r.Type != imagesres.TypeBackup {
 			return nil
 		}
 		backups, err := imagesres.Backups(tx, *r.BoundTo)
