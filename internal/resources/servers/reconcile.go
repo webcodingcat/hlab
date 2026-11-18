@@ -124,18 +124,8 @@ func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) err
 
 // createVM creates the VM with the server's disk, public adapter and seed.
 func (m *Module) createVM(ctx context.Context, name string, id int64, cores int, memoryMB int64, mac net.HardwareAddr, location string) error {
-	spec := platform.VMSpec{
-		Name:       name,
-		CPUs:       cores,
-		MemoryMB:   memoryMB,
-		Folder:     m.vmFolder(id),
-		StopAction: platform.StopSave,
-	}
-	if m.d.Settings.StopBehaviour == "shutdown" {
-		spec.StopAction = platform.StopShutdown
-	}
 	p := m.d.Platform
-	if err := p.CreateVM(ctx, spec); err != nil {
+	if err := p.CreateVM(ctx, m.vmSpec(name, id, cores, memoryMB)); err != nil {
 		return err
 	}
 	if err := p.AttachDisk(ctx, name, m.diskPath(id), 0); err != nil {
@@ -148,6 +138,21 @@ func (m *Module) createVM(ctx context.Context, name string, id int64, cores int,
 		return err
 	}
 	return p.SetBootOrder(ctx, name, []platform.BootDevice{{Kind: "disk", Slot: 0}})
+}
+
+// vmSpec is the VM specification of server id with cores and memoryMB.
+func (m *Module) vmSpec(name string, id int64, cores int, memoryMB int64) platform.VMSpec {
+	spec := platform.VMSpec{
+		Name:       name,
+		CPUs:       cores,
+		MemoryMB:   memoryMB,
+		Folder:     m.vmFolder(id),
+		StopAction: platform.StopSave,
+	}
+	if m.d.Settings.StopBehaviour == "shutdown" {
+		spec.StopAction = platform.StopShutdown
+	}
+	return spec
 }
 
 // deleteMachine turns the VM off, removes it with its disk, seed and
