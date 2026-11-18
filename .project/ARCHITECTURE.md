@@ -117,7 +117,10 @@ Inside `hlabd` (Go packages under `internal/`):
       Deleter
       Reconcile(ctx context.Context, id int64) error   // make reality match state
   }
-  // phase 02: servers implement only Deleter; phase 03 adds Reconcile.
+  type Scheduled interface {            // modules with time-driven jobs (status watch, sampling)
+      Jobs() []scheduler.Job
+  }
+  // servers implement Reconciler and Scheduled (phase 03).
   type NetContributor interface {       // modules contributing to the agent document
       Contribute(tx store.Tx, doc *agentapi.Config) error
   }
@@ -328,7 +331,11 @@ Inside `hlabd` (Go packages under `internal/`):
 - Purpose: time-driven work while the cloud runs: daily backups (one per
   server per day, 7 kept), managed certificate renewal (30 days before
   expiry), LB metrics sampling, server metrics sampling.
-- Interface: internal; uses a clock interface so tests use a fake clock.
+- Interface: `scheduler.Clock` (`RealClock` in production, a fake in
+  tests), `scheduler.Job{Name; Every; Run}` and `scheduler.Run`; the cloud
+  runs the `Jobs()` of every module implementing `resource.Scheduled` after
+  the API is up and cancels them first at stop. A job first runs one
+  interval after start; runs of one job never overlap.
 - Depends on: actions, store.
 
 #### ca
