@@ -307,7 +307,7 @@ func (c *Cloud) modules() []resource.Module {
 		datacenters.New(),
 		servertypes.New(c.cat),
 		pricing.New(c.cat),
-		imagesres.New(c.cat),
+		imagesres.NewModule(imagesres.Deps{Catalog: c.cat, DataFolder: c.set.Storage.DataFolder}),
 		sshkeys.New(),
 		placementgroups.New(),
 		servers.New(servers.Deps{
@@ -315,7 +315,7 @@ func (c *Cloud) modules() []resource.Module {
 			PublicRange: c.set.Network.PublicRange,
 			Store:       c.st,
 			Platform:    c.plat,
-			Images:      c.images,
+			Images:      serverImages{c.images},
 			PushAgent:   c.PushAgent,
 			AgentStatus: func(ctx context.Context) (agentapi.Status, error) { return c.agent.Status(ctx) },
 			Metrics:     metrics.NewStore(metricsRetention),
@@ -328,6 +328,15 @@ func (c *Cloud) modules() []resource.Module {
 			},
 		}),
 	}
+}
+
+// serverImages is the image store as the servers module needs it; the
+// rescue base is not prepared yet.
+type serverImages struct{ *images.Store }
+
+// EnsureRescue fails: no rescue base exists yet.
+func (serverImages) EnsureRescue(context.Context) (string, error) {
+	return "", errors.New("the rescue base is not available yet")
 }
 
 // PushAgent rebuilds the full agent document from the store and pushes it.

@@ -244,7 +244,8 @@ func (m *Module) update(w http.ResponseWriter, req *http.Request) {
 	api.JSON(w, http.StatusOK, map[string]any{"image": r.Image})
 }
 
-// delete removes a project image without delete protection and its disk.
+// delete removes a project image without delete protection and its disk;
+// an image still being created is locked.
 func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 	id, ok := api.PathID(w, req)
 	if !ok {
@@ -259,6 +260,11 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 		}
 		if r.Protection.Delete {
 			return actions.ErrProtected
+		}
+		// create_image is still writing the disk; its failure path
+		// removes the image.
+		if r.Status == StatusCreating {
+			return actions.ErrLocked
 		}
 		return Remove(tx, r)
 	})

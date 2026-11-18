@@ -22,9 +22,12 @@ var (
 	guestNameservers = []netip.Addr{netip.MustParseAddr("185.12.64.1"), netip.MustParseAddr("185.12.64.2")}
 )
 
-func (m *Module) vmName(id int64) string {
-	return fmt.Sprintf("%s-server-%d", m.d.Settings.VMPrefix, id)
+// VMName is the VM name of server id under the profile tag prefix.
+func VMName(prefix string, id int64) string {
+	return fmt.Sprintf("%s-server-%d", prefix, id)
 }
+
+func (m *Module) vmName(id int64) string { return VMName(m.d.Settings.VMPrefix, id) }
 
 func (m *Module) diskPath(id int64) string {
 	return filepath.Join(m.d.Settings.DataFolder, "disks", fmt.Sprintf("server-%d.vhdx", id))
@@ -71,7 +74,7 @@ func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) err
 
 	disk := m.diskPath(id)
 	if _, err := os.Stat(disk); errors.Is(err, os.ErrNotExist) {
-		base, err := m.d.Images.Ensure(ctx, rec.Hlab.Image)
+		base, err := m.baseDisk(ctx, stor, rec)
 		if err != nil {
 			return err
 		}

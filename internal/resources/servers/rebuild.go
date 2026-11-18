@@ -13,8 +13,8 @@ import (
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
-// rebuild replaces the server's disk with a new one from a system image and
-// keeps ID, MAC and addresses. Without user_data in the body the server's
+// rebuild replaces the server's disk with a new one from a system image or
+// a project image (snapshot, backup) and keeps ID, MAC and addresses. Without user_data in the body the server's
 // previous user_data is used again. A server without SSH keys gets a new
 // root password, returned once.
 func (m *Module) rebuild(w http.ResponseWriter, req *http.Request) {
@@ -46,10 +46,20 @@ func (m *Module) rebuild(w http.ResponseWriter, req *http.Request) {
 		api.Fail(w, actions.ErrProtected)
 		return
 	}
-	ref := refString(body.Image)
-	img, ok := m.image(ref)
-	if !ok || img.Type != "system" {
-		api.Fail(w, &api.FieldError{Field: "image", Message: "system image " + ref + " not found"})
+	typ, ok := m.d.Catalog.ServerType(rec.Hlab.ServerType)
+	if !ok {
+		api.ServerError(w, errors.New("server type "+rec.Hlab.ServerType+" not in the catalog"))
+		return
+	}
+	var img source
+	if err := stor.Tx(func(tx store.Tx) error {
+		var err error
+		if img, err = m.findImage(tx, p.ID, refString(body.Image), true); err != nil {
+			return err
+		}
+		return img.fits(typ.Disk, "image")
+	}); err != nil {
+		api.Fail(w, err)
 		return
 	}
 	// The new disk replaces the old one: the server's disks can grow by
@@ -85,8 +95,9 @@ func (m *Module) rebuild(w http.ResponseWriter, req *http.Request) {
 			return err
 		}
 		r.Status = StatusRebuilding
-		r.Image = img.Raw
-		r.Hlab.Image = img.Name
+		r.Image = img.raw
+		r.Hlab.Image = img.name
+		r.Hlab.ImageID = img.imageID
 		if body.UserData != nil {
 			r.Hlab.UserData = *body.UserData
 		}
@@ -100,7 +111,7 @@ func (m *Module) rebuild(w http.ResponseWriter, req *http.Request) {
 
 	acts.Run(action.ID, func(ctx context.Context, progress func(int)) error {
 		progress(10)
-		if err := m.rebuildMachine(ctx, stor, id, img.Name, check); err != nil {
+		if err := m.rebuildMachine(ctx, stor, id, check); err != nil {
 			// The status follows what the VM does now.
 			m.settle(ctx, stor, id)
 			return err
@@ -116,11 +127,19 @@ func (m *Module) rebuild(w http.ResponseWriter, req *http.Request) {
 // its drives, and the new files inherit the data folder's access for VMs.
 // The image is fetched before the old disk goes, so a failed download
 // leaves the server as it was.
-func (m *Module) rebuildMachine(ctx context.Context, stor *store.Store, id int64, image string, check func(context.Context) error) error {
+func (m *Module) rebuildMachine(ctx context.Context, stor *store.Store, id int64, check func(context.Context) error) error {
 	if err := check(ctx); err != nil {
 		return err
 	}
-	if _, err := m.d.Images.Ensure(ctx, image); err != nil {
+	var rec Record
+	if err := stor.Tx(func(tx store.Tx) error {
+		var err error
+		rec, err = Load(tx, id)
+		return err
+	}); err != nil {
+		return err
+	}
+	if _, err := m.baseDisk(ctx, stor, rec); err != nil {
 		return err
 	}
 	p, name := m.d.Platform, m.vmName(id)
