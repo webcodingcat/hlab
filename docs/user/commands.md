@@ -1,6 +1,7 @@
 # Command reference
 
-`hlab` manages the local cloud: start and stop, projects and API tokens.
+`hlab` manages the local cloud: start and stop, projects, API tokens and
+the server type catalog.
 In a working copy it is `bin\hlab.exe`; the examples write `hlab`.
 
 `hlab cloud start`, `stop` and `status` work at any time. All other
@@ -85,12 +86,16 @@ demo                 0          2026-11-18 12:56:55
 
 ### hlab project delete
 
-Deletes a project and its tokens. A project that still has resources
-(servers, SSH keys) cannot be deleted yet; delete them first.
+Deletes a project with everything in it: it revokes the project's tokens
+at once, waits until running actions of the project (a server creation,
+for example) have finished, then deletes its servers with their VMs and
+disks (protected servers too), SSH keys and placement groups. The command
+returns when all is gone, which takes a while for many servers. If a
+resource cannot be deleted, the command fails with
+`hlab: deleting project <name> failed: <reason>`; the project stays with
+what is left in it but without tokens, and you can run the command again.
 
 ```
-> hlab project delete demo
-hlab: project has resources; deleting resources comes in a later version
 > hlab project delete demo
 project demo deleted
 ```
@@ -158,6 +163,13 @@ server type catalog updated: 14 server types
 > $env:HZ_TOKEN = "<your Hetzner token>"
 > hlab catalog update --hetzner-token-env HZ_TOKEN
 server type catalog updated: 14 server types
+```
+
+Without a terminal and without the flag:
+
+```
+> hlab catalog update
+hlab: no terminal to ask for the Hetzner token; pass it in an environment variable named with --hetzner-token-env
 ```
 
 ## Other

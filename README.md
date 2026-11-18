@@ -8,7 +8,7 @@ Windows and from WSL2.
 
 The project is in development; there is no release and no installer yet.
 You run hlab from a working copy as described below. The current version
-covers projects, tokens, SSH keys and servers; see
+covers projects, tokens, SSH keys, servers and placement groups; see
 [What does not work yet](#what-does-not-work-yet).
 
 ## Prerequisites and setup
@@ -102,24 +102,82 @@ takes longer; later servers reuse the cached copy. `server create` returns
 when the VM runs; a fresh server needs about a minute more until
 cloud-init has finished and SSH accepts the key.
 
-Clean up with `hcloud server delete web1`, `hcloud ssh-key delete demo`,
-`bin\hlab.exe project delete demo` and `bin\hlab.exe cloud stop`.
+Clean up with `bin\hlab.exe project delete demo`, which deletes the
+server and the SSH key with the project, and `bin\hlab.exe cloud stop`.
 
 All `hlab` commands are in the [command reference](docs/user/commands.md),
 the settings in the [configuration reference](docs/user/configuration.md),
 and the differences from the real API in
 [Known deviations](docs/user/deviations.md).
 
+## OpenTofu and Ansible
+
+The OpenTofu provider and the Ansible collection read the same two
+variables as hcloud, so the provider block and the module calls stay as
+they are for the real cloud. For OpenTofu on Windows:
+
+```powershell
+$env:HCLOUD_ENDPOINT = "http://api.hetzner.internal/v1"
+$env:HCLOUD_TOKEN = "<the token>"
+```
+
+```hcl
+terraform {
+  required_providers {
+    hcloud = {
+      source  = "hetznercloud/hcloud"
+      version = "1.70.2"
+    }
+  }
+}
+
+provider "hcloud" {}
+```
+
+For Ansible in WSL2 (see [WSL2](#wsl2)), set them in the shell that runs
+`ansible-playbook`:
+
+```bash
+export HCLOUD_ENDPOINT=http://api.hetzner.internal/v1
+export HCLOUD_TOKEN=<the token>
+```
+
+When ansible-core and hcloud-python are installed with `uv` into their own
+environment, set `ansible_python_interpreter: "{{ ansible_playbook_python }}"`
+in plays for `localhost`, so the modules find hcloud-python:
+
+```yaml
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  tasks:
+    - hetzner.hcloud.server_info:
+      register: servers
+```
+
 ## WSL2
 
-From a WSL2 distribution in NAT mode with `dnsTunneling` on (the WSL
-defaults), `api.hetzner.internal` and the server addresses work as on
-Windows, so hcloud in WSL2 can use the same endpoint and token. OpenTofu
-and Ansible are not yet tested with hlab; they come with the next version.
-hlab enables IPv4 forwarding for the WSL adapter when the cloud
-starts and restores the previous setting when it stops. It does not yet
-notice when WSL recreates its adapter (after `wsl --shutdown`); stop and
-start the cloud again in that case.
+hcloud, OpenTofu and Ansible in a WSL2 distribution reach
+`api.hetzner.internal` and the servers' addresses as on Windows, with the
+same endpoint and token. This needs WSL2 in NAT networking mode with
+`dnsTunneling` on, which are the WSL defaults. In
+`%UserProfile%\.wslconfig`, section `[wsl2]`, leave `networkingMode` unset
+or set it to `nat`, and leave `dnsTunneling` unset or set it to `true`.
+
+At every `hlab cloud start`, hlab reads the `.wslconfig` of the user
+logged on at the console. When it finds `networkingMode` set to
+`mirrored`, `virtioproxy`, `bridged` or `none`, or `dnsTunneling=false`,
+the cloud starts anyway and `hlab cloud status` shows a `problem:` line
+saying what to change. Change `.wslconfig`, run `wsl --shutdown`, and stop
+and start the cloud. hlab only reads the file; it does not notice when WSL
+falls back to another mode on its own.
+
+hlab enables IPv4 forwarding for the WSL adapter when the cloud starts and
+restores the previous setting when it stops. It does not yet notice when
+WSL recreates its adapter (after `wsl --shutdown`); stop and start the
+cloud again in that case.
 
 ## The release and the development service
 
@@ -146,14 +204,13 @@ Manager if you want them gone.
 
 ## What does not work yet
 
-- The API offers actions, locations, server types, images, SSH keys and
-  servers (create, list, get, delete). Everything else, for example server
-  power actions, networks, firewalls, volumes, floating IPs and load
-  balancers, answers `not_found`.
-- Lists have no pagination and only the filters listed in
+- The API offers actions, locations, server types, pricing, images, SSH
+  keys, servers and placement groups; the server actions are
+  `change_protection`, `add_to_placement_group` and
+  `remove_from_placement_group`. Everything else, for example server power
+  actions, networks, firewalls, volumes, floating IPs and load balancers,
+  answers `not_found`. The details are in
   [Known deviations](docs/user/deviations.md).
-- A project can be deleted only when it has no resources left.
 - `hlab cloud stop` stops the appliance and the host networking, but does
   not save or shut down the server VMs; they stay as they are in Hyper-V.
-- There is no tray program and no installer; OpenTofu and Ansible are not
-  covered by the tests yet.
+- There is no tray program and no installer.
