@@ -36,6 +36,7 @@ func NewMetadata() *Metadata {
 	mux.HandleFunc("GET /hetzner/v1/userdata", m.serve(m.getUserData))
 	mux.HandleFunc("GET /hlab/v1/password-reset", m.serve(m.getPasswordReset))
 	mux.HandleFunc("POST /hlab/v1/password-reset/{id}/done", m.serve(m.postPasswordResetDone))
+	mux.HandleFunc("GET /hlab/v1/volumes", m.serve(m.getVolumes))
 	m.mux = mux
 	return m
 }
@@ -159,6 +160,17 @@ func (m *Metadata) getPasswordReset(w http.ResponseWriter, _ *http.Request, s ag
 		ID          int64  `json:"id"`
 		SHA512Crypt string `json:"sha512_crypt"`
 	}{s.PasswordReset.ID, s.PasswordReset.SHA512Crypt})
+}
+
+// getVolumes answers the asking server's attached volumes with automount
+// as {"volumes":[<id>,...]}, sorted, [] when none; the guest's volume hook
+// mounts only these.
+func (m *Metadata) getVolumes(w http.ResponseWriter, _ *http.Request, s agentapi.Metadata) {
+	ids := append([]int64{}, s.Volumes...)
+	slices.Sort(ids)
+	writeJSON(w, struct {
+		Volumes []int64 `json:"volumes"`
+	}{ids})
 }
 
 // postPasswordResetDone accepts the confirmation only for the reset pending
