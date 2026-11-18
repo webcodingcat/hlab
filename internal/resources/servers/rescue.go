@@ -185,6 +185,15 @@ func (m *Module) startRescue(ctx context.Context, stor *store.Store, id int64, k
 // reboot or reset while rescue is enabled boots the rescue system and ends
 // rescue; one without rescue removes a rescue disk left from before.
 func (m *Module) bootPower(ctx context.Context, stor *store.Store, id int64, op platform.PowerOp) error {
+	if op == platform.PowerReboot {
+		rec, err := m.load(stor, id)
+		if err != nil {
+			return err
+		}
+		if res := rec.Hlab.Rescue; res != nil && !res.Enabled && res.Booted {
+			return m.rebootFromRescue(ctx, stor, id)
+		}
+	}
 	if err := m.d.Platform.Power(ctx, m.vmName(id), op); err != nil {
 		return err
 	}
@@ -211,6 +220,43 @@ func (m *Module) bootPower(ctx context.Context, stor *store.Store, id int64, op 
 		}
 	}
 	return m.endRescue(ctx, stor, id, true)
+}
+
+// rescueOffTimeout bounds the wait for the guest of a rebooted rescue
+// system to turn the VM off.
+const rescueOffTimeout = 2 * time.Minute
+
+// rebootFromRescue reboots a server whose guest runs the rescue system from
+// the rescue disk. A guest reboot keeps that disk in use while the guest
+// shuts down, so it cannot be detached then: the guest is shut down, the
+// rescue disk removed once the VM is off and the VM started again.
+func (m *Module) rebootFromRescue(ctx context.Context, stor *store.Store, id int64) error {
+	p, name := m.d.Platform, m.vmName(id)
+	if err := p.Power(ctx, name, platform.PowerShutdown); err != nil {
+		return err
+	}
+	deadline := m.d.Clock.Now().Add(rescueOffTimeout)
+	for {
+		st, err := p.State(ctx, name)
+		if err != nil {
+			return err
+		}
+		if st == platform.StateOff {
+			break
+		}
+		if !m.d.Clock.Now().Before(deadline) {
+			return fmt.Errorf("vm %s did not turn off within %s", name, rescueOffTimeout)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-m.d.Clock.After(time.Second):
+		}
+	}
+	if err := m.dropRescueDisk(ctx, stor, id); err != nil {
+		return err
+	}
+	return p.Power(ctx, name, platform.PowerStart)
 }
 
 // watchRescue disables a rescue unused for 60 minutes and removes the
