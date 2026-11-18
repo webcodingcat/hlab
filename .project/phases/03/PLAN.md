@@ -138,13 +138,13 @@ func ServersDeps(t *testing.T, cat *catalog.Catalog, p platform.Platform) server
 
 ## Plans
 
-- [ ] 03-01 Fake platform for unit tests
+- [x] 03-01 Fake platform for unit tests
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: - (base of SRV-18, SRV-20 unit rows) | Tests: -
   - Reads: ARCHITECTURE "platform (interface) and platform/hyperv"
   - Size: ~220 lines in 1 file
   - Adjusts: -
-  - [ ] `platformtest.Fake` implementing every `platform.Platform` method in memory with the power semantics, call log, `FailNext`, `Block`, `HoldShutdown`, `SetState`, `SetSample`, `SetResources` (internal/platform/platformtest/fake.go)
+  - [x] `platformtest.Fake` implementing every `platform.Platform` method in memory with the power semantics, call log, `FailNext`, `Block`, `HoldShutdown`, `SetState`, `SetSample`, `SetResources` (internal/platform/platformtest/fake.go)
 
 - [ ] 03-02 SHA-512 crypt
   - Wave: 1 | Depends on: - | Review: alone
