@@ -121,8 +121,11 @@ Inside `hlabd` (Go packages under `internal/`):
 
 - Purpose: the persistent state, one SQLite file.
 - Interface: `store.Open(path) (*Store, error)`; `Store.Tx(func(tx Tx) error)`;
-  generic typed access `store.Get[T]`, `store.List[T]`, `store.Put[T]`,
-  `store.Delete` over the schema below; `store.NextID(kind)`.
+  generic typed access `store.Get[T](tx, kind, projectID, id)`,
+  `store.List[T](tx, kind, projectID)`, `store.Put[T](tx, Meta, doc)`,
+  `store.Delete(tx, kind, projectID, id)` (projectID 0 = no project),
+  `store.ListAll[T](tx, kind)` for hlabd internals only, `store.NextID(tx, kind)`,
+  kv, projects, tokens and actions access.
 - Schema (version 1, see "Data schema").
 - Depends on: nothing.
 
@@ -222,6 +225,7 @@ Inside `hlabd` (Go packages under `internal/`):
       Up(ctx, cfg Config) error             // adapter IP, route, forwarding, NAT, base NRPT rules
       SetZones(ctx, zones []string) error   // exactly one NRPT rule per zone, idempotent
       Down(ctx) error                        // removes everything Up and SetZones added
+      DNSServers(ctx) ([]netip.Addr, error) // host DNS servers for the agent's Upstream
       WatchWSL(ctx, onChange func(WSLInfo)) // re-applies forwarding when WSL restarts
       TrustCA(ctx, pem []byte, on bool) error // Windows store and WSL2 distros
   }
@@ -249,7 +253,7 @@ Inside `hlabd` (Go packages under `internal/`):
   `<data folder root>\hostnet-restore.json`; `Up`, `Down` and
   `hlabd uninstall-cleanup` first restore what that file records and then
   delete it, so a crash leaves nothing changed after the next start.
-  `Up` also returns the host's DNS servers (those of adapters with a
+  `DNSServers` returns the host's DNS servers (those of adapters with a
   default route, without the hlab, WSL and loopback adapters) for the agent
   document.
 - Depends on: Windows networking (see SPEC.md).
@@ -259,8 +263,8 @@ Inside `hlabd` (Go packages under `internal/`):
 - Purpose: build the agent document and push it.
 - Interface: `agentclient.Push(ctx, cfg agentapi.Config) error` (PUT, full
   document, monotonically increasing `generation`), `Status(ctx)` (applied
-  generation, LB target health, LB metrics), `Job(ctx, job agentapi.Job)`
-  for worker jobs. Every state change that touches the network triggers a
+  generation, LB target health, LB metrics), `WaitReady(ctx)`,
+  `Job(ctx, job agentapi.Job)` for worker jobs (from the phase that needs them). Every state change that touches the network triggers a
   rebuild of the full document from the store and a push; the agent is
   stateless across reboots.
 - Depends on: agentapi, store, resource modules (`NetContributor`).
@@ -271,7 +275,8 @@ Inside `hlabd` (Go packages under `internal/`):
 - Interface: `images.Ensure(ctx, imageID) (basePath string, err error)`
   downloads on the host, verifies the checksum, converts once (qcow2 via
   `go-qcow2reader` or raw, to a fixed VHD by appending the footer, then to
-  a dynamic VHDX through the platform) and caches; `images.EnsureISO(ctx,
+  a dynamic VHDX through a `Convert` callback, on Hyper-V
+  `hyperv.ConvertToDynamic`, outside the `Platform` interface) and caches; `images.EnsureISO(ctx,
   isoID)`; `images.EnsureRescue(ctx)`. Snapshots, backups and system
   images live as VHDX files in the data folder. The same pipeline creates
   the appliance disk from the Debian 13 `generic` image.
@@ -282,8 +287,10 @@ Inside `hlabd` (Go packages under `internal/`):
 - Purpose: per-server NoCloud seed ISO (`meta-data`, `user-data`,
   `vendor-data`, `network-config` v2) written in Go (`go-diskfs`, ISO 9660
   with Rock Ridge, volume label `cidata`).
-- Interface: `cidata.Build(server, keys, networks, rootPassword) ([]byte,
-  error)`. `network-config`: public adapter `/32` with on-link default route
+- Interface: `cidata.Build(Seed) ([]byte, error)` and `cidata.BuildFile(Seed,
+  path)`; `Seed` carries instance ID, hostname, SSH keys, user-data,
+  vendor-data, interfaces (MAC, addresses, gateway, routes, nameservers)
+  and extra files (the appliance's agent binary and secret). `network-config`: public adapter `/32` with on-link default route
   via `172.31.1.1`, nameservers `185.12.64.1` and `185.12.64.2`; one adapter
   per private network with its `/32` and a route to the network's range via
   the network gateway, like Hetzner. `vendor-data` installs the guest hooks
@@ -357,7 +364,7 @@ Inside `hlabd` (Go packages under `internal/`):
   Exit code 0 on success, 1 on error, 2 on usage error. `cloud start|stop`
   use the service controller (see "System integration"); all other commands
   use the management API and fail with "the cloud is not running" while it
-  is stopped, except `logs`, which then reads the log file.
+  is stopped, except `logs`, which then reads the log file, and `version`.
 - `catalog update`: the token comes from the environment variable named by
   `--hetzner-token-env`, else from a hidden prompt on a terminal; with
   neither, the command fails with exit code 2 and says how to pass it. It
@@ -670,8 +677,9 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 
 - `doc` holds the resource in Hetzner's API shape plus an `_hlab` object for
   internal fields (VM name, disk paths, VLAN, MACs). IDs are global per
-  kind across projects, like Hetzner. Catalog kinds (locations, server
-  types, images of type system, ISOs) have `project_id` NULL.
+  kind across projects, like Hetzner. Catalogs (locations, server
+  types, system images, ISOs) are not stored here; hlabd serves them from
+  the catalog files in memory.
 - An incompatible `user_version` (newer than the binary, or older without a
   migration) leads to the warning of LIFE-08; until a 1.0 the user may
   discard the state.
@@ -688,7 +696,7 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 | `%ProgramData%\hlab\state.db` | SQLite, see "Data schema" | hlabd |
 | `%ProgramData%\hlab\logs\hlabd.log` | JSON lines (`time`, `level`, `msg`, fields), 10 MB x 5 rotated | hlabd |
 | `%ProgramData%\hlab\ca\` | `ca.pem`, `ca.key` (SYSTEM only) | hlabd |
-| `<data folder>\{disks,volumes,images,isos,cache,appliance}\` | VHDX, ISO | hlabd |
+| `<data folder>\{disks,volumes,images,isos,cache,appliance,vms}\` | VHDX, server seed ISOs (in `disks`), VM configuration folders (in `vms`) | hlabd |
 
 Settings (`settings.toml`), all optional with defaults:
 
