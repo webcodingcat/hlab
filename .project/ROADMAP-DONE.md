@@ -6,6 +6,22 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x] 03 Server lifecycle: all power actions, rebuild, change type, root
+      password, metadata, resource limits, metrics.
+      Requirements: SRV-02, SRV-07, SRV-08, SRV-09, SRV-10, SRV-18, SRV-20,
+      SRV-21, META-01.
+      Depends on: 02.
+      First plan: the servers module implements `resource.Reconciler` and
+      replaces `servers.Deps.Machines` and `internal/cloud/servers.go`
+      (decisions/resource-reconciler.md); SRV-01 and SRV-16 run again
+      end-to-end after it.
+      Success criteria:
+      1. hcloud power actions change the VM visibly (SSH drops, comes back).
+      2. A rebuilt server keeps its IP and boots the new image.
+      3. `hcloud server reset-password` gives a password that logs in.
+      4. A server type larger than the host's free RAM returns
+         `resource_unavailable`.
+
 - [x] 02 API conventions, catalog and the three clients: shared API behaviour,
       projects and tokens complete, SSH keys, placement groups, pricing,
       server type catalog, WSL2, OpenTofu and Ansible in the harness.

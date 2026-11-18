@@ -271,3 +271,9 @@ func ServersDeps(t *testing.T, cat *catalog.Catalog, p platform.Platform) server
   - Adjusts: -
   - [x] docs/user/deviations.md: reset_password through the hlab guest hook (not qemu-guest-agent; servers not created from hlab images lack it; 409 `conflict` when not running), metrics kept 24 h in memory at 10 s and lost at cloud stop, disk.0 sums the VM's disks, shutdown reports only the sent request, root password not expired, reboot fallback if 03-03 chose it, metadata service without EC2 routes and with `public-keys`/`userdata` in cloud-init's shape
   - [x] README.md server section (power actions, rebuild, change type, root password, metadata); docs/dev/components.md (scheduler, metrics, platformtest)
+
+## Close
+
+- Unit suite and lint in full: green on 05ebc26 and again on bde8901 after the doc fix.
+- End-to-end: `task e2e` (all tests, no filter, because the phase changed the shared harness helper `env.deleteServer` every test uses): green on 05ebc26; the fix after it touched only documentation.
+- No manual requirements in this phase.

@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 03 Server lifecycle
+- Phase: 04 Images, backups, rescue, ISOs and volumes
 - Base branch: main
-- Last done: phase 02 API conventions, catalog and the three clients merged into main (2026-11-18); the data folder DACL now admits Hyper-V VMs (dev-setup rerun done)
-- Next: /wcc:phase in a new session (phase 03; its first plan is the Reconciler refactor, Q1)
+- Last done: phase 03 Server lifecycle merged into main (2026-11-18): power actions, rebuild, change type, root password and reset, metadata service, resource limits, metrics; also fixed debian-12 boot (COM1 pipe served by hlabd) and first-boot sync
+- Next: /wcc:phase in a new session (phase 04)
 
 ## Open manual checks
 

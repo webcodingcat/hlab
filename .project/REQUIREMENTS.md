@@ -279,15 +279,15 @@ What the target vision in IDEA.md will need, not built yet.
 | CAT-07 | 01 | x |
 | CAT-08 | 04 | |
 | SRV-01 | 01 | x |
-| SRV-02 | 03 | |
+| SRV-02 | 03 | x |
 | SRV-03 | 01 | x |
 | SRV-04 | 01 | x |
 | SRV-05 | 01 | x |
 | SRV-06 | 01 | x |
-| SRV-07 | 03 | |
-| SRV-08 | 03 | |
-| SRV-09 | 03 | |
-| SRV-10 | 03 | |
+| SRV-07 | 03 | x |
+| SRV-08 | 03 | x |
+| SRV-09 | 03 | x |
+| SRV-10 | 03 | x |
 | SRV-11 | 04 | |
 | SRV-12 | 04 | |
 | SRV-13 | 04 | |
@@ -295,13 +295,13 @@ What the target vision in IDEA.md will need, not built yet.
 | SRV-15 | 04 | |
 | SRV-16 | 01 | x |
 | SRV-17 | 02 | x |
-| SRV-18 | 03 | |
+| SRV-18 | 03 | x |
 | SRV-19 | 01 | x |
-| SRV-20 | 03 | |
-| SRV-21 | 03 | |
+| SRV-20 | 03 | x |
+| SRV-21 | 03 | x |
 | SRV-22 | 02 | x |
 | KEY-01 | 02 | x |
-| META-01 | 03 | |
+| META-01 | 03 | x |
 | NET-01 | 05 | |
 | NET-02 | 05 | |
 | NET-03 | 05 | |
