@@ -10,19 +10,23 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/api"
+	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/metrics"
+	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/resource"
+	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
@@ -49,12 +53,7 @@ func New(t testing.TB, mods ...resource.Module) *Env {
 	t.Helper()
 	RequireDescription(t)
 
-	st, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-
+	st := takeStore(t)
 	mgr := actions.New(st)
 	router := api.New(api.Deps{Store: st, Actions: mgr})
 	for _, m := range mods {
@@ -193,56 +192,72 @@ func RandomToken() string {
 	return string(b)
 }
 
-// NoopMachines satisfies the servers module's machine dependency
-// (servers.Machines) without touching Hyper-V: every call succeeds.
-type NoopMachines struct{}
-
-// Create pretends to create and start the server's VM.
-func (NoopMachines) Create(context.Context, int64) error { return nil }
-
-// Delete pretends to delete the server's VM and disk.
-func (NoopMachines) Delete(context.Context, int64) error { return nil }
-
-// errBlockingFailed is what BlockingMachines.Create returns after Fail.
-var errBlockingFailed = errors.New("machine creation failed (test)")
-
-// BlockingMachines satisfies servers.Machines for lock and progress tests:
-// Create blocks until Release or Fail. Release lets every waiting and later
-// Create succeed; Fail makes them fail. Delete always succeeds.
-type BlockingMachines struct {
-	done   chan struct{}
-	once   sync.Once
-	failed atomic.Bool
+// ServersDeps returns the servers module's dependencies for tests: the
+// catalog cat, the public range 198.19.0.0/16, platform p, a temporary
+// data folder, images that resolve to a path in it without any file, and
+// an agent push that does nothing. Store is the store the next New(t)
+// uses, so the module's jobs and project deletion see the API's servers.
+func ServersDeps(t testing.TB, cat *catalog.Catalog, p platform.Platform) servers.Deps {
+	t.Helper()
+	dir := t.TempDir()
+	st := openStore(t)
+	nextStores.Lock()
+	nextStores.m[t] = st
+	nextStores.Unlock()
+	return servers.Deps{
+		Catalog:     cat,
+		PublicRange: netip.MustParsePrefix("198.19.0.0/16"),
+		Store:       st,
+		Platform:    p,
+		Images:      fakeImages{dir: filepath.Join(dir, "images")},
+		PushAgent:   func(context.Context) error { return nil },
+		Metrics:     metrics.NewStore(24 * time.Hour),
+		Settings: servers.Settings{
+			DataFolder:    dir,
+			StopBehaviour: "save",
+			VMPrefix:      "hlab-test",
+		},
+	}
 }
 
-// NewBlockingMachines returns machines whose Create blocks.
-func NewBlockingMachines() *BlockingMachines {
-	return &BlockingMachines{done: make(chan struct{})}
+// nextStores holds per test the store ServersDeps opened for the next New.
+var nextStores = struct {
+	sync.Mutex
+	m map[testing.TB]*store.Store
+}{m: map[testing.TB]*store.Store{}}
+
+// takeStore returns the store ServersDeps opened for t, or a new one.
+func takeStore(t testing.TB) *store.Store {
+	t.Helper()
+	nextStores.Lock()
+	st, ok := nextStores.m[t]
+	delete(nextStores.m, t)
+	nextStores.Unlock()
+	if ok {
+		return st
+	}
+	return openStore(t)
 }
 
-// Release lets every blocked and later Create succeed.
-func (b *BlockingMachines) Release() { b.once.Do(func() { close(b.done) }) }
-
-// Fail lets every blocked and later Create fail.
-func (b *BlockingMachines) Fail() {
-	b.once.Do(func() {
-		b.failed.Store(true)
-		close(b.done)
+// openStore opens a store in a temporary folder, closed when t ends.
+func openStore(t testing.TB) *store.Store {
+	t.Helper()
+	st, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() {
+		nextStores.Lock()
+		delete(nextStores.m, t)
+		nextStores.Unlock()
+		_ = st.Close()
 	})
+	return st
 }
 
-// Create blocks until Release or Fail, or until ctx ends.
-func (b *BlockingMachines) Create(ctx context.Context, _ int64) error {
-	select {
-	case <-b.done:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	if b.failed.Load() {
-		return errBlockingFailed
-	}
-	return nil
-}
+// fakeImages names a base disk per image without downloading anything.
+type fakeImages struct{ dir string }
 
-// Delete pretends to delete the server's VM and disk.
-func (*BlockingMachines) Delete(context.Context, int64) error { return nil }
+func (f fakeImages) Ensure(_ context.Context, name string) (string, error) {
+	return filepath.Join(f.dir, name+".vhdx"), nil
+}

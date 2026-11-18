@@ -80,7 +80,7 @@ func (m *Module) addToPlacementGroup(w http.ResponseWriter, req *http.Request) {
 	ref := refString(body.PlacementGroup)
 	m.groupAction(w, req, id, "add_to_placement_group", func(tx store.Tx, r Record) error {
 		if r.Status != StatusOff {
-			return &api.FieldError{Code: "server_not_stopped", Message: "the action requires a stopped server"}
+			return errNotStopped
 		}
 		g, err := placementgroups.Find(tx, r.Hlab.ProjectID, ref)
 		if errors.Is(err, store.ErrNotFound) {

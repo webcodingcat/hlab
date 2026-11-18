@@ -15,21 +15,7 @@
 
 - [x] 02 API conventions, catalog and the three clients (API-03, API-04, API-05, API-06, API-07, API-08, API-09, API-11, API-12, API-13, API-14, PROJ-03, PROJ-04, CAT-02, CAT-03, CAT-04, CAT-05, KEY-01, SRV-17, SRV-22, HOST-03, HOST-04) → phases/02/
 
-- [ ] 03 Server lifecycle: all power actions, rebuild, change type, root
-      password, metadata, resource limits, metrics.
-      Requirements: SRV-02, SRV-07, SRV-08, SRV-09, SRV-10, SRV-18, SRV-20,
-      SRV-21, META-01.
-      Depends on: 02.
-      First plan: the servers module implements `resource.Reconciler` and
-      replaces `servers.Deps.Machines` and `internal/cloud/servers.go`
-      (decisions/resource-reconciler.md); SRV-01 and SRV-16 run again
-      end-to-end after it.
-      Success criteria:
-      1. hcloud power actions change the VM visibly (SSH drops, comes back).
-      2. A rebuilt server keeps its IP and boots the new image.
-      3. `hcloud server reset-password` gives a password that logs in.
-      4. A server type larger than the host's free RAM returns
-         `resource_unavailable`.
+- [x] 03 Server lifecycle (SRV-02, SRV-07, SRV-08, SRV-09, SRV-10, SRV-18, SRV-20, SRV-21, META-01) → phases/03/
 
 - [ ] 04 Images, backups, rescue, ISOs and volumes.
       Requirements: SRV-11, SRV-12, SRV-13, SRV-14, SRV-15, CAT-08, VOL-01,

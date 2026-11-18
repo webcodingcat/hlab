@@ -1,6 +1,6 @@
 // Package servers serves Hetzner's servers of a project. Handlers write the
-// desired state and start an action; the VM work runs in the action
-// through Machines.
+// desired state and start an action; the VM work runs in the action on
+// the platform (resource.Reconciler).
 package servers
 
 import (
@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/actions"
@@ -22,10 +23,13 @@ import (
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/ipam"
+	"github.com/webcodingcat/hlab/internal/metrics"
+	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/placementgroups"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
+	"github.com/webcodingcat/hlab/internal/scheduler"
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
@@ -45,27 +49,46 @@ const (
 	StatusStarting     = "starting"
 	StatusRunning      = "running"
 	StatusOff          = "off"
+	StatusStopping     = "stopping"
 	StatusDeleting     = "deleting"
+	StatusRebuilding   = "rebuilding"
+	StatusMigrating    = "migrating"
 )
 
-// Machines creates and deletes the VM of a server. Both run inside an
-// action and read what they need from the store by the server ID.
-type Machines interface {
-	// Create creates the VM with its disk and seed and starts it when the
-	// server asks for it.
-	Create(ctx context.Context, id int64) error
-	// Delete removes the VM and its files; a missing VM is no error.
-	Delete(ctx context.Context, id int64) error
+// Images provides the base disk of an image by name (*images.Store).
+type Images interface {
+	Ensure(ctx context.Context, name string) (string, error)
+}
+
+// Settings are the settings the module reads.
+type Settings struct {
+	DataFolder    string
+	StopBehaviour string // "save" | "shutdown"
+	ReserveRAMMB  int64
+	ReserveDiskGB int64
+	VMPrefix      string // profile tag: "hlab" | "hlab-dev"
 }
 
 // Deps are what the module needs.
 type Deps struct {
 	Catalog     *catalog.Catalog
 	PublicRange netip.Prefix
-	Machines    Machines
-	// Store is what Delete works on outside a request (project deletion);
-	// the handlers use the store of the request.
-	Store *store.Store
+	// Store is what Reconcile and Delete work on outside a request
+	// (project deletion); the handlers use the store of the request.
+	Store    *store.Store
+	Platform platform.Platform
+	Images   Images
+	// PushAgent rebuilds and pushes the agent document.
+	PushAgent func(ctx context.Context) error
+	Settings  Settings
+	// AgentStatus reads the agent's status (reset_password).
+	AgentStatus func(ctx context.Context) (agentapi.Status, error)
+	// ResetTimeout bounds the wait for a password reset; 0 = 120 s.
+	ResetTimeout time.Duration
+	// Clock is the module's source of time; nil = scheduler.RealClock().
+	Clock scheduler.Clock
+	// Metrics keeps the samples of the servers' VMs.
+	Metrics *metrics.Store
 }
 
 // Server is a server in Hetzner's API shape.
@@ -137,6 +160,12 @@ type Internal struct {
 	SSHKeys          []string `json:"ssh_keys"`
 	UserData         string   `json:"user_data"`
 	StartAfterCreate bool     `json:"start_after_create"`
+	// RootHash is the SHA-512 crypt of the root password of a server
+	// created without SSH keys; the clear text is never stored.
+	RootHash string `json:"root_hash,omitempty"`
+	// PasswordReset is the pending root password reset of reset_password,
+	// served to the guest by the agent's metadata service.
+	PasswordReset *agentapi.PasswordReset `json:"password_reset,omitempty"`
 }
 
 // Record is the stored document of a server.
@@ -155,10 +184,22 @@ func (r Record) IPv4() netip.Addr {
 }
 
 // Module is the servers resource type.
-type Module struct{ d Deps }
+type Module struct {
+	d Deps
+
+	mu sync.Mutex
+	// changes counts the status changes actions made per server, so the
+	// status watch skips a server whose state it read before one.
+	changes map[int64]uint64
+}
 
 // New returns the module.
-func New(d Deps) *Module { return &Module{d: d} }
+func New(d Deps) *Module {
+	if d.Clock == nil {
+		d.Clock = scheduler.RealClock()
+	}
+	return &Module{d: d}
+}
 
 // Type implements resource.Module.
 func (m *Module) Type() string { return "servers" }
@@ -170,15 +211,33 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("GET /servers/{id}", http.HandlerFunc(m.get))
 	r.Handle("PUT /servers/{id}", http.HandlerFunc(m.update))
 	r.Handle("DELETE /servers/{id}", http.HandlerFunc(m.delete))
+	r.Handle("GET /servers/{id}/metrics", http.HandlerFunc(m.getMetrics))
 	r.Handle("POST /servers/{id}/actions/change_protection", http.HandlerFunc(m.changeProtection))
+	r.Handle("POST /servers/{id}/actions/poweron", http.HandlerFunc(m.poweron))
+	r.Handle("POST /servers/{id}/actions/poweroff", http.HandlerFunc(m.poweroff))
+	r.Handle("POST /servers/{id}/actions/shutdown", http.HandlerFunc(m.shutdown))
+	r.Handle("POST /servers/{id}/actions/reboot", http.HandlerFunc(m.reboot))
+	r.Handle("POST /servers/{id}/actions/reset", http.HandlerFunc(m.reset))
+	r.Handle("POST /servers/{id}/actions/rebuild", http.HandlerFunc(m.rebuild))
+	r.Handle("POST /servers/{id}/actions/change_type", http.HandlerFunc(m.changeType))
+	r.Handle("POST /servers/{id}/actions/reset_password", http.HandlerFunc(m.resetPassword))
 	r.Handle("POST /servers/{id}/actions/request_console", http.HandlerFunc(m.requestConsole))
 	r.Handle("POST /servers/{id}/actions/add_to_placement_group", http.HandlerFunc(m.addToPlacementGroup))
 	r.Handle("POST /servers/{id}/actions/remove_from_placement_group", http.HandlerFunc(m.removeFromPlacementGroup))
 	resactions.RoutesFor(r, "servers", refType)
 }
 
+// powerOn marks server id starting and starts its VM.
+func (m *Module) powerOn(ctx context.Context, stor *store.Store, id int64) error {
+	if err := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, StatusStarting) }); err != nil {
+		return err
+	}
+	return m.d.Platform.Power(ctx, m.vmName(id), platform.PowerStart)
+}
+
 // Contribute implements resource.NetContributor: every server not being
-// deleted, with its public IPv4 and MAC.
+// deleted, with its public IPv4 and MAC, and the metadata of each such
+// server with a public IPv4.
 func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 	recs, err := store.ListAll[Record](tx, Kind)
 	if err != nil {
@@ -188,14 +247,44 @@ func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 		if r.Status == StatusDeleting {
 			continue
 		}
+		ip := r.IPv4()
 		doc.Servers = append(doc.Servers, agentapi.Server{
 			ID:         r.ID,
 			Location:   r.Hlab.Location,
 			MAC:        r.Hlab.MAC,
-			PublicIPv4: r.IPv4(),
+			PublicIPv4: ip,
+		})
+		if !ip.IsValid() {
+			continue
+		}
+		loc, _ := m.d.Catalog.Location(r.Hlab.Location)
+		doc.Metadata = append(doc.Metadata, agentapi.Metadata{
+			IP:               ip,
+			ServerID:         r.ID,
+			Hostname:         r.Name,
+			Region:           loc.NetworkZone,
+			AvailabilityZone: availabilityZone(r.Hlab.Location),
+			PublicIPv4:       ip.String(),
+			PublicKeys:       r.Hlab.SSHKeys,
+			UserData:         r.Hlab.UserData,
+			PasswordReset:    r.Hlab.PasswordReset,
 		})
 	}
 	return nil
+}
+
+// datacenterNumbers are the numbers of Hetzner's datacenters per location
+// (fsn1-dc14 ...); the datacenter catalog itself left the API.
+var datacenterNumbers = map[string]int{"fsn1": 14, "nbg1": 3, "hel1": 2, "ash": 1, "hil": 1, "sin": 1}
+
+// availabilityZone is the metadata availability zone of a location,
+// Hetzner's datacenter name `<location>-dc<n>`; an unknown location gets 1.
+func availabilityZone(location string) string {
+	n, ok := datacenterNumbers[location]
+	if !ok {
+		n = 1
+	}
+	return location + "-dc" + strconv.Itoa(n)
 }
 
 // Load returns the server id of any project, or store.ErrNotFound.
@@ -355,11 +444,33 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		labels = map[string]string{}
 	}
 	start := body.StartAfterCreate == nil || *body.StartAfterCreate
+	stor := api.StoreFrom(req.Context())
+	// A server created without starting holds no RAM until poweron.
+	var ramMB int64
+	if start {
+		ramMB = int64(typ.Memory * 1024)
+	}
+	if err := m.checkResources(req.Context(), stor, typ.Cores, ramMB, int64(typ.Disk)<<30); err != nil {
+		api.Fail(w, err)
+		return
+	}
+
+	// Without SSH keys root gets a random password; only its hash is kept.
+	var rootPassword any
+	var rootHash string
+	if len(body.SSHKeys) == 0 {
+		pw, hash, err := newRootPassword()
+		if err != nil {
+			api.ServerError(w, err)
+			return
+		}
+		rootPassword, rootHash = pw, hash
+	}
 
 	var rec Record
 	var shown Server
 	var action *actions.Action
-	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
+	err := stor.Tx(func(tx store.Tx) error {
 		if err := checkName(tx, p.ID, body.Name, 0); err != nil {
 			return err
 		}
@@ -412,7 +523,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 				ID:      id,
 				Name:    body.Name,
 				Status:  StatusInitializing,
-				Created: time.Now().UTC().Truncate(time.Second),
+				Created: m.d.Clock.Now().UTC().Truncate(time.Second),
 				PublicNet: PublicNet{
 					IPv4:        &IPv4{ID: ipv4ID, IP: ip.String(), DNSPtr: ""},
 					IPv6:        &IPv6{ID: ipv6ID, IP: IPv6Net(id).String(), DNSPtr: []any{}},
@@ -437,6 +548,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 				SSHKeys:          keys,
 				UserData:         body.UserData,
 				StartAfterCreate: start,
+				RootHash:         rootHash,
 			},
 		}
 		if err := put(tx, rec); err != nil {
@@ -462,19 +574,25 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	stor := api.StoreFrom(req.Context())
 	id := rec.ID
 	acts.Run(action.ID, func(ctx context.Context, progress func(int)) error {
 		progress(10)
-		err := m.d.Machines.Create(ctx, id)
+		// The new server is stored now, so its disk counts as growth.
+		err := m.checkResources(ctx, stor, typ.Cores, ramMB, 0)
+		if err == nil {
+			err = m.reconcile(ctx, stor, id)
+		}
 		final := StatusOff
 		if err == nil && start {
-			final = StatusRunning
+			err = m.powerOn(ctx, stor, id)
+			if err == nil {
+				final = StatusRunning
+			}
 		}
 		if err == nil {
 			progress(90)
 		}
-		if serr := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, final) }); serr != nil && err == nil {
+		if serr := m.setStatus(stor, id, final); serr != nil && err == nil {
 			err = serr
 		}
 		return err
@@ -483,7 +601,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		"server":        shown,
 		"action":        action,
 		"next_actions":  []any{},
-		"root_password": nil,
+		"root_password": rootPassword,
 	})
 }
 
@@ -644,12 +762,13 @@ func (m *Module) remove(ctx context.Context, stor *store.Store, id int64) error 
 	if err != nil {
 		return err
 	}
-	if err := m.d.Machines.Delete(ctx, id); err != nil {
+	if err := m.deleteMachine(ctx, id); err != nil {
 		if serr := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, StatusOff) }); serr != nil {
 			err = errors.Join(err, serr)
 		}
 		return err
 	}
+	m.d.Metrics.Forget(id)
 	return stor.Tx(func(tx store.Tx) error {
 		r, err := Load(tx, id)
 		if err != nil {

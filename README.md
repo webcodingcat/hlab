@@ -110,6 +110,46 @@ the settings in the [configuration reference](docs/user/configuration.md),
 and the differences from the real API in
 [Known deviations](docs/user/deviations.md).
 
+## Managing servers
+
+The server actions of hcloud work on hlab's VMs:
+
+```
+> hcloud server shutdown web1
+> hcloud server poweron web1
+> hcloud server reboot web1
+> hcloud server poweroff web1
+> hcloud server change-type web1 cx33
+> hcloud server rebuild --image debian-13 web1
+> hcloud server reset-password web1
+> hcloud server metrics --type cpu web1
+```
+
+- `poweroff` and `reset` cut the power; `shutdown` and `reboot` ask the
+  guest.
+- `change-type` needs a stopped server and starts it again afterwards. It
+  grows the disk to the new type's size unless you pass `--keep-disk`;
+  with `--keep-disk` you can later change back to a smaller type.
+- `rebuild` replaces the disk with a fresh system image and keeps the ID
+  and the addresses, and the user data unless you pass new. A server
+  without SSH keys gets a new root password.
+- A server created without `--ssh-key` gets a root password, printed
+  once; root can log in with it over SSH. `reset-password` sets a new one
+  on a running server.
+- `metrics` shows CPU, disk and network; hlab keeps them for 24 hours
+  while the cloud runs.
+
+Inside a server, the metadata is at `http://169.254.169.254/hetzner/v1/metadata`,
+as at Hetzner:
+
+```
+root@web1:~# curl http://169.254.169.254/hetzner/v1/metadata/hostname
+```
+
+A cloud with too little free RAM or disk, beyond the reserve set in the
+[configuration](docs/user/configuration.md#settingstoml), refuses to
+create or start a server with `resource_unavailable`.
+
 ## OpenTofu and Ansible
 
 The OpenTofu provider and the Ansible collection read the same two
@@ -205,11 +245,12 @@ Manager if you want them gone.
 ## What does not work yet
 
 - The API offers actions, locations, server types, pricing, images, SSH
-  keys, servers and placement groups; the server actions are
+  keys, servers, server metrics and placement groups. The server actions
+  are the power actions, `rebuild`, `change_type`, `reset_password`,
   `change_protection`, `add_to_placement_group` and
-  `remove_from_placement_group`. Everything else, for example server power
-  actions, networks, firewalls, volumes, floating IPs and load balancers,
-  answers `not_found`. The details are in
+  `remove_from_placement_group`. Everything else, for example rescue
+  mode, snapshots, backups, ISOs, networks, firewalls, volumes, floating
+  IPs and load balancers, answers `not_found`. The details are in
   [Known deviations](docs/user/deviations.md).
 - `hlab cloud stop` stops the appliance and the host networking, but does
   not save or shut down the server VMs; they stay as they are in Hyper-V.

@@ -117,7 +117,10 @@ Inside `hlabd` (Go packages under `internal/`):
       Deleter
       Reconcile(ctx context.Context, id int64) error   // make reality match state
   }
-  // phase 02: servers implement only Deleter; phase 03 adds Reconcile.
+  type Scheduled interface {            // modules with time-driven jobs (status watch, sampling)
+      Jobs() []scheduler.Job
+  }
+  // servers implement Reconciler and Scheduled (phase 03).
   type NetContributor interface {       // modules contributing to the agent document
       Contribute(tx store.Tx, doc *agentapi.Config) error
   }
@@ -179,7 +182,7 @@ Inside `hlabd` (Go packages under `internal/`):
       CreateVM(ctx, spec VMSpec) error            // name "hlab-<kind>-<id>", Gen2, Secure Boot template from spec
       SetVM(ctx, name string, spec VMSpec) error  // cpu, ram (stopped only)
       DeleteVM(ctx, name string) error
-      Power(ctx, name string, op PowerOp) error   // Start, Stop(hard), Shutdown and Reboot (Shutdown integration service), Reset, Save
+      Power(ctx, name string, op PowerOp) error   // Start, Stop(hard), Shutdown and Reboot (Shutdown integration service; Reboot falls back to shutdown, wait for off, start), Reset, Save
       State(ctx, name string) (VMState, error)
       AttachNIC(ctx, vm string, nic NICSpec) error // MAC, segment (public PVLAN or private VLAN), MAC deny-list
       DetachNIC(ctx, vm, mac string) error
@@ -212,7 +215,7 @@ Inside `hlabd` (Go packages under `internal/`):
       DenyMACs []net.HardwareAddr // other members of the same private network
   }
   type BootDevice struct { Kind string; Slot int } // Kind "disk" (Slot = LUN) or "dvd" (Slot = 0|1)
-  type Sample struct { Time time.Time; CPUPercent float64; DiskReadBytes, DiskWriteBytes, NetRxBytes, NetTxBytes uint64 } // counters cumulative
+  type Sample struct { Time time.Time; CPUPercent float64; DiskReadBytes, DiskWriteBytes, DiskReadOps, DiskWriteOps, NetRxBytes, NetTxBytes, NetRxPackets, NetTxPackets uint64 } // counters cumulative; disks summed over the VM's hard disks; zero while the VM is not running
   type Resources struct { MemoryMB, FreeMemoryMB int64; LogicalCPUs int; FreeDiskBytes int64 }
   ```
 
@@ -328,8 +331,12 @@ Inside `hlabd` (Go packages under `internal/`):
 - Purpose: time-driven work while the cloud runs: daily backups (one per
   server per day, 7 kept), managed certificate renewal (30 days before
   expiry), LB metrics sampling, server metrics sampling.
-- Interface: internal; uses a clock interface so tests use a fake clock.
-- Depends on: actions, store.
+- Interface: `scheduler.Clock` (`RealClock` in production, a fake in
+  tests), `scheduler.Job{Name; Every; Run}` and `scheduler.Run`; the cloud
+  runs the `Jobs()` of every module implementing `resource.Scheduled` after
+  the API is up and cancels them first at stop. A job first runs one
+  interval after start; runs of one job never overlap.
+- Depends on: nothing (jobs bring their own dependencies).
 
 #### ca
 
@@ -555,7 +562,7 @@ locks a resource of type `project`.
       PrivateNetworks []MetadataNetwork
       PasswordReset *PasswordReset           // pending root password reset, or nil
   }
-  type MetadataNetwork struct { IP netip.Addr; AliasIPs []netip.Addr; MAC string; NetworkID int64; NetworkName string; Subnet netip.Prefix; Gateway netip.Addr }
+  type MetadataNetwork struct { IP netip.Addr; AliasIPs []netip.Addr; MAC string; NetworkID int64; NetworkName string; Subnet netip.Prefix; Gateway netip.Addr; InterfaceNum int; Network netip.Prefix } // InterfaceNum, Network written only when set
   type PasswordReset struct { ID int64; SHA512Crypt string } // crypt(3) hash, never the clear text
   type APIProxy struct { Listen netip.AddrPort; Backend netip.AddrPort }
 
@@ -569,6 +576,7 @@ locks a resource of type `project`.
       Generation int
       Targets    map[int64][]TargetHealth   // per load balancer
       LBMetrics  map[int64]LBCounters
+      PasswordResetsDone []int64          // reset IDs the guest hook confirmed
   }
   type TargetHealth struct { Key string; ListenPort int; Status string } // "healthy" | "unhealthy" | "unknown"
   type LBCounters struct { OpenConnections, ConnectionsTotal, RequestsTotal, BytesIn, BytesOut uint64 }
@@ -577,11 +585,15 @@ locks a resource of type `project`.
   Metadata service (agent, on `169.254.169.254:80`, answers by source
   address and segment): Hetzner's paths under `/hetzner/v1/metadata`
   (`/hostname`, `/instance-id`, `/public-ipv4`, `/private-networks`,
-  `/region`, `/availability-zone`, `/public-keys`, `/userdata`, and the full
-  YAML document at `/hetzner/v1/metadata`). hlab's own paths for the guest
+  `/region`, `/availability-zone`, `/public-keys`, and the full YAML
+  document at `/hetzner/v1/metadata`; user_data raw at
+  `/hetzner/v1/userdata`). The agent drops TCP to 169.254.169.254:80 from a
+  known guest MAC whose source address is not its own (`input` chain of
+  table `inet hlab`). hlab's own paths for the guest
   hook: `GET /hlab/v1/password-reset` returns `204` or `200
   {"id":n,"sha512_crypt":"$6$..."}`; `POST /hlab/v1/password-reset/{id}/done`
-  confirms, after which hlabd ends the action with `success` (no
+  confirms (accepted only from the server whose pending reset has that ID;
+  afterwards GET answers 204 for it), after which hlabd ends the action with `success` (no
   confirmation within 120 s: `error`, code `server_error`).
 - Depends on: nothing on the host; the Debian packages listed in SPEC.md.
 
@@ -596,6 +608,18 @@ locks a resource of type `project`.
   pending root password reset and applies it with `chpasswd`. Servers whose
   disks were not created by hlab (ISO installs) lack the hooks; listed as a
   deviation.
+- `vendor-data` is a multipart MIME document: a cloud-config part with
+  only `disable_root`, `ssh_pwauth` and `chpasswd`, and a
+  `text/x-shellscript` part (run once per instance) that writes the hooks,
+  their units and the `00-hlab-root.conf` sshd drop-in. User cloud-config
+  keys such as `runcmd` or `write_files` cannot replace the hooks.
+  The script ends with `sync`, so a hard poweroff right after the first
+  boot does not leave empty host keys or hook files.
+- Every VM has COM1 on `\\.\pipe\<vm>-com1` (Debian 12 panics without a
+  serial port). hlabd serves that pipe itself before every start, with the
+  SD `D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;S-1-5-83-0)`, drains it and
+  closes it on delete; a start fails if the pipe cannot be served, because
+  a pipe Hyper-V creates itself is readable by Everyone.
 - Volumes with `automount` are mounted by a `user-data` part merged by
   cloud-init at creation, or by the udev rule plus a systemd mount unit when
   attached later.

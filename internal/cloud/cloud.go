@@ -27,6 +27,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/hostnet"
 	hnwin "github.com/webcodingcat/hlab/internal/hostnet/windows"
 	"github.com/webcodingcat/hlab/internal/images"
+	"github.com/webcodingcat/hlab/internal/metrics"
 	"github.com/webcodingcat/hlab/internal/mgmt"
 	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/platform/hyperv"
@@ -41,6 +42,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/resources/servertypes"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
+	"github.com/webcodingcat/hlab/internal/scheduler"
 	"github.com/webcodingcat/hlab/internal/settings"
 	"github.com/webcodingcat/hlab/internal/store"
 	"github.com/webcodingcat/hlab/internal/sysint"
@@ -108,6 +110,8 @@ type Cloud struct {
 	applianceOn bool
 	apiSrv      *http.Server
 	mgmtSrv     *http.Server
+	// stopJobs cancels the scheduled jobs and waits until they returned.
+	stopJobs func()
 }
 
 // New returns a stopped cloud.
@@ -262,8 +266,36 @@ func (c *Cloud) start(ctx context.Context) error {
 		return err
 	}
 
-	return c.serveManagement(router)
+	if err := c.serveManagement(router); err != nil {
+		return err
+	}
+	c.startJobs(ctx)
+	return nil
 }
+
+// startJobs runs the jobs of every module implementing resource.Scheduled
+// until stopJobs is called.
+func (c *Cloud) startJobs(ctx context.Context) {
+	var jobs []scheduler.Job
+	for _, m := range c.mods {
+		if s, ok := m.(resource.Scheduled); ok {
+			jobs = append(jobs, s.Jobs()...)
+		}
+	}
+	jctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	done := make(chan struct{})
+	go func() {
+		scheduler.Run(jctx, scheduler.RealClock(), jobs)
+		close(done)
+	}()
+	c.stopJobs = func() {
+		cancel()
+		<-done
+	}
+}
+
+// metricsRetention is how long the samples of the servers' VMs are kept.
+const metricsRetention = 24 * time.Hour
 
 // modules are the resource modules of the Hetzner API. A new resource type
 // is one more entry here; a module implementing resource.NetContributor
@@ -281,8 +313,19 @@ func (c *Cloud) modules() []resource.Module {
 		servers.New(servers.Deps{
 			Catalog:     c.cat,
 			PublicRange: c.set.Network.PublicRange,
-			Machines:    machines{c},
 			Store:       c.st,
+			Platform:    c.plat,
+			Images:      c.images,
+			PushAgent:   c.PushAgent,
+			AgentStatus: func(ctx context.Context) (agentapi.Status, error) { return c.agent.Status(ctx) },
+			Metrics:     metrics.NewStore(metricsRetention),
+			Settings: servers.Settings{
+				DataFolder:    c.set.Storage.DataFolder,
+				StopBehaviour: c.set.Cloud.StopBehaviour,
+				ReserveRAMMB:  int64(c.set.Resources.ReserveRAMMB),
+				ReserveDiskGB: int64(c.set.Resources.ReserveDiskGB),
+				VMPrefix:      c.tag,
+			},
 		}),
 	}
 }
@@ -415,6 +458,10 @@ func (c *Cloud) Stop(ctx context.Context, reason sysint.StopReason) error {
 // returns the joined errors.
 func (c *Cloud) teardown(ctx context.Context, reason sysint.StopReason) error {
 	var errs []error
+	if c.stopJobs != nil {
+		c.stopJobs()
+		c.stopJobs = nil
+	}
 	for _, srv := range []*http.Server{c.mgmtSrv, c.apiSrv} {
 		if srv == nil {
 			continue

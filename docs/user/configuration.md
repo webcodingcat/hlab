@@ -38,8 +38,8 @@ log `%ProgramData%\hlab-dev\logs\hlabd.log`.
 | `[cloud]` `stop_behaviour` | `"save"` | `"save"` or `"shutdown"`: the automatic stop action Hyper-V applies to the appliance and the server VMs when Windows shuts down. `hlab cloud stop` does not use it yet. |
 | `[network]` `public_range` | `"198.19.0.0/16"` | IPv4 range of the public addresses. The first four addresses connect host and appliance; servers get addresses from the fifth on. The start is refused when the range collides with an address, route or NAT of the host. |
 | `[storage]` `data_folder` | `<data folder>\data` | Folder of the VM disks, seed ISOs, downloaded images and the appliance. |
-| `[resources]` `reserve_ram_mb` | `4096` | Accepted and checked (not negative); has no effect in this version. |
-| `[resources]` `reserve_disk_gb` | `50` | Accepted and checked (not negative); has no effect in this version. |
+| `[resources]` `reserve_ram_mb` | `4096` | RAM in MB kept free for Windows. Creating, starting or changing the type of a server answers `resource_unavailable` when the server's RAM exceeds the host's free RAM minus this reserve. |
+| `[resources]` `reserve_disk_gb` | `50` | Disk space in GB kept free in the data folder. Creating, rebuilding or changing the type of a server answers `resource_unavailable` when the disks of all servers, grown to their full size, would leave less than this free. |
 | `[certificates]` `trust_ca` | `false` | Accepted; has no effect in this version. |
 | `[logging]` `level` | `"info"` | `"debug"`, `"info"`, `"warn"` or `"error"`: the level of `hlabd.log`. |
 

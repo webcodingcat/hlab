@@ -40,6 +40,7 @@ var statuses = map[string]int{
 	// Operation-specific codes of single endpoints.
 	"placement_error":            http.StatusUnprocessableEntity,
 	"server_not_stopped":         http.StatusUnprocessableEntity,
+	"invalid_server_type":        http.StatusUnprocessableEntity,
 	"already_in_placement_group": http.StatusUnprocessableEntity,
 }
 

@@ -85,7 +85,7 @@ func (a *Agent) putConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	a.generation = cfg.Generation
 	slog.Info("config applied", "generation", cfg.Generation)
-	writeJSON(w, agentapi.Status{Generation: cfg.Generation})
+	writeJSON(w, agentapi.Status{Generation: cfg.Generation, PasswordResetsDone: a.resetsDone()})
 }
 
 func (a *Agent) getStatus(w http.ResponseWriter, _ *http.Request) {
@@ -96,7 +96,20 @@ func (a *Agent) getStatus(w http.ResponseWriter, _ *http.Request) {
 		LBMetrics:  map[int64]agentapi.LBCounters{},
 	}
 	a.mu.Unlock()
+	st.PasswordResetsDone = a.resetsDone()
 	writeJSON(w, st)
+}
+
+// resetsDone returns the password resets confirmed to the metadata
+// service, if one is among the appliers.
+func (a *Agent) resetsDone() []int64 {
+	done := []int64{}
+	for _, ap := range a.appliers {
+		if m, ok := ap.(*Metadata); ok {
+			done = append(done, m.Done()...)
+		}
+	}
+	return done
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
