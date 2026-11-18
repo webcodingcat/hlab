@@ -681,3 +681,11 @@ in ARCHITECTURE.md or the plan.
 - What: project files brought from wcc 0.32.0 to 0.32.2: CLAUDE.md test rule on shared behaviour takes the template wording; version line updated
 - Why: the skills of the installed version search for these keys and rules
 - Cost of change: low
+
+## 2026-11-18 Q3 SRV-18 counts live RAM and remaining disk growth
+
+- Type: decision
+- Phase: 03
+- What: A server fits when its type RAM is at most the host's free physical RAM minus `reserve_ram_mb`, and the remaining growth of all thin disks plus the new disk is at most the free data-folder space minus `reserve_disk_gb`.
+- Why: RAM matches success criterion 4 literally, and disk stays a hard limit although disks are thin.
+- Cost of change: low
