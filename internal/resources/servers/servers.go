@@ -155,6 +155,9 @@ type Internal struct {
 	SSHKeys          []string `json:"ssh_keys"`
 	UserData         string   `json:"user_data"`
 	StartAfterCreate bool     `json:"start_after_create"`
+	// RootHash is the SHA-512 crypt of the root password of a server
+	// created without SSH keys; the clear text is never stored.
+	RootHash string `json:"root_hash,omitempty"`
 }
 
 // Record is the stored document of a server.
@@ -409,6 +412,18 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// Without SSH keys root gets a random password; only its hash is kept.
+	var rootPassword any
+	var rootHash string
+	if len(body.SSHKeys) == 0 {
+		pw, hash, err := newRootPassword()
+		if err != nil {
+			api.ServerError(w, err)
+			return
+		}
+		rootPassword, rootHash = pw, hash
+	}
+
 	var rec Record
 	var shown Server
 	var action *actions.Action
@@ -490,6 +505,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 				SSHKeys:          keys,
 				UserData:         body.UserData,
 				StartAfterCreate: start,
+				RootHash:         rootHash,
 			},
 		}
 		if err := put(tx, rec); err != nil {
@@ -542,7 +558,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		"server":        shown,
 		"action":        action,
 		"next_actions":  []any{},
-		"root_password": nil,
+		"root_password": rootPassword,
 	})
 }
 

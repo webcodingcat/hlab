@@ -22,10 +22,6 @@ var (
 	guestNameservers = []netip.Addr{netip.MustParseAddr("185.12.64.1"), netip.MustParseAddr("185.12.64.2")}
 )
 
-// vendorData lets root log in with the given keys, as on Hetzner's
-// images; cloud images lock root by default. user_data overrides it.
-const vendorData = "#cloud-config\ndisable_root: false\n"
-
 func (m *Module) vmName(id int64) string {
 	return fmt.Sprintf("%s-server-%d", m.d.Settings.VMPrefix, id)
 }
@@ -96,7 +92,7 @@ func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) err
 			Hostname:   rec.Name,
 			SSHKeys:    rec.Hlab.SSHKeys,
 			UserData:   rec.Hlab.UserData,
-			VendorData: vendorData,
+			VendorData: vendorData(rec.Hlab.RootHash),
 			Interfaces: []cidata.Interface{{
 				MAC:         rec.Hlab.MAC,
 				Addresses:   []netip.Prefix{netip.PrefixFrom(ip, 32)},
