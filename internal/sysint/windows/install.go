@@ -5,6 +5,7 @@ package windows
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,10 +45,10 @@ func NewInstaller() *Installer {
 
 // Install registers the service (manual start, LocalSystem, the running
 // executable, the service descriptor, preshutdown timeout) and creates the
-// data folder with settings.toml, which Interactive Users may modify. With
-// dev it refuses when the release service is installed under
-// %ProgramFiles%.
-func (*Installer) Install(dev bool) error {
+// data folder with settings.toml, which Interactive Users may modify. The
+// profile of the binary decides the names, so dev changes nothing here; the
+// release and the dev service may be installed side by side.
+func (*Installer) Install(_ bool) error {
 	exe, err := executable()
 	if err != nil {
 		return err
@@ -57,16 +58,6 @@ func (*Installer) Install(dev bool) error {
 		return fmt.Errorf("connect to the service manager (administrator rights needed): %w", err)
 	}
 	defer func() { _ = m.Disconnect() }()
-
-	if dev {
-		installed, err := releaseInstalled(m)
-		if err != nil {
-			return err
-		}
-		if installed {
-			return fmt.Errorf("an installed hlab (service %s) exists; this command is for the dev build of a working copy", profile.Other().ServiceName)
-		}
-	}
 
 	if err := registerService(m, exe); err != nil {
 		return err
@@ -144,49 +135,29 @@ func setServiceDACL(h xwin.Handle) error {
 	return xwin.SetSecurityInfo(h, xwin.SE_SERVICE, xwin.DACL_SECURITY_INFORMATION, nil, nil, dacl, nil)
 }
 
-// releaseInstalled reports whether the release service exists and runs a
-// binary below %ProgramFiles%. An old dev service of the same name running
-// a working copy is not a release installation.
-func releaseInstalled(m *mgr.Mgr) (bool, error) {
-	name := profile.Other().ServiceName
-	if profile.Current().Name == "release" {
-		name = profile.Current().ServiceName
-	}
-	s, err := m.OpenService(name)
-	if errors.Is(err, xwin.ERROR_SERVICE_DOES_NOT_EXIST) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("open service %s: %w", name, err)
-	}
-	defer func() { _ = s.Close() }()
-	c, err := s.Config()
-	if err != nil {
-		return false, fmt.Errorf("read configuration of service %s: %w", name, err)
-	}
-	bin := binaryPath(c.BinaryPathName)
-	pf := strings.ToLower(filepath.Clean(programFiles())) + string(filepath.Separator)
-	return strings.HasPrefix(strings.ToLower(filepath.Clean(bin)), pf), nil
-}
+// dataFolderSDDL: owner Administrators; a protected DACL with SYSTEM and
+// Administrators full control and Interactive Users read and execute, all
+// inherited by files and folders below. No other user can create ca\,
+// logs\, state.db or junctions in the data folder.
+const dataFolderSDDL = "O:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;IU)"
 
-// binaryPath is the program of a service command line, without quotes and
-// arguments.
-func binaryPath(cmdline string) string {
-	cmdline = strings.TrimSpace(cmdline)
-	if rest, ok := strings.CutPrefix(cmdline, `"`); ok {
-		p, _, _ := strings.Cut(rest, `"`)
-		return p
-	}
-	p, _, _ := strings.Cut(cmdline, " ")
-	return p
-}
-
-// createDataFolder creates the data folder and settings.toml and lets
-// Interactive Users modify settings.toml.
+// createDataFolder creates the data folder with its protected DACL (also
+// when it exists already) and settings.toml, which Interactive Users may
+// modify.
 func createDataFolder() error {
 	dir := DataDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
+	}
+	fi, err := os.Lstat(dir)
+	if err != nil {
+		return err
+	}
+	if fi.Mode().Type() != fs.ModeDir {
+		return fmt.Errorf("%s is not a plain folder (link or junction); remove it and install again", dir)
+	}
+	if err := setFolderSecurity(dir); err != nil {
+		return fmt.Errorf("set permissions of %s: %w", dir, err)
 	}
 	file := filepath.Join(dir, "settings.toml")
 	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY, 0o644)
@@ -202,6 +173,25 @@ func createDataFolder() error {
 		return fmt.Errorf("grant Interactive Users modify on %s: %w: %s", file, err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// setFolderSecurity sets owner and protected DACL of dataFolderSDDL on dir;
+// Windows propagates the inheritable entries to existing children.
+func setFolderSecurity(dir string) error {
+	sd, err := xwin.SecurityDescriptorFromString(dataFolderSDDL)
+	if err != nil {
+		return err
+	}
+	owner, _, err := sd.Owner()
+	if err != nil {
+		return err
+	}
+	dacl, _, err := sd.DACL()
+	if err != nil {
+		return err
+	}
+	info := xwin.SECURITY_INFORMATION(xwin.OWNER_SECURITY_INFORMATION | xwin.DACL_SECURITY_INFORMATION | xwin.PROTECTED_DACL_SECURITY_INFORMATION)
+	return xwin.SetNamedSecurityInfo(dir, xwin.SE_FILE_OBJECT, info, owner, nil, dacl, nil)
 }
 
 func systemRoot() string {

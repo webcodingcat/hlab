@@ -68,8 +68,8 @@ type ServiceHost interface {
 // hlabd install and hlabd uninstall-cleanup.
 type Installer interface {
 	// Install registers the service of the current profile and creates
-	// its data folder. With dev it refuses when an installed release
-	// exists.
+	// its data folder; dev marks the call of scripts/dev-setup.ps1. The
+	// release and the dev profile may be installed side by side.
 	Install(dev bool) error
 	// Uninstall removes the service and, unless keepData, the data folder.
 	Uninstall(keepData bool) error
