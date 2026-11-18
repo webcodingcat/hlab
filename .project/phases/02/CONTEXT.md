@@ -28,3 +28,7 @@ Confirmed with the user at the start of the phase (2026-11-18).
 - API-09: the HTTP status of every error code comes from one table in one place in the code, taken from the error table of the frozen OpenAPI description (`info.description`), never from phase 01 or memory. The table there: json_error 400, unauthorized 401, forbidden 403, maintenance 403, resource_limit_exceeded 403, not_found 404, method_not_allowed 405, uniqueness_error 409, conflict 409, deprecated_api_endpoint 410, resource_unavailable 412, invalid_input 422, service_error 422, unsupported_error 422, locked 423, protected 423, rate_limit_exceeded 429, server_error 500, bad_gateway 502, unavailable 503, timeout 504.
 - API-09 live check (read-only, hcloud context HLab, 2026-11-18): `GET /v1/servers?label_selector=!!!==` answered `HTTP/2.0 422` with code `invalid_input`. So `invalid_input` moves from 400 to 422; `protected` is 423 (not 403).
 - E2E: Ansible runs in the Ubuntu distribution SPEC.md names ("one Ubuntu distribution, 24.04 or newer"), selected explicitly with `wsl.exe -d <name>`, never the default distro. The harness copies the test key into a temporary directory inside that distro (mode 0600) and deletes it at the end of the run.
+
+## Added during the phase
+
+- 02-12 review: `DELETE /placement_groups/{id}` removes a group that still has members. Plan 02-13 makes the server object show its group and must keep it consistent: deleting a group clears the servers' `placement_group` reference (or refuses, if RESEARCH or the description says Hetzner refuses).

@@ -234,13 +234,13 @@ func (e *env) wslKey() string                                           // path 
   - [ ] `change_protection` (delete, rebuild) as an action, protected delete refused with 423 `protected`, `request_console` answers `unsupported_error` with the SPEC message, create reports progress; `api.Deviations` gets the console entry (internal/resources/servers/actions.go, servers.go, internal/api/deviations.go)
   - [ ] `BlockingMachines` for lock and progress tests (internal/apitest/apitest.go)
 
-- [ ] 02-12 Placement groups
+- [x] 02-12 Placement groups
   - Wave: 3 | Depends on: 02-06 | Review: alone
   - Requirements: SRV-22 | Tests: - (rows in plan 02-13, which wires the module)
   - Reads: REQUIREMENTS SRV-22, API; RESEARCH R1 (`hcloud_placement_group`: separate PUTs, nullable action), R5 (limits, filters, sort)
   - Size: ~260 lines in 1 file
   - Adjusts: -
-  - [ ] Module: create (type `spread` only, answer with `action: null`), get, list (name, label_selector, type, sort id/name/created), PUT with name or labels alone, delete; `servers` list in the document; `Find`, `AddServer` (11th: 422 `placement_error`), `RemoveServer` (internal/resources/placementgroups/placementgroups.go)
+  - [x] Module: create (type `spread` only, answer with `action: null`), get, list (name, label_selector, type, sort id/name/created), PUT with name or labels alone, delete; `servers` list in the document; `Find`, `AddServer` (11th: 422 `placement_error`), `RemoveServer` (internal/resources/placementgroups/placementgroups.go)
 
 - [ ] 02-13 Servers in placement groups; conventions across resources
   - Wave: 5 | Depends on: 02-05, 02-08, 02-09, 02-11, 02-12 | Review: alone | e2e

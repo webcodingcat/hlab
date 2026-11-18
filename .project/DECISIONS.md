@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Placement group membership errors
+
+- Type: decision
+- Phase: phase 02
+- What: adding a server already in the group answers 422 `already_in_placement_group`; a full group answers 422 `placement_error` without `details.fields`; group names are unique per project.
+- Why: keeps the member list free of duplicates; the full-group error concerns no single field.
+- Cost of change: low
+
 ## 2026-11-18 List details: sort without keys, last_page, repeats
 
 - Type: decision
