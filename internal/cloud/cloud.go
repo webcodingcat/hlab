@@ -309,6 +309,37 @@ const metricsRetention = 24 * time.Hour
 // is one more entry here; a module implementing resource.NetContributor
 // adds its part to the agent document.
 func (c *Cloud) modules() []resource.Module {
+	srv := servers.New(servers.Deps{
+		Catalog:     c.cat,
+		PublicRange: c.set.Network.PublicRange,
+		Store:       c.st,
+		Platform:    c.plat,
+		Images:      c.images,
+		PushAgent:   c.PushAgent,
+		AgentStatus: func(ctx context.Context) (agentapi.Status, error) { return c.agent.Status(ctx) },
+		Metrics:     metrics.NewStore(metricsRetention),
+		Settings: servers.Settings{
+			DataFolder:    c.set.Storage.DataFolder,
+			StopBehaviour: c.set.Cloud.StopBehaviour,
+			ReserveRAMMB:  int64(c.set.Resources.ReserveRAMMB),
+			ReserveDiskGB: int64(c.set.Resources.ReserveDiskGB),
+			VMPrefix:      c.tag,
+		},
+		ExtraDisks: volumeDisks,
+	})
+	vol := volumes.New(volumes.Deps{
+		Catalog:      c.cat,
+		Store:        c.st,
+		Platform:     c.plat,
+		DataFolder:   c.set.Storage.DataFolder,
+		VMPrefix:     c.tag,
+		CheckDisk:    srv.CheckDisk,
+		ApplianceJob: c.applianceJob,
+		PushAgent:    c.PushAgent,
+	})
+	srv.SetVolumes(vol)
+	// The servers module comes before volumes: volumes adds to the
+	// metadata the servers module writes into the agent document.
 	return []resource.Module{
 		actionsres.New(),
 		locations.New(c.cat),
@@ -319,33 +350,19 @@ func (c *Cloud) modules() []resource.Module {
 		isos.New(c.cat),
 		sshkeys.New(),
 		placementgroups.New(),
-		servers.New(servers.Deps{
-			Catalog:     c.cat,
-			PublicRange: c.set.Network.PublicRange,
-			Store:       c.st,
-			Platform:    c.plat,
-			Images:      c.images,
-			PushAgent:   c.PushAgent,
-			AgentStatus: func(ctx context.Context) (agentapi.Status, error) { return c.agent.Status(ctx) },
-			Metrics:     metrics.NewStore(metricsRetention),
-			Settings: servers.Settings{
-				DataFolder:    c.set.Storage.DataFolder,
-				StopBehaviour: c.set.Cloud.StopBehaviour,
-				ReserveRAMMB:  int64(c.set.Resources.ReserveRAMMB),
-				ReserveDiskGB: int64(c.set.Resources.ReserveDiskGB),
-				VMPrefix:      c.tag,
-			},
-		}),
-		volumes.New(volumes.Deps{
-			Catalog:      c.cat,
-			Store:        c.st,
-			Platform:     c.plat,
-			DataFolder:   c.set.Storage.DataFolder,
-			VMPrefix:     c.tag,
-			ApplianceJob: c.applianceJob,
-			PushAgent:    c.PushAgent,
-		}),
+		srv,
+		vol,
 	}
+}
+
+// volumeDisks are the volume disks for the servers' disk rule.
+func volumeDisks(tx store.Tx) ([]servers.DiskUse, error) {
+	disks, err := volumes.Disks(tx)
+	out := make([]servers.DiskUse, 0, len(disks))
+	for _, d := range disks {
+		out = append(out, servers.DiskUse{Path: d.Path, NominalBytes: d.NominalBytes})
+	}
+	return out, err
 }
 
 // PushAgent rebuilds the full agent document from the store and pushes it.
