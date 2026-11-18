@@ -24,7 +24,6 @@ import (
 // number. Calls are serialized; a dead process is replaced at the next call.
 type runner struct {
 	mu   sync.Mutex
-	exe  string
 	proc *process
 	seq  uint64
 }
@@ -32,7 +31,7 @@ type runner struct {
 type process struct {
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
-	lines  chan string // lines carrying the marker; closed when stdout ends
+	lines  chan string   // lines carrying the marker; closed when stdout ends
 	done   chan struct{} // closed by kill
 	marker string
 	stderr *tailBuffer
@@ -62,7 +61,7 @@ func (r *runner) run(ctx context.Context, op string, vars map[string]any, body s
 	defer r.mu.Unlock()
 
 	if r.proc == nil {
-		p, err := startProcess(r.exe)
+		p, err := startProcess()
 		if err != nil {
 			return nil, &platform.Error{Kind: platform.Failed, Op: op, Err: err}
 		}
@@ -127,12 +126,12 @@ func (r *runner) kill() {
 	r.proc = nil
 }
 
-func startProcess(exe string) (*process, error) {
+func startProcess() (*process, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(exe, "-NoProfile", "-NonInteractive", "-Command", "-")
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "-")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -199,11 +198,6 @@ func psValue(v any) string {
 	switch v := v.(type) {
 	case string:
 		return psQuote(v)
-	case bool:
-		if v {
-			return "$true"
-		}
-		return "$false"
 	case int:
 		return strconv.Itoa(v)
 	case int64:

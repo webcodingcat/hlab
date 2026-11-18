@@ -17,9 +17,6 @@ type Options struct {
 	// DataDir is the folder whose free disk space HostResources reports;
 	// empty reports 0.
 	DataDir string
-	// PowerShell is the Windows PowerShell executable; empty means
-	// "powershell.exe".
-	PowerShell string
 }
 
 // Platform is the Hyper-V implementation of platform.Platform.
@@ -32,11 +29,7 @@ var _ platform.Platform = (*Platform)(nil)
 
 // New starts the PowerShell process and loads the Hyper-V module.
 func New(opts Options) (platform.Platform, error) {
-	exe := opts.PowerShell
-	if exe == "" {
-		exe = "powershell.exe"
-	}
-	p := &Platform{opts: opts, r: &runner{exe: exe}}
+	p := &Platform{opts: opts, r: &runner{}}
 	if _, err := p.r.run(context.Background(), "New", nil, "Import-Module Hyper-V"); err != nil {
 		_ = p.r.close()
 		return nil, err
