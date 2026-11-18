@@ -23,6 +23,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/ipam"
 	"github.com/webcodingcat/hlab/internal/resource"
+	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
 	"github.com/webcodingcat/hlab/internal/store"
 )
@@ -156,6 +157,9 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("GET /servers/{id}", http.HandlerFunc(m.get))
 	r.Handle("PUT /servers/{id}", http.HandlerFunc(m.update))
 	r.Handle("DELETE /servers/{id}", http.HandlerFunc(m.delete))
+	r.Handle("POST /servers/{id}/actions/change_protection", http.HandlerFunc(m.changeProtection))
+	r.Handle("POST /servers/{id}/actions/request_console", http.HandlerFunc(m.requestConsole))
+	resactions.RoutesFor(r, "servers", refType)
 }
 
 // Contribute implements resource.NetContributor: every server not being
@@ -390,11 +394,15 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 
 	stor := api.StoreFrom(req.Context())
 	id := rec.ID
-	acts.Run(action.ID, func(ctx context.Context, _ func(int)) error {
+	acts.Run(action.ID, func(ctx context.Context, progress func(int)) error {
+		progress(10)
 		err := m.d.Machines.Create(ctx, id)
 		final := StatusOff
 		if err == nil && start {
 			final = StatusRunning
+		}
+		if err == nil {
+			progress(90)
 		}
 		if serr := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, final) }); serr != nil && err == nil {
 			err = serr
@@ -522,6 +530,9 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 		r, err := store.Get[Record](tx, Kind, p.ID, id)
 		if err != nil {
 			return err
+		}
+		if r.Protection.Delete {
+			return actions.ErrProtected
 		}
 		action, err = acts.Start(tx, p.ID, "delete_server", []actions.Ref{{ID: id, Type: refType}})
 		if err != nil {

@@ -44,6 +44,10 @@ func (e *Error) Error() string { return e.Code + ": " + e.Message }
 // action. Handlers answer it with Hetzner's 423 "locked".
 var ErrLocked = &Error{Code: "locked", Message: "the resource is locked by a running action"}
 
+// ErrProtected is returned for an operation refused by the resource's
+// protection (change_protection). Handlers answer it with 423 "protected".
+var ErrProtected = &Error{Code: "protected", Message: "the resource is protected"}
+
 // Action is an action in Hetzner's API shape.
 type Action struct {
 	ID        int64      `json:"id"`
@@ -179,6 +183,32 @@ func (m *Manager) List(projectID int64, ids []int64) ([]Action, error) {
 				return err
 			}
 			out = append(out, *a)
+		}
+		return nil
+	})
+	return out, err
+}
+
+// ListFor returns the actions of projectID that reference the resource
+// resourceID of refType, ordered by ID; resourceID 0 means every resource
+// of refType.
+func (m *Manager) ListFor(projectID int64, refType string, resourceID int64) ([]Action, error) {
+	out := []Action{}
+	err := m.st.Tx(func(tx store.Tx) error {
+		rows, err := store.ProjectActions(tx, projectID)
+		if err != nil {
+			return err
+		}
+		for _, r := range rows {
+			a, err := fromStore(r)
+			if err != nil {
+				return err
+			}
+			if slices.ContainsFunc(a.Resources, func(ref Ref) bool {
+				return ref.Type == refType && (resourceID == 0 || ref.ID == resourceID)
+			}) {
+				out = append(out, *a)
+			}
 		}
 		return nil
 	})
