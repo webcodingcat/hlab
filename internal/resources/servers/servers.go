@@ -59,6 +59,9 @@ type Deps struct {
 	Catalog     *catalog.Catalog
 	PublicRange netip.Prefix
 	Machines    Machines
+	// Store is what Delete works on outside a request (project deletion);
+	// the handlers use the store of the request.
+	Store *store.Store
 }
 
 // Server is a server in Hetzner's API shape.
@@ -603,29 +606,50 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 	}
 
 	acts.Run(action.ID, func(ctx context.Context, _ func(int)) error {
-		if err := m.d.Machines.Delete(ctx, id); err != nil {
-			if serr := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, StatusOff) }); serr != nil {
-				err = errors.Join(err, serr)
-			}
-			return err
-		}
-		return stor.Tx(func(tx store.Tx) error {
-			r, err := Load(tx, id)
-			if err != nil {
-				return err
-			}
-			if a := r.IPv4(); a.IsValid() {
-				if err := ipam.Release(tx, a); err != nil {
-					return err
-				}
-			}
-			if err := leaveGroup(tx, r); err != nil {
-				return err
-			}
-			return store.Delete(tx, Kind, r.Hlab.ProjectID, id)
-		})
+		return m.remove(ctx, stor, id)
 	})
 	api.JSON(w, http.StatusOK, map[string]any{"action": action})
+}
+
+// Delete implements resource.Deleter for project deletion: it deletes the
+// server's VM and disk, releases its IPv4, removes it from its placement
+// group and deletes its row. A server already gone is no error.
+func (m *Module) Delete(ctx context.Context, id int64) error {
+	return m.remove(ctx, m.d.Store, id)
+}
+
+// remove marks server id as deleting (the agent document leaves it out),
+// deletes its VM and then its row with its address and group membership.
+// When the VM cannot be deleted, the server stays with status off.
+func (m *Module) remove(ctx context.Context, stor *store.Store, id int64) error {
+	err := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, StatusDeleting) })
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := m.d.Machines.Delete(ctx, id); err != nil {
+		if serr := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, StatusOff) }); serr != nil {
+			err = errors.Join(err, serr)
+		}
+		return err
+	}
+	return stor.Tx(func(tx store.Tx) error {
+		r, err := Load(tx, id)
+		if err != nil {
+			return err
+		}
+		if a := r.IPv4(); a.IsValid() {
+			if err := ipam.Release(tx, a); err != nil {
+				return err
+			}
+		}
+		if err := leaveGroup(tx, r); err != nil {
+			return err
+		}
+		return store.Delete(tx, Kind, r.Hlab.ProjectID, id)
+	})
 }
 
 // MAC is the public adapter's MAC of server id: 02:48:4c, then 0x1 and the

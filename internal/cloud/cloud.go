@@ -282,6 +282,7 @@ func (c *Cloud) modules() []resource.Module {
 			Catalog:     c.cat,
 			PublicRange: c.set.Network.PublicRange,
 			Machines:    machines{c},
+			Store:       c.st,
 		}),
 	}
 }
@@ -356,10 +357,19 @@ func (c *Cloud) serveManagement(apiHandler http.Handler) error {
 	if err != nil {
 		return fmt.Errorf("listen on the management pipe: %w", err)
 	}
+	deleters := map[string]resource.Deleter{}
+	for _, m := range c.mods {
+		if d, ok := m.(resource.Deleter); ok {
+			deleters[m.Type()] = d // the store kind of every module is its type
+		}
+	}
 	h := mgmt.New(mgmt.Deps{
-		Store:  c.st,
-		API:    apiHandler,
-		Status: c.mgmtStatus,
+		Store:     c.st,
+		API:       apiHandler,
+		Status:    c.mgmtStatus,
+		Actions:   c.acts,
+		Deleters:  deleters,
+		PushAgent: c.PushAgent,
 		UpdateCatalog: func(ctx context.Context, hetznerToken string) error {
 			return catalog.Update(ctx, c.cat, catalog.UpdateOptions{DataDir: c.d.Paths.Config}, hetznerToken)
 		},

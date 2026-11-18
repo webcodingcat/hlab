@@ -4,6 +4,7 @@
 package resource
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/webcodingcat/hlab/internal/agentapi"
@@ -31,4 +32,20 @@ type Module interface {
 // hlabd rebuilds the full document from the store before every push.
 type NetContributor interface {
 	Contribute(tx store.Tx, doc *agentapi.Config) error
+}
+
+// Deleter is the optional interface of a module whose resources need work
+// to delete, for example a VM and its disk. Project deletion calls it once
+// per resource of the project; the delete handler of the module uses it
+// too. Delete removes the resource's row as well; a project deletion
+// removes any rows left with the project.
+type Deleter interface {
+	Delete(ctx context.Context, id int64) error
+}
+
+// Reconciler is the optional interface of a module owning real resources:
+// Reconcile makes reality match the stored state and is idempotent.
+type Reconciler interface {
+	Deleter
+	Reconcile(ctx context.Context, id int64) error
 }
