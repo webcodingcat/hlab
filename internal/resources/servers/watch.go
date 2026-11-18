@@ -66,8 +66,9 @@ func (m *Module) changeCount(id int64) uint64 {
 }
 
 // watch gives every server without a running action the status of its
-// VM's state. A server shown stopping keeps it while its VM still runs: the
-// guest has been asked to shut down and has not finished.
+// VM's state, then watches its rescue (watchRescue). A server shown
+// stopping keeps it while its VM still runs: the guest has been asked to
+// shut down and has not finished.
 func (m *Module) watch(ctx context.Context) {
 	stor := m.d.Store
 	var recs []Record
@@ -89,6 +90,7 @@ func (m *Module) watch(ctx context.Context) {
 		changes uint64
 	}
 	states := map[int64]seen{}
+	vmStates := map[int64]platform.VMState{}
 	for _, r := range recs {
 		if locked[r.ID] || r.Status == StatusInitializing || r.Status == StatusDeleting {
 			continue
@@ -98,10 +100,12 @@ func (m *Module) watch(ctx context.Context) {
 		if err != nil {
 			continue
 		}
+		vmStates[r.ID] = st
 		if status, ok := statusOf(st); ok {
 			states[r.ID] = seen{status, changes}
 		}
 	}
+	defer m.watchRescue(ctx, recs, locked, vmStates)
 	if len(states) == 0 {
 		return
 	}

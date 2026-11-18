@@ -40,7 +40,7 @@ func testRescue(t *testing.T) {
 		// enable checks the rescue configuration and returns the password.
 		enable := func(t *testing.T) (password string, child string) {
 			t.Helper()
-			n := len(p.Fake.Calls())
+			n := len(p.Calls())
 			act, raw := startAction(t, env, id, "enable_rescue", map[string]any{"type": "linux64", "ssh_keys": []int64{keyID}})
 			if err := json.Unmarshal(raw, &password); err != nil || password == "" {
 				t.Fatalf("enable_rescue root_password = %s, want a non-empty string", raw)
@@ -48,7 +48,7 @@ func testRescue(t *testing.T) {
 			if a := env.WaitAction(act); a.Status != "success" {
 				t.Fatalf("enable_rescue action: %q %+v, want success", a.Status, a.Error)
 			}
-			if c := callsIn(p.Fake.Calls()[n:], "Power"); len(c) != 0 {
+			if c := callsIn(p.Calls()[n:], "Power"); len(c) != 0 {
 				t.Errorf("enable_rescue changed the power state: %+v", c)
 			}
 			if s := rescueView(t, env, id); !s.RescueEnabled {
@@ -113,9 +113,9 @@ func testRescue(t *testing.T) {
 		// restored the server's configuration after the start.
 		bootsRescue := func(t *testing.T, op string) {
 			t.Helper()
-			n := len(p.Fake.Calls())
+			n := len(p.Calls())
 			runAction(t, env, id, op, nil)
-			calls := p.Fake.Calls()[n:]
+			calls := p.Calls()[n:]
 			power := -1
 			for i, c := range calls {
 				if c.Op == "Power" {
@@ -135,9 +135,9 @@ func testRescue(t *testing.T) {
 
 		_, child1 := enable(t)
 		bootsRescue(t, "reset")
-		n := len(p.Fake.Calls())
+		n := len(p.Calls())
 		runAction(t, env, id, "reboot", nil)
-		if !detached(p.Fake.Calls()[n:], child1) || fileExists(child1) {
+		if !detached(p.Calls()[n:], child1) || fileExists(child1) {
 			t.Errorf("rescue disk %s not detached and deleted at the next boot without rescue", child1)
 		}
 
@@ -147,25 +147,25 @@ func testRescue(t *testing.T) {
 		if !rescueView(t, env, id).RescueEnabled {
 			t.Fatal("rescue disabled 59 minutes after enable_rescue, want enabled until 60")
 		}
-		n = len(p.Fake.Calls())
+		n = len(p.Calls())
 		clk.Add(2 * time.Minute)
 		tickWatch(t, mod)
 		checkRestored(t, "60 minutes without a boot", n)
 
 		_, child3 := enable(t)
-		n = len(p.Fake.Calls())
+		n = len(p.Calls())
 		runAction(t, env, id, "disable_rescue", nil)
 		checkRestored(t, "disable_rescue", n)
 
-		n = len(p.Fake.Calls())
+		n = len(p.Calls())
 		p.SetState(vm, platform.StateOff)
 		tickWatch(t, mod)
-		if !detached(p.Fake.Calls()[n:], child3) || fileExists(child3) {
+		if !detached(p.Calls()[n:], child3) || fileExists(child3) {
 			t.Errorf("rescue disk %s not detached and deleted when the VM was seen off", child3)
 		}
 		// The rescue disk of the timed-out rescue is gone by now as well,
 		// whether enable_rescue replaced it or the VM was seen off.
-		if child2 != child3 && (!detached(p.Fake.Calls(), child2) || fileExists(child2)) {
+		if child2 != child3 && (!detached(p.Calls(), child2) || fileExists(child2)) {
 			t.Errorf("rescue disk %s of the timed-out rescue not detached and deleted", child2)
 		}
 

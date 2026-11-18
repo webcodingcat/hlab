@@ -121,9 +121,10 @@ func (m *Module) rebuild(w http.ResponseWriter, req *http.Request) {
 	api.JSON(w, http.StatusCreated, map[string]any{"action": action, "root_password": rootPassword})
 }
 
-// rebuildMachine turns the VM of server id off, deletes its disk and seed,
-// lets reconcile create both again at the same paths from the stored record
-// (the seed keeps instance-id, MAC and IP) and starts the VM; the VM keeps
+// rebuildMachine turns the VM of server id off, ends its rescue and removes
+// the rescue disk, deletes its disk and seed, lets reconcile create both
+// again at the same paths from the stored record (the seed keeps
+// instance-id, MAC and IP) and starts the VM; the VM keeps
 // its drives, and the new files inherit the data folder's access for VMs.
 // The image is fetched before the old disk goes, so a failed download
 // leaves the server as it was.
@@ -144,6 +145,9 @@ func (m *Module) rebuildMachine(ctx context.Context, stor *store.Store, id int64
 	}
 	p, name := m.d.Platform, m.vmName(id)
 	if err := p.Power(ctx, name, platform.PowerStop); err != nil {
+		return err
+	}
+	if err := m.clearRescue(ctx, stor, id); err != nil {
 		return err
 	}
 	for _, f := range []string{m.diskPath(id), m.seedPath(id)} {
