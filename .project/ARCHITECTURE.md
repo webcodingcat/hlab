@@ -182,7 +182,7 @@ Inside `hlabd` (Go packages under `internal/`):
       CreateVM(ctx, spec VMSpec) error            // name "hlab-<kind>-<id>", Gen2, Secure Boot template from spec
       SetVM(ctx, name string, spec VMSpec) error  // cpu, ram (stopped only)
       DeleteVM(ctx, name string) error
-      Power(ctx, name string, op PowerOp) error   // Start, Stop(hard), Shutdown and Reboot (Shutdown integration service), Reset, Save
+      Power(ctx, name string, op PowerOp) error   // Start, Stop(hard), Shutdown and Reboot (Shutdown integration service; Reboot falls back to shutdown, wait for off, start), Reset, Save
       State(ctx, name string) (VMState, error)
       AttachNIC(ctx, vm string, nic NICSpec) error // MAC, segment (public PVLAN or private VLAN), MAC deny-list
       DetachNIC(ctx, vm, mac string) error
@@ -336,7 +336,7 @@ Inside `hlabd` (Go packages under `internal/`):
   runs the `Jobs()` of every module implementing `resource.Scheduled` after
   the API is up and cancels them first at stop. A job first runs one
   interval after start; runs of one job never overlap.
-- Depends on: actions, store.
+- Depends on: nothing (jobs bring their own dependencies).
 
 #### ca
 

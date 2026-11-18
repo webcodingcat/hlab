@@ -43,8 +43,9 @@ description. Every other endpoint answers 404 `not_found`.
   more vCPUs than the host has logical CPUs, when its RAM exceeds the
   host's free RAM minus `reserve_ram_mb`, or when its disk does not fit
   into the free space of the data folder minus `reserve_disk_gb` (see the
-  [configuration reference](configuration.md#settingstoml)). A stopped
-  server holds no RAM.
+  [configuration reference](configuration.md#settingstoml)); `rebuild`
+  answers the same when the disk does not fit. A stopped server holds no
+  RAM.
 - Only `name`, `server_type`, `image`, `location`, `ssh_keys`, `user_data`,
   `start_after_create`, `labels` and `placement_group` are used. Other
   fields, such as `networks`, `volumes`, `firewalls` and `public_net`, are
