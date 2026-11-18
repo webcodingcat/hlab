@@ -36,12 +36,14 @@ import (
 	actionsres "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/datacenters"
 	imagesres "github.com/webcodingcat/hlab/internal/resources/images"
+	"github.com/webcodingcat/hlab/internal/resources/isos"
 	"github.com/webcodingcat/hlab/internal/resources/locations"
 	"github.com/webcodingcat/hlab/internal/resources/placementgroups"
 	"github.com/webcodingcat/hlab/internal/resources/pricing"
 	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/resources/servertypes"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
+	"github.com/webcodingcat/hlab/internal/resources/volumes"
 	"github.com/webcodingcat/hlab/internal/scheduler"
 	"github.com/webcodingcat/hlab/internal/settings"
 	"github.com/webcodingcat/hlab/internal/store"
@@ -106,6 +108,8 @@ type Cloud struct {
 	mods   []resource.Module
 	// pushMu keeps agent documents in the order they were built.
 	pushMu sync.Mutex
+	// jobMu runs one appliance job at a time.
+	jobMu sync.Mutex
 
 	applianceOn bool
 	apiSrv      *http.Server
@@ -224,9 +228,13 @@ func (c *Cloud) start(ctx context.Context) error {
 		return errors.New("platform cannot convert images")
 	}
 	c.images = images.New(images.Options{
-		Dir:     filepath.Join(set.Storage.DataFolder, "images"),
-		Catalog: c.cat.ImageSources(),
-		Convert: conv.ConvertToDynamic,
+		Dir:           filepath.Join(set.Storage.DataFolder, "images"),
+		Catalog:       c.cat.ImageSources(),
+		Convert:       conv.ConvertToDynamic,
+		ISOs:          c.cat.ISOSources(),
+		ISODir:        filepath.Join(set.Storage.DataFolder, "isos"),
+		RescueImage:   applianceImage,
+		PrepareRescue: c.prepareRescue,
 	})
 
 	if err := c.plat.EnsureSwitch(ctx, platform.SwitchSpec{Name: c.tag, PVLANPrimary: pvlanPrimary, PVLANSecondary: pvlanSecondary}); err != nil {
@@ -308,6 +316,7 @@ func (c *Cloud) modules() []resource.Module {
 		servertypes.New(c.cat),
 		pricing.New(c.cat),
 		imagesres.NewModule(imagesres.Deps{Catalog: c.cat, DataFolder: c.set.Storage.DataFolder}),
+		isos.New(c.cat),
 		sshkeys.New(),
 		placementgroups.New(),
 		servers.New(servers.Deps{
@@ -315,7 +324,7 @@ func (c *Cloud) modules() []resource.Module {
 			PublicRange: c.set.Network.PublicRange,
 			Store:       c.st,
 			Platform:    c.plat,
-			Images:      serverImages{c.images},
+			Images:      c.images,
 			PushAgent:   c.PushAgent,
 			AgentStatus: func(ctx context.Context) (agentapi.Status, error) { return c.agent.Status(ctx) },
 			Metrics:     metrics.NewStore(metricsRetention),
@@ -327,16 +336,16 @@ func (c *Cloud) modules() []resource.Module {
 				VMPrefix:      c.tag,
 			},
 		}),
+		volumes.New(volumes.Deps{
+			Catalog:      c.cat,
+			Store:        c.st,
+			Platform:     c.plat,
+			DataFolder:   c.set.Storage.DataFolder,
+			VMPrefix:     c.tag,
+			ApplianceJob: c.applianceJob,
+			PushAgent:    c.PushAgent,
+		}),
 	}
-}
-
-// serverImages is the image store as the servers module needs it; the
-// rescue base is not prepared yet.
-type serverImages struct{ *images.Store }
-
-// EnsureRescue fails: no rescue base exists yet.
-func (serverImages) EnsureRescue(context.Context) (string, error) {
-	return "", errors.New("the rescue base is not available yet")
 }
 
 // PushAgent rebuilds the full agent document from the store and pushes it.

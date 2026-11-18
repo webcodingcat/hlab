@@ -4,10 +4,15 @@
 // every cloud start) must contain:
 //
 //   - user-data: UserData()
-//   - meta-data: instance-id and local-hostname
+//   - meta-data: instance-id (the appliance name plus a hash of the
+//     user-data, so a changed user-data runs once on an existing appliance)
+//     and local-hostname
 //   - network-config: v2, eth0 198.19.0.1/30 with default route via 198.19.0.2
 //   - AgentFile ("hlab-agent"): the static Linux binary bin/hlab-agent
 //   - SecretFile ("secret"): the agent secret, one line
+//   - <name>.deb: the packages of catalog/appliance-debs.json (xfsprogs and
+//     its libraries), installed by the install script while mkfs.xfs is
+//     missing
 //
 // On first boot cloud-init installs the systemd unit hlab-agent.service and
 // the install script; at every boot the unit copies AgentFile to
