@@ -8,7 +8,8 @@ Windows and from WSL2.
 
 The project is in development; there is no release and no installer yet.
 You run hlab from a working copy as described below. The current version
-covers projects, tokens, SSH keys, servers and placement groups; see
+covers projects, tokens, SSH keys, servers with snapshots, backups,
+rescue system and ISOs, volumes and placement groups; see
 [What does not work yet](#what-does-not-work-yet).
 
 ## Prerequisites and setup
@@ -150,6 +151,84 @@ A cloud with too little free RAM or disk, beyond the reserve set in the
 [configuration](docs/user/configuration.md#settingstoml), refuses to
 create or start a server with `resource_unavailable`.
 
+## Snapshots, backups and rescue
+
+```
+> hcloud server create-image --type snapshot --description web1-base web1
+Waiting for create_image (server: 88) ...
+Waiting for create_image (server: 88) ... done
+Image 2 created from Server 88
+> hcloud server create --name web2 --type cx23 --location fsn1 --image 2 --ssh-key demo
+> hcloud server enable-backup web1
+> hcloud server create-image --type backup web1
+> hcloud image list --type snapshot --type backup
+```
+
+- A snapshot copies the server's disk while it runs; servers created or
+  rebuilt from it start with that disk.
+- With backups enabled, hlab makes one backup per server and day while
+  the cloud runs and keeps the newest 7. Deleting the server deletes its
+  backups; snapshots stay.
+
+The rescue system is a Debian 13 system with your SSH keys and a new root
+password. `enable-rescue` prepares it; the next boot runs it:
+
+```
+> hcloud server enable-rescue --ssh-key demo web2
+Waiting for enable_rescue (server: 89) ...
+Waiting for enable_rescue (server: 89) ... done
+Rescue enabled for Server 89 with root password: <password>
+> hcloud server reboot web2
+> ssh root@198.19.0.92
+root@web2:~# findmnt -n -o SOURCE /
+/dev/sdb1
+```
+
+The server's own disk is `/dev/sda`. The next `reboot` starts the
+installed system again. The first `enable-rescue` downloads the debian-13
+image if no server used it yet.
+
+## ISOs
+
+```
+> hcloud iso list
+ID       NAME                                   DESCRIPTION                          TYPE     ARCHITECTURE
+130001   ubuntu-22.04.5-live-server-amd64.iso   Ubuntu 22.04.5 Live Server (amd64)   public   x86
+...
+> hcloud server attach-iso web2 ubuntu-22.04.5-live-server-amd64.iso
+> hcloud server reset web2
+> hcloud server detach-iso web2
+```
+
+An attached ISO boots before the server's disk until you detach it. The
+first attach of an ISO downloads it, which takes minutes; later attaches
+use the cached copy.
+
+## Volumes
+
+```
+> hcloud volume create --name data1 --size 10 --server web1 --automount --format ext4
+Waiting for create_volume (volume: 10) ...
+Waiting for attach_volume (server: 88) ...
+Waiting for create_volume (volume: 10) ... done
+Waiting for attach_volume (server: 88) ... done
+Volume 10 created
+> ssh root@198.19.0.91 df -h /mnt/HC_Volume_10
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sdb        9.8G  2.1M  9.3G   1% /mnt/HC_Volume_10
+```
+
+- In the server the volume is `/dev/disk/by-id/scsi-0HC_Volume_<id>`; with
+  `--automount` it is mounted at `/mnt/HC_Volume_<id>`, also after a later
+  `hcloud volume attach --automount`.
+- `hcloud volume resize --size 20 data1` grows the disk; grow the
+  filesystem in the server, for example with
+  `resize2fs /dev/disk/by-id/scsi-0HC_Volume_10`.
+- `hcloud volume detach` and `attach` move a volume between servers of
+  its location; its data stays. Deleting a server detaches its volumes.
+- `--format xfs` needs packages that hlab downloads for the appliance at
+  `hlab cloud start`.
+
 ## OpenTofu and Ansible
 
 The OpenTofu provider and the Ansible collection read the same two
@@ -244,13 +323,12 @@ Manager if you want them gone.
 
 ## What does not work yet
 
-- The API offers actions, locations, server types, pricing, images, SSH
-  keys, servers, server metrics and placement groups. The server actions
-  are the power actions, `rebuild`, `change_type`, `reset_password`,
-  `change_protection`, `add_to_placement_group` and
-  `remove_from_placement_group`. Everything else, for example rescue
-  mode, snapshots, backups, ISOs, networks, firewalls, volumes, floating
-  IPs and load balancers, answers `not_found`. The details are in
+- The API offers actions, locations, server types, pricing, images
+  (with snapshots and backups), ISOs, SSH keys, servers, server metrics,
+  placement groups and volumes. Everything else, for example networks,
+  firewalls, floating IPs, primary IPs, certificates and load balancers,
+  answers `not_found`, and the server action `request_console` answers
+  `unsupported_error`. The details are in
   [Known deviations](docs/user/deviations.md).
 - `hlab cloud stop` stops the appliance and the host networking, but does
   not save or shut down the server VMs; they stay as they are in Hyper-V.
