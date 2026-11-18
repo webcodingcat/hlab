@@ -405,16 +405,7 @@ func (m *Module) resolve(b createRequest) (catalog.ServerType, catalog.Image, ca
 }
 
 func (m *Module) serverType(ref string) (catalog.ServerType, bool) {
-	if st, ok := m.d.Catalog.ServerType(ref); ok {
-		return st, true
-	}
-	id, err := strconv.ParseInt(ref, 10, 64)
-	for _, st := range m.d.Catalog.ServerTypes {
-		if err == nil && st.ID == id {
-			return st, true
-		}
-	}
-	return catalog.ServerType{}, false
+	return m.d.Catalog.ServerTypeByRef(ref)
 }
 
 func (m *Module) image(ref string) (catalog.Image, bool) {
