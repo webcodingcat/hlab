@@ -5,8 +5,10 @@
 package actions
 
 import (
+	"cmp"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -86,6 +88,22 @@ func RoutesFor(r resource.Registrar, typ, refType string) {
 	r.Handle("GET /"+typ+"/{id}/actions", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		id, ok := api.PathID(w, req)
 		if !ok {
+			return
+		}
+		// The resource must exist in the token's project (store kind typ).
+		project, _ := api.ProjectFrom(req.Context())
+		var ids []int64
+		err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
+			var err error
+			ids, err = store.IDs(tx, typ, project.ID)
+			return err
+		})
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+		if !slices.Contains(ids, id) {
+			api.NotFound(w)
 			return
 		}
 		listFor(w, req, refType, id)

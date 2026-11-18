@@ -180,7 +180,7 @@ func create(t *testing.T, e *apitest.Env, r labeled, name string, labels map[str
 		t.Fatalf("POST /%s %q: status %d, want 201: %v", r.typ, name, status, m)
 	}
 	if a := idOf(m["action"]); a != 0 {
-		waitAction(t, e, a)
+		e.For(t).WaitAction(a)
 	}
 	obj, _ := m[r.key].(map[string]any)
 	return obj
@@ -219,7 +219,7 @@ func newFixture(t *testing.T, e *apitest.Env) fixture {
 		t.Fatalf("POST /servers: status %d: %v", status, m)
 	}
 	f.server, f.action = idOf(m["server"]), idOf(m["action"])
-	waitAction(t, e, f.action)
+	e.For(t).WaitAction(f.action)
 	return f
 }
 
@@ -306,7 +306,7 @@ func testProjectIsolation(t *testing.T) {
 		t.Fatalf("change_protection: status %d: %v", status, m)
 	}
 	protectAction := idOf(m["action"])
-	waitAction(t, env, protectAction)
+	env.For(t).WaitAction(protectAction)
 	q := env.NewToken("q", false)
 	srv := fmt.Sprintf("/servers/%d", f.server)
 
@@ -393,7 +393,7 @@ func testListPaging(t *testing.T) {
 	if status != http.StatusCreated {
 		t.Fatalf("change_protection: status %d: %v", status, m)
 	}
-	waitAction(t, env, idOf(m["action"]))
+	env.For(t).WaitAction(idOf(m["action"]))
 
 	endpoints := []struct{ path, key string }{
 		{"/ssh_keys", "ssh_keys"},
@@ -595,7 +595,7 @@ func testListFilterSort(t *testing.T) {
 		if status != http.StatusCreated {
 			t.Fatalf("change_protection: status %d: %v", status, m)
 		}
-		waitAction(t, env, idOf(m["action"]))
+		env.For(t).WaitAction(idOf(m["action"]))
 	}
 
 	// filter is one of the endpoint's own documented filters: param=value
