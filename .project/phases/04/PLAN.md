@@ -285,11 +285,11 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - Adjusts: -
   - [x] `attach_iso` (`iso` by name or ID; unknown or deprecated: 422 `invalid_input`): `EnsureISO` inside the action, `SetDVD` slot 1, boot order DVD slot 1 then LUN 0, server `iso` object; replaces an attached ISO; `detach_iso` ejects and restores disk-first; a server without ISO answers `detach_iso` with success and no change; rescue boot order keeps LUN 63 first (internal/resources/servers/iso.go, servers.go, reconcile.go)
 
-- [ ] 04-14 Documentation
+- [x] 04-14 Documentation
   - Wave: 9 | Depends on: 04-10 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06 | Tests: test/docs/docs_test.go (existing)
   - Reads: SPEC "Documentation"; REQUIREMENTS DOC; CONTEXT.md "Documentation"; the summaries of 04-01, 04-05, 04-09, 04-10
   - Size: ~160 lines in 4 files
   - Adjusts: -
-  - [ ] docs/user/deviations.md: rescue runs from its own disk (not RAM), auto-disable is noticed only for boots hlab drives (a guest-initiated reboot into rescue is ended by the 60 min timeout), ISO catalog instead of Hetzner's ISOs, udev/automount hooks only on hlab-created disks, snapshots of running servers crash-consistent via a checkpoint, a grown volume shows its new size only through the hlab guest hook (servers without hooks see it at the next disk I/O), backups only while the cloud runs and not made up, the chosen error codes (`volume_already_attached`, `invalid_input` for location, backup and disk-size cases, deleting an attached volume)
-  - [ ] docs/user/configuration.md (`isos.json`, `appliance-debs.json`, data folders `images`, `isos`, `volumes`, `cache\debs`), README.md (snapshots, backups, rescue, ISOs, volumes), docs/dev/components.md (agent jobs, appliance debs)
+  - [x] docs/user/deviations.md: rescue runs from its own disk (not RAM), auto-disable is noticed only for boots hlab drives (a guest-initiated reboot into rescue is ended by the 60 min timeout), ISO catalog instead of Hetzner's ISOs, udev/automount hooks only on hlab-created disks, snapshots of running servers crash-consistent via a checkpoint, a grown volume shows its new size only through the hlab guest hook (servers without hooks see it at the next disk I/O), backups only while the cloud runs and not made up, the chosen error codes (`volume_already_attached`, `invalid_input` for location, backup and disk-size cases, deleting an attached volume)
+  - [x] docs/user/configuration.md (`isos.json`, `appliance-debs.json`, data folders `images`, `isos`, `volumes`, `cache\debs`), README.md (snapshots, backups, rescue, ISOs, volumes), docs/dev/components.md (agent jobs, appliance debs)
