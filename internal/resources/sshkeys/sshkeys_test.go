@@ -85,11 +85,13 @@ func TestSSHKeys(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("PUT %s: status %d, want 200", path, resp.StatusCode)
 		}
+		one.SSHKey = key{} // json merges into a non-nil labels map
 		apitest.Decode(t, resp, &one)
 		if one.SSHKey.Name != "renamed" || !reflect.DeepEqual(one.SSHKey.Labels, map[string]string{"env": "test"}) {
 			t.Errorf("PUT %s answered %+v, want name renamed, labels {env: test}", path, one.SSHKey)
 		}
 		resp = env.Do(http.MethodGet, path, nil)
+		one.SSHKey = key{}
 		apitest.Decode(t, resp, &one)
 		if one.SSHKey.Name != "renamed" || !reflect.DeepEqual(one.SSHKey.Labels, map[string]string{"env": "test"}) || one.SSHKey.Fingerprint != fixtures[0].fingerprint {
 			t.Errorf("GET %s after PUT = %+v, want name renamed, labels {env: test}, fingerprint unchanged", path, one.SSHKey)
