@@ -120,12 +120,12 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
   - [x] `cmd/hlab-agent`, `internal/agent`: HTTP on 198.19.0.1:9100 with bearer secret, `PUT /v1/config`, `GET /v1/status`; addresses on eth0, /32 routes to the public adapter, IP forwarding; API reverse proxy 198.19.0.1:80
   - [x] appliance boot files: systemd unit that installs the agent from the cidata ISO at every boot
 
-- [ ] 01-13 hlab-agent: DNS and isolation backstop
+- [x] 01-13 hlab-agent: DNS and isolation backstop
   - Wave: 3 | Depends on: 01-12 | Review: alone
   - Requirements: - | Tests: (API-01, SRV-05 e2e)
   - Size: ~300 lines in 3 files
-  - [ ] DNS server (miekg/dns) on 198.19.0.1 and the resolver addresses: `hetzner.internal` (api -> 198.19.0.1), reverse zone of the public range, forward to `Upstream`
-  - [ ] nftables forward chain: no guest-to-guest on the public segment except via routing rules of the document
+  - [x] DNS server (miekg/dns) on 198.19.0.1 and the resolver addresses: `hetzner.internal` (api -> 198.19.0.1), reverse zone of the public range, forward to `Upstream`
+  - [x] nftables forward chain: no guest-to-guest on the public segment except via routing rules of the document
 
 - [ ] 01-14 Management API and hlab command
   - Wave: 3 | Depends on: 01-02, 01-03, 01-04 | Review: alone
