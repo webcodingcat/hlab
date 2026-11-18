@@ -113,12 +113,12 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
   - Size: ~400 lines in 4 files
   - [x] Check (range collision, WinNAT exists, other_instance_running), Up (adapter IP, route ActiveStore, WinNAT, forwarding hlab and WSL, firewall rule, base NRPT), Down, restore file, DNSServers, SetZones
 
-- [ ] 01-12 hlab-agent: config server, routes, API proxy
+- [x] 01-12 hlab-agent: config server, routes, API proxy
   - Wave: 2 | Depends on: 01-01 | Review: alone
   - Requirements: - | Tests: (API-01, SRV-03 e2e)
   - Size: ~400 lines in 5 files
-  - [ ] `cmd/hlab-agent`, `internal/agent`: HTTP on 198.19.0.1:9100 with bearer secret, `PUT /v1/config`, `GET /v1/status`; addresses on eth0, /32 routes to the public adapter, IP forwarding; API reverse proxy 198.19.0.1:80
-  - [ ] appliance boot files: systemd unit that installs the agent from the cidata ISO at every boot
+  - [x] `cmd/hlab-agent`, `internal/agent`: HTTP on 198.19.0.1:9100 with bearer secret, `PUT /v1/config`, `GET /v1/status`; addresses on eth0, /32 routes to the public adapter, IP forwarding; API reverse proxy 198.19.0.1:80
+  - [x] appliance boot files: systemd unit that installs the agent from the cidata ISO at every boot
 
 - [ ] 01-13 hlab-agent: DNS and isolation backstop
   - Wave: 3 | Depends on: 01-12 | Review: alone
