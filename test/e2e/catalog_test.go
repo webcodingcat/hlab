@@ -5,10 +5,7 @@ package e2e
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -82,7 +79,7 @@ func testCAT03(t *testing.T) {
 		t.Skipf("no usable hcloud context %q: hcloud config get token gave no token (%v; stderr: %s)", name, err, r.Stderr)
 	}
 
-	restoreCatalog(t)
+	// The update stays: the dev profile keeps Hetzner's current server types, as after a user's hlab catalog update.
 
 	// The token goes only into the environment of this one child process.
 	environ := append(os.Environ(), tokenVar+"="+token)
@@ -107,32 +104,6 @@ func testCAT03(t *testing.T) {
 			t.Errorf("hlab does not list server type %q of the real API after the update", name)
 		}
 	}
-}
-
-// restoreCatalog saves the dev profile's updated server type catalog
-// (catalog\server-types.json in the config root) or notes its absence, and
-// puts it back (or removes the new file) when the test ends. No reload
-// exists: the running hlabd keeps serving the updated types until its next
-// start, which loads the restored file.
-func restoreCatalog(t *testing.T) {
-	t.Helper()
-	path := filepath.Join(os.Getenv("ProgramData"), "hlab-dev", "catalog", "server-types.json")
-	saved, err := os.ReadFile(path)
-	existed := err == nil
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		t.Fatalf("saving %s before the update: %v", path, err)
-	}
-	t.Cleanup(func() {
-		var err error
-		if existed {
-			err = os.WriteFile(path, saved, 0o644)
-		} else if err = os.Remove(path); errors.Is(err, fs.ErrNotExist) {
-			err = nil
-		}
-		if err != nil {
-			t.Errorf("restoring %s: %v", path, err)
-		}
-	})
 }
 
 func typeNames(out string) (map[string]bool, error) {
