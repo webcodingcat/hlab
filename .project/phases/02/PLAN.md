@@ -172,14 +172,14 @@ func (e *env) wslKey() string                                           // path 
   - [ ] Distro selection (`HLAB_E2E_WSL_DISTRO`, else the one registered distro whose name starts with `Ubuntu`; fail when none or several), temp key directory in the distro with mode 0600 deleted at teardown, `env.wsl` (test/e2e/main_test.go, test/e2e/clients_test.go)
   - [ ] Version checks for tofu 1.13.9 and ansible-core 2.22.0 with collection 7.2.0 (fail with a clear message, install nothing); `env.tofu` with plugin cache in the user cache folder, `env.ansible` with `HCLOUD_TOKEN`/`HCLOUD_ENDPOINT` through `WSLENV` (test/e2e/clients_test.go, test/e2e/e2e_test.go)
 
-- [ ] 02-03 Catalog with own server types and pricing
+- [x] 02-03 Catalog with own server types and pricing
   - Wave: 2 | Depends on: 02-01 | Review: alone
   - Requirements: CAT-02, CAT-05 | Tests: internal/catalog/catalog_test.go, internal/resources/pricing/pricing_test.go
   - Reads: REQUIREMENTS CAT; ARCHITECTURE "Files and formats", "Data schema" (catalogs in memory); CONTEXT.md
   - Size: ~330 lines in 6 files
   - Adjusts: tests reading `Catalog.ServerTypes` (none known)
-  - [ ] `LoadAll`: data-folder `catalog\server-types.json` before the shipped one, own types from `server-types.custom.json` (IDs from 100000, unique names and IDs; else a warning and shipped types only), guarded `Types`, `ServerTypeByRef`, `ReplaceServerTypes`, `Pricing` (own types without prices get zero prices per location) (internal/catalog/catalog.go, custom.go)
-  - [ ] Field `ServerTypes` unexported; servertypes and servers use `Types`/`ServerTypeByRef`; new `/pricing` module; hlabd loads with `LoadAll` and reports warnings as problems in `/status` (internal/resources/servertypes/servertypes.go, servers/servers.go, pricing/pricing.go, internal/cloud/cloud.go)
+  - [x] `LoadAll`: data-folder `catalog\server-types.json` before the shipped one, own types from `server-types.custom.json` (IDs from 100000, unique names and IDs; else a warning and shipped types only), guarded `Types`, `ServerTypeByRef`, `ReplaceServerTypes`, `Pricing` (own types without prices get zero prices per location) (internal/catalog/catalog.go, custom.go)
+  - [x] Field `ServerTypes` unexported; servertypes and servers use `Types`/`ServerTypeByRef`; new `/pricing` module; hlabd loads with `LoadAll` and reports warnings as problems in `/status` (internal/resources/servertypes/servertypes.go, servers/servers.go, pricing/pricing.go, internal/cloud/cloud.go)
 
 - [x] 02-06 List conventions, label checks and uniqueness
   - Wave: 2 | Depends on: 02-01, 02-02 | Review: alone

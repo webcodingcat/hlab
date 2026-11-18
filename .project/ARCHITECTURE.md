@@ -438,7 +438,7 @@ HTTP/1.1 over `\\.\pipe\hlab`, JSON. All paths under `/mgmt/v1`:
 
 | Method and path | Purpose |
 |---|---|
-| `GET /status` | `{"state":"running","version":"...","problems":[Problem],"shadowing_zones":[{"zone":"example.com","project":"p"}],"appliance_generation":n}` |
+| `GET /status` | `{"state":"running","version":"...","problems":[Problem],"shadowing_zones":[{"zone":"example.com","project":"p"}],"appliance_generation":n}`; besides the hostnet problems, a non-fatal `custom_server_types` problem when the own server types are invalid or collide and are not served |
 | `GET /projects` | `{"projects":[{"name":"p","created":"RFC3339","resources":n}]}` |
 | `POST /projects` | body `{"name":"p"}` (1-63 chars, `[a-z0-9-]`); `201` with the project; `409` if it exists |
 | `DELETE /projects/{name}` | `202 {"action_id":n}`; revokes the project's tokens at once, then in one action deletes every resource through its module's `resource.Deleter`, the rest through the store, then the project; `409 conflict` while a deletion of that project runs; on failure the project stays listed. `hlab project delete` waits for the action |

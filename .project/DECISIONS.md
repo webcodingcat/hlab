@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Catalog loading and pricing source
+
+- Type: decision
+- Phase: phase 02
+- What: an unreadable updated `server-types.json` stops loading with an error (a missing one falls back to the shipped file); `/pricing` takes server type prices from each type's own `prices`; catalog problems show in `/status` as `custom_server_types`.
+- Why: updated types are then priced correctly, and a broken file is not silently replaced by older data.
+- Cost of change: low
+
 ## 2026-11-18 Placement group membership errors
 
 - Type: decision
