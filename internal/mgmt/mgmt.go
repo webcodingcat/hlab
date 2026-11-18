@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/store"
 )
@@ -171,8 +172,11 @@ func (s server) createProject(w http.ResponseWriter, req *http.Request) {
 // errHasResources stops the deletion of a project that still has resources.
 var errHasResources = errors.New("project has resources")
 
+// deleteProject deletes a project without resources and records the
+// deletion as a finished action without a project, whose id it returns.
 func (s server) deleteProject(w http.ResponseWriter, req *http.Request) {
 	name := req.PathValue("name")
+	var actionID int64
 	err := s.d.Store.Tx(func(tx store.Tx) error {
 		p, err := store.ProjectByName(tx, name)
 		if err != nil {
@@ -185,7 +189,19 @@ func (s server) deleteProject(w http.ResponseWriter, req *http.Request) {
 		if n > 0 {
 			return errHasResources
 		}
-		return store.DeleteProject(tx, p.ID)
+		if err := store.DeleteProject(tx, p.ID); err != nil {
+			return err
+		}
+		now := time.Now().UTC()
+		actionID, err = store.CreateAction(tx, store.Action{
+			Command:   "delete_project",
+			Status:    actions.StatusSuccess,
+			Progress:  100,
+			Started:   now,
+			Finished:  now,
+			Resources: "[]",
+		})
+		return err
 	})
 	if errors.Is(err, errHasResources) {
 		writeError(w, http.StatusConflict, "conflict", "project has resources; deleting resources comes in a later version")
@@ -195,7 +211,7 @@ func (s server) deleteProject(w http.ResponseWriter, req *http.Request) {
 		fail(w, err, "project "+name)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	writeJSON(w, http.StatusAccepted, map[string]int64{"action_id": actionID})
 }
 
 // project looks up the project of the request path and answers not_found

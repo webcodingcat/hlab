@@ -258,9 +258,6 @@ func (e apiError) Error() string { return e.Message }
 // mgmt sends one request to the management API and decodes the answer into
 // v (if not nil).
 func (c *call) mgmt(method, path string, body, v any) error {
-	if c.io.Dial == nil {
-		return errNotRunning
-	}
 	var rd io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -321,9 +318,6 @@ type serviceState struct {
 }
 
 func cloudStart(c *call) error {
-	if c.io.Service == nil {
-		return errors.New("no service control")
-	}
 	if err := c.io.Service.Start(c.ctx); err != nil {
 		return err
 	}
@@ -331,9 +325,6 @@ func cloudStart(c *call) error {
 }
 
 func cloudStop(c *call) error {
-	if c.io.Service == nil {
-		return errors.New("no service control")
-	}
 	if err := c.io.Service.Stop(c.ctx); err != nil {
 		return err
 	}
@@ -341,9 +332,6 @@ func cloudStop(c *call) error {
 }
 
 func cloudStatus(c *call) error {
-	if c.io.Service == nil {
-		return errors.New("no service control")
-	}
 	state, err := c.io.Service.State(c.ctx)
 	if err != nil {
 		return err
@@ -399,10 +387,13 @@ func projectList(c *call) error {
 }
 
 func projectDelete(c *call) error {
-	if err := c.mgmt(http.MethodDelete, "/projects/"+pathEscape(c.args[0]), nil, nil); err != nil {
+	var body struct {
+		ActionID int64 `json:"action_id"`
+	}
+	if err := c.mgmt(http.MethodDelete, "/projects/"+pathEscape(c.args[0]), nil, &body); err != nil {
 		return err
 	}
-	return c.out(map[string]string{}, "project "+c.args[0]+" deleted\n")
+	return c.out(body, "project "+c.args[0]+" deleted\n")
 }
 
 func tokenCreate(c *call) error {
