@@ -221,15 +221,15 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [x] Module, Record (`linux_device`, `format`, `location`, `server`, `assignee`, `status`, protection, labels), `POST /volumes` validation (size 10–10240, location by name or ID or from the server, automount without server, format ext4/xfs, a location differing from the server's) with `CheckDisk`; list, get, PUT, `DELETE` (attached: 422 `invalid_input`; removes the file), `change_protection`, `resize` (grow only, `ResizeDisk`, `CheckDisk` on the growth), `Page83`, `Disks` (internal/resources/volumes/volumes.go)
   - [x] Reconcile/Delete: create the disk with `Page83`, run `mkfs` through `ApplianceJob` when `format` is set, then status `available` (internal/resources/volumes/disk.go)
 
-- [ ] 04-05 Appliance jobs, rescue base and wiring
+- [x] 04-05 Appliance jobs, rescue base and wiring
   - Wave: 4 | Depends on: 04-02, 04-04, 04-06, 04-12 | Review: alone
   - Requirements: SRV-11, VOL-03, CAT-08 | Tests: - (covered by test/e2e/rescue_test.go, volume_test.go)
   - Reads: ARCHITECTURE "hlab-agent", "images", "Cloud start and stop"; RESEARCH R3, R4 (option B); CONTEXT "Corrections by the user"
   - Size: ~330 lines in 5 files
   - Adjusts: -
-  - [ ] `catalog/appliance-debs.json` (xfsprogs, libicu76, libinih1: pool URL, snapshot.debian.org URL, sha256); hlabd fetches them once into `<data>\cache\debs\` and puts them on the appliance cidata; the install script runs `dpkg -i` from the seed only when `mkfs.xfs` is missing (internal/cloud/appliance.go, appliance/hlab-agent-install.sh)
-  - [ ] `applianceJob` (mutex, LUN 1, detach on every path) and `PrepareRescue` (copy the debian-13 base with `CreateDisk`, job `rescue-prepare`, rename into place); `EnsureRescue` in the store (internal/cloud/jobs.go, internal/images/rescue.go)
-  - [ ] Wiring: images store with ISOs and rescue, `isos` module, `imagesres.NewModule`, `volumes.New` with `ApplianceJob` and `PushAgent` (internal/cloud/cloud.go)
+  - [x] `catalog/appliance-debs.json` (xfsprogs, libicu76, libinih1: pool URL, snapshot.debian.org URL, sha256); hlabd fetches them once into `<data>\cache\debs\` and puts them on the appliance cidata; the install script runs `dpkg -i` from the seed only when `mkfs.xfs` is missing (internal/cloud/appliance.go, appliance/hlab-agent-install.sh)
+  - [x] `applianceJob` (mutex, LUN 1, detach on every path) and `PrepareRescue` (copy the debian-13 base with `CreateDisk`, job `rescue-prepare`, rename into place); `EnsureRescue` in the store (internal/cloud/jobs.go, internal/images/rescue.go)
+  - [x] Wiring: images store with ISOs and rescue, `isos` module, `imagesres.NewModule`, `volumes.New` with `ApplianceJob` and `PushAgent` (internal/cloud/cloud.go)
 
 - [x] 04-07 Servers: snapshots and images as source
   - Wave: 2 | Depends on: 04-01, 04-06 | Review: alone
