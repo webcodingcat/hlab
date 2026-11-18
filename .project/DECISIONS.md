@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Catalog lists through ListRequest
+
+- Type: decision
+- Phase: phase 02
+- What: `/server_types`, `/locations`, `/images` and `/actions` are sorted by ID and paged by `ListRequest`; `/actions` ignores its old `sort`; `name` takes one exact value.
+- Why: the clients follow `meta.pagination`, and the frozen description gives these lists only these parameters.
+- Cost of change: low
+
 ## 2026-11-18 Catalog loading and pricing source
 
 - Type: decision
