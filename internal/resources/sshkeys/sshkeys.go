@@ -2,6 +2,7 @@
 package sshkeys
 
 import (
+	"cmp"
 	"crypto/md5" //nolint:gosec // Hetzner's fingerprint is the MD5 of the key
 	"encoding/base64"
 	"encoding/binary"
@@ -38,13 +39,14 @@ type Module struct{}
 func New() *Module { return &Module{} }
 
 // Type implements resource.Module.
-func (m *Module) Type() string { return "ssh_keys" }
+func (m *Module) Type() string { return Kind }
 
 // Routes implements resource.Module.
 func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("GET /ssh_keys", http.HandlerFunc(m.list))
 	r.Handle("POST /ssh_keys", http.HandlerFunc(m.create))
 	r.Handle("GET /ssh_keys/{id}", http.HandlerFunc(m.get))
+	r.Handle("PUT /ssh_keys/{id}", http.HandlerFunc(m.update))
 	r.Handle("DELETE /ssh_keys/{id}", http.HandlerFunc(m.delete))
 }
 
@@ -70,9 +72,51 @@ func Find(tx store.Tx, projectID int64, ref string) (Key, error) {
 	return Key{}, store.ErrNotFound
 }
 
+func put(tx store.Tx, projectID int64, k Key) error {
+	return store.Put(tx, store.Meta{Kind: Kind, ID: k.ID, ProjectID: projectID, Name: k.Name, Labels: k.Labels, Created: k.Created}, k)
+}
+
+// checkName refuses an empty name and one another key of the project has.
+func checkName(tx store.Tx, projectID int64, name string, exceptID int64) error {
+	if strings.TrimSpace(name) == "" {
+		return &api.FieldError{Field: "name", Message: "name is required"}
+	}
+	taken, err := store.NameTaken(tx, Kind, projectID, name, exceptID)
+	if err != nil {
+		return err
+	}
+	if taken {
+		return &api.FieldError{Code: "uniqueness_error", Field: "name", Message: "name is already used"}
+	}
+	return nil
+}
+
+// checkFingerprint refuses a key another key of the project already has.
+func checkFingerprint(tx store.Tx, projectID int64, fingerprint string) error {
+	keys, err := store.List[Key](tx, Kind, projectID)
+	if err != nil {
+		return err
+	}
+	if slices.ContainsFunc(keys, func(k Key) bool { return k.Fingerprint == fingerprint }) {
+		return &api.FieldError{Code: "uniqueness_error", Field: "public_key", Message: "SSH key with the same fingerprint already exists"}
+	}
+	return nil
+}
+
+var listOptions = api.ListOptions[Key]{
+	Name:   func(k Key) string { return k.Name },
+	Labels: func(k Key) map[string]string { return k.Labels },
+	Sort: map[string]func(a, b Key) int{
+		"id":   func(a, b Key) int { return cmp.Compare(a.ID, b.ID) },
+		"name": func(a, b Key) int { return strings.Compare(a.Name, b.Name) },
+	},
+	Filters: map[string]func(Key, []string) bool{
+		"fingerprint": func(k Key, v []string) bool { return slices.Contains(v, k.Fingerprint) },
+	},
+}
+
 func (m *Module) list(w http.ResponseWriter, req *http.Request) {
 	p, _ := api.ProjectFrom(req.Context())
-	q := req.URL.Query()
 	var keys []Key
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
 		var err error
@@ -83,14 +127,7 @@ func (m *Module) list(w http.ResponseWriter, req *http.Request) {
 		api.ServerError(w, err)
 		return
 	}
-	var out []Key
-	for _, k := range keys {
-		if (len(q["name"]) == 0 || slices.Contains(q["name"], k.Name)) &&
-			(len(q["fingerprint"]) == 0 || slices.Contains(q["fingerprint"], k.Fingerprint)) {
-			out = append(out, k)
-		}
-	}
-	api.List(w, "ssh_keys", out)
+	api.ListRequest(w, req, Kind, keys, listOptions)
 }
 
 func (m *Module) get(w http.ResponseWriter, req *http.Request) {
@@ -122,10 +159,6 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	if !api.Decode(w, req, &body) {
 		return
 	}
-	if strings.TrimSpace(body.Name) == "" {
-		api.InvalidInput(w, "name", "name is required")
-		return
-	}
 	fp, err := Fingerprint(body.PublicKey)
 	if err != nil {
 		api.InvalidInput(w, "public_key", err.Error())
@@ -143,17 +176,68 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		Created:     time.Now().UTC().Truncate(time.Second),
 	}
 	err = api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
+		if err := checkName(tx, p.ID, k.Name, 0); err != nil {
+			return err
+		}
+		if err := api.CheckLabels(k.Labels); err != nil {
+			return err
+		}
+		if err := checkFingerprint(tx, p.ID, k.Fingerprint); err != nil {
+			return err
+		}
 		var err error
 		if k.ID, err = store.NextID(tx, Kind); err != nil {
 			return err
 		}
-		return store.Put(tx, store.Meta{Kind: Kind, ID: k.ID, ProjectID: p.ID, Name: k.Name, Labels: k.Labels, Created: k.Created}, k)
+		return put(tx, p.ID, k)
 	})
 	if err != nil {
-		api.ServerError(w, err)
+		api.Fail(w, err)
 		return
 	}
 	api.JSON(w, http.StatusCreated, map[string]any{"ssh_key": k})
+}
+
+// update changes only the fields present in the body; labels, when
+// present, replace the whole set.
+func (m *Module) update(w http.ResponseWriter, req *http.Request) {
+	id, ok := api.PathID(w, req)
+	if !ok {
+		return
+	}
+	var body struct {
+		Name   *string            `json:"name"`
+		Labels *map[string]string `json:"labels"`
+	}
+	if !api.Decode(w, req, &body) {
+		return
+	}
+	p, _ := api.ProjectFrom(req.Context())
+	var k Key
+	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
+		var err error
+		if k, err = store.Get[Key](tx, Kind, p.ID, id); err != nil {
+			return err
+		}
+		if body.Name != nil {
+			if err := checkName(tx, p.ID, *body.Name, id); err != nil {
+				return err
+			}
+			k.Name = *body.Name
+		}
+		if body.Labels != nil {
+			if err := api.CheckLabels(*body.Labels); err != nil {
+				return err
+			}
+			k.Labels = *body.Labels
+		}
+		return put(tx, p.ID, k)
+	})
+	if err != nil {
+		api.Fail(w, err)
+		return
+	}
+	api.JSON(w, http.StatusOK, map[string]any{"ssh_key": k})
 }
 
 func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
