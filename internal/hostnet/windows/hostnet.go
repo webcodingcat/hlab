@@ -43,6 +43,10 @@ type Options struct {
 	StateDir string
 	// Program is the executable the firewall rule admits; default os.Executable().
 	Program string
+	// WSLConfig returns the console user's %UserProfile%\.wslconfig;
+	// found false when there is no file or no console user. Default: WTS
+	// session token and GetUserProfileDirectory.
+	WSLConfig func(ctx context.Context) (data []byte, found bool, err error)
 }
 
 // HostNet configures the Windows host network for one cloud.
@@ -63,6 +67,9 @@ func New(opts Options) *HostNet {
 	}
 	if opts.OtherInstanceRunning == nil {
 		opts.OtherInstanceRunning = otherServiceRunning
+	}
+	if opts.WSLConfig == nil {
+		opts.WSLConfig = consoleUserWSLConfig
 	}
 	if opts.Program == "" {
 		if exe, err := os.Executable(); err == nil {
@@ -108,10 +115,10 @@ type hostEntry struct {
 	Prefix string `json:"prefix"`
 }
 
-// Check reports range collisions, a foreign WinNAT and a running cloud of
-// the other profile.
+// Check reports range collisions, a foreign WinNAT, a running cloud of
+// the other profile and unsupported WSL2 networking settings.
 func (h *HostNet) Check(ctx context.Context, cfg hostnet.Config) []hostnet.Problem {
-	var problems []hostnet.Problem
+	problems := h.checkWSL(ctx)
 	other := profile.Other().Name
 	running, err := h.opts.OtherInstanceRunning(ctx)
 	switch {
