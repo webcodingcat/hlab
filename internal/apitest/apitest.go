@@ -51,12 +51,7 @@ func New(t testing.TB, mods ...resource.Module) *Env {
 	t.Helper()
 	RequireDescription(t)
 
-	st, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-
+	st := takeStore(t)
 	mgr := actions.New(st)
 	router := api.New(api.Deps{Store: st, Actions: mgr})
 	for _, m := range mods {
@@ -198,14 +193,19 @@ func RandomToken() string {
 // ServersDeps returns the servers module's dependencies for tests: the
 // catalog cat, the public range 198.19.0.0/16, platform p, a temporary
 // data folder, images that resolve to a path in it without any file, and
-// an agent push that does nothing. Store stays nil; the handlers use the
-// store of the request.
+// an agent push that does nothing. Store is the store the next New(t)
+// uses, so the module's jobs and project deletion see the API's servers.
 func ServersDeps(t testing.TB, cat *catalog.Catalog, p platform.Platform) servers.Deps {
 	t.Helper()
 	dir := t.TempDir()
+	st := openStore(t)
+	nextStores.Lock()
+	nextStores.m[t] = st
+	nextStores.Unlock()
 	return servers.Deps{
 		Catalog:     cat,
 		PublicRange: netip.MustParsePrefix("198.19.0.0/16"),
+		Store:       st,
 		Platform:    p,
 		Images:      fakeImages{dir: filepath.Join(dir, "images")},
 		PushAgent:   func(context.Context) error { return nil },
@@ -215,6 +215,41 @@ func ServersDeps(t testing.TB, cat *catalog.Catalog, p platform.Platform) server
 			VMPrefix:      "hlab-test",
 		},
 	}
+}
+
+// nextStores holds per test the store ServersDeps opened for the next New.
+var nextStores = struct {
+	sync.Mutex
+	m map[testing.TB]*store.Store
+}{m: map[testing.TB]*store.Store{}}
+
+// takeStore returns the store ServersDeps opened for t, or a new one.
+func takeStore(t testing.TB) *store.Store {
+	t.Helper()
+	nextStores.Lock()
+	st, ok := nextStores.m[t]
+	delete(nextStores.m, t)
+	nextStores.Unlock()
+	if ok {
+		return st
+	}
+	return openStore(t)
+}
+
+// openStore opens a store in a temporary folder, closed when t ends.
+func openStore(t testing.TB) *store.Store {
+	t.Helper()
+	st, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() {
+		nextStores.Lock()
+		delete(nextStores.m, t)
+		nextStores.Unlock()
+		_ = st.Close()
+	})
+	return st
 }
 
 // fakeImages names a base disk per image without downloading anything.

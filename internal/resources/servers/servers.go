@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/actions"
@@ -47,6 +48,7 @@ const (
 	StatusStarting     = "starting"
 	StatusRunning      = "running"
 	StatusOff          = "off"
+	StatusStopping     = "stopping"
 	StatusDeleting     = "deleting"
 )
 
@@ -80,6 +82,8 @@ type Deps struct {
 	AgentStatus func(ctx context.Context) (agentapi.Status, error)
 	// ResetTimeout bounds the wait for a password reset; 0 = 120 s.
 	ResetTimeout time.Duration
+	// Clock is the module's source of time; nil = scheduler.RealClock().
+	Clock scheduler.Clock
 }
 
 // Server is a server in Hetzner's API shape.
@@ -169,10 +173,22 @@ func (r Record) IPv4() netip.Addr {
 }
 
 // Module is the servers resource type.
-type Module struct{ d Deps }
+type Module struct {
+	d Deps
+
+	mu sync.Mutex
+	// changes counts the status changes actions made per server, so the
+	// status watch skips a server whose state it read before one.
+	changes map[int64]uint64
+}
 
 // New returns the module.
-func New(d Deps) *Module { return &Module{d: d} }
+func New(d Deps) *Module {
+	if d.Clock == nil {
+		d.Clock = scheduler.RealClock()
+	}
+	return &Module{d: d}
+}
 
 // Type implements resource.Module.
 func (m *Module) Type() string { return "servers" }
@@ -185,6 +201,11 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("PUT /servers/{id}", http.HandlerFunc(m.update))
 	r.Handle("DELETE /servers/{id}", http.HandlerFunc(m.delete))
 	r.Handle("POST /servers/{id}/actions/change_protection", http.HandlerFunc(m.changeProtection))
+	r.Handle("POST /servers/{id}/actions/poweron", http.HandlerFunc(m.poweron))
+	r.Handle("POST /servers/{id}/actions/poweroff", http.HandlerFunc(m.poweroff))
+	r.Handle("POST /servers/{id}/actions/shutdown", http.HandlerFunc(m.shutdown))
+	r.Handle("POST /servers/{id}/actions/reboot", http.HandlerFunc(m.reboot))
+	r.Handle("POST /servers/{id}/actions/reset", http.HandlerFunc(m.reset))
 	r.Handle("POST /servers/{id}/actions/request_console", http.HandlerFunc(m.requestConsole))
 	r.Handle("POST /servers/{id}/actions/add_to_placement_group", http.HandlerFunc(m.addToPlacementGroup))
 	r.Handle("POST /servers/{id}/actions/remove_from_placement_group", http.HandlerFunc(m.removeFromPlacementGroup))
@@ -198,9 +219,6 @@ func (m *Module) powerOn(ctx context.Context, stor *store.Store, id int64) error
 	}
 	return m.d.Platform.Power(ctx, m.vmName(id), platform.PowerStart)
 }
-
-// Jobs implements resource.Scheduled; the module has no jobs yet.
-func (m *Module) Jobs() []scheduler.Job { return nil }
 
 // Contribute implements resource.NetContributor: every server not being
 // deleted, with its public IPv4 and MAC.
@@ -447,7 +465,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 				ID:      id,
 				Name:    body.Name,
 				Status:  StatusInitializing,
-				Created: time.Now().UTC().Truncate(time.Second),
+				Created: m.d.Clock.Now().UTC().Truncate(time.Second),
 				PublicNet: PublicNet{
 					IPv4:        &IPv4{ID: ipv4ID, IP: ip.String(), DNSPtr: ""},
 					IPv6:        &IPv6{ID: ipv6ID, IP: IPv6Net(id).String(), DNSPtr: []any{}},
@@ -515,7 +533,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		if err == nil {
 			progress(90)
 		}
-		if serr := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, final) }); serr != nil && err == nil {
+		if serr := m.setStatus(stor, id, final); serr != nil && err == nil {
 			err = serr
 		}
 		return err
