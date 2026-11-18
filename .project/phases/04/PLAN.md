@@ -166,14 +166,14 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
 
 ## Plans
 
-- [ ] 04-01 Platform: child disks and snapshots
+- [x] 04-01 Platform: child disks and snapshots
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SRV-12, SRV-11 | Tests: - (covered by test/e2e/image_test.go, rescue_test.go)
   - Reads: ARCHITECTURE "platform", "Guest integration" (rescue); RESEARCH R1, R3 (last two bullets); EXPERIMENTS E7
   - Size: ~220 lines in 5 files
   - Adjusts: -
-  - [ ] `CreateChildDisk` in the interface, hyperv (`New-VHD -Differencing`, `Set-VHD -ResetDiskIdentifier`) and the fake (internal/platform/platform.go, hyperv/disks.go, platformtest/fake.go)
-  - [ ] `Snapshot` in hyperv: off/saved VM direct copy; running VM `Set-VM -CheckpointType Standard`, `Checkpoint-VM -Passthru` with an hlab-prefixed name, copy the parent, reset the identifier, `Remove-VMCheckpoint` by object, wait for the merge (no `.avhdx` path) with a deadline; leftover hlab checkpoints are removed first; `CreateVM` sets CheckpointType Standard; remove the stub (hyperv/disks.go, hyperv/hyperv.go, hyperv/pending.go)
+  - [x] `CreateChildDisk` in the interface, hyperv (`New-VHD -Differencing`, `Set-VHD -ResetDiskIdentifier`) and the fake (internal/platform/platform.go, hyperv/disks.go, platformtest/fake.go)
+  - [x] `Snapshot` in hyperv: off/saved VM direct copy; running VM `Set-VM -CheckpointType Standard`, `Checkpoint-VM -Passthru` with an hlab-prefixed name, copy the parent, reset the identifier, `Remove-VMCheckpoint` by object, wait for the merge (no `.avhdx` path) with a deadline; leftover hlab checkpoints are removed first; `CreateVM` sets CheckpointType Standard; remove the stub (hyperv/disks.go, hyperv/hyperv.go, hyperv/pending.go)
 
 - [ ] 04-02 Agent jobs
   - Wave: 1 | Depends on: - | Review: alone

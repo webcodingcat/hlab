@@ -187,6 +187,7 @@ Inside `hlabd` (Go packages under `internal/`):
       AttachNIC(ctx, vm string, nic NICSpec) error // MAC, segment (public PVLAN or private VLAN), MAC deny-list
       DetachNIC(ctx, vm, mac string) error
       CreateDisk(ctx, path string, sizeBytes int64, from string, page83 [16]byte) error // thin VHDX, optional copy of base
+      CreateChildDisk(ctx, path, parent string) error // differencing VHDX on parent, new disk identifier
       ResizeDisk(ctx, path string, sizeBytes int64) error
       AttachDisk(ctx, vm, path string, lun int) error   // hot-add on SCSI controller 0
       DetachDisk(ctx, vm, path string) error
