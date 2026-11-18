@@ -4,6 +4,7 @@
 package servers
 
 import (
+	"cmp"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -153,6 +154,7 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("GET /servers", http.HandlerFunc(m.list))
 	r.Handle("POST /servers", http.HandlerFunc(m.create))
 	r.Handle("GET /servers/{id}", http.HandlerFunc(m.get))
+	r.Handle("PUT /servers/{id}", http.HandlerFunc(m.update))
 	r.Handle("DELETE /servers/{id}", http.HandlerFunc(m.delete))
 }
 
@@ -207,9 +209,36 @@ func put(tx store.Tx, r Record) error {
 	}, r)
 }
 
+// checkName refuses an empty name and one another server of the project has.
+func checkName(tx store.Tx, projectID int64, name string, exceptID int64) error {
+	if strings.TrimSpace(name) == "" {
+		return &api.FieldError{Field: "name", Message: "name is required"}
+	}
+	taken, err := store.NameTaken(tx, Kind, projectID, name, exceptID)
+	if err != nil {
+		return err
+	}
+	if taken {
+		return &api.FieldError{Code: "uniqueness_error", Field: "name", Message: "name is already used"}
+	}
+	return nil
+}
+
+var listOptions = api.ListOptions[Server]{
+	Name:   func(s Server) string { return s.Name },
+	Labels: func(s Server) map[string]string { return s.Labels },
+	Sort: map[string]func(a, b Server) int{
+		"id":      func(a, b Server) int { return cmp.Compare(a.ID, b.ID) },
+		"name":    func(a, b Server) int { return strings.Compare(a.Name, b.Name) },
+		"created": func(a, b Server) int { return a.Created.Compare(b.Created) },
+	},
+	Filters: map[string]func(Server, []string) bool{
+		"status": func(s Server, v []string) bool { return slices.Contains(v, s.Status) },
+	},
+}
+
 func (m *Module) list(w http.ResponseWriter, req *http.Request) {
 	p, _ := api.ProjectFrom(req.Context())
-	names := req.URL.Query()["name"]
 	var recs []Record
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
 		var err error
@@ -220,13 +249,11 @@ func (m *Module) list(w http.ResponseWriter, req *http.Request) {
 		api.ServerError(w, err)
 		return
 	}
-	var out []Server
+	out := make([]Server, 0, len(recs))
 	for _, r := range recs {
-		if len(names) == 0 || slices.Contains(names, r.Name) {
-			out = append(out, r.Server)
-		}
+		out = append(out, r.Server)
 	}
-	api.List(w, "servers", out)
+	api.ListRequest(w, req, Kind, out, listOptions)
 }
 
 func (m *Module) get(w http.ResponseWriter, req *http.Request) {
@@ -286,6 +313,12 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	var rec Record
 	var action *actions.Action
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
+		if err := checkName(tx, p.ID, body.Name, 0); err != nil {
+			return err
+		}
+		if err := api.CheckLabels(labels); err != nil {
+			return err
+		}
 		var keys []string
 		for _, raw := range body.SSHKeys {
 			k, err := sshkeys.Find(tx, p.ID, refString(raw))
@@ -379,12 +412,12 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 // resolve finds server type, image and location of a create request.
 func (m *Module) resolve(b createRequest) (catalog.ServerType, catalog.Image, catalog.Location, *api.FieldError) {
 	var none catalog.ServerType
-	if strings.TrimSpace(b.Name) == "" {
-		return none, catalog.Image{}, catalog.Location{}, &api.FieldError{Field: "name", Message: "name is required"}
-	}
 	typ, ok := m.serverType(refString(b.ServerType))
 	if !ok {
 		return none, catalog.Image{}, catalog.Location{}, &api.FieldError{Field: "server_type", Message: "server type " + refString(b.ServerType) + " not found"}
+	}
+	if typ.Architecture == "arm" {
+		return none, catalog.Image{}, catalog.Location{}, &api.FieldError{Code: "resource_unavailable", Message: "server type " + typ.Name + " is an arm type; hlab runs only x86 servers"}
 	}
 	img, ok := m.image(refString(b.Image))
 	if !ok {
@@ -432,6 +465,48 @@ func (m *Module) location(ref string) (catalog.Location, bool) {
 		}
 	}
 	return catalog.Location{}, false
+}
+
+// update changes only the fields present in the body; labels, when
+// present, replace the whole set.
+func (m *Module) update(w http.ResponseWriter, req *http.Request) {
+	id, ok := api.PathID(w, req)
+	if !ok {
+		return
+	}
+	var body struct {
+		Name   *string            `json:"name"`
+		Labels *map[string]string `json:"labels"`
+	}
+	if !api.Decode(w, req, &body) {
+		return
+	}
+	p, _ := api.ProjectFrom(req.Context())
+	var r Record
+	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
+		var err error
+		if r, err = store.Get[Record](tx, Kind, p.ID, id); err != nil {
+			return err
+		}
+		if body.Name != nil {
+			if err := checkName(tx, p.ID, *body.Name, id); err != nil {
+				return err
+			}
+			r.Name = *body.Name
+		}
+		if body.Labels != nil {
+			if err := api.CheckLabels(*body.Labels); err != nil {
+				return err
+			}
+			r.Labels = *body.Labels
+		}
+		return put(tx, r)
+	})
+	if err != nil {
+		api.Fail(w, err)
+		return
+	}
+	api.JSON(w, http.StatusOK, map[string]any{"server": r.Server})
 }
 
 func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
