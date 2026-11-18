@@ -9,4 +9,4 @@ and taste do not go here; a finding that needs a change to REQUIREMENTS.md,
 SPEC.md or ARCHITECTURE.md goes to "Open decisions" in STATUS.md. Checked items move to
 BACKLOG-DONE.md when a backlog phase closes.
 
-- [ ] <severity>: <component>: <what goes wrong for whom> (source: <phase> <plan> review)
+- [ ] later: platform/hyperv: Reboot uses Msvm_ShutdownComponent.InitiateReboot, which answered "not supported" on a VM without guest OS; if it also fails with Linux guests, every server reboot fails (phase 03, SRV-07) and Reboot needs guest shutdown plus start (source: 01 01-09 implementer)

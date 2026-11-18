@@ -94,12 +94,12 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
   - Size: ~350 lines in 4 files
   - [ ] `internal/images`: download with checksum file from the source, verify, qcow2/raw to fixed VHD (E2), convert via callback, cache, single conversion under concurrent use
 
-- [ ] 01-09 Hyper-V platform: runner, switch, VMs
+- [x] 01-09 Hyper-V platform: runner, switch, VMs
   - Wave: 2 | Depends on: 01-01 | Review: alone
   - Requirements: - | Tests: (e2e)
   - Size: ~400 lines in 4 files
-  - [ ] persistent PowerShell 5.1 runner (stdin commands, JSON out, mutex, restart)
-  - [ ] EnsureSwitch (internal, host adapter isolated PVLAN), CreateVM (E2 defaults), SetVM, DeleteVM, Power, State, HostResources
+  - [x] persistent PowerShell 5.1 runner (stdin commands, JSON out, mutex, restart)
+  - [x] EnsureSwitch (internal, host adapter isolated PVLAN), CreateVM (E2 defaults), SetVM, DeleteVM, Power, State, HostResources
 
 - [ ] 01-10 Hyper-V platform: disks, NICs, DVD, boot
   - Wave: 3 | Depends on: 01-09 | Review: alone
