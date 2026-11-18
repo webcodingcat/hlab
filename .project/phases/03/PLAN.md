@@ -174,14 +174,14 @@ func ServersDeps(t *testing.T, cat *catalog.Catalog, p platform.Platform) server
   - [ ] `Status.PasswordResetsDone` filled from `Metadata.Done` (internal/agentapi/agentapi.go, internal/agent/agent.go); second listener on `169.254.169.254:80` (cmd/hlab-agent/main.go)
   - [ ] Input-path binding: TCP to 169.254.169.254:80 from a known guest MAC with a source address not its own is dropped, in the same table as the forward backstop (internal/agent/isolation_linux.go)
 
-- [ ] 03-05 Scheduler
+- [x] 03-05 Scheduler
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: - (runs SRV-20 watch and SRV-21 sampling) | Tests: -
   - Reads: ARCHITECTURE "scheduler", "resource"
   - Size: ~120 lines in 3 files
   - Adjusts: -
-  - [ ] `scheduler.Clock`, `RealClock`, `Job`, `Run` (internal/scheduler/scheduler.go); `resource.Scheduled` (internal/resource/resource.go)
-  - [ ] Cloud start runs the jobs of every module implementing `Scheduled` after the API is up and cancels them first at stop (internal/cloud/cloud.go)
+  - [x] `scheduler.Clock`, `RealClock`, `Job`, `Run` (internal/scheduler/scheduler.go); `resource.Scheduled` (internal/resource/resource.go)
+  - [x] Cloud start runs the jobs of every module implementing `Scheduled` after the API is up and cancels them first at stop (internal/cloud/cloud.go)
 
 - [ ] 03-06 Servers module reconciles its VMs
   - Wave: 2 | Depends on: 03-01, 03-05 | Review: alone | e2e
