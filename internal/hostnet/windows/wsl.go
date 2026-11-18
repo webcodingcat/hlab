@@ -73,14 +73,11 @@ func wslProblems(s wslSettings) []hostnet.Problem {
 }
 
 // checkWSL reads the console user's .wslconfig and reports what hlab does
-// not support. It never changes the file.
+// not support. It never changes the file. A file that cannot be read
+// leaves the mode unknown and gives no problem.
 func (h *HostNet) checkWSL(ctx context.Context) []hostnet.Problem {
 	data, found, err := h.opts.WSLConfig(ctx)
-	if err != nil {
-		return []hostnet.Problem{{Code: hostnet.ProblemWSLModeUnsupported,
-			Message: fmt.Sprintf("cannot read the console user's .wslconfig, the WSL2 networking mode is unknown: %v", err)}}
-	}
-	if !found {
+	if err != nil || !found {
 		return nil
 	}
 	return wslProblems(parseWSLConfig(data))
