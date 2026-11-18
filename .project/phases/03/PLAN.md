@@ -263,11 +263,11 @@ func ServersDeps(t *testing.T, cat *catalog.Catalog, p platform.Platform) server
   - Adjusts: -
   - [x] `GET /servers/{id}/metrics` through `metrics.ParseQuery` (`invalid_input` on the named field) and `Series`; sample job every 10 s for running servers; delete forgets the series (internal/resources/servers/metrics.go, servers.go); cloud creates the 24 h store (internal/cloud/cloud.go)
 
-- [ ] 03-15 Documentation
+- [x] 03-15 Documentation
   - Wave: 10 | Depends on: 03-14 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06 | Tests: test/docs/docs_test.go (existing)
   - Reads: SPEC "Documentation"; REQUIREMENTS DOC; CONTEXT.md "Documentation"; the summaries of 03-03 and 03-09
   - Size: ~120 lines in 3 files
   - Adjusts: -
-  - [ ] docs/user/deviations.md: reset_password through the hlab guest hook (not qemu-guest-agent; servers not created from hlab images lack it; 409 `conflict` when not running), metrics kept 24 h in memory at 10 s and lost at cloud stop, disk.0 sums the VM's disks, shutdown reports only the sent request, root password not expired, reboot fallback if 03-03 chose it, metadata service without EC2 routes and with `public-keys`/`userdata` in cloud-init's shape
-  - [ ] README.md server section (power actions, rebuild, change type, root password, metadata); docs/dev/components.md (scheduler, metrics, platformtest)
+  - [x] docs/user/deviations.md: reset_password through the hlab guest hook (not qemu-guest-agent; servers not created from hlab images lack it; 409 `conflict` when not running), metrics kept 24 h in memory at 10 s and lost at cloud stop, disk.0 sums the VM's disks, shutdown reports only the sent request, root password not expired, reboot fallback if 03-03 chose it, metadata service without EC2 routes and with `public-keys`/`userdata` in cloud-init's shape
+  - [x] README.md server section (power actions, rebuild, change type, root password, metadata); docs/dev/components.md (scheduler, metrics, platformtest)
