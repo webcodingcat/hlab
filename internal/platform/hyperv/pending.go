@@ -7,7 +7,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/platform"
 )
 
-// Methods not built yet: Snapshot and Metrics follow in later phases.
+// Methods not built yet: Snapshot follows in a later phase.
 
 var errNotImplemented = errors.New("not implemented")
 
@@ -18,9 +18,4 @@ func notImplemented(op string) error {
 // Snapshot is not implemented yet.
 func (p *Platform) Snapshot(ctx context.Context, vm, diskPath, target string) error {
 	return notImplemented("Snapshot")
-}
-
-// Metrics is not implemented yet.
-func (p *Platform) Metrics(ctx context.Context, vm string) (platform.Sample, error) {
-	return platform.Sample{}, notImplemented("Metrics")
 }

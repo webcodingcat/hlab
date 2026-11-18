@@ -169,12 +169,17 @@ type BootDevice struct {
 	Slot int
 }
 
-// Sample holds cumulative counters of a VM.
+// Sample holds counters of a VM. CPUPercent is computed by the platform
+// between two Metrics calls for the same VM (per vCPU summed, 100 = one vCPU
+// fully busy; 0 on the first call). All other counters are cumulative and
+// restart at 0 when the VM restarts.
 type Sample struct {
 	Time                          time.Time
 	CPUPercent                    float64
 	DiskReadBytes, DiskWriteBytes uint64
 	NetRxBytes, NetTxBytes        uint64
+	DiskReadOps, DiskWriteOps     uint64
+	NetRxPackets, NetTxPackets    uint64
 }
 
 // Resources are the host's resources.
