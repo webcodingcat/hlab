@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 Catalog update CLI details
+
+- Type: decision
+- Phase: phase 02
+- What: the hidden prompt uses `golang.org/x/term` `ReadPassword` in cmd/hlab; `UpdateOptions.DataDir` gets the config root; a usage error raised while a command runs (missing token) also exits with 2.
+- Why: x/term already sets the console mode through x/sys/windows, and ARCHITECTURE puts the updated catalog in the config root.
+- Cost of change: low
+
 ## 2026-11-18 Placement group membership stored on the group
 
 - Type: decision

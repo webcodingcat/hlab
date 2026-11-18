@@ -456,8 +456,9 @@ HTTP/1.1 over `\\.\pipe\hlab`, JSON. All paths under `/mgmt/v1`:
 Errors: `{"error":{"code":"...","message":"..."}}` with codes
 `invalid_input`, `not_found`, `conflict`, `cloud_not_running`,
 `server_error`. The handlers get `mgmt.Deps` with, among others,
-`Actions`, `Deleters` (the modules implementing `resource.Deleter`) and
-`UpdateCatalog`.
+`Actions`, `Deleters` (the modules implementing `resource.Deleter`),
+`UpdateCatalog` (nil leaves the route out) and `ServerTypes` (the count
+returned by the catalog update).
 
 ### hlab-agent (appliance)
 
