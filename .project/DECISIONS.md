@@ -22,6 +22,22 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-18 List details: sort without keys, last_page, repeats
+
+- Type: decision
+- Phase: phase 02
+- What: endpoints without sort keys ignore `sort`; `last_page` is always a number (at least 1); a repeated sort field is ignored; bad `sort` or `label_selector` answers `invalid_input` on that field.
+- Why: the parameter does not exist on those endpoints, the description allows a number, and Hetzner ignores contrary orders.
+- Cost of change: low
+
+## 2026-11-18 Reading .wslconfig: missing user, unreadable file, defaults
+
+- Type: decision
+- Phase: phase 02
+- What: no console user token means no WSL problem; an unreadable profile or `.wslconfig` gives no problem, only a logged warning; unknown `networkingMode` counts as NAT and only `dnsTunneling=false` as off.
+- Why: WSL falls back to its defaults for unknown values, and `wsl_mode_unsupported` is reserved for bridged and none.
+- Cost of change: low
+
 ## 2026-11-18 Status of codes outside the frozen error table
 
 - Type: decision

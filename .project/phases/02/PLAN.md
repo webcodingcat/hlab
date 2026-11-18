@@ -181,14 +181,14 @@ func (e *env) wslKey() string                                           // path 
   - [ ] `LoadAll`: data-folder `catalog\server-types.json` before the shipped one, own types from `server-types.custom.json` (IDs from 100000, unique names and IDs; else a warning and shipped types only), guarded `Types`, `ServerTypeByRef`, `ReplaceServerTypes`, `Pricing` (own types without prices get zero prices per location) (internal/catalog/catalog.go, custom.go)
   - [ ] Field `ServerTypes` unexported; servertypes and servers use `Types`/`ServerTypeByRef`; new `/pricing` module; hlabd loads with `LoadAll` and reports warnings as problems in `/status` (internal/resources/servertypes/servertypes.go, servers/servers.go, pricing/pricing.go, internal/cloud/cloud.go)
 
-- [ ] 02-06 List conventions, label checks and uniqueness
+- [x] 02-06 List conventions, label checks and uniqueness
   - Wave: 2 | Depends on: 02-01, 02-02 | Review: alone
   - Requirements: API-05, API-06, API-11 | Tests: internal/api/list_test.go
   - Reads: REQUIREMENTS API; RESEARCH R5 (pagination, sorting); ARCHITECTURE "api", "store"
   - Size: ~280 lines in 3 files
   - Adjusts: -
-  - [ ] `ListRequest` and `ListOptions`; `api.List` stays for single-page catalog answers until its callers move (internal/api/list.go)
-  - [ ] `CheckLabels` (internal/api/labels.go); `NameTaken`, `IDs` (internal/store/resources.go)
+  - [x] `ListRequest` and `ListOptions`; `api.List` stays for single-page catalog answers until its callers move (internal/api/list.go)
+  - [x] `CheckLabels` (internal/api/labels.go); `NameTaken`, `IDs` (internal/store/resources.go)
 
 - [ ] 02-07 Catalog update and token revocation path
   - Wave: 3 | Depends on: 02-03, 02-05 | Review: alone | e2e
