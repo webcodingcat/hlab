@@ -212,14 +212,14 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [x] Record, `NewModule`, `Put`/`Load`/`Backups`/`Remove`; list and get merge catalog images with the project's images (filters type, status, bound_to, architecture, include_deprecated; sorts id, name, created) (internal/resources/images/images.go, records.go)
   - [x] `PUT /images/{id}` (description, labels, `type` backup→snapshot clears bound_to), `DELETE /images/{id}` (`protected` with delete protection, removes the file), `POST /images/{id}/actions/change_protection`, action endpoints, `Deleter` (internal/resources/images/images.go, records.go)
 
-- [ ] 04-12 Volumes: create, resize, delete
+- [x] 04-12 Volumes: create, resize, delete
   - Wave: 3 | Depends on: 04-07 | Review: alone
   - Requirements: VOL-01 | Tests: internal/resources/volumes/volumes_test.go (the test package uses servers interfaces of 04-07; VOL-01's case for deleting an attached volume passes only after 04-13)
   - Reads: REQUIREMENTS VOL-01; ARCHITECTURE "resource", "Guest integration"; RESEARCH R2, R7 (volume create); DECISIONS "Guest-visible identifiers", "Volume identifier byte order"
   - Size: ~400 lines in 2 files
   - Adjusts: -
-  - [ ] Module, Record (`linux_device`, `format`, `location`, `server`, `assignee`, `status`, protection, labels), `POST /volumes` validation (size 10–10240, location by name or ID or from the server, automount without server, format ext4/xfs, a location differing from the server's) with `CheckDisk`; list, get, PUT, `DELETE` (attached: 422 `invalid_input`; removes the file), `change_protection`, `resize` (grow only, `ResizeDisk`, `CheckDisk` on the growth), `Page83`, `Disks` (internal/resources/volumes/volumes.go)
-  - [ ] Reconcile/Delete: create the disk with `Page83`, run `mkfs` through `ApplianceJob` when `format` is set, then status `available` (internal/resources/volumes/disk.go)
+  - [x] Module, Record (`linux_device`, `format`, `location`, `server`, `assignee`, `status`, protection, labels), `POST /volumes` validation (size 10–10240, location by name or ID or from the server, automount without server, format ext4/xfs, a location differing from the server's) with `CheckDisk`; list, get, PUT, `DELETE` (attached: 422 `invalid_input`; removes the file), `change_protection`, `resize` (grow only, `ResizeDisk`, `CheckDisk` on the growth), `Page83`, `Disks` (internal/resources/volumes/volumes.go)
+  - [x] Reconcile/Delete: create the disk with `Page83`, run `mkfs` through `ApplianceJob` when `format` is set, then status `available` (internal/resources/volumes/disk.go)
 
 - [ ] 04-05 Appliance jobs, rescue base and wiring
   - Wave: 4 | Depends on: 04-02, 04-04, 04-06, 04-12 | Review: alone
