@@ -39,7 +39,7 @@ type Router struct {
 func New(deps Deps) *Router {
 	r := &Router{deps: deps, mux: http.NewServeMux()}
 	r.mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		Error(w, http.StatusNotFound, "not_found", "the requested resource was not found", nil)
+		NotFound(w)
 	}))
 	inner := r.authenticate(checkJSON(guardReadOnly(r.mux)))
 	r.handler = logRequests(r.underPrefix(http.StripPrefix(Prefix, inner)))
@@ -65,7 +65,7 @@ func (g registrar) Handle(pattern string, h http.Handler) { g.mux.Handle(pattern
 func (r *Router) underPrefix(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path != Prefix && !strings.HasPrefix(req.URL.Path, Prefix+"/") {
-			Error(w, http.StatusNotFound, "not_found", "the requested resource was not found", nil)
+			NotFound(w)
 			return
 		}
 		next.ServeHTTP(w, req.WithContext(withDeps(req.Context(), r.deps)))
@@ -82,7 +82,7 @@ func (r *Router) authenticate(next http.Handler) http.Handler {
 		}
 		token, ok := strings.CutPrefix(req.Header.Get("Authorization"), "Bearer ")
 		if !ok || token == "" {
-			Error(w, http.StatusUnauthorized, "unauthorized", "unable to authenticate", nil)
+			Error(w, "unauthorized", "unable to authenticate", nil)
 			return
 		}
 		sum := sha256.Sum256([]byte(token))
@@ -94,12 +94,11 @@ func (r *Router) authenticate(next http.Handler) http.Handler {
 			return err
 		})
 		if errors.Is(err, store.ErrNotFound) {
-			Error(w, http.StatusUnauthorized, "unauthorized", "unable to authenticate", nil)
+			Error(w, "unauthorized", "unable to authenticate", nil)
 			return
 		}
 		if err != nil {
-			slog.Error("token lookup", "err", err)
-			Error(w, http.StatusInternalServerError, "server_error", "internal error", nil)
+			ServerError(w, err)
 			return
 		}
 		next.ServeHTTP(w, req.WithContext(withAuth(req.Context(), project, tok.ReadOnly)))
@@ -113,11 +112,11 @@ func checkJSON(next http.Handler) http.Handler {
 			body, err := io.ReadAll(req.Body)
 			_ = req.Body.Close()
 			if err != nil {
-				Error(w, http.StatusBadRequest, "json_error", "unable to read the request body", nil)
+				Error(w, "json_error", "unable to read the request body", nil)
 				return
 			}
 			if len(bytes.TrimSpace(body)) > 0 && !json.Valid(body) {
-				Error(w, http.StatusBadRequest, "json_error", "the request body is not valid JSON", nil)
+				Error(w, "json_error", "the request body is not valid JSON", nil)
 				return
 			}
 			req.Body = io.NopCloser(bytes.NewReader(body))
@@ -130,7 +129,7 @@ func checkJSON(next http.Handler) http.Handler {
 func guardReadOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodGet && ReadOnlyFrom(req.Context()) {
-			Error(w, http.StatusForbidden, "token_readonly", "the token is read-only", nil)
+			Error(w, "token_readonly", "the token is read-only", nil)
 			return
 		}
 		next.ServeHTTP(w, req)
@@ -141,7 +140,7 @@ func guardReadOnly(next http.Handler) http.Handler {
 // json_error response and returns false.
 func Decode(w http.ResponseWriter, req *http.Request, v any) bool {
 	if err := json.NewDecoder(req.Body).Decode(v); err != nil {
-		Error(w, http.StatusBadRequest, "json_error", "invalid JSON: "+err.Error(), nil)
+		Error(w, "json_error", "invalid JSON: "+err.Error(), nil)
 		return false
 	}
 	return true

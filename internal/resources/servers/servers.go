@@ -263,11 +263,6 @@ type createRequest struct {
 	Labels           map[string]string `json:"labels"`
 }
 
-// inputError is a rejected field of a request.
-type inputError struct{ field, msg string }
-
-func (e *inputError) Error() string { return e.field + ": " + e.msg }
-
 var errNoAddress = errors.New("no free public IPv4 address")
 
 func (m *Module) create(w http.ResponseWriter, req *http.Request) {
@@ -277,7 +272,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	}
 	typ, img, loc, ierr := m.resolve(body)
 	if ierr != nil {
-		api.InvalidInput(w, ierr.field, ierr.msg)
+		api.Fail(w, ierr)
 		return
 	}
 	p, _ := api.ProjectFrom(req.Context())
@@ -295,7 +290,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		for _, raw := range body.SSHKeys {
 			k, err := sshkeys.Find(tx, p.ID, refString(raw))
 			if errors.Is(err, store.ErrNotFound) {
-				return &inputError{"ssh_keys", "ssh key " + refString(raw) + " not found"}
+				return &api.FieldError{Field: "ssh_keys", Message: "ssh key " + refString(raw) + " not found"}
 			}
 			if err != nil {
 				return err
@@ -351,16 +346,12 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		action, err = acts.Start(tx, p.ID, "create_server", []actions.Ref{{ID: id, Type: refType}})
 		return err
 	})
-	var ie *inputError
 	switch {
-	case errors.As(err, &ie):
-		api.InvalidInput(w, ie.field, ie.msg)
-		return
 	case errors.Is(err, errNoAddress):
-		api.Error(w, http.StatusConflict, "resource_unavailable", "no free public IPv4 address in the public range", nil)
+		api.Error(w, "resource_unavailable", "no free public IPv4 address in the public range", nil)
 		return
 	case err != nil:
-		api.ServerError(w, err)
+		api.Fail(w, err)
 		return
 	}
 
@@ -386,18 +377,18 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 }
 
 // resolve finds server type, image and location of a create request.
-func (m *Module) resolve(b createRequest) (catalog.ServerType, catalog.Image, catalog.Location, *inputError) {
+func (m *Module) resolve(b createRequest) (catalog.ServerType, catalog.Image, catalog.Location, *api.FieldError) {
 	var none catalog.ServerType
 	if strings.TrimSpace(b.Name) == "" {
-		return none, catalog.Image{}, catalog.Location{}, &inputError{"name", "name is required"}
+		return none, catalog.Image{}, catalog.Location{}, &api.FieldError{Field: "name", Message: "name is required"}
 	}
 	typ, ok := m.serverType(refString(b.ServerType))
 	if !ok {
-		return none, catalog.Image{}, catalog.Location{}, &inputError{"server_type", "server type " + refString(b.ServerType) + " not found"}
+		return none, catalog.Image{}, catalog.Location{}, &api.FieldError{Field: "server_type", Message: "server type " + refString(b.ServerType) + " not found"}
 	}
 	img, ok := m.image(refString(b.Image))
 	if !ok {
-		return none, catalog.Image{}, catalog.Location{}, &inputError{"image", "image " + refString(b.Image) + " not found"}
+		return none, catalog.Image{}, catalog.Location{}, &api.FieldError{Field: "image", Message: "image " + refString(b.Image) + " not found"}
 	}
 	ref := refString(b.Location)
 	if ref == "" && len(typ.Locations) > 0 {
@@ -405,10 +396,10 @@ func (m *Module) resolve(b createRequest) (catalog.ServerType, catalog.Image, ca
 	}
 	loc, ok := m.location(ref)
 	if !ok {
-		return none, catalog.Image{}, catalog.Location{}, &inputError{"location", "location " + ref + " not found"}
+		return none, catalog.Image{}, catalog.Location{}, &api.FieldError{Field: "location", Message: "location " + ref + " not found"}
 	}
 	if !slices.ContainsFunc(typ.Locations, func(l catalog.ServerTypeLocation) bool { return l.Name == loc.Name }) {
-		return none, catalog.Image{}, catalog.Location{}, &inputError{"location", "server type " + typ.Name + " is not offered in " + loc.Name}
+		return none, catalog.Image{}, catalog.Location{}, &api.FieldError{Field: "location", Message: "server type " + typ.Name + " is not offered in " + loc.Name}
 	}
 	return typ, img, loc, nil
 }
@@ -473,15 +464,8 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 		r.Status = StatusDeleting
 		return put(tx, r)
 	})
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		api.NotFound(w)
-		return
-	case errors.Is(err, actions.ErrLocked):
-		api.Error(w, http.StatusLocked, actions.ErrLocked.Code, actions.ErrLocked.Message, nil)
-		return
-	case err != nil:
-		api.ServerError(w, err)
+	if err != nil {
+		api.Fail(w, err)
 		return
 	}
 

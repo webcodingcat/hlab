@@ -15,15 +15,6 @@ func JSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
-// Error writes Hetzner's error object. details may be nil.
-func Error(w http.ResponseWriter, status int, code, message string, details any) {
-	JSON(w, status, map[string]any{"error": map[string]any{
-		"code":    code,
-		"message": message,
-		"details": details,
-	}})
-}
-
 // defaultPerPage is Hetzner's default page size.
 const defaultPerPage = 25
 
@@ -44,17 +35,4 @@ func List[T any](w http.ResponseWriter, key string, items []T) {
 			"total_entries": len(items),
 		}},
 	})
-}
-
-// InvalidInput writes Hetzner's invalid_input error for one field.
-func InvalidInput(w http.ResponseWriter, field, message string) {
-	Error(w, http.StatusBadRequest, "invalid_input", "invalid input in field '"+field+"'", map[string]any{
-		"fields": []any{map[string]any{"name": field, "messages": []string{message}}},
-	})
-}
-
-// ServerError logs err and writes Hetzner's server_error.
-func ServerError(w http.ResponseWriter, err error) {
-	slog.Error("api request failed", "err", err)
-	Error(w, http.StatusInternalServerError, "server_error", "internal error", nil)
 }

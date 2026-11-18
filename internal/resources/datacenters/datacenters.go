@@ -21,7 +21,7 @@ func (*Module) Type() string { return "datacenters" }
 // Routes implements resource.Module.
 func (*Module) Routes(r resource.Registrar) {
 	gone := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		api.Error(w, http.StatusGone, "deprecated_api_endpoint",
+		api.Error(w, "deprecated_api_endpoint",
 			"datacenters have been removed from the API; use locations", nil)
 	})
 	r.Handle("GET /datacenters", gone)
