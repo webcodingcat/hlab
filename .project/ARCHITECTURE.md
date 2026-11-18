@@ -619,8 +619,9 @@ locks a resource of type `project`.
   `text/x-shellscript` part (run once per instance) that writes the hooks,
   their units and the `00-hlab-root.conf` sshd drop-in. User cloud-config
   keys such as `runcmd` or `write_files` cannot replace the hooks.
-  The script ends with `sync`, so a hard poweroff right after the first
-  boot does not leave empty host keys or hook files.
+  The script installs `hlab-sync.service` (After=cloud-final.service, runs
+  `sync` once) and queues it, so a hard poweroff right after the first boot
+  does not leave empty host keys, hook files or files user_data wrote.
 - Every VM has COM1 on `\\.\pipe\<vm>-com1` (Debian 12 panics without a
   serial port). hlabd serves that pipe itself before every start, with the
   SD `D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;S-1-5-83-0)`, drains it and
