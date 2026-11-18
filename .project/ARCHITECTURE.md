@@ -622,7 +622,9 @@ locks a resource of type `project`.
   a pipe Hyper-V creates itself is readable by Everyone.
 - Volumes with `automount` are mounted by a `user-data` part merged by
   cloud-init at creation, or by the udev rule plus a systemd mount unit when
-  attached later.
+  attached later: the unit asks the metadata service `GET /hlab/v1/volumes`
+  (the server's attached volumes with `automount`, by ID) and mounts at
+  `/mnt/HC_Volume_<id>` with an fstab entry (DECISIONS.md Q4).
 - Rescue: hlab keeps one rescue base disk (Debian 13 `generic`, prepared
   once by the agent job `rescue-prepare` so that no UUID or label matches
   any image). Enable rescue creates a differencing disk from it at SCSI
