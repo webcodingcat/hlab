@@ -36,6 +36,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/resources/datacenters"
 	imagesres "github.com/webcodingcat/hlab/internal/resources/images"
 	"github.com/webcodingcat/hlab/internal/resources/locations"
+	"github.com/webcodingcat/hlab/internal/resources/pricing"
 	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/resources/servertypes"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
@@ -112,6 +113,10 @@ type Cloud struct {
 func New(d Deps) *Cloud {
 	return &Cloud{d: d, tag: profile.Current().Tag}
 }
+
+// problemCustomServerTypes is the /status problem of own server types
+// that LoadAll could not add.
+const problemCustomServerTypes = "custom_server_types"
 
 // status is the content of the status file.
 type status struct {
@@ -194,8 +199,15 @@ func (c *Cloud) start(ctx context.Context) error {
 	if c.st, err = store.Open(filepath.Join(c.d.Paths.State, "state.db")); err != nil {
 		return err
 	}
-	if c.cat, err = catalog.Load(c.d.Paths.Catalog); err != nil {
+	var catWarns []string
+	c.cat, catWarns, err = catalog.LoadAll(c.d.Paths.Catalog, c.d.Paths.Config,
+		filepath.Join(c.d.Paths.Config, "server-types.custom.json"))
+	if err != nil {
 		return err
+	}
+	for _, w := range catWarns {
+		slog.Warn("catalog problem", "message", w)
+		c.problems = append(c.problems, hostnet.Problem{Code: problemCustomServerTypes, Message: w})
 	}
 	if c.plat, err = hyperv.New(hyperv.Options{DataDir: set.Storage.DataFolder, SwitchName: c.tag}); err != nil {
 		return err
@@ -261,6 +273,7 @@ func (c *Cloud) modules() []resource.Module {
 		locations.New(c.cat),
 		datacenters.New(),
 		servertypes.New(c.cat),
+		pricing.New(c.cat),
 		imagesres.New(c.cat),
 		sshkeys.New(),
 		servers.New(servers.Deps{

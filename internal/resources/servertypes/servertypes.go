@@ -29,7 +29,7 @@ func (m *Module) Routes(r resource.Registrar) {
 func (m *Module) list(w http.ResponseWriter, req *http.Request) {
 	names := req.URL.Query()["name"]
 	var out []json.RawMessage
-	for _, st := range m.cat.ServerTypes {
+	for _, st := range m.cat.Types() {
 		if len(names) == 0 || slices.Contains(names, st.Name) {
 			out = append(out, st.Raw)
 		}
@@ -42,7 +42,7 @@ func (m *Module) get(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	for _, st := range m.cat.ServerTypes {
+	for _, st := range m.cat.Types() {
 		if st.ID == id {
 			api.JSON(w, http.StatusOK, map[string]any{"server_type": st.Raw})
 			return
