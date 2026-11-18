@@ -1,5 +1,4 @@
-// Package servertypes serves Hetzner's server types from the catalog,
-// including the user's own server types.
+// Package servertypes serves Hetzner's server types from the shipped catalog.
 package servertypes
 
 import (
