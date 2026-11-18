@@ -193,15 +193,15 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - Adjusts: -
   - [x] `Metadata.Volumes` and `GET /hlab/v1/volumes` on the existing server lookup (internal/agentapi/agentapi.go, internal/agent/metadata.go)
 
-- [ ] 04-04 ISO catalog and ISO cache
+- [x] 04-04 ISO catalog and ISO cache
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: CAT-08 | Tests: internal/images/images_test.go, internal/resources/isos/isos_test.go
   - Reads: REQUIREMENTS CAT-07, CAT-08; ARCHITECTURE "images", "Files and formats"; RESEARCH R5 (size warning), R6
   - Size: ~380 lines in 5 files
   - Adjusts: -
-  - [ ] `catalog/isos.json` with the five ISOs of R6 (IDs, names as the file names, descriptions, `type: public`, `architecture: x86`, sources; debian-13 with the archive fallback); `Catalog.ISOs`, `ISO`, `ISOSources` (internal/catalog/catalog.go)
-  - [ ] `Source` fallback fields, `EnsureISO` (no conversion, same lock and temp handling), `Fetch` (internal/images/images.go, internal/images/download.go)
-  - [ ] Module `isos` with `isos.New(cat *catalog.Catalog) *Module` like locations: `GET /isos` (name, architecture, include_architecture_wildcard, page, per_page through `api.ListRequest`) and `GET /isos/{id}` (internal/resources/isos/isos.go)
+  - [x] `catalog/isos.json` with the five ISOs of R6 (IDs, names as the file names, descriptions, `type: public`, `architecture: x86`, sources; debian-13 with the archive fallback); `Catalog.ISOs`, `ISO`, `ISOSources` (internal/catalog/catalog.go)
+  - [x] `Source` fallback fields, `EnsureISO` (no conversion, same lock and temp handling), `Fetch` (internal/images/images.go, internal/images/download.go)
+  - [x] Module `isos` with `isos.New(cat *catalog.Catalog) *Module` like locations: `GET /isos` (name, architecture, include_architecture_wildcard, page, per_page through `api.ListRequest`) and `GET /isos/{id}` (internal/resources/isos/isos.go)
 
 - [ ] 04-06 Project images
   - Wave: 1 | Depends on: - | Review: alone
