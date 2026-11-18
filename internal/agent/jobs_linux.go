@@ -208,21 +208,9 @@ func rescuePrepare(ctx context.Context, lun int) error {
 	if err != nil {
 		return err
 	}
-	before, err := partitions(ctx, dev)
+	before, root, esp, err := imagePartitions(ctx, dev)
 	if err != nil {
 		return err
-	}
-	var root, esp *partition
-	for i := range before {
-		switch before[i].typ {
-		case "ext4":
-			root = &before[i]
-		case "vfat":
-			esp = &before[i]
-		}
-	}
-	if root == nil || esp == nil {
-		return fmt.Errorf("%s: no ext4 root or no vfat ESP partition", dev)
 	}
 
 	if _, err := run(ctx, "sgdisk", "-G", dev); err != nil {
@@ -303,6 +291,41 @@ func rescuePrepare(ctx context.Context, lun int) error {
 		}
 		return nil
 	})
+}
+
+// imagePartitions returns the partitions of the image disk dev with its
+// ext4 root and vfat ESP. The kernel reads the partition table of a
+// hot-added disk after the disk itself appears, so imagePartitions waits
+// for both partitions with a deadline and asks the kernel to reread the
+// table while they are missing.
+func imagePartitions(ctx context.Context, dev string) (parts []partition, root, esp *partition, err error) {
+	ctx, cancel := context.WithTimeout(ctx, diskWait)
+	defer cancel()
+	for {
+		parts, err = partitions(ctx, dev)
+		if err == nil {
+			root, esp = nil, nil
+			for i := range parts {
+				switch parts[i].typ {
+				case "ext4":
+					root = &parts[i]
+				case "vfat":
+					esp = &parts[i]
+				}
+			}
+			if root != nil && esp != nil {
+				return parts, root, esp, nil
+			}
+			err = fmt.Errorf("%s: no ext4 root or no vfat ESP partition", dev)
+		}
+		// Fails while the kernel still scans the disk; the next round retries.
+		_, _ = run(ctx, "blockdev", "--rereadpt", dev)
+		select {
+		case <-ctx.Done():
+			return nil, nil, nil, err
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
 }
 
 // withMounts mounts root and ESP on temporary folders, calls fn and
