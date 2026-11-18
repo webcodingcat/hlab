@@ -107,6 +107,35 @@ func scanDocs[T any](rows *sql.Rows) ([]T, error) {
 	return out, rows.Err()
 }
 
+// NameTaken reports whether another resource of kind in project projectID
+// (0: no project) than exceptID already has name.
+func NameTaken(tx Tx, kind string, projectID int64, name string, exceptID int64) (bool, error) {
+	var taken bool
+	err := tx.tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM resources WHERE kind = ? AND project_id IS ? AND name = ? AND id != ?)`,
+		kind, nullProject(projectID), name, exceptID).Scan(&taken)
+	return taken, err
+}
+
+// IDs returns the IDs of all resources of kind in project projectID
+// (0: no project), ordered.
+func IDs(tx Tx, kind string, projectID int64) ([]int64, error) {
+	rows, err := tx.tx.Query(`SELECT id FROM resources WHERE kind = ? AND project_id IS ? ORDER BY id`,
+		kind, nullProject(projectID))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // Delete removes the resource kind/id of project projectID (0: no project),
 // or returns ErrNotFound.
 func Delete(tx Tx, kind string, projectID, id int64) error {
