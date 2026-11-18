@@ -238,16 +238,31 @@ func (s server) deleteProject(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]int64{"action_id": action.ID})
 }
 
-// purge deletes every resource of p through its module's Deleter, then the
-// project with the remaining rows, and pushes the agent document. It stops
-// at the first failing Delete and keeps the project.
+// idleTimeout bounds how long a project deletion waits for the project's
+// running actions, a server creation for example, before it deletes.
+const idleTimeout = 20 * time.Minute
+
+// purge waits until no action of p runs, so no VM is created after its
+// server was deleted, then deletes every resource of p through its
+// module's Deleter, then the project with the remaining rows, and pushes
+// the agent document. It stops at the first failing Delete or a wait that
+// times out and keeps the project.
 func (s server) purge(ctx context.Context, p store.Project, progress func(int)) error {
 	type item struct {
 		kind string
 		id   int64
 	}
+	wait, cancel := context.WithTimeout(ctx, idleTimeout)
+	err := s.d.Actions.WaitIdle(wait, p.ID)
+	cancel()
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("actions of project %s still running after %s", p.Name, idleTimeout)
+	}
+	if err != nil {
+		return err
+	}
 	var items []item
-	err := s.d.Store.Tx(func(tx store.Tx) error {
+	err = s.d.Store.Tx(func(tx store.Tx) error {
 		for _, kind := range slices.Sorted(maps.Keys(s.d.Deleters)) {
 			ids, err := store.IDs(tx, kind, p.ID)
 			if err != nil {
