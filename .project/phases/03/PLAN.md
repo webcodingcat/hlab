@@ -164,15 +164,15 @@ func ServersDeps(t *testing.T, cat *catalog.Catalog, p platform.Platform) server
   - [ ] `Sample` counters (internal/platform/platform.go); `Power(PowerReboot)` falls back to InitiateShutdown, wait for Off (120 s), Start-VM on any return value other than 0 and 4096 (internal/platform/hyperv/hyperv.go)
   - [ ] `Metrics` from the probed raw classes, matched by exact delimiter on the VM name, CPU percent from the previous call's ticks kept per VM, all of the VM's disks summed, `_Total` skipped; drop it from pending.go (internal/platform/hyperv/metrics.go, internal/platform/hyperv/pending.go)
 
-- [ ] 03-04 Agent metadata service
+- [x] 03-04 Agent metadata service
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: META-01, SRV-10 (guest side) | Tests: internal/agent/metadata_test.go
   - Reads: ARCHITECTURE "hlab-agent" (metadata, password reset), "Network"; RESEARCH R3; CONTEXT.md META-01
   - Size: ~350 lines in 5 files
   - Adjusts: -
-  - [ ] `Metadata` Applier and handler: lookup by source IPv4 among `Config.Metadata` with VLAN 0, Hetzner paths with hand-written YAML (sorted keys, MAC quoted), `/hetzner/v1/userdata`, password-reset GET and done; confirmed IDs kept while the reset is still in the config (internal/agent/metadata.go)
-  - [ ] `Status.PasswordResetsDone` filled from `Metadata.Done` (internal/agentapi/agentapi.go, internal/agent/agent.go); second listener on `169.254.169.254:80` (cmd/hlab-agent/main.go)
-  - [ ] Input-path binding: TCP to 169.254.169.254:80 from a known guest MAC with a source address not its own is dropped, in the same table as the forward backstop (internal/agent/isolation_linux.go)
+  - [x] `Metadata` Applier and handler: lookup by source IPv4 among `Config.Metadata` with VLAN 0, Hetzner paths with hand-written YAML (sorted keys, MAC quoted), `/hetzner/v1/userdata`, password-reset GET and done; confirmed IDs kept while the reset is still in the config (internal/agent/metadata.go)
+  - [x] `Status.PasswordResetsDone` filled from `Metadata.Done` (internal/agentapi/agentapi.go, internal/agent/agent.go); second listener on `169.254.169.254:80` (cmd/hlab-agent/main.go)
+  - [x] Input-path binding: TCP to 169.254.169.254:80 from a known guest MAC with a source address not its own is dropped, in the same table as the forward backstop (internal/agent/isolation_linux.go)
 
 - [x] 03-05 Scheduler
   - Wave: 1 | Depends on: - | Review: alone
