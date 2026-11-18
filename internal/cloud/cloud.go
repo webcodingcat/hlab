@@ -41,6 +41,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/resources/servertypes"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
+	"github.com/webcodingcat/hlab/internal/scheduler"
 	"github.com/webcodingcat/hlab/internal/settings"
 	"github.com/webcodingcat/hlab/internal/store"
 	"github.com/webcodingcat/hlab/internal/sysint"
@@ -108,6 +109,8 @@ type Cloud struct {
 	applianceOn bool
 	apiSrv      *http.Server
 	mgmtSrv     *http.Server
+	// stopJobs cancels the scheduled jobs and waits until they returned.
+	stopJobs func()
 }
 
 // New returns a stopped cloud.
@@ -262,7 +265,32 @@ func (c *Cloud) start(ctx context.Context) error {
 		return err
 	}
 
-	return c.serveManagement(router)
+	if err := c.serveManagement(router); err != nil {
+		return err
+	}
+	c.startJobs(ctx)
+	return nil
+}
+
+// startJobs runs the jobs of every module implementing resource.Scheduled
+// until stopJobs is called.
+func (c *Cloud) startJobs(ctx context.Context) {
+	var jobs []scheduler.Job
+	for _, m := range c.mods {
+		if s, ok := m.(resource.Scheduled); ok {
+			jobs = append(jobs, s.Jobs()...)
+		}
+	}
+	jctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	done := make(chan struct{})
+	go func() {
+		scheduler.Run(jctx, scheduler.RealClock(), jobs)
+		close(done)
+	}()
+	c.stopJobs = func() {
+		cancel()
+		<-done
+	}
 }
 
 // modules are the resource modules of the Hetzner API. A new resource type
@@ -415,6 +443,10 @@ func (c *Cloud) Stop(ctx context.Context, reason sysint.StopReason) error {
 // returns the joined errors.
 func (c *Cloud) teardown(ctx context.Context, reason sysint.StopReason) error {
 	var errs []error
+	if c.stopJobs != nil {
+		c.stopJobs()
+		c.stopJobs = nil
+	}
 	for _, srv := range []*http.Server{c.mgmtSrv, c.apiSrv} {
 		if srv == nil {
 			continue
