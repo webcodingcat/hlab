@@ -231,15 +231,15 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - [ ] `applianceJob` (mutex, LUN 1, detach on every path) and `PrepareRescue` (copy the debian-13 base with `CreateDisk`, job `rescue-prepare`, rename into place); `EnsureRescue` in the store (internal/cloud/jobs.go, internal/images/rescue.go)
   - [ ] Wiring: images store with ISOs and rescue, `isos` module, `imagesres.NewModule`, `volumes.New` with `ApplianceJob` and `PushAgent` (internal/cloud/cloud.go)
 
-- [ ] 04-07 Servers: snapshots and images as source
+- [x] 04-07 Servers: snapshots and images as source
   - Wave: 2 | Depends on: 04-01, 04-06 | Review: alone
   - Requirements: SRV-12, SRV-18 | Tests: internal/resources/servers/snapshot_test.go, test/e2e/image_test.go
   - Reads: REQUIREMENTS SRV-12; RESEARCH R1, R7 (create_image, rebuild); DECISIONS "Rebuild from system images only in phase 03", "Q3 SRV-18 counts live RAM and remaining disk growth"
   - Size: ~380 lines in 5 files
   - Adjusts: -
-  - [ ] Shared changes of the Interfaces section: `Images` interface, `Internal` fields, `Rescue`, `DiskUse`, `ExtraDisks`, `VMName`, `SetVolumes`, `VolumeHooks`/`SetVolumes` (no behaviour yet), `CheckDisk` including `ExtraDisks`; apitest fake images gain `EnsureISO`/`EnsureRescue` (internal/resources/servers/servers.go, limits.go, internal/apitest/apitest.go)
-  - [ ] `create_image` (type snapshot here; description default, labels): image record `creating`, server locked, `CheckDisk` on the disk file size, `Platform.Snapshot` into `<data>\images\image-<id>.vhdx`, `image_size`, then `available`; a failure removes record and file (internal/resources/servers/snapshot.go)
-  - [ ] Server create and rebuild accept a snapshot or backup of the project by ID (base = its file, `ImageID`, server `image` = the image object); a type whose disk is below the image's `disk_size` gives 422 `invalid_input` on field `image`/`server_type` (internal/resources/servers/servers.go, rebuild.go, reconcile.go)
+  - [x] Shared changes of the Interfaces section: `Images` interface, `Internal` fields, `Rescue`, `DiskUse`, `ExtraDisks`, `VMName`, `SetVolumes`, `VolumeHooks`/`SetVolumes` (no behaviour yet), `CheckDisk` including `ExtraDisks`; apitest fake images gain `EnsureISO`/`EnsureRescue` (internal/resources/servers/servers.go, limits.go, internal/apitest/apitest.go)
+  - [x] `create_image` (type snapshot here; description default, labels): image record `creating`, server locked, `CheckDisk` on the disk file size, `Platform.Snapshot` into `<data>\images\image-<id>.vhdx`, `image_size`, then `available`; a failure removes record and file (internal/resources/servers/snapshot.go)
+  - [x] Server create and rebuild accept a snapshot or backup of the project by ID (base = its file, `ImageID`, server `image` = the image object); a type whose disk is below the image's `disk_size` gives 422 `invalid_input` on field `image`/`server_type` (internal/resources/servers/servers.go, rebuild.go, reconcile.go)
 
 - [ ] 04-13 Volumes: attach and detach
   - Wave: 5 | Depends on: 04-03, 04-05, 04-07 | Review: alone
