@@ -37,6 +37,11 @@ type Options struct {
 	ISOs map[string]Source
 	// ISODir holds the cached ISOs (<data>\isos).
 	ISODir string
+	// RescueImage names the image the rescue base is prepared from.
+	RescueImage string
+	// PrepareRescue writes the prepared rescue base dst from the cached base
+	// of RescueImage.
+	PrepareRescue func(ctx context.Context, base, dst string) error
 }
 
 // Store caches converted base disks, one per image name.
