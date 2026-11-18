@@ -1286,7 +1286,7 @@ in ARCHITECTURE.md or the plan.
 
 - Type: decision
 - Phase: 04 (04-09)
-- What: The cached base is `<data>\imagesescue-v2.vhdx`; the name is bumped whenever the preparation changes.
+- What: The cached base is `<data>\images\rescue-v2.vhdx`; the name is bumped whenever the preparation changes.
 - Why: Existing installs prepare the base again instead of keeping a stale one.
 - Cost of change: low
 
