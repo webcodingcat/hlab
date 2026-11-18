@@ -113,7 +113,8 @@ func mkfs(ctx context.Context, lun int, fsType string) error {
 type partition struct {
 	dev      string
 	typ      string // filesystem type, "ext4", "vfat", "" if none
-	uuid     string // filesystem UUID
+	uuid     string // filesystem UUID (vfat: volume ID "ABCD-1234")
+	label    string // filesystem label, "" if none
 	partUUID string
 }
 
@@ -147,6 +148,8 @@ func partitions(ctx context.Context, dev string) ([]partition, error) {
 				p.typ = v
 			case "UUID":
 				p.uuid = v
+			case "LABEL":
+				p.label = v
 			case "PARTUUID":
 				p.partUUID = v
 			}
@@ -170,9 +173,36 @@ func newUUID() (string, error) {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16]), nil
 }
 
+// New labels of the rescue disk's filesystems, set only where the image has
+// a label (ext4 takes up to 16 characters, vfat up to 11).
+const (
+	rescueRootLabel = "hlab-rescue"
+	rescueESPLabel  = "HLABRESCUE"
+)
+
+// addLabel records the references to a changed label for RewriteIDs: the
+// LABEL= form of fstab and the --label form of grub's search. The bare
+// label is not replaced, as short words would match unrelated text.
+func addLabel(ids map[string]string, old, label string) {
+	ids["LABEL="+old] = "LABEL=" + label
+	ids["--label "+old] = "--label " + label
+}
+
+// newVolumeID returns a random vfat volume ID as fatlabel takes it
+// ("ABCD1234") and as blkid shows it ("ABCD-1234").
+func newVolumeID() (arg, shown string, err error) {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", "", err
+	}
+	arg = fmt.Sprintf("%X", b[:])
+	return arg, arg[:4] + "-" + arg[4:], nil
+}
+
 // rescuePrepare gives the copy of the Debian image at lun new partition
-// GUIDs and a new root filesystem UUID and rewrites fstab and every
-// grub.cfg to them, so the rescue disk never finds the server's disk.
+// GUIDs, a new root filesystem UUID, a new ESP volume ID and new labels
+// where labels exist, and rewrites fstab and every grub.cfg to them, so
+// no identifier of the rescue disk matches the server's disk.
 func rescuePrepare(ctx context.Context, lun int) error {
 	dev, err := findDisk(ctx, lun)
 	if err != nil {
@@ -233,6 +263,29 @@ func rescuePrepare(ctx context.Context, lun int) error {
 		return err
 	}
 	ids[root.uuid] = fsUUID
+	if root.label != "" && root.label != rescueRootLabel {
+		if _, err := run(ctx, "tune2fs", "-L", rescueRootLabel, root.dev); err != nil {
+			return err
+		}
+		addLabel(ids, root.label, rescueRootLabel)
+	}
+
+	volArg, volID, err := newVolumeID()
+	if err != nil {
+		return err
+	}
+	if _, err := run(ctx, "fatlabel", "-i", esp.dev, volArg); err != nil {
+		return err
+	}
+	if esp.uuid != "" {
+		ids[esp.uuid] = volID
+	}
+	if esp.label != "" && esp.label != rescueESPLabel {
+		if _, err := run(ctx, "fatlabel", esp.dev, rescueESPLabel); err != nil {
+			return err
+		}
+		addLabel(ids, esp.label, rescueESPLabel)
+	}
 
 	return withMounts(ctx, root.dev, esp.dev, func(rootDir, espDir string) error {
 		files := []string{filepath.Join(rootDir, "etc", "fstab")}
