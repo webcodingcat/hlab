@@ -1,0 +1,328 @@
+// Package mgmt is the management API of hlabd, served over the management
+// pipe under /mgmt/v1: status, projects, tokens and the project proxy to
+// the Hetzner API handlers.
+package mgmt
+
+import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"math/big"
+	"net/http"
+	"regexp"
+	"time"
+
+	"github.com/webcodingcat/hlab/internal/actions"
+	"github.com/webcodingcat/hlab/internal/api"
+	"github.com/webcodingcat/hlab/internal/store"
+)
+
+// Prefix is the path prefix of the management API.
+const Prefix = "/mgmt/v1"
+
+// Status is the answer of GET /status.
+type Status struct {
+	State    string    `json:"state"`
+	Version  string    `json:"version"`
+	Problems []Problem `json:"problems"`
+}
+
+// Problem is a host problem reported in Status.
+type Problem struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// Deps are what the management API serves from.
+type Deps struct {
+	Store *store.Store
+	// API serves the Hetzner API under /v1; the project proxy forwards to it.
+	API    http.Handler
+	Status func() Status
+}
+
+// Project is a project as the management API returns it.
+type Project struct {
+	Name      string    `json:"name"`
+	Created   time.Time `json:"created"`
+	Resources int       `json:"resources"`
+}
+
+// Token is a token as the management API returns it. Value is only set in
+// the response that creates the token.
+type Token struct {
+	Name     string    `json:"name"`
+	ReadOnly bool      `json:"read_only"`
+	Created  time.Time `json:"created"`
+	Value    string    `json:"token,omitempty"`
+}
+
+type server struct{ d Deps }
+
+// New returns the handler of the management API.
+func New(d Deps) http.Handler {
+	s := server{d}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET "+Prefix+"/status", s.status)
+	mux.HandleFunc("GET "+Prefix+"/projects", s.listProjects)
+	mux.HandleFunc("POST "+Prefix+"/projects", s.createProject)
+	mux.HandleFunc("DELETE "+Prefix+"/projects/{name}", s.deleteProject)
+	mux.HandleFunc("GET "+Prefix+"/projects/{name}/tokens", s.listTokens)
+	mux.HandleFunc("POST "+Prefix+"/projects/{name}/tokens", s.createToken)
+	mux.HandleFunc("DELETE "+Prefix+"/projects/{name}/tokens/{token}", s.deleteToken)
+	mux.HandleFunc(Prefix+"/projects/{name}/api/v1/{rest...}", s.proxy)
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		writeError(w, http.StatusNotFound, "not_found", "unknown path")
+	})
+	return mux
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Error("write management response", "err", err)
+	}
+}
+
+func writeError(w http.ResponseWriter, status int, code, message string) {
+	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
+}
+
+// fail answers a store error: not found, conflict or a server error.
+func fail(w http.ResponseWriter, err error, what string) {
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not_found", what+" not found")
+	case errors.Is(err, store.ErrConflict):
+		writeError(w, http.StatusConflict, "conflict", what+" already exists")
+	default:
+		slog.Error("management request", "err", err)
+		writeError(w, http.StatusInternalServerError, "server_error", "internal error")
+	}
+}
+
+func decode(w http.ResponseWriter, req *http.Request, v any) bool {
+	if err := json.NewDecoder(req.Body).Decode(v); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_input", "invalid JSON body: "+err.Error())
+		return false
+	}
+	return true
+}
+
+func (s server) status(w http.ResponseWriter, _ *http.Request) {
+	st := s.d.Status()
+	if st.Problems == nil {
+		st.Problems = []Problem{}
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
+var projectName = regexp.MustCompile(`^[a-z0-9-]{1,63}$`)
+
+func (s server) listProjects(w http.ResponseWriter, _ *http.Request) {
+	out := []Project{}
+	err := s.d.Store.Tx(func(tx store.Tx) error {
+		ps, err := store.ListProjects(tx)
+		if err != nil {
+			return err
+		}
+		for _, p := range ps {
+			n, err := store.CountResources(tx, p.ID)
+			if err != nil {
+				return err
+			}
+			out = append(out, Project{Name: p.Name, Created: p.Created, Resources: n})
+		}
+		return nil
+	})
+	if err != nil {
+		fail(w, err, "project")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"projects": out})
+}
+
+func (s server) createProject(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if !decode(w, req, &body) {
+		return
+	}
+	if !projectName.MatchString(body.Name) {
+		writeError(w, http.StatusBadRequest, "invalid_input", "the project name must have 1 to 63 characters a-z, 0-9 and -")
+		return
+	}
+	var p store.Project
+	err := s.d.Store.Tx(func(tx store.Tx) error {
+		var err error
+		p, err = store.CreateProject(tx, body.Name)
+		return err
+	})
+	if err != nil {
+		fail(w, err, "project "+body.Name)
+		return
+	}
+	writeJSON(w, http.StatusCreated, Project{Name: p.Name, Created: p.Created})
+}
+
+// errHasResources stops the deletion of a project that still has resources.
+var errHasResources = errors.New("project has resources")
+
+// deleteProject deletes a project without resources and records the
+// deletion as a finished action without a project, whose id it returns.
+func (s server) deleteProject(w http.ResponseWriter, req *http.Request) {
+	name := req.PathValue("name")
+	var actionID int64
+	err := s.d.Store.Tx(func(tx store.Tx) error {
+		p, err := store.ProjectByName(tx, name)
+		if err != nil {
+			return err
+		}
+		n, err := store.CountResources(tx, p.ID)
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			return errHasResources
+		}
+		if err := store.DeleteProject(tx, p.ID); err != nil {
+			return err
+		}
+		now := time.Now().UTC()
+		actionID, err = store.CreateAction(tx, store.Action{
+			Command:   "delete_project",
+			Status:    actions.StatusSuccess,
+			Progress:  100,
+			Started:   now,
+			Finished:  now,
+			Resources: "[]",
+		})
+		return err
+	})
+	if errors.Is(err, errHasResources) {
+		writeError(w, http.StatusConflict, "conflict", "project has resources; deleting resources comes in a later version")
+		return
+	}
+	if err != nil {
+		fail(w, err, "project "+name)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]int64{"action_id": actionID})
+}
+
+// project looks up the project of the request path and answers not_found
+// when it does not exist.
+func (s server) project(w http.ResponseWriter, req *http.Request) (store.Project, bool) {
+	name := req.PathValue("name")
+	var p store.Project
+	err := s.d.Store.Tx(func(tx store.Tx) error {
+		var err error
+		p, err = store.ProjectByName(tx, name)
+		return err
+	})
+	if err != nil {
+		fail(w, err, "project "+name)
+		return store.Project{}, false
+	}
+	return p, true
+}
+
+func (s server) listTokens(w http.ResponseWriter, req *http.Request) {
+	p, ok := s.project(w, req)
+	if !ok {
+		return
+	}
+	out := []Token{}
+	err := s.d.Store.Tx(func(tx store.Tx) error {
+		ts, err := store.ListTokens(tx, p.ID)
+		for _, t := range ts {
+			out = append(out, Token{Name: t.Name, ReadOnly: t.ReadOnly, Created: t.Created})
+		}
+		return err
+	})
+	if err != nil {
+		fail(w, err, "token")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tokens": out})
+}
+
+func (s server) createToken(w http.ResponseWriter, req *http.Request) {
+	p, ok := s.project(w, req)
+	if !ok {
+		return
+	}
+	var body struct {
+		Name     string `json:"name"`
+		ReadOnly bool   `json:"read_only"`
+	}
+	if !decode(w, req, &body) {
+		return
+	}
+	if body.Name == "" || len(body.Name) > 63 {
+		writeError(w, http.StatusBadRequest, "invalid_input", "the token name must have 1 to 63 characters")
+		return
+	}
+	value, err := newTokenValue()
+	if err != nil {
+		fail(w, err, "token")
+		return
+	}
+	sum := sha256.Sum256([]byte(value))
+	err = s.d.Store.Tx(func(tx store.Tx) error {
+		return store.CreateToken(tx, p.ID, body.Name, sum[:], body.ReadOnly)
+	})
+	if err != nil {
+		fail(w, err, "token "+body.Name)
+		return
+	}
+	writeJSON(w, http.StatusCreated, Token{Name: body.Name, ReadOnly: body.ReadOnly, Created: time.Now().UTC(), Value: value})
+}
+
+func (s server) deleteToken(w http.ResponseWriter, req *http.Request) {
+	p, ok := s.project(w, req)
+	if !ok {
+		return
+	}
+	name := req.PathValue("token")
+	err := s.d.Store.Tx(func(tx store.Tx) error { return store.DeleteToken(tx, p.ID, name) })
+	if err != nil {
+		fail(w, err, "token "+name)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// proxy forwards a request to the Hetzner API handlers as project name
+// with read/write rights.
+func (s server) proxy(w http.ResponseWriter, req *http.Request) {
+	p, ok := s.project(w, req)
+	if !ok {
+		return
+	}
+	r := req.Clone(api.WithProject(req.Context(), p))
+	r.URL.Path = api.Prefix + "/" + req.PathValue("rest")
+	r.URL.RawPath = ""
+	r.RequestURI = ""
+	s.d.API.ServeHTTP(w, r)
+}
+
+const tokenAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+
+// newTokenValue returns 64 random characters [A-Za-z0-9].
+func newTokenValue() (string, error) {
+	b := make([]byte, 64)
+	n := big.NewInt(int64(len(tokenAlphabet)))
+	for i := range b {
+		k, err := rand.Int(rand.Reader, n)
+		if err != nil {
+			return "", err
+		}
+		b[i] = tokenAlphabet[k.Int64()]
+	}
+	return string(b), nil
+}

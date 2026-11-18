@@ -24,6 +24,14 @@ func withAuth(ctx context.Context, p store.Project, readOnly bool) context.Conte
 	return context.WithValue(ctx, keyReadOnly, readOnly)
 }
 
+// WithProject returns ctx carrying project p with read/write rights. The
+// router serves a request with such a context for p without a token; only
+// trusted callers in the same process (the management API's project proxy)
+// set it.
+func WithProject(ctx context.Context, p store.Project) context.Context {
+	return withAuth(ctx, p, false)
+}
+
 // ProjectFrom returns the project the request's token selected.
 func ProjectFrom(ctx context.Context) (store.Project, bool) {
 	p, ok := ctx.Value(keyProject).(store.Project)
