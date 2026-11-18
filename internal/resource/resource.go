@@ -3,7 +3,12 @@
 // internal/resources and is mounted by api.Router.
 package resource
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/webcodingcat/hlab/internal/agentapi"
+	"github.com/webcodingcat/hlab/internal/store"
+)
 
 // Registrar receives the endpoints of a module.
 type Registrar interface {
@@ -19,4 +24,11 @@ type Module interface {
 	Type() string
 	// Routes registers the module's endpoints and actions.
 	Routes(r Registrar)
+}
+
+// NetContributor is the optional interface of a module that contributes
+// to the agent document, for example the servers with their public IPv4.
+// hlabd rebuilds the full document from the store before every push.
+type NetContributor interface {
+	Contribute(tx store.Tx, doc *agentapi.Config) error
 }

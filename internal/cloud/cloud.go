@@ -1,0 +1,415 @@
+//go:build windows
+
+// Package cloud starts and stops one hlab cloud inside hlabd: settings,
+// host checks, state, switch, appliance, host networking, agent document,
+// the Hetzner API on the transit address and the management pipe.
+package cloud
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net"
+	"net/http"
+	"net/netip"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/webcodingcat/hlab/internal/actions"
+	"github.com/webcodingcat/hlab/internal/agentapi"
+	"github.com/webcodingcat/hlab/internal/agentclient"
+	"github.com/webcodingcat/hlab/internal/api"
+	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/hostnet"
+	hnwin "github.com/webcodingcat/hlab/internal/hostnet/windows"
+	"github.com/webcodingcat/hlab/internal/images"
+	"github.com/webcodingcat/hlab/internal/mgmt"
+	"github.com/webcodingcat/hlab/internal/platform"
+	"github.com/webcodingcat/hlab/internal/platform/hyperv"
+	"github.com/webcodingcat/hlab/internal/profile"
+	"github.com/webcodingcat/hlab/internal/resource"
+	actionsres "github.com/webcodingcat/hlab/internal/resources/actions"
+	"github.com/webcodingcat/hlab/internal/resources/datacenters"
+	imagesres "github.com/webcodingcat/hlab/internal/resources/images"
+	"github.com/webcodingcat/hlab/internal/resources/locations"
+	"github.com/webcodingcat/hlab/internal/resources/servertypes"
+	"github.com/webcodingcat/hlab/internal/settings"
+	"github.com/webcodingcat/hlab/internal/store"
+	"github.com/webcodingcat/hlab/internal/sysint"
+	syswin "github.com/webcodingcat/hlab/internal/sysint/windows"
+	"github.com/webcodingcat/hlab/internal/version"
+)
+
+// Transit network between host and appliance (ARCHITECTURE.md "Network").
+var (
+	hostAddr      = netip.MustParsePrefix("198.19.0.2/30")
+	applianceAddr = netip.MustParseAddr("198.19.0.1")
+	apiListen     = netip.MustParseAddrPort("198.19.0.2:8780")
+	apiProxy      = netip.MustParseAddrPort("198.19.0.1:80")
+	agentAddr     = "198.19.0.1:9100"
+)
+
+// The public segment's private VLAN (DECISIONS.md "Guest-visible identifiers").
+const (
+	pvlanPrimary   = 4094
+	pvlanSecondary = 4093
+)
+
+const (
+	// agentReadyTimeout bounds the wait for the agent after the appliance
+	// starts (boot, first-boot cloud-init, agent install).
+	agentReadyTimeout = 10 * time.Minute
+	// listenTimeout bounds the wait until the host address is usable.
+	listenTimeout = time.Minute
+	// serverShutdownTimeout bounds the graceful end of the HTTP servers.
+	serverShutdownTimeout = 10 * time.Second
+	// statusFile is the cloud's state for hlab and the tray.
+	statusFile = "status.json"
+)
+
+// Deps are what a Cloud needs from the program that runs it.
+type Deps struct {
+	// Paths are the folders of the current profile.
+	Paths sysint.Paths
+	// Level, when set, is set to logging.level of the settings at start.
+	Level *slog.LevelVar
+}
+
+// Cloud is one cloud of the current profile. Start and Stop are called one
+// after another, never at the same time.
+type Cloud struct {
+	d   Deps
+	tag string
+
+	set      settings.Settings
+	net      *hnwin.HostNet
+	netCfg   hostnet.Config
+	problems []hostnet.Problem // non-fatal problems of Check
+	netUp    bool
+
+	st     *store.Store
+	plat   platform.Platform
+	cat    *catalog.Catalog
+	images *images.Store
+	agent  *agentclient.Client
+	acts   *actions.Manager
+	mods   []resource.Module
+
+	applianceOn bool
+	apiSrv      *http.Server
+	mgmtSrv     *http.Server
+}
+
+// New returns a stopped cloud.
+func New(d Deps) *Cloud {
+	return &Cloud{d: d, tag: profile.Current().Tag}
+}
+
+// status is the content of the status file.
+type status struct {
+	State   string           `json:"state"` // "starting", "running", "refused", "stopped"
+	Problem *hostnet.Problem `json:"problem,omitempty"`
+	Error   string           `json:"error,omitempty"`
+}
+
+// refusal is a fatal problem of hostnet.Check.
+type refusal struct{ p hostnet.Problem }
+
+func (r *refusal) Error() string { return "refused: " + r.p.Code + ": " + r.p.Message }
+
+// Start brings the cloud up. On failure it undoes what it did, writes the
+// status file and returns the error.
+func (c *Cloud) Start(ctx context.Context) error {
+	c.writeStatus(status{State: "starting"})
+	err := c.start(ctx)
+	if err == nil {
+		c.writeStatus(status{State: sysint.StateRunning})
+		slog.Info("cloud running")
+		return nil
+	}
+	var r *refusal
+	if errors.As(err, &r) {
+		slog.Error("cloud start refused", "code", r.p.Code, "message", r.p.Message)
+		c.writeStatus(status{State: "refused", Problem: &r.p})
+		return err
+	}
+	slog.Error("cloud start failed", "err", err)
+	if terr := c.teardown(context.WithoutCancel(ctx), sysint.StopRequested); terr != nil {
+		slog.Error("cleanup after the failed start", "err", terr)
+	}
+	c.writeStatus(status{State: sysint.StateStopped, Error: err.Error()})
+	return err
+}
+
+func (c *Cloud) start(ctx context.Context) error {
+	set, err := settings.Load(filepath.Join(c.d.Paths.Config, "settings.toml"))
+	if err != nil {
+		return err
+	}
+	c.set = set
+	if c.d.Level != nil {
+		var l slog.Level
+		if err := l.UnmarshalText([]byte(set.Logging.Level)); err == nil {
+			c.d.Level.Set(l)
+		}
+	}
+	slog.Info("cloud starting", "version", version.Version, "profile", profile.Current().Name,
+		"public_range", set.Network.PublicRange.String(), "data_folder", set.Storage.DataFolder)
+
+	zones := []string{"hetzner.internal"}
+	zones = append(zones, agentapi.ReverseZones(set.Network.PublicRange)...)
+	c.netCfg = hostnet.Config{
+		PublicRange:   set.Network.PublicRange,
+		HostAddr:      hostAddr,
+		ApplianceAddr: applianceAddr,
+		SwitchName:    c.tag,
+		BaseZones:     zones,
+	}
+	c.net = hnwin.New(hnwin.Options{StateDir: c.d.Paths.State})
+	c.problems = nil
+	for _, p := range c.net.Check(ctx, c.netCfg) {
+		if p.Fatal {
+			return &refusal{p}
+		}
+		slog.Warn("host problem", "code", p.Code, "message", p.Message)
+		c.problems = append(c.problems, p)
+	}
+
+	if err := os.MkdirAll(set.Storage.DataFolder, 0o750); err != nil {
+		return err
+	}
+	if c.st, err = store.Open(filepath.Join(c.d.Paths.State, "state.db")); err != nil {
+		return err
+	}
+	if c.cat, err = catalog.Load(c.d.Paths.Catalog); err != nil {
+		return err
+	}
+	if c.plat, err = hyperv.New(hyperv.Options{DataDir: set.Storage.DataFolder, SwitchName: c.tag}); err != nil {
+		return err
+	}
+	conv, ok := c.plat.(interface {
+		ConvertToDynamic(ctx context.Context, src, dst string) error
+	})
+	if !ok {
+		return errors.New("platform cannot convert images")
+	}
+	c.images = images.New(images.Options{
+		Dir:     filepath.Join(set.Storage.DataFolder, "images"),
+		Catalog: c.cat.ImageSources(),
+		Convert: conv.ConvertToDynamic,
+	})
+
+	if err := c.plat.EnsureSwitch(ctx, platform.SwitchSpec{Name: c.tag, PVLANPrimary: pvlanPrimary, PVLANSecondary: pvlanSecondary}); err != nil {
+		return err
+	}
+	secret, err := c.agentSecret()
+	if err != nil {
+		return err
+	}
+	if err := c.startAppliance(ctx, secret); err != nil {
+		return err
+	}
+
+	c.netUp = true // Up may stop half way; Down removes what it added
+	if err := c.net.Up(ctx, c.netCfg); err != nil {
+		return err
+	}
+
+	c.acts = actions.New(c.st)
+	c.mods = c.modules()
+	router := api.New(api.Deps{Store: c.st, Actions: c.acts})
+	for _, m := range c.mods {
+		router.Mount(m)
+	}
+	if err := c.serveAPI(ctx, router); err != nil {
+		return err
+	}
+
+	c.agent = agentclient.New(agentclient.Options{Addr: agentAddr, Secret: secret, Store: c.st})
+	readyCtx, cancel := context.WithTimeout(ctx, agentReadyTimeout)
+	err = c.agent.WaitReady(readyCtx)
+	cancel()
+	if err != nil {
+		return err
+	}
+	if err := c.PushAgent(ctx); err != nil {
+		return err
+	}
+
+	return c.serveManagement(router)
+}
+
+// modules are the resource modules of the Hetzner API. A new resource type
+// is one more entry here; a module implementing resource.NetContributor
+// adds its part to the agent document.
+func (c *Cloud) modules() []resource.Module {
+	return []resource.Module{
+		actionsres.New(),
+		locations.New(c.cat),
+		datacenters.New(),
+		servertypes.New(c.cat),
+		imagesres.New(c.cat),
+	}
+}
+
+// PushAgent rebuilds the full agent document from the store and pushes it.
+// Every state change that touches the network calls it.
+func (c *Cloud) PushAgent(ctx context.Context) error {
+	doc := agentapi.Config{
+		PublicRange: c.set.Network.PublicRange,
+		API:         agentapi.APIProxy{Listen: apiProxy, Backend: apiListen},
+	}
+	dns, err := c.net.DNSServers(ctx)
+	if err != nil {
+		slog.Warn("host DNS servers unknown; the agent uses its defaults", "err", err)
+	}
+	for _, a := range dns {
+		doc.Upstream = append(doc.Upstream, netip.AddrPortFrom(a, 53))
+	}
+	err = c.st.Tx(func(tx store.Tx) error {
+		for _, m := range c.mods {
+			if nc, ok := m.(resource.NetContributor); ok {
+				if err := nc.Contribute(tx, &doc); err != nil {
+					return fmt.Errorf("%s: %w", m.Type(), err)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("build agent document: %w", err)
+	}
+	if err := c.agent.Push(ctx, doc); err != nil {
+		return err
+	}
+	slog.Info("agent document pushed", "servers", len(doc.Servers), "upstream", len(doc.Upstream))
+	return nil
+}
+
+// serveAPI serves the Hetzner API on the transit address. The address may
+// still be tentative right after hostnet.Up, so listening is retried.
+func (c *Cloud) serveAPI(ctx context.Context, h http.Handler) error {
+	var ln net.Listener
+	deadline := time.Now().Add(listenTimeout)
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
+	for {
+		var err error
+		ln, err = net.Listen("tcp4", apiListen.String())
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("listen on %s: %w", apiListen, err)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-t.C:
+		}
+	}
+	c.apiSrv = &http.Server{Handler: h, ReadHeaderTimeout: 30 * time.Second}
+	go serve(c.apiSrv, ln, "api")
+	slog.Info("API listening", "addr", apiListen.String())
+	return nil
+}
+
+// serveManagement serves the management API on the pipe of the profile.
+func (c *Cloud) serveManagement(apiHandler http.Handler) error {
+	ln, err := syswin.ListenManagement()
+	if err != nil {
+		return fmt.Errorf("listen on the management pipe: %w", err)
+	}
+	h := mgmt.New(mgmt.Deps{Store: c.st, API: apiHandler, Status: c.mgmtStatus})
+	c.mgmtSrv = &http.Server{Handler: h, ReadHeaderTimeout: 30 * time.Second}
+	go serve(c.mgmtSrv, ln, "management")
+	return nil
+}
+
+func serve(srv *http.Server, ln net.Listener, name string) {
+	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		slog.Error("server ended", "server", name, "err", err)
+	}
+}
+
+func (c *Cloud) mgmtStatus() mgmt.Status {
+	st := mgmt.Status{State: sysint.StateRunning, Version: version.Version}
+	for _, p := range c.problems {
+		st.Problems = append(st.Problems, mgmt.Problem{Code: p.Code, Message: p.Message})
+	}
+	return st
+}
+
+// Stop takes the cloud down. At a host shutdown Hyper-V has already
+// applied the VMs' stop action, so the appliance is left alone.
+func (c *Cloud) Stop(ctx context.Context, reason sysint.StopReason) error {
+	slog.Info("cloud stopping", "reason", reason.String())
+	err := c.teardown(ctx, reason)
+	c.writeStatus(status{State: sysint.StateStopped})
+	if err != nil {
+		slog.Error("cloud stopped with errors", "err", err)
+		return err
+	}
+	slog.Info("cloud stopped")
+	return nil
+}
+
+// teardown undoes every part of start that ran, in reverse order, and
+// returns the joined errors.
+func (c *Cloud) teardown(ctx context.Context, reason sysint.StopReason) error {
+	var errs []error
+	for _, srv := range []*http.Server{c.mgmtSrv, c.apiSrv} {
+		if srv == nil {
+			continue
+		}
+		sctx, cancel := context.WithTimeout(ctx, serverShutdownTimeout)
+		if err := srv.Shutdown(sctx); err != nil {
+			_ = srv.Close()
+		}
+		cancel()
+	}
+	c.mgmtSrv, c.apiSrv = nil, nil
+
+	if c.applianceOn && reason != sysint.StopHostShutdown {
+		if err := c.stopAppliance(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	c.applianceOn = false
+
+	if c.netUp {
+		if err := c.net.Down(ctx); err != nil {
+			errs = append(errs, err)
+		}
+		c.netUp = false
+	}
+	if cl, ok := c.plat.(interface{ Close() error }); ok {
+		_ = cl.Close()
+	}
+	c.plat = nil
+	if c.st != nil {
+		if err := c.st.Close(); err != nil {
+			errs = append(errs, err)
+		}
+		c.st = nil
+	}
+	return errors.Join(errs...)
+}
+
+// writeStatus replaces the status file; a failure is only logged.
+func (c *Cloud) writeStatus(s status) {
+	data, err := json.Marshal(s)
+	if err == nil {
+		path := filepath.Join(c.d.Paths.State, statusFile)
+		tmp := path + ".tmp"
+		if err = os.WriteFile(tmp, data, 0o644); err == nil {
+			err = os.Rename(tmp, path)
+		}
+	}
+	if err != nil {
+		slog.Error("write status file", "err", err)
+	}
+}

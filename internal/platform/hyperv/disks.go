@@ -110,3 +110,11 @@ Remove-VMHardDiskDrive -VMHardDiskDrive $d
 `)
 	return err
 }
+
+// ConvertToDynamic writes the dynamic VHDX dst from the VHD src (the
+// images.Options.Convert step); src stays.
+func (p *Platform) ConvertToDynamic(ctx context.Context, src, dst string) error {
+	_, err := p.r.run(ctx, "ConvertToDynamic", map[string]any{"src": src, "dst": dst},
+		`Convert-VHD -Path $src -DestinationPath $dst -VHDType Dynamic`)
+	return err
+}

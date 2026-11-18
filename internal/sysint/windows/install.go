@@ -23,7 +23,6 @@ import (
 
 // serviceSDDL is the default service DACL with Interactive Users (IU)
 // widened to query, start (RP) and stop (WP), never change-config (DC).
-// It must stay identical to $ServiceSddl in scripts/dev-setup.ps1.
 const serviceSDDL = "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPWPLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)"
 
 const (

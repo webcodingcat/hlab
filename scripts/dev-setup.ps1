@@ -4,23 +4,22 @@
     Registers the hlab development service on a developer machine.
 
 .DESCRIPTION
-    Run once per machine in an administrator terminal. Afterwards build,
-    tests and the dev service run without elevated rights.
+    Run once per machine in an administrator terminal, after "task build".
+    Afterwards build, tests and the dev service run without elevated rights.
 
-    It sets up:
+    It runs "bin\hlabd.exe install --dev" of this working copy (profile
+    "dev"), which sets up:
       - the Windows service "hlab-dev" (manual start, LocalSystem) running
-        bin\hlabd.exe of this working copy (profile "dev")
+        bin\hlabd.exe of this working copy
       - the service security descriptor of the installer: Interactive Users
         may query, start and stop the service, never change its configuration
       - the pre-shutdown timeout of 180 seconds
       - the folder %ProgramData%\hlab-dev and settings.toml in it, which
         Interactive Users may modify
-      - the removal of an older dev service named "hlab", but only if it
-        runs bin\hlabd.exe of this working copy (an installed hlab is never
-        touched)
 
-    Until hlabd implements "hlabd install --dev" (phase 01), this script does
-    the same with sc.exe and icacls.
+    Before that it removes an older dev service named "hlab", but only if it
+    runs bin\hlabd.exe of this working copy (an installed hlab is never
+    touched).
 
     SECURITY: the service runs a program from a folder the developer account
     can write to, as LocalSystem. Every process of that account can therefore
@@ -39,19 +38,9 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$ServiceName = 'hlab-dev'
-$DisplayName = 'hlab (dev)'
 $LegacyServiceName = 'hlab'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $ExePath = Join-Path $RepoRoot 'bin\hlabd.exe'
-$DataDir = Join-Path $env:ProgramData 'hlab-dev'
-$SettingsFile = Join-Path $DataDir 'settings.toml'
-$PreshutdownTimeoutMs = 180000
-# Default service rights, with Interactive Users (IU) widened to query (LC and
-# others), start (RP) and stop (WP); no change-config (DC). Same as the
-# installer.
-$ServiceSddl = 'D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPWPLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)'
-$InteractiveUsersSid = '*S-1-5-4'
 
 function Assert-Elevated {
     $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
@@ -68,77 +57,16 @@ function Invoke-Native {
     }
 }
 
-function Set-PreshutdownTimeout {
-    if (-not ('Hlab.ServiceConfig' -as [type])) {
-        Add-Type -Namespace Hlab -Name ServiceConfig -MemberDefinition @'
-[StructLayout(LayoutKind.Sequential)]
-public struct PreshutdownInfo { public uint Timeout; }
-
-[DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-public static extern IntPtr OpenSCManager(IntPtr machine, IntPtr database, uint access);
-
-[DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-public static extern IntPtr OpenService(IntPtr manager, string name, uint access);
-
-[DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-public static extern bool ChangeServiceConfig2(IntPtr service, uint infoLevel, ref PreshutdownInfo info);
-
-[DllImport("advapi32.dll", SetLastError = true)]
-public static extern bool CloseServiceHandle(IntPtr handle);
-'@
-    }
-    $scManagerConnect = 0x0001
-    $serviceChangeConfig = 0x0002
-    $serviceConfigPreshutdownInfo = 7
-
-    $manager = [Hlab.ServiceConfig]::OpenSCManager([IntPtr]::Zero, [IntPtr]::Zero, $scManagerConnect)
-    if ($manager -eq [IntPtr]::Zero) {
-        throw "OpenSCManager failed with error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
-    }
-    try {
-        $service = [Hlab.ServiceConfig]::OpenService($manager, $ServiceName, $serviceChangeConfig)
-        if ($service -eq [IntPtr]::Zero) {
-            throw "OpenService failed with error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
-        }
-        try {
-            $info = New-Object 'Hlab.ServiceConfig+PreshutdownInfo'
-            $info.Timeout = $PreshutdownTimeoutMs
-            if (-not [Hlab.ServiceConfig]::ChangeServiceConfig2($service, $serviceConfigPreshutdownInfo, [ref]$info)) {
-                throw "ChangeServiceConfig2 failed with error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
-            }
-        }
-        finally {
-            [Hlab.ServiceConfig]::CloseServiceHandle($service) | Out-Null
-        }
-    }
-    finally {
-        [Hlab.ServiceConfig]::CloseServiceHandle($manager) | Out-Null
-    }
-}
-
 function Register-DevService {
-    $binPath = '"' + $ExePath + '"'
-    $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-    if ($existing) {
-        if ($existing.Status -ne 'Stopped') {
-            throw "Service $ServiceName is $($existing.Status). Stop it first (hlab cloud stop) and run this script again."
-        }
-        Invoke-Native 'sc.exe' @('config', $ServiceName, 'binPath=', $binPath, 'start=', 'demand', 'obj=', 'LocalSystem', 'DisplayName=', $DisplayName)
+    if (-not (Test-Path -LiteralPath $ExePath)) {
+        throw "$ExePath not found. Run 'task build' first and run this script again."
     }
-    else {
-        New-Service -Name $ServiceName -BinaryPathName $binPath -DisplayName $DisplayName -StartupType Manual | Out-Null
+    & $ExePath install --dev
+    if ($LASTEXITCODE -ne 0) {
+        throw "$ExePath install --dev failed with code $LASTEXITCODE"
     }
-    Invoke-Native 'sc.exe' @('sdset', $ServiceName, $ServiceSddl)
-    Set-PreshutdownTimeout
-
-    New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
-    if (-not (Test-Path -LiteralPath $SettingsFile)) {
-        New-Item -ItemType File -Path $SettingsFile | Out-Null
-    }
-    Invoke-Native 'icacls.exe' @($SettingsFile, '/grant', "${InteractiveUsersSid}:(M)")
-
-    Write-Host "Service '$ServiceName' registered: $ExePath"
-    Write-Host "Data folder: $DataDir"
+    Write-Host "Service 'hlab-dev' registered: $ExePath"
+    Write-Host "Data folder: $(Join-Path $env:ProgramData 'hlab-dev')"
 }
 
 function Remove-LegacyDevService {

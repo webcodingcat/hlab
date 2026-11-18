@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -242,7 +241,7 @@ func buildDNSData(cfg agentapi.Config) *dnsData {
 	dd.zones[internalZone] = internal
 
 	if cfg.PublicRange.Addr().Is4() {
-		for _, name := range reverseZones(cfg.PublicRange) {
+		for _, name := range agentapi.ReverseZones(cfg.PublicRange) {
 			dd.zones[name] = newZone(name, serial)
 		}
 	}
@@ -289,27 +288,3 @@ func hdr(name string, t uint16) dns.RR_Header {
 	return dns.RR_Header{Name: name, Rrtype: t, Class: dns.ClassINET, Ttl: dnsTTL}
 }
 
-// reverseZones returns the in-addr.arpa zones covering an IPv4 prefix on
-// octet boundaries: a /16 is one zone, a /20 sixteen /24 zones. Prefixes
-// longer than /24 are served as their whole /24 zone.
-func reverseZones(p netip.Prefix) []string {
-	p = p.Masked()
-	bits := p.Bits()
-	zoneBits := min(max((bits+7)/8*8, 8), 24)
-	count := 1
-	if zoneBits > bits {
-		count = 1 << (zoneBits - bits)
-	}
-	a4 := p.Addr().As4()
-	base := uint32(a4[0])<<24 | uint32(a4[1])<<16 | uint32(a4[2])<<8 | uint32(a4[3])
-	zones := make([]string, 0, count)
-	for i := range count {
-		v := base + uint32(i)<<(32-zoneBits) //nolint:gosec // i < 2^24
-		var labels []string
-		for o := zoneBits/8 - 1; o >= 0; o-- {
-			labels = append(labels, strconv.Itoa(int(v>>(24-8*o)&0xff)))
-		}
-		zones = append(zones, strings.Join(labels, ".")+".in-addr.arpa.")
-	}
-	return zones
-}
