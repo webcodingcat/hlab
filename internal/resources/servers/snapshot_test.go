@@ -446,7 +446,8 @@ func isoFiles(t *testing.T, path string) map[string][]byte {
 	return out
 }
 
-var instanceIDRe = regexp.MustCompile(`(?m)^instance-id:\s*"?([^"\s]+)"?\s*$`)
+// The seed writes meta-data as JSON, which is YAML too; both forms match.
+var instanceIDRe = regexp.MustCompile(`(?m)^\s*"?instance-id"?:\s*"?([^",\s]+)"?,?\s*$`)
 
 // instanceID is the instance-id of a meta-data file.
 func instanceID(t *testing.T, metaData []byte) string {

@@ -255,9 +255,18 @@ func openStore(t testing.TB) *store.Store {
 	return st
 }
 
-// fakeImages names a base disk per image without downloading anything.
+// fakeImages names a base disk per image, ISO and the rescue base without
+// downloading anything.
 type fakeImages struct{ dir string }
 
 func (f fakeImages) Ensure(_ context.Context, name string) (string, error) {
 	return filepath.Join(f.dir, name+".vhdx"), nil
+}
+
+func (f fakeImages) EnsureISO(_ context.Context, name string) (string, error) {
+	return filepath.Join(f.dir, "isos", name), nil
+}
+
+func (f fakeImages) EnsureRescue(context.Context) (string, error) {
+	return filepath.Join(f.dir, "rescue.vhdx"), nil
 }
