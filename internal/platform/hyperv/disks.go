@@ -58,8 +58,8 @@ func (p *Platform) CreateDisk(ctx context.Context, path string, sizeBytes int64,
 		return err
 	}
 	_, err := p.r.run(ctx, op, map[string]any{"path": path, "size": sizeBytes, "from": from}, `if (Test-Path -LiteralPath $path) { throw [System.InvalidOperationException]::new("disk $path exists") }
-Copy-Item -LiteralPath $from -Destination $path
 try {
+  Copy-Item -LiteralPath $from -Destination $path
   Set-VHD -Path $path -ResetDiskIdentifier -Force
   if ($size -gt (Get-VHD -Path $path).Size) { Resize-VHD -Path $path -SizeBytes $size }
 } catch {
