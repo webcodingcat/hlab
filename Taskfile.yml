@@ -5,7 +5,7 @@ version: "3"
 
 vars:
   VERSION: '{{.VERSION | default "dev"}}'
-  LDFLAGS: -X github.com/webcodingcat/hlab/internal/version.Version={{.VERSION}}
+  LDFLAGS: -X github.com/webcodingcat/hlab/internal/version.Version={{.VERSION}} -X github.com/webcodingcat/hlab/internal/profile.Name=dev
 
 tasks:
   default:
