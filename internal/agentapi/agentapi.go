@@ -158,14 +158,18 @@ type Metadata struct {
 }
 
 // MetadataNetwork is a private network as the metadata service shows it.
+// InterfaceNum (0 = not shown) and Network (invalid = not shown) are
+// Hetzner's interface_num and network fields.
 type MetadataNetwork struct {
-	IP          netip.Addr
-	AliasIPs    []netip.Addr
-	MAC         string
-	NetworkID   int64
-	NetworkName string
-	Subnet      netip.Prefix
-	Gateway     netip.Addr
+	IP           netip.Addr
+	AliasIPs     []netip.Addr
+	InterfaceNum int
+	MAC          string
+	NetworkID    int64
+	NetworkName  string
+	Network      netip.Prefix // the network's IP range
+	Subnet       netip.Prefix
+	Gateway      netip.Addr
 }
 
 // PasswordReset is a pending root password reset; SHA512Crypt is the
@@ -205,6 +209,9 @@ type Status struct {
 	Generation int
 	Targets    map[int64][]TargetHealth // per load balancer
 	LBMetrics  map[int64]LBCounters
+	// PasswordResetsDone are the password reset IDs the guests confirmed,
+	// kept while the reset is still in the config.
+	PasswordResetsDone []int64
 }
 
 // TargetHealth is the health of one target of one service; Status is
