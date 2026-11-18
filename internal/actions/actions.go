@@ -7,7 +7,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/store"
@@ -38,6 +40,10 @@ type Error struct {
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
 
+// ErrLocked is returned by Start when a referenced resource has a running
+// action. Handlers answer it with Hetzner's 423 "locked".
+var ErrLocked = &Error{Code: "locked", Message: "the resource is locked by a running action"}
+
 // Action is an action in Hetzner's API shape.
 type Action struct {
 	ID        int64      `json:"id"`
@@ -56,15 +62,43 @@ type Manager struct {
 	sem chan struct{}
 }
 
-// New returns a manager on st. Its workers need no separate start.
+// New returns a manager on st. Its workers need no separate start. Actions
+// still running from a previous run of hlabd end as "error" with code
+// "server_error".
 func New(st *store.Store) *Manager {
-	return &Manager{st: st, sem: make(chan struct{}, workers)}
+	m := &Manager{st: st, sem: make(chan struct{}, workers)}
+	if err := m.failInterrupted(); err != nil {
+		slog.Error("end interrupted actions", "err", err)
+	}
+	return m
 }
 
-// Start creates a running action for command on resources in tx.
-func (m *Manager) Start(tx store.Tx, command string, resources []Ref) (*Action, error) {
+func (m *Manager) failInterrupted() error {
+	return m.st.Tx(func(tx store.Tx) error {
+		running, err := store.RunningActions(tx)
+		if err != nil {
+			return err
+		}
+		for _, a := range running {
+			a.Status = StatusError
+			a.Finished = time.Now().UTC().Truncate(time.Second)
+			a.Error = errorJSON(&Error{Code: "server_error", Message: "the action was interrupted by a restart"})
+			if err := store.UpdateAction(tx, a); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// Start creates a running action of projectID for command on resources in
+// tx. It returns ErrLocked if one of resources has a running action.
+func (m *Manager) Start(tx store.Tx, projectID int64, command string, resources []Ref) (*Action, error) {
 	if resources == nil {
 		resources = []Ref{}
+	}
+	if err := checkLocks(tx, resources); err != nil {
+		return nil, err
 	}
 	refs, err := json.Marshal(resources)
 	if err != nil {
@@ -77,6 +111,7 @@ func (m *Manager) Start(tx store.Tx, command string, resources []Ref) (*Action, 
 		Resources: resources,
 	}
 	a.ID, err = store.CreateAction(tx, store.Action{
+		ProjectID: projectID,
 		Command:   command,
 		Status:    a.Status,
 		Started:   a.Started,
@@ -84,6 +119,94 @@ func (m *Manager) Start(tx store.Tx, command string, resources []Ref) (*Action, 
 	})
 	if err != nil {
 		return nil, err
+	}
+	return a, nil
+}
+
+// checkLocks returns ErrLocked if a running action references one of refs.
+func checkLocks(tx store.Tx, refs []Ref) error {
+	if len(refs) == 0 {
+		return nil
+	}
+	running, err := store.RunningActions(tx)
+	if err != nil {
+		return err
+	}
+	for _, r := range running {
+		a, err := fromStore(r)
+		if err != nil {
+			return err
+		}
+		for _, held := range a.Resources {
+			if slices.Contains(refs, held) {
+				return ErrLocked
+			}
+		}
+	}
+	return nil
+}
+
+// Get returns the action id of projectID, or store.ErrNotFound if it does
+// not exist or belongs to another project.
+func (m *Manager) Get(projectID, id int64) (*Action, error) {
+	var a *Action
+	err := m.st.Tx(func(tx store.Tx) error {
+		r, err := store.GetAction(tx, id)
+		if err != nil {
+			return err
+		}
+		if r.ProjectID != projectID {
+			return store.ErrNotFound
+		}
+		a, err = fromStore(r)
+		return err
+	})
+	return a, err
+}
+
+// List returns the actions of projectID with one of ids, ordered by ID.
+// IDs that do not exist or belong to another project are skipped.
+func (m *Manager) List(projectID int64, ids []int64) ([]Action, error) {
+	var out []Action
+	err := m.st.Tx(func(tx store.Tx) error {
+		rows, err := store.ListActions(tx, projectID, ids)
+		if err != nil {
+			return err
+		}
+		for _, r := range rows {
+			a, err := fromStore(r)
+			if err != nil {
+				return err
+			}
+			out = append(out, *a)
+		}
+		return nil
+	})
+	return out, err
+}
+
+// fromStore converts a stored action into the API shape.
+func fromStore(r store.Action) (*Action, error) {
+	a := &Action{
+		ID:        r.ID,
+		Command:   r.Command,
+		Status:    r.Status,
+		Progress:  r.Progress,
+		Started:   r.Started,
+		Resources: []Ref{},
+	}
+	if !r.Finished.IsZero() {
+		f := r.Finished
+		a.Finished = &f
+	}
+	if err := json.Unmarshal([]byte(r.Resources), &a.Resources); err != nil {
+		return nil, fmt.Errorf("action %d resources: %w", r.ID, err)
+	}
+	if r.Error != "" {
+		a.Error = &Error{}
+		if err := json.Unmarshal([]byte(r.Error), a.Error); err != nil {
+			return nil, fmt.Errorf("action %d error: %w", r.ID, err)
+		}
 	}
 	return a, nil
 }
