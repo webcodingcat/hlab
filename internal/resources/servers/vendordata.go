@@ -96,6 +96,10 @@ func vendorData(rootHash string) string {
 	sh.WriteString("systemctl daemon-reload\n")
 	sh.WriteString("systemctl enable --now hlab-guest.timer\n")
 	sh.WriteString("systemctl try-reload-or-restart ssh.service sshd.service || true\n")
+	// poweroff cuts the power: without a sync, the files of the first boot
+	// (SSH host keys, root password, these hooks) can still be only in the
+	// page cache when cloud-init reports done, and come back empty.
+	sh.WriteString("sync\n")
 
 	var b strings.Builder
 	b.WriteString("Content-Type: multipart/mixed; boundary=\"" + vendorBoundary + "\"\nMIME-Version: 1.0\n\n")
