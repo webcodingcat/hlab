@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/webcodingcat/hlab/internal/agentapi"
+	"github.com/webcodingcat/hlab/internal/scheduler"
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
@@ -48,4 +49,11 @@ type Deleter interface {
 type Reconciler interface {
 	Deleter
 	Reconcile(ctx context.Context, id int64) error
+}
+
+// Scheduled is the optional interface of a module with time-driven work,
+// for example a status watch. The cloud runs the jobs after the API is up
+// and cancels them first at stop.
+type Scheduled interface {
+	Jobs() []scheduler.Job
 }
