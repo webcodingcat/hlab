@@ -134,12 +134,12 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
   - [x] `internal/mgmt`: status, projects, tokens, project API proxy
   - [x] `internal/cli` and `cmd/hlab`: `cloud start|stop|status`, `project`, `token`, `version`, `--output json`, exit codes
 
-- [ ] 01-15 Cloud lifecycle in hlabd
+- [x] 01-15 Cloud lifecycle in hlabd
   - Wave: 4 | Depends on: 01-05, 01-06, 01-07, 01-08, 01-10, 01-11, 01-13, 01-14 | Review: alone
   - Requirements: LIFE-01 | Tests: test/e2e (LIFE-01)
   - Size: ~400 lines in 5 files
-  - [ ] `internal/cloud`: start (settings, Check, store, switch, appliance image/disk/cidata with agent and secret, VM, hostnet.Up, agent push with DNS upstream, API listener on 198.19.0.2:8780, pipe), stop (API, appliance, hostnet.Down, store)
-  - [ ] `internal/agentclient`; `cmd/hlabd` service entry, `install`, `uninstall-cleanup`; status file; `scripts/dev-setup.ps1` calls `bin\hlabd.exe install --dev` instead of sc.exe/icacls
+  - [x] `internal/cloud`: start (settings, Check, store, switch, appliance image/disk/cidata with agent and secret, VM, hostnet.Up, agent push with DNS upstream, API listener on 198.19.0.2:8780, pipe), stop (API, appliance, hostnet.Down, store)
+  - [x] `internal/agentclient`; `cmd/hlabd` service entry, `install`, `uninstall-cleanup`; status file; `scripts/dev-setup.ps1` calls `bin\hlabd.exe install --dev` instead of sc.exe/icacls
 
 - [ ] 01-16 SSH keys, servers and IPAM
   - Wave: 5 | Depends on: 01-15 | Review: alone

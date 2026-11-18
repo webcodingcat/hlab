@@ -373,6 +373,7 @@ Inside `hlabd` (Go packages under `internal/`):
   through the start parameter `discard-state` and starts with an empty
   state; VMs and disks of the discarded state are deleted by the tagged
   cleanup of `hlabd uninstall-cleanup --vms-only`.
+- Status file `<data dir>\status.json`: `{"state":"starting"|"running"|"stopped"}`, `{"state":"stopped","error":...}` after a failed start, `{"state":"refused","problem":{"code","message","fatal"}}` after a refusal; `hlab cloud status` reads it while the service is stopped.
 - Depends on: management API.
 
 ### hlab-tray (tray program)
