@@ -49,11 +49,11 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
   - [x] `internal/agentapi` (Config incl. `Upstream`, Job, Status), `internal/platform` (interface, types, `Error`, `SegmentFor`), `internal/hostnet` (interface incl. `DNSServers`, Config, Problem, WSLInfo)
   - [x] `internal/profile` with `Current`/`Other`; `Taskfile.yml` build passes `-X .../profile.Name=dev`
 
-- [ ] 01-02 Store
+- [x] 01-02 Store
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: - | Tests: (used by all unit tests)
   - Size: ~350 lines in 3 files
-  - [ ] `internal/store`: schema v1 (ARCHITECTURE.md "Data schema"), `Open`, `Tx`, `Get/List/Put/Delete[T]`, `NextID`, kv, projects and tokens access (`TokenByHash`)
+  - [x] `internal/store`: schema v1 (ARCHITECTURE.md "Data schema"), `Open`, `Tx`, `Get/List/Put/Delete[T]`, `NextID`, kv, projects and tokens access (`TokenByHash`)
 
 - [ ] 01-03 System integration and settings
   - Wave: 2 | Depends on: 01-01 | Review: alone
