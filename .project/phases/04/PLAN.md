@@ -293,3 +293,10 @@ func (c *Cloud) applianceJob(ctx context.Context, diskPath string, job agentapi.
   - Adjusts: -
   - [x] docs/user/deviations.md: rescue runs from its own disk (not RAM), auto-disable is noticed only for boots hlab drives (a guest-initiated reboot into rescue is ended by the 60 min timeout), ISO catalog instead of Hetzner's ISOs, udev/automount hooks only on hlab-created disks, snapshots of running servers crash-consistent via a checkpoint, a grown volume shows its new size only through the hlab guest hook (servers without hooks see it at the next disk I/O), backups only while the cloud runs and not made up, the chosen error codes (`volume_already_attached`, `invalid_input` for location, backup and disk-size cases, deleting an attached volume)
   - [x] docs/user/configuration.md (`isos.json`, `appliance-debs.json`, data folders `images`, `isos`, `volumes`, `cache\debs`), README.md (snapshots, backups, rescue, ISOs, volumes), docs/dev/components.md (agent jobs, appliance debs)
+
+## Close
+
+- Unit suite and lint in full: green on 35a726a, 8ecb3b4 and 78bd26a (after the close fixes).
+- End-to-end: `task e2e -- -run 'TestE2E/(SRV-11|SRV-12|SRV-15|VOL-02|VOL-03|VOL-04)$'` (the phase's requirements; no e2e test function outside them changed). On 35a726a SRV-11 failed intermittently (rescue disk took sda), fixed in 8ecb3b4 (SRV-11 green three times); on 8ecb3b4 SRV-15 failed intermittently (user_data file empty after an early hard reset), fixed in a2be9d7 (SRV-15 green twice on a2be9d7). Final run of SRV-11, SRV-12, VOL-02, VOL-03, VOL-04 green on 78bd26a; only planning documents changed after a2be9d7.
+- SRV-15 passes through its indirect proof: the Ubuntu live session does not answer SSH (DECISIONS "Q5 SRV-15 proved by SSH into the live ISO" allows the fallback).
+- No manual requirements in this phase.

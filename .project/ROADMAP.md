@@ -17,18 +17,7 @@
 
 - [x] 03 Server lifecycle (SRV-02, SRV-07, SRV-08, SRV-09, SRV-10, SRV-18, SRV-20, SRV-21, META-01) → phases/03/
 
-- [ ] 04 Images, backups, rescue, ISOs and volumes.
-      Requirements: SRV-11, SRV-12, SRV-13, SRV-14, SRV-15, CAT-08, VOL-01,
-      VOL-02, VOL-03, VOL-04, VOL-05.
-      Depends on: 03.
-      Success criteria:
-      1. A snapshot of a server with a marker file boots as a new server
-         with that file.
-      2. Rescue mode gives an SSH login into a RAM system where the server
-         disk is `/dev/sda`.
-      3. A volume created with format and automount is mounted in the
-         server; after detach and attach to another server its data is
-         there.
+- [x] 04 Images, backups, rescue, ISOs and volumes (SRV-11, SRV-12, SRV-13, SRV-14, SRV-15, CAT-08, VOL-01, VOL-02, VOL-03, VOL-04, VOL-05) → phases/04/
 
 - [ ] 05 Private networks, primary IPs and floating IPs, port isolation.
       Requirements: NET-01, NET-02, NET-03, NET-04, NET-05, NET-06, PIP-01,

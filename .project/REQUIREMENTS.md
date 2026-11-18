@@ -277,7 +277,7 @@ What the target vision in IDEA.md will need, not built yet.
 | CAT-05 | 02 | x |
 | CAT-06 | 01 | x |
 | CAT-07 | 01 | x |
-| CAT-08 | 04 | |
+| CAT-08 | 04 | x |
 | SRV-01 | 01 | x |
 | SRV-02 | 03 | x |
 | SRV-03 | 01 | x |
@@ -288,11 +288,11 @@ What the target vision in IDEA.md will need, not built yet.
 | SRV-08 | 03 | x |
 | SRV-09 | 03 | x |
 | SRV-10 | 03 | x |
-| SRV-11 | 04 | |
-| SRV-12 | 04 | |
-| SRV-13 | 04 | |
-| SRV-14 | 04 | |
-| SRV-15 | 04 | |
+| SRV-11 | 04 | x |
+| SRV-12 | 04 | x |
+| SRV-13 | 04 | x |
+| SRV-14 | 04 | x |
+| SRV-15 | 04 | x |
 | SRV-16 | 01 | x |
 | SRV-17 | 02 | x |
 | SRV-18 | 03 | x |
@@ -333,11 +333,11 @@ What the target vision in IDEA.md will need, not built yet.
 | CERT-03 | 08 | |
 | CERT-04 | 08 | |
 | CERT-05 | 08 | |
-| VOL-01 | 04 | |
-| VOL-02 | 04 | |
-| VOL-03 | 04 | |
-| VOL-04 | 04 | |
-| VOL-05 | 04 | |
+| VOL-01 | 04 | x |
+| VOL-02 | 04 | x |
+| VOL-03 | 04 | x |
+| VOL-04 | 04 | x |
+| VOL-05 | 04 | x |
 | DNS-01 | 07 | |
 | DNS-02 | 07 | |
 | DNS-03 | 07 | |
