@@ -82,11 +82,11 @@ rest. Constructors take a `Deps`/`Options` struct so tests pass fakes.
   - [ ] `task catalog` (tool in `tools/catalog`, hcloud context or hidden prompt, SPEC.md "Accounts and secrets"); generate `catalog/{locations,server-types,load-balancer-types,pricing}.json`; write `catalog/images.json` by hand
   - [ ] modules `locations`, `datacenters` (410 as the frozen description), `server_types`, `images` (system images from the catalog)
 
-- [ ] 01-07 cidata
+- [x] 01-07 cidata
   - Wave: 2 | Depends on: 01-01 | Review: alone
   - Requirements: - | Tests: (SRV-01, SRV-03 e2e)
   - Size: ~200 lines in 2 files
-  - [ ] `internal/cidata`: meta-data, user-data, vendor-data (empty hooks for now), network-config v2 (/32, on-link 172.31.1.1, resolvers), extra files (agent binary for the appliance)
+  - [x] `internal/cidata`: meta-data, user-data, vendor-data (empty hooks for now), network-config v2 (/32, on-link 172.31.1.1, resolvers), extra files (agent binary for the appliance)
 
 - [x] 01-08 Image pipeline
   - Wave: 2 | Depends on: 01-01 | Review: alone
