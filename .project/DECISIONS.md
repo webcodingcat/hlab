@@ -1799,3 +1799,11 @@ in ARCHITECTURE.md or the plan.
 - What: the default SOA (`hydrogen.ns.hetzner.com. dns.hetzner.com. <serial> 86400 10800 3600000 3600`) and NS sets carry no TTL of their own and use the zone TTL; record values with a line break or a trailing `;` comment are refused; owner names may contain `_` and a `*` label.
 - Why: follows Hetzner's defaults where known and keeps zone file export unambiguous.
 - Cost of change: low
+
+## 2026-11-19 change_dns_ptr body and side effects
+
+- Type: decision
+- Phase: phase 07
+- What: `change_dns_ptr` requires the `dns_ptr` key (missing is `invalid_input` on `dns_ptr`, `null` resets); a primary IP's action names only the primary IP, pushes only the agent document and copies the PTR into the assigned server's `public_net` without rebuilding its seed.
+- Why: a PTR is not part of the seed, and an explicit key avoids resetting a PTR by an empty body.
+- Cost of change: low

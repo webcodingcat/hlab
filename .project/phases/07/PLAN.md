@@ -189,15 +189,15 @@ type ShadowingZone struct {
   - [x] `Entry`, `Default`, `Change`, `Show`, `PTR` (internal/rdns/rdns.go)
   - [x] Rows of TESTS.md for 07-03 (internal/rdns/rdns_test.go, group `TestRDNS`)
 
-- [ ] 07-04 Primary IPs and servers: change_dns_ptr
+- [x] 07-04 Primary IPs and servers: change_dns_ptr
   - Wave: 2 | Depends on: 07-03 | Review: alone
   - Requirements: RDNS-01 | Tests: internal/resources/primaryips/primaryips_test.go
   - Reads: RESEARCH R3; this file "Interfaces"; internal/resources/primaryips/actions.go (assign writes the server's public_net), internal/resources/servers/network.go (hooks)
   - Size: ~300 lines in 5 files
   - Adjusts: tests in internal/resources/servers that compare `ipv6.dns_ptr` with `[]any{}` (type only)
-  - [ ] Servers: `IPv6.DNSPtr []rdns.Entry`, IPv4 `dns_ptr` shown as `rdns.Default` when stored empty, `DNSPtrs`, `SetDNSPtrs`, route `POST /servers/{id}/actions/change_dns_ptr` (body `ip` and `dns_ptr` required, `dns_ptr` null allowed; action `change_dns_ptr` on server and primary IP; push) (internal/resources/servers/servers.go, internal/resources/servers/network.go, internal/resources/servers/dnsptr.go)
-  - [ ] Primary IPs: `change_dns_ptr` action through `rdns.Change` (records shown through `rdns.Show`), `ChangeServer` (finds the server's primary IP holding `ip`; an IP the server does not hold: 422 `invalid_input` on `ip`; mirrors the change into the server's `public_net`, also on assign), `Contribute` adds the effective PTR of every primary IPv4 to `doc.PTR` (internal/resources/primaryips/actions.go, internal/resources/primaryips/primaryips.go)
-  - [ ] Rows of TESTS.md for 07-04 (internal/resources/primaryips/primaryips_test.go)
+  - [x] Servers: `IPv6.DNSPtr []rdns.Entry`, IPv4 `dns_ptr` shown as `rdns.Default` when stored empty, `DNSPtrs`, `SetDNSPtrs`, route `POST /servers/{id}/actions/change_dns_ptr` (body `ip` and `dns_ptr` required, `dns_ptr` null allowed; action `change_dns_ptr` on server and primary IP; push) (internal/resources/servers/servers.go, internal/resources/servers/network.go, internal/resources/servers/dnsptr.go)
+  - [x] Primary IPs: `change_dns_ptr` action through `rdns.Change` (records shown through `rdns.Show`), `ChangeServer` (finds the server's primary IP holding `ip`; an IP the server does not hold: 422 `invalid_input` on `ip`; mirrors the change into the server's `public_net`, also on assign), `Contribute` adds the effective PTR of every primary IPv4 to `doc.PTR` (internal/resources/primaryips/actions.go, internal/resources/primaryips/primaryips.go)
+  - [x] Rows of TESTS.md for 07-04 (internal/resources/primaryips/primaryips_test.go)
 
 - [ ] 07-05 Floating IPs: change_dns_ptr
   - Wave: 2 | Depends on: 07-03 | Review: alone
