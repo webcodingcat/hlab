@@ -21,6 +21,15 @@ func TestE2E(t *testing.T) {
 	// parallel rows.
 	t.Run("LIFE-01", testLIFE01)
 
+	// LIFE-02, LIFE-03, LIFE-04 and LIFE-07 share one fixture and one stop
+	// and start per stop behaviour, so they also run alone; their fixture
+	// goes and settings.toml is restored before the parallel rows.
+	t.Run("LIFE-02", testLIFE02)
+	t.Run("LIFE-03", testLIFE03)
+	t.Run("LIFE-04", testLIFE04)
+	t.Run("LIFE-07", testLIFE07)
+	releaseLifeFixture(t)
+
 	t.Run("PROJ-05", parallel(testPROJ05))
 	t.Run("API-01", parallel(testAPI01))
 	t.Run("SRV-01", parallel(testSRV01))

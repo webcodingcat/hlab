@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/binary"
 	"encoding/pem"
 	"fmt"
 	"math/big"
@@ -23,6 +24,8 @@ import (
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/platform/platformtest"
+	"github.com/webcodingcat/hlab/internal/rdns"
+	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/certificates"
 	"github.com/webcodingcat/hlab/internal/resources/loadbalancers"
@@ -285,6 +288,7 @@ type lbView struct {
 		NetworkZone string `json:"network_zone"`
 	} `json:"location"`
 	LoadBalancerType struct {
+		ID   int64  `json:"id"`
 		Name string `json:"name"`
 	} `json:"load_balancer_type"`
 	Protection struct {
@@ -612,6 +616,7 @@ func TestLoadBalancers(t *testing.T) {
 	t.Run("LB-09", testDNSPtr)
 	t.Run("LB-06/document", testDocument)
 	t.Run("LB-09/document", testDocumentPTR)
+	t.Run("LB-09/recover", testRecover)
 }
 
 // testCreate: create, location and type rules, primary IPs and names.
@@ -631,7 +636,7 @@ func testCreate(t *testing.T) {
 	if lb.PublicNet.IPv4.ID != nil {
 		t.Errorf("system IPv4 shows primary IP ID %d, want null", *lb.PublicNet.IPv4.ID)
 	}
-	want6 := netip.MustParseAddr(fmt.Sprintf("2001:db8:8000:%x::1", lb.ID))
+	want6 := netip.MustParseAddr(fmt.Sprintf("2001:db8:a000:%x::1", lb.ID))
 	if got := loadbalancers.IPv6(lb.ID); got != want6 {
 		t.Errorf("IPv6(%d) = %s, want %s", lb.ID, got, want6)
 	}
@@ -649,6 +654,12 @@ func testCreate(t *testing.T) {
 	zoned := createLB(t, e, map[string]any{"name": "zoned", "load_balancer_type": "lb11", "network_zone": "eu-central"})
 	if zoned.Location.Name != firstInZone || zoned.Location.NetworkZone != "eu-central" {
 		t.Errorf("network_zone eu-central alone: location %s (%s), want %s", zoned.Location.Name, zoned.Location.NetworkZone, firstInZone)
+	}
+
+	byID := lbBody("by-type-id")
+	byID["load_balancer_type"] = lb.LoadBalancerType.ID
+	if got := createLB(t, e, byID); got.LoadBalancerType.Name != "lb11" {
+		t.Errorf("create with type ID %d: type %s, want lb11", lb.LoadBalancerType.ID, got.LoadBalancerType.Name)
 	}
 
 	badType := lbBody("bad-type")
@@ -780,4 +791,133 @@ func testChange(t *testing.T) {
 	if !slices.Contains(deleted, held.ID) {
 		t.Errorf("LoadBalancerDeleted calls %v, want one for %d", deleted, held.ID)
 	}
+}
+
+// testRecover: Q14 moves the formal IPv6 of load balancers to the prefix
+// 0xA0000000; Recover moves PTR entries stored on the old /64.
+func testRecover(t *testing.T) {
+	e := newEnv(t)
+	var mod any = e.lb
+	rec, ok := mod.(resource.Recoverer)
+	if !ok {
+		t.Fatal("load balancers module does not implement resource.Recoverer")
+	}
+
+	lb := createLB(t, e, lbBody("formal"))
+	new6 := netip.MustParseAddr(lb.ipv6())
+	newOther := withInterfaceID(new6, 0x5)
+	old6 := oldFormal(new6, lb.ID)
+	oldOther := oldFormal(newOther, lb.ID)
+
+	e.pips.mu.Lock()
+	e.pips.ipv4[601] = netip.MustParseAddr("198.19.77.8")
+	e.pips.ipv6[602] = netip.MustParsePrefix("2001:db8:9000:2::/64")
+	e.pips.mu.Unlock()
+	withPIPs := lbBody("held")
+	withPIPs["public_net"] = map[string]any{"ipv4": 601, "ipv6": 602}
+	held := createLB(t, e, withPIPs)
+	// The held LB's entries lie in the /64 that would be its old formal
+	// one: a primary IP with the same ID as the LB.
+	heldEntries := []rdns.Entry{
+		{IP: oldFormal(withInterfaceID(new6, 1), held.ID).String(), DNSPtr: "held.example.com"},
+		{IP: held.ipv6(), DNSPtr: "held6.example.com"},
+	}
+
+	// The state of phase 08: entries stored on the old formal IPv6.
+	setPTRs(t, e, lb.ID, []rdns.Entry{
+		{IP: old6.String(), DNSPtr: "lb6.example.com"},
+		{IP: oldOther.String(), DNSPtr: "other.example.com"},
+		{IP: lb.ipv4(), DNSPtr: "lb.example.com"},
+	})
+	setPTRs(t, e, held.ID, heldEntries)
+
+	if err := rec.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
+	}
+	want := []rdns.Entry{
+		{IP: new6.String(), DNSPtr: "lb6.example.com"},
+		{IP: newOther.String(), DNSPtr: "other.example.com"},
+		{IP: lb.ipv4(), DNSPtr: "lb.example.com"},
+	}
+	if got := ptrsOf(t, e, lb.ID); !sameEntries(got, want) {
+		t.Errorf("dns_ptr after Recover: %+v, want %+v", got, want)
+	}
+	if got := mustLB(t, e, lb.ID).PublicNet.IPv6.DNSPtr; strOf(got) != "lb6.example.com" {
+		t.Errorf("ipv6 dns_ptr after Recover %s, want lb6.example.com", strOf(got))
+	}
+	if got := ptrsOf(t, e, held.ID); !sameEntries(got, heldEntries) {
+		t.Errorf("dns_ptr of the LB with an IPv6 primary IP after Recover: %+v, want unchanged %+v", got, heldEntries)
+	}
+
+	if err := rec.Recover(context.Background()); err != nil {
+		t.Fatalf("second Recover: %v", err)
+	}
+	if got := ptrsOf(t, e, lb.ID); !sameEntries(got, want) {
+		t.Errorf("dns_ptr after a second Recover: %+v, want unchanged %+v", got, want)
+	}
+	if got := ptrsOf(t, e, held.ID); !sameEntries(got, heldEntries) {
+		t.Errorf("dns_ptr of the LB with an IPv6 primary IP after a second Recover: %+v, want unchanged %+v", got, heldEntries)
+	}
+}
+
+// oldFormal is a in the formal /64 of phase 08, 2001:db8:<0x80000000|id>.
+func oldFormal(a netip.Addr, id int64) netip.Addr {
+	b := a.As16()
+	binary.BigEndian.PutUint32(b[4:8], 0x80000000|uint32(id))
+	return netip.AddrFrom16(b)
+}
+
+// withInterfaceID is a with its last 64 bits set to iid.
+func withInterfaceID(a netip.Addr, iid uint64) netip.Addr {
+	b := a.As16()
+	binary.BigEndian.PutUint64(b[8:], iid)
+	return netip.AddrFrom16(b)
+}
+
+// setPTRs replaces the stored dns_ptr entries of load balancer id.
+func setPTRs(t *testing.T, e *lbEnv, id int64, entries []rdns.Entry) {
+	t.Helper()
+	err := e.Store.Tx(func(tx store.Tx) error {
+		r, err := store.Get[loadbalancers.Record](tx, loadbalancers.Kind, e.Project.ID, id)
+		if err != nil {
+			return err
+		}
+		r.DNSPtr = entries
+		return store.Put(tx, store.Meta{Kind: loadbalancers.Kind, ID: id, ProjectID: e.Project.ID, Name: r.Name, Labels: r.Labels, Created: r.Created}, r)
+	})
+	if err != nil {
+		t.Fatalf("store dns_ptr of load balancer %d: %v", id, err)
+	}
+}
+
+func ptrsOf(t *testing.T, e *lbEnv, id int64) []rdns.Entry {
+	t.Helper()
+	var r loadbalancers.Record
+	err := e.Store.Tx(func(tx store.Tx) error {
+		var err error
+		r, err = store.Get[loadbalancers.Record](tx, loadbalancers.Kind, e.Project.ID, id)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("read load balancer %d: %v", id, err)
+	}
+	return r.DNSPtr
+}
+
+// sameEntries compares entries regardless of order and of the textual form
+// of the addresses.
+func sameEntries(got, want []rdns.Entry) bool {
+	norm := func(es []rdns.Entry) []string {
+		out := make([]string, 0, len(es))
+		for _, e := range es {
+			ip := e.IP
+			if a, err := netip.ParseAddr(ip); err == nil {
+				ip = a.String()
+			}
+			out = append(out, ip+" "+e.DNSPtr)
+		}
+		slices.Sort(out)
+		return out
+	}
+	return slices.Equal(norm(got), norm(want))
 }

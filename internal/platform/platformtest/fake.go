@@ -9,6 +9,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -210,6 +212,43 @@ func (f *Fake) SetVM(ctx context.Context, name string, spec platform.VMSpec) err
 	}
 	v.spec.StopAction = spec.StopAction
 	return nil
+}
+
+// SetStopAction records the stop action of the VM, in any state.
+func (f *Fake) SetStopAction(ctx context.Context, name string, a platform.StopAction) error {
+	if err := f.begin(ctx, "SetStopAction", name, a); err != nil {
+		return err
+	}
+	defer f.mu.Unlock()
+	v, err := f.existing("SetStopAction", name)
+	if err != nil {
+		return err
+	}
+	v.spec.StopAction = a
+	return nil
+}
+
+// StopAction returns the stop action recorded for the VM.
+func (f *Fake) StopAction(name string) platform.StopAction {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.vm(name).spec.StopAction
+}
+
+// VMs returns the sorted names of the VMs starting with prefix.
+func (f *Fake) VMs(ctx context.Context, prefix string) ([]string, error) {
+	if err := f.begin(ctx, "VMs", "", prefix); err != nil {
+		return nil, err
+	}
+	defer f.mu.Unlock()
+	var out []string
+	for name := range f.vms {
+		if strings.HasPrefix(name, prefix) {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // DeleteVM removes the VM; its disks stay.

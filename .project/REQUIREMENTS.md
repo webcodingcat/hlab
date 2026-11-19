@@ -344,18 +344,18 @@ What the target vision in IDEA.md will need, not built yet.
 | DNS-04 | 07 | x |
 | DNS-05 | 07 | x |
 | HOST-01 | 05 | x |
-| HOST-02 | 09 | |
+| HOST-02 | 09 | x |
 | HOST-03 | 02 | x |
 | HOST-04 | 02 | x |
 | LIFE-01 | 01 | x |
-| LIFE-02 | 09 | |
-| LIFE-03 | 09 | |
-| LIFE-04 | 09 | |
-| LIFE-05 | 09 | |
+| LIFE-02 | 09 | x |
+| LIFE-03 | 09 | x |
+| LIFE-04 | 09 | x |
+| LIFE-05 | 09 | x |
 | LIFE-06 | 01 | x |
-| LIFE-07 | 09 | |
-| LIFE-08 | 09 | |
-| LIFE-09 | 09 | |
+| LIFE-07 | 09 | x |
+| LIFE-08 | 09 | x |
+| LIFE-09 | 09 | x |
 | LIFE-10 | 01 | x |
 | UI-01 | 10 | |
 | UI-02 | 11 | |

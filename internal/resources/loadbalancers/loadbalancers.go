@@ -142,11 +142,16 @@ func (r Record) IPv6Net() netip.Prefix {
 }
 
 // IPv6 is the formal IPv6 of a load balancer without an IPv6 primary IP
-// (Q11): 2001:db8:<0x80000000|id as 32 bits>::1.
+// (Q14): 2001:db8:<0xA0000000|id as 32 bits>::1.
 func IPv6(id int64) netip.Addr {
+	return formalIPv6(0xA0000000, id)
+}
+
+// formalIPv6 is 2001:db8:<prefix|id as 32 bits>::1.
+func formalIPv6(prefix uint32, id int64) netip.Addr {
 	var b [16]byte
 	b[0], b[1], b[2], b[3] = 0x20, 0x01, 0x0d, 0xb8
-	binary.BigEndian.PutUint32(b[4:8], 0x80000000|uint32(id))
+	binary.BigEndian.PutUint32(b[4:8], prefix|uint32(id))
 	b[15] = 1
 	return netip.AddrFrom16(b)
 }
@@ -262,6 +267,20 @@ func (m *Module) lbType(ref string) (Type, bool) {
 		}
 	}
 	return Type{}, false
+}
+
+// refString is a reference given as a JSON string or number, as text; ""
+// for anything else.
+func refString(raw json.RawMessage) string {
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	var n json.Number
+	if json.Unmarshal(raw, &n) == nil {
+		return n.String()
+	}
+	return ""
 }
 
 // location finds a catalog location by name or ID.

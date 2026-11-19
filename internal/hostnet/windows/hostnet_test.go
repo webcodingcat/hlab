@@ -254,4 +254,52 @@ func TestHostNet(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("HOST-02", func(t *testing.T) {
+		r := netip.MustParsePrefix("198.19.0.0/16")
+		cases := []struct {
+			name  string
+			entry windows.HostEntry
+			names []string // what the message names; nil: no collision
+		}{
+			{name: "address inside the range",
+				entry: windows.HostEntry{Kind: "address", Alias: "Ethernet 2", Prefix: "198.19.5.10/24"},
+				names: []string{"Ethernet 2"}},
+			{name: "address network containing the range",
+				entry: windows.HostEntry{Kind: "address", Alias: "VPN", Prefix: "198.18.0.1/15"},
+				names: []string{"VPN"}},
+			{name: "route into the range",
+				entry: windows.HostEntry{Kind: "route", Alias: "Wi-Fi", Prefix: "198.19.128.0/17"},
+				names: []string{"198.19.128.0/17", "Wi-Fi"}},
+			{name: "disjoint address",
+				entry: windows.HostEntry{Kind: "address", Alias: "Ethernet", Prefix: "192.168.1.20/24"}},
+			{name: "disjoint route",
+				entry: windows.HostEntry{Kind: "route", Alias: "Ethernet", Prefix: "198.20.0.0/16"}},
+			{name: "default route",
+				entry: windows.HostEntry{Kind: "route", Alias: "Ethernet", Prefix: "0.0.0.0/0"}},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				got := windows.RangeCollisions([]windows.HostEntry{tc.entry}, r)
+				if tc.names == nil {
+					if len(got) != 0 {
+						t.Fatalf("RangeCollisions = %+v, want none", got)
+					}
+					return
+				}
+				if len(got) != 1 {
+					t.Fatalf("RangeCollisions = %+v, want one range_collision", got)
+				}
+				p := got[0]
+				if p.Code != "range_collision" || !p.Fatal {
+					t.Errorf("problem %+v, want fatal range_collision", p)
+				}
+				for _, n := range tc.names {
+					if !strings.Contains(p.Message, n) {
+						t.Errorf("message %q does not name %q", p.Message, n)
+					}
+				}
+			})
+		}
+	})
 }

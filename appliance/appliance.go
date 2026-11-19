@@ -5,19 +5,22 @@
 //
 //   - user-data: UserData()
 //   - meta-data: instance-id (the appliance name plus a hash of the
-//     user-data, so a changed user-data runs once on an existing appliance)
-//     and local-hostname
-//   - network-config: v2, eth0 198.19.0.1/30 with default route via 198.19.0.2
+//     user-data and the network-config, so a changed user-data or public
+//     range runs once on an existing appliance) and local-hostname
+//   - network-config: v2, eth0 with the transit address of the public range
+//     (range .1/30) and default route via the host (range .2)
 //   - AgentFile ("hlab-agent"): the static Linux binary bin/hlab-agent
 //   - SecretFile ("secret"): the agent secret, one line
+//   - TransitFile ("transit"): the appliance's transit address, one line
 //   - <name>.deb: the packages of catalog/appliance-debs.json (xfsprogs and
 //     its libraries), installed by the install script while mkfs.xfs is
 //     missing
 //
 // On first boot cloud-init installs the systemd unit hlab-agent.service and
 // the install script; at every boot the unit copies AgentFile to
-// /usr/local/sbin/hlab-agent and SecretFile to /etc/hlab-agent/secret (mode
-// 0600) from the ISO and starts the agent, so a cloud start with a new ISO
+// /usr/local/sbin/hlab-agent, SecretFile to /etc/hlab-agent/secret (mode
+// 0600) and TransitFile to /etc/hlab-agent/transit from the ISO and starts
+// the agent, so a cloud start with a new ISO
 // updates the agent.
 package appliance
 
@@ -29,8 +32,9 @@ import (
 
 // Names of the agent's files on the cidata ISO.
 const (
-	AgentFile  = "hlab-agent"
-	SecretFile = "secret"
+	AgentFile   = "hlab-agent"
+	SecretFile  = "secret"
+	TransitFile = "transit"
 )
 
 var (

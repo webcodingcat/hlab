@@ -21,6 +21,7 @@ import (
 
 	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/api"
+	"github.com/webcodingcat/hlab/internal/logfile"
 	"github.com/webcodingcat/hlab/internal/resource"
 	"github.com/webcodingcat/hlab/internal/settings"
 	"github.com/webcodingcat/hlab/internal/store"
@@ -79,6 +80,9 @@ type Deps struct {
 	Trust func(ctx context.Context, on bool) error
 	// SettingsPath is settings.toml, where PUT /trust stores trust_ca.
 	SettingsPath string
+	// LogDir is the folder of hlabd.log, served by GET /logs; "" leaves the
+	// route out.
+	LogDir string
 }
 
 // Project is a project as the management API returns it.
@@ -120,6 +124,9 @@ func New(d Deps) http.Handler {
 	}
 	if d.Trust != nil {
 		mux.HandleFunc("PUT "+Prefix+"/trust", s.trust)
+	}
+	if d.LogDir != "" {
+		mux.HandleFunc("GET "+Prefix+"/logs", s.logs)
 	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "unknown path")
@@ -451,6 +458,28 @@ func (s server) caCert(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(s.d.CACert()); err != nil {
 		slog.Error("write management response", "err", err)
+	}
+}
+
+// LogLines is the number of lines GET /logs answers before following.
+const LogLines = 1000
+
+// logs answers the last LogLines lines of hlabd.log as NDJSON, one flush
+// per line; with follow=1 it goes on with new lines until the client goes.
+func (s server) logs(w http.ResponseWriter, req *http.Request) {
+	follow := req.URL.Query().Get("follow") == "1"
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.WriteHeader(http.StatusOK)
+	rc := http.NewResponseController(w)
+	_ = rc.Flush()
+	err := logfile.Tail(req.Context(), s.d.LogDir, "hlabd.log", LogLines, follow, func(line []byte) error {
+		if _, err := w.Write(line); err != nil {
+			return err
+		}
+		return rc.Flush()
+	})
+	if err != nil && req.Context().Err() == nil {
+		slog.Error("serve the log", "err", err)
 	}
 }
 

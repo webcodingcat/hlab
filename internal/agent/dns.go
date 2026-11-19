@@ -18,10 +18,11 @@ import (
 	"github.com/webcodingcat/hlab/internal/dnszone"
 )
 
-// dnsListen are the addresses the DNS server binds: the transit address
-// (host and WSL2 through NRPT) and Hetzner's resolver addresses (guests).
-// Never the wildcard: systemd-resolved holds 127.0.0.53/54.
-var dnsListen = []string{"198.19.0.1:53", "185.12.64.1:53", "185.12.64.2:53"}
+// resolverListen are Hetzner's resolver addresses (guests) the DNS server
+// binds besides the transit address (host and WSL2 through NRPT), which is
+// the address of Config.API.Listen. Never the wildcard: systemd-resolved
+// holds 127.0.0.53/54.
+var resolverListen = []string{"185.12.64.1:53", "185.12.64.2:53"}
 
 // defaultUpstream is used when the document names no forwarders.
 var defaultUpstream = []string{"1.1.1.1:53", "9.9.9.9:53"}
@@ -33,8 +34,6 @@ const (
 	upstreamTimeout = 2 * time.Second
 	maxCNAMEChain   = 8
 )
-
-var apiAddr = netip.MustParseAddr("198.19.0.1")
 
 // DNS is the Applier of the appliance's DNS server: authoritative for
 // hetzner.internal, the reverse zones of the public range and the user zones
@@ -73,8 +72,9 @@ func (d *DNS) Apply(_ context.Context, cfg agentapi.Config) error {
 	if d.servers != nil {
 		return nil
 	}
+	listen := append([]string{netip.AddrPortFrom(cfg.API.Listen.Addr(), 53).String()}, resolverListen...)
 	var servers []*dns.Server
-	for _, addr := range dnsListen {
+	for _, addr := range listen {
 		pc, err := net.ListenPacket("udp4", addr)
 		if err != nil {
 			shutdownAll(servers)
@@ -96,7 +96,7 @@ func (d *DNS) Apply(_ context.Context, cfg agentapi.Config) error {
 		}()
 	}
 	d.servers = servers
-	slog.Info("dns server started", "listen", dnsListen)
+	slog.Info("dns server started", "listen", listen)
 	return nil
 }
 
@@ -321,7 +321,9 @@ func buildDNSData(cfg agentapi.Config) *dnsData {
 	serial := uint32(cfg.Generation) //nolint:gosec // generations are small positive counters
 
 	internal := newZone(internalZone, serial)
-	internal.add(&dns.A{Hdr: hdr(apiName, dns.TypeA), A: apiAddr.AsSlice()})
+	if api := cfg.API.Listen.Addr(); api.Is4() {
+		internal.add(&dns.A{Hdr: hdr(apiName, dns.TypeA), A: api.AsSlice()})
+	}
 	dd.zones[internalZone] = internal
 
 	if cfg.PublicRange.Addr().Is4() {

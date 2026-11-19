@@ -15,6 +15,12 @@ type Platform interface {
 	CreateVM(ctx context.Context, spec VMSpec) error
 	SetVM(ctx context.Context, name string, spec VMSpec) error // cpu, ram (stopped only)
 	DeleteVM(ctx context.Context, name string) error
+	// SetStopAction sets only the VM's automatic stop action, the action
+	// the host applies to it when Windows shuts down. Hyper-V refuses a
+	// change on a running VM with an InvalidState error.
+	SetStopAction(ctx context.Context, name string, a StopAction) error
+	// VMs returns the names of the VMs whose name starts with prefix.
+	VMs(ctx context.Context, prefix string) ([]string, error)
 	Power(ctx context.Context, name string, op PowerOp) error
 	State(ctx context.Context, name string) (VMState, error)
 	// AttachNIC and DetachNIC also work on a running VM (hot add and

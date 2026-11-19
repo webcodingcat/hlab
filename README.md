@@ -533,6 +533,49 @@ restores the previous setting when it stops. It does not yet notice when
 WSL recreates its adapter (after `wsl --shutdown`); stop and start the
 cloud again in that case.
 
+## Stopping and starting the cloud
+
+The cloud never starts with Windows. Stop it when you need the memory
+back and start it again later; servers, IPs, networks, firewalls, volumes,
+load balancers and DNS zones are kept:
+
+```
+> bin\hlab.exe cloud stop
+the cloud is stopping
+> bin\hlab.exe cloud start
+the cloud is starting
+```
+
+With `stop_behaviour = "save"` (the default) the stop saves the running
+servers and the start resumes them where they were. With `"shutdown"` the
+servers shut down cleanly and the start boots those that were running.
+Servers that were off stay off. A Windows shutdown with a running cloud
+does the same through Hyper-V; after the reboot, start the cloud again.
+The details, also on changing the setting, are under
+[Stop behaviour](docs/user/configuration.md#stop-behaviour).
+
+When something goes wrong, `bin\hlab.exe logs` shows the end of the
+service's log, also while the cloud is stopped; `--follow` keeps
+watching it.
+
+### Discarding the state
+
+hlab refuses to start with a state it cannot use: one written by a newer
+hlab version, a damaged state file, or a state that holds addresses
+outside a changed `public_range`. `bin\hlab.exe cloud status` then shows
+`state: refused` and the reason. Set the range back, or, if you can lose
+everything in the cloud, confirm the discard:
+
+```
+> bin\hlab.exe cloud start --discard-state
+the cloud is starting
+```
+
+This deletes all projects, servers with their disks, volumes, snapshots
+and backups, keeps the old state file renamed to
+`state.db.discarded-<time>`, and starts empty. A usable state is never
+discarded by this flag.
+
 ## The release and the development service
 
 Every build belongs to a profile. `task build` builds the `dev` profile:
@@ -567,6 +610,4 @@ runs, before you remove the service.
   certificates. Every other endpoint answers `not_found`, and the server
   action `request_console` answers `unsupported_error`. The details are
   in [Known deviations](docs/user/deviations.md).
-- `hlab cloud stop` stops the appliance and the host networking, but does
-  not save or shut down the server VMs; they stay as they are in Hyper-V.
 - There is no tray program and no installer.

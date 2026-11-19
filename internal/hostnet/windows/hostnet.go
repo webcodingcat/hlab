@@ -118,8 +118,8 @@ func (h *HostNet) run(ctx context.Context, script string, v any) error {
 	return nil
 }
 
-// hostEntry is one host address, route or NAT instance reported by checkScript.
-type hostEntry struct {
+// HostEntry is one host address, route or NAT instance reported by checkScript.
+type HostEntry struct {
 	Kind   string `json:"kind"` // "address", "route" or "nat"
 	Alias  string `json:"alias"`
 	Prefix string `json:"prefix"`
@@ -140,32 +140,40 @@ func (h *HostNet) Check(ctx context.Context, cfg hostnet.Config) []hostnet.Probl
 			Message: fmt.Sprintf("the hlab cloud of profile %s is running; stop it first", other)})
 	}
 
-	var entries []hostEntry
+	var entries []HostEntry
 	if err := h.run(ctx, checkScript(alias(cfg.SwitchName), h.tag), &entries); err != nil {
 		return append(problems, hostnet.Problem{Code: hostnet.ProblemRangeCollision, Fatal: true,
 			Message: fmt.Sprintf("cannot read the host's addresses and routes: %v", err)})
 	}
 	for _, e := range entries {
-		switch e.Kind {
-		case "nat":
+		if e.Kind == "nat" {
 			problems = append(problems, hostnet.Problem{Code: hostnet.ProblemWinNATExists, Fatal: true,
 				Message: fmt.Sprintf("the WinNAT instance %q exists; Windows allows only one, remove it with Remove-NetNat", e.Alias)})
-		case "address", "route":
-			p, err := netip.ParsePrefix(e.Prefix)
-			if err != nil || p.Bits() == 0 || !p.Addr().Is4() {
-				continue
-			}
-			p = p.Masked()
-			if !p.Overlaps(cfg.PublicRange) {
-				continue
-			}
-			what := "address " + e.Prefix + " of interface " + e.Alias
-			if e.Kind == "route" {
-				what = "route " + e.Prefix + " via interface " + e.Alias
-			}
-			problems = append(problems, hostnet.Problem{Code: hostnet.ProblemRangeCollision, Fatal: true,
-				Message: fmt.Sprintf("the public range %s collides with the host's %s", cfg.PublicRange, what)})
 		}
+	}
+	problems = append(problems, RangeCollisions(entries, cfg.PublicRange)...)
+	return problems
+}
+
+// RangeCollisions returns a fatal range_collision for every host address
+// or route in entries that overlaps r, naming the interface or route.
+// Default routes, non-IPv4 and unparsable prefixes are ignored.
+func RangeCollisions(entries []HostEntry, r netip.Prefix) []hostnet.Problem {
+	var problems []hostnet.Problem
+	for _, e := range entries {
+		if e.Kind != "address" && e.Kind != "route" {
+			continue
+		}
+		p, err := netip.ParsePrefix(e.Prefix)
+		if err != nil || p.Bits() == 0 || !p.Addr().Is4() || !p.Masked().Overlaps(r) {
+			continue
+		}
+		what := "address " + e.Prefix + " of interface " + e.Alias
+		if e.Kind == "route" {
+			what = "route " + e.Prefix + " via interface " + e.Alias
+		}
+		problems = append(problems, hostnet.Problem{Code: hostnet.ProblemRangeCollision, Fatal: true,
+			Message: fmt.Sprintf("the public range %s collides with the host's %s", r, what)})
 	}
 	return problems
 }

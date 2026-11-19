@@ -129,8 +129,12 @@ Inside `hlabd` (Go packages under `internal/`):
   type ActionUser interface {           // modules starting actions outside a handler (daily backups); Mount calls it before Routes
       UseActions(m *actions.Manager)
   }
-  type Recoverer interface {            // modules with records to repair at cloud start (images, volumes: half-made records; primary_ips: missing records)
+  type Recoverer interface {            // modules with records to repair at cloud start (images, volumes: half-made records; primary_ips: missing records; load_balancers: PTR entries on the pre-Q14 formal IPv6)
       Recover(ctx context.Context) error // cloud start calls it before the API serves and before the first scheduled job run
+  }
+  type Lifecycle interface {            // modules whose VMs follow the cloud's stop and start (servers)
+      Halt(ctx context.Context, behaviour string, hostShutdown bool) error // at stop, after API and jobs, before the appliance; nothing at a host shutdown
+      Restore(ctx context.Context, behaviour string) error // at start after the first PushAgent, before the management API and jobs (the Hetzner API already serves): stop action on Off/Saved VMs, resume or power on servers recorded running
   }
   ```
 
@@ -198,6 +202,8 @@ Inside `hlabd` (Go packages under `internal/`):
       EnsureSwitch(ctx, spec SwitchSpec) error
       CreateVM(ctx, spec VMSpec) error            // name "hlab-<kind>-<id>", Gen2, Secure Boot template from spec
       SetVM(ctx, name string, spec VMSpec) error  // cpu, ram (stopped only)
+      SetStopAction(ctx, name string, a StopAction) error // Off and Saved VMs; a change on a Running VM gives Error{Kind: InvalidState}
+      VMs(ctx, prefix string) ([]string, error)   // names of all VMs starting with prefix
       DeleteVM(ctx, name string) error
       Power(ctx, name string, op PowerOp) error   // Start, Stop(hard), Shutdown and Reboot (Shutdown integration service; Reboot falls back to shutdown, wait for off, start), Reset, Save
       State(ctx, name string) (VMState, error)
@@ -419,7 +425,9 @@ Inside `hlabd` (Go packages under `internal/`):
   Exit code 0 on success, 1 on error, 2 on usage error. `cloud start|stop`
   use the service controller (see "System integration"); all other commands
   use the management API and fail with "the cloud is not running" while it
-  is stopped, except `logs`, which then reads the log file, and `version`.
+  is stopped, except `logs`, which then reads the log files, and `version`.
+  `logs` uses `GET /mgmt/v1/logs[?follow=1]`: the last 1000 lines over the
+  rotated files as NDJSON, with `follow` streamed until the client leaves.
 - `catalog update`: the token comes from the environment variable named by
   `--hetzner-token-env`, else from a hidden prompt on a terminal; with
   neither, the command fails with exit code 2 and says how to pass it. It
@@ -431,10 +439,13 @@ Inside `hlabd` (Go packages under `internal/`):
   file `%ProgramData%\hlab\status.json` (`{"state":"refused","problem":
   {"code":"state_incompatible","message":...}}`) and stops. `hlab cloud
   status` and the tray show the message; `hlab cloud start --discard-state`
-  (tray: confirm dialog) renames `state.db` to `state.db.discarded-<time>`
-  through the start parameter `discard-state` and starts with an empty
-  state; VMs and disks of the discarded state are deleted by the tagged
-  cleanup of `hlabd uninstall-cleanup --vms-only`.
+  (tray: confirm dialog) passes the start parameter `discard-state`; hlabd
+  then runs `hostnet.Down`, deletes the profile's server VMs, `disks`,
+  `volumes`, `vms` and `images\image-*.vhdx` (`internal/discard`), renames
+  `state.db` (with `-wal`/`-shm`) to `state.db.discarded-<time>` last and
+  starts with an empty state. A higher `user_version` is reported as a
+  state of a newer hlab version. The same refusal and discard apply to
+  `public_range_changed` (assigned IPs outside a changed `public_range`).
 - Status file `<data dir>\status.json`: `{"state":"starting"|"running"|"stopped"}`, `{"state":"stopped","error":...}` after a failed start, `{"state":"refused","problem":{"code","message","fatal"}}` after a refusal; `hlab cloud status` reads it while the service is stopped.
 - Depends on: management API.
 
@@ -698,7 +709,10 @@ locks a resource of type `project`.
 ## Network
 
 All addresses below derive from the configured public range
-(`network.public_range`, default `198.19.0.0/16`).
+(`network.public_range`, default `198.19.0.0/16`); the addresses shown are
+those of the default range. `internal/transit.For(range)` returns them
+(`Addrs{Host, Appliance, APIListen, APIProxy, Agent}`) for every component;
+the agent reads its own from the `transit` file of its seed.
 
 - Virtual switch `hlab` (internal). The host adapter `vEthernet (hlab)` has
   `198.19.0.2/30`; the appliance's first adapter has `198.19.0.1/30` plus
@@ -835,16 +849,19 @@ level = "info"
   problem with a status message), open store, create switch and appliance
   if missing, open the hlab CA (created if missing) and renew its CRL,
   apply `hostnet.TrustCA` when `trust_ca` is on (a failure is a status
-  problem, not an abort), start appliance, `hostnet.Up`, push agent document, restore
-  servers (resume saved ones; power on those marked running), start API and
-  scheduler (with the weekly `crl` job), set status `running`.
+  problem, not an abort), start appliance, `hostnet.Up`, serve the Hetzner API, push agent document,
+  restore servers (resume saved ones; power on those marked running), start
+  the management API and scheduler (with the weekly `crl` job), set status `running`.
 - Stop (SCM stop or `SERVICE_CONTROL_PRESHUTDOWN` at Windows shutdown):
-  stop API, record which servers ran, then per `stop_behaviour` save or
+  stop jobs and APIs, record which servers ran, then per `stop_behaviour`
+  (read again from settings.toml) save or
   shut down every running VM (Shutdown integration service, 60 s, then
   hard off), stop the appliance, `hostnet.Down`, close store. At Windows
   shutdown `vmms` runs before hlabd in `PreshutdownOrder` and already
-  applies each VM's `AutomaticStopAction` (set to match `stop_behaviour`);
-  hlabd's preshutdown handler records the state and runs `hostnet.Down`.
+  applies each VM's `AutomaticStopAction` (set at the last cloud start on
+  Off and Saved VMs; Hyper-V refuses a change on a running VM); hlabd's
+  preshutdown handler changes no VM and no stored status and runs
+  `hostnet.Down`.
   hlabd sets its preshutdown timeout to 180 s
   (`SERVICE_CONFIG_PRESHUTDOWN_INFO`).
 

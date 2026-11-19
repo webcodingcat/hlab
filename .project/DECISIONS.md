@@ -1903,6 +1903,7 @@ in ARCHITECTURE.md or the plan.
 - What: a load balancer without an IPv6 primary IP shows `2001:db8:<0x80000000 | LB ID as 32 bits>::1`; with an IPv6 primary IP it shows `<its /64>::1`.
 - Why: the user's answer to Q3; one documentation prefix, no collision with server IDs below 2^31, and the hcloud CLI prints the IPv6 without a nil check.
 - Cost of change: high
+- Superseded: the prefix `0x80000000` by Q14 (`0xA0000000`).
 
 ## 2026-11-19 Q12: empty CRL for leaf certificates
 
@@ -2214,4 +2215,100 @@ in ARCHITECTURE.md or the plan.
 - Phase: upgrade
 - What: project files brought from wcc 0.32.9 to 0.32.10: version line only; the autoMode environment entry for the hcloud context `hlab-docs` is shown to the user for their own settings
 - Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
+
+## 2026-11-19 Q14: separate IPv6 prefix for load balancers
+
+- Type: change
+- Phase: change after phase 08
+- What: a load balancer without an IPv6 primary IP shows `2001:db8:<0xA0000000 | LB ID as 32 bits>::1` instead of `0x80000000` (Q11); IDs stay below 2^29; a `dns_ptr` entry stored on the old formal IPv6 moves to the new one; built in phase 09.
+- Why: standalone IPv6 primary IPs already use `0x80000000 | ID`, so an LB and a primary IP with the same ID shared a /64 and their PTR entries could overlap; `0xA0000000` keeps one documentation prefix and separates servers, primary IPs, load balancers and floating IPs.
+- Cost of change: low
+
+## 2026-11-19 Server status kept until restore at cloud start
+
+- Type: decision
+- Phase: phase 09
+- What: at cloud start nothing reconciles a server's stored status with its VM state before `Restore` has run, and actions still running at stop end with `error` at start.
+- Why: the user's answer at the start of phase 09; after "shutdown" the VMs are off and the stored status is the only record of which servers ran.
+- Cost of change: low
+
+## 2026-11-19 Stop behaviour at a Windows shutdown
+
+- Type: decision
+- Phase: phase 09
+- What: a Windows shutdown applies the `AutomaticStopAction` set at the last cloud start; a changed `stop_behaviour` is applied to running VMs at once only if Hyper-V accepts it on running VMs, otherwise documented as taking effect after the next cloud start.
+- Why: the user's answer at the start of phase 09; RESEARCH.md leaves open whether `Set-VM -AutomaticStopAction` works on running VMs.
+- Cost of change: low
+
+## 2026-11-19 public_range excludes private and shared ranges
+
+- Type: decision
+- Phase: phase 09
+- What: `network.public_range` is refused when it overlaps 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 or 100.64.0.0/10, besides the reserved ranges and Hetzner's special addresses.
+- Why: the user's answer at the start of phase 09; users' private networks live in these ranges and Hetzner requires RFC 1918 for them.
+- Cost of change: low
+
+## 2026-11-19 Changed public_range refuses the start
+
+- Type: decision
+- Phase: phase 09
+- What: if the state holds assigned IPs outside a changed `public_range`, hlabd refuses to start with problem `public_range_changed`, naming the old range and `hlab cloud start --discard-state`.
+- Why: the user's answer to the planner's question at the start of phase 09; no data is lost and the API never shows addresses that do not work.
+- Cost of change: medium
+
+## 2026-11-19 Discarding the state cleans host objects and names downgrades
+
+- Type: decision
+- Phase: phase 09
+- What: `--discard-state` also removes the old state's zone NRPT rules and the tagged host objects `hostnet` cleans up, and a state with a higher `user_version` is reported as coming from a newer hlab version.
+- Why: the user's answer at the start of phase 09; a discard leaves nothing stale on the host and a downgrade does not look like a broken file.
+- Cost of change: low
+
+## 2026-11-19 Changed stop_behaviour reaches VMs at the next cloud start
+
+- Type: decision
+- Phase: phase 09
+- What: `SetStopAction` runs at cloud start only (on Running VMs too if the 09-01 probe allows it); no settings reload is built in phase 09, so a changed `stop_behaviour` applies to a Windows shutdown after the next cloud start, as documented.
+- Why: hlabd learns of a settings change only through `POST /mgmt/v1/settings/reload`, which belongs with the tray settings of phase 10; building it now goes beyond the phase's requirements.
+- Cost of change: low
+
+## 2026-11-19 Stop action on running VMs refused by Hyper-V
+
+- Type: decision
+- Phase: phase 09
+- What: the 09-01 probe on a real server VM showed Hyper-V refuses a changed `AutomaticStopAction` on a Running VM (InvalidState) and accepts it on a Saved VM, so `SetStopAction` runs at cloud start on Off and Saved VMs only and the documentation says a changed `stop_behaviour` applies to a Windows shutdown after the next cloud start.
+- Why: this settles the open part of the user's answer on the stop behaviour at a Windows shutdown.
+- Cost of change: low
+
+## 2026-11-19 Recorded public range in ipam
+
+- Type: decision
+- Phase: phase 09
+- What: `ipam.Outside` reads the `ipam.public.used.` keys and the range of the last successful start is kept in kv `ipam.public.range`; a state without that record names the first address outside instead of the old range.
+- Why: every public IPv4 goes through ipam, so one place answers whether a range change strands addresses.
+- Cost of change: low
+
+## 2026-11-19 Agent reads its transit address from the seed
+
+- Type: decision
+- Phase: phase 09
+- What: the agent reads its listen address from a new `transit` file on the appliance seed, copied by `hlab-agent.service` like the secret; the appliance instance-id hashes user-data and network-config so a changed range applies once.
+- Why: transit addresses now follow `public_range` instead of fixed 198.19.0.x values.
+- Cost of change: low
+
+## 2026-11-19 Package internal/discard
+
+- Type: decision
+- Phase: phase 09
+- What: the discard decision (`Requested`) and cleanup (`Run`, after `hostnet.Down`) live in a new package `internal/discard`; discarded files get the suffix `.discarded-<UTC 20060102T150405Z>`, missing `-wal`/`-shm` are skipped.
+- Why: a wrong discard decision destroys data, so it is unit-tested with the fake platform.
+- Cost of change: low
+
+## 2026-11-19 Small phase 09 implementation choices
+
+- Type: decision
+- Phase: phase 09
+- What: `logfile.Tail` follows by polling with a test-shortenable interval and never splits a rotated line; the 60 s halt wait is `servers.Deps.HaltTimeout`; the `range_collision` logic moves into exported `RangeCollisions` in hostnet/windows; e2e LIFE rows share one stop/start cycle per stop behaviour; at a Windows shutdown the jobs are cancelled first and `Halt` changes no VM or status.
+- Why: each keeps the behaviour testable at the cheapest level without new components.
 - Cost of change: low

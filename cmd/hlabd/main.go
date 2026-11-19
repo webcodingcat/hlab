@@ -13,10 +13,10 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
 
 	"github.com/webcodingcat/hlab/internal/cloud"
 	hnwin "github.com/webcodingcat/hlab/internal/hostnet/windows"
+	"github.com/webcodingcat/hlab/internal/logfile"
 	"github.com/webcodingcat/hlab/internal/sysint"
 	"github.com/webcodingcat/hlab/internal/sysint/windows"
 )
@@ -74,7 +74,7 @@ func uninstall(keepData bool) error {
 }
 
 // service runs the cloud under the service manager, logging JSON lines to
-// hlabd.log in the profile's log folder.
+// hlabd.log in the profile's log folder (rotated at logfile.MaxBytes).
 func service() int {
 	paths, err := windows.Paths()
 	if err != nil {
@@ -82,19 +82,16 @@ func service() int {
 		return 1
 	}
 	var out io.Writer = os.Stderr
-	if err := os.MkdirAll(paths.Logs, 0o750); err == nil {
-		f, err := os.OpenFile(filepath.Join(paths.Logs, "hlabd.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
-		if err == nil {
-			defer func() { _ = f.Close() }()
-			out = f
-		}
+	if w, err := logfile.NewWriter(paths.Logs, "hlabd.log", logfile.MaxBytes, logfile.Keep); err == nil {
+		defer func() { _ = w.Close() }()
+		out = w
 	}
 	level := new(slog.LevelVar)
 	slog.SetDefault(slog.New(slog.NewJSONHandler(out, &slog.HandlerOptions{Level: level})))
 
 	c := cloud.New(cloud.Deps{Paths: paths, Level: level})
 	err = windows.NewServiceHost().Run(
-		func(ctx context.Context, _ []string) error { return c.Start(ctx) },
+		func(ctx context.Context, params []string) error { return c.Start(ctx, params) },
 		func(ctx context.Context, reason sysint.StopReason) error { return c.Stop(ctx, reason) },
 	)
 	if err != nil {

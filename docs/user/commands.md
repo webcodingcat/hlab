@@ -5,8 +5,8 @@ the server type catalog and the hlab CA.
 In a working copy it is `bin\hlab.exe`; the examples write `hlab`.
 
 `hlab cloud start`, `stop` and `status` work at any time. All other
-commands except `hlab version` talk to the running cloud and fail with
-`hlab: the cloud is not running` while it is stopped.
+commands except `hlab logs` and `hlab version` talk to the running cloud
+and fail with `hlab: the cloud is not running` while it is stopped.
 
 ## Output and exit codes
 
@@ -28,18 +28,43 @@ printed). Errors go to standard error, prefixed with `hlab:`.
 ### hlab cloud start
 
 Starts the cloud: virtual switch, appliance VM, host networking and the
-API. The command returns at once; follow the start with `hlab cloud status`.
-No administrator rights are needed.
+API. The servers that ran at the last stop are resumed or powered on;
+servers that were off stay off. The command returns at once; follow the
+start with `hlab cloud status`. No administrator rights are needed.
 
 ```
 > hlab cloud start
 the cloud is starting
 ```
 
+`--discard-state` confirms that hlab may throw away a state it refused to
+start with: a state file this version cannot read (written by a newer
+hlab version, or damaged), or a state that holds addresses outside a
+changed `public_range` (see
+[configuration](configuration.md#settingstoml)). hlab then renames the
+state file to `state.db.discarded-<UTC time>`, deletes the server VMs with
+their disks, volumes and snapshots, removes the old host network settings
+and DNS rules, and starts with an empty state. Downloaded images and ISOs,
+the appliance and the hlab CA stay. A start refused for such a state shows
+`state: refused` and names this flag on the `problem:` line of
+`hlab cloud status`. A state that can be used is never discarded; the flag
+is then ignored and the log says so:
+
+```
+> hlab cloud start --discard-state
+the cloud is starting
+> hlab logs
+...
+2026-11-19 19:22:23 INFO discard of the state requested, but the state is compatible; it is kept
+```
+
 ### hlab cloud stop
 
-Stops the API and the appliance and removes the host networking. Server
-VMs are not saved or shut down yet; they stay as they are in Hyper-V.
+Stops the API, then saves or shuts down the running server VMs as
+`stop_behaviour` in [settings.toml](configuration.md#settingstoml) says
+at that moment, then stops the appliance and removes the host networking.
+With `"shutdown"`, servers whose guest has not shut down after 60 seconds
+are turned off.
 
 ```
 > hlab cloud stop
@@ -230,6 +255,29 @@ the hlab CA is no longer trusted on this host
 ```
 
 ## Other
+
+### hlab logs
+
+Shows the last 1000 lines of the hlabd log, oldest first, as
+`time LEVEL message key=value...`; `--output json` prints the lines as
+they are in the file. While the cloud runs the lines come through the
+cloud, while it is stopped from the log files, so it also works when the
+cloud is stopped. `--follow` keeps printing new lines until Ctrl+C.
+
+```
+> hlab logs
+...
+2026-11-19 19:22:01 INFO cloud stopping reason=requested
+2026-11-19 19:22:01 INFO halting servers stop_behaviour=save host_shutdown=false
+2026-11-19 19:22:11 INFO cloud stopped
+> hlab logs --output json
+...
+{"time":"2026-11-19T19:18:57.1154384+01:00","level":"INFO","msg":"api request","method":"GET","path":"/v1/servers","status":200,"duration":512400}
+> hlab logs --follow
+```
+
+The log files are described in the
+[configuration reference](configuration.md#log-files).
 
 ### hlab version
 
