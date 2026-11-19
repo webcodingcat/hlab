@@ -181,13 +181,14 @@ type nrptRule struct {
 }
 
 // taggedNRPTRules reads the NRPT rules whose Comment is the profile's tag
-// with Get-DnsClientNrptRule; where that is refused it reads the same rules
+// with Get-DnsClientNrptRule (its NameServers are IPAddress objects, turned
+// into strings here); where that is refused it reads the same rules
 // from the registry (decision D16). It never changes a rule.
 func taggedNRPTRules() ([]nrptRule, error) {
 	script := `$tag = '` + nrptTag + `'
 try {
   $rules = @(Get-DnsClientNrptRule | Where-Object { $_.Comment -eq $tag } |
-    ForEach-Object { [pscustomobject]@{ Namespace = @($_.Namespace); NameServers = @($_.NameServers) } })
+    ForEach-Object { [pscustomobject]@{ Namespace = @($_.Namespace | ForEach-Object { [string]$_ }); NameServers = @($_.NameServers | ForEach-Object { [string]$_ }) } })
 } catch {
   $key = 'HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DnsPolicyConfig'
   $rules = @(Get-ChildItem -Path $key | ForEach-Object { Get-ItemProperty -Path $_.PSPath } |
