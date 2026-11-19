@@ -79,14 +79,14 @@ func seedUserData(userData string, volumes []int64) string
   - [x] `Contribute` (servers.go) puts `Hlab.PasswordReset` into the server's metadata only while the action with the reset's ID has status `running` (`store.GetAction` in the same tx); `rebuild` (rebuild.go) sets `Hlab.PasswordReset = nil` in its record update
   - [x] `Internal.InstanceID` (servers.go); `rebuild` sets it to `<id>-<action.ID>` in the transaction that starts the action; `seed` (reconcile.go) uses it and falls back to the server ID, so the server seed and the rescue seed (rescue.go builds on `m.seed`) carry the current one; the metadata document keeps `ServerID`
 
-- [ ] B1-02 Servers: user_data layers in the seed
+- [x] B1-02 Servers: user_data layers in the seed
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SRV-01, VOL-03 | Tests: internal/resources/servers/vendordata_test.go (TestServers/SRV-01/user_data_layers, TestServers/VOL-03/user_data_layers)
   - Reads: REQUIREMENTS SRV-01, VOL-03; ARCHITECTURE "cidata", "Guest integration"; RESEARCH.md Q1, Q3; DECISIONS "Automount at create via runcmd"
   - Size: ~180 lines in 1 file
   - Adjusts: -
-  - [ ] `seedUserData` (vendordata.go): decode user_data as standard base64 only when it consists of the base64 alphabet with correct padding and no whitespace (Go's decoder skips newlines, so check that first), as cloud-init's `maybe_b64decode(validate=True)`; otherwise keep it raw; without volumes return the decoded bytes (cloud-init gunzips a top-level gzip and parses top-level MIME itself)
-  - [ ] with volumes: gunzip a result starting with 1f 8b (keep the bytes on error); if the result parses as a MIME message with a `multipart/*` Content-Type (net/mail, mime/multipart, nested multiparts walked), copy every leaf part with its headers and body unchanged, in order, into hlab's outer multipart before hlab's cloud-config part, and make sure hlab's boundary does not occur in the copied content (pick another boundary if it does); anything else keeps today's base64 `text/plain` part
+  - [x] `seedUserData` (vendordata.go): decode user_data as standard base64 only when it consists of the base64 alphabet with correct padding and no whitespace (Go's decoder skips newlines, so check that first), as cloud-init's `maybe_b64decode(validate=True)`; otherwise keep it raw; without volumes return the decoded bytes (cloud-init gunzips a top-level gzip and parses top-level MIME itself)
+  - [x] with volumes: gunzip a result starting with 1f 8b (keep the bytes on error); if the result parses as a MIME message with a `multipart/*` Content-Type (net/mail, mime/multipart, nested multiparts walked), copy every leaf part with its headers and body unchanged, in order, into hlab's outer multipart before hlab's cloud-config part, and make sure hlab's boundary does not occur in the copied content (pick another boundary if it does); anything else keeps today's base64 `text/plain` part
 
 - [ ] B1-03 Metrics: one counter read per sample for all VMs
   - Wave: 2 | Depends on: B1-01 | Review: alone

@@ -1391,3 +1391,35 @@ in ARCHITECTURE.md or the plan.
 - What: a pending password reset whose action ID is no longer in the actions table counts as not running and is not served to the agent.
 - Why: an action that no longer exists can never finish the reset, so serving it could only apply a password nobody was told about.
 - Cost of change: low
+
+## 2026-11-19 Seed multipart written with mime/multipart
+
+- Type: decision
+- Phase: B1
+- What: With automount volumes the seed user-data is written by Go's `multipart.Writer` (CRLF, sorted part headers) instead of a hand-built LF document.
+- Why: Standard MIME that cloud-init's email parser accepts, and copied user parts keep their exact bytes.
+- Cost of change: low
+
+## 2026-11-19 Base64 check for seed user_data
+
+- Type: decision
+- Phase: B1
+- What: user_data is decoded only if the whole value matches `^[A-Za-z0-9+/]*={0,2}$` and decodes with correct padding; extra bits in the last character are accepted as in Python's validate=True.
+- Why: Mirrors cloud-init's `maybe_b64decode(validate=True)`.
+- Cost of change: low
+
+## 2026-11-19 Seed boundary collision and unparsable MIME
+
+- Type: decision
+- Phase: B1
+- What: If hlab's boundary occurs in copied content a number is appended until it does not; a MIME document that cannot be parsed falls back to one base64 text/plain part with the content after gunzip.
+- Why: Keeps the outer document valid and never drops user content.
+- Cost of change: low
+
+## 2026-11-19 E2E harness stop of a running dev cloud
+
+- Type: decision
+- Phase: B1
+- What: the harness skips the running check when bin\hlab.exe does not exist yet, and after `stopped` waits up to 2 minutes for the `hlab-dev` service to report Stopped before building.
+- Why: a fresh checkout has no binary to ask, and hlabd.exe must be free before the build overwrites it.
+- Cost of change: low
