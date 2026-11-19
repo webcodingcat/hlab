@@ -37,13 +37,17 @@ export function showError(title: string, err: unknown) {
 }
 
 // action runs one user action under a toast. It resolves to the result, or
-// to undefined after showing the error.
-export async function action<T>(title: string, run: () => Promise<T>): Promise<T | undefined> {
+// to undefined after showing the error. done words the success message.
+export async function action<T>(
+  title: string,
+  run: () => Promise<T>,
+  done?: (result: T) => string,
+): Promise<T | undefined> {
   const id = next++;
   put({ id, kind: "progress", title });
   try {
     const result = await run();
-    put({ id, kind: "success", title, message: "Done" });
+    put({ id, kind: "success", title, message: done ? done(result) : "Done" });
     setTimeout(() => dismiss(id), successFor);
     return result;
   } catch (err) {

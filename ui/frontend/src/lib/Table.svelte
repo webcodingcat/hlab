@@ -16,6 +16,7 @@
   // Resource table: rows undefined shows skeleton rows (loading). The search
   // matches the name, or with "=" a label selector (key=value, key!=value,
   // comma-separated). cell renders a column's content; default is its value.
+  // A row without actions has no menu button.
   type Props = {
     title: string;
     rows: T[] | undefined;
@@ -135,6 +136,7 @@
               {/each}
               {#if actions}
                 <td class="menu">
+                  {#if actions(row).length > 0}
                   <Button variant="icon" label="Actions" aria-haspopup="menu" aria-expanded={menuFor === key(row)}
                     onclick={(e) => toggleMenu(e, key(row))}><Ellipsis size={16} aria-hidden="true" /></Button>
                   {#if menuFor === key(row)}
@@ -147,6 +149,7 @@
                         </li>
                       {/each}
                     </ul>
+                  {/if}
                   {/if}
                 </td>
               {/if}
