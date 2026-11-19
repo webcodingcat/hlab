@@ -171,18 +171,12 @@ func remove(tx store.Tx, r Record) error {
 	if err := store.Delete(tx, Kind, r.Hlab.ProjectID, r.ID); err != nil {
 		return err
 	}
-	if r.Hlab.VLAN == 0 {
-		return nil
-	}
 	return store.DeleteKV(tx, vlanKey(r.Hlab.VLAN))
 }
 
 // push sends the agent document; a failure is logged, the state is
 // already stored and the next push carries it.
 func (m *Module) push(ctx context.Context) error {
-	if m.d.PushAgent == nil {
-		return nil
-	}
 	return m.d.PushAgent(ctx)
 }
 

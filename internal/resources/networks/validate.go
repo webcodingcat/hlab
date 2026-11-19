@@ -34,7 +34,6 @@ type subnetRequest struct {
 	Type        string `json:"type"`
 	IPRange     string `json:"ip_range"`
 	NetworkZone string `json:"network_zone"`
-	VSwitchID   *int64 `json:"vswitch_id"`
 }
 
 func invalid(field, format string, args ...any) error {
@@ -160,9 +159,6 @@ func (m *Module) checkSubnet(rng netip.Prefix, s subnetRequest, subnets []Subnet
 
 // firstFree returns the first /24 of rng that overlaps none of taken.
 func firstFree(rng netip.Prefix, taken []netip.Prefix) (netip.Prefix, bool) {
-	if rng.Bits() > defaultBits {
-		return netip.Prefix{}, false
-	}
 	b := rng.Addr().As4()
 	base := binary.BigEndian.Uint32(b[:])
 	for i := range uint32(1) << (defaultBits - rng.Bits()) {
