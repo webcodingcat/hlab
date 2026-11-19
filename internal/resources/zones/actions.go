@@ -20,17 +20,18 @@ var tsigAlgorithms = []string{"hmac-md5", "hmac-sha1", "hmac-sha256"}
 // zoneRef is the zone in the resources of an action.
 func zoneRef(id int64) actions.Ref { return actions.Ref{ID: id, Type: refType} }
 
-// change runs one zone action: in a single transaction it loads the zone
-// of the path, lets f validate and change it, stores it and starts the
-// action command; the action publishes the zones. The answer is 201
-// {action}.
-func (m *Module) change(w http.ResponseWriter, req *http.Request, command string, f func(r *Record) error) {
+// write runs one zone write: in a single transaction it loads the zone of
+// the path, lets f validate and change it, stores it and starts the action
+// command; the action publishes the zones. It returns the stored zone and
+// the action.
+func (m *Module) write(req *http.Request, command string, f func(r *Record) error) (Record, *actions.Action, error) {
 	p, _ := api.ProjectFrom(req.Context())
 	acts := api.ActionsFrom(req.Context())
+	var r Record
 	var action *actions.Action
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
-		r, err := Load(tx, p.ID, req.PathValue("id"))
-		if err != nil {
+		var err error
+		if r, err = Load(tx, p.ID, req.PathValue("id")); err != nil {
 			return err
 		}
 		if err := f(&r); err != nil {
@@ -42,11 +43,19 @@ func (m *Module) change(w http.ResponseWriter, req *http.Request, command string
 		return put(tx, r)
 	})
 	if err != nil {
-		api.Fail(w, err)
-		return
+		return r, nil, err
 	}
 	m.publish(acts, action)
-	api.JSON(w, http.StatusCreated, map[string]any{"action": action})
+	return r, action, nil
+}
+
+// change runs one zone action through write and answers status {action}.
+func (m *Module) change(w http.ResponseWriter, req *http.Request, command string, status int, f func(r *Record) error) {
+	if _, action, err := m.write(req, command, f); err != nil {
+		api.Fail(w, err)
+	} else {
+		api.JSON(w, status, map[string]any{"action": action})
+	}
 }
 
 func (m *Module) changeProtection(w http.ResponseWriter, req *http.Request) {
@@ -56,7 +65,7 @@ func (m *Module) changeProtection(w http.ResponseWriter, req *http.Request) {
 	if !api.Decode(w, req, &body) {
 		return
 	}
-	m.change(w, req, "change_protection", func(r *Record) error {
+	m.change(w, req, "change_protection", http.StatusCreated, func(r *Record) error {
 		if body.Delete != nil {
 			r.Protection.Delete = *body.Delete
 		}
@@ -72,7 +81,7 @@ func (m *Module) changeTTL(w http.ResponseWriter, req *http.Request) {
 	if !api.Decode(w, req, &body) {
 		return
 	}
-	m.change(w, req, "change_ttl", func(r *Record) error {
+	m.change(w, req, "change_ttl", http.StatusCreated, func(r *Record) error {
 		if r.Mode != ModePrimary {
 			return errMode
 		}
@@ -97,7 +106,7 @@ func (m *Module) changePrimaryNameservers(w http.ResponseWriter, req *http.Reque
 	if !api.Decode(w, req, &body) {
 		return
 	}
-	m.change(w, req, "change_primary_nameservers", func(r *Record) error {
+	m.change(w, req, "change_primary_nameservers", http.StatusCreated, func(r *Record) error {
 		if r.Mode != ModeSecondary {
 			return errMode
 		}

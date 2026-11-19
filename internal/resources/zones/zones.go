@@ -187,8 +187,7 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("POST /zones/{id}/actions/change_ttl", http.HandlerFunc(m.changeTTL))
 	r.Handle("POST /zones/{id}/actions/change_primary_nameservers", http.HandlerFunc(m.changePrimaryNameservers))
 	r.Handle("GET /zones/{id}/zonefile", http.HandlerFunc(m.exportZonefile))
-	r.Handle("GET /zones/{id}/rrsets/{rr_name}/{rr_type}", http.HandlerFunc(m.getRRSet))
-	r.Handle("POST /zones/{id}/rrsets", http.HandlerFunc(m.createRRSet))
+	m.rrsetRoutes(r)
 	// GET /zones/actions/{id} conflicts with /zones/{id}/actions in
 	// http.ServeMux; the less specific pattern takes it.
 	r.Handle("GET /zones/{id}/{sub}", http.HandlerFunc(m.zoneAction))
