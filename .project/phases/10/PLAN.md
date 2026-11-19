@@ -196,13 +196,13 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - [x] ui/embed.go (`package ui`, `//go:embed all:frontend/dist`, `var Dist embed.FS`); committed placeholder `ui/frontend/dist/embed-placeholder.txt` and `ui/frontend/public/embed-placeholder.txt` (Vite copies it back after `emptyOutDir`), .gitignore `ui/frontend/dist/*` with `!ui/frontend/dist/embed-placeholder.txt`, so `go vet`/`go test`/lint work on a fresh checkout.
   - [x] ui/frontend/src/lib/bridge.ts as in "Interfaces" (`Call.ByName`, `Events.On`, Hetzner and management error objects to `ApiError`).
 
-- [ ] 10-06 Frontend building blocks
+- [x] 10-06 Frontend building blocks
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-08 | Tests: - (manual UI-08; used by the view tests)
   - Reads: UI-SPEC "Foundation", "Colours", "Typography", "Spacing and grid", "Building blocks", "Behaviour", "Language of the interface"
   - Size: ~400 lines in 9 files
-  - [ ] ui/frontend/src/theme.css (custom properties light/dark), lib/Button.svelte, lib/StatusPill.svelte, lib/CopyField.svelte.
-  - [ ] lib/Table.svelte (header, count, search, sortable columns, skeleton rows, empty state, row menu), lib/Field.svelte (label, inline error), lib/ConfirmDialog.svelte (typed name option, Escape closes), lib/Toast.svelte with lib/toast.ts (action progress, errors stay until closed).
+  - [x] ui/frontend/src/theme.css (custom properties light/dark), lib/Button.svelte, lib/StatusPill.svelte, lib/CopyField.svelte.
+  - [x] lib/Table.svelte (header, count, search, sortable columns, skeleton rows, empty state, row menu), lib/Field.svelte (label, inline error), lib/ConfirmDialog.svelte (typed name option, Escape closes), lib/Toast.svelte with lib/toast.ts (action progress, errors stay until closed).
 
 - [ ] 10-07 hlabd: settings reload, own types file, log followers at stop
   - Wave: 2 | Depends on: 10-01, 10-04 | Review: alone
