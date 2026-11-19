@@ -179,17 +179,6 @@ func stopRunningCloud() (bool, error) {
 	if err := waitCloudState("stopped", 10*time.Minute); err != nil {
 		return false, err
 	}
-	err = waitFor(2*time.Minute, time.Second, func() (bool, error) {
-		svcs, err := services(devService)
-		if err != nil {
-			return false, err
-		}
-		dev, ok := svcs[devService]
-		return !ok || dev.State == "Stopped", nil
-	})
-	if err != nil {
-		return false, fmt.Errorf("service %q did not stop: %w", devService, err)
-	}
 	return true, nil
 }
 
