@@ -255,6 +255,9 @@ func (c *Cloud) start(ctx context.Context) error {
 
 	c.acts = actions.New(c.st)
 	c.mods = c.modules()
+	if err := recoverModules(ctx, c.mods); err != nil {
+		return err
+	}
 	router := api.New(api.Deps{Store: c.st, Actions: c.acts})
 	for _, m := range c.mods {
 		router.Mount(m)
@@ -351,7 +354,7 @@ func (c *Cloud) modules() []resource.Module {
 		datacenters.New(),
 		servertypes.New(c.cat),
 		pricing.New(c.cat),
-		imagesres.NewModule(imagesres.Deps{Catalog: c.cat, DataFolder: c.set.Storage.DataFolder}),
+		imagesres.NewModule(imagesres.Deps{Catalog: c.cat, DataFolder: c.set.Storage.DataFolder, Store: c.st}),
 		isos.New(c.cat),
 		sshkeys.New(),
 		placementgroups.New(),

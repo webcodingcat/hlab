@@ -65,3 +65,11 @@ type Scheduled interface {
 type ActionUser interface {
 	UseActions(m *actions.Manager)
 }
+
+// Recoverer is implemented by modules whose records an interrupted action
+// can leave half-made. Cloud start calls it after the action manager has
+// marked interrupted actions error, before the API serves and before the
+// first scheduled job run.
+type Recoverer interface {
+	Recover(ctx context.Context) error
+}
