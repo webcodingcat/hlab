@@ -1,6 +1,6 @@
 # Project rules (wcc)
 
-wcc version: 0.32.10
+wcc version: 0.32.12
 
 These rules come from the wcc plugin; `/wcc:upgrade` updates them.
 
