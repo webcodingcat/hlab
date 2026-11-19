@@ -5,9 +5,10 @@ After=network-online.target
 
 [Service]
 Type=simple
-# Installs the current agent binary and secret from the cidata ISO.
+# Installs the current agent binary, secret and transit address from the
+# cidata ISO.
 ExecStartPre=/usr/local/sbin/hlab-agent-install
-ExecStart=/usr/local/sbin/hlab-agent -secret /etc/hlab-agent/secret
+ExecStart=/usr/local/sbin/hlab-agent -secret /etc/hlab-agent/secret -transit /etc/hlab-agent/transit
 Restart=always
 RestartSec=2
 

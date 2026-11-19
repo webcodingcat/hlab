@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"syscall"
@@ -20,11 +21,11 @@ import (
 	"github.com/webcodingcat/hlab/internal/version"
 )
 
-// listenAddr is the agent interface on the transit address; metadataAddr is
-// the metadata service; publicInterface is the appliance adapter on the
-// public segment.
+// listenPort is the agent interface's port on the transit address;
+// metadataAddr is the metadata service; publicInterface is the appliance
+// adapter on the public segment.
 const (
-	listenAddr      = "198.19.0.1:9100"
+	listenPort      = 9100
 	metadataAddr    = "169.254.169.254:80"
 	publicInterface = "eth0"
 	lbDir           = "/run/hlab"
@@ -43,12 +44,22 @@ func main() {
 
 func run() error {
 	secretFile := flag.String("secret", "/etc/hlab-agent/secret", "file holding the bearer secret")
+	transitFile := flag.String("transit", "/etc/hlab-agent/transit", "file holding the appliance's transit address")
 	flag.Parse()
 
 	raw, err := os.ReadFile(*secretFile)
 	if err != nil {
 		return fmt.Errorf("read secret: %w", err)
 	}
+	rawTransit, err := os.ReadFile(*transitFile)
+	if err != nil {
+		return fmt.Errorf("read transit address: %w", err)
+	}
+	transit, err := netip.ParseAddr(string(bytes.TrimSpace(rawTransit)))
+	if err != nil || !transit.Is4() {
+		return fmt.Errorf("transit address %q is no IPv4 address", bytes.TrimSpace(rawTransit))
+	}
+	listenAddr := netip.AddrPortFrom(transit, listenPort).String()
 	proxy := &agent.APIProxy{}
 	dns := &agent.DNS{}
 	defer dns.Close()
