@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 07 DNS zones and reverse DNS (in progress on wcc/phase-07)
+- Phase: 08 Load balancers and certificates
 - Base branch: main
-- Last done: phase 06 merged into main (2026-11-19): firewalls with rules, direct and label-selector application, stateful filtering of public traffic on the appliance in table `inet hlab_fw`
-- Next: /wcc:phase in a new session (phase 07)
+- Last done: phase 07 merged into main (2026-11-19): DNS zones and RRSets with zone files, NRPT rule per zone, shadowing warning in the status, reverse DNS for servers, primary IPs and floating IPs
+- Next: /wcc:phase in a new session (phase 08)
 
 ## Open manual checks
 

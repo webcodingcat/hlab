@@ -1863,3 +1863,11 @@ in ARCHITECTURE.md or the plan.
 - What: the zones module is built after `hostnet.Up`, so `SetZones(Names)` and the shadow check of every primary public zone run right after the modules recover; end-to-end runs happen from the main checkout after a plan's merge, because the dev service runs the main checkout's `bin\hlabd.exe` and the harness refuses any other working copy.
 - Why: NRPT rules need the host network up; the harness guard protects against testing a stale binary.
 - Cost of change: low
+
+## 2026-11-19 Zones deleted with their project
+
+- Type: decision
+- Phase: phase 07
+- What: the zones module is a `resource.Deleter`; project deletion removes each zone, forgets its shadow result and publishes (agent push, `SetZones`) like the zone DELETE action, and a failed publish stops the project deletion.
+- Why: the verifier found NRPT rules and shadow warnings left behind for zones of a deleted project (DNS-03).
+- Cost of change: low

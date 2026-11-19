@@ -25,14 +25,7 @@
 
 - [x] 06 Firewalls (FW-01, FW-02, FW-03, FW-04, FW-05) → phases/06/
 
-- [ ] 07 DNS zones and reverse DNS.
-      Requirements: DNS-01, DNS-02, DNS-03, DNS-04, DNS-05, RDNS-01,
-      RDNS-02.
-      Depends on: 05.
-      Success criteria:
-      1. An A record in a new zone resolves from a server, the host and
-         WSL2; deleting the zone removes its NRPT rule.
-      2. A PTR set on a server's IP resolves from the host.
+- [x] 07 DNS zones and reverse DNS (DNS-01, DNS-02, DNS-03, DNS-04, DNS-05, RDNS-01, RDNS-02) → phases/07/
 
 - [ ] 08 Load balancers and certificates.
       Requirements: LB-01, LB-02, LB-03, LB-04, LB-05, LB-06, LB-07, LB-08, LB-09,

@@ -264,14 +264,14 @@ type ShadowingZone struct {
   - [x] Module `zones` after `firewalls` in `modules()` with `SetZones` = `c.net.SetZones`, a `Shadow` from `PublicLookup(host DNS servers)`; `srv.SetDNSPtrs(pips)`; at start after `hostnet.Up`, `SetZones(Names)` and `Shadow.Check` for every `Primary` zone outside `PrivateUse`; `mgmtStatus` fills `ShadowingZones` from `Shadow.List()`; zones in `newFullEnv` plus the API-06, API-07 and API-11 cases (internal/cloud/cloud.go, internal/resources/conventions_test.go)
   - [x] End-to-end rows DNS-02, DNS-03, RDNS-02 (test/e2e/dns_test.go, test/e2e/e2e_test.go)
 
-- [ ] 07-12 Documentation
+- [x] 07-12 Documentation
   - Wave: 6 | Depends on: 07-11 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06 | Tests: test/docs/docs_test.go (existing)
   - Reads: SPEC "Documentation", "Accounts and secrets" (`hlab-docs`); REQUIREMENTS DOC; CONTEXT; RESEARCH R6; decisions of this phase
   - Size: ~200 lines in 5 files
   - Adjusts: -
-  - [ ] Deviations, each in internal/api/deviations.go AND docs/user/deviations.md (DOC-03 checks only the Go list): private-use zone suffixes; secondary zones stored and forwarded, never transferred; `authoritative_nameservers.delegated` `[]`, `delegation_status`/`registrar` `unknown`, `status` always `ok`; no DNSSEC, DS served as data; IPv6 PTRs stored but not resolvable; zone names unique across projects; the codes and rules chosen where Hetzner is unconfirmed (D3, D5, D7, D12, D13) (internal/api/deviations.go, docs/user/deviations.md)
-  - [ ] README.md (zones resolve on host, WSL2 and servers; one NRPT rule per zone while the cloud runs; shadowing warning; reverse DNS), docs/user/commands.md (`hlab cloud status` warning line), docs/dev/components.md (zones module, dnszone, rdns, agent DNS); examples run through `hcloud --context hlab-docs` as SPEC.md says
+  - [x] Deviations, each in internal/api/deviations.go AND docs/user/deviations.md (DOC-03 checks only the Go list): private-use zone suffixes; secondary zones stored and forwarded, never transferred; `authoritative_nameservers.delegated` `[]`, `delegation_status`/`registrar` `unknown`, `status` always `ok`; no DNSSEC, DS served as data; IPv6 PTRs stored but not resolvable; zone names unique across projects; the codes and rules chosen where Hetzner is unconfirmed (D3, D5, D7, D12, D13) (internal/api/deviations.go, docs/user/deviations.md)
+  - [x] README.md (zones resolve on host, WSL2 and servers; one NRPT rule per zone while the cloud runs; shadowing warning; reverse DNS), docs/user/commands.md (`hlab cloud status` warning line), docs/dev/components.md (zones module, dnszone, rdns, agent DNS); examples run through `hcloud --context hlab-docs` as SPEC.md says
 
 ## Decisions taken in planning
 
@@ -291,3 +291,9 @@ type ShadowingZone struct {
 - D14 A zone name used in another project answers 409 `uniqueness_error`. The message is `zone name is already used`, without naming the project.
 - D15 Zone `status` is always `ok`, and `authoritative_nameservers.assigned` is `Nameservers` from the create answer on.
 - D16 DNS-03 reads the rules with `Get-DnsClientNrptRule` filtered by the profile's tag in `Comment`. If that is refused without elevated rights, the test reads the same rules from `HKLM\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DnsPolicyConfig` (`Name`, `Comment`). The test never changes rules.
+
+## Close
+
+- Unit suite and lint in full; end-to-end selection `task e2e -- -v -run 'TestE2E/(DNS-02|DNS-03|RDNS-02)$'` (the phase's requirements; no other e2e test function changed), green at 2174598 and again after the verifier fix.
+- Verifier fix: zones deleted with their project (`resource.Deleter`), reviewed.
+- README examples for zones and reverse DNS run by the main session against the dev cloud (`--context hlab-docs`, project `docs`): zone create, add-records, wildcard, `Resolve-DnsName`, PTR set and `--reset` on a primary IP, zone delete removes the NRPT rule; resources removed afterwards. The server variant of `set-rdns` is covered by RDNS-02.
