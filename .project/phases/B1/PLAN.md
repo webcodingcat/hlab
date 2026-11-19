@@ -124,3 +124,7 @@ func seedUserData(userData string, volumes []int64) string
   - Adjusts: -
   - [ ] docs/dev/build-and-test.md: `task e2e` stops a running dev cloud for the build and starts it again
   - [ ] docs/user/deviations.md: after a rebuild the NoCloud instance-id is `<server id>-<n>` while the metadata `/instance-id` stays the server ID; images and volumes cut short by a cloud stop are removed at the next start
+
+## Close
+
+- B1-05 measurement (2026-11-19, on 7055e87): with the dev cloud started (`starting`), `task e2e -- -run 'TestE2E/API-01'` stopped it, built, passed API-01 and left the cloud `running`.
