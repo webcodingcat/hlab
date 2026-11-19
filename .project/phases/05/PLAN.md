@@ -263,11 +263,11 @@ func (m *Metadata) HandlerFor(vlan int) http.Handler
   - [x] Modules `networks`, `primary_ips`, `floating_ips` after `servers` in `modules()`, `networks` before `volumes` so that `volumes.Contribute` also fills the `Volumes` of each member's private metadata entry (check it does; 05-11 review); `SetPublicIPs`, `SetNetworks`, `OnDelete` wiring; the appliance gets its trunk adapter (MAC `02:48:4c:00:00:02`, `Segment{Trunk: true}`) at creation and, when missing, at cloud start; the three modules in `newFullEnv` (internal/cloud/cloud.go, internal/cloud/appliance.go, internal/resources/conventions_test.go)
   - [x] End-to-end rows of TESTS.md (test/e2e/network_test.go, test/e2e/ip_test.go, test/e2e/e2e_test.go)
 
-- [ ] 05-14 Documentation
+- [x] 05-14 Documentation
   - Wave: 5 | Depends on: 05-13 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06 | Tests: test/docs/docs_test.go (existing)
   - Reads: SPEC "Documentation"; REQUIREMENTS DOC; CONTEXT "Deviations"; the decisions of this phase
   - Size: ~150 lines in 4 files
   - Adjusts: -
-  - [ ] docs/user/deviations.md: formal IPv6 of primary and floating IPs, `expose_routes_to_vswitch` without effect, `vswitch` subnets refused, private MACs `02:48:4c:2x:xx:xx` instead of `86:00:00:xx:xx:xx`, private adapters configured by the hlab guest hook instead of DHCP and only on hlab-created disks, MTU 1500 on private networks, the chosen error codes where Hetzner documents none (delete_subnet, floating IP zone, limits, create without any interface, change_protection with auto_delete)
-  - [ ] README.md (networks, primary and floating IPs, configuring a floating IP or alias IP in the guest), docs/dev/components.md (VRFs, trunk adapter, isolation per segment, metadata per VRF)
+  - [x] docs/user/deviations.md: formal IPv6 of primary and floating IPs, `expose_routes_to_vswitch` without effect, `vswitch` subnets refused, private MACs `02:48:4c:2x:xx:xx` instead of `86:00:00:xx:xx:xx`, private adapters configured by the hlab guest hook instead of DHCP and only on hlab-created disks, MTU 1500 on private networks, the chosen error codes where Hetzner documents none (delete_subnet, floating IP zone, limits, create without any interface, change_protection with auto_delete)
+  - [x] README.md (networks, primary and floating IPs, configuring a floating IP or alias IP in the guest), docs/dev/components.md (VRFs, trunk adapter, isolation per segment, metadata per VRF)

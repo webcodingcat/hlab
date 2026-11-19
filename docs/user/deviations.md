@@ -33,9 +33,20 @@ hlab serves these endpoints:
 | `GET /volumes`, `POST /volumes`, `GET /volumes/{id}`, `PUT /volumes/{id}`, `DELETE /volumes/{id}` | See [Volumes](#volumes). |
 | `POST /volumes/{id}/actions/attach`, `POST /volumes/{id}/actions/detach`, `POST /volumes/{id}/actions/resize`, `POST /volumes/{id}/actions/change_protection` | See [Volumes](#volumes). |
 | `GET /volumes/actions`, `GET /volumes/{id}/actions`, `GET /volumes/{id}/actions/{action_id}` | |
+| `GET /networks`, `POST /networks`, `GET /networks/{id}`, `PUT /networks/{id}`, `DELETE /networks/{id}` | See [Networks](#networks). |
+| `POST /networks/{id}/actions/add_subnet`, `POST /networks/{id}/actions/delete_subnet`, `POST /networks/{id}/actions/add_route`, `POST /networks/{id}/actions/delete_route`, `POST /networks/{id}/actions/change_ip_range`, `POST /networks/{id}/actions/change_protection` | See [Networks](#networks). |
+| `POST /servers/{id}/actions/attach_to_network`, `POST /servers/{id}/actions/detach_from_network`, `POST /servers/{id}/actions/change_alias_ips` | See [Networks](#networks). |
+| `GET /networks/actions`, `GET /networks/{id}/actions`, `GET /networks/{id}/actions/{action_id}` | |
+| `GET /primary_ips`, `POST /primary_ips`, `GET /primary_ips/{id}`, `PUT /primary_ips/{id}`, `DELETE /primary_ips/{id}` | See [Primary IPs](#primary-ips). |
+| `POST /primary_ips/{id}/actions/assign`, `POST /primary_ips/{id}/actions/unassign`, `POST /primary_ips/{id}/actions/change_protection` | See [Primary IPs](#primary-ips). |
+| `GET /primary_ips/actions`, `GET /primary_ips/{id}/actions`, `GET /primary_ips/{id}/actions/{action_id}` | |
+| `GET /floating_ips`, `POST /floating_ips`, `GET /floating_ips/{id}`, `PUT /floating_ips/{id}`, `DELETE /floating_ips/{id}` | See [Floating IPs](#floating-ips). |
+| `POST /floating_ips/{id}/actions/assign`, `POST /floating_ips/{id}/actions/unassign`, `POST /floating_ips/{id}/actions/change_protection` | See [Floating IPs](#floating-ips). |
+| `GET /floating_ips/actions`, `GET /floating_ips/{id}/actions`, `GET /floating_ips/{id}/actions/{action_id}` | |
 
 Lists page, filter and sort with the parameters of Hetzner's API
-description. Every other endpoint answers 404 `not_found`.
+description. Every other endpoint answers 404 `not_found`, among them
+`change_dns_ptr` of servers, primary IPs and floating IPs.
 
 ## POST /servers
 
@@ -55,9 +66,13 @@ description. Every other endpoint answers 404 `not_found`.
   answers the same when the disk does not fit. A stopped server holds no
   RAM.
 - Only `name`, `server_type`, `image`, `location`, `ssh_keys`, `user_data`,
-  `start_after_create`, `labels`, `placement_group`, `volumes` and
-  `automount` are used. Other fields, such as `networks`, `firewalls` and
-  `public_net`, are ignored.
+  `start_after_create`, `labels`, `placement_group`, `volumes`,
+  `automount`, `public_net` and `networks` are used. Other fields, such as
+  `firewalls`, are ignored.
+- A server without public IPv4, public IPv6 and network answers 422
+  `invalid_input` on the field `public_net`. A primary IP given in
+  `public_net.ipv4` or `public_net.ipv6` is used even when
+  `enable_ipv4` or `enable_ipv6` is `false`.
 - `image` takes a system image by name or ID, or a snapshot or backup of
   the project by ID. A server type whose disk is smaller than the image's
   `disk_size` answers 422 `invalid_input` on the field `server_type`.
@@ -181,6 +196,88 @@ description. Every other endpoint answers 404 `not_found`.
   start ends its action with `server_error` and removes the volume and its
   disk file.
 
+## Networks
+
+- A subnet of type `vswitch` answers 422 `invalid_input` with the message
+  `vswitch subnets are not supported by hlab`. `expose_routes_to_vswitch`
+  is stored and shown but has no effect.
+- The gateway of a network is the first host address of its `ip_range`
+  (`10.0.0.1` for `10.0.0.0/16`); every subnet shows it as `gateway`, also
+  a subnet of type `server`. A server gets the lowest free host address of
+  a subnet in its location's network zone; the network and broadcast
+  address of each subnet, the gateway and `172.31.1.1` are never handed
+  out.
+- Private adapters have MAC addresses `02:48:4c:2x:xx:xx`; Hetzner uses
+  `86:00:00:xx:xx:xx`. Tools that recognise Hetzner's private adapters by
+  their MAC, such as hc-utils, do not see hlab's.
+- hlab has no DHCP server. A network a server gets at creation is set up
+  by cloud-init from hlab's seed at boot: the private IP as `/32` and a
+  route to the network range via the gateway, on-link, as Hetzner's DHCP
+  gives it. A network attached or detached while the server runs is set
+  up or removed within a few seconds by the hlab guest hook that hlab
+  installs at the first boot of every server it creates; every later boot
+  sets up the current networks again. A server without the hook, such as
+  one created by an earlier hlab version or one whose user data turns off
+  cloud-init's vendor data, picks up later attachments only if you
+  configure the adapter yourself.
+- The MTU on private networks is 1500; Hetzner uses 1450.
+- As at Hetzner, alias IPs and routes to destinations outside the
+  network range are not configured in the guest; see
+  [Networks](../../README.md#networks).
+- `DELETE /networks/{id}` detaches all servers of the network and removes
+  their adapters before it answers.
+
+Hetzner documents no error for these cases; hlab answers:
+
+| Case | Answer |
+|---|---|
+| `delete_subnet` of a subnet in which an attached server holds an IP or alias IP | 422 `service_error` |
+| `delete_subnet` or `delete_route` of a subnet or route the network does not have | 422 `invalid_input` |
+| `change_ip_range` with another start address or a smaller range | 422 `invalid_input` on the field `ip_range` |
+| `change_ip_range` while servers are attached | 422 `service_error` |
+| `POST /networks` when all 4091 VLAN IDs of the cloud are in use | 403 `resource_limit_exceeded` |
+| `attach_to_network` or `POST /servers` with a fourth network for the server | 403 `resource_limit_exceeded` |
+| more than 5 alias IPs of a server in one network | 422 `invalid_input` on the field `alias_ips` |
+| no free IP, or no subnet in the server's network zone | 422 `no_subnet_available` |
+| an `ip` or alias IP that is taken or reserved | 422 `ip_not_available` |
+| an `ip` outside the subnets of the server's network zone | 422 `invalid_input` on the field `ip` |
+
+## Primary IPs
+
+- A primary IPv4 comes from the configured public range. A primary IPv6
+  is formal, like a server's: it carries no traffic. One made with a
+  server is the server's `/64` (server 4: `2001:db8:0:4::/64`); one
+  created on its own is `2001:db8:8000:<id>::/64` (ID 12:
+  `2001:db8:8000:c::/64`).
+- Primary IPs show their `location`; they have no `datacenter` field.
+- A primary IP created without a name is named `primary_ip-<id>`, as are
+  the ones hlab makes for a new server.
+- Servers created by an earlier hlab version get primary IP records for
+  their addresses at the next cloud start, assigned and with
+  `auto_delete: true`.
+- `change_protection` with `delete: true` on a primary IP with
+  `auto_delete` answers 422 `invalid_input` on the field `delete`.
+- `DELETE /primary_ips/{id}` of an assigned primary IP answers 422
+  `must_be_unassigned`; unassign it first.
+- `dns_ptr` is always an empty list.
+
+## Floating IPs
+
+- An IPv4 floating IP comes from the configured public range. hlab routes
+  it to the public IPv4 of its server, so a server without public IPv4
+  receives no traffic for it. The guest has to configure the address,
+  as at Hetzner; see [Primary and floating IPs](../../README.md#primary-and-floating-ips).
+- An IPv6 floating IP is formal and carries no traffic:
+  `2001:db8:c000:<id>::/64` (ID 12: `2001:db8:c000:c::/64`).
+- A floating IP is assigned only to a server in the network zone of its
+  home location; another server answers 422 `invalid_input` on the field
+  `server`. Assigning it to the server that holds it answers 422
+  `floating_ip_assigned`; assigning it to another server moves it.
+- A floating IP created without a name is named `floating_ip-<id>`.
+- `DELETE /floating_ips/{id}` of an assigned floating IP answers 422
+  `must_be_unassigned`; unassign it first.
+- `dns_ptr` is always an empty list.
+
 ## Metrics
 
 - hlabd samples every running server every 10 s and keeps the samples
@@ -201,6 +298,9 @@ Servers read their metadata at `http://169.254.169.254/hetzner/v1/metadata`
 - The service answers by the source address of the request, and a
   server cannot send from another server's address, so each server reads
   only its own data.
+- The service also answers at the same address through each private
+  network, so a server without public IPv4 reads its metadata there.
+  `/hetzner/v1/metadata/private-networks` lists the server's networks.
 
 ## Placement groups
 
