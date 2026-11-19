@@ -1639,3 +1639,67 @@ in ARCHITECTURE.md or the plan.
 - What: project files brought from wcc 0.32.4 to 0.32.6: the test rule on parallel end-to-end tests now takes shared limits in one step and logs each test's start and end with a time limit
 - Why: the skills of the installed version search for these keys and rules
 - Cost of change: low
+
+## 2026-11-19 Firewall create with unknown server answers 422
+
+- Type: decision
+- Phase: phase 06
+- What: `POST /firewalls` with an `apply_to` server that does not exist answers `422 firewall_resource_not_found`; `apply_to_resources` and `remove_from_resources` answer 404 with that code.
+- Why: the Hetzner OpenAPI documents 422 for create (RESEARCH.md), which overrides the 404 assumed at the phase start.
+- Cost of change: low
+
+## 2026-11-19 Firewall rule limits
+
+- Type: decision
+- Phase: phase 06
+- What: a firewall takes at most 50 rules (validated); Hetzner's limit of 500 effective rules per firewall is not enforced and listed in `deviations.md`.
+- Why: research shows the 500 limit is per firewall in effective rules, not per server as assumed at the phase start.
+- Cost of change: low
+
+## 2026-11-19 Outbound firewall rules never filter appliance services
+
+- Type: decision
+- Phase: phase 06
+- What: resolvers, metadata service and API proxy on the appliance are never filtered by firewall rules; the firewall matches only forwarded traffic on the public interface.
+- Why: Hetzner never filters resolver and metadata traffic (RESEARCH.md), so the user's answer to Q1 falls back to "never filter"; `hlab-guest` needs the metadata service.
+- Cost of change: low
+
+## 2026-11-19 Firewall rule input format
+
+- Type: decision
+- Phase: phase 06
+- What: a CIDR with host bits set or without a mask gives 422 `invalid_input`; ports are `any`, `N` or `A-B` (1 <= A <= B <= 65535, digits only) echoed as sent; rules and IPs keep the order sent, IPv6 comes back in RFC 5952 form.
+- Why: the spec wording suggests rejection, clients always send masked CIDRs, and the provider and Ansible compare rules order-sensitively.
+- Cost of change: low
+
+## 2026-11-19 Firewall apply and remove error cases
+
+- Type: decision
+- Phase: phase 06
+- What: removing a server or selector that is not applied gives 404 `firewall_resource_not_found`; applying an applied selector gives 422 `firewall_already_applied`; a sixth direct firewall on a server gives 403 `resource_limit_exceeded`, selector matches beyond five are skipped; DELETE of a firewall applied only by selector gives 422 `resource_in_use` with message `firewall <id> is still in use`; server create with an unknown firewall gives 404 `not_found`, with firewalls and no public IPv4 422 `private_net_only_server`; `incompatible_network_type` is never returned.
+- Why: `firewall_already_removed` is deprecated and the pinned clients tolerate the 404; Ansible retries on "is still in use"; Hetzner documents the rest only loosely.
+- Cost of change: low
+
+## 2026-11-19 Firewall actions
+
+- Type: decision
+- Phase: phase 06
+- What: `apply_firewall`/`remove_firewall` for a server name server and firewall, for a selector one action naming only the firewall; `set_rules` returns `set_firewall_rules` plus one `apply_firewall` per directly applied server, create with rules and `apply_to` the same; the record changes in the request's transaction before the actions run; new `actions.Manager.StartAll(tx, projectID, lock, specs)` checks locks once on `lock` and never locks actions of one batch against each other.
+- Why: follows the spec examples; GET and DELETE right after a remove see the new state (provider delete retry); `Start` would lock the apply actions against the running `create_server` and against each other.
+- Cost of change: low
+
+## 2026-11-19 Firewall traffic semantics
+
+- Type: decision
+- Phase: phase 06
+- What: with several firewalls, outbound is restricted once any has an `out` rule and the union of `out` rules is allowed; traffic to and from a floating IP is filtered by the firewalls of its server (listed in `deviations.md`); not enforced and listed in `deviations.md`: 500 effective rules per firewall, 50 firewalls per project.
+- Why: natural reading of "combined"; Hetzner does not document floating IP behaviour.
+- Cost of change: low
+
+## 2026-11-19 Firewall nftables table on the appliance
+
+- Type: decision
+- Phase: phase 06
+- What: the firewall lives in its own table `inet hlab_fw`, forward chain at filter priority + 10, matching only the public interface and stateful through `ct state established,related`; table `inet hlab` stays unchanged.
+- Why: keeps isolation untouched, gives FW-04 by construction, and an explicit priority avoids undefined order between base chains.
+- Cost of change: medium
