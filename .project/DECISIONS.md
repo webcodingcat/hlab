@@ -1356,7 +1356,7 @@ in ARCHITECTURE.md or the plan.
 
 - Type: decision
 - Phase: B1
-- What: `imagesres.Deps.Store`, used only by `Recover`; nil makes `Recover` a no-op.
+- What: `imagesres.Deps.Store`, used only by `Recover`.
 - Why: `Recover` runs outside a request and cannot take the store from the request context.
 - Cost of change: low
 

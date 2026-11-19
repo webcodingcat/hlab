@@ -98,15 +98,15 @@ func seedUserData(userData string, volumes []int64) string
   - [ ] `platformtest.Fake.MetricsAll` (fake.go): returns the samples set with `SetSample` and records the call like the other methods
   - [ ] `servers.sample` (servers/metrics.go): one `MetricsAll` call per tick for the VMs of all running servers; a VM missing from the result is skipped
 
-- [ ] B1-04 Start-up recovery of images and volumes left creating
+- [x] B1-04 Start-up recovery of images and volumes left creating
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SRV-12, VOL-01 | Tests: internal/resources/images/images_test.go (TestImages/SRV-12/recover), internal/resources/volumes/volumes_test.go (TestVolumes/VOL-01/recover), internal/cloud/recover_test.go (TestCloud/VOL-01)
   - Reads: REQUIREMENTS SRV-12, VOL-01; ARCHITECTURE "resource (one module per resource type)", "actions", "Cloud start and stop"; DECISIONS Q6, "Deleting a creating image is locked", "Failed volume create is dropped", "Image Deleter removes only the disk file"
   - Size: ~220 lines in 6 files
   - Adjusts: -
-  - [ ] `resource.Recoverer` (resource.go); images (images.go): `Deps.Store`, `Recover` removes `creating` records through `Remove` and their files
-  - [ ] volumes (disk.go): `Recover` removes `creating` records and their disk files
-  - [ ] cloud: `recoverModules` (new recover.go); `start` (cloud.go) passes `Store` to `imagesres.NewModule` and calls `recoverModules` right after `c.modules()`, before the router mounts the modules and before `serveAPI` and `startJobs`; an error fails the start
+  - [x] `resource.Recoverer` (resource.go); images (images.go): `Deps.Store`, `Recover` removes `creating` records through `Remove` and their files
+  - [x] volumes (disk.go): `Recover` removes `creating` records and their disk files
+  - [x] cloud: `recoverModules` (new recover.go); `start` (cloud.go) passes `Store` to `imagesres.NewModule` and calls `recoverModules` right after `c.modules()`, before the router mounts the modules and before `serveAPI` and `startJobs`; an error fails the start
 
 - [ ] B1-05 E2E harness: build with the dev cloud running
   - Wave: 1 | Depends on: - | Review: alone
