@@ -1703,3 +1703,11 @@ in ARCHITECTURE.md or the plan.
 - What: the firewall lives in its own table `inet hlab_fw`, forward chain at filter priority + 10, matching only the public interface and stateful through `ct state established,related`; table `inet hlab` stays unchanged.
 - Why: keeps isolation untouched, gives FW-04 by construction, and an explicit priority avoids undefined order between base chains.
 - Cost of change: medium
+
+## 2026-11-19 Firewalls in server create
+
+- Type: decision
+- Phase: phase 06
+- What: a firewall ID listed twice in a server create is applied once; a sixth firewall answers 403 `resource_limit_exceeded`; a selector's `applied_to_resources` also lists servers applied directly; each firewall action runs its own agent push.
+- Why: Hetzner documents none of these cases; the simplest behaviour that keeps every client working.
+- Cost of change: low

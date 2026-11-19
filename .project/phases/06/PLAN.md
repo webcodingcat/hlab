@@ -138,16 +138,16 @@ func NewFirewall(iface string) *Firewall
   - [x] Module, `Record` (Hetzner shape: id, name, labels, created, rules, applied_to; `_hlab.project_id`; applied entries stored as `{type, server}` or `{type, label_selector}`), `GET /firewalls` (filter name, label_selector; sort id, name, created), `GET /firewalls/{id}`, `PUT` (name, labels; name 1..128, unique per project: 409 `uniqueness_error`), `POST /firewalls` without `apply_to` (rules through `CheckRules`; 201 `{firewall, actions}`, with rules one `set_firewall_rules` action naming the firewall that ends after the agent push), `DELETE` (applied anywhere, also by selector: 422 `resource_in_use`, message `firewall <id> is still in use`; else 204), action endpoints through `resactions.RoutesFor` (internal/resources/firewalls/firewalls.go)
   - [x] Rows of TESTS.md for 06-05 (internal/resources/firewalls/firewalls_test.go, group `TestFirewalls`)
 
-- [ ] 06-06 Firewalls: apply, remove, set rules, server hook
+- [x] 06-06 Firewalls: apply, remove, set rules, server hook
   - Wave: 3 | Depends on: 06-01, 06-03, 06-05 | Review: alone
   - Requirements: FW-01 | Tests: internal/resources/firewalls/actions_test.go
   - Reads: RESEARCH R1 (errors, actions, applied_to, precedence, 5 per server), R4 (what clients wait for); CONTEXT "Corrections by the user"; decisions D3 to D9 below
   - Size: ~400 lines in 3 files
   - Adjusts: -
   - Note from 06-03: servers runs only `create_server`; `AttachAtCreate` runs its `apply_firewall` actions itself (`acts.Run` after its last fallible step; the single store connection makes the push wait for the commit) and starts them through `StartAll` with lock on the firewall only, never the server (held by `create_server`).
-  - [ ] Resolution: the servers a firewall reaches (direct entries, then selectors over the project's servers that have a public IPv4 and are not deleting), skipping a selector match that would give a server a sixth firewall; `applied_to_resources` on selector entries; `ForServer`; `ServerDeleted` (internal/resources/firewalls/applied.go)
-  - [ ] `POST /firewalls` with `apply_to`; `apply_to_resources` (`apply_to`), `remove_from_resources` (`remove_from`), `set_rules` (`rules`), all 201 `{actions}` through `StartAll` with lock on the firewall; checks and codes as in TESTS.md; the record changes in the request's transaction, each action ends `success` after the agent push and `error` when it fails; `AttachAtCreate` (internal/resources/firewalls/actions.go, internal/resources/firewalls/firewalls.go)
-  - [ ] Rows of TESTS.md for 06-06 (internal/resources/firewalls/actions_test.go)
+  - [x] Resolution: the servers a firewall reaches (direct entries, then selectors over the project's servers that have a public IPv4 and are not deleting), skipping a selector match that would give a server a sixth firewall; `applied_to_resources` on selector entries; `ForServer`; `ServerDeleted` (internal/resources/firewalls/applied.go)
+  - [x] `POST /firewalls` with `apply_to`; `apply_to_resources` (`apply_to`), `remove_from_resources` (`remove_from`), `set_rules` (`rules`), all 201 `{actions}` through `StartAll` with lock on the firewall; checks and codes as in TESTS.md; the record changes in the request's transaction, each action ends `success` after the agent push and `error` when it fails; `AttachAtCreate` (internal/resources/firewalls/actions.go, internal/resources/firewalls/firewalls.go)
+  - [x] Rows of TESTS.md for 06-06 (internal/resources/firewalls/actions_test.go)
 
 - [ ] 06-07 Firewalls: agent document
   - Wave: 4 | Depends on: 06-06 | Review: alone
