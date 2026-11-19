@@ -169,13 +169,13 @@ Settled by the test writers (the tests rely on them):
   - Size: ~170 lines in 2 files
   - [x] New package internal/discard with `Requested` and `Run` as in Interfaces.
 
-- [ ] 09-11 Management API and CLI: logs and discard-state
+- [x] 09-11 Management API and CLI: logs and discard-state
   - Wave: 2 | Depends on: 09-03 | Review: alone
   - Requirements: LIFE-08, LIFE-09 | Tests: internal/cli/cli_test.go
   - Reads: ARCHITECTURE "hlab (management command)", "Management API (named pipe)"; docs/user/commands.md
   - Size: ~280 lines in 4 files
-  - [ ] `GET /mgmt/v1/logs[?follow=1]` via `logfile.Tail` (1000 lines, NDJSON, flushed per line) in internal/mgmt/mgmt.go.
-  - [ ] CLI: `hlab logs [--follow]` (management API while running, `logfile.Tail` on `IO.LogDir` while stopped; human `time LEVEL msg key=value...`, `--output json` raw lines) and `hlab cloud start --discard-state` (start parameter `discard-state`); `cloud status` shows the refused message as today (internal/cli/cli.go, cmd/hlab/main.go sets `LogDir`); short entries in docs/user/commands.md so DOC-01 stays green.
+  - [x] `GET /mgmt/v1/logs[?follow=1]` via `logfile.Tail` (1000 lines, NDJSON, flushed per line) in internal/mgmt/mgmt.go.
+  - [x] CLI: `hlab logs [--follow]` (management API while running, `logfile.Tail` on `IO.LogDir` while stopped; human `time LEVEL msg key=value...`, `--output json` raw lines) and `hlab cloud start --discard-state` (start parameter `discard-state`); `cloud status` shows the refused message as today (internal/cli/cli.go, cmd/hlab/main.go sets `LogDir`); short entries in docs/user/commands.md so DOC-01 stays green.
 
 - [ ] 09-12 Cloud: start and stop with persistence
   - Wave: 3 | Depends on: 09-01, 09-02, 09-03, 09-04, 09-05, 09-07, 09-08, 09-09, 09-10, 09-11 | Review: alone
