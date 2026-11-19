@@ -3,6 +3,7 @@ package firewalls
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -14,7 +15,6 @@ import (
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
-	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
@@ -97,6 +97,9 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("GET /firewalls/{id}", http.HandlerFunc(m.get))
 	r.Handle("PUT /firewalls/{id}", http.HandlerFunc(m.update))
 	r.Handle("DELETE /firewalls/{id}", http.HandlerFunc(m.delete))
+	r.Handle("POST /firewalls/{id}/actions/apply_to_resources", http.HandlerFunc(m.applyToResources))
+	r.Handle("POST /firewalls/{id}/actions/remove_from_resources", http.HandlerFunc(m.removeFromResources))
+	r.Handle("POST /firewalls/{id}/actions/set_rules", http.HandlerFunc(m.setRules))
 	resactions.RoutesFor(r, Kind, refType)
 }
 
@@ -163,9 +166,13 @@ func (m *Module) list(w http.ResponseWriter, req *http.Request) {
 	var out []Firewall
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
 		recs, err := store.List[Record](tx, Kind, p.ID)
+		if err != nil {
+			return err
+		}
+		res, err := resolve(tx, p.ID)
 		out = make([]Firewall, 0, len(recs))
 		for _, r := range recs {
-			out = append(out, view(r))
+			out = append(out, res.show(r))
 		}
 		return err
 	})
@@ -182,28 +189,32 @@ func (m *Module) get(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	p, _ := api.ProjectFrom(req.Context())
-	var r Record
+	var f Firewall
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
-		var err error
-		r, err = Load(tx, p.ID, id)
+		r, err := Load(tx, p.ID, id)
+		if err != nil {
+			return err
+		}
+		f, err = shown(tx, r)
 		return err
 	})
 	if err != nil {
 		api.Fail(w, err)
 		return
 	}
-	api.JSON(w, http.StatusOK, map[string]any{"firewall": view(r)})
+	api.JSON(w, http.StatusOK, map[string]any{"firewall": f})
 }
 
 // createRequest is POST /firewalls.
 type createRequest struct {
-	Name   string            `json:"name"`
-	Labels map[string]string `json:"labels"`
-	Rules  []Rule            `json:"rules"`
+	Name    string            `json:"name"`
+	Labels  map[string]string `json:"labels"`
+	Rules   []Rule            `json:"rules"`
+	ApplyTo []Target          `json:"apply_to"`
 }
 
 // create stores a firewall; with rules it starts a set_firewall_rules
-// action that ends after the agent push.
+// action, with apply_to the apply actions; each ends after the agent push.
 func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	var body createRequest
 	if !api.Decode(w, req, &body) {
@@ -214,7 +225,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	}
 	p, _ := api.ProjectFrom(req.Context())
 	acts := api.ActionsFrom(req.Context())
-	var r Record
+	var f Firewall
 	started := []*actions.Action{}
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
 		if err := checkName(tx, p.ID, body.Name, 0); err != nil {
@@ -231,6 +242,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			return err
 		}
+		var r Record
 		r.Firewall = Firewall{
 			ID:        id,
 			Name:      body.Name,
@@ -240,23 +252,57 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 			AppliedTo: []Applied{},
 		}
 		r.Hlab.ProjectID = p.ID
-		if len(rules) > 0 {
-			a, err := acts.Start(tx, p.ID, "set_firewall_rules", []actions.Ref{{ID: id, Type: refType}})
-			if err != nil {
-				return err
-			}
-			started = append(started, a)
+		res, err := resolve(tx, p.ID)
+		if err != nil {
+			return err
 		}
-		return put(tx, r)
+		var specs []actions.Spec
+		if len(rules) > 0 {
+			specs = append(specs, actions.Spec{Command: "set_firewall_rules", Resources: []actions.Ref{fwRef(id)}})
+		}
+		applySpecs, err := applyTargets(tx, &r, res, body.ApplyTo, "apply_to")
+		if err != nil {
+			return err
+		}
+		if err := put(tx, r); err != nil {
+			return err
+		}
+		a, err := acts.StartAll(tx, p.ID, nil, append(specs, applySpecs...))
+		if err != nil {
+			return err
+		}
+		started = append(started, a...)
+		f, err = shown(tx, r)
+		return err
 	})
 	if err != nil {
-		api.Fail(w, err)
+		failCreate(w, err)
 		return
 	}
-	for _, a := range started {
-		acts.Run(a.ID, func(ctx context.Context, _ func(int)) error { return m.d.PushAgent(ctx) })
+	m.runPush(acts, started)
+	api.JSON(w, http.StatusCreated, map[string]any{"firewall": f, "actions": started})
+}
+
+// failCreate is api.Fail, except that an unknown server in apply_to
+// answers 422 as the spec of POST /firewalls says.
+func failCreate(w http.ResponseWriter, err error) {
+	var fe *api.FieldError
+	if errors.As(err, &fe) && fe.Code == codeResourceNotFound {
+		api.JSON(w, http.StatusUnprocessableEntity, map[string]any{"error": map[string]any{
+			"code": fe.Code, "message": fe.Message, "details": map[string]any{},
+		}})
+		return
 	}
-	api.JSON(w, http.StatusCreated, map[string]any{"firewall": view(r), "actions": started})
+	api.Fail(w, err)
+}
+
+// shown is firewall r as the API shows it.
+func shown(tx store.Tx, r Record) (Firewall, error) {
+	res, err := resolve(tx, r.Hlab.ProjectID)
+	if err != nil {
+		return Firewall{}, err
+	}
+	return res.show(r), nil
 }
 
 // update changes only the name and labels present in the body; labels,
@@ -274,10 +320,10 @@ func (m *Module) update(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	p, _ := api.ProjectFrom(req.Context())
-	var r Record
+	var f Firewall
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
-		var err error
-		if r, err = Load(tx, p.ID, id); err != nil {
+		r, err := Load(tx, p.ID, id)
+		if err != nil {
 			return err
 		}
 		if body.Name != nil {
@@ -292,13 +338,17 @@ func (m *Module) update(w http.ResponseWriter, req *http.Request) {
 			}
 			r.Labels = *body.Labels
 		}
-		return put(tx, r)
+		if err := put(tx, r); err != nil {
+			return err
+		}
+		f, err = shown(tx, r)
+		return err
 	})
 	if err != nil {
 		api.Fail(w, err)
 		return
 	}
-	api.JSON(w, http.StatusOK, map[string]any{"firewall": view(r)})
+	api.JSON(w, http.StatusOK, map[string]any{"firewall": f})
 }
 
 // delete removes a firewall that is applied nowhere, neither to a server
@@ -326,26 +376,5 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// The hooks below let the servers module and the agent document use the
-// module; plans 06-06 (resolution, attach at create, server deletion) and
-// 06-07 (agent document) fill them in. Until then no firewall reaches a
-// server.
-
-// ForServer implements servers.Firewalls: the firewalls applied to server r.
-func (m *Module) ForServer(store.Tx, servers.Record) ([]servers.ServerFirewall, error) {
-	return []servers.ServerFirewall{}, nil
-}
-
-// AttachAtCreate implements servers.Firewalls; firewalls cannot be applied
-// yet.
-func (m *Module) AttachAtCreate(store.Tx, *actions.Manager, int64, int64, bool, []int64) ([]*actions.Action, error) {
-	return nil, &api.FieldError{Field: "firewalls", Message: "firewalls are not available"}
-}
-
-// ServerDeleted removes server serverID from every applied_to; nothing is
-// applied yet.
-func (m *Module) ServerDeleted(store.Tx, int64) error { return nil }
-
-// Contribute implements resource.NetContributor; no firewall reaches a
-// server yet.
+// Contribute implements resource.NetContributor; plan 06-07 fills it in.
 func (m *Module) Contribute(store.Tx, *agentapi.Config) error { return nil }
