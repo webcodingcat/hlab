@@ -187,6 +187,7 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("POST /zones/{id}/actions/change_ttl", http.HandlerFunc(m.changeTTL))
 	r.Handle("POST /zones/{id}/actions/change_primary_nameservers", http.HandlerFunc(m.changePrimaryNameservers))
 	r.Handle("GET /zones/{id}/zonefile", http.HandlerFunc(m.exportZonefile))
+	r.Handle("POST /zones/{id}/actions/import_zonefile", http.HandlerFunc(m.importZonefile))
 	m.rrsetRoutes(r)
 	// GET /zones/actions/{id} conflicts with /zones/{id}/actions in
 	// http.ServeMux; the less specific pattern takes it.
@@ -362,9 +363,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	m.publish(acts, action)
-	if m.d.Shadow != nil && r.Mode == ModePrimary && !dnszone.PrivateUse(r.Name) {
-		m.d.Shadow.Check(r.Name, p.Name)
-	}
+	m.checkShadow(req, r)
 	api.JSON(w, http.StatusCreated, map[string]any{"zone": view(r), "action": action})
 }
 
@@ -412,7 +411,10 @@ func (m *Module) newZone(tx store.Tx, body createRequest) (Record, error) {
 		return r, err
 	}
 	if body.Zonefile != nil {
-		return r, &api.FieldError{Field: "zonefile", Message: "zone file import is not available yet"}
+		if len(body.RRSets) > 0 {
+			return r, &api.FieldError{Field: "zonefile", Message: "zonefile and rrsets cannot be given together"}
+		}
+		return r, importSets(&r, *body.Zonefile, now)
 	}
 	r.RRSets, err = createSets(body.Name, now, body.RRSets)
 	return r, err
