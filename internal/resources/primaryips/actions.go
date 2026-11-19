@@ -133,6 +133,9 @@ func (m *Module) unassign(w http.ResponseWriter, req *http.Request) {
 		if r.AssigneeID == nil {
 			return nil, nil
 		}
+		if heldByLB(*r) {
+			return nil, &api.FieldError{Message: "a primary IP held by a load balancer is released by deleting the load balancer"}
+		}
 		sid := *r.AssigneeID
 		err := servers.Update(tx, sid, func(s *servers.Record) error {
 			if s.Status != servers.StatusOff {
@@ -221,7 +224,7 @@ func (m *Module) changeDNSPtr(w http.ResponseWriter, req *http.Request) {
 		if err := applyDNSPtr(r, ip, ptr); err != nil {
 			return nil, err
 		}
-		if r.AssigneeID == nil {
+		if r.AssigneeID == nil || heldByLB(*r) {
 			return nil, nil
 		}
 		err := servers.Update(tx, *r.AssigneeID, func(s *servers.Record) error {
@@ -353,7 +356,7 @@ func (m *Module) ServerDeleted(tx store.Tx, serverID int64) error {
 		return err
 	}
 	for _, r := range recs {
-		if r.AssigneeID == nil || *r.AssigneeID != serverID {
+		if !heldByServer(r, serverID) {
 			continue
 		}
 		if r.AutoDelete {
