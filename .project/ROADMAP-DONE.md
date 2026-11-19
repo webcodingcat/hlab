@@ -72,3 +72,17 @@ this file; it keeps the details for looking things up.
          server that answers `ssh root@<ip>` from the host and reaches the
          internet; `hcloud server delete` removes VM and disk.
       4. `task e2e` runs the end-to-end suite against Hyper-V and passes.
+
+- [x] 05 Private networks, primary IPs and floating IPs, port isolation.
+      Requirements: NET-01, NET-02, NET-03, NET-04, NET-05, NET-06, PIP-01,
+      PIP-02, FIP-01, FIP-02, HOST-01.
+      Depends on: 03.
+      Also: remove the unused `Metrics(ctx, vm)` from `platform.Platform`,
+      the hyperv implementation and the fake; `MetricsAll` stays (Q7).
+      Success criteria:
+      1. Two servers in one network ping each other on their private IPs;
+         a server in another network cannot.
+      2. A floating IP moved from one server to another answers from the
+         new server.
+      3. A hand-made route on a guest does not reach another guest
+         directly.
