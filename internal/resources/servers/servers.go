@@ -128,7 +128,7 @@ type Server struct {
 	Status          string            `json:"status"`
 	Created         time.Time         `json:"created"`
 	PublicNet       PublicNet         `json:"public_net"`
-	PrivateNet      []any             `json:"private_net"`
+	PrivateNet      []PrivateNet      `json:"private_net"`
 	ServerType      json.RawMessage   `json:"server_type"`
 	Location        json.RawMessage   `json:"location"`
 	Image           json.RawMessage   `json:"image"`
@@ -209,6 +209,9 @@ type Internal struct {
 	// rebuild to `<id>-<action id>` so cloud-init sees a new instance;
 	// empty means the server ID.
 	InstanceID string `json:"instance_id,omitempty"`
+	// Networks holds per attached network ID what adapter and seed need;
+	// the range cannot change while servers are attached.
+	Networks map[int64]NetInternal `json:"networks,omitempty"`
 }
 
 // Rescue is the rescue state of a server.
@@ -246,6 +249,11 @@ type Module struct {
 	d       Deps
 	volumes VolumeHooks
 	acts    *actions.Manager // set at mount (UseActions); the backup job starts actions with it
+	// publicIPs and networks are the create hooks; nil = none.
+	publicIPs PublicIPs
+	networks  Networks
+	// onDelete run inside the transaction that deletes a server record.
+	onDelete []func(tx store.Tx, serverID int64) error
 
 	mu sync.Mutex
 	// changes counts the status changes actions made per server, so the
@@ -528,6 +536,33 @@ type createRequest struct {
 	PlacementGroup   json.RawMessage   `json:"placement_group"`
 	Volumes          []int64           `json:"volumes"`
 	Automount        *bool             `json:"automount"`
+	PublicNet        *struct {
+		EnableIPv4 *bool  `json:"enable_ipv4"`
+		EnableIPv6 *bool  `json:"enable_ipv6"`
+		IPv4       *int64 `json:"ipv4"`
+		IPv6       *int64 `json:"ipv6"`
+	} `json:"public_net"`
+	Networks []int64 `json:"networks"`
+}
+
+// publicNetRequest is the public_net of b with Hetzner's defaults.
+func (b createRequest) publicNetRequest() PublicNetRequest {
+	req := PublicNetRequest{EnableIPv4: true, EnableIPv6: true}
+	if pn := b.PublicNet; pn != nil {
+		if pn.EnableIPv4 != nil {
+			req.EnableIPv4 = *pn.EnableIPv4
+		}
+		if pn.EnableIPv6 != nil {
+			req.EnableIPv6 = *pn.EnableIPv6
+		}
+		if pn.IPv4 != nil {
+			req.IPv4 = *pn.IPv4
+		}
+		if pn.IPv6 != nil {
+			req.IPv6 = *pn.IPv6
+		}
+	}
+	return req
 }
 
 var errNoAddress = errors.New("no free public IPv4 address")
@@ -540,6 +575,11 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	typ, loc, ierr := m.resolve(body)
 	if ierr != nil {
 		api.Fail(w, ierr)
+		return
+	}
+	pubReq := body.publicNetRequest()
+	if !pubReq.EnableIPv4 && !pubReq.EnableIPv6 && len(body.Networks) == 0 {
+		api.Fail(w, &api.FieldError{Field: "public_net", Message: "a server needs a public IPv4, a public IPv6 or a network"})
 		return
 	}
 	p, _ := api.ProjectFrom(req.Context())
@@ -626,18 +666,11 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			return err
 		}
-		ip, err := ipam.NextPublic(tx, m.d.PublicRange)
-		if errors.Is(err, ipam.ErrFull) {
-			return errNoAddress
-		}
+		publicNet, err := m.allocatePublic(tx, p.ID, id, loc.Name, pubReq)
 		if err != nil {
 			return err
 		}
-		ipv4ID, err := store.NextID(tx, primaryIPKind)
-		if err != nil {
-			return err
-		}
-		ipv6ID, err := store.NextID(tx, primaryIPKind)
+		privateNet, nets, err := m.attachAtCreate(tx, p.ID, id, loc.Name, body.Networks)
 		if err != nil {
 			return err
 		}
@@ -647,13 +680,8 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 				Name:    body.Name,
 				Status:  StatusInitializing,
 				Created: m.d.Clock.Now().UTC().Truncate(time.Second),
-				PublicNet: PublicNet{
-					IPv4:        &IPv4{ID: ipv4ID, IP: ip.String(), DNSPtr: ""},
-					IPv6:        &IPv6{ID: ipv6ID, IP: IPv6Net(id).String(), DNSPtr: []any{}},
-					FloatingIPs: []int64{},
-					Firewalls:   []any{},
-				},
-				PrivateNet:      []any{},
+				PublicNet:       publicNet,
+				PrivateNet:      privateNet,
 				ServerType:      typ.Raw,
 				Location:        loc.Raw,
 				Image:           img.raw,
@@ -674,6 +702,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 				StartAfterCreate: start,
 				RootHash:         rootHash,
 				AutomountVolumes: automountVolumes,
+				Networks:         nets,
 			},
 		}
 		if err := put(tx, rec); err != nil {
@@ -731,6 +760,67 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		"next_actions":  []any{},
 		"root_password": rootPassword,
 	})
+}
+
+// allocatePublic returns the public_net of new server id: from the
+// PublicIPs hook, or without it an IPv4 from ipam and IDs from the
+// primary_ips sequence.
+func (m *Module) allocatePublic(tx store.Tx, projectID, id int64, location string, req PublicNetRequest) (PublicNet, error) {
+	var pn PublicNet
+	if m.publicIPs != nil {
+		var err error
+		if pn, err = m.publicIPs.Allocate(tx, projectID, id, location, req); err != nil {
+			return PublicNet{}, err
+		}
+	} else {
+		if req.EnableIPv4 {
+			ip, err := ipam.NextPublic(tx, m.d.PublicRange)
+			if errors.Is(err, ipam.ErrFull) {
+				return PublicNet{}, errNoAddress
+			}
+			if err != nil {
+				return PublicNet{}, err
+			}
+			ipID, err := store.NextID(tx, primaryIPKind)
+			if err != nil {
+				return PublicNet{}, err
+			}
+			pn.IPv4 = &IPv4{ID: ipID, IP: ip.String(), DNSPtr: ""}
+		}
+		if req.EnableIPv6 {
+			ipID, err := store.NextID(tx, primaryIPKind)
+			if err != nil {
+				return PublicNet{}, err
+			}
+			pn.IPv6 = &IPv6{ID: ipID, IP: IPv6Net(id).String(), DNSPtr: []any{}}
+		}
+	}
+	if pn.FloatingIPs == nil {
+		pn.FloatingIPs = []int64{}
+	}
+	if pn.Firewalls == nil {
+		pn.Firewalls = []any{}
+	}
+	return pn, nil
+}
+
+// attachAtCreate allocates the networks of new server id through the
+// Networks hook; without networks the server has none.
+func (m *Module) attachAtCreate(tx store.Tx, projectID, id int64, location string, ids []int64) ([]PrivateNet, map[int64]NetInternal, error) {
+	if len(ids) == 0 {
+		return []PrivateNet{}, nil, nil
+	}
+	if m.networks == nil {
+		return nil, nil, &api.FieldError{Field: "networks", Message: "networks are not available"}
+	}
+	pn, nets, err := m.networks.AttachAtCreate(tx, projectID, id, location, ids)
+	if err != nil {
+		return nil, nil, err
+	}
+	if pn == nil {
+		pn = []PrivateNet{}
+	}
+	return pn, nets, nil
 }
 
 // checkVolumes validates the volumes of a create request in location; a
@@ -886,7 +976,8 @@ func (m *Module) Delete(ctx context.Context, id int64) error {
 
 // remove marks server id as deleting (the agent document leaves it out),
 // detaches its volumes, deletes its VM and then its row with its address,
-// group membership and backups (with their files); snapshots stay. When
+// group membership and backups (with their files), running the OnDelete
+// functions in that transaction; snapshots stay. When
 // the VM cannot be deleted, the server stays with status off.
 func (m *Module) remove(ctx context.Context, stor *store.Store, id int64) error {
 	err := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, StatusDeleting) })
@@ -915,8 +1006,15 @@ func (m *Module) remove(ctx context.Context, stor *store.Store, id int64) error 
 		if err != nil {
 			return err
 		}
-		if a := r.IPv4(); a.IsValid() {
+		// With the PublicIPs hook the primary IPs own the address and
+		// release it in their OnDelete function.
+		if a := r.IPv4(); a.IsValid() && m.publicIPs == nil {
 			if err := ipam.Release(tx, a); err != nil {
+				return err
+			}
+		}
+		for _, f := range m.onDelete {
+			if err := f(tx, id); err != nil {
 				return err
 			}
 		}

@@ -67,10 +67,8 @@ func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) err
 	if err != nil {
 		return err
 	}
+	// A server without public IPv4 keeps its public adapter without address.
 	ip := rec.IPv4()
-	if !ip.IsValid() {
-		return errors.New("server has no public IPv4")
-	}
 
 	disk := m.diskPath(id)
 	if _, err := os.Stat(disk); errors.Is(err, os.ErrNotExist) {
@@ -123,11 +121,19 @@ func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) err
 	return nil
 }
 
-// seed is the seed of server rec.
+// seed is the seed of server rec: the public interface with the public
+// IPv4 (without one, the adapter gets no address) and one interface per
+// private network.
 func (m *Module) seed(rec Record) cidata.Seed {
 	instanceID := rec.Hlab.InstanceID
 	if instanceID == "" {
 		instanceID = strconv.FormatInt(rec.ID, 10)
+	}
+	public := cidata.Interface{MAC: rec.Hlab.MAC}
+	if ip := rec.IPv4(); ip.IsValid() {
+		public.Addresses = []netip.Prefix{netip.PrefixFrom(ip, 32)}
+		public.Gateway = guestGateway
+		public.Nameservers = guestNameservers
 	}
 	return cidata.Seed{
 		InstanceID: instanceID,
@@ -135,12 +141,7 @@ func (m *Module) seed(rec Record) cidata.Seed {
 		SSHKeys:    rec.Hlab.SSHKeys,
 		UserData:   seedUserData(rec.Hlab.UserData, rec.Hlab.AutomountVolumes),
 		VendorData: vendorData(rec.Hlab.RootHash),
-		Interfaces: []cidata.Interface{{
-			MAC:         rec.Hlab.MAC,
-			Addresses:   []netip.Prefix{netip.PrefixFrom(rec.IPv4(), 32)},
-			Gateway:     guestGateway,
-			Nameservers: guestNameservers,
-		}},
+		Interfaces: append([]cidata.Interface{public}, privateInterfaces(rec)...),
 	}
 }
 
