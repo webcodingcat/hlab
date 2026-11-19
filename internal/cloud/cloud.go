@@ -24,6 +24,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/agentclient"
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/dnszone"
 	"github.com/webcodingcat/hlab/internal/hostnet"
 	hnwin "github.com/webcodingcat/hlab/internal/hostnet/windows"
 	"github.com/webcodingcat/hlab/internal/images"
@@ -48,6 +49,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/resources/servertypes"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
 	"github.com/webcodingcat/hlab/internal/resources/volumes"
+	"github.com/webcodingcat/hlab/internal/resources/zones"
 	"github.com/webcodingcat/hlab/internal/scheduler"
 	"github.com/webcodingcat/hlab/internal/settings"
 	"github.com/webcodingcat/hlab/internal/store"
@@ -75,6 +77,9 @@ const (
 	// agentReadyTimeout bounds the wait for the agent after the appliance
 	// starts (boot, first-boot cloud-init, agent install).
 	agentReadyTimeout = 10 * time.Minute
+	// shadowLookupTimeout bounds the public SOA query per DNS server of the
+	// shadow check of a zone.
+	shadowLookupTimeout = 2 * time.Second
 	// listenTimeout bounds the wait until the host address is usable.
 	listenTimeout = time.Minute
 	// serverShutdownTimeout bounds the graceful end of the HTTP servers.
@@ -110,6 +115,8 @@ type Cloud struct {
 	agent  *agentclient.Client
 	acts   *actions.Manager
 	mods   []resource.Module
+	// shadow keeps the primary zones that shadow a public domain.
+	shadow *zones.Shadow
 	// pushMu keeps agent documents in the order they were built.
 	pushMu sync.Mutex
 	// jobMu runs one appliance job at a time.
@@ -187,14 +194,14 @@ func (c *Cloud) start(ctx context.Context) error {
 	slog.Info("cloud starting", "version", version.Version, "profile", profile.Current().Name,
 		"public_range", set.Network.PublicRange.String(), "data_folder", set.Storage.DataFolder)
 
-	zones := []string{"hetzner.internal"}
-	zones = append(zones, agentapi.ReverseZones(set.Network.PublicRange)...)
+	base := []string{"hetzner.internal"}
+	base = append(base, agentapi.ReverseZones(set.Network.PublicRange)...)
 	c.netCfg = hostnet.Config{
 		PublicRange:   set.Network.PublicRange,
 		HostAddr:      hostAddr,
 		ApplianceAddr: applianceAddr,
 		SwitchName:    c.tag,
-		BaseZones:     zones,
+		BaseZones:     base,
 	}
 	c.net = hnwin.New(hnwin.Options{StateDir: c.d.Paths.State})
 	c.problems = nil
@@ -258,8 +265,12 @@ func (c *Cloud) start(ctx context.Context) error {
 	}
 
 	c.acts = actions.New(c.st)
+	c.shadow = zones.NewShadow(zones.PublicLookup(c.hostDNS(ctx), shadowLookupTimeout))
 	c.mods = c.modules()
 	if err := recoverModules(ctx, c.mods); err != nil {
+		return err
+	}
+	if err := c.publishZones(ctx); err != nil {
 		return err
 	}
 	router := api.New(api.Deps{Store: c.st, Actions: c.acts})
@@ -361,9 +372,11 @@ func (c *Cloud) modules() []resource.Module {
 	srv.SetPublicIPs(pips)
 	srv.OnDelete(pips.ServerDeleted)
 	srv.OnDelete(fips.ServerDeleted)
+	srv.SetDNSPtrs(pips)
 	fws := firewalls.New(firewalls.Deps{Store: c.st, PushAgent: c.PushAgent})
 	srv.SetFirewalls(fws)
 	srv.OnDelete(fws.ServerDeleted)
+	zns := zones.New(zones.Deps{Store: c.st, PushAgent: c.PushAgent, SetZones: c.net.SetZones, Shadow: c.shadow})
 	// Order of the agent document: servers writes the public metadata
 	// entries, networks adds the members' private entries, and volumes then
 	// sets the volumes of every entry, public and private. Firewalls sets
@@ -383,8 +396,50 @@ func (c *Cloud) modules() []resource.Module {
 		pips,
 		fips,
 		fws,
+		zns,
 		vol,
 	}
+}
+
+// hostDNS returns the host's DNS servers on port 53; none when they are
+// unknown (the agent and the shadow check then use their defaults).
+func (c *Cloud) hostDNS(ctx context.Context) []netip.AddrPort {
+	dns, err := c.net.DNSServers(ctx)
+	if err != nil {
+		slog.Warn("host DNS servers unknown", "err", err)
+	}
+	var out []netip.AddrPort
+	for _, a := range dns {
+		out = append(out, netip.AddrPortFrom(a, 53))
+	}
+	return out
+}
+
+// publishZones sets one NRPT rule per stored zone and starts the shadow
+// check of every primary zone outside the private-use suffixes.
+func (c *Cloud) publishZones(ctx context.Context) error {
+	var names []string
+	var primary []zones.ZoneRef
+	err := c.st.Tx(func(tx store.Tx) error {
+		var err error
+		if names, err = zones.Names(tx); err != nil {
+			return err
+		}
+		primary, err = zones.Primary(tx)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("read zones: %w", err)
+	}
+	if err := c.net.SetZones(ctx, names); err != nil {
+		return err
+	}
+	for _, z := range primary {
+		if !dnszone.PrivateUse(z.Zone) {
+			c.shadow.Check(z.Zone, z.Project)
+		}
+	}
+	return nil
 }
 
 // volumeDisks are the volume disks for the servers' disk rule.
@@ -406,14 +461,8 @@ func (c *Cloud) PushAgent(ctx context.Context) error {
 		PublicRange: c.set.Network.PublicRange,
 		API:         agentapi.APIProxy{Listen: apiProxy, Backend: apiListen},
 	}
-	dns, err := c.net.DNSServers(ctx)
-	if err != nil {
-		slog.Warn("host DNS servers unknown; the agent uses its defaults", "err", err)
-	}
-	for _, a := range dns {
-		doc.Upstream = append(doc.Upstream, netip.AddrPortFrom(a, 53))
-	}
-	err = c.st.Tx(func(tx store.Tx) error {
+	doc.Upstream = c.hostDNS(ctx)
+	err := c.st.Tx(func(tx store.Tx) error {
 		for _, m := range c.mods {
 			if nc, ok := m.(resource.NetContributor); ok {
 				if err := nc.Contribute(tx, &doc); err != nil {
@@ -503,6 +552,9 @@ func (c *Cloud) mgmtStatus() mgmt.Status {
 	}
 	if w := c.cat.OwnTypesWarning(); w != "" {
 		st.Problems = append(st.Problems, mgmt.Problem{Code: problemCustomServerTypes, Message: w})
+	}
+	for _, z := range c.shadow.List() {
+		st.ShadowingZones = append(st.ShadowingZones, mgmt.ShadowingZone{Zone: z.Zone, Project: z.Project})
 	}
 	return st
 }
