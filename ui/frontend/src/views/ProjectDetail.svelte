@@ -62,7 +62,7 @@
 
   async function create(e: SubmitEvent) {
     e.preventDefault();
-    if (creating || value) return;
+    if (creating) return;
     creating = true;
     nameError = undefined;
     try {
