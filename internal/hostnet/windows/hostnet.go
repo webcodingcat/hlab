@@ -240,9 +240,6 @@ func (h *HostNet) Down(ctx context.Context) error {
 // in a later phase.
 func (h *HostNet) WatchWSL(context.Context, func(hostnet.WSLInfo)) {}
 
-// TrustCA is a stub: the CA trust store is handled in a later phase.
-func (h *HostNet) TrustCA(context.Context, []byte, bool) error { return nil }
-
 // DNSServers returns the IPv4 DNS servers of the interfaces with a default
 // route, without the hlab, WSL and loopback adapters.
 func (h *HostNet) DNSServers(ctx context.Context) ([]netip.Addr, error) {
