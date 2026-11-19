@@ -523,7 +523,7 @@ locks a resource of type `project`.
       Firewalls    []Firewall            // ID, rules in Hetzner's shape
       LoadBalancers []LoadBalancer       // ID, public IP, private IPs, services, targets resolved to IPs
       Zones        []Zone                // name, TTL, RRSets in Hetzner's shape
-      PTR          map[netip.Addr]string
+      PTR          map[netip.Addr]string // IPv4 only; filled by primary IPs and floating IPs, which own all PTRs (internal/rdns); a server's change_dns_ptr writes to its primary IP
       Metadata     []Metadata
       API          APIProxy              // listen 198.19.0.1:80, backend 198.19.0.2:8780
       Upstream     []netip.AddrPort      // DNS forwarders: the host's DNS servers, else 1.1.1.1:53, 9.9.9.9:53
