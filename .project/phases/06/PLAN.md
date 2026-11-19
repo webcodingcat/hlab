@@ -110,14 +110,14 @@ func NewFirewall(iface string) *Firewall
   - [x] `Rule`, `CheckRules` (direction in/out, protocol enum; port required for tcp/udp and forbidden for icmp/esp/gre, `any`, `N` or `A-B` with 1 <= A <= B <= 65535, digits only; `source_ips` required and non-empty for `in`, `destination_ips` for `out`; each IP a CIDR with a mask and no host bits, at most 100 per list; at most 50 rules; description at most 255 characters; order kept; IPv6 canonical), `AgentRules` (internal/resources/firewalls/rules.go)
   - [x] Rows of TESTS.md for 06-02 (internal/resources/firewalls/rules_test.go)
 
-- [ ] 06-03 Servers: firewall hook
+- [x] 06-03 Servers: firewall hook
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: FW-01, FW-05 | Tests: internal/resources/firewalls/actions_test.go, internal/resources/firewalls/contribute_test.go (through 06-06, 06-07)
   - Reads: ARCHITECTURE "resource"; RESEARCH R1 (server `public_net.firewalls`, create `firewalls`), R4 (provider `firewall_ids`); DECISIONS "Network membership on the server record"
   - Size: ~150 lines in 2 files
   - Adjusts: -
-  - [ ] `ServerFirewall`, `Firewalls`, `SetFirewalls`; `public_net.firewalls` filled through `ForServer` wherever a server is shown (get, list, create, update, actions); create accepts `firewalls: [{firewall: id}]` and appends the hook's actions to `next_actions` (without hook: 422 `invalid_input` on `firewalls`) (internal/resources/servers/firewalls.go, internal/resources/servers/servers.go)
-  - [ ] `update` pushes the agent document after the commit when `labels` changed, logging a failed push (internal/resources/servers/servers.go)
+  - [x] `ServerFirewall`, `Firewalls`, `SetFirewalls`; `public_net.firewalls` filled through `ForServer` wherever a server is shown (get, list, create, update, actions); create accepts `firewalls: [{firewall: id}]` and appends the hook's actions to `next_actions` (without hook: 422 `invalid_input` on `firewalls`) (internal/resources/servers/firewalls.go, internal/resources/servers/servers.go)
+  - [x] `update` pushes the agent document after the commit when `labels` changed, logging a failed push (internal/resources/servers/servers.go)
 
 - [ ] 06-04 Agent: firewall plan and nftables applier
   - Wave: 1 | Depends on: - | Review: alone
@@ -144,6 +144,7 @@ func NewFirewall(iface string) *Firewall
   - Reads: RESEARCH R1 (errors, actions, applied_to, precedence, 5 per server), R4 (what clients wait for); CONTEXT "Corrections by the user"; decisions D3 to D9 below
   - Size: ~400 lines in 3 files
   - Adjusts: -
+  - Note from 06-03: servers runs only `create_server`; `AttachAtCreate` runs its `apply_firewall` actions itself (`acts.Run` after its last fallible step; the single store connection makes the push wait for the commit) and starts them through `StartAll` with lock on the firewall only, never the server (held by `create_server`).
   - [ ] Resolution: the servers a firewall reaches (direct entries, then selectors over the project's servers that have a public IPv4 and are not deleting), skipping a selector match that would give a server a sixth firewall; `applied_to_resources` on selector entries; `ForServer`; `ServerDeleted` (internal/resources/firewalls/applied.go)
   - [ ] `POST /firewalls` with `apply_to`; `apply_to_resources` (`apply_to`), `remove_from_resources` (`remove_from`), `set_rules` (`rules`), all 201 `{actions}` through `StartAll` with lock on the firewall; checks and codes as in TESTS.md; the record changes in the request's transaction, each action ends `success` after the agent push and `error` when it fails; `AttachAtCreate` (internal/resources/firewalls/actions.go, internal/resources/firewalls/firewalls.go)
   - [ ] Rows of TESTS.md for 06-06 (internal/resources/firewalls/actions_test.go)
