@@ -127,7 +127,7 @@ Inside `hlabd` (Go packages under `internal/`):
   type ActionUser interface {           // modules starting actions outside a handler (daily backups); Mount calls it before Routes
       UseActions(m *actions.Manager)
   }
-  type Recoverer interface {            // modules with records an interrupted action can leave half-made (images, volumes)
+  type Recoverer interface {            // modules with records to repair at cloud start (images, volumes: half-made records; primary_ips: missing records)
       Recover(ctx context.Context) error // cloud start calls it before the API serves and before the first scheduled job run
   }
   ```
@@ -142,7 +142,9 @@ Inside `hlabd` (Go packages under `internal/`):
   aborted action; cloud start does not call it. At cloud start, after the
   action manager has marked interrupted actions `error`, each `Recoverer`
   removes the records those actions left `creating` with their partial
-  files, before the API serves and before the first run of the backup job
+  files (primary_ips instead creates the missing primary IP records of
+  servers from before phase 05, idempotently, decision Q2 of phase 05),
+  before the API serves and before the first run of the backup job
   (decision Q6). Power actions, rebuild and
   change type stay actions inside the module. `internal/cloud` only wires
   the modules and calls these interfaces; it holds no logic of a resource
@@ -508,7 +510,7 @@ locks a resource of type `project`.
       PublicRange  netip.Prefix          // e.g. 198.19.0.0/16
       Servers      []Server              // public IPv4, MAC, location, firewall IDs
       FloatingIPs  []FloatingIP          // IP -> server public IPv4
-      Networks     []Network             // ID, VLAN, range, gateway, subnets, routes, members (IP, aliases, MAC)
+      Networks     []Network             // ID, VLAN, range, gateway, routes, members (IP, aliases, MAC)
       Firewalls    []Firewall            // ID, rules in Hetzner's shape
       LoadBalancers []LoadBalancer       // ID, public IP, private IPs, services, targets resolved to IPs
       Zones        []Zone                // name, TTL, RRSets in Hetzner's shape
