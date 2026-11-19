@@ -21,6 +21,7 @@ const (
 // after disable_rescue and reboot the installed system runs again.
 func testSRV11(t *testing.T) {
 	e := sharedEnv(t)
+	takeServerSlots(t, 1)
 	srv := ownServerImage(t, e, "srv11", rescueImage)
 	content := harness.runID + "-srv11"
 	if r, err := e.ssh(srv, time.Minute, "", "echo "+content+" > "+srv11Marker+" && sync"); err != nil {

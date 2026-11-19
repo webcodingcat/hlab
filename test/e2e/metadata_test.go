@@ -131,6 +131,7 @@ func testMETA01(t *testing.T) {
 // extra source address gets no answer from the metadata service with it.
 func testMETA01Spoof(t *testing.T) {
 	e, shared := sharedServer(t)
+	takeServerSlots(t, 1)
 	other := ownServer(t, e, "meta01")
 
 	// The service answers the second server under its own address, so a

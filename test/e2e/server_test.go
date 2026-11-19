@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -176,15 +177,63 @@ func testSRV19(t *testing.T) {
 	}
 }
 
-// ownServerSlots bounds how many servers of single rows exist at once, so
-// the parallel rows stay within the host's resources.
-var ownServerSlots = make(chan struct{}, 3)
+// serverSlots bounds how many servers of single rows and fixtures exist at
+// once, so the parallel rows stay within the host's resources.
+var serverSlots = newSlotPool(3)
+
+// slotPool is a counting semaphore whose acquire takes several slots at
+// once: a row that needs several servers never holds some of its slots
+// while waiting for the rest, which deadlocks once all slots are held so.
+type slotPool struct {
+	order sync.Mutex // one acquirer waits at a time; a larger request is not overtaken
+	mu    sync.Mutex
+	cond  *sync.Cond
+	size  int
+	free  int
+}
+
+func newSlotPool(size int) *slotPool {
+	p := &slotPool{size: size, free: size}
+	p.cond = sync.NewCond(&p.mu)
+	return p
+}
+
+// acquire waits until n slots are free and takes them together; a request
+// beyond the capacity takes all slots. It returns the number taken.
+func (p *slotPool) acquire(n int) int {
+	n = min(n, p.size)
+	p.order.Lock()
+	defer p.order.Unlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for p.free < n {
+		p.cond.Wait()
+	}
+	p.free -= n
+	return n
+}
+
+func (p *slotPool) release(n int) {
+	p.mu.Lock()
+	p.free += n
+	p.mu.Unlock()
+	p.cond.Broadcast()
+}
+
+// takeServerSlots takes the slots for all servers the row creates itself,
+// at once and before the first of them, and gives them back when the row
+// ends (after its servers are deleted, as cleanups run in reverse order).
+func takeServerSlots(t *testing.T, n int) {
+	t.Helper()
+	got := serverSlots.acquire(n)
+	t.Cleanup(func() { serverSlots.release(got) })
+}
 
 // ownServer creates a server with the run's key and user_data for one row,
-// waits until it is ready and deletes it when the row ends.
+// waits until it is ready and deletes it when the row ends. The row takes
+// its slot first with takeServerSlots.
 func ownServer(t *testing.T, e *env, suffix string) *server {
 	t.Helper()
-	takeServerSlot(t)
 	name := harness.runID + "-" + suffix
 	t.Cleanup(func() { deleteIfCreated(t, e, name) })
 	srv, err := e.createServer(name)
@@ -195,14 +244,6 @@ func ownServer(t *testing.T, e *env, suffix string) *server {
 		t.Fatal(err)
 	}
 	return srv
-}
-
-// takeServerSlot waits for a free slot and gives it back when the row ends
-// (after the row's server is deleted, as cleanups run in reverse order).
-func takeServerSlot(t *testing.T) {
-	t.Helper()
-	ownServerSlots <- struct{}{}
-	t.Cleanup(func() { <-ownServerSlots })
 }
 
 // deleteIfCreated deletes the server if it exists; a failed create leaves
@@ -250,7 +291,7 @@ func (e *env) bootID(srv *server) (string, error) {
 // with the root_password the create returned.
 func testSRV02(t *testing.T) {
 	e := sharedEnv(t)
-	takeServerSlot(t)
+	takeServerSlots(t, 1)
 	name := harness.runID + "-srv02"
 	t.Cleanup(func() { deleteIfCreated(t, e, name) })
 
@@ -300,6 +341,7 @@ func testSRV02(t *testing.T) {
 // testSRV07: power actions change the VM's real state and the status.
 func testSRV07(t *testing.T) {
 	e := sharedEnv(t)
+	takeServerSlots(t, 1)
 	srv := ownServer(t, e, "srv07")
 
 	e.hcloudAction(t, 5*time.Minute, "server", "poweroff", srv.Name)
@@ -425,6 +467,7 @@ const srv08Marker = "/root/hlab-srv08-marker"
 // a fresh disk with the new image and runs the user_data again.
 func testSRV08(t *testing.T) {
 	e := sharedEnv(t)
+	takeServerSlots(t, 1)
 	srv := ownServer(t, e, "srv08")
 	img := otherSystemImage(t, e)
 	ipv4, ipv6 := e.publicNet(t, srv.ID)
@@ -536,6 +579,7 @@ func largerType(t *testing.T, e *env) (small, big serverTypeInfo) {
 func testSRV09(t *testing.T) {
 	e := sharedEnv(t)
 	small, big := largerType(t, e)
+	takeServerSlots(t, 1)
 	srv := ownServer(t, e, "srv09")
 	path := fmt.Sprintf("/servers/%d/actions/change_type", srv.ID)
 	req := map[string]any{"server_type": big.Name, "upgrade_disk": true}

@@ -24,6 +24,7 @@ func liveRoot(out string) bool {
 // the installed system answers again.
 func testSRV15(t *testing.T) {
 	e := sharedEnv(t)
+	takeServerSlots(t, 1)
 	srv := ownServer(t, e, "srv15")
 	iso := catalogISO(t, e, srv15ISO)
 	before, err := e.bootID(srv)

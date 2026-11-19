@@ -63,7 +63,7 @@ func sharedNetwork(t *testing.T) *netFixture {
 	f := &netFix
 	f.once.Do(func() {
 		f.e = e
-		ownServerSlots <- struct{}{}
+		serverSlots.acquire(1)
 		f.slot = true
 		f.err = f.create()
 	})
@@ -173,7 +173,7 @@ func releaseNetFixture(t *testing.T) {
 		f.e.deleteNetwork(t, id)
 	}
 	if f.slot {
-		<-ownServerSlots
+		serverSlots.release(1)
 	}
 }
 

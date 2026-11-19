@@ -64,6 +64,7 @@ func (e *env) powerOff(t *testing.T, srv *server) {
 // hostname once powered on.
 func testPIP02(t *testing.T) {
 	e := sharedEnv(t)
+	takeServerSlots(t, 2)
 	x := ownServer(t, e, "pip02-x")
 	y := ownServer(t, e, "pip02-y")
 	e.powerOff(t, x)
