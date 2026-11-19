@@ -35,6 +35,10 @@ type Platform interface {
 	// target becomes a standalone dynamic VHDX with a new disk identifier.
 	Snapshot(ctx context.Context, vm, diskPath, target string) error
 	Metrics(ctx context.Context, vm string) (Sample, error)
+	// MetricsAll reads the counters of all vms in one platform call. A VM
+	// that is not running (no counter instances) gets a zero sample; a VM
+	// that does not exist is left out of the map.
+	MetricsAll(ctx context.Context, vms []string) (map[string]Sample, error)
 	HostResources(ctx context.Context) (Resources, error)
 }
 

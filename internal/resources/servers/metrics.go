@@ -37,8 +37,9 @@ func (m *Module) getMetrics(w http.ResponseWriter, req *http.Request) {
 	api.JSON(w, http.StatusOK, map[string]any{"metrics": m.d.Metrics.Series(id, q)})
 }
 
-// sample stores one sample of the VM of every running server. A VM that
-// cannot be read (stopped meanwhile, deleted) is skipped.
+// sample stores one sample of the VM of every running server, read in one
+// platform call. A VM missing from the result (deleted meanwhile) is
+// skipped.
 func (m *Module) sample(ctx context.Context) {
 	var recs []Record
 	if err := m.d.Store.Tx(func(tx store.Tx) error {
@@ -49,18 +50,29 @@ func (m *Module) sample(ctx context.Context) {
 		slog.Error("server metrics sample", "err", err)
 		return
 	}
+	ids := map[string]int64{}
+	var vms []string
 	for _, r := range recs {
 		if r.Status != StatusRunning {
 			continue
 		}
-		smp, err := m.d.Platform.Metrics(ctx, m.vmName(r.ID))
-		if err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-			slog.Debug("server metrics sample", "id", r.ID, "err", err)
-			continue
+		vm := m.vmName(r.ID)
+		ids[vm] = r.ID
+		vms = append(vms, vm)
+	}
+	if len(vms) == 0 {
+		return
+	}
+	smps, err := m.d.Platform.MetricsAll(ctx, vms)
+	if err != nil {
+		if ctx.Err() == nil {
+			slog.Warn("server metrics sample", "err", err)
 		}
-		m.d.Metrics.Add(r.ID, smp)
+		return
+	}
+	for vm, smp := range smps {
+		if id, ok := ids[vm]; ok {
+			m.d.Metrics.Add(id, smp)
+		}
 	}
 }
