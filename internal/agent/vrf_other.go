@@ -13,6 +13,7 @@ import (
 // VRF is the Applier of private networks on the trunk link; it needs Linux.
 type VRF struct {
 	TrunkMAC net.HardwareAddr
+	Metadata *Metadata
 }
 
 // NewVRF returns the Applier of private networks on the link with

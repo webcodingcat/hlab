@@ -52,10 +52,13 @@ func run() error {
 	dns := &agent.DNS{}
 	defer dns.Close()
 	metadata := agent.NewMetadata()
+	// The VRF applier runs one metadata listener per private network.
+	vrf := agent.NewVRF(trunkMAC)
+	vrf.Metadata = metadata
 	// The network applier adds the addresses the DNS server binds, so it
 	// comes first; the VRF applier needs its IPv4 forwarding.
 	a, err := agent.New(bytes.TrimSpace(raw),
-		agent.NewNetwork(publicInterface), agent.NewVRF(trunkMAC), agent.NewIsolation(publicInterface), dns, proxy, metadata)
+		agent.NewNetwork(publicInterface), vrf, agent.NewIsolation(publicInterface), dns, proxy, metadata)
 	if err != nil {
 		return err
 	}
