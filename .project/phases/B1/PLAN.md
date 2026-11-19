@@ -1,0 +1,13 @@
+# Phase B1: Backlog: restart recovery, cloud-init and dev-loop bugs
+
+Taken in by the user with /wcc:change on 2026-11-19.
+
+## Items
+
+- [ ] bug: test/e2e harness: `task e2e` fails in `task build` when the dev cloud is already running, because the service holds `bin\hlabd.exe`; a developer who left the cloud running gets a build error instead of a test run (source: 01 verifier)
+- [ ] bug: servers: after an hlabd restart during reset_password the action ends `server_error` but the pending reset stays in the record and keeps being served (nothing clears it at startup or on rebuild); the guest may later apply a password the user was told failed, and a server rebuilt afterwards may get its new root password overwritten by the stale one (internal/resources/servers/password.go, reconcile.go) (source: 03 03-13 review)
+- [ ] bug: platform/hyperv: the metrics sample runs one full query of three `Win32_PerfRawData_*` classes per running server every 10 s through the single mutex-serialized PowerShell process; with many running servers it occupies the process for much of each interval and every user action waits behind it (internal/platform/hyperv/metrics.go, internal/resources/servers/metrics.go) (source: 03 verifier)
+- [ ] bug: images/servers: if hlabd restarts while `create_image` runs, the action ends in error but the image record stays `creating`, and `DELETE /images/{id}` (423 for `creating`) then never lets the user remove it or its partial file in `<data>\images` (internal/resources/images/images.go, internal/resources/servers/snapshot.go) (source: 04 04-07 review)
+- [ ] bug: cloud: nothing calls `resource.Reconciler.Reconcile` at cloud start, so a volume whose create or format is cut short by a cloud stop stays `creating` for the user forever, although ARCHITECTURE says Reconcile can run again after a cloud restart (internal/cloud, internal/resources/volumes) (source: 04 04-05 review)
+- [ ] bug: servers: a server created with volumes and `automount` whose user_data is itself MIME multipart or gzip (e.g. from OpenTofu `cloudinit_config`) gets it wrapped in a base64 `text/plain` part that cloud-init does not unpack, so the user's configuration silently does not run (internal/resources/servers/vendordata.go, seedUserData) (source: 04 04-11 review)
+- [ ] bug: servers: rebuilding a server from a snapshot or backup of that same server keeps instance-id = server ID while the restored disk already carries cloud-init state for it, so cloud-init skips its per-instance modules: the returned `root_password` does not work and new `user_data` is ignored - the normal way to restore a backup (internal/resources/servers/rebuild.go, reconcile.go) (source: 04 verifier)

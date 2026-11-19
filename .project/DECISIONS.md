@@ -1297,3 +1297,9 @@ in ARCHITECTURE.md or the plan.
 - What: The vendor script installs `hlab-sync.service` (After=cloud-final.service, runs sync once) and queues it with --no-block, replacing its own final `sync` (updates "Vendor script syncs before first boot ends").
 - Why: user_data runcmd and scripts run after scripts_vendor; only a flush after cloud-final makes their files survive a hard reset soon after first boot.
 - Cost of change: low
+
+## 2026-11-19 Backlog phase B1 before phase 05
+
+- Type: change
+- What: The seven open `bug` items of BACKLOG.md become phase B1, inserted before phase 05; the `later` item for phase 09 and the `minor` test item stay in the backlog.
+- Why: They cause stuck resources after a restart, wrong passwords and ignored user_data on normal paths, and a broken e2e build, which later phases would build on.

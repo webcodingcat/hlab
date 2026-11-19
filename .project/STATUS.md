@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 05 Private networks, primary IPs and floating IPs, port isolation
+- Phase: B1 Backlog: restart recovery, cloud-init and dev-loop bugs (then 05)
 - Base branch: main
 - Last done: phase 04 Images, backups, rescue, ISOs and volumes merged into main (2026-11-19): snapshots and backups (daily job), rescue on its own disk, ISO catalog and attach, volumes with format, automount and online resize
-- Next: /wcc:phase in a new session (phase 05)
+- Next: /wcc:phase in a new session (phase B1)
 
 ## Open manual checks
 
