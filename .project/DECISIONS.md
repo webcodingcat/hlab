@@ -1847,3 +1847,11 @@ in ARCHITECTURE.md or the plan.
 - What: `sort=created` on RRSets sorts by creation order in the zone document; `remove_records` and `update_records` refuse a value not in the RRSet on `records[<i>].value`; `add_records` with a `ttl` other than the RRSet's TTL is `invalid_input` on `ttl`; RRSet list and get on a secondary zone also answer `incorrect_zone_mode`.
 - Why: RRSets have no `created` field, and the OpenAPI text and the user's answer at the phase start set the rest.
 - Cost of change: low
+
+## 2026-11-19 Zone file import rules
+
+- Type: decision
+- Phase: phase 07
+- What: an import is refused with `protected` when any RRSet of the zone is change-protected; the imported SOA keeps its values except the serial, which hlab continues; a `$TTL` below 60 is a zone file error on its line; imported RRSets have no labels and no protection; `POST /zones` with both `zonefile` and `rrsets` is `invalid_input` on `zonefile`; create and import both run the shadow check.
+- Why: the simplest reading of D4, D5 and DNS-04.
+- Cost of change: low

@@ -236,14 +236,14 @@ type ShadowingZone struct {
   - [x] `GET .../rrsets` (filter name, type, label_selector; sort id, name, created), `GET`/`PUT` (labels, 200 without action)/`DELETE` of `.../rrsets/{rr_name}/{rr_type}`, `POST .../rrsets` (`create_rrset`; existing: 409 `uniqueness_error`), actions `change_protection` (`change_rrset_protection`), `change_ttl`, `set_records`, `add_records` (creates a missing RRSet), `remove_records` (removing the last record deletes the RRSet), `update_records` (comments only); every change through `CheckRRSet` and `CheckConflicts`, SOA serial through `NextSerial`, change protection answers `protected`, the apex SOA is read-only (D5), secondary zones answer `incorrect_zone_mode` (internal/resources/zones/rrsets.go)
   - [x] Rows of TESTS.md for 07-08 (internal/resources/zones/rrsets_test.go)
 
-- [ ] 07-09 Zones: zone file import and export
+- [x] 07-09 Zones: zone file import and export
   - Wave: 4 | Depends on: 07-02, 07-08 | Review: alone
   - Requirements: DNS-01 | Tests: internal/resources/zones/zonefile_test.go
   - Reads: RESEARCH R4; OpenAPI `zonefile`, `import_zonefile`, `POST /zones` (`zonefile`); decisions D7, D8 below
   - Size: ~180 lines in 3 files
   - Adjusts: the 07-07 row that expects `invalid_input` on `zonefile` at create (replaced by the 07-09 row)
-  - [ ] `GET /zones/{id_or_name}/zonefile` (`{"zonefile": FormatZonefile}`), action `import_zonefile` (replaces all RRSets; `$TTL` sets the zone TTL; a change-protected RRSet: `protected`), `POST /zones` with `zonefile` (with `rrsets` not empty: 422 `invalid_input` on `zonefile`); secondary: `incorrect_zone_mode` (internal/resources/zones/zonefile.go, internal/resources/zones/zones.go)
-  - [ ] Rows of TESTS.md for 07-09 (internal/resources/zones/zonefile_test.go)
+  - [x] `GET /zones/{id_or_name}/zonefile` (`{"zonefile": FormatZonefile}`), action `import_zonefile` (replaces all RRSets; `$TTL` sets the zone TTL; a change-protected RRSet: `protected`), `POST /zones` with `zonefile` (with `rrsets` not empty: 422 `invalid_input` on `zonefile`); secondary: `incorrect_zone_mode` (internal/resources/zones/zonefile.go, internal/resources/zones/zones.go)
+  - [x] Rows of TESTS.md for 07-09 (internal/resources/zones/zonefile_test.go)
 
 - [x] 07-10 Shadowing zones in the status
   - Wave: 3 | Depends on: 07-07 | Review: alone
