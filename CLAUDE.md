@@ -1,6 +1,6 @@
 # Project rules (wcc)
 
-wcc version: 0.32.3
+wcc version: 0.32.4
 
 These rules come from the wcc plugin; `/wcc:upgrade` updates them.
 
@@ -37,7 +37,9 @@ conversation, ask when something is unclear.
   input, extending an interface without breaking it); changing and
   replacing is not (renaming or removing in an interface, swapping a part
   of the stack, adding or dropping a component). When in doubt, it is not
-  allowed.
+  allowed. Removing what the plan's own change left without any caller in
+  product and tests is cleanup, also in an internal interface; a public
+  interface (API, file format, command line, configuration) keeps it.
 - Never build a way into the product or the tests for debugging (a debug
   endpoint, port, account, key, shell access, hidden command or encoded
   payload), and never work around a protection the project builds.

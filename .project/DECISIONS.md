@@ -1447,3 +1447,11 @@ in ARCHITECTURE.md or the plan.
 - What: If the MetricsAll call fails the tick stores nothing and logs a warning (not when the context was cancelled); with no running servers no platform call is made.
 - Why: One failed read must not write zero samples for all servers.
 - Cost of change: low
+
+## 2026-11-19 Upgrade to wcc 0.32.4
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.32.3 to 0.32.4: CLAUDE.md rule on removing code the plan's own change left without callers
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
