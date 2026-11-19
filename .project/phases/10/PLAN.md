@@ -171,13 +171,13 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - Size: ~120 lines in 4 files
   - [x] One helper (internal/resources/servers/servers.go or a new types.go) that returns the catalog type or, when missing, cores, memory and disk from the server's stored `server_type`; power.go, rebuild.go and reconcile.go use it; create and change_type keep requiring the catalog.
 
-- [ ] 10-03 Shared management client and status file
+- [x] 10-03 Shared management client and status file
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-01 | Tests: - (behaviour unchanged; internal/cli/cli_test.go keeps passing)
   - Reads: ARCHITECTURE "hlab (management command)", "Management API (named pipe)"; internal/cli/cli.go `mgmt`, `send`, `readStatusFile`
   - Size: ~250 lines in 5 files
-  - [ ] New internal/mgmtclient (`Client`, `Do`, `Stream`, `ErrNotRunning`) and internal/cloudstatus (`File`, `Problem`, `Read`) from the code in internal/cli/cli.go.
-  - [ ] internal/cli/cli.go and cmd/hlab/main.go use them; no output change.
+  - [x] New internal/mgmtclient (`Client`, `Do`, `Stream`, `ErrNotRunning`) and internal/cloudstatus (`File`, `Problem`, `Read`) from the code in internal/cli/cli.go.
+  - [x] internal/cli/cli.go and cmd/hlab/main.go use them; no output change.
 
 - [ ] 10-04 Settings: field errors, in-place write, exported ACL copy
   - Wave: 1 | Depends on: - | Review: alone
