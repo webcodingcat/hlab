@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 // MinOwnID is the smallest ID of an own server type.
@@ -75,18 +76,7 @@ func (c *Catalog) OwnTypesWarning() string {
 
 // readOwn reads the own server types of file; a missing file has none.
 func readOwn(file string) ([]ServerType, error) {
-	data, err := os.ReadFile(file)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var raw []json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil, err
-	}
-	own, err := serverTypes(raw)
+	_, own, err := readOwnRaw(file)
 	if err != nil {
 		return nil, err
 	}
@@ -167,4 +157,178 @@ func zeroPrices(locs []ServerTypeLocation) json.RawMessage {
 	}
 	b, _ := json.Marshal(prices)
 	return b
+}
+
+// OwnSpec describes an own server type to add.
+type OwnSpec struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	CPUType     string   `json:"cpu_type"` // "shared" or "dedicated"
+	Cores       int      `json:"cores"`
+	Memory      float64  `json:"memory"`    // GB
+	Disk        int      `json:"disk"`      // GB
+	Locations   []string `json:"locations"` // location names; empty means all
+}
+
+// FieldError is an invalid field of an OwnSpec.
+type FieldError struct {
+	Field   string // "name", "cores", "memory", "disk", "cpu_type", "locations"
+	Message string
+}
+
+func (e *FieldError) Error() string { return e.Field + ": " + e.Message }
+
+// Own returns the own server types served now.
+func (c *Catalog) Own() []ServerType {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return append([]ServerType(nil), c.own...)
+}
+
+// ReloadOwn re-reads customFile. Invalid or colliding own types are dropped
+// and OwnTypesWarning reports why; a valid file clears the warning.
+func (c *Catalog) ReloadOwn(customFile string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	types := c.serverTypes[:len(c.serverTypes)-len(c.own)]
+	own, err := readOwn(customFile)
+	if err == nil {
+		err = conflicts(types, own)
+	}
+	if err != nil {
+		slog.Warn("own server types are ignored", "file", customFile, "err", err)
+		own = nil
+		c.ownWarning = fmt.Sprintf("own server types in %s are ignored: %v", customFile, err)
+	} else {
+		c.ownWarning = ""
+	}
+	c.own = own
+	c.serverTypes = append(append([]ServerType(nil), types...), own...)
+}
+
+// AddOwn checks s against c and the own types of customFile, builds the
+// Hetzner server_type object (next free ID from MinOwnID, x86, local
+// storage, zero prices, the given locations or all) and rewrites
+// customFile in place in one write.
+func AddOwn(c *Catalog, customFile string, s OwnSpec) (ServerType, error) {
+	raw, own, err := readOwnRaw(customFile)
+	if err != nil {
+		return ServerType{}, fmt.Errorf("read %s: %w", customFile, err)
+	}
+	served := c.Types()
+	taken := func(match func(ServerType) bool) bool {
+		return slices.ContainsFunc(served, match) || slices.ContainsFunc(own, match)
+	}
+	switch {
+	case s.Name == "":
+		return ServerType{}, &FieldError{"name", "is required"}
+	case taken(func(st ServerType) bool { return st.Name == s.Name }):
+		return ServerType{}, &FieldError{"name", fmt.Sprintf("server type %q exists", s.Name)}
+	case s.CPUType != "shared" && s.CPUType != "dedicated":
+		return ServerType{}, &FieldError{"cpu_type", `must be "shared" or "dedicated"`}
+	case s.Cores < 1:
+		return ServerType{}, &FieldError{"cores", "must be at least 1"}
+	case s.Memory <= 0:
+		return ServerType{}, &FieldError{"memory", "must be more than 0"}
+	case s.Disk < 1:
+		return ServerType{}, &FieldError{"disk", "must be at least 1"}
+	}
+
+	locs := []map[string]any{}
+	var stLocs []ServerTypeLocation
+	add := func(l Location) {
+		locs = append(locs, map[string]any{"id": l.ID, "name": l.Name, "available": true, "recommended": false, "deprecation": nil})
+		stLocs = append(stLocs, ServerTypeLocation{ID: l.ID, Name: l.Name, Available: true})
+	}
+	if len(s.Locations) == 0 {
+		for _, l := range c.Locations {
+			add(l)
+		}
+	}
+	for _, name := range s.Locations {
+		l, ok := c.Location(name)
+		if !ok {
+			return ServerType{}, &FieldError{"locations", fmt.Sprintf("unknown location %q", name)}
+		}
+		add(l)
+	}
+
+	id := int64(MinOwnID)
+	for taken(func(st ServerType) bool { return st.ID == id }) {
+		id++
+	}
+	obj, err := json.Marshal(map[string]any{
+		"id":           id,
+		"name":         s.Name,
+		"description":  s.Description,
+		"architecture": "x86",
+		"cores":        s.Cores,
+		"cpu_type":     s.CPUType,
+		"category":     "regular_purpose",
+		"memory":       s.Memory,
+		"disk":         s.Disk,
+		"storage_type": "local",
+		"deprecation":  nil,
+		"prices":       zeroPrices(stLocs),
+		"locations":    locs,
+	})
+	if err != nil {
+		return ServerType{}, err
+	}
+	sts, err := serverTypes([]json.RawMessage{obj})
+	if err != nil {
+		return ServerType{}, err
+	}
+	if err := writeOwn(customFile, append(raw, obj)); err != nil {
+		return ServerType{}, err
+	}
+	return sts[0], nil
+}
+
+// RemoveOwn removes the own type name from customFile in place; the error
+// wraps fs.ErrNotExist when the file has no such type.
+func RemoveOwn(customFile, name string) error {
+	raw, own, err := readOwnRaw(customFile)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", customFile, err)
+	}
+	i := slices.IndexFunc(own, func(st ServerType) bool { return st.Name == name })
+	if i < 0 {
+		return fmt.Errorf("own server type %q: %w", name, fs.ErrNotExist)
+	}
+	return writeOwn(customFile, slices.Delete(raw, i, i+1))
+}
+
+// readOwnRaw reads the objects of customFile and their decoded types; a
+// missing file has none.
+func readOwnRaw(file string) ([]json.RawMessage, []ServerType, error) {
+	data, err := os.ReadFile(file)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	var raw []json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, nil, err
+	}
+	own, err := serverTypes(raw)
+	if err != nil {
+		return nil, nil, err
+	}
+	return raw, own, nil
+}
+
+// writeOwn writes raw as the JSON array of customFile in place in one
+// write, which keeps the file's ACL.
+func writeOwn(file string, raw []json.RawMessage) error {
+	if raw == nil {
+		raw = []json.RawMessage{}
+	}
+	data, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(file, append(data, '\n'), 0o644)
 }
