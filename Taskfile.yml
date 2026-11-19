@@ -61,6 +61,13 @@ tasks:
     cmds:
       - go test {{.CLI_ARGS | default "./..."}}
 
+  test:frontend:
+    desc: Run the frontend unit tests (Playwright Test without a browser)
+    dir: ui/frontend
+    deps: [frontend:install]
+    cmds:
+      - npm run test:unit
+
   openapi:
     desc: Download the pinned Hetzner OpenAPI description into the user cache folder
     cmds:

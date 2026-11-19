@@ -8,7 +8,8 @@
 
 # Frontend
 node_modules/
-ui/frontend/dist/
+ui/frontend/dist/*
+!ui/frontend/dist/embed-placeholder.txt
 test-results/
 playwright-report/
 
