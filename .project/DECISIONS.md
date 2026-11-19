@@ -2175,3 +2175,11 @@ in ARCHITECTURE.md or the plan.
 - What: remove_target of an unknown target is 404 `not_found`; while the public interface is off every target without `use_private_ip` (IP targets included) is 422 `load_balancer_public_interface_disabled`; label selectors match the project's servers in the LB's network zone that are not being deleted, each server once; `use_private_ip` on an LB without a network is `resolve_cloud_private_targets_error`.
 - Why: Terraform treats not found on remove as harmless; one rule with disable_public_interface.
 - Cost of change: low
+
+## 2026-11-19 Load balancer agent document details
+
+- Type: decision
+- Phase: phase 08
+- What: a certificate that is not issued yet is left out of the service's TLS, a missing certificate fails the push; the PTR of an LB's IPv4 is pushed while its public interface is off; reverse DNS display keeps the view code of 08-13.
+- Why: D12; the address stays assigned; project deletion removes LBs through their Deleter before the store drops certificates, so a missing certificate is a bug.
+- Cost of change: low

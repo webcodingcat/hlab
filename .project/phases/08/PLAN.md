@@ -462,26 +462,27 @@ type Deps struct {
   - [x] `change_dns_ptr` through `rdns.Change` on the LB's IPv4 /32 and IPv6 /64 entries (`servers.DecodeDNSPtr`); `public_net.ipv4.dns_ptr` and `ipv6.dns_ptr` through `rdns.Show`; push (internal/resources/loadbalancers/dnsptr.go)
   - [x] Rows of TESTS.md for 08-18 (internal/resources/loadbalancers/dnsptr_test.go)
 
-- [ ] 08-19 Load balancers: agent document
+- [x] 08-19 Load balancers: agent document
   - Wave: 4 | Depends on: 08-14, 08-15, 08-16, 08-18 | Review: alone
   - Requirements: LB-06, LB-09 | Tests: internal/resources/loadbalancers/contribute_test.go
   - Reads: ARCHITECTURE "hlab-agent" (`LoadBalancer` types); this file "Interfaces"
   - Size: ~200 lines in 2 files
   - Adjusts: -
-  - [ ] `Contribute` (NetContributor) builds one `agentapi.LoadBalancer` per LB:
+  - [x] `Contribute` (NetContributor) builds one `agentapi.LoadBalancer` per LB:
     - `PublicIPv4`, invalid while the interface is off
     - `Private` with the network's VLAN and IP; `Algorithm`; `MaxConn` from the type
     - services with health check and certificate PEMs and keys through `KeyPair`; a managed certificate not yet issued leaves the service out of TLS
     - targets from `resolve`, with `ViaNetworkID` set for private ones
     - `PTR` entries through `rdns.PTR` for the IPv4
     - (internal/resources/loadbalancers/contribute.go)
-  - [ ] Rows of TESTS.md for 08-19 (internal/resources/loadbalancers/contribute_test.go)
+  - [x] Rows of TESTS.md for 08-19 (internal/resources/loadbalancers/contribute_test.go)
 
 - [ ] 08-20 Cloud wiring
   - Wave: 5 | Depends on: 08-05, 08-06, 08-09, 08-10, 08-11, 08-12, 08-17, 08-19 | Review: alone
   - Requirements: LB-01, CERT-04, CERT-05 | Tests: internal/resources/conventions_test.go
   - Reads: ARCHITECTURE "Cloud start and stop", "ca", "Management API"; DECISIONS Q9, Q12; internal/cloud/cloud.go; decision D6 below
   - Size: ~300 lines in 5 files
+  - Note: wire `certificates.Deps.UsedBy` to `lb.UsedBy`; without it a used certificate can be deleted and every later agent push fails (08-19 finding)
   - Adjusts: -
   - [ ] At start, before the modules:
     - `ca.Open(Paths.CA, "<tag> CA")` and `RenewCRL`
