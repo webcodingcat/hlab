@@ -226,12 +226,12 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - Size: ~300 lines in 2 files
   - [x] internal/bridge/cloud.go: `Cloud` poller (SCM state every interval, `/status` while running, `cloudstatus.Read` while stopped; `ConnectionLost` after three failed polls while running, cleared by the next answer), `Start(discard)` (`discard-state` parameter), `Stop`, `OnChange` on every change, `Tray(State) TrayModel`.
 
-- [ ] 10-10 Bridge: log stream
+- [x] 10-10 Bridge: log stream
   - Wave: 2 | Depends on: 10-03 | Review: alone
   - Requirements: UI-06 | Tests: internal/bridge/logs_test.go
   - Reads: ARCHITECTURE "Management API" (`GET /logs`); DECISIONS "Tray connection banner and log stream reconnect", "Small phase 09 implementation choices"; RESEARCH topic 3 (batched events)
   - Size: ~250 lines in 2 files
-  - [ ] internal/bridge/logs.go: `Logs.Follow(on)`: while running `Stream("/logs?follow=1")`, while stopped `logfile.Tail` on `LogDir`; batches lines per `Batch`; a broken stream reconnects every `Interval` and continues after the last emitted line (matched in the replayed 1000) without duplicates; switches to the files at stop and back to the stream at start.
+  - [x] internal/bridge/logs.go: `Logs.Follow(on)`: while running `Stream("/logs?follow=1")`, while stopped `logfile.Tail` on `LogDir`; batches lines per `Batch`; a broken stream reconnects every `Interval` and continues after the last emitted line (matched in the replayed 1000) without duplicates; switches to the files at stop and back to the stream at start.
 
 - [ ] 10-11 Frontend shell
   - Wave: 2 | Depends on: 10-05, 10-06 | Review: alone
