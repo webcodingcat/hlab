@@ -290,12 +290,12 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - Size: ~300 lines in 2 files
   - [x] src/views/ServerTypes.svelte: table (name, cores, memory, disk, CPU type, locations, source), problem banner, add own type form (errors under fields), remove with confirm, "Update from Hetzner" password field (only while running; cleared after success and failure; result or Hetzner's message as toast).
 
-- [ ] 10-18 Logs view
+- [x] 10-18 Logs view
   - Wave: 5 | Depends on: 10-10, 10-11, 10-12, 10-14 | Review: alone
   - Requirements: UI-06 | Tests: ui/frontend/tests/e2e/logs.spec.ts
   - Reads: UI-SPEC "Views" (Logs); ARCHITECTURE "Files and formats" (hlabd.log)
   - Size: ~200 lines in 2 files
-  - [ ] src/views/Logs.svelte: monospace list of parsed JSON lines (time, level, msg, fields), at most 5000 kept, level filter, follow toggle (`Logs.Follow`, scroll to the end), `logs` events.
+  - [x] src/views/Logs.svelte: monospace list of parsed JSON lines (time, level, msg, fields), at most 5000 kept, level filter, follow toggle (`Logs.Follow`, scroll to the end), `logs` events.
 
 - [ ] 10-19 Documentation
   - Wave: 6 | Depends on: 10-15, 10-16, 10-17, 10-18 | Review: alone
