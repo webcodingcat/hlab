@@ -453,11 +453,16 @@ Inside `hlabd` (Go packages under `internal/`):
 
 - Purpose: tray icon and console window like Docker Desktop.
 - Interface: Wails v3 application. Go side: `tray` (icon, menu, start/stop
-  through SCM), `bridge` (Wails-bound service with one method
-  `Call(method, path string, body []byte) (status int, body []byte)` that
-  forwards to the management API, plus `Settings()`/`SaveSettings()` for
-  the file while the cloud is stopped). Frontend: Svelte SPA in
-  `ui/frontend`, which uses only the bridge; the Hetzner resources are
+  through SCM), `bridge` (package without a Wails import, bound as three
+  Wails services: `bridge.Service` with
+  `Call(method, path, body string) (Response{status, body}, error)` that
+  forwards to the management API, `Settings()`/`SaveSettings()` for the
+  file and the own server types; `bridge.Cloud` with status, start and
+  stop; `bridge.Logs` with the log stream, sent as one `logs` event per
+  100 ms batch). Frontend: Svelte SPA in `ui/frontend`, embedded by package
+  `ui` (`ui/embed.go`), calling the bridge through `Call.ByName` of
+  `@wailsio/runtime`, with views switched by `location.hash`; it uses only
+  the bridge; the Hetzner resources are
   managed through the management API's project proxy
   (`/mgmt/v1/projects/{name}/api/v1/...`), so the UI exercises the same
   handlers as the clients. Views per UI-SPEC.md.

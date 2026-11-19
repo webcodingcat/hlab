@@ -65,7 +65,8 @@ everywhere.
   field (error colour), Hetzner's field error messages from `details.fields`
   shown under the matching field; submit button at the bottom right.
 - Confirm dialog: for every delete and every destructive action; the
-  resource name must be typed for servers, volumes, networks and zones.
+  resource name must be typed for projects, servers, volumes, networks and
+  zones.
 - Action toast: bottom right, shows a running action with progress and its
   result; errors stay until closed.
 - Copy field: monospace value with a copy button (IPs, tokens, CA).
@@ -80,8 +81,9 @@ everywhere.
   ISOs), then a separator and the app sections (Projects, Server Types,
   Settings, Logs). Top bar: cloud status pill and Start/Stop button.
 - Cloud stopped: resource sections are disabled with the text "Start the
-  cloud to manage resources"; Settings, Server Types (own types only) and
-  Logs (last file contents) stay available.
+  cloud to manage resources"; Settings, Server Types (catalog and own
+  types, as hlabd would merge them) and Logs (last file contents) stay
+  available.
 - Resource list per type: resource table.
 - Create per type: one form page following the Hetzner Console's order
   (servers: location, image, type, networking, SSH keys, volumes,

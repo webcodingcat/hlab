@@ -2312,3 +2312,91 @@ in ARCHITECTURE.md or the plan.
 - What: `logfile.Tail` follows by polling with a test-shortenable interval and never splits a rotated line; the 60 s halt wait is `servers.Deps.HaltTimeout`; the `range_collision` logic moves into exported `RangeCollisions` in hostnet/windows; e2e LIFE rows share one stop/start cycle per stop behaviour; at a Windows shutdown the jobs are cancelled first and `Halt` changes no VM or status.
 - Why: each keeps the behaviour testable at the cheapest level without new components.
 - Cost of change: low
+
+## 2026-11-19 Server Types view shows the catalog while the cloud is stopped
+
+- Type: decision
+- Phase: phase 10
+- What: the Server Types view lists catalog and own types, merged and checked by the same Go package hlabd uses, also while the cloud is stopped; UI-SPEC.md changed from "own types only".
+- Why: the view must match what clients see, and the merge needs no running service.
+- Cost of change: low
+
+## 2026-11-19 Deleting a project needs its name typed
+
+- Type: decision
+- Phase: phase 10
+- What: the confirm dialog for deleting a project requires typing the project name, like servers, volumes, networks and zones; UI-SPEC.md lists projects there.
+- Why: deleting a project deletes all its resources.
+- Cost of change: low
+
+## 2026-11-19 Existing servers outlive a removed own server type
+
+- Type: decision
+- Phase: phase 10
+- What: power on, rebuild and the reconcile at cloud start take cores, memory and disk from the server's stored `server_type` copy when the type is no longer in the catalog; create and change_type still need the catalog.
+- Why: an own type may be removed while servers use it, as Hetzner keeps deprecated types valid for existing servers.
+- Cost of change: low
+
+## 2026-11-19 Tray writes server-types.custom.json directly
+
+- Type: decision
+- Phase: phase 10
+- What: hlabd creates `server-types.custom.json` (`[]`) at start when missing, with the settings.toml ACL (Interactive Users modify); the tray validates with the hlabd package, writes it directly and calls `POST /mgmt/v1/settings/reload` while the cloud runs.
+- Why: keeps ARCHITECTURE's "writer: tray" and works with the cloud stopped, without broader folder rights.
+- Cost of change: medium
+
+## 2026-11-19 Tray settings writes
+
+- Type: decision
+- Phase: phase 10
+- What: the tray validates settings with the `settings` package and writes settings.toml in one write in place; before saving it rereads the file and keeps `trust_ca` from the file, which `PUT /trust` owns.
+- Why: Interactive Users cannot create files in the config folder, and the form must not overwrite the trust switch.
+- Cost of change: low
+
+## 2026-11-19 Tray quit and tray state in e2e
+
+- Type: decision
+- Phase: phase 10
+- What: "Quit" ends only the tray, without a question; the e2e build (tag `e2e`) exposes the tray state (icon key, tooltip, menu items with enabled state) through a bridge method, and UI-01 drives start/stop through the menu handlers of the same controller.
+- Why: the cloud is a Windows service; Playwright cannot reach the notification area, the real icon is judged in UI-08, and no debug access exists in release builds.
+- Cost of change: low
+
+## 2026-11-19 Tray connection banner and log stream reconnect
+
+- Type: decision
+- Phase: phase 10
+- What: "connection to the service lost" shows only after three failed `/mgmt/v1/status` polls (about 6 s) while the SCM reports running and clears by itself; a broken log follow reconnects at the poll interval and continues after the last shown line, switching to the files while the cloud is stopped.
+- Why: single hiccups must not alarm, and the log view must not duplicate or lose lines.
+- Cost of change: low
+
+## 2026-11-19 Tray build and bridge shape
+
+- Type: decision
+- Phase: phase 10
+- What: package `ui` embeds `frontend/dist` with a committed placeholder file so Go builds without a frontend build; the bridge is three Wails services without a Wails import, `Call` takes and returns strings in a `Response` struct, the frontend uses `Call.ByName` without generated bindings, views switch by `location.hash`, log lines go out in 100 ms batches.
+- Why: Wails sends `[]byte` as base64 and tuples as arrays, has no history routing and blocks on each event; fast bridge tests need no Wails (phase 10 research).
+- Cost of change: low
+
+## 2026-11-19 Tray settings reload and log followers
+
+- Type: decision
+- Phase: phase 10
+- What: `POST /mgmt/v1/settings/reload` applies `logging.level` and the own server types; stop_behaviour is re-read at stop, public_range, data_folder and the reserves apply at the next start and the form says so; log followers end through `mgmt.Deps.Done`, closed before the management server shuts down.
+- Why: the reserves go to the servers module only at start; followers must not delay a stop.
+- Cost of change: low
+
+## 2026-11-19 Tray tests
+
+- Type: decision
+- Phase: phase 10
+- What: frontend unit tests run with Playwright Test without a browser through `task test:frontend`, the help module loaded through Vite `runnerImport`; the e2e tray has its own single-instance UniqueID and a `TrayTest` service under tag `e2e`; UI e2e rows share one tray process and run `npx playwright test --grep <ID>` after the LIFE rows; the Hetzner token check of CAT-03 becomes a shared helper; settings structs get json tags equal to their toml keys.
+- Why: `@playwright/experimental-ct-svelte` no longer exists, and a test tray must not collide with the user's.
+- Cost of change: low
+
+## 2026-11-19 Wails raises an indirect module
+
+- Type: decision
+- Phase: phase 10
+- What: adding Wails v3.1.0 raises the indirect `klauspost/compress` from v1.18.5 to v1.18.7.
+- Why: required by Wails; no pinned module of SPEC.md changes.
+- Cost of change: low
