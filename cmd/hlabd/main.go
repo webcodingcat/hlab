@@ -91,7 +91,7 @@ func service() int {
 
 	c := cloud.New(cloud.Deps{Paths: paths, Level: level})
 	err = windows.NewServiceHost().Run(
-		func(ctx context.Context, _ []string) error { return c.Start(ctx) },
+		func(ctx context.Context, params []string) error { return c.Start(ctx, params) },
 		func(ctx context.Context, reason sysint.StopReason) error { return c.Stop(ctx, reason) },
 	)
 	if err != nil {

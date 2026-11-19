@@ -59,16 +59,8 @@ import (
 	"github.com/webcodingcat/hlab/internal/store"
 	"github.com/webcodingcat/hlab/internal/sysint"
 	syswin "github.com/webcodingcat/hlab/internal/sysint/windows"
+	"github.com/webcodingcat/hlab/internal/transit"
 	"github.com/webcodingcat/hlab/internal/version"
-)
-
-// Transit network between host and appliance (ARCHITECTURE.md "Network").
-var (
-	hostAddr      = netip.MustParsePrefix("198.19.0.2/30")
-	applianceAddr = netip.MustParseAddr("198.19.0.1")
-	apiListen     = netip.MustParseAddrPort("198.19.0.2:8780")
-	apiProxy      = netip.MustParseAddrPort("198.19.0.1:80")
-	agentAddr     = "198.19.0.1:9100"
 )
 
 // The public segment's private VLAN (DECISIONS.md "Guest-visible identifiers").
@@ -107,6 +99,7 @@ type Cloud struct {
 	tag string
 
 	set      settings.Settings
+	addrs    transit.Addrs // transit addresses of set's public range
 	net      *hnwin.HostNet
 	netCfg   hostnet.Config
 	problems []hostnet.Problem // non-fatal problems of Check
@@ -128,6 +121,9 @@ type Cloud struct {
 	jobMu sync.Mutex
 
 	applianceOn bool
+	// restored is set once Lifecycle.Restore ran; only then does the stop
+	// halt the servers and record which ran.
+	restored bool
 	apiSrv      *http.Server
 	mgmtSrv     *http.Server
 	// stopJobs cancels the scheduled jobs and waits until they returned.
@@ -162,11 +158,12 @@ type refusal struct{ p hostnet.Problem }
 
 func (r *refusal) Error() string { return "refused: " + r.p.Code + ": " + r.p.Message }
 
-// Start brings the cloud up. On failure it undoes what it did, writes the
-// status file and returns the error.
-func (c *Cloud) Start(ctx context.Context) error {
+// Start brings the cloud up with the service's start parameters (see
+// discard.Param). On failure it undoes what it did, writes the status file
+// and returns the error.
+func (c *Cloud) Start(ctx context.Context, params []string) error {
 	c.writeStatus(status{State: "starting"})
-	err := c.start(ctx)
+	err := c.start(ctx, params)
 	if err == nil {
 		c.writeStatus(status{State: sysint.StateRunning})
 		slog.Info("cloud running")
@@ -176,6 +173,9 @@ func (c *Cloud) Start(ctx context.Context) error {
 	if errors.As(err, &r) {
 		slog.Error("cloud start refused", "code", r.p.Code, "message", r.p.Message)
 		c.writeStatus(status{State: "refused", Problem: &problem{Code: r.p.Code, Message: r.p.Message, Fatal: r.p.Fatal}})
+		if terr := c.teardown(context.WithoutCancel(ctx), sysint.StopRequested); terr != nil {
+			slog.Error("cleanup after the refused start", "err", terr)
+		}
 		return err
 	}
 	slog.Error("cloud start failed", "err", err)
@@ -186,12 +186,13 @@ func (c *Cloud) Start(ctx context.Context) error {
 	return err
 }
 
-func (c *Cloud) start(ctx context.Context) error {
+func (c *Cloud) start(ctx context.Context, params []string) error {
 	set, err := settings.Load(filepath.Join(c.d.Paths.Config, "settings.toml"))
 	if err != nil {
 		return err
 	}
 	c.set = set
+	c.addrs = transit.For(set.Network.PublicRange)
 	var l slog.Level
 	if err := l.UnmarshalText([]byte(set.Logging.Level)); err == nil {
 		c.d.Level.Set(l)
@@ -203,8 +204,8 @@ func (c *Cloud) start(ctx context.Context) error {
 	base = append(base, agentapi.ReverseZones(set.Network.PublicRange)...)
 	c.netCfg = hostnet.Config{
 		PublicRange:   set.Network.PublicRange,
-		HostAddr:      hostAddr,
-		ApplianceAddr: applianceAddr,
+		HostAddr:      c.addrs.Host,
+		ApplianceAddr: c.addrs.Appliance,
 		SwitchName:    c.tag,
 		BaseZones:     base,
 	}
@@ -221,7 +222,10 @@ func (c *Cloud) start(ctx context.Context) error {
 	if err := os.MkdirAll(set.Storage.DataFolder, 0o750); err != nil {
 		return err
 	}
-	if c.st, err = store.Open(filepath.Join(c.d.Paths.State, "state.db")); err != nil {
+	if c.plat, err = hyperv.New(hyperv.Options{DataDir: set.Storage.DataFolder, SwitchName: c.tag}); err != nil {
+		return err
+	}
+	if err := c.openState(ctx, params); err != nil {
 		return err
 	}
 	var catWarns []string
@@ -233,9 +237,6 @@ func (c *Cloud) start(ctx context.Context) error {
 	for _, w := range catWarns {
 		slog.Warn("catalog problem", "message", w)
 		c.problems = append(c.problems, hostnet.Problem{Code: problemCustomServerTypes, Message: w})
-	}
-	if c.plat, err = hyperv.New(hyperv.Options{DataDir: set.Storage.DataFolder, SwitchName: c.tag}); err != nil {
-		return err
 	}
 	conv, ok := c.plat.(interface {
 		ConvertToDynamic(ctx context.Context, src, dst string) error
@@ -289,7 +290,7 @@ func (c *Cloud) start(ctx context.Context) error {
 		return err
 	}
 
-	c.agent = agentclient.New(agentclient.Options{Addr: agentAddr, Secret: secret, Store: c.st})
+	c.agent = agentclient.New(agentclient.Options{Addr: c.addrs.Agent.String(), Secret: secret, Store: c.st})
 	readyCtx, cancel := context.WithTimeout(ctx, agentReadyTimeout)
 	err = c.agent.WaitReady(readyCtx)
 	cancel()
@@ -299,6 +300,7 @@ func (c *Cloud) start(ctx context.Context) error {
 	if err := c.PushAgent(ctx); err != nil {
 		return err
 	}
+	c.restore(ctx)
 
 	if err := c.serveManagement(router); err != nil {
 		return err
@@ -483,7 +485,7 @@ func (c *Cloud) PushAgent(ctx context.Context) error {
 	defer c.pushMu.Unlock()
 	doc := agentapi.Config{
 		PublicRange: c.set.Network.PublicRange,
-		API:         agentapi.APIProxy{Listen: apiProxy, Backend: apiListen},
+		API:         agentapi.APIProxy{Listen: c.addrs.APIProxy, Backend: c.addrs.APIListen},
 	}
 	doc.Upstream = c.hostDNS(ctx)
 	err := c.st.Tx(func(tx store.Tx) error {
@@ -515,12 +517,12 @@ func (c *Cloud) serveAPI(ctx context.Context, h http.Handler) error {
 	defer t.Stop()
 	for {
 		var err error
-		ln, err = net.Listen("tcp4", apiListen.String())
+		ln, err = net.Listen("tcp4", c.addrs.APIListen.String())
 		if err == nil {
 			break
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("listen on %s: %w", apiListen, err)
+			return fmt.Errorf("listen on %s: %w", c.addrs.APIListen, err)
 		}
 		select {
 		case <-ctx.Done():
@@ -530,7 +532,7 @@ func (c *Cloud) serveAPI(ctx context.Context, h http.Handler) error {
 	}
 	c.apiSrv = &http.Server{Handler: h, ReadHeaderTimeout: 30 * time.Second}
 	go serve(c.apiSrv, ln, "api")
-	slog.Info("API listening", "addr", apiListen.String())
+	slog.Info("API listening", "addr", c.addrs.APIListen.String())
 	return nil
 }
 
@@ -620,6 +622,13 @@ func (c *Cloud) teardown(ctx context.Context, reason sysint.StopReason) error {
 		cancel()
 	}
 	c.mgmtSrv, c.apiSrv = nil, nil
+
+	if c.restored {
+		if err := c.halt(ctx, reason == sysint.StopHostShutdown); err != nil {
+			errs = append(errs, err)
+		}
+		c.restored = false
+	}
 
 	if c.applianceOn && reason != sysint.StopHostShutdown {
 		if err := c.stopAppliance(ctx); err != nil {
