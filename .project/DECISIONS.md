@@ -1831,3 +1831,11 @@ in ARCHITECTURE.md or the plan.
 - What: `rrsets` errors on zone create name `rrsets[<i>].<field>`; a given SOA set is refused, a given apex NS set replaces the default; a secondary zone needs `primary_nameservers`; every zone action publishes (agent push, then `SetZones`) under one module lock, `change_ttl` raises the SOA serial; `GET /zones/actions/{id}` is served through the `/zones/{id}/{sub}` route because `http.ServeMux` refuses both patterns side by side.
 - Why: concurrent zone actions must never leave a zone without its NRPT rule (DNS-03).
 - Cost of change: low
+
+## 2026-11-19 Public lookup for shadowing zones
+
+- Type: decision
+- Phase: phase 07
+- What: `PublicLookup` treats SERVFAIL or REFUSED as no answer and tries the next server; a later `Check` or `Forget` discards the result of an older lookup still running; `hlab cloud status` prints `warning: zone <zone> (project <project>) shadows a public domain`.
+- Why: the simplest reading of "error when no server answers" and "a later call replaces the result".
+- Cost of change: low

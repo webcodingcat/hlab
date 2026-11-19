@@ -245,15 +245,15 @@ type ShadowingZone struct {
   - [ ] `GET /zones/{id_or_name}/zonefile` (`{"zonefile": FormatZonefile}`), action `import_zonefile` (replaces all RRSets; `$TTL` sets the zone TTL; a change-protected RRSet: `protected`), `POST /zones` with `zonefile` (with `rrsets` not empty: 422 `invalid_input` on `zonefile`); secondary: `incorrect_zone_mode` (internal/resources/zones/zonefile.go, internal/resources/zones/zones.go)
   - [ ] Rows of TESTS.md for 07-09 (internal/resources/zones/zonefile_test.go)
 
-- [ ] 07-10 Shadowing zones in the status
+- [x] 07-10 Shadowing zones in the status
   - Wave: 3 | Depends on: 07-07 | Review: alone
   - Requirements: DNS-04 | Tests: internal/resources/zones/shadow_test.go
   - Reads: REQUIREMENTS DNS-04; ARCHITECTURE "Management API" (`/status`); CONTEXT (DNS-04 line, user changes, Q8); internal/mgmt/mgmt.go, internal/cli/cli.go (`cloudStatus`)
   - Size: ~250 lines in 4 files
   - Adjusts: -
-  - [ ] `Shadow` (`NewShadow`, `Check` runs the lookup in a goroutine with the lookup's own timeouts, `Forget`, `List`), `PublicLookup` (miekg client, UDP, 2 s per server) (internal/resources/zones/shadow.go)
-  - [ ] `mgmt.Status.ShadowingZones`, `ShadowingZone`; `hlab cloud status` prints `warning: zone <zone> (project <project>) shadows a public domain` per entry (internal/mgmt/mgmt.go, internal/cli/cli.go)
-  - [ ] Rows of TESTS.md for 07-10 (internal/resources/zones/shadow_test.go)
+  - [x] `Shadow` (`NewShadow`, `Check` runs the lookup in a goroutine with the lookup's own timeouts, `Forget`, `List`), `PublicLookup` (miekg client, UDP, 2 s per server) (internal/resources/zones/shadow.go)
+  - [x] `mgmt.Status.ShadowingZones`, `ShadowingZone`; `hlab cloud status` prints `warning: zone <zone> (project <project>) shadows a public domain` per entry (internal/mgmt/mgmt.go, internal/cli/cli.go)
+  - [x] Rows of TESTS.md for 07-10 (internal/resources/zones/shadow_test.go)
 
 - [ ] 07-11 Cloud wiring and end-to-end
   - Wave: 5 | Depends on: 07-04, 07-05, 07-06, 07-09, 07-10 | Review: alone
