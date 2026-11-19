@@ -23,6 +23,46 @@
         "https://snapshot.debian.org/archive/debian/20250402T024758Z/pool/main/libi/libinih/libinih1_59-1_amd64.deb"
       ],
       "sha256": "22e51939acb45906a57851508290782a2a704fce5208e213e951268b3c799c4a"
+    },
+    {
+      "name": "haproxy",
+      "urls": [
+        "http://deb.debian.org/debian-security/pool/updates/main/h/haproxy/haproxy_3.0.11-1+deb13u5_amd64.deb",
+        "https://snapshot.debian.org/archive/debian-security/20261118T221811Z/pool/updates/main/h/haproxy/haproxy_3.0.11-1+deb13u5_amd64.deb"
+      ],
+      "sha256": "7c3e5e2c47d0906a192d3a0b76924ba0d87f5d19e620789f4aa5c3375bd19ec0"
+    },
+    {
+      "name": "liblua5.4-0",
+      "urls": [
+        "http://deb.debian.org/debian/pool/main/l/lua5.4/liblua5.4-0_5.4.7-1+b2_amd64.deb",
+        "https://snapshot.debian.org/archive/debian/20250105T040337Z/pool/main/l/lua5.4/liblua5.4-0_5.4.7-1+b2_amd64.deb"
+      ],
+      "sha256": "3456e23667f21a5bea4f2182ec878621bf4c47fbc9819fdaad8835d6d1ee6247"
+    },
+    {
+      "name": "libopentracing-c-wrapper0t64",
+      "urls": [
+        "http://deb.debian.org/debian/pool/main/o/opentracing-c-wrapper/libopentracing-c-wrapper0t64_1.1.3-3.1+b1_amd64.deb",
+        "https://snapshot.debian.org/archive/debian/20241029T234230Z/pool/main/o/opentracing-c-wrapper/libopentracing-c-wrapper0t64_1.1.3-3.1+b1_amd64.deb"
+      ],
+      "sha256": "6012776c16169e77fe08e0e0771ccb2e6b1b597b29e34b232c2de1d46a0d7353"
+    },
+    {
+      "name": "libopentracing1",
+      "urls": [
+        "http://deb.debian.org/debian/pool/main/o/opentracing-cpp/libopentracing1_1.6.0-4+b2_amd64.deb",
+        "https://snapshot.debian.org/archive/debian/20241029T234230Z/pool/main/o/opentracing-cpp/libopentracing1_1.6.0-4+b2_amd64.deb"
+      ],
+      "sha256": "451786b60ca9724e1b2a85fe99ced3a4210629eb91d1e7e055d0d29b3d791b95"
+    },
+    {
+      "name": "lsb-base",
+      "urls": [
+        "http://deb.debian.org/debian/pool/main/l/lsb/lsb-base_11.6_all.deb",
+        "https://snapshot.debian.org/archive/debian/20230206T092119Z/pool/main/l/lsb/lsb-base_11.6_all.deb"
+      ],
+      "sha256": "f8bedd167280e76636df3a1bc023cd2906d458916c1af4c1d7912c5b971fc642"
     }
   ]
 }
