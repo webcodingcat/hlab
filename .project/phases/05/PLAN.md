@@ -69,6 +69,16 @@ func (m *Module) SetNetworks(h Networks)
 // transaction that deletes the record (primary IPs, floating IPs,
 // network membership).
 func (m *Module) OnDelete(f func(tx store.Tx, serverID int64) error)
+// primaryips (05-07) and floatingips (05-08) each provide the hook as
+//   func (m *Module) ServerDeleted(tx store.Tx, serverID int64) error
+// New does not register hooks itself; the cloud (05-13) and the tests
+// call srv.SetPublicIPs(pip), srv.OnDelete(pip.ServerDeleted),
+// srv.OnDelete(fip.ServerDeleted). Create answers 201, DELETE 204.
+// Constructors the tests use:
+//   networks.New(networks.Deps{Store, Catalog, Servers, PushAgent})
+//   primaryips.New(primaryips.Deps{Store, Catalog, PublicRange, Servers, PushAgent})
+//   floatingips.New(floatingips.Deps{Store, Catalog, PublicRange, PushAgent})
+// platformtest.Fake exposes NICs per VM with their deny lists (05-01).
 // Update loads server id, applies f and stores it.
 func Update(tx store.Tx, id int64, f func(*Record) error) error
 // PrivateMAC is the MAC of private adapter number n (kv counter

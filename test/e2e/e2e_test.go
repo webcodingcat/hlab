@@ -11,6 +11,9 @@ func TestE2E(t *testing.T) {
 	// The server and snapshot SRV-12 shares go when all parallel rows end,
 	// if a filter left out one of the rows using them.
 	t.Cleanup(func() { releaseSharedSnapshot(t) })
+	// The same for the servers and networks NET-02, NET-03, NET-04, HOST-01
+	// and FIP-02 share.
+	t.Cleanup(func() { releaseNetFixture(t) })
 
 	// LIFE-01 stops and starts the cloud, so it runs alone before the
 	// parallel rows.
@@ -36,6 +39,12 @@ func TestE2E(t *testing.T) {
 	t.Run("VOL-02", parallel(testVOL02))
 	t.Run("VOL-03", parallel(testVOL03))
 	t.Run("VOL-04", parallel(testVOL04))
+	t.Run("NET-02", parallel(testNET02))
+	t.Run("NET-03", parallel(testNET03))
+	t.Run("NET-04", parallel(testNET04))
+	t.Run("HOST-01", parallel(testHOST01))
+	t.Run("PIP-02", parallel(testPIP02))
+	t.Run("FIP-02", parallel(testFIP02))
 	t.Run("META-01", parallel(testMETA01))
 	t.Run("HOST-03", parallel(testHOST03))
 	t.Run("CLI-02", parallel(testCLI02))

@@ -20,10 +20,13 @@ import (
 	"github.com/webcodingcat/hlab/internal/platform/platformtest"
 	actionsres "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/datacenters"
+	"github.com/webcodingcat/hlab/internal/resources/floatingips"
 	imagesres "github.com/webcodingcat/hlab/internal/resources/images"
 	"github.com/webcodingcat/hlab/internal/resources/locations"
+	"github.com/webcodingcat/hlab/internal/resources/networks"
 	"github.com/webcodingcat/hlab/internal/resources/placementgroups"
 	"github.com/webcodingcat/hlab/internal/resources/pricing"
+	"github.com/webcodingcat/hlab/internal/resources/primaryips"
 	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/resources/servertypes"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
@@ -47,6 +50,15 @@ func newFullEnv(t *testing.T) *apitest.Env {
 	if err != nil {
 		t.Fatalf("load shipped catalog: %v", err)
 	}
+	d := apitest.ServersDeps(t, cat, platformtest.NewFake())
+	srv := servers.New(d)
+	nets := networks.New(networks.Deps{Store: d.Store, Catalog: cat, Servers: srv, PushAgent: d.PushAgent})
+	pips := primaryips.New(primaryips.Deps{Store: d.Store, Catalog: cat, PublicRange: d.PublicRange, Servers: srv, PushAgent: d.PushAgent})
+	fips := floatingips.New(floatingips.Deps{Store: d.Store, Catalog: cat, PublicRange: d.PublicRange, PushAgent: d.PushAgent})
+	srv.SetNetworks(nets)
+	srv.SetPublicIPs(pips)
+	srv.OnDelete(pips.ServerDeleted)
+	srv.OnDelete(fips.ServerDeleted)
 	return apitest.New(t,
 		actionsres.New(),
 		locations.New(cat),
@@ -56,7 +68,7 @@ func newFullEnv(t *testing.T) *apitest.Env {
 		pricing.New(cat),
 		sshkeys.New(),
 		placementgroups.New(),
-		servers.New(apitest.ServersDeps(t, cat, platformtest.NewFake())),
+		srv, nets, pips, fips,
 	)
 }
 
@@ -720,6 +732,52 @@ func testListFilterSort(t *testing.T) {
 					t.Errorf("undocumented sort key: status %d code %q, want 422 invalid_input", status, errCode(m))
 				}
 			}
+		})
+	}
+	listNameAndIDDesc(t, env)
+}
+
+// listNameAndIDDesc checks, for the network and IP resources of phase 05,
+// one name filter and one sort by id:desc each.
+func listNameAndIDDesc(t *testing.T, env *apitest.Env) {
+	for _, r := range []struct {
+		path, key, list string
+		body            func(name string, n int) map[string]any
+	}{
+		{"/networks", "network", "networks", func(name string, n int) map[string]any {
+			return map[string]any{"name": name, "ip_range": fmt.Sprintf("10.%d.0.0/16", n%250)}
+		}},
+		{"/primary_ips", "primary_ip", "primary_ips", func(name string, _ int) map[string]any {
+			return map[string]any{"name": name, "type": "ipv4", "assignee_type": "server", "location": "fsn1"}
+		}},
+		{"/floating_ips", "floating_ip", "floating_ips", func(name string, _ int) map[string]any {
+			return map[string]any{"name": name, "type": "ipv4", "home_location": "fsn1"}
+		}},
+	} {
+		t.Run(r.path, func(t *testing.T) {
+			e := env.For(t)
+			var created []int64
+			for _, name := range []string{"list-alpha", "list-beta", "list-gamma"} {
+				status, m := call(t, e, http.MethodPost, r.path, r.body(name, nextN()))
+				if status != http.StatusCreated {
+					t.Fatalf("POST %s %q: status %d, want 201: %v", r.path, name, status, m)
+				}
+				if a := idOf(m["action"]); a != 0 {
+					e.WaitAction(a)
+				}
+				created = append(created, idOf(m[r.key]))
+			}
+			status, m := call(t, e, http.MethodGet, r.path+"?name=list-beta", nil)
+			items, _ := m[r.list].([]any)
+			if got := ids(items); status != http.StatusOK || !sameSet(got, created[1:2]) {
+				t.Errorf("name=list-beta: status %d items %v, want [%d]", status, got, created[1])
+			}
+			status, m = call(t, e, http.MethodGet, r.path+"?per_page=50&sort=id:desc", nil)
+			items, _ = m[r.list].([]any)
+			if status != http.StatusOK || len(items) < len(created) {
+				t.Fatalf("sort=id:desc: status %d, %d items, want at least %d", status, len(items), len(created))
+			}
+			checkOrder(t, "sort=id:desc", items, []sortKey{{"id", true}})
 		})
 	}
 }
