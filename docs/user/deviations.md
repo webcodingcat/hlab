@@ -52,7 +52,15 @@ hlab serves these endpoints:
 | `GET /zones/{id}/rrsets`, `POST /zones/{id}/rrsets`, `GET /zones/{id}/rrsets/{name}/{type}`, `PUT /zones/{id}/rrsets/{name}/{type}`, `DELETE /zones/{id}/rrsets/{name}/{type}` | See [Records](#records). |
 | `POST /zones/{id}/rrsets/{name}/{type}/actions/change_protection`, `.../change_ttl`, `.../set_records`, `.../add_records`, `.../remove_records`, `.../update_records` | See [Records](#records). |
 | `GET /zones/actions`, `GET /zones/actions/{id}`, `GET /zones/{id}/actions`, `GET /zones/{id}/actions/{action_id}` | Zone and RRSet actions are readable at all of these and at `GET /actions/{id}`. |
-| `POST /servers/{id}/actions/change_dns_ptr`, `POST /primary_ips/{id}/actions/change_dns_ptr`, `POST /floating_ips/{id}/actions/change_dns_ptr` | See [Reverse DNS](#reverse-dns). |
+| `POST /servers/{id}/actions/change_dns_ptr`, `POST /primary_ips/{id}/actions/change_dns_ptr`, `POST /floating_ips/{id}/actions/change_dns_ptr`, `POST /load_balancers/{id}/actions/change_dns_ptr` | See [Reverse DNS](#reverse-dns). |
+| `GET /load_balancer_types`, `GET /load_balancer_types/{id}` | The types of hlab's catalog. |
+| `GET /load_balancers`, `POST /load_balancers`, `GET /load_balancers/{id}`, `PUT /load_balancers/{id}`, `DELETE /load_balancers/{id}` | See [Load balancers](#load-balancers). |
+| `POST /load_balancers/{id}/actions/add_service`, `.../update_service`, `.../delete_service`, `.../add_target`, `.../remove_target`, `.../change_algorithm`, `.../change_type`, `.../change_protection` | See [Load balancers](#load-balancers). |
+| `POST /load_balancers/{id}/actions/attach_to_network`, `.../detach_from_network`, `.../enable_public_interface`, `.../disable_public_interface` | See [Load balancers](#load-balancers). |
+| `GET /load_balancers/{id}/metrics` | See [Metrics](#metrics). |
+| `GET /load_balancers/actions`, `GET /load_balancers/{id}/actions`, `GET /load_balancers/{id}/actions/{action_id}` | |
+| `GET /certificates`, `POST /certificates`, `GET /certificates/{id}`, `PUT /certificates/{id}`, `DELETE /certificates/{id}`, `POST /certificates/{id}/actions/retry` | See [Certificates](#certificates). |
+| `GET /certificates/actions`, `GET /certificates/{id}/actions`, `GET /certificates/{id}/actions/{action_id}` | |
 
 `{id}` of a zone is its ID or its name. Lists page, filter and sort with
 the parameters of Hetzner's API description. Every other endpoint answers
@@ -269,6 +277,12 @@ Hetzner documents no error for these cases; hlab answers:
   `auto_delete` answers 422 `invalid_input` on the field `delete`.
 - `DELETE /primary_ips/{id}` of an assigned primary IP answers 422
   `must_be_unassigned`; unassign it first.
+- A primary IP held by a load balancer shows `assignee_type`
+  `load_balancer` and the load balancer's ID in `assignee_id`; Hetzner's
+  API description knows only `server` there. `assign` on such an IP
+  answers 422 `primary_ip_already_assigned`, `unassign` 422
+  `invalid_input`. Deleting the load balancer frees the IP, or deletes it
+  when it has `auto_delete`.
 - For `dns_ptr` see [Reverse DNS](#reverse-dns).
 
 ## Floating IPs
@@ -420,6 +434,82 @@ registrar or public nameserver is involved.
 - A server's `change_dns_ptr` writes to the primary IP that holds the
   address. An IP the server does not hold answers 422 `invalid_input` on
   the field `ip`; the action names the server and the primary IP.
+- A load balancer's IPv4 starts with the same default name and resolves
+  like a server's, also while its public interface is off.
+
+## Load balancers
+
+A load balancer is an HAProxy instance in the appliance VM, in a network
+namespace of its own. It forwards traffic as Hetzner's does, with these
+differences:
+
+- `ip` targets take any unicast IPv4 address except the first four
+  addresses of the public range (they connect host and appliance) and the
+  load balancer's own address; addresses of servers in the cloud are
+  allowed. Hetzner allows only the IPs of your dedicated servers. They are
+  reached over the public interface.
+- The IPv6 address is formal and carries no traffic:
+  `2001:db8:<0x80000000 + load balancer ID>::1` (load balancer 3:
+  `2001:db8:8000:3::1`), or `<its /64>::1` with an IPv6 primary IP.
+- Without `public_net.ipv4`, the load balancer gets an IPv4 from the
+  public range that is not a primary IP and is deleted with it. With
+  `public_net.ipv4` or `public_net.ipv6` it holds those primary IPs; see
+  [Primary IPs](#primary-ips).
+- `proxyprotocol` sends PROXY protocol version 2. Which version Hetzner
+  sends is not documented; most receivers accept both.
+- A health check with protocol `https` is stored and shown as `http` with
+  `http.tls: true`. TLS health checks do not verify the target's
+  certificate.
+- `health_status` of a target is `unknown` until HAProxy has checked it,
+  and shows only `listen_port` and `status`.
+- `max_connections` of the load balancer type becomes HAProxy's
+  `maxconn`; nothing else limits the traffic.
+- `redirect_http` of an https service takes port 80 of the load
+  balancer.
+- An https service whose managed certificate is not issued yet, or has
+  failed, is not served until the certificate is issued.
+- A load balancer is attached to at most one network.
+
+Hetzner documents no error for these cases, or does not confirm one;
+hlab answers:
+
+| Case | Answer |
+|---|---|
+| `add_service` or `add_target` beyond the limits of the load balancer type | 403 `resource_limit_exceeded` |
+| `change_type` to a type whose limits the load balancer exceeds | 422 `invalid_load_balancer_type` |
+| a server target in another network zone than the load balancer | 422 `invalid_input` on the field `server` |
+| `add_service` on a listen port in use | 412 `source_port_already_used` |
+| `update_service` that moves a service onto a listen port in use | 422 `source_port_already_used` |
+| `update_service` or `delete_service` of a listen port without a service | 422 `invalid_input` on the field `listen_port` |
+| `remove_target` of a target the load balancer does not have | 404 `not_found` |
+| `detach_from_network` while targets use private IPs of the network | 422 `invalid_input` on the field `network` |
+| a target without `use_private_ip` while the public interface is off | 422 `load_balancer_public_interface_disabled` |
+| `add_service` without `health_check` | a `tcp` check on the destination port, interval 15 s, timeout 10 s, 3 retries |
+
+## Certificates
+
+- Managed certificates are issued by the hlab CA inside hlab, not by
+  Let's Encrypt. They are valid for 90 days, use an ECDSA P-256 key and
+  name their domains; hlab renews them 30 days before they expire.
+  Clients trust them only after `hlab ca trust on`, or with the CA
+  certificate from `hlab ca export`; see
+  [Load balancers and certificates](../../README.md#load-balancers-and-certificates).
+- Every certificate the hlab CA issues names the revocation list
+  `http://api.hetzner.internal/hlab/v1/ca.crl`. hlab serves an empty,
+  signed list there, renewed at every cloud start and every week, so
+  clients that check revocation, such as `curl.exe` on Windows, accept
+  the certificate.
+- A managed certificate is issued when every domain equals or lies below
+  a zone of the project, wildcards included. Otherwise it fails with
+  `dns_zone_not_found` in `status.error` and on the action, or with
+  `dns_zone_is_secondary_zone` when that zone is a secondary zone.
+- `retry` of a certificate that has not failed, or of an uploaded one,
+  answers 422 `invalid_input`.
+- `DELETE /certificates/{id}` of a certificate a load balancer service
+  uses answers 422 `resource_in_use`.
+- Uploaded certificates are not checked for expiry or chain order. A PEM
+  that cannot be read, or a key that does not match the first
+  certificate, answers 422 `invalid_input`.
 
 ## Metrics
 
@@ -427,6 +517,11 @@ registrar or public nameserver is involved.
   24 hours in memory. They are lost when the cloud stops, and a stopped
   server has no samples for its stopped time. The smallest `step` is 10 s.
 - `disk.0` is the sum of all disks of the server's VM.
+- Load balancer metrics (`open_connections`, `connections_per_second`,
+  `requests_per_second`, `bandwidth`) come from HAProxy's counters, read
+  every 10 s and kept 24 hours in memory like the server samples; the
+  smallest `step` is 10 s. Counters that drop, as after a reload of
+  HAProxy, count as a reset, not as negative traffic.
 
 ## Metadata service
 
