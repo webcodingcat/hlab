@@ -24,6 +24,12 @@ func TestAgent(t *testing.T) {
 	t.Run("FW-03", testCompileFirewallsOut)
 	t.Run("FW-04", testCompileFirewallsPrivate)
 	t.Run("DNS-02", testDNSZones)
+	t.Run("LB-02", testHAProxyBalance)
+	t.Run("LB-03", testHAProxyHTTP)
+	t.Run("LB-04", testHAProxyTLS)
+	t.Run("LB-05/check", testHAProxyChecks)
+	t.Run("LB-05/stat", testParseStat)
+	t.Run("LB-07", testHAProxyProxyProtocol)
 }
 
 // testMetadataPrivateVLAN: two servers with the same private IP in two

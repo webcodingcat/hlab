@@ -3,6 +3,7 @@ package primaryips_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/netip"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/agentapi"
+	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/apitest"
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/platform"
@@ -412,6 +414,7 @@ func wantPIPPtr(t *testing.T, e *pipEnv, id int64, ip, want, what string) {
 }
 
 func TestPrimaryIPs(t *testing.T) {
+	t.Run("LB-01", testLoadBalancerIPs)
 	t.Run("PIP-01/create_delete", func(t *testing.T) {
 		e := newPIPEnv(t)
 
@@ -700,4 +703,119 @@ func TestPrimaryIPs(t *testing.T) {
 		wantInvalidField(t, e.Do(http.MethodPost, path+"/actions/change_dns_ptr",
 			map[string]any{"ip": other.IP, "dns_ptr": "x.example.com"}), "ip", "server change_dns_ptr on an IP it does not hold")
 	})
+}
+
+// apiCode is the API code of an error the module returns to the
+// loadbalancers module.
+func apiCode(err error) string {
+	var fe *api.FieldError
+	if errors.As(err, &fe) {
+		if fe.Code == "" {
+			return "invalid_input"
+		}
+		return fe.Code
+	}
+	if err == nil {
+		return ""
+	}
+	return "other: " + err.Error()
+}
+
+// block marks primary IP id as blocked, as Hetzner does for abuse.
+func block(t *testing.T, e *pipEnv, id int64) {
+	t.Helper()
+	err := e.Store.Tx(func(tx store.Tx) error {
+		r, err := primaryips.Load(tx, e.Project.ID, id)
+		if err != nil {
+			return err
+		}
+		r.Blocked = true
+		return store.Put(tx, store.Meta{Kind: primaryips.Kind, ID: r.ID, ProjectID: r.Hlab.ProjectID,
+			Name: r.Name, Labels: r.Labels, Created: r.Created}, r)
+	})
+	if err != nil {
+		t.Fatalf("block primary IP %d: %v", id, err)
+	}
+}
+
+// testLoadBalancerIPs: primary IPs held by a load balancer.
+func testLoadBalancerIPs(t *testing.T) {
+	e := newPIPEnv(t)
+	const lbID = 77
+	v4 := createPIP(t, e, map[string]any{"name": "lb-v4", "type": "ipv4", "location": "fsn1"})
+	v6 := createPIP(t, e, map[string]any{"name": "lb-v6", "type": "ipv6", "location": "fsn1"})
+	assignLB := func(lb int64, location string, ipv4, ipv6 *int64) (netip.Addr, netip.Prefix, error) {
+		t.Helper()
+		var a netip.Addr
+		var p netip.Prefix
+		var aerr error
+		if err := e.Store.Tx(func(tx store.Tx) error {
+			a, p, aerr = e.pip.AssignLoadBalancer(tx, e.Project.ID, lb, location, ipv4, ipv6)
+			return aerr
+		}); err != nil && aerr == nil {
+			t.Fatalf("transaction: %v", err)
+		}
+		return a, p, aerr
+	}
+
+	a, p, err := assignLB(lbID, "fsn1", &v4.ID, &v6.ID)
+	if err != nil {
+		t.Fatalf("AssignLoadBalancer: %v", err)
+	}
+	if a.String() != v4.IP || p.String() != v6.IP {
+		t.Errorf("AssignLoadBalancer = %s, %s; want %s, %s", a, p, v4.IP, v6.IP)
+	}
+	if primaryips.AssigneeLoadBalancer != "load_balancer" {
+		t.Errorf("AssigneeLoadBalancer = %q, want load_balancer", primaryips.AssigneeLoadBalancer)
+	}
+	for _, id := range []int64{v4.ID, v6.ID} {
+		if got := mustPIP(t, e, id); got.AssigneeType != "load_balancer" || assignee(got) != lbID {
+			t.Errorf("primary IP %d after AssignLoadBalancer: assignee %q %d, want load_balancer %d", id, got.AssigneeType, assignee(got), lbID)
+		}
+	}
+
+	blocked := createPIP(t, e, map[string]any{"name": "blocked", "type": "ipv4", "location": "fsn1"})
+	block(t, e, blocked.ID)
+	elsewhere := createPIP(t, e, map[string]any{"name": "nbg1", "type": "ipv4", "location": "nbg1"})
+	free6 := createPIP(t, e, map[string]any{"name": "free6", "type": "ipv6", "location": "fsn1"})
+	for _, c := range []struct {
+		what       string
+		ipv4, ipv6 *int64
+		code       string
+		status     int
+	}{
+		{"an assigned IP", &v4.ID, nil, "primary_ip_assigned", http.StatusUnprocessableEntity},
+		{"a blocked IP", &blocked.ID, nil, "primary_ip_blocked", http.StatusUnprocessableEntity},
+		{"an IP of another location", &elsewhere.ID, nil, "primary_ip_location_mismatch", http.StatusUnprocessableEntity},
+		{"an IPv6 as ipv4", &free6.ID, nil, "primary_ip_version_mismatch", http.StatusPreconditionFailed},
+	} {
+		_, _, err := assignLB(lbID+1, "fsn1", c.ipv4, c.ipv6)
+		if got := apiCode(err); got != c.code || api.Status(got) != c.status {
+			t.Errorf("AssignLoadBalancer with %s: %v (status %d), want %d %s", c.what, err, api.Status(got), c.status, c.code)
+		}
+	}
+	if got := mustPIP(t, e, free6.ID); got.AssigneeID != nil {
+		t.Errorf("refused AssignLoadBalancer assigned primary IP %d to %d", free6.ID, *got.AssigneeID)
+	}
+
+	x := stoppedServer(t, e, "x", "fsn1")
+	wantError(t, pipAction(e, v4.ID, "assign", assignTo(x)),
+		http.StatusUnprocessableEntity, "primary_ip_already_assigned", "assign of an LB-held IP")
+	wantError(t, pipAction(e, v4.ID, "unassign", nil),
+		http.StatusUnprocessableEntity, "invalid_input", "unassign of an LB-held IP")
+
+	resp := e.Do(http.MethodPut, fmt.Sprintf("/primary_ips/%d", v6.ID), map[string]any{"auto_delete": true})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PUT /primary_ips/%d auto_delete: status %d (%s), want 200", v6.ID, resp.StatusCode, apitest.ErrorCode(t, resp))
+	}
+	_ = resp.Body.Close()
+	if err := e.Store.Tx(func(tx store.Tx) error { return e.pip.LoadBalancerDeleted(tx, lbID) }); err != nil {
+		t.Fatalf("LoadBalancerDeleted: %v", err)
+	}
+	if got := mustPIP(t, e, v4.ID); got.AssigneeID != nil {
+		t.Errorf("after LoadBalancerDeleted: primary IP %d assignee %q %d, want unassigned", v4.ID, got.AssigneeType, *got.AssigneeID)
+	}
+	if _, ok := getPIP(t, e, v6.ID); ok {
+		t.Errorf("after LoadBalancerDeleted: primary IP %d with auto_delete still there", v6.ID)
+	}
 }

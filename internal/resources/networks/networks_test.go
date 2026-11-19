@@ -2,15 +2,19 @@ package networks_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/agentapi"
+	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/apitest"
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/platform/platformtest"
@@ -584,6 +588,146 @@ func TestNetworks(t *testing.T) {
 		}
 	})
 
+	t.Run("LB-01", testLoadBalancerMembers)
+
 	testAttach(t)
 	testContribute(t)
+}
+
+// fakeLBs is the loadbalancers hook: the LB members per network, and the
+// networks NetworkDeleted was called for.
+type fakeLBs struct {
+	mu      sync.Mutex
+	members map[int64][]networks.LBMember
+	deleted []int64
+}
+
+func (f *fakeLBs) InNetwork(_ store.Tx, _, netID int64) ([]networks.LBMember, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.members[netID]), nil
+}
+
+func (f *fakeLBs) NetworkDeleted(_ store.Tx, netID int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.deleted = append(f.deleted, netID)
+	delete(f.members, netID)
+	return nil
+}
+
+func (f *fakeLBs) add(netID, lbID int64, ip netip.Addr) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.members[netID] = append(f.members[netID], networks.LBMember{ID: lbID, IP: ip})
+}
+
+// errCode is the API code of an error AttachLoadBalancer returns.
+func errCode(err error) string {
+	var fe *api.FieldError
+	if errors.As(err, &fe) {
+		if fe.Code == "" {
+			return "invalid_input"
+		}
+		return fe.Code
+	}
+	var ae *actions.Error
+	if errors.As(err, &ae) {
+		return ae.Code
+	}
+	if err == nil {
+		return ""
+	}
+	return "other: " + err.Error()
+}
+
+// testLoadBalancerMembers: AttachLoadBalancer allocates LB IPs next to the
+// servers' IPs, the network view lists the LBs and deleting the network
+// tells the loadbalancers module.
+func testLoadBalancerMembers(t *testing.T) {
+	e := newNetEnv(t)
+	lbs := &fakeLBs{members: map[int64][]networks.LBMember{}}
+	e.nw.SetLoadBalancers(lbs)
+	n1 := createNetwork(t, e, netBody("n1", "10.0.0.0/16", "10.0.0.0/24"))
+	us := createNetwork(t, e, map[string]any{
+		"name": "us", "ip_range": "10.1.0.0/16",
+		"subnets": []any{subnet("cloud", "10.1.1.0/24", "us-east")},
+	})
+	a := createServer(t, e, "a", "fsn1", nil)
+	attach(t, e, a, n1.ID, nil) // 10.0.0.2
+
+	attachLB := func(netID int64, ip, ipRange string) (netip.Addr, int, error) {
+		t.Helper()
+		var got netip.Addr
+		var vlan int
+		var aerr error
+		err := e.Store.Tx(func(tx store.Tx) error {
+			got, vlan, aerr = e.nw.AttachLoadBalancer(tx, e.Project.ID, "eu-central", netID, ip, ipRange)
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("transaction: %v", err)
+		}
+		return got, vlan, aerr
+	}
+	var wantVLAN int
+	if err := e.Store.Tx(func(tx store.Tx) error {
+		r, err := networks.Load(tx, e.Project.ID, n1.ID)
+		wantVLAN = r.Hlab.VLAN
+		return err
+	}); err != nil {
+		t.Fatalf("load network: %v", err)
+	}
+
+	ip, vlan, err := attachLB(n1.ID, "10.0.0.9", "")
+	if err != nil || ip != netip.MustParseAddr("10.0.0.9") || vlan != wantVLAN {
+		t.Fatalf("AttachLoadBalancer with ip 10.0.0.9 = %s, %d, %v; want 10.0.0.9, VLAN %d", ip, vlan, err, wantVLAN)
+	}
+	lbs.add(n1.ID, 1, ip)
+
+	ip, _, err = attachLB(n1.ID, "", "")
+	if err != nil || ip != netip.MustParseAddr("10.0.0.3") {
+		t.Fatalf("AttachLoadBalancer without ip = %s, %v; want the next free 10.0.0.3", ip, err)
+	}
+	lbs.add(n1.ID, 2, ip)
+
+	if _, _, err := attachLB(n1.ID, "10.0.0.2", ""); errCode(err) != "ip_not_available" {
+		t.Errorf("AttachLoadBalancer with the IP of server a: %v, want ip_not_available", err)
+	}
+	if _, _, err := attachLB(n1.ID, "10.0.0.9", ""); errCode(err) != "ip_not_available" {
+		t.Errorf("AttachLoadBalancer with the IP of LB 1: %v, want ip_not_available", err)
+	}
+	if _, _, err := attachLB(us.ID, "", ""); errCode(err) != "no_subnet_available" {
+		t.Errorf("AttachLoadBalancer in eu-central to a us-east network: %v, want no_subnet_available", err)
+	}
+
+	b := createServer(t, e, "b", "fsn1", nil)
+	attach(t, e, b, n1.ID, nil)
+	if got := mustPrivateNet(t, e, b, n1.ID).IP; got == "10.0.0.3" || got == "10.0.0.9" {
+		t.Errorf("server attached after the LBs got the LB IP %s", got)
+	}
+
+	resp := e.Do(http.MethodGet, fmt.Sprintf("/networks/%d", n1.ID), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /networks/%d: status %d, want 200", n1.ID, resp.StatusCode)
+	}
+	var view struct {
+		Network struct {
+			LoadBalancers []int64 `json:"load_balancers"`
+		} `json:"network"`
+	}
+	apitest.Decode(t, resp, &view)
+	if got := sorted(view.Network.LoadBalancers); !slices.Equal(got, []int64{1, 2}) {
+		t.Errorf("GET /networks/%d load_balancers %v, want [1 2]", n1.ID, got)
+	}
+
+	if resp := e.Do(http.MethodDelete, fmt.Sprintf("/networks/%d", n1.ID), nil); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("DELETE /networks/%d: status %d (%s), want 204", n1.ID, resp.StatusCode, apitest.ErrorCode(t, resp))
+	}
+	lbs.mu.Lock()
+	deleted := slices.Clone(lbs.deleted)
+	lbs.mu.Unlock()
+	if !slices.Equal(deleted, []int64{n1.ID}) {
+		t.Errorf("NetworkDeleted called for %v, want [%d]", deleted, n1.ID)
+	}
 }

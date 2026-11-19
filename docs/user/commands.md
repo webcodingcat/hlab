@@ -1,7 +1,7 @@
 # Command reference
 
-`hlab` manages the local cloud: start and stop, projects, API tokens and
-the server type catalog.
+`hlab` manages the local cloud: start and stop, projects, API tokens,
+the server type catalog and the hlab CA.
 In a working copy it is `bin\hlab.exe`; the examples write `hlab`.
 
 `hlab cloud start`, `stop` and `status` work at any time. All other
@@ -185,6 +185,48 @@ Without a terminal and without the flag:
 ```
 > hlab catalog update
 hlab: no terminal to ask for the Hetzner token; pass it in an environment variable named with --hetzner-token-env
+```
+
+## Certificate authority
+
+The hlab CA signs the managed certificates of load balancers; see
+[Load balancers and certificates](../../README.md#load-balancers-and-certificates).
+
+### hlab ca export
+
+`hlab ca export <file>` writes the certificate of the hlab CA (PEM) to the
+file, for clients that do not use the host's trust store, such as
+`curl --cacert` or a server that gets it through cloud-init. The file
+holds no private key.
+
+```
+> hlab ca export hlab-ca.pem
+hlab CA written to hlab-ca.pem
+```
+
+### hlab ca trust
+
+`hlab ca trust on` adds the hlab CA to the trust store of Windows
+(Local Computer, Trusted Root Certification Authorities) and of every
+WSL2 distribution, as `/usr/local/share/ca-certificates/hlab-ca.crt`;
+`hlab ca trust off` removes it from both. Read the
+[risk](../../README.md#trusting-the-hlab-ca) first.
+
+- The switch is kept in `[certificates] trust_ca` of settings.toml; while
+  it is on, every cloud start adds the CA again.
+- WSL2 distributions without `update-ca-certificates`, and the
+  `docker-desktop` distributions, are skipped. The change in WSL2 runs as
+  the user logged on at the console; with nobody logged on it waits until
+  someone logs on.
+- When the Windows store cannot be changed, the command fails and the
+  setting stays as it was.
+- `--output json` prints `{"on": true}` or `{"on": false}`.
+
+```
+> hlab ca trust on
+the hlab CA is trusted on this host
+> hlab ca trust off
+the hlab CA is no longer trusted on this host
 ```
 
 ## Other

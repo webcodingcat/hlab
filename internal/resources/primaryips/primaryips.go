@@ -175,14 +175,14 @@ func owner(r Record) netip.Prefix {
 }
 
 // Contribute implements resource.NetContributor: the effective PTR name of
-// every primary IPv4.
+// every primary IPv4 not held by a load balancer, which contributes its own.
 func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 	recs, err := store.ListAll[Record](tx, Kind)
 	if err != nil {
 		return err
 	}
 	for _, r := range recs {
-		if r.Type != typeIPv4 {
+		if r.Type != typeIPv4 || heldByLB(r) {
 			continue
 		}
 		a, _ := netip.ParseAddr(r.IP)
@@ -472,6 +472,9 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 		}
 		if r.Protection.Delete {
 			return actions.ErrProtected
+		}
+		if heldByLB(r) {
+			return &api.FieldError{Code: "primary_ip_assigned", Message: "the primary IP is held by a load balancer"}
 		}
 		if r.AssigneeID != nil {
 			return &api.FieldError{Code: "must_be_unassigned", Message: "unassign the primary IP before deleting it"}

@@ -319,20 +319,20 @@ What the target vision in IDEA.md will need, not built yet.
 | FW-03 | 06 | x |
 | FW-04 | 06 | x |
 | FW-05 | 06 | x |
-| LB-01 | 08 | |
-| LB-02 | 08 | |
-| LB-03 | 08 | |
-| LB-04 | 08 | |
-| LB-05 | 08 | |
-| LB-06 | 08 | |
-| LB-07 | 08 | |
-| LB-08 | 08 | |
-| LB-09 | 08 | |
-| CERT-01 | 08 | |
-| CERT-02 | 08 | |
-| CERT-03 | 08 | |
-| CERT-04 | 08 | |
-| CERT-05 | 08 | |
+| LB-01 | 08 | x |
+| LB-02 | 08 | x |
+| LB-03 | 08 | x |
+| LB-04 | 08 | x |
+| LB-05 | 08 | x |
+| LB-06 | 08 | x |
+| LB-07 | 08 | x |
+| LB-08 | 08 | x |
+| LB-09 | 08 | x |
+| CERT-01 | 08 | x |
+| CERT-02 | 08 | x |
+| CERT-03 | 08 | x |
+| CERT-04 | 08 | x |
+| CERT-05 | 08 | x |
 | VOL-01 | 04 | x |
 | VOL-02 | 04 | x |
 | VOL-03 | 04 | x |

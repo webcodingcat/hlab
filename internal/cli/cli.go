@@ -76,6 +76,8 @@ var commands = []command{
 	{path: "token create", flags: []string{"project", "name"}, bools: []string{"read-only"}, run: tokenCreate},
 	{path: "token list", flags: []string{"project"}, run: tokenList},
 	{path: "token revoke", args: "<name>", nargs: 1, flags: []string{"project"}, run: tokenRevoke},
+	{path: "ca export", args: "<file>", nargs: 1, run: caExport},
+	{path: "ca trust", args: "on|off", nargs: 1, run: caTrust},
 	{path: "version", run: printVersion},
 }
 
@@ -276,7 +278,7 @@ type apiError struct {
 func (e apiError) Error() string { return e.Message }
 
 // mgmt sends one request to the management API and decodes the answer into
-// v (if not nil).
+// v (if not nil); a *[]byte gets the answer as it is.
 func (c *call) mgmt(method, path string, body, v any) error {
 	var rd io.Reader
 	if body != nil {
@@ -324,6 +326,10 @@ func (c *call) mgmt(method, path string, body, v any) error {
 			return fmt.Errorf("management API answered %s", resp.Status)
 		}
 		return e.Error
+	}
+	if raw, ok := v.(*[]byte); ok {
+		*raw = data
+		return nil
 	}
 	if v != nil && len(data) > 0 {
 		return json.Unmarshal(data, v)
@@ -579,6 +585,42 @@ func tokenRevoke(c *call) error {
 		return err
 	}
 	return c.out(map[string]string{}, "token "+c.args[0]+" revoked\n")
+}
+
+// caExport writes the hlab CA certificate (PEM) to the file of the argument.
+func caExport(c *call) error {
+	var pem []byte
+	if err := c.mgmt(http.MethodGet, "/ca.pem", nil, &pem); err != nil {
+		return err
+	}
+	if err := os.WriteFile(c.args[0], pem, 0o644); err != nil {
+		return err
+	}
+	return c.out(map[string]string{"file": c.args[0]}, "hlab CA written to "+c.args[0]+"\n")
+}
+
+// caTrust adds the hlab CA to the host's trust stores (on) or removes it
+// (off).
+func caTrust(c *call) error {
+	var on bool
+	switch c.args[0] {
+	case "on":
+		on = true
+	case "off":
+	default:
+		return usageError{fmt.Sprintf("hlab ca trust takes on or off, not %q", c.args[0])}
+	}
+	var body struct {
+		On bool `json:"on"`
+	}
+	if err := c.mgmt(http.MethodPut, "/trust", map[string]bool{"on": on}, &body); err != nil {
+		return err
+	}
+	text := "the hlab CA is no longer trusted on this host\n"
+	if body.On {
+		text = "the hlab CA is trusted on this host\n"
+	}
+	return c.out(body, text)
 }
 
 func printVersion(c *call) error {

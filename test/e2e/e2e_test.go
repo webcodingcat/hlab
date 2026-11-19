@@ -14,6 +14,8 @@ func TestE2E(t *testing.T) {
 	// The same for the servers and networks NET-02, NET-03, NET-04, HOST-01
 	// and FIP-02 share.
 	t.Cleanup(func() { releaseNetFixture(t) })
+	// The same for the load balancer LB-02 to LB-05 and CERT-04 share.
+	t.Cleanup(func() { releaseLBFixture(t) })
 
 	// LIFE-01 stops and starts the cloud, so it runs alone before the
 	// parallel rows.
@@ -55,6 +57,11 @@ func TestE2E(t *testing.T) {
 	t.Run("CLI-02", parallel(testCLI02))
 	t.Run("CLI-03", parallel(testCLI03))
 	t.Run("CAT-03", parallel(testCAT03))
+	t.Run("LB-02", parallel(testLB02))
+	t.Run("LB-03", parallel(testLB03))
+	t.Run("LB-04", parallel(testLB04))
+	t.Run("LB-05", parallel(testLB05))
+	t.Run("CERT-04", parallel(testCERT04))
 }
 
 func parallel(f func(t *testing.T)) func(t *testing.T) {

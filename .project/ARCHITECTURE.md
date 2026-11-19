@@ -88,7 +88,9 @@ Inside `hlabd` (Go packages under `internal/`):
   `api.Status(code)`, the one table of HTTP statuses (taken from the error
   table of the frozen OpenAPI description); `api.Fail(w, err)` maps errors
   (`actions.ErrLocked`, `actions.ErrProtected`, ...) to it;
-  `api.FieldError`, `api.CheckLabels`. Package `internal/labels`:
+  `api.FieldError` (an optional `Status` overrides the code's status for
+  one call, e.g. 422 `source_port_already_used` on update_service),
+  `api.CheckLabels`. Package `internal/labels`:
   `labels.Validate`, `labels.Selector` (parser and matcher for all Hetzner
   operators).
 - Depends on: store, resource, actions.
@@ -360,9 +362,10 @@ Inside `hlabd` (Go packages under `internal/`):
 
 - Purpose: the hlab CA for managed certificates
   (`decisions/managed-certificates.md`).
-- Interface: `ca.Issue(domains []string) (certPEM, keyPEM, error)`,
-  `ca.Certificate() []byte`. Key at `%ProgramData%\hlab\ca\ca.key`, ACL
-  SYSTEM only.
+- Interface: `ca.Open(dir, name, now)` (create or load), `ca.Issue(domains []string) (certPEM, keyPEM, error)`,
+  `ca.Certificate() []byte`, `ca.RenewCRL()`, `ca.CRL() []byte`. Key at
+  `%ProgramData%\hlab\ca\ca.key` with a protected DACL, SYSTEM only (Open
+  repairs it); the empty CRL in `ca.crl`.
 
 #### system integration (interface `sysint`, implementation `sysint/windows`)
 
@@ -408,6 +411,7 @@ Inside `hlabd` (Go packages under `internal/`):
   hlab catalog update [--hetzner-token-env <VAR>]
   hlab logs [--follow]
   hlab ca export <file>
+  hlab ca trust on|off
   hlab version
   ```
 
@@ -476,7 +480,7 @@ HTTP/1.1 over `\\.\pipe\hlab`, JSON. All paths under `/mgmt/v1`:
 | `POST /catalog/update` | body `{"hetzner_token": "..."}` (required, used once, never stored or logged); `200 {"server_types":n}`; `400 invalid_input` without a token; `502 server_error` with Hetzner's message when the real API refuses |
 | `GET /logs?follow=1` | log lines as newline-delimited JSON |
 | `GET /ca.pem` | the hlab CA certificate |
-| `PUT /trust` | `{"on": bool}` |
+| `PUT /trust` | body `{"on": bool}`; `200 {"on": bool}`; `400 invalid_input` without `on`; `500 server_error` when the trust store or the settings file fails |
 | `POST /settings/reload` | re-read the settings file |
 
 Errors: `{"error":{"code":"...","message":"..."}}` with codes
@@ -485,7 +489,10 @@ Errors: `{"error":{"code":"...","message":"..."}}` with codes
 `Actions`, `Deleters` (the modules implementing `resource.Deleter`),
 `UpdateCatalog` (nil leaves the route out), `ServerTypes` (the count
 returned by the catalog update) and `PushAgent` (pushes the agent document
-after a project deletion). A running project deletion is an action that
+after a project deletion), `CACert` (the PEM for `/ca.pem`), `Trust`
+(`hostnet.TrustCA` with the CA) and `SettingsPath` (where `PUT /trust`
+stores `trust_ca` through `settings.Save`, which writes the whole file).
+`PUT /trust` answers `200 {"on":bool}`. A running project deletion is an action that
 locks a resource of type `project`.
 
 ### hlab-agent (appliance)
@@ -523,7 +530,7 @@ locks a resource of type `project`.
       Firewalls    []Firewall            // ID, rules in Hetzner's shape
       LoadBalancers []LoadBalancer       // ID, public IP, private IPs, services, targets resolved to IPs
       Zones        []Zone                // name, TTL, RRSets in Hetzner's shape
-      PTR          map[netip.Addr]string // IPv4 only; filled by primary IPs and floating IPs, which own all PTRs (internal/rdns); a server's change_dns_ptr writes to its primary IP
+      PTR          map[netip.Addr]string // IPv4 only; filled by primary IPs, floating IPs and load balancers (the LB's own IPv4; primary IPs held by an LB are left to it) through internal/rdns; a server's change_dns_ptr writes to its primary IP
       Metadata     []Metadata
       API          APIProxy              // listen 198.19.0.1:80, backend 198.19.0.2:8780
       Upstream     []netip.AddrPort      // DNS forwarders: the host's DNS servers, else 1.1.1.1:53, 9.9.9.9:53
@@ -562,6 +569,7 @@ locks a resource of type `project`.
       Algorithm  string                     // "round_robin" | "least_connections"
       Services   []LBService
       Targets    []LBTarget                 // resolved from servers, label selectors, IPs
+      MaxConn    int                        // the type's max_connections, HAProxy maxconn
   }
   type LBNetwork struct { NetworkID int64; VLAN int; IP netip.Addr }
   type LBService struct {
@@ -571,7 +579,7 @@ locks a resource of type `project`.
       HTTP            *LBHTTP               // nil for tcp
       HealthCheck     LBHealthCheck
   }
-  type LBHTTP struct { CookieName string; CookieLifetime int; StickySessions, RedirectHTTP bool; CertPEM, KeyPEM []string }
+  type LBHTTP struct { CookieName string; CookieLifetime, TimeoutIdle int; StickySessions, RedirectHTTP bool; CertPEM, KeyPEM []string }
   type LBHealthCheck struct { Protocol string; Port, Interval, Timeout, Retries int; Path, Domain, Response string; StatusCodes []string; TLS bool }
   type LBTarget struct { Key string; IP netip.Addr; ViaNetworkID int64 } // Key: "server:<id>" or "ip:<addr>"; ViaNetworkID 0 = public
   type Zone struct { Name string; TTL int; RRSets []RRSet }
@@ -620,6 +628,10 @@ locks a resource of type `project`.
   confirms (accepted only from the server whose pending reset has that ID;
   afterwards GET answers 204 for it), after which hlabd ends the action with `success` (no
   confirmation within 120 s: `error`, code `server_error`).
+  CA revocation list: `http://api.hetzner.internal/hlab/v1/ca.crl` serves an
+  empty CRL signed by the hlab CA, renewed at every cloud start and weekly,
+  `nextUpdate` 8 days ahead; every leaf certificate names it as its CRL
+  distribution point, the root CA has none.
 - Depends on: nothing on the host; the Debian packages listed in SPEC.md.
 
 ### Guest integration
@@ -747,7 +759,10 @@ All addresses below derive from the configured public range
   (VirtioProxy), mirrored and other modes are detected from the console
   user's `%UserProfile%\.wslconfig` (`networkingMode`, `dnsTunneling`,
   read through the WTS user token) plus the host adapters; hlabd runs no
-  `wsl.exe` or `wslinfo`.
+  `wsl.exe` or `wslinfo` for this. The one exception is the CA trust switch:
+  `TrustCA` runs `wsl.exe` with the console user's token to add or remove
+  the hlab CA in each WSL2 distro, only while trust is on (pending until
+  the next logon when nobody is logged on).
 - NRPT: one suffix rule per zone (`.example.net`) also covers the zone
   apex (E5).
 
@@ -785,7 +800,7 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 
 | Path | Format | Writer |
 |---|---|---|
-| `%ProgramData%\hlab\settings.toml` | TOML, keys in "Settings" below; ACL: Interactive Users modify | tray, user |
+| `%ProgramData%\hlab\settings.toml` | TOML, keys in "Settings" below; ACL: Interactive Users modify, kept when hlabd rewrites the file | tray, user, hlabd (`PUT /trust` through `settings.Save`) |
 | `%ProgramData%\hlab\server-types.custom.json` | JSON array of Hetzner `server_type` objects (IDs from 100000) | tray, user |
 | `%ProgramFiles%\hlab\catalog\server-types.json` | `{"server_types": [...]}` as returned by Hetzner's API | `task catalog` (release) |
 | `%ProgramData%\hlab\catalog\server-types.json` | same; written by `hlab catalog update`, preferred when present | hlabd |
@@ -793,7 +808,7 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 | `%ProgramFiles%\hlab\catalog\appliance-debs.json` | `{"debs":[{"name","urls","sha256"}]}`: Debian packages missing from the appliance image; cached in `<data>\cache\debs\` and put on the appliance cidata as `<name>.deb` | release |
 | `%ProgramData%\hlab\state.db` | SQLite, see "Data schema" | hlabd |
 | `%ProgramData%\hlab\logs\hlabd.log` | JSON lines (`time`, `level`, `msg`, fields), 10 MB x 5 rotated | hlabd |
-| `%ProgramData%\hlab\ca\` | `ca.pem`, `ca.key` (SYSTEM only) | hlabd |
+| `%ProgramData%\hlab\ca\` | `ca.pem`, `ca.key` (SYSTEM only), `ca.crl` | hlabd |
 | `<data folder>\{disks,volumes,images,isos,cache,appliance,vms}\` | VHDX, server seed ISOs (in `disks`), VM configuration folders (in `vms`) | hlabd |
 
 Settings (`settings.toml`), all optional with defaults:
@@ -818,9 +833,11 @@ level = "info"
 
 - Start (`hlabd` service start): read settings, `hostnet.Check` (abort on a
   problem with a status message), open store, create switch and appliance
-  if missing, start appliance, `hostnet.Up`, push agent document, restore
+  if missing, open the hlab CA (created if missing) and renew its CRL,
+  apply `hostnet.TrustCA` when `trust_ca` is on (a failure is a status
+  problem, not an abort), start appliance, `hostnet.Up`, push agent document, restore
   servers (resume saved ones; power on those marked running), start API and
-  scheduler, set status `running`.
+  scheduler (with the weekly `crl` job), set status `running`.
 - Stop (SCM stop or `SERVICE_CONTROL_PRESHUTDOWN` at Windows shutdown):
   stop API, record which servers ran, then per `stop_behaviour` save or
   shut down every running VM (Shutdown integration service, 60 s, then

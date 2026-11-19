@@ -3,6 +3,7 @@
 package settings
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -90,6 +91,30 @@ func Load(path string) (Settings, error) {
 		return Settings{}, fmt.Errorf("%s: %w", path, err)
 	}
 	return s, nil
+}
+
+// Save writes s to path as TOML, replacing the whole file; comments in an
+// existing file are lost. It writes a temporary file beside path first and
+// renames it, so a failed write leaves the old file. The new file keeps the
+// access rules of the file it replaces.
+func Save(path string, s Settings) error {
+	var b bytes.Buffer
+	if err := toml.NewEncoder(&b).Encode(s); err != nil {
+		return fmt.Errorf("encode settings: %w", err)
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b.Bytes(), 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", tmp, err)
+	}
+	if err := copySecurity(path, tmp); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("keep permissions of %s: %w", path, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("replace %s: %w", path, err)
+	}
+	return nil
 }
 
 func (s Settings) validate() error {

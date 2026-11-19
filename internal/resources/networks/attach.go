@@ -93,54 +93,11 @@ func (m *Module) allocate(tx store.Tx, projectID int64, location string, held []
 	if l, ok := m.d.Catalog.Location(location); ok {
 		zone = l.NetworkZone
 	}
-	var cands []netip.Prefix
-	for _, s := range n.Subnets {
-		p, err := netip.ParsePrefix(s.IPRange)
-		if err != nil || s.NetworkZone != zone {
-			continue
-		}
-		if req.IPRange == "" || p.String() == req.IPRange {
-			cands = append(cands, p)
-		}
-	}
-	if req.IPRange != "" && !slices.ContainsFunc(n.Subnets, func(s Subnet) bool { return s.IPRange == req.IPRange }) {
-		return none, servers.NetInternal{}, invalid("ip_range", "the network has no subnet %s", req.IPRange)
-	}
-	if len(cands) == 0 {
-		return none, servers.NetInternal{}, &api.FieldError{Code: "no_subnet_available",
-			Message: fmt.Sprintf("network %d has no subnet in network zone %s", n.ID, zone)}
-	}
-
-	used, err := usedIPs(tx, projectID, n.ID, 0)
+	ip, used, err := m.pickIP(tx, projectID, n, zone, req.IP, req.IPRange)
 	if err != nil {
 		return none, servers.NetInternal{}, err
 	}
 	gw := Gateway(rng)
-	var ip netip.Addr
-	if req.IP != "" {
-		if ip, err = netip.ParseAddr(req.IP); err != nil || !ip.Is4() {
-			return none, servers.NetInternal{}, invalid("ip", "%q is no IPv4 address", req.IP)
-		}
-		if !slices.ContainsFunc(cands, func(p netip.Prefix) bool { return p.Contains(ip) }) {
-			return none, servers.NetInternal{}, invalid("ip", "%s is not inside a subnet of the server's network zone", ip)
-		}
-		if used[ip] || !isHost(n.Subnets, gw, ip) {
-			return none, servers.NetInternal{}, &api.FieldError{Code: "ip_not_available",
-				Message: fmt.Sprintf("the IP %s is not available", ip)}
-		}
-	} else {
-		found := false
-		for _, p := range cands {
-			if ip, found = NextIP(p, gw, used); found {
-				break
-			}
-		}
-		if !found {
-			return none, servers.NetInternal{}, &api.FieldError{Code: "no_subnet_available",
-				Message: fmt.Sprintf("no free IP left in the subnets of network %d in network zone %s", n.ID, zone)}
-		}
-	}
-	used[ip] = true
 	aliases, err := checkAliases(n.Subnets, gw, used, req.AliasIPs)
 	if err != nil {
 		return none, servers.NetInternal{}, err
@@ -153,9 +110,71 @@ func (m *Module) allocate(tx store.Tx, projectID int64, location string, held []
 		servers.NetInternal{VLAN: n.Hlab.VLAN, IPRange: rng.String()}, nil
 }
 
+// pickIP returns the IP for a new member of network n in network zone
+// zone: ip if given (free and in a subnet of the zone, of ipRange if
+// given), else the next free IP of ipRange or of the first subnet of the
+// zone that has one. It also returns the IPs used in n, ip included.
+func (m *Module) pickIP(tx store.Tx, projectID int64, n Record, zone, ip, ipRange string) (netip.Addr, map[netip.Addr]bool, error) {
+	var none netip.Addr
+	rng, err := netip.ParsePrefix(n.IPRange)
+	if err != nil {
+		return none, nil, err
+	}
+	var cands []netip.Prefix
+	for _, s := range n.Subnets {
+		p, err := netip.ParsePrefix(s.IPRange)
+		if err != nil || s.NetworkZone != zone {
+			continue
+		}
+		if ipRange == "" || p.String() == ipRange {
+			cands = append(cands, p)
+		}
+	}
+	if ipRange != "" && !slices.ContainsFunc(n.Subnets, func(s Subnet) bool { return s.IPRange == ipRange }) {
+		return none, nil, invalid("ip_range", "the network has no subnet %s", ipRange)
+	}
+	if len(cands) == 0 {
+		return none, nil, &api.FieldError{Code: "no_subnet_available",
+			Message: fmt.Sprintf("network %d has no subnet in network zone %s", n.ID, zone)}
+	}
+
+	used, err := m.usedIPs(tx, projectID, n.ID, 0)
+	if err != nil {
+		return none, nil, err
+	}
+	gw := Gateway(rng)
+	var a netip.Addr
+	if ip != "" {
+		if a, err = netip.ParseAddr(ip); err != nil || !a.Is4() {
+			return none, nil, invalid("ip", "%q is no IPv4 address", ip)
+		}
+		if !slices.ContainsFunc(cands, func(p netip.Prefix) bool { return p.Contains(a) }) {
+			return none, nil, invalid("ip", "%s is not inside a subnet of network zone %s", a, zone)
+		}
+		if used[a] || !isHost(n.Subnets, gw, a) {
+			return none, nil, &api.FieldError{Code: "ip_not_available",
+				Message: fmt.Sprintf("the IP %s is not available", a)}
+		}
+	} else {
+		found := false
+		for _, p := range cands {
+			if a, found = NextIP(p, gw, used); found {
+				break
+			}
+		}
+		if !found {
+			return none, nil, &api.FieldError{Code: "no_subnet_available",
+				Message: fmt.Sprintf("no free IP left in the subnets of network %d in network zone %s", n.ID, zone)}
+		}
+	}
+	used[a] = true
+	return a, used, nil
+}
+
 // usedIPs are the private and alias IPs the servers of projectID hold in
-// network id; the alias IPs of server except are left out.
-func usedIPs(tx store.Tx, projectID, id, except int64) (map[netip.Addr]bool, error) {
+// network id, and the IPs of its load balancers; the alias IPs of server
+// except are left out.
+func (m *Module) usedIPs(tx store.Tx, projectID, id, except int64) (map[netip.Addr]bool, error) {
 	mbs, err := members(tx, projectID, id)
 	if err != nil {
 		return nil, err
@@ -168,6 +187,13 @@ func usedIPs(tx store.Tx, projectID, id, except int64) (map[netip.Addr]bool, err
 			}
 			used[a] = true
 		}
+	}
+	lbs, err := m.lbMembers(tx, projectID, id)
+	if err != nil {
+		return nil, err
+	}
+	for _, lb := range lbs {
+		used[lb.IP] = true
 	}
 	return used, nil
 }
@@ -325,7 +351,7 @@ func (m *Module) changeAliasIPs(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			return err
 		}
-		used, err := usedIPs(tx, r.Hlab.ProjectID, n.ID, r.ID)
+		used, err := m.usedIPs(tx, r.Hlab.ProjectID, n.ID, r.ID)
 		if err != nil {
 			return err
 		}

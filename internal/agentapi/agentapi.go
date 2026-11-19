@@ -86,6 +86,7 @@ type LoadBalancer struct {
 	Algorithm  string      // "round_robin" | "least_connections"
 	Services   []LBService
 	Targets    []LBTarget // resolved from servers, label selectors, IPs
+	MaxConn    int        // max_connections of the type
 }
 
 // LBNetwork is a load balancer's address in a private network.
@@ -109,7 +110,8 @@ type LBHTTP struct {
 	CookieName                   string
 	CookieLifetime               int
 	StickySessions, RedirectHTTP bool
-	CertPEM, KeyPEM              []string
+	CertPEM, KeyPEM              []string // CertPEM[i] is leaf+chain, KeyPEM[i] its key
+	TimeoutIdle                  int      // seconds
 }
 
 // LBHealthCheck is the health check of a service.

@@ -14,6 +14,7 @@ require (
 	github.com/pb33f/libopenapi v0.42.5
 	github.com/pb33f/libopenapi-validator v0.16.3
 	github.com/vishvananda/netlink v1.3.1
+	github.com/vishvananda/netns v0.0.5
 	golang.org/x/net v0.62.0
 	golang.org/x/sys v0.50.0
 	golang.org/x/term v0.48.0
@@ -45,7 +46,6 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/sirupsen/logrus v1.10.2 // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
-	github.com/vishvananda/netns v0.0.5 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	modernc.org/libc v1.80.1 // indirect

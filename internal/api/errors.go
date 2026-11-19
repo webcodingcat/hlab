@@ -69,6 +69,21 @@ var statuses = map[string]int{
 
 	// Codes of zones.
 	"incorrect_zone_mode": http.StatusUnprocessableEntity,
+
+	// Codes of load balancers and the primary IPs they hold.
+	"load_balancer_already_attached":          http.StatusUnprocessableEntity,
+	"load_balancer_not_attached_to_network":   http.StatusUnprocessableEntity,
+	"targets_without_use_private_ip":          http.StatusUnprocessableEntity,
+	"load_balancer_public_interface_disabled": http.StatusUnprocessableEntity,
+	"resolve_cloud_private_targets_error":     http.StatusUnprocessableEntity,
+	"resolve_cloud_public_targets_error":      http.StatusUnprocessableEntity,
+	"target_already_defined":                  http.StatusUnprocessableEntity,
+	"invalid_load_balancer_type":              http.StatusUnprocessableEntity,
+	"primary_ip_blocked":                      http.StatusUnprocessableEntity,
+	"primary_ip_location_mismatch":            http.StatusUnprocessableEntity,
+	// add_service answers 412; update_service answers 422 through
+	// FieldError.Status.
+	"source_port_already_used": http.StatusPreconditionFailed,
 }
 
 // Status returns the HTTP status of an error code; unknown codes give 500.
@@ -82,10 +97,15 @@ func Status(code string) int {
 // Error writes Hetzner's error object with the status of code. details nil
 // is written as an empty object.
 func Error(w http.ResponseWriter, code, message string, details any) {
+	writeError(w, Status(code), code, message, details)
+}
+
+// writeError writes Hetzner's error object with status.
+func writeError(w http.ResponseWriter, status int, code, message string, details any) {
 	if details == nil {
 		details = map[string]any{}
 	}
-	JSON(w, Status(code), map[string]any{"error": map[string]any{
+	JSON(w, status, map[string]any{"error": map[string]any{
 		"code":    code,
 		"message": message,
 		"details": details,
@@ -98,11 +118,14 @@ func InvalidInput(w http.ResponseWriter, field, message string) {
 }
 
 // FieldError is an error a handler returns from its transaction for
-// invalid_input, uniqueness_error or an operation-specific 422 code.
+// invalid_input, uniqueness_error or an operation-specific code.
 type FieldError struct {
 	Code    string // default "invalid_input"
 	Field   string // "" = no details.fields
 	Message string
+	// Status overrides the HTTP status of Code for this one answer; 0
+	// keeps Status(Code).
+	Status int
 }
 
 func (e *FieldError) Error() string {
@@ -120,7 +143,8 @@ func (e *FieldError) code() string {
 }
 
 // Fail answers err: store.ErrNotFound with not_found, an *actions.Error
-// with its code, a *FieldError with its code and details.fields, anything
+// with its code, a *FieldError with its code (and its Status, when set) and
+// details.fields, anything
 // else with server_error (logged).
 func Fail(w http.ResponseWriter, err error) {
 	var ae *actions.Error
@@ -141,7 +165,11 @@ func Fail(w http.ResponseWriter, err error) {
 				message = "invalid input in field '" + fe.Field + "'"
 			}
 		}
-		Error(w, fe.code(), message, details)
+		status := fe.Status
+		if status == 0 {
+			status = Status(fe.code())
+		}
+		writeError(w, status, fe.code(), message, details)
 	default:
 		ServerError(w, err)
 	}

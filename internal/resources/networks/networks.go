@@ -92,7 +92,8 @@ type Record struct {
 
 // Module is the networks resource type.
 type Module struct {
-	d Deps
+	d   Deps
+	lbs LoadBalancerMembers // set by SetLoadBalancers; nil: no LBs
 }
 
 // New returns the module.
@@ -166,11 +167,17 @@ func serversByNetwork(tx store.Tx, projectID int64) (map[int64][]int64, error) {
 	return out, nil
 }
 
-// show is r as the API shows it, with its members as servers.
-func show(tx store.Tx, r Record) (Network, error) {
+// show is r as the API shows it, with its server and LB members.
+func (m *Module) show(tx store.Tx, r Record) (Network, error) {
 	by, err := serversByNetwork(tx, r.Hlab.ProjectID)
+	if err != nil {
+		return Network{}, err
+	}
 	r.Servers = by[r.ID]
-	return view(r), err
+	if r.LoadBalancers, err = m.lbIDs(tx, r.Hlab.ProjectID, r.ID); err != nil {
+		return Network{}, err
+	}
+	return view(r), nil
 }
 
 // vlanKey is the kv key of VLAN n; its value is the network ID.
@@ -190,8 +197,13 @@ func allocVLAN(tx store.Tx, id int64) (int, error) {
 	return 0, &api.FieldError{Code: "resource_limit_exceeded", Message: "no free VLAN ID left for a new network"}
 }
 
-// remove deletes the record of r and releases its VLAN.
-func remove(tx store.Tx, r Record) error {
+// remove detaches the LBs of r, deletes its record and releases its VLAN.
+func (m *Module) remove(tx store.Tx, r Record) error {
+	if m.lbs != nil {
+		if err := m.lbs.NetworkDeleted(tx, r.ID); err != nil {
+			return err
+		}
+	}
 	if err := store.Delete(tx, Kind, r.Hlab.ProjectID, r.ID); err != nil {
 		return err
 	}
@@ -244,12 +256,18 @@ func (m *Module) list(w http.ResponseWriter, req *http.Request) {
 			return err
 		}
 		by, err := serversByNetwork(tx, p.ID)
+		if err != nil {
+			return err
+		}
 		out = make([]Network, 0, len(recs))
 		for _, r := range recs {
 			r.Servers = by[r.ID]
+			if r.LoadBalancers, err = m.lbIDs(tx, p.ID, r.ID); err != nil {
+				return err
+			}
 			out = append(out, view(r))
 		}
-		return err
+		return nil
 	})
 	if err != nil {
 		api.ServerError(w, err)
@@ -270,7 +288,7 @@ func (m *Module) get(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			return err
 		}
-		n, err = show(tx, r)
+		n, err = m.show(tx, r)
 		return err
 	})
 	if err != nil {
@@ -395,7 +413,7 @@ func (m *Module) update(w http.ResponseWriter, req *http.Request) {
 		if err := put(tx, r); err != nil {
 			return err
 		}
-		n, err = show(tx, r)
+		n, err = m.show(tx, r)
 		return err
 	})
 	if err != nil {
@@ -426,7 +444,7 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 		if detached, err = detachAll(tx, r); err != nil {
 			return err
 		}
-		return remove(tx, r)
+		return m.remove(tx, r)
 	})
 	if err != nil {
 		api.Fail(w, err)
@@ -448,7 +466,7 @@ func (m *Module) Delete(_ context.Context, id int64) error {
 		}
 		for _, r := range recs {
 			if r.ID == id {
-				return remove(tx, r)
+				return m.remove(tx, r)
 			}
 		}
 		return nil

@@ -7,7 +7,8 @@ hlab reads `settings.toml` from its data folder when the cloud starts:
 (`%ProgramData%\hlab\settings.toml` for the release profile). Setting up the
 service creates an empty file that interactive users may edit. Every key is
 optional; a missing key keeps its default. Changes apply at the next
-`hlab cloud start`.
+`hlab cloud start`. `hlab ca trust` writes the file itself: it rewrites
+it with all current settings, and comments in it are lost.
 
 ```toml
 [cloud]
@@ -40,7 +41,7 @@ log `%ProgramData%\hlab-dev\logs\hlabd.log`.
 | `[storage]` `data_folder` | `<data folder>\data` | Folder of the VM disks, seed ISOs, downloaded images and ISOs, snapshots, backups, volumes and the appliance; see [Data folder](#data-folder). |
 | `[resources]` `reserve_ram_mb` | `4096` | RAM in MB kept free for Windows. Creating, starting or changing the type of a server answers `resource_unavailable` when the server's RAM exceeds the host's free RAM minus this reserve. |
 | `[resources]` `reserve_disk_gb` | `50` | Disk space in GB kept free in the data folder. Creating, rebuilding or changing the type of a server, creating an image and creating or resizing a volume answer `resource_unavailable` when the disks of all servers and volumes, grown to their full size, would leave less than this free. |
-| `[certificates]` `trust_ca` | `false` | Accepted; has no effect in this version. |
+| `[certificates]` `trust_ca` | `false` | Whether the hlab CA, which signs managed certificates, is in the trust store of Windows and of the WSL2 distributions. Set it with [`hlab ca trust`](commands.md#hlab-ca-trust); while it is `true`, every cloud start adds the CA again. Read the [risk](../../README.md#trusting-the-hlab-ca) before you switch it on. |
 | `[logging]` `level` | `"info"` | `"debug"`, `"info"`, `"warn"` or `"error"`: the level of `hlabd.log`. |
 
 ## Custom server types
@@ -96,11 +97,11 @@ development service reads them from `catalog\` of the working copy.
 |---|---|---|
 | `locations.json` | Locations, as Hetzner's API returns them | `task catalog` |
 | `server-types.json` | Server types, as Hetzner's API returns them | `task catalog` |
-| `load-balancer-types.json` | Load balancer types (not served yet) | `task catalog` |
+| `load-balancer-types.json` | Load balancer types, served at `/load_balancer_types` | `task catalog` |
 | `pricing.json` | Prices, served at `/pricing` | `task catalog` |
 | `images.json` | The system images ubuntu-22.04, ubuntu-24.04, ubuntu-26.04, debian-12, debian-13, each with its download source in `_hlab.source` | by hand |
 | `isos.json` | The ISOs served at `/isos`, see [ISOs](#isos) | by hand |
-| `appliance-debs.json` | Debian packages the appliance needs for formatting volumes, see [Appliance packages](#appliance-packages) | by hand |
+| `appliance-debs.json` | Debian packages the appliance needs for formatting volumes and for load balancers, see [Appliance packages](#appliance-packages) | by hand |
 
 `hlab catalog update` writes the current server types from Hetzner to
 `catalog\server-types.json` in the data folder
@@ -158,9 +159,14 @@ against the checksum file and keeps it unchanged in
 ### Appliance packages
 
 `appliance-debs.json` names Debian packages the appliance VM lacks:
-`xfsprogs` and its libraries `libicu76` and `libinih1`, needed to format
-volumes with `xfs`. Each entry has a `name`, a list of `urls` tried in
-order, and the `sha256` of the file:
+
+- `xfsprogs` and its libraries `libicu76` and `libinih1`, needed to
+  format volumes with `xfs`;
+- `haproxy` with `liblua5.4-0`, `libopentracing-c-wrapper0t64`,
+  `libopentracing1` and `lsb-base`, which runs the load balancers.
+
+Each entry has a `name`, a list of `urls` tried in order, and the
+`sha256` of the file:
 
 ```json
 {
@@ -179,8 +185,10 @@ order, and the `sha256` of the file:
 
 At `hlab cloud start`, hlab downloads each package once into
 `<data_folder>\cache\debs` and hands them to the appliance, which installs
-them while `mkfs.xfs` is missing. Without them the cloud still starts;
-creating a volume with `format` `xfs` then fails.
+the xfs packages while `mkfs.xfs` is missing and the HAProxy packages
+while `haproxy` is missing. Without them the cloud still starts; creating
+a volume with `format` `xfs` then fails, and load balancers accept no
+traffic.
 
 ## Data folder
 
@@ -198,3 +206,9 @@ The folder of `[storage]` `data_folder` holds:
 
 Deleting a snapshot, backup, volume or project deletes its files; the
 downloaded images, ISOs and packages stay until you delete them.
+
+The hlab CA is not in the data folder but in `ca` beside settings.toml
+(`%ProgramData%\hlab-dev\ca`): `ca.pem` (the CA certificate), `ca.key`
+(its private key) and `ca.crl` (the revocation
+list). The first cloud start creates them; they stay the same until you
+delete the folder.

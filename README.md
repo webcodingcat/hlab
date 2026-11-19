@@ -10,7 +10,8 @@ The project is in development; there is no release and no installer yet.
 You run hlab from a working copy as described below. The current version
 covers projects, tokens, SSH keys, servers with snapshots, backups,
 rescue system and ISOs, volumes, placement groups, private networks,
-primary IPs, floating IPs, firewalls, DNS zones and reverse DNS; see
+primary IPs, floating IPs, firewalls, DNS zones, reverse DNS, load
+balancers and certificates; see
 [What does not work yet](#what-does-not-work-yet).
 
 ## Prerequisites and setup
@@ -383,6 +384,86 @@ the same DNS server. A public IPv4 starts with Hetzner's default name
 `hcloud primary-ip set-rdns` and `hcloud floating-ip set-rdns` work the
 same way. IPv6 entries are stored but do not resolve.
 
+## Load balancers and certificates
+
+A load balancer distributes connections to servers, label selectors or IP
+addresses. The targets need a service on the destination port; here a web
+server on port 80 in web1 and web2:
+
+```
+> hcloud server add-label web1 role=web
+> hcloud server add-label web2 role=web
+> hcloud load-balancer create --name lb1 --type lb11 --location fsn1
+> hcloud load-balancer add-target lb1 --label-selector role=web
+> hcloud load-balancer add-service lb1 --protocol http --listen-port 80 --destination-port 80
+> hcloud load-balancer describe lb1
+> curl.exe http://<load balancer IPv4>/
+```
+
+`describe` shows the public IPv4 and the health of each target; a new
+target shows `unknown` until its first health check, a few seconds
+later. TCP services, round robin and least connections, sticky
+sessions, the redirect from HTTP to HTTPS, health checks, private
+networks (`--network`, `--use-private-ip`), the PROXY protocol and
+`hcloud load-balancer metrics` work as at Hetzner. Each load balancer is
+an HAProxy instance in the appliance VM; the differences are in
+[Known deviations](docs/user/deviations.md#load-balancers).
+
+An HTTPS service takes uploaded or managed certificates. A managed
+certificate is issued at once when its domains lie in a DNS zone of the
+project, and renewed before it expires:
+
+```
+> hcloud zone add-records lab.internal www A --record <load balancer IPv4>
+> hcloud certificate create --name www --type managed --domain www.lab.internal
+> hcloud load-balancer add-service lb1 --protocol https --listen-port 443 --destination-port 80 --http-certificates www
+```
+
+Managed certificates come from the hlab CA, which hlab creates at its
+first start, not from Let's Encrypt. No client trusts it until you
+decide so; see the next section.
+
+### Trusting the hlab CA
+
+To reach the service with a plain `curl https://<name>`, add the hlab CA
+to the trust stores of Windows and WSL2:
+
+```
+> bin\hlab.exe ca trust on
+the hlab CA is trusted on this host
+> curl.exe https://www.lab.internal/
+```
+
+and in WSL2:
+
+```bash
+curl https://www.lab.internal/
+```
+
+`bin\hlab.exe ca trust off` removes it again from both. The switch is
+off until you turn it on, and stays on across cloud starts.
+
+The risk: the hlab CA cannot be limited to your zones, because zones may
+use any domain, real ones such as `example.com` included. While the CA is
+trusted, anyone who obtains its private key can create certificates that
+Windows and WSL2 accept for any domain. Turn trust on only on a
+development machine, and off when you no longer need it. hlab never adds
+the CA to servers.
+
+Without trust, give the CA certificate to the client that needs it:
+
+```
+> bin\hlab.exe ca export hlab-ca.pem
+hlab CA written to hlab-ca.pem
+```
+
+```bash
+curl --cacert hlab-ca.pem https://www.lab.internal/
+```
+
+In a server, pass the file with cloud-init (`ca_certs`) or copy it
+there yourself.
+
 ## OpenTofu and Ansible
 
 The OpenTofu provider and the Ansible collection read the same two
@@ -473,17 +554,19 @@ It stops and removes the service `hlab-dev`, removes the host network
 settings it made (route, NAT, DNS rules, firewall rule) and deletes
 `%ProgramData%\hlab-dev`. With `--keep-data` the data folder stays. The
 Hyper-V VMs and the virtual switch `hlab-dev` stay; remove them in Hyper-V
-Manager if you want them gone.
+Manager if you want them gone. The hlab CA stays in the trust stores of
+Windows and WSL2: run `bin\hlab.exe ca trust off` while the cloud still
+runs, before you remove the service.
 
 ## What does not work yet
 
 - The API offers actions, locations, server types, pricing, images
   (with snapshots and backups), ISOs, SSH keys, servers, server metrics,
   placement groups, volumes, networks, primary IPs, floating IPs,
-  firewalls and DNS zones. Everything else, for example certificates and load
-  balancers, answers `not_found`, and the server action `request_console` answers
-  `unsupported_error`. The details are in
-  [Known deviations](docs/user/deviations.md).
+  firewalls, DNS zones, load balancer types, load balancers and
+  certificates. Every other endpoint answers `not_found`, and the server
+  action `request_console` answers `unsupported_error`. The details are
+  in [Known deviations](docs/user/deviations.md).
 - `hlab cloud stop` stops the appliance and the host networking, but does
   not save or shut down the server VMs; they stay as they are in Hyper-V.
 - There is no tray program and no installer.

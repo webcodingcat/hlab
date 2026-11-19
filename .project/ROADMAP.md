@@ -27,16 +27,7 @@
 
 - [x] 07 DNS zones and reverse DNS (DNS-01, DNS-02, DNS-03, DNS-04, DNS-05, RDNS-01, RDNS-02) → phases/07/
 
-- [ ] 08 Load balancers and certificates.
-      Requirements: LB-01, LB-02, LB-03, LB-04, LB-05, LB-06, LB-07, LB-08, LB-09,
-      CERT-01, CERT-02, CERT-03, CERT-04, CERT-05.
-      Depends on: 06, 07.
-      Success criteria:
-      1. A load balancer with two private targets alternates between them;
-         stopping one target's web server takes it out.
-      2. An HTTPS service with a managed certificate for a name in an hlab
-         zone answers with that certificate; with the trust switch on,
-         `curl https://<name>` succeeds on host and WSL2.
+- [x] 08 Load balancers and certificates (LB-01, LB-02, LB-03, LB-04, LB-05, LB-06, LB-07, LB-08, LB-09, CERT-01, CERT-02, CERT-03, CERT-04, CERT-05) → phases/08/
 
 - [ ] 09 Cloud lifecycle and persistence.
       Requirements: LIFE-02, LIFE-03, LIFE-04, LIFE-05, LIFE-07, LIFE-08,

@@ -47,6 +47,9 @@ type Options struct {
 	// found false when there is no file or no console user. Default: WTS
 	// session token and GetUserProfileDirectory.
 	WSLConfig func(ctx context.Context) (data []byte, found bool, err error)
+	// RunAsUser runs commands such as wsl.exe in the console user's
+	// context; default: CreateProcessAsUser with the WTS session token.
+	RunAsUser UserRunner
 }
 
 // HostNet configures the Windows host network for one cloud.
@@ -56,6 +59,10 @@ type HostNet struct {
 
 	mu  sync.Mutex
 	cfg hostnet.Config // of the last successful Up
+
+	wslMu       sync.Mutex
+	wslPending  *wslTrust // CA switch the WSL distros have not received
+	wslWatching bool      // watchLogon runs
 }
 
 var _ hostnet.HostNet = (*HostNet)(nil)
@@ -70,6 +77,9 @@ func New(opts Options) *HostNet {
 	}
 	if opts.WSLConfig == nil {
 		opts.WSLConfig = consoleUserWSLConfig
+	}
+	if opts.RunAsUser == nil {
+		opts.RunAsUser = userRunner
 	}
 	if opts.Program == "" {
 		if exe, err := os.Executable(); err == nil {
@@ -203,6 +213,7 @@ func (h *HostNet) Up(ctx context.Context, cfg hostnet.Config) error {
 	h.mu.Lock()
 	h.cfg = cfg
 	h.mu.Unlock()
+	h.wslChanged(ctx) // a CA switch still pending for WSL
 	return nil
 }
 
@@ -239,9 +250,6 @@ func (h *HostNet) Down(ctx context.Context) error {
 // WatchWSL is a stub: re-applying forwarding after a WSL restart is built
 // in a later phase.
 func (h *HostNet) WatchWSL(context.Context, func(hostnet.WSLInfo)) {}
-
-// TrustCA is a stub: the CA trust store is handled in a later phase.
-func (h *HostNet) TrustCA(context.Context, []byte, bool) error { return nil }
 
 // DNSServers returns the IPv4 DNS servers of the interfaces with a default
 // route, without the hlab, WSL and loopback adapters.
