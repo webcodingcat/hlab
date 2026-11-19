@@ -119,15 +119,15 @@ func NewFirewall(iface string) *Firewall
   - [x] `ServerFirewall`, `Firewalls`, `SetFirewalls`; `public_net.firewalls` filled through `ForServer` wherever a server is shown (get, list, create, update, actions); create accepts `firewalls: [{firewall: id}]` and appends the hook's actions to `next_actions` (without hook: 422 `invalid_input` on `firewalls`) (internal/resources/servers/firewalls.go, internal/resources/servers/servers.go)
   - [x] `update` pushes the agent document after the commit when `labels` changed, logging a failed push (internal/resources/servers/servers.go)
 
-- [ ] 06-04 Agent: firewall plan and nftables applier
+- [x] 06-04 Agent: firewall plan and nftables applier
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: FW-02, FW-03, FW-04 | Tests: internal/agent/firewall_test.go
   - Reads: ARCHITECTURE "hlab-agent", "Network" (firewalls); RESEARCH R2, R3; DECISIONS "Isolation on private networks", "Appliance private network layout"; internal/agent/isolation_linux.go
   - Size: ~400 lines in 5 files
   - Adjusts: -
-  - [ ] `FilterRule`, `ServerFilter`, `CompileFirewalls` (addresses: public IPv4 plus `FloatingIPs` whose target is it; In/Out the union of the rules of `FirewallIDs`; ports parsed from `Port`; IPv6 prefixes dropped, a rule left without prefixes dropped; `RestrictOut` if any of its firewalls has an `out` rule; unknown firewall ID ignored) (internal/agent/firewall.go)
-  - [ ] Applier `Firewall` on Linux: table `inet hlab_fw` replaced atomically (add, delete, add); forward chain policy accept at filter priority + 10; `ct state established,related accept` for packets to or from a filtered address; per filter: `oifname <pub> ip daddr <addr>` jumps to the server's in-chain (rules accept, then drop), `iifname <pub> ip saddr <addr>` to its out-chain (rules accept, then drop) only when `RestrictOut`; prefixes per rule as an interval set or per-prefix mask compare; port ranges with `expr.Range`; `firewall_other.go` no-op; registered after `NewIsolation` in main (internal/agent/firewall_linux.go, internal/agent/firewall_other.go, cmd/hlab-agent/main.go)
-  - [ ] Rows of TESTS.md for 06-04 (internal/agent/firewall_test.go, registered in `TestAgent`)
+  - [x] `FilterRule`, `ServerFilter`, `CompileFirewalls` (addresses: public IPv4 plus `FloatingIPs` whose target is it; In/Out the union of the rules of `FirewallIDs`; ports parsed from `Port`; IPv6 prefixes dropped, a rule left without prefixes dropped; `RestrictOut` if any of its firewalls has an `out` rule; unknown firewall ID ignored) (internal/agent/firewall.go)
+  - [x] Applier `Firewall` on Linux: table `inet hlab_fw` replaced atomically (add, delete, add); forward chain policy accept at filter priority + 10; `ct state established,related accept` for packets to or from a filtered address; per filter: `oifname <pub> ip daddr <addr>` jumps to the server's in-chain (rules accept, then drop), `iifname <pub> ip saddr <addr>` to its out-chain (rules accept, then drop) only when `RestrictOut`; prefixes per rule as an interval set or per-prefix mask compare; port ranges with `expr.Range`; `firewall_other.go` no-op; registered after `NewIsolation` in main (internal/agent/firewall_linux.go, internal/agent/firewall_other.go, cmd/hlab-agent/main.go)
+  - [x] Rows of TESTS.md for 06-04 (internal/agent/firewall_test.go, registered in `TestAgent`)
 
 - [ ] 06-05 Firewalls: resource
   - Wave: 2 | Depends on: 06-02 | Review: alone
