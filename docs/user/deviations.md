@@ -55,7 +55,7 @@ hlab serves these endpoints:
 | `POST /servers/{id}/actions/change_dns_ptr`, `POST /primary_ips/{id}/actions/change_dns_ptr`, `POST /floating_ips/{id}/actions/change_dns_ptr`, `POST /load_balancers/{id}/actions/change_dns_ptr` | See [Reverse DNS](#reverse-dns). |
 | `GET /load_balancer_types`, `GET /load_balancer_types/{id}` | The types of hlab's catalog. |
 | `GET /load_balancers`, `POST /load_balancers`, `GET /load_balancers/{id}`, `PUT /load_balancers/{id}`, `DELETE /load_balancers/{id}` | See [Load balancers](#load-balancers). |
-| `POST /load_balancers/{id}/actions/add_service`, `.../update_service`, `.../delete_service`, `.../add_target`, `.../remove_target`, `.../change_algorithm`, `.../change_type`, `.../change_protection` | See [Load balancers](#load-balancers). |
+| `POST /load_balancers/{id}/actions/add_service`, `.../update_service`, `.../delete_service`, `POST /load_balancers/{id}/actions/add_target`, `.../remove_target`, `.../change_algorithm`, `.../change_type`, `.../change_protection` | See [Load balancers](#load-balancers). |
 | `POST /load_balancers/{id}/actions/attach_to_network`, `.../detach_from_network`, `.../enable_public_interface`, `.../disable_public_interface` | See [Load balancers](#load-balancers). |
 | `GET /load_balancers/{id}/metrics` | See [Metrics](#metrics). |
 | `GET /load_balancers/actions`, `GET /load_balancers/{id}/actions`, `GET /load_balancers/{id}/actions/{action_id}` | |

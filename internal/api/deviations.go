@@ -142,5 +142,29 @@ func Deviations() []Deviation {
 			Endpoint:    "POST /servers/{id}/actions/change_dns_ptr",
 			Description: "an IP the server does not hold answers 422 invalid_input on the field ip; the action names the server and its primary IP",
 		},
+		{
+			Endpoint:    "POST /load_balancers",
+			Description: "the IPv6 address is formal and carries no traffic; without public_net.ipv4 the IPv4 comes from the public range and is no primary IP, given primary IPs are held by the load balancer",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/add_target",
+			Description: "ip targets take any unicast IPv4 except the first four addresses of the public range and the load balancer's own, servers of the cloud included; they are reached over the public interface",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/add_service",
+			Description: "proxyprotocol sends PROXY protocol v2, Hetzner's version is not documented; an https health check is stored as http with http.tls true and does not verify the certificate; undocumented errors use hlab's chosen codes",
+		},
+		{
+			Endpoint:    "POST /primary_ips/{id}/actions/assign",
+			Description: "a primary IP held by a load balancer shows assignee_type load_balancer; assign answers 422 primary_ip_already_assigned, unassign 422 invalid_input",
+		},
+		{
+			Endpoint:    "POST /certificates",
+			Description: "managed certificates are issued by the hlab CA, not Let's Encrypt, and name the CRL http://api.hetzner.internal/hlab/v1/ca.crl",
+		},
+		{
+			Endpoint:    "GET /load_balancers/{id}/metrics",
+			Description: "HAProxy counters read every 10 s and kept 24 h in memory; the smallest step is 10 s",
+		},
 	}
 }
