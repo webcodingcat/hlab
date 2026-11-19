@@ -457,7 +457,9 @@ Inside `hlabd` (Go packages under `internal/`):
   Wails services: `bridge.Service` with
   `Call(method, path, body string) (Response{status, body}, error)` that
   forwards to the management API, `Settings()`/`SaveSettings()` for the
-  file and the own server types; `bridge.Cloud` with status, start and
+  file, `ServerTypes`/`AddServerType`/`RemoveServerType` for the merged
+  list and the own types (results `ListedType`, `ServerTypeList`,
+  `Invalid` for field errors); `bridge.Cloud` with status, start and
   stop; `bridge.Logs` with the log stream, sent as one `logs` event per
   100 ms batch). Frontend: Svelte SPA in `ui/frontend`, embedded by package
   `ui` (`ui/embed.go`), calling the bridge through `Call.ByName` of
@@ -494,10 +496,10 @@ HTTP/1.1 over `\\.\pipe\hlab`, JSON. All paths under `/mgmt/v1`:
 | `DELETE /projects/{name}/tokens/{token-name}` | `204` |
 | `ANY /projects/{name}/api/v1/{rest}` | forwards to the Hetzner API handlers with that project and read/write rights |
 | `POST /catalog/update` | body `{"hetzner_token": "..."}` (required, used once, never stored or logged); `200 {"server_types":n}`; `400 invalid_input` without a token; `502 server_error` with Hetzner's message when the real API refuses |
-| `GET /logs?follow=1` | log lines as newline-delimited JSON |
+| `GET /logs?follow=1` | log lines as newline-delimited JSON; followers end when the cloud stops |
 | `GET /ca.pem` | the hlab CA certificate |
 | `PUT /trust` | body `{"on": bool}`; `200 {"on": bool}`; `400 invalid_input` without `on`; `500 server_error` when the trust store or the settings file fails |
-| `POST /settings/reload` | re-read the settings file |
+| `POST /settings/reload` | re-read the settings file (applies `logging.level`) and the own server types (refreshes the `custom_server_types` problem); `200 {}` or `500 server_error` |
 
 Errors: `{"error":{"code":"...","message":"..."}}` with codes
 `invalid_input`, `not_found`, `conflict`, `cloud_not_running`,
@@ -507,7 +509,9 @@ Errors: `{"error":{"code":"...","message":"..."}}` with codes
 returned by the catalog update) and `PushAgent` (pushes the agent document
 after a project deletion), `CACert` (the PEM for `/ca.pem`), `Trust`
 (`hostnet.TrustCA` with the CA) and `SettingsPath` (where `PUT /trust`
-stores `trust_ca` through `settings.Save`, which writes the whole file).
+stores `trust_ca` through `settings.Save`, which writes the whole file),
+`Reload` (serves `POST /settings/reload`; nil leaves the route out) and
+`Done` (closed at stop, ends log followers).
 `PUT /trust` answers `200 {"on":bool}`. A running project deletion is an action that
 locks a resource of type `project`.
 
@@ -820,7 +824,7 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 | Path | Format | Writer |
 |---|---|---|
 | `%ProgramData%\hlab\settings.toml` | TOML, keys in "Settings" below; ACL: Interactive Users modify, kept when hlabd rewrites the file | tray, user, hlabd (`PUT /trust` through `settings.Save`) |
-| `%ProgramData%\hlab\server-types.custom.json` | JSON array of Hetzner `server_type` objects (IDs from 100000) | tray, user |
+| `%ProgramData%\hlab\server-types.custom.json` | JSON array of Hetzner `server_type` objects (IDs from 100000) | tray, user; hlabd creates it as `[]` with the settings.toml ACL at start when missing |
 | `%ProgramFiles%\hlab\catalog\server-types.json` | `{"server_types": [...]}` as returned by Hetzner's API | `task catalog` (release) |
 | `%ProgramData%\hlab\catalog\server-types.json` | same; written by `hlab catalog update`, preferred when present | hlabd |
 | `%ProgramFiles%\hlab\catalog\{images,isos,locations,load-balancer-types,pricing}.json` | Hetzner API shapes plus `_hlab.source` (URL, checksum URL, format); locations, load balancer types and pricing from `task catalog`, images and ISOs by hand | release |
@@ -852,13 +856,13 @@ level = "info"
 
 - Start (`hlabd` service start): read settings, `hostnet.Check` (abort on a
   problem with a status message), open store, create switch and appliance
-  if missing, open the hlab CA (created if missing) and renew its CRL,
+  if missing, create `server-types.custom.json` if missing, open the hlab CA (created if missing) and renew its CRL,
   apply `hostnet.TrustCA` when `trust_ca` is on (a failure is a status
   problem, not an abort), start appliance, `hostnet.Up`, serve the Hetzner API, push agent document,
   restore servers (resume saved ones; power on those marked running), start
   the management API and scheduler (with the weekly `crl` job), set status `running`.
 - Stop (SCM stop or `SERVICE_CONTROL_PRESHUTDOWN` at Windows shutdown):
-  stop jobs and APIs, record which servers ran, then per `stop_behaviour`
+  stop jobs, close the log followers' `Done`, stop the APIs, record which servers ran, then per `stop_behaviour`
   (read again from settings.toml) save or
   shut down every running VM (Shutdown integration service, 60 s, then
   hard off), stop the appliance, `hostnet.Down`, close store. At Windows

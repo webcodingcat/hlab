@@ -150,7 +150,7 @@ line and only the catalog types are served. The same happens when
 Changes by hand apply at the next `hlab cloud start`; changes made in the
 tray apply at once while the cloud runs, otherwise at the next start. The
 tray gives a new type the next free `id` from 100000, `architecture`
-`x86`, `storage_type` `local` and no prices.
+`x86`, `storage_type` `local` and zero prices in its locations.
 
 Servers of a type you remove keep running, and power on and
 rebuild still work for them; new servers and `change_type` cannot use the
