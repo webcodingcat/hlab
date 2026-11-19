@@ -2199,3 +2199,11 @@ in ARCHITECTURE.md or the plan.
 - What: the LB-04 WSL script runs without `set -e` and exits on a failed `mktemp` explicitly; netns/VRF, the HAProxy config and wsl.exe under the user token passed their first e2e run unchanged, so the scheduled-task fallback of Q9 is not used.
 - Why: under `bash -l` with `set -e` the shell exits through `~/.bash_logout`, whose `clear_console` fails without a console, and returns 1 after curl succeeded.
 - Cost of change: low
+
+## 2026-11-19 Close fixes of phase 08
+
+- Type: decision
+- Phase: phase 08
+- What: `ca.key` gets a protected DACL with SYSTEM only (plus the running user when hlabd does not run as SYSTEM, for tests and manual starts) and `ca.Open` repairs an existing key; `settings.Save` copies the replaced file's DACL onto the temp file before the rename; the agent's LB teardown treats ENODEV on a link delete as done.
+- Why: the doc-writer found ca.key readable by INTERACTIVE and Virtual Machines; the verifier found the Interactive Users modify grant lost after `hlab ca trust`; the close e2e run failed deleting a veth that the netns deletion had already removed.
+- Cost of change: low
