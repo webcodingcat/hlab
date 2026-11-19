@@ -47,9 +47,9 @@ func (m *Module) rebuild(w http.ResponseWriter, req *http.Request) {
 		api.Fail(w, actions.ErrProtected)
 		return
 	}
-	typ, ok := m.d.Catalog.ServerType(rec.Hlab.ServerType)
-	if !ok {
-		api.ServerError(w, errors.New("server type "+rec.Hlab.ServerType+" not in the catalog"))
+	typ, err := m.recordType(rec)
+	if err != nil {
+		api.ServerError(w, err)
 		return
 	}
 	var img source
@@ -83,7 +83,7 @@ func (m *Module) rebuild(w http.ResponseWriter, req *http.Request) {
 	}
 
 	var action *actions.Action
-	err := stor.Tx(func(tx store.Tx) error {
+	err = stor.Tx(func(tx store.Tx) error {
 		r, err := store.Get[Record](tx, Kind, p.ID, id)
 		if err != nil {
 			return err

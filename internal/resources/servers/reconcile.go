@@ -55,9 +55,9 @@ func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) err
 	if err != nil {
 		return err
 	}
-	typ, ok := m.d.Catalog.ServerType(rec.Hlab.ServerType)
-	if !ok {
-		return fmt.Errorf("server type %q not in the catalog", rec.Hlab.ServerType)
+	typ, err := m.recordType(rec)
+	if err != nil {
+		return err
 	}
 	mac, err := net.ParseMAC(rec.Hlab.MAC)
 	if err != nil {
