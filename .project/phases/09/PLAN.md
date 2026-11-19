@@ -153,21 +153,21 @@ Settled by the test writers (the tests rely on them):
   - [x] `loadbalancers.IPv6` uses `0xA0000000|id` (internal/resources/loadbalancers/loadbalancers.go).
   - [x] New internal/resources/loadbalancers/recover.go: `Recover` moves every `dns_ptr` entry of an LB without IPv6 primary IP from the /64 `2001:db8:<0x80000000|id>` to the new /64 with the same interface ID; idempotent; LBs with an IPv6 primary IP untouched.
 
-- [ ] 09-09 Agent and appliance: transit addresses from the range
+- [x] 09-09 Agent and appliance: transit addresses from the range
   - Wave: 2 | Depends on: 09-04 | Review: alone
   - Requirements: HOST-02 | Tests: - (default range covered by every e2e row)
   - Reads: ARCHITECTURE "hlab-agent (appliance)", "Network"; appliance/appliance.go
   - Size: ~180 lines in 5 files
   - Adjusts: internal/agent/dns_test.go (only if the DNS listen addresses become a parameter)
-  - [ ] Appliance seed: new file `transit` (appliance address, one line) next to the secret, copied by hlab-agent.service; network-config, instance-id hash (over user-data and network-config) and addresses from `transit.For(c.set.Network.PublicRange)` (appliance/appliance.go, appliance/hlab-agent.service, internal/cloud/appliance.go).
-  - [ ] hlab-agent listens on the address from `transit` (cmd/hlab-agent/main.go); its DNS server binds that address plus 185.12.64.1/2 and answers `api.hetzner.internal` with `Config.API.Listen.Addr()` (internal/agent/dns.go).
+  - [x] Appliance seed: new file `transit` (appliance address, one line) next to the secret, copied by hlab-agent.service; network-config, instance-id hash (over user-data and network-config) and addresses from `transit.For(c.set.Network.PublicRange)` (appliance/appliance.go, appliance/hlab-agent.service, internal/cloud/appliance.go).
+  - [x] hlab-agent listens on the address from `transit` (cmd/hlab-agent/main.go); its DNS server binds that address plus 185.12.64.1/2 and answers `api.hetzner.internal` with `Config.API.Listen.Addr()` (internal/agent/dns.go).
 
-- [ ] 09-10 Discard of an incompatible state
+- [x] 09-10 Discard of an incompatible state
   - Wave: 2 | Depends on: 09-01, 09-02 | Review: alone
   - Requirements: LIFE-08 | Tests: internal/discard/discard_test.go
   - Reads: ARCHITECTURE "hlab (management command)" (Incompatible state), "Files and formats"; DECISIONS "Discarding the state cleans host objects and names downgrades"
   - Size: ~170 lines in 2 files
-  - [ ] New package internal/discard with `Requested` and `Run` as in Interfaces.
+  - [x] New package internal/discard with `Requested` and `Run` as in Interfaces.
 
 - [ ] 09-11 Management API and CLI: logs and discard-state
   - Wave: 2 | Depends on: 09-03 | Review: alone
