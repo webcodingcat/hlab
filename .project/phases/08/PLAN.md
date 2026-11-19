@@ -259,18 +259,18 @@ type Deps struct {
   - [x] `hlab ca export <file>`, `hlab ca trust on|off` (usage errors give exit code 2) (internal/cli/cli.go)
   - [x] Rows of TESTS.md for 08-06 (internal/mgmt/mgmt_test.go, internal/cli/cli_test.go)
 
-- [ ] 08-07 Networks: load balancer members
+- [x] 08-07 Networks: load balancer members
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: LB-01 | Tests: internal/resources/networks/networks_test.go
   - Reads: internal/resources/networks/attach.go (`allocate`, `usedIPs`), networks.go (`view`, delete); this file "Interfaces"
   - Size: ~200 lines in 4 files
   - Adjusts: -
-  - [ ] `LoadBalancerMembers`, `LBMember`, `SetLoadBalancers`, `AttachLoadBalancer`:
+  - [x] `LoadBalancerMembers`, `LBMember`, `SetLoadBalancers`, `AttachLoadBalancer`:
     - `usedIPs` also counts LB IPs
     - the network view fills `load_balancers` from `InNetwork`
     - network delete calls `NetworkDeleted`
     - (internal/resources/networks/attach.go, internal/resources/networks/networks.go, internal/resources/networks/lb.go)
-  - [ ] Rows of TESTS.md for 08-07 (internal/resources/networks/networks_test.go, with a fake `LoadBalancerMembers`)
+  - [x] Rows of TESTS.md for 08-07 (internal/resources/networks/networks_test.go, with a fake `LoadBalancerMembers`)
 
 - [ ] 08-08 Certificates: uploaded certificates and the resource
   - Wave: 1 | Depends on: - | Review: alone
