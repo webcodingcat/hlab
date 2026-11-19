@@ -56,9 +56,14 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
 /** bound calls a Go method bound in the tray by its fully qualified name. */
 export async function bound<T>(page: Page, fqn: string, ...args: unknown[]): Promise<T> {
   // A string expression: the app bundle does not set window.wails, only the
-  // runtime script served by the tray does.
+  // runtime script served by the tray does. That second runtime replaces the
+  // handlers in window._wails (event dispatch among them), so the app's
+  // handlers are put back after the import; otherwise the app would no
+  // longer receive the tray's events.
   const expr = `(async () => {
+    const saved = { ...(window._wails || {}) };
     const m = await import("/wails/runtime.js");
+    Object.assign(window._wails, saved);
     return await m.Call.ByName(${JSON.stringify(fqn)}, ...${JSON.stringify(args)});
   })()`;
   return (await page.evaluate(expr)) as T;
