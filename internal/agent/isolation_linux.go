@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
+	"strconv"
 
 	"github.com/google/nftables"
+	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
 	"golang.org/x/sys/unix"
 
@@ -26,8 +29,16 @@ var metadataAddr = netip.MustParseAddr("169.254.169.254")
 // IPv4 and the floating IPs assigned to it). Traffic from other MACs (the
 // host, which carries internet and WSL2 traffic) passes. The same check
 // drops TCP to the metadata service (169.254.169.254:80) on the input path,
-// since that service selects the server by source address. Every apply
-// replaces the whole table atomically; other tables are never touched.
+// since that service selects the server by source address.
+//
+// On the subinterface t<vlan> of each private network the same backstop
+// holds per member: forwarded IPv4 from a member MAC passes only with the
+// member's IP, an alias IP, or a source inside the destination of a network
+// route whose gateway is that member (Hetzner's unicast RPF). A raw-priority
+// prerouting chain puts each t<vlan> into conntrack zone <vlan>, so
+// overlapping ranges of different networks never share conntrack entries.
+// Every apply replaces the whole table atomically; other tables are never
+// touched.
 type Isolation struct {
 	Interface string
 }
@@ -130,10 +141,144 @@ func (n *Isolation) Apply(_ context.Context, cfg agentapi.Config) error {
 			&expr.Verdict{Kind: expr.VerdictDrop},
 		},
 	})
+	if err := addPrivate(c, table, chain, cfg.Networks); err != nil {
+		return fmt.Errorf("isolation: %w", err)
+	}
 	if err := c.Flush(); err != nil {
 		return fmt.Errorf("isolation: %w", err)
 	}
 	return nil
+}
+
+// addPrivate adds the per-network rules: the conntrack zones in a prerouting
+// chain, and in the forward chain an accept rule per network route and the
+// drop of member traffic with a foreign source.
+func addPrivate(c *nftables.Conn, table *nftables.Table, forward *nftables.Chain, networks []agentapi.Network) error {
+	macs, sources := memberSources(networks)
+
+	macType, err := nftables.ConcatSetType(nftables.TypeIFName, nftables.TypeEtherAddr)
+	if err != nil {
+		return err
+	}
+	macSet := &nftables.Set{Table: table, Name: "member_macs", KeyType: macType, Concatenation: true}
+	if err := c.AddSet(macSet, macs); err != nil {
+		return err
+	}
+	srcType, err := nftables.ConcatSetType(nftables.TypeIFName, nftables.TypeEtherAddr, nftables.TypeIPAddr)
+	if err != nil {
+		return err
+	}
+	srcSet := &nftables.Set{Table: table, Name: "member_sources", KeyType: srcType, Concatenation: true}
+	if err := c.AddSet(srcSet, sources); err != nil {
+		return err
+	}
+
+	accept := nftables.ChainPolicyAccept
+	pre := c.AddChain(&nftables.Chain{
+		Table:    table,
+		Name:     "prerouting",
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookPrerouting,
+		Priority: nftables.ChainPriorityRaw,
+		Policy:   &accept,
+	})
+	for _, nw := range networks {
+		sub := ifname("t" + strconv.Itoa(nw.VLAN))
+		// iifname t<vlan> ct zone set <vlan>
+		c.AddRule(&nftables.Rule{
+			Table: table,
+			Chain: pre,
+			Exprs: []expr.Any{
+				&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: sub},
+				&expr.Immediate{Register: 1, Data: binaryutil.NativeEndian.PutUint16(uint16(nw.VLAN))},
+				&expr.Ct{Key: expr.CtKeyZONE, Register: 1, SourceRegister: true},
+			},
+		})
+
+		// iifname t<vlan> meta nfproto ipv4 ether saddr <gateway's MAC>
+		// ip saddr <destination> accept
+		for _, r := range nw.Routes {
+			mac, ok := memberMAC(nw, r.Gateway)
+			if !ok || !r.Destination.Addr().Is4() {
+				continue
+			}
+			dst := r.Destination.Masked()
+			mask := net.CIDRMask(dst.Bits(), 32)
+			c.AddRule(&nftables.Rule{
+				Table: table,
+				Chain: forward,
+				Exprs: []expr.Any{
+					&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+					&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: sub},
+					&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+					&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV4}},
+					&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseLLHeader, Offset: 6, Len: 6},
+					&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: mac},
+					&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseNetworkHeader, Offset: 12, Len: 4},
+					&expr.Bitwise{SourceRegister: 1, DestRegister: 1, Len: 4, Mask: mask, Xor: make([]byte, 4)},
+					&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: dst.Addr().AsSlice()},
+					&expr.Verdict{Kind: expr.VerdictAccept},
+				},
+			})
+		}
+	}
+
+	// meta nfproto ipv4 iifname . ether saddr @member_macs
+	// iifname . ether saddr . ip saddr != @member_sources drop
+	c.AddRule(&nftables.Rule{
+		Table: table,
+		Chain: forward,
+		Exprs: []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV4}},
+			// The name fills 32-bit registers 8 to 11 (register 1), the MAC
+			// 12 and 13 (padded), the address 14.
+			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+			&expr.Payload{DestRegister: 12, Base: expr.PayloadBaseLLHeader, Offset: 6, Len: 6},
+			&expr.Lookup{SourceRegister: 1, SetName: macSet.Name, SetID: macSet.ID},
+			&expr.Payload{DestRegister: 14, Base: expr.PayloadBaseNetworkHeader, Offset: 12, Len: 4},
+			&expr.Lookup{SourceRegister: 1, SetName: srcSet.Name, SetID: srcSet.ID, Invert: true},
+			&expr.Verdict{Kind: expr.VerdictDrop},
+		},
+	})
+	return nil
+}
+
+// memberSources returns the private set elements: every pair of
+// subinterface and member MAC, and every triple of subinterface, member MAC
+// and an address that member may send from (its IP and alias IPs).
+func memberSources(networks []agentapi.Network) (macs, sources []nftables.SetElement) {
+	for _, nw := range networks {
+		sub := ifname("t" + strconv.Itoa(nw.VLAN))
+		for _, m := range nw.Members {
+			mac, err := net.ParseMAC(m.MAC)
+			if err != nil || len(mac) != 6 {
+				continue
+			}
+			key := append(append(append([]byte{}, sub...), mac...), 0, 0)
+			macs = append(macs, nftables.SetElement{Key: key})
+			for _, a := range append([]netip.Addr{m.IP}, m.AliasIPs...) {
+				if a.Is4() {
+					a4 := a.As4()
+					sources = append(sources, nftables.SetElement{Key: append(append([]byte{}, key...), a4[:]...)})
+				}
+			}
+		}
+	}
+	return macs, sources
+}
+
+// memberMAC returns the MAC of the member of nw that has the address gw.
+func memberMAC(nw agentapi.Network, gw netip.Addr) (net.HardwareAddr, bool) {
+	for _, m := range nw.Members {
+		if m.IP != gw && !slices.Contains(m.AliasIPs, gw) {
+			continue
+		}
+		mac, err := net.ParseMAC(m.MAC)
+		return mac, err == nil && len(mac) == 6
+	}
+	return nil, false
 }
 
 // guestSources returns the set elements: every known guest MAC, and every
