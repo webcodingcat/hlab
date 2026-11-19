@@ -3,6 +3,9 @@
 import { derived, get, writable } from "svelte/store";
 import { mgmt, on, service } from "./lib/bridge";
 import { showError } from "./lib/toast";
+import type { ViewId } from "./help";
+
+export type { ViewId };
 
 /** Problem is one problem of hlabd (status file or /status). */
 export type Problem = { code: string; message: string; fatal: boolean };
@@ -42,7 +45,6 @@ export function stopCloud(): Promise<void> {
 
 // Views switch by location.hash ("#/projects"); the tray's asset server has
 // no history routing.
-export type ViewId = "projects" | "server-types" | "settings" | "logs";
 
 export const views: { id: ViewId; title: string }[] = [
   { id: "projects", title: "Projects" },
