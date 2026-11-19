@@ -1599,3 +1599,11 @@ in ARCHITECTURE.md or the plan.
 - What: A floating IP without name is named `floating_ip-<id>`; create with `server` returns an `assign_floating_ip` action, with `home_location` none; the list sorts by id and created and filters by name, label_selector and ip; the FIP-01 test reads the server's top-level `location` as the frozen schema has it.
 - Why: The frozen spec says so; the old test path read a field the server shape does not have.
 - Cost of change: low
+
+## 2026-11-19 Metadata per VRF
+
+- Type: decision
+- Phase: 05
+- What: The VRF applier gets the metadata service through the field `VRF.Metadata`, set by main.go before the first Apply; each listener passes its VLAN to the shared request router through the request context.
+- Why: Keeps `NewVRF(trunkMAC)` as planned and registers every metadata path once.
+- Cost of change: low

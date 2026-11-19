@@ -219,14 +219,14 @@ func (m *Metadata) HandlerFor(vlan int) http.Handler
   - [x] Module, Record (Hetzner's floating IP: type, ip, home_location, server, blocked, dns_ptr, protection, labels, description, name), create (`type` required, `server` or `home_location` exclusive, home location of the server by default, IPv4 by ipam, IPv6 formal), list, get, PUT, DELETE (assigned: 422 `must_be_unassigned`; protection), `change_protection`, action endpoints (internal/resources/floatingips/floatingips.go)
   - [x] `assign` on a running or stopped server (server in another network zone than the home location: 422 `invalid_input` field `server`; assigned to the same server: 422 `floating_ip_assigned`; assigned elsewhere: moves), `unassign`; the servers' `public_net.floating_ips` kept through `servers.Update`; `OnDelete` unassigns; `Contribute` fills `FloatingIPs` with the target's public IPv4 (invalid when unassigned or the server has none or is deleting); every change pushes the agent (internal/resources/floatingips/actions.go)
 
-- [ ] 05-09 Agent: metadata on private networks
+- [x] 05-09 Agent: metadata on private networks
   - Wave: 2 | Depends on: 05-02 | Review: alone
   - Requirements: META-01 | Tests: internal/agent/metadata_test.go
   - Reads: ARCHITECTURE "hlab-agent" (metadata); RESEARCH R4 (metadata per VRF); DECISIONS "Metadata service binds IP and MAC on its input path"
   - Size: ~180 lines in 3 files
   - Adjusts: -
-  - [ ] `Metadata` indexes entries by (VLAN, IP); `HandlerFor(vlan)` (internal/agent/metadata.go)
-  - [ ] The VRF applier keeps one listener on `169.254.169.254:80` per VRF, bound with `SO_BINDTODEVICE` to `vrf<vlan>`, serving `HandlerFor(vlan)`, closed with its VRF; the VRF gets `169.254.169.254/32` (internal/agent/vrf_linux.go, cmd/hlab-agent/main.go)
+  - [x] `Metadata` indexes entries by (VLAN, IP); `HandlerFor(vlan)` (internal/agent/metadata.go)
+  - [x] The VRF applier keeps one listener on `169.254.169.254:80` per VRF, bound with `SO_BINDTODEVICE` to `vrf<vlan>`, serving `HandlerFor(vlan)`, closed with its VRF; the VRF gets `169.254.169.254/32` (internal/agent/vrf_linux.go, cmd/hlab-agent/main.go)
 
 - [x] 05-10 Servers: private adapters
   - Wave: 2 | Depends on: 05-01, 05-04 | Review: alone
