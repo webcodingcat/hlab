@@ -103,25 +103,56 @@ func (m *Manager) failInterrupted() error {
 // Start creates a running action of projectID for command on resources in
 // tx. It returns ErrLocked if one of resources has a running action.
 func (m *Manager) Start(tx store.Tx, projectID int64, command string, resources []Ref) (*Action, error) {
-	if resources == nil {
-		resources = []Ref{}
-	}
 	if err := checkLocks(tx, resources); err != nil {
 		return nil, err
+	}
+	return create(tx, projectID, Spec{Command: command, Resources: resources})
+}
+
+// Spec describes one action of a batch started by StartAll.
+type Spec struct {
+	Command   string
+	Resources []Ref
+}
+
+// StartAll creates one running action of projectID per spec in tx, in the
+// order of specs. It returns ErrLocked if a running action outside the
+// batch references one of lock (nil: no check); the actions of one batch
+// never lock each other.
+func (m *Manager) StartAll(tx store.Tx, projectID int64, lock []Ref, specs []Spec) ([]*Action, error) {
+	if err := checkLocks(tx, lock); err != nil {
+		return nil, err
+	}
+	out := make([]*Action, 0, len(specs))
+	for _, s := range specs {
+		a, err := create(tx, projectID, s)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, nil
+}
+
+// create stores a running action for s without checking locks.
+func create(tx store.Tx, projectID int64, s Spec) (*Action, error) {
+	resources := s.Resources
+	if resources == nil {
+		resources = []Ref{}
 	}
 	refs, err := json.Marshal(resources)
 	if err != nil {
 		return nil, err
 	}
 	a := &Action{
-		Command:   command,
+		Command:   s.Command,
 		Status:    StatusRunning,
 		Started:   time.Now().UTC().Truncate(time.Second),
 		Resources: resources,
 	}
 	a.ID, err = store.CreateAction(tx, store.Action{
 		ProjectID: projectID,
-		Command:   command,
+		Command:   s.Command,
 		Status:    a.Status,
 		Started:   a.Started,
 		Resources: string(refs),
