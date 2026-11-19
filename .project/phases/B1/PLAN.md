@@ -65,6 +65,9 @@ InstanceID string `json:"instance_id,omitempty"`
 func seedUserData(userData string, volumes []int64) string
 ```
 
+- Set by the B1-03 tests (internal/platform/hyperv/metrics_test.go): package-internal `mapCounters(rows counterRows, vms []string) map[string]X` with `counterRows{VPs []vpRow; Disks []diskRow; NICs []nicRow; DiskPaths map[string][]string}`, `vpRow{Name; RunTime, Timestamp uint64}`, `diskRow{Name; ReadBytes, WriteBytes, ReadOps, WriteOps uint64}`, `nicRow{Name; RxBytes, TxBytes, RxPackets, TxPackets uint64}`; X has fields `ticks`, `cpuTicks` and `sample platform.Sample`. `platformtest.Fake.MetricsAll` records `Call{Op: "MetricsAll", Arg: []string}`.
+- VOL-03 case "gzip" sends base64(gzip(text)), since raw gzip cannot pass the JSON API.
+
 ## Plans
 
 - [ ] B1-01 Servers: stale password resets and the instance-id after a rebuild

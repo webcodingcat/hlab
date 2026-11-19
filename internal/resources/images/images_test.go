@@ -1,6 +1,7 @@
 package images_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -217,6 +218,49 @@ func TestImages(t *testing.T) {
 		}
 		if exists(backupPath) {
 			t.Errorf("disk file %s still exists after delete", backupPath)
+		}
+	})
+
+	t.Run("SRV-12/recover", func(t *testing.T) {
+		cat, err := catalog.Load("../../../catalog")
+		if err != nil {
+			t.Fatalf("load shipped catalog: %v", err)
+		}
+		dir := t.TempDir()
+		env := apitest.New(t, images.NewModule(images.Deps{Catalog: cat, DataFolder: dir}), resactions.New())
+
+		kept, keptPath := putImage(t, env, dir, "snapshot", nil)
+		cut, cutPath := putImage(t, env, dir, "snapshot", nil)
+		err = env.Store.Tx(func(tx store.Tx) error {
+			r, err := images.Load(tx, env.Project.ID, cut)
+			if err != nil {
+				return err
+			}
+			r.Status = images.StatusCreating
+			return images.Put(tx, r)
+		})
+		if err != nil {
+			t.Fatalf("mark image %d creating: %v", cut, err)
+		}
+
+		mod := images.NewModule(images.Deps{Catalog: cat, DataFolder: dir, Store: env.Store})
+		if err := mod.Recover(context.Background()); err != nil {
+			t.Fatalf("Recover: %v", err)
+		}
+
+		path := fmt.Sprintf("/images/%d", cut)
+		if resp := env.Do(http.MethodGet, path, nil); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("GET %s of the image left creating after Recover: status %d, want 404", path, resp.StatusCode)
+		}
+		if exists(cutPath) {
+			t.Errorf("file %s of the image left creating still exists after Recover", cutPath)
+		}
+		path = fmt.Sprintf("/images/%d", kept)
+		if resp := env.Do(http.MethodGet, path, nil); resp.StatusCode != http.StatusOK {
+			t.Errorf("GET %s of the available image after Recover: status %d, want 200", path, resp.StatusCode)
+		}
+		if !exists(keptPath) {
+			t.Errorf("file %s of the available image removed by Recover", keptPath)
 		}
 	})
 

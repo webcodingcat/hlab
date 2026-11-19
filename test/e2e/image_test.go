@@ -8,38 +8,119 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
-const srv12Marker = "/root/hlab-srv12-marker"
+const (
+	srv12Marker = "/root/hlab-srv12-marker"
+	// srv12SnapshotUsers are the rows sharing the SRV-12 server and
+	// snapshot: SRV-12 and SRV-08/own_snapshot.
+	srv12SnapshotUsers = 2
+)
+
+// srv12Snapshot is a server with a marker file and a snapshot of it,
+// created once for the rows that need both.
+var srv12Snapshot struct {
+	once    sync.Once
+	e       *env
+	name    string
+	srv     *server
+	image   int64
+	content string // the marker's content
+	slot    bool   // holds a server slot
+	err     error
+
+	mu       sync.Mutex
+	done     int // rows that finished with it
+	released bool
+}
+
+// sharedSnapshot returns the SRV-12 server, its snapshot and the marker
+// content, created once; when every row using it has ended, the snapshot
+// and the server are deleted (or at the end of TestE2E when a filter runs
+// only some of them).
+func sharedSnapshot(t *testing.T) (*env, *server, int64, string) {
+	t.Helper()
+	e := sharedEnv(t)
+	f := &srv12Snapshot
+	f.once.Do(func() {
+		f.e = e
+		f.name = harness.runID + "-srv12"
+		ownServerSlots <- struct{}{}
+		f.slot = true
+		f.srv, f.err = e.createServer(f.name)
+		if f.err != nil {
+			return
+		}
+		if f.err = e.waitReady(f.srv); f.err != nil {
+			return
+		}
+		f.content = harness.runID + "-srv12"
+		if r, err := e.ssh(f.srv, time.Minute, "", "echo "+f.content+" > "+srv12Marker+" && sync"); err != nil {
+			f.err = fmt.Errorf("write marker: %v\n%s", err, r)
+			return
+		}
+		var body struct {
+			Image struct {
+				ID int64 `json:"id"`
+			} `json:"image"`
+			Action struct {
+				ID int64 `json:"id"`
+			} `json:"action"`
+		}
+		path := fmt.Sprintf("/servers/%d/actions/create_image", f.srv.ID)
+		status, aerr, err := e.apiDo(context.Background(), http.MethodPost, path,
+			map[string]any{"type": "snapshot", "description": harness.runID + " srv12"}, &body)
+		if err != nil || status != http.StatusCreated {
+			f.err = fmt.Errorf("POST %s: %v (status %d %s: %s)", path, err, status, aerr.Code, aerr.Message)
+			return
+		}
+		f.image = body.Image.ID
+		if err := e.waitAction(body.Action.ID, 30*time.Minute); err != nil {
+			f.err = fmt.Errorf("create_image: %v", err)
+		}
+	})
+	t.Cleanup(func() {
+		f.mu.Lock()
+		f.done++
+		last := f.done == srv12SnapshotUsers
+		f.mu.Unlock()
+		if last {
+			releaseSharedSnapshot(t)
+		}
+	})
+	if f.err != nil {
+		t.Fatalf("SRV-12 server and snapshot: %v", f.err)
+	}
+	return e, f.srv, f.image, f.content
+}
+
+// releaseSharedSnapshot deletes the snapshot and the server of
+// sharedSnapshot once and gives back the server slot.
+func releaseSharedSnapshot(t *testing.T) {
+	t.Helper()
+	f := &srv12Snapshot
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.released || f.e == nil {
+		return
+	}
+	f.released = true
+	f.e.deleteImage(t, f.image)
+	deleteIfCreated(t, f.e, f.name)
+	if f.slot {
+		<-ownServerSlots
+	}
+}
 
 // testSRV12: a snapshot of a running server boots as a new server with the
 // same disk content and its own hostname.
 func testSRV12(t *testing.T) {
-	e := sharedEnv(t)
-	srv := ownServer(t, e, "srv12")
-	content := harness.runID + "-srv12"
-	if r, err := e.ssh(srv, time.Minute, "", "echo "+content+" > "+srv12Marker+" && sync"); err != nil {
-		t.Fatalf("write marker: %v\n%s", err, r)
-	}
+	e, _, image, content := sharedSnapshot(t)
 
-	var body struct {
-		Image struct {
-			ID int64 `json:"id"`
-		} `json:"image"`
-		Action struct {
-			ID int64 `json:"id"`
-		} `json:"action"`
-	}
-	e.post(t, fmt.Sprintf("/servers/%d/actions/create_image", srv.ID),
-		map[string]any{"type": "snapshot", "description": harness.runID + " srv12"}, &body)
-	t.Cleanup(func() { e.deleteImage(t, body.Image.ID) })
-	if err := e.waitAction(body.Action.ID, 30*time.Minute); err != nil {
-		t.Fatalf("create_image: %v", err)
-	}
-
-	copied := ownServerImage(t, e, "srv12-copy", fmt.Sprint(body.Image.ID))
+	copied := ownServerImage(t, e, "srv12-copy", fmt.Sprint(image))
 	r, err := e.ssh(copied, time.Minute, "", "cat "+srv12Marker)
 	if err != nil || strings.TrimSpace(r.Stdout) != content {
 		t.Errorf("marker on the server from the snapshot: %v\n%s\nwant %q", err, r, content)
@@ -47,6 +128,31 @@ func testSRV12(t *testing.T) {
 	r, err = e.ssh(copied, time.Minute, "", "hostname")
 	if err != nil || strings.TrimSpace(r.Stdout) != copied.Name {
 		t.Errorf("hostname of the server from the snapshot: %v\n%s\nwant %q", err, r, copied.Name)
+	}
+}
+
+// testSRV08OwnSnapshot: rebuilding a server from a snapshot of itself with
+// new user_data runs that user_data, as for a new instance, and keeps the
+// snapshot's content.
+func testSRV08OwnSnapshot(t *testing.T) {
+	e, srv, image, content := sharedSnapshot(t)
+	const marker = "/root/hlab-srv08-own-snapshot"
+	value := harness.runID + "-srv08-own-snapshot"
+	userData := "#cloud-config\nruncmd:\n  - [sh, -c, \"echo " + value + " > " + marker + "\"]\n"
+
+	e.runAPIAction(t, fmt.Sprintf("/servers/%d/actions/rebuild", srv.ID),
+		map[string]any{"image": image, "user_data": userData}, 30*time.Minute)
+	if err := e.waitReady(srv); err != nil {
+		t.Fatalf("SSH after rebuild from the own snapshot: %v", err)
+	}
+
+	r, err := e.ssh(srv, time.Minute, "", "cat "+marker)
+	if err != nil || strings.TrimSpace(r.Stdout) != value {
+		t.Errorf("new user_data did not run after rebuild from the own snapshot: %v\n%s\nwant %q", err, r, value)
+	}
+	r, err = e.ssh(srv, time.Minute, "", "cat "+srv12Marker)
+	if err != nil || strings.TrimSpace(r.Stdout) != content {
+		t.Errorf("snapshot marker after rebuild: %v\n%s\nwant %q", err, r, content)
 	}
 }
 
