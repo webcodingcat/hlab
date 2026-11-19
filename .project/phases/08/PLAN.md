@@ -397,14 +397,14 @@ type Deps struct {
     - (internal/resources/loadbalancers/network.go)
   - [x] Rows of TESTS.md for 08-14 (internal/resources/loadbalancers/network_test.go)
 
-- [ ] 08-15 Load balancers: services
+- [x] 08-15 Load balancers: services
   - Wave: 3 | Depends on: 08-08, 08-13 | Review: alone
   - Requirements: LB-02, LB-03, LB-04 | Tests: internal/resources/loadbalancers/services_test.go
   - Reads: R3.1, R3.3, R5 (CLI, Terraform, Ansible service fields); OpenAPI add_service, update_service, delete_service; DECISIONS "Load balancer networks, targets and services"
   - Size: ~380 lines in 2 files
   - Note: refuse control characters in cookie_name and in health-check path, domain and response with 422 `invalid_input` (the 08-02 renderer only drops them)
   - Adjusts: -
-  - [ ] Services:
+  - [x] Services:
     - `add_service`, `update_service`, `delete_service`, `createServices`
     - validation of protocol, ports and http fields; certificates must exist in the project (`KeyPair`, else `invalid_input`)
     - the health check: omitted means tcp/destination port/15/10/3; protocol `https` accepted; status_codes default `["2??","3??"]`
@@ -415,7 +415,7 @@ type Deps struct {
     - GET always shows the booleans
     - `UsedBy`
     - (internal/resources/loadbalancers/services.go)
-  - [ ] Rows of TESTS.md for 08-15 (internal/resources/loadbalancers/services_test.go)
+  - [x] Rows of TESTS.md for 08-15 (internal/resources/loadbalancers/services_test.go)
 
 - [ ] 08-16 Load balancers: targets
   - Wave: 3 | Depends on: 08-13 | Review: alone

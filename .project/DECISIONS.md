@@ -2151,3 +2151,11 @@ in ARCHITECTURE.md or the plan.
 - What: network.go reads `use_private_ip` from each stored target's JSON; `detach_from_network` while targets use private IPs answers 422 `invalid_input` on `network`; `NetworkDeleted` clears only `private_net` and the VLAN; attach and detach list the network as an action resource.
 - Why: no dependency on the Go fields of 08-16; no documented code for the detach refusal.
 - Cost of change: low
+
+## 2026-11-19 Load balancer service details
+
+- Type: decision
+- Phase: phase 08
+- What: a health check with protocol `https` is stored and shown as `http` with `tls: true`; an https service without certificates is `invalid_input`; add_service defaults listen port 80 (http) or 443 (https), destination port 80 and 15/10/3; update/delete of an unknown listen port is `invalid_input` on `listen_port`; `timeout_idle` 0 keeps the stored value; an https service with `redirect_http` collides with a service on 80 (`source_port_already_used`).
+- Why: the OpenAPI response enum allows only tcp and http; the agent cannot pass TLS through (D12); defaults from the Terraform docs.
+- Cost of change: low
