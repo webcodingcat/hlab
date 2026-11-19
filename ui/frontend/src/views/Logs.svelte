@@ -72,7 +72,6 @@
   }
 
   function add(batch: string[]) {
-    if (!Array.isArray(batch) || batch.length === 0) return;
     const next = lines.concat(batch.map(parse));
     lines = next.length > keep ? next.slice(next.length - keep) : next;
   }
