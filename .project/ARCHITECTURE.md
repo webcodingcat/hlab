@@ -198,6 +198,8 @@ Inside `hlabd` (Go packages under `internal/`):
       EnsureSwitch(ctx, spec SwitchSpec) error
       CreateVM(ctx, spec VMSpec) error            // name "hlab-<kind>-<id>", Gen2, Secure Boot template from spec
       SetVM(ctx, name string, spec VMSpec) error  // cpu, ram (stopped only)
+      SetStopAction(ctx, name string, a StopAction) error // Off and Saved VMs; a change on a Running VM gives Error{Kind: InvalidState}
+      VMs(ctx, prefix string) ([]string, error)   // names of all VMs starting with prefix
       DeleteVM(ctx, name string) error
       Power(ctx, name string, op PowerOp) error   // Start, Stop(hard), Shutdown and Reboot (Shutdown integration service; Reboot falls back to shutdown, wait for off, start), Reset, Save
       State(ctx, name string) (VMState, error)

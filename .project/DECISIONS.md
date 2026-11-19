@@ -2273,6 +2273,14 @@ in ARCHITECTURE.md or the plan.
 - Why: hlabd learns of a settings change only through `POST /mgmt/v1/settings/reload`, which belongs with the tray settings of phase 10; building it now goes beyond the phase's requirements.
 - Cost of change: low
 
+## 2026-11-19 Stop action on running VMs refused by Hyper-V
+
+- Type: decision
+- Phase: phase 09
+- What: the 09-01 probe on a real server VM showed Hyper-V refuses a changed `AutomaticStopAction` on a Running VM (InvalidState) and accepts it on a Saved VM, so `SetStopAction` runs at cloud start on Off and Saved VMs only and the documentation says a changed `stop_behaviour` applies to a Windows shutdown after the next cloud start.
+- Why: this settles the open part of the user's answer on the stop behaviour at a Windows shutdown.
+- Cost of change: low
+
 ## 2026-11-19 Recorded public range in ipam
 
 - Type: decision

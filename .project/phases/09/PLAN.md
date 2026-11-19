@@ -90,13 +90,13 @@ Settled by the test writers (the tests rely on them):
 
 ## Plans
 
-- [ ] 09-01 Platform: stop action and VM listing
+- [x] 09-01 Platform: stop action and VM listing
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: LIFE-02, LIFE-03, LIFE-05, LIFE-08 | Tests: - (used by 09-07 and 09-11 tests)
   - Reads: ARCHITECTURE "platform (interface) and platform/hyperv"; RESEARCH.md topic 1; EXPERIMENTS E11
   - Size: ~150 lines in 3 files
-  - [ ] Add `SetStopAction` and `VMs` to `platform.Platform` (internal/platform/platform.go), Hyper-V implementation (internal/platform/hyperv/hyperv.go: `Set-VM -AutomaticStopAction`, `Get-VM` filtered by prefix in Go, never parsing localized text), fake (internal/platform/platformtest/fake.go: records the stop action per VM, lists VMs).
-  - [ ] Verify on a real server VM of the dev cloud (non-elevated, Hyper-V Administrators) whether `Set-VM -AutomaticStopAction` is accepted on a Running and on a Saved VM; report the result in the plan's summary (the user asked for it). `SetStopAction` returns `platform.Error{Kind: InvalidState}` where Hyper-V refuses.
+  - [x] Add `SetStopAction` and `VMs` to `platform.Platform` (internal/platform/platform.go), Hyper-V implementation (internal/platform/hyperv/hyperv.go: `Set-VM -AutomaticStopAction`, `Get-VM` filtered by prefix in Go, never parsing localized text), fake (internal/platform/platformtest/fake.go: records the stop action per VM, lists VMs).
+  - [x] Verify on a real server VM of the dev cloud (non-elevated, Hyper-V Administrators) whether `Set-VM -AutomaticStopAction` is accepted on a Running and on a Saved VM; report the result in the plan's summary (the user asked for it). `SetStopAction` returns `platform.Error{Kind: InvalidState}` where Hyper-V refuses.
 
 - [x] 09-02 Store: incompatible state and discard
   - Wave: 1 | Depends on: - | Review: alone
