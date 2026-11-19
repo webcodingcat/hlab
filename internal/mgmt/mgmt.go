@@ -33,6 +33,15 @@ type Status struct {
 	State    string    `json:"state"`
 	Version  string    `json:"version"`
 	Problems []Problem `json:"problems"`
+	// ShadowingZones are the primary zones that shadow a public domain.
+	ShadowingZones []ShadowingZone `json:"shadowing_zones"`
+}
+
+// ShadowingZone is a zone whose name also resolves publicly, with the name
+// of its project.
+type ShadowingZone struct {
+	Zone    string `json:"zone"`
+	Project string `json:"project"`
 }
 
 // Problem is a host problem reported in Status.
@@ -140,6 +149,9 @@ func (s server) status(w http.ResponseWriter, _ *http.Request) {
 	st := s.d.Status()
 	if st.Problems == nil {
 		st.Problems = []Problem{}
+	}
+	if st.ShadowingZones == nil {
+		st.ShadowingZones = []ShadowingZone{}
 	}
 	writeJSON(w, http.StatusOK, st)
 }
