@@ -228,14 +228,14 @@ func (m *Metadata) HandlerFor(vlan int) http.Handler
   - [ ] `Metadata` indexes entries by (VLAN, IP); `HandlerFor(vlan)` (internal/agent/metadata.go)
   - [ ] The VRF applier keeps one listener on `169.254.169.254:80` per VRF, bound with `SO_BINDTODEVICE` to `vrf<vlan>`, serving `HandlerFor(vlan)`, closed with its VRF; the VRF gets `169.254.169.254/32` (internal/agent/vrf_linux.go, cmd/hlab-agent/main.go)
 
-- [ ] 05-10 Servers: private adapters
+- [x] 05-10 Servers: private adapters
   - Wave: 2 | Depends on: 05-01, 05-04 | Review: alone
   - Requirements: NET-02, HOST-01 | Tests: internal/resources/servers/adapters_test.go
   - Reads: ARCHITECTURE "platform", "Network" (deny lists); RESEARCH R3; EXPERIMENTS E1; DECISIONS "Port isolation by private VLAN"
   - Size: ~300 lines in 3 files
   - Adjusts: -
-  - [ ] `SyncAdapters` as in the Interfaces section; deny lists from the `private_net` MACs of the other servers in the same network (not deleting) (internal/resources/servers/adapters.go)
-  - [ ] `createVM` attaches the public adapter and one private adapter per `private_net` entry (Segment VLAN from `Internal.Networks`, deny list); deletion needs no detach (the VM goes) (internal/resources/servers/reconcile.go)
+  - [x] `SyncAdapters` as in the Interfaces section; deny lists from the `private_net` MACs of the other servers in the same network (not deleting) (internal/resources/servers/adapters.go)
+  - [x] `createVM` attaches the public adapter and one private adapter per `private_net` entry (Segment VLAN from `Internal.Networks`, deny list); deletion needs no detach (the VM goes) (internal/resources/servers/reconcile.go)
 
 - [ ] 05-11 Networks: agent document
   - Wave: 2 | Depends on: 05-04, 05-05 | Review: alone

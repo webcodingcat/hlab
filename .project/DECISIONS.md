@@ -1559,3 +1559,11 @@ in ARCHITECTURE.md or the plan.
 - What: Each VRF table holds an `unreachable default` route (kernel metric 4278198272); the gateway sits on `t<vlan>` as a `/32` without a connected route for the range; the trunk link is looked up only when the document has networks; stale `vrf<N>`/`t<N>` links and agent routes in tables 1002..5092 are always cleaned; the VRF applier runs after the Network applier.
 - Why: Misses must not fall through to the main table (NET-02), only members, aliases and routes are reachable, and appliances without a trunk keep applying.
 - Cost of change: low
+
+## 2026-11-19 Private adapters of a server
+
+- Type: decision
+- Phase: 05
+- What: The server record keeps the private MACs its VM has in `Internal.Adapters`; while rescue is on `SyncAdapters` writes the seed but leaves DVD slot 0; NotFound from `SetNICDeny`/`DetachNIC` counts as done; private adapters get `Segment{VLAN}` from the server record, `SegmentFor` decides only the public segment (ARCHITECTURE.md updated).
+- Why: The platform cannot list adapters, a detach clears `private_net` before the sync, and the VLAN is server data.
+- Cost of change: low

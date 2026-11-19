@@ -234,9 +234,10 @@ Inside `hlabd` (Go packages under `internal/`):
   Errors are `platform.Error{Kind, Op, Err}` with Kind `NotFound`,
   `InvalidState`, `NoResources`, `Failed`; the action worker maps them to
   Hetzner codes. `SegmentFor(location string, networkID int64) Segment` is
-  the one place deciding the segment of an adapter (`decisions/locations.md`):
-  public adapters always the public PVLAN, private adapters the network's
-  VLAN.
+  the one place deciding the public segment of an adapter
+  (`decisions/locations.md`): public adapters always the public PVLAN.
+  Private adapters get `Segment{VLAN}` with the network's VLAN, which the
+  servers module takes from the server record (`Internal.Networks`).
 - Implementation: one long-running Windows PowerShell 5.1 process per
   hlabd, fed commands on stdin and answering JSON (`ConvertTo-Json`) on
   stdout, serialized by a mutex; restarted if it dies. VHDX files whose
