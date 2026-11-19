@@ -457,7 +457,9 @@ func testLB04(t *testing.T) {
 		t.Errorf("GET https://%s/ answered %q, want one of the targets", host, name)
 	}
 
-	script := "set -e\nd=$(mktemp -d)\ncat > \"$d/ca.pem\" <<'HLAB_CA_EOF'\n" +
+	// No `set -e`: with it, the login shell's ~/.bash_logout (clear_console
+	// without a console) turns the final exit into exit status 1.
+	script := "d=$(mktemp -d) || exit 1\ncat > \"$d/ca.pem\" <<'HLAB_CA_EOF'\n" +
 		strings.TrimSpace(strings.ReplaceAll(string(caPEM), "\r", "")) +
 		"\nHLAB_CA_EOF\ncurl -sS --max-time 20 --cacert \"$d/ca.pem\" https://" + host + "/; rc=$?\nrm -rf \"$d\"\nexit $rc\n"
 	if r, err := w.run(context.Background(), 2*time.Minute, nil, script); err != nil {
