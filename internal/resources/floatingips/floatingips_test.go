@@ -67,12 +67,10 @@ type fipView struct {
 }
 
 type serverView struct {
-	ID         int64 `json:"id"`
-	Datacenter struct {
-		Location struct {
-			Name string `json:"name"`
-		} `json:"location"`
-	} `json:"datacenter"`
+	ID       int64 `json:"id"`
+	Location struct {
+		Name string `json:"name"`
+	} `json:"location"`
 	PublicNet struct {
 		IPv4 *struct {
 			IP string `json:"ip"`
@@ -271,9 +269,9 @@ func TestFloatingIPs(t *testing.T) {
 			t.Errorf("created with home_location fsn1: %+v, want home location fsn1, unassigned, ipv4", free)
 		}
 		held := createFIP(t, e, map[string]any{"name": "held", "type": "ipv4", "server": s.ID})
-		if held.HomeLocation.Name != s.Datacenter.Location.Name || serverOf(held) != s.ID {
+		if held.HomeLocation.Name != s.Location.Name || serverOf(held) != s.ID {
 			t.Errorf("created with server %d: home location %q server %v, want %q and %d",
-				s.ID, held.HomeLocation.Name, held.Server, s.Datacenter.Location.Name, s.ID)
+				s.ID, held.HomeLocation.Name, held.Server, s.Location.Name, s.ID)
 		}
 
 		resp := e.Do(http.MethodGet, "/floating_ips", nil)
