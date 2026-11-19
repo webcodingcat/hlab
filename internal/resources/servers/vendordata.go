@@ -27,14 +27,17 @@ import (
 // confirms it and remembers the ID, so a reset is applied once.
 //
 // Private adapters: per entry whose MAC is one of hlab's (02:48:4c:2x:xx:xx)
-// and belongs to a link, it sets the private IP as /32 and a route to the
-// network range via the gateway, on-link; Hetzner's guests get the same
-// from DHCP, hlab has no DHCP server. With systemd-networkd active it writes
-// /run/systemd/network/05-hlab-<mac>.network (volatile, so the seed's
-// network-config rules again after a reboot; sorts before netplan's files)
-// and reconfigures the link; otherwise it uses ip addr/route replace. What
-// it set is kept in /run/hlab-guest/networks.json and removed again when the
-// entry goes (detach). Alias IPs are left to the user, as at Hetzner.
+// and belongs to a link that does not carry its private IP yet (a link
+// hot-added after boot; links the seed's network-config configured at boot
+// are left to it, with what the user added), it sets the private IP as /32
+// and a route to the network range via the gateway, on-link; Hetzner's
+// guests get the same from DHCP, hlab has no DHCP server. With
+// systemd-networkd active it writes
+// /run/systemd/network/05-hlab-<mac>.network (volatile, gone after a
+// reboot) and reconfigures the link; otherwise it uses ip addr/route
+// replace. What it set is kept in /run/hlab-guest/networks.json and removed
+// again when the entry goes (detach). Alias IPs are left to the user, as at
+// Hetzner.
 const guestHook = `#!/usr/bin/python3
 # hlab guest hook: picks up grown volumes, configures private adapters,
 # applies a pending root password reset.
@@ -91,6 +94,15 @@ def quiet(*args):
     subprocess.run(list(args), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+# A link that already carries its private IP was configured by the seed's
+# network-config at boot (or by an earlier run): the hook leaves it alone.
+def has_ip(dev, ip):
+    out = subprocess.run(["ip", "-o", "addr", "show", "dev", dev],
+                         capture_output=True, text=True).stdout
+    return (" %s/" % ip) in out
+
+
+# The address comes last, so a link carrying it is fully configured.
 def apply_net(mac, dev, cfg, networkd):
     if networkd:
         os.makedirs(NETDIR, exist_ok=True)
@@ -102,8 +114,8 @@ def apply_net(mac, dev, cfg, networkd):
         run("networkctl", "reconfigure", dev)
     else:
         run("ip", "link", "set", dev, "up")
-        run("ip", "addr", "replace", cfg["ip"] + "/32", "dev", dev)
         run("ip", "route", "replace", cfg["network"], "via", cfg["gateway"], "dev", dev, "onlink")
+        run("ip", "addr", "replace", cfg["ip"] + "/32", "dev", dev)
 
 
 def remove_net(mac, dev, cfg):
@@ -144,7 +156,7 @@ def sync_networks():
             remove_net(mac, devs.get(mac), cfg)
     networkd = None
     for mac, cfg in want.items():
-        if mac in done or mac not in devs:
+        if mac in done or mac not in devs or has_ip(devs[mac], cfg["ip"]):
             continue
         if networkd is None:
             networkd = networkd_active()
