@@ -276,12 +276,12 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - Size: ~330 lines in 3 files
   - [x] src/views/Projects.svelte (table with resource counts, create form, delete with typed name and the deletion action as a progress toast via `/actions/{id}`), src/views/ProjectDetail.svelte (token table, "Create token" dialog with read-only switch showing the value once in a CopyField with a warning, revoke with confirm).
 
-- [ ] 10-16 Settings view
+- [x] 10-16 Settings view
   - Wave: 5 | Depends on: 10-07, 10-08, 10-11, 10-12, 10-14 | Review: alone
   - Requirements: UI-03 | Tests: ui/frontend/tests/e2e/settings.spec.ts
   - Reads: UI-SPEC "Views" (Settings); ARCHITECTURE "Files and formats" (Settings); decisions/managed-certificates.md (risk text); CONTEXT (stop_behaviour hint)
   - Size: ~300 lines in 2 files
-  - [ ] src/views/Settings.svelte: grouped form for every key, errors under the field from `*Invalid`, hints (stop_behaviour as in CONTEXT; public_range, data_folder and reserves "Applies at the next cloud start"; data_folder "Existing data is not moved"); trust switch with risk text through `PUT /trust` and "Save CA certificate" from `GET /ca.pem`, both only while running.
+  - [x] src/views/Settings.svelte: grouped form for every key, errors under the field from `*Invalid`, hints (stop_behaviour as in CONTEXT; public_range, data_folder and reserves "Applies at the next cloud start"; data_folder "Existing data is not moved"); trust switch with risk text through `PUT /trust` and "Save CA certificate" from `GET /ca.pem`, both only while running.
 
 - [ ] 10-17 Server Types view
   - Wave: 5 | Depends on: 10-08, 10-11, 10-12, 10-14 | Review: alone
