@@ -269,12 +269,12 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - [x] ui/frontend/tests/e2e/fixtures.ts (worker-scoped CDP connection, existing page, reload per test) and the UI-01 spec.
   - Adjusts: test/e2e/catalog_test.go (uses the extracted token helper), test/e2e/e2e_test.go (UI rows in the serial part)
 
-- [ ] 10-15 Projects view
+- [x] 10-15 Projects view
   - Wave: 5 | Depends on: 10-11, 10-12, 10-14 | Review: alone
   - Requirements: UI-05 | Tests: ui/frontend/tests/e2e/projects.spec.ts
   - Reads: UI-SPEC "Views" (Projects), "Building blocks"; ARCHITECTURE "Management API" (projects, tokens, actions); DECISIONS "Deleting a project needs its name typed"
   - Size: ~330 lines in 3 files
-  - [ ] src/views/Projects.svelte (table with resource counts, create form, delete with typed name and the deletion action as a progress toast via `/actions/{id}`), src/views/ProjectDetail.svelte (token table, "Create token" dialog with read-only switch showing the value once in a CopyField with a warning, revoke with confirm).
+  - [x] src/views/Projects.svelte (table with resource counts, create form, delete with typed name and the deletion action as a progress toast via `/actions/{id}`), src/views/ProjectDetail.svelte (token table, "Create token" dialog with read-only switch showing the value once in a CopyField with a warning, revoke with confirm).
 
 - [ ] 10-16 Settings view
   - Wave: 5 | Depends on: 10-07, 10-08, 10-11, 10-12, 10-14 | Review: alone
