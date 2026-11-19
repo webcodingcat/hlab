@@ -56,6 +56,17 @@ Fixed API answers:
 - `/datacenters`: as at Hetzner since 2026-10-01 (410 Gone, per the frozen
   description).
 
+## References
+
+External descriptions the project must match, such as an API it
+re-implements, a file format or a protocol. Agents read the part a phase
+touches here instead of relying on memory.
+
+- Hetzner Cloud OpenAPI description: `%LocalAppData%\hlab\openapi\cloud.spec.json`
+  (downloaded by `task openapi` from `https://docs.hetzner.cloud/cloud.spec.json`),
+  OpenAPI 3.1.2 pinned by SHA-256 in `api/openapi.lock`; settles the
+  request and response shapes, error codes and HTTP statuses hlab serves.
+
 ## Accounts and secrets
 
 What the user has to provide before the implementation runs. Values never

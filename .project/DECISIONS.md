@@ -1711,3 +1711,11 @@ in ARCHITECTURE.md or the plan.
 - What: a firewall ID listed twice in a server create is applied once; a sixth firewall answers 403 `resource_limit_exceeded`; a selector's `applied_to_resources` also lists servers applied directly; each firewall action runs its own agent push.
 - Why: Hetzner documents none of these cases; the simplest behaviour that keeps every client working.
 - Cost of change: low
+
+## 2026-11-19 Upgrade to wcc 0.32.8
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.32.6 to 0.32.8: SPEC.md section "References" with the Hetzner OpenAPI description, version line in CLAUDE.md
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
