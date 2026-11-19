@@ -2095,3 +2095,11 @@ in ARCHITECTURE.md or the plan.
 - What: the install script names the xfs packages instead of `*.deb`, installs haproxy with its four libraries only while `haproxy` is missing, skips a package file missing from the ISO, ignores a failed `systemctl disable` and creates `/run/hlab`.
 - Why: the glob would mix the xfs and HAProxy installs; missing debs must not stop the cloud (earlier decision).
 - Cost of change: low
+
+## 2026-11-19 Certificate and network module details
+
+- Type: decision
+- Phase: phase 08
+- What: `POST /certificates` without `type` means `uploaded`; a missing `certificate` or `private_key` is `invalid_input` on that field; certificate names follow the firewall rules (128 characters, unique per project); networks pick server and LB IPs through one shared `pickIP`, and `NetworkDeleted` runs for every network removal, project deletion included.
+- Why: the OpenAPI default; one place for the IP rules; LBs must hear of every deleted network.
+- Cost of change: low

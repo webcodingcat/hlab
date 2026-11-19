@@ -272,13 +272,13 @@ type Deps struct {
     - (internal/resources/networks/attach.go, internal/resources/networks/networks.go, internal/resources/networks/lb.go)
   - [x] Rows of TESTS.md for 08-07 (internal/resources/networks/networks_test.go, with a fake `LoadBalancerMembers`)
 
-- [ ] 08-08 Certificates: uploaded certificates and the resource
+- [x] 08-08 Certificates: uploaded certificates and the resource
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: CERT-01 | Tests: internal/resources/certificates/certificates_test.go
   - Reads: R4; OpenAPI `/certificates`, `/certificates/{id}`, `/certificates/actions`; DECISIONS "Certificate issuance and status"; internal/resources/firewalls/firewalls.go as pattern
   - Size: ~380 lines in 3 files
   - Adjusts: -
-  - [ ] Module, `Record` (Hetzner shape; `_hlab.key` never shown), `Deps`, `KeyPair`, `ErrNotIssued`:
+  - [x] Module, `Record` (Hetzner shape; `_hlab.key` never shown), `Deps`, `KeyPair`, `ErrNotIssued`:
     - list (filter name, label_selector, type; sort id, name, created), GET, PUT (name and labels)
     - POST `uploaded` (201, `action` null, `status` null)
     - DELETE: 422 `resource_in_use` while `UsedBy` names an LB
@@ -286,8 +286,8 @@ type Deps struct {
     - action routes through `resactions.RoutesFor`
     - POST `managed` answers 422 `invalid_input` on `type` until 08-10
     - (internal/resources/certificates/certificates.go)
-  - [ ] PEM handling: parse the chain and the PKCS#1, PKCS#8 or EC key; the key must match the leaf, otherwise `invalid_input` on `private_key`; a bad chain gives `invalid_input` on `certificate`. The SHA-256 fingerprint is colon-separated hex; domain names come from the SANs, else the CN (internal/resources/certificates/pem.go)
-  - [ ] Rows of TESTS.md for 08-08 (internal/resources/certificates/certificates_test.go, group `TestCertificates`)
+  - [x] PEM handling: parse the chain and the PKCS#1, PKCS#8 or EC key; the key must match the leaf, otherwise `invalid_input` on `private_key`; a bad chain gives `invalid_input` on `certificate`. The SHA-256 fingerprint is colon-separated hex; domain names come from the SANs, else the CN (internal/resources/certificates/pem.go)
+  - [x] Rows of TESTS.md for 08-08 (internal/resources/certificates/certificates_test.go, group `TestCertificates`)
 
 - [ ] 08-09 Primary IPs held by load balancers
   - Wave: 2 | Depends on: 08-03 | Review: alone
