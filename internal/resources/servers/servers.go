@@ -9,6 +9,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"net/netip"
@@ -154,7 +156,8 @@ type PublicNet struct {
 	IPv4        *IPv4   `json:"ipv4"`
 	IPv6        *IPv6   `json:"ipv6"`
 	FloatingIPs []int64 `json:"floating_ips"`
-	Firewalls   []any   `json:"firewalls"`
+	// Firewalls is filled from the firewall hook when a server is shown.
+	Firewalls []ServerFirewall `json:"firewalls"`
 }
 
 // IPv4 is the public IPv4 of a server. ID is the ID of its primary IP,
@@ -255,6 +258,7 @@ type Module struct {
 	// publicIPs and networks are the create hooks; nil = none.
 	publicIPs PublicIPs
 	networks  Networks
+	firewalls Firewalls
 	// onDelete run inside the transaction that deletes a server record.
 	onDelete []func(tx store.Tx, serverID int64) error
 
@@ -444,8 +448,8 @@ func put(tx store.Tx, r Record) error {
 	}, r)
 }
 
-// show returns the API shape of r with its placement group.
-func show(tx store.Tx, r Record) (Server, error) {
+// show returns the API shape of r with its placement group and firewalls.
+func (m *Module) show(tx store.Tx, r Record) (Server, error) {
 	g, ok, err := placementgroups.Of(tx, r.Hlab.ProjectID, r.ID)
 	if err != nil {
 		return Server{}, err
@@ -453,6 +457,9 @@ func show(tx store.Tx, r Record) (Server, error) {
 	s := r.Server
 	if ok {
 		s.PlacementGroup = &g
+	}
+	if s.PublicNet.Firewalls, err = m.firewallsOf(tx, r); err != nil {
+		return Server{}, err
 	}
 	return s, nil
 }
@@ -503,6 +510,9 @@ func (m *Module) list(w http.ResponseWriter, req *http.Request) {
 			if g, ok := members[r.ID]; ok {
 				s.PlacementGroup = &g
 			}
+			if s.PublicNet.Firewalls, err = m.firewallsOf(tx, r); err != nil {
+				return err
+			}
 			out = append(out, s)
 		}
 		return nil
@@ -526,7 +536,7 @@ func (m *Module) get(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			return err
 		}
-		s, err = show(tx, r)
+		s, err = m.show(tx, r)
 		return err
 	})
 	switch {
@@ -558,7 +568,8 @@ type createRequest struct {
 		IPv4       *int64 `json:"ipv4"`
 		IPv6       *int64 `json:"ipv6"`
 	} `json:"public_net"`
-	Networks []int64 `json:"networks"`
+	Networks  []int64       `json:"networks"`
+	Firewalls []firewallRef `json:"firewalls"`
 }
 
 // publicNetRequest is the public_net of b with Hetzner's defaults.
@@ -646,6 +657,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	var rec Record
 	var shown Server
 	var action *actions.Action
+	next := []*actions.Action{}
 	err := stor.Tx(func(tx store.Tx) error {
 		if err := checkName(tx, p.ID, body.Name, 0); err != nil {
 			return err
@@ -692,10 +704,10 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		}
 		rec = Record{
 			Server: Server{
-				ID:      id,
-				Name:    body.Name,
-				Status:  StatusInitializing,
-				Created: m.d.Clock.Now().UTC().Truncate(time.Second),
+				ID:              id,
+				Name:            body.Name,
+				Status:          StatusInitializing,
+				Created:         m.d.Clock.Now().UTC().Truncate(time.Second),
 				PublicNet:       publicNet,
 				PrivateNet:      privateNet,
 				ServerType:      typ.Raw,
@@ -729,10 +741,15 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 				return err
 			}
 		}
-		if shown, err = show(tx, rec); err != nil {
+		if action, err = acts.Start(tx, p.ID, "create_server", []actions.Ref{{ID: id, Type: refType}}); err != nil {
 			return err
 		}
-		action, err = acts.Start(tx, p.ID, "create_server", []actions.Ref{{ID: id, Type: refType}})
+		fwActions, err := m.attachFirewalls(tx, acts, rec, body.Firewalls)
+		if err != nil {
+			return err
+		}
+		next = append(next, fwActions...)
+		shown, err = m.show(tx, rec)
 		return err
 	})
 	switch {
@@ -773,7 +790,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	api.JSON(w, http.StatusCreated, map[string]any{
 		"server":        shown,
 		"action":        action,
-		"next_actions":  []any{},
+		"next_actions":  next,
 		"root_password": rootPassword,
 	})
 }
@@ -815,7 +832,7 @@ func (m *Module) allocatePublic(tx store.Tx, projectID, id int64, location strin
 		pn.FloatingIPs = []int64{}
 	}
 	if pn.Firewalls == nil {
-		pn.Firewalls = []any{}
+		pn.Firewalls = []ServerFirewall{}
 	}
 	return pn, nil
 }
@@ -918,6 +935,7 @@ func (m *Module) update(w http.ResponseWriter, req *http.Request) {
 	}
 	p, _ := api.ProjectFrom(req.Context())
 	var s Server
+	var relabelled bool
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
 		r, err := store.Get[Record](tx, Kind, p.ID, id)
 		if err != nil {
@@ -933,17 +951,24 @@ func (m *Module) update(w http.ResponseWriter, req *http.Request) {
 			if err := api.CheckLabels(*body.Labels); err != nil {
 				return err
 			}
+			relabelled = !maps.Equal(r.Labels, *body.Labels)
 			r.Labels = *body.Labels
 		}
 		if err := put(tx, r); err != nil {
 			return err
 		}
-		s, err = show(tx, r)
+		s, err = m.show(tx, r)
 		return err
 	})
 	if err != nil {
 		api.Fail(w, err)
 		return
+	}
+	// Labels decide which label selectors of firewalls reach the server.
+	if relabelled {
+		if err := m.d.PushAgent(req.Context()); err != nil {
+			slog.Warn("push agent document after server labels changed", "id", id, "err", err)
+		}
 	}
 	api.JSON(w, http.StatusOK, map[string]any{"server": s})
 }
