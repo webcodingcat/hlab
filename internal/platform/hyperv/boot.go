@@ -15,14 +15,25 @@ const dvdController = 1
 
 // SetDVD inserts iso into the DVD drive at location slot of SCSI controller
 // 1 (0 cidata, 1 user ISO), adding the controller and the drive if they are
-// missing; "" ejects.
+// missing; "" ejects. Hyper-V completes an eject a few seconds after
+// Set-VMDvdDrive returns, and inserting before that fails with "object not
+// found", so an eject returns only once the drive reports no media.
 func (p *Platform) SetDVD(ctx context.Context, vm string, slot int, iso string) error {
 	if slot != 0 && slot != 1 {
 		return &platform.Error{Kind: platform.Failed, Op: "SetDVD", Err: fmt.Errorf("dvd slot %d is not 0 or 1", slot)}
 	}
 	_, err := p.r.run(ctx, "SetDVD", map[string]any{"name": vm, "slot": slot, "iso": iso, "ctl": dvdController}, getVM+`$iso = if ($iso) { [System.IO.Path]::GetFullPath($iso) } else { $null }
 $d = Get-VMDvdDrive -VM $vm | Where-Object { $_.ControllerNumber -eq $ctl -and $_.ControllerLocation -eq $slot } | Select-Object -First 1
-if ($d) { Set-VMDvdDrive -VMDvdDrive $d -Path $iso; return }
+if ($d) {
+  Set-VMDvdDrive -VMDvdDrive $d -Path $iso
+  if ($iso) { return }
+  $sw = [System.Diagnostics.Stopwatch]::StartNew()
+  while ((Get-VMDvdDrive -VM $vm | Where-Object { $_.ControllerNumber -eq $ctl -and $_.ControllerLocation -eq $slot } | Select-Object -First 1).Path) {
+    if ($sw.Elapsed.TotalSeconds -gt 60) { throw "dvd $slot of vm $name still holds media 60 s after the eject" }
+    Start-Sleep -Milliseconds 250
+  }
+  return
+}
 if (-not $iso) { return }
 if (-not (Get-VMScsiController -VM $vm | Where-Object { $_.ControllerNumber -eq $ctl })) { Add-VMScsiController -VM $vm }
 Add-VMDvdDrive -VM $vm -ControllerNumber $ctl -ControllerLocation $slot -Path $iso
