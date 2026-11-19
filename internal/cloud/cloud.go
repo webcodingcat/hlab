@@ -121,13 +121,13 @@ type Cloud struct {
 	jobMu sync.Mutex
 
 	applianceOn bool
-	// restored is set once Lifecycle.Restore ran; only then does the stop
-	// halt the servers and record which ran.
-	restored bool
 	apiSrv      *http.Server
 	mgmtSrv     *http.Server
 	// stopJobs cancels the scheduled jobs and waits until they returned.
 	stopJobs func()
+	// restored is set once Lifecycle.Restore ran; only then does the stop
+	// halt the servers and record which ran.
+	restored bool
 }
 
 // New returns a stopped cloud.
