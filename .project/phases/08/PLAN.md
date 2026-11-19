@@ -289,18 +289,18 @@ type Deps struct {
   - [x] PEM handling: parse the chain and the PKCS#1, PKCS#8 or EC key; the key must match the leaf, otherwise `invalid_input` on `private_key`; a bad chain gives `invalid_input` on `certificate`. The SHA-256 fingerprint is colon-separated hex; domain names come from the SANs, else the CN (internal/resources/certificates/pem.go)
   - [x] Rows of TESTS.md for 08-08 (internal/resources/certificates/certificates_test.go, group `TestCertificates`)
 
-- [ ] 08-09 Primary IPs held by load balancers
+- [x] 08-09 Primary IPs held by load balancers
   - Wave: 2 | Depends on: 08-03 | Review: alone
   - Requirements: LB-01 | Tests: internal/resources/primaryips/primaryips_test.go
   - Reads: DECISIONS "Load balancer public IPs and primary IPs", "Primary IP details"; internal/resources/primaryips/actions.go (`assign`, `unassign`, `Allocate`, `ServerDeleted`)
   - Size: ~200 lines in 3 files
   - Adjusts: -
-  - [ ] `AssigneeLoadBalancer`, `AssignLoadBalancer`, `LoadBalancerDeleted`:
+  - [x] `AssigneeLoadBalancer`, `AssignLoadBalancer`, `LoadBalancerDeleted`:
     - `assign` on an LB-held IP gives 422 `primary_ip_already_assigned`; `unassign` gives 422 `invalid_input`
     - DELETE of an LB-held IP gives `primary_ip_assigned`
     - `Contribute` skips LB-held IPs, because the LB contributes them
     - (internal/resources/primaryips/actions.go, internal/resources/primaryips/primaryips.go)
-  - [ ] Rows of TESTS.md for 08-09 (internal/resources/primaryips/primaryips_test.go)
+  - [x] Rows of TESTS.md for 08-09 (internal/resources/primaryips/primaryips_test.go)
 
 - [ ] 08-10 Certificates: managed issuance, retry and renewal
   - Wave: 2 | Depends on: 08-01, 08-08 | Review: alone

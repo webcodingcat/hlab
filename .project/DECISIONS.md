@@ -2103,3 +2103,11 @@ in ARCHITECTURE.md or the plan.
 - What: `POST /certificates` without `type` means `uploaded`; a missing `certificate` or `private_key` is `invalid_input` on that field; certificate names follow the firewall rules (128 characters, unique per project); networks pick server and LB IPs through one shared `pickIP`, and `NetworkDeleted` runs for every network removal, project deletion included.
 - Why: the OpenAPI default; one place for the IP rules; LBs must hear of every deleted network.
 - Cost of change: low
+
+## 2026-11-19 Primary IPs held by load balancers, details
+
+- Type: decision
+- Phase: phase 08
+- What: `ServerDeleted` and `change_dns_ptr` mirroring skip IPs held by a load balancer; `AssignLoadBalancer` checks version, assigned, blocked, location in that order; an unknown or foreign ID is `invalid_input` on `public_net.ipv4`/`ipv6`; an IP freed from a deleted LB gets `assignee_type` "server" back.
+- Why: LB and server IDs can be equal, so an IP would otherwise be freed with or mirrored onto the wrong server.
+- Cost of change: low
