@@ -197,7 +197,7 @@ func (l *LoadBalancers) removeStale(ctx context.Context, want map[int64]bool) er
 			id, ok = lbID(name, "lbn")
 		}
 		if ok && !want[id] && lk.Type() == "veth" {
-			if err := netlink.LinkDel(lk); err != nil {
+			if err := linkDel(lk); err != nil {
 				return fmt.Errorf("loadbalancers: delete link %s: %w", name, err)
 			}
 		}
@@ -307,7 +307,7 @@ func ensureVeth(h *netlink.Handle, ns netns.NsHandle, rootName, peerName string,
 		return nil, nil, fmt.Errorf("link %s: %w", rootName, err)
 	}
 	if err == nil && root.Attrs().MasterIndex != master {
-		if err := netlink.LinkDel(root); err != nil {
+		if err := linkDel(root); err != nil {
 			return nil, nil, fmt.Errorf("delete link %s: %w", rootName, err)
 		}
 		missing = true
@@ -355,10 +355,20 @@ func deleteLink(name string) error {
 	if err != nil {
 		return fmt.Errorf("link %s: %w", name, err)
 	}
-	if err := netlink.LinkDel(lk); err != nil {
+	if err := linkDel(lk); err != nil {
 		return fmt.Errorf("delete link %s: %w", name, err)
 	}
 	return nil
+}
+
+// linkDel deletes lk; a link already gone is no error. Deleting a netns or
+// one end of a veth removes the other end too, sometimes after it was listed.
+func linkDel(lk netlink.Link) error {
+	err := netlink.LinkDel(lk)
+	if errors.Is(err, unix.ENODEV) || errors.As(err, &netlink.LinkNotFoundError{}) {
+		return nil
+	}
+	return err
 }
 
 // syncPeerAddr makes a /32 the only IPv4 address of the netns link.
