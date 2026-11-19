@@ -1815,3 +1815,11 @@ in ARCHITECTURE.md or the plan.
 - What: an RRSet has its own TTL only when its line names one; `$TTL` and record TTLs accept BIND units (`1h30m`); `$INCLUDE` and `$GENERATE` are refused with the line; owner names are lower-cased on import; the apex NS must contain the three Hetzner nameservers and may hold more.
 - Why: ordinary BIND zone files import unchanged and export and import round-trip exactly.
 - Cost of change: low
+
+## 2026-11-19 Agent zone answers
+
+- Type: decision
+- Phase: phase 07
+- What: empty non-terminals count as existing (wildcards answer below them, a direct query gets NODATA); an RRSet with TTL 0 uses the zone TTL; unparsable values are skipped with a warning and a zone without apex SOA is not served; for an outside CNAME target an upstream NXDOMAIN is passed on with the chain, any other upstream failure or the 8-step limit returns the chain so far.
+- Why: RFC 4592 behaviour and an agent that keeps answering when one record is bad.
+- Cost of change: low

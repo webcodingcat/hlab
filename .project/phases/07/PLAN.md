@@ -208,14 +208,14 @@ type ShadowingZone struct {
   - [x] `change_dns_ptr` action through `rdns.Change`, `dns_ptr` shown through `rdns.Show`, `Contribute` adds the effective PTR of every floating IPv4 to `doc.PTR` (internal/resources/floatingips/actions.go, internal/resources/floatingips/floatingips.go)
   - [x] Rows of TESTS.md for 07-05 (internal/resources/floatingips/floatingips_test.go)
 
-- [ ] 07-06 Agent: answering hlab zones
+- [x] 07-06 Agent: answering hlab zones
   - Wave: 2 | Depends on: 07-01 | Review: alone
   - Requirements: DNS-02 | Tests: internal/agent/dns_test.go
   - Reads: ARCHITECTURE "hlab-agent" (Zone, RRSet), "Network" (DNS); CONTEXT (wildcards, CNAME, DS); internal/agent/dns.go; decision D11 below
   - Size: ~250 lines in 2 files
   - Adjusts: -
-  - [ ] `buildDNSData` adds every `cfg.Zones` entry as an authoritative zone (RRs through `dnszone.ToRR`, SOA from its SOA RRSet); `zoneFor` keeps the most specific zone; `answer` serves wildcard owners (`*.<name>`) for names without own records, and follows a CNAME inside hlab zones and, for a target outside them, through the upstream servers, appending the chain (at most 8 steps) (internal/agent/dns.go)
-  - [ ] Rows of TESTS.md for 07-06 (internal/agent/dns_test.go, registered in `TestAgent`; fake upstream through a local miekg server on 127.0.0.1)
+  - [x] `buildDNSData` adds every `cfg.Zones` entry as an authoritative zone (RRs through `dnszone.ToRR`, SOA from its SOA RRSet); `zoneFor` keeps the most specific zone; `answer` serves wildcard owners (`*.<name>`) for names without own records, and follows a CNAME inside hlab zones and, for a target outside them, through the upstream servers, appending the chain (at most 8 steps) (internal/agent/dns.go)
+  - [x] Rows of TESTS.md for 07-06 (internal/agent/dns_test.go, registered in `TestAgent`; fake upstream through a local miekg server on 127.0.0.1)
 
 - [ ] 07-07 Zones: zones resource
   - Wave: 2 | Depends on: 07-01 | Review: alone
