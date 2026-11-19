@@ -43,7 +43,6 @@ type trayUI struct {
 	updating sync.Mutex // one tray update at a time
 
 	mu    sync.Mutex
-	ready bool
 	model bridge.TrayModel
 }
 
@@ -93,7 +92,6 @@ func (t *trayUI) setup(app *application.App, cloud *bridge.Cloud) {
 	t.mu.Lock()
 	t.app, t.window, t.cloud = app, window, cloud
 	t.systray, t.menu, t.status, t.start, t.stop = systray, menu, status, start, stop
-	t.ready = true
 	t.mu.Unlock()
 	t.apply(cloud.Status(), false)
 }
@@ -111,10 +109,6 @@ func (t *trayUI) apply(s bridge.State, emit bool) {
 	defer t.updating.Unlock()
 	m := bridge.Tray(s)
 	t.mu.Lock()
-	if !t.ready {
-		t.mu.Unlock()
-		return
-	}
 	prev := t.model
 	t.model = m
 	t.mu.Unlock()
@@ -136,12 +130,7 @@ func (t *trayUI) apply(s bridge.State, emit bool) {
 
 // emitLogs sends a batch of log lines to the window as the "logs" event.
 func (t *trayUI) emitLogs(lines []string) {
-	t.mu.Lock()
-	app := t.app
-	t.mu.Unlock()
-	if app != nil {
-		app.Event.Emit("logs", lines)
-	}
+	t.app.Event.Emit("logs", lines)
 }
 
 // state is what the tray shows now.
@@ -192,12 +181,7 @@ func (t *trayUI) showWindow() {
 // quit ends the tray only; the cloud keeps running.
 func (t *trayUI) quit() {
 	t.quitting.Store(true)
-	t.mu.Lock()
-	app := t.app
-	t.mu.Unlock()
-	if app != nil {
-		app.Quit()
-	}
+	t.app.Quit()
 }
 
 // fail shows a failed menu action in a message box.
