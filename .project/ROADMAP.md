@@ -23,14 +23,7 @@
 
 - [x] 05 Private networks, primary IPs and floating IPs, port isolation (NET-01, NET-02, NET-03, NET-04, NET-05, NET-06, PIP-01, PIP-02, FIP-01, FIP-02, HOST-01) → phases/05/
 
-- [ ] 06 Firewalls.
-      Requirements: FW-01, FW-02, FW-03, FW-04, FW-05.
-      Depends on: 05.
-      Success criteria:
-      1. With a firewall allowing only port 22, SSH works and port 80 is
-         blocked; removing the firewall opens port 80.
-      2. Applying a firewall by label selector filters a server that gets
-         the label later.
+- [x] 06 Firewalls (FW-01, FW-02, FW-03, FW-04, FW-05) → phases/06/
 
 - [ ] 07 DNS zones and reverse DNS.
       Requirements: DNS-01, DNS-02, DNS-03, DNS-04, DNS-05, RDNS-01,

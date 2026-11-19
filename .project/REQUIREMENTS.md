@@ -314,11 +314,11 @@ What the target vision in IDEA.md will need, not built yet.
 | FIP-02 | 05 | x |
 | RDNS-01 | 07 | |
 | RDNS-02 | 07 | |
-| FW-01 | 06 | |
-| FW-02 | 06 | |
-| FW-03 | 06 | |
-| FW-04 | 06 | |
-| FW-05 | 06 | |
+| FW-01 | 06 | x |
+| FW-02 | 06 | x |
+| FW-03 | 06 | x |
+| FW-04 | 06 | x |
+| FW-05 | 06 | x |
 | LB-01 | 08 | |
 | LB-02 | 08 | |
 | LB-03 | 08 | |

@@ -190,3 +190,8 @@ func NewFirewall(iface string) *Firewall
 - D10 The record changes in the request's transaction, before the action runs, so `GET` and `DELETE` right after a remove see the new state.
 - D12 `POST /servers` with an unknown firewall in `firewalls` answers 404 `not_found` and creates no server; a server create with firewalls and no public IPv4 answers 422 `private_net_only_server`.
 - D11 New `actions.Manager.StartAll` instead of naming only one resource per action: the server create action and several apply actions on one firewall would otherwise lock each other.
+
+## Close
+
+- E2E: `task e2e -- -v -run 'TestE2E/FW-0[23]$'` (the phase's e2e rows; no other e2e test function changed). Green on cf1ac92.
+- Unit suite `task test` and `task lint` green on cf1ac92.
