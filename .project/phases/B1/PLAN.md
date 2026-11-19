@@ -33,7 +33,7 @@ func recoverModules(ctx context.Context, mods []resource.Module) error
 type Deps struct {
 	Catalog    *catalog.Catalog
 	DataFolder string
-	Store      *store.Store // used by Recover; nil leaves Recover a no-op
+	Store      *store.Store // used by Recover
 }
 
 // Recover removes every image record with status creating and its file
@@ -116,14 +116,14 @@ func seedUserData(userData string, volumes []int64) string
   - Adjusts: -
   - [x] `setup()` (test/e2e/main_test.go): read `cloudState()` before `buildAll`; if it is `running`, run `hlab cloud stop` with the existing binary and wait for `stopped`, then build, guard the profiles and start the cloud as today without setting `harness.startedCloud`, so teardown leaves it running as found. Measurement at the close: with the dev cloud running, `task e2e -- -run 'TestE2E/API-01'` builds and runs instead of failing in `task build` (before: build error); noted under "Close"
 
-- [ ] B1-06 Documentation
+- [x] B1-06 Documentation
   - Wave: 3 | Depends on: B1-01, B1-02, B1-03, B1-04, B1-05 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06 | Tests: test/docs/docs_test.go (existing)
   - Reads: SPEC "Documentation"; REQUIREMENTS "Documentation (`DOC`)"
   - Size: ~40 lines in 2 files
   - Adjusts: -
-  - [ ] docs/dev/build-and-test.md: `task e2e` stops a running dev cloud for the build and starts it again
-  - [ ] docs/user/deviations.md: after a rebuild the NoCloud instance-id is `<server id>-<n>` while the metadata `/instance-id` stays the server ID; images and volumes cut short by a cloud stop are removed at the next start
+  - [x] docs/dev/build-and-test.md: `task e2e` stops a running dev cloud for the build and starts it again
+  - [x] docs/user/deviations.md: after a rebuild the NoCloud instance-id is `<server id>-<n>` while the metadata `/instance-id` stays the server ID; images and volumes cut short by a cloud stop are removed at the next start
 
 ## Close
 

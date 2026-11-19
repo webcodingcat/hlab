@@ -28,7 +28,11 @@ STATUS: IN_PROGRESS
      /wcc:phase asks those of its phase at its start, /wcc:change takes
      answers any time. -->
 
-- none
+- Q7 (B1 B1-03): Should `Metrics(ctx, vm)` stay in the `platform.Platform` interface now that nothing calls it?
+  - Context: since B1-03 the sampler uses only `MetricsAll`; `Metrics` remains in the interface (ARCHITECTURE platform section), in the hyperv implementation and in the fake, with no caller in production or tests.
+  - Options: 1. Keep it as a convenience for a later platform 2. Remove it from `Platform`, hyperv and the fake, and from ARCHITECTURE
+  - Recommendation: 2, because every new platform would otherwise implement and maintain a method nothing uses.
+  - Affects: SRV-21, ARCHITECTURE.md platform section
 
 ## If BLOCKED
 
