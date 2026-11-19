@@ -79,6 +79,11 @@ description. Every other endpoint answers 404 `not_found`.
 - `rebuild` takes a system image, or a snapshot or backup of the project
   by ID. An image whose `disk_size` exceeds the server type's disk answers
   422 `invalid_input` on the field `image`.
+- After a `rebuild`, cloud-init in the guest sees the instance-id
+  `<server id>-<action id>` (the ID of the rebuild action), so it runs its
+  first-boot steps again, also on a disk restored from a snapshot or
+  backup of the same server. The metadata service keeps answering
+  `/hetzner/v1/metadata/instance-id` with the server ID.
 - `reset_password` works through a small hlab guest hook that hlab
   installs at the first boot of every server it creates, not through
   qemu-guest-agent. The hook applies the new password within a few
@@ -86,7 +91,9 @@ description. Every other endpoint answers 404 `not_found`.
   `server_error`. A server without the hook, such as one created by an
   earlier hlab version or one whose user data turns off cloud-init's
   vendor data, therefore cannot reset its password. On a server that is
-  not `running` the action answers 409 `conflict`.
+  not `running` the action answers 409 `conflict`. When the cloud stops
+  during the action, the action ends with `server_error` at the next
+  start, and the server no longer receives the new password.
 - `request_console` answers 422 `unsupported_error` with the message
   `server console is not supported by hlab yet` and starts no action.
 
@@ -107,6 +114,9 @@ description. Every other endpoint answers 404 `not_found`.
   without backups enabled answers 422 `invalid_input` on the field `type`.
 - `DELETE /images/{id}` of an image that is still being created answers
   423 `locked`.
+- When the cloud stops while an image is being created, the next cloud
+  start ends the `create_image` action with `server_error` and removes the
+  image and its partial file.
 
 ## Rescue system
 
@@ -167,6 +177,9 @@ description. Every other endpoint answers 404 `not_found`.
 - `POST /volumes` and `resize` answer 412 `resource_unavailable` when the
   volume does not fit into the free space of the data folder minus
   `reserve_disk_gb`.
+- When the cloud stops while a volume is being created, the next cloud
+  start ends its action with `server_error` and removes the volume and its
+  disk file.
 
 ## Metrics
 

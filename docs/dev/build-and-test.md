@@ -88,7 +88,10 @@ skipped when there is no such context.
 The harness runs `task build`, starts the development cloud if it is
 stopped (and stops it again at the end if it started it), creates one
 project `e2e-<time>` with an SSH key per run, and deletes the run's servers
-at the end; the project and its SSH key stay. It refuses to run while the release cloud (service `hlab`) runs, when
+at the end; the project and its SSH key stay. A running development cloud
+holds `bin\hlabd.exe`, so the harness stops it before the build, starts it
+again afterwards and leaves it running at the end. It refuses to run while
+the release cloud (service `hlab`) runs, when
 `hlab-dev` points to another working copy, or in an elevated terminal.
 
 ## Catalogs
