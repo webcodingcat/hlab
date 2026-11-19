@@ -179,13 +179,13 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - [x] New internal/mgmtclient (`Client`, `Do`, `Stream`, `ErrNotRunning`) and internal/cloudstatus (`File`, `Problem`, `Read`) from the code in internal/cli/cli.go.
   - [x] internal/cli/cli.go and cmd/hlab/main.go use them; no output change.
 
-- [ ] 10-04 Settings: field errors, in-place write, exported ACL copy
+- [x] 10-04 Settings: field errors, in-place write, exported ACL copy
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-03 | Tests: internal/settings/settings_test.go
   - Reads: ARCHITECTURE "Files and formats" (Settings); DECISIONS "Tray settings writes", "settings.Save rewrites the file"
   - Size: ~180 lines in 4 files
-  - [ ] internal/settings/settings.go: json tags equal to the toml keys, `FieldError`, `Validate` (the existing rules returning the key), `Write` (validate, reread `trust_ca` from the file, encode, one in-place write that keeps the file's ACL); `Load` keeps its messages.
-  - [ ] internal/settings/security_windows.go, security_other.go: export `CopySecurity`; `Save` uses it.
+  - [x] internal/settings/settings.go: json tags equal to the toml keys, `FieldError`, `Validate` (the existing rules returning the key), `Write` (validate, reread `trust_ca` from the file, encode, one in-place write that keeps the file's ACL); `Load` keeps its messages.
+  - [x] internal/settings/security_windows.go, security_other.go: export `CopySecurity`; `Save` uses it.
 
 - [ ] 10-05 Frontend tooling, embed and bridge wrapper
   - Wave: 1 | Depends on: - | Review: alone
