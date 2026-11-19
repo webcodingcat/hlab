@@ -1972,7 +1972,7 @@ in ARCHITECTURE.md or the plan.
 
 - Type: decision
 - Phase: phase 08
-- What: TrustCA changes the Windows store and keeps WSL pending; a session-logon notification, cloud start or the next switch applies it (WatchWSL is a stub and is not used for this).
+- What: TrustCA changes the Windows store and keeps WSL pending; while a change is pending, hostnet tries again every 30 s until a user is logged on; cloud start and the next switch apply it too (WatchWSL is a stub and is not used for this).
 - Why: the user's answer to Q1 promised the next logon; the 08-12 review found WatchWSL is never called.
 - Cost of change: low
 
@@ -2126,4 +2126,12 @@ in ARCHITECTURE.md or the plan.
 - Phase: phase 08
 - What: a HAProxy failure for one LB (not installed, refused by `haproxy -c`, failed start or reload) is logged and the other LBs and appliers continue, while netns, veth and route failures fail Apply; LB routes use route protocol 201; the applier runs after `vrf` and before `isolation` and `firewall`; only the first `Private` entry is used.
 - Why: missing appliance debs must not stop the cloud (earlier decision); the network and VRF appliers delete foreign protocol-200 routes; an LB has at most one network.
+- Cost of change: low
+
+## 2026-11-19 WSL trust runner
+
+- Type: decision
+- Phase: phase 08
+- What: WSL failures (list, no distros, failed distros) are logged and never fail `TrustCA` after the Windows store changed; the user runner calls CreateProcessAsUser directly with desktop winsta0\default and adds stderr to the output on a non-zero exit; the pending-logon trigger is a 30 s polling loop that runs only while a change is pending.
+- Why: a missing WSL must not undo or fail the Windows part; os/exec cannot set the desktop; a session-change hook would need a new `sysint.ServiceHost` interface and a WTS window loop.
 - Cost of change: low

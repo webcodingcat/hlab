@@ -340,24 +340,24 @@ type Deps struct {
   - [x] `GET /v1/status` fills `Targets` and `LBMetrics` through `show stat` on each instance's socket and `ParseStat`, by asking the applier through an optional interface (internal/agent/agent.go)
   - [x] Register the applier (cmd/hlab-agent/main.go)
 
-- [ ] 08-12 Host: CA in WSL2 distros
+- [x] 08-12 Host: CA in WSL2 distros
   - Wave: 2 | Depends on: 08-04 | Review: alone
   - Requirements: CERT-04 | Tests: internal/hostnet/windows/trust_test.go
   - Reads: R7; DECISIONS Q9; ARCHITECTURE "Network" (WSL2 paragraph); internal/hostnet/windows/wslconfig.go, wsl.go (WatchWSL); decision D3 below
   - Size: ~350 lines in 4 files
   - Adjusts: -
-  - [ ] Running WSL commands as the user:
+  - [x] Running WSL commands as the user:
     - `userRunner`: the console session's token through WTSQueryUserToken, then `CreateEnvironmentBlock` with `WSL_UTF8=1`, then `CreateProcessAsUser` (CREATE_NO_WINDOW, desktop `winsta0\default`, stdin and stdout pipes)
     - no token returns `errNoUser`
     - (internal/hostnet/windows/runas.go)
-  - [ ] `trustWSL` with an injectable runner:
+  - [x] `trustWSL` with an injectable runner:
     - list with `wsl.exe --list --quiet`, decoding UTF-8 or UTF-16LE with BOM, and skip `docker-desktop*`
     - per distro, on: `wsl.exe -d X -u root -e sh -c 'command -v update-ca-certificates >/dev/null || exit 3; cat > /usr/local/share/ca-certificates/hlab-ca.crt && update-ca-certificates'` with the PEM on stdin
     - off: `rm -f ... && update-ca-certificates --fresh`
     - exit code 3: skipped and logged; other failures: logged, and the remaining distros continue
     - `errNoUser`: remember the pending state; the `WatchWSL` callback path applies it at the next WSL change
     - (internal/hostnet/windows/trust_wsl.go, internal/hostnet/windows/wsl.go)
-  - [ ] Rows of TESTS.md for 08-12 (internal/hostnet/windows/trust_test.go, in `TestHostNet`)
+  - [x] Rows of TESTS.md for 08-12 (internal/hostnet/windows/trust_test.go, in `TestHostNet`)
 
 - [ ] 08-13 Load balancers: core resource
   - Wave: 2 | Depends on: 08-03 | Review: alone
