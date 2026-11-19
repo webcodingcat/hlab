@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -13,11 +14,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"text/tabwriter"
 	"time"
 
+	"github.com/webcodingcat/hlab/internal/discard"
+	"github.com/webcodingcat/hlab/internal/logfile"
 	"github.com/webcodingcat/hlab/internal/sysint"
 	"github.com/webcodingcat/hlab/internal/version"
 )
@@ -40,6 +44,9 @@ type IO struct {
 	// ReadSecret shows prompt and reads a line from the terminal without
 	// echoing it.
 	ReadSecret func(prompt string) (string, error)
+	// LogDir is the folder of hlabd.log, read by `hlab logs` while the
+	// cloud is stopped; "" reads nothing.
+	LogDir string
 }
 
 // Command is one command with its flags, for the documentation.
@@ -66,7 +73,7 @@ type command struct {
 }
 
 var commands = []command{
-	{path: "cloud start", run: cloudStart},
+	{path: "cloud start", bools: []string{discard.Param}, run: cloudStart},
 	{path: "cloud stop", run: cloudStop},
 	{path: "cloud status", run: cloudStatus},
 	{path: "catalog update", opts: []string{"hetzner-token-env"}, run: catalogUpdate},
@@ -78,6 +85,7 @@ var commands = []command{
 	{path: "token revoke", args: "<name>", nargs: 1, flags: []string{"project"}, run: tokenRevoke},
 	{path: "ca export", args: "<file>", nargs: 1, run: caExport},
 	{path: "ca trust", args: "on|off", nargs: 1, run: caTrust},
+	{path: "logs", bools: []string{"follow"}, run: logs},
 	{path: "version", run: printVersion},
 }
 
@@ -288,9 +296,32 @@ func (c *call) mgmt(method, path string, body, v any) error {
 		}
 		rd = bytes.NewReader(b)
 	}
-	req, err := http.NewRequestWithContext(c.ctx, method, "http://hlab/mgmt/v1"+path, rd)
+	resp, err := c.send(method, path, rd)
 	if err != nil {
 		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if raw, ok := v.(*[]byte); ok {
+		*raw = data
+		return nil
+	}
+	if v != nil && len(data) > 0 {
+		return json.Unmarshal(data, v)
+	}
+	return nil
+}
+
+// send sends one request to the management API and returns a successful
+// answer with its body unread; a failed connection is errNotRunning, an
+// error answer its message.
+func (c *call) send(method, path string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(c.ctx, method, "http://hlab/mgmt/v1"+path, body)
+	if err != nil {
+		return nil, err
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -304,37 +335,30 @@ func (c *call) mgmt(method, path string, body, v any) error {
 			}
 			return conn, err
 		},
+		DisableKeepAlives: true,
 	}}
-	defer client.CloseIdleConnections()
 	resp, err := client.Do(req)
 	if err != nil {
 		if dialFailed.Load() {
-			return errNotRunning
+			return nil, errNotRunning
 		}
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
+		return nil, err
 	}
 	if resp.StatusCode >= 300 {
+		defer func() { _ = resp.Body.Close() }()
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
 		var e struct {
 			Error apiError `json:"error"`
 		}
 		if json.Unmarshal(data, &e) != nil || e.Error.Message == "" {
-			return fmt.Errorf("management API answered %s", resp.Status)
+			return nil, fmt.Errorf("management API answered %s", resp.Status)
 		}
-		return e.Error
+		return nil, e.Error
 	}
-	if raw, ok := v.(*[]byte); ok {
-		*raw = data
-		return nil
-	}
-	if v != nil && len(data) > 0 {
-		return json.Unmarshal(data, v)
-	}
-	return nil
+	return resp, nil
 }
 
 func pathEscape(s string) string { return url.PathEscape(s) }
@@ -344,7 +368,11 @@ type serviceState struct {
 }
 
 func cloudStart(c *call) error {
-	if err := c.io.Service.Start(c.ctx); err != nil {
+	var params []string
+	if c.flags[discard.Param] == "true" {
+		params = append(params, discard.Param)
+	}
+	if err := c.io.Service.Start(c.ctx, params...); err != nil {
 		return err
 	}
 	return c.out(serviceState{"starting"}, "the cloud is starting\n")
@@ -625,4 +653,103 @@ func caTrust(c *call) error {
 
 func printVersion(c *call) error {
 	return c.out(map[string]string{"version": version.Version}, "hlab "+version.Version+"\n")
+}
+
+// logLines is the number of lines `hlab logs` shows before following.
+const logLines = 1000
+
+// logs shows the last lines of hlabd.log, through the management API while
+// the cloud runs and from the files while it is stopped; --follow goes on
+// with new lines until the command is interrupted.
+func logs(c *call) error {
+	follow := c.flags["follow"] == "true"
+	path := "/logs"
+	if follow {
+		path += "?follow=1"
+	}
+	resp, err := c.send(http.MethodGet, path, nil)
+	switch {
+	case err == nil:
+		defer func() { _ = resp.Body.Close() }()
+		r := bufio.NewReader(resp.Body)
+		for {
+			line, err := r.ReadBytes('\n')
+			if len(line) > 0 {
+				if err := c.logLine(line); err != nil {
+					return err
+				}
+			}
+			if err != nil {
+				if errors.Is(err, io.EOF) || c.ctx.Err() != nil {
+					return nil
+				}
+				return err
+			}
+		}
+	case errors.Is(err, errNotRunning) && c.io.LogDir != "":
+		err := logfile.Tail(c.ctx, c.io.LogDir, "hlabd.log", logLines, follow, c.logLine)
+		if c.ctx.Err() != nil {
+			return nil
+		}
+		return err
+	default:
+		return err
+	}
+}
+
+// logLine prints one line of hlabd.log: raw with --output json, else as
+// "time LEVEL msg key=value...".
+func (c *call) logLine(line []byte) error {
+	line = bytes.TrimRight(line, "\r\n")
+	if !c.json {
+		if text, ok := humanLogLine(line); ok {
+			line = []byte(text)
+		}
+	}
+	_, err := fmt.Fprintf(c.io.Stdout, "%s\n", line)
+	return err
+}
+
+// humanLogLine turns a JSON log record into "time LEVEL msg key=value...",
+// keeping the order of the keys; false for a line that is no JSON object.
+func humanLogLine(line []byte) (string, bool) {
+	dec := json.NewDecoder(bytes.NewReader(line))
+	dec.UseNumber()
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return "", false
+	}
+	var head [3]string // time, level, msg
+	var attrs []string
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return "", false
+		}
+		key, _ := tok.(string)
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			return "", false
+		}
+		var value string
+		if json.Unmarshal(raw, &value) != nil {
+			value = string(raw)
+		}
+		switch key {
+		case "time":
+			if t, err := time.Parse(time.RFC3339Nano, value); err == nil {
+				value = t.Local().Format(time.DateTime)
+			}
+			head[0] = value
+		case "level":
+			head[1] = value
+		case "msg":
+			head[2] = value
+		default:
+			if value == "" || strings.ContainsAny(value, " \"=") {
+				value = strconv.Quote(value)
+			}
+			attrs = append(attrs, key+"="+value)
+		}
+	}
+	return strings.Join(append(head[:], attrs...), " "), true
 }

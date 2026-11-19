@@ -19,6 +19,10 @@ import (
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	var logDir string
+	if paths, err := windows.Paths(); err == nil {
+		logDir = paths.Logs
+	}
 	code := cli.Run(ctx, os.Args[1:], cli.IO{
 		Stdin:      os.Stdin,
 		Stdout:     os.Stdout,
@@ -29,6 +33,7 @@ func main() {
 		StatusFile: filepath.Join(windows.DataDir(), "status.json"),
 		Getenv:     os.Getenv,
 		ReadSecret: readSecret,
+		LogDir:     logDir,
 	})
 	stop()
 	os.Exit(code)

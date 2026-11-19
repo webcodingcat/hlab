@@ -5,8 +5,8 @@ the server type catalog and the hlab CA.
 In a working copy it is `bin\hlab.exe`; the examples write `hlab`.
 
 `hlab cloud start`, `stop` and `status` work at any time. All other
-commands except `hlab version` talk to the running cloud and fail with
-`hlab: the cloud is not running` while it is stopped.
+commands except `hlab logs` and `hlab version` talk to the running cloud
+and fail with `hlab: the cloud is not running` while it is stopped.
 
 ## Output and exit codes
 
@@ -35,6 +35,12 @@ No administrator rights are needed.
 > hlab cloud start
 the cloud is starting
 ```
+
+`--discard-state` discards a state file that this hlab version cannot
+read (written by a newer version, or damaged): the file is renamed, the
+server VMs and their disks and volumes are deleted, and the cloud starts
+empty. A start refused for such a state names this flag in
+`hlab cloud status`. A readable state is never discarded.
 
 ### hlab cloud stop
 
@@ -230,6 +236,19 @@ the hlab CA is no longer trusted on this host
 ```
 
 ## Other
+
+### hlab logs
+
+Shows the last 1000 lines of the hlabd log, oldest first, as
+`time LEVEL message key=value...`; `--output json` prints the lines as
+they are in the file. While the cloud runs the lines come through the
+cloud, while it is stopped from the log files. `--follow` keeps printing
+new lines until Ctrl+C.
+
+```
+> hlab logs
+2026-11-19 11:00:00 INFO cloud started profile=hlab-dev
+```
 
 ### hlab version
 
