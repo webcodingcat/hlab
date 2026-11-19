@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 08 Load balancers and certificates
+- Phase: 09 Cloud lifecycle and persistence
 - Base branch: main
-- Last done: phase 07 merged into main (2026-11-19): DNS zones and RRSets with zone files, NRPT rule per zone, shadowing warning in the status, reverse DNS for servers, primary IPs and floating IPs
-- Next: /wcc:phase in a new session (phase 08)
+- Last done: phase 08 merged into main (2026-11-19): load balancers with services, targets, network, health and metrics on HAProxy in the appliance; uploaded and managed certificates from the hlab CA with CRL; CA trust switch for Windows and WSL2
+- Next: /wcc:phase in a new session (phase 09)
 
 ## Open manual checks
 
@@ -28,7 +28,11 @@ STATUS: IN_PROGRESS
      /wcc:phase asks those of its phase at its start, /wcc:change takes
      answers any time. -->
 
-- none
+- Q14 (08 close, doc-writer): Which formal IPv6 should load balancers get, now that the Q11 choice collides with standalone IPv6 primary IPs?
+  - Context: Q11 gave LBs `2001:db8:<0x80000000 | ID>::1`; standalone IPv6 primary IPs (phase 05) already use `2001:db8:<0x80000000 | ID>::/64` (internal/resources/primaryips/primaryips.go:117), so an LB and a primary IP with the same ID show addresses in the same /64 and their PTR entries can overlap. Floating IPs use 0xC0000000, servers plain IDs.
+  - Options: 1. LBs move to `2001:db8:<0xA0000000 | ID>::1` (IDs below 2^29) 2. LBs use `3fff:0:<ID>::1` 3. keep it and document the overlap
+  - Recommendation: 1, because it keeps one documentation prefix and separates all four kinds
+  - Affects: LB-01, LB-09, DECISIONS Q11, docs/user/deviations.md
 
 ## If BLOCKED
 

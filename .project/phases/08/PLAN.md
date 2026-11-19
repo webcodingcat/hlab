@@ -545,3 +545,7 @@ type Deps struct {
 - D10 The CA's CN is "<profile tag> CA" (`hlab CA`, `hlab-dev CA`), so the store entries of the two profiles can be told apart. Cost of change: medium (the CA stays until uninstall).
 - D11 `health_status` shows `listen_port` and `status` only; `detail` is left out because it is optional in the description. Cost of change: low.
 - D12 A managed certificate that is not yet issued, or failed, is left out of the HTTPS service's TLS in the agent document. A service with no usable certificate is not rendered, until renewal or retry issues it. Cost of change: low.
+
+## Close
+
+- End-to-end: `task e2e -- -run 'TestE2E/(LB-0[2-5]|CERT-04)$' -v` on 42db20c, all five passed; `task test -- -count=1 ./...` and `task lint` green.
