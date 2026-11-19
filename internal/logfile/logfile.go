@@ -87,15 +87,11 @@ func (w *Writer) rotate() error {
 		return err
 	}
 	w.f = nil
-	if w.keep > 0 {
-		_ = os.Remove(rotated(w.path, w.keep))
-		for i := w.keep - 1; i >= 1; i-- {
-			_ = os.Rename(rotated(w.path, i), rotated(w.path, i+1))
-		}
-		_ = os.Rename(w.path, rotated(w.path, 1))
-	} else {
-		_ = os.Remove(w.path)
+	_ = os.Remove(rotated(w.path, w.keep))
+	for i := w.keep - 1; i >= 1; i-- {
+		_ = os.Rename(rotated(w.path, i), rotated(w.path, i+1))
 	}
+	_ = os.Rename(w.path, rotated(w.path, 1))
 	return w.open()
 }
 
