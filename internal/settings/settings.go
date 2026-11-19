@@ -90,6 +90,7 @@ func Load(path string) (Settings, error) {
 	if err := s.validate(); err != nil {
 		return Settings{}, fmt.Errorf("%s: %w", path, err)
 	}
+	s.Network.PublicRange = s.Network.PublicRange.Masked()
 	return s, nil
 }
 
@@ -128,14 +129,44 @@ func (s Settings) validate() error {
 	default:
 		return fmt.Errorf(`logging.level must be "debug", "info", "warn" or "error", not %q`, s.Logging.Level)
 	}
-	if !s.Network.PublicRange.Addr().Is4() {
-		return fmt.Errorf("network.public_range must be an IPv4 range, not %s", s.Network.PublicRange)
+	if err := validateRange(s.Network.PublicRange); err != nil {
+		return err
 	}
 	if s.Storage.DataFolder == "" {
 		return errors.New("storage.data_folder must not be empty")
 	}
 	if s.Resources.ReserveRAMMB < 0 || s.Resources.ReserveDiskGB < 0 {
 		return errors.New("resources.reserve_ram_mb and resources.reserve_disk_gb must not be negative")
+	}
+	return nil
+}
+
+// excludedRanges may not overlap network.public_range: reserved, private
+// and shared ranges, multicast and above, and Hetzner's resolvers.
+var excludedRanges = []netip.Prefix{
+	netip.MustParsePrefix("0.0.0.0/8"),
+	netip.MustParsePrefix("10.0.0.0/8"),
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("127.0.0.0/8"),
+	netip.MustParsePrefix("169.254.0.0/16"),
+	netip.MustParsePrefix("172.16.0.0/12"),
+	netip.MustParsePrefix("192.168.0.0/16"),
+	netip.MustParsePrefix("224.0.0.0/3"),
+	netip.MustParsePrefix("185.12.64.1/32"),
+	netip.MustParsePrefix("185.12.64.2/32"),
+}
+
+func validateRange(r netip.Prefix) error {
+	if !r.IsValid() || !r.Addr().Is4() {
+		return fmt.Errorf("network.public_range must be an IPv4 range, not %s", r)
+	}
+	if r.Bits() < 8 || r.Bits() > 28 {
+		return fmt.Errorf("network.public_range must be a /8 to /28 range, not %s", r)
+	}
+	for _, x := range excludedRanges {
+		if x.Overlaps(r) {
+			return fmt.Errorf("network.public_range %s overlaps %s, which hlab cannot use", r.Masked(), x)
+		}
 	}
 	return nil
 }
