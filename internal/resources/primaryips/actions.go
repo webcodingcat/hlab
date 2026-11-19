@@ -237,11 +237,7 @@ func (m *Module) changeDNSPtr(w http.ResponseWriter, req *http.Request) {
 
 // applyDNSPtr changes the reverse DNS entries of r through rdns.Change.
 func applyDNSPtr(r *Record, ip string, ptr *string) error {
-	o, ok := owner(*r)
-	if !ok {
-		return &api.FieldError{Field: "ip", Message: "the primary IP has no valid address"}
-	}
-	entries, err := rdns.Change(r.DNSPtr, o, ip, ptr)
+	entries, err := rdns.Change(r.DNSPtr, owner(*r), ip, ptr)
 	if err != nil {
 		return err
 	}
@@ -270,8 +266,8 @@ func (m *Module) ChangeServer(tx store.Tx, s *servers.Record, ip string, ptr *st
 	case addr.Is4() && s.PublicNet.IPv4 != nil && s.PublicNet.IPv4.IP == addr.String():
 		pipID = s.PublicNet.IPv4.ID
 	case addr.Is6() && s.PublicNet.IPv6 != nil:
-		n, err := netip.ParsePrefix(s.PublicNet.IPv6.IP)
-		if err != nil || !n.Contains(addr) {
+		n, _ := netip.ParsePrefix(s.PublicNet.IPv6.IP)
+		if !n.Contains(addr) {
 			return 0, notHeld
 		}
 		pipID = s.PublicNet.IPv6.ID

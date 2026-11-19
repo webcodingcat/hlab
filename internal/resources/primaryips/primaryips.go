@@ -156,11 +156,7 @@ func view(r Record) PrimaryIP {
 	if p.Labels == nil {
 		p.Labels = map[string]string{}
 	}
-	if owner, ok := owner(r); ok {
-		p.DNSPtr = rdns.Show(p.DNSPtr, owner)
-	} else if p.DNSPtr == nil {
-		p.DNSPtr = []DNSPtr{}
-	}
+	p.DNSPtr = rdns.Show(p.DNSPtr, owner(r))
 	if p.AssigneeType == "" {
 		p.AssigneeType = "server"
 	}
@@ -168,13 +164,14 @@ func view(r Record) PrimaryIP {
 }
 
 // owner is the address range r owns: its IPv4 as /32 or its IPv6 /64.
-func owner(r Record) (netip.Prefix, bool) {
+// The stored IP always parses: it is written only from netip values.
+func owner(r Record) netip.Prefix {
 	if r.Type == typeIPv4 {
-		a, err := netip.ParseAddr(r.IP)
-		return netip.PrefixFrom(a, 32), err == nil
+		a, _ := netip.ParseAddr(r.IP)
+		return netip.PrefixFrom(a, 32)
 	}
-	p, err := netip.ParsePrefix(r.IP)
-	return p, err == nil
+	p, _ := netip.ParsePrefix(r.IP)
+	return p
 }
 
 // Contribute implements resource.NetContributor: the effective PTR name of
@@ -188,10 +185,7 @@ func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 		if r.Type != typeIPv4 {
 			continue
 		}
-		a, err := netip.ParseAddr(r.IP)
-		if err != nil {
-			continue
-		}
+		a, _ := netip.ParseAddr(r.IP)
 		if doc.PTR == nil {
 			doc.PTR = map[netip.Addr]string{}
 		}
