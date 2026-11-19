@@ -11,7 +11,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/webcodingcat/hlab/internal/actions"
-	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
@@ -375,6 +374,3 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-
-// Contribute implements resource.NetContributor; plan 06-07 fills it in.
-func (m *Module) Contribute(store.Tx, *agentapi.Config) error { return nil }
