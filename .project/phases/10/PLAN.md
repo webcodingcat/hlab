@@ -2,6 +2,8 @@
 
 ## Interfaces
 
+Test contracts: the tests written first fix names and labels listed in `TEST-CONTRACTS.md`; every implementer reads the lines of its plan there.
+
 ```go
 // internal/mgmtclient: HTTP/1.1 over the management pipe, shared by hlab
 // and hlab-tray (moved out of internal/cli).

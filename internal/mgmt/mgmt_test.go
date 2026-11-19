@@ -1,6 +1,7 @@
 package mgmt_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -288,6 +289,62 @@ func TestMgmt(t *testing.T) {
 		}
 		if got := rec.Body.String(); got != pem {
 			t.Errorf("GET /mgmt/v1/ca.pem returned %q, want the PEM of CACert %q", got, pem)
+		}
+	})
+
+	t.Run("LIFE-09", func(t *testing.T) {
+		logDir := t.TempDir()
+		const line = `{"time":"2026-11-19T10:00:00Z","level":"INFO","msg":"before the stop"}` + "\n"
+		if err := os.WriteFile(filepath.Join(logDir, "hlabd.log"), []byte(line), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		env := apitest.New(t, apitest.ProbeModule())
+		done := make(chan struct{})
+		srv := httptest.NewServer(mgmt.New(mgmt.Deps{
+			Store:   env.Store,
+			API:     env.Router,
+			Status:  func() mgmt.Status { return mgmt.Status{State: "running"} },
+			Actions: env.Actions,
+			LogDir:  logDir,
+			Done:    done,
+		}))
+		t.Cleanup(srv.Close)
+
+		resp, err := srv.Client().Get(srv.URL + mgmt.Prefix + "/logs?follow=1")
+		if err != nil {
+			t.Fatalf("GET /mgmt/v1/logs?follow=1: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET /mgmt/v1/logs?follow=1: status %d, want 200", resp.StatusCode)
+		}
+		lines := make(chan string, 100)
+		ended := make(chan struct{})
+		go func() {
+			defer close(ended)
+			sc := bufio.NewScanner(resp.Body)
+			for sc.Scan() {
+				lines <- sc.Text()
+			}
+		}()
+		select {
+		case got := <-lines:
+			if got+"\n" != line {
+				t.Errorf("first followed line %q, want %q", got, line)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("no log line from the follower within 5 s")
+		}
+
+		close(done)
+		// The shutdown timeout of the management server is 10 s; the
+		// follower must end well before.
+		select {
+		case <-ended:
+		case got := <-lines:
+			t.Fatalf("line %q after Done closed, want the stream to end", got)
+		case <-time.After(2 * time.Second):
+			t.Fatal("log follower still streaming 2 s after Done closed")
 		}
 	})
 }

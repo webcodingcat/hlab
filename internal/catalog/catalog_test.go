@@ -1,7 +1,10 @@
 package catalog_test
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -219,4 +222,236 @@ func TestCatalog(t *testing.T) {
 	})
 
 	t.Run("CAT-03", testUpdate)
+
+	t.Run("UI-04/add-remove", func(t *testing.T) {
+		dataDir := t.TempDir()
+		customFile := filepath.Join(t.TempDir(), "server-types.custom.json")
+		if err := os.WriteFile(customFile, []byte("[]"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cat := loadAll(t, dataDir, customFile)
+		firstID := nextFreeID(cat.Types(), catalog.MinOwnID)
+
+		spec := catalog.OwnSpec{
+			Name: "own-a", Description: "own type a", CPUType: "dedicated",
+			Cores: 3, Memory: 6, Disk: 50, Locations: []string{"fsn1", "nbg1"},
+		}
+		st, err := catalog.AddOwn(cat, customFile, spec)
+		if err != nil {
+			t.Fatalf("AddOwn %s: %v", spec.Name, err)
+		}
+		if st.ID != firstID || st.Name != "own-a" {
+			t.Errorf("AddOwn returned %s with ID %d, want own-a with ID %d", st.Name, st.ID, firstID)
+		}
+		own := readCustom(t, customFile)
+		if len(own) != 1 {
+			t.Fatalf("custom file holds %d types after the first AddOwn, want 1", len(own))
+		}
+		checkOwnObject(t, own[0], spec, firstID, []string{"fsn1", "nbg1"})
+
+		cat = loadAll(t, dataDir, customFile)
+		if got, ok := cat.ServerTypeByRef("own-a"); !ok || got.ID != firstID || got.Cores != 3 || got.Memory != 6 || got.Disk != 50 {
+			t.Errorf("served own-a after AddOwn = %+v, %v; want ID %d, 3 cores, 6 GB, 50 GB", got, ok, firstID)
+		}
+
+		all := catalog.OwnSpec{Name: "own-b", CPUType: "shared", Cores: 1, Memory: 2, Disk: 20}
+		var allLocs []string
+		for _, l := range cat.Locations {
+			allLocs = append(allLocs, l.Name)
+		}
+		secondID := nextFreeID(cat.Types(), catalog.MinOwnID)
+		if st, err = catalog.AddOwn(cat, customFile, all); err != nil {
+			t.Fatalf("AddOwn %s without locations: %v", all.Name, err)
+		}
+		if st.ID != secondID || secondID == firstID {
+			t.Errorf("second AddOwn gave ID %d, want the next free ID %d", st.ID, secondID)
+		}
+		own = readCustom(t, customFile)
+		if len(own) != 2 {
+			t.Fatalf("custom file holds %d types after the second AddOwn, want 2", len(own))
+		}
+		checkOwnObject(t, own[1], all, secondID, allLocs)
+		cat = loadAll(t, dataDir, customFile)
+
+		refusals := []struct {
+			name  string
+			spec  catalog.OwnSpec
+			field string
+		}{
+			{"catalog name taken", catalog.OwnSpec{Name: "cx23", CPUType: "shared", Cores: 2, Memory: 4, Disk: 40}, "name"},
+			{"own name taken", catalog.OwnSpec{Name: "own-a", CPUType: "shared", Cores: 2, Memory: 4, Disk: 40}, "name"},
+			{"empty name", catalog.OwnSpec{Name: "", CPUType: "shared", Cores: 2, Memory: 4, Disk: 40}, "name"},
+			{"no cores", catalog.OwnSpec{Name: "own-c", CPUType: "shared", Cores: 0, Memory: 4, Disk: 40}, "cores"},
+			{"no memory", catalog.OwnSpec{Name: "own-c", CPUType: "shared", Cores: 2, Memory: 0, Disk: 40}, "memory"},
+			{"no disk", catalog.OwnSpec{Name: "own-c", CPUType: "shared", Cores: 2, Memory: 4, Disk: 0}, "disk"},
+			{"unknown cpu type", catalog.OwnSpec{Name: "own-c", CPUType: "turbo", Cores: 2, Memory: 4, Disk: 40}, "cpu_type"},
+			{"unknown location", catalog.OwnSpec{Name: "own-c", CPUType: "shared", Cores: 2, Memory: 4, Disk: 40,
+				Locations: []string{"fsn1", "nowhere1"}}, "locations"},
+		}
+		for _, r := range refusals {
+			t.Run(r.name, func(t *testing.T) {
+				before, err := os.ReadFile(customFile)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = catalog.AddOwn(cat, customFile, r.spec)
+				var fe *catalog.FieldError
+				if !errors.As(err, &fe) || fe.Field != r.field {
+					t.Errorf("AddOwn %+v = %v, want a FieldError for %q", r.spec, err, r.field)
+				}
+				if after, _ := os.ReadFile(customFile); !bytes.Equal(before, after) {
+					t.Errorf("custom file changed by a refused AddOwn: %s", after)
+				}
+			})
+		}
+
+		if err := catalog.RemoveOwn(customFile, "own-a"); err != nil {
+			t.Fatalf("RemoveOwn own-a: %v", err)
+		}
+		if got := mapNames(readCustom(t, customFile)); !slices.Equal(got, []string{"own-b"}) {
+			t.Errorf("custom file after RemoveOwn own-a holds %v, want [own-b]", got)
+		}
+		if err := catalog.RemoveOwn(customFile, "own-a"); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("RemoveOwn of an unknown name = %v, want an fs.ErrNotExist error", err)
+		}
+	})
+
+	t.Run("UI-04/reload", func(t *testing.T) {
+		dataDir := t.TempDir()
+		customFile := filepath.Join(t.TempDir(), "server-types.custom.json")
+		writeJSON(t, customFile, []any{ownType(100001, "own-a")})
+		cat := loadAll(t, dataDir, customFile)
+
+		check := func(t *testing.T, step string, wantOwn []string, wantWarning bool) {
+			t.Helper()
+			if got := typeNames(cat.Own()); !slices.Equal(got, wantOwn) {
+				t.Errorf("%s: Own() = %v, want %v", step, got, wantOwn)
+			}
+			names := typeNames(cat.Types())
+			for _, n := range []string{"own-a", "own-b"} {
+				if slices.Contains(names, n) != slices.Contains(wantOwn, n) {
+					t.Errorf("%s: Types() serves %s = %v, want %v", step, n, slices.Contains(names, n), slices.Contains(wantOwn, n))
+				}
+			}
+			if w := cat.OwnTypesWarning(); (w != "") != wantWarning {
+				t.Errorf("%s: OwnTypesWarning() = %q, want a warning: %v", step, w, wantWarning)
+			}
+		}
+
+		writeJSON(t, customFile, []any{ownType(100001, "own-a"), ownType(100002, "own-b")})
+		cat.ReloadOwn(customFile)
+		check(t, "changed file", []string{"own-a", "own-b"}, false)
+
+		if err := os.WriteFile(customFile, []byte("[{not json"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cat.ReloadOwn(customFile)
+		check(t, "invalid file", nil, true)
+
+		writeJSON(t, customFile, []any{ownType(100001, "own-a")})
+		cat.ReloadOwn(customFile)
+		check(t, "valid file after the invalid one", []string{"own-a"}, false)
+
+		writeJSON(t, customFile, []any{ownType(100001, "own-a"), ownType(100003, "cx23")})
+		cat.ReloadOwn(customFile)
+		check(t, "colliding file", nil, true)
+		if st, ok := cat.ServerType("cx23"); !ok || st.ID == 100003 {
+			t.Errorf("cx23 after a colliding own type = %+v, %v; want the catalog type", st, ok)
+		}
+
+		writeJSON(t, customFile, []any{ownType(100002, "own-b")})
+		cat.ReloadOwn(customFile)
+		check(t, "valid file after the colliding one", []string{"own-b"}, false)
+	})
+}
+
+// loadAll loads the shipped catalog with dataDir and customFile and fails
+// on an error or a warning.
+func loadAll(t *testing.T, dataDir, customFile string) *catalog.Catalog {
+	t.Helper()
+	cat, warns, err := catalog.LoadAll(shippedDir, dataDir, customFile)
+	if err != nil {
+		t.Fatalf("LoadAll: %v", err)
+	}
+	if len(warns) != 0 {
+		t.Fatalf("LoadAll warnings %q, want none", warns)
+	}
+	return cat
+}
+
+// nextFreeID is the smallest ID from minID that no type in types has.
+func nextFreeID(types []catalog.ServerType, minID int64) int64 {
+	id := minID
+	for slices.ContainsFunc(types, func(st catalog.ServerType) bool { return st.ID == id }) {
+		id++
+	}
+	return id
+}
+
+// readCustom reads the own server types of customFile.
+func readCustom(t *testing.T, customFile string) []map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(customFile)
+	if err != nil {
+		t.Fatalf("read custom file: %v", err)
+	}
+	var own []map[string]any
+	if err := json.Unmarshal(data, &own); err != nil {
+		t.Fatalf("custom file is not a JSON array of objects: %v\n%s", err, data)
+	}
+	return own
+}
+
+// checkOwnObject checks that obj is the Hetzner server_type object AddOwn
+// builds for spec: ID id, x86, local storage, zero prices and the
+// locations locs, each available.
+func checkOwnObject(t *testing.T, obj map[string]any, spec catalog.OwnSpec, id int64, locs []string) {
+	t.Helper()
+	want := map[string]any{
+		"id": float64(id), "name": spec.Name, "cores": float64(spec.Cores), "memory": spec.Memory,
+		"disk": float64(spec.Disk), "cpu_type": spec.CPUType, "architecture": "x86", "storage_type": "local",
+	}
+	if spec.Description != "" {
+		want["description"] = spec.Description
+	}
+	for k, v := range want {
+		if obj[k] != v {
+			t.Errorf("own type %s: %s = %v, want %v", spec.Name, k, obj[k], v)
+		}
+	}
+	rawLocs, _ := obj["locations"].([]any)
+	var got []string
+	for _, l := range rawLocs {
+		m, _ := l.(map[string]any)
+		name, _ := m["name"].(string)
+		got = append(got, name)
+		if m["available"] != true {
+			t.Errorf("own type %s: location %s not available", spec.Name, name)
+		}
+	}
+	slices.Sort(got)
+	wantLocs := slices.Clone(locs)
+	slices.Sort(wantLocs)
+	if !slices.Equal(got, wantLocs) {
+		t.Errorf("own type %s: locations %v, want %v", spec.Name, got, wantLocs)
+	}
+	prices, ok := obj["prices"].([]any)
+	if !ok {
+		t.Errorf("own type %s: prices %v, want a list", spec.Name, obj["prices"])
+	}
+	for _, p := range prices {
+		entry, _ := p.(map[string]any)
+		for key, v := range entry {
+			amount, isAmount := v.(map[string]any)
+			if !isAmount {
+				continue
+			}
+			for _, part := range []string{"net", "gross"} {
+				s, _ := amount[part].(string)
+				if f, err := strconv.ParseFloat(s, 64); err != nil || f != 0 {
+					t.Errorf("own type %s: price %s.%s = %v, want zero", spec.Name, key, part, amount[part])
+				}
+			}
+		}
+	}
 }
