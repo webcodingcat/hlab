@@ -212,6 +212,9 @@ type Internal struct {
 	// Networks holds per attached network ID what adapter and seed need;
 	// the range cannot change while servers are attached.
 	Networks map[int64]NetInternal `json:"networks,omitempty"`
+	// Adapters are the MACs of the private adapters the VM has, so a
+	// detach knows which adapter to remove.
+	Adapters []string `json:"adapters,omitempty"`
 }
 
 // Rescue is the rescue state of a server.
