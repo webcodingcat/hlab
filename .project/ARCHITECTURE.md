@@ -204,8 +204,7 @@ Inside `hlabd` (Go packages under `internal/`):
       SetDVD(ctx, vm string, slot int, iso string) error // DVD drives on SCSI controller 1: slot 0 cidata, slot 1 user ISO; "" ejects
       SetBootOrder(ctx, vm string, order []BootDevice) error
       Snapshot(ctx, vm, diskPath, target string) error  // crash-consistent copy of a running or stopped disk
-      Metrics(ctx, vm string) (Sample, error)            // cpu %, disk bytes, net bytes
-      MetricsAll(ctx, vms []string) (map[string]Sample, error) // one counter read for all VMs; VMs not on the host are left out
+      MetricsAll(ctx, vms []string) (map[string]Sample, error) // cpu %, disk bytes, net bytes; one counter read for all VMs; VMs not on the host are left out
       HostResources(ctx) (Resources, error)              // RAM, logical cores, free disk in data folder
   }
 

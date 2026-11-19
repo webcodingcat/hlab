@@ -10,7 +10,7 @@ STATUS: IN_PROGRESS
 - Phase: 05 Private networks, primary IPs and floating IPs, port isolation
 - Base branch: main
 - Last done: phase B1 backlog merged into main (2026-11-19): images and volumes left `creating` are removed at cloud start, stale password resets are no longer served, rebuild gives cloud-init a new instance-id, user_data layers (base64, gzip, MIME) reach cloud-init, one metrics read per tick, `task e2e` works with the dev cloud running
-- Next: /wcc:phase in a new session (phase 05); Q7 open for /wcc:change
+- Next: /wcc:phase in a new session (phase 05)
 
 ## Open manual checks
 
@@ -28,11 +28,7 @@ STATUS: IN_PROGRESS
      /wcc:phase asks those of its phase at its start, /wcc:change takes
      answers any time. -->
 
-- Q7 (B1 B1-03): Should `Metrics(ctx, vm)` stay in the `platform.Platform` interface now that nothing calls it?
-  - Context: since B1-03 the sampler uses only `MetricsAll`; `Metrics` remains in the interface (ARCHITECTURE platform section), in the hyperv implementation and in the fake, with no caller in production or tests.
-  - Options: 1. Keep it as a convenience for a later platform 2. Remove it from `Platform`, hyperv and the fake, and from ARCHITECTURE
-  - Recommendation: 2, because every new platform would otherwise implement and maintain a method nothing uses.
-  - Affects: SRV-21, ARCHITECTURE.md platform section
+- none
 
 ## If BLOCKED
 

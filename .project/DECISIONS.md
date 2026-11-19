@@ -1455,3 +1455,11 @@ in ARCHITECTURE.md or the plan.
 - What: project files brought from wcc 0.32.3 to 0.32.4: CLAUDE.md rule on removing code the plan's own change left without callers
 - Why: the skills of the installed version search for these keys and rules
 - Cost of change: low
+
+## 2026-11-19 Q7: drop the unused per-VM Metrics call
+
+- Type: change
+- Phase: change
+- What: `Metrics(ctx, vm)` is removed from `platform.Platform`, the hyperv implementation, the fake and ARCHITECTURE.md; `MetricsAll` stays, and phase 05 does the code removal (Q7).
+- Why: since B1-03 nothing calls it, and every new platform would otherwise implement and maintain a method nothing uses.
+- Cost of change: low

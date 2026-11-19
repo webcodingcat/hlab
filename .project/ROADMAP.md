@@ -25,6 +25,8 @@
       Requirements: NET-01, NET-02, NET-03, NET-04, NET-05, NET-06, PIP-01,
       PIP-02, FIP-01, FIP-02, HOST-01.
       Depends on: 03.
+      Also: remove the unused `Metrics(ctx, vm)` from `platform.Platform`,
+      the hyperv implementation and the fake; `MetricsAll` stays (Q7).
       Success criteria:
       1. Two servers in one network ping each other on their private IPs;
          a server in another network cannot.
