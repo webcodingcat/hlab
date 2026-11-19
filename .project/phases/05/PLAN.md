@@ -254,14 +254,14 @@ func (m *Metadata) HandlerFor(vlan int) http.Handler
   - [x] `POST /servers/{id}/actions/attach_to_network` (network, ip, alias_ips, ip_range; subnet of the server's network zone else 422 `no_subnet_available`; `server_already_attached`, `ip_not_available`, `networks_overlap`; a fourth network 403 `resource_limit_exceeded`; more than 5 alias IPs 422 `invalid_input`), `detach_from_network`, `change_alias_ips` (replaces the list): record changes through `servers.Update` with a private MAC from `NextPrivateMAC`, then `SyncAdapters` in the action; actions lock server and network; `servers.Networks` for create (internal/resources/networks/attach.go)
   - [x] `DELETE /networks/{id}` detaches every member first (records, then `SyncAdapters`); network `servers` shown from the members' `private_net`; server deletion needs no hook here, since membership lives on the server record (internal/resources/networks/networks.go)
 
-- [ ] 05-13 Cloud wiring, appliance trunk and end-to-end
+- [x] 05-13 Cloud wiring, appliance trunk and end-to-end
   - Wave: 4 | Depends on: 05-03, 05-06, 05-07, 05-08, 05-09, 05-12 | Review: alone
   - Requirements: NET-02, NET-03, NET-04, PIP-02, FIP-02, HOST-01 | Tests: test/e2e/network_test.go, test/e2e/ip_test.go, internal/resources/conventions_test.go
   - Reads: ARCHITECTURE "resource", "Cloud start and stop", "Network"; RESEARCH C6, R3; EXPERIMENTS E1 (measure routed before direct); TESTS.md header
   - Size: ~350 lines in 6 files
   - Adjusts: -
-  - [ ] Modules `networks`, `primary_ips`, `floating_ips` after `servers` in `modules()`, `networks` before `volumes` so that `volumes.Contribute` also fills the `Volumes` of each member's private metadata entry (check it does; 05-11 review); `SetPublicIPs`, `SetNetworks`, `OnDelete` wiring; the appliance gets its trunk adapter (MAC `02:48:4c:00:00:02`, `Segment{Trunk: true}`) at creation and, when missing, at cloud start; the three modules in `newFullEnv` (internal/cloud/cloud.go, internal/cloud/appliance.go, internal/resources/conventions_test.go)
-  - [ ] End-to-end rows of TESTS.md (test/e2e/network_test.go, test/e2e/ip_test.go, test/e2e/e2e_test.go)
+  - [x] Modules `networks`, `primary_ips`, `floating_ips` after `servers` in `modules()`, `networks` before `volumes` so that `volumes.Contribute` also fills the `Volumes` of each member's private metadata entry (check it does; 05-11 review); `SetPublicIPs`, `SetNetworks`, `OnDelete` wiring; the appliance gets its trunk adapter (MAC `02:48:4c:00:00:02`, `Segment{Trunk: true}`) at creation and, when missing, at cloud start; the three modules in `newFullEnv` (internal/cloud/cloud.go, internal/cloud/appliance.go, internal/resources/conventions_test.go)
+  - [x] End-to-end rows of TESTS.md (test/e2e/network_test.go, test/e2e/ip_test.go, test/e2e/e2e_test.go)
 
 - [ ] 05-14 Documentation
   - Wave: 5 | Depends on: 05-13 | Review: alone

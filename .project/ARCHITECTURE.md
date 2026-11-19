@@ -202,7 +202,7 @@ Inside `hlabd` (Go packages under `internal/`):
       ResizeDisk(ctx, path string, sizeBytes int64) error
       AttachDisk(ctx, vm, path string, lun int) error   // hot-add on SCSI controller 0
       DetachDisk(ctx, vm, path string) error
-      SetDVD(ctx, vm string, slot int, iso string) error // DVD drives on SCSI controller 1: slot 0 cidata, slot 1 user ISO; "" ejects
+      SetDVD(ctx, vm string, slot int, iso string) error // DVD drives on SCSI controller 1: slot 0 cidata, slot 1 user ISO; "" ejects and returns once the drive is empty
       SetBootOrder(ctx, vm string, order []BootDevice) error
       Snapshot(ctx, vm, diskPath, target string) error  // crash-consistent copy of a running or stopped disk
       MetricsAll(ctx, vms []string) (map[string]Sample, error) // cpu %, disk bytes, net bytes; one counter read for all VMs; VMs not on the host are left out

@@ -1623,3 +1623,11 @@ in ARCHITECTURE.md or the plan.
 - What: `attach_to_network` checks network existence, `server_already_attached`, `networks_overlap`, then the 3-network limit; no free IP or no zone subnet gives `no_subnet_available`, a used or reserved `ip` or alias IP `ip_not_available`, an `ip`/`ip_range`/alias outside the subnets 422 `invalid_input`; alias IPs may come from any subnet of the network; `DELETE /networks` syncs the detached members' adapters after the commit before answering 204, logging failures.
 - Why: Hetzner documents no order or code for these cases.
 - Cost of change: low
+
+## 2026-11-19 Cloud wiring of the network modules
+
+- Type: decision
+- Phase: 05
+- What: Module order is servers, networks, primary_ips, floating_ips, volumes; cloud start detects a missing appliance trunk adapter by `SetNICDeny(appliance, 02:48:4c:00:00:02, nil)` returning NotFound and then attaches it; hyperv `SetDVD` with "" returns only once the drive is empty (at most 60 s).
+- Why: volumes fill every metadata entry of a server only after networks made them; no new platform method is needed; Hyper-V finishes an eject about 5 s after returning, which broke every seed rewrite on running VMs.
+- Cost of change: low
