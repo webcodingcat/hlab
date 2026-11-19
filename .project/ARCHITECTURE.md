@@ -88,7 +88,9 @@ Inside `hlabd` (Go packages under `internal/`):
   `api.Status(code)`, the one table of HTTP statuses (taken from the error
   table of the frozen OpenAPI description); `api.Fail(w, err)` maps errors
   (`actions.ErrLocked`, `actions.ErrProtected`, ...) to it;
-  `api.FieldError`, `api.CheckLabels`. Package `internal/labels`:
+  `api.FieldError` (an optional `Status` overrides the code's status for
+  one call, e.g. 422 `source_port_already_used` on update_service),
+  `api.CheckLabels`. Package `internal/labels`:
   `labels.Validate`, `labels.Selector` (parser and matcher for all Hetzner
   operators).
 - Depends on: store, resource, actions.

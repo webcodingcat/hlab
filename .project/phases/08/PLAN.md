@@ -222,13 +222,13 @@ type Deps struct {
   - [ ] The response validator adds `load_balancer` to the enum of `primary_ip.assignee_type` in the loaded description (D7) (internal/apitest/openapi.go)
   - [ ] Rows of TESTS.md for 08-03 (internal/resources/loadbalancertypes/loadbalancertypes_test.go, group `TestLoadBalancerTypes`)
 
-- [ ] 08-04 Host: CA in the Windows trust store
+- [x] 08-04 Host: CA in the Windows trust store
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: CERT-04 | Tests: - (e2e in 08-21)
   - Reads: R6; ARCHITECTURE "hostnet"; DECISIONS "HAProxy on the appliance and Windows trust store"
   - Size: ~150 lines in 2 files
   - Adjusts: -
-  - [ ] `TrustCA`:
+  - [x] `TrustCA`:
     - decode the PEM
     - on: `CertOpenStore` LocalMachine ROOT, then `CertCreateCertificateContext` and `CertAddCertificateContextToStore` REPLACE_EXISTING
     - off: find by SHA-1 thumbprint with `CertFindCertificateInStore` and `CertDeleteCertificateFromStore`; a missing entry is no error
