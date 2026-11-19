@@ -1839,3 +1839,11 @@ in ARCHITECTURE.md or the plan.
 - What: `PublicLookup` treats SERVFAIL or REFUSED as no answer and tries the next server; a later `Check` or `Forget` discards the result of an older lookup still running; `hlab cloud status` prints `warning: zone <zone> (project <project>) shadows a public domain`.
 - Why: the simplest reading of "error when no server answers" and "a later call replaces the result".
 - Cost of change: low
+
+## 2026-11-19 RRSet list and record actions
+
+- Type: decision
+- Phase: phase 07
+- What: `sort=created` on RRSets sorts by creation order in the zone document; `remove_records` and `update_records` refuse a value not in the RRSet on `records[<i>].value`; `add_records` with a `ttl` other than the RRSet's TTL is `invalid_input` on `ttl`; RRSet list and get on a secondary zone also answer `incorrect_zone_mode`.
+- Why: RRSets have no `created` field, and the OpenAPI text and the user's answer at the phase start set the rest.
+- Cost of change: low

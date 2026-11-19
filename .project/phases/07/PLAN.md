@@ -227,14 +227,14 @@ type ShadowingZone struct {
   - [x] Publishing: every write that changes zones or records runs `PushAgent` then `SetZones(Names)` inside its action (failure: action `error`, zone `status` stays `ok`); `Contribute` adds each primary zone with its RRSets (TTL resolved) to `doc.Zones`; `Shadow.Check` on create of a primary zone outside `PrivateUse`, `Forget` on delete (internal/resources/zones/publish.go)
   - [x] Rows of TESTS.md for 07-07 (internal/resources/zones/zones_test.go, group `TestZones`)
 
-- [ ] 07-08 Zones: RRSets
+- [x] 07-08 Zones: RRSets
   - Wave: 3 | Depends on: 07-07 | Review: alone
   - Requirements: DNS-01 | Tests: internal/resources/zones/rrsets_test.go
   - Reads: RESEARCH R1, R6; OpenAPI `/zones/{id_or_name}/rrsets...`; decisions D3 to D5, D13 below
   - Size: ~380 lines in 2 files
   - Adjusts: -
-  - [ ] `GET .../rrsets` (filter name, type, label_selector; sort id, name, created), `GET`/`PUT` (labels, 200 without action)/`DELETE` of `.../rrsets/{rr_name}/{rr_type}`, `POST .../rrsets` (`create_rrset`; existing: 409 `uniqueness_error`), actions `change_protection` (`change_rrset_protection`), `change_ttl`, `set_records`, `add_records` (creates a missing RRSet), `remove_records` (removing the last record deletes the RRSet), `update_records` (comments only); every change through `CheckRRSet` and `CheckConflicts`, SOA serial through `NextSerial`, change protection answers `protected`, the apex SOA is read-only (D5), secondary zones answer `incorrect_zone_mode` (internal/resources/zones/rrsets.go)
-  - [ ] Rows of TESTS.md for 07-08 (internal/resources/zones/rrsets_test.go)
+  - [x] `GET .../rrsets` (filter name, type, label_selector; sort id, name, created), `GET`/`PUT` (labels, 200 without action)/`DELETE` of `.../rrsets/{rr_name}/{rr_type}`, `POST .../rrsets` (`create_rrset`; existing: 409 `uniqueness_error`), actions `change_protection` (`change_rrset_protection`), `change_ttl`, `set_records`, `add_records` (creates a missing RRSet), `remove_records` (removing the last record deletes the RRSet), `update_records` (comments only); every change through `CheckRRSet` and `CheckConflicts`, SOA serial through `NextSerial`, change protection answers `protected`, the apex SOA is read-only (D5), secondary zones answer `incorrect_zone_mode` (internal/resources/zones/rrsets.go)
+  - [x] Rows of TESTS.md for 07-08 (internal/resources/zones/rrsets_test.go)
 
 - [ ] 07-09 Zones: zone file import and export
   - Wave: 4 | Depends on: 07-02, 07-08 | Review: alone
