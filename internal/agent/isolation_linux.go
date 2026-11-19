@@ -21,6 +21,12 @@ import (
 // metadataAddr is the address of the metadata service.
 var metadataAddr = netip.MustParseAddr("169.254.169.254")
 
+// metaKeySDIFNAME is NFT_META_SDIFNAME (kernel 5.1+), the name of the
+// enslaved device a packet arrived on. On the input hook of a VRF, iifname
+// is the VRF device; sdifname is the original ingress subinterface t<vlan>.
+// Neither golang.org/x/sys nor google/nftables define the key yet.
+const metaKeySDIFNAME expr.MetaKey = 34
+
 // Isolation is the Applier of the isolation backstop in table inet hlab.
 // The private VLAN already keeps guests from talking to each other
 // directly, and guest-to-guest traffic routed by the appliance is
@@ -37,6 +43,8 @@ var metadataAddr = netip.MustParseAddr("169.254.169.254")
 // route whose gateway is that member (Hetzner's unicast RPF). A raw-priority
 // prerouting chain puts each t<vlan> into conntrack zone <vlan>, so
 // overlapping ranges of different networks never share conntrack entries.
+// TCP to the metadata service arriving on t<vlan> gets the same member
+// check on the input path.
 // Every apply replaces the whole table atomically; other tables are never
 // touched.
 type Isolation struct {
@@ -141,7 +149,7 @@ func (n *Isolation) Apply(_ context.Context, cfg agentapi.Config) error {
 			&expr.Verdict{Kind: expr.VerdictDrop},
 		},
 	})
-	if err := addPrivate(c, table, chain, cfg.Networks); err != nil {
+	if err := addPrivate(c, table, chain, input, cfg.Networks); err != nil {
 		return fmt.Errorf("isolation: %w", err)
 	}
 	if err := c.Flush(); err != nil {
@@ -152,8 +160,9 @@ func (n *Isolation) Apply(_ context.Context, cfg agentapi.Config) error {
 
 // addPrivate adds the per-network rules: the conntrack zones in a prerouting
 // chain, and in the forward chain an accept rule per network route and the
-// drop of member traffic with a foreign source.
-func addPrivate(c *nftables.Conn, table *nftables.Table, forward *nftables.Chain, networks []agentapi.Network) error {
+// drop of member traffic with a foreign source, and in the input chain the
+// same drop for TCP to the metadata service.
+func addPrivate(c *nftables.Conn, table *nftables.Table, forward, input *nftables.Chain, networks []agentapi.Network) error {
 	macs, sources := memberSources(networks)
 
 	macType, err := nftables.ConcatSetType(nftables.TypeIFName, nftables.TypeEtherAddr)
@@ -235,6 +244,31 @@ func addPrivate(c *nftables.Conn, table *nftables.Table, forward *nftables.Chain
 			// The name fills 32-bit registers 8 to 11 (register 1), the MAC
 			// 12 and 13 (padded), the address 14.
 			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+			&expr.Payload{DestRegister: 12, Base: expr.PayloadBaseLLHeader, Offset: 6, Len: 6},
+			&expr.Lookup{SourceRegister: 1, SetName: macSet.Name, SetID: macSet.ID},
+			&expr.Payload{DestRegister: 14, Base: expr.PayloadBaseNetworkHeader, Offset: 12, Len: 4},
+			&expr.Lookup{SourceRegister: 1, SetName: srcSet.Name, SetID: srcSet.ID, Invert: true},
+			&expr.Verdict{Kind: expr.VerdictDrop},
+		},
+	})
+
+	// meta nfproto ipv4 meta l4proto tcp ip daddr 169.254.169.254
+	// tcp dport 80 meta sdifname . ether saddr @member_macs
+	// meta sdifname . ether saddr . ip saddr != @member_sources drop
+	c.AddRule(&nftables.Rule{
+		Table: table,
+		Chain: input,
+		Exprs: []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV4}},
+			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.IPPROTO_TCP}},
+			&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseNetworkHeader, Offset: 16, Len: 4},
+			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: metadataAddr.AsSlice()},
+			&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2},
+			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{0, 80}},
+			// Registers as in the forward rule, with the subinterface name.
+			&expr.Meta{Key: metaKeySDIFNAME, Register: 1},
 			&expr.Payload{DestRegister: 12, Base: expr.PayloadBaseLLHeader, Offset: 6, Len: 6},
 			&expr.Lookup{SourceRegister: 1, SetName: macSet.Name, SetID: macSet.ID},
 			&expr.Payload{DestRegister: 14, Base: expr.PayloadBaseNetworkHeader, Offset: 12, Len: 4},
