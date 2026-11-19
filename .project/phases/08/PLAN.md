@@ -322,13 +322,13 @@ type Deps struct {
     - (internal/resources/certificates/renew.go)
   - [x] Rows of TESTS.md for 08-10 (internal/resources/certificates/managed_test.go; fake `Issuer` and fake clock)
 
-- [ ] 08-11 Agent: load balancer applier
+- [x] 08-11 Agent: load balancer applier
   - Wave: 2 | Depends on: 08-02 | Review: alone
   - Requirements: LB-02, LB-03, LB-04, LB-05 | Tests: - (e2e in 08-21; Linux-only code)
   - Reads: R1.2, R1.3, R2; internal/agent/vrf_linux.go, isolation_linux.go, network_linux.go; decision D1 below
   - Size: ~400 lines in 5 files
   - Adjusts: -
-  - [ ] Applier `loadbalancers` (after `vrf`, before `firewall`). Per LB:
+  - [x] Applier `loadbalancers` (after `vrf`, before `firewall`). Per LB:
     - netns `lb<ID>`
     - public veth `lbp<ID>`: root end 169.254.0.1/32 with route `<public IP>/32 dev lbp<ID>`; netns end with the public IP /32 and `default via 169.254.0.1 onlink`; only while `PublicIPv4` is valid
     - network veth `lbn<ID>`: root end enslaved to `vrf<vlan>` with 169.254.0.1/32 and VRF route `<private IP>/32`; netns end with the private IP /32 and route `<network range> via 169.254.0.1 onlink src <private IP>`
@@ -336,9 +336,9 @@ type Deps struct {
     - LBs no longer in the document are stopped and their netns deleted
     - all steps idempotent
     - (internal/agent/lb_linux.go, internal/agent/lb_other.go)
-  - [ ] Conntrack zone: in the isolation raw chain, `iifname lbn<ID> ct zone set <vlan>` (internal/agent/isolation_linux.go)
-  - [ ] `GET /v1/status` fills `Targets` and `LBMetrics` through `show stat` on each instance's socket and `ParseStat`, by asking the applier through an optional interface (internal/agent/agent.go)
-  - [ ] Register the applier (cmd/hlab-agent/main.go)
+  - [x] Conntrack zone: in the isolation raw chain, `iifname lbn<ID> ct zone set <vlan>` (internal/agent/isolation_linux.go)
+  - [x] `GET /v1/status` fills `Targets` and `LBMetrics` through `show stat` on each instance's socket and `ParseStat`, by asking the applier through an optional interface (internal/agent/agent.go)
+  - [x] Register the applier (cmd/hlab-agent/main.go)
 
 - [ ] 08-12 Host: CA in WSL2 distros
   - Wave: 2 | Depends on: 08-04 | Review: alone

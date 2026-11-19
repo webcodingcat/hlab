@@ -1972,8 +1972,8 @@ in ARCHITECTURE.md or the plan.
 
 - Type: decision
 - Phase: phase 08
-- What: TrustCA changes the Windows store and keeps WSL pending; the next WatchWSL change, cloud start or switch applies it.
-- Why: reuses the existing WSL watcher.
+- What: TrustCA changes the Windows store and keeps WSL pending; a session-logon notification, cloud start or the next switch applies it (WatchWSL is a stub and is not used for this).
+- Why: the user's answer to Q1 promised the next logon; the 08-12 review found WatchWSL is never called.
 - Cost of change: low
 
 ## 2026-11-19 settings.Save rewrites the file
@@ -2118,4 +2118,12 @@ in ARCHITECTURE.md or the plan.
 - Phase: phase 08
 - What: a domain is checked against the most specific zone of its project that equals it or lies above it, and a secondary zone there gives `dns_zone_is_secondary_zone`; a failed renewal is tried again every hour while less than 30 days remain; the agent document is pushed after every successful issuance; a managed create without a CA answers 422 `invalid_input` on `type`.
 - Why: the simplest reading of CERT-02/03 and decisions/managed-certificates.md; a retried certificate an LB references must reach the agent.
+- Cost of change: low
+
+## 2026-11-19 Load balancer applier
+
+- Type: decision
+- Phase: phase 08
+- What: a HAProxy failure for one LB (not installed, refused by `haproxy -c`, failed start or reload) is logged and the other LBs and appliers continue, while netns, veth and route failures fail Apply; LB routes use route protocol 201; the applier runs after `vrf` and before `isolation` and `firewall`; only the first `Private` entry is used.
+- Why: missing appliance debs must not stop the cloud (earlier decision); the network and VRF appliers delete foreign protocol-200 routes; an LB has at most one network.
 - Cost of change: low
