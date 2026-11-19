@@ -122,6 +122,9 @@ type Deps struct {
 	// hlab started the VM into rescue, so the rescue system reads it before
 	// the server's seed returns; 0 = none.
 	RescueSeedHold time.Duration
+	// HaltTimeout bounds the wait for the guests to shut down at cloud
+	// stop before their VMs are turned off hard; 0 = 60 s.
+	HaltTimeout time.Duration
 }
 
 // Server is a server in Hetzner's API shape.
