@@ -304,3 +304,9 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - Size: ~250 lines in 9 files
   - [x] README.md (tray program: start, status, start/stop, quit, settings, server types, projects and tokens, logs; the "no tray program" line goes, the installer stays missing), docs/user/configuration.md (server-types.custom.json created by hlabd and written by the tray, when each setting applies), docs/dev/build-and-test.md (`task test:frontend`, tray UI tests over CDP, e2e build), docs/dev/components.md (bridge, tray, frontend).
   - [x] The help texts ui/frontend/src/help/{projects,server-types,settings,logs}.md naming only existing views and buttons.
+
+## Close
+
+- Unit suite (`task test`), `task test:frontend` and `task lint` green on af3971a.
+- End-to-end: all rows (`task e2e -- -v`) on af3971a, because the phase changed cloud start and stop, server power-on, rebuild and reconcile, and the shared harness (test/e2e/e2e_test.go). 59 rows passed; RDNS-02 failed with `423 locked` on the shared server (a parallel row's action), then passed 3 of 3 with `task e2e -- -run '^TestE2E$/^RDNS-02$' -v`; recorded as a backlog bug. Later commits changed only docs/user/configuration.md and planning documents.
+- Manual: UI-08 in CHECKS.md.
