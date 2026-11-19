@@ -132,6 +132,10 @@ Inside `hlabd` (Go packages under `internal/`):
   type Recoverer interface {            // modules with records to repair at cloud start (images, volumes: half-made records; primary_ips: missing records; load_balancers: PTR entries on the pre-Q14 formal IPv6)
       Recover(ctx context.Context) error // cloud start calls it before the API serves and before the first scheduled job run
   }
+  type Lifecycle interface {            // modules whose VMs follow the cloud's stop and start (servers)
+      Halt(ctx context.Context, behaviour string, hostShutdown bool) error // at stop, after API and jobs, before the appliance; nothing at a host shutdown
+      Restore(ctx context.Context, behaviour string) error // at start after the first PushAgent, before the API and jobs: stop action on Off/Saved VMs, resume or power on servers recorded running
+  }
   ```
 
   Handlers validate input, write the desired state in one transaction,

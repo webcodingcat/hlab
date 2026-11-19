@@ -122,27 +122,27 @@ Settled by the test writers (the tests rely on them):
   - [x] internal/settings/settings.go: `public_range` must be IPv4 /8../28, is normalised to its network address, and is refused (message naming `network.public_range` and the overlapped range) when it overlaps 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12 (this covers 172.31.1.1), 192.168.0.0/16, 224.0.0.0/3 (224/4 and up), 185.12.64.1 or 185.12.64.2.
   - [x] New package internal/transit with `For(r)`.
 
-- [ ] 09-05 IPAM: changed range detection
+- [x] 09-05 IPAM: changed range detection
   - Wave: 2 | Depends on: 09-02 | Review: alone
   - Requirements: HOST-02 | Tests: internal/ipam/ipam_test.go
   - Reads: DECISIONS "Changed public_range refuses the start", "Public IPv4 allocation continues after the last address"
   - Size: ~90 lines in 1 file
-  - [ ] `ipam.Outside` over the `ipam.public.used.` keys (every public IPv4 of servers, primary IPs, floating IPs and LBs goes through ipam) and `ipam.RecordRange` (kv `ipam.public.range`) in internal/ipam/ipam.go.
+  - [x] `ipam.Outside` over the `ipam.public.used.` keys (every public IPv4 of servers, primary IPs, floating IPs and LBs goes through ipam) and `ipam.RecordRange` (kv `ipam.public.range`) in internal/ipam/ipam.go.
 
-- [ ] 09-06 Hostnet: range collision as a pure function
+- [x] 09-06 Hostnet: range collision as a pure function
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: HOST-02 | Tests: internal/hostnet/windows/hostnet_test.go
   - Reads: ARCHITECTURE "hostnet (interface) and hostnet/windows"
   - Size: ~60 lines in 1 file
-  - [ ] Move the overlap logic of `Check` into exported `RangeCollisions(entries []HostEntry, r netip.Prefix) []hostnet.Problem` (fatal `range_collision`, message naming the interface or route); `Check` calls it (internal/hostnet/windows/hostnet.go).
+  - [x] Move the overlap logic of `Check` into exported `RangeCollisions(entries []HostEntry, r netip.Prefix) []hostnet.Problem` (fatal `range_collision`, message naming the interface or route); `Check` calls it (internal/hostnet/windows/hostnet.go).
 
-- [ ] 09-07 Servers: halt and restore
+- [x] 09-07 Servers: halt and restore
   - Wave: 2 | Depends on: 09-01 | Review: alone
   - Requirements: LIFE-02, LIFE-03, LIFE-05 | Tests: internal/resources/servers/lifecycle_test.go
   - Reads: ARCHITECTURE "resource", "Cloud start and stop"; EXPERIMENTS E11; DECISIONS "Server status kept until restore at cloud start", "Stop behaviour at a Windows shutdown", "VM settings and Windows shutdown"
   - Size: ~260 lines in 3 files
-  - [ ] Add `resource.Lifecycle` (internal/resource/resource.go).
-  - [ ] internal/resources/servers/lifecycle.go: `Halt` (save one VM after another, a failed save falls back to guest shutdown then hard off; shutdown asks all running guests, waits `Deps.HaltTimeout` (default 60 s, short in tests) in total, then hard off; Running VMs keep status `running`, Off VMs get `off`; hostShutdown changes nothing) and `Restore` (`SetStopAction` on every server VM that is Off or Saved, and on Running VMs too if 09-01 found Hyper-V accepts it, an InvalidState failure only logged; then Start for status running/starting with VM Saved or Off; failures logged).
+  - [x] Add `resource.Lifecycle` (internal/resource/resource.go).
+  - [x] internal/resources/servers/lifecycle.go: `Halt` (save one VM after another, a failed save falls back to guest shutdown then hard off; shutdown asks all running guests, waits `Deps.HaltTimeout` (default 60 s, short in tests) in total, then hard off; Running VMs keep status `running`, Off VMs get `off`; hostShutdown changes nothing) and `Restore` (`SetStopAction` on every server VM that is Off or Saved, and on Running VMs too if 09-01 found Hyper-V accepts it, an InvalidState failure only logged; then Start for status running/starting with VM Saved or Off; failures logged).
 
 - [x] 09-08 Load balancers: separate IPv6 prefix (Q14)
   - Wave: 1 | Depends on: - | Review: alone
