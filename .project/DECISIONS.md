@@ -1607,3 +1607,11 @@ in ARCHITECTURE.md or the plan.
 - What: The VRF applier gets the metadata service through the field `VRF.Metadata`, set by main.go before the first Apply; each listener passes its VLAN to the shared request router through the request context.
 - Why: Keeps `NewVRF(trunkMAC)` as planned and registers every metadata path once.
 - Cost of change: low
+
+## 2026-11-19 Private metadata entries
+
+- Type: decision
+- Phase: 05
+- What: `servers.Module.Metadata` builds a server's metadata entry without VLAN and IP and networks uses it for each member's private entry; `InterfaceNum` is the 1-based index in `private_net`; a member's `Subnet` is the subnet holding its IP.
+- Why: A server without public IPv4 has no public entry to copy; the index matches the seed's interface order.
+- Cost of change: low
