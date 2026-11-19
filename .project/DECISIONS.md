@@ -1879,3 +1879,179 @@ in ARCHITECTURE.md or the plan.
 - What: project files brought from wcc 0.32.8 to 0.32.9: allow rule `Bash(hcloud --context hlab-docs *)` in .claude/settings.json, version line in CLAUDE.md
 - Why: the skills of the installed version search for these keys and rules
 - Cost of change: low
+
+## 2026-11-19 Q9: hlabd installs the CA into WSL2 distros
+
+- Type: decision
+- Phase: phase 08
+- What: `hostnet.TrustCA` runs `wsl.exe` with the console user's token (WTSQueryUserToken, CreateProcessAsUser) for every WSL2 distro, only while trust is on, and removes the CA from them the same way when it is switched off; with nobody logged on the WSL part waits for the next logon, cloud start or switch; distros without `update-ca-certificates` are skipped and logged.
+- Why: the user's answer to Q1; it keeps TrustCA in hostnet as ARCHITECTURE.md places it. If the first CERT-04 run shows wsl.exe fails under the user token, a scheduled task in the user's context is the fallback.
+- Cost of change: medium
+
+## 2026-11-19 Q10: `hlab ca trust on|off` in the CLI
+
+- Type: decision
+- Phase: phase 08
+- What: the CLI gets `hlab ca trust on|off` (with `--output json`) over `PUT /mgmt/v1/trust`.
+- Why: the user's answer to Q2; scripts and the CERT-04 e2e use it before the tray switch of phase 10.
+- Cost of change: low
+
+## 2026-11-19 Q11: formal IPv6 of load balancers
+
+- Type: decision
+- Phase: phase 08
+- What: a load balancer without an IPv6 primary IP shows `2001:db8:<0x80000000 | LB ID as 32 bits>::1`; with an IPv6 primary IP it shows `<its /64>::1`.
+- Why: the user's answer to Q3; one documentation prefix, no collision with server IDs below 2^31, and the hcloud CLI prints the IPv6 without a nil check.
+- Cost of change: high
+
+## 2026-11-19 Q12: empty CRL for leaf certificates
+
+- Type: decision
+- Phase: phase 08
+- What: every leaf certificate names `http://api.hetzner.internal/hlab/v1/ca.crl` as its CRL distribution point; hlabd serves an empty CRL there, signed by the hlab CA, renewed at every cloud start and weekly, `nextUpdate` 8 days ahead; the root CA has no CDP; the URL goes into the documentation and deviations.md.
+- Why: the user's answer to Q4; curl.exe (Schannel) checks revocation by default and success criterion 2 asks for a plain `curl https://<name>`.
+- Cost of change: high
+
+## 2026-11-19 Q13: PROXY protocol v2
+
+- Type: decision
+- Phase: phase 08
+- What: `proxyprotocol: true` makes HAProxy send PROXY protocol v2 (`send-proxy-v2`); deviations.md names the version as not verified against Hetzner.
+- Why: the user's answer to Q5; no source says which version Hetzner sends, and receivers usually accept both.
+- Cost of change: low
+
+## 2026-11-19 Load balancer public IPs and primary IPs
+
+- Type: decision
+- Phase: phase 08
+- What: `POST /load_balancers` takes `public_net.ipv4`/`ipv6` as primary IP IDs only while the public interface is on (422 `primary_ip_assigned`, 422 `primary_ip_blocked`, 422 `primary_ip_location_mismatch`, 412 `primary_ip_version_mismatch`); without them the LB gets a system-managed IPv4 from the public pool that is no primary IP and is deleted with it; a primary IP held by an LB shows `assignee_type` "load_balancer" with the LB ID, `assign` on it gives 422 `primary_ip_already_assigned`, `unassign` 422 `invalid_input`, and LB deletion frees or deletes it by `auto_delete`; listed in deviations.md.
+- Why: the user's corrections from the frozen OpenAPI description; the description's enum knows only `server`, and neither it nor the research says what an LB-held IP shows.
+- Cost of change: medium
+
+## 2026-11-19 Load balancer networks, targets and services
+
+- Type: decision
+- Phase: phase 08
+- What: an LB attaches to at most one network (422 `load_balancer_already_attached`, `ip_not_available`, `no_subnet_available`); `disable_public_interface` needs a network (422 `load_balancer_not_attached_to_network`) and no targets without `use_private_ip` (422 `targets_without_use_private_ip`), and while it is off a public target gives 422 `load_balancer_public_interface_disabled`; add_target gives 422 `resolve_cloud_private_targets_error`, `resolve_cloud_public_targets_error`, `target_already_defined`; IP targets take any unicast IPv4 except the transit /30 and the LB's own IP over the public path (deviations.md); `source_port_already_used` is 412 on add_service and 422 on update_service, and `redirect_http` takes port 80; change_type over the new type's limits gives 422 `invalid_load_balancer_type`, add_service/add_target over a limit 403 `resource_limit_exceeded`, a target in another network zone 422 `invalid_input`, a duplicate name 409 `uniqueness_error`; an omitted health check is tcp/15/10/3 and health protocol `https` is accepted.
+- Why: the user's corrections from the frozen OpenAPI description; where the research differed (update_service status 422) the research wins, as the user asked.
+- Cost of change: low
+
+## 2026-11-19 Certificate issuance and status
+
+- Type: decision
+- Phase: phase 08
+- What: a managed certificate starts `issuance pending, renewal unavailable`, ends `completed`/`scheduled`, or `failed` with `dns_zone_not_found` (no matching zone in the project) or `dns_zone_is_secondary_zone`, the same code on the failed action; renewal goes `scheduled` → `pending` → `scheduled` or `failed`; retry when not failed and on uploaded certificates gives 422 `invalid_input`; deleting a certificate a service uses gives 422 `resource_in_use`; uploaded certificates are not checked for expiry or chain order, and a bad PEM or a key that does not match the leaf gives 422 `invalid_input`.
+- Why: the user's corrections; the renewal values scheduled/pending/failed/unavailable come from the research, which wins over the user's list as the user asked.
+- Cost of change: low
+
+## 2026-11-19 HAProxy on the appliance and Windows trust store
+
+- Type: decision
+- Phase: phase 08
+- What: HAProxy comes from five cached Debian 13 .debs (hashes recomputed before commit), one master-worker instance per LB in its own netns, reloaded through the master CLI after `haproxy -c`, health and counters from `show stat`; the network veth gets the conntrack-zone rule of its VLAN; hlabd adds and removes the CA in LocalMachine\Root through the Go Cert* calls, found by thumbprint.
+- Why: RESEARCH.md of phase 08; the simplest way with the existing appliance and no PowerShell round trip.
+- Cost of change: medium
+
+## 2026-11-19 Load balancer veth addressing
+
+- Type: decision
+- Phase: phase 08
+- What: every LB veth's root end carries 169.254.0.1/32 with onlink routes, so no transit addressing per LB.
+- Why: same pattern as 172.31.1.1; simplest.
+- Cost of change: low
+
+## 2026-11-19 HAProxy object names
+
+- Type: decision
+- Phase: phase 08
+- What: frontends `fe<port>`, backends `be<port>`, server name = target key, redirect frontend `fe80redirect`.
+- Why: `ParseStat` needs no mapping table.
+- Cost of change: low
+
+## 2026-11-19 WSL trust without a logged-on user
+
+- Type: decision
+- Phase: phase 08
+- What: TrustCA changes the Windows store and keeps WSL pending; the next WatchWSL change, cloud start or switch applies it.
+- Why: reuses the existing WSL watcher.
+- Cost of change: low
+
+## 2026-11-19 settings.Save rewrites the file
+
+- Type: decision
+- Phase: phase 08
+- What: `settings.Save` writes the whole settings.toml, dropping comments; the tray writes it the same way.
+- Why: simplest writer for `[certificates] trust_ca`.
+- Cost of change: low
+
+## 2026-11-19 Load balancer package split
+
+- Type: decision
+- Phase: phase 08
+- What: the loadbalancers package is split per feature file; 08-13 creates stubs so 08-14 to 08-18 run in parallel on separate files.
+- Why: parallel plans without merge conflicts.
+- Cost of change: low
+
+## 2026-11-19 CRL served by hlabd
+
+- Type: decision
+- Phase: phase 08
+- What: the CRL is served by hlabd on the API listener outside the token-checked `/v1` tree, reached through the agent's port-80 proxy, and stored as `ca.crl` beside `ca.pem`.
+- Why: hlabd holds the CA key; no new listener.
+- Cost of change: low
+
+## 2026-11-19 Validator patch for LB-held primary IPs
+
+- Type: decision
+- Phase: phase 08
+- What: the test response validator adds `load_balancer` to `primary_ip.assignee_type` in the loaded description, the only patched shape.
+- Why: the frozen enum lacks the value hlab returns (see LB public IPs decision).
+- Cost of change: low
+
+## 2026-11-19 Per-call error status
+
+- Type: decision
+- Phase: phase 08
+- What: `FieldError.Status` overrides the status only for `source_port_already_used` on update_service (422).
+- Why: extends `api.Error` without changing it.
+- Cost of change: low
+
+## 2026-11-19 Load balancer metrics storage
+
+- Type: decision
+- Phase: phase 08
+- What: LB metrics keep their own samples in the module with the step, point and 24 h retention rules of the server metrics.
+- Why: `internal/metrics` is bound to the server samples.
+- Cost of change: low
+
+## 2026-11-19 CA common name per profile
+
+- Type: decision
+- Phase: phase 08
+- What: the CA's CN is "<profile tag> CA" (`hlab CA`, `hlab-dev CA`).
+- Why: the trust store entries of the two profiles can be told apart.
+- Cost of change: medium
+
+## 2026-11-19 health_status without detail
+
+- Type: decision
+- Phase: phase 08
+- What: `health_status` shows only `listen_port` and `status`.
+- Why: `detail` is optional in the description.
+- Cost of change: low
+
+## 2026-11-19 HTTPS services without an issued certificate
+
+- Type: decision
+- Phase: phase 08
+- What: a managed certificate not yet issued or failed is left out of an HTTPS service's TLS; a service with no usable certificate is not rendered until renewal or retry issues it.
+- Why: HAProxy refuses a bind without a certificate.
+- Cost of change: low
+
+## 2026-11-19 Load balancer e2e fixture ports
+
+- Type: decision
+- Phase: phase 08
+- What: the e2e http service listens on 8000 because `redirect_http` takes port 80; LB-05 uses its own tcp service 8081 to a second web server on both servers.
+- Why: stopping it leaves LB-02/03/04 alone.
+- Cost of change: low

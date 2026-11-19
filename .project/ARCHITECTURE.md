@@ -408,6 +408,7 @@ Inside `hlabd` (Go packages under `internal/`):
   hlab catalog update [--hetzner-token-env <VAR>]
   hlab logs [--follow]
   hlab ca export <file>
+  hlab ca trust on|off
   hlab version
   ```
 
@@ -620,6 +621,10 @@ locks a resource of type `project`.
   confirms (accepted only from the server whose pending reset has that ID;
   afterwards GET answers 204 for it), after which hlabd ends the action with `success` (no
   confirmation within 120 s: `error`, code `server_error`).
+  CA revocation list: `http://api.hetzner.internal/hlab/v1/ca.crl` serves an
+  empty CRL signed by the hlab CA, renewed at every cloud start and weekly,
+  `nextUpdate` 8 days ahead; every leaf certificate names it as its CRL
+  distribution point, the root CA has none.
 - Depends on: nothing on the host; the Debian packages listed in SPEC.md.
 
 ### Guest integration
@@ -747,7 +752,10 @@ All addresses below derive from the configured public range
   (VirtioProxy), mirrored and other modes are detected from the console
   user's `%UserProfile%\.wslconfig` (`networkingMode`, `dnsTunneling`,
   read through the WTS user token) plus the host adapters; hlabd runs no
-  `wsl.exe` or `wslinfo`.
+  `wsl.exe` or `wslinfo` for this. The one exception is the CA trust switch:
+  `TrustCA` runs `wsl.exe` with the console user's token to add or remove
+  the hlab CA in each WSL2 distro, only while trust is on (pending until
+  the next logon when nobody is logged on).
 - NRPT: one suffix rule per zone (`.example.net`) also covers the zone
   apex (E5).
 
