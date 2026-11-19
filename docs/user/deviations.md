@@ -449,8 +449,11 @@ differences:
   allowed. Hetzner allows only the IPs of your dedicated servers. They are
   reached over the public interface.
 - The IPv6 address is formal and carries no traffic:
-  `2001:db8:<0x80000000 + load balancer ID>::1` (load balancer 3:
-  `2001:db8:8000:3::1`), or `<its /64>::1` with an IPv6 primary IP.
+  `2001:db8:<0xA0000000 + load balancer ID>::1` (load balancer 3:
+  `2001:db8:a000:3::1`), or `<its /64>::1` with an IPv6 primary IP.
+  Reverse DNS entries an older hlab stored under the earlier prefix
+  `2001:db8:8000:<ID>::/64` move to the same address in the new /64 at
+  the next cloud start.
 - Without `public_net.ipv4`, the load balancer gets an IPv4 from the
   public range that is not a primary IP and is deleted with it. With
   `public_net.ipv4` or `public_net.ipv6` it holds those primary IPs; see

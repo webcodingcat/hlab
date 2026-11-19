@@ -7,7 +7,8 @@ hlab reads `settings.toml` from its data folder when the cloud starts:
 (`%ProgramData%\hlab\settings.toml` for the release profile). Setting up the
 service creates an empty file that interactive users may edit. Every key is
 optional; a missing key keeps its default. Changes apply at the next
-`hlab cloud start`. `hlab ca trust` writes the file itself: it rewrites
+`hlab cloud start`; `stop_behaviour` is also read again at
+`hlab cloud stop`. `hlab ca trust` writes the file itself: it rewrites
 it with all current settings, and comments in it are lost.
 
 ```toml
@@ -36,13 +37,61 @@ log `%ProgramData%\hlab-dev\logs\hlabd.log`.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `[cloud]` `stop_behaviour` | `"save"` | `"save"` or `"shutdown"`: the automatic stop action Hyper-V applies to the appliance and the server VMs when Windows shuts down. `hlab cloud stop` does not use it yet. |
-| `[network]` `public_range` | `"198.19.0.0/16"` | IPv4 range of the public addresses. The first four addresses connect host and appliance; servers get addresses from the fifth on. The start is refused when the range collides with an address, route or NAT of the host. |
+| `[cloud]` `stop_behaviour` | `"save"` | `"save"` or `"shutdown"`: what happens to running servers when the cloud stops or Windows shuts down; see [Stop behaviour](#stop-behaviour). |
+| `[network]` `public_range` | `"198.19.0.0/16"` | IPv4 range of the public addresses; see [Public range](#public-range). |
 | `[storage]` `data_folder` | `<data folder>\data` | Folder of the VM disks, seed ISOs, downloaded images and ISOs, snapshots, backups, volumes and the appliance; see [Data folder](#data-folder). |
 | `[resources]` `reserve_ram_mb` | `4096` | RAM in MB kept free for Windows. Creating, starting or changing the type of a server answers `resource_unavailable` when the server's RAM exceeds the host's free RAM minus this reserve. |
 | `[resources]` `reserve_disk_gb` | `50` | Disk space in GB kept free in the data folder. Creating, rebuilding or changing the type of a server, creating an image and creating or resizing a volume answer `resource_unavailable` when the disks of all servers and volumes, grown to their full size, would leave less than this free. |
 | `[certificates]` `trust_ca` | `false` | Whether the hlab CA, which signs managed certificates, is in the trust store of Windows and of the WSL2 distributions. Set it with [`hlab ca trust`](commands.md#hlab-ca-trust); while it is `true`, every cloud start adds the CA again. Read the [risk](../../README.md#trusting-the-hlab-ca) before you switch it on. |
-| `[logging]` `level` | `"info"` | `"debug"`, `"info"`, `"warn"` or `"error"`: the level of `hlabd.log`. |
+| `[logging]` `level` | `"info"` | `"debug"`, `"info"`, `"warn"` or `"error"`: the level of `hlabd.log`; see [Log files](#log-files). |
+
+### Stop behaviour
+
+`hlab cloud stop` reads `stop_behaviour` again, so a change applies to
+the next stop without a restart; if the file is invalid at that moment,
+the value read at the last start is used.
+
+- `"save"`: the running servers are saved one after another, like
+  hibernation, and the next `hlab cloud start` resumes them where they
+  left off. A server that cannot be saved is shut down instead.
+- `"shutdown"`: every running server is asked to shut down at once;
+  servers still running after 60 seconds are turned off. The next
+  `hlab cloud start` powers on the servers that were running.
+
+Servers that were off stay off.
+
+When Windows shuts down while the cloud runs, Hyper-V itself saves or
+shuts down the appliance and the servers, with the stop behaviour of the
+last `hlab cloud start`. Hyper-V does not accept a new value for running
+VMs, so a changed `stop_behaviour` applies to a Windows shutdown only
+after the next `hlab cloud start`. After the reboot the cloud is stopped;
+`hlab cloud start` resumes or powers on the servers that ran.
+
+### Public range
+
+`public_range` must be an IPv4 range from `/8` to `/28`; host bits are
+ignored (`198.19.5.0/16` means `198.19.0.0/16`). It may not overlap
+`0.0.0.0/8`, `10.0.0.0/8`, `100.64.0.0/10`, `127.0.0.0/8`,
+`169.254.0.0/16`, `172.16.0.0/12`, `192.168.0.0/16`, `224.0.0.0/3`, or
+Hetzner's resolvers `185.12.64.1` and `185.12.64.2`; such a value stops
+the start like any invalid setting. The private ranges stay free for
+your private networks.
+
+The first four addresses connect host and appliance: the appliance has
+the first (`198.19.0.1` with the default range) and the host the second,
+where the API listens on port 8780 behind the appliance's proxy on port
+80. Servers, primary IPs, floating IPs and load balancers get addresses
+from the fifth on.
+
+The start is refused, and `hlab cloud status` shows `state: refused` with
+a `problem:` line, when
+
+- the range collides with an address, route or NAT of the host
+  (`range_collision`, naming the interface or route), or
+- the range was changed while the state still holds addresses outside
+  the new one (`public_range_changed`). Set the range back, or start with
+  [`hlab cloud start --discard-state`](commands.md#hlab-cloud-start) to
+  delete all servers and resources and begin with an empty state.
 
 ## Custom server types
 
@@ -212,3 +261,12 @@ The hlab CA is not in the data folder but in `ca` beside settings.toml
 (its private key) and `ca.crl` (the revocation
 list). The first cloud start creates them; they stay the same until you
 delete the folder.
+
+## Log files
+
+hlabd writes its log to `hlabd.log` in the `logs` folder beside
+settings.toml (`%ProgramData%\hlab-dev\logs\hlabd.log`), one JSON object
+per line. At 10 MB the file becomes `hlabd.log.1`, older files move on up
+to `hlabd.log.5`, and the oldest is deleted, so the log never takes much
+more than 60 MB. [`hlab logs`](commands.md#hlab-logs) shows and follows
+these files.
