@@ -453,14 +453,14 @@ type Deps struct {
     - (internal/resources/loadbalancers/metrics.go)
   - [x] Rows of TESTS.md for 08-17 (internal/resources/loadbalancers/status_test.go; fake `AgentStatus` and fake clock)
 
-- [ ] 08-18 Load balancers: reverse DNS
+- [x] 08-18 Load balancers: reverse DNS
   - Wave: 3 | Depends on: 08-13 | Review: alone
   - Requirements: LB-09 | Tests: internal/resources/loadbalancers/dnsptr_test.go
   - Reads: OpenAPI `/load_balancers/{id}/actions/change_dns_ptr`; internal/rdns/rdns.go; internal/resources/floatingips/actions.go (change_dns_ptr pattern)
   - Size: ~150 lines in 2 files
   - Adjusts: -
-  - [ ] `change_dns_ptr` through `rdns.Change` on the LB's IPv4 /32 and IPv6 /64 entries (`servers.DecodeDNSPtr`); `public_net.ipv4.dns_ptr` and `ipv6.dns_ptr` through `rdns.Show`; push (internal/resources/loadbalancers/dnsptr.go)
-  - [ ] Rows of TESTS.md for 08-18 (internal/resources/loadbalancers/dnsptr_test.go)
+  - [x] `change_dns_ptr` through `rdns.Change` on the LB's IPv4 /32 and IPv6 /64 entries (`servers.DecodeDNSPtr`); `public_net.ipv4.dns_ptr` and `ipv6.dns_ptr` through `rdns.Show`; push (internal/resources/loadbalancers/dnsptr.go)
+  - [x] Rows of TESTS.md for 08-18 (internal/resources/loadbalancers/dnsptr_test.go)
 
 - [ ] 08-19 Load balancers: agent document
   - Wave: 4 | Depends on: 08-14, 08-15, 08-16, 08-18 | Review: alone
