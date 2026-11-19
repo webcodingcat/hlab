@@ -157,7 +157,7 @@ var excludedRanges = []netip.Prefix{
 }
 
 func validateRange(r netip.Prefix) error {
-	if !r.IsValid() || !r.Addr().Is4() {
+	if !r.Addr().Is4() {
 		return fmt.Errorf("network.public_range must be an IPv4 range, not %s", r)
 	}
 	if r.Bits() < 8 || r.Bits() > 28 {
