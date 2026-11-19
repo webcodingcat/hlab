@@ -66,6 +66,9 @@ var statuses = map[string]int{
 	"server_already_added":               http.StatusUnprocessableEntity,
 	// POST /firewalls answers it with 422 instead.
 	"firewall_resource_not_found": http.StatusNotFound,
+
+	// Codes of zones.
+	"incorrect_zone_mode": http.StatusUnprocessableEntity,
 }
 
 // Status returns the HTTP status of an error code; unknown codes give 500.
