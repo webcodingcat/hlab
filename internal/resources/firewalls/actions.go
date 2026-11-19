@@ -247,7 +247,7 @@ func (m *Module) AttachAtCreate(tx store.Tx, acts *actions.Manager, projectID, s
 		}
 		recs = append(recs, r)
 	}
-	if len(recs) > 0 && !hasIPv4 {
+	if !hasIPv4 {
 		return nil, &api.FieldError{Code: codePrivateOnly, Message: fmt.Sprintf("server %d has no public IPv4", serverID)}
 	}
 	var lock []actions.Ref
@@ -266,9 +266,6 @@ func (m *Module) AttachAtCreate(tx store.Tx, acts *actions.Manager, projectID, s
 		}
 		lock = append(lock, fwRef(r.ID))
 		specs = append(specs, serverSpec("apply_firewall", serverID, r.ID))
-	}
-	if len(specs) == 0 {
-		return nil, nil
 	}
 	started, err := acts.StartAll(tx, projectID, lock, specs)
 	if err != nil {
