@@ -255,14 +255,14 @@ type ShadowingZone struct {
   - [x] `mgmt.Status.ShadowingZones`, `ShadowingZone`; `hlab cloud status` prints `warning: zone <zone> (project <project>) shadows a public domain` per entry (internal/mgmt/mgmt.go, internal/cli/cli.go)
   - [x] Rows of TESTS.md for 07-10 (internal/resources/zones/shadow_test.go)
 
-- [ ] 07-11 Cloud wiring and end-to-end
+- [x] 07-11 Cloud wiring and end-to-end
   - Wave: 5 | Depends on: 07-04, 07-05, 07-06, 07-09, 07-10 | Review: alone
   - Requirements: DNS-02, DNS-03, RDNS-02 | Tests: test/e2e/dns_test.go, internal/resources/conventions_test.go
   - Reads: ARCHITECTURE "Cloud start and stop", "hostnet", "Network" (NRPT); EXPERIMENTS E4, E5; TESTS.md header; test/e2e/ip_test.go, test/e2e/wsl_test.go (helpers); decision D16 below
   - Size: ~350 lines in 5 files
   - Adjusts: -
-  - [ ] Module `zones` after `firewalls` in `modules()` with `SetZones` = `c.net.SetZones`, a `Shadow` from `PublicLookup(host DNS servers)`; `srv.SetDNSPtrs(pips)`; at start after `hostnet.Up`, `SetZones(Names)` and `Shadow.Check` for every `Primary` zone outside `PrivateUse`; `mgmtStatus` fills `ShadowingZones` from `Shadow.List()`; zones in `newFullEnv` plus the API-06, API-07 and API-11 cases (internal/cloud/cloud.go, internal/resources/conventions_test.go)
-  - [ ] End-to-end rows DNS-02, DNS-03, RDNS-02 (test/e2e/dns_test.go, test/e2e/e2e_test.go)
+  - [x] Module `zones` after `firewalls` in `modules()` with `SetZones` = `c.net.SetZones`, a `Shadow` from `PublicLookup(host DNS servers)`; `srv.SetDNSPtrs(pips)`; at start after `hostnet.Up`, `SetZones(Names)` and `Shadow.Check` for every `Primary` zone outside `PrivateUse`; `mgmtStatus` fills `ShadowingZones` from `Shadow.List()`; zones in `newFullEnv` plus the API-06, API-07 and API-11 cases (internal/cloud/cloud.go, internal/resources/conventions_test.go)
+  - [x] End-to-end rows DNS-02, DNS-03, RDNS-02 (test/e2e/dns_test.go, test/e2e/e2e_test.go)
 
 - [ ] 07-12 Documentation
   - Wave: 6 | Depends on: 07-11 | Review: alone

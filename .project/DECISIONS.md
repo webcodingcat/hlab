@@ -1855,3 +1855,11 @@ in ARCHITECTURE.md or the plan.
 - What: an import is refused with `protected` when any RRSet of the zone is change-protected; the imported SOA keeps its values except the serial, which hlab continues; a `$TTL` below 60 is a zone file error on its line; imported RRSets have no labels and no protection; `POST /zones` with both `zonefile` and `rrsets` is `invalid_input` on `zonefile`; create and import both run the shadow check.
 - Why: the simplest reading of D4, D5 and DNS-04.
 - Cost of change: low
+
+## 2026-11-19 Zones at cloud start and e2e runs from worktrees
+
+- Type: decision
+- Phase: phase 07
+- What: the zones module is built after `hostnet.Up`, so `SetZones(Names)` and the shadow check of every primary public zone run right after the modules recover; end-to-end runs happen from the main checkout after a plan's merge, because the dev service runs the main checkout's `bin\hlabd.exe` and the harness refuses any other working copy.
+- Why: NRPT rules need the host network up; the harness guard protects against testing a stale binary.
+- Cost of change: low
