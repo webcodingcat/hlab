@@ -177,13 +177,13 @@ Settled by the test writers (the tests rely on them):
   - [x] `GET /mgmt/v1/logs[?follow=1]` via `logfile.Tail` (1000 lines, NDJSON, flushed per line) in internal/mgmt/mgmt.go.
   - [x] CLI: `hlab logs [--follow]` (management API while running, `logfile.Tail` on `IO.LogDir` while stopped; human `time LEVEL msg key=value...`, `--output json` raw lines) and `hlab cloud start --discard-state` (start parameter `discard-state`); `cloud status` shows the refused message as today (internal/cli/cli.go, cmd/hlab/main.go sets `LogDir`); short entries in docs/user/commands.md so DOC-01 stays green.
 
-- [ ] 09-12 Cloud: start and stop with persistence
+- [x] 09-12 Cloud: start and stop with persistence
   - Wave: 3 | Depends on: 09-01, 09-02, 09-03, 09-04, 09-05, 09-07, 09-08, 09-09, 09-10, 09-11 | Review: alone
   - Requirements: LIFE-02, LIFE-03, LIFE-04, LIFE-05, LIFE-07, LIFE-08, HOST-02 | Tests: test/e2e/life_test.go
   - Reads: ARCHITECTURE "Cloud start and stop", "hlab (management command)", "Network"; DECISIONS phase 09 entries; CONTEXT.md
   - Size: ~300 lines in 4 files
-  - [ ] internal/cloud/cloud.go: addresses from `transit.For`; on `*store.IncompatibleError` refuse with `state_incompatible` unless `discard.Requested(params, err)`, then `hostnet.Down` (old tagged objects and zone NRPT rules), `discard.Run`, open the empty state; `ipam.Outside` non-empty refuses with `public_range_changed` (naming the recorded old range, or the first address outside when none is recorded, and `--discard-state`), and also discards when requested; `ipam.RecordRange` after the check; `Lifecycle.Restore` after the first `PushAgent`; at stop: jobs first, then re-read `stop_behaviour` (start value if the file is invalid), `Lifecycle.Halt`, appliance, `hostnet.Down`.
-  - [ ] cmd/hlabd/main.go passes the start parameters to `Cloud.Start`.
+  - [x] internal/cloud/cloud.go: addresses from `transit.For`; on `*store.IncompatibleError` refuse with `state_incompatible` unless `discard.Requested(params, err)`, then `hostnet.Down` (old tagged objects and zone NRPT rules), `discard.Run`, open the empty state; `ipam.Outside` non-empty refuses with `public_range_changed` (naming the recorded old range, or the first address outside when none is recorded, and `--discard-state`), and also discards when requested; `ipam.RecordRange` after the check; `Lifecycle.Restore` after the first `PushAgent`; at stop: jobs first, then re-read `stop_behaviour` (start value if the file is invalid), `Lifecycle.Halt`, appliance, `hostnet.Down`.
+  - [x] cmd/hlabd/main.go passes the start parameters to `Cloud.Start`.
 
 - [ ] 09-13 Documentation
   - Wave: 4 | Depends on: 09-12 | Review: alone
