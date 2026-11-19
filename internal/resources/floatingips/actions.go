@@ -10,6 +10,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/api"
+	"github.com/webcodingcat/hlab/internal/rdns"
 	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/store"
 )
@@ -116,6 +117,27 @@ func (m *Module) unassign(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
+// changeDNSPtr sets or resets a reverse DNS entry of the floating IP; the
+// action pushes the agent document.
+func (m *Module) changeDNSPtr(w http.ResponseWriter, req *http.Request) {
+	id, ok := api.PathID(w, req)
+	if !ok {
+		return
+	}
+	ip, ptr, ok := servers.DecodeDNSPtr(w, req)
+	if !ok {
+		return
+	}
+	m.change(w, req, id, "change_dns_ptr", func(_ store.Tx, r *Record) ([]actions.Ref, error) {
+		entries, err := rdns.Change(r.DNSPtr, owner(*r), ip, ptr)
+		if err != nil {
+			return nil, err
+		}
+		r.DNSPtr = entries
+		return nil, nil
+	})
+}
+
 // loadServer returns server id of projectID; a missing one is an input
 // error of server.
 func loadServer(tx store.Tx, projectID, id int64) (servers.Record, error) {
@@ -195,9 +217,10 @@ func (m *Module) ServerDeleted(tx store.Tx, serverID int64) error {
 }
 
 // Contribute implements resource.NetContributor: one entry per IPv4
-// floating IP, targeting the public IPv4 of its server; the target is
-// invalid when the floating IP is unassigned or its server has no public
-// IPv4 or is being deleted. IPv6 floating IPs carry no traffic.
+// floating IP, targeting the public IPv4 of its server, and its effective
+// PTR name; the target is invalid when the floating IP is unassigned or its
+// server has no public IPv4 or is being deleted. IPv6 floating IPs carry no
+// traffic.
 func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 	recs, err := store.ListAll[Record](tx, Kind)
 	if err != nil {
@@ -226,6 +249,10 @@ func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 			target = targets[*r.Server]
 		}
 		doc.FloatingIPs = append(doc.FloatingIPs, agentapi.FloatingIP{IP: ip, Target: target})
+		if doc.PTR == nil {
+			doc.PTR = map[netip.Addr]string{}
+		}
+		doc.PTR[ip] = rdns.PTR(r.DNSPtr, ip)
 	}
 	return nil
 }

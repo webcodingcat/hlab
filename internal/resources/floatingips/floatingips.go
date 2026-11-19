@@ -23,6 +23,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/ipam"
+	"github.com/webcodingcat/hlab/internal/rdns"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/servers"
@@ -53,10 +54,7 @@ type Deps struct {
 }
 
 // DNSPtr is a reverse DNS entry of a floating IP.
-type DNSPtr struct {
-	IP     string `json:"ip"`
-	DNSPtr string `json:"dns_ptr"`
-}
+type DNSPtr = rdns.Entry
 
 // Protection is the protection of a floating IP.
 type Protection struct {
@@ -109,6 +107,7 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("POST /floating_ips/{id}/actions/change_protection", http.HandlerFunc(m.changeProtection))
 	r.Handle("POST /floating_ips/{id}/actions/assign", http.HandlerFunc(m.assign))
 	r.Handle("POST /floating_ips/{id}/actions/unassign", http.HandlerFunc(m.unassign))
+	r.Handle("POST /floating_ips/{id}/actions/change_dns_ptr", http.HandlerFunc(m.changeDNSPtr))
 	resactions.RoutesFor(r, Kind, refType)
 }
 
@@ -154,10 +153,19 @@ func view(r Record) FloatingIP {
 	if f.Labels == nil {
 		f.Labels = map[string]string{}
 	}
-	if f.DNSPtr == nil {
-		f.DNSPtr = []DNSPtr{}
-	}
+	f.DNSPtr = rdns.Show(f.DNSPtr, owner(r))
 	return f
+}
+
+// owner is the address range r owns: its IPv4 as /32 or its IPv6 /64.
+// The stored IP always parses: it is written only from netip values.
+func owner(r Record) netip.Prefix {
+	if r.Type == typeIPv4 {
+		a, _ := netip.ParseAddr(r.IP)
+		return netip.PrefixFrom(a, 32)
+	}
+	p, _ := netip.ParsePrefix(r.IP)
+	return p
 }
 
 // pushLogged sends the agent document; a failure is logged, the state is
