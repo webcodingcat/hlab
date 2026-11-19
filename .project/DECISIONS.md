@@ -1423,3 +1423,27 @@ in ARCHITECTURE.md or the plan.
 - What: the harness skips the running check and the stop when bin\hlab.exe does not exist yet.
 - Why: a fresh checkout has no binary to ask and no cloud of this working copy can run.
 - Cost of change: low
+
+## 2026-11-19 MetricsAll leaves out VMs not on the host
+
+- Type: decision
+- Phase: B1
+- What: A VM counts as existing when `Get-VM` lists it; a requested VM missing there is left out of the map and `Metrics(vm)` returns NotFound as before.
+- Why: Keeps the behaviour of `Metrics` and lets the sampler skip servers whose VM is gone.
+- Cost of change: low
+
+## 2026-11-19 Adapters map to the longest VM name on the host
+
+- Type: decision
+- Phase: B1
+- What: Network adapter rows go to the longest matching VM name among all VMs on the host, not only the requested ones.
+- Why: A VM not sampled must not have its adapters counted for a VM whose name is a prefix of its own.
+- Cost of change: low
+
+## 2026-11-19 Failed metrics tick stores nothing
+
+- Type: decision
+- Phase: B1
+- What: If the MetricsAll call fails the tick stores nothing and logs a warning (not when the context was cancelled); with no running servers no platform call is made.
+- Why: One failed read must not write zero samples for all servers.
+- Cost of change: low

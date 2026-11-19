@@ -205,6 +205,7 @@ Inside `hlabd` (Go packages under `internal/`):
       SetBootOrder(ctx, vm string, order []BootDevice) error
       Snapshot(ctx, vm, diskPath, target string) error  // crash-consistent copy of a running or stopped disk
       Metrics(ctx, vm string) (Sample, error)            // cpu %, disk bytes, net bytes
+      MetricsAll(ctx, vms []string) (map[string]Sample, error) // one counter read for all VMs; VMs not on the host are left out
       HostResources(ctx) (Resources, error)              // RAM, logical cores, free disk in data folder
   }
 
