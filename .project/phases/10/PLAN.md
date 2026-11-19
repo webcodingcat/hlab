@@ -249,15 +249,15 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - [x] ui/frontend/src/help.ts (`renderHelp`, `helpFor`), src/helpTexts.ts (`import.meta.glob("./help/*.md", { query: "?raw", import: "default", eager: true })`), lib/HelpButton.svelte with the side panel.
   - [x] src/views.json with `projects`, `server-types`, `settings`, `logs`; a short help text per view in src/help/<view>.md (the documentation plan completes them).
 
-- [ ] 10-13 Tray program
+- [x] 10-13 Tray program
   - Wave: 3 | Depends on: 10-05, 10-08, 10-09, 10-10 | Review: alone
   - Requirements: UI-01 | Tests: cmd/hlab-tray/options_test.go
   - Reads: ARCHITECTURE "hlab-tray (tray program)", "Profiles"; RESEARCH topics 1, 2, 3, 4; EXPERIMENTS E9; DECISIONS "Tray UI tests through a CDP port in an e2e-only build", "Tray quit and tray state in e2e"
   - Size: ~350 lines in 7 files
-  - [ ] go.mod/go.sum: `github.com/wailsapp/wails/v3` v3.1.0 (the indirect klauspost/compress rises to v1.18.7; nothing else in SPEC changes).
-  - [ ] cmd/hlab-tray/main.go, options.go (application options: services `bridge.Service`, `bridge.Cloud`, `bridge.Logs`; assets `ui.Dist` through `BundledAssetFileServer`; single instance with UniqueID per profile, focusing the window; window 1000x640 minimum, shown at start, hidden on close with a `quitting` flag; `DisableQuitOnLastWindowClosed`; `application.New` first, so a second instance does nothing before it exits).
-  - [ ] cmd/hlab-tray/tray.go (icon per `TrayModel.Icon`, tooltip, menu status line, Open hlab, Start cloud / Stop cloud, Quit only the tray; `OnClick` shows and focuses; `Cloud.OnChange` updates tray and emits `cloud`; `Logs.Emit` emits `logs`), icons/*.ico (running, stopped, busy, error; 16 to 48 px).
-  - [ ] cmd/hlab-tray/e2e.go (`//go:build e2e`): own UniqueID, `--remote-debugging-port` and `WebviewUserDataPath` from `HLAB_E2E_CDP_PORT`/`HLAB_E2E_WEBVIEW_DIR`, service `TrayTest` with `State() TrayModel` and `Click(item)` calling the menu handlers.
+  - [x] go.mod/go.sum: `github.com/wailsapp/wails/v3` v3.1.0 (the indirect klauspost/compress rises to v1.18.7; nothing else in SPEC changes).
+  - [x] cmd/hlab-tray/main.go, options.go (application options: services `bridge.Service`, `bridge.Cloud`, `bridge.Logs`; assets `ui.Dist` through `BundledAssetFileServer`; single instance with UniqueID per profile, focusing the window; window 1000x640 minimum, shown at start, hidden on close with a `quitting` flag; `DisableQuitOnLastWindowClosed`; `application.New` first, so a second instance does nothing before it exits).
+  - [x] cmd/hlab-tray/tray.go (icon per `TrayModel.Icon`, tooltip, menu status line, Open hlab, Start cloud / Stop cloud, Quit only the tray; `OnClick` shows and focuses; `Cloud.OnChange` updates tray and emits `cloud`; `Logs.Emit` emits `logs`), icons/*.ico (running, stopped, busy, error; 16 to 48 px).
+  - [x] cmd/hlab-tray/e2e.go (`//go:build e2e`): own UniqueID, `--remote-debugging-port` and `WebviewUserDataPath` from `HLAB_E2E_CDP_PORT`/`HLAB_E2E_WEBVIEW_DIR`, service `TrayTest` with `State() TrayModel` and `Click(item)` calling the menu handlers.
 
 - [ ] 10-14 E2E harness: tray over CDP and UI-01
   - Wave: 4 | Depends on: 10-11, 10-13 | Review: alone
