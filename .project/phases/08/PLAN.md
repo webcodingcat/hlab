@@ -359,14 +359,14 @@ type Deps struct {
     - (internal/hostnet/windows/trust_wsl.go, internal/hostnet/windows/wsl.go)
   - [x] Rows of TESTS.md for 08-12 (internal/hostnet/windows/trust_test.go, in `TestHostNet`)
 
-- [ ] 08-13 Load balancers: core resource
+- [x] 08-13 Load balancers: core resource
   - Wave: 2 | Depends on: 08-03 | Review: alone
   - Requirements: LB-01 | Tests: internal/resources/loadbalancers/loadbalancers_test.go
   - Reads: OpenAPI `/load_balancers`, `/load_balancers/{id}`, change_algorithm, change_type, change_protection; R3.1 (type limits), R5 (client reads); CONTEXT; DECISIONS "Load balancer public IPs and primary IPs", Q11; internal/resources/firewalls/firewalls.go as pattern; decision D5 below
   - Size: ~420 lines in 9 files (five of them stubs of a few lines)
   - Adjusts: -
-  - [ ] `Record`, `Deps`, `New`, `IPv6`, the full Hetzner LB shape (services, targets, private_net, public_net with dns_ptr, protection, `included_traffic`, `ingoing_traffic`/`outgoing_traffic` 0), `Routes`, list (filter name, label_selector; sort id, name, created), GET, PUT (name and labels) (internal/resources/loadbalancers/loadbalancers.go)
-  - [ ] Create, delete and actions:
+  - [x] `Record`, `Deps`, `New`, `IPv6`, the full Hetzner LB shape (services, targets, private_net, public_net with dns_ptr, protection, `included_traffic`, `ingoing_traffic`/`outgoing_traffic` 0), `Routes`, list (filter name, label_selector; sort id, name, created), GET, PUT (name and labels) (internal/resources/loadbalancers/loadbalancers.go)
+  - [x] Create, delete and actions:
     - POST: name unique (409); type and location or network_zone (zone alone takes its first location); algorithm (default round_robin)
     - POST: public_interface (default true); `public_net` IDs through `PublicIPs` (only with the public interface on, otherwise `invalid_input`); a system IPv4 from `ipam.NextPublic` otherwise
     - POST: network, services and targets through the stubs; 201 with a `create_load_balancer` action
@@ -375,7 +375,7 @@ type Deps struct {
     - Deleter
     - the rows of TESTS.md for 08-13, in group `TestLoadBalancers` with a fake `PublicIPs` and the shared helper `newEnv`
     - (internal/resources/loadbalancers/create.go, internal/resources/loadbalancers/actions.go, internal/resources/loadbalancers/loadbalancers_test.go)
-  - [ ] Stub files, each owned and filled by its plan in wave 3; every stub refuses non-empty input with `invalid_input`:
+  - [x] Stub files, each owned and filled by its plan in wave 3; every stub refuses non-empty input with `invalid_input`:
     - `network.go`: `networkRoutes`, `attachAtCreate`
     - `services.go`: `serviceRoutes`, `createServices`
     - `targets.go`: `targetRoutes`, `createTargets`, `viewTargets`

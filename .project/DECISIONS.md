@@ -2135,3 +2135,11 @@ in ARCHITECTURE.md or the plan.
 - What: WSL failures (list, no distros, failed distros) are logged and never fail `TrustCA` after the Windows store changed; the user runner calls CreateProcessAsUser directly with desktop winsta0\default and adds stderr to the output on a non-zero exit; the pending-logon trigger is a 30 s polling loop that runs only while a change is pending.
 - Why: a missing WSL must not undo or fail the Windows part; os/exec cannot set the desktop; a session-change hook would need a new `sysint.ServiceHost` interface and a WTS window loop.
 - Cost of change: low
+
+## 2026-11-19 Load balancer package layout
+
+- Type: decision
+- Phase: phase 08
+- What: 08-13 adds a stub `contribute.go` (filled by 08-19); stored service types live in services.go, target types in targets.go, the status state in status.go, so wave 3 plans extend them without touching loadbalancers.go; the views already show `public_net.ipv4/ipv6.dns_ptr` from `Record.DNSPtr`.
+- Why: PLAN D5, parallel plans on separate files; the test helper needs `Contribute` to compile.
+- Cost of change: low
