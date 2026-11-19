@@ -187,6 +187,32 @@ Without a terminal and without the flag:
 hlab: no terminal to ask for the Hetzner token; pass it in an environment variable named with --hetzner-token-env
 ```
 
+## Certificate authority
+
+### hlab ca export
+
+Writes the certificate of the hlab CA (PEM) to the given file, for
+clients that do not use the host's trust store.
+
+```
+> hlab ca export hlab-ca.pem
+hlab CA written to hlab-ca.pem
+```
+
+### hlab ca trust
+
+`on` adds the hlab CA to the trust store of Windows and of the WSL2
+distributions, `off` removes it again. The switch is kept in
+`[certificates] trust_ca` of settings.toml. `--output json` prints
+`{"on": true}` or `{"on": false}`.
+
+```
+> hlab ca trust on
+the hlab CA is trusted on this host
+> hlab ca trust off
+the hlab CA is no longer trusted on this host
+```
+
 ## Other
 
 ### hlab version
