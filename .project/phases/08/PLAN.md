@@ -434,24 +434,24 @@ type Deps struct {
     - (internal/resources/loadbalancers/targets.go)
   - [ ] Rows of TESTS.md for 08-16 (internal/resources/loadbalancers/targets_test.go)
 
-- [ ] 08-17 Load balancers: health status and metrics
+- [x] 08-17 Load balancers: health status and metrics
   - Wave: 3 | Depends on: 08-13 | Review: alone
   - Requirements: LB-05, LB-08 | Tests: internal/resources/loadbalancers/status_test.go
   - Reads: R1.2 (counter resets), R3.1 (health_status), R3.5; OpenAPI `/load_balancers/{id}/metrics`; internal/metrics/metrics.go (step and point rules to mirror)
   - Size: ~350 lines in 3 files
   - Adjusts: -
-  - [ ] Health and metrics data:
+  - [x] Health and metrics data:
     - job `lb-status` every 10 s: `AgentStatus`, health cache per LB, counter samples per LB, 24 h retention
     - `m.health(lbID, key, port)` gives `unknown` when nothing is known
     - (internal/resources/loadbalancers/status.go)
-  - [ ] `GET /load_balancers/{id}/metrics`:
+  - [x] `GET /load_balancers/{id}/metrics`:
     - `type` list required; start and end required (RFC3339)
     - the step rule of the server metrics: 200 points by default, at most 500
     - rates from deltas, where a smaller counter counts as a reset
     - series `open_connections`, `connections_per_second`, `requests_per_second`, `bandwidth.in`, `bandwidth.out`
     - an unknown type gives `invalid_input`
     - (internal/resources/loadbalancers/metrics.go)
-  - [ ] Rows of TESTS.md for 08-17 (internal/resources/loadbalancers/status_test.go; fake `AgentStatus` and fake clock)
+  - [x] Rows of TESTS.md for 08-17 (internal/resources/loadbalancers/status_test.go; fake `AgentStatus` and fake clock)
 
 - [ ] 08-18 Load balancers: reverse DNS
   - Wave: 3 | Depends on: 08-13 | Review: alone

@@ -2159,3 +2159,11 @@ in ARCHITECTURE.md or the plan.
 - What: a health check with protocol `https` is stored and shown as `http` with `tls: true`; an https service without certificates is `invalid_input`; add_service defaults listen port 80 (http) or 443 (https), destination port 80 and 15/10/3; update/delete of an unknown listen port is `invalid_input` on `listen_port`; `timeout_idle` 0 keeps the stored value; an https service with `redirect_http` collides with a service on 80 (`source_port_already_used`).
 - Why: the OpenAPI response enum allows only tcp and http; the agent cannot pass TLS through (D12); defaults from the Terraform docs.
 - Cost of change: low
+
+## 2026-11-19 Load balancer metrics rules
+
+- Type: decision
+- Phase: phase 08
+- What: the step and point rules of the server metrics are copied into the loadbalancers package instead of exported from internal/metrics; the `lb-status` job runs every 10 s.
+- Why: keeps 08-17 out of internal/metrics (PLAN D9).
+- Cost of change: low
