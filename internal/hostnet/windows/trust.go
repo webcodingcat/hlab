@@ -26,10 +26,6 @@ func (h *HostNet) TrustCA(ctx context.Context, pemData []byte, on bool) error {
 	return h.trustWSL(ctx, pemData, on)
 }
 
-// trustWSL applies the trust switch in the WSL2 distros (built in a later
-// plan).
-func (h *HostNet) trustWSL(context.Context, []byte, bool) error { return nil }
-
 // trustRoot adds or removes the DER certificate in LocalMachine\ROOT.
 func trustRoot(der []byte, on bool) error {
 	store, err := windows.CertOpenStore(windows.CERT_STORE_PROV_SYSTEM, 0, 0,
