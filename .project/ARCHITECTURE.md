@@ -127,6 +127,9 @@ Inside `hlabd` (Go packages under `internal/`):
   type ActionUser interface {           // modules starting actions outside a handler (daily backups); Mount calls it before Routes
       UseActions(m *actions.Manager)
   }
+  type Recoverer interface {            // modules with records an interrupted action can leave half-made (images, volumes)
+      Recover(ctx context.Context) error // cloud start calls it before the API serves and before the first scheduled job run
+  }
   ```
 
   Handlers validate input, write the desired state in one transaction,
@@ -136,7 +139,11 @@ Inside `hlabd` (Go packages under `internal/`):
   a function that pushes the agent document and the settings it reads
   through its `Deps`. `Reconcile` is idempotent (it does only the
   difference between state and platform), so it can run again after an
-  aborted action and after a cloud restart. Power actions, rebuild and
+  aborted action; cloud start does not call it. At cloud start, after the
+  action manager has marked interrupted actions `error`, each `Recoverer`
+  removes the records those actions left `creating` with their partial
+  files, before the API serves and before the first run of the backup job
+  (decision Q6). Power actions, rebuild and
   change type stay actions inside the module. `internal/cloud` only wires
   the modules and calls these interfaces; it holds no logic of a resource
   type (decisions/resource-reconciler.md).

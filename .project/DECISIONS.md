@@ -1303,3 +1303,83 @@ in ARCHITECTURE.md or the plan.
 - Type: change
 - What: The seven open `bug` items of BACKLOG.md become phase B1, inserted before phase 05; the `later` item for phase 09 and the `minor` test item stay in the backlog.
 - Why: They cause stuck resources after a restart, wrong passwords and ignored user_data on normal paths, and a broken e2e build, which later phases would build on.
+
+## 2026-11-19 Q6 Cloud start removes images and volumes left creating
+
+- Type: decision
+- Phase: B1
+- What: an optional module interface `resource.Recoverer` runs at cloud start, before the API serves and before the first backup job run, and removes images and volumes left `creating` by an interrupted action, with their partial files; Reconcile is not called at cloud start (ARCHITECTURE corrected).
+- Why: matches the `error` result of the interrupted action and the existing "failed create is dropped" handling, lets a client retry with the same name, and keeps the server path unchanged.
+- Cost of change: low
+
+## 2026-11-19 Stale password reset filtered by its action's status
+
+- Type: decision
+- Phase: B1
+- What: `Contribute` serves a pending reset to the agent only while the reset_password action with the reset's ID is `running`; rebuild clears `Hlab.PasswordReset`.
+- Why: `failInterrupted` marks the action `error` before the first agent push, so no start-up hook is needed and no path serves a stale reset.
+- Cost of change: low
+
+## 2026-11-19 NoCloud instance-id after a rebuild
+
+- Type: decision
+- Phase: B1
+- What: Optional `Hlab.InstanceID` (empty = server ID); every rebuild sets `<server id>-<rebuild action id>`, used by the server and rescue seed; metadata `/instance-id` stays the server ID.
+- Why: A disk restored from the same server must count as a new instance so cloud-init reruns chpasswd and user_data.
+- Cost of change: medium (guest-visible)
+
+## 2026-11-19 Strict base64 decoding of user_data for the seed
+
+- Type: decision
+- Phase: B1
+- What: user_data that is valid standard base64 without whitespace is decoded for the NoCloud seed, with and without volumes; anything else stays raw; metadata serves raw user_data.
+- Why: Mirrors `maybe_b64decode(validate=True)` of the Hetzner datasource, which NoCloud lacks.
+- Cost of change: low
+
+## 2026-11-19 User MIME parts become leaf parts of hlab's multipart
+
+- Type: decision
+- Phase: B1
+- What: With automount volumes, gzip is unpacked and each leaf part of a user MIME document is copied unchanged and in order before hlab's cloud-config part (boundary chosen to not collide); non-MIME content stays one base64 text/plain part.
+- Why: cloud-init walks nested multiparts but does not unpack MIME or gzip inside text/plain, and `merge_how` needs hlab's part last.
+- Cost of change: low
+
+## 2026-11-19 `Platform.MetricsAll` with VM mapping in Go
+
+- Type: decision
+- Phase: B1
+- What: A new interface method reads the three counter classes and VM disks once per call; Go maps rows to VMs by exact name (adapters: longest matching VM name); `Metrics(vm)` stays on top of it.
+- Why: Extends the interface without breaking it and keeps the mapping unit-testable without Hyper-V.
+- Cost of change: low
+
+## 2026-11-19 Images module gets the store in its Deps
+
+- Type: decision
+- Phase: B1
+- What: `imagesres.Deps.Store`, used only by `Recover`; nil makes `Recover` a no-op.
+- Why: `Recover` runs outside a request and cannot take the store from the request context.
+- Cost of change: low
+
+## 2026-11-19 Start-up recovery runs before mounting
+
+- Type: decision
+- Phase: B1
+- What: `recoverModules` (internal/cloud/recover.go) runs right after `c.modules()`, before mounting, the API and the scheduled jobs; an error fails cloud start.
+- Why: Q6 requires it before the API serves and before the backup job.
+- Cost of change: low
+
+## 2026-11-19 E2E harness restores the cloud state it found
+
+- Type: decision
+- Phase: B1
+- What: If the dev cloud runs, `setup()` stops it with the existing binary, builds, and starts it again without setting `startedCloud`, so it stays running.
+- Why: A developer gets a test run instead of a build error and the cloud is left as found.
+- Cost of change: low
+
+## 2026-11-19 SRV-08 e2e row shares SRV-12's server and snapshot
+
+- Type: decision
+- Phase: B1
+- What: A once-fixture provides the server and its snapshot to SRV-12 and SRV-08/own_snapshot.
+- Why: No extra boot, as confirmed at the phase start.
+- Cost of change: low
