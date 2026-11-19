@@ -283,12 +283,12 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - Size: ~300 lines in 2 files
   - [x] src/views/Settings.svelte: grouped form for every key, errors under the field from `*Invalid`, hints (stop_behaviour as in CONTEXT; public_range, data_folder and reserves "Applies at the next cloud start"; data_folder "Existing data is not moved"); trust switch with risk text through `PUT /trust` and "Save CA certificate" from `GET /ca.pem`, both only while running.
 
-- [ ] 10-17 Server Types view
+- [x] 10-17 Server Types view
   - Wave: 5 | Depends on: 10-08, 10-11, 10-12, 10-14 | Review: alone
   - Requirements: UI-04 | Tests: ui/frontend/tests/e2e/servertypes.spec.ts
   - Reads: UI-SPEC "Views" (Server Types); ARCHITECTURE "Management API" (`POST /catalog/update`); DECISIONS "Server Types view shows the catalog while the cloud is stopped"
   - Size: ~300 lines in 2 files
-  - [ ] src/views/ServerTypes.svelte: table (name, cores, memory, disk, CPU type, locations, source), problem banner, add own type form (errors under fields), remove with confirm, "Update from Hetzner" password field (only while running; cleared after success and failure; result or Hetzner's message as toast).
+  - [x] src/views/ServerTypes.svelte: table (name, cores, memory, disk, CPU type, locations, source), problem banner, add own type form (errors under fields), remove with confirm, "Update from Hetzner" password field (only while running; cleared after success and failure; result or Hetzner's message as toast).
 
 - [ ] 10-18 Logs view
   - Wave: 5 | Depends on: 10-10, 10-11, 10-12, 10-14 | Review: alone
