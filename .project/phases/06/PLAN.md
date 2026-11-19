@@ -101,14 +101,14 @@ func NewFirewall(iface string) *Firewall
   - Adjusts: -
   - [x] `Spec`, `Manager.StartAll` (lock check once on `lock` against running actions, then one action per spec in the same tx; `Start` unchanged) (internal/actions/actions.go)
 
-- [ ] 06-02 Firewalls: rule validation
+- [x] 06-02 Firewalls: rule validation
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: FW-01 | Tests: internal/resources/firewalls/rules_test.go
   - Reads: REQUIREMENTS FW-01; RESEARCH R1 (rule shape, limits, port, CIDR); CONTEXT; decisions D1, D2 below
   - Size: ~300 lines in 2 files
   - Adjusts: -
-  - [ ] `Rule`, `CheckRules` (direction in/out, protocol enum; port required for tcp/udp and forbidden for icmp/esp/gre, `any`, `N` or `A-B` with 1 <= A <= B <= 65535, digits only; `source_ips` required and non-empty for `in`, `destination_ips` for `out`; each IP a CIDR with a mask and no host bits, at most 100 per list; at most 50 rules; description at most 255 characters; order kept; IPv6 canonical), `AgentRules` (internal/resources/firewalls/rules.go)
-  - [ ] Rows of TESTS.md for 06-02 (internal/resources/firewalls/rules_test.go)
+  - [x] `Rule`, `CheckRules` (direction in/out, protocol enum; port required for tcp/udp and forbidden for icmp/esp/gre, `any`, `N` or `A-B` with 1 <= A <= B <= 65535, digits only; `source_ips` required and non-empty for `in`, `destination_ips` for `out`; each IP a CIDR with a mask and no host bits, at most 100 per list; at most 50 rules; description at most 255 characters; order kept; IPv6 canonical), `AgentRules` (internal/resources/firewalls/rules.go)
+  - [x] Rows of TESTS.md for 06-02 (internal/resources/firewalls/rules_test.go)
 
 - [ ] 06-03 Servers: firewall hook
   - Wave: 1 | Depends on: - | Review: alone
