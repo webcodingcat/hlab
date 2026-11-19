@@ -365,7 +365,7 @@ func deleteLink(name string) error {
 // one end of a veth removes the other end too, sometimes after it was listed.
 func linkDel(lk netlink.Link) error {
 	err := netlink.LinkDel(lk)
-	if errors.Is(err, unix.ENODEV) || errors.As(err, &netlink.LinkNotFoundError{}) {
+	if errors.Is(err, unix.ENODEV) {
 		return nil
 	}
 	return err
