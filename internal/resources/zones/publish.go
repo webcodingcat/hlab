@@ -16,8 +16,11 @@ import (
 
 // publish runs action a as the publishing of all zones: the agent push,
 // then the NRPT rules for all zone names. A failure ends the action error.
+// Publishes run one at a time, so the latest name list is written last.
 func (m *Module) publish(acts *actions.Manager, a *actions.Action) {
 	acts.Run(a.ID, func(ctx context.Context, _ func(int)) error {
+		m.publishMu.Lock()
+		defer m.publishMu.Unlock()
 		if err := m.d.PushAgent(ctx); err != nil {
 			return err
 		}
@@ -66,13 +69,7 @@ func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 // bumpSerial sets the serial of the apex SOA of r to the next one for now.
 func bumpSerial(r *Record, now time.Time) {
 	i := slices.IndexFunc(r.RRSets, func(s RRSet) bool { return s.Name == "@" && s.Type == "SOA" })
-	if i < 0 || len(r.RRSets[i].Records) == 0 {
-		return
-	}
 	f := strings.Fields(r.RRSets[i].Records[0].Value)
-	if len(f) < 3 {
-		return
-	}
 	old, _ := strconv.ParseUint(f[2], 10, 32)
 	f[2] = strconv.FormatUint(uint64(dnszone.NextSerial(uint32(old), now)), 10) //nolint:gosec // parsed with 32 bits
 	r.RRSets[i].Records[0].Value = strings.Join(f, " ")

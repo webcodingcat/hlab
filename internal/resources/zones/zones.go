@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/actions"
@@ -160,6 +161,8 @@ func (r Record) Sets() []dnszone.RRSet {
 // Module is the zones resource type.
 type Module struct {
 	d Deps
+	// publishMu orders the publishes of all zone actions.
+	publishMu sync.Mutex
 }
 
 // New returns the module.
