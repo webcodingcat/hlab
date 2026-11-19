@@ -149,7 +149,7 @@ func (n *Isolation) Apply(_ context.Context, cfg agentapi.Config) error {
 			&expr.Verdict{Kind: expr.VerdictDrop},
 		},
 	})
-	if err := addPrivate(c, table, chain, input, cfg.Networks); err != nil {
+	if err := addPrivate(c, table, chain, input, cfg.Networks, cfg.LoadBalancers); err != nil {
 		return fmt.Errorf("isolation: %w", err)
 	}
 	if err := c.Flush(); err != nil {
@@ -159,10 +159,10 @@ func (n *Isolation) Apply(_ context.Context, cfg agentapi.Config) error {
 }
 
 // addPrivate adds the per-network rules: the conntrack zones in a prerouting
-// chain, and in the forward chain an accept rule per network route and the
+// chain (for the subinterfaces and the load balancers' network veths), and in the forward chain an accept rule per network route and the
 // drop of member traffic with a foreign source, and in the input chain the
 // same drop for TCP to the metadata service.
-func addPrivate(c *nftables.Conn, table *nftables.Table, forward, input *nftables.Chain, networks []agentapi.Network) error {
+func addPrivate(c *nftables.Conn, table *nftables.Table, forward, input *nftables.Chain, networks []agentapi.Network, lbs []agentapi.LoadBalancer) error {
 	macs, sources := memberSources(networks)
 
 	macType, err := nftables.ConcatSetType(nftables.TypeIFName, nftables.TypeEtherAddr)
@@ -191,19 +191,29 @@ func addPrivate(c *nftables.Conn, table *nftables.Table, forward, input *nftable
 		Priority: nftables.ChainPriorityRaw,
 		Policy:   &accept,
 	})
-	for _, nw := range networks {
-		sub := ifname("t" + strconv.Itoa(nw.VLAN))
-		// iifname t<vlan> ct zone set <vlan>
+	// iifname <name> ct zone set <vlan>
+	zone := func(name string, vlan int) {
 		c.AddRule(&nftables.Rule{
 			Table: table,
 			Chain: pre,
 			Exprs: []expr.Any{
 				&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
-				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: sub},
-				&expr.Immediate{Register: 1, Data: binaryutil.NativeEndian.PutUint16(uint16(nw.VLAN))},
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: ifname(name)},
+				&expr.Immediate{Register: 1, Data: binaryutil.NativeEndian.PutUint16(uint16(vlan))},
 				&expr.Ct{Key: expr.CtKeyZONE, Register: 1, SourceRegister: true},
 			},
 		})
+	}
+	// A load balancer's traffic into a network enters from its veth
+	// lbn<ID> and the replies from t<vlan>: both share the zone.
+	for _, lb := range lbs {
+		if len(lb.Private) > 0 {
+			zone("lbn"+strconv.FormatInt(lb.ID, 10), lb.Private[0].VLAN)
+		}
+	}
+	for _, nw := range networks {
+		sub := ifname("t" + strconv.Itoa(nw.VLAN))
+		zone("t"+strconv.Itoa(nw.VLAN), nw.VLAN)
 
 		// iifname t<vlan> meta nfproto ipv4 ether saddr <gateway's MAC>
 		// ip saddr <destination> accept

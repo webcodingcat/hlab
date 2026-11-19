@@ -27,6 +27,7 @@ const (
 	listenAddr      = "198.19.0.1:9100"
 	metadataAddr    = "169.254.169.254:80"
 	publicInterface = "eth0"
+	lbDir           = "/run/hlab"
 )
 
 // trunkMAC is the MAC of the appliance's second adapter, the trunk that
@@ -56,9 +57,10 @@ func run() error {
 	vrf := agent.NewVRF(trunkMAC)
 	vrf.Metadata = metadata
 	// The network applier adds the addresses the DNS server binds, so it
-	// comes first; the VRF applier needs its IPv4 forwarding.
+	// comes first; the VRF applier needs its IPv4 forwarding, and the load
+	// balancers enslave their network veths to its VRF devices.
 	a, err := agent.New(bytes.TrimSpace(raw),
-		agent.NewNetwork(publicInterface), vrf, agent.NewIsolation(publicInterface), agent.NewFirewall(publicInterface), dns, proxy, metadata)
+		agent.NewNetwork(publicInterface), vrf, agent.NewLoadBalancers(lbDir), agent.NewIsolation(publicInterface), agent.NewFirewall(publicInterface), dns, proxy, metadata)
 	if err != nil {
 		return err
 	}
