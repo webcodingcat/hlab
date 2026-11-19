@@ -1567,3 +1567,11 @@ in ARCHITECTURE.md or the plan.
 - What: The server record keeps the private MACs its VM has in `Internal.Adapters`; while rescue is on `SyncAdapters` writes the seed but leaves DVD slot 0; NotFound from `SetNICDeny`/`DetachNIC` counts as done; private adapters get `Segment{VLAN}` from the server record, `SegmentFor` decides only the public segment (ARCHITECTURE.md updated).
 - Why: The platform cannot list adapters, a detach clears `private_net` before the sync, and the VLAN is server data.
 - Cost of change: low
+
+## 2026-11-19 Isolation on private networks
+
+- Type: decision
+- Phase: 05
+- What: The metadata input rule on private networks matches the ingress subinterface with `meta sdifname` (key 34, defined locally; kernel 5.1+), since `iifname` is the VRF device there; a route accept rule exists only when the route's gateway is a member IP or alias IP; conntrack zones are set in prerouting only.
+- Why: Keeps "Metadata service binds IP and MAC on its input path" on every segment; no rule uses `ct state`, and Hetzner firewalls do not filter private networks.
+- Cost of change: low

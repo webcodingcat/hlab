@@ -163,14 +163,14 @@ func (m *Metadata) HandlerFor(vlan int) http.Handler
   - [x] `VRF` Applier: find the trunk link by MAC and set it up; per Network create or keep VRF `vrf<vlan>` (table 1000+vlan) and VLAN link `t<vlan>`, enslave, gateway address, sysctls on `t<vlan>` (`forwarding=1`, `proxy_arp=1`, `proxy_arp_pvlan=1`, `send_redirects=0`, `accept_redirects=0`, `rp_filter=0`); routes in the VRF table with the agent's route protocol: `/32` per member IP and alias IP on `t<vlan>`, each network route via its gateway (onlink); remove the VRFs, links and routes of networks no longer in the document (internal/agent/vrf_linux.go, internal/agent/vrf_other.go)
   - [x] Register the applier with the trunk MAC `02:48:4c:00:00:02` (cmd/hlab-agent/main.go)
 
-- [ ] 05-03 Agent: floating IP routes and isolation per segment
+- [x] 05-03 Agent: floating IP routes and isolation per segment
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: FIP-02, HOST-01, NET-02 | Tests: - (covered by test/e2e/ip_test.go, network_test.go)
   - Reads: ARCHITECTURE "hlab-agent", "Network"; RESEARCH R1 (unicast RPF), R4 (nftables, conntrack); DECISIONS "Metadata service binds IP and MAC on its input path"
   - Size: ~250 lines in 2 files
   - Adjusts: -
-  - [ ] Floating IPs: `syncRoutes` also keeps one onlink `/32` route per assigned floating IP via the target's public IPv4 on the public interface (internal/agent/network_linux.go)
-  - [ ] Isolation: forwarded IPv4 from a member MAC on `t<vlan>` is dropped unless its source is the member's IP, an alias IP, or inside a route destination whose gateway is that member (one accept rule per route before the drop); a raw-priority prerouting chain sets `ct zone` = VLAN by iifname on `t<vlan>` links, so overlapping ranges never share conntrack entries; the public rules stay as they are; still one atomic table replace (internal/agent/isolation_linux.go)
+  - [x] Floating IPs: `syncRoutes` also keeps one onlink `/32` route per assigned floating IP via the target's public IPv4 on the public interface (internal/agent/network_linux.go)
+  - [x] Isolation: forwarded IPv4 from a member MAC on `t<vlan>` is dropped unless its source is the member's IP, an alias IP, or inside a route destination whose gateway is that member (one accept rule per route before the drop); a raw-priority prerouting chain sets `ct zone` = VLAN by iifname on `t<vlan>` links, so overlapping ranges never share conntrack entries; the public rules stay as they are; still one atomic table replace (internal/agent/isolation_linux.go)
 
 - [x] 05-04 Servers: network fields and hooks
   - Wave: 1 | Depends on: - | Review: alone
