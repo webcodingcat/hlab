@@ -35,6 +35,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/resource"
 	actionsres "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/datacenters"
+	"github.com/webcodingcat/hlab/internal/resources/firewalls"
 	"github.com/webcodingcat/hlab/internal/resources/floatingips"
 	imagesres "github.com/webcodingcat/hlab/internal/resources/images"
 	"github.com/webcodingcat/hlab/internal/resources/isos"
@@ -360,9 +361,13 @@ func (c *Cloud) modules() []resource.Module {
 	srv.SetPublicIPs(pips)
 	srv.OnDelete(pips.ServerDeleted)
 	srv.OnDelete(fips.ServerDeleted)
+	fws := firewalls.New(firewalls.Deps{Store: c.st, PushAgent: c.PushAgent})
+	srv.SetFirewalls(fws)
+	srv.OnDelete(fws.ServerDeleted)
 	// Order of the agent document: servers writes the public metadata
 	// entries, networks adds the members' private entries, and volumes then
-	// sets the volumes of every entry, public and private.
+	// sets the volumes of every entry, public and private. Firewalls sets
+	// the firewall IDs of the public entries after servers and floating IPs.
 	return []resource.Module{
 		actionsres.New(),
 		locations.New(c.cat),
@@ -377,6 +382,7 @@ func (c *Cloud) modules() []resource.Module {
 		nets,
 		pips,
 		fips,
+		fws,
 		vol,
 	}
 }
