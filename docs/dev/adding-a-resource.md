@@ -62,7 +62,12 @@ Work that takes time (a VM, a disk) runs in an action: create it with
 `ActionsFrom(ctx).Start(tx, projectID, "create_widget", refs)` inside the
 transaction, answer with the action, and hand the work to `Run` after the
 commit. `Start` fails with `locked` while another action holds the
-resource. `actions.RoutesFor(r, "widgets", "widget")` from
+resource. A request that starts several actions on the same resources at
+once (the firewalls' `set_rules` starts `set_firewall_rules` plus one
+`apply_firewall` per server) uses
+`StartAll(tx, projectID, lock, specs)`: it checks locks once, only on the
+refs in `lock`, and the actions of one batch never lock each other.
+`actions.RoutesFor(r, "widgets", "widget")` from
 [internal/resources/actions](../../internal/resources/actions) adds the
 generic `GET /widgets/actions`, `/widgets/{id}/actions` and
 `/widgets/{id}/actions/{action_id}` endpoints.

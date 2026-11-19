@@ -167,14 +167,14 @@ func NewFirewall(iface string) *Firewall
   - [x] Module `firewalls` after `floating_ips` in `modules()` (Contribute after servers and floating IPs), `srv.SetFirewalls(fw)`, `srv.OnDelete(fw.ServerDeleted)`; the module in `newFullEnv` plus the API-06 and API-11 cases (internal/cloud/cloud.go, internal/resources/conventions_test.go)
   - [x] End-to-end rows FW-02 and FW-03 (test/e2e/firewall_test.go, test/e2e/e2e_test.go)
 
-- [ ] 06-09 Documentation
+- [x] 06-09 Documentation
   - Wave: 6 | Depends on: 06-08 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06 | Tests: test/docs/docs_test.go (existing)
   - Reads: SPEC "Documentation"; REQUIREMENTS DOC; CONTEXT; RESEARCH C1, R1, R2; the decisions of this phase
   - Size: ~120 lines in 3 files
   - Adjusts: -
-  - [ ] docs/user/deviations.md: server firewall status always `applied` (no `pending`), IPv6 rules stored without effect, 500 effective rules per firewall and 50 firewalls per project not enforced, floating IP traffic filtered by the assigned server's firewalls (Hetzner unverified), `incompatible_network_type` never returned, the codes chosen where Hetzner documents none (D3 to D7)
-  - [ ] README.md (firewalls: what is filtered, stateful, private networks not filtered, appliance services never filtered), docs/dev/components.md (table `inet hlab_fw` beside `inet hlab`, CompileFirewalls)
+  - [x] docs/user/deviations.md: server firewall status always `applied` (no `pending`), IPv6 rules stored without effect, 500 effective rules per firewall and 50 firewalls per project not enforced, floating IP traffic filtered by the assigned server's firewalls (Hetzner unverified), `incompatible_network_type` never returned, the codes chosen where Hetzner documents none (D3 to D7)
+  - [x] README.md (firewalls: what is filtered, stateful, private networks not filtered, appliance services never filtered), docs/dev/components.md (table `inet hlab_fw` beside `inet hlab`, CompileFirewalls)
 
 ## Decisions taken in planning
 
