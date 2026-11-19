@@ -64,6 +64,8 @@
     return list;
   });
 
+  const empty = $derived(!!shown && shown.length === 0 && !query.trim());
+
   function sortBy(k: string) {
     ascending = sortKey === k ? !ascending : true;
     sortKey = k;
@@ -81,10 +83,11 @@
   <header>
     <h2>{title} <span class="muted">{rows ? rows.length : ""}</span></h2>
     <input type="search" aria-label="Search" placeholder="Search by name or key=value" bind:value={query} />
-    {#if createLabel && oncreate}<Button variant="primary" onclick={oncreate}>{createLabel}</Button>{/if}
+    <!-- The empty state carries the create button instead, so it shows once. -->
+    {#if createLabel && oncreate && !empty}<Button variant="primary" onclick={oncreate}>{createLabel}</Button>{/if}
   </header>
 
-  {#if shown && shown.length === 0 && !query.trim()}
+  {#if empty}
     <div class="empty">
       <p>{emptyText}</p>
       {#if createLabel && oncreate}<Button variant="primary" onclick={oncreate}>{createLabel}</Button>{/if}
