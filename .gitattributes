@@ -1,0 +1,2 @@
+# LF everywhere, also on Windows; binary files are detected and left alone.
+* text=auto eol=lf
