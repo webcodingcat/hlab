@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"net/netip"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/apitest"
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/platform"
@@ -17,6 +19,7 @@ import (
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/primaryips"
 	"github.com/webcodingcat/hlab/internal/resources/servers"
+	"github.com/webcodingcat/hlab/internal/store"
 )
 
 // plenty is a host with room for every server of the tests.
@@ -24,7 +27,11 @@ var plenty = platform.Resources{MemoryMB: 64 << 10, FreeMemoryMB: 64 << 10, Logi
 
 var publicRange = netip.MustParsePrefix("198.19.0.0/16")
 
-type pipEnv struct{ *apitest.Env }
+type pipEnv struct {
+	*apitest.Env
+	pip    *primaryips.Module
+	pushes *atomic.Int64 // agent pushes of both modules
+}
 
 func loadCatalog(t *testing.T) *catalog.Catalog {
 	t.Helper()
@@ -37,18 +44,22 @@ func loadCatalog(t *testing.T) *catalog.Catalog {
 
 // newPIPEnv mounts the servers and primary IPs modules on a fake platform,
 // wired like the cloud does: the primary IPs make the public IPs of new
-// servers and follow server deletion.
+// servers, follow server deletion and handle the servers' reverse DNS.
+// Both modules count their agent pushes in pushes.
 func newPIPEnv(t *testing.T) *pipEnv {
 	t.Helper()
 	cat := loadCatalog(t)
 	fake := platformtest.NewFake()
 	fake.SetResources(plenty)
 	d := apitest.ServersDeps(t, cat, fake)
+	pushes := new(atomic.Int64)
+	d.PushAgent = func(context.Context) error { pushes.Add(1); return nil }
 	srv := servers.New(d)
 	pip := newModule(d, cat, srv)
 	srv.SetPublicIPs(pip)
 	srv.OnDelete(pip.ServerDeleted)
-	return &pipEnv{apitest.New(t, srv, pip, resactions.New())}
+	srv.SetDNSPtrs(pip)
+	return &pipEnv{Env: apitest.New(t, srv, pip, resactions.New()), pip: pip, pushes: pushes}
 }
 
 func newModule(d servers.Deps, cat *catalog.Catalog, srv *servers.Module) *primaryips.Module {
@@ -57,7 +68,7 @@ func newModule(d servers.Deps, cat *catalog.Catalog, srv *servers.Module) *prima
 		Catalog:     cat,
 		PublicRange: d.PublicRange,
 		Servers:     srv,
-		PushAgent:   func(context.Context) error { return nil },
+		PushAgent:   d.PushAgent,
 	})
 }
 
@@ -69,20 +80,28 @@ type pipView struct {
 	AssigneeID   *int64            `json:"assignee_id"`
 	AssigneeType string            `json:"assignee_type"`
 	AutoDelete   bool              `json:"auto_delete"`
+	DNSPtr       []dnsPtr          `json:"dns_ptr"`
 	Labels       map[string]string `json:"labels"`
 	Protection   struct {
 		Delete bool `json:"delete"`
 	} `json:"protection"`
 }
 
+type dnsPtr struct {
+	IP     string `json:"ip"`
+	DNSPtr string `json:"dns_ptr"`
+}
+
 type publicNet struct {
 	IPv4 *struct {
-		ID int64  `json:"id"`
-		IP string `json:"ip"`
+		ID     int64  `json:"id"`
+		IP     string `json:"ip"`
+		DNSPtr string `json:"dns_ptr"`
 	} `json:"ipv4"`
 	IPv6 *struct {
-		ID int64  `json:"id"`
-		IP string `json:"ip"`
+		ID     int64    `json:"id"`
+		IP     string   `json:"ip"`
+		DNSPtr []dnsPtr `json:"dns_ptr"`
 	} `json:"ipv6"`
 }
 
@@ -288,6 +307,110 @@ func wantError(t *testing.T, resp *http.Response, status int, code, what string)
 	}
 }
 
+// wantInvalidField expects 422 invalid_input naming field.
+func wantInvalidField(t *testing.T, resp *http.Response, field, what string) {
+	t.Helper()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("%s: status %d, want 422", what, resp.StatusCode)
+	}
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Details struct {
+				Fields []struct {
+					Name string `json:"name"`
+				} `json:"fields"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	apitest.Decode(t, resp, &body)
+	var names []string
+	for _, f := range body.Error.Details.Fields {
+		names = append(names, f.Name)
+	}
+	if body.Error.Code != "invalid_input" || !slices.Contains(names, field) {
+		t.Errorf("%s: error %q on fields %v, want invalid_input on %s", what, body.Error.Code, names, field)
+	}
+}
+
+// changeDNSPtr posts change_dns_ptr to path (".../actions/change_dns_ptr"
+// is appended), expects 201 with a change_dns_ptr action and waits for its
+// success and an agent push.
+func changeDNSPtr(t *testing.T, e *pipEnv, path, ip string, ptr any) {
+	t.Helper()
+	before := e.pushes.Load()
+	body := map[string]any{"ip": ip, "dns_ptr": ptr}
+	resp := e.Do(http.MethodPost, path+"/actions/change_dns_ptr", body)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST %s/actions/change_dns_ptr %v: status %d (%s), want 201", path, body, resp.StatusCode, apitest.ErrorCode(t, resp))
+	}
+	var b struct {
+		Action apitest.Action `json:"action"`
+	}
+	apitest.Decode(t, resp, &b)
+	if b.Action.Command != "change_dns_ptr" {
+		t.Errorf("POST %s/actions/change_dns_ptr: action command %q, want change_dns_ptr", path, b.Action.Command)
+	}
+	waitSuccess(t, e, b.Action.ID, fmt.Sprintf("change_dns_ptr %s on %s", ip, path))
+	if e.pushes.Load() == before {
+		t.Errorf("change_dns_ptr %s on %s: no agent push", ip, path)
+	}
+}
+
+// defaultPTR is Hetzner's default reverse name of an IPv4 address.
+func defaultPTR(ip string) string {
+	a := netip.MustParseAddr(ip).As4()
+	return fmt.Sprintf("static.%d.%d.%d.%d.clients.your-server.de", a[3], a[2], a[1], a[0])
+}
+
+// inNet returns the address with last byte host in the /64 of ip, which is
+// either the network ("2001:db8::/64") or an address.
+func inNet(t *testing.T, ip string, host byte) string {
+	t.Helper()
+	p, err := netip.ParsePrefix(ip)
+	if err != nil {
+		a, err := netip.ParseAddr(ip)
+		if err != nil {
+			t.Fatalf("IPv6 %q is neither a prefix nor an address", ip)
+		}
+		p = netip.PrefixFrom(a, 64)
+	}
+	b := p.Masked().Addr().As16()
+	b[15] = host
+	return netip.AddrFrom16(b).String()
+}
+
+// ptrFor returns the dns_ptr of the entry for ip and whether there is one.
+func ptrFor(entries []dnsPtr, ip string) (string, bool) {
+	want := netip.MustParseAddr(ip)
+	for _, en := range entries {
+		if a, err := netip.ParseAddr(en.IP); err == nil && a == want {
+			return en.DNSPtr, true
+		}
+	}
+	return "", false
+}
+
+// pushedPTR returns the PTR name the primary IPs contribute to the agent
+// document for ip ("" if none).
+func pushedPTR(t *testing.T, e *pipEnv, ip string) string {
+	t.Helper()
+	var doc agentapi.Config
+	if err := e.Store.Tx(func(tx store.Tx) error { return e.pip.Contribute(tx, &doc) }); err != nil {
+		t.Fatalf("Contribute: %v", err)
+	}
+	return doc.PTR[netip.MustParseAddr(ip)]
+}
+
+// wantPIPPtr checks the primary IP's dns_ptr entry for ip.
+func wantPIPPtr(t *testing.T, e *pipEnv, id int64, ip, want, what string) {
+	t.Helper()
+	got, ok := ptrFor(mustPIP(t, e, id).DNSPtr, ip)
+	if !ok || got != want {
+		t.Errorf("%s: primary IP %d dns_ptr for %s = %q (present %v), want %q", what, id, ip, got, ok, want)
+	}
+}
+
 func TestPrimaryIPs(t *testing.T) {
 	t.Run("PIP-01/create_delete", func(t *testing.T) {
 		e := newPIPEnv(t)
@@ -468,7 +591,7 @@ func TestPrimaryIPs(t *testing.T) {
 		fake.SetResources(plenty)
 		d := apitest.ServersDeps(t, cat, fake)
 		srv := servers.New(d)
-		e := &pipEnv{apitest.New(t, srv, resactions.New())}
+		e := &pipEnv{Env: apitest.New(t, srv, resactions.New())}
 		s := getServer(t, e, createServer(t, e, "old", "fsn1", nil))
 		if s.PublicNet.IPv4 == nil || s.PublicNet.IPv6 == nil || s.PublicNet.IPv4.ID == 0 || s.PublicNet.IPv6.ID == 0 {
 			t.Fatalf("setup: server public_net = %+v, want IPv4 and IPv6 with IDs", s.PublicNet)
@@ -505,5 +628,76 @@ func TestPrimaryIPs(t *testing.T) {
 		if string(a) != string(b) {
 			t.Errorf("second Recover changed the primary IPs:\nbefore %s\nafter  %s", a, b)
 		}
+	})
+
+	t.Run("RDNS-01/primary_ip", func(t *testing.T) {
+		e := newPIPEnv(t)
+
+		v4 := createPIP(t, e, map[string]any{"name": "rdns-v4", "type": "ipv4", "location": "fsn1"})
+		path := fmt.Sprintf("/primary_ips/%d", v4.ID)
+		wantPIPPtr(t, e, v4.ID, v4.IP, defaultPTR(v4.IP), "new primary IPv4")
+
+		changeDNSPtr(t, e, path, v4.IP, "mail.example.com")
+		wantPIPPtr(t, e, v4.ID, v4.IP, "mail.example.com", "after change_dns_ptr")
+		if got := pushedPTR(t, e, v4.IP); got != "mail.example.com" {
+			t.Errorf("after change_dns_ptr: agent PTR for %s = %q, want mail.example.com", v4.IP, got)
+		}
+
+		changeDNSPtr(t, e, path, v4.IP, nil)
+		wantPIPPtr(t, e, v4.ID, v4.IP, defaultPTR(v4.IP), "after dns_ptr null")
+		if got := pushedPTR(t, e, v4.IP); got != defaultPTR(v4.IP) {
+			t.Errorf("after dns_ptr null: agent PTR for %s = %q, want %q", v4.IP, got, defaultPTR(v4.IP))
+		}
+
+		v6 := createPIP(t, e, map[string]any{"name": "rdns-v6", "type": "ipv6", "location": "fsn1"})
+		path6 := fmt.Sprintf("/primary_ips/%d", v6.ID)
+		host := inNet(t, v6.IP, 1)
+		changeDNSPtr(t, e, path6, host, "v6.example.com")
+		wantPIPPtr(t, e, v6.ID, host, "v6.example.com", "after IPv6 change_dns_ptr")
+
+		changeDNSPtr(t, e, path6, host, nil)
+		if got, ok := ptrFor(mustPIP(t, e, v6.ID).DNSPtr, host); ok {
+			t.Errorf("after IPv6 dns_ptr null: entry for %s = %q, want none", host, got)
+		}
+	})
+
+	t.Run("RDNS-01/server", func(t *testing.T) {
+		e := newPIPEnv(t)
+
+		s := getServer(t, e, createServer(t, e, "rdns", "fsn1", nil))
+		if s.PublicNet.IPv4 == nil || s.PublicNet.IPv6 == nil {
+			t.Fatalf("server public_net = %+v, want IPv4 and IPv6", s.PublicNet)
+		}
+		v4 := s.PublicNet.IPv4.IP
+		path := fmt.Sprintf("/servers/%d", s.ID)
+
+		changeDNSPtr(t, e, path, v4, "web.example.com")
+		got := getServer(t, e, s.ID)
+		if got.PublicNet.IPv4 == nil || got.PublicNet.IPv4.DNSPtr != "web.example.com" {
+			t.Errorf("after server change_dns_ptr: public_net.ipv4 = %+v, want dns_ptr web.example.com", got.PublicNet.IPv4)
+		}
+		wantPIPPtr(t, e, s.PublicNet.IPv4.ID, v4, "web.example.com", "server's primary IPv4 after server change_dns_ptr")
+		if p := pushedPTR(t, e, v4); p != "web.example.com" {
+			t.Errorf("after server change_dns_ptr: agent PTR for %s = %q, want web.example.com", v4, p)
+		}
+
+		host := inNet(t, s.PublicNet.IPv6.IP, 2)
+		changeDNSPtr(t, e, path, host, "web6.example.com")
+		got = getServer(t, e, s.ID)
+		if got.PublicNet.IPv6 == nil {
+			t.Fatalf("after IPv6 change_dns_ptr: public_net.ipv6 null")
+		}
+		if p, ok := ptrFor(got.PublicNet.IPv6.DNSPtr, host); !ok || p != "web6.example.com" {
+			t.Errorf("after IPv6 change_dns_ptr: public_net.ipv6.dns_ptr = %+v, want %s -> web6.example.com", got.PublicNet.IPv6.DNSPtr, host)
+		}
+
+		changeDNSPtr(t, e, path, v4, nil)
+		if got := getServer(t, e, s.ID); got.PublicNet.IPv4 == nil || got.PublicNet.IPv4.DNSPtr != defaultPTR(v4) {
+			t.Errorf("after dns_ptr null: public_net.ipv4 = %+v, want dns_ptr %s", got.PublicNet.IPv4, defaultPTR(v4))
+		}
+
+		other := createPIP(t, e, map[string]any{"name": "foreign", "type": "ipv4", "location": "fsn1"})
+		wantInvalidField(t, e.Do(http.MethodPost, path+"/actions/change_dns_ptr",
+			map[string]any{"ip": other.IP, "dns_ptr": "x.example.com"}), "ip", "server change_dns_ptr on an IP it does not hold")
 	})
 }

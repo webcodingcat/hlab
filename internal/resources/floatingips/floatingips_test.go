@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/netip"
 	"slices"
+	"sync/atomic"
 	"testing"
 
 	"github.com/webcodingcat/hlab/internal/agentapi"
@@ -24,12 +25,13 @@ var plenty = platform.Resources{MemoryMB: 64 << 10, FreeMemoryMB: 64 << 10, Logi
 
 type fipEnv struct {
 	*apitest.Env
-	fip *floatingips.Module
+	fip    *floatingips.Module
+	pushes *atomic.Int64 // agent pushes of the floating IPs module
 }
 
 // newFIPEnv mounts the servers and floating IPs modules on a fake
 // platform, wired like the cloud does: server deletion unassigns the
-// server's floating IPs.
+// server's floating IPs. The module counts its agent pushes in pushes.
 func newFIPEnv(t *testing.T) *fipEnv {
 	t.Helper()
 	cat, err := catalog.Load("../../../catalog")
@@ -40,14 +42,15 @@ func newFIPEnv(t *testing.T) *fipEnv {
 	fake.SetResources(plenty)
 	d := apitest.ServersDeps(t, cat, fake)
 	srv := servers.New(d)
+	pushes := new(atomic.Int64)
 	fip := floatingips.New(floatingips.Deps{
 		Store:       d.Store,
 		Catalog:     cat,
 		PublicRange: d.PublicRange,
-		PushAgent:   func(context.Context) error { return nil },
+		PushAgent:   func(context.Context) error { pushes.Add(1); return nil },
 	})
 	srv.OnDelete(fip.ServerDeleted)
-	return &fipEnv{Env: apitest.New(t, srv, fip, resactions.New()), fip: fip}
+	return &fipEnv{Env: apitest.New(t, srv, fip, resactions.New()), fip: fip, pushes: pushes}
 }
 
 type fipView struct {
@@ -57,6 +60,7 @@ type fipView struct {
 	IP           string            `json:"ip"`
 	Type         string            `json:"type"`
 	Server       *int64            `json:"server"`
+	DNSPtr       []dnsPtr          `json:"dns_ptr"`
 	Labels       map[string]string `json:"labels"`
 	HomeLocation struct {
 		Name string `json:"name"`
@@ -64,6 +68,11 @@ type fipView struct {
 	Protection struct {
 		Delete bool `json:"delete"`
 	} `json:"protection"`
+}
+
+type dnsPtr struct {
+	IP     string `json:"ip"`
+	DNSPtr string `json:"dns_ptr"`
 }
 
 type serverView struct {
@@ -252,6 +261,62 @@ func target(t *testing.T, e *fipEnv, ip string) netip.Addr {
 	return netip.Addr{}
 }
 
+// defaultPTR is Hetzner's default reverse name of an IPv4 address.
+func defaultPTR(ip string) string {
+	a := netip.MustParseAddr(ip).As4()
+	return fmt.Sprintf("static.%d.%d.%d.%d.clients.your-server.de", a[3], a[2], a[1], a[0])
+}
+
+// wantFIPPtr checks the floating IP's dns_ptr entry for its address.
+func wantFIPPtr(t *testing.T, e *fipEnv, f fipView, want, what string) {
+	t.Helper()
+	got := mustFIP(t, e, f.ID).DNSPtr
+	addr := netip.MustParseAddr(f.IP)
+	for _, en := range got {
+		if a, err := netip.ParseAddr(en.IP); err == nil && a == addr {
+			if en.DNSPtr != want {
+				t.Errorf("%s: floating IP %d dns_ptr for %s = %q, want %q", what, f.ID, f.IP, en.DNSPtr, want)
+			}
+			return
+		}
+	}
+	t.Errorf("%s: floating IP %d dns_ptr = %+v, want an entry %s -> %s", what, f.ID, got, f.IP, want)
+}
+
+// pushedPTR returns the PTR name the floating IPs contribute to the agent
+// document for ip ("" if none).
+func pushedPTR(t *testing.T, e *fipEnv, ip string) string {
+	t.Helper()
+	var doc agentapi.Config
+	if err := e.Store.Tx(func(tx store.Tx) error { return e.fip.Contribute(tx, &doc) }); err != nil {
+		t.Fatalf("Contribute: %v", err)
+	}
+	return doc.PTR[netip.MustParseAddr(ip)]
+}
+
+// changeDNSPtr runs change_dns_ptr on the floating IP's address, expects a
+// change_dns_ptr action that succeeds and an agent push.
+func changeDNSPtr(t *testing.T, e *fipEnv, f fipView, ptr any) {
+	t.Helper()
+	before := e.pushes.Load()
+	body := map[string]any{"ip": f.IP, "dns_ptr": ptr}
+	resp := fipAction(e, f.ID, "change_dns_ptr", body)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /floating_ips/%d/actions/change_dns_ptr %v: status %d (%s), want 201", f.ID, body, resp.StatusCode, apitest.ErrorCode(t, resp))
+	}
+	var b struct {
+		Action apitest.Action `json:"action"`
+	}
+	apitest.Decode(t, resp, &b)
+	if b.Action.Command != "change_dns_ptr" {
+		t.Errorf("change_dns_ptr on floating IP %d: action command %q, want change_dns_ptr", f.ID, b.Action.Command)
+	}
+	waitSuccess(t, e, b.Action.ID, fmt.Sprintf("change_dns_ptr %v on floating IP %d", ptr, f.ID))
+	if e.pushes.Load() == before {
+		t.Errorf("change_dns_ptr %v on floating IP %d: no agent push", ptr, f.ID)
+	}
+}
+
 func TestFloatingIPs(t *testing.T) {
 	t.Run("FIP-01/create_delete", func(t *testing.T) {
 		e := newFIPEnv(t)
@@ -377,6 +442,25 @@ func TestFloatingIPs(t *testing.T) {
 		runFIPAction(t, e, ip.ID, "unassign", nil)
 		if got := target(t, e, ip.IP); got.IsValid() {
 			t.Errorf("unassigned: target %v, want an invalid address", got)
+		}
+	})
+
+	t.Run("RDNS-01", func(t *testing.T) {
+		e := newFIPEnv(t)
+		ip := createFIP(t, e, map[string]any{"name": "rdns", "type": "ipv4", "home_location": "fsn1"})
+		def := defaultPTR(ip.IP)
+		wantFIPPtr(t, e, ip, def, "new floating IPv4")
+
+		changeDNSPtr(t, e, ip, "mail.example.com")
+		wantFIPPtr(t, e, ip, "mail.example.com", "after change_dns_ptr")
+		if got := pushedPTR(t, e, ip.IP); got != "mail.example.com" {
+			t.Errorf("after change_dns_ptr: agent PTR for %s = %q, want mail.example.com", ip.IP, got)
+		}
+
+		changeDNSPtr(t, e, ip, nil)
+		wantFIPPtr(t, e, ip, def, "after dns_ptr null")
+		if got := pushedPTR(t, e, ip.IP); got != def {
+			t.Errorf("after dns_ptr null: agent PTR for %s = %q, want %q", ip.IP, got, def)
 		}
 	})
 }

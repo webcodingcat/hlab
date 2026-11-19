@@ -37,3 +37,11 @@ Confirmed by the user at the start of the phase, one line each.
 ## Answers
 
 - Q8 (planner's Q1) secondary zones: accept and store with `primary_nameservers`, the appliance forwards their queries upstream; no own records, never in `shadowing_zones`, but they get their NRPT rule (DNS-03); deviation in deviations.md.
+
+## Decisions of the main session while writing tests
+
+- Record values given through the API (create, set, add, update records) are stored and returned exactly as given, never rewritten, so OpenTofu sees no drift; only `ParseZonefile` brings values into miekg/dns presentation form with in-zone names relative, and `FormatZonefile`/`ParseZonefile` keep that canonical form unchanged.
+- Validation fields: duplicate value, empty records and more than 50 records name `records`; a bad value names `records[<i>].value`; a zone file error names `zonefile` and its message names the line as `line N`.
+- `shadowing_zones[].project` and `ZoneRef.Project` carry the project name, not its ID.
+- Zone responses return `primary_nameservers[]` with `tsig_key` as the OpenAPI shows; a missing `port` is shown as 53; a duplicate address names `primary_nameservers[<i>].address`.
+- `update_records` answers 200 as the OpenAPI says, the other RRSet actions 201; `protected` is 423 as in the existing modules; zone and RRSet `DELETE` answer 201 with an action.

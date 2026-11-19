@@ -1,6 +1,7 @@
 package resources_test
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -31,6 +32,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/resources/servertypes"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
+	"github.com/webcodingcat/hlab/internal/resources/zones"
 )
 
 // conventionRows runs the rows of the cross-resource conventions table as
@@ -63,6 +65,11 @@ func newFullEnv(t *testing.T) *apitest.Env {
 	fws := firewalls.New(firewalls.Deps{Store: d.Store, PushAgent: d.PushAgent})
 	srv.SetFirewalls(fws)
 	srv.OnDelete(fws.ServerDeleted)
+	zns := zones.New(zones.Deps{
+		Store:     d.Store,
+		PushAgent: d.PushAgent,
+		SetZones:  func(context.Context, []string) error { return nil },
+	})
 	return apitest.New(t,
 		actionsres.New(),
 		locations.New(cat),
@@ -72,7 +79,7 @@ func newFullEnv(t *testing.T) *apitest.Env {
 		pricing.New(cat),
 		sshkeys.New(),
 		placementgroups.New(),
-		srv, nets, pips, fips, fws,
+		srv, nets, pips, fips, fws, zns,
 	)
 }
 
@@ -741,31 +748,36 @@ func testListFilterSort(t *testing.T) {
 	listNameAndIDDesc(t, env)
 }
 
-// listNameAndIDDesc checks, for the network, IP and firewall resources,
-// one name filter and one sort by id:desc each.
+// listNameAndIDDesc checks, for the network, IP, firewall and zone
+// resources, one name filter and one sort by id:desc each, and for the
+// RRSets of a zone one type filter.
 func listNameAndIDDesc(t *testing.T, env *apitest.Env) {
 	for _, r := range []struct {
 		path, key, list string
+		suffix          string // appended to every name
 		body            func(name string, n int) map[string]any
 	}{
-		{"/networks", "network", "networks", func(name string, n int) map[string]any {
+		{"/networks", "network", "networks", "", func(name string, n int) map[string]any {
 			return map[string]any{"name": name, "ip_range": fmt.Sprintf("10.%d.0.0/16", n%250)}
 		}},
-		{"/primary_ips", "primary_ip", "primary_ips", func(name string, _ int) map[string]any {
+		{"/primary_ips", "primary_ip", "primary_ips", "", func(name string, _ int) map[string]any {
 			return map[string]any{"name": name, "type": "ipv4", "assignee_type": "server", "location": "fsn1"}
 		}},
-		{"/floating_ips", "floating_ip", "floating_ips", func(name string, _ int) map[string]any {
+		{"/floating_ips", "floating_ip", "floating_ips", "", func(name string, _ int) map[string]any {
 			return map[string]any{"name": name, "type": "ipv4", "home_location": "fsn1"}
 		}},
-		{"/firewalls", "firewall", "firewalls", func(name string, _ int) map[string]any {
+		{"/firewalls", "firewall", "firewalls", "", func(name string, _ int) map[string]any {
 			return map[string]any{"name": name}
+		}},
+		{"/zones", "zone", "zones", ".test", func(name string, _ int) map[string]any {
+			return map[string]any{"name": name, "mode": "primary"}
 		}},
 	} {
 		t.Run(r.path, func(t *testing.T) {
 			e := env.For(t)
 			var created []int64
 			for _, name := range []string{"list-alpha", "list-beta", "list-gamma"} {
-				status, m := call(t, e, http.MethodPost, r.path, r.body(name, nextN()))
+				status, m := call(t, e, http.MethodPost, r.path, r.body(name+r.suffix, nextN()))
 				if status != http.StatusCreated {
 					t.Fatalf("POST %s %q: status %d, want 201: %v", r.path, name, status, m)
 				}
@@ -774,10 +786,10 @@ func listNameAndIDDesc(t *testing.T, env *apitest.Env) {
 				}
 				created = append(created, idOf(m[r.key]))
 			}
-			status, m := call(t, e, http.MethodGet, r.path+"?name=list-beta", nil)
+			status, m := call(t, e, http.MethodGet, r.path+"?name=list-beta"+r.suffix, nil)
 			items, _ := m[r.list].([]any)
 			if got := ids(items); status != http.StatusOK || !sameSet(got, created[1:2]) {
-				t.Errorf("name=list-beta: status %d items %v, want [%d]", status, got, created[1])
+				t.Errorf("name=list-beta%s: status %d items %v, want [%d]", r.suffix, status, got, created[1])
 			}
 			status, m = call(t, e, http.MethodGet, r.path+"?per_page=50&sort=id:desc", nil)
 			items, _ = m[r.list].([]any)
@@ -787,6 +799,46 @@ func listNameAndIDDesc(t *testing.T, env *apitest.Env) {
 			checkOrder(t, "sort=id:desc", items, []sortKey{{"id", true}})
 		})
 	}
+	t.Run("/zones/{id}/rrsets", func(t *testing.T) {
+		e := env.For(t)
+		zone := createZone(t, e, "rrsets-filter.test", nil)
+		for _, rr := range []map[string]any{
+			{"name": "www", "type": "A", "records": []map[string]any{{"value": "198.51.100.10"}}},
+			{"name": "www", "type": "TXT", "records": []map[string]any{{"value": `"hello"`}}},
+		} {
+			status, m := call(t, e, http.MethodPost, fmt.Sprintf("/zones/%d/rrsets", zone), rr)
+			if status != http.StatusCreated {
+				t.Fatalf("POST rrset %v: status %d, want 201: %v", rr, status, m)
+			}
+			e.WaitAction(idOf(m["action"]))
+		}
+		status, m := call(t, e, http.MethodGet, fmt.Sprintf("/zones/%d/rrsets?type=A", zone), nil)
+		items, _ := m["rrsets"].([]any)
+		var got []string
+		for _, it := range items {
+			id, _ := it.(map[string]any)["id"].(string)
+			got = append(got, id)
+		}
+		if status != http.StatusOK || !reflect.DeepEqual(got, []string{"www/A"}) {
+			t.Errorf("type=A: status %d rrsets %v, want [www/A]", status, got)
+		}
+	})
+}
+
+// createZone creates a primary zone named name with labels (nil: none),
+// waits for its action and returns its ID.
+func createZone(t *testing.T, e *apitest.Env, name string, labels map[string]string) int64 {
+	t.Helper()
+	body := map[string]any{"name": name, "mode": "primary"}
+	if labels != nil {
+		body["labels"] = labels
+	}
+	status, m := call(t, e, http.MethodPost, "/zones", body)
+	if status != http.StatusCreated {
+		t.Fatalf("POST /zones %q: status %d, want 201: %v", name, status, m)
+	}
+	e.For(t).WaitAction(idOf(m["action"]))
+	return idOf(m["zone"])
 }
 
 func sameSet(a, b []int64) bool {
@@ -878,6 +930,63 @@ func testLabelsOnResources(t *testing.T) {
 			}
 		})
 	}
+	var zone int64
+	for _, r := range []struct {
+		name, key string
+		// create creates the object with labels and returns its path.
+		create func(t *testing.T, e *apitest.Env, labels map[string]string) string
+	}{
+		{"zones", "zone", func(t *testing.T, e *apitest.Env, labels map[string]string) string {
+			zone = createZone(t, e, "labeled.test", labels)
+			return fmt.Sprintf("/zones/%d", zone)
+		}},
+		{"rrsets", "rrset", func(t *testing.T, e *apitest.Env, labels map[string]string) string {
+			if zone == 0 {
+				zone = createZone(t, e, "labeled.test", nil)
+			}
+			status, m := call(t, e, http.MethodPost, fmt.Sprintf("/zones/%d/rrsets", zone), map[string]any{
+				"name": "www", "type": "A", "records": []map[string]any{{"value": "198.51.100.10"}}, "labels": labels,
+			})
+			if status != http.StatusCreated {
+				t.Fatalf("POST rrset: status %d, want 201: %v", status, m)
+			}
+			e.WaitAction(idOf(m["action"]))
+			return fmt.Sprintf("/zones/%d/rrsets/www/A", zone)
+		}},
+	} {
+		t.Run(r.name, func(t *testing.T) {
+			e := env.For(t)
+			path := r.create(t, e, map[string]string{"a": "1"})
+			current := func() map[string]any {
+				t.Helper()
+				status, m := call(t, e, http.MethodGet, path, nil)
+				if status != http.StatusOK {
+					t.Fatalf("GET %s: status %d", path, status)
+				}
+				o, _ := m[r.key].(map[string]any)
+				return labelsOf(o)
+			}
+			if got := current(); !reflect.DeepEqual(got, map[string]any{"a": "1"}) {
+				t.Errorf("labels after create %v, want a=1", got)
+			}
+			status, m := call(t, e, http.MethodPut, path, map[string]any{"labels": map[string]string{"c": "3"}})
+			if status != http.StatusOK {
+				t.Fatalf("PUT with labels: status %d: %v", status, m)
+			}
+			if got := current(); !reflect.DeepEqual(got, map[string]any{"c": "3"}) {
+				t.Errorf("labels after PUT %v, want only c=3", got)
+			}
+			status, m = call(t, e, http.MethodPut, path, map[string]any{"labels": invalid})
+			if status != http.StatusUnprocessableEntity || errCode(m) != "invalid_input" ||
+				!reflect.DeepEqual(errFields(m), []string{"labels"}) {
+				t.Errorf("PUT with an invalid label key: status %d code %q fields %v, want 422 invalid_input on labels",
+					status, errCode(m), errFields(m))
+			}
+			if got := current(); !reflect.DeepEqual(got, map[string]any{"c": "3"}) {
+				t.Errorf("labels after refused PUT %v, want c=3 kept", got)
+			}
+		})
+	}
 }
 
 func testNameUniqueness(t *testing.T) {
@@ -911,6 +1020,14 @@ func testNameUniqueness(t *testing.T) {
 			t.Fatalf("POST /firewalls: status %d, want 201: %v", status, m)
 		}
 		status, m = call(t, e, http.MethodPost, "/firewalls", map[string]any{"name": "dup-fw"})
+		if status != http.StatusConflict || errCode(m) != "uniqueness_error" {
+			t.Errorf("create with a used name: status %d code %q, want 409 uniqueness_error", status, errCode(m))
+		}
+	})
+	t.Run("zones", func(t *testing.T) {
+		e := env.For(t)
+		createZone(t, e, "dup.test", nil)
+		status, m := call(t, e, http.MethodPost, "/zones", map[string]any{"name": "dup.test", "mode": "primary"})
 		if status != http.StatusConflict || errCode(m) != "uniqueness_error" {
 			t.Errorf("create with a used name: status %d code %q, want 409 uniqueness_error", status, errCode(m))
 		}
