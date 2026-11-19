@@ -233,13 +233,13 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - Size: ~250 lines in 2 files
   - [x] internal/bridge/logs.go: `Logs.Follow(on)`: while running `Stream("/logs?follow=1")`, while stopped `logfile.Tail` on `LogDir`; batches lines per `Batch`; a broken stream reconnects every `Interval` and continues after the last emitted line (matched in the replayed 1000) without duplicates; switches to the files at stop and back to the stream at start.
 
-- [ ] 10-11 Frontend shell
+- [x] 10-11 Frontend shell
   - Wave: 2 | Depends on: 10-05, 10-06 | Review: alone
   - Requirements: UI-01, UI-08 | Tests: - (UI-01 e2e in 10-14)
   - Reads: UI-SPEC "Views" (Shell, Tray menu), "Behaviour"; RESEARCH topic 3 (no history routing); DECISIONS "Tray connection banner and log stream reconnect"
   - Size: ~380 lines in 8 files
-  - [ ] ui/frontend/src/App.svelte, lib/Sidebar.svelte (project switcher from `GET /projects`, kept in localStorage, disabled while stopped; app sections Projects, Server Types, Settings, Logs), lib/TopBar.svelte (status pill and Start/Stop through `Cloud`), lib/Banner.svelte (connection lost, refused with "Discard state and start" through ConfirmDialog, failed start), stores in src/state.ts (cloud state from the `cloud` event, active view in `location.hash`).
-  - [ ] Placeholder view files src/views/Projects.svelte, ServerTypes.svelte, Settings.svelte, Logs.svelte, each with its title row, so the view plans only replace their own file.
+  - [x] ui/frontend/src/App.svelte, lib/Sidebar.svelte (project switcher from `GET /projects`, kept in localStorage, disabled while stopped; app sections Projects, Server Types, Settings, Logs), lib/TopBar.svelte (status pill and Start/Stop through `Cloud`), lib/Banner.svelte (connection lost, refused with "Discard state and start" through ConfirmDialog, failed start), stores in src/state.ts (cloud state from the `cloud` event, active view in `location.hash`).
+  - [x] Placeholder view files src/views/Projects.svelte, ServerTypes.svelte, Settings.svelte, Logs.svelte, each with its title row, so the view plans only replace their own file.
 
 - [ ] 10-12 Help texts and panel
   - Wave: 2 | Depends on: 10-05 | Review: alone
