@@ -235,14 +235,14 @@ type Deps struct {
     - then call `h.trustWSL(ctx, pem, on)`, which stays a stub returning nil until 08-12
     - (internal/hostnet/windows/trust.go, internal/hostnet/windows/hostnet.go: remove the stub)
 
-- [ ] 08-05 Appliance: HAProxy packages
+- [x] 08-05 Appliance: HAProxy packages
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: LB-02 | Tests: - (e2e in 08-21)
   - Reads: R1.1; DECISIONS "Appliance debs as `<name>.deb` at the cidata root", "Missing appliance debs do not stop the cloud"; appliance/hlab-agent-install.sh
   - Size: ~60 lines in 2 files
   - Adjusts: -
-  - [ ] Five entries (haproxy, liblua5.4-0, libopentracing-c-wrapper0t64, libopentracing1, lsb-base) with pool and snapshot URLs; download the five files once and put the recomputed sha256 in the catalog (catalog/appliance-debs.json)
-  - [ ] Install script: when `command -v haproxy` fails, run one `dpkg -i` with all five files, then `systemctl disable --now haproxy`; create `/run/hlab` (appliance/hlab-agent-install.sh)
+  - [x] Five entries (haproxy, liblua5.4-0, libopentracing-c-wrapper0t64, libopentracing1, lsb-base) with pool and snapshot URLs; download the five files once and put the recomputed sha256 in the catalog (catalog/appliance-debs.json)
+  - [x] Install script: when `command -v haproxy` fails, run one `dpkg -i` with all five files, then `systemctl disable --now haproxy`; create `/run/hlab` (appliance/hlab-agent-install.sh)
 
 - [x] 08-06 Trust switch and CA export in the management API and CLI
   - Wave: 1 | Depends on: - | Review: alone

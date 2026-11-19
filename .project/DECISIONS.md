@@ -2087,3 +2087,11 @@ in ARCHITECTURE.md or the plan.
 - What: `settings.Save` writes a `.tmp` file beside settings.toml and renames it; `hlab ca export` and `hlab ca trust` got short entries in docs/user/commands.md during 08-06 because DOC-01 fails for an undocumented command; the documentation plan extends them.
 - Why: a failed write keeps the old settings; the docs test guards every command.
 - Cost of change: low
+
+## 2026-11-19 Appliance package install
+
+- Type: decision
+- Phase: phase 08
+- What: the install script names the xfs packages instead of `*.deb`, installs haproxy with its four libraries only while `haproxy` is missing, skips a package file missing from the ISO, ignores a failed `systemctl disable` and creates `/run/hlab`.
+- Why: the glob would mix the xfs and HAProxy installs; missing debs must not stop the cloud (earlier decision).
+- Cost of change: low
