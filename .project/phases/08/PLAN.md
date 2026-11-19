@@ -383,19 +383,19 @@ type Deps struct {
     - `dnsptr.go`: `dnsPtrRoutes`
     - (all in internal/resources/loadbalancers)
 
-- [ ] 08-14 Load balancers: network and public interface
+- [x] 08-14 Load balancers: network and public interface
   - Wave: 3 | Depends on: 08-07, 08-13 | Review: alone
   - Requirements: LB-01 | Tests: internal/resources/loadbalancers/network_test.go
   - Reads: OpenAPI attach_to_network, detach_from_network, enable/disable_public_interface; DECISIONS "Load balancer networks, targets and services"; R5 (Terraform and Ansible poll `private_net`)
   - Size: ~250 lines in 2 files
   - Adjusts: -
-  - [ ] Network and public interface, with the networks module mounted in the test:
+  - [x] Network and public interface, with the networks module mounted in the test:
     - `attach_to_network` through `Networks` (a second network: 422 `load_balancer_already_attached`)
     - `detach_from_network`: `load_balancer_not_attached_to_network` when none; refused while targets use private IPs
     - `disable_public_interface` (422 `load_balancer_not_attached_to_network`, 422 `targets_without_use_private_ip`) and `enable_public_interface`
     - `attachAtCreate`; `InNetwork`, `NetworkDeleted`
     - (internal/resources/loadbalancers/network.go)
-  - [ ] Rows of TESTS.md for 08-14 (internal/resources/loadbalancers/network_test.go)
+  - [x] Rows of TESTS.md for 08-14 (internal/resources/loadbalancers/network_test.go)
 
 - [ ] 08-15 Load balancers: services
   - Wave: 3 | Depends on: 08-08, 08-13 | Review: alone
@@ -422,6 +422,7 @@ type Deps struct {
   - Requirements: LB-06 | Tests: internal/resources/loadbalancers/targets_test.go
   - Reads: R3.1 (targets), R3.4, R5 (target shapes); OpenAPI add_target, remove_target; DECISIONS "Load balancer networks, targets and services"; internal/labels
   - Size: ~380 lines in 2 files
+  - Note: store targets with the JSON field `use_private_ip` (08-14 reads it from the stored JSON); TestLoadBalancers/LB-01/network (08-14) must pass after this plan, its second half needs add_target
   - Adjusts: -
   - [ ] Adding and removing targets:
     - `add_target` and `remove_target` for server, label_selector and ip; `createTargets`

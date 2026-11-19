@@ -2143,3 +2143,11 @@ in ARCHITECTURE.md or the plan.
 - What: 08-13 adds a stub `contribute.go` (filled by 08-19); stored service types live in services.go, target types in targets.go, the status state in status.go, so wave 3 plans extend them without touching loadbalancers.go; the views already show `public_net.ipv4/ipv6.dns_ptr` from `Record.DNSPtr`.
 - Why: PLAN D5, parallel plans on separate files; the test helper needs `Contribute` to compile.
 - Cost of change: low
+
+## 2026-11-19 Load balancer network details
+
+- Type: decision
+- Phase: phase 08
+- What: network.go reads `use_private_ip` from each stored target's JSON; `detach_from_network` while targets use private IPs answers 422 `invalid_input` on `network`; `NetworkDeleted` clears only `private_net` and the VLAN; attach and detach list the network as an action resource.
+- Why: no dependency on the Go fields of 08-16; no documented code for the detach refusal.
+- Cost of change: low
