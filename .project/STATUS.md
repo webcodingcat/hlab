@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: B1 Backlog: restart recovery, cloud-init and dev-loop bugs (then 05)
+- Phase: 05 Private networks, primary IPs and floating IPs, port isolation
 - Base branch: main
-- Last done: phase 04 Images, backups, rescue, ISOs and volumes merged into main (2026-11-19): snapshots and backups (daily job), rescue on its own disk, ISO catalog and attach, volumes with format, automount and online resize
-- Next: /wcc:phase in a new session (phase B1)
+- Last done: phase B1 backlog merged into main (2026-11-19): images and volumes left `creating` are removed at cloud start, stale password resets are no longer served, rebuild gives cloud-init a new instance-id, user_data layers (base64, gzip, MIME) reach cloud-init, one metrics read per tick, `task e2e` works with the dev cloud running
+- Next: /wcc:phase in a new session (phase 05); Q7 open for /wcc:change
 
 ## Open manual checks
 

@@ -19,7 +19,7 @@
 
 - [x] 04 Images, backups, rescue, ISOs and volumes (SRV-11, SRV-12, SRV-13, SRV-14, SRV-15, CAT-08, VOL-01, VOL-02, VOL-03, VOL-04, VOL-05) → phases/04/
 
-- [ ] B1 Backlog: restart recovery, cloud-init and dev-loop bugs → phases/B1/
+- [x] B1 Backlog: restart recovery, cloud-init and dev-loop bugs → phases/B1/
 
 - [ ] 05 Private networks, primary IPs and floating IPs, port isolation.
       Requirements: NET-01, NET-02, NET-03, NET-04, NET-05, NET-06, PIP-01,
