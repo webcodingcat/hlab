@@ -425,7 +425,9 @@ Inside `hlabd` (Go packages under `internal/`):
   Exit code 0 on success, 1 on error, 2 on usage error. `cloud start|stop`
   use the service controller (see "System integration"); all other commands
   use the management API and fail with "the cloud is not running" while it
-  is stopped, except `logs`, which then reads the log file, and `version`.
+  is stopped, except `logs`, which then reads the log files, and `version`.
+  `logs` uses `GET /mgmt/v1/logs[?follow=1]`: the last 1000 lines over the
+  rotated files as NDJSON, with `follow` streamed until the client leaves.
 - `catalog update`: the token comes from the environment variable named by
   `--hetzner-token-env`, else from a hidden prompt on a terminal; with
   neither, the command fails with exit code 2 and says how to pass it. It
@@ -437,10 +439,13 @@ Inside `hlabd` (Go packages under `internal/`):
   file `%ProgramData%\hlab\status.json` (`{"state":"refused","problem":
   {"code":"state_incompatible","message":...}}`) and stops. `hlab cloud
   status` and the tray show the message; `hlab cloud start --discard-state`
-  (tray: confirm dialog) renames `state.db` to `state.db.discarded-<time>`
-  through the start parameter `discard-state` and starts with an empty
-  state; VMs and disks of the discarded state are deleted by the tagged
-  cleanup of `hlabd uninstall-cleanup --vms-only`.
+  (tray: confirm dialog) passes the start parameter `discard-state`; hlabd
+  then runs `hostnet.Down`, deletes the profile's server VMs, `disks`,
+  `volumes`, `vms` and `images\image-*.vhdx` (`internal/discard`), renames
+  `state.db` (with `-wal`/`-shm`) to `state.db.discarded-<time>` last and
+  starts with an empty state. A higher `user_version` is reported as a
+  state of a newer hlab version. The same refusal and discard apply to
+  `public_range_changed` (assigned IPs outside a changed `public_range`).
 - Status file `<data dir>\status.json`: `{"state":"starting"|"running"|"stopped"}`, `{"state":"stopped","error":...}` after a failed start, `{"state":"refused","problem":{"code","message","fatal"}}` after a refusal; `hlab cloud status` reads it while the service is stopped.
 - Depends on: management API.
 
