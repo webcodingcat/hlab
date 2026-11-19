@@ -7,7 +7,9 @@ package ipam
 
 import (
 	"errors"
+	"fmt"
 	"net/netip"
+	"strings"
 
 	"github.com/webcodingcat/hlab/internal/store"
 )
@@ -17,6 +19,8 @@ const (
 	lastKey = "ipam.public.last"
 	// usedPrefix + address marks an address in use.
 	usedPrefix = "ipam.public.used."
+	// rangeKey holds the public range recorded at the last cloud start.
+	rangeKey = "ipam.public.range"
 	// firstOffset skips the transit /30 at the start of the range.
 	firstOffset = 4
 )
@@ -74,6 +78,41 @@ func NextPublic(tx store.Tx, r netip.Prefix) (netip.Addr, error) {
 // Release frees a; releasing a free address is no error.
 func Release(tx store.Tx, a netip.Addr) error {
 	return store.DeleteKV(tx, usedPrefix+a.String())
+}
+
+// Outside returns the public IPv4s in use outside r and the range recorded
+// by the last RecordRange (invalid if none).
+func Outside(tx store.Tx, r netip.Prefix) (used []netip.Addr, recorded netip.Prefix, err error) {
+	r = r.Masked()
+	keys, err := store.KVKeys(tx, usedPrefix)
+	if err != nil {
+		return nil, netip.Prefix{}, err
+	}
+	for _, k := range keys {
+		a, perr := netip.ParseAddr(strings.TrimPrefix(k, usedPrefix))
+		if perr != nil {
+			return nil, netip.Prefix{}, fmt.Errorf("ipam: invalid key %q: %w", k, perr)
+		}
+		if !r.Contains(a) {
+			used = append(used, a)
+		}
+	}
+	v, err := store.GetKV(tx, rangeKey)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+	case err != nil:
+		return nil, netip.Prefix{}, err
+	default:
+		if p, perr := netip.ParsePrefix(v); perr == nil {
+			recorded = p
+		}
+	}
+	return used, recorded, nil
+}
+
+// RecordRange records r as the public range the state's addresses belong to.
+func RecordRange(tx store.Tx, r netip.Prefix) error {
+	return store.SetKV(tx, rangeKey, r.Masked().String())
 }
 
 func inUse(tx store.Tx, a netip.Addr) (bool, error) {
