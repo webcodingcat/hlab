@@ -497,18 +497,18 @@ type Deps struct {
     - (internal/cloud/cloud.go, internal/cloud/ca.go, internal/resources/servers/servers.go)
   - [x] Conventions: load_balancers and certificates in `newFullEnv`, with the API-06, API-07 and API-11 cases (internal/resources/conventions_test.go)
 
-- [ ] 08-21 End-to-end: load balancers and trust
+- [x] 08-21 End-to-end: load balancers and trust
   - Wave: 6 | Depends on: 08-20 | Review: alone | e2e
   - Requirements: LB-02, LB-03, LB-04, LB-05, CERT-04 | Tests: test/e2e/lb_test.go, test/e2e/cert_test.go
   - Reads: TESTS.md header; test/e2e/main_test.go (`sharedEnv`, server helpers), network_test.go (`sharedNetwork`), dns_test.go (zones), wsl_test.go; ROADMAP phase 08 success criteria
   - Size: ~400 lines in 3 files
   - Adjusts: -
-  - [ ] Fixture `sharedLB`:
+  - [x] Fixture `sharedLB`:
     - a per-run zone under `.test`, a network, and two servers in it whose cloud-init serves the hostname over HTTP on 80 and, from a second web server, on 8081
     - one LB attached to the network with private targets and these services: tcp 8080 to 80; tcp 8081 to 8081 (for LB-05); http 8000 to 80 with sticky sessions; https 443 with a managed certificate for `www.<zone>` and `redirect_http`
     - an A record for `www` pointing to the LB IP
     - (test/e2e/lb_test.go)
-  - [ ] Rows LB-02, LB-03, LB-04, LB-05 (test/e2e/lb_test.go) and CERT-04 (test/e2e/cert_test.go; it switches trust off in `t.Cleanup` as well), registered in test/e2e/e2e_test.go
+  - [x] Rows LB-02, LB-03, LB-04, LB-05 (test/e2e/lb_test.go) and CERT-04 (test/e2e/cert_test.go; it switches trust off in `t.Cleanup` as well), registered in test/e2e/e2e_test.go
 
 - [ ] 08-22 Documentation
   - Wave: 7 | Depends on: 08-21 | Review: alone

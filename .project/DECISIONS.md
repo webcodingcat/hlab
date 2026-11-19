@@ -2191,3 +2191,11 @@ in ARCHITECTURE.md or the plan.
 - What: a failed `TrustCA` at cloud start is a /status problem `trust_ca` with a log warning and the start continues; the loadbalancers module is built before certificates so `certificates.Deps.UsedBy` is `lb.UsedBy`; a cloud job `crl` renews the CRL every 7 days; the server view's `load_balancers` comes from `lb.ForServer`.
 - Why: trust is a convenience and must not stop the cloud; no setter needed.
 - Cost of change: low
+
+## 2026-11-19 WSL test scripts without set -e
+
+- Type: decision
+- Phase: phase 08
+- What: the LB-04 WSL script runs without `set -e` and exits on a failed `mktemp` explicitly; netns/VRF, the HAProxy config and wsl.exe under the user token passed their first e2e run unchanged, so the scheduled-task fallback of Q9 is not used.
+- Why: under `bash -l` with `set -e` the shell exits through `~/.bash_logout`, whose `clear_console` fails without a console, and returns 1 after curl succeeded.
+- Cost of change: low
