@@ -98,7 +98,7 @@ func HAProxyConfig(lb agentapi.LoadBalancer, dir string) (cfg string, files map[
 			w("    timeout server %ds", s.HTTP.TimeoutIdle)
 		}
 		if sticky {
-			w("    cookie %s insert indirect nocache maxlife %ds", s.HTTP.CookieName, s.HTTP.CookieLifetime)
+			w("    cookie %s insert indirect nocache maxlife %ds", cookieName(s.HTTP.CookieName), s.HTTP.CookieLifetime)
 		}
 		hc := s.HealthCheck
 		httpCheck := hc.Protocol == "http" || hc.Protocol == "https"
@@ -110,9 +110,9 @@ func HAProxyConfig(lb agentapi.LoadBalancer, dir string) (cfg string, files map[
 				uri = "/"
 			}
 			if hc.Domain != "" {
-				w("    http-check send meth GET uri %s ver HTTP/1.1 hdr Host %s", uri, hc.Domain)
+				w("    http-check send meth GET uri %s ver HTTP/1.1 hdr Host %s", arg(uri), arg(hc.Domain))
 			} else {
-				w("    http-check send meth GET uri %s", uri)
+				w("    http-check send meth GET uri %s", arg(uri))
 			}
 			if len(hc.StatusCodes) > 0 {
 				w("    http-check expect rstatus %s", statusRegex(hc.StatusCodes))
@@ -158,7 +158,7 @@ func HAProxyConfig(lb agentapi.LoadBalancer, dir string) (cfg string, files map[
 func statusRegex(patterns []string) string {
 	parts := make([]string, len(patterns))
 	for i, p := range patterns {
-		q := regexp.QuoteMeta(p)
+		q := regexp.QuoteMeta(strings.Map(dropSpace, p))
 		q = strings.ReplaceAll(q, `\?`, ".")
 		q = strings.ReplaceAll(q, `\*`, ".*")
 		parts[i] = q
@@ -166,10 +166,56 @@ func statusRegex(patterns []string) string {
 	return "^(" + strings.Join(parts, "|") + ")$"
 }
 
-// quote writes s as a double-quoted HAProxy argument.
+// The renderer writes API-supplied strings into haproxy.cfg. Control
+// characters (a newline would start a new configuration line) are dropped,
+// and every value that is not a plain word is double-quoted with HAProxy's
+// escapes, so no value can add or split a configuration line.
+
+// dropControl drops control characters.
+func dropControl(r rune) rune {
+	if r < 0x20 || r == 0x7f {
+		return -1
+	}
+	return r
+}
+
+// dropSpace drops control characters and white space.
+func dropSpace(r rune) rune {
+	if r <= ' ' || r == 0x7f {
+		return -1
+	}
+	return r
+}
+
+// plainArg matches values HAProxy takes unquoted without special meaning.
+var plainArg = regexp.MustCompile(`^[A-Za-z0-9._~/:?&=%+@!,;*()\[\]-]+$`)
+
+// arg returns s as one HAProxy argument: a plain word as it is, anything
+// else quoted.
+func arg(s string) string {
+	s = strings.Map(dropControl, s)
+	if plainArg.MatchString(s) {
+		return s
+	}
+	return quote(s)
+}
+
+// quote writes s as a double-quoted HAProxy argument without control
+// characters.
 func quote(s string) string {
-	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, `$`, `\$`)
-	return `"` + r.Replace(s) + `"`
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, `$`, `\$`, `#`, `\#`, `'`, `\'`)
+	return `"` + r.Replace(strings.Map(dropControl, s)) + `"`
+}
+
+// cookieName keeps the characters a cookie name (an RFC 6265 token) may
+// hold, so the name is always one plain HAProxy argument.
+func cookieName(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r <= ' ' || r >= 0x7f || strings.ContainsRune(`()<>@,;:\"/[]?={}#$'`, r) {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 // cookieValue derives the sticky cookie value of a target from its key.
