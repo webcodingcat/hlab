@@ -44,6 +44,9 @@ func ParseZonefile(zone, text string) (ttl int, sets []RRSet, err error) {
 			if !ok {
 				return 0, nil, lineErr(e.line, "$TTL has an invalid value "+quote(fields[1]))
 			}
+			if v < 60 {
+				return 0, nil, lineErr(e.line, "$TTL must be between 60 and 2147483647")
+			}
 			if !ttlSeen {
 				ttl, ttlSeen = v, true
 			}
