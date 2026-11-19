@@ -194,8 +194,9 @@ Inside `hlabd` (Go packages under `internal/`):
       DeleteVM(ctx, name string) error
       Power(ctx, name string, op PowerOp) error   // Start, Stop(hard), Shutdown and Reboot (Shutdown integration service; Reboot falls back to shutdown, wait for off, start), Reset, Save
       State(ctx, name string) (VMState, error)
-      AttachNIC(ctx, vm string, nic NICSpec) error // MAC, segment (public PVLAN or private VLAN), MAC deny-list
-      DetachNIC(ctx, vm, mac string) error
+      AttachNIC(ctx, vm string, nic NICSpec) error // MAC, segment (public PVLAN, private VLAN or trunk), MAC deny-list; hot-add on a running VM
+      DetachNIC(ctx, vm, mac string) error         // hot-remove on a running VM
+      SetNICDeny(ctx, vm, mac string, deny []net.HardwareAddr) error // replace the MAC deny-list of an adapter, running or not
       CreateDisk(ctx, path string, sizeBytes int64, from string, page83 [16]byte) error // thin VHDX, optional copy of base
       CreateChildDisk(ctx, path, parent string) error // differencing VHDX on parent, new disk identifier
       ResizeDisk(ctx, path string, sizeBytes int64) error
@@ -219,7 +220,7 @@ Inside `hlabd` (Go packages under `internal/`):
   type PowerOp int   // PowerStart, PowerStop (hard), PowerShutdown, PowerReboot, PowerReset, PowerSave
   type StopAction int
   type VMState int   // StateOff, StateStarting, StateRunning, StateStopping, StateSaved, StatePaused, StateOther
-  type Segment struct { PublicPVLAN, Promiscuous bool; VLAN int } // public: PVLAN isolated port (Promiscuous: the appliance's port); private: access VLAN 2..4092
+  type Segment struct { PublicPVLAN, Promiscuous, Trunk bool; VLAN int } // public: PVLAN isolated port (Promiscuous: the appliance's port); private: access VLAN 2..4092; Trunk: the appliance's adapter for all VLANs 2..4092
   type NICSpec struct {
       MAC     net.HardwareAddr
       Segment Segment

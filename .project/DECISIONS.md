@@ -1527,3 +1527,11 @@ in ARCHITECTURE.md or the plan.
 - What: Membership lives in the server record (`private_net` plus `_hlab.networks`); the network's `servers` list is derived; servers own adapters, deny lists and seed (`SyncAdapters`), reached through the hooks `SetPublicIPs`, `SetNetworks`, `OnDelete`; a running VM's seed is swapped by ejecting and reinserting DVD slot 0.
 - Why: Seed and adapters are built from the server record; hooks avoid import cycles as with volumes.
 - Cost of change: medium
+
+## 2026-11-19 Trunk adapter guards and deny-list sync
+
+- Type: decision
+- Phase: 05
+- What: Trunk adapters have router guard and DHCP guard off like the appliance's promiscuous port; `SetNICDeny` keeps wanted deny entries present in both directions, removes partial or unwanted ones, adds missing ones, and leaves IP and non-deny ACLs alone.
+- Why: The appliance routes on the trunk; Hyper-V refuses duplicate ACLs and lists `Both` as two entries.
+- Cost of change: low

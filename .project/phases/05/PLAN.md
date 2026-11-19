@@ -144,15 +144,15 @@ func (m *Metadata) HandlerFor(vlan int) http.Handler
 
 ## Plans
 
-- [ ] 05-01 Platform: trunk, deny lists, hot-plug, Metrics removal
+- [x] 05-01 Platform: trunk, deny lists, hot-plug, Metrics removal
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: NET-02, HOST-01 | Tests: - (covered by test/e2e/network_test.go)
   - Reads: ARCHITECTURE "platform", "Network"; RESEARCH R3; EXPERIMENTS E1; DECISIONS "Port isolation by private VLAN", "Q7: drop the unused per-VM Metrics call"
   - Size: ~250 lines in 5 files
   - Adjusts: -
-  - [ ] Probe first, on the dev machine as a non-elevated Hyper-V Administrators member with two throwaway VMs on a throwaway internal switch (scratch script, not committed, everything removed afterwards): a trunk adapter (`-Trunk -AllowedVlanIdList 2-4092 -NativeVlanId 0`) beside a PVLAN promiscuous and isolated port on the same switch; hot-add and remove of an adapter on a running Gen2 VM; add and remove of a MAC deny ACL on a running adapter. Report the result. If trunk and PVLAN cannot coexist or hot-plug or ACL changes need elevation, the plan stops (the design in ARCHITECTURE "Network" would change)
-  - [ ] `Segment.Trunk`, `SetNICDeny` (Get-VMNetworkAdapterAcl, remove the deny entries not wanted, add the missing ones, MACs with dashes, E1), AttachNIC with the trunk mode and on running VMs; remove `Metrics` from interface, hyperv and fake (internal/platform/platform.go, hyperv/nics.go, hyperv/metrics.go, hyperv/hyperv.go)
-  - [ ] Fake: adapters per VM, `SetNICDeny`, `NICs` (internal/platform/platformtest/fake.go)
+  - [x] Probe first, on the dev machine as a non-elevated Hyper-V Administrators member with two throwaway VMs on a throwaway internal switch (scratch script, not committed, everything removed afterwards): a trunk adapter (`-Trunk -AllowedVlanIdList 2-4092 -NativeVlanId 0`) beside a PVLAN promiscuous and isolated port on the same switch; hot-add and remove of an adapter on a running Gen2 VM; add and remove of a MAC deny ACL on a running adapter. Report the result. If trunk and PVLAN cannot coexist or hot-plug or ACL changes need elevation, the plan stops (the design in ARCHITECTURE "Network" would change)
+  - [x] `Segment.Trunk`, `SetNICDeny` (Get-VMNetworkAdapterAcl, remove the deny entries not wanted, add the missing ones, MACs with dashes, E1), AttachNIC with the trunk mode and on running VMs; remove `Metrics` from interface, hyperv and fake (internal/platform/platform.go, hyperv/nics.go, hyperv/metrics.go, hyperv/hyperv.go)
+  - [x] Fake: adapters per VM, `SetNICDeny`, `NICs` (internal/platform/platformtest/fake.go)
 
 - [ ] 05-02 Agent: private networks in VRFs
   - Wave: 1 | Depends on: - | Review: alone
