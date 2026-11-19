@@ -36,14 +36,14 @@ func Default(ip netip.Addr) string {
 // *api.FieldError on "ip" or "dns_ptr".
 func Change(entries []Entry, owner netip.Prefix, ip string, ptr *string) ([]Entry, error) {
 	addr, err := netip.ParseAddr(ip)
-	if err != nil || addr.Zone() != "" {
+	if err != nil {
 		return nil, &api.FieldError{Field: "ip", Message: "invalid IP address"}
 	}
 	if owner.Addr().Is4() {
-		if !addr.Is4() || addr != owner.Addr() {
+		if addr != owner.Addr() {
 			return nil, &api.FieldError{Field: "ip", Message: "IP does not belong to this resource"}
 		}
-	} else if !addr.Is6() || addr.Is4In6() || !owner.Contains(addr) {
+	} else if !owner.Contains(addr) {
 		return nil, &api.FieldError{Field: "ip", Message: "IP does not belong to this resource"}
 	}
 	if ptr != nil && !validFQDN(*ptr) {
