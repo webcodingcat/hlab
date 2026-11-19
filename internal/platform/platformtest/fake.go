@@ -3,8 +3,10 @@
 package platformtest
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -17,7 +19,13 @@ import (
 type Call struct {
 	Op  string // method name: "CreateVM", "Power", "SetVM", "ResizeDisk", ...
 	VM  string
-	Arg any // PowerOp, VMSpec, size in bytes (int64), path ...
+	Arg any // PowerOp, VMSpec, size in bytes (int64), path, Deny ...
+}
+
+// Deny is the Arg of a recorded SetNICDeny call.
+type Deny struct {
+	MAC  string
+	Deny []net.HardwareAddr
 }
 
 type vm struct {
@@ -25,6 +33,7 @@ type vm struct {
 	state        platform.VMState
 	holdShutdown bool
 	sample       *platform.Sample
+	nics         []platform.NICSpec
 }
 
 // Fake implements platform.Platform in memory; it is safe for concurrent
@@ -70,7 +79,7 @@ func (f *Fake) SetState(name string, s platform.VMState) {
 	f.vm(name).state = s
 }
 
-// SetSample sets what Metrics returns for vm.
+// SetSample sets what MetricsAll returns for vm.
 func (f *Fake) SetSample(name string, s platform.Sample) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -257,14 +266,97 @@ func (f *Fake) State(ctx context.Context, name string) (platform.VMState, error)
 	return v.state, nil
 }
 
-// AttachNIC records the call.
+// AttachNIC adds the adapter to the VM, running or not.
 func (f *Fake) AttachNIC(ctx context.Context, name string, nic platform.NICSpec) error {
-	return f.onVM(ctx, "AttachNIC", name, nic)
+	if err := f.begin(ctx, "AttachNIC", name, nic); err != nil {
+		return err
+	}
+	defer f.mu.Unlock()
+	v, err := f.existing("AttachNIC", name)
+	if err != nil {
+		return err
+	}
+	nic.MAC = append(net.HardwareAddr(nil), nic.MAC...)
+	nic.DenyMACs = cloneMACs(nic.DenyMACs)
+	v.nics = append(v.nics, nic)
+	return nil
 }
 
-// DetachNIC records the call.
+// DetachNIC removes the VM's adapter with MAC mac; an unknown MAC is
+// NotFound.
 func (f *Fake) DetachNIC(ctx context.Context, name, mac string) error {
-	return f.onVM(ctx, "DetachNIC", name, mac)
+	if err := f.begin(ctx, "DetachNIC", name, mac); err != nil {
+		return err
+	}
+	defer f.mu.Unlock()
+	v, i, err := f.nic("DetachNIC", name, mac)
+	if err != nil {
+		return err
+	}
+	v.nics = append(v.nics[:i], v.nics[i+1:]...)
+	return nil
+}
+
+// SetNICDeny records Deny{mac, deny} and stores deny as the deny list of
+// the VM's adapter with MAC mac; an unknown MAC is NotFound.
+func (f *Fake) SetNICDeny(ctx context.Context, name, mac string, deny []net.HardwareAddr) error {
+	if err := f.begin(ctx, "SetNICDeny", name, Deny{MAC: mac, Deny: cloneMACs(deny)}); err != nil {
+		return err
+	}
+	defer f.mu.Unlock()
+	v, i, err := f.nic("SetNICDeny", name, mac)
+	if err != nil {
+		return err
+	}
+	v.nics[i].DenyMACs = cloneMACs(deny)
+	return nil
+}
+
+// NICs returns copies of the current adapters of vm with their deny lists.
+func (f *Fake) NICs(name string) []platform.NICSpec {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	v, ok := f.vms[name]
+	if !ok {
+		return nil
+	}
+	out := make([]platform.NICSpec, len(v.nics))
+	for i, n := range v.nics {
+		n.MAC = append(net.HardwareAddr(nil), n.MAC...)
+		n.DenyMACs = cloneMACs(n.DenyMACs)
+		out[i] = n
+	}
+	return out
+}
+
+// nic returns the VM and the index of its adapter with MAC mac; f.mu is
+// held.
+func (f *Fake) nic(op, name, mac string) (*vm, int, error) {
+	v, err := f.existing(op, name)
+	if err != nil {
+		return nil, 0, err
+	}
+	hw, err := net.ParseMAC(mac)
+	if err != nil {
+		return nil, 0, errOf(platform.Failed, op, "%v", err)
+	}
+	for i, n := range v.nics {
+		if bytes.Equal(n.MAC, hw) {
+			return v, i, nil
+		}
+	}
+	return nil, 0, errOf(platform.NotFound, op, "adapter %s of vm %s not found", mac, name)
+}
+
+func cloneMACs(macs []net.HardwareAddr) []net.HardwareAddr {
+	if macs == nil {
+		return nil
+	}
+	out := make([]net.HardwareAddr, len(macs))
+	for i, m := range macs {
+		out[i] = append(net.HardwareAddr(nil), m...)
+	}
+	return out
 }
 
 // CreateDisk records a disk of sizeBytes at path.
@@ -343,22 +435,6 @@ func (f *Fake) Snapshot(ctx context.Context, name, diskPath, target string) erro
 	}
 	f.disks[target] = size
 	return nil
-}
-
-// Metrics returns the sample set with SetSample, else zero counters now.
-func (f *Fake) Metrics(ctx context.Context, name string) (platform.Sample, error) {
-	if err := f.begin(ctx, "Metrics", name, nil); err != nil {
-		return platform.Sample{}, err
-	}
-	defer f.mu.Unlock()
-	v, err := f.existing("Metrics", name)
-	if err != nil {
-		return platform.Sample{}, err
-	}
-	if v.sample != nil {
-		return *v.sample, nil
-	}
-	return platform.Sample{Time: time.Now()}, nil
 }
 
 // MetricsAll returns, for every existing VM of vms, the sample set with
