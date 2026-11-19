@@ -127,7 +127,7 @@ Inside `hlabd` (Go packages under `internal/`):
   type ActionUser interface {           // modules starting actions outside a handler (daily backups); Mount calls it before Routes
       UseActions(m *actions.Manager)
   }
-  type Recoverer interface {            // modules with records an interrupted action can leave half-made (images, volumes)
+  type Recoverer interface {            // modules with records to repair at cloud start (images, volumes: half-made records; primary_ips: missing records)
       Recover(ctx context.Context) error // cloud start calls it before the API serves and before the first scheduled job run
   }
   ```
@@ -142,7 +142,9 @@ Inside `hlabd` (Go packages under `internal/`):
   aborted action; cloud start does not call it. At cloud start, after the
   action manager has marked interrupted actions `error`, each `Recoverer`
   removes the records those actions left `creating` with their partial
-  files, before the API serves and before the first run of the backup job
+  files (primary_ips instead creates the missing primary IP records of
+  servers from before phase 05, idempotently, decision Q2 of phase 05),
+  before the API serves and before the first run of the backup job
   (decision Q6). Power actions, rebuild and
   change type stay actions inside the module. `internal/cloud` only wires
   the modules and calls these interfaces; it holds no logic of a resource
@@ -194,14 +196,15 @@ Inside `hlabd` (Go packages under `internal/`):
       DeleteVM(ctx, name string) error
       Power(ctx, name string, op PowerOp) error   // Start, Stop(hard), Shutdown and Reboot (Shutdown integration service; Reboot falls back to shutdown, wait for off, start), Reset, Save
       State(ctx, name string) (VMState, error)
-      AttachNIC(ctx, vm string, nic NICSpec) error // MAC, segment (public PVLAN or private VLAN), MAC deny-list
-      DetachNIC(ctx, vm, mac string) error
+      AttachNIC(ctx, vm string, nic NICSpec) error // MAC, segment (public PVLAN, private VLAN or trunk), MAC deny-list; hot-add on a running VM
+      DetachNIC(ctx, vm, mac string) error         // hot-remove on a running VM
+      SetNICDeny(ctx, vm, mac string, deny []net.HardwareAddr) error // replace the MAC deny-list of an adapter, running or not
       CreateDisk(ctx, path string, sizeBytes int64, from string, page83 [16]byte) error // thin VHDX, optional copy of base
       CreateChildDisk(ctx, path, parent string) error // differencing VHDX on parent, new disk identifier
       ResizeDisk(ctx, path string, sizeBytes int64) error
       AttachDisk(ctx, vm, path string, lun int) error   // hot-add on SCSI controller 0
       DetachDisk(ctx, vm, path string) error
-      SetDVD(ctx, vm string, slot int, iso string) error // DVD drives on SCSI controller 1: slot 0 cidata, slot 1 user ISO; "" ejects
+      SetDVD(ctx, vm string, slot int, iso string) error // DVD drives on SCSI controller 1: slot 0 cidata, slot 1 user ISO; "" ejects and returns once the drive is empty
       SetBootOrder(ctx, vm string, order []BootDevice) error
       Snapshot(ctx, vm, diskPath, target string) error  // crash-consistent copy of a running or stopped disk
       MetricsAll(ctx, vms []string) (map[string]Sample, error) // cpu %, disk bytes, net bytes; one counter read for all VMs; VMs not on the host are left out
@@ -219,7 +222,7 @@ Inside `hlabd` (Go packages under `internal/`):
   type PowerOp int   // PowerStart, PowerStop (hard), PowerShutdown, PowerReboot, PowerReset, PowerSave
   type StopAction int
   type VMState int   // StateOff, StateStarting, StateRunning, StateStopping, StateSaved, StatePaused, StateOther
-  type Segment struct { PublicPVLAN, Promiscuous bool; VLAN int } // public: PVLAN isolated port (Promiscuous: the appliance's port); private: access VLAN 2..4092
+  type Segment struct { PublicPVLAN, Promiscuous, Trunk bool; VLAN int } // public: PVLAN isolated port (Promiscuous: the appliance's port); private: access VLAN 2..4092; Trunk: the appliance's adapter for all VLANs 2..4092
   type NICSpec struct {
       MAC     net.HardwareAddr
       Segment Segment
@@ -233,9 +236,10 @@ Inside `hlabd` (Go packages under `internal/`):
   Errors are `platform.Error{Kind, Op, Err}` with Kind `NotFound`,
   `InvalidState`, `NoResources`, `Failed`; the action worker maps them to
   Hetzner codes. `SegmentFor(location string, networkID int64) Segment` is
-  the one place deciding the segment of an adapter (`decisions/locations.md`):
-  public adapters always the public PVLAN, private adapters the network's
-  VLAN.
+  the one place deciding the public segment of an adapter
+  (`decisions/locations.md`): public adapters always the public PVLAN.
+  Private adapters get `Segment{VLAN}` with the network's VLAN, which the
+  servers module takes from the server record (`Internal.Networks`).
 - Implementation: one long-running Windows PowerShell 5.1 process per
   hlabd, fed commands on stdin and answering JSON (`ConvertTo-Json`) on
   stdout, serialized by a mutex; restarted if it dies. VHDX files whose
@@ -506,7 +510,7 @@ locks a resource of type `project`.
       PublicRange  netip.Prefix          // e.g. 198.19.0.0/16
       Servers      []Server              // public IPv4, MAC, location, firewall IDs
       FloatingIPs  []FloatingIP          // IP -> server public IPv4
-      Networks     []Network             // ID, VLAN, range, gateway, subnets, routes, members (IP, aliases, MAC)
+      Networks     []Network             // ID, VLAN, range, gateway, routes, members (IP, aliases, MAC)
       Firewalls    []Firewall            // ID, rules in Hetzner's shape
       LoadBalancers []LoadBalancer       // ID, public IP, private IPs, services, targets resolved to IPs
       Zones        []Zone                // name, TTL, RRSets in Hetzner's shape
@@ -618,7 +622,15 @@ locks a resource of type `project`.
   from the disk's Page 83 identifier (hlab creates volume disks with the identifier `484C4142-0000-4000-8000-<volume ID as 12 hex digits>`; the last 6 bytes survive in both the T10 and the NAA designator the guest sees), and
   `hlab-guest.timer`, which asks the metadata service every 5 seconds for a
   pending root password reset and applies it with `chpasswd`, and rescans every
-  `scsi-0HC_Volume_*` disk so a grown volume shows its new size. Servers whose
+  `scsi-0HC_Volume_*` disk so a grown volume shows its new size; it also
+  configures hot-added private adapters (MAC `02:48:4c:2x:xx:xx`, only
+  links not yet carrying their private IP, so the seed's config stays in
+  charge of the others) live from
+  `/hetzner/v1/metadata/private-networks` (`/32` plus the route to the
+  network range via the gateway, no alias IPs) through networkd files in
+  `/run` or `ip` without networkd. The script also writes the cloud-init
+  drop-in `99-hlab-network.cfg` (`updates: network: when: [boot-new-instance,
+  boot]`), so every boot renders the current seed's network-config. Servers whose
   disks were not created by hlab (ISO installs) lack the hooks; listed as a
   deviation.
 - `vendor-data` is a multipart MIME document: a cloud-config part with

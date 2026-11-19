@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 05 Private networks, primary IPs and floating IPs, port isolation
+- Phase: 06 Firewalls
 - Base branch: main
-- Last done: phase B1 backlog merged into main (2026-11-19): images and volumes left `creating` are removed at cloud start, stale password resets are no longer served, rebuild gives cloud-init a new instance-id, user_data layers (base64, gzip, MIME) reach cloud-init, one metrics read per tick, `task e2e` works with the dev cloud running
-- Next: /wcc:phase in a new session (phase 05)
+- Last done: phase 05 merged into main (2026-11-19): private networks with one VRF per network on the appliance, primary IPs as records, floating IPs, live attach and detach of private adapters, port isolation by MAC deny lists
+- Next: /wcc:phase in a new session (phase 06)
 
 ## Open manual checks
 

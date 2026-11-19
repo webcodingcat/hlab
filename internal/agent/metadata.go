@@ -15,21 +15,32 @@ import (
 
 // Metadata is the Applier and the HTTP handler of the metadata service on
 // 169.254.169.254:80. It answers each request with the entry of
-// Config.Metadata on the public segment (VLAN 0) whose address is the
-// request's source address; any other source gets 404. Besides Hetzner's
+// Config.Metadata whose VLAN is the segment of the listener (0 = public,
+// see HandlerFor) and whose address is the request's source address; any
+// other source gets 404. Besides Hetzner's
 // paths it serves the guest hook of the root password reset and remembers
 // the resets the guests confirmed while the reset is still in the config.
 type Metadata struct {
 	mu      sync.RWMutex
-	servers map[netip.Addr]agentapi.Metadata
+	servers map[segmentAddr]agentapi.Metadata
 	done    map[int64]bool
 	mux     *http.ServeMux
 }
 
+// segmentAddr identifies a server by its segment (VLAN, 0 = public) and
+// its source address there.
+type segmentAddr struct {
+	vlan int
+	ip   netip.Addr
+}
+
+// vlanKey is the request context key of the listener's VLAN.
+type vlanKey struct{}
+
 // NewMetadata returns an empty metadata service; it answers 404 until the
 // first Apply.
 func NewMetadata() *Metadata {
-	m := &Metadata{servers: map[netip.Addr]agentapi.Metadata{}, done: map[int64]bool{}}
+	m := &Metadata{servers: map[segmentAddr]agentapi.Metadata{}, done: map[int64]bool{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /hetzner/v1/metadata", m.serve(m.getDocument))
 	mux.HandleFunc("GET /hetzner/v1/metadata/{key}", m.serve(m.getKey))
@@ -47,13 +58,13 @@ func (m *Metadata) Name() string { return "metadata" }
 // Apply implements Applier. Confirmed resets whose ID is no longer pending
 // in cfg are forgotten.
 func (m *Metadata) Apply(_ context.Context, cfg agentapi.Config) error {
-	servers := map[netip.Addr]agentapi.Metadata{}
+	servers := map[segmentAddr]agentapi.Metadata{}
 	pending := map[int64]bool{}
 	for _, s := range cfg.Metadata {
-		if s.VLAN != 0 || !s.IP.IsValid() {
+		if !s.IP.IsValid() {
 			continue
 		}
-		servers[s.IP.Unmap()] = s
+		servers[segmentAddr{s.VLAN, s.IP.Unmap()}] = s
 		if s.PasswordReset != nil {
 			pending[s.PasswordReset.ID] = true
 		}
@@ -81,11 +92,22 @@ func (m *Metadata) Done() []int64 {
 	return ids
 }
 
-// ServeHTTP implements http.Handler.
+// ServeHTTP implements http.Handler for the public segment (VLAN 0).
 func (m *Metadata) ServeHTTP(w http.ResponseWriter, r *http.Request) { m.mux.ServeHTTP(w, r) }
 
-// serve looks up the asking server by the request's source address and
-// hands it to h; an unknown source gets 404.
+// HandlerFor returns the handler of the listener on segment vlan (0 = the
+// public listener): it answers by (vlan, source address).
+func (m *Metadata) HandlerFor(vlan int) http.Handler {
+	if vlan == 0 {
+		return m
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		m.mux.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), vlanKey{}, vlan)))
+	})
+}
+
+// serve looks up the asking server by the listener's VLAN and the
+// request's source address and hands it to h; an unknown source gets 404.
 func (m *Metadata) serve(h func(http.ResponseWriter, *http.Request, agentapi.Metadata)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ap, err := netip.ParseAddrPort(r.RemoteAddr)
@@ -93,8 +115,9 @@ func (m *Metadata) serve(h func(http.ResponseWriter, *http.Request, agentapi.Met
 			http.NotFound(w, r)
 			return
 		}
+		vlan, _ := r.Context().Value(vlanKey{}).(int)
 		m.mu.RLock()
-		s, ok := m.servers[ap.Addr().Unmap()]
+		s, ok := m.servers[segmentAddr{vlan, ap.Addr().Unmap()}]
 		m.mu.RUnlock()
 		if !ok {
 			http.NotFound(w, r)

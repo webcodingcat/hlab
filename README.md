@@ -9,7 +9,8 @@ Windows and from WSL2.
 The project is in development; there is no release and no installer yet.
 You run hlab from a working copy as described below. The current version
 covers projects, tokens, SSH keys, servers with snapshots, backups,
-rescue system and ISOs, volumes and placement groups; see
+rescue system and ISOs, volumes, placement groups, private networks,
+primary IPs and floating IPs; see
 [What does not work yet](#what-does-not-work-yet).
 
 ## Prerequisites and setup
@@ -229,6 +230,80 @@ Filesystem      Size  Used Avail Use% Mounted on
 - `--format xfs` needs packages that hlab downloads for the appliance at
   `hlab cloud start`.
 
+## Networks
+
+```
+> hcloud network create --name net1 --ip-range 10.0.0.0/16
+> hcloud network add-subnet net1 --type cloud --network-zone eu-central --ip-range 10.0.1.0/24
+> hcloud server create --name app1 --type cx23 --location fsn1 --image ubuntu-24.04 --ssh-key demo --network net1
+> hcloud server attach-to-network --network net1 web1
+> hcloud server describe web1
+```
+
+- A server gets the lowest free address of a subnet in its location's
+  network zone, or the one you pass with `--ip`; `describe` shows it under
+  `Private Net`. Servers of one network reach each other on these
+  addresses; servers of different networks do not.
+- In the server, the network appears as an adapter with the private IP as
+  `/32` and a route to the network range via the network's gateway, the
+  first host address of the range (`10.0.0.1` here). A server attached while
+  it runs gets the adapter and its configuration within a few seconds;
+  `detach-from-network` removes them.
+- A server holds at most 3 networks and 5 alias IPs per network.
+- Deleting a network detaches its servers.
+
+Alias IPs and routes to destinations outside the network range are not
+configured in the guest, as at Hetzner. Add them yourself; the adapter is
+the one whose MAC is the `mac_address` of the network in the server's
+`private_net`:
+
+```
+> hcloud server change-alias-ips --network net1 --alias-ips 10.0.1.10 web1
+root@web1:~# ip -br link
+root@web1:~# ip addr add 10.0.1.10/32 dev eth1
+```
+
+A network route sends traffic for its destination to a server of the
+network. Add the route on the network, then on each server that uses it:
+
+```
+> hcloud network add-route net1 --destination 10.99.0.0/24 --gateway 10.0.1.2
+root@app1:~# ip route add 10.99.0.0/24 via 10.0.0.1 dev eth1 onlink
+```
+
+## Primary and floating IPs
+
+A server's public addresses are primary IPs. Those made with the server
+are deleted with it; one you create yourself stays and can move between
+powered-off servers of its location:
+
+```
+> hcloud primary-ip create --type ipv4 --location fsn1 --name ip1
+> hcloud server create --name web3 --type cx23 --location fsn1 --image ubuntu-24.04 --ssh-key demo --primary-ipv4 ip1
+> hcloud server poweroff web3
+> hcloud primary-ip unassign ip1
+> hcloud server create --name web4 --type cx23 --location fsn1 --image ubuntu-24.04 --ssh-key demo --without-ipv4 --start-after-create=false
+> hcloud primary-ip assign --server web4 ip1
+> hcloud server poweron web4
+```
+
+The server uses its new address from its next start. Primary IPv6
+addresses are formal and carry no traffic.
+
+A floating IP can move between running servers of a network zone. hlab
+routes it to the server's public IPv4; configure the address in the
+server, as at Hetzner:
+
+```
+> hcloud floating-ip create --type ipv4 --home-location fsn1 --name fip1
+> hcloud floating-ip describe fip1
+> hcloud floating-ip assign fip1 web1
+root@web1:~# ip addr add <floating IP>/32 dev eth0
+```
+
+After `hcloud floating-ip assign fip1 web2` and the same command in web2,
+the address reaches web2; web1 needs no change.
+
 ## OpenTofu and Ansible
 
 The OpenTofu provider and the Ansible collection read the same two
@@ -325,9 +400,9 @@ Manager if you want them gone.
 
 - The API offers actions, locations, server types, pricing, images
   (with snapshots and backups), ISOs, SSH keys, servers, server metrics,
-  placement groups and volumes. Everything else, for example networks,
-  firewalls, floating IPs, primary IPs, certificates and load balancers,
-  answers `not_found`, and the server action `request_console` answers
+  placement groups, volumes, networks, primary IPs and floating IPs.
+  Everything else, for example firewalls, certificates and load
+  balancers, answers `not_found`, and the server action `request_console` answers
   `unsupported_error`. The details are in
   [Known deviations](docs/user/deviations.md).
 - `hlab cloud stop` stops the appliance and the host networking, but does

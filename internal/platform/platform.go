@@ -17,8 +17,13 @@ type Platform interface {
 	DeleteVM(ctx context.Context, name string) error
 	Power(ctx context.Context, name string, op PowerOp) error
 	State(ctx context.Context, name string) (VMState, error)
+	// AttachNIC and DetachNIC also work on a running VM (hot add and
+	// remove).
 	AttachNIC(ctx context.Context, vm string, nic NICSpec) error
 	DetachNIC(ctx context.Context, vm, mac string) error
+	// SetNICDeny replaces the MAC deny ACLs (both directions) of the VM's
+	// adapter with MAC mac by deny, running or not; idempotent.
+	SetNICDeny(ctx context.Context, vm, mac string, deny []net.HardwareAddr) error
 	// CreateDisk creates a thin VHDX, optionally as a copy of the base from.
 	CreateDisk(ctx context.Context, path string, sizeBytes int64, from string, page83 [16]byte) error
 	// CreateChildDisk creates the differencing VHDX path on the VHDX parent
@@ -34,7 +39,6 @@ type Platform interface {
 	// Snapshot makes a crash-consistent copy of a running or stopped disk:
 	// target becomes a standalone dynamic VHDX with a new disk identifier.
 	Snapshot(ctx context.Context, vm, diskPath, target string) error
-	Metrics(ctx context.Context, vm string) (Sample, error)
 	// MetricsAll reads the counters of all vms in one platform call. A VM
 	// that is not running (no counter instances) gets a zero sample; a VM
 	// that does not exist is left out of the map.
@@ -142,13 +146,16 @@ func (s VMState) String() string {
 }
 
 // Segment is where a network adapter is connected: the public PVLAN
-// (isolated port) or a private network's access VLAN 2..4092.
+// (isolated port), a private network's access VLAN 2..4092 or the trunk.
 // Promiscuous (with PublicPVLAN) makes the adapter the PVLAN's promiscuous
-// port; only the appliance's public adapter uses it.
+// port; only the appliance's public adapter uses it. Trunk carries VLANs
+// 2..4092 tagged with native VLAN 0; only the appliance's second adapter
+// uses it.
 type Segment struct {
 	PublicPVLAN bool
 	Promiscuous bool
 	VLAN        int
+	Trunk       bool
 }
 
 // SegmentFor is the one place deciding the segment of an adapter
@@ -178,7 +185,7 @@ type BootDevice struct {
 }
 
 // Sample holds counters of a VM. CPUPercent is computed by the platform
-// between two Metrics calls for the same VM (per vCPU summed, 100 = one vCPU
+// between two MetricsAll reads of the same VM (per vCPU summed, 100 = one vCPU
 // fully busy; 0 on the first call). All other counters are cumulative and
 // restart at 0 when the VM restarts.
 type Sample struct {

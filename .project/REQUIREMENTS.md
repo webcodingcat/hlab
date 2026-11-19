@@ -302,16 +302,16 @@ What the target vision in IDEA.md will need, not built yet.
 | SRV-22 | 02 | x |
 | KEY-01 | 02 | x |
 | META-01 | 03 | x |
-| NET-01 | 05 | |
-| NET-02 | 05 | |
-| NET-03 | 05 | |
-| NET-04 | 05 | |
-| NET-05 | 05 | |
-| NET-06 | 05 | |
-| PIP-01 | 05 | |
-| PIP-02 | 05 | |
-| FIP-01 | 05 | |
-| FIP-02 | 05 | |
+| NET-01 | 05 | x |
+| NET-02 | 05 | x |
+| NET-03 | 05 | x |
+| NET-04 | 05 | x |
+| NET-05 | 05 | x |
+| NET-06 | 05 | x |
+| PIP-01 | 05 | x |
+| PIP-02 | 05 | x |
+| FIP-01 | 05 | x |
+| FIP-02 | 05 | x |
 | RDNS-01 | 07 | |
 | RDNS-02 | 07 | |
 | FW-01 | 06 | |
@@ -343,7 +343,7 @@ What the target vision in IDEA.md will need, not built yet.
 | DNS-03 | 07 | |
 | DNS-04 | 07 | |
 | DNS-05 | 07 | |
-| HOST-01 | 05 | |
+| HOST-01 | 05 | x |
 | HOST-02 | 09 | |
 | HOST-03 | 02 | x |
 | HOST-04 | 02 | x |

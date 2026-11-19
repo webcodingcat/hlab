@@ -21,6 +21,7 @@ func volumeDevice(id int64) string {
 // data across detach and attach, also on a second server.
 func testVOL02(t *testing.T) {
 	e := sharedEnv(t)
+	takeServerSlots(t, 2)
 	srv := ownServer(t, e, "vol02")
 	vol := e.createVolume(t, map[string]any{"name": harness.runID + "-vol02", "size": 10, "location": serverLocation})
 	dev := volumeDevice(vol)
@@ -71,6 +72,7 @@ func testVOL03(t *testing.T) {
 			vol := e.createVolume(t, map[string]any{
 				"name": harness.runID + "-" + suffix, "size": 10, "location": serverLocation, "format": c.format,
 			})
+			takeServerSlots(t, 1)
 			var srv *server
 			if c.atCreate {
 				srv = ownServerImage(t, e, suffix, serverImage, "--volume", strconv.FormatInt(vol, 10), "--automount")
@@ -98,6 +100,7 @@ func testVOL03(t *testing.T) {
 // running guest sees, without a rescan.
 func testVOL04(t *testing.T) {
 	e := sharedEnv(t)
+	takeServerSlots(t, 1)
 	srv := ownServer(t, e, "vol04")
 	vol := e.createVolume(t, map[string]any{"name": harness.runID + "-vol04", "size": 10, "location": serverLocation})
 	dev := volumeDevice(vol)

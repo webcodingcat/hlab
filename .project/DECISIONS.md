@@ -1463,3 +1463,171 @@ in ARCHITECTURE.md or the plan.
 - What: `Metrics(ctx, vm)` is removed from `platform.Platform`, the hyperv implementation, the fake and ARCHITECTURE.md; `MetricsAll` stays, and phase 05 does the code removal (Q7).
 - Why: since B1-03 nothing calls it, and every new platform would otherwise implement and maintain a method nothing uses.
 - Cost of change: low
+
+## 2026-11-19 Guest picks up private network changes live
+
+- Type: decision
+- Phase: 05
+- What: The `hlab-guest` timer configures attached and detached private adapters (`02:48:4c:2x` only, primary private IP and the route to the network range, no alias IPs) from the metadata service via networkd files in `/run` or an `ip` fallback; the seed is rebuilt too, and a cloud-init drop-in `99-hlab-network.cfg` re-renders network config on every boot.
+- Why: The user wants changes to act without a reboot, as at Hetzner (hc-utils with DHCP); hlab has no DHCP server and vendor-data `updates` acts only from the second boot.
+- Cost of change: low
+
+## 2026-11-19 Primary IP records for existing servers
+
+- Type: decision
+- Phase: 05
+- What: The primary IP module's `Recover` creates missing primary IP records of existing servers at cloud start, idempotently, assigned and `auto_delete: true`; a primary IPv6 created with a server keeps `IPv6Net(serverID)`, standalone ones use `0x80000000|id`, floating ones `0xC0000000|id`.
+- Why: The user keeps the dev cloud's servers; existing formal addresses stay.
+- Cost of change: low
+
+## 2026-11-19 Private adapter MACs
+
+- Type: decision
+- Phase: 05
+- What: Private adapters get `02:48:4c` plus nibble `0x2` plus a 20-bit per-attachment counter; the appliance trunk adapter is `02:48:4c:00:00:02`; deviations.md notes Hetzner's `86:00:00:xx:xx:xx`.
+- Why: Stays within the approved prefix and cannot collide with public MACs or the appliance.
+- Cost of change: low
+
+## 2026-11-19 One gateway per network
+
+- Type: decision
+- Phase: 05
+- What: Each network's gateway is the first host address of its `ip_range`, shown as every subnet's `gateway` and reserved with each subnet's network and broadcast address and `172.31.1.1`; private IPs are the lowest free host address of the subnet.
+- Why: Hetzner's FAQ and the spec examples say so (the spec text contradicts itself), and it fits one VRF per network.
+- Cost of change: medium
+
+## 2026-11-19 Network and IP refusals
+
+- Type: decision
+- Phase: 05
+- What: `change_ip_range` keeps the start address and only grows (422 `service_error` with attached servers, 409 `conflict` during a change); deleting an assigned primary or floating IP gives 422 `must_be_unassigned`; delete protection on an `auto_delete` primary IP, more than 5 alias IPs and a create without IPv4, IPv6 and network give 422 `invalid_input`; a fourth network gives 403 `resource_limit_exceeded`; `delete_subnet` with attached servers gives 422 `service_error`.
+- Why: The frozen spec where it says so; Hetzner documents no code for the rest.
+- Cost of change: low
+
+## 2026-11-19 Floating IP zone rule
+
+- Type: decision
+- Phase: 05
+- What: A floating IP is assigned only to a server in the network zone of its home location (else 422 `invalid_input`); assigning to another server moves it, to the same server gives 422 `floating_ip_assigned`.
+- Why: The stricter docs rule; FIP-02 needs a move without unassigning first.
+- Cost of change: low
+
+## 2026-11-19 Appliance private network layout
+
+- Type: decision
+- Phase: 05
+- What: Per network a subinterface `t<vlan>` of the trunk adapter (found by MAC), VRF `vrf<vlan>`, table 1000+vlan, sysctls `proxy_arp`, `proxy_arp_pvlan`, no redirects, `rp_filter=0`; one conntrack zone per VLAN; stateless isolation that admits a gateway member's route destinations; one metadata listener per VRF with `SO_BINDTODEVICE`.
+- Why: Members share one subinterface, ranges may overlap across VRFs, and research prefers per-VRF listeners.
+- Cost of change: low
+
+## 2026-11-19 Network membership on the server record
+
+- Type: decision
+- Phase: 05
+- What: Membership lives in the server record (`private_net` plus `_hlab.networks`); the network's `servers` list is derived; servers own adapters, deny lists and seed (`SyncAdapters`), reached through the hooks `SetPublicIPs`, `SetNetworks`, `OnDelete`; a running VM's seed is swapped by ejecting and reinserting DVD slot 0.
+- Why: Seed and adapters are built from the server record; hooks avoid import cycles as with volumes.
+- Cost of change: medium
+
+## 2026-11-19 Trunk adapter guards and deny-list sync
+
+- Type: decision
+- Phase: 05
+- What: Trunk adapters have router guard and DHCP guard off like the appliance's promiscuous port; `SetNICDeny` keeps wanted deny entries present in both directions, removes partial or unwanted ones, adds missing ones, and leaves IP and non-deny ACLs alone.
+- Why: The appliance routes on the trunk; Hyper-V refuses duplicate ACLs and lists `Both` as two entries.
+- Cost of change: low
+
+## 2026-11-19 Network validation details
+
+- Type: decision
+- Phase: 05
+- What: Field errors name nested create fields `subnets[i].<field>`/`routes[i].<field>`; a `0.0.0.0/0` route skips the overlap checks with subnets and 172.31.1.1 but not with other routes; `change_ip_range` to the same size is a no-op; no free VLAN gives 403 `resource_limit_exceeded`; no free /24 and unknown subnet or route in delete actions give 422 `invalid_input`.
+- Why: Hetzner documents none of these; the simplest answers that fit the frozen spec.
+- Cost of change: low
+
+## 2026-11-19 Server create and delete without public IPv4
+
+- Type: decision
+- Phase: 05
+- What: cidata renders an interface without addresses as `optional: true`, so a server without IPv4 keeps eth0 and does not block wait-online; with the PublicIPs hook set, server delete leaves releasing the IPv4 to the primary IP's `ServerDeleted`; without hooks create follows `enable_ipv4/6`, ignores primary IP IDs and refuses `networks` with 422 `invalid_input`.
+- Why: Keeps interface names stable and gives one owner for each IPv4.
+- Cost of change: low
+
+## 2026-11-19 VRF details on the appliance
+
+- Type: decision
+- Phase: 05
+- What: Each VRF table holds an `unreachable default` route (kernel metric 4278198272); the gateway sits on `t<vlan>` as a `/32` without a connected route for the range; the trunk link is looked up only when the document has networks; stale `vrf<N>`/`t<N>` links and agent routes in tables 1002..5092 are always cleaned; the VRF applier runs after the Network applier.
+- Why: Misses must not fall through to the main table (NET-02), only members, aliases and routes are reachable, and appliances without a trunk keep applying.
+- Cost of change: low
+
+## 2026-11-19 Private adapters of a server
+
+- Type: decision
+- Phase: 05
+- What: The server record keeps the private MACs its VM has in `Internal.Adapters`; while rescue is on `SyncAdapters` writes the seed but leaves DVD slot 0; NotFound from `SetNICDeny`/`DetachNIC` counts as done; private adapters get `Segment{VLAN}` from the server record, `SegmentFor` decides only the public segment (ARCHITECTURE.md updated).
+- Why: The platform cannot list adapters, a detach clears `private_net` before the sync, and the VLAN is server data.
+- Cost of change: low
+
+## 2026-11-19 Isolation on private networks
+
+- Type: decision
+- Phase: 05
+- What: The metadata input rule on private networks matches the ingress subinterface with `meta sdifname` (key 34, defined locally; kernel 5.1+), since `iifname` is the VRF device there; a route accept rule exists only when the route's gateway is a member IP or alias IP; conntrack zones are set in prerouting only.
+- Why: Keeps "Metadata service binds IP and MAC on its input path" on every segment; no rule uses `ct state`, and Hetzner firewalls do not filter private networks.
+- Cost of change: low
+
+## 2026-11-19 Primary IP details
+
+- Type: decision
+- Phase: 05
+- What: Primary IPs have no `datacenter` field (the frozen schema has none), the location lives in `_hlab.location`; create with `assignee_id` returns an `assign_primary_ip` action, with `location` none; automatic and recovered ones are named `primary_ip-<id>`; given `public_net` IDs win over `enable_ipv4/6: false`; DELETE checks protection before assignment; assign and unassign rebuild the server's seed through `SyncAdapters`.
+- Why: The frozen spec forbids extra properties; the seed must carry the new address for the next boot (PIP-02).
+- Cost of change: low
+
+## 2026-11-19 Guest hook for private adapters
+
+- Type: decision
+- Phase: 05
+- What: `hlab-guest` takes over only private links that do not yet carry their private IP (hot-added after boot), records what it applied in `/run/hlab-guest/networks.json` and acts only on changes; without networkd it sets the route before the address; a failed network sync does not stop the password reset.
+- Why: The seed's netplan config must stay in charge of links it set up, so user alias IPs and NAT routes survive (NET-03).
+- Cost of change: low
+
+## 2026-11-19 Floating IP details
+
+- Type: decision
+- Phase: 05
+- What: A floating IP without name is named `floating_ip-<id>`; create with `server` returns an `assign_floating_ip` action, with `home_location` none; the list sorts by id and created and filters by name, label_selector and ip; the FIP-01 test reads the server's top-level `location` as the frozen schema has it.
+- Why: The frozen spec says so; the old test path read a field the server shape does not have.
+- Cost of change: low
+
+## 2026-11-19 Metadata per VRF
+
+- Type: decision
+- Phase: 05
+- What: The VRF applier gets the metadata service through the field `VRF.Metadata`, set by main.go before the first Apply; each listener passes its VLAN to the shared request router through the request context.
+- Why: Keeps `NewVRF(trunkMAC)` as planned and registers every metadata path once.
+- Cost of change: low
+
+## 2026-11-19 Private metadata entries
+
+- Type: decision
+- Phase: 05
+- What: `servers.Module.Metadata` builds a server's metadata entry without VLAN and IP and networks uses it for each member's private entry; `InterfaceNum` is the 1-based index in `private_net`; a member's `Subnet` is the subnet holding its IP.
+- Why: A server without public IPv4 has no public entry to copy; the index matches the seed's interface order.
+- Cost of change: low
+
+## 2026-11-19 Attach and detach rules
+
+- Type: decision
+- Phase: 05
+- What: `attach_to_network` checks network existence, `server_already_attached`, `networks_overlap`, then the 3-network limit; no free IP or no zone subnet gives `no_subnet_available`, a used or reserved `ip` or alias IP `ip_not_available`, an `ip`/`ip_range`/alias outside the subnets 422 `invalid_input`; alias IPs may come from any subnet of the network; `DELETE /networks` syncs the detached members' adapters after the commit before answering 204, logging failures.
+- Why: Hetzner documents no order or code for these cases.
+- Cost of change: low
+
+## 2026-11-19 Cloud wiring of the network modules
+
+- Type: decision
+- Phase: 05
+- What: Module order is servers, networks, primary_ips, floating_ips, volumes; cloud start detects a missing appliance trunk adapter by `SetNICDeny(appliance, 02:48:4c:00:00:02, nil)` returning NotFound and then attaches it; hyperv `SetDVD` with "" returns only once the drive is empty (at most 60 s).
+- Why: volumes fill every metadata entry of a server only after networks made them; no new platform method is needed; Hyper-V finishes an eject about 5 s after returning, which broke every seed rewrite on running VMs.
+- Cost of change: low

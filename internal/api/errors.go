@@ -43,6 +43,20 @@ var statuses = map[string]int{
 	"invalid_server_type":        http.StatusUnprocessableEntity,
 	"already_in_placement_group": http.StatusUnprocessableEntity,
 	"volume_already_attached":    http.StatusUnprocessableEntity,
+
+	// Codes of networks, primary IPs and floating IPs.
+	"must_be_unassigned":             http.StatusUnprocessableEntity,
+	"primary_ip_assigned":            http.StatusUnprocessableEntity,
+	"primary_ip_already_assigned":    http.StatusUnprocessableEntity,
+	"primary_ip_datacenter_mismatch": http.StatusUnprocessableEntity,
+	"primary_ip_version_mismatch":    http.StatusPreconditionFailed,
+	"server_has_ipv4":                http.StatusUnprocessableEntity,
+	"server_has_ipv6":                http.StatusUnprocessableEntity,
+	"floating_ip_assigned":           http.StatusUnprocessableEntity,
+	"server_already_attached":        http.StatusUnprocessableEntity,
+	"ip_not_available":               http.StatusUnprocessableEntity,
+	"no_subnet_available":            http.StatusUnprocessableEntity,
+	"networks_overlap":               http.StatusUnprocessableEntity,
 }
 
 // Status returns the HTTP status of an error code; unknown codes give 500.

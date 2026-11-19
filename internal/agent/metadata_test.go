@@ -17,8 +17,54 @@ import (
 
 func TestAgent(t *testing.T) {
 	t.Run("META-01", testMetadata)
+	t.Run("META-01/private_vlan", testMetadataPrivateVLAN)
 	t.Run("SRV-11", testRewriteIDs)
 	t.Run("VOL-03", testMetadataVolumes)
+}
+
+// testMetadataPrivateVLAN: two servers with the same private IP in two
+// VLANs each get their own metadata from the handler of their VLAN.
+func testMetadataPrivateVLAN(t *testing.T) {
+	ctx := context.Background()
+	private := netip.MustParseAddr("10.0.0.2")
+	x := agentapi.Metadata{
+		VLAN:       2,
+		IP:         private,
+		ServerID:   60,
+		Hostname:   "vlan-x",
+		Region:     "eu-central",
+		PublicIPv4: "198.19.0.30",
+	}
+	y := agentapi.Metadata{
+		VLAN:       3,
+		IP:         private,
+		ServerID:   61,
+		Hostname:   "vlan-y",
+		Region:     "us-east",
+		PublicIPv4: "198.19.0.31",
+	}
+	m := agent.NewMetadata()
+	if err := m.Apply(ctx, agentapi.Config{Schema: agentapi.Schema, Generation: 1, Metadata: []agentapi.Metadata{x, y}}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	for _, s := range []agentapi.Metadata{x, y} {
+		h := m.HandlerFor(s.VLAN)
+		for key, want := range map[string]string{
+			"hostname":    s.Hostname,
+			"instance-id": strconv.FormatInt(s.ServerID, 10),
+			"region":      s.Region,
+		} {
+			code, body := request(t, h, http.MethodGet, "/hetzner/v1/metadata/"+key, private.String())
+			if code != http.StatusOK || strings.TrimSpace(body) != want {
+				t.Errorf("VLAN %d from %s: GET %s = %d %q, want 200 %q", s.VLAN, private, key, code, body, want)
+			}
+		}
+	}
+
+	if code, body := request(t, m.HandlerFor(2), http.MethodGet, "/hetzner/v1/metadata/hostname", "10.0.0.9"); code != http.StatusNotFound {
+		t.Errorf("unknown IP on VLAN 2: GET hostname = %d %q, want 404", code, body)
+	}
 }
 
 func testMetadataVolumes(t *testing.T) {

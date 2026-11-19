@@ -840,6 +840,7 @@ func TestServers(t *testing.T) {
 	testRescue(t)
 	testISOs(t)
 	testVendorData(t)
+	testAdapters(t)
 }
 
 // roomy are host resources far above what any test server needs.

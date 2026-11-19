@@ -40,16 +40,23 @@ var srv12Snapshot struct {
 // sharedSnapshot returns the SRV-12 server, its snapshot and the marker
 // content, created once; when every row using it has ended, the snapshot
 // and the server are deleted (or at the end of TestE2E when a filter runs
-// only some of them).
-func sharedSnapshot(t *testing.T) (*env, *server, int64, string) {
+// only some of them). own is the number of servers the row creates itself:
+// the row that creates the fixture takes their slots together with the
+// fixture's, so it never holds one slot while waiting for another.
+func sharedSnapshot(t *testing.T, own int) (*env, *server, int64, string) {
 	t.Helper()
 	e := sharedEnv(t)
 	f := &srv12Snapshot
+	created := false
 	f.once.Do(func() {
+		created = true
 		f.e = e
 		f.name = harness.runID + "-srv12"
-		ownServerSlots <- struct{}{}
+		got := serverSlots.acquire(1 + own)
 		f.slot = true
+		if got > 1 {
+			t.Cleanup(func() { serverSlots.release(got - 1) })
+		}
 		f.srv, f.err = e.createServer(f.name)
 		if f.err != nil {
 			return
@@ -82,6 +89,10 @@ func sharedSnapshot(t *testing.T) (*env, *server, int64, string) {
 			f.err = fmt.Errorf("create_image: %v", err)
 		}
 	})
+	if !created && own > 0 {
+		// The fixture holds its own slot, which no other row waits on.
+		takeServerSlots(t, own)
+	}
 	t.Cleanup(func() {
 		f.mu.Lock()
 		f.done++
@@ -111,14 +122,14 @@ func releaseSharedSnapshot(t *testing.T) {
 	f.e.deleteImage(t, f.image)
 	deleteIfCreated(t, f.e, f.name)
 	if f.slot {
-		<-ownServerSlots
+		serverSlots.release(1)
 	}
 }
 
 // testSRV12: a snapshot of a running server boots as a new server with the
 // same disk content and its own hostname.
 func testSRV12(t *testing.T) {
-	e, _, image, content := sharedSnapshot(t)
+	e, _, image, content := sharedSnapshot(t, 1)
 
 	copied := ownServerImage(t, e, "srv12-copy", fmt.Sprint(image))
 	r, err := e.ssh(copied, time.Minute, "", "cat "+srv12Marker)
@@ -135,7 +146,7 @@ func testSRV12(t *testing.T) {
 // new user_data runs that user_data, as for a new instance, and keeps the
 // snapshot's content.
 func testSRV08OwnSnapshot(t *testing.T) {
-	e, srv, image, content := sharedSnapshot(t)
+	e, srv, image, content := sharedSnapshot(t, 0)
 	const marker = "/root/hlab-srv08-own-snapshot"
 	value := harness.runID + "-srv08-own-snapshot"
 	userData := "#cloud-config\nruncmd:\n  - [sh, -c, \"echo " + value + " > " + marker + "\"]\n"
@@ -173,7 +184,6 @@ func (e *env) createServerImage(name, image string, extra ...string) (*server, e
 // ownServerImage is ownServer from image, with extra hcloud arguments.
 func ownServerImage(t *testing.T, e *env, suffix, image string, extra ...string) *server {
 	t.Helper()
-	takeServerSlot(t)
 	name := harness.runID + "-" + suffix
 	t.Cleanup(func() { deleteIfCreated(t, e, name) })
 	srv, err := e.createServerImage(name, image, extra...)

@@ -51,12 +51,8 @@ func (m *Module) Reconcile(ctx context.Context, id int64) error {
 // reconcile is Reconcile on the given store. An existing VM is taken as
 // it is; a missing disk or seed file is created.
 func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) error {
-	var rec Record
-	if err := stor.Tx(func(tx store.Tx) error {
-		var err error
-		rec, err = Load(tx, id)
-		return err
-	}); err != nil {
+	rec, all, err := loadWithAll(stor, id)
+	if err != nil {
 		return err
 	}
 	typ, ok := m.d.Catalog.ServerType(rec.Hlab.ServerType)
@@ -67,10 +63,8 @@ func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) err
 	if err != nil {
 		return err
 	}
+	// A server without public IPv4 keeps its public adapter without address.
 	ip := rec.IPv4()
-	if !ip.IsValid() {
-		return errors.New("server has no public IPv4")
-	}
 
 	disk := m.diskPath(id)
 	if _, err := os.Stat(disk); errors.Is(err, os.ErrNotExist) {
@@ -102,7 +96,27 @@ func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) err
 		if !isNotFound(err) {
 			return err
 		}
-		if err := m.createVM(ctx, name, id, typ.Cores, int64(typ.Memory*1024), mac, rec.Hlab.Location); err != nil {
+		nics := privateNICs(rec, all)
+		if err := m.createVM(ctx, name, id, typ.Cores, int64(typ.Memory*1024), mac, rec.Hlab.Location, nics); err != nil {
+			return err
+		}
+		if err := stor.Tx(func(tx store.Tx) error {
+			return Update(tx, id, func(r *Record) error {
+				r.Hlab.Adapters = nil
+				for _, nic := range nics {
+					r.Hlab.Adapters = append(r.Hlab.Adapters, nic.MAC.String())
+				}
+				return nil
+			})
+		}); err != nil {
+			return err
+		}
+		// The other members learn the new adapter's MAC.
+		var nets []int64
+		for _, pn := range rec.PrivateNet {
+			nets = append(nets, pn.Network)
+		}
+		if err := m.syncDeny(ctx, all, nets); err != nil {
 			return err
 		}
 		// A VM made again keeps the server's ISO.
@@ -123,11 +137,19 @@ func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) err
 	return nil
 }
 
-// seed is the seed of server rec.
+// seed is the seed of server rec: the public interface with the public
+// IPv4 (without one, the adapter gets no address) and one interface per
+// private network.
 func (m *Module) seed(rec Record) cidata.Seed {
 	instanceID := rec.Hlab.InstanceID
 	if instanceID == "" {
 		instanceID = strconv.FormatInt(rec.ID, 10)
+	}
+	public := cidata.Interface{MAC: rec.Hlab.MAC}
+	if ip := rec.IPv4(); ip.IsValid() {
+		public.Addresses = []netip.Prefix{netip.PrefixFrom(ip, 32)}
+		public.Gateway = guestGateway
+		public.Nameservers = guestNameservers
 	}
 	return cidata.Seed{
 		InstanceID: instanceID,
@@ -135,17 +157,13 @@ func (m *Module) seed(rec Record) cidata.Seed {
 		SSHKeys:    rec.Hlab.SSHKeys,
 		UserData:   seedUserData(rec.Hlab.UserData, rec.Hlab.AutomountVolumes),
 		VendorData: vendorData(rec.Hlab.RootHash),
-		Interfaces: []cidata.Interface{{
-			MAC:         rec.Hlab.MAC,
-			Addresses:   []netip.Prefix{netip.PrefixFrom(rec.IPv4(), 32)},
-			Gateway:     guestGateway,
-			Nameservers: guestNameservers,
-		}},
+		Interfaces: append([]cidata.Interface{public}, privateInterfaces(rec)...),
 	}
 }
 
-// createVM creates the VM with the server's disk, public adapter and seed.
-func (m *Module) createVM(ctx context.Context, name string, id int64, cores int, memoryMB int64, mac net.HardwareAddr, location string) error {
+// createVM creates the VM with the server's disk, public adapter, private
+// adapters and seed.
+func (m *Module) createVM(ctx context.Context, name string, id int64, cores int, memoryMB int64, mac net.HardwareAddr, location string, private []platform.NICSpec) error {
 	p := m.d.Platform
 	if err := p.CreateVM(ctx, m.vmSpec(name, id, cores, memoryMB)); err != nil {
 		return err
@@ -155,6 +173,11 @@ func (m *Module) createVM(ctx context.Context, name string, id int64, cores int,
 	}
 	if err := p.AttachNIC(ctx, name, platform.NICSpec{MAC: mac, Segment: platform.SegmentFor(location, 0)}); err != nil {
 		return err
+	}
+	for _, nic := range private {
+		if err := p.AttachNIC(ctx, name, nic); err != nil {
+			return err
+		}
 	}
 	if err := p.SetDVD(ctx, name, 0, m.seedPath(id)); err != nil {
 		return err

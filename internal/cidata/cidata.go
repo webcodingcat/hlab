@@ -212,7 +212,8 @@ type networkV2 struct {
 type ethernet struct {
 	Match       match        `json:"match"`
 	SetName     string       `json:"set-name"`
-	Addresses   []string     `json:"addresses"`
+	Addresses   []string     `json:"addresses,omitempty"`
+	Optional    bool         `json:"optional,omitempty"`
 	Routes      []route      `json:"routes,omitempty"`
 	Nameservers *nameservers `json:"nameservers,omitempty"`
 }
@@ -231,8 +232,9 @@ type nameservers struct {
 	Addresses []string `json:"addresses"`
 }
 
-// networkConfig renders network-config version 2. Every interface needs an
-// address: one without blocks systemd-networkd-wait-online in the guest.
+// networkConfig renders network-config version 2. An interface without
+// address is optional, so it does not block systemd-networkd-wait-online
+// in the guest.
 func networkConfig(ifaces []Interface) ([]byte, error) {
 	cfg := network{Network: networkV2{Version: 2, Ethernets: map[string]ethernet{}}}
 	seen := map[string]bool{}
@@ -246,10 +248,7 @@ func networkConfig(ifaces []Interface) ([]byte, error) {
 			return nil, fmt.Errorf("cidata: interface %s: MAC address %s is used twice", name, mac)
 		}
 		seen[mac] = true
-		if len(iface.Addresses) == 0 {
-			return nil, fmt.Errorf("cidata: interface %s: no address", name)
-		}
-		eth := ethernet{Match: match{MACAddress: mac}, SetName: name}
+		eth := ethernet{Match: match{MACAddress: mac}, SetName: name, Optional: len(iface.Addresses) == 0}
 		for _, p := range iface.Addresses {
 			if !p.IsValid() {
 				return nil, fmt.Errorf("cidata: interface %s: invalid address", name)

@@ -31,7 +31,10 @@ const (
 	applianceMemoryMB = 1024
 	applianceDiskSize = 10 << 30
 	applianceMAC      = "02:48:4c:00:00:01"
-	secretKey         = "agent.secret"
+	// trunkMAC is the appliance's second adapter, carrying the private
+	// networks' VLANs tagged; the agent finds it by this MAC.
+	trunkMAC  = "02:48:4c:00:00:02"
+	secretKey = "agent.secret"
 	// shutdownTimeout bounds the guest shutdown before the hard stop.
 	shutdownTimeout = 60 * time.Second
 	statePoll       = time.Second
@@ -98,6 +101,9 @@ func (c *Cloud) startAppliance(ctx context.Context, secret string) error {
 		if err := c.plat.SetVM(ctx, name, spec); err != nil {
 			return err
 		}
+		if err := c.ensureTrunk(ctx, name); err != nil {
+			return err
+		}
 	case errors.As(err, &perr) && perr.Kind == platform.NotFound:
 		if err := c.createAppliance(ctx, spec); err != nil {
 			return err
@@ -157,10 +163,34 @@ func (c *Cloud) createAppliance(ctx context.Context, spec platform.VMSpec) (err 
 	if err != nil {
 		return err
 	}
-	return c.plat.AttachNIC(ctx, spec.Name, platform.NICSpec{
+	if err := c.plat.AttachNIC(ctx, spec.Name, platform.NICSpec{
 		MAC:     mac,
 		Segment: platform.Segment{PublicPVLAN: true, Promiscuous: true},
-	})
+	}); err != nil {
+		return err
+	}
+	return c.attachTrunk(ctx, spec.Name)
+}
+
+// attachTrunk adds the appliance's trunk adapter.
+func (c *Cloud) attachTrunk(ctx context.Context, name string) error {
+	mac, err := net.ParseMAC(trunkMAC)
+	if err != nil {
+		return err
+	}
+	return c.plat.AttachNIC(ctx, name, platform.NICSpec{MAC: mac, Segment: platform.Segment{Trunk: true}})
+}
+
+// ensureTrunk adds the trunk adapter to an appliance created before it
+// existed. Setting its (empty) deny list finds out whether it is there.
+func (c *Cloud) ensureTrunk(ctx context.Context, name string) error {
+	err := c.plat.SetNICDeny(ctx, name, trunkMAC, nil)
+	var perr *platform.Error
+	if errors.As(err, &perr) && perr.Kind == platform.NotFound {
+		slog.Info("adding the trunk adapter to the appliance", "vm", name)
+		return c.attachTrunk(ctx, name)
+	}
+	return err
 }
 
 // applianceDebs is catalog/appliance-debs.json: packages the appliance
