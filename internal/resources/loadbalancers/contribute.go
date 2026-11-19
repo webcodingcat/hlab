@@ -65,8 +65,7 @@ func (m *Module) document(tx store.Tx, r Record) (agentapi.LoadBalancer, error) 
 }
 
 // service is service s of a load balancer of projectID with its
-// certificates' PEMs; a certificate without a key pair (a managed one not
-// yet issued) is left out.
+// certificates' PEMs; a managed certificate not yet issued is left out.
 func service(tx store.Tx, projectID int64, s Service) (agentapi.LBService, error) {
 	out := agentapi.LBService{
 		Protocol:        s.Protocol,
@@ -100,7 +99,7 @@ func service(tx store.Tx, projectID int64, s Service) (agentapi.LBService, error
 		}
 		for _, id := range h.Certificates {
 			c, k, err := certificates.KeyPair(tx, projectID, id)
-			if errors.Is(err, certificates.ErrNotIssued) || errors.Is(err, store.ErrNotFound) {
+			if errors.Is(err, certificates.ErrNotIssued) {
 				continue
 			}
 			if err != nil {
