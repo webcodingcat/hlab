@@ -244,20 +244,20 @@ type Deps struct {
   - [ ] Five entries (haproxy, liblua5.4-0, libopentracing-c-wrapper0t64, libopentracing1, lsb-base) with pool and snapshot URLs; download the five files once and put the recomputed sha256 in the catalog (catalog/appliance-debs.json)
   - [ ] Install script: when `command -v haproxy` fails, run one `dpkg -i` with all five files, then `systemctl disable --now haproxy`; create `/run/hlab` (appliance/hlab-agent-install.sh)
 
-- [ ] 08-06 Trust switch and CA export in the management API and CLI
+- [x] 08-06 Trust switch and CA export in the management API and CLI
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: CERT-04, CERT-05 | Tests: internal/mgmt/mgmt_test.go, internal/cli/cli_test.go
   - Reads: ARCHITECTURE "hlab (management command)", "Management API"; DECISIONS Q10; this file "Interfaces"; decision D4 below
   - Size: ~300 lines in 5 files
   - Adjusts: -
-  - [ ] `settings.Save` (internal/settings/settings.go)
-  - [ ] `Deps.CACert`, `Deps.Trust`, `GET /ca.pem`, `PUT /trust`:
+  - [x] `settings.Save` (internal/settings/settings.go)
+  - [x] `Deps.CACert`, `Deps.Trust`, `GET /ca.pem`, `PUT /trust`:
     - load the settings, call Trust, then save `trust_ca`
     - a Trust error answers `server_error` and saves nothing
     - a body without `on` answers `invalid_input`
     - (internal/mgmt/mgmt.go; the settings path comes from a new `Deps.SettingsPath`)
-  - [ ] `hlab ca export <file>`, `hlab ca trust on|off` (usage errors give exit code 2) (internal/cli/cli.go)
-  - [ ] Rows of TESTS.md for 08-06 (internal/mgmt/mgmt_test.go, internal/cli/cli_test.go)
+  - [x] `hlab ca export <file>`, `hlab ca trust on|off` (usage errors give exit code 2) (internal/cli/cli.go)
+  - [x] Rows of TESTS.md for 08-06 (internal/mgmt/mgmt_test.go, internal/cli/cli_test.go)
 
 - [ ] 08-07 Networks: load balancer members
   - Wave: 1 | Depends on: - | Review: alone

@@ -479,7 +479,7 @@ HTTP/1.1 over `\\.\pipe\hlab`, JSON. All paths under `/mgmt/v1`:
 | `POST /catalog/update` | body `{"hetzner_token": "..."}` (required, used once, never stored or logged); `200 {"server_types":n}`; `400 invalid_input` without a token; `502 server_error` with Hetzner's message when the real API refuses |
 | `GET /logs?follow=1` | log lines as newline-delimited JSON |
 | `GET /ca.pem` | the hlab CA certificate |
-| `PUT /trust` | `{"on": bool}` |
+| `PUT /trust` | body `{"on": bool}`; `200 {"on": bool}`; `400 invalid_input` without `on`; `500 server_error` when the trust store or the settings file fails |
 | `POST /settings/reload` | re-read the settings file |
 
 Errors: `{"error":{"code":"...","message":"..."}}` with codes
@@ -488,7 +488,10 @@ Errors: `{"error":{"code":"...","message":"..."}}` with codes
 `Actions`, `Deleters` (the modules implementing `resource.Deleter`),
 `UpdateCatalog` (nil leaves the route out), `ServerTypes` (the count
 returned by the catalog update) and `PushAgent` (pushes the agent document
-after a project deletion). A running project deletion is an action that
+after a project deletion), `CACert` (the PEM for `/ca.pem`), `Trust`
+(`hostnet.TrustCA` with the CA) and `SettingsPath` (where `PUT /trust`
+stores `trust_ca` through `settings.Save`, which writes the whole file).
+`PUT /trust` answers `200 {"on":bool}`. A running project deletion is an action that
 locks a resource of type `project`.
 
 ### hlab-agent (appliance)
