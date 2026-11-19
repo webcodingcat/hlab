@@ -123,6 +123,9 @@ type Cloud struct {
 	applianceOn bool
 	apiSrv      *http.Server
 	mgmtSrv     *http.Server
+	// done is closed at the stop; it ends the log followers of the
+	// management API.
+	done chan struct{}
 	// stopJobs cancels the scheduled jobs and waits until they returned.
 	stopJobs func()
 	// restored is set once Lifecycle.Restore ran; only then does the stop
@@ -228,15 +231,19 @@ func (c *Cloud) start(ctx context.Context, params []string) error {
 	if err := c.openState(ctx, params); err != nil {
 		return err
 	}
+	if err := ensureCustomServerTypes(c.d.Paths.Config); err != nil {
+		return fmt.Errorf("create the own server types file: %w", err)
+	}
+	customFile := filepath.Join(c.d.Paths.Config, customServerTypesFile)
 	var catWarns []string
-	c.cat, catWarns, err = catalog.LoadAll(c.d.Paths.Catalog, c.d.Paths.Config,
-		filepath.Join(c.d.Paths.Config, "server-types.custom.json"))
+	c.cat, catWarns, err = catalog.LoadAll(c.d.Paths.Catalog, c.d.Paths.Config, customFile)
 	if err != nil {
 		return err
 	}
-	for _, w := range catWarns {
-		slog.Warn("catalog problem", "message", w)
-		c.problems = append(c.problems, hostnet.Problem{Code: problemCustomServerTypes, Message: w})
+	if len(catWarns) > 0 {
+		// ReloadOwn keeps the warning in the catalog, where /status reads it
+		// and a reload clears it.
+		c.cat.ReloadOwn(customFile)
 	}
 	conv, ok := c.plat.(interface {
 		ConvertToDynamic(ctx context.Context, src, dst string) error
@@ -548,6 +555,7 @@ func (c *Cloud) serveManagement(apiHandler http.Handler) error {
 			deleters[m.Type()] = d // the store kind of every module is its type
 		}
 	}
+	c.done = make(chan struct{})
 	h := mgmt.New(mgmt.Deps{
 		Store:     c.st,
 		API:       apiHandler,
@@ -563,6 +571,8 @@ func (c *Cloud) serveManagement(apiHandler http.Handler) error {
 		Trust:        c.trust,
 		SettingsPath: filepath.Join(c.d.Paths.Config, "settings.toml"),
 		LogDir:       c.d.Paths.Logs,
+		Reload:       c.reload,
+		Done:         c.done,
 	})
 	c.mgmtSrv = &http.Server{Handler: h, ReadHeaderTimeout: 30 * time.Second}
 	go serve(c.mgmtSrv, ln, "management")
@@ -610,6 +620,10 @@ func (c *Cloud) teardown(ctx context.Context, reason sysint.StopReason) error {
 	if c.stopJobs != nil {
 		c.stopJobs()
 		c.stopJobs = nil
+	}
+	if c.done != nil {
+		close(c.done)
+		c.done = nil
 	}
 	for _, srv := range []*http.Server{c.mgmtSrv, c.apiSrv} {
 		if srv == nil {

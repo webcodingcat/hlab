@@ -314,7 +314,7 @@ func TestMgmt(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GET /mgmt/v1/logs?follow=1: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("GET /mgmt/v1/logs?follow=1: status %d, want 200", resp.StatusCode)
 		}
