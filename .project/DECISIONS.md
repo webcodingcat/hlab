@@ -2111,3 +2111,11 @@ in ARCHITECTURE.md or the plan.
 - What: `ServerDeleted` and `change_dns_ptr` mirroring skip IPs held by a load balancer; `AssignLoadBalancer` checks version, assigned, blocked, location in that order; an unknown or foreign ID is `invalid_input` on `public_net.ipv4`/`ipv6`; an IP freed from a deleted LB gets `assignee_type` "server" back.
 - Why: LB and server IDs can be equal, so an IP would otherwise be freed with or mirrored onto the wrong server.
 - Cost of change: low
+
+## 2026-11-19 Managed certificate details
+
+- Type: decision
+- Phase: phase 08
+- What: a domain is checked against the most specific zone of its project that equals it or lies above it, and a secondary zone there gives `dns_zone_is_secondary_zone`; a failed renewal is tried again every hour while less than 30 days remain; the agent document is pushed after every successful issuance; a managed create without a CA answers 422 `invalid_input` on `type`.
+- Why: the simplest reading of CERT-02/03 and decisions/managed-certificates.md; a retried certificate an LB references must reach the agent.
+- Cost of change: low

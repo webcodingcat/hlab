@@ -302,25 +302,25 @@ type Deps struct {
     - (internal/resources/primaryips/actions.go, internal/resources/primaryips/primaryips.go)
   - [x] Rows of TESTS.md for 08-09 (internal/resources/primaryips/primaryips_test.go)
 
-- [ ] 08-10 Certificates: managed issuance, retry and renewal
+- [x] 08-10 Certificates: managed issuance, retry and renewal
   - Wave: 2 | Depends on: 08-01, 08-08 | Review: alone
   - Requirements: CERT-02, CERT-03 | Tests: internal/resources/certificates/managed_test.go
   - Reads: R4; DECISIONS "Certificate issuance and status"; decisions/managed-certificates.md; internal/resources/zones/zones.go (`Record`, `Mode`); internal/scheduler/scheduler.go
   - Size: ~350 lines in 3 files
   - Adjusts: the 08-08 row case that expects `invalid_input` for `type: managed` (replaced by the CERT-02 row)
-  - [ ] POST `managed` and the `retry` action:
+  - [x] POST `managed` and the `retry` action:
     - managed: `domain_names` required; 201 with a `create_certificate` action; `status` pending/unavailable
     - the action checks every domain against the project's zones: equal to the zone, or below it, wildcards included
     - no zone gives `dns_zone_not_found`; a secondary zone gives `dns_zone_is_secondary_zone`; both set issuance `failed` with `status.error` and end the action `error` with the same code
     - success: `CA.Issue` gives issuance completed, renewal scheduled, and the fields read from the leaf
     - `retry` (`retry_issuance`): 422 `invalid_input` unless issuance or renewal is failed
     - (internal/resources/certificates/managed.go)
-  - [ ] Hourly renewal job:
+  - [x] Hourly renewal job:
     - a managed, completed certificate with less than 30 days left gets renewal `pending`, then a new issuance
     - success gives renewal `scheduled`, the new leaf and `PushAgent`
     - failure gives renewal `failed` with `error` and keeps the old leaf
     - (internal/resources/certificates/renew.go)
-  - [ ] Rows of TESTS.md for 08-10 (internal/resources/certificates/managed_test.go; fake `Issuer` and fake clock)
+  - [x] Rows of TESTS.md for 08-10 (internal/resources/certificates/managed_test.go; fake `Issuer` and fake clock)
 
 - [ ] 08-11 Agent: load balancer applier
   - Wave: 2 | Depends on: 08-02 | Review: alone
