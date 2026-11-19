@@ -1791,3 +1791,11 @@ in ARCHITECTURE.md or the plan.
 - What: a new IPv6 entry beyond 100 per /64 is `invalid_input` on `ip`; a `dns_ptr` needs at least two labels of letters, digits, `-` or `_`, no trailing dot, at most 253 characters; entries are keyed by the canonical IP form.
 - Why: Hetzner's exact rules are unconfirmed; the simplest check that refuses obvious mistakes.
 - Cost of change: low
+
+## 2026-11-19 Default zone sets and record value checks
+
+- Type: decision
+- Phase: phase 07
+- What: the default SOA (`hydrogen.ns.hetzner.com. dns.hetzner.com. <serial> 86400 10800 3600000 3600`) and NS sets carry no TTL of their own and use the zone TTL; record values with a line break or a trailing `;` comment are refused; owner names may contain `_` and a `*` label.
+- Why: follows Hetzner's defaults where known and keeps zone file export unambiguous.
+- Cost of change: low

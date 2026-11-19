@@ -161,15 +161,15 @@ type ShadowingZone struct {
 
 ## Plans
 
-- [ ] 07-01 DNS zone data: names and records
+- [x] 07-01 DNS zone data: names and records
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: DNS-01 | Tests: internal/dnszone/dnszone_test.go
   - Reads: REQUIREMENTS DNS-01; CONTEXT "Changes by the user"; RESEARCH R1, R2, R5; DECISIONS "Zones under private-use suffixes"; decisions D1 to D5 below; OpenAPI `/zones` POST (name, rrsets)
   - Size: ~350 lines in 3 files
   - Adjusts: -
-  - [ ] `RRSet`, `Record`, `FieldError`, `Nameservers`, `CheckZoneName`, `PrivateUse` (golang.org/x/net/publicsuffix, ICANN section only; go.mod: x/net direct) (internal/dnszone/names.go, go.mod)
-  - [ ] `CheckRRSet`, `CheckConflicts`, `ToRR` (rdata parsed with `dns.NewRR` under `$ORIGIN zone.`; TXT quoting and 255-character strings; SOA records only through `DefaultSets`), `DefaultSets`, `NextSerial` (internal/dnszone/records.go)
-  - [ ] Rows of TESTS.md for 07-01 (internal/dnszone/dnszone_test.go, group `TestDNSZone`)
+  - [x] `RRSet`, `Record`, `FieldError`, `Nameservers`, `CheckZoneName`, `PrivateUse` (golang.org/x/net/publicsuffix, ICANN section only; go.mod: x/net direct) (internal/dnszone/names.go, go.mod)
+  - [x] `CheckRRSet`, `CheckConflicts`, `ToRR` (rdata parsed with `dns.NewRR` under `$ORIGIN zone.`; TXT quoting and 255-character strings; SOA records only through `DefaultSets`), `DefaultSets`, `NextSerial` (internal/dnszone/records.go)
+  - [x] Rows of TESTS.md for 07-01 (internal/dnszone/dnszone_test.go, group `TestDNSZone`)
 
 - [ ] 07-02 DNS zone data: zone files
   - Wave: 2 | Depends on: 07-01 | Review: alone
