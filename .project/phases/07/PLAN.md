@@ -217,15 +217,15 @@ type ShadowingZone struct {
   - [x] `buildDNSData` adds every `cfg.Zones` entry as an authoritative zone (RRs through `dnszone.ToRR`, SOA from its SOA RRSet); `zoneFor` keeps the most specific zone; `answer` serves wildcard owners (`*.<name>`) for names without own records, and follows a CNAME inside hlab zones and, for a target outside them, through the upstream servers, appending the chain (at most 8 steps) (internal/agent/dns.go)
   - [x] Rows of TESTS.md for 07-06 (internal/agent/dns_test.go, registered in `TestAgent`; fake upstream through a local miekg server on 127.0.0.1)
 
-- [ ] 07-07 Zones: zones resource
+- [x] 07-07 Zones: zones resource
   - Wave: 2 | Depends on: 07-01 | Review: alone
   - Requirements: DNS-01 | Tests: internal/resources/zones/zones_test.go
   - Reads: REQUIREMENTS DNS-01; CONTEXT; RESEARCH R1, R4, R8; DECISIONS "Q8: secondary zones are stored and forwarded", "Zone modes and synchronous updates"; OpenAPI `/zones`, `/zones/{id_or_name}`, `/zones/actions`, zone actions; internal/resources/firewalls/firewalls.go as pattern; decisions D6, D12 to D15 below
   - Size: ~400 lines in 3 files
   - Adjusts: -
-  - [ ] Module, `Record` (Hetzner zone shape; RRSets stored in the document with labels and `protection.change`; `_hlab.project_id`), `Deps`, `Names`, `Primary`, path lookup by ID or name, `GET /zones` (filter name, mode, label_selector; sort id, name, created), `GET /zones/{id_or_name}`, `PUT` (labels only, 200 without action), `POST /zones` (primary with `rrsets` or `zonefile` placeholder left to 07-09: 422 `invalid_input` on `zonefile` until then; secondary with `primary_nameservers`), `DELETE` (`delete_zone`; delete protection: `protected`), actions `change_protection`, `change_ttl`, `change_primary_nameservers`, mode checks (`incorrect_zone_mode`), `/zones/actions` and per-zone action routes through `resactions.RoutesFor` (internal/resources/zones/zones.go, internal/resources/zones/actions.go)
-  - [ ] Publishing: every write that changes zones or records runs `PushAgent` then `SetZones(Names)` inside its action (failure: action `error`, zone `status` stays `ok`); `Contribute` adds each primary zone with its RRSets (TTL resolved) to `doc.Zones`; `Shadow.Check` on create of a primary zone outside `PrivateUse`, `Forget` on delete (internal/resources/zones/publish.go)
-  - [ ] Rows of TESTS.md for 07-07 (internal/resources/zones/zones_test.go, group `TestZones`)
+  - [x] Module, `Record` (Hetzner zone shape; RRSets stored in the document with labels and `protection.change`; `_hlab.project_id`), `Deps`, `Names`, `Primary`, path lookup by ID or name, `GET /zones` (filter name, mode, label_selector; sort id, name, created), `GET /zones/{id_or_name}`, `PUT` (labels only, 200 without action), `POST /zones` (primary with `rrsets` or `zonefile` placeholder left to 07-09: 422 `invalid_input` on `zonefile` until then; secondary with `primary_nameservers`), `DELETE` (`delete_zone`; delete protection: `protected`), actions `change_protection`, `change_ttl`, `change_primary_nameservers`, mode checks (`incorrect_zone_mode`), `/zones/actions` and per-zone action routes through `resactions.RoutesFor` (internal/resources/zones/zones.go, internal/resources/zones/actions.go)
+  - [x] Publishing: every write that changes zones or records runs `PushAgent` then `SetZones(Names)` inside its action (failure: action `error`, zone `status` stays `ok`); `Contribute` adds each primary zone with its RRSets (TTL resolved) to `doc.Zones`; `Shadow.Check` on create of a primary zone outside `PrivateUse`, `Forget` on delete (internal/resources/zones/publish.go)
+  - [x] Rows of TESTS.md for 07-07 (internal/resources/zones/zones_test.go, group `TestZones`)
 
 - [ ] 07-08 Zones: RRSets
   - Wave: 3 | Depends on: 07-07 | Review: alone

@@ -1823,3 +1823,11 @@ in ARCHITECTURE.md or the plan.
 - What: empty non-terminals count as existing (wildcards answer below them, a direct query gets NODATA); an RRSet with TTL 0 uses the zone TTL; unparsable values are skipped with a warning and a zone without apex SOA is not served; for an outside CNAME target an upstream NXDOMAIN is passed on with the chain, any other upstream failure or the 8-step limit returns the chain so far.
 - Why: RFC 4592 behaviour and an agent that keeps answering when one record is bad.
 - Cost of change: low
+
+## 2026-11-19 Zone create and publish details
+
+- Type: decision
+- Phase: phase 07
+- What: `rrsets` errors on zone create name `rrsets[<i>].<field>`; a given SOA set is refused, a given apex NS set replaces the default; a secondary zone needs `primary_nameservers`; every zone action publishes (agent push, then `SetZones`) under one module lock, `change_ttl` raises the SOA serial; `GET /zones/actions/{id}` is served through the `/zones/{id}/{sub}` route because `http.ServeMux` refuses both patterns side by side.
+- Why: concurrent zone actions must never leave a zone without its NRPT rule (DNS-03).
+- Cost of change: low
