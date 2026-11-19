@@ -1,6 +1,3 @@
-// Package bridge holds the services the tray program binds to its window:
-// management calls, settings, server types, cloud status and control, and
-// the log stream. It does not import Wails; events leave through callbacks.
 package bridge
 
 import (
