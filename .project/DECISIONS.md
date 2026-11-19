@@ -1535,3 +1535,11 @@ in ARCHITECTURE.md or the plan.
 - What: Trunk adapters have router guard and DHCP guard off like the appliance's promiscuous port; `SetNICDeny` keeps wanted deny entries present in both directions, removes partial or unwanted ones, adds missing ones, and leaves IP and non-deny ACLs alone.
 - Why: The appliance routes on the trunk; Hyper-V refuses duplicate ACLs and lists `Both` as two entries.
 - Cost of change: low
+
+## 2026-11-19 Network validation details
+
+- Type: decision
+- Phase: 05
+- What: Field errors name nested create fields `subnets[i].<field>`/`routes[i].<field>`; a `0.0.0.0/0` route skips the overlap checks with subnets and 172.31.1.1 but not with other routes; `change_ip_range` to the same size is a no-op; no free VLAN gives 403 `resource_limit_exceeded`; no free /24 and unknown subnet or route in delete actions give 422 `invalid_input`.
+- Why: Hetzner documents none of these; the simplest answers that fit the frozen spec.
+- Cost of change: low
