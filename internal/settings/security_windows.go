@@ -10,10 +10,10 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// copySecurity gives dst the DACL of src, with its protection, so that a
+// CopySecurity gives dst the DACL of src, with its protection, so that a
 // rename of dst over src keeps the access rules of src (settings.toml grants
 // Interactive Users modify). A missing src leaves dst as it is.
-func copySecurity(src, dst string) error {
+func CopySecurity(src, dst string) error {
 	if _, err := os.Stat(src); errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
