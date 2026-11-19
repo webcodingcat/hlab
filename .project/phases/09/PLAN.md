@@ -83,6 +83,11 @@ LogDir string // read by `hlab logs` while the cloud is stopped
 Status file problems at a refused start (code, fatal): `state_incompatible`
 and `public_range_changed`, both naming `hlab cloud start --discard-state`.
 
+Settled by the test writers (the tests rely on them):
+- `windows.HostEntry` is the current `hostEntry` exported, with string fields `Kind`, `Alias`, `Prefix`.
+- `store.Discard` renames side files to `state.db-wal.discarded-<time>` and `state.db-shm.discarded-<time>` (suffix after each file's full name).
+- logfile's follow poll interval may stay unexported; the follow test uses the default interval with a 10 s deadline.
+
 ## Plans
 
 - [ ] 09-01 Platform: stop action and VM listing
