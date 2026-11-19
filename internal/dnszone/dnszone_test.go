@@ -83,7 +83,7 @@ func testNames(t *testing.T) {
 		})
 	}
 
-	long := strings.Repeat(strings.Repeat("a", 63)+".", 3) + strings.Repeat("b", 62) + ".com"
+	long := strings.Repeat(strings.Repeat("a", 63)+".", 3) + strings.Repeat("b", 60) + ".com"
 	if len(long) != 256 {
 		t.Fatalf("long name has %d characters, want 256", len(long))
 	}
