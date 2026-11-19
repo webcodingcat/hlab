@@ -129,7 +129,7 @@ Inside `hlabd` (Go packages under `internal/`):
   type ActionUser interface {           // modules starting actions outside a handler (daily backups); Mount calls it before Routes
       UseActions(m *actions.Manager)
   }
-  type Recoverer interface {            // modules with records to repair at cloud start (images, volumes: half-made records; primary_ips: missing records)
+  type Recoverer interface {            // modules with records to repair at cloud start (images, volumes: half-made records; primary_ips: missing records; load_balancers: PTR entries on the pre-Q14 formal IPv6)
       Recover(ctx context.Context) error // cloud start calls it before the API serves and before the first scheduled job run
   }
   ```
@@ -698,7 +698,10 @@ locks a resource of type `project`.
 ## Network
 
 All addresses below derive from the configured public range
-(`network.public_range`, default `198.19.0.0/16`).
+(`network.public_range`, default `198.19.0.0/16`); the addresses shown are
+those of the default range. `internal/transit.For(range)` returns them
+(`Addrs{Host, Appliance, APIListen, APIProxy, Agent}`) for every component;
+the agent reads its own from the `transit` file of its seed.
 
 - Virtual switch `hlab` (internal). The host adapter `vEthernet (hlab)` has
   `198.19.0.2/30`; the appliance's first adapter has `198.19.0.1/30` plus

@@ -98,29 +98,29 @@ Settled by the test writers (the tests rely on them):
   - [ ] Add `SetStopAction` and `VMs` to `platform.Platform` (internal/platform/platform.go), Hyper-V implementation (internal/platform/hyperv/hyperv.go: `Set-VM -AutomaticStopAction`, `Get-VM` filtered by prefix in Go, never parsing localized text), fake (internal/platform/platformtest/fake.go: records the stop action per VM, lists VMs).
   - [ ] Verify on a real server VM of the dev cloud (non-elevated, Hyper-V Administrators) whether `Set-VM -AutomaticStopAction` is accepted on a Running and on a Saved VM; report the result in the plan's summary (the user asked for it). `SetStopAction` returns `platform.Error{Kind: InvalidState}` where Hyper-V refuses.
 
-- [ ] 09-02 Store: incompatible state and discard
+- [x] 09-02 Store: incompatible state and discard
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: LIFE-08 | Tests: internal/store/store_test.go
   - Reads: ARCHITECTURE "Data schema", "hlab (management command)" (Incompatible state); RESEARCH.md topic 3; DECISIONS "Discarding the state cleans host objects and names downgrades"
   - Size: ~180 lines in 3 files
-  - [ ] `store.Open` pings and reads `user_version` and returns `*IncompatibleError` for a version other than 0 or 1 (`Newer` when higher) and for SQLITE_NOTADB/SQLITE_CORRUPT by code (`Code()&0xff`), never by message (internal/store/store.go).
-  - [ ] `store.Discard` (rename of the file and its `-wal`/`-shm`, missing side files skipped) and `store.KVKeys` (internal/store/store.go or a new internal/store/kv.go).
+  - [x] `store.Open` pings and reads `user_version` and returns `*IncompatibleError` for a version other than 0 or 1 (`Newer` when higher) and for SQLITE_NOTADB/SQLITE_CORRUPT by code (`Code()&0xff`), never by message (internal/store/store.go).
+  - [x] `store.Discard` (rename of the file and its `-wal`/`-shm`, missing side files skipped) and `store.KVKeys` (internal/store/store.go or a new internal/store/kv.go).
 
-- [ ] 09-03 Log file with rotation
+- [x] 09-03 Log file with rotation
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: LIFE-09 | Tests: internal/logfile/logfile_test.go
   - Reads: ARCHITECTURE "Files and formats" (hlabd.log); SPEC "Stack"
   - Size: ~260 lines in 3 files
-  - [ ] New package internal/logfile: `Writer` rotating at `MaxBytes` to `.1`..`.Keep` (oldest dropped, never splitting a line), `Tail` with last n lines and follow across rotation by polling (no fixed sleeps in tests: the poll interval is a package variable tests shorten).
-  - [ ] cmd/hlabd/main.go logs through `logfile.NewWriter(paths.Logs, "hlabd.log", logfile.MaxBytes, logfile.Keep)`.
+  - [x] New package internal/logfile: `Writer` rotating at `MaxBytes` to `.1`..`.Keep` (oldest dropped, never splitting a line), `Tail` with last n lines and follow across rotation by polling (no fixed sleeps in tests: the poll interval is a package variable tests shorten).
+  - [x] cmd/hlabd/main.go logs through `logfile.NewWriter(paths.Logs, "hlabd.log", logfile.MaxBytes, logfile.Keep)`.
 
-- [ ] 09-04 Public range: settings rules and transit addresses
+- [x] 09-04 Public range: settings rules and transit addresses
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: HOST-02 | Tests: internal/settings/settings_test.go, internal/transit/transit_test.go
   - Reads: ARCHITECTURE "Network", "Files and formats" (Settings); DECISIONS "public_range excludes private and shared ranges", "Network addressing"
   - Size: ~200 lines in 4 files
-  - [ ] internal/settings/settings.go: `public_range` must be IPv4 /8../28, is normalised to its network address, and is refused (message naming `network.public_range` and the overlapped range) when it overlaps 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12 (this covers 172.31.1.1), 192.168.0.0/16, 224.0.0.0/3 (224/4 and up), 185.12.64.1 or 185.12.64.2.
-  - [ ] New package internal/transit with `For(r)`.
+  - [x] internal/settings/settings.go: `public_range` must be IPv4 /8../28, is normalised to its network address, and is refused (message naming `network.public_range` and the overlapped range) when it overlaps 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12 (this covers 172.31.1.1), 192.168.0.0/16, 224.0.0.0/3 (224/4 and up), 185.12.64.1 or 185.12.64.2.
+  - [x] New package internal/transit with `For(r)`.
 
 - [ ] 09-05 IPAM: changed range detection
   - Wave: 2 | Depends on: 09-02 | Review: alone
@@ -144,14 +144,14 @@ Settled by the test writers (the tests rely on them):
   - [ ] Add `resource.Lifecycle` (internal/resource/resource.go).
   - [ ] internal/resources/servers/lifecycle.go: `Halt` (save one VM after another, a failed save falls back to guest shutdown then hard off; shutdown asks all running guests, waits `Deps.HaltTimeout` (default 60 s, short in tests) in total, then hard off; Running VMs keep status `running`, Off VMs get `off`; hostShutdown changes nothing) and `Restore` (`SetStopAction` on every server VM that is Off or Saved, and on Running VMs too if 09-01 found Hyper-V accepts it, an InvalidState failure only logged; then Start for status running/starting with VM Saved or Off; failures logged).
 
-- [ ] 09-08 Load balancers: separate IPv6 prefix (Q14)
+- [x] 09-08 Load balancers: separate IPv6 prefix (Q14)
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: LB-01, LB-09 | Tests: internal/resources/loadbalancers/loadbalancers_test.go
   - Reads: DECISIONS "Q14: separate IPv6 prefix for load balancers", "Q11"; ARCHITECTURE "resource" (Recoverer)
   - Size: ~120 lines in 3 files
   - Adjusts: internal/resources/loadbalancers/loadbalancers_test.go (expected formal IPv6 of LB-01/LB-09 rows follows Q14)
-  - [ ] `loadbalancers.IPv6` uses `0xA0000000|id` (internal/resources/loadbalancers/loadbalancers.go).
-  - [ ] New internal/resources/loadbalancers/recover.go: `Recover` moves every `dns_ptr` entry of an LB without IPv6 primary IP from the /64 `2001:db8:<0x80000000|id>` to the new /64 with the same interface ID; idempotent; LBs with an IPv6 primary IP untouched.
+  - [x] `loadbalancers.IPv6` uses `0xA0000000|id` (internal/resources/loadbalancers/loadbalancers.go).
+  - [x] New internal/resources/loadbalancers/recover.go: `Recover` moves every `dns_ptr` entry of an LB without IPv6 primary IP from the /64 `2001:db8:<0x80000000|id>` to the new /64 with the same interface ID; idempotent; LBs with an IPv6 primary IP untouched.
 
 - [ ] 09-09 Agent and appliance: transit addresses from the range
   - Wave: 2 | Depends on: 09-04 | Review: alone
