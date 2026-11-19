@@ -199,14 +199,14 @@ type ShadowingZone struct {
   - [x] Primary IPs: `change_dns_ptr` action through `rdns.Change` (records shown through `rdns.Show`), `ChangeServer` (finds the server's primary IP holding `ip`; an IP the server does not hold: 422 `invalid_input` on `ip`; mirrors the change into the server's `public_net`, also on assign), `Contribute` adds the effective PTR of every primary IPv4 to `doc.PTR` (internal/resources/primaryips/actions.go, internal/resources/primaryips/primaryips.go)
   - [x] Rows of TESTS.md for 07-04 (internal/resources/primaryips/primaryips_test.go)
 
-- [ ] 07-05 Floating IPs: change_dns_ptr
+- [x] 07-05 Floating IPs: change_dns_ptr
   - Wave: 2 | Depends on: 07-03 | Review: alone
   - Requirements: RDNS-01 | Tests: internal/resources/floatingips/floatingips_test.go
   - Reads: RESEARCH R3; internal/resources/floatingips/actions.go (`change`, `Contribute`)
   - Size: ~120 lines in 3 files
   - Adjusts: -
-  - [ ] `change_dns_ptr` action through `rdns.Change`, `dns_ptr` shown through `rdns.Show`, `Contribute` adds the effective PTR of every floating IPv4 to `doc.PTR` (internal/resources/floatingips/actions.go, internal/resources/floatingips/floatingips.go)
-  - [ ] Rows of TESTS.md for 07-05 (internal/resources/floatingips/floatingips_test.go)
+  - [x] `change_dns_ptr` action through `rdns.Change`, `dns_ptr` shown through `rdns.Show`, `Contribute` adds the effective PTR of every floating IPv4 to `doc.PTR` (internal/resources/floatingips/actions.go, internal/resources/floatingips/floatingips.go)
+  - [x] Rows of TESTS.md for 07-05 (internal/resources/floatingips/floatingips_test.go)
 
 - [ ] 07-06 Agent: answering hlab zones
   - Wave: 2 | Depends on: 07-01 | Review: alone
