@@ -262,6 +262,8 @@ type Module struct {
 	networks  Networks
 	firewalls Firewalls
 	dnsPtrs   DNSPtrs
+	// loadBalancers lists the load balancers targeting a server; nil = none.
+	loadBalancers func(tx store.Tx, serverID int64) ([]int64, error)
 	// onDelete run inside the transaction that deletes a server record.
 	onDelete []func(tx store.Tx, serverID int64) error
 
@@ -281,6 +283,12 @@ func New(d Deps) *Module {
 
 // SetVolumes sets the volume hooks.
 func (m *Module) SetVolumes(h VolumeHooks) { m.volumes = h }
+
+// SetLoadBalancers sets the hook that fills the load_balancers field of
+// the server view.
+func (m *Module) SetLoadBalancers(f func(tx store.Tx, serverID int64) ([]int64, error)) {
+	m.loadBalancers = f
+}
 
 // SetVolumes sets the volumes field of server serverID.
 func SetVolumes(tx store.Tx, serverID int64, ids []int64) error {
@@ -465,6 +473,13 @@ func (m *Module) show(tx store.Tx, r Record) (Server, error) {
 	}
 	if s.PublicNet.Firewalls, err = m.firewallsOf(tx, r); err != nil {
 		return Server{}, err
+	}
+	if m.loadBalancers != nil {
+		lbs, err := m.loadBalancers(tx, r.ID)
+		if err != nil {
+			return Server{}, err
+		}
+		s.LoadBalancers = append([]int64{}, lbs...)
 	}
 	return s, nil
 }
