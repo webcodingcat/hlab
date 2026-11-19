@@ -1324,7 +1324,7 @@ in ARCHITECTURE.md or the plan.
 
 - Type: decision
 - Phase: B1
-- What: Optional `Hlab.InstanceID` (empty = server ID); every rebuild sets `<server id>-<rebuild action id>`, used by the server and rescue seed; metadata `/instance-id` stays the server ID.
+- What: Optional `Internal.InstanceID` in the server record (JSON `instance_id`, empty = server ID); every rebuild sets `<server id>-<rebuild action id>`, used by the server and rescue seed; metadata `/instance-id` stays the server ID.
 - Why: A disk restored from the same server must count as a new instance so cloud-init reruns chpasswd and user_data.
 - Cost of change: medium (guest-visible)
 
@@ -1382,4 +1382,12 @@ in ARCHITECTURE.md or the plan.
 - Phase: B1
 - What: A once-fixture provides the server and its snapshot to SRV-12 and SRV-08/own_snapshot.
 - Why: No extra boot, as confirmed at the phase start.
+- Cost of change: low
+
+## 2026-11-19 A reset without its action is not served
+
+- Type: decision
+- Phase: B1
+- What: a pending password reset whose action ID is no longer in the actions table counts as not running and is not served to the agent.
+- Why: an action that no longer exists can never finish the reset, so serving it could only apply a password nobody was told about.
 - Cost of change: low
