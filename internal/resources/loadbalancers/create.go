@@ -19,7 +19,7 @@ import (
 // createRequest is POST /load_balancers.
 type createRequest struct {
 	Name             string            `json:"name"`
-	LoadBalancerType string            `json:"load_balancer_type"`
+	LoadBalancerType json.RawMessage   `json:"load_balancer_type"`
 	Algorithm        *Algorithm        `json:"algorithm"`
 	Labels           map[string]string `json:"labels"`
 	PublicInterface  *bool             `json:"public_interface"`
@@ -91,9 +91,9 @@ func (m *Module) newRecord(tx store.Tx, projectID int64, body createRequest) (Re
 	if err := api.CheckLabels(body.Labels); err != nil {
 		return r, err
 	}
-	typ, ok := m.lbType(body.LoadBalancerType)
+	typ, ok := m.lbType(refString(body.LoadBalancerType))
 	if !ok {
-		return r, &api.FieldError{Field: "load_balancer_type", Message: "load balancer type " + body.LoadBalancerType + " not found"}
+		return r, &api.FieldError{Field: "load_balancer_type", Message: "load balancer type " + refString(body.LoadBalancerType) + " not found"}
 	}
 	loc, err := m.createLocation(body.Location, body.NetworkZone)
 	if err != nil {

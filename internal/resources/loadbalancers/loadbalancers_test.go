@@ -288,6 +288,7 @@ type lbView struct {
 		NetworkZone string `json:"network_zone"`
 	} `json:"location"`
 	LoadBalancerType struct {
+		ID   int64  `json:"id"`
 		Name string `json:"name"`
 	} `json:"load_balancer_type"`
 	Protection struct {
@@ -653,6 +654,12 @@ func testCreate(t *testing.T) {
 	zoned := createLB(t, e, map[string]any{"name": "zoned", "load_balancer_type": "lb11", "network_zone": "eu-central"})
 	if zoned.Location.Name != firstInZone || zoned.Location.NetworkZone != "eu-central" {
 		t.Errorf("network_zone eu-central alone: location %s (%s), want %s", zoned.Location.Name, zoned.Location.NetworkZone, firstInZone)
+	}
+
+	byID := lbBody("by-type-id")
+	byID["load_balancer_type"] = lb.LoadBalancerType.ID
+	if got := createLB(t, e, byID); got.LoadBalancerType.Name != "lb11" {
+		t.Errorf("create with type ID %d: type %s, want lb11", lb.LoadBalancerType.ID, got.LoadBalancerType.Name)
 	}
 
 	badType := lbBody("bad-type")

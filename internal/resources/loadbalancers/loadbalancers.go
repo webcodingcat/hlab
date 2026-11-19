@@ -269,6 +269,20 @@ func (m *Module) lbType(ref string) (Type, bool) {
 	return Type{}, false
 }
 
+// refString is a reference given as a JSON string or number, as text; ""
+// for anything else.
+func refString(raw json.RawMessage) string {
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	var n json.Number
+	if json.Unmarshal(raw, &n) == nil {
+		return n.String()
+	}
+	return ""
+}
+
 // location finds a catalog location by name or ID.
 func (m *Module) location(ref string) (catalog.Location, bool) {
 	if l, ok := m.d.Catalog.Location(ref); ok {

@@ -2,6 +2,7 @@ package loadbalancers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -75,16 +76,17 @@ func (m *Module) changeAlgorithm(w http.ResponseWriter, req *http.Request) {
 // services, targets and certificates.
 func (m *Module) changeType(w http.ResponseWriter, req *http.Request) {
 	var body struct {
-		LoadBalancerType string `json:"load_balancer_type"`
+		LoadBalancerType json.RawMessage `json:"load_balancer_type"`
 	}
 	id, ok := decodeAction(w, req, &body)
 	if !ok {
 		return
 	}
 	m.change(w, req, id, "change_type", func(_ store.Tx, r *Record) ([]actions.Ref, error) {
-		typ, ok := m.lbType(body.LoadBalancerType)
+		ref := refString(body.LoadBalancerType)
+		typ, ok := m.lbType(ref)
 		if !ok {
-			return nil, &api.FieldError{Field: "load_balancer_type", Message: "load balancer type " + body.LoadBalancerType + " not found"}
+			return nil, &api.FieldError{Field: "load_balancer_type", Message: "load balancer type " + ref + " not found"}
 		}
 		if err := fits(*r, typ); err != nil {
 			return nil, err
