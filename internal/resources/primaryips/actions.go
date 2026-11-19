@@ -14,11 +14,13 @@ import (
 // change runs one primary IP action: in a single transaction it loads
 // primary IP id, applies f (which validates and changes the record and
 // returns further action resources), starts the action command and stores
-// the record; the action's work pushes the agent document.
+// the record; the action's work applies the change to the server among
+// those resources (applyTo).
 func (m *Module) change(w http.ResponseWriter, req *http.Request, id int64, command string, f func(tx store.Tx, r *Record) ([]actions.Ref, error)) {
 	p, _ := api.ProjectFrom(req.Context())
 	acts := api.ActionsFrom(req.Context())
 	var action *actions.Action
+	var refs []actions.Ref
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
 		r, err := Load(tx, p.ID, id)
 		if err != nil {
@@ -28,7 +30,7 @@ func (m *Module) change(w http.ResponseWriter, req *http.Request, id int64, comm
 		if err != nil {
 			return err
 		}
-		refs := append([]actions.Ref{{ID: id, Type: refType}}, more...)
+		refs = append([]actions.Ref{{ID: id, Type: refType}}, more...)
 		if action, err = acts.Start(tx, p.ID, command, refs); err != nil {
 			return err
 		}
@@ -38,8 +40,28 @@ func (m *Module) change(w http.ResponseWriter, req *http.Request, id int64, comm
 		api.Fail(w, err)
 		return
 	}
-	acts.Run(action.ID, func(ctx context.Context, _ func(int)) error { return m.d.PushAgent(ctx) })
+	var serverID int64
+	for _, ref := range refs {
+		if ref.Type == "server" {
+			serverID = ref.ID
+		}
+	}
+	acts.Run(action.ID, func(ctx context.Context, _ func(int)) error { return m.applyTo(ctx, serverID) })
 	api.JSON(w, http.StatusCreated, map[string]any{"action": action})
+}
+
+// applyTo brings an addressing change to server serverID: its seed is
+// rebuilt and the agent document pushed; a server gone meanwhile needs
+// nothing. Without a server (0) only the agent document is pushed.
+func (m *Module) applyTo(ctx context.Context, serverID int64) error {
+	if serverID == 0 {
+		return m.d.PushAgent(ctx)
+	}
+	err := m.d.Servers.SyncAdapters(ctx, m.d.Store, serverID, nil)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	return err
 }
 
 // decodeAction reads the path ID and the body of a primary IP action; an

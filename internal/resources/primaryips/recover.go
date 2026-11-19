@@ -56,7 +56,7 @@ func recovered(s servers.Record, id int64, typ, ip string) Record {
 		Created:      s.Created,
 		Location:     s.Location,
 		IP:           ip,
-		DNSPtr:      []DNSPtr{},
+		DNSPtr:       []DNSPtr{},
 		Type:         typ,
 		AutoDelete:   true,
 		AssigneeType: "server",

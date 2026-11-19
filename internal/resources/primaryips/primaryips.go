@@ -376,7 +376,8 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if action != nil {
-		acts.Run(action.ID, func(ctx context.Context, _ func(int)) error { return m.d.PushAgent(ctx) })
+		sid := *body.AssigneeID
+		acts.Run(action.ID, func(ctx context.Context, _ func(int)) error { return m.applyTo(ctx, sid) })
 	}
 	api.JSON(w, http.StatusCreated, map[string]any{"primary_ip": view(r), "action": action})
 }
