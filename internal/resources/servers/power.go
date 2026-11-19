@@ -3,7 +3,6 @@ package servers
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -62,9 +61,9 @@ func (m *Module) power(w http.ResponseWriter, req *http.Request, a powerAction) 
 	}
 	check := func(context.Context) error { return nil }
 	if a.op == platform.PowerStart && rec.Status != StatusRunning {
-		typ, ok := m.d.Catalog.ServerType(rec.Hlab.ServerType)
-		if !ok {
-			api.ServerError(w, fmt.Errorf("server type %q not in the catalog", rec.Hlab.ServerType))
+		typ, err := m.recordType(rec)
+		if err != nil {
+			api.ServerError(w, err)
 			return
 		}
 		check = func(ctx context.Context) error {
