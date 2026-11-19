@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -55,6 +56,11 @@ func loadValidator() (validator.Validator, error) {
 		}
 		if err != nil {
 			specErr = fmt.Errorf("read %s: %w", path, err)
+			return
+		}
+		data, err = lbAssignee(data)
+		if err != nil {
+			specErr = fmt.Errorf("patch %s: %w", path, err)
 			return
 		}
 		doc, err := libopenapi.NewDocument(upperRangeKeys(data))
@@ -137,6 +143,21 @@ func upperRangeKeys(data []byte) []byte {
 		data = bytes.ReplaceAll(data, []byte(`"`+k+`xx":`), []byte(`"`+k+`XX":`))
 	}
 	return data
+}
+
+// assigneeEnum matches the start of the enum of primary_ip.assignee_type
+// in the response schemas, which describe it as the type of resource the
+// Primary IP "is assigned to".
+var assigneeEnum = regexp.MustCompile(`("assignee_type":\s*\{\s*"description":\s*"Type of resource the [^"]*is assigned to\.[^"]*",\s*"type":\s*"string",\s*"enum":\s*\[)`)
+
+// lbAssignee adds "load_balancer" to the enum of primary_ip.assignee_type
+// in the responses: hlab shows a Primary IP held by a load balancer that
+// way, the one documented deviation in a response shape.
+func lbAssignee(data []byte) ([]byte, error) {
+	if !assigneeEnum.Match(data) {
+		return nil, errors.New("primary_ip.assignee_type enum not found")
+	}
+	return assigneeEnum.ReplaceAll(data, []byte(`$1"load_balancer",`)), nil
 }
 
 func truncate(b []byte, n int) string {
