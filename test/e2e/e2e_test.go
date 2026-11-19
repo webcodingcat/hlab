@@ -16,6 +16,8 @@ func TestE2E(t *testing.T) {
 	t.Cleanup(func() { releaseNetFixture(t) })
 	// The same for the load balancer LB-02 to LB-05 and CERT-04 share.
 	t.Cleanup(func() { releaseLBFixture(t) })
+	// The e2e tray the UI rows share ends with the group.
+	t.Cleanup(func() { releaseTray(t) })
 
 	// LIFE-01 stops and starts the cloud, so it runs alone before the
 	// parallel rows.
@@ -29,6 +31,14 @@ func TestE2E(t *testing.T) {
 	t.Run("LIFE-04", testLIFE04)
 	t.Run("LIFE-07", testLIFE07)
 	releaseLifeFixture(t)
+
+	// The UI rows drive the one tray window, and UI-01 stops and starts the
+	// cloud, so they run alone after the LIFE rows.
+	t.Run("UI-01", testUI01)
+	t.Run("UI-03", testUI03)
+	t.Run("UI-04", testUI04)
+	t.Run("UI-05", testUI05)
+	t.Run("UI-06", testUI06)
 
 	t.Run("PROJ-05", parallel(testPROJ05))
 	t.Run("API-01", parallel(testAPI01))
