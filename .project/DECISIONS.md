@@ -1783,3 +1783,11 @@ in ARCHITECTURE.md or the plan.
 - What: the DNS-03 e2e test reads NRPT rules with `Get-DnsClientNrptRule` filtered by the profile tag and falls back to the `DnsPolicyConfig` registry key if that needs elevation; it never changes rules.
 - Why: whether reading needs elevation is unconfirmed.
 - Cost of change: low
+
+## 2026-11-19 Reverse DNS entry rules
+
+- Type: decision
+- Phase: phase 07
+- What: a new IPv6 entry beyond 100 per /64 is `invalid_input` on `ip`; a `dns_ptr` needs at least two labels of letters, digits, `-` or `_`, no trailing dot, at most 253 characters; entries are keyed by the canonical IP form.
+- Why: Hetzner's exact rules are unconfirmed; the simplest check that refuses obvious mistakes.
+- Cost of change: low

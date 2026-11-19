@@ -180,14 +180,14 @@ type ShadowingZone struct {
   - [ ] `ParseZonefile` (miekg `ZoneParser` with origin `zone.`, TTL before or after class, rdata of each RR made relative where it lies in the zone, records grouped into RRSets in file order, each set through `CheckRRSet`, then `CheckConflicts`), `FormatZonefile` (internal/dnszone/zonefile.go)
   - [ ] Rows of TESTS.md for 07-02 (internal/dnszone/zonefile_test.go, in `TestDNSZone`)
 
-- [ ] 07-03 Reverse DNS entries
+- [x] 07-03 Reverse DNS entries
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: RDNS-01 | Tests: internal/rdns/rdns_test.go
   - Reads: REQUIREMENTS RDNS-01; RESEARCH R3; OpenAPI `change_dns_ptr` of servers, primary IPs, floating IPs; decisions D9, D10 below
   - Size: ~150 lines in 2 files
   - Adjusts: -
-  - [ ] `Entry`, `Default`, `Change`, `Show`, `PTR` (internal/rdns/rdns.go)
-  - [ ] Rows of TESTS.md for 07-03 (internal/rdns/rdns_test.go, group `TestRDNS`)
+  - [x] `Entry`, `Default`, `Change`, `Show`, `PTR` (internal/rdns/rdns.go)
+  - [x] Rows of TESTS.md for 07-03 (internal/rdns/rdns_test.go, group `TestRDNS`)
 
 - [ ] 07-04 Primary IPs and servers: change_dns_ptr
   - Wave: 2 | Depends on: 07-03 | Review: alone
