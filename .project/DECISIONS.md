@@ -1615,3 +1615,11 @@ in ARCHITECTURE.md or the plan.
 - What: `servers.Module.Metadata` builds a server's metadata entry without VLAN and IP and networks uses it for each member's private entry; `InterfaceNum` is the 1-based index in `private_net`; a member's `Subnet` is the subnet holding its IP.
 - Why: A server without public IPv4 has no public entry to copy; the index matches the seed's interface order.
 - Cost of change: low
+
+## 2026-11-19 Attach and detach rules
+
+- Type: decision
+- Phase: 05
+- What: `attach_to_network` checks network existence, `server_already_attached`, `networks_overlap`, then the 3-network limit; no free IP or no zone subnet gives `no_subnet_available`, a used or reserved `ip` or alias IP `ip_not_available`, an `ip`/`ip_range`/alias outside the subnets 422 `invalid_input`; alias IPs may come from any subnet of the network; `DELETE /networks` syncs the detached members' adapters after the commit before answering 204, logging failures.
+- Why: Hetzner documents no order or code for these cases.
+- Cost of change: low

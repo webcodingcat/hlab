@@ -245,14 +245,14 @@ func (m *Metadata) HandlerFor(vlan int) http.Handler
   - Adjusts: -
   - [x] `Contribute`: one `Network` per network (VLAN, range, gateway, routes, members with MAC, IP, alias IPs from the servers' `private_net`, deleting servers left out); per member a `Metadata` entry with the VLAN and private IP (copy of the server's public entry); `PrivateNetworks` of every server's metadata filled with name, subnet, gateway, range and interface number (internal/resources/networks/contribute.go)
 
-- [ ] 05-12 Networks: attach, detach, alias IPs
+- [x] 05-12 Networks: attach, detach, alias IPs
   - Wave: 3 | Depends on: 05-05, 05-10 | Review: alone
   - Requirements: NET-02, NET-03, NET-05 | Tests: internal/resources/networks/attach_test.go
   - Reads: REQUIREMENTS NET-02, NET-03, NET-05; RESEARCH R1 (limits), R2 (attach_server_to_network, change_server_alias_ips, delete_network); decisions/locations.md
   - Size: ~400 lines in 3 files
   - Adjusts: -
-  - [ ] `POST /servers/{id}/actions/attach_to_network` (network, ip, alias_ips, ip_range; subnet of the server's network zone else 422 `no_subnet_available`; `server_already_attached`, `ip_not_available`, `networks_overlap`; a fourth network 403 `resource_limit_exceeded`; more than 5 alias IPs 422 `invalid_input`), `detach_from_network`, `change_alias_ips` (replaces the list): record changes through `servers.Update` with a private MAC from `NextPrivateMAC`, then `SyncAdapters` in the action; actions lock server and network; `servers.Networks` for create (internal/resources/networks/attach.go)
-  - [ ] `DELETE /networks/{id}` detaches every member first (records, then `SyncAdapters`); network `servers` shown from the members' `private_net`; server deletion needs no hook here, since membership lives on the server record (internal/resources/networks/networks.go)
+  - [x] `POST /servers/{id}/actions/attach_to_network` (network, ip, alias_ips, ip_range; subnet of the server's network zone else 422 `no_subnet_available`; `server_already_attached`, `ip_not_available`, `networks_overlap`; a fourth network 403 `resource_limit_exceeded`; more than 5 alias IPs 422 `invalid_input`), `detach_from_network`, `change_alias_ips` (replaces the list): record changes through `servers.Update` with a private MAC from `NextPrivateMAC`, then `SyncAdapters` in the action; actions lock server and network; `servers.Networks` for create (internal/resources/networks/attach.go)
+  - [x] `DELETE /networks/{id}` detaches every member first (records, then `SyncAdapters`); network `servers` shown from the members' `private_net`; server deletion needs no hook here, since membership lives on the server record (internal/resources/networks/networks.go)
 
 - [ ] 05-13 Cloud wiring, appliance trunk and end-to-end
   - Wave: 4 | Depends on: 05-03, 05-06, 05-07, 05-08, 05-09, 05-12 | Review: alone
