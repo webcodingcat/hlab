@@ -191,3 +191,10 @@ Settled by the test writers (the tests rely on them):
   - Reads: SPEC "Documentation"; REQUIREMENTS "Documentation (DOC)"; DECISIONS phase 09 entries
   - Size: ~200 lines in 5 files
   - [x] docs/user/commands.md (`hlab logs`, `cloud start --discard-state`), docs/user/configuration.md (stop behaviour used at stop and re-read then, at a Windows shutdown the action set at the last start unless 09-01 found it applies to running VMs, `public_range` rules and refusals, log rotation), docs/user/deviations.md (LB IPv6 prefix of Q14), README.md (stop and start, discarding the state), docs/dev where components changed.
+
+## Close
+
+- Fix at the close: LB create and change_type accept a numeric `load_balancer_type` (hcloud 1.70.2 sends the ID; found by the doc-writer), commit 5483747, checked live with hcloud.
+- Unit suite and lint in full on 5483747: green.
+- End-to-end: `task e2e -- -v` (all tests, no filter, because the phase changed the shared harness test/e2e/e2e_test.go and the transit addresses every test uses) on 5483747: green, 1754 s; the e2e time limit in Taskfile.yml is lowered from 180m to 60m.
+- Manual: LIFE-05 in CHECKS.md.

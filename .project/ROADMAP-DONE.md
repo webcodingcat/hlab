@@ -6,6 +6,22 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x] 09 Cloud lifecycle and persistence.
+      Requirements: LIFE-02, LIFE-03, LIFE-04, LIFE-05, LIFE-07, LIFE-08,
+      LIFE-09, HOST-02; changes LB-01, LB-09 (Q14).
+      Depends on: 08.
+      Success criteria:
+      1. After stop and start with "save", a server's uptime continues and
+         every resource still works.
+      2. With "shutdown", servers come back after start and every resource
+         still works.
+      3. While the cloud is stopped no hlab route or NRPT rule exists on the
+         host.
+      4. A load balancer without an IPv6 primary IP shows
+         `2001:db8:<0xA0000000 | ID>::1` (Q14) and a PTR record set on its
+         old formal IPv6 is kept on the new address; LB-01 and LB-09 tests
+         and docs/user/deviations.md follow.
+
 - [x] 07 DNS zones and reverse DNS.
       Requirements: DNS-01, DNS-02, DNS-03, DNS-04, DNS-05, RDNS-01,
       RDNS-02.

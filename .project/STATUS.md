@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 09 Cloud lifecycle and persistence
+- Phase: 10 Tray program: shell, status, settings, server types, projects, logs
 - Base branch: main
-- Last done: phase 08 merged into main (2026-11-19): load balancers with services, targets, network, health and metrics on HAProxy in the appliance; uploaded and managed certificates from the hlab CA with CRL; CA trust switch for Windows and WSL2
-- Next: /wcc:phase in a new session (phase 09)
+- Last done: phase 09 merged into main (2026-11-19): servers saved or shut down at cloud stop and restored at start, configurable public range, incompatible state refused with `--discard-state`, rotated logs with `hlab logs`, LB IPv6 prefix 0xA0000000 (Q14)
+- Next: /wcc:phase in a new session (phase 10)
 
 ## Open manual checks
 
@@ -19,6 +19,7 @@ STATUS: IN_PROGRESS
      phases/<id>/CHECKS.md. /wcc:feedback walks through them. -->
 
 - DOC-07 (01): README and guides are understandable for their audience
+- LIFE-05 (09): a Windows shutdown or restart with the cloud running applies the stop behaviour
 
 ## Open decisions
 

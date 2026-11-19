@@ -29,21 +29,7 @@
 
 - [x] 08 Load balancers and certificates (LB-01, LB-02, LB-03, LB-04, LB-05, LB-06, LB-07, LB-08, LB-09, CERT-01, CERT-02, CERT-03, CERT-04, CERT-05) → phases/08/
 
-- [ ] 09 Cloud lifecycle and persistence.
-      Requirements: LIFE-02, LIFE-03, LIFE-04, LIFE-05, LIFE-07, LIFE-08,
-      LIFE-09, HOST-02; changes LB-01, LB-09 (Q14).
-      Depends on: 08.
-      Success criteria:
-      1. After stop and start with "save", a server's uptime continues and
-         every resource still works.
-      2. With "shutdown", servers come back after start and every resource
-         still works.
-      3. While the cloud is stopped no hlab route or NRPT rule exists on the
-         host.
-      4. A load balancer without an IPv6 primary IP shows
-         `2001:db8:<0xA0000000 | ID>::1` (Q14) and a PTR record set on its
-         old formal IPv6 is kept on the new address; LB-01 and LB-09 tests
-         and docs/user/deviations.md follow.
+- [x] 09 Cloud lifecycle and persistence (LIFE-02, LIFE-03, LIFE-04, LIFE-05, LIFE-07, LIFE-08, LIFE-09, HOST-02, LB-01, LB-09) → phases/09/
 
 - [ ] 10 Tray program: shell, status, settings, server types, projects,
       logs.
