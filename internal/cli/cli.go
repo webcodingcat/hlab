@@ -20,7 +20,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/webcodingcat/hlab/internal/discard"
 	"github.com/webcodingcat/hlab/internal/logfile"
 	"github.com/webcodingcat/hlab/internal/sysint"
 	"github.com/webcodingcat/hlab/internal/version"
@@ -55,6 +54,10 @@ type Command struct {
 	Flags []string
 }
 
+// discardParam is the flag of `cloud start` and the service start
+// parameter that ask hlabd to discard an incompatible state.
+const discardParam = "discard-state"
+
 // Exit codes.
 const (
 	exitOK    = 0
@@ -73,7 +76,7 @@ type command struct {
 }
 
 var commands = []command{
-	{path: "cloud start", bools: []string{discard.Param}, run: cloudStart},
+	{path: "cloud start", bools: []string{discardParam}, run: cloudStart},
 	{path: "cloud stop", run: cloudStop},
 	{path: "cloud status", run: cloudStatus},
 	{path: "catalog update", opts: []string{"hetzner-token-env"}, run: catalogUpdate},
@@ -369,8 +372,8 @@ type serviceState struct {
 
 func cloudStart(c *call) error {
 	var params []string
-	if c.flags[discard.Param] == "true" {
-		params = append(params, discard.Param)
+	if c.flags[discardParam] == "true" {
+		params = append(params, discardParam)
 	}
 	if err := c.io.Service.Start(c.ctx, params...); err != nil {
 		return err
