@@ -2071,3 +2071,11 @@ in ARCHITECTURE.md or the plan.
 - What: every API value drops control characters before it reaches haproxy.cfg, the cookie name keeps only RFC 6265 token characters, path, domain and response are double-quoted with escaping; an https service without a certificate is left out; health checks carry `port <n>`, `check-ssl verify none` for tls or https checks and `check-send-proxy` with proxyprotocol; sticky cookie values come from the target key; defaults timeouts 5s/50s/50s with a server-state file.
 - Why: the 08-02 review found config injection through unquoted API values; the rest is the simplest valid HAProxy config for the services.
 - Cost of change: low
+
+## 2026-11-19 Validator patch and load balancer type order
+
+- Type: decision
+- Phase: phase 08
+- What: the D7 validator patch finds the response schemas of `assignee_type` by regex and fails loading when it finds none; `GET /load_balancer_types` returns the catalog order without sorting; a PEM without a CERTIFICATE block makes `TrustCA` fail before the store is touched.
+- Why: a silent no-op patch would hide a changed description; the catalog is already in ID order.
+- Cost of change: low

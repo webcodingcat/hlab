@@ -207,20 +207,20 @@ type Deps struct {
   - [x] `ParseStat` (internal/agent/haproxy_stat.go)
   - [x] Rows of TESTS.md for 08-02 (internal/agent/haproxy_test.go, registered in `TestAgent` in internal/agent/metadata_test.go)
 
-- [ ] 08-03 API groundwork: error codes and load balancer types
+- [x] 08-03 API groundwork: error codes and load balancer types
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: LB-01 | Tests: internal/resources/loadbalancertypes/loadbalancertypes_test.go
   - Reads: R3.4; DECISIONS "Load balancer networks, targets and services", "Load balancer public IPs and primary IPs", "HTTP status of error codes from the OpenAPI error table"; OpenAPI `/load_balancer_types`; internal/resources/servertypes/servertypes.go as pattern; decision D7 below
   - Size: ~250 lines in 5 files
   - Adjusts: -
-  - [ ] Status table entries:
+  - [x] Status table entries:
     - 422: `load_balancer_already_attached`, `load_balancer_not_attached_to_network`, `targets_without_use_private_ip`, `load_balancer_public_interface_disabled`, `resolve_cloud_private_targets_error`, `resolve_cloud_public_targets_error`, `target_already_defined`, `invalid_load_balancer_type`, `primary_ip_blocked`, `primary_ip_location_mismatch`, `primary_ip_already_assigned`
     - 412: `source_port_already_used`
     - `FieldError.Status` used by `Fail`
     - (internal/api/errors.go)
-  - [ ] Module `loadbalancertypes`: `GET /load_balancer_types` (filter name, paging) and `/{id}` from `Catalog.LoadBalancerTypes` (internal/resources/loadbalancertypes/loadbalancertypes.go)
-  - [ ] The response validator adds `load_balancer` to the enum of `primary_ip.assignee_type` in the loaded description (D7) (internal/apitest/openapi.go)
-  - [ ] Rows of TESTS.md for 08-03 (internal/resources/loadbalancertypes/loadbalancertypes_test.go, group `TestLoadBalancerTypes`)
+  - [x] Module `loadbalancertypes`: `GET /load_balancer_types` (filter name, paging) and `/{id}` from `Catalog.LoadBalancerTypes` (internal/resources/loadbalancertypes/loadbalancertypes.go)
+  - [x] The response validator adds `load_balancer` to the enum of `primary_ip.assignee_type` in the loaded description (D7) (internal/apitest/openapi.go)
+  - [x] Rows of TESTS.md for 08-03 (internal/resources/loadbalancertypes/loadbalancertypes_test.go, group `TestLoadBalancerTypes`)
 
 - [x] 08-04 Host: CA in the Windows trust store
   - Wave: 1 | Depends on: - | Review: alone
