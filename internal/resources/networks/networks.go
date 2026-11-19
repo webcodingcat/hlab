@@ -114,6 +114,7 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("POST /networks/{id}/actions/add_route", http.HandlerFunc(m.addRoute))
 	r.Handle("POST /networks/{id}/actions/delete_route", http.HandlerFunc(m.deleteRoute))
 	r.Handle("POST /networks/{id}/actions/change_ip_range", http.HandlerFunc(m.changeIPRange))
+	m.serverRoutes(r)
 	resactions.RoutesFor(r, Kind, refType)
 }
 
@@ -147,6 +148,29 @@ func view(r Record) Network {
 		n.LoadBalancers = []int64{}
 	}
 	return n
+}
+
+// serversByNetwork returns per network ID of projectID the IDs of its
+// members, read from the servers' private_net.
+func serversByNetwork(tx store.Tx, projectID int64) (map[int64][]int64, error) {
+	docs, err := store.List[memberDoc](tx, servers.Kind, projectID)
+	if err != nil {
+		return nil, err
+	}
+	out := map[int64][]int64{}
+	for _, d := range docs {
+		for _, p := range d.PrivateNet {
+			out[p.Network] = append(out[p.Network], d.ID)
+		}
+	}
+	return out, nil
+}
+
+// show is r as the API shows it, with its members as servers.
+func show(tx store.Tx, r Record) (Network, error) {
+	by, err := serversByNetwork(tx, r.Hlab.ProjectID)
+	r.Servers = by[r.ID]
+	return view(r), err
 }
 
 // vlanKey is the kv key of VLAN n; its value is the network ID.
@@ -216,8 +240,13 @@ func (m *Module) list(w http.ResponseWriter, req *http.Request) {
 	var out []Network
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
 		recs, err := store.List[Record](tx, Kind, p.ID)
+		if err != nil {
+			return err
+		}
+		by, err := serversByNetwork(tx, p.ID)
 		out = make([]Network, 0, len(recs))
 		for _, r := range recs {
+			r.Servers = by[r.ID]
 			out = append(out, view(r))
 		}
 		return err
@@ -235,17 +264,20 @@ func (m *Module) get(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	p, _ := api.ProjectFrom(req.Context())
-	var r Record
+	var n Network
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
-		var err error
-		r, err = Load(tx, p.ID, id)
+		r, err := Load(tx, p.ID, id)
+		if err != nil {
+			return err
+		}
+		n, err = show(tx, r)
 		return err
 	})
 	if err != nil {
 		api.Fail(w, err)
 		return
 	}
-	api.JSON(w, http.StatusOK, map[string]any{"network": view(r)})
+	api.JSON(w, http.StatusOK, map[string]any{"network": n})
 }
 
 // createRequest is POST /networks.
@@ -339,10 +371,10 @@ func (m *Module) update(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	p, _ := api.ProjectFrom(req.Context())
-	var r Record
+	var n Network
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
-		var err error
-		if r, err = Load(tx, p.ID, id); err != nil {
+		r, err := Load(tx, p.ID, id)
+		if err != nil {
 			return err
 		}
 		if body.Name != nil {
@@ -360,24 +392,30 @@ func (m *Module) update(w http.ResponseWriter, req *http.Request) {
 		if body.ExposeRoutesToVSwitch != nil {
 			r.ExposeRoutesToVSwitch = *body.ExposeRoutesToVSwitch
 		}
-		return put(tx, r)
+		if err := put(tx, r); err != nil {
+			return err
+		}
+		n, err = show(tx, r)
+		return err
 	})
 	if err != nil {
 		api.Fail(w, err)
 		return
 	}
-	api.JSON(w, http.StatusOK, map[string]any{"network": view(r)})
+	api.JSON(w, http.StatusOK, map[string]any{"network": n})
 }
 
 // delete removes a network without delete protection and releases its
-// VLAN.
+// VLAN; its servers are detached first (records, then their adapters).
 func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 	id, ok := api.PathID(w, req)
 	if !ok {
 		return
 	}
 	p, _ := api.ProjectFrom(req.Context())
-	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
+	stor := api.StoreFrom(req.Context())
+	var detached []int64
+	err := stor.Tx(func(tx store.Tx) error {
 		r, err := Load(tx, p.ID, id)
 		if err != nil {
 			return err
@@ -385,12 +423,16 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 		if r.Protection.Delete {
 			return actions.ErrProtected
 		}
+		if detached, err = detachAll(tx, r); err != nil {
+			return err
+		}
 		return remove(tx, r)
 	})
 	if err != nil {
 		api.Fail(w, err)
 		return
 	}
+	m.syncDetached(req.Context(), stor, id, detached)
 	m.pushLogged(req.Context())
 	w.WriteHeader(http.StatusNoContent)
 }
