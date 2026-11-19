@@ -1,0 +1,1 @@
+Placeholder so go:embed finds ui/frontend/dist before the frontend is built.
