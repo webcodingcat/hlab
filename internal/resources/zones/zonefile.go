@@ -83,9 +83,6 @@ func importSets(r *Record, text string, now time.Time) error {
 		return fieldErr(err, "")
 	}
 	if ttl != 0 {
-		if checkTTL(ttl) != nil {
-			return &api.FieldError{Field: "zonefile", Message: "$TTL must be between 60 and 2147483647"}
-		}
 		r.TTL = ttl
 	}
 	old := "0"
