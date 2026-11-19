@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -27,6 +28,10 @@ const (
 	metadataAddr    = "169.254.169.254:80"
 	publicInterface = "eth0"
 )
+
+// trunkMAC is the MAC of the appliance's second adapter, the trunk that
+// carries the private networks' VLANs.
+var trunkMAC = net.HardwareAddr{0x02, 0x48, 0x4c, 0x00, 0x00, 0x02}
 
 func main() {
 	if err := run(); err != nil {
@@ -48,9 +53,9 @@ func run() error {
 	defer dns.Close()
 	metadata := agent.NewMetadata()
 	// The network applier adds the addresses the DNS server binds, so it
-	// comes first.
+	// comes first; the VRF applier needs its IPv4 forwarding.
 	a, err := agent.New(bytes.TrimSpace(raw),
-		agent.NewNetwork(publicInterface), agent.NewIsolation(publicInterface), dns, proxy, metadata)
+		agent.NewNetwork(publicInterface), agent.NewVRF(trunkMAC), agent.NewIsolation(publicInterface), dns, proxy, metadata)
 	if err != nil {
 		return err
 	}
