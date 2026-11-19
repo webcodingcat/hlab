@@ -185,9 +185,9 @@ Settled by the test writers (the tests rely on them):
   - [x] internal/cloud/cloud.go: addresses from `transit.For`; on `*store.IncompatibleError` refuse with `state_incompatible` unless `discard.Requested(params, err)`, then `hostnet.Down` (old tagged objects and zone NRPT rules), `discard.Run`, open the empty state; `ipam.Outside` non-empty refuses with `public_range_changed` (naming the recorded old range, or the first address outside when none is recorded, and `--discard-state`), and also discards when requested; `ipam.RecordRange` after the check; `Lifecycle.Restore` after the first `PushAgent`; at stop: jobs first, then re-read `stop_behaviour` (start value if the file is invalid), `Lifecycle.Halt`, appliance, `hostnet.Down`.
   - [x] cmd/hlabd/main.go passes the start parameters to `Cloud.Start`.
 
-- [ ] 09-13 Documentation
+- [x] 09-13 Documentation
   - Wave: 4 | Depends on: 09-12 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06, DOC-07 | Tests: test/docs/docs_test.go
   - Reads: SPEC "Documentation"; REQUIREMENTS "Documentation (DOC)"; DECISIONS phase 09 entries
   - Size: ~200 lines in 5 files
-  - [ ] docs/user/commands.md (`hlab logs`, `cloud start --discard-state`), docs/user/configuration.md (stop behaviour used at stop and re-read then, at a Windows shutdown the action set at the last start unless 09-01 found it applies to running VMs, `public_range` rules and refusals, log rotation), docs/user/deviations.md (LB IPv6 prefix of Q14), README.md (stop and start, discarding the state), docs/dev where components changed.
+  - [x] docs/user/commands.md (`hlab logs`, `cloud start --discard-state`), docs/user/configuration.md (stop behaviour used at stop and re-read then, at a Windows shutdown the action set at the last start unless 09-01 found it applies to running VMs, `public_range` rules and refusals, log rotation), docs/user/deviations.md (LB IPv6 prefix of Q14), README.md (stop and start, discarding the state), docs/dev where components changed.

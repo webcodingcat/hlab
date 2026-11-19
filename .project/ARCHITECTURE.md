@@ -134,7 +134,7 @@ Inside `hlabd` (Go packages under `internal/`):
   }
   type Lifecycle interface {            // modules whose VMs follow the cloud's stop and start (servers)
       Halt(ctx context.Context, behaviour string, hostShutdown bool) error // at stop, after API and jobs, before the appliance; nothing at a host shutdown
-      Restore(ctx context.Context, behaviour string) error // at start after the first PushAgent, before the API and jobs: stop action on Off/Saved VMs, resume or power on servers recorded running
+      Restore(ctx context.Context, behaviour string) error // at start after the first PushAgent, before the management API and jobs (the Hetzner API already serves): stop action on Off/Saved VMs, resume or power on servers recorded running
   }
   ```
 
@@ -849,16 +849,19 @@ level = "info"
   problem with a status message), open store, create switch and appliance
   if missing, open the hlab CA (created if missing) and renew its CRL,
   apply `hostnet.TrustCA` when `trust_ca` is on (a failure is a status
-  problem, not an abort), start appliance, `hostnet.Up`, push agent document, restore
-  servers (resume saved ones; power on those marked running), start API and
-  scheduler (with the weekly `crl` job), set status `running`.
+  problem, not an abort), start appliance, `hostnet.Up`, serve the Hetzner API, push agent document,
+  restore servers (resume saved ones; power on those marked running), start
+  the management API and scheduler (with the weekly `crl` job), set status `running`.
 - Stop (SCM stop or `SERVICE_CONTROL_PRESHUTDOWN` at Windows shutdown):
-  stop API, record which servers ran, then per `stop_behaviour` save or
+  stop jobs and APIs, record which servers ran, then per `stop_behaviour`
+  (read again from settings.toml) save or
   shut down every running VM (Shutdown integration service, 60 s, then
   hard off), stop the appliance, `hostnet.Down`, close store. At Windows
   shutdown `vmms` runs before hlabd in `PreshutdownOrder` and already
-  applies each VM's `AutomaticStopAction` (set to match `stop_behaviour`);
-  hlabd's preshutdown handler records the state and runs `hostnet.Down`.
+  applies each VM's `AutomaticStopAction` (set at the last cloud start on
+  Off and Saved VMs; Hyper-V refuses a change on a running VM); hlabd's
+  preshutdown handler changes no VM and no stored status and runs
+  `hostnet.Down`.
   hlabd sets its preshutdown timeout to 180 s
   (`SERVICE_CONFIG_PRESHUTDOWN_INFO`).
 
