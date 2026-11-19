@@ -73,3 +73,19 @@ type ActionUser interface {
 type Recoverer interface {
 	Recover(ctx context.Context) error
 }
+
+// Lifecycle is implemented by the servers module. The cloud calls Halt at
+// stop (after the API and the jobs, before the appliance) and Restore at
+// start (after the first agent push, before the management API and the
+// jobs).
+type Lifecycle interface {
+	// Halt saves ("save") or shuts down ("shutdown": all guests asked at
+	// once, hard off after the deadline) the running VMs and records in the
+	// server status which ran. hostShutdown: Hyper-V has already applied
+	// AutomaticStopAction; Halt changes neither VMs nor statuses.
+	Halt(ctx context.Context, behaviour string, hostShutdown bool) error
+	// Restore sets the VMs' AutomaticStopAction for behaviour, then resumes
+	// or powers on every server with status running or starting whose VM is
+	// Saved or Off. A server that fails is logged; Restore goes on.
+	Restore(ctx context.Context, behaviour string) error
+}
