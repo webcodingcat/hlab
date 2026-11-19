@@ -204,13 +204,13 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - [x] ui/frontend/src/theme.css (custom properties light/dark), lib/Button.svelte, lib/StatusPill.svelte, lib/CopyField.svelte.
   - [x] lib/Table.svelte (header, count, search, sortable columns, skeleton rows, empty state, row menu), lib/Field.svelte (label, inline error), lib/ConfirmDialog.svelte (typed name option, Escape closes), lib/Toast.svelte with lib/toast.ts (action progress, errors stay until closed).
 
-- [ ] 10-07 hlabd: settings reload, own types file, log followers at stop
+- [x] 10-07 hlabd: settings reload, own types file, log followers at stop
   - Wave: 2 | Depends on: 10-01, 10-04 | Review: alone
   - Requirements: UI-03, UI-04, LIFE-09 | Tests: internal/cloud/reload_test.go, internal/mgmt/mgmt_test.go
   - Reads: ARCHITECTURE "Management API (named pipe)", "Cloud start and stop"; DECISIONS "Tray writes server-types.custom.json directly", "Changed stop_behaviour reaches VMs at the next cloud start"; BACKLOG item "log followers"; CONTEXT
   - Size: ~250 lines in 5 files
-  - [ ] internal/mgmt/mgmt.go: `Deps.Reload` with `POST /settings/reload`; `Deps.Done` ends the follow of `GET /logs` (backlog bug: no 10 s wait at stop).
-  - [ ] internal/cloud (cloud.go, new reload.go): at start create `server-types.custom.json` with `[]` when missing and give it settings.toml's ACL via `settings.CopySecurity`; `reload` re-reads settings.toml (invalid file: error, nothing changed), sets `logging.level`, calls `cat.ReloadOwn` and refreshes the `custom_server_types` problem; stop_behaviour is already re-read at stop; public_range, data_folder and the reserves apply at the next start; close `Done` before `mgmtSrv.Shutdown`.
+  - [x] internal/mgmt/mgmt.go: `Deps.Reload` with `POST /settings/reload`; `Deps.Done` ends the follow of `GET /logs` (backlog bug: no 10 s wait at stop).
+  - [x] internal/cloud (cloud.go, new reload.go): at start create `server-types.custom.json` with `[]` when missing and give it settings.toml's ACL via `settings.CopySecurity`; `reload` re-reads settings.toml (invalid file: error, nothing changed), sets `logging.level`, calls `cat.ReloadOwn` and refreshes the `custom_server_types` problem; stop_behaviour is already re-read at stop; public_range, data_folder and the reserves apply at the next start; close `Done` before `mgmtSrv.Shutdown`.
 
 - [ ] 10-08 Bridge: management calls, settings, server types
   - Wave: 2 | Depends on: 10-01, 10-03, 10-04 | Review: alone
