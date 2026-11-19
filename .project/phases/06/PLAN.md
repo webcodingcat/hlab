@@ -129,14 +129,14 @@ func NewFirewall(iface string) *Firewall
   - [x] Applier `Firewall` on Linux: table `inet hlab_fw` replaced atomically (add, delete, add); forward chain policy accept at filter priority + 10; `ct state established,related accept` for packets to or from a filtered address; per filter: `oifname <pub> ip daddr <addr>` jumps to the server's in-chain (rules accept, then drop), `iifname <pub> ip saddr <addr>` to its out-chain (rules accept, then drop) only when `RestrictOut`; prefixes per rule as an interval set or per-prefix mask compare; port ranges with `expr.Range`; `firewall_other.go` no-op; registered after `NewIsolation` in main (internal/agent/firewall_linux.go, internal/agent/firewall_other.go, cmd/hlab-agent/main.go)
   - [x] Rows of TESTS.md for 06-04 (internal/agent/firewall_test.go, registered in `TestAgent`)
 
-- [ ] 06-05 Firewalls: resource
+- [x] 06-05 Firewalls: resource
   - Wave: 2 | Depends on: 06-02 | Review: alone
   - Requirements: FW-01 | Tests: internal/resources/firewalls/firewalls_test.go
   - Reads: REQUIREMENTS FW-01; RESEARCH R1 (endpoints, errors, limits); CONTEXT "Corrections by the user"; internal/resources/floatingips/floatingips.go as pattern
   - Size: ~350 lines in 2 files
   - Adjusts: -
-  - [ ] Module, `Record` (Hetzner shape: id, name, labels, created, rules, applied_to; `_hlab.project_id`; applied entries stored as `{type, server}` or `{type, label_selector}`), `GET /firewalls` (filter name, label_selector; sort id, name, created), `GET /firewalls/{id}`, `PUT` (name, labels; name 1..128, unique per project: 409 `uniqueness_error`), `POST /firewalls` without `apply_to` (rules through `CheckRules`; 201 `{firewall, actions}`, with rules one `set_firewall_rules` action naming the firewall that ends after the agent push), `DELETE` (applied anywhere, also by selector: 422 `resource_in_use`, message `firewall <id> is still in use`; else 204), action endpoints through `resactions.RoutesFor` (internal/resources/firewalls/firewalls.go)
-  - [ ] Rows of TESTS.md for 06-05 (internal/resources/firewalls/firewalls_test.go, group `TestFirewalls`)
+  - [x] Module, `Record` (Hetzner shape: id, name, labels, created, rules, applied_to; `_hlab.project_id`; applied entries stored as `{type, server}` or `{type, label_selector}`), `GET /firewalls` (filter name, label_selector; sort id, name, created), `GET /firewalls/{id}`, `PUT` (name, labels; name 1..128, unique per project: 409 `uniqueness_error`), `POST /firewalls` without `apply_to` (rules through `CheckRules`; 201 `{firewall, actions}`, with rules one `set_firewall_rules` action naming the firewall that ends after the agent push), `DELETE` (applied anywhere, also by selector: 422 `resource_in_use`, message `firewall <id> is still in use`; else 204), action endpoints through `resactions.RoutesFor` (internal/resources/firewalls/firewalls.go)
+  - [x] Rows of TESTS.md for 06-05 (internal/resources/firewalls/firewalls_test.go, group `TestFirewalls`)
 
 - [ ] 06-06 Firewalls: apply, remove, set rules, server hook
   - Wave: 3 | Depends on: 06-01, 06-03, 06-05 | Review: alone
