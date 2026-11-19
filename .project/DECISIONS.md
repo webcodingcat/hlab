@@ -1575,3 +1575,11 @@ in ARCHITECTURE.md or the plan.
 - What: The metadata input rule on private networks matches the ingress subinterface with `meta sdifname` (key 34, defined locally; kernel 5.1+), since `iifname` is the VRF device there; a route accept rule exists only when the route's gateway is a member IP or alias IP; conntrack zones are set in prerouting only.
 - Why: Keeps "Metadata service binds IP and MAC on its input path" on every segment; no rule uses `ct state`, and Hetzner firewalls do not filter private networks.
 - Cost of change: low
+
+## 2026-11-19 Primary IP details
+
+- Type: decision
+- Phase: 05
+- What: Primary IPs have no `datacenter` field (the frozen schema has none), the location lives in `_hlab.location`; create with `assignee_id` returns an `assign_primary_ip` action, with `location` none; automatic and recovered ones are named `primary_ip-<id>`; given `public_net` IDs win over `enable_ipv4/6: false`; DELETE checks protection before assignment; assign and unassign rebuild the server's seed through `SyncAdapters`.
+- Why: The frozen spec forbids extra properties; the seed must carry the new address for the next boot (PIP-02).
+- Cost of change: low
