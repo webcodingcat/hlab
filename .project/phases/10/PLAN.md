@@ -187,14 +187,14 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - [x] internal/settings/settings.go: json tags equal to the toml keys, `FieldError`, `Validate` (the existing rules returning the key), `Write` (validate, reread `trust_ca` from the file, encode, one in-place write that keeps the file's ACL); `Load` keeps its messages.
   - [x] internal/settings/security_windows.go, security_other.go: export `CopySecurity`; `Save` uses it.
 
-- [ ] 10-05 Frontend tooling, embed and bridge wrapper
+- [x] 10-05 Frontend tooling, embed and bridge wrapper
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-01 | Tests: - (used by all frontend tests)
   - Reads: RESEARCH topics 3 and 6; SPEC "Stack"; Taskfile.yml
   - Size: ~180 lines in 9 files
-  - [ ] ui/frontend/package.json (`@wailsio/runtime` 3.1.0 exact; scripts `test:unit`, `test:e2e`), tsconfig.json (`"types": ["svelte", "vite/client"]`), playwright.config.ts (projects `unit` = tests/unit without browser, `e2e` = tests/e2e, `workers: 1`, `fullyParallel: false`), Taskfile.yml task `test:frontend` (`npm run test:unit`).
-  - [ ] ui/embed.go (`package ui`, `//go:embed all:frontend/dist`, `var Dist embed.FS`); committed placeholder `ui/frontend/dist/embed-placeholder.txt` and `ui/frontend/public/embed-placeholder.txt` (Vite copies it back after `emptyOutDir`), .gitignore `ui/frontend/dist/*` with `!ui/frontend/dist/embed-placeholder.txt`, so `go vet`/`go test`/lint work on a fresh checkout.
-  - [ ] ui/frontend/src/lib/bridge.ts as in "Interfaces" (`Call.ByName`, `Events.On`, Hetzner and management error objects to `ApiError`).
+  - [x] ui/frontend/package.json (`@wailsio/runtime` 3.1.0 exact; scripts `test:unit`, `test:e2e`), tsconfig.json (`"types": ["svelte", "vite/client"]`), playwright.config.ts (projects `unit` = tests/unit without browser, `e2e` = tests/e2e, `workers: 1`, `fullyParallel: false`), Taskfile.yml task `test:frontend` (`npm run test:unit`).
+  - [x] ui/embed.go (`package ui`, `//go:embed all:frontend/dist`, `var Dist embed.FS`); committed placeholder `ui/frontend/dist/embed-placeholder.txt` and `ui/frontend/public/embed-placeholder.txt` (Vite copies it back after `emptyOutDir`), .gitignore `ui/frontend/dist/*` with `!ui/frontend/dist/embed-placeholder.txt`, so `go vet`/`go test`/lint work on a fresh checkout.
+  - [x] ui/frontend/src/lib/bridge.ts as in "Interfaces" (`Call.ByName`, `Events.On`, Hetzner and management error objects to `ApiError`).
 
 - [ ] 10-06 Frontend building blocks
   - Wave: 1 | Depends on: - | Review: alone
