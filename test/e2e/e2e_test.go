@@ -8,6 +8,10 @@ import "testing"
 // requirement ID only, so `-run 'TestE2E/SRV-01'` selects it and still gets
 // the shared setup of TestMain and the lazily created project and server.
 func TestE2E(t *testing.T) {
+	// The server and snapshot SRV-12 shares go when all parallel rows end,
+	// if a filter left out one of the rows using them.
+	t.Cleanup(func() { releaseSharedSnapshot(t) })
+
 	// LIFE-01 stops and starts the cloud, so it runs alone before the
 	// parallel rows.
 	t.Run("LIFE-01", testLIFE01)
@@ -22,6 +26,7 @@ func TestE2E(t *testing.T) {
 	t.Run("SRV-02", parallel(testSRV02))
 	t.Run("SRV-07", parallel(testSRV07))
 	t.Run("SRV-08", parallel(testSRV08))
+	t.Run("SRV-08/own_snapshot", parallel(testSRV08OwnSnapshot))
 	t.Run("SRV-09", parallel(testSRV09))
 	t.Run("SRV-10", parallel(testSRV10))
 	t.Run("SRV-21", parallel(testSRV21))

@@ -1303,3 +1303,147 @@ in ARCHITECTURE.md or the plan.
 - Type: change
 - What: The seven open `bug` items of BACKLOG.md become phase B1, inserted before phase 05; the `later` item for phase 09 and the `minor` test item stay in the backlog.
 - Why: They cause stuck resources after a restart, wrong passwords and ignored user_data on normal paths, and a broken e2e build, which later phases would build on.
+
+## 2026-11-19 Q6 Cloud start removes images and volumes left creating
+
+- Type: decision
+- Phase: B1
+- What: an optional module interface `resource.Recoverer` runs at cloud start, before the API serves and before the first backup job run, and removes images and volumes left `creating` by an interrupted action, with their partial files; Reconcile is not called at cloud start (ARCHITECTURE corrected).
+- Why: matches the `error` result of the interrupted action and the existing "failed create is dropped" handling, lets a client retry with the same name, and keeps the server path unchanged.
+- Cost of change: low
+
+## 2026-11-19 Stale password reset filtered by its action's status
+
+- Type: decision
+- Phase: B1
+- What: `Contribute` serves a pending reset to the agent only while the reset_password action with the reset's ID is `running`; rebuild clears `Hlab.PasswordReset`.
+- Why: `failInterrupted` marks the action `error` before the first agent push, so no start-up hook is needed and no path serves a stale reset.
+- Cost of change: low
+
+## 2026-11-19 NoCloud instance-id after a rebuild
+
+- Type: decision
+- Phase: B1
+- What: Optional `Internal.InstanceID` in the server record (JSON `instance_id`, empty = server ID); every rebuild sets `<server id>-<rebuild action id>`, used by the server and rescue seed; metadata `/instance-id` stays the server ID.
+- Why: A disk restored from the same server must count as a new instance so cloud-init reruns chpasswd and user_data.
+- Cost of change: medium (guest-visible)
+
+## 2026-11-19 Strict base64 decoding of user_data for the seed
+
+- Type: decision
+- Phase: B1
+- What: user_data that is valid standard base64 without whitespace is decoded for the NoCloud seed, with and without volumes; anything else stays raw; metadata serves raw user_data.
+- Why: Mirrors `maybe_b64decode(validate=True)` of the Hetzner datasource, which NoCloud lacks.
+- Cost of change: low
+
+## 2026-11-19 User MIME parts become leaf parts of hlab's multipart
+
+- Type: decision
+- Phase: B1
+- What: With automount volumes, gzip is unpacked and each leaf part of a user MIME document is copied unchanged and in order before hlab's cloud-config part (boundary chosen to not collide); non-MIME content stays one base64 text/plain part.
+- Why: cloud-init walks nested multiparts but does not unpack MIME or gzip inside text/plain, and `merge_how` needs hlab's part last.
+- Cost of change: low
+
+## 2026-11-19 `Platform.MetricsAll` with VM mapping in Go
+
+- Type: decision
+- Phase: B1
+- What: A new interface method reads the three counter classes and VM disks once per call; Go maps rows to VMs by exact name (adapters: longest matching VM name); `Metrics(vm)` stays on top of it.
+- Why: Extends the interface without breaking it and keeps the mapping unit-testable without Hyper-V.
+- Cost of change: low
+
+## 2026-11-19 Images module gets the store in its Deps
+
+- Type: decision
+- Phase: B1
+- What: `imagesres.Deps.Store`, used only by `Recover`.
+- Why: `Recover` runs outside a request and cannot take the store from the request context.
+- Cost of change: low
+
+## 2026-11-19 Start-up recovery runs before mounting
+
+- Type: decision
+- Phase: B1
+- What: `recoverModules` (internal/cloud/recover.go) runs right after `c.modules()`, before mounting, the API and the scheduled jobs; an error fails cloud start.
+- Why: Q6 requires it before the API serves and before the backup job.
+- Cost of change: low
+
+## 2026-11-19 E2E harness restores the cloud state it found
+
+- Type: decision
+- Phase: B1
+- What: If the dev cloud runs, `setup()` stops it with the existing binary, builds, and starts it again without setting `startedCloud`, so it stays running.
+- Why: A developer gets a test run instead of a build error and the cloud is left as found.
+- Cost of change: low
+
+## 2026-11-19 SRV-08 e2e row shares SRV-12's server and snapshot
+
+- Type: decision
+- Phase: B1
+- What: A once-fixture provides the server and its snapshot to SRV-12 and SRV-08/own_snapshot.
+- Why: No extra boot, as confirmed at the phase start.
+- Cost of change: low
+
+## 2026-11-19 A reset without its action is not served
+
+- Type: decision
+- Phase: B1
+- What: a pending password reset whose action ID is no longer in the actions table counts as not running and is not served to the agent.
+- Why: an action that no longer exists can never finish the reset, so serving it could only apply a password nobody was told about.
+- Cost of change: low
+
+## 2026-11-19 Seed multipart written with mime/multipart
+
+- Type: decision
+- Phase: B1
+- What: With automount volumes the seed user-data is written by Go's `multipart.Writer` (CRLF, sorted part headers) instead of a hand-built LF document.
+- Why: Standard MIME that cloud-init's email parser accepts, and copied user parts keep their exact bytes.
+- Cost of change: low
+
+## 2026-11-19 Base64 check for seed user_data
+
+- Type: decision
+- Phase: B1
+- What: user_data is decoded only if the whole value matches `^[A-Za-z0-9+/]*={0,2}$` and decodes with correct padding; extra bits in the last character are accepted as in Python's validate=True.
+- Why: Mirrors cloud-init's `maybe_b64decode(validate=True)`.
+- Cost of change: low
+
+## 2026-11-19 Seed boundary collision and unparsable MIME
+
+- Type: decision
+- Phase: B1
+- What: If hlab's boundary occurs in copied content a number is appended until it does not; a MIME document that cannot be parsed falls back to one base64 text/plain part with the content after gunzip.
+- Why: Keeps the outer document valid and never drops user content.
+- Cost of change: low
+
+## 2026-11-19 E2E harness on a fresh checkout
+
+- Type: decision
+- Phase: B1
+- What: the harness skips the running check and the stop when bin\hlab.exe does not exist yet.
+- Why: a fresh checkout has no binary to ask and no cloud of this working copy can run.
+- Cost of change: low
+
+## 2026-11-19 MetricsAll leaves out VMs not on the host
+
+- Type: decision
+- Phase: B1
+- What: A VM counts as existing when `Get-VM` lists it; a requested VM missing there is left out of the map and `Metrics(vm)` returns NotFound as before.
+- Why: Keeps the behaviour of `Metrics` and lets the sampler skip servers whose VM is gone.
+- Cost of change: low
+
+## 2026-11-19 Adapters map to the longest VM name on the host
+
+- Type: decision
+- Phase: B1
+- What: Network adapter rows go to the longest matching VM name among all VMs on the host, not only the requested ones.
+- Why: A VM not sampled must not have its adapters counted for a VM whose name is a prefix of its own.
+- Cost of change: low
+
+## 2026-11-19 Failed metrics tick stores nothing
+
+- Type: decision
+- Phase: B1
+- What: If the MetricsAll call fails the tick stores nothing and logs a warning (not when the context was cancelled); with no running servers no platform call is made.
+- Why: One failed read must not write zero samples for all servers.
+- Cost of change: low

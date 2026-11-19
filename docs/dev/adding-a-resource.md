@@ -122,13 +122,29 @@ The router calls it with its action manager when it mounts the module,
 before `Routes`; the job then calls `m.actions.Start` itself, as the
 servers do for the daily backups.
 
-## 5. Register the module
+## 5. Clean up after a restart (optional)
+
+An action cut short by a cloud stop ends with `server_error` at the next
+start, but the record it worked on may be left half-made (a `creating`
+volume with a partial disk). A module with such records implements
+`resource.Recoverer`:
+
+```go
+func (m *Module) Recover(ctx context.Context) error
+```
+
+Cloud start calls it once, after the interrupted actions are marked
+failed and before the API serves or any job runs; an error fails the
+start. Remove what cannot be finished, as the images and volumes do with
+records still `creating` and their files; a missing file is no error.
+
+## 6. Register the module
 
 Add it to `Cloud.modules()` in
 [internal/cloud/cloud.go](../../internal/cloud/cloud.go). The router mounts
 every module of that list.
 
-## 6. Test it
+## 7. Test it
 
 Test with [internal/apitest](../../internal/apitest): `apitest.New(t,
 widgets.New())` runs the handlers in process with a temporary store and a
@@ -150,7 +166,7 @@ it has finished.
   table.
 - Behaviour that needs real Hyper-V goes into [test/e2e](../../test/e2e).
 
-## 7. Document deviations
+## 8. Document deviations
 
 When the resource behaves differently from Hetzner, add an entry to
 `api.Deviations()` in [internal/api/deviations.go](../../internal/api/deviations.go)

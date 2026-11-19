@@ -361,6 +361,27 @@ func (f *Fake) Metrics(ctx context.Context, name string) (platform.Sample, error
 	return platform.Sample{Time: time.Now()}, nil
 }
 
+// MetricsAll returns, for every existing VM of vms, the sample set with
+// SetSample, else zero counters now; it records the VM names as Arg.
+func (f *Fake) MetricsAll(ctx context.Context, vms []string) (map[string]platform.Sample, error) {
+	if err := f.begin(ctx, "MetricsAll", "", append([]string(nil), vms...)); err != nil {
+		return nil, err
+	}
+	defer f.mu.Unlock()
+	out := map[string]platform.Sample{}
+	for _, name := range vms {
+		v, ok := f.vms[name]
+		switch {
+		case !ok:
+		case v.sample != nil:
+			out[name] = *v.sample
+		default:
+			out[name] = platform.Sample{Time: time.Now()}
+		}
+	}
+	return out, nil
+}
+
 // HostResources returns the resources set with SetResources.
 func (f *Fake) HostResources(ctx context.Context) (platform.Resources, error) {
 	if err := f.begin(ctx, "HostResources", "", nil); err != nil {

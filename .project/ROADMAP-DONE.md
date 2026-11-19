@@ -6,6 +6,8 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x] B1 Backlog: restart recovery, cloud-init and dev-loop bugs → phases/B1/
+
 - [x] 04 Images, backups, rescue, ISOs and volumes.
       Requirements: SRV-11, SRV-12, SRV-13, SRV-14, SRV-15, CAT-08, VOL-01,
       VOL-02, VOL-03, VOL-04, VOL-05.

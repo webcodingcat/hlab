@@ -504,6 +504,47 @@ func TestVolumes(t *testing.T) {
 		}
 	})
 
+	t.Run("VOL-01/recover", func(t *testing.T) {
+		e := newVolEnv(t)
+		kept := createVolume(t, e, "kept", 10)
+		cut := createVolume(t, e, "cut", 10)
+		keptPath, cutPath := e.diskOf(t, kept), e.diskOf(t, cut)
+		err := e.Store.Tx(func(tx store.Tx) error {
+			r, err := store.Get[volumes.Record](tx, volumes.Kind, e.Project.ID, cut)
+			if err != nil {
+				return err
+			}
+			r.Status = volumes.StatusCreating
+			return store.Put(tx, store.Meta{
+				Kind: volumes.Kind, ID: r.ID, ProjectID: r.Hlab.ProjectID, Name: r.Name, Labels: r.Labels, Created: r.Created,
+			}, r)
+		})
+		if err != nil {
+			t.Fatalf("mark volume %d creating: %v", cut, err)
+		}
+
+		mod := volumes.New(volumes.Deps{Store: e.Store, Platform: e.fake})
+		if err := mod.Recover(context.Background()); err != nil {
+			t.Fatalf("Recover: %v", err)
+		}
+
+		path := fmt.Sprintf("/volumes/%d", cut)
+		if resp := e.Do(http.MethodGet, path, nil); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("GET %s of the volume left creating after Recover: status %d, want 404", path, resp.StatusCode)
+		}
+		if exists(cutPath) {
+			t.Errorf("disk %s of the volume left creating still exists after Recover", cutPath)
+		}
+		if v := getVolume(t, e, kept); v.Status != "available" {
+			t.Errorf("volume kept after Recover = %+v, want available", v)
+		}
+		if !exists(keptPath) {
+			t.Errorf("disk %s of the available volume removed by Recover", keptPath)
+		}
+		// The name of the removed volume can be used again.
+		createVolume(t, e, "cut", 10)
+	})
+
 	t.Run("SRV-18", func(t *testing.T) {
 		e := newVolEnv(t)
 		tight := plenty

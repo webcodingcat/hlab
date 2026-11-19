@@ -10,10 +10,13 @@ import (
 	"io/fs"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,6 +25,7 @@ import (
 
 	diskfs "github.com/diskfs/go-diskfs"
 
+	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/apitest"
 	"github.com/webcodingcat/hlab/internal/catalog"
@@ -675,6 +679,159 @@ func TestServers(t *testing.T) {
 		}
 		if r := trec.currentReset(t, tid); r != nil {
 			t.Errorf("pending reset after the timeout: %+v, want none", r)
+		}
+	})
+
+	t.Run("SRV-10/interrupted_reset", func(t *testing.T) {
+		env, rec := newAgentEnv(t, platformtest.NewFake(), apitest.ActionTimeout)
+		id := createdServer(t, env, "reset-interrupted", nil)
+		act, _ := startAction(t, env, id, "reset_password", nil)
+		rec.waitPushedReset(t, id)
+		if r := rec.currentReset(t, id); r == nil {
+			t.Fatal("agent document without the pending reset while reset_password runs, want it")
+		}
+		rec.mu.Lock()
+		pushed := rec.pushed
+		rec.mu.Unlock()
+
+		// A restart of hlabd: the new action manager ends the running
+		// reset_password with server_error.
+		actions.New(env.Store)
+		if a := env.GetAction(act); a.Status != "error" || a.Error == nil || a.Error.Code != "server_error" {
+			t.Fatalf("reset_password after the restart: %q %+v, want error server_error", a.Status, a.Error)
+		}
+		if r := rec.currentReset(t, id); r != nil {
+			t.Errorf("agent document after the interrupted reset_password holds the pending reset %+v, want none", r)
+		}
+
+		// The worker of the interrupted action still runs in this process;
+		// confirm its reset so it ends before the test does.
+		rec.mu.Lock()
+		rec.pushed = pushed
+		rec.mu.Unlock()
+		rec.confirm.Store(true)
+		deadline := time.Now().Add(apitest.ActionTimeout)
+		for env.GetAction(act).Status == "error" && time.Now().Before(deadline) {
+			time.Sleep(10 * time.Millisecond)
+		}
+	})
+
+	t.Run("SRV-08/instance_id", func(t *testing.T) {
+		p := newRecPlatform()
+		imgs := newTestImages(t)
+		env, _, _ := newImageEnv(t, p, func(d *servers.Deps) { d.Images = imgs })
+		id := createdServer(t, env, "instance-id", map[string]any{"user_data": "#cloud-config\n# hlab-before-rebuild\n"})
+
+		// rebuild runs a rebuild with userData and returns its action, the
+		// returned root password and the files of the new server seed.
+		rebuild := func(t *testing.T, userData string) (int64, string, map[string][]byte) {
+			t.Helper()
+			act, raw := startAction(t, env, id, "rebuild", map[string]any{"image": "ubuntu-24.04", "user_data": userData})
+			var password string
+			if err := json.Unmarshal(raw, &password); err != nil || password == "" {
+				t.Fatalf("rebuild root_password = %s, want a non-empty string", raw)
+			}
+			if a := env.WaitAction(act); a.Status != "success" {
+				t.Fatalf("rebuild action: %q %+v, want success", a.Status, a.Error)
+			}
+			return act, password, isoFiles(t, p.lastDVD(t, 0).iso)
+		}
+
+		var previous string
+		for i, userData := range []string{"#cloud-config\n# hlab-rebuild-1\n", "#cloud-config\n# hlab-rebuild-2\n"} {
+			act, password, files := rebuild(t, userData)
+			got := instanceID(t, files["meta-data"])
+			if want := fmt.Sprintf("%d-%d", id, act); got != want {
+				t.Errorf("rebuild %d: seed instance-id %q, want %q", i+1, got, want)
+			}
+			if got == previous {
+				t.Errorf("rebuild %d: seed instance-id %q is the one of the rebuild before", i+1, got)
+			}
+			previous = got
+			checkCrypt(t, fmt.Sprintf("seed after rebuild %d", i+1), bytes.Join([][]byte{files["meta-data"], files["user-data"], files["vendor-data"]}, []byte("\n")), password)
+			if !bytes.Contains(files["user-data"], []byte(strings.TrimPrefix(userData, "#cloud-config\n"))) {
+				t.Errorf("rebuild %d: seed user-data lacks the rebuild's user_data:\n%s", i+1, files["user-data"])
+			}
+		}
+
+		act, _ := startAction(t, env, id, "enable_rescue", map[string]any{"type": "linux64"})
+		if a := env.WaitAction(act); a.Status != "success" {
+			t.Fatalf("enable_rescue action: %q %+v, want success", a.Status, a.Error)
+		}
+		if got := instanceID(t, isoFiles(t, p.lastDVD(t, 0).iso)["meta-data"]); got != previous {
+			t.Errorf("rescue seed instance-id %q, want the server's current %q", got, previous)
+		}
+	})
+
+	t.Run("SRV-21/one_call", func(t *testing.T) {
+		fake := platformtest.NewFake()
+		env, mod, _ := newFakeEnv(t, fake, nil)
+		now := time.Now().UTC().Truncate(time.Second)
+		running := map[int64]string{}
+		cpu := map[int64]float64{}
+		for i, name := range []string{"metrics-a", "metrics-b", "metrics-c"} {
+			id := createdServer(t, env, name, nil)
+			vm := vmName(t, fake)
+			running[id], cpu[id] = vm, float64(10*(i+1))
+			fake.SetSample(vm, platform.Sample{Time: now, CPUPercent: cpu[id]})
+		}
+		createdServer(t, env, "metrics-off", map[string]any{"start_after_create": false})
+		offVM := vmName(t, fake)
+
+		n := len(fake.Calls())
+		runJob(t, mod, "servers metrics sample")
+		calls := fake.Calls()[n:]
+		if c := callsIn(calls, "Metrics"); len(c) != 0 {
+			t.Errorf("sample tick made %d Metrics calls, want none", len(c))
+		}
+		all := callsIn(calls, "MetricsAll")
+		if len(all) != 1 {
+			t.Fatalf("sample tick made %d MetricsAll calls, want one", len(all))
+		}
+		vms, ok := all[0].Arg.([]string)
+		if !ok {
+			t.Fatalf("MetricsAll call argument %T, want the VM names ([]string)", all[0].Arg)
+		}
+		for _, vm := range running {
+			if !slices.Contains(vms, vm) {
+				t.Errorf("MetricsAll VMs %v lack the running %s", vms, vm)
+			}
+		}
+		if slices.Contains(vms, offVM) {
+			t.Errorf("MetricsAll VMs %v hold the stopped %s", vms, offVM)
+		}
+
+		q := url.Values{
+			"type":  {"cpu"},
+			"start": {now.Add(-time.Minute).Format(time.RFC3339)},
+			"end":   {now.Add(time.Minute).Format(time.RFC3339)},
+		}
+		for id := range running {
+			path := fmt.Sprintf("/servers/%d/metrics?%s", id, q.Encode())
+			resp := env.Do(http.MethodGet, path, nil)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("GET %s: status %d, want 200", path, resp.StatusCode)
+			}
+			var body struct {
+				Metrics struct {
+					TimeSeries map[string]struct {
+						Values [][2]any `json:"values"`
+					} `json:"time_series"`
+				} `json:"metrics"`
+			}
+			apitest.Decode(t, resp, &body)
+			want := strconv.FormatFloat(cpu[id], 'f', -1, 64)
+			found := false
+			for _, v := range body.Metrics.TimeSeries["cpu"].Values {
+				if s, ok := v[1].(string); ok {
+					if f, err := strconv.ParseFloat(s, 64); err == nil && f == cpu[id] {
+						found = true
+					}
+				}
+			}
+			if !found {
+				t.Errorf("server %d: cpu series %v, want the stored sample's %s", id, body.Metrics.TimeSeries["cpu"].Values, want)
+			}
 		}
 	})
 
