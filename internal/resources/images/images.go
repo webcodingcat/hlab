@@ -32,7 +32,7 @@ type Deps struct {
 	Catalog *catalog.Catalog
 	// DataFolder holds the image disks as images\image-<id>.vhdx.
 	DataFolder string
-	// Store is what Recover works on; nil leaves Recover a no-op.
+	// Store is what Recover works on.
 	Store *store.Store
 }
 
@@ -292,9 +292,6 @@ func (m *Module) Delete(_ context.Context, id int64) error {
 // Recover implements resource.Recoverer: it removes every image record
 // with status creating and its file; a missing file is no error.
 func (m *Module) Recover(_ context.Context) error {
-	if m.store == nil {
-		return nil
-	}
 	var cut []Record
 	err := m.store.Tx(func(tx store.Tx) error {
 		all, err := store.ListAll[Record](tx, Kind)
