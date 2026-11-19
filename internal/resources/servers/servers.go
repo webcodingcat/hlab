@@ -348,24 +348,37 @@ func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 		if !ip.IsValid() {
 			continue
 		}
-		loc, _ := m.d.Catalog.Location(r.Hlab.Location)
-		reset, err := runningReset(tx, r.Hlab.PasswordReset)
+		md, err := m.Metadata(tx, r)
 		if err != nil {
 			return err
 		}
-		doc.Metadata = append(doc.Metadata, agentapi.Metadata{
-			IP:               ip,
-			ServerID:         r.ID,
-			Hostname:         r.Name,
-			Region:           loc.NetworkZone,
-			AvailabilityZone: availabilityZone(r.Hlab.Location),
-			PublicIPv4:       ip.String(),
-			PublicKeys:       r.Hlab.SSHKeys,
-			UserData:         r.Hlab.UserData,
-			PasswordReset:    reset,
-		})
+		md.IP = ip
+		doc.Metadata = append(doc.Metadata, md)
 	}
 	return nil
+}
+
+// Metadata is the metadata entry of server r without segment and source
+// address; the caller sets VLAN and IP.
+func (m *Module) Metadata(tx store.Tx, r Record) (agentapi.Metadata, error) {
+	loc, _ := m.d.Catalog.Location(r.Hlab.Location)
+	reset, err := runningReset(tx, r.Hlab.PasswordReset)
+	if err != nil {
+		return agentapi.Metadata{}, err
+	}
+	md := agentapi.Metadata{
+		ServerID:         r.ID,
+		Hostname:         r.Name,
+		Region:           loc.NetworkZone,
+		AvailabilityZone: availabilityZone(r.Hlab.Location),
+		PublicKeys:       r.Hlab.SSHKeys,
+		UserData:         r.Hlab.UserData,
+		PasswordReset:    reset,
+	}
+	if ip := r.IPv4(); ip.IsValid() {
+		md.PublicIPv4 = ip.String()
+	}
+	return md, nil
 }
 
 // runningReset returns reset while its reset_password action runs; a reset
