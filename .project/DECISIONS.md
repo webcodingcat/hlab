@@ -1727,3 +1727,59 @@ in ARCHITECTURE.md or the plan.
 - What: agents run documentation examples against the dev cloud through a user-created hcloud context `hlab-docs` (endpoint `http://api.hetzner.internal/v1` set per context, token of project `docs`) and pass its token to OpenTofu and Ansible only inside the one command that needs it, never reading it.
 - Why: the doc-writer has to check that the README examples work, and hcloud 1.70.2 stores the endpoint per context, so no environment variable or task is needed.
 - Cost of change: low
+
+## 2026-11-19 Zones under private-use suffixes
+
+- Type: change
+- Phase: phase 07
+- What: besides a registrable domain of the Public Suffix List, a zone name may lie under `.internal`, `.test` or `.home.arpa` (except `hetzner.internal` and below, used by hlab, and never `.local`, used by mDNS); such zones never shadow a public name, so DNS-04 skips them; DNS-01 changed and the deviation goes to docs/user/deviations.md.
+- Why: a local lab needs zone names that cannot collide with real domains.
+- Cost of change: low
+
+## 2026-11-19 Q8: secondary zones are stored and forwarded
+
+- Type: change
+- Phase: phase 07
+- What: zones with `mode: secondary` are accepted and stored with their `primary_nameservers`, have no records in hlab, and the appliance forwards their queries upstream; they get their NRPT rule (DNS-03) but never count as `shadowing_zones` (DNS-04); listed in docs/user/deviations.md.
+- Why: clients and OpenTofu configurations with secondary zones keep working without a zone transfer component.
+- Cost of change: low
+
+## 2026-11-19 Zone modes and synchronous updates
+
+- Type: decision
+- Phase: phase 07
+- What: on a secondary zone the RRSet calls, `change_ttl` and `import_zonefile` answer 422 `incorrect_zone_mode`, as does `change_primary_nameservers` on a primary zone; `PUT /zones/{id}` and `PUT .../rrsets/{name}/{type}` answer 200 synchronously without an action, all other writes run as actions; where the phase 07 research finds Hetzner behaving differently, the research wins.
+- Why: the user's answer at the start of phase 07, matching Hetzner's documented behaviour as far as known.
+- Cost of change: low
+
+## 2026-11-19 Zone name and record validation
+
+- Type: decision
+- Phase: phase 07
+- What: zone names count only the ICANN section of the Public Suffix List (everything under `arpa` except `home.arpa` refused) and private-use names are exactly one label below `internal`, `test` or `home.arpa`, all refusals `invalid_input` on `name`; RP values only in DNS mailbox form; a CNAME conflict (beside another type, twice, at the apex) is 422 `invalid_input` on `type` with `(<name>, CNAME) conflicts with (<name>, <type>)`; an existing RRSet on create is 409 `uniqueness_error`, a write on a protected RRSet `protected`; the apex SOA is read-only except its TTL, apex NS editable.
+- Why: the research could not confirm these details; the closest of Hetzner's documented rules and the project's existing codes.
+- Cost of change: low
+
+## 2026-11-19 Zone files, counts and actions
+
+- Type: decision
+- Phase: phase 07
+- What: `record_count` counts SOA and NS (4 for a new zone); a bad zone file fails synchronously with 422 `invalid_input` on `zonefile` naming the line; the export writes `$ORIGIN`, `$TTL`, SOA, NS, then the rest sorted by name and type, a TTL only where the RRSet has its own; zone and RRSet actions are readable under `/zones/actions/{id}`, the per-zone action path and `/actions/{id}`; zone `status` is always `ok`.
+- Why: follows the hcloud-go and CLI fixtures; the simplest behaviour where Hetzner is unconfirmed.
+- Cost of change: low
+
+## 2026-11-19 Reverse DNS defaults and zone serving
+
+- Type: decision
+- Phase: phase 07
+- What: fresh primary and floating IPv4 addresses get the server default `static.<d>.<c>.<b>.<a>.clients.your-server.de`, IPv6 starts empty; a server's `change_dns_ptr` for an IP it does not hold is `invalid_input` on `ip`; `servers.IPv6.DNSPtr` becomes `[]rdns.Entry` with compatible JSON; the agent follows CNAME chains at most 8 steps and wildcards per RFC 4592; secondary zones stay out of the agent document but get their NRPT rule; secondary `primary_nameservers` are checked for syntax only; a zone name used in another project is 409 `uniqueness_error` without naming it.
+- Why: consistent behaviour across resources without a migration or an `agentapi` change, and no leak across projects.
+- Cost of change: low
+
+## 2026-11-19 Reading NRPT rules in the DNS-03 test
+
+- Type: decision
+- Phase: phase 07
+- What: the DNS-03 e2e test reads NRPT rules with `Get-DnsClientNrptRule` filtered by the profile tag and falls back to the `DnsPolicyConfig` registry key if that needs elevation; it never changes rules.
+- Why: whether reading needs elevation is unconfirmed.
+- Cost of change: low
