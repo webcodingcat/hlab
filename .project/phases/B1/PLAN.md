@@ -70,14 +70,14 @@ func seedUserData(userData string, volumes []int64) string
 
 ## Plans
 
-- [ ] B1-01 Servers: stale password resets and the instance-id after a rebuild
+- [x] B1-01 Servers: stale password resets and the instance-id after a rebuild
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SRV-10, SRV-08 | Tests: internal/resources/servers/servers_test.go (TestServers/SRV-10/interrupted_reset, TestServers/SRV-08/instance_id), test/e2e/image_test.go and test/e2e/e2e_test.go (TestE2E/SRV-08/own_snapshot)
   - Reads: REQUIREMENTS SRV-08, SRV-10, SRV-11, META-01; ARCHITECTURE "cidata", "Guest integration", "hlab-agent (appliance)" (metadata service, password reset); RESEARCH.md Q2; DECISIONS "Rescue seed reuses the server's instance-id and network-config", "Root password without expiry, root SSH login by drop-in"
   - Size: ~150 lines in 4 files
   - Adjusts: -
-  - [ ] `Contribute` (servers.go) puts `Hlab.PasswordReset` into the server's metadata only while the action with the reset's ID has status `running` (`store.GetAction` in the same tx); `rebuild` (rebuild.go) sets `Hlab.PasswordReset = nil` in its record update
-  - [ ] `Internal.InstanceID` (servers.go); `rebuild` sets it to `<id>-<action.ID>` in the transaction that starts the action; `seed` (reconcile.go) uses it and falls back to the server ID, so the server seed and the rescue seed (rescue.go builds on `m.seed`) carry the current one; the metadata document keeps `ServerID`
+  - [x] `Contribute` (servers.go) puts `Hlab.PasswordReset` into the server's metadata only while the action with the reset's ID has status `running` (`store.GetAction` in the same tx); `rebuild` (rebuild.go) sets `Hlab.PasswordReset = nil` in its record update
+  - [x] `Internal.InstanceID` (servers.go); `rebuild` sets it to `<id>-<action.ID>` in the transaction that starts the action; `seed` (reconcile.go) uses it and falls back to the server ID, so the server seed and the rescue seed (rescue.go builds on `m.seed`) carry the current one; the metadata document keeps `ServerID`
 
 - [ ] B1-02 Servers: user_data layers in the seed
   - Wave: 1 | Depends on: - | Review: alone
