@@ -23,6 +23,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/agentclient"
 	"github.com/webcodingcat/hlab/internal/api"
+	"github.com/webcodingcat/hlab/internal/ca"
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/dnszone"
 	"github.com/webcodingcat/hlab/internal/hostnet"
@@ -35,11 +36,14 @@ import (
 	"github.com/webcodingcat/hlab/internal/profile"
 	"github.com/webcodingcat/hlab/internal/resource"
 	actionsres "github.com/webcodingcat/hlab/internal/resources/actions"
+	"github.com/webcodingcat/hlab/internal/resources/certificates"
 	"github.com/webcodingcat/hlab/internal/resources/datacenters"
 	"github.com/webcodingcat/hlab/internal/resources/firewalls"
 	"github.com/webcodingcat/hlab/internal/resources/floatingips"
 	imagesres "github.com/webcodingcat/hlab/internal/resources/images"
 	"github.com/webcodingcat/hlab/internal/resources/isos"
+	"github.com/webcodingcat/hlab/internal/resources/loadbalancers"
+	"github.com/webcodingcat/hlab/internal/resources/loadbalancertypes"
 	"github.com/webcodingcat/hlab/internal/resources/locations"
 	"github.com/webcodingcat/hlab/internal/resources/networks"
 	"github.com/webcodingcat/hlab/internal/resources/placementgroups"
@@ -114,6 +118,7 @@ type Cloud struct {
 	images *images.Store
 	agent  *agentclient.Client
 	acts   *actions.Manager
+	ca     *ca.CA
 	mods   []resource.Module
 	// shadow keeps the primary zones that shadow a public domain.
 	shadow *zones.Shadow
@@ -264,6 +269,9 @@ func (c *Cloud) start(ctx context.Context) error {
 		return err
 	}
 
+	if err := c.openCA(ctx); err != nil {
+		return err
+	}
 	c.acts = actions.New(c.st)
 	c.shadow = zones.NewShadow(zones.PublicLookup(c.hostDNS(ctx), shadowLookupTimeout))
 	c.mods = c.modules()
@@ -277,7 +285,7 @@ func (c *Cloud) start(ctx context.Context) error {
 	for _, m := range c.mods {
 		router.Mount(m)
 	}
-	if err := c.serveAPI(ctx, router); err != nil {
+	if err := c.serveAPI(ctx, c.withCRL(router)); err != nil {
 		return err
 	}
 
@@ -299,10 +307,10 @@ func (c *Cloud) start(ctx context.Context) error {
 	return nil
 }
 
-// startJobs runs the jobs of every module implementing resource.Scheduled
-// until stopJobs is called.
+// startJobs runs the cloud's jobs and those of every module implementing
+// resource.Scheduled until stopJobs is called.
 func (c *Cloud) startJobs(ctx context.Context) {
-	var jobs []scheduler.Job
+	jobs := c.cloudJobs()
 	for _, m := range c.mods {
 		if s, ok := m.(resource.Scheduled); ok {
 			jobs = append(jobs, s.Jobs()...)
@@ -376,6 +384,19 @@ func (c *Cloud) modules() []resource.Module {
 	fws := firewalls.New(firewalls.Deps{Store: c.st, PushAgent: c.PushAgent})
 	srv.SetFirewalls(fws)
 	srv.OnDelete(fws.ServerDeleted)
+	lb := loadbalancers.New(loadbalancers.Deps{
+		Store:       c.st,
+		Catalog:     c.cat,
+		PublicRange: c.set.Network.PublicRange,
+		PushAgent:   c.PushAgent,
+		AgentStatus: func(ctx context.Context) (agentapi.Status, error) { return c.agent.Status(ctx) },
+		PublicIPs:   pips,
+		Networks:    nets,
+	})
+	nets.SetLoadBalancers(lb)
+	srv.OnDelete(lb.ServerDeleted)
+	srv.SetLoadBalancers(lb.ForServer)
+	certs := certificates.New(certificates.Deps{Store: c.st, CA: c.ca, PushAgent: c.PushAgent, UsedBy: lb.UsedBy})
 	zns := zones.New(zones.Deps{Store: c.st, PushAgent: c.PushAgent, SetZones: c.net.SetZones, Shadow: c.shadow})
 	// Order of the agent document: servers writes the public metadata
 	// entries, networks adds the members' private entries, and volumes then
@@ -396,6 +417,9 @@ func (c *Cloud) modules() []resource.Module {
 		pips,
 		fips,
 		fws,
+		loadbalancertypes.New(c.cat),
+		certs,
+		lb,
 		zns,
 		vol,
 	}
@@ -532,7 +556,10 @@ func (c *Cloud) serveManagement(apiHandler http.Handler) error {
 		UpdateCatalog: func(ctx context.Context, hetznerToken string) error {
 			return catalog.Update(ctx, c.cat, catalog.UpdateOptions{DataDir: c.d.Paths.Config}, hetznerToken)
 		},
-		ServerTypes: func() int { return len(c.cat.Types()) },
+		ServerTypes:  func() int { return len(c.cat.Types()) },
+		CACert:       c.ca.Certificate,
+		Trust:        c.trust,
+		SettingsPath: filepath.Join(c.d.Paths.Config, "settings.toml"),
 	})
 	c.mgmtSrv = &http.Server{Handler: h, ReadHeaderTimeout: 30 * time.Second}
 	go serve(c.mgmtSrv, ln, "management")
