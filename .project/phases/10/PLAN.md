@@ -297,10 +297,10 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - Size: ~200 lines in 2 files
   - [x] src/views/Logs.svelte: monospace list of parsed JSON lines (time, level, msg, fields), at most 5000 kept, level filter, follow toggle (`Logs.Follow`, scroll to the end), `logs` events.
 
-- [ ] 10-19 Documentation
+- [x] 10-19 Documentation
   - Wave: 6 | Depends on: 10-15, 10-16, 10-17, 10-18 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06, DOC-07 | Tests: test/docs/docs_test.go
   - Reads: SPEC "Documentation"; REQUIREMENTS "Documentation (DOC)"; DECISIONS phase 10 entries
   - Size: ~250 lines in 9 files
-  - [ ] README.md (tray program: start, status, start/stop, quit, settings, server types, projects and tokens, logs; the "no tray program" line goes, the installer stays missing), docs/user/configuration.md (server-types.custom.json created by hlabd and written by the tray, when each setting applies), docs/dev/build-and-test.md (`task test:frontend`, tray UI tests over CDP, e2e build), docs/dev/components.md (bridge, tray, frontend).
-  - [ ] The help texts ui/frontend/src/help/{projects,server-types,settings,logs}.md naming only existing views and buttons.
+  - [x] README.md (tray program: start, status, start/stop, quit, settings, server types, projects and tokens, logs; the "no tray program" line goes, the installer stays missing), docs/user/configuration.md (server-types.custom.json created by hlabd and written by the tray, when each setting applies), docs/dev/build-and-test.md (`task test:frontend`, tray UI tests over CDP, e2e build), docs/dev/components.md (bridge, tray, frontend).
+  - [x] The help texts ui/frontend/src/help/{projects,server-types,settings,logs}.md naming only existing views and buttons.
