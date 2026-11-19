@@ -23,7 +23,7 @@ func setVersion(t *testing.T, path string, v int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec("CREATE TABLE IF NOT EXISTS other (a TEXT)"); err != nil {
 		t.Fatal(err)
 	}

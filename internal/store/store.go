@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -50,8 +51,30 @@ type Tx struct {
 	tx *sql.Tx
 }
 
+// IncompatibleError reports a state file this binary cannot use: another
+// schema version, or no SQLite database at all.
+type IncompatibleError struct {
+	Found, Want int  // user_version of the file and of this binary
+	NotDatabase bool // the file is no SQLite database (SQLITE_NOTADB/CORRUPT)
+}
+
+func (e *IncompatibleError) Error() string {
+	switch {
+	case e.NotDatabase:
+		return "store: the state file is not a readable SQLite database"
+	case e.Newer():
+		return fmt.Sprintf("store: the state has schema version %d from a newer hlab version, this binary uses %d", e.Found, e.Want)
+	default:
+		return fmt.Sprintf("store: the state has unknown schema version %d, this binary uses %d", e.Found, e.Want)
+	}
+}
+
+// Newer reports whether the file was written by a newer hlab version.
+func (e *IncompatibleError) Newer() bool { return !e.NotDatabase && e.Found > e.Want }
+
 // Open opens or creates the database at path and creates schema version 1
-// in a new file. A file with another schema version is an error.
+// in a new file. A file with another schema version or a file that is no
+// SQLite database gives an *IncompatibleError.
 func Open(path string) (*Store, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -71,12 +94,27 @@ func Open(path string) (*Store, error) {
 	s := &Store{db: db}
 	if err := s.migrate(); err != nil {
 		_ = db.Close()
-		return nil, err
+		return nil, notDatabase(err)
 	}
 	return s, nil
 }
 
+// notDatabase turns SQLITE_NOTADB and SQLITE_CORRUPT into an
+// *IncompatibleError, judged by the result code only.
+func notDatabase(err error) error {
+	var se *sqlite.Error
+	if errors.As(err, &se) {
+		if c := se.Code() & 0xff; c == sqlite3.SQLITE_NOTADB || c == sqlite3.SQLITE_CORRUPT {
+			return &IncompatibleError{Want: SchemaVersion, NotDatabase: true}
+		}
+	}
+	return err
+}
+
 func (s *Store) migrate() error {
+	if err := s.db.Ping(); err != nil {
+		return err
+	}
 	return s.Tx(func(tx Tx) error {
 		var v int
 		if err := tx.tx.QueryRow("PRAGMA user_version").Scan(&v); err != nil {
@@ -92,9 +130,25 @@ func (s *Store) migrate() error {
 			_, err := tx.tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", SchemaVersion))
 			return err
 		default:
-			return fmt.Errorf("store: schema version %d, this binary uses %d", v, SchemaVersion)
+			return &IncompatibleError{Found: v, Want: SchemaVersion}
 		}
 	})
+}
+
+// Discard renames the state file at path and its -wal and -shm files to
+// <name>.discarded-<UTC time> and returns the new name of path. Missing side
+// files are skipped.
+func Discard(path string, now time.Time) (string, error) {
+	suffix := ".discarded-" + now.UTC().Format("20060102T150405Z")
+	if err := os.Rename(path, path+suffix); err != nil {
+		return "", err
+	}
+	for _, side := range []string{"-wal", "-shm"} {
+		if err := os.Rename(path+side, path+side+suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+	}
+	return path + suffix, nil
 }
 
 // Close closes the database.
@@ -179,6 +233,24 @@ func SetKV(tx Tx, key, value string) error {
 	_, err := tx.exec(`INSERT INTO kv(key, value) VALUES(?, ?)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
 	return err
+}
+
+// KVKeys returns the keys starting with prefix, sorted.
+func KVKeys(tx Tx, prefix string) ([]string, error) {
+	rows, err := tx.tx.Query(`SELECT key FROM kv WHERE substr(key, 1, length(?1)) = ?1 ORDER BY key`, prefix)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var keys []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
 }
 
 // DeleteKV removes key; a missing key is no error.
