@@ -20,12 +20,24 @@ import (
 
 // guestHook is the hlab-guest script. It rescans each hlab volume disk: a
 // volume grown while attached reports its new size only on the disk's next
-// SCSI command, which an idle disk never gets. Then it asks the metadata
-// service for a pending root password reset, applies its hash with
-// `chpasswd -e`, confirms it and remembers the ID, so a reset is applied
-// once.
+// SCSI command, which an idle disk never gets. It configures the private
+// adapters from the metadata service's private-networks list (see
+// syncNetworks in the script). Then it asks the metadata service for a
+// pending root password reset, applies its hash with `chpasswd -e`,
+// confirms it and remembers the ID, so a reset is applied once.
+//
+// Private adapters: per entry whose MAC is one of hlab's (02:48:4c:2x:xx:xx)
+// and belongs to a link, it sets the private IP as /32 and a route to the
+// network range via the gateway, on-link; Hetzner's guests get the same
+// from DHCP, hlab has no DHCP server. With systemd-networkd active it writes
+// /run/systemd/network/05-hlab-<mac>.network (volatile, so the seed's
+// network-config rules again after a reboot; sorts before netplan's files)
+// and reconfigures the link; otherwise it uses ip addr/route replace. What
+// it set is kept in /run/hlab-guest/networks.json and removed again when the
+// entry goes (detach). Alias IPs are left to the user, as at Hetzner.
 const guestHook = `#!/usr/bin/python3
-# hlab guest hook: picks up grown volumes, applies a pending root password reset.
+# hlab guest hook: picks up grown volumes, configures private adapters,
+# applies a pending root password reset.
 import glob
 import json
 import os
@@ -34,6 +46,10 @@ import urllib.request
 
 BASE = "http://169.254.169.254/hlab/v1/password-reset"
 STATE = "/var/lib/hlab-guest/last-reset"
+PRIVATE = "http://169.254.169.254/hetzner/v1/metadata/private-networks"
+NETSTATE = "/run/hlab-guest/networks.json"
+NETDIR = "/run/systemd/network"
+MAC_PREFIX = "02:48:4c:2"
 
 
 def rescan_volumes():
@@ -46,8 +62,109 @@ def rescan_volumes():
             pass
 
 
+def links():
+    out = {}
+    for path in glob.glob("/sys/class/net/*/address"):
+        try:
+            with open(path) as f:
+                mac = f.read().strip().lower()
+        except OSError:
+            continue
+        if mac.startswith(MAC_PREFIX):
+            out[mac] = path.split("/")[-2]
+    return out
+
+
+def networkd_active():
+    return subprocess.run(["systemctl", "is-active", "--quiet", "systemd-networkd"]).returncode == 0
+
+
+def unit_path(mac):
+    return "%s/05-hlab-%s.network" % (NETDIR, mac.replace(":", ""))
+
+
+def run(*args):
+    subprocess.run(list(args), check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def quiet(*args):
+    subprocess.run(list(args), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def apply_net(mac, dev, cfg, networkd):
+    if networkd:
+        os.makedirs(NETDIR, exist_ok=True)
+        with open(unit_path(mac), "w") as f:
+            f.write("[Match]\nMACAddress=%s\n\n[Network]\nAddress=%s/32\n\n"
+                    "[Route]\nDestination=%s\nGateway=%s\nGatewayOnLink=yes\n"
+                    % (mac, cfg["ip"], cfg["network"], cfg["gateway"]))
+        run("networkctl", "reload")
+        run("networkctl", "reconfigure", dev)
+    else:
+        run("ip", "link", "set", dev, "up")
+        run("ip", "addr", "replace", cfg["ip"] + "/32", "dev", dev)
+        run("ip", "route", "replace", cfg["network"], "via", cfg["gateway"], "dev", dev, "onlink")
+
+
+def remove_net(mac, dev, cfg):
+    try:
+        os.remove(unit_path(mac))
+        quiet("networkctl", "reload")
+    except FileNotFoundError:
+        pass
+    if dev:
+        quiet("ip", "route", "del", cfg["network"], "via", cfg["gateway"], "dev", dev)
+        quiet("ip", "addr", "del", cfg["ip"] + "/32", "dev", dev)
+
+
+def sync_networks():
+    import yaml
+    with urllib.request.urlopen(PRIVATE, timeout=4) as r:
+        if r.status != 200:
+            return
+        entries = yaml.safe_load(r) or []
+    want = {}
+    for e in entries:
+        mac = str(e.get("mac_address") or "").lower()
+        if not mac.startswith(MAC_PREFIX) or not e.get("ip") or not e.get("gateway"):
+            continue
+        want[mac] = {"ip": str(e["ip"]), "gateway": str(e["gateway"]),
+                     "network": str(e.get("network") or e.get("subnet"))}
+    try:
+        with open(NETSTATE) as f:
+            have = json.load(f)
+    except (OSError, ValueError):
+        have = {}
+    devs = links()
+    done = {}
+    for mac, cfg in have.items():
+        if want.get(mac) == cfg and mac in devs:
+            done[mac] = cfg
+        else:
+            remove_net(mac, devs.get(mac), cfg)
+    networkd = None
+    for mac, cfg in want.items():
+        if mac in done or mac not in devs:
+            continue
+        if networkd is None:
+            networkd = networkd_active()
+        try:
+            apply_net(mac, devs[mac], cfg, networkd)
+        except (OSError, subprocess.CalledProcessError):
+            continue
+        done[mac] = cfg
+    if done != have:
+        os.makedirs(os.path.dirname(NETSTATE), exist_ok=True)
+        with open(NETSTATE, "w") as f:
+            json.dump(done, f)
+
+
 def main():
     rescan_volumes()
+    try:
+        sync_networks()
+    except Exception:
+        pass
     try:
         with urllib.request.urlopen(BASE, timeout=4) as r:
             if r.status != 200:
@@ -75,7 +192,7 @@ main()
 `
 
 const guestService = `[Unit]
-Description=hlab guest hook (grown volumes, root password reset)
+Description=hlab guest hook (grown volumes, private networks, root password reset)
 After=network-online.target
 
 [Service]
@@ -215,6 +332,13 @@ After=network-online.target
 Type=oneshot
 TimeoutStartSec=120
 ExecStart=/usr/bin/python3 /usr/local/sbin/hlab-volume %i
+`
+
+// networkUpdates is the cloud-init drop-in that renders the network-config
+// on every boot, not only on the first.
+const networkUpdates = `updates:
+  network:
+    when: [boot-new-instance, boot]
 `
 
 // vendorBoundary separates the parts of the vendor-data MIME document.
@@ -425,8 +549,10 @@ func occursIn(parts []mimePart, s string) bool {
 // user_data may override these keys. Its shell script part, run once per
 // instance by cloud-init's scripts_vendor, installs the sshd drop-in that
 // allows root password login (cloud images refuse it) and the hlab-guest
-// timer that applies later password resets; being a script, a user_data
-// with its own write_files or runcmd does not replace it.
+// timer that applies later password resets and private networks, and the
+// cloud-init drop-in that renders network-config on every boot; being a
+// script, a user_data with its own write_files or runcmd does not replace
+// it.
 func vendorData(rootHash string) string {
 	var cfg strings.Builder
 	cfg.WriteString("#cloud-config\ndisable_root: false\nssh_pwauth: true\n")
@@ -445,6 +571,10 @@ func vendorData(rootHash string) string {
 	writeFile(&sh, "/etc/systemd/system/hlab-volume@.service", "0644", volumeService)
 	writeFile(&sh, "/etc/udev/rules.d/61-hlab-volume.rules", "0644", volumeRule)
 	writeFile(&sh, "/etc/systemd/system/hlab-sync.service", "0644", syncService)
+	// Each later boot renders the seed's network-config again, which hlab
+	// rewrites when private networks change; cloud-init's default renders it
+	// only on a new instance.
+	writeFile(&sh, "/etc/cloud/cloud.cfg.d/99-hlab-network.cfg", "0644", networkUpdates)
 	sh.WriteString("systemctl daemon-reload\n")
 	sh.WriteString("systemctl enable --now hlab-guest.timer\n")
 	// Disks attached before this script ran get their names now.
