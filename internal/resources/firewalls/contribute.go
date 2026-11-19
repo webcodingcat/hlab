@@ -35,10 +35,8 @@ func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 	}
 	used := map[int64]bool{}
 	for i := range doc.Servers {
-		ids := slices.Clone(applied[doc.Servers[i].ID])
-		slices.Sort(ids)
-		doc.Servers[i].FirewallIDs = ids
-		for _, id := range ids {
+		doc.Servers[i].FirewallIDs = applied[doc.Servers[i].ID]
+		for _, id := range doc.Servers[i].FirewallIDs {
 			used[id] = true
 		}
 	}
