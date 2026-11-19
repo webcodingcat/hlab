@@ -219,12 +219,12 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - Size: ~300 lines in 2 files
   - [x] internal/bridge/service.go: `Service` with `Call` (string body, `Response`), `Settings`, `SaveSettings` (`settings.Write`, `*Invalid` for a `FieldError`, `POST /settings/reload` when running), `ServerTypes` (`catalog.LoadAll` over shipped, data and custom file with source and problem), `AddServerType`, `RemoveServerType` (reload when running).
 
-- [ ] 10-09 Bridge: cloud status and control
+- [x] 10-09 Bridge: cloud status and control
   - Wave: 2 | Depends on: 10-03 | Review: alone
   - Requirements: UI-01 | Tests: internal/bridge/cloud_test.go
   - Reads: ARCHITECTURE "system integration", "hlab (management command)" (status file, incompatible state); DECISIONS "Tray connection banner and log stream reconnect", "Tray quit and tray state in e2e"; EXPERIMENTS E10
   - Size: ~300 lines in 2 files
-  - [ ] internal/bridge/cloud.go: `Cloud` poller (SCM state every interval, `/status` while running, `cloudstatus.Read` while stopped; `ConnectionLost` after three failed polls while running, cleared by the next answer), `Start(discard)` (`discard-state` parameter), `Stop`, `OnChange` on every change, `Tray(State) TrayModel`.
+  - [x] internal/bridge/cloud.go: `Cloud` poller (SCM state every interval, `/status` while running, `cloudstatus.Read` while stopped; `ConnectionLost` after three failed polls while running, cleared by the next answer), `Start(discard)` (`discard-state` parameter), `Stop`, `OnChange` on every change, `Tray(State) TrayModel`.
 
 - [ ] 10-10 Bridge: log stream
   - Wave: 2 | Depends on: 10-03 | Review: alone
