@@ -60,8 +60,9 @@ type HostNet struct {
 	mu  sync.Mutex
 	cfg hostnet.Config // of the last successful Up
 
-	wslMu      sync.Mutex
-	wslPending *wslTrust // CA switch the WSL distros have not received
+	wslMu       sync.Mutex
+	wslPending  *wslTrust // CA switch the WSL distros have not received
+	wslWatching bool      // watchLogon runs
 }
 
 var _ hostnet.HostNet = (*HostNet)(nil)
@@ -247,7 +248,7 @@ func (h *HostNet) Down(ctx context.Context) error {
 }
 
 // WatchWSL is a stub: re-applying forwarding after a WSL restart is built
-// in a later phase; its change path then calls wslChanged.
+// in a later phase.
 func (h *HostNet) WatchWSL(context.Context, func(hostnet.WSLInfo)) {}
 
 // DNSServers returns the IPv4 DNS servers of the interfaces with a default

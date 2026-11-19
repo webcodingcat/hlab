@@ -9,6 +9,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"time"
 	"unicode/utf16"
 )
 
@@ -24,6 +25,13 @@ const (
 	wslRemoveScript  = "command -v update-ca-certificates >/dev/null || exit 3; rm -f " + wslCAFile + " && update-ca-certificates --fresh"
 )
 
+// logonPoll is how often a pending switch checks for a logged-on user;
+// logonApplyLimit bounds one attempt.
+const (
+	logonPoll       = 30 * time.Second
+	logonApplyLimit = 5 * time.Minute
+)
+
 // wslTrust is a trust switch the WSL distros have not received yet.
 type wslTrust struct {
 	pem []byte
@@ -33,7 +41,8 @@ type wslTrust struct {
 // trustWSL installs (on) or removes (off) the CA in every WSL2 distro of
 // the console user. Distros without update-ca-certificates and failing
 // distros are logged and skipped. Without a logged-on user the switch
-// stays pending until wslChanged applies it. WSL failures never fail the
+// stays pending until wslChanged applies it: at the next logon (polled by
+// watchLogon), the next Up or the next switch. WSL failures never fail the
 // switch: the Windows store is the part that must succeed.
 func (h *HostNet) trustWSL(ctx context.Context, pem []byte, on bool) error {
 	h.wslMu.Lock()
@@ -42,11 +51,40 @@ func (h *HostNet) trustWSL(ctx context.Context, pem []byte, on bool) error {
 	if errors.Is(h.applyWSL(ctx, pem, on), errNoUser) {
 		slog.Info("hostnet: no user logged on; the CA switch for WSL waits for the next WSL change", "on", on)
 		h.wslPending = &wslTrust{pem: bytes.Clone(pem), on: on}
+		h.watchLogon()
 	}
 	return nil
 }
 
-// wslChanged applies a pending trust switch; WatchWSL and Up call it.
+// watchLogon applies the pending switch once a user is logged on at the
+// console: it retries every logonPoll until nothing is pending. The caller
+// holds wslMu.
+func (h *HostNet) watchLogon() {
+	if h.wslWatching {
+		return
+	}
+	h.wslWatching = true
+	go func() {
+		tick := time.NewTicker(logonPoll)
+		defer tick.Stop()
+		for range tick.C {
+			ctx, cancel := context.WithTimeout(context.Background(), logonApplyLimit)
+			h.wslChanged(ctx)
+			cancel()
+			h.wslMu.Lock()
+			done := h.wslPending == nil
+			if done {
+				h.wslWatching = false
+			}
+			h.wslMu.Unlock()
+			if done {
+				return
+			}
+		}
+	}()
+}
+
+// wslChanged applies a pending trust switch; watchLogon and Up call it.
 func (h *HostNet) wslChanged(ctx context.Context) {
 	h.wslMu.Lock()
 	defer h.wslMu.Unlock()
