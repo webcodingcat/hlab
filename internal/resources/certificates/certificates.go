@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
@@ -131,6 +132,7 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("GET /certificates/{id}", http.HandlerFunc(m.get))
 	r.Handle("PUT /certificates/{id}", http.HandlerFunc(m.update))
 	r.Handle("DELETE /certificates/{id}", http.HandlerFunc(m.delete))
+	r.Handle("POST /certificates/{id}/actions/retry", http.HandlerFunc(m.retry))
 	resactions.RoutesFor(r, Kind, refType)
 }
 
@@ -279,8 +281,8 @@ type createRequest struct {
 	DomainNames []string          `json:"domain_names"`
 }
 
-// create stores an uploaded certificate with its key; it has no action and
-// no status.
+// create stores an uploaded certificate with its key, which has no action
+// and no status, or a managed one with its create_certificate action.
 func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	var body createRequest
 	if !api.Decode(w, req, &body) {
@@ -293,12 +295,33 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		body.Type = TypeUploaded
 	}
 	p, _ := api.ProjectFrom(req.Context())
+	acts := api.ActionsFrom(req.Context())
+	st := api.StoreFrom(req.Context())
 	var c Certificate
-	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
+	var action *actions.Action
+	err := st.Tx(func(tx store.Tx) error {
 		if err := checkName(tx, p.ID, body.Name, 0); err != nil {
 			return err
 		}
 		if err := api.CheckLabels(body.Labels); err != nil {
+			return err
+		}
+		if body.Type == TypeManaged {
+			r, err := m.newManaged(body)
+			if err != nil {
+				return err
+			}
+			if r.ID, err = store.NextID(tx, Kind); err != nil {
+				return err
+			}
+			r.Hlab.ProjectID = p.ID
+			if err := put(tx, r); err != nil {
+				return err
+			}
+			if action, err = acts.Start(tx, p.ID, "create_certificate", []actions.Ref{certRef(r.ID)}); err != nil {
+				return err
+			}
+			c, err = m.shown(tx, r)
 			return err
 		}
 		if body.Type != TypeUploaded {
@@ -343,7 +366,13 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		api.Fail(w, err)
 		return
 	}
-	api.JSON(w, http.StatusCreated, map[string]any{"certificate": c, "action": nil})
+	if action != nil {
+		id := c.ID
+		acts.Run(action.ID, func(ctx context.Context, _ func(int)) error {
+			return m.issue(ctx, st, p.ID, id, false)
+		})
+	}
+	api.JSON(w, http.StatusCreated, map[string]any{"certificate": c, "action": action})
 }
 
 // update changes only the name and labels present in the body; labels,
