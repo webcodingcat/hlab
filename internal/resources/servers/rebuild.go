@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 
@@ -102,6 +103,8 @@ func (m *Module) rebuild(w http.ResponseWriter, req *http.Request) {
 			r.Hlab.UserData = *body.UserData
 		}
 		r.Hlab.RootHash = rootHash
+		r.Hlab.PasswordReset = nil
+		r.Hlab.InstanceID = fmt.Sprintf("%d-%d", id, action.ID)
 		return put(tx, r)
 	})
 	if err != nil {
@@ -124,7 +127,7 @@ func (m *Module) rebuild(w http.ResponseWriter, req *http.Request) {
 // rebuildMachine turns the VM of server id off, ends its rescue and removes
 // the rescue disk, deletes its disk and seed, lets reconcile create both
 // again at the same paths from the stored record (the seed keeps
-// instance-id, MAC and IP) and starts the VM; the VM keeps
+// MAC and IP and carries the rebuild's instance-id) and starts the VM; the VM keeps
 // its drives, and the new files inherit the data folder's access for VMs.
 // The image is fetched before the old disk goes, so a failed download
 // leaves the server as it was.

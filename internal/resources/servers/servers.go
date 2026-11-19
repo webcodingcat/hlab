@@ -205,6 +205,10 @@ type Internal struct {
 	// ISO is the name of the attached catalog ISO.
 	ISO            string `json:"iso,omitempty"`
 	BackupsEnabled bool   `json:"backups_enabled,omitempty"`
+	// InstanceID is the NoCloud instance-id of the seed, set by each
+	// rebuild to `<id>-<action id>` so cloud-init sees a new instance;
+	// empty means the server ID.
+	InstanceID string `json:"instance_id,omitempty"`
 }
 
 // Rescue is the rescue state of a server.
@@ -334,6 +338,10 @@ func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 			continue
 		}
 		loc, _ := m.d.Catalog.Location(r.Hlab.Location)
+		reset, err := runningReset(tx, r.Hlab.PasswordReset)
+		if err != nil {
+			return err
+		}
 		doc.Metadata = append(doc.Metadata, agentapi.Metadata{
 			IP:               ip,
 			ServerID:         r.ID,
@@ -343,10 +351,29 @@ func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 			PublicIPv4:       ip.String(),
 			PublicKeys:       r.Hlab.SSHKeys,
 			UserData:         r.Hlab.UserData,
-			PasswordReset:    r.Hlab.PasswordReset,
+			PasswordReset:    reset,
 		})
 	}
 	return nil
+}
+
+// runningReset returns reset while its reset_password action runs; a reset
+// whose action ended (a restart ends it with server_error) is stale.
+func runningReset(tx store.Tx, reset *agentapi.PasswordReset) (*agentapi.PasswordReset, error) {
+	if reset == nil {
+		return nil, nil
+	}
+	a, err := store.GetAction(tx, reset.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if a.Status != actions.StatusRunning {
+		return nil, nil
+	}
+	return reset, nil
 }
 
 // datacenterNumbers are the numbers of Hetzner's datacenters per location

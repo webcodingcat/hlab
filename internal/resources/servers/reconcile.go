@@ -125,8 +125,12 @@ func (m *Module) reconcile(ctx context.Context, stor *store.Store, id int64) err
 
 // seed is the seed of server rec.
 func (m *Module) seed(rec Record) cidata.Seed {
+	instanceID := rec.Hlab.InstanceID
+	if instanceID == "" {
+		instanceID = strconv.FormatInt(rec.ID, 10)
+	}
 	return cidata.Seed{
-		InstanceID: strconv.FormatInt(rec.ID, 10),
+		InstanceID: instanceID,
 		Hostname:   rec.Name,
 		SSHKeys:    rec.Hlab.SSHKeys,
 		UserData:   seedUserData(rec.Hlab.UserData, rec.Hlab.AutomountVolumes),
