@@ -241,13 +241,13 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - [x] ui/frontend/src/App.svelte, lib/Sidebar.svelte (project switcher from `GET /projects`, kept in localStorage, disabled while stopped; app sections Projects, Server Types, Settings, Logs), lib/TopBar.svelte (status pill and Start/Stop through `Cloud`), lib/Banner.svelte (connection lost, refused with "Discard state and start" through ConfirmDialog, failed start), stores in src/state.ts (cloud state from the `cloud` event, active view in `location.hash`).
   - [x] Placeholder view files src/views/Projects.svelte, ServerTypes.svelte, Settings.svelte, Logs.svelte, each with its title row, so the view plans only replace their own file.
 
-- [ ] 10-12 Help texts and panel
+- [x] 10-12 Help texts and panel
   - Wave: 2 | Depends on: 10-05 | Review: alone
   - Requirements: UI-07, DOC-05 | Tests: ui/frontend/tests/unit/help.test.ts
   - Reads: UI-SPEC "Building blocks" (Help button); SPEC "Documentation" D5; RESEARCH topic 6; test/docs/docs_test.go DOC-05
   - Size: ~220 lines in 9 files
-  - [ ] ui/frontend/src/help.ts (`renderHelp`, `helpFor`), src/helpTexts.ts (`import.meta.glob("./help/*.md", { query: "?raw", import: "default", eager: true })`), lib/HelpButton.svelte with the side panel.
-  - [ ] src/views.json with `projects`, `server-types`, `settings`, `logs`; a short help text per view in src/help/<view>.md (the documentation plan completes them).
+  - [x] ui/frontend/src/help.ts (`renderHelp`, `helpFor`), src/helpTexts.ts (`import.meta.glob("./help/*.md", { query: "?raw", import: "default", eager: true })`), lib/HelpButton.svelte with the side panel.
+  - [x] src/views.json with `projects`, `server-types`, `settings`, `logs`; a short help text per view in src/help/<view>.md (the documentation plan completes them).
 
 - [ ] 10-13 Tray program
   - Wave: 3 | Depends on: 10-05, 10-08, 10-09, 10-10 | Review: alone
