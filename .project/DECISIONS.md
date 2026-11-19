@@ -2167,3 +2167,11 @@ in ARCHITECTURE.md or the plan.
 - What: the step and point rules of the server metrics are copied into the loadbalancers package instead of exported from internal/metrics; the `lb-status` job runs every 10 s.
 - Why: keeps 08-17 out of internal/metrics (PLAN D9).
 - Cost of change: low
+
+## 2026-11-19 Load balancer target details
+
+- Type: decision
+- Phase: phase 08
+- What: remove_target of an unknown target is 404 `not_found`; while the public interface is off every target without `use_private_ip` (IP targets included) is 422 `load_balancer_public_interface_disabled`; label selectors match the project's servers in the LB's network zone that are not being deleted, each server once; `use_private_ip` on an LB without a network is `resolve_cloud_private_targets_error`.
+- Why: Terraform treats not found on remove as harmless; one rule with disable_public_interface.
+- Cost of change: low

@@ -417,14 +417,14 @@ type Deps struct {
     - (internal/resources/loadbalancers/services.go)
   - [x] Rows of TESTS.md for 08-15 (internal/resources/loadbalancers/services_test.go)
 
-- [ ] 08-16 Load balancers: targets
+- [x] 08-16 Load balancers: targets
   - Wave: 3 | Depends on: 08-13 | Review: alone
   - Requirements: LB-06 | Tests: internal/resources/loadbalancers/targets_test.go
   - Reads: R3.1 (targets), R3.4, R5 (target shapes); OpenAPI add_target, remove_target; DECISIONS "Load balancer networks, targets and services"; internal/labels
   - Size: ~380 lines in 2 files
   - Note: store targets with the JSON field `use_private_ip` (08-14 reads it from the stored JSON); TestLoadBalancers/LB-01/network (08-14) must pass after this plan, its second half needs add_target
   - Adjusts: -
-  - [ ] Adding and removing targets:
+  - [x] Adding and removing targets:
     - `add_target` and `remove_target` for server, label_selector and ip; `createTargets`
     - server checks: `use_private_ip` needs the server in the LB's network (`resolve_cloud_private_targets_error`); a public server target needs an IPv4 (`resolve_cloud_public_targets_error`) and the public interface on (`load_balancer_public_interface_disabled`)
     - other checks: a server in another network zone gives `invalid_input`; ip targets must be unicast IPv4, not in the transit /30 and not the LB's own IP; duplicates give `target_already_defined`; `max_targets` gives 403
@@ -432,7 +432,7 @@ type Deps struct {
     - `viewTargets` with nested `targets` for label selectors and `health_status` from `m.health` (filled by 08-17)
     - `ServerDeleted`, `ForServer`
     - (internal/resources/loadbalancers/targets.go)
-  - [ ] Rows of TESTS.md for 08-16 (internal/resources/loadbalancers/targets_test.go)
+  - [x] Rows of TESTS.md for 08-16 (internal/resources/loadbalancers/targets_test.go)
 
 - [x] 08-17 Load balancers: health status and metrics
   - Wave: 3 | Depends on: 08-13 | Review: alone

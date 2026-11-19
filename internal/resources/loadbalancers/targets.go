@@ -96,7 +96,7 @@ func (m *Module) addTarget(w http.ResponseWriter, req *http.Request) {
 	}
 	m.change(w, req, id, "add_target", func(tx store.Tx, r *Record) ([]actions.Ref, error) {
 		typ, _ := m.lbType(r.Hlab.Type)
-		return nil, m.addTo(tx, r, typ, body)
+		return nil, m.addTargetTo(tx, r, typ, body)
 	})
 }
 
@@ -126,15 +126,15 @@ func (m *Module) createTargets(tx store.Tx, r *Record, typ Type, in []json.RawMe
 		if err := json.Unmarshal(raw, &t); err != nil {
 			return &api.FieldError{Field: "targets", Message: "invalid target: " + err.Error()}
 		}
-		if err := m.addTo(tx, r, typ, t); err != nil {
+		if err := m.addTargetTo(tx, r, typ, t); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// addTo checks target t against r and typ and appends it to r's targets.
-func (m *Module) addTo(tx store.Tx, r *Record, typ Type, t Target) error {
+// addTargetTo checks target t against r and typ and appends it to r's targets.
+func (m *Module) addTargetTo(tx store.Tx, r *Record, typ Type, t Target) error {
 	if len(r.Targets) >= typ.MaxTargets {
 		return &api.FieldError{Code: "resource_limit_exceeded", Message: fmt.Sprintf("the load balancer type allows %d targets", typ.MaxTargets)}
 	}

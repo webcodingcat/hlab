@@ -94,7 +94,7 @@ func healthKey(key string, port int) string { return key + "/" + strconv.Itoa(po
 
 // health is the health of target key on listen port of load balancer
 // lbID: "healthy", "unhealthy" or "unknown".
-func (m *Module) health(lbID int64, key string, port int) string { //nolint:unused // used by viewTargets (plan 08-16)
+func (m *Module) health(lbID int64, key string, port int) string {
 	m.stat.mu.Lock()
 	defer m.stat.mu.Unlock()
 	if s, ok := m.stat.health[lbID][healthKey(key, port)]; ok {
