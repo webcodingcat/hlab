@@ -259,14 +259,14 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - [x] cmd/hlab-tray/tray.go (icon per `TrayModel.Icon`, tooltip, menu status line, Open hlab, Start cloud / Stop cloud, Quit only the tray; `OnClick` shows and focuses; `Cloud.OnChange` updates tray and emits `cloud`; `Logs.Emit` emits `logs`), icons/*.ico (running, stopped, busy, error; 16 to 48 px).
   - [x] cmd/hlab-tray/e2e.go (`//go:build e2e`): own UniqueID, `--remote-debugging-port` and `WebviewUserDataPath` from `HLAB_E2E_CDP_PORT`/`HLAB_E2E_WEBVIEW_DIR`, service `TrayTest` with `State() TrayModel` and `Click(item)` calling the menu handlers.
 
-- [ ] 10-14 E2E harness: tray over CDP and UI-01
+- [x] 10-14 E2E harness: tray over CDP and UI-01
   - Wave: 4 | Depends on: 10-11, 10-13 | Review: alone
   - Requirements: UI-01 | Tests: test/e2e/ui_test.go, ui/frontend/tests/e2e/tray.spec.ts
   - Reads: RESEARCH topic 5; EXPERIMENTS E9; test/e2e/main_test.go (setup, buildAll, waitFor), test/e2e/e2e_test.go (order); test/e2e/catalog_test.go (hcloud context checks)
   - Size: ~350 lines in 5 files
-  - [ ] Early check first: build the e2e tray, start it, connect with `chromium.connectOverCDP("http://127.0.0.1:<port>")`, find the `wails.localhost` page and evaluate a bound call through `/wails/runtime.js`; if this fails, stop the plan and report.
-  - [ ] test/e2e/main_test.go/ui_test.go: build `hlab-tray` with `-tags e2e` once, start it lazily for all UI rows with a free port and a per-run user data folder, end it at teardown; one Go subtest per UI row running `npx playwright test --project e2e --grep "<ID>"` in ui/frontend (logged start and end, deadline); the UI rows run alone after the LIFE rows; extract the Hetzner token helper of testCAT03 for UI-04.
-  - [ ] ui/frontend/tests/e2e/fixtures.ts (worker-scoped CDP connection, existing page, reload per test) and the UI-01 spec.
+  - [x] Early check first: build the e2e tray, start it, connect with `chromium.connectOverCDP("http://127.0.0.1:<port>")`, find the `wails.localhost` page and evaluate a bound call through `/wails/runtime.js`; if this fails, stop the plan and report.
+  - [x] test/e2e/main_test.go/ui_test.go: build `hlab-tray` with `-tags e2e` once, start it lazily for all UI rows with a free port and a per-run user data folder, end it at teardown; one Go subtest per UI row running `npx playwright test --project e2e --grep "<ID>"` in ui/frontend (logged start and end, deadline); the UI rows run alone after the LIFE rows; extract the Hetzner token helper of testCAT03 for UI-04.
+  - [x] ui/frontend/tests/e2e/fixtures.ts (worker-scoped CDP connection, existing page, reload per test) and the UI-01 spec.
   - Adjusts: test/e2e/catalog_test.go (uses the extracted token helper), test/e2e/e2e_test.go (UI rows in the serial part)
 
 - [ ] 10-15 Projects view
