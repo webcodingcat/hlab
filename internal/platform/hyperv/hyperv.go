@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -135,6 +136,40 @@ if ($memory -gt 0) { $a.StaticMemory = $true; $a.MemoryStartupBytes = $memory }
 Set-VM @a
 `)
 	return err
+}
+
+// SetStopAction sets the VM's AutomaticStopAction. Hyper-V refuses a
+// change on a running VM (probed: InvalidOperation, mapped to InvalidState)
+// and accepts it on a VM that is off or saved.
+func (p *Platform) SetStopAction(ctx context.Context, name string, a platform.StopAction) error {
+	stop, err := stopAction(a)
+	if err != nil {
+		return &platform.Error{Kind: platform.Failed, Op: "SetStopAction", Err: err}
+	}
+	_, err = p.r.run(ctx, "SetStopAction", map[string]any{"name": name, "stop": stop}, getVM+`Set-VM -VM $vm -AutomaticStopAction $stop`)
+	return err
+}
+
+// VMs returns the names of the VMs starting with prefix; the names are
+// filtered here, not by a PowerShell wildcard.
+func (p *Platform) VMs(ctx context.Context, prefix string) ([]string, error) {
+	data, err := p.r.run(ctx, "VMs", nil, `@{ names = @(Get-VM | ForEach-Object { $_.Name }) }`)
+	if err != nil {
+		return nil, err
+	}
+	var v struct {
+		Names []string `json:"names"`
+	}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return nil, &platform.Error{Kind: platform.Failed, Op: "VMs", Err: err}
+	}
+	var out []string
+	for _, n := range v.Names {
+		if strings.HasPrefix(n, prefix) {
+			out = append(out, n)
+		}
+	}
+	return out, nil
 }
 
 // DeleteVM turns the VM off if needed and removes it; its disks stay.
