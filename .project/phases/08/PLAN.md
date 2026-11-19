@@ -477,25 +477,25 @@ type Deps struct {
     - (internal/resources/loadbalancers/contribute.go)
   - [x] Rows of TESTS.md for 08-19 (internal/resources/loadbalancers/contribute_test.go)
 
-- [ ] 08-20 Cloud wiring
+- [x] 08-20 Cloud wiring
   - Wave: 5 | Depends on: 08-05, 08-06, 08-09, 08-10, 08-11, 08-12, 08-17, 08-19 | Review: alone
   - Requirements: LB-01, CERT-04, CERT-05 | Tests: internal/resources/conventions_test.go
   - Reads: ARCHITECTURE "Cloud start and stop", "ca", "Management API"; DECISIONS Q9, Q12; internal/cloud/cloud.go; decision D6 below
   - Size: ~300 lines in 5 files
   - Note: wire `certificates.Deps.UsedBy` to `lb.UsedBy`; without it a used certificate can be deleted and every later agent push fails (08-19 finding)
   - Adjusts: -
-  - [ ] At start, before the modules:
+  - [x] At start, before the modules:
     - `ca.Open(Paths.CA, "<tag> CA")` and `RenewCRL`
     - when `trust_ca` is on, `c.net.TrustCA(on)`; an error is logged as a problem and does not stop the start
-  - [ ] Modules and hooks:
+  - [x] Modules and hooks:
     - modules `loadbalancertypes`, `certificates` (CA, UsedBy = lb.UsedBy) and `loadbalancers` (PublicIPs = pips, Networks = nets, AgentStatus) after `fws`
     - `nets.SetLoadBalancers(lb)`, `srv.OnDelete(lb.ServerDeleted)`, and the server view's `load_balancers` through a new `srv.SetLoadBalancers(lb.ForServer)`
-  - [ ] HTTP and jobs:
+  - [x] HTTP and jobs:
     - `GET /hlab/v1/ca.crl` on the API listener outside `/v1` (no token, `application/pkix-crl`)
     - a cloud job `crl` every 7 days that runs `RenewCRL`
     - mgmt `CACert` and `Trust` (TrustCA, then `c.set.Certificates.TrustCA` updated) and `SettingsPath`
     - (internal/cloud/cloud.go, internal/cloud/ca.go, internal/resources/servers/servers.go)
-  - [ ] Conventions: load_balancers and certificates in `newFullEnv`, with the API-06, API-07 and API-11 cases (internal/resources/conventions_test.go)
+  - [x] Conventions: load_balancers and certificates in `newFullEnv`, with the API-06, API-07 and API-11 cases (internal/resources/conventions_test.go)
 
 - [ ] 08-21 End-to-end: load balancers and trust
   - Wave: 6 | Depends on: 08-20 | Review: alone | e2e

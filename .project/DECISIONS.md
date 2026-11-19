@@ -2183,3 +2183,11 @@ in ARCHITECTURE.md or the plan.
 - What: a certificate that is not issued yet is left out of the service's TLS, a missing certificate fails the push; the PTR of an LB's IPv4 is pushed while its public interface is off; reverse DNS display keeps the view code of 08-13.
 - Why: D12; the address stays assigned; project deletion removes LBs through their Deleter before the store drops certificates, so a missing certificate is a bug.
 - Cost of change: low
+
+## 2026-11-19 Cloud wiring for load balancers and certificates
+
+- Type: decision
+- Phase: phase 08
+- What: a failed `TrustCA` at cloud start is a /status problem `trust_ca` with a log warning and the start continues; the loadbalancers module is built before certificates so `certificates.Deps.UsedBy` is `lb.UsedBy`; a cloud job `crl` renews the CRL every 7 days; the server view's `load_balancers` comes from `lb.ForServer`.
+- Why: trust is a convenience and must not stop the cloud; no setter needed.
+- Cost of change: low
