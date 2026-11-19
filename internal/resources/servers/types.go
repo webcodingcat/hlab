@@ -19,6 +19,5 @@ func (m *Module) recordType(r Record) (catalog.ServerType, error) {
 	if err := json.Unmarshal(r.ServerType, &typ); err != nil || typ.Cores <= 0 || typ.Memory <= 0 {
 		return catalog.ServerType{}, fmt.Errorf("server type %q not in the catalog and not stored with the server", r.Hlab.ServerType)
 	}
-	typ.Raw = r.ServerType
 	return typ, nil
 }
