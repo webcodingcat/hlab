@@ -188,7 +188,7 @@ type LoadBalancer struct {
 // Module is the load balancers resource type.
 type Module struct {
 	d    Deps
-	stat lbStatus //nolint:unused // health and counters, filled by status.go (plan 08-17)
+	stat lbStatus // health and counters, filled by status.go
 }
 
 // New returns the module.
