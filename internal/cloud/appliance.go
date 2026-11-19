@@ -22,6 +22,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/images"
 	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/store"
+	"github.com/webcodingcat/hlab/internal/transit"
 )
 
 // The appliance VM (CONTEXT.md: Debian 13 generic, 2 vCPU, 1024 MB, 10 GB).
@@ -238,10 +239,11 @@ func (c *Cloud) applianceDebFiles(ctx context.Context) (map[string][]byte, error
 	return files, nil
 }
 
-// writeApplianceISO rebuilds the appliance's cidata ISO: transit address,
-// default route via the host, the agent binary next to hlabd, the secret
-// and the cached appliance packages. Without the packages the appliance
-// still starts; formatting with xfs then fails with a clear message.
+// writeApplianceISO rebuilds the appliance's cidata ISO: transit address
+// of the public range, default route via the host, the agent binary next to
+// hlabd, the secret, the transit address for the agent and the cached
+// appliance packages. Without the packages the appliance still starts;
+// formatting with xfs then fails with a clear message.
 func (c *Cloud) writeApplianceISO(ctx context.Context, secret string) error {
 	agentBin, err := os.ReadFile(filepath.Join(c.d.Paths.Programs, appliance.AgentFile))
 	if err != nil {
@@ -252,29 +254,33 @@ func (c *Cloud) writeApplianceISO(ctx context.Context, secret string) error {
 		slog.Warn("appliance packages unavailable; xfs volumes cannot be formatted", "err", err)
 		files = map[string][]byte{}
 	}
+	addrs := transit.For(c.set.Network.PublicRange)
 	files[appliance.AgentFile] = agentBin
 	files[appliance.SecretFile] = []byte(secret + "\n")
+	files[appliance.TransitFile] = []byte(addrs.Appliance.String() + "\n")
 	if err := os.MkdirAll(c.applianceDir(), 0o750); err != nil {
 		return err
 	}
 	if err := os.Remove(c.isoPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	// The instance-id carries a hash of the user-data, so cloud-init treats an
-	// existing appliance as a new instance once and writes the changed unit
-	// and install script; the appliance keeps no state that this loses.
+	iface := cidata.Interface{
+		MAC:       applianceMAC,
+		Addresses: []netip.Prefix{netip.PrefixFrom(addrs.Appliance, addrs.Host.Bits())},
+		Gateway:   addrs.Host.Addr(),
+	}
+	// The instance-id carries a hash of the user-data and the network
+	// settings, so cloud-init treats an existing appliance as a new instance
+	// once and writes the changed unit, install script and network-config;
+	// the appliance keeps no state that this loses.
 	userData := appliance.UserData()
-	sum := sha256.Sum256(userData)
+	sum := sha256.Sum256(fmt.Appendf(userData, "\n%s %v %s", iface.MAC, iface.Addresses, iface.Gateway))
 	return cidata.BuildFile(cidata.Seed{
 		InstanceID: c.applianceName() + "-" + hex.EncodeToString(sum[:6]),
 		Hostname:   c.applianceName(),
 		UserData:   string(userData),
-		Interfaces: []cidata.Interface{{
-			MAC:       applianceMAC,
-			Addresses: []netip.Prefix{netip.PrefixFrom(applianceAddr, hostAddr.Bits())},
-			Gateway:   hostAddr.Addr(),
-		}},
-		Files: files,
+		Interfaces: []cidata.Interface{iface},
+		Files:      files,
 	}, c.isoPath())
 }
 
