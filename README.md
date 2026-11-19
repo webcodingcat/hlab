@@ -10,7 +10,7 @@ The project is in development; there is no release and no installer yet.
 You run hlab from a working copy as described below. The current version
 covers projects, tokens, SSH keys, servers with snapshots, backups,
 rescue system and ISOs, volumes, placement groups, private networks,
-primary IPs, floating IPs and firewalls; see
+primary IPs, floating IPs, firewalls, DNS zones and reverse DNS; see
 [What does not work yet](#what-does-not-work-yet).
 
 ## Prerequisites and setup
@@ -334,6 +334,55 @@ to it, as at Hetzner:
   services: DNS, the metadata service and the API.
 - Rules for IPv6 addresses are stored but have no effect.
 
+## DNS zones
+
+Zones you create in a project resolve on the host, in WSL2 and in the
+servers while the cloud runs:
+
+```
+> hcloud zone create --name lab.internal
+> hcloud zone add-records lab.internal www A --record 198.19.0.7
+> hcloud zone add-records lab.internal '*' A --record 198.19.0.7
+> Resolve-DnsName www.lab.internal
+```
+
+A zone name is a registrable domain such as `example.com`, or one label
+below `internal`, `test` or `home.arpa` such as `lab.internal`. The
+private-use names can never collide with a real domain; prefer them.
+RRSets, TTLs, protection and the zone file import and export
+(`hcloud zone export-zonefile`, `hcloud zone import-zonefile`) work as at
+Hetzner.
+
+The appliance's DNS server answers for every zone. On the host, hlab adds
+one NRPT rule per zone that sends its names to the appliance, and removes
+it when the zone is deleted or the cloud stops; WSL2 uses the host's
+resolver through `dnsTunneling`. Names outside your zones resolve as
+before.
+
+A zone named like a real domain hides that domain on your machine while
+the cloud runs. hlab checks this and `hlab cloud status` then shows a
+warning line for the zone; see the
+[command reference](docs/user/commands.md#hlab-cloud-status).
+
+A secondary zone is accepted but not transferred: its names are looked up
+in the public DNS as before. The details are in
+[Known deviations](docs/user/deviations.md#zones).
+
+### Reverse DNS
+
+The PTR records of servers, primary IPs and floating IPs resolve through
+the same DNS server. A public IPv4 starts with Hetzner's default name
+`static.<d>.<c>.<b>.<a>.clients.your-server.de`:
+
+```
+> hcloud server set-rdns web1 --ip 198.19.0.7 --hostname www.lab.internal
+> Resolve-DnsName 198.19.0.7
+> hcloud server set-rdns web1 --ip 198.19.0.7 --reset
+```
+
+`hcloud primary-ip set-rdns` and `hcloud floating-ip set-rdns` work the
+same way. IPv6 entries are stored but do not resolve.
+
 ## OpenTofu and Ansible
 
 The OpenTofu provider and the Ansible collection read the same two
@@ -430,8 +479,8 @@ Manager if you want them gone.
 
 - The API offers actions, locations, server types, pricing, images
   (with snapshots and backups), ISOs, SSH keys, servers, server metrics,
-  placement groups, volumes, networks, primary IPs, floating IPs and
-  firewalls. Everything else, for example certificates and load
+  placement groups, volumes, networks, primary IPs, floating IPs,
+  firewalls and DNS zones. Everything else, for example certificates and load
   balancers, answers `not_found`, and the server action `request_console` answers
   `unsupported_error`. The details are in
   [Known deviations](docs/user/deviations.md).

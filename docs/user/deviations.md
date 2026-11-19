@@ -46,10 +46,17 @@ hlab serves these endpoints:
 | `GET /firewalls`, `POST /firewalls`, `GET /firewalls/{id}`, `PUT /firewalls/{id}`, `DELETE /firewalls/{id}` | See [Firewalls](#firewalls). |
 | `POST /firewalls/{id}/actions/apply_to_resources`, `POST /firewalls/{id}/actions/remove_from_resources`, `POST /firewalls/{id}/actions/set_rules` | See [Firewalls](#firewalls). |
 | `GET /firewalls/actions`, `GET /firewalls/{id}/actions`, `GET /firewalls/{id}/actions/{action_id}` | |
+| `GET /zones`, `POST /zones`, `GET /zones/{id}`, `PUT /zones/{id}`, `DELETE /zones/{id}` | See [Zones](#zones). |
+| `POST /zones/{id}/actions/change_protection`, `POST /zones/{id}/actions/change_ttl`, `POST /zones/{id}/actions/change_primary_nameservers` | See [Zones](#zones). |
+| `GET /zones/{id}/zonefile`, `POST /zones/{id}/actions/import_zonefile` | See [Zone files](#zone-files). |
+| `GET /zones/{id}/rrsets`, `POST /zones/{id}/rrsets`, `GET /zones/{id}/rrsets/{name}/{type}`, `PUT /zones/{id}/rrsets/{name}/{type}`, `DELETE /zones/{id}/rrsets/{name}/{type}` | See [Records](#records). |
+| `POST /zones/{id}/rrsets/{name}/{type}/actions/change_protection`, `.../change_ttl`, `.../set_records`, `.../add_records`, `.../remove_records`, `.../update_records` | See [Records](#records). |
+| `GET /zones/actions`, `GET /zones/actions/{id}`, `GET /zones/{id}/actions`, `GET /zones/{id}/actions/{action_id}` | Zone and RRSet actions are readable at all of these and at `GET /actions/{id}`. |
+| `POST /servers/{id}/actions/change_dns_ptr`, `POST /primary_ips/{id}/actions/change_dns_ptr`, `POST /floating_ips/{id}/actions/change_dns_ptr` | See [Reverse DNS](#reverse-dns). |
 
-Lists page, filter and sort with the parameters of Hetzner's API
-description. Every other endpoint answers 404 `not_found`, among them
-`change_dns_ptr` of servers, primary IPs and floating IPs.
+`{id}` of a zone is its ID or its name. Lists page, filter and sort with
+the parameters of Hetzner's API description. Every other endpoint answers
+404 `not_found`.
 
 ## POST /servers
 
@@ -262,7 +269,7 @@ Hetzner documents no error for these cases; hlab answers:
   `auto_delete` answers 422 `invalid_input` on the field `delete`.
 - `DELETE /primary_ips/{id}` of an assigned primary IP answers 422
   `must_be_unassigned`; unassign it first.
-- `dns_ptr` is always an empty list.
+- For `dns_ptr` see [Reverse DNS](#reverse-dns).
 
 ## Floating IPs
 
@@ -279,7 +286,7 @@ Hetzner documents no error for these cases; hlab answers:
 - A floating IP created without a name is named `floating_ip-<id>`.
 - `DELETE /floating_ips/{id}` of an assigned floating IP answers 422
   `must_be_unassigned`; unassign it first.
-- `dns_ptr` is always an empty list.
+- For `dns_ptr` see [Reverse DNS](#reverse-dns).
 
 ## Firewalls
 
@@ -318,6 +325,101 @@ Hetzner documents no error for these cases; hlab answers:
 | `POST /servers` with a firewall that does not exist | 404 `not_found`; no server is created |
 | `POST /servers` with `firewalls` and without public IPv4 | 422 `private_net_only_server` |
 | a firewall listed twice in the `firewalls` of `POST /servers` | applied once |
+
+## Zones
+
+hlab's DNS server in the appliance answers for your zones; the host, WSL2
+and the servers ask it (see [DNS zones](../../README.md#dns-zones)). No
+registrar or public nameserver is involved.
+
+- Besides a registrable domain (`example.com`, exactly one label below a
+  public suffix of the ICANN section of the Public Suffix List), a zone
+  name may be exactly one label below the private-use suffixes
+  `internal`, `test` or `home.arpa`, such as `lab.internal`.
+  `hetzner.internal`, which hlab uses itself, is refused, and so are names
+  under `local`, unknown TLDs, subdomains such as `a.example.com` or
+  `a.lab.internal`, and every name under `arpa` except `home.arpa`, which
+  also refuses reverse zones. Each refusal is 422 `invalid_input` on the
+  field `name`.
+- A zone name is unique in the whole cloud: a name used in another project
+  answers 409 `uniqueness_error` with the message `zone name is already
+  used`.
+- `authoritative_nameservers.assigned` lists Hetzner's three nameservers,
+  but nothing is delegated: `delegated` is `[]`, `delegation_status` and
+  `registrar` are `unknown`, and `status` is always `ok`.
+- A zone with `mode` `secondary` is stored with its
+  `primary_nameservers`, but hlab never transfers it (no AXFR) and holds no
+  records for it: the appliance forwards its queries to the host's DNS
+  servers. Its RRSet calls, `change_ttl` and `import_zonefile` answer 422
+  `incorrect_zone_mode`, as does `change_primary_nameservers` on a primary
+  zone.
+- In `primary_nameservers`, `address` must be an IP address (private
+  addresses are allowed) and unique in the zone, `port` lies in 1 to 65535
+  (default 53), `tsig_algorithm` is one of Hetzner's values and `tsig_key`
+  is valid base64. Each refusal is 422 `invalid_input` on the field
+  `primary_nameservers[i].<field>`. hlab never checks whether the
+  nameservers answer.
+- There is no DNSSEC: answers are not signed, and DS records are stored
+  and served as plain data.
+- `PUT /zones/{id}` and `PUT /zones/{id}/rrsets/{name}/{type}` answer 200
+  without an action; all other writes run as actions.
+- `record_count` counts every record, SOA and NS included (4 for a new
+  zone).
+
+### Records
+
+- The apex SOA RRSet is managed by hlab; its serial grows with every
+  change. Creating, deleting or changing its records answers 422
+  `invalid_input` on the field `type`; its TTL may be changed. The apex NS
+  RRSet may be edited freely.
+- A CNAME beside another type at the same name, a CNAME RRSet with more
+  than one record, or a CNAME at the apex answers 422 `invalid_input` on
+  the field `type` with the message
+  `(<name>, CNAME) conflicts with (<name>, <type>)`.
+- Creating an RRSet that exists answers 409 `uniqueness_error`.
+- Every write to a change-protected RRSet answers `protected`: records,
+  TTL, delete, and a zone file import that would replace it. Labels and
+  the protection itself stay changeable.
+- `RP` values are taken in DNS mailbox form
+  (`admin.example.com. txt.example.com.`); `admin@example.com` is
+  refused.
+- Record values are stored and returned exactly as sent.
+
+### Zone files
+
+- A bad zone file answers 422 `invalid_input` on the field `zonefile` at
+  once, with the line number in the message (`line N`); no action is
+  started. `$INCLUDE` and `$GENERATE` are refused.
+- The export writes `$ORIGIN` and `$TTL`, then the SOA, the NS records and
+  the other records sorted by name and type. A record line carries a TTL
+  only when its RRSet has its own. Comments are exported, and dropped on
+  import, as at Hetzner.
+- An import into a zone with any change-protected RRSet answers
+  `protected`. The imported SOA keeps its values except the serial, which
+  hlab continues.
+
+### Answers of the DNS server
+
+- Wildcards answer only names without records of their own (RFC 4592).
+- A CNAME is followed inside hlab's zones and, for outside names, through
+  the host's DNS servers, at most 8 steps.
+- hlab warns when a zone you create hides a domain that exists publicly;
+  see [hlab cloud status](commands.md#hlab-cloud-status).
+
+## Reverse DNS
+
+- A primary IPv4 or floating IPv4 without an own entry shows Hetzner's
+  default `static.<d>.<c>.<b>.<a>.clients.your-server.de`, as a server's
+  IPv4 does. IPv6 addresses start without entries.
+- PTRs of IPv4 addresses resolve through hlab's DNS server. IPv6 entries
+  are stored and shown but do not resolve, since servers carry no IPv6
+  traffic in hlab.
+- `dns_ptr` must be a host name of at least two labels without a trailing
+  dot; `null` resets an IPv4 to its default and removes an IPv6 entry. A
+  /64 holds at most 100 entries. The `dns_ptr` key is required.
+- A server's `change_dns_ptr` writes to the primary IP that holds the
+  address. An IP the server does not hold answers 422 `invalid_input` on
+  the field `ip`; the action names the server and the primary IP.
 
 ## Metrics
 
