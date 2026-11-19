@@ -157,19 +157,19 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
 
 ## Plans
 
-- [ ] 10-01 Catalog: own server types add, remove and reload
+- [x] 10-01 Catalog: own server types add, remove and reload
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-04 | Tests: internal/catalog/catalog_test.go
   - Reads: ARCHITECTURE "Files and formats"; DECISIONS "Tray writes server-types.custom.json directly", "Server Types view shows the catalog while the cloud is stopped"; OpenAPI `server_type` schema (`/server_types` response) in the reference
   - Size: ~250 lines in 2 files
-  - [ ] internal/catalog/custom.go: `Own`, `ReloadOwn` (under `c.mu`, sets or clears the own-types warning), `OwnSpec`, `FieldError`, `AddOwn` (field checks, collisions, next free ID, object in Hetzner shape, in-place single write), `RemoveOwn`.
+  - [x] internal/catalog/custom.go: `Own`, `ReloadOwn` (under `c.mu`, sets or clears the own-types warning), `OwnSpec`, `FieldError`, `AddOwn` (field checks, collisions, next free ID, object in Hetzner shape, in-place single write), `RemoveOwn`.
 
-- [ ] 10-02 Servers: stored server type when the own type is gone
+- [x] 10-02 Servers: stored server type when the own type is gone
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-04 | Tests: internal/resources/servers/servers_test.go
   - Reads: DECISIONS "Existing servers outlive a removed own server type"; CONTEXT "Corrections"
   - Size: ~120 lines in 4 files
-  - [ ] One helper (internal/resources/servers/servers.go or a new types.go) that returns the catalog type or, when missing, cores, memory and disk from the server's stored `server_type`; power.go, rebuild.go and reconcile.go use it; create and change_type keep requiring the catalog.
+  - [x] One helper (internal/resources/servers/servers.go or a new types.go) that returns the catalog type or, when missing, cores, memory and disk from the server's stored `server_type`; power.go, rebuild.go and reconcile.go use it; create and change_type keep requiring the catalog.
 
 - [ ] 10-03 Shared management client and status file
   - Wave: 1 | Depends on: - | Review: alone
