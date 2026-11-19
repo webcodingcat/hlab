@@ -2055,3 +2055,19 @@ in ARCHITECTURE.md or the plan.
 - What: the e2e http service listens on 8000 because `redirect_http` takes port 80; LB-05 uses its own tcp service 8081 to a second web server on both servers.
 - Why: stopping it leaves LB-02/03/04 alone.
 - Cost of change: low
+
+## 2026-11-19 hlab CA files and validity
+
+- Type: decision
+- Phase: phase 08
+- What: a `ca.crl` that exists but cannot be parsed makes `ca.Open` fail and stops the cloud start; the CA and leaf certificates start one hour in the past.
+- Why: simplest validation; allows for clock skew between host and guests.
+- Cost of change: low
+
+## 2026-11-19 HAProxy configuration rendering
+
+- Type: decision
+- Phase: phase 08
+- What: every API value drops control characters before it reaches haproxy.cfg, the cookie name keeps only RFC 6265 token characters, path, domain and response are double-quoted with escaping; an https service without a certificate is left out; health checks carry `port <n>`, `check-ssl verify none` for tls or https checks and `check-send-proxy` with proxyprotocol; sticky cookie values come from the target key; defaults timeouts 5s/50s/50s with a server-state file.
+- Why: the 08-02 review found config injection through unquoted API values; the rest is the simplest valid HAProxy config for the services.
+- Cost of change: low

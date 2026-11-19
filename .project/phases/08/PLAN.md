@@ -190,22 +190,22 @@ type Deps struct {
   - [x] `RenewCRL`, `CRL` (x509.CreateRevocationList, number in ca.crl) (internal/ca/crl.go)
   - [x] Rows of TESTS.md for 08-01 (internal/ca/ca_test.go, group `TestCA`)
 
-- [ ] 08-02 Agent: HAProxy configuration and stats
+- [x] 08-02 Agent: HAProxy configuration and stats
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: LB-02, LB-03, LB-04, LB-05, LB-07 | Tests: internal/agent/haproxy_test.go
   - Reads: R1.2, R1.4, R3.1, R3.3; DECISIONS Q13; CONTEXT (HAProxy mapping); ARCHITECTURE "hlab-agent" (LoadBalancer types); decision D2 below
   - Size: ~400 lines in 4 files
   - Adjusts: -
-  - [ ] `MaxConn`, `LBHTTP.TimeoutIdle` (internal/agentapi/agentapi.go)
-  - [ ] `HAProxyConfig`:
+  - [x] `MaxConn`, `LBHTTP.TimeoutIdle` (internal/agentapi/agentapi.go)
+  - [x] `HAProxyConfig`:
     - global with `maxconn`, stats socket and `server-state-file`; one frontend and backend per service, `mode tcp|http`
     - `balance roundrobin|leastconn`; one server line per target on the destination port, with `send-proxy-v2` when proxyprotocol is on
     - http: `option forwardfor`, X-Forwarded-Proto/Port, sticky cookie `cookie <name> insert indirect nocache maxlife <lifetime>s`, `timeout client/server <timeout_idle>s`
     - https: `bind :<port> ssl crt` with every certificate file, the first being the default; `redirect_http` as frontend `fe80redirect` answering 301 to https
     - health check: `option httpchk`, `http-check send meth GET uri <path> ver HTTP/1.1 hdr Host <domain>`, `http-check expect rstatus` from the status patterns, `expect string` for `response`, `ssl` when tls is on, `inter`, `fall`, `rise`, `timeout check`
     - (internal/agent/haproxy.go)
-  - [ ] `ParseStat` (internal/agent/haproxy_stat.go)
-  - [ ] Rows of TESTS.md for 08-02 (internal/agent/haproxy_test.go, registered in `TestAgent` in internal/agent/metadata_test.go)
+  - [x] `ParseStat` (internal/agent/haproxy_stat.go)
+  - [x] Rows of TESTS.md for 08-02 (internal/agent/haproxy_test.go, registered in `TestAgent` in internal/agent/metadata_test.go)
 
 - [ ] 08-03 API groundwork: error codes and load balancer types
   - Wave: 1 | Depends on: - | Review: alone
@@ -402,6 +402,7 @@ type Deps struct {
   - Requirements: LB-02, LB-03, LB-04 | Tests: internal/resources/loadbalancers/services_test.go
   - Reads: R3.1, R3.3, R5 (CLI, Terraform, Ansible service fields); OpenAPI add_service, update_service, delete_service; DECISIONS "Load balancer networks, targets and services"
   - Size: ~380 lines in 2 files
+  - Note: refuse control characters in cookie_name and in health-check path, domain and response with 422 `invalid_input` (the 08-02 renderer only drops them)
   - Adjusts: -
   - [ ] Services:
     - `add_service`, `update_service`, `delete_service`, `createServices`
