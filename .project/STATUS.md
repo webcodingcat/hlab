@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 06 Firewalls
+- Phase: 07 DNS zones and reverse DNS
 - Base branch: main
-- Last done: phase 05 merged into main (2026-11-19): private networks with one VRF per network on the appliance, primary IPs as records, floating IPs, live attach and detach of private adapters, port isolation by MAC deny lists
-- Next: /wcc:phase in a new session (phase 06)
+- Last done: phase 06 merged into main (2026-11-19): firewalls with rules, direct and label-selector application, stateful filtering of public traffic on the appliance in table `inet hlab_fw`
+- Next: /wcc:phase in a new session (phase 07)
 
 ## Open manual checks
 

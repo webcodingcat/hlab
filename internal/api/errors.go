@@ -57,6 +57,15 @@ var statuses = map[string]int{
 	"ip_not_available":               http.StatusUnprocessableEntity,
 	"no_subnet_available":            http.StatusUnprocessableEntity,
 	"networks_overlap":               http.StatusUnprocessableEntity,
+
+	// Codes of firewalls.
+	"resource_in_use":                    http.StatusUnprocessableEntity,
+	"firewall_already_applied":           http.StatusUnprocessableEntity,
+	"firewall_managed_by_label_selector": http.StatusUnprocessableEntity,
+	"private_net_only_server":            http.StatusUnprocessableEntity,
+	"server_already_added":               http.StatusUnprocessableEntity,
+	// POST /firewalls answers it with 422 instead.
+	"firewall_resource_not_found": http.StatusNotFound,
 }
 
 // Status returns the HTTP status of an error code; unknown codes give 500.

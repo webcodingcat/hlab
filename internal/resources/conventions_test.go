@@ -20,6 +20,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/platform/platformtest"
 	actionsres "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/datacenters"
+	"github.com/webcodingcat/hlab/internal/resources/firewalls"
 	"github.com/webcodingcat/hlab/internal/resources/floatingips"
 	imagesres "github.com/webcodingcat/hlab/internal/resources/images"
 	"github.com/webcodingcat/hlab/internal/resources/locations"
@@ -59,6 +60,9 @@ func newFullEnv(t *testing.T) *apitest.Env {
 	srv.SetPublicIPs(pips)
 	srv.OnDelete(pips.ServerDeleted)
 	srv.OnDelete(fips.ServerDeleted)
+	fws := firewalls.New(firewalls.Deps{Store: d.Store, PushAgent: d.PushAgent})
+	srv.SetFirewalls(fws)
+	srv.OnDelete(fws.ServerDeleted)
 	return apitest.New(t,
 		actionsres.New(),
 		locations.New(cat),
@@ -68,7 +72,7 @@ func newFullEnv(t *testing.T) *apitest.Env {
 		pricing.New(cat),
 		sshkeys.New(),
 		placementgroups.New(),
-		srv, nets, pips, fips,
+		srv, nets, pips, fips, fws,
 	)
 }
 
@@ -737,7 +741,7 @@ func testListFilterSort(t *testing.T) {
 	listNameAndIDDesc(t, env)
 }
 
-// listNameAndIDDesc checks, for the network and IP resources of phase 05,
+// listNameAndIDDesc checks, for the network, IP and firewall resources,
 // one name filter and one sort by id:desc each.
 func listNameAndIDDesc(t *testing.T, env *apitest.Env) {
 	for _, r := range []struct {
@@ -752,6 +756,9 @@ func listNameAndIDDesc(t *testing.T, env *apitest.Env) {
 		}},
 		{"/floating_ips", "floating_ip", "floating_ips", func(name string, _ int) map[string]any {
 			return map[string]any{"name": name, "type": "ipv4", "home_location": "fsn1"}
+		}},
+		{"/firewalls", "firewall", "firewalls", func(name string, _ int) map[string]any {
+			return map[string]any{"name": name}
 		}},
 	} {
 		t.Run(r.path, func(t *testing.T) {
@@ -897,4 +904,15 @@ func testNameUniqueness(t *testing.T) {
 			create(t, as(t, env, q), r, "dup", nil, nil)
 		})
 	}
+	t.Run("firewalls", func(t *testing.T) {
+		e := env.For(t)
+		status, m := call(t, e, http.MethodPost, "/firewalls", map[string]any{"name": "dup-fw"})
+		if status != http.StatusCreated {
+			t.Fatalf("POST /firewalls: status %d, want 201: %v", status, m)
+		}
+		status, m = call(t, e, http.MethodPost, "/firewalls", map[string]any{"name": "dup-fw"})
+		if status != http.StatusConflict || errCode(m) != "uniqueness_error" {
+			t.Errorf("create with a used name: status %d code %q, want 409 uniqueness_error", status, errCode(m))
+		}
+	})
 }

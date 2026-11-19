@@ -43,6 +43,9 @@ hlab serves these endpoints:
 | `GET /floating_ips`, `POST /floating_ips`, `GET /floating_ips/{id}`, `PUT /floating_ips/{id}`, `DELETE /floating_ips/{id}` | See [Floating IPs](#floating-ips). |
 | `POST /floating_ips/{id}/actions/assign`, `POST /floating_ips/{id}/actions/unassign`, `POST /floating_ips/{id}/actions/change_protection` | See [Floating IPs](#floating-ips). |
 | `GET /floating_ips/actions`, `GET /floating_ips/{id}/actions`, `GET /floating_ips/{id}/actions/{action_id}` | |
+| `GET /firewalls`, `POST /firewalls`, `GET /firewalls/{id}`, `PUT /firewalls/{id}`, `DELETE /firewalls/{id}` | See [Firewalls](#firewalls). |
+| `POST /firewalls/{id}/actions/apply_to_resources`, `POST /firewalls/{id}/actions/remove_from_resources`, `POST /firewalls/{id}/actions/set_rules` | See [Firewalls](#firewalls). |
+| `GET /firewalls/actions`, `GET /firewalls/{id}/actions`, `GET /firewalls/{id}/actions/{action_id}` | |
 
 Lists page, filter and sort with the parameters of Hetzner's API
 description. Every other endpoint answers 404 `not_found`, among them
@@ -67,8 +70,8 @@ description. Every other endpoint answers 404 `not_found`, among them
   RAM.
 - Only `name`, `server_type`, `image`, `location`, `ssh_keys`, `user_data`,
   `start_after_create`, `labels`, `placement_group`, `volumes`,
-  `automount`, `public_net` and `networks` are used. Other fields, such as
-  `firewalls`, are ignored.
+  `automount`, `public_net`, `networks` and `firewalls` are used. Other
+  fields are ignored.
 - A server without public IPv4, public IPv6 and network answers 422
   `invalid_input` on the field `public_net`. A primary IP given in
   `public_net.ipv4` or `public_net.ipv6` is used even when
@@ -277,6 +280,44 @@ Hetzner documents no error for these cases; hlab answers:
 - `DELETE /floating_ips/{id}` of an assigned floating IP answers 422
   `must_be_unassigned`; unassign it first.
 - `dns_ptr` is always an empty list.
+
+## Firewalls
+
+- A firewall filters the traffic of a server's public IPv4 and of the
+  floating IPs assigned to the server. Hetzner does not document whether
+  its firewalls filter floating IP traffic.
+- IPv6 rules are accepted and stored but have no effect; servers carry no
+  IPv6 traffic in hlab.
+- The `status` of a firewall in a server's `public_net.firewalls` is
+  always `applied`, never `pending`.
+- A firewall takes at most 50 rules and 100 CIDRs per rule list, and a
+  server at most 5 firewalls, as at Hetzner. Hetzner's limits of 500
+  effective rules per firewall and 50 firewalls per project are not
+  enforced.
+- Every IP in a rule must be a CIDR with a mask and without host bits set
+  (`10.0.0.0/24`, not `10.0.0.5/24` or `10.0.0.5`); otherwise the answer is
+  422 `invalid_input` on the field `rules[i].source_ips` or
+  `rules[i].destination_ips`. `port` is `any`, a port `N` or a range `A-B`
+  (1 to 65535), required for `tcp` and `udp` and not allowed for `icmp`,
+  `esp` and `gre`; it is returned exactly as sent. IPv6 CIDRs are returned
+  in their canonical form.
+- `apply_firewall` and `remove_firewall` for a label selector name only the
+  firewall in their `resources`. `set_rules` returns `set_firewall_rules`
+  plus one `apply_firewall` per server the firewall is applied to
+  directly.
+- `incompatible_network_type` is never returned.
+
+Hetzner documents no error for these cases; hlab answers:
+
+| Case | Answer |
+|---|---|
+| `remove_from_resources` of a server or label selector the firewall is not applied to | 404 `firewall_resource_not_found` |
+| `apply_to_resources` of a label selector the firewall already has | 422 `firewall_already_applied` |
+| `apply_to_resources`, `POST /firewalls` or `POST /servers` that would give a server a sixth firewall | 403 `resource_limit_exceeded`; a label selector that matches such a server skips it |
+| `DELETE /firewalls/{id}` of a firewall applied only through a label selector | 422 `resource_in_use` |
+| `POST /servers` with a firewall that does not exist | 404 `not_found`; no server is created |
+| `POST /servers` with `firewalls` and without public IPv4 | 422 `private_net_only_server` |
+| a firewall listed twice in the `firewalls` of `POST /servers` | applied once |
 
 ## Metrics
 

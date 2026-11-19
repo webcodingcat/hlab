@@ -6,6 +6,15 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x] 06 Firewalls.
+      Requirements: FW-01, FW-02, FW-03, FW-04, FW-05.
+      Depends on: 05.
+      Success criteria:
+      1. With a firewall allowing only port 22, SSH works and port 80 is
+         blocked; removing the firewall opens port 80.
+      2. Applying a firewall by label selector filters a server that gets
+         the label later.
+
 - [x] B1 Backlog: restart recovery, cloud-init and dev-loop bugs → phases/B1/
 
 - [x] 04 Images, backups, rescue, ISOs and volumes.

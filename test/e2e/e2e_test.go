@@ -45,6 +45,8 @@ func TestE2E(t *testing.T) {
 	t.Run("HOST-01", parallel(testHOST01))
 	t.Run("PIP-02", parallel(testPIP02))
 	t.Run("FIP-02", parallel(testFIP02))
+	t.Run("FW-02", parallel(testFW02))
+	t.Run("FW-03", parallel(testFW03))
 	t.Run("META-01", parallel(testMETA01))
 	t.Run("HOST-03", parallel(testHOST03))
 	t.Run("CLI-02", parallel(testCLI02))

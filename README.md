@@ -10,7 +10,7 @@ The project is in development; there is no release and no installer yet.
 You run hlab from a working copy as described below. The current version
 covers projects, tokens, SSH keys, servers with snapshots, backups,
 rescue system and ISOs, volumes, placement groups, private networks,
-primary IPs and floating IPs; see
+primary IPs, floating IPs and firewalls; see
 [What does not work yet](#what-does-not-work-yet).
 
 ## Prerequisites and setup
@@ -304,6 +304,36 @@ root@web1:~# ip addr add <floating IP>/32 dev eth0
 After `hcloud floating-ip assign fip1 web2` and the same command in web2,
 the address reaches web2; web1 needs no change.
 
+## Firewalls
+
+```
+> hcloud firewall create --name fw1
+> hcloud firewall add-rule fw1 --direction in --protocol tcp --port 22 --source-ips 0.0.0.0/0
+> hcloud firewall add-rule fw1 --direction in --protocol icmp --source-ips 0.0.0.0/0
+> hcloud firewall apply-to-resource fw1 --type server --server web1
+> hcloud firewall apply-to-resource fw1 --type label_selector --label-selector role=web
+> hcloud server add-label web2 role=web
+```
+
+A firewall filters a server's public IPv4 and the floating IPs assigned
+to it, as at Hetzner:
+
+- A server without firewall accepts all traffic. Once a firewall is
+  applied, inbound traffic is dropped unless an `in` rule allows it, ICMP
+  included.
+- Outbound traffic is allowed until one of the server's firewalls has an
+  `out` rule; from then on only what the `out` rules allow leaves the
+  server.
+- The firewalls of a server are combined: what any of them allows passes.
+  A server has at most 5 firewalls.
+- Firewalls are stateful: replies to an allowed connection pass, and a
+  rule change does not cut connections that are already open.
+- A label selector reaches every server of the project with a public
+  IPv4 whose labels match, also when the labels change later.
+- Private networks are never filtered, and neither are the cloud's own
+  services: DNS, the metadata service and the API.
+- Rules for IPv6 addresses are stored but have no effect.
+
 ## OpenTofu and Ansible
 
 The OpenTofu provider and the Ansible collection read the same two
@@ -400,8 +430,8 @@ Manager if you want them gone.
 
 - The API offers actions, locations, server types, pricing, images
   (with snapshots and backups), ISOs, SSH keys, servers, server metrics,
-  placement groups, volumes, networks, primary IPs and floating IPs.
-  Everything else, for example firewalls, certificates and load
+  placement groups, volumes, networks, primary IPs, floating IPs and
+  firewalls. Everything else, for example certificates and load
   balancers, answers `not_found`, and the server action `request_console` answers
   `unsupported_error`. The details are in
   [Known deviations](docs/user/deviations.md).

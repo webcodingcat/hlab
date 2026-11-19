@@ -20,6 +20,9 @@ func TestAgent(t *testing.T) {
 	t.Run("META-01/private_vlan", testMetadataPrivateVLAN)
 	t.Run("SRV-11", testRewriteIDs)
 	t.Run("VOL-03", testMetadataVolumes)
+	t.Run("FW-02", testCompileFirewallsIn)
+	t.Run("FW-03", testCompileFirewallsOut)
+	t.Run("FW-04", testCompileFirewallsPrivate)
 }
 
 // testMetadataPrivateVLAN: two servers with the same private IP in two
