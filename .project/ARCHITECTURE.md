@@ -171,7 +171,10 @@ Inside `hlabd` (Go packages under `internal/`):
 - Purpose: Hetzner actions, resource locks and the work queue.
 - Interface: `actions.Start(tx, projectID int64, command string, resources []Ref) (*Action,
   error)` returns `locked` if a referenced resource has a running action
-  that locks it; `actions.Run(id, func(ctx, progress func(int)) error)` runs
+  that locks it; `Manager.StartAll(tx, projectID, lock []Ref, specs []Spec)
+  ([]*Action, error)` checks locks once, only on `lock`, and starts one
+  action per `Spec{Command, Resources}` without the batch locking itself;
+  `actions.Run(id, func(ctx, progress func(int)) error)` runs
   the work in a worker pool and sets `success` or `error` with Hetzner's
   error object. Actions survive a stop: running actions are marked `error`
   with code `server_error` at the next start. `Manager.ListFor(projectID, refType, resourceID)` lists

@@ -93,13 +93,13 @@ func NewFirewall(iface string) *Firewall
 
 ## Plans
 
-- [ ] 06-01 Actions: batch start
+- [x] 06-01 Actions: batch start
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: FW-01 | Tests: internal/resources/firewalls/actions_test.go (through 06-06)
   - Reads: ARCHITECTURE "actions"; this file "Interfaces"
   - Size: ~60 lines in 1 file
   - Adjusts: -
-  - [ ] `Spec`, `Manager.StartAll` (lock check once on `lock` against running actions, then one action per spec in the same tx; `Start` unchanged) (internal/actions/actions.go)
+  - [x] `Spec`, `Manager.StartAll` (lock check once on `lock` against running actions, then one action per spec in the same tx; `Start` unchanged) (internal/actions/actions.go)
 
 - [ ] 06-02 Firewalls: rule validation
   - Wave: 1 | Depends on: - | Review: alone
