@@ -1,9 +1,18 @@
 package servers
 
 import (
+	"bytes"
+	"compress/gzip"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"io"
+	"mime"
+	"mime/multipart"
+	"net/mail"
+	"net/textproto"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/webcodingcat/hlab/internal/shacrypt"
@@ -214,15 +223,24 @@ const vendorBoundary = "==hlab-vendor-data=="
 // userBoundary separates the parts of the seed user-data MIME document.
 const userBoundary = "==hlab-user-data=="
 
-// seedUserData returns the user-data of the server's seed. Without
-// automount volumes it is userData; with them, a multipart MIME document
-// of userData unchanged (base64, so every byte survives; cloud-init detects
-// its type) and a cloud-config part whose runcmd, appended to the user's,
-// mounts each volume at /mnt/HC_Volume_<id> with an fstab line. runcmd runs
-// after the vendor script, so the udev rule has named the disks by then.
+// seedUserData returns the user-data of the server's seed. It first decodes
+// userData like cloud-init's Hetzner datasource: strict base64 (the base64
+// alphabet with correct padding, no whitespace) is decoded, anything else is
+// kept raw. Without automount volumes that is the result; cloud-init itself
+// gunzips a top-level gzip and parses a top-level MIME document. With them,
+// it is a multipart MIME document of the user's content and a cloud-config
+// part whose runcmd, appended to the user's, mounts each volume at
+// /mnt/HC_Volume_<id> with an fstab line. runcmd runs after the vendor
+// script, so the udev rule has named the disks by then. The user's content
+// is gunzipped if it is gzip; the leaf parts of a multipart MIME document are
+// copied unchanged and in order before hlab's part, since cloud-init does
+// not unpack a document nested in a text/plain part; anything else becomes
+// one base64 text/plain part (every byte survives; cloud-init detects its
+// type).
 func seedUserData(userData string, volumes []int64) string {
+	data := decodeUserData(userData)
 	if len(volumes) == 0 {
-		return userData
+		return string(data)
 	}
 	var cfg strings.Builder
 	cfg.WriteString("#cloud-config\nmerge_how: \"list(append)+dict(no_replace,recurse_list)+str()\"\nruncmd:\n")
@@ -241,21 +259,164 @@ func seedUserData(userData string, volumes []int64) string {
 `, id)
 	}
 
-	var b strings.Builder
-	b.WriteString("Content-Type: multipart/mixed; boundary=\"" + userBoundary + "\"\nMIME-Version: 1.0\n\n")
-	if userData != "" {
-		b.WriteString("--" + userBoundary + "\nContent-Type: text/plain; charset=\"utf-8\"\nContent-Transfer-Encoding: base64\nMIME-Version: 1.0\n\n")
-		enc := base64.StdEncoding.EncodeToString([]byte(userData))
+	if bytes.HasPrefix(data, []byte{0x1f, 0x8b}) {
+		if unzipped, err := gunzip(data); err == nil {
+			data = unzipped
+		}
+	}
+	var parts []mimePart
+	if leaves, ok := mimeLeaves(data); ok {
+		parts = leaves
+	} else if len(data) > 0 {
+		enc := base64.StdEncoding.EncodeToString(data)
+		var body strings.Builder
 		for len(enc) > 76 {
-			b.WriteString(enc[:76] + "\n")
+			body.WriteString(enc[:76] + "\n")
 			enc = enc[76:]
 		}
-		b.WriteString(enc + "\n")
+		body.WriteString(enc + "\n")
+		parts = append(parts, mimePart{
+			header: textproto.MIMEHeader{
+				"Content-Type":              {`text/plain; charset="utf-8"`},
+				"Content-Transfer-Encoding": {"base64"},
+				"Mime-Version":              {"1.0"},
+			},
+			body: []byte(body.String()),
+		})
 	}
-	b.WriteString("--" + userBoundary + "\nContent-Type: text/cloud-config; charset=\"utf-8\"\nMIME-Version: 1.0\n\n")
-	b.WriteString(cfg.String())
-	b.WriteString("--" + userBoundary + "--\n")
-	return b.String()
+	parts = append(parts, mimePart{
+		header: textproto.MIMEHeader{
+			"Content-Type": {`text/cloud-config; charset="utf-8"`},
+			"Mime-Version": {"1.0"},
+		},
+		body: []byte(cfg.String()),
+	})
+	return writeMultipart(parts)
+}
+
+// mimePart is a leaf part of a MIME document: its headers and its body as
+// written, not decoded.
+type mimePart struct {
+	header textproto.MIMEHeader
+	body   []byte
+}
+
+// decodeUserData decodes userData as cloud-init's maybe_b64decode with
+// validate=True: standard base64 of the alphabet only, with correct
+// padding; otherwise userData is returned unchanged.
+func decodeUserData(userData string) []byte {
+	if !strictBase64.MatchString(userData) {
+		return []byte(userData)
+	}
+	dec, err := base64.StdEncoding.DecodeString(userData)
+	if err != nil {
+		return []byte(userData)
+	}
+	return dec
+}
+
+// strictBase64 matches the base64 alphabet with at most two padding
+// characters at the end; Go's decoder would skip newlines, cloud-init's does
+// not.
+var strictBase64 = regexp.MustCompile(`^[A-Za-z0-9+/]*={0,2}$`)
+
+func gunzip(data []byte) ([]byte, error) {
+	zr, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = zr.Close() }()
+	return io.ReadAll(zr)
+}
+
+// mimeLeaves returns the leaf parts of data in document order, walking
+// nested multiparts, if data is a MIME message with a multipart/* type.
+func mimeLeaves(data []byte) ([]mimePart, bool) {
+	msg, err := mail.ReadMessage(bytes.NewReader(data))
+	if err != nil {
+		return nil, false
+	}
+	mt, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+	if err != nil || !strings.HasPrefix(mt, "multipart/") || params["boundary"] == "" {
+		return nil, false
+	}
+	leaves, err := walkLeaves(msg.Body, params["boundary"])
+	if err != nil || len(leaves) == 0 {
+		return nil, false
+	}
+	return leaves, true
+}
+
+func walkLeaves(body io.Reader, boundary string) ([]mimePart, error) {
+	r := multipart.NewReader(body, boundary)
+	var out []mimePart
+	for {
+		p, err := r.NextRawPart()
+		if err == io.EOF {
+			return out, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		data, err := io.ReadAll(p)
+		if err != nil {
+			return nil, err
+		}
+		mt, params, err := mime.ParseMediaType(p.Header.Get("Content-Type"))
+		if err == nil && strings.HasPrefix(mt, "multipart/") {
+			nested, err := walkLeaves(bytes.NewReader(data), params["boundary"])
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, nested...)
+			continue
+		}
+		out = append(out, mimePart{header: p.Header, body: data})
+	}
+}
+
+// writeMultipart writes parts as a multipart/mixed document. Its boundary
+// is userBoundary, with a number added while the boundary occurs in a part.
+func writeMultipart(parts []mimePart) string {
+	boundary := userBoundary
+	for n := 1; occursIn(parts, "--"+boundary); n++ {
+		boundary = userBoundary + strconv.Itoa(n)
+	}
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	if err := w.SetBoundary(boundary); err != nil {
+		panic(err) // userBoundary is a valid boundary
+	}
+	for _, p := range parts {
+		pw, err := w.CreatePart(p.header)
+		if err == nil {
+			_, err = pw.Write(p.body)
+		}
+		if err != nil {
+			panic(err) // writes to a bytes.Buffer do not fail
+		}
+	}
+	if err := w.Close(); err != nil {
+		panic(err)
+	}
+	return "Content-Type: multipart/mixed; boundary=\"" + boundary + "\"\r\nMIME-Version: 1.0\r\n\r\n" + body.String()
+}
+
+// occursIn reports whether s occurs in a header value or body of parts.
+func occursIn(parts []mimePart, s string) bool {
+	for _, p := range parts {
+		if bytes.Contains(p.body, []byte(s)) {
+			return true
+		}
+		for _, vs := range p.header {
+			for _, v := range vs {
+				if strings.Contains(v, s) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // vendorData returns the server's vendor-data, a multipart MIME document.
