@@ -106,5 +106,41 @@ func Deviations() []Deviation {
 			Endpoint:    "http://169.254.169.254/hetzner/v1/metadata",
 			Description: "no EC2 routes; public-keys and userdata in cloud-init's shape",
 		},
+		{
+			Endpoint:    "POST /zones",
+			Description: "names may also be one label below internal, test or home.arpa (not hetzner.internal, never local); zones under arpa and subdomains are refused; a name used in another project answers 409 uniqueness_error",
+		},
+		{
+			Endpoint:    "POST /zones",
+			Description: "secondary zones are stored and their queries forwarded upstream; no zone transfer, no records of their own",
+		},
+		{
+			Endpoint:    "GET /zones/{id}",
+			Description: "authoritative_nameservers.delegated is [], delegation_status and registrar are unknown, status is always ok",
+		},
+		{
+			Endpoint:    "POST /zones/{id}/rrsets",
+			Description: "no DNSSEC, DS records are served as plain data; CNAME conflicts answer 422 invalid_input on type, an existing RRSet 409 uniqueness_error; the apex SOA is managed by hlab except its TTL",
+		},
+		{
+			Endpoint:    "POST /zones/{id}/actions/import_zonefile",
+			Description: "a bad zone file answers 422 invalid_input on zonefile naming the line, without an action; a change-protected RRSet in the zone answers protected",
+		},
+		{
+			Endpoint:    "POST /zones/{id}/actions/change_primary_nameservers",
+			Description: "addresses are checked for syntax only, never for reachability; private addresses are allowed",
+		},
+		{
+			Endpoint:    "GET /zones/actions/{id}",
+			Description: "zone and RRSet actions are also readable here and at /actions/{id}",
+		},
+		{
+			Endpoint:    "POST /primary_ips/{id}/actions/change_dns_ptr",
+			Description: "IPv6 PTR entries are stored and shown but not resolvable; only IPv4 PTRs are answered by DNS",
+		},
+		{
+			Endpoint:    "POST /servers/{id}/actions/change_dns_ptr",
+			Description: "an IP the server does not hold answers 422 invalid_input on the field ip; the action names the server and its primary IP",
+		},
 	}
 }

@@ -149,7 +149,7 @@ resource types.
 
 ### DNS zones (`DNS`)
 
-- DNS-01 user creates, updates and deletes zones and RRSets of all record types Hetzner supports, with TTLs and zone file import and export, validated like Hetzner (goal 1) [unit]
+- DNS-01 user creates, updates and deletes zones and RRSets of all record types Hetzner supports, with TTLs and zone file import and export, validated like Hetzner; zone names may also lie under the private-use suffixes `.internal`, `.test` and `.home.arpa` (e.g. `lab.internal`), except `hetzner.internal` and its subdomains, while `.local` stays refused (goal 1) [unit]
 - DNS-02 records of hlab zones resolve from servers, the host and WSL2 while the cloud runs (goal 2) [e2e]
 - DNS-03 every zone has exactly one NRPT rule on the host while the cloud runs; deleting the zone or stopping the cloud removes it (goal 4) [e2e]
 - DNS-04 `/mgmt/v1/status` lists every zone that shadows a domain resolving publicly, so tray and `hlab cloud status` can warn (goal 2) [unit]
@@ -312,8 +312,8 @@ What the target vision in IDEA.md will need, not built yet.
 | PIP-02 | 05 | x |
 | FIP-01 | 05 | x |
 | FIP-02 | 05 | x |
-| RDNS-01 | 07 | |
-| RDNS-02 | 07 | |
+| RDNS-01 | 07 | x |
+| RDNS-02 | 07 | x |
 | FW-01 | 06 | x |
 | FW-02 | 06 | x |
 | FW-03 | 06 | x |
@@ -338,11 +338,11 @@ What the target vision in IDEA.md will need, not built yet.
 | VOL-03 | 04 | x |
 | VOL-04 | 04 | x |
 | VOL-05 | 04 | x |
-| DNS-01 | 07 | |
-| DNS-02 | 07 | |
-| DNS-03 | 07 | |
-| DNS-04 | 07 | |
-| DNS-05 | 07 | |
+| DNS-01 | 07 | x |
+| DNS-02 | 07 | x |
+| DNS-03 | 07 | x |
+| DNS-04 | 07 | x |
+| DNS-05 | 07 | x |
 | HOST-01 | 05 | x |
 | HOST-02 | 09 | |
 | HOST-03 | 02 | x |

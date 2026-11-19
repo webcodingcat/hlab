@@ -27,6 +27,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/ipam"
 	"github.com/webcodingcat/hlab/internal/metrics"
 	"github.com/webcodingcat/hlab/internal/platform"
+	"github.com/webcodingcat/hlab/internal/rdns"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
 	imagesres "github.com/webcodingcat/hlab/internal/resources/images"
@@ -161,7 +162,8 @@ type PublicNet struct {
 }
 
 // IPv4 is the public IPv4 of a server. ID is the ID of its primary IP,
-// which clients such as hcloud-python read.
+// which clients such as hcloud-python read. A stored empty DNSPtr is shown
+// as rdns.Default.
 type IPv4 struct {
 	ID      int64  `json:"id,omitempty"`
 	IP      string `json:"ip"`
@@ -171,10 +173,10 @@ type IPv4 struct {
 
 // IPv6 is the formal public IPv6 network of a server; ID as for IPv4.
 type IPv6 struct {
-	ID      int64  `json:"id,omitempty"`
-	IP      string `json:"ip"`
-	Blocked bool   `json:"blocked"`
-	DNSPtr  []any  `json:"dns_ptr"`
+	ID      int64        `json:"id,omitempty"`
+	IP      string       `json:"ip"`
+	Blocked bool         `json:"blocked"`
+	DNSPtr  []rdns.Entry `json:"dns_ptr"`
 }
 
 // Protection is the protection of a server.
@@ -259,6 +261,7 @@ type Module struct {
 	publicIPs PublicIPs
 	networks  Networks
 	firewalls Firewalls
+	dnsPtrs   DNSPtrs
 	// onDelete run inside the transaction that deletes a server record.
 	onDelete []func(tx store.Tx, serverID int64) error
 
@@ -319,6 +322,7 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("POST /servers/{id}/actions/disable_rescue", http.HandlerFunc(m.disableRescue))
 	r.Handle("POST /servers/{id}/actions/attach_iso", http.HandlerFunc(m.attachISO))
 	r.Handle("POST /servers/{id}/actions/detach_iso", http.HandlerFunc(m.detachISO))
+	r.Handle("POST /servers/{id}/actions/change_dns_ptr", http.HandlerFunc(m.changeDNSPtr))
 	resactions.RoutesFor(r, "servers", refType)
 }
 
@@ -455,6 +459,7 @@ func (m *Module) show(tx store.Tx, r Record) (Server, error) {
 		return Server{}, err
 	}
 	s := r.Server
+	s.PublicNet = showPublic(s.PublicNet)
 	if ok {
 		s.PlacementGroup = &g
 	}
@@ -507,6 +512,7 @@ func (m *Module) list(w http.ResponseWriter, req *http.Request) {
 		out = make([]Server, 0, len(recs))
 		for _, r := range recs {
 			s := r.Server
+			s.PublicNet = showPublic(s.PublicNet)
 			if g, ok := members[r.ID]; ok {
 				s.PlacementGroup = &g
 			}
@@ -825,7 +831,7 @@ func (m *Module) allocatePublic(tx store.Tx, projectID, id int64, location strin
 			if err != nil {
 				return PublicNet{}, err
 			}
-			pn.IPv6 = &IPv6{ID: ipID, IP: IPv6Net(id).String(), DNSPtr: []any{}}
+			pn.IPv6 = &IPv6{ID: ipID, IP: IPv6Net(id).String(), DNSPtr: []rdns.Entry{}}
 		}
 	}
 	if pn.FloatingIPs == nil {

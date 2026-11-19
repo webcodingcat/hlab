@@ -371,6 +371,13 @@ func cloudStatus(c *call) error {
 					}
 				}
 			}
+			if zs, ok := st["shadowing_zones"].([]any); ok {
+				for _, z := range zs {
+					if m, ok := z.(map[string]any); ok {
+						text += fmt.Sprintf("warning: zone %v (project %v) shadows a public domain\n", m["zone"], m["project"])
+					}
+				}
+			}
 			return c.out(st, text)
 		}
 	}

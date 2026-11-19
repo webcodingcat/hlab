@@ -23,6 +23,7 @@ func TestAgent(t *testing.T) {
 	t.Run("FW-02", testCompileFirewallsIn)
 	t.Run("FW-03", testCompileFirewallsOut)
 	t.Run("FW-04", testCompileFirewallsPrivate)
+	t.Run("DNS-02", testDNSZones)
 }
 
 // testMetadataPrivateVLAN: two servers with the same private IP in two

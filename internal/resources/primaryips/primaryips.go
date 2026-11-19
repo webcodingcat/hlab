@@ -18,9 +18,11 @@ import (
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/actions"
+	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/ipam"
+	"github.com/webcodingcat/hlab/internal/rdns"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/servers"
@@ -53,10 +55,7 @@ type Deps struct {
 }
 
 // DNSPtr is a reverse DNS entry of a primary IP.
-type DNSPtr struct {
-	IP     string `json:"ip"`
-	DNSPtr string `json:"dns_ptr"`
-}
+type DNSPtr = rdns.Entry
 
 // Protection is the protection of a primary IP.
 type Protection struct {
@@ -110,6 +109,7 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("POST /primary_ips/{id}/actions/change_protection", http.HandlerFunc(m.changeProtection))
 	r.Handle("POST /primary_ips/{id}/actions/assign", http.HandlerFunc(m.assign))
 	r.Handle("POST /primary_ips/{id}/actions/unassign", http.HandlerFunc(m.unassign))
+	r.Handle("POST /primary_ips/{id}/actions/change_dns_ptr", http.HandlerFunc(m.changeDNSPtr))
 	resactions.RoutesFor(r, Kind, refType)
 }
 
@@ -156,13 +156,42 @@ func view(r Record) PrimaryIP {
 	if p.Labels == nil {
 		p.Labels = map[string]string{}
 	}
-	if p.DNSPtr == nil {
-		p.DNSPtr = []DNSPtr{}
-	}
+	p.DNSPtr = rdns.Show(p.DNSPtr, owner(r))
 	if p.AssigneeType == "" {
 		p.AssigneeType = "server"
 	}
 	return p
+}
+
+// owner is the address range r owns: its IPv4 as /32 or its IPv6 /64.
+// The stored IP always parses: it is written only from netip values.
+func owner(r Record) netip.Prefix {
+	if r.Type == typeIPv4 {
+		a, _ := netip.ParseAddr(r.IP)
+		return netip.PrefixFrom(a, 32)
+	}
+	p, _ := netip.ParsePrefix(r.IP)
+	return p
+}
+
+// Contribute implements resource.NetContributor: the effective PTR name of
+// every primary IPv4.
+func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
+	recs, err := store.ListAll[Record](tx, Kind)
+	if err != nil {
+		return err
+	}
+	for _, r := range recs {
+		if r.Type != typeIPv4 {
+			continue
+		}
+		a, _ := netip.ParseAddr(r.IP)
+		if doc.PTR == nil {
+			doc.PTR = map[netip.Addr]string{}
+		}
+		doc.PTR[a] = rdns.PTR(r.DNSPtr, a)
+	}
+	return nil
 }
 
 // newRecord makes the record of a new primary IP of type typ in location

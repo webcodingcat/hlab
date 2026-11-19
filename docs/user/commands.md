@@ -48,8 +48,8 @@ the cloud is stopping
 
 ### hlab cloud status
 
-Shows the state (`running`, `stopped`, `starting`, `stopping`), the version
-and any problem found at start.
+Shows the state (`running`, `stopped`, `starting`, `stopping`), the version,
+any problem found at start, and the DNS zones that hide a public domain.
 
 ```
 > hlab cloud status
@@ -58,6 +58,7 @@ version: dev
 > hlab cloud status --output json
 {
   "problems": [],
+  "shadowing_zones": [],
   "state": "running",
   "version": "dev"
 }
@@ -66,6 +67,20 @@ version: dev
 When the last start was refused, for example because the cloud of the
 other profile runs, the status shows `state: refused` and the reason on a
 `problem:` line.
+
+While the cloud runs, the host, WSL2 and the servers resolve the names of
+a zone you create in hlab through hlab, so a zone such as `example.com`
+hides the real domain. hlab asks the public DNS for each primary zone when
+it is created or imported and at every cloud start; when the domain
+exists, the status shows one line per zone, and the JSON output lists it
+under `shadowing_zones` with `zone` and `project`:
+
+```
+warning: zone example.com (project demo) shadows a public domain
+```
+
+Zones under `internal`, `test` and `home.arpa` and secondary zones are
+never listed, and neither is a zone whose check got no answer.
 
 ## Projects
 
