@@ -48,9 +48,6 @@ func (m *Module) Jobs() []scheduler.Job {
 // readStatus replaces the health cache with the agent's report and adds a
 // counter sample per load balancer; samples older than the retention go.
 func (m *Module) readStatus(ctx context.Context) {
-	if m.d.AgentStatus == nil {
-		return
-	}
 	st, err := m.d.AgentStatus(ctx)
 	if err != nil {
 		if ctx.Err() == nil {
