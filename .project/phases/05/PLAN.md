@@ -172,15 +172,15 @@ func (m *Metadata) HandlerFor(vlan int) http.Handler
   - [ ] Floating IPs: `syncRoutes` also keeps one onlink `/32` route per assigned floating IP via the target's public IPv4 on the public interface (internal/agent/network_linux.go)
   - [ ] Isolation: forwarded IPv4 from a member MAC on `t<vlan>` is dropped unless its source is the member's IP, an alias IP, or inside a route destination whose gateway is that member (one accept rule per route before the drop); a raw-priority prerouting chain sets `ct zone` = VLAN by iifname on `t<vlan>` links, so overlapping ranges never share conntrack entries; the public rules stay as they are; still one atomic table replace (internal/agent/isolation_linux.go)
 
-- [ ] 05-04 Servers: network fields and hooks
+- [x] 05-04 Servers: network fields and hooks
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: PIP-01, NET-02, FIP-01 | Tests: - (covered by primaryips_test.go, adapters_test.go, attach_test.go)
   - Reads: ARCHITECTURE "resource", "cidata", "Data schema"; RESEARCH R2 (create_server, delete_server); CONTEXT "Corrected guest config", Q3; DECISIONS "Server public_net carries primary IP IDs", "Server MACs, IPv6 and root login"
   - Size: ~350 lines in 4 files
   - Adjusts: -
-  - [ ] Types and hooks of the Interfaces section (`PrivateNet`, `Internal.Networks`, `NetInternal`, `PublicNetRequest`, `PublicIPs`, `Networks`, `OnDelete`, `Update`, `PrivateMAC`, `NextPrivateMAC`); create parses `public_net` (enable_ipv4/6, ipv4/ipv6 IDs) and `networks`, calls the hooks when set, refuses a server with neither public IPv4, IPv6 nor network (422 `invalid_input`, field `public_net`); without hooks the old allocation stays; delete runs the `OnDelete` functions in its record transaction (internal/resources/servers/servers.go, internal/resources/servers/network.go)
-  - [ ] Seed and reconcile: a server without public IPv4 keeps its public adapter without address and is no error; the seed gets one interface per `private_net` entry with its `/32` and a route to the network range via the network gateway (first host address of `Internal.Networks[id].IPRange`, onlink), not the network's routes (internal/resources/servers/reconcile.go, internal/resources/servers/network.go)
-  - [ ] The apitest servers deps take the new hooks unset (internal/apitest/apitest.go)
+  - [x] Types and hooks of the Interfaces section (`PrivateNet`, `Internal.Networks`, `NetInternal`, `PublicNetRequest`, `PublicIPs`, `Networks`, `OnDelete`, `Update`, `PrivateMAC`, `NextPrivateMAC`); create parses `public_net` (enable_ipv4/6, ipv4/ipv6 IDs) and `networks`, calls the hooks when set, refuses a server with neither public IPv4, IPv6 nor network (422 `invalid_input`, field `public_net`); without hooks the old allocation stays; delete runs the `OnDelete` functions in its record transaction (internal/resources/servers/servers.go, internal/resources/servers/network.go)
+  - [x] Seed and reconcile: a server without public IPv4 keeps its public adapter without address and is no error; the seed gets one interface per `private_net` entry with its `/32` and a route to the network range via the network gateway (first host address of `Internal.Networks[id].IPRange`, onlink), not the network's routes (internal/resources/servers/reconcile.go, internal/resources/servers/network.go)
+  - [x] The apitest servers deps take the new hooks unset (internal/apitest/apitest.go)
 
 - [x] 05-05 Networks: resource, subnets, routes
   - Wave: 1 | Depends on: - | Review: alone

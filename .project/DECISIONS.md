@@ -1543,3 +1543,11 @@ in ARCHITECTURE.md or the plan.
 - What: Field errors name nested create fields `subnets[i].<field>`/`routes[i].<field>`; a `0.0.0.0/0` route skips the overlap checks with subnets and 172.31.1.1 but not with other routes; `change_ip_range` to the same size is a no-op; no free VLAN gives 403 `resource_limit_exceeded`; no free /24 and unknown subnet or route in delete actions give 422 `invalid_input`.
 - Why: Hetzner documents none of these; the simplest answers that fit the frozen spec.
 - Cost of change: low
+
+## 2026-11-19 Server create and delete without public IPv4
+
+- Type: decision
+- Phase: 05
+- What: cidata renders an interface without addresses as `optional: true`, so a server without IPv4 keeps eth0 and does not block wait-online; with the PublicIPs hook set, server delete leaves releasing the IPv4 to the primary IP's `ServerDeleted`; without hooks create follows `enable_ipv4/6`, ignores primary IP IDs and refuses `networks` with 422 `invalid_input`.
+- Why: Keeps interface names stable and gives one owner for each IPv4.
+- Cost of change: low
