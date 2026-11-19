@@ -101,6 +101,29 @@ appear here, only names.
   and the default endpoint, so the list is checked first). Calls to hcloud
   clear `HCLOUD_TOKEN`, `HCLOUD_ENDPOINT` and `HCLOUD_CONTEXT` in the child
   environment.
+- Development only, for agents: an hcloud context `hlab-docs` for the dev
+  cloud, created once by the user: endpoint `http://api.hetzner.internal/v1`
+  set in the context (`hcloud --context hlab-docs config set endpoint ...`,
+  not `--global`), token of a read/write token of the hlab project `docs`.
+  The `doc-writer` agent uses it to run the examples of the user
+  documentation against the running dev service:
+  - hcloud examples run as `hcloud --context hlab-docs <command>`, with
+    `HCLOUD_TOKEN`, `HCLOUD_ENDPOINT` and `HCLOUD_CONTEXT` cleared in the
+    child environment; the examples in the documents keep their
+    `HCLOUD_ENDPOINT`/`HCLOUD_TOKEN` form.
+  - OpenTofu and Ansible examples get the token only inside the one command
+    that needs it, as
+    `HCLOUD_TOKEN="$(hcloud --context hlab-docs config get token --allow-sensitive)" <command>`
+    (PowerShell: set `$env:HCLOUD_TOKEN` from the same call in the same
+    command and remove it afterwards); the value is never printed, written
+    to a file or read by the agent.
+  - Agents work only in project `docs`, never create, delete or list
+    projects or tokens there, never run an example whose output contains a
+    token value, and delete the resources they created before they finish.
+  - The context is usable if `hcloud context list` names it and
+    `hcloud --context hlab-docs config get endpoint` returns
+    `http://api.hetzner.internal/v1`; otherwise the examples are not run and
+    the documentation plan says why. The active context is never changed.
 - Operation: the product has no dependency on hcloud. `hlab catalog
   update` and the tray ask the user for a real Hetzner token (ARCHITECTURE.md,
   "hlab"); hlab uses it for that one update and never stores it.
@@ -148,7 +171,9 @@ The documents the project delivers, from "Documentation" in IDEA.md. Every
 phase brings them up to date for what it delivers, in its documentation
 plan, carried out by the `doc-writer` agent. They describe what is built,
 never the target vision. Their requirements are in category `DOC` of
-REQUIREMENTS.md.
+REQUIREMENTS.md. The `doc-writer` runs the examples it writes against the
+dev cloud through the hcloud context `hlab-docs` (see "Accounts and
+secrets").
 
 - D1 User guide: `README.md`, for developers testing Hetzner setups;
   installation, first steps (project, token, client endpoint settings for

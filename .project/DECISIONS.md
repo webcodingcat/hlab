@@ -1719,3 +1719,11 @@ in ARCHITECTURE.md or the plan.
 - What: project files brought from wcc 0.32.6 to 0.32.8: SPEC.md section "References" with the Hetzner OpenAPI description, version line in CLAUDE.md
 - Why: the skills of the installed version search for these keys and rules
 - Cost of change: low
+
+## 2026-11-19 Dev cloud access for agents through hcloud context hlab-docs
+
+- Type: change
+- Phase: change
+- What: agents run documentation examples against the dev cloud through a user-created hcloud context `hlab-docs` (endpoint `http://api.hetzner.internal/v1` set per context, token of project `docs`) and pass its token to OpenTofu and Ansible only inside the one command that needs it, never reading it.
+- Why: the doc-writer has to check that the README examples work, and hcloud 1.70.2 stores the endpoint per context, so no environment variable or task is needed.
+- Cost of change: low
