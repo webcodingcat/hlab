@@ -362,9 +362,10 @@ Inside `hlabd` (Go packages under `internal/`):
 
 - Purpose: the hlab CA for managed certificates
   (`decisions/managed-certificates.md`).
-- Interface: `ca.Issue(domains []string) (certPEM, keyPEM, error)`,
-  `ca.Certificate() []byte`. Key at `%ProgramData%\hlab\ca\ca.key`, ACL
-  SYSTEM only.
+- Interface: `ca.Open(dir, name, now)` (create or load), `ca.Issue(domains []string) (certPEM, keyPEM, error)`,
+  `ca.Certificate() []byte`, `ca.RenewCRL()`, `ca.CRL() []byte`. Key at
+  `%ProgramData%\hlab\ca\ca.key` with a protected DACL, SYSTEM only (Open
+  repairs it); the empty CRL in `ca.crl`.
 
 #### system integration (interface `sysint`, implementation `sysint/windows`)
 
@@ -529,7 +530,7 @@ locks a resource of type `project`.
       Firewalls    []Firewall            // ID, rules in Hetzner's shape
       LoadBalancers []LoadBalancer       // ID, public IP, private IPs, services, targets resolved to IPs
       Zones        []Zone                // name, TTL, RRSets in Hetzner's shape
-      PTR          map[netip.Addr]string // IPv4 only; filled by primary IPs and floating IPs, which own all PTRs (internal/rdns); a server's change_dns_ptr writes to its primary IP
+      PTR          map[netip.Addr]string // IPv4 only; filled by primary IPs, floating IPs and load balancers (the LB's own IPv4; primary IPs held by an LB are left to it) through internal/rdns; a server's change_dns_ptr writes to its primary IP
       Metadata     []Metadata
       API          APIProxy              // listen 198.19.0.1:80, backend 198.19.0.2:8780
       Upstream     []netip.AddrPort      // DNS forwarders: the host's DNS servers, else 1.1.1.1:53, 9.9.9.9:53
@@ -799,7 +800,7 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 
 | Path | Format | Writer |
 |---|---|---|
-| `%ProgramData%\hlab\settings.toml` | TOML, keys in "Settings" below; ACL: Interactive Users modify | tray, user |
+| `%ProgramData%\hlab\settings.toml` | TOML, keys in "Settings" below; ACL: Interactive Users modify, kept when hlabd rewrites the file | tray, user, hlabd (`PUT /trust` through `settings.Save`) |
 | `%ProgramData%\hlab\server-types.custom.json` | JSON array of Hetzner `server_type` objects (IDs from 100000) | tray, user |
 | `%ProgramFiles%\hlab\catalog\server-types.json` | `{"server_types": [...]}` as returned by Hetzner's API | `task catalog` (release) |
 | `%ProgramData%\hlab\catalog\server-types.json` | same; written by `hlab catalog update`, preferred when present | hlabd |
@@ -807,7 +808,7 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 | `%ProgramFiles%\hlab\catalog\appliance-debs.json` | `{"debs":[{"name","urls","sha256"}]}`: Debian packages missing from the appliance image; cached in `<data>\cache\debs\` and put on the appliance cidata as `<name>.deb` | release |
 | `%ProgramData%\hlab\state.db` | SQLite, see "Data schema" | hlabd |
 | `%ProgramData%\hlab\logs\hlabd.log` | JSON lines (`time`, `level`, `msg`, fields), 10 MB x 5 rotated | hlabd |
-| `%ProgramData%\hlab\ca\` | `ca.pem`, `ca.key` (SYSTEM only) | hlabd |
+| `%ProgramData%\hlab\ca\` | `ca.pem`, `ca.key` (SYSTEM only), `ca.crl` | hlabd |
 | `<data folder>\{disks,volumes,images,isos,cache,appliance,vms}\` | VHDX, server seed ISOs (in `disks`), VM configuration folders (in `vms`) | hlabd |
 
 Settings (`settings.toml`), all optional with defaults:
@@ -832,9 +833,11 @@ level = "info"
 
 - Start (`hlabd` service start): read settings, `hostnet.Check` (abort on a
   problem with a status message), open store, create switch and appliance
-  if missing, start appliance, `hostnet.Up`, push agent document, restore
+  if missing, open the hlab CA (created if missing) and renew its CRL,
+  apply `hostnet.TrustCA` when `trust_ca` is on (a failure is a status
+  problem, not an abort), start appliance, `hostnet.Up`, push agent document, restore
   servers (resume saved ones; power on those marked running), start API and
-  scheduler, set status `running`.
+  scheduler (with the weekly `crl` job), set status `running`.
 - Stop (SCM stop or `SERVICE_CONTROL_PRESHUTDOWN` at Windows shutdown):
   stop API, record which servers ran, then per `stop_behaviour` save or
   shut down every running VM (Shutdown integration service, 60 s, then

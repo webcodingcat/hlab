@@ -510,13 +510,13 @@ type Deps struct {
     - (test/e2e/lb_test.go)
   - [x] Rows LB-02, LB-03, LB-04, LB-05 (test/e2e/lb_test.go) and CERT-04 (test/e2e/cert_test.go; it switches trust off in `t.Cleanup` as well), registered in test/e2e/e2e_test.go
 
-- [ ] 08-22 Documentation
+- [x] 08-22 Documentation
   - Wave: 7 | Depends on: 08-21 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06 | Tests: test/docs/docs_test.go (existing)
   - Reads: SPEC "Documentation", "Accounts and secrets" (`hlab-docs`); REQUIREMENTS DOC; CONTEXT; DECISIONS Q9 to Q13 and the phase 08 entries; decisions/managed-certificates.md (risk text)
   - Size: ~250 lines in 5 files
   - Adjusts: -
-  - [ ] Deviations, in internal/api/deviations.go and docs/user/deviations.md:
+  - [x] Deviations, in internal/api/deviations.go and docs/user/deviations.md:
     - IP targets
     - LB-held primary IPs (`assignee_type` load_balancer, assign and unassign answers)
     - formal LB IPv6
@@ -525,7 +525,7 @@ type Deps struct {
     - the metrics resolution of 10 s
     - the codes chosen where Hetzner is unconfirmed: limits 403, zone mismatch, retry, delete in use, omitted health check
     - (internal/api/deviations.go, docs/user/deviations.md)
-  - [ ] docs/user/commands.md (`hlab ca export`, `hlab ca trust on|off`), docs/user/configuration.md (`trust_ca`, appliance debs), README.md (load balancers, managed certificates, the trust switch with the risk text from decisions/managed-certificates.md, `curl https://<name>` on host and WSL2), docs/dev/components.md (ca, certificates, loadbalancers, agent HAProxy); examples run through `hcloud --context hlab-docs` as SPEC.md says
+  - [x] docs/user/commands.md (`hlab ca export`, `hlab ca trust on|off`), docs/user/configuration.md (`trust_ca`, appliance debs), README.md (load balancers, managed certificates, the trust switch with the risk text from decisions/managed-certificates.md, `curl https://<name>` on host and WSL2), docs/dev/components.md (ca, certificates, loadbalancers, agent HAProxy); examples run through `hcloud --context hlab-docs` as SPEC.md says
 
 ## Decisions taken in planning
 
