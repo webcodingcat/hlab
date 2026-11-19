@@ -35,11 +35,14 @@ import (
 	"github.com/webcodingcat/hlab/internal/resource"
 	actionsres "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/datacenters"
+	"github.com/webcodingcat/hlab/internal/resources/floatingips"
 	imagesres "github.com/webcodingcat/hlab/internal/resources/images"
 	"github.com/webcodingcat/hlab/internal/resources/isos"
 	"github.com/webcodingcat/hlab/internal/resources/locations"
+	"github.com/webcodingcat/hlab/internal/resources/networks"
 	"github.com/webcodingcat/hlab/internal/resources/placementgroups"
 	"github.com/webcodingcat/hlab/internal/resources/pricing"
+	"github.com/webcodingcat/hlab/internal/resources/primaryips"
 	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/resources/servertypes"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
@@ -346,8 +349,20 @@ func (c *Cloud) modules() []resource.Module {
 		PushAgent:    c.PushAgent,
 	})
 	srv.SetVolumes(vol)
-	// The servers module comes before volumes: volumes adds to the
-	// metadata the servers module writes into the agent document.
+	nets := networks.New(networks.Deps{Store: c.st, Catalog: c.cat, Servers: srv, PushAgent: c.PushAgent})
+	pips := primaryips.New(primaryips.Deps{
+		Store: c.st, Catalog: c.cat, PublicRange: c.set.Network.PublicRange, Servers: srv, PushAgent: c.PushAgent,
+	})
+	fips := floatingips.New(floatingips.Deps{
+		Store: c.st, Catalog: c.cat, PublicRange: c.set.Network.PublicRange, PushAgent: c.PushAgent,
+	})
+	srv.SetNetworks(nets)
+	srv.SetPublicIPs(pips)
+	srv.OnDelete(pips.ServerDeleted)
+	srv.OnDelete(fips.ServerDeleted)
+	// Order of the agent document: servers writes the public metadata
+	// entries, networks adds the members' private entries, and volumes then
+	// sets the volumes of every entry, public and private.
 	return []resource.Module{
 		actionsres.New(),
 		locations.New(c.cat),
@@ -359,6 +374,9 @@ func (c *Cloud) modules() []resource.Module {
 		sshkeys.New(),
 		placementgroups.New(),
 		srv,
+		nets,
+		pips,
+		fips,
 		vol,
 	}
 }
