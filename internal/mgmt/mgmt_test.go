@@ -8,7 +8,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -21,6 +24,7 @@ import (
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
+	"github.com/webcodingcat/hlab/internal/settings"
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
@@ -170,6 +174,144 @@ func TestMgmt(t *testing.T) {
 			t.Errorf("Deleter was called for q's server %d", q1)
 		}
 	})
+
+	t.Run("CERT-04", func(t *testing.T) {
+		env := apitest.New(t, apitest.ProbeModule())
+		path := filepath.Join(t.TempDir(), "settings.toml")
+		const initial = "[cloud]\nstop_behaviour = \"shutdown\"\n\n[logging]\nlevel = \"debug\"\n"
+		if err := os.WriteFile(path, []byte(initial), 0o600); err != nil {
+			t.Fatalf("write settings file: %v", err)
+		}
+		var mu sync.Mutex
+		var calls []bool
+		var trustErr error
+		h := mgmt.New(mgmt.Deps{
+			Store:        env.Store,
+			API:          env.Router,
+			Status:       func() mgmt.Status { return mgmt.Status{State: "running"} },
+			Actions:      env.Actions,
+			SettingsPath: path,
+			Trust: func(_ context.Context, on bool) error {
+				mu.Lock()
+				defer mu.Unlock()
+				calls = append(calls, on)
+				return trustErr
+			},
+		})
+		takeCalls := func() []bool {
+			mu.Lock()
+			defer mu.Unlock()
+			c := calls
+			calls = nil
+			return c
+		}
+		load := func() settings.Settings {
+			t.Helper()
+			s, err := settings.Load(path)
+			if err != nil {
+				t.Fatalf("load settings file after PUT /trust: %v", err)
+			}
+			return s
+		}
+
+		for _, on := range []bool{true, false} {
+			rec := doBody(t, h, http.MethodPut, "/trust", fmt.Sprintf(`{"on":%t}`, on))
+			if rec.Code != http.StatusOK {
+				t.Fatalf("PUT /trust on=%t: status %d, want 200 (%s)", on, rec.Code, rec.Body.String())
+			}
+			var body struct {
+				On *bool `json:"on"`
+			}
+			decode(t, rec, &body)
+			if body.On == nil || *body.On != on {
+				t.Errorf("PUT /trust on=%t answered %s, want {\"on\":%t}", on, rec.Body.String(), on)
+			}
+			if got := takeCalls(); !slices.Equal(got, []bool{on}) {
+				t.Errorf("PUT /trust on=%t: Trust calls %v, want [%t]", on, got, on)
+			}
+			s := load()
+			if s.Certificates.TrustCA != on {
+				t.Errorf("PUT /trust on=%t: settings trust_ca = %t, want %t", on, s.Certificates.TrustCA, on)
+			}
+			if s.Cloud.StopBehaviour != "shutdown" || s.Logging.Level != "debug" {
+				t.Errorf("PUT /trust on=%t: stop_behaviour %q, level %q; want the file's shutdown and debug kept",
+					on, s.Cloud.StopBehaviour, s.Logging.Level)
+			}
+		}
+
+		// A failing Trust answers server_error and leaves the file as it is.
+		before, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read settings file: %v", err)
+		}
+		mu.Lock()
+		trustErr = errors.New("store access denied")
+		mu.Unlock()
+		rec := doBody(t, h, http.MethodPut, "/trust", `{"on":true}`)
+		if code := mgmtErrorCode(t, rec); code != "server_error" {
+			t.Errorf("PUT /trust with a failing Trust: status %d, code %q, want server_error", rec.Code, code)
+		}
+		if got := takeCalls(); !slices.Equal(got, []bool{true}) {
+			t.Errorf("PUT /trust with a failing Trust: Trust calls %v, want [true]", got)
+		}
+		after, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read settings file: %v", err)
+		}
+		if !bytes.Equal(before, after) {
+			t.Errorf("PUT /trust with a failing Trust changed the settings file:\n%s\nwant\n%s", after, before)
+		}
+
+		// A body without on is invalid input and calls nothing.
+		rec = doBody(t, h, http.MethodPut, "/trust", `{}`)
+		if code := mgmtErrorCode(t, rec); code != "invalid_input" {
+			t.Errorf("PUT /trust {}: status %d, code %q, want invalid_input", rec.Code, code)
+		}
+		if got := takeCalls(); len(got) != 0 {
+			t.Errorf("PUT /trust {}: Trust calls %v, want none", got)
+		}
+	})
+
+	t.Run("CERT-05", func(t *testing.T) {
+		env := apitest.New(t, apitest.ProbeModule())
+		const pem = "-----BEGIN CERTIFICATE-----\nTUlJQ2FDQQ==\n-----END CERTIFICATE-----\n"
+		h := mgmt.New(mgmt.Deps{
+			Store:   env.Store,
+			API:     env.Router,
+			Status:  func() mgmt.Status { return mgmt.Status{State: "running"} },
+			Actions: env.Actions,
+			CACert:  func() []byte { return []byte(pem) },
+		})
+		rec := do(t, h, http.MethodGet, "/ca.pem")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /mgmt/v1/ca.pem: status %d, want 200", rec.Code)
+		}
+		if got := rec.Body.String(); got != pem {
+			t.Errorf("GET /mgmt/v1/ca.pem returned %q, want the PEM of CACert %q", got, pem)
+		}
+	})
+}
+
+// doBody sends a request with a JSON body to the management API.
+func doBody(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequestWithContext(context.Background(), method, mgmt.Prefix+path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// mgmtErrorCode returns the error code of a management API error answer.
+func mgmtErrorCode(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	var body struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	decode(t, rec, &body)
+	return body.Error.Code
 }
 
 func sorted(ids ...int64) []int64 {

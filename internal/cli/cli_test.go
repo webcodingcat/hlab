@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -230,6 +232,25 @@ func TestCLI(t *testing.T) {
 		}
 		if resp := h.env.DoAuth("Bearer "+kept, http.MethodGet, "/ssh_keys", nil); resp.StatusCode != http.StatusOK {
 			t.Errorf("other token of the project after revoke: status %d, want 200", resp.StatusCode)
+		}
+	})
+
+	t.Run("CERT-05", func(t *testing.T) {
+		const pem = "-----BEGIN CERTIFICATE-----\nTUlJQ2FDQQ==\n-----END CERTIFICATE-----\n"
+		h := newHlabWith(t, func(d *mgmt.Deps) {
+			d.CACert = func() []byte { return []byte(pem) }
+		})
+		file := filepath.Join(t.TempDir(), "hlab-ca.pem")
+		h.mustRun(t, "ca", "export", file)
+		got, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("read the exported file: %v", err)
+		}
+		if string(got) != pem {
+			t.Errorf("hlab ca export wrote %q, want the served PEM %q", got, pem)
+		}
+		if code, _, errOut := h.run(t, "ca", "export"); code != 2 {
+			t.Errorf("hlab ca export without a file: exit %d, want 2; stderr %q", code, errOut)
 		}
 	})
 

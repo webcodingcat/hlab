@@ -2,11 +2,18 @@ package resources_test
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,10 +27,13 @@ import (
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/platform/platformtest"
 	actionsres "github.com/webcodingcat/hlab/internal/resources/actions"
+	"github.com/webcodingcat/hlab/internal/resources/certificates"
 	"github.com/webcodingcat/hlab/internal/resources/datacenters"
 	"github.com/webcodingcat/hlab/internal/resources/firewalls"
 	"github.com/webcodingcat/hlab/internal/resources/floatingips"
 	imagesres "github.com/webcodingcat/hlab/internal/resources/images"
+	"github.com/webcodingcat/hlab/internal/resources/loadbalancers"
+	"github.com/webcodingcat/hlab/internal/resources/loadbalancertypes"
 	"github.com/webcodingcat/hlab/internal/resources/locations"
 	"github.com/webcodingcat/hlab/internal/resources/networks"
 	"github.com/webcodingcat/hlab/internal/resources/placementgroups"
@@ -70,6 +80,13 @@ func newFullEnv(t *testing.T) *apitest.Env {
 		PushAgent: d.PushAgent,
 		SetZones:  func(context.Context, []string) error { return nil },
 	})
+	lbs := loadbalancers.New(loadbalancers.Deps{
+		Store: d.Store, Catalog: cat, PublicRange: d.PublicRange, PushAgent: d.PushAgent,
+		PublicIPs: pips, Networks: nets,
+	})
+	nets.SetLoadBalancers(lbs)
+	srv.OnDelete(lbs.ServerDeleted)
+	certs := certificates.New(certificates.Deps{Store: d.Store, PushAgent: d.PushAgent, UsedBy: lbs.UsedBy})
 	return apitest.New(t,
 		actionsres.New(),
 		locations.New(cat),
@@ -80,7 +97,47 @@ func newFullEnv(t *testing.T) *apitest.Env {
 		sshkeys.New(),
 		placementgroups.New(),
 		srv, nets, pips, fips, fws, zns,
+		loadbalancertypes.New(cat), certs, lbs,
 	)
+}
+
+// lbBody is the create body of an lb11 load balancer in fsn1.
+func lbBody(name string) map[string]any {
+	return map[string]any{"name": name, "load_balancer_type": "lb11", "location": "fsn1"}
+}
+
+// certBody is the create body of an uploaded self-signed certificate for
+// <name>.example.test. Key generation and signing cannot fail with these
+// inputs, so an error panics.
+func certBody(name string) map[string]any {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	domain := name + ".example.test"
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(int64(nextN())),
+		Subject:      pkix.Name{CommonName: domain},
+		DNSNames:     []string{domain},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		panic(err)
+	}
+	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		panic(err)
+	}
+	return map[string]any{
+		"name":        name,
+		"type":        "uploaded",
+		"certificate": string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})),
+		"private_key": string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})),
+	}
 }
 
 // as returns e reporting on t and sending token instead of e.Token.
@@ -748,8 +805,8 @@ func testListFilterSort(t *testing.T) {
 	listNameAndIDDesc(t, env)
 }
 
-// listNameAndIDDesc checks, for the network, IP, firewall and zone
-// resources, one name filter and one sort by id:desc each, and for the
+// listNameAndIDDesc checks, for the network, IP, firewall, zone, load
+// balancer and certificate resources, one name filter and one sort by id:desc each, and for the
 // RRSets of a zone one type filter.
 func listNameAndIDDesc(t *testing.T, env *apitest.Env) {
 	for _, r := range []struct {
@@ -771,6 +828,12 @@ func listNameAndIDDesc(t *testing.T, env *apitest.Env) {
 		}},
 		{"/zones", "zone", "zones", ".test", func(name string, _ int) map[string]any {
 			return map[string]any{"name": name, "mode": "primary"}
+		}},
+		{"/load_balancers", "load_balancer", "load_balancers", "", func(name string, _ int) map[string]any {
+			return lbBody(name)
+		}},
+		{"/certificates", "certificate", "certificates", "", func(name string, _ int) map[string]any {
+			return certBody(name)
 		}},
 	} {
 		t.Run(r.path, func(t *testing.T) {
@@ -953,6 +1016,12 @@ func testLabelsOnResources(t *testing.T) {
 			e.WaitAction(idOf(m["action"]))
 			return fmt.Sprintf("/zones/%d/rrsets/www/A", zone)
 		}},
+		{"load_balancers", "load_balancer", func(t *testing.T, e *apitest.Env, labels map[string]string) string {
+			return createLabeled(t, e, "/load_balancers", "load_balancer", lbBody("labeled-lb"), labels)
+		}},
+		{"certificates", "certificate", func(t *testing.T, e *apitest.Env, labels map[string]string) string {
+			return createLabeled(t, e, "/certificates", "certificate", certBody("labeled-cert"), labels)
+		}},
 	} {
 		t.Run(r.name, func(t *testing.T) {
 			e := env.For(t)
@@ -987,6 +1056,21 @@ func testLabelsOnResources(t *testing.T) {
 			}
 		})
 	}
+}
+
+// createLabeled posts body with labels to path, waits for the action if
+// there is one, and returns the path of the new object under key.
+func createLabeled(t *testing.T, e *apitest.Env, path, key string, body map[string]any, labels map[string]string) string {
+	t.Helper()
+	body["labels"] = labels
+	status, m := call(t, e, http.MethodPost, path, body)
+	if status != http.StatusCreated {
+		t.Fatalf("POST %s: status %d, want 201: %v", path, status, m)
+	}
+	if a := idOf(m["action"]); a != 0 {
+		e.WaitAction(a)
+	}
+	return fmt.Sprintf("%s/%d", path, idOf(m[key]))
 }
 
 func testNameUniqueness(t *testing.T) {
@@ -1024,6 +1108,28 @@ func testNameUniqueness(t *testing.T) {
 			t.Errorf("create with a used name: status %d code %q, want 409 uniqueness_error", status, errCode(m))
 		}
 	})
+	for _, r := range []struct {
+		path string
+		body func() map[string]any
+	}{
+		{"/load_balancers", func() map[string]any { return lbBody("dup-lb") }},
+		{"/certificates", func() map[string]any { return certBody("dup-cert") }},
+	} {
+		t.Run(strings.TrimPrefix(r.path, "/"), func(t *testing.T) {
+			e := env.For(t)
+			status, m := call(t, e, http.MethodPost, r.path, r.body())
+			if status != http.StatusCreated {
+				t.Fatalf("POST %s: status %d, want 201: %v", r.path, status, m)
+			}
+			if a := idOf(m["action"]); a != 0 {
+				e.WaitAction(a)
+			}
+			status, m = call(t, e, http.MethodPost, r.path, r.body())
+			if status != http.StatusConflict || errCode(m) != "uniqueness_error" {
+				t.Errorf("create with a used name: status %d code %q, want 409 uniqueness_error", status, errCode(m))
+			}
+		})
+	}
 	t.Run("zones", func(t *testing.T) {
 		e := env.For(t)
 		createZone(t, e, "dup.test", nil)
