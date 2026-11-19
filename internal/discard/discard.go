@@ -33,39 +33,40 @@ func Requested(params []string, openErr error) bool {
 	return slices.Contains(params, Param) && errors.As(openErr, &ie)
 }
 
-// Run renames the state (store.Discard), deletes every VM with VMPrefix,
-// the folders disks, volumes, vms and images\image-*.vhdx; the image and
-// ISO cache, the appliance and the CA stay.
+// Run deletes every VM with VMPrefix, the folders disks, volumes, vms and
+// images\image-*.vhdx, then renames the state (store.Discard); the image and
+// ISO cache, the appliance and the CA stay. The state is renamed last so a
+// failed run leaves it incompatible and a retry repeats the cleanup.
 func Run(ctx context.Context, o Options) (string, error) {
-	renamed, err := store.Discard(o.StatePath, o.Now)
-	if err != nil {
-		return "", fmt.Errorf("discard state: %w", err)
-	}
 	vms, err := o.Platform.VMs(ctx, o.VMPrefix)
 	if err != nil {
-		return renamed, fmt.Errorf("list server VMs: %w", err)
+		return "", fmt.Errorf("list server VMs: %w", err)
 	}
 	for _, name := range vms {
 		if err := o.Platform.DeleteVM(ctx, name); err != nil {
 			var pe *platform.Error
 			if !errors.As(err, &pe) || pe.Kind != platform.NotFound {
-				return renamed, fmt.Errorf("delete VM %s: %w", name, err)
+				return "", fmt.Errorf("delete VM %s: %w", name, err)
 			}
 		}
 	}
 	for _, dir := range []string{"disks", "volumes", "vms"} {
 		if err := os.RemoveAll(filepath.Join(o.DataFolder, dir)); err != nil {
-			return renamed, fmt.Errorf("delete %s: %w", dir, err)
+			return "", fmt.Errorf("delete %s: %w", dir, err)
 		}
 	}
 	images, err := filepath.Glob(filepath.Join(o.DataFolder, "images", "image-*.vhdx"))
 	if err != nil {
-		return renamed, err
+		return "", err
 	}
 	for _, p := range images {
 		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
-			return renamed, fmt.Errorf("delete %s: %w", p, err)
+			return "", fmt.Errorf("delete %s: %w", p, err)
 		}
+	}
+	renamed, err := store.Discard(o.StatePath, o.Now)
+	if err != nil {
+		return "", fmt.Errorf("discard state: %w", err)
 	}
 	return renamed, nil
 }
