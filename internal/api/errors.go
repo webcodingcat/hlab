@@ -57,6 +57,9 @@ var statuses = map[string]int{
 	"ip_not_available":               http.StatusUnprocessableEntity,
 	"no_subnet_available":            http.StatusUnprocessableEntity,
 	"networks_overlap":               http.StatusUnprocessableEntity,
+
+	// Codes of firewalls.
+	"resource_in_use": http.StatusUnprocessableEntity,
 }
 
 // Status returns the HTTP status of an error code; unknown codes give 500.
