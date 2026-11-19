@@ -158,14 +158,14 @@ func NewFirewall(iface string) *Firewall
   - [x] `Contribute` (runs after servers): sets `FirewallIDs` of each `doc.Servers` entry from the resolution, sorted; appends one `agentapi.Firewall` with `AgentRules` per firewall that reaches a server (internal/resources/firewalls/contribute.go)
   - [x] Rows of TESTS.md for 06-07 (internal/resources/firewalls/contribute_test.go)
 
-- [ ] 06-08 Cloud wiring and end-to-end
+- [x] 06-08 Cloud wiring and end-to-end
   - Wave: 5 | Depends on: 06-04, 06-07 | Review: alone
   - Requirements: FW-02, FW-03 | Tests: test/e2e/firewall_test.go, internal/resources/conventions_test.go
   - Reads: ARCHITECTURE "resource", "Network" (firewalls); TESTS.md header; test/e2e/ip_test.go, test/e2e/image_test.go (helpers `ownServerImage`, `runAPIAction`, `post`)
   - Size: ~300 lines in 5 files
   - Adjusts: -
-  - [ ] Module `firewalls` after `floating_ips` in `modules()` (Contribute after servers and floating IPs), `srv.SetFirewalls(fw)`, `srv.OnDelete(fw.ServerDeleted)`; the module in `newFullEnv` plus the API-06 and API-11 cases (internal/cloud/cloud.go, internal/resources/conventions_test.go)
-  - [ ] End-to-end rows FW-02 and FW-03 (test/e2e/firewall_test.go, test/e2e/e2e_test.go)
+  - [x] Module `firewalls` after `floating_ips` in `modules()` (Contribute after servers and floating IPs), `srv.SetFirewalls(fw)`, `srv.OnDelete(fw.ServerDeleted)`; the module in `newFullEnv` plus the API-06 and API-11 cases (internal/cloud/cloud.go, internal/resources/conventions_test.go)
+  - [x] End-to-end rows FW-02 and FW-03 (test/e2e/firewall_test.go, test/e2e/e2e_test.go)
 
 - [ ] 06-09 Documentation
   - Wave: 6 | Depends on: 06-08 | Review: alone
