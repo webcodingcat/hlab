@@ -1416,10 +1416,10 @@ in ARCHITECTURE.md or the plan.
 - Why: Keeps the outer document valid and never drops user content.
 - Cost of change: low
 
-## 2026-11-19 E2E harness stop of a running dev cloud
+## 2026-11-19 E2E harness on a fresh checkout
 
 - Type: decision
 - Phase: B1
-- What: the harness skips the running check when bin\hlab.exe does not exist yet, and after `stopped` waits up to 2 minutes for the `hlab-dev` service to report Stopped before building.
-- Why: a fresh checkout has no binary to ask, and hlabd.exe must be free before the build overwrites it.
+- What: the harness skips the running check and the stop when bin\hlab.exe does not exist yet.
+- Why: a fresh checkout has no binary to ask and no cloud of this working copy can run.
 - Cost of change: low

@@ -108,13 +108,13 @@ func seedUserData(userData string, volumes []int64) string
   - [x] volumes (disk.go): `Recover` removes `creating` records and their disk files
   - [x] cloud: `recoverModules` (new recover.go); `start` (cloud.go) passes `Store` to `imagesres.NewModule` and calls `recoverModules` right after `c.modules()`, before the router mounts the modules and before `serveAPI` and `startJobs`; an error fails the start
 
-- [ ] B1-05 E2E harness: build with the dev cloud running
+- [x] B1-05 E2E harness: build with the dev cloud running
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: - (backlog item 1) | Tests: none (existing e2e rows stay green; measured at the close)
   - Reads: SPEC "Machine prerequisites"; CLAUDE.md "Build and test commands"
   - Size: ~40 lines in 1 file
   - Adjusts: -
-  - [ ] `setup()` (test/e2e/main_test.go): read `cloudState()` before `buildAll`; if it is `running`, run `hlab cloud stop` with the existing binary and wait for `stopped`, then build, guard the profiles and start the cloud as today without setting `harness.startedCloud`, so teardown leaves it running as found. Measurement at the close: with the dev cloud running, `task e2e -- -run 'TestE2E/API-01'` builds and runs instead of failing in `task build` (before: build error); noted under "Close"
+  - [x] `setup()` (test/e2e/main_test.go): read `cloudState()` before `buildAll`; if it is `running`, run `hlab cloud stop` with the existing binary and wait for `stopped`, then build, guard the profiles and start the cloud as today without setting `harness.startedCloud`, so teardown leaves it running as found. Measurement at the close: with the dev cloud running, `task e2e -- -run 'TestE2E/API-01'` builds and runs instead of failing in `task build` (before: build error); noted under "Close"
 
 - [ ] B1-06 Documentation
   - Wave: 3 | Depends on: B1-01, B1-02, B1-03, B1-04, B1-05 | Review: alone
