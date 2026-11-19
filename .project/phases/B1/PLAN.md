@@ -88,15 +88,15 @@ func seedUserData(userData string, volumes []int64) string
   - [x] `seedUserData` (vendordata.go): decode user_data as standard base64 only when it consists of the base64 alphabet with correct padding and no whitespace (Go's decoder skips newlines, so check that first), as cloud-init's `maybe_b64decode(validate=True)`; otherwise keep it raw; without volumes return the decoded bytes (cloud-init gunzips a top-level gzip and parses top-level MIME itself)
   - [x] with volumes: gunzip a result starting with 1f 8b (keep the bytes on error); if the result parses as a MIME message with a `multipart/*` Content-Type (net/mail, mime/multipart, nested multiparts walked), copy every leaf part with its headers and body unchanged, in order, into hlab's outer multipart before hlab's cloud-config part, and make sure hlab's boundary does not occur in the copied content (pick another boundary if it does); anything else keeps today's base64 `text/plain` part
 
-- [ ] B1-03 Metrics: one counter read per sample for all VMs
+- [x] B1-03 Metrics: one counter read per sample for all VMs
   - Wave: 2 | Depends on: B1-01 | Review: alone
   - Requirements: SRV-21 | Tests: internal/platform/hyperv/metrics_test.go (TestHyperV/SRV-21), internal/resources/servers/servers_test.go (TestServers/SRV-21/one_call)
   - Reads: REQUIREMENTS SRV-21; ARCHITECTURE "platform (interface) and platform/hyperv"; RESEARCH.md Q4; DECISIONS "platform.Sample only gains counters", "Minimal scheduler for status watch and metrics"
   - Size: ~250 lines in 5 files
   - Adjusts: -
-  - [ ] `Platform.MetricsAll` (platform.go); hyperv (metrics.go): one script reads each of the three `Win32_PerfRawData_*` classes once and `Get-VM | Get-VMHardDiskDrive` once and returns the raw rows (instance name, counters, timestamp) plus each VM's disk paths; a Go function maps rows to the requested VMs by exact name (VP `<vm>:Hv VP <n>`, disk by its path with `\` as `-`, NIC `<vm>_...` with the longest matching VM name winning) and sums them; `cpuPercent` per VM as today; `Metrics(vm)` calls `MetricsAll`
-  - [ ] `platformtest.Fake.MetricsAll` (fake.go): returns the samples set with `SetSample` and records the call like the other methods
-  - [ ] `servers.sample` (servers/metrics.go): one `MetricsAll` call per tick for the VMs of all running servers; a VM missing from the result is skipped
+  - [x] `Platform.MetricsAll` (platform.go); hyperv (metrics.go): one script reads each of the three `Win32_PerfRawData_*` classes once and `Get-VM | Get-VMHardDiskDrive` once and returns the raw rows (instance name, counters, timestamp) plus each VM's disk paths; a Go function maps rows to the requested VMs by exact name (VP `<vm>:Hv VP <n>`, disk by its path with `\` as `-`, NIC `<vm>_...` with the longest matching VM name winning) and sums them; `cpuPercent` per VM as today; `Metrics(vm)` calls `MetricsAll`
+  - [x] `platformtest.Fake.MetricsAll` (fake.go): returns the samples set with `SetSample` and records the call like the other methods
+  - [x] `servers.sample` (servers/metrics.go): one `MetricsAll` call per tick for the VMs of all running servers; a VM missing from the result is skipped
 
 - [x] B1-04 Start-up recovery of images and volumes left creating
   - Wave: 1 | Depends on: - | Review: alone
