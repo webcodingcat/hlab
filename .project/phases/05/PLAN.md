@@ -210,14 +210,14 @@ func (m *Metadata) HandlerFor(vlan int) http.Handler
   - [x] `assign` (server `off` else 422 `server_not_stopped`, other assignee `primary_ip_already_assigned`, `server_has_ipv4`/`server_has_ipv6`, other location `primary_ip_datacenter_mismatch`) and `unassign` (server `off`), each updating the server's `public_net` through `servers.Update` and pushing the agent; `servers.PublicIPs` implementation (new records with auto_delete true, given IDs checked as at Hetzner) and an `OnDelete` function (auto_delete records go, others become unassigned) (internal/resources/primaryips/actions.go)
   - [x] `Recover`: every server whose `public_net` carries an ID without record gets its record (assigned, auto_delete true), once and idempotently (Q2) (internal/resources/primaryips/recover.go)
 
-- [ ] 05-08 Floating IPs
+- [x] 05-08 Floating IPs
   - Wave: 2 | Depends on: 05-04 | Review: alone
   - Requirements: FIP-01, FIP-02 | Tests: internal/resources/floatingips/floatingips_test.go
   - Reads: REQUIREMENTS FIP-01, FIP-02; ARCHITECTURE "resource", "hlab-agent" (FloatingIP); RESEARCH C3, C4, R2 (floating IP); decisions/locations.md
   - Size: ~380 lines in 3 files
   - Adjusts: -
-  - [ ] Module, Record (Hetzner's floating IP: type, ip, home_location, server, blocked, dns_ptr, protection, labels, description, name), create (`type` required, `server` or `home_location` exclusive, home location of the server by default, IPv4 by ipam, IPv6 formal), list, get, PUT, DELETE (assigned: 422 `must_be_unassigned`; protection), `change_protection`, action endpoints (internal/resources/floatingips/floatingips.go)
-  - [ ] `assign` on a running or stopped server (server in another network zone than the home location: 422 `invalid_input` field `server`; assigned to the same server: 422 `floating_ip_assigned`; assigned elsewhere: moves), `unassign`; the servers' `public_net.floating_ips` kept through `servers.Update`; `OnDelete` unassigns; `Contribute` fills `FloatingIPs` with the target's public IPv4 (invalid when unassigned or the server has none or is deleting); every change pushes the agent (internal/resources/floatingips/actions.go)
+  - [x] Module, Record (Hetzner's floating IP: type, ip, home_location, server, blocked, dns_ptr, protection, labels, description, name), create (`type` required, `server` or `home_location` exclusive, home location of the server by default, IPv4 by ipam, IPv6 formal), list, get, PUT, DELETE (assigned: 422 `must_be_unassigned`; protection), `change_protection`, action endpoints (internal/resources/floatingips/floatingips.go)
+  - [x] `assign` on a running or stopped server (server in another network zone than the home location: 422 `invalid_input` field `server`; assigned to the same server: 422 `floating_ip_assigned`; assigned elsewhere: moves), `unassign`; the servers' `public_net.floating_ips` kept through `servers.Update`; `OnDelete` unassigns; `Contribute` fills `FloatingIPs` with the target's public IPv4 (invalid when unassigned or the server has none or is deleting); every change pushes the agent (internal/resources/floatingips/actions.go)
 
 - [ ] 05-09 Agent: metadata on private networks
   - Wave: 2 | Depends on: 05-02 | Review: alone

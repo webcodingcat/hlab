@@ -1591,3 +1591,11 @@ in ARCHITECTURE.md or the plan.
 - What: `hlab-guest` takes over only private links that do not yet carry their private IP (hot-added after boot), records what it applied in `/run/hlab-guest/networks.json` and acts only on changes; without networkd it sets the route before the address; a failed network sync does not stop the password reset.
 - Why: The seed's netplan config must stay in charge of links it set up, so user alias IPs and NAT routes survive (NET-03).
 - Cost of change: low
+
+## 2026-11-19 Floating IP details
+
+- Type: decision
+- Phase: 05
+- What: A floating IP without name is named `floating_ip-<id>`; create with `server` returns an `assign_floating_ip` action, with `home_location` none; the list sorts by id and created and filters by name, label_selector and ip; the FIP-01 test reads the server's top-level `location` as the frozen schema has it.
+- Why: The frozen spec says so; the old test path read a field the server shape does not have.
+- Cost of change: low
