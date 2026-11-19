@@ -58,7 +58,7 @@ func run() error {
 	// The network applier adds the addresses the DNS server binds, so it
 	// comes first; the VRF applier needs its IPv4 forwarding.
 	a, err := agent.New(bytes.TrimSpace(raw),
-		agent.NewNetwork(publicInterface), vrf, agent.NewIsolation(publicInterface), dns, proxy, metadata)
+		agent.NewNetwork(publicInterface), vrf, agent.NewIsolation(publicInterface), agent.NewFirewall(publicInterface), dns, proxy, metadata)
 	if err != nil {
 		return err
 	}
