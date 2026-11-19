@@ -237,13 +237,13 @@ func (m *Metadata) HandlerFor(vlan int) http.Handler
   - [x] `SyncAdapters` as in the Interfaces section; deny lists from the `private_net` MACs of the other servers in the same network (not deleting) (internal/resources/servers/adapters.go)
   - [x] `createVM` attaches the public adapter and one private adapter per `private_net` entry (Segment VLAN from `Internal.Networks`, deny list); deletion needs no detach (the VM goes) (internal/resources/servers/reconcile.go)
 
-- [ ] 05-11 Networks: agent document
+- [x] 05-11 Networks: agent document
   - Wave: 2 | Depends on: 05-04, 05-05 | Review: alone
   - Requirements: NET-02, NET-03, NET-04 | Tests: internal/resources/networks/contribute_test.go
   - Reads: ARCHITECTURE "hlab-agent" (Network, Metadata); RESEARCH R1 (routes not given to guests)
   - Size: ~200 lines in 2 files
   - Adjusts: -
-  - [ ] `Contribute`: one `Network` per network (VLAN, range, gateway, routes, members with MAC, IP, alias IPs from the servers' `private_net`, deleting servers left out); per member a `Metadata` entry with the VLAN and private IP (copy of the server's public entry); `PrivateNetworks` of every server's metadata filled with name, subnet, gateway, range and interface number (internal/resources/networks/contribute.go)
+  - [x] `Contribute`: one `Network` per network (VLAN, range, gateway, routes, members with MAC, IP, alias IPs from the servers' `private_net`, deleting servers left out); per member a `Metadata` entry with the VLAN and private IP (copy of the server's public entry); `PrivateNetworks` of every server's metadata filled with name, subnet, gateway, range and interface number (internal/resources/networks/contribute.go)
 
 - [ ] 05-12 Networks: attach, detach, alias IPs
   - Wave: 3 | Depends on: 05-05, 05-10 | Review: alone
@@ -260,7 +260,7 @@ func (m *Metadata) HandlerFor(vlan int) http.Handler
   - Reads: ARCHITECTURE "resource", "Cloud start and stop", "Network"; RESEARCH C6, R3; EXPERIMENTS E1 (measure routed before direct); TESTS.md header
   - Size: ~350 lines in 6 files
   - Adjusts: -
-  - [ ] Modules `networks`, `primary_ips`, `floating_ips` after `servers` in `modules()`; `SetPublicIPs`, `SetNetworks`, `OnDelete` wiring; the appliance gets its trunk adapter (MAC `02:48:4c:00:00:02`, `Segment{Trunk: true}`) at creation and, when missing, at cloud start; the three modules in `newFullEnv` (internal/cloud/cloud.go, internal/cloud/appliance.go, internal/resources/conventions_test.go)
+  - [ ] Modules `networks`, `primary_ips`, `floating_ips` after `servers` in `modules()`, `networks` before `volumes` so that `volumes.Contribute` also fills the `Volumes` of each member's private metadata entry (check it does; 05-11 review); `SetPublicIPs`, `SetNetworks`, `OnDelete` wiring; the appliance gets its trunk adapter (MAC `02:48:4c:00:00:02`, `Segment{Trunk: true}`) at creation and, when missing, at cloud start; the three modules in `newFullEnv` (internal/cloud/cloud.go, internal/cloud/appliance.go, internal/resources/conventions_test.go)
   - [ ] End-to-end rows of TESTS.md (test/e2e/network_test.go, test/e2e/ip_test.go, test/e2e/e2e_test.go)
 
 - [ ] 05-14 Documentation
