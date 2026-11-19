@@ -1631,3 +1631,11 @@ in ARCHITECTURE.md or the plan.
 - What: Module order is servers, networks, primary_ips, floating_ips, volumes; cloud start detects a missing appliance trunk adapter by `SetNICDeny(appliance, 02:48:4c:00:00:02, nil)` returning NotFound and then attaches it; hyperv `SetDVD` with "" returns only once the drive is empty (at most 60 s).
 - Why: volumes fill every metadata entry of a server only after networks made them; no new platform method is needed; Hyper-V finishes an eject about 5 s after returning, which broke every seed rewrite on running VMs.
 - Cost of change: low
+
+## 2026-11-19 Upgrade to wcc 0.32.6
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.32.4 to 0.32.6: the test rule on parallel end-to-end tests now takes shared limits in one step and logs each test's start and end with a time limit
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
