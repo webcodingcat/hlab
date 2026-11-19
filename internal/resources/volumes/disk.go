@@ -81,6 +81,39 @@ func (m *Module) Delete(_ context.Context, id int64) error {
 	return removeFile(r.Hlab.Path)
 }
 
+// Recover implements resource.Recoverer: it removes every volume record
+// with status creating and its disk file; a missing file is no error.
+func (m *Module) Recover(_ context.Context) error {
+	var cut []Record
+	err := m.d.Store.Tx(func(tx store.Tx) error {
+		all, err := store.ListAll[Record](tx, Kind)
+		if err != nil {
+			return err
+		}
+		for _, r := range all {
+			if r.Status != StatusCreating {
+				continue
+			}
+			if err := store.Delete(tx, Kind, r.Hlab.ProjectID, r.ID); err != nil {
+				return err
+			}
+			cut = append(cut, r)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, r := range cut {
+		slog.Info("removed volume left creating", "volume", r.ID)
+		if err := removeFile(r.Hlab.Path); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
 // drop removes the record of a volume whose creation failed, if it is
 // still there, and its file.
 func (m *Module) drop(stor *store.Store, r Record) {

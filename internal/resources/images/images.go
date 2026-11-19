@@ -32,6 +32,8 @@ type Deps struct {
 	Catalog *catalog.Catalog
 	// DataFolder holds the image disks as images\image-<id>.vhdx.
 	DataFolder string
+	// Store is what Recover works on.
+	Store *store.Store
 }
 
 // Module is the images resource type.
@@ -40,6 +42,7 @@ type Module struct {
 	items    []image // catalog images ordered by ID
 	projects bool    // serves the project images too
 	dataDir  string
+	store    *store.Store
 }
 
 // NewModule returns the module serving the catalog images and the images
@@ -48,6 +51,7 @@ func NewModule(d Deps) *Module {
 	m := New(d.Catalog)
 	m.projects = true
 	m.dataDir = d.DataFolder
+	m.store = d.Store
 	return m
 }
 
@@ -283,6 +287,39 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 // project deletion removes the record. A missing file is no error.
 func (m *Module) Delete(_ context.Context, id int64) error {
 	return removeFile(filepath.Join(m.dataDir, "images", fmt.Sprintf("image-%d.vhdx", id)))
+}
+
+// Recover implements resource.Recoverer: it removes every image record
+// with status creating and its file; a missing file is no error.
+func (m *Module) Recover(_ context.Context) error {
+	var cut []Record
+	err := m.store.Tx(func(tx store.Tx) error {
+		all, err := store.ListAll[Record](tx, Kind)
+		if err != nil {
+			return err
+		}
+		for _, r := range all {
+			if r.Status != StatusCreating {
+				continue
+			}
+			if err := Remove(tx, r); err != nil {
+				return err
+			}
+			cut = append(cut, r)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, r := range cut {
+		slog.Info("removed image left creating", "image", r.ID)
+		if err := removeFile(r.Hlab.Path); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // removeFile removes path; a missing file is no error.
