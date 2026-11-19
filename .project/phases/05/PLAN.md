@@ -154,14 +154,14 @@ func (m *Metadata) HandlerFor(vlan int) http.Handler
   - [x] `Segment.Trunk`, `SetNICDeny` (Get-VMNetworkAdapterAcl, remove the deny entries not wanted, add the missing ones, MACs with dashes, E1), AttachNIC with the trunk mode and on running VMs; remove `Metrics` from interface, hyperv and fake (internal/platform/platform.go, hyperv/nics.go, hyperv/metrics.go, hyperv/hyperv.go)
   - [x] Fake: adapters per VM, `SetNICDeny`, `NICs` (internal/platform/platformtest/fake.go)
 
-- [ ] 05-02 Agent: private networks in VRFs
+- [x] 05-02 Agent: private networks in VRFs
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: NET-02, NET-03, NET-04 | Tests: - (covered by test/e2e/network_test.go)
   - Reads: ARCHITECTURE "hlab-agent", "Network"; RESEARCH C6, R4 (VRF, sysctls, netlink)
   - Size: ~300 lines in 3 files
   - Adjusts: -
-  - [ ] `VRF` Applier: find the trunk link by MAC and set it up; per Network create or keep VRF `vrf<vlan>` (table 1000+vlan) and VLAN link `t<vlan>`, enslave, gateway address, sysctls on `t<vlan>` (`forwarding=1`, `proxy_arp=1`, `proxy_arp_pvlan=1`, `send_redirects=0`, `accept_redirects=0`, `rp_filter=0`); routes in the VRF table with the agent's route protocol: `/32` per member IP and alias IP on `t<vlan>`, each network route via its gateway (onlink); remove the VRFs, links and routes of networks no longer in the document (internal/agent/vrf_linux.go, internal/agent/vrf_other.go)
-  - [ ] Register the applier with the trunk MAC `02:48:4c:00:00:02` (cmd/hlab-agent/main.go)
+  - [x] `VRF` Applier: find the trunk link by MAC and set it up; per Network create or keep VRF `vrf<vlan>` (table 1000+vlan) and VLAN link `t<vlan>`, enslave, gateway address, sysctls on `t<vlan>` (`forwarding=1`, `proxy_arp=1`, `proxy_arp_pvlan=1`, `send_redirects=0`, `accept_redirects=0`, `rp_filter=0`); routes in the VRF table with the agent's route protocol: `/32` per member IP and alias IP on `t<vlan>`, each network route via its gateway (onlink); remove the VRFs, links and routes of networks no longer in the document (internal/agent/vrf_linux.go, internal/agent/vrf_other.go)
+  - [x] Register the applier with the trunk MAC `02:48:4c:00:00:02` (cmd/hlab-agent/main.go)
 
 - [ ] 05-03 Agent: floating IP routes and isolation per segment
   - Wave: 1 | Depends on: - | Review: alone

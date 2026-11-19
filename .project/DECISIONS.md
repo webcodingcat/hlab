@@ -1551,3 +1551,11 @@ in ARCHITECTURE.md or the plan.
 - What: cidata renders an interface without addresses as `optional: true`, so a server without IPv4 keeps eth0 and does not block wait-online; with the PublicIPs hook set, server delete leaves releasing the IPv4 to the primary IP's `ServerDeleted`; without hooks create follows `enable_ipv4/6`, ignores primary IP IDs and refuses `networks` with 422 `invalid_input`.
 - Why: Keeps interface names stable and gives one owner for each IPv4.
 - Cost of change: low
+
+## 2026-11-19 VRF details on the appliance
+
+- Type: decision
+- Phase: 05
+- What: Each VRF table holds an `unreachable default` route (kernel metric 4278198272); the gateway sits on `t<vlan>` as a `/32` without a connected route for the range; the trunk link is looked up only when the document has networks; stale `vrf<N>`/`t<N>` links and agent routes in tables 1002..5092 are always cleaned; the VRF applier runs after the Network applier.
+- Why: Misses must not fall through to the main table (NET-02), only members, aliases and routes are reachable, and appliances without a trunk keep applying.
+- Cost of change: low
