@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"sync"
 
@@ -28,6 +29,12 @@ const maxJobBytes = 64 << 10
 type Applier interface {
 	Name() string
 	Apply(ctx context.Context, cfg agentapi.Config) error
+}
+
+// LBStatusSource is an Applier that reports the target health and the
+// counters of its load balancers for GET /v1/status.
+type LBStatusSource interface {
+	LBStatus() (map[int64][]agentapi.TargetHealth, map[int64]agentapi.LBCounters)
 }
 
 // Agent serves the agent's HTTP interface.
@@ -124,6 +131,13 @@ func (a *Agent) getStatus(w http.ResponseWriter, _ *http.Request) {
 	}
 	a.mu.Unlock()
 	st.PasswordResetsDone = a.resetsDone()
+	for _, ap := range a.appliers {
+		if src, ok := ap.(LBStatusSource); ok {
+			health, counters := src.LBStatus()
+			maps.Copy(st.Targets, health)
+			maps.Copy(st.LBMetrics, counters)
+		}
+	}
 	writeJSON(w, st)
 }
 
