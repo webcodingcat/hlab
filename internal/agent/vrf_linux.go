@@ -43,8 +43,8 @@ const unreachableMetric = 4278198272
 // /32 routes to the members and their alias IPs, the network's routes via
 // their gateway, and no default route. It touches only the links named
 // vrf<vlan> and t<vlan> and the routes carrying the agent's protocol in the
-// VRF tables. With Metadata set, each VRF device also carries
-// 169.254.169.254/32 and gets its own metadata listener on
+// VRF tables. Each VRF device also carries 169.254.169.254/32 and gets
+// its own metadata listener on
 // 169.254.169.254:80, bound to the VRF device and serving
 // Metadata.HandlerFor(vlan); the listener closes with its VRF.
 type VRF struct {
@@ -118,7 +118,7 @@ func (v *VRF) Apply(_ context.Context, cfg agentapi.Config) error {
 // listenMetadata starts the metadata listener of VLAN vlan on
 // 169.254.169.254:80 bound to the VRF device vrf<vlan>, unless it runs.
 func (v *VRF) listenMetadata(vlan int) error {
-	if v.Metadata == nil || v.listeners[vlan] != nil {
+	if v.listeners[vlan] != nil {
 		return nil
 	}
 	dev := "vrf" + strconv.Itoa(vlan)
