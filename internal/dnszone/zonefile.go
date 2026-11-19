@@ -3,6 +3,7 @@ package dnszone
 import (
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -39,12 +40,12 @@ func ParseZonefile(zone, text string) (ttl int, sets []RRSet, err error) {
 			if len(fields) < 2 {
 				return 0, nil, lineErr(e.line, "$TTL needs a value")
 			}
-			v, perr := strconv.ParseUint(fields[1], 10, 31)
-			if perr != nil {
-				return 0, nil, lineErr(e.line, "$TTL must be a number of seconds")
+			v, ok := parseTTL(fields[1])
+			if !ok {
+				return 0, nil, lineErr(e.line, "$TTL has an invalid value "+quote(fields[1]))
 			}
 			if !ttlSeen {
-				ttl, ttlSeen = int(v), true
+				ttl, ttlSeen = v, true
 			}
 		default:
 			return 0, nil, lineErr(e.line, fields[0]+" is not supported")
@@ -76,9 +77,19 @@ func ParseZonefile(zone, text string) (ttl int, sets []RRSet, err error) {
 		if !ok {
 			return 0, nil, lineErr(line, "name "+quote(h.Name)+" is outside the zone")
 		}
-		if typ == "TXT" && i < len(rrEntries) {
-			if qerr := checkQuoted(rawRdata(rrEntries[i].text, typ)); qerr != nil {
-				return 0, nil, lineErr(line, qerr.Error())
+		name = strings.ToLower(name)
+		explicitTTL := false
+		if i < len(rrEntries) {
+			pre, rdata := splitRR(rrEntries[i].text, typ)
+			for _, tok := range pre {
+				if _, isTTL := parseTTL(tok); isTTL {
+					explicitTTL = true
+				}
+			}
+			if typ == "TXT" {
+				if qerr := checkQuoted(rdata); qerr != nil {
+					return 0, nil, lineErr(line, qerr.Error())
+				}
 			}
 		}
 		key := name + "/" + typ
@@ -87,7 +98,7 @@ func ParseZonefile(zone, text string) (ttl int, sets []RRSet, err error) {
 			n = len(sets)
 			index[key] = n
 			set := RRSet{Name: name, Type: typ}
-			if !ttlSeen || int(h.Ttl) != ttl {
+			if explicitTTL {
 				t := int(h.Ttl)
 				set.TTL = &t
 			}
@@ -210,9 +221,44 @@ func splitEntries(text string) []entry {
 	return out
 }
 
-// rawRdata returns the rdata of an entry of type typ as written: the text
-// after the type token, the owner skipped when the entry has one.
-func rawRdata(text, typ string) string {
+// parseTTL parses a TTL in BIND form: seconds, or numbers with the units
+// s, m, h, d and w (1h30m).
+func parseTTL(s string) (int, bool) {
+	if s == "" {
+		return 0, false
+	}
+	if v, err := strconv.ParseUint(s, 10, 31); err == nil {
+		return int(v), true
+	}
+	units := map[byte]uint64{'s': 1, 'm': 60, 'h': 3600, 'd': 86400, 'w': 604800}
+	var total, num uint64
+	digits := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= '0' && c <= '9':
+			num = num*10 + uint64(c-'0')
+			digits = true
+		case units[c|0x20] > 0 && digits:
+			total += num * units[c|0x20]
+			num, digits = 0, false
+		default:
+			return 0, false
+		}
+		if num > math.MaxInt32 || total > math.MaxInt32 {
+			return 0, false
+		}
+	}
+	if digits {
+		return 0, false
+	}
+	return int(total), true
+}
+
+// splitRR splits an entry of type typ as written into the tokens between
+// owner and type (TTL and class) and the rdata after the type token; the
+// owner is skipped when the entry has one.
+func splitRR(text, typ string) (pre []string, rdata string) {
 	s := text
 	if s != "" && s[0] != ' ' && s[0] != '\t' {
 		if i := strings.IndexAny(s, " \t"); i >= 0 {
@@ -224,15 +270,16 @@ func rawRdata(text, typ string) string {
 	for {
 		s = strings.TrimLeft(s, " \t\r")
 		if s == "" {
-			return ""
+			return pre, ""
 		}
 		tok, rest := s, ""
 		if i := strings.IndexAny(s, " \t\r"); i >= 0 {
 			tok, rest = s[:i], s[i:]
 		}
 		if strings.EqualFold(tok, typ) {
-			return strings.TrimSpace(rest)
+			return pre, strings.TrimSpace(rest)
 		}
+		pre = append(pre, tok)
 		s = rest
 	}
 }
