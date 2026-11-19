@@ -75,7 +75,7 @@ type HealthStatus struct {
 
 // resolved is a target as the agent reaches it: Key is "server:<id>" or
 // "ip:<addr>", ViaNetworkID 0 is the public path.
-type resolved struct { //nolint:unused // used by Contribute (plan 08-19)
+type resolved struct {
 	Key          string
 	IP           netip.Addr
 	ViaNetworkID int64
@@ -301,7 +301,7 @@ func (m *Module) selected(tx store.Tx, r Record, sel string) ([]servers.Record, 
 // servers of the project, an ip target as its address. A server listed
 // twice keeps its first entry; servers the load balancer cannot reach are
 // left out.
-func (m *Module) resolve(tx store.Tx, r Record) ([]resolved, error) { //nolint:unused // used by Contribute (plan 08-19)
+func (m *Module) resolve(tx store.Tx, r Record) ([]resolved, error) {
 	var out []resolved
 	seen := map[string]bool{}
 	add := func(x resolved) {
