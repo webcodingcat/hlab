@@ -22,6 +22,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/resource"
+	"github.com/webcodingcat/hlab/internal/settings"
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
@@ -70,6 +71,14 @@ type Deps struct {
 	// ServerTypes counts the served server types for the answer of
 	// POST /catalog/update; nil answers 0.
 	ServerTypes func() int
+	// CACert returns the hlab CA certificate as PEM; nil leaves
+	// GET /ca.pem out.
+	CACert func() []byte
+	// Trust adds the hlab CA to the host's trust stores (on) or removes it;
+	// nil leaves PUT /trust out.
+	Trust func(ctx context.Context, on bool) error
+	// SettingsPath is settings.toml, where PUT /trust stores trust_ca.
+	SettingsPath string
 }
 
 // Project is a project as the management API returns it.
@@ -105,6 +114,12 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc(Prefix+"/projects/{name}/api/v1/{rest...}", s.proxy)
 	if d.UpdateCatalog != nil {
 		mux.HandleFunc("POST "+Prefix+"/catalog/update", s.updateCatalog)
+	}
+	if d.CACert != nil {
+		mux.HandleFunc("GET "+Prefix+"/ca.pem", s.caCert)
+	}
+	if d.Trust != nil {
+		mux.HandleFunc("PUT "+Prefix+"/trust", s.trust)
 	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "unknown path")
@@ -428,6 +443,48 @@ func (s server) updateCatalog(w http.ResponseWriter, req *http.Request) {
 		n = s.d.ServerTypes()
 	}
 	writeJSON(w, http.StatusOK, map[string]int{"server_types": n})
+}
+
+// caCert answers the hlab CA certificate as PEM.
+func (s server) caCert(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/x-pem-file")
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(s.d.CACert()); err != nil {
+		slog.Error("write management response", "err", err)
+	}
+}
+
+// trust switches the hlab CA in the host's trust stores and, once that
+// worked, stores the switch as trust_ca in the settings file.
+func (s server) trust(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		On *bool `json:"on"`
+	}
+	if !decode(w, req, &body) {
+		return
+	}
+	if body.On == nil {
+		writeError(w, http.StatusBadRequest, "invalid_input", "on is required")
+		return
+	}
+	set, err := settings.Load(s.d.SettingsPath)
+	if err != nil {
+		slog.Error("load the settings for the trust switch", "err", err)
+		writeError(w, http.StatusInternalServerError, "server_error", err.Error())
+		return
+	}
+	if err := s.d.Trust(req.Context(), *body.On); err != nil {
+		slog.Warn("trust switch failed", "on", *body.On, "err", err)
+		writeError(w, http.StatusInternalServerError, "server_error", err.Error())
+		return
+	}
+	set.Certificates.TrustCA = *body.On
+	if err := settings.Save(s.d.SettingsPath, set); err != nil {
+		slog.Error("save the trust switch", "err", err)
+		writeError(w, http.StatusInternalServerError, "server_error", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"on": *body.On})
 }
 
 // proxy forwards a request to the Hetzner API handlers as project name
