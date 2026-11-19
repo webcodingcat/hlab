@@ -560,6 +560,7 @@ func (c *Cloud) serveManagement(apiHandler http.Handler) error {
 		CACert:       c.ca.Certificate,
 		Trust:        c.trust,
 		SettingsPath: filepath.Join(c.d.Paths.Config, "settings.toml"),
+		LogDir:       c.d.Paths.Logs,
 	})
 	c.mgmtSrv = &http.Server{Handler: h, ReadHeaderTimeout: 30 * time.Second}
 	go serve(c.mgmtSrv, ln, "management")
