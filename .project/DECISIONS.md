@@ -1903,6 +1903,7 @@ in ARCHITECTURE.md or the plan.
 - What: a load balancer without an IPv6 primary IP shows `2001:db8:<0x80000000 | LB ID as 32 bits>::1`; with an IPv6 primary IP it shows `<its /64>::1`.
 - Why: the user's answer to Q3; one documentation prefix, no collision with server IDs below 2^31, and the hcloud CLI prints the IPv6 without a nil check.
 - Cost of change: high
+- Superseded: the prefix `0x80000000` by Q14 (`0xA0000000`).
 
 ## 2026-11-19 Q12: empty CRL for leaf certificates
 
@@ -2214,4 +2215,12 @@ in ARCHITECTURE.md or the plan.
 - Phase: upgrade
 - What: project files brought from wcc 0.32.9 to 0.32.10: version line only; the autoMode environment entry for the hcloud context `hlab-docs` is shown to the user for their own settings
 - Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
+
+## 2026-11-19 Q14: separate IPv6 prefix for load balancers
+
+- Type: change
+- Phase: change after phase 08
+- What: a load balancer without an IPv6 primary IP shows `2001:db8:<0xA0000000 | LB ID as 32 bits>::1` instead of `0x80000000` (Q11); IDs stay below 2^29; a `dns_ptr` entry stored on the old formal IPv6 moves to the new one; built in phase 09.
+- Why: standalone IPv6 primary IPs already use `0x80000000 | ID`, so an LB and a primary IP with the same ID shared a /64 and their PTR entries could overlap; `0xA0000000` keeps one documentation prefix and separates servers, primary IPs, load balancers and floating IPs.
 - Cost of change: low
