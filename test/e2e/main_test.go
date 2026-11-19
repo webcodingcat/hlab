@@ -129,6 +129,13 @@ func setup() error {
 		return errors.New("the end-to-end tests must run without elevated rights; start the terminal normally")
 	}
 
+	// A running dev service holds bin\hlabd.exe, so the build could not
+	// replace it: stop the cloud with the existing binary first and start it
+	// again after the build, leaving it running as found.
+	wasRunning, err := stopRunningCloud()
+	if err != nil {
+		return err
+	}
 	if err := buildAll(); err != nil {
 		return err
 	}
@@ -144,12 +151,35 @@ func setup() error {
 		if out, err := runHlab(context.Background(), 10*time.Minute, "cloud", "start"); err != nil {
 			return fmt.Errorf("hlab cloud start: %w\n%s", err, out)
 		}
-		harness.startedCloud = true
+		harness.startedCloud = !wasRunning
 		if err := waitCloudState("running", 15*time.Minute); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// stopRunningCloud stops the dev cloud if it runs and waits until its
+// service has stopped, so bin\hlabd.exe is free for the build. Without a
+// built hlab.exe there is nothing to ask and nothing to stop.
+func stopRunningCloud() (bool, error) {
+	if notExist(harness.hlab) {
+		return false, nil
+	}
+	state, err := cloudState()
+	if err != nil {
+		return false, err
+	}
+	if state != "running" {
+		return false, nil
+	}
+	if out, err := runHlab(context.Background(), 10*time.Minute, "cloud", "stop"); err != nil {
+		return false, fmt.Errorf("hlab cloud stop before the build: %w\n%s", err, out)
+	}
+	if err := waitCloudState("stopped", 10*time.Minute); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func teardown() error {
