@@ -171,14 +171,14 @@ type ShadowingZone struct {
   - [x] `CheckRRSet`, `CheckConflicts`, `ToRR` (rdata parsed with `dns.NewRR` under `$ORIGIN zone.`; TXT quoting and 255-character strings; SOA records only through `DefaultSets`), `DefaultSets`, `NextSerial` (internal/dnszone/records.go)
   - [x] Rows of TESTS.md for 07-01 (internal/dnszone/dnszone_test.go, group `TestDNSZone`)
 
-- [ ] 07-02 DNS zone data: zone files
+- [x] 07-02 DNS zone data: zone files
   - Wave: 2 | Depends on: 07-01 | Review: alone
   - Requirements: DNS-01 | Tests: internal/dnszone/zonefile_test.go
   - Reads: RESEARCH R4, R5; OpenAPI "Zone file import" (tag Zones); decisions D7, D8 below
   - Size: ~250 lines in 2 files
   - Adjusts: -
-  - [ ] `ParseZonefile` (miekg `ZoneParser` with origin `zone.`, TTL before or after class, rdata of each RR made relative where it lies in the zone, records grouped into RRSets in file order, each set through `CheckRRSet`, then `CheckConflicts`), `FormatZonefile` (internal/dnszone/zonefile.go)
-  - [ ] Rows of TESTS.md for 07-02 (internal/dnszone/zonefile_test.go, in `TestDNSZone`)
+  - [x] `ParseZonefile` (miekg `ZoneParser` with origin `zone.`, TTL before or after class, rdata of each RR made relative where it lies in the zone, records grouped into RRSets in file order, each set through `CheckRRSet`, then `CheckConflicts`), `FormatZonefile` (internal/dnszone/zonefile.go)
+  - [x] Rows of TESTS.md for 07-02 (internal/dnszone/zonefile_test.go, in `TestDNSZone`)
 
 - [x] 07-03 Reverse DNS entries
   - Wave: 1 | Depends on: - | Review: alone

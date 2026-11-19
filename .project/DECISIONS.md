@@ -1807,3 +1807,11 @@ in ARCHITECTURE.md or the plan.
 - What: `change_dns_ptr` requires the `dns_ptr` key (missing is `invalid_input` on `dns_ptr`, `null` resets); a primary IP's action names only the primary IP, pushes only the agent document and copies the PTR into the assigned server's `public_net` without rebuilding its seed.
 - Why: a PTR is not part of the seed, and an explicit key avoids resetting a PTR by an empty body.
 - Cost of change: low
+
+## 2026-11-19 Zone file parsing details
+
+- Type: decision
+- Phase: phase 07
+- What: an RRSet has its own TTL only when its line names one; `$TTL` and record TTLs accept BIND units (`1h30m`); `$INCLUDE` and `$GENERATE` are refused with the line; owner names are lower-cased on import; the apex NS must contain the three Hetzner nameservers and may hold more.
+- Why: ordinary BIND zone files import unchanged and export and import round-trip exactly.
+- Cost of change: low
