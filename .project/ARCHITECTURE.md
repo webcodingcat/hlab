@@ -563,6 +563,7 @@ locks a resource of type `project`.
       Algorithm  string                     // "round_robin" | "least_connections"
       Services   []LBService
       Targets    []LBTarget                 // resolved from servers, label selectors, IPs
+      MaxConn    int                        // the type's max_connections, HAProxy maxconn
   }
   type LBNetwork struct { NetworkID int64; VLAN int; IP netip.Addr }
   type LBService struct {
@@ -572,7 +573,7 @@ locks a resource of type `project`.
       HTTP            *LBHTTP               // nil for tcp
       HealthCheck     LBHealthCheck
   }
-  type LBHTTP struct { CookieName string; CookieLifetime int; StickySessions, RedirectHTTP bool; CertPEM, KeyPEM []string }
+  type LBHTTP struct { CookieName string; CookieLifetime, TimeoutIdle int; StickySessions, RedirectHTTP bool; CertPEM, KeyPEM []string }
   type LBHealthCheck struct { Protocol string; Port, Interval, Timeout, Retries int; Path, Domain, Response string; StatusCodes []string; TLS bool }
   type LBTarget struct { Key string; IP netip.Addr; ViaNetworkID int64 } // Key: "server:<id>" or "ip:<addr>"; ViaNetworkID 0 = public
   type Zone struct { Name string; TTL int; RRSets []RRSet }

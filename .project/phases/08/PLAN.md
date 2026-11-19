@@ -180,15 +180,15 @@ type Deps struct {
 
 ## Plans
 
-- [ ] 08-01 hlab CA
+- [x] 08-01 hlab CA
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: CERT-02, CERT-04 | Tests: internal/ca/ca_test.go
   - Reads: ARCHITECTURE "ca", "Files and formats"; decisions/managed-certificates.md; DECISIONS Q12; R6 (last point: certificate extensions); this file "Interfaces"
   - Size: ~300 lines in 3 files
   - Adjusts: -
-  - [ ] `Open` (create or load), `Certificate`, `Issue` (internal/ca/ca.go)
-  - [ ] `RenewCRL`, `CRL` (x509.CreateRevocationList, number in ca.crl) (internal/ca/crl.go)
-  - [ ] Rows of TESTS.md for 08-01 (internal/ca/ca_test.go, group `TestCA`)
+  - [x] `Open` (create or load), `Certificate`, `Issue` (internal/ca/ca.go)
+  - [x] `RenewCRL`, `CRL` (x509.CreateRevocationList, number in ca.crl) (internal/ca/crl.go)
+  - [x] Rows of TESTS.md for 08-01 (internal/ca/ca_test.go, group `TestCA`)
 
 - [ ] 08-02 Agent: HAProxy configuration and stats
   - Wave: 1 | Depends on: - | Review: alone
