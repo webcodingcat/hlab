@@ -271,3 +271,8 @@ func (m *Metadata) HandlerFor(vlan int) http.Handler
   - Adjusts: -
   - [x] docs/user/deviations.md: formal IPv6 of primary and floating IPs, `expose_routes_to_vswitch` without effect, `vswitch` subnets refused, private MACs `02:48:4c:2x:xx:xx` instead of `86:00:00:xx:xx:xx`, private adapters configured by the hlab guest hook instead of DHCP and only on hlab-created disks, MTU 1500 on private networks, the chosen error codes where Hetzner documents none (delete_subnet, floating IP zone, limits, create without any interface, change_protection with auto_delete)
   - [x] README.md (networks, primary and floating IPs, configuring a floating IP or alias IP in the guest), docs/dev/components.md (VRFs, trunk adapter, isolation per segment, metadata per VRF)
+
+## Close
+
+- E2E: `task e2e` (all tests, no filter; the phase changed shared server, seed, agent and hyperv code, and the e2e harness's server slots after a deadlock in the first close run). Green on 549b202.
+- Unit suite `task test` and `task lint` green on 549b202.
