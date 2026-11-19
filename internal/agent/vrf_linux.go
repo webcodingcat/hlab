@@ -7,12 +7,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
+	"net/http"
 	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
@@ -39,9 +43,15 @@ const unreachableMetric = 4278198272
 // /32 routes to the members and their alias IPs, the network's routes via
 // their gateway, and no default route. It touches only the links named
 // vrf<vlan> and t<vlan> and the routes carrying the agent's protocol in the
-// VRF tables.
+// VRF tables. With Metadata set, each VRF device also carries
+// 169.254.169.254/32 and gets its own metadata listener on
+// 169.254.169.254:80, bound to the VRF device and serving
+// Metadata.HandlerFor(vlan); the listener closes with its VRF.
 type VRF struct {
 	TrunkMAC net.HardwareAddr
+	Metadata *Metadata
+
+	listeners map[int]*http.Server // per VLAN
 }
 
 // NewVRF returns the Applier of private networks on the link with
@@ -66,6 +76,12 @@ func (v *VRF) Apply(_ context.Context, cfg agentapi.Config) error {
 	for _, n := range cfg.Networks {
 		want[n.VLAN] = true
 	}
+	for vlan, srv := range v.listeners {
+		if !want[vlan] {
+			_ = srv.Close()
+			delete(v.listeners, vlan)
+		}
+	}
 	// Subinterfaces go before their VRF devices.
 	for _, kind := range [][2]string{{"t", "vlan"}, {"vrf", "vrf"}} {
 		for _, l := range links {
@@ -87,6 +103,9 @@ func (v *VRF) Apply(_ context.Context, cfg agentapi.Config) error {
 		}
 		for _, n := range cfg.Networks {
 			rs, err := setupNetwork(trunk, byName, n)
+			if err == nil {
+				err = v.listenMetadata(n.VLAN)
+			}
 			if err != nil {
 				return fmt.Errorf("vrf: network %d (vlan %d): %w", n.ID, n.VLAN, err)
 			}
@@ -94,6 +113,39 @@ func (v *VRF) Apply(_ context.Context, cfg agentapi.Config) error {
 		}
 	}
 	return syncVRFRoutes(routes)
+}
+
+// listenMetadata starts the metadata listener of VLAN vlan on
+// 169.254.169.254:80 bound to the VRF device vrf<vlan>, unless it runs.
+func (v *VRF) listenMetadata(vlan int) error {
+	if v.Metadata == nil || v.listeners[vlan] != nil {
+		return nil
+	}
+	dev := "vrf" + strconv.Itoa(vlan)
+	lc := net.ListenConfig{Control: func(_, _ string, c syscall.RawConn) error {
+		var serr error
+		if err := c.Control(func(fd uintptr) {
+			serr = unix.SetsockoptString(int(fd), unix.SOL_SOCKET, unix.SO_BINDTODEVICE, dev)
+		}); err != nil {
+			return err
+		}
+		return serr
+	}}
+	ln, err := lc.Listen(context.Background(), "tcp4", netip.AddrPortFrom(metadataAddr, 80).String())
+	if err != nil {
+		return fmt.Errorf("metadata listener on %s: %w", dev, err)
+	}
+	srv := &http.Server{Handler: v.Metadata.HandlerFor(vlan), ReadHeaderTimeout: 30 * time.Second}
+	go func() {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("metadata listener", "vrf", dev, "err", err)
+		}
+	}()
+	if v.listeners == nil {
+		v.listeners = map[int]*http.Server{}
+	}
+	v.listeners[vlan] = srv
+	return nil
 }
 
 // trunk finds the trunk link by MAC and sets it up.
@@ -137,6 +189,10 @@ func setupNetwork(trunk netlink.Link, byName map[string]netlink.Link, n agentapi
 	}
 	if err := netlink.AddrReplace(sub, &netlink.Addr{IPNet: hostNet(n.Gateway)}); err != nil {
 		return nil, fmt.Errorf("address %s on %s: %w", n.Gateway, subName, err)
+	}
+	// The metadata listener of the VRF answers on this address.
+	if err := netlink.AddrReplace(vrf, &netlink.Addr{IPNet: hostNet(metadataAddr)}); err != nil {
+		return nil, fmt.Errorf("address %s on %s: %w", metadataAddr, vrfName, err)
 	}
 
 	// Members reach each other only through the gateway: the subinterface
