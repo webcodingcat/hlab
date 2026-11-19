@@ -15,6 +15,7 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/webcodingcat/hlab/internal/agentapi"
+	"github.com/webcodingcat/hlab/internal/dnszone"
 )
 
 // dnsListen are the addresses the DNS server binds: the transit address
@@ -30,13 +31,14 @@ const (
 	apiName         = "api.hetzner.internal."
 	dnsTTL          = 60
 	upstreamTimeout = 2 * time.Second
+	maxCNAMEChain   = 8
 )
 
 var apiAddr = netip.MustParseAddr("198.19.0.1")
 
 // DNS is the Applier of the appliance's DNS server: authoritative for
-// hetzner.internal and the reverse zones of the public range, forwarding
-// everything else to Config.Upstream. The listeners start with the first
+// hetzner.internal, the reverse zones of the public range and the user zones
+// of Config.Zones, forwarding everything else to Config.Upstream. The listeners start with the first
 // apply; later applies swap the answer data in place.
 type DNS struct {
 	data atomic.Pointer[dnsData]
@@ -52,8 +54,10 @@ type dnsData struct {
 }
 
 type dnsZone struct {
+	name    string // canonical zone name
 	soa     dns.RR
 	records map[string][]dns.RR // by canonical owner name
+	exists  map[string]bool     // owners and their ancestors in the zone (empty non-terminals)
 }
 
 // Name implements Applier.
@@ -130,7 +134,7 @@ func (d *DNS) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	}
 	name := dns.CanonicalName(req.Question[0].Name)
 	if z := data.zoneFor(name); z != nil {
-		writeDNS(w, req, z.answer(req, name))
+		writeDNS(w, req, data.answer(req, z, name))
 		return
 	}
 	writeDNS(w, req, data.forward(w, req))
@@ -149,7 +153,7 @@ func writeDNS(w dns.ResponseWriter, req, m *dns.Msg) {
 	}
 }
 
-// zoneFor returns the authoritative zone of name, or nil.
+// zoneFor returns the most specific authoritative zone of name, or nil.
 func (dd *dnsData) zoneFor(name string) *dnsZone {
 	for n := name; n != ""; {
 		if z, ok := dd.zones[n]; ok {
@@ -164,39 +168,124 @@ func (dd *dnsData) zoneFor(name string) *dnsZone {
 	return nil
 }
 
-// answer answers a question for name inside the zone.
-func (z *dnsZone) answer(req *dns.Msg, name string) *dns.Msg {
+// answer answers a question for name inside zone z. A CNAME is followed
+// inside the served zones and, for a target outside them, through the
+// upstream servers, at most maxCNAMEChain steps; the chain comes first.
+func (dd *dnsData) answer(req *dns.Msg, z *dnsZone, name string) *dns.Msg {
 	m := new(dns.Msg)
 	m.SetReply(req)
 	m.Authoritative = true
 	m.RecursionAvailable = true
-	rrs, ok := z.records[name]
-	if !ok {
-		m.Rcode = dns.RcodeNameError
-		m.Ns = []dns.RR{z.soa}
-		return m
-	}
 	qtype := req.Question[0].Qtype
-	for _, rr := range rrs {
-		if qtype == dns.TypeANY || rr.Header().Rrtype == qtype {
-			m.Answer = append(m.Answer, rr)
+	for step := 1; ; step++ {
+		rrs, found := z.lookup(name)
+		if !found {
+			m.Rcode = dns.RcodeNameError
+			m.Ns = []dns.RR{z.soa}
+			return m
+		}
+		var cname dns.RR
+		for _, rr := range rrs {
+			switch {
+			case qtype == dns.TypeANY || rr.Header().Rrtype == qtype:
+				m.Answer = append(m.Answer, rr)
+			case rr.Header().Rrtype == dns.TypeCNAME:
+				cname = rr
+			}
+		}
+		if cname == nil {
+			if len(m.Answer) == 0 {
+				m.Ns = []dns.RR{z.soa}
+			}
+			return m
+		}
+		m.Answer = append(m.Answer, cname)
+		if step >= maxCNAMEChain {
+			return m
+		}
+		name = dns.CanonicalName(cname.(*dns.CNAME).Target)
+		if z = dd.zoneFor(name); z == nil {
+			dd.chase(m, name, qtype)
+			return m
 		}
 	}
-	if len(m.Answer) == 0 {
-		m.Ns = []dns.RR{z.soa}
-	}
-	return m
 }
 
-// forward asks the upstream servers in order and returns the first answer,
-// retrying over TCP when a UDP answer is truncated.
+// chase asks the upstream servers for a CNAME target outside the served
+// zones and appends their answer; when they fail, m keeps the chain so far.
+func (dd *dnsData) chase(m *dns.Msg, target string, qtype uint16) {
+	q := new(dns.Msg)
+	q.SetQuestion(target, qtype)
+	q.RecursionDesired = true
+	r, err := dd.ask("udp", q)
+	if err != nil {
+		return
+	}
+	switch r.Rcode {
+	case dns.RcodeSuccess:
+		m.Answer = append(m.Answer, r.Answer...)
+	case dns.RcodeNameError:
+		m.Rcode = dns.RcodeNameError
+		m.Ns = r.Ns
+	}
+}
+
+// lookup returns the records of name, synthesized from a wildcard when name
+// does not exist (RFC 4592: only the wildcard below the closest existing
+// ancestor answers); found is false when neither exists.
+func (z *dnsZone) lookup(name string) (rrs []dns.RR, found bool) {
+	if z.exists[name] {
+		return z.records[name], true
+	}
+	for n := name; n != z.name; {
+		i := strings.IndexByte(n, '.')
+		if i < 0 || i == len(n)-1 {
+			return nil, false
+		}
+		n = n[i+1:]
+		if !z.exists[n] {
+			continue
+		}
+		wild, ok := z.records["*."+n]
+		if !ok {
+			return nil, false
+		}
+		out := make([]dns.RR, 0, len(wild))
+		for _, rr := range wild {
+			c := dns.Copy(rr)
+			c.Header().Name = name
+			out = append(out, c)
+		}
+		return out, true
+	}
+	return nil, false
+}
+
+// forward asks the upstream servers for req and returns their answer, or
+// SERVFAIL when none answers.
 func (dd *dnsData) forward(w dns.ResponseWriter, req *dns.Msg) *dns.Msg {
 	first := "udp"
 	if _, ok := w.RemoteAddr().(*net.TCPAddr); ok {
 		first = "tcp"
 	}
+	r, err := dd.ask(first, req)
+	if err != nil {
+		m := new(dns.Msg)
+		m.SetRcode(req, dns.RcodeServerFailure)
+		m.RecursionAvailable = true
+		return m
+	}
+	r.Id = req.Id
+	return r
+}
+
+// ask asks the upstream servers in order and returns the first answer,
+// retrying over TCP when a UDP answer is truncated.
+func (dd *dnsData) ask(first string, req *dns.Msg) (*dns.Msg, error) {
+	err := errors.New("no upstream server")
 	for _, up := range dd.upstream {
-		r, err := exchange(first, req, up)
+		var r *dns.Msg
+		r, err = exchange(first, req, up)
 		if err == nil && r.Truncated && first == "udp" {
 			r, err = exchange("tcp", req, up)
 		}
@@ -204,13 +293,9 @@ func (dd *dnsData) forward(w dns.ResponseWriter, req *dns.Msg) *dns.Msg {
 			slog.Debug("dns upstream failed", "upstream", up, "err", err)
 			continue
 		}
-		r.Id = req.Id
-		return r
+		return r, nil
 	}
-	m := new(dns.Msg)
-	m.SetRcode(req, dns.RcodeServerFailure)
-	m.RecursionAvailable = true
-	return m
+	return nil, err
 }
 
 func exchange(network string, req *dns.Msg, upstream string) (*dns.Msg, error) {
@@ -222,8 +307,7 @@ func exchange(network string, req *dns.Msg, upstream string) (*dns.Msg, error) {
 	return r, err
 }
 
-// buildDNSData builds the answer data of a document. User zones
-// (Config.Zones) are not served yet; queries for them are forwarded.
+// buildDNSData builds the answer data of a document.
 func buildDNSData(cfg agentapi.Config) *dnsData {
 	dd := &dnsData{zones: map[string]*dnsZone{}}
 	for _, u := range cfg.Upstream {
@@ -245,6 +329,11 @@ func buildDNSData(cfg agentapi.Config) *dnsData {
 			dd.zones[name] = newZone(name, serial)
 		}
 	}
+	for _, uz := range cfg.Zones {
+		if z := userZone(uz); z != nil {
+			dd.zones[z.name] = z
+		}
+	}
 	for addr, target := range cfg.PTR {
 		if !addr.Is4() || target == "" {
 			continue
@@ -263,7 +352,7 @@ func buildDNSData(cfg agentapi.Config) *dnsData {
 // newZone returns a zone with SOA and NS; api.hetzner.internal is its name
 // server.
 func newZone(name string, serial uint32) *dnsZone {
-	z := &dnsZone{records: map[string][]dns.RR{}}
+	z := &dnsZone{name: name, records: map[string][]dns.RR{}, exists: map[string]bool{}}
 	z.soa = &dns.SOA{
 		Hdr:     hdr(name, dns.TypeSOA),
 		Ns:      apiName,
@@ -279,9 +368,53 @@ func newZone(name string, serial uint32) *dnsZone {
 	return z
 }
 
+// userZone builds a zone of the document; its SOA comes from the apex SOA
+// RRSet. Records that do not parse are skipped; a zone without SOA is not
+// served.
+func userZone(uz agentapi.Zone) *dnsZone {
+	name := dns.CanonicalName(uz.Name)
+	z := &dnsZone{name: name, records: map[string][]dns.RR{}, exists: map[string]bool{}}
+	for _, set := range uz.RRSets {
+		ds := dnszone.RRSet{Name: set.Name, Type: set.Type}
+		if set.TTL > 0 {
+			ds.TTL = &set.TTL
+		}
+		for _, v := range set.Records {
+			ds.Records = append(ds.Records, dnszone.Record{Value: v})
+		}
+		rrs, err := dnszone.ToRR(strings.TrimSuffix(name, "."), uz.TTL, ds)
+		if err != nil {
+			slog.Warn("dns record skipped", "zone", uz.Name, "err", err)
+			continue
+		}
+		for _, rr := range rrs {
+			rr.Header().Name = dns.CanonicalName(rr.Header().Name)
+			if rr.Header().Rrtype == dns.TypeSOA && rr.Header().Name == name {
+				z.soa = rr
+			}
+			z.add(rr)
+		}
+	}
+	if z.soa == nil {
+		slog.Warn("dns zone without SOA not served", "zone", uz.Name)
+		return nil
+	}
+	return z
+}
+
+// add adds rr and marks its owner and the owner's ancestors up to the apex
+// as existing.
 func (z *dnsZone) add(rr dns.RR) {
 	n := rr.Header().Name
 	z.records[n] = append(z.records[n], rr)
+	for !z.exists[n] {
+		z.exists[n] = true
+		i := strings.IndexByte(n, '.')
+		if n == z.name || i < 0 || i == len(n)-1 {
+			return
+		}
+		n = n[i+1:]
+	}
 }
 
 func hdr(name string, t uint16) dns.RR_Header {
