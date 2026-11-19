@@ -1583,3 +1583,11 @@ in ARCHITECTURE.md or the plan.
 - What: Primary IPs have no `datacenter` field (the frozen schema has none), the location lives in `_hlab.location`; create with `assignee_id` returns an `assign_primary_ip` action, with `location` none; automatic and recovered ones are named `primary_ip-<id>`; given `public_net` IDs win over `enable_ipv4/6: false`; DELETE checks protection before assignment; assign and unassign rebuild the server's seed through `SyncAdapters`.
 - Why: The frozen spec forbids extra properties; the seed must carry the new address for the next boot (PIP-02).
 - Cost of change: low
+
+## 2026-11-19 Guest hook for private adapters
+
+- Type: decision
+- Phase: 05
+- What: `hlab-guest` takes over only private links that do not yet carry their private IP (hot-added after boot), records what it applied in `/run/hlab-guest/networks.json` and acts only on changes; without networkd it sets the route before the address; a failed network sync does not stop the password reset.
+- Why: The seed's netplan config must stay in charge of links it set up, so user alias IPs and NAT routes survive (NET-03).
+- Cost of change: low

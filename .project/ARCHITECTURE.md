@@ -621,7 +621,9 @@ locks a resource of type `project`.
   `hlab-guest.timer`, which asks the metadata service every 5 seconds for a
   pending root password reset and applies it with `chpasswd`, and rescans every
   `scsi-0HC_Volume_*` disk so a grown volume shows its new size; it also
-  configures private adapters (MAC `02:48:4c:2x:xx:xx`) live from
+  configures hot-added private adapters (MAC `02:48:4c:2x:xx:xx`, only
+  links not yet carrying their private IP, so the seed's config stays in
+  charge of the others) live from
   `/hetzner/v1/metadata/private-networks` (`/32` plus the route to the
   network range via the gateway, no alias IPs) through networkd files in
   `/run` or `ip` without networkd. The script also writes the cloud-init
