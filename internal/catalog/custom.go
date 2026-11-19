@@ -322,7 +322,7 @@ func readOwnRaw(file string) ([]json.RawMessage, []ServerType, error) {
 
 // writeOwn writes raw as the JSON array of customFile in place in one
 // write, which keeps the file's ACL.
-	}
+func writeOwn(file string, raw []json.RawMessage) error {
 	data, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
 		return err
