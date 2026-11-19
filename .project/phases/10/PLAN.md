@@ -212,12 +212,12 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - [x] internal/mgmt/mgmt.go: `Deps.Reload` with `POST /settings/reload`; `Deps.Done` ends the follow of `GET /logs` (backlog bug: no 10 s wait at stop).
   - [x] internal/cloud (cloud.go, new reload.go): at start create `server-types.custom.json` with `[]` when missing and give it settings.toml's ACL via `settings.CopySecurity`; `reload` re-reads settings.toml (invalid file: error, nothing changed), sets `logging.level`, calls `cat.ReloadOwn` and refreshes the `custom_server_types` problem; stop_behaviour is already re-read at stop; public_range, data_folder and the reserves apply at the next start; close `Done` before `mgmtSrv.Shutdown`.
 
-- [ ] 10-08 Bridge: management calls, settings, server types
+- [x] 10-08 Bridge: management calls, settings, server types
   - Wave: 2 | Depends on: 10-01, 10-03, 10-04 | Review: alone
   - Requirements: UI-03, UI-04 | Tests: internal/bridge/service_test.go
   - Reads: ARCHITECTURE "hlab-tray (tray program)", "Files and formats"; RESEARCH topic 3 (argument and result shapes); DECISIONS "Tray settings writes", "Tray writes server-types.custom.json directly"
   - Size: ~300 lines in 2 files
-  - [ ] internal/bridge/service.go: `Service` with `Call` (string body, `Response`), `Settings`, `SaveSettings` (`settings.Write`, `*Invalid` for a `FieldError`, `POST /settings/reload` when running), `ServerTypes` (`catalog.LoadAll` over shipped, data and custom file with source and problem), `AddServerType`, `RemoveServerType` (reload when running).
+  - [x] internal/bridge/service.go: `Service` with `Call` (string body, `Response`), `Settings`, `SaveSettings` (`settings.Write`, `*Invalid` for a `FieldError`, `POST /settings/reload` when running), `ServerTypes` (`catalog.LoadAll` over shipped, data and custom file with source and problem), `AddServerType`, `RemoveServerType` (reload when running).
 
 - [ ] 10-09 Bridge: cloud status and control
   - Wave: 2 | Depends on: 10-03 | Review: alone
