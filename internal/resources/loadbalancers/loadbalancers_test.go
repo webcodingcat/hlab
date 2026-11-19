@@ -599,8 +599,6 @@ func uploadCert(t *testing.T, e *apitest.Env, name string) (id int64, certPEM, k
 	return b.Certificate.ID, certPEM, keyPEM
 }
 
-func ptr[T any](v T) *T { return &v }
-
 func TestLoadBalancers(t *testing.T) {
 	t.Run("LB-01/create", testCreate)
 	t.Run("LB-01/change", testChange)
