@@ -19,22 +19,28 @@ import (
 // Publishes run one at a time, so the latest name list is written last.
 func (m *Module) publish(acts *actions.Manager, a *actions.Action) {
 	acts.Run(a.ID, func(ctx context.Context, _ func(int)) error {
-		m.publishMu.Lock()
-		defer m.publishMu.Unlock()
-		if err := m.d.PushAgent(ctx); err != nil {
-			return err
-		}
-		var names []string
-		err := m.d.Store.Tx(func(tx store.Tx) error {
-			var err error
-			names, err = Names(tx)
-			return err
-		})
-		if err != nil {
-			return err
-		}
-		return m.d.SetZones(ctx, names)
+		return m.publishNow(ctx)
 	})
+}
+
+// publishNow pushes the agent document, then sets the NRPT rules to all
+// zone names, one publish at a time.
+func (m *Module) publishNow(ctx context.Context) error {
+	m.publishMu.Lock()
+	defer m.publishMu.Unlock()
+	if err := m.d.PushAgent(ctx); err != nil {
+		return err
+	}
+	var names []string
+	err := m.d.Store.Tx(func(tx store.Tx) error {
+		var err error
+		names, err = Names(tx)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	return m.d.SetZones(ctx, names)
 }
 
 // Contribute implements resource.NetContributor: every primary zone with

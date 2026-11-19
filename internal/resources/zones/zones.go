@@ -525,6 +525,33 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 	api.JSON(w, http.StatusCreated, map[string]any{"action": action})
 }
 
+// Delete implements resource.Deleter for project deletion: it removes zone
+// id of any project, forgets its shadow check and publishes the remaining
+// zones like the delete_zone action. A zone already gone is no error.
+func (m *Module) Delete(ctx context.Context, id int64) error {
+	var name string
+	err := m.d.Store.Tx(func(tx store.Tx) error {
+		recs, err := store.ListAll[Record](tx, Kind)
+		if err != nil {
+			return err
+		}
+		for _, r := range recs {
+			if r.ID == id {
+				name = r.Name
+				return store.Delete(tx, Kind, r.Hlab.ProjectID, r.ID)
+			}
+		}
+		return nil
+	})
+	if err != nil || name == "" {
+		return err
+	}
+	if m.d.Shadow != nil {
+		m.d.Shadow.Forget(name)
+	}
+	return m.publishNow(ctx)
+}
+
 // Names returns the names of all zones of all projects, sorted.
 func Names(tx store.Tx) ([]string, error) {
 	recs, err := store.ListAll[Record](tx, Kind)
