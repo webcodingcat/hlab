@@ -78,7 +78,7 @@ func (m *Module) retry(w http.ResponseWriter, req *http.Request) {
 			return err
 		}
 		s := r.Status
-		if r.Type != TypeManaged || s == nil || (s.Issuance != IssuanceFailed && s.Renewal != RenewalFailed) {
+		if r.Type != TypeManaged || (s.Issuance != IssuanceFailed && s.Renewal != RenewalFailed) {
 			return &api.FieldError{Message: "retry needs a managed certificate whose issuance or renewal failed"}
 		}
 		if action, err = acts.Start(tx, p.ID, "retry_issuance", []actions.Ref{certRef(id)}); err != nil {
@@ -134,9 +134,6 @@ func (m *Module) issue(ctx context.Context, st *store.Store, projectID, id int64
 		r, err := Load(tx, projectID, id)
 		if err != nil {
 			return err
-		}
-		if r.Status == nil {
-			r.Status = &Status{}
 		}
 		if ae != nil {
 			r.Status.Error = &StatusError{Code: ae.Code, Message: ae.Message}

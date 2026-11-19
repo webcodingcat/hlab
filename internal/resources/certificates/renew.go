@@ -30,7 +30,7 @@ func (m *Module) renew(ctx context.Context) {
 			return err
 		}
 		for _, r := range recs {
-			if r.Type != TypeManaged || r.Status == nil || r.Status.Issuance != IssuanceCompleted ||
+			if r.Type != TypeManaged || r.Status.Issuance != IssuanceCompleted ||
 				r.NotValidAfter == nil || r.NotValidAfter.Sub(now) >= renewBefore {
 				continue
 			}
