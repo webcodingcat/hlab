@@ -30,7 +30,7 @@ type Platform struct {
 	r    *runner
 
 	mu       sync.Mutex
-	cpu      map[string]cpuTicks     // last CPU counters per VM, for Metrics
+	cpu      map[string]cpuTicks     // last CPU counters per VM, for MetricsAll
 	consoles map[string]net.Listener // served COM1 pipes per VM
 }
 

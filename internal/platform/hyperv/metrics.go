@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -161,19 +160,6 @@ func (p *Platform) MetricsAll(ctx context.Context, vms []string) (map[string]pla
 		out[vm] = s
 	}
 	return out, nil
-}
-
-// Metrics reads the counters of one VM through MetricsAll.
-func (p *Platform) Metrics(ctx context.Context, vm string) (platform.Sample, error) {
-	all, err := p.MetricsAll(ctx, []string{vm})
-	if err != nil {
-		return platform.Sample{}, err
-	}
-	s, ok := all[vm]
-	if !ok {
-		return platform.Sample{}, &platform.Error{Kind: platform.NotFound, Op: "Metrics", Err: fmt.Errorf("vm %s not found", vm)}
-	}
-	return s, nil
 }
 
 // cpuPercent keeps cur for vm and returns the busy percentage since the
