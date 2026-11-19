@@ -3,6 +3,9 @@
     "deny": [
       "Read(./.env)",
       "Read(./.env.local)"
+    ],
+    "allow": [
+      "Bash(hcloud --context hlab-docs *)"
     ]
   }
 }

@@ -1871,3 +1871,11 @@ in ARCHITECTURE.md or the plan.
 - What: the zones module is a `resource.Deleter`; project deletion removes each zone, forgets its shadow result and publishes (agent push, `SetZones`) like the zone DELETE action, and a failed publish stops the project deletion.
 - Why: the verifier found NRPT rules and shadow warnings left behind for zones of a deleted project (DNS-03).
 - Cost of change: low
+
+## 2026-11-19 Upgrade to wcc 0.32.9
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.32.8 to 0.32.9: allow rule `Bash(hcloud --context hlab-docs *)` in .claude/settings.json, version line in CLAUDE.md
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
