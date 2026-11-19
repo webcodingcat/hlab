@@ -2207,3 +2207,11 @@ in ARCHITECTURE.md or the plan.
 - What: `ca.key` gets a protected DACL with SYSTEM only (plus the running user when hlabd does not run as SYSTEM, for tests and manual starts) and `ca.Open` repairs an existing key; `settings.Save` copies the replaced file's DACL onto the temp file before the rename; the agent's LB teardown treats ENODEV on a link delete as done.
 - Why: the doc-writer found ca.key readable by INTERACTIVE and Virtual Machines; the verifier found the Interactive Users modify grant lost after `hlab ca trust`; the close e2e run failed deleting a veth that the netns deletion had already removed.
 - Cost of change: low
+
+## 2026-11-19 Upgrade to wcc 0.32.10
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.32.9 to 0.32.10: version line only; the autoMode environment entry for the hcloud context `hlab-docs` is shown to the user for their own settings
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
