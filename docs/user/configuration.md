@@ -8,8 +8,13 @@ hlab reads `settings.toml` from its data folder when the cloud starts:
 service creates an empty file that interactive users may edit. Every key is
 optional; a missing key keeps its default. Changes apply at the next
 `hlab cloud start`; `stop_behaviour` is also read again at
-`hlab cloud stop`. `hlab ca trust` writes the file itself: it rewrites
-it with all current settings, and comments in it are lost.
+`hlab cloud stop`.
+
+The Settings view of the [tray program](../../README.md#the-tray-program)
+edits the file too. It saves only when every value is valid, and while the
+cloud runs, a save applies `level` at once. `hlab ca trust` and the
+tray rewrite the file with all current settings, and comments in it are
+lost.
 
 ```toml
 [cloud]
@@ -95,12 +100,18 @@ a `problem:` line, when
 
 ## Custom server types
 
-Your own server types go in `server-types.custom.json` in the data folder
-(`%ProgramData%\hlab-dev\server-types.custom.json` for the development
-service). The file is a JSON array of server type objects in the format of
-Hetzner's API. hlab reads it when the cloud starts and serves the types
-after those of the catalog, in `/server_types` and `/pricing`, and
-`POST /servers` accepts them like any other type:
+Your own server types go in `server-types.custom.json` beside
+settings.toml (`%ProgramData%\hlab-dev\server-types.custom.json` for the
+development service). The cloud start creates it with an empty list `[]`
+when it is missing, with the permissions of settings.toml, so interactive
+users may edit it. The Server Types view of the
+[tray program](../../README.md#the-tray-program) adds and removes types in
+it; you can also edit it by hand.
+
+The file is a JSON array of server type objects in the format of
+Hetzner's API. hlab serves the types after those of the catalog, in
+`/server_types` and `/pricing`, and `POST /servers` accepts them like any
+other type:
 
 ```json
 [
@@ -135,7 +146,15 @@ A file that cannot be read, or whose types break these rules, is ignored
 as a whole; `hlab cloud status` then names the reason on a `problem:`
 line and only the catalog types are served. The same happens when
 `hlab catalog update` brings a type with the name or ID of one of yours.
-Changes to the file apply at the next `hlab cloud start`.
+
+Changes by hand apply at the next `hlab cloud start`; changes made in the
+tray apply at once while the cloud runs, otherwise at the next start. The
+tray gives a new type the next free `id` from 100000, `architecture`
+`x86`, `storage_type` `local` and no prices.
+
+Servers of a type you remove keep running, and power on and
+rebuild still work for them; new servers and `change_type` cannot use the
+type any more.
 
 ## Catalogs
 

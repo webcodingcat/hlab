@@ -15,6 +15,12 @@ builds the tray frontend and `bin\hlabd.exe`, `bin\hlab.exe`,
 current `bin\hlab-agent` on the appliance at every cloud start, so a changed
 agent needs a rebuild and a cloud restart, not a new appliance.
 
+`task frontend:build` builds only the frontend (Vite, into
+`ui\frontend\dist`); it runs `npm ci` first through
+`task frontend:install`. `bin\hlab-tray.exe` embeds `dist`. A committed
+placeholder file lets Go compile the tray without a frontend build, but
+its window then stays empty.
+
 ## Lint
 
 ```
@@ -45,6 +51,13 @@ missing.
 
 Test names carry the requirement they prove (`TestResources/API-10`), so
 `-run` selects one requirement.
+
+```
+task test:frontend
+```
+
+runs the frontend unit tests in `ui\frontend\tests\unit` with Playwright
+Test, without a browser.
 
 ## End-to-end tests
 
@@ -84,6 +97,17 @@ The row `CAT-03` runs `hlab catalog update` with the token of the hcloud
 context for the real API (`HLab`, or the name in `HLAB_HCLOUD_CONTEXT`; see
 [Developer setup](setup.md#optional-access-to-the-real-hetzner-api)); it is
 skipped when there is no such context.
+
+The `UI-` rows test the tray program. The harness builds
+`bin\hlab-tray-e2e.exe` with the build tag `e2e`, which opens a WebView2
+remote debugging port on 127.0.0.1 and runs beside a tray you may have
+open. Each row then runs the Playwright test of its ID from
+`ui\frontend\tests\e2e`, which connects to the real tray window over CDP;
+this needs the frontend dependencies (`task frontend:install`). `UI-01`
+stops and starts the cloud. `UI-04` updates the server types with the
+token of the same hcloud context as `CAT-03`, and without one checks
+Hetzner's refusal of an invalid token. Release builds never carry the
+`e2e` tag.
 
 The harness runs `task build`, starts the development cloud if it is
 stopped (and stops it again at the end if it started it), creates one

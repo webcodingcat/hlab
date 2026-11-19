@@ -1,8 +1,8 @@
 # Logs
 
-The log of the cloud service. While the cloud runs, new lines arrive as
-they are written; while it is stopped, the last lines of the log files
-show.
+The log of the cloud service: the last 1000 lines, then new lines as they
+are written, while the cloud runs and while it is stopped.
 
-- Filter the lines by level.
-- **Follow** keeps the list scrolled to the newest line.
+- **Level** hides the lines below the level you choose.
+- **Follow** keeps the list scrolled to the newest line. Turning it off
+  stops new lines; turning it on again reloads the last 1000 lines.

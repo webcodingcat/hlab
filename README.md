@@ -11,7 +11,8 @@ You run hlab from a working copy as described below. The current version
 covers projects, tokens, SSH keys, servers with snapshots, backups,
 rescue system and ISOs, volumes, placement groups, private networks,
 primary IPs, floating IPs, firewalls, DNS zones, reverse DNS, load
-balancers and certificates; see
+balancers and certificates, and a [tray program](#the-tray-program) for
+the cloud, projects, settings, server types and logs; see
 [What does not work yet](#what-does-not-work-yet).
 
 ## Prerequisites and setup
@@ -112,6 +113,58 @@ All `hlab` commands are in the [command reference](docs/user/commands.md),
 the settings in the [configuration reference](docs/user/configuration.md),
 and the differences from the real API in
 [Known deviations](docs/user/deviations.md).
+
+## The tray program
+
+```
+> bin\hlab-tray.exe
+```
+
+opens the hlab window and puts the hlab icon in the notification area.
+The icon and its tooltip show the state of the cloud: running, stopped,
+starting or stopping, or an error (start refused, start failed,
+connection to the service lost). Right-click the icon for its menu:
+
+- the state line, for example `Cloud running`;
+- **Open hlab** shows the window, as a click on the icon does;
+- **Start cloud** and **Stop cloud**, each enabled when it applies;
+- **Quit** ends the tray program; the cloud keeps running.
+
+Closing the window only hides it. Starting `hlab-tray.exe` again shows
+the window of the tray that already runs. The tray program does not start
+with Windows.
+
+The top bar of the window shows the cloud state with **Start cloud** or
+**Stop cloud**. A banner reports a lost connection to the service or a
+failed start. When the cloud refused to start because of its state, the
+banner offers **Discard state and start**, which does what
+`hlab cloud start --discard-state` does (see
+[Discarding the state](#discarding-the-state)) after you confirm.
+
+The sidebar leads to four views; the `?` button in each opens its help:
+
+- **Projects** (needs the running cloud): **Create project**; click a
+  project to see its API tokens. **Create token** asks for a name and
+  whether the token is read only, and shows the token once with a copy
+  button. **Revoke** and **Delete** are in the row menu (`…`); deleting a
+  project deletes all its resources and needs its name typed.
+- **Server Types**: the catalog and your own types, with their source,
+  also while the cloud is stopped. **Add server type** asks for name,
+  description, cores, memory, disk, CPU type and locations; **Remove** in
+  the row menu removes an own type. **Update from Hetzner** does what
+  `hlab catalog update` does with the Hetzner token you enter; the token
+  is not stored. See
+  [Custom server types](docs/user/configuration.md#custom-server-types).
+- **Settings**: every key of `settings.toml`; each field says when a
+  change applies. **Save settings** checks all fields first. The switch
+  **Trust the hlab CA** and **Save CA certificate** do what
+  `hlab ca trust` and `hlab ca export` do (see
+  [Trusting the hlab CA](#trusting-the-hlab-ca)) and need the running
+  cloud.
+- **Logs**: the last 1000 lines of the service log and new ones as they
+  are written, also while the cloud is stopped. **Level** hides lines
+  below a level. Turning **Follow** off stops new lines; turning it on
+  again reloads the last 1000 lines and follows on.
 
 ## Managing servers
 
@@ -610,4 +663,7 @@ runs, before you remove the service.
   certificates. Every other endpoint answers `not_found`, and the server
   action `request_console` answers `unsupported_error`. The details are
   in [Known deviations](docs/user/deviations.md).
-- There is no tray program and no installer.
+- The tray program has views for projects and tokens, server types,
+  settings and logs only; manage the resources of a project with hcloud,
+  OpenTofu or Ansible.
+- There is no installer.
