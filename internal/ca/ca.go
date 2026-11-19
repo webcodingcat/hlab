@@ -54,8 +54,14 @@ func Open(dir, name string, now func() time.Time) (*CA, error) {
 		now = time.Now
 	}
 	c := &CA{dir: dir, now: now}
+	keyPath := filepath.Join(dir, keyFile)
+	if _, err := os.Stat(keyPath); err == nil {
+		if err := restrictKey(keyPath); err != nil {
+			return nil, err
+		}
+	}
 	certPEM, certErr := os.ReadFile(filepath.Join(dir, certFile))
-	keyPEM, keyErr := os.ReadFile(filepath.Join(dir, keyFile))
+	keyPEM, keyErr := os.ReadFile(keyPath)
 	switch {
 	case errors.Is(certErr, fs.ErrNotExist) || errors.Is(keyErr, fs.ErrNotExist):
 		if err := c.create(name); err != nil {
@@ -76,7 +82,7 @@ func Open(dir, name string, now func() time.Time) (*CA, error) {
 	return c, nil
 }
 
-// create makes a new CA key pair and writes ca.key (0600) and ca.pem.
+// create makes a new CA key pair and writes ca.key (SYSTEM only) and ca.pem.
 func (c *CA) create(name string) error {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -109,13 +115,34 @@ func (c *CA) create(name string) error {
 	if err := os.MkdirAll(c.dir, 0o700); err != nil {
 		return fmt.Errorf("ca: create %s: %w", c.dir, err)
 	}
-	if err := os.WriteFile(filepath.Join(c.dir, keyFile), keyPEM, 0o600); err != nil {
-		return fmt.Errorf("ca: write %s: %w", keyFile, err)
+	if err := writeKey(filepath.Join(c.dir, keyFile), keyPEM); err != nil {
+		return err
 	}
 	if err := os.WriteFile(filepath.Join(c.dir, certFile), certPEM, 0o644); err != nil {
 		return fmt.Errorf("ca: write %s: %w", certFile, err)
 	}
 	return c.load(certPEM, keyPEM)
+}
+
+// writeKey writes the CA key to path; the file gets its restricted ACL
+// before the key is written into it.
+func writeKey(path string, keyPEM []byte) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return fmt.Errorf("ca: write %s: %w", keyFile, err)
+	}
+	if err := restrictKey(path); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if _, err := f.Write(keyPEM); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("ca: write %s: %w", keyFile, err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("ca: write %s: %w", keyFile, err)
+	}
+	return nil
 }
 
 // load parses the CA certificate and key.
