@@ -149,14 +149,14 @@ func NewFirewall(iface string) *Firewall
   - [x] `POST /firewalls` with `apply_to`; `apply_to_resources` (`apply_to`), `remove_from_resources` (`remove_from`), `set_rules` (`rules`), all 201 `{actions}` through `StartAll` with lock on the firewall; checks and codes as in TESTS.md; the record changes in the request's transaction, each action ends `success` after the agent push and `error` when it fails; `AttachAtCreate` (internal/resources/firewalls/actions.go, internal/resources/firewalls/firewalls.go)
   - [x] Rows of TESTS.md for 06-06 (internal/resources/firewalls/actions_test.go)
 
-- [ ] 06-07 Firewalls: agent document
+- [x] 06-07 Firewalls: agent document
   - Wave: 4 | Depends on: 06-06 | Review: alone
   - Requirements: FW-05 | Tests: internal/resources/firewalls/contribute_test.go
   - Reads: ARCHITECTURE "hlab-agent" (Server.FirewallIDs, Firewall, Rule); RESEARCH R1 (selector skips)
   - Size: ~150 lines in 2 files
   - Adjusts: -
-  - [ ] `Contribute` (runs after servers): sets `FirewallIDs` of each `doc.Servers` entry from the resolution, sorted; appends one `agentapi.Firewall` with `AgentRules` per firewall that reaches a server (internal/resources/firewalls/contribute.go)
-  - [ ] Rows of TESTS.md for 06-07 (internal/resources/firewalls/contribute_test.go)
+  - [x] `Contribute` (runs after servers): sets `FirewallIDs` of each `doc.Servers` entry from the resolution, sorted; appends one `agentapi.Firewall` with `AgentRules` per firewall that reaches a server (internal/resources/firewalls/contribute.go)
+  - [x] Rows of TESTS.md for 06-07 (internal/resources/firewalls/contribute_test.go)
 
 - [ ] 06-08 Cloud wiring and end-to-end
   - Wave: 5 | Depends on: 06-04, 06-07 | Review: alone
