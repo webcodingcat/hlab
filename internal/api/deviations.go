@@ -166,5 +166,237 @@ func Deviations() []Deviation {
 			Endpoint:    "GET /load_balancers/{id}/metrics",
 			Description: "HAProxy counters read every 10 s and kept 24 h in memory; the smallest step is 10 s",
 		},
+		{
+			Endpoint:    "POST /networks/{id}/actions/add_subnet",
+			Description: "a vswitch subnet answers 422 invalid_input; expose_routes_to_vswitch is stored and shown but has no effect",
+		},
+		{
+			Endpoint:    "POST /networks",
+			Description: "the gateway is the first host address of ip_range and is shown on every subnet, also one of type server",
+		},
+		{
+			Endpoint:    "POST /servers/{id}/actions/attach_to_network",
+			Description: "a server gets the lowest free host address of a subnet in its network zone; network, broadcast, gateway and 172.31.1.1 are never handed out",
+		},
+		{
+			Endpoint:    "POST /servers/{id}/actions/attach_to_network",
+			Description: "private adapters have MAC addresses 02:48:4c:2x:xx:xx, not Hetzner's 86:00:00:xx:xx:xx",
+		},
+		{
+			Endpoint:    "POST /servers/{id}/actions/attach_to_network",
+			Description: "no DHCP server; cloud-init's seed and the HLab guest hook set up private networks, a server without the hook needs the adapter configured by hand",
+		},
+		{
+			Endpoint:    "POST /networks",
+			Description: "the MTU on private networks is 1500; Hetzner uses 1450",
+		},
+		{
+			Endpoint:    "DELETE /networks/{id}",
+			Description: "detaches all servers of the network and removes their adapters before it answers",
+		},
+		{
+			Endpoint:    "POST /networks/{id}/actions/delete_subnet",
+			Description: "a subnet in which an attached server holds an IP or alias IP answers 422 service_error",
+		},
+		{
+			Endpoint:    "POST /networks/{id}/actions/delete_route",
+			Description: "a subnet or route the network does not have answers 422 invalid_input, for delete_subnet as well",
+		},
+		{
+			Endpoint:    "POST /networks/{id}/actions/change_ip_range",
+			Description: "another start address or a smaller range answers 422 invalid_input on the field ip_range",
+		},
+		{
+			Endpoint:    "POST /networks/{id}/actions/change_ip_range",
+			Description: "answers 422 service_error while servers are attached",
+		},
+		{
+			Endpoint:    "POST /networks",
+			Description: "answers 403 resource_limit_exceeded when all 4091 VLAN IDs of the cloud are in use",
+		},
+		{
+			Endpoint:    "POST /servers/{id}/actions/attach_to_network",
+			Description: "a fourth network for the server answers 403 resource_limit_exceeded, at POST /servers as well",
+		},
+		{
+			Endpoint:    "POST /servers/{id}/actions/change_alias_ips",
+			Description: "more than 5 alias IPs of a server in one network answer 422 invalid_input on the field alias_ips",
+		},
+		{
+			Endpoint:    "POST /servers/{id}/actions/attach_to_network",
+			Description: "no free IP or no subnet in the server's network zone answers 422 no_subnet_available",
+		},
+		{
+			Endpoint:    "POST /servers/{id}/actions/attach_to_network",
+			Description: "an ip or alias IP that is taken or reserved answers 422 ip_not_available",
+		},
+		{
+			Endpoint:    "POST /servers/{id}/actions/attach_to_network",
+			Description: "an ip outside the subnets of the server's network zone answers 422 invalid_input on the field ip",
+		},
+		{
+			Endpoint:    "POST /primary_ips",
+			Description: "an IPv6 primary IP is formal and carries no traffic: the server's /64 or 2001:db8:8000:<id>::/64",
+		},
+		{
+			Endpoint:    "GET /primary_ips/{id}",
+			Description: "primary IPs show their location and have no datacenter field",
+		},
+		{
+			Endpoint:    "POST /primary_ips",
+			Description: "a primary IP created without a name is named primary_ip-<id>",
+		},
+		{
+			Endpoint:    "GET /primary_ips",
+			Description: "servers of an earlier HLab version get assigned primary IP records with auto_delete true at the next cloud start",
+		},
+		{
+			Endpoint:    "POST /primary_ips/{id}/actions/change_protection",
+			Description: "delete true on a primary IP with auto_delete answers 422 invalid_input on the field delete",
+		},
+		{
+			Endpoint:    "DELETE /primary_ips/{id}",
+			Description: "an assigned primary IP answers 422 must_be_unassigned",
+		},
+		{
+			Endpoint:    "POST /floating_ips/{id}/actions/assign",
+			Description: "an IPv4 floating IP is routed to the server's public IPv4; a server without public IPv4 receives no traffic for it",
+		},
+		{
+			Endpoint:    "POST /floating_ips",
+			Description: "an IPv6 floating IP is formal and carries no traffic: 2001:db8:c000:<id>::/64",
+		},
+		{
+			Endpoint:    "POST /floating_ips/{id}/actions/assign",
+			Description: "a server outside the network zone of the home location answers 422 invalid_input on the field server; the server holding it answers 422 floating_ip_assigned",
+		},
+		{
+			Endpoint:    "POST /floating_ips",
+			Description: "a floating IP created without a name is named floating_ip-<id>",
+		},
+		{
+			Endpoint:    "DELETE /floating_ips/{id}",
+			Description: "an assigned floating IP answers 422 must_be_unassigned",
+		},
+		{
+			Endpoint:    "POST /firewalls/{id}/actions/apply_to_resources",
+			Description: "filters the server's public IPv4 and the floating IPs assigned to it; Hetzner does not document floating IPs",
+		},
+		{
+			Endpoint:    "POST /firewalls/{id}/actions/set_rules",
+			Description: "IPv6 rules are stored but have no effect",
+		},
+		{
+			Endpoint:    "GET /servers/{id}",
+			Description: "the status of a firewall in public_net.firewalls is always applied, never pending",
+		},
+		{
+			Endpoint:    "POST /firewalls",
+			Description: "Hetzner's limits of 500 effective rules per firewall and 50 firewalls per project are not enforced",
+		},
+		{
+			Endpoint:    "POST /firewalls/{id}/actions/set_rules",
+			Description: "IPs must be CIDRs with a mask and without host bits, else 422 invalid_input on rules[i].source_ips or destination_ips; ports are returned as sent, IPv6 CIDRs in canonical form",
+		},
+		{
+			Endpoint:    "POST /firewalls/{id}/actions/apply_to_resources",
+			Description: "the actions for a label selector name only the firewall in their resources; incompatible_network_type is never returned",
+		},
+		{
+			Endpoint:    "POST /firewalls/{id}/actions/set_rules",
+			Description: "returns set_firewall_rules plus one apply_firewall per server the firewall is applied to directly",
+		},
+		{
+			Endpoint:    "POST /firewalls/{id}/actions/remove_from_resources",
+			Description: "a server or label selector the firewall is not applied to answers 404 firewall_resource_not_found",
+		},
+		{
+			Endpoint:    "POST /firewalls/{id}/actions/apply_to_resources",
+			Description: "a label selector the firewall already has answers 422 firewall_already_applied",
+		},
+		{
+			Endpoint:    "POST /firewalls/{id}/actions/apply_to_resources",
+			Description: "a sixth firewall for a server answers 403 resource_limit_exceeded; a label selector skips such a server",
+		},
+		{
+			Endpoint:    "DELETE /firewalls/{id}",
+			Description: "a firewall applied only through a label selector answers 422 resource_in_use",
+		},
+		{
+			Endpoint:    "POST /servers",
+			Description: "a firewall that does not exist answers 404 not_found; firewalls without public IPv4 answer 422 private_net_only_server; a firewall listed twice is applied once",
+		},
+		{
+			Endpoint:    "POST /floating_ips/{id}/actions/change_dns_ptr",
+			Description: "an IPv4 without an own entry shows Hetzner's default static.<d>.<c>.<b>.<a>.clients.your-server.de; dns_ptr needs two labels, null resets it, a /64 holds 100 entries",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/change_dns_ptr",
+			Description: "the load balancer's IPv4 starts with the default name and resolves also while its public interface is off",
+		},
+		{
+			Endpoint:    "GET /load_balancers/{id}",
+			Description: "health_status of a target is unknown until HAProxy checked it and shows only listen_port and status",
+		},
+		{
+			Endpoint:    "POST /load_balancers",
+			Description: "max_connections of the type becomes HAProxy's maxconn and nothing else limits the traffic; at most one network",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/add_service",
+			Description: "redirect_http of an https service takes port 80; an https service whose managed certificate is not issued is not served",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/add_service",
+			Description: "beyond the limits of the load balancer type answers 403 resource_limit_exceeded, as add_target does",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/change_type",
+			Description: "a type whose limits the load balancer exceeds answers 422 invalid_load_balancer_type",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/add_target",
+			Description: "a server target in another network zone answers 422 invalid_input on the field server; without use_private_ip while the public interface is off 422 load_balancer_public_interface_disabled",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/add_service",
+			Description: "a listen port in use answers 412 source_port_already_used; without health_check a tcp check on the destination port is set",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/update_service",
+			Description: "moving a service onto a listen port in use answers 422 source_port_already_used; a listen port without a service 422 invalid_input",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/delete_service",
+			Description: "a listen port without a service answers 422 invalid_input on the field listen_port",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/remove_target",
+			Description: "a target the load balancer does not have answers 404 not_found",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/detach_from_network",
+			Description: "answers 422 invalid_input on the field network while targets use private IPs of the network",
+		},
+		{
+			Endpoint:    "POST /certificates",
+			Description: "managed certificates are valid 90 days with an ECDSA P-256 key, renewed 30 days before they expire, trusted after hlab ca trust on",
+		},
+		{
+			Endpoint:    "POST /certificates",
+			Description: "a managed certificate whose domains lie below no zone of the project fails with dns_zone_not_found, below a secondary zone with dns_zone_is_secondary_zone",
+		},
+		{
+			Endpoint:    "POST /certificates/{id}/actions/retry",
+			Description: "a certificate that has not failed, or an uploaded one, answers 422 invalid_input",
+		},
+		{
+			Endpoint:    "DELETE /certificates/{id}",
+			Description: "a certificate a load balancer service uses answers 422 resource_in_use",
+		},
+		{
+			Endpoint:    "POST /certificates",
+			Description: "uploaded certificates are not checked for expiry or chain order; an unreadable PEM or a key that does not match answers 422 invalid_input",
+		},
 	}
 }
