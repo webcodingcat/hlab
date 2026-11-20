@@ -2670,3 +2670,67 @@ in ARCHITECTURE.md or the plan.
 - Type: change
 - What: phase 11 builds the shared console frame with Servers and SSH Keys and stops for a manual check; the new phase 14 builds the remaining resource sections and UI-09, UI-02 is done only after both, and phase 13 depends on 14 instead of 11.
 - Why: the user wants to check the look and operation of the frame before the other sections are built on the same pattern.
+
+## 2026-11-20 Unit-tested UI modules stay free of the Wails runtime
+
+- Type: decision
+- Phase: phase 11
+- What: the modules the unit tests load (actions, formErrors, labels, routes, serverActions) import neither bridge.ts nor the Wails runtime and recognise API errors by their shape.
+- Why: the Playwright `unit` project runs without a browser, and the Wails runtime needs a window.
+- Cost of change: low
+
+## 2026-11-20 Console routes in a pure module, project console starts on Servers
+
+- Type: decision
+- Phase: phase 11
+- What: routing moves into `lib/routes.ts` with hashes `#/projects/<p>/<view>`, `.../new` and `.../<id>/<tab>`; an unknown tab falls back to `overview` and a project console starts on Servers.
+- Why: a project console opens on Servers as at Hetzner, and pure parsing can be unit-tested.
+- Cost of change: low
+
+## 2026-11-20 Server list row menu without dialogs
+
+- Type: decision
+- Phase: phase 11
+- What: the server list's row menu offers only the entries without input (power on, shutdown, reboot, reset, power off, delete); the full menu with dialogs is on the detail page.
+- Why: the dialogs live once, in ServerActions.svelte.
+- Cost of change: low
+
+## 2026-11-20 Restore from backup or snapshot is rebuild
+
+- Type: decision
+- Phase: phase 11
+- What: restoring a server from a backup or snapshot calls `rebuild` with the image ID and shows the returned root password.
+- Why: the API has no separate restore action, and rebuild returns `root_password`.
+- Cost of change: low
+
+## 2026-11-20 Server detail tabs built one plan after another
+
+- Type: decision
+- Phase: phase 11
+- What: the server tabs are added in plans 11-09 to 11-11 in successive waves; tabs not built yet stay out of the tab list.
+- Why: plans of one wave must not touch the same file, and stub tabs would be placeholders.
+- Cost of change: low
+
+## 2026-11-20 Own SVG line chart for server graphs
+
+- Type: decision
+- Phase: phase 11
+- What: the Graphs tab uses its own `lib/LineChart.svelte` with ranges 1 h, 24 h and 7 d, reloaded every 30 s while visible.
+- Why: SPEC.md names no chart library and UI-SPEC wants its own components.
+- Cost of change: low
+
+## 2026-11-20 Firewalls and volumes from the server tabs through their own actions
+
+- Type: decision
+- Phase: phase 11
+- What: the Firewalls and Volumes tabs apply, remove, attach and detach through `/firewalls/{id}/actions/apply_to_resources`, `remove_from_resources` and `/volumes/{id}/actions/attach`, `detach`.
+- Why: the API has no server action for them, and the tabs would otherwise only list.
+- Cost of change: low
+
+## 2026-11-20 UI-02 e2e depth for server actions
+
+- Type: decision
+- Phase: phase 11
+- What: the e2e flows create, change one field, run one power action and delete (servers) or create, label and delete (SSH keys); every menu and tab request is proven by serverActions.test.ts, the rest of the operation by the manual check.
+- Why: the user's answer at the phase start; each action against a real VM costs minutes.
+- Cost of change: low
