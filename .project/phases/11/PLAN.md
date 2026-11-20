@@ -156,15 +156,15 @@ Svelte building blocks (props):
   - [x] ui/frontend/src/lib/actions.ts (`Action`, `ActionResult`, `ActionError`, `waitAction`, `runAction`) and lib/toast.ts (`progress` on a progress toast, an update function used by `runAction`); lib/Toast.svelte shows the progress in % with a bar.
   - [x] ui/frontend/src/lib/api.ts (`api`, `listAll`, `runApi`) over `mgmt` of bridge.ts.
 
-- [ ] 11-02 Routes and project console sections
+- [x] 11-02 Routes and project console sections
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/unit/routes.test.ts
   - Reads: UI-SPEC "Views" (Shell, Project console), "Building blocks" (Help button); ARCHITECTURE "hlab-tray (tray program)"; DECISIONS "Shell start route and last project", "Project console building blocks"; ui/frontend/src/state.ts, App.svelte, views/ProjectConsole.svelte, help.ts, views.json, lib/SectionSidebar.svelte
   - Size: ~260 lines in 11 files
   - Adjusts: ui/frontend/tests/e2e/projects.spec.ts (UI-05: the row click now opens Servers; the test opens "API tokens" through the sidebar before its checks), ui/frontend/tests/screenshots/console.spec.ts (opens "API tokens" through the sidebar)
-  - [ ] ui/frontend/src/lib/routes.ts (`Route`, `Page`, `href`, `parse`, `consoleStart`); state.ts uses it, and the start route and a project row click go to `consoleStart`; help.ts `ViewId` and views.json get `servers` and `ssh-keys`.
-  - [ ] views/ProjectConsole.svelte: sidebar Servers (Lucide `Server`), SSH Keys (`Key`), separator, API tokens; renders the section of the route. New section entry components views/servers/Servers.svelte and views/sshkeys/SshKeys.svelte with the title row ("Servers", "SSH Keys"), HelpButton and `CloudStopped`; help/servers.md and help/ssh-keys.md with a heading and a short text (the documentation plan completes them).
-  - [ ] Adjust the two specs under "Adjusts".
+  - [x] ui/frontend/src/lib/routes.ts (`Route`, `Page`, `href`, `parse`, `consoleStart`); state.ts uses it, and the start route and a project row click go to `consoleStart`; help.ts `ViewId` and views.json get `servers` and `ssh-keys`.
+  - [x] views/ProjectConsole.svelte: sidebar Servers (Lucide `Server`), SSH Keys (`Key`), separator, API tokens; renders the section of the route. New section entry components views/servers/Servers.svelte and views/sshkeys/SshKeys.svelte with the title row ("Servers", "SSH Keys"), HelpButton and `CloudStopped`; help/servers.md and help/ssh-keys.md with a heading and a short text (the documentation plan completes them).
+  - [x] Adjust the two specs under "Adjusts".
 
 - [ ] 11-03 Detail page, actions menu, form page and secret dialog
   - Wave: 1 | Depends on: - | Review: alone
