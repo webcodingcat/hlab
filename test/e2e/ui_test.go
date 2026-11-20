@@ -6,40 +6,30 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
-	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/webcodingcat/hlab/test/traylaunch"
 )
 
 // The UI rows share one tray process of the e2e build (tag e2e) and its
 // window. Each row runs the Playwright test of its ID in ui/frontend, which
 // connects to the window over CDP (ui/frontend/tests/e2e/fixtures.ts).
 
-// trayProc is the running e2e tray.
-type trayProc struct {
-	cmd     *exec.Cmd
-	port    int
-	logFile string
-	exited  chan struct{}
-	waitErr error
-}
-
 var tray struct {
 	once sync.Once
 	mu   sync.Mutex
-	proc *trayProc
+	proc *traylaunch.Tray
 	err  error
 }
 
 // sharedTray builds and starts the e2e tray once, for all UI rows.
-func sharedTray(t *testing.T) *trayProc {
+func sharedTray(t *testing.T) *traylaunch.Tray {
 	t.Helper()
 	tray.once.Do(func() {
 		p, err := startTray()
@@ -51,89 +41,25 @@ func sharedTray(t *testing.T) *trayProc {
 		t.Fatalf("e2e tray: %v", tray.err)
 	}
 	select {
-	case <-tray.proc.exited:
-		t.Fatalf("the e2e tray has ended (%v); its log: %s", tray.proc.waitErr, tray.proc.logFile)
+	case <-tray.proc.Done():
+		t.Fatalf("the e2e tray has ended (%v); its log: %s", tray.proc.Err(), tray.proc.Log)
 	default:
 	}
 	return tray.proc
 }
 
 // startTray builds cmd/hlab-tray with tag e2e next to the other dev
-// binaries (the dev profile finds the shipped catalog next to bin\), starts
-// it with a free CDP port and a user data folder of this run, and waits
-// until the CDP endpoint answers.
-func startTray() (*trayProc, error) {
+// binaries and starts it with a user data folder of this run.
+func startTray() (*traylaunch.Tray, error) {
 	exe := filepath.Join(harness.root, "bin", "hlab-tray-e2e.exe")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	build := exec.CommandContext(ctx, "go", "build", "-tags", "e2e",
-		"-ldflags", "-X github.com/webcodingcat/hlab/internal/profile.Name=dev -H windowsgui",
-		"-o", exe, "./cmd/hlab-tray")
-	build.Dir = harness.root
-	if out, err := build.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("go build -tags e2e ./cmd/hlab-tray: %w\n%s", err, out)
-	}
-
-	port, err := freePort()
-	if err != nil {
+	if err := traylaunch.Build(ctx, harness.root, exe); err != nil {
 		return nil, err
 	}
-	p := &trayProc{port: port, logFile: filepath.Join(harness.tmp, "hlab-tray-e2e.log"), exited: make(chan struct{})}
-	logf, err := os.Create(p.logFile)
-	if err != nil {
-		return nil, err
-	}
-	p.cmd = exec.Command(exe)
-	p.cmd.Dir = harness.root
-	p.cmd.Stdout = logf
-	p.cmd.Stderr = logf
-	p.cmd.Env = append(os.Environ(),
-		"HLAB_E2E_CDP_PORT="+strconv.Itoa(port),
-		"HLAB_E2E_WEBVIEW_DIR="+filepath.Join(harness.tmp, "webview"),
-	)
-	if err := p.cmd.Start(); err != nil {
-		_ = logf.Close()
-		return nil, fmt.Errorf("start %s: %w", exe, err)
-	}
-	go func() {
-		p.waitErr = p.cmd.Wait()
-		_ = logf.Close()
-		close(p.exited)
-	}()
-
-	url := fmt.Sprintf("http://127.0.0.1:%d/json/version", port)
-	client := &http.Client{Timeout: 5 * time.Second}
-	err = waitFor(2*time.Minute, 500*time.Millisecond, func() (bool, error) {
-		select {
-		case <-p.exited:
-			return false, fmt.Errorf("the e2e tray ended at start (%v); its log: %s", p.waitErr, p.logFile)
-		default:
-		}
-		resp, err := client.Get(url)
-		if err != nil {
-			return false, nil
-		}
-		_ = resp.Body.Close()
-		return resp.StatusCode == http.StatusOK, nil
-	})
-	if err != nil {
-		stopTray(p)
-		return nil, fmt.Errorf("CDP endpoint %s: %w", url, err)
-	}
-	return p, nil
-}
-
-func stopTray(p *trayProc) {
-	select {
-	case <-p.exited:
-		return
-	default:
-	}
-	_ = p.cmd.Process.Kill()
-	select {
-	case <-p.exited:
-	case <-time.After(time.Minute):
-	}
+	ctx, cancel = context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	return traylaunch.Start(ctx, exe, filepath.Join(harness.tmp, "webview"), nil)
 }
 
 // releaseTray ends the e2e tray if a UI row started it.
@@ -144,17 +70,8 @@ func releaseTray(t *testing.T) {
 	tray.proc = nil
 	tray.mu.Unlock()
 	if p != nil {
-		stopTray(p)
+		p.Stop()
 	}
-}
-
-func freePort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = l.Close() }()
-	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
 // runSpec runs the Playwright test named id against the shared tray. The
@@ -164,7 +81,7 @@ func runSpec(t *testing.T, id string, timeout time.Duration, env []string, secre
 	p := sharedTray(t)
 	frontend := filepath.Join(harness.root, "ui", "frontend")
 	environ := append(os.Environ(),
-		"HLAB_E2E_CDP_PORT="+strconv.Itoa(p.port),
+		"HLAB_E2E_CDP_PORT="+strconv.Itoa(p.Port),
 		"HLAB_E2E_HLAB="+harness.hlab,
 	)
 	environ = append(environ, env...)
