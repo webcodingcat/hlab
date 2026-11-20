@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 Screenshot tool and tray launcher
+
+- Type: decision
+- Phase: phase 10
+- What: `task docs:screenshots` (tools/screenshots + Playwright project `screenshots`) creates only missing `demo-*` projects and the "ci" token and removes only what it created; `test/traylaunch` offers `Build`, `Start(ctx, exe, webviewDir)` and a tray log; the viewport is reset with CDP `Emulation.clearDeviceMetricsOverride`.
+- Why: never touch the user's projects or show a token value; Playwright cannot reset a viewport set over CDP.
+- Cost of change: low
+
 ## 2026-11-20 Server Types dialogs
 
 - Type: decision

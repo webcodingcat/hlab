@@ -214,7 +214,7 @@ func Generate(root string) error // writes the files below under the repository 
 // test/traylaunch (new, no build tag): starts the e2e tray build for the UI
 // e2e tests and the screenshot tool (moved out of test/e2e/ui_test.go).
 type Tray struct{ Port int /* CDP port */ }
-func Start(ctx context.Context, exe, webviewDir string, env []string) (*Tray, error) // waits until CDP answers
+func Start(ctx context.Context, exe, webviewDir string) (*Tray, error) // waits until CDP answers
 func (t *Tray) Stop()
 ```
 
@@ -493,24 +493,24 @@ Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes
   - Size: ~220 lines in 1 file
   - [x] src/views/Logs.svelte: search field (Enter or 300 ms pause) calling `Logs.Search` with the level filter, matches newest first with the matched text highlighted (`<mark>`), count "N matches" / "1000+ matches", follow off while a search shows, clearing returns to the live follow; "Load older lines" above the list calling `Logs.Older` with the oldest shown raw line, prepending the result, disabled after `at_start`; loaded older lines are not trimmed by the 5000 cap, which applies to the live part.
 
-- [ ] 10-33 README screenshots from the running tray
+- [x] 10-33 README screenshots from the running tray
   - Wave: 8 | Depends on: 10-29, 10-26 (order) | Review: alone
   - Requirements: DOC-07 | Tests: - (manual DOC-07)
   - Reads: RESEARCH "Findings fixes" F3, topic 5; CONTEXT "Findings fixes" (sample projects); test/e2e/ui_test.go `startTray`, `stopTray`, `freePort`; finding 14 (2)
   - Size: ~320 lines in 6 files
   - Adjusts: test/e2e/ui_test.go (uses test/traylaunch; UI rows unchanged)
-  - [ ] test/traylaunch/launch.go: tray start and stop moved out of test/e2e/ui_test.go as in "Interfaces"; ui_test.go uses it.
-  - [ ] Probe first: tools/screenshots/main.go builds `bin\hlab-tray-e2e.exe` (tag e2e), starts it, and ui/frontend/tests/screenshots/console.spec.ts (Playwright project `screenshots` in playwright.config.ts) connects over CDP, sets `emulateMedia({ colorScheme: "dark" })`, `setViewportSize({ width: 1200, height: 800 })` and takes a screenshot; if this fails, stop the plan and report.
-  - [ ] The tool needs the dev cloud running, creates the sample projects `demo-web`, `demo-staging`, `demo-ci` (only those it created are deleted afterwards) and a token "ci" in `demo-web` through bin\hlab.exe; the spec types `demo-` into the list's search, captures the project list and the `demo-web` console "API tokens" in light and dark into docs/images/{projects,tokens}-{light,dark}.png (no token value on screen) and resets media and viewport; Taskfile.yml `docs:screenshots`; run it and commit the images.
+  - [x] test/traylaunch/launch.go: tray start and stop moved out of test/e2e/ui_test.go as in "Interfaces"; ui_test.go uses it.
+  - [x] Probe first: tools/screenshots/main.go builds `bin\hlab-tray-e2e.exe` (tag e2e), starts it, and ui/frontend/tests/screenshots/console.spec.ts (Playwright project `screenshots` in playwright.config.ts) connects over CDP, sets `emulateMedia({ colorScheme: "dark" })`, `setViewportSize({ width: 1200, height: 800 })` and takes a screenshot; if this fails, stop the plan and report.
+  - [x] The tool needs the dev cloud running, creates the sample projects `demo-web`, `demo-staging`, `demo-ci` (only those it created are deleted afterwards) and a token "ci" in `demo-web` through bin\hlab.exe; the spec types `demo-` into the list's search, captures the project list and the `demo-web` console "API tokens" in light and dark into docs/images/{projects,tokens}-{light,dark}.png (no token value on screen) and resets media and viewport; Taskfile.yml `docs:screenshots`; run it and commit the images.
 
-- [ ] 10-34 Documentation: deviations, references and help texts
+- [x] 10-34 Documentation: deviations, references and help texts
   - Wave: 8 | Depends on: 10-21, 10-26, 10-30, 10-32 | Review: alone
   - Requirements: DOC-03, DOC-05, DOC-07 | Tests: test/docs/docs_test.go (DOC-03)
   - Reads: SPEC "Documentation" D2-D6; REQUIREMENTS DOC-03, DOC-05, DOC-07; UI-SPEC "Views", "Language of the interface"; internal/api/deviations.go; findings 2, 13, 15
   - Size: ~400 lines in 10 files
-  - [ ] docs/deviations.md new for users: short prose by topic (servers; images, snapshots, backups, rescue and ISOs; volumes; networks, primary and floating IPs; firewalls; DNS and reverse DNS; load balancers and certificates; projects, server types and prices; WSL2), no routes, at most about 150 lines, linking docs/development/api-coverage.md; api-coverage.md gets a contributor introduction and the descriptions renamed in 10-21.
-  - [ ] ui/frontend/src/help/{projects,tokens,server-types,settings,logs}.md for the new shell (project list, project console "API tokens", Administration; token dialog, location checkboxes, search and "Load older lines"), naming only existing views and buttons, "HLab" as name.
-  - [ ] docs/commands.md, docs/configuration.md, docs/development/components.md: "HLab" in prose, the shell, logfile search, tools/icons and test/traylaunch.
+  - [x] docs/deviations.md new for users: short prose by topic (servers; images, snapshots, backups, rescue and ISOs; volumes; networks, primary and floating IPs; firewalls; DNS and reverse DNS; load balancers and certificates; projects, server types and prices; WSL2), no routes, at most about 150 lines, linking docs/development/api-coverage.md; api-coverage.md gets a contributor introduction and the descriptions renamed in 10-21.
+  - [x] ui/frontend/src/help/{projects,tokens,server-types,settings,logs}.md for the new shell (project list, project console "API tokens", Administration; token dialog, location checkboxes, search and "Load older lines"), naming only existing views and buttons, "HLab" as name.
+  - [x] docs/commands.md, docs/configuration.md, docs/development/components.md: "HLab" in prose, the shell, logfile search, tools/icons and test/traylaunch.
 
 - [ ] 10-35 Documentation
   - Wave: 9 | Depends on: 10-32, 10-33, 10-34 | Review: alone
