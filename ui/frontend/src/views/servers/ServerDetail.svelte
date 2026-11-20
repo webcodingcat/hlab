@@ -11,6 +11,7 @@
   import ServerActions from "./ServerActions.svelte";
   import Backups from "./tabs/Backups.svelte";
   import Firewalls from "./tabs/Firewalls.svelte";
+  import Graphs from "./tabs/Graphs.svelte";
   import Iso from "./tabs/Iso.svelte";
   import Networking from "./tabs/Networking.svelte";
   import Rescue from "./tabs/Rescue.svelte";
@@ -19,7 +20,7 @@
   import { createdText, imageLabel, tone, type Server } from "./servers";
 
   // The detail page of one server: Overview, Networking, Firewalls,
-  // Volumes, Backups, Snapshots, Rescue, ISO, Labels and Protection, with the actions menu in the title
+  // Volumes, Backups, Snapshots, Rescue, ISO, Graphs, Labels and Protection, with the actions menu in the title
   // row; refreshed every 5 s.
   let { project, id, tab, list }: { project: string; id: number; tab: string; list: string } = $props();
 
@@ -34,6 +35,7 @@
       { id: "snapshots", label: "Snapshots" },
       { id: "rescue", label: "Rescue" },
       { id: "iso", label: "ISO" },
+      { id: "graphs", label: "Graphs" },
       { id: "labels", label: "Labels" },
       { id: "protection", label: "Protection" },
     ].map((t) => ({ ...t, href: href({ area: "project", project, view: "servers", page: { kind: "detail", id, tab: t.id } }) })),
@@ -93,6 +95,8 @@
       <Rescue {project} server={server!} onchanged={load} />
     {:else if current === "iso"}
       <Iso {project} server={server!} onchanged={load} />
+    {:else if current === "graphs"}
+      <Graphs {project} server={server!} />
     {:else if current === "labels"}
       <LabelsTab {project} {path} labels={server.labels} onsaved={load} />
     {:else if current === "protection"}
