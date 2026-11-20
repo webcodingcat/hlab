@@ -222,13 +222,13 @@ Svelte building blocks (props):
   - [x] views/servers/tabs/Networking.svelte: public IPs with their reverse DNS (edit, reset to default), private networks with attach (network, optional IP, alias IPs), change alias IPs and detach (plain confirmation).
   - [x] views/servers/tabs/Firewalls.svelte (applied firewalls, apply one, remove one), views/servers/tabs/Volumes.svelte (attached volumes, attach a volume of the same location with automount, detach); ServerDetail.svelte adds the three tabs.
 
-- [ ] 11-10 Server tabs: Backups, Snapshots, Rescue, ISO
+- [x] 11-10 Server tabs: Backups, Snapshots, Rescue, ISO
   - Wave: 6 | Depends on: 11-09 | Review: alone
   - Requirements: UI-02 | Tests: - (requests and confirmations proven by serverActions.test.ts)
   - Reads: OpenAPI `/images` (type backup and snapshot, `bound_to`, `created_from`), `/isos`, `enable_rescue` in the reference; REQUIREMENTS SRV-11 to SRV-15; docs/development/api-coverage.md "Snapshots and backups", "Rescue system", "ISOs"; CONTEXT "Corrections"
   - Size: ~380 lines in 5 files
-  - [ ] views/servers/tabs/Backups.svelte (enable, disable, "Create backup", list with Restore and Delete, both confirmed), views/servers/tabs/Snapshots.svelte (create with description, list of this server's snapshots with Restore and Delete, confirmed).
-  - [ ] views/servers/tabs/Rescue.svelte (enable with SSH keys after confirmation, password in SecretDialog; disable), views/servers/tabs/Iso.svelte (attached ISO, attach from `/isos`, detach); ServerDetail.svelte adds the four tabs.
+  - [x] views/servers/tabs/Backups.svelte (enable, disable, "Create backup", list with Restore and Delete, both confirmed), views/servers/tabs/Snapshots.svelte (create with description, list of this server's snapshots with Restore and Delete, confirmed).
+  - [x] views/servers/tabs/Rescue.svelte (enable with SSH keys after confirmation, password in SecretDialog; disable), views/servers/tabs/Iso.svelte (attached ISO, attach from `/isos`, detach); ServerDetail.svelte adds the four tabs.
 
 - [ ] 11-11 Server tab: Graphs
   - Wave: 7 | Depends on: 11-10 | Review: alone

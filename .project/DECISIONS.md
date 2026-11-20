@@ -2774,3 +2774,11 @@ in ARCHITECTURE.md or the plan.
 - What: the Firewalls tab lists a firewall applied only through a label selector as "Through a label selector" without Remove; `runAction` also waits for an `actions` array.
 - Why: `remove_from_resources` for the server answers `firewall_resource_not_found` there, and `apply_to_resources` answers with `actions`.
 - Cost of change: low
+
+## 2026-11-20 Disabling backups asks first
+
+- Type: decision
+- Phase: phase 11
+- What: "Disable backups" asks for a plain confirmation; the Backups and Snapshots tabs share `ImageTable.svelte`, snapshots are found by `created_from.id`, deprecated ISOs are not offered, and `runAction` accepts an empty 204 answer.
+- Why: disabling deletes every backup, which the user wants confirmed like deleting one; `bound_to` is set only on backups and HLab refuses deprecated ISOs.
+- Cost of change: low
