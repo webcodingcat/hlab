@@ -41,10 +41,10 @@ func Build(ctx context.Context, root, exe string) error {
 }
 
 // Start starts exe (built by Build) with a free CDP port and the WebView
-// user data folder webviewDir, the environment of this process plus env,
-// and waits until the CDP endpoint answers or ctx ends. The tray's output
+// user data folder webviewDir and the environment of this process, and
+// waits until the CDP endpoint answers or ctx ends. The tray's output
 // goes to hlab-tray-e2e.log next to webviewDir.
-func Start(ctx context.Context, exe, webviewDir string, env []string) (*Tray, error) {
+func Start(ctx context.Context, exe, webviewDir string) (*Tray, error) {
 	port, err := freePort()
 	if err != nil {
 		return nil, err
@@ -62,7 +62,7 @@ func Start(ctx context.Context, exe, webviewDir string, env []string) (*Tray, er
 	t.cmd.Dir = filepath.Dir(filepath.Dir(exe))
 	t.cmd.Stdout = logf
 	t.cmd.Stderr = logf
-	t.cmd.Env = append(append(os.Environ(), env...),
+	t.cmd.Env = append(os.Environ(),
 		"HLAB_E2E_CDP_PORT="+strconv.Itoa(port),
 		"HLAB_E2E_WEBVIEW_DIR="+webviewDir,
 	)

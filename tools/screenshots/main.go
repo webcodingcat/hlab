@@ -87,7 +87,7 @@ func run() (err error) {
 		return err
 	}
 	startCtx, startCancel := context.WithTimeout(ctx, 2*time.Minute)
-	tray, err := traylaunch.Start(startCtx, exe, filepath.Join(tmp, "webview"), nil)
+	tray, err := traylaunch.Start(startCtx, exe, filepath.Join(tmp, "webview"))
 	startCancel()
 	if err != nil {
 		return err

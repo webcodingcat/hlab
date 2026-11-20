@@ -59,7 +59,7 @@ func startTray() (*traylaunch.Tray, error) {
 	}
 	ctx, cancel = context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	return traylaunch.Start(ctx, exe, filepath.Join(harness.tmp, "webview"), nil)
+	return traylaunch.Start(ctx, exe, filepath.Join(harness.tmp, "webview"))
 }
 
 // releaseTray ends the e2e tray if a UI row started it.
