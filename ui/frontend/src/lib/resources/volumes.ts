@@ -47,6 +47,5 @@ export const tabs: Record<string, ResourceAction> = {
   resize,
   attach,
   detach,
-  change_protection: protection,
   delete: del,
 };

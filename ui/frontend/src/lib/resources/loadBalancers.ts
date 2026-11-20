@@ -120,6 +120,5 @@ export const tabs: Record<string, ResourceAction> = {
     body: (i) => ({ network: i.network }),
     confirm: "plain",
   }),
-  change_protection: protection,
   delete: del,
 };
