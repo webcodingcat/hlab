@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"testing"
@@ -313,6 +314,86 @@ func TestCatalog(t *testing.T) {
 		}
 		if err := catalog.RemoveOwn(customFile, "own-a"); !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("RemoveOwn of an unknown name = %v, want an fs.ErrNotExist error", err)
+		}
+	})
+
+	t.Run("UI-04/update", func(t *testing.T) {
+		dataDir := t.TempDir()
+		customFile := filepath.Join(t.TempDir(), "server-types.custom.json")
+		if err := os.WriteFile(customFile, []byte("[]"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cat := loadAll(t, dataDir, customFile)
+		a := catalog.OwnSpec{Name: "own-a", Description: "own type a", CPUType: "shared",
+			Cores: 2, Memory: 4, Disk: 40, Locations: []string{"fsn1"}}
+		stA, err := catalog.AddOwn(cat, customFile, a)
+		if err != nil {
+			t.Fatalf("AddOwn own-a: %v", err)
+		}
+		cat = loadAll(t, dataDir, customFile)
+		if _, err := catalog.AddOwn(cat, customFile, catalog.OwnSpec{Name: "own-b", CPUType: "shared", Cores: 1, Memory: 2, Disk: 20}); err != nil {
+			t.Fatalf("AddOwn own-b: %v", err)
+		}
+		ownB := readCustom(t, customFile)[1]
+		cat = loadAll(t, dataDir, customFile)
+
+		changed := catalog.OwnSpec{Name: "own-a", Description: "own type a, bigger", CPUType: "dedicated",
+			Cores: 4, Memory: 8, Disk: 80, Locations: []string{"nbg1", "hel1"}}
+		st, err := catalog.UpdateOwn(cat, customFile, changed)
+		if err != nil {
+			t.Fatalf("UpdateOwn own-a: %v", err)
+		}
+		if st.ID != stA.ID || st.Name != "own-a" {
+			t.Errorf("UpdateOwn returned %s with ID %d, want own-a with its ID %d", st.Name, st.ID, stA.ID)
+		}
+		own := readCustom(t, customFile)
+		if got := mapNames(own); len(own) != 2 || own[0]["name"] != "own-a" || own[1]["name"] != "own-b" {
+			t.Fatalf("custom file after UpdateOwn holds %v, want own-a then own-b", got)
+		}
+		checkOwnObject(t, own[0], changed, stA.ID, changed.Locations)
+		if !reflect.DeepEqual(own[1], ownB) {
+			t.Errorf("own-b changed by UpdateOwn own-a: %v, want %v", own[1], ownB)
+		}
+		cat = loadAll(t, dataDir, customFile)
+		if got, ok := cat.ServerTypeByRef("own-a"); !ok || got.ID != stA.ID || got.Cores != 4 || got.Memory != 8 || got.Disk != 80 {
+			t.Errorf("served own-a after UpdateOwn = %+v, %v; want ID %d, 4 cores, 8 GB, 80 GB", got, ok, stA.ID)
+		}
+
+		refusals := []struct {
+			name     string
+			spec     catalog.OwnSpec
+			field    string
+			notExist bool
+		}{
+			{"no cores", catalog.OwnSpec{Name: "own-a", CPUType: "shared", Cores: 0, Memory: 4, Disk: 40}, "cores", false},
+			{"no memory", catalog.OwnSpec{Name: "own-a", CPUType: "shared", Cores: 2, Memory: 0, Disk: 40}, "memory", false},
+			{"no disk", catalog.OwnSpec{Name: "own-a", CPUType: "shared", Cores: 2, Memory: 4, Disk: 0}, "disk", false},
+			{"unknown cpu type", catalog.OwnSpec{Name: "own-a", CPUType: "turbo", Cores: 2, Memory: 4, Disk: 40}, "cpu_type", false},
+			{"unknown location", catalog.OwnSpec{Name: "own-a", CPUType: "shared", Cores: 2, Memory: 4, Disk: 40,
+				Locations: []string{"fsn1", "nowhere1"}}, "locations", false},
+			{"unknown name", catalog.OwnSpec{Name: "own-x", CPUType: "shared", Cores: 2, Memory: 4, Disk: 40}, "", true},
+		}
+		for _, r := range refusals {
+			t.Run(r.name, func(t *testing.T) {
+				before, err := os.ReadFile(customFile)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = catalog.UpdateOwn(cat, customFile, r.spec)
+				if r.notExist {
+					if !errors.Is(err, fs.ErrNotExist) {
+						t.Errorf("UpdateOwn of an unknown name = %v, want an fs.ErrNotExist error", err)
+					}
+				} else {
+					var fe *catalog.FieldError
+					if !errors.As(err, &fe) || fe.Field != r.field {
+						t.Errorf("UpdateOwn %+v = %v, want a FieldError for %q", r.spec, err, r.field)
+					}
+				}
+				if after, _ := os.ReadFile(customFile); !bytes.Equal(before, after) {
+					t.Errorf("custom file changed by a refused UpdateOwn: %s", after)
+				}
+			})
 		}
 	})
 

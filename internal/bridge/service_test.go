@@ -255,6 +255,41 @@ func TestBridge(t *testing.T) {
 		}
 	})
 
+	t.Run("UI-04/update", func(t *testing.T) {
+		dir := t.TempDir()
+		writeOwnTypes(t, filepath.Join(dir, "server-types.custom.json"), "own-a")
+		var running atomic.Bool
+		svc, f := newService(t, dir, &running)
+
+		inv, err := svc.UpdateServerType(catalog.OwnSpec{Name: "own-a", CPUType: "shared", Cores: 0, Memory: 2, Disk: 20})
+		if err != nil || inv == nil || inv.Field != "cores" {
+			t.Errorf("UpdateServerType without cores = %+v, %v; want an Invalid for cores", inv, err)
+		}
+
+		spec := catalog.OwnSpec{Name: "own-a", CPUType: "shared", Cores: 3, Memory: 2, Disk: 20, Locations: []string{"fsn1"}}
+		if inv, err := svc.UpdateServerType(spec); inv != nil || err != nil {
+			t.Fatalf("UpdateServerType while stopped = %+v, %v; want nil, nil", inv, err)
+		}
+		if got := listedCores(t, svc, "own-a"); got != 3 {
+			t.Errorf("own-a after UpdateServerType has %d cores, want 3", got)
+		}
+		if n := f.count(reload); n != 0 {
+			t.Errorf("%s sent %d times while stopped, want never", reload, n)
+		}
+
+		setRunning(&running, f, true)
+		spec.Cores = 5
+		if inv, err := svc.UpdateServerType(spec); inv != nil || err != nil {
+			t.Fatalf("UpdateServerType while running = %+v, %v; want nil, nil", inv, err)
+		}
+		if got := listedCores(t, svc, "own-a"); got != 5 {
+			t.Errorf("own-a after UpdateServerType while running has %d cores, want 5", got)
+		}
+		if n := f.count(reload); n != 1 {
+			t.Errorf("%s after the update while running sent %d times, want once", reload, n)
+		}
+	})
+
 	t.Run("UI-04/locations", func(t *testing.T) {
 		var shipped struct {
 			Locations []bridge.Location `json:"locations"`
@@ -343,4 +378,24 @@ func listedSources(t *testing.T, list bridge.ServerTypeList) map[string]string {
 		t.Error("no catalog type listed")
 	}
 	return out
+}
+
+// listedCores is the cores of the type named name in the list of svc.
+func listedCores(t *testing.T, svc *bridge.Service, name string) int {
+	t.Helper()
+	list, err := svc.ServerTypes()
+	if err != nil {
+		t.Fatalf("ServerTypes: %v", err)
+	}
+	for _, lt := range list.Types {
+		var st struct {
+			Name  string `json:"name"`
+			Cores int    `json:"cores"`
+		}
+		if err := json.Unmarshal(lt.Type, &st); err == nil && st.Name == name {
+			return st.Cores
+		}
+	}
+	t.Fatalf("server type %s not listed", name)
+	return 0
 }

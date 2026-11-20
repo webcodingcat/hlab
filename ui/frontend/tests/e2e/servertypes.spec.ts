@@ -1,6 +1,6 @@
 import { test, expect, env, openView, rowAction, tableRow, api, uniqueName } from "./fixtures";
 
-type TypeList = { server_types?: { name: string; locations?: { name: string }[] }[] };
+type TypeList = { server_types?: { name: string; cores?: number; locations?: { name: string }[] }[] };
 
 /**
  * served is what `/server_types?name=` of the run's project gives: each
@@ -10,6 +10,13 @@ async function served(name: string): Promise<string[]> {
   const r = await api(env("HLAB_E2E_API_TOKEN"), `/server_types?name=${encodeURIComponent(name)}`);
   if (r.status !== 200) return [`status ${r.status}`];
   return ((r.body as TypeList).server_types ?? []).map((t) => `${t.name} @ ${(t.locations ?? []).map((l) => l.name).join(",")}`);
+}
+
+/** servedCores is the cores `/server_types?name=` gives for each type named name. */
+async function servedCores(name: string): Promise<(number | string)[]> {
+  const r = await api(env("HLAB_E2E_API_TOKEN"), `/server_types?name=${encodeURIComponent(name)}`);
+  if (r.status !== 200) return [`status ${r.status}`];
+  return ((r.body as TypeList).server_types ?? []).map((t) => t.cores ?? "no cores");
 }
 
 test("UI-04", async ({ page }) => {
@@ -60,6 +67,33 @@ test("UI-04", async ({ page }) => {
   await expect(own).toBeVisible();
   await expect(own.getByRole("cell", { name: "own", exact: true })).toBeVisible();
   await expect.poll(() => served(name), { timeout: 30_000 }).toEqual([`${name} @ ${location}`]);
+
+  // Catalog rows offer no "Edit".
+  const shippedActions = shipped.getByRole("button", { name: "Actions" });
+  if ((await shippedActions.count()) > 0) {
+    await shippedActions.click();
+    await expect(page.getByRole("menu")).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Edit", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toBeHidden();
+  }
+
+  // Edit the own type: the dialog is filled in with its values, the name
+  // read-only; the changed cores show in the table and in /server_types.
+  await rowAction(own, "Edit");
+  const edit = page.getByRole("dialog");
+  await expect(edit.getByRole("heading", { name: "Edit server type" })).toBeVisible();
+  await expect(edit.getByLabel("Name")).toHaveValue(name);
+  await expect(edit.getByLabel("Name")).not.toBeEditable();
+  await expect(edit.getByLabel("Cores")).toHaveValue("2");
+  await expect(edit.getByRole("checkbox", { name: "All locations", exact: true })).not.toBeChecked();
+  await expect(edit.getByRole("checkbox", { name: new RegExp(`^${location} \\(`) })).toBeChecked();
+  await edit.getByLabel("Cores").fill("4");
+  await edit.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(edit).toBeHidden();
+  await expect(own.getByRole("cell", { name: "4", exact: true })).toBeVisible();
+  await expect.poll(() => servedCores(name), { timeout: 30_000 }).toEqual([4]);
+  expect(await served(name)).toEqual([`${name} @ ${location}`]);
 
   // Remove it again.
   await rowAction(own, "Remove");
