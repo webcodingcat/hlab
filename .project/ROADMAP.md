@@ -35,13 +35,43 @@
 
 - [x] B2 Backlog: VLAN release at project deletion, LB health check, docs and e2e test fixes → phases/B2/
 
-- [ ] 11 Tray console for all resources.
-      Requirements: UI-02, UI-09.
+- [ ] 11 Tray console: shared frame, servers, SSH keys.
+      Requirements: UI-02 (part: shared frame, servers, SSH keys; done
+      after phase 14).
       Depends on: 10.
+      Research: phases/11/RESEARCH.md (field order of the Hetzner create
+      forms; also used by phase 14).
+      Scope: the shared frame every resource section builds on - API client
+      over `bridge.Call`, action polling with a toast, detail and tab frame,
+      Labels and Protection tabs, form errors from `details.fields`,
+      confirmation dialogs, routes, help IDs - and the sections Servers and
+      SSH Keys completely.
       Success criteria:
-      1. Every resource type can be listed, created, configured and deleted
-         in the window.
-      2. The example environment can be created and deleted by hand.
+      1. Servers and SSH keys can be listed, shown, created, configured and
+         deleted in the window, including every server action the API
+         offers.
+      2. A running action shows its progress and ends in a toast; a
+         rejected form shows the error at its field from `details.fields`;
+         deleting asks for confirmation.
+      3. Labels and protection of a server and an SSH key can be changed in
+         their tabs, and every new view opens its help text.
+      Stops for: manual check (look and operation of the frame, before the
+      remaining sections follow the same pattern).
+
+- [ ] 14 Tray console: remaining resources.
+      Requirements: UI-02 (part: remaining resource types; completes it),
+      UI-09.
+      Depends on: 11.
+      Research: phases/11/RESEARCH.md.
+      Scope: the sections Volumes, Load Balancers, Networks, Firewalls,
+      Floating IPs, Primary IPs, DNS, Certificates, Placement Groups,
+      Images and ISOs on the frame of phase 11.
+      Success criteria:
+      1. Every remaining resource type can be listed, shown, created,
+         configured and deleted in the window; with phase 11, every
+         resource type of the API is covered.
+      2. The example environment can be created and deleted by hand in the
+         console.
       Stops for: manual check.
 
 - [ ] 12 Installer and uninstaller.
@@ -57,7 +87,7 @@
 
 - [ ] 13 Client matrix and success criterion.
       Requirements: CLI-01, CLI-02, CLI-03, CLI-04.
-      Depends on: 11, 12.
+      Depends on: 14, 12.
       Success criteria:
       1. Every resource type passes its row for hcloud, OpenTofu and
          Ansible.

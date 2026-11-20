@@ -2664,3 +2664,9 @@ in ARCHITECTURE.md or the plan.
 - What: `waitCloudState("stopped")` in the e2e harness also accepts `refused`.
 - Why: hlab reports `refused` only once the service manager reports the service stopped.
 - Cost of change: low
+
+## 2026-11-20 Phase 11 split into frame and remaining resources
+
+- Type: change
+- What: phase 11 builds the shared console frame with Servers and SSH Keys and stops for a manual check; the new phase 14 builds the remaining resource sections and UI-09, UI-02 is done only after both, and phase 13 depends on 14 instead of 11.
+- Why: the user wants to check the look and operation of the frame before the other sections are built on the same pattern.
