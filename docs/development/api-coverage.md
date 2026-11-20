@@ -289,8 +289,9 @@ Hetzner documents no error for these cases; HLab answers:
   created on its own is `2001:db8:8000:<id>::/64` (ID 12:
   `2001:db8:8000:c::/64`).
 - Primary IPs show their `location`; they have no `datacenter` field.
-- A primary IP created without a name is named `primary_ip-<id>`, as are
-  the ones HLab makes for a new server.
+- `POST /primary_ips` needs a `name`; an empty one answers 422
+  `invalid_input` on the field `name`. The primary IPs HLab makes for a new
+  server are named `primary_ip-<id>`.
 - Servers created by an earlier HLab version get primary IP records for
   their addresses at the next cloud start, assigned and with
   `auto_delete: true`.

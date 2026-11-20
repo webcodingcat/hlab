@@ -84,9 +84,18 @@ the bridge calls in `src/lib/bridge.ts`.
 
 The project console
 ([src/views/ProjectConsole.svelte](../../ui/frontend/src/views/ProjectConsole.svelte))
-shows its sections (Servers, SSH Keys, API tokens) in its sidebar. The
-resource sections reach the project's Hetzner API through the management
-API's project proxy and are built from these parts of `src/lib`:
+shows its sections in its sidebar: Servers, the other resource sections,
+SSH Keys and, after a separator, API tokens. Servers, SSH Keys and API
+tokens are wired in by hand. Every other section lives in
+`src/views/<view>/` with the entry component `Section.svelte`
+(props `project` and `page`), which renders the title row with the help
+button, the "start the cloud" notice while the cloud is stopped, and then
+the list, the create form or the detail page by `page`. The console finds
+these components with `import.meta.glob("./*/Section.svelte")`, keyed by
+folder name, and lists a section in the sidebar only once its component
+exists. The resource sections reach the project's Hetzner API through the
+management API's project proxy and are built from these parts of
+`src/lib`:
 
 - `api.ts`: `api` sends one request, `listAll` reads every page of a list,
   `runApi` runs a request under an action toast.
@@ -103,14 +112,39 @@ API's project proxy and are built from these parts of `src/lib`:
   the detail tabs (label, method, path, body, confirmation, whether the
   answer carries a root password); the views in `src/views/servers` only
   render it, so its unit test covers every request.
+- [resourceActions.ts](../../ui/frontend/src/lib/resourceActions.ts) does
+  the same for the other resources: a `ResourceAction` holds an action's
+  label, method, path, body, confirmation (`none`, `plain` or
+  `typed-name`), whether it opens a dialog for input first, and an
+  optional hint that shows it disabled. `request` turns an entry and its
+  input into the request; builders make the common entries (`postAction`,
+  `update`, `remove`, `createAt`, `changeProtection`, `changeDnsPtr`).
+- `src/lib/resources/<resource>.ts` (volumes, load balancers, networks,
+  firewalls, floating IPs, primary IPs, zones, certificates, placement
+  groups, images) exports per resource the create form's request
+  `create` (images have none), the detail page's actions menu `menu`
+  with Delete last, and `tabs`, the actions of the detail tabs and row
+  menus by ID. `firewallRules.ts` converts between the rows of the rules
+  editor and the API's rules. These modules import neither the bridge nor
+  the Wails runtime, so their unit tests in `tests/unit` check every
+  request without a browser.
+- `ResourceActionsMenu.svelte` renders a `menu`: it asks for confirmation
+  as the entry says (typing the name for `typed-name`), shows the
+  section's input dialog for entries that need input, and runs the request
+  under a toast. `ReverseDnsDialog.svelte` is the shared reverse DNS
+  dialog, and `format.ts` formats labels and creation times for the
+  tables.
 
 A new view needs its ID in `views.json` and in `ViewId` of `src/help.ts`,
 its title and area in `src/state.ts` and a help text
 `src/help/<view>.md`, which the `?` button shows. An Administration view
 also needs its ID in `AdminView` of `routes.ts` and an icon and a
 branch in `src/App.svelte`; a project section needs its ID in
-`ProjectView` of `routes.ts` (and in `listOnly` if it has no create form or
-detail pages) and an entry and a branch in `ProjectConsole.svelte`. The build tag `e2e` adds the test hooks of
+`ProjectView` and `projectViews` of `routes.ts` (and in `listOnly` if it
+has no create form or detail pages, in `noNew` if it has detail pages but
+no create form), an entry with title and icon in the `sections` list of
+`ProjectConsole.svelte`, and its `src/views/<view>/Section.svelte`; for
+its requests, add a module under `src/lib/resources` with a unit test. The build tag `e2e` adds the test hooks of
 [cmd/hlab-tray/e2e.go](../../cmd/hlab-tray/e2e.go) (see
 [Build and test](build-and-test.md#end-to-end-tests)).
 

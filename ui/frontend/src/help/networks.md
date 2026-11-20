@@ -10,6 +10,13 @@ balancers. Networks can only be managed while the cloud runs.
   `team=ops`.
 - **Delete** in the row menu (`…`) deletes the network after you type its
   name; attached servers and load balancers are detached from it.
+- Clicking a row opens the network's page. **Overview** shows its IP
+  range; **Subnets** lists the subnets with **Add subnet** (a network zone
+  and a range inside the network) and **Delete** per subnet; **Routes**
+  lists the routes with **Add route** (a destination and a gateway inside
+  the network) and **Delete** per route; **Resources** lists the attached
+  servers and load balancers, each linking to its page; **Labels** edits
+  its labels; **Protection** turns the delete protection on or off.
 - The actions menu (`…`) on a network's page offers **Change IP range**,
   **Change protection** and **Delete**.
 - **Change IP range** only grows the range: the new range must contain the

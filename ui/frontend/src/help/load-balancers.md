@@ -14,6 +14,12 @@ Load balancers can only be managed while the cloud runs.
   - **Overview** shows its public IPs with a copy button and their reverse
     DNS, whether the public interface is enabled, the type, the algorithm,
     the location and how many targets are healthy.
+  - **Targets** lists the servers, label selectors and IPs it sends traffic
+    to, with their health per service port; **Add target** adds one,
+    **Remove** takes one away after a confirmation.
+  - **Services** lists the services with protocol, ports, health check,
+    sticky sessions and certificates; **Add service** and **Edit** open the
+    service form, **Delete** removes a service after a confirmation.
   - **Networking** lists its private networks with its IP in each;
     **Attach to network** adds it to a network with a subnet in its network
     zone (the IP is optional), **Detach** removes it after a confirmation.

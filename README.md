@@ -28,7 +28,7 @@ networks, primary and floating IPs, firewalls, DNS zones with reverse DNS,
 load balancers and certificates. Other parts of the Hetzner API answer
 `not_found`; what else differs is in [Known deviations](docs/deviations.md).
 A [tray program](#the-tray-program) starts and stops the cloud and manages
-projects, tokens, servers, SSH keys, server types and settings.
+projects, tokens, every resource of a project, server types and settings.
 
 <p align="center">
   <picture>
@@ -123,8 +123,8 @@ cloud-init has finished and SSH accepts the key.
 Clean up with `bin\hlab.exe project delete demo`, which deletes the
 server and the SSH key with the project, and `bin\hlab.exe cloud stop`.
 
-The [guide](docs/guide.md) shows every resource: servers, snapshots and
-backups, ISOs, volumes, networks, IPs, firewalls, DNS, load balancers and
+The [guide](docs/guide.md) shows every resource with hcloud and in the
+window: servers, placement groups, snapshots and backups, ISOs, volumes, networks, IPs, firewalls, DNS, load balancers and
 certificates, and stopping and starting the cloud.
 
 ## The tray program
@@ -164,16 +164,24 @@ confirm.
   (`…`). Click a project to open its console; the window opens the last
   project you used when it starts again.
 - The **project console** opens on **Servers**; its sidebar holds
-  **Servers**, **SSH Keys** and **API tokens**. The project name in the
+  **Servers**, **Volumes**, **Load Balancers**, **Networks**,
+  **Firewalls**, **Floating IPs**, **Primary IPs**, **DNS**,
+  **Certificates**, **SSH Keys**, **Placement Groups**, **Images**,
+  **ISOs** and, below a line, **API tokens**. The project name in the
   breadcrumb switches to another project.
+  - Each resource section has a list with a search field (a name, or a
+    label selector such as `env=dev`), a create button that opens a form,
+    and a detail page with an actions menu (`…`) and tabs such as Labels
+    and Protection. **Images** has no create form (snapshots and backups
+    are made on a server's page) and **ISOs** is read only. See
+    [Servers in the window](docs/guide.md#servers-in-the-window) and the
+    paragraph "In the window" under each resource of the
+    [guide](docs/guide.md).
   - **Servers**: the list with **Create server** and power actions in the
     row menu, the create form, and a detail page per server with an
     actions menu (power, rebuild, change type, rename, delete) and the
     tabs Overview, Networking, Firewalls, Volumes, Backups, Snapshots,
-    Rescue, ISO, Graphs, Labels and Protection. See
-    [Servers in the window](docs/guide.md#servers-in-the-window).
-  - **SSH Keys**: **Add SSH key**, a detail page with name and labels,
-    **Delete**.
+    Rescue, ISO, Graphs, Labels and Protection.
   - **API tokens**: **Create token** asks for a name and whether the
     token is read only, and shows the token once with a copy button;
     **Revoke** is in the row menu.
