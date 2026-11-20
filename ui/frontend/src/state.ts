@@ -65,6 +65,8 @@ const viewInfo: Record<ViewId, { title: string; area: Area }> = {
   certificates: { title: "Certificates", area: "project" },
   "ssh-keys": { title: "SSH Keys", area: "project" },
   "placement-groups": { title: "Placement Groups", area: "project" },
+  snapshots: { title: "Snapshots", area: "project" },
+  backups: { title: "Backups", area: "project" },
   images: { title: "Images", area: "project" },
   isos: { title: "ISOs", area: "project" },
   tokens: { title: "API tokens", area: "project" },

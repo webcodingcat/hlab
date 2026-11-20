@@ -13,10 +13,12 @@ export type ProjectView =
   | "certificates"
   | "ssh-keys"
   | "placement-groups"
+  | "snapshots"
+  | "backups"
   | "images"
   | "isos"
   | "tokens";
-export type AdminView = "server-types" | "settings" | "logs";
+export type AdminView = "server-types" | "isos" | "settings" | "logs";
 export type Page = { kind: "list" } | { kind: "new" } | { kind: "detail"; id: number; tab: string };
 export type Route =
   | { area: "projects" }
@@ -35,15 +37,17 @@ const projectViews: ProjectView[] = [
   "certificates",
   "ssh-keys",
   "placement-groups",
+  "snapshots",
+  "backups",
   "images",
   "isos",
   "tokens",
 ];
-const adminViews: AdminView[] = ["server-types", "settings", "logs"];
+const adminViews: AdminView[] = ["server-types", "isos", "settings", "logs"];
 // Views with only a list page.
 const listOnly: ProjectView[] = ["tokens"];
 // Views with a list and a detail page but no create page.
-const noNew: ProjectView[] = ["isos"];
+const noNew: ProjectView[] = ["snapshots", "backups", "isos"];
 
 /** href is the hash of a route. */
 export function href(r: Route): string {

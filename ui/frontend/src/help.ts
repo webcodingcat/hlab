@@ -15,6 +15,8 @@ export type ViewId =
   | "certificates"
   | "ssh-keys"
   | "placement-groups"
+  | "snapshots"
+  | "backups"
   | "images"
   | "isos"
   | "tokens"
