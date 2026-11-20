@@ -109,8 +109,18 @@ plain), `enable_rescue` (plain, password, `ssh_keys`, type `linux64`),
 `apply_firewall` and `remove_firewall` (`POST
 /firewalls/{firewall}/actions/apply_to_resources` and
 `remove_from_resources` with `[{type: "server", server: {id}}]`),
-`attach_volume` (`POST /volumes/{volume}/actions/attach` with `server`,
-`automount`), `detach_volume`, `change_protection` (`delete`, `rebuild`).
+`attach_volume` (`POST /volumes/{volume}/actions/attach` with
+`assignee: {id, type: "server"}`, `automount`; `server` is deprecated),
+`detach_volume`, `change_protection` (`delete`, `rebuild`).
+
+UI texts the e2e specs rely on (tests/e2e/console.ts, sshkeys.spec.ts,
+servers.spec.ts): create buttons "Create server" and "Add SSH key"; the
+rename dialog's button "Rename"; Location, Image and Type in the server
+form are a select or radio group with those accessible names; label row
+inputs have names containing "key" and "value"; a one-time password shows
+in a `<code>` CopyField next to text matching "not shown again"; action
+progress shows as "N%" in the `aria-live` toast region; the gear returns
+to the last console route, not to `consoleStart`.
 
 Svelte building blocks (props):
 

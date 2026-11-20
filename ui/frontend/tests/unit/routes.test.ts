@@ -1,0 +1,89 @@
+// Unit tests of the window's routes: href and parse agree for every kind of
+// page, unknown routes parse to undefined. They need no browser.
+import { test, expect } from "@playwright/test";
+import { consoleStart, href, parse, type Route } from "../../src/lib/routes";
+
+test.describe("UI-02 routes", () => {
+  const roundTrips: { name: string; route: Route; hash: string }[] = [
+    { name: "project list", route: { area: "projects" }, hash: "#/projects" },
+    {
+      name: "servers list",
+      route: { area: "project", project: "demo", view: "servers", page: { kind: "list" } },
+      hash: "#/projects/demo/servers",
+    },
+    {
+      name: "servers new",
+      route: { area: "project", project: "demo", view: "servers", page: { kind: "new" } },
+      hash: "#/projects/demo/servers/new",
+    },
+    {
+      name: "servers detail with tab",
+      route: { area: "project", project: "demo", view: "servers", page: { kind: "detail", id: 42, tab: "networking" } },
+      hash: "#/projects/demo/servers/42/networking",
+    },
+    {
+      name: "ssh-keys list",
+      route: { area: "project", project: "demo", view: "ssh-keys", page: { kind: "list" } },
+      hash: "#/projects/demo/ssh-keys",
+    },
+    {
+      name: "ssh-keys new",
+      route: { area: "project", project: "demo", view: "ssh-keys", page: { kind: "new" } },
+      hash: "#/projects/demo/ssh-keys/new",
+    },
+    {
+      name: "ssh-keys detail with tab",
+      route: { area: "project", project: "demo", view: "ssh-keys", page: { kind: "detail", id: 7, tab: "labels" } },
+      hash: "#/projects/demo/ssh-keys/7/labels",
+    },
+    {
+      name: "tokens list",
+      route: { area: "project", project: "demo", view: "tokens", page: { kind: "list" } },
+      hash: "#/projects/demo/tokens",
+    },
+    { name: "admin server-types", route: { area: "admin", view: "server-types" }, hash: "#/admin/server-types" },
+    { name: "admin settings", route: { area: "admin", view: "settings" }, hash: "#/admin/settings" },
+    { name: "admin logs", route: { area: "admin", view: "logs" }, hash: "#/admin/logs" },
+  ];
+  for (const c of roundTrips) {
+    test(`href and parse agree: ${c.name}`, () => {
+      expect(href(c.route)).toBe(c.hash);
+      expect(parse(c.hash)).toEqual(c.route);
+    });
+  }
+
+  const overview: { name: string; hash: string }[] = [
+    { name: "detail without tab", hash: "#/projects/demo/servers/42" },
+    { name: "detail with an invalid tab", hash: "#/projects/demo/servers/42/Bad_Tab" },
+  ];
+  for (const c of overview) {
+    test(`overview tab: ${c.name}`, () => {
+      expect(parse(c.hash)).toEqual({
+        area: "project",
+        project: "demo",
+        view: "servers",
+        page: { kind: "detail", id: 42, tab: "overview" },
+      });
+    });
+  }
+
+  const unknown: { name: string; hash: string }[] = [
+    { name: "unknown view", hash: "#/projects/demo/volumes" },
+    { name: "ID that is not a number", hash: "#/projects/demo/servers/abc/overview" },
+    { name: "unknown area", hash: "#/nowhere" },
+  ];
+  for (const c of unknown) {
+    test(`undefined: ${c.name}`, () => {
+      expect(parse(c.hash)).toBeUndefined();
+    });
+  }
+
+  test("consoleStart is the Servers list", () => {
+    expect(consoleStart("demo")).toEqual({
+      area: "project",
+      project: "demo",
+      view: "servers",
+      page: { kind: "list" },
+    });
+  });
+});

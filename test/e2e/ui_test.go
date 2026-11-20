@@ -168,6 +168,18 @@ func testUI05(t *testing.T) {
 	runSpec(t, "UI-05", 10*time.Minute, nil)
 }
 
+// testUI02: the project console's SSH Keys and Servers sections, each in a
+// project of its own: an SSH key is created, labelled and deleted; a server
+// is created through the form, renamed, powered off and deleted. The server
+// uses the type, location and image of the other server rows.
+func testUI02(t *testing.T) {
+	runSpec(t, "UI-02", 40*time.Minute, []string{
+		"HLAB_E2E_SERVER_TYPE=" + serverType,
+		"HLAB_E2E_SERVER_LOCATION=" + serverLocation,
+		"HLAB_E2E_SERVER_IMAGE=" + serverImage,
+	})
+}
+
 // testUI06: the logs view shows the service log and follows it.
 func testUI06(t *testing.T) {
 	runSpec(t, "UI-06", 10*time.Minute, nil)
