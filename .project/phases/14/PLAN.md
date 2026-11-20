@@ -394,6 +394,20 @@ shows all ISOs on one page (no paging).
   menu / runApi helper), not per view; one unit test for the title
   builder, plus the existing UI-02 specs adjusted where they match toast
   titles.
+- minor (2026-11-20, /wcc:report during UI-09; the user chose to fix it
+  on this branch with the changes above, before UI-09 is checked):
+  Create placement group, field Type.
+  - What the user did: opened Create placement group. The form shows Name,
+    then "Type" as a text input holding "spread" (readonly, looks editable)
+    with the hint "Spread: each server of the group runs on its own host
+    (in HLab, the group only records its servers).", then Labels with
+    "+ Add label", and the buttons Cancel / Create placement group.
+  - Expected: Type is a select (dropdown) with the single option "spread",
+    preselected, same hint below it; the request still sends
+    `type: "spread"`.
+  - Requirement: UI-02. Code:
+    ui/frontend/src/views/placement-groups/PlacementGroupCreate.svelte:64.
+  - Tests: none new (cosmetic); existing unit and e2e rows stay.
 
 ## Close
 

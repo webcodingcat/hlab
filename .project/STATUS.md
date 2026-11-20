@@ -7,7 +7,7 @@ STATUS: MANUAL_CHECK
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 14 Tray console: remaining resources (built; the changes "console sidebar in groups, own ISOs" and "volume create form like Hetzner" wait in phases/14/PLAN.md, then the manual check UI-09, on branch wcc/phase-14)
+- Phase: 14 Tray console: remaining resources (built; the changes "console sidebar in groups, own ISOs" and "volume create form like Hetzner" and the placement group Type select wait in phases/14/PLAN.md, then the manual check UI-09, on branch wcc/phase-14)
 - Base branch: main
 - Last done: phase 11 merged into main (2026-11-20): console frame (API client, action toasts, detail/form/labels/protection building blocks, routes) with the complete Servers and SSH Keys sections; UI-02 frame check fits
 - Next: /wcc:phase builds the changes of phase 14 (grouped sidebar, section tabs, own ISOs; volume create form), then /wcc:report for UI-09, then phase 15 (project display names, Hetzner-style project list); DOC-07 (01) waits until the repository is on GitHub
