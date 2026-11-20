@@ -1,17 +1,25 @@
 # ISOs
 
-The ISO images that can be attached to a server: the Ubuntu live server and
-Debian netinst images of HLab's catalog. There are no private ISOs, so the
-list is read-only. ISOs can only be shown while the cloud runs.
+The ISO images a server can boot from: the Ubuntu live server and Debian
+netinst images of HLab's catalog and your own ISOs. The list shows while
+the cloud is stopped too.
 
-- The list shows every ISO on one page with its **Name**, **Description**,
-  **Architecture** and whether it is **Deprecated**; a deprecated ISO can no
-  longer be attached.
-- The search field filters by name.
-- Clicking a row opens the ISO's page with its **Overview**.
+- The **Source** column says whether an ISO comes from the catalog or is
+  your own. Own ISOs have no Hetzner name; they are shown by their
+  **Name** everywhere, and the API lists them as `private` ISOs.
+- **Add ISO** opens a form for your own ISO: **Name** (required),
+  **Architecture** (x86 or arm) and the **Source**, a URL or a local file.
+- Source **URL**: the address HLab downloads the ISO from at its first
+  attach, with an optional **SHA-256** the download is checked against.
+- Source **Local file**: the **Path** of an `.iso` file on this computer;
+  type it or choose it with **Browse…**. HLab copies the file when the
+  cloud reads the own ISOs.
+- **Edit** in an own ISO's row menu (`…`) opens the same form filled in
+  with its values; **Save** applies the changes. Catalog ISOs cannot be
+  edited.
+- **Remove** in an own ISO's row menu (`…`) removes it after a
+  confirmation. A server that has it attached keeps it until it is
+  detached.
+- When own ISOs cannot be served, a message above the table says why.
 - To boot a server from an ISO, attach it in the **ISO** tab of the
-  server's page. The first attach of an ISO downloads it, which takes
-  minutes.
-
-To switch to another section of the project, use the sidebar on the left;
-**API tokens** manages the project's tokens.
+  server's page.

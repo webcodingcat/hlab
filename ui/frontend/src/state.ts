@@ -68,7 +68,7 @@ const viewInfo: Record<ViewId, { title: string; area: Area }> = {
   snapshots: { title: "Snapshots", area: "project" },
   backups: { title: "Backups", area: "project" },
   images: { title: "Images", area: "project" },
-  isos: { title: "ISOs", area: "project" },
+  isos: { title: "ISOs", area: "admin" },
   tokens: { title: "API tokens", area: "project" },
   "server-types": { title: "Server Types", area: "admin" },
   settings: { title: "Settings", area: "admin" },
