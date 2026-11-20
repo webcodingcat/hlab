@@ -12,11 +12,13 @@
   import { href } from "../../state";
   import { modeText, type Zone } from "./Section.svelte";
   import ZoneActionInput from "./ZoneActionInput.svelte";
+  import PrimaryNameservers from "./tabs/PrimaryNameservers.svelte";
   import Records from "./tabs/Records.svelte";
+  import ZoneFile from "./tabs/ZoneFile.svelte";
 
   // The detail page of one DNS zone: Overview (mode, nameservers, default
-  // TTL, record count, created), Records (primary zones only), Labels and
-  // Protection; the actions menu changes the default TTL, imports a zone
+  // TTL, record count, created), Records and Zone file (primary zones) or
+  // Primary nameservers (secondary zones), Labels and Protection; the actions menu changes the default TTL, imports a zone
   // file, changes the protection and deletes the zone (back to the list).
   let { project, id, tab, list }: { project: string; id: number; tab: string; list: string } = $props();
 
@@ -29,7 +31,12 @@
   const tabs = $derived(
     [
       { id: "overview", label: "Overview" },
-      ...(zone?.mode === "secondary" ? [] : [{ id: "records", label: "Records" }]),
+      ...(zone?.mode === "secondary"
+        ? [{ id: "primary-nameservers", label: "Primary nameservers" }]
+        : [
+            { id: "records", label: "Records" },
+            { id: "zone-file", label: "Zone file" },
+          ]),
       { id: "labels", label: "Labels" },
       { id: "protection", label: "Protection" },
     ].map((t) => ({ ...t, href: href({ area: "project", project, view: "dns", page: { kind: "detail", id, tab: t.id } }) })),
@@ -94,6 +101,10 @@
     {/snippet}
     {#if current === "records"}
       <Records {project} zone={z} onchanged={load} />
+    {:else if current === "zone-file"}
+      <ZoneFile {project} zone={z} onchanged={load} />
+    {:else if current === "primary-nameservers"}
+      <PrimaryNameservers {project} zone={z} onchanged={load} />
     {:else if current === "labels"}
       <LabelsTab {project} {path} labels={z.labels} onsaved={load} />
     {:else if current === "protection"}

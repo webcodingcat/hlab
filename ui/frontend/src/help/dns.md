@@ -28,6 +28,13 @@ the cloud runs.
   every change of its records and TTL) and **Delete**.
 - The SOA record set is managed by HLab, which raises its serial with every
   change; only its TTL can be changed.
+- **Zone file** shows the export of a primary zone in BIND format with
+  **Copy zone file**; **Import zone file** below replaces all records with
+  the pasted zone file after a confirmation. A bad zone file is refused
+  with its line number under the field.
+- **Primary nameservers** of a secondary zone lists address, port and an
+  optional TSIG algorithm and key per nameserver; **Save primary
+  nameservers** replaces the list. HLab never transfers the zone from them.
 - The actions menu (`…`) on the zone's page offers **Change default TTL**,
   **Import zone file** (a zone file in BIND format replaces all records),
   **Change protection** and **Delete**.
