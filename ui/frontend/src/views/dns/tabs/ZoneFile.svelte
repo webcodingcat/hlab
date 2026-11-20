@@ -5,6 +5,7 @@
   import Field from "../../../lib/Field.svelte";
   import { runAction, type Action, type ActionResult } from "../../../lib/actions";
   import { api } from "../../../lib/api";
+  import { actionTitle, resourceType } from "../../../lib/format";
   import { formErrors } from "../../../lib/formErrors";
   import { request } from "../../../lib/resourceActions";
   import { menu, tabs } from "../../../lib/resources/zones";
@@ -65,7 +66,7 @@
     busy = true;
     const req = request(importAction, zoneId, { zonefile: text })!;
     const res = await runAction(
-      `${importAction.label} ${zone.name}`,
+      actionTitle(resourceType(req.path), zone.name, importAction.label),
       async () => {
         try {
           return await api<ActionResult>(project, req.method, req.path, req.body);

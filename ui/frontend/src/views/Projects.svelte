@@ -6,6 +6,7 @@
   import HelpButton from "../lib/HelpButton.svelte";
   import Table, { type Column } from "../lib/Table.svelte";
   import { ApiError, mgmt } from "../lib/bridge";
+  import { actionTitle } from "../lib/format";
   import { action, showError } from "../lib/toast";
   import { consoleStart, href, running, type Project } from "../state";
 
@@ -88,7 +89,7 @@
   function remove() {
     const name = deleting!.name;
     // Not awaited: the dialog closes, the toast shows the progress.
-    action(`Delete project ${name}`, async () => {
+    action(actionTitle("Project", name, "Delete"), async () => {
       const { action_id } = await mgmt<{ action_id: number }>("DELETE", `/projects/${encodeURIComponent(name)}`);
       await waitAction(action_id);
     }).finally(load);

@@ -3,6 +3,7 @@
   import FormPage from "../../lib/FormPage.svelte";
   import LabelsField from "../../lib/LabelsField.svelte";
   import { api } from "../../lib/api";
+  import { actionTitle, resourceType } from "../../lib/format";
   import { formErrors } from "../../lib/formErrors";
   import { toLabels, type LabelRow } from "../../lib/labels";
   import { showSuccess } from "../../lib/toast";
@@ -27,7 +28,7 @@
     const keyName = name.trim();
     try {
       await api(project, "POST", "/ssh_keys", { name: keyName, public_key: publicKey.trim(), labels: l.labels });
-      showSuccess("Add SSH key", `SSH key ${keyName} added`);
+      showSuccess(actionTitle(resourceType("/ssh_keys"), keyName, "Create"), `SSH key ${keyName} added`);
       location.hash = list;
     } catch (err) {
       const fe = formErrors(err, ["public_key", "name", "labels"]);
