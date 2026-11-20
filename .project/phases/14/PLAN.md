@@ -550,15 +550,15 @@ button "Browse…", row menu "Edit" and "Remove".
   - [x] The same in views/certificates (Section, CertificateCreate) and views/sshkeys (SshKeys, SshKeyDetail).
   - [x] The same in views/Tokens.svelte ("Token <name>: Revoke"), Projects.svelte ("Project <name>: Delete"), ServerTypes.svelte ("Server type <name>: Remove").
 
-- [ ] 14-38 Sidebar groups and section tabs
+- [x] 14-38 Sidebar groups and section tabs
   - Wave: 3 | Depends on: 14-28, 14-30, 14-34, 14-35 | Review: alone
   - Requirements: UI-02 | Tests: the UI-02 specs through test/e2e/ui_test.go TestE2E/UI-02
   - Reads: UI-SPEC "Views" (Project console), "Building blocks" (Section tabs), "Foundation" (icons); PLAN "Findings from manual testing" (sidebar); PLAN "Interfaces" (consoleNav, SectionTabs, SectionSidebar); ui/frontend/src/views/ProjectConsole.svelte, lib/SectionSidebar.svelte, state.ts; tests/e2e/console.ts `section`; test/e2e/ui_test.go `testUI02`
   - Size: ~350 lines in 10 files
   - Adjusts: ui/frontend/tests/e2e/console.ts `section` opens the sidebar entry that holds the view, then its tab; ui/frontend/tests/unit/routes.test.ts drops the `images` cases
-  - [ ] lib/SectionSidebar.svelte with groups (12 px uppercase muted heading with chevron, collapse on click, 1 px line between groups), state.ts `collapsedGroups`; lib/SectionTabs.svelte (accent underline, `aria-current`).
-  - [ ] views/ProjectConsole.svelte: sidebar from `navGroups` (icons by entry, e.g. Server, HardDrive, Shield, Scale, Network, MapPin, Globe, KeyRound), the entry of the open view highlighted, SectionTabs on top of every page of the entry; remove the `images` view from routes.ts, help.ts, views.json and help/images.md.
-  - [ ] Adjust tests/e2e/console.ts; run `task e2e -- -run 'TestE2E/UI-02$' -v` in full and set the UI-02 limit in test/e2e/ui_test.go to about twice that run.
+  - [x] lib/SectionSidebar.svelte with groups (12 px uppercase muted heading with chevron, collapse on click, 1 px line between groups), state.ts `collapsedGroups`; lib/SectionTabs.svelte (accent underline, `aria-current`).
+  - [x] views/ProjectConsole.svelte: sidebar from `navGroups` (icons by entry, e.g. Server, HardDrive, Shield, Scale, Network, MapPin, Globe, KeyRound), the entry of the open view highlighted, SectionTabs on top of every page of the entry; remove the `images` view from routes.ts, help.ts, views.json and help/images.md.
+  - [x] Adjust tests/e2e/console.ts; run `task e2e -- -run 'TestE2E/UI-02$' -v` in full and set the UI-02 limit in test/e2e/ui_test.go to about twice that run.
 
 - [x] 14-39 ISOs Administration view
   - Wave: 3 | Depends on: 14-30, 14-33 | Review: alone
