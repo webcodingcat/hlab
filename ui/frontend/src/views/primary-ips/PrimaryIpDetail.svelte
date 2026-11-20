@@ -7,7 +7,7 @@
   import RenameInput from "../../lib/RenameInput.svelte";
   import ResourceActionsMenu from "../../lib/ResourceActionsMenu.svelte";
   import ReverseDnsDialog from "../../lib/ReverseDnsDialog.svelte";
-  import { api, listAll, runApi } from "../../lib/api";
+  import { api, listAll, runOn } from "../../lib/api";
   import { createdText, protocolText } from "../../lib/format";
   import { request, type Input, type ResourceAction } from "../../lib/resourceActions";
   import { menu, tabs as pipTabs } from "../../lib/resources/primaryIps";
@@ -102,7 +102,7 @@
   async function savePtr(input: Input) {
     if (!pip || !ptrAction) return;
     const req = request(ptrAction, pip.id, input)!;
-    const res = await runApi(project, `${ptrAction.label} ${pip.name}`, req.method, req.path, req.body);
+    const res = await runOn(project, pip.name, ptrAction.label, req);
     if (res !== undefined) load();
   }
 
@@ -112,7 +112,7 @@
     const on = (e.currentTarget as HTMLInputElement).checked;
     const a = pipTabs.auto_delete;
     const req = request(a, pip.id, { auto_delete: on })!;
-    await runApi(project, `${a.label} ${pip.name}`, req.method, req.path, req.body);
+    await runOn(project, pip.name, a.label, req);
     load();
   }
 

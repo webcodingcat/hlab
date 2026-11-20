@@ -10,7 +10,7 @@
   import RenameInput from "../../lib/RenameInput.svelte";
   import ResourceActionsMenu from "../../lib/ResourceActionsMenu.svelte";
   import ReverseDnsDialog from "../../lib/ReverseDnsDialog.svelte";
-  import { api, listAll, runApi } from "../../lib/api";
+  import { api, listAll, runOn } from "../../lib/api";
   import { createdText, protocolText } from "../../lib/format";
   import { request, type Input, type ResourceAction } from "../../lib/resourceActions";
   import { menu, tabs as fipTabs } from "../../lib/resources/floatingIps";
@@ -106,7 +106,7 @@
   async function savePtr(input: Input) {
     if (!fip || !ptrAction) return;
     const req = request(ptrAction, fip.id, input)!;
-    const res = await runApi(project, `${ptrAction.label} ${fip.name}`, req.method, req.path, req.body);
+    const res = await runOn(project, fip.name, ptrAction.label, req);
     if (res !== undefined) load();
   }
 
@@ -125,7 +125,7 @@
     if (!fip) return;
     const a = fipTabs.description;
     const req = request(a, fip.id, { description: description.trim() })!;
-    const res = await runApi(project, `${a.label} ${fip.name}`, req.method, req.path, req.body);
+    const res = await runOn(project, fip.name, a.label, req);
     if (res !== undefined) load();
   }
 

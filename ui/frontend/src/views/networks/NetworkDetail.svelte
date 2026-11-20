@@ -9,7 +9,7 @@
   import ProtectionTab from "../../lib/ProtectionTab.svelte";
   import RenameInput from "../../lib/RenameInput.svelte";
   import ResourceActionsMenu from "../../lib/ResourceActionsMenu.svelte";
-  import { api, listAll, runApi } from "../../lib/api";
+  import { api, listAll, runOn } from "../../lib/api";
   import { createdText } from "../../lib/format";
   import { request, type Input, type ResourceAction } from "../../lib/resourceActions";
   import { menu, tabs as tabActions } from "../../lib/resources/networks";
@@ -93,7 +93,7 @@
   async function run(a: ResourceAction, input: Input) {
     if (!network) return;
     const req = request(a, network.id, input)!;
-    const res = await runApi(project, `${a.label} ${network.name}`, req.method, req.path, req.body);
+    const res = await runOn(project, network.name, a.label, req);
     if (res !== undefined) load();
   }
 

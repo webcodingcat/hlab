@@ -7,7 +7,7 @@
   import RenameInput from "../../lib/RenameInput.svelte";
   import ResourceActionsMenu from "../../lib/ResourceActionsMenu.svelte";
   import ReverseDnsDialog from "../../lib/ReverseDnsDialog.svelte";
-  import { api, listAll, runApi } from "../../lib/api";
+  import { api, listAll, runOn } from "../../lib/api";
   import { createdText } from "../../lib/format";
   import { request, type Input, type ResourceAction } from "../../lib/resourceActions";
   import { menu } from "../../lib/resources/loadBalancers";
@@ -142,7 +142,7 @@
   async function savePtr(input: Input) {
     if (!lb || !ptrAction) return;
     const req = request(ptrAction, lb.id, input)!;
-    const res = await runApi(project, `${ptrAction.label} ${lb.name}`, req.method, req.path, req.body);
+    const res = await runOn(project, lb.name, ptrAction.label, req);
     if (res !== undefined) load();
   }
 
