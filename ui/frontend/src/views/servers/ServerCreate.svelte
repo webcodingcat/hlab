@@ -33,7 +33,7 @@
     locations: { name: string; available: boolean }[];
   };
   type PrimaryIp = Named & { ip: string; type: "ipv4" | "ipv6"; location: { name: string }; assignee_id: number | null };
-  type Volume = Named & { size: number; location: { name: string }; assignee: unknown; server: number | null };
+  type Volume = Named & { size: number; location: { name: string }; server: number | null };
   type Created = ActionResult & { server: { id: number }; root_password: string | null };
 
   let locations = $state<Location[]>([]);
@@ -118,7 +118,7 @@
   const ipv4Options = $derived(freeIps("ipv4"));
   const ipv6Options = $derived(freeIps("ipv6"));
   const volumeOptions = $derived(
-    volumes.filter((v) => v.location.name === location && !v.assignee && v.server === null),
+    volumes.filter((v) => v.location.name === location && v.server === null),
   );
 
   // The default name <type>-<location>-<n> with the first n not taken.
