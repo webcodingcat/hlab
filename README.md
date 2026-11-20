@@ -51,7 +51,7 @@ Setup:
    token: `hcloud context create HLab`. `task catalog` uses it, and asks for
    a token instead when hcloud or the context is missing.
 
-The developer guide in [docs/dev/](docs/dev/setup.md) explains the build,
+The developer guide in [docs/development/](docs/development/setup.md) explains the build,
 the tests and the code.
 
 ## First steps
@@ -109,10 +109,10 @@ cloud-init has finished and SSH accepts the key.
 Clean up with `bin\hlab.exe project delete demo`, which deletes the
 server and the SSH key with the project, and `bin\hlab.exe cloud stop`.
 
-All `hlab` commands are in the [command reference](docs/user/commands.md),
-the settings in the [configuration reference](docs/user/configuration.md),
+All `hlab` commands are in the [command reference](docs/commands.md),
+the settings in the [configuration reference](docs/configuration.md),
 and the differences from the real API in
-[Known deviations](docs/user/deviations.md).
+[Known deviations](docs/development/api-coverage.md).
 
 ## The tray program
 
@@ -154,7 +154,7 @@ The sidebar leads to four views; the `?` button in each opens its help:
   the row menu removes an own type. **Update from Hetzner** does what
   `hlab catalog update` does with the Hetzner token you enter; the token
   is not stored. See
-  [Custom server types](docs/user/configuration.md#custom-server-types).
+  [Custom server types](docs/configuration.md#custom-server-types).
 - **Settings**: every key of `settings.toml`; each field says when a
   change applies. **Save settings** checks all fields first. The switch
   **Trust the hlab CA** and **Save CA certificate** do what
@@ -203,7 +203,7 @@ root@web1:~# curl http://169.254.169.254/hetzner/v1/metadata/hostname
 ```
 
 A cloud with too little free RAM or disk, beyond the reserve set in the
-[configuration](docs/user/configuration.md#settingstoml), refuses to
+[configuration](docs/configuration.md#settingstoml), refuses to
 create or start a server with `resource_unavailable`.
 
 ## Snapshots, backups and rescue
@@ -416,11 +416,11 @@ before.
 A zone named like a real domain hides that domain on your machine while
 the cloud runs. hlab checks this and `hlab cloud status` then shows a
 warning line for the zone; see the
-[command reference](docs/user/commands.md#hlab-cloud-status).
+[command reference](docs/commands.md#hlab-cloud-status).
 
 A secondary zone is accepted but not transferred: its names are looked up
 in the public DNS as before. The details are in
-[Known deviations](docs/user/deviations.md#zones).
+[Known deviations](docs/development/api-coverage.md#zones).
 
 ### Reverse DNS
 
@@ -460,7 +460,7 @@ sessions, the redirect from HTTP to HTTPS, health checks, private
 networks (`--network`, `--use-private-ip`), the PROXY protocol and
 `hcloud load-balancer metrics` work as at Hetzner. Each load balancer is
 an HAProxy instance in the appliance VM; the differences are in
-[Known deviations](docs/user/deviations.md#load-balancers).
+[Known deviations](docs/development/api-coverage.md#load-balancers).
 
 An HTTPS service takes uploaded or managed certificates. A managed
 certificate is issued at once when its domains lie in a DNS zone of the
@@ -605,7 +605,7 @@ servers shut down cleanly and the start boots those that were running.
 Servers that were off stay off. A Windows shutdown with a running cloud
 does the same through Hyper-V; after the reboot, start the cloud again.
 The details, also on changing the setting, are under
-[Stop behaviour](docs/user/configuration.md#stop-behaviour).
+[Stop behaviour](docs/configuration.md#stop-behaviour).
 
 When something goes wrong, `bin\hlab.exe logs` shows the end of the
 service's log, also while the cloud is stopped; `--follow` keeps
@@ -662,7 +662,7 @@ runs, before you remove the service.
   firewalls, DNS zones, load balancer types, load balancers and
   certificates. Every other endpoint answers `not_found`, and the server
   action `request_console` answers `unsupported_error`. The details are
-  in [Known deviations](docs/user/deviations.md).
+  in [Known deviations](docs/development/api-coverage.md).
 - The tray program has views for projects and tokens, server types,
   settings and logs only; manage the resources of a project with hcloud,
   OpenTofu or Ansible.

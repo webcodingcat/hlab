@@ -175,5 +175,5 @@ it has finished.
 
 When the resource behaves differently from Hetzner, add an entry to
 `api.Deviations()` in [internal/api/deviations.go](../../internal/api/deviations.go)
-and describe it in [docs/user/deviations.md](../user/deviations.md); the
+and describe it in [docs/development/api-coverage.md](api-coverage.md); the
 documentation test checks that every entry is listed there.

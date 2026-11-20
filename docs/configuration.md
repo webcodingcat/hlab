@@ -10,7 +10,7 @@ optional; a missing key keeps its default. Changes apply at the next
 `hlab cloud start`; `stop_behaviour` is also read again at
 `hlab cloud stop`.
 
-The Settings view of the [tray program](../../README.md#the-tray-program)
+The Settings view of the [tray program](../README.md#the-tray-program)
 edits the file too. It saves only when every value is valid, and while the
 cloud runs, a save applies `level` at once. `hlab ca trust` and the
 tray rewrite the file with all current settings, and comments in it are
@@ -47,7 +47,7 @@ log `%ProgramData%\hlab-dev\logs\hlabd.log`.
 | `[storage]` `data_folder` | `<data folder>\data` | Folder of the VM disks, seed ISOs, downloaded images and ISOs, snapshots, backups, volumes and the appliance; see [Data folder](#data-folder). |
 | `[resources]` `reserve_ram_mb` | `4096` | RAM in MB kept free for Windows. Creating, starting or changing the type of a server answers `resource_unavailable` when the server's RAM exceeds the host's free RAM minus this reserve. |
 | `[resources]` `reserve_disk_gb` | `50` | Disk space in GB kept free in the data folder. Creating, rebuilding or changing the type of a server, creating an image and creating or resizing a volume answer `resource_unavailable` when the disks of all servers and volumes, grown to their full size, would leave less than this free. |
-| `[certificates]` `trust_ca` | `false` | Whether the hlab CA, which signs managed certificates, is in the trust store of Windows and of the WSL2 distributions. Set it with [`hlab ca trust`](commands.md#hlab-ca-trust); while it is `true`, every cloud start adds the CA again. Read the [risk](../../README.md#trusting-the-hlab-ca) before you switch it on. |
+| `[certificates]` `trust_ca` | `false` | Whether the hlab CA, which signs managed certificates, is in the trust store of Windows and of the WSL2 distributions. Set it with [`hlab ca trust`](commands.md#hlab-ca-trust); while it is `true`, every cloud start adds the CA again. Read the [risk](../README.md#trusting-the-hlab-ca) before you switch it on. |
 | `[logging]` `level` | `"info"` | `"debug"`, `"info"`, `"warn"` or `"error"`: the level of `hlabd.log`; see [Log files](#log-files). |
 
 ### Stop behaviour
@@ -105,7 +105,7 @@ settings.toml (`%ProgramData%\hlab-dev\server-types.custom.json` for the
 development service). The cloud start creates it with an empty list `[]`
 when it is missing, with the permissions of settings.toml, so interactive
 users may edit it. The Server Types view of the
-[tray program](../../README.md#the-tray-program) adds and removes types in
+[tray program](../README.md#the-tray-program) adds and removes types in
 it; you can also edit it by hand.
 
 The file is a JSON array of server type objects in the format of
