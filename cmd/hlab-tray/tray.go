@@ -13,12 +13,11 @@ import (
 	"github.com/webcodingcat/hlab/internal/bridge"
 )
 
-// Labels of the tray menu items.
+// Labels of the fixed tray menu items; the cloud item's label comes from
+// bridge.TrayModel.
 const (
-	labelOpen  = "Open hlab"
-	labelStart = "Start cloud"
-	labelStop  = "Stop cloud"
-	labelQuit  = "Quit"
+	labelOpen = "Open HLab"
+	labelQuit = "Quit"
 )
 
 // errDisabled is returned for a click on a disabled menu item.
@@ -37,8 +36,7 @@ type trayUI struct {
 	systray *application.SystemTray
 	menu    *application.Menu
 	status  *application.MenuItem
-	start   *application.MenuItem
-	stop    *application.MenuItem
+	item    *application.MenuItem // the one cloud item: Start or Stop
 
 	updating sync.Mutex // one tray update at a time
 
@@ -54,7 +52,7 @@ var tray = &trayUI{}
 func (t *trayUI) setup(app *application.App, cloud *bridge.Cloud) {
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:      "main",
-		Title:     "hlab",
+		Title:     "HLab",
 		URL:       "/",
 		Width:     1200,
 		Height:    760,
@@ -72,18 +70,19 @@ func (t *trayUI) setup(app *application.App, cloud *bridge.Cloud) {
 	status := menu.Add(bridge.Tray(bridge.State{}).Status)
 	status.SetEnabled(false)
 	menu.AddSeparator()
-	item := func(label string) *application.MenuItem {
-		return menu.Add(label).OnClick(func(*application.Context) {
-			if err := t.click(label); err != nil && !errors.Is(err, errDisabled) {
+	onClick := func(label func() string) func(*application.Context) {
+		return func(*application.Context) {
+			if err := t.click(label()); err != nil && !errors.Is(err, errDisabled) {
 				t.fail(err)
 			}
-		})
+		}
 	}
-	item(labelOpen)
-	start := item(labelStart)
-	stop := item(labelStop)
+	fixed := func(label string) func() string { return func() string { return label } }
+	menu.Add(labelOpen).OnClick(onClick(fixed(labelOpen)))
+	item := menu.Add(bridge.Tray(bridge.State{}).CloudItem).
+		OnClick(onClick(func() string { return t.state().CloudItem }))
 	menu.AddSeparator()
-	item(labelQuit)
+	menu.Add(labelQuit).OnClick(onClick(fixed(labelQuit)))
 
 	systray := app.SystemTray.New()
 	systray.SetMenu(menu)
@@ -91,7 +90,7 @@ func (t *trayUI) setup(app *application.App, cloud *bridge.Cloud) {
 
 	t.mu.Lock()
 	t.app, t.window, t.cloud = app, window, cloud
-	t.systray, t.menu, t.status, t.start, t.stop = systray, menu, status, start, stop
+	t.systray, t.menu, t.status, t.item = systray, menu, status, item
 	t.mu.Unlock()
 	t.apply(cloud.Status(), false)
 }
@@ -120,8 +119,8 @@ func (t *trayUI) apply(s bridge.State, emit bool) {
 	}
 	t.systray.SetTooltip(m.Tooltip)
 	t.status.SetLabel(m.Status)
-	t.start.SetEnabled(m.CanStart)
-	t.stop.SetEnabled(m.CanStop)
+	t.item.SetLabel(m.CloudItem)
+	t.item.SetEnabled(m.CloudAction != "")
 	t.menu.Update()
 	if emit {
 		t.app.Event.Emit("cloud", s)
@@ -140,29 +139,28 @@ func (t *trayUI) state() bridge.TrayModel {
 	return t.model
 }
 
-// click runs the action of the menu item with label; a disabled item
-// returns errDisabled.
+// click runs the action of the menu item with label; for the cloud item
+// label is its current label. A disabled item returns errDisabled.
 func (t *trayUI) click(label string) error {
-	m := t.state()
 	switch label {
 	case labelOpen:
 		t.showWindow()
 		return nil
-	case labelStart:
-		if !m.CanStart {
-			return errDisabled
-		}
-		return t.cloud.Start(false)
-	case labelStop:
-		if !m.CanStop {
-			return errDisabled
-		}
-		return t.cloud.Stop()
 	case labelQuit:
 		t.quit()
 		return nil
 	}
-	return fmt.Errorf("no menu item %q", label)
+	m := t.state()
+	if label != m.CloudItem {
+		return fmt.Errorf("no menu item %q", label)
+	}
+	switch m.CloudAction {
+	case "start":
+		return t.cloud.Start(false)
+	case "stop":
+		return t.cloud.Stop()
+	}
+	return errDisabled
 }
 
 // showWindow shows, restores and focuses the window.
@@ -186,5 +184,5 @@ func (t *trayUI) quit() {
 
 // fail shows a failed menu action in a message box.
 func (t *trayUI) fail(err error) {
-	t.app.Dialog.Error().SetTitle("hlab").SetMessage(err.Error()).Show()
+	t.app.Dialog.Error().SetTitle("HLab").SetMessage(err.Error()).Show()
 }

@@ -17,7 +17,7 @@ var e2eOptions func(*application.Options)
 // shows and focuses the window of the first and exits.
 func appOptions(svc *bridge.Service, cloud *bridge.Cloud, logs *bridge.Logs) application.Options {
 	opts := application.Options{
-		Name:        "hlab",
+		Name:        "HLab",
 		Description: "Local Hetzner-compatible cloud",
 		Services: []application.Service{
 			application.NewService(svc),

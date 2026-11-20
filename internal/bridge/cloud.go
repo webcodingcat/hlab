@@ -48,9 +48,14 @@ type CloudDeps struct {
 type Cloud struct {
 	d CloudDeps
 
+	// notify orders recording a state and calling OnChange, so OnChange
+	// sees the states in the order they were recorded.
+	notify sync.Mutex
+
 	mu    sync.Mutex
 	state State
-	fails int // failed /status polls in a row while running
+	fails int    // failed /status polls in a row while running
+	gen   uint64 // counts Start and Stop; a poll begun before one is dropped
 }
 
 // NewCloud returns a Cloud; Run starts its poller.
@@ -82,22 +87,64 @@ func (c *Cloud) Status() State {
 }
 
 // Start asks the service manager to start the cloud; discard asks hlabd to
-// discard an incompatible state.
+// discard an incompatible state. Once the call is accepted the state is
+// "starting" at once.
 func (c *Cloud) Start(discard bool) error {
 	var params []string
 	if discard {
 		params = append(params, discardParam)
 	}
-	return c.d.Service.Start(context.Background(), params...)
+	if err := c.d.Service.Start(context.Background(), params...); err != nil {
+		return err
+	}
+	c.pending(sysint.StateStarting)
+	return nil
 }
 
-// Stop asks the service manager to stop the cloud.
+// Stop asks the service manager to stop the cloud. Once the call is
+// accepted the state is "stopping" at once.
 func (c *Cloud) Stop() error {
-	return c.d.Service.Stop(context.Background())
+	if err := c.d.Service.Stop(context.Background()); err != nil {
+		return err
+	}
+	c.pending(sysint.StateStopping)
+	return nil
+}
+
+// pending records state after an accepted Start or Stop and drops the
+// result of every poll begun before.
+func (c *Cloud) pending(state string) {
+	c.record(State{State: state, Problems: []cloudstatus.Problem{}}, 0, true, 0)
+}
+
+// record sets the state and the failed poll count and calls OnChange when
+// the state changed. A poll passes the generation it began with and is
+// dropped when a Start or Stop came in between; bump starts a new
+// generation.
+func (c *Cloud) record(next State, fails int, bump bool, gen uint64) {
+	c.notify.Lock()
+	defer c.notify.Unlock()
+	c.mu.Lock()
+	if bump {
+		c.gen++
+	} else if gen != c.gen {
+		c.mu.Unlock()
+		return
+	}
+	c.fails = fails
+	changed := !reflect.DeepEqual(c.state, next)
+	c.state = next
+	c.mu.Unlock()
+	if changed && c.d.OnChange != nil {
+		c.d.OnChange(next)
+	}
 }
 
 // poll reads the state once and records it.
 func (c *Cloud) poll(ctx context.Context) {
+	c.mu.Lock()
+	gen := c.gen
+	c.mu.Unlock()
 	scm, err := c.d.Service.State(ctx)
 	if err != nil {
 		return
@@ -131,14 +178,7 @@ func (c *Cloud) poll(ctx context.Context) {
 			}
 		}
 	}
-	c.mu.Lock()
-	c.fails = fails
-	changed := !reflect.DeepEqual(c.state, next)
-	c.state = next
-	c.mu.Unlock()
-	if changed && c.d.OnChange != nil {
-		c.d.OnChange(next)
-	}
+	c.record(next, fails, false, gen)
 }
 
 // statusAnswer is the part of GET /status the tray shows.
@@ -165,35 +205,50 @@ func (c *Cloud) status(ctx context.Context) (statusAnswer, bool) {
 
 // TrayModel is what the tray icon and its menu show.
 type TrayModel struct {
-	Icon     string `json:"icon"` // running|stopped|busy|error
-	Tooltip  string `json:"tooltip"`
-	Status   string `json:"status"` // menu status line
-	CanStart bool   `json:"can_start"`
-	CanStop  bool   `json:"can_stop"`
+	Icon        string `json:"icon"`         // running|stopped|busy|error
+	Tooltip     string `json:"tooltip"`      // "HLab: <status>"
+	Status      string `json:"status"`       // menu status line
+	CloudItem   string `json:"cloud_item"`   // label of the one cloud item
+	CloudAction string `json:"cloud_action"` // "start" | "stop" | "" (item disabled)
 }
 
-// Tray maps a state to icon, tooltip, menu status line and the enabled
-// Start and Stop items.
+// Labels of the tray menu's cloud item.
+const (
+	itemStart    = "Start cloud"
+	itemStop     = "Stop cloud"
+	itemStarting = "Starting cloud…"
+	itemStopping = "Stopping cloud…"
+	itemChecking = "Checking cloud…"
+)
+
+// Actions of the tray menu's cloud item.
+const (
+	actionStart = "start"
+	actionStop  = "stop"
+)
+
+// Tray maps a state to icon, tooltip, menu status line and the label and
+// action of the cloud item.
 func Tray(s State) TrayModel {
-	m := func(icon, status string, canStart, canStop bool) TrayModel {
-		return TrayModel{Icon: icon, Tooltip: "hlab: " + status, Status: status, CanStart: canStart, CanStop: canStop}
+	m := func(icon, status, item, action string) TrayModel {
+		return TrayModel{Icon: icon, Tooltip: "HLab: " + status, Status: status, CloudItem: item, CloudAction: action}
 	}
 	switch {
 	case s.State == sysint.StateRunning && s.ConnectionLost:
-		return m("error", "Connection to the cloud service lost", false, true)
+		return m("error", "Connection to the cloud service lost", itemStop, actionStop)
 	case s.State == sysint.StateRunning:
-		return m("running", "Cloud running", false, true)
+		return m("running", "Cloud running", itemStop, actionStop)
 	case s.State == sysint.StateStarting:
-		return m("busy", "Cloud starting", false, false)
+		return m("busy", "Cloud starting", itemStarting, "")
 	case s.State == sysint.StateStopping:
-		return m("busy", "Cloud stopping", false, false)
+		return m("busy", "Cloud stopping", itemStopping, "")
 	case s.State == "refused":
-		return m("error", "Cloud start refused", true, false)
+		return m("error", "Cloud start refused", itemStart, actionStart)
 	case s.State == sysint.StateStopped && s.Error != "":
-		return m("error", "Cloud stopped: start failed", true, false)
+		return m("error", "Cloud stopped: start failed", itemStart, actionStart)
 	case s.State == sysint.StateStopped:
-		return m("stopped", "Cloud stopped", true, false)
+		return m("stopped", "Cloud stopped", itemStart, actionStart)
 	default:
-		return m("busy", "Checking the cloud state", false, false)
+		return m("busy", "Checking the cloud state", itemChecking, "")
 	}
 }
