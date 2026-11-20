@@ -230,13 +230,13 @@ Svelte building blocks (props):
   - [x] views/servers/tabs/Backups.svelte (enable, disable, "Create backup", list with Restore and Delete, both confirmed), views/servers/tabs/Snapshots.svelte (create with description, list of this server's snapshots with Restore and Delete, confirmed).
   - [x] views/servers/tabs/Rescue.svelte (enable with SSH keys after confirmation, password in SecretDialog; disable), views/servers/tabs/Iso.svelte (attached ISO, attach from `/isos`, detach); ServerDetail.svelte adds the four tabs.
 
-- [ ] 11-11 Server tab: Graphs
+- [x] 11-11 Server tab: Graphs
   - Wave: 7 | Depends on: 11-10 | Review: alone
   - Requirements: UI-02 | Tests: - (metrics content is SRV-21)
   - Reads: OpenAPI `GET /servers/{id}/metrics` (type, start, end, step; `time_series`) in the reference; UI-SPEC "Colours", "Behaviour"
   - Size: ~260 lines in 3 files
-  - [ ] ui/frontend/src/lib/LineChart.svelte: SVG line chart of one or more series with time axis, value axis, legend and an accessible title.
-  - [ ] views/servers/tabs/Graphs.svelte: CPU, disk (IOPS, bandwidth) and network (PPS, bandwidth) for 1 h, 24 h, 7 d, reloaded every 30 s while visible; ServerDetail.svelte adds the tab.
+  - [x] ui/frontend/src/lib/LineChart.svelte: SVG line chart of one or more series with time axis, value axis, legend and an accessible title.
+  - [x] views/servers/tabs/Graphs.svelte: CPU, disk (IOPS, bandwidth) and network (PPS, bandwidth) for 1 h, 24 h, 7 d, reloaded every 30 s while visible; ServerDetail.svelte adds the tab.
 
 - [ ] 11-12 Documentation
   - Wave: 8 | Depends on: 11-06, 11-11 | Review: alone

@@ -2782,3 +2782,11 @@ in ARCHITECTURE.md or the plan.
 - What: "Disable backups" asks for a plain confirmation; the Backups and Snapshots tabs share `ImageTable.svelte`, snapshots are found by `created_from.id`, deprecated ISOs are not offered, and `runAction` accepts an empty 204 answer.
 - Why: disabling deletes every backup, which the user wants confirmed like deleting one; `bound_to` is set only on backups and HLab refuses deprecated ISOs.
 - Cost of change: low
+
+## 2026-11-20 Graphs tab offers 7 days over 24 hours of samples
+
+- Type: decision
+- Phase: phase 11
+- What: the Graphs tab loads all metric types in one request with the server's step and offers 1 h, 24 h and 7 d, with a muted note that hlabd keeps samples for 24 hours.
+- Why: UI-SPEC names the three ranges, and hlabd's retention is 24 hours.
+- Cost of change: low
