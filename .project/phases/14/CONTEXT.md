@@ -4,7 +4,7 @@ Confirmed at the start of phase 14. The planner's assumptions stand with these c
 
 ## Corrections
 
-- Volume create: without a server the form needs a Location (the API requires location or server); Location stands after Name and disappears once a server is chosen, then the server's location applies; mount option and filesystem as assumed.
+- Volume create: replaced by the change of 2026-11-20 "Volume create form like the Hetzner Console" (PLAN.md "Findings from manual testing", UI-SPEC.md "Views > Create per type"): Server is required, no Location field.
 - Images: converting a backup to a snapshot exists in HLab (`PUT /images/{id}` with `type: snapshot`); it is a fixed entry in a backup's actions menu, without confirmation.
 - Load balancer actions menu also holds Change type, Change algorithm, Enable/Disable public interface and Reverse DNS (`change_dns_ptr`); Disable public interface and Change type get a plain confirmation.
 - Firewall: apply to and remove from servers and label selectors (`apply_to_resources`/`remove_from_resources` with `label_selector`), in the apply tab and in the create form.

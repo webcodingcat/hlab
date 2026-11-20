@@ -338,6 +338,47 @@ shows all ISOs on one page (no paging).
     Administration), docs/guide.md (console sections, ISOs),
     docs/development/components.md (sidebar, section convention), the help
     texts of the moved and new views; regenerate the screenshots.
+- change (2026-11-20, /wcc:report during UI-09, then /wcc:change):
+  Create volume like the Hetzner Console's volume dialog. Build it on this
+  branch with the sidebar change, before UI-09 is checked, as one more
+  plan after 14-25 onward.
+  - What the user did: opened Create volume in the console and compared it
+    with the Hetzner Console. hlab shows size as a plain number input,
+    then Name, a Location select (preselected), an optional Server ("No
+    server"); Mount and Filesystem appear only after a server is chosen,
+    so the user did not find them.
+  - Reference screenshot of the user (Hetzner Console "Volume erstellen",
+    dark): hexagon volume icon at the top left; at the right a large
+    number field "10" with stacked + / − buttons and "GB" beside it; a
+    full-width slider below with "10 GB" at the left end and "1.024 GB" at
+    the right end; field "Name *" prefilled "volume-1" with a clear ×;
+    required select "Server wählen *" with an info icon line "the volume
+    is bound to the location of the server"; "Mount-Optionen wählen:" with
+    a segmented control Automatisch | Manuell and the line "your volume is
+    formatted automatically and mounted on your server"; "Dateisystem
+    wählen:" with inline radios EXT4 (selected) and XFS; price and the
+    buttons Cancel / Create at the bottom.
+  - Expected (UI-SPEC.md "Views > Create per type", Create volume): size
+    field with +/− stepper (1 GB) and a slider over the full range 10 to
+    10240 GB of VOL-01 (not Hetzner's 1024), bound to one value; Name
+    (prefill "volume-1" only if trivial, otherwise empty); Server
+    required, no Location field, hint "The volume is bound to the server's
+    location."; Mount options as a segmented control Automatic | Manual
+    with a one-line explanation, default Automatic; Filesystem inline
+    radios ext4 / xfs, default ext4; both always visible; Labels; no
+    price. The request always sends `server`, `automount` and `format`;
+    the API keeps accepting `location` without a server (VOL-01
+    unchanged). With no server in the project the select is empty and
+    submit shows the required-field error under Server.
+  - Requirements: UI-02, UI-09. Code: ui/frontend/src/views/volumes/VolumeCreate.svelte,
+    ui/frontend/src/lib/resources/volumes.ts.
+  - Tests: tests/unit/volumes.test.ts keeps its rows; the console form row
+    uses a server. Adjusts: tests/e2e/volumes.spec.ts, which creates a
+    volume without a booted server (CONTEXT Q1): it now needs a server in
+    the shared project, created through the API in the spec setup (what it
+    uses, not what it checks).
+  - Documentation: help/volumes.md, docs/guide.md (volumes in the
+    console), README screenshots if the volume form is among them.
 
 ## Close
 

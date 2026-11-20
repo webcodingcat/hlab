@@ -27,6 +27,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 Volume create form like the Hetzner Console
+
+- Type: change
+- Phase: change
+- What: the console's Create volume form has a size field with +/− stepper and a slider over 10 to 10240 GB, a required Server instead of a Location (volumes without a server only through API, hcloud and CLI), and always visible Mount options (segmented Automatic | Manual) and Filesystem (ext4 / xfs).
+- Why: in the manual check of UI-09 the user compared the form with the Hetzner Console's volume dialog and did not find mount and filesystem behind the optional server.
+- Cost of change: low
+
 ## 2026-11-20 Console sidebar in groups with section tabs, own ISOs in the Administration
 
 - Type: change

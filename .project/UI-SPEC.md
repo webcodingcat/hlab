@@ -118,6 +118,18 @@ everywhere.
 - Create per type: one form page following the Hetzner Console's order
   (servers: location, image, type, networking, SSH keys, volumes,
   firewalls, backups, placement group, labels, cloud config, name).
+  Create volume follows the Hetzner Console's volume dialog: at the top a
+  volume icon on the left and a large size field with + and − stepper
+  buttons (1 GB steps) and the unit "GB" on the right; below it a
+  full-width slider from 10 to 10240 GB, its ends labelled "10 GB" and
+  "10,240 GB", bound to the same value as the field; then Name; then a
+  required Server select with the hint "The volume is bound to the
+  server's location." (the form has no Location field; a volume without
+  a server is created through the API, hcloud or the CLI); then "Mount
+  options" as a segmented control Automatic | Manual (default Automatic)
+  with one line explaining the chosen option, and "Filesystem" as inline
+  radios ext4 / xfs (default ext4), both always visible; then Labels. No
+  price line.
 - Resource detail per type: detail page with the tabs that type supports.
 - Projects: the project list follows the Hetzner Console's project
   overview. Toolbar: search field (display name or name), sort menu
