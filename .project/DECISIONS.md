@@ -82,7 +82,7 @@ in ARCHITECTURE.md or the plan.
 
 - Type: decision
 - Phase: phase 10
-- What: new CAs get the CN "HLab CA" (existing CA files are kept); `hlab version` text reads "HLab <version>"; the `hlab:` prefix, usage lines, `hlab <command>` mentions and `/hlab/v1/ca.crl` stay lowercase.
+- What: new CAs get the CN "HLab CA" (dev profile "HLab-dev CA"; existing CA files are kept); the Windows service display names are "HLab" and "HLab (dev)"; `hlab version` text reads "HLab <version>"; the `hlab:` prefix, usage lines, `hlab <command>` mentions and `/hlab/v1/ca.crl` stay lowercase.
 - Why: command, path and file names stay as they are.
 - Cost of change: low
 

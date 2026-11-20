@@ -443,15 +443,15 @@ Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes
   - [ ] ui/frontend/src/views.json `["projects","tokens","server-types","settings","logs"]`; src/state.ts (`views` built from views.json with title and area, `Route`, `route` from the hash, `href`, `lastProject` in localStorage `hlab.project`; at startup an empty hash opens `lastProject`'s console when `GET /projects` lists it, else the list; unknown routes fall back to `#/projects`); src/help.ts `ViewId`; src/help/tokens.md (short; the documentation plan completes it).
   - [ ] src/lib/TopBar.svelte (app icon from src/assets/app-icon.svg and "HLab" linking to `#/projects`, breadcrumb slot, status pill, Start/Stop button, icon button "Administration" linking to `#/admin/server-types`), src/lib/SectionSidebar.svelte, src/App.svelte (areas: project list full width, project area renders the existing Projects/ProjectDetail until 10-29, admin area with SectionSidebar Server Types, Settings, Logs and breadcrumb "Administration"); remove src/lib/Sidebar.svelte and the project switcher.
 
-- [ ] 10-22 Name HLab in CLI, cloud and host messages
+- [x] 10-22 Name HLab in CLI, cloud and host messages
   - Wave: 4 | Depends on: 10-21 | Review: alone
   - Requirements: UI-08 | Tests: - (wording; tests comparing it follow)
   - Reads: UI-SPEC "Language of the interface"; finding 2
   - Size: ~60 lines in 10 files
   - Adjusts: tests that compare a renamed message (internal/cli/cli_test.go, internal/hostnet/windows tests, internal/cloud tests, internal/ca/ca_test.go where they use the CA name constant)
-  - [ ] internal/cli/cli.go: "HLab CA written to …", "the HLab CA is (no longer) trusted on this host", `hlab version` text output "HLab <version>" (JSON unchanged); usage lines, flag messages naming `hlab <command>` and the `hlab:` error prefix stay (command name).
-  - [ ] internal/cloud/ca.go (new CAs get CN "HLab CA"; an existing CA file is kept), lifecycle.go ("readable HLab state", "newer HLab version"), internal/store/store.go ("newer HLab version").
-  - [ ] internal/hostnet/windows/hostnet.go ("the HLab cloud of profile …"), wsl.go ("which HLab does not support", "resolve HLab names"), internal/settings/settings.go ("which HLab cannot use").
+  - [x] internal/cli/cli.go: "HLab CA written to …", "the HLab CA is (no longer) trusted on this host", `hlab version` text output "HLab <version>" (JSON unchanged); usage lines, flag messages naming `hlab <command>` and the `hlab:` error prefix stay (command name).
+  - [x] internal/cloud/ca.go (new CAs get CN "HLab CA"; an existing CA file is kept), lifecycle.go ("readable HLab state", "newer HLab version"), internal/store/store.go ("newer HLab version").
+  - [x] internal/hostnet/windows/hostnet.go ("the HLab cloud of profile …"), wsl.go ("which HLab does not support", "resolve HLab names"), internal/settings/settings.go ("which HLab cannot use").
 
 - [ ] 10-29 Project list and project console
   - Wave: 5 | Depends on: 10-28 | Review: alone
