@@ -25,26 +25,26 @@ func TestDocs(t *testing.T) {
 	root := repoRoot(t)
 
 	t.Run("DOC-01", func(t *testing.T) {
-		doc := readFile(t, filepath.Join(root, "docs", "user", "commands.md"))
+		doc := readFile(t, filepath.Join(root, "docs", "commands.md"))
 		cmds := cli.Commands()
 		if len(cmds) == 0 {
 			t.Fatal("cli.Commands() lists no command")
 		}
 		for _, c := range cmds {
 			if !strings.Contains(doc, "hlab "+c.Path) {
-				t.Errorf("command %q is not described in docs/user/commands.md", "hlab "+c.Path)
+				t.Errorf("command %q is not described in docs/commands.md", "hlab "+c.Path)
 			}
 			for _, f := range c.Flags {
 				flag := "--" + strings.TrimLeft(f, "-")
 				if !containsWord(doc, flag) {
-					t.Errorf("flag %s of %q is not described in docs/user/commands.md", flag, "hlab "+c.Path)
+					t.Errorf("flag %s of %q is not described in docs/commands.md", flag, "hlab "+c.Path)
 				}
 			}
 		}
 	})
 
 	t.Run("DOC-02", func(t *testing.T) {
-		doc := readFile(t, filepath.Join(root, "docs", "user", "configuration.md"))
+		doc := readFile(t, filepath.Join(root, "docs", "configuration.md"))
 		keys := tomlKeys(reflect.TypeFor[settings.Settings](), "")
 		if len(keys) == 0 {
 			t.Fatal("settings.Settings has no toml keys")
@@ -52,7 +52,7 @@ func TestDocs(t *testing.T) {
 		for _, k := range keys {
 			name := k[strings.LastIndex(k, ".")+1:]
 			if !containsWord(doc, name) {
-				t.Errorf("settings.toml key %q is not described in docs/user/configuration.md", k)
+				t.Errorf("settings.toml key %q is not described in docs/configuration.md", k)
 			}
 		}
 		files := []string{"server-types.custom.json"}
@@ -65,16 +65,24 @@ func TestDocs(t *testing.T) {
 		}
 		for _, f := range files {
 			if !strings.Contains(doc, f) {
-				t.Errorf("file %s is not named in docs/user/configuration.md", f)
+				t.Errorf("file %s is not named in docs/configuration.md", f)
 			}
 		}
 	})
 
 	t.Run("DOC-03", func(t *testing.T) {
-		doc := readFile(t, filepath.Join(root, "docs", "user", "deviations.md"))
-		for _, d := range api.Deviations() {
-			if !strings.Contains(doc, d.Endpoint) {
-				t.Errorf("deviation %q (%s) is not listed in docs/user/deviations.md", d.Endpoint, d.Description)
+		coverage := readFile(t, filepath.Join(root, "docs", "development", "api-coverage.md"))
+		users := readFile(t, filepath.Join(root, "docs", "deviations.md"))
+		devs := api.Deviations()
+		if len(devs) == 0 {
+			t.Fatal("api.Deviations() lists nothing")
+		}
+		for _, d := range devs {
+			if !strings.Contains(coverage, d.Endpoint) {
+				t.Errorf("deviation %q (%s) is not listed in docs/development/api-coverage.md", d.Endpoint, d.Description)
+			}
+			if strings.Contains(users, d.Endpoint) {
+				t.Errorf("docs/deviations.md names the endpoint %q; it describes deviations by topic without routes", d.Endpoint)
 			}
 		}
 	})
@@ -120,14 +128,14 @@ func TestDocs(t *testing.T) {
 
 	t.Run("DOC-06", func(t *testing.T) {
 		tasks := taskfileTasks(t, filepath.Join(root, "Taskfile.yml"))
-		guides, _ := filepath.Glob(filepath.Join(root, "docs", "dev", "*.md"))
+		guides, _ := filepath.Glob(filepath.Join(root, "docs", "development", "*.md"))
 		if len(guides) == 0 {
-			t.Fatal("no developer guide in docs/dev/")
+			t.Fatal("no developer guide in docs/development/")
 		}
 		for _, g := range guides {
 			for _, name := range taskCommands(readFile(t, g)) {
 				if !tasks[name] {
-					t.Errorf("docs/dev/%s: `task %s` is not a task in Taskfile.yml", filepath.Base(g), name)
+					t.Errorf("docs/development/%s: `task %s` is not a task in Taskfile.yml", filepath.Base(g), name)
 				}
 			}
 		}

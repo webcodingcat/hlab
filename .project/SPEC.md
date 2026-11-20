@@ -25,6 +25,8 @@ Versions as of 2026-11-18 (reasoning and sources in DECISIONS.md, "Stack").
 - Tray: Wails v3.1.0 (pinned exactly), Svelte 5.58.0, Vite 8.3.8, TypeScript
   5.9.3 (the 7.x line is not yet confirmed with `svelte-check`),
   `@lucide/svelte` 1.75.0, Node.js 24.22.3 LTS for the frontend build (newer Node versions work for development).
+- Windows icon resources: `github.com/tc-hib/winres` v0.3.1 (0BSD) in the
+  icon generator `tools/icons`, which writes the committed `.syso` files.
 - Appliance: Debian 13 `generic` cloud image, cloud-init, nftables,
   HAProxy 3.0 (Debian package), iproute2 (VRF, VLAN, netns), xfsprogs,
   e2fsprogs; hlab-agent as one static Go binary.
@@ -50,9 +52,9 @@ Fixed API answers:
 
 - `POST /servers/{id}/actions/request_console`: error code
   `unsupported_error` with the HTTP status Hetzner documents for it, message
-  `server console is not supported by hlab yet`.
+  `server console is not supported by HLab yet`.
 - Subnet `type: vswitch`: `invalid_input`, field `type`, message
-  `vswitch subnets are not supported by hlab`.
+  `vswitch subnets are not supported by HLab`.
 - `/datacenters`: as at Hetzner since 2026-10-01 (410 Gone, per the frozen
   description).
 
@@ -175,19 +177,30 @@ REQUIREMENTS.md. The `doc-writer` runs the examples it writes against the
 dev cloud through the hcloud context `hlab-docs` (see "Accounts and
 secrets").
 
-- D1 User guide: `README.md`, for developers testing Hetzner setups;
-  installation, first steps (project, token, client endpoint settings for
-  hcloud, OpenTofu and Ansible), tray program, WSL2 prerequisites,
-  uninstallation.
-- D2 Command reference: `docs/user/commands.md`, every `hlab` command and
+- D1 User guide: `README.md`, for developers testing Hetzner setups,
+  compact: a banner with the application icon, "HLab" and a subtitle,
+  badges and a link line; what HLab is; screenshots; prerequisites;
+  installation; first steps (project, token, client endpoint settings for
+  hcloud, OpenTofu and Ansible); tray program; WSL2 prerequisites;
+  uninstallation; links to the other documents. The detailed usage per
+  resource lives in `docs/guide.md`. Images live in `docs/images/`;
+  screenshots of the console are generated from the running tray
+  program, in light and dark mode.
+- D2 Command reference: `docs/commands.md`, every `hlab` command and
   flag with an example.
-- D3 Configuration reference: `docs/user/configuration.md`, every key of
+- D3 Configuration reference: `docs/configuration.md`, every key of
   `settings.toml`, the custom server types file and the catalog files.
-- D4 Known deviations from Hetzner: `docs/user/deviations.md`, every
-  endpoint or behaviour that differs, and every `unsupported_error`.
+- D4 Known deviations from Hetzner: `docs/deviations.md`, for users: short
+  prose grouped by topic (servers, images and backups, volumes, networks
+  and IPs, firewalls, DNS, load balancers and certificates, projects and
+  server types, WSL2), saying what a user notices and what is not
+  available, without routes or endpoint lists; about 150 lines at most.
 - D5 Help inside the program: one help text per tray view in
   `ui/frontend/src/help/<view>.md`, shown by the help button.
-- D6 Developer guide: `docs/dev/`, for outside contributors: `setup.md`
+- D6 Developer guide: `docs/development/`, for outside contributors: `setup.md`
   (tools, `dev-setup.ps1`), `build-and-test.md` (Taskfile targets, unit,
   e2e, elevated suite), `components.md` (overview linking to the code),
-  `adding-a-resource.md` (a new resource module step by step).
+  `adding-a-resource.md` (a new resource module step by step),
+  `api-coverage.md` (every endpoint hlab serves, every endpoint or
+  behaviour that differs from Hetzner with its route, and every
+  `unsupported_error`).

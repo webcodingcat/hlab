@@ -7,18 +7,18 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 10 Tray program: shell, status, settings, server types, projects, logs
+- Phase: B2 Backlog: VLAN release at project deletion, LB health check, docs and e2e test fixes (not started)
 - Base branch: main
-- Last done: phase 09 merged into main (2026-11-19): servers saved or shut down at cloud stop and restored at start, configurable public range, incompatible state refused with `--discard-state`, rotated logs with `hlab logs`, LB IPv6 prefix 0xA0000000 (Q14)
-- Next: /wcc:phase in a new session (phase 10)
+- Last done: phase 10 merged into main (2026-11-20): tray program with HLab shell, cloud start/stop, settings, server types (add, edit, remove), projects with tokens, logs with search; UI-08 checked
+- Next: /wcc:phase for B2 in a new session; DOC-07 (01) waits until the repository is on GitHub
 
 ## Open manual checks
 
 <!-- Requirements verified as "manual" that the user still has to look at,
      one line each: "- UI-04 (03): <requirement>". The guide is in
-     phases/<id>/CHECKS.md. /wcc:feedback walks through them. -->
+     phases/<id>/CHECKS.md. /wcc:report walks through them. -->
 
-- DOC-07 (01): README and guides are understandable for their audience
+- DOC-07 (01): README and guides are understandable for their audience, help texts name only existing views and buttons
 - LIFE-05 (09): a Windows shutdown or restart with the cloud running applies the stop behaviour
 
 ## Open decisions

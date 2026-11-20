@@ -22,6 +22,214 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 Screenshot tool and tray launcher
+
+- Type: decision
+- Phase: phase 10
+- What: `task docs:screenshots` (tools/screenshots + Playwright project `screenshots`) creates only missing `demo-*` projects and the "ci" token and removes only what it created; `test/traylaunch` offers `Build`, `Start(ctx, exe, webviewDir)` and a tray log; the viewport is reset with CDP `Emulation.clearDeviceMetricsOverride`.
+- Why: never touch the user's projects or show a token value; Playwright cannot reset a viewport set over CDP.
+- Cost of change: low
+
+## 2026-11-20 Server Types dialogs
+
+- Type: decision
+- Phase: phase 10
+- What: the shared `lib/Dialog.svelte` (open, title, onclose, children) holds the token and add forms with Cancel inside the content; `toast.ts` gets `showSuccess`; "All locations" keeps the other boxes' state while disabling them, and the browser checks "at least one location" before the call.
+- Why: the update error stays under the field, so the existing `action()` toast helper does not fit.
+- Cost of change: low
+
+## 2026-11-20 Own server types share one check
+
+- Type: decision
+- Phase: phase 10 (10-38)
+- What: `AddOwn` and `UpdateOwn` build and check the server type object through one internal helper `ownObject`; `UpdateOwn` treats an empty or non-own name like an unknown one (`fs.ErrNotExist`).
+- Why: one place for the field checks; catalog types are never in the own types file.
+- Cost of change: low
+
+## 2026-11-20 Q17 own server types are editable
+
+- Type: change
+- Phase: feedback
+- What: Q17 answered with option 1: own server types get "Edit" in the row menu, opening the add form filled in with the name read-only, saved through a new bridge method `UpdateServerType` into the own types file (UI-04, UI-SPEC "Views", ARCHITECTURE tray bridge); built as a findings plan of phase 10.
+- Why: user's wish in the UI-08 check: changing an own type should not need removing and adding it again.
+- Cost of change: low
+
+## 2026-11-20 Q16 no second window; gear toggles Administration
+
+- Type: change
+- Phase: feedback
+- What: Q16 answered with option 3, the tray program keeps one window; the gear becomes a toggle (a second click closes Administration and returns to the page shown before, the project list when there was none), and the logo keeps leading to the project list (UI-SPEC "Views"); the home icon recorded earlier the same day is dropped.
+- Why: user's decision in the UI-08 check: no intuitive way back from Administration, and separate windows are not wanted.
+- Cost of change: low
+
+## 2026-11-20 Project console building blocks
+
+- Type: decision
+- Phase: phase 10
+- What: the breadcrumb project menu is `lib/ProjectMenu.svelte` in the top bar; "Start the cloud to manage projects" is the shared `lib/CloudStopped.svelte`, shown inside Tokens so the h1 "API tokens" stays; ProjectDetail becomes `views/Tokens.svelte` with the table heading "Tokens".
+- Why: the top bar is rendered by App, and the stopped state looks the same on the list and in the console.
+- Cost of change: low
+
+## 2026-11-20 Shell start route and last project
+
+- Type: decision
+- Phase: phase 10
+- What: an empty hash shows the project list and switches to the last project's console once `GET /projects` lists it (the list stays when the cloud is stopped); unknown hashes fall back to `#/projects`; `lastProject` is set whenever a project route opens.
+- Why: Q3 of the findings fixes (open the last project's console if it still exists) without a blank start page.
+- Cost of change: low
+
+## 2026-11-20 E2E rows of a plan run after its merge
+
+- Type: decision
+- Phase: phase 10
+- What: plans implement in their own worktree, but their e2e rows run in the main checkout on the phase branch after the merge, one run at a time; the tray's e2e click acts only on the item's current label.
+- Why: the dev service `hlab-dev` runs the main checkout's `bin\hlabd.exe`, and the harness refuses other working copies.
+- Cost of change: low
+
+## 2026-11-20 winres raises indirect modules
+
+- Type: decision
+- Phase: phase 10
+- What: adding `github.com/tc-hib/winres` v0.3.1 brings the indirect modules `github.com/nfnt/resize` and `golang.org/x/image` v0.45.0; ICO files are encoded by `tools/icons` itself, winres only builds the `.syso`, and group 32512 shares the image data of group 3.
+- Why: required by winres; no pinned module of SPEC.md changes.
+- Cost of change: low
+
+## 2026-11-20 Phase 10 findings: screenshot sample projects
+
+- Type: decision
+- Phase: phase 10
+- What: the README screenshots use throwaway projects `demo-web`, `demo-staging`, `demo-ci`, filtered by the search `demo-`; only projects the tool created are deleted.
+- Why: the list search is a name substring filter, so only a shared prefix shows exactly these.
+- Cost of change: low
+
+## 2026-11-20 Phase 10 findings: shared tray launcher
+
+- Type: decision
+- Phase: phase 10
+- What: tray start and stop move from test/e2e/ui_test.go into package test/traylaunch, used by the UI e2e tests and tools/screenshots.
+- Why: shared helpers are used, not copied.
+- Cost of change: low
+
+## 2026-11-20 Phase 10 findings: log search and older lines
+
+- Type: decision
+- Phase: phase 10
+- What: search matches level, msg and key=value fields (raw text for non-JSON lines), the level filter runs in the service before the 1000 cap; "Load older lines" finds the oldest shown line by its text from the end each time, without a cursor, and older lines are outside the view's 5000-line cap.
+- Why: survives rotation and the switch between stream and files with no state in the bridge.
+- Cost of change: low
+
+## 2026-11-20 Phase 10 findings: tray cloud item and pending state
+
+- Type: decision
+- Phase: phase 10
+- What: `TrayModel` replaces `CanStart`/`CanStop` with `CloudItem`/`CloudAction`; a poll generation counter keeps a poll begun before Start/Stop from overwriting "starting"/"stopping".
+- Why: one item, and window and tray agree without a gap.
+- Cost of change: low
+
+## 2026-11-20 Phase 10 findings: one icon geometry
+
+- Type: decision
+- Phase: phase 10
+- What: `tools/icons` writes the app icon, the tray state icons, the `.syso` files, `ui/frontend/src/assets/app-icon.svg` and `docs/images/banner.svg`; its `debug/pe` check is a unit row under UI-01.
+- Why: all artwork from one geometry; UI-08 is manual and cannot carry a row.
+- Cost of change: low
+
+## 2026-11-20 Phase 10 findings: product name in messages
+
+- Type: decision
+- Phase: phase 10
+- What: new CAs get the CN "HLab CA" (dev profile "HLab-dev CA"; existing CA files are kept); the Windows service display names are "HLab" and "HLab (dev)"; `hlab version` text reads "HLab <version>"; the `hlab:` prefix, usage lines, `hlab <command>` mentions and `/hlab/v1/ca.crl` stay lowercase.
+- Why: command, path and file names stay as they are.
+- Cost of change: low
+
+## 2026-11-20 Phase 10 findings: catalog locations
+
+- Type: decision
+- Phase: phase 10
+- What: `catalog.Location` gets a `City` field from the shipped location objects; "Update from Hetzner" stays enabled only while the cloud runs.
+- Why: the form labels "<name> (<city>)"; the update goes through hlabd.
+- Cost of change: low
+
+## 2026-11-20 Windows icon resources with winres
+
+- Type: change
+- Phase: phase 10
+- What: the icon generator `tools/icons` writes the `.syso` icon resources (group ID 3 and 32512) with `github.com/tc-hib/winres` v0.3.1 (0BSD); SPEC "Stack" names it.
+- Why: user's answer at the start of the phase 10 findings fixes; the standard library has no resource writer and Wails uses the same package.
+- Cost of change: low
+
+## 2026-11-20 Upgrade to wcc 0.32.13
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.32.12 to 0.32.13: `/wcc:feedback` renamed to `/wcc:report` in STATUS.md and ROADMAP.md.
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
+
+## 2026-11-20 Q15 DOC-05 views from views.json
+
+- Type: change
+- Phase: change
+- What: Q15 answered with option 2: the app takes its view list from views.json so the DOC-05 unit test covers the real views, and the clause that help texts name only existing views and buttons becomes a manual check under DOC-07.
+- Why: the test cannot see buttons without reading Svelte source, and one source for the views closes the gap a test can close.
+- Cost of change: low
+
+## 2026-11-20 Backlog phase B2
+
+- Type: change
+- Phase: change
+- What: the user took the VLAN release at project deletion (security), the two e2e harness bugs (RDNS-02 423 locked, cloud stop before build only when running) the DOC-03 route check and the load balancer https health check into phase B2 before phase 11.
+- Why: the user's choice from the backlog.
+- Cost of change: low
+
+## 2026-11-20 Documentation folders
+
+- Type: change
+- Phase: feedback
+- What: user documentation lives directly in `docs/` (commands.md, configuration.md, deviations.md) and the developer guide in `docs/development/`, replacing `docs/user/` and `docs/dev/`; `docs/deviations.md` becomes short prose for users without routes, the full route list moves to `docs/development/api-coverage.md`, which DOC-03 checks; README.md becomes compact with a banner, badges and generated light/dark screenshots, its per-resource sections move to `docs/guide.md`.
+- Why: the user's wish during the manual check of DOC-07.
+- Cost of change: low
+
+## 2026-11-20 Hetzner token in a dialog
+
+- Type: change
+- Phase: feedback
+- What: "Update from Hetzner" opens a dialog that asks for the Hetzner token instead of a token field on the Server Types page; the add form for own types chooses locations from a checkbox list of the catalog locations with "All locations" checked by default.
+- Why: the user expected the token to be asked for only when the update is started.
+- Cost of change: low
+
+## 2026-11-20 Log search and older lines
+
+- Type: change
+- Phase: feedback
+- What: the Logs view gets a search over hlabd.log and all rotated files (matches newest first, at most 1000, highlighted) and a "Load older lines" button that pages back 1000 lines at a time across rotated files.
+- Why: in the manual check of UI-08 the user missed searching the log and seeing lines older than the last 1000.
+- Cost of change: low
+
+## 2026-11-20 Console shell like the Hetzner Cloud Console
+
+- Type: change
+- Phase: feedback
+- What: the window has a top bar (HLab, breadcrumb, status, Start/Stop, gear), a project list as start page, a project console per project with a sidebar of its sections (phase 10: API tokens; phase 11 adds the resource sections) and a breadcrumb project switcher, and an Administration area behind the gear with Server Types, Settings and Logs; the sidebar project switcher goes.
+- Why: in the manual check of UI-08 one sidebar mixed the project switcher, Projects and the administration views, which the user found confusing.
+- Cost of change: low
+
+## 2026-11-19 One Start/Stop item in the tray menu
+
+- Type: change
+- Phase: feedback
+- What: the tray menu has one cloud item whose label and action follow the cloud state ("Start cloud", "Stop cloud", disabled "Starting cloud…", "Stopping cloud…", "Checking cloud…") instead of two items; the tray icon is the application icon with a status dot in the lower-right corner in the UI-SPEC role colours.
+- Why: the user's manual check of UI-08 found two items of which one is always greyed out.
+- Cost of change: low
+
+## 2026-11-19 Product name HLab and an app icon
+
+- Type: change
+- Phase: feedback
+- What: the product is named "HLab" in every user-facing text (window, tray, UI, help, API and CLI messages, docs prose) while program, command, service, file and module names stay lowercase; the tray program gets an application icon for window, taskbar and EXE.
+- Why: the user's manual check of UI-08 found the lowercase name and the missing window icon.
+- Cost of change: low
+
 ## 2026-11-18 Server public_net carries primary IP IDs
 
 - Type: decision
@@ -2311,4 +2519,92 @@ in ARCHITECTURE.md or the plan.
 - Phase: phase 09
 - What: `logfile.Tail` follows by polling with a test-shortenable interval and never splits a rotated line; the 60 s halt wait is `servers.Deps.HaltTimeout`; the `range_collision` logic moves into exported `RangeCollisions` in hostnet/windows; e2e LIFE rows share one stop/start cycle per stop behaviour; at a Windows shutdown the jobs are cancelled first and `Halt` changes no VM or status.
 - Why: each keeps the behaviour testable at the cheapest level without new components.
+- Cost of change: low
+
+## 2026-11-19 Server Types view shows the catalog while the cloud is stopped
+
+- Type: decision
+- Phase: phase 10
+- What: the Server Types view lists catalog and own types, merged and checked by the same Go package hlabd uses, also while the cloud is stopped; UI-SPEC.md changed from "own types only".
+- Why: the view must match what clients see, and the merge needs no running service.
+- Cost of change: low
+
+## 2026-11-19 Deleting a project needs its name typed
+
+- Type: decision
+- Phase: phase 10
+- What: the confirm dialog for deleting a project requires typing the project name, like servers, volumes, networks and zones; UI-SPEC.md lists projects there.
+- Why: deleting a project deletes all its resources.
+- Cost of change: low
+
+## 2026-11-19 Existing servers outlive a removed own server type
+
+- Type: decision
+- Phase: phase 10
+- What: power on, rebuild and the reconcile at cloud start take cores, memory and disk from the server's stored `server_type` copy when the type is no longer in the catalog; create and change_type still need the catalog.
+- Why: an own type may be removed while servers use it, as Hetzner keeps deprecated types valid for existing servers.
+- Cost of change: low
+
+## 2026-11-19 Tray writes server-types.custom.json directly
+
+- Type: decision
+- Phase: phase 10
+- What: hlabd creates `server-types.custom.json` (`[]`) at start when missing, with the settings.toml ACL (Interactive Users modify); the tray validates with the hlabd package, writes it directly and calls `POST /mgmt/v1/settings/reload` while the cloud runs.
+- Why: keeps ARCHITECTURE's "writer: tray" and works with the cloud stopped, without broader folder rights.
+- Cost of change: medium
+
+## 2026-11-19 Tray settings writes
+
+- Type: decision
+- Phase: phase 10
+- What: the tray validates settings with the `settings` package and writes settings.toml in one write in place; before saving it rereads the file and keeps `trust_ca` from the file, which `PUT /trust` owns.
+- Why: Interactive Users cannot create files in the config folder, and the form must not overwrite the trust switch.
+- Cost of change: low
+
+## 2026-11-19 Tray quit and tray state in e2e
+
+- Type: decision
+- Phase: phase 10
+- What: "Quit" ends only the tray, without a question; the e2e build (tag `e2e`) exposes the tray state (icon key, tooltip, menu items with enabled state) through a bridge method, and UI-01 drives start/stop through the menu handlers of the same controller.
+- Why: the cloud is a Windows service; Playwright cannot reach the notification area, the real icon is judged in UI-08, and no debug access exists in release builds.
+- Cost of change: low
+
+## 2026-11-19 Tray connection banner and log stream reconnect
+
+- Type: decision
+- Phase: phase 10
+- What: "connection to the service lost" shows only after three failed `/mgmt/v1/status` polls (about 6 s) while the SCM reports running and clears by itself; a broken log follow reconnects at the poll interval and continues after the last shown line, switching to the files while the cloud is stopped.
+- Why: single hiccups must not alarm, and the log view must not duplicate or lose lines.
+- Cost of change: low
+
+## 2026-11-19 Tray build and bridge shape
+
+- Type: decision
+- Phase: phase 10
+- What: package `ui` embeds `frontend/dist` with a committed placeholder file so Go builds without a frontend build; the bridge is three Wails services without a Wails import, `Call` takes and returns strings in a `Response` struct, the frontend uses `Call.ByName` without generated bindings, views switch by `location.hash`, log lines go out in 100 ms batches.
+- Why: Wails sends `[]byte` as base64 and tuples as arrays, has no history routing and blocks on each event; fast bridge tests need no Wails (phase 10 research).
+- Cost of change: low
+
+## 2026-11-19 Tray settings reload and log followers
+
+- Type: decision
+- Phase: phase 10
+- What: `POST /mgmt/v1/settings/reload` applies `logging.level` and the own server types; stop_behaviour is re-read at stop, public_range, data_folder and the reserves apply at the next start and the form says so; log followers end through `mgmt.Deps.Done`, closed before the management server shuts down.
+- Why: the reserves go to the servers module only at start; followers must not delay a stop.
+- Cost of change: low
+
+## 2026-11-19 Tray tests
+
+- Type: decision
+- Phase: phase 10
+- What: frontend unit tests run with Playwright Test without a browser through `task test:frontend`, the help module loaded through Vite `runnerImport`; the e2e tray has its own single-instance UniqueID and a `TrayTest` service under tag `e2e`; UI e2e rows share one tray process and run `npx playwright test --grep <ID>` after the LIFE rows; the Hetzner token check of CAT-03 becomes a shared helper; settings structs get json tags equal to their toml keys.
+- Why: `@playwright/experimental-ct-svelte` no longer exists, and a test tray must not collide with the user's.
+- Cost of change: low
+
+## 2026-11-19 Wails raises an indirect module
+
+- Type: decision
+- Phase: phase 10
+- What: adding Wails v3.1.0 raises the indirect `klauspost/compress` from v1.18.5 to v1.18.7.
+- Why: required by Wails; no pinned module of SPEC.md changes.
 - Cost of change: low

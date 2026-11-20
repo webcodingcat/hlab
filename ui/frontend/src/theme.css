@@ -1,0 +1,115 @@
+/* Colours, type and spacing of the tray console (UI-SPEC.md). Light and
+   dark follow the Windows setting; there is no manual switch. */
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --border: #dfe2e7;
+  --text: #1b1e24;
+  --muted: #5d6472;
+  --accent: #2f6fdf;
+  --success: #1f9d55;
+  --warning: #c98a0a;
+  --error: #d0343a;
+
+  --font: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", Consolas, monospace;
+
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s6: 24px;
+  --s8: 32px;
+  --radius: 4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181d;
+    --surface: #1f2229;
+    --border: #2e323b;
+    --text: #e6e8ec;
+    --muted: #9aa1ad;
+    --accent: #5b8ff0;
+    --success: #3cc47a;
+    --warning: #e0a53a;
+    --error: #ef5a5f;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-width: 1000px;
+  min-height: 640px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+}
+
+h2 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+}
+
+a {
+  color: var(--accent);
+}
+
+code,
+pre,
+.mono {
+  font-family: var(--mono);
+}
+
+.small {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--s1) var(--s2);
+  min-height: 32px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}

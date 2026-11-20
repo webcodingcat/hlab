@@ -106,9 +106,9 @@ func (c *Cloud) rangeChanged() (string, error) {
 func incompatibleMessage(ie *store.IncompatibleError) string {
 	switch {
 	case ie.NotDatabase:
-		return "the state file is not a readable hlab state; " + discardHint
+		return "the state file is not a readable HLab state; " + discardHint
 	case ie.Newer():
-		return fmt.Sprintf("the state was written by a newer hlab version (state version %d, this version reads %d); %s",
+		return fmt.Sprintf("the state was written by a newer HLab version (state version %d, this version reads %d); %s",
 			ie.Found, ie.Want, discardHint)
 	default:
 		return fmt.Sprintf("the state has an unknown version (state version %d, this version reads %d); %s",

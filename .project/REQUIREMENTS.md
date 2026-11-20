@@ -180,7 +180,7 @@ resource types.
 - UI-01 the tray icon shows the cloud status and starts and stops the cloud (goal 3) [e2e]
 - UI-02 the console window lists, shows, creates, configures and deletes every resource type of the API in the active project (goal 3) [e2e]
 - UI-03 the settings view changes every setting of the settings file (goal 3) [e2e]
-- UI-04 the server types view shows the catalog, adds and removes own types and starts the catalog update (goal 3) [e2e]
+- UI-04 the server types view shows the catalog, adds, edits and removes own types and starts the catalog update (goal 3) [e2e]
 - UI-05 the projects view creates and deletes projects and tokens (goal 3) [e2e]
 - UI-06 the logs view shows the service log and follows it (goal 3) [e2e]
 - UI-07 every view opens its help text inside the program (goal 3) [unit]
@@ -214,13 +214,13 @@ They hold at the close of every phase, measured against what is built so
 far, and belong to no single phase. They serve the "Documentation" section
 of IDEA.md rather than a numbered goal.
 
-- DOC-01 every command and flag of `hlab` is described in `docs/user/commands.md` [unit]
-- DOC-02 every key of every configuration file is described in `docs/user/configuration.md` [unit]
-- DOC-03 every API endpoint hlab serves differently from Hetzner, and every `unsupported_error`, is listed in `docs/user/deviations.md` [unit]
+- DOC-01 every command and flag of `hlab` is described in `docs/commands.md` [unit]
+- DOC-02 every key of every configuration file is described in `docs/configuration.md` [unit]
+- DOC-03 every API endpoint hlab serves differently from Hetzner, and every `unsupported_error`, is listed in `docs/development/api-coverage.md`, and `docs/deviations.md` describes the deviations for users by topic without routes [unit]
 - DOC-04 every link in README.md and docs/ resolves [unit]
-- DOC-05 every view of the tray has a help text, and every help text names only views and buttons that exist [unit]
+- DOC-05 every view of the tray has a help text and every help text belongs to a view, with the app taking its view list from `views.json` [unit]; that each help text names only views and buttons that exist is checked by hand with DOC-07
 - DOC-06 every command in the developer guide exists in the Taskfile [unit]
-- DOC-07 README and guides are understandable for their audience [manual]
+- DOC-07 README and guides are understandable for their audience, and the help texts name only views and buttons that exist [manual]
 
 ## Later
 
@@ -357,14 +357,14 @@ What the target vision in IDEA.md will need, not built yet.
 | LIFE-08 | 09 | x |
 | LIFE-09 | 09 | x |
 | LIFE-10 | 01 | x |
-| UI-01 | 10 | |
+| UI-01 | 10 | x |
 | UI-02 | 11 | |
-| UI-03 | 10 | |
-| UI-04 | 10 | |
-| UI-05 | 10 | |
-| UI-06 | 10 | |
-| UI-07 | 10 | |
-| UI-08 | 10 | |
+| UI-03 | 10 | x |
+| UI-04 | 10 | x |
+| UI-05 | 10 | x |
+| UI-06 | 10 | x |
+| UI-07 | 10 | x |
+| UI-08 | 10 | x |
 | UI-09 | 11 | |
 | INST-01 | 12 | |
 | INST-02 | 12 | |

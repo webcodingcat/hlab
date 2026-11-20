@@ -66,9 +66,9 @@ func (*Installer) Install(_ bool) error {
 
 func displayName() string {
 	if profile.Current().Name == "release" {
-		return "hlab"
+		return "HLab"
 	}
-	return "hlab (dev)"
+	return "HLab (dev)"
 }
 
 func registerService(m *mgr.Mgr, exe string) error {

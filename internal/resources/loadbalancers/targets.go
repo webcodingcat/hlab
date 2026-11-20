@@ -217,7 +217,7 @@ func (m *Module) checkIPTarget(r Record, t Target) (Target, error) {
 	}
 	transit := netip.PrefixFrom(m.d.PublicRange.Masked().Addr(), 30)
 	if transit.Contains(a) {
-		return t, &api.FieldError{Field: "ip", Message: "ip is in hlab's transit network"}
+		return t, &api.FieldError{Field: "ip", Message: "ip is in HLab's transit network"}
 	}
 	if a == r.IPv4() {
 		return t, &api.FieldError{Field: "ip", Message: "ip is the load balancer's own address"}

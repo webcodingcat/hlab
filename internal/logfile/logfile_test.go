@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -170,5 +171,183 @@ func TestLogfile(t *testing.T) {
 				t.Fatal("Tail does not return after the context is cancelled")
 			}
 		})
+	})
+
+	t.Run("UI-06", func(t *testing.T) {
+		t.Run("search", testSearch)
+		t.Run("older", testBefore)
+	})
+}
+
+// writeLogs writes files[0] as hlabd.log, files[1] as hlabd.log.1 and so
+// on, each line followed by a newline.
+func writeLogs(t *testing.T, dir string, files ...[]string) {
+	t.Helper()
+	for i, lines := range files {
+		p := filepath.Join(dir, name)
+		if i > 0 {
+			p += fmt.Sprintf(".%d", i)
+		}
+		var b strings.Builder
+		for _, l := range lines {
+			b.WriteString(l + "\n")
+		}
+		if err := os.WriteFile(p, []byte(b.String()), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func testSearch(t *testing.T) {
+	const (
+		started = `{"time":"2026-11-20T10:00:00Z","level":"INFO","msg":"Backup started","project":"alpha"}`
+		panicky = `panic: Backup failed in goroutine 7`
+		tick    = `{"time":"2026-11-20T10:01:00Z","level":"DEBUG","msg":"backup tick"}`
+		created = `{"time":"2026-11-20T10:02:00Z","level":"WARN","msg":"server created","project":"Demo-Web"}`
+		failed  = `{"time":"2026-11-20T10:05:00Z","level":"ERROR","msg":"backup failed","error":"disk full"}`
+		listen  = `{"time":"2026-11-20T10:06:00Z","level":"INFO","msg":"listening","addr":"127.0.0.1:8443"}`
+	)
+	dir := t.TempDir()
+	writeLogs(t, dir,
+		[]string{failed, listen},   // hlabd.log
+		[]string{tick, created},    // hlabd.log.1
+		[]string{started, panicky}, // hlabd.log.2
+	)
+	cases := []struct {
+		name     string
+		query    string
+		minLevel string
+		max      int
+		want     []string
+		capped   bool
+	}{
+		{"msg in any case across files newest first", "BACKUP", "", 100, []string{failed, tick, panicky, started}, false},
+		{"field value", "demo-web", "", 100, []string{created}, false},
+		{"field as key=value", "project=demo", "", 100, []string{created}, false},
+		{"level", "warn", "", 100, []string{created}, false},
+		{"time not searched", "10:05", "", 100, nil, false},
+		{"minimum level; a line without a level passes", "backup", "WARN", 100, []string{failed, panicky}, false},
+		{"exactly max matches", "backup", "", 4, []string{failed, tick, panicky, started}, false},
+		{"more than max matches", "backup", "", 2, []string{failed, tick}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, capped, err := logfile.Search(dir, name, tc.query, tc.minLevel, tc.max)
+			if err != nil {
+				t.Fatalf("Search(%q, %q, %d): %v", tc.query, tc.minLevel, tc.max, err)
+			}
+			if !slices.Equal(got, tc.want) || capped != tc.capped {
+				t.Errorf("Search(%q, %q, %d) = %q, capped %v; want %q, capped %v", tc.query, tc.minLevel, tc.max, got, capped, tc.want, tc.capped)
+			}
+		})
+	}
+
+	t.Run("rotated during the search", func(t *testing.T) {
+		dir := t.TempDir()
+		w := newWriter(t, dir)
+		write(t, w, 0, 40)
+		const total = 2000 // rotates every few lines
+		done := make(chan error, 1)
+		go func() {
+			for i := 40; i < total; i++ {
+				if _, err := w.Write([]byte(line(i))); err != nil {
+					done <- fmt.Errorf("write line %d: %w", i, err)
+					return
+				}
+			}
+			done <- nil
+		}()
+		for running := true; running; {
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatal(err)
+				}
+				running = false
+			default:
+			}
+			got, _, err := logfile.Search(dir, name, "LINE", "", 1000)
+			if err != nil {
+				t.Fatalf("Search while the log rotates: %v", err)
+			}
+			prev := total
+			for _, l := range got {
+				var n int
+				if _, err := fmt.Sscanf(l, `{"msg":"line %d"`, &n); err != nil {
+					t.Fatalf("Search returned %q, not a written line", l)
+				}
+				if n >= prev {
+					t.Fatalf("Search while the log rotates returned line %d after line %d, want newest first without repeats", n, prev)
+				}
+				prev = n
+			}
+		}
+	})
+}
+
+func testBefore(t *testing.T) {
+	l := func(i int) string {
+		return fmt.Sprintf(`{"time":"2026-11-20T10:%02d:00Z","level":"INFO","msg":"line %02d"}`, i, i)
+	}
+	ls := func(from, to int) []string {
+		var out []string
+		for i := from; i < to; i++ {
+			out = append(out, l(i))
+		}
+		return out
+	}
+	dir := t.TempDir()
+	writeLogs(t, dir, ls(10, 15), ls(5, 10), ls(0, 5)) // hlabd.log, .1, .2
+	cases := []struct {
+		name    string
+		line    string
+		n       int
+		want    []string
+		atStart bool
+	}{
+		{"within the current file", l(13), 2, ls(11, 13), false},
+		{"across into rotated files", l(11), 7, ls(4, 11), false},
+		{"start of the oldest file reached", l(3), 5, ls(0, 3), true},
+		{"the first line", l(0), 5, nil, true},
+		{"line not found", `{"msg":"never logged"}`, 5, nil, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, atStart, err := logfile.Before(dir, name, tc.line, tc.n)
+			if err != nil {
+				t.Fatalf("Before(%q, %d): %v", tc.line, tc.n, err)
+			}
+			if !slices.Equal(got, tc.want) || atStart != tc.atStart {
+				t.Errorf("Before(%q, %d) = %q, atStart %v; want %q, atStart %v", tc.line, tc.n, got, atStart, tc.want, tc.atStart)
+			}
+		})
+	}
+
+	t.Run("rotation between two calls", func(t *testing.T) {
+		dir := t.TempDir()
+		writeLogs(t, dir, ls(10, 15), ls(5, 10), ls(0, 5))
+		first, _, err := logfile.Before(dir, name, l(12), 3)
+		if err != nil || !slices.Equal(first, ls(9, 12)) {
+			t.Fatalf("Before(line 12, 3) = %q, %v; want lines 9 to 11", first, err)
+		}
+		// Rotate as the writer does: name.2 -> name.3, name.1 -> name.2,
+		// name -> name.1, then a new name.
+		for i := 2; i >= 0; i-- {
+			from := filepath.Join(dir, name)
+			if i > 0 {
+				from += fmt.Sprintf(".%d", i)
+			}
+			if err := os.Rename(from, filepath.Join(dir, fmt.Sprintf("%s.%d", name, i+1))); err != nil {
+				t.Fatal(err)
+			}
+		}
+		writeLogs(t, dir, ls(15, 18))
+		got, atStart, err := logfile.Before(dir, name, first[0], 4)
+		if err != nil {
+			t.Fatalf("Before after a rotation: %v", err)
+		}
+		if !slices.Equal(got, ls(5, 9)) || atStart {
+			t.Errorf("Before(line 9, 4) after a rotation = %q, atStart %v; want lines 5 to 8, atStart false", got, atStart)
+		}
 	})
 }

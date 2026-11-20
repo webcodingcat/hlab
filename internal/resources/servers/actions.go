@@ -14,7 +14,7 @@ import (
 
 // consoleMessage is the fixed answer to request_console (SPEC.md "Fixed API
 // answers").
-const consoleMessage = "server console is not supported by hlab yet"
+const consoleMessage = "server console is not supported by HLab yet"
 
 // changeProtection sets the delete and rebuild protection present in the
 // body as an action. The change is written with the action; its work has

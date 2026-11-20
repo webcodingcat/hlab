@@ -10,7 +10,7 @@ import (
 )
 
 // VSwitchMessage is SPEC's fixed answer to a subnet of type vswitch.
-const VSwitchMessage = "vswitch subnets are not supported by hlab"
+const VSwitchMessage = "vswitch subnets are not supported by HLab"
 
 // Subnet sizes: a network is at least a /24, a subnet at least a /30, and
 // a subnet without ip_range is the first free /24.

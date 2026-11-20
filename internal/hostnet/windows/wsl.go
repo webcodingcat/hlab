@@ -57,17 +57,17 @@ func wslProblems(s wslSettings) []hostnet.Problem {
 	switch s.networkingMode {
 	case "mirrored":
 		out = append(out, hostnet.Problem{Code: hostnet.ProblemWSLMirrored,
-			Message: "WSL2 runs in mirrored networking mode, which hlab does not support; set networkingMode=nat in .wslconfig and run wsl --shutdown"})
+			Message: "WSL2 runs in mirrored networking mode, which HLab does not support; set networkingMode=nat in .wslconfig and run wsl --shutdown"})
 	case "consomme", "virtioproxy":
 		out = append(out, hostnet.Problem{Code: hostnet.ProblemWSLVirtioProxy,
-			Message: fmt.Sprintf("WSL2 runs in %s networking mode, which hlab does not support; set networkingMode=nat in .wslconfig and run wsl --shutdown", s.networkingMode)})
+			Message: fmt.Sprintf("WSL2 runs in %s networking mode, which HLab does not support; set networkingMode=nat in .wslconfig and run wsl --shutdown", s.networkingMode)})
 	case "bridged", "none":
 		out = append(out, hostnet.Problem{Code: hostnet.ProblemWSLModeUnsupported,
-			Message: fmt.Sprintf("WSL2 networking mode %s is not supported by hlab; set networkingMode=nat in .wslconfig and run wsl --shutdown", s.networkingMode)})
+			Message: fmt.Sprintf("WSL2 networking mode %s is not supported by HLab; set networkingMode=nat in .wslconfig and run wsl --shutdown", s.networkingMode)})
 	}
 	if s.dnsTunneling == "false" {
 		out = append(out, hostnet.Problem{Code: hostnet.ProblemWSLDNSTunnelingOff,
-			Message: "WSL2 has dnsTunneling turned off, so WSL cannot resolve hlab names; set dnsTunneling=true in .wslconfig and run wsl --shutdown"})
+			Message: "WSL2 has dnsTunneling turned off, so WSL cannot resolve HLab names; set dnsTunneling=true in .wslconfig and run wsl --shutdown"})
 	}
 	return out
 }

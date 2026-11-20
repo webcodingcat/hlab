@@ -19,43 +19,43 @@ import (
 
 // Settings is the content of settings.toml, one struct per table.
 type Settings struct {
-	Cloud        Cloud        `toml:"cloud"`
-	Network      Network      `toml:"network"`
-	Storage      Storage      `toml:"storage"`
-	Resources    Resources    `toml:"resources"`
-	Certificates Certificates `toml:"certificates"`
-	Logging      Logging      `toml:"logging"`
+	Cloud        Cloud        `toml:"cloud" json:"cloud"`
+	Network      Network      `toml:"network" json:"network"`
+	Storage      Storage      `toml:"storage" json:"storage"`
+	Resources    Resources    `toml:"resources" json:"resources"`
+	Certificates Certificates `toml:"certificates" json:"certificates"`
+	Logging      Logging      `toml:"logging" json:"logging"`
 }
 
 // Cloud is the table [cloud].
 type Cloud struct {
-	StopBehaviour string `toml:"stop_behaviour"` // "save" | "shutdown"
+	StopBehaviour string `toml:"stop_behaviour" json:"stop_behaviour"` // "save" | "shutdown"
 }
 
 // Network is the table [network].
 type Network struct {
-	PublicRange netip.Prefix `toml:"public_range"`
+	PublicRange netip.Prefix `toml:"public_range" json:"public_range"`
 }
 
 // Storage is the table [storage].
 type Storage struct {
-	DataFolder string `toml:"data_folder"`
+	DataFolder string `toml:"data_folder" json:"data_folder"`
 }
 
 // Resources is the table [resources].
 type Resources struct {
-	ReserveRAMMB  int `toml:"reserve_ram_mb"`
-	ReserveDiskGB int `toml:"reserve_disk_gb"`
+	ReserveRAMMB  int `toml:"reserve_ram_mb" json:"reserve_ram_mb"`
+	ReserveDiskGB int `toml:"reserve_disk_gb" json:"reserve_disk_gb"`
 }
 
 // Certificates is the table [certificates].
 type Certificates struct {
-	TrustCA bool `toml:"trust_ca"`
+	TrustCA bool `toml:"trust_ca" json:"trust_ca"`
 }
 
 // Logging is the table [logging].
 type Logging struct {
-	Level string `toml:"level"` // "debug" | "info" | "warn" | "error"
+	Level string `toml:"level" json:"level"` // "debug" | "info" | "warn" | "error"
 }
 
 // Defaults returns the settings without a settings file.
@@ -87,11 +87,37 @@ func Load(path string) (Settings, error) {
 		}
 		return Settings{}, fmt.Errorf("%s: unknown key %s", path, strings.Join(keys, ", "))
 	}
-	if err := s.validate(); err != nil {
+	if err := Validate(s); err != nil {
 		return Settings{}, fmt.Errorf("%s: %w", path, err)
 	}
 	s.Network.PublicRange = s.Network.PublicRange.Masked()
 	return s, nil
+}
+
+// Write validates s and writes it to path in place, in one write, so the
+// file keeps its access rules. trust_ca is taken from the file at path
+// (PUT /trust owns it); a missing file gives false. An invalid s returns a
+// *FieldError and leaves the file unchanged.
+func Write(path string, s Settings) error {
+	if err := Validate(s); err != nil {
+		return err
+	}
+	var cur struct {
+		Certificates Certificates `toml:"certificates"`
+	}
+	if _, err := toml.DecodeFile(path, &cur); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	s.Certificates.TrustCA = cur.Certificates.TrustCA
+	s.Network.PublicRange = s.Network.PublicRange.Masked()
+	var b bytes.Buffer
+	if err := toml.NewEncoder(&b).Encode(s); err != nil {
+		return fmt.Errorf("encode settings: %w", err)
+	}
+	if err := os.WriteFile(path, b.Bytes(), 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
 }
 
 // Save writes s to path as TOML, replacing the whole file; comments in an
@@ -107,7 +133,7 @@ func Save(path string, s Settings) error {
 	if err := os.WriteFile(tmp, b.Bytes(), 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", tmp, err)
 	}
-	if err := copySecurity(path, tmp); err != nil {
+	if err := CopySecurity(path, tmp); err != nil {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("keep permissions of %s: %w", path, err)
 	}
@@ -118,25 +144,36 @@ func Save(path string, s Settings) error {
 	return nil
 }
 
-func (s Settings) validate() error {
+// FieldError is an invalid settings value; Key is its settings key, for
+// example "network.public_range".
+type FieldError struct{ Key, Message string }
+
+func (e *FieldError) Error() string { return e.Key + " " + e.Message }
+
+// Validate checks s against the rules Load applies; it returns nil or a
+// *FieldError for the first invalid value.
+func Validate(s Settings) error {
 	switch s.Cloud.StopBehaviour {
 	case "save", "shutdown":
 	default:
-		return fmt.Errorf(`cloud.stop_behaviour must be "save" or "shutdown", not %q`, s.Cloud.StopBehaviour)
+		return &FieldError{"cloud.stop_behaviour", fmt.Sprintf(`must be "save" or "shutdown", not %q`, s.Cloud.StopBehaviour)}
 	}
 	switch s.Logging.Level {
 	case "debug", "info", "warn", "error":
 	default:
-		return fmt.Errorf(`logging.level must be "debug", "info", "warn" or "error", not %q`, s.Logging.Level)
+		return &FieldError{"logging.level", fmt.Sprintf(`must be "debug", "info", "warn" or "error", not %q`, s.Logging.Level)}
 	}
 	if err := validateRange(s.Network.PublicRange); err != nil {
 		return err
 	}
 	if s.Storage.DataFolder == "" {
-		return errors.New("storage.data_folder must not be empty")
+		return &FieldError{"storage.data_folder", "must not be empty"}
 	}
-	if s.Resources.ReserveRAMMB < 0 || s.Resources.ReserveDiskGB < 0 {
-		return errors.New("resources.reserve_ram_mb and resources.reserve_disk_gb must not be negative")
+	if s.Resources.ReserveRAMMB < 0 {
+		return &FieldError{"resources.reserve_ram_mb", "must not be negative"}
+	}
+	if s.Resources.ReserveDiskGB < 0 {
+		return &FieldError{"resources.reserve_disk_gb", "must not be negative"}
 	}
 	return nil
 }
@@ -157,15 +194,16 @@ var excludedRanges = []netip.Prefix{
 }
 
 func validateRange(r netip.Prefix) error {
+	const key = "network.public_range"
 	if !r.Addr().Is4() {
-		return fmt.Errorf("network.public_range must be an IPv4 range, not %s", r)
+		return &FieldError{key, fmt.Sprintf("must be an IPv4 range, not %s", r)}
 	}
 	if r.Bits() < 8 || r.Bits() > 28 {
-		return fmt.Errorf("network.public_range must be a /8 to /28 range, not %s", r)
+		return &FieldError{key, fmt.Sprintf("must be a /8 to /28 range, not %s", r)}
 	}
 	for _, x := range excludedRanges {
 		if x.Overlaps(r) {
-			return fmt.Errorf("network.public_range %s overlaps %s, which hlab cannot use", r.Masked(), x)
+			return &FieldError{key, fmt.Sprintf("%s overlaps %s, which HLab cannot use", r.Masked(), x)}
 		}
 	}
 	return nil

@@ -4,6 +4,10 @@ Checked items from BACKLOG.md, done or dropped, moved here unchanged at the
 close of each backlog phase. Newest backlog phase first. No skill
 reads this file; it keeps the notes for looking things up.
 
+## Phase 10
+
+- [x] bug: cloud/mgmt: a client following `GET /mgmt/v1/logs?follow=1` (`hlab logs --follow`, later the tray's log view) keeps `mgmtSrv.Shutdown` waiting for its 10 s timeout (internal/cloud/cloud.go:614-623, internal/mgmt/mgmt.go:469), so every cloud stop with an open follower takes 10 s longer, also out of the preshutdown budget at a Windows shutdown (source: 09 verifier) - fixed in phase 10 plan 10-07: followers end through mgmt.Deps.Done, closed before the management server shuts down
+
 ## B1
 
 - [x] later: platform/hyperv: Reboot uses Msvm_ShutdownComponent.InitiateReboot, which answered "not supported" on a VM without guest OS; if it also fails with Linux guests, every server reboot fails (phase 03, SRV-07) and Reboot needs guest shutdown plus start (source: 01 01-09 implementer) - answered in 03-03: InitiateReboot returns 0 on Ubuntu 24.04 and Debian 13, SSH back after about 10 s; a shutdown-and-start fallback covers other return values

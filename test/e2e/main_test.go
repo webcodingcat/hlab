@@ -45,6 +45,7 @@ var harness struct {
 	tmp          string // temporary folder of this run
 	startedCloud bool   // the harness started the dev cloud and stops it at the end
 	runID        string // e2e-<time>, the project name
+	projectMade  bool   // the run's project exists; teardown deletes it
 }
 
 // env is the shared project, token, hcloud configuration and SSH key,
@@ -156,6 +157,45 @@ func setup() error {
 			return err
 		}
 	}
+	return deleteLeftoverProjects()
+}
+
+// leftoverProject matches exactly the project names this harness creates.
+var leftoverProject = regexp.MustCompile(`^e2e-\d{8}-\d{6}$`)
+
+// deleteLeftoverProjects deletes the projects earlier runs left behind
+// (a run that was killed before its teardown); other projects stay.
+func deleteLeftoverProjects() error {
+	r, err := runHlab(context.Background(), 2*time.Minute, "project", "list", "--output", "json")
+	if err != nil {
+		return fmt.Errorf("hlab project list: %w\n%s", err, r)
+	}
+	var body struct {
+		Projects []struct {
+			Name string `json:"name"`
+		} `json:"projects"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(r.Stdout)), &body); err != nil {
+		return fmt.Errorf("hlab project list --output json: %w\n%s", err, r.Stdout)
+	}
+	var errs []error
+	for _, p := range body.Projects {
+		if p.Name == harness.runID || !leftoverProject.MatchString(p.Name) {
+			continue
+		}
+		if err := deleteProject(p.Name); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// deleteProject deletes the project with every resource in it and waits
+// until the deletion is done.
+func deleteProject(name string) error {
+	if r, err := runHlab(context.Background(), 35*time.Minute, "project", "delete", name); err != nil {
+		return fmt.Errorf("hlab project delete %s: %w\n%s", name, err, r)
+	}
 	return nil
 }
 
@@ -187,8 +227,8 @@ func teardown() error {
 	if err := removeWSLDir(); err != nil {
 		errs = append(errs, err)
 	}
-	if envVal != nil {
-		if err := deleteAllServers(); err != nil {
+	if harness.projectMade {
+		if err := deleteProject(harness.runID); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -449,6 +489,7 @@ func newEnv() (*env, error) {
 	if r, err := runHlab(ctx, 2*time.Minute, "project", "create", e.project); err != nil || r.ExitCode != 0 {
 		return nil, fmt.Errorf("hlab project create: %v\n%s", err, r)
 	}
+	harness.projectMade = true
 	r, err := runHlab(ctx, 2*time.Minute, "token", "create", "--project", e.project, "--name", "e2e", "--output", "json")
 	if err != nil || r.ExitCode != 0 {
 		return nil, fmt.Errorf("hlab token create: %v (exit %d)\nstderr: %s", err, r.ExitCode, r.Stderr)
@@ -554,28 +595,6 @@ func (e *env) deleteServer(name string) error {
 		return fmt.Errorf("hcloud server delete %s: %v\n%s", name, err, r)
 	}
 	return nil
-}
-
-// deleteAllServers removes every server of the run's project one by one
-// (deleting the project comes in phase 02).
-func deleteAllServers() error {
-	r, err := envVal.hcloudRun(context.Background(), 2*time.Minute, "server", "list", "-o", "json")
-	if err != nil {
-		return fmt.Errorf("hcloud server list: %v\n%s", err, r)
-	}
-	var list []struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal([]byte(r.Stdout), &list); err != nil {
-		return fmt.Errorf("hcloud server list: %w", err)
-	}
-	var errs []error
-	for _, s := range list {
-		if err := envVal.deleteServer(s.Name); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	return errors.Join(errs...)
 }
 
 // sharedServer is the one Ubuntu server the server rows share; it is ready

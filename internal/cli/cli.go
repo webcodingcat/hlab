@@ -3,7 +3,6 @@
 package cli
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -16,11 +15,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"text/tabwriter"
 	"time"
 
+	"github.com/webcodingcat/hlab/internal/cloudstatus"
 	"github.com/webcodingcat/hlab/internal/logfile"
+	"github.com/webcodingcat/hlab/internal/mgmtclient"
 	"github.com/webcodingcat/hlab/internal/sysint"
 	"github.com/webcodingcat/hlab/internal/version"
 )
@@ -124,9 +124,6 @@ type call struct {
 type usageError struct{ msg string }
 
 func (e usageError) Error() string { return e.msg }
-
-// errNotRunning is a failed connection to the management API.
-var errNotRunning = errors.New("the cloud is not running")
 
 // Run executes the command line args (without the program name) and
 // returns the exit code.
@@ -280,33 +277,23 @@ func (c *call) out(v any, text string) error {
 	return err
 }
 
-// apiError is an error answer of the management API.
-type apiError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
-
-func (e apiError) Error() string { return e.Message }
-
 // mgmt sends one request to the management API and decodes the answer into
-// v (if not nil); a *[]byte gets the answer as it is.
+// v (if not nil); a *[]byte gets the answer as it is. A failed connection
+// is mgmtclient.ErrNotRunning, an error answer its message.
 func (c *call) mgmt(method, path string, body, v any) error {
-	var rd io.Reader
+	var b []byte
 	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
+		var err error
+		if b, err = json.Marshal(body); err != nil {
 			return err
 		}
-		rd = bytes.NewReader(b)
 	}
-	resp, err := c.send(method, path, rd)
+	status, data, err := mgmtclient.New(c.io.Dial).Do(c.ctx, method, path, b)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = resp.Body.Close() }()
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
+	if status >= 300 {
+		return mgmtclient.AnswerError(status, data)
 	}
 	if raw, ok := v.(*[]byte); ok {
 		*raw = data
@@ -316,52 +303,6 @@ func (c *call) mgmt(method, path string, body, v any) error {
 		return json.Unmarshal(data, v)
 	}
 	return nil
-}
-
-// send sends one request to the management API and returns a successful
-// answer with its body unread; a failed connection is errNotRunning, an
-// error answer its message.
-func (c *call) send(method, path string, body io.Reader) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(c.ctx, method, "http://hlab/mgmt/v1"+path, body)
-	if err != nil {
-		return nil, err
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	var dialFailed atomic.Bool
-	client := &http.Client{Transport: &http.Transport{
-		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			conn, err := c.io.Dial(ctx)
-			if err != nil {
-				dialFailed.Store(true)
-			}
-			return conn, err
-		},
-		DisableKeepAlives: true,
-	}}
-	resp, err := client.Do(req)
-	if err != nil {
-		if dialFailed.Load() {
-			return nil, errNotRunning
-		}
-		return nil, err
-	}
-	if resp.StatusCode >= 300 {
-		defer func() { _ = resp.Body.Close() }()
-		data, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
-		}
-		var e struct {
-			Error apiError `json:"error"`
-		}
-		if json.Unmarshal(data, &e) != nil || e.Error.Message == "" {
-			return nil, fmt.Errorf("management API answered %s", resp.Status)
-		}
-		return nil, e.Error
-	}
-	return resp, nil
 }
 
 func pathEscape(s string) string { return url.PathEscape(s) }
@@ -419,7 +360,7 @@ func cloudStatus(c *call) error {
 		}
 	}
 	if state == sysint.StateStopped && c.io.StatusFile != "" {
-		if f, ok := readStatusFile(c.io.StatusFile); ok {
+		if f, ok := cloudstatus.Read(c.io.StatusFile); ok {
 			switch {
 			case f.State == "refused" && f.Problem != nil:
 				return c.out(f, "state: refused\nproblem: "+f.Problem.Message+"\n")
@@ -429,29 +370,6 @@ func cloudStatus(c *call) error {
 		}
 	}
 	return c.out(serviceState{state}, "state: "+state+"\n")
-}
-
-// statusFile is hlabd's status file: a refused start carries the problem,
-// a failed start the error.
-type statusFile struct {
-	State   string `json:"state"`
-	Problem *struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-		Fatal   bool   `json:"fatal"`
-	} `json:"problem,omitempty"`
-	Error string `json:"error,omitempty"`
-}
-
-// readStatusFile reads the status file; a missing or unreadable file
-// reports false.
-func readStatusFile(path string) (statusFile, bool) {
-	var f statusFile
-	data, err := os.ReadFile(path)
-	if err != nil || json.Unmarshal(data, &f) != nil {
-		return statusFile{}, false
-	}
-	return f, true
 }
 
 // catalogUpdate sends the Hetzner token once to hlabd, which updates the
@@ -543,8 +461,8 @@ func (c *call) waitAction(id int64, timeout time.Duration) error {
 	for {
 		var body struct {
 			Action struct {
-				Status string    `json:"status"`
-				Error  *apiError `json:"error"`
+				Status string               `json:"status"`
+				Error  *mgmtclient.APIError `json:"error"`
 			} `json:"action"`
 		}
 		if err := c.mgmt(http.MethodGet, fmt.Sprintf("/actions/%d", id), nil, &body); err != nil {
@@ -627,7 +545,7 @@ func caExport(c *call) error {
 	if err := os.WriteFile(c.args[0], pem, 0o644); err != nil {
 		return err
 	}
-	return c.out(map[string]string{"file": c.args[0]}, "hlab CA written to "+c.args[0]+"\n")
+	return c.out(map[string]string{"file": c.args[0]}, "HLab CA written to "+c.args[0]+"\n")
 }
 
 // caTrust adds the hlab CA to the host's trust stores (on) or removes it
@@ -647,15 +565,15 @@ func caTrust(c *call) error {
 	if err := c.mgmt(http.MethodPut, "/trust", map[string]bool{"on": on}, &body); err != nil {
 		return err
 	}
-	text := "the hlab CA is no longer trusted on this host\n"
+	text := "the HLab CA is no longer trusted on this host\n"
 	if body.On {
-		text = "the hlab CA is trusted on this host\n"
+		text = "the HLab CA is trusted on this host\n"
 	}
 	return c.out(body, text)
 }
 
 func printVersion(c *call) error {
-	return c.out(map[string]string{"version": version.Version}, "hlab "+version.Version+"\n")
+	return c.out(map[string]string{"version": version.Version}, "HLab "+version.Version+"\n")
 }
 
 // logLines is the number of lines `hlab logs` shows before following.
@@ -670,27 +588,12 @@ func logs(c *call) error {
 	if follow {
 		path += "?follow=1"
 	}
-	resp, err := c.send(http.MethodGet, path, nil)
+	err := mgmtclient.New(c.io.Dial).Stream(c.ctx, path, c.logLine)
 	switch {
-	case err == nil:
-		defer func() { _ = resp.Body.Close() }()
-		r := bufio.NewReader(resp.Body)
-		for {
-			line, err := r.ReadBytes('\n')
-			if len(line) > 0 {
-				if err := c.logLine(line); err != nil {
-					return err
-				}
-			}
-			if err != nil {
-				if errors.Is(err, io.EOF) || c.ctx.Err() != nil {
-					return nil
-				}
-				return err
-			}
-		}
-	case errors.Is(err, errNotRunning) && c.io.LogDir != "":
-		err := logfile.Tail(c.ctx, c.io.LogDir, "hlabd.log", logLines, follow, c.logLine)
+	case err == nil || c.ctx.Err() != nil:
+		return nil
+	case errors.Is(err, mgmtclient.ErrNotRunning) && c.io.LogDir != "":
+		err = logfile.Tail(c.ctx, c.io.LogDir, "hlabd.log", logLines, follow, c.logLine)
 		if c.ctx.Err() != nil {
 			return nil
 		}

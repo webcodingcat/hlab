@@ -83,6 +83,12 @@ type Deps struct {
 	// LogDir is the folder of hlabd.log, served by GET /logs; "" leaves the
 	// route out.
 	LogDir string
+	// Reload re-reads the settings and the own server types; nil leaves
+	// POST /settings/reload out.
+	Reload func(ctx context.Context) error
+	// Done is closed when the cloud stops; it ends the followers of
+	// GET /logs, so they do not hold up the shutdown. nil never ends them.
+	Done <-chan struct{}
 }
 
 // Project is a project as the management API returns it.
@@ -127,6 +133,9 @@ func New(d Deps) http.Handler {
 	}
 	if d.LogDir != "" {
 		mux.HandleFunc("GET "+Prefix+"/logs", s.logs)
+	}
+	if d.Reload != nil {
+		mux.HandleFunc("POST "+Prefix+"/settings/reload", s.reload)
 	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "unknown path")
@@ -465,22 +474,44 @@ func (s server) caCert(w http.ResponseWriter, _ *http.Request) {
 const LogLines = 1000
 
 // logs answers the last LogLines lines of hlabd.log as NDJSON, one flush
-// per line; with follow=1 it goes on with new lines until the client goes.
+// per line; with follow=1 it goes on with new lines until the client goes
+// or Done closes.
 func (s server) logs(w http.ResponseWriter, req *http.Request) {
 	follow := req.URL.Query().Get("follow") == "1"
+	ctx, cancel := context.WithCancel(req.Context())
+	defer cancel()
+	if s.d.Done != nil {
+		go func() {
+			select {
+			case <-s.d.Done:
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+	}
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.WriteHeader(http.StatusOK)
 	rc := http.NewResponseController(w)
 	_ = rc.Flush()
-	err := logfile.Tail(req.Context(), s.d.LogDir, "hlabd.log", LogLines, follow, func(line []byte) error {
+	err := logfile.Tail(ctx, s.d.LogDir, "hlabd.log", LogLines, follow, func(line []byte) error {
 		if _, err := w.Write(line); err != nil {
 			return err
 		}
 		return rc.Flush()
 	})
-	if err != nil && req.Context().Err() == nil {
+	if err != nil && ctx.Err() == nil {
 		slog.Error("serve the log", "err", err)
 	}
+}
+
+// reload applies a changed settings file and own server types file.
+func (s server) reload(w http.ResponseWriter, req *http.Request) {
+	if err := s.d.Reload(req.Context()); err != nil {
+		slog.Warn("settings reload failed", "err", err)
+		writeError(w, http.StatusInternalServerError, "server_error", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, struct{}{})
 }
 
 // trust switches the hlab CA in the host's trust stores and, once that

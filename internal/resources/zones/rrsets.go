@@ -41,7 +41,7 @@ func rrsetView(zone int64, s RRSet) RRSetView {
 }
 
 // errSOA refuses a change of the apex SOA records, which hlab manages.
-var errSOA = &api.FieldError{Field: "type", Message: "the SOA RRSet is managed by hlab"}
+var errSOA = &api.FieldError{Field: "type", Message: "the SOA RRSet is managed by HLab"}
 
 // rrsetRoutes registers the RRSet routes below /zones/{id}.
 func (m *Module) rrsetRoutes(r resource.Registrar) {

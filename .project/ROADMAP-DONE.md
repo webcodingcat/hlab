@@ -6,6 +6,16 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x] 10 Tray program: shell, status, settings, server types, projects,
+      logs.
+      Requirements: UI-01, UI-03, UI-04, UI-05, UI-06, UI-07, UI-08.
+      Depends on: 09.
+      Success criteria:
+      1. The tray icon starts and stops the cloud and shows its state.
+      2. Settings, server types, projects with tokens and logs work in the
+         window.
+      Stops for: manual check.
+
 - [x] 09 Cloud lifecycle and persistence.
       Requirements: LIFE-02, LIFE-03, LIFE-04, LIFE-05, LIFE-07, LIFE-08,
       LIFE-09, HOST-02; changes LB-01, LB-09 (Q14).

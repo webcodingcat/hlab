@@ -31,6 +31,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/platform/platformtest"
+	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
@@ -243,7 +244,7 @@ func TestServers(t *testing.T) {
 			} `json:"error"`
 		}
 		apitest.Decode(t, resp, &body)
-		if body.Error.Code != "unsupported_error" || body.Error.Message != "server console is not supported by hlab yet" {
+		if body.Error.Code != "unsupported_error" || body.Error.Message != "server console is not supported by HLab yet" {
 			t.Errorf("request_console: error %+v, want unsupported_error with the SPEC message", body.Error)
 		}
 		if after := len(listActions(t, env, path)); after != before {
@@ -835,6 +836,94 @@ func TestServers(t *testing.T) {
 		}
 	})
 
+	t.Run("UI-04", func(t *testing.T) {
+		shipped, err := catalog.Load("../../../catalog")
+		if err != nil {
+			t.Fatalf("load shipped catalog: %v", err)
+		}
+		ref, ok := shipped.ServerType("cx23")
+		if !ok {
+			t.Fatal("shipped catalog lacks cx23")
+		}
+		var own map[string]any
+		if err := json.Unmarshal(ref.Raw, &own); err != nil {
+			t.Fatalf("decode cx23: %v", err)
+		}
+		own["id"], own["name"], own["description"] = 100001, "own-gone", "own type removed later"
+		own["cores"], own["memory"], own["disk"] = 3, 6, 50
+		customFile := filepath.Join(t.TempDir(), "server-types.custom.json")
+		writeCustomTypes(t, customFile, own)
+		cat, warns, err := catalog.LoadAll("../../../catalog", t.TempDir(), customFile)
+		if err != nil || len(warns) != 0 {
+			t.Fatalf("LoadAll with own-gone: %v, warnings %q", err, warns)
+		}
+
+		fake := platformtest.NewFake()
+		mod := servers.New(apitest.ServersDeps(t, cat, fake))
+		env := apitest.New(t, sshkeys.New(), mod, resactions.New())
+		id := createdServer(t, env, "outlives", map[string]any{"server_type": "own-gone"})
+		vm := vmName(t, fake)
+		created := vmSpec(t, lastCall(t, fake, "CreateVM"))
+		if created.CPUs != 3 {
+			t.Fatalf("VM of own-gone has %d cores, want 3", created.CPUs)
+		}
+		diskSize := sizeArg(t, lastCall(t, fake, "CreateDisk"))
+
+		writeCustomTypes(t, customFile)
+		cat.ReloadOwn(customFile)
+		if _, ok := cat.ServerType("own-gone"); ok {
+			t.Fatal("own-gone still in the catalog after its removal")
+		}
+
+		runAction(t, env, id, "poweroff", nil)
+		runAction(t, env, id, "poweron", nil)
+		if got := getServer(t, env, id).Status; got != "running" {
+			t.Errorf("status after poweron without the catalog type: %q, want running", got)
+		}
+
+		n := len(fake.Calls())
+		runAction(t, env, id, "rebuild", map[string]any{"image": "ubuntu-24.04"})
+		disks := callsIn(fake.Calls()[n:], "CreateDisk")
+		if len(disks) == 0 {
+			t.Fatal("rebuild without the catalog type made no CreateDisk call")
+		}
+		if got := sizeArg(t, disks[len(disks)-1]); got != diskSize {
+			t.Errorf("rebuild disk size %d, want %d as at create", got, diskSize)
+		}
+
+		runAction(t, env, id, "poweroff", nil)
+		if err := fake.DeleteVM(context.Background(), vm); err != nil {
+			t.Fatalf("delete the VM behind the module: %v", err)
+		}
+		var m any = mod
+		rec, ok := m.(resource.Reconciler)
+		if !ok {
+			t.Fatal("servers module does not implement resource.Reconciler")
+		}
+		n = len(fake.Calls())
+		if err := rec.Reconcile(lifeCtx(t), id); err != nil {
+			t.Fatalf("Reconcile without the catalog type: %v", err)
+		}
+		vms := callsIn(fake.Calls()[n:], "CreateVM")
+		if len(vms) != 1 {
+			t.Fatalf("Reconcile made %d CreateVM calls, want 1", len(vms))
+		}
+		if s := vmSpec(t, vms[0]); s.CPUs != created.CPUs || s.MemoryMB != created.MemoryMB {
+			t.Errorf("reconciled VM: %d cores, %d MB; want %d, %d as at create", s.CPUs, s.MemoryMB, created.CPUs, created.MemoryMB)
+		}
+
+		before := countServers(t, env)
+		resp := env.Do(http.MethodPost, "/servers", map[string]any{
+			"name": "refused", "server_type": "own-gone", "image": "ubuntu-24.04", "location": "fsn1",
+		})
+		if resp.StatusCode < 400 || resp.StatusCode >= 500 {
+			t.Errorf("POST /servers with the removed own type: status %d, want a client error", resp.StatusCode)
+		}
+		if got := countServers(t, env); got != before {
+			t.Errorf("servers after the refused create: %d, want %d", got, before)
+		}
+	})
+
 	testSnapshots(t)
 	testBackups(t)
 	testRescue(t)
@@ -842,6 +931,21 @@ func TestServers(t *testing.T) {
 	testVendorData(t)
 	testAdapters(t)
 	testLifecycle(t)
+}
+
+// writeCustomTypes writes types as the own server type file.
+func writeCustomTypes(t *testing.T, path string, types ...map[string]any) {
+	t.Helper()
+	if types == nil {
+		types = []map[string]any{}
+	}
+	data, err := json.Marshal(types)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // roomy are host resources far above what any test server needs.

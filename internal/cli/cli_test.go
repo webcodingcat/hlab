@@ -376,7 +376,7 @@ func TestCLI(t *testing.T) {
 			t.Errorf("hlab cloud start started the service with parameters %q, want once without discard-state", got)
 		}
 
-		const message = "the state was written by a newer hlab version (state version 7, this version reads 1); " +
+		const message = "the state was written by a newer HLab version (state version 7, this version reads 1); " +
 			"start with hlab cloud start --discard-state to discard it"
 		status := filepath.Join(t.TempDir(), "status.json")
 		doc, err := json.Marshal(map[string]any{

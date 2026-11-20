@@ -6,15 +6,19 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings"
+    "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+    "test:unit": "playwright test --project unit",
+    "test:e2e": "playwright test --project e2e"
   },
   "dependencies": {
-    "@lucide/svelte": "1.75.0"
+    "@lucide/svelte": "1.75.0",
+    "@wailsio/runtime": "3.1.0"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@tsconfig/svelte": "5.0.9",
+    "@types/node": "24.19.2",
     "svelte": "5.58.0",
     "svelte-check": "4.7.8",
     "typescript": "5.9.3",

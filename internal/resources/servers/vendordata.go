@@ -204,7 +204,7 @@ main()
 `
 
 const guestService = `[Unit]
-Description=hlab guest hook (grown volumes, private networks, root password reset)
+Description=HLab guest hook (grown volumes, private networks, root password reset)
 After=network-online.target
 
 [Service]
@@ -213,7 +213,7 @@ ExecStart=/usr/bin/python3 /usr/local/sbin/hlab-guest
 `
 
 const guestTimer = `[Unit]
-Description=Run the hlab guest hook every 5 seconds
+Description=Run the HLab guest hook every 5 seconds
 
 [Timer]
 OnBootSec=5s
@@ -573,7 +573,7 @@ func vendorData(rootHash string) string {
 	}
 
 	var sh strings.Builder
-	sh.WriteString("#!/bin/sh\n# hlab guest hooks: root password login and password resets.\nset -e\n")
+	sh.WriteString("#!/bin/sh\n# HLab guest hooks: root password login and password resets.\nset -e\n")
 	writeFile(&sh, "/etc/ssh/sshd_config.d/00-hlab-root.conf", "0644", "PermitRootLogin yes\n")
 	writeFile(&sh, "/usr/local/sbin/hlab-guest", "0755", guestHook)
 	writeFile(&sh, "/etc/systemd/system/hlab-guest.service", "0644", guestService)

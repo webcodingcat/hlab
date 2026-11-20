@@ -6,6 +6,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/ca"
@@ -23,12 +24,12 @@ const (
 	problemTrustCA = "trust_ca"
 )
 
-// openCA opens (or creates) the hlab CA of the profile, renews its CRL and,
+// openCA opens (or creates) the HLab CA of the profile, renews its CRL and,
 // when trust_ca is on, adds it to the host's trust stores. A failed trust
 // is a problem, not a reason to stop the start.
 func (c *Cloud) openCA(ctx context.Context) error {
 	var err error
-	if c.ca, err = ca.Open(c.d.Paths.CA, c.tag+" CA", nil); err != nil {
+	if c.ca, err = ca.Open(c.d.Paths.CA, caName(c.tag), nil); err != nil {
 		return err
 	}
 	if err := c.ca.RenewCRL(); err != nil {
@@ -36,11 +37,18 @@ func (c *Cloud) openCA(ctx context.Context) error {
 	}
 	if c.set.Certificates.TrustCA {
 		if err := c.net.TrustCA(ctx, c.ca.Certificate(), true); err != nil {
-			slog.Warn("trust the hlab CA", "err", err)
+			slog.Warn("trust the HLab CA", "err", err)
 			c.problems = append(c.problems, hostnet.Problem{Code: problemTrustCA, Message: err.Error()})
 		}
 	}
 	return nil
+}
+
+// caName is the common name of a new CA of the profile with tag: "HLab CA"
+// for the release, "HLab-dev CA" for the dev profile. An existing CA keeps
+// the name it was created with.
+func caName(tag string) string {
+	return "HLab" + strings.TrimPrefix(tag, "hlab") + " CA"
 }
 
 // trust adds the CA to the host's trust stores (on) or removes it, and

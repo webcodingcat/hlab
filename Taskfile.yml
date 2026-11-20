@@ -61,6 +61,13 @@ tasks:
     cmds:
       - go test {{.CLI_ARGS | default "./..."}}
 
+  test:frontend:
+    desc: Run the frontend unit tests (Playwright Test without a browser)
+    dir: ui/frontend
+    deps: [frontend:install]
+    cmds:
+      - npm run test:unit
+
   openapi:
     desc: Download the pinned Hetzner OpenAPI description into the user cache folder
     cmds:
@@ -70,6 +77,17 @@ tasks:
     desc: Generate the shipped location, server type, load balancer type and pricing catalogs from the real Hetzner API
     cmds:
       - go run ./tools/catalog
+
+  icons:
+    desc: Render the app and tray icons, the .syso icon resources and the SVG artwork (outputs are committed)
+    cmds:
+      - go run ./tools/icons
+
+  docs:screenshots:
+    desc: Render the README screenshots of the tray window into docs/images (needs the dev cloud running)
+    deps: [frontend:install]
+    cmds:
+      - go run ./tools/screenshots
 
   e2e:
     desc: "Run the end-to-end tests against real Hyper-V and clients; filter with -- -run <regexp>"

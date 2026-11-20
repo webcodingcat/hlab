@@ -25,65 +25,17 @@ func testCAT03(t *testing.T) {
 	e := sharedEnv(t)
 	ctx := context.Background()
 
-	name := os.Getenv("HLAB_HCLOUD_CONTEXT")
-	if name == "" {
-		name = "HLab"
+	acc, why := usableHetzner(ctx)
+	if why != "" {
+		t.Skipf("no usable hcloud context: %s", why)
 	}
-	// hcloud never sees HCLOUD_TOKEN, HCLOUD_ENDPOINT or HCLOUD_CONTEXT; the
-	// context is always selected by name.
-	var real []string
-	for _, kv := range os.Environ() {
-		k, _, _ := strings.Cut(kv, "=")
-		switch strings.ToUpper(k) {
-		case "HCLOUD_TOKEN", "HCLOUD_ENDPOINT", "HCLOUD_CONTEXT":
-			continue
-		}
-		real = append(real, kv)
-	}
-	hcloud := func(timeout time.Duration, args ...string) (result, error) {
-		return command(ctx, timeout, real, "", harness.hcloud, append([]string{"--context", name}, args...)...)
-	}
-
-	// Usable context (SPEC "Accounts and secrets"): listed by
-	// `hcloud context list`, and its endpoint is the real API.
-	r, err := command(ctx, time.Minute, real, "", harness.hcloud, "context", "list", "-o", "noheader", "-o", "columns=name")
-	if err != nil {
-		t.Skipf("no usable hcloud context: hcloud context list: %v; stderr: %s", err, r.Stderr)
-	}
-	listed := false
-	for _, line := range strings.Split(r.Stdout, "\n") {
-		if strings.TrimSpace(line) == name {
-			listed = true
-		}
-	}
-	if !listed {
-		t.Skipf("no usable hcloud context: %q is not listed by hcloud context list (set HLAB_HCLOUD_CONTEXT)", name)
-	}
-	r, err = hcloud(time.Minute, "config", "get", "endpoint")
-	if err != nil || strings.TrimSpace(r.Stdout) != realEndpoint {
-		t.Skipf("no usable hcloud context: endpoint of %q is %q, want %s (%v)", name, strings.TrimSpace(r.Stdout), realEndpoint, err)
-	}
-
-	r, err = hcloud(2*time.Minute, "server-type", "list", "-o", "json")
-	if err != nil {
-		t.Skipf("no usable hcloud context %q (hcloud server-type list: %v; stderr: %s)", name, err, r.Stderr)
-	}
-	want, err := typeNames(r.Stdout)
-	if err != nil || len(want) == 0 {
-		t.Skipf("no usable hcloud context %q: the real API listed no server types (%v)", name, err)
-	}
-	r, err = hcloud(time.Minute, "config", "get", "token", "--allow-sensitive")
-	token := strings.TrimSpace(r.Stdout)
-	if err != nil || token == "" {
-		// Never show stdout here: it may hold the token.
-		t.Skipf("no usable hcloud context %q: hcloud config get token gave no token (%v; stderr: %s)", name, err, r.Stderr)
-	}
+	want, token := acc.types, acc.token
 
 	// The update stays: the dev profile keeps Hetzner's current server types, as after a user's hlab catalog update.
 
 	// The token goes only into the environment of this one child process.
 	environ := append(os.Environ(), tokenVar+"="+token)
-	r, err = command(ctx, 5*time.Minute, environ, "", harness.hlab, "catalog", "update", "--hetzner-token-env", tokenVar)
+	r, err := command(ctx, 5*time.Minute, environ, "", harness.hlab, "catalog", "update", "--hetzner-token-env", tokenVar)
 	if err != nil || r.ExitCode != 0 {
 		t.Fatalf("hlab catalog update --hetzner-token-env %s: %v\n%s", tokenVar, err, redact(r, token))
 	}
