@@ -462,12 +462,12 @@ Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes
   - [ ] src/views/Projects.svelte: the project list full width, row click opens `#/projects/<name>/tokens` and sets `lastProject`; cloud stopped: "Start the cloud to manage projects" with the Start button.
   - [ ] src/views/ProjectConsole.svelte (breadcrumb "Projects / <name> ▾" with a menu of the other projects, SectionSidebar with a separator and "API tokens", the stopped text), src/views/Tokens.svelte (`git mv` of ProjectDetail.svelte: token table and "Create token" dialog under the title "API tokens" with its help button); App.svelte renders ProjectConsole for the project area.
 
-- [ ] 10-31 E2E harness: delete the run's project and leftovers
+- [x] 10-31 E2E harness: delete the run's project and leftovers
   - Wave: 5 | Depends on: 10-22 (order) | Review: alone
   - Requirements: - (test harness) | Tests: - (proof at the close: after `task e2e`, `hlab project list` shows no `e2e-*` project)
   - Reads: test/e2e/main_test.go `setup`, `teardown`, `newEnv`, `deleteAllServers`; ARCHITECTURE "Management API" (`DELETE /projects/{name}`); finding 6
   - Size: ~80 lines in 1 file
-  - [ ] test/e2e/main_test.go: shared `deleteProject(name)` (`hlab project delete`, which deletes every resource); `teardown` deletes the run's project when `envVal != nil` instead of `deleteAllServers` (removed); setup lists projects (`hlab project list --output json`) and deletes every name matching exactly `^e2e-\d{8}-\d{6}$` other than the run's own, after the cloud runs.
+  - [x] test/e2e/main_test.go: shared `deleteProject(name)` (`hlab project delete`, which deletes every resource); `teardown` deletes the run's project when `envVal != nil` instead of `deleteAllServers` (removed); setup lists projects (`hlab project list --output json`) and deletes every name matching exactly `^e2e-\d{8}-\d{6}$` other than the run's own, after the cloud runs.
 
 - [ ] 10-30 Server Types view: token dialog and location checkboxes
   - Wave: 6 | Depends on: 10-27, 10-29 | Review: alone
