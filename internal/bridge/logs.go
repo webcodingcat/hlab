@@ -200,3 +200,45 @@ func (f *follow) flushEvery(ctx context.Context, interval time.Duration, emit fu
 		}
 	}
 }
+
+// SearchResult is the answer of Logs.Search.
+type SearchResult struct {
+	Lines  []string `json:"lines"`  // raw log lines, newest first
+	Capped bool     `json:"capped"` // more than logLines matched
+}
+
+// Search returns the lines of the log files whose shown text contains query
+// and whose level is at least minLevel, newest first, at most 1000; an empty
+// query returns no lines.
+func (l *Logs) Search(query, minLevel string) (SearchResult, error) {
+	if query == "" {
+		return SearchResult{Lines: []string{}}, nil
+	}
+	lines, capped, err := logfile.Search(l.d.LogDir, "hlabd.log", query, minLevel, logLines)
+	if err != nil {
+		return SearchResult{}, err
+	}
+	if lines == nil {
+		lines = []string{}
+	}
+	return SearchResult{Lines: lines, Capped: capped}, nil
+}
+
+// OlderResult is the answer of Logs.Older.
+type OlderResult struct {
+	Lines   []string `json:"lines"`    // oldest first, the lines before the given one
+	AtStart bool     `json:"at_start"` // the start of the oldest file is reached
+}
+
+// Older returns up to 1000 lines of the log files before the line oldest,
+// oldest first.
+func (l *Logs) Older(oldest string) (OlderResult, error) {
+	lines, atStart, err := logfile.Before(l.d.LogDir, "hlabd.log", oldest, logLines)
+	if err != nil {
+		return OlderResult{}, err
+	}
+	if lines == nil {
+		lines = []string{}
+	}
+	return OlderResult{Lines: lines, AtStart: atStart}, nil
+}
