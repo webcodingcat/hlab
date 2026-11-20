@@ -78,21 +78,20 @@ everywhere.
 - Shell, built like the Hetzner Cloud Console, in three areas:
   - Top bar on every page: application icon and "HLab" (a click leads to
     the project list), breadcrumb, cloud status pill, Start/Stop button and
-    a gear icon button (label "Administration") on the right. The
-    breadcrumb starts on every page with a home icon (accessible name
-    "Projects") that leads to the project list; on the project list it is
-    the current page.
+    a gear icon button (label "Administration") on the right. The gear is
+    a toggle: a click opens Administration, a second click closes it and
+    returns to the page shown before (the project list when there was
+    none); while Administration is open the gear shows as pressed.
   - Project list (start page): the projects table, full width, no sidebar.
     A row click opens the project console of that project.
-  - Project console: breadcrumb "<home> / <name> ▾"; the name opens a
-    menu to switch to another project, the home icon leads back to the
-    list.
+  - Project console: breadcrumb "Projects / <name> ▾"; the name opens a
+    menu to switch to another project, "Projects" leads back to the list.
     Left sidebar with the sections of this project only: the resource
     sections (Servers, Volumes, Load Balancers, Networks, Firewalls,
     Floating IPs, Primary IPs, DNS, Certificates, SSH Keys, Placement
     Groups, Images, ISOs), then a separator and "API tokens". Phase 10
     builds "API tokens" only. The last opened project is remembered.
-  - Administration (gear): breadcrumb "<home> / Administration", left sidebar with
+  - Administration (gear): breadcrumb "Administration", left sidebar with
     Server Types, Settings, Logs.
 - Cloud stopped: the project list and the project console show the text
   "Start the cloud to manage projects" with the Start button; the

@@ -38,12 +38,12 @@ in ARCHITECTURE.md or the plan.
 - Why: the update error stays under the field, so the existing `action()` toast helper does not fit.
 - Cost of change: low
 
-## 2026-11-20 Home icon in the breadcrumb
+## 2026-11-20 Q16 no second window; gear toggles Administration
 
 - Type: change
 - Phase: feedback
-- What: the breadcrumb starts on every page with a home icon (accessible name "Projects") that leads to the project list; the project console reads "<home> / <name> ▾", Administration "<home> / Administration" (UI-SPEC "Views").
-- Why: user's finding in the UI-08 check: no intuitive way from Administration back to the projects.
+- What: Q16 answered with option 3, the tray program keeps one window; the gear becomes a toggle (a second click closes Administration and returns to the page shown before, the project list when there was none), and the logo keeps leading to the project list (UI-SPEC "Views"); the home icon recorded earlier the same day is dropped.
+- Why: user's decision in the UI-08 check: no intuitive way back from Administration, and separate windows are not wanted.
 - Cost of change: low
 
 ## 2026-11-20 Project console building blocks
