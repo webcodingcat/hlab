@@ -411,12 +411,12 @@ Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes
   - [ ] cmd/hlab-tray/tray.go (one cloud item whose label and enabled state follow the model, "Open HLab", window title and error dialog title "HLab"; `click` takes the current item label), e2e.go (`Click` labels), options.go (`Name: "HLab"`).
   - [ ] ui/frontend/index.html `<title>HLab</title>`; src/views/Settings.svelte texts "Trust the HLab CA", "Stop trusting the HLab CA", "HLab CA certificate", "HLab's domains".
 
-- [ ] 10-25 Bridge: log search and older lines
+- [x] 10-25 Bridge: log search and older lines
   - Wave: 2 | Depends on: 10-24 | Review: alone
   - Requirements: UI-06 | Tests: - (pass-through; the UI-06 e2e rows cover it)
   - Reads: PLAN "Interfaces" (bridge Logs, logfile); internal/bridge/logs.go
   - Size: ~60 lines in 1 file
-  - [ ] internal/bridge/logs.go: `Search(query, minLevel)` and `Older(oldest)` on `LogDir` with 1000 as in "Interfaces"; an empty query returns no lines.
+  - [x] internal/bridge/logs.go: `Search(query, minLevel)` and `Older(oldest)` on `LogDir` with 1000 as in "Interfaces"; an empty query returns no lines.
 
 - [ ] 10-21 Name HLab in API messages
   - Wave: 3 | Depends on: 10-23 (order) | Review: alone
