@@ -2648,3 +2648,19 @@ in ARCHITECTURE.md or the plan.
 - What: RDNS-02 and SRV-10, the two parallel rows that post actions on the shared server, retry on `locked` through `postAction` and a new `postActionInto`.
 - Why: the real API also answers `423 locked` while another action runs; clients retry.
 - Cost of change: low
+
+## 2026-11-20 APIRoutes builds modules with an empty catalog
+
+- Type: decision
+- Phase: phase B2
+- What: `cloud.APIRoutes()` calls `Cloud.modules()` with an empty catalog, so test/docs builds only on Windows; api-coverage.md names RRSet routes `{rr_name}/{rr_type}` like the registered patterns.
+- Why: the image and catalog constructors iterate the catalog; routes do not depend on its content, and the project builds and tests on Windows only.
+- Cost of change: medium (moving `APIRoutes` into an untagged package)
+
+## 2026-11-20 e2e waits for stopped accept refused
+
+- Type: decision
+- Phase: phase B2
+- What: `waitCloudState("stopped")` in the e2e harness also accepts `refused`.
+- Why: hlab reports `refused` only once the service manager reports the service stopped.
+- Cost of change: low
