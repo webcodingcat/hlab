@@ -6,6 +6,7 @@
 import path from "node:path";
 import type { Page } from "@playwright/test";
 import { test, expect, env, openView, tableRow } from "../e2e/fixtures";
+import { section } from "../e2e/console";
 
 const schemes = ["light", "dark"] as const;
 
@@ -36,8 +37,7 @@ test("README screenshots", async ({ page }) => {
 
     // The project console of demo-web with its token "ci".
     await tableRow(page, "demo-web").getByRole("cell", { name: "demo-web", exact: true }).click();
-    await page.getByRole("navigation").getByRole("link", { name: "API tokens", exact: true }).click();
-    await expect(page.getByRole("heading", { level: 1, name: "API tokens", exact: true })).toBeVisible();
+    await section(page, "API tokens");
     await expect(tableRow(page, "ci")).toBeVisible();
     await shoot(page, "tokens");
   } finally {

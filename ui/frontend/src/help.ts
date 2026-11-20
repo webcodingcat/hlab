@@ -17,7 +17,6 @@ export type ViewId =
   | "placement-groups"
   | "snapshots"
   | "backups"
-  | "images"
   | "isos"
   | "tokens"
   | "server-types"
