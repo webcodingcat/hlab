@@ -63,13 +63,12 @@
     errors = { fields: {} };
     if ("error" in l) return;
     const pipName = name.trim();
-    const input: Input = { type, location, auto_delete: autoDelete, labels: l.labels };
-    if (pipName) input.name = pipName;
+    const input: Input = { name: pipName, type, location, auto_delete: autoDelete, labels: l.labels };
     if (server) input.assignee_id = Number(server);
     const req = request(create, 0, input)!;
     busy = true;
     await runAction(
-      `Create primary IP ${pipName}`.trim(),
+      `Create primary IP ${pipName}`,
       async () => {
         try {
           const res = await api<ActionResult>(project, req.method, req.path, req.body);
@@ -96,7 +95,7 @@
   onsubmit={submit}
   oncancel={() => (window.location.hash = list)}
 >
-  <Field label="Name" error={errors.fields.name} hint="Optional; unique in the project.">
+  <Field label="Name" error={errors.fields.name} hint="Unique in the project.">
     {#snippet children(c)}
       <input id={c.id} aria-describedby={c.describedby} aria-invalid={c.invalid} autocomplete="off" bind:value={name} />
     {/snippet}

@@ -115,8 +115,7 @@
   function run() {
     if (!pending) return;
     const { pip, action } = pending;
-    const req = request(action, pip.id);
-    if (!req) return;
+    const req = request(action, pip.id)!;
     // Not awaited: the dialog closes at once, the toast follows the request.
     runApi(project, `${action.label} ${pip.name}`, req.method, req.path, req.body).then(load);
   }
