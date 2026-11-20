@@ -205,7 +205,7 @@ Svelte building blocks (props):
   - [x] ui/frontend/src/views/servers/Servers.svelte: list (Name, Status pill, Public IPv4, Type, Location, Labels, Created; refresh every 5 s and after every action); row menu with the menu entries that need no input (Power on, Shutdown, Reboot, Reset, Power off, Delete) with their confirmations; switching to create and detail by the route.
   - [x] views/servers/ServerCreate.svelte in the UI-SPEC order: Location, Image (system images, own snapshots and backups), Type (only types available in the chosen location, ARM left out), Networking (public IPv4 and IPv6 switches, optional primary IPs, private networks), SSH keys, Volumes, Firewalls, Backups, Placement group, Labels, Cloud config, Name (default `<type>-<location>-<n>`); submit through `runApi`, the `root_password` in SecretDialog, then the new server's detail page.
 
-- [x] 11-08 Server detail page and actions menu
+- [ ] 11-08 Server detail page and actions menu
   - Wave: 4 | Depends on: 11-07 | Review: alone
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/e2e/servers.spec.ts (through test/e2e/ui_test.go TestE2E/UI-02)
   - Reads: UI-SPEC "Building blocks" (Detail page, Confirm dialog), "Behaviour"; CONTEXT "Corrections"; OpenAPI `server` schema and `/server_types`, `/images`, `/placement_groups` in the reference
