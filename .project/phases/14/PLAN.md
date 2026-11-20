@@ -586,14 +586,14 @@ button "Browse…", row menu "Edit" and "Remove".
   - [x] Remove the project view `isos` (views/isos/Section.svelte, IsoDetail.svelte, routes.ts project view, routes.test.ts cases).
   - [x] tests/e2e/isos.spec.ts rewritten for UI-10 and test/e2e/ui_test.go `testUI10` (temporary `.iso` file passed by environment variable, own project with a read/write token to check `/isos`, every own ISO it adds removed at the end); first run with a generous limit, then about twice that run.
 
-- [ ] 14-42 Documentation
+- [x] 14-42 Documentation
   - Wave: 5 | Depends on: 14-25 … 14-41 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06, DOC-07 | Tests: test/docs/docs_test.go, ui/frontend/tests/unit/help.test.ts
   - Reads: SPEC "Documentation"; REQUIREMENTS "Documentation (DOC)", CAT-10, UI-10; CONTEXT "Findings plans 14-25 onward"; DECISIONS 2026-11-20 entries; PLAN "Findings from manual testing" (documentation lines)
   - Size: ~300 lines in 10 files
-  - [ ] Help texts: snapshots, backups, isos (Administration), volumes (form), placement-groups, and every help text that names the sidebar or labels; only existing views and buttons.
-  - [ ] README.md (tray program: project console groups and tabs, Administration ISOs), docs/guide.md (console sections, labels, volume form, own ISOs), docs/configuration.md (`isos.custom.json`), docs/deviations.md and docs/development/api-coverage.md (own ISOs as private ISOs with name null, attached by ID).
-  - [ ] docs/development/components.md (consoleNav, SectionSidebar groups, SectionTabs, toast title helper, labels chips, own ISOs in catalog, images and cloud); regenerate the screenshots with `task docs:screenshots`.
+  - [x] Help texts: snapshots, backups, isos (Administration), volumes (form), placement-groups, and every help text that names the sidebar or labels; only existing views and buttons.
+  - [x] README.md (tray program: project console groups and tabs, Administration ISOs), docs/guide.md (console sections, labels, volume form, own ISOs), docs/configuration.md (`isos.custom.json`), docs/deviations.md and docs/development/api-coverage.md (own ISOs as private ISOs with name null, attached by ID).
+  - [x] docs/development/components.md (consoleNav, SectionSidebar groups, SectionTabs, toast title helper, labels chips, own ISOs in catalog, images and cloud); regenerate the screenshots with `task docs:screenshots`.
 
 ## Findings from manual testing
 
