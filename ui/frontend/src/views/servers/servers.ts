@@ -37,6 +37,9 @@ export type Server = {
   location: { name: string };
   image: Image | null;
   placement_group: Named | null;
+  backup_window: string | null;
+  rescue_enabled: boolean;
+  iso: (Named & { description: string }) | null;
   protection: { delete: boolean; rebuild: boolean };
   labels: Record<string, string>;
 };
