@@ -150,9 +150,9 @@ export async function openRow(page: Page, name: string): Promise<void> {
 /** addLabel adds the label env=e2e in the detail page's Labels tab and saves it. */
 export async function addLabel(page: Page): Promise<void> {
   await page.getByRole("link", { name: "Labels", exact: true }).click();
-  await page.getByRole("button", { name: "Add label", exact: true }).click();
-  await page.getByRole("textbox", { name: /key/i }).last().fill("env");
-  await page.getByRole("textbox", { name: /value/i }).last().fill("e2e");
+  const box = page.getByRole("textbox", { name: "Labels", exact: true });
+  await box.fill("env=e2e");
+  await box.press("Enter");
   await page.getByRole("button", { name: "Save labels", exact: true }).click();
 }
 
