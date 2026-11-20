@@ -475,12 +475,12 @@ button "Browse…", row menu "Edit" and "Remove".
   - [ ] lib/LabelsField.svelte as the chip box (rule text, chips with key on muted background, Enter/Space/comma turn text into a chip, click selects in the accent colour, Delete/Backspace removes the selected chip, Backspace in the empty input removes the last, double click edits, rule and duplicate messages under the box with the text kept); LabelsTab.svelte follows ("Save labels" stays).
   - [ ] Adjust tests/e2e/console.ts and sshkeys.spec.ts; run `task e2e -- -run 'TestE2E/UI-02$'`.
 
-- [ ] 14-29 Placement group Type select
+- [x] 14-29 Placement group Type select
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-02 | Tests: - (cosmetic; existing rows stay)
   - Reads: PLAN "Findings from manual testing" (placement group Type); views/placement-groups/PlacementGroupCreate.svelte
   - Size: ~15 lines in 1 file
-  - [ ] views/placement-groups/PlacementGroupCreate.svelte: Type as a select with the single preselected option `spread`, the hint below it; the request still sends `type: "spread"`.
+  - [x] views/placement-groups/PlacementGroupCreate.svelte: Type as a select with the single preselected option `spread`, the hint below it; the request still sends `type: "spread"`.
 
 - [x] 14-30 Console navigation model and new routes
   - Wave: 1 | Depends on: - | Review: alone
