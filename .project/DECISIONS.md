@@ -2790,3 +2790,11 @@ in ARCHITECTURE.md or the plan.
 - What: the Graphs tab loads all metric types in one request with the server's step and offers 1 h, 24 h and 7 d, with a muted note that hlabd keeps samples for 24 hours.
 - Why: UI-SPEC names the three ranges, and hlabd's retention is 24 hours.
 - Cost of change: low
+
+## 2026-11-20 e2e actions have a 60 s deadline
+
+- Type: decision
+- Phase: phase 11
+- What: the Playwright `e2e` project sets `actionTimeout: 60_000`, and the servers spec waits for a form control to be visible before choosing select or radio group.
+- Why: an unbounded click held a UI-02 run for 40 minutes; the spec counted controls before the form had rendered.
+- Cost of change: low

@@ -189,13 +189,13 @@ Svelte building blocks (props):
   - Size: ~260 lines in 1 file
   - [x] ui/frontend/src/lib/serverActions.ts as in "Interfaces", with every menu and tab entry, its confirmation and password flags.
 
-- [ ] 11-06 SSH Keys section
+- [x] 11-06 SSH Keys section
   - Wave: 3 | Depends on: 11-02, 11-03, 11-04 | Review: alone
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/e2e/sshkeys.spec.ts (through test/e2e/ui_test.go TestE2E/UI-02)
   - Reads: UI-SPEC "Building blocks", "Views", "Behaviour"; REQUIREMENTS KEY-01; OpenAPI `/ssh_keys` and `/ssh_keys/{id}` in the reference; CONTEXT "Corrections"
   - Size: ~300 lines in 3 files
-  - [ ] ui/frontend/src/views/sshkeys/SshKeys.svelte: list (Name, Fingerprint, Labels, Created; refresh every 5 s; row menu Delete with a plain confirmation), switching to create and detail by the route.
-  - [ ] views/sshkeys/SshKeyCreate.svelte (Public key text area, Name, Labels; field errors through `formErrors`), views/sshkeys/SshKeyDetail.svelte (tabs Overview: name edit, fingerprint, public key in a CopyField, created; Labels; actions menu Delete).
+  - [x] ui/frontend/src/views/sshkeys/SshKeys.svelte: list (Name, Fingerprint, Labels, Created; refresh every 5 s; row menu Delete with a plain confirmation), switching to create and detail by the route.
+  - [x] views/sshkeys/SshKeyCreate.svelte (Public key text area, Name, Labels; field errors through `formErrors`), views/sshkeys/SshKeyDetail.svelte (tabs Overview: name edit, fingerprint, public key in a CopyField, created; Labels; actions menu Delete).
 
 - [x] 11-07 Servers list and create form
   - Wave: 3 | Depends on: 11-02, 11-03, 11-04, 11-05 | Review: alone
@@ -205,7 +205,7 @@ Svelte building blocks (props):
   - [x] ui/frontend/src/views/servers/Servers.svelte: list (Name, Status pill, Public IPv4, Type, Location, Labels, Created; refresh every 5 s and after every action); row menu with the menu entries that need no input (Power on, Shutdown, Reboot, Reset, Power off, Delete) with their confirmations; switching to create and detail by the route.
   - [x] views/servers/ServerCreate.svelte in the UI-SPEC order: Location, Image (system images, own snapshots and backups), Type (only types available in the chosen location, ARM left out), Networking (public IPv4 and IPv6 switches, optional primary IPs, private networks), SSH keys, Volumes, Firewalls, Backups, Placement group, Labels, Cloud config, Name (default `<type>-<location>-<n>`); submit through `runApi`, the `root_password` in SecretDialog, then the new server's detail page.
 
-- [ ] 11-08 Server detail page and actions menu
+- [x] 11-08 Server detail page and actions menu
   - Wave: 4 | Depends on: 11-07 | Review: alone
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/e2e/servers.spec.ts (through test/e2e/ui_test.go TestE2E/UI-02)
   - Reads: UI-SPEC "Building blocks" (Detail page, Confirm dialog), "Behaviour"; CONTEXT "Corrections"; OpenAPI `server` schema and `/server_types`, `/images`, `/placement_groups` in the reference
@@ -238,10 +238,10 @@ Svelte building blocks (props):
   - [x] ui/frontend/src/lib/LineChart.svelte: SVG line chart of one or more series with time axis, value axis, legend and an accessible title.
   - [x] views/servers/tabs/Graphs.svelte: CPU, disk (IOPS, bandwidth) and network (PPS, bandwidth) for 1 h, 24 h, 7 d, reloaded every 30 s while visible; ServerDetail.svelte adds the tab.
 
-- [ ] 11-12 Documentation
+- [x] 11-12 Documentation
   - Wave: 8 | Depends on: 11-06, 11-11 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06, DOC-07 | Tests: test/docs/docs_test.go, ui/frontend/tests/unit/help.test.ts
   - Reads: SPEC "Documentation"; REQUIREMENTS "Documentation (DOC)"; CONTEXT; DECISIONS phase 11 entries
   - Size: ~250 lines in 6 files
-  - [ ] ui/frontend/src/help/servers.md and help/ssh-keys.md: list, create form, detail tabs and actions, naming only existing views and buttons (Console not available in HLab).
-  - [ ] README.md (tray program: project console with Servers and SSH Keys, the other sections follow), docs/guide.md (servers and SSH keys in the console), docs/development/components.md (the console frame in ui/frontend/src/lib: api, actions, routes, detail and form building blocks); regenerate the README console screenshots with `task docs:screenshots`.
+  - [x] ui/frontend/src/help/servers.md and help/ssh-keys.md: list, create form, detail tabs and actions, naming only existing views and buttons (Console not available in HLab).
+  - [x] README.md (tray program: project console with Servers and SSH Keys, the other sections follow), docs/guide.md (servers and SSH keys in the console), docs/development/components.md (the console frame in ui/frontend/src/lib: api, actions, routes, detail and form building blocks); regenerate the README console screenshots with `task docs:screenshots`.

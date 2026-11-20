@@ -1,4 +1,4 @@
-STATUS: IN_PROGRESS
+STATUS: MANUAL_CHECK
 
 <!-- Allowed values: IDEA, IDEA_DONE, SPEC_REVIEW, READY, IN_PROGRESS, MANUAL_CHECK, BLOCKED, DONE -->
 
@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 11 Tray console: shared frame, servers, SSH keys (in progress, branch wcc/phase-11)
+- Phase: 11 Tray console: shared frame, servers, SSH keys (built on branch wcc/phase-11, unmerged; waits for the manual check)
 - Base branch: main
 - Last done: phase B2 merged into main (2026-11-20): networks deleted last at project deletion, DOC-03 checks every registered route, e2e harness stops the dev service in every holding state, RDNS-02 and SRV-10 retry on `locked`; LB `https` health-check item dropped (the real API rejects it)
-- Next: /wcc:phase for 11 in a new session; DOC-07 (01) waits until the repository is on GitHub
+- Next: /wcc:report for the UI-02 (11) frame check, then /wcc:phase to close phase 11; DOC-07 (01) waits until the repository is on GitHub
 
 ## Open manual checks
 
@@ -20,6 +20,7 @@ STATUS: IN_PROGRESS
 
 - DOC-07 (01): README and guides are understandable for their audience, help texts name only existing views and buttons
 - LIFE-05 (09): a Windows shutdown or restart with the cloud running applies the stop behaviour
+- UI-02 (11): the console frame with Servers and SSH Keys looks right and is pleasant to operate
 
 ## Open decisions
 
