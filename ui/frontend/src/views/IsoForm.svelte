@@ -53,11 +53,14 @@
       </select>
     {/snippet}
   </Field>
-  <fieldset class="source">
-    <legend>Source</legend>
-    <label class="check"><input type="radio" name="source" value="url" bind:group={spec.source} /> URL</label>
-    <label class="check"><input type="radio" name="source" value="path" bind:group={spec.source} /> Local file</label>
-  </fieldset>
+  <Field label="Source">
+    {#snippet children(c)}
+      <select id={c.id} aria-describedby={c.describedby} bind:value={spec.source}>
+        <option value="url">URL</option>
+        <option value="path">Local file</option>
+      </select>
+    {/snippet}
+  </Field>
   {#if spec.source === "url"}
     <Field label="URL" error={errors.url}>
       {#snippet children(c)}
@@ -89,25 +92,6 @@
   input,
   select {
     width: 100%;
-  }
-  .source {
-    display: flex;
-    gap: var(--s4);
-    margin: 0 0 var(--s4);
-    padding: 0;
-    border: 0;
-  }
-  legend {
-    margin-bottom: var(--s1);
-    font-weight: 600;
-  }
-  .check {
-    display: flex;
-    align-items: center;
-    gap: var(--s2);
-  }
-  .check input {
-    width: auto;
   }
   .path {
     display: flex;

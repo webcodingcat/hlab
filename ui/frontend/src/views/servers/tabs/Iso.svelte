@@ -2,13 +2,14 @@
   import Button from "../../../lib/Button.svelte";
   import Field from "../../../lib/Field.svelte";
   import { listAll } from "../../../lib/api";
+  import { isoTitle } from "../../../lib/format";
   import { showError } from "../../../lib/toast";
   import type { Server } from "../servers";
   import { runTab } from "./run";
 
   // The ISO tab: the ISO in the server's DVD drive, attach one from /isos
   // and detach it.
-  type Iso = { id: number; name: string; description: string; deprecation: unknown };
+  type Iso = { id: number; name: string | null; description: string; deprecation: unknown };
   type Props = { project: string; server: Server; onchanged: () => void };
 
   let { project, server, onchanged }: Props = $props();
@@ -37,7 +38,7 @@
   <h2>ISO</h2>
   {#if server.iso}
     <div class="attached">
-      <span><strong>{server.iso.description || server.iso.name}</strong> is in the DVD drive; the server boots from it after a reset.</span>
+      <span><strong>{isoTitle(server.iso)}</strong> is in the DVD drive; the server boots from it after a reset.</span>
       <Button onclick={() => run("detach_iso")}>Detach ISO</Button>
     </div>
   {:else}
@@ -48,7 +49,7 @@
       {#snippet children(c)}
         <select id={c.id} aria-describedby={c.describedby} bind:value={chosen}>
           <option value="" disabled>{isos ? "Choose an ISO" : "Loading the ISOs…"}</option>
-          {#each isos ?? [] as i (i.id)}<option value={`${i.id}`}>{i.description || i.name}</option>{/each}
+          {#each isos ?? [] as i (i.id)}<option value={`${i.id}`}>{isoTitle(i)}</option>{/each}
         </select>
       {/snippet}
     </Field>

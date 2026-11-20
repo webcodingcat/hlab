@@ -183,8 +183,7 @@ func testUI05(t *testing.T) {
 // deleted, with the type, location and image of the other server rows.
 // Volumes, Load Balancers, Networks, Firewalls, Floating IPs, Primary IPs,
 // DNS, Certificates and Placement Groups share one project: each creates a
-// resource through its form, labels and deletes it; ISOs lists the API's
-// ISOs. The limit is about twice the last full run (1m31s).
+// resource through its form, labels and deletes it. The limit is about twice the last full run (1m31s).
 func testUI02(t *testing.T) {
 	runSpec(t, "UI-02", 3*time.Minute, []string{
 		"HLAB_E2E_SERVER_TYPE=" + serverType,
@@ -196,14 +195,15 @@ func testUI02(t *testing.T) {
 // testUI10: the Administration ISOs view lists the catalog and adds an own
 // ISO by URL and one by a local .iso file (a small file of this run), edits
 // and removes them; a project of its own checks /isos. The spec removes
-// every own ISO it added. The limit is generous until the first full run.
+// every own ISO it added. The limit is about twice the last full run (4s),
+// rounded up for the start of node and Playwright.
 func testUI10(t *testing.T) {
 	file := filepath.Join(harness.tmp, "ui10-own.iso")
 	if err := os.WriteFile(file, []byte("hlab e2e UI-10: not a real ISO image\n"), 0o644); err != nil {
 		t.Fatalf("write %s: %v", file, err)
 	}
 	t.Cleanup(func() { _ = os.Remove(file) })
-	runSpec(t, "UI-10", 10*time.Minute, []string{"HLAB_E2E_ISO_FILE=" + file})
+	runSpec(t, "UI-10", 15*time.Second, []string{"HLAB_E2E_ISO_FILE=" + file})
 }
 
 // testUI06: the logs view shows the service log and follows it.
