@@ -19,6 +19,13 @@ test("UI-02 dns", async ({ page, shared }) => {
   await expect.poll(async () => (await named<Zone>(token, "/zones", "zones", name)).length, { timeout: 60_000 }).toBe(1);
   const [created] = await named<Zone>(token, "/zones", "zones", name);
   expect(created.mode).toBe("primary");
+  // Its create action locks it until it ends (API-13); Delete waits for that.
+  await expect
+    .poll(
+      async () => ((await api(token, `/zones/${created.id}/actions?status=running`)).body as { actions: unknown[] }).actions.length,
+      { timeout: 60_000 },
+    )
+    .toBe(0);
   await section(page, "DNS");
 
   // A label added in its Labels tab is in the API.
