@@ -155,6 +155,85 @@ export function helpFor(view: string, texts: Record<string, string>): string | u
 
 Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bridge.<Type>.<Method>`; the e2e-only tray service is `main.TrayTest.State` / `main.TrayTest.Click`.
 
+### Findings fixes (10-20 onward)
+
+```go
+// internal/bridge (changed): one cloud item instead of CanStart/CanStop.
+type TrayModel struct {
+	Icon        string `json:"icon"`         // running|stopped|busy|error (unchanged keys)
+	Tooltip     string `json:"tooltip"`      // "HLab: <status>"
+	Status      string `json:"status"`       // menu status line
+	CloudItem   string `json:"cloud_item"`   // "Start cloud" | "Stop cloud" | "Starting cloud…" | "Stopping cloud…" | "Checking cloud…"
+	CloudAction string `json:"cloud_action"` // "start" | "stop" | "" (item disabled)
+}
+// Start and Stop (unchanged signatures): after the service manager accepted
+// the call the state is "starting" / "stopping" at once and OnChange fires;
+// a poll that began before the call does not overwrite it; an error leaves
+// the state unchanged.
+
+// internal/bridge (additions)
+type Location struct {
+	Name string `json:"name"`
+	City string `json:"city"`
+}
+func (s *Service) Locations() ([]Location, error) // catalog locations, also while stopped
+type SearchResult struct {
+	Lines  []string `json:"lines"`  // raw log lines, newest first
+	Capped bool     `json:"capped"` // more than max matched
+}
+func (l *Logs) Search(query, minLevel string) (SearchResult, error) // logfile.Search with max 1000
+type OlderResult struct {
+	Lines   []string `json:"lines"`    // oldest first, the lines before the given one
+	AtStart bool     `json:"at_start"` // the start of the oldest file is reached
+}
+func (l *Logs) Older(oldest string) (OlderResult, error) // logfile.Before with n 1000
+
+// internal/logfile (additions). Both read hlabd.log, then name.1 .. name.Keep
+// backwards in fixed-size chunks (never a whole file in memory); a file that
+// is rotated away while reading is read on under its new name (os.SameFile)
+// or skipped, never an error. Lines are returned without their newline.
+// minLevel: "" all, else DEBUG < INFO < WARN < ERROR and above; a line without
+// a known level always passes. The query matches case-insensitively the text
+// the Logs view shows: level, msg and the key=value fields of a JSON line
+// (time excluded), or the raw text of a line that is not JSON.
+func Search(dir, name, query, minLevel string, max int) (lines []string, capped bool, err error) // newest first
+// Before returns the n lines before the newest line equal to line, oldest
+// first; a line not found returns no lines and atStart true.
+func Before(dir, name, line string, n int) (lines []string, atStart bool, err error)
+
+// internal/catalog (addition): Location gets City string `json:"city"`.
+
+// tools/icons (new, `task icons`): renders the app icon (white "H" on a
+// rounded square in the accent blue) and the four state icons (app icon with
+// a status dot) and writes the committed outputs.
+func Generate(root string) error // writes the files below under the repository root
+// cmd/hlab-tray/icons/{app,running,busy,stopped,error}.ico,
+// cmd/{hlab-tray,hlab,hlabd}/rsrc_windows_amd64.syso (group icon IDs 3 and 32512, github.com/tc-hib/winres),
+// ui/frontend/src/assets/app-icon.svg, docs/images/banner.svg
+
+// test/traylaunch (new, no build tag): starts the e2e tray build for the UI
+// e2e tests and the screenshot tool (moved out of test/e2e/ui_test.go).
+type Tray struct{ Port int /* CDP port */ }
+func Start(ctx context.Context, exe, webviewDir string, env []string) (*Tray, error) // waits until CDP answers
+func (t *Tray) Stop()
+```
+
+```ts
+// ui/frontend/src/state.ts (changed)
+export type ViewId = "projects" | "tokens" | "server-types" | "settings" | "logs"; // ids of views.json
+export type Route =
+  | { area: "projects" }
+  | { area: "project"; project: string; view: "tokens" }
+  | { area: "admin"; view: "server-types" | "settings" | "logs" };
+export const route: Readable<Route>;          // from location.hash: #/projects, #/projects/<name>/tokens, #/admin/<view>
+export function href(r: Route): string;
+export const views: { id: ViewId; title: string; area: "projects" | "project" | "admin" }[]; // ids from views.json
+export const lastProject: Writable<string>;   // localStorage "hlab.project"; the window opens its console when it exists
+
+// ui/frontend/src/lib/Dialog.svelte: props open (bindable), title, children, onclose; Escape closes.
+// ui/frontend/src/lib/SectionSidebar.svelte: props label, items: { href, title, icon, current }[].
+```
+
 ## Plans
 
 - [x] 10-01 Catalog: own server types add, remove and reload
@@ -304,6 +383,143 @@ Bound method names for `Call.ByName`: `github.com/webcodingcat/hlab/internal/bri
   - Size: ~250 lines in 9 files
   - [x] README.md (tray program: start, status, start/stop, quit, settings, server types, projects and tokens, logs; the "no tray program" line goes, the installer stays missing), docs/user/configuration.md (server-types.custom.json created by hlabd and written by the tray, when each setting applies), docs/dev/build-and-test.md (`task test:frontend`, tray UI tests over CDP, e2e build), docs/dev/components.md (bridge, tray, frontend).
   - [x] The help texts ui/frontend/src/help/{projects,server-types,settings,logs}.md naming only existing views and buttons.
+
+Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes"). At most two plans run at once and at most one of them runs UI e2e tests; a dependency marked "(order)" only sequences the waves.
+
+- [ ] 10-20 App icon, tray state icons and EXE resources
+  - Wave: 1 | Depends on: - | Review: alone
+  - Requirements: UI-01, UI-08 | Tests: tools/icons/icons_test.go
+  - Reads: UI-SPEC "Foundation", "Colours", "Views" (Tray icon); SPEC "Stack" (winres); RESEARCH "Findings fixes" F1, F2; CONTEXT "Findings fixes"; findings 1, 4
+  - Size: ~380 lines in 5 files plus generated files
+  - [ ] go.mod/go.sum: `github.com/tc-hib/winres` v0.3.1. tools/icons/main.go and icons.go: `Generate` draws the app icon (white "H" on a rounded square in the accent blue, supersampled anti-aliasing, standard library `image`) at 16, 20, 24, 32, 48, 256 px and the four state icons at 16, 20, 24, 32 px (app icon plus a lower-right dot about a third wide with a 1 px contrasting rim: running success, busy warning, stopped text muted, error error, light-mode values), encodes ICO (PNG frame for 256), writes the `.syso` per main package with the group icon under IDs 3 and 32512 through winres, and writes `ui/frontend/src/assets/app-icon.svg` and `docs/images/banner.svg` (icon, "HLab", subtitle "A local Hetzner-compatible cloud on Hyper-V", readable on light and dark through `prefers-color-scheme` inside the SVG) from the same geometry.
+  - [ ] Taskfile.yml task `icons` (`go run ./tools/icons`); run it once and commit cmd/hlab-tray/icons/*.ico, cmd/{hlab-tray,hlab,hlabd}/rsrc_windows_amd64.syso, the two SVGs; `task build` links the `.syso` without running the tool.
+
+- [ ] 10-24 Log files: search and older lines
+  - Wave: 1 | Depends on: - | Review: alone
+  - Requirements: UI-06 | Tests: internal/logfile/logfile_test.go
+  - Reads: UI-SPEC "Views" (Logs); ARCHITECTURE "Files and formats" (hlabd.log); PLAN "Interfaces" (logfile); finding 7
+  - Size: ~280 lines in 2 files
+  - [ ] internal/logfile/search.go: a backward line reader over hlabd.log and its rotated files in 64 KiB chunks (open with `openRead`, files identified with `os.SameFile` so a rotation during the read continues under the new name or skips the file), `Search` (match text as in "Interfaces", level filter, newest first, stops after max+1 with `capped`) and `Before`.
+
+- [ ] 10-23 Tray: one cloud item, state at once after Start/Stop, name HLab in the window
+  - Wave: 2 | Depends on: 10-20 | Review: alone
+  - Requirements: UI-01, UI-08 | Tests: internal/bridge/cloud_test.go, ui/frontend/tests/e2e/fixtures.ts, ui/frontend/tests/e2e/tray.spec.ts
+  - Reads: UI-SPEC "Views" (Tray icon, Tray menu), "Building blocks" (Button loading), "Language of the interface"; RESEARCH topic 1 (menu updates); DECISIONS "One Start/Stop item in the tray menu", "Product name HLab and an app icon"; findings 2, 3, 10
+  - Size: ~250 lines in 6 files
+  - Adjusts: ui/frontend/tests/e2e/settings.spec.ts (switch label "Trust the HLab CA")
+  - [ ] internal/bridge/cloud.go: `TrayModel` with `CloudItem`/`CloudAction` and tooltip "HLab: <status>" as in "Interfaces"; `Start`/`Stop` record and emit "starting"/"stopping" on success, with a poll generation counter so an older poll result is dropped.
+  - [ ] cmd/hlab-tray/tray.go (one cloud item whose label and enabled state follow the model, "Open HLab", window title and error dialog title "HLab"; `click` takes the current item label), e2e.go (`Click` labels), options.go (`Name: "HLab"`).
+  - [ ] ui/frontend/index.html `<title>HLab</title>`; src/views/Settings.svelte texts "Trust the HLab CA", "Stop trusting the HLab CA", "HLab CA certificate", "HLab's domains".
+
+- [ ] 10-25 Bridge: log search and older lines
+  - Wave: 2 | Depends on: 10-24 | Review: alone
+  - Requirements: UI-06 | Tests: - (pass-through; the UI-06 e2e rows cover it)
+  - Reads: PLAN "Interfaces" (bridge Logs, logfile); internal/bridge/logs.go
+  - Size: ~60 lines in 1 file
+  - [ ] internal/bridge/logs.go: `Search(query, minLevel)` and `Older(oldest)` on `LogDir` with 1000 as in "Interfaces"; an empty query returns no lines.
+
+- [ ] 10-21 Name HLab in API messages
+  - Wave: 3 | Depends on: 10-23 (order) | Review: alone
+  - Requirements: UI-08 | Tests: - (fixed answers in SPEC; the tests below follow the wording)
+  - Reads: SPEC "Stack" (fixed API answers); UI-SPEC "Language of the interface"; finding 2
+  - Size: ~60 lines in 9 files
+  - Adjusts: internal/resources/servers/servers_test.go (console message), internal/resources/networks/networks_test.go (vswitch message), any other test comparing a renamed message
+  - [ ] internal/resources/servers: actions.go (`server console is not supported by HLab yet`), changetype.go and servers.go ("HLab runs only x86 servers"), with servers_test.go.
+  - [ ] internal/resources/networks/validate.go (`vswitch subnets are not supported by HLab`), networks_test.go, loadbalancers/targets.go ("HLab's transit network"), zones/rrsets.go and zones.go ("managed by HLab").
+  - [ ] internal/api/deviations.go: descriptions name "HLab" where they name the product (the CRL path `/hlab/v1/ca.crl` stays).
+
+- [ ] 10-27 Bridge: catalog locations
+  - Wave: 3 | Depends on: 10-25 (order) | Review: alone
+  - Requirements: UI-04 | Tests: internal/bridge/service_test.go
+  - Reads: UI-SPEC "Views" (Server Types); PLAN "Interfaces" (Location); internal/bridge/service.go `catalog()`; internal/catalog/catalog.go `Location`; finding 9
+  - Size: ~60 lines in 2 files
+  - [ ] internal/catalog/catalog.go: `Location.City` (`json:"city"`, read from the shipped object); internal/bridge/service.go: `Locations()` from the catalog the bridge already loads (works while stopped), sorted by name.
+
+- [ ] 10-28 Shell: routes, top bar, Administration
+  - Wave: 4 | Depends on: 10-20, 10-23, 10-27 (order) | Review: alone
+  - Requirements: UI-07, UI-08, DOC-05 | Tests: - (UI-07 help.test.ts and DOC-05 docs_test.go cover views.json; navigation e2e in 10-29)
+  - Reads: UI-SPEC "Foundation", "Spacing and grid", "Views" (Shell, Cloud stopped), "Behaviour"; DECISIONS "Console shell like the Hetzner Cloud Console", "Q15 DOC-05 views from views.json"; CONTEXT "Findings fixes" (last opened project); PLAN "Interfaces" (state.ts, SectionSidebar); finding 5
+  - Size: ~380 lines in 8 files
+  - [ ] ui/frontend/src/views.json `["projects","tokens","server-types","settings","logs"]`; src/state.ts (`views` built from views.json with title and area, `Route`, `route` from the hash, `href`, `lastProject` in localStorage `hlab.project`; at startup an empty hash opens `lastProject`'s console when `GET /projects` lists it, else the list; unknown routes fall back to `#/projects`); src/help.ts `ViewId`; src/help/tokens.md (short; the documentation plan completes it).
+  - [ ] src/lib/TopBar.svelte (app icon from src/assets/app-icon.svg and "HLab" linking to `#/projects`, breadcrumb slot, status pill, Start/Stop button, icon button "Administration" linking to `#/admin/server-types`), src/lib/SectionSidebar.svelte, src/App.svelte (areas: project list full width, project area renders the existing Projects/ProjectDetail until 10-29, admin area with SectionSidebar Server Types, Settings, Logs and breadcrumb "Administration"); remove src/lib/Sidebar.svelte and the project switcher.
+
+- [ ] 10-22 Name HLab in CLI, cloud and host messages
+  - Wave: 4 | Depends on: 10-21 | Review: alone
+  - Requirements: UI-08 | Tests: - (wording; tests comparing it follow)
+  - Reads: UI-SPEC "Language of the interface"; finding 2
+  - Size: ~60 lines in 10 files
+  - Adjusts: tests that compare a renamed message (internal/cli/cli_test.go, internal/hostnet/windows tests, internal/cloud tests, internal/ca/ca_test.go where they use the CA name constant)
+  - [ ] internal/cli/cli.go: "HLab CA written to …", "the HLab CA is (no longer) trusted on this host", `hlab version` text output "HLab <version>" (JSON unchanged); usage lines, flag messages naming `hlab <command>` and the `hlab:` error prefix stay (command name).
+  - [ ] internal/cloud/ca.go (new CAs get CN "HLab CA"; an existing CA file is kept), lifecycle.go ("readable HLab state", "newer HLab version"), internal/store/store.go ("newer HLab version").
+  - [ ] internal/hostnet/windows/hostnet.go ("the HLab cloud of profile …"), wsl.go ("which HLab does not support", "resolve HLab names"), internal/settings/settings.go ("which HLab cannot use").
+
+- [ ] 10-29 Project list and project console
+  - Wave: 5 | Depends on: 10-28 | Review: alone
+  - Requirements: UI-05, UI-08 | Tests: ui/frontend/tests/e2e/projects.spec.ts
+  - Reads: UI-SPEC "Views" (Shell, Cloud stopped, Projects), "Building blocks"; PLAN "Interfaces" (state.ts, SectionSidebar); finding 5
+  - Size: ~350 lines in 6 files
+  - Adjusts: ui/frontend/tests/e2e/fixtures.ts (`openView` goes through the gear and the Administration sidebar for Server Types, Settings, Logs; UI-03, UI-04, UI-06 specs keep what they check)
+  - [ ] src/views/Projects.svelte: the project list full width, row click opens `#/projects/<name>/tokens` and sets `lastProject`; cloud stopped: "Start the cloud to manage projects" with the Start button.
+  - [ ] src/views/ProjectConsole.svelte (breadcrumb "Projects / <name> ▾" with a menu of the other projects, SectionSidebar with a separator and "API tokens", the stopped text), src/views/Tokens.svelte (`git mv` of ProjectDetail.svelte: token table and "Create token" dialog under the title "API tokens" with its help button); App.svelte renders ProjectConsole for the project area.
+
+- [ ] 10-31 E2E harness: delete the run's project and leftovers
+  - Wave: 5 | Depends on: 10-22 (order) | Review: alone
+  - Requirements: - (test harness) | Tests: - (proof at the close: after `task e2e`, `hlab project list` shows no `e2e-*` project)
+  - Reads: test/e2e/main_test.go `setup`, `teardown`, `newEnv`, `deleteAllServers`; ARCHITECTURE "Management API" (`DELETE /projects/{name}`); finding 6
+  - Size: ~80 lines in 1 file
+  - [ ] test/e2e/main_test.go: shared `deleteProject(name)` (`hlab project delete`, which deletes every resource); `teardown` deletes the run's project when `envVal != nil` instead of `deleteAllServers` (removed); setup lists projects (`hlab project list --output json`) and deletes every name matching exactly `^e2e-\d{8}-\d{6}$` other than the run's own, after the cloud runs.
+
+- [ ] 10-30 Server Types view: token dialog and location checkboxes
+  - Wave: 6 | Depends on: 10-27, 10-29 | Review: alone
+  - Requirements: UI-04, UI-08 | Tests: ui/frontend/tests/e2e/servertypes.spec.ts
+  - Reads: UI-SPEC "Building blocks" (Form, Confirm dialog), "Views" (Server Types), "Behaviour" (Keyboard); PLAN "Interfaces" (Locations, Dialog); findings 8, 9
+  - Size: ~300 lines in 2 files
+  - [ ] src/lib/Dialog.svelte (native `<dialog>`, title, Escape and "Cancel" close, `onclose`); src/views/ServerTypes.svelte: the add form and the token form use it.
+  - [ ] ServerTypes.svelte: "Update from Hetzner" (enabled while the cloud runs) opens the dialog with the required password field "Hetzner token", the hint, "Update" (loading, Enter submits); success closes it and shows the toast, an error stays under the field; the token is cleared on every close. Locations: "All locations" (checked by default, disables the others, saves `[]`) and one checkbox "<name> (<city>)" per `Locations()` entry; unchecked without a location shows the error under the list.
+
+- [ ] 10-32 Documentation layout: docs/ and docs/development/
+  - Wave: 6 | Depends on: 10-31 (order) | Review: alone
+  - Requirements: DOC-01, DOC-02, DOC-04, DOC-06 | Tests: test/docs/docs_test.go (paths only)
+  - Reads: SPEC "Documentation"; REQUIREMENTS "Documentation (DOC)"; DECISIONS "Documentation folders"; finding 12
+  - Size: ~60 lines in 10 files (moves)
+  - Adjusts: test/docs/docs_test.go (DOC-01 docs/commands.md, DOC-02 docs/configuration.md, DOC-03 docs/development/api-coverage.md, DOC-06 docs/development/*.md)
+  - [ ] `git mv` docs/user/commands.md, configuration.md to docs/; docs/user/deviations.md to docs/development/api-coverage.md (its full content); test/docs/docs_test.go follows the paths.
+  - [ ] `git mv` docs/dev/{setup,build-and-test,components,adding-a-resource}.md to docs/development/; fix every link in README.md and the moved documents (DOC-04 green).
+
+- [ ] 10-26 Logs view: search and older lines
+  - Wave: 7 | Depends on: 10-25, 10-29, 10-30 (order) | Review: alone
+  - Requirements: UI-06, UI-08 | Tests: ui/frontend/tests/e2e/logs.spec.ts
+  - Reads: UI-SPEC "Views" (Logs), "Behaviour"; PLAN "Interfaces" (bridge Logs); ui/frontend/src/views/Logs.svelte; finding 7
+  - Size: ~220 lines in 1 file
+  - [ ] src/views/Logs.svelte: search field (Enter or 300 ms pause) calling `Logs.Search` with the level filter, matches newest first with the matched text highlighted (`<mark>`), count "N matches" / "1000+ matches", follow off while a search shows, clearing returns to the live follow; "Load older lines" above the list calling `Logs.Older` with the oldest shown raw line, prepending the result, disabled after `at_start`; loaded older lines are not trimmed by the 5000 cap, which applies to the live part.
+
+- [ ] 10-33 README screenshots from the running tray
+  - Wave: 8 | Depends on: 10-29, 10-26 (order) | Review: alone
+  - Requirements: DOC-07 | Tests: - (manual DOC-07)
+  - Reads: RESEARCH "Findings fixes" F3, topic 5; CONTEXT "Findings fixes" (sample projects); test/e2e/ui_test.go `startTray`, `stopTray`, `freePort`; finding 14 (2)
+  - Size: ~320 lines in 6 files
+  - Adjusts: test/e2e/ui_test.go (uses test/traylaunch; UI rows unchanged)
+  - [ ] test/traylaunch/launch.go: tray start and stop moved out of test/e2e/ui_test.go as in "Interfaces"; ui_test.go uses it.
+  - [ ] Probe first: tools/screenshots/main.go builds `bin\hlab-tray-e2e.exe` (tag e2e), starts it, and ui/frontend/tests/screenshots/console.spec.ts (Playwright project `screenshots` in playwright.config.ts) connects over CDP, sets `emulateMedia({ colorScheme: "dark" })`, `setViewportSize({ width: 1200, height: 800 })` and takes a screenshot; if this fails, stop the plan and report.
+  - [ ] The tool needs the dev cloud running, creates the sample projects `demo-web`, `demo-staging`, `demo-ci` (only those it created are deleted afterwards) and a token "ci" in `demo-web` through bin\hlab.exe; the spec types `demo-` into the list's search, captures the project list and the `demo-web` console "API tokens" in light and dark into docs/images/{projects,tokens}-{light,dark}.png (no token value on screen) and resets media and viewport; Taskfile.yml `docs:screenshots`; run it and commit the images.
+
+- [ ] 10-34 Documentation: deviations, references and help texts
+  - Wave: 8 | Depends on: 10-21, 10-26, 10-30, 10-32 | Review: alone
+  - Requirements: DOC-03, DOC-05, DOC-07 | Tests: test/docs/docs_test.go (DOC-03)
+  - Reads: SPEC "Documentation" D2-D6; REQUIREMENTS DOC-03, DOC-05, DOC-07; UI-SPEC "Views", "Language of the interface"; internal/api/deviations.go; findings 2, 13, 15
+  - Size: ~400 lines in 10 files
+  - [ ] docs/deviations.md new for users: short prose by topic (servers; images, snapshots, backups, rescue and ISOs; volumes; networks, primary and floating IPs; firewalls; DNS and reverse DNS; load balancers and certificates; projects, server types and prices; WSL2), no routes, at most about 150 lines, linking docs/development/api-coverage.md; api-coverage.md gets a contributor introduction and the descriptions renamed in 10-21.
+  - [ ] ui/frontend/src/help/{projects,tokens,server-types,settings,logs}.md for the new shell (project list, project console "API tokens", Administration; token dialog, location checkboxes, search and "Load older lines"), naming only existing views and buttons, "HLab" as name.
+  - [ ] docs/commands.md, docs/configuration.md, docs/development/components.md: "HLab" in prose, the shell, logfile search, tools/icons and test/traylaunch.
+
+- [ ] 10-35 Documentation
+  - Wave: 9 | Depends on: 10-32, 10-33, 10-34 | Review: alone
+  - Requirements: DOC-04, DOC-06, DOC-07 | Tests: test/docs/docs_test.go (DOC-04, DOC-06 unchanged)
+  - Reads: SPEC "Documentation" D1, D6, "Machine prerequisites", "Accounts and secrets" (hlab-docs); RESEARCH "Findings fixes" F4; CONTEXT "Findings fixes"; findings 11, 14
+  - Size: ~400 lines changed in 5 files (mostly moved text)
+  - [ ] docs/guide.md: the per-resource sections of README.md (servers, snapshots and backups, ISOs, volumes, networks, IPs, firewalls, DNS, load balancers and certificates, OpenTofu and Ansible, stopping and starting, profiles) with working anchors; links to them follow.
+  - [ ] README.md compact: centred docs/images/banner.svg, static badges (`badge/Go-1.27-00ADD8`, `badge/platform-Windows-0078D4`), link line "Guide · Commands · Configuration · Deviations · Development", what HLab is, the screenshots with `<picture>` light/dark (relative paths), Prerequisites for using HLab, Installation (no installer yet, built from source per docs/development/setup.md), first steps, tray program for the new shell, a terminal example `hcloud server create …` with its real output and `ssh root@<ip>` run through the `hlab-docs` context (server deleted afterwards), WSL2, uninstallation, links; "HLab" in prose.
+  - [ ] docs/development/setup.md merges the developer tool list (Go, Node.js, Task, golangci-lint, WiX, Wails, the e2e RAM and disk figures), `task build` and `scripts\dev-setup.ps1` without duplicates; build-and-test.md documents `task icons` and `task docs:screenshots`.
 
 ## Findings from manual testing
 

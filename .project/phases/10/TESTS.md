@@ -30,3 +30,32 @@ changes settings.toml and restores it. UI-08 (manual) has no row; it also
 covers the real tray icon. DOC-01 to DOC-06 keep their rows in
 test/docs/docs_test.go (TestDocs/DOC-0n); DOC-05 covers views.json and the
 help texts; DOC-07 is manual.
+
+## Findings fixes (10-20 onward)
+
+New rows, and rows that replace an earlier row because the promise changed:
+
+| Requirement | Behaviour | Level | Test | Plan |
+|-------------|-----------|-------|------|------|
+| UI-01 | `Generate` writes app.ico with 16, 20, 24, 32, 48 and 256 px and the four state icons with 16, 20, 24 and 32 px, each differing from the app icon only in the lower-right corner, and a `.syso` whose resources (read with `debug/pe`) hold the icon group under IDs 3 and 32512 | unit | tools/icons/icons_test.go: TestIcons/UI-01 | 10-20 |
+| UI-01 | (replaces TestBridge/UI-01/tray above) `Tray` maps each state (stopped, starting, running, stopping, refused, stopped after a failed start, connection lost, unknown) to icon key, tooltip "HLab: …", status line, cloud item label and action ("Start cloud"/start, "Stop cloud"/stop, "Starting cloud…", "Stopping cloud…", "Checking cloud…" disabled) (table) | unit | internal/bridge/cloud_test.go: TestBridge/UI-01/tray | 10-23 |
+| UI-01 | right after a successful `Start` or `Stop` the state is "starting" or "stopping" and `OnChange` has fired, a poll begun before the call does not bring back the old state, and a failed call leaves the state unchanged | unit | internal/bridge/cloud_test.go: TestBridge/UI-01/pending | 10-23 |
+| UI-01 | (replaces the UI-01 e2e row above) the one cloud item reads "Stop cloud" while running; clicking it stops the cloud, the item then reads "Start cloud" and starts it again; icon key, tooltip, item label and the top bar pill follow each step (busy states disabled with their label) and `hlab cloud status` agrees | e2e | test/e2e/ui_test.go: TestE2E/UI-01 running ui/frontend/tests/e2e/tray.spec.ts: UI-01 | 10-23 |
+| UI-04 | `Locations` lists the catalog's locations with name and city, also while the cloud is stopped | unit | internal/bridge/service_test.go: TestBridge/UI-04/locations | 10-27 |
+| UI-04 | (replaces the UI-04 e2e row above) the server types view lists the catalog with its source; adding an own type with "All locations" unchecked and no location shows the error under the list, with one location ticked it is added and `/server_types` of a project serves it with that location; removing it works; "Update from Hetzner" opens a dialog with the password field "Hetzner token": with the token of a usable hcloud context the dialog closes and the count shows, without one Hetzner's refusal of an invalid token stays in the dialog; reopened, the field is empty | e2e | test/e2e/ui_test.go: TestE2E/UI-04 running ui/frontend/tests/e2e/servertypes.spec.ts: UI-04 | 10-30 |
+| UI-05 | (replaces the UI-05 e2e row above) the project list creates a project; a row click opens its project console with "API tokens", where a token is created and shown once, reads the project's API, is revoked (the API then answers 401); back in the list the project is deleted after its name is typed | e2e | test/e2e/ui_test.go: TestE2E/UI-05 running ui/frontend/tests/e2e/projects.spec.ts: UI-05 | 10-29 |
+| UI-06 | `Search` finds a text case-insensitively in msg and fields across hlabd.log and rotated files, newest first, applies the minimum level, stops at max with `capped`; a file rotated away during the search does not fail it (table) | unit | internal/logfile/logfile_test.go: TestLogfile/UI-06/search | 10-24 |
+| UI-06 | `Before` returns the n lines before a given line oldest first, across into rotated files, with `atStart` at the start of the oldest file and for a line not found; a rotation between two calls does not fail it (table) | unit | internal/logfile/logfile_test.go: TestLogfile/UI-06/older | 10-24 |
+| UI-06 | the logs view searches for a text the service logged (a created project's name): matches show highlighted with the count, follow is off; clearing the field returns to the live view | e2e | test/e2e/ui_test.go: TestE2E/UI-06 running ui/frontend/tests/e2e/logs.spec.ts: UI-06 search | 10-26 |
+| UI-06 | "Load older lines" prepends the lines before the oldest shown one (the count grows), or is disabled when the log starts within the shown lines | e2e | test/e2e/ui_test.go: TestE2E/UI-06 running ui/frontend/tests/e2e/logs.spec.ts: UI-06 older | 10-26 |
+| DOC-03 | every deviation and `unsupported_error` of `api.Deviations()` is listed in docs/development/api-coverage.md, and docs/deviations.md names none of their endpoints | unit | test/docs/docs_test.go: TestDocs/DOC-03 | 10-34 |
+
+Tests that change only how they reach a view or which file they read (Adjusts:, what they check stays):
+
+- ui/frontend/tests/e2e/fixtures.ts `openView` (UI-03, UI-04, UI-06 specs) through the gear and the Administration sidebar: 10-29.
+- ui/frontend/tests/e2e/settings.spec.ts switch label "Trust the HLab CA": 10-23.
+- test/docs/docs_test.go DOC-01, DOC-02, DOC-06 paths under docs/ and docs/development/: 10-32.
+- internal/resources/servers/servers_test.go and networks_test.go fixed messages naming HLab (SPEC "Stack"): 10-21; tests comparing CLI, cloud and host messages: 10-22.
+- test/e2e/ui_test.go tray start through test/traylaunch: 10-33.
+
+Unchanged and still covering the fixes: UI-07 help.test.ts and DOC-05 iterate views.json, so the new `tokens` view needs its help text (10-28, 10-34). The app icon, tray icon look, shell layout, token dialog look, README and help wording are checked by hand under UI-08 and DOC-07 (CHECKS.md at the close). The e2e harness fix (10-31) has no row; the close checks that `hlab project list` shows no `e2e-*` project after `task e2e`.

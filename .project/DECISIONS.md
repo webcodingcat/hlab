@@ -22,6 +22,62 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 Phase 10 findings: screenshot sample projects
+
+- Type: decision
+- Phase: phase 10
+- What: the README screenshots use throwaway projects `demo-web`, `demo-staging`, `demo-ci`, filtered by the search `demo-`; only projects the tool created are deleted.
+- Why: the list search is a name substring filter, so only a shared prefix shows exactly these.
+- Cost of change: low
+
+## 2026-11-20 Phase 10 findings: shared tray launcher
+
+- Type: decision
+- Phase: phase 10
+- What: tray start and stop move from test/e2e/ui_test.go into package test/traylaunch, used by the UI e2e tests and tools/screenshots.
+- Why: shared helpers are used, not copied.
+- Cost of change: low
+
+## 2026-11-20 Phase 10 findings: log search and older lines
+
+- Type: decision
+- Phase: phase 10
+- What: search matches level, msg and key=value fields (raw text for non-JSON lines), the level filter runs in the service before the 1000 cap; "Load older lines" finds the oldest shown line by its text from the end each time, without a cursor, and older lines are outside the view's 5000-line cap.
+- Why: survives rotation and the switch between stream and files with no state in the bridge.
+- Cost of change: low
+
+## 2026-11-20 Phase 10 findings: tray cloud item and pending state
+
+- Type: decision
+- Phase: phase 10
+- What: `TrayModel` replaces `CanStart`/`CanStop` with `CloudItem`/`CloudAction`; a poll generation counter keeps a poll begun before Start/Stop from overwriting "starting"/"stopping".
+- Why: one item, and window and tray agree without a gap.
+- Cost of change: low
+
+## 2026-11-20 Phase 10 findings: one icon geometry
+
+- Type: decision
+- Phase: phase 10
+- What: `tools/icons` writes the app icon, the tray state icons, the `.syso` files, `ui/frontend/src/assets/app-icon.svg` and `docs/images/banner.svg`; its `debug/pe` check is a unit row under UI-01.
+- Why: all artwork from one geometry; UI-08 is manual and cannot carry a row.
+- Cost of change: low
+
+## 2026-11-20 Phase 10 findings: product name in messages
+
+- Type: decision
+- Phase: phase 10
+- What: new CAs get the CN "HLab CA" (existing CA files are kept); `hlab version` text reads "HLab <version>"; the `hlab:` prefix, usage lines, `hlab <command>` mentions and `/hlab/v1/ca.crl` stay lowercase.
+- Why: command, path and file names stay as they are.
+- Cost of change: low
+
+## 2026-11-20 Phase 10 findings: catalog locations
+
+- Type: decision
+- Phase: phase 10
+- What: `catalog.Location` gets a `City` field from the shipped location objects; "Update from Hetzner" stays enabled only while the cloud runs.
+- Why: the form labels "<name> (<city>)"; the update goes through hlabd.
+- Cost of change: low
+
 ## 2026-11-20 Windows icon resources with winres
 
 - Type: change
