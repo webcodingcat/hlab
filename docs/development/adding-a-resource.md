@@ -173,6 +173,14 @@ it has finished.
 
 ## 8. Document deviations
 
+Add every route the module registers to the Endpoints table of
+[docs/development/api-coverage.md](api-coverage.md#endpoints), written out
+in full as in `Routes`, for example `POST /servers/{id}/actions/poweron`;
+the documentation test fails for a registered route that page does not
+name. A route with a catch-all wildcard such as `GET /zones/{id}/{sub}`
+also needs an entry in the `aliases` map of `TestDocs/DOC-03`, naming the
+routes it serves.
+
 When the resource behaves differently from Hetzner, add an entry to
 `api.Deviations()` in [internal/api/deviations.go](../../internal/api/deviations.go)
 and describe it in [docs/development/api-coverage.md](api-coverage.md); the

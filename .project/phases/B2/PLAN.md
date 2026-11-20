@@ -71,11 +71,11 @@ func (e *env) postActionInto(path string, body, out any, timeout time.Duration) 
   - Finding (checked in the code for CONTEXT.md): in `refused` the service process does not keep running. `Cloud.Start` writes `refused` to the state file, tears down and returns the refusal; `handler.Execute` (internal/sysint/windows/service.go) then returns `(true, 1)` before it reports `Running`, `svc.Run` ends and `service()` in cmd/hlabd/main.go returns 1, so the process exits. `hlab cloud status` reports `refused` only when the SCM state is `stopped` (internal/cli/cli.go `cloudStatus`), so `bin\hlabd.exe` is free and `hlab cloud stop` would fail with "service not active". While the refusal is being torn down the SCM state is `START_PENDING`, which the harness sees as `starting` and waits through. So `refused` is handled like `stopped`, not like `running`
   - Measurement (noted under "Close"): before, at the phase 10 close, 2 of 2 full runs failed RDNS-02 with `423 locked`. After: `task e2e -- -run '^TestE2E$/^(RDNS-02|SRV-10)$' -count=3 -v` (RDNS-02 together with SRV-10, the parallel row that acts on the shared server; the other shared-server rows only read or use SSH), all 6 row runs green. The `stopRunningCloud` fix is shown by one `task e2e -- -run '^TestE2E$/^SRV-01$'` started with the dev service in `starting` and one started after a `refused` start; both builds succeed and the cloud is left as found
 
-- [ ] B2-04 Documentation
+- [x] B2-04 Documentation
   - Wave: 2 | Depends on: B2-01, B2-02, B2-03 | Review: alone
   - Requirements: DOC-03, DOC-04, DOC-06 | Tests: test/docs/docs_test.go (existing rows stay green)
   - Reads: SPEC "Documentation"; REQUIREMENTS DOC-01 to DOC-07; docs/development/api-coverage.md (introduction), docs/development/adding-a-resource.md "8. Document deviations", docs/development/build-and-test.md (harness paragraph), docs/guide.md (project deletion)
   - Size: ~40 lines in 3 files
   - Adjusts: -
-  - [ ] docs/development/api-coverage.md introduction and docs/development/adding-a-resource.md section 8: DOC-03 now also checks that every route hlabd registers (`cloud.APIRoutes()`) is listed on the coverage page, so a new endpoint goes into the Endpoints table
-  - [ ] docs/development/build-and-test.md: the harness stops the development cloud before the build also while it is starting (it waits until it runs) or stopping, and leaves it as found
+  - [x] docs/development/api-coverage.md introduction and docs/development/adding-a-resource.md section 8: DOC-03 now also checks that every route hlabd registers (`cloud.APIRoutes()`) is listed on the coverage page, so a new endpoint goes into the Endpoints table
+  - [x] docs/development/build-and-test.md: the harness stops the development cloud before the build also while it is starting (it waits until it runs) or stopping, and leaves it as found

@@ -128,8 +128,11 @@ demo                 0          2026-11-18 12:56:55
 
 Deletes a project with everything in it: it revokes the project's tokens
 at once, waits until running actions of the project (a server creation,
-for example) have finished, then deletes its servers with their VMs and
-disks (protected servers too), SSH keys and placement groups. The command
+for example) have finished, then deletes everything the project owns:
+servers with their VMs and disks (protected servers too), volumes with
+their disk files, snapshots and backups, networks, primary and floating
+IPs, firewalls, load balancers, certificates, DNS zones, SSH keys and
+placement groups. The command
 returns when all is gone, which takes a while for many servers. If a
 resource cannot be deleted, the command fails with
 `hlab: deleting project <name> failed: <reason>`; the project stays with
