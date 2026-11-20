@@ -150,8 +150,7 @@
   }
 
   async function loadOlder() {
-    const oldest = lines[0]?.raw;
-    if (oldest === undefined) return;
+    const oldest = lines[0].raw;
     const gen = generation;
     loadingOlder = true;
     try {
@@ -196,7 +195,6 @@
     clearTimeout(searchTimer);
     const q = query;
     if (q === "") {
-      if (results !== undefined || searching) backToLive();
       return;
     }
     const seq = ++searchSeq;
