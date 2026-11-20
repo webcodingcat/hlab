@@ -30,7 +30,11 @@ STATUS: MANUAL_CHECK
      /wcc:phase asks those of its phase at its start, /wcc:change takes
      answers any time. -->
 
-- none
+- Q16 (feedback, UI-08 check 2026-11-20): Should the tray program open views in a window of their own, so the logs can run alongside the rest?
+  - Context: Wails v3.1.0 supports several windows (`app.Window.NewWithOptions`), each loading the same frontend with its own route; the bridge and its events are shared. Today hlab-tray has exactly one window (ARCHITECTURE "hlab-tray"), and the UI e2e tests attach to that one page over CDP. The home icon in the breadcrumb is being built either way.
+  - Options: 1. Logs get "Open in new window"; Server Types and Settings stay in Administration 2. Administration (Server Types, Settings, Logs) opens as a window of its own from the gear 3. no second window
+  - Recommendation: 1, because only the logs are watched alongside other work, while Settings and Server Types are short tasks that fit the shell.
+  - Affects: UI-06, UI-08; ARCHITECTURE "hlab-tray (tray program)"; UI-SPEC "Views"
 
 ## If BLOCKED
 
