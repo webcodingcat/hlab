@@ -22,6 +22,54 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 Documentation folders
+
+- Type: change
+- Phase: feedback
+- What: user documentation lives directly in `docs/` (commands.md, configuration.md, deviations.md) and the developer guide in `docs/development/`, replacing `docs/user/` and `docs/dev/`; `docs/deviations.md` becomes short prose for users without routes, the full route list moves to `docs/development/api-coverage.md`, which DOC-03 checks; README.md becomes compact with a banner, badges and generated light/dark screenshots, its per-resource sections move to `docs/guide.md`.
+- Why: the user's wish during the manual check of DOC-07.
+- Cost of change: low
+
+## 2026-11-20 Hetzner token in a dialog
+
+- Type: change
+- Phase: feedback
+- What: "Update from Hetzner" opens a dialog that asks for the Hetzner token instead of a token field on the Server Types page; the add form for own types chooses locations from a checkbox list of the catalog locations with "All locations" checked by default.
+- Why: the user expected the token to be asked for only when the update is started.
+- Cost of change: low
+
+## 2026-11-20 Log search and older lines
+
+- Type: change
+- Phase: feedback
+- What: the Logs view gets a search over hlabd.log and all rotated files (matches newest first, at most 1000, highlighted) and a "Load older lines" button that pages back 1000 lines at a time across rotated files.
+- Why: in the manual check of UI-08 the user missed searching the log and seeing lines older than the last 1000.
+- Cost of change: low
+
+## 2026-11-20 Console shell like the Hetzner Cloud Console
+
+- Type: change
+- Phase: feedback
+- What: the window has a top bar (HLab, breadcrumb, status, Start/Stop, gear), a project list as start page, a project console per project with a sidebar of its sections (phase 10: API tokens; phase 11 adds the resource sections) and a breadcrumb project switcher, and an Administration area behind the gear with Server Types, Settings and Logs; the sidebar project switcher goes.
+- Why: in the manual check of UI-08 one sidebar mixed the project switcher, Projects and the administration views, which the user found confusing.
+- Cost of change: low
+
+## 2026-11-19 One Start/Stop item in the tray menu
+
+- Type: change
+- Phase: feedback
+- What: the tray menu has one cloud item whose label and action follow the cloud state ("Start cloud", "Stop cloud", disabled "Starting cloud…", "Stopping cloud…", "Checking cloud…") instead of two items; the tray icon is the application icon with a status dot in the lower-right corner in the UI-SPEC role colours.
+- Why: the user's manual check of UI-08 found two items of which one is always greyed out.
+- Cost of change: low
+
+## 2026-11-19 Product name HLab and an app icon
+
+- Type: change
+- Phase: feedback
+- What: the product is named "HLab" in every user-facing text (window, tray, UI, help, API and CLI messages, docs prose) while program, command, service, file and module names stay lowercase; the tray program gets an application icon for window, taskbar and EXE.
+- Why: the user's manual check of UI-08 found the lowercase name and the missing window icon.
+- Cost of change: low
+
 ## 2026-11-18 Server public_net carries primary IP IDs
 
 - Type: decision

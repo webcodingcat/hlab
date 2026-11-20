@@ -214,9 +214,9 @@ They hold at the close of every phase, measured against what is built so
 far, and belong to no single phase. They serve the "Documentation" section
 of IDEA.md rather than a numbered goal.
 
-- DOC-01 every command and flag of `hlab` is described in `docs/user/commands.md` [unit]
-- DOC-02 every key of every configuration file is described in `docs/user/configuration.md` [unit]
-- DOC-03 every API endpoint hlab serves differently from Hetzner, and every `unsupported_error`, is listed in `docs/user/deviations.md` [unit]
+- DOC-01 every command and flag of `hlab` is described in `docs/commands.md` [unit]
+- DOC-02 every key of every configuration file is described in `docs/configuration.md` [unit]
+- DOC-03 every API endpoint hlab serves differently from Hetzner, and every `unsupported_error`, is listed in `docs/development/api-coverage.md`, and `docs/deviations.md` describes the deviations for users by topic without routes [unit]
 - DOC-04 every link in README.md and docs/ resolves [unit]
 - DOC-05 every view of the tray has a help text, and every help text names only views and buttons that exist [unit]
 - DOC-06 every command in the developer guide exists in the Taskfile [unit]

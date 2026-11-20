@@ -18,4 +18,4 @@
   11. Close the window with the X: it disappears, the icon stays; start `bin\hlab-tray.exe` again: the existing window comes to the front.
   12. Choose "Quit" in the tray menu: the tray ends, the cloud keeps running (`bin\hlab.exe cloud status`).
 - Expected: colours, spacing, building blocks (buttons, pills, tables with search and row menu "Actions", confirm dialogs, toasts bottom right, copy fields) look as UI-SPEC.md describes, and the icon is clear at the notification-area size in light and dark taskbar themes.
-- Result: open
+- Result: does not fit, see plan (app icon missing, product name "HLab", one Start/Stop item in the tray menu, tray icon = app icon with status dot, shell rebuilt like the Hetzner Console (project list, project console, Administration), log search and older lines, Hetzner token in a dialog, locations as checkboxes, Start/Stop button flickers; 2026-11-19)

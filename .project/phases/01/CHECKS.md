@@ -10,4 +10,4 @@
   3. Skim docs/user/commands.md, configuration.md and deviations.md: is each command, key and deviation clear?
   4. Read docs/dev/setup.md and build-and-test.md as an outside contributor: could you set up the machine and run `task build`, `task test`, `task e2e`?
 - Expected: every step works as written; nothing in the texts is unclear, missing or describes something that is not built.
-- Result: open
+- Result: does not fit, see plan phases/10/PLAN.md (README holds the developer setup; 2026-11-20)

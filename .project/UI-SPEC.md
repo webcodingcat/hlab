@@ -75,31 +75,65 @@ everywhere.
 
 ## Views
 
-- Shell: left sidebar with project switcher on top, then the resource
-  sections (Servers, Volumes, Load Balancers, Networks, Firewalls, Floating
-  IPs, Primary IPs, DNS, Certificates, SSH Keys, Placement Groups, Images,
-  ISOs), then a separator and the app sections (Projects, Server Types,
-  Settings, Logs). Top bar: cloud status pill and Start/Stop button.
-- Cloud stopped: resource sections are disabled with the text "Start the
-  cloud to manage resources"; Settings, Server Types (catalog and own
-  types, as hlabd would merge them) and Logs (last file contents) stay
-  available.
+- Shell, built like the Hetzner Cloud Console, in three areas:
+  - Top bar on every page: application icon and "HLab" (a click leads to
+    the project list), breadcrumb, cloud status pill, Start/Stop button and
+    a gear icon button (label "Administration") on the right.
+  - Project list (start page): the projects table, full width, no sidebar.
+    A row click opens the project console of that project.
+  - Project console: breadcrumb "Projects / <name> ▾"; the name opens a
+    menu to switch to another project, "Projects" leads back to the list.
+    Left sidebar with the sections of this project only: the resource
+    sections (Servers, Volumes, Load Balancers, Networks, Firewalls,
+    Floating IPs, Primary IPs, DNS, Certificates, SSH Keys, Placement
+    Groups, Images, ISOs), then a separator and "API tokens". Phase 10
+    builds "API tokens" only. The last opened project is remembered.
+  - Administration (gear): breadcrumb "Administration", left sidebar with
+    Server Types, Settings, Logs.
+- Cloud stopped: the project list and the project console show the text
+  "Start the cloud to manage projects" with the Start button; the
+  Administration (Server Types: catalog and own types, as hlabd would merge
+  them; Settings; Logs: last file contents) stays available.
 - Resource list per type: resource table.
 - Create per type: one form page following the Hetzner Console's order
   (servers: location, image, type, networking, SSH keys, volumes,
   firewalls, backups, placement group, labels, cloud config, name).
 - Resource detail per type: detail page with the tabs that type supports.
-- Projects: table of projects; detail with token table, "Create token"
-  dialog that shows the token once in a copy field with a warning.
+- Projects: the project list is the table of projects with "Create
+  project" and the row menu (delete); the project console's "API tokens"
+  section has the token table and the "Create token" dialog that shows the
+  token once in a copy field with a warning.
 - Server Types: table of the catalog with source column (catalog, own),
-  add/remove own types, "Update from Hetzner" with a required password
-  field for the Hetzner token, which is cleared after the update and never
-  stored.
+  add/remove own types (the add form chooses locations with a checkbox
+  list of the catalog's locations, "<name> (<city>)", led by an "All
+  locations" checkbox that is checked by default, disables the others and
+  means all; without it at least one location is required), an "Update
+  from Hetzner" button; it opens a dialog
+  with a required password field for the Hetzner token (hint "Used once
+  for the update, never stored."), "Update" and "Cancel"; the token is
+  cleared when the dialog closes and never stored.
 - Settings: grouped form for every key of `settings.toml`; the trust switch
   shows the risk text from `decisions/managed-certificates.md` and a "Save
   CA certificate" button.
-- Logs: monospace list, level filter, follow toggle.
-- Tray menu: status line, Open hlab, Start cloud / Stop cloud, Quit.
+- Logs: monospace list, level filter, follow toggle, search field and a
+  "Load older lines" button above the list. The search (case-insensitive
+  text, Enter or after a short pause) runs in the service over hlabd.log
+  and all rotated files and shows the matches, newest first, at most 1000,
+  the matched text highlighted, with the count ("1000+ matches" when
+  capped); follow is off while a search is shown, clearing the field
+  returns to the live view. "Load older lines" prepends the 1000 lines
+  before the oldest shown one, across rotated files, and is disabled at
+  the start of the oldest file.
+- Tray icon: the application icon with a status dot in the lower-right
+  corner (about a third of the icon, with a 1 px contrasting rim): success
+  colour while running, warning while starting, stopping or checking, text
+  muted while stopped, error colour on an error or a lost connection.
+- Tray menu: status line, Open HLab, one cloud item, Quit. The cloud item
+  reads "Start cloud" while the cloud is stopped (also after a failed or
+  refused start) and "Stop cloud" while it runs (also with the connection
+  lost); while it starts, stops or its state is being checked it is
+  disabled and reads "Starting cloud…", "Stopping cloud…" or "Checking
+  cloud…".
 
 ## Behaviour
 
@@ -114,6 +148,11 @@ everywhere.
 
 ## Language of the interface
 
+- The product is called "HLab" wherever it is named as a name: window
+  title, tray menu and tooltip, view texts, help texts, API and CLI
+  messages, README and documentation prose. Program, command, service,
+  file, folder and module names stay lowercase (`hlab.exe`, `hlabd`,
+  `hlab-tray`, `hlab-dev`, `%LocalAppData%\hlab`, `hlab-ca.pem`).
 - English, sentence case, short and neutral ("Create server", "Delete
   volume"); no exclamation marks; addresses the user as "you" only where
   needed.
