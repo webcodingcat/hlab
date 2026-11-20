@@ -465,15 +465,15 @@ button "Browse…", row menu "Edit" and "Remove".
   - [x] ProtectionTab `name` in views/dns/ZoneDetail.svelte, floating-ips/FloatingIpDetail.svelte, images/ImageDetail.svelte, load-balancers/LoadBalancerDetail.svelte.
   - [x] ProtectionTab `name` in views/networks/NetworkDetail.svelte, primary-ips/PrimaryIpDetail.svelte, servers/ServerDetail.svelte, volumes/VolumeDetail.svelte.
 
-- [ ] 14-28 Labels as chips
+- [x] 14-28 Labels as chips
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-02 | Tests: ui/frontend/tests/unit/forms.test.ts; e2e: the UI-02 specs through test/e2e/ui_test.go TestE2E/UI-02
   - Reads: UI-SPEC "Building blocks" (Labels field); DECISIONS "Labels are entered as chips"; PLAN "Interfaces" (labels, LabelsField); phases/14/feedback/hetzner-labels.png, hetzner-labels-selected.png; internal/labels/labels.go (the API's rule); ui/frontend/src/lib/labels.ts, LabelsField.svelte, LabelsTab.svelte; tests/e2e/console.ts `addLabel`
   - Size: ~330 lines in 6 files
   - Adjusts: ui/frontend/tests/e2e/console.ts `addLabel` and ui/frontend/tests/e2e/sshkeys.spec.ts fill the labels box with `env=e2e` and Enter instead of the key and value rows
-  - [ ] lib/labels.ts `parseLabel`, `checkLabel`; tests/unit/forms.test.ts.
-  - [ ] lib/LabelsField.svelte as the chip box (rule text, chips with key on muted background, Enter/Space/comma turn text into a chip, click selects in the accent colour, Delete/Backspace removes the selected chip, Backspace in the empty input removes the last, double click edits, rule and duplicate messages under the box with the text kept); LabelsTab.svelte follows ("Save labels" stays).
-  - [ ] Adjust tests/e2e/console.ts and sshkeys.spec.ts; run `task e2e -- -run 'TestE2E/UI-02$'`.
+  - [x] lib/labels.ts `parseLabel`, `checkLabel`; tests/unit/forms.test.ts.
+  - [x] lib/LabelsField.svelte as the chip box (rule text, chips with key on muted background, Enter/Space/comma turn text into a chip, click selects in the accent colour, Delete/Backspace removes the selected chip, Backspace in the empty input removes the last, double click edits, rule and duplicate messages under the box with the text kept); LabelsTab.svelte follows ("Save labels" stays).
+  - [x] Adjust tests/e2e/console.ts and sshkeys.spec.ts; run `task e2e -- -run 'TestE2E/UI-02$'`.
 
 - [x] 14-29 Placement group Type select
   - Wave: 1 | Depends on: - | Review: alone
