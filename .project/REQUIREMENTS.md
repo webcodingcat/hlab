@@ -218,9 +218,9 @@ of IDEA.md rather than a numbered goal.
 - DOC-02 every key of every configuration file is described in `docs/configuration.md` [unit]
 - DOC-03 every API endpoint hlab serves differently from Hetzner, and every `unsupported_error`, is listed in `docs/development/api-coverage.md`, and `docs/deviations.md` describes the deviations for users by topic without routes [unit]
 - DOC-04 every link in README.md and docs/ resolves [unit]
-- DOC-05 every view of the tray has a help text, and every help text names only views and buttons that exist [unit]
+- DOC-05 every view of the tray has a help text and every help text belongs to a view, with the app taking its view list from `views.json` [unit]; that each help text names only views and buttons that exist is checked by hand with DOC-07
 - DOC-06 every command in the developer guide exists in the Taskfile [unit]
-- DOC-07 README and guides are understandable for their audience [manual]
+- DOC-07 README and guides are understandable for their audience, and the help texts name only views and buttons that exist [manual]
 
 ## Later
 

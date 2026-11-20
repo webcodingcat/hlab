@@ -22,6 +22,22 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 Q15 DOC-05 views from views.json
+
+- Type: change
+- Phase: change
+- What: Q15 answered with option 2: the app takes its view list from views.json so the DOC-05 unit test covers the real views, and the clause that help texts name only existing views and buttons becomes a manual check under DOC-07.
+- Why: the test cannot see buttons without reading Svelte source, and one source for the views closes the gap a test can close.
+- Cost of change: low
+
+## 2026-11-20 Backlog phase B2
+
+- Type: change
+- Phase: change
+- What: the user took the VLAN release at project deletion (security), the two e2e harness bugs (RDNS-02 423 locked, cloud stop before build only when running) and the DOC-03 route check into phase B2 before phase 11.
+- Why: the user's choice from the backlog.
+- Cost of change: low
+
 ## 2026-11-20 Documentation folders
 
 - Type: change
