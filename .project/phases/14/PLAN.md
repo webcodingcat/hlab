@@ -379,6 +379,21 @@ shows all ISOs on one page (no paging).
     uses, not what it checks).
   - Documentation: help/volumes.md, docs/guide.md (volumes in the
     console), README screenshots if the volume form is among them.
+- minor (2026-11-20, /wcc:report, wanted in this phase by the user): action
+  toasts do not name the resource type. The user deleted the network
+  "Test" from the Networks list; the toast read "Delete Test" / "Done"
+  (screenshot `phases/14/feedback/toast-without-type.png`: dark toast,
+  green bar on the left, check icon, title "Delete Test", line "Done",
+  close button). Expected: the title names action and type like the
+  UI-SPEC.md wording "Delete volume", followed by the name, e.g. "Delete
+  network Test", "Assign floating IP fip-1", "Add record www A". Cause:
+  every caller builds the title as `${label} ${name}` (all `runApi(project,
+  ...)` calls in `ui/frontend/src/views/**` and
+  `lib/ResourceActionsMenu.svelte`, servers of phase 11 included). Fix it
+  once in a shared place (the resource's type name passed to the actions
+  menu / runApi helper), not per view; one unit test for the title
+  builder, plus the existing UI-02 specs adjusted where they match toast
+  titles.
 
 ## Close
 
