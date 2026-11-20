@@ -174,13 +174,13 @@ Svelte building blocks (props):
   - [x] ui/frontend/src/lib/DetailPage.svelte (title row with status pill, actions snippet and help button; tabs as links with `aria-current`; "not found" with a link back), lib/ActionsMenu.svelte (keyboard reachable, Escape closes, disabled items show their hint as text and `aria-describedby`).
   - [x] lib/FormPage.svelte, lib/SecretDialog.svelte ("Copy the password now. It is not shown again."), lib/Table.svelte `RowAction.disabled`/`hint`.
 
-- [ ] 11-04 Form errors, labels and protection
+- [x] 11-04 Form errors, labels and protection
   - Wave: 2 | Depends on: 11-01 | Review: alone
   - Requirements: UI-02 | Tests: ui/frontend/tests/unit/forms.test.ts
   - Reads: UI-SPEC "Building blocks" (Form); REQUIREMENTS API-07, API-09; OpenAPI error object (`details.fields`) and `change_protection` of servers in the reference; ui/frontend/src/lib/Field.svelte, bridge.ts `toApiError`
   - Size: ~300 lines in 5 files
-  - [ ] ui/frontend/src/lib/formErrors.ts, lib/labels.ts as in "Interfaces".
-  - [ ] lib/LabelsField.svelte, lib/LabelsTab.svelte (rows with key, value and remove, "Add label", "Save labels"; a duplicate key or the API's `labels` message under the row or the list), lib/ProtectionTab.svelte (one switch per flag, "Save" sends `change_protection` through `runApi`).
+  - [x] ui/frontend/src/lib/formErrors.ts, lib/labels.ts as in "Interfaces".
+  - [x] lib/LabelsField.svelte, lib/LabelsTab.svelte (rows with key, value and remove, "Add label", "Save labels"; a duplicate key or the API's `labels` message under the row or the list), lib/ProtectionTab.svelte (one switch per flag, "Save" sends `change_protection` through `runApi`).
 
 - [x] 11-05 Server actions module
   - Wave: 1 | Depends on: - | Review: alone
