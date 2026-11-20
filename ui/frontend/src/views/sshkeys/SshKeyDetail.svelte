@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import ActionsMenu from "../../lib/ActionsMenu.svelte";
   import Button from "../../lib/Button.svelte";
   import ConfirmDialog from "../../lib/ConfirmDialog.svelte";
@@ -27,32 +28,49 @@
 
   let key = $state<SshKey | undefined>();
   let notFound = $state(false);
+  let failing = false;
 
   async function load() {
     try {
       key = (await api<{ ssh_key: SshKey }>(project, "GET", path)).ssh_key;
       notFound = false;
+      failing = false;
     } catch (err) {
       if ((err as { code?: unknown }).code === "not_found") notFound = true;
-      else showError("Load SSH key", err);
+      else if (!failing) showError("Load SSH key", err);
+      failing = true;
     }
   }
 
-  $effect(() => {
-    void path;
-    key = undefined;
-    notFound = false;
-    load();
-  });
-
   // Name edit in the Overview.
   let name = $state("");
+  // baseName is the last name shown; a field that still holds it is unedited.
+  let baseName = "";
   let nameError = $state<string | undefined>();
   let general = $state<string | undefined>();
   let saving = $state(false);
 
+  // The open key refreshes every 5 s while it is shown.
   $effect(() => {
-    if (key) name = key.name;
+    void path;
+    untrack(() => {
+      key = undefined;
+      notFound = false;
+      name = baseName = "";
+    });
+    load();
+    const t = setInterval(load, 5000);
+    return () => clearInterval(t);
+  });
+
+  // The refreshed name replaces the field as long as it is not edited.
+  $effect(() => {
+    if (!key) return;
+    const next = key.name;
+    untrack(() => {
+      if (name === baseName) name = next;
+      baseName = next;
+    });
   });
 
   async function rename(e: SubmitEvent) {
@@ -61,6 +79,7 @@
     nameError = general = undefined;
     try {
       key = (await api<{ ssh_key: SshKey }>(project, "PUT", path, { name: name.trim() })).ssh_key;
+      name = key.name;
       showSuccess("Rename SSH key", `SSH key renamed to ${key.name}`);
     } catch (err) {
       const fe = formErrors(err, ["name"]);
