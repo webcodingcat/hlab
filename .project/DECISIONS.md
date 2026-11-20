@@ -27,6 +27,38 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 Console resources as pure action modules
+
+- Type: decision
+- Phase: phase 14
+- What: a generic `lib/resourceActions.ts` and one pure module per resource under `lib/resources/` (create, menu, tabs, firewall rule conversion) with table-driven unit tests, rendered by one `ResourceActionsMenu.svelte` and one `ReverseDnsDialog.svelte`; `serverActions.ts` stays as it is and `labelText`/`createdText` move to `lib/format.ts`.
+- Why: the phase 11 pattern for every resource keeps requests testable without a browser and dialog logic in one place.
+- Cost of change: low
+
+## 2026-11-20 Console sections found by glob, registered at once
+
+- Type: decision
+- Phase: phase 14
+- What: sections live in `views/<view-id>/Section.svelte` and ProjectConsole shows a section once its file exists via `import.meta.glob`; plan 14-01 registers all eleven views in routes, help, views.json and sidebar with help stubs (one task touches 11 stub files).
+- Why: section plans of one wave never touch the same file, and UI-07/DOC-05 need a help file for every view in views.json.
+- Cost of change: low
+
+## 2026-11-20 Phase 14 confirmations and zone file handling
+
+- Type: decision
+- Phase: phase 14
+- What: deleting volumes, networks and zones needs the typed name, every other delete and detach, unassign, removal of sub-resources, zone file import, Change IP range, LB Change type and Disable public interface need a plain confirmation; zone file export shows in a read-only text area with copy, import takes pasted text.
+- Why: UI-SPEC and the phase start; pasted text needs no new bridge function for file dialogs.
+- Cost of change: low
+
+## 2026-11-20 Phase 14 e2e scope
+
+- Type: decision
+- Phase: phase 14
+- What: Images list only snapshots and backups without Create, ISOs are read-only; placement groups get no unit row; the certificates flow uses a managed certificate in a zone made through the API; the UI-02 time limit is set by plan 14-23 after one full run.
+- Why: the API offers nothing more for images and ISOs, Node cannot easily make an uploadable certificate, and the limit is about twice the first full run.
+- Cost of change: low
+
 ## 2026-11-20 Upgrade to wcc 0.32.15
 
 - Type: approval

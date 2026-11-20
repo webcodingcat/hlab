@@ -1,0 +1,47 @@
+# Phase 14 test map
+
+| Requirement | Behaviour | Level | Test | Plan |
+|-------------|-----------|-------|------|------|
+| UI-02 | `parse` and `href` agree for the list, `new` and a detail with tab of each new view (volumes, load-balancers, networks, firewalls, floating-ips, primary-ips, dns, certificates, placement-groups, images, isos); `isos/new` gives undefined (table) | unit | ui/frontend/tests/unit/routes.test.ts: UI-02 resource routes | 14-01 |
+| UI-02 | `request` builds method, path and body, and each entry has its confirmation, for volume create (without a server: `location`; with a server: `server`, `automount`, `format`, no `location`), resize, attach, detach (plain), change protection and delete (typed name) (table) | unit | ui/frontend/tests/unit/volumes.test.ts: UI-02 volumes | 14-03 |
+| UI-02 | `request` builds method, path and body, and each entry has its confirmation, for load balancer create (location, type, network, algorithm, a server, a label selector and an IP target, a tcp, an http with sticky sessions and an https service with certificates and `redirect_http`, health check, proxy protocol), change type (plain), change algorithm, enable and disable public interface (plain), reverse DNS set and reset, add, update and delete service (plain), add and remove target (plain), attach and detach network (plain), change protection and delete (plain) (table) | unit | ui/frontend/tests/unit/loadBalancers.test.ts: UI-02 load balancers | 14-05 |
+| UI-02 | `request` builds method, path and body, and each entry has its confirmation, for network create, change IP range (plain), add subnet (always type `cloud`, no `expose_routes_to_vswitch`), delete subnet (plain), add route, delete route (plain), change protection and delete (typed name) (table) | unit | ui/frontend/tests/unit/networks.test.ts: UI-02 networks | 14-09 |
+| UI-02 | `request` builds method, path and body, and each entry has its confirmation, for firewall create with rules and `apply_to` a server and a label selector, set rules, apply to and remove from a server and a label selector (removes plain) and delete (plain) (table) | unit | ui/frontend/tests/unit/firewalls.test.ts: UI-02 firewalls | 14-11 |
+| UI-02 | `toRules` puts the IPs of an inbound row into `source_ips` and of an outbound row into `destination_ips`, splits them at commas and line breaks, keeps the port only for tcp and udp and drops an empty description; `toRuleRows` turns the rules back into the same rows (table) | unit | ui/frontend/tests/unit/firewalls.test.ts: UI-02 firewall rules | 14-11 |
+| UI-02 | `request` builds method, path and body, and each entry has its confirmation, for floating IP create with a home location and with a server, assign, unassign (plain), reverse DNS set and reset, description, change protection and delete (plain) (table) | unit | ui/frontend/tests/unit/floatingIps.test.ts: UI-02 floating IPs | 14-14 |
+| UI-02 | `request` builds method, path and body, and each entry has its confirmation, for primary IP create (location, no datacenter; without and with a server to assign; `auto_delete`), assign, unassign (plain), auto_delete on and off, reverse DNS set and reset, change protection and delete (plain) (table) | unit | ui/frontend/tests/unit/primaryIps.test.ts: UI-02 primary IPs | 14-15 |
+| UI-02 | `request` builds method, path and body, and each entry has its confirmation, for zone create (empty, with zone file, secondary with primary nameservers), change default TTL, import zone file (plain), export zone file, change primary nameservers, change protection, delete (typed name), and per RRSet create, change TTL, add records, remove records (plain), labels, change protection and delete (plain) at `/zones/{id}/rrsets/{name}/{type}` (table) | unit | ui/frontend/tests/unit/zones.test.ts: UI-02 zones | 14-16 |
+| UI-02 | `request` builds method, path and body, and each entry has its confirmation, for an uploaded certificate (certificate, private key), a managed certificate (domain names), retry and delete (plain) (table) | unit | ui/frontend/tests/unit/certificates.test.ts: UI-02 certificates | 14-19 |
+| UI-02 | `request` builds method, path and body, and each entry has its confirmation, for edit description, convert a backup to a snapshot (`PUT /images/{id}` with `type: snapshot`, no confirmation), change protection and delete (plain) (table) | unit | ui/frontend/tests/unit/images.test.ts: UI-02 images | 14-21 |
+| UI-02 | in the shared project the Volumes section opens its help text; the form creates a volume with Size, Name and Location (no server), listed and in the API; a label added in its Labels tab is in the API; Delete needs the name typed and removes it from the list and the API | e2e | test/e2e/ui_test.go: TestE2E/UI-02 running ui/frontend/tests/e2e/volumes.spec.ts: UI-02 volumes | 14-04 |
+| UI-02 | in the shared project the Load Balancers section opens its help text; the form creates a load balancer with Location, Type and Name, listed and in the API; a label added in its Labels tab is in the API; Delete after the confirmation removes it from the list and the API | e2e | test/e2e/ui_test.go: TestE2E/UI-02 running ui/frontend/tests/e2e/loadbalancers.spec.ts: UI-02 load balancers | 14-07 |
+| UI-02 | in the shared project the Networks section opens its help text; the form creates a network with Name and IP range, listed and in the API; a label added in its Labels tab is in the API; Delete needs the name typed and removes it from the list and the API | e2e | test/e2e/ui_test.go: TestE2E/UI-02 running ui/frontend/tests/e2e/networks.spec.ts: UI-02 networks | 14-10 |
+| UI-02 | in the shared project the Firewalls section opens its help text; the form creates a firewall with one inbound rule and a Name, listed and in the API with that rule; a label added in its Labels tab is in the API; Delete after the confirmation removes it from the list and the API | e2e | test/e2e/ui_test.go: TestE2E/UI-02 running ui/frontend/tests/e2e/firewalls.spec.ts: UI-02 firewalls | 14-13 |
+| UI-02 | in the shared project the Floating IPs section opens its help text; the form creates an IPv4 floating IP with Location and Name, listed with its address and in the API; a label added in its Labels tab is in the API; Delete after the confirmation removes it from the list and the API | e2e | test/e2e/ui_test.go: TestE2E/UI-02 running ui/frontend/tests/e2e/floatingips.spec.ts: UI-02 floating IPs | 14-14 |
+| UI-02 | in the shared project the Primary IPs section opens its help text; the form creates an unassigned IPv4 primary IP with Name and Location, listed with its address and in the API; a label added in its Labels tab is in the API; Delete after the confirmation removes it from the list and the API | e2e | test/e2e/ui_test.go: TestE2E/UI-02 running ui/frontend/tests/e2e/primaryips.spec.ts: UI-02 primary IPs | 14-15 |
+| UI-02 | in the shared project the DNS section opens its help text; "Add zone" creates an empty zone `<unique>.internal`, listed and in the API; a label added in its Labels tab is in the API; Delete needs the name typed and removes it from the list and the API | e2e | test/e2e/ui_test.go: TestE2E/UI-02 running ui/frontend/tests/e2e/dns.spec.ts: UI-02 dns | 14-17 |
+| UI-02 | in the shared project, with a zone made through the API, the Certificates section opens its help text; the form creates a managed certificate for a name in that zone, listed and in the API; a label added in its Labels tab is in the API; Delete after the confirmation removes it from the list and the API | e2e | test/e2e/ui_test.go: TestE2E/UI-02 running ui/frontend/tests/e2e/certificates.spec.ts: UI-02 certificates | 14-19 |
+| UI-02 | in the shared project the Placement Groups section opens its help text; the form creates a spread placement group, listed and in the API; a label added in its Labels tab is in the API; Delete after the confirmation removes it from the list and the API | e2e | test/e2e/ui_test.go: TestE2E/UI-02 running ui/frontend/tests/e2e/placementgroups.spec.ts: UI-02 placement groups | 14-20 |
+| UI-02 | in the shared project the ISOs section opens its help text and lists the ISOs the API lists, by name | e2e | test/e2e/ui_test.go: TestE2E/UI-02 running ui/frontend/tests/e2e/isos.spec.ts: UI-02 isos | 14-22 |
+
+Notes:
+
+- The UI-02 Go subtest runs `playwright test --grep UI-02`, so the phase 11
+  specs (SSH keys, servers; each with its own project) and all specs above
+  run in it. The phase 14 specs share one project through the worker-scoped
+  `shared` fixture of tests/e2e/console.ts (14-02); none of them boots a
+  server. Plan 14-23 sets the run's time limit to about twice its first
+  full run.
+- Not tested end to end (CONTEXT "Answers"): Images, and everything that
+  needs a running server (attaching a volume, load balancer targets,
+  assigning an IP, a firewall on a server). The unit tables prove their
+  requests, and the manual check UI-09 goes through them by hand.
+- UI-09 is manual: at the close, CHECKS.md gets a guide to build the
+  example environment in the console and delete it again, plus the look
+  and operation of the new sections.
+- Help texts: UI-07 (`help.test.ts`) and DOC-05 (`test/docs/docs_test.go`)
+  go through views.json, so the eleven new views need their help texts but
+  no new row. DOC-01 to DOC-06 keep their rows; DOC-07 is manual.
+- Placement group requests (create, rename, delete) get no unit row. They
+  are plain create/update/delete with nothing to check (glue), and the
+  e2e row covers them.
