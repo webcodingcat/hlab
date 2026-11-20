@@ -54,6 +54,12 @@ body {
   line-height: 20px;
 }
 
+/* The space of the vertical scrollbar stays reserved, so the page does not
+   shift sideways when a view grows taller than the window. */
+html {
+  scrollbar-gutter: stable;
+}
+
 h1 {
   margin: 0;
   font-size: 20px;

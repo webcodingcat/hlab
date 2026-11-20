@@ -21,4 +21,4 @@
   14. Close the window with the X: it disappears, the icon stays; start `bin\hlab-tray.exe` again: the existing window comes to the front. "Quit" ends the tray, the cloud keeps running (`bin\hlab.exe cloud status`).
   15. Open services.msc: the service `hlab-dev` shows the display name "HLab (dev)" (after re-running `scripts\dev-setup.ps1`).
 - Expected: everything says "HLab" (program, file and command names stay lowercase); colours, spacing and building blocks (buttons, pills, tables with search and row menu, dialogs, toasts, copy fields) look as UI-SPEC.md describes; the shell feels like the Hetzner Cloud Console; the icons are clear at small sizes on light and dark backgrounds.
-- Result: open (gear toggle 10-36 built; step 8 to check again, all other steps fitted on 2026-11-20)
+- Result: open (step 8 fitted on 2026-11-20; the scrollbar shift 10-37 is fixed: switch between a short view and Server Types and check that top bar and content stay in place)

@@ -7,10 +7,10 @@ STATUS: MANUAL_CHECK
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 10 Tray program: shell, status, settings, server types, projects, logs (findings fixes 10-20..10-36 done on wcc/phase-10, unmerged; the gear toggle 10-36 is built, UI-08 step 8 waits for its check)
+- Phase: 10 Tray program: shell, status, settings, server types, projects, logs (findings fixes 10-20..10-37 done on wcc/phase-10, unmerged; gear toggle checked, the scrollbar shift fix 10-37 waits for its check)
 - Base branch: main
 - Last done: phase 09 merged into main (2026-11-19): servers saved or shut down at cloud stop and restored at start, configurable public range, incompatible state refused with `--discard-state`, rotated logs with `hlab logs`, LB IPv6 prefix 0xA0000000 (Q14)
-- Next: /wcc:report for UI-08 (step 8, the gear toggle), then /wcc:phase closes phase 10; DOC-07 (01) waits until the repository is on GitHub
+- Next: /wcc:report for UI-08 (the scrollbar shift), then /wcc:phase closes phase 10; DOC-07 (01) waits until the repository is on GitHub
 
 ## Open manual checks
 
