@@ -2,6 +2,7 @@
 // the detail tabs, which only collect the input and the confirmation.
 import type { ActionResult } from "../../../lib/actions";
 import { runApi } from "../../../lib/api";
+import { actionTitle } from "../../../lib/format";
 import { request, tabActions, type Input } from "../../../lib/serverActions";
 
 export type Answer = ActionResult & { root_password?: string | null };
@@ -11,7 +12,7 @@ export async function runTabAnswer(project: string, server: { id: number; name: 
   const a = tabActions[id];
   const req = request(a, server.id, input);
   if (!req) return undefined;
-  return runApi<Answer>(project, `${a.label} ${server.name}`, req.method, req.path, req.body);
+  return runApi<Answer>(project, actionTitle("Server", server.name, a.label), req.method, req.path, req.body);
 }
 
 /** runTab sends the tab action id for the server; true when its actions ended well. */
