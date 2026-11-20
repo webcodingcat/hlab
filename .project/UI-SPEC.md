@@ -64,6 +64,21 @@ everywhere.
 - Form: labelled fields in one column, inline validation message under the
   field (error colour), Hetzner's field error messages from `details.fields`
   shown under the matching field; submit button at the bottom right.
+- Labels field (every create form and every Labels tab): heading
+  "Labels", below it the rule text "Labels are key-value pairs. Key and
+  value are at most 63 characters each, start and end with an
+  alphanumeric character and may contain dashes, underscores and dots in
+  between. The value is optional." and one multi-line box (surface
+  colour, border, about five lines high, resizable). Each label is a
+  chip: the key on a muted background, the value next to it, one rounded
+  border around both; a label without value shows the key only. Typing
+  `key=value` or `key` and pressing Enter, Space or comma turns the text
+  into a chip; a click selects a chip (key part filled with the accent
+  colour, white text, accent border), Delete or Backspace removes the
+  selected chip, Backspace in the empty input removes the last chip, a
+  double click puts the chip back into the input for editing. A key used
+  twice or a text that breaks the rule shows its message under the box
+  (error colour) and stays in the input.
 - Confirm dialog: for every delete and every destructive action; the
   resource name must be typed for projects (their display name), servers,
   volumes, networks and zones.

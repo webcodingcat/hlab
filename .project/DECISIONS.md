@@ -27,6 +27,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 Labels are entered as chips
+
+- Type: change
+- Phase: change
+- What: the labels field of every create form and Labels tab is one box of chips (`key=value` or `key`, confirmed with Enter, Space or comma; click selects in the accent colour, Delete removes, double click edits) under the label rule text, replacing the key/value rows with "Add label" (UI-SPEC.md "Labels field").
+- Why: the user wants labels entered and shown like in the Hetzner Console.
+- Cost of change: low
+
 ## 2026-11-20 Volume create form like the Hetzner Console
 
 - Type: change

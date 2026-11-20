@@ -408,6 +408,24 @@ shows all ISOs on one page (no paging).
   - Requirement: UI-02. Code:
     ui/frontend/src/views/placement-groups/PlacementGroupCreate.svelte:64.
   - Tests: none new (cosmetic); existing unit and e2e rows stay.
+- change (2026-11-20, /wcc:report, wish built in this phase by the user):
+  labels as chips like the Hetzner Console. Today `lib/LabelsField.svelte`
+  shows one row per label (key input, value input, remove button) and an
+  "Add label" button; `lib/LabelsTab.svelte` the same on detail pages.
+  UI-SPEC.md "Building blocks > Labels field" holds the new behaviour;
+  build it once in `lib/` and use it in every create form (the twelve
+  users of LabelsField) and in LabelsTab; `lib/labels.ts` keeps the
+  conversion to the API's labels object (parsing `key=value` and the
+  rule check go there, with unit tests). Screenshots of the user
+  (Hetzner Console, dark, German text): `phases/14/feedback/hetzner-labels.png`
+  shows the heading "Labels", the rule text, a dark card with a large
+  resizable text box holding one chip "Label | value" (key part on a grey
+  background, value part plain, rounded border) and the text cursor
+  after it; `phases/14/feedback/hetzner-labels-selected.png` shows the
+  same chip selected: key part filled red (Hetzner's accent; HLab uses its
+  own accent colour), red border. The step markers of the Hetzner form
+  (check in a circle, dashed line) are not part of this change. Adjust
+  the UI-02 specs that fill label rows (Adjusts: what they use).
 
 ## Close
 
