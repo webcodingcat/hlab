@@ -24,4 +24,4 @@ applying a firewall, images).
   11. Switch the Windows theme between light and dark once and look at lists, forms, detail pages and dialogs of the new sections.
   12. Delete everything by hand: the zone and the network need their name typed, the rest a plain confirmation; delete the load balancer, IPs, volume, zone and firewall first, then the servers, then the network. Afterwards every section of the project is empty.
 - Expected: every step works from the window alone; every action ends in a toast, errors appear at their field; menus offer only what the API accepts (disabled entries name why); the new sections look and behave like Servers and SSH Keys in both themes; at the end nothing of the environment is left in any section.
-- Result: open
+- Result: open; waits for the change in PLAN.md "Findings from manual testing" (grouped sidebar with tabs, ISOs in the Administration). Step 1 then reads: the sidebar shows Cloud (Servers, Volumes, Firewalls), Networking (Load Balancers, Networks, IPs, DNS) and Security; snapshots and backups are tabs under Servers (step 10), floating IPs a tab under IPs (step 8).

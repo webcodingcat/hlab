@@ -42,6 +42,7 @@ resource types.
 - PROJ-03 user lists and revokes tokens; a revoked token gets `401 unauthorized` (goal 1) [unit]
 - PROJ-04 deleting a project deletes all of its resources including VMs and disks (goal 4) [unit]
 - PROJ-05 an interactive user without administrator rights runs the management command without an admin prompt (goal 3) [e2e]
+- PROJ-06 a project has a display name of 1 to 255 characters, fixed at creation; its name, the key in the management command and API, is derived from it (lower case, ä ö ü ß as ae oe ue ss, other accents dropped, every other run of characters as `-`, no `-` at either end), and a display name whose derived name exists or is empty is refused (goal 1) [unit]
 
 ### Catalog (`CAT`)
 
@@ -53,6 +54,7 @@ resource types.
 - CAT-06 system images ubuntu-22.04, ubuntu-24.04, ubuntu-26.04, debian-12 and debian-13 are listed under Hetzner's names and attributes (goal 1) [unit]
 - CAT-07 an image is downloaded from its official source on first use, verified by checksum, converted once and reused from the cache (goal 2) [unit]
 - CAT-08 `/isos` lists the ISO catalog; an ISO is downloaded on first attach, verified by checksum and cached (goal 2) [unit]
+- CAT-10 the user's own ISOs file adds ISOs to `/isos` for every project as type `private`; an own ISO comes from a URL (downloaded on first attach, verified when a SHA-256 is given) or from a local `.iso` file that hlabd copies into its cache when it reads the file, and attaches like a catalog ISO (goal 2) [unit]
 
 ### Servers (`SRV`)
 
@@ -186,6 +188,8 @@ resource types.
 - UI-07 every view opens its help text inside the program (goal 3) [unit]
 - UI-08 the console looks and behaves as UI-SPEC.md describes (goal 3) [manual]
 - UI-09 the example environment of the success criterion can be created and deleted by hand in the console (goal 3) [manual]
+- UI-10 the ISOs view in the Administration lists the catalog and the own ISOs and adds, edits and removes own ISOs from a URL or a local file (goal 3) [e2e]
+- UI-11 the project list shows the projects as cards in a grid or as rows in a list (switch remembered), sorted by display name or creation date in either direction, each with display name, name, a menu (Delete) and its resources per type that open their section ("Create server" when empty), and a dashed "New project" tile that creates a project (goal 3) [e2e]
 
 ### Installer (`INST`)
 
@@ -245,7 +249,7 @@ What the target vision in IDEA.md will need, not built yet.
 | Server console in v1 | `decisions/server-console.md`; returns `unsupported_error` |
 | vSwitch subnets (Robot coupling) | No dedicated servers exist in hlab; returns `invalid_input` |
 | Real IPv6 traffic | Possible later in IDEA.md; addresses are formal only |
-| Hetzner's private ISOs | Not downloadable; a public ISO catalog replaces them |
+| Hetzner's private ISOs | Not downloadable; a public ISO catalog and the user's own ISOs (CAT-10) replace them |
 
 ## Coverage
 
@@ -270,6 +274,7 @@ What the target vision in IDEA.md will need, not built yet.
 | PROJ-03 | 02 | x |
 | PROJ-04 | 02 | x |
 | PROJ-05 | 01 | x |
+| PROJ-06 | 15 | |
 | CAT-01 | 01 | x |
 | CAT-02 | 02 | x |
 | CAT-03 | 02 | x |
@@ -278,6 +283,7 @@ What the target vision in IDEA.md will need, not built yet.
 | CAT-06 | 01 | x |
 | CAT-07 | 01 | x |
 | CAT-08 | 04 | x |
+| CAT-10 | 14 | |
 | SRV-01 | 01 | x |
 | SRV-02 | 03 | x |
 | SRV-03 | 01 | x |
@@ -366,6 +372,8 @@ What the target vision in IDEA.md will need, not built yet.
 | UI-07 | 10 | x |
 | UI-08 | 10 | x |
 | UI-09 | 14 | |
+| UI-10 | 14 | |
+| UI-11 | 15 | |
 | INST-01 | 12 | |
 | INST-02 | 12 | |
 | INST-03 | 12 | |

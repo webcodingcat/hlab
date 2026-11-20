@@ -27,6 +27,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 Console sidebar in groups with section tabs, own ISOs in the Administration
+
+- Type: change
+- Phase: change
+- What: the project console sidebar has the collapsible groups Cloud (Servers, Volumes, Firewalls) and Networking (Load Balancers, Networks, IPs, DNS) plus the entry Security, every entry shows its views as tabs (Servers: Servers, Snapshots, Backups, Placement Groups; IPs: Primary IPs, Floating IPs; DNS: DNS Zones; Security: SSH Keys, API tokens, Certificates), and ISOs move to an Administration view where own ISOs from a URL or a local file are kept in `isos.custom.json` and served as type `private` (CAT-10, UI-10).
+- Why: in the manual check of UI-09 the user wanted the navigation of the current Hetzner Cloud Console and a way to add own ISOs.
+- Cost of change: medium
+
 ## 2026-11-20 Console menus offer only what the API accepts
 
 - Type: decision

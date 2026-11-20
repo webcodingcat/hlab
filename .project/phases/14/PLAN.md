@@ -304,6 +304,41 @@ shows all ISOs on one page (no paging).
   - [x] Check the eleven help texts against the built views (only existing views and buttons).
   - [x] README.md (tray program: every resource section), docs/guide.md (the console for each resource, at the matching sections), docs/development/components.md (resourceActions, lib/resources, section convention); regenerate the console screenshots with `task docs:screenshots`.
 
+## Findings from manual testing
+
+- change (2026-11-20, /wcc:report during UI-09, then /wcc:change): console
+  navigation like the Hetzner Cloud Console, and own ISOs. Build it on this
+  branch before UI-09 is checked; plan it as new plans 14-25 onward.
+  - Sidebar: UI-SPEC.md "Views > Project console" (collapsible groups
+    "Cloud" and "Networking", single entry "Security", collapsed groups
+    remembered) and "Building blocks > Section tabs". Reference screenshot
+    of the user (Hetzner Console, dark): group headings CLOUD, NETWORKING,
+    STORAGE in uppercase muted small print, each with a down chevron at the
+    right edge, a thin horizontal line between the groups, entries with an
+    outline icon and the name, and at the bottom below a line a single
+    entry "Security" with a key icon. HLab has no Storage group.
+  - Tabs per entry: Servers (Servers, Snapshots, Backups, Placement
+    Groups), Volumes, Firewalls, Load Balancers, Networks, IPs (Primary
+    IPs, Floating IPs), DNS (DNS Zones), Security (SSH Keys, API tokens,
+    Certificates). The `images` view splits into `snapshots` and `backups`
+    (images of that type; system images are not listed); the project
+    console has no ISOs section any more. The user may describe the tab
+    design further in a later report; until then UI-SPEC.md "Section
+    tabs" holds.
+  - Own ISOs: CAT-10 (`isos.custom.json`, `/isos` as type `private`,
+    `custom_isos` problem, copy of local files on start and
+    `/settings/reload`) and UI-10 (Administration view ISOs with add,
+    edit, remove; the ISOs view moves from the project console to
+    `#/admin/isos`); ARCHITECTURE.md "images", "hlab-tray", "Management
+    API" and "Files and formats".
+  - Tests: CAT-10 unit, UI-10 e2e (new rows in TESTS.md); UI-02 e2e specs
+    that open sections through the sidebar adjust to the entries and tabs
+    (Adjusts: what they use, not what they check).
+  - Documentation: README.md (tray program: project console and
+    Administration), docs/guide.md (console sections, ISOs),
+    docs/development/components.md (sidebar, section convention), the help
+    texts of the moved and new views; regenerate the screenshots.
+
 ## Close
 
 - e2e: `task e2e -- -run 'TestE2E/UI-0[1-6]$' -v` green on 691eb1a (UI-02 12 of 12 specs; the other UI rows because `runSpec` changed in 14-23).

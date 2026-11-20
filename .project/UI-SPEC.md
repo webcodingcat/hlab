@@ -70,6 +70,10 @@ everywhere.
 - Action toast: bottom right, shows a running action with progress and its
   result; errors stay until closed.
 - Copy field: monospace value with a copy button (IPs, tokens, CA).
+- Section tabs: a row of tabs on top of every project console page,
+  below the page title, the open tab underlined in the accent colour;
+  each tab has its own address, so the browser history and a reload keep
+  it.
 - Help button: `?` in the page title row; opens the view's help text in a
   side panel.
 
@@ -86,17 +90,30 @@ everywhere.
     A row click opens the project console of that project.
   - Project console: breadcrumb "Projects / <name> ▾"; the name opens a
     menu to switch to another project, "Projects" leads back to the list.
-    Left sidebar with the sections of this project only: the resource
-    sections (Servers, Volumes, Load Balancers, Networks, Firewalls,
-    Floating IPs, Primary IPs, DNS, Certificates, SSH Keys, Placement
-    Groups, Images, ISOs), then a separator and "API tokens". Phase 10
-    builds "API tokens" only. The last opened project is remembered.
+    Left sidebar with the entries of this project only, in collapsible
+    groups like the Hetzner Cloud Console: a group heading in uppercase
+    small print (12 px, text muted) with a chevron on the right; a click
+    on the heading collapses or expands the group, the collapsed groups
+    are remembered; a 1 px border line separates the groups. Groups and
+    entries: "Cloud" with Servers, Volumes, Firewalls; "Networking" with
+    Load Balancers, Networks, IPs, DNS; after a separator line the single
+    entry "Security" (no heading). Every entry opens a page with a tab
+    bar on top (see "Section tabs"), also when it has only one tab:
+    Servers: Servers, Snapshots, Backups, Placement Groups; Volumes:
+    Volumes; Firewalls: Firewalls; Load Balancers: Load Balancers;
+    Networks: Networks; IPs: Primary IPs, Floating IPs; DNS: DNS Zones;
+    Security: SSH Keys, API tokens, Certificates. Snapshots and Backups
+    list the project's images of that type (system images are not
+    listed); ISOs are not part of the project console. The entry that
+    contains the open tab is highlighted. The last opened project is
+    remembered.
   - Administration (gear): breadcrumb "Administration", left sidebar with
-    Server Types, Settings, Logs.
+    Server Types, ISOs, Settings, Logs.
 - Cloud stopped: the project list and the project console show the text
   "Start the cloud to manage projects" with the Start button; the
   Administration (Server Types: catalog and own types, as hlabd would merge
-  them; Settings; Logs: last file contents) stays available.
+  them; ISOs: catalog and own ISOs; Settings; Logs: last file contents)
+  stays available.
 - Resource list per type: resource table.
 - Create per type: one form page following the Hetzner Console's order
   (servers: location, image, type, networking, SSH keys, volumes,
@@ -117,6 +134,14 @@ everywhere.
   with a required password field for the Hetzner token (hint "Used once
   for the update, never stored."), "Update" and "Cancel"; the token is
   cleared when the dialog closes and never stored.
+- ISOs: table of the ISO catalog and the own ISOs with source column
+  (catalog, own), name, description, architecture; "Add ISO" opens a form
+  with name, description, architecture (x86 or arm) and the source,
+  either a URL with an optional SHA-256 or a local `.iso` file chosen
+  with the Windows file dialog; own rows have "Edit" (the add form filled
+  in, the name read-only) and "Remove" (confirm dialog) in the row menu.
+  Available while the cloud is stopped; a local file is copied when the
+  cloud reads the own ISOs.
 - Settings: grouped form for every key of `settings.toml`; the trust switch
   shows the risk text from `decisions/managed-certificates.md` and a "Save
   CA certificate" button.
