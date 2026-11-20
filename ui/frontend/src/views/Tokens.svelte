@@ -8,6 +8,7 @@
   import HelpButton from "../lib/HelpButton.svelte";
   import Table, { type Column } from "../lib/Table.svelte";
   import { ApiError, mgmt } from "../lib/bridge";
+  import { actionTitle } from "../lib/format";
   import { action, showError } from "../lib/toast";
   import { running } from "../state";
 
@@ -74,7 +75,7 @@
       if (err instanceof ApiError && (err.code === "invalid_input" || err.code === "conflict")) {
         nameError = err.fields?.name?.join(" ") || err.message;
       } else {
-        showError("Create token", err);
+        showError(actionTitle("Token", tokenName.trim(), "Create"), err);
       }
     } finally {
       creating = false;
@@ -87,7 +88,7 @@
 
   async function revoke() {
     const t = revoking!.name;
-    await action(`Revoke token ${t}`, () => mgmt("DELETE", `${base}/${encodeURIComponent(t)}`));
+    await action(actionTitle("Token", t, "Revoke"), () => mgmt("DELETE", `${base}/${encodeURIComponent(t)}`));
     await load();
   }
 </script>

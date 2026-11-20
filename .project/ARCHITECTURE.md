@@ -332,7 +332,8 @@ Inside `hlabd` (Go packages under `internal/`):
   `go-qcow2reader` or raw, to a fixed VHD by appending the footer, then to
   a dynamic VHDX through a `Convert` callback, on Hyper-V
   `hyperv.ConvertToDynamic`, outside the `Platform` interface) and caches; `images.EnsureISO(ctx,
-  name)` (cached as `<data>\isos\<name>`); `images.EnsureRescue(ctx)`. Snapshots, backups and system
+  name)` (cached under the catalog name or the own ISO's `_hlab.name`; serves
+  catalog and own ISOs, see `isos.custom.json`); `images.EnsureRescue(ctx)`. Snapshots, backups and system
   images live as VHDX files in the data folder. The same pipeline creates
   the appliance disk from the Debian 13 `generic` image.
 - Depends on: platform.
@@ -411,7 +412,7 @@ Inside `hlabd` (Go packages under `internal/`):
 
   ```
   hlab cloud start | stop | status
-  hlab project create <name> | list | delete <name>
+  hlab project create <display-name> | list | delete <name>   # create prints the derived name
   hlab token create --project <name> --name <name> [--read-only]   # prints the token once
   hlab token list --project <name> | revoke --project <name> <name>
   hlab catalog update [--hetzner-token-env <VAR>]
@@ -459,8 +460,11 @@ Inside `hlabd` (Go packages under `internal/`):
   forwards to the management API, `Settings()`/`SaveSettings()` for the
   file, `ServerTypes`/`AddServerType`/`UpdateServerType`/`RemoveServerType`
   for the merged list and the own types (`UpdateServerType(OwnSpec)
-  (*Invalid, error)` replaces the own type of the same name) (results `ListedType`, `ServerTypeList`,
-  `Invalid` for field errors), `Locations() ([]Location{name, city})`
+  (*Invalid, error)` replaces the own type of the same name),
+  `ISOs`/`AddISO`/`UpdateISO`/`RemoveISO` the same way for the catalog
+  and the own ISOs (own rows from the file's entries, own ISOs addressed
+  by ID; results `ListedISO`, `ISOList`) (results `ListedType`,
+  `ServerTypeList`, `Invalid` for field errors), `Locations() ([]Location{name, city})`
   from the shipped catalog, also while the cloud is stopped; `bridge.Cloud`
   with status, start and stop, recording "starting"/"stopping" as soon as
   the SCM accepts a start or stop (a poll begun earlier cannot overwrite
@@ -470,12 +474,18 @@ Inside `hlabd` (Go packages under `internal/`):
   SearchResult{lines, capped}` and `Older(oldest) OlderResult{lines,
   at_start}`, which read `hlabd.log` and its rotated files directly
   through `logfile.Search`/`logfile.Before` in 64 KiB chunks backwards,
-  also while hlabd writes and rotates them). Frontend: Svelte SPA in `ui/frontend`, embedded by package
+  also while hlabd writes and rotates them), and outside the bridge the
+  Wails service `Files` in `cmd/hlab-tray` with `PickISOFile() (string,
+  error)` (Windows file dialog, "" on cancel). Frontend: Svelte SPA in `ui/frontend`, embedded by package
   `ui` (`ui/embed.go`), calling the bridge through `Call.ByName` of
   `@wailsio/runtime`, with views switched by `location.hash` (`#/projects`,
   `#/projects/<name>/<view>`, `.../<view>/new`, `.../<view>/<id>/<tab>`,
   `#/admin/<view>`; parsed in `lib/routes.ts`, a project console starts on
-  `servers`; the view list comes from `views.json`); it uses only
+  `servers`; each view is one tab of a sidebar entry (UI-SPEC.md "Project
+  console"), `images` is split into the views `snapshots` and `backups`,
+  `isos` is an Administration view; the view list comes from `views.json`; project sections other
+  than servers, SSH keys and API tokens are `views/<view>/Section.svelte` with props
+  `{project, page}`, found by ProjectConsole through `import.meta.glob`); it uses only
   the bridge; the Hetzner resources are
   managed through the management API's project proxy
   (`/mgmt/v1/projects/{name}/api/v1/...`), so the UI exercises the same
@@ -506,9 +516,9 @@ HTTP/1.1 over `\\.\pipe\hlab`, JSON. All paths under `/mgmt/v1`:
 
 | Method and path | Purpose |
 |---|---|
-| `GET /status` | `{"state":"running","version":"...","problems":[Problem],"shadowing_zones":[{"zone":"example.com","project":"p"}],"appliance_generation":n}`; besides the hostnet problems, a non-fatal `custom_server_types` problem when the own server types are invalid or collide and are not served |
-| `GET /projects` | `{"projects":[{"name":"p","created":"RFC3339","resources":n}]}` |
-| `POST /projects` | body `{"name":"p"}` (1-63 chars, `[a-z0-9-]`); `201` with the project; `409` if it exists |
+| `GET /status` | `{"state":"running","version":"...","problems":[Problem],"shadowing_zones":[{"zone":"example.com","project":"p"}],"appliance_generation":n}`; besides the hostnet problems, a non-fatal `custom_server_types` problem when the own server types are invalid or collide and are not served, and a non-fatal `custom_isos` problem for an invalid or colliding own ISO or a local file that cannot be copied |
+| `GET /projects` | `{"projects":[{"name":"web-coding-cat","display_name":"Web Coding Cat","created":"RFC3339","resources":n,"resources_by_type":{"servers":n,...}}]}`; `resources_by_type` has a key per resource kind with a count above zero, named like the API path (`servers`, `volumes`, `load_balancers`, `networks`, `firewalls`, `floating_ips`, `primary_ips`, `zones`, `certificates`, `ssh_keys`, `placement_groups`, `images`) |
+| `POST /projects` | body `{"display_name":"Web Coding Cat"}` (trimmed, 1-255 chars, no control characters); the name is derived by hlabd (lower case; ä ö ü ß as ae oe ue ss; other accents dropped; every run of other characters as `-`; no `-` at either end; cut to 255 chars); `201` with the project; `400 invalid_input` for an invalid display name or an empty derived name; `409 conflict` if the derived name exists. A display name never changes |
 | `DELETE /projects/{name}` | `202 {"action_id":n}`; revokes the project's tokens at once, then in one action deletes every resource through its module's `resource.Deleter`, the rest through the store, then the project; `409 conflict` while a deletion of that project runs; on failure the project stays listed. `hlab project delete` waits for the action |
 | `GET /actions/{id}` | `200 {"action": <Hetzner action object>}`; `404 not_found` for an unknown ID or an action of a project |
 | `GET /projects/{name}/tokens` | `{"tokens":[{"name":"t","read_only":false,"created":"RFC3339"}]}` (never the value) |
@@ -519,7 +529,7 @@ HTTP/1.1 over `\\.\pipe\hlab`, JSON. All paths under `/mgmt/v1`:
 | `GET /logs?follow=1` | log lines as newline-delimited JSON; followers end when the cloud stops |
 | `GET /ca.pem` | the hlab CA certificate |
 | `PUT /trust` | body `{"on": bool}`; `200 {"on": bool}`; `400 invalid_input` without `on`; `500 server_error` when the trust store or the settings file fails |
-| `POST /settings/reload` | re-read the settings file (applies `logging.level`) and the own server types (refreshes the `custom_server_types` problem); `200 {}` or `500 server_error` |
+| `POST /settings/reload` | re-read the settings file (applies `logging.level`), the own server types (refreshes the `custom_server_types` problem) and the own ISOs (copies new local files, refreshes the `custom_isos` problem); `200 {}` or `500 server_error` |
 
 Errors: `{"error":{"code":"...","message":"..."}}` with codes
 `invalid_input`, `not_found`, `conflict`, `cloud_not_running`,
@@ -812,11 +822,12 @@ the agent reads its own from the `transit` file of its seed.
 ## Data schema
 
 SQLite file `%ProgramData%\hlab\state.db`, `PRAGMA user_version` = schema
-version (1). Resources are stored as JSON documents so that adding a field is
+version (2; the migration from 1 adds `projects.display_name`, filled with
+the name). Resources are stored as JSON documents so that adding a field is
 no migration:
 
 ```sql
-CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, created TEXT NOT NULL);
+CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, display_name TEXT NOT NULL, created TEXT NOT NULL);
 CREATE TABLE tokens   (id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects ON DELETE CASCADE,
                        name TEXT NOT NULL, sha256 BLOB UNIQUE NOT NULL, read_only INTEGER NOT NULL, created TEXT NOT NULL,
                        UNIQUE(project_id, name));
@@ -844,6 +855,7 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 | Path | Format | Writer |
 |---|---|---|
 | `%ProgramData%\hlab\settings.toml` | TOML, keys in "Settings" below; ACL: Interactive Users modify, kept when hlabd rewrites the file | tray, user, hlabd (`PUT /trust` through `settings.Save`) |
+| `%ProgramData%\hlab\isos.custom.json` | JSON array of Hetzner `iso` objects (`type` `private`, IDs from 100000, `name` null, `description` the shown name, `deprecation` null, `architecture` x86 or arm) plus `_hlab.name` (cache file `<data>\isos\<_hlab.name>`, derived by the tray as `own-<id>-<hash of the source>.iso`) and `_hlab.source`: `{"url","sha256"}` or `{"path","sha256"}` (sha256 optional; path a local `.iso` file); hlabd serves them without `_hlab` in `/isos` of every project, matches them by ID only, and copies a `path` source into the cache when it reads the file (start, `/settings/reload`), verifying sha256 when given; an invalid file or a duplicate ID or `_hlab.name` leaves out all own ISOs, a source that cannot be copied leaves out only that ISO, both as the non-fatal problem `custom_isos`; cache files no own ISO names are deleted at start and reload once no server has them attached | tray, user; hlabd creates it as `[]` with the settings.toml ACL at start when missing |
 | `%ProgramData%\hlab\server-types.custom.json` | JSON array of Hetzner `server_type` objects (IDs from 100000) | tray, user; hlabd creates it as `[]` with the settings.toml ACL at start when missing |
 | `%ProgramFiles%\hlab\catalog\server-types.json` | `{"server_types": [...]}` as returned by Hetzner's API | `task catalog` (release) |
 | `%ProgramData%\hlab\catalog\server-types.json` | same; written by `hlab catalog update`, preferred when present | hlabd |

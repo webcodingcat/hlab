@@ -158,6 +158,66 @@ Servers of a type you remove keep running, and power on and
 rebuild still work for them; new servers and `change_type` cannot use the
 type any more.
 
+## Own ISOs
+
+Your own ISOs go in `isos.custom.json` beside settings.toml
+(`%ProgramData%\hlab-dev\isos.custom.json` for the development service).
+The cloud start creates it with an empty list `[]` when it is missing,
+with the permissions of settings.toml. Administration > ISOs in the
+[tray program](../README.md#the-tray-program) adds, edits and removes
+entries; you can also edit it by hand. HLab serves the entries after the
+[catalog ISOs](#isos) in `/isos` of every project; see
+[Own ISOs](guide.md#own-isos) for their use.
+
+```json
+[
+  {
+    "_hlab": {
+      "name": "own-100000-801b2aa9.iso",
+      "source": {
+        "url": "https://boot.netboot.xyz/ipxe/netboot.xyz.iso"
+      }
+    },
+    "architecture": "x86",
+    "deprecation": null,
+    "description": "netboot.xyz",
+    "id": 100000,
+    "name": null,
+    "type": "private"
+  }
+]
+```
+
+- `id` is 100000 or more, unique and taken by no catalog ISO. The tray
+  gives a new ISO the next free one.
+- `description` is the name shown in the tray and by hcloud; `name` is
+  `null`, as for Hetzner's private ISOs, so the ISO is attached by its
+  `id`.
+- `architecture` is `x86` or `arm`.
+- `_hlab.source` holds exactly one of `url` (http or https) and `path`
+  (a local `.iso` file, for example `"D:\\isos\\tools.iso"`), and an
+  optional `sha256` of 64 hexadecimal characters that the file is
+  checked against.
+- `_hlab.name` is the file name in `<data_folder>\isos`, unique in the
+  file. The tray writes `own-<id>-<hash>.iso`, where the hash is the
+  first 8 hexadecimal characters of the SHA-256 of the source, and
+  changes it when the source changes, so a changed source is fetched
+  again.
+- `_hlab` is not served.
+
+An ISO from a `url` is downloaded at its first `attach_iso`. A `path` is
+copied into `<data_folder>\isos` when the cloud reads the file. A file
+that cannot be read, or an `id` or `_hlab.name` that breaks these rules,
+leaves out every own ISO; a `path` that cannot be opened or copied leaves
+out only its ISO. `hlab cloud status` names the reason on a `problem:`
+line, and the JSON output lists it with the code `custom_isos`.
+
+Changes by hand apply at the next `hlab cloud start`; changes made in the
+tray apply at once while the cloud runs. An ISO that is removed or whose
+source changed stays in the servers that have it attached until it is
+detached; its cache file is deleted at the next start or tray change after
+no server has it attached any more.
+
 ## Catalogs
 
 The catalogs hold what the API serves as Hetzner's fixed offer. The
@@ -269,7 +329,7 @@ The folder of `[storage]` `data_folder` holds:
 | `vms` | The configuration files of the server VMs. |
 | `disks` | Server disks and their seed ISOs, and the rescue disk of a server in rescue. |
 | `images` | Downloaded system images as base disks, the rescue base `rescue-v2.vhdx`, and the snapshots and backups of all projects as `image-<id>.vhdx`. |
-| `isos` | Downloaded ISOs of `isos.json`. |
+| `isos` | Downloaded ISOs of `isos.json`, and own ISOs as `own-<id>-<hash>.iso`. |
 | `volumes` | Volume disks as `volume-<id>.vhdx`. |
 | `cache\debs` | Downloaded packages of `appliance-debs.json`. |
 | `appliance` | The appliance VM with its disk and seed ISO. |

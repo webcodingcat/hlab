@@ -37,21 +37,30 @@
 
 - [x] 11 Tray console: shared frame, servers, SSH keys (UI-02 part) → phases/11/
 
-- [ ] 14 Tray console: remaining resources.
-      Requirements: UI-02 (part: remaining resource types; completes it),
-      UI-09.
-      Depends on: 11.
-      Research: phases/11/RESEARCH.md.
-      Scope: the sections Volumes, Load Balancers, Networks, Firewalls,
-      Floating IPs, Primary IPs, DNS, Certificates, Placement Groups,
-      Images and ISOs on the frame of phase 11.
+- [x] 14 Tray console: remaining resources (UI-02, UI-09, UI-10, CAT-10) → phases/14/
+
+- [ ] 15 Project display names and Hetzner-style project list.
+      Requirements: PROJ-06, UI-11.
+      Depends on: 14.
+      Scope: schema version 2 with `projects.display_name` and its
+      migration; `POST /projects` takes the display name and derives the
+      name, `GET /projects` adds `display_name` and `resources_by_type`;
+      `hlab project create <display-name>` and `list` with the display
+      name; the tray's project list as cards (grid/list, sort, resources
+      per type, "New project" tile), breadcrumb, project switcher and the
+      delete confirmation with the display name. Adjusts the callers of
+      `POST /projects` (CLI, tray, test fixtures). Documentation: the CLI
+      reference, the guide and the README on projects and their names, the
+      projects help text and the README screenshots of the project list.
       Success criteria:
-      1. Every remaining resource type can be listed, shown, created,
-         configured and deleted in the window; with phase 11, every
-         resource type of the API is covered.
-      2. The example environment can be created and deleted by hand in the
-         console.
-      Stops for: manual check.
+      1. "Web Coding Cat" can be created in the tray and with `hlab`; it is
+         listed as `web-coding-cat` with its display name, and a second
+         "web coding cat" is refused.
+      2. A state of schema version 1 starts with every project showing its
+         name as display name.
+      3. The project list switches between grid and list, sorts by display
+         name and creation date, and a resource count per type opens its
+         section.
 
 - [ ] 12 Installer and uninstaller.
       Requirements: INST-01, INST-02, INST-03, INST-04, INST-05, INST-06.
@@ -66,7 +75,7 @@
 
 - [ ] 13 Client matrix and success criterion.
       Requirements: CLI-01, CLI-02, CLI-03, CLI-04.
-      Depends on: 14, 12.
+      Depends on: 14, 15, 12.
       Success criteria:
       1. Every resource type passes its row for hcloud, OpenTofu and
          Ansible.

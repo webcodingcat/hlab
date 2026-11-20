@@ -48,9 +48,25 @@ create or start a server with `resource_unavailable`.
 
 ## Servers in the window
 
-The HLab window manages the same servers and SSH keys. Click a project in
-the project list; its console opens on **Servers**, and the sidebar leads
-to **SSH Keys** and **API tokens**. Every page needs the running cloud.
+The HLab window manages the same resources as hcloud. Click a project in
+the project list; its console opens on **Servers**. The sidebar has the
+groups **Cloud** (Servers, Volumes, Firewalls) and **Networking** (Load
+Balancers, Networks, IPs, DNS) and the entry **Security**; the tabs above
+the page lead to the views of an entry: **Servers** to Servers,
+Snapshots, Backups and Placement Groups, **IPs** to Primary IPs and
+Floating IPs, **DNS** to DNS Zones, and **Security** to SSH Keys, API
+tokens and Certificates. Every page needs the running cloud. The lists of
+all sections work alike: the search field takes a name or a label
+selector such as `env=dev`, the row menu (`…`) holds the quick actions, a
+click on a row opens the detail page with its actions menu and tabs, and
+each page's `?` button explains it. The paragraph "In the window" under
+each resource below names what its section offers.
+
+Every create form and every **Labels** tab takes labels as chips. Type
+`env=dev` or `env` and press Enter, Space or a comma to turn it into a
+chip; a label that breaks Hetzner's rules or repeats a key shows an error
+under the box and stays in the input. Click a chip and press Delete to
+remove it, or double-click it to edit it.
 
 - **Servers** lists the servers with status, public IPv4, type, location
   and labels. The search field takes a name or a label selector such as
@@ -78,6 +94,27 @@ to **SSH Keys** and **API tokens**. Every page needs the running cloud.
 
 Long actions such as creating, rebuilding or snapshotting show a toast
 with their progress until they end.
+
+## Placement groups
+
+```
+> hcloud placement-group create --name pg1 --type spread
+Placement Group 16 created
+> hcloud placement-group list
+ID   NAME   SERVERS     TYPE     AGE
+16   pg1    0 servers   spread   just now
+```
+
+A server joins a group with `hcloud server create --placement-group pg1`
+or `hcloud server add-to-placement-group`. A spread group holds at most 10
+servers. HLab runs every server on your one machine, so a group only
+records its members.
+
+In the window, **Placement Groups** is a tab of **Servers**; **Create
+placement group** asks for name and labels (the type is always
+`spread`); the
+group's page lists its servers, and its actions menu offers **Rename** and
+**Delete**. A server joins or leaves a group in the server's actions menu.
 
 ## Snapshots, backups and rescue
 
@@ -116,6 +153,14 @@ The server's own disk is `/dev/sda`. The next `reboot` starts the
 installed system again. The first `enable-rescue` downloads the debian-13
 image if no server used it yet.
 
+In the window, snapshots and backups are made in a server's **Snapshots**
+and **Backups** tabs. The tabs **Snapshots** and **Backups** of the
+sidebar entry **Servers** list the project's snapshots and backups (not
+the system images) with size and the server they come from; their
+actions menu offers **Edit description**, **Change protection**,
+**Delete** and, for a backup, **Convert to snapshot**, which keeps it
+when its server is deleted.
+
 ## ISOs
 
 ```
@@ -131,6 +176,57 @@ ID       NAME                                   DESCRIPTION                     
 An attached ISO boots before the server's disk until you detach it. The
 first attach of an ISO downloads it, which takes minutes; later attaches
 use the cached copy.
+
+In the window, attach an ISO in the **ISO** tab of a server's page;
+**Administration > ISOs** lists the ISOs.
+
+### Own ISOs
+
+Besides the catalog, HLab serves ISOs you add yourself, in every project.
+Add them in **Administration > ISOs** with **Add ISO**: a **Name**, the
+**Architecture** and a **Source**, either a **URL** (with an optional
+**SHA-256** the download is checked against) or a **Local file**, whose
+**Path** you type or choose with **Browse…**. **Edit** and **Remove** are
+in an own ISO's row menu; catalog ISOs cannot be changed. The tray keeps
+them in [`isos.custom.json`](configuration.md#own-isos).
+
+The API lists an own ISO as a `private` ISO without a name; attach it by
+its ID:
+
+```
+> hcloud iso list
+ID       NAME                                   DESCRIPTION                          TYPE      ARCHITECTURE
+130001   ubuntu-22.04.5-live-server-amd64.iso   Ubuntu 22.04.5 Live Server (amd64)   public    x86
+...
+100000   -                                      netboot.xyz                          private   x86
+> hcloud server attach-iso web2 100000
+Waiting for attach_iso (server: 383) ...
+Waiting for attach_iso (server: 383) ... done
+ISO  attached to Server 383
+> hcloud server attach-iso web2 netboot.xyz
+hcloud: ISO not found: netboot.xyz
+```
+
+- An ISO from a URL is downloaded at its first attach, like a catalog
+  ISO.
+- A local file is copied into HLab's cache when the cloud starts and,
+  while the cloud runs, when you save the ISO in the tray. Keep the file
+  where it is: at the next start a missing file leaves the ISO out.
+- When an own ISO cannot be served, for example because its local file
+  is missing, the others still are, and
+  [`hlab cloud status`](commands.md#hlab-cloud-status) names the reason
+  (the ISOs page names a broken file or a missing local file; a failed
+  copy, for example a wrong SHA-256, shows only in the status):
+
+  ```
+  > bin\hlab.exe cloud status
+  state: running
+  version: dev
+  problem: own ISO 100002 ("Gone") is left out: open D:/missing/gone.iso: <error message of Windows>
+  ```
+
+- A server that has an ISO attached keeps it after you change or remove
+  the ISO, until you detach it.
 
 ## Volumes
 
@@ -156,6 +252,17 @@ Filesystem      Size  Used Avail Use% Mounted on
   its location; its data stays. Deleting a server detaches its volumes.
 - `--format xfs` needs packages that HLab downloads for the appliance at
   `hlab cloud start`.
+
+In the window, **Create volume** takes the size (a number field with + and
+− buttons and a slider from 10 to 10,240 GB), the name (proposed as the
+first free `volume-<n>`), the **Server** the volume is attached to and
+whose location it gets, the **Mount options** **Automatic** or
+**Manual**, the **Filesystem** ext4 or xfs, and labels. The window always
+creates a volume for a server; create one without a server with hcloud
+(`--location` instead of `--server`). **Detach** and
+**Delete** are in the row menu; a volume's page shows the Linux device
+path with a copy button, and its actions menu offers **Rename**,
+**Resize**, **Attach**, **Detach**, **Change protection** and **Delete**.
 
 ## Networks
 
@@ -198,6 +305,13 @@ network. Add the route on the network, then on each server that uses it:
 root@app1:~# ip route add 10.99.0.0/24 via 10.0.0.1 dev eth1 onlink
 ```
 
+In the window, **Create network** asks for name, IP range and labels. A
+network's page has the tabs **Subnets** and **Routes** to add and delete
+them, **Resources** with the attached servers and load balancers, and
+**Rename** and **Change IP range** in its actions menu; the latter only
+grows the range and is refused while servers are attached. Subnets are always of type
+`cloud`.
+
 ## Primary and floating IPs
 
 A server's public addresses are primary IPs. Those made with the server
@@ -231,6 +345,14 @@ root@web1:~# ip addr add <floating IP>/32 dev eth0
 After `hcloud floating-ip assign fip1 web2` and the same command in web2,
 the address reaches web2; web1 needs no change.
 
+In the window, **Create primary IP** and **Create floating IP** ask for
+a location or a server to assign the address to at once, the protocol,
+the name and labels; a primary IP also for **Auto delete**, which deletes
+it with its server and which its page switches on and off. **Unassign**
+and **Delete** are in the row menu. An IP's actions menu offers
+**Rename**, **Assign**, **Unassign**, **Reverse DNS**, **Change protection** and
+**Delete**; **Assign** offers only the servers the address can move to.
+
 ## Firewalls
 
 ```
@@ -260,6 +382,13 @@ to it, as at Hetzner:
 - Private networks are never filtered, and neither are the cloud's own
   services: DNS, the metadata service and the API.
 - Rules for IPv6 addresses are stored but have no effect.
+
+In the window, **Create firewall** takes the inbound and outbound rules,
+the servers and label selectors to apply it to, labels and a name. A
+firewall's **Rules** tab edits all rules and **Save rules** replaces
+them at once; **Resources** applies it to a server or label selector,
+shows the servers each selector matches, and removes them again. The
+firewall's actions menu offers **Rename** and **Delete**.
 
 ## DNS zones
 
@@ -295,6 +424,17 @@ A secondary zone is accepted but not transferred: its names are looked up
 in the public DNS as before. The details are in
 [Known deviations](deviations.md#dns-and-reverse-dns).
 
+In the window, **DNS** lists the zones; **Add zone** creates an empty
+zone, one from a pasted zone file, or a secondary zone with its primary
+nameservers. A primary zone's page has the tabs **Records** (**Add record
+set**, and per record set **Change TTL**, **Add records**, **Remove
+records**, labels, protection and **Delete**; the SOA only takes a new
+TTL) and **Zone file** (export with **Copy zone file**, import after a
+confirmation, with the line of a bad zone file shown under the field). A
+secondary zone has **Primary nameservers** instead. The zone's actions
+menu offers **Change default TTL**, **Import zone file**, **Change
+protection** and **Delete**.
+
 ### Reverse DNS
 
 The PTR records of servers, primary IPs and floating IPs resolve through
@@ -308,7 +448,9 @@ the same DNS server. A public IPv4 starts with Hetzner's default name
 ```
 
 `hcloud primary-ip set-rdns` and `hcloud floating-ip set-rdns` work the
-same way. IPv6 entries are stored but do not resolve.
+same way. IPv6 entries are stored but do not resolve. In the window,
+**Reverse DNS** in the actions menu of a primary IP, floating IP or load
+balancer sets the name; an empty name resets it to the default.
 
 ## Load balancers and certificates
 
@@ -335,6 +477,15 @@ networks (`--network`, `--use-private-ip`), the PROXY protocol and
 an HAProxy instance in the appliance VM; the differences are in
 [Known deviations](deviations.md#load-balancers-and-certificates).
 
+In the window, **Create load balancer** takes location, type, network,
+targets, services, algorithm, labels and name. A load balancer's page has
+the tabs **Targets** (with the health per service port), **Services**,
+**Networking**, **Graphs** (connections, requests and bandwidth over 1 hour,
+24 hours or 7 days), **Labels** and **Protection**; its actions menu
+offers **Rename**, **Change type**, **Change algorithm**, **Enable public interface**,
+**Disable public interface**, **Reverse DNS**, **Change protection** and
+**Delete**.
+
 An HTTPS service takes uploaded or managed certificates. A managed
 certificate is issued at once when its domains lie in a DNS zone of the
 project, and renewed before it expires:
@@ -348,6 +499,14 @@ project, and renewed before it expires:
 Managed certificates come from the HLab CA, which HLab creates at its
 first start, not from Let's Encrypt. No client trusts it until you
 decide so; see the next section.
+
+In the window, **Add certificate** uploads a certificate with its
+private key or requests a managed one for a list of domain names. A
+domain outside the project's zones fails with `dns_zone_not_found`; once
+the zone exists, **Retry** in the certificate's actions menu issues it;
+**Rename** in the same menu changes its name.
+The certificate's page shows its status, domains, fingerprint, validity
+and the load balancers that use it.
 
 ### Trusting the HLab CA
 

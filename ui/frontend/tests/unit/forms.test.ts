@@ -2,7 +2,7 @@
 // and label rows. They need no browser.
 import { test, expect } from "@playwright/test";
 import { formErrors, type FormErrors } from "../../src/lib/formErrors";
-import { toLabels, toRows, type LabelRow } from "../../src/lib/labels";
+import { parseLabel, toLabels, toRows, type LabelRow } from "../../src/lib/labels";
 
 /** apiError has the shape of the bridge's ApiError: code, message and details.fields by name. */
 function apiError(code: string, message: string, fields?: Record<string, string[]>): Error {
@@ -102,6 +102,41 @@ test.describe("UI-02 labels", () => {
       if (!("error" in got)) return;
       expect(got.row).toBe(c.want.row);
       expect(got.error).not.toBe("");
+    });
+  }
+});
+
+test.describe("UI-02 label chips", () => {
+  const long = "a".repeat(64);
+  const cases: { name: string; text: string; want: LabelRow | "error" }[] = [
+    { name: "key=value", text: "env=prod", want: { key: "env", value: "prod" } },
+    { name: "key only", text: "backup", want: { key: "backup", value: "" } },
+    { name: "key with empty value", text: "backup=", want: { key: "backup", value: "" } },
+    { name: "trimmed", text: "  env=prod  ", want: { key: "env", value: "prod" } },
+    { name: "63 characters", text: `${"k".repeat(63)}=${"v".repeat(63)}`, want: { key: "k".repeat(63), value: "v".repeat(63) } },
+    { name: "dashes, underscores and dots inside", text: "a-b_c.d=x.y-z_1", want: { key: "a-b_c.d", value: "x.y-z_1" } },
+    { name: "valid prefix", text: "example.com/app=web", want: { key: "example.com/app", value: "web" } },
+    { name: "key over 63 characters", text: `${long}=x`, want: "error" },
+    { name: "value over 63 characters", text: `env=${long}`, want: "error" },
+    { name: "key starting with a dash", text: "-env=prod", want: "error" },
+    { name: "key ending with a dot", text: "env.=prod", want: "error" },
+    { name: "value starting with an underscore", text: "env=_prod", want: "error" },
+    { name: "value ending with a dash", text: "env=prod-", want: "error" },
+    { name: "other character in the key", text: "en$v=prod", want: "error" },
+    { name: "other character in the value", text: "env=pr od", want: "error" },
+    { name: "invalid prefix", text: "Example_Com/app=web", want: "error" },
+    { name: "empty prefix", text: "/app=web", want: "error" },
+    { name: "reserved prefix", text: "hetzner.cloud/app=web", want: "error" },
+  ];
+  for (const c of cases) {
+    test(`parseLabel: ${c.name}`, () => {
+      const got = parseLabel(c.text);
+      if (c.want === "error") {
+        expect("error" in got).toBe(true);
+        if ("error" in got) expect(got.error).not.toBe("");
+        return;
+      }
+      expect(got).toEqual({ row: c.want });
     });
   }
 });

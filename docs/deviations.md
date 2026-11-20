@@ -57,7 +57,9 @@ Rescue ends with the next boot that HLab starts, or after 60 minutes; a
 reboot from inside the guest keeps it enabled.
 
 The ISOs are five Ubuntu and Debian installer images of HLab's own list,
-with HLab's own IDs; there are no private ISOs. The first attach of an
+with HLab's own IDs, plus the ISOs you add yourself. Your own ISOs appear
+in every project as private ISOs without a name, shown by their
+description, and are attached by their ID only. The first attach of an
 ISO downloads it, which takes minutes. The server sees a second DVD drive
 with its cloud-init data.
 

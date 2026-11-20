@@ -28,7 +28,7 @@ networks, primary and floating IPs, firewalls, DNS zones with reverse DNS,
 load balancers and certificates. Other parts of the Hetzner API answer
 `not_found`; what else differs is in [Known deviations](docs/deviations.md).
 A [tray program](#the-tray-program) starts and stops the cloud and manages
-projects, tokens, servers, SSH keys, server types and settings.
+projects, tokens, every resource of a project, server types and settings.
 
 <p align="center">
   <picture>
@@ -123,8 +123,8 @@ cloud-init has finished and SSH accepts the key.
 Clean up with `bin\hlab.exe project delete demo`, which deletes the
 server and the SSH key with the project, and `bin\hlab.exe cloud stop`.
 
-The [guide](docs/guide.md) shows every resource: servers, snapshots and
-backups, ISOs, volumes, networks, IPs, firewalls, DNS, load balancers and
+The [guide](docs/guide.md) shows every resource with hcloud and in the
+window: servers, placement groups, snapshots and backups, ISOs, volumes, networks, IPs, firewalls, DNS, load balancers and
 certificates, and stopping and starting the cloud.
 
 ## The tray program
@@ -163,17 +163,38 @@ confirm.
   **Create project**, a search field, and **Delete** in each row's menu
   (`…`). Click a project to open its console; the window opens the last
   project you used when it starts again.
-- The **project console** opens on **Servers**; its sidebar holds
-  **Servers**, **SSH Keys** and **API tokens**. The project name in the
-  breadcrumb switches to another project.
+- The **project console** opens on **Servers**. Its sidebar groups the
+  entries like the Hetzner Cloud Console: **Cloud** with **Servers**,
+  **Volumes** and **Firewalls**; **Networking** with **Load Balancers**,
+  **Networks**, **IPs** and **DNS**; and, below a line, **Security**. A
+  click on a group heading collapses or expands it, and the window
+  remembers the collapsed groups. An entry with several views shows them
+  as tabs above the page:
+
+  | Entry | Tabs |
+  |---|---|
+  | Servers | Servers, Snapshots, Backups, Placement Groups |
+  | IPs | Primary IPs, Floating IPs |
+  | DNS | DNS Zones |
+  | Security | SSH Keys, API tokens, Certificates |
+
+  The project name in the breadcrumb switches to another project.
+  - Each resource section has a list with a search field (a name, or a
+    label selector such as `env=dev`), a create button that opens a form,
+    and a detail page with an actions menu (`…`) and tabs such as Labels
+    and Protection. Labels are entered as chips: type `key=value` (or
+    just `key`) and press Enter, Space or a comma. **Snapshots** and
+    **Backups** have no create form; they are made on a server's page.
+    A toast follows each action and names the resource, for example
+    "Network test: Delete". See
+    [Servers in the window](docs/guide.md#servers-in-the-window) and the
+    paragraph "In the window" under each resource of the
+    [guide](docs/guide.md).
   - **Servers**: the list with **Create server** and power actions in the
     row menu, the create form, and a detail page per server with an
     actions menu (power, rebuild, change type, rename, delete) and the
     tabs Overview, Networking, Firewalls, Volumes, Backups, Snapshots,
-    Rescue, ISO, Graphs, Labels and Protection. See
-    [Servers in the window](docs/guide.md#servers-in-the-window).
-  - **SSH Keys**: **Add SSH key**, a detail page with name and labels,
-    **Delete**.
+    Rescue, ISO, Graphs, Labels and Protection.
   - **API tokens**: **Create token** asks for a name and whether the
     token is read only, and shows the token once with a copy button;
     **Revoke** is in the row menu.
@@ -184,6 +205,10 @@ confirm.
     change or remove it; **Update from Hetzner** asks for a Hetzner token
     in a dialog and uses it once, without storing it. See
     [Custom server types](docs/configuration.md#custom-server-types).
+  - **ISOs**: the ISOs of the catalog and your own ISOs, also while the
+    cloud is stopped. **Add ISO** adds an own ISO from a URL or a local
+    `.iso` file; **Edit** and **Remove** are in an own ISO's row menu.
+    See [Own ISOs](docs/guide.md#own-isos).
   - **Settings**: every key of `settings.toml`, the switch
     **Trust the HLab CA** and **Save CA certificate** (see
     [Trusting the HLab CA](docs/guide.md#trusting-the-hlab-ca)).

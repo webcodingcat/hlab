@@ -8,5 +8,7 @@ while the cloud runs.
   token is **Read only**. **Create** then shows the token once; copy it
   right away, it is never shown again.
 - **Revoke** in a token's row menu (`…`) cuts off the clients that use it.
+- API tokens is a tab of **Security** in the sidebar on the left, beside
+  **SSH Keys** and **Certificates**.
 - To switch to another project, click the project name in the breadcrumb;
   **Projects** leads back to the project list.

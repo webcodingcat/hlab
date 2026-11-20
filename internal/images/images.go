@@ -21,6 +21,11 @@ type Source struct {
 	// FallbackURL and FallbackChecksumURL are tried when URL or ChecksumURL
 	// answers 404 (a release moved to an archive directory).
 	FallbackURL, FallbackChecksumURL string
+	// Path is a local file copied instead of downloaded (own ISOs).
+	Path string
+	// SHA256 (hex) verifies a Path source, or a URL source without
+	// ChecksumURL; empty means the file is not checked.
+	SHA256 string
 }
 
 // Options configure a Store.
@@ -35,6 +40,8 @@ type Options struct {
 	Convert func(ctx context.Context, src, dst string) error
 	// ISOs maps ISO names to their sources; ISOs are cached unchanged.
 	ISOs map[string]Source
+	// ISOSource is consulted for names ISOs lacks (own ISOs); nil means none.
+	ISOSource func(name string) (Source, bool)
 	// ISODir holds the cached ISOs (<data>\isos).
 	ISODir string
 	// RescueImage names the image the rescue base is prepared from.
@@ -85,10 +92,16 @@ func (s *Store) Ensure(ctx context.Context, name string) (string, error) {
 }
 
 // EnsureISO returns the path of the cached ISO name (<ISODir>\<name>),
-// downloading and verifying it first if it does not exist. Concurrent calls
+// downloading (or copying a Path source) and verifying it first if it does
+// not exist. Concurrent calls
 // for the same name download once; on error nothing stays in ISODir.
 func (s *Store) EnsureISO(ctx context.Context, name string) (string, error) {
 	src, ok := s.opts.ISOs[name]
+	own := false
+	if !ok && s.opts.ISOSource != nil {
+		src, ok = s.opts.ISOSource(name)
+		own = ok
+	}
 	if !ok {
 		return "", fmt.Errorf("images: unknown ISO %q", name)
 	}
@@ -103,15 +116,15 @@ func (s *Store) EnsureISO(ctx context.Context, name string) (string, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("images: %w", err)
 	}
-	if err := s.fetchISO(ctx, src, dst); err != nil {
+	if err := s.fetchISO(ctx, src, own, dst); err != nil {
 		return "", fmt.Errorf("images: ISO %s: %w", name, err)
 	}
 	return dst, nil
 }
 
 // fetchISO downloads and verifies the ISO of src into dst through a
-// temporary file in the same folder.
-func (s *Store) fetchISO(ctx context.Context, src Source, dst string) error {
+// temporary file in the same folder; own sources go through fetchOwn.
+func (s *Store) fetchISO(ctx context.Context, src Source, own bool, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
 		return err
 	}
@@ -121,7 +134,11 @@ func (s *Store) fetchISO(ctx context.Context, src Source, dst string) error {
 	}
 	tmp := f.Name()
 	defer func() { _ = os.Remove(tmp) }()
-	err = s.fetchSource(ctx, src, f)
+	if own {
+		err = s.fetchOwn(ctx, src, f)
+	} else {
+		err = s.fetchSource(ctx, src, f)
+	}
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}

@@ -104,7 +104,12 @@ remote debugging port on 127.0.0.1 and runs beside a tray you may have
 open. Each row then runs the Playwright test of its ID from
 `ui\frontend\tests\e2e`, which connects to the real tray window over CDP;
 this needs the frontend dependencies (`task frontend:install`). `UI-01`
-stops and starts the cloud. `UI-04` updates the server types with the
+stops and starts the cloud. `UI-02` runs one spec per project section:
+Servers and SSH Keys in a project of their own; Volumes, Load Balancers,
+Networks, Firewalls, Floating IPs, Primary IPs, DNS, Certificates and
+Placement Groups in one shared project `e2e-ui02-res-<time>`, made and
+deleted through `hlab`, each creating a resource through its form,
+labelling and deleting it; ISOs only checks the list. `UI-04` updates the server types with the
 token of the same hcloud context as `CAT-03`, and without one checks
 Hetzner's refusal of an invalid token. Release builds never carry the
 `e2e` tag.

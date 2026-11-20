@@ -64,9 +64,9 @@ test("UI-02 ssh keys", async ({ page }) => {
     await row.getByRole("cell", { name, exact: true }).click();
     await expect(page.getByRole("heading", { level: 1, name, exact: true })).toBeVisible();
     await page.getByRole("link", { name: "Labels", exact: true }).click();
-    await page.getByRole("button", { name: "Add label", exact: true }).click();
-    await page.getByRole("textbox", { name: /key/i }).last().fill("env");
-    await page.getByRole("textbox", { name: /value/i }).last().fill("e2e");
+    const labelsBox = page.getByRole("textbox", { name: "Labels", exact: true });
+    await labelsBox.fill("env=e2e");
+    await labelsBox.press("Enter");
     await page.getByRole("button", { name: "Save labels", exact: true }).click();
     await expect
       .poll(async () => (await keysNamed(project.token, name))[0]?.labels, { timeout: 30_000 })

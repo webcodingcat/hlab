@@ -60,9 +60,12 @@ The tabs:
   downloads it.
 - **Graphs**: CPU, disk and network for 1 hour, 24 hours or 7 days. HLab
   keeps 24 hours of samples while the cloud runs.
-- **Labels**: edit the labels, then **Save labels**.
+- **Labels**: type `key=value` or `key` and press Enter, Space or a
+  comma to add a label as a chip; click a chip and press Delete to remove
+  it, or double-click it to edit it. Then **Save labels**. The labels of
+  the create form work the same way.
 - **Protection**: protection against deletion and against rebuild,
   then **Save**.
 
-To switch to another section of the project, use the sidebar on the left;
-**API tokens** manages the project's tokens.
+Servers is an entry of the sidebar's **Cloud** group; its tabs also lead
+to **Snapshots**, **Backups** and **Placement Groups**.

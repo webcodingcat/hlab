@@ -6,6 +6,27 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x] 14 Tray console: remaining resources.
+      Requirements: UI-02 (part: remaining resource types; completes it),
+      UI-09, UI-10, CAT-10.
+      Depends on: 11.
+      Research: phases/11/RESEARCH.md.
+      Scope: the sections Volumes, Load Balancers, Networks, Firewalls,
+      Floating IPs, Primary IPs, DNS, Certificates, Placement Groups,
+      Images and ISOs on the frame of phase 11; after the manual check the
+      console navigation of UI-SPEC.md (grouped sidebar, section tabs)
+      and own ISOs in the Administration (change of 2026-11-20).
+      Success criteria:
+      1. Every remaining resource type can be listed, shown, created,
+         configured and deleted in the window; with phase 11, every
+         resource type of the API is covered.
+      2. The example environment can be created and deleted by hand in the
+         console.
+      3. The sidebar shows the groups Cloud and Networking and the entry
+         Security, every entry with its tabs; own ISOs can be added from a
+         URL or a local file in the Administration and attached to a server.
+      UI-09 manual check deferred to before the release (2026-11-20).
+
 - [x] 11 Tray console: shared frame, servers, SSH keys.
       Requirements: UI-02 (part: shared frame, servers, SSH keys; done
       after phase 14).

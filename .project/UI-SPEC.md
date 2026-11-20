@@ -64,12 +64,32 @@ everywhere.
 - Form: labelled fields in one column, inline validation message under the
   field (error colour), Hetzner's field error messages from `details.fields`
   shown under the matching field; submit button at the bottom right.
+- Labels field (every create form and every Labels tab): heading
+  "Labels", below it the rule text "Labels are key-value pairs. Key and
+  value are at most 63 characters each, start and end with an
+  alphanumeric character and may contain dashes, underscores and dots in
+  between. The value is optional." and one multi-line box (surface
+  colour, border, about five lines high, resizable). Each label is a
+  chip: the key on a muted background, the value next to it, one rounded
+  border around both; a label without value shows the key only. Typing
+  `key=value` or `key` and pressing Enter, Space or comma turns the text
+  into a chip; a click selects a chip (key part filled with the accent
+  colour, white text, accent border), Delete or Backspace removes the
+  selected chip, Backspace in the empty input removes the last chip, a
+  double click puts the chip back into the input for editing. A key used
+  twice or a text that breaks the rule shows its message under the box
+  (error colour) and stays in the input.
 - Confirm dialog: for every delete and every destructive action; the
-  resource name must be typed for projects, servers, volumes, networks and
-  zones.
+  resource name must be typed for projects (their display name), servers,
+  volumes, networks and zones.
 - Action toast: bottom right, shows a running action with progress and its
-  result; errors stay until closed.
+  result; errors stay until closed. Its title is `<Type> <name>: <action>`,
+  e.g. "Network Test: Delete", "Record www A: Change TTL".
 - Copy field: monospace value with a copy button (IPs, tokens, CA).
+- Section tabs: a row of tabs on top of every project console page,
+  below the page title, the open tab underlined in the accent colour;
+  each tab has its own address, so the browser history and a reload keep
+  it.
 - Help button: `?` in the page title row; opens the view's help text in a
   side panel.
 
@@ -82,28 +102,66 @@ everywhere.
     a toggle: a click opens Administration, a second click closes it and
     returns to the page shown before (the project list when there was
     none); while Administration is open the gear shows as pressed.
-  - Project list (start page): the projects table, full width, no sidebar.
-    A row click opens the project console of that project.
-  - Project console: breadcrumb "Projects / <name> ▾"; the name opens a
+  - Project list (start page): the project cards, full width, no sidebar.
+    A click on a card opens the project console of that project.
+  - Project console: breadcrumb "Projects / <display name> ▾"; the name opens a
     menu to switch to another project, "Projects" leads back to the list.
-    Left sidebar with the sections of this project only: the resource
-    sections (Servers, Volumes, Load Balancers, Networks, Firewalls,
-    Floating IPs, Primary IPs, DNS, Certificates, SSH Keys, Placement
-    Groups, Images, ISOs), then a separator and "API tokens". Phase 10
-    builds "API tokens" only. The last opened project is remembered.
+    Left sidebar with the entries of this project only, in collapsible
+    groups like the Hetzner Cloud Console: a group heading in uppercase
+    small print (12 px, text muted) with a chevron on the right; a click
+    on the heading collapses or expands the group, the collapsed groups
+    are remembered; a 1 px border line separates the groups. Groups and
+    entries: "Cloud" with Servers, Volumes, Firewalls; "Networking" with
+    Load Balancers, Networks, IPs, DNS; after a separator line the single
+    entry "Security" (no heading). Every entry opens a page with a tab
+    bar on top (see "Section tabs"), also when it has only one tab:
+    Servers: Servers, Snapshots, Backups, Placement Groups; Volumes:
+    Volumes; Firewalls: Firewalls; Load Balancers: Load Balancers;
+    Networks: Networks; IPs: Primary IPs, Floating IPs; DNS: DNS Zones;
+    Security: SSH Keys, API tokens, Certificates. Snapshots and Backups
+    list the project's images of that type (system images are not
+    listed); ISOs are not part of the project console. The entry that
+    contains the open tab is highlighted. The last opened project is
+    remembered.
   - Administration (gear): breadcrumb "Administration", left sidebar with
-    Server Types, Settings, Logs.
+    Server Types, ISOs, Settings, Logs.
 - Cloud stopped: the project list and the project console show the text
   "Start the cloud to manage projects" with the Start button; the
   Administration (Server Types: catalog and own types, as hlabd would merge
-  them; Settings; Logs: last file contents) stays available.
+  them; ISOs: catalog and own ISOs; Settings; Logs: last file contents)
+  stays available.
 - Resource list per type: resource table.
 - Create per type: one form page following the Hetzner Console's order
   (servers: location, image, type, networking, SSH keys, volumes,
   firewalls, backups, placement group, labels, cloud config, name).
+  Create volume follows the Hetzner Console's volume dialog: at the top a
+  volume icon on the left and a large size field with + and − stepper
+  buttons (1 GB steps) and the unit "GB" on the right; below it a
+  full-width slider from 10 to 10240 GB, its ends labelled "10 GB" and
+  "10,240 GB", bound to the same value as the field; then Name; then a
+  required Server select with the hint "The volume is bound to the
+  server's location." (the form has no Location field; a volume without
+  a server is created through the API, hcloud or the CLI); then "Mount
+  options" as a segmented control Automatic | Manual (default Automatic)
+  with one line explaining the chosen option, and "Filesystem" as inline
+  radios ext4 / xfs (default ext4), both always visible; then Labels. No
+  price line.
 - Resource detail per type: detail page with the tabs that type supports.
-- Projects: the project list is the table of projects with "Create
-  project" and the row menu (delete); the project console's "API tokens"
+- Projects: the project list follows the Hetzner Console's project
+  overview. Toolbar: search field (display name or name), sort menu
+  (Display name, Created) with a direction arrow (default Created,
+  ascending), and a grid/list switch; sort and switch are remembered like
+  the last opened project. Grid: cards of equal size; list: one full-width
+  row per project. A card shows a project icon and the display name large,
+  the name small and muted below, a "…" menu (Delete) at the top right, and
+  a footer "N resources ▾" that opens the counts per type ("2 Servers",
+  "1 Volume"), each opening its section; an empty project shows
+  "+ Create server" there, which opens the server create form. A last
+  tile with a dashed border, "+ New project", opens the "Create project"
+  dialog with the field "Display name" and, below it, the derived name
+  shown live; the refusal of a taken or empty name appears under the field. Role and member
+  badges of Hetzner are left out (hlab has no members). The project
+  console's "API tokens"
   section has the token table and the "Create token" dialog that shows the
   token once in a copy field with a warning.
 - Server Types: table of the catalog with source column (catalog, own),
@@ -117,6 +175,15 @@ everywhere.
   with a required password field for the Hetzner token (hint "Used once
   for the update, never stored."), "Update" and "Cancel"; the token is
   cleared when the dialog closes and never stored.
+- ISOs: table of the ISO catalog and the own ISOs with source column
+  (catalog, own), name, description, architecture; "Add ISO" opens a form
+  with name (required, stored as the ISO's description; own ISOs have no
+  Hetzner name and are shown by it everywhere), architecture (x86 or arm)
+  and the source, either a URL with an optional SHA-256 or a local `.iso`
+  file as an editable path with "Browse…" opening the Windows file
+  dialog; own rows have "Edit" (the add form filled in) and "Remove" (confirm dialog) in the row menu.
+  Available while the cloud is stopped; a local file is copied when the
+  cloud reads the own ISOs.
 - Settings: grouped form for every key of `settings.toml`; the trust switch
   shows the risk text from `decisions/managed-certificates.md` and a "Save
   CA certificate" button.

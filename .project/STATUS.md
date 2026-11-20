@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 14 Tray console: remaining resources (not started)
+- Phase: 15 Project display names and Hetzner-style project list (next)
 - Base branch: main
-- Last done: phase 11 merged into main (2026-11-20): console frame (API client, action toasts, detail/form/labels/protection building blocks, routes) with the complete Servers and SSH Keys sections; UI-02 frame check fits
-- Next: /wcc:phase for 14 in a new session; DOC-07 (01) waits until the repository is on GitHub
+- Last done: phase 14 merged into main (2026-11-20): all remaining resource sections, grouped sidebar with section tabs, own ISOs in the Administration, Hetzner-style volume form, labels as chips; the manual check UI-09 is deferred to before the release
+- Next: /wcc:phase in a new session builds phase 15; before the release /wcc:report walks through UI-09, LIFE-05 and DOC-07 (DOC-07 waits until the repository is on GitHub)
 
 ## Open manual checks
 
@@ -20,6 +20,7 @@ STATUS: IN_PROGRESS
 
 - DOC-07 (01): README and guides are understandable for their audience, help texts name only existing views and buttons
 - LIFE-05 (09): a Windows shutdown or restart with the cloud running applies the stop behaviour
+- UI-09 (14): the example environment can be created and deleted by hand in the console (deferred to before the release)
 
 ## Open decisions
 

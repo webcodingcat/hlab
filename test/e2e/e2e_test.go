@@ -40,6 +40,7 @@ func TestE2E(t *testing.T) {
 	t.Run("UI-05", testUI05)
 	t.Run("UI-02", testUI02)
 	t.Run("UI-06", testUI06)
+	t.Run("UI-10", testUI10)
 
 	t.Run("PROJ-05", parallel(testPROJ05))
 	t.Run("API-01", parallel(testAPI01))

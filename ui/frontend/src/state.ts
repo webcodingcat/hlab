@@ -55,7 +55,19 @@ type Area = Route["area"];
 const viewInfo: Record<ViewId, { title: string; area: Area }> = {
   projects: { title: "Projects", area: "projects" },
   servers: { title: "Servers", area: "project" },
+  volumes: { title: "Volumes", area: "project" },
+  "load-balancers": { title: "Load Balancers", area: "project" },
+  networks: { title: "Networks", area: "project" },
+  firewalls: { title: "Firewalls", area: "project" },
+  "floating-ips": { title: "Floating IPs", area: "project" },
+  "primary-ips": { title: "Primary IPs", area: "project" },
+  dns: { title: "DNS", area: "project" },
+  certificates: { title: "Certificates", area: "project" },
   "ssh-keys": { title: "SSH Keys", area: "project" },
+  "placement-groups": { title: "Placement Groups", area: "project" },
+  snapshots: { title: "Snapshots", area: "project" },
+  backups: { title: "Backups", area: "project" },
+  isos: { title: "ISOs", area: "admin" },
   tokens: { title: "API tokens", area: "project" },
   "server-types": { title: "Server Types", area: "admin" },
   settings: { title: "Settings", area: "admin" },
@@ -88,6 +100,21 @@ export const lastProject = writable<string>(localStorage.getItem(projectKey) ?? 
 lastProject.subscribe((p) => {
   if (p) localStorage.setItem(projectKey, p);
 });
+
+const groupsKey = "hlab.collapsedGroups";
+
+function storedGroups(): string[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(groupsKey) ?? "[]");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** collapsedGroups are the IDs of the collapsed sidebar groups, kept in localStorage. */
+export const collapsedGroups = writable<string[]>(storedGroups());
+collapsedGroups.subscribe((g) => localStorage.setItem(groupsKey, JSON.stringify(g)));
 
 /** Project as GET /projects lists it. */
 export type Project = { name: string; created: string; resources: number };

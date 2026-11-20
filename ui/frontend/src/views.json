@@ -1,1 +1,21 @@
-["projects", "servers", "ssh-keys", "tokens", "server-types", "settings", "logs"]
+[
+  "projects",
+  "servers",
+  "snapshots",
+  "backups",
+  "placement-groups",
+  "volumes",
+  "firewalls",
+  "load-balancers",
+  "networks",
+  "primary-ips",
+  "floating-ips",
+  "dns",
+  "ssh-keys",
+  "tokens",
+  "certificates",
+  "server-types",
+  "isos",
+  "settings",
+  "logs"
+]

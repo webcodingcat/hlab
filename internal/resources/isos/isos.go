@@ -1,4 +1,4 @@
-// Package isos serves the ISO catalog.
+// Package isos serves the ISO catalog and the own ISOs.
 package isos
 
 import (
@@ -33,12 +33,23 @@ func (i iso) MarshalJSON() ([]byte, error) { return i.Raw, nil }
 
 // list offers name, architecture, include_architecture_wildcard (with an
 // architecture filter also ISOs without architecture), page and per_page.
+// The catalog ISOs come first, then the own ISOs, each by ID; a name matches
+// catalog ISOs only, as own ISOs have none.
 func (m *Module) list(w http.ResponseWriter, req *http.Request) {
-	items := make([]iso, 0, len(m.cat.ISOs))
-	for _, i := range m.cat.ISOs {
+	all := m.cat.AllISOs()
+	items := make([]iso, 0, len(all))
+	for _, i := range all {
 		items = append(items, iso(i))
 	}
-	slices.SortStableFunc(items, func(a, b iso) int { return cmp.Compare(a.ID, b.ID) })
+	slices.SortStableFunc(items, func(a, b iso) int {
+		if a.Own != b.Own {
+			if b.Own {
+				return -1
+			}
+			return 1
+		}
+		return cmp.Compare(a.ID, b.ID)
+	})
 	wildcard := req.URL.Query().Get("include_architecture_wildcard") == "true"
 	api.ListRequest(w, req, "isos", items, api.ListOptions[iso]{
 		Name: func(i iso) string { return i.Name },
@@ -55,7 +66,7 @@ func (m *Module) get(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	for _, i := range m.cat.ISOs {
+	for _, i := range m.cat.AllISOs() {
 		if i.ID == id {
 			api.JSON(w, http.StatusOK, map[string]any{"iso": i.Raw})
 			return

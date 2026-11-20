@@ -27,6 +27,182 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 UI-09 is checked before the release, phase 14 closes
+
+- Type: decision
+- Phase: phase 14
+- What: the manual check UI-09 no longer stops phase 14; it stays in "Open manual checks" and is done before the release of milestone 1.
+- Why: the user deferred it to shortly before the release.
+- Cost of change: low
+
+## 2026-11-20 Section tabs sit above the section title row
+
+- Type: decision
+- Phase: phase 14
+- What: the tab row of an entry is at the top of every page of that entry, above the open view's own h1 and help button; no separate entry title.
+- Why: avoids a second heading and edits to every section.
+- Cost of change: low
+
+## 2026-11-20 Toast type comes from the request path
+
+- Type: decision
+- Phase: phase 14
+- What: `resourceType(req.path)` in `lib/format.ts` derives the type and `runOn(project, name, action, req)` wraps `runApi`, for every action on a named resource, creates included.
+- Why: one shared place without a new prop on every actions menu.
+- Cost of change: low
+
+## 2026-11-20 LabelsField keeps its props
+
+- Type: decision
+- Phase: phase 14
+- What: the chip box keeps `rows` (bindable) and `error`; `parseLabel` and `checkLabel` in `labels.ts` follow `internal/labels` incl. optional prefix and reserved `hetzner.cloud/`.
+- Why: its 25 users stay unchanged.
+- Cost of change: low
+
+## 2026-11-20 Catalog extended for own ISOs
+
+- Type: decision
+- Phase: phase 14
+- What: `Catalog.ISOs` and `LoadAll` keep their meaning; added `OwnISOs`, `AllISOs`, `ReloadOwnISOs`, `DropOwnISO`, `OwnISOsWarnings`, `ISOSourceByCacheName`; `images.Source` gains `Path`, `SHA256`, `images.Options` an `ISOSource` lookup.
+- Why: extending, not changing, the interfaces others use.
+- Cost of change: low
+
+## 2026-11-20 PickISOFile in a tray service Files
+
+- Type: decision
+- Phase: phase 14
+- What: the file dialog lives in a Wails service `Files` in `cmd/hlab-tray`, not in `internal/bridge`.
+- Why: the bridge package stays free of Wails.
+- Cost of change: low
+
+## 2026-11-20 Snapshots and Backups wrap one image list
+
+- Type: decision
+- Phase: phase 14
+- What: `views/images/Section.svelte` becomes `ImageList.svelte` with a `type` prop, used by the Snapshots and Backups sections.
+- Why: no copied view code.
+- Cost of change: low
+
+## 2026-11-20 Own local ISO served before its copy ends
+
+- Type: decision
+- Phase: phase 14
+- What: a local file is served as soon as it can be opened and copied in the background; a failed copy drops that ISO.
+- Why: start and reload do not wait for large copies.
+- Cost of change: low
+
+## 2026-11-20 Own ISOs have no name and attach by ID
+
+- Type: decision
+- Phase: phase 14
+- What: own ISOs are served with `name` null and shown by their description (the form's required "Name"), attached and edited by ID only, cached as `own-<id>-<hash of the source>.iso`; an uncopyable local file drops only its ISO, and a cache file stays while a server has it attached.
+- Why: Hetzner's schema gives private ISOs `name` null (answer of the user at the start of the phase 14 changes).
+- Cost of change: medium
+
+## 2026-11-20 Toast titles name type and resource first
+
+- Type: decision
+- Phase: phase 14
+- What: action toast titles read `<Type> <name>: <action>`, e.g. "Network Test: Delete", built by one shared helper.
+- Why: the user chose it at the start of the phase 14 changes; menu labels differ too much to insert the type.
+- Cost of change: low
+
+## 2026-11-20 Labels are entered as chips
+
+- Type: change
+- Phase: change
+- What: the labels field of every create form and Labels tab is one box of chips (`key=value` or `key`, confirmed with Enter, Space or comma; click selects in the accent colour, Delete removes, double click edits) under the label rule text, replacing the key/value rows with "Add label" (UI-SPEC.md "Labels field").
+- Why: the user wants labels entered and shown like in the Hetzner Console.
+- Cost of change: low
+
+## 2026-11-20 Volume create form like the Hetzner Console
+
+- Type: change
+- Phase: change
+- What: the console's Create volume form has a size field with +/− stepper and a slider over 10 to 10240 GB, a required Server instead of a Location (volumes without a server only through API, hcloud and CLI), and always visible Mount options (segmented Automatic | Manual) and Filesystem (ext4 / xfs).
+- Why: in the manual check of UI-09 the user compared the form with the Hetzner Console's volume dialog and did not find mount and filesystem behind the optional server.
+- Cost of change: low
+
+## 2026-11-20 Console sidebar in groups with section tabs, own ISOs in the Administration
+
+- Type: change
+- Phase: change
+- What: the project console sidebar has the collapsible groups Cloud (Servers, Volumes, Firewalls) and Networking (Load Balancers, Networks, IPs, DNS) plus the entry Security, every entry shows its views as tabs (Servers: Servers, Snapshots, Backups, Placement Groups; IPs: Primary IPs, Floating IPs; DNS: DNS Zones; Security: SSH Keys, API tokens, Certificates), and ISOs move to an Administration view where own ISOs from a URL or a local file are kept in `isos.custom.json` and served as type `private` (CAT-10, UI-10).
+- Why: in the manual check of UI-09 the user wanted the navigation of the current Hetzner Cloud Console and a way to add own ISOs.
+- Cost of change: medium
+
+## 2026-11-20 Project display names and Hetzner-style project list
+
+- Type: change
+- Phase: feedback
+- What: projects get a fixed display name of 1-255 characters from which hlabd derives the name (slug, refused with 409 when taken, no length limit of 63), stored in schema version 2, and the tray's project list becomes Hetzner-like cards (grid/list, sort, resources per type, "New project" tile), built in phase 15.
+- Why: the user wants names like "Web Coding Cat" as in the Hetzner Console, and the 63-character DNS-label limit has no technical reason in hlab.
+- Cost of change: high
+
+## 2026-11-20 Console menus offer only what the API accepts
+
+- Type: decision
+- Phase: phase 14
+- What: menus and selects disable or hide what the API would refuse (Attach while attached, Detach while not, Assign/Unassign by state, primary IPs only to powered-off servers without such an IP, floating IPs only within the home network zone, secondary zones without Records, TTL and import, Convert to snapshot only for backups) and the reason shows as a hint.
+- Why: a request the UI knows to fail only produces an error toast.
+- Cost of change: low
+
+## 2026-11-20 Console form defaults and editing behaviour
+
+- Type: decision
+- Phase: phase 14
+- What: a new load balancer starts with one HTTP service on port 80, a new network with 10.0.0.0/16, a new firewall rule as TCP from `0.0.0.0/0, ::/0`; editing a service locks its listen port; the firewall rules editor and dialog inputs fill from the resource only on open and after a save, so the 5 s refresh never overwrites an edit; the ISO list loads once per opening.
+- Why: the Hetzner console defaults; update_service finds a service by its port; ISOs do not change while the cloud runs.
+- Cost of change: low
+
+## 2026-11-20 Console shows API field errors and shared building blocks
+
+- Type: decision
+- Phase: phase 14
+- What: zone file import and primary nameservers show the API's 422 field message under the field; `ResourceActionsMenu` has an `onselect` hook for entries a page handles itself; `ReverseDnsDialog` takes an IPv6 `network` to set a new address in it; every renamable resource uses the `rename(base)` builder and `lib/RenameInput.svelte`; `protocolText` lives in `lib/format.ts`.
+- Why: one dialog per concern, and the first reverse DNS entry of an IPv6 IP must be settable.
+- Cost of change: low
+
+## 2026-11-20 UI-02 specs wait for running actions before Delete
+
+- Type: decision
+- Phase: phase 14
+- What: the load balancer and DNS specs wait until the resource has no running action before Delete.
+- Why: Delete right after create answers 423 locked under API-13, as at Hetzner; the wait weakens no check.
+- Cost of change: low
+
+## 2026-11-20 Console resources as pure action modules
+
+- Type: decision
+- Phase: phase 14
+- What: a generic `lib/resourceActions.ts` and one pure module per resource under `lib/resources/` (create, menu, tabs, firewall rule conversion) with table-driven unit tests, rendered by one `ResourceActionsMenu.svelte` and one `ReverseDnsDialog.svelte`; `serverActions.ts` stays as it is and `labelText`/`createdText` move to `lib/format.ts`.
+- Why: the phase 11 pattern for every resource keeps requests testable without a browser and dialog logic in one place.
+- Cost of change: low
+
+## 2026-11-20 Console sections found by glob, registered at once
+
+- Type: decision
+- Phase: phase 14
+- What: sections live in `views/<view-id>/Section.svelte` and ProjectConsole shows a section once its file exists via `import.meta.glob`; plan 14-01 registers all eleven views in routes, help, views.json and sidebar with help stubs (one task touches 11 stub files).
+- Why: section plans of one wave never touch the same file, and UI-07/DOC-05 need a help file for every view in views.json.
+- Cost of change: low
+
+## 2026-11-20 Phase 14 confirmations and zone file handling
+
+- Type: decision
+- Phase: phase 14
+- What: deleting volumes, networks and zones needs the typed name, every other delete and detach, unassign, removal of sub-resources, zone file import, Change IP range, LB Change type and Disable public interface need a plain confirmation; zone file export shows in a read-only text area with copy, import takes pasted text.
+- Why: UI-SPEC and the phase start; pasted text needs no new bridge function for file dialogs.
+- Cost of change: low
+
+## 2026-11-20 Phase 14 e2e scope
+
+- Type: decision
+- Phase: phase 14
+- What: Images list only snapshots and backups without Create, ISOs are read-only; placement groups get no unit row; the certificates flow uses a managed certificate in a zone made through the API; the UI-02 time limit is set by plan 14-23 after one full run.
+- Why: the API offers nothing more for images and ISOs, Node cannot easily make an uploadable certificate, and the limit is about twice the first full run.
+- Cost of change: low
+
 ## 2026-11-20 Upgrade to wcc 0.32.15
 
 - Type: approval

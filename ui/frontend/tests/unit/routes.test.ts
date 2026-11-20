@@ -68,7 +68,7 @@ test.describe("UI-02 routes", () => {
   }
 
   const unknown: { name: string; hash: string }[] = [
-    { name: "unknown view", hash: "#/projects/demo/volumes" },
+    { name: "unknown view", hash: "#/projects/demo/nowhere" },
     { name: "ID that is not a number", hash: "#/projects/demo/servers/abc/overview" },
     { name: "unknown area", hash: "#/nowhere" },
   ];
@@ -86,4 +86,48 @@ test.describe("UI-02 routes", () => {
       page: { kind: "list" },
     });
   });
+});
+
+test.describe("UI-02 resource routes", () => {
+  // Each new view with a tab its detail page has; snapshots and backups have
+  // no create page.
+  const views: { view: string; tab: string; hasNew: boolean }[] = [
+    { view: "volumes", tab: "labels", hasNew: true },
+    { view: "load-balancers", tab: "targets", hasNew: true },
+    { view: "networks", tab: "subnets", hasNew: true },
+    { view: "firewalls", tab: "rules", hasNew: true },
+    { view: "floating-ips", tab: "protection", hasNew: true },
+    { view: "primary-ips", tab: "labels", hasNew: true },
+    { view: "dns", tab: "records", hasNew: true },
+    { view: "certificates", tab: "labels", hasNew: true },
+    { view: "placement-groups", tab: "labels", hasNew: true },
+    { view: "snapshots", tab: "protection", hasNew: false },
+    { view: "backups", tab: "labels", hasNew: false },
+  ];
+  const cases: { name: string; route: Route; hash: string }[] = [];
+  for (const v of views) {
+    const at = (page: unknown) => ({ area: "project", project: "demo", view: v.view, page }) as Route;
+    cases.push({ name: `${v.view} list`, route: at({ kind: "list" }), hash: `#/projects/demo/${v.view}` });
+    if (v.hasNew) {
+      cases.push({ name: `${v.view} new`, route: at({ kind: "new" }), hash: `#/projects/demo/${v.view}/new` });
+    }
+    cases.push({
+      name: `${v.view} detail with tab`,
+      route: at({ kind: "detail", id: 7, tab: v.tab }),
+      hash: `#/projects/demo/${v.view}/7/${v.tab}`,
+    });
+  }
+  cases.push({ name: "admin isos", route: { area: "admin", view: "isos" } as Route, hash: "#/admin/isos" });
+  for (const c of cases) {
+    test(`href and parse agree: ${c.name}`, () => {
+      expect(href(c.route)).toBe(c.hash);
+      expect(parse(c.hash)).toEqual(c.route);
+    });
+  }
+
+  for (const view of views.filter((v) => !v.hasNew).map((v) => v.view)) {
+    test(`${view} has no create page`, () => {
+      expect(parse(`#/projects/demo/${view}/new`)).toBeUndefined();
+    });
+  }
 });
