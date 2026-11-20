@@ -1,23 +1,39 @@
 <script lang="ts">
-  import { KeyRound } from "@lucide/svelte";
+  import { Key, KeyRound, Server } from "@lucide/svelte";
   import SectionSidebar from "../lib/SectionSidebar.svelte";
-  import { href } from "../state";
+  import { href, type Page, type ProjectView } from "../state";
   import Tokens from "./Tokens.svelte";
+  import Servers from "./servers/Servers.svelte";
+  import SshKeys from "./sshkeys/SshKeys.svelte";
 
   // The console of one project: the sidebar with this project's sections
-  // and the open section. Phase 10 has only "API tokens", which follows
-  // the resource sections after a separator.
-  let { project }: { project: string } = $props();
+  // and the open section. "API tokens" follows the resource sections after
+  // a separator.
+  let { project, view, page }: { project: string; view: ProjectView; page: Page } = $props();
 
-  const items = $derived([
-    { href: href({ area: "project", project, view: "tokens" }), title: "API tokens", icon: KeyRound, current: true, separator: true },
-  ]);
+  const sections: { view: ProjectView; title: string; icon: typeof Server; separator?: boolean }[] = [
+    { view: "servers", title: "Servers", icon: Server },
+    { view: "ssh-keys", title: "SSH Keys", icon: Key },
+    { view: "tokens", title: "API tokens", icon: KeyRound, separator: true },
+  ];
+
+  const items = $derived(
+    sections.map((s) => ({
+      href: href({ area: "project", project, view: s.view, page: { kind: "list" } }),
+      title: s.title,
+      icon: s.icon,
+      current: s.view === view,
+      separator: s.separator,
+    })),
+  );
 </script>
 
 <div class="area">
   <SectionSidebar label="Project" {items} />
   <main>
-    <Tokens name={project} />
+    {#if view === "servers"}<Servers {project} {page} />
+    {:else if view === "ssh-keys"}<SshKeys {project} {page} />
+    {:else}<Tokens name={project} />{/if}
   </main>
 </div>
 
