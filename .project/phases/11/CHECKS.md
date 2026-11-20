@@ -16,4 +16,4 @@ frame before phase 14 builds the remaining sections on the same pattern.
   6. Turn on delete protection in Protection, try Delete (the API refuses with a toast), turn it off, then Delete: the name must be typed.
   7. Switch the Windows theme between light and dark once and look at list, form, detail and dialogs.
 - Expected: layout, spacing, tables, menus, dialogs and toasts look consistent with the existing Projects and API tokens views in both themes; every action ends in a toast; errors appear at their field; nothing feels slow or confusing. Note anything you would want different before the other sections follow this pattern.
-- Result: open
+- Result: fits

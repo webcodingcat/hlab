@@ -10,7 +10,7 @@ STATUS: MANUAL_CHECK
 - Phase: 11 Tray console: shared frame, servers, SSH keys (built on branch wcc/phase-11, unmerged; waits for the manual check)
 - Base branch: main
 - Last done: phase B2 merged into main (2026-11-20): networks deleted last at project deletion, DOC-03 checks every registered route, e2e harness stops the dev service in every holding state, RDNS-02 and SRV-10 retry on `locked`; LB `https` health-check item dropped (the real API rejects it)
-- Next: /wcc:report for the UI-02 (11) frame check, then /wcc:phase to close phase 11; DOC-07 (01) waits until the repository is on GitHub
+- Next: /wcc:phase to close phase 11 (UI-02 frame check fits); DOC-07 (01) waits until the repository is on GitHub
 
 ## Open manual checks
 
@@ -20,7 +20,6 @@ STATUS: MANUAL_CHECK
 
 - DOC-07 (01): README and guides are understandable for their audience, help texts name only existing views and buttons
 - LIFE-05 (09): a Windows shutdown or restart with the cloud running applies the stop behaviour
-- UI-02 (11): the console frame with Servers and SSH Keys looks right and is pleasant to operate
 
 ## Open decisions
 
