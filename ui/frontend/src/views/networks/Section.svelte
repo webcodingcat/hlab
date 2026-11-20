@@ -26,6 +26,7 @@
   import { showError } from "../../lib/toast";
   import { href, running, type Page } from "../../state";
   import NetworkCreate from "./NetworkCreate.svelte";
+  import NetworkDetail from "./NetworkDetail.svelte";
 
   // The "Networks" section of a project console; page says which of its
   // pages the route opens (list, create form or detail).
@@ -95,11 +96,7 @@
 {:else if page.kind === "new"}
   <NetworkCreate {project} {list} />
 {:else if page.kind === "detail"}
-  <div class="title-row">
-    <h1>Networks</h1>
-    <HelpButton view="networks" />
-  </div>
-  <p><a href={list}>Back to the list</a></p>
+  <NetworkDetail {project} id={page.id} tab={page.tab} {list} />
 {:else}
   <div class="title-row">
     <h1>Networks</h1>
