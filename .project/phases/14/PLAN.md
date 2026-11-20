@@ -448,13 +448,13 @@ button "Browse…", row menu "Edit" and "Remove".
   - [ ] internal/catalog/isos_custom.go: ISOSource, OwnISOSpec, OwnISOCacheName, ReloadOwnISOs, DropOwnISO, OwnISOsWarnings, OwnISOs, AllISOs, ISOSourceByCacheName, AddOwnISO, UpdateOwnISO, RemoveOwnISO as in "Interfaces"; catalog.go: the new ISO fields (catalog ISOs get CacheName = Name), `ISO(ref)` matching own ISOs by ID only, a guarded own ISO list.
   - [ ] internal/catalog/isos_custom_test.go.
 
-- [ ] 14-26 Image store: own ISO sources
+- [x] 14-26 Image store: own ISO sources
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: CAT-10 | Tests: internal/images/images_test.go
   - Reads: ARCHITECTURE "images"; PLAN "Interfaces" (images); internal/images/images.go, download.go (Fetch, fetchSource)
   - Size: ~150 lines in 3 files
-  - [ ] internal/images/images.go and download.go: Source.Path and Source.SHA256; Options.ISOSource consulted when ISOs lacks the name; EnsureISO copies a Path source through a temporary file and checks SHA256 when set; a URL source with SHA256 and no ChecksumURL is checked against it; on error nothing stays in ISODir.
-  - [ ] internal/images/images_test.go: the CAT-10 subtest.
+  - [x] internal/images/images.go and download.go: Source.Path and Source.SHA256; Options.ISOSource consulted when ISOs lacks the name; EnsureISO copies a Path source through a temporary file and checks SHA256 when set; a URL source with SHA256 and no ChecksumURL is checked against it; on error nothing stays in ISODir.
+  - [x] internal/images/images_test.go: the CAT-10 subtest.
 
 - [ ] 14-27 Toast titles: shared builder
   - Wave: 1 | Depends on: - | Review: alone
