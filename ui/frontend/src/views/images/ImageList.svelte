@@ -76,7 +76,6 @@
   // The list refreshes every 5 s while it is shown.
   $effect(() => {
     if (!$running || page.kind === "detail") return;
-    void type;
     rows = undefined;
     load();
     const t = setInterval(load, 5000);
