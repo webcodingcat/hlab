@@ -151,7 +151,8 @@ with Windows.
 
 The top bar of the window holds **HLab** (back to the project list), the
 breadcrumb, the cloud state with **Start cloud** or **Stop cloud**, and
-the gear **Administration**. A banner reports a lost connection to the
+the gear **Administration**; a second click on the gear returns to the
+page shown before. A banner reports a lost connection to the
 service or a failed start; when the cloud refused to start because of its
 state, it offers **Discard state and start**, which does what
 `hlab cloud start --discard-state` does (see
@@ -169,7 +170,8 @@ confirm.
 - **Administration** has its own sidebar:
   - **Server Types**: the catalog and your own types, also while the
     cloud is stopped. **Add server type** adds an own type for all or
-    selected locations; **Update from Hetzner** asks for a Hetzner token
+    selected locations, **Edit** and **Remove** in an own type's row menu
+    change or remove it; **Update from Hetzner** asks for a Hetzner token
     in a dialog and uses it once, without storing it. See
     [Custom server types](docs/configuration.md#custom-server-types).
   - **Settings**: every key of `settings.toml`, the switch

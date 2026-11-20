@@ -105,8 +105,8 @@ settings.toml (`%ProgramData%\hlab-dev\server-types.custom.json` for the
 development service). The cloud start creates it with an empty list `[]`
 when it is missing, with the permissions of settings.toml, so interactive
 users may edit it. Administration > Server Types in the
-[tray program](../README.md#the-tray-program) adds and removes types in
-it; you can also edit it by hand.
+[tray program](../README.md#the-tray-program) adds, edits and removes types
+in it; you can also edit it by hand.
 
 The file is a JSON array of server type objects in the format of
 Hetzner's API. HLab serves the types after those of the catalog, in

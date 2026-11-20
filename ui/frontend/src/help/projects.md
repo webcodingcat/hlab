@@ -15,4 +15,4 @@ Projects can only be managed while the cloud runs; while it is stopped,
 - **Delete** in a project's row menu (`…`) deletes the project with all
   its resources; type its name to confirm.
 - **Administration** (the gear in the top bar) holds Server Types,
-  Settings and Logs.
+  Settings and Logs; click the gear again to return.
