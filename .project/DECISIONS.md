@@ -34,7 +34,7 @@ in ARCHITECTURE.md or the plan.
 
 - Type: change
 - Phase: change
-- What: the user took the VLAN release at project deletion (security), the two e2e harness bugs (RDNS-02 423 locked, cloud stop before build only when running) and the DOC-03 route check into phase B2 before phase 11.
+- What: the user took the VLAN release at project deletion (security), the two e2e harness bugs (RDNS-02 423 locked, cloud stop before build only when running) the DOC-03 route check and the load balancer https health check into phase B2 before phase 11.
 - Why: the user's choice from the backlog.
 - Cost of change: low
 

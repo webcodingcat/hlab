@@ -41,7 +41,7 @@
          window.
       Stops for: manual check.
 
-- [ ] B2 Backlog: VLAN release at project deletion, docs and e2e test fixes → phases/B2/
+- [ ] B2 Backlog: VLAN release at project deletion, LB health check, docs and e2e test fixes → phases/B2/
 
 - [ ] 11 Tray console for all resources.
       Requirements: UI-02, UI-09.
