@@ -184,7 +184,7 @@ func testUI05(t *testing.T) {
 // Volumes, Load Balancers, Networks, Firewalls, Floating IPs, Primary IPs,
 // DNS, Certificates and Placement Groups share one project: each creates a
 // resource through its form, labels and deletes it; ISOs lists the API's
-// ISOs. The limit is about twice the last full run (1m26s).
+// ISOs. The limit is about twice the last full run (1m31s).
 func testUI02(t *testing.T) {
 	runSpec(t, "UI-02", 3*time.Minute, []string{
 		"HLAB_E2E_SERVER_TYPE=" + serverType,
