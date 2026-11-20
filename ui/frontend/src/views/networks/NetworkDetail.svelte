@@ -7,6 +7,7 @@
   import Field from "../../lib/Field.svelte";
   import LabelsTab from "../../lib/LabelsTab.svelte";
   import ProtectionTab from "../../lib/ProtectionTab.svelte";
+  import RenameInput from "../../lib/RenameInput.svelte";
   import ResourceActionsMenu from "../../lib/ResourceActionsMenu.svelte";
   import { api, listAll, runApi } from "../../lib/api";
   import { createdText } from "../../lib/format";
@@ -161,28 +162,32 @@
     {#snippet actions()}
       <ResourceActionsMenu {project} id={n.id} name={n.name} actions={menu} ondone={done} onselect={prefill}>
         {#snippet input(a: ResourceAction, submit: (i: Input) => void, cancel: () => void)}
-          <form
-            onsubmit={(e) => {
-              e.preventDefault();
-              if (a.id === "change_ip_range") {
-                if (ipRange.trim() !== "") submit({ ip_range: ipRange.trim() });
-              } else submit({ delete: protectDelete });
-            }}
-          >
-            {#if a.id === "change_ip_range"}
-              <Field label="IP range" hint="Must contain the current range; refused while servers are attached.">
-                {#snippet children(c)}
-                  <input id={c.id} aria-describedby={c.describedby} bind:value={ipRange} />
-                {/snippet}
-              </Field>
-            {:else}
-              <label class="check"><input type="checkbox" bind:checked={protectDelete} />Protect against deletion</label>
-            {/if}
-            <div class="buttons">
-              <Button onclick={cancel}>Cancel</Button>
-              <Button type="submit" variant="primary">{a.label}</Button>
-            </div>
-          </form>
+          {#if a.id === "rename"}
+            <RenameInput current={n.name} {submit} {cancel} />
+          {:else}
+            <form
+              onsubmit={(e) => {
+                e.preventDefault();
+                if (a.id === "change_ip_range") {
+                  if (ipRange.trim() !== "") submit({ ip_range: ipRange.trim() });
+                } else submit({ delete: protectDelete });
+              }}
+            >
+              {#if a.id === "change_ip_range"}
+                <Field label="IP range" hint="Must contain the current range; refused while servers are attached.">
+                  {#snippet children(c)}
+                    <input id={c.id} aria-describedby={c.describedby} bind:value={ipRange} />
+                  {/snippet}
+                </Field>
+              {:else}
+                <label class="check"><input type="checkbox" bind:checked={protectDelete} />Protect against deletion</label>
+              {/if}
+              <div class="buttons">
+                <Button onclick={cancel}>Cancel</Button>
+                <Button type="submit" variant="primary">{a.label}</Button>
+              </div>
+            </form>
+          {/if}
         {/snippet}
       </ResourceActionsMenu>
     {/snippet}

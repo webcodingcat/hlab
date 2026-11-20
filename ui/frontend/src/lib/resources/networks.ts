@@ -1,6 +1,6 @@
 // Network actions: the create form's request, the detail page's actions menu
 // and the actions of the detail tabs (subnets, routes) and the list row menu.
-import { changeProtection, createAt, pick, postAction, remove, type ResourceAction } from "../resourceActions";
+import { changeProtection, createAt, pick, postAction, remove, rename, type ResourceAction } from "../resourceActions";
 
 const base = "networks";
 
@@ -20,7 +20,7 @@ const protection = changeProtection(base);
 const del = remove(base, "Delete", "typed-name");
 
 /** menu is the detail page's actions menu, Delete last. */
-export const menu: ResourceAction[] = [changeIpRange, protection, del];
+export const menu: ResourceAction[] = [rename(base), changeIpRange, protection, del];
 
 /** tabs are the actions of the detail tabs and the list row menu. */
 export const tabs: Record<string, ResourceAction> = {

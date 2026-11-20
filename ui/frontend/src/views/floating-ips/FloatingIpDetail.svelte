@@ -7,6 +7,7 @@
   import Field from "../../lib/Field.svelte";
   import LabelsTab from "../../lib/LabelsTab.svelte";
   import ProtectionTab from "../../lib/ProtectionTab.svelte";
+  import RenameInput from "../../lib/RenameInput.svelte";
   import ResourceActionsMenu from "../../lib/ResourceActionsMenu.svelte";
   import ReverseDnsDialog from "../../lib/ReverseDnsDialog.svelte";
   import { api, listAll, runApi } from "../../lib/api";
@@ -146,7 +147,11 @@
     {#snippet actions()}
       <ResourceActionsMenu {project} id={f.id} name={f.name} actions={menuActions} ondone={done} onselect={select}>
         {#snippet input(a: ResourceAction, submit: (i: Input) => void, cancel: () => void)}
-          <FloatingIpActionInput action={a} fip={f} {servers} {submit} {cancel} />
+          {#if a.id === "rename"}
+            <RenameInput current={f.name} {submit} {cancel} />
+          {:else}
+            <FloatingIpActionInput action={a} fip={f} {servers} {submit} {cancel} />
+          {/if}
         {/snippet}
       </ResourceActionsMenu>
     {/snippet}

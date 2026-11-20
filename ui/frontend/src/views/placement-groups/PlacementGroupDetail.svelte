@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
   import DetailPage from "../../lib/DetailPage.svelte";
   import LabelsTab from "../../lib/LabelsTab.svelte";
+  import RenameInput from "../../lib/RenameInput.svelte";
   import ResourceActionsMenu from "../../lib/ResourceActionsMenu.svelte";
   import { api, listAll } from "../../lib/api";
   import { createdText } from "../../lib/format";
@@ -9,7 +10,6 @@
   import { menu } from "../../lib/resources/placementGroups";
   import { showError } from "../../lib/toast";
   import { href } from "../../state";
-  import PlacementGroupRename from "./PlacementGroupRename.svelte";
   import type { PlacementGroup } from "./Section.svelte";
 
   // The detail page of one placement group: Overview (type and its servers,
@@ -84,7 +84,7 @@
     {#snippet actions()}
       <ResourceActionsMenu {project} id={g.id} name={g.name} actions={menu} ondone={done}>
         {#snippet input(_a: ResourceAction, submit: (i: Input) => void, cancel: () => void)}
-          <PlacementGroupRename current={g.name} {submit} {cancel} />
+          <RenameInput current={g.name} {submit} {cancel} />
         {/snippet}
       </ResourceActionsMenu>
     {/snippet}

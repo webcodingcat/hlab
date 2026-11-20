@@ -7,6 +7,7 @@ import {
   pick,
   postAction,
   remove,
+  rename,
   type Input,
   type ResourceAction,
 } from "../resourceActions";
@@ -74,6 +75,7 @@ const del = remove(base, "Delete", "plain");
 
 /** menu is the detail page's actions menu, Delete last. */
 export const menu: ResourceAction[] = [
+  rename(base),
   changeType,
   changeAlgorithm,
   enablePublic,

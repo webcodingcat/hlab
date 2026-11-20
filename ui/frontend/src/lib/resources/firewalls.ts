@@ -2,7 +2,7 @@
 // and the actions of the detail tabs (rules, resources) and the list row menu.
 // Firewalls apply to servers and to label selectors, in the create form and
 // in the resources tab.
-import { createAt, pick, postAction, remove, type Input, type ResourceAction } from "../resourceActions";
+import { createAt, pick, postAction, remove, rename, type Input, type ResourceAction } from "../resourceActions";
 
 const base = "firewalls";
 
@@ -20,7 +20,7 @@ export const create: ResourceAction = createAt(base, "Create firewall", (i) =>
 const del = remove(base, "Delete", "plain");
 
 /** menu is the detail page's actions menu, Delete last. */
-export const menu: ResourceAction[] = [del];
+export const menu: ResourceAction[] = [rename(base), del];
 
 /** tabs are the actions of the detail tabs and the list row menu. */
 export const tabs: Record<string, ResourceAction> = {

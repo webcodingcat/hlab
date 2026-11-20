@@ -1,10 +1,11 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import Button from "../../lib/Button.svelte";
-  import Field from "../../lib/Field.svelte";
-  import type { Input } from "../../lib/resourceActions";
+  import Button from "./Button.svelte";
+  import Field from "./Field.svelte";
+  import type { Input } from "./resourceActions";
 
-  // The input of the Rename dialog: the new name, starting from the current one.
+  // The input of a resource's Rename dialog: the new name, starting from the
+  // current one; shared by every detail page with a Rename menu entry.
   let { current, submit, cancel }: { current: string; submit: (i: Input) => void; cancel: () => void } = $props();
 
   let name = $state(untrack(() => current));

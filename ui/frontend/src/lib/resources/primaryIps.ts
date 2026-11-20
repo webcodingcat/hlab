@@ -7,6 +7,7 @@ import {
   pick,
   postAction,
   remove,
+  rename,
   update,
   type ResourceAction,
 } from "../resourceActions";
@@ -35,7 +36,7 @@ const unassign = postAction(base, "unassign", "unassign", { label: "Unassign", c
 const del = remove(base, "Delete", "plain");
 
 /** menu is the detail page's actions menu, Delete last. */
-export const menu: ResourceAction[] = [assign, unassign, changeDnsPtr(base), changeProtection(base), del];
+export const menu: ResourceAction[] = [rename(base), assign, unassign, changeDnsPtr(base), changeProtection(base), del];
 
 /** tabs are the actions of the detail tabs and the list row menu. */
 export const tabs: Record<string, ResourceAction> = {

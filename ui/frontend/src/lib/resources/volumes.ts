@@ -6,6 +6,7 @@ import {
   pick,
   postAction,
   remove,
+  rename,
   type ResourceAction,
 } from "../resourceActions";
 
@@ -40,7 +41,7 @@ const protection = changeProtection(base);
 const del = remove(base, "Delete", "typed-name");
 
 /** menu is the detail page's actions menu, Delete last. */
-export const menu: ResourceAction[] = [resize, attach, detach, protection, del];
+export const menu: ResourceAction[] = [rename(base), resize, attach, detach, protection, del];
 
 /** tabs are the actions of the detail tabs and the list row menu. */
 export const tabs: Record<string, ResourceAction> = {

@@ -67,6 +67,11 @@ export function update(
   };
 }
 
+/** rename is the menu entry Rename: a PUT of input.name to /<base>/{id}, with input, no confirmation. */
+export function rename(base: string): ResourceAction {
+  return update(base, "rename", "Rename", (i) => ({ name: i.name }), { needsInput: true });
+}
+
 /** remove is a DELETE of /<base>/{id} with the id "delete". */
 export function remove(base: string, label: string, confirm: Confirm): ResourceAction {
   return { id: "delete", label, method: "DELETE", path: (rid) => `/${base}/${rid}`, confirm, needsInput: false };

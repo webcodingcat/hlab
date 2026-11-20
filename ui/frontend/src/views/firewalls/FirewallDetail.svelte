@@ -6,6 +6,7 @@
   import Dialog from "../../lib/Dialog.svelte";
   import Field from "../../lib/Field.svelte";
   import LabelsTab from "../../lib/LabelsTab.svelte";
+  import RenameInput from "../../lib/RenameInput.svelte";
   import ResourceActionsMenu from "../../lib/ResourceActionsMenu.svelte";
   import { api, listAll, runApi } from "../../lib/api";
   import { request, type Input, type ResourceAction } from "../../lib/resourceActions";
@@ -155,7 +156,11 @@
   {@const f = firewall}
   <DetailPage title={f.name} help="firewalls" {tabs} {current} back={list}>
     {#snippet actions()}
-      <ResourceActionsMenu {project} id={f.id} name={f.name} actions={menu} ondone={done} />
+      <ResourceActionsMenu {project} id={f.id} name={f.name} actions={menu} ondone={done}>
+        {#snippet input(_a: ResourceAction, submit: (i: Input) => void, cancel: () => void)}
+          <RenameInput current={f.name} {submit} {cancel} />
+        {/snippet}
+      </ResourceActionsMenu>
     {/snippet}
     {#if current === "resources"}
       <section>

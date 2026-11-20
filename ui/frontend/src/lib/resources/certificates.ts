@@ -1,6 +1,6 @@
 // Certificate actions: the create form's request, the detail page's actions
 // menu and the actions of the list row menu.
-import { createAt, pick, postAction, remove, type ResourceAction } from "../resourceActions";
+import { createAt, pick, postAction, remove, rename, type ResourceAction } from "../resourceActions";
 
 const base = "certificates";
 
@@ -21,7 +21,7 @@ const retry = postAction(base, "retry", "retry", { label: "Retry" });
 const del = remove(base, "Delete", "plain");
 
 /** menu is the detail page's actions menu, Delete last. */
-export const menu: ResourceAction[] = [retry, del];
+export const menu: ResourceAction[] = [rename(base), retry, del];
 
 /** tabs are the actions of the list row menu. */
 export const tabs: Record<string, ResourceAction> = {

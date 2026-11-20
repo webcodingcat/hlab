@@ -2,10 +2,11 @@
   import { untrack } from "svelte";
   import DetailPage from "../../lib/DetailPage.svelte";
   import LabelsTab from "../../lib/LabelsTab.svelte";
+  import RenameInput from "../../lib/RenameInput.svelte";
   import ResourceActionsMenu from "../../lib/ResourceActionsMenu.svelte";
   import { api, listAll } from "../../lib/api";
   import { createdText } from "../../lib/format";
-  import type { ResourceAction } from "../../lib/resourceActions";
+  import type { Input, ResourceAction } from "../../lib/resourceActions";
   import { menu } from "../../lib/resources/certificates";
   import { showError } from "../../lib/toast";
   import { href } from "../../state";
@@ -87,7 +88,11 @@
   {@const c = cert}
   <DetailPage title={c.name} help="certificates" {tabs} {current} back={list}>
     {#snippet actions()}
-      <ResourceActionsMenu {project} id={c.id} name={c.name} actions={menuActions} ondone={done} />
+      <ResourceActionsMenu {project} id={c.id} name={c.name} actions={menuActions} ondone={done}>
+        {#snippet input(_a: ResourceAction, submit: (i: Input) => void, cancel: () => void)}
+          <RenameInput current={c.name} {submit} {cancel} />
+        {/snippet}
+      </ResourceActionsMenu>
     {/snippet}
     {#if current === "labels"}
       <LabelsTab {project} {path} labels={c.labels} onsaved={load} />

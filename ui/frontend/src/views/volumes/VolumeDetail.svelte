@@ -4,6 +4,7 @@
   import DetailPage from "../../lib/DetailPage.svelte";
   import LabelsTab from "../../lib/LabelsTab.svelte";
   import ProtectionTab from "../../lib/ProtectionTab.svelte";
+  import RenameInput from "../../lib/RenameInput.svelte";
   import ResourceActionsMenu from "../../lib/ResourceActionsMenu.svelte";
   import StatusPill from "../../lib/StatusPill.svelte";
   import { api, listAll } from "../../lib/api";
@@ -97,7 +98,11 @@
     {#snippet actions()}
       <ResourceActionsMenu {project} id={v.id} name={v.name} actions={menuActions} ondone={done}>
         {#snippet input(a: ResourceAction, submit: (i: Input) => void, cancel: () => void)}
-          <VolumeActionInput action={a} volume={v} {servers} {submit} {cancel} />
+          {#if a.id === "rename"}
+            <RenameInput current={v.name} {submit} {cancel} />
+          {:else}
+            <VolumeActionInput action={a} volume={v} {servers} {submit} {cancel} />
+          {/if}
         {/snippet}
       </ResourceActionsMenu>
     {/snippet}
