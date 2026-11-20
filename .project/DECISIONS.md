@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 Upgrade to wcc 0.32.13
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.32.12 to 0.32.13: `/wcc:feedback` renamed to `/wcc:report` in STATUS.md and ROADMAP.md.
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
+
 ## 2026-11-20 Q15 DOC-05 views from views.json
 
 - Type: change

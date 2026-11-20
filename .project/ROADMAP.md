@@ -2,7 +2,7 @@
 
 <!-- A milestone is a version: it ends with all end-to-end tests and a tag.
      A phase is a slice of it that runs and can be checked.
-     /wcc:feedback (or /wcc:phase from FEEDBACK.md) inserts feedback
+     /wcc:report (or /wcc:phase from FEEDBACK.md) inserts feedback
      phases (F1, ...) for reported bugs,
      /wcc:change backlog phases (B1, ...) for backlog items the user takes
      in, and further milestones before "Later".
