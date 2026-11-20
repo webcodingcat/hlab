@@ -39,6 +39,7 @@
   import { showError } from "../../lib/toast";
   import { href, running, type Page } from "../../state";
   import FirewallCreate from "./FirewallCreate.svelte";
+  import FirewallDetail from "./FirewallDetail.svelte";
 
   // The "Firewalls" section of a project console; page says which of its
   // pages the route opens (list, create form or detail).
@@ -109,11 +110,7 @@
 {:else if page.kind === "new"}
   <FirewallCreate {project} {list} />
 {:else if page.kind === "detail"}
-  <div class="title-row">
-    <h1>Firewalls</h1>
-    <HelpButton view="firewalls" />
-  </div>
-  <p><a href={list}>Back to the list</a></p>
+  <FirewallDetail {project} id={page.id} tab={page.tab} {list} />
 {:else}
   <div class="title-row">
     <h1>Firewalls</h1>
