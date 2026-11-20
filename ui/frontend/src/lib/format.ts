@@ -39,7 +39,7 @@ const types: Record<string, string> = {
 
 /** resourceType names the resource type of an API path, e.g. "/networks/5/actions/x" -> "Network"; RRSets are "Record". */
 export function resourceType(path: string): string {
-  const parts = path.split("?")[0].split("/").filter((p) => p !== "");
+  const parts = path.split("/").filter((p) => p !== "");
   if (parts[0] === "zones" && parts[2] === "rrsets") return "Record";
   return types[parts[0]] ?? "";
 }
