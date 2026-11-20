@@ -23,5 +23,4 @@ balancers. Networks can only be managed while the cloud runs.
   old one. It is refused while servers are attached to the network.
 - Subnets are always of type cloud and lie in one network zone.
 
-To switch to another section of the project, use the sidebar on the left;
-**API tokens** manages the project's tokens.
+Networks is an entry of the sidebar's **Networking** group.

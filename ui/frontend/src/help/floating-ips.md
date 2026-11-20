@@ -28,5 +28,5 @@ the cloud runs.
   **Reverse DNS** (choose the address and enter a host name; an empty host
   name resets it to the default), **Change protection** and **Delete**.
 
-To switch to another section of the project, use the sidebar on the left;
-**API tokens** manages the project's tokens.
+Floating IPs is a tab of **IPs** in the sidebar's **Networking** group,
+beside **Primary IPs**.

@@ -19,5 +19,5 @@ managed while the cloud runs.
 - The actions menu (`…`) on the group's page offers **Rename** and
   **Delete**.
 
-To switch to another section of the project, use the sidebar on the left;
-**API tokens** manages the project's tokens.
+Placement Groups is a tab of **Servers** in the sidebar on the left, beside
+**Servers**, **Snapshots** and **Backups**.

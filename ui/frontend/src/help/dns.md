@@ -39,5 +39,4 @@ the cloud runs.
   **Import zone file** (a zone file in BIND format replaces all records),
   **Change protection** and **Delete**.
 
-To switch to another section of the project, use the sidebar on the left;
-**API tokens** manages the project's tokens.
+DNS Zones is the tab of **DNS** in the sidebar's **Networking** group.

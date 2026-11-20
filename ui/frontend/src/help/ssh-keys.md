@@ -15,5 +15,5 @@ runs.
   deletes the key after a confirmation. Servers that already use it keep
   it.
 
-To switch to another section of the project, use the sidebar on the left;
-**API tokens** manages the project's tokens.
+SSH Keys is a tab of **Security** in the sidebar on the left, beside
+**API tokens** and **Certificates**.

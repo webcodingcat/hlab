@@ -43,10 +43,12 @@ own, so networks with overlapping ranges stay apart.
 
 ## The tray program
 
-[cmd/hlab-tray](../../cmd/hlab-tray) wires the window, the tray icon and
-three services of [internal/bridge](../../internal/bridge) that the
-frontend calls by name. The bridge does not import Wails, so its tests run
-without a window:
+[cmd/hlab-tray](../../cmd/hlab-tray) wires the window, the tray icon,
+three services of [internal/bridge](../../internal/bridge) and the
+service `Files` that the frontend calls by name. The bridge does not
+import Wails, so its tests run without a window; `Files`
+([cmd/hlab-tray/files.go](../../cmd/hlab-tray/files.go)) holds the native
+file dialog (`PickISOFile`) and therefore lives beside the window:
 
 - `Service` forwards `Call(method, path, body)` to the management API
   through [internal/mgmtclient](../../internal/mgmtclient), and edits the
@@ -56,7 +58,11 @@ without a window:
   `server-types.custom.json` itself and then calls
   `POST /mgmt/v1/settings/reload` while the cloud runs. `Locations` lists
   the catalog's locations for the location checkboxes of an own server
-  type, also while the cloud is stopped.
+  type, also while the cloud is stopped. `ISOs`, `AddISO`, `UpdateISO`
+  and `RemoveISO` do the same for the own ISOs in `isos.custom.json`;
+  `ISOs` reads the files and lists the catalog ISOs, every entry of the
+  file and why entries are left out, so the Administration's ISOs view
+  works while the cloud is stopped.
 - `Cloud` polls every 2 s: the service manager's state, `/mgmt/v1/status`
   while the cloud runs, and `status.json` through
   [internal/cloudstatus](../../internal/cloudstatus) while it is stopped.
@@ -84,22 +90,39 @@ the bridge calls in `src/lib/bridge.ts`.
 
 The project console
 ([src/views/ProjectConsole.svelte](../../ui/frontend/src/views/ProjectConsole.svelte))
-shows its sections in its sidebar: Servers, Volumes, Load Balancers,
-Networks, Firewalls, Floating IPs, Primary IPs, DNS, Certificates, SSH
-Keys, Placement Groups, Images, ISOs and, after a separator, API tokens. Servers, SSH Keys and API
-tokens are wired in by hand. Every other section lives in
-`src/views/<view>/` with the entry component `Section.svelte`
-(props `project` and `page`), which renders the title row with the help
-button, the "start the cloud" notice while the cloud is stopped, and then
-the list, the create form or the detail page by `page`. The console finds
-these components with `import.meta.glob("./*/Section.svelte")`, keyed by
-folder name, and lists a section in the sidebar only once its component
-exists. The resource sections reach the project's Hetzner API through the
+takes its navigation from
+[src/lib/consoleNav.ts](../../ui/frontend/src/lib/consoleNav.ts):
+`navGroups` holds the sidebar groups Cloud (Servers, Volumes, Firewalls)
+and Networking (Load Balancers, Networks, IPs, DNS) and the group
+Security without a heading. Each entry lists its views as tabs (Servers:
+servers, snapshots, backups, placement-groups; IPs: primary-ips,
+floating-ips; DNS: dns; Security: ssh-keys, tokens, certificates) and
+opens its first tab; `entryOf(view)` finds the entry of a view.
+`SectionSidebar.svelte` renders the groups with a line between them and
+collapses a group on a click on its heading; the collapsed groups are kept
+in `localStorage` (`collapsedGroups` in `src/state.ts`). The
+Administration uses the same component with a flat list.
+`SectionTabs.svelte` shows the tabs of the open entry above the open
+view's own title row.
+
+Servers, SSH Keys and API tokens are wired in by hand. Every other
+section lives in `src/views/<view>/` with the entry component
+`Section.svelte` (props `project` and `page`), which renders the title row
+with the help button, the "start the cloud" notice while the cloud is
+stopped, and then the list, the create form or the detail page by
+`page`. The console finds these components with
+`import.meta.glob("./*/Section.svelte")`, keyed by folder name. Snapshots
+and Backups share `src/views/images/ImageList.svelte` with a `type` prop.
+The resource sections reach the project's Hetzner API through the
 management API's project proxy and are built from these parts of
 `src/lib`:
 
 - `api.ts`: `api` sends one request, `listAll` reads every page of a list,
-  `runApi` runs a request under an action toast.
+  `runApi` runs a request under an action toast, and `runOn` does so for
+  an action on a named resource. Its toast title comes from
+  `actionTitle(type, name, action)` in `format.ts`, for example
+  "Network test: Delete", with the type derived from the request path by
+  `resourceType`.
 - `actions.ts`: `runAction` follows the returned action and its next
   actions to the end and shows their progress in a toast (`toast.ts`,
   `Toast.svelte`).
@@ -107,8 +130,10 @@ management API's project proxy and are built from these parts of
   `ActionsMenu.svelte`, `FormPage.svelte`, `LabelsField.svelte`,
   `LabelsTab.svelte`, `ProtectionTab.svelte`, `SecretDialog.svelte` (a
   one-time root password) and `LineChart.svelte`; `formErrors.ts` puts an
-  API error's field messages under the form fields, `labels.ts` converts
-  label rows.
+  API error's field messages under the form fields. `LabelsField.svelte`
+  shows the labels as chips in one box; `labels.ts` parses `key=value`
+  (`parseLabel`), checks Hetzner's label rules (`checkLabel`) and converts
+  between the chips' rows and the API's labels object.
 - `serverActions.ts` describes every server action of the actions menu and
   the detail tabs (label, method, path, body, confirmation, whether the
   answer carries a root password); the views in `src/views/servers` only
@@ -133,7 +158,8 @@ management API's project proxy and are built from these parts of
   as the entry says (typing the name for `typed-name`), shows the
   section's input dialog for entries that need input, and runs the request
   under a toast. `ReverseDnsDialog.svelte` is the shared reverse DNS
-  dialog, and `format.ts` formats labels and creation times for the
+  dialog, and `format.ts` formats labels, creation times and ISO names
+  (`isoTitle`: the name, or the description of an own ISO) for the
   tables.
 
 A new view needs its ID in `views.json` and in `ViewId` of `src/help.ts`,
@@ -143,8 +169,9 @@ also needs its ID in `AdminView` of `routes.ts` and an icon and a
 branch in `src/App.svelte`; a project section needs its ID in
 `ProjectView` and `projectViews` of `routes.ts` (and in `listOnly` if it
 has only a list page, in `noNew` if its `new` route is refused, as for
-ISOs), an entry with title and icon in the `sections` list of
-`ProjectConsole.svelte`, and its `src/views/<view>/Section.svelte`; for
+snapshots and backups), a tab in an entry of `navGroups` in
+`consoleNav.ts` (a new entry also needs an icon in
+`ProjectConsole.svelte`), and its `src/views/<view>/Section.svelte`; for
 its requests, add a module under `src/lib/resources` with a unit test. The build tag `e2e` adds the test hooks of
 [cmd/hlab-tray/e2e.go](../../cmd/hlab-tray/e2e.go) (see
 [Build and test](build-and-test.md#end-to-end-tests)).
@@ -161,7 +188,7 @@ only links the `.syso` files.
 
 | Package | Role |
 |---|---|
-| [internal/cloud](../../internal/cloud) | Start and stop of one cloud: settings, host checks, store, switch, appliance (with its trunk adapter, added at start to an appliance made without one), host network, API, management pipe; the list of resource modules. After the modules recover it sets one NRPT rule per stored zone and starts the shadow check of every public primary zone, whose result the status of the management pipe reports as `shadowing_zones`. Opens the HLab CA (`openCA`, [internal/cloud/ca.go](../../internal/cloud/ca.go)), renews its CRL, serves it without a token at `/hlab/v1/ca.crl` on the API listener and adds the CA to the trust stores while `trust_ca` is on; a failed trust is the status problem `trust_ca`, not a failed start. Runs appliance jobs one at a time (the disk at LUN 1 of the appliance, detached again on every path) and downloads the packages of `catalog/appliance-debs.json` into `<data>\cache\debs` for the appliance's seed ISO. Opening the state ([internal/cloud/lifecycle.go](../../internal/cloud/lifecycle.go)) refuses an incompatible state (`state_incompatible`) or one with public IPv4s outside a changed range (`public_range_changed`) unless the start parameter `discard-state` asks for a discard, and records the range of every start. After the first agent push it calls `Restore` of the `Lifecycle` modules; at stop it stops the API and the jobs, reads `stop_behaviour` again, calls `Halt`, then stops the appliance and the host network. At start it creates a missing `server-types.custom.json` with the permissions of settings.toml; `reload` ([internal/cloud/reload.go](../../internal/cloud/reload.go)) applies `logging.level` and the own server types while the cloud runs. |
+| [internal/cloud](../../internal/cloud) | Start and stop of one cloud: settings, host checks, store, switch, appliance (with its trunk adapter, added at start to an appliance made without one), host network, API, management pipe; the list of resource modules. After the modules recover it sets one NRPT rule per stored zone and starts the shadow check of every public primary zone, whose result the status of the management pipe reports as `shadowing_zones`. Opens the HLab CA (`openCA`, [internal/cloud/ca.go](../../internal/cloud/ca.go)), renews its CRL, serves it without a token at `/hlab/v1/ca.crl` on the API listener and adds the CA to the trust stores while `trust_ca` is on; a failed trust is the status problem `trust_ca`, not a failed start. Runs appliance jobs one at a time (the disk at LUN 1 of the appliance, detached again on every path) and downloads the packages of `catalog/appliance-debs.json` into `<data>\cache\debs` for the appliance's seed ISO. Opening the state ([internal/cloud/lifecycle.go](../../internal/cloud/lifecycle.go)) refuses an incompatible state (`state_incompatible`) or one with public IPv4s outside a changed range (`public_range_changed`) unless the start parameter `discard-state` asks for a discard, and records the range of every start. After the first agent push it calls `Restore` of the `Lifecycle` modules; at stop it stops the API and the jobs, reads `stop_behaviour` again, calls `Halt`, then stops the appliance and the host network. At start it creates a missing `server-types.custom.json` and `isos.custom.json` with the permissions of settings.toml; `reload` ([internal/cloud/reload.go](../../internal/cloud/reload.go)) applies `logging.level`, the own server types and the own ISOs while the cloud runs. For the own ISOs ([internal/cloud/isos.go](../../internal/cloud/isos.go)), at start and reload, it reads the file, deletes the `own-*.iso` cache files that no served ISO names and no server has attached, and copies local files into the cache in the background; a failed copy drops that ISO, and every left-out ISO is a line of the status problem `custom_isos`. |
 | [internal/api](../../internal/api) | HTTP layer of the Hetzner API: routing under `/v1`, token authentication, read-only guard, JSON checks, error and list helpers. |
 | [internal/resource](../../internal/resource) | The `Module` interface every resource type implements, and the optional `NetContributor`, `Deleter`, `Reconciler` (make the VM, disk and seed match the stored state), `Scheduled` (time-driven jobs), `Recoverer` (cleans up records an interrupted action left half-made, at cloud start) `ActionUser` (receives the action manager to start actions outside a request, as the servers' daily backups do) and `Lifecycle` (`Halt` saves or shuts down the running VMs at cloud stop, `Restore` sets their Hyper-V stop action and resumes or powers on at start what ran; implemented by the servers, whose stored status records which ran). |
 | [internal/resources](../../internal/resources) | One package per resource type: actions, locations, datacenters, server types, pricing, images (catalog images and the projects' snapshots and backups), ISOs, SSH keys, placement groups, servers (with snapshots, backups, rescue and ISOs), networks (with the server actions attach, detach and alias IPs), primary IPs, floating IPs, firewalls, volumes, zones, load balancer types, load balancers, certificates. Zones keep their RRSets inside the zone's document; every zone action publishes all zones (agent push, then `hostnet` `SetZones` for the NRPT rules) under one lock, and `Shadow` asks the public DNS whether a primary zone outside the private-use suffixes hides a real domain. Servers, primary IPs and floating IPs share `change_dns_ptr` through [internal/rdns](../../internal/rdns); a server's action is applied by the primary IP that holds the address (`SetDNSPtrs`). The other packages reach the servers through hooks of the servers package, which the cloud wires: `VolumeHooks`, `SetPublicIPs` (primary IPs of a new server), `SetNetworks` (networks of a new server), `SetFirewalls` (the server's `public_net.firewalls` and the firewalls of a new server) and `OnDelete` (primary IPs, floating IPs and firewall entries of a deleted server). Firewalls resolve their label selectors at every read and every agent push, so a server whose labels change gets the matching firewalls with the push that follows `PUT /servers/{id}`. The server record holds its network membership; `SyncAdapters` makes the VM's private adapters, their deny lists and the seed match it. [loadbalancers](../../internal/resources/loadbalancers) is split by feature (create, actions, network, services, targets, status and metrics, reverse DNS, `Contribute` for the agent document); label selector targets resolve when the document is built, and LB-held primary IPs go through `AssignLoadBalancer` of the primary IPs package. [certificates](../../internal/resources/certificates) stores uploaded certificates, issues managed ones through the HLab CA when every domain lies in a zone of the project, and renews them in an hourly job; `UsedBy` (the load balancers) blocks deletion. |
@@ -175,11 +202,11 @@ only links the `.syso` files.
 | [internal/logfile](../../internal/logfile) | Writer of `hlabd.log` rotating at 10 MB to `.1`..`.5`, and `Tail`, which reads the last lines across the rotated files and follows new ones; used by hlabd, the management API and `hlab logs`. `Search` (case-insensitive text and level filter, newest first, capped) and `Before` (the lines before a given one) read the files backwards in 64 KiB chunks and keep reading a file that is rotated away under its new name; used by the tray's Logs view. |
 | [internal/transit](../../internal/transit) | The addresses of host, appliance, API listener, API proxy and agent, derived from `public_range`. |
 | [internal/mgmt](../../internal/mgmt) | Management API on the named pipe: status, projects (deletion as an action with its resources), tokens, catalog update, the CA certificate (`GET /mgmt/v1/ca.pem`) and the trust switch (`PUT /mgmt/v1/trust`, which stores `trust_ca` once the trust stores changed), the log (`GET /mgmt/v1/logs[?follow=1]`, the last 1000 lines as NDJSON; followers end when the cloud stops), and `POST /mgmt/v1/settings/reload`. |
-| [internal/catalog](../../internal/catalog) | Loads the shipped catalogs from [catalog/](../../catalog), an updated server type catalog and the own server types; updates the server types from the real Hetzner API. `AddOwn`, `UpdateOwn`, `RemoveOwn` and `ReloadOwn` add, change, remove and re-read own types. |
+| [internal/catalog](../../internal/catalog) | Loads the shipped catalogs from [catalog/](../../catalog), an updated server type catalog and the own server types; updates the server types from the real Hetzner API. `AddOwn`, `UpdateOwn`, `RemoveOwn` and `ReloadOwn` add, change, remove and re-read own types. For the own ISOs ([isos_custom.go](../../internal/catalog/isos_custom.go)), `AddOwnISO`, `UpdateOwnISO` and `RemoveOwnISO` check and write `isos.custom.json`, `ReloadOwnISOs` re-reads it and leaves out what cannot be served, `OwnISOs` and `AllISOs` return what is served, and `ISOSourceByCacheName` gives the images package the source of an own ISO's cache file. |
 | [internal/labels](../../internal/labels) | Hetzner's label rules and label selectors. |
 | [internal/dnszone](../../internal/dnszone) | Hetzner's DNS data rules without API bookkeeping: zone names (Public Suffix List and the private-use suffixes), RRSets and record values (parsed with miekg/dns), SOA serials, and BIND zone file import and export. |
 | [internal/rdns](../../internal/rdns) | Reverse DNS entries of an IPv4 or IPv6 /64 owner: Hetzner's default IPv4 PTR, the rules of `change_dns_ptr`, and the effective PTR for the agent document. |
-| [internal/images](../../internal/images) | Downloads, verifies and converts system images into cached base disks; downloads and verifies catalog ISOs unchanged; prepares the rescue base `rescue-v2.vhdx` once through an appliance job. |
+| [internal/images](../../internal/images) | Downloads, verifies and converts system images into cached base disks; downloads and verifies ISOs unchanged, and copies the local file of an own ISO (a `Source` with `Path`, checked against `SHA256` when given; `Options.ISOSource` looks up the sources of own ISOs); prepares the rescue base `rescue-v2.vhdx` once through an appliance job. |
 | [internal/ipam](../../internal/ipam) | Public IPv4 allocation for servers, primary IPs, floating IPs and load balancers; `Outside` finds addresses outside a changed range, `RecordRange` keeps the range of the last start. |
 | [internal/cidata](../../internal/cidata) | Cloud-init seed ISOs for servers and the appliance. A server's vendor-data is multipart MIME, built in [internal/resources/servers](../../internal/resources/servers): a cloud-config part (root login, root password without expiry) and a shell script part that installs the sshd drop-in, the `hlab-guest` timer for password resets, grown volumes and private adapters attached while the server runs, a cloud-init drop-in that renders the seed's network configuration at every boot, and the udev rule and `hlab-volume@.service` that name volume disks `scsi-0HC_Volume_<id>` and mount automount volumes, so user data with its own `runcmd` or `write_files` cannot drop them. |
 | [internal/platform](../../internal/platform), [internal/platform/hyperv](../../internal/platform/hyperv) | VMs, disks (copies, differencing child disks, snapshots of running VMs through a Standard checkpoint), adapters (isolated or promiscuous port of the public segment, access port of a private VLAN, trunk; hot add and remove; MAC deny ACLs), DVD drives, boot order, power, the automatic stop action (`SetStopAction`, which Hyper-V refuses on a running VM), listing VMs by name prefix, VM samples and host resources; Hyper-V implementation through one PowerShell process. Every VM gets COM1 on a named pipe that hlabd itself serves and drains before each start, with an ACL for SYSTEM, administrators and the VM worker processes only, because the console carries user data output and a pipe Hyper-V creates would be readable by everyone. |

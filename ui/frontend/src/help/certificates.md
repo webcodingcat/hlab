@@ -28,5 +28,5 @@ balancers. Certificates can only be managed while the cloud runs.
   managed certificate whose issuance failed, for example after the
   missing zone was added, and **Delete**.
 
-To switch to another section of the project, use the sidebar on the left;
-**API tokens** manages the project's tokens.
+Certificates is a tab of **Security** in the sidebar on the left, beside
+**SSH Keys** and **API tokens**.

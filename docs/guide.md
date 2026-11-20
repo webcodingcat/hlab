@@ -49,13 +49,24 @@ create or start a server with `resource_unavailable`.
 ## Servers in the window
 
 The HLab window manages the same resources as hcloud. Click a project in
-the project list; its console opens on **Servers**, and the sidebar leads
-to the other resources and to **API tokens**. Every page needs the running
-cloud. The lists of all sections work alike: the search field takes a name
-or a label selector such as `env=dev`, the row menu (`…`) holds the
-quick actions, a click on a row opens the detail page with its actions
-menu and tabs, and each page's `?` button explains it. The paragraph "In
-the window" under each resource below names what its section offers.
+the project list; its console opens on **Servers**. The sidebar has the
+groups **Cloud** (Servers, Volumes, Firewalls) and **Networking** (Load
+Balancers, Networks, IPs, DNS) and the entry **Security**; the tabs above
+the page lead to the views of an entry: **Servers** to Servers,
+Snapshots, Backups and Placement Groups, **IPs** to Primary IPs and
+Floating IPs, **DNS** to DNS Zones, and **Security** to SSH Keys, API
+tokens and Certificates. Every page needs the running cloud. The lists of
+all sections work alike: the search field takes a name or a label
+selector such as `env=dev`, the row menu (`…`) holds the quick actions, a
+click on a row opens the detail page with its actions menu and tabs, and
+each page's `?` button explains it. The paragraph "In the window" under
+each resource below names what its section offers.
+
+Every create form and every **Labels** tab takes labels as chips. Type
+`env=dev` or `env` and press Enter, Space or a comma to turn it into a
+chip; a label that breaks Hetzner's rules or repeats a key shows an error
+under the box and stays in the input. Click a chip and press Delete to
+remove it, or double-click it to edit it.
 
 - **Servers** lists the servers with status, public IPv4, type, location
   and labels. The search field takes a name or a label selector such as
@@ -99,7 +110,9 @@ or `hcloud server add-to-placement-group`. A spread group holds at most 10
 servers. HLab runs every server on your one machine, so a group only
 records its members.
 
-In the window, **Create placement group** asks for name and labels; the
+In the window, **Placement Groups** is a tab of **Servers**; **Create
+placement group** asks for name and labels (the type is always
+`spread`); the
 group's page lists its servers, and its actions menu offers **Rename** and
 **Delete**. A server joins or leaves a group in the server's actions menu.
 
@@ -141,11 +154,12 @@ installed system again. The first `enable-rescue` downloads the debian-13
 image if no server used it yet.
 
 In the window, snapshots and backups are made in a server's **Snapshots**
-and **Backups** tabs. **Images** lists the project's snapshots and
-backups (not the system images) with type, size and the server they come
-from; an image's actions menu offers **Edit description**, **Change
-protection**, **Delete** and, for a backup, **Convert to snapshot**,
-which keeps it when its server is deleted.
+and **Backups** tabs. The tabs **Snapshots** and **Backups** of the
+sidebar entry **Servers** list the project's snapshots and backups (not
+the system images) with size and the server they come from; their
+actions menu offers **Edit description**, **Change protection**,
+**Delete** and, for a backup, **Convert to snapshot**, which keeps it
+when its server is deleted.
 
 ## ISOs
 
@@ -163,9 +177,55 @@ An attached ISO boots before the server's disk until you detach it. The
 first attach of an ISO downloads it, which takes minutes; later attaches
 use the cached copy.
 
-In the window, **ISOs** lists the ISOs read only, with architecture and
-whether they are deprecated; attach one in the **ISO** tab of a server's
-page.
+In the window, attach an ISO in the **ISO** tab of a server's page;
+**Administration > ISOs** lists the ISOs.
+
+### Own ISOs
+
+Besides the catalog, HLab serves ISOs you add yourself, in every project.
+Add them in **Administration > ISOs** with **Add ISO**: a **Name**, the
+**Architecture** and a **Source**, either a **URL** (with an optional
+**SHA-256** the download is checked against) or a **Local file**, whose
+**Path** you type or choose with **Browse…**. **Edit** and **Remove** are
+in an own ISO's row menu; catalog ISOs cannot be changed. The tray keeps
+them in [`isos.custom.json`](configuration.md#own-isos).
+
+The API lists an own ISO as a `private` ISO without a name; attach it by
+its ID:
+
+```
+> hcloud iso list
+ID       NAME                                   DESCRIPTION                          TYPE      ARCHITECTURE
+130001   ubuntu-22.04.5-live-server-amd64.iso   Ubuntu 22.04.5 Live Server (amd64)   public    x86
+...
+100000   -                                      netboot.xyz                          private   x86
+> hcloud server attach-iso web2 100000
+Waiting for attach_iso (server: 383) ...
+Waiting for attach_iso (server: 383) ... done
+ISO  attached to Server 383
+> hcloud server attach-iso web2 netboot.xyz
+hcloud: ISO not found: netboot.xyz
+```
+
+- An ISO from a URL is downloaded at its first attach, like a catalog
+  ISO.
+- A local file is copied into HLab's cache when the cloud starts and,
+  while the cloud runs, when you save the ISO in the tray. Keep the file
+  where it is: at the next start a missing file leaves the ISO out.
+- When an own ISO cannot be served, for example because its local file
+  is missing, the others still are, and
+  [`hlab cloud status`](commands.md#hlab-cloud-status) and the ISOs page
+  name the reason:
+
+  ```
+  > bin\hlab.exe cloud status
+  state: running
+  version: dev
+  problem: own ISO 100002 ("Gone") is left out: open D:/missing/gone.iso: <error message of Windows>
+  ```
+
+- A server that has an ISO attached keeps it after you change or remove
+  the ISO, until you detach it.
 
 ## Volumes
 
@@ -192,8 +252,13 @@ Filesystem      Size  Used Avail Use% Mounted on
 - `--format xfs` needs packages that HLab downloads for the appliance at
   `hlab cloud start`.
 
-In the window, **Create volume** asks for size, name and location, or for
-a server, then with the mount option and the filesystem. **Detach** and
+In the window, **Create volume** takes the size (a number field with + and
+− buttons and a slider from 10 to 10,240 GB), the name (proposed as the
+first free `volume-<n>`), the **Server** the volume is attached to and
+whose location it gets, the **Mount options** **Automatic** or
+**Manual**, the **Filesystem** ext4 or xfs, and labels. The window always
+creates a volume for a server; create one without a server with hcloud
+(`--location` instead of `--server`). **Detach** and
 **Delete** are in the row menu; a volume's page shows the Linux device
 path with a copy button, and its actions menu offers **Rename**,
 **Resize**, **Attach**, **Detach**, **Change protection** and **Delete**.

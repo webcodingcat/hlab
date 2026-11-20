@@ -6,7 +6,8 @@ the cloud is stopped too.
 
 - The **Source** column says whether an ISO comes from the catalog or is
   your own. Own ISOs have no Hetzner name; they are shown by their
-  **Name** everywhere, and the API lists them as `private` ISOs.
+  **Name** everywhere, and the API lists them as `private` ISOs, which
+  hcloud attaches by their ID.
 - **Add ISO** opens a form for your own ISO: **Name** (required),
   **Architecture** (x86 or arm) and the **Source**, a URL or a local file.
 - Source **URL**: the address HLab downloads the ISO from at its first

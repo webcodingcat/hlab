@@ -35,5 +35,4 @@ Load balancers can only be managed while the cloud runs.
   empty name resets it to the default), **Change protection** and
   **Delete**.
 
-To switch to another section of the project, use the sidebar on the left;
-**API tokens** manages the project's tokens.
+Load Balancers is an entry of the sidebar's **Networking** group.

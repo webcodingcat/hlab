@@ -24,5 +24,4 @@ servers they apply to. Firewalls can only be managed while the cloud runs.
   firewall applied through a label selector is removed here, not in a
   server's tab.
 
-To switch to another section of the project, use the sidebar on the left;
-**API tokens** manages the project's tokens.
+Firewalls is an entry of the sidebar's **Cloud** group.

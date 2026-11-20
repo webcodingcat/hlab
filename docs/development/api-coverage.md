@@ -195,10 +195,16 @@ the parameters of Hetzner's API description. Every other endpoint answers
 
 - `/isos` lists the five ISOs of HLab's catalog (Ubuntu live server
   22.04.5, 24.04.5 and 26.04.1, Debian netinst 12.15.0 and 13.7.0) with
-  HLab's own IDs from 130001, not Hetzner's ISOs; there are no private
-  ISOs. See the [configuration reference](../configuration.md#isos).
+  HLab's own IDs from 130001, not Hetzner's ISOs, followed by the user's
+  own ISOs from `isos.custom.json` with IDs from 100000. These are the same
+  in every project, of `type` `private` with `name` `null`; the `name`
+  filter matches only catalog ISOs. See the configuration reference,
+  [ISOs](../configuration.md#isos) and [Own ISOs](../configuration.md#own-isos).
+- `attach_iso` takes a catalog ISO by name or ID and an own ISO by ID
+  only.
 - The first `attach_iso` of an ISO downloads it inside the action, which
-  takes minutes.
+  takes minutes; an own ISO from a local file is copied when hlabd reads
+  `isos.custom.json`.
 - An unknown or deprecated ISO answers 422 `invalid_input` on the field
   `iso`. `detach_iso` on a server without an ISO succeeds and changes
   nothing.
