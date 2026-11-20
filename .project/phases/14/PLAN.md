@@ -523,14 +523,14 @@ button "Browse…", row menu "Edit" and "Remove".
   - Size: ~200 lines in 6 files
   - [x] views/images/Section.svelte becomes ImageList.svelte with a `type` ("snapshot" or "backup") listing `/images?type=<type>` (title, empty state and help per view); views/snapshots/Section.svelte and views/backups/Section.svelte use it and ImageDetail; ImageDetail.svelte and ImageActionInput.svelte link back to the view they were opened from; Convert to snapshot stays on backups only.
 
-- [ ] 14-35 Volume create form like the Hetzner Console
+- [x] 14-35 Volume create form like the Hetzner Console
   - Wave: 2 | Depends on: - | Review: alone
   - Requirements: UI-02 | Tests: ui/frontend/tests/e2e/volumes.spec.ts (through TestE2E/UI-02)
   - Reads: UI-SPEC "Views" (Create per type, Create volume); DECISIONS "Volume create form like the Hetzner Console"; CONTEXT "Findings plans 14-25 onward" (volume e2e setup); PLAN "Findings from manual testing" (volume); ui/frontend/src/views/volumes/VolumeCreate.svelte, lib/resources/volumes.ts; tests/e2e/volumes.spec.ts, console.ts
   - Size: ~300 lines in 2 files
   - Adjusts: ui/frontend/tests/e2e/volumes.spec.ts creates a server in the shared project through the API with `start_after_create: false` in its setup, deletes it at the end, and picks it as Server in the form
-  - [ ] views/volumes/VolumeCreate.svelte: volume icon, Size field with +/− (1 GB) and a slider 10–10240 GB ("10 GB", "10,240 GB") on one value; Name prefilled with the first free `volume-N`; required Server (hint "The volume is bound to the server's location.", required error under it, empty select without servers); Mount options segmented Automatic | Manual (default Automatic) with one explaining line; Filesystem radios ext4 / xfs (default ext4); Labels; the request always sends `server`, `automount`, `format`.
-  - [ ] Adjust tests/e2e/volumes.spec.ts; run `task e2e -- -run 'TestE2E/UI-02$'` filtered to the volumes spec.
+  - [x] views/volumes/VolumeCreate.svelte: volume icon, Size field with +/− (1 GB) and a slider 10–10240 GB ("10 GB", "10,240 GB") on one value; Name prefilled with the first free `volume-N`; required Server (hint "The volume is bound to the server's location.", required error under it, empty select without servers); Mount options segmented Automatic | Manual (default Automatic) with one explaining line; Filesystem radios ext4 / xfs (default ext4); Labels; the request always sends `server`, `automount`, `format`.
+  - [x] Adjust tests/e2e/volumes.spec.ts; run `task e2e -- -run 'TestE2E/UI-02$'` filtered to the volumes spec.
 
 - [x] 14-36 Toast titles: networking sections
   - Wave: 2 | Depends on: 14-27 | Review: alone
