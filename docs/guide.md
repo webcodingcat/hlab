@@ -1,9 +1,9 @@
 # Guide
 
-How to use the resources of HLab with hcloud, OpenTofu and Ansible. The
-examples assume a running cloud and hcloud pointed at a project, as in
-[First steps](../README.md#first-steps): a server `web1` with the SSH key
-`demo` in location `fsn1`. The differences from Hetzner are collected in
+How to use the resources of HLab with hcloud, OpenTofu, Ansible and the
+HLab window. The examples assume a running cloud and hcloud pointed at a
+project, as in [First steps](../README.md#first-steps): a server `web1`
+with the SSH key `demo` in location `fsn1`. The differences from Hetzner are collected in
 [Known deviations](deviations.md).
 
 ## Managing servers
@@ -45,6 +45,39 @@ root@web1:~# curl http://169.254.169.254/hetzner/v1/metadata/hostname
 A cloud with too little free RAM or disk, beyond the reserve set in the
 [configuration](configuration.md#settingstoml), refuses to
 create or start a server with `resource_unavailable`.
+
+## Servers in the window
+
+The HLab window manages the same servers and SSH keys. Click a project in
+the project list; its console opens on **Servers**, and the sidebar leads
+to **SSH Keys** and **API tokens**. Every page needs the running cloud.
+
+- **Servers** lists the servers with status, public IPv4, type, location
+  and labels. The search field takes a name or a label selector such as
+  `env=dev`. The row menu (`…`) powers a server on, shuts it down,
+  reboots, resets, powers it off or deletes it.
+- **Create server** opens a form in the order of the Hetzner Console:
+  location, image (system images, snapshots and backups), type, public
+  and private networking, SSH keys, volumes, firewalls, backups,
+  placement group, labels, cloud config and name. A server without SSH
+  keys gets a root password, shown once with a copy button.
+- A click on a server opens its detail page. The `…` menu next to its name
+  holds the power actions, **Reset root password**, **Rebuild**,
+  **Change type**, **Rename**, the placement group actions and **Delete**.
+  The tabs Networking, Firewalls, Volumes, Backups, Snapshots, Rescue,
+  ISO, Graphs, Labels and Protection cover the rest of the actions shown
+  above. **Console** stays disabled: HLab has no remote console.
+- Power off, reset, rebuild, change type, enable rescue, restoring and
+  deleting a backup or snapshot ask for confirmation; deleting a server
+  needs its name typed. A root password that **Reset root password**,
+  a rebuild, a restore or enabling rescue returns shows once in the same
+  dialog as at creation.
+- **SSH Keys** lists the keys with their fingerprints. **Add SSH key**
+  takes the public key in OpenSSH format, a name and labels; a key's
+  detail page changes its name and labels, and **Delete** removes it.
+
+Long actions such as creating, rebuilding or snapshotting show a toast
+with their progress until they end.
 
 ## Snapshots, backups and rescue
 

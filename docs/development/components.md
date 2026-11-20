@@ -72,14 +72,45 @@ without a window:
 The frontend in [ui/frontend](../../ui/frontend) is Svelte 5 with Vite;
 [ui/embed.go](../../ui/embed.go) embeds its build. The views are in
 `src/views` and listed in `src/views.json`; the shell has three areas
-(project list `#/projects`, project console `#/projects/<name>/tokens`,
-Administration `#/admin/<view>`), routed by `location.hash` in
-`src/state.ts`. The building blocks (top bar, section sidebar, table, form
-field, dialogs, toast, help button) are in `src/lib`, the bridge calls in
-`src/lib/bridge.ts`, the shared state in `src/state.ts`. A new view needs
-its ID in `views.json` and in `ViewId` of `src/help.ts`, its title and
-area in `src/state.ts`, a sidebar entry and a branch in `src/App.svelte`
-and a help text `src/help/<view>.md`, which the `?` button shows. The build tag `e2e` adds the test hooks of
+(project list `#/projects`, project console, Administration
+`#/admin/<view>`), routed by `location.hash`.
+[src/lib/routes.ts](../../ui/frontend/src/lib/routes.ts) turns routes into
+hashes and back; a project console page is
+`#/projects/<name>/<section>` for a list, `.../new` for a create form and
+`.../<id>/<tab>` for a detail page. `src/state.ts` keeps the current route,
+the cloud state and the view titles. The building blocks (top bar, section
+sidebar, table, form field, dialogs, toast, help button) are in `src/lib`,
+the bridge calls in `src/lib/bridge.ts`.
+
+The project console
+([src/views/ProjectConsole.svelte](../../ui/frontend/src/views/ProjectConsole.svelte))
+shows its sections (Servers, SSH Keys, API tokens) in its sidebar. The
+resource sections reach the project's Hetzner API through the management
+API's project proxy and are built from these parts of `src/lib`:
+
+- `api.ts`: `api` sends one request, `listAll` reads every page of a list,
+  `runApi` runs a request under an action toast.
+- `actions.ts`: `runAction` follows the returned action and its next
+  actions to the end and shows their progress in a toast (`toast.ts`,
+  `Toast.svelte`).
+- `DetailPage.svelte` (title row with status, actions menu and tabs),
+  `ActionsMenu.svelte`, `FormPage.svelte`, `LabelsField.svelte`,
+  `LabelsTab.svelte`, `ProtectionTab.svelte`, `SecretDialog.svelte` (a
+  one-time root password) and `LineChart.svelte`; `formErrors.ts` puts an
+  API error's field messages under the form fields, `labels.ts` converts
+  label rows.
+- `serverActions.ts` describes every server action of the actions menu and
+  the detail tabs (label, method, path, body, confirmation, whether the
+  answer carries a root password); the views in `src/views/servers` only
+  render it, so its unit test covers every request.
+
+A new view needs its ID in `views.json` and in `ViewId` of `src/help.ts`,
+its title and area in `src/state.ts` and a help text
+`src/help/<view>.md`, which the `?` button shows. An Administration view
+also needs its ID in `AdminView` of `routes.ts` and an icon and a
+branch in `src/App.svelte`; a project section needs its ID in
+`ProjectView` of `routes.ts` (and in `listOnly` if it has no create form or
+detail pages) and an entry and a branch in `ProjectConsole.svelte`. The build tag `e2e` adds the test hooks of
 [cmd/hlab-tray/e2e.go](../../cmd/hlab-tray/e2e.go) (see
 [Build and test](build-and-test.md#end-to-end-tests)).
 
