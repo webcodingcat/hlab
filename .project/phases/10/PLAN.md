@@ -535,6 +535,16 @@ Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes
   - Size: ~25 lines in 1 file
   - [x] src/App.svelte: the shell is one window high; top bar and banner stay in place over the full width, only the area below them scrolls with its scrollbar gutter reserved (`scrollbar-gutter: stable`), so nothing shifts sideways and no stripe shows beside the top bar.
 
+- [ ] 10-38 Edit own server types
+  - Wave: 12 | Depends on: - | Review: alone
+  - Requirements: UI-04 | Tests: internal/catalog/catalog_test.go, internal/bridge/service_test.go, ui/frontend/tests/e2e/servertypes.spec.ts
+  - Reads: REQUIREMENTS UI-04, CAT-02; UI-SPEC "Views" (Server Types); ARCHITECTURE tray bridge (`UpdateServerType`); finding Q17 (own server types are editable)
+  - Size: ~200 lines in 6 files
+  - Interfaces: `catalog.UpdateOwn(c *Catalog, customFile string, s OwnSpec) (ServerType, error)` replaces the own type named `s.Name` in place with the same checks as `AddOwn` (its own name does not count as taken), keeps its ID and position, rewrites the file in one write; an unknown name wraps `fs.ErrNotExist`. `bridge.Service.UpdateServerType(spec catalog.OwnSpec) (*Invalid, error)` like `AddServerType`.
+  - [ ] internal/catalog/custom.go `UpdateOwn` (shared validation with `AddOwn`, no copy); internal/bridge/service.go `UpdateServerType` with the reload while running; regenerated Wails bindings.
+  - [ ] ui/frontend/src/views/ServerTypes.svelte: "Edit" in the row menu of own rows only, opening the add dialog titled "Edit server type" filled in with the type's values (name read-only, "All locations" checked when the type has all catalog locations), saving through `UpdateServerType` with field errors as when adding; src/help/server-types.md mentions editing.
+  - [ ] .project/phases/10/CHECKS.md is kept by the main session (step 9 follows at the close).
+
 ## Findings from manual testing
 
 - [x] bug (UI-08): no application icon. The user started `bin\hlab-tray.exe` and opened the window: its title bar shows the generic Windows placeholder icon next to the title "hlab" (screenshot `phases/10/feedback/window-title-no-icon.png`: a small grey-green default window glyph, then the text "hlab"). The taskbar button and `bin\hlab-tray.exe` in Explorer have no icon of their own either. Cause: only the four tray state icons exist (`cmd/hlab-tray/icons/{stopped,busy,running,error}.ico`); neither `application.Options`/the window options in `cmd/hlab-tray/options.go` and `tray.go` set an icon, and the build embeds no Windows resource. Expected: one application icon in the style of the tray icons (neutral, without a state colour), multi-size `.ico` (16, 20, 24, 32, 48, 256 px), clear on light and dark backgrounds, shown in the window title bar, the taskbar and Alt+Tab, and embedded as the EXE resource of `hlab-tray.exe` through `task build` (also `hlab.exe` and `hlabd.exe` if it costs nothing extra). No Hetzner logo (UI-SPEC "Foundation").
