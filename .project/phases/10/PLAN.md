@@ -394,12 +394,12 @@ Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes
   - [ ] go.mod/go.sum: `github.com/tc-hib/winres` v0.3.1. tools/icons/main.go and icons.go: `Generate` draws the app icon (white "H" on a rounded square in the accent blue, supersampled anti-aliasing, standard library `image`) at 16, 20, 24, 32, 48, 256 px and the four state icons at 16, 20, 24, 32 px (app icon plus a lower-right dot about a third wide with a 1 px contrasting rim: running success, busy warning, stopped text muted, error error, light-mode values), encodes ICO (PNG frame for 256), writes the `.syso` per main package with the group icon under IDs 3 and 32512 through winres, and writes `ui/frontend/src/assets/app-icon.svg` and `docs/images/banner.svg` (icon, "HLab", subtitle "A local Hetzner-compatible cloud on Hyper-V", readable on light and dark through `prefers-color-scheme` inside the SVG) from the same geometry.
   - [ ] Taskfile.yml task `icons` (`go run ./tools/icons`); run it once and commit cmd/hlab-tray/icons/*.ico, cmd/{hlab-tray,hlab,hlabd}/rsrc_windows_amd64.syso, the two SVGs; `task build` links the `.syso` without running the tool.
 
-- [ ] 10-24 Log files: search and older lines
+- [x] 10-24 Log files: search and older lines
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-06 | Tests: internal/logfile/logfile_test.go
   - Reads: UI-SPEC "Views" (Logs); ARCHITECTURE "Files and formats" (hlabd.log); PLAN "Interfaces" (logfile); finding 7
   - Size: ~280 lines in 2 files
-  - [ ] internal/logfile/search.go: a backward line reader over hlabd.log and its rotated files in 64 KiB chunks (open with `openRead`, files identified with `os.SameFile` so a rotation during the read continues under the new name or skips the file), `Search` (match text as in "Interfaces", level filter, newest first, stops after max+1 with `capped`) and `Before`.
+  - [x] internal/logfile/search.go: a backward line reader over hlabd.log and its rotated files in 64 KiB chunks (open with `openRead`, files identified with `os.SameFile` so a rotation during the read continues under the new name or skips the file), `Search` (match text as in "Interfaces", level filter, newest first, stops after max+1 with `capped`) and `Before`.
 
 - [ ] 10-23 Tray: one cloud item, state at once after Start/Stop, name HLab in the window
   - Wave: 2 | Depends on: 10-20 | Review: alone
