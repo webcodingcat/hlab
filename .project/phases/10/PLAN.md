@@ -469,13 +469,13 @@ Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes
   - Size: ~80 lines in 1 file
   - [x] test/e2e/main_test.go: shared `deleteProject(name)` (`hlab project delete`, which deletes every resource); `teardown` deletes the run's project when `envVal != nil` instead of `deleteAllServers` (removed); setup lists projects (`hlab project list --output json`) and deletes every name matching exactly `^e2e-\d{8}-\d{6}$` other than the run's own, after the cloud runs.
 
-- [ ] 10-30 Server Types view: token dialog and location checkboxes
+- [x] 10-30 Server Types view: token dialog and location checkboxes
   - Wave: 6 | Depends on: 10-27, 10-29 | Review: alone
   - Requirements: UI-04, UI-08 | Tests: ui/frontend/tests/e2e/servertypes.spec.ts
   - Reads: UI-SPEC "Building blocks" (Form, Confirm dialog), "Views" (Server Types), "Behaviour" (Keyboard); PLAN "Interfaces" (Locations, Dialog); findings 8, 9
   - Size: ~300 lines in 2 files
-  - [ ] src/lib/Dialog.svelte (native `<dialog>`, title, Escape and "Cancel" close, `onclose`); src/views/ServerTypes.svelte: the add form and the token form use it.
-  - [ ] ServerTypes.svelte: "Update from Hetzner" (enabled while the cloud runs) opens the dialog with the required password field "Hetzner token", the hint, "Update" (loading, Enter submits); success closes it and shows the toast, an error stays under the field; the token is cleared on every close. Locations: "All locations" (checked by default, disables the others, saves `[]`) and one checkbox "<name> (<city>)" per `Locations()` entry; unchecked without a location shows the error under the list.
+  - [x] src/lib/Dialog.svelte (native `<dialog>`, title, Escape and "Cancel" close, `onclose`); src/views/ServerTypes.svelte: the add form and the token form use it.
+  - [x] ServerTypes.svelte: "Update from Hetzner" (enabled while the cloud runs) opens the dialog with the required password field "Hetzner token", the hint, "Update" (loading, Enter submits); success closes it and shows the toast, an error stays under the field; the token is cleared on every close. Locations: "All locations" (checked by default, disables the others, saves `[]`) and one checkbox "<name> (<city>)" per `Locations()` entry; unchecked without a location shows the error under the list.
 
 - [x] 10-32 Documentation layout: docs/ and docs/development/
   - Wave: 6 | Depends on: 10-31 (order) | Review: alone

@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 Server Types dialogs
+
+- Type: decision
+- Phase: phase 10
+- What: the shared `lib/Dialog.svelte` (open, title, onclose, children) holds the token and add forms with Cancel inside the content; `toast.ts` gets `showSuccess`; "All locations" keeps the other boxes' state while disabling them, and the browser checks "at least one location" before the call.
+- Why: the update error stays under the field, so the existing `action()` toast helper does not fit.
+- Cost of change: low
+
 ## 2026-11-20 Project console building blocks
 
 - Type: decision
