@@ -27,6 +27,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 UI-09 is checked before the release, phase 14 closes
+
+- Type: decision
+- Phase: phase 14
+- What: the manual check UI-09 no longer stops phase 14; it stays in "Open manual checks" and is done before the release of milestone 1.
+- Why: the user deferred it to shortly before the release.
+- Cost of change: low
+
 ## 2026-11-20 Section tabs sit above the section title row
 
 - Type: decision

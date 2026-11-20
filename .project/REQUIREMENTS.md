@@ -283,7 +283,7 @@ What the target vision in IDEA.md will need, not built yet.
 | CAT-06 | 01 | x |
 | CAT-07 | 01 | x |
 | CAT-08 | 04 | x |
-| CAT-10 | 14 | |
+| CAT-10 | 14 | x |
 | SRV-01 | 01 | x |
 | SRV-02 | 03 | x |
 | SRV-03 | 01 | x |
@@ -364,15 +364,15 @@ What the target vision in IDEA.md will need, not built yet.
 | LIFE-09 | 09 | x |
 | LIFE-10 | 01 | x |
 | UI-01 | 10 | x |
-| UI-02 | 11, 14 | |
+| UI-02 | 11, 14 | x |
 | UI-03 | 10 | x |
 | UI-04 | 10 | x |
 | UI-05 | 10 | x |
 | UI-06 | 10 | x |
 | UI-07 | 10 | x |
 | UI-08 | 10 | x |
-| UI-09 | 14 | |
-| UI-10 | 14 | |
+| UI-09 | 14 | x |
+| UI-10 | 14 | x |
 | UI-11 | 15 | |
 | INST-01 | 12 | |
 | INST-02 | 12 | |
