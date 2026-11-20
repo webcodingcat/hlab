@@ -107,7 +107,9 @@ everywhere.
   section has the token table and the "Create token" dialog that shows the
   token once in a copy field with a warning.
 - Server Types: table of the catalog with source column (catalog, own),
-  add/remove own types (the add form chooses locations with a checkbox
+  add/edit/remove own types (own rows have "Edit" and "Remove" in the row
+  menu; "Edit" opens the add form filled in with the type's values, the
+  name read-only; the add form chooses locations with a checkbox
   list of the catalog's locations, "<name> (<city>)", led by an "All
   locations" checkbox that is checked by default, disables the others and
   means all; without it at least one location is required), an "Update

@@ -457,8 +457,9 @@ Inside `hlabd` (Go packages under `internal/`):
   Wails services: `bridge.Service` with
   `Call(method, path, body string) (Response{status, body}, error)` that
   forwards to the management API, `Settings()`/`SaveSettings()` for the
-  file, `ServerTypes`/`AddServerType`/`RemoveServerType` for the merged
-  list and the own types (results `ListedType`, `ServerTypeList`,
+  file, `ServerTypes`/`AddServerType`/`UpdateServerType`/`RemoveServerType`
+  for the merged list and the own types (`UpdateServerType(OwnSpec)
+  (*Invalid, error)` replaces the own type of the same name) (results `ListedType`, `ServerTypeList`,
   `Invalid` for field errors), `Locations() ([]Location{name, city})`
   from the shipped catalog, also while the cloud is stopped; `bridge.Cloud`
   with status, start and stop, recording "starting"/"stopping" as soon as

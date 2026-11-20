@@ -10,7 +10,7 @@ STATUS: MANUAL_CHECK
 - Phase: 10 Tray program: shell, status, settings, server types, projects, logs (findings fixes 10-20..10-37 done on wcc/phase-10, unmerged; gear toggle checked, the scrollbar shift fix 10-37 waits for its check)
 - Base branch: main
 - Last done: phase 09 merged into main (2026-11-19): servers saved or shut down at cloud stop and restored at start, configurable public range, incompatible state refused with `--discard-state`, rotated logs with `hlab logs`, LB IPv6 prefix 0xA0000000 (Q14)
-- Next: /wcc:report for UI-08 (the scrollbar shift), then /wcc:phase closes phase 10; DOC-07 (01) waits until the repository is on GitHub
+- Next: /wcc:phase builds the edit of own server types (Q17) on wcc/phase-10, then /wcc:report for UI-08 (scroll layout, editing own types) and /wcc:phase closes phase 10; DOC-07 (01) waits until the repository is on GitHub
 
 ## Open manual checks
 
@@ -30,11 +30,7 @@ STATUS: MANUAL_CHECK
      /wcc:phase asks those of its phase at its start, /wcc:change takes
      answers any time. -->
 
-- Q17 (phase 10, UI-08 check): Should own server types be editable in the Server Types view?
-  - Context: the user asked for it during the UI-08 check on 2026-11-20; UI-04 promises only adding and removing own types (`ui/frontend/src/views/ServerTypes.svelte`), so changing one today means removing and adding it again.
-  - Options: 1. add "Edit" to the row menu of own types, opening the add dialog filled in (name stays fixed), saved through the bridge and the own types file 2. keep remove and add again
-  - Recommendation: 1, because the dialog and the types file exist and the change stays inside UI-04 and the bridge
-  - Affects: UI-04, CAT-02, UI-SPEC "Views" (Server Types)
+- none
 
 ## If BLOCKED
 

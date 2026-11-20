@@ -180,7 +180,7 @@ resource types.
 - UI-01 the tray icon shows the cloud status and starts and stops the cloud (goal 3) [e2e]
 - UI-02 the console window lists, shows, creates, configures and deletes every resource type of the API in the active project (goal 3) [e2e]
 - UI-03 the settings view changes every setting of the settings file (goal 3) [e2e]
-- UI-04 the server types view shows the catalog, adds and removes own types and starts the catalog update (goal 3) [e2e]
+- UI-04 the server types view shows the catalog, adds, edits and removes own types and starts the catalog update (goal 3) [e2e]
 - UI-05 the projects view creates and deletes projects and tokens (goal 3) [e2e]
 - UI-06 the logs view shows the service log and follows it (goal 3) [e2e]
 - UI-07 every view opens its help text inside the program (goal 3) [unit]

@@ -38,6 +38,14 @@ in ARCHITECTURE.md or the plan.
 - Why: the update error stays under the field, so the existing `action()` toast helper does not fit.
 - Cost of change: low
 
+## 2026-11-20 Q17 own server types are editable
+
+- Type: change
+- Phase: feedback
+- What: Q17 answered with option 1: own server types get "Edit" in the row menu, opening the add form filled in with the name read-only, saved through a new bridge method `UpdateServerType` into the own types file (UI-04, UI-SPEC "Views", ARCHITECTURE tray bridge); built as a findings plan of phase 10.
+- Why: user's wish in the UI-08 check: changing an own type should not need removing and adding it again.
+- Cost of change: low
+
 ## 2026-11-20 Q16 no second window; gear toggles Administration
 
 - Type: change
