@@ -532,14 +532,14 @@ button "Browse…", row menu "Edit" and "Remove".
   - [ ] views/volumes/VolumeCreate.svelte: volume icon, Size field with +/− (1 GB) and a slider 10–10240 GB ("10 GB", "10,240 GB") on one value; Name prefilled with the first free `volume-N`; required Server (hint "The volume is bound to the server's location.", required error under it, empty select without servers); Mount options segmented Automatic | Manual (default Automatic) with one explaining line; Filesystem radios ext4 / xfs (default ext4); Labels; the request always sends `server`, `automount`, `format`.
   - [ ] Adjust tests/e2e/volumes.spec.ts; run `task e2e -- -run 'TestE2E/UI-02$'` filtered to the volumes spec.
 
-- [ ] 14-36 Toast titles: networking sections
+- [x] 14-36 Toast titles: networking sections
   - Wave: 2 | Depends on: 14-27 | Review: alone
   - Requirements: UI-02 | Tests: - (format.test.ts)
   - Reads: PLAN "Interfaces" (format, api, toast types); lib/format.ts, api.ts
   - Size: ~90 lines in 15 files
-  - [ ] Every action toast on a named resource through `runOn`/`actionTitle` in views/load-balancers (Section, LoadBalancerDetail, LoadBalancerCreate, tabs/Networking, tabs/Services).
-  - [ ] The same in views/load-balancers/tabs/Targets.svelte and views/networks (Section, NetworkDetail, NetworkCreate).
-  - [ ] The same in views/floating-ips (Section, FloatingIpDetail, FloatingIpCreate) and views/primary-ips (Section, PrimaryIpDetail, PrimaryIpCreate).
+  - [x] Every action toast on a named resource through `runOn`/`actionTitle` in views/load-balancers (Section, LoadBalancerDetail, LoadBalancerCreate, tabs/Networking, tabs/Services).
+  - [x] The same in views/load-balancers/tabs/Targets.svelte and views/networks (Section, NetworkDetail, NetworkCreate).
+  - [x] The same in views/floating-ips (Section, FloatingIpDetail, FloatingIpCreate) and views/primary-ips (Section, PrimaryIpDetail, PrimaryIpCreate).
 
 - [ ] 14-37 Toast titles: DNS, Security and Administration
   - Wave: 2 | Depends on: 14-27 | Review: alone
