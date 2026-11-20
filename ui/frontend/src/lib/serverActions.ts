@@ -113,7 +113,7 @@ export const menuActions: ServerAction[] = [
 
 const tabList: ServerAction[] = [
   simple("enable_backup", "Enable backups"),
-  simple("disable_backup", "Disable backups"),
+  simple("disable_backup", "Disable backups", "plain"),
   serverAction("create_backup", "create_image", { label: "Create backup", body: () => ({ type: "backup" }) }),
   serverAction("create_snapshot", "create_image", {
     label: "Create snapshot",

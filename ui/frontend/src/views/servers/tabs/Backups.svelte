@@ -1,5 +1,6 @@
 <script lang="ts">
   import Button from "../../../lib/Button.svelte";
+  import ConfirmDialog from "../../../lib/ConfirmDialog.svelte";
   import { listAll } from "../../../lib/api";
   import { showError } from "../../../lib/toast";
   import type { Server } from "../servers";
@@ -13,6 +14,7 @@
   let { project, server, onchanged }: Props = $props();
 
   let images = $state<ServerImage[] | undefined>();
+  let disableOpen = $state(false);
   let failing = false;
 
   const enabled = $derived(server.backup_window !== null);
@@ -49,7 +51,7 @@
     <h2>Backups</h2>
     <div class="buttons">
       {#if enabled}
-        <Button onclick={() => run("disable_backup")}>Disable backups</Button>
+        <Button onclick={() => (disableOpen = true)}>Disable backups</Button>
         <Button variant="primary" onclick={() => run("create_backup")}>Create backup</Button>
       {:else}
         <Button variant="primary" onclick={() => run("enable_backup")}>Enable backups</Button>
@@ -58,14 +60,17 @@
   </header>
   <p class="muted">
     {#if enabled}
-      Backups are enabled: one backup per day while the cloud runs, the 7 newest are kept. Disabling backups deletes
-      all backups of this server.
+      Backups are enabled: one backup per day while the cloud runs, the 7 newest are kept.
     {:else}
       Backups are disabled.
     {/if}
   </p>
   <ImageTable {project} {server} kind="backup" {images} onchanged={changed} />
 </section>
+
+<ConfirmDialog bind:open={disableOpen} title="Disable backups" confirmLabel="Disable backups" onconfirm={() => run("disable_backup")}>
+  <p>Backups of <strong>{server.name}</strong> stop and all backups of this server are deleted for good.</p>
+</ConfirmDialog>
 
 <style>
   section {
