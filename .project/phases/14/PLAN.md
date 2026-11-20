@@ -110,184 +110,184 @@ shows all ISOs on one page (no paging).
 
 ## Plans
 
-- [ ] 14-01 Console registration of the new sections
+- [x] 14-01 Console registration of the new sections
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/unit/routes.test.ts
   - Reads: UI-SPEC "Views" (Project console), "Foundation" (icons); ARCHITECTURE "hlab-tray (tray program)"; DECISIONS "Console routes in a pure module, project console starts on Servers"; PLAN "Interfaces" (section convention, view IDs); ui/frontend/src/lib/routes.ts, help.ts, views.json, views/ProjectConsole.svelte, lib/SectionSidebar.svelte
   - Size: ~200 lines in 16 files (11 of them one-heading help stubs)
-  - [ ] ui/frontend/src/lib/routes.ts (`ProjectView` with the eleven views, `isos` without `new`), help.ts `ViewId`, views.json in sidebar order; tests/unit/routes.test.ts gets the new views.
-  - [ ] views/ProjectConsole.svelte: sidebar in UI-SPEC order with Lucide icons (Server, HardDrive, Scale, Network, Shield, Globe, MapPin, Book/Globe for DNS, ShieldCheck, Key, Group, Images/Camera, Disc), separator, API tokens; sections found by `import.meta.glob("./*/Section.svelte")`, listed only when present.
-  - [ ] help/volumes.md, load-balancers.md, networks.md, firewalls.md, floating-ips.md, primary-ips.md, dns.md, certificates.md, placement-groups.md, images.md, isos.md: one heading and one sentence each (the section plans write the text).
+  - [x] ui/frontend/src/lib/routes.ts (`ProjectView` with the eleven views, `isos` without `new`), help.ts `ViewId`, views.json in sidebar order; tests/unit/routes.test.ts gets the new views.
+  - [x] views/ProjectConsole.svelte: sidebar in UI-SPEC order with Lucide icons (Server, HardDrive, Scale, Network, Shield, Globe, MapPin, Book/Globe for DNS, ShieldCheck, Key, Group, Images/Camera, Disc), separator, API tokens; sections found by `import.meta.glob("./*/Section.svelte")`, listed only when present.
+  - [x] help/volumes.md, load-balancers.md, networks.md, firewalls.md, floating-ips.md, primary-ips.md, dns.md, certificates.md, placement-groups.md, images.md, isos.md: one heading and one sentence each (the section plans write the text).
 
-- [ ] 14-02 Shared resource action building blocks
+- [x] 14-02 Shared resource action building blocks
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-02 | Tests: - (proven through the resource modules' tables)
   - Reads: PLAN "Interfaces"; CONTEXT; ui/frontend/src/lib/serverActions.ts, views/servers/ServerActions.svelte, lib/ActionsMenu.svelte, ConfirmDialog.svelte, Dialog.svelte, api.ts, views/servers/tabs/Networking.svelte (reverse DNS), views/sshkeys/SshKeys.svelte, tests/e2e/console.ts, fixtures.ts
   - Size: ~330 lines in 6 files
-  - [ ] ui/frontend/src/lib/resourceActions.ts and lib/format.ts as in "Interfaces"; views/sshkeys/SshKeys.svelte re-exports `labelText`/`createdText` from lib/format.ts.
-  - [ ] lib/ResourceActionsMenu.svelte and lib/ReverseDnsDialog.svelte as in "Interfaces".
-  - [ ] tests/e2e/console.ts: `resourceTest` with the worker-scoped `shared` project.
+  - [x] ui/frontend/src/lib/resourceActions.ts and lib/format.ts as in "Interfaces"; views/sshkeys/SshKeys.svelte re-exports `labelText`/`createdText` from lib/format.ts.
+  - [x] lib/ResourceActionsMenu.svelte and lib/ReverseDnsDialog.svelte as in "Interfaces".
+  - [x] tests/e2e/console.ts: `resourceTest` with the worker-scoped `shared` project.
 
-- [ ] 14-03 Volumes: actions, list and create
+- [x] 14-03 Volumes: actions, list and create
   - Wave: 2 | Depends on: 14-01, 14-02 | Review: alone
   - Requirements: UI-02 | Tests: ui/frontend/tests/unit/volumes.test.ts
   - Reads: CONTEXT "Corrections" (volume create); phases/11/RESEARCH.md "Volume"; REQUIREMENTS VOL-01, VOL-03, VOL-05; OpenAPI `/volumes`, `/volumes/{id}`, `/volumes/{id}/actions/*` in the reference; docs/development/api-coverage.md "Volumes"; views/sshkeys/SshKeys.svelte and SshKeyCreate.svelte as the pattern
   - Size: ~400 lines in 5 files
-  - [ ] ui/frontend/src/lib/resources/volumes.ts: `create` (size, name, labels; `location` without a server, `server` plus `automount` and `format` with one), `menu` (Resize, Attach, Detach plain, Change protection, Delete typed-name), `tabs`; tests/unit/volumes.test.ts.
-  - [ ] views/volumes/Section.svelte (list: Name, Size, Server, Location, Labels, Created; refresh 5 s; row menu Detach and Delete) and views/volumes/VolumeCreate.svelte (Size 10–10240 GB, Name, Location after Name, hidden once a Server is chosen; Server optional; Mount Automatic/Manual and Filesystem ext4/xfs only with a server; Labels); help/volumes.md.
+  - [x] ui/frontend/src/lib/resources/volumes.ts: `create` (size, name, labels; `location` without a server, `server` plus `automount` and `format` with one), `menu` (Resize, Attach, Detach plain, Change protection, Delete typed-name), `tabs`; tests/unit/volumes.test.ts.
+  - [x] views/volumes/Section.svelte (list: Name, Size, Server, Location, Labels, Created; refresh 5 s; row menu Detach and Delete) and views/volumes/VolumeCreate.svelte (Size 10–10240 GB, Name, Location after Name, hidden once a Server is chosen; Server optional; Mount Automatic/Manual and Filesystem ext4/xfs only with a server; Labels); help/volumes.md.
 
-- [ ] 14-04 Volumes: detail
+- [x] 14-04 Volumes: detail
   - Wave: 3 | Depends on: 14-03 | Review: alone
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/e2e/volumes.spec.ts (through test/e2e/ui_test.go TestE2E/UI-02)
   - Reads: UI-SPEC "Building blocks" (Detail page, Confirm dialog); OpenAPI `volume` schema in the reference; docs/development/api-coverage.md "Volumes"; lib/DetailPage.svelte, LabelsTab.svelte, ProtectionTab.svelte
   - Size: ~300 lines in 3 files
-  - [ ] ui/frontend/src/views/volumes/VolumeDetail.svelte: tabs Overview (size, location, server, status, Linux device `/dev/disk/by-id/scsi-0HC_Volume_<id>` in a CopyField, created), Labels, Protection (delete); ResourceActionsMenu with dialogs Resize (larger size only), Attach (servers of the same location, automount); after Delete back to the list.
-  - [ ] tests/e2e/volumes.spec.ts.
+  - [x] ui/frontend/src/views/volumes/VolumeDetail.svelte: tabs Overview (size, location, server, status, Linux device `/dev/disk/by-id/scsi-0HC_Volume_<id>` in a CopyField, created), Labels, Protection (delete); ResourceActionsMenu with dialogs Resize (larger size only), Attach (servers of the same location, automount); after Delete back to the list.
+  - [x] tests/e2e/volumes.spec.ts.
 
-- [ ] 14-05 Load balancers: actions module
+- [x] 14-05 Load balancers: actions module
   - Wave: 2 | Depends on: 14-02 | Review: alone
   - Requirements: UI-02 | Tests: ui/frontend/tests/unit/loadBalancers.test.ts
   - Reads: CONTEXT "Corrections" (load balancer menu); REQUIREMENTS LB-01, LB-03, LB-04, LB-06, LB-07, LB-09; OpenAPI `POST /load_balancers` and `/load_balancers/{id}/actions/*` request bodies in the reference; docs/development/api-coverage.md "Load balancers"
   - Size: ~300 lines in 2 files
-  - [ ] ui/frontend/src/lib/resources/loadBalancers.ts: `create` (location, type, network, algorithm, targets, services, labels, name, public interface); service body from form input (tcp without `http`; http/https with sticky sessions, cookie, `redirect_http` and `certificates` only for https; health check; proxy protocol); targets server, label selector and IP with `use_private_ip`; `menu` (Change type plain, Change algorithm, Enable public interface, Disable public interface plain, Reverse DNS, Change protection, Delete plain); `tabs` add/update/delete service (delete plain), add/remove target (remove plain), attach/detach network (detach plain).
-  - [ ] tests/unit/loadBalancers.test.ts.
+  - [x] ui/frontend/src/lib/resources/loadBalancers.ts: `create` (location, type, network, algorithm, targets, services, labels, name, public interface); service body from form input (tcp without `http`; http/https with sticky sessions, cookie, `redirect_http` and `certificates` only for https; health check; proxy protocol); targets server, label selector and IP with `use_private_ip`; `menu` (Change type plain, Change algorithm, Enable public interface, Disable public interface plain, Reverse DNS, Change protection, Delete plain); `tabs` add/update/delete service (delete plain), add/remove target (remove plain), attach/detach network (detach plain).
+  - [x] tests/unit/loadBalancers.test.ts.
 
-- [ ] 14-06 Load balancers: list and create
+- [x] 14-06 Load balancers: list and create
   - Wave: 3 | Depends on: 14-01, 14-05 | Review: alone
   - Requirements: UI-02 | Tests: - (the UI-02 load balancer row of 14-07 creates through this form)
   - Reads: phases/11/RESEARCH.md "Load Balancer"; UI-SPEC "Building blocks" (Form); OpenAPI `/load_balancer_types`, `/locations`, `/networks`, `/servers`, `/certificates` lists in the reference
   - Size: ~400 lines in 4 files
-  - [ ] ui/frontend/src/views/load-balancers/Section.svelte (list: Name, Public IPv4, Type, Location, Targets, Services, Labels, Created; row menu Delete) and views/load-balancers/LoadBalancerCreate.svelte (Location, Type, Network, Targets, Services, Algorithm, Labels, Name).
-  - [ ] views/load-balancers/ServiceEditor.svelte and TargetEditor.svelte, reused by the detail tabs.
+  - [x] ui/frontend/src/views/load-balancers/Section.svelte (list: Name, Public IPv4, Type, Location, Targets, Services, Labels, Created; row menu Delete) and views/load-balancers/LoadBalancerCreate.svelte (Location, Type, Network, Targets, Services, Algorithm, Labels, Name).
+  - [x] views/load-balancers/ServiceEditor.svelte and TargetEditor.svelte, reused by the detail tabs.
 
-- [ ] 14-07 Load balancers: detail, actions menu, networking and graphs
+- [x] 14-07 Load balancers: detail, actions menu, networking and graphs
   - Wave: 4 | Depends on: 14-06 | Review: alone
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/e2e/loadbalancers.spec.ts (through TestE2E/UI-02)
   - Reads: OpenAPI `load_balancer` schema and `GET /load_balancers/{id}/metrics` in the reference; REQUIREMENTS LB-08, LB-09; lib/LineChart.svelte, views/servers/tabs/Graphs.svelte; CONTEXT "Corrections"
   - Size: ~380 lines in 4 files
-  - [ ] ui/frontend/src/views/load-balancers/LoadBalancerDetail.svelte: tabs Overview (IPs in CopyFields with reverse DNS, type, algorithm, location, public interface, health summary), Networking (attach, detach), Graphs (open connections, connections and requests per second, bandwidth over 1 h, 24 h, 7 d), Labels, Protection; ResourceActionsMenu with dialogs for Change type, Change algorithm and ReverseDnsDialog; help/load-balancers.md.
-  - [ ] tests/e2e/loadbalancers.spec.ts.
+  - [x] ui/frontend/src/views/load-balancers/LoadBalancerDetail.svelte: tabs Overview (IPs in CopyFields with reverse DNS, type, algorithm, location, public interface, health summary), Networking (attach, detach), Graphs (open connections, connections and requests per second, bandwidth over 1 h, 24 h, 7 d), Labels, Protection; ResourceActionsMenu with dialogs for Change type, Change algorithm and ReverseDnsDialog; help/load-balancers.md.
+  - [x] tests/e2e/loadbalancers.spec.ts.
 
-- [ ] 14-08 Load balancers: targets and services tabs
+- [x] 14-08 Load balancers: targets and services tabs
   - Wave: 5 | Depends on: 14-07 | Review: alone
   - Requirements: UI-02 | Tests: - (requests proven by loadBalancers.test.ts)
   - Reads: OpenAPI `load_balancer.targets`, `services`, `health_status` in the reference; docs/development/api-coverage.md "Load balancers", "Certificates"
   - Size: ~300 lines in 3 files
-  - [ ] views/load-balancers/tabs/Targets.svelte (targets with health per service, add through TargetEditor, remove after confirmation) and tabs/Services.svelte (services, add and edit through ServiceEditor, delete after confirmation); LoadBalancerDetail.svelte adds both tabs.
+  - [x] views/load-balancers/tabs/Targets.svelte (targets with health per service, add through TargetEditor, remove after confirmation) and tabs/Services.svelte (services, add and edit through ServiceEditor, delete after confirmation); LoadBalancerDetail.svelte adds both tabs.
 
-- [ ] 14-09 Networks: actions, list and create
+- [x] 14-09 Networks: actions, list and create
   - Wave: 2 | Depends on: 14-01, 14-02 | Review: alone
   - Requirements: UI-02 | Tests: ui/frontend/tests/unit/networks.test.ts
   - Reads: CONTEXT "Corrections" (network); phases/11/RESEARCH.md "Network"; REQUIREMENTS NET-01, NET-05, NET-06; OpenAPI `/networks` and `/networks/{id}/actions/*` in the reference; docs/development/api-coverage.md "Networks"
   - Size: ~350 lines in 5 files
-  - [ ] ui/frontend/src/lib/resources/networks.ts: `create` (name, ip_range, labels), `menu` (Change IP range plain, Change protection, Delete typed-name), `tabs` add subnet (type `cloud` always, network zone, ip_range), delete subnet plain, add route, delete route plain; no `expose_routes_to_vswitch`; tests/unit/networks.test.ts.
-  - [ ] views/networks/Section.svelte (list: Name, IP range, Subnets, Servers, Labels, Created; row menu Delete) and views/networks/NetworkCreate.svelte (Name, IP range, Labels); help/networks.md (Change IP range only grows and not while servers are attached).
+  - [x] ui/frontend/src/lib/resources/networks.ts: `create` (name, ip_range, labels), `menu` (Change IP range plain, Change protection, Delete typed-name), `tabs` add subnet (type `cloud` always, network zone, ip_range), delete subnet plain, add route, delete route plain; no `expose_routes_to_vswitch`; tests/unit/networks.test.ts.
+  - [x] views/networks/Section.svelte (list: Name, IP range, Subnets, Servers, Labels, Created; row menu Delete) and views/networks/NetworkCreate.svelte (Name, IP range, Labels); help/networks.md (Change IP range only grows and not while servers are attached).
 
-- [ ] 14-10 Networks: detail
+- [x] 14-10 Networks: detail
   - Wave: 3 | Depends on: 14-09 | Review: alone
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/e2e/networks.spec.ts (through TestE2E/UI-02)
   - Reads: OpenAPI `network` schema (subnets, routes, servers, load_balancers) in the reference; /locations network zones
   - Size: ~350 lines in 2 files
-  - [ ] ui/frontend/src/views/networks/NetworkDetail.svelte: tabs Overview (IP range, change IP range dialog), Subnets (add with network zone and range, delete), Routes (add destination and gateway, delete), Resources (attached servers and load balancers, read only, linking to their pages), Labels, Protection.
-  - [ ] tests/e2e/networks.spec.ts.
+  - [x] ui/frontend/src/views/networks/NetworkDetail.svelte: tabs Overview (IP range, change IP range dialog), Subnets (add with network zone and range, delete), Routes (add destination and gateway, delete), Resources (attached servers and load balancers, read only, linking to their pages), Labels, Protection.
+  - [x] tests/e2e/networks.spec.ts.
 
-- [ ] 14-11 Firewalls: actions module and rules
+- [x] 14-11 Firewalls: actions module and rules
   - Wave: 2 | Depends on: 14-02 | Review: alone
   - Requirements: UI-02 | Tests: ui/frontend/tests/unit/firewalls.test.ts
   - Reads: CONTEXT "Corrections" (firewall); REQUIREMENTS FW-01, FW-05; OpenAPI `POST /firewalls`, `/firewalls/{id}/actions/set_rules`, `apply_to_resources`, `remove_from_resources` in the reference; docs/development/api-coverage.md "Firewalls"; DECISIONS "Firewalls applied by label selector cannot be removed from the server tab"
   - Size: ~250 lines in 3 files
-  - [ ] ui/frontend/src/lib/resources/firewallRules.ts (`toRules`, `toRuleRows`) and lib/resources/firewalls.ts: `create` (name, labels, rules, `apply_to` with servers and label selectors), `menu` (Delete plain), `tabs` set rules, apply to server, apply to label selector, remove server plain, remove label selector plain.
-  - [ ] tests/unit/firewalls.test.ts.
+  - [x] ui/frontend/src/lib/resources/firewallRules.ts (`toRules`, `toRuleRows`) and lib/resources/firewalls.ts: `create` (name, labels, rules, `apply_to` with servers and label selectors), `menu` (Delete plain), `tabs` set rules, apply to server, apply to label selector, remove server plain, remove label selector plain.
+  - [x] tests/unit/firewalls.test.ts.
 
-- [ ] 14-12 Firewalls: list and create
+- [x] 14-12 Firewalls: list and create
   - Wave: 3 | Depends on: 14-01, 14-11 | Review: alone
   - Requirements: UI-02 | Tests: - (the UI-02 firewall row of 14-13 creates through this form)
   - Reads: phases/11/RESEARCH.md "Firewall"; UI-SPEC "Building blocks" (Form); OpenAPI `firewall` schema in the reference
   - Size: ~380 lines in 4 files
-  - [ ] ui/frontend/src/views/firewalls/Section.svelte (list: Name, Rules in/out, Applied to, Labels, Created; row menu Delete) and views/firewalls/FirewallCreate.svelte (Rules, Apply to, Labels, Name).
-  - [ ] views/firewalls/RulesEditor.svelte (inbound and outbound tables of RuleRows: protocol, port, IPs, description, add and remove) and views/firewalls/ApplyEditor.svelte (servers and label selectors), reused by the detail.
+  - [x] ui/frontend/src/views/firewalls/Section.svelte (list: Name, Rules in/out, Applied to, Labels, Created; row menu Delete) and views/firewalls/FirewallCreate.svelte (Rules, Apply to, Labels, Name).
+  - [x] views/firewalls/RulesEditor.svelte (inbound and outbound tables of RuleRows: protocol, port, IPs, description, add and remove) and views/firewalls/ApplyEditor.svelte (servers and label selectors), reused by the detail.
 
-- [ ] 14-13 Firewalls: detail
+- [x] 14-13 Firewalls: detail
   - Wave: 4 | Depends on: 14-12 | Review: alone
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/e2e/firewalls.spec.ts (through TestE2E/UI-02)
   - Reads: OpenAPI `firewall.applied_to` in the reference; docs/development/api-coverage.md "Firewalls"
   - Size: ~300 lines in 3 files
-  - [ ] ui/frontend/src/views/firewalls/FirewallDetail.svelte: tabs Rules (RulesEditor, "Save rules" through set_rules), Resources (servers and label selectors with apply and remove, servers matched by a selector shown under it), Labels; actions menu Delete; help/firewalls.md.
-  - [ ] tests/e2e/firewalls.spec.ts.
+  - [x] ui/frontend/src/views/firewalls/FirewallDetail.svelte: tabs Rules (RulesEditor, "Save rules" through set_rules), Resources (servers and label selectors with apply and remove, servers matched by a selector shown under it), Labels; actions menu Delete; help/firewalls.md.
+  - [x] tests/e2e/firewalls.spec.ts.
 
-- [ ] 14-14 Floating IPs
+- [x] 14-14 Floating IPs
   - Wave: 2 | Depends on: 14-01, 14-02 | Review: alone
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/unit/floatingIps.test.ts, ui/frontend/tests/e2e/floatingips.spec.ts (through TestE2E/UI-02)
   - Reads: CONTEXT "Corrections" (IPs); phases/11/RESEARCH.md "Floating IP"; REQUIREMENTS FIP-01, RDNS-01; OpenAPI `/floating_ips` and actions in the reference; docs/development/api-coverage.md "Floating IPs", "Reverse DNS"
   - Size: ~420 lines in 6 files
-  - [ ] ui/frontend/src/lib/resources/floatingIps.ts: `create` (type, `home_location` or `server`, name, description, labels), `menu` (Assign, Unassign plain, Reverse DNS, Change protection, Delete plain), `tabs`; tests/unit/floatingIps.test.ts.
-  - [ ] views/floating-ips/Section.svelte (list: Name, IP, Protocol, Home location, Server, Labels, Created; row menu Unassign and Delete), FloatingIpCreate.svelte (Location or Server, Protocol, Name, Labels), FloatingIpDetail.svelte (Overview with IP in a CopyField, description edit, server, reverse DNS; Labels; Protection; Assign dialog with servers); help/floating-ips.md.
-  - [ ] tests/e2e/floatingips.spec.ts.
+  - [x] ui/frontend/src/lib/resources/floatingIps.ts: `create` (type, `home_location` or `server`, name, description, labels), `menu` (Assign, Unassign plain, Reverse DNS, Change protection, Delete plain), `tabs`; tests/unit/floatingIps.test.ts.
+  - [x] views/floating-ips/Section.svelte (list: Name, IP, Protocol, Home location, Server, Labels, Created; row menu Unassign and Delete), FloatingIpCreate.svelte (Location or Server, Protocol, Name, Labels), FloatingIpDetail.svelte (Overview with IP in a CopyField, description edit, server, reverse DNS; Labels; Protection; Assign dialog with servers); help/floating-ips.md.
+  - [x] tests/e2e/floatingips.spec.ts.
 
-- [ ] 14-15 Primary IPs
+- [x] 14-15 Primary IPs
   - Wave: 2 | Depends on: 14-01, 14-02 | Review: alone
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/unit/primaryIps.test.ts, ui/frontend/tests/e2e/primaryips.spec.ts (through TestE2E/UI-02)
   - Reads: CONTEXT "Corrections" (IPs); phases/11/RESEARCH.md "Primary IP"; REQUIREMENTS PIP-01, RDNS-01; OpenAPI `/primary_ips` and actions in the reference; docs/development/api-coverage.md "Primary IPs"
   - Size: ~420 lines in 6 files
-  - [ ] ui/frontend/src/lib/resources/primaryIps.ts: `create` (name, type, location, without a server `location`, with a server `assignee_type: "server"` and `assignee_id` and no `location`, `auto_delete`, labels; no datacenter), `menu` (Assign, Unassign plain, Reverse DNS, Change protection, Delete plain), `tabs` auto_delete through PUT; tests/unit/primaryIps.test.ts.
-  - [ ] views/primary-ips/Section.svelte (list: Name, IP, Protocol, Location, Assignee, Auto delete, Labels, Created), PrimaryIpCreate.svelte (Name, Location, Protocol, Server, Auto delete, Labels), PrimaryIpDetail.svelte (Overview with auto_delete switch, assignee, reverse DNS; Labels; Protection; Assign dialog offering servers of the location that are off); help/primary-ips.md.
-  - [ ] tests/e2e/primaryips.spec.ts.
+  - [x] ui/frontend/src/lib/resources/primaryIps.ts: `create` (name, type, location, without a server `location`, with a server `assignee_type: "server"` and `assignee_id` and no `location`, `auto_delete`, labels; no datacenter), `menu` (Assign, Unassign plain, Reverse DNS, Change protection, Delete plain), `tabs` auto_delete through PUT; tests/unit/primaryIps.test.ts.
+  - [x] views/primary-ips/Section.svelte (list: Name, IP, Protocol, Location, Assignee, Auto delete, Labels, Created), PrimaryIpCreate.svelte (Name, Location, Protocol, Server, Auto delete, Labels), PrimaryIpDetail.svelte (Overview with auto_delete switch, assignee, reverse DNS; Labels; Protection; Assign dialog offering servers of the location that are off); help/primary-ips.md.
+  - [x] tests/e2e/primaryips.spec.ts.
 
-- [ ] 14-16 DNS: actions, list and create
+- [x] 14-16 DNS: actions, list and create
   - Wave: 2 | Depends on: 14-01, 14-02 | Review: alone
   - Requirements: UI-02 | Tests: ui/frontend/tests/unit/zones.test.ts
   - Reads: CONTEXT "Corrections" (DNS); phases/11/RESEARCH.md "DNS zone"; REQUIREMENTS DNS-01; OpenAPI `/zones`, `/zones/{id}/actions/*`, `/zones/{id}/rrsets*`, `/zones/{id}/zonefile` in the reference; docs/development/api-coverage.md "Zones", "Records", "Zone files"
   - Size: ~400 lines in 4 files
-  - [ ] ui/frontend/src/lib/resources/zones.ts: `create` (name, mode primary with optional `zonefile` or secondary with `primary_nameservers`, ttl, labels), `menu` (Change default TTL, Import zone file plain, Change protection, Delete typed-name), `tabs` change primary nameservers, export zone file, RRSet create, change TTL, add records, remove records plain, labels, change protection, delete plain; tests/unit/zones.test.ts.
-  - [ ] views/dns/Section.svelte (list: Name, Mode, Records, TTL, Labels, Created; row menu Delete) and views/dns/ZoneCreate.svelte (Domain, Type empty / import zone file / secondary with primary nameservers, TTL, Labels; "Add zone").
+  - [x] ui/frontend/src/lib/resources/zones.ts: `create` (name, mode primary with optional `zonefile` or secondary with `primary_nameservers`, ttl, labels), `menu` (Change default TTL, Import zone file plain, Change protection, Delete typed-name), `tabs` change primary nameservers, export zone file, RRSet create, change TTL, add records, remove records plain, labels, change protection, delete plain; tests/unit/zones.test.ts.
+  - [x] views/dns/Section.svelte (list: Name, Mode, Records, TTL, Labels, Created; row menu Delete) and views/dns/ZoneCreate.svelte (Domain, Type empty / import zone file / secondary with primary nameservers, TTL, Labels; "Add zone").
 
-- [ ] 14-17 DNS: detail and records
+- [x] 14-17 DNS: detail and records
   - Wave: 3 | Depends on: 14-16 | Review: alone
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/e2e/dns.spec.ts (through TestE2E/UI-02)
   - Reads: OpenAPI `zone` and `rrset` schemas in the reference; docs/development/api-coverage.md "Records"; DECISIONS on DNS of phase 07 that name the SOA
   - Size: ~400 lines in 4 files
-  - [ ] ui/frontend/src/views/dns/ZoneDetail.svelte (tabs Overview with nameservers, default TTL, record count; Records; Labels; Protection; ResourceActionsMenu with Change default TTL) and views/dns/tabs/Records.svelte (RRSets with name, type, TTL, values; add RRSet with records; per RRSet change TTL, add and remove records, labels, protection, delete; the SOA row shows only Change TTL); help/dns.md.
-  - [ ] tests/e2e/dns.spec.ts.
+  - [x] ui/frontend/src/views/dns/ZoneDetail.svelte (tabs Overview with nameservers, default TTL, record count; Records; Labels; Protection; ResourceActionsMenu with Change default TTL) and views/dns/tabs/Records.svelte (RRSets with name, type, TTL, values; add RRSet with records; per RRSet change TTL, add and remove records, labels, protection, delete; the SOA row shows only Change TTL); help/dns.md.
+  - [x] tests/e2e/dns.spec.ts.
 
-- [ ] 14-18 DNS: zone file and primary nameservers tabs
+- [x] 14-18 DNS: zone file and primary nameservers tabs
   - Wave: 4 | Depends on: 14-17 | Review: alone
   - Requirements: UI-02 | Tests: - (requests proven by zones.test.ts)
   - Reads: docs/development/api-coverage.md "Zone files", "Zones" (secondary); OpenAPI `GET /zones/{id}/zonefile`, `import_zonefile`, `change_primary_nameservers` in the reference
   - Size: ~250 lines in 3 files
-  - [ ] views/dns/tabs/ZoneFile.svelte (export in a monospace read-only text area with copy; import from pasted text after a plain confirmation, the API's line error under the field) and views/dns/tabs/PrimaryNameservers.svelte (address, port, TSIG for secondary zones); ZoneDetail.svelte shows Records and Zone file for primary zones and Primary nameservers for secondary ones.
+  - [x] views/dns/tabs/ZoneFile.svelte (export in a monospace read-only text area with copy; import from pasted text after a plain confirmation, the API's line error under the field) and views/dns/tabs/PrimaryNameservers.svelte (address, port, TSIG for secondary zones); ZoneDetail.svelte shows Records and Zone file for primary zones and Primary nameservers for secondary ones.
 
-- [ ] 14-19 Certificates
+- [x] 14-19 Certificates
   - Wave: 2 | Depends on: 14-01, 14-02 | Review: alone
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/unit/certificates.test.ts, ui/frontend/tests/e2e/certificates.spec.ts (through TestE2E/UI-02)
   - Reads: CONTEXT "Corrections" (managed certificate); phases/11/RESEARCH.md "Certificate"; REQUIREMENTS CERT-01, CERT-02; OpenAPI `/certificates` and `retry` in the reference; docs/development/api-coverage.md "Certificates"
   - Size: ~420 lines in 6 files
-  - [ ] ui/frontend/src/lib/resources/certificates.ts: `create` (uploaded: name, certificate, private_key; managed: name, domain_names; labels), `menu` (Retry, shown only for a failed managed certificate; Delete plain); tests/unit/certificates.test.ts.
-  - [ ] views/certificates/Section.svelte (list: Name, Type, Domains, Status, Valid until, Labels, Created; row menu Delete), CertificateCreate.svelte (Type, then Name, Certificate and Private key, or Name and Domain names; Labels; "Add certificate"), CertificateDetail.svelte (Overview: type, status with the issuance error, domains, fingerprint, validity, used by; Labels); help/certificates.md (managed: domains under a primary zone of this project, issued by HLab's CA; `dns_zone_not_found` otherwise).
-  - [ ] tests/e2e/certificates.spec.ts.
+  - [x] ui/frontend/src/lib/resources/certificates.ts: `create` (uploaded: name, certificate, private_key; managed: name, domain_names; labels), `menu` (Retry, shown only for a failed managed certificate; Delete plain); tests/unit/certificates.test.ts.
+  - [x] views/certificates/Section.svelte (list: Name, Type, Domains, Status, Valid until, Labels, Created; row menu Delete), CertificateCreate.svelte (Type, then Name, Certificate and Private key, or Name and Domain names; Labels; "Add certificate"), CertificateDetail.svelte (Overview: type, status with the issuance error, domains, fingerprint, validity, used by; Labels); help/certificates.md (managed: domains under a primary zone of this project, issued by HLab's CA; `dns_zone_not_found` otherwise).
+  - [x] tests/e2e/certificates.spec.ts.
 
-- [ ] 14-20 Placement groups
+- [x] 14-20 Placement groups
   - Wave: 2 | Depends on: 14-01, 14-02 | Review: alone
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/e2e/placementgroups.spec.ts (through TestE2E/UI-02)
   - Reads: phases/11/RESEARCH.md "Placement Group"; REQUIREMENTS SRV-22; OpenAPI `/placement_groups` in the reference; docs/development/api-coverage.md "Placement groups"
   - Size: ~300 lines in 5 files
-  - [ ] ui/frontend/src/lib/resources/placementGroups.ts (`create` with type spread, `menu` Rename and Delete plain) and views/placement-groups/Section.svelte (list: Name, Type, Servers, Labels, Created), PlacementGroupCreate.svelte (Name, Type spread shown fixed, Labels), PlacementGroupDetail.svelte (Overview with its servers linking to them; Labels); help/placement-groups.md.
-  - [ ] tests/e2e/placementgroups.spec.ts.
+  - [x] ui/frontend/src/lib/resources/placementGroups.ts (`create` with type spread, `menu` Rename and Delete plain) and views/placement-groups/Section.svelte (list: Name, Type, Servers, Labels, Created), PlacementGroupCreate.svelte (Name, Type spread shown fixed, Labels), PlacementGroupDetail.svelte (Overview with its servers linking to them; Labels); help/placement-groups.md.
+  - [x] tests/e2e/placementgroups.spec.ts.
 
-- [ ] 14-21 Images
+- [x] 14-21 Images
   - Wave: 2 | Depends on: 14-01, 14-02 | Review: alone
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/unit/images.test.ts
   - Reads: CONTEXT "Corrections" (images), "Answers"; OpenAPI `/images`, `PUT /images/{id}`, `change_protection` in the reference; docs/development/api-coverage.md "Snapshots and backups"; views/servers/tabs/ImageTable.svelte
   - Size: ~330 lines in 5 files
-  - [ ] ui/frontend/src/lib/resources/images.ts: `menu` (Edit description, Convert to snapshot only for backups, no confirmation, `PUT /images/{id}` with `type: snapshot`; Change protection; Delete plain); tests/unit/images.test.ts.
-  - [ ] views/images/Section.svelte (the project's snapshots and backups, no system images: Name/description, Type, Size, Created from, Labels, Created; empty state saying images are made from a server's Backups and Snapshots tabs) and views/images/ImageDetail.svelte (Overview, Labels, Protection); help/images.md.
+  - [x] ui/frontend/src/lib/resources/images.ts: `menu` (Edit description, Convert to snapshot only for backups, no confirmation, `PUT /images/{id}` with `type: snapshot`; Change protection; Delete plain); tests/unit/images.test.ts.
+  - [x] views/images/Section.svelte (the project's snapshots and backups, no system images: Name/description, Type, Size, Created from, Labels, Created; empty state saying images are made from a server's Backups and Snapshots tabs) and views/images/ImageDetail.svelte (Overview, Labels, Protection); help/images.md.
 
-- [ ] 14-22 ISOs
+- [x] 14-22 ISOs
   - Wave: 2 | Depends on: 14-01, 14-02 | Review: alone
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/e2e/isos.spec.ts (through TestE2E/UI-02)
   - Reads: OpenAPI `/isos` in the reference; docs/development/api-coverage.md "ISOs"
   - Size: ~180 lines in 4 files
-  - [ ] ui/frontend/src/views/isos/Section.svelte (read-only list: Name, Description, Architecture, Deprecated) and views/isos/IsoDetail.svelte (Overview; a note that ISOs attach in a server's ISO tab); help/isos.md.
-  - [ ] tests/e2e/isos.spec.ts.
+  - [x] ui/frontend/src/views/isos/Section.svelte (read-only list: Name, Description, Architecture, Deprecated) and views/isos/IsoDetail.svelte (Overview; a note that ISOs attach in a server's ISO tab); help/isos.md.
+  - [x] tests/e2e/isos.spec.ts.
 
 - [ ] 14-23 UI-02 full run and time limit
   - Wave: 6 | Depends on: 14-04, 14-08, 14-10, 14-13, 14-14, 14-15, 14-18, 14-19, 14-20, 14-21, 14-22 | Review: alone

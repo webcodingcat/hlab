@@ -475,7 +475,9 @@ Inside `hlabd` (Go packages under `internal/`):
   `@wailsio/runtime`, with views switched by `location.hash` (`#/projects`,
   `#/projects/<name>/<view>`, `.../<view>/new`, `.../<view>/<id>/<tab>`,
   `#/admin/<view>`; parsed in `lib/routes.ts`, a project console starts on
-  `servers`; the view list comes from `views.json`); it uses only
+  `servers`; the view list comes from `views.json`; project sections other
+  than servers and SSH keys are `views/<view>/Section.svelte` with props
+  `{project, page}`, found by ProjectConsole through `import.meta.glob`); it uses only
   the bridge; the Hetzner resources are
   managed through the management API's project proxy
   (`/mgmt/v1/projects/{name}/api/v1/...`), so the UI exercises the same

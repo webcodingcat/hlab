@@ -27,6 +27,38 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 Console menus offer only what the API accepts
+
+- Type: decision
+- Phase: phase 14
+- What: menus and selects disable or hide what the API would refuse (Attach while attached, Detach while not, Assign/Unassign by state, primary IPs only to powered-off servers without such an IP, floating IPs only within the home network zone, secondary zones without Records, TTL and import, Convert to snapshot only for backups) and the reason shows as a hint.
+- Why: a request the UI knows to fail only produces an error toast.
+- Cost of change: low
+
+## 2026-11-20 Console form defaults and editing behaviour
+
+- Type: decision
+- Phase: phase 14
+- What: a new load balancer starts with one HTTP service on port 80, a new network with 10.0.0.0/16, a new firewall rule as TCP from `0.0.0.0/0, ::/0`; editing a service locks its listen port; the firewall rules editor and dialog inputs fill from the resource only on open and after a save, so the 5 s refresh never overwrites an edit; the ISO list loads once per opening.
+- Why: the Hetzner console defaults; update_service finds a service by its port; ISOs do not change while the cloud runs.
+- Cost of change: low
+
+## 2026-11-20 Console shows API field errors and shared building blocks
+
+- Type: decision
+- Phase: phase 14
+- What: zone file import and primary nameservers show the API's 422 field message under the field; `ResourceActionsMenu` has an `onselect` hook for entries a page handles itself; `ReverseDnsDialog` takes an IPv6 `network` to set a new address in it; `protocolText` lives in `lib/format.ts`.
+- Why: one dialog per concern, and the first reverse DNS entry of an IPv6 IP must be settable.
+- Cost of change: low
+
+## 2026-11-20 UI-02 specs wait for running actions before Delete
+
+- Type: decision
+- Phase: phase 14
+- What: the load balancer and DNS specs wait until the resource has no running action before Delete.
+- Why: Delete right after create answers 423 locked under API-13, as at Hetzner; the wait weakens no check.
+- Cost of change: low
+
 ## 2026-11-20 Console resources as pure action modules
 
 - Type: decision
