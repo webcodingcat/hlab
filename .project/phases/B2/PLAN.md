@@ -5,7 +5,7 @@ Taken in by the user with /wcc:change on 2026-11-20.
 ## Items
 
 - [ ] bug: test/e2e harness: `stopRunningCloud` (test/e2e/main_test.go) stops the dev cloud only in state `running`; a developer whose dev service is up in `starting` or `refused` still gets the `task build` error because the service holds `bin\hlabd.exe` (source: B1 verifier)
-- [ ] security: networks (project deletion): `mgmt.purge` deletes kinds in sorted order, so `networks.Delete` frees the network's VLAN before the project's servers and VMs are deleted; a network another project creates in that window can get the VLAN, and its members share layer 2 with the old VMs without deny ACLs until those VMs are gone (source: 05 verifier)
+- [x] security: networks (project deletion): `mgmt.purge` deletes kinds in sorted order, so `networks.Delete` frees the network's VLAN before the project's servers and VMs are deleted; a network another project creates in that window can get the VLAN, and its members share layer 2 with the old VMs without deny ACLs until those VMs are gone (source: 05 verifier)
 - [ ] later: test/docs DOC-03: the test checks only the hand-kept list in `internal/api/deviations.go` (already missing the phase 05 and 06 endpoints), not the registered routes, so phases 07 and 08 can add endpoints without their deviations in docs/deviations.md and the test stays green (source: 06 verifier)
 - [ ] bug: test/e2e: RDNS-02 posts `change_dns_ptr` on the shared server while parallel rows run actions on it, so a full `task e2e` can fail with `423 locked` (seen at the phase 10 close; passed 3 of 3 alone), and a developer gets a red run without a product fault (source: 10 close)
 - [x] bug: loadbalancers/services: `applyHealthCheck` (internal/resources/loadbalancers/services.go) stores health-check protocol `https` as `http` with `tls: true`, so Terraform and Ansible users who set `https` read back `http` and every plan or run shows a change it never applies; the OpenAPI response enum knows only tcp and http, so returning `https` needs the validator patch too (source: 08 08-15 review)
@@ -40,14 +40,14 @@ func (e *env) postActionInto(path string, body, out any, timeout time.Duration) 
 
 ## Plans
 
-- [ ] B2-01 Project deletion deletes networks last
+- [x] B2-01 Project deletion deletes networks last
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: PROJ-04 | Tests: internal/mgmt/mgmt_test.go
   - Reads: REQUIREMENTS PROJ-04, NET-02, HOST-01; ARCHITECTURE "Data schema" and "resource (one module per resource type)"; DECISIONS "Port isolation by private VLAN"; internal/mgmt/mgmt.go `purge`; internal/resources/networks/networks.go `remove`, `Delete`, `allocVLAN`
   - Size: ~80 lines in 2 files
   - Adjusts: -
-  - [ ] internal/mgmt/mgmt.go: `purge` collects the kinds in sorted order but moves the kind `networks` (string constant in mgmt, no import of the networks package) to the end, so the VLAN kv key is released only after every server (VM) and load balancer of the project is deleted; doc comment says why (a released VLAN can go to another project's network at once)
-  - [ ] internal/mgmt/mgmt_test.go: `TestMgmt/PROJ-04/networks_last`: a project with a server and a network row, fake deleters for `servers`, `load_balancers` and `networks` recording into one shared call log; after the deletion `networks` was called last
+  - [x] internal/mgmt/mgmt.go: `purge` collects the kinds in sorted order but moves the kind `networks` (string constant in mgmt, no import of the networks package) to the end, so the VLAN kv key is released only after every server (VM) and load balancer of the project is deleted; doc comment says why (a released VLAN can go to another project's network at once)
+  - [x] internal/mgmt/mgmt_test.go: `TestMgmt/PROJ-04/networks_last`: a project with a server and a network row, fake deleters for `servers`, `load_balancers` and `networks` recording into one shared call log; after the deletion `networks` was called last
 
 - [ ] B2-02 DOC-03 checks the registered routes
   - Wave: 1 | Depends on: - | Review: alone
