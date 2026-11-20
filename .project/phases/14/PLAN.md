@@ -490,13 +490,13 @@ button "Browse…", row menu "Edit" and "Remove".
   - [x] lib/consoleNav.ts as in "Interfaces"; routes.ts: project views `snapshots` and `backups` (list and detail, no new), admin view `isos`; help.ts `ViewId`, views.json in sidebar order.
   - [x] help/snapshots.md and help/backups.md (from help/images.md, split by type); tests/unit/routes.test.ts gets the new views and `#/admin/isos`.
 
-- [ ] 14-31 Own ISOs served and attached
+- [x] 14-31 Own ISOs served and attached
   - Wave: 2 | Depends on: 14-25 | Review: alone
   - Requirements: CAT-10 | Tests: internal/resources/isos/isos_test.go, internal/resources/servers/iso_test.go
   - Reads: CONTEXT "Findings plans 14-25 onward"; RESEARCH.md "2."; PLAN "Interfaces" (catalog); internal/resources/isos/isos.go, internal/resources/servers/iso.go; OpenAPI `GET /isos` (name filter) and `POST /servers/{id}/actions/attach_iso` in the reference
   - Size: ~200 lines in 4 files
-  - [ ] internal/resources/isos/isos.go: list and get over `AllISOs()` (catalog then own ISOs by ID), `name` filter matching catalog ISOs only; internal/resources/servers/iso.go: attach through `Catalog.ISO(ref)` (own ISOs by ID only) and `EnsureISO(iso.CacheName)`.
-  - [ ] internal/resources/isos/isos_test.go and internal/resources/servers/iso_test.go: the CAT-10 subtests.
+  - [x] internal/resources/isos/isos.go: list and get over `AllISOs()` (catalog then own ISOs by ID), `name` filter matching catalog ISOs only; internal/resources/servers/iso.go: attach through `Catalog.ISO(ref)` (own ISOs by ID only) and `EnsureISO(iso.CacheName)`.
+  - [x] internal/resources/isos/isos_test.go and internal/resources/servers/iso_test.go: the CAT-10 subtests.
 
 - [ ] 14-32 Cloud: own ISOs file, copies and cache cleanup
   - Wave: 2 | Depends on: 14-25, 14-26 | Review: alone
@@ -515,6 +515,7 @@ button "Browse…", row menu "Edit" and "Remove".
   - [ ] internal/bridge/service.go: `ISOs`, `AddISO`, `UpdateISO`, `RemoveISO` over the catalog functions and `OwnISOsFile`, working while the cloud is stopped, then `reload()`; field errors as `Invalid`; `ISOList.Problem` from `OwnISOsWarnings`.
   - [ ] cmd/hlab-tray: a `Files` Wails service with `PickISOFile` (`app.Dialog.OpenFile().SetTitle("Select ISO").AddFilter("ISO images", "*.iso").CanChooseFiles(true).AttachToWindow(win).PromptForSingleSelection()`), registered beside the bridge services.
 
+  - Note (from 14-31 review): catalog ISO IDs reach 130005, inside the own range from 100000; AddOwnISO/the bridge must pick an ID above every catalog and own ISO ID, never just the next own one.
 - [ ] 14-34 Snapshots and Backups views
   - Wave: 2 | Depends on: 14-27, 14-30 | Review: alone
   - Requirements: UI-02 | Tests: - (images requests proven by images.test.ts; CONTEXT Q1)
