@@ -1,12 +1,13 @@
 <script lang="ts">
   import { Cpu, ScrollText, Settings as SettingsIcon } from "@lucide/svelte";
   import Banner from "./lib/Banner.svelte";
+  import ProjectMenu from "./lib/ProjectMenu.svelte";
   import SectionSidebar, { type SectionItem } from "./lib/SectionSidebar.svelte";
   import Toast from "./lib/Toast.svelte";
   import TopBar from "./lib/TopBar.svelte";
   import { href, initCloud, initRoute, route, views, type ViewId } from "./state";
   import Logs from "./views/Logs.svelte";
-  import ProjectDetail from "./views/ProjectDetail.svelte";
+  import ProjectConsole from "./views/ProjectConsole.svelte";
   import Projects from "./views/Projects.svelte";
   import ServerTypes from "./views/ServerTypes.svelte";
   import Settings from "./views/Settings.svelte";
@@ -45,7 +46,7 @@
         {#if $route.area === "project"}
           <a href={href({ area: "projects" })}>Projects</a>
           <span aria-hidden="true">/</span>
-          <span aria-current="page">{$route.project}</span>
+          {#key $route.project}<ProjectMenu project={$route.project} />{/key}
         {:else if $route.area === "admin"}
           <span aria-current="page">Administration</span>
         {:else}
@@ -65,9 +66,7 @@
       </main>
     </div>
   {:else if $route.area === "project"}
-    <main>
-      {#key $route.project}<ProjectDetail name={$route.project} />{/key}
-    </main>
+    {#key $route.project}<ProjectConsole project={$route.project} />{/key}
   {:else}
     <main><Projects /></main>
   {/if}

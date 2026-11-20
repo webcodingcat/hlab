@@ -1,14 +1,15 @@
 <script lang="ts">
   import Button from "../lib/Button.svelte";
+  import CloudStopped from "../lib/CloudStopped.svelte";
   import ConfirmDialog from "../lib/ConfirmDialog.svelte";
   import Field from "../lib/Field.svelte";
   import HelpButton from "../lib/HelpButton.svelte";
   import Table, { type Column } from "../lib/Table.svelte";
   import { ApiError, mgmt } from "../lib/bridge";
   import { action, showError } from "../lib/toast";
-  import { href, running, type Project } from "../state";
+  import { href, lastProject, running, type Project } from "../state";
 
-  // Project list; a row click opens the project's console.
+  // The project list, full width; a row click opens the project's console.
   let rows = $state<Project[] | undefined>();
   let failing = false;
 
@@ -36,6 +37,11 @@
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
   });
+
+  function openProject(p: Project) {
+    lastProject.set(p.name);
+    location.hash = href({ area: "project", project: p.name, view: "tokens" });
+  }
 
   // Create dialog.
   let createDialog: HTMLDialogElement;
@@ -109,11 +115,11 @@
     emptyText="There are no projects yet."
     createLabel="Create project"
     oncreate={openCreate}
-    onrowclick={(p) => (location.hash = href({ area: "project", project: p.name, view: "tokens" }))}
+    onrowclick={openProject}
     actions={(p) => [{ label: "Delete", onclick: () => ((deleting = p), (confirmOpen = true)) }]}
   />
 {:else}
-  <p class="muted">Start the cloud to manage projects.</p>
+  <CloudStopped />
 {/if}
 
 <dialog bind:this={createDialog} aria-labelledby="create-project-title">
