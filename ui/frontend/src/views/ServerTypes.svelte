@@ -6,6 +6,7 @@
   import HelpButton from "../lib/HelpButton.svelte";
   import Table, { type Column } from "../lib/Table.svelte";
   import { mgmt, service } from "../lib/bridge";
+  import { actionTitle } from "../lib/format";
   import { action, errorText, showError, showSuccess } from "../lib/toast";
   import { running } from "../state";
 
@@ -143,7 +144,7 @@
         await load();
       }
     } catch (err) {
-      showError(editing ? `Edit server type ${own.name}` : "Add server type", err);
+      showError(actionTitle("Server type", own.name, editing ? "Edit" : "Add"), err);
     } finally {
       adding = false;
     }
@@ -155,7 +156,7 @@
 
   async function remove() {
     const name = removing!.name;
-    await action(`Remove server type ${name}`, () => service<void>("Service", "RemoveServerType", name));
+    await action(actionTitle("Server type", name, "Remove"), () => service<void>("Service", "RemoveServerType", name));
     await load();
   }
 

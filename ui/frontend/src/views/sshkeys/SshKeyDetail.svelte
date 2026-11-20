@@ -8,6 +8,7 @@
   import Field from "../../lib/Field.svelte";
   import LabelsTab from "../../lib/LabelsTab.svelte";
   import { api } from "../../lib/api";
+  import { actionTitle, resourceType } from "../../lib/format";
   import { formErrors } from "../../lib/formErrors";
   import { action, showError, showSuccess } from "../../lib/toast";
   import { href } from "../../state";
@@ -78,9 +79,10 @@
     saving = true;
     nameError = general = undefined;
     try {
+      const old = key!.name;
       key = (await api<{ ssh_key: SshKey }>(project, "PUT", path, { name: name.trim() })).ssh_key;
       name = key.name;
-      showSuccess("Rename SSH key", `SSH key renamed to ${key.name}`);
+      showSuccess(actionTitle(resourceType(path), old, "Rename"), `SSH key renamed to ${key.name}`);
     } catch (err) {
       const fe = formErrors(err, ["name"]);
       nameError = fe.fields.name;
@@ -95,7 +97,7 @@
 
   async function remove() {
     const k = key!;
-    const done = await action(`Delete SSH key ${k.name}`, () => api(project, "DELETE", path).then(() => true));
+    const done = await action(actionTitle(resourceType(path), k.name, "Delete"), () => api(project, "DELETE", path).then(() => true));
     if (done) location.hash = list;
   }
 </script>

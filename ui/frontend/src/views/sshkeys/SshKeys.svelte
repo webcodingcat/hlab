@@ -1,5 +1,5 @@
 <script module lang="ts">
-  import { createdText, labelText } from "../../lib/format";
+  import { actionTitle, createdText, labelText, resourceType } from "../../lib/format";
 
   /** SshKey as the Hetzner API returns it. */
   export type SshKey = {
@@ -70,7 +70,8 @@
 
   async function remove() {
     const k = deleting!;
-    await action(`Delete SSH key ${k.name}`, () => api(project, "DELETE", `/ssh_keys/${k.id}`));
+    const path = `/ssh_keys/${k.id}`;
+    await action(actionTitle(resourceType(path), k.name, "Delete"), () => api(project, "DELETE", path));
     await load();
   }
 </script>

@@ -25,7 +25,7 @@
   import ConfirmDialog from "../../lib/ConfirmDialog.svelte";
   import HelpButton from "../../lib/HelpButton.svelte";
   import Table, { type Column } from "../../lib/Table.svelte";
-  import { listAll, runApi } from "../../lib/api";
+  import { listAll, runOn } from "../../lib/api";
   import { createdText, labelText } from "../../lib/format";
   import { request } from "../../lib/resourceActions";
   import { tabs } from "../../lib/resources/certificates";
@@ -95,7 +95,7 @@
     const c = pending;
     const req = request(tabs.delete, c.id)!;
     // Not awaited: the dialog closes at once, the toast follows the request.
-    runApi(project, `${tabs.delete.label} ${c.name}`, req.method, req.path, req.body).then(load);
+    runOn(project, c.name, tabs.delete.label, req).then(load);
   }
 </script>
 

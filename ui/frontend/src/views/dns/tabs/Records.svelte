@@ -2,7 +2,7 @@
   import Dialog from "../../../lib/Dialog.svelte";
   import ResourceActionsMenu from "../../../lib/ResourceActionsMenu.svelte";
   import Table, { type Column } from "../../../lib/Table.svelte";
-  import { listAll, runApi } from "../../../lib/api";
+  import { listAll, runOn } from "../../../lib/api";
   import { labelText } from "../../../lib/format";
   import { request, type Input, type ResourceAction } from "../../../lib/resourceActions";
   import { tabs } from "../../../lib/resources/zones";
@@ -77,7 +77,7 @@
     addOpen = false;
     const a = tabs.create_rrset;
     const req = request(a, zone.id, i)!;
-    const res = await runApi(project, `${a.label} ${i.name} ${i.type}`, req.method, req.path, req.body);
+    const res = await runOn(project, `${i.name} ${i.type}`, a.label, req);
     if (res !== undefined) changed();
   }
 </script>

@@ -4,6 +4,7 @@
   import Button from "../../../lib/Button.svelte";
   import { runAction, type Action, type ActionResult } from "../../../lib/actions";
   import { api } from "../../../lib/api";
+  import { actionTitle, resourceType } from "../../../lib/format";
   import { formErrors } from "../../../lib/formErrors";
   import { request } from "../../../lib/resourceActions";
   import { tabs } from "../../../lib/resources/zones";
@@ -55,7 +56,7 @@
     const req = request(action, zone.id, { primary_nameservers })!;
     busy = true;
     const res = await runAction(
-      `${action.label} ${zone.name}`,
+      actionTitle(resourceType(req.path), zone.name, action.label),
       async () => {
         try {
           return await api<ActionResult>(project, req.method, req.path, req.body);
