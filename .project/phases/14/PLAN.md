@@ -541,14 +541,14 @@ button "Browse…", row menu "Edit" and "Remove".
   - [x] The same in views/load-balancers/tabs/Targets.svelte and views/networks (Section, NetworkDetail, NetworkCreate).
   - [x] The same in views/floating-ips (Section, FloatingIpDetail, FloatingIpCreate) and views/primary-ips (Section, PrimaryIpDetail, PrimaryIpCreate).
 
-- [ ] 14-37 Toast titles: DNS, Security and Administration
+- [x] 14-37 Toast titles: DNS, Security and Administration
   - Wave: 2 | Depends on: 14-27 | Review: alone
   - Requirements: UI-02 | Tests: - (format.test.ts)
   - Reads: PLAN "Interfaces" (format, api, toast types); lib/format.ts, api.ts, toast.ts `action`
   - Size: ~80 lines in 12 files
-  - [ ] Every action toast on a named resource through `runOn`/`actionTitle` in views/dns (Section, ZoneCreate, tabs/Records, tabs/ZoneFile, tabs/PrimaryNameservers; records as "Record <name> <type>").
-  - [ ] The same in views/certificates (Section, CertificateCreate) and views/sshkeys (SshKeys, SshKeyDetail).
-  - [ ] The same in views/Tokens.svelte ("Token <name>: Revoke"), Projects.svelte ("Project <name>: Delete"), ServerTypes.svelte ("Server type <name>: Remove").
+  - [x] Every action toast on a named resource through `runOn`/`actionTitle` in views/dns (Section, ZoneCreate, tabs/Records, tabs/ZoneFile, tabs/PrimaryNameservers; records as "Record <name> <type>").
+  - [x] The same in views/certificates (Section, CertificateCreate) and views/sshkeys (SshKeys, SshKeyDetail).
+  - [x] The same in views/Tokens.svelte ("Token <name>: Revoke"), Projects.svelte ("Project <name>: Delete"), ServerTypes.svelte ("Server type <name>: Remove").
 
 - [ ] 14-38 Sidebar groups and section tabs
   - Wave: 3 | Depends on: 14-28, 14-30, 14-34, 14-35 | Review: alone
