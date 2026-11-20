@@ -215,7 +215,7 @@ hlab: no terminal to ask for the Hetzner token; pass it in an environment variab
 ## Certificate authority
 
 The HLab CA signs the managed certificates of load balancers; see
-[Load balancers and certificates](../README.md#load-balancers-and-certificates).
+[Load balancers and certificates](guide.md#load-balancers-and-certificates).
 
 ### hlab ca export
 
@@ -235,7 +235,7 @@ HLab CA written to hlab-ca.pem
 (Local Computer, Trusted Root Certification Authorities) and of every
 WSL2 distribution, as `/usr/local/share/ca-certificates/hlab-ca.crt`;
 `hlab ca trust off` removes it from both. Read the
-[risk](../README.md#trusting-the-hlab-ca) first.
+[risk](guide.md#trusting-the-hlab-ca) first.
 
 - The switch is kept in `[certificates] trust_ca` of settings.toml; while
   it is on, every cloud start adds the CA again.

@@ -131,8 +131,9 @@ Other folders:
   the packages of `appliance-debs.json`: the xfs packages while
   `mkfs.xfs` is missing, HAProxy while `haproxy` is missing, with Debian's
   own HAProxy service disabled).
-- [tools/](../../tools): `openapi`, `catalog` and `icons`, run by
-  `task openapi`, `task catalog` and `task icons`.
+- [tools/](../../tools): `openapi`, `catalog`, `icons` and `screenshots`,
+  run by `task openapi`, `task catalog`, `task icons` and
+  `task docs:screenshots`.
 - [internal/apitest](../../internal/apitest): test helper that runs API
   handlers in process and validates every response against Hetzner's
   OpenAPI description; `apitest.ServersDeps` wires the servers module to
@@ -141,7 +142,7 @@ Other folders:
   in-memory fake of the platform for unit tests, with VM states, host
   resources, samples, injected failures and blocked calls.
 - [test/e2e](../../test/e2e), [test/docs](../../test/docs): end-to-end and
-  documentation tests. `test/traylaunch` starts and stops the e2e build of
+  documentation tests. [test/traylaunch](../../test/traylaunch) starts and stops the e2e build of
   the tray program for the UI end-to-end tests and the README screenshots
   and reports its CDP port.
 

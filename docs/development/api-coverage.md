@@ -254,7 +254,7 @@ the parameters of Hetzner's API description. Every other endpoint answers
 - The MTU on private networks is 1500; Hetzner uses 1450.
 - As at Hetzner, alias IPs and routes to destinations outside the
   network range are not configured in the guest; see
-  [Networks](../../README.md#networks).
+  [Networks](../guide.md#networks).
 - `DELETE /networks/{id}` detaches all servers of the network and removes
   their adapters before it answers.
 
@@ -303,7 +303,7 @@ Hetzner documents no error for these cases; HLab answers:
 - An IPv4 floating IP comes from the configured public range. HLab routes
   it to the public IPv4 of its server, so a server without public IPv4
   receives no traffic for it. The guest has to configure the address,
-  as at Hetzner; see [Primary and floating IPs](../../README.md#primary-and-floating-ips).
+  as at Hetzner; see [Primary and floating IPs](../guide.md#primary-and-floating-ips).
 - An IPv6 floating IP is formal and carries no traffic:
   `2001:db8:c000:<id>::/64` (ID 12: `2001:db8:c000:c::/64`).
 - A floating IP is assigned only to a server in the network zone of its
@@ -356,7 +356,7 @@ Hetzner documents no error for these cases; HLab answers:
 ## Zones
 
 HLab's DNS server in the appliance answers for your zones; the host, WSL2
-and the servers ask it (see [DNS zones](../../README.md#dns-zones)). No
+and the servers ask it (see [DNS zones](../guide.md#dns-zones)). No
 registrar or public nameserver is involved.
 
 - Besides a registrable domain (`example.com`, exactly one label below a
@@ -509,7 +509,7 @@ HLab answers:
   name their domains; HLab renews them 30 days before they expire.
   Clients trust them only after `hlab ca trust on`, or with the CA
   certificate from `hlab ca export`; see
-  [Load balancers and certificates](../../README.md#load-balancers-and-certificates).
+  [Load balancers and certificates](../guide.md#load-balancers-and-certificates).
 - Every certificate the HLab CA issues names the revocation list
   `http://api.hetzner.internal/hlab/v1/ca.crl`. HLab serves an empty,
   signed list there, renewed at every cloud start and every week, so

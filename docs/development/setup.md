@@ -1,5 +1,9 @@
 # Developer setup
 
+How to build HLab from source, register its development service and run
+it from your working copy. There is no installer yet, so this is also how
+you install HLab.
+
 ## Tools
 
 On the Windows host:
@@ -17,6 +21,19 @@ In WSL2 (Ubuntu 24.04 or newer, NAT mode, `dnsTunneling` on): `uv`, then
 `uv tool install ansible-core==2.22.0 --with hcloud==2.27.0` and
 `ansible-galaxy collection install hetzner.hcloud:==7.2.0`.
 
+Internet access for image, ISO, package and OpenAPI downloads.
+
+## Build
+
+Clone the repository and build, in a normal terminal in its root:
+
+```powershell
+task build
+```
+
+The programs land in `bin\`; [Build and test](build-and-test.md#build)
+says what the build produces.
+
 ## Register the development service
 
 hlabd runs as a Windows service under LocalSystem, because it creates
@@ -25,7 +42,6 @@ machine, after the first build, in an administrator PowerShell in the
 repository:
 
 ```powershell
-task build
 .\scripts\dev-setup.ps1
 ```
 

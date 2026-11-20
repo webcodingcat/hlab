@@ -76,7 +76,7 @@ several minutes. They need:
 - OpenTofu 1.13.9 as `tofu` on `PATH`; `tofu init` downloads the provider
   hetznercloud/hcloud 1.70.2 into `%LocalAppData%\hlab-e2e\tofu-plugins`,
 - one WSL2 distribution with Ubuntu 24.04 or newer, with `curl` and, as in
-  the [README](../../README.md#prerequisites-and-setup), ansible-core
+  the [tool list](setup.md#tools), ansible-core
   2.22.0 with hcloud-python 2.27.0 and the collection hetzner.hcloud 7.2.0,
 - a normal, not elevated, terminal.
 
@@ -111,8 +111,10 @@ Hetzner's refusal of an invalid token. Release builds never carry the
 
 The harness runs `task build`, starts the development cloud if it is
 stopped (and stops it again at the end if it started it), creates one
-project `e2e-<time>` with an SSH key per run, and deletes the run's servers
-at the end; the project and its SSH key stay. A running development cloud
+project `e2e-<yyyymmdd-hhmmss>` with an SSH key per run, and deletes that
+project with everything in it at the end, also after a failed row. At the
+start it deletes projects of that exact name pattern that earlier,
+interrupted runs left behind; other projects stay. A running development cloud
 holds `bin\hlabd.exe`, so the harness stops it before the build, starts it
 again afterwards and leaves it running at the end. It refuses to run while
 the release cloud (service `hlab`) runs, when
@@ -128,3 +130,31 @@ regenerates `catalog\locations.json`, `server-types.json`,
 `load-balancer-types.json` and `pricing.json` from the real Hetzner API
 (see [Developer setup](setup.md#optional-access-to-the-real-hetzner-api)).
 `catalog\images.json` is maintained by hand.
+
+## Icons
+
+```
+task icons
+```
+
+draws the application icon, the four tray state icons, the icon
+resources (`rsrc_windows_amd64.syso`) of `hlabd`, `hlab` and `hlab-tray`,
+the frontend's `app-icon.svg` and the README banner `docs\images\banner.svg`
+from one geometry in [tools/icons](../../tools/icons). The outputs are
+committed; run it only after changing the icon, and commit what it writes.
+
+## README screenshots
+
+```
+task docs:screenshots
+```
+
+renders the screenshots of the README into `docs\images`: the project
+list and the "API tokens" section of a project console, each in light
+and dark mode. It needs the development cloud running and the frontend
+dependencies (it runs `task frontend:install`). It creates the sample
+projects `demo-web`, `demo-staging` and `demo-ci` and a token in
+`demo-web`, starts the e2e build of the tray program and runs the
+Playwright project `screenshots` from `ui\frontend\tests\screenshots`
+against its window. Afterwards it deletes the projects it created; a
+token value never appears on a screenshot. Commit the new images.
