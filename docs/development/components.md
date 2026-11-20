@@ -84,8 +84,9 @@ the bridge calls in `src/lib/bridge.ts`.
 
 The project console
 ([src/views/ProjectConsole.svelte](../../ui/frontend/src/views/ProjectConsole.svelte))
-shows its sections in its sidebar: Servers, the other resource sections,
-SSH Keys and, after a separator, API tokens. Servers, SSH Keys and API
+shows its sections in its sidebar: Servers, Volumes, Load Balancers,
+Networks, Firewalls, Floating IPs, Primary IPs, DNS, Certificates, SSH
+Keys, Placement Groups, Images, ISOs and, after a separator, API tokens. Servers, SSH Keys and API
 tokens are wired in by hand. Every other section lives in
 `src/views/<view>/` with the entry component `Section.svelte`
 (props `project` and `page`), which renders the title row with the help
@@ -141,8 +142,8 @@ its title and area in `src/state.ts` and a help text
 also needs its ID in `AdminView` of `routes.ts` and an icon and a
 branch in `src/App.svelte`; a project section needs its ID in
 `ProjectView` and `projectViews` of `routes.ts` (and in `listOnly` if it
-has no create form or detail pages, in `noNew` if it has detail pages but
-no create form), an entry with title and icon in the `sections` list of
+has only a list page, in `noNew` if its `new` route is refused, as for
+ISOs), an entry with title and icon in the `sections` list of
 `ProjectConsole.svelte`, and its `src/views/<view>/Section.svelte`; for
 its requests, add a module under `src/lib/resources` with a unit test. The build tag `e2e` adds the test hooks of
 [cmd/hlab-tray/e2e.go](../../cmd/hlab-tray/e2e.go) (see

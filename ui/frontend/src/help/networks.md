@@ -17,7 +17,7 @@ balancers. Networks can only be managed while the cloud runs.
   the network) and **Delete** per route; **Resources** lists the attached
   servers and load balancers, each linking to its page; **Labels** edits
   its labels; **Protection** turns the delete protection on or off.
-- The actions menu (`…`) on a network's page offers **Change IP range**,
+- The actions menu (`…`) on a network's page offers **Rename**, **Change IP range**,
   **Change protection** and **Delete**.
 - **Change IP range** only grows the range: the new range must contain the
   old one. It is refused while servers are attached to the network.

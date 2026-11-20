@@ -23,7 +23,7 @@ runs.
   the **Auto delete** switch and the reverse DNS entries; **Labels** edits
   its labels; **Protection** turns the delete protection on or off (not
   while auto delete is on).
-- The actions menu (`…`) on that page offers **Assign** (to a powered-off
+- The actions menu (`…`) on that page offers **Rename**, **Assign** (to a powered-off
   server of the location), **Unassign**, **Reverse DNS** (choose the
   address, or for IPv6 a new address in the network, and enter a host name;
   an empty host name resets it to the default), **Change protection** and

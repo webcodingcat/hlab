@@ -28,7 +28,7 @@ Load balancers can only be managed while the cloud runs.
     keeps the samples 24 hours.
   - **Labels** edits its labels; **Protection** turns the delete protection
     on or off.
-- The actions menu (`…`) on that page offers **Change type** (after a
+- The actions menu (`…`) on that page offers **Rename**, **Change type** (after a
   confirmation), **Change algorithm** (round robin or least connections),
   **Enable public interface**, **Disable public interface** (after a
   confirmation), **Reverse DNS** (choose the IP and enter a host name; an

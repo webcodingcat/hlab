@@ -195,8 +195,8 @@ Filesystem      Size  Used Avail Use% Mounted on
 In the window, **Create volume** asks for size, name and location, or for
 a server, then with the mount option and the filesystem. **Detach** and
 **Delete** are in the row menu; a volume's page shows the Linux device
-path with a copy button, and its actions menu offers **Resize**,
-**Attach**, **Detach**, **Change protection** and **Delete**.
+path with a copy button, and its actions menu offers **Rename**,
+**Resize**, **Attach**, **Detach**, **Change protection** and **Delete**.
 
 ## Networks
 
@@ -242,8 +242,8 @@ root@app1:~# ip route add 10.99.0.0/24 via 10.0.0.1 dev eth1 onlink
 In the window, **Create network** asks for name, IP range and labels. A
 network's page has the tabs **Subnets** and **Routes** to add and delete
 them, **Resources** with the attached servers and load balancers, and
-**Change IP range** in its actions menu, which only grows the range and
-is refused while servers are attached. Subnets are always of type
+**Rename** and **Change IP range** in its actions menu; the latter only
+grows the range and is refused while servers are attached. Subnets are always of type
 `cloud`.
 
 ## Primary and floating IPs
@@ -284,7 +284,7 @@ a location or a server to assign the address to at once, the protocol,
 the name and labels; a primary IP also for **Auto delete**, which deletes
 it with its server and which its page switches on and off. **Unassign**
 and **Delete** are in the row menu. An IP's actions menu offers
-**Assign**, **Unassign**, **Reverse DNS**, **Change protection** and
+**Rename**, **Assign**, **Unassign**, **Reverse DNS**, **Change protection** and
 **Delete**; **Assign** offers only the servers the address can move to.
 
 ## Firewalls
@@ -321,7 +321,8 @@ In the window, **Create firewall** takes the inbound and outbound rules,
 the servers and label selectors to apply it to, labels and a name. A
 firewall's **Rules** tab edits all rules and **Save rules** replaces
 them at once; **Resources** applies it to a server or label selector,
-shows the servers each selector matches, and removes them again.
+shows the servers each selector matches, and removes them again. The
+firewall's actions menu offers **Rename** and **Delete**.
 
 ## DNS zones
 
@@ -415,7 +416,7 @@ targets, services, algorithm, labels and name. A load balancer's page has
 the tabs **Targets** (with the health per service port), **Services**,
 **Networking**, **Graphs** (connections, requests and bandwidth over 1 hour,
 24 hours or 7 days), **Labels** and **Protection**; its actions menu
-offers **Change type**, **Change algorithm**, **Enable public interface**,
+offers **Rename**, **Change type**, **Change algorithm**, **Enable public interface**,
 **Disable public interface**, **Reverse DNS**, **Change protection** and
 **Delete**.
 
@@ -436,7 +437,8 @@ decide so; see the next section.
 In the window, **Add certificate** uploads a certificate with its
 private key or requests a managed one for a list of domain names. A
 domain outside the project's zones fails with `dns_zone_not_found`; once
-the zone exists, **Retry** in the certificate's actions menu issues it.
+the zone exists, **Retry** in the certificate's actions menu issues it;
+**Rename** in the same menu changes its name.
 The certificate's page shows its status, domains, fingerprint, validity
 and the load balancers that use it.
 

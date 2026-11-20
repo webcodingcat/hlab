@@ -14,7 +14,8 @@ servers they apply to. Firewalls can only be managed while the cloud runs.
 - The search field filters by name, or with `=` by labels, for example
   `team=ops`.
 - **Delete** in the row menu (`…`) or in the actions menu on a firewall's
-  page deletes the firewall after a confirmation.
+  page deletes the firewall after a confirmation. That actions menu also
+  offers **Rename**.
 - On a firewall's page, the **Rules** tab edits the rules; **Save rules**
   replaces all of them at once.
 - The **Resources** tab lists the servers and label selectors the firewall

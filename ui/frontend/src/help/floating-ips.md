@@ -23,7 +23,7 @@ the cloud runs.
   description** changes it), the home location, the server and the reverse
   DNS entries; **Labels** edits its labels; **Protection** turns the delete
   protection on or off.
-- The actions menu (`…`) on that page offers **Assign** (to a server in the
+- The actions menu (`…`) on that page offers **Rename**, **Assign** (to a server in the
   network zone; assigning it to another server moves it), **Unassign**,
   **Reverse DNS** (choose the address and enter a host name; an empty host
   name resets it to the default), **Change protection** and **Delete**.

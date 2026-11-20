@@ -24,7 +24,7 @@ balancers. Certificates can only be managed while the cloud runs.
   type, the status with the issuance error, the domains, the fingerprint,
   the validity and the load balancers that use it; **Labels** edits its
   labels.
-- The actions menu (`…`) on the certificate's page offers **Retry** for a
+- The actions menu (`…`) on the certificate's page offers **Rename**, **Retry** for a
   managed certificate whose issuance failed, for example after the
   missing zone was added, and **Delete**.
 
