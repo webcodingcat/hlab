@@ -26,9 +26,10 @@
   import { showError } from "../../lib/toast";
   import { href, running, type Page } from "../../state";
   import VolumeCreate from "./VolumeCreate.svelte";
+  import VolumeDetail from "./VolumeDetail.svelte";
 
   // The "Volumes" section of a project console; page says which of its
-  // pages the route opens (list or create form).
+  // pages the route opens (list, create form or detail).
   let { project, page }: { project: string; page: Page } = $props();
 
   const list = $derived(href({ area: "project", project, view: "volumes", page: { kind: "list" } }));
@@ -103,6 +104,8 @@
   <CloudStopped />
 {:else if page.kind === "new"}
   <VolumeCreate {project} {list} />
+{:else if page.kind === "detail"}
+  <VolumeDetail {project} id={page.id} tab={page.tab} {list} />
 {:else}
   <div class="title-row">
     <h1>Volumes</h1>
@@ -118,6 +121,7 @@
     emptyText="This project has no volumes yet."
     createLabel="Create volume"
     oncreate={() => open({ kind: "new" })}
+    onrowclick={(v) => open({ kind: "detail", id: v.id, tab: "overview" })}
     actions={(v) => [
       {
         label: "Detach",
