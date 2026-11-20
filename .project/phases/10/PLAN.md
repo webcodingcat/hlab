@@ -418,15 +418,15 @@ Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes
   - Size: ~60 lines in 1 file
   - [x] internal/bridge/logs.go: `Search(query, minLevel)` and `Older(oldest)` on `LogDir` with 1000 as in "Interfaces"; an empty query returns no lines.
 
-- [ ] 10-21 Name HLab in API messages
+- [x] 10-21 Name HLab in API messages
   - Wave: 3 | Depends on: 10-23 (order) | Review: alone
   - Requirements: UI-08 | Tests: - (fixed answers in SPEC; the tests below follow the wording)
   - Reads: SPEC "Stack" (fixed API answers); UI-SPEC "Language of the interface"; finding 2
   - Size: ~60 lines in 9 files
   - Adjusts: internal/resources/servers/servers_test.go (console message), internal/resources/networks/networks_test.go (vswitch message), any other test comparing a renamed message
-  - [ ] internal/resources/servers: actions.go (`server console is not supported by HLab yet`), changetype.go and servers.go ("HLab runs only x86 servers"), with servers_test.go.
-  - [ ] internal/resources/networks/validate.go (`vswitch subnets are not supported by HLab`), networks_test.go, loadbalancers/targets.go ("HLab's transit network"), zones/rrsets.go and zones.go ("managed by HLab").
-  - [ ] internal/api/deviations.go: descriptions name "HLab" where they name the product (the CRL path `/hlab/v1/ca.crl` stays).
+  - [x] internal/resources/servers: actions.go (`server console is not supported by HLab yet`), changetype.go and servers.go ("HLab runs only x86 servers"), with servers_test.go.
+  - [x] internal/resources/networks/validate.go (`vswitch subnets are not supported by HLab`), networks_test.go, loadbalancers/targets.go ("HLab's transit network"), zones/rrsets.go and zones.go ("managed by HLab").
+  - [x] internal/api/deviations.go: descriptions name "HLab" where they name the product (the CRL path `/hlab/v1/ca.crl` stays).
 
 - [x] 10-27 Bridge: catalog locations
   - Wave: 3 | Depends on: 10-25 (order) | Review: alone
