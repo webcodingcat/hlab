@@ -6,16 +6,9 @@
   import Table, { type Column } from "../lib/Table.svelte";
   import { ApiError, mgmt } from "../lib/bridge";
   import { action, showError } from "../lib/toast";
-  import { loadProjects, running, type Project } from "../state";
-  import ProjectDetail from "./ProjectDetail.svelte";
+  import { href, running, type Project } from "../state";
 
-  // Project list; "#/projects/<name>" opens a project's detail (tokens).
-  function openedFromHash(): string | undefined {
-    const parts = location.hash.replace(/^#\/?/, "").split("/");
-    return parts[0] === "projects" && parts[1] ? decodeURIComponent(parts[1]) : undefined;
-  }
-
-  let opened = $state(openedFromHash());
+  // Project list; a row click opens the project's console.
   let rows = $state<Project[] | undefined>();
   let failing = false;
 
@@ -38,16 +31,10 @@
 
   // Lists refresh every 5 seconds while visible and the cloud runs.
   $effect(() => {
-    if (!$running || opened) return;
+    if (!$running) return;
     load();
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
-  });
-
-  $effect(() => {
-    const update = () => (opened = openedFromHash());
-    window.addEventListener("hashchange", update);
-    return () => window.removeEventListener("hashchange", update);
   });
 
   // Create dialog.
@@ -70,7 +57,7 @@
     try {
       await mgmt("POST", "/projects", { name: newName.trim() });
       createDialog.close();
-      await Promise.all([load(), loadProjects()]);
+      await load();
     } catch (err) {
       if (err instanceof ApiError && (err.code === "invalid_input" || err.code === "conflict")) {
         nameError = err.fields?.name?.join(" ") || err.message;
@@ -103,34 +90,30 @@
     action(`Delete project ${name}`, async () => {
       const { action_id } = await mgmt<{ action_id: number }>("DELETE", `/projects/${encodeURIComponent(name)}`);
       await waitAction(action_id);
-    }).finally(() => Promise.all([load(), loadProjects()]));
+    }).finally(load);
   }
 </script>
 
-{#if opened}
-  <ProjectDetail name={opened} />
-{:else}
-  <div class="title-row">
-    <h1>Projects</h1>
-    <HelpButton view="projects" />
-  </div>
+<div class="title-row">
+  <h1>Projects</h1>
+  <HelpButton view="projects" />
+</div>
 
-  {#if $running}
-    <Table
-      title="Projects"
-      {rows}
-      {columns}
-      key={(p) => p.name}
-      name={(p) => p.name}
-      emptyText="There are no projects yet."
-      createLabel="Create project"
-      oncreate={openCreate}
-      onrowclick={(p) => (location.hash = `#/projects/${encodeURIComponent(p.name)}`)}
-      actions={(p) => [{ label: "Delete", onclick: () => ((deleting = p), (confirmOpen = true)) }]}
-    />
-  {:else}
-    <p class="muted">Start the cloud to manage projects.</p>
-  {/if}
+{#if $running}
+  <Table
+    title="Projects"
+    {rows}
+    {columns}
+    key={(p) => p.name}
+    name={(p) => p.name}
+    emptyText="There are no projects yet."
+    createLabel="Create project"
+    oncreate={openCreate}
+    onrowclick={(p) => (location.hash = href({ area: "project", project: p.name, view: "tokens" }))}
+    actions={(p) => [{ label: "Delete", onclick: () => ((deleting = p), (confirmOpen = true)) }]}
+  />
+{:else}
+  <p class="muted">Start the cloud to manage projects.</p>
 {/if}
 
 <dialog bind:this={createDialog} aria-labelledby="create-project-title">
