@@ -97,8 +97,10 @@ func (s *Store) Ensure(ctx context.Context, name string) (string, error) {
 // for the same name download once; on error nothing stays in ISODir.
 func (s *Store) EnsureISO(ctx context.Context, name string) (string, error) {
 	src, ok := s.opts.ISOs[name]
+	own := false
 	if !ok && s.opts.ISOSource != nil {
 		src, ok = s.opts.ISOSource(name)
+		own = ok
 	}
 	if !ok {
 		return "", fmt.Errorf("images: unknown ISO %q", name)
@@ -114,15 +116,15 @@ func (s *Store) EnsureISO(ctx context.Context, name string) (string, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("images: %w", err)
 	}
-	if err := s.fetchISO(ctx, src, dst); err != nil {
+	if err := s.fetchISO(ctx, src, own, dst); err != nil {
 		return "", fmt.Errorf("images: ISO %s: %w", name, err)
 	}
 	return dst, nil
 }
 
 // fetchISO downloads and verifies the ISO of src into dst through a
-// temporary file in the same folder.
-func (s *Store) fetchISO(ctx context.Context, src Source, dst string) error {
+// temporary file in the same folder; own sources go through fetchOwn.
+func (s *Store) fetchISO(ctx context.Context, src Source, own bool, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
 		return err
 	}
@@ -132,7 +134,11 @@ func (s *Store) fetchISO(ctx context.Context, src Source, dst string) error {
 	}
 	tmp := f.Name()
 	defer func() { _ = os.Remove(tmp) }()
-	err = s.fetchSource(ctx, src, f)
+	if own {
+		err = s.fetchOwn(ctx, src, f)
+	} else {
+		err = s.fetchSource(ctx, src, f)
+	}
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}

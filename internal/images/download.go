@@ -29,12 +29,8 @@ var errNotFound = errors.New("not found")
 
 // fetchSource downloads the file of src into f and verifies it against its
 // checksum file. When the URL or the checksum URL answers 404, the fallback
-// pair is tried. A Path source is copied, and a source without ChecksumURL
-// is checked against SHA256 when that is set.
+// pair is tried.
 func (s *Store) fetchSource(ctx context.Context, src Source, f *os.File) error {
-	if src.Path != "" || src.ChecksumURL == "" {
-		return s.fetchOwn(ctx, src, f)
-	}
 	err := s.fetchPair(ctx, src.URL, src.ChecksumURL, f)
 	if errors.Is(err, errNotFound) && src.FallbackURL != "" {
 		err = s.fetchPair(ctx, src.FallbackURL, src.FallbackChecksumURL, f)
@@ -42,8 +38,9 @@ func (s *Store) fetchSource(ctx context.Context, src Source, f *os.File) error {
 	return err
 }
 
-// fetchOwn copies the local file src.Path, or downloads src.URL, into f and
-// compares its SHA-256 with src.SHA256 when that is set.
+// fetchOwn fetches an own ISO source: it copies the local file src.Path, or
+// downloads src.URL, into f and compares its SHA-256 with src.SHA256 when
+// that is set.
 func (s *Store) fetchOwn(ctx context.Context, src Source, f *os.File) error {
 	var (
 		body io.ReadCloser
