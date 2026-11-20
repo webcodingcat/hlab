@@ -53,7 +53,7 @@
       </select>
     {/snippet}
   </Field>
-  <fieldset class="source">
+  <fieldset class="source" role="radiogroup" aria-label="Source">
     <legend>Source</legend>
     <label class="check"><input type="radio" name="source" value="url" bind:group={spec.source} /> URL</label>
     <label class="check"><input type="radio" name="source" value="path" bind:group={spec.source} /> Local file</label>
