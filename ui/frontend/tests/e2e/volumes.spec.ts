@@ -62,6 +62,12 @@ test("UI-02 volumes", async ({ page, shared }) => {
       )
       .toEqual({ size: 12, server: serverId, format: "ext4", location });
     const [created] = await named<Volume>(token, "/volumes", "volumes", name);
+    // The volume stays locked until its create action (formatting) ends.
+    await expect
+      .poll(async () => ((await api(token, `/volumes/${created.id}/actions?status=running`)).body as { actions: unknown[] }).actions.length, {
+        timeout: 2 * 60_000,
+      })
+      .toBe(0);
     await section(page, "Volumes");
 
     // A label added in its Labels tab is in the API.
