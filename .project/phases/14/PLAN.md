@@ -440,13 +440,13 @@ button "Browse…", row menu "Edit" and "Remove".
   - [x] Check the eleven help texts against the built views (only existing views and buttons).
   - [x] README.md (tray program: every resource section), docs/guide.md (the console for each resource, at the matching sections), docs/development/components.md (resourceActions, lib/resources, section convention); regenerate the console screenshots with `task docs:screenshots`.
 
-- [ ] 14-25 Own ISOs in the catalog
+- [x] 14-25 Own ISOs in the catalog
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: CAT-10, UI-10 | Tests: internal/catalog/isos_custom_test.go
   - Reads: CONTEXT "Findings plans 14-25 onward"; RESEARCH.md "2."; REQUIREMENTS CAT-10, UI-10; ARCHITECTURE "Files and formats" (isos.custom.json), "images"; PLAN "Interfaces" (Findings plans); internal/catalog/catalog.go (ISO, splitHlab), custom.go as the pattern; OpenAPI `GET /isos/{id}` response in the reference
   - Size: ~350 lines in 3 files
-  - [ ] internal/catalog/isos_custom.go: ISOSource, OwnISOSpec, OwnISOCacheName, ReloadOwnISOs, DropOwnISO, OwnISOsWarnings, OwnISOs, AllISOs, ISOSourceByCacheName, AddOwnISO, UpdateOwnISO, RemoveOwnISO as in "Interfaces"; catalog.go: the new ISO fields (catalog ISOs get CacheName = Name), `ISO(ref)` matching own ISOs by ID only, a guarded own ISO list.
-  - [ ] internal/catalog/isos_custom_test.go.
+  - [x] internal/catalog/isos_custom.go: ISOSource, OwnISOSpec, OwnISOCacheName, ReloadOwnISOs, DropOwnISO, OwnISOsWarnings, OwnISOs, AllISOs, ISOSourceByCacheName, AddOwnISO, UpdateOwnISO, RemoveOwnISO as in "Interfaces"; catalog.go: the new ISO fields (catalog ISOs get CacheName = Name), `ISO(ref)` matching own ISOs by ID only, a guarded own ISO list.
+  - [x] internal/catalog/isos_custom_test.go.
 
 - [x] 14-26 Image store: own ISO sources
   - Wave: 1 | Depends on: - | Review: alone
@@ -506,6 +506,7 @@ button "Browse…", row menu "Edit" and "Remove".
   - [ ] internal/cloud/isos.go (new) and reload.go: create isos.custom.json as `[]` with the settings.toml ACL when missing; read own ISOs at start and on reload (`ReloadOwnISOs`); copy Path sources in the background through `EnsureISO`, a failed copy calls `DropOwnISO`; delete `own-*` files in `<data>\isos` that no served own ISO names and no server has attached, at start and on reload; cloud.go: `images.Options.ISOSource`, the `custom_isos` problem from `OwnISOsWarnings` in `/status`.
   - [ ] internal/cloud/reload_test.go: the CAT-10 subtests.
 
+  - Note (from 14-25): `catalog.ISOSourceByCacheName` maps only URL and Format; map `OwnSource.Path` and `SHA256` into `images.Source` here.
 - [ ] 14-33 Tray bridge for own ISOs and the file dialog
   - Wave: 2 | Depends on: 14-25 | Review: alone
   - Requirements: UI-10 | Tests: - (UI-10 e2e of 14-41; the file logic is tested in 14-25)
