@@ -80,7 +80,7 @@ the parameters of Hetzner's API description. Every other endpoint answers
   more vCPUs than the host has logical CPUs, when its RAM exceeds the
   host's free RAM minus `reserve_ram_mb`, or when its disk does not fit
   into the free space of the data folder minus `reserve_disk_gb` (see the
-  [configuration reference](configuration.md#settingstoml)); `rebuild`
+  [configuration reference](../configuration.md#settingstoml)); `rebuild`
   answers the same when the disk does not fit. A stopped server holds no
   RAM.
 - Only `name`, `server_type`, `image`, `location`, `ssh_keys`, `user_data`,
@@ -175,7 +175,7 @@ the parameters of Hetzner's API description. Every other endpoint answers
 - `/isos` lists the five ISOs of hlab's catalog (Ubuntu live server
   22.04.5, 24.04.5 and 26.04.1, Debian netinst 12.15.0 and 13.7.0) with
   hlab's own IDs from 130001, not Hetzner's ISOs; there are no private
-  ISOs. See the [configuration reference](configuration.md#isos).
+  ISOs. See the [configuration reference](../configuration.md#isos).
 - The first `attach_iso` of an ISO downloads it inside the action, which
   takes minutes.
 - An unknown or deprecated ISO answers 422 `invalid_input` on the field
@@ -418,7 +418,7 @@ registrar or public nameserver is involved.
 - A CNAME is followed inside hlab's zones and, for outside names, through
   the host's DNS servers, at most 8 steps.
 - hlab warns when a zone you create hides a domain that exists publicly;
-  see [hlab cloud status](commands.md#hlab-cloud-status).
+  see [hlab cloud status](../commands.md#hlab-cloud-status).
 
 ## Reverse DNS
 
@@ -559,7 +559,7 @@ nothing physically: a `spread` group only records its member servers.
 
 - `/server_types` lists the server types of hlab's catalog, followed by
   your own types from `server-types.custom.json` (see the
-  [configuration reference](configuration.md#custom-server-types)).
+  [configuration reference](../configuration.md#custom-server-types)).
   `hlab catalog update` replaces the catalog types with the current ones
   from Hetzner.
 - `/pricing` shows the prices of hlab's catalog. Its `server_types` list
