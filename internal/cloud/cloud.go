@@ -234,6 +234,9 @@ func (c *Cloud) start(ctx context.Context, params []string) error {
 	if err := ensureCustomServerTypes(c.d.Paths.Config); err != nil {
 		return fmt.Errorf("create the own server types file: %w", err)
 	}
+	if err := ensureCustomISOs(c.d.Paths.Config); err != nil {
+		return fmt.Errorf("create the own ISOs file: %w", err)
+	}
 	customFile := filepath.Join(c.d.Paths.Config, customServerTypesFile)
 	var catWarns []string
 	c.cat, catWarns, err = catalog.LoadAll(c.d.Paths.Catalog, c.d.Paths.Config, customFile)
@@ -256,10 +259,12 @@ func (c *Cloud) start(ctx context.Context, params []string) error {
 		Catalog:       c.cat.ImageSources(),
 		Convert:       conv.ConvertToDynamic,
 		ISOs:          c.cat.ISOSources(),
+		ISOSource:     c.cat.ISOSourceByCacheName,
 		ISODir:        filepath.Join(set.Storage.DataFolder, "isos"),
 		RescueImage:   applianceImage,
 		PrepareRescue: c.prepareRescue,
 	})
+	c.loadOwnISOs(ctx)
 
 	if err := c.plat.EnsureSwitch(ctx, platform.SwitchSpec{Name: c.tag, PVLANPrimary: pvlanPrimary, PVLANSecondary: pvlanSecondary}); err != nil {
 		return err
@@ -592,6 +597,9 @@ func (c *Cloud) mgmtStatus() mgmt.Status {
 	}
 	if w := c.cat.OwnTypesWarning(); w != "" {
 		st.Problems = append(st.Problems, mgmt.Problem{Code: problemCustomServerTypes, Message: w})
+	}
+	for _, w := range c.cat.OwnISOsWarnings() {
+		st.Problems = append(st.Problems, mgmt.Problem{Code: problemCustomISOs, Message: w})
 	}
 	for _, z := range c.shadow.List() {
 		st.ShadowingZones = append(st.ShadowingZones, mgmt.ShadowingZone{Zone: z.Zone, Project: z.Project})

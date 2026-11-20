@@ -73,7 +73,7 @@ func (e ownISOEntry) iso() ISO {
 	return ISO{
 		ID:           e.ID,
 		Architecture: e.Architecture,
-		Source:       images.Source{URL: e.Hlab.Source.URL, Format: "iso"},
+		Source:       images.Source{URL: e.Hlab.Source.URL, Path: e.Hlab.Source.Path, SHA256: e.Hlab.Source.SHA256, Format: "iso"},
 		Raw:          raw,
 		Own:          true,
 		CacheName:    e.Hlab.Name,
