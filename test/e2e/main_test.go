@@ -199,9 +199,14 @@ func deleteProject(name string) error {
 	return nil
 }
 
-// stopRunningCloud stops the dev cloud if it runs and waits until its
-// service has stopped, so bin\hlabd.exe is free for the build. Without a
-// built hlab.exe there is nothing to ask and nothing to stop.
+// stopRunningCloud frees bin\hlabd.exe for the build in every state in
+// which the dev service holds it: a starting cloud is waited for and then
+// handled by its new state, a running one is stopped, a stopping one is
+// waited for. In stopped and refused the service process has exited (a
+// refused start ends the service), so nothing needs to stop. It reports
+// whether the cloud was running (or came up from starting), so the harness
+// leaves it running as found. Without a built hlab.exe there is nothing to
+// ask and nothing to stop.
 func stopRunningCloud() (bool, error) {
 	if notExist(harness.hlab) {
 		return false, nil
@@ -210,16 +215,33 @@ func stopRunningCloud() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if state != "running" {
+	if state == "starting" {
+		err := waitFor(15*time.Minute, 2*time.Second, func() (bool, error) {
+			s, err := cloudState()
+			if err != nil {
+				return false, nil
+			}
+			state = s
+			return s != "starting", nil
+		})
+		if err != nil {
+			return false, fmt.Errorf("the cloud is still starting before the build: %w", err)
+		}
+	}
+	switch state {
+	case "running":
+		if out, err := runHlab(context.Background(), 10*time.Minute, "cloud", "stop"); err != nil {
+			return false, fmt.Errorf("hlab cloud stop before the build: %w\n%s", err, out)
+		}
+		if err := waitCloudState("stopped", 10*time.Minute); err != nil {
+			return false, err
+		}
+		return true, nil
+	case "stopping":
+		return false, waitCloudState("stopped", 10*time.Minute)
+	default:
 		return false, nil
 	}
-	if out, err := runHlab(context.Background(), 10*time.Minute, "cloud", "stop"); err != nil {
-		return false, fmt.Errorf("hlab cloud stop before the build: %w\n%s", err, out)
-	}
-	if err := waitCloudState("stopped", 10*time.Minute); err != nil {
-		return false, err
-	}
-	return true, nil
 }
 
 func teardown() error {
@@ -432,6 +454,10 @@ func cloudState() (string, error) {
 	return st.State, nil
 }
 
+// waitCloudState waits until `hlab cloud status` reports want. While it
+// waits for "stopped", a refused state counts as stopped: hlab reports it
+// only when the service has stopped, and the state file can still hold the
+// refusal of an earlier start.
 func waitCloudState(want string, timeout time.Duration) error {
 	var last string
 	err := waitFor(timeout, 2*time.Second, func() (bool, error) {
@@ -440,6 +466,9 @@ func waitCloudState(want string, timeout time.Duration) error {
 			return false, nil
 		}
 		last = s
+		if s == "refused" && want == "stopped" {
+			return true, nil
+		}
 		if s == "refused" {
 			return false, fmt.Errorf("the cloud refused to start; see hlab cloud status")
 		}

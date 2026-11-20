@@ -290,6 +290,11 @@ const idleTimeout = 20 * time.Minute
 // module's Deleter, then the project with the remaining rows, and pushes
 // the agent document. It stops at the first failing Delete or a wait that
 // times out and keeps the project.
+//
+// The kinds go in sorted order, except networks, which go last: deleting a
+// network releases its VLAN, and a released VLAN can go to another
+// project's network at once, whose members would then share layer 2 with
+// this project's VMs until those are deleted.
 func (s server) purge(ctx context.Context, p store.Project, progress func(int)) error {
 	type item struct {
 		kind string
@@ -306,7 +311,7 @@ func (s server) purge(ctx context.Context, p store.Project, progress func(int)) 
 	}
 	var items []item
 	err = s.d.Store.Tx(func(tx store.Tx) error {
-		for _, kind := range slices.Sorted(maps.Keys(s.d.Deleters)) {
+		for _, kind := range deletionOrder(s.d.Deleters) {
 			ids, err := store.IDs(tx, kind, p.ID)
 			if err != nil {
 				return err
@@ -336,6 +341,19 @@ func (s server) purge(ctx context.Context, p store.Project, progress func(int)) 
 	}
 	slog.Info("project deleted", "project", p.Name, "resources", len(items))
 	return nil
+}
+
+// networksKind is the kind of the networks module; mgmt does not import it.
+const networksKind = "networks"
+
+// deletionOrder returns the kinds of deleters sorted, with networksKind
+// moved to the end.
+func deletionOrder(deleters map[string]resource.Deleter) []string {
+	kinds := slices.Sorted(maps.Keys(deleters))
+	if i := slices.Index(kinds, networksKind); i >= 0 {
+		kinds = append(slices.Delete(kinds, i, i+1), networksKind)
+	}
+	return kinds
 }
 
 // getAction answers a management action, that is one without a project.

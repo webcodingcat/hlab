@@ -114,9 +114,12 @@ stopped (and stops it again at the end if it started it), creates one
 project `e2e-<yyyymmdd-hhmmss>` with an SSH key per run, and deletes that
 project with everything in it at the end, also after a failed row. At the
 start it deletes projects of that exact name pattern that earlier,
-interrupted runs left behind; other projects stay. A running development cloud
-holds `bin\hlabd.exe`, so the harness stops it before the build, starts it
-again afterwards and leaves it running at the end. It refuses to run while
+interrupted runs left behind; other projects stay. A development cloud
+that runs holds `bin\hlabd.exe`, so the harness stops it before the build,
+starts it again afterwards and leaves it running at the end. A cloud that
+is still starting is waited for (up to 15 minutes) and then handled by the
+state it reaches; a cloud that is stopping is waited for until it has
+stopped. It refuses to run while
 the release cloud (service `hlab`) runs, when
 `hlab-dev` points to another working copy, or in an elevated terminal.
 
