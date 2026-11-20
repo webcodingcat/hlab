@@ -2,7 +2,7 @@
 
 ## settings.toml
 
-hlab reads `settings.toml` from its data folder when the cloud starts:
+HLab reads `settings.toml` from its data folder when the cloud starts:
 `%ProgramData%\hlab-dev\settings.toml` for the development service
 (`%ProgramData%\hlab\settings.toml` for the release profile). Setting up the
 service creates an empty file that interactive users may edit. Every key is
@@ -10,7 +10,7 @@ optional; a missing key keeps its default. Changes apply at the next
 `hlab cloud start`; `stop_behaviour` is also read again at
 `hlab cloud stop`.
 
-The Settings view of the [tray program](../README.md#the-tray-program)
+Administration > Settings in the [tray program](../README.md#the-tray-program)
 edits the file too. It saves only when every value is valid, and while the
 cloud runs, a save applies `level` at once. `hlab ca trust` and the
 tray rewrite the file with all current settings, and comments in it are
@@ -104,12 +104,12 @@ Your own server types go in `server-types.custom.json` beside
 settings.toml (`%ProgramData%\hlab-dev\server-types.custom.json` for the
 development service). The cloud start creates it with an empty list `[]`
 when it is missing, with the permissions of settings.toml, so interactive
-users may edit it. The Server Types view of the
+users may edit it. Administration > Server Types in the
 [tray program](../README.md#the-tray-program) adds and removes types in
 it; you can also edit it by hand.
 
 The file is a JSON array of server type objects in the format of
-Hetzner's API. hlab serves the types after those of the catalog, in
+Hetzner's API. HLab serves the types after those of the catalog, in
 `/server_types` and `/pricing`, and `POST /servers` accepts them like any
 other type:
 
@@ -138,7 +138,7 @@ other type:
   catalog type.
 - `cores`, `memory` (GB) and `disk` (GB) are the size of the VM.
 - `locations` names the locations the type is offered in.
-- `architecture` is `x86`; hlab refuses to create servers of `arm` types.
+- `architecture` is `x86`; HLab refuses to create servers of `arm` types.
 - Without `prices`, `/pricing` shows zero prices for the type in each of
   its locations.
 
@@ -150,7 +150,9 @@ line and only the catalog types are served. The same happens when
 Changes by hand apply at the next `hlab cloud start`; changes made in the
 tray apply at once while the cloud runs, otherwise at the next start. The
 tray gives a new type the next free `id` from 100000, `architecture`
-`x86`, `storage_type` `local` and zero prices in its locations.
+`x86`, `storage_type` `local` and zero prices in its locations; it
+writes the locations ticked in its form, or every location of the catalog
+when "All locations" is ticked.
 
 Servers of a type you remove keep running, and power on and
 rebuild still work for them; new servers and `change_type` cannot use the
@@ -174,11 +176,11 @@ development service reads them from `catalog\` of the working copy.
 `hlab catalog update` writes the current server types from Hetzner to
 `catalog\server-types.json` in the data folder
 (`%ProgramData%\hlab-dev\catalog\server-types.json`). While that file
-exists, hlab serves its server types instead of those of the shipped
+exists, HLab serves its server types instead of those of the shipped
 `server-types.json`; delete it to go back to the shipped ones at the next
 start.
 
-hlab downloads an image from the source in `images.json` the first time a
+HLab downloads an image from the source in `images.json` the first time a
 server uses it, checks it against the checksum file of the source, converts
 it once and keeps it in `<data_folder>\images`.
 
@@ -214,7 +216,7 @@ Hetzner's API plus its download source:
 
 - `url` and `checksum_url` are the ISO and the `SHA256SUMS` file that
   lists it.
-- `fallback_url` and `fallback_checksum_url` are optional; hlab uses them
+- `fallback_url` and `fallback_checksum_url` are optional; HLab uses them
   when the first pair answers 404, as Debian's `current` directory does
   after the next point release.
 - An ISO with a `deprecation` is listed but cannot be attached.
@@ -275,7 +277,7 @@ The folder of `[storage]` `data_folder` holds:
 Deleting a snapshot, backup, volume or project deletes its files; the
 downloaded images, ISOs and packages stay until you delete them.
 
-The hlab CA is not in the data folder but in `ca` beside settings.toml
+The HLab CA is not in the data folder but in `ca` beside settings.toml
 (`%ProgramData%\hlab-dev\ca`): `ca.pem` (the CA certificate), `ca.key`
 (its private key) and `ca.crl` (the revocation
 list). The first cloud start creates them; they stay the same until you
@@ -288,4 +290,5 @@ settings.toml (`%ProgramData%\hlab-dev\logs\hlabd.log`), one JSON object
 per line. At 10 MB the file becomes `hlabd.log.1`, older files move on up
 to `hlabd.log.5`, and the oldest is deleted, so the log never takes much
 more than 60 MB. [`hlab logs`](commands.md#hlab-logs) shows and follows
-these files.
+these files; Administration > Logs in the tray program also searches all
+of them and loads older lines from them.

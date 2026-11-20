@@ -112,7 +112,7 @@ server and the SSH key with the project, and `bin\hlab.exe cloud stop`.
 All `hlab` commands are in the [command reference](docs/commands.md),
 the settings in the [configuration reference](docs/configuration.md),
 and the differences from the real API in
-[Known deviations](docs/development/api-coverage.md).
+[Known deviations](docs/deviations.md).
 
 ## The tray program
 
@@ -420,7 +420,7 @@ warning line for the zone; see the
 
 A secondary zone is accepted but not transferred: its names are looked up
 in the public DNS as before. The details are in
-[Known deviations](docs/development/api-coverage.md#zones).
+[Known deviations](docs/deviations.md#dns-and-reverse-dns).
 
 ### Reverse DNS
 
@@ -460,7 +460,7 @@ sessions, the redirect from HTTP to HTTPS, health checks, private
 networks (`--network`, `--use-private-ip`), the PROXY protocol and
 `hcloud load-balancer metrics` work as at Hetzner. Each load balancer is
 an HAProxy instance in the appliance VM; the differences are in
-[Known deviations](docs/development/api-coverage.md#load-balancers).
+[Known deviations](docs/deviations.md#load-balancers-and-certificates).
 
 An HTTPS service takes uploaded or managed certificates. A managed
 certificate is issued at once when its domains lie in a DNS zone of the
@@ -662,7 +662,7 @@ runs, before you remove the service.
   firewalls, DNS zones, load balancer types, load balancers and
   certificates. Every other endpoint answers `not_found`, and the server
   action `request_console` answers `unsupported_error`. The details are
-  in [Known deviations](docs/development/api-coverage.md).
+  in [Known deviations](docs/deviations.md).
 - The tray program has views for projects and tokens, server types,
   settings and logs only; manage the resources of a project with hcloud,
   OpenTofu or Ansible.

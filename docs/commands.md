@@ -1,7 +1,7 @@
 # Command reference
 
 `hlab` manages the local cloud: start and stop, projects, API tokens,
-the server type catalog and the hlab CA.
+the server type catalog and the HLab CA.
 In a working copy it is `bin\hlab.exe`; the examples write `hlab`.
 
 `hlab cloud start`, `stop` and `status` work at any time. All other
@@ -37,15 +37,15 @@ start with `hlab cloud status`. No administrator rights are needed.
 the cloud is starting
 ```
 
-`--discard-state` confirms that hlab may throw away a state it refused to
+`--discard-state` confirms that HLab may throw away a state it refused to
 start with: a state file this version cannot read (written by a newer
-hlab version, or damaged), or a state that holds addresses outside a
+HLab version, or damaged), or a state that holds addresses outside a
 changed `public_range` (see
-[configuration](configuration.md#settingstoml)). hlab then renames the
+[configuration](configuration.md#settingstoml)). HLab then renames the
 state file to `state.db.discarded-<UTC time>`, deletes the server VMs with
 their disks, volumes and snapshots, removes the old host network settings
 and DNS rules, and starts with an empty state. Downloaded images and ISOs,
-the appliance and the hlab CA stay. A start refused for such a state shows
+the appliance and the HLab CA stay. A start refused for such a state shows
 `state: refused` and names this flag on the `problem:` line of
 `hlab cloud status`. A state that can be used is never discarded; the flag
 is then ignored and the log says so:
@@ -94,8 +94,8 @@ other profile runs, the status shows `state: refused` and the reason on a
 `problem:` line.
 
 While the cloud runs, the host, WSL2 and the servers resolve the names of
-a zone you create in hlab through hlab, so a zone such as `example.com`
-hides the real domain. hlab asks the public DNS for each primary zone when
+a zone you create in HLab through HLab, so a zone such as `example.com`
+hides the real domain. HLab asks the public DNS for each primary zone when
 it is created or imported and at every cloud start; when the domain
 exists, the status shows one line per zone, and the JSON output lists it
 under `shadowing_zones` with `zone` and `project`:
@@ -192,7 +192,7 @@ Updates the server type catalog from the real Hetzner Cloud API with a
 Hetzner API token of yours. On a terminal the command asks for the token
 without showing it; in a script, put the token in an environment variable
 and name it with `--hetzner-token-env <variable>`. Without a terminal and
-without that flag the command exits with `2`. hlab uses the token for this
+without that flag the command exits with `2`. HLab uses the token for this
 one update and never stores or logs it. The updated types are served at
 once and kept for later starts; your own server types stay.
 
@@ -214,24 +214,24 @@ hlab: no terminal to ask for the Hetzner token; pass it in an environment variab
 
 ## Certificate authority
 
-The hlab CA signs the managed certificates of load balancers; see
+The HLab CA signs the managed certificates of load balancers; see
 [Load balancers and certificates](../README.md#load-balancers-and-certificates).
 
 ### hlab ca export
 
-`hlab ca export <file>` writes the certificate of the hlab CA (PEM) to the
+`hlab ca export <file>` writes the certificate of the HLab CA (PEM) to the
 file, for clients that do not use the host's trust store, such as
 `curl --cacert` or a server that gets it through cloud-init. The file
 holds no private key.
 
 ```
 > hlab ca export hlab-ca.pem
-hlab CA written to hlab-ca.pem
+HLab CA written to hlab-ca.pem
 ```
 
 ### hlab ca trust
 
-`hlab ca trust on` adds the hlab CA to the trust store of Windows
+`hlab ca trust on` adds the HLab CA to the trust store of Windows
 (Local Computer, Trusted Root Certification Authorities) and of every
 WSL2 distribution, as `/usr/local/share/ca-certificates/hlab-ca.crt`;
 `hlab ca trust off` removes it from both. Read the
@@ -249,9 +249,9 @@ WSL2 distribution, as `/usr/local/share/ca-certificates/hlab-ca.crt`;
 
 ```
 > hlab ca trust on
-the hlab CA is trusted on this host
+the HLab CA is trusted on this host
 > hlab ca trust off
-the hlab CA is no longer trusted on this host
+the HLab CA is no longer trusted on this host
 ```
 
 ## Other
@@ -276,12 +276,14 @@ cloud is stopped. `--follow` keeps printing new lines until Ctrl+C.
 > hlab logs --follow
 ```
 
-The log files are described in the
-[configuration reference](configuration.md#log-files).
+To search the whole log, the rotated files included, or to read lines
+older than the last 1000, use Administration > Logs in the
+[tray program](../README.md#the-tray-program). The log files are
+described in the [configuration reference](configuration.md#log-files).
 
 ### hlab version
 
 ```
 > hlab version
-hlab dev
+HLab dev
 ```
