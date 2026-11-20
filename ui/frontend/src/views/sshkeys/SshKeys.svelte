@@ -1,4 +1,6 @@
 <script module lang="ts">
+  import { createdText, labelText } from "../../lib/format";
+
   /** SshKey as the Hetzner API returns it. */
   export type SshKey = {
     id: number;
@@ -9,18 +11,7 @@
     created: string;
   };
 
-  /** labelText shows labels as "key=value, ..." sorted by key. */
-  export function labelText(labels: Record<string, string>): string {
-    return Object.keys(labels ?? {})
-      .sort()
-      .map((k) => `${k}=${labels[k]}`)
-      .join(", ");
-  }
-
-  /** createdText shows an API timestamp as "YYYY-MM-DD hh:mm". */
-  export function createdText(created: string): string {
-    return created.slice(0, 16).replace("T", " ");
-  }
+  export { createdText, labelText };
 </script>
 
 <script lang="ts">
