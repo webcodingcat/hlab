@@ -512,14 +512,14 @@ Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes
   - [x] ui/frontend/src/help/{projects,tokens,server-types,settings,logs}.md for the new shell (project list, project console "API tokens", Administration; token dialog, location checkboxes, search and "Load older lines"), naming only existing views and buttons, "HLab" as name.
   - [x] docs/commands.md, docs/configuration.md, docs/development/components.md: "HLab" in prose, the shell, logfile search, tools/icons and test/traylaunch.
 
-- [ ] 10-35 Documentation
+- [x] 10-35 Documentation
   - Wave: 9 | Depends on: 10-32, 10-33, 10-34 | Review: alone
   - Requirements: DOC-04, DOC-06, DOC-07 | Tests: test/docs/docs_test.go (DOC-04, DOC-06 unchanged)
   - Reads: SPEC "Documentation" D1, D6, "Machine prerequisites", "Accounts and secrets" (hlab-docs); RESEARCH "Findings fixes" F4; CONTEXT "Findings fixes"; findings 11, 14
   - Size: ~400 lines changed in 5 files (mostly moved text)
-  - [ ] docs/guide.md: the per-resource sections of README.md (servers, snapshots and backups, ISOs, volumes, networks, IPs, firewalls, DNS, load balancers and certificates, OpenTofu and Ansible, stopping and starting, profiles) with working anchors; links to them follow.
-  - [ ] README.md compact: centred docs/images/banner.svg, static badges (`badge/Go-1.27-00ADD8`, `badge/platform-Windows-0078D4`), link line "Guide · Commands · Configuration · Deviations · Development", what HLab is, the screenshots with `<picture>` light/dark (relative paths), Prerequisites for using HLab, Installation (no installer yet, built from source per docs/development/setup.md), first steps, tray program for the new shell, a terminal example `hcloud server create …` with its real output and `ssh root@<ip>` run through the `hlab-docs` context (server deleted afterwards), WSL2, uninstallation, links; "HLab" in prose.
-  - [ ] docs/development/setup.md merges the developer tool list (Go, Node.js, Task, golangci-lint, WiX, Wails, the e2e RAM and disk figures), `task build` and `scripts\dev-setup.ps1` without duplicates; build-and-test.md documents `task icons` and `task docs:screenshots`.
+  - [x] docs/guide.md: the per-resource sections of README.md (servers, snapshots and backups, ISOs, volumes, networks, IPs, firewalls, DNS, load balancers and certificates, OpenTofu and Ansible, stopping and starting, profiles) with working anchors; links to them follow.
+  - [x] README.md compact: centred docs/images/banner.svg, static badges (`badge/Go-1.27-00ADD8`, `badge/platform-Windows-0078D4`), link line "Guide · Commands · Configuration · Deviations · Development", what HLab is, the screenshots with `<picture>` light/dark (relative paths), Prerequisites for using HLab, Installation (no installer yet, built from source per docs/development/setup.md), first steps, tray program for the new shell, a terminal example `hcloud server create …` with its real output and `ssh root@<ip>` run through the `hlab-docs` context (server deleted afterwards), WSL2, uninstallation, links; "HLab" in prose.
+  - [x] docs/development/setup.md merges the developer tool list (Go, Node.js, Task, golangci-lint, WiX, Wails, the e2e RAM and disk figures), `task build` and `scripts\dev-setup.ps1` without duplicates; build-and-test.md documents `task icons` and `task docs:screenshots`.
 
 ## Findings from manual testing
 
