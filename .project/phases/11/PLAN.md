@@ -245,3 +245,9 @@ Svelte building blocks (props):
   - Size: ~250 lines in 6 files
   - [x] ui/frontend/src/help/servers.md and help/ssh-keys.md: list, create form, detail tabs and actions, naming only existing views and buttons (Console not available in HLab).
   - [x] README.md (tray program: project console with Servers and SSH Keys, the other sections follow), docs/guide.md (servers and SSH keys in the console), docs/development/components.md (the console frame in ui/frontend/src/lib: api, actions, routes, detail and form building blocks); regenerate the README console screenshots with `task docs:screenshots`.
+
+## Close
+
+- e2e: `task e2e -- -run 'TestE2E/UI-02$' -v` green at 14:22 on the finished code; `task e2e -- -run 'TestE2E/(UI-01|UI-03|UI-04|UI-05|UI-06)$' -v` green at the close (shared Table, routes and the e2e action timeout touch every UI spec).
+- Unit suite, linter and frontend unit tests green on f77a7b3.
+- Manual check UI-02 frame: fits (CHECKS.md).

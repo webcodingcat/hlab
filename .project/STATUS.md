@@ -1,4 +1,4 @@
-STATUS: MANUAL_CHECK
+STATUS: IN_PROGRESS
 
 <!-- Allowed values: IDEA, IDEA_DONE, SPEC_REVIEW, READY, IN_PROGRESS, MANUAL_CHECK, BLOCKED, DONE -->
 
@@ -7,10 +7,10 @@ STATUS: MANUAL_CHECK
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 11 Tray console: shared frame, servers, SSH keys (built on branch wcc/phase-11, unmerged; waits for the manual check)
+- Phase: 14 Tray console: remaining resources (not started)
 - Base branch: main
-- Last done: phase B2 merged into main (2026-11-20): networks deleted last at project deletion, DOC-03 checks every registered route, e2e harness stops the dev service in every holding state, RDNS-02 and SRV-10 retry on `locked`; LB `https` health-check item dropped (the real API rejects it)
-- Next: /wcc:phase to close phase 11 (UI-02 frame check fits); DOC-07 (01) waits until the repository is on GitHub
+- Last done: phase 11 merged into main (2026-11-20): console frame (API client, action toasts, detail/form/labels/protection building blocks, routes) with the complete Servers and SSH Keys sections; UI-02 frame check fits
+- Next: /wcc:phase for 14 in a new session; DOC-07 (01) waits until the repository is on GitHub
 
 ## Open manual checks
 

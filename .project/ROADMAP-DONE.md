@@ -6,6 +6,29 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x] 11 Tray console: shared frame, servers, SSH keys.
+      Requirements: UI-02 (part: shared frame, servers, SSH keys; done
+      after phase 14).
+      Depends on: 10.
+      Research: phases/11/RESEARCH.md (field order of the Hetzner create
+      forms; also used by phase 14).
+      Scope: the shared frame every resource section builds on - API client
+      over `bridge.Call`, action polling with a toast, detail and tab frame,
+      Labels and Protection tabs, form errors from `details.fields`,
+      confirmation dialogs, routes, help IDs - and the sections Servers and
+      SSH Keys completely.
+      Success criteria:
+      1. Servers and SSH keys can be listed, shown, created, configured and
+         deleted in the window, including every server action the API
+         offers.
+      2. A running action shows its progress and ends in a toast; a
+         rejected form shows the error at its field from `details.fields`;
+         deleting asks for confirmation.
+      3. Labels and protection of a server and an SSH key can be changed in
+         their tabs, and every new view opens its help text.
+      Stops for: manual check (look and operation of the frame, before the
+      remaining sections follow the same pattern).
+
 - [x] 10 Tray program: shell, status, settings, server types, projects,
       logs.
       Requirements: UI-01, UI-03, UI-04, UI-05, UI-06, UI-07, UI-08.
