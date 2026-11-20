@@ -576,15 +576,15 @@ button "Browse…", row menu "Edit" and "Remove".
   - [x] Every action toast on a named resource through `runOn`/`actionTitle` in views/servers (Servers.svelte, ServerCreate.svelte) and views/volumes (Section, VolumeCreate).
   - [x] The same in views/firewalls (Section, FirewallDetail, FirewallCreate), views/images/ImageList.svelte (Snapshot or Backup by type), views/placement-groups (Section, PlacementGroupCreate).
 
-- [ ] 14-41 Own ISOs in the console and UI-10
+- [x] 14-41 Own ISOs in the console and UI-10
   - Wave: 4 | Depends on: 14-31, 14-32, 14-33, 14-38, 14-39 | Review: alone
   - Requirements: UI-10, CAT-10 | Tests: ui/frontend/tests/e2e/isos.spec.ts (through test/e2e/ui_test.go TestE2E/UI-10)
   - Reads: CONTEXT "Findings plans 14-25 onward"; TESTS.md UI-10 row; EXPERIMENTS E9; test/e2e/ui_test.go `runSpec`, `testUI04`; tests/e2e/servertypes.spec.ts, fixtures.ts; views/servers/tabs/Iso.svelte
   - Size: ~300 lines in 8 files
   - Adjusts: ui/frontend/tests/unit/routes.test.ts drops the project `isos` cases; ui/frontend/tests/e2e/isos.spec.ts (UI-02 row replaced by UI-10)
-  - [ ] lib/format.ts `isoTitle`; views/servers/tabs/Iso.svelte shows and selects ISOs by `isoTitle` and attaches by ID.
-  - [ ] Remove the project view `isos` (views/isos/Section.svelte, IsoDetail.svelte, routes.ts project view, routes.test.ts cases).
-  - [ ] tests/e2e/isos.spec.ts rewritten for UI-10 and test/e2e/ui_test.go `testUI10` (temporary `.iso` file passed by environment variable, own project with a read/write token to check `/isos`, every own ISO it adds removed at the end); first run with a generous limit, then about twice that run.
+  - [x] lib/format.ts `isoTitle`; views/servers/tabs/Iso.svelte shows and selects ISOs by `isoTitle` and attaches by ID.
+  - [x] Remove the project view `isos` (views/isos/Section.svelte, IsoDetail.svelte, routes.ts project view, routes.test.ts cases).
+  - [x] tests/e2e/isos.spec.ts rewritten for UI-10 and test/e2e/ui_test.go `testUI10` (temporary `.iso` file passed by environment variable, own project with a read/write token to check `/isos`, every own ISO it adds removed at the end); first run with a generous limit, then about twice that run.
 
 - [ ] 14-42 Documentation
   - Wave: 5 | Depends on: 14-25 … 14-41 | Review: alone
