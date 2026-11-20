@@ -54,7 +54,7 @@
         retries: hc.retries,
         http: hc.http ? { domain: hc.http.domain ?? "", path: hc.http.path, tls: hc.http.tls } : d.health_check.http,
       },
-      http: s.http ? { ...s.http, certificates: [...(s.http.certificates ?? [])] } : d.http,
+      http: s.http ? { ...s.http, certificates: [...s.http.certificates] } : d.http,
     };
   }
 
