@@ -54,7 +54,6 @@
 
   function ask(e: SubmitEvent) {
     e.preventDefault();
-    if (text.trim() === "") return;
     confirmOpen = true;
   }
 
