@@ -386,13 +386,13 @@ export const lastProject: Writable<string>;   // localStorage "hlab.project"; th
 
 Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes"). At most two plans run at once and at most one of them runs UI e2e tests; a dependency marked "(order)" only sequences the waves.
 
-- [ ] 10-20 App icon, tray state icons and EXE resources
+- [x] 10-20 App icon, tray state icons and EXE resources
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-01, UI-08 | Tests: tools/icons/icons_test.go
   - Reads: UI-SPEC "Foundation", "Colours", "Views" (Tray icon); SPEC "Stack" (winres); RESEARCH "Findings fixes" F1, F2; CONTEXT "Findings fixes"; findings 1, 4
   - Size: ~380 lines in 5 files plus generated files
-  - [ ] go.mod/go.sum: `github.com/tc-hib/winres` v0.3.1. tools/icons/main.go and icons.go: `Generate` draws the app icon (white "H" on a rounded square in the accent blue, supersampled anti-aliasing, standard library `image`) at 16, 20, 24, 32, 48, 256 px and the four state icons at 16, 20, 24, 32 px (app icon plus a lower-right dot about a third wide with a 1 px contrasting rim: running success, busy warning, stopped text muted, error error, light-mode values), encodes ICO (PNG frame for 256), writes the `.syso` per main package with the group icon under IDs 3 and 32512 through winres, and writes `ui/frontend/src/assets/app-icon.svg` and `docs/images/banner.svg` (icon, "HLab", subtitle "A local Hetzner-compatible cloud on Hyper-V", readable on light and dark through `prefers-color-scheme` inside the SVG) from the same geometry.
-  - [ ] Taskfile.yml task `icons` (`go run ./tools/icons`); run it once and commit cmd/hlab-tray/icons/*.ico, cmd/{hlab-tray,hlab,hlabd}/rsrc_windows_amd64.syso, the two SVGs; `task build` links the `.syso` without running the tool.
+  - [x] go.mod/go.sum: `github.com/tc-hib/winres` v0.3.1. tools/icons/main.go and icons.go: `Generate` draws the app icon (white "H" on a rounded square in the accent blue, supersampled anti-aliasing, standard library `image`) at 16, 20, 24, 32, 48, 256 px and the four state icons at 16, 20, 24, 32 px (app icon plus a lower-right dot about a third wide with a 1 px contrasting rim: running success, busy warning, stopped text muted, error error, light-mode values), encodes ICO (PNG frame for 256), writes the `.syso` per main package with the group icon under IDs 3 and 32512 through winres, and writes `ui/frontend/src/assets/app-icon.svg` and `docs/images/banner.svg` (icon, "HLab", subtitle "A local Hetzner-compatible cloud on Hyper-V", readable on light and dark through `prefers-color-scheme` inside the SVG) from the same geometry.
+  - [x] Taskfile.yml task `icons` (`go run ./tools/icons`); run it once and commit cmd/hlab-tray/icons/*.ico, cmd/{hlab-tray,hlab,hlabd}/rsrc_windows_amd64.syso, the two SVGs; `task build` links the `.syso` without running the tool.
 
 - [x] 10-24 Log files: search and older lines
   - Wave: 1 | Depends on: - | Review: alone

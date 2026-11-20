@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 winres raises indirect modules
+
+- Type: decision
+- Phase: phase 10
+- What: adding `github.com/tc-hib/winres` v0.3.1 brings the indirect modules `github.com/nfnt/resize` and `golang.org/x/image` v0.45.0; ICO files are encoded by `tools/icons` itself, winres only builds the `.syso`, and group 32512 shares the image data of group 3.
+- Why: required by winres; no pinned module of SPEC.md changes.
+- Cost of change: low
+
 ## 2026-11-20 Phase 10 findings: screenshot sample projects
 
 - Type: decision
