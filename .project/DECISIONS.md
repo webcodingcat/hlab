@@ -2734,3 +2734,19 @@ in ARCHITECTURE.md or the plan.
 - What: the e2e flows create, change one field, run one power action and delete (servers) or create, label and delete (SSH keys); every menu and tab request is proven by serverActions.test.ts, the rest of the operation by the manual check.
 - Why: the user's answer at the phase start; each action against a real VM costs minutes.
 - Cost of change: low
+
+## 2026-11-20 Detaching from a server tab asks plainly
+
+- Type: decision
+- Phase: phase 11
+- What: detaching a network, removing a firewall and detaching a volume in the server tabs ask for a plain confirmation; `ServerAction.body` gets the server ID as a second parameter.
+- Why: they cut a running server off a resource; the firewall and volume bodies need the server ID.
+- Cost of change: low (one flag per entry)
+
+## 2026-11-20 One actions menu for tables and detail pages
+
+- Type: decision
+- Phase: phase 11
+- What: Table's row menu uses the new `lib/ActionsMenu.svelte`; disabled items use `aria-disabled` and stay focusable, their hint sits beside the item.
+- Why: one menu implementation, and a disabled entry such as Console stays reachable by keyboard with its hint readable.
+- Cost of change: low

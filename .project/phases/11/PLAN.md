@@ -182,12 +182,12 @@ Svelte building blocks (props):
   - [ ] ui/frontend/src/lib/formErrors.ts, lib/labels.ts as in "Interfaces".
   - [ ] lib/LabelsField.svelte, lib/LabelsTab.svelte (rows with key, value and remove, "Add label", "Save labels"; a duplicate key or the API's `labels` message under the row or the list), lib/ProtectionTab.svelte (one switch per flag, "Save" sends `change_protection` through `runApi`).
 
-- [ ] 11-05 Server actions module
+- [x] 11-05 Server actions module
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-02 | Tests: ui/frontend/tests/unit/serverActions.test.ts
   - Reads: CONTEXT "Corrections", "Answers"; OpenAPI request bodies of every `/servers/{id}/actions/*` endpoint, `PUT /servers/{id}`, `DELETE /images/{id}`, `/firewalls/{id}/actions/apply_to_resources`, `remove_from_resources`, `/volumes/{id}/actions/attach`, `detach` in the reference; docs/development/api-coverage.md "Server actions"
   - Size: ~260 lines in 1 file
-  - [ ] ui/frontend/src/lib/serverActions.ts as in "Interfaces", with every menu and tab entry, its confirmation and password flags.
+  - [x] ui/frontend/src/lib/serverActions.ts as in "Interfaces", with every menu and tab entry, its confirmation and password flags.
 
 - [ ] 11-06 SSH Keys section
   - Wave: 3 | Depends on: 11-02, 11-03, 11-04 | Review: alone
