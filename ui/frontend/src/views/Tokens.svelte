@@ -75,7 +75,7 @@
       if (err instanceof ApiError && (err.code === "invalid_input" || err.code === "conflict")) {
         nameError = err.fields?.name?.join(" ") || err.message;
       } else {
-        showError("Create token", err);
+        showError(actionTitle("Token", tokenName.trim(), "Create"), err);
       }
     } finally {
       creating = false;

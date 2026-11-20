@@ -64,7 +64,7 @@
       if (err instanceof ApiError && (err.code === "invalid_input" || err.code === "conflict")) {
         nameError = err.fields?.name?.join(" ") || err.message;
       } else {
-        showError("Create project", err);
+        showError(actionTitle("Project", newName.trim(), "Create"), err);
       }
     } finally {
       creating = false;
