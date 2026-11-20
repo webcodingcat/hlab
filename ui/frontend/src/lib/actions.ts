@@ -63,7 +63,8 @@ export async function runAction<T extends ActionResult>(
 ): Promise<T | undefined> {
   const toast = progressToast(title, 0);
   try {
-    const result = await run();
+    // An answer without a body (204 of a DELETE) arrives as null.
+    const result = (await run()) ?? ({} as T);
     const all = [...(result.action ? [result.action] : []), ...(result.actions ?? []), ...(result.next_actions ?? [])];
     for (const a of all) {
       toast.update(a.progress);
