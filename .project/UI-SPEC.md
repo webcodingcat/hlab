@@ -65,8 +65,8 @@ everywhere.
   field (error colour), Hetzner's field error messages from `details.fields`
   shown under the matching field; submit button at the bottom right.
 - Confirm dialog: for every delete and every destructive action; the
-  resource name must be typed for projects, servers, volumes, networks and
-  zones.
+  resource name must be typed for projects (their display name), servers,
+  volumes, networks and zones.
 - Action toast: bottom right, shows a running action with progress and its
   result; errors stay until closed.
 - Copy field: monospace value with a copy button (IPs, tokens, CA).
@@ -86,9 +86,9 @@ everywhere.
     a toggle: a click opens Administration, a second click closes it and
     returns to the page shown before (the project list when there was
     none); while Administration is open the gear shows as pressed.
-  - Project list (start page): the projects table, full width, no sidebar.
-    A row click opens the project console of that project.
-  - Project console: breadcrumb "Projects / <name> ▾"; the name opens a
+  - Project list (start page): the project cards, full width, no sidebar.
+    A click on a card opens the project console of that project.
+  - Project console: breadcrumb "Projects / <display name> ▾"; the name opens a
     menu to switch to another project, "Projects" leads back to the list.
     Left sidebar with the entries of this project only, in collapsible
     groups like the Hetzner Cloud Console: a group heading in uppercase
@@ -119,8 +119,21 @@ everywhere.
   (servers: location, image, type, networking, SSH keys, volumes,
   firewalls, backups, placement group, labels, cloud config, name).
 - Resource detail per type: detail page with the tabs that type supports.
-- Projects: the project list is the table of projects with "Create
-  project" and the row menu (delete); the project console's "API tokens"
+- Projects: the project list follows the Hetzner Console's project
+  overview. Toolbar: search field (display name or name), sort menu
+  (Display name, Created) with a direction arrow (default Created,
+  ascending), and a grid/list switch; sort and switch are remembered like
+  the last opened project. Grid: cards of equal size; list: one full-width
+  row per project. A card shows a project icon and the display name large,
+  the name small and muted below, a "…" menu (Delete) at the top right, and
+  a footer "N resources ▾" that opens the counts per type ("2 Servers",
+  "1 Volume"), each opening its section; an empty project shows
+  "+ Create server" there, which opens the server create form. A last
+  tile with a dashed border, "+ New project", opens the "Create project"
+  dialog with the field "Display name" and, below it, the derived name
+  shown live; the refusal of a taken or empty name appears under the field. Role and member
+  badges of Hetzner are left out (hlab has no members). The project
+  console's "API tokens"
   section has the token table and the "Create token" dialog that shows the
   token once in a copy field with a warning.
 - Server Types: table of the catalog with source column (catalog, own),

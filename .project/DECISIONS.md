@@ -35,6 +35,14 @@ in ARCHITECTURE.md or the plan.
 - Why: in the manual check of UI-09 the user wanted the navigation of the current Hetzner Cloud Console and a way to add own ISOs.
 - Cost of change: medium
 
+## 2026-11-20 Project display names and Hetzner-style project list
+
+- Type: change
+- Phase: feedback
+- What: projects get a fixed display name of 1-255 characters from which hlabd derives the name (slug, refused with 409 when taken, no length limit of 63), stored in schema version 2, and the tray's project list becomes Hetzner-like cards (grid/list, sort, resources per type, "New project" tile), built in phase 15.
+- Why: the user wants names like "Web Coding Cat" as in the Hetzner Console, and the 63-character DNS-label limit has no technical reason in hlab.
+- Cost of change: high
+
 ## 2026-11-20 Console menus offer only what the API accepts
 
 - Type: decision
