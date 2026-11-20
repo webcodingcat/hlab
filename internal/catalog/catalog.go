@@ -61,7 +61,7 @@ type Image struct {
 	Raw json.RawMessage `json:"-"`
 }
 
-// ISO is one catalog ISO.
+// ISO is one catalog ISO or own ISO.
 type ISO struct {
 	ID           int64         `json:"id"`
 	Name         string        `json:"name"`
@@ -70,6 +70,13 @@ type ISO struct {
 	Source       images.Source `json:"-"` // Format "iso"
 	// Raw is the ISO object as served, without `_hlab`.
 	Raw json.RawMessage `json:"-"`
+	// Own is set for an ISO of isos.custom.json.
+	Own bool `json:"-"`
+	// CacheName is the file in <data>\isos: the catalog name, or
+	// `_hlab.name` of an own ISO.
+	CacheName string `json:"-"`
+	// OwnSource is the source of an own ISO.
+	OwnSource ISOSource `json:"-"`
 }
 
 // Catalog holds the loaded catalogs, each list sorted as in its file. The
@@ -86,6 +93,9 @@ type Catalog struct {
 	own         []ServerType // own types, merged again after an update
 	ownWarning  string       // why an update dropped the own types
 	pricing     json.RawMessage
+
+	ownISOs        []ISO    // own ISOs served after the catalog ISOs
+	ownISOWarnings []string // why own ISOs are left out
 }
 
 // Load reads the catalog files in dir.
@@ -139,6 +149,7 @@ func Load(dir string) (*Catalog, error) {
 			return nil, fmt.Errorf("isos.json: %s: %w", iso.Name, err)
 		}
 		iso.Source.Format = "iso"
+		iso.CacheName = iso.Name
 		c.ISOs = append(c.ISOs, iso)
 	}
 
@@ -257,11 +268,22 @@ func (c *Catalog) ImageSources() map[string]images.Source {
 	return m
 }
 
-// ISO returns the ISO with the given name or ID.
+// ISO returns the ISO with the given name or ID. A name matches catalog
+// ISOs only; an ID matches catalog and own ISOs.
 func (c *Catalog) ISO(ref string) (ISO, bool) {
 	id, err := strconv.ParseInt(ref, 10, 64)
 	for _, iso := range c.ISOs {
 		if iso.Name == ref || (err == nil && iso.ID == id) {
+			return iso, true
+		}
+	}
+	if err != nil {
+		return ISO{}, false
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, iso := range c.ownISOs {
+		if iso.ID == id {
 			return iso, true
 		}
 	}
