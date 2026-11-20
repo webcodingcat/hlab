@@ -2750,3 +2750,11 @@ in ARCHITECTURE.md or the plan.
 - What: Table's row menu uses the new `lib/ActionsMenu.svelte`; disabled items use `aria-disabled` and stay focusable, their hint sits beside the item.
 - Why: one menu implementation, and a disabled entry such as Console stays reachable by keyboard with its hint readable.
 - Cost of change: low
+
+## 2026-11-20 Server create shows the password before the first boot ends
+
+- Type: decision
+- Phase: phase 11
+- What: the server create form opens the root password dialog as soon as `POST /servers` answers while the toast follows the create and start actions; "Backups" sends `enable_backup` after they succeed; only x86 images and types are offered.
+- Why: a first boot may download an image for minutes, `POST /servers` has no backups field, and ARM types are left out.
+- Cost of change: low

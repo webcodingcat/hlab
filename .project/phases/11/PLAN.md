@@ -197,13 +197,13 @@ Svelte building blocks (props):
   - [ ] ui/frontend/src/views/sshkeys/SshKeys.svelte: list (Name, Fingerprint, Labels, Created; refresh every 5 s; row menu Delete with a plain confirmation), switching to create and detail by the route.
   - [ ] views/sshkeys/SshKeyCreate.svelte (Public key text area, Name, Labels; field errors through `formErrors`), views/sshkeys/SshKeyDetail.svelte (tabs Overview: name edit, fingerprint, public key in a CopyField, created; Labels; actions menu Delete).
 
-- [ ] 11-07 Servers list and create form
+- [x] 11-07 Servers list and create form
   - Wave: 3 | Depends on: 11-02, 11-03, 11-04, 11-05 | Review: alone
   - Requirements: UI-02 | Tests: - (the UI-02 server row of 11-08 creates through this form)
   - Reads: UI-SPEC "Views" (create order for servers), "Building blocks", "Behaviour"; OpenAPI `POST /servers` request, `/locations`, `/images`, `/server_types`, `/ssh_keys`, `/networks`, `/primary_ips`, `/volumes`, `/firewalls`, `/placement_groups` lists in the reference; docs/development/api-coverage.md "POST /servers"
   - Size: ~400 lines in 2 files
-  - [ ] ui/frontend/src/views/servers/Servers.svelte: list (Name, Status pill, Public IPv4, Type, Location, Labels, Created; refresh every 5 s and after every action); row menu with the menu entries that need no input (Power on, Shutdown, Reboot, Reset, Power off, Delete) with their confirmations; switching to create and detail by the route.
-  - [ ] views/servers/ServerCreate.svelte in the UI-SPEC order: Location, Image (system images, own snapshots and backups), Type (only types available in the chosen location, ARM left out), Networking (public IPv4 and IPv6 switches, optional primary IPs, private networks), SSH keys, Volumes, Firewalls, Backups, Placement group, Labels, Cloud config, Name (default `<type>-<location>-<n>`); submit through `runApi`, the `root_password` in SecretDialog, then the new server's detail page.
+  - [x] ui/frontend/src/views/servers/Servers.svelte: list (Name, Status pill, Public IPv4, Type, Location, Labels, Created; refresh every 5 s and after every action); row menu with the menu entries that need no input (Power on, Shutdown, Reboot, Reset, Power off, Delete) with their confirmations; switching to create and detail by the route.
+  - [x] views/servers/ServerCreate.svelte in the UI-SPEC order: Location, Image (system images, own snapshots and backups), Type (only types available in the chosen location, ARM left out), Networking (public IPv4 and IPv6 switches, optional primary IPs, private networks), SSH keys, Volumes, Firewalls, Backups, Placement group, Labels, Cloud config, Name (default `<type>-<location>-<n>`); submit through `runApi`, the `root_password` in SecretDialog, then the new server's detail page.
 
 - [ ] 11-08 Server detail page and actions menu
   - Wave: 4 | Depends on: 11-07 | Review: alone
