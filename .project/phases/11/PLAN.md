@@ -166,13 +166,13 @@ Svelte building blocks (props):
   - [x] views/ProjectConsole.svelte: sidebar Servers (Lucide `Server`), SSH Keys (`Key`), separator, API tokens; renders the section of the route. New section entry components views/servers/Servers.svelte and views/sshkeys/SshKeys.svelte with the title row ("Servers", "SSH Keys"), HelpButton and `CloudStopped`; help/servers.md and help/ssh-keys.md with a heading and a short text (the documentation plan completes them).
   - [x] Adjust the two specs under "Adjusts".
 
-- [ ] 11-03 Detail page, actions menu, form page and secret dialog
+- [x] 11-03 Detail page, actions menu, form page and secret dialog
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-02 | Tests: - (used by the sections; covered by the UI-02 e2e rows)
   - Reads: UI-SPEC "Building blocks", "Behaviour", "Typography"; ui/frontend/src/lib/Table.svelte, Dialog.svelte, ConfirmDialog.svelte, CopyField.svelte, StatusPill.svelte, HelpButton.svelte, views/Tokens.svelte (token dialog)
   - Size: ~320 lines in 5 files
-  - [ ] ui/frontend/src/lib/DetailPage.svelte (title row with status pill, actions snippet and help button; tabs as links with `aria-current`; "not found" with a link back), lib/ActionsMenu.svelte (keyboard reachable, Escape closes, disabled items show their hint as text and `aria-describedby`).
-  - [ ] lib/FormPage.svelte, lib/SecretDialog.svelte ("Copy the password now. It is not shown again."), lib/Table.svelte `RowAction.disabled`/`hint`.
+  - [x] ui/frontend/src/lib/DetailPage.svelte (title row with status pill, actions snippet and help button; tabs as links with `aria-current`; "not found" with a link back), lib/ActionsMenu.svelte (keyboard reachable, Escape closes, disabled items show their hint as text and `aria-describedby`).
+  - [x] lib/FormPage.svelte, lib/SecretDialog.svelte ("Copy the password now. It is not shown again."), lib/Table.svelte `RowAction.disabled`/`hint`.
 
 - [ ] 11-04 Form errors, labels and protection
   - Wave: 2 | Depends on: 11-01 | Review: alone
