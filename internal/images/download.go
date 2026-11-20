@@ -29,13 +29,45 @@ var errNotFound = errors.New("not found")
 
 // fetchSource downloads the file of src into f and verifies it against its
 // checksum file. When the URL or the checksum URL answers 404, the fallback
-// pair is tried.
+// pair is tried. A Path source is copied, and a source without ChecksumURL
+// is checked against SHA256 when that is set.
 func (s *Store) fetchSource(ctx context.Context, src Source, f *os.File) error {
+	if src.Path != "" || src.ChecksumURL == "" {
+		return s.fetchOwn(ctx, src, f)
+	}
 	err := s.fetchPair(ctx, src.URL, src.ChecksumURL, f)
 	if errors.Is(err, errNotFound) && src.FallbackURL != "" {
 		err = s.fetchPair(ctx, src.FallbackURL, src.FallbackChecksumURL, f)
 	}
 	return err
+}
+
+// fetchOwn copies the local file src.Path, or downloads src.URL, into f and
+// compares its SHA-256 with src.SHA256 when that is set.
+func (s *Store) fetchOwn(ctx context.Context, src Source, f *os.File) error {
+	var (
+		body io.ReadCloser
+		from string
+		err  error
+	)
+	if src.Path != "" {
+		from = src.Path
+		body, err = os.Open(src.Path)
+	} else {
+		from = src.URL
+		body, err = get(ctx, s.opts.HTTP, src.URL)
+	}
+	if err != nil {
+		return err
+	}
+	defer func() { _ = body.Close() }()
+	if src.SHA256 == "" {
+		if _, err := io.Copy(f, body); err != nil {
+			return fmt.Errorf("copy %s: %w", from, err)
+		}
+		return nil
+	}
+	return copyVerified(body, f, from, checksum{hex: strings.ToLower(src.SHA256), hash: sha256.New})
 }
 
 // fetchPair downloads fileURL into f and verifies it against the entry for
