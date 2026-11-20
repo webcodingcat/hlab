@@ -15,7 +15,6 @@ export type ProjectView =
   | "placement-groups"
   | "snapshots"
   | "backups"
-  | "images"
   | "isos"
   | "tokens";
 export type AdminView = "server-types" | "isos" | "settings" | "logs";
@@ -39,7 +38,6 @@ const projectViews: ProjectView[] = [
   "placement-groups",
   "snapshots",
   "backups",
-  "images",
   "isos",
   "tokens",
 ];

@@ -1,32 +1,17 @@
 <script lang="ts">
-  import {
-    Archive,
-    Book,
-    Disc,
-    Globe,
-    Group,
-    HardDrive,
-    Images,
-    Key,
-    KeyRound,
-    MapPin,
-    Network,
-    Scale,
-    Server,
-    Shield,
-    ShieldCheck,
-  } from "@lucide/svelte";
+  import { Globe, HardDrive, KeyRound, MapPin, Network, Scale, Server, Shield } from "@lucide/svelte";
   import type { Component } from "svelte";
-  import SectionSidebar from "../lib/SectionSidebar.svelte";
+  import SectionSidebar, { type SectionGroup } from "../lib/SectionSidebar.svelte";
+  import SectionTabs from "../lib/SectionTabs.svelte";
+  import { entryOf, navGroups } from "../lib/consoleNav";
   import { href, type Page, type ProjectView } from "../state";
   import Tokens from "./Tokens.svelte";
   import Servers from "./servers/Servers.svelte";
   import SshKeys from "./sshkeys/SshKeys.svelte";
 
-  // The console of one project: the sidebar with this project's sections
-  // and the open section. "API tokens" follows the resource sections after
-  // a separator. The newer resource sections live in ./<view>/Section.svelte
-  // and are listed only once that component exists.
+  // The console of one project: the sidebar with this project's entries in
+  // their groups, the tab bar of the open entry and the open view. The
+  // resource sections live in ./<view>/Section.svelte.
   let { project, view, page }: { project: string; view: ProjectView; page: Page } = $props();
 
   type SectionProps = { project: string; page: Page };
@@ -34,44 +19,39 @@
   const sectionComponents: Partial<Record<ProjectView, Component<SectionProps>>> = Object.fromEntries(
     Object.entries(found).map(([path, m]) => [path.split("/")[1], m.default]),
   );
-  const builtIn: ProjectView[] = ["servers", "ssh-keys", "tokens"];
 
-  const sections: { view: ProjectView; title: string; icon: typeof Server; separator?: boolean }[] = [
-    { view: "servers", title: "Servers", icon: Server },
-    { view: "volumes", title: "Volumes", icon: HardDrive },
-    { view: "load-balancers", title: "Load Balancers", icon: Scale },
-    { view: "networks", title: "Networks", icon: Network },
-    { view: "firewalls", title: "Firewalls", icon: Shield },
-    { view: "floating-ips", title: "Floating IPs", icon: Globe },
-    { view: "primary-ips", title: "Primary IPs", icon: MapPin },
-    { view: "dns", title: "DNS", icon: Book },
-    { view: "certificates", title: "Certificates", icon: ShieldCheck },
-    { view: "ssh-keys", title: "SSH Keys", icon: Key },
-    { view: "placement-groups", title: "Placement Groups", icon: Group },
-    { view: "snapshots", title: "Snapshots", icon: Images },
-    { view: "backups", title: "Backups", icon: Archive },
-    { view: "isos", title: "ISOs", icon: Disc },
-    { view: "tokens", title: "API tokens", icon: KeyRound, separator: true },
-  ];
+  const icons: Record<string, typeof Server> = {
+    servers: Server,
+    volumes: HardDrive,
+    firewalls: Shield,
+    "load-balancers": Scale,
+    networks: Network,
+    ips: MapPin,
+    dns: Globe,
+    security: KeyRound,
+  };
 
   const Section = $derived(sectionComponents[view]);
+  const open = $derived(entryOf(view));
 
-  const items = $derived(
-    sections
-      .filter((s) => builtIn.includes(s.view) || sectionComponents[s.view])
-      .map((s) => ({
-        href: href({ area: "project", project, view: s.view, page: { kind: "list" } }),
-        title: s.title,
-        icon: s.icon,
-        current: s.view === view,
-        separator: s.separator,
+  const groups: SectionGroup[] = $derived(
+    navGroups.map((g) => ({
+      id: g.id,
+      title: g.title,
+      items: g.entries.map((e) => ({
+        href: href({ area: "project", project, view: e.tabs[0].view, page: { kind: "list" } }),
+        title: e.title,
+        icon: icons[e.id],
+        current: e.id === open.id,
       })),
+    })),
   );
 </script>
 
 <div class="area">
-  <SectionSidebar label="Project" {items} />
+  <SectionSidebar label="Project" {groups} />
   <main>
+    <SectionTabs {project} {view} />
     {#if view === "servers"}<Servers {project} {page} />
     {:else if view === "ssh-keys"}<SshKeys {project} {page} />
     {:else if view === "tokens"}<Tokens name={project} />

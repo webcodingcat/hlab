@@ -1,4 +1,5 @@
 import { test, expect, openView, rowAction, tableRow, api, uniqueName } from "./fixtures";
+import { section } from "./console";
 
 test("UI-05", async ({ page }) => {
   test.setTimeout(5 * 60_000);
@@ -15,13 +16,10 @@ test("UI-05", async ({ page }) => {
   await expect(row).toBeVisible();
 
   // A row click opens the project console of that project with "API tokens",
-  // which its sidebar opens.
+  // which its sidebar and section tabs open.
   await row.getByRole("cell", { name: project, exact: true }).click();
   await expect(page.getByRole("banner").getByText(project).first()).toBeVisible();
-  const tokensLink = page.getByRole("navigation").getByRole("link", { name: "API tokens", exact: true });
-  await expect(tokensLink).toBeVisible();
-  await tokensLink.click();
-  await expect(page.getByRole("heading", { level: 1, name: "API tokens", exact: true })).toBeVisible();
+  await section(page, "API tokens");
 
   // Create a token; its value is shown once.
   await page.getByRole("button", { name: "Create token" }).click();

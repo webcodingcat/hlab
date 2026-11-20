@@ -3,6 +3,7 @@
 // that token, and the way into its console through the project list; the
 // shared project of the phase 14 sections and the steps they have in common.
 import type { Page } from "@playwright/test";
+import { navGroups } from "../../src/lib/consoleNav";
 import { test, expect, hlab, openView, tableRow, rowAction, uniqueName, apiEndpoint, api } from "./fixtures";
 
 export type TestProject = { name: string; token: string; remove: () => Promise<void> };
@@ -63,9 +64,19 @@ export async function openConsole(page: Page, project: string): Promise<void> {
   await expect(page.getByRole("banner").getByText(project).first()).toBeVisible();
 }
 
-/** section opens a section of the project console through its sidebar. */
+/**
+ * section opens a section of the project console, name being its title:
+ * the sidebar entry that holds it, then its tab when the entry has a tab
+ * of that name.
+ */
 export async function section(page: Page, name: string): Promise<void> {
-  await page.getByRole("navigation").getByRole("link", { name, exact: true }).click();
+  const entries = navGroups.flatMap((g) => g.entries);
+  const entry = entries.find((e) => e.title === name) ?? entries.find((e) => e.tabs.some((t) => t.title === name));
+  if (!entry) throw new Error(`no console entry holds ${name}`);
+  await page.getByRole("navigation", { name: "Project", exact: true }).getByRole("link", { name: entry.title, exact: true }).click();
+  if (entry.tabs.some((t) => t.title === name)) {
+    await page.getByRole("navigation", { name: "Section", exact: true }).getByRole("link", { name, exact: true }).click();
+  }
   await expect(page.getByRole("heading", { level: 1, name, exact: true })).toBeVisible();
 }
 

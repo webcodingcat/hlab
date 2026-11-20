@@ -64,7 +64,7 @@ export const navGroups: NavGroup[] = [
 
 /**
  * entryOf is the sidebar entry whose tabs hold view. A view no tab holds
- * (the images and isos views until they leave the console) belongs to Servers.
+ * (the isos view until it leaves the console) belongs to Servers.
  */
 export function entryOf(view: ProjectView): NavEntry {
   const entries = navGroups.flatMap((g) => g.entries);
