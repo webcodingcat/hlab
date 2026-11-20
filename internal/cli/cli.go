@@ -545,7 +545,7 @@ func caExport(c *call) error {
 	if err := os.WriteFile(c.args[0], pem, 0o644); err != nil {
 		return err
 	}
-	return c.out(map[string]string{"file": c.args[0]}, "hlab CA written to "+c.args[0]+"\n")
+	return c.out(map[string]string{"file": c.args[0]}, "HLab CA written to "+c.args[0]+"\n")
 }
 
 // caTrust adds the hlab CA to the host's trust stores (on) or removes it
@@ -565,15 +565,15 @@ func caTrust(c *call) error {
 	if err := c.mgmt(http.MethodPut, "/trust", map[string]bool{"on": on}, &body); err != nil {
 		return err
 	}
-	text := "the hlab CA is no longer trusted on this host\n"
+	text := "the HLab CA is no longer trusted on this host\n"
 	if body.On {
-		text = "the hlab CA is trusted on this host\n"
+		text = "the HLab CA is trusted on this host\n"
 	}
 	return c.out(body, text)
 }
 
 func printVersion(c *call) error {
-	return c.out(map[string]string{"version": version.Version}, "hlab "+version.Version+"\n")
+	return c.out(map[string]string{"version": version.Version}, "HLab "+version.Version+"\n")
 }
 
 // logLines is the number of lines `hlab logs` shows before following.

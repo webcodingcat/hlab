@@ -62,7 +62,7 @@ func certs(t *testing.T, data []byte) []*x509.Certificate {
 
 func openCA(t *testing.T, dir string, c *clock) *ca.CA {
 	t.Helper()
-	a, err := ca.Open(dir, "hlab CA", c.Now)
+	a, err := ca.Open(dir, "HLab CA", c.Now)
 	if err != nil {
 		t.Fatalf("ca.Open(%s): %v", dir, err)
 	}
@@ -112,8 +112,8 @@ func TestCA(t *testing.T) {
 		if want := x509.KeyUsageCertSign | x509.KeyUsageCRLSign; root.KeyUsage&want != want {
 			t.Errorf("CA key usage %b, want keyCertSign and cRLSign", root.KeyUsage)
 		}
-		if root.Subject.CommonName != "hlab CA" {
-			t.Errorf("CA CN %q, want %q", root.Subject.CommonName, "hlab CA")
+		if root.Subject.CommonName != "HLab CA" {
+			t.Errorf("CA CN %q, want %q", root.Subject.CommonName, "HLab CA")
 		}
 		if len(root.CRLDistributionPoints) != 0 {
 			t.Errorf("CA has CDP %v, want none", root.CRLDistributionPoints)

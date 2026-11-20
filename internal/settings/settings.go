@@ -203,7 +203,7 @@ func validateRange(r netip.Prefix) error {
 	}
 	for _, x := range excludedRanges {
 		if x.Overlaps(r) {
-			return &FieldError{key, fmt.Sprintf("%s overlaps %s, which hlab cannot use", r.Masked(), x)}
+			return &FieldError{key, fmt.Sprintf("%s overlaps %s, which HLab cannot use", r.Masked(), x)}
 		}
 	}
 	return nil

@@ -63,7 +63,7 @@ func (e *IncompatibleError) Error() string {
 	case e.NotDatabase:
 		return "store: the state file is not a readable SQLite database"
 	case e.Newer():
-		return fmt.Sprintf("store: the state has schema version %d from a newer hlab version, this binary uses %d", e.Found, e.Want)
+		return fmt.Sprintf("store: the state has schema version %d from a newer HLab version, this binary uses %d", e.Found, e.Want)
 	default:
 		return fmt.Sprintf("store: the state has unknown schema version %d, this binary uses %d", e.Found, e.Want)
 	}

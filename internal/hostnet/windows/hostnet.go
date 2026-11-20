@@ -134,10 +134,10 @@ func (h *HostNet) Check(ctx context.Context, cfg hostnet.Config) []hostnet.Probl
 	switch {
 	case err != nil:
 		problems = append(problems, hostnet.Problem{Code: hostnet.ProblemOtherInstanceRunning, Fatal: true,
-			Message: fmt.Sprintf("cannot tell whether the hlab cloud of profile %s runs: %v", other, err)})
+			Message: fmt.Sprintf("cannot tell whether the HLab cloud of profile %s runs: %v", other, err)})
 	case running:
 		problems = append(problems, hostnet.Problem{Code: hostnet.ProblemOtherInstanceRunning, Fatal: true,
-			Message: fmt.Sprintf("the hlab cloud of profile %s is running; stop it first", other)})
+			Message: fmt.Sprintf("the HLab cloud of profile %s is running; stop it first", other)})
 	}
 
 	var entries []HostEntry
