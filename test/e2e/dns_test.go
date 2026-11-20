@@ -257,23 +257,14 @@ func testRDNS02(t *testing.T) {
 	path := fmt.Sprintf("/servers/%d/actions/change_dns_ptr", srv.ID)
 
 	// The shared server gets its default PTR back when the row ends.
+	// Other rows act on the shared server too, so both posts retry while it
+	// is locked, like a real client.
 	t.Cleanup(func() {
-		var b struct {
-			Action struct {
-				ID int64 `json:"id"`
-			} `json:"action"`
-		}
-		status, aerr, err := e.apiDo(context.Background(), http.MethodPost, path,
-			map[string]any{"ip": srv.IPv4, "dns_ptr": nil}, &b)
-		if err != nil || status != http.StatusCreated {
-			t.Errorf("reset PTR of %s: %v (status %d %s)", srv.IPv4, err, status, aerr.Code)
-			return
-		}
-		if err := e.waitAction(b.Action.ID, 5*time.Minute); err != nil {
+		if err := e.postAction(path, map[string]any{"ip": srv.IPv4, "dns_ptr": nil}, 5*time.Minute); err != nil {
 			t.Errorf("reset PTR of %s: %v", srv.IPv4, err)
 		}
 	})
-	e.runAPIAction(t, path, map[string]any{"ip": srv.IPv4, "dns_ptr": ptr}, 5*time.Minute)
+	e.runLockedAction(t, path, map[string]any{"ip": srv.IPv4, "dns_ptr": ptr})
 
 	resolvesEverywhere(t, e, srv, w, srv.IPv4, ptr, true)
 }

@@ -655,23 +655,13 @@ func testSRV10(t *testing.T) {
 	e, srv := sharedServer(t)
 	var body struct {
 		RootPassword string `json:"root_password"`
-		Action       struct {
-			ID int64 `json:"id"`
-		} `json:"action"`
 	}
-	status, aerr, err := e.apiDo(context.Background(), http.MethodPost,
-		fmt.Sprintf("/servers/%d/actions/reset_password", srv.ID), nil, &body)
-	if err != nil {
+	// Other rows act on the shared server too: retry while it is locked.
+	if err := e.postActionInto(fmt.Sprintf("/servers/%d/actions/reset_password", srv.ID), nil, &body, 5*time.Minute); err != nil {
 		t.Fatal(err)
-	}
-	if status != http.StatusCreated {
-		t.Fatalf("reset_password: status %d %s: %s", status, aerr.Code, aerr.Message)
 	}
 	if body.RootPassword == "" {
 		t.Fatal("reset_password returned no root_password")
-	}
-	if err := e.waitAction(body.Action.ID, 5*time.Minute); err != nil {
-		t.Fatal(err)
 	}
 	r, err := sshPassword(srv, body.RootPassword, time.Minute, "id -un")
 	if err != nil || strings.TrimSpace(r.Stdout) != "root" {

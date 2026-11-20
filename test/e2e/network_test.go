@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -225,6 +226,14 @@ func (e *env) deleteNetwork(t *testing.T, id int64) {
 // postAction posts an action, trying again while the API answers that a
 // resource is locked by another action, and waits for its success.
 func (e *env) postAction(path string, body any, timeout time.Duration) error {
+	return e.postActionInto(path, body, nil, timeout)
+}
+
+// postActionInto posts an action, trying again while the API answers
+// locked or conflict, decodes the 201 body into out as well (when out is
+// not nil) and waits for the action's success.
+func (e *env) postActionInto(path string, body, out any, timeout time.Duration) error {
+	var raw json.RawMessage
 	var b struct {
 		Action struct {
 			ID int64 `json:"id"`
@@ -232,7 +241,7 @@ func (e *env) postAction(path string, body any, timeout time.Duration) error {
 	}
 	var last string
 	err := waitFor(5*time.Minute, 3*time.Second, func() (bool, error) {
-		status, aerr, err := e.apiDo(context.Background(), http.MethodPost, path, body, &b)
+		status, aerr, err := e.apiDo(context.Background(), http.MethodPost, path, body, &raw)
 		if err != nil {
 			return false, err
 		}
@@ -247,6 +256,14 @@ func (e *env) postAction(path string, body any, timeout time.Duration) error {
 	})
 	if err != nil {
 		return fmt.Errorf("POST %s: %w (%s)", path, err, last)
+	}
+	if err := json.Unmarshal(raw, &b); err != nil {
+		return fmt.Errorf("POST %s: %w", path, err)
+	}
+	if out != nil {
+		if err := json.Unmarshal(raw, out); err != nil {
+			return fmt.Errorf("POST %s: %w", path, err)
+		}
 	}
 	return e.waitAction(b.Action.ID, timeout)
 }
