@@ -401,15 +401,15 @@ Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes
   - Size: ~280 lines in 2 files
   - [x] internal/logfile/search.go: a backward line reader over hlabd.log and its rotated files in 64 KiB chunks (open with `openRead`, files identified with `os.SameFile` so a rotation during the read continues under the new name or skips the file), `Search` (match text as in "Interfaces", level filter, newest first, stops after max+1 with `capped`) and `Before`.
 
-- [ ] 10-23 Tray: one cloud item, state at once after Start/Stop, name HLab in the window
+- [x] 10-23 Tray: one cloud item, state at once after Start/Stop, name HLab in the window
   - Wave: 2 | Depends on: 10-20 | Review: alone
   - Requirements: UI-01, UI-08 | Tests: internal/bridge/cloud_test.go, ui/frontend/tests/e2e/fixtures.ts, ui/frontend/tests/e2e/tray.spec.ts
   - Reads: UI-SPEC "Views" (Tray icon, Tray menu), "Building blocks" (Button loading), "Language of the interface"; RESEARCH topic 1 (menu updates); DECISIONS "One Start/Stop item in the tray menu", "Product name HLab and an app icon"; findings 2, 3, 10
   - Size: ~250 lines in 6 files
   - Adjusts: ui/frontend/tests/e2e/settings.spec.ts (switch label "Trust the HLab CA")
-  - [ ] internal/bridge/cloud.go: `TrayModel` with `CloudItem`/`CloudAction` and tooltip "HLab: <status>" as in "Interfaces"; `Start`/`Stop` record and emit "starting"/"stopping" on success, with a poll generation counter so an older poll result is dropped.
-  - [ ] cmd/hlab-tray/tray.go (one cloud item whose label and enabled state follow the model, "Open HLab", window title and error dialog title "HLab"; `click` takes the current item label), e2e.go (`Click` labels), options.go (`Name: "HLab"`).
-  - [ ] ui/frontend/index.html `<title>HLab</title>`; src/views/Settings.svelte texts "Trust the HLab CA", "Stop trusting the HLab CA", "HLab CA certificate", "HLab's domains".
+  - [x] internal/bridge/cloud.go: `TrayModel` with `CloudItem`/`CloudAction` and tooltip "HLab: <status>" as in "Interfaces"; `Start`/`Stop` record and emit "starting"/"stopping" on success, with a poll generation counter so an older poll result is dropped.
+  - [x] cmd/hlab-tray/tray.go (one cloud item whose label and enabled state follow the model, "Open HLab", window title and error dialog title "HLab"; `click` takes the current item label), e2e.go (`Click` labels), options.go (`Name: "HLab"`).
+  - [x] ui/frontend/index.html `<title>HLab</title>`; src/views/Settings.svelte texts "Trust the HLab CA", "Stop trusting the HLab CA", "HLab CA certificate", "HLab's domains".
 
 - [x] 10-25 Bridge: log search and older lines
   - Wave: 2 | Depends on: 10-24 | Review: alone

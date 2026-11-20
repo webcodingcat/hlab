@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 E2E rows of a plan run after its merge
+
+- Type: decision
+- Phase: phase 10
+- What: plans implement in their own worktree, but their e2e rows run in the main checkout on the phase branch after the merge, one run at a time; the tray's e2e click acts only on the item's current label.
+- Why: the dev service `hlab-dev` runs the main checkout's `bin\hlabd.exe`, and the harness refuses other working copies.
+- Cost of change: low
+
 ## 2026-11-20 winres raises indirect modules
 
 - Type: decision
