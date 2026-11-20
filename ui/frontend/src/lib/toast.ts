@@ -36,6 +36,14 @@ export function showError(title: string, err: unknown) {
   put({ id: next++, kind: "error", title, message: errorText(err) });
 }
 
+// showSuccess shows the result of an action that ran outside a toast; it
+// closes by itself.
+export function showSuccess(title: string, message: string) {
+  const id = next++;
+  put({ id, kind: "success", title, message });
+  setTimeout(() => dismiss(id), successFor);
+}
+
 // action runs one user action under a toast. It resolves to the result, or
 // to undefined after showing the error. done words the success message.
 export async function action<T>(
