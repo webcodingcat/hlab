@@ -175,6 +175,101 @@ func (s *Service) RemoveServerType(name string) error {
 	return s.reload()
 }
 
+// ListedISO is an ISO with where it comes from; an own ISO also carries
+// its spec for the edit form.
+type ListedISO struct {
+	ISO    json.RawMessage     `json:"iso"`    // Hetzner iso object
+	Source string              `json:"source"` // "catalog" | "own"
+	Own    *catalog.OwnISOSpec `json:"own,omitempty"`
+}
+
+// ISOList is the catalog and own ISOs and why own ISOs are left out.
+type ISOList struct {
+	ISOs    []ListedISO `json:"isos"`
+	Problem string      `json:"problem,omitempty"` // like custom_isos
+}
+
+// ISOs lists the catalog ISOs followed by the own ISOs of the own ISOs
+// file. It reads the files, so it works while the cloud is stopped.
+func (s *Service) ISOs() (ISOList, error) {
+	cat, warns, err := s.isoCatalog()
+	if err != nil {
+		return ISOList{}, err
+	}
+	list := ISOList{ISOs: []ListedISO{}, Problem: strings.Join(warns, "; ")}
+	for _, iso := range cat.AllISOs() {
+		l := ListedISO{ISO: iso.Raw, Source: "catalog"}
+		if iso.Own {
+			var obj struct {
+				Description string `json:"description"`
+			}
+			if err := json.Unmarshal(iso.Raw, &obj); err != nil {
+				return ISOList{}, fmt.Errorf("own ISO %d: %w", iso.ID, err)
+			}
+			l.Source = "own"
+			l.Own = &catalog.OwnISOSpec{ID: iso.ID, Description: obj.Description,
+				Architecture: iso.Architecture, Source: iso.OwnSource}
+		}
+		list.ISOs = append(list.ISOs, l)
+	}
+	return list, nil
+}
+
+// AddISO adds an own ISO to the own ISOs file and has a running cloud
+// re-read it. An invalid spec returns its field.
+func (s *Service) AddISO(spec catalog.OwnISOSpec) (*Invalid, error) {
+	cat, _, err := s.isoCatalog()
+	if err != nil {
+		return nil, err
+	}
+	_, err = catalog.AddOwnISO(cat, s.isoFile(), spec)
+	return s.isoResult(err)
+}
+
+// UpdateISO replaces the own ISO spec.ID in the own ISOs file and has a
+// running cloud re-read it. An invalid spec returns its field.
+func (s *Service) UpdateISO(spec catalog.OwnISOSpec) (*Invalid, error) {
+	cat, _, err := s.isoCatalog()
+	if err != nil {
+		return nil, err
+	}
+	_, err = catalog.UpdateOwnISO(cat, s.isoFile(), spec)
+	return s.isoResult(err)
+}
+
+// RemoveISO removes the own ISO id from the own ISOs file and has a
+// running cloud re-read it.
+func (s *Service) RemoveISO(id int64) error {
+	if err := catalog.RemoveOwnISO(s.isoFile(), id); err != nil {
+		return err
+	}
+	return s.reload()
+}
+
+func (s *Service) isoFile() string { return filepath.Join(s.d.Paths.Config, catalog.OwnISOsFile) }
+
+// isoCatalog loads the catalog with the own ISOs of the own ISOs file and
+// returns why own ISOs are left out.
+func (s *Service) isoCatalog() (*catalog.Catalog, []string, error) {
+	cat, _, err := s.catalog()
+	if err != nil {
+		return nil, nil, err
+	}
+	return cat, cat.ReloadOwnISOs(s.isoFile()), nil
+}
+
+// isoResult turns the error of an own ISOs file change into a refused
+// field, or reloads a running cloud after a change.
+func (s *Service) isoResult(err error) (*Invalid, error) {
+	if err != nil {
+		if fe, ok := errors.AsType[*catalog.FieldError](err); ok {
+			return &Invalid{Field: fe.Field, Message: fe.Message}, nil
+		}
+		return nil, err
+	}
+	return nil, s.reload()
+}
+
 // Location is one catalog location as the views show it.
 type Location struct {
 	Name string `json:"name"`
@@ -201,8 +296,8 @@ func (s *Service) catalog() (*catalog.Catalog, []string, error) {
 	return catalog.LoadAll(s.d.Paths.Catalog, s.d.Paths.Config, s.customFile())
 }
 
-// reload asks a running cloud to re-read the settings file and the own
-// server types; a stopped cloud reads them at its next start.
+// reload asks a running cloud to re-read the settings file, the own
+// server types and the own ISOs; a stopped cloud reads them at its next start.
 func (s *Service) reload() error {
 	ctx := context.Background()
 	if !s.d.Running(ctx) {

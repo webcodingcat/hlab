@@ -13,8 +13,9 @@ import (
 var e2eOptions func(*application.Options)
 
 // appOptions returns the application options: the three bridge services,
-// the embedded frontend and one tray per user and profile. A second start
-// shows and focuses the window of the first and exits.
+// the file dialogs, the embedded frontend and one tray per user and
+// profile. A second start shows and focuses the window of the first and
+// exits.
 func appOptions(svc *bridge.Service, cloud *bridge.Cloud, logs *bridge.Logs) application.Options {
 	opts := application.Options{
 		Name:        "HLab",
@@ -23,6 +24,7 @@ func appOptions(svc *bridge.Service, cloud *bridge.Cloud, logs *bridge.Logs) app
 			application.NewService(svc),
 			application.NewService(cloud),
 			application.NewService(logs),
+			application.NewService(&Files{}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.BundledAssetFileServer(ui.Dist),
