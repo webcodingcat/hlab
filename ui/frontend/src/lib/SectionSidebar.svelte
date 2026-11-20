@@ -1,8 +1,8 @@
 <script lang="ts" module>
   import type { Cpu } from "@lucide/svelte";
 
-  /** SectionItem is one link of a section sidebar. */
-  export type SectionItem = { href: string; title: string; icon: typeof Cpu; current: boolean };
+  /** SectionItem is one link of a section sidebar; separator draws a line above it. */
+  export type SectionItem = { href: string; title: string; icon: typeof Cpu; current: boolean; separator?: boolean };
 </script>
 
 <script lang="ts">
@@ -15,6 +15,7 @@
   <nav aria-label={label}>
     {#each items as item (item.href)}
       {@const Icon = item.icon}
+      {#if item.separator}<hr />{/if}
       <a href={item.href} aria-current={item.current ? "page" : undefined}>
         <Icon size={20} aria-hidden="true" />{item.title}
       </a>
@@ -43,6 +44,12 @@
     border-radius: var(--radius);
     color: var(--text);
     text-decoration: none;
+  }
+  hr {
+    width: 100%;
+    margin: var(--s2) 0;
+    border: 0;
+    border-top: 1px solid var(--border);
   }
   a:hover {
     background: var(--bg);

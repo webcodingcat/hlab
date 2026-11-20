@@ -1,6 +1,7 @@
 <script lang="ts">
   import { TriangleAlert } from "@lucide/svelte";
   import Button from "../lib/Button.svelte";
+  import CloudStopped from "../lib/CloudStopped.svelte";
   import ConfirmDialog from "../lib/ConfirmDialog.svelte";
   import CopyField from "../lib/CopyField.svelte";
   import Field from "../lib/Field.svelte";
@@ -10,8 +11,8 @@
   import { action, showError } from "../lib/toast";
   import { running } from "../state";
 
-  // Detail of one project: its API tokens. A new token's value is shown
-  // once in the create dialog and dropped when the dialog closes.
+  // The "API tokens" section of a project console. A new token's value is
+  // shown once in the create dialog and dropped when the dialog closes.
   let { name }: { name: string } = $props();
 
   type Token = { name: string; read_only: boolean; created: string };
@@ -92,14 +93,13 @@
 </script>
 
 <div class="title-row">
-  <h1>{name}</h1>
-  <HelpButton view="projects" />
+  <h1>API tokens</h1>
+  <HelpButton view="tokens" />
 </div>
-<p><a href="#/projects">All projects</a></p>
 
 {#if $running}
   <Table
-    title="API tokens"
+    title="Tokens"
     {rows}
     {columns}
     key={(t) => t.name}
@@ -110,7 +110,7 @@
     actions={(t) => [{ label: "Revoke", onclick: () => ((revoking = t), (confirmOpen = true)) }]}
   />
 {:else}
-  <p class="muted">Start the cloud to manage projects.</p>
+  <CloudStopped />
 {/if}
 
 <dialog bind:this={createDialog} aria-labelledby="create-token-title" onclose={() => (value = undefined)}>
@@ -152,7 +152,7 @@
     display: flex;
     align-items: center;
     gap: var(--s2);
-    margin-bottom: var(--s2);
+    margin-bottom: var(--s4);
   }
   dialog {
     width: 520px;
