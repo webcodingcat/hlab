@@ -459,11 +459,21 @@ Inside `hlabd` (Go packages under `internal/`):
   forwards to the management API, `Settings()`/`SaveSettings()` for the
   file, `ServerTypes`/`AddServerType`/`RemoveServerType` for the merged
   list and the own types (results `ListedType`, `ServerTypeList`,
-  `Invalid` for field errors); `bridge.Cloud` with status, start and
-  stop; `bridge.Logs` with the log stream, sent as one `logs` event per
-  100 ms batch). Frontend: Svelte SPA in `ui/frontend`, embedded by package
+  `Invalid` for field errors), `Locations() ([]Location{name, city})`
+  from the shipped catalog, also while the cloud is stopped; `bridge.Cloud`
+  with status, start and stop, recording "starting"/"stopping" as soon as
+  the SCM accepts a start or stop (a poll begun earlier cannot overwrite
+  it), and `TrayModel{icon, tooltip, status, cloud_item, cloud_action}`
+  for the one cloud menu item; `bridge.Logs` with the log stream, sent as
+  one `logs` event per 100 ms batch, plus `Search(query, minLevel)
+  SearchResult{lines, capped}` and `Older(oldest) OlderResult{lines,
+  at_start}`, which read `hlabd.log` and its rotated files directly
+  through `logfile.Search`/`logfile.Before` in 64 KiB chunks backwards,
+  also while hlabd writes and rotates them). Frontend: Svelte SPA in `ui/frontend`, embedded by package
   `ui` (`ui/embed.go`), calling the bridge through `Call.ByName` of
-  `@wailsio/runtime`, with views switched by `location.hash`; it uses only
+  `@wailsio/runtime`, with views switched by `location.hash` (`#/projects`,
+  `#/projects/<name>/tokens`, `#/admin/<view>`; the view list comes from
+  `views.json`); it uses only
   the bridge; the Hetzner resources are
   managed through the management API's project proxy
   (`/mgmt/v1/projects/{name}/api/v1/...`), so the UI exercises the same
@@ -472,9 +482,17 @@ Inside `hlabd` (Go packages under `internal/`):
   and the service with `SERVICE_START|SERVICE_STOP|SERVICE_QUERY_STATUS`
   only (raw `windows.OpenSCManager`/`OpenService`; `svc/mgr.Connect`
   requests full access and fails for non-admins).
-- UI tests: Playwright Test connects over CDP to the real tray window of a
+- Icons: `tools/icons` (`task icons`) draws the application icon, the four
+  tray state icons, the SVGs for the top bar and the README banner, and
+  the committed `cmd/{hlab-tray,hlab,hlabd}/rsrc_windows_amd64.syso` with
+  the icon group under resource IDs 3 and 32512 (built with
+  `github.com/tc-hib/winres`); Wails loads ID 3 for window, taskbar and
+  dialogs.
+- UI tests: `test/traylaunch` (`Build`, `Start`, `Stop`, `Done`, `Err`,
+  tray log) builds and starts the e2e tray for the UI e2e tests and for
+  `task docs:screenshots`. Playwright Test connects over CDP to the real tray window of a
   build with tag `e2e`, which passes `--remote-debugging-port` (127.0.0.1)
-  and a per-run user data folder from the harness's environment variables
+  and a per-run user data folder from the launcher's environment variables
   to Wails' `AdditionalBrowserArgs`/`WebviewUserDataPath` (Wails clears the
   WebView2 environment variables, E9). Release builds never carry the tag
   (DECISIONS.md "Tray UI tests through a CDP port in an e2e-only build").
@@ -830,7 +848,7 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 | `%ProgramFiles%\hlab\catalog\{images,isos,locations,load-balancer-types,pricing}.json` | Hetzner API shapes plus `_hlab.source` (URL, checksum URL, format); locations, load balancer types and pricing from `task catalog`, images and ISOs by hand | release |
 | `%ProgramFiles%\hlab\catalog\appliance-debs.json` | `{"debs":[{"name","urls","sha256"}]}`: Debian packages missing from the appliance image; cached in `<data>\cache\debs\` and put on the appliance cidata as `<name>.deb` | release |
 | `%ProgramData%\hlab\state.db` | SQLite, see "Data schema" | hlabd |
-| `%ProgramData%\hlab\logs\hlabd.log` | JSON lines (`time`, `level`, `msg`, fields), 10 MB x 5 rotated | hlabd |
+| `%ProgramData%\hlab\logs\hlabd.log` | JSON lines (`time`, `level`, `msg`, fields), 10 MB x 5 rotated | hlabd (writes); hlab logs and the tray (read, also during rotation) |
 | `%ProgramData%\hlab\ca\` | `ca.pem`, `ca.key` (SYSTEM only), `ca.crl` | hlabd |
 | `<data folder>\{disks,volumes,images,isos,cache,appliance,vms}\` | VHDX, server seed ISOs (in `disks`), VM configuration folders (in `vms`) | hlabd |
 
