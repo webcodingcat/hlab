@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 Shell start route and last project
+
+- Type: decision
+- Phase: phase 10
+- What: an empty hash shows the project list and switches to the last project's console once `GET /projects` lists it (the list stays when the cloud is stopped); unknown hashes fall back to `#/projects`; `lastProject` is set whenever a project route opens.
+- Why: Q3 of the findings fixes (open the last project's console if it still exists) without a blank start page.
+- Cost of change: low
+
 ## 2026-11-20 E2E rows of a plan run after its merge
 
 - Type: decision

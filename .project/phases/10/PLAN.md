@@ -435,13 +435,13 @@ Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes
   - Size: ~60 lines in 2 files
   - [x] internal/catalog/catalog.go: `Location.City` (`json:"city"`, read from the shipped object); internal/bridge/service.go: `Locations()` from the catalog the bridge already loads (works while stopped), sorted by name.
 
-- [ ] 10-28 Shell: routes, top bar, Administration
+- [x] 10-28 Shell: routes, top bar, Administration
   - Wave: 4 | Depends on: 10-20, 10-23, 10-27 (order) | Review: alone
   - Requirements: UI-07, UI-08, DOC-05 | Tests: - (UI-07 help.test.ts and DOC-05 docs_test.go cover views.json; navigation e2e in 10-29)
   - Reads: UI-SPEC "Foundation", "Spacing and grid", "Views" (Shell, Cloud stopped), "Behaviour"; DECISIONS "Console shell like the Hetzner Cloud Console", "Q15 DOC-05 views from views.json"; CONTEXT "Findings fixes" (last opened project); PLAN "Interfaces" (state.ts, SectionSidebar); finding 5
   - Size: ~380 lines in 8 files
-  - [ ] ui/frontend/src/views.json `["projects","tokens","server-types","settings","logs"]`; src/state.ts (`views` built from views.json with title and area, `Route`, `route` from the hash, `href`, `lastProject` in localStorage `hlab.project`; at startup an empty hash opens `lastProject`'s console when `GET /projects` lists it, else the list; unknown routes fall back to `#/projects`); src/help.ts `ViewId`; src/help/tokens.md (short; the documentation plan completes it).
-  - [ ] src/lib/TopBar.svelte (app icon from src/assets/app-icon.svg and "HLab" linking to `#/projects`, breadcrumb slot, status pill, Start/Stop button, icon button "Administration" linking to `#/admin/server-types`), src/lib/SectionSidebar.svelte, src/App.svelte (areas: project list full width, project area renders the existing Projects/ProjectDetail until 10-29, admin area with SectionSidebar Server Types, Settings, Logs and breadcrumb "Administration"); remove src/lib/Sidebar.svelte and the project switcher.
+  - [x] ui/frontend/src/views.json `["projects","tokens","server-types","settings","logs"]`; src/state.ts (`views` built from views.json with title and area, `Route`, `route` from the hash, `href`, `lastProject` in localStorage `hlab.project`; at startup an empty hash opens `lastProject`'s console when `GET /projects` lists it, else the list; unknown routes fall back to `#/projects`); src/help.ts `ViewId`; src/help/tokens.md (short; the documentation plan completes it).
+  - [x] src/lib/TopBar.svelte (app icon from src/assets/app-icon.svg and "HLab" linking to `#/projects`, breadcrumb slot, status pill, Start/Stop button, icon button "Administration" linking to `#/admin/server-types`), src/lib/SectionSidebar.svelte, src/App.svelte (areas: project list full width, project area renders the existing Projects/ProjectDetail until 10-29, admin area with SectionSidebar Server Types, Settings, Logs and breadcrumb "Administration"); remove src/lib/Sidebar.svelte and the project switcher.
 
 - [x] 10-22 Name HLab in CLI, cloud and host messages
   - Wave: 4 | Depends on: 10-21 | Review: alone
