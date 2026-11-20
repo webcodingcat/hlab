@@ -15,6 +15,13 @@ while the cloud runs.
   server after a confirmation.
 - **Delete** in the row menu deletes the volume and its data after you type
   its name. An attached volume must be detached first.
+- Clicking a row opens the volume's page. **Overview** shows its size,
+  location, server, status and the Linux device path
+  `/dev/disk/by-id/scsi-0HC_Volume_<id>` with a copy button; **Labels**
+  edits its labels; **Protection** turns the delete protection on or off.
+- The actions menu (`…`) on that page offers **Resize** (a larger size only),
+  **Attach** (to a server in the volume's location, optionally mounted
+  automatically), **Detach**, **Change protection** and **Delete**.
 - A volume can grow but not shrink. After a resize, grow the filesystem in
   the server with `resize2fs` or `xfs_growfs`.
 
