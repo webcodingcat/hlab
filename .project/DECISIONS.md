@@ -38,6 +38,14 @@ in ARCHITECTURE.md or the plan.
 - Why: the update error stays under the field, so the existing `action()` toast helper does not fit.
 - Cost of change: low
 
+## 2026-11-20 Own server types share one check
+
+- Type: decision
+- Phase: phase 10 (10-38)
+- What: `AddOwn` and `UpdateOwn` build and check the server type object through one internal helper `ownObject`; `UpdateOwn` treats an empty or non-own name like an unknown one (`fs.ErrNotExist`).
+- Why: one place for the field checks; catalog types are never in the own types file.
+- Cost of change: low
+
 ## 2026-11-20 Q17 own server types are editable
 
 - Type: change
