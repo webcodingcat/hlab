@@ -48,7 +48,7 @@ func (c *Cloud) loadOwnISOs(ctx context.Context) {
 		go func() {
 			if _, err := c.images.EnsureISO(bg, iso.CacheName); err != nil {
 				slog.Warn("copy own ISO", "id", iso.ID, "path", iso.OwnSource.Path, "err", err)
-				c.cat.DropOwnISO(iso.ID, "copy failed: "+err.Error())
+				c.cat.DropOwnISOByCacheName(iso.CacheName, "copy failed: "+err.Error())
 			}
 		}()
 	}

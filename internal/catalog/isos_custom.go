@@ -171,9 +171,21 @@ func (c *Catalog) ReloadOwnISOs(file string) []string {
 // DropOwnISO stops serving the own ISO id, for example after a failed
 // copy, and adds a warning naming it with reason.
 func (c *Catalog) DropOwnISO(id int64, reason string) {
+	c.dropOwnISO(func(iso ISO) bool { return iso.ID == id }, reason)
+}
+
+// DropOwnISOByCacheName stops serving the own ISO with cache name name,
+// if one is served, and adds a warning naming it with reason. A copy that
+// fails after a reload changed the ISO's source drops nothing.
+func (c *Catalog) DropOwnISOByCacheName(name, reason string) {
+	c.dropOwnISO(func(iso ISO) bool { return iso.CacheName == name }, reason)
+}
+
+// dropOwnISO stops serving the first own ISO match accepts.
+func (c *Catalog) dropOwnISO(match func(ISO) bool, reason string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	i := slices.IndexFunc(c.ownISOs, func(iso ISO) bool { return iso.ID == id })
+	i := slices.IndexFunc(c.ownISOs, match)
 	if i < 0 {
 		return
 	}
@@ -181,7 +193,7 @@ func (c *Catalog) DropOwnISO(id int64, reason string) {
 		Description string `json:"description"`
 	}
 	_ = json.Unmarshal(c.ownISOs[i].Raw, &desc) // Raw is built by iso()
-	c.ownISOWarnings = append(c.ownISOWarnings, fmt.Sprintf("own ISO %d (%q) is left out: %s", id, desc.Description, reason))
+	c.ownISOWarnings = append(c.ownISOWarnings, fmt.Sprintf("own ISO %d (%q) is left out: %s", c.ownISOs[i].ID, desc.Description, reason))
 	c.ownISOs = slices.Delete(slices.Clone(c.ownISOs), i, i+1)
 }
 
