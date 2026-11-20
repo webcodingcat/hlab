@@ -724,3 +724,6 @@ button "Browse…", row menu "Edit" and "Remove".
 - Unit suite, frontend unit tests and linter green on 691eb1a.
 - Verifier blockers fixed: Rename for the seven resources without it (0804ea2), components.md sidebar order and `noNew` sentence (691eb1a).
 - Manual check UI-09: open (CHECKS.md); the phase stops for it unmerged.
+- Findings plans 14-25 to 14-42 (2026-11-20): e2e `task e2e -- -run 'TestE2E/(UI-02|UI-03|UI-05|UI-10|SRV-15)$' -v` green on ac5afc6 (UI-02 90s, UI-10 4s, SRV-15 948s); unit suite, frontend unit tests and linter green on ac5afc6; after the doc fix 5b144fa the docs tests and help unit tests green.
+- Verifier: one blocker (docs promised own-ISO copy failures on the ISOs page) fixed in 5b144fa; one backlog item (labels box text dropped on submit).
+- Manual check UI-09: guide in CHECKS.md updated to the new navigation, own ISOs, label chips and volume form; open.
