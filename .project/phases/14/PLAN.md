@@ -568,13 +568,13 @@ button "Browse…", row menu "Edit" and "Remove".
   - [x] views/Isos.svelte: table (Source catalog/own, Name as `isoTitle`, Description, Architecture), the `custom_isos` problem as a banner, "Add ISO", own rows with Edit and Remove (confirm dialog), available while the cloud is stopped; views/IsoForm.svelte: Name (required, stored as description), Architecture x86/arm, Source URL (URL, optional SHA-256) or Local file (editable Path, "Browse…" through `Files.PickISOFile`), field errors under the fields.
   - [x] App.svelte: Administration entry "ISOs" (Disc icon) between Server Types and Settings; help/isos.md for the Administration view.
 
-- [ ] 14-40 Toast titles: cloud sections
+- [x] 14-40 Toast titles: cloud sections
   - Wave: 3 | Depends on: 14-27, 14-29, 14-34, 14-35 | Review: alone
   - Requirements: UI-02 | Tests: - (format.test.ts)
   - Reads: PLAN "Interfaces" (format, api, toast types); lib/format.ts, api.ts
   - Size: ~70 lines in 10 files
-  - [ ] Every action toast on a named resource through `runOn`/`actionTitle` in views/servers (Servers.svelte, ServerCreate.svelte) and views/volumes (Section, VolumeCreate).
-  - [ ] The same in views/firewalls (Section, FirewallDetail, FirewallCreate), views/images/ImageList.svelte (Snapshot or Backup by type), views/placement-groups (Section, PlacementGroupCreate).
+  - [x] Every action toast on a named resource through `runOn`/`actionTitle` in views/servers (Servers.svelte, ServerCreate.svelte) and views/volumes (Section, VolumeCreate).
+  - [x] The same in views/firewalls (Section, FirewallDetail, FirewallCreate), views/images/ImageList.svelte (Snapshot or Backup by type), views/placement-groups (Section, PlacementGroupCreate).
 
 - [ ] 14-41 Own ISOs in the console and UI-10
   - Wave: 4 | Depends on: 14-31, 14-32, 14-33, 14-38, 14-39 | Review: alone
