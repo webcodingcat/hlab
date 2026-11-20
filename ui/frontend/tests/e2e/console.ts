@@ -136,7 +136,7 @@ export async function pick(page: Page, label: string, name: string): Promise<voi
     await select.first().selectOption(value!);
     return;
   }
-  await group.getByRole("radio", { name: new RegExp(`\b${name.replace(/[.]/g, "\.")}\b`, "i") }).first().check();
+  await group.getByRole("radio", { name: new RegExp(`\\b${name.replace(/[.]/g, "\\.")}\\b`, "i") }).first().check();
 }
 
 /** openRow opens the detail page of the list row named name. */

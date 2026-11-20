@@ -230,6 +230,101 @@ func TestImages(t *testing.T) {
 			t.Errorf("EnsureISO of an unknown name = %q, want an error", p)
 		}
 	})
+	t.Run("CAT-10", func(t *testing.T) {
+		ctx := context.Background()
+		const ownName = "own-100000-0123abcd.iso"
+		wrongSum := hex.EncodeToString(make([]byte, sha256.Size))
+
+		cases := []struct {
+			name string
+			// source returns the own source; src serves the URL and local
+			// is a local copy of the same ISO content.
+			source func(src *isoSource, local string) images.Source
+			ok     bool
+		}{
+			{"url with SHA-256", func(s *isoSource, _ string) images.Source {
+				sum := sha256.Sum256(s.iso)
+				return images.Source{URL: s.srv.URL + "/current/" + isoFile, SHA256: hex.EncodeToString(sum[:]), Format: "iso"}
+			}, true},
+			{"url with a wrong SHA-256", func(s *isoSource, _ string) images.Source {
+				return images.Source{URL: s.srv.URL + "/current/" + isoFile, SHA256: wrongSum, Format: "iso"}
+			}, false},
+			{"url without SHA-256", func(s *isoSource, _ string) images.Source {
+				return images.Source{URL: s.srv.URL + "/current/" + isoFile, Format: "iso"}
+			}, true},
+			{"local file with SHA-256", func(s *isoSource, local string) images.Source {
+				sum := sha256.Sum256(s.iso)
+				return images.Source{Path: local, SHA256: hex.EncodeToString(sum[:]), Format: "iso"}
+			}, true},
+			{"local file with a wrong SHA-256", func(_ *isoSource, local string) images.Source {
+				return images.Source{Path: local, SHA256: wrongSum, Format: "iso"}
+			}, false},
+			{"missing local file", func(_ *isoSource, local string) images.Source {
+				return images.Source{Path: filepath.Join(filepath.Dir(local), "missing.iso"), Format: "iso"}
+			}, false},
+		}
+		for _, c := range cases {
+			t.Run(c.name, func(t *testing.T) {
+				src := newISOSource(t)
+				// The checksum file lists a wrong sum: an own URL source is
+				// checked against its SHA-256 only.
+				src.setSum(wrongSum)
+				local := filepath.Join(t.TempDir(), "local.iso")
+				if err := os.WriteFile(local, src.iso, 0o644); err != nil {
+					t.Fatal(err)
+				}
+				own := c.source(src, local)
+				isoDir := filepath.Join(t.TempDir(), "isos")
+				st := images.New(images.Options{
+					Dir:    t.TempDir(),
+					ISODir: isoDir,
+					HTTP:   src.srv.Client(),
+					ISOSource: func(name string) (images.Source, bool) {
+						if name == ownName {
+							return own, true
+						}
+						return images.Source{}, false
+					},
+				})
+
+				path, err := st.EnsureISO(ctx, ownName)
+				if !c.ok {
+					if err == nil {
+						t.Errorf("EnsureISO = %q, want an error", path)
+					}
+					if files := isoDirFiles(t, isoDir); len(files) != 0 {
+						t.Errorf("ISO folder after the failed EnsureISO holds %v, want nothing", files)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatalf("EnsureISO: %v", err)
+				}
+				if filepath.Dir(path) != isoDir {
+					t.Errorf("EnsureISO = %q, want a file in %q", path, isoDir)
+				}
+				if data, err := os.ReadFile(path); err != nil || !bytes.Equal(data, src.iso) {
+					t.Errorf("cached ISO %q: %d bytes (%v), want the source unchanged (%d bytes)", path, len(data), err, len(src.iso))
+				}
+				again, err := st.EnsureISO(ctx, ownName)
+				if err != nil || again != path {
+					t.Errorf("second EnsureISO = %q, %v; want cached %q", again, err, path)
+				}
+				wantDownloads := int64(0)
+				if own.URL != "" {
+					wantDownloads = 1
+				}
+				if got := src.downloads.Load(); got != wantDownloads {
+					t.Errorf("downloads after two EnsureISO = %d, want %d", got, wantDownloads)
+				}
+				if own.Path != "" {
+					if data, err := os.ReadFile(own.Path); err != nil || !bytes.Equal(data, src.iso) {
+						t.Errorf("local source after the copy: %d bytes (%v), want it unchanged", len(data), err)
+					}
+				}
+			})
+		}
+	})
 	t.Run("CAT-07", func(t *testing.T) {
 		ctx := context.Background()
 

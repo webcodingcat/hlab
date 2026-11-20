@@ -193,6 +193,19 @@ func testUI02(t *testing.T) {
 	})
 }
 
+// testUI10: the Administration ISOs view lists the catalog and adds an own
+// ISO by URL and one by a local .iso file (a small file of this run), edits
+// and removes them; a project of its own checks /isos. The spec removes
+// every own ISO it added. The limit is generous until the first full run.
+func testUI10(t *testing.T) {
+	file := filepath.Join(harness.tmp, "ui10-own.iso")
+	if err := os.WriteFile(file, []byte("hlab e2e UI-10: not a real ISO image\n"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", file, err)
+	}
+	t.Cleanup(func() { _ = os.Remove(file) })
+	runSpec(t, "UI-10", 10*time.Minute, []string{"HLAB_E2E_ISO_FILE=" + file})
+}
+
 // testUI06: the logs view shows the service log and follows it.
 func testUI06(t *testing.T) {
 	runSpec(t, "UI-06", 10*time.Minute, nil)

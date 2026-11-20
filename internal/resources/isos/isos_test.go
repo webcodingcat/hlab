@@ -3,6 +3,10 @@ package isos_test
 import (
 	"fmt"
 	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/webcodingcat/hlab/internal/apitest"
@@ -103,6 +107,88 @@ func TestISOs(t *testing.T) {
 		}
 		if resp := env.Do(http.MethodGet, fmt.Sprintf("/isos/%d", unknown), nil); resp.StatusCode != http.StatusNotFound {
 			t.Errorf("GET /isos/%d: status %d, want 404", unknown, resp.StatusCode)
+		}
+	})
+	t.Run("CAT-10", func(t *testing.T) {
+		cat, err := catalog.Load("../../../catalog")
+		if err != nil {
+			t.Fatalf("load shipped catalog: %v", err)
+		}
+		file := filepath.Join(t.TempDir(), catalog.OwnISOsFile)
+		if err := os.WriteFile(file, []byte("[]"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		var own []catalog.ISO
+		for _, spec := range []catalog.OwnISOSpec{
+			{Description: "Own ISO A", Architecture: "x86", Source: catalog.ISOSource{URL: "https://example.com/a.iso"}},
+			{Description: "Own ISO B", Architecture: "arm", Source: catalog.ISOSource{URL: "https://example.com/b.iso"}},
+		} {
+			iso, err := catalog.AddOwnISO(cat, file, spec)
+			if err != nil {
+				t.Fatalf("AddOwnISO %+v: %v", spec, err)
+			}
+			own = append(own, iso)
+		}
+		if warns := cat.ReloadOwnISOs(file); len(warns) != 0 {
+			t.Fatalf("ReloadOwnISOs: warnings %q", warns)
+		}
+		env := apitest.New(t, isos.New(cat))
+
+		var wantIDs []float64
+		for _, iso := range cat.ISOs {
+			wantIDs = append(wantIDs, float64(iso.ID))
+		}
+		for _, iso := range own {
+			wantIDs = append(wantIDs, float64(iso.ID))
+		}
+		all := listISOs(t, env, "?per_page=50")
+		var gotIDs []float64
+		for _, iso := range all {
+			id, _ := iso["id"].(float64)
+			gotIDs = append(gotIDs, id)
+		}
+		if !slices.Equal(gotIDs, wantIDs) {
+			t.Errorf("GET /isos IDs %v, want the catalog ISOs then the own ISOs %v", gotIDs, wantIDs)
+		}
+		checkOwn := func(t *testing.T, what string, got map[string]any, want catalog.ISO, desc string) {
+			t.Helper()
+			for _, f := range isoFields {
+				if _, ok := got[f]; !ok {
+					t.Errorf("%s: own ISO %d lacks field %s", what, want.ID, f)
+				}
+			}
+			if got["id"] != float64(want.ID) || got["name"] != nil || got["type"] != "private" || got["description"] != desc {
+				t.Errorf("%s = %v, want own ISO %d with name null, type private, description %q", what, got, want.ID, desc)
+			}
+			if _, ok := got["_hlab"]; ok {
+				t.Errorf("%s carries _hlab", what)
+			}
+		}
+		for i, desc := range []string{"Own ISO A", "Own ISO B"} {
+			if n := len(cat.ISOs) + i; n < len(all) {
+				checkOwn(t, "GET /isos entry", all[n], own[i], desc)
+			}
+		}
+
+		path := fmt.Sprintf("/isos/%d", own[0].ID)
+		resp := env.Do(http.MethodGet, path, nil)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET %s: status %d, want 200", path, resp.StatusCode)
+		}
+		var one struct {
+			ISO map[string]any `json:"iso"`
+		}
+		apitest.Decode(t, resp, &one)
+		checkOwn(t, "GET "+path, one.ISO, own[0], "Own ISO A")
+
+		for _, name := range []string{"Own ISO A", own[0].CacheName} {
+			if got := listISOs(t, env, "?name="+url.QueryEscape(name)); len(got) != 0 {
+				t.Errorf("GET /isos?name=%s = %v, want none: a name matches catalog ISOs only", name, got)
+			}
+		}
+		first := cat.ISOs[0]
+		if got := listISOs(t, env, "?name="+first.Name); len(got) != 1 || got[0]["name"] != first.Name {
+			t.Errorf("GET /isos?name=%s = %v, want exactly that catalog ISO", first.Name, got)
 		}
 	})
 }

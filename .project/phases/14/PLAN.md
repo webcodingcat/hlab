@@ -242,6 +242,7 @@ labels box is a textbox named "Labels"; volume form fields "Size",
 (ext4, xfs); Administration entry "ISOs" with "Add ISO", fields "Name",
 "Architecture", "Source" (URL, Local file), "URL", "SHA-256", "Path",
 button "Browse…", row menu "Edit" and "Remove".
+- Cloud (14-32, fixed by the tests): `ensureCustomISOs(configDir string) error` in `internal/cloud` like `ensureCustomServerTypes`; `c.reload(ctx)` reloads own ISOs, copies through `c.images` and cleans `<DataFolder>\isos` using `servers.Record.Hlab.ISO` (cache name) from `c.st`; problem code `custom_isos`; start wires `images.Options.ISOSource = c.cat.ISOSourceByCacheName`.
 
 ## Plans
 

@@ -89,7 +89,8 @@ test.describe("UI-02 routes", () => {
 });
 
 test.describe("UI-02 resource routes", () => {
-  // Each new view with a tab its detail page has; isos has no create page.
+  // Each new view with a tab its detail page has; snapshots and backups have
+  // no create page.
   const views: { view: string; tab: string; hasNew: boolean }[] = [
     { view: "volumes", tab: "labels", hasNew: true },
     { view: "load-balancers", tab: "targets", hasNew: true },
@@ -100,8 +101,8 @@ test.describe("UI-02 resource routes", () => {
     { view: "dns", tab: "records", hasNew: true },
     { view: "certificates", tab: "labels", hasNew: true },
     { view: "placement-groups", tab: "labels", hasNew: true },
-    { view: "images", tab: "protection", hasNew: true },
-    { view: "isos", tab: "overview", hasNew: false },
+    { view: "snapshots", tab: "protection", hasNew: false },
+    { view: "backups", tab: "labels", hasNew: false },
   ];
   const cases: { name: string; route: Route; hash: string }[] = [];
   for (const v of views) {
@@ -116,6 +117,7 @@ test.describe("UI-02 resource routes", () => {
       hash: `#/projects/demo/${v.view}/7/${v.tab}`,
     });
   }
+  cases.push({ name: "admin isos", route: { area: "admin", view: "isos" } as Route, hash: "#/admin/isos" });
   for (const c of cases) {
     test(`href and parse agree: ${c.name}`, () => {
       expect(href(c.route)).toBe(c.hash);
@@ -123,7 +125,9 @@ test.describe("UI-02 resource routes", () => {
     });
   }
 
-  test("isos has no create page", () => {
-    expect(parse("#/projects/demo/isos/new")).toBeUndefined();
-  });
+  for (const view of views.filter((v) => !v.hasNew).map((v) => v.view)) {
+    test(`${view} has no create page`, () => {
+      expect(parse(`#/projects/demo/${view}/new`)).toBeUndefined();
+    });
+  }
 });

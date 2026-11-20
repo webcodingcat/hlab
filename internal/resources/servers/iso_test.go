@@ -3,6 +3,8 @@ package servers_test
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -88,6 +90,44 @@ func testISOs(t *testing.T) {
 			t.Errorf("server iso after the failed attach_iso %+v, want null", got)
 		}
 	})
+
+	t.Run("CAT-10", func(t *testing.T) {
+		var own catalog.ISO
+		p := newRecPlatform()
+		imgs := newTestImages(t)
+		env, _, _ := newImageEnv(t, p, func(d *servers.Deps) {
+			d.Images = imgs
+			file := filepath.Join(t.TempDir(), catalog.OwnISOsFile)
+			if err := os.WriteFile(file, []byte("[]"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			spec := catalog.OwnISOSpec{Description: "Own install ISO", Architecture: "x86",
+				Source: catalog.ISOSource{URL: "https://example.com/own-install.iso"}}
+			var err error
+			if own, err = catalog.AddOwnISO(d.Catalog, file, spec); err != nil {
+				t.Fatalf("AddOwnISO %+v: %v", spec, err)
+			}
+			if warns := d.Catalog.ReloadOwnISOs(file); len(warns) != 0 {
+				t.Fatalf("ReloadOwnISOs: warnings %q", warns)
+			}
+		})
+		id := createdServer(t, env, "own-iso", nil)
+
+		wantError(t, postAction(env, id, "attach_iso", map[string]any{"iso": "Own install ISO"}),
+			http.StatusUnprocessableEntity, "invalid_input", "attach_iso with an own ISO's description")
+
+		runAction(t, env, id, "attach_iso", map[string]any{"iso": fmt.Sprint(own.ID)})
+		if reqs := imgs.isoRequests(); !slices.Contains(reqs, own.CacheName) {
+			t.Errorf("attach_iso of the own ISO: EnsureISO requests %v, want %q", reqs, own.CacheName)
+		}
+		if d := p.lastDVD(t, 1); !sameFile(d.iso, imgs.isoPath(own.CacheName)) {
+			t.Errorf("attach_iso of the own ISO: DVD slot 1 holds %q, want %q", d.iso, imgs.isoPath(own.CacheName))
+		}
+		got := serverISOObject(t, env, id)
+		if got == nil || got["id"] != float64(own.ID) || got["name"] != nil || got["type"] != "private" || got["description"] != "Own install ISO" {
+			t.Errorf("server iso after attaching the own ISO = %v, want own ISO %d with name null, type private and its description", got, own.ID)
+		}
+	})
 }
 
 type isoRef struct {
@@ -105,6 +145,22 @@ func serverISO(t *testing.T, env *apitest.Env, id int64) *isoRef {
 	var b struct {
 		Server struct {
 			ISO *isoRef `json:"iso"`
+		} `json:"server"`
+	}
+	apitest.Decode(t, resp, &b)
+	return b.Server.ISO
+}
+
+// serverISOObject is the server's iso object, nil when none is attached.
+func serverISOObject(t *testing.T, env *apitest.Env, id int64) map[string]any {
+	t.Helper()
+	resp := env.Do(http.MethodGet, fmt.Sprintf("/servers/%d", id), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /servers/%d: status %d, want 200", id, resp.StatusCode)
+	}
+	var b struct {
+		Server struct {
+			ISO map[string]any `json:"iso"`
 		} `json:"server"`
 	}
 	apitest.Decode(t, resp, &b)
