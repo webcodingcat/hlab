@@ -27,6 +27,78 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 Section tabs sit above the section title row
+
+- Type: decision
+- Phase: phase 14
+- What: the tab row of an entry is at the top of every page of that entry, above the open view's own h1 and help button; no separate entry title.
+- Why: avoids a second heading and edits to every section.
+- Cost of change: low
+
+## 2026-11-20 Toast type comes from the request path
+
+- Type: decision
+- Phase: phase 14
+- What: `resourceType(req.path)` in `lib/format.ts` derives the type and `runOn(project, name, action, req)` wraps `runApi`, for every action on a named resource, creates included.
+- Why: one shared place without a new prop on every actions menu.
+- Cost of change: low
+
+## 2026-11-20 LabelsField keeps its props
+
+- Type: decision
+- Phase: phase 14
+- What: the chip box keeps `rows` (bindable) and `error`; `parseLabel` and `checkLabel` in `labels.ts` follow `internal/labels` incl. optional prefix and reserved `hetzner.cloud/`.
+- Why: its 25 users stay unchanged.
+- Cost of change: low
+
+## 2026-11-20 Catalog extended for own ISOs
+
+- Type: decision
+- Phase: phase 14
+- What: `Catalog.ISOs` and `LoadAll` keep their meaning; added `OwnISOs`, `AllISOs`, `ReloadOwnISOs`, `DropOwnISO`, `OwnISOsWarnings`, `ISOSourceByCacheName`; `images.Source` gains `Path`, `SHA256`, `images.Options` an `ISOSource` lookup.
+- Why: extending, not changing, the interfaces others use.
+- Cost of change: low
+
+## 2026-11-20 PickISOFile in a tray service Files
+
+- Type: decision
+- Phase: phase 14
+- What: the file dialog lives in a Wails service `Files` in `cmd/hlab-tray`, not in `internal/bridge`.
+- Why: the bridge package stays free of Wails.
+- Cost of change: low
+
+## 2026-11-20 Snapshots and Backups wrap one image list
+
+- Type: decision
+- Phase: phase 14
+- What: `views/images/Section.svelte` becomes `ImageList.svelte` with a `type` prop, used by the Snapshots and Backups sections.
+- Why: no copied view code.
+- Cost of change: low
+
+## 2026-11-20 Own local ISO served before its copy ends
+
+- Type: decision
+- Phase: phase 14
+- What: a local file is served as soon as it can be opened and copied in the background; a failed copy drops that ISO.
+- Why: start and reload do not wait for large copies.
+- Cost of change: low
+
+## 2026-11-20 Own ISOs have no name and attach by ID
+
+- Type: decision
+- Phase: phase 14
+- What: own ISOs are served with `name` null and shown by their description (the form's required "Name"), attached and edited by ID only, cached as `own-<id>-<hash of the source>.iso`; an uncopyable local file drops only its ISO, and a cache file stays while a server has it attached.
+- Why: Hetzner's schema gives private ISOs `name` null (answer of the user at the start of the phase 14 changes).
+- Cost of change: medium
+
+## 2026-11-20 Toast titles name type and resource first
+
+- Type: decision
+- Phase: phase 14
+- What: action toast titles read `<Type> <name>: <action>`, e.g. "Network Test: Delete", built by one shared helper.
+- Why: the user chose it at the start of the phase 14 changes; menu labels differ too much to insert the type.
+- Cost of change: low
+
 ## 2026-11-20 Labels are entered as chips
 
 - Type: change

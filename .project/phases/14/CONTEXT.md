@@ -16,3 +16,15 @@ Confirmed at the start of phase 14. The planner's assumptions stand with these c
 ## Answers
 
 - Q1 (UI-02 e2e depth): per section one short flow without a booted server: create, change a label, delete; ISOs only the list. Images and everything needing a running server (attach volume, LB targets, assign IP, firewall on a server) are proven by the unit tables of the requests and by hand in UI-09. All specs share one project. The run's time limit is about twice the first full run, not raised by a flat amount.
+
+## Findings plans 14-25 onward (confirmed 2026-11-20)
+
+The planner's assumptions for the findings stand with these corrections and answers; research in RESEARCH.md.
+
+- Own ISOs: `/isos` serves them with `name` null; the shown name is `description`, entered as the required form field "Name"; the cache name `_hlab.name` is `own-<id>-<first 8 hex of SHA-256 of the source JSON>.iso`, derived by the tray.
+- attach_iso takes an own ISO only by ID; a name and `?name=` match only catalog ISOs. The console shows `iso.name ?? iso.description` wherever it shows an ISO name.
+- A local file that cannot be copied drops only that ISO (named in `custom_isos`); all drop only for an invalid file or a duplicate ID or `_hlab.name`.
+- A removed or changed own ISO still attached keeps its cache file; it is deleted at the next start or reload once attached nowhere.
+- Local file in the ISO form: editable path field plus "Browse…" (Wails dialog); the e2e test types the path.
+- Volume e2e setup creates its server through the API with `start_after_create: false`.
+- Toast titles: `<Type> <name>: <action>`, e.g. "Network Test: Delete".

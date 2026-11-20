@@ -54,7 +54,7 @@ resource types.
 - CAT-06 system images ubuntu-22.04, ubuntu-24.04, ubuntu-26.04, debian-12 and debian-13 are listed under Hetzner's names and attributes (goal 1) [unit]
 - CAT-07 an image is downloaded from its official source on first use, verified by checksum, converted once and reused from the cache (goal 2) [unit]
 - CAT-08 `/isos` lists the ISO catalog; an ISO is downloaded on first attach, verified by checksum and cached (goal 2) [unit]
-- CAT-10 the user's own ISOs file adds ISOs to `/isos` for every project as type `private`; an own ISO comes from a URL (downloaded on first attach, verified when a SHA-256 is given) or from a local `.iso` file that hlabd copies into its cache when it reads the file, and attaches like a catalog ISO (goal 2) [unit]
+- CAT-10 the user's own ISOs file adds ISOs to `/isos` for every project as type `private` (name null, shown by their description, attached by ID; a name matches only catalog ISOs); an own ISO comes from a URL (downloaded on first attach, verified when a SHA-256 is given) or from a local `.iso` file that hlabd copies into its cache when it reads the file, and attaches like a catalog ISO; a local file that cannot be copied leaves out only that ISO (goal 2) [unit]
 
 ### Servers (`SRV`)
 

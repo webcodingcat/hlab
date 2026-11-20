@@ -108,6 +108,141 @@ first; the certificate "Type" select has an option value `managed`; the
 floating and primary IP "Protocol" control has an "IPv4" entry; the ISOs list
 shows all ISOs on one page (no paging).
 
+### Findings plans (14-25 onward)
+
+Go, own ISOs (CAT-10, UI-10). Everything here extends; `Catalog.ISOs`
+(the catalog ISOs), `LoadAll` and `images.Options.ISOs` keep their meaning.
+
+```go
+// internal/catalog/isos_custom.go
+const OwnISOsFile = "isos.custom.json" // in the config folder
+const MinOwnISOID = 100000
+
+// ISOSource is `_hlab.source` of an own ISO: exactly one of URL and Path.
+type ISOSource struct {
+	URL    string `json:"url,omitempty"`
+	Path   string `json:"path,omitempty"`   // local .iso file
+	SHA256 string `json:"sha256,omitempty"` // optional, 64 hex
+}
+
+// OwnISOSpec is an own ISO to add (ID 0) or update (ID set).
+type OwnISOSpec struct {
+	ID           int64     `json:"id"`
+	Description  string    `json:"description"`  // required; the shown name ("Name" in the form)
+	Architecture string    `json:"architecture"` // "x86" or "arm"
+	Source       ISOSource `json:"source"`
+}
+
+// ISO (catalog.go) gains, without changing its other fields:
+//   Own       bool      // from isos.custom.json
+//   CacheName string    // file in <data>\isos: the catalog name, or `_hlab.name` of an own ISO
+//   OwnSource ISOSource // own ISOs only
+// The Raw object of an own ISO is {id, name: null, description, type: "private",
+// deprecation: null, architecture}; `_hlab` holds {name, source}.
+
+func OwnISOCacheName(id int64, src ISOSource) string // "own-<id>-<first 8 hex of SHA-256 of the source JSON>.iso"
+
+// ReloadOwnISOs reads file (missing: none) and replaces the served own ISOs.
+// An invalid file, an ID below MinOwnISOID or a duplicate ID or cache name
+// serves none; a Path source whose file cannot be opened leaves out only
+// that ISO. Each returned warning is one line for the custom_isos problem.
+func (c *Catalog) ReloadOwnISOs(file string) []string
+func (c *Catalog) DropOwnISO(id int64, reason string) // after a failed copy; adds a warning
+func (c *Catalog) OwnISOsWarnings() []string
+func (c *Catalog) OwnISOs() []ISO           // guarded
+func (c *Catalog) AllISOs() []ISO           // catalog ISOs, then own ISOs
+func (c *Catalog) ISO(ref string) (ISO, bool) // a name matches catalog ISOs only, an ID both
+func (c *Catalog) ISOSourceByCacheName(name string) (images.Source, bool)
+
+// AddOwnISO, UpdateOwnISO and RemoveOwnISO rewrite file in place in one
+// write (keeps its ACL). Field errors are *FieldError with Field
+// "description", "architecture", "url", "path" or "sha256"; an unknown ID
+// wraps fs.ErrNotExist. Update keeps the ID and changes the cache name only
+// when the source changed.
+func AddOwnISO(c *Catalog, file string, s OwnISOSpec) (ISO, error)
+func UpdateOwnISO(c *Catalog, file string, s OwnISOSpec) (ISO, error)
+func RemoveOwnISO(file string, id int64) error
+
+// internal/images: Source gains Path and SHA256 (a Path source is copied,
+// a URL source with SHA256 and no ChecksumURL is checked against it);
+// Options gains
+//   ISOSource func(name string) (Source, bool) // consulted when ISOs lacks name
+
+// internal/bridge (bound as before)
+type ListedISO struct {
+	ISO    json.RawMessage     `json:"iso"`    // Hetzner iso object
+	Source string              `json:"source"` // "catalog" or "own"
+	Own    *catalog.OwnISOSpec `json:"own,omitempty"`
+}
+type ISOList struct {
+	ISOs    []ListedISO `json:"isos"`
+	Problem string      `json:"problem,omitempty"` // like custom_server_types
+}
+func (s *Service) ISOs() (ISOList, error)
+func (s *Service) AddISO(spec catalog.OwnISOSpec) (*Invalid, error)
+func (s *Service) UpdateISO(spec catalog.OwnISOSpec) (*Invalid, error)
+func (s *Service) RemoveISO(id int64) error
+
+// cmd/hlab-tray: Wails service "Files" (outside the Wails-free bridge)
+func (f *Files) PickISOFile() (string, error) // "" when cancelled
+```
+
+Frontend:
+
+```ts
+// lib/consoleNav.ts (pure): the project console's sidebar and tabs.
+export type NavTab = { view: ProjectView; title: string };
+export type NavEntry = { id: string; title: string; tabs: NavTab[] }; // ids: servers, volumes, firewalls, load-balancers, networks, ips, dns, security
+export type NavGroup = { id: "cloud" | "networking" | "security"; title?: string; entries: NavEntry[] }; // security: no heading
+export const navGroups: NavGroup[];
+export function entryOf(view: ProjectView): NavEntry;
+// Tabs: Servers (Servers, Snapshots, Backups, Placement Groups), Volumes,
+// Firewalls, Load Balancers, Networks, IPs (Primary IPs, Floating IPs),
+// DNS (DNS Zones), Security (SSH Keys, API tokens, Certificates).
+
+// routes.ts: ProjectView gains "snapshots" and "backups" (list and detail,
+// no new); AdminView gains "isos". "images" (14-38) and the project view
+// "isos" (14-41) are removed.
+
+// lib/format.ts
+export function actionTitle(type: string, name: string, action: string): string; // "Network Test: Delete"
+export function resourceType(path: string): string; // API path to type: "/networks/5/actions/x" -> "Network", "/zones/1/rrsets/www/A" -> "Record", "/load_balancers" -> "Load balancer"
+export function isoTitle(iso: { name: string | null; description: string }): string; // name ?? description
+
+// lib/api.ts
+export function runOn<T extends ActionResult>(project: string, name: string, action: string,
+  req: { method: string; path: string; body?: unknown }): Promise<T | undefined>; // runApi titled actionTitle(resourceType(req.path), name, action)
+
+// lib/labels.ts (LabelRow, toRows, toLabels stay)
+export function parseLabel(text: string): { row: LabelRow } | { error: string }; // "key=value" or "key", trimmed, checked
+export function checkLabel(row: LabelRow): string | undefined; // the API's rule: optional DNS-subdomain prefix "x/", name and value at most 63, alphanumeric at both ends, -_. inside, value optional, prefix hetzner.cloud/ reserved
+```
+
+Svelte: `lib/LabelsField.svelte` keeps its props `{ rows: LabelRow[]
+(bindable); error?: string }` and becomes the chip box (UI-SPEC "Labels
+field"), so its users stay; its box is a textbox named "Labels".
+`lib/ProtectionTab.svelte` gains `name: string`. `lib/SectionTabs.svelte`
+`{ project: string; view: ProjectView }`: a `nav` labelled "Section" with
+one link per tab of `entryOf(view)`. `lib/SectionSidebar.svelte` gains
+optional groups (heading button with `aria-expanded`); the collapsed
+groups are the `collapsedGroups` store in state.ts (localStorage).
+
+Toast titles are `<Type> <name>: <action>` for every action on a named
+resource (create included: "Network web: Create"); titles of loading
+errors ("Load zones") stay. Types: Server, Volume, Firewall, Snapshot or
+Image, Placement group, Load balancer, Network, Primary IP, Floating IP,
+Zone, Record, Certificate, SSH key, Project, Token, Server type, ISO.
+
+UI texts the e2e specs rely on (new): sidebar navigation "Project" with
+the entries "Servers", "Volumes", "Firewalls", "Load Balancers",
+"Networks", "IPs", "DNS", "Security" and group buttons "Cloud",
+"Networking"; tab navigation "Section" with the tab titles above; the
+labels box is a textbox named "Labels"; volume form fields "Size",
+"Name", "Server", "Mount options" (Automatic, Manual), "Filesystem"
+(ext4, xfs); Administration entry "ISOs" with "Add ISO", fields "Name",
+"Architecture", "Source" (URL, Local file), "URL", "SHA-256", "Path",
+button "Browse…", row menu "Edit" and "Remove".
+
 ## Plans
 
 - [x] 14-01 Console registration of the new sections
@@ -303,6 +438,159 @@ shows all ISOs on one page (no paging).
   - Size: ~250 lines in 5 files
   - [x] Check the eleven help texts against the built views (only existing views and buttons).
   - [x] README.md (tray program: every resource section), docs/guide.md (the console for each resource, at the matching sections), docs/development/components.md (resourceActions, lib/resources, section convention); regenerate the console screenshots with `task docs:screenshots`.
+
+- [ ] 14-25 Own ISOs in the catalog
+  - Wave: 1 | Depends on: - | Review: alone
+  - Requirements: CAT-10, UI-10 | Tests: internal/catalog/isos_custom_test.go
+  - Reads: CONTEXT "Findings plans 14-25 onward"; RESEARCH.md "2."; REQUIREMENTS CAT-10, UI-10; ARCHITECTURE "Files and formats" (isos.custom.json), "images"; PLAN "Interfaces" (Findings plans); internal/catalog/catalog.go (ISO, splitHlab), custom.go as the pattern; OpenAPI `GET /isos/{id}` response in the reference
+  - Size: ~350 lines in 3 files
+  - [ ] internal/catalog/isos_custom.go: ISOSource, OwnISOSpec, OwnISOCacheName, ReloadOwnISOs, DropOwnISO, OwnISOsWarnings, OwnISOs, AllISOs, ISOSourceByCacheName, AddOwnISO, UpdateOwnISO, RemoveOwnISO as in "Interfaces"; catalog.go: the new ISO fields (catalog ISOs get CacheName = Name), `ISO(ref)` matching own ISOs by ID only, a guarded own ISO list.
+  - [ ] internal/catalog/isos_custom_test.go.
+
+- [ ] 14-26 Image store: own ISO sources
+  - Wave: 1 | Depends on: - | Review: alone
+  - Requirements: CAT-10 | Tests: internal/images/images_test.go
+  - Reads: ARCHITECTURE "images"; PLAN "Interfaces" (images); internal/images/images.go, download.go (Fetch, fetchSource)
+  - Size: ~150 lines in 3 files
+  - [ ] internal/images/images.go and download.go: Source.Path and Source.SHA256; Options.ISOSource consulted when ISOs lacks the name; EnsureISO copies a Path source through a temporary file and checks SHA256 when set; a URL source with SHA256 and no ChecksumURL is checked against it; on error nothing stays in ISODir.
+  - [ ] internal/images/images_test.go: the CAT-10 subtest.
+
+- [ ] 14-27 Toast titles: shared builder
+  - Wave: 1 | Depends on: - | Review: alone
+  - Requirements: UI-02 | Tests: ui/frontend/tests/unit/format.test.ts
+  - Reads: UI-SPEC "Building blocks" (Action toast); PLAN "Interfaces" (format, api, ProtectionTab; toast types); ui/frontend/src/lib/format.ts, api.ts, ResourceActionsMenu.svelte, ProtectionTab.svelte
+  - Size: ~180 lines in 12 files
+  - [ ] lib/format.ts `actionTitle`, `resourceType`; lib/api.ts `runOn`; lib/ResourceActionsMenu.svelte titles through `actionTitle(resourceType(req.path), name, a.label)`; lib/ProtectionTab.svelte gets `name` and titles "<Type> <name>: Change protection"; tests/unit/format.test.ts.
+  - [ ] ProtectionTab `name` in views/dns/ZoneDetail.svelte, floating-ips/FloatingIpDetail.svelte, images/ImageDetail.svelte, load-balancers/LoadBalancerDetail.svelte.
+  - [ ] ProtectionTab `name` in views/networks/NetworkDetail.svelte, primary-ips/PrimaryIpDetail.svelte, servers/ServerDetail.svelte, volumes/VolumeDetail.svelte.
+
+- [ ] 14-28 Labels as chips
+  - Wave: 1 | Depends on: - | Review: alone
+  - Requirements: UI-02 | Tests: ui/frontend/tests/unit/forms.test.ts; e2e: the UI-02 specs through test/e2e/ui_test.go TestE2E/UI-02
+  - Reads: UI-SPEC "Building blocks" (Labels field); DECISIONS "Labels are entered as chips"; PLAN "Interfaces" (labels, LabelsField); phases/14/feedback/hetzner-labels.png, hetzner-labels-selected.png; internal/labels/labels.go (the API's rule); ui/frontend/src/lib/labels.ts, LabelsField.svelte, LabelsTab.svelte; tests/e2e/console.ts `addLabel`
+  - Size: ~330 lines in 6 files
+  - Adjusts: ui/frontend/tests/e2e/console.ts `addLabel` and ui/frontend/tests/e2e/sshkeys.spec.ts fill the labels box with `env=e2e` and Enter instead of the key and value rows
+  - [ ] lib/labels.ts `parseLabel`, `checkLabel`; tests/unit/forms.test.ts.
+  - [ ] lib/LabelsField.svelte as the chip box (rule text, chips with key on muted background, Enter/Space/comma turn text into a chip, click selects in the accent colour, Delete/Backspace removes the selected chip, Backspace in the empty input removes the last, double click edits, rule and duplicate messages under the box with the text kept); LabelsTab.svelte follows ("Save labels" stays).
+  - [ ] Adjust tests/e2e/console.ts and sshkeys.spec.ts; run `task e2e -- -run 'TestE2E/UI-02$'`.
+
+- [ ] 14-29 Placement group Type select
+  - Wave: 1 | Depends on: - | Review: alone
+  - Requirements: UI-02 | Tests: - (cosmetic; existing rows stay)
+  - Reads: PLAN "Findings from manual testing" (placement group Type); views/placement-groups/PlacementGroupCreate.svelte
+  - Size: ~15 lines in 1 file
+  - [ ] views/placement-groups/PlacementGroupCreate.svelte: Type as a select with the single preselected option `spread`, the hint below it; the request still sends `type: "spread"`.
+
+- [ ] 14-30 Console navigation model and new routes
+  - Wave: 1 | Depends on: - | Review: alone
+  - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/unit/routes.test.ts
+  - Reads: UI-SPEC "Views" (Project console, Administration), "Building blocks" (Section tabs); ARCHITECTURE "hlab-tray (tray program)"; PLAN "Interfaces" (consoleNav, routes); ui/frontend/src/lib/routes.ts, help.ts, views.json, help/images.md
+  - Size: ~200 lines in 7 files
+  - [ ] lib/consoleNav.ts as in "Interfaces"; routes.ts: project views `snapshots` and `backups` (list and detail, no new), admin view `isos`; help.ts `ViewId`, views.json in sidebar order.
+  - [ ] help/snapshots.md and help/backups.md (from help/images.md, split by type); tests/unit/routes.test.ts gets the new views and `#/admin/isos`.
+
+- [ ] 14-31 Own ISOs served and attached
+  - Wave: 2 | Depends on: 14-25 | Review: alone
+  - Requirements: CAT-10 | Tests: internal/resources/isos/isos_test.go, internal/resources/servers/iso_test.go
+  - Reads: CONTEXT "Findings plans 14-25 onward"; RESEARCH.md "2."; PLAN "Interfaces" (catalog); internal/resources/isos/isos.go, internal/resources/servers/iso.go; OpenAPI `GET /isos` (name filter) and `POST /servers/{id}/actions/attach_iso` in the reference
+  - Size: ~200 lines in 4 files
+  - [ ] internal/resources/isos/isos.go: list and get over `AllISOs()` (catalog then own ISOs by ID), `name` filter matching catalog ISOs only; internal/resources/servers/iso.go: attach through `Catalog.ISO(ref)` (own ISOs by ID only) and `EnsureISO(iso.CacheName)`.
+  - [ ] internal/resources/isos/isos_test.go and internal/resources/servers/iso_test.go: the CAT-10 subtests.
+
+- [ ] 14-32 Cloud: own ISOs file, copies and cache cleanup
+  - Wave: 2 | Depends on: 14-25, 14-26 | Review: alone
+  - Requirements: CAT-10 | Tests: internal/cloud/reload_test.go
+  - Reads: CONTEXT "Findings plans 14-25 onward"; ARCHITECTURE "Management API" (`/status` problems, `/settings/reload`), "Files and formats", "Cloud start and stop"; PLAN "Interfaces"; internal/cloud/cloud.go (catalog load, images.New, mgmtStatus), reload.go, reload_test.go; how the store keeps a server's attached ISO (internal/resources/servers/iso.go setISO)
+  - Size: ~300 lines in 4 files
+  - [ ] internal/cloud/isos.go (new) and reload.go: create isos.custom.json as `[]` with the settings.toml ACL when missing; read own ISOs at start and on reload (`ReloadOwnISOs`); copy Path sources in the background through `EnsureISO`, a failed copy calls `DropOwnISO`; delete `own-*` files in `<data>\isos` that no served own ISO names and no server has attached, at start and on reload; cloud.go: `images.Options.ISOSource`, the `custom_isos` problem from `OwnISOsWarnings` in `/status`.
+  - [ ] internal/cloud/reload_test.go: the CAT-10 subtests.
+
+- [ ] 14-33 Tray bridge for own ISOs and the file dialog
+  - Wave: 2 | Depends on: 14-25 | Review: alone
+  - Requirements: UI-10 | Tests: - (UI-10 e2e of 14-41; the file logic is tested in 14-25)
+  - Reads: RESEARCH.md "1."; ARCHITECTURE "hlab-tray (tray program)"; PLAN "Interfaces" (bridge, Files); internal/bridge/service.go (ServerTypes, AddServerType, reload); cmd/hlab-tray/main.go (service registration)
+  - Size: ~200 lines in 3 files
+  - [ ] internal/bridge/service.go: `ISOs`, `AddISO`, `UpdateISO`, `RemoveISO` over the catalog functions and `OwnISOsFile`, working while the cloud is stopped, then `reload()`; field errors as `Invalid`; `ISOList.Problem` from `OwnISOsWarnings`.
+  - [ ] cmd/hlab-tray: a `Files` Wails service with `PickISOFile` (`app.Dialog.OpenFile().SetTitle("Select ISO").AddFilter("ISO images", "*.iso").CanChooseFiles(true).AttachToWindow(win).PromptForSingleSelection()`), registered beside the bridge services.
+
+- [ ] 14-34 Snapshots and Backups views
+  - Wave: 2 | Depends on: 14-27, 14-30 | Review: alone
+  - Requirements: UI-02 | Tests: - (images requests proven by images.test.ts; CONTEXT Q1)
+  - Reads: UI-SPEC "Views" (Project console: Snapshots and Backups); PLAN "Interfaces" (section convention, routes); ui/frontend/src/views/images/*
+  - Size: ~200 lines in 6 files
+  - [ ] views/images/Section.svelte becomes ImageList.svelte with a `type` ("snapshot" or "backup") listing `/images?type=<type>` (title, empty state and help per view); views/snapshots/Section.svelte and views/backups/Section.svelte use it and ImageDetail; ImageDetail.svelte and ImageActionInput.svelte link back to the view they were opened from; Convert to snapshot stays on backups only.
+
+- [ ] 14-35 Volume create form like the Hetzner Console
+  - Wave: 2 | Depends on: - | Review: alone
+  - Requirements: UI-02 | Tests: ui/frontend/tests/e2e/volumes.spec.ts (through TestE2E/UI-02)
+  - Reads: UI-SPEC "Views" (Create per type, Create volume); DECISIONS "Volume create form like the Hetzner Console"; CONTEXT "Findings plans 14-25 onward" (volume e2e setup); PLAN "Findings from manual testing" (volume); ui/frontend/src/views/volumes/VolumeCreate.svelte, lib/resources/volumes.ts; tests/e2e/volumes.spec.ts, console.ts
+  - Size: ~300 lines in 2 files
+  - Adjusts: ui/frontend/tests/e2e/volumes.spec.ts creates a server in the shared project through the API with `start_after_create: false` in its setup, deletes it at the end, and picks it as Server in the form
+  - [ ] views/volumes/VolumeCreate.svelte: volume icon, Size field with +/− (1 GB) and a slider 10–10240 GB ("10 GB", "10,240 GB") on one value; Name prefilled with the first free `volume-N`; required Server (hint "The volume is bound to the server's location.", required error under it, empty select without servers); Mount options segmented Automatic | Manual (default Automatic) with one explaining line; Filesystem radios ext4 / xfs (default ext4); Labels; the request always sends `server`, `automount`, `format`.
+  - [ ] Adjust tests/e2e/volumes.spec.ts; run `task e2e -- -run 'TestE2E/UI-02$'` filtered to the volumes spec.
+
+- [ ] 14-36 Toast titles: networking sections
+  - Wave: 2 | Depends on: 14-27 | Review: alone
+  - Requirements: UI-02 | Tests: - (format.test.ts)
+  - Reads: PLAN "Interfaces" (format, api, toast types); lib/format.ts, api.ts
+  - Size: ~90 lines in 15 files
+  - [ ] Every action toast on a named resource through `runOn`/`actionTitle` in views/load-balancers (Section, LoadBalancerDetail, LoadBalancerCreate, tabs/Networking, tabs/Services).
+  - [ ] The same in views/load-balancers/tabs/Targets.svelte and views/networks (Section, NetworkDetail, NetworkCreate).
+  - [ ] The same in views/floating-ips (Section, FloatingIpDetail, FloatingIpCreate) and views/primary-ips (Section, PrimaryIpDetail, PrimaryIpCreate).
+
+- [ ] 14-37 Toast titles: DNS, Security and Administration
+  - Wave: 2 | Depends on: 14-27 | Review: alone
+  - Requirements: UI-02 | Tests: - (format.test.ts)
+  - Reads: PLAN "Interfaces" (format, api, toast types); lib/format.ts, api.ts, toast.ts `action`
+  - Size: ~80 lines in 12 files
+  - [ ] Every action toast on a named resource through `runOn`/`actionTitle` in views/dns (Section, ZoneCreate, tabs/Records, tabs/ZoneFile, tabs/PrimaryNameservers; records as "Record <name> <type>").
+  - [ ] The same in views/certificates (Section, CertificateCreate) and views/sshkeys (SshKeys, SshKeyDetail).
+  - [ ] The same in views/Tokens.svelte ("Token <name>: Revoke"), Projects.svelte ("Project <name>: Delete"), ServerTypes.svelte ("Server type <name>: Remove").
+
+- [ ] 14-38 Sidebar groups and section tabs
+  - Wave: 3 | Depends on: 14-28, 14-30, 14-34, 14-35 | Review: alone
+  - Requirements: UI-02 | Tests: the UI-02 specs through test/e2e/ui_test.go TestE2E/UI-02
+  - Reads: UI-SPEC "Views" (Project console), "Building blocks" (Section tabs), "Foundation" (icons); PLAN "Findings from manual testing" (sidebar); PLAN "Interfaces" (consoleNav, SectionTabs, SectionSidebar); ui/frontend/src/views/ProjectConsole.svelte, lib/SectionSidebar.svelte, state.ts; tests/e2e/console.ts `section`; test/e2e/ui_test.go `testUI02`
+  - Size: ~350 lines in 10 files
+  - Adjusts: ui/frontend/tests/e2e/console.ts `section` opens the sidebar entry that holds the view, then its tab; ui/frontend/tests/unit/routes.test.ts drops the `images` cases
+  - [ ] lib/SectionSidebar.svelte with groups (12 px uppercase muted heading with chevron, collapse on click, 1 px line between groups), state.ts `collapsedGroups`; lib/SectionTabs.svelte (accent underline, `aria-current`).
+  - [ ] views/ProjectConsole.svelte: sidebar from `navGroups` (icons by entry, e.g. Server, HardDrive, Shield, Scale, Network, MapPin, Globe, KeyRound), the entry of the open view highlighted, SectionTabs on top of every page of the entry; remove the `images` view from routes.ts, help.ts, views.json and help/images.md.
+  - [ ] Adjust tests/e2e/console.ts; run `task e2e -- -run 'TestE2E/UI-02$' -v` in full and set the UI-02 limit in test/e2e/ui_test.go to about twice that run.
+
+- [ ] 14-39 ISOs Administration view
+  - Wave: 3 | Depends on: 14-30, 14-33 | Review: alone
+  - Requirements: UI-10, UI-07 | Tests: - (UI-10 e2e of 14-41)
+  - Reads: UI-SPEC "Views" (Administration, Cloud stopped, ISOs), "Building blocks" (Form, Confirm dialog); CONTEXT "Findings plans 14-25 onward"; PLAN "Interfaces" (bridge, Files); ui/frontend/src/views/ServerTypes.svelte and App.svelte as the pattern; lib/Dialog.svelte, formErrors.ts
+  - Size: ~400 lines in 4 files
+  - [ ] views/Isos.svelte: table (Source catalog/own, Name as `isoTitle`, Description, Architecture), the `custom_isos` problem as a banner, "Add ISO", own rows with Edit and Remove (confirm dialog), available while the cloud is stopped; views/IsoForm.svelte: Name (required, stored as description), Architecture x86/arm, Source URL (URL, optional SHA-256) or Local file (editable Path, "Browse…" through `Files.PickISOFile`), field errors under the fields.
+  - [ ] App.svelte: Administration entry "ISOs" (Disc icon) between Server Types and Settings; help/isos.md for the Administration view.
+
+- [ ] 14-40 Toast titles: cloud sections
+  - Wave: 3 | Depends on: 14-27, 14-29, 14-34, 14-35 | Review: alone
+  - Requirements: UI-02 | Tests: - (format.test.ts)
+  - Reads: PLAN "Interfaces" (format, api, toast types); lib/format.ts, api.ts
+  - Size: ~70 lines in 10 files
+  - [ ] Every action toast on a named resource through `runOn`/`actionTitle` in views/servers (Servers.svelte, ServerCreate.svelte) and views/volumes (Section, VolumeCreate).
+  - [ ] The same in views/firewalls (Section, FirewallDetail, FirewallCreate), views/images/ImageList.svelte (Snapshot or Backup by type), views/placement-groups (Section, PlacementGroupCreate).
+
+- [ ] 14-41 Own ISOs in the console and UI-10
+  - Wave: 4 | Depends on: 14-31, 14-32, 14-33, 14-38, 14-39 | Review: alone
+  - Requirements: UI-10, CAT-10 | Tests: ui/frontend/tests/e2e/isos.spec.ts (through test/e2e/ui_test.go TestE2E/UI-10)
+  - Reads: CONTEXT "Findings plans 14-25 onward"; TESTS.md UI-10 row; EXPERIMENTS E9; test/e2e/ui_test.go `runSpec`, `testUI04`; tests/e2e/servertypes.spec.ts, fixtures.ts; views/servers/tabs/Iso.svelte
+  - Size: ~300 lines in 8 files
+  - Adjusts: ui/frontend/tests/unit/routes.test.ts drops the project `isos` cases; ui/frontend/tests/e2e/isos.spec.ts (UI-02 row replaced by UI-10)
+  - [ ] lib/format.ts `isoTitle`; views/servers/tabs/Iso.svelte shows and selects ISOs by `isoTitle` and attaches by ID.
+  - [ ] Remove the project view `isos` (views/isos/Section.svelte, IsoDetail.svelte, routes.ts project view, routes.test.ts cases).
+  - [ ] tests/e2e/isos.spec.ts rewritten for UI-10 and test/e2e/ui_test.go `testUI10` (temporary `.iso` file passed by environment variable, own project with a read/write token to check `/isos`, every own ISO it adds removed at the end); first run with a generous limit, then about twice that run.
+
+- [ ] 14-42 Documentation
+  - Wave: 5 | Depends on: 14-25 … 14-41 | Review: alone
+  - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06, DOC-07 | Tests: test/docs/docs_test.go, ui/frontend/tests/unit/help.test.ts
+  - Reads: SPEC "Documentation"; REQUIREMENTS "Documentation (DOC)", CAT-10, UI-10; CONTEXT "Findings plans 14-25 onward"; DECISIONS 2026-11-20 entries; PLAN "Findings from manual testing" (documentation lines)
+  - Size: ~300 lines in 10 files
+  - [ ] Help texts: snapshots, backups, isos (Administration), volumes (form), placement-groups, and every help text that names the sidebar or labels; only existing views and buttons.
+  - [ ] README.md (tray program: project console groups and tabs, Administration ISOs), docs/guide.md (console sections, labels, volume form, own ISOs), docs/configuration.md (`isos.custom.json`), docs/deviations.md and docs/development/api-coverage.md (own ISOs as private ISOs with name null, attached by ID).
+  - [ ] docs/development/components.md (consoleNav, SectionSidebar groups, SectionTabs, toast title helper, labels chips, own ISOs in catalog, images and cloud); regenerate the screenshots with `task docs:screenshots`.
 
 ## Findings from manual testing
 

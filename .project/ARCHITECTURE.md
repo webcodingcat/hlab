@@ -332,8 +332,8 @@ Inside `hlabd` (Go packages under `internal/`):
   `go-qcow2reader` or raw, to a fixed VHD by appending the footer, then to
   a dynamic VHDX through a `Convert` callback, on Hyper-V
   `hyperv.ConvertToDynamic`, outside the `Platform` interface) and caches; `images.EnsureISO(ctx,
-  name)` (cached as `<data>\isos\<name>`; serves catalog and own ISOs, see
-  `isos.custom.json`); `images.EnsureRescue(ctx)`. Snapshots, backups and system
+  name)` (cached under the catalog name or the own ISO's `_hlab.name`; serves
+  catalog and own ISOs, see `isos.custom.json`); `images.EnsureRescue(ctx)`. Snapshots, backups and system
   images live as VHDX files in the data folder. The same pipeline creates
   the appliance disk from the Debian 13 `generic` image.
 - Depends on: platform.
@@ -853,7 +853,7 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 | Path | Format | Writer |
 |---|---|---|
 | `%ProgramData%\hlab\settings.toml` | TOML, keys in "Settings" below; ACL: Interactive Users modify, kept when hlabd rewrites the file | tray, user, hlabd (`PUT /trust` through `settings.Save`) |
-| `%ProgramData%\hlab\isos.custom.json` | JSON array of Hetzner `iso` objects (`type` `private`, IDs from 100000, `deprecation` null) plus `_hlab.source`: `{"url","sha256"}` (sha256 optional) or `{"path"}` (a local `.iso` file); hlabd serves them in `/isos` of every project and copies a `path` source into `<data>\isos\<name>` when it reads the file (start, `/settings/reload`), verifying sha256 when given; a missing or failed file is the non-fatal problem `custom_isos` | tray, user; hlabd creates it as `[]` with the settings.toml ACL at start when missing |
+| `%ProgramData%\hlab\isos.custom.json` | JSON array of Hetzner `iso` objects (`type` `private`, IDs from 100000, `name` null, `description` the shown name, `deprecation` null, `architecture` x86 or arm) plus `_hlab.name` (cache file `<data>\isos\<_hlab.name>`, derived by the tray as `own-<id>-<hash of the source>.iso`) and `_hlab.source`: `{"url","sha256"}` or `{"path","sha256"}` (sha256 optional; path a local `.iso` file); hlabd serves them without `_hlab` in `/isos` of every project, matches them by ID only, and copies a `path` source into the cache when it reads the file (start, `/settings/reload`), verifying sha256 when given; an invalid file or a duplicate ID or `_hlab.name` leaves out all own ISOs, a source that cannot be copied leaves out only that ISO, both as the non-fatal problem `custom_isos`; cache files no own ISO names are deleted at start and reload once no server has them attached | tray, user; hlabd creates it as `[]` with the settings.toml ACL at start when missing |
 | `%ProgramData%\hlab\server-types.custom.json` | JSON array of Hetzner `server_type` objects (IDs from 100000) | tray, user; hlabd creates it as `[]` with the settings.toml ACL at start when missing |
 | `%ProgramFiles%\hlab\catalog\server-types.json` | `{"server_types": [...]}` as returned by Hetzner's API | `task catalog` (release) |
 | `%ProgramData%\hlab\catalog\server-types.json` | same; written by `hlab catalog update`, preferred when present | hlabd |

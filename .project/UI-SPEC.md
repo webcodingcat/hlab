@@ -83,7 +83,8 @@ everywhere.
   resource name must be typed for projects (their display name), servers,
   volumes, networks and zones.
 - Action toast: bottom right, shows a running action with progress and its
-  result; errors stay until closed.
+  result; errors stay until closed. Its title is `<Type> <name>: <action>`,
+  e.g. "Network Test: Delete", "Record www A: Change TTL".
 - Copy field: monospace value with a copy button (IPs, tokens, CA).
 - Section tabs: a row of tabs on top of every project console page,
   below the page title, the open tab underlined in the accent colour;
@@ -176,10 +177,11 @@ everywhere.
   cleared when the dialog closes and never stored.
 - ISOs: table of the ISO catalog and the own ISOs with source column
   (catalog, own), name, description, architecture; "Add ISO" opens a form
-  with name, description, architecture (x86 or arm) and the source,
-  either a URL with an optional SHA-256 or a local `.iso` file chosen
-  with the Windows file dialog; own rows have "Edit" (the add form filled
-  in, the name read-only) and "Remove" (confirm dialog) in the row menu.
+  with name (required, stored as the ISO's description; own ISOs have no
+  Hetzner name and are shown by it everywhere), architecture (x86 or arm)
+  and the source, either a URL with an optional SHA-256 or a local `.iso`
+  file as an editable path with "Browse…" opening the Windows file
+  dialog; own rows have "Edit" (the add form filled in) and "Remove" (confirm dialog) in the row menu.
   Available while the cloud is stopped; a local file is copied when the
   cloud reads the own ISOs.
 - Settings: grouped form for every key of `settings.toml`; the trust switch
