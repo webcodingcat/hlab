@@ -20,6 +20,9 @@ async function serverStatus(token: string, id: number): Promise<string> {
  * select (option value or text) or a group of radio buttons.
  */
 async function pick(page: Page, label: string, name: string): Promise<void> {
+  // Wait for the control first: count() does not wait, and the form renders
+  // after the click that opens it.
+  await expect(page.getByRole("combobox", { name: label, exact: true }).or(page.getByRole("radiogroup", { name: label, exact: true }))).toBeVisible({ timeout: 30_000 });
   const select = page.getByRole("combobox", { name: label, exact: true });
   if ((await select.count()) > 0) {
     await expect(select.locator("option").filter({ hasText: name }).first()).toBeAttached();
