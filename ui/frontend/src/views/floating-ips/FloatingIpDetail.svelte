@@ -10,13 +10,13 @@
   import ResourceActionsMenu from "../../lib/ResourceActionsMenu.svelte";
   import ReverseDnsDialog from "../../lib/ReverseDnsDialog.svelte";
   import { api, listAll, runApi } from "../../lib/api";
-  import { createdText } from "../../lib/format";
+  import { createdText, protocolText } from "../../lib/format";
   import { request, type Input, type ResourceAction } from "../../lib/resourceActions";
   import { menu, tabs as fipTabs } from "../../lib/resources/floatingIps";
   import { showError } from "../../lib/toast";
   import { href } from "../../state";
   import FloatingIpActionInput from "./FloatingIpActionInput.svelte";
-  import { protocolText, type FloatingIp } from "./Section.svelte";
+  import type { FloatingIp } from "./Section.svelte";
 
   // The detail page of one floating IP: Overview (address with a copy
   // button, protocol, description with an edit dialog, home location,
@@ -74,7 +74,8 @@
   const serverName = (sid: number) => servers.find((s) => s.id === sid)?.name ?? `${sid}`;
 
   // ptrIps are the addresses the reverse DNS dialog offers: an IPv4 floating
-  // IP's address, and every address of the IPv6 network that has an entry.
+  // IP's address, and every address of the IPv6 network that has an entry;
+  // for an IPv6 network the dialog also offers a new address in it.
   const ptrIps = $derived.by(() => {
     if (!fip) return [];
     const out = fip.type === "ipv4" ? [fip.ip] : [];
@@ -82,11 +83,10 @@
     return out;
   });
 
-  // Unassign is disabled while the IP is not assigned; Reverse DNS needs an address.
+  // Unassign is disabled while the IP is not assigned.
   const menuActions = $derived(
     menu.map((a): ResourceAction => {
       if (a.id === "unassign" && fip?.server == null) return { ...a, disabledHint: "The floating IP is not assigned." };
-      if (a.id === "change_dns_ptr" && ptrIps.length === 0) return { ...a, disabledHint: "The IPv6 network has no reverse DNS entry." };
       return a;
     }),
   );
@@ -193,6 +193,7 @@
   <ReverseDnsDialog
     bind:open={ptrOpen}
     ips={ptrIps}
+    network={f.type === "ipv6" ? f.ip : undefined}
     current={Object.fromEntries(f.dns_ptr.map((p) => [p.ip, p.dns_ptr]))}
     onsubmit={savePtr}
   />

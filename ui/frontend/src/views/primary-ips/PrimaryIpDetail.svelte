@@ -7,12 +7,11 @@
   import ResourceActionsMenu from "../../lib/ResourceActionsMenu.svelte";
   import ReverseDnsDialog from "../../lib/ReverseDnsDialog.svelte";
   import { api, listAll, runApi } from "../../lib/api";
-  import { createdText } from "../../lib/format";
+  import { createdText, protocolText } from "../../lib/format";
   import { request, type Input, type ResourceAction } from "../../lib/resourceActions";
   import { menu, tabs as pipTabs } from "../../lib/resources/primaryIps";
   import { showError } from "../../lib/toast";
   import { href } from "../../state";
-  import { protocolText } from "../floating-ips/Section.svelte";
   import PrimaryIpActionInput from "./PrimaryIpActionInput.svelte";
   import { assigneeText, type PrimaryIp, type Server } from "./Section.svelte";
 

@@ -12,3 +12,6 @@ export function labelText(labels: Record<string, string>): string {
 export function createdText(created: string): string {
   return created.slice(0, 16).replace("T", " ");
 }
+
+/** protocolText shows an IP type as IPv4 or IPv6. */
+export const protocolText = (t: string) => (t === "ipv6" ? "IPv6" : "IPv4");

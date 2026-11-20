@@ -14,9 +14,6 @@
     labels: Record<string, string>;
     created: string;
   };
-
-  /** protocolText shows the type as IPv4 or IPv6. */
-  export const protocolText = (t: string) => (t === "ipv6" ? "IPv6" : "IPv4");
 </script>
 
 <script lang="ts">
@@ -25,7 +22,7 @@
   import HelpButton from "../../lib/HelpButton.svelte";
   import Table, { type Column } from "../../lib/Table.svelte";
   import { listAll, runApi } from "../../lib/api";
-  import { createdText, labelText } from "../../lib/format";
+  import { createdText, labelText, protocolText } from "../../lib/format";
   import { request, type ResourceAction } from "../../lib/resourceActions";
   import { tabs } from "../../lib/resources/floatingIps";
   import { showError } from "../../lib/toast";

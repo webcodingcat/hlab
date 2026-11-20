@@ -46,12 +46,11 @@
   import HelpButton from "../../lib/HelpButton.svelte";
   import Table, { type Column } from "../../lib/Table.svelte";
   import { listAll, runApi } from "../../lib/api";
-  import { createdText, labelText } from "../../lib/format";
+  import { createdText, labelText, protocolText } from "../../lib/format";
   import { request, type ResourceAction } from "../../lib/resourceActions";
   import { tabs } from "../../lib/resources/primaryIps";
   import { showError } from "../../lib/toast";
   import { href, running, type Page } from "../../state";
-  import { protocolText } from "../floating-ips/Section.svelte";
   import PrimaryIpCreate from "./PrimaryIpCreate.svelte";
   import PrimaryIpDetail from "./PrimaryIpDetail.svelte";
 
