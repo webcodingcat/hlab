@@ -22,3 +22,11 @@ Confirmed at the start of phase 10. The planner's assumptions stand with these c
 - Connection banner: only when the SCM reports running and `/mgmt/v1/status` fails three polls in a row (about 6 s); the poller keeps its 2 s interval; the banner clears by itself when the pipe answers; a regular stop shows only "stopped".
 - Log stream: a broken follow stream reconnects automatically while the cloud runs and the view follows, at the poller's interval, continuing after the last shown line without duplicates; when the cloud stops the view switches to the files, and back to the stream at start.
 - Where the research says otherwise, the research wins; record that in DECISIONS.md.
+
+## Findings fixes (10-20 onward)
+
+- Assumptions of the planner confirmed by the user without corrections (2026-11-20), including the four the research changed: icon group under resource ID 3 and 32512 in a committed `rsrc_windows_amd64.syso` per main package, no `Options.Icon`; icon look checked by hand under UI-08, generator gets a `debug/pe` unit test; screenshot plan starts with a CDP probe (dark mode, 1200x800, screenshot) and stops on failure; static shields.io badges and relative `<picture>` paths, checked under DOC-07.
+- README screenshots: the script creates sample projects ("demo", "staging", "ci") and filters the list with the search field so only these show; real project names are never published.
+- Application icon: a white "H" on a rounded square in the accent blue; also the banner motif and the base of the four tray state icons.
+- Last opened project: the window opens the console of the last opened project if it still exists, otherwise the project list.
+- `.syso`: produced by `tools/icons` with `github.com/tc-hib/winres` v0.3.1 (0BSD, used by Wails' own `generate syso`); SPEC "Stack" names it; the generated files are committed so `task build` does not run the tool.

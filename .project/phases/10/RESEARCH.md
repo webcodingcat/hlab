@@ -237,3 +237,106 @@ https://playwright.dev/docs/release-notes ; Wails source `request_cancellation_w
      CDP e2e against the real window.
 - `views.json` (existing `src/views.json`) is importable by Vite (and by `node --test` with the `with { type: "json" }`
   attribute); under Playwright Test's transform `import views from "./views.json"` also works.
+
+## Findings fixes (10-20 onward)
+
+Checked on 2026-11-20. Wails facts read in the v3.1.0 module cache (cited as `wails/…`) and on the v3.1.0 tag
+on GitHub. Nothing was executed.
+
+### F1. Where the Windows app icon comes from (Wails v3.1.0)
+
+Confirmed in source:
+- `wails/pkg/application/webview_window_windows.go` (~line 660, in `run()`): unless `Windows.DisableIcon`, the
+  window loads `NewIconFromResource(GetModuleHandle(""), 3)`, i.e. **icon resource ID 3** of the exe. Only if that
+  fails and `Options.Icon != nil` does it use `w32.CreateLargeHIconFromImage(Options.Icon)` (PNG or ICO bytes).
+  Then `setIcon` sends `WM_SETICON` with `ICON_BIG` only. So on Windows **`Options.Icon` is a fallback**, not
+  the primary source; there is no window-level icon option (`Windows.DisableIcon` only hides it). Alt+Tab and
+  taskbar use this big icon. No `ICON_SMALL` is sent; the title bar small icon falls back to the class icon, else
+  a scaled big icon (Windows behaviour, not verified here).
+- `wails/pkg/application/application_windows.go:214`: the window class icon (`Icon` and `IconSm`) is
+  `LoadIconWithResourceID(instance, IDI_APPLICATION)` with `IDI_APPLICATION = 32512`
+  (`wails/pkg/w32/constants.go`). With a non-null instance, `LoadIcon` looks for an icon resource with
+  numeric ID 32512 in the exe; without one it returns 0 (no default shell icon). To also cover the class icon,
+  the .syso may add the same group icon under ID 32512 (not needed for window/taskbar/Alt+Tab because of
+  WM_SETICON; my inference, not tested).
+- `wails/pkg/application/dialogs_windows.go`: the error/message dialog uses `LoadIconWithResourceID(handle, 3)`
+  (MessageBoxIndirect user icon and TaskDialog `mainIcon`), again **ID 3**.
+- Explorer shows the exe icon as the first RT_GROUP_ICON in the resource table (lowest ID / first name; Windows rule).
+  A group icon with ID 3 alone is enough; if more groups exist, ID 3 must sort first or be the only one.
+
+Resource layout the .syso needs: **RT_GROUP_ICON (type 14), ID 3, language neutral or 0x409**, referencing
+**RT_ICON (type 3) entries** with IDs 1..N (one per ICO image, e.g. 16/20/24/32/48/256). Optional: RT_VERSION
+(16) ID 1, RT_MANIFEST (24) ID 1. This matches `wails3 generate syso`, which calls
+`winres.SetIcon(winres.RT_ICON, ico)` (`winres.RT_ICON` is the constant `ID(3)`, so the *group* is named 3; the
+comment in `webview_window_windows.go` says "App icon ID is 3").
+Sources: Wails files above; https://raw.githubusercontent.com/wailsapp/wails/v3.1.0/v3/internal/commands/syso.go ;
+https://raw.githubusercontent.com/tc-hib/winres/master/winres.go (constants `RT_ICON ID = 3`, `RT_GROUP_ICON ID = 14`)
+and `icon.go` (`SetIconTranslation`: RT_ICON images get IDs `lastIconID+1…`, then `Set(RT_GROUP_ICON, resID, …)`).
+Note that the tray icon (`SystemTray.SetIcon`) is separate and takes bytes; the tray does not use the exe resource.
+
+### F2. Producing the .syso without a new module dependency
+
+- Wails' `internal/commands/syso.go` uses **`github.com/tc-hib/winres` v0.3.1** (+ `winres/version`): `LoadICO`,
+  `SetIcon(RT_ICON, ico)`, `SetManifest`, optional `SetVersionInfo`, `WriteObject(file, ArchAMD64)`; default file
+  name `rsrc_windows_<arch>.syso`. It is in Wails' `go.mod` (line 24) but **not** in this repo's `go.sum`, because
+  only `cmd/wails3` imports it. Using it means a new module in `tools/icons` (or its own module); that violates the
+  "no new module" condition. License not confirmed (README did not state it).
+- A stdlib-only writer is **practical but not trivial**; I did not write or run one. Rough size 200-300 lines of Go
+  plus a test, using `encoding/binary`, `bytes`, `image`-free (ICO images are copied as raw bytes; if the ICO holds PNG
+  frames, copy them unchanged). Needed: (1) build the resource directory tree: type level (3, 14, optionally 16, 24),
+  name/ID level, language level, then `IMAGE_RESOURCE_DATA_ENTRY` records (OffsetToData, Size, CodePage 0, Reserved);
+  (2) the group icon data `GRPICONDIR` (reserved, type 1, count) plus `GRPICONDIRENTRY` of 14 bytes each (width, height,
+  colors, reserved, planes, bitcount, bytes, **RT_ICON ID instead of file offset**); (3) a COFF object: 20-byte file
+  header with `Machine = 0x8664` (IMAGE_FILE_MACHINE_AMD64), 1 section named `.rsrc` with characteristics
+  `0x40000040` (initialized data, read), raw data = the tree + data, **one `IMAGE_REL_AMD64_ADDR32NB` (type 3)
+  relocation per data entry** pointing at a symbol for the section start (the OffsetToData fields hold the offset
+  inside the section and are fixed up by the linker into RVAs), a symbol table with one `.rsrc` section symbol (plus
+  aux record) and a minimal string table (4 bytes). Pitfalls: entries sorted (named before ID, IDs ascending) in each
+  directory; 4-byte alignment of data entries; relocation `VirtualAddress` is the offset of each OffsetToData field;
+  `PointerToRelocations`/`NumberOfRelocations` must match; `rsrc_windows_amd64.syso` file name picks GOOS/GOARCH
+  by suffix so no build tag is needed; Go's internal linker merges .rsrc from syso files (this is how `rsrc` and
+  `winres` work); only one .syso with a resource section per binary (resources of several cmds need separate package
+  directories, since the .syso belongs to the `main` package directory). Alternative with no code: the `llvm-windres`
+  or `windres` binary, but those are external tools (not confirmed present).
+- Verdict: feasible as a small repo tool; the risk is a malformed COFF that the linker rejects or Explorer ignores.
+  It needs a check by the e2e or a unit test that links a tiny main and loads the icon (or reads the PE with `debug/pe`).
+  If that effort is not wanted, a new module (`tc-hib/winres`, last pinned by Wails at v0.3.1) is the only simple
+  route. Release date of winres v0.3.1 not checked.
+
+### F3. Playwright 1.65.1 over CDP against a WebView2 window
+
+- `page.emulateMedia({ colorScheme: "dark" })`: documented as emulating `prefers-color-scheme` with `'light'`,
+  `'dark'`, or `null` to reset (since v1.9; `'no-preference'` deprecated)
+  (https://playwright.dev/docs/api/class-page#page-emulate-media). Playwright implements it with the CDP command
+  `Emulation.setEmulatedMedia`, which a WebView2 (Chromium) target accepts. **Unclear**: no source states it works on
+  a `connectOverCDP` WebView2 page, and I did not run it. Reset with `emulateMedia({ colorScheme: null })` in a
+  fixture teardown so the setting does not leak (the default context persists).
+- `page.setViewportSize` and `page.screenshot`: the WebView2 docs page
+  (https://playwright.dev/docs/webview2) lists no limitations and says nothing on viewport or screenshots. Via
+  CDP they map to `Emulation.setDeviceMetricsOverride` and `Page.captureScreenshot`; both are generic Chromium
+  commands, so they should work, but **unclear** and untested here. Expected behaviour: the override changes the
+  layout viewport of the page, not the size of the host window; an existing-context page has no viewport emulation
+  until `setViewportSize` is called. After the screenshot, reset with `setViewportSize` back to the window size or
+  reload; a hidden window may stall `captureScreenshot` (see risk (b) in section 5). Recommended: do a 10-second
+  probe in the plan first (connect, `emulateMedia`, `setViewportSize({width:1200,height:800})`, `screenshot`).
+
+### F4. README badges and dark/light images
+
+- Go version badge from go.mod: `https://img.shields.io/github/go-mod/go-version/<user>/<repo>` with optional
+  `?filename=<path/to/go.mod>` (https://shields.io/badges/git-hub-go-mod-go-version). It reads the repo through
+  the GitHub API, so it works only for repos GitHub-public (private repo: the badge shows an error). Full URL
+  template is my inference from the badge's service path; the docs page shows only the parameter names.
+  Otherwise static: `https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white`
+  (static badge format `label-message-color`, `-` in text written as `--`, `_`/`%20` = space, `logo=` takes a
+  simple-icons slug; https://shields.io/badges/static-badge). The slugs `go` and `windows` were **not verified** in
+  the simple-icons list (`windows` was removed from simple-icons in some versions for brand reasons; if it does not
+  render, drop the `logo` parameter).
+- Platform Windows: `https://img.shields.io/badge/platform-Windows-0078D4` (static; no `logo` needed).
+- `<picture>` with `<source media="(prefers-color-scheme: dark)" srcset="…">` and a fallback `<img src="…">` is
+  supported in GitHub Markdown (GitHub changelog, 2022-05-19, GA:
+  https://github.blog/changelog/2022-05-19-specify-theme-context-for-images-in-markdown-ga/). GitHub docs recommend
+  **relative links for images in the repository** (https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax),
+  but no page I read shows relative paths inside `srcset` specifically. **Unclear for `srcset` with relative paths**;
+  commonly used in READMEs, but not confirmed from GitHub documentation. Pitfall: the README renders correctly only
+  on GitHub (and on a local viewer that lacks `prefers-color-scheme` support it shows the `<img>` fallback), and
+  paths are resolved against the branch being viewed.

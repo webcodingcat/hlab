@@ -25,6 +25,8 @@ Versions as of 2026-11-18 (reasoning and sources in DECISIONS.md, "Stack").
 - Tray: Wails v3.1.0 (pinned exactly), Svelte 5.58.0, Vite 8.3.8, TypeScript
   5.9.3 (the 7.x line is not yet confirmed with `svelte-check`),
   `@lucide/svelte` 1.75.0, Node.js 24.22.3 LTS for the frontend build (newer Node versions work for development).
+- Windows icon resources: `github.com/tc-hib/winres` v0.3.1 (0BSD) in the
+  icon generator `tools/icons`, which writes the committed `.syso` files.
 - Appliance: Debian 13 `generic` cloud image, cloud-init, nftables,
   HAProxy 3.0 (Debian package), iproute2 (VRF, VLAN, netns), xfsprogs,
   e2fsprogs; hlab-agent as one static Go binary.

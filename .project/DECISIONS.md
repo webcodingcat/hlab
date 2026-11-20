@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 Windows icon resources with winres
+
+- Type: change
+- Phase: phase 10
+- What: the icon generator `tools/icons` writes the `.syso` icon resources (group ID 3 and 32512) with `github.com/tc-hib/winres` v0.3.1 (0BSD); SPEC "Stack" names it.
+- Why: user's answer at the start of the phase 10 findings fixes; the standard library has no resource writer and Wails uses the same package.
+- Cost of change: low
+
 ## 2026-11-20 Upgrade to wcc 0.32.13
 
 - Type: approval
