@@ -560,7 +560,7 @@ func TestNetworks(t *testing.T) {
 
 	t.Run("NET-06", func(t *testing.T) {
 		e := newNetEnv(t)
-		const message = "vswitch subnets are not supported by hlab"
+		const message = "vswitch subnets are not supported by HLab"
 		vswitch := map[string]any{"type": "vswitch", "ip_range": "10.0.1.0/24", "network_zone": "eu-central", "vswitch_id": 1000}
 		check := func(resp *http.Response, what string) {
 			t.Helper()

@@ -14,9 +14,13 @@ test("UI-05", async ({ page }) => {
   const row = tableRow(page, project);
   await expect(row).toBeVisible();
 
-  // Create a token; its value is shown once.
+  // A row click opens the project console of that project with "API tokens".
   await row.getByRole("cell", { name: project, exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1, name: project })).toBeVisible();
+  await expect(page.getByRole("banner").getByText(project).first()).toBeVisible();
+  await expect(page.getByRole("navigation").getByRole("link", { name: "API tokens", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "API tokens", exact: true })).toBeVisible();
+
+  // Create a token; its value is shown once.
   await page.getByRole("button", { name: "Create token" }).click();
   dialog = page.getByRole("dialog");
   await dialog.getByLabel("Name").fill("ui05");
@@ -39,8 +43,10 @@ test("UI-05", async ({ page }) => {
   await expect(tokenRow).toBeHidden();
   await expect.poll(async () => (await api(token, "/servers")).status, { timeout: 30_000 }).toBe(401);
 
-  // Delete the project after its name is typed.
-  await openView(page, "Projects");
+  // Back in the list through the breadcrumb, delete the project after its
+  // name is typed.
+  await page.getByRole("banner").getByRole("link", { name: "Projects", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Projects", exact: true })).toBeVisible();
   await rowAction(tableRow(page, project), "Delete");
   dialog = page.getByRole("dialog");
   const confirm = dialog.getByRole("button", { name: "Delete", exact: true });

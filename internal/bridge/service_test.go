@@ -255,7 +255,39 @@ func TestBridge(t *testing.T) {
 		}
 	})
 
+	t.Run("UI-04/locations", func(t *testing.T) {
+		var shipped struct {
+			Locations []bridge.Location `json:"locations"`
+		}
+		data, err := os.ReadFile(filepath.Join(shippedCatalog, "locations.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(data, &shipped); err != nil || len(shipped.Locations) == 0 {
+			t.Fatalf("shipped catalog/locations.json lists no locations: %v", err)
+		}
+		byName := func(a, b bridge.Location) int { return strings.Compare(a.Name, b.Name) }
+		slices.SortFunc(shipped.Locations, byName)
+
+		var running atomic.Bool
+		svc, _ := newService(t, t.TempDir(), &running)
+		got, err := svc.Locations()
+		if err != nil {
+			t.Fatalf("Locations while stopped: %v", err)
+		}
+		slices.SortFunc(got, byName)
+		if !slices.Equal(got, shipped.Locations) {
+			t.Errorf("Locations while stopped = %+v, want the catalog's %+v", got, shipped.Locations)
+		}
+		for _, l := range got {
+			if l.Name == "" || l.City == "" {
+				t.Errorf("location %+v lacks its name or city", l)
+			}
+		}
+	})
+
 	t.Run("UI-01/tray", testTray)
+	t.Run("UI-01/pending", testPending)
 	t.Run("UI-01/control", testControl)
 	t.Run("UI-01/banner", testBanner)
 	t.Run("UI-06", testLogs)

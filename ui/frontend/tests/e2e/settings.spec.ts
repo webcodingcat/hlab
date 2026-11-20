@@ -41,7 +41,7 @@ test("UI-03", async ({ page }) => {
   const ram = page.getByLabel("Reserved RAM (MB)");
   const disk = page.getByLabel("Reserved disk (GB)");
   const level = page.getByLabel("Log level");
-  const trust = page.getByRole("switch", { name: "Trust the hlab CA" });
+  const trust = page.getByRole("switch", { name: "Trust the HLab CA" });
 
   // Every key gets a value other than its current one.
   const nextStop = (await stop.inputValue()) === "save" ? "shutdown" : "save";

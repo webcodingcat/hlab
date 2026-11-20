@@ -244,7 +244,7 @@ func TestServers(t *testing.T) {
 			} `json:"error"`
 		}
 		apitest.Decode(t, resp, &body)
-		if body.Error.Code != "unsupported_error" || body.Error.Message != "server console is not supported by hlab yet" {
+		if body.Error.Code != "unsupported_error" || body.Error.Message != "server console is not supported by HLab yet" {
 			t.Errorf("request_console: error %+v, want unsupported_error with the SPEC message", body.Error)
 		}
 		if after := len(listActions(t, env, path)); after != before {

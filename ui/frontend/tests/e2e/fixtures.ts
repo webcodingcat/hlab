@@ -69,13 +69,17 @@ export async function bound<T>(page: Page, fqn: string, ...args: unknown[]): Pro
   return (await page.evaluate(expr)) as T;
 }
 
+/** The labels of the tray menu's one cloud item. */
+export type CloudItem = "Start cloud" | "Stop cloud" | "Starting cloud…" | "Stopping cloud…" | "Checking cloud…";
+
 /** TrayModel as the e2e-only TrayTest service reports it. */
 export type TrayModel = {
   icon: string;
   tooltip: string;
   status: string;
-  can_start: boolean;
-  can_stop: boolean;
+  cloud_item: CloudItem;
+  /** "start" | "stop", or "" while the item is disabled. */
+  cloud_action: string;
 };
 
 export function trayState(page: Page): Promise<TrayModel> {
@@ -83,13 +87,25 @@ export function trayState(page: Page): Promise<TrayModel> {
 }
 
 /** trayClick runs the handler of the tray menu item with this label. */
-export async function trayClick(page: Page, item: "Start cloud" | "Stop cloud"): Promise<void> {
+export async function trayClick(page: Page, item: CloudItem): Promise<void> {
   await bound<unknown>(page, "main.TrayTest.Click", item);
 }
 
-/** openView opens an app section through the sidebar. */
+/**
+ * openView opens a view of the shell: the project list through "HLab" in
+ * the top bar, Server Types, Settings and Logs through the gear
+ * ("Administration") and the Administration sidebar.
+ */
 export async function openView(page: Page, name: "Projects" | "Server Types" | "Settings" | "Logs"): Promise<void> {
-  await page.getByRole("navigation").getByRole("link", { name, exact: true }).click();
+  const banner = page.getByRole("banner");
+  if (name === "Projects") {
+    await banner.getByRole("link", { name: "HLab" }).first().click();
+  } else {
+    // The gear is the right-most "Administration" link of the top bar; the
+    // breadcrumb may name the area too.
+    await banner.getByRole("link", { name: "Administration", exact: true }).last().click();
+    await page.getByRole("navigation").getByRole("link", { name, exact: true }).click();
+  }
   await expect(page.getByRole("heading", { level: 1, name, exact: true })).toBeVisible();
 }
 

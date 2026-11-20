@@ -107,8 +107,8 @@ func TestStore(t *testing.T) {
 				if ie.Newer() != newer {
 					t.Errorf("Newer() = %v, want %v", ie.Newer(), newer)
 				}
-				if names := strings.Contains(ie.Error(), "newer hlab version"); names != newer {
-					t.Errorf("Error() = %q; naming a newer hlab version: %v, want %v", ie.Error(), names, newer)
+				if names := strings.Contains(ie.Error(), "newer HLab version"); names != newer {
+					t.Errorf("Error() = %q; naming a newer HLab version: %v, want %v", ie.Error(), names, newer)
 				}
 			})
 		}
