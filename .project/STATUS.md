@@ -7,10 +7,10 @@ STATUS: MANUAL_CHECK
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 10 Tray program: shell, status, settings, server types, projects, logs (waits for manual check UI-08, branch wcc/phase-10 unmerged)
+- Phase: 10 Tray program: shell, status, settings, server types, projects, logs (findings fixes 10-20..10-35 done on wcc/phase-10, unmerged; waits for manual checks UI-08 and DOC-07)
 - Base branch: main
 - Last done: phase 09 merged into main (2026-11-19): servers saved or shut down at cloud stop and restored at start, configurable public range, incompatible state refused with `--discard-state`, rotated logs with `hlab logs`, LB IPv6 prefix 0xA0000000 (Q14)
-- Next: /wcc:phase fixes the UI-08 findings (app icon, product name "HLab", one Start/Stop tray item, tray icon with status dot, shell like the Hetzner Console: project list, project console, Administration; log search and older lines; Hetzner token in a dialog; locations as checkboxes; Start/Stop button flicker; README without the developer setup (DOC-07); docs/ for users, docs/development/ for contributors; short deviations page for users; compact README with banner and screenshots; views from views.json (Q15); e2e runs delete their projects) on wcc/phase-10, then /wcc:report for UI-08 again
+- Next: /wcc:report walks through UI-08 (phase 10) and DOC-07 (phase 01) again; when both fit, /wcc:phase closes phase 10 and merges it
 
 ## Open manual checks
 
@@ -18,7 +18,7 @@ STATUS: MANUAL_CHECK
      one line each: "- UI-04 (03): <requirement>". The guide is in
      phases/<id>/CHECKS.md. /wcc:report walks through them. -->
 
-- DOC-07 (01): README and guides are understandable for their audience, help texts name only existing views and buttons (does not fit, fix in phase 10 plan)
+- DOC-07 (01): README and guides are understandable for their audience, help texts name only existing views and buttons
 - LIFE-05 (09): a Windows shutdown or restart with the cloud running applies the stop behaviour
 - UI-08 (10): the console looks and behaves as UI-SPEC.md describes
 
