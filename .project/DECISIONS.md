@@ -38,6 +38,14 @@ in ARCHITECTURE.md or the plan.
 - Why: the update error stays under the field, so the existing `action()` toast helper does not fit.
 - Cost of change: low
 
+## 2026-11-20 Home icon in the breadcrumb
+
+- Type: change
+- Phase: feedback
+- What: the breadcrumb starts on every page with a home icon (accessible name "Projects") that leads to the project list; the project console reads "<home> / <name> ▾", Administration "<home> / Administration" (UI-SPEC "Views").
+- Why: user's finding in the UI-08 check: no intuitive way from Administration back to the projects.
+- Cost of change: low
+
 ## 2026-11-20 Project console building blocks
 
 - Type: decision
