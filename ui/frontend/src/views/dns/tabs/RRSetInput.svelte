@@ -53,7 +53,7 @@
   const invalid = $derived.by(() => {
     switch (action.id) {
       case "create_rrset":
-        return name.trim() === "" || lines.length === 0;
+        return name.trim() === "" || lines.length === 0 || "error" in toLabels(labelRows);
       case "rrset_add_records":
         return lines.length === 0;
       case "rrset_remove_records":
