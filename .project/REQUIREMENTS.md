@@ -357,14 +357,14 @@ What the target vision in IDEA.md will need, not built yet.
 | LIFE-08 | 09 | x |
 | LIFE-09 | 09 | x |
 | LIFE-10 | 01 | x |
-| UI-01 | 10 | |
+| UI-01 | 10 | x |
 | UI-02 | 11 | |
-| UI-03 | 10 | |
-| UI-04 | 10 | |
-| UI-05 | 10 | |
-| UI-06 | 10 | |
-| UI-07 | 10 | |
-| UI-08 | 10 | |
+| UI-03 | 10 | x |
+| UI-04 | 10 | x |
+| UI-05 | 10 | x |
+| UI-06 | 10 | x |
+| UI-07 | 10 | x |
+| UI-08 | 10 | x |
 | UI-09 | 11 | |
 | INST-01 | 12 | |
 | INST-02 | 12 | |

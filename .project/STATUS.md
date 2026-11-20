@@ -1,4 +1,4 @@
-STATUS: MANUAL_CHECK
+STATUS: IN_PROGRESS
 
 <!-- Allowed values: IDEA, IDEA_DONE, SPEC_REVIEW, READY, IN_PROGRESS, MANUAL_CHECK, BLOCKED, DONE -->
 
@@ -7,10 +7,10 @@ STATUS: MANUAL_CHECK
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 10 Tray program: shell, status, settings, server types, projects, logs (findings fixes 10-20..10-38 done on wcc/phase-10, unmerged; gear toggle checked; the scroll layout 10-37 and editing own server types 10-38 wait for the UI-08 check)
+- Phase: B2 Backlog: VLAN release at project deletion, LB health check, docs and e2e test fixes (not started)
 - Base branch: main
-- Last done: phase 09 merged into main (2026-11-19): servers saved or shut down at cloud stop and restored at start, configurable public range, incompatible state refused with `--discard-state`, rotated logs with `hlab logs`, LB IPv6 prefix 0xA0000000 (Q14)
-- Next: /wcc:report for UI-08 (scroll layout, editing own types in step 9), then /wcc:phase closes phase 10; DOC-07 (01) waits until the repository is on GitHub
+- Last done: phase 10 merged into main (2026-11-20): tray program with HLab shell, cloud start/stop, settings, server types (add, edit, remove), projects with tokens, logs with search; UI-08 checked
+- Next: /wcc:phase for B2 in a new session; DOC-07 (01) waits until the repository is on GitHub
 
 ## Open manual checks
 
@@ -20,7 +20,6 @@ STATUS: MANUAL_CHECK
 
 - DOC-07 (01): README and guides are understandable for their audience, help texts name only existing views and buttons
 - LIFE-05 (09): a Windows shutdown or restart with the cloud running applies the stop behaviour
-- UI-08 (10): the console looks and behaves as UI-SPEC.md describes
 
 ## Open decisions
 
