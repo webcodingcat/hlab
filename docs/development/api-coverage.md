@@ -1,12 +1,25 @@
-# Known deviations from Hetzner
+# API coverage
 
-hlab answers in Hetzner's formats, at `http://api.hetzner.internal/v1`
-with a token from `hlab token create`. This page lists where it behaves
-differently from the real Hetzner Cloud API.
+This page is for contributors. It lists every endpoint HLab serves, every
+endpoint or behaviour that differs from the real Hetzner Cloud API with
+its route, and every `unsupported_error`. Users read the short summary by
+topic in [Known deviations](../deviations.md) instead.
+
+HLab answers in Hetzner's formats, at `http://api.hetzner.internal/v1`,
+with a token from `hlab token create`.
+
+The list is kept complete by a test: every entry of `api.Deviations()` in
+[internal/api/deviations.go](../../internal/api/deviations.go) must name
+an endpoint that appears on this page, and none of them may appear in
+`docs/deviations.md` (`TestDocs/DOC-03` in
+[test/docs](../../test/docs/docs_test.go)). A change of behaviour against
+Hetzner updates the code list, this page and, when users notice it, the
+matching topic of the user page; see
+[Adding a resource](adding-a-resource.md#8-document-deviations).
 
 ## Endpoints
 
-hlab serves these endpoints:
+HLab serves these endpoints:
 
 | Endpoint | Notes |
 |---|---|
@@ -53,7 +66,7 @@ hlab serves these endpoints:
 | `POST /zones/{id}/rrsets/{name}/{type}/actions/change_protection`, `.../change_ttl`, `.../set_records`, `.../add_records`, `.../remove_records`, `.../update_records` | See [Records](#records). |
 | `GET /zones/actions`, `GET /zones/actions/{id}`, `GET /zones/{id}/actions`, `GET /zones/{id}/actions/{action_id}` | Zone and RRSet actions are readable at all of these and at `GET /actions/{id}`. |
 | `POST /servers/{id}/actions/change_dns_ptr`, `POST /primary_ips/{id}/actions/change_dns_ptr`, `POST /floating_ips/{id}/actions/change_dns_ptr`, `POST /load_balancers/{id}/actions/change_dns_ptr` | See [Reverse DNS](#reverse-dns). |
-| `GET /load_balancer_types`, `GET /load_balancer_types/{id}` | The types of hlab's catalog. |
+| `GET /load_balancer_types`, `GET /load_balancer_types/{id}` | The types of HLab's catalog. |
 | `GET /load_balancers`, `POST /load_balancers`, `GET /load_balancers/{id}`, `PUT /load_balancers/{id}`, `DELETE /load_balancers/{id}` | See [Load balancers](#load-balancers). |
 | `POST /load_balancers/{id}/actions/add_service`, `.../update_service`, `.../delete_service`, `POST /load_balancers/{id}/actions/add_target`, `.../remove_target`, `.../change_algorithm`, `.../change_type`, `.../change_protection` | See [Load balancers](#load-balancers). |
 | `POST /load_balancers/{id}/actions/attach_to_network`, `.../detach_from_network`, `.../enable_public_interface`, `.../disable_public_interface` | See [Load balancers](#load-balancers). |
@@ -95,7 +108,7 @@ the parameters of Hetzner's API description. Every other endpoint answers
   the project by ID. A server type whose disk is smaller than the image's
   `disk_size` answers 422 `invalid_input` on the field `server_type`.
 - Server types with architecture `arm` answer 412 `resource_unavailable`:
-  hlab runs only x86 servers.
+  HLab runs only x86 servers.
 - The `create_server` action succeeds when the VM runs, before the guest
   has booted; SSH answers a few seconds later.
 - Public IPv4 addresses come from the configured public range (default
@@ -117,18 +130,18 @@ the parameters of Hetzner's API description. Every other endpoint answers
   first-boot steps again, also on a disk restored from a snapshot or
   backup of the same server. The metadata service keeps answering
   `/hetzner/v1/metadata/instance-id` with the server ID.
-- `reset_password` works through a small hlab guest hook that hlab
+- `reset_password` works through a small HLab guest hook that HLab
   installs at the first boot of every server it creates, not through
   qemu-guest-agent. The hook applies the new password within a few
   seconds; without a confirmation within 120 s the action fails with
   `server_error`. A server without the hook, such as one created by an
-  earlier hlab version or one whose user data turns off cloud-init's
+  earlier HLab version or one whose user data turns off cloud-init's
   vendor data, therefore cannot reset its password. On a server that is
   not `running` the action answers 409 `conflict`. When the cloud stops
   during the action, the action ends with `server_error` at the next
   start, and the server no longer receives the new password.
 - `request_console` answers 422 `unsupported_error` with the message
-  `server console is not supported by hlab yet` and starts no action.
+  `server console is not supported by HLab yet` and starts no action.
 
 ## Snapshots and backups
 
@@ -137,8 +150,8 @@ the parameters of Hetzner's API description. Every other endpoint answers
   a power cut at that moment would leave on the disk. Without
   `description`, the image gets `<server name> <creation time>`.
 - `image_size` is the size of the copied disk file, not a compressed size.
-- `backup_window` shows `22-02` while backups are enabled; hlab does not
-  use it. hlab checks every hour while the cloud runs and makes one daily
+- `backup_window` shows `22-02` while backups are enabled; HLab does not
+  use it. HLab checks every hour while the cloud runs and makes one daily
   backup per server and UTC day at the first check of that day. Days on
   which the cloud did not run get no backup later; a server with a
   running action gets its backup at the next check.
@@ -160,10 +173,10 @@ the parameters of Hetzner's API description. Every other endpoint answers
 - The first `enable_rescue` prepares the rescue disk from the debian-13
   image, downloading that image if no server used it before, so it takes
   longer.
-- Rescue is disabled when hlab boots the server into it, through
+- Rescue is disabled when HLab boots the server into it, through
   `poweron`, `reboot` or `reset`, or 60 minutes after `enable_rescue`
   without such a boot. A reboot started inside the guest also boots the
-  rescue system, but hlab does not notice it: rescue then stays enabled,
+  rescue system, but HLab does not notice it: rescue then stays enabled,
   and every later boot runs the rescue system, until `disable_rescue` or
   the 60 minutes have passed.
 - `reboot` of a server running the rescue system shuts the guest down and
@@ -172,9 +185,9 @@ the parameters of Hetzner's API description. Every other endpoint answers
 
 ## ISOs
 
-- `/isos` lists the five ISOs of hlab's catalog (Ubuntu live server
+- `/isos` lists the five ISOs of HLab's catalog (Ubuntu live server
   22.04.5, 24.04.5 and 26.04.1, Debian netinst 12.15.0 and 13.7.0) with
-  hlab's own IDs from 130001, not Hetzner's ISOs; there are no private
+  HLab's own IDs from 130001, not Hetzner's ISOs; there are no private
   ISOs. See the [configuration reference](../configuration.md#isos).
 - The first `attach_iso` of an ISO downloads it inside the action, which
   takes minutes.
@@ -187,8 +200,8 @@ the parameters of Hetzner's API description. Every other endpoint answers
 ## Volumes
 
 - `linux_device` is `/dev/disk/by-id/scsi-0HC_Volume_<id>`. The link, the
-  automatic mount and the pick-up of a grown volume come from hlab guest
-  hooks that hlab installs at the first boot of every server it creates.
+  automatic mount and the pick-up of a grown volume come from HLab guest
+  hooks that HLab installs at the first boot of every server it creates.
   In a server without them,
   such as one whose user data turns off cloud-init's vendor data, a
   volume is a plain SCSI disk `/dev/sdX`.
@@ -217,7 +230,7 @@ the parameters of Hetzner's API description. Every other endpoint answers
 ## Networks
 
 - A subnet of type `vswitch` answers 422 `invalid_input` with the message
-  `vswitch subnets are not supported by hlab`. `expose_routes_to_vswitch`
+  `vswitch subnets are not supported by HLab`. `expose_routes_to_vswitch`
   is stored and shown but has no effect.
 - The gateway of a network is the first host address of its `ip_range`
   (`10.0.0.1` for `10.0.0.0/16`); every subnet shows it as `gateway`, also
@@ -227,15 +240,15 @@ the parameters of Hetzner's API description. Every other endpoint answers
   out.
 - Private adapters have MAC addresses `02:48:4c:2x:xx:xx`; Hetzner uses
   `86:00:00:xx:xx:xx`. Tools that recognise Hetzner's private adapters by
-  their MAC, such as hc-utils, do not see hlab's.
-- hlab has no DHCP server. A network a server gets at creation is set up
-  by cloud-init from hlab's seed at boot: the private IP as `/32` and a
+  their MAC, such as hc-utils, do not see HLab's.
+- HLab has no DHCP server. A network a server gets at creation is set up
+  by cloud-init from HLab's seed at boot: the private IP as `/32` and a
   route to the network range via the gateway, on-link, as Hetzner's DHCP
   gives it. A network attached or detached while the server runs is set
-  up or removed within a few seconds by the hlab guest hook that hlab
+  up or removed within a few seconds by the HLab guest hook that HLab
   installs at the first boot of every server it creates; every later boot
   sets up the current networks again. A server without the hook, such as
-  one created by an earlier hlab version or one whose user data turns off
+  one created by an earlier HLab version or one whose user data turns off
   cloud-init's vendor data, picks up later attachments only if you
   configure the adapter yourself.
 - The MTU on private networks is 1500; Hetzner uses 1450.
@@ -245,7 +258,7 @@ the parameters of Hetzner's API description. Every other endpoint answers
 - `DELETE /networks/{id}` detaches all servers of the network and removes
   their adapters before it answers.
 
-Hetzner documents no error for these cases; hlab answers:
+Hetzner documents no error for these cases; HLab answers:
 
 | Case | Answer |
 |---|---|
@@ -269,8 +282,8 @@ Hetzner documents no error for these cases; hlab answers:
   `2001:db8:8000:c::/64`).
 - Primary IPs show their `location`; they have no `datacenter` field.
 - A primary IP created without a name is named `primary_ip-<id>`, as are
-  the ones hlab makes for a new server.
-- Servers created by an earlier hlab version get primary IP records for
+  the ones HLab makes for a new server.
+- Servers created by an earlier HLab version get primary IP records for
   their addresses at the next cloud start, assigned and with
   `auto_delete: true`.
 - `change_protection` with `delete: true` on a primary IP with
@@ -287,7 +300,7 @@ Hetzner documents no error for these cases; hlab answers:
 
 ## Floating IPs
 
-- An IPv4 floating IP comes from the configured public range. hlab routes
+- An IPv4 floating IP comes from the configured public range. HLab routes
   it to the public IPv4 of its server, so a server without public IPv4
   receives no traffic for it. The guest has to configure the address,
   as at Hetzner; see [Primary and floating IPs](../../README.md#primary-and-floating-ips).
@@ -308,7 +321,7 @@ Hetzner documents no error for these cases; hlab answers:
   floating IPs assigned to the server. Hetzner does not document whether
   its firewalls filter floating IP traffic.
 - IPv6 rules are accepted and stored but have no effect; servers carry no
-  IPv6 traffic in hlab.
+  IPv6 traffic in HLab.
 - The `status` of a firewall in a server's `public_net.firewalls` is
   always `applied`, never `pending`.
 - A firewall takes at most 50 rules and 100 CIDRs per rule list, and a
@@ -328,7 +341,7 @@ Hetzner documents no error for these cases; hlab answers:
   directly.
 - `incompatible_network_type` is never returned.
 
-Hetzner documents no error for these cases; hlab answers:
+Hetzner documents no error for these cases; HLab answers:
 
 | Case | Answer |
 |---|---|
@@ -342,7 +355,7 @@ Hetzner documents no error for these cases; hlab answers:
 
 ## Zones
 
-hlab's DNS server in the appliance answers for your zones; the host, WSL2
+HLab's DNS server in the appliance answers for your zones; the host, WSL2
 and the servers ask it (see [DNS zones](../../README.md#dns-zones)). No
 registrar or public nameserver is involved.
 
@@ -350,7 +363,7 @@ registrar or public nameserver is involved.
   public suffix of the ICANN section of the Public Suffix List), a zone
   name may be exactly one label below the private-use suffixes
   `internal`, `test` or `home.arpa`, such as `lab.internal`.
-  `hetzner.internal`, which hlab uses itself, is refused, and so are names
+  `hetzner.internal`, which HLab uses itself, is refused, and so are names
   under `local`, unknown TLDs, subdomains such as `a.example.com` or
   `a.lab.internal`, and every name under `arpa` except `home.arpa`, which
   also refuses reverse zones. Each refusal is 422 `invalid_input` on the
@@ -362,7 +375,7 @@ registrar or public nameserver is involved.
   but nothing is delegated: `delegated` is `[]`, `delegation_status` and
   `registrar` are `unknown`, and `status` is always `ok`.
 - A zone with `mode` `secondary` is stored with its
-  `primary_nameservers`, but hlab never transfers it (no AXFR) and holds no
+  `primary_nameservers`, but HLab never transfers it (no AXFR) and holds no
   records for it: the appliance forwards its queries to the host's DNS
   servers. Its RRSet calls, `change_ttl` and `import_zonefile` answer 422
   `incorrect_zone_mode`, as does `change_primary_nameservers` on a primary
@@ -371,7 +384,7 @@ registrar or public nameserver is involved.
   addresses are allowed) and unique in the zone, `port` lies in 1 to 65535
   (default 53), `tsig_algorithm` is one of Hetzner's values and `tsig_key`
   is valid base64. Each refusal is 422 `invalid_input` on the field
-  `primary_nameservers[i].<field>`. hlab never checks whether the
+  `primary_nameservers[i].<field>`. HLab never checks whether the
   nameservers answer.
 - There is no DNSSEC: answers are not signed, and DS records are stored
   and served as plain data.
@@ -382,7 +395,7 @@ registrar or public nameserver is involved.
 
 ### Records
 
-- The apex SOA RRSet is managed by hlab; its serial grows with every
+- The apex SOA RRSet is managed by HLab; its serial grows with every
   change. Creating, deleting or changing its records answers 422
   `invalid_input` on the field `type`; its TTL may be changed. The apex NS
   RRSet may be edited freely.
@@ -410,14 +423,14 @@ registrar or public nameserver is involved.
   import, as at Hetzner.
 - An import into a zone with any change-protected RRSet answers
   `protected`. The imported SOA keeps its values except the serial, which
-  hlab continues.
+  HLab continues.
 
 ### Answers of the DNS server
 
 - Wildcards answer only names without records of their own (RFC 4592).
-- A CNAME is followed inside hlab's zones and, for outside names, through
+- A CNAME is followed inside HLab's zones and, for outside names, through
   the host's DNS servers, at most 8 steps.
-- hlab warns when a zone you create hides a domain that exists publicly;
+- HLab warns when a zone you create hides a domain that exists publicly;
   see [hlab cloud status](../commands.md#hlab-cloud-status).
 
 ## Reverse DNS
@@ -425,9 +438,9 @@ registrar or public nameserver is involved.
 - A primary IPv4 or floating IPv4 without an own entry shows Hetzner's
   default `static.<d>.<c>.<b>.<a>.clients.your-server.de`, as a server's
   IPv4 does. IPv6 addresses start without entries.
-- PTRs of IPv4 addresses resolve through hlab's DNS server. IPv6 entries
+- PTRs of IPv4 addresses resolve through HLab's DNS server. IPv6 entries
   are stored and shown but do not resolve, since servers carry no IPv6
-  traffic in hlab.
+  traffic in HLab.
 - `dns_ptr` must be a host name of at least two labels without a trailing
   dot; `null` resets an IPv4 to its default and removes an IPv6 entry. A
   /64 holds at most 100 entries. The `dns_ptr` key is required.
@@ -451,7 +464,7 @@ differences:
 - The IPv6 address is formal and carries no traffic:
   `2001:db8:<0xA0000000 + load balancer ID>::1` (load balancer 3:
   `2001:db8:a000:3::1`), or `<its /64>::1` with an IPv6 primary IP.
-  Reverse DNS entries an older hlab stored under the earlier prefix
+  Reverse DNS entries an older HLab stored under the earlier prefix
   `2001:db8:8000:<ID>::/64` move to the same address in the new /64 at
   the next cloud start.
 - Without `public_net.ipv4`, the load balancer gets an IPv4 from the
@@ -474,7 +487,7 @@ differences:
 - A load balancer is attached to at most one network.
 
 Hetzner documents no error for these cases, or does not confirm one;
-hlab answers:
+HLab answers:
 
 | Case | Answer |
 |---|---|
@@ -491,14 +504,14 @@ hlab answers:
 
 ## Certificates
 
-- Managed certificates are issued by the hlab CA inside hlab, not by
+- Managed certificates are issued by the HLab CA inside HLab, not by
   Let's Encrypt. They are valid for 90 days, use an ECDSA P-256 key and
-  name their domains; hlab renews them 30 days before they expire.
+  name their domains; HLab renews them 30 days before they expire.
   Clients trust them only after `hlab ca trust on`, or with the CA
   certificate from `hlab ca export`; see
   [Load balancers and certificates](../../README.md#load-balancers-and-certificates).
-- Every certificate the hlab CA issues names the revocation list
-  `http://api.hetzner.internal/hlab/v1/ca.crl`. hlab serves an empty,
+- Every certificate the HLab CA issues names the revocation list
+  `http://api.hetzner.internal/hlab/v1/ca.crl`. HLab serves an empty,
   signed list there, renewed at every cloud start and every week, so
   clients that check revocation, such as `curl.exe` on Windows, accept
   the certificate.
@@ -545,7 +558,7 @@ Servers read their metadata at `http://169.254.169.254/hetzner/v1/metadata`
 
 ## Placement groups
 
-hlab runs every server on your one machine, so a placement group places
+HLab runs every server on your one machine, so a placement group places
 nothing physically: a `spread` group only records its member servers.
 
 - `POST /placement_groups` answers with `"action": null`.
@@ -557,18 +570,19 @@ nothing physically: a `spread` group only records its member servers.
 
 ## Server types and prices
 
-- `/server_types` lists the server types of hlab's catalog, followed by
+- `/server_types` lists the server types of HLab's catalog, followed by
   your own types from `server-types.custom.json` (see the
   [configuration reference](../configuration.md#custom-server-types)).
   `hlab catalog update` replaces the catalog types with the current ones
   from Hetzner.
-- `/pricing` shows the prices of hlab's catalog. Its `server_types` list
+- `/pricing` shows the prices of HLab's catalog. Its `server_types` list
   every served type; an own type without `prices` gets zero prices in each
   of its locations.
 
 ## Projects
 
-Projects and tokens are managed with the `hlab` command, not in a console.
+Projects and tokens are managed with the `hlab` command and in the tray
+program, not through the API.
 `hlab project delete` deletes a project with all its resources, servers
 with delete protection included.
 

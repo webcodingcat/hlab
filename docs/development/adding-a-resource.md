@@ -176,4 +176,7 @@ it has finished.
 When the resource behaves differently from Hetzner, add an entry to
 `api.Deviations()` in [internal/api/deviations.go](../../internal/api/deviations.go)
 and describe it in [docs/development/api-coverage.md](api-coverage.md); the
-documentation test checks that every entry is listed there.
+documentation test checks that every entry is listed there. When users
+notice the difference, also mention it under its topic in
+[docs/deviations.md](../deviations.md), in plain words without routes; the
+test fails if that page names an endpoint of `api.Deviations()`.
