@@ -30,7 +30,7 @@
   import HelpButton from "../../lib/HelpButton.svelte";
   import Table, { type Column } from "../../lib/Table.svelte";
   import { listAll, runApi } from "../../lib/api";
-  import { createdText, labelText } from "../../lib/format";
+  import { actionTitle, createdText, labelText } from "../../lib/format";
   import { request } from "../../lib/resourceActions";
   import { tabs } from "../../lib/resources/images";
   import { showError } from "../../lib/toast";
@@ -100,7 +100,7 @@
     const i = pending;
     const req = request(tabs.delete, i.id)!;
     // Not awaited: the dialog closes at once, the toast follows the request.
-    runApi(project, `${tabs.delete.label} ${imageName(i)}`, req.method, req.path, req.body).then(load);
+    runApi(project, actionTitle(type === "snapshot" ? "Snapshot" : "Backup", imageName(i), tabs.delete.label), req.method, req.path, req.body).then(load);
   }
 </script>
 

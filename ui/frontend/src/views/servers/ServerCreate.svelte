@@ -4,7 +4,8 @@
   import LabelsField from "../../lib/LabelsField.svelte";
   import SecretDialog from "../../lib/SecretDialog.svelte";
   import { runAction, type Action, type ActionResult } from "../../lib/actions";
-  import { api, listAll, runApi } from "../../lib/api";
+  import { api, listAll, runOn } from "../../lib/api";
+  import { actionTitle } from "../../lib/format";
   import { formErrors, type FormErrors } from "../../lib/formErrors";
   import { toLabels, type LabelRow } from "../../lib/labels";
   import { request, tabActions } from "../../lib/serverActions";
@@ -180,7 +181,7 @@
     // The answer opens the password or the detail page at once; the toast
     // follows the create action and the start after it.
     const result = await runAction(
-      `Create server ${name.trim()}`,
+      actionTitle("Server", name.trim(), "Create"),
       async () => {
         try {
           const res = await api<Created>(project, "POST", "/servers", body(l.labels));
@@ -203,7 +204,7 @@
     );
     const req = request(tabActions.enable_backup, createdId);
     if (result && withBackups && req) {
-      await runApi(project, `Enable backups ${name.trim()}`, req.method, req.path, req.body);
+      await runOn(project, name.trim(), tabActions.enable_backup.label, req);
     }
   }
 </script>

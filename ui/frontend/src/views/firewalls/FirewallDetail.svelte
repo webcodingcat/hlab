@@ -8,7 +8,7 @@
   import LabelsTab from "../../lib/LabelsTab.svelte";
   import RenameInput from "../../lib/RenameInput.svelte";
   import ResourceActionsMenu from "../../lib/ResourceActionsMenu.svelte";
-  import { api, listAll, runApi } from "../../lib/api";
+  import { api, listAll, runOn } from "../../lib/api";
   import { request, type Input, type ResourceAction } from "../../lib/resourceActions";
   import { toRuleRows, toRules, type RuleRow } from "../../lib/resources/firewallRules";
   import { menu, tabs as tabActions } from "../../lib/resources/firewalls";
@@ -86,7 +86,7 @@
   async function run(a: ResourceAction, input: Input): Promise<boolean> {
     if (!firewall) return false;
     const req = request(a, firewall.id, input)!;
-    const res = await runApi(project, `${a.label} ${firewall.name}`, req.method, req.path, req.body);
+    const res = await runOn(project, firewall.name, a.label, req);
     if (res !== undefined) load();
     return res !== undefined;
   }

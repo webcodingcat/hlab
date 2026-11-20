@@ -4,7 +4,7 @@
   import HelpButton from "../../lib/HelpButton.svelte";
   import StatusPill from "../../lib/StatusPill.svelte";
   import Table, { type Column, type RowAction } from "../../lib/Table.svelte";
-  import { listAll, runApi } from "../../lib/api";
+  import { listAll, runOn } from "../../lib/api";
   import { menuActions, request, type ServerAction } from "../../lib/serverActions";
   import { showError } from "../../lib/toast";
   import { href, running, type Page } from "../../state";
@@ -68,7 +68,7 @@
   async function run(a: ServerAction, s: Server) {
     const req = request(a, s.id);
     if (!req) return;
-    await runApi(project, `${a.label} ${s.name}`, req.method, req.path, req.body);
+    await runOn(project, s.name, a.label, req);
     await load();
   }
 
