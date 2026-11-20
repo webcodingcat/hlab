@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/webcodingcat/hlab/internal/catalog"
@@ -155,6 +156,27 @@ func (s *Service) RemoveServerType(name string) error {
 		return err
 	}
 	return s.reload()
+}
+
+// Location is one catalog location as the views show it.
+type Location struct {
+	Name string `json:"name"`
+	City string `json:"city"`
+}
+
+// Locations lists the catalog's locations sorted by name. It reads the
+// catalog files, so it works while the cloud is stopped.
+func (s *Service) Locations() ([]Location, error) {
+	cat, _, err := s.catalog()
+	if err != nil {
+		return nil, err
+	}
+	locs := make([]Location, 0, len(cat.Locations))
+	for _, l := range cat.Locations {
+		locs = append(locs, Location{Name: l.Name, City: l.City})
+	}
+	slices.SortFunc(locs, func(a, b Location) int { return strings.Compare(a.Name, b.Name) })
+	return locs, nil
 }
 
 // catalog loads the catalog the way hlabd does.

@@ -20,6 +20,7 @@ type Location struct {
 	ID          int64  `json:"id"`
 	Name        string `json:"name"`
 	NetworkZone string `json:"network_zone"`
+	City        string `json:"city"`
 	// Raw is the location object as served.
 	Raw json.RawMessage `json:"-"`
 }
