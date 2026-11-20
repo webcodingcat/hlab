@@ -27,8 +27,15 @@ test("UI-02 volumes", async ({ page, shared }) => {
     start_after_create: false,
   });
   expect(made.status, `POST /servers: ${JSON.stringify(made.body)}`).toBe(201);
-  const serverId = (made.body as { server: { id: number } }).server.id;
+  const { server: madeServer, action: createAction } = made.body as { server: { id: number }; action: { id: number } };
+  const serverId = madeServer.id;
   try {
+    // The server stays locked until its create action ends.
+    await expect
+      .poll(async () => ((await api(token, `/actions/${createAction.id}`)).body as { action: { status: string } }).action.status, {
+        timeout: 5 * 60_000,
+      })
+      .toBe("success");
     await openConsole(page, shared.name);
     await section(page, "Volumes");
     await helpOpens(page);
