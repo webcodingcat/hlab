@@ -482,13 +482,13 @@ button "Browse…", row menu "Edit" and "Remove".
   - Size: ~15 lines in 1 file
   - [ ] views/placement-groups/PlacementGroupCreate.svelte: Type as a select with the single preselected option `spread`, the hint below it; the request still sends `type: "spread"`.
 
-- [ ] 14-30 Console navigation model and new routes
+- [x] 14-30 Console navigation model and new routes
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/unit/routes.test.ts
   - Reads: UI-SPEC "Views" (Project console, Administration), "Building blocks" (Section tabs); ARCHITECTURE "hlab-tray (tray program)"; PLAN "Interfaces" (consoleNav, routes); ui/frontend/src/lib/routes.ts, help.ts, views.json, help/images.md
   - Size: ~200 lines in 7 files
-  - [ ] lib/consoleNav.ts as in "Interfaces"; routes.ts: project views `snapshots` and `backups` (list and detail, no new), admin view `isos`; help.ts `ViewId`, views.json in sidebar order.
-  - [ ] help/snapshots.md and help/backups.md (from help/images.md, split by type); tests/unit/routes.test.ts gets the new views and `#/admin/isos`.
+  - [x] lib/consoleNav.ts as in "Interfaces"; routes.ts: project views `snapshots` and `backups` (list and detail, no new), admin view `isos`; help.ts `ViewId`, views.json in sidebar order.
+  - [x] help/snapshots.md and help/backups.md (from help/images.md, split by type); tests/unit/routes.test.ts gets the new views and `#/admin/isos`.
 
 - [ ] 14-31 Own ISOs served and attached
   - Wave: 2 | Depends on: 14-25 | Review: alone
