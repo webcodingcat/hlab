@@ -516,12 +516,12 @@ button "Browse…", row menu "Edit" and "Remove".
   - [x] cmd/hlab-tray: a `Files` Wails service with `PickISOFile` (`app.Dialog.OpenFile().SetTitle("Select ISO").AddFilter("ISO images", "*.iso").CanChooseFiles(true).AttachToWindow(win).PromptForSingleSelection()`), registered beside the bridge services.
 
   - Note (from 14-31 review): catalog ISO IDs reach 130005, inside the own range from 100000; AddOwnISO/the bridge must pick an ID above every catalog and own ISO ID, never just the next own one.
-- [ ] 14-34 Snapshots and Backups views
+- [x] 14-34 Snapshots and Backups views
   - Wave: 2 | Depends on: 14-27, 14-30 | Review: alone
   - Requirements: UI-02 | Tests: - (images requests proven by images.test.ts; CONTEXT Q1)
   - Reads: UI-SPEC "Views" (Project console: Snapshots and Backups); PLAN "Interfaces" (section convention, routes); ui/frontend/src/views/images/*
   - Size: ~200 lines in 6 files
-  - [ ] views/images/Section.svelte becomes ImageList.svelte with a `type` ("snapshot" or "backup") listing `/images?type=<type>` (title, empty state and help per view); views/snapshots/Section.svelte and views/backups/Section.svelte use it and ImageDetail; ImageDetail.svelte and ImageActionInput.svelte link back to the view they were opened from; Convert to snapshot stays on backups only.
+  - [x] views/images/Section.svelte becomes ImageList.svelte with a `type` ("snapshot" or "backup") listing `/images?type=<type>` (title, empty state and help per view); views/snapshots/Section.svelte and views/backups/Section.svelte use it and ImageDetail; ImageDetail.svelte and ImageActionInput.svelte link back to the view they were opened from; Convert to snapshot stays on backups only.
 
 - [ ] 14-35 Volume create form like the Hetzner Console
   - Wave: 2 | Depends on: - | Review: alone
