@@ -289,17 +289,17 @@ shows all ISOs on one page (no paging).
   - [x] ui/frontend/src/views/isos/Section.svelte (read-only list: Name, Description, Architecture, Deprecated) and views/isos/IsoDetail.svelte (Overview; a note that ISOs attach in a server's ISO tab); help/isos.md.
   - [x] tests/e2e/isos.spec.ts.
 
-- [ ] 14-23 UI-02 full run and time limit
+- [x] 14-23 UI-02 full run and time limit
   - Wave: 6 | Depends on: 14-04, 14-08, 14-10, 14-13, 14-14, 14-15, 14-18, 14-19, 14-20, 14-21, 14-22 | Review: alone
   - Requirements: UI-02 | Tests: test/e2e/ui_test.go TestE2E/UI-02 (all specs)
   - Reads: CONTEXT "Answers"; CLAUDE.md "Tests"; test/e2e/ui_test.go `runSpec`, `testUI02`
   - Size: ~15 lines in 1 file
-  - [ ] Run `task e2e -- -run 'TestE2E/UI-02$' -v` once in full, then set the UI-02 limit in test/e2e/ui_test.go to about twice that run and update `testUI02`'s comment to name all sections.
+  - [x] Run `task e2e -- -run 'TestE2E/UI-02$' -v` once in full, then set the UI-02 limit in test/e2e/ui_test.go to about twice that run and update `testUI02`'s comment to name all sections.
 
-- [ ] 14-24 Documentation
+- [x] 14-24 Documentation
   - Wave: 7 | Depends on: 14-23 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06, DOC-07 | Tests: test/docs/docs_test.go, ui/frontend/tests/unit/help.test.ts
   - Reads: SPEC "Documentation"; REQUIREMENTS "Documentation (DOC)"; CONTEXT; DECISIONS phase 14 entries
   - Size: ~250 lines in 5 files
-  - [ ] Check the eleven help texts against the built views (only existing views and buttons).
-  - [ ] README.md (tray program: every resource section), docs/guide.md (the console for each resource, at the matching sections), docs/development/components.md (resourceActions, lib/resources, section convention); regenerate the console screenshots with `task docs:screenshots`.
+  - [x] Check the eleven help texts against the built views (only existing views and buttons).
+  - [x] README.md (tray program: every resource section), docs/guide.md (the console for each resource, at the matching sections), docs/development/components.md (resourceActions, lib/resources, section convention); regenerate the console screenshots with `task docs:screenshots`.
