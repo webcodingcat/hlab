@@ -189,28 +189,33 @@ type ISOList struct {
 	Problem string      `json:"problem,omitempty"` // like custom_isos
 }
 
-// ISOs lists the catalog ISOs followed by the own ISOs of the own ISOs
-// file. It reads the files, so it works while the cloud is stopped.
+// ISOs lists the catalog ISOs followed by every entry of the own ISOs
+// file, also those left out of serving, so they can be edited or removed;
+// Problem says why own ISOs are left out. A file that cannot be read lists
+// no own ISOs. It reads the files, so it works while the cloud is stopped.
 func (s *Service) ISOs() (ISOList, error) {
 	cat, warns, err := s.isoCatalog()
 	if err != nil {
 		return ISOList{}, err
 	}
 	list := ISOList{ISOs: []ListedISO{}, Problem: strings.Join(warns, "; ")}
-	for _, iso := range cat.AllISOs() {
-		l := ListedISO{ISO: iso.Raw, Source: "catalog"}
-		if iso.Own {
-			var obj struct {
-				Description string `json:"description"`
-			}
-			if err := json.Unmarshal(iso.Raw, &obj); err != nil {
-				return ISOList{}, fmt.Errorf("own ISO %d: %w", iso.ID, err)
-			}
-			l.Source = "own"
-			l.Own = &catalog.OwnISOSpec{ID: iso.ID, Description: obj.Description,
-				Architecture: iso.Architecture, Source: iso.OwnSource}
+	for _, iso := range cat.ISOs {
+		list.ISOs = append(list.ISOs, ListedISO{ISO: iso.Raw, Source: "catalog"})
+	}
+	own, err := catalog.ReadOwnISOs(s.isoFile())
+	if err != nil {
+		return list, nil // the problem names the file
+	}
+	for _, iso := range own {
+		var obj struct {
+			Description string `json:"description"`
 		}
-		list.ISOs = append(list.ISOs, l)
+		if err := json.Unmarshal(iso.Raw, &obj); err != nil {
+			return ISOList{}, fmt.Errorf("own ISO %d: %w", iso.ID, err)
+		}
+		list.ISOs = append(list.ISOs, ListedISO{ISO: iso.Raw, Source: "own",
+			Own: &catalog.OwnISOSpec{ID: iso.ID, Description: obj.Description,
+				Architecture: iso.Architecture, Source: iso.OwnSource}})
 	}
 	return list, nil
 }

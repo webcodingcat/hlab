@@ -109,6 +109,22 @@ func readOwnISOsRaw(file string) ([]json.RawMessage, []ownISOEntry, error) {
 	return raw, entries, nil
 }
 
+// ReadOwnISOs returns every entry of file as an own ISO, also those
+// ReloadOwnISOs leaves out (a local file that cannot be opened, a
+// conflicting ID), so they can still be edited or removed; a missing file
+// has none.
+func ReadOwnISOs(file string) ([]ISO, error) {
+	_, entries, err := readOwnISOsRaw(file)
+	if err != nil {
+		return nil, err
+	}
+	isos := make([]ISO, len(entries))
+	for i, e := range entries {
+		isos[i] = e.iso()
+	}
+	return isos, nil
+}
+
 // checkOwnISOs reports the first entry with an ID below MinOwnISOID, an ID
 // of a catalog ISO, a duplicate ID or cache name, or no cache name.
 func (c *Catalog) checkOwnISOs(entries []ownISOEntry) error {
