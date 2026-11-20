@@ -477,14 +477,14 @@ Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes
   - [ ] src/lib/Dialog.svelte (native `<dialog>`, title, Escape and "Cancel" close, `onclose`); src/views/ServerTypes.svelte: the add form and the token form use it.
   - [ ] ServerTypes.svelte: "Update from Hetzner" (enabled while the cloud runs) opens the dialog with the required password field "Hetzner token", the hint, "Update" (loading, Enter submits); success closes it and shows the toast, an error stays under the field; the token is cleared on every close. Locations: "All locations" (checked by default, disables the others, saves `[]`) and one checkbox "<name> (<city>)" per `Locations()` entry; unchecked without a location shows the error under the list.
 
-- [ ] 10-32 Documentation layout: docs/ and docs/development/
+- [x] 10-32 Documentation layout: docs/ and docs/development/
   - Wave: 6 | Depends on: 10-31 (order) | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-04, DOC-06 | Tests: test/docs/docs_test.go (paths only)
   - Reads: SPEC "Documentation"; REQUIREMENTS "Documentation (DOC)"; DECISIONS "Documentation folders"; finding 12
   - Size: ~60 lines in 10 files (moves)
   - Adjusts: test/docs/docs_test.go (DOC-01 docs/commands.md, DOC-02 docs/configuration.md, DOC-03 docs/development/api-coverage.md, DOC-06 docs/development/*.md)
-  - [ ] `git mv` docs/user/commands.md, configuration.md to docs/; docs/user/deviations.md to docs/development/api-coverage.md (its full content); test/docs/docs_test.go follows the paths.
-  - [ ] `git mv` docs/dev/{setup,build-and-test,components,adding-a-resource}.md to docs/development/; fix every link in README.md and the moved documents (DOC-04 green).
+  - [x] `git mv` docs/user/commands.md, configuration.md to docs/; docs/user/deviations.md to docs/development/api-coverage.md (its full content); test/docs/docs_test.go follows the paths.
+  - [x] `git mv` docs/dev/{setup,build-and-test,components,adding-a-resource}.md to docs/development/; fix every link in README.md and the moved documents (DOC-04 green).
 
 - [ ] 10-26 Logs view: search and older lines
   - Wave: 7 | Depends on: 10-25, 10-29, 10-30 (order) | Review: alone
