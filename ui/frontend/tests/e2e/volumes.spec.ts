@@ -51,12 +51,17 @@ test("UI-02 volumes", async ({ page, shared }) => {
     await page.getByLabel("Name", { exact: true }).fill(name);
     await pick(page, "Server", serverName);
     await page.getByRole("button", { name: /^Create( volume)?$/ }).last().click();
-    await expect.poll(async () => (await named<Volume>(token, "/volumes", "volumes", name)).length, { timeout: 2 * 60_000 }).toBe(1);
+    // Server and format are set once the volume's create action ends.
+    await expect
+      .poll(
+        async () => {
+          const [v] = await named<Volume>(token, "/volumes", "volumes", name);
+          return v && { size: v.size, server: v.server, format: v.format, location: v.location.name };
+        },
+        { timeout: 2 * 60_000 },
+      )
+      .toEqual({ size: 12, server: serverId, format: "ext4", location });
     const [created] = await named<Volume>(token, "/volumes", "volumes", name);
-    expect(created.size).toBe(12);
-    expect(created.server).toBe(serverId);
-    expect(created.format).toBe("ext4");
-    expect(created.location.name).toBe(location);
     await section(page, "Volumes");
 
     // A label added in its Labels tab is in the API.
@@ -74,7 +79,8 @@ test("UI-02 volumes", async ({ page, shared }) => {
     await deleteRow(page, name, true);
     await expect.poll(async () => (await api(token, `/volumes/${created.id}`)).status, { timeout: 2 * 60_000 }).toBe(404);
   } finally {
-    await send(token, "DELETE", `/servers/${serverId}`);
+    // A running action of the server or its volume locks it for a while.
+    await expect.poll(async () => (await send(token, "DELETE", `/servers/${serverId}`)).status, { timeout: 2 * 60_000 }).not.toBe(423);
     await expect.poll(async () => (await api(token, `/servers/${serverId}`)).status, { timeout: 2 * 60_000 }).toBe(404);
   }
 });
