@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -74,7 +75,8 @@ func releaseTray(t *testing.T) {
 	}
 }
 
-// runSpec runs the Playwright test named id against the shared tray. The
+// runSpec runs the Playwright tests named id against the shared tray and
+// logs each spec's result (list reporter). A skipped spec fails the row. The
 // values in secrets are given to the test through env and never logged.
 func runSpec(t *testing.T, id string, timeout time.Duration, env []string, secrets ...string) {
 	t.Helper()
@@ -91,7 +93,7 @@ func runSpec(t *testing.T, id string, timeout time.Duration, env []string, secre
 	r, err := command(context.Background(), timeout, environ, "", "node",
 		filepath.Join(frontend, "node_modules", "@playwright", "test", "cli.js"), "test",
 		"--config", filepath.Join(frontend, "playwright.config.ts"),
-		"--project", "e2e", "--grep", id, "--reporter", "line")
+		"--project", "e2e", "--grep", id, "--reporter", "list")
 	t.Logf("%s: end after %s", id, time.Since(start).Round(time.Second))
 	for _, s := range secrets {
 		if s != "" {
@@ -101,7 +103,14 @@ func runSpec(t *testing.T, id string, timeout time.Duration, env []string, secre
 	if err != nil || r.ExitCode != 0 {
 		t.Fatalf("playwright test --grep %s: %v\n%s", id, err, r)
 	}
+	t.Logf("%s: playwright output:\n%s", id, r.Stdout)
+	if skipped.MatchString(r.Stdout) {
+		t.Fatalf("playwright test --grep %s skipped specs", id)
+	}
 }
+
+// skipped matches the skipped count in Playwright's summary.
+var skipped = regexp.MustCompile(`(?m)^\s*\d+ skipped`)
 
 // testUI01: through the tray menu handlers the cloud stops and starts
 // again; the tray state and the top bar pill follow, and hlab cloud status
@@ -168,10 +177,14 @@ func testUI05(t *testing.T) {
 	runSpec(t, "UI-05", 10*time.Minute, nil)
 }
 
-// testUI02: the project console's SSH Keys and Servers sections, each in a
-// project of its own: an SSH key is created, labelled and deleted; a server
-// is created through the form, renamed, powered off and deleted. The server
-// uses the type, location and image of the other server rows.
+// testUI02: the project console's sections, one spec each. SSH Keys and
+// Servers run in a project of their own: an SSH key is created, labelled and
+// deleted; a server is created through the form, renamed, powered off and
+// deleted, with the type, location and image of the other server rows.
+// Volumes, Load Balancers, Networks, Firewalls, Floating IPs, Primary IPs,
+// DNS, Certificates and Placement Groups share one project: each creates a
+// resource through its form, labels and deletes it; ISOs lists the API's
+// ISOs.
 func testUI02(t *testing.T) {
 	runSpec(t, "UI-02", 40*time.Minute, []string{
 		"HLAB_E2E_SERVER_TYPE=" + serverType,
