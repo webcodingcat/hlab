@@ -456,14 +456,14 @@ button "Browse…", row menu "Edit" and "Remove".
   - [x] internal/images/images.go and download.go: Source.Path and Source.SHA256; Options.ISOSource consulted when ISOs lacks the name; EnsureISO copies a Path source through a temporary file and checks SHA256 when set; a URL source with SHA256 and no ChecksumURL is checked against it; on error nothing stays in ISODir.
   - [x] internal/images/images_test.go: the CAT-10 subtest.
 
-- [ ] 14-27 Toast titles: shared builder
+- [x] 14-27 Toast titles: shared builder
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-02 | Tests: ui/frontend/tests/unit/format.test.ts
   - Reads: UI-SPEC "Building blocks" (Action toast); PLAN "Interfaces" (format, api, ProtectionTab; toast types); ui/frontend/src/lib/format.ts, api.ts, ResourceActionsMenu.svelte, ProtectionTab.svelte
   - Size: ~180 lines in 12 files
-  - [ ] lib/format.ts `actionTitle`, `resourceType`; lib/api.ts `runOn`; lib/ResourceActionsMenu.svelte titles through `actionTitle(resourceType(req.path), name, a.label)`; lib/ProtectionTab.svelte gets `name` and titles "<Type> <name>: Change protection"; tests/unit/format.test.ts.
-  - [ ] ProtectionTab `name` in views/dns/ZoneDetail.svelte, floating-ips/FloatingIpDetail.svelte, images/ImageDetail.svelte, load-balancers/LoadBalancerDetail.svelte.
-  - [ ] ProtectionTab `name` in views/networks/NetworkDetail.svelte, primary-ips/PrimaryIpDetail.svelte, servers/ServerDetail.svelte, volumes/VolumeDetail.svelte.
+  - [x] lib/format.ts `actionTitle`, `resourceType`; lib/api.ts `runOn`; lib/ResourceActionsMenu.svelte titles through `actionTitle(resourceType(req.path), name, a.label)`; lib/ProtectionTab.svelte gets `name` and titles "<Type> <name>: Change protection"; tests/unit/format.test.ts.
+  - [x] ProtectionTab `name` in views/dns/ZoneDetail.svelte, floating-ips/FloatingIpDetail.svelte, images/ImageDetail.svelte, load-balancers/LoadBalancerDetail.svelte.
+  - [x] ProtectionTab `name` in views/networks/NetworkDetail.svelte, primary-ips/PrimaryIpDetail.svelte, servers/ServerDetail.svelte, volumes/VolumeDetail.svelte.
 
 - [ ] 14-28 Labels as chips
   - Wave: 1 | Depends on: - | Review: alone
