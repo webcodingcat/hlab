@@ -153,7 +153,7 @@
 
   async function update(e: SubmitEvent) {
     e.preventDefault();
-    if (updating || !token) return;
+    if (updating) return;
     updating = true;
     tokenError = "";
     try {
