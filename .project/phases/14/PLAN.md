@@ -498,13 +498,13 @@ button "Browse…", row menu "Edit" and "Remove".
   - [x] internal/resources/isos/isos.go: list and get over `AllISOs()` (catalog then own ISOs by ID), `name` filter matching catalog ISOs only; internal/resources/servers/iso.go: attach through `Catalog.ISO(ref)` (own ISOs by ID only) and `EnsureISO(iso.CacheName)`.
   - [x] internal/resources/isos/isos_test.go and internal/resources/servers/iso_test.go: the CAT-10 subtests.
 
-- [ ] 14-32 Cloud: own ISOs file, copies and cache cleanup
+- [x] 14-32 Cloud: own ISOs file, copies and cache cleanup
   - Wave: 2 | Depends on: 14-25, 14-26 | Review: alone
   - Requirements: CAT-10 | Tests: internal/cloud/reload_test.go
   - Reads: CONTEXT "Findings plans 14-25 onward"; ARCHITECTURE "Management API" (`/status` problems, `/settings/reload`), "Files and formats", "Cloud start and stop"; PLAN "Interfaces"; internal/cloud/cloud.go (catalog load, images.New, mgmtStatus), reload.go, reload_test.go; how the store keeps a server's attached ISO (internal/resources/servers/iso.go setISO)
   - Size: ~300 lines in 4 files
-  - [ ] internal/cloud/isos.go (new) and reload.go: create isos.custom.json as `[]` with the settings.toml ACL when missing; read own ISOs at start and on reload (`ReloadOwnISOs`); copy Path sources in the background through `EnsureISO`, a failed copy calls `DropOwnISO`; delete `own-*` files in `<data>\isos` that no served own ISO names and no server has attached, at start and on reload; cloud.go: `images.Options.ISOSource`, the `custom_isos` problem from `OwnISOsWarnings` in `/status`.
-  - [ ] internal/cloud/reload_test.go: the CAT-10 subtests.
+  - [x] internal/cloud/isos.go (new) and reload.go: create isos.custom.json as `[]` with the settings.toml ACL when missing; read own ISOs at start and on reload (`ReloadOwnISOs`); copy Path sources in the background through `EnsureISO`, a failed copy calls `DropOwnISO`; delete `own-*` files in `<data>\isos` that no served own ISO names and no server has attached, at start and on reload; cloud.go: `images.Options.ISOSource`, the `custom_isos` problem from `OwnISOsWarnings` in `/status`.
+  - [x] internal/cloud/reload_test.go: the CAT-10 subtests.
 
   - Note (from 14-25): `catalog.ISOSourceByCacheName` maps only URL and Format; map `OwnSource.Path` and `SHA256` into `images.Source` here.
 - [ ] 14-33 Tray bridge for own ISOs and the file dialog
