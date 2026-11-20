@@ -22,6 +22,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-20 Project console building blocks
+
+- Type: decision
+- Phase: phase 10
+- What: the breadcrumb project menu is `lib/ProjectMenu.svelte` in the top bar; "Start the cloud to manage projects" is the shared `lib/CloudStopped.svelte`, shown inside Tokens so the h1 "API tokens" stays; ProjectDetail becomes `views/Tokens.svelte` with the table heading "Tokens".
+- Why: the top bar is rendered by App, and the stopped state looks the same on the list and in the console.
+- Cost of change: low
+
 ## 2026-11-20 Shell start route and last project
 
 - Type: decision

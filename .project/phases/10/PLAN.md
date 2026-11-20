@@ -453,14 +453,14 @@ Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes
   - [x] internal/cloud/ca.go (new CAs get CN "HLab CA"; an existing CA file is kept), lifecycle.go ("readable HLab state", "newer HLab version"), internal/store/store.go ("newer HLab version").
   - [x] internal/hostnet/windows/hostnet.go ("the HLab cloud of profile …"), wsl.go ("which HLab does not support", "resolve HLab names"), internal/settings/settings.go ("which HLab cannot use").
 
-- [ ] 10-29 Project list and project console
+- [x] 10-29 Project list and project console
   - Wave: 5 | Depends on: 10-28 | Review: alone
   - Requirements: UI-05, UI-08 | Tests: ui/frontend/tests/e2e/projects.spec.ts
   - Reads: UI-SPEC "Views" (Shell, Cloud stopped, Projects), "Building blocks"; PLAN "Interfaces" (state.ts, SectionSidebar); finding 5
   - Size: ~350 lines in 6 files
   - Adjusts: ui/frontend/tests/e2e/fixtures.ts (`openView` goes through the gear and the Administration sidebar for Server Types, Settings, Logs; UI-03, UI-04, UI-06 specs keep what they check)
-  - [ ] src/views/Projects.svelte: the project list full width, row click opens `#/projects/<name>/tokens` and sets `lastProject`; cloud stopped: "Start the cloud to manage projects" with the Start button.
-  - [ ] src/views/ProjectConsole.svelte (breadcrumb "Projects / <name> ▾" with a menu of the other projects, SectionSidebar with a separator and "API tokens", the stopped text), src/views/Tokens.svelte (`git mv` of ProjectDetail.svelte: token table and "Create token" dialog under the title "API tokens" with its help button); App.svelte renders ProjectConsole for the project area.
+  - [x] src/views/Projects.svelte: the project list full width, row click opens `#/projects/<name>/tokens` and sets `lastProject`; cloud stopped: "Start the cloud to manage projects" with the Start button.
+  - [x] src/views/ProjectConsole.svelte (breadcrumb "Projects / <name> ▾" with a menu of the other projects, SectionSidebar with a separator and "API tokens", the stopped text), src/views/Tokens.svelte (`git mv` of ProjectDetail.svelte: token table and "Create token" dialog under the title "API tokens" with its help button); App.svelte renders ProjectConsole for the project area.
 
 - [x] 10-31 E2E harness: delete the run's project and leftovers
   - Wave: 5 | Depends on: 10-22 (order) | Review: alone
