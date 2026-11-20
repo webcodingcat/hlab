@@ -23,6 +23,8 @@ import (
 	"github.com/webcodingcat/hlab/internal/platform/platformtest"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
+	"github.com/webcodingcat/hlab/internal/resources/loadbalancers"
+	"github.com/webcodingcat/hlab/internal/resources/networks"
 	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
 	"github.com/webcodingcat/hlab/internal/settings"
@@ -68,6 +70,47 @@ func (d *fakeDeleter) setFail(id int64, fail bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.fail[id] = fail
+}
+
+// call is one entry of a callLog: event is "start" or "done".
+type call struct {
+	kind  string
+	id    int64
+	event string
+}
+
+// callLog records the Delete calls of several kinds in one order.
+type callLog struct {
+	mu    sync.Mutex
+	calls []call
+}
+
+func (l *callLog) add(c call) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.calls = append(l.calls, c)
+}
+
+func (l *callLog) entries() []call {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Clone(l.calls)
+}
+
+// deleter returns a Deleter for kind that records its start and end in l.
+func (l *callLog) deleter(kind string) resource.Deleter {
+	return logDeleter{log: l, kind: kind}
+}
+
+type logDeleter struct {
+	log  *callLog
+	kind string
+}
+
+func (d logDeleter) Delete(_ context.Context, id int64) error {
+	d.log.add(call{kind: d.kind, id: id, event: "start"})
+	d.log.add(call{kind: d.kind, id: id, event: "done"})
+	return nil
 }
 
 func TestMgmt(t *testing.T) {
@@ -174,6 +217,65 @@ func TestMgmt(t *testing.T) {
 		if got := deleter.take(); slices.Contains(got, q1) {
 			t.Errorf("Deleter was called for q's server %d", q1)
 		}
+
+		t.Run("networks_last", func(t *testing.T) {
+			env := apitest.New(t,
+				servers.New(apitest.ServersDeps(t, cat, platformtest.NewFake())),
+				resactions.New(),
+			)
+			log := &callLog{}
+			h := mgmt.New(mgmt.Deps{
+				Store:   env.Store,
+				API:     env.Router,
+				Status:  func() mgmt.Status { return mgmt.Status{State: "running"} },
+				Actions: env.Actions,
+				Deleters: map[string]resource.Deleter{
+					servers.Kind:       log.deleter(servers.Kind),
+					loadbalancers.Kind: log.deleter(loadbalancers.Kind),
+					networks.Kind:      log.deleter(networks.Kind),
+				},
+			})
+
+			auth := "Bearer " + env.Token
+			srv := createServer(t, env, auth, "n-1")
+			const netID, lbID = 900001, 900002
+			err := env.Store.Tx(func(tx store.Tx) error {
+				if err := store.Put(tx, store.Meta{Kind: networks.Kind, ID: netID, ProjectID: env.Project.ID, Name: "n-net"},
+					map[string]any{"id": netID, "name": "n-net", "ip_range": "10.0.0.0/16"}); err != nil {
+					return err
+				}
+				return store.Put(tx, store.Meta{Kind: loadbalancers.Kind, ID: lbID, ProjectID: env.Project.ID, Name: "n-lb"},
+					map[string]any{"id": lbID, "name": "n-lb"})
+			})
+			if err != nil {
+				t.Fatalf("store network and load balancer rows: %v", err)
+			}
+
+			action := deleteProject(t, h, "p")
+			if status := waitMgmtAction(t, h, action); status != "success" {
+				t.Fatalf("deletion of p ended %q, want success", status)
+			}
+			calls := log.entries()
+			lastOther, firstNet := -1, -1
+			seen := map[string]bool{}
+			for i, c := range calls {
+				seen[c.kind+":"+c.event] = true
+				switch {
+				case c.kind == networks.Kind && c.event == "start" && firstNet < 0:
+					firstNet = i
+				case c.kind != networks.Kind && c.event == "done":
+					lastOther = i
+				}
+			}
+			for _, want := range []string{servers.Kind, loadbalancers.Kind, networks.Kind} {
+				if !seen[want+":start"] || !seen[want+":done"] {
+					t.Errorf("Deleter for %s was not called to completion; calls %v", want, calls)
+				}
+			}
+			if firstNet < lastOther {
+				t.Errorf("networks Delete started before every server and load balancer was deleted (server %d); calls %v", srv, calls)
+			}
+		})
 	})
 
 	t.Run("CERT-04", func(t *testing.T) {

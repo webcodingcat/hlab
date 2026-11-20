@@ -18,6 +18,7 @@ import (
 
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/cli"
+	"github.com/webcodingcat/hlab/internal/cloud"
 	"github.com/webcodingcat/hlab/internal/settings"
 )
 
@@ -83,6 +84,30 @@ func TestDocs(t *testing.T) {
 			}
 			if strings.Contains(users, d.Endpoint) {
 				t.Errorf("docs/deviations.md names the endpoint %q; it describes deviations by topic without routes", d.Endpoint)
+			}
+		}
+		routes := cloud.APIRoutes()
+		if len(routes) == 0 {
+			t.Fatal("cloud.APIRoutes() lists no route")
+		}
+		// aliases maps an internal wildcard route to the documented routes it
+		// serves; any other route must appear literally on the page.
+		aliases := map[string][]string{
+			"GET /zones/{id}/{sub}": {"GET /zones/actions/{id}"},
+		}
+		for _, r := range routes {
+			if strings.Contains(coverage, "`"+r+"`") {
+				continue
+			}
+			served, ok := aliases[r]
+			if !ok {
+				t.Errorf("route %q that hlabd registers is not listed in docs/development/api-coverage.md", r)
+				continue
+			}
+			for _, a := range served {
+				if !strings.Contains(coverage, "`"+a+"`") {
+					t.Errorf("route %q (served by %q) is not listed in docs/development/api-coverage.md", a, r)
+				}
 			}
 		}
 	})
