@@ -214,8 +214,9 @@ hcloud: ISO not found: netboot.xyz
   where it is: at the next start a missing file leaves the ISO out.
 - When an own ISO cannot be served, for example because its local file
   is missing, the others still are, and
-  [`hlab cloud status`](commands.md#hlab-cloud-status) and the ISOs page
-  name the reason:
+  [`hlab cloud status`](commands.md#hlab-cloud-status) names the reason
+  (the ISOs page names a broken file or a missing local file; a failed
+  copy, for example a wrong SHA-256, shows only in the status):
 
   ```
   > bin\hlab.exe cloud status

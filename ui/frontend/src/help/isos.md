@@ -21,6 +21,8 @@ the cloud is stopped too.
 - **Remove** in an own ISO's row menu (`…`) removes it after a
   confirmation. A server that has it attached keeps it until it is
   detached.
-- When own ISOs cannot be served, a message above the table says why.
+- When the file of own ISOs is broken or a local file is missing, a
+  message above the table says why; `hlab cloud status` also names a
+  copy that failed.
 - To boot a server from an ISO, attach it in the **ISO** tab of the
   server's page.
