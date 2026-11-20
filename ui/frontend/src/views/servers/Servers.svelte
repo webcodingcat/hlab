@@ -1,7 +1,6 @@
 <script lang="ts">
   import CloudStopped from "../../lib/CloudStopped.svelte";
   import ConfirmDialog from "../../lib/ConfirmDialog.svelte";
-  import DetailPage from "../../lib/DetailPage.svelte";
   import HelpButton from "../../lib/HelpButton.svelte";
   import StatusPill from "../../lib/StatusPill.svelte";
   import Table, { type Column, type RowAction } from "../../lib/Table.svelte";
@@ -10,26 +9,12 @@
   import { showError } from "../../lib/toast";
   import { href, running, type Page } from "../../state";
   import ServerCreate from "./ServerCreate.svelte";
+  import ServerDetail from "./ServerDetail.svelte";
+  import { createdText, tone, type Server } from "./servers";
 
   // The "Servers" section of a project console; page says which of its
   // pages the route opens (list, create form or detail).
   let { project, page }: { project: string; page: Page } = $props();
-
-  type Server = {
-    id: number;
-    name: string;
-    status: string;
-    created: string;
-    public_net: { ipv4: { ip: string } | null };
-    server_type: { name: string };
-    location: { name: string };
-    labels: Record<string, string>;
-  };
-  type Tone = "success" | "warning" | "muted" | "error";
-
-  // Transitional states (starting, stopping, rebuilding, ...) are warnings.
-  const tones: Record<string, Tone> = { running: "success", off: "muted", unknown: "error" };
-  const tone = (status: string): Tone => tones[status] ?? "warning";
 
   let rows = $state<Server[] | undefined>();
   let failing = false;
@@ -38,7 +23,7 @@
   const newHref = $derived(href({ area: "project", project, view: "servers", page: { kind: "new" } }));
   const detailHref = (id: number) =>
     href({ area: "project", project, view: "servers", page: { kind: "detail", id, tab: "overview" } });
-  const created = (s: Server) => s.created.slice(0, 16).replace("T", " ");
+  const created = (s: Server) => createdText(s.created);
 
   const labelText = (l: Record<string, string>) =>
     Object.keys(l)
@@ -67,7 +52,7 @@
   }
 
   $effect(() => {
-    if (!$running || page.kind === "new") return;
+    if (!$running || page.kind !== "list") return;
     load();
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
@@ -98,9 +83,6 @@
 
   const rowActions = (s: Server): RowAction[] =>
     rowEntries.map((a) => ({ label: a.label, onclick: () => choose(a, s) }));
-
-  // The detail page shows the server's overview from the list.
-  const shown = $derived(page.kind === "detail" && rows ? rows.find((s) => s.id === page.id) : undefined);
 </script>
 
 {#if !$running}
@@ -112,31 +94,7 @@
 {:else if page.kind === "new"}
   <ServerCreate {project} />
 {:else if page.kind === "detail"}
-  {#if shown}
-    <DetailPage
-      title={shown.name}
-      status={{ tone: tone(shown.status), text: shown.status }}
-      help="servers"
-      tabs={[{ id: "overview", label: "Overview", href: detailHref(shown.id) }]}
-      current="overview"
-      back={listHref}
-    >
-      <dl>
-        <dt>Type</dt>
-        <dd>{shown.server_type.name}</dd>
-        <dt>Location</dt>
-        <dd>{shown.location.name}</dd>
-        <dt>Public IPv4</dt>
-        <dd>{shown.public_net.ipv4?.ip ?? "-"}</dd>
-        <dt>Created</dt>
-        <dd>{created(shown)}</dd>
-      </dl>
-    </DetailPage>
-  {:else if rows}
-    <DetailPage title="Server" help="servers" tabs={[]} current="overview" back={listHref} notFound>
-      {#snippet children()}{/snippet}
-    </DetailPage>
-  {/if}
+  <ServerDetail {project} id={page.id} tab={page.tab} list={listHref} />
 {:else}
   <div class="title-row">
     <h1>Servers</h1>
@@ -183,13 +141,5 @@
     align-items: center;
     gap: var(--s2);
     margin-bottom: var(--s4);
-  }
-  dl {
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    gap: var(--s2) var(--s6);
-  }
-  dt {
-    color: var(--muted);
   }
 </style>

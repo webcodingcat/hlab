@@ -10,28 +10,14 @@
   import { request, tabActions } from "../../lib/serverActions";
   import { showError } from "../../lib/toast";
   import { href } from "../../state";
+  import { imageGroups, imageLabel, typeLabel, typesIn, usableImages, type Image, type Named, type ServerType } from "./servers";
 
   // The create form of a server in the order of the Hetzner Console. The
   // request runs under an action toast; once it answers, a root password
   // shows once in the secret dialog and the new server's detail page opens.
   let { project }: { project: string } = $props();
 
-  type Named = { id: number; name: string };
   type Location = Named & { city: string };
-  type Image = Named & {
-    type: "system" | "app" | "snapshot" | "backup";
-    status: string;
-    name: string | null;
-    description: string;
-    architecture: string;
-  };
-  type ServerType = Named & {
-    cores: number;
-    memory: number;
-    disk: number;
-    architecture: string;
-    locations: { name: string; available: boolean }[];
-  };
   type PrimaryIp = Named & { ip: string; type: "ipv4" | "ipv6"; location: { name: string }; assignee_id: number | null };
   type Volume = Named & { size: number; location: { name: string }; server: number | null };
   type Created = ActionResult & { server: { id: number }; root_password: string | null };
@@ -63,8 +49,8 @@
         all<Named>("/servers", "servers"),
       ]);
       locations = l.sort((a, b) => a.name.localeCompare(b.name));
-      images = i.filter((x) => x.type !== "app" && x.status === "available" && x.architecture === "x86");
-      types = t.filter((x) => x.architecture !== "arm");
+      images = usableImages(i);
+      types = t;
       [sshKeys, networks, primaryIps, volumes, firewalls, placementGroups] = [k, n, p, v, f, g];
       serverNames = s.map((x) => x.name);
       if (!location && locations.length > 0) location = locations[0].name;
@@ -96,19 +82,10 @@
   let userData = $state("");
   let customName = $state<string | undefined>();
 
-  const imageGroups = $derived(
-    (
-      [
-        ["system", "System images"],
-        ["snapshot", "Snapshots"],
-        ["backup", "Backups"],
-      ] as const
-    ).map(([type, label]) => ({ label, images: images.filter((i) => i.type === type) })),
-  );
-  const imageLabel = (i: Image) => (i.type === "system" ? (i.name ?? `${i.id}`) : i.description || `${i.type} ${i.id}`);
+  const groups = $derived(imageGroups(images));
 
   // Only the types available in the chosen location.
-  const typeOptions = $derived(types.filter((t) => t.locations.some((l) => l.name === location && l.available)));
+  const typeOptions = $derived(typesIn(types, location));
   $effect(() => {
     if (!typeOptions.some((t) => t.name === serverType)) serverType = typeOptions[0]?.name ?? "";
   });
@@ -252,7 +229,7 @@
     {#snippet children(c)}
       <select id={c.id} aria-describedby={c.describedby} aria-invalid={c.invalid} bind:value={image}>
         <option value="" disabled>Choose an image</option>
-        {#each imageGroups as g (g.label)}
+        {#each groups as g (g.label)}
           {#if g.images.length > 0}
             <optgroup label={g.label}>
               {#each g.images as i (i.id)}<option value={`${i.id}`}>{imageLabel(i)}</option>{/each}
@@ -267,7 +244,7 @@
     {#snippet children(c)}
       <select id={c.id} aria-describedby={c.describedby} aria-invalid={c.invalid} bind:value={serverType}>
         {#each typeOptions as t (t.id)}
-          <option value={t.name}>{t.name} ({t.cores} vCPU, {t.memory} GB RAM, {t.disk} GB disk)</option>
+          <option value={t.name}>{typeLabel(t)}</option>
         {/each}
       </select>
     {/snippet}
