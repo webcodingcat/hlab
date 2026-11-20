@@ -1,6 +1,6 @@
 # Project rules (wcc)
 
-wcc version: 0.32.13
+wcc version: 0.32.15
 
 These rules come from the wcc plugin; `/wcc:upgrade` updates them.
 
@@ -83,7 +83,9 @@ conversation, ask when something is unclear.
   environment; a test takes all it needs from a shared limit (slots,
   machines) in one step. The run logs each test as it starts and ends, with
   a time limit of about twice its last full run.
-- No fixed waits; wait for a condition with a deadline. Time limits are
+- No fixed waits; wait for a condition with a deadline. Every waiting step
+  has a deadline of its own, well below the test's limit, including a
+  framework's built-in wait for an element or a response. Time limits are
   tested with short values or a test clock.
 - During development only the tests a change can break run; all end-to-end
   tests run at the end of a milestone.

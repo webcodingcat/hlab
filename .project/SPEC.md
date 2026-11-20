@@ -8,8 +8,8 @@ Versions as of 2026-11-18 (reasoning and sources in DECISIONS.md, "Stack").
 
 - Go 1.27.4 (`go.mod`: `go 1.27`, toolchain pinned) for hlabd, hlab,
   hlab-tray (Windows/amd64) and hlab-agent (Linux/amd64).
-- Go module path `github.com/webcodingcat/hlab`; repository
-  `https://github.com/webcodingcat/hlab`.
+- Module or package name: Go module path `github.com/webcodingcat/hlab`;
+  repository `https://github.com/webcodingcat/hlab`.
 - Go modules: `golang.org/x/sys` v0.50.0 (service, SCM, ACLs, virtdisk),
   `github.com/Microsoft/go-winio` v0.6.4 (named pipe, `vhd.CreateVirtualDisk`), `modernc.org/sqlite`
   v1.62.0 (state, WAL, one writer), `github.com/BurntSushi/toml` v1.6.0 (settings),

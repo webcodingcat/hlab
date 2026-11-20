@@ -17,7 +17,7 @@ it is built.
 
 ## Colours
 
-Light and dark mode: both, following the Windows setting
+- Light and dark mode: both, following the Windows setting
 (`prefers-color-scheme`); no manual switch.
 
 | Role | Light | Dark |
@@ -41,7 +41,7 @@ Light and dark mode: both, following the Windows setting
 
 ## Spacing and grid
 
-- Base unit 4 px; steps used: 4, 8, 12, 16, 24, 32.
+- Base unit: 4 px; steps used: 4, 8, 12, 16, 24, 32.
 - Window minimum 1000 x 640 px; sidebar fixed 220 px; content max width
   1200 px, left-aligned; tables use the full content width.
 
@@ -147,8 +147,8 @@ everywhere.
 - Errors: API errors as toast with Hetzner's code and message; form errors
   under the fields; connection loss to the service as a banner on top.
 - Lists refresh every 5 seconds while visible and after every action.
-- Keyboard: every control reachable with Tab, visible focus, Enter submits
-  forms, Escape closes dialogs; tables are real `<table>` elements; icons
+- Keyboard and accessibility: every control reachable with Tab, visible
+  focus, Enter submits forms, Escape closes dialogs; tables are real `<table>` elements; icons
   have labels.
 
 ## Language of the interface

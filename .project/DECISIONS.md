@@ -1,7 +1,7 @@
 # DECISIONS
 
 Every decision Claude takes without asking, and every assumption, is recorded
-here. Newest entries first.
+here, as long as it holds. Newest entries first.
 
 Format:
 
@@ -12,15 +12,28 @@ Format:
 - What: <one sentence>
 - Why: <one sentence>
 - Cost of change: low | medium | high
+- Replaces: <date> <title of the earlier entry>   (only if it replaces one)
 
 The cost is high when a later change needs a migration or breaks something
 others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+An entry that revokes or changes an earlier one states in full what holds
+now, names the earlier entry under `Replaces:`, and the earlier entry moves
+unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
+
 Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
+
+## 2026-11-20 Upgrade to wcc 0.32.15
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.32.13 to 0.32.15: waiting-step deadline rule in CLAUDE.md, `Replaces:` format and DECISIONS-DONE.md with three revoked entries, template key names in SPEC.md and UI-SPEC.md.
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
 
 ## 2026-11-20 Screenshot tool and tray launcher
 
@@ -141,6 +154,7 @@ in ARCHITECTURE.md or the plan.
 - What: new CAs get the CN "HLab CA" (dev profile "HLab-dev CA"; existing CA files are kept); the Windows service display names are "HLab" and "HLab (dev)"; `hlab version` text reads "HLab <version>"; the `hlab:` prefix, usage lines, `hlab <command>` mentions and `/hlab/v1/ca.crl` stay lowercase.
 - Why: command, path and file names stay as they are.
 - Cost of change: low
+- Replaces: 2026-11-19 CA common name per profile
 
 ## 2026-11-20 Phase 10 findings: catalog locations
 
@@ -269,6 +283,7 @@ in ARCHITECTURE.md or the plan.
 - What: the hidden prompt uses `golang.org/x/term` `ReadPassword` in cmd/hlab; `UpdateOptions.DataDir` gets the config root; a usage error raised while a command runs (missing token) also exits with 2.
 - Why: x/term already sets the console mode through x/sys/windows, and ARCHITECTURE puts the updated catalog in the config root.
 - Cost of change: low
+- Replaces: 2026-11-18 Hidden token prompt through x/sys/windows
 
 ## 2026-11-18 Placement group membership stored on the group
 
@@ -428,14 +443,6 @@ in ARCHITECTURE.md or the plan.
 - Phase: phase 02
 - What: `Catalog.ServerTypes` becomes unexported behind `Types()` and `ReplaceServerTypes`.
 - Why: `hlab catalog update` swaps the types while requests run.
-- Cost of change: low
-
-## 2026-11-18 Hidden token prompt through x/sys/windows
-
-- Type: decision
-- Phase: phase 02
-- What: the hidden prompt of `hlab catalog update` uses the console mode of `x/sys/windows`, with new `cli.IO.ReadSecret` and `IO.Getenv`.
-- Why: no new module.
 - Cost of change: low
 
 ## 2026-11-18 WSL distro of the e2e harness
@@ -994,14 +1001,6 @@ in ARCHITECTURE.md or the plan.
 - Why: Debian 12 panics with `console=ttyS0` when no serial port exists, and a pipe Hyper-V creates is readable by Everyone (console carries user_data output).
 - Cost of change: low
 
-## 2026-11-18 Vendor script syncs before first boot ends
-
-- Type: decision
-- Phase: 03
-- What: the vendor shell part ends with `sync`; poweroff stays a hard cut.
-- Why: a hard poweroff within about 30 s of the first boot left zero-length SSH host keys and hook files, so sshd never came back.
-- Cost of change: low
-
 ## 2026-11-18 Upgrade to wcc 0.32.3
 
 - Type: approval
@@ -1505,6 +1504,7 @@ in ARCHITECTURE.md or the plan.
 - What: The vendor script installs `hlab-sync.service` (After=cloud-final.service, runs sync once) and queues it with --no-block, replacing its own final `sync` (updates "Vendor script syncs before first boot ends").
 - Why: user_data runcmd and scripts run after scripts_vendor; only a flush after cloud-final makes their files survive a hard reset soon after first boot.
 - Cost of change: low
+- Replaces: 2026-11-18 Vendor script syncs before first boot ends
 
 ## 2026-11-19 Backlog phase B1 before phase 05
 
@@ -2232,14 +2232,6 @@ in ARCHITECTURE.md or the plan.
 - What: LB metrics keep their own samples in the module with the step, point and 24 h retention rules of the server metrics.
 - Why: `internal/metrics` is bound to the server samples.
 - Cost of change: low
-
-## 2026-11-19 CA common name per profile
-
-- Type: decision
-- Phase: phase 08
-- What: the CA's CN is "<profile tag> CA" (`hlab CA`, `hlab-dev CA`).
-- Why: the trust store entries of the two profiles can be told apart.
-- Cost of change: medium
 
 ## 2026-11-19 health_status without detail
 
