@@ -1,4 +1,4 @@
-STATUS: IN_PROGRESS
+STATUS: MANUAL_CHECK
 
 <!-- Allowed values: IDEA, IDEA_DONE, SPEC_REVIEW, READY, IN_PROGRESS, MANUAL_CHECK, BLOCKED, DONE -->
 
@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 14 Tray console: remaining resources (in progress)
+- Phase: 14 Tray console: remaining resources (built, waits for the manual check UI-09 on branch wcc/phase-14)
 - Base branch: main
 - Last done: phase 11 merged into main (2026-11-20): console frame (API client, action toasts, detail/form/labels/protection building blocks, routes) with the complete Servers and SSH Keys sections; UI-02 frame check fits
-- Next: /wcc:phase for 14 in a new session; DOC-07 (01) waits until the repository is on GitHub
+- Next: /wcc:report for UI-09 (14), then /wcc:phase to close phase 14; DOC-07 (01) waits until the repository is on GitHub
 
 ## Open manual checks
 
@@ -20,6 +20,7 @@ STATUS: IN_PROGRESS
 
 - DOC-07 (01): README and guides are understandable for their audience, help texts name only existing views and buttons
 - LIFE-05 (09): a Windows shutdown or restart with the cloud running applies the stop behaviour
+- UI-09 (14): the example environment can be created and deleted by hand in the console
 
 ## Open decisions
 

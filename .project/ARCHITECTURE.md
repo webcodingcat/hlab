@@ -476,7 +476,7 @@ Inside `hlabd` (Go packages under `internal/`):
   `#/projects/<name>/<view>`, `.../<view>/new`, `.../<view>/<id>/<tab>`,
   `#/admin/<view>`; parsed in `lib/routes.ts`, a project console starts on
   `servers`; the view list comes from `views.json`; project sections other
-  than servers and SSH keys are `views/<view>/Section.svelte` with props
+  than servers, SSH keys and API tokens are `views/<view>/Section.svelte` with props
   `{project, page}`, found by ProjectConsole through `import.meta.glob`); it uses only
   the bridge; the Hetzner resources are
   managed through the management API's project proxy

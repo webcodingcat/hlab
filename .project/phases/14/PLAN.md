@@ -303,3 +303,10 @@ shows all ISOs on one page (no paging).
   - Size: ~250 lines in 5 files
   - [x] Check the eleven help texts against the built views (only existing views and buttons).
   - [x] README.md (tray program: every resource section), docs/guide.md (the console for each resource, at the matching sections), docs/development/components.md (resourceActions, lib/resources, section convention); regenerate the console screenshots with `task docs:screenshots`.
+
+## Close
+
+- e2e: `task e2e -- -run 'TestE2E/UI-0[1-6]$' -v` green on 691eb1a (UI-02 12 of 12 specs; the other UI rows because `runSpec` changed in 14-23).
+- Unit suite, frontend unit tests and linter green on 691eb1a.
+- Verifier blockers fixed: Rename for the seven resources without it (0804ea2), components.md sidebar order and `noNew` sentence (691eb1a).
+- Manual check UI-09: open (CHECKS.md); the phase stops for it unmerged.

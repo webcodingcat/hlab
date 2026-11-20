@@ -47,7 +47,7 @@ in ARCHITECTURE.md or the plan.
 
 - Type: decision
 - Phase: phase 14
-- What: zone file import and primary nameservers show the API's 422 field message under the field; `ResourceActionsMenu` has an `onselect` hook for entries a page handles itself; `ReverseDnsDialog` takes an IPv6 `network` to set a new address in it; `protocolText` lives in `lib/format.ts`.
+- What: zone file import and primary nameservers show the API's 422 field message under the field; `ResourceActionsMenu` has an `onselect` hook for entries a page handles itself; `ReverseDnsDialog` takes an IPv6 `network` to set a new address in it; every renamable resource uses the `rename(base)` builder and `lib/RenameInput.svelte`; `protocolText` lives in `lib/format.ts`.
 - Why: one dialog per concern, and the first reverse DNS entry of an IPv6 IP must be settable.
 - Cost of change: low
 
