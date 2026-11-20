@@ -103,6 +103,7 @@
       <ProtectionTab
         {project}
         {path}
+        name={server.name}
         flags={[
           { key: "delete", label: "Protect against deletion", value: server.protection.delete },
           { key: "rebuild", label: "Protect against rebuild", value: server.protection.rebuild },

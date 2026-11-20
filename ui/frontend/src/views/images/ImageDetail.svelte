@@ -90,7 +90,7 @@
     {#if current === "labels"}
       <LabelsTab {project} {path} labels={i.labels} onsaved={load} />
     {:else if current === "protection"}
-      <ProtectionTab {project} {path} flags={[{ key: "delete", label: "Protect against deletion", value: i.protection.delete }]} onchanged={load} />
+      <ProtectionTab {project} {path} name={imageName(i)} flags={[{ key: "delete", label: "Protect against deletion", value: i.protection.delete }]} onchanged={load} />
     {:else}
       <dl>
         <dt>Type</dt>

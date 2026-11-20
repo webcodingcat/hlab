@@ -1,14 +1,15 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import Button from "./Button.svelte";
-  import { runApi } from "./api";
+  import { runOn } from "./api";
 
   // The Protection tab of a detail page: one switch per flag; "Save" sends
-  // POST <path>/actions/change_protection as an action.
+  // POST <path>/actions/change_protection as an action under the toast
+  // "<Type> <name>: Change protection".
   type Flag = { key: string; label: string; value: boolean };
-  type Props = { project: string; path: string; flags: Flag[]; onchanged: () => void };
+  type Props = { project: string; path: string; name: string; flags: Flag[]; onchanged: () => void };
 
-  let { project, path, flags, onchanged }: Props = $props();
+  let { project, path, name, flags, onchanged }: Props = $props();
 
   let values = $state<Record<string, boolean>>({});
   // base is the last state of the flags shown; values that still equal it are unedited.
@@ -28,7 +29,11 @@
     e.preventDefault();
     saving = true;
     const body = { ...values };
-    const res = await runApi(project, "Change protection", "POST", `${path}/actions/change_protection`, body);
+    const res = await runOn(project, name, "Change protection", {
+      method: "POST",
+      path: `${path}/actions/change_protection`,
+      body,
+    });
     saving = false;
     if (res === undefined) return;
     base = JSON.stringify(body);

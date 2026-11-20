@@ -2,6 +2,7 @@
 // proxy (/mgmt/v1/projects/{name}/api/v1...).
 import { mgmt } from "./bridge";
 import { runAction, type Action, type ActionResult } from "./actions";
+import { actionTitle, resourceType } from "./format";
 
 const perPage = 50;
 
@@ -36,4 +37,14 @@ export function runApi<T extends ActionResult>(
   return runAction(title, () => api<T>(project, method, path, body), {
     get: async (id) => (await api<{ action: Action }>(project, "GET", `/actions/${id}`)).action,
   });
+}
+
+/** runOn runs a request on the named resource under the toast "<Type> <name>: <action>", the type taken from its path. */
+export function runOn<T extends ActionResult>(
+  project: string,
+  name: string,
+  action: string,
+  req: { method: string; path: string; body?: unknown },
+): Promise<T | undefined> {
+  return runApi<T>(project, actionTitle(resourceType(req.path), name, action), req.method, req.path, req.body);
 }
