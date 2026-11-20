@@ -126,7 +126,6 @@
 
   function addSubnet(e: SubmitEvent) {
     e.preventDefault();
-    if (subnetZone === "" || subnetRange.trim() === "") return;
     subnetOpen = false;
     // Not awaited: the dialog closes at once, the toast follows the request.
     run(tabActions.add_subnet, { network_zone: subnetZone, ip_range: subnetRange.trim() });
@@ -140,7 +139,6 @@
 
   function addRoute(e: SubmitEvent) {
     e.preventDefault();
-    if (routeDestination.trim() === "" || routeGateway.trim() === "") return;
     routeOpen = false;
     run(tabActions.add_route, { destination: routeDestination.trim(), gateway: routeGateway.trim() });
   }
