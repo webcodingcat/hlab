@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { Cpu, ScrollText, Settings as SettingsIcon } from "@lucide/svelte";
+  import { Cpu, Disc, ScrollText, Settings as SettingsIcon } from "@lucide/svelte";
   import Banner from "./lib/Banner.svelte";
   import ProjectMenu from "./lib/ProjectMenu.svelte";
   import SectionSidebar, { type SectionItem } from "./lib/SectionSidebar.svelte";
   import Toast from "./lib/Toast.svelte";
   import TopBar from "./lib/TopBar.svelte";
   import { href, initCloud, initRoute, route, views, type AdminView, type ViewId } from "./state";
+  import Isos from "./views/Isos.svelte";
   import Logs from "./views/Logs.svelte";
   import ProjectConsole from "./views/ProjectConsole.svelte";
   import Projects from "./views/Projects.svelte";
@@ -24,6 +25,7 @@
   // The Administration sidebar: the admin views of views.json.
   const adminIcons: Partial<Record<ViewId, SectionItem["icon"]>> = {
     "server-types": Cpu,
+    isos: Disc,
     settings: SettingsIcon,
     logs: ScrollText,
   };
@@ -62,6 +64,7 @@
         <SectionSidebar label="Administration" items={adminItems} />
         <main>
           {#if $route.view === "server-types"}<ServerTypes />
+          {:else if $route.view === "isos"}<Isos />
           {:else if $route.view === "settings"}<Settings />
           {:else}<Logs />{/if}
         </main>

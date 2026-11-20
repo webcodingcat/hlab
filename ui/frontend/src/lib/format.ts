@@ -43,3 +43,8 @@ export function resourceType(path: string): string {
   if (parts[0] === "zones" && parts[2] === "rrsets") return "Record";
   return types[parts[0]] ?? "";
 }
+
+/** isoTitle is the shown name of an ISO: its name, or the description of an own ISO (name null). */
+export function isoTitle(iso: { name: string | null; description: string }): string {
+  return iso.name ?? iso.description;
+}

@@ -68,3 +68,8 @@ function toApiError(res: Response): ApiError {
 export function on<T>(event: "cloud" | "logs", fn: (data: T) => void): () => void {
   return Events.On(event, (ev) => fn(ev.data as T));
 }
+
+/** pickISOFile opens the Windows file dialog for one .iso file; "" when cancelled. */
+export function pickISOFile(): Promise<string> {
+  return Call.ByName("main.Files.PickISOFile") as Promise<string>;
+}
