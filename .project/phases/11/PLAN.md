@@ -148,13 +148,13 @@ Svelte building blocks (props):
 
 ## Plans
 
-- [ ] 11-01 API client and action polling
+- [x] 11-01 API client and action polling
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-02 | Tests: ui/frontend/tests/unit/actions.test.ts
   - Reads: UI-SPEC "Building blocks" (Action toast), "Behaviour"; ARCHITECTURE "hlab-tray (tray program)", "Management API (named pipe)" (project proxy); OpenAPI `action` schema and `GET /actions/{id}` in the reference; ui/frontend/src/lib/bridge.ts, lib/toast.ts, lib/Toast.svelte
   - Size: ~220 lines in 4 files
-  - [ ] ui/frontend/src/lib/actions.ts (`Action`, `ActionResult`, `ActionError`, `waitAction`, `runAction`) and lib/toast.ts (`progress` on a progress toast, an update function used by `runAction`); lib/Toast.svelte shows the progress in % with a bar.
-  - [ ] ui/frontend/src/lib/api.ts (`api`, `listAll`, `runApi`) over `mgmt` of bridge.ts.
+  - [x] ui/frontend/src/lib/actions.ts (`Action`, `ActionResult`, `ActionError`, `waitAction`, `runAction`) and lib/toast.ts (`progress` on a progress toast, an update function used by `runAction`); lib/Toast.svelte shows the progress in % with a bar.
+  - [x] ui/frontend/src/lib/api.ts (`api`, `listAll`, `runApi`) over `mgmt` of bridge.ts.
 
 - [ ] 11-02 Routes and project console sections
   - Wave: 1 | Depends on: - | Review: alone
