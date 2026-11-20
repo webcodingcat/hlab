@@ -428,12 +428,12 @@ Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes
   - [ ] internal/resources/networks/validate.go (`vswitch subnets are not supported by HLab`), networks_test.go, loadbalancers/targets.go ("HLab's transit network"), zones/rrsets.go and zones.go ("managed by HLab").
   - [ ] internal/api/deviations.go: descriptions name "HLab" where they name the product (the CRL path `/hlab/v1/ca.crl` stays).
 
-- [ ] 10-27 Bridge: catalog locations
+- [x] 10-27 Bridge: catalog locations
   - Wave: 3 | Depends on: 10-25 (order) | Review: alone
   - Requirements: UI-04 | Tests: internal/bridge/service_test.go
   - Reads: UI-SPEC "Views" (Server Types); PLAN "Interfaces" (Location); internal/bridge/service.go `catalog()`; internal/catalog/catalog.go `Location`; finding 9
   - Size: ~60 lines in 2 files
-  - [ ] internal/catalog/catalog.go: `Location.City` (`json:"city"`, read from the shipped object); internal/bridge/service.go: `Locations()` from the catalog the bridge already loads (works while stopped), sorted by name.
+  - [x] internal/catalog/catalog.go: `Location.City` (`json:"city"`, read from the shipped object); internal/bridge/service.go: `Locations()` from the catalog the bridge already loads (works while stopped), sorted by name.
 
 - [ ] 10-28 Shell: routes, top bar, Administration
   - Wave: 4 | Depends on: 10-20, 10-23, 10-27 (order) | Review: alone
