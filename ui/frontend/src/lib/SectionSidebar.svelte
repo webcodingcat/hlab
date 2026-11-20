@@ -1,8 +1,8 @@
 <script lang="ts" module>
   import type { Cpu } from "@lucide/svelte";
 
-  /** SectionItem is one link of a section sidebar; separator draws a line above it. */
-  export type SectionItem = { href: string; title: string; icon: typeof Cpu; current: boolean; separator?: boolean };
+  /** SectionItem is one link of a section sidebar. */
+  export type SectionItem = { href: string; title: string; icon: typeof Cpu; current: boolean };
 
   /** SectionGroup is a group of links; a group with a title can be collapsed. */
   export type SectionGroup = { id: string; title?: string; items: SectionItem[] };
@@ -46,10 +46,7 @@
         {/if}
       {/each}
     {:else}
-      {#each items as item (item.href)}
-        {#if item.separator}<hr />{/if}
-        {@render link(item)}
-      {/each}
+      {#each items as item (item.href)}{@render link(item)}{/each}
     {/if}
   </nav>
 </aside>
