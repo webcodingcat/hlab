@@ -528,12 +528,12 @@ Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes
   - Size: ~60 lines in 3 files
   - [x] src/lib/TopBar.svelte, src/state.ts: the gear opens Administration and remembers the route shown before; a second click while Administration is open returns to that route (the project list when none, e.g. after a direct `#/admin/...` start); pressed state as today; logo and breadcrumbs unchanged.
 
-- [x] 10-37 Stable scrollbar gutter
+- [ ] 10-37 Scrolling area below the top bar
   - Wave: 11 | Depends on: - | Review: alone
   - Requirements: UI-08 | Tests: none (layout, checked by hand under UI-08)
-  - Reads: UI-SPEC "Foundation"; finding 19 (scrollbar shift)
-  - Size: ~5 lines in 1 file
-  - [x] src/theme.css: `html` reserves the scrollbar gutter (`scrollbar-gutter: stable`), so top bar and content keep their position when a view starts scrolling.
+  - Reads: UI-SPEC "Foundation"; findings 19 and 20 (scrollbar shift, gutter stripe)
+  - Size: ~25 lines in 1 file
+  - [ ] src/App.svelte: the shell is one window high; top bar and banner stay in place over the full width, only the area below them scrolls with its scrollbar gutter reserved (`scrollbar-gutter: stable`), so nothing shifts sideways and no stripe shows beside the top bar.
 
 ## Findings from manual testing
 
@@ -554,6 +554,7 @@ Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes
 - [x] change (DOC-05, decision Q15 2026-11-20): the app takes its view list from `ui/frontend/src/views.json`, so the views the shell offers (`ui/frontend/src/state.ts` `views`, including the new areas of the shell rework) and the help texts have one source; the DOC-05 unit test (`test/docs`) keeps checking help file per view and view per help file. The clause "names only views and buttons that exist" is no longer a unit check: it moved to DOC-07 [manual]; CHECKS.md DOC-07 of phase 01 gets the step "every help text names only views and buttons that exist".
 - [x] change (UI-08, user decision 2026-11-20, Q16): no intuitive way back from Administration. The user opened Settings through the gear and found no visible way back to the project or the project list; today the breadcrumb in Administration shows only the plain text "Administration" (`ui/frontend/src/App.svelte` breadcrumb snippet), and only the "HLab" logo link leads to the list. Expected, as UI-SPEC "Views" now says: the gear in the top bar (`ui/frontend/src/lib/TopBar.svelte`) is a toggle: a click opens Administration, a second click closes it and returns to the route shown before it was opened (the project list when there was none, e.g. after a direct `#/admin/...` start); while Administration is open the gear shows as pressed (`aria-pressed` or `aria-current`, as today). The logo keeps leading to the project list; the breadcrumbs stay as they are. One UI e2e case (UI-05 or a shell step of an existing spec) opens Administration from a project console and closes it with the gear, back in that console; CHECKS.md UI-08 step 8 follows.
 - [x] bug (UI-08, 2026-11-20): the layout shifts when a view scrolls. The user opened Server Types, whose list is taller than the window: the vertical scrollbar appears over the whole window height and the top bar (status pill, "Stop cloud", gear) and the content move left by the scrollbar width compared with a view without scrollbar (screenshots `phases/10/feedback/scroll-shift-without-scrollbar.png` and `phases/10/feedback/scroll-shift-with-scrollbar.png`: the gear at the right edge without scrollbar, about 60 px further left with it). Cause: `ui/frontend/src/theme.css` reserves no scrollbar space on `html`. Expected: the top bar and content keep their horizontal position whether a view scrolls or not. Step 8 of UI-08 (gear toggle) fits.
+- [ ] bug (UI-08, 2026-11-20): after the first fix of 10-37 (`scrollbar-gutter: stable` on `html`) an empty stripe the width of the scrollbar shows right of the top bar in views without scrollbar (screenshot `phases/10/feedback/scroll-gutter-stripe.png`: the top bar with "Stop cloud" and the gear ends before the window edge, a darker strip below the window buttons). Expected: no stripe and no shift; the top bar spans the full width, only the area below it scrolls.
 
 ## Close
 

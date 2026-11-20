@@ -56,28 +56,40 @@
     {/snippet}
   </TopBar>
   <Banner />
-  {#if $route.area === "admin"}
-    <div class="area">
-      <SectionSidebar label="Administration" items={adminItems} />
-      <main>
-        {#if $route.view === "server-types"}<ServerTypes />
-        {:else if $route.view === "settings"}<Settings />
-        {:else}<Logs />{/if}
-      </main>
-    </div>
-  {:else if $route.area === "project"}
-    {#key $route.project}<ProjectConsole project={$route.project} />{/key}
-  {:else}
-    <main><Projects /></main>
-  {/if}
+  <div class="scroll">
+    {#if $route.area === "admin"}
+      <div class="area">
+        <SectionSidebar label="Administration" items={adminItems} />
+        <main>
+          {#if $route.view === "server-types"}<ServerTypes />
+          {:else if $route.view === "settings"}<Settings />
+          {:else}<Logs />{/if}
+        </main>
+      </div>
+    {:else if $route.area === "project"}
+      {#key $route.project}<ProjectConsole project={$route.project} />{/key}
+    {:else}
+      <main><Projects /></main>
+    {/if}
+  </div>
 </div>
 <Toast />
 
 <style>
+  /* The top bar stays in place; only the area below it scrolls, and its
+     scrollbar space is always reserved so nothing shifts sideways. */
   .shell {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    height: 100vh;
+  }
+  .scroll {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
   }
   .area {
     display: flex;
