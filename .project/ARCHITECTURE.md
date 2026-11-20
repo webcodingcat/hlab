@@ -462,9 +462,9 @@ Inside `hlabd` (Go packages under `internal/`):
   for the merged list and the own types (`UpdateServerType(OwnSpec)
   (*Invalid, error)` replaces the own type of the same name),
   `ISOs`/`AddISO`/`UpdateISO`/`RemoveISO` the same way for the catalog
-  and the own ISOs plus `PickISOFile() (path string)` (Windows file
-  dialog) (results `ListedType`, `ServerTypeList`,
-  `Invalid` for field errors), `Locations() ([]Location{name, city})`
+  and the own ISOs (own rows from the file's entries, own ISOs addressed
+  by ID; results `ListedISO`, `ISOList`) (results `ListedType`,
+  `ServerTypeList`, `Invalid` for field errors), `Locations() ([]Location{name, city})`
   from the shipped catalog, also while the cloud is stopped; `bridge.Cloud`
   with status, start and stop, recording "starting"/"stopping" as soon as
   the SCM accepts a start or stop (a poll begun earlier cannot overwrite
@@ -474,7 +474,9 @@ Inside `hlabd` (Go packages under `internal/`):
   SearchResult{lines, capped}` and `Older(oldest) OlderResult{lines,
   at_start}`, which read `hlabd.log` and its rotated files directly
   through `logfile.Search`/`logfile.Before` in 64 KiB chunks backwards,
-  also while hlabd writes and rotates them). Frontend: Svelte SPA in `ui/frontend`, embedded by package
+  also while hlabd writes and rotates them), and outside the bridge the
+  Wails service `Files` in `cmd/hlab-tray` with `PickISOFile() (string,
+  error)` (Windows file dialog, "" on cancel). Frontend: Svelte SPA in `ui/frontend`, embedded by package
   `ui` (`ui/embed.go`), calling the bridge through `Call.ByName` of
   `@wailsio/runtime`, with views switched by `location.hash` (`#/projects`,
   `#/projects/<name>/<view>`, `.../<view>/new`, `.../<view>/<id>/<tab>`,
