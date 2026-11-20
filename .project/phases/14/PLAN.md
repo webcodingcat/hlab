@@ -560,13 +560,13 @@ button "Browse…", row menu "Edit" and "Remove".
   - [ ] views/ProjectConsole.svelte: sidebar from `navGroups` (icons by entry, e.g. Server, HardDrive, Shield, Scale, Network, MapPin, Globe, KeyRound), the entry of the open view highlighted, SectionTabs on top of every page of the entry; remove the `images` view from routes.ts, help.ts, views.json and help/images.md.
   - [ ] Adjust tests/e2e/console.ts; run `task e2e -- -run 'TestE2E/UI-02$' -v` in full and set the UI-02 limit in test/e2e/ui_test.go to about twice that run.
 
-- [ ] 14-39 ISOs Administration view
+- [x] 14-39 ISOs Administration view
   - Wave: 3 | Depends on: 14-30, 14-33 | Review: alone
   - Requirements: UI-10, UI-07 | Tests: - (UI-10 e2e of 14-41)
   - Reads: UI-SPEC "Views" (Administration, Cloud stopped, ISOs), "Building blocks" (Form, Confirm dialog); CONTEXT "Findings plans 14-25 onward"; PLAN "Interfaces" (bridge, Files); ui/frontend/src/views/ServerTypes.svelte and App.svelte as the pattern; lib/Dialog.svelte, formErrors.ts
   - Size: ~400 lines in 4 files
-  - [ ] views/Isos.svelte: table (Source catalog/own, Name as `isoTitle`, Description, Architecture), the `custom_isos` problem as a banner, "Add ISO", own rows with Edit and Remove (confirm dialog), available while the cloud is stopped; views/IsoForm.svelte: Name (required, stored as description), Architecture x86/arm, Source URL (URL, optional SHA-256) or Local file (editable Path, "Browse…" through `Files.PickISOFile`), field errors under the fields.
-  - [ ] App.svelte: Administration entry "ISOs" (Disc icon) between Server Types and Settings; help/isos.md for the Administration view.
+  - [x] views/Isos.svelte: table (Source catalog/own, Name as `isoTitle`, Description, Architecture), the `custom_isos` problem as a banner, "Add ISO", own rows with Edit and Remove (confirm dialog), available while the cloud is stopped; views/IsoForm.svelte: Name (required, stored as description), Architecture x86/arm, Source URL (URL, optional SHA-256) or Local file (editable Path, "Browse…" through `Files.PickISOFile`), field errors under the fields.
+  - [x] App.svelte: Administration entry "ISOs" (Disc icon) between Server Types and Settings; help/isos.md for the Administration view.
 
 - [ ] 14-40 Toast titles: cloud sections
   - Wave: 3 | Depends on: 14-27, 14-29, 14-34, 14-35 | Review: alone
