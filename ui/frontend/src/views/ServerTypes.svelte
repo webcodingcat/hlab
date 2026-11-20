@@ -1,11 +1,12 @@
 <script lang="ts">
   import Button from "../lib/Button.svelte";
   import ConfirmDialog from "../lib/ConfirmDialog.svelte";
+  import Dialog from "../lib/Dialog.svelte";
   import Field from "../lib/Field.svelte";
   import HelpButton from "../lib/HelpButton.svelte";
   import Table, { type Column } from "../lib/Table.svelte";
   import { mgmt, service } from "../lib/bridge";
-  import { action, showError } from "../lib/toast";
+  import { action, errorText, showError, showSuccess } from "../lib/toast";
   import { running } from "../state";
 
   // The list comes from the bridge, which merges the shipped catalog, the
@@ -58,25 +59,46 @@
     return () => clearInterval(t);
   });
 
-  // Add dialog; the field names are those of catalog.OwnSpec.
-  let addDialog: HTMLDialogElement;
-  const blank = () => ({ name: "", description: "", cores: 2, memory: 4, disk: 40, cpu_type: "shared", locations: "" });
+  // Add dialog; the field names are those of catalog.OwnSpec. "All
+  // locations" saves no locations, which means all.
+  type Location = { name: string; city: string };
+  let addOpen = $state(false);
+  let locations = $state<Location[]>([]);
+  const blank = () => ({
+    name: "",
+    description: "",
+    cores: 2,
+    memory: 4,
+    disk: 40,
+    cpu_type: "shared",
+    all: true,
+    locations: [] as string[],
+  });
   let spec = $state(blank());
   let errors = $state<Record<string, string>>({});
   let adding = $state(false);
 
-  function openAdd() {
+  async function openAdd() {
     spec = blank();
     errors = {};
-    addDialog.showModal();
+    addOpen = true;
+    try {
+      locations = await service<Location[]>("Service", "Locations");
+    } catch (err) {
+      showError("Load locations", err);
+    }
   }
 
   async function add(e: SubmitEvent) {
     e.preventDefault();
     if (adding) return;
-    adding = true;
     errors = {};
     const s = $state.snapshot(spec);
+    if (!s.all && s.locations.length === 0) {
+      errors = { locations: "Choose at least one location or All locations." };
+      return;
+    }
+    adding = true;
     const own = {
       name: s.name.trim(),
       description: s.description.trim(),
@@ -84,14 +106,14 @@
       cores: Number(s.cores),
       memory: Number(s.memory),
       disk: Number(s.disk),
-      locations: s.locations.split(",").map((l) => l.trim()).filter(Boolean),
+      locations: s.all ? [] : s.locations,
     };
     try {
       const invalid = await service<Invalid>("Service", "AddServerType", own);
       if (invalid) {
         errors = { [invalid.field]: invalid.message };
       } else {
-        addDialog.close();
+        addOpen = false;
         await load();
       }
     } catch (err) {
@@ -111,55 +133,57 @@
     await load();
   }
 
-  // Update from Hetzner: the token is sent once and the field is cleared
-  // after the update, whatever its result.
+  // Update from Hetzner: the token is sent once; it is cleared whenever the
+  // dialog closes and never stored. An error stays under the field.
+  let updateOpen = $state(false);
   let token = $state("");
+  let tokenError = $state("");
   let updating = $state(false);
+
+  function openUpdate() {
+    token = "";
+    tokenError = "";
+    updateOpen = true;
+  }
+
+  function updateClosed() {
+    token = "";
+    tokenError = "";
+  }
 
   async function update(e: SubmitEvent) {
     e.preventDefault();
-    if (updating) return;
+    if (updating || !token) return;
     updating = true;
-    const t = token;
+    tokenError = "";
     try {
-      await action(
-        "Update from Hetzner",
-        () => mgmt<{ server_types: number }>("POST", "/catalog/update", { hetzner_token: t }),
-        (r) => `Catalog updated: ${r.server_types} server types`,
-      );
+      const r = await mgmt<{ server_types: number }>("POST", "/catalog/update", { hetzner_token: token });
+      updateOpen = false;
+      showSuccess("Update from Hetzner", `Catalog updated: ${r.server_types} server types`);
+      await load();
+    } catch (err) {
+      tokenError = errorText(err);
     } finally {
-      token = "";
       updating = false;
     }
-    await load();
   }
 </script>
 
 <div class="title-row">
   <h1>Server Types</h1>
   <HelpButton view="server-types" />
+  <span class="spacer"></span>
+  <Button
+    variant="primary"
+    disabled={!$running}
+    title={$running ? undefined : "Start the cloud to update from Hetzner."}
+    onclick={openUpdate}>Update from Hetzner</Button
+  >
 </div>
 
 {#if problem}
   <div class="problem" role="alert">Own server types left out: {problem}</div>
 {/if}
-
-<form class="update" onsubmit={update}>
-  <Field label="Hetzner token" hint={$running ? "Used once for the update, never stored." : "Start the cloud to update from Hetzner."}>
-    {#snippet children(c)}
-      <input
-        id={c.id}
-        type="password"
-        autocomplete="off"
-        required
-        aria-describedby={c.describedby}
-        disabled={!$running}
-        bind:value={token}
-      />
-    {/snippet}
-  </Field>
-  <Button type="submit" variant="primary" loading={updating} disabled={!$running || !token}>Update from Hetzner</Button>
-</form>
 
 <Table
   title="Server types"
@@ -173,9 +197,8 @@
   actions={(t) => (t.source === "own" ? [{ label: "Remove", onclick: () => ((removing = t), (confirmOpen = true)) }] : [])}
 />
 
-<dialog bind:this={addDialog} aria-labelledby="add-type-title">
+<Dialog bind:open={addOpen} title="Add server type">
   <form onsubmit={add} novalidate>
-    <h2 id="add-type-title">Add server type</h2>
     <Field label="Name" error={errors.name} hint="Must not match a catalog type">
       {#snippet children(c)}
         <input id={c.id} aria-describedby={c.describedby} aria-invalid={c.invalid} autocomplete="off" bind:value={spec.name} />
@@ -211,17 +234,45 @@
         </select>
       {/snippet}
     </Field>
-    <Field label="Locations" error={errors.locations} hint="Comma-separated location names; empty means all">
-      {#snippet children(c)}
-        <input id={c.id} aria-describedby={c.describedby} aria-invalid={c.invalid} autocomplete="off" bind:value={spec.locations} />
-      {/snippet}
-    </Field>
+    <fieldset class="locations" aria-describedby={errors.locations ? "locations-error" : undefined}>
+      <legend>Locations</legend>
+      <label class="check"><input type="checkbox" bind:checked={spec.all} /> All locations</label>
+      {#each locations as l (l.name)}
+        <label class="check">
+          <input type="checkbox" value={l.name} disabled={spec.all} bind:group={spec.locations} />
+          {l.name} ({l.city})
+        </label>
+      {/each}
+      {#if errors.locations}<div id="locations-error" class="error">{errors.locations}</div>{/if}
+    </fieldset>
     <div class="actions">
-      <Button onclick={() => addDialog.close()} disabled={adding}>Cancel</Button>
+      <Button onclick={() => (addOpen = false)} disabled={adding}>Cancel</Button>
       <Button type="submit" variant="primary" loading={adding}>Add</Button>
     </div>
   </form>
-</dialog>
+</Dialog>
+
+<Dialog bind:open={updateOpen} title="Update from Hetzner" onclose={updateClosed}>
+  <form onsubmit={update}>
+    <Field label="Hetzner token" error={tokenError} hint="Used once for the update, never stored.">
+      {#snippet children(c)}
+        <input
+          id={c.id}
+          type="password"
+          autocomplete="off"
+          required
+          aria-describedby={c.describedby}
+          aria-invalid={c.invalid}
+          bind:value={token}
+        />
+      {/snippet}
+    </Field>
+    <div class="actions">
+      <Button onclick={() => (updateOpen = false)}>Cancel</Button>
+      <Button type="submit" variant="primary" loading={updating}>Update</Button>
+    </div>
+  </form>
+</Dialog>
 
 <ConfirmDialog bind:open={confirmOpen} title="Remove server type" confirmLabel="Remove" onconfirm={remove}>
   <p>Removing <strong>{removing?.name}</strong> keeps existing servers of this type running; new servers cannot use it.</p>
@@ -234,38 +285,15 @@
     gap: var(--s2);
     margin-bottom: var(--s4);
   }
+  .spacer {
+    flex: 1;
+  }
   .problem {
     margin-bottom: var(--s4);
     padding: var(--s3);
     border: 1px solid var(--error);
     border-radius: var(--radius);
     color: var(--error);
-  }
-  .update {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--s3);
-    margin-bottom: var(--s6);
-  }
-  .update :global(.field) {
-    width: 320px;
-  }
-  .update :global(.btn) {
-    margin-top: 22px;
-  }
-  dialog {
-    width: 480px;
-    padding: var(--s6);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface);
-    color: var(--text);
-  }
-  dialog::backdrop {
-    background: rgb(0 0 0 / 0.4);
-  }
-  h2 {
-    margin-bottom: var(--s4);
   }
   input,
   select {
@@ -275,6 +303,31 @@
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: var(--s3);
+  }
+  .locations {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s1);
+    margin: 0 0 var(--s4);
+    padding: 0;
+    border: 0;
+  }
+  legend {
+    margin-bottom: var(--s1);
+    font-weight: 600;
+  }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+  }
+  .check input {
+    width: auto;
+  }
+  .error {
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--error);
   }
   .actions {
     display: flex;
