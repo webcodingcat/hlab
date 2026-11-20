@@ -45,6 +45,7 @@ var harness struct {
 	tmp          string // temporary folder of this run
 	startedCloud bool   // the harness started the dev cloud and stops it at the end
 	runID        string // e2e-<time>, the project name
+	projectMade  bool   // the run's project exists; teardown deletes it
 }
 
 // env is the shared project, token, hcloud configuration and SSH key,
@@ -226,8 +227,8 @@ func teardown() error {
 	if err := removeWSLDir(); err != nil {
 		errs = append(errs, err)
 	}
-	if envVal != nil {
-		if err := deleteProject(envVal.project); err != nil {
+	if harness.projectMade {
+		if err := deleteProject(harness.runID); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -488,6 +489,7 @@ func newEnv() (*env, error) {
 	if r, err := runHlab(ctx, 2*time.Minute, "project", "create", e.project); err != nil || r.ExitCode != 0 {
 		return nil, fmt.Errorf("hlab project create: %v\n%s", err, r)
 	}
+	harness.projectMade = true
 	r, err := runHlab(ctx, 2*time.Minute, "token", "create", "--project", e.project, "--name", "e2e", "--output", "json")
 	if err != nil || r.ExitCode != 0 {
 		return nil, fmt.Errorf("hlab token create: %v (exit %d)\nstderr: %s", err, r.ExitCode, r.Stderr)
