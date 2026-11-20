@@ -1,5 +1,6 @@
 <script module lang="ts">
   import type { Input } from "../../lib/resourceActions";
+  import type { LoadBalancerService } from "./Section.svelte";
 
   /** ServiceForm holds every field of a service; serviceInput sends only what applies. */
   export type ServiceForm = {
@@ -36,6 +37,27 @@
     };
   }
 
+  /** serviceForm turns a service of the API into the form; missing http blocks get newService's values. */
+  export function serviceForm(s: LoadBalancerService): ServiceForm {
+    const d = newService();
+    const hc = s.health_check;
+    return {
+      protocol: s.protocol,
+      listen_port: s.listen_port,
+      destination_port: s.destination_port,
+      proxyprotocol: s.proxyprotocol,
+      health_check: {
+        protocol: hc.protocol,
+        port: hc.port,
+        interval: hc.interval,
+        timeout: hc.timeout,
+        retries: hc.retries,
+        http: hc.http ? { domain: hc.http.domain ?? "", path: hc.http.path, tls: hc.http.tls } : d.health_check.http,
+      },
+      http: s.http ? { ...s.http, certificates: [...(s.http.certificates ?? [])] } : d.http,
+    };
+  }
+
   /**
    * serviceInput is the service as the actions module takes it: a tcp health
    * check without its http block, an empty health check domain as null. The
@@ -65,16 +87,17 @@
   // One load balancer service: protocol and ports, proxy protocol, the
   // health check and, for http and https, sticky sessions; https also takes
   // certificates and the redirect from http. Used by the create form and the
-  // Services tab.
-  type Props = { service: ServiceForm; certificates: { id: number; name: string }[] };
+  // Services tab. fixedPort keeps the listen port, which names the service
+  // being edited.
+  type Props = { service: ServiceForm; certificates: { id: number; name: string }[]; fixedPort?: boolean };
 
-  let { service = $bindable(), certificates }: Props = $props();
+  let { service = $bindable(), certificates, fixedPort = false }: Props = $props();
 
   // A new protocol brings its usual listen port and health check protocol.
   function setProtocol(p: ServiceForm["protocol"]) {
     service.protocol = p;
-    if (service.protocol === "https") service.listen_port = 443;
-    else if (service.protocol === "http") service.listen_port = 80;
+    if (!fixedPort && service.protocol === "https") service.listen_port = 443;
+    else if (!fixedPort && service.protocol === "http") service.listen_port = 80;
     service.health_check.protocol = service.protocol === "tcp" ? "tcp" : "http";
   }
 
@@ -97,7 +120,7 @@
   <div class="row">
     <Field label="Listen port">
       {#snippet children(c)}
-        <input id={c.id} aria-describedby={c.describedby} type="number" min="1" max="65535" bind:value={service.listen_port} />
+        <input id={c.id} aria-describedby={c.describedby} type="number" min="1" max="65535" disabled={fixedPort} bind:value={service.listen_port} />
       {/snippet}
     </Field>
     <Field label="Destination port">

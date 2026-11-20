@@ -16,13 +16,15 @@
   import type { LoadBalancer, LoadBalancerTarget } from "./Section.svelte";
   import Graphs from "./tabs/Graphs.svelte";
   import Networking from "./tabs/Networking.svelte";
+  import Services from "./tabs/Services.svelte";
+  import Targets from "./tabs/Targets.svelte";
 
   // The detail page of one load balancer: Overview (public IPs with their
   // reverse DNS, type, algorithm, location, public interface, target
-  // health), Networking, Graphs, Labels and Protection; the actions menu
-  // changes the type and the algorithm, enables and disables the public
-  // interface, sets the reverse DNS, changes the protection and deletes it
-  // (back to the list afterwards).
+  // health), Targets, Services, Networking, Graphs, Labels and Protection;
+  // the actions menu changes the type and the algorithm, enables and
+  // disables the public interface, sets the reverse DNS, changes the
+  // protection and deletes it (back to the list afterwards).
   let { project, id, tab, list }: { project: string; id: number; tab: string; list: string } = $props();
 
   type LoadBalancerType = { id: number; name: string; description: string };
@@ -32,6 +34,8 @@
   const tabs = $derived(
     [
       { id: "overview", label: "Overview" },
+      { id: "targets", label: "Targets" },
+      { id: "services", label: "Services" },
       { id: "networking", label: "Networking" },
       { id: "graphs", label: "Graphs" },
       { id: "labels", label: "Labels" },
@@ -165,7 +169,11 @@
         {/snippet}
       </ResourceActionsMenu>
     {/snippet}
-    {#if current === "networking"}
+    {#if current === "targets"}
+      <Targets {project} lb={l} onchanged={load} />
+    {:else if current === "services"}
+      <Services {project} lb={l} onchanged={load} />
+    {:else if current === "networking"}
       <Networking {project} lb={l} {networks} onchanged={load} />
     {:else if current === "graphs"}
       <Graphs {project} id={l.id} />

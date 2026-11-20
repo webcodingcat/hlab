@@ -10,6 +10,29 @@
     targets?: LoadBalancerTarget[];
   };
 
+  /** Service of a load balancer as the API returns it. */
+  export type LoadBalancerService = {
+    protocol: "tcp" | "http" | "https";
+    listen_port: number;
+    destination_port: number;
+    proxyprotocol: boolean;
+    health_check: {
+      protocol: "tcp" | "http";
+      port: number;
+      interval: number;
+      timeout: number;
+      retries: number;
+      http?: { domain: string | null; path: string; tls: boolean } | null;
+    };
+    http?: {
+      sticky_sessions: boolean;
+      cookie_name: string;
+      cookie_lifetime: number;
+      certificates: number[];
+      redirect_http: boolean;
+    } | null;
+  };
+
   /** Load balancer as the Hetzner API returns it (the fields the views use). */
   export type LoadBalancer = {
     id: number;
@@ -24,7 +47,7 @@
     load_balancer_type: { name: string; description: string };
     algorithm: { type: string };
     targets: LoadBalancerTarget[];
-    services: { protocol: string; listen_port: number; destination_port: number }[];
+    services: LoadBalancerService[];
     protection: { delete: boolean };
     labels: Record<string, string>;
     created: string;
