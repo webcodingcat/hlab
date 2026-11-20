@@ -48,6 +48,7 @@ New rows, and rows that replace an earlier row because the promise changed:
 | UI-06 | `Before` returns the n lines before a given line oldest first, across into rotated files, with `atStart` at the start of the oldest file and for a line not found; a rotation between two calls does not fail it (table) | unit | internal/logfile/logfile_test.go: TestLogfile/UI-06/older | 10-24 |
 | UI-06 | the logs view searches for a text the service logged (a created project's name): matches show highlighted with the count, follow is off; clearing the field returns to the live view | e2e | test/e2e/ui_test.go: TestE2E/UI-06 running ui/frontend/tests/e2e/logs.spec.ts: UI-06 search | 10-26 |
 | UI-06 | "Load older lines" prepends the lines before the oldest shown one (the count grows), or is disabled when the log starts within the shown lines | e2e | test/e2e/ui_test.go: TestE2E/UI-06 running ui/frontend/tests/e2e/logs.spec.ts: UI-06 older | 10-26 |
+| UI-05 | in a project console the gear opens Administration (gear pressed); a second click on the gear returns to that project console | e2e | test/e2e/ui_test.go: TestE2E/UI-05 running ui/frontend/tests/e2e/projects.spec.ts: UI-05 (gear step) | 10-36 |
 | DOC-03 | every deviation and `unsupported_error` of `api.Deviations()` is listed in docs/development/api-coverage.md, and docs/deviations.md names none of their endpoints | unit | test/docs/docs_test.go: TestDocs/DOC-03 | 10-34 |
 
 Tests that change only how they reach a view or which file they read (Adjusts:, what they check stays):

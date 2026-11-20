@@ -5,11 +5,12 @@
   import StatusPill from "./StatusPill.svelte";
   import { showError } from "./toast";
   import appIcon from "../assets/app-icon.svg";
-  import { cloud, href, route, startCloud, stopCloud, type CloudState } from "../state";
+  import { adminReturn, cloud, href, route, startCloud, stopCloud, type CloudState } from "../state";
 
   // Top bar on every page: "HLab" (to the project list), the breadcrumb of
-  // the area, the cloud status pill, the Start/Stop button and the gear to
-  // the Administration.
+  // the area, the cloud status pill, the Start/Stop button and the gear,
+  // which opens the Administration and, while it is open, returns to the
+  // route shown before it.
   let { breadcrumb }: { breadcrumb?: Snippet } = $props();
 
   type Pill = { tone: "success" | "warning" | "muted" | "error"; text: string };
@@ -62,7 +63,7 @@
   {/if}
   <a
     class="gear"
-    href={href({ area: "admin", view: "server-types" })}
+    href={$route.area === "admin" ? $adminReturn : href({ area: "admin", view: "server-types" })}
     aria-label="Administration"
     title="Administration"
     aria-current={$route.area === "admin" ? "page" : undefined}><Settings size={20} aria-hidden="true" /></a

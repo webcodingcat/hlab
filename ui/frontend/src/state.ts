@@ -101,6 +101,14 @@ const current = writable<Route>(parse(location.hash) ?? { area: "projects" });
 /** route is the route of location.hash. */
 export const route: Readable<Route> = { subscribe: current.subscribe };
 
+const outsideAdmin = writable<string>(href({ area: "projects" }));
+
+/**
+ * adminReturn is the hash of the last route shown outside Administration,
+ * the project list when there was none; the gear returns there.
+ */
+export const adminReturn: Readable<string> = { subscribe: outsideAdmin.subscribe };
+
 const projectKey = "hlab.project";
 
 /** lastProject is the last opened project, kept in localStorage. */
@@ -141,6 +149,7 @@ export function initRoute(): () => void {
       return;
     }
     if (r.area === "project") lastProject.set(r.project);
+    if (r.area !== "admin") outsideAdmin.set(href(r));
     current.set(r);
   };
   window.addEventListener("hashchange", update);

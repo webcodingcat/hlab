@@ -43,6 +43,17 @@ test("UI-05", async ({ page }) => {
   await expect(tokenRow).toBeHidden();
   await expect.poll(async () => (await api(token, "/servers")).status, { timeout: 30_000 }).toBe(401);
 
+  // The gear opens Administration and, clicked again, returns to this
+  // project console.
+  const gear = page.getByRole("banner").getByRole("link", { name: "Administration", exact: true });
+  await gear.click();
+  await expect(gear).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("banner").getByText("Administration", { exact: true })).toBeVisible();
+  await gear.click();
+  await expect(gear).not.toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("heading", { level: 1, name: "API tokens", exact: true })).toBeVisible();
+  await expect(page.getByRole("banner").getByText(project).first()).toBeVisible();
+
   // Back in the list through the breadcrumb, delete the project after its
   // name is typed.
   await page.getByRole("banner").getByRole("link", { name: "Projects", exact: true }).click();

@@ -521,6 +521,13 @@ Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes
   - [x] README.md compact: centred docs/images/banner.svg, static badges (`badge/Go-1.27-00ADD8`, `badge/platform-Windows-0078D4`), link line "Guide · Commands · Configuration · Deviations · Development", what HLab is, the screenshots with `<picture>` light/dark (relative paths), Prerequisites for using HLab, Installation (no installer yet, built from source per docs/development/setup.md), first steps, tray program for the new shell, a terminal example `hcloud server create …` with its real output and `ssh root@<ip>` run through the `hlab-docs` context (server deleted afterwards), WSL2, uninstallation, links; "HLab" in prose.
   - [x] docs/development/setup.md merges the developer tool list (Go, Node.js, Task, golangci-lint, WiX, Wails, the e2e RAM and disk figures), `task build` and `scripts\dev-setup.ps1` without duplicates; build-and-test.md documents `task icons` and `task docs:screenshots`.
 
+- [ ] 10-36 Gear toggles Administration
+  - Wave: 10 | Depends on: - | Review: alone
+  - Requirements: UI-05, UI-08 | Tests: ui/frontend/tests/e2e/projects.spec.ts
+  - Reads: UI-SPEC "Views" (Shell, Administration); finding 18 (gear toggle)
+  - Size: ~60 lines in 3 files
+  - [ ] src/lib/TopBar.svelte, src/state.ts: the gear opens Administration and remembers the route shown before; a second click while Administration is open returns to that route (the project list when none, e.g. after a direct `#/admin/...` start); pressed state as today; logo and breadcrumbs unchanged.
+
 ## Findings from manual testing
 
 - [x] bug (UI-08): no application icon. The user started `bin\hlab-tray.exe` and opened the window: its title bar shows the generic Windows placeholder icon next to the title "hlab" (screenshot `phases/10/feedback/window-title-no-icon.png`: a small grey-green default window glyph, then the text "hlab"). The taskbar button and `bin\hlab-tray.exe` in Explorer have no icon of their own either. Cause: only the four tray state icons exist (`cmd/hlab-tray/icons/{stopped,busy,running,error}.ico`); neither `application.Options`/the window options in `cmd/hlab-tray/options.go` and `tray.go` set an icon, and the build embeds no Windows resource. Expected: one application icon in the style of the tray icons (neutral, without a state colour), multi-size `.ico` (16, 20, 24, 32, 48, 256 px), clear on light and dark backgrounds, shown in the window title bar, the taskbar and Alt+Tab, and embedded as the EXE resource of `hlab-tray.exe` through `task build` (also `hlab.exe` and `hlabd.exe` if it costs nothing extra). No Hetzner logo (UI-SPEC "Foundation").
