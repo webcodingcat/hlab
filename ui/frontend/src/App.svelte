@@ -5,7 +5,7 @@
   import SectionSidebar, { type SectionItem } from "./lib/SectionSidebar.svelte";
   import Toast from "./lib/Toast.svelte";
   import TopBar from "./lib/TopBar.svelte";
-  import { href, initCloud, initRoute, route, views, type ViewId } from "./state";
+  import { href, initCloud, initRoute, route, views, type AdminView, type ViewId } from "./state";
   import Logs from "./views/Logs.svelte";
   import ProjectConsole from "./views/ProjectConsole.svelte";
   import Projects from "./views/Projects.svelte";
@@ -31,7 +31,7 @@
     views
       .filter((v) => v.area === "admin")
       .map((v) => ({
-        href: href({ area: "admin", view: v.id as "server-types" | "settings" | "logs" }),
+        href: href({ area: "admin", view: v.id as AdminView }),
         title: v.title,
         icon: adminIcons[v.id] ?? Cpu,
         current: $route.area === "admin" && $route.view === v.id,
@@ -67,7 +67,7 @@
         </main>
       </div>
     {:else if $route.area === "project"}
-      {#key $route.project}<ProjectConsole project={$route.project} />{/key}
+      {#key $route.project}<ProjectConsole project={$route.project} view={$route.view} page={$route.page} />{/key}
     {:else}
       <main><Projects /></main>
     {/if}

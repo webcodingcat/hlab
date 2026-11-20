@@ -2,7 +2,7 @@
   import { ChevronDown } from "@lucide/svelte";
   import { mgmt } from "./bridge";
   import { showError } from "./toast";
-  import { href, running, type Project } from "../state";
+  import { consoleStart, href, running, type Project } from "../state";
 
   // The project name in the breadcrumb of a project console; it opens a
   // menu with the other projects to switch to.
@@ -46,7 +46,7 @@
       {:else}
         {#each others as name (name)}
           <li role="none">
-            <a role="menuitem" href={href({ area: "project", project: name, view: "tokens" })} onclick={() => (open = false)}>{name}</a>
+            <a role="menuitem" href={href(consoleStart(name))} onclick={() => (open = false)}>{name}</a>
           </li>
         {:else}
           <li role="none" class="muted">No other projects</li>
