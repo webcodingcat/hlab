@@ -182,7 +182,7 @@ func groupIconIDs(t *testing.T, path string) []uint32 {
 	if err != nil {
 		t.Fatalf("%s: %v", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var rsrc []byte
 	for _, s := range f.Sections {
 		if strings.HasPrefix(s.Name, ".rsrc") {

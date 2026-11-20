@@ -78,6 +78,11 @@ tasks:
     cmds:
       - go run ./tools/catalog
 
+  icons:
+    desc: Render the app and tray icons, the .syso icon resources and the SVG artwork (outputs are committed)
+    cmds:
+      - go run ./tools/icons
+
   e2e:
     desc: "Run the end-to-end tests against real Hyper-V and clients; filter with -- -run <regexp>"
     cmds:

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 200" width="720" height="200">
+<style>
+.title { fill: #1b1e24; font: 700 64px "Segoe UI", system-ui, sans-serif; }
+.subtitle { fill: #5d6472; font: 400 24px "Segoe UI", system-ui, sans-serif; }
+@media (prefers-color-scheme: dark) {
+  .title { fill: #e6e8ec; }
+  .subtitle { fill: #9aa1ad; }
+}
+</style>
+<g transform="translate(24 36) scale(0.5)"><rect width="256" height="256" rx="56" fill="#2f6fdf"/><path fill="#ffffff" d="M64 56H104V200H64ZM152 56H192V200H152ZM104 110H152V146H104Z"/></g>
+<text class="title" x="180" y="112">HLab</text>
+<text class="subtitle" x="182" y="152">A local Hetzner-compatible cloud on Hyper-V</text>
+</svg>
