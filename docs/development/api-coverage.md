@@ -62,14 +62,14 @@ HLab serves these endpoints:
 | `GET /zones`, `POST /zones`, `GET /zones/{id}`, `PUT /zones/{id}`, `DELETE /zones/{id}` | See [Zones](#zones). |
 | `POST /zones/{id}/actions/change_protection`, `POST /zones/{id}/actions/change_ttl`, `POST /zones/{id}/actions/change_primary_nameservers` | See [Zones](#zones). |
 | `GET /zones/{id}/zonefile`, `POST /zones/{id}/actions/import_zonefile` | See [Zone files](#zone-files). |
-| `GET /zones/{id}/rrsets`, `POST /zones/{id}/rrsets`, `GET /zones/{id}/rrsets/{name}/{type}`, `PUT /zones/{id}/rrsets/{name}/{type}`, `DELETE /zones/{id}/rrsets/{name}/{type}` | See [Records](#records). |
-| `POST /zones/{id}/rrsets/{name}/{type}/actions/change_protection`, `.../change_ttl`, `.../set_records`, `.../add_records`, `.../remove_records`, `.../update_records` | See [Records](#records). |
+| `GET /zones/{id}/rrsets`, `POST /zones/{id}/rrsets`, `GET /zones/{id}/rrsets/{rr_name}/{rr_type}`, `PUT /zones/{id}/rrsets/{rr_name}/{rr_type}`, `DELETE /zones/{id}/rrsets/{rr_name}/{rr_type}` | See [Records](#records). |
+| `POST /zones/{id}/rrsets/{rr_name}/{rr_type}/actions/change_protection`, `POST /zones/{id}/rrsets/{rr_name}/{rr_type}/actions/change_ttl`, `POST /zones/{id}/rrsets/{rr_name}/{rr_type}/actions/set_records`, `POST /zones/{id}/rrsets/{rr_name}/{rr_type}/actions/add_records`, `POST /zones/{id}/rrsets/{rr_name}/{rr_type}/actions/remove_records`, `POST /zones/{id}/rrsets/{rr_name}/{rr_type}/actions/update_records` | See [Records](#records). |
 | `GET /zones/actions`, `GET /zones/actions/{id}`, `GET /zones/{id}/actions`, `GET /zones/{id}/actions/{action_id}` | Zone and RRSet actions are readable at all of these and at `GET /actions/{id}`. |
 | `POST /servers/{id}/actions/change_dns_ptr`, `POST /primary_ips/{id}/actions/change_dns_ptr`, `POST /floating_ips/{id}/actions/change_dns_ptr`, `POST /load_balancers/{id}/actions/change_dns_ptr` | See [Reverse DNS](#reverse-dns). |
 | `GET /load_balancer_types`, `GET /load_balancer_types/{id}` | The types of HLab's catalog. |
 | `GET /load_balancers`, `POST /load_balancers`, `GET /load_balancers/{id}`, `PUT /load_balancers/{id}`, `DELETE /load_balancers/{id}` | See [Load balancers](#load-balancers). |
-| `POST /load_balancers/{id}/actions/add_service`, `.../update_service`, `.../delete_service`, `POST /load_balancers/{id}/actions/add_target`, `.../remove_target`, `.../change_algorithm`, `.../change_type`, `.../change_protection` | See [Load balancers](#load-balancers). |
-| `POST /load_balancers/{id}/actions/attach_to_network`, `.../detach_from_network`, `.../enable_public_interface`, `.../disable_public_interface` | See [Load balancers](#load-balancers). |
+| `POST /load_balancers/{id}/actions/add_service`, `POST /load_balancers/{id}/actions/update_service`, `POST /load_balancers/{id}/actions/delete_service`, `POST /load_balancers/{id}/actions/add_target`, `POST /load_balancers/{id}/actions/remove_target`, `POST /load_balancers/{id}/actions/change_algorithm`, `POST /load_balancers/{id}/actions/change_type`, `POST /load_balancers/{id}/actions/change_protection` | See [Load balancers](#load-balancers). |
+| `POST /load_balancers/{id}/actions/attach_to_network`, `POST /load_balancers/{id}/actions/detach_from_network`, `POST /load_balancers/{id}/actions/enable_public_interface`, `POST /load_balancers/{id}/actions/disable_public_interface` | See [Load balancers](#load-balancers). |
 | `GET /load_balancers/{id}/metrics` | See [Metrics](#metrics). |
 | `GET /load_balancers/actions`, `GET /load_balancers/{id}/actions`, `GET /load_balancers/{id}/actions/{action_id}` | |
 | `GET /certificates`, `POST /certificates`, `GET /certificates/{id}`, `PUT /certificates/{id}`, `DELETE /certificates/{id}`, `POST /certificates/{id}/actions/retry` | See [Certificates](#certificates). |
@@ -388,7 +388,7 @@ registrar or public nameserver is involved.
   nameservers answer.
 - There is no DNSSEC: answers are not signed, and DS records are stored
   and served as plain data.
-- `PUT /zones/{id}` and `PUT /zones/{id}/rrsets/{name}/{type}` answer 200
+- `PUT /zones/{id}` and `PUT /zones/{id}/rrsets/{rr_name}/{rr_type}` answer 200
   without an action; all other writes run as actions.
 - `record_count` counts every record, SOA and NS included (4 for a new
   zone).
