@@ -62,11 +62,10 @@ test("UI-02 volumes", async ({ page, shared }) => {
       )
       .toEqual({ size: 12, server: serverId, format: "ext4", location });
     const [created] = await named<Volume>(token, "/volumes", "volumes", name);
-    // The volume stays locked until its create action (formatting) ends.
+    // Volume and server stay locked until the create and attach actions end.
+    const running = async (path: string) => ((await api(token, `${path}/actions?status=running`)).body as { actions: unknown[] }).actions.length;
     await expect
-      .poll(async () => ((await api(token, `/volumes/${created.id}/actions?status=running`)).body as { actions: unknown[] }).actions.length, {
-        timeout: 2 * 60_000,
-      })
+      .poll(async () => (await running(`/volumes/${created.id}`)) + (await running(`/servers/${serverId}`)), { timeout: 2 * 60_000 })
       .toBe(0);
     await section(page, "Volumes");
 
