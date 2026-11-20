@@ -9,7 +9,6 @@
     disk_size: number;
     created: string;
     created_from: { id: number; name: string } | null;
-    bound_to: number | null;
     protection: { delete: boolean };
     labels: Record<string, string>;
   };
