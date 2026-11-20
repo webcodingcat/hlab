@@ -7,7 +7,7 @@
   import Table, { type Column } from "../lib/Table.svelte";
   import { ApiError, mgmt } from "../lib/bridge";
   import { action, showError } from "../lib/toast";
-  import { href, lastProject, running, type Project } from "../state";
+  import { href, running, type Project } from "../state";
 
   // The project list, full width; a row click opens the project's console.
   let rows = $state<Project[] | undefined>();
@@ -37,11 +37,6 @@
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
   });
-
-  function openProject(p: Project) {
-    lastProject.set(p.name);
-    location.hash = href({ area: "project", project: p.name, view: "tokens" });
-  }
 
   // Create dialog.
   let createDialog: HTMLDialogElement;
@@ -115,7 +110,7 @@
     emptyText="There are no projects yet."
     createLabel="Create project"
     oncreate={openCreate}
-    onrowclick={openProject}
+    onrowclick={(p) => (location.hash = href({ area: "project", project: p.name, view: "tokens" }))}
     actions={(p) => [{ label: "Delete", onclick: () => ((deleting = p), (confirmOpen = true)) }]}
   />
 {:else}
