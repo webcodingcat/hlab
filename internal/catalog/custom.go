@@ -159,7 +159,7 @@ func zeroPrices(locs []ServerTypeLocation) json.RawMessage {
 	return b
 }
 
-// OwnSpec describes an own server type to add.
+// OwnSpec describes an own server type to add or update.
 type OwnSpec struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
@@ -224,14 +224,57 @@ func AddOwn(c *Catalog, customFile string, s OwnSpec) (ServerType, error) {
 		return ServerType{}, &FieldError{"name", "is required"}
 	case taken(func(st ServerType) bool { return st.Name == s.Name }):
 		return ServerType{}, &FieldError{"name", fmt.Sprintf("server type %q exists", s.Name)}
+	}
+	id := int64(MinOwnID)
+	for taken(func(st ServerType) bool { return st.ID == id }) {
+		id++
+	}
+	obj, st, err := ownObject(c, s, id)
+	if err != nil {
+		return ServerType{}, err
+	}
+	if err := writeOwn(customFile, append(raw, obj)); err != nil {
+		return ServerType{}, err
+	}
+	return st, nil
+}
+
+// UpdateOwn replaces the own type named s.Name in customFile with the
+// values of s, checked as by AddOwn; it keeps its ID and its position and
+// rewrites customFile in place in one write. The error wraps
+// fs.ErrNotExist when customFile has no own type of that name.
+func UpdateOwn(c *Catalog, customFile string, s OwnSpec) (ServerType, error) {
+	raw, own, err := readOwnRaw(customFile)
+	if err != nil {
+		return ServerType{}, fmt.Errorf("read %s: %w", customFile, err)
+	}
+	i := slices.IndexFunc(own, func(st ServerType) bool { return st.Name == s.Name })
+	if s.Name == "" || i < 0 {
+		return ServerType{}, fmt.Errorf("own server type %q: %w", s.Name, fs.ErrNotExist)
+	}
+	obj, st, err := ownObject(c, s, own[i].ID)
+	if err != nil {
+		return ServerType{}, err
+	}
+	raw[i] = obj
+	if err := writeOwn(customFile, raw); err != nil {
+		return ServerType{}, err
+	}
+	return st, nil
+}
+
+// ownObject checks the values of s other than its name and builds the
+// Hetzner server_type object with ID id.
+func ownObject(c *Catalog, s OwnSpec, id int64) (json.RawMessage, ServerType, error) {
+	switch {
 	case s.CPUType != "shared" && s.CPUType != "dedicated":
-		return ServerType{}, &FieldError{"cpu_type", `must be "shared" or "dedicated"`}
+		return nil, ServerType{}, &FieldError{"cpu_type", `must be "shared" or "dedicated"`}
 	case s.Cores < 1:
-		return ServerType{}, &FieldError{"cores", "must be at least 1"}
+		return nil, ServerType{}, &FieldError{"cores", "must be at least 1"}
 	case s.Memory <= 0:
-		return ServerType{}, &FieldError{"memory", "must be more than 0"}
+		return nil, ServerType{}, &FieldError{"memory", "must be more than 0"}
 	case s.Disk < 1:
-		return ServerType{}, &FieldError{"disk", "must be at least 1"}
+		return nil, ServerType{}, &FieldError{"disk", "must be at least 1"}
 	}
 
 	locs := []map[string]any{}
@@ -248,15 +291,11 @@ func AddOwn(c *Catalog, customFile string, s OwnSpec) (ServerType, error) {
 	for _, name := range s.Locations {
 		l, ok := c.Location(name)
 		if !ok {
-			return ServerType{}, &FieldError{"locations", fmt.Sprintf("unknown location %q", name)}
+			return nil, ServerType{}, &FieldError{"locations", fmt.Sprintf("unknown location %q", name)}
 		}
 		add(l)
 	}
 
-	id := int64(MinOwnID)
-	for taken(func(st ServerType) bool { return st.ID == id }) {
-		id++
-	}
 	obj, err := json.Marshal(map[string]any{
 		"id":           id,
 		"name":         s.Name,
@@ -273,16 +312,13 @@ func AddOwn(c *Catalog, customFile string, s OwnSpec) (ServerType, error) {
 		"locations":    locs,
 	})
 	if err != nil {
-		return ServerType{}, err
+		return nil, ServerType{}, err
 	}
 	sts, err := serverTypes([]json.RawMessage{obj})
 	if err != nil {
-		return ServerType{}, err
+		return nil, ServerType{}, err
 	}
-	if err := writeOwn(customFile, append(raw, obj)); err != nil {
-		return ServerType{}, err
-	}
-	return sts[0], nil
+	return obj, sts[0], nil
 }
 
 // RemoveOwn removes the own type name from customFile in place; the error

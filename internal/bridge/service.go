@@ -149,6 +149,23 @@ func (s *Service) AddServerType(spec catalog.OwnSpec) (*Invalid, error) {
 	return nil, s.reload()
 }
 
+// UpdateServerType replaces the own server type spec.Name in the custom
+// file and has a running cloud re-read it. An invalid spec returns its
+// field.
+func (s *Service) UpdateServerType(spec catalog.OwnSpec) (*Invalid, error) {
+	cat, _, err := s.catalog()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := catalog.UpdateOwn(cat, s.customFile(), spec); err != nil {
+		if fe, ok := errors.AsType[*catalog.FieldError](err); ok {
+			return &Invalid{Field: fe.Field, Message: fe.Message}, nil
+		}
+		return nil, err
+	}
+	return nil, s.reload()
+}
+
 // RemoveServerType removes the own server type name from the custom file
 // and has a running cloud re-read it.
 func (s *Service) RemoveServerType(name string) error {

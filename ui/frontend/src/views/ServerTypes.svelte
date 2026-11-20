@@ -59,8 +59,9 @@
     return () => clearInterval(t);
   });
 
-  // Add dialog; the field names are those of catalog.OwnSpec. "All
-  // locations" saves no locations, which means all.
+  // Add and edit dialog; the field names are those of catalog.OwnSpec.
+  // "All locations" saves no locations, which means all. While editing, the
+  // name of the own type is fixed.
   type Location = { name: string; city: string };
   let addOpen = $state(false);
   let locations = $state<Location[]>([]);
@@ -77,16 +78,41 @@
   let spec = $state(blank());
   let errors = $state<Record<string, string>>({});
   let adding = $state(false);
+  let editing = $state(false);
 
-  async function openAdd() {
-    spec = blank();
-    errors = {};
-    addOpen = true;
+  async function loadLocations() {
     try {
       locations = await service<Location[]>("Service", "Locations");
     } catch (err) {
       showError("Load locations", err);
     }
+  }
+
+  async function openAdd() {
+    spec = blank();
+    errors = {};
+    editing = false;
+    addOpen = true;
+    await loadLocations();
+  }
+
+  async function openEdit(t: Row) {
+    await loadLocations();
+    const own = (t.locations ?? []).map((l) => l.name);
+    const all = locations.length > 0 && locations.every((l) => own.includes(l.name));
+    spec = {
+      name: t.name,
+      description: t.description ?? "",
+      cores: t.cores,
+      memory: t.memory,
+      disk: t.disk,
+      cpu_type: t.cpu_type,
+      all,
+      locations: all ? [] : own,
+    };
+    errors = {};
+    editing = true;
+    addOpen = true;
   }
 
   async function add(e: SubmitEvent) {
@@ -109,7 +135,7 @@
       locations: s.all ? [] : s.locations,
     };
     try {
-      const invalid = await service<Invalid>("Service", "AddServerType", own);
+      const invalid = await service<Invalid>("Service", editing ? "UpdateServerType" : "AddServerType", own);
       if (invalid) {
         errors = { [invalid.field]: invalid.message };
       } else {
@@ -117,7 +143,7 @@
         await load();
       }
     } catch (err) {
-      showError("Add server type", err);
+      showError(editing ? `Edit server type ${own.name}` : "Add server type", err);
     } finally {
       adding = false;
     }
@@ -194,14 +220,27 @@
   emptyText="There are no server types."
   createLabel="Add server type"
   oncreate={openAdd}
-  actions={(t) => (t.source === "own" ? [{ label: "Remove", onclick: () => ((removing = t), (confirmOpen = true)) }] : [])}
+  actions={(t) =>
+    t.source === "own"
+      ? [
+          { label: "Edit", onclick: () => openEdit(t) },
+          { label: "Remove", onclick: () => ((removing = t), (confirmOpen = true)) },
+        ]
+      : []}
 />
 
-<Dialog bind:open={addOpen} title="Add server type">
+<Dialog bind:open={addOpen} title={editing ? "Edit server type" : "Add server type"}>
   <form onsubmit={add} novalidate>
-    <Field label="Name" error={errors.name} hint="Must not match a catalog type">
+    <Field label="Name" error={errors.name} hint={editing ? undefined : "Must not match a catalog type"}>
       {#snippet children(c)}
-        <input id={c.id} aria-describedby={c.describedby} aria-invalid={c.invalid} autocomplete="off" bind:value={spec.name} />
+        <input
+          id={c.id}
+          aria-describedby={c.describedby}
+          aria-invalid={c.invalid}
+          autocomplete="off"
+          readonly={editing}
+          bind:value={spec.name}
+        />
       {/snippet}
     </Field>
     <Field label="Description" error={errors.description}>
@@ -247,7 +286,7 @@
     </fieldset>
     <div class="actions">
       <Button onclick={() => (addOpen = false)} disabled={adding}>Cancel</Button>
-      <Button type="submit" variant="primary" loading={adding}>Add</Button>
+      <Button type="submit" variant="primary" loading={adding}>{editing ? "Save" : "Add"}</Button>
     </div>
   </form>
 </Dialog>
