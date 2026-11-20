@@ -12,7 +12,7 @@
     series: ChartSeries[];
     start: number; // unix seconds
     end: number; // unix seconds
-    step?: number; // seconds between points
+    step: number; // seconds between points
     format: (v: number) => string;
   };
 
@@ -52,7 +52,7 @@
     let d = "";
     let prev: number | undefined;
     for (const [t, v] of points) {
-      const gap = prev === undefined || (step !== undefined && t - prev > 2 * step);
+      const gap = prev === undefined || t - prev > 2 * step;
       d += `${gap ? "M" : "L"}${x(t).toFixed(1)},${y(v).toFixed(1)}`;
       prev = t;
     }
