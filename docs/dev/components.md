@@ -67,13 +67,15 @@ without a window:
 
 The frontend in [ui/frontend](../../ui/frontend) is Svelte 5 with Vite;
 [ui/embed.go](../../ui/embed.go) embeds its build. The views are in
-`src/views` and listed in `src/views.json`, switched by `location.hash`;
-the building blocks (table, form field, dialogs, toast, help button) are in
-`src/lib`, the bridge calls in `src/lib/bridge.ts`, the shared state in
-`src/state.ts`. A new view needs its ID in `views.json` and in `ViewId`
-of `src/help.ts`, an entry in `views` of `src/state.ts`, an icon in
-`src/lib/Sidebar.svelte`, a branch in `src/App.svelte` and a help text
-`src/help/<view>.md`, which the `?` button shows. The build tag `e2e` adds the test hooks of
+`src/views` and listed in `src/views.json`; the shell has three areas
+(project list `#/projects`, project console `#/projects/<name>/tokens`,
+Administration `#/admin/<view>`), routed by `location.hash` in
+`src/state.ts`. The building blocks (top bar, section sidebar, table, form
+field, dialogs, toast, help button) are in `src/lib`, the bridge calls in
+`src/lib/bridge.ts`, the shared state in `src/state.ts`. A new view needs
+its ID in `views.json` and in `ViewId` of `src/help.ts`, its title and
+area in `src/state.ts`, a sidebar entry and a branch in `src/App.svelte`
+and a help text `src/help/<view>.md`, which the `?` button shows. The build tag `e2e` adds the test hooks of
 [cmd/hlab-tray/e2e.go](../../cmd/hlab-tray/e2e.go) (see
 [Build and test](build-and-test.md#end-to-end-tests)).
 
