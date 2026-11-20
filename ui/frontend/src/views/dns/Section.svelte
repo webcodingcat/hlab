@@ -29,6 +29,7 @@
   import { showError } from "../../lib/toast";
   import { href, running, type Page } from "../../state";
   import ZoneCreate from "./ZoneCreate.svelte";
+  import ZoneDetail from "./ZoneDetail.svelte";
 
   // The "DNS" section of a project console; page says which of its pages
   // the route opens (list, create form or detail).
@@ -98,11 +99,7 @@
 {:else if page.kind === "new"}
   <ZoneCreate {project} {list} />
 {:else if page.kind === "detail"}
-  <div class="title-row">
-    <h1>DNS</h1>
-    <HelpButton view="dns" />
-  </div>
-  <p><a href={list}>Back to the list</a></p>
+  <ZoneDetail {project} id={page.id} tab={page.tab} {list} />
 {:else}
   <div class="title-row">
     <h1>DNS</h1>
