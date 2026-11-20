@@ -1,4 +1,15 @@
 <script module lang="ts">
+  /** Target of a load balancer; a label selector lists the servers it matched under targets. */
+  export type LoadBalancerTarget = {
+    type: "server" | "label_selector" | "ip";
+    server?: { id: number; ip: string };
+    label_selector?: { selector: string };
+    ip?: { ip: string };
+    use_private_ip?: boolean;
+    health_status?: { listen_port: number; status: string }[];
+    targets?: LoadBalancerTarget[];
+  };
+
   /** Load balancer as the Hetzner API returns it (the fields the views use). */
   export type LoadBalancer = {
     id: number;
@@ -12,7 +23,7 @@
     location: { name: string; network_zone: string };
     load_balancer_type: { name: string; description: string };
     algorithm: { type: string };
-    targets: unknown[];
+    targets: LoadBalancerTarget[];
     services: { protocol: string; listen_port: number; destination_port: number }[];
     protection: { delete: boolean };
     labels: Record<string, string>;
@@ -32,6 +43,7 @@
   import { showError } from "../../lib/toast";
   import { href, running, type Page } from "../../state";
   import LoadBalancerCreate from "./LoadBalancerCreate.svelte";
+  import LoadBalancerDetail from "./LoadBalancerDetail.svelte";
 
   // The "Load Balancers" section of a project console; page says which of
   // its pages the route opens (list, create form or detail).
@@ -105,11 +117,7 @@
 {:else if page.kind === "new"}
   <LoadBalancerCreate {project} {list} />
 {:else if page.kind === "detail"}
-  <div class="title-row">
-    <h1>Load Balancers</h1>
-    <HelpButton view="load-balancers" />
-  </div>
-  <p><a href={list}>Back to the list</a></p>
+  <LoadBalancerDetail {project} id={page.id} tab={page.tab} {list} />
 {:else}
   <div class="title-row">
     <h1>Load Balancers</h1>

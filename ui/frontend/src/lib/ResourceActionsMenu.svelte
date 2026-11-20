@@ -12,6 +12,8 @@
   // confirmation by the entry's confirm (typed-name asks for name); then
   // the request runs under the toast "<label> <name>". Every dialog closes
   // at once; ondone follows when the request and its actions succeeded.
+  // An entry for which onselect returns true is left to the page (for
+  // example Reverse DNS with its own dialog).
   type Props = {
     project: string;
     id: number;
@@ -19,9 +21,10 @@
     actions: ResourceAction[];
     input?: Snippet<[ResourceAction, (i: Input) => void, () => void]>;
     ondone: (a: ResourceAction) => void;
+    onselect?: (a: ResourceAction) => boolean;
   };
 
-  let { project, id, name, actions, input, ondone }: Props = $props();
+  let { project, id, name, actions, input, ondone, onselect }: Props = $props();
 
   // The entry whose input dialog or confirmation is open, with its input.
   let pending = $state<{ action: ResourceAction; input: Input } | undefined>();
@@ -46,6 +49,7 @@
   }
 
   function choose(a: ResourceAction) {
+    if (onselect?.(a)) return;
     if (a.needsInput && input) {
       pending = { action: a, input: {} };
       inputOpen = true;
