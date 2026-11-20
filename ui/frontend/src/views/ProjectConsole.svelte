@@ -1,5 +1,6 @@
 <script lang="ts">
   import {
+    Archive,
     Book,
     Disc,
     Globe,
@@ -47,7 +48,8 @@
     { view: "certificates", title: "Certificates", icon: ShieldCheck },
     { view: "ssh-keys", title: "SSH Keys", icon: Key },
     { view: "placement-groups", title: "Placement Groups", icon: Group },
-    { view: "images", title: "Images", icon: Images },
+    { view: "snapshots", title: "Snapshots", icon: Images },
+    { view: "backups", title: "Backups", icon: Archive },
     { view: "isos", title: "ISOs", icon: Disc },
     { view: "tokens", title: "API tokens", icon: KeyRound, separator: true },
   ];

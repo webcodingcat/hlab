@@ -3,7 +3,7 @@
   import Button from "../../lib/Button.svelte";
   import Field from "../../lib/Field.svelte";
   import type { Input, ResourceAction } from "../../lib/resourceActions";
-  import type { Image } from "./Section.svelte";
+  import type { Image } from "./ImageList.svelte";
 
   // The input of an image action dialog: Edit description asks for the new
   // description, Change protection for the delete flag. It is created anew

@@ -37,20 +37,26 @@
   import { href, running, type Page } from "../../state";
   import ImageDetail from "./ImageDetail.svelte";
 
-  // The "Images" section of a project console: the project's snapshots and
-  // backups (no system images); page says whether the list or a detail page
-  // shows. Images are made in a server's Backups and Snapshots tabs, so
-  // there is no create form.
-  let { project, page }: { project: string; page: Page } = $props();
+  // The list of a project's images of one type, the body of the Snapshots
+  // and the Backups section (system images are not listed); page says
+  // whether the list or a detail page shows. Images are made in a server's
+  // Backups and Snapshots tabs, so there is no create form.
+  let { project, page, type }: { project: string; page: Page; type: "snapshot" | "backup" } = $props();
 
-  const list = $derived(href({ area: "project", project, view: "images", page: { kind: "list" } }));
+  const view = $derived(type === "snapshot" ? "snapshots" : "backups");
+  const title = $derived(type === "snapshot" ? "Snapshots" : "Backups");
+  const emptyText = $derived(
+    type === "snapshot"
+      ? "This project has no snapshots yet. They are made in a server's Snapshots tab."
+      : "This project has no backups yet. They are made in a server's Backups tab.",
+  );
+  const list = $derived(href({ area: "project", project, view, page: { kind: "list" } }));
 
   let rows = $state<Image[] | undefined>();
   let failing = false;
 
   const columns: Column<Image>[] = [
     { key: "name", label: "Name", value: imageName, sortable: true },
-    { key: "type", label: "Type", value: (i) => i.type, sortable: true },
     { key: "size", label: "Size", value: sizeText, sortable: true },
     { key: "created_from", label: "Created from", value: (i) => i.created_from?.name ?? "-", sortable: true },
     { key: "labels", label: "Labels", value: (i) => labelText(i.labels) },
@@ -59,10 +65,10 @@
 
   async function load() {
     try {
-      rows = await listAll<Image>(project, "/images?type=snapshot&type=backup", "images");
+      rows = await listAll<Image>(project, `/images?type=${type}`, "images");
       failing = false;
     } catch (err) {
-      if (!failing) showError("Load images", err);
+      if (!failing) showError(`Load ${view}`, err);
       failing = true;
     }
   }
@@ -77,7 +83,7 @@
   });
 
   function open(p: Page) {
-    location.hash = href({ area: "project", project, view: "images", page: p });
+    location.hash = href({ area: "project", project, view, page: p });
   }
 
   // Row menu: Delete after a plain confirmation.
@@ -100,31 +106,31 @@
 
 {#if !$running}
   <div class="title-row">
-    <h1>Images</h1>
-    <HelpButton view="images" />
+    <h1>{title}</h1>
+    <HelpButton {view} />
   </div>
   <CloudStopped />
 {:else if page.kind === "detail"}
-  <ImageDetail {project} id={page.id} tab={page.tab} {list} />
+  <ImageDetail {project} {view} id={page.id} tab={page.tab} {list} />
 {:else}
   <div class="title-row">
-    <h1>Images</h1>
-    <HelpButton view="images" />
+    <h1>{title}</h1>
+    <HelpButton {view} />
   </div>
   <Table
-    title="Images"
+    {title}
     {rows}
     {columns}
     key={(i) => i.id}
     name={imageName}
     labels={(i) => i.labels}
-    emptyText="This project has no snapshots or backups yet. They are made in a server's Backups and Snapshots tabs."
+    {emptyText}
     onrowclick={(i) => open({ kind: "detail", id: i.id, tab: "overview" })}
     actions={(i) => [{ label: "Delete", onclick: () => ask(i) }]}
   />
 {/if}
 
-<ConfirmDialog bind:open={confirmOpen} title={`Delete ${pending?.type ?? "image"}`} confirmLabel="Delete" onconfirm={run}>
+<ConfirmDialog bind:open={confirmOpen} title={`Delete ${type}`} confirmLabel="Delete" onconfirm={run}>
   {#if pending}
     <p>The {pending.type} <strong>{imageName(pending)}</strong> is deleted for good.</p>
   {/if}
