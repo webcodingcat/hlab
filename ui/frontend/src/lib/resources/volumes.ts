@@ -16,7 +16,7 @@ const base = "volumes";
  * one the server, automount and format instead (the server's location applies).
  */
 export const create: ResourceAction = createAt(base, "Create volume", (i) =>
-  i.server !== undefined && i.server !== null && i.server !== ""
+  i.server !== undefined
     ? pick(i, ["name", "size", "server", "automount", "format", "labels"])
     : pick(i, ["name", "size", "location", "labels"]),
 );
