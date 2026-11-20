@@ -27,7 +27,11 @@ export type Server = {
   name: string;
   status: string;
   created: string;
-  public_net: { ipv4: { ip: string } | null; ipv6: { ip: string } | null };
+  public_net: {
+    ipv4: { ip: string; dns_ptr: string } | null;
+    ipv6: { ip: string; dns_ptr: { ip: string; dns_ptr: string }[] } | null;
+    firewalls: { id: number; status: string }[];
+  };
   private_net: { network: number; ip: string; alias_ips: string[] }[];
   server_type: { name: string };
   location: { name: string };

@@ -9,16 +9,23 @@
   import { showError } from "../../lib/toast";
   import { href } from "../../state";
   import ServerActions from "./ServerActions.svelte";
+  import Firewalls from "./tabs/Firewalls.svelte";
+  import Networking from "./tabs/Networking.svelte";
+  import Volumes from "./tabs/Volumes.svelte";
   import { createdText, imageLabel, tone, type Server } from "./servers";
 
-  // The detail page of one server: Overview, Labels and Protection, with
-  // the actions menu in the title row; refreshed every 5 s.
+  // The detail page of one server: Overview, Networking, Firewalls,
+  // Volumes, Labels and Protection, with the actions menu in the title
+  // row; refreshed every 5 s.
   let { project, id, tab, list }: { project: string; id: number; tab: string; list: string } = $props();
 
   const path = $derived(`/servers/${id}`);
   const tabs = $derived(
     [
       { id: "overview", label: "Overview" },
+      { id: "networking", label: "Networking" },
+      { id: "firewalls", label: "Firewalls" },
+      { id: "volumes", label: "Volumes" },
       { id: "labels", label: "Labels" },
       { id: "protection", label: "Protection" },
     ].map((t) => ({ ...t, href: href({ area: "project", project, view: "servers", page: { kind: "detail", id, tab: t.id } }) })),
@@ -64,7 +71,13 @@
     {#snippet actions()}
       <ServerActions {project} server={server!} {list} onchanged={load} />
     {/snippet}
-    {#if current === "labels"}
+    {#if current === "networking"}
+      <Networking {project} server={server!} onchanged={load} />
+    {:else if current === "firewalls"}
+      <Firewalls {project} server={server!} onchanged={load} />
+    {:else if current === "volumes"}
+      <Volumes {project} server={server!} onchanged={load} />
+    {:else if current === "labels"}
       <LabelsTab {project} {path} labels={server.labels} onsaved={load} />
     {:else if current === "protection"}
       <ProtectionTab

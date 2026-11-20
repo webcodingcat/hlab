@@ -13,8 +13,8 @@ export type Action = {
   error: { code: string; message: string } | null;
 };
 
-/** ActionResult is the part of an answer that carries actions. */
-export type ActionResult = { action?: Action; next_actions?: Action[] };
+/** ActionResult is the part of an answer that carries actions (actions: firewall resource changes). */
+export type ActionResult = { action?: Action; actions?: Action[]; next_actions?: Action[] };
 
 /** ActionError is an action that ended in "error", with its code and message. */
 export class ActionError extends Error {
@@ -52,8 +52,8 @@ export async function waitAction(a: Action, poll: Poll, onProgress?: (a: Action)
 }
 
 /**
- * runAction shows a progress toast, runs run(), waits for its action and
- * then every next action, and ends the toast as success or error. It
+ * runAction shows a progress toast, runs run(), waits for its action or
+ * actions and then every next action, and ends the toast as success or error. It
  * resolves to the result, or to undefined after an error.
  */
 export async function runAction<T extends ActionResult>(
@@ -64,7 +64,7 @@ export async function runAction<T extends ActionResult>(
   const toast = progressToast(title, 0);
   try {
     const result = await run();
-    const all = [...(result.action ? [result.action] : []), ...(result.next_actions ?? [])];
+    const all = [...(result.action ? [result.action] : []), ...(result.actions ?? []), ...(result.next_actions ?? [])];
     for (const a of all) {
       toast.update(a.progress);
       await waitAction(a, poll, (s) => toast.update(s.progress));
