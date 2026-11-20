@@ -1,6 +1,6 @@
 package api
 
-// Deviation is one known difference between hlab and the Hetzner Cloud API.
+// Deviation is one known difference between HLab and the Hetzner Cloud API.
 type Deviation struct {
 	Endpoint    string
 	Description string
@@ -56,11 +56,11 @@ func Deviations() []Deviation {
 		},
 		{
 			Endpoint:    "POST /servers/{id}/actions/enable_rescue",
-			Description: "rescue is disabled only on boots hlab drives (poweron, reboot, reset) or after 60 minutes; a reboot inside the guest keeps it enabled",
+			Description: "rescue is disabled only on boots HLab drives (poweron, reboot, reset) or after 60 minutes; a reboot inside the guest keeps it enabled",
 		},
 		{
 			Endpoint:    "GET /isos",
-			Description: "lists the five ISOs of hlab's catalog with hlab's own IDs from 130001; no private ISOs",
+			Description: "lists the five ISOs of HLab's catalog with HLab's own IDs from 130001; no private ISOs",
 		},
 		{
 			Endpoint:    "POST /servers/{id}/actions/attach_iso",
@@ -72,7 +72,7 @@ func Deviations() []Deviation {
 		},
 		{
 			Endpoint:    "POST /volumes",
-			Description: "linux_device link, automount and pick-up of a grown volume work only through hlab guest hooks; without them a volume is a plain SCSI disk",
+			Description: "linux_device link, automount and pick-up of a grown volume work only through HLab guest hooks; without them a volume is a plain SCSI disk",
 		},
 		{
 			Endpoint:    "POST /volumes",
@@ -92,7 +92,7 @@ func Deviations() []Deviation {
 		},
 		{
 			Endpoint:    "POST /servers/{id}/actions/reset_password",
-			Description: "works through the hlab guest hook, not qemu-guest-agent; 409 conflict when the server is not running",
+			Description: "works through the HLab guest hook, not qemu-guest-agent; 409 conflict when the server is not running",
 		},
 		{
 			Endpoint:    "GET /servers/{id}/metrics",
@@ -100,7 +100,7 @@ func Deviations() []Deviation {
 		},
 		{
 			Endpoint:    "POST /servers/{id}/actions/request_console",
-			Description: "answers unsupported_error: server console is not supported by hlab yet",
+			Description: "answers unsupported_error: server console is not supported by HLab yet",
 		},
 		{
 			Endpoint:    "http://169.254.169.254/hetzner/v1/metadata",
@@ -120,7 +120,7 @@ func Deviations() []Deviation {
 		},
 		{
 			Endpoint:    "POST /zones/{id}/rrsets",
-			Description: "no DNSSEC, DS records are served as plain data; CNAME conflicts answer 422 invalid_input on type, an existing RRSet 409 uniqueness_error; the apex SOA is managed by hlab except its TTL",
+			Description: "no DNSSEC, DS records are served as plain data; CNAME conflicts answer 422 invalid_input on type, an existing RRSet 409 uniqueness_error; the apex SOA is managed by HLab except its TTL",
 		},
 		{
 			Endpoint:    "POST /zones/{id}/actions/import_zonefile",
@@ -152,7 +152,7 @@ func Deviations() []Deviation {
 		},
 		{
 			Endpoint:    "POST /load_balancers/{id}/actions/add_service",
-			Description: "proxyprotocol sends PROXY protocol v2, Hetzner's version is not documented; an https health check is stored as http with http.tls true and does not verify the certificate; undocumented errors use hlab's chosen codes",
+			Description: "proxyprotocol sends PROXY protocol v2, Hetzner's version is not documented; an https health check is stored as http with http.tls true and does not verify the certificate; undocumented errors use HLab's chosen codes",
 		},
 		{
 			Endpoint:    "POST /primary_ips/{id}/actions/assign",
@@ -160,7 +160,7 @@ func Deviations() []Deviation {
 		},
 		{
 			Endpoint:    "POST /certificates",
-			Description: "managed certificates are issued by the hlab CA, not Let's Encrypt, and name the CRL http://api.hetzner.internal/hlab/v1/ca.crl",
+			Description: "managed certificates are issued by the HLab CA, not Let's Encrypt, and name the CRL http://api.hetzner.internal/hlab/v1/ca.crl",
 		},
 		{
 			Endpoint:    "GET /load_balancers/{id}/metrics",

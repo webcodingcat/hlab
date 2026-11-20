@@ -441,7 +441,7 @@ func createSets(zone string, now time.Time, given []rrsetRequest) ([]RRSet, erro
 			return nil, err
 		}
 		if s.Type == "SOA" {
-			return nil, &api.FieldError{Field: prefix + "type", Message: "the SOA RRSet is managed by hlab"}
+			return nil, &api.FieldError{Field: prefix + "type", Message: "the SOA RRSet is managed by HLab"}
 		}
 		key := s.Name + "/" + s.Type
 		if seen[key] {

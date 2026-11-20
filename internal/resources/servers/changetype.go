@@ -112,7 +112,7 @@ func (m *Module) fittingType(ref string, r Record) (catalog.ServerType, error) {
 		return typ, invalid("server type " + ref + " not found")
 	}
 	if typ.Architecture == "arm" {
-		return typ, invalid("server type " + typ.Name + " is an arm type; hlab runs only x86 servers")
+		return typ, invalid("server type " + typ.Name + " is an arm type; HLab runs only x86 servers")
 	}
 	if typ.Disk < r.PrimaryDiskSize {
 		return typ, invalid("server type " + typ.Name + " has a smaller disk than the server")
