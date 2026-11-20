@@ -79,3 +79,10 @@ func (e *env) postActionInto(path string, body, out any, timeout time.Duration) 
   - Adjusts: -
   - [x] docs/development/api-coverage.md introduction and docs/development/adding-a-resource.md section 8: DOC-03 now also checks that every route hlabd registers (`cloud.APIRoutes()`) is listed on the coverage page, so a new endpoint goes into the Endpoints table
   - [x] docs/development/build-and-test.md: the harness stops the development cloud before the build also while it is starting (it waits until it runs) or stopping, and leaves it as found
+
+## Close
+
+- Unit suite and linter: `task test`, `task lint` green at a9197b6.
+- End-to-end: all tests (`task e2e -- -v`, the shared harness `stopRunningCloud`/`waitCloudState` changed), 2241 s at a9197b6: all green except SRV-07 (reboot: status stayed `stopping` 2 min after SSH came back); SRV-07 is unchanged by B2 and passed alone 3 of 3 (`task e2e -- -run '^TestE2E$/^SRV-07$' -count=3 -v`, 89 to 92 s each); recorded as a backlog bug.
+- RDNS-02 measurement: before, 2 of 2 full runs at the phase 10 close failed RDNS-02 with `423 locked`; after, `task e2e -- -run '^TestE2E$/^(RDNS-02|SRV-10)$' -count=3 -v` at 076df56, 6 of 6 row runs green, and RDNS-02 green in the full run.
+- `stopRunningCloud`: `task e2e -- -run '^TestE2E$/^SRV-01$' -v` at 076df56 started with the dev service in `starting` and once after a refused start (public_range_changed): both built and passed, the cloud left as found.

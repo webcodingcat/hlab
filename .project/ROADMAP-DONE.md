@@ -141,3 +141,5 @@ this file; it keeps the details for looking things up.
       2. An HTTPS service with a managed certificate for a name in an hlab
          zone answers with that certificate; with the trust switch on,
          `curl https://<name>` succeeds on host and WSL2.
+
+- [x] B2 Backlog: VLAN release at project deletion, LB health check, docs and e2e test fixes → phases/B2/

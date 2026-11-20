@@ -4,6 +4,14 @@ Checked items from BACKLOG.md, done or dropped, moved here unchanged at the
 close of each backlog phase. Newest backlog phase first. No skill
 reads this file; it keeps the notes for looking things up.
 
+## B2
+
+- [x] bug: test/e2e harness: `stopRunningCloud` (test/e2e/main_test.go) stops the dev cloud only in state `running`; a developer whose dev service is up in `starting` or `refused` still gets the `task build` error because the service holds `bin\hlabd.exe` (source: B1 verifier) - fixed in B2-03: stops `running`, waits through `starting` and `stopping`; `refused` needs no stop because the service process has exited
+- [x] security: networks (project deletion): `mgmt.purge` deletes kinds in sorted order, so `networks.Delete` frees the network's VLAN before the project's servers and VMs are deleted; a network another project creates in that window can get the VLAN, and its members share layer 2 with the old VMs without deny ACLs until those VMs are gone (source: 05 verifier) - fixed in B2-01: purge deletes networks last
+- [x] later: test/docs DOC-03: the test checks only the hand-kept list in `internal/api/deviations.go` (already missing the phase 05 and 06 endpoints), not the registered routes, so phases 07 and 08 can add endpoints without their deviations in docs/deviations.md and the test stays green (source: 06 verifier) - fixed in B2-02: `cloud.APIRoutes()` and the DOC-03 test require every registered route on docs/development/api-coverage.md
+- [x] bug: loadbalancers/services: `applyHealthCheck` (internal/resources/loadbalancers/services.go) stores health-check protocol `https` as `http` with `tls: true`, so Terraform and Ansible users who set `https` read back `http` and every plan or run shows a change it never applies; the OpenAPI response enum knows only tcp and http, so returning `https` needs the validator patch too (source: 08 08-15 review) - dropped in B2: the real Hetzner API rejects health-check protocol `https` ("Not a valid choice", probed 2026-11-20), so `http` with `tls: true` stays
+- [x] bug: test/e2e: RDNS-02 posts `change_dns_ptr` on the shared server while parallel rows run actions on it, so a full `task e2e` can fail with `423 locked` (seen at the phase 10 close; passed 3 of 3 alone), and a developer gets a red run without a product fault (source: 10 close) - fixed in B2-03: RDNS-02 and SRV-10 retry on `locked`; 6 of 6 green with -count=3
+
 ## Phase 10
 
 - [x] bug: cloud/mgmt: a client following `GET /mgmt/v1/logs?follow=1` (`hlab logs --follow`, later the tray's log view) keeps `mgmtSrv.Shutdown` waiting for its 10 s timeout (internal/cloud/cloud.go:614-623, internal/mgmt/mgmt.go:469), so every cloud stop with an open follower takes 10 s longer, also out of the preshutdown budget at a Windows shutdown (source: 09 verifier) - fixed in phase 10 plan 10-07: followers end through mgmt.Deps.Done, closed before the management server shuts down

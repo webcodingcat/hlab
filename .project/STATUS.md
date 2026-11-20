@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: B2 Backlog: VLAN release at project deletion, LB health check, docs and e2e test fixes (in progress, branch wcc/phase-b2)
+- Phase: 11 Tray console for all resources (not started)
 - Base branch: main
-- Last done: phase 10 merged into main (2026-11-20): tray program with HLab shell, cloud start/stop, settings, server types (add, edit, remove), projects with tokens, logs with search; UI-08 checked
-- Next: /wcc:phase for B2 in a new session; DOC-07 (01) waits until the repository is on GitHub
+- Last done: phase B2 merged into main (2026-11-20): networks deleted last at project deletion, DOC-03 checks every registered route, e2e harness stops the dev service in every holding state, RDNS-02 and SRV-10 retry on `locked`; LB `https` health-check item dropped (the real API rejects it)
+- Next: /wcc:phase for 11 in a new session; DOC-07 (01) waits until the repository is on GitHub
 
 ## Open manual checks
 

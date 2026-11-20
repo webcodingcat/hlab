@@ -33,7 +33,7 @@
 
 - [x] 10 Tray program: shell, status, settings, server types, projects, logs (UI-01, UI-03, UI-04, UI-05, UI-06, UI-07, UI-08) → phases/10/
 
-- [ ] B2 Backlog: VLAN release at project deletion, LB health check, docs and e2e test fixes → phases/B2/
+- [x] B2 Backlog: VLAN release at project deletion, LB health check, docs and e2e test fixes → phases/B2/
 
 - [ ] 11 Tray console for all resources.
       Requirements: UI-02, UI-09.
