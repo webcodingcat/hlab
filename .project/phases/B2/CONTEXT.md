@@ -1,0 +1,11 @@
+# Phase B2: context
+
+Confirmed with the user at the start of the phase (2026-11-20).
+
+- Plans by component: 01 project deletion order (internal/mgmt), 02 DOC-03 route check, 03 e2e harness fixes, 04 Documentation.
+- VLAN at project deletion: `mgmt.purge` keeps the sorted kind order but always deletes `networks` last; unit row under PROJ-04 with fake deleters recording their call order.
+- LB health-check `https` item is closed without a code change: the real Hetzner API rejects `health_check.protocol: https` ("Not a valid choice", probed with hcloud 1.70.2 against a throwaway lb11 on 2026-11-20), and its OpenAPI description knows only tcp and http in requests and responses. `http` with `tls: true` stays; Terraform 1.70.2 and Ansible 7.2.0 allow `https` but the real API refuses it, so no client relies on it.
+- DOC-03: new `cloud.APIRoutes()` collects every registered route; the test requires each in docs/development/api-coverage.md (the wildcard `GET /zones/{id}/{sub}` mapped by an explicit alias in the test); `api.Deviations()` completed with the phase 05 to 08 deviations; the DOC-03 plan writes out the abbreviated LB action routes in api-coverage.md.
+- `stopRunningCloud`: by the state `hlab cloud status` reports: `running` stops the service and waits for `stopped`; `starting` waits with a deadline, then acts on the new state; `stopping` waits for `stopped`; `stopped` and `refused` need no action. The user asked to stop in `refused`; the planner checked the code: the service process exits on a refused start (`handler.Execute` returns before Running) and the CLI shows `refused` only for a stopped service, so there is nothing to stop. Proof under Close: one `task e2e` run started with the dev service in `starting`, one after a refused start.
+- RDNS-02: row and cleanup use the existing `postAction`/`runLockedAction` helpers (retry on `locked` like the real API); what the row checks stays the same. Proof under Close: RDNS-02 together with the parallel rows that run actions on the shared server, `-count 3` on that filter, all green; a full run alone is not enough.
+- Documentation: docs/development/api-coverage.md (DOC-03 now checks the registered routes); docs/development/build-and-test.md only if it describes the harness's stop-before-build behaviour.

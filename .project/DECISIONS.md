@@ -2608,3 +2608,43 @@ in ARCHITECTURE.md or the plan.
 - What: adding Wails v3.1.0 raises the indirect `klauspost/compress` from v1.18.5 to v1.18.7.
 - Why: required by Wails; no pinned module of SPEC.md changes.
 - Cost of change: low
+
+## 2026-11-20 Load balancer health check https stays http with tls
+
+- Type: decision
+- Phase: phase B2
+- What: the backlog item to return health-check protocol `https` is dropped; `https` is still stored as `http` with `tls: true`.
+- Why: the real Hetzner API rejects `health_check.protocol: https` ("Not a valid choice", probed with hcloud 1.70.2 on 2026-11-20) and its OpenAPI description knows only tcp and http.
+- Cost of change: low
+
+## 2026-11-20 Project deletion deletes networks last
+
+- Type: decision
+- Phase: phase B2
+- What: `mgmt.purge` keeps the sorted kind order but moves the kind `networks` to the end through a string constant, without importing the networks package.
+- Why: the network's VLAN must stay taken until no VM or load balancer of the project is left.
+- Cost of change: low
+
+## 2026-11-20 Registered routes for DOC-03
+
+- Type: decision
+- Phase: phase B2
+- What: `cloud.APIRoutes()` builds the modules through `Cloud.modules` with zero values and records every registered route; the DOC-03 test requires each in docs/development/api-coverage.md, the wildcard `GET /zones/{id}/{sub}` through an explicit alias.
+- Why: a hand-kept list let new endpoints pass without their documentation.
+- Cost of change: low
+
+## 2026-11-20 e2e harness stops the dev service by its state
+
+- Type: decision
+- Phase: phase B2
+- What: `stopRunningCloud` stops `running`, waits through `starting` and `stopping`, and does nothing for `stopped` and `refused`.
+- Why: in `refused` the service process has already exited (`handler.Execute` returns before Running, `hlab cloud status` shows `refused` only for a stopped service), so `bin\hlabd.exe` is free; the user's wish to stop it there was checked against the code.
+- Cost of change: low
+
+## 2026-11-20 e2e actions on the shared server retry on locked
+
+- Type: decision
+- Phase: phase B2
+- What: RDNS-02 and SRV-10, the two parallel rows that post actions on the shared server, retry on `locked` through `postAction` and a new `postActionInto`.
+- Why: the real API also answers `423 locked` while another action runs; clients retry.
+- Cost of change: low

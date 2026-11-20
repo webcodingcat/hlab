@@ -7,7 +7,7 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: B2 Backlog: VLAN release at project deletion, LB health check, docs and e2e test fixes (not started)
+- Phase: B2 Backlog: VLAN release at project deletion, LB health check, docs and e2e test fixes (in progress, branch wcc/phase-b2)
 - Base branch: main
 - Last done: phase 10 merged into main (2026-11-20): tray program with HLab shell, cloud start/stop, settings, server types (add, edit, remove), projects with tokens, logs with search; UI-08 checked
 - Next: /wcc:phase for B2 in a new session; DOC-07 (01) waits until the repository is on GitHub
