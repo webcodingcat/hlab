@@ -205,22 +205,22 @@ Svelte building blocks (props):
   - [x] ui/frontend/src/views/servers/Servers.svelte: list (Name, Status pill, Public IPv4, Type, Location, Labels, Created; refresh every 5 s and after every action); row menu with the menu entries that need no input (Power on, Shutdown, Reboot, Reset, Power off, Delete) with their confirmations; switching to create and detail by the route.
   - [x] views/servers/ServerCreate.svelte in the UI-SPEC order: Location, Image (system images, own snapshots and backups), Type (only types available in the chosen location, ARM left out), Networking (public IPv4 and IPv6 switches, optional primary IPs, private networks), SSH keys, Volumes, Firewalls, Backups, Placement group, Labels, Cloud config, Name (default `<type>-<location>-<n>`); submit through `runApi`, the `root_password` in SecretDialog, then the new server's detail page.
 
-- [ ] 11-08 Server detail page and actions menu
+- [x] 11-08 Server detail page and actions menu
   - Wave: 4 | Depends on: 11-07 | Review: alone
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/e2e/servers.spec.ts (through test/e2e/ui_test.go TestE2E/UI-02)
   - Reads: UI-SPEC "Building blocks" (Detail page, Confirm dialog), "Behaviour"; CONTEXT "Corrections"; OpenAPI `server` schema and `/server_types`, `/images`, `/placement_groups` in the reference
   - Size: ~380 lines in 3 files
-  - [ ] ui/frontend/src/views/servers/ServerDetail.svelte: DetailPage with status pill, tabs Overview, Networking, Firewalls, Volumes, Backups, Snapshots, Rescue, ISO, Graphs, Labels, Protection (tabs not built yet stay out of the list until their plan adds them); Overview (status, type, location, image, public IPv4 and IPv6 in CopyFields, private IPs, placement group, created); Labels and Protection (delete, rebuild) through the shared tabs; refresh every 5 s.
-  - [ ] views/servers/ServerActions.svelte: ActionsMenu from `menuActions`; dialogs for Rebuild (image), Change type (type, "Upgrade disk", saying that a disk upgrade cannot be undone), Rename, Add to placement group; ConfirmDialog by `confirm` (typed name only for Delete); SecretDialog for `password`; Console disabled with its hint; after Delete back to the list.
-  - [ ] servers.ts in views/servers: the server types, images and status tone mapping shared by list, form and detail.
+  - [x] ui/frontend/src/views/servers/ServerDetail.svelte: DetailPage with status pill, tabs Overview, Networking, Firewalls, Volumes, Backups, Snapshots, Rescue, ISO, Graphs, Labels, Protection (tabs not built yet stay out of the list until their plan adds them); Overview (status, type, location, image, public IPv4 and IPv6 in CopyFields, private IPs, placement group, created); Labels and Protection (delete, rebuild) through the shared tabs; refresh every 5 s.
+  - [x] views/servers/ServerActions.svelte: ActionsMenu from `menuActions`; dialogs for Rebuild (image), Change type (type, "Upgrade disk", saying that a disk upgrade cannot be undone), Rename, Add to placement group; ConfirmDialog by `confirm` (typed name only for Delete); SecretDialog for `password`; Console disabled with its hint; after Delete back to the list.
+  - [x] servers.ts in views/servers: the server types, images and status tone mapping shared by list, form and detail.
 
-- [ ] 11-09 Server tabs: Networking, Firewalls, Volumes
+- [x] 11-09 Server tabs: Networking, Firewalls, Volumes
   - Wave: 5 | Depends on: 11-08 | Review: alone
   - Requirements: UI-02 | Tests: - (requests proven by serverActions.test.ts)
   - Reads: OpenAPI `server.public_net`, `private_net`, `/networks`, `/firewalls`, `/volumes` in the reference; REQUIREMENTS RDNS-01, NET-01, FW-01, VOL-05; docs/development/api-coverage.md "Networks", "Firewalls", "Volumes"
   - Size: ~380 lines in 4 files
-  - [ ] views/servers/tabs/Networking.svelte: public IPs with their reverse DNS (edit, reset to default), private networks with attach (network, optional IP, alias IPs), change alias IPs and detach (plain confirmation).
-  - [ ] views/servers/tabs/Firewalls.svelte (applied firewalls, apply one, remove one), views/servers/tabs/Volumes.svelte (attached volumes, attach a volume of the same location with automount, detach); ServerDetail.svelte adds the three tabs.
+  - [x] views/servers/tabs/Networking.svelte: public IPs with their reverse DNS (edit, reset to default), private networks with attach (network, optional IP, alias IPs), change alias IPs and detach (plain confirmation).
+  - [x] views/servers/tabs/Firewalls.svelte (applied firewalls, apply one, remove one), views/servers/tabs/Volumes.svelte (attached volumes, attach a volume of the same location with automount, detach); ServerDetail.svelte adds the three tabs.
 
 - [ ] 11-10 Server tabs: Backups, Snapshots, Rescue, ISO
   - Wave: 6 | Depends on: 11-09 | Review: alone

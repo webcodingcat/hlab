@@ -2758,3 +2758,19 @@ in ARCHITECTURE.md or the plan.
 - What: the server create form opens the root password dialog as soon as `POST /servers` answers while the toast follows the create and start actions; "Backups" sends `enable_backup` after they succeed; only x86 images and types are offered.
 - Why: a first boot may download an image for minutes, `POST /servers` has no backups field, and ARM types are left out.
 - Cost of change: low
+
+## 2026-11-20 Server dialogs close before the action ends
+
+- Type: decision
+- Phase: phase 11
+- What: confirmation and input dialogs of server actions close at once and the action runs on under its progress toast.
+- Why: the toast already shows progress and the outcome, and a long action would otherwise block the page.
+- Cost of change: low
+
+## 2026-11-20 Firewalls applied by label selector cannot be removed from the server tab
+
+- Type: decision
+- Phase: phase 11
+- What: the Firewalls tab lists a firewall applied only through a label selector as "Through a label selector" without Remove; `runAction` also waits for an `actions` array.
+- Why: `remove_from_resources` for the server answers `firewall_resource_not_found` there, and `apply_to_resources` answers with `actions`.
+- Cost of change: low
