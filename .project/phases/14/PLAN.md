@@ -14,7 +14,7 @@ export type Confirm = "none" | "plain" | "typed-name";
 export type ResourceAction = {
   id: string;                         // "resize", "assign", "add_subnet", "create", ...
   label: string;                      // menu or button label
-  method: "POST" | "PUT" | "DELETE";
+  method: "GET" | "POST" | "PUT" | "DELETE"; // GET only for the zone file export
   path: (id: number, input: Input) => string; // id is the resource's ID (ignored by create)
   body?: (input: Input, id: number) => unknown;
   confirm: Confirm;
@@ -100,6 +100,13 @@ UI texts the e2e specs rely on: sidebar titles "Volumes", "Load Balancers",
 "IP range", "Domain", "Domain names", "Protocol", "Type"; the detail tab
 "Labels" with "Add label" and "Save labels" (LabelsTab); delete through the
 row menu "Delete" and the dialog button "Delete".
+Also: form submit buttons named "Create <resource>" (certificates "Add
+certificate", DNS "Add zone", the same name as the opening button); the
+firewall rules editor has an "Add inbound rule" button, per row a "Protocol"
+select with option value `tcp`, fields "Port" and "Source IPs", inbound
+first; the certificate "Type" select has an option value `managed`; the
+floating and primary IP "Protocol" control has an "IPv4" entry; the ISOs list
+shows all ISOs on one page (no paging).
 
 ## Plans
 
@@ -222,7 +229,7 @@ row menu "Delete" and the dialog button "Delete".
   - Requirements: UI-02, UI-07 | Tests: ui/frontend/tests/unit/primaryIps.test.ts, ui/frontend/tests/e2e/primaryips.spec.ts (through TestE2E/UI-02)
   - Reads: CONTEXT "Corrections" (IPs); phases/11/RESEARCH.md "Primary IP"; REQUIREMENTS PIP-01, RDNS-01; OpenAPI `/primary_ips` and actions in the reference; docs/development/api-coverage.md "Primary IPs"
   - Size: ~420 lines in 6 files
-  - [ ] ui/frontend/src/lib/resources/primaryIps.ts: `create` (name, type, location, `assignee_type` server with optional `assignee_id`, `auto_delete`, labels; no datacenter), `menu` (Assign, Unassign plain, Reverse DNS, Change protection, Delete plain), `tabs` auto_delete through PUT; tests/unit/primaryIps.test.ts.
+  - [ ] ui/frontend/src/lib/resources/primaryIps.ts: `create` (name, type, location, without a server `location`, with a server `assignee_type: "server"` and `assignee_id` and no `location`, `auto_delete`, labels; no datacenter), `menu` (Assign, Unassign plain, Reverse DNS, Change protection, Delete plain), `tabs` auto_delete through PUT; tests/unit/primaryIps.test.ts.
   - [ ] views/primary-ips/Section.svelte (list: Name, IP, Protocol, Location, Assignee, Auto delete, Labels, Created), PrimaryIpCreate.svelte (Name, Location, Protocol, Server, Auto delete, Labels), PrimaryIpDetail.svelte (Overview with auto_delete switch, assignee, reverse DNS; Labels; Protection; Assign dialog offering servers of the location that are off); help/primary-ips.md.
   - [ ] tests/e2e/primaryips.spec.ts.
 
