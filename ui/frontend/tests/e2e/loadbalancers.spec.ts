@@ -29,6 +29,14 @@ test("UI-02 load balancers", async ({ page, shared }) => {
   const [created] = await named<LoadBalancer>(token, "/load_balancers", "load_balancers", name);
   expect(created.location.name).toBe(location);
   expect(created.load_balancer_type.name).toBe(type);
+  // Its create action locks it until it ends (API-13); Delete waits for that.
+  await expect
+    .poll(
+      async () =>
+        ((await api(token, `/load_balancers/${created.id}/actions?status=running`)).body as { actions: unknown[] }).actions.length,
+      { timeout: 2 * 60_000 },
+    )
+    .toBe(0);
   await section(page, "Load Balancers");
 
   // A label added in its Labels tab is in the API.
