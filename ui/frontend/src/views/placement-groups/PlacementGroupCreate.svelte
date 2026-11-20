@@ -9,8 +9,8 @@
   import { request } from "../../lib/resourceActions";
   import { create } from "../../lib/resources/placementGroups";
 
-  // The create form of a placement group: the name, the type spread (the
-  // only one, shown fixed) and labels. The list opens as soon as the API
+  // The create form of a placement group: the name, the type (a select with
+  // spread, the only one) and labels. The list opens as soon as the API
   // answers.
   let { project, list }: { project: string; list: string } = $props();
 
@@ -61,14 +61,17 @@
   </Field>
   <Field label="Type" error={errors.fields.type} hint="Spread: each server of the group runs on its own host (in HLab, the group only records its servers).">
     {#snippet children(c)}
-      <input id={c.id} aria-describedby={c.describedby} value="spread" readonly />
+      <select id={c.id} aria-describedby={c.describedby} aria-invalid={c.invalid}>
+        <option value="spread" selected>spread</option>
+      </select>
     {/snippet}
   </Field>
   <LabelsField bind:rows={labelRows} error={errors.fields.labels} />
 </FormPage>
 
 <style>
-  input {
+  input,
+  select {
     width: 100%;
   }
 </style>
