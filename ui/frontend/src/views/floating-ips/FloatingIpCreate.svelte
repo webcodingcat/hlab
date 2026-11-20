@@ -4,6 +4,7 @@
   import LabelsField from "../../lib/LabelsField.svelte";
   import { runAction, type Action, type ActionResult } from "../../lib/actions";
   import { api, listAll } from "../../lib/api";
+  import { actionTitle, resourceType } from "../../lib/format";
   import { formErrors, type FormErrors } from "../../lib/formErrors";
   import { toLabels, type LabelRow } from "../../lib/labels";
   import { request, type Input } from "../../lib/resourceActions";
@@ -62,7 +63,7 @@
     const req = request(create, 0, input)!;
     busy = true;
     await runAction(
-      `Create floating IP ${fipName}`.trim(),
+      actionTitle(resourceType(req.path), fipName, "Create"),
       async () => {
         try {
           const res = await api<ActionResult>(project, req.method, req.path, req.body);

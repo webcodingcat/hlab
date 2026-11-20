@@ -45,7 +45,7 @@
   import ConfirmDialog from "../../lib/ConfirmDialog.svelte";
   import HelpButton from "../../lib/HelpButton.svelte";
   import Table, { type Column } from "../../lib/Table.svelte";
-  import { listAll, runApi } from "../../lib/api";
+  import { listAll, runOn } from "../../lib/api";
   import { createdText, labelText, protocolText } from "../../lib/format";
   import { request, type ResourceAction } from "../../lib/resourceActions";
   import { tabs } from "../../lib/resources/primaryIps";
@@ -117,7 +117,7 @@
     const { pip, action } = pending;
     const req = request(action, pip.id)!;
     // Not awaited: the dialog closes at once, the toast follows the request.
-    runApi(project, `${action.label} ${pip.name}`, req.method, req.path, req.body).then(load);
+    runOn(project, pip.name, action.label, req).then(load);
   }
 
   function unassignHint(p: PrimaryIp): string | undefined {

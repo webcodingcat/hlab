@@ -2,7 +2,7 @@
   import Button from "../../../lib/Button.svelte";
   import ConfirmDialog from "../../../lib/ConfirmDialog.svelte";
   import Dialog from "../../../lib/Dialog.svelte";
-  import { listAll, runApi } from "../../../lib/api";
+  import { listAll, runOn } from "../../../lib/api";
   import { request, type Input, type ResourceAction } from "../../../lib/resourceActions";
   import { tabs } from "../../../lib/resources/loadBalancers";
   import { showError } from "../../../lib/toast";
@@ -34,7 +34,7 @@
 
   async function run(a: ResourceAction, input: Input) {
     const req = request(a, lb.id, input)!;
-    const res = await runApi(project, `${a.label} ${lb.name}`, req.method, req.path, req.body);
+    const res = await runOn(project, lb.name, a.label, req);
     if (res !== undefined) onchanged();
   }
 

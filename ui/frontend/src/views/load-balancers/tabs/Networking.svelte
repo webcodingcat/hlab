@@ -3,7 +3,7 @@
   import ConfirmDialog from "../../../lib/ConfirmDialog.svelte";
   import Dialog from "../../../lib/Dialog.svelte";
   import Field from "../../../lib/Field.svelte";
-  import { runApi } from "../../../lib/api";
+  import { runOn } from "../../../lib/api";
   import { request, type Input, type ResourceAction } from "../../../lib/resourceActions";
   import { tabs } from "../../../lib/resources/loadBalancers";
   import { href } from "../../../state";
@@ -31,7 +31,7 @@
 
   async function run(a: ResourceAction, input: Input) {
     const req = request(a, lb.id, input)!;
-    const res = await runApi(project, `${a.label} ${lb.name}`, req.method, req.path, req.body);
+    const res = await runOn(project, lb.name, a.label, req);
     if (res !== undefined) onchanged();
   }
 
