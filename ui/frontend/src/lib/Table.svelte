@@ -5,12 +5,14 @@
     value: (row: T) => string | number;
     sortable?: boolean;
   };
-  export type RowAction = { label: string; onclick: () => void };
+  // A disabled action shows its hint and never runs.
+  export type RowAction = { label: string; onclick: () => void; disabled?: boolean; hint?: string };
 </script>
 
 <script lang="ts" generics="T">
   import type { Snippet } from "svelte";
-  import { ArrowDown, ArrowUp, Ellipsis } from "@lucide/svelte";
+  import { ArrowDown, ArrowUp } from "@lucide/svelte";
+  import ActionsMenu from "./ActionsMenu.svelte";
   import Button from "./Button.svelte";
 
   // Resource table: rows undefined shows skeleton rows (loading). The search
@@ -38,7 +40,6 @@
   let query = $state("");
   let sortKey = $state<string | undefined>();
   let ascending = $state(true);
-  let menuFor = $state<string | number | undefined>();
 
   function matches(row: T, q: string): boolean {
     if (!q.includes("=")) return name(row).toLowerCase().includes(q.toLowerCase());
@@ -72,13 +73,12 @@
     sortKey = k;
   }
 
-  function toggleMenu(e: MouseEvent, k: string | number) {
-    e.stopPropagation();
-    menuFor = menuFor === k ? undefined : k;
+  // A click inside the row menu does not open the row.
+  function rowClick(e: MouseEvent, row: T) {
+    if ((e.target as Element).closest(".menu")) return;
+    onrowclick?.(row);
   }
 </script>
-
-<svelte:window onclick={() => (menuFor = undefined)} onkeydown={(e) => e.key === "Escape" && (menuFor = undefined)} />
 
 <section class="resource">
   <header>
@@ -128,7 +128,7 @@
             <tr
               class:clickable={!!onrowclick}
               tabindex={onrowclick ? 0 : undefined}
-              onclick={() => onrowclick?.(row)}
+              onclick={(e) => rowClick(e, row)}
               onkeydown={(e) => e.key === "Enter" && e.target === e.currentTarget && onrowclick?.(row)}
             >
               {#each columns as c (c.key)}
@@ -136,21 +136,7 @@
               {/each}
               {#if actions}
                 <td class="menu">
-                  {#if actions(row).length > 0}
-                  <Button variant="icon" label="Actions" aria-haspopup="menu" aria-expanded={menuFor === key(row)}
-                    onclick={(e) => toggleMenu(e, key(row))}><Ellipsis size={16} aria-hidden="true" /></Button>
-                  {#if menuFor === key(row)}
-                    <ul role="menu">
-                      {#each actions(row) as a (a.label)}
-                        <li role="none">
-                          <button role="menuitem" onclick={(e) => { e.stopPropagation(); menuFor = undefined; a.onclick(); }}>
-                            {a.label}
-                          </button>
-                        </li>
-                      {/each}
-                    </ul>
-                  {/if}
-                  {/if}
+                  {#if actions(row).length > 0}<ActionsMenu items={actions(row)} />{/if}
                 </td>
               {/if}
             </tr>
@@ -217,35 +203,6 @@
   .menu {
     position: relative;
     width: 48px;
-  }
-  ul {
-    position: absolute;
-    right: var(--s3);
-    top: 100%;
-    z-index: 10;
-    min-width: 160px;
-    margin: 0;
-    padding: var(--s1) 0;
-    list-style: none;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
-  }
-  [role="menuitem"] {
-    display: block;
-    width: 100%;
-    padding: var(--s2) var(--s3);
-    border: 0;
-    background: none;
-    color: var(--text);
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-  }
-  [role="menuitem"]:hover,
-  [role="menuitem"]:focus-visible {
-    background: var(--bg);
   }
   .empty {
     padding: var(--s8);
