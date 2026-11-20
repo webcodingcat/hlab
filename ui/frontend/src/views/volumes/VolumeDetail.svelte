@@ -109,7 +109,7 @@
     {#if current === "labels"}
       <LabelsTab {project} {path} labels={v.labels} onsaved={load} />
     {:else if current === "protection"}
-      <ProtectionTab {project} {path} flags={[{ key: "delete", label: "Protect against deletion", value: v.protection.delete }]} onchanged={load} />
+      <ProtectionTab {project} {path} name={v.name} flags={[{ key: "delete", label: "Protect against deletion", value: v.protection.delete }]} onchanged={load} />
     {:else}
       <dl>
         <dt>Size</dt>

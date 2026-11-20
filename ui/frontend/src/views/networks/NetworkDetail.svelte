@@ -275,7 +275,7 @@
     {:else if current === "labels"}
       <LabelsTab {project} {path} labels={n.labels} onsaved={load} />
     {:else if current === "protection"}
-      <ProtectionTab {project} {path} flags={[{ key: "delete", label: "Protect against deletion", value: n.protection.delete }]} onchanged={load} />
+      <ProtectionTab {project} {path} name={n.name} flags={[{ key: "delete", label: "Protect against deletion", value: n.protection.delete }]} onchanged={load} />
     {:else}
       <dl>
         <dt>IP range</dt>

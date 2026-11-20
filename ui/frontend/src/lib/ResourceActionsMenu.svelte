@@ -3,14 +3,14 @@
   import ActionsMenu from "./ActionsMenu.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import Dialog from "./Dialog.svelte";
-  import { runApi } from "./api";
+  import { runOn } from "./api";
   import { request, type Input, type ResourceAction } from "./resourceActions";
 
   // The actions menu of a resource's detail page or list row, built from
   // ResourceAction entries. An entry with input opens a dialog with the
   // input snippet first (it gets the entry, submit and cancel); then a
   // confirmation by the entry's confirm (typed-name asks for name); then
-  // the request runs under the toast "<label> <name>". Every dialog closes
+  // the request runs under the toast "<Type> <name>: <label>". Every dialog closes
   // at once; ondone follows when the request and its actions succeeded.
   // An entry for which onselect returns true is left to the page (for
   // example Reverse DNS with its own dialog).
@@ -34,7 +34,7 @@
   async function run(a: ResourceAction, i: Input) {
     const req = request(a, id, i);
     if (!req) return;
-    const res = await runApi(project, `${a.label} ${name}`, req.method, req.path, req.body);
+    const res = await runOn(project, name, a.label, req);
     if (res !== undefined) ondone(a);
   }
 
