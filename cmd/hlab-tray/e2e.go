@@ -32,10 +32,11 @@ func init() {
 // TrayTest shows the tests what the tray shows and clicks its menu.
 type TrayTest struct{}
 
-// State is the icon key, tooltip, status line and enabled Start and Stop
-// items of the tray.
+// State is the icon key, tooltip, status line and the cloud item's label
+// and action of the tray.
 func (*TrayTest) State() bridge.TrayModel { return tray.state() }
 
-// Click runs the menu item with the label item ("Start cloud", "Stop
-// cloud", "Open hlab", "Quit") as a click in the menu would.
+// Click runs the menu item with the label item as a click in the menu
+// would: "Open HLab", "Quit" or the cloud item's current label ("Start
+// cloud", "Stop cloud"); a label the menu does not show is an error.
 func (*TrayTest) Click(item string) error { return tray.click(item) }

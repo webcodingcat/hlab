@@ -85,7 +85,7 @@
     const on = !form.certificates.trust_ca;
     switching = true;
     try {
-      const res = await action(on ? "Trust the hlab CA" : "Stop trusting the hlab CA", () =>
+      const res = await action(on ? "Trust the HLab CA" : "Stop trusting the HLab CA", () =>
         mgmt<{ on: boolean }>("PUT", "/trust", { on }),
       );
       if (res) form.certificates.trust_ca = res.on;
@@ -225,12 +225,12 @@
         onclick={toggleTrust}
       >
         <span class="knob" aria-hidden="true"></span>
-        <span>Trust the hlab CA</span>
+        <span>Trust the HLab CA</span>
       </button>
     </div>
     <p id="trust-risk" class="small muted">
-      Adds the hlab CA certificate to the Windows trust store and to the WSL2 distros; switching off removes it. The CA
-      cannot be limited to hlab's domains: if its key were stolen while trust is on, it could be used to forge TLS
+      Adds the HLab CA certificate to the Windows trust store and to the WSL2 distros; switching off removes it. The CA
+      cannot be limited to HLab's domains: if its key were stolen while trust is on, it could be used to forge TLS
       certificates for any domain. Keep it off unless you need it.
     </p>
     <Button onclick={saveCA} disabled={!$running}>Save CA certificate</Button>
