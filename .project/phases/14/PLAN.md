@@ -507,13 +507,13 @@ button "Browse…", row menu "Edit" and "Remove".
   - [x] internal/cloud/reload_test.go: the CAT-10 subtests.
 
   - Note (from 14-25): `catalog.ISOSourceByCacheName` maps only URL and Format; map `OwnSource.Path` and `SHA256` into `images.Source` here.
-- [ ] 14-33 Tray bridge for own ISOs and the file dialog
+- [x] 14-33 Tray bridge for own ISOs and the file dialog
   - Wave: 2 | Depends on: 14-25 | Review: alone
   - Requirements: UI-10 | Tests: - (UI-10 e2e of 14-41; the file logic is tested in 14-25)
   - Reads: RESEARCH.md "1."; ARCHITECTURE "hlab-tray (tray program)"; PLAN "Interfaces" (bridge, Files); internal/bridge/service.go (ServerTypes, AddServerType, reload); cmd/hlab-tray/main.go (service registration)
   - Size: ~200 lines in 3 files
-  - [ ] internal/bridge/service.go: `ISOs`, `AddISO`, `UpdateISO`, `RemoveISO` over the catalog functions and `OwnISOsFile`, working while the cloud is stopped, then `reload()`; field errors as `Invalid`; `ISOList.Problem` from `OwnISOsWarnings`.
-  - [ ] cmd/hlab-tray: a `Files` Wails service with `PickISOFile` (`app.Dialog.OpenFile().SetTitle("Select ISO").AddFilter("ISO images", "*.iso").CanChooseFiles(true).AttachToWindow(win).PromptForSingleSelection()`), registered beside the bridge services.
+  - [x] internal/bridge/service.go: `ISOs`, `AddISO`, `UpdateISO`, `RemoveISO` over the catalog functions and `OwnISOsFile`, working while the cloud is stopped, then `reload()`; field errors as `Invalid`; `ISOList.Problem` from `OwnISOsWarnings`.
+  - [x] cmd/hlab-tray: a `Files` Wails service with `PickISOFile` (`app.Dialog.OpenFile().SetTitle("Select ISO").AddFilter("ISO images", "*.iso").CanChooseFiles(true).AttachToWindow(win).PromptForSingleSelection()`), registered beside the bridge services.
 
   - Note (from 14-31 review): catalog ISO IDs reach 130005, inside the own range from 100000; AddOwnISO/the bridge must pick an ID above every catalog and own ISO ID, never just the next own one.
 - [ ] 14-34 Snapshots and Backups views
