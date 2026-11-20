@@ -4,6 +4,7 @@
   import LabelsField from "../../lib/LabelsField.svelte";
   import { runAction, type Action, type ActionResult } from "../../lib/actions";
   import { api } from "../../lib/api";
+  import { actionTitle, resourceType } from "../../lib/format";
   import { formErrors, type FormErrors } from "../../lib/formErrors";
   import { toLabels, type LabelRow } from "../../lib/labels";
   import { request } from "../../lib/resourceActions";
@@ -47,7 +48,7 @@
     })!;
     busy = true;
     await runAction(
-      `Create firewall ${firewallName}`,
+      actionTitle(resourceType(req.path), firewallName, "Create"),
       async () => {
         try {
           const res = await api<ActionResult>(project, req.method, req.path, req.body);

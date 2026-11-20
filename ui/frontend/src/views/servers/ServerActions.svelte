@@ -6,7 +6,7 @@
   import Field from "../../lib/Field.svelte";
   import SecretDialog from "../../lib/SecretDialog.svelte";
   import type { ActionResult } from "../../lib/actions";
-  import { listAll, runApi } from "../../lib/api";
+  import { listAll, runOn } from "../../lib/api";
   import { menuActions, request, type Input, type ServerAction } from "../../lib/serverActions";
   import { showError } from "../../lib/toast";
   import {
@@ -62,7 +62,7 @@
   async function run(a: ServerAction, input: Input) {
     const req = request(a, server.id, input);
     if (!req) return;
-    const res = await runApi<Answer>(project, `${a.label} ${server.name}`, req.method, req.path, req.body);
+    const res = await runOn<Answer>(project, server.name, a.label, req);
     if (res === undefined) return;
     if (a.id === "delete") {
       location.hash = list;

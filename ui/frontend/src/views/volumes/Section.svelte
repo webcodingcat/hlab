@@ -19,7 +19,7 @@
   import ConfirmDialog from "../../lib/ConfirmDialog.svelte";
   import HelpButton from "../../lib/HelpButton.svelte";
   import Table, { type Column } from "../../lib/Table.svelte";
-  import { listAll, runApi } from "../../lib/api";
+  import { listAll, runOn } from "../../lib/api";
   import { createdText, labelText } from "../../lib/format";
   import { request, type ResourceAction } from "../../lib/resourceActions";
   import { tabs } from "../../lib/resources/volumes";
@@ -92,7 +92,7 @@
     const req = request(action, volume.id);
     if (!req) return;
     // Not awaited: the dialog closes at once, the toast follows the request.
-    runApi(project, `${action.label} ${volume.name}`, req.method, req.path, req.body).then(load);
+    runOn(project, volume.name, action.label, req).then(load);
   }
 </script>
 
