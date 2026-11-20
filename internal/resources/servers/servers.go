@@ -210,7 +210,8 @@ type Internal struct {
 	// AutomountVolumes were attached at create with automount.
 	AutomountVolumes []int64 `json:"automount_volumes,omitempty"`
 	Rescue           *Rescue `json:"rescue,omitempty"`
-	// ISO is the name of the attached catalog ISO.
+	// ISO is the cache name of the attached ISO (a catalog ISO's name or
+	// an own ISO's `_hlab.name`).
 	ISO            string `json:"iso,omitempty"`
 	BackupsEnabled bool   `json:"backups_enabled,omitempty"`
 	// InstanceID is the NoCloud instance-id of the seed, set by each

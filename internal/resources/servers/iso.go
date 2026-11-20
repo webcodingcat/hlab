@@ -11,7 +11,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
-// isoSlot is the DVD slot of an attached catalog ISO; slot 0 holds the seed.
+// isoSlot is the DVD slot of an attached ISO; slot 0 holds the seed.
 const isoSlot = 1
 
 // bootOrder is the boot order of a server: the rescue disk first while
@@ -30,9 +30,10 @@ func bootOrder(rescue, iso bool) []platform.BootDevice {
 // rescueOn reports whether rescue is enabled on rec.
 func rescueOn(rec Record) bool { return rec.Hlab.Rescue != nil && rec.Hlab.Rescue.Enabled }
 
-// attachISO inserts a catalog ISO, by name or ID, into DVD slot 1 and boots
-// it before the server's disk; an attached ISO is replaced. The ISO is
-// downloaded inside the action.
+// attachISO inserts an ISO into DVD slot 1 and boots it before the
+// server's disk; an attached ISO is replaced. A catalog ISO is taken by name
+// or ID, an own ISO by ID only. The ISO is fetched into the cache inside the
+// action, under its cache name.
 func (m *Module) attachISO(w http.ResponseWriter, req *http.Request) {
 	id, ok := api.PathID(w, req)
 	if !ok {
@@ -51,11 +52,11 @@ func (m *Module) attachISO(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	m.isoAction(w, req, id, "attach_iso", func(ctx context.Context, stor *store.Store) error {
-		path, err := m.d.Images.EnsureISO(ctx, iso.Name)
+		path, err := m.d.Images.EnsureISO(ctx, iso.CacheName)
 		if err != nil {
 			return err
 		}
-		return m.setISO(ctx, stor, id, path, iso.Name, iso.Raw)
+		return m.setISO(ctx, stor, id, path, iso.CacheName, iso.Raw)
 	})
 }
 
@@ -101,7 +102,7 @@ func (m *Module) isoAction(w http.ResponseWriter, req *http.Request, id int64, c
 }
 
 // setISO puts the ISO file path ("" ejects) into DVD slot 1 of server id,
-// sets the boot order to match and records the ISO's name and object.
+// sets the boot order to match and records the ISO's cache name and object.
 func (m *Module) setISO(ctx context.Context, stor *store.Store, id int64, path, name string, object json.RawMessage) error {
 	rec, err := m.load(stor, id)
 	if err != nil {
