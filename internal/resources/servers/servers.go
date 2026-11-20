@@ -897,7 +897,7 @@ func (m *Module) resolve(b createRequest) (catalog.ServerType, catalog.Location,
 		return none, catalog.Location{}, &api.FieldError{Field: "server_type", Message: "server type " + refString(b.ServerType) + " not found"}
 	}
 	if typ.Architecture == "arm" {
-		return none, catalog.Location{}, &api.FieldError{Code: "resource_unavailable", Message: "server type " + typ.Name + " is an arm type; hlab runs only x86 servers"}
+		return none, catalog.Location{}, &api.FieldError{Code: "resource_unavailable", Message: "server type " + typ.Name + " is an arm type; HLab runs only x86 servers"}
 	}
 	ref := refString(b.Location)
 	if ref == "" && len(typ.Locations) > 0 {
