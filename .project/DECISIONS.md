@@ -2670,3 +2670,131 @@ in ARCHITECTURE.md or the plan.
 - Type: change
 - What: phase 11 builds the shared console frame with Servers and SSH Keys and stops for a manual check; the new phase 14 builds the remaining resource sections and UI-09, UI-02 is done only after both, and phase 13 depends on 14 instead of 11.
 - Why: the user wants to check the look and operation of the frame before the other sections are built on the same pattern.
+
+## 2026-11-20 Unit-tested UI modules stay free of the Wails runtime
+
+- Type: decision
+- Phase: phase 11
+- What: the modules the unit tests load (actions, formErrors, labels, routes, serverActions) import neither bridge.ts nor the Wails runtime and recognise API errors by their shape.
+- Why: the Playwright `unit` project runs without a browser, and the Wails runtime needs a window.
+- Cost of change: low
+
+## 2026-11-20 Console routes in a pure module, project console starts on Servers
+
+- Type: decision
+- Phase: phase 11
+- What: routing moves into `lib/routes.ts` with hashes `#/projects/<p>/<view>`, `.../new` and `.../<id>/<tab>`; an unknown tab falls back to `overview` and a project console starts on Servers.
+- Why: a project console opens on Servers as at Hetzner, and pure parsing can be unit-tested.
+- Cost of change: low
+
+## 2026-11-20 Server list row menu without dialogs
+
+- Type: decision
+- Phase: phase 11
+- What: the server list's row menu offers only the entries without input (power on, shutdown, reboot, reset, power off, delete); the full menu with dialogs is on the detail page.
+- Why: the dialogs live once, in ServerActions.svelte.
+- Cost of change: low
+
+## 2026-11-20 Restore from backup or snapshot is rebuild
+
+- Type: decision
+- Phase: phase 11
+- What: restoring a server from a backup or snapshot calls `rebuild` with the image ID and shows the returned root password.
+- Why: the API has no separate restore action, and rebuild returns `root_password`.
+- Cost of change: low
+
+## 2026-11-20 Server detail tabs built one plan after another
+
+- Type: decision
+- Phase: phase 11
+- What: the server tabs are added in plans 11-09 to 11-11 in successive waves; tabs not built yet stay out of the tab list.
+- Why: plans of one wave must not touch the same file, and stub tabs would be placeholders.
+- Cost of change: low
+
+## 2026-11-20 Own SVG line chart for server graphs
+
+- Type: decision
+- Phase: phase 11
+- What: the Graphs tab uses its own `lib/LineChart.svelte` with ranges 1 h, 24 h and 7 d, reloaded every 30 s while visible.
+- Why: SPEC.md names no chart library and UI-SPEC wants its own components.
+- Cost of change: low
+
+## 2026-11-20 Firewalls and volumes from the server tabs through their own actions
+
+- Type: decision
+- Phase: phase 11
+- What: the Firewalls and Volumes tabs apply, remove, attach and detach through `/firewalls/{id}/actions/apply_to_resources`, `remove_from_resources` and `/volumes/{id}/actions/attach`, `detach`.
+- Why: the API has no server action for them, and the tabs would otherwise only list.
+- Cost of change: low
+
+## 2026-11-20 UI-02 e2e depth for server actions
+
+- Type: decision
+- Phase: phase 11
+- What: the e2e flows create, change one field, run one power action and delete (servers) or create, label and delete (SSH keys); every menu and tab request is proven by serverActions.test.ts, the rest of the operation by the manual check.
+- Why: the user's answer at the phase start; each action against a real VM costs minutes.
+- Cost of change: low
+
+## 2026-11-20 Detaching from a server tab asks plainly
+
+- Type: decision
+- Phase: phase 11
+- What: detaching a network, removing a firewall and detaching a volume in the server tabs ask for a plain confirmation; `ServerAction.body` gets the server ID as a second parameter.
+- Why: they cut a running server off a resource; the firewall and volume bodies need the server ID.
+- Cost of change: low (one flag per entry)
+
+## 2026-11-20 One actions menu for tables and detail pages
+
+- Type: decision
+- Phase: phase 11
+- What: Table's row menu uses the new `lib/ActionsMenu.svelte`; disabled items use `aria-disabled` and stay focusable, their hint sits beside the item.
+- Why: one menu implementation, and a disabled entry such as Console stays reachable by keyboard with its hint readable.
+- Cost of change: low
+
+## 2026-11-20 Server create shows the password before the first boot ends
+
+- Type: decision
+- Phase: phase 11
+- What: the server create form opens the root password dialog as soon as `POST /servers` answers while the toast follows the create and start actions; "Backups" sends `enable_backup` after they succeed; only x86 images and types are offered.
+- Why: a first boot may download an image for minutes, `POST /servers` has no backups field, and ARM types are left out.
+- Cost of change: low
+
+## 2026-11-20 Server dialogs close before the action ends
+
+- Type: decision
+- Phase: phase 11
+- What: confirmation and input dialogs of server actions close at once and the action runs on under its progress toast.
+- Why: the toast already shows progress and the outcome, and a long action would otherwise block the page.
+- Cost of change: low
+
+## 2026-11-20 Firewalls applied by label selector cannot be removed from the server tab
+
+- Type: decision
+- Phase: phase 11
+- What: the Firewalls tab lists a firewall applied only through a label selector as "Through a label selector" without Remove; `runAction` also waits for an `actions` array.
+- Why: `remove_from_resources` for the server answers `firewall_resource_not_found` there, and `apply_to_resources` answers with `actions`.
+- Cost of change: low
+
+## 2026-11-20 Disabling backups asks first
+
+- Type: decision
+- Phase: phase 11
+- What: "Disable backups" asks for a plain confirmation; the Backups and Snapshots tabs share `ImageTable.svelte`, snapshots are found by `created_from.id`, deprecated ISOs are not offered, and `runAction` accepts an empty 204 answer.
+- Why: disabling deletes every backup, which the user wants confirmed like deleting one; `bound_to` is set only on backups and HLab refuses deprecated ISOs.
+- Cost of change: low
+
+## 2026-11-20 Graphs tab offers 7 days over 24 hours of samples
+
+- Type: decision
+- Phase: phase 11
+- What: the Graphs tab loads all metric types in one request with the server's step and offers 1 h, 24 h and 7 d, with a muted note that hlabd keeps samples for 24 hours.
+- Why: UI-SPEC names the three ranges, and hlabd's retention is 24 hours.
+- Cost of change: low
+
+## 2026-11-20 e2e actions have a 60 s deadline
+
+- Type: decision
+- Phase: phase 11
+- What: the Playwright `e2e` project sets `actionTimeout: 60_000`, and the servers spec waits for a form control to be visible before choosing select or radio group.
+- Why: an unbounded click held a UI-02 run for 40 minutes; the spec counted controls before the form had rendered.
+- Cost of change: low

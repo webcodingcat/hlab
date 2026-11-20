@@ -11,7 +11,9 @@ export default defineConfig({
   use: { trace: "off", video: "off", screenshot: "off" },
   projects: [
     { name: "unit", testDir: "tests/unit" },
-    { name: "e2e", testDir: "tests/e2e" },
+    // Every click, fill and select gets a deadline, so a control that never
+    // becomes actionable fails with its locator instead of holding the run.
+    { name: "e2e", testDir: "tests/e2e", use: { actionTimeout: 60_000 } },
     { name: "screenshots", testDir: "tests/screenshots" },
   ],
 });

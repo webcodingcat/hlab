@@ -5,8 +5,10 @@ import { mgmt, on, service } from "./lib/bridge";
 import { showError } from "./lib/toast";
 import type { ViewId } from "./help";
 import viewIds from "./views.json";
+import { consoleStart, href, parse, type AdminView, type Page, type ProjectView, type Route } from "./lib/routes";
 
-export type { ViewId };
+export type { AdminView, Page, ProjectView, Route, ViewId };
+export { consoleStart, href };
 
 /** Problem is one problem of hlabd (status file or /status). */
 export type Problem = { code: string; message: string; fatal: boolean };
@@ -48,16 +50,12 @@ export function stopCloud(): Promise<void> {
 // and the Administration. Routes live in location.hash; the tray's asset
 // server has no history routing.
 
-type Area = "projects" | "project" | "admin";
-type AdminView = "server-types" | "settings" | "logs";
-
-export type Route =
-  | { area: "projects" }
-  | { area: "project"; project: string; view: "tokens" }
-  | { area: "admin"; view: AdminView };
+type Area = Route["area"];
 
 const viewInfo: Record<ViewId, { title: string; area: Area }> = {
   projects: { title: "Projects", area: "projects" },
+  servers: { title: "Servers", area: "project" },
+  "ssh-keys": { title: "SSH Keys", area: "project" },
   tokens: { title: "API tokens", area: "project" },
   "server-types": { title: "Server Types", area: "admin" },
   settings: { title: "Settings", area: "admin" },
@@ -69,32 +67,6 @@ export const views: { id: ViewId; title: string; area: Area }[] = (viewIds as Vi
   id,
   ...viewInfo[id],
 }));
-
-/** href is the hash of a route. */
-export function href(r: Route): string {
-  switch (r.area) {
-    case "projects":
-      return "#/projects";
-    case "project":
-      return `#/projects/${encodeURIComponent(r.project)}/${r.view}`;
-    case "admin":
-      return `#/admin/${r.view}`;
-  }
-}
-
-/** parse reads a hash; undefined for an unknown route. */
-function parse(hash: string): Route | undefined {
-  const parts = hash.replace(/^#\/?/, "").split("/");
-  const known = (id: string, area: Area) => views.some((v) => v.id === id && v.area === area);
-  if (parts.length === 1 && parts[0] === "projects") return { area: "projects" };
-  if (parts.length === 3 && parts[0] === "projects" && parts[1] && known(parts[2], "project")) {
-    return { area: "project", project: decodeURIComponent(parts[1]), view: "tokens" };
-  }
-  if (parts.length === 2 && parts[0] === "admin" && known(parts[1], "admin")) {
-    return { area: "admin", view: parts[1] as AdminView };
-  }
-  return undefined;
-}
 
 const current = writable<Route>(parse(location.hash) ?? { area: "projects" });
 
@@ -126,7 +98,7 @@ async function startHash(): Promise<string> {
   if (name) {
     try {
       const res = await mgmt<{ projects: Project[] }>("GET", "/projects");
-      if ((res.projects ?? []).some((p) => p.name === name)) return href({ area: "project", project: name, view: "tokens" });
+      if ((res.projects ?? []).some((p) => p.name === name)) return href(consoleStart(name));
     } catch {
       // The cloud does not run: the project list says how to start it.
     }

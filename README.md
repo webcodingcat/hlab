@@ -28,7 +28,7 @@ networks, primary and floating IPs, firewalls, DNS zones with reverse DNS,
 load balancers and certificates. Other parts of the Hetzner API answer
 `not_found`; what else differs is in [Known deviations](docs/deviations.md).
 A [tray program](#the-tray-program) starts and stops the cloud and manages
-projects, tokens, server types and settings.
+projects, tokens, servers, SSH keys, server types and settings.
 
 <p align="center">
   <picture>
@@ -163,10 +163,20 @@ confirm.
   **Create project**, a search field, and **Delete** in each row's menu
   (`…`). Click a project to open its console; the window opens the last
   project you used when it starts again.
-- **API tokens** in a project's console: **Create token** asks for a name
-  and whether the token is read only, and shows the token once with a
-  copy button; **Revoke** is in the row menu. The project name in the
+- The **project console** opens on **Servers**; its sidebar holds
+  **Servers**, **SSH Keys** and **API tokens**. The project name in the
   breadcrumb switches to another project.
+  - **Servers**: the list with **Create server** and power actions in the
+    row menu, the create form, and a detail page per server with an
+    actions menu (power, rebuild, change type, rename, delete) and the
+    tabs Overview, Networking, Firewalls, Volumes, Backups, Snapshots,
+    Rescue, ISO, Graphs, Labels and Protection. See
+    [Servers in the window](docs/guide.md#servers-in-the-window).
+  - **SSH Keys**: **Add SSH key**, a detail page with name and labels,
+    **Delete**.
+  - **API tokens**: **Create token** asks for a name and whether the
+    token is read only, and shows the token once with a copy button;
+    **Revoke** is in the row menu.
 - **Administration** has its own sidebar:
   - **Server Types**: the catalog and your own types, also while the
     cloud is stopped. **Add server type** adds an own type for all or
@@ -180,8 +190,8 @@ confirm.
   - **Logs**: the service log as it is written, with a level filter, a
     search over all log files and **Load older lines**.
 
-Projects and tokens need the running cloud; while it is stopped, the
-project pages show "Start the cloud to manage projects" with a
+Projects and their sections need the running cloud; while it is stopped,
+the project pages show "Start the cloud to manage projects" with a
 **Start cloud** button. The `?` button of each page opens its help.
 
 ## WSL2

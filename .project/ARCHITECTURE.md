@@ -473,8 +473,9 @@ Inside `hlabd` (Go packages under `internal/`):
   also while hlabd writes and rotates them). Frontend: Svelte SPA in `ui/frontend`, embedded by package
   `ui` (`ui/embed.go`), calling the bridge through `Call.ByName` of
   `@wailsio/runtime`, with views switched by `location.hash` (`#/projects`,
-  `#/projects/<name>/tokens`, `#/admin/<view>`; the view list comes from
-  `views.json`); it uses only
+  `#/projects/<name>/<view>`, `.../<view>/new`, `.../<view>/<id>/<tab>`,
+  `#/admin/<view>`; parsed in `lib/routes.ts`, a project console starts on
+  `servers`; the view list comes from `views.json`); it uses only
   the bridge; the Hetzner resources are
   managed through the management API's project proxy
   (`/mgmt/v1/projects/{name}/api/v1/...`), so the UI exercises the same

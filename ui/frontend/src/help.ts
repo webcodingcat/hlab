@@ -2,7 +2,7 @@
 // src/help/<view>.md. Pure, so it runs without Vite; helpTexts.ts loads the
 // files.
 
-export type ViewId = "projects" | "tokens" | "server-types" | "settings" | "logs";
+export type ViewId = "projects" | "servers" | "ssh-keys" | "tokens" | "server-types" | "settings" | "logs";
 
 function escape(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

@@ -14,10 +14,13 @@ test("UI-05", async ({ page }) => {
   const row = tableRow(page, project);
   await expect(row).toBeVisible();
 
-  // A row click opens the project console of that project with "API tokens".
+  // A row click opens the project console of that project with "API tokens",
+  // which its sidebar opens.
   await row.getByRole("cell", { name: project, exact: true }).click();
   await expect(page.getByRole("banner").getByText(project).first()).toBeVisible();
-  await expect(page.getByRole("navigation").getByRole("link", { name: "API tokens", exact: true })).toBeVisible();
+  const tokensLink = page.getByRole("navigation").getByRole("link", { name: "API tokens", exact: true });
+  await expect(tokensLink).toBeVisible();
+  await tokensLink.click();
   await expect(page.getByRole("heading", { level: 1, name: "API tokens", exact: true })).toBeVisible();
 
   // Create a token; its value is shown once.

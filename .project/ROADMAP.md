@@ -35,28 +35,7 @@
 
 - [x] B2 Backlog: VLAN release at project deletion, LB health check, docs and e2e test fixes → phases/B2/
 
-- [ ] 11 Tray console: shared frame, servers, SSH keys.
-      Requirements: UI-02 (part: shared frame, servers, SSH keys; done
-      after phase 14).
-      Depends on: 10.
-      Research: phases/11/RESEARCH.md (field order of the Hetzner create
-      forms; also used by phase 14).
-      Scope: the shared frame every resource section builds on - API client
-      over `bridge.Call`, action polling with a toast, detail and tab frame,
-      Labels and Protection tabs, form errors from `details.fields`,
-      confirmation dialogs, routes, help IDs - and the sections Servers and
-      SSH Keys completely.
-      Success criteria:
-      1. Servers and SSH keys can be listed, shown, created, configured and
-         deleted in the window, including every server action the API
-         offers.
-      2. A running action shows its progress and ends in a toast; a
-         rejected form shows the error at its field from `details.fields`;
-         deleting asks for confirmation.
-      3. Labels and protection of a server and an SSH key can be changed in
-         their tabs, and every new view opens its help text.
-      Stops for: manual check (look and operation of the frame, before the
-      remaining sections follow the same pattern).
+- [x] 11 Tray console: shared frame, servers, SSH keys (UI-02 part) → phases/11/
 
 - [ ] 14 Tray console: remaining resources.
       Requirements: UI-02 (part: remaining resource types; completes it),

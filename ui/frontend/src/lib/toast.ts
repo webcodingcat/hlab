@@ -7,6 +7,8 @@ export type Toast = {
   kind: "progress" | "success" | "error";
   title: string;
   message?: string;
+  /** progress of a running action in percent (0..100), kind "progress" only. */
+  progress?: number;
 };
 
 export const toasts = writable<Toast[]>([]);
@@ -44,6 +46,28 @@ export function showSuccess(title: string, message: string) {
   setTimeout(() => dismiss(id), successFor);
 }
 
+/** ProgressToast controls one toast of a running action. */
+export type ProgressToast = {
+  update: (progress: number) => void;
+  succeed: (message?: string) => void;
+  fail: (err: unknown) => void;
+};
+
+// progressToast shows a running action; update sets its progress, succeed
+// ends it as success (closes by itself), fail as error (stays).
+export function progressToast(title: string, progress?: number): ProgressToast {
+  const id = next++;
+  put({ id, kind: "progress", title, progress });
+  return {
+    update: (p) => put({ id, kind: "progress", title, progress: p }),
+    succeed: (message = "Done") => {
+      put({ id, kind: "success", title, message });
+      setTimeout(() => dismiss(id), successFor);
+    },
+    fail: (err) => put({ id, kind: "error", title, message: errorText(err) }),
+  };
+}
+
 // action runs one user action under a toast. It resolves to the result, or
 // to undefined after showing the error. done words the success message.
 export async function action<T>(
@@ -51,15 +75,13 @@ export async function action<T>(
   run: () => Promise<T>,
   done?: (result: T) => string,
 ): Promise<T | undefined> {
-  const id = next++;
-  put({ id, kind: "progress", title });
+  const t = progressToast(title);
   try {
     const result = await run();
-    put({ id, kind: "success", title, message: done ? done(result) : "Done" });
-    setTimeout(() => dismiss(id), successFor);
+    t.succeed(done ? done(result) : "Done");
     return result;
   } catch (err) {
-    put({ id, kind: "error", title, message: errorText(err) });
+    t.fail(err);
     return undefined;
   }
 }

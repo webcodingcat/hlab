@@ -16,6 +16,12 @@
       <div class="text">
         <strong>{t.title}</strong>
         {#if t.message}<div>{t.message}</div>{/if}
+        {#if t.kind === "progress" && t.progress !== undefined}
+          <div class="progress">
+            <div class="bar" aria-hidden="true"><div class="fill" style:width="{t.progress}%"></div></div>
+            <span>{t.progress}%</span>
+          </div>
+        {/if}
       </div>
       {#if t.kind !== "progress"}
         <Button variant="icon" label="Dismiss" onclick={() => dismiss(t.id)}><X size={16} aria-hidden="true" /></Button>
@@ -65,5 +71,22 @@
   .text {
     flex: 1;
     overflow-wrap: anywhere;
+  }
+  .progress {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    margin-top: var(--s1);
+  }
+  .bar {
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    overflow: hidden;
+  }
+  .fill {
+    height: 100%;
+    background: var(--accent);
   }
 </style>

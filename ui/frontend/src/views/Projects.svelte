@@ -7,7 +7,7 @@
   import Table, { type Column } from "../lib/Table.svelte";
   import { ApiError, mgmt } from "../lib/bridge";
   import { action, showError } from "../lib/toast";
-  import { href, running, type Project } from "../state";
+  import { consoleStart, href, running, type Project } from "../state";
 
   // The project list, full width; a row click opens the project's console.
   let rows = $state<Project[] | undefined>();
@@ -110,7 +110,7 @@
     emptyText="There are no projects yet."
     createLabel="Create project"
     oncreate={openCreate}
-    onrowclick={(p) => (location.hash = href({ area: "project", project: p.name, view: "tokens" }))}
+    onrowclick={(p) => (location.hash = href(consoleStart(p.name)))}
     actions={(p) => [{ label: "Delete", onclick: () => ((deleting = p), (confirmOpen = true)) }]}
   />
 {:else}
