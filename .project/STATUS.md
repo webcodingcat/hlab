@@ -30,7 +30,11 @@ STATUS: MANUAL_CHECK
      /wcc:phase asks those of its phase at its start, /wcc:change takes
      answers any time. -->
 
-- none
+- Q17 (phase 10, UI-08 check): Should own server types be editable in the Server Types view?
+  - Context: the user asked for it during the UI-08 check on 2026-11-20; UI-04 promises only adding and removing own types (`ui/frontend/src/views/ServerTypes.svelte`), so changing one today means removing and adding it again.
+  - Options: 1. add "Edit" to the row menu of own types, opening the add dialog filled in (name stays fixed), saved through the bridge and the own types file 2. keep remove and add again
+  - Recommendation: 1, because the dialog and the types file exist and the change stays inside UI-04 and the bridge
+  - Affects: UI-04, CAT-02, UI-SPEC "Views" (Server Types)
 
 ## If BLOCKED
 
