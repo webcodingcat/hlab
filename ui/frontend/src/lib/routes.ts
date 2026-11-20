@@ -1,7 +1,21 @@
 // Routes of the window: the hash of each page and back. Pure, so the unit
 // tests load it without a browser; state.ts keeps the stores.
 
-export type ProjectView = "servers" | "ssh-keys" | "tokens";
+export type ProjectView =
+  | "servers"
+  | "volumes"
+  | "load-balancers"
+  | "networks"
+  | "firewalls"
+  | "floating-ips"
+  | "primary-ips"
+  | "dns"
+  | "certificates"
+  | "ssh-keys"
+  | "placement-groups"
+  | "images"
+  | "isos"
+  | "tokens";
 export type AdminView = "server-types" | "settings" | "logs";
 export type Page = { kind: "list" } | { kind: "new" } | { kind: "detail"; id: number; tab: string };
 export type Route =
@@ -9,10 +23,27 @@ export type Route =
   | { area: "project"; project: string; view: ProjectView; page: Page }
   | { area: "admin"; view: AdminView };
 
-const projectViews: ProjectView[] = ["servers", "ssh-keys", "tokens"];
+const projectViews: ProjectView[] = [
+  "servers",
+  "volumes",
+  "load-balancers",
+  "networks",
+  "firewalls",
+  "floating-ips",
+  "primary-ips",
+  "dns",
+  "certificates",
+  "ssh-keys",
+  "placement-groups",
+  "images",
+  "isos",
+  "tokens",
+];
 const adminViews: AdminView[] = ["server-types", "settings", "logs"];
 // Views with only a list page.
 const listOnly: ProjectView[] = ["tokens"];
+// Views with a list and a detail page but no create page.
+const noNew: ProjectView[] = ["isos"];
 
 /** href is the hash of a route. */
 export function href(r: Route): string {
@@ -60,7 +91,7 @@ export function parse(hash: string): Route | undefined {
   const route = (page: Page): Route => ({ area: "project", project, view, page });
   if (parts.length === 3) return route({ kind: "list" });
   if (listOnly.includes(view)) return undefined;
-  if (parts.length === 4 && parts[3] === "new") return route({ kind: "new" });
+  if (parts.length === 4 && parts[3] === "new") return noNew.includes(view) ? undefined : route({ kind: "new" });
   if (!/^[1-9][0-9]*$/.test(parts[3])) return undefined;
   const tab = parts.length === 5 && /^[a-z-]+$/.test(parts[4]) ? parts[4] : "overview";
   return route({ kind: "detail", id: Number(parts[3]), tab });
