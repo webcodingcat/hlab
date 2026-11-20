@@ -14,3 +14,4 @@
   7. Open the help panel (`?`) of every tray view, "API tokens" included: each help text names only views and buttons that exist (Q15).
 - Expected: every step works as written; nothing in the texts is unclear, missing or describes something that is not built.
 - Result: open
+- Note: postponed until the repository is on GitHub (planned at the end); the GitHub light/dark view of step 1 cannot be checked before (2026-11-20)
