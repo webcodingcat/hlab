@@ -486,12 +486,12 @@ Plans 10-20 onward fix the findings from manual testing (CONTEXT "Findings fixes
   - [x] `git mv` docs/user/commands.md, configuration.md to docs/; docs/user/deviations.md to docs/development/api-coverage.md (its full content); test/docs/docs_test.go follows the paths.
   - [x] `git mv` docs/dev/{setup,build-and-test,components,adding-a-resource}.md to docs/development/; fix every link in README.md and the moved documents (DOC-04 green).
 
-- [ ] 10-26 Logs view: search and older lines
+- [x] 10-26 Logs view: search and older lines
   - Wave: 7 | Depends on: 10-25, 10-29, 10-30 (order) | Review: alone
   - Requirements: UI-06, UI-08 | Tests: ui/frontend/tests/e2e/logs.spec.ts
   - Reads: UI-SPEC "Views" (Logs), "Behaviour"; PLAN "Interfaces" (bridge Logs); ui/frontend/src/views/Logs.svelte; finding 7
   - Size: ~220 lines in 1 file
-  - [ ] src/views/Logs.svelte: search field (Enter or 300 ms pause) calling `Logs.Search` with the level filter, matches newest first with the matched text highlighted (`<mark>`), count "N matches" / "1000+ matches", follow off while a search shows, clearing returns to the live follow; "Load older lines" above the list calling `Logs.Older` with the oldest shown raw line, prepending the result, disabled after `at_start`; loaded older lines are not trimmed by the 5000 cap, which applies to the live part.
+  - [x] src/views/Logs.svelte: search field (Enter or 300 ms pause) calling `Logs.Search` with the level filter, matches newest first with the matched text highlighted (`<mark>`), count "N matches" / "1000+ matches", follow off while a search shows, clearing returns to the live follow; "Load older lines" above the list calling `Logs.Older` with the oldest shown raw line, prepending the result, disabled after `at_start`; loaded older lines are not trimmed by the 5000 cap, which applies to the live part.
 
 - [ ] 10-33 README screenshots from the running tray
   - Wave: 8 | Depends on: 10-29, 10-26 (order) | Review: alone
