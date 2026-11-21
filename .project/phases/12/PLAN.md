@@ -123,7 +123,8 @@ Added after the tests were written:
 - `tools/installer` (package main): `validateVersion(v string) error`.
 - `internal/prereq` missing-item texts must contain, case-insensitive: architecture `x64` or `64-bit`; Windows version `22000`, `20348`, `Windows 11` or `Server 2022`; edition `home` or `edition`; hardware virtualization `virtualization`; Hyper-V `hyper-v`; PowerShell module `powershell`; the restart line is exactly "Restart Windows to finish enabling Hyper-V".
 - `internal/hostnet/windows` exports `ErrNoConsoleUser`; without `ca.pem` the uninstall calls neither `RemoveRootTrust` nor `RemoveWSLTrust`.
-- `tools/installer` (from 12-06): `go run ./tools/installer [-out dir] <version>` writes `<out>\hlab-<v>.msi` and `<out>\hlab-setup-<v>.exe`; it does not build the frontend (`task installer` does via `frontend:build`), so 12-10 runs `task frontend:build` first when it calls the tool directly. Both `wix build` runs get `-d Version=<v>`; Package.wxs has unnamed bind paths `<out>elease` (hlabd.exe, hlab.exe, hlab-tray.exe, hlab-agent) and the repo root (`catalog\*.json`) with the util extension; Bundle.wxs has `<out>` (`hlab-<v>.msi`) and `%LocalAppData%\hlab-build-cache` (`MicrosoftEdgeWebview2Setup.exe`) with the bal and util extensions.
+- `tools/installer` (from 12-06): `go run ./tools/installer [-out dir] <version>` writes `<out>\hlab-<v>.msi` and `<out>\hlab-setup-<v>.exe`; it does not build the frontend (`task installer` does via `frontend:build`), so 12-10 runs `task frontend:build` first when it calls the tool directly. Both `wix build` runs get `-d Version=<v>`; Package.wxs has unnamed bind paths `<out>
+elease` (hlabd.exe, hlab.exe, hlab-tray.exe, hlab-agent) and the repo root (`catalog\*.json`) with the util extension; Bundle.wxs has `<out>` (`hlab-<v>.msi`) and `%LocalAppData%\hlab-build-cache` (`MicrosoftEdgeWebview2Setup.exe`) with the bal and util extensions.
 - `task e2e:elevated` runs `go test -tags e2einstall ./test/install/...` with `-timeout 420m` (above the sum of the row limits in install_test.go).
 - The elevated suite expects: `bin\hlab-setup-<v>.exe` from `task installer`; quiet uninstall `/uninstall /quiet KeepData=1`; the prerequisite custom action Id contains "prereq"; the bundle's WebView2 `pv` search variable name contains "WebView" and the WebView2 package Id contains "webview"; bundle Publisher `webcodingcat` and DisplayName starting with "HLab"; shortcuts named `HLab.lnk`.
 
@@ -161,12 +162,12 @@ Added after the tests were written:
   - Size: ~80 lines in 2 files
   - [x] `internal/cloud/lifecycle.go`: `StopOverrideFile`, `haltBehaviour`; `halt` uses it: "off" skips halting the servers, "shutdown" overrides the configured behaviour (60 s per guest as today); the file is deleted when read
 
-- [ ] 12-05 Uninstall orchestration
+- [x] 12-05 Uninstall orchestration
   - Wave: 2 | Depends on: 12-02 | Review: alone
   - Requirements: INST-04, INST-05 | Tests: internal/uninstall/uninstall_test.go
   - Reads: ARCHITECTURE "Installer", "Profiles", "Files and formats"; CONTEXT.md INST-04, INST-05; DECISIONS "Release and dev profile side by side"; `internal/discard/discard.go` as a pattern
   - Size: ~300 lines in 2 files
-  - [ ] `internal/uninstall/uninstall.go`: `Options`, `Run`, `ProfileVM`, `RemoveFiles`, `RemoveUserData` as in Interfaces; data_folder from `settings.Load(<DataDir>\settings.toml)` read before anything is deleted (default when unreadable); a Hyper-V that is not installed lists no VMs (no error); WSL `ErrNoConsoleUser` and distro failures become `Result.Notes`
+  - [x] `internal/uninstall/uninstall.go`: `Options`, `Run`, `ProfileVM`, `RemoveFiles`, `RemoveUserData` as in Interfaces; data_folder from `settings.Load(<DataDir>\settings.toml)` read before anything is deleted (default when unreadable); a Hyper-V that is not installed lists no VMs (no error); WSL `ErrNoConsoleUser` and distro failures become `Result.Notes`
 
 - [x] 12-06 Installer build tool and task
   - Wave: 1 | Depends on: - | Review: alone
@@ -184,14 +185,14 @@ Added after the tests were written:
   - [ ] `installer/Package.wxs`: per-machine (`Scope="perMachine"`), fixed UpgradeCode (new GUID committed once), Manufacturer webcodingcat, ARPSYSTEMCOMPONENT, `%ProgramFiles%\hlab` with hlabd.exe, hlab.exe, hlab-tray.exe, hlab-agent, `catalog\*.json`; `Environment` PATH `[INSTALLFOLDER]` (Part last, System); Start menu and Desktop shortcuts "HLab" to hlab-tray.exe; `MajorUpgrade` (afterInstallValidate, DowngradeErrorMessage); `util:CloseApplication` hlab-tray.exe (TerminateProcess, RebootPrompt no)
   - [ ] Custom actions in `installer/Package.wxs`: `check-prerequisites [--ui when HLABUI=1]` immediate from a Binary of hlabd.exe, before InstallValidate, condition `NOT REMOVE`; `install` deferred, Impersonate no, after InstallFiles, `NOT REMOVE`; rollback of it `uninstall-cleanup --keep-data` on a first install; `stop-service` deferred, Impersonate no, before RemoveFiles, `REMOVE="ALL" AND UPGRADINGPRODUCTCODE`; `uninstall-cleanup [--keep-data when KEEPDATA=1]` through WixQuietExec, deferred, Impersonate no, before StopServices, `REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE`; `remove-user-data` deferred, Impersonate yes, after the cleanup and before RemoveFiles, same condition plus `KEEPDATA<>1`. No ServiceControl element
 
-- [ ] 12-08 hlabd uninstall commands
+- [x] 12-08 hlabd uninstall commands
   - Wave: 3 | Depends on: 12-01, 12-03, 12-04, 12-05 | Review: alone
   - Requirements: INST-04, INST-05, INST-06 | Tests: test/install/install_test.go (via 12-10)
   - Reads: ARCHITECTURE "hlabd", "system integration"; CONTEXT.md INST-04 to INST-06; Interfaces
   - Size: ~200 lines in 4 files
   - Adjusts: -
-  - [ ] `internal/sysint/windows/install.go`: `RemoveService(ctx, mode)` (writes `<Paths.State>\uninstall-stop` (the folder cloud.halt reads), then the existing stop-wait-delete), `StopService`; `Installer.Uninstall(keepData)` keeps its contract through them; the stale comment about phase 12 goes
-  - [ ] `cmd/hlabd/main.go`: `uninstall-cleanup` builds `uninstall.Options` with `hostnet/windows`, `platform/hyperv` and `RemoveService`, prints the notes and the error list; `stop-service`; `remove-user-data` (from `%AppData%` and `%LocalAppData%`); usage text names all commands
+  - [x] `internal/sysint/windows/install.go`: `RemoveService(ctx, mode)` (writes `<Paths.State>\uninstall-stop` (the folder cloud.halt reads), then the existing stop-wait-delete), `StopService`; `Installer.Uninstall(keepData)` keeps its contract through them; the stale comment about phase 12 goes
+  - [x] `cmd/hlabd/main.go`: `uninstall-cleanup` builds `uninstall.Options` with `hostnet/windows`, `platform/hyperv` and `RemoveService`, prints the notes and the error list; `stop-service`; `remove-user-data` (from `%AppData%` and `%LocalAppData%`); usage text names all commands
 
 - [ ] 12-09 Setup bundle
   - Wave: 3 | Depends on: 12-07 | Review: alone

@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 12 Installer and uninstaller (next)
+- Phase: 12 Installer and uninstaller (in progress, branch wcc/phase-12)
 - Base branch: main
 - Last done: phase 15 merged into main (2026-11-21): project display names with derived names (schema version 2 and its migration), `hlab project create <display-name>`, and the tray's project list as cards with grid/list, sort, resource counts per tab and the "+ New project" tile
-- Next: /wcc:phase in a new session builds phase 12 (stops for a manual check); before the release /wcc:report walks through UI-09, LIFE-05 and DOC-07 (DOC-07 waits until the repository is on GitHub)
+- Next: phase 12 continues at 12-07; before the release /wcc:report walks through UI-09, LIFE-05 and DOC-07
 
 ## Open manual checks
 
