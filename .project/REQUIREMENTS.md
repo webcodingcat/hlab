@@ -375,12 +375,12 @@ What the target vision in IDEA.md will need, not built yet.
 | UI-09 | 14 | x |
 | UI-10 | 14 | x |
 | UI-11 | 15 | x |
-| INST-01 | 12 | |
-| INST-02 | 12 | |
-| INST-03 | 12 | |
-| INST-04 | 12 | |
-| INST-05 | 12 | |
-| INST-06 | 12 | |
+| INST-01 | 12 | x |
+| INST-02 | 12 | x |
+| INST-03 | 12 | x |
+| INST-04 | 12 | x |
+| INST-05 | 12 | x |
+| INST-06 | 12 | x |
 | CLI-01 | 13 | |
 | CLI-02 | 13 | |
 | CLI-03 | 13 | |

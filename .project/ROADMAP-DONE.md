@@ -6,6 +6,16 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x] 12 Installer and uninstaller.
+      Requirements: INST-01, INST-02, INST-03, INST-04, INST-05, INST-06.
+      Depends on: 09.
+      Success criteria:
+      1. The setup EXE installs hlab on a machine without hlab, including
+         WebView2 if missing; the tray starts from the start menu.
+      2. After uninstalling with the default answer, no VM, switch, route,
+         NRPT rule, service or file of hlab remains.
+      3. Installing a newer build over an older one keeps the state.
+
 - [x] 15 Project display names and Hetzner-style project list.
       Requirements: PROJ-06, UI-11.
       Depends on: 14.
