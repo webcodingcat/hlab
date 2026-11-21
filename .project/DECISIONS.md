@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-21 Firewall apply commits at success and delete waits for actions
+
+- Type: decision
+- Phase: phase 13
+- What: `apply_to_resources`/`remove_from_resources` start one action per target that keeps `_hlab.pending` and commits its own target to the current record at success (Recover clears leftovers), a server create still writes `applied_to` in its create transaction and queues its `apply_firewall` on the firewall, and DELETE /firewalls/{id} answers 423 `locked` while an action holds the firewall.
+- Why: GET shows an apply only at success while FW-01/server_create expects the firewall applied in the create response, and without the lock a firewall could be deleted during its apply.
+- Cost of change: low
+
 ## 2026-11-21 Floating IPs commit at success, primary IPs restore their earlier state
 
 - Type: decision

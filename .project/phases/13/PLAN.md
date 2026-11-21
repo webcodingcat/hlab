@@ -166,14 +166,14 @@ a group is split per client).
   - [x] `floatingips/actions.go`, `primaryips/actions.go`: assign and unassign refuse the IP and queue on the server; `server`/`assignee_id` and the server's `public_net` change at `success`.
   - [x] `floatingips_test.go`, `primaryips_test.go`: the rows of the test map.
 
-- [ ] 13-07 Firewalls and server create: queue
+- [x] 13-07 Firewalls and server create: queue
   - Wave: 2 | Depends on: 13-02 | Review: alone
   - Requirements: CLI-02 | Tests: internal/resources/firewalls/firewalls_test.go, internal/resources/servers/servers_test.go
   - Reads: CONTEXT.md "Actions"; Interfaces "internal/actions"; internal/resources/firewalls/actions.go; internal/resources/servers/servers.go (create, around lines 700 to 830)
   - Size: ~200 lines in 4 files
-  - [ ] `firewalls/actions.go`: `apply_to_resources`/`remove_from_resources` refuse the firewall and queue on the servers; the firewall actions of a server create queue on the firewall; `applied_to` changes at `success`.
-  - [ ] `servers/servers.go`: the next actions of `POST /servers` with `networks`, `firewalls` and `volumes` queue on network, firewall and volume refs instead of refusing, so two servers created in parallel with the same network and firewall both succeed.
-  - [ ] `firewalls_test.go`, `servers_test.go`: the rows of the test map.
+  - [x] `firewalls/actions.go`: `apply_to_resources`/`remove_from_resources` refuse the firewall and queue on the servers; the firewall actions of a server create queue on the firewall; `applied_to` changes at `success`.
+  - [x] `servers/servers.go`: the next actions of `POST /servers` with `networks`, `firewalls` and `volumes` queue on network, firewall and volume refs instead of refusing, so two servers created in parallel with the same network and firewall both succeed.
+  - [x] `firewalls_test.go`, `servers_test.go`: the rows of the test map.
 
 - [ ] 13-08 Servers with hcloud
   - Wave: 2 | Depends on: 13-01 | Review: alone | e2e

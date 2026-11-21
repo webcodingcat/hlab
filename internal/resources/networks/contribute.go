@@ -46,7 +46,7 @@ func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 	}
 
 	private := map[int64][]agentapi.MetadataNetwork{} // per server
-	var entries []agentapi.Metadata                    // the members' private entries
+	var entries []agentapi.Metadata                   // the members' private entries
 	for _, r := range recs {
 		if r.Status == servers.StatusDeleting || len(r.PrivateNet) == 0 {
 			continue
