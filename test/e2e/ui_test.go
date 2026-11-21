@@ -179,8 +179,9 @@ func testUI05(t *testing.T) {
 
 // testUI11: the project list as cards: grid and list, sorting, the
 // resource counts and their menu, and "+ New project" with the derived name.
+// The limit is about twice the first full run (17s).
 func testUI11(t *testing.T) {
-	runSpec(t, "UI-11", 5*time.Minute, nil)
+	runSpec(t, "UI-11", 40*time.Second, nil)
 }
 
 // testUI02: the project console's sections, one spec each. SSH Keys and
