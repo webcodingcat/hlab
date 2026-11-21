@@ -2,6 +2,7 @@ package networks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/netip"
@@ -19,14 +20,29 @@ type member struct {
 	IPs    []netip.Addr // the private IP and the alias IPs
 }
 
-// memberDoc reads only the private_net entries of a server record.
+// memberNet is a private_net entry of a server record.
+type memberNet struct {
+	Network  int64    `json:"network"`
+	IP       string   `json:"ip"`
+	AliasIPs []string `json:"alias_ips"`
+}
+
+// memberDoc reads only the private_net entries of a server record and
+// those the API shows while a network action runs on it.
 type memberDoc struct {
-	ID         int64 `json:"id"`
-	PrivateNet []struct {
-		Network  int64    `json:"network"`
-		IP       string   `json:"ip"`
-		AliasIPs []string `json:"alias_ips"`
-	} `json:"private_net"`
+	ID         int64       `json:"id"`
+	PrivateNet []memberNet `json:"private_net"`
+	Hlab       struct {
+		ShownPrivateNet *[]memberNet `json:"shown_private_net"`
+	} `json:"_hlab"`
+}
+
+// shown is the private_net the API shows of d.
+func (d memberDoc) shown() []memberNet {
+	if d.Hlab.ShownPrivateNet != nil {
+		return *d.Hlab.ShownPrivateNet
+	}
+	return d.PrivateNet
 }
 
 // members returns the servers of projectID attached to network id; the
@@ -55,9 +71,9 @@ func members(tx store.Tx, projectID, id int64) ([]member, error) {
 }
 
 // change runs one network action: in a single transaction it loads network
-// id, applies f (which validates and changes the record), starts the action
-// command and stores the record; the action's work pushes the agent
-// document.
+// id, starts the action command (refused while the network has one),
+// applies f (which validates and changes the record) and stores the
+// record; the action's work pushes the agent document.
 func (m *Module) change(w http.ResponseWriter, req *http.Request, id int64, command string, f func(tx store.Tx, r *Record) error) {
 	p, _ := api.ProjectFrom(req.Context())
 	acts := api.ActionsFrom(req.Context())
@@ -67,10 +83,10 @@ func (m *Module) change(w http.ResponseWriter, req *http.Request, id int64, comm
 		if err != nil {
 			return err
 		}
-		if err := f(tx, &r); err != nil {
+		if action, err = acts.Start(tx, p.ID, command, []actions.Ref{{ID: id, Type: refType}}); err != nil {
 			return err
 		}
-		if action, err = acts.Start(tx, p.ID, command, []actions.Ref{{ID: id, Type: refType}}); err != nil {
+		if err := f(tx, &r); err != nil {
 			return err
 		}
 		return put(tx, r)
@@ -80,6 +96,66 @@ func (m *Module) change(w http.ResponseWriter, req *http.Request, id int64, comm
 		return
 	}
 	acts.Run(action.ID, func(ctx context.Context, _ func(int)) error { return m.push(ctx) })
+	api.JSON(w, http.StatusCreated, map[string]any{"action": action})
+}
+
+// queuedChange runs one network action that adds or removes a subnet or a
+// route. The request checks f on the current network and starts the action
+// command, queued behind the actions holding the network. The work applies
+// f again to the state the earlier actions left, stores it, pushes the
+// agent document and only then lets the API show the new subnets and
+// routes.
+func (m *Module) queuedChange(w http.ResponseWriter, req *http.Request, id int64, command string, f func(tx store.Tx, r *Record) error) {
+	p, _ := api.ProjectFrom(req.Context())
+	acts := api.ActionsFrom(req.Context())
+	stor := api.StoreFrom(req.Context())
+	var action *actions.Action
+	err := stor.Tx(func(tx store.Tx) error {
+		r, err := Load(tx, p.ID, id)
+		if err != nil {
+			return err
+		}
+		if action, err = acts.StartQueued(tx, p.ID, command, []actions.Ref{{ID: id, Type: refType}}, nil); err != nil {
+			return err
+		}
+		return f(tx, &r)
+	})
+	if err != nil {
+		api.Fail(w, err)
+		return
+	}
+	acts.Run(action.ID, func(ctx context.Context, _ func(int)) error {
+		err := stor.Tx(func(tx store.Tx) error {
+			r, err := Load(tx, p.ID, id)
+			if err != nil {
+				return err
+			}
+			shown := &shownParts{Subnets: append([]Subnet{}, r.Subnets...), Routes: append([]Route{}, r.Routes...)}
+			if err := f(tx, &r); err != nil {
+				return err
+			}
+			r.Hlab.Shown = shown
+			return put(tx, r)
+		})
+		if err != nil {
+			return workError(err)
+		}
+		err = m.push(ctx)
+		if serr := stor.Tx(func(tx store.Tx) error {
+			r, err := Load(tx, p.ID, id)
+			if errors.Is(err, store.ErrNotFound) {
+				return nil // deleted while the action ran
+			}
+			if err != nil {
+				return err
+			}
+			r.Hlab.Shown = nil
+			return put(tx, r)
+		}); serr != nil && err == nil {
+			err = serr
+		}
+		return err
+	})
 	api.JSON(w, http.StatusCreated, map[string]any{"action": action})
 }
 
@@ -116,7 +192,7 @@ func (m *Module) addSubnet(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	m.change(w, req, id, "add_subnet", func(_ store.Tx, r *Record) error {
+	m.queuedChange(w, req, id, "add_subnet", func(_ store.Tx, r *Record) error {
 		rng, err := netip.ParsePrefix(r.IPRange)
 		if err != nil {
 			return err
@@ -139,7 +215,7 @@ func (m *Module) deleteSubnet(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	m.change(w, req, id, "delete_subnet", func(tx store.Tx, r *Record) error {
+	m.queuedChange(w, req, id, "delete_subnet", func(tx store.Tx, r *Record) error {
 		p, err := parsePrefix(body.IPRange, "ip_range")
 		if err != nil {
 			return err
@@ -170,7 +246,7 @@ func (m *Module) addRoute(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	m.change(w, req, id, "add_route", func(_ store.Tx, r *Record) error {
+	m.queuedChange(w, req, id, "add_route", func(_ store.Tx, r *Record) error {
 		rng, err := netip.ParsePrefix(r.IPRange)
 		if err != nil {
 			return err
@@ -191,7 +267,7 @@ func (m *Module) deleteRoute(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	m.change(w, req, id, "delete_route", func(_ store.Tx, r *Record) error {
+	m.queuedChange(w, req, id, "delete_route", func(_ store.Tx, r *Record) error {
 		d, err := parsePrefix(body.Destination, "destination")
 		if err != nil {
 			return err

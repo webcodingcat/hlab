@@ -24,6 +24,14 @@ type NetInternal struct {
 	IPRange string `json:"ip_range"` // gateway = first host address
 }
 
+// shownPrivateNet is the private_net the API shows of r.
+func (r Record) shownPrivateNet() []PrivateNet {
+	if r.Hlab.ShownPrivateNet != nil {
+		return *r.Hlab.ShownPrivateNet
+	}
+	return r.PrivateNet
+}
+
 // PublicNetRequest is the public_net of a server create; IPv4 or IPv6 0
 // means make a new primary IP.
 type PublicNetRequest struct {

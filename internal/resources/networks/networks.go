@@ -87,7 +87,17 @@ type Record struct {
 	Hlab    struct {
 		ProjectID int64 `json:"project_id"`
 		VLAN      int   `json:"vlan"`
+		// Shown are the subnets and routes the API shows while a subnet or
+		// route action runs, whose change shows at its success; nil shows
+		// the record's own.
+		Shown *shownParts `json:"shown,omitempty"`
 	} `json:"_hlab"`
+}
+
+// shownParts are the subnets and routes the API shows of a network.
+type shownParts struct {
+	Subnets []Subnet `json:"subnets"`
+	Routes  []Route  `json:"routes"`
 }
 
 // Module is the networks resource type.
@@ -136,6 +146,9 @@ func put(tx store.Tx, r Record) error {
 // view is the network as the API shows it.
 func view(r Record) Network {
 	n := r.Network
+	if r.Hlab.Shown != nil {
+		n.Subnets, n.Routes = r.Hlab.Shown.Subnets, r.Hlab.Shown.Routes
+	}
 	if n.Subnets == nil {
 		n.Subnets = []Subnet{}
 	}
@@ -160,7 +173,7 @@ func serversByNetwork(tx store.Tx, projectID int64) (map[int64][]int64, error) {
 	}
 	out := map[int64][]int64{}
 	for _, d := range docs {
-		for _, p := range d.PrivateNet {
+		for _, p := range d.shown() {
 			out[p.Network] = append(out[p.Network], d.ID)
 		}
 	}

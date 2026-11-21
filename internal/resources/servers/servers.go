@@ -224,6 +224,10 @@ type Internal struct {
 	// Adapters are the MACs of the private adapters the VM has, so a
 	// detach knows which adapter to remove.
 	Adapters []string `json:"adapters,omitempty"`
+	// ShownPrivateNet is the private_net the API shows while a network
+	// action runs on the server, whose change shows at its success; nil
+	// shows PrivateNet.
+	ShownPrivateNet *[]PrivateNet `json:"shown_private_net,omitempty"`
 }
 
 // Rescue is the rescue state of a server.
@@ -472,6 +476,7 @@ func (m *Module) show(tx store.Tx, r Record) (Server, error) {
 	}
 	s := r.Server
 	s.PublicNet = showPublic(s.PublicNet)
+	s.PrivateNet = r.shownPrivateNet()
 	if ok {
 		s.PlacementGroup = &g
 	}
@@ -532,6 +537,7 @@ func (m *Module) list(w http.ResponseWriter, req *http.Request) {
 		for _, r := range recs {
 			s := r.Server
 			s.PublicNet = showPublic(s.PublicNet)
+			s.PrivateNet = r.shownPrivateNet()
 			if g, ok := members[r.ID]; ok {
 				s.PlacementGroup = &g
 			}
