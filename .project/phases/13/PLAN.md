@@ -222,14 +222,14 @@ a group is split per client).
   - [x] Ansible rows `ssh_keys`, `placement_groups` (`ssh_key`, `ssh_key_info`, `placement_group` present, updated, absent).
   - [x] `tofu_test.go`: rows `ssh_keys` and `placement_groups` also read `hcloud_ssh_key`/`hcloud_ssh_keys` and `hcloud_placement_group`/`hcloud_placement_groups`.
 
-- [ ] 13-14 Networks with all clients
+- [x] 13-14 Networks with all clients
   - Wave: 3 | Depends on: 13-01, 13-03 | Review: alone | e2e
   - Requirements: CLI-01, CLI-02, CLI-03 | Tests: test/e2e/clients_networks_test.go
   - Reads: CONTEXT.md "Scope" (vswitch exclusions); RESEARCH.md §1, §2, §3; REQUIREMENTS NET-01
   - Size: ~350 lines in 1 file
-  - [ ] Fixture rows `CLI-01/networks`: create, add-subnet, add-route, change-ip-range, update, labels, protection, server attach-to-network with alias IPs, change-alias-ips, list-members, detach, remove-route, remove-subnet, delete.
-  - [ ] `CLI-02/networks`: `hcloud_network`, `hcloud_network_subnet` (two in parallel), `hcloud_network_route`, `hcloud_server_network` with alias IPs on the fixture server, updates, data sources `hcloud_network`, `hcloud_networks`, `hcloud_network_members`, destroy.
-  - [ ] `CLI-03/networks`: `network`, `subnetwork`, `route`, `server_network`, `network_info`, `network_member_info`, absent.
+  - [x] Fixture rows `CLI-01/networks`: create, add-subnet, add-route, change-ip-range, update, labels, protection, server attach-to-network with alias IPs, change-alias-ips, list-members, detach, remove-route, remove-subnet, delete.
+  - [x] `CLI-02/networks`: `hcloud_network`, `hcloud_network_subnet` (two in parallel), `hcloud_network_route`, `hcloud_server_network` with alias IPs on the fixture server, updates, data sources `hcloud_network`, `hcloud_networks`, `hcloud_network_members`, destroy.
+  - [x] `CLI-03/networks`: `network`, `subnetwork`, `route`, `server_network`, `network_info`, `network_member_info`, absent.
 
 - [x] 13-15 Primary IPs with all clients
   - Wave: 3 | Depends on: 13-01, 13-06 | Review: alone | e2e
