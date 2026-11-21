@@ -54,11 +54,15 @@ export async function send(
   return { status: res.status, body: parsed };
 }
 
-/** projectCard is the project card (grid) or row (list) of the project list that shows this display name. */
+/**
+ * projectCard is the project card (grid) or row (list) of the project list
+ * that shows this display name; hidden copies of the name (the closed delete
+ * dialog) do not count.
+ */
 export function projectCard(page: Page, display: string): Locator {
   return page
     .locator("li, article, section, div, a, [role]")
-    .filter({ has: page.getByText(display, { exact: true }) })
+    .filter({ has: page.getByText(display, { exact: true }).filter({ visible: true }) })
     .filter({ has: page.getByRole("button", { name: "Actions" }) })
     .filter({ hasText: /\d+ resources?|Create server/ })
     .last();
