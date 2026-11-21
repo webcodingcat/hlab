@@ -110,15 +110,15 @@ a group is split per client).
 
 ## Plans
 
-- [ ] 13-01 Shared client-matrix helpers
+- [x] 13-01 Shared client-matrix helpers
   - Wave: 1 | Depends on: - | Review: alone | e2e
   - Requirements: CLI-01, CLI-02, CLI-03, CLI-04 (harness only, no row of its own) | Tests: test/e2e/tofu_test.go, test/e2e/ansible_test.go (existing rows, registered anew)
   - Reads: CONTEXT.md "Rows and harness", "CLI-04", "Process"; SPEC "Machine prerequisites"; test/e2e/main_test.go (env, slots), clients_test.go, tofu_test.go, ansible_test.go, e2e_test.go
   - Size: ~320 lines in 5 files
   - Adjusts: TestE2E/CLI-02/ssh_keys, CLI-02/placement_groups, CLI-03/server_info (registered through `registerRow` instead of the `testCLI02`/`testCLI03` dispatchers; what they check stays)
-  - [ ] `test/e2e/clients_matrix_test.go`: `clientRow`, `registerRow`, `testClients` (fixture rows first and sequential with a lazy fixture server of one slot, deleted after the last fixture row; then parallel rows with their slots in one step), `logged`, `newProjectEnv`, `hcloudOK`, `hcloudJSON`, `ansibleOK`, `assertGoneIDs`, `assertProjectEmpty` (all list endpoints of the Cloud API through `apiIDs`, VMs through `vmExists`), `sshAddr` for host and WSL2.
-  - [ ] `test/e2e/e2e_test.go`, `tofu_test.go`, `ansible_test.go`: `CLI-01` to `CLI-04` run through `testClients`; the existing rows register themselves; `parallel` rows are wrapped in `logged`.
-  - [ ] `Taskfile.yml`: `task e2e` with `-timeout 180m`.
+  - [x] `test/e2e/clients_matrix_test.go`: `clientRow`, `registerRow`, `testClients` (fixture rows first and sequential with a lazy fixture server of one slot, deleted after the last fixture row; then parallel rows with their slots in one step), `logged`, `newProjectEnv`, `hcloudOK`, `hcloudJSON`, `ansibleOK`, `assertGoneIDs`, `assertProjectEmpty` (all list endpoints of the Cloud API through `apiIDs`, VMs through `vmExists`), `sshAddr` for host and WSL2.
+  - [x] `test/e2e/e2e_test.go`, `tofu_test.go`, `ansible_test.go`: `CLI-01` to `CLI-04` run through `testClients`; the existing rows register themselves; `parallel` rows are wrapped in `logged`.
+  - [x] `Taskfile.yml`: `task e2e` with `-timeout 180m`.
 
 - [x] 13-02 Action queue
   - Wave: 1 | Depends on: - | Review: alone
