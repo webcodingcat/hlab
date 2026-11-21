@@ -202,7 +202,10 @@ Inside `hlabd` (Go packages under `internal/`):
   without holding a worker, until every running action with a lower ID that
   shares a ref has finished (also for actions from `Start` and `StartAll`),
   then runs the work in a worker pool and sets `success` or `error` with
-  Hetzner's error object; a queued action shows as `running`. Actions survive a stop: running actions are marked `error`
+  Hetzner's error object; a queued action shows as `running`.
+  `Manager.Succeed(tx, acts)` marks actions created in the same transaction
+  `success` at once, without `Run` (an action with nothing to do, such as
+  the rules of a firewall applied to nothing). Actions survive a stop: running actions are marked `error`
   with code `server_error` at the next start. `Manager.ListFor(projectID, refType, resourceID)` lists
   the actions of one resource (or of a resource type) for the generic
   action endpoints; `ErrProtected` is returned for an action refused by

@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-21 Rules of an unapplied firewall succeed at once
+
+- Type: decision
+- Phase: phase 13
+- What: when a firewall is applied to nothing, the `set_firewall_rules` action of `POST /firewalls` and of `set_rules` ends `success` inside the request (`actions.Manager.Succeed`), without an agent push.
+- Why: Ansible's `firewall` module does not wait for these actions, so its next call hit 423 `locked`; Hetzner also finishes them at once.
+- Cost of change: low
+
 ## 2026-11-21 Network members list attached members with status ok
 
 - Type: decision
