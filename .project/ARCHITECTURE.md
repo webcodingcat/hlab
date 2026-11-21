@@ -392,10 +392,12 @@ Inside `hlabd` (Go packages under `internal/`):
   type ServiceHost interface {              // used by hlabd
       Run(start func(ctx context.Context, params []string) error, stop func(ctx context.Context, reason StopReason) error) error
   }                                          // StopReason: StopRequested | StopHostShutdown
-  type Installer interface {                // hlabd install / uninstall-cleanup
+  type Installer interface {                // hlabd install
       Install(dev bool) error
-      Uninstall(keepData bool) error
   }
+  // hlabd uninstall-cleanup runs internal/uninstall.Run, which stops and
+  // removes the service through sysint/windows RemoveService(ctx, mode);
+  // hlabd stop-service (before an upgrade) calls StopService(ctx).
   // these two live in the implementation package (sysint/windows):
   func ListenManagement() (net.Listener, error) // Windows: \\.\pipe\hlab with ACL
   func DialManagement(ctx context.Context) (net.Conn, error)

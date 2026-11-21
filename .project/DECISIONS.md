@@ -27,6 +27,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-21 Uninstall runs only through internal/uninstall
+
+- Type: decision
+- Phase: phase 12
+- What: `Uninstall(keepData)` is removed from `sysint.Installer`; `hlabd uninstall-cleanup` runs `uninstall.Run`, and a Hyper-V that cannot be loaded is reported as a failed object after all other steps.
+- Why: nothing called the narrower path any more, and CONTEXT.md INST-04 requires every other step to run before an error is reported.
+- Cost of change: low
+
 ## 2026-11-21 Prerequisite check refuses Server Core and finds the Hyper-V module in a version folder
 
 - Type: decision
