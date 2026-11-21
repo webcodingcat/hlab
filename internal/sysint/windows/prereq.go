@@ -56,6 +56,7 @@ func Prerequisites(ctx context.Context) (prereq.Facts, error) {
 		return f, fmt.Errorf("read the Windows installation type: %w", err)
 	}
 	f.Server = inst == "Server"
+	f.ServerCore = inst == "Server Core"
 
 	// The manifest lies in the module folder or in a version folder below it
 	// (Windows 11 has Hyper-V\2.0.0.0\Hyper-V.psd1).

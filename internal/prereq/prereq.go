@@ -9,6 +9,7 @@ type Facts struct {
 	Arch         string // runtime of the OS: "amd64", "arm64", "386"
 	Build        int    // CurrentBuildNumber
 	Server       bool   // InstallationType "Server" (Desktop Experience)
+	ServerCore   bool   // InstallationType "Server Core" (no Desktop Experience, unsupported)
 	EditionID    string // HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\EditionID
 	VMMS         bool   // service vmms is registered (Hyper-V platform and services)
 	PSModule     bool   // ...\WindowsPowerShell\v1.0\Modules\Hyper-V\[<version>\]Hyper-V.psd1 exists
@@ -42,13 +43,16 @@ func Missing(f Facts) []string {
 	if f.Arch != "amd64" {
 		out = append(out, fmt.Sprintf("hlab needs 64-bit Windows on an x64 processor (this machine: %s)", f.Arch))
 	}
-	if f.Server && f.Build < serverMinBuild {
+	server := f.Server || f.ServerCore
+	if server && f.Build < serverMinBuild {
 		out = append(out, fmt.Sprintf("hlab needs Windows Server 2022 (build %d) or newer with Desktop Experience (this machine: build %d)", serverMinBuild, f.Build))
-	} else if !f.Server && f.Build < clientMinBuild {
+	} else if !server && f.Build < clientMinBuild {
 		out = append(out, fmt.Sprintf("hlab needs Windows 11 (build %d) or newer, or Windows Server 2022 with Desktop Experience (this machine: build %d)", clientMinBuild, f.Build))
 	}
 	if homeEditions[f.EditionID] {
 		out = append(out, "Windows Home has no Hyper-V; hlab needs the Pro, Enterprise or Education edition")
+	} else if f.ServerCore {
+		out = append(out, "Windows Server Core is not supported; hlab needs Windows Server with the Desktop Experience edition")
 	}
 	if !f.FirmwareVirt && !f.Hypervisor {
 		out = append(out, "Hardware virtualization is off; turn it on in the firmware (UEFI/BIOS) settings")
