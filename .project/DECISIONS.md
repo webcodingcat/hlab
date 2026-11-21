@@ -19,6 +19,54 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-21 Action queue in Run
+
+- Type: decision
+- Phase: phase 13
+- What: `actions.StartQueued` refuses with `locked` only on the refuse refs, and every action's `Run` waits without taking a worker until all running actions with a lower ID that share a ref have finished; a queued action shows as `running`.
+- Why: it realises the queuing the user asked for in one place without a new action status, and waiting before taking a worker keeps more queued actions than workers from deadlocking.
+- Cost of change: medium
+
+## 2026-11-21 Which actions queue instead of locked
+
+- Type: decision
+- Phase: phase 13
+- What: network attach/detach and `change_alias_ips` queue on the network, subnet and route actions on the network, LB target and service actions on the LB and its target servers, volume attach/detach and floating/primary IP assign/unassign on the server, firewall apply/remove on the servers and a server create's firewall actions on the firewall; all others refuse on every ref as before (table in phases/13/PLAN.md "Interfaces", deviation in deviations.md and `api.Deviations()`).
+- Why: OpenTofu creates sibling resources in parallel and does not retry on `locked` (phases/13/RESEARCH.md §4), while Hetzner accepts these configurations.
+- Cost of change: medium
+
+## 2026-11-21 Client matrix rows register through init()
+
+- Type: decision
+- Phase: phase 13
+- What: client rows register with `registerRow` from `init()` in one file per group (`test/e2e/clients_<group>[_<client>]_test.go`), and `testClients` runs each client's fixture rows one after another, the others in parallel.
+- Why: plans of one wave never touch a shared dispatcher file, and a fixture server holds its slot only while its rows run.
+- Cost of change: low
+
+## 2026-11-21 One client matrix subtest per type and client
+
+- Type: decision
+- Phase: phase 13
+- What: every type including the read-only catalog types has one row per client, snapshots are covered in the images row, and reverse DNS has own rows only for OpenTofu and Ansible because hcloud's `set-rdns` runs in each type's row.
+- Why: each row stays filterable as `TestE2E/CLI-0n/<type>`.
+- Cost of change: low
+
+## 2026-11-21 The queue plan writes its own deviation entries
+
+- Type: decision
+- Phase: phase 13
+- What: plan 13-02 adds the queue deviations to `api.Deviations()`, `api-coverage.md` and `deviations.md`; the documentation plan only checks them.
+- Why: DOC-03 fails as soon as an `api.Deviations()` entry has no matching line in `api-coverage.md`.
+- Cost of change: low
+
+## 2026-11-21 Primary IP client rows use the fixture server
+
+- Type: decision
+- Phase: phase 13
+- What: the primary IP rows assign an IPv6 primary IP to the powered-off fixture server after unassigning its own IPv6, then restore it.
+- Why: Hetzner assigns primary IPs only to powered-off servers, and the fixture must stay reachable for the rows after it.
+- Cost of change: low
+
 ## 2026-11-21 Manual checks and the installer suite move to a last phase in two test VMs
 
 - Type: change
