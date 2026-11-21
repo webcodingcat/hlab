@@ -66,6 +66,41 @@
          example for Claude Code and Claude Desktop; the README points to
          it.
 
+- [ ] 18 Storage Box API.
+      Requirements: SBOX-01.
+      Depends on: 13.
+      Success criteria:
+      1. `http://api.hetzner.internal/hetzner/v1` serves storage box types, storage
+         boxes and their actions as the frozen Hetzner API description
+         says, with the cloud tokens of the project.
+      2. `task catalog` writes the storage box types with prices from the
+         real API.
+
+- [ ] 19 Storage VM and data access.
+      Requirements: SBOX-02, SBOX-03, SBOX-04, SBOX-05, SBOX-06, SBOX-07,
+      SBOX-08.
+      Depends on: 18.
+      Success criteria:
+      1. Data written to a storage box over each protocol can be read back
+         over the others, from a server, and from host and WSL2 only with
+         reachable_externally.
+      2. Subaccounts see only their home directory; read-only ones write
+         nothing.
+      3. Snapshots, the snapshot plan, rollback and the quota behave as at
+         Hetzner, and everything survives a stop and start of the cloud.
+      4. `docs/guide.md`, `docs/deviations.md` and `docs/configuration.md`
+         describe storage boxes.
+
+- [ ] 20 Storage Boxes in the console and the clients.
+      Requirements: UI-12, CLI-05.
+      Depends on: 19, 17.
+      Success criteria:
+      1. The console manages storage boxes, subaccounts and snapshots.
+      2. hcloud, OpenTofu and Ansible pass their storage box rows with only
+         their endpoints changed.
+      3. The README names the Hetzner endpoint setting of each client, and
+         the help text of the new view exists.
+
 - [ ] 16 Release checks in test VMs.
       Requirements: DOC-08.
       Depends on: 13 and every other phase of milestone 1; it stays the
@@ -87,7 +122,6 @@
 - Fault injection (server failure, network disruption, latency, API errors,
   rate limits, storage errors)
 - Linux host with KVM/libvirt, including the tray
-- Storage Box (version 2)
 - Server console with a working wss VNC console
 - WSL2 in mirrored networking mode
 - More system images and app images

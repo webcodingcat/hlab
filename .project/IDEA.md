@@ -57,9 +57,13 @@ official clients.
     shadows the real domain on host and WSL2 while the cloud runs (one NRPT
     rule per zone); the UI warns when a zone shadows a real domain.
   - Actions, pricing, metadata service for the VMs (169.254.169.254)
+  - Storage Boxes of the Hetzner API with types, subaccounts, snapshots and
+    snapshot plans, holding real data: SFTP/SCP, rsync, BorgBackup, SMB,
+    WebDAV and FTP/FTPS work as at Hetzner, in a storage VM of their own
 - API at `http://api.hetzner.internal/v1`, plain HTTP, no CA
-  (`decisions/api-transport.md`). v1 only reserves an own base address under
-  `.internal` for the Storage Box API of v2; nothing is served there yet.
+  (`decisions/api-transport.md`); the Storage Box API of the Hetzner API
+  at `http://api.hetzner.internal/hetzner/v1`, Storage Boxes at
+  `uNNNNN.storagebox.hetzner.internal` (`decisions/storage-box.md`).
 - Locations: all six real Hetzner locations with datacenters and network
   zones; one shared network segment, Hetzner's location rules enforced by
   the API, all guest traffic routed (/32) through the appliance
@@ -116,7 +120,6 @@ is built for now.
 - Deliberate fault injection: server failure, network disruption, latency
   between locations, API errors and rate limits, storage errors
 - Linux as a full host with KVM/libvirt, including the UI
-- Storage Box (version 2)
 - Server console (request_console with a working wss VNC console)
 - WSL2 in mirrored networking mode
 - More images: other Hetzner system images (Rocky, Alma, Fedora, CentOS
@@ -174,8 +177,8 @@ The same environment can be created and deleted by hand in the tray UI.
 Stopping and starting via the tray keeps everything. After uninstalling
 with the default choice, nothing of hlab remains. Resources the example
 environment does not use (primary IPs, placement groups, certificates,
-reverse DNS, snapshots, backups, rescue, ISOs) are covered by the
-per-resource client tests.
+reverse DNS, snapshots, backups, rescue, ISOs, Storage Boxes) are covered by
+the per-resource client tests.
 
 ## In clarification
 

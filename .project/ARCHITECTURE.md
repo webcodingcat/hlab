@@ -9,7 +9,8 @@ cloud runs), a management command `hlab` (Go), a tray program `hlab-tray`
 state in SQLite, drives Hyper-V and the host network through a platform
 interface, and pushes the complete network configuration (routes,
 firewalls, load balancers, DNS, metadata) to `hlab-agent` as one declarative
-document. Every guest packet passes the appliance. `hlab` and `hlab-tray`
+document. Every guest packet passes the appliance. Storage Boxes live in a
+second VM, the storage VM, which runs `hlab-agent` in role `storage`. `hlab` and `hlab-tray`
 talk to `hlabd` through a named pipe; when the cloud is stopped they only
 read and write the settings file.
 
@@ -57,7 +58,9 @@ the other profile runs. Both may be installed side by side.
 - Interface:
   - Hetzner API on `198.19.0.2:8780` (transit address, see "Network"),
     reached by clients as `http://api.hetzner.internal/v1` through the
-    agent's API proxy.
+    agent's API proxy; the Hetzner API (Storage Boxes) on the same
+    listener under `/hetzner/v1`, reached as `http://api.hetzner.internal/hetzner/v1`, with
+    the same tokens and middleware.
   - Management API: HTTP over the named pipe `\\.\pipe\hlab` (ACL: SYSTEM,
     Administrators, Interactive Users `IU`), see "Management API".
   - `hlabd install [--dev]` and `hlabd uninstall-cleanup [--keep-data]`:
@@ -107,7 +110,9 @@ Inside `hlabd` (Go packages under `internal/`):
   `internal/resources/<type>` (servers, server_types, images, isos,
   locations, datacenters, ssh_keys, primary_ips, floating_ips, networks,
   firewalls, load_balancers, load_balancer_types, certificates, volumes,
-  placement_groups, zones, pricing, actions). A new resource type is a new
+  placement_groups, zones, pricing, actions; under `/hetzner/v1`:
+  storage_boxes with subaccounts and snapshots, storage_box_types, and
+  their actions). A new resource type is a new
   package plus one line in `Cloud.modules()` (`internal/cloud`); the core
   does not change.
 - Interface:
@@ -564,7 +569,7 @@ HTTP/1.1 over `\\.\pipe\hlab`, JSON. All paths under `/mgmt/v1`:
 | Method and path | Purpose |
 |---|---|
 | `GET /status` | `{"state":"running","version":"...","problems":[Problem],"shadowing_zones":[{"zone":"example.com","project":"p"}],"appliance_generation":n}`; besides the hostnet problems, a non-fatal `custom_server_types` problem when the own server types are invalid or collide and are not served, and a non-fatal `custom_isos` problem for an invalid or colliding own ISO or a local file that cannot be copied |
-| `GET /projects` | `{"projects":[{"name":"web-coding-cat","display_name":"Web Coding Cat","created":"RFC3339","resources":n,"resources_by_type":{"servers":n,...}}]}`; `resources_by_type` has a key per resource kind with a count above zero, one key per console tab, so each count opens exactly one tab (`servers`, `volumes`, `load_balancers`, `networks`, `firewalls`, `floating_ips`, `primary_ips`, `zones`, `certificates`, `ssh_keys`, `placement_groups`, `snapshots`, `backups`; images are split by type into `snapshots` and `backups`) |
+| `GET /projects` | `{"projects":[{"name":"web-coding-cat","display_name":"Web Coding Cat","created":"RFC3339","resources":n,"resources_by_type":{"servers":n,...}}]}`; `resources_by_type` has a key per resource kind with a count above zero, one key per console tab, so each count opens exactly one tab (`servers`, `volumes`, `load_balancers`, `networks`, `firewalls`, `floating_ips`, `primary_ips`, `zones`, `certificates`, `ssh_keys`, `placement_groups`, `snapshots`, `backups`, `storage_boxes`; images are split by type into `snapshots` and `backups`) |
 | `POST /projects` | body `{"display_name":"Web Coding Cat"}` (trimmed, 1-255 chars, no control characters); the name is derived by hlabd (lower case; ä ö ü ß as ae oe ue ss; other accents dropped; every run of other characters as `-`; no `-` at either end; cut to 255 chars); `201` with the project; `400 invalid_input` for an invalid display name or an empty derived name; `409 conflict` if the derived name exists. A display name never changes |
 | `DELETE /projects/{name}` | `202 {"action_id":n}`; revokes the project's tokens at once, then in one action deletes every resource through its module's `resource.Deleter`, the rest through the store, then the project; `409 conflict` while a deletion of that project runs; on failure the project stays listed. `hlab project delete` waits for the action |
 | `GET /actions/{id}` | `200 {"action": <Hetzner action object>}`; `404 not_found` for an unknown ID or an action of a project |
@@ -730,6 +735,36 @@ locks a resource of type `project`.
   `nextUpdate` 8 days ahead; every leaf certificate names it as its CRL
   distribution point, the root CA has none.
 - Depends on: nothing on the host; the Debian packages listed in SPEC.md.
+
+### Storage VM (`hlab-agent` in role `storage`)
+
+- Purpose: the data and protocols of Storage Boxes
+  (`decisions/storage-box.md`).
+- One VM `<prefix>-storage` (Debian 13, cidata like the appliance), created
+  with the first storage box of any project and deleted with the last; it
+  starts and stops with the cloud and follows `stop_behaviour`. Data disk
+  `<data folder>\storage\data.vhdx` (dynamic, btrfs); one subvolume per box
+  with a quota of its type's size (SBOX-06), snapshots as read-only btrfs
+  snapshots, shown under `.zfs/snapshot/<name>` with zfs_enabled.
+- Network: each storage box gets a public IPv4 of the range like a server,
+  routed `/32` by the appliance to the storage VM's public adapter; the
+  agent DNS answers `u<n>.storagebox.hetzner.internal` and
+  `u<n>-sub<m>.storagebox.hetzner.internal` with it. The appliance drops traffic
+  from the host and WSL2 to a box without reachable_externally.
+- Accounts: box `u<n>` (`n` from 100000 upward, never reused), subaccounts
+  `u<n>-sub<m>` (`m` from 1 upward per box); passwords follow Hetzner's
+  policy, the VM keeps only hashes. Services per box IP: OpenSSH on 22
+  (SFTP/SCP, chrooted) and 23 (SFTP/SCP, rsync, borg serve; only with
+  ssh_enabled), Samba on 445 (share `backup`, a subaccount's share named
+  after it), Apache with mod_dav on 443 (certificate from the hlab CA),
+  vsftpd on 21 (FTP and explicit FTPS); read-only subaccounts write
+  nothing.
+- Interface: like the appliance agent, HTTP on its transit address with
+  its own secret: `PUT /v1/storage` takes the full `agentapi.Storage`
+  (boxes with IP, quota, accounts, password hashes, SSH keys, access
+  settings) and applies it idempotently; jobs `snapshot`, `rollback`,
+  `delete-snapshot`, `folders` and `usage` run what the actions need. The
+  snapshot plans are run by the scheduler in hlabd.
 
 ### Guest integration
 
@@ -913,12 +948,13 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 | `%ProgramFiles%\hlab\catalog\server-types.json` | `{"server_types": [...]}` as returned by Hetzner's API | `task catalog` (release) |
 | `%ProgramData%\hlab\catalog\server-types.json` | same; written by `hlab catalog update`, preferred when present | hlabd |
 | `%ProgramFiles%\hlab\catalog\{images,isos,locations,load-balancer-types,pricing}.json` | Hetzner API shapes plus `_hlab.source` (URL, checksum URL, format); locations, load balancer types and pricing from `task catalog`, images and ISOs by hand | release |
+| `%ProgramFiles%\hlab\catalog\storage-box-types.json` | `{"storage_box_types": [...]}` as returned by Hetzner's API, prices included | `task catalog` (release) |
 | `%ProgramFiles%\hlab\catalog\appliance-debs.json` | `{"debs":[{"name","urls","sha256"}]}`: Debian packages missing from the appliance image; cached in `<data>\cache\debs\` and put on the appliance cidata as `<name>.deb` | release |
 | `%ProgramData%\hlab\state.db` | SQLite, see "Data schema" | hlabd |
 | `%ProgramData%\hlab\logs\hlabd.log` | JSON lines (`time`, `level`, `msg`, fields), 10 MB x 5 rotated | hlabd (writes); hlab logs and the tray (read, also during rotation) |
 | `%ProgramData%\hlab\ca\` | `ca.pem`, `ca.key` (SYSTEM only), `ca.crl` | hlabd |
 | `%ProgramData%\hlab\uninstall-stop` | one word, `off` or `shutdown`; read and deleted at the next service stop | `hlabd uninstall-cleanup` |
-| `<data folder>\{disks,volumes,images,isos,cache,appliance,vms}\` | VHDX, server seed ISOs (in `disks`), VM configuration folders (in `vms`) | hlabd |
+| `<data folder>\{disks,volumes,images,isos,cache,appliance,storage,vms}\` | VHDX, server seed ISOs (in `disks`), VM configuration folders (in `vms`) | hlabd |
 
 Settings (`settings.toml`), all optional with defaults:
 
@@ -945,7 +981,7 @@ level = "info"
   if missing, create `server-types.custom.json` if missing, open the hlab CA (created if missing) and renew its CRL,
   apply `hostnet.TrustCA` when `trust_ca` is on (a failure is a status
   problem, not an abort), start appliance, `hostnet.Up`, serve the Hetzner API, push agent document,
-  restore servers (resume saved ones; power on those marked running), start
+  restore servers and the storage VM (resume saved ones; power on those marked running), push the storage document, start
   the management API and scheduler (with the weekly `crl` job), set status `running`.
 - Stop (SCM stop or `SERVICE_CONTROL_PRESHUTDOWN` at Windows shutdown):
   stop jobs, close the log followers' `Done`, stop the APIs, record which servers ran, then per `stop_behaviour`
@@ -977,10 +1013,6 @@ level = "info"
   the API, store, resource modules, cidata, images (VHDX becomes qcow2 inside
   `platform`) and the appliance stay unchanged. Every `%ProgramData%` path in
   this document is `sysint.Paths` on Windows.
-- Storage Box (v2): a second HTTP listener for the Hetzner API base address
-  under `.internal` with its own module set; the agent's API proxy gets a
-  second name. The Storage Box itself can be a VM or a Samba/SFTP service on
-  the appliance.
 - Server console: a new component (RFB-over-WebSocket bridge) behind
   `request_console`, using `Platform` extensions for framebuffer and input;
   the endpoint already exists and returns `unsupported_error` until then.

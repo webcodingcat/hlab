@@ -157,6 +157,19 @@ resource types.
 - DNS-04 `/mgmt/v1/status` lists every zone that shadows a domain resolving publicly, so tray and `hlab cloud status` can warn (goal 2) [unit]
 - DNS-05 names outside hlab zones resolve normally for servers (goal 2) [none]
 
+### Storage Boxes (`SBOX`)
+
+The Hetzner API (`http://api.hetzner.internal/hetzner/v1`), with the cloud tokens of the project.
+
+- SBOX-01 the Hetzner API serves storage box types (from the catalog, with prices) and storage boxes with create, update, delete, folders and the actions change_type, change_protection, reset_password, update_access_settings, enable and disable snapshot plan and rollback_snapshot, with Hetzner behaviour (goal 1) [unit]
+- SBOX-02 subaccounts are created, updated, deleted and get a home directory, a password and access settings including read-only; each logs in with its own username and sees only its home directory (goal 2) [e2e]
+- SBOX-03 a storage box holds real data on `uNNNNN.storagebox.hetzner.internal` with its password or SSH keys: SFTP and SCP on port 22, SFTP, SCP, rsync and BorgBackup on port 23 with ssh_enabled, SMB on port 445 with samba_enabled (share `backup`, a subaccount's share named after it), WebDAV over HTTPS on port 443 with webdav_enabled, FTP and FTPS on port 21 (goal 2) [e2e]
+- SBOX-04 a storage box is reachable from the servers; from the host and WSL2 only with reachable_externally (goal 2) [e2e]
+- SBOX-05 snapshots are taken by hand and by the snapshot plan, which keeps at most max_snapshots automatic ones; the limits of the type hold; a rollback restores the data and deletes newer snapshots; with zfs_enabled the snapshots are visible as read-only folders (goal 2) [e2e]
+- SBOX-06 the size of the type is a hard quota, and change_type refuses a type smaller than the stored data (goal 2) [e2e]
+- SBOX-07 data, accounts and snapshots of storage boxes survive a stop and start of the cloud (goal 3) [e2e]
+- SBOX-08 uninstalling removes the storage VM; the data of storage boxes are user data and remain only when the user keeps them (goal 4) [e2e]
+
 ### Host integration (`HOST`)
 
 - HOST-01 all guest traffic, east-west included, passes the appliance; a guest cannot reach another guest directly even with a hand-made route (goal 2) [e2e]
@@ -180,7 +193,7 @@ resource types.
 ### Tray program (`UI`)
 
 - UI-01 the tray icon shows the cloud status and starts and stops the cloud (goal 3) [e2e]
-- UI-02 the console window lists, shows, creates, configures and deletes every resource type of the API in the active project (goal 3) [e2e]
+- UI-02 the console window lists, shows, creates, configures and deletes every resource type of the Cloud API in the active project (goal 3) [e2e]
 - UI-03 the settings view changes every setting of the settings file (goal 3) [e2e]
 - UI-04 the server types view shows the catalog, adds, edits and removes own types and starts the catalog update (goal 3) [e2e]
 - UI-05 the projects view creates and deletes projects and tokens (goal 3) [e2e]
@@ -190,6 +203,7 @@ resource types.
 - UI-09 the example environment of the success criterion can be created and deleted by hand in the console (goal 3) [manual]
 - UI-10 the ISOs view in the Administration lists the catalog and the own ISOs and adds, edits and removes own ISOs from a URL or a local file (goal 3) [e2e]
 - UI-11 the project list shows the projects as cards in a grid or as rows in a list (switch remembered), sorted by display name or creation date in either direction, each with display name, name, a menu (Delete) and its resources per type that open their section ("Create server" when empty), and a dashed "New project" tile that creates a project (goal 3) [e2e]
+- UI-12 the console lists, shows, creates, configures and deletes storage boxes, their subaccounts and snapshots in the active project (goal 3) [e2e]
 
 ### Installer (`INST`)
 
@@ -207,10 +221,11 @@ prerequisites").
 
 One requirement per client; the test map has one row per resource type.
 
-- CLI-01 the hcloud CLI manages every resource type it supports against hlab with only the endpoint changed (goal 1) [e2e]
-- CLI-02 the OpenTofu provider manages every resource and reads every data source against hlab with only the endpoint changed (goal 1) [e2e]
-- CLI-03 the Ansible collection runs every module and the inventory plugin against hlab from WSL2 with only the endpoint changed (goal 1) [e2e]
+- CLI-01 the hcloud CLI manages every Cloud API resource type it supports against hlab with only the endpoint changed (goal 1) [e2e]
+- CLI-02 the OpenTofu provider manages every Cloud API resource and reads every Cloud API data source against hlab with only the endpoint changed (goal 1) [e2e]
+- CLI-03 the Ansible collection runs every Cloud API module and the inventory plugin against hlab from WSL2 with only the endpoint changed (goal 1) [e2e]
 - CLI-04 each client builds the example environment of the success criterion, it is reachable via SSH from host and WSL2, and the client deletes it completely (goal 1) [e2e]
+- CLI-05 each client manages storage boxes, subaccounts and snapshots and reads storage box types against hlab with only its cloud and Hetzner endpoints changed (goal 1) [e2e]
 
 ### MCP server (`MCP`)
 
@@ -241,7 +256,6 @@ What the target vision in IDEA.md will need, not built yet.
 
 - FAULT-01 inject server failure, network disruption, latency between locations, API errors, rate limits and storage errors
 - LINUX-01 run hlab with the tray on Linux with KVM/libvirt
-- SBOX-01 Storage Box API at its own `.internal` base address
 - CON-01 request console returns a working wss VNC console
 - HOST-05 WSL2 in mirrored networking mode
 - CAT-09 further system images (Rocky, Alma, Fedora, CentOS Stream, openSUSE) and app images
@@ -358,6 +372,14 @@ What the target vision in IDEA.md will need, not built yet.
 | DNS-03 | 07 | x |
 | DNS-04 | 07 | x |
 | DNS-05 | 07 | x |
+| SBOX-01 | 18 | |
+| SBOX-02 | 19 | |
+| SBOX-03 | 19 | |
+| SBOX-04 | 19 | |
+| SBOX-05 | 19 | |
+| SBOX-06 | 19 | |
+| SBOX-07 | 19 | |
+| SBOX-08 | 19 | |
 | HOST-01 | 05 | x |
 | HOST-02 | 09 | x |
 | HOST-03 | 02 | x |
@@ -383,6 +405,7 @@ What the target vision in IDEA.md will need, not built yet.
 | UI-09 | 14 | x |
 | UI-10 | 14 | x |
 | UI-11 | 15 | x |
+| UI-12 | 20 | |
 | INST-01 | 12 | x |
 | INST-02 | 12 | x |
 | INST-03 | 12 | x |
@@ -393,6 +416,7 @@ What the target vision in IDEA.md will need, not built yet.
 | CLI-02 | 13 | |
 | CLI-03 | 13 | |
 | CLI-04 | 13 | |
+| CLI-05 | 20 | |
 | MCP-01 | 17 | |
 | MCP-02 | 17 | |
 | MCP-03 | 17 | |

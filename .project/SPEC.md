@@ -29,6 +29,10 @@ Versions as of 2026-11-18 (reasoning and sources in DECISIONS.md, "Stack").
   `@lucide/svelte` 1.75.0, Node.js 24.22.3 LTS for the frontend build (newer Node versions work for development).
 - Windows icon resources: `github.com/tc-hib/winres` v0.3.1 (0BSD) in the
   icon generator `tools/icons`, which writes the committed `.syso` files.
+- Storage VM: Debian 13 `generic` cloud image, cloud-init, btrfs-progs
+  (data disk, quotas, snapshots), OpenSSH (ports 22 and 23), rsync,
+  borgbackup, Samba, Apache 2.4 with mod_dav (WebDAV over HTTPS), vsftpd
+  (FTP and explicit FTPS); Debian packages; hlab-agent in role `storage`.
 - Appliance: Debian 13 `generic` cloud image, cloud-init, nftables,
   HAProxy 3.0 (Debian package), iproute2 (VRF, VLAN, netns), xfsprogs,
   e2fsprogs; hlab-agent as one static Go binary.
@@ -70,6 +74,11 @@ touches here instead of relying on memory.
   (downloaded by `task openapi` from `https://docs.hetzner.cloud/cloud.spec.json`),
   OpenAPI 3.1.2 pinned by SHA-256 in `api/openapi.lock`; settles the
   request and response shapes, error codes and HTTP statuses hlab serves.
+- Hetzner API OpenAPI description (Storage Boxes):
+  `%LocalAppData%\hlab\openapi\hetzner.spec.json` (downloaded by
+  `task openapi` from `https://docs.hetzner.cloud/hetzner.spec.json`, a
+  copy from after 2026-04-21), OpenAPI 3.1.2 pinned by SHA-256 in
+  `api/hetzner-openapi.lock`; settles the same for `/hetzner/v1`.
 
 ## Accounts and secrets
 
@@ -107,8 +116,9 @@ appear here, only names.
   environment.
 - Development only, for agents: an hcloud context `hlab-docs` for the dev
   cloud, created once by the user: endpoint `http://api.hetzner.internal/v1`
-  set in the context (`hcloud --context hlab-docs config set endpoint ...`,
-  not `--global`), token of a read/write token of the hlab project `docs`.
+  and Hetzner endpoint `http://api.hetzner.internal/hetzner/v1` set in the context
+  (`hcloud --context hlab-docs config set endpoint ...` and
+  `... config set hetzner_endpoint ...`, not `--global`), token of a read/write token of the hlab project `docs`.
   The `doc-writer` agent uses it to run the examples of the user
   documentation against the running dev service:
   - hcloud examples run as `hcloud --context hlab-docs <command>`, with
@@ -139,7 +149,8 @@ appear here, only names.
   hardware virtualization on; the developer is a member of Hyper-V Administrators; for the end-to-end tests at least 16 GB RAM
   and 100 GB free disk.
 - WSL2 with one Ubuntu distribution (24.04 or newer) in NAT mode with `dnsTunneling`
-  on (the defaults), for Ansible and the WSL2 tests.
+  on (the defaults), for Ansible and the WSL2 tests, with `rsync`,
+  `borgbackup`, `smbclient` and `lftp` for the storage box tests.
 - Go, Node.js, Task, WiX (as dotnet tool), hcloud, OpenTofu on the host;
   `uv`, ansible-core and the collection in WSL2 — versions as in "Stack".
 - Internet access for image, ISO, package and OpenAPI downloads.
@@ -194,7 +205,7 @@ secrets").
 - D1 User guide: `README.md`, for developers testing Hetzner setups,
   compact: a banner with the application icon, "HLab" and a subtitle,
   badges and a link line; what HLab is; screenshots; prerequisites;
-  installation; first steps (project, token, client endpoint settings for
+  installation; first steps (project, token, client cloud and Hetzner endpoint settings for
   hcloud, OpenTofu and Ansible); tray program; WSL2 prerequisites;
   uninstallation; a short note on the MCP server `hlab mcp`; links to the
   other documents. The detailed usage per
@@ -208,8 +219,8 @@ secrets").
   `settings.toml`, the custom server types file and the catalog files.
 - D4 Known deviations from Hetzner: `docs/deviations.md`, for users: short
   prose grouped by topic (servers, images and backups, volumes, networks
-  and IPs, firewalls, DNS, load balancers and certificates, projects and
-  server types, WSL2), saying what a user notices and what is not
+  and IPs, firewalls, DNS, load balancers and certificates, storage boxes,
+  projects and server types, WSL2), saying what a user notices and what is not
   available, without routes or endpoint lists; about 150 lines at most.
 - D5 Help inside the program: one help text per tray view in
   `ui/frontend/src/help/<view>.md`, shown by the help button.

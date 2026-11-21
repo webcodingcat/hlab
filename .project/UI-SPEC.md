@@ -111,12 +111,13 @@ everywhere.
     small print (12 px, text muted) with a chevron on the right; a click
     on the heading collapses or expands the group, the collapsed groups
     are remembered; a 1 px border line separates the groups. Groups and
-    entries: "Cloud" with Servers, Volumes, Firewalls; "Networking" with
+    entries: "Cloud" with Servers, Volumes, Storage Boxes, Firewalls; "Networking" with
     Load Balancers, Networks, IPs, DNS; after a separator line the single
     entry "Security" (no heading). Every entry opens a page with a tab
     bar on top (see "Section tabs"), also when it has only one tab:
     Servers: Servers, Snapshots, Backups, Placement Groups; Volumes:
-    Volumes; Firewalls: Firewalls; Load Balancers: Load Balancers;
+    Volumes; Storage Boxes: Storage Boxes (a box's detail page has the
+    tabs Overview, Subaccounts, Snapshots and Settings); Firewalls: Firewalls; Load Balancers: Load Balancers;
     Networks: Networks; IPs: Primary IPs, Floating IPs; DNS: DNS Zones;
     Security: SSH Keys, API tokens, Certificates. Snapshots and Backups
     list the project's images of that type (system images are not

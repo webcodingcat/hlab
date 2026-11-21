@@ -3183,3 +3183,19 @@ taken with the approval of the spec or by an answer from the user.
 - What: `hlab mcp` uses `github.com/modelcontextprotocol/go-sdk` v1.8.0 (latest stable; MCP 2026-07-28 and older protocol versions, needs Go 1.25), with `mcp.AddTool` on typed structs, `StdioTransport`, and `NewInMemoryTransports` for unit tests; handler errors become tool errors (`isError`).
 - Why: the official SDK infers and validates schemas from structs and has an in-memory transport for tests; `mark3labs/mcp-go` needs manual argument handling and offers nothing more here.
 - Cost of change: low
+
+## 2026-11-21 Storage Boxes in milestone 1
+
+- Type: change
+- Phase: change
+- What: the Storage Box moves from the target vision into milestone 1 as phases 18 to 20 after phase 13 (API, storage VM with real data over SFTP/SCP, rsync, Borg, SMB, WebDAV and FTP/FTPS, console section and client tests), with requirements SBOX-01 to SBOX-08, UI-12 and CLI-05, addresses under `hetzner.internal` and the details in `decisions/storage-box.md`; UI-02 and CLI-01 to CLI-03 now name the Cloud API.
+- Why: the user wants Storage Box setups testable in the first version, with real data as goal 2 asks.
+- Cost of change: medium (additions: three phases, a second VM role of hlab-agent, a second router under `/hetzner/v1`; no rebuild of existing code)
+
+## 2026-11-21 Storage Box details
+
+- Type: decision
+- Phase: change
+- What: usernames `u<n>` from 100000, one public IPv4 per box routed to the storage VM, `reachable_externally` means reachable from host and WSL2, btrfs subvolumes with quotas and snapshots, WebDAV and FTPS certificates from the hlab CA, types and prices from `task catalog`, the Hetzner API description frozen in `api/hetzner-openapi.lock`.
+- Why: the simplest layout that gives every protocol its Hetzner port and behaviour without changing the appliance's role.
+- Cost of change: medium
