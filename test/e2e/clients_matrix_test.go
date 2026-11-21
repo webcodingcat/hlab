@@ -295,35 +295,11 @@ type named struct {
 // pages.
 func (e *env) apiNamed(t *testing.T, path, key string) map[int64]string {
 	t.Helper()
-	out := map[int64]string{}
-	sep := "?"
-	if strings.Contains(path, "?") {
-		sep = "&"
+	items, err := e.apiItems(context.Background(), path, key)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for page := 1; page <= 1000; page++ {
-		var body map[string]json.RawMessage
-		e.getOK(t, fmt.Sprintf("%s%sper_page=50&page=%d", path, sep, page), &body)
-		var items []named
-		if err := json.Unmarshal(body[key], &items); err != nil {
-			t.Fatalf("GET %s: no list %q: %v", path, key, err)
-		}
-		for _, it := range items {
-			out[it.ID] = it.Name
-		}
-		var meta struct {
-			Pagination struct {
-				NextPage *int `json:"next_page"`
-			} `json:"pagination"`
-		}
-		if err := json.Unmarshal(body["meta"], &meta); err != nil {
-			t.Fatalf("GET %s: no meta.pagination: %v", path, err)
-		}
-		if meta.Pagination.NextPage == nil {
-			return out
-		}
-	}
-	t.Fatalf("GET %s: more than 1000 pages", path)
-	return nil
+	return namedOf(items)
 }
 
 // namedOf turns a decoded client list into the map apiNamed returns.

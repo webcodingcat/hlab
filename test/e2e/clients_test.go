@@ -435,7 +435,21 @@ func (e *env) apiGet(ctx context.Context, path string, out any) (int, error) {
 
 // apiIDs returns the IDs of a list endpoint over all pages.
 func (e *env) apiIDs(ctx context.Context, path, key string) ([]int64, error) {
-	var ids []int64
+	items, err := e.apiItems(ctx, path, key)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(items))
+	for _, it := range items {
+		ids = append(ids, it.ID)
+	}
+	return ids, nil
+}
+
+// apiItems returns ID and name of every item of a list endpoint over all
+// pages.
+func (e *env) apiItems(ctx context.Context, path, key string) ([]named, error) {
+	var all []named
 	for page := 1; ; page++ {
 		var body map[string]json.RawMessage
 		sep := "?"
@@ -449,15 +463,11 @@ func (e *env) apiIDs(ctx context.Context, path, key string) ([]int64, error) {
 		if status != http.StatusOK {
 			return nil, fmt.Errorf("GET %s: status %d", path, status)
 		}
-		var items []struct {
-			ID int64 `json:"id"`
-		}
+		var items []named
 		if err := json.Unmarshal(body[key], &items); err != nil {
 			return nil, fmt.Errorf("GET %s: no list %q: %w", path, key, err)
 		}
-		for _, it := range items {
-			ids = append(ids, it.ID)
-		}
+		all = append(all, items...)
 		var meta struct {
 			Pagination struct {
 				NextPage *int `json:"next_page"`
@@ -467,7 +477,7 @@ func (e *env) apiIDs(ctx context.Context, path, key string) ([]int64, error) {
 			return nil, fmt.Errorf("GET %s: no meta.pagination: %w", path, err)
 		}
 		if meta.Pagination.NextPage == nil {
-			return ids, nil
+			return all, nil
 		}
 		if page > 1000 {
 			return nil, errors.New("GET " + path + ": more than 1000 pages")
