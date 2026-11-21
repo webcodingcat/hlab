@@ -111,22 +111,56 @@ never listed, and neither is a zone whose check got no answer.
 
 ### hlab project create
 
+Creates a project from its display name, the name shown in the window.
+Quote a display name with spaces. HLab derives the project's name from
+it and prints that name; commands, the token commands and the window's
+addresses use the name.
+
 ```
-> hlab project create demo
-project demo created
+> hlab project create "Web Coding Cat"
+project web-coding-cat created
+> hlab project create "München Büro"
+project muenchen-buero created
+```
+
+The name is the display name in lower case with ä, ö, ü and ß written as
+ae, oe, ue and ss and other accents dropped (é becomes e); every other run
+of characters, spaces included, becomes one `-`, and no `-` stays at
+either end. Letters without an accent to drop, such as ø or æ, become
+`-` as well. A name is at most 255 characters. A display name is 1 to 255
+characters after leading and trailing spaces are removed and holds no
+control characters.
+
+The command fails with exit code 1 when the display name is empty, when
+nothing is left of it for the name, or when the name is taken; two
+display names that differ only in case give the same name:
+
+```
+> hlab project create "  "
+hlab: the display name is empty
+> hlab project create "!!!"
+hlab: the display name gives an empty project name
+> hlab project create "Docs"
+hlab: project docs already exists
 ```
 
 ### hlab project list
 
+Lists the projects by name with their number of resources, creation time
+and display name. `--output json` adds `resources_by_type`, the number of
+resources per section of the project console.
+
 ```
 > hlab project list
-NAME                 RESOURCES  CREATED
-demo                 0          2026-11-18 12:56:55
+NAME            RESOURCES  CREATED              DISPLAY NAME
+muenchen-buero  3          2026-11-21 10:14:40  München Büro
+web-coding-cat  0          2026-11-21 10:12:03  Web Coding Cat
 ```
 
 ### hlab project delete
 
-Deletes a project with everything in it: it revokes the project's tokens
+Deletes the project of the given name (not its display name) with
+everything in it: it revokes the project's tokens
 at once, waits until running actions of the project (a server creation,
 for example) have finished, then deletes everything the project owns:
 servers with their VMs and disks (protected servers too), volumes with

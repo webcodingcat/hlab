@@ -78,8 +78,9 @@ state: running
 version: dev
 ```
 
-Create a project and a token for it. The token is printed once and cannot
-be shown again:
+Create a project and a token for it. `project create` takes a display
+name and prints the project's name, which the other commands use. The
+token is printed once and cannot be shown again:
 
 ```
 > bin\hlab.exe project create demo
@@ -159,10 +160,15 @@ state, it offers **Discard state and start**, which does what
 [Discarding the state](docs/guide.md#discarding-the-state)) after you
 confirm.
 
-- **Projects**, the start page: the list of projects with
-  **Create project**, a search field, and **Delete** in each row's menu
-  (`…`). Click a project to open its console; the window opens the last
-  project you used when it starts again.
+- **Projects**, the start page: the projects as cards with their display
+  name, name and number of resources, in a grid or a list, with a search
+  field and sorting by display name or creation time. The number opens a
+  menu of the project's sections; **+ New project** asks for a display
+  name and shows the name HLab derives from it (see
+  [Projects](docs/guide.md#projects)); **Delete** is in each card's menu
+  (`…`) and asks you to type the display name. Click a card to open the
+  project's console; the window opens the last project you used when it
+  starts again.
 - The **project console** opens on **Servers**. Its sidebar groups the
   entries like the Hetzner Cloud Console: **Cloud** with **Servers**,
   **Volumes** and **Firewalls**; **Networking** with **Load Balancers**,
@@ -178,7 +184,8 @@ confirm.
   | DNS | DNS Zones |
   | Security | SSH Keys, API tokens, Certificates |
 
-  The project name in the breadcrumb switches to another project.
+  The project's display name in the breadcrumb opens a menu to switch to
+  another project.
   - Each resource section has a list with a search field (a name, or a
     label selector such as `env=dev`), a create button that opens a form,
     and a detail page with an actions menu (`…`) and tabs such as Labels

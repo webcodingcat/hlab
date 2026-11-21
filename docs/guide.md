@@ -6,6 +6,24 @@ project, as in [First steps](../README.md#first-steps): a server `web1`
 with the SSH key `demo` in location `fsn1`. The differences from Hetzner are collected in
 [Known deviations](deviations.md).
 
+## Projects
+
+A project has a display name, such as `Web Coding Cat`, and a name that
+HLab derives from it, `web-coding-cat`. The window shows the display
+name; `hlab` commands, the token commands and the window's addresses use
+the name. Create a project with
+[`hlab project create`](commands.md#hlab-project-create) or with
+**+ New project** in the window, which shows the derived name below the
+field as you type. A project whose name is taken cannot be created.
+
+The window's start page shows the projects as cards with the display
+name, the name and the number of resources. A click on the number opens
+a menu with one entry per section, such as "1 SSH Key", that opens that
+section; a project without resources offers **+ Create server** instead.
+The toolbar searches by display name or name, sorts by display name or
+creation time in either direction, and switches between a grid of cards
+and a list. The window keeps the sort and the layout.
+
 ## Managing servers
 
 The server actions of hcloud work on HLab's VMs:
@@ -48,8 +66,8 @@ create or start a server with `resource_unavailable`.
 
 ## Servers in the window
 
-The HLab window manages the same resources as hcloud. Click a project in
-the project list; its console opens on **Servers**. The sidebar has the
+The HLab window manages the same resources as hcloud. Click a project's
+card in the project list; its console opens on **Servers**. The sidebar has the
 groups **Cloud** (Servers, Volumes, Firewalls) and **Networking** (Load
 Balancers, Networks, IPs, DNS) and the entry **Security**; the tabs above
 the page lead to the views of an entry: **Servers** to Servers,
