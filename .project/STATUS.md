@@ -7,7 +7,7 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 15 Project display names and Hetzner-style project list (next)
+- Phase: 15 Project display names and Hetzner-style project list (in progress on wcc/phase-15)
 - Base branch: main
 - Last done: phase 14 merged into main (2026-11-20): all remaining resource sections, grouped sidebar with section tabs, own ISOs in the Administration, Hetzner-style volume form, labels as chips; the manual check UI-09 is deferred to before the release
 - Next: /wcc:phase in a new session builds phase 15; before the release /wcc:report walks through UI-09, LIFE-05 and DOC-07 (DOC-07 waits until the repository is on GitHub)
