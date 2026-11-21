@@ -114,8 +114,8 @@ func (m *Module) unassign(w http.ResponseWriter, req *http.Request) {
 // action on the floating IP, refused while it has a running action, and
 // on its current and its target server, queued behind their actions. The
 // work waits its turn, checks target again, pushes the new assignment to
-// the agent as pending and, at success, assigns the floating IP as it is
-// then, so GET shows the change together with the action's success and a
+// the agent as pending and, at success, applies it to the floating IP as
+// it is then, so GET shows the change together with the action's success and a
 // failed or interrupted action changes nothing.
 func (m *Module) assignment(w http.ResponseWriter, req *http.Request, id int64, command string, target func(tx store.Tx, r Record) (*int64, error)) {
 	p, _ := api.ProjectFrom(req.Context())
@@ -147,12 +147,13 @@ func (m *Module) assignment(w http.ResponseWriter, req *http.Request, id int64, 
 	}
 	actionID := action.ID
 	acts.Run(actionID, func(ctx context.Context, _ func(int)) error {
+		var to *int64
 		err := st.Tx(func(tx store.Tx) error {
 			r, err := Load(tx, p.ID, id)
 			if err != nil {
 				return err
 			}
-			to, err := target(tx, r)
+			to, err = target(tx, r)
 			if err != nil {
 				return err
 			}
@@ -163,7 +164,6 @@ func (m *Module) assignment(w http.ResponseWriter, req *http.Request, id int64, 
 			return actionError(err)
 		}
 		pushErr := m.d.PushAgent(ctx)
-		var changeErr error
 		err = st.Tx(func(tx store.Tx) error {
 			r, err := Load(tx, p.ID, id)
 			if errors.Is(err, store.ErrNotFound) {
@@ -176,17 +176,15 @@ func (m *Module) assignment(w http.ResponseWriter, req *http.Request, id int64, 
 				r.Hlab.Pending = nil
 			}
 			if pushErr == nil {
-				// The check again, on the record as it is now.
-				var to *int64
-				if to, changeErr = target(tx, r); changeErr == nil {
-					if err := m.move(tx, &r, to); err != nil {
-						return err
-					}
+				// Checked in the first transaction; the action holds the
+				// floating IP and both servers since.
+				if err := m.move(tx, &r, to); err != nil {
+					return err
 				}
 			}
 			return put(tx, r)
 		})
-		return errors.Join(pushErr, actionError(changeErr), err)
+		return errors.Join(pushErr, err)
 	})
 	api.JSON(w, http.StatusCreated, map[string]any{"action": action})
 }
@@ -197,11 +195,7 @@ func (m *Module) move(tx store.Tx, r *Record, to *int64) error {
 	if to == nil {
 		return detach(tx, r)
 	}
-	srv, err := loadServer(tx, r.Hlab.ProjectID, *to)
-	if err != nil {
-		return err
-	}
-	return m.assignTo(tx, r, srv)
+	return attach(tx, r, *to)
 }
 
 // actionError turns an error of a check inside an action's work into the
@@ -278,10 +272,15 @@ func (m *Module) assignTo(tx store.Tx, r *Record, srv servers.Record) error {
 	if err := m.checkAssign(*r, srv); err != nil {
 		return err
 	}
+	return attach(tx, r, srv.ID)
+}
+
+// attach takes r from its server and assigns it to server sid, adding it
+// to the server's public_net.floating_ips.
+func attach(tx store.Tx, r *Record, sid int64) error {
 	if err := detach(tx, r); err != nil {
 		return err
 	}
-	sid := srv.ID
 	r.Server = &sid
 	return servers.Update(tx, sid, func(s *servers.Record) error {
 		if !slices.Contains(s.PublicNet.FloatingIPs, r.ID) {
