@@ -457,7 +457,9 @@ Inside `hlabd` (Go packages under `internal/`):
   through SCM), `bridge` (package without a Wails import, bound as three
   Wails services: `bridge.Service` with
   `Call(method, path, body string) (Response{status, body}, error)` that
-  forwards to the management API, `Settings()`/`SaveSettings()` for the
+  forwards to the management API, `ProjectName(display string) string`
+  for the live name preview (`projectname.Derive`, no cloud needed),
+  `Settings()`/`SaveSettings()` for the
   file, `ServerTypes`/`AddServerType`/`UpdateServerType`/`RemoveServerType`
   for the merged list and the own types (`UpdateServerType(OwnSpec)
   (*Invalid, error)` replaces the own type of the same name),

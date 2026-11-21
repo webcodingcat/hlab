@@ -154,13 +154,13 @@ of `main`, in list over 80 %.
   - Adjusts: -
   - [x] `internal/cli/cli.go`: `project create` takes `<display-name>` (one argument, usage line), sends `{"display_name"}`, prints `project <derived name> created` from the response; `project list` columns NAME, RESOURCES, CREATED, DISPLAY NAME; `--output json` passes the body through
 
-- [ ] 15-05 Tray bridge: derived name preview
+- [x] 15-05 Tray bridge: derived name preview
   - Wave: 2 | Depends on: 15-01 | Review: alone
   - Requirements: UI-11 | Tests: -
   - Reads: ARCHITECTURE "hlab-tray (tray program)" (bridge); CONTEXT.md
   - Size: ~15 lines in 1 file (plus the regenerated Wails bindings, if the build generates them)
   - Adjusts: -
-  - [ ] `internal/bridge/service.go`: `ProjectName(display string) string` returning `projectname.Derive(display)`; reachable from the frontend as `service<string>("Service", "ProjectName", text)`
+  - [x] `internal/bridge/service.go`: `ProjectName(display string) string` returning `projectname.Derive(display)`; reachable from the frontend as `service<string>("Service", "ProjectName", text)`
 
 - [x] 15-06 Tray: project list logic
   - Wave: 1 | Depends on: - | Review: alone
