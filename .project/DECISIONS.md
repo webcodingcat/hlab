@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-21 Volume attach commits at success and delete waits for actions
+
+- Type: decision
+- Phase: phase 13
+- What: a volume attach (also the one of a create with `server`, which only queues) is checked again at its turn, kept as `_hlab.pending` and applied to the current record at success; a failed push takes the disk off again, Recover drops a pending attach after a stop, and DELETE /volumes/{id} answers 423 `locked` while any action holds the volume.
+- Why: GET shows the attach only at success, and without the lock a volume could be deleted during its attach.
+- Cost of change: low
+
 ## 2026-11-21 Network actions keep the earlier state and restore it
 
 - Type: decision

@@ -143,7 +143,7 @@ Inside `hlabd` (Go packages under `internal/`):
   type ActionUser interface {           // modules starting actions outside a handler (daily backups); Mount calls it before Routes
       UseActions(m *actions.Manager)
   }
-  type Recoverer interface {            // modules with records to repair at cloud start (images, volumes: half-made records; primary_ips: missing records; load_balancers: PTR entries on the pre-Q14 formal IPv6; networks: earlier state left by an interrupted network action)
+  type Recoverer interface {            // modules with records to repair at cloud start (images, volumes: half-made records; primary_ips: missing records; load_balancers: PTR entries on the pre-Q14 formal IPv6; networks: earlier state left by an interrupted network action; volumes: pending attach left by a stop)
       Recover(ctx context.Context) error // cloud start calls it before the API serves and before the first scheduled job run
   }
   type Lifecycle interface {            // modules whose VMs follow the cloud's stop and start (servers)

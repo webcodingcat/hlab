@@ -149,14 +149,14 @@ a group is split per client).
   - [x] `network.go`: LB `attach_to_network`/`detach_from_network` refuse the LB, queue the network; `private_net` at `success`.
   - [x] `loadbalancers_test.go`: the rows of the test map.
 
-- [ ] 13-05 Volumes: queue and effect at success
+- [x] 13-05 Volumes: queue and effect at success
   - Wave: 2 | Depends on: 13-02 | Review: alone
   - Requirements: CLI-02 | Tests: internal/resources/volumes/volumes_test.go
   - Reads: CONTEXT.md "Actions"; Interfaces "internal/actions"; internal/resources/volumes/attach.go, volumes.go (create with `server`, around lines 420 to 490)
   - Size: ~160 lines in 3 files
   - Adjusts: none (`wantLocked` checks change_protection of the volume and the server, which keep refusing)
-  - [ ] `attach.go`, `volumes.go`: attach, detach and the attach of a create with `server` refuse the volume and queue on the server; `server` on the volume and `volumes` on the server change at `success`.
-  - [ ] `volumes_test.go`: the rows of the test map.
+  - [x] `attach.go`, `volumes.go`: attach, detach and the attach of a create with `server` refuse the volume and queue on the server; `server` on the volume and `volumes` on the server change at `success`.
+  - [x] `volumes_test.go`: the rows of the test map.
 
 - [ ] 13-06 Floating and primary IPs: queue and effect at success
   - Wave: 2 | Depends on: 13-02 | Review: alone
