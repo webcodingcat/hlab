@@ -182,12 +182,12 @@ a group is split per client).
   - Size: ~260 lines in 1 file
   - [x] Row `CLI-01/servers` (own server, 1 slot): create with labels, ssh key, user data, placement group; list, describe, ip, update, labels; poweroff, poweron, reboot, reset, shutdown; reset-password; change-type (powered off, x86 type); rebuild; enable/disable-rescue; enable/disable-backup; create-image (snapshot, deleted afterwards); attach-iso, detach-iso; set-rdns; metrics; enable/disable-protection; add-to/remove-from-placement-group; delete; each step checked through the API.
 
-- [ ] 13-09 Servers with OpenTofu
+- [x] 13-09 Servers with OpenTofu
   - Wave: 2 | Depends on: 13-01 | Review: alone | e2e
   - Requirements: CLI-02 | Tests: test/e2e/clients_servers_tofu_test.go
   - Reads: CONTEXT.md "Scope"; RESEARCH.md §2 (resources, data sources, datacenter handling); provider docs of `hcloud_server`
   - Size: ~240 lines in 1 file
-  - [ ] Row `CLI-02/servers` (own server, 1 slot): `hcloud_server` with labels, ssh keys, user data, placement group, `backups`, `rescue`, `iso`, protection; in-place updates of name, labels, server type (x86), `backups`, `iso`, protection; data sources `hcloud_server` and `hcloud_servers`; destroy and gone.
+  - [x] Row `CLI-02/servers` (own server, 1 slot): `hcloud_server` with labels, ssh keys, user data, placement group, `backups`, `rescue`, `iso`, protection; in-place updates of name, labels, server type (x86), `backups`, `iso`, protection; data sources `hcloud_server` and `hcloud_servers`; destroy and gone.
 
 - [ ] 13-10 Servers with Ansible
   - Wave: 2 | Depends on: 13-01 | Review: alone | e2e
