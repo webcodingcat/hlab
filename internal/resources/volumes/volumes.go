@@ -99,6 +99,19 @@ type Internal struct {
 	LUN int `json:"lun,omitempty"`
 	// Automount is set while attached with automount.
 	Automount bool `json:"automount,omitempty"`
+	// Pending is the attach a running action has started and commits at
+	// success; nil without one.
+	Pending *Pending `json:"pending,omitempty"`
+}
+
+// Pending is the attach of a volume the running action Action works on:
+// the agent document serves it while that action runs, GET shows it once
+// the action has succeeded.
+type Pending struct {
+	Action    int64 `json:"action"`
+	Server    int64 `json:"server"`
+	LUN       int   `json:"lun"`
+	Automount bool  `json:"automount"`
 }
 
 // Record is the stored document of a volume.
@@ -433,8 +446,11 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		if err != nil || serverID == 0 {
 			return err
 		}
-		// The volume is locked by its creation; the attach locks the server.
-		attach, err = acts.Start(tx, p.ID, "attach_volume", []actions.Ref{{ID: serverID, Type: serverRefType}})
+		// The attach queues behind the creation, which holds the new volume,
+		// and behind the actions on the server; nothing else can hold the
+		// volume yet, so it refuses on nothing.
+		attach, err = acts.StartQueued(tx, p.ID, "attach_volume",
+			[]actions.Ref{{ID: id, Type: refType}, {ID: serverID, Type: serverRefType}}, nil)
 		return err
 	})
 	if err != nil {
@@ -449,11 +465,14 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			m.drop(stor, rec)
 		}
-		if attach != nil {
-			m.attachCreated(stor, acts, attach.ID, id, serverID, automount, serverField, err)
-		}
 		return err
 	})
+	if attach != nil {
+		attachID := attach.ID
+		acts.Run(attachID, func(ctx context.Context, _ func(int)) error {
+			return m.attachWork(ctx, stor, attachID, id, serverID, automount, serverField)
+		})
+	}
 	next := []any{}
 	if attach != nil {
 		next = append(next, attach)
@@ -462,29 +481,6 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		"volume":       rec.Volume,
 		"action":       action,
 		"next_actions": next,
-	})
-}
-
-// attachCreated runs the attach action of a volume created with a server:
-// the volume is bound while its creation still locks it, then its disk is
-// hot-added. A failed creation fails the attach too.
-func (m *Module) attachCreated(stor *store.Store, acts *actions.Manager, action, id, server int64, automount bool, field string, created error) {
-	var r Record
-	err := created
-	if err == nil {
-		err = stor.Tx(func(tx store.Tx) error {
-			var err error
-			r, err = bind(tx, id, server, automount, field)
-			return err
-		})
-	} else {
-		err = fmt.Errorf("volume %d was not created: %w", id, err)
-	}
-	acts.Run(action, func(ctx context.Context, _ func(int)) error {
-		if err != nil {
-			return err
-		}
-		return m.plug(ctx, stor, r)
 	})
 }
 
@@ -559,6 +555,13 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 			return &api.FieldError{Message: fmt.Sprintf("volume %d is attached to server %d; detach it first", id, *r.Server)}
 		case r.Status == StatusCreating:
 			return actions.ErrLocked
+		}
+		// An attach records the volume's server only at its success.
+		if held, err := busy(tx, id); err != nil || held {
+			if err == nil {
+				err = actions.ErrLocked
+			}
+			return err
 		}
 		return store.Delete(tx, Kind, p.ID, id)
 	})

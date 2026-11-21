@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/webcodingcat/hlab/internal/agentapi"
+	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
@@ -82,15 +83,24 @@ func (m *Module) Delete(_ context.Context, id int64) error {
 }
 
 // Recover implements resource.Recoverer: it removes every volume record
-// with status creating and its disk file; a missing file is no error.
-func (m *Module) Recover(_ context.Context) error {
-	var cut []Record
+// with status creating and its disk file; a missing file is no error. The
+// attach of a volume interrupted by a stop is dropped: its disk leaves the
+// server's VM and the volume stays as it was before the attach.
+func (m *Module) Recover(ctx context.Context) error {
+	var cut, interrupted []Record
 	err := m.d.Store.Tx(func(tx store.Tx) error {
 		all, err := store.ListAll[Record](tx, Kind)
 		if err != nil {
 			return err
 		}
 		for _, r := range all {
+			if r.Hlab.Pending != nil {
+				interrupted = append(interrupted, r)
+				r.Hlab.Pending = nil
+				if err := put(tx, r); err != nil {
+					return err
+				}
+			}
 			if r.Status != StatusCreating {
 				continue
 			}
@@ -105,6 +115,13 @@ func (m *Module) Recover(_ context.Context) error {
 		return err
 	}
 	var errs []error
+	for _, r := range interrupted {
+		slog.Info("dropped the interrupted attach of a volume", "volume", r.ID, "server", r.Hlab.Pending.Server)
+		vm := servers.VMName(m.d.VMPrefix, r.Hlab.Pending.Server)
+		if err := m.d.Platform.DetachDisk(ctx, vm, r.Hlab.Path); err != nil && !isNotFound(err) {
+			errs = append(errs, err)
+		}
+	}
 	for _, r := range cut {
 		slog.Info("removed volume left creating", "volume", r.ID)
 		if err := removeFile(r.Hlab.Path); err != nil {

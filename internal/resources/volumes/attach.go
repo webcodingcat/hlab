@@ -2,6 +2,7 @@ package volumes
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -59,25 +60,24 @@ func freeLUN(tx store.Tx, server int64, field string) (int, error) {
 	return 0, &api.FieldError{Field: field, Message: fmt.Sprintf("server %d has %d volumes attached already", server, MaxLUN)}
 }
 
-// bind records volume id as attached to server at its lowest free LUN and
-// adds it to the server's volumes; field names the request field of the
-// server for errors.
-func bind(tx store.Tx, id, server int64, automount bool, field string) (Record, error) {
-	r, err := load(tx, id)
-	if err != nil {
-		return r, err
-	}
+// target checks that volume r can be attached to server: the server
+// exists in r's project and location and r is detached; field names the
+// request field of the server for errors.
+func target(tx store.Tx, r Record, server int64, field string) error {
 	s, err := servers.Load(tx, server)
 	if errors.Is(err, store.ErrNotFound) || err == nil && s.Hlab.ProjectID != r.Hlab.ProjectID {
-		return r, &api.FieldError{Field: field, Message: fmt.Sprintf("server %d not found", server)}
+		return &api.FieldError{Field: field, Message: fmt.Sprintf("server %d not found", server)}
 	}
 	if err != nil {
-		return r, err
+		return err
 	}
-	if err := checkBind(r, s.Hlab.Location, field); err != nil {
-		return r, err
-	}
-	lun, err := freeLUN(tx, server, field)
+	return checkBind(r, s.Hlab.Location, field)
+}
+
+// setBound records volume r as attached to server at lun and adds it to
+// the server's volumes.
+func setBound(tx store.Tx, r Record, server int64, lun int, automount bool) (Record, error) {
+	s, err := servers.Load(tx, server)
 	if err != nil {
 		return r, err
 	}
@@ -88,7 +88,25 @@ func bind(tx store.Tx, id, server int64, automount bool, field string) (Record, 
 	if err := put(tx, r); err != nil {
 		return r, err
 	}
-	return r, servers.SetVolumes(tx, server, append(slices.Clone(s.Volumes), id))
+	return r, servers.SetVolumes(tx, server, append(slices.Clone(s.Volumes), r.ID))
+}
+
+// bind records volume id as attached to server at its lowest free LUN and
+// adds it to the server's volumes; field names the request field of the
+// server for errors.
+func bind(tx store.Tx, id, server int64, automount bool, field string) (Record, error) {
+	r, err := load(tx, id)
+	if err != nil {
+		return r, err
+	}
+	if err := target(tx, r, server, field); err != nil {
+		return r, err
+	}
+	lun, err := freeLUN(tx, server, field)
+	if err != nil {
+		return r, err
+	}
+	return setBound(tx, r, server, lun, automount)
 }
 
 // unbind records volume id as detached and removes it from its server's
@@ -127,6 +145,95 @@ func (m *Module) plug(ctx context.Context, stor *store.Store, r Record) error {
 		return m.d.PushAgent(ctx)
 	}
 	return nil
+}
+
+// attachWork is the work of an attach action (actionID) of volume id to
+// server. At its turn it checks the attach against the state the earlier
+// actions left and records it as pending on the volume, hot-adds the disk
+// and, with automount, pushes the agent document, which serves the pending
+// attach. Only at success does it commit the attach to the volume and the
+// server; a failure leaves both as they were.
+func (m *Module) attachWork(ctx context.Context, stor *store.Store, actionID, id, server int64, automount bool, field string) error {
+	var r Record
+	err := stor.Tx(func(tx store.Tx) error {
+		var err error
+		if r, err = load(tx, id); err != nil {
+			return err
+		}
+		if err := target(tx, r, server, field); err != nil {
+			return err
+		}
+		lun, err := freeLUN(tx, server, field)
+		if err != nil {
+			return err
+		}
+		r.Hlab.Pending = &Pending{Action: actionID, Server: server, LUN: lun, Automount: automount}
+		return put(tx, r)
+	})
+	if errors.Is(err, store.ErrNotFound) {
+		return &actions.Error{Code: "not_found", Message: fmt.Sprintf("volume %d not found", id)}
+	}
+	if err != nil {
+		return actionError(err)
+	}
+	lun := r.Hlab.Pending.LUN
+	vm := servers.VMName(m.d.VMPrefix, server)
+	err = m.d.Platform.AttachDisk(ctx, vm, r.Hlab.Path, lun)
+	if err == nil && automount {
+		if err = m.d.PushAgent(ctx); err != nil {
+			if derr := m.d.Platform.DetachDisk(ctx, vm, r.Hlab.Path); derr != nil && !isNotFound(derr) {
+				err = errors.Join(err, derr)
+			}
+		}
+	}
+	cerr := stor.Tx(func(tx store.Tx) error {
+		r, lerr := load(tx, id)
+		if lerr != nil {
+			return lerr
+		}
+		if p := r.Hlab.Pending; p != nil && p.Action == actionID {
+			r.Hlab.Pending = nil
+		}
+		if err != nil {
+			return put(tx, r)
+		}
+		_, serr := setBound(tx, r, server, lun, automount)
+		return serr
+	})
+	return errors.Join(err, cerr)
+}
+
+// actionError turns an error of a validation inside an action's work into
+// the action's error object with the code the request would have answered.
+func actionError(err error) error {
+	var fe *api.FieldError
+	if errors.As(err, &fe) {
+		code := fe.Code
+		if code == "" {
+			code = "invalid_input"
+		}
+		return &actions.Error{Code: code, Message: fe.Message}
+	}
+	return err
+}
+
+// busy reports whether a running action, one waiting in the queue
+// included, references volume id.
+func busy(tx store.Tx, id int64) (bool, error) {
+	running, err := store.RunningActions(tx)
+	if err != nil {
+		return false, err
+	}
+	for _, a := range running {
+		var refs []actions.Ref
+		if err := json.Unmarshal([]byte(a.Resources), &refs); err != nil {
+			return false, err
+		}
+		if slices.Contains(refs, actions.Ref{ID: id, Type: refType}) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // unplug removes the disk of the attached volume r from its server's VM
@@ -178,25 +285,31 @@ func (m *Module) attach(w http.ResponseWriter, req *http.Request) {
 	p, _ := api.ProjectFrom(req.Context())
 	acts := api.ActionsFrom(req.Context())
 	stor := api.StoreFrom(req.Context())
-	var rec Record
 	var action *actions.Action
 	err = stor.Tx(func(tx store.Tx) error {
-		if _, err := store.Get[Record](tx, Kind, p.ID, id); err != nil {
+		r, err := store.Get[Record](tx, Kind, p.ID, id)
+		if err != nil {
 			return err
 		}
-		var err error
-		if rec, err = bind(tx, id, server, automount, field); err != nil {
+		if err := target(tx, r, server, field); err != nil {
 			return err
 		}
-		action, err = acts.Start(tx, p.ID, "attach_volume", []actions.Ref{{ID: id, Type: refType}, {ID: server, Type: serverRefType}})
+		if _, err := freeLUN(tx, server, field); err != nil {
+			return err
+		}
+		// The attach changes the volume; on the server it queues.
+		volRef := actions.Ref{ID: id, Type: refType}
+		action, err = acts.StartQueued(tx, p.ID, "attach_volume",
+			[]actions.Ref{volRef, {ID: server, Type: serverRefType}}, []actions.Ref{volRef})
 		return err
 	})
 	if err != nil {
 		api.Fail(w, err)
 		return
 	}
-	acts.Run(action.ID, func(ctx context.Context, _ func(int)) error {
-		return m.plug(ctx, stor, rec)
+	actionID := action.ID
+	acts.Run(actionID, func(ctx context.Context, _ func(int)) error {
+		return m.attachWork(ctx, stor, actionID, id, server, automount, field)
 	})
 	api.JSON(w, http.StatusCreated, map[string]any{"action": action})
 }
@@ -211,18 +324,18 @@ func (m *Module) detach(w http.ResponseWriter, req *http.Request) {
 	p, _ := api.ProjectFrom(req.Context())
 	acts := api.ActionsFrom(req.Context())
 	stor := api.StoreFrom(req.Context())
-	var rec Record
 	var action *actions.Action
 	err := stor.Tx(func(tx store.Tx) error {
-		var err error
-		if rec, err = store.Get[Record](tx, Kind, p.ID, id); err != nil {
+		rec, err := store.Get[Record](tx, Kind, p.ID, id)
+		if err != nil {
 			return err
 		}
 		refs := []actions.Ref{{ID: id, Type: refType}}
 		if rec.Server != nil {
 			refs = append(refs, actions.Ref{ID: *rec.Server, Type: serverRefType})
 		}
-		action, err = acts.Start(tx, p.ID, "detach_volume", refs)
+		// The detach changes the volume; on the server it queues.
+		action, err = acts.StartQueued(tx, p.ID, "detach_volume", refs, refs[:1])
 		return err
 	})
 	if err != nil {
@@ -230,6 +343,15 @@ func (m *Module) detach(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	acts.Run(action.ID, func(ctx context.Context, _ func(int)) error {
+		// The volume as the earlier actions on its server left it.
+		var rec Record
+		if err := stor.Tx(func(tx store.Tx) error {
+			var err error
+			rec, err = load(tx, id)
+			return err
+		}); err != nil {
+			return err
+		}
 		if rec.Server == nil {
 			return nil
 		}
@@ -306,7 +428,8 @@ func (m *Module) DetachAll(ctx context.Context, stor *store.Store, serverID int6
 }
 
 // Contribute implements resource.NetContributor: the metadata of each
-// server lists its attached volumes with automount. It runs after the
+// server lists its attached volumes with automount and the volume of a
+// running attach with automount. It runs after the
 // servers module added the metadata.
 func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 	recs, err := store.ListAll[Record](tx, Kind)
@@ -317,6 +440,15 @@ func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 	for _, r := range recs {
 		if r.Server != nil && r.Hlab.Automount {
 			auto[*r.Server] = append(auto[*r.Server], r.ID)
+		}
+		if p := r.Hlab.Pending; p != nil && p.Automount {
+			a, err := store.GetAction(tx, p.Action)
+			if err != nil && !errors.Is(err, store.ErrNotFound) {
+				return err
+			}
+			if err == nil && a.Status == actions.StatusRunning {
+				auto[p.Server] = append(auto[p.Server], r.ID)
+			}
 		}
 	}
 	for i := range doc.Metadata {
