@@ -236,15 +236,42 @@ func (p *Platform) askGuest(ctx context.Context, name, method string) (bool, int
 	return rv == 0 || rv == 4096, rv, nil
 }
 
-// reboot asks the guest to reboot. A guest refusing InitiateReboot is shut
-// down instead, awaited until off and started again.
-func (p *Platform) reboot(ctx context.Context, name string) error {
-	ok, _, err := p.askGuest(ctx, name, "InitiateReboot")
-	if err != nil || ok {
-		return err
+// guestReadyTimeout bounds how long a reboot keeps asking a guest that
+// refuses both requests, as a guest does while it still boots and its
+// Shutdown integration service is not up yet.
+const guestReadyTimeout = 2 * time.Minute
+
+// untilAccepted calls ask every interval until the guest accepts, ask
+// fails or timeout has passed; it answers the last answer of ask.
+func untilAccepted(ctx context.Context, timeout, interval time.Duration, ask func(context.Context) (bool, int64, error)) (bool, int64, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		ok, rv, err := ask(ctx)
+		if err != nil || ok || !time.Now().Before(deadline) {
+			return ok, rv, err
+		}
+		select {
+		case <-ctx.Done():
+			return false, rv, &platform.Error{Kind: platform.Failed, Op: "Power", Err: ctx.Err()}
+		case <-time.After(interval):
+		}
 	}
-	ok, rv, err := p.askGuest(ctx, name, "InitiateShutdown")
-	if err != nil {
+}
+
+// reboot asks the guest to reboot. A guest refusing InitiateReboot is shut
+// down instead, awaited until off and started again. A guest refusing both
+// is asked again until guestReadyTimeout.
+func (p *Platform) reboot(ctx context.Context, name string) error {
+	rebooted := false
+	ok, rv, err := untilAccepted(ctx, guestReadyTimeout, 2*time.Second, func(ctx context.Context) (bool, int64, error) {
+		ok, _, err := p.askGuest(ctx, name, "InitiateReboot")
+		if err != nil || ok {
+			rebooted = ok
+			return ok, 0, err
+		}
+		return p.askGuest(ctx, name, "InitiateShutdown")
+	})
+	if err != nil || rebooted {
 		return err
 	}
 	if !ok {
