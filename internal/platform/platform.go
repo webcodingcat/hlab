@@ -12,6 +12,9 @@ import (
 // Platform manages switches, VMs, adapters and disks.
 type Platform interface {
 	EnsureSwitch(ctx context.Context, spec SwitchSpec) error
+	// DeleteSwitch removes the switch with exactly this name; a missing
+	// switch is no error.
+	DeleteSwitch(ctx context.Context, name string) error
 	CreateVM(ctx context.Context, spec VMSpec) error
 	SetVM(ctx context.Context, name string, spec VMSpec) error // cpu, ram (stopped only)
 	DeleteVM(ctx context.Context, name string) error

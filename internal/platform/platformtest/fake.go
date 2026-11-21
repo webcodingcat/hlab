@@ -178,6 +178,15 @@ func (f *Fake) EnsureSwitch(ctx context.Context, spec platform.SwitchSpec) error
 	return nil
 }
 
+// DeleteSwitch records the call.
+func (f *Fake) DeleteSwitch(ctx context.Context, name string) error {
+	if err := f.begin(ctx, "DeleteSwitch", "", name); err != nil {
+		return err
+	}
+	f.mu.Unlock()
+	return nil
+}
+
 // CreateVM creates a VM that is off.
 func (f *Fake) CreateVM(ctx context.Context, spec platform.VMSpec) error {
 	if err := f.begin(ctx, "CreateVM", spec.Name, spec); err != nil {

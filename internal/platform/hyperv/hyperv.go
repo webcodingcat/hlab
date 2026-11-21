@@ -77,6 +77,24 @@ Set-VMNetworkAdapterVlan -ManagementOS -VMNetworkAdapterName $name -Isolated -Pr
 	return err
 }
 
+// DeleteSwitch removes the switch named exactly name; a missing switch is
+// no error. When Remove-VMSwitch fails, the management-OS adapter of that
+// name (which carries the PVLAN setting) is removed first and the removal
+// retried.
+func (p *Platform) DeleteSwitch(ctx context.Context, name string) error {
+	_, err := p.r.run(ctx, "DeleteSwitch", map[string]any{"name": name}, `$sw = Get-VMSwitch -Name $name -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq $name } | Select-Object -First 1
+if ($sw) {
+  try { Remove-VMSwitch -VMSwitch $sw -Force }
+  catch {
+    Get-VMNetworkAdapter -ManagementOS -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq $name -and $_.SwitchName -eq $name } | Remove-VMNetworkAdapter
+    $sw = Get-VMSwitch -Name $name -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq $name } | Select-Object -First 1
+    if ($sw) { Remove-VMSwitch -VMSwitch $sw -Force }
+  }
+}
+`)
+	return err
+}
+
 func stopAction(a platform.StopAction) (string, error) {
 	switch a {
 	case platform.StopSave:
