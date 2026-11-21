@@ -34,7 +34,15 @@ STATUS: IN_PROGRESS
      /wcc:phase asks those of its phase at its start, /wcc:change takes
      answers any time. -->
 
-- none
+- Q18 Scope of the MCP server for controlling HLab, taken from "Later" into
+  milestone 1 (a phase before 16): which tools it offers. Options: the
+  functions of `hlab` (cloud status, start and stop, projects, tokens,
+  logs, CA); those plus reading and changing Hetzner resources through
+  the project API; read-only. Recommendation: the functions of `hlab`.
+  Already settled (DECISIONS.md, 2026-11-21): it runs as `hlab mcp` over
+  stdio and uses the management pipe; it offers neither
+  `cloud start --discard-state` nor `catalog update`.
+  - In clarification: decisions/mcp-server.md
 
 ## If BLOCKED
 

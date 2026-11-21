@@ -3159,3 +3159,11 @@ taken with the approval of the spec or by an answer from the user.
 - What: project files brought from wcc 0.32.16 to 0.32.17: version line only; all migrations and templates already matched.
 - Why: the skills of the installed version search for these keys and rules
 - Cost of change: low
+
+## 2026-11-21 The MCP server runs as `hlab mcp` over stdio
+
+- Type: decision
+- Phase: change (Q18)
+- What: the MCP server taken from "Later" into milestone 1 is a subcommand `hlab mcp` that the MCP client starts and that speaks MCP over stdio and talks to hlabd through the management pipe; it offers neither `cloud start --discard-state` nor `catalog update`; its scope is in clarification (Q18, `decisions/mcp-server.md`).
+- Why: no new port, listener or authentication, the same access as `hlab`, and no destructive state discard or real Hetzner token in an agent's hands.
+- Cost of change: low
