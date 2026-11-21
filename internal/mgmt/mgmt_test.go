@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -447,6 +448,84 @@ func TestMgmt(t *testing.T) {
 			t.Fatalf("line %q after Done closed, want the stream to end", got)
 		case <-time.After(2 * time.Second):
 			t.Fatal("log follower still streaming 2 s after Done closed")
+		}
+	})
+
+	t.Run("PROJ-06", func(t *testing.T) {
+		env := apitest.New(t, apitest.ProbeModule())
+		h := mgmt.New(mgmt.Deps{
+			Store:   env.Store,
+			API:     env.Router,
+			Status:  func() mgmt.Status { return mgmt.Status{State: "running"} },
+			Actions: env.Actions,
+		})
+
+		rec := doBody(t, h, http.MethodPost, "/projects", `{"display_name":" Web Coding Cat "}`)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("POST /projects: status %d, want 201 (%s)", rec.Code, rec.Body.String())
+		}
+		var created mgmt.Project
+		decode(t, rec, &created)
+		if created.Name != "web-coding-cat" || created.DisplayName != "Web Coding Cat" {
+			t.Errorf("created project %q with display name %q, want web-coding-cat with \"Web Coding Cat\"",
+				created.Name, created.DisplayName)
+		}
+
+		// One server and one snapshot of the project.
+		err := env.Store.Tx(func(tx store.Tx) error {
+			p, err := store.ProjectByName(tx, "web-coding-cat")
+			if err != nil {
+				return err
+			}
+			if err := store.Put(tx, store.Meta{Kind: servers.Kind, ID: 9001, ProjectID: p.ID, Name: "s"}, map[string]any{}); err != nil {
+				return err
+			}
+			return store.Put(tx, store.Meta{Kind: "images", ID: 9002, ProjectID: p.ID}, map[string]any{"type": "snapshot"})
+		})
+		if err != nil {
+			t.Fatalf("add resources: %v", err)
+		}
+		listed, ok := listProjects(t, h)["web-coding-cat"]
+		if !ok {
+			t.Fatal("GET /projects does not list web-coding-cat")
+		}
+		if listed.DisplayName != "Web Coding Cat" {
+			t.Errorf("listed display name %q, want \"Web Coding Cat\"", listed.DisplayName)
+		}
+		if want := map[string]int{"servers": 1, "snapshots": 1}; !maps.Equal(listed.ResourcesByType, want) {
+			t.Errorf("listed resources_by_type %v, want %v", listed.ResourcesByType, want)
+		}
+
+		for _, tc := range []struct {
+			name, body string
+			status     int
+			code       string
+			message    string // a part of the error message, if any
+		}{
+			{"invalid display name", `{"display_name":""}`, http.StatusBadRequest, "invalid_input", ""},
+			{"only name", `{"name":"other"}`, http.StatusBadRequest, "invalid_input", ""},
+			{"empty derived name", `{"display_name":"!!!"}`, http.StatusBadRequest, "invalid_input", ""},
+			{"derived name taken", `{"display_name":"web coding cat"}`, http.StatusConflict, "conflict", "web-coding-cat"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				rec := doBody(t, h, http.MethodPost, "/projects", tc.body)
+				if rec.Code != tc.status {
+					t.Fatalf("POST /projects %s: status %d, want %d (%s)", tc.body, rec.Code, tc.status, rec.Body.String())
+				}
+				var body struct {
+					Error struct {
+						Code    string `json:"code"`
+						Message string `json:"message"`
+					} `json:"error"`
+				}
+				decode(t, rec, &body)
+				if body.Error.Code != tc.code {
+					t.Errorf("POST /projects %s: error code %q, want %q", tc.body, body.Error.Code, tc.code)
+				}
+				if !strings.Contains(body.Error.Message, tc.message) {
+					t.Errorf("POST /projects %s: message %q does not name %q", tc.body, body.Error.Message, tc.message)
+				}
+			})
 		}
 	})
 }

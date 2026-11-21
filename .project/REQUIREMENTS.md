@@ -274,7 +274,7 @@ What the target vision in IDEA.md will need, not built yet.
 | PROJ-03 | 02 | x |
 | PROJ-04 | 02 | x |
 | PROJ-05 | 01 | x |
-| PROJ-06 | 15 | |
+| PROJ-06 | 15 | x |
 | CAT-01 | 01 | x |
 | CAT-02 | 02 | x |
 | CAT-03 | 02 | x |
@@ -373,7 +373,7 @@ What the target vision in IDEA.md will need, not built yet.
 | UI-08 | 10 | x |
 | UI-09 | 14 | x |
 | UI-10 | 14 | x |
-| UI-11 | 15 | |
+| UI-11 | 15 | x |
 | INST-01 | 12 | |
 | INST-02 | 12 | |
 | INST-03 | 12 | |

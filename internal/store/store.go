@@ -16,7 +16,7 @@ import (
 )
 
 // SchemaVersion is the schema version this binary reads and writes.
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 var (
 	// ErrNotFound reports that a row does not exist.
@@ -26,7 +26,7 @@ var (
 )
 
 const schema = `
-CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, created TEXT NOT NULL);
+CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, display_name TEXT NOT NULL, created TEXT NOT NULL);
 CREATE TABLE tokens   (id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects ON DELETE CASCADE,
                        name TEXT NOT NULL, sha256 BLOB UNIQUE NOT NULL, read_only INTEGER NOT NULL, created TEXT NOT NULL,
                        UNIQUE(project_id, name));
@@ -72,9 +72,10 @@ func (e *IncompatibleError) Error() string {
 // Newer reports whether the file was written by a newer hlab version.
 func (e *IncompatibleError) Newer() bool { return !e.NotDatabase && e.Found > e.Want }
 
-// Open opens or creates the database at path and creates schema version 1
-// in a new file. A file with another schema version or a file that is no
-// SQLite database gives an *IncompatibleError.
+// Open opens or creates the database at path, creates the current schema in
+// a new file and migrates a file of schema version 1. A file with another
+// schema version or a file that is no SQLite database gives an
+// *IncompatibleError.
 func Open(path string) (*Store, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -129,6 +130,18 @@ func (s *Store) migrate() error {
 			}
 			_, err := tx.tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", SchemaVersion))
 			return err
+		case 1:
+			// Version 2 adds the display name, set to the name.
+			for _, stmt := range []string{
+				`ALTER TABLE projects ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`,
+				`UPDATE projects SET display_name = name`,
+				`PRAGMA user_version = 2`,
+			} {
+				if _, err := tx.tx.Exec(stmt); err != nil {
+					return fmt.Errorf("migrate schema 1 to 2: %w", err)
+				}
+			}
+			return nil
 		default:
 			return &IncompatibleError{Found: v, Want: SchemaVersion}
 		}

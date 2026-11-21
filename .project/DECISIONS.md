@@ -27,6 +27,70 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-21 Tray e2e tests find project cards by their visible display name
+
+- Type: decision
+- Phase: phase 15
+- What: the shared `projectCard` helper in tests/e2e/console.ts matches a card by its visible display name, and UI-05, `openConsole` and the screenshot spec use it; the direction arrow is named "Ascending"/"Descending" and the sort button "Sort: <key>".
+- Why: the closed delete dialog keeps the name in a hidden element, so a hidden match made `toBeHidden` after a delete fail.
+- Cost of change: low
+
+## 2026-11-21 CLI project test matches the existing CREATED format
+
+- Type: decision
+- Phase: phase 15
+- What: TestCLI/PROJ-06 matches CREATED as date and time with a space (`\S+ \S+`), the format `hlab project list` already prints.
+- Why: the test wrote CREATED as one word, which contradicts the existing public output; the check stays the same.
+- Cost of change: low
+
+## 2026-11-21 Store counts resources per tab and takes display names
+
+- Type: decision
+- Phase: phase 15
+- What: `store.CreateProject(tx, name, displayName)` replaces the old signature, and `CountResourcesByType` splits `images` by `json_extract(doc, '$.type')` in one GROUP BY.
+- Why: internal interface; keeps mgmt free of image knowledge since the type is already stored.
+- Cost of change: low
+
+## 2026-11-21 Schema v1 migration adds display_name with a default
+
+- Type: decision
+- Phase: phase 15
+- What: the v1→v2 migration runs `ADD COLUMN display_name TEXT NOT NULL DEFAULT ''` then sets it to `name`, so a migrated file keeps a DEFAULT a fresh v2 file lacks.
+- Why: SQLite allows NOT NULL on ADD COLUMN only with a default, and a table rebuild is not worth it.
+- Cost of change: low
+
+## 2026-11-21 Tray project list sorting and stored view
+
+- Type: decision
+- Phase: phase 15
+- What: display names sort with `localeCompare` (sensitivity "base"), ties by name in the same direction; sort and layout stay in localStorage `hlab.projectSort` and `hlab.projectLayout` (default `grid`, invalid values fall back); count labels follow the tab titles in sidebar order.
+- Why: sorting must not depend on case, and the keys follow the existing `hlab.project`.
+- Cost of change: low
+
+## 2026-11-21 resources_by_type has one key per console tab
+
+- Type: change
+- Phase: phase 15
+- What: `GET /projects` counts images as `snapshots` and `backups` instead of `images`, so every key of `resources_by_type` opens exactly one console tab.
+- Why: the user's answer at the start of phase 15; "N resources" entries must each open one tab.
+- Cost of change: medium
+
+## 2026-11-21 hlab project list puts the display name last
+
+- Type: decision
+- Phase: phase 15
+- What: `hlab project list` prints NAME, RESOURCES, CREATED, DISPLAY NAME; `--output json` adds `display_name` as a field.
+- Why: the user's answer at the start of phase 15; existing columns keep their place for scripts and the display name with its spaces stands last.
+- Cost of change: medium
+
+## 2026-11-21 Project names transliterate only ä ö ü ß
+
+- Type: decision
+- Phase: phase 15
+- What: letters without a canonical decomposition (ø, æ, œ, ł, đ, ...) become `-` like any other character; the derived name is cut to 255 before `-` is trimmed at both ends.
+- Why: the user's answer at the start of phase 15; PROJ-06 names only those four, and a cut must not leave a trailing `-`.
+- Cost of change: medium
+
 ## 2026-11-20 UI-09 is checked before the release, phase 14 closes
 
 - Type: decision

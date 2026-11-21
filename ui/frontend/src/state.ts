@@ -6,8 +6,9 @@ import { showError } from "./lib/toast";
 import type { ViewId } from "./help";
 import viewIds from "./views.json";
 import { consoleStart, href, parse, type AdminView, type Page, type ProjectView, type Route } from "./lib/routes";
+import type { Layout, Project, ProjectSort } from "./lib/projects";
 
-export type { AdminView, Page, ProjectView, Route, ViewId };
+export type { AdminView, Page, Project, ProjectView, Route, ViewId };
 export { consoleStart, href };
 
 /** Problem is one problem of hlabd (status file or /status). */
@@ -116,8 +117,34 @@ function storedGroups(): string[] {
 export const collapsedGroups = writable<string[]>(storedGroups());
 collapsedGroups.subscribe((g) => localStorage.setItem(groupsKey, JSON.stringify(g)));
 
-/** Project as GET /projects lists it. */
-export type Project = { name: string; created: string; resources: number };
+const sortKey = "hlab.projectSort";
+
+function storedSort(): ProjectSort {
+  try {
+    const v = JSON.parse(localStorage.getItem(sortKey) ?? "null") as Partial<ProjectSort> | null;
+    if (v && (v.key === "display_name" || v.key === "created") && (v.dir === "asc" || v.dir === "desc")) {
+      return { key: v.key, dir: v.dir };
+    }
+  } catch {
+    // An invalid stored value falls back to the default.
+  }
+  return { key: "created", dir: "asc" };
+}
+
+/** projectSort is the sort order of the project list, kept in localStorage. */
+export const projectSort = writable<ProjectSort>(storedSort());
+projectSort.subscribe((s) => localStorage.setItem(sortKey, JSON.stringify(s)));
+
+const layoutKey = "hlab.projectLayout";
+
+function storedLayout(): Layout {
+  const v = localStorage.getItem(layoutKey);
+  return v === "list" ? "list" : "grid";
+}
+
+/** projectLayout is the layout of the project list (grid or list), kept in localStorage. */
+export const projectLayout = writable<Layout>(storedLayout());
+projectLayout.subscribe((l) => localStorage.setItem(layoutKey, l));
 
 /** startHash is the console of the last opened project while it exists, else the project list. */
 async function startHash(): Promise<string> {

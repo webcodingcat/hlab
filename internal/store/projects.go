@@ -4,9 +4,10 @@ import "time"
 
 // Project is one project; resources and tokens belong to it.
 type Project struct {
-	ID      int64
-	Name    string
-	Created time.Time
+	ID          int64
+	Name        string
+	DisplayName string
+	Created     time.Time
 }
 
 // Token is an API token of a project. Only the SHA-256 of its value is stored.
@@ -18,10 +19,12 @@ type Token struct {
 	Created   time.Time
 }
 
-// CreateProject creates the project name; an existing name is ErrConflict.
-func CreateProject(tx Tx, name string) (Project, error) {
-	p := Project{Name: name, Created: time.Now().UTC()}
-	res, err := tx.exec(`INSERT INTO projects(name, created) VALUES(?, ?)`, name, formatTime(p.Created))
+// CreateProject creates the project name with its display name; an existing
+// name is ErrConflict.
+func CreateProject(tx Tx, name, displayName string) (Project, error) {
+	p := Project{Name: name, DisplayName: displayName, Created: time.Now().UTC()}
+	res, err := tx.exec(`INSERT INTO projects(name, display_name, created) VALUES(?, ?, ?)`,
+		name, displayName, formatTime(p.Created))
 	if err != nil {
 		return Project{}, err
 	}
@@ -32,7 +35,7 @@ func CreateProject(tx Tx, name string) (Project, error) {
 func scanProject(row interface{ Scan(...any) error }) (Project, error) {
 	var p Project
 	var created string
-	if err := row.Scan(&p.ID, &p.Name, &created); err != nil {
+	if err := row.Scan(&p.ID, &p.Name, &p.DisplayName, &created); err != nil {
 		return Project{}, mapErr(err)
 	}
 	p.Created = parseTime(created)
@@ -41,12 +44,12 @@ func scanProject(row interface{ Scan(...any) error }) (Project, error) {
 
 // ProjectByName returns the project name, or ErrNotFound.
 func ProjectByName(tx Tx, name string) (Project, error) {
-	return scanProject(tx.tx.QueryRow(`SELECT id, name, created FROM projects WHERE name = ?`, name))
+	return scanProject(tx.tx.QueryRow(`SELECT id, name, display_name, created FROM projects WHERE name = ?`, name))
 }
 
 // ListProjects returns all projects ordered by name.
 func ListProjects(tx Tx) ([]Project, error) {
-	rows, err := tx.tx.Query(`SELECT id, name, created FROM projects ORDER BY name`)
+	rows, err := tx.tx.Query(`SELECT id, name, display_name, created FROM projects ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -119,14 +122,40 @@ func CountResources(tx Tx, projectID int64) (int, error) {
 	return n, mapErr(err)
 }
 
+// CountResourcesByType counts the resources of project projectID by console
+// tab: images split by their type into "snapshots" and "backups", every other
+// kind under its kind name. Only counts above zero appear; the map is never
+// nil.
+func CountResourcesByType(tx Tx, projectID int64) (map[string]int, error) {
+	rows, err := tx.tx.Query(`SELECT CASE
+			WHEN kind = 'images' AND json_extract(doc, '$.type') = 'snapshot' THEN 'snapshots'
+			WHEN kind = 'images' AND json_extract(doc, '$.type') = 'backup' THEN 'backups'
+			ELSE kind END AS tab,
+		count(*) FROM resources WHERE project_id = ? GROUP BY tab`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]int{}
+	for rows.Next() {
+		var tab string
+		var n int
+		if err := rows.Scan(&tab, &n); err != nil {
+			return nil, err
+		}
+		out[tab] = n
+	}
+	return out, rows.Err()
+}
+
 // TokenByHash returns the token with the given SHA-256 and its project, or
 // ErrNotFound.
 func TokenByHash(tx Tx, sha256 []byte) (Token, Project, error) {
 	var p Project
 	var pcreated string
-	row := tx.tx.QueryRow(`SELECT `+tokenCols+`, p.id, p.name, p.created
+	row := tx.tx.QueryRow(`SELECT `+tokenCols+`, p.id, p.name, p.display_name, p.created
 		FROM tokens t JOIN projects p ON p.id = t.project_id WHERE t.sha256 = ?`, sha256)
-	t, err := scanToken(row, &p.ID, &p.Name, &pcreated)
+	t, err := scanToken(row, &p.ID, &p.Name, &p.DisplayName, &pcreated)
 	if err != nil {
 		return Token{}, Project{}, err
 	}

@@ -1,12 +1,12 @@
 // README screenshots of the tray window (tools/screenshots, task
 // docs:screenshots): the project list filtered to the sample projects
-// demo-* and the "API tokens" section of demo-web, each in light and dark,
+// demo-* as cards and the "API tokens" section of demo-web, each in light and dark,
 // written to HLAB_SCREENSHOTS_DIR. The tool creates the samples; only
 // their names and the token's name are on screen, never a token value.
 import path from "node:path";
 import type { Page } from "@playwright/test";
 import { test, expect, env, openView, tableRow } from "../e2e/fixtures";
-import { section } from "../e2e/console";
+import { openCard, projectCard, section } from "../e2e/console";
 
 const schemes = ["light", "dark"] as const;
 
@@ -28,15 +28,16 @@ test("README screenshots", async ({ page }) => {
 
     // Only the sample projects: every shown name starts with "demo-".
     await page.getByRole("searchbox", { name: "Search" }).fill("demo-");
-    for (const p of ["demo-web", "demo-staging", "demo-ci"]) {
-      await expect(tableRow(page, p)).toBeVisible();
+    const samples = ["demo-web", "demo-staging", "demo-ci"];
+    for (const p of samples) {
+      await expect(projectCard(page, p)).toBeVisible();
     }
-    const names = await page.getByRole("table").getByRole("row").locator("td:first-child").allTextContents();
-    expect(names.every((n) => n.trim().startsWith("demo-"))).toBe(true);
+    // One "Actions" menu per card: no other card is shown.
+    await expect(page.getByRole("main").getByRole("button", { name: "Actions" })).toHaveCount(samples.length);
     await shoot(page, "projects");
 
     // The project console of demo-web with its token "ci".
-    await tableRow(page, "demo-web").getByRole("cell", { name: "demo-web", exact: true }).click();
+    await openCard(projectCard(page, "demo-web"));
     await section(page, "API tokens");
     await expect(tableRow(page, "ci")).toBeVisible();
     await shoot(page, "tokens");

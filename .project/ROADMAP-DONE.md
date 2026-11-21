@@ -6,6 +6,29 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x] 15 Project display names and Hetzner-style project list.
+      Requirements: PROJ-06, UI-11.
+      Depends on: 14.
+      Scope: schema version 2 with `projects.display_name` and its
+      migration; `POST /projects` takes the display name and derives the
+      name, `GET /projects` adds `display_name` and `resources_by_type`;
+      `hlab project create <display-name>` and `list` with the display
+      name; the tray's project list as cards (grid/list, sort, resources
+      per type, "New project" tile), breadcrumb, project switcher and the
+      delete confirmation with the display name. Adjusts the callers of
+      `POST /projects` (CLI, tray, test fixtures). Documentation: the CLI
+      reference, the guide and the README on projects and their names, the
+      projects help text and the README screenshots of the project list.
+      Success criteria:
+      1. "Web Coding Cat" can be created in the tray and with `hlab`; it is
+         listed as `web-coding-cat` with its display name, and a second
+         "web coding cat" is refused.
+      2. A state of schema version 1 starts with every project showing its
+         name as display name.
+      3. The project list switches between grid and list, sorts by display
+         name and creation date, and a resource count per type opens its
+         section.
+
 - [x] 14 Tray console: remaining resources.
       Requirements: UI-02 (part: remaining resource types; completes it),
       UI-09, UI-10, CAT-10.

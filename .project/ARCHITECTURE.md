@@ -457,7 +457,9 @@ Inside `hlabd` (Go packages under `internal/`):
   through SCM), `bridge` (package without a Wails import, bound as three
   Wails services: `bridge.Service` with
   `Call(method, path, body string) (Response{status, body}, error)` that
-  forwards to the management API, `Settings()`/`SaveSettings()` for the
+  forwards to the management API, `ProjectName(display string) string`
+  for the live name preview (`projectname.Derive`, no cloud needed),
+  `Settings()`/`SaveSettings()` for the
   file, `ServerTypes`/`AddServerType`/`UpdateServerType`/`RemoveServerType`
   for the merged list and the own types (`UpdateServerType(OwnSpec)
   (*Invalid, error)` replaces the own type of the same name),
@@ -517,7 +519,7 @@ HTTP/1.1 over `\\.\pipe\hlab`, JSON. All paths under `/mgmt/v1`:
 | Method and path | Purpose |
 |---|---|
 | `GET /status` | `{"state":"running","version":"...","problems":[Problem],"shadowing_zones":[{"zone":"example.com","project":"p"}],"appliance_generation":n}`; besides the hostnet problems, a non-fatal `custom_server_types` problem when the own server types are invalid or collide and are not served, and a non-fatal `custom_isos` problem for an invalid or colliding own ISO or a local file that cannot be copied |
-| `GET /projects` | `{"projects":[{"name":"web-coding-cat","display_name":"Web Coding Cat","created":"RFC3339","resources":n,"resources_by_type":{"servers":n,...}}]}`; `resources_by_type` has a key per resource kind with a count above zero, named like the API path (`servers`, `volumes`, `load_balancers`, `networks`, `firewalls`, `floating_ips`, `primary_ips`, `zones`, `certificates`, `ssh_keys`, `placement_groups`, `images`) |
+| `GET /projects` | `{"projects":[{"name":"web-coding-cat","display_name":"Web Coding Cat","created":"RFC3339","resources":n,"resources_by_type":{"servers":n,...}}]}`; `resources_by_type` has a key per resource kind with a count above zero, one key per console tab, so each count opens exactly one tab (`servers`, `volumes`, `load_balancers`, `networks`, `firewalls`, `floating_ips`, `primary_ips`, `zones`, `certificates`, `ssh_keys`, `placement_groups`, `snapshots`, `backups`; images are split by type into `snapshots` and `backups`) |
 | `POST /projects` | body `{"display_name":"Web Coding Cat"}` (trimmed, 1-255 chars, no control characters); the name is derived by hlabd (lower case; ä ö ü ß as ae oe ue ss; other accents dropped; every run of other characters as `-`; no `-` at either end; cut to 255 chars); `201` with the project; `400 invalid_input` for an invalid display name or an empty derived name; `409 conflict` if the derived name exists. A display name never changes |
 | `DELETE /projects/{name}` | `202 {"action_id":n}`; revokes the project's tokens at once, then in one action deletes every resource through its module's `resource.Deleter`, the rest through the store, then the project; `409 conflict` while a deletion of that project runs; on failure the project stays listed. `hlab project delete` waits for the action |
 | `GET /actions/{id}` | `200 {"action": <Hetzner action object>}`; `404 not_found` for an unknown ID or an action of a project |
