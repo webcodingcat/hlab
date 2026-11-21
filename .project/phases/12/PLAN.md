@@ -212,10 +212,18 @@ elease` (hlabd.exe, hlab.exe, hlab-tray.exe, hlab-agent) and the repo root (`cat
   - [x] `Taskfile.yml`: `e2e:elevated` (`go test -tags e2einstall -count=1 -timeout 90m ./test/install/... {{.CLI_ARGS}}`)
   - The suite settles what RESEARCH.md could not confirm: the prerequisite action runs under Burn (INST-01 log), MsiProperty on uninstall (INST-05 keep), CloseApplication on uninstall and the WebView2 folder (INST-05), Remove-VMSwitch with PVLAN and WSL removal from the deferred action (INST-04), Burn upgrade order (INST-06). A failure there goes back to the plan that owns the part
 
-- [ ] 12-11 Documentation
+- [x] 12-11 Documentation
   - Wave: 5 | Depends on: 12-10 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06 | Tests: test/docs/docs_test.go
   - Reads: SPEC "Documentation"; REQUIREMENTS DOC; CONTEXT.md "Tests and documentation"
   - Size: ~200 lines in 4 files
-  - [ ] `README.md`: installation with the setup EXE (SmartScreen for unsigned packages, WebView2, PATH), uninstallation (keep-data checkbox, quiet `KeepData=1`, other accounts' tray folders stay, WSL CA removal needs a logged-on user), remove the "no installer yet" text and the `ca trust off` workaround
-  - [ ] `docs/development/build-and-test.md`: `task installer VERSION=x.y.z`, `task e2e:elevated` and what it refuses; `docs/development/setup.md`: `wix extension add -g` for both extensions 7.0.1 and `wix eula accept wix7`; `docs/development/components.md`: installer and `internal/uninstall`, `internal/prereq`
+  - [x] `README.md`: installation with the setup EXE (SmartScreen for unsigned packages, WebView2, PATH), uninstallation (keep-data checkbox, quiet `KeepData=1`, other accounts' tray folders stay, WSL CA removal needs a logged-on user), remove the "no installer yet" text and the `ca trust off` workaround
+  - [x] `docs/development/build-and-test.md`: `task installer VERSION=x.y.z`, `task e2e:elevated` and what it refuses; `docs/development/setup.md`: `wix extension add -g` for both extensions 7.0.1 and `wix eula accept wix7`; `docs/development/components.md`: installer and `internal/uninstall`, `internal/prereq`
+
+## Close
+
+- Documentation: 480e881 (README, guide, commands, development docs); TestDocs green.
+- Fix at the close: 93400fd, the bundle chains the MSI before WebView2 so a failed prerequisite check changes nothing (verifier).
+- Unit suite `task test -- ./... -count=1` and `task lint` green over the whole project, again after the fix.
+- End-to-end: `task e2e` ran none: the phase's rows are all in the elevated suite `test/install`, and no subtest of test/e2e changed. The elevated suite `task e2e:elevated` needs admin rights and waits for the user (CHECKS.md).
+- The phase stopped for the manual check and stayed unmerged on wcc/phase-12; the user then deferred all manual checks to the release (DECISIONS.md 2026-11-21), so it closes without them.

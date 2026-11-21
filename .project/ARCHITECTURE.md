@@ -65,6 +65,12 @@ the other profile runs. Both may be installed side by side.
     (`IU`: query, start, stop; never change-config), creates
     `%ProgramData%\hlab` with its ACLs, and removes everything again. Used by
     the installer's custom actions and by `scripts/dev-setup.ps1`.
+  - Further commands for the installer's custom actions:
+    `hlabd check-prerequisites [--ui]` (exit 1 with the list on stdout and in
+    `%TEMP%\hlab-setup-prerequisites.log`, a message box with `--ui`),
+    `hlabd stop-service` (before an upgrade replaces files) and
+    `hlabd remove-user-data` (as the uninstalling user: `%AppData%\hlab-tray.exe`
+    and `%LocalAppData%\hlab`).
   - Files, see "Files and formats".
 - Depends on: store, resources, actions, platform, hostnet, agent client,
   images, ca.
@@ -312,7 +318,26 @@ Inside `hlabd` (Go packages under `internal/`):
   `DNSServers` returns the host's DNS servers (those of adapters with a
   default route, without the hlab, WSL and loopback adapters) for the agent
   document.
+- Uninstall helpers on the concrete `hostnet/windows.HostNet` (used by
+  `internal/uninstall`, not part of the interface): `Restore(ctx)` (the
+  restore file above), `RemoveRootTrust(pem) (had bool, err)` (LocalMachine\Root
+  by thumbprint, a missing CA is no error), `RemoveWSLTrust(ctx, pem)` (one
+  pass over the console user's distros, returns each failed distro by name,
+  `ErrNoConsoleUser` when nobody is logged on).
 - Depends on: Windows networking (see SPEC.md).
+
+#### uninstall and prereq
+
+- Purpose: `internal/uninstall` is the order `hlabd uninstall-cleanup` runs:
+  service (with the stop override, see "Cloud start and stop"), forwarding
+  restore, CA trust (thumbprint read from `ca.pem` before files go), host
+  network, VMs `<tag>-server-<digits>` and `<tag>-appliance` by exact name,
+  switch `<tag>`, files. Missing objects are no error; an existing object
+  that cannot be removed fails the run after all other steps, naming it; WSL
+  failures are notes. `internal/prereq` turns detected machine facts
+  (`prereq.Facts`, read by `sysint/windows.Prerequisites`) into the ordered
+  list of what is missing (`prereq.Missing`).
+- Depends on: platform, hostnet/windows, sysint/windows, settings.
 
 #### agent client
 
@@ -740,15 +765,21 @@ locks a resource of type `project`.
 ### Installer
 
 - Purpose: install, update and uninstall.
-- Interface: WiX bundle `hlab-setup-<version>.exe` chaining the WebView2
-  Evergreen bootstrapper (detected by its `pv` registry value) and
-  `hlab-<version>.msi`. The MSI installs to `%ProgramFiles%\hlab`, runs
+- Interface: WiX bundle `hlab-setup-<version>.exe` (built by
+  `task installer VERSION=x.y.z`, sources in `installer/`) chaining
+  `hlab-<version>.msi` and then the WebView2 Evergreen bootstrapper
+  (detected by its `pv` registry value), with a "Keep projects, servers and
+  settings" checkbox on uninstall (`KeepData`, passed as `KEEPDATA`) and
+  "Launch" through WixStdBA's LaunchTarget in the user's process. The MSI installs to `%ProgramFiles%\hlab`, runs
   `hlabd install` as a deferred elevated custom action (service, security
   descriptor, `%ProgramData%\hlab` and ACLs), checks Hyper-V first (a custom
   action names what is missing), and creates the shortcuts. Uninstall runs `hlabd uninstall-cleanup
   [--keep-data]` as a deferred custom action, which removes every
   Hyper-V and host object tagged `hlab` (see hostnet) even without a
-  readable state, then the files.
+  readable state, then the files; without KEEPDATA an impersonated custom
+  action then runs `hlabd remove-user-data` for the uninstalling user. An
+  upgrade runs `hlabd stop-service` in the old product and never the
+  cleanup.
 
 ## Network
 
@@ -869,6 +900,7 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 | `%ProgramData%\hlab\state.db` | SQLite, see "Data schema" | hlabd |
 | `%ProgramData%\hlab\logs\hlabd.log` | JSON lines (`time`, `level`, `msg`, fields), 10 MB x 5 rotated | hlabd (writes); hlab logs and the tray (read, also during rotation) |
 | `%ProgramData%\hlab\ca\` | `ca.pem`, `ca.key` (SYSTEM only), `ca.crl` | hlabd |
+| `%ProgramData%\hlab\uninstall-stop` | one word, `off` or `shutdown`; read and deleted at the next service stop | `hlabd uninstall-cleanup` |
 | `<data folder>\{disks,volumes,images,isos,cache,appliance,vms}\` | VHDX, server seed ISOs (in `disks`), VM configuration folders (in `vms`) | hlabd |
 
 Settings (`settings.toml`), all optional with defaults:
@@ -900,7 +932,10 @@ level = "info"
   the management API and scheduler (with the weekly `crl` job), set status `running`.
 - Stop (SCM stop or `SERVICE_CONTROL_PRESHUTDOWN` at Windows shutdown):
   stop jobs, close the log followers' `Done`, stop the APIs, record which servers ran, then per `stop_behaviour`
-  (read again from settings.toml) save or
+  (read again from settings.toml; overridden once by the file
+  `uninstall-stop` in the state folder, which hlabd reads and deletes:
+  "off" skips halting the servers, "shutdown" replaces the configured
+  behaviour) save or
   shut down every running VM (Shutdown integration service, 60 s, then
   hard off), stop the appliance, `hostnet.Down`, close store. At Windows
   shutdown `vmms` runs before hlabd in `PreshutdownOrder` and already

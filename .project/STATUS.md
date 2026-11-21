@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 12 Installer and uninstaller (in progress, branch wcc/phase-12)
+- Phase: 12 Installer and uninstaller (built and closed, its manual checks deferred; branch wcc/phase-12, unmerged)
 - Base branch: main
 - Last done: phase 15 merged into main (2026-11-21): project display names with derived names (schema version 2 and its migration), `hlab project create <display-name>`, and the tray's project list as cards with grid/list, sort, resource counts per tab and the "+ New project" tile
-- Next: phase 12 continues at 12-07; before the release /wcc:report walks through UI-09, LIFE-05 and DOC-07
+- Next: /wcc:phase merges phase 12 without waiting for its manual checks and goes on with phase 13; all manual checks are done before the release with /wcc:report in a dedicated Hyper-V test VM (Windows, nested virtualization)
 
 ## Open manual checks
 
@@ -20,7 +20,11 @@ STATUS: IN_PROGRESS
 
 - DOC-07 (01): README and guides are understandable for their audience, help texts name only existing views and buttons
 - LIFE-05 (09): a Windows shutdown or restart with the cloud running applies the stop behaviour
-- UI-09 (14): the example environment can be created and deleted by hand in the console (deferred to before the release)
+- INST-01 to INST-06 (12): the elevated installer suite passes on this machine
+- INST-03 (12): the setup creates shortcuts that open only the tray program, and "Launch" starts it without admin rights
+- INST-05 (12): uninstalling asks whether to keep the data; with the default answer no file of hlab remains
+- UI-09 (14): the example environment can be created and deleted by hand in the console
+- All of them are deferred to before the release of milestone 1 and done in a dedicated Hyper-V VM with Windows and nested virtualization (DECISIONS.md 2026-11-21).
 
 ## Open decisions
 
