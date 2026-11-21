@@ -10,7 +10,7 @@
   // outside its controls opens the project console.
   let { project, layout, ondelete }: { project: Project; layout: Layout; ondelete: (p: Project) => void } = $props();
 
-  const entries = $derived(resourceEntries(project.resources_by_type ?? {}));
+  const entries = $derived(resourceEntries(project.resources_by_type));
   const id = $props.id();
 
   // The resource menu of the footer.
