@@ -120,13 +120,13 @@ of `main`, in list over 80 %.
 
 ## Plans
 
-- [ ] 15-01 Project name derivation
+- [x] 15-01 Project name derivation
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: PROJ-06 | Tests: internal/projectname/projectname_test.go
   - Reads: REQUIREMENTS PROJ-06; ARCHITECTURE "Management API" (`POST /projects`); phases/15/RESEARCH.md; phases/15/CONTEXT.md; DECISIONS "Project names transliterate only ä ö ü ß"
   - Size: ~120 lines in 3 files
   - Adjusts: -
-  - [ ] `internal/projectname/projectname.go` with `ValidateDisplay` and `Derive` per Interfaces (RESEARCH option A); `go.mod`/`go.sum`: `golang.org/x/text` becomes a direct requirement (`go mod tidy`)
+  - [x] `internal/projectname/projectname.go` with `ValidateDisplay` and `Derive` per Interfaces (RESEARCH option A); `go.mod`/`go.sum`: `golang.org/x/text` becomes a direct requirement (`go mod tidy`)
 
 - [ ] 15-02 Store: schema version 2, display names, counts per type
   - Wave: 1 | Depends on: - | Review: alone
