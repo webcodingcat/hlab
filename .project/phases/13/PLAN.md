@@ -317,12 +317,12 @@ a group is split per client).
   - Size: ~220 lines in 1 file
   - [x] Row `CLI-04/tofu` (2 slots, own project): the same environment as one `main.tf` with default parallelism, `apply`, the same SSH checks, `destroy` and `assertProjectEmpty`.
 
-- [ ] 13-27 Example environment with Ansible
+- [x] 13-27 Example environment with Ansible
   - Wave: 3 | Depends on: 13-01, 13-03, 13-04, 13-05, 13-06, 13-07 | Review: alone | e2e
   - Requirements: CLI-04 | Tests: test/e2e/clients_example_ansible_test.go
   - Reads: CONTEXT.md "CLI-04"; RESEARCH.md §4 (Ansible)
   - Size: ~240 lines in 1 file
-  - [ ] Row `CLI-04/ansible` (2 slots, own project): the same environment from a create playbook in WSL2, the same SSH checks from host and WSL2, a delete playbook and `assertProjectEmpty`.
+  - [x] Row `CLI-04/ansible` (2 slots, own project): the same environment from a create playbook in WSL2, the same SSH checks from host and WSL2, a delete playbook and `assertProjectEmpty`.
 
 - [ ] 13-28 Documentation
   - Wave: 4 | Depends on: all other plans | Review: alone
