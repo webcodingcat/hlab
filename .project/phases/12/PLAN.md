@@ -123,6 +123,7 @@ Added after the tests were written:
 - `tools/installer` (package main): `validateVersion(v string) error`.
 - `internal/prereq` missing-item texts must contain, case-insensitive: architecture `x64` or `64-bit`; Windows version `22000`, `20348`, `Windows 11` or `Server 2022`; edition `home` or `edition`; hardware virtualization `virtualization`; Hyper-V `hyper-v`; PowerShell module `powershell`; the restart line is exactly "Restart Windows to finish enabling Hyper-V".
 - `internal/hostnet/windows` exports `ErrNoConsoleUser`; without `ca.pem` the uninstall calls neither `RemoveRootTrust` nor `RemoveWSLTrust`.
+- `tools/installer` (from 12-06): `go run ./tools/installer [-out dir] <version>` writes `<out>\hlab-<v>.msi` and `<out>\hlab-setup-<v>.exe`; it does not build the frontend (`task installer` does via `frontend:build`), so 12-10 runs `task frontend:build` first when it calls the tool directly. Both `wix build` runs get `-d Version=<v>`; Package.wxs has unnamed bind paths `<out>elease` (hlabd.exe, hlab.exe, hlab-tray.exe, hlab-agent) and the repo root (`catalog\*.json`) with the util extension; Bundle.wxs has `<out>` (`hlab-<v>.msi`) and `%LocalAppData%\hlab-build-cache` (`MicrosoftEdgeWebview2Setup.exe`) with the bal and util extensions.
 - `task e2e:elevated` runs `go test -tags e2einstall ./test/install/...` with `-timeout 420m` (above the sum of the row limits in install_test.go).
 - The elevated suite expects: `bin\hlab-setup-<v>.exe` from `task installer`; quiet uninstall `/uninstall /quiet KeepData=1`; the prerequisite custom action Id contains "prereq"; the bundle's WebView2 `pv` search variable name contains "WebView" and the WebView2 package Id contains "webview"; bundle Publisher `webcodingcat` and DisplayName starting with "HLab"; shortcuts named `HLab.lnk`.
 
@@ -167,13 +168,13 @@ Added after the tests were written:
   - Size: ~300 lines in 2 files
   - [ ] `internal/uninstall/uninstall.go`: `Options`, `Run`, `ProfileVM`, `RemoveFiles`, `RemoveUserData` as in Interfaces; data_folder from `settings.Load(<DataDir>\settings.toml)` read before anything is deleted (default when unreadable); a Hyper-V that is not installed lists no VMs (no error); WSL `ErrNoConsoleUser` and distro failures become `Result.Notes`
 
-- [ ] 12-06 Installer build tool and task
+- [x] 12-06 Installer build tool and task
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: INST-01, INST-06 | Tests: tools/installer/installer_test.go
   - Reads: SPEC "Stack" (WiX, WebView2), "Machine prerequisites"; ARCHITECTURE "Profiles", "Installer"; RESEARCH.md §1 (command line), §5 (download URL); CONTEXT.md "Build and package"
   - Size: ~250 lines in 3 files
-  - [ ] `tools/installer/main.go`, `version.go`: validates VERSION (x.y.z, major and minor ≤ 255, patch ≤ 65535); builds the four binaries with profile `release` and the version into `bin\release\`; fetches `MicrosoftEdgeWebview2Setup.exe` from `https://go.microsoft.com/fwlink/p/?LinkId=2124703` into `%LocalAppData%\hlab-build-cache\` (outside `%LocalAppData%\hlab`, which uninstall deletes) when missing or older than 7 days (a failed download with a cached copy uses the copy and says so); runs `wix build -acceptEula wix7 -arch x64` for `installer\Package.wxs` then `installer\Bundle.wxs` with `-d Version=`, `-b` paths and the util/bal extensions; checks that both extensions 7.0.1 are in the global cache and names the `wix extension add -g` command otherwise
-  - [ ] `Taskfile.yml`: `installer` (VERSION required, `go run ./tools/installer`)
+  - [x] `tools/installer/main.go`, `version.go`: validates VERSION (x.y.z, major and minor ≤ 255, patch ≤ 65535); builds the four binaries with profile `release` and the version into `bin\release\`; fetches `MicrosoftEdgeWebview2Setup.exe` from `https://go.microsoft.com/fwlink/p/?LinkId=2124703` into `%LocalAppData%\hlab-build-cache\` (outside `%LocalAppData%\hlab`, which uninstall deletes) when missing or older than 7 days (a failed download with a cached copy uses the copy and says so); runs `wix build -acceptEula wix7 -arch x64` for `installer\Package.wxs` then `installer\Bundle.wxs` with `-d Version=`, `-b` paths and the util/bal extensions; checks that both extensions 7.0.1 are in the global cache and names the `wix extension add -g` command otherwise
+  - [x] `Taskfile.yml`: `installer` (VERSION required, `go run ./tools/installer`)
 
 - [ ] 12-07 MSI package
   - Wave: 2 | Depends on: 12-06 | Review: alone
