@@ -137,13 +137,13 @@ Added after the tests were written:
   - [ ] `internal/sysint/windows/prereq.go`: `Prerequisites` from registry (EditionID, CurrentBuildNumber, InstallationType), the module file, an SCM query of vmms, one `Get-CimInstance Win32_ComputerSystem, Win32_Processor` call through powershell.exe; no Win32_OptionalFeature, no DISM, nothing that needs elevation
   - [ ] `cmd/hlabd/main.go`: `check-prerequisites [--ui]`: prints the list, writes it to `%TEMP%\hlab-setup-prerequisites.log`, with `--ui` shows it in one MessageBoxW (MB_ICONERROR|MB_TOPMOST|MB_SETFOREGROUND), exits 1 when anything is missing; a failure to read the facts is exit 1 with the reason
 
-- [ ] 12-02 Platform: delete the switch
+- [x] 12-02 Platform: delete the switch
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: INST-04 | Tests: (used by internal/uninstall/uninstall_test.go)
   - Reads: ARCHITECTURE "platform"; RESEARCH.md §6
   - Size: ~70 lines in 3 files
-  - [ ] `internal/platform/platform.go`, `internal/platform/hyperv/hyperv.go`: `DeleteSwitch` matching `$_.Name -eq $name` exactly; missing is no error; if `Remove-VMSwitch -Force` fails, remove the management-OS adapter of that name first and retry (PVLAN on the host adapter is unverified, RESEARCH §6)
-  - [ ] `internal/platform/platformtest/fake.go`: switches in the fake (created by EnsureSwitch, removed by DeleteSwitch, failure injection like the other calls)
+  - [x] `internal/platform/platform.go`, `internal/platform/hyperv/hyperv.go`: `DeleteSwitch` matching `$_.Name -eq $name` exactly; missing is no error; if `Remove-VMSwitch -Force` fails, remove the management-OS adapter of that name first and retry (PVLAN on the host adapter is unverified, RESEARCH §6)
+  - [x] `internal/platform/platformtest/fake.go`: switches in the fake (created by EnsureSwitch, removed by DeleteSwitch, failure injection like the other calls)
 
 - [ ] 12-03 Host network: uninstall helpers
   - Wave: 1 | Depends on: - | Review: alone

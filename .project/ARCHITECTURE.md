@@ -200,6 +200,7 @@ Inside `hlabd` (Go packages under `internal/`):
   ```go
   type Platform interface {
       EnsureSwitch(ctx, spec SwitchSpec) error
+      DeleteSwitch(ctx, name string) error         // exact name; a missing switch is no error; retries after removing the host adapter
       CreateVM(ctx, spec VMSpec) error            // name "hlab-<kind>-<id>", Gen2, Secure Boot template from spec
       SetVM(ctx, name string, spec VMSpec) error  // cpu, ram (stopped only)
       SetStopAction(ctx, name string, a StopAction) error // Off and Saved VMs; a change on a Running VM gives Error{Kind: InvalidState}
