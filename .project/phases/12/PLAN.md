@@ -31,7 +31,7 @@ func Missing(f Facts) []string
 ```go
 // internal/sysint/windows
 func Prerequisites(ctx context.Context) (prereq.Facts, error) // registry, files, SCM query, one CIM query via powershell.exe
-// RemoveService writes mode to <DataDir>\uninstall-stop (when the service
+// RemoveService writes mode to <Paths.State>\uninstall-stop, the folder cloud.halt reads (when the service
 // runs), stops the service, waits (uninstallStopWait) and deletes it; a
 // missing service is no error. The file is deleted afterwards if it is left.
 func RemoveService(ctx context.Context, mode string) error
@@ -153,12 +153,12 @@ Added after the tests were written:
   - [x] `internal/hostnet/windows/hostnet.go`: exported `Restore` (the existing `restore`)
   - [x] `internal/hostnet/windows/trust.go`, `trust_wsl.go`: `RemoveRootTrust` (thumbprint lookup of `trustRoot`, reports whether it was there), `RemoveWSLTrust` (one `applyWSL(off)`, returns `ErrNoConsoleUser`, never sets `wslPending` or starts `watchLogon`), `ErrNoConsoleUser` exported from `errNoUser`
 
-- [ ] 12-04 Cloud: stop override for the uninstaller
+- [x] 12-04 Cloud: stop override for the uninstaller
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: INST-04 | Tests: internal/cloud/halt_test.go
   - Reads: ARCHITECTURE "Cloud start and stop"; CONTEXT.md INST-04 (stopping at uninstall)
   - Size: ~80 lines in 2 files
-  - [ ] `internal/cloud/lifecycle.go`: `StopOverrideFile`, `haltBehaviour`; `halt` uses it: "off" skips halting the servers, "shutdown" overrides the configured behaviour (60 s per guest as today); the file is deleted when read
+  - [x] `internal/cloud/lifecycle.go`: `StopOverrideFile`, `haltBehaviour`; `halt` uses it: "off" skips halting the servers, "shutdown" overrides the configured behaviour (60 s per guest as today); the file is deleted when read
 
 - [ ] 12-05 Uninstall orchestration
   - Wave: 2 | Depends on: 12-02 | Review: alone
@@ -189,7 +189,7 @@ Added after the tests were written:
   - Reads: ARCHITECTURE "hlabd", "system integration"; CONTEXT.md INST-04 to INST-06; Interfaces
   - Size: ~200 lines in 4 files
   - Adjusts: -
-  - [ ] `internal/sysint/windows/install.go`: `RemoveService(ctx, mode)` (writes `<DataDir>\uninstall-stop`, then the existing stop-wait-delete), `StopService`; `Installer.Uninstall(keepData)` keeps its contract through them; the stale comment about phase 12 goes
+  - [ ] `internal/sysint/windows/install.go`: `RemoveService(ctx, mode)` (writes `<Paths.State>\uninstall-stop` (the folder cloud.halt reads), then the existing stop-wait-delete), `StopService`; `Installer.Uninstall(keepData)` keeps its contract through them; the stale comment about phase 12 goes
   - [ ] `cmd/hlabd/main.go`: `uninstall-cleanup` builds `uninstall.Options` with `hostnet/windows`, `platform/hyperv` and `RemoveService`, prints the notes and the error list; `stop-service`; `remove-user-data` (from `%AppData%` and `%LocalAppData%`); usage text names all commands
 
 - [ ] 12-09 Setup bundle
