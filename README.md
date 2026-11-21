@@ -59,10 +59,35 @@ projects, tokens, every resource of a project, server types and settings.
 
 ## Installation
 
-There is no installer yet. Build HLab from source and register its
-service once, as described in the [developer setup](docs/development/setup.md);
-the programs are then in `bin\` of your working copy, and the examples
-below run from there.
+HLab has no published release yet. Build the setup program from a working
+copy with `task installer VERSION=1.0.0` (the tools are listed in the
+[developer setup](docs/development/setup.md#tools)); it writes
+`bin\hlab-setup-1.0.0.exe`.
+
+Run `hlab-setup-<version>.exe` and confirm the administrator prompt. The
+setup program is not signed, so Windows SmartScreen may show "Windows
+protected your PC"; choose **More info**, then **Run anyway**.
+
+Setup first checks the [prerequisites](#prerequisites). When something is
+missing, it lists each missing item (for example Hyper-V not enabled, or a
+restart pending after enabling it) and ends without changing anything;
+the list is also in `%TEMP%\hlab-setup-prerequisites.log`. Otherwise it
+
+- installs the WebView2 runtime if it is missing,
+- installs the programs into `%ProgramFiles%\hlab` and adds that folder to
+  the system `PATH`, so `hlab` works in every terminal opened afterwards,
+- registers the service `hlab` (manual start) and creates the data folder
+  `%ProgramData%\hlab` with an empty `settings.toml`,
+- adds the shortcut "HLab" to the Start menu and the desktop; it opens the
+  [tray program](#the-tray-program).
+
+**Launch** on the last page opens the tray program. Neither the service
+nor the tray program starts with Windows.
+
+To update, run the setup program of the newer version. Projects, servers
+and settings stay; a running cloud is stopped and stays stopped until you
+start it again. Setup refuses to install an older version over a newer
+one; uninstall first.
 
 ## First steps
 
@@ -71,11 +96,11 @@ appliance VM and takes a few minutes; wait until the status says
 `running`:
 
 ```
-> bin\hlab.exe cloud start
+> hlab cloud start
 the cloud is starting
-> bin\hlab.exe cloud status
+> hlab cloud status
 state: running
-version: dev
+version: <the installed version>
 ```
 
 Create a project and a token for it. `project create` takes a display
@@ -83,9 +108,9 @@ name and prints the project's name, which the other commands use. The
 token is printed once and cannot be shown again:
 
 ```
-> bin\hlab.exe project create demo
+> hlab project create demo
 project demo created
-> bin\hlab.exe token create --project demo --name ci
+> hlab token create --project demo --name ci
 <64-character token>
 ```
 
@@ -121,8 +146,8 @@ takes longer; later servers reuse the cached copy. `server create` returns
 when the VM runs; a fresh server needs about a minute more until
 cloud-init has finished and SSH accepts the key.
 
-Clean up with `bin\hlab.exe project delete demo`, which deletes the
-server and the SSH key with the project, and `bin\hlab.exe cloud stop`.
+Clean up with `hlab project delete demo`, which deletes the
+server and the SSH key with the project, and `hlab cloud stop`.
 
 The [guide](docs/guide.md) shows every resource with hcloud and in the
 window: servers, placement groups, snapshots and backups, ISOs, volumes, networks, IPs, firewalls, DNS, load balancers and
@@ -130,8 +155,10 @@ certificates, and stopping and starting the cloud.
 
 ## The tray program
 
+The shortcut "HLab" in the Start menu or on the desktop, or
+
 ```
-> bin\hlab-tray.exe
+> hlab-tray
 ```
 
 opens the HLab window and puts the HLab icon in the notification area.
@@ -250,19 +277,48 @@ cloud again in that case.
 
 ## Uninstallation
 
-If you turned on trust for the HLab CA, run `bin\hlab.exe ca trust off`
-first, while the cloud still runs. Then, in an administrator terminal in
-the repository:
+Open **Settings > Apps > Installed apps**, choose **Uninstall** at
+"HLab", and confirm the administrator prompt. The setup page that opens
+has the checkbox **Keep projects, servers and settings**, unchecked by
+default; then choose **Uninstall**.
+
+Uninstalling stops the cloud and removes the service, every VM of HLab,
+its virtual switch, its host routes, NAT, DNS rules and firewall rules,
+restores the IPv4 forwarding of the WSL adapter, and removes the HLab CA
+from the Windows trust store. It then deletes `%ProgramFiles%\hlab` with
+its `PATH` entry and the shortcuts, `%ProgramData%\hlab`, and your own tray
+data (`%AppData%\hlab-tray.exe`, `%LocalAppData%\hlab`). With a
+`data_folder` outside `%ProgramData%\hlab`, only the folders HLab created
+there are deleted.
+
+- **Keep projects, servers and settings** keeps `%ProgramData%\hlab` and
+  your tray data. The servers are shut down first so their disks stay
+  consistent; the VMs, the switch and the host settings are removed all
+  the same. After a new installation, the next cloud start recreates the
+  VMs and the servers boot fresh from their kept disks; a CA trust that
+  was on returns at that start.
+- Other Windows accounts keep their own tray data folders; delete them in
+  those accounts if you want them gone.
+- The CA is removed from the WSL2 distributions of the user logged on at
+  the console only. With nobody logged on, or when a distribution fails,
+  the uninstall still completes and the CA file
+  `/usr/local/share/ca-certificates/hlab-ca.crt` stays in those
+  distributions; delete it there and run `sudo update-ca-certificates
+  --fresh`.
+
+When an existing object cannot be removed, the uninstall is rolled back
+and HLab stays installed; the setup log names the object.
+
+Without the window, in an administrator terminal:
 
 ```
-bin\hlabd.exe uninstall-cleanup
+hlab-setup-<version>.exe /uninstall /quiet
+hlab-setup-<version>.exe /uninstall /quiet KeepData=1
 ```
 
-It stops and removes the service `hlab-dev`, removes the host network
-settings it made (route, NAT, DNS rules, firewall rule) and deletes
-`%ProgramData%\hlab-dev`. With `--keep-data` the data folder stays. The
-Hyper-V VMs and the virtual switch `hlab-dev` stay; remove them in Hyper-V
-Manager if you want them gone.
+The first deletes everything as described; only `KeepData=1` keeps the
+data. Use the setup program of the installed version; Windows keeps a copy
+of it in `%ProgramData%\Package Cache`.
 
 ## More documentation
 

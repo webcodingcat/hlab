@@ -128,6 +128,65 @@ stopped. It refuses to run while
 the release cloud (service `hlab`) runs, when
 `hlab-dev` points to another working copy, or in an elevated terminal.
 
+## Installers
+
+```
+task installer VERSION=1.0.0
+```
+
+builds the release installers: the four programs for the `release`
+profile with that version into `bin\release\`, the MSI
+`bin\hlab-1.0.0.msi` from [installer/Package.wxs](../../installer/Package.wxs)
+and the setup program `bin\hlab-setup-1.0.0.exe` from
+[installer/Bundle.wxs](../../installer/Bundle.wxs), which embeds the MSI and
+the WebView2 bootstrapper. It needs WiX and its two extensions (see
+[Developer setup](setup.md#tools)) and names the missing one otherwise.
+Its last two lines, `built <path>`, name the MSI and the setup program.
+
+`VERSION` must have the form `x.y.z` with major and minor at most 255 and
+patch at most 65535, the limits of an MSI version:
+
+```
+> task installer VERSION=1.2
+...
+task: [installer] go run ./tools/installer 1.2
+installer: version "1.2" is not of the form x.y.z (for example task installer VERSION=1.2.3)
+exit status 1
+task: Failed to run task "installer": exit status 1
+```
+
+The WebView2 bootstrapper is downloaded into
+`%LocalAppData%\hlab-build-cache` and downloaded again when it is older
+than seven days; a failed download uses the cached copy and says so. The
+installers are not signed.
+
+Uninstalling a release deletes `%LocalAppData%\hlab` of the uninstalling
+user, which holds the OpenAPI cache of the tests; run `task openapi` again
+afterwards.
+
+## Elevated installer suite
+
+```
+task e2e:elevated
+task e2e:elevated -- -run 'TestInstall/INST-05'
+```
+
+installs, upgrades and uninstalls the release profile on this machine and
+checks what is left in Hyper-V and on the host. Run it in an administrator
+terminal; a full run can take several hours. It builds the installers 0.0.1 and 0.0.2
+from the working copy (so it needs everything `task installer` needs and
+the frontend dependencies), stops the development cloud if it runs and
+starts it again at the end, and copies the dev profile's base images and
+appliance packages into the release data folder so the release cloud
+downloads nothing. The CA rows need a running WSL2 distribution, selected
+as for the [end-to-end tests](#end-to-end-tests) (`HLAB_E2E_WSL_DISTRO`).
+
+It refuses to run in a terminal without elevated rights, and while a
+release HLab is installed (the service `hlab` or a registered HLab setup
+program): uninstall that first. It checks that the VMs and the switch of
+the dev profile survive uninstalling the release. When a run fails, its
+logs stay in the temporary folder `hlab-e2einstall-*` it names.
+
 ## Catalogs
 
 ```

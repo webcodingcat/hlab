@@ -1,8 +1,8 @@
 # Developer setup
 
 How to build HLab from source, register its development service and run
-it from your working copy. There is no installer yet, so this is also how
-you install HLab.
+it from your working copy. Users install HLab with the setup program that
+`task installer` builds (see [Build and test](build-and-test.md#installers)).
 
 ## Tools
 
@@ -12,8 +12,18 @@ On the Windows host:
   Desktop Experience), x64, hardware virtualization on, Hyper-V and its
   PowerShell module enabled, your account in "Hyper-V Administrators".
 - Go 1.27.4, Node.js 24 LTS or newer, Task v3.54.0, golangci-lint v2.15.0.
-- WiX Toolset v7.0.1 (`dotnet tool install --global wix`) and Wails v3.1.0
+- WiX Toolset v7.0.1 (`dotnet tool install --global wix --version 7.0.1`)
+  and Wails v3.1.0
   (`go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0`).
+- For the installers: WiX v7 needs its license (the Open Source
+  Maintenance Fee EULA) accepted once per user, then its util and
+  bootstrapper extensions in the global extension cache:
+
+  ```powershell
+  wix eula accept wix7
+  wix extension add -g WixToolset.Util.wixext/7.0.1
+  wix extension add -g WixToolset.BootstrapperApplications.wixext/7.0.1
+  ```
 - For the end-to-end tests: hcloud CLI v1.70.2 and OpenTofu 1.13.9 on the
   host, at least 16 GB RAM and 100 GB free disk.
 
@@ -64,8 +74,16 @@ file is not in use.
 write to, with system rights. Any process of your account can therefore act
 with system rights through it. Do this on a development machine only.
 
-To remove it, run `bin\hlabd.exe uninstall-cleanup` (add `--keep-data` to
-keep `%ProgramData%\hlab-dev`) in an administrator terminal.
+To remove it, run `bin\hlabd.exe uninstall-cleanup` in an administrator
+terminal. It does for the dev profile what uninstalling the release does
+for `hlab`: it stops and deletes the service `hlab-dev`, restores the IPv4
+forwarding of the WSL adapter, removes the HLab CA from the trust stores,
+removes the host routes, NAT, DNS and firewall rules tagged `hlab-dev`,
+deletes the VMs `hlab-dev-appliance` and `hlab-dev-server-<n>` and the
+switch `hlab-dev`, and deletes `%ProgramData%\hlab-dev`. `--keep-data`
+keeps the data folder. It prints a `note:` line for what it skipped (for
+example the CA in WSL with nobody logged on at the console) and exits
+non-zero naming each object it could not remove.
 
 ## Profiles
 
