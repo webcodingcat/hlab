@@ -600,6 +600,7 @@ func TestNetworks(t *testing.T) {
 	})
 
 	t.Run("LB-01", testLoadBalancerMembers)
+	t.Run("CLI-01/members", testMembers)
 	t.Run("CLI-02/queue", testQueue)
 	t.Run("CLI-02/effect", testEffect)
 
@@ -743,6 +744,62 @@ func testLoadBalancerMembers(t *testing.T) {
 	if !slices.Equal(deleted, []int64{n1.ID}) {
 		t.Errorf("NetworkDeleted called for %v, want [%d]", deleted, n1.ID)
 	}
+}
+
+type memberView struct {
+	Type     string   `json:"type"`
+	ID       int64    `json:"id"`
+	IP       string   `json:"ip"`
+	Status   string   `json:"status"`
+	AliasIPs []string `json:"alias_ips"`
+	Subnet   string   `json:"subnet"`
+}
+
+// listMembers gets GET /networks/{id}/members with query and expects 200.
+func listMembers(t *testing.T, e *netEnv, id int64, query string) []memberView {
+	t.Helper()
+	path := fmt.Sprintf("/networks/%d/members%s", id, query)
+	resp := e.Do(http.MethodGet, path, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s: status %d (%s), want 200", path, resp.StatusCode, apitest.ErrorCode(t, resp))
+	}
+	var b struct {
+		Members []memberView `json:"members"`
+	}
+	apitest.Decode(t, resp, &b)
+	return b.Members
+}
+
+// testMembers: GET /networks/{id}/members lists the servers with their
+// alias IPs and the LBs of the network with their subnets, filtered by
+// type and subnet.
+func testMembers(t *testing.T) {
+	e := newNetEnv(t)
+	lbs := &fakeLBs{members: map[int64][]networks.LBMember{}}
+	e.nw.SetLoadBalancers(lbs)
+	n := createNetwork(t, e, netBody("n", "10.0.0.0/16", "10.0.1.0/24", "10.0.2.0/24"))
+	other := createNetwork(t, e, netBody("other", "10.1.0.0/16", "10.1.1.0/24"))
+	a := createServer(t, e, "a", "fsn1", nil)
+	attach(t, e, a, n.ID, map[string]any{"ip": "10.0.1.5", "alias_ips": []string{"10.0.1.6"}})
+	b := createServer(t, e, "b", "fsn1", nil)
+	attach(t, e, b, other.ID, nil)
+	lbs.add(n.ID, 7, netip.MustParseAddr("10.0.2.9"))
+
+	got := listMembers(t, e, n.ID, "")
+	want := []memberView{
+		{Type: "server", ID: a, IP: "10.0.1.5", Status: "ok", AliasIPs: []string{"10.0.1.6"}, Subnet: "10.0.1.0/24"},
+		{Type: "load_balancer", ID: 7, IP: "10.0.2.9", Status: "ok", AliasIPs: []string{}, Subnet: "10.0.2.0/24"},
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("members of network %d: %+v, want %+v", n.ID, got, want)
+	}
+	if got := listMembers(t, e, n.ID, "?type=load_balancer"); len(got) != 1 || got[0].ID != 7 {
+		t.Errorf("members with type=load_balancer: %+v, want LB 7", got)
+	}
+	if got := listMembers(t, e, n.ID, "?subnet=10.0.1.0%2F24"); len(got) != 1 || got[0].ID != a {
+		t.Errorf("members with subnet=10.0.1.0/24: %+v, want server %d", got, a)
+	}
+	wantError(t, e.Do(http.MethodGet, "/networks/999/members", nil), http.StatusNotFound, "not_found", "members of an unknown network")
 }
 
 // startedAction expects 201 for the action request and returns the

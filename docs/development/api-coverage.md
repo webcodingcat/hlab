@@ -54,7 +54,7 @@ HLab serves these endpoints:
 | `GET /volumes`, `POST /volumes`, `GET /volumes/{id}`, `PUT /volumes/{id}`, `DELETE /volumes/{id}` | See [Volumes](#volumes). |
 | `POST /volumes/{id}/actions/attach`, `POST /volumes/{id}/actions/detach`, `POST /volumes/{id}/actions/resize`, `POST /volumes/{id}/actions/change_protection` | See [Volumes](#volumes). |
 | `GET /volumes/actions`, `GET /volumes/{id}/actions`, `GET /volumes/{id}/actions/{action_id}` | |
-| `GET /networks`, `POST /networks`, `GET /networks/{id}`, `PUT /networks/{id}`, `DELETE /networks/{id}` | See [Networks](#networks). |
+| `GET /networks`, `POST /networks`, `GET /networks/{id}`, `PUT /networks/{id}`, `DELETE /networks/{id}`, `GET /networks/{id}/members` | See [Networks](#networks). |
 | `POST /networks/{id}/actions/add_subnet`, `POST /networks/{id}/actions/delete_subnet`, `POST /networks/{id}/actions/add_route`, `POST /networks/{id}/actions/delete_route`, `POST /networks/{id}/actions/change_ip_range`, `POST /networks/{id}/actions/change_protection` | See [Networks](#networks). |
 | `POST /servers/{id}/actions/attach_to_network`, `POST /servers/{id}/actions/detach_from_network`, `POST /servers/{id}/actions/change_alias_ips` | See [Networks](#networks). |
 | `GET /networks/actions`, `GET /networks/{id}/actions`, `GET /networks/{id}/actions/{action_id}` | |
@@ -295,6 +295,8 @@ action holds it.
   [Networks](../guide.md#networks).
 - `DELETE /networks/{id}` detaches all servers of the network and removes
   their adapters before it answers.
+- `GET /networks/{id}/members` lists a member once its attach action has
+  succeeded, always with status `ok`.
 
 Hetzner documents no error for these cases; HLab answers:
 
