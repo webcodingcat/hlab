@@ -17,15 +17,19 @@ import (
 // tsigAlgorithms are the TSIG algorithms of secondary zones.
 var tsigAlgorithms = []string{"hmac-md5", "hmac-sha1", "hmac-sha256"}
 
+// ownCommands are the zone writes that change the state of the zone
+// itself; they answer locked while an action holds the zone. All other
+// writes add, change or remove RRSets and queue behind those actions.
+var ownCommands = []string{"change_protection", "change_ttl", "change_primary_nameservers", "import_zonefile"}
+
 // zoneRef is the zone in the resources of an action.
 func zoneRef(id int64) actions.Ref { return actions.Ref{ID: id, Type: refType} }
 
 // write runs one zone write: in a single transaction it loads the zone of
 // the path, lets f validate and change it, stores it and starts the action
-// command; the action publishes the zones. The change is stored at once, so
-// the action never refuses: it queues behind the running actions of the
-// zone (only delete_zone answers locked). It returns the stored zone and
-// the action.
+// command; the action publishes the zones. A command of ownCommands answers
+// locked while an action holds the zone; an RRSet command queues behind the
+// running actions of the zone. It returns the stored zone and the action.
 func (m *Module) write(req *http.Request, command string, f func(r *Record) error) (Record, *actions.Action, error) {
 	p, _ := api.ProjectFrom(req.Context())
 	acts := api.ActionsFrom(req.Context())
@@ -39,7 +43,12 @@ func (m *Module) write(req *http.Request, command string, f func(r *Record) erro
 		if err := f(&r); err != nil {
 			return err
 		}
-		if action, err = acts.StartQueued(tx, p.ID, command, []actions.Ref{zoneRef(r.ID)}, nil); err != nil {
+		refs := []actions.Ref{zoneRef(r.ID)}
+		var refuse []actions.Ref
+		if slices.Contains(ownCommands, command) {
+			refuse = refs
+		}
+		if action, err = acts.StartQueued(tx, p.ID, command, refs, refuse); err != nil {
 			return err
 		}
 		return put(tx, r)

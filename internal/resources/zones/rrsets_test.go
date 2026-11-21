@@ -162,10 +162,10 @@ func testRRSets(t *testing.T) {
 	}
 }
 
-// testQueue: while a zone action still publishes, further zone and RRSet
-// actions on the same zone wait as running instead of answering locked, as
-// the Ansible zone_rrset module and parallel OpenTofu siblings need; the
-// zone delete still answers locked.
+// testQueue: while a zone action still publishes, further RRSet actions on
+// the same zone wait as running instead of answering locked, as the Ansible
+// zone_rrset module and parallel OpenTofu siblings need; actions on the zone
+// itself and the zone delete still answer locked.
 func testQueue(t *testing.T) {
 	e := newZoneEnv(t)
 	z := createZone(t, e, map[string]any{"name": "example.com", "mode": "primary", "ttl": 3600})
@@ -180,7 +180,10 @@ func testQueue(t *testing.T) {
 	acts = append(acts, startAction(t, e, http.MethodPost, www+"/actions/change_ttl", map[string]any{"ttl": 900}, http.StatusCreated))
 	acts = append(acts, startAction(t, e, http.MethodPost, www+"/actions/set_records", map[string]any{"records": records("198.51.100.20")}, http.StatusCreated))
 	acts = append(acts, startAction(t, e, http.MethodPost, zonePath(z.ID)+"/rrsets", map[string]any{"name": "api", "type": "A", "records": records("198.51.100.30")}, http.StatusCreated))
-	acts = append(acts, startAction(t, e, http.MethodPost, zonePath(z.ID)+"/actions/change_ttl", map[string]any{"ttl": 7200}, http.StatusCreated))
+	for _, a := range []string{"change_ttl", "change_protection"} {
+		wantError(t, e.Do(http.MethodPost, zonePath(z.ID)+"/actions/"+a, map[string]any{"ttl": 7200, "delete": true}),
+			http.StatusLocked, "locked", "zone "+a+" with running actions")
+	}
 	wantError(t, e.Do(http.MethodDelete, zonePath(z.ID), nil), http.StatusLocked, "locked", "DELETE of a zone with running actions")
 	e.mu.Lock()
 	e.hold = nil
@@ -195,8 +198,8 @@ func testQueue(t *testing.T) {
 	for _, r := range pz.RRSets {
 		got[r.Name+"/"+r.Type] = r
 	}
-	if pz.TTL != 7200 || got["www/A"].TTL != 900 || !reflect.DeepEqual(got["www/A"].Records, []string{"198.51.100.20"}) ||
+	if pz.TTL != 3600 || got["www/A"].TTL != 900 || !reflect.DeepEqual(got["www/A"].Records, []string{"198.51.100.20"}) ||
 		!reflect.DeepEqual(got["api/A"].Records, []string{"198.51.100.30"}) {
-		t.Errorf("pushed zone %+v, want TTL 7200, www/A 900 with 198.51.100.20 and api/A with 198.51.100.30", pz)
+		t.Errorf("pushed zone %+v, want TTL 3600, www/A 900 with 198.51.100.20 and api/A with 198.51.100.30", pz)
 	}
 }

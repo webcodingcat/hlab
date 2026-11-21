@@ -495,22 +495,6 @@ func Deviations() []Deviation {
 			Description: "the firewall actions of a create with firewalls wait as running behind a second action on the same firewall instead of answering 423 locked",
 		},
 		{
-			Endpoint:    "POST /zones/{id}/actions/change_protection",
-			Description: "a second action on the same zone waits as running instead of answering 423 locked",
-		},
-		{
-			Endpoint:    "POST /zones/{id}/actions/change_ttl",
-			Description: "a second action on the same zone waits as running instead of answering 423 locked",
-		},
-		{
-			Endpoint:    "POST /zones/{id}/actions/change_primary_nameservers",
-			Description: "a second action on the same zone waits as running instead of answering 423 locked",
-		},
-		{
-			Endpoint:    "POST /zones/{id}/actions/import_zonefile",
-			Description: "a second action on the same zone waits as running instead of answering 423 locked",
-		},
-		{
 			Endpoint:    "POST /zones/{id}/rrsets",
 			Description: "a second action on the same zone waits as running instead of answering 423 locked",
 		},
