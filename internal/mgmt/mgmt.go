@@ -226,7 +226,7 @@ func (s server) createProject(w http.ResponseWriter, req *http.Request) {
 	var p store.Project
 	err := s.d.Store.Tx(func(tx store.Tx) error {
 		var err error
-		p, err = store.CreateProject(tx, body.Name)
+		p, err = store.CreateProject(tx, body.Name, body.Name)
 		return err
 	})
 	if err != nil {

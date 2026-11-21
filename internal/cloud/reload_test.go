@@ -273,7 +273,7 @@ func putServerWithISO(t *testing.T, st *store.Store, iso string) servers.Record 
 	t.Helper()
 	var r servers.Record
 	err := st.Tx(func(tx store.Tx) error {
-		p, err := store.CreateProject(tx, "p")
+		p, err := store.CreateProject(tx, "p", "p")
 		if err != nil {
 			return err
 		}
