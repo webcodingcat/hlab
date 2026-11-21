@@ -162,18 +162,28 @@ func (m *Module) InNetwork(tx store.Tx, projectID, netID int64) ([]networks.LBMe
 	return out, nil
 }
 
-// NetworkDeleted detaches every load balancer from network netID.
+// NetworkDeleted detaches every load balancer from network netID, in the
+// pending state of a running action too.
 func (m *Module) NetworkDeleted(tx store.Tx, netID int64) error {
 	recs, err := store.ListAll[Record](tx, Kind)
 	if err != nil {
 		return err
 	}
 	for _, r := range recs {
-		if len(r.PrivateNet) == 0 || r.PrivateNet[0].Network != netID {
+		changed := false
+		if len(r.PrivateNet) > 0 && r.PrivateNet[0].Network == netID {
+			r.PrivateNet = []PrivateNet{}
+			r.Hlab.VLAN = 0
+			changed = true
+		}
+		if p := r.Hlab.Pending; p != nil && len(p.PrivateNet) > 0 && p.PrivateNet[0].Network == netID {
+			p.PrivateNet = []PrivateNet{}
+			p.VLAN = 0
+			changed = true
+		}
+		if !changed {
 			continue
 		}
-		r.PrivateNet = []PrivateNet{}
-		r.Hlab.VLAN = 0
 		if err := put(tx, r); err != nil {
 			return err
 		}

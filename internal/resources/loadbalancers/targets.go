@@ -414,20 +414,21 @@ func (m *Module) viewTargets(tx store.Tx, r Record) ([]TargetView, error) {
 }
 
 // ServerDeleted is the servers.OnDelete function: it removes the targets
-// of server serverID.
+// of server serverID, from the pending state of a running action too.
 func (m *Module) ServerDeleted(tx store.Tx, serverID int64) error {
 	recs, err := store.ListAll[Record](tx, Kind)
 	if err != nil {
 		return err
 	}
 	for _, r := range recs {
-		kept := make([]Target, 0, len(r.Targets))
-		for _, t := range r.Targets {
-			if t.Type != targetServer || t.Server == nil || t.Server.ID != serverID {
-				kept = append(kept, t)
+		kept, changed := withoutServer(r.Targets, serverID)
+		if p := r.Hlab.Pending; p != nil {
+			var pc bool
+			if p.Targets, pc = withoutServer(p.Targets, serverID); pc {
+				changed = true
 			}
 		}
-		if len(kept) == len(r.Targets) {
+		if !changed {
 			continue
 		}
 		r.Targets = kept
@@ -436,6 +437,18 @@ func (m *Module) ServerDeleted(tx store.Tx, serverID int64) error {
 		}
 	}
 	return nil
+}
+
+// withoutServer returns ts without the targets of server serverID and
+// whether there were any.
+func withoutServer(ts []Target, serverID int64) ([]Target, bool) {
+	kept := make([]Target, 0, len(ts))
+	for _, t := range ts {
+		if t.Type != targetServer || t.Server == nil || t.Server.ID != serverID {
+			kept = append(kept, t)
+		}
+	}
+	return kept, len(kept) != len(ts)
 }
 
 // ForServer returns the load balancers with a server target on serverID.

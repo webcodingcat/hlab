@@ -51,8 +51,9 @@ func (m *Module) change(w http.ResponseWriter, req *http.Request, id int64, comm
 // the load balancer and the refs f returns; it refuses with locked only
 // when refuseLB is set and the load balancer has a running action. The work
 // waits its turn, applies f again to the state the earlier actions left,
-// pushes that state to the agent as pending and commits it at success, so
-// GET shows the change together with the action's success.
+// pushes that state to the agent as pending and, at success, applies f once
+// more to the record as it is then and commits it, so GET shows the change
+// together with the action's success and deletions made meanwhile hold.
 func (m *Module) queued(w http.ResponseWriter, req *http.Request, id int64, command string, refuseLB bool, f func(tx store.Tx, r *Record) ([]actions.Ref, error)) {
 	p, _ := api.ProjectFrom(req.Context())
 	acts := api.ActionsFrom(req.Context())
@@ -86,10 +87,7 @@ func (m *Module) queued(w http.ResponseWriter, req *http.Request, id int64, comm
 			if err != nil {
 				return err
 			}
-			next := r
-			next.Services = slices.Clone(r.Services)
-			next.Targets = slices.Clone(r.Targets)
-			next.PrivateNet = slices.Clone(r.PrivateNet)
+			next := cloneState(r)
 			if _, err := f(tx, &next); err != nil {
 				return err
 			}
@@ -103,6 +101,7 @@ func (m *Module) queued(w http.ResponseWriter, req *http.Request, id int64, comm
 			return actionError(err)
 		}
 		pushErr := m.d.PushAgent(ctx)
+		var changeErr error
 		err = st.Tx(func(tx store.Tx) error {
 			r, err := Load(tx, p.ID, id)
 			if errors.Is(err, store.ErrNotFound) {
@@ -111,15 +110,31 @@ func (m *Module) queued(w http.ResponseWriter, req *http.Request, id int64, comm
 			if err != nil {
 				return err
 			}
-			if pd := r.Hlab.Pending; pushErr == nil && pd != nil && pd.Action == actionID {
-				r = pd.apply(r)
+			if pd := r.Hlab.Pending; pd != nil && pd.Action == actionID {
+				r.Hlab.Pending = nil
 			}
-			r.Hlab.Pending = nil
+			if pushErr == nil {
+				// The change again, on the record as it is now, so a server
+				// or network deleted while the action ran stays gone.
+				next := cloneState(r)
+				if _, changeErr = f(tx, &next); changeErr == nil {
+					r = next
+				}
+			}
 			return put(tx, r)
 		})
-		return errors.Join(pushErr, err)
+		return errors.Join(pushErr, actionError(changeErr), err)
 	})
 	api.JSON(w, http.StatusCreated, map[string]any{"action": action})
+}
+
+// cloneState returns r with its own copies of the services, targets and
+// networks an action's f changes.
+func cloneState(r Record) Record {
+	r.Services = slices.Clone(r.Services)
+	r.Targets = slices.Clone(r.Targets)
+	r.PrivateNet = slices.Clone(r.PrivateNet)
+	return r
 }
 
 // actionError turns an error of a validation inside an action's work into
