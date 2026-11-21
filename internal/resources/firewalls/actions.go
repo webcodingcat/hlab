@@ -142,7 +142,8 @@ func (m *Module) runPush(acts *actions.Manager, started []*actions.Action) {
 // change loads firewall id of the request's project, lets f change it and
 // return the specs of its actions, stores it and starts the actions with a
 // lock on the firewall; after the commit the actions run and the answer is
-// 201 {actions}. set_rules uses it.
+// 201 {actions}. A firewall applied nowhere filters nothing, so its actions
+// succeed at once. set_rules uses it.
 func (m *Module) change(w http.ResponseWriter, req *http.Request, f func(tx store.Tx, r *Record, res resolution) ([]actions.Spec, error)) {
 	id, ok := api.PathID(w, req)
 	if !ok {
@@ -150,7 +151,7 @@ func (m *Module) change(w http.ResponseWriter, req *http.Request, f func(tx stor
 	}
 	p, _ := api.ProjectFrom(req.Context())
 	acts := api.ActionsFrom(req.Context())
-	var started []*actions.Action
+	var started, done []*actions.Action
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
 		r, err := Load(tx, p.ID, id)
 		if err != nil {
@@ -168,6 +169,11 @@ func (m *Module) change(w http.ResponseWriter, req *http.Request, f func(tx stor
 			return err
 		}
 		started, err = acts.StartAll(tx, p.ID, []actions.Ref{fwRef(id)}, specs)
+		if err != nil || len(r.AppliedTo) > 0 {
+			return err
+		}
+		err = acts.Succeed(tx, started)
+		started, done = nil, started
 		return err
 	})
 	if err != nil {
@@ -175,6 +181,7 @@ func (m *Module) change(w http.ResponseWriter, req *http.Request, f func(tx stor
 		return
 	}
 	m.runPush(acts, started)
+	started = append(started, done...)
 	api.JSON(w, http.StatusCreated, map[string]any{"actions": started})
 }
 

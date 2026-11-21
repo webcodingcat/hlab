@@ -149,6 +149,24 @@ func (m *Manager) StartAll(tx store.Tx, projectID int64, lock []Ref, specs []Spe
 	return out, nil
 }
 
+// Succeed marks the running actions acts, created in tx, as finished with
+// success, for work that has nothing to do; they are not handed to Run.
+func (m *Manager) Succeed(tx store.Tx, acts []*Action) error {
+	now := time.Now().UTC().Truncate(time.Second)
+	for _, a := range acts {
+		sa, err := store.GetAction(tx, a.ID)
+		if err != nil {
+			return err
+		}
+		sa.Status, sa.Progress, sa.Finished = StatusSuccess, 100, now
+		if err := store.UpdateAction(tx, sa); err != nil {
+			return err
+		}
+		a.Status, a.Progress, a.Finished = StatusSuccess, 100, &now
+	}
+	return nil
+}
+
 // create stores a running action for s without checking locks.
 func create(tx store.Tx, projectID int64, s Spec) (*Action, error) {
 	resources := s.Resources

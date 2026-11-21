@@ -225,7 +225,8 @@ type createRequest struct {
 }
 
 // create stores a firewall; with rules it starts a set_firewall_rules
-// action, with apply_to the apply actions; each ends after the agent push.
+// action, with apply_to the apply actions; each ends after the agent push,
+// or at once when the firewall is applied nowhere.
 func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	var body createRequest
 	if !api.Decode(w, req, &body) {
@@ -238,6 +239,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	acts := api.ActionsFrom(req.Context())
 	var f Firewall
 	started := []*actions.Action{}
+	var done []*actions.Action
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
 		if err := checkName(tx, p.ID, body.Name, 0); err != nil {
 			return err
@@ -282,6 +284,14 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			return err
 		}
+		if len(r.AppliedTo) == 0 {
+			// Applied nowhere, the rules filter nothing yet.
+			if err := acts.Succeed(tx, a); err != nil {
+				return err
+			}
+			done = a
+			a = nil
+		}
 		started = append(started, a...)
 		f, err = shown(tx, r)
 		return err
@@ -291,6 +301,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	m.runPush(acts, started)
+	started = append(started, done...)
 	api.JSON(w, http.StatusCreated, map[string]any{"firewall": f, "actions": started})
 }
 

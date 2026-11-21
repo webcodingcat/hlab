@@ -391,6 +391,7 @@ func TestFirewalls(t *testing.T) {
 	t.Run("FW-01/server_create", testServerCreate)
 	t.Run("FW-05", testLabelChange)
 	t.Run("CLI-02", testQueue)
+	t.Run("CLI-03", testUnappliedRules)
 }
 
 func testCRUD(t *testing.T) {
@@ -522,4 +523,41 @@ func testQueue(t *testing.T) {
 	if got := mustFirewall(t, e, f2.ID).appliedServers(); !slices.Equal(got, []int64{s.ID}) {
 		t.Errorf("after apply f2: applied servers %v, want [%d]", got, s.ID)
 	}
+}
+
+// testUnappliedRules: the rules of a firewall applied nowhere change at
+// once, so Ansible's firewall module, which does not wait for the actions
+// of a create or set_rules, can change the rules and apply the firewall
+// right after.
+func testUnappliedRules(t *testing.T) {
+	e := newFWEnv(t)
+	s := createServer(t, e, "s", nil)
+	e.gate.Close()
+
+	resp := e.Do(http.MethodPost, "/firewalls", map[string]any{"name": "fw", "rules": []firewalls.Rule{sshRule}})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /firewalls: status %d (%s), want 201", resp.StatusCode, apitest.ErrorCode(t, resp))
+	}
+	var created struct {
+		Firewall fwView       `json:"firewall"`
+		Actions  []actionView `json:"actions"`
+	}
+	apitest.Decode(t, resp, &created)
+	for _, a := range created.Actions {
+		if a.Status != "success" {
+			t.Errorf("create action %d %s: status %q, want success", a.ID, a.Command, a.Status)
+		}
+	}
+	rules := []firewalls.Rule{sshRule, inRule("tcp", ptr("443"), "0.0.0.0/0")}
+	for _, a := range startFWAction(t, e, created.Firewall.ID, "set_rules", map[string]any{"rules": rules}) {
+		if a.Status != "success" {
+			t.Errorf("set_rules action %d %s: status %q, want success", a.ID, a.Command, a.Status)
+		}
+	}
+	if got := mustFirewall(t, e, created.Firewall.ID).Rules; !reflect.DeepEqual(got, rules) {
+		t.Errorf("after set_rules: rules %+v, want %+v", got, rules)
+	}
+	applied := startFWAction(t, e, created.Firewall.ID, "apply_to_resources", applyBody(serverTarget(s.ID)))
+	e.gate.Next(t, "apply after set_rules")()
+	waitAll(t, e, applied, "success", "apply after set_rules")
 }
