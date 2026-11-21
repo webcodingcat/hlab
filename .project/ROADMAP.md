@@ -50,7 +50,6 @@
       2. After uninstalling with the default answer, no VM, switch, route,
          NRPT rule, service or file of hlab remains.
       3. Installing a newer build over an older one keeps the state.
-      Stops for: manual check.
 
 - [ ] 13 Client matrix and success criterion.
       Requirements: CLI-01, CLI-02, CLI-03, CLI-04.
