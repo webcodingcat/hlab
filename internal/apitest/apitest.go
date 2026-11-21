@@ -92,7 +92,7 @@ func (e *Env) NewToken(project string, readOnly bool) string {
 		p, ok := e.projects[project]
 		if !ok {
 			var err error
-			p, err = store.CreateProject(tx, project)
+			p, err = store.CreateProject(tx, project, project)
 			if err != nil {
 				return err
 			}

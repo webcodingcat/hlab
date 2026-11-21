@@ -38,7 +38,7 @@ func TestCloud(t *testing.T) {
 		imagePath := filepath.Join(dir, "images", "image-left.vhdx")
 		volumePath := filepath.Join(dir, "volumes", "volume-left.vhdx")
 		err = st.Tx(func(tx store.Tx) error {
-			p, err := store.CreateProject(tx, "p")
+			p, err := store.CreateProject(tx, "p", "p")
 			if err != nil {
 				return err
 			}
