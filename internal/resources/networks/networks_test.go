@@ -33,6 +33,8 @@ type netEnv struct {
 	srv  *servers.Module
 	nw   *networks.Module
 
+	gate *apitest.PushGate
+
 	mu     sync.Mutex
 	pushed *agentapi.Config
 }
@@ -43,7 +45,7 @@ func newNetEnv(t *testing.T) *netEnv {
 	if err != nil {
 		t.Fatalf("load shipped catalog: %v", err)
 	}
-	e := &netEnv{fake: platformtest.NewFake()}
+	e := &netEnv{fake: platformtest.NewFake(), gate: apitest.NewPushGate(t)}
 	d := apitest.ServersDeps(t, cat, e.fake)
 	d.PushAgent = e.push
 	e.srv = servers.New(d)
@@ -65,7 +67,10 @@ func (e *netEnv) contribute() (agentapi.Config, error) {
 	return doc, err
 }
 
-func (e *netEnv) push(context.Context) error {
+func (e *netEnv) push(ctx context.Context) error {
+	if err := e.gate.Wait(ctx); err != nil {
+		return err
+	}
 	doc, err := e.contribute()
 	if err != nil {
 		return err
@@ -589,6 +594,8 @@ func TestNetworks(t *testing.T) {
 	})
 
 	t.Run("LB-01", testLoadBalancerMembers)
+	t.Run("CLI-02/queue", testQueue)
+	t.Run("CLI-02/effect", testEffect)
 
 	testAttach(t)
 	testContribute(t)
@@ -729,5 +736,132 @@ func testLoadBalancerMembers(t *testing.T) {
 	lbs.mu.Unlock()
 	if !slices.Equal(deleted, []int64{n1.ID}) {
 		t.Errorf("NetworkDeleted called for %v, want [%d]", deleted, n1.ID)
+	}
+}
+
+// startedAction expects 201 for the action request and returns the
+// action, which is still running.
+func startedAction(t *testing.T, resp *http.Response, what string) apitest.Action {
+	t.Helper()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("%s: status %d (%s), want 201", what, resp.StatusCode, apitest.ErrorCode(t, resp))
+	}
+	var b struct {
+		Action apitest.Action `json:"action"`
+	}
+	apitest.Decode(t, resp, &b)
+	if b.Action.Status != "running" {
+		t.Errorf("%s: action status %q, want running", what, b.Action.Status)
+	}
+	return b.Action
+}
+
+// inOrder lets the held push of first through and checks that the work of
+// second starts only after first succeeded; it returns the release of the
+// push of second.
+func inOrder(t *testing.T, e *netEnv, releaseFirst func(), first, second apitest.Action) func() {
+	t.Helper()
+	releaseFirst()
+	releaseSecond := e.gate.Next(t, second.Command+" queued behind "+first.Command)
+	if got := e.GetAction(first.ID); got.Status != "success" {
+		t.Errorf("%s %d when the queued %s %d worked: %q, want success", first.Command, first.ID, second.Command, second.ID, got.Status)
+	}
+	return releaseSecond
+}
+
+func waitSuccess(t *testing.T, e *netEnv, a apitest.Action, what string) {
+	t.Helper()
+	if got := e.WaitAction(a.ID); got.Status != "success" {
+		t.Fatalf("%s: action %q %+v, want success", what, got.Status, got.Error)
+	}
+}
+
+// testQueue: actions on one network queue instead of answering locked;
+// actions on the server itself and change_ip_range still refuse.
+func testQueue(t *testing.T) {
+	e := newNetEnv(t)
+	n := createNetwork(t, e, netBody("net", "10.0.0.0/16", "10.0.1.0/24"))
+	other := createNetwork(t, e, netBody("other", "10.1.0.0/16", "10.1.1.0/24"))
+	s1 := createServer(t, e, "s1", "fsn1", nil)
+	s2 := createServer(t, e, "s2", "fsn1", nil)
+	e.gate.Close()
+
+	a1 := startedAction(t, serverAction(e, s1, "attach_to_network", map[string]any{"network": n.ID}), "attach s1")
+	release := e.gate.Next(t, "attach s1")
+	a2 := startedAction(t, serverAction(e, s2, "attach_to_network", map[string]any{"network": n.ID}), "attach s2 while s1 attaches")
+	wantError(t, networkAction(e, n.ID, "change_ip_range", map[string]any{"ip_range": "10.0.0.0/15"}),
+		http.StatusLocked, "locked", "change_ip_range while an attach holds the network")
+	wantError(t, serverAction(e, s1, "attach_to_network", map[string]any{"network": other.ID}),
+		http.StatusLocked, "locked", "second attach_to_network of s1")
+	inOrder(t, e, release, a1, a2)()
+	waitSuccess(t, e, a2, "attach s2")
+
+	sub1 := startedAction(t, networkAction(e, n.ID, "add_subnet", subnet("cloud", "10.0.2.0/24", "eu-central")), "add_subnet 10.0.2.0/24")
+	release = e.gate.Next(t, "add_subnet 10.0.2.0/24")
+	sub2 := startedAction(t, networkAction(e, n.ID, "add_subnet", subnet("cloud", "10.0.3.0/24", "eu-central")), "add_subnet 10.0.3.0/24 while the first runs")
+	inOrder(t, e, release, sub1, sub2)()
+	waitSuccess(t, e, sub2, "add_subnet 10.0.3.0/24")
+
+	r1 := startedAction(t, networkAction(e, n.ID, "add_route", route("10.100.0.0/24", "10.0.1.5")), "add_route 10.100.0.0/24")
+	release = e.gate.Next(t, "add_route 10.100.0.0/24")
+	r2 := startedAction(t, networkAction(e, n.ID, "add_route", route("10.101.0.0/24", "10.0.1.5")), "add_route 10.101.0.0/24 while the first runs")
+	inOrder(t, e, release, r1, r2)()
+	waitSuccess(t, e, r2, "add_route 10.101.0.0/24")
+	e.gate.Open()
+
+	got := getNetwork(t, e, n.ID)
+	if !slices.Contains(got.Servers, s1) || !slices.Contains(got.Servers, s2) {
+		t.Errorf("network servers %v, want %d and %d", got.Servers, s1, s2)
+	}
+	if r := got.subnetRanges(); !slices.Contains(r, "10.0.2.0/24") || !slices.Contains(r, "10.0.3.0/24") {
+		t.Errorf("subnets %v, want 10.0.2.0/24 and 10.0.3.0/24", r)
+	}
+	if len(got.Routes) != 2 {
+		t.Errorf("routes %v, want both added routes", got.Routes)
+	}
+}
+
+// testEffect: attachments, subnets and routes appear on GET at success.
+func testEffect(t *testing.T) {
+	e := newNetEnv(t)
+	n := createNetwork(t, e, netBody("net", "10.0.0.0/16", "10.0.1.0/24"))
+	s := createServer(t, e, "s", "fsn1", nil)
+	e.gate.Close()
+
+	a := startedAction(t, serverAction(e, s, "attach_to_network", map[string]any{"network": n.ID}), "attach")
+	release := e.gate.Next(t, "attach")
+	if _, ok := privateNet(t, e, s, n.ID); ok {
+		t.Errorf("while attach_to_network runs: server has private_net for network %d, want none yet", n.ID)
+	}
+	if got := getNetwork(t, e, n.ID).Servers; slices.Contains(got, s) {
+		t.Errorf("while attach_to_network runs: network servers %v, want %d not yet", got, s)
+	}
+	release()
+	waitSuccess(t, e, a, "attach")
+	mustPrivateNet(t, e, s, n.ID)
+	if got := getNetwork(t, e, n.ID).Servers; !slices.Contains(got, s) {
+		t.Errorf("after attach_to_network: network servers %v, want %d", got, s)
+	}
+
+	a = startedAction(t, networkAction(e, n.ID, "add_subnet", subnet("cloud", "10.0.2.0/24", "eu-central")), "add_subnet")
+	release = e.gate.Next(t, "add_subnet")
+	if got := getNetwork(t, e, n.ID).subnetRanges(); slices.Contains(got, "10.0.2.0/24") {
+		t.Errorf("while add_subnet runs: subnets %v, want 10.0.2.0/24 not yet", got)
+	}
+	release()
+	waitSuccess(t, e, a, "add_subnet")
+	if got := getNetwork(t, e, n.ID).subnetRanges(); !slices.Contains(got, "10.0.2.0/24") {
+		t.Errorf("after add_subnet: subnets %v, want 10.0.2.0/24", got)
+	}
+
+	a = startedAction(t, networkAction(e, n.ID, "add_route", route("10.100.0.0/24", "10.0.1.5")), "add_route")
+	release = e.gate.Next(t, "add_route")
+	if got := getNetwork(t, e, n.ID).Routes; len(got) != 0 {
+		t.Errorf("while add_route runs: routes %v, want none yet", got)
+	}
+	release()
+	waitSuccess(t, e, a, "add_route")
+	if got := getNetwork(t, e, n.ID).Routes; !slices.Equal(got, []routeView{{"10.100.0.0/24", "10.0.1.5"}}) {
+		t.Errorf("after add_route: routes %v, want 10.100.0.0/24 via 10.0.1.5", got)
 	}
 }

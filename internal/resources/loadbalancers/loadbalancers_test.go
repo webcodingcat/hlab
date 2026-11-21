@@ -110,6 +110,7 @@ type lbEnv struct {
 	clock *fakeClock
 
 	status atomic.Pointer[agentapi.Status]
+	gate   *apitest.PushGate
 	mu     sync.Mutex
 	pushes []agentapi.Config
 }
@@ -131,6 +132,7 @@ func newEnv(t *testing.T, tune ...func(d *loadbalancers.Deps)) *lbEnv {
 		cat:   cat,
 		pips:  &fakePIPs{ipv4: map[int64]netip.Addr{}, ipv6: map[int64]netip.Prefix{}},
 		clock: &fakeClock{now: time.Now().UTC().Truncate(time.Second)},
+		gate:  apitest.NewPushGate(t),
 	}
 	e.status.Store(&agentapi.Status{})
 	d := apitest.ServersDeps(t, cat, fake)
@@ -159,7 +161,10 @@ func newEnv(t *testing.T, tune ...func(d *loadbalancers.Deps)) *lbEnv {
 	return e
 }
 
-func (e *lbEnv) push(context.Context) error {
+func (e *lbEnv) push(ctx context.Context) error {
+	if err := e.gate.Wait(ctx); err != nil {
+		return err
+	}
 	var doc agentapi.Config
 	err := e.Store.Tx(func(tx store.Tx) error {
 		if err := e.srv.Contribute(tx, &doc); err != nil {
@@ -617,6 +622,8 @@ func TestLoadBalancers(t *testing.T) {
 	t.Run("LB-06/document", testDocument)
 	t.Run("LB-09/document", testDocumentPTR)
 	t.Run("LB-09/recover", testRecover)
+	t.Run("CLI-02/queue", testQueue)
+	t.Run("CLI-02/effect", testEffect)
 }
 
 // testCreate: create, location and type rules, primary IPs and names.
@@ -920,4 +927,135 @@ func sameEntries(got, want []rdns.Entry) bool {
 		return out
 	}
 	return slices.Equal(norm(got), norm(want))
+}
+
+// startedAction expects 201 for the action request and returns the
+// action, which is still running.
+func startedAction(t *testing.T, resp *http.Response, what string) apitest.Action {
+	t.Helper()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("%s: status %d (%s), want 201", what, resp.StatusCode, apitest.ErrorCode(t, resp))
+	}
+	var b struct {
+		Action apitest.Action `json:"action"`
+	}
+	apitest.Decode(t, resp, &b)
+	if b.Action.Status != "running" {
+		t.Errorf("%s: action status %q, want running", what, b.Action.Status)
+	}
+	return b.Action
+}
+
+// inOrder lets the held push of first through and checks that the work of
+// second starts only after first succeeded; it returns the release of the
+// push of second.
+func inOrder(t *testing.T, e *lbEnv, releaseFirst func(), first, second apitest.Action) func() {
+	t.Helper()
+	releaseFirst()
+	releaseSecond := e.gate.Next(t, second.Command+" queued behind "+first.Command)
+	if got := e.For(t).GetAction(first.ID); got.Status != "success" {
+		t.Errorf("%s %d when the queued %s %d worked: %q, want success", first.Command, first.ID, second.Command, second.ID, got.Status)
+	}
+	return releaseSecond
+}
+
+func waitSuccess(t *testing.T, e *lbEnv, a apitest.Action, what string) {
+	t.Helper()
+	if got := e.For(t).WaitAction(a.ID); got.Status != "success" {
+		t.Fatalf("%s: action %q %+v, want success", what, got.Status, got.Error)
+	}
+}
+
+// testQueue: target and service actions on one load balancer queue;
+// change_type and a second attach still refuse.
+func testQueue(t *testing.T) {
+	e := newEnv(t)
+	n := createNetwork(t, e, "n", "10.0.0.0/16", "10.0.1.0/24")
+	n2 := createNetwork(t, e, "n2", "10.1.0.0/16", "10.1.1.0/24")
+	lb := createLB(t, e, lbBody("queue"))
+	s1 := createServer(t, e, "s1", "fsn1", nil)
+	s2 := createServer(t, e, "s2", "fsn1", nil)
+	e.gate.Close()
+
+	t1 := startedAction(t, lbAction(e, lb.ID, "add_target", serverTargetBody(s1.ID, false)), "add_target s1")
+	release := e.gate.Next(t, "add_target s1")
+	t2 := startedAction(t, lbAction(e, lb.ID, "add_target", serverTargetBody(s2.ID, false)), "add_target s2 while s1 is added")
+	wantError(t, lbAction(e, lb.ID, "change_type", map[string]any{"load_balancer_type": "lb21"}),
+		http.StatusLocked, "locked", "change_type while a target action runs")
+	inOrder(t, e, release, t1, t2)()
+	waitSuccess(t, e, t2, "add_target s2")
+
+	sv1 := startedAction(t, lbAction(e, lb.ID, "add_service", tcpService(80, 80)), "add_service 80")
+	release = e.gate.Next(t, "add_service 80")
+	sv2 := startedAction(t, lbAction(e, lb.ID, "add_service", tcpService(443, 443)), "add_service 443 while 80 is added")
+	inOrder(t, e, release, sv1, sv2)()
+	waitSuccess(t, e, sv2, "add_service 443")
+
+	a := startedAction(t, lbAction(e, lb.ID, "attach_to_network", map[string]any{"network": n}), "attach_to_network")
+	release = e.gate.Next(t, "attach_to_network")
+	wantError(t, lbAction(e, lb.ID, "attach_to_network", map[string]any{"network": n2}),
+		http.StatusLocked, "locked", "second attach_to_network of the load balancer")
+	release()
+	waitSuccess(t, e, a, "attach_to_network")
+	e.gate.Open()
+
+	got := mustLB(t, e, lb.ID)
+	for _, id := range []int64{s1.ID, s2.ID} {
+		if _, ok := got.serverTarget(id); !ok {
+			t.Errorf("targets %+v, want server %d", got.Targets, id)
+		}
+	}
+	for _, port := range []int{80, 443} {
+		if _, ok := got.service(port); !ok {
+			t.Errorf("services %+v, want listen port %d", got.Services, port)
+		}
+	}
+}
+
+// testEffect: targets, services and private_net appear on GET at success;
+// a private target checks the committed network state.
+func testEffect(t *testing.T) {
+	e := newEnv(t)
+	n := createNetwork(t, e, "n", "10.0.0.0/16", "10.0.1.0/24")
+	lb := createLB(t, e, lbBody("effect"))
+	s1 := createServer(t, e, "s1", "fsn1", nil)
+	s2 := createServer(t, e, "s2", "fsn1", nil)
+	runAction(t, e, e.Do(http.MethodPost, fmt.Sprintf("/servers/%d/actions/attach_to_network", s2.ID), map[string]any{"network": n}),
+		"attach_to_network", "attach s2 to the network")
+	e.gate.Close()
+
+	a := startedAction(t, lbAction(e, lb.ID, "add_target", serverTargetBody(s1.ID, false)), "add_target")
+	release := e.gate.Next(t, "add_target")
+	if _, ok := mustLB(t, e, lb.ID).serverTarget(s1.ID); ok {
+		t.Errorf("while add_target runs: target server %d shown, want not yet", s1.ID)
+	}
+	release()
+	waitSuccess(t, e, a, "add_target")
+	if _, ok := mustLB(t, e, lb.ID).serverTarget(s1.ID); !ok {
+		t.Errorf("after add_target: no target server %d", s1.ID)
+	}
+
+	a = startedAction(t, lbAction(e, lb.ID, "add_service", tcpService(80, 80)), "add_service")
+	release = e.gate.Next(t, "add_service")
+	if _, ok := mustLB(t, e, lb.ID).service(80); ok {
+		t.Errorf("while add_service runs: service 80 shown, want not yet")
+	}
+	release()
+	waitSuccess(t, e, a, "add_service")
+	if _, ok := mustLB(t, e, lb.ID).service(80); !ok {
+		t.Errorf("after add_service: no service 80")
+	}
+
+	a = startedAction(t, lbAction(e, lb.ID, "attach_to_network", map[string]any{"network": n}), "attach_to_network")
+	release = e.gate.Next(t, "attach_to_network")
+	if got := mustLB(t, e, lb.ID).PrivateNet; len(got) != 0 {
+		t.Errorf("while attach_to_network runs: private_net %+v, want none yet", got)
+	}
+	wantError(t, lbAction(e, lb.ID, "add_target", serverTargetBody(s2.ID, true)),
+		http.StatusUnprocessableEntity, "load_balancer_not_attached_to_network", "private target while attach_to_network runs")
+	release()
+	waitSuccess(t, e, a, "attach_to_network")
+	if got := mustLB(t, e, lb.ID).PrivateNet; len(got) != 1 || got[0].Network != n {
+		t.Errorf("after attach_to_network: private_net %+v, want network %d", got, n)
+	}
 }

@@ -8,7 +8,7 @@ Confirmed assumptions and answers from the start of the phase, one line each.
 - Excluded in all clients: hcloud `datacenter`, tofu `hcloud_datacenter(s)`, Ansible `datacenter_info` (410 like Hetzner), `server request-console`, vswitch subnets and `network expose-routes-to-vswitch`, the tofu `datacenter` arguments (removed in provider 1.67.0), storage boxes; the test map header names them.
 - `hcloud all list` runs in CLI-01 only if it works with the Cloud API endpoint alone; otherwise it moves to the CLI-05 row of phase 21 and the test map says so.
 - A row runs every write command, resource or module the client offers for the type once, plus every read command or data source; each OpenTofu row also reads its type's data sources; `tofu import` is not used.
-- Each client's servers row also covers rescue, enabling backups, creating a snapshot, attaching an ISO, `metrics` and protection; servers use x86 types only (CAX gives resource_unavailable).
+- Each client's servers row also covers rescue, enabling backups, creating a snapshot, attaching an ISO (hcloud and OpenTofu only; the Ansible `server` module has none), `metrics` and protection; servers use x86 types only (CAX gives resource_unavailable).
 - A row checks that the client did its job by reading back through the API; it does not repeat behaviour the SRV, NET, FW, LB, DNS and FIP rows prove.
 
 ## Rows and harness

@@ -33,6 +33,8 @@ import (
 	"github.com/webcodingcat/hlab/internal/platform/platformtest"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
+	"github.com/webcodingcat/hlab/internal/resources/firewalls"
+	"github.com/webcodingcat/hlab/internal/resources/networks"
 	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
 	"github.com/webcodingcat/hlab/internal/shacrypt"
@@ -931,6 +933,86 @@ func TestServers(t *testing.T) {
 	testVendorData(t)
 	testAdapters(t)
 	testLifecycle(t)
+
+	t.Run("CLI-02", func(t *testing.T) {
+		fake := platformtest.NewFake()
+		env := newNetworkFirewallEnv(t, fake)
+		resp := env.Do(http.MethodPost, "/networks", map[string]any{
+			"name": "n", "ip_range": "10.0.0.0/16",
+			"subnets": []any{map[string]any{"type": "cloud", "ip_range": "10.0.1.0/24", "network_zone": "eu-central"}},
+		})
+		var n struct {
+			Network struct {
+				ID int64 `json:"id"`
+			} `json:"network"`
+		}
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("POST /networks: status %d (%s), want 201", resp.StatusCode, apitest.ErrorCode(t, resp))
+		}
+		apitest.Decode(t, resp, &n)
+		resp = env.Do(http.MethodPost, "/firewalls", map[string]any{"name": "fw"})
+		var fw struct {
+			Firewall struct {
+				ID int64 `json:"id"`
+			} `json:"firewall"`
+			Actions []apitest.Action `json:"actions"`
+		}
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("POST /firewalls: status %d (%s), want 201", resp.StatusCode, apitest.ErrorCode(t, resp))
+		}
+		apitest.Decode(t, resp, &fw)
+		for _, a := range fw.Actions {
+			if got := env.WaitAction(a.ID); got.Status != "success" {
+				t.Fatalf("create firewall: action %s %q, want success", got.Command, got.Status)
+			}
+		}
+
+		// The first server's VM waits, so its next actions still hold the
+		// network and the firewall when the second server is created.
+		release := block(t, fake, "CreateVM")
+		var all []apitest.Action
+		for _, name := range []string{"s1", "s2"} {
+			resp := env.Do(http.MethodPost, "/servers", map[string]any{
+				"name": name, "server_type": "cx23", "image": "ubuntu-24.04", "location": "fsn1",
+				"networks":  []int64{n.Network.ID},
+				"firewalls": []any{map[string]any{"firewall": fw.Firewall.ID}},
+			})
+			if resp.StatusCode != http.StatusCreated {
+				t.Fatalf("POST /servers %s with the shared network and firewall: status %d (%s), want 201", name, resp.StatusCode, apitest.ErrorCode(t, resp))
+			}
+			var b struct {
+				Action      apitest.Action   `json:"action"`
+				NextActions []apitest.Action `json:"next_actions"`
+			}
+			apitest.Decode(t, resp, &b)
+			all = append(all, b.Action)
+			all = append(all, b.NextActions...)
+		}
+		release()
+		for _, a := range all {
+			if got := env.WaitAction(a.ID); got.Status != "success" {
+				t.Errorf("action %d %s: %q %+v, want success", a.ID, got.Command, got.Status, got.Error)
+			}
+		}
+	})
+}
+
+// newNetworkFirewallEnv mounts the servers, networks and firewalls modules
+// on the shipped catalog and platform p, wired like the cloud does.
+func newNetworkFirewallEnv(t *testing.T, p platform.Platform) *apitest.Env {
+	t.Helper()
+	cat, err := catalog.Load("../../../catalog")
+	if err != nil {
+		t.Fatalf("load shipped catalog: %v", err)
+	}
+	d := apitest.ServersDeps(t, cat, p)
+	srv := servers.New(d)
+	nw := networks.New(networks.Deps{Store: d.Store, Catalog: cat, Servers: srv, PushAgent: d.PushAgent})
+	srv.SetNetworks(nw)
+	fw := firewalls.New(firewalls.Deps{Store: d.Store, PushAgent: d.PushAgent})
+	srv.SetFirewalls(fw)
+	srv.OnDelete(fw.ServerDeleted)
+	return apitest.New(t, srv, nw, fw, resactions.New())
 }
 
 // writeCustomTypes writes types as the own server type file.

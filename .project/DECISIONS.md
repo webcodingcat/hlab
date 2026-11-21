@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-21 The Ansible servers row attaches no ISO
+
+- Type: decision
+- Phase: phase 13
+- What: CLI-03/servers leaves out attaching an ISO, which hcloud and OpenTofu still cover.
+- Why: the `hetzner.hcloud.server` module of collection 7.2.0 has no ISO option (checked with `ansible-doc` in WSL2).
+- Cost of change: low
+
 ## 2026-11-21 Action queue in Run
 
 - Type: decision

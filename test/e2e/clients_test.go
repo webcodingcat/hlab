@@ -217,10 +217,24 @@ func checkAnsible(w *wslEnv) error {
 // Python) and the hlab endpoint and token from the environment.
 func (e *env) playbook(t *testing.T, w *wslEnv, name, content string) result {
 	t.Helper()
+	return e.playbookWithin(t, w, name, content, playbookTimeout)
+}
+
+const (
+	// playbookTimeout bounds a playbook that creates no server.
+	playbookTimeout = 10 * time.Minute
+	// playbookServerTimeout bounds a playbook that creates servers; the
+	// first server of an image downloads and converts it (createServer).
+	playbookServerTimeout = 45 * time.Minute
+)
+
+// playbookWithin is playbook with a deadline the caller sets.
+func (e *env) playbookWithin(t *testing.T, w *wslEnv, name, content string, timeout time.Duration) result {
+	t.Helper()
 	file := w.dir + "/" + name + ".yml"
 	script := "set -e\ncat > '" + file + "' <<'HLAB_PLAYBOOK_EOF'\n" + content + "\nHLAB_PLAYBOOK_EOF\n" +
 		"ANSIBLE_NOCOLOR=1 ansible-playbook -i localhost, '" + file + "'\n"
-	r, err := w.run(context.Background(), 10*time.Minute, e.ansibleEnviron(), script)
+	r, err := w.run(context.Background(), timeout, e.ansibleEnviron(), script)
 	if err != nil {
 		t.Fatalf("ansible-playbook %s: %v\n%s", name, err, r)
 	}
@@ -261,7 +275,18 @@ func checkTofu() error {
 type tofuDir struct {
 	e   *env
 	dir string
+	// timeout bounds one tofu command; zero is tofuTimeout. A row whose
+	// apply creates servers sets tofuServerTimeout.
+	timeout time.Duration
 }
+
+const (
+	// tofuTimeout bounds a tofu command that creates no server.
+	tofuTimeout = 15 * time.Minute
+	// tofuServerTimeout bounds a tofu command that creates servers; the
+	// first server of an image downloads and converts it (createServer).
+	tofuServerTimeout = 45 * time.Minute
+)
 
 // newTofuDir creates a working directory with the provider pinned and no
 // provider arguments: the endpoint and token come from HCLOUD_ENDPOINT and
@@ -327,8 +352,12 @@ func (d *tofuDir) run(t *testing.T, args ...string) result {
 		tofuInitMu.Lock()
 		defer tofuInitMu.Unlock()
 	}
+	timeout := d.timeout
+	if timeout == 0 {
+		timeout = tofuTimeout
+	}
 	all := append([]string{"-chdir=" + d.dir}, args...)
-	r, err := command(context.Background(), 15*time.Minute, environ, "", tofuBin, all...)
+	r, err := command(context.Background(), timeout, environ, "", tofuBin, all...)
 	if err != nil {
 		t.Fatalf("tofu %s: %v\n%s", strings.Join(args, " "), err, r)
 	}

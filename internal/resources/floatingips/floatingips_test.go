@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"net/netip"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/apitest"
@@ -17,6 +19,7 @@ import (
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/floatingips"
 	"github.com/webcodingcat/hlab/internal/resources/servers"
+	"github.com/webcodingcat/hlab/internal/resources/volumes"
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
@@ -27,11 +30,14 @@ type fipEnv struct {
 	*apitest.Env
 	fip    *floatingips.Module
 	pushes *atomic.Int64 // agent pushes of the floating IPs module
+	fake   *platformtest.Fake
+	gate   *apitest.PushGate // holds the agent pushes of the floating IPs module
 }
 
 // newFIPEnv mounts the servers and floating IPs modules on a fake
 // platform, wired like the cloud does: server deletion unassigns the
 // server's floating IPs. The module counts its agent pushes in pushes.
+// The volumes module is mounted too, for actions sharing a server.
 func newFIPEnv(t *testing.T) *fipEnv {
 	t.Helper()
 	cat, err := catalog.Load("../../../catalog")
@@ -43,14 +49,31 @@ func newFIPEnv(t *testing.T) *fipEnv {
 	d := apitest.ServersDeps(t, cat, fake)
 	srv := servers.New(d)
 	pushes := new(atomic.Int64)
+	gate := apitest.NewPushGate(t)
 	fip := floatingips.New(floatingips.Deps{
 		Store:       d.Store,
 		Catalog:     cat,
 		PublicRange: d.PublicRange,
-		PushAgent:   func(context.Context) error { pushes.Add(1); return nil },
+		PushAgent: func(ctx context.Context) error {
+			if err := gate.Wait(ctx); err != nil {
+				return err
+			}
+			pushes.Add(1)
+			return nil
+		},
 	})
 	srv.OnDelete(fip.ServerDeleted)
-	return &fipEnv{Env: apitest.New(t, srv, fip, resactions.New()), fip: fip, pushes: pushes}
+	vol := volumes.New(volumes.Deps{
+		Catalog:    cat,
+		Store:      d.Store,
+		Platform:   fake,
+		DataFolder: d.Settings.DataFolder,
+		VMPrefix:   d.Settings.VMPrefix,
+		CheckDisk:  srv.CheckDisk,
+		PushAgent:  func(context.Context) error { return nil },
+	})
+	srv.SetVolumes(vol)
+	return &fipEnv{Env: apitest.New(t, srv, fip, vol, resactions.New()), fip: fip, pushes: pushes, fake: fake, gate: gate}
 }
 
 type fipView struct {
@@ -463,4 +486,90 @@ func TestFloatingIPs(t *testing.T) {
 			t.Errorf("after dns_ptr null: agent PTR for %s = %q, want %q", ip.IP, got, def)
 		}
 	})
+
+	t.Run("CLI-02", func(t *testing.T) {
+		e := newFIPEnv(t)
+		old := createServer(t, e, "old", "cx23", "fsn1")
+		s := createServer(t, e, "new", "cx23", "fsn1")
+		third := createServer(t, e, "third", "cx23", "fsn1")
+		ip := createFIP(t, e, map[string]any{"name": "queue", "type": "ipv4", "home_location": "fsn1"})
+		runFIPAction(t, e, ip.ID, "assign", map[string]any{"server": old.ID})
+		vol := createVolume(t, e)
+
+		releaseAttach := e.fake.Block("AttachDisk")
+		t.Cleanup(sync.OnceFunc(releaseAttach))
+		attach := startAction(t, e.Do(http.MethodPost, fmt.Sprintf("/volumes/%d/actions/attach", vol), map[string]any{"server": s.ID}), "attach volume")
+		waitCall(t, e, "AttachDisk", "attach volume")
+		e.gate.Close()
+		assign := startAction(t, fipAction(e, ip.ID, "assign", map[string]any{"server": s.ID}), "assign while a volume attaches to the server")
+		if got := serverOf(mustFIP(t, e, ip.ID)); got != old.ID {
+			t.Errorf("while the assign waits: server %d, want the old server %d", got, old.ID)
+		}
+		wantError(t, fipAction(e, ip.ID, "assign", map[string]any{"server": third.ID}),
+			http.StatusLocked, "locked", "second assign of the floating IP")
+
+		releaseAttach()
+		releaseAssign := e.gate.Next(t, "assign queued behind the volume attach")
+		if a := e.GetAction(attach.ID); a.Status != "success" {
+			t.Errorf("volume attach when the queued assign worked: %q, want success", a.Status)
+		}
+		if got := serverOf(mustFIP(t, e, ip.ID)); got != old.ID {
+			t.Errorf("while the assign runs: server %d, want the old server %d", got, old.ID)
+		}
+		releaseAssign()
+		waitSuccess(t, e, assign.ID, "assign")
+		if got := serverOf(mustFIP(t, e, ip.ID)); got != s.ID {
+			t.Errorf("after assign: server %d, want %d", got, s.ID)
+		}
+		if got := getServer(t, e, s.ID).PublicNet.FloatingIPs; !slices.Contains(got, ip.ID) {
+			t.Errorf("after assign: server floating_ips %v, want %d", got, ip.ID)
+		}
+	})
+}
+
+// startAction expects 201 for the action request and returns the action,
+// which is still running.
+func startAction(t *testing.T, resp *http.Response, what string) apitest.Action {
+	t.Helper()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("%s: status %d (%s), want 201", what, resp.StatusCode, apitest.ErrorCode(t, resp))
+	}
+	var b struct {
+		Action apitest.Action `json:"action"`
+	}
+	apitest.Decode(t, resp, &b)
+	if b.Action.Status != "running" {
+		t.Errorf("%s: action status %q, want running", what, b.Action.Status)
+	}
+	return b.Action
+}
+
+// createVolume creates a detached 10 GB volume in fsn1 and waits for it.
+func createVolume(t *testing.T, e *fipEnv) int64 {
+	t.Helper()
+	resp := e.Do(http.MethodPost, "/volumes", map[string]any{"name": "vol", "size": 10, "location": "fsn1"})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /volumes: status %d (%s), want 201", resp.StatusCode, apitest.ErrorCode(t, resp))
+	}
+	var b struct {
+		Volume struct {
+			ID int64 `json:"id"`
+		} `json:"volume"`
+		Action apitest.Action `json:"action"`
+	}
+	apitest.Decode(t, resp, &b)
+	waitSuccess(t, e, b.Action.ID, "create volume")
+	return b.Volume.ID
+}
+
+// waitCall waits until the platform saw a call of op.
+func waitCall(t *testing.T, e *fipEnv, op, what string) {
+	t.Helper()
+	deadline := time.Now().Add(apitest.ActionTimeout)
+	for !slices.ContainsFunc(e.fake.Calls(), func(c platformtest.Call) bool { return c.Op == op }) {
+		if time.Now().After(deadline) {
+			t.Fatalf("%s: no %s call within %s", what, op, apitest.ActionTimeout)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }

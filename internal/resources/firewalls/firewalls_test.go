@@ -38,6 +38,7 @@ type fwEnv struct {
 	fw  *firewalls.Module
 
 	failPush atomic.Bool
+	gate     *apitest.PushGate
 	mu       sync.Mutex
 	pushes   []agentapi.Config
 }
@@ -53,7 +54,7 @@ func newFWEnv(t *testing.T) *fwEnv {
 	}
 	fake := platformtest.NewFake()
 	fake.SetResources(plenty)
-	e := &fwEnv{}
+	e := &fwEnv{gate: apitest.NewPushGate(t)}
 	d := apitest.ServersDeps(t, cat, fake)
 	d.PushAgent = e.push
 	e.srv = servers.New(d)
@@ -64,7 +65,10 @@ func newFWEnv(t *testing.T) *fwEnv {
 	return e
 }
 
-func (e *fwEnv) push(context.Context) error {
+func (e *fwEnv) push(ctx context.Context) error {
+	if err := e.gate.Wait(ctx); err != nil {
+		return err
+	}
 	if e.failPush.Load() {
 		return errors.New("agent unreachable")
 	}
@@ -386,6 +390,7 @@ func TestFirewalls(t *testing.T) {
 	t.Run("FW-01/delete_in_use", testDeleteInUse)
 	t.Run("FW-01/server_create", testServerCreate)
 	t.Run("FW-05", testLabelChange)
+	t.Run("CLI-02", testQueue)
 }
 
 func testCRUD(t *testing.T) {
@@ -470,5 +475,49 @@ func testCRUD(t *testing.T) {
 	}
 	if _, ok := getFirewall(t, e, fw.ID); ok {
 		t.Errorf("firewall %d still there after DELETE", fw.ID)
+	}
+}
+
+// testQueue: apply_to_resources of two firewalls to one server queue on
+// the server; a second apply of the same firewall still refuses.
+func testQueue(t *testing.T) {
+	e := newFWEnv(t)
+	s := createServer(t, e, "s", nil)
+	other := createServer(t, e, "other", nil)
+	f1, _ := createFirewall(t, e, map[string]any{"name": "f1"})
+	f2, _ := createFirewall(t, e, map[string]any{"name": "f2"})
+	e.gate.Close()
+
+	first := startFWAction(t, e, f1.ID, "apply_to_resources", applyBody(serverTarget(s.ID)))
+	release := e.gate.Next(t, "apply f1")
+	if got := mustFirewall(t, e, f1.ID).appliedServers(); slices.Contains(got, s.ID) {
+		t.Errorf("while apply f1 runs: applied servers %v, want %d not yet", got, s.ID)
+	}
+	second := startFWAction(t, e, f2.ID, "apply_to_resources", applyBody(serverTarget(s.ID)))
+	for _, a := range append(append([]actionView{}, first...), second...) {
+		if a.Status != "running" {
+			t.Errorf("action %d %s: status %q, want running", a.ID, a.Command, a.Status)
+		}
+	}
+	wantError(t, fwAction(e, f1.ID, "apply_to_resources", applyBody(serverTarget(other.ID))),
+		http.StatusLocked, "locked", "second apply_to_resources of f1 while its first runs")
+
+	release()
+	releaseSecond := e.gate.Next(t, "apply f2 queued behind f1")
+	for _, a := range first {
+		if got := e.For(t).GetAction(a.ID); got.Status != "success" {
+			t.Errorf("apply f1 action %d when the queued apply of f2 worked: %q, want success", a.ID, got.Status)
+		}
+	}
+	if got := mustFirewall(t, e, f1.ID).appliedServers(); !slices.Equal(got, []int64{s.ID}) {
+		t.Errorf("after apply f1: applied servers %v, want [%d]", got, s.ID)
+	}
+	if got := mustFirewall(t, e, f2.ID).appliedServers(); slices.Contains(got, s.ID) {
+		t.Errorf("while apply f2 runs: applied servers %v, want %d not yet", got, s.ID)
+	}
+	releaseSecond()
+	waitAll(t, e, second, "success", "apply f2")
+	if got := mustFirewall(t, e, f2.ID).appliedServers(); !slices.Equal(got, []int64{s.ID}) {
+		t.Errorf("after apply f2: applied servers %v, want [%d]", got, s.ID)
 	}
 }
