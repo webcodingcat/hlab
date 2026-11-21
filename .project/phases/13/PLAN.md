@@ -189,38 +189,38 @@ a group is split per client).
   - Size: ~240 lines in 1 file
   - [x] Row `CLI-02/servers` (own server, 1 slot): `hcloud_server` with labels, ssh keys, user data, placement group, `backups`, `rescue`, `iso`, protection; in-place updates of name, labels, server type (x86), `backups`, `iso`, protection; data sources `hcloud_server` and `hcloud_servers`; destroy and gone.
 
-- [ ] 13-10 Servers with Ansible
+- [x] 13-10 Servers with Ansible
   - Wave: 2 | Depends on: 13-01 | Review: alone | e2e
   - Requirements: CLI-03 | Tests: test/e2e/clients_servers_ansible_test.go, test/e2e/ansible_test.go
   - Reads: CONTEXT.md "Scope"; RESEARCH.md §3; `ansible-doc hetzner.hcloud.server`, `server_info`
   - Size: ~250 lines in 2 files
   - Adjusts: TestE2E/CLI-03/server_info (its checks move into CLI-03/servers; the row goes)
-  - [ ] Row `CLI-03/servers` (own server, 1 slot): `server` present with labels, ssh key, user data, placement group, backups, protection; states stopped, started, restarted, rebuild, rescue mode on and off; server type change; ISO; `server_info` without filter, by name, by ID and by label selector; absent and gone.
+  - [x] Row `CLI-03/servers` (own server, 1 slot): `server` present with labels, ssh key, user data, placement group, backups, protection; states stopped, started, restarted, rebuild, rescue mode on and off; server type change; ISO; `server_info` without filter, by name, by ID and by label selector; absent and gone.
 
-- [ ] 13-11 Catalog types with all clients
+- [x] 13-11 Catalog types with all clients
   - Wave: 2 | Depends on: 13-01 | Review: alone | e2e
   - Requirements: CLI-01, CLI-02, CLI-03 | Tests: test/e2e/clients_catalog_test.go
   - Reads: CONTEXT.md "Scope" (exclusions, `all list`); RESEARCH.md §1, §2, §3; open item 4
   - Size: ~260 lines in 1 file
-  - [ ] hcloud rows `server_types`, `locations`, `load_balancer_types`, `isos` (list and describe by name and ID, compared with the API) and `all` (`hcloud all list`; if it fails on storage boxes without a Hetzner endpoint, the row is left out and the test map entry moves to phase 21 with the reason).
-  - [ ] tofu rows `server_types`, `locations`, `load_balancer_types` (both data sources each, compared with the API).
-  - [ ] Ansible rows `server_types`, `locations`, `load_balancer_types`, `isos` (the `*_info` modules by name and without filter).
+  - [x] hcloud rows `server_types`, `locations`, `load_balancer_types`, `isos` (list and describe by name and ID, compared with the API) and `all` (`hcloud all list`; if it fails on storage boxes without a Hetzner endpoint, the row is left out and the test map entry moves to phase 21 with the reason).
+  - [x] tofu rows `server_types`, `locations`, `load_balancer_types` (both data sources each, compared with the API).
+  - [x] Ansible rows `server_types`, `locations`, `load_balancer_types`, `isos` (the `*_info` modules by name and without filter).
 
-- [ ] 13-12 Images with all clients
+- [x] 13-12 Images with all clients
   - Wave: 2 | Depends on: 13-01 | Review: alone | e2e
   - Requirements: CLI-01, CLI-02, CLI-03 | Tests: test/e2e/clients_images_test.go
   - Reads: CONTEXT.md "Scope"; RESEARCH.md §2 (`hcloud_snapshot`), §3 (`image_info`)
   - Size: ~230 lines in 1 file
-  - [ ] Fixture rows `CLI-01/images`, `CLI-02/images`, `CLI-03/images`: hcloud `server create-image` of the fixture server, then `image list/describe/update/enable-protection/disable-protection/delete`; tofu `hcloud_snapshot` with labels, update, data sources `hcloud_image` and `hcloud_images` (system image by name, snapshot by ID and label), destroy; Ansible `image_info` for a system image by name and a snapshot made through the API by label; each removes its snapshot and checks it is gone.
+  - [x] Fixture rows `CLI-01/images`, `CLI-02/images`, `CLI-03/images`: hcloud `server create-image` of the fixture server, then `image list/describe/update/enable-protection/disable-protection/delete`; tofu `hcloud_snapshot` with labels, update, data sources `hcloud_image` and `hcloud_images` (system image by name, snapshot by ID and label), destroy; Ansible `image_info` for a system image by name and a snapshot made through the API by label; each removes its snapshot and checks it is gone.
 
-- [ ] 13-13 SSH keys and placement groups with all clients
+- [x] 13-13 SSH keys and placement groups with all clients
   - Wave: 2 | Depends on: 13-01 | Review: alone | e2e
   - Requirements: CLI-01, CLI-02, CLI-03 | Tests: test/e2e/clients_keys_test.go, test/e2e/tofu_test.go
   - Reads: RESEARCH.md §1, §2, §3
   - Size: ~260 lines in 2 files
-  - [ ] hcloud rows `ssh_keys`, `placement_groups` (create, list, describe, update, labels, delete, gone).
-  - [ ] Ansible rows `ssh_keys`, `placement_groups` (`ssh_key`, `ssh_key_info`, `placement_group` present, updated, absent).
-  - [ ] `tofu_test.go`: rows `ssh_keys` and `placement_groups` also read `hcloud_ssh_key`/`hcloud_ssh_keys` and `hcloud_placement_group`/`hcloud_placement_groups`.
+  - [x] hcloud rows `ssh_keys`, `placement_groups` (create, list, describe, update, labels, delete, gone).
+  - [x] Ansible rows `ssh_keys`, `placement_groups` (`ssh_key`, `ssh_key_info`, `placement_group` present, updated, absent).
+  - [x] `tofu_test.go`: rows `ssh_keys` and `placement_groups` also read `hcloud_ssh_key`/`hcloud_ssh_keys` and `hcloud_placement_group`/`hcloud_placement_groups`.
 
 - [ ] 13-14 Networks with all clients
   - Wave: 3 | Depends on: 13-01, 13-03 | Review: alone | e2e
@@ -231,27 +231,27 @@ a group is split per client).
   - [ ] `CLI-02/networks`: `hcloud_network`, `hcloud_network_subnet` (two in parallel), `hcloud_network_route`, `hcloud_server_network` with alias IPs on the fixture server, updates, data sources `hcloud_network`, `hcloud_networks`, `hcloud_network_members`, destroy.
   - [ ] `CLI-03/networks`: `network`, `subnetwork`, `route`, `server_network`, `network_info`, `network_member_info`, absent.
 
-- [ ] 13-15 Primary IPs with all clients
+- [x] 13-15 Primary IPs with all clients
   - Wave: 3 | Depends on: 13-01, 13-06 | Review: alone | e2e
   - Requirements: CLI-01, CLI-02, CLI-03 | Tests: test/e2e/clients_primaryips_test.go
   - Reads: RESEARCH.md §1, §2, §3; REQUIREMENTS PIP-01
   - Size: ~280 lines in 1 file
-  - [ ] Fixture rows `CLI-01/primary_ips`, `CLI-02/primary_ips`, `CLI-03/primary_ips`: create in a location, update, labels, auto_delete, protection, set-rdns, assign to the powered-off fixture server (an IPv6 primary IP, after unassigning the fixture's own IPv6 one) and unassign, restore the fixture, delete; tofu also reads `hcloud_primary_ip(s)`; Ansible `primary_ip` and `primary_ip_info`.
+  - [x] Fixture rows `CLI-01/primary_ips`, `CLI-02/primary_ips`, `CLI-03/primary_ips`: create in a location, update, labels, auto_delete, protection, set-rdns, assign to the powered-off fixture server (an IPv6 primary IP, after unassigning the fixture's own IPv6 one) and unassign, restore the fixture, delete; tofu also reads `hcloud_primary_ip(s)`; Ansible `primary_ip` and `primary_ip_info`.
 
-- [ ] 13-16 Floating IPs and reverse DNS with all clients
+- [x] 13-16 Floating IPs and reverse DNS with all clients
   - Wave: 3 | Depends on: 13-01, 13-06 | Review: alone | e2e
   - Requirements: CLI-01, CLI-02, CLI-03 | Tests: test/e2e/clients_floatingips_test.go
   - Reads: RESEARCH.md §1, §2 (`hcloud_floating_ip_assignment`, `hcloud_rdns`), §3 (`rdns`)
   - Size: ~300 lines in 1 file
-  - [ ] Fixture rows `CLI-01/floating_ips`, `CLI-02/floating_ips`, `CLI-03/floating_ips`: create with home location, update, labels, protection, set-rdns, assign to and unassign from the fixture server, delete; tofu `hcloud_floating_ip`, `hcloud_floating_ip_assignment`, data sources `hcloud_floating_ip(s)`; Ansible `floating_ip`, `floating_ip_info`.
-  - [ ] Fixture rows `CLI-02/rdns`, `CLI-03/rdns`: PTR of the fixture server, a floating IP and a primary IP set, changed and reset (tofu `hcloud_rdns`, Ansible `rdns`).
+  - [x] Fixture rows `CLI-01/floating_ips`, `CLI-02/floating_ips`, `CLI-03/floating_ips`: create with home location, update, labels, protection, set-rdns, assign to and unassign from the fixture server, delete; tofu `hcloud_floating_ip`, `hcloud_floating_ip_assignment`, data sources `hcloud_floating_ip(s)`; Ansible `floating_ip`, `floating_ip_info`.
+  - [x] Fixture rows `CLI-02/rdns`, `CLI-03/rdns`: PTR of the fixture server, a floating IP and a primary IP set, changed and reset (tofu `hcloud_rdns`, Ansible `rdns`).
 
-- [ ] 13-17 Volumes with all clients
+- [x] 13-17 Volumes with all clients
   - Wave: 3 | Depends on: 13-01, 13-05 | Review: alone | e2e
   - Requirements: CLI-01, CLI-02, CLI-03 | Tests: test/e2e/clients_volumes_test.go
   - Reads: RESEARCH.md §1, §2, §3; REQUIREMENTS VOL-01
   - Size: ~260 lines in 1 file
-  - [ ] Fixture rows `CLI-01/volumes`, `CLI-02/volumes`, `CLI-03/volumes`: create in a location and on the fixture server with automount and format, attach, detach, resize, update, labels, protection, delete; tofu `hcloud_volume`, `hcloud_volume_attachment`, data sources `hcloud_volume(s)`; Ansible `volume`, `volume_attachment`, `volume_info`.
+  - [x] Fixture rows `CLI-01/volumes`, `CLI-02/volumes`, `CLI-03/volumes`: create in a location and on the fixture server with automount and format, attach, detach, resize, update, labels, protection, delete; tofu `hcloud_volume`, `hcloud_volume_attachment`, data sources `hcloud_volume(s)`; Ansible `volume`, `volume_attachment`, `volume_info`.
 
 - [ ] 13-18 Firewalls with all clients
   - Wave: 3 | Depends on: 13-01, 13-07 | Review: alone | e2e
@@ -281,12 +281,12 @@ a group is split per client).
   - Size: ~200 lines in 1 file
   - [ ] Fixture row `CLI-03/load_balancers`: `load_balancer`, `load_balancer_network`, `load_balancer_service`, `load_balancer_target` (server with private IP, label selector, IP), `load_balancer_info`, updates, absent.
 
-- [ ] 13-22 Certificates with all clients
+- [x] 13-22 Certificates with all clients
   - Wave: 2 | Depends on: 13-01 | Review: alone | e2e
   - Requirements: CLI-01, CLI-02, CLI-03 | Tests: test/e2e/clients_certificates_test.go
   - Reads: CONTEXT.md "Rows and harness" (certificates); RESEARCH.md §1, §2, §3; REQUIREMENTS CERT-01 to CERT-03
   - Size: ~300 lines in 1 file
-  - [ ] Rows `CLI-01/certificates`, `CLI-02/certificates`, `CLI-03/certificates`: an uploaded certificate (self-signed, made in Go in the row's temp folder) and a managed certificate for a name in a zone `<runID>-<client>-cert.test` the same client creates; describe, list, update, labels, `retry` (hcloud), delete; tofu `hcloud_uploaded_certificate`, `hcloud_managed_certificate`, data sources `hcloud_certificate(s)`; Ansible `certificate`, `certificate_info`; zone and certificates gone at the end.
+  - [x] Rows `CLI-01/certificates`, `CLI-02/certificates`, `CLI-03/certificates`: an uploaded certificate (self-signed, made in Go in the row's temp folder) and a managed certificate for a name in a zone `<runID>-<client>-cert.test` the same client creates; describe, list, update, labels, `retry` (hcloud), delete; tofu `hcloud_uploaded_certificate`, `hcloud_managed_certificate`, data sources `hcloud_certificate(s)`; Ansible `certificate`, `certificate_info`; zone and certificates gone at the end.
 
 - [ ] 13-23 Zones with all clients
   - Wave: 2 | Depends on: 13-01 | Review: alone | e2e
@@ -295,19 +295,19 @@ a group is split per client).
   - Size: ~380 lines in 1 file
   - [ ] Rows `CLI-01/zones`: zone create, change-ttl, protection, add/set/remove-records, import-zonefile, export-zonefile, rrset create, change-ttl, add/set/remove-records, labels, protection, delete; `CLI-02/zones`: `hcloud_zone`, `hcloud_zone_rrset`, `hcloud_zone_record`, updates, data sources `hcloud_zone(s)`, `hcloud_zone_rrset(s)`; `CLI-03/zones`: `zone`, `zone_info`, `zone_rrset`, `zone_rrset_info`; zone names `<runID>-<client>.test`.
 
-- [ ] 13-24 Ansible inventory
+- [x] 13-24 Ansible inventory
   - Wave: 2 | Depends on: 13-01 | Review: alone | e2e
   - Requirements: CLI-03 | Tests: test/e2e/clients_inventory_test.go
   - Reads: CONTEXT.md "Rows and harness" (inventory); RESEARCH.md §3 (inventory plugin); `ansible-doc -t inventory hetzner.hcloud.hcloud`
   - Size: ~120 lines in 1 file
-  - [ ] Fixture row `CLI-03/inventory`: `ansible-inventory --list` with a `<name>.hcloud.yml` (`plugin: hetzner.hcloud.hcloud`, `keyed_groups` on `hcloud_labels`) in WSL2; the fixture server is a host with `ansible_host` and `hcloud_ipv4` equal to its public IPv4 and is in the group of its label.
+  - [x] Fixture row `CLI-03/inventory`: `ansible-inventory --list` with a `<name>.hcloud.yml` (`plugin: hetzner.hcloud.hcloud`, `keyed_groups` on `hcloud_labels`) in WSL2; the fixture server is a host with `ansible_host` and `hcloud_ipv4` equal to its public IPv4 and is in the group of its label.
 
-- [ ] 13-25 Example environment with hcloud
+- [x] 13-25 Example environment with hcloud
   - Wave: 3 | Depends on: 13-01, 13-03, 13-04, 13-05, 13-06, 13-07 | Review: alone | e2e
   - Requirements: CLI-04 | Tests: test/e2e/clients_example_hcloud_test.go
   - Reads: CONTEXT.md "CLI-04"; IDEA.md "Success criterion"; RESEARCH.md §4 (hcloud)
   - Size: ~220 lines in 1 file
-  - [ ] Row `CLI-04/hcloud` (2 slots, own project): network with subnet, firewall allowing 22, two cx23 Ubuntu servers in the network with the firewall, LB with both as private targets and a TCP service on a free listen port to 22, volume and floating IP on server 1, zone `<runID>-hcloud.test` with an A record per server; SSH from host and WSL2 to both public IPv4s and once through the LB's service; then every resource deleted with hcloud and `assertProjectEmpty`.
+  - [x] Row `CLI-04/hcloud` (2 slots, own project): network with subnet, firewall allowing 22, two cx23 Ubuntu servers in the network with the firewall, LB with both as private targets and a TCP service on a free listen port to 22, volume and floating IP on server 1, zone `<runID>-hcloud.test` with an A record per server; SSH from host and WSL2 to both public IPv4s and once through the LB's service; then every resource deleted with hcloud and `assertProjectEmpty`.
 
 - [ ] 13-26 Example environment with OpenTofu
   - Wave: 3 | Depends on: 13-01, 13-03, 13-04, 13-05, 13-06, 13-07 | Review: alone | e2e
@@ -360,3 +360,8 @@ showed these product bugs; the plan named fixes each with a unit test first.
 - 13-08: `POST /servers/{id}/actions/reboot` right after poweron with status `running` ends `error` with `server_error` ("InitiateShutdown ... returned 32768"); it must succeed.
 - 13-14: `GET /networks/{id}/members` is missing (404 `not_found`); hcloud `network list-members` and Ansible `network_member_info` use it.
 - 13-21: `POST /load_balancers` with `"location": <numeric ID>` (as hcloud-python sends) answers 400 `json_error`; Hetzner accepts ID or name (internal/resources/loadbalancers/create.go:32).
+
+
+## Runs
+
+- 931db15: `task e2e -- -v -run '^TestE2E$/^CLI-0[1-4]$/'` (13.6 min): 48 rows green; plans 13-10 to 13-13, 13-15 to 13-17, 13-22, 13-24 and 13-25 needed no change after the queue plans and are checked off without a review (no commit of their own). Red: CLI-01/02/03 networks and load_balancers, CLI-02/03 zones, CLI-03/firewalls, CLI-04/tofu and /ansible.
