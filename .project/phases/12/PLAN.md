@@ -177,7 +177,7 @@ elease` (hlabd.exe, hlab.exe, hlab-tray.exe, hlab-agent) and the repo root (`cat
   - [x] `tools/installer/main.go`, `version.go`: validates VERSION (x.y.z, major and minor ≤ 255, patch ≤ 65535); builds the four binaries with profile `release` and the version into `bin\release\`; fetches `MicrosoftEdgeWebview2Setup.exe` from `https://go.microsoft.com/fwlink/p/?LinkId=2124703` into `%LocalAppData%\hlab-build-cache\` (outside `%LocalAppData%\hlab`, which uninstall deletes) when missing or older than 7 days (a failed download with a cached copy uses the copy and says so); runs `wix build -acceptEula wix7 -arch x64` for `installer\Package.wxs` then `installer\Bundle.wxs` with `-d Version=`, `-b` paths and the util/bal extensions; checks that both extensions 7.0.1 are in the global cache and names the `wix extension add -g` command otherwise
   - [x] `Taskfile.yml`: `installer` (VERSION required, `go run ./tools/installer`)
 
-- [!] 12-07 MSI package - stopped: WiX extensions WixToolset.Util.wixext and WixToolset.BootstrapperApplications.wixext 7.0.1 missing from the global cache (WIX0144); installing them was refused in this session. Written and committed on wcc/phase-12-12-07 (02888b2): scratch build without the util elements passes ICE validation; untested are `Wix4UtilCA_$(sys.BUILDARCHSHORT)` and CloseApplication
+- [ ] 12-07 MSI package
   - Wave: 2 | Depends on: 12-06 | Review: alone
   - Requirements: INST-01, INST-03, INST-04, INST-05, INST-06 | Tests: test/install/install_test.go (via 12-10)
   - Reads: ARCHITECTURE "Installer", "Files and formats" (shipped catalogs); RESEARCH.md §1, §2 (CloseApplication); CONTEXT.md all sections; the hlabd command line in Interfaces
@@ -194,7 +194,7 @@ elease` (hlabd.exe, hlab.exe, hlab-tray.exe, hlab-agent) and the repo root (`cat
   - [x] `internal/sysint/windows/install.go`: `RemoveService(ctx, mode)` (writes `<Paths.State>\uninstall-stop` (the folder cloud.halt reads), then the existing stop-wait-delete), `StopService`; `Installer.Uninstall(keepData)` keeps its contract through them; the stale comment about phase 12 goes
   - [x] `cmd/hlabd/main.go`: `uninstall-cleanup` builds `uninstall.Options` with `hostnet/windows`, `platform/hyperv` and `RemoveService`, prints the notes and the error list; `stop-service`; `remove-user-data` (from `%AppData%` and `%LocalAppData%`); usage text names all commands
 
-- [ ] 12-09 Setup bundle - skipped: depends on 12-07
+- [ ] 12-09 Setup bundle
   - Wave: 3 | Depends on: 12-07 | Review: alone
   - Requirements: INST-01, INST-03, INST-05 | Tests: test/install/install_test.go (via 12-10)
   - Reads: SPEC "Stack" (WebView2); ARCHITECTURE "Installer"; RESEARCH.md §2, §3, §5; CONTEXT.md INST-01, INST-03, INST-05
@@ -202,7 +202,7 @@ elease` (hlabd.exe, hlab.exe, hlab-tray.exe, hlab-agent) and the repo root (`cat
   - [ ] `installer/Bundle.wxs`: same version, own fixed UpgradeCode; chain WebView2 `ExePackage` (embedded, PerMachine, Permanent, `/silent /install`, `InstallCondition` from two `util:RegistrySearch` of `pv` (HKLM WOW6432Node, HKCU): missing or `0.0.0.0`), then the MSI with `MsiProperty KEEPDATA=[KeepData]` and `HLABUI`; numeric `KeepData` default 0 and `bal:Overridable`; `HLABUI` from Burn's display level if v7 exposes one as a built-in variable, else an overridable numeric `HlabUI` default 1 (record which in DECISIONS.md); `LaunchTarget="[ProgramFiles64Folder]hlab\hlab-tray.exe"`
   - [ ] `installer/theme.xml`, `installer/theme.wxl`: WixStdBA theme with all required pages and the checkbox `KeepData` "Keep projects, servers and settings" on the Modify page, unchecked by default
 
-- [ ] 12-10 Elevated installer suite - skipped: depends on 12-07
+- [ ] 12-10 Elevated installer suite
   - Wave: 4 | Depends on: 12-06, 12-08, 12-09 | Review: alone
   - Requirements: INST-01, INST-04, INST-05, INST-06 | Tests: test/install/install_test.go
   - Reads: SPEC "Machine prerequisites", "Accounts and secrets"; CONTEXT.md "Tests and documentation"; RESEARCH.md "Could not confirm"; test/e2e/main_test.go (refusal, dev cloud restore, logging, deadlines) and test/e2e/cert_test.go, wsl_test.go (CA in WSL)
@@ -212,7 +212,7 @@ elease` (hlabd.exe, hlab.exe, hlab-tray.exe, hlab-agent) and the repo root (`cat
   - [ ] `Taskfile.yml`: `e2e:elevated` (`go test -tags e2einstall -count=1 -timeout 90m ./test/install/... {{.CLI_ARGS}}`)
   - The suite settles what RESEARCH.md could not confirm: the prerequisite action runs under Burn (INST-01 log), MsiProperty on uninstall (INST-05 keep), CloseApplication on uninstall and the WebView2 folder (INST-05), Remove-VMSwitch with PVLAN and WSL removal from the deferred action (INST-04), Burn upgrade order (INST-06). A failure there goes back to the plan that owns the part
 
-- [ ] 12-11 Documentation - skipped: depends on 12-07
+- [ ] 12-11 Documentation
   - Wave: 5 | Depends on: 12-10 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06 | Tests: test/docs/docs_test.go
   - Reads: SPEC "Documentation"; REQUIREMENTS DOC; CONTEXT.md "Tests and documentation"
