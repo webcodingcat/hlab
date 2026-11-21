@@ -120,14 +120,14 @@ a group is split per client).
   - [ ] `test/e2e/e2e_test.go`, `tofu_test.go`, `ansible_test.go`: `CLI-01` to `CLI-04` run through `testClients`; the existing rows register themselves; `parallel` rows are wrapped in `logged`.
   - [ ] `Taskfile.yml`: `task e2e` with `-timeout 180m`.
 
-- [ ] 13-02 Action queue
+- [x] 13-02 Action queue
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: CLI-02 | Tests: internal/actions/actions_test.go
   - Reads: CONTEXT.md "Actions"; RESEARCH.md §4 "Does hlab have to finish actions in a certain order?"; internal/actions/actions.go; internal/api/deviations.go; docs/development/api-coverage.md (head and "Endpoints"); docs/deviations.md
   - Size: ~300 lines in 5 files
-  - [ ] `internal/actions/actions.go`: `StartQueued`; `Run` waits before it takes a worker until every running action with a lower ID sharing a ref has finished (woken by `finished`), so more queued actions than workers never deadlock.
-  - [ ] `internal/actions/actions_test.go`: the rows of the test map.
-  - [ ] `internal/api/deviations.go`, `docs/development/api-coverage.md`, `docs/deviations.md`: one deviation per queuing endpoint of the table above ("a second action on the same network/load balancer/server waits as running instead of answering 423 locked"); the user page says it in prose under the matching topics without routes (DOC-03 keeps holding).
+  - [x] `internal/actions/actions.go`: `StartQueued`; `Run` waits before it takes a worker until every running action with a lower ID sharing a ref has finished (woken by `finished`), so more queued actions than workers never deadlock.
+  - [x] `internal/actions/actions_test.go`: the rows of the test map.
+  - [x] `internal/api/deviations.go`, `docs/development/api-coverage.md`, `docs/deviations.md`: one deviation per queuing endpoint of the table above ("a second action on the same network/load balancer/server waits as running instead of answering 423 locked"); the user page says it in prose under the matching topics without routes (DOC-03 keeps holding).
 
 - [ ] 13-03 Networks: queue and effect at success
   - Wave: 2 | Depends on: 13-02 | Review: alone
