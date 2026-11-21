@@ -96,14 +96,17 @@
                   Execute="immediate" Return="check" />
 
     <!-- Install: service, security descriptor, %ProgramData%\hlab and ACLs. -->
-    <CustomAction Id="HlabInstallRollback" FileRef="HlabdExe"
-                  ExeCommand="uninstall-cleanup --keep-data"
+    <!-- Actions that run while hlabd.exe is being removed take its path from
+         the folder: [#HlabdExe] is blank when the component is Absent. -->
+    <CustomAction Id="HlabInstallRollback" Directory="INSTALLFOLDER"
+                  ExeCommand="&quot;[INSTALLFOLDER]hlabd.exe&quot; uninstall-cleanup --keep-data"
                   Execute="rollback" Impersonate="no" Return="ignore" />
     <CustomAction Id="HlabInstall" FileRef="HlabdExe" ExeCommand="install"
                   Execute="deferred" Impersonate="no" Return="check" />
 
     <!-- Upgrade: the old product stops the service before its files go. -->
-    <CustomAction Id="HlabStopService" FileRef="HlabdExe" ExeCommand="stop-service"
+    <CustomAction Id="HlabStopService" Directory="INSTALLFOLDER"
+                  ExeCommand="&quot;[INSTALLFOLDER]hlabd.exe&quot; stop-service"
                   Execute="deferred" Impersonate="no" Return="check" />
 
     <!-- Uninstall: the deferred WixQuietExec reads its command line from the
@@ -111,13 +114,14 @@
     <SetProperty Id="CLEANUPARGS" Action="SetCleanupArgs" Value="--keep-data" Sequence="execute"
                  Before="SetHlabCleanup" Condition="KEEPDATA=1" />
     <SetProperty Id="HlabCleanup" Action="SetHlabCleanup" Sequence="execute" Before="HlabCleanup"
-                 Value="&quot;[#HlabdExe]&quot; uninstall-cleanup [CLEANUPARGS]"
+                 Value="&quot;[INSTALLFOLDER]hlabd.exe&quot; uninstall-cleanup [CLEANUPARGS]"
                  Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
     <CustomAction Id="HlabCleanup" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixQuietExec"
                   Execute="deferred" Impersonate="no" Return="check" />
 
     <!-- The uninstalling user's tray data (other accounts keep theirs). -->
-    <CustomAction Id="HlabRemoveUserData" FileRef="HlabdExe" ExeCommand="remove-user-data"
+    <CustomAction Id="HlabRemoveUserData" Directory="INSTALLFOLDER"
+                  ExeCommand="&quot;[INSTALLFOLDER]hlabd.exe&quot; remove-user-data"
                   Execute="deferred" Impersonate="yes" Return="check" />
 
     <InstallExecuteSequence>
