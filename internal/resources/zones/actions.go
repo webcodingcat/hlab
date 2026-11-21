@@ -1,6 +1,7 @@
 package zones
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -26,13 +27,16 @@ var ownCommands = []string{"change_protection", "change_ttl", "change_primary_na
 func zoneRef(id int64) actions.Ref { return actions.Ref{ID: id, Type: refType} }
 
 // write runs one zone write: in a single transaction it loads the zone of
-// the path, lets f validate and change it, stores it and starts the action
-// command; the action publishes the zones. A command of ownCommands answers
-// locked while an action holds the zone; an RRSet command queues behind the
-// running actions of the zone. It returns the stored zone and the action.
+// the path, lets f validate and change it and starts the action command;
+// the action publishes the zones. A command of ownCommands answers locked
+// while an action holds the zone and stores its change at once. Any other
+// command changes RRSets: it queues behind the running actions of the zone
+// and its change takes effect only at its success (see queued). It returns
+// the zone as f left it and the action.
 func (m *Module) write(req *http.Request, command string, f func(r *Record) error) (Record, *actions.Action, error) {
 	p, _ := api.ProjectFrom(req.Context())
 	acts := api.ActionsFrom(req.Context())
+	own := slices.Contains(ownCommands, command)
 	var r Record
 	var action *actions.Action
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
@@ -40,15 +44,18 @@ func (m *Module) write(req *http.Request, command string, f func(r *Record) erro
 		if r, err = Load(tx, p.ID, req.PathValue("id")); err != nil {
 			return err
 		}
+		if !own {
+			r = cloneSets(r)
+		}
 		if err := f(&r); err != nil {
 			return err
 		}
 		refs := []actions.Ref{zoneRef(r.ID)}
-		var refuse []actions.Ref
-		if slices.Contains(ownCommands, command) {
-			refuse = refs
+		if !own {
+			action, err = acts.StartQueued(tx, p.ID, command, refs, nil)
+			return err
 		}
-		if action, err = acts.StartQueued(tx, p.ID, command, refs, refuse); err != nil {
+		if action, err = acts.StartQueued(tx, p.ID, command, refs, refs); err != nil {
 			return err
 		}
 		return put(tx, r)
@@ -56,8 +63,90 @@ func (m *Module) write(req *http.Request, command string, f func(r *Record) erro
 	if err != nil {
 		return r, nil, err
 	}
-	m.publish(acts, action)
+	if own {
+		m.publish(acts, action)
+	} else {
+		m.queued(acts, p.ID, r.ID, action.ID, f)
+	}
 	return r, action, nil
+}
+
+// queued runs the work of RRSet action actionID on zone id once its turn
+// has come: f applied again to the zone as earlier actions left it is
+// stored as the zone's pending RRSets, which only the agent document
+// shows, and published; at success f is applied once more to the zone as
+// it is then and committed, so GET shows the change together with the
+// action's success. A failed publish drops the pending RRSets; Recover
+// drops those of an action a stop interrupted.
+func (m *Module) queued(acts *actions.Manager, projectID, id, actionID int64, f func(r *Record) error) {
+	acts.Run(actionID, func(ctx context.Context, _ func(int)) error {
+		err := m.d.Store.Tx(func(tx store.Tx) error {
+			r, err := store.Get[Record](tx, Kind, projectID, id)
+			if err != nil {
+				return err
+			}
+			next := cloneSets(r)
+			if err := f(&next); err != nil {
+				return err
+			}
+			r.Hlab.Pending = &Pending{Action: actionID, RRSets: next.RRSets}
+			return put(tx, r)
+		})
+		if err != nil {
+			return workError(err)
+		}
+		pubErr := m.publishNow(ctx)
+		var changeErr error
+		err = m.d.Store.Tx(func(tx store.Tx) error {
+			r, err := store.Get[Record](tx, Kind, projectID, id)
+			if errors.Is(err, store.ErrNotFound) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if pd := r.Hlab.Pending; pd != nil && pd.Action == actionID {
+				r.Hlab.Pending = nil
+			}
+			if pubErr == nil {
+				next := cloneSets(r)
+				if changeErr = f(&next); changeErr == nil {
+					r = next
+				}
+			}
+			return put(tx, r)
+		})
+		return errors.Join(pubErr, workError(changeErr), err)
+	})
+}
+
+// cloneSets returns r with its own copies of the RRSets and their records,
+// so f can change them without touching r.
+func cloneSets(r Record) Record {
+	r.RRSets = slices.Clone(r.RRSets)
+	for i := range r.RRSets {
+		r.RRSets[i].Records = slices.Clone(r.RRSets[i].Records)
+	}
+	return r
+}
+
+// workError turns an error of a check inside queued work into the action's
+// error with the code the request would have answered.
+func workError(err error) error {
+	var fe *api.FieldError
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, store.ErrNotFound):
+		return &actions.Error{Code: "not_found", Message: "the RRSet was not found"}
+	case errors.As(err, &fe):
+		code := fe.Code
+		if code == "" {
+			code = "invalid_input"
+		}
+		return &actions.Error{Code: code, Message: fe.Message}
+	}
+	return err
 }
 
 // change runs one zone action through write and answers status {action}.

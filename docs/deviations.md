@@ -132,9 +132,10 @@ HLab; only its TTL can be changed.
 
 Changes to the records of a zone wait for other changes to the same
 zone instead of answering `locked`; they show as `running` until their
-turn comes, in the order they were sent. Changing the zone's TTL,
-protection or primary nameservers, importing a zone file and deleting
-the zone still answer `locked` while another change to it runs.
+turn comes, in the order they were sent, and appear when they succeed.
+Changing the zone's TTL, protection or primary nameservers, importing a
+zone file and deleting the zone still answer `locked` while another
+change to it runs.
 
 Reverse DNS names of IPv4 addresses resolve through HLab's DNS server.
 IPv6 entries are stored and shown but do not resolve.

@@ -1,6 +1,7 @@
 package zones_test
 
 import (
+	"context"
 	"net/http"
 	"reflect"
 	"slices"
@@ -8,6 +9,9 @@ import (
 
 	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/apitest"
+	"github.com/webcodingcat/hlab/internal/resource"
+	"github.com/webcodingcat/hlab/internal/resources/zones"
+	"github.com/webcodingcat/hlab/internal/store"
 )
 
 func records(values ...string) []map[string]any {
@@ -162,44 +166,146 @@ func testRRSets(t *testing.T) {
 	}
 }
 
-// testQueue: while a zone action still publishes, further RRSet actions on
-// the same zone wait as running instead of answering locked, as the Ansible
-// zone_rrset module and parallel OpenTofu siblings need; actions on the zone
-// itself and the zone delete still answer locked.
+// testQueue: RRSet create, delete and RRSet actions sent together on one
+// zone all succeed in order, each running while it waits, as the Ansible
+// zone_rrset module and parallel OpenTofu siblings need; zone change_ttl,
+// change_protection and DELETE while an RRSet action runs answer locked.
 func testQueue(t *testing.T) {
 	e := newZoneEnv(t)
 	z := createZone(t, e, map[string]any{"name": "example.com", "mode": "primary", "ttl": 3600})
 	www := rrsetPath(z.ID, "www", "A")
 	runAction(t, e, zonePath(z.ID)+"/rrsets", map[string]any{"name": "www", "type": "A", "records": records("198.51.100.10")}, "create_rrset")
+	runAction(t, e, zonePath(z.ID)+"/rrsets", map[string]any{"name": "old", "type": "A", "records": records("198.51.100.11")}, "create_rrset")
 
-	hold := make(chan struct{})
-	e.mu.Lock()
-	e.hold = hold
-	e.mu.Unlock()
-	var acts []actionView
-	acts = append(acts, startAction(t, e, http.MethodPost, www+"/actions/change_ttl", map[string]any{"ttl": 900}, http.StatusCreated))
-	acts = append(acts, startAction(t, e, http.MethodPost, www+"/actions/set_records", map[string]any{"records": records("198.51.100.20")}, http.StatusCreated))
-	acts = append(acts, startAction(t, e, http.MethodPost, zonePath(z.ID)+"/rrsets", map[string]any{"name": "api", "type": "A", "records": records("198.51.100.30")}, http.StatusCreated))
+	e.gate.Close()
+	first := startAction(t, e, http.MethodPost, www+"/actions/change_ttl", map[string]any{"ttl": 900}, http.StatusCreated)
+	release := e.gate.Next(t, "change_ttl of www/A")
+	waiting := []actionView{
+		startAction(t, e, http.MethodPost, www+"/actions/set_records", map[string]any{"records": records("198.51.100.20")}, http.StatusCreated),
+		startAction(t, e, http.MethodPost, www+"/actions/add_records", map[string]any{"records": records("198.51.100.21")}, http.StatusCreated),
+		startAction(t, e, http.MethodPost, zonePath(z.ID)+"/rrsets", map[string]any{"name": "api", "type": "A", "records": records("198.51.100.30")}, http.StatusCreated),
+		startAction(t, e, http.MethodDelete, rrsetPath(z.ID, "old", "A"), nil, http.StatusCreated),
+	}
+	for _, a := range waiting {
+		if got := e.GetAction(a.ID); got.Status != "running" {
+			t.Errorf("waiting %s: status %q, want running", a.Command, got.Status)
+		}
+	}
 	for _, a := range []string{"change_ttl", "change_protection"} {
 		wantError(t, e.Do(http.MethodPost, zonePath(z.ID)+"/actions/"+a, map[string]any{"ttl": 7200, "delete": true}),
-			http.StatusLocked, "locked", "zone "+a+" with running actions")
+			http.StatusLocked, "locked", "zone "+a+" while an RRSet action runs")
 	}
-	wantError(t, e.Do(http.MethodDelete, zonePath(z.ID), nil), http.StatusLocked, "locked", "DELETE of a zone with running actions")
-	e.mu.Lock()
-	e.hold = nil
-	e.mu.Unlock()
-	close(hold)
-	for _, a := range acts {
+	wantError(t, e.Do(http.MethodDelete, zonePath(z.ID), nil), http.StatusLocked, "locked", "DELETE of a zone while an RRSet action runs")
+	e.gate.Open()
+	release()
+	for _, a := range append([]actionView{first}, waiting...) {
 		waitSuccess(t, e, a, "queued "+a.Command)
 	}
 
-	pz, _ := pushedZone(e.lastPush(t), "example.com")
-	got := map[string]agentapi.RRSet{}
-	for _, r := range pz.RRSets {
-		got[r.Name+"/"+r.Type] = r
+	if got := mustRRSet(t, e, z.ID, "www", "A"); got.TTL == nil || *got.TTL != 900 || !reflect.DeepEqual(got.values(), []string{"198.51.100.20", "198.51.100.21"}) {
+		t.Errorf("www/A after the queue: %+v, want TTL 900 and records 198.51.100.20, 198.51.100.21", got)
 	}
-	if pz.TTL != 3600 || got["www/A"].TTL != 900 || !reflect.DeepEqual(got["www/A"].Records, []string{"198.51.100.20"}) ||
-		!reflect.DeepEqual(got["api/A"].Records, []string{"198.51.100.30"}) {
-		t.Errorf("pushed zone %+v, want TTL 3600, www/A 900 with 198.51.100.20 and api/A with 198.51.100.30", pz)
+	if got := mustRRSet(t, e, z.ID, "api", "A"); !reflect.DeepEqual(got.values(), []string{"198.51.100.30"}) {
+		t.Errorf("api/A after the queue: %+v, want 198.51.100.30", got)
+	}
+	if _, ok := getRRSet(t, e, z.ID, "old", "A"); ok {
+		t.Error("old/A after its queued delete: still there")
+	}
+}
+
+// testEffect: an RRSet action that runs or waits leaves GET and the
+// published zone at the old state until its success; a failed publish and
+// Recover after a stop keep the old state.
+func testEffect(t *testing.T) {
+	e := newZoneEnv(t)
+	z := createZone(t, e, map[string]any{"name": "example.com", "mode": "primary", "ttl": 3600})
+	www := rrsetPath(z.ID, "www", "A")
+	runAction(t, e, zonePath(z.ID)+"/rrsets", map[string]any{"name": "www", "type": "A", "records": records("198.51.100.10")}, "create_rrset")
+	count := mustZone(t, e, z.ID).RecordCount
+	oldState := func(what string) {
+		t.Helper()
+		if _, ok := getRRSet(t, e, z.ID, "api", "A"); ok {
+			t.Errorf("%s: GET shows api/A before its create succeeded", what)
+		}
+		if got := mustRRSet(t, e, z.ID, "www", "A").values(); !reflect.DeepEqual(got, []string{"198.51.100.10"}) {
+			t.Errorf("%s: GET www/A records %v, want the old 198.51.100.10", what, got)
+		}
+		if got := mustZone(t, e, z.ID).RecordCount; got != count {
+			t.Errorf("%s: record_count %d, want the old %d", what, got, count)
+		}
+		pz, _ := pushedZone(e.lastPush(t), "example.com")
+		for _, r := range pz.RRSets {
+			if r.Name == "api" || r.Name == "www" && !reflect.DeepEqual(r.Records, []string{"198.51.100.10"}) {
+				t.Errorf("%s: published %s/%s %v, want the old state", what, r.Name, r.Type, r.Records)
+			}
+		}
+	}
+
+	e.gate.Close()
+	create := startAction(t, e, http.MethodPost, zonePath(z.ID)+"/rrsets", map[string]any{"name": "api", "type": "A", "records": records("198.51.100.30")}, http.StatusCreated)
+	release := e.gate.Next(t, "create of api/A")
+	set := startAction(t, e, http.MethodPost, www+"/actions/set_records", map[string]any{"records": records("198.51.100.20")}, http.StatusCreated)
+	oldState("while create_rrset runs and set_rrset_records waits")
+	release()
+	waitSuccess(t, e, create, "create of api/A")
+	releaseSet := e.gate.Next(t, "set_records of www/A")
+	if got := mustRRSet(t, e, z.ID, "www", "A").values(); !reflect.DeepEqual(got, []string{"198.51.100.10"}) {
+		t.Errorf("www/A while its set_records runs: %v, want the old 198.51.100.10", got)
+	}
+	e.gate.Open()
+	releaseSet()
+	waitSuccess(t, e, set, "set_records of www/A")
+	if _, ok := getRRSet(t, e, z.ID, "api", "A"); !ok {
+		t.Error("api/A after its create succeeded: not found")
+	}
+	if got := mustRRSet(t, e, z.ID, "www", "A").values(); !reflect.DeepEqual(got, []string{"198.51.100.20"}) {
+		t.Errorf("www/A after set_records succeeded: %v, want 198.51.100.20", got)
+	}
+	pz, _ := pushedZone(e.lastPush(t), "example.com")
+	got := map[string][]string{}
+	for _, r := range pz.RRSets {
+		got[r.Name+"/"+r.Type] = r.Records
+	}
+	if !reflect.DeepEqual(got["api/A"], []string{"198.51.100.30"}) || !reflect.DeepEqual(got["www/A"], []string{"198.51.100.20"}) {
+		t.Errorf("published zone %+v after success, want api/A 198.51.100.30 and www/A 198.51.100.20", pz)
+	}
+
+	e.failPush.Store(true)
+	failed := startAction(t, e, http.MethodPost, www+"/actions/set_records", map[string]any{"records": records("198.51.100.40")}, http.StatusCreated)
+	if a := e.WaitAction(failed.ID); a.Status != "error" {
+		t.Errorf("set_records with a failing publish: status %q, want error", a.Status)
+	}
+	e.failPush.Store(false)
+	if got := mustRRSet(t, e, z.ID, "www", "A").values(); !reflect.DeepEqual(got, []string{"198.51.100.20"}) {
+		t.Errorf("www/A after a failed publish: %v, want the old 198.51.100.20", got)
+	}
+
+	// The pending state of an action a stop interrupted.
+	err := e.Store.Tx(func(tx store.Tx) error {
+		r, err := store.Get[zones.Record](tx, zones.Kind, e.Project.ID, z.ID)
+		if err != nil {
+			return err
+		}
+		stale := zones.RRSet{Name: "stale", Type: "A", Records: []zones.RRSetRecord{{Value: "198.51.100.50"}}}
+		r.Hlab.Pending = &zones.Pending{Action: 99, RRSets: append(slices.Clone(r.RRSets), stale)}
+		return store.Put(tx, store.Meta{Kind: zones.Kind, ID: r.ID, ProjectID: e.Project.ID, Name: r.Name, Labels: r.Labels, Created: r.Created}, r)
+	})
+	if err != nil {
+		t.Fatalf("store pending state: %v", err)
+	}
+	var mod any = e.mod
+	rec, ok := mod.(resource.Recoverer)
+	if !ok {
+		t.Fatal("zones module does not implement resource.Recoverer")
+	}
+	if err := rec.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
+	}
+	runAction(t, e, zonePath(z.ID)+"/actions/change_ttl", map[string]any{"ttl": 7200}, "change_ttl")
+	pz, _ = pushedZone(e.lastPush(t), "example.com")
+	for _, r := range pz.RRSets {
+		if r.Name == "stale" {
+			t.Errorf("published zone after Recover has stale/A of the interrupted action")
+		}
 	}
 }
