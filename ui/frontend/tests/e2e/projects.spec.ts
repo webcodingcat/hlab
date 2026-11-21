@@ -1,6 +1,6 @@
-import type { Locator, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { test, expect, openView, rowAction, tableRow, api, uniqueName, hlab } from "./fixtures";
-import { section, newProject, send, type TestProject } from "./console";
+import { section, newProject, send, projectCard, openCard, type TestProject } from "./console";
 import { href } from "../../src/lib/routes";
 
 test("UI-05", async ({ page }) => {
@@ -9,17 +9,17 @@ test("UI-05", async ({ page }) => {
 
   // Create a project.
   const project = uniqueName("ui05");
-  await page.getByRole("button", { name: "Create project" }).click();
+  await page.getByRole("button", { name: /New project/ }).click();
   let dialog = page.getByRole("dialog");
-  await dialog.getByLabel("Name").fill(project);
+  await dialog.getByLabel("Display name").fill(project);
   await dialog.getByRole("button", { name: "Create", exact: true }).click();
   await expect(dialog).toBeHidden();
-  const row = tableRow(page, project);
+  const row = projectCard(page, project);
   await expect(row).toBeVisible();
 
-  // A row click opens the project console of that project with "API tokens",
+  // A card click opens the project console of that project with "API tokens",
   // which its sidebar and section tabs open.
-  await row.getByRole("cell", { name: project, exact: true }).click();
+  await openCard(row);
   await expect(page.getByRole("banner").getByText(project).first()).toBeVisible();
   await section(page, "API tokens");
 
@@ -61,13 +61,13 @@ test("UI-05", async ({ page }) => {
   // name is typed.
   await page.getByRole("banner").getByRole("link", { name: "Projects", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Projects", exact: true })).toBeVisible();
-  await rowAction(tableRow(page, project), "Delete");
+  await rowAction(projectCard(page, project), "Delete");
   dialog = page.getByRole("dialog");
   const confirm = dialog.getByRole("button", { name: "Delete", exact: true });
   await expect(confirm).toBeDisabled();
   await dialog.getByRole("textbox").fill(project);
   await confirm.click();
-  await expect(tableRow(page, project)).toBeHidden({ timeout: 2 * 60_000 });
+  await expect(projectCard(page, project)).toBeHidden({ timeout: 2 * 60_000 });
 });
 
 // UI-11: the project list as cards. The rows share three projects made
@@ -120,16 +120,6 @@ const ui11 = test.extend<{}, { listed: ListedProjects }>({
   ],
 });
 
-/** card is the project card (grid) or row (list) that shows this display name. */
-function card(page: Page, display: string): Locator {
-  return page
-    .locator("li, article, section, div, a, [role]")
-    .filter({ has: page.getByText(display, { exact: true }) })
-    .filter({ has: page.getByRole("button", { name: "Actions" }) })
-    .filter({ hasText: /\d+ resources?|Create server/ })
-    .last();
-}
-
 /** layout clicks the "Grid" or "List" side of the layout switch. */
 async function layout(page: Page, name: "Grid" | "List"): Promise<void> {
   await page
@@ -140,7 +130,7 @@ async function layout(page: Page, name: "Grid" | "List"): Promise<void> {
 
 /** share is the width of the card of display as a part of the main area's width. */
 async function share(page: Page, display: string): Promise<number> {
-  const c = await card(page, display).boundingBox();
+  const c = await projectCard(page, display).boundingBox();
   const m = await page.getByRole("main").boundingBox();
   return c && m ? c.width / m.width : 0;
 }
@@ -180,19 +170,19 @@ ui11("UI-11 layout", async ({ page, listed }) => {
   const shown = [listed.zulu, listed.alpha];
   await openView(page, "Projects");
   // The list refreshes every 5 s; the projects were made outside the window.
-  for (const p of shown) await expect(card(page, p.display)).toBeVisible({ timeout: 30_000 });
+  for (const p of shown) await expect(projectCard(page, p.display)).toBeVisible({ timeout: 30_000 });
 
   // Grid: cards next to each other, each with display name and name.
   await layout(page, "Grid");
   for (const p of shown) {
-    await expect(card(page, p.display).getByText(p.name, { exact: true })).toBeVisible();
+    await expect(projectCard(page, p.display).getByText(p.name, { exact: true })).toBeVisible();
     await expect.poll(() => share(page, p.display), { timeout: 10_000 }).toBeLessThan(0.5);
   }
 
   // List: full-width rows with the same content.
   await layout(page, "List");
   for (const p of shown) {
-    await expect(card(page, p.display).getByText(p.name, { exact: true })).toBeVisible();
+    await expect(projectCard(page, p.display).getByText(p.name, { exact: true })).toBeVisible();
     await expect.poll(() => share(page, p.display), { timeout: 10_000 }).toBeGreaterThan(0.8);
   }
 
@@ -200,7 +190,7 @@ ui11("UI-11 layout", async ({ page, listed }) => {
   await page.reload();
   await expect(page.getByRole("heading", { level: 1, name: "Projects", exact: true })).toBeVisible({ timeout: 30_000 });
   for (const p of shown) {
-    await expect(card(page, p.display)).toBeVisible({ timeout: 30_000 });
+    await expect(projectCard(page, p.display)).toBeVisible({ timeout: 30_000 });
     await expect.poll(() => share(page, p.display), { timeout: 10_000 }).toBeGreaterThan(0.8);
   }
 
@@ -230,7 +220,7 @@ ui11("UI-11 sort", async ({ page, listed }) => {
   };
 
   await openView(page, "Projects");
-  for (const d of displays) await expect(card(page, d)).toBeVisible({ timeout: 30_000 });
+  for (const d of displays) await expect(projectCard(page, d)).toBeVisible({ timeout: 30_000 });
 
   // Display name, and the arrow reverses it.
   await sortBy(page, "Display name");
@@ -242,7 +232,7 @@ ui11("UI-11 sort", async ({ page, listed }) => {
   // The choice survives a reload.
   await page.reload();
   await expect(page.getByRole("heading", { level: 1, name: "Projects", exact: true })).toBeVisible({ timeout: 30_000 });
-  for (const d of displays) await expect(card(page, d)).toBeVisible({ timeout: 30_000 });
+  for (const d of displays) await expect(projectCard(page, d)).toBeVisible({ timeout: 30_000 });
   await expect.poll(state, { timeout: 10_000 }).toBe(s);
 
   // Created, and the arrow reverses it.
@@ -264,7 +254,7 @@ ui11("UI-11 resources", async ({ page, listed }) => {
   await openView(page, "Projects");
 
   // One SSH key: "1 resource", whose menu opens the SSH Keys tab.
-  const keyed = card(page, listed.keyed.name);
+  const keyed = projectCard(page, listed.keyed.name);
   await expect(keyed.getByText("1 resource", { exact: true })).toBeVisible({ timeout: 30_000 });
   await keyed.getByRole("button", { name: "1 resource" }).click();
   await page.getByText("1 SSH Key", { exact: true }).click();
@@ -275,7 +265,7 @@ ui11("UI-11 resources", async ({ page, listed }) => {
 
   // An empty project: "+ Create server" opens its server create form.
   await openView(page, "Projects");
-  const empty = card(page, listed.mike.display);
+  const empty = projectCard(page, listed.mike.display);
   await expect(empty).toBeVisible({ timeout: 30_000 });
   await empty.getByText(/Create server/).click();
   const create = href({ area: "project", project: listed.mike.name, view: "servers", page: { kind: "new" } });
@@ -284,7 +274,7 @@ ui11("UI-11 resources", async ({ page, listed }) => {
 
   // The card's "…" menu has Delete.
   await openView(page, "Projects");
-  const other = card(page, listed.zulu.display);
+  const other = projectCard(page, listed.zulu.display);
   await expect(other).toBeVisible({ timeout: 30_000 });
   await other.getByRole("button", { name: "Actions" }).click();
   const del = page.getByRole("menuitem", { name: "Delete", exact: true });
@@ -310,7 +300,7 @@ ui11("UI-11 new project", async ({ page }) => {
     await expect(dialog.getByText(new RegExp(`Name:\\s*${escapeRegExp(derived)}`)).first()).toBeVisible();
     await dialog.getByRole("button", { name: "Create", exact: true }).click();
     await expect(dialog).toBeHidden();
-    const created = card(page, display);
+    const created = projectCard(page, display);
     await expect(created).toBeVisible({ timeout: 30_000 });
     await expect(created.getByText(derived, { exact: true })).toBeVisible();
 
@@ -337,7 +327,7 @@ ui11("UI-11 new project", async ({ page }) => {
     await expect(confirm).toBeDisabled();
     await dialog.getByRole("textbox").fill(display);
     await confirm.click();
-    await expect(card(page, display)).toBeHidden({ timeout: 2 * 60_000 });
+    await expect(projectCard(page, display)).toBeHidden({ timeout: 2 * 60_000 });
   } finally {
     // Gone already when the test passed; the result is not needed.
     await hlab("project", "delete", derived);

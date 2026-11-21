@@ -2,7 +2,7 @@
 // with a token, made and removed through hlab, requests to its API with
 // that token, and the way into its console through the project list; the
 // shared project of the phase 14 sections and the steps they have in common.
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { navGroups } from "../../src/lib/consoleNav";
 import { test, expect, hlab, openView, tableRow, rowAction, uniqueName, apiEndpoint, api } from "./fixtures";
 
@@ -54,13 +54,28 @@ export async function send(
   return { status: res.status, body: parsed };
 }
 
-/** openConsole opens the console of project through a click on its row in the project list. */
+/** projectCard is the project card (grid) or row (list) of the project list that shows this display name. */
+export function projectCard(page: Page, display: string): Locator {
+  return page
+    .locator("li, article, section, div, a, [role]")
+    .filter({ has: page.getByText(display, { exact: true }) })
+    .filter({ has: page.getByRole("button", { name: "Actions" }) })
+    .filter({ hasText: /\d+ resources?|Create server/ })
+    .last();
+}
+
+/** openCard clicks a project card outside its links and buttons, which opens the project console. */
+export async function openCard(card: Locator): Promise<void> {
+  await card.click({ position: { x: 8, y: 8 } });
+}
+
+/** openConsole opens the console of project through a click on its card in the project list. */
 export async function openConsole(page: Page, project: string): Promise<void> {
   await openView(page, "Projects");
-  const row = tableRow(page, project);
+  const card = projectCard(page, project);
   // The list refreshes every 5 s; the project was made outside the window.
-  await expect(row).toBeVisible({ timeout: 30_000 });
-  await row.getByRole("cell", { name: project, exact: true }).click();
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  await openCard(card);
   await expect(page.getByRole("banner").getByText(project).first()).toBeVisible();
 }
 

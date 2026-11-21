@@ -177,6 +177,12 @@ func testUI05(t *testing.T) {
 	runSpec(t, "UI-05", 10*time.Minute, nil)
 }
 
+// testUI11: the project list as cards: grid and list, sorting, the
+// resource counts and their menu, and "+ New project" with the derived name.
+func testUI11(t *testing.T) {
+	runSpec(t, "UI-11", 5*time.Minute, nil)
+}
+
 // testUI02: the project console's sections, one spec each. SSH Keys and
 // Servers run in a project of their own: an SSH key is created, labelled and
 // deleted; a server is created through the form, renamed, powered off and
