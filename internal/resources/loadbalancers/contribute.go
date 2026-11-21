@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/netip"
 
+	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/rdns"
 	"github.com/webcodingcat/hlab/internal/resources/certificates"
@@ -18,6 +19,15 @@ func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 		return err
 	}
 	for _, r := range recs {
+		if p := r.Hlab.Pending; p != nil {
+			a, err := store.GetAction(tx, p.Action)
+			if err != nil && !errors.Is(err, store.ErrNotFound) {
+				return err
+			}
+			if err == nil && a.Status == actions.StatusRunning {
+				r = p.apply(r)
+			}
+		}
 		l, err := m.document(tx, r)
 		if err != nil {
 			return err

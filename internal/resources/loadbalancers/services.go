@@ -118,7 +118,7 @@ func (m *Module) addService(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	m.change(w, req, id, "add_service", func(tx store.Tx, r *Record) ([]actions.Ref, error) {
+	m.queued(w, req, id, "add_service", false, func(tx store.Tx, r *Record) ([]actions.Ref, error) {
 		typ, _ := m.lbType(r.Hlab.Type)
 		return nil, m.addTo(tx, r, typ, in)
 	})
@@ -132,7 +132,7 @@ func (m *Module) updateService(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	m.change(w, req, id, "update_service", func(tx store.Tx, r *Record) ([]actions.Ref, error) {
+	m.queued(w, req, id, "update_service", false, func(tx store.Tx, r *Record) ([]actions.Ref, error) {
 		i, err := findService(*r, in.ListenPort)
 		if err != nil {
 			return nil, err
@@ -154,7 +154,7 @@ func (m *Module) deleteService(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	m.change(w, req, id, "delete_service", func(_ store.Tx, r *Record) ([]actions.Ref, error) {
+	m.queued(w, req, id, "delete_service", false, func(_ store.Tx, r *Record) ([]actions.Ref, error) {
 		i, err := findService(*r, body.ListenPort)
 		if err != nil {
 			return nil, err

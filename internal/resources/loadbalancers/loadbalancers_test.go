@@ -624,6 +624,7 @@ func TestLoadBalancers(t *testing.T) {
 	t.Run("LB-09/recover", testRecover)
 	t.Run("CLI-02/queue", testQueue)
 	t.Run("CLI-02/effect", testEffect)
+	t.Run("CLI-02/deleted", testDeletedWhileQueued)
 }
 
 // testCreate: create, location and type rules, primary IPs and names.
@@ -1058,4 +1059,72 @@ func testEffect(t *testing.T) {
 	if got := mustLB(t, e, lb.ID).PrivateNet; len(got) != 1 || got[0].Network != n {
 		t.Errorf("after attach_to_network: private_net %+v, want network %d", got, n)
 	}
+}
+
+// testDeletedWhileQueued: a server target and the network deleted while a
+// service action runs stay gone when that action commits, on GET; the
+// network also in the agent document.
+func testDeletedWhileQueued(t *testing.T) {
+	e := newEnv(t)
+	n := createNetwork(t, e, "n", "10.0.0.0/16", "10.0.1.0/24")
+	lb := createLB(t, e, lbBody("deleted"))
+	s1 := createServer(t, e, "s1", "fsn1", nil)
+	runLBAction(t, e, lb.ID, "attach_to_network", map[string]any{"network": n})
+	runLBAction(t, e, lb.ID, "add_target", serverTargetBody(s1.ID, false))
+	e.gate.Close()
+
+	a := startedAction(t, lbAction(e, lb.ID, "add_service", tcpService(80, 80)), "add_service")
+	release := e.gate.Next(t, "add_service")
+	resp := e.Do(http.MethodDelete, fmt.Sprintf("/servers/%d", s1.ID), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("DELETE /servers/%d: status %d (%s), want 200", s1.ID, resp.StatusCode, apitest.ErrorCode(t, resp))
+	}
+	var del struct {
+		Action apitest.Action `json:"action"`
+	}
+	apitest.Decode(t, resp, &del)
+	done := make(chan int, 1)
+	go func() {
+		resp := e.Do(http.MethodDelete, fmt.Sprintf("/networks/%d", n), nil)
+		_ = resp.Body.Close()
+		done <- resp.StatusCode
+	}()
+	deadline := time.Now().Add(apitest.ActionTimeout)
+	for {
+		resp := e.Do(http.MethodGet, fmt.Sprintf("/networks/%d", n), nil)
+		_ = resp.Body.Close()
+		if resp.StatusCode == http.StatusNotFound {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("network %d still there after %s", n, apitest.ActionTimeout)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	e.gate.Open()
+	release()
+	if code := <-done; code != http.StatusNoContent {
+		t.Fatalf("DELETE /networks/%d: status %d, want 204", n, code)
+	}
+	waitSuccess(t, e, a, "add_service")
+	waitSuccess(t, e, del.Action, "delete server")
+
+	got := mustLB(t, e, lb.ID)
+	if _, ok := got.serverTarget(s1.ID); ok {
+		t.Errorf("after add_service: target of deleted server %d shown", s1.ID)
+	}
+	if len(got.PrivateNet) != 0 {
+		t.Errorf("after add_service: private_net %+v of deleted network %d", got.PrivateNet, n)
+	}
+	if _, ok := got.service(80); !ok {
+		t.Errorf("after add_service: no service 80")
+	}
+	e.waitDoc(t, "service 80 without the deleted network", func(doc agentapi.Config) bool {
+		for _, l := range doc.LoadBalancers {
+			if l.ID == lb.ID {
+				return len(l.Services) == 1 && len(l.Private) == 0
+			}
+		}
+		return false
+	})
 }
