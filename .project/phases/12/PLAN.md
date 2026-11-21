@@ -194,13 +194,13 @@ elease` (hlabd.exe, hlab.exe, hlab-tray.exe, hlab-agent) and the repo root (`cat
   - [x] `internal/sysint/windows/install.go`: `RemoveService(ctx, mode)` (writes `<Paths.State>\uninstall-stop` (the folder cloud.halt reads), then the existing stop-wait-delete), `StopService`; `Installer.Uninstall(keepData)` keeps its contract through them; the stale comment about phase 12 goes
   - [x] `cmd/hlabd/main.go`: `uninstall-cleanup` builds `uninstall.Options` with `hostnet/windows`, `platform/hyperv` and `RemoveService`, prints the notes and the error list; `stop-service`; `remove-user-data` (from `%AppData%` and `%LocalAppData%`); usage text names all commands
 
-- [ ] 12-09 Setup bundle
+- [x] 12-09 Setup bundle
   - Wave: 3 | Depends on: 12-07 | Review: alone
   - Requirements: INST-01, INST-03, INST-05 | Tests: test/install/install_test.go (via 12-10)
   - Reads: SPEC "Stack" (WebView2); ARCHITECTURE "Installer"; RESEARCH.md §2, §3, §5; CONTEXT.md INST-01, INST-03, INST-05
   - Size: ~300 lines in 3 files
-  - [ ] `installer/Bundle.wxs`: same version, own fixed UpgradeCode; chain WebView2 `ExePackage` (embedded, PerMachine, Permanent, `/silent /install`, `InstallCondition` from two `util:RegistrySearch` of `pv` (HKLM WOW6432Node, HKCU): missing or `0.0.0.0`), then the MSI with `MsiProperty KEEPDATA=[KeepData]` and `HLABUI`; numeric `KeepData` default 0 and `bal:Overridable`; `HLABUI` from Burn's display level if v7 exposes one as a built-in variable, else an overridable numeric `HlabUI` default 1 (record which in DECISIONS.md); `LaunchTarget="[ProgramFiles64Folder]hlab\hlab-tray.exe"`
-  - [ ] `installer/theme.xml`, `installer/theme.wxl`: WixStdBA theme with all required pages and the checkbox `KeepData` "Keep projects, servers and settings" on the Modify page, unchecked by default
+  - [x] `installer/Bundle.wxs`: same version, own fixed UpgradeCode; chain WebView2 `ExePackage` (embedded, PerMachine, Permanent, `/silent /install`, `InstallCondition` from two `util:RegistrySearch` of `pv` (HKLM WOW6432Node, HKCU): missing or `0.0.0.0`), then the MSI with `MsiProperty KEEPDATA=[KeepData]` and `HLABUI`; numeric `KeepData` default 0 and `bal:Overridable`; `HLABUI` from Burn's display level if v7 exposes one as a built-in variable, else an overridable numeric `HlabUI` default 1 (record which in DECISIONS.md); `LaunchTarget="[ProgramFiles64Folder]hlab\hlab-tray.exe"`
+  - [x] `installer/theme.xml`, `installer/theme.wxl`: WixStdBA theme with all required pages and the checkbox `KeepData` "Keep projects, servers and settings" on the Modify page, unchecked by default
 
 - [ ] 12-10 Elevated installer suite
   - Wave: 4 | Depends on: 12-06, 12-08, 12-09 | Review: alone

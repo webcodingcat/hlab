@@ -27,6 +27,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-21 Bundle sets HLABUI from WixBundleUILevel
+
+- Type: decision
+- Phase: phase 12
+- What: the bundle passes `HLABUI=1` to the MSI only when `WixBundleUILevel = 4` (full UI), so quiet and passive runs never show the prerequisite message box; the bundle UpgradeCode is 81FBE7E2-15D3-4E38-9FBA-57FC18DB72D5, named "HLab", Publisher webcodingcat.
+- Why: a Burn built-in avoids the overridable fallback whose quiet install would wait on a message box; the value 4 is checked by the elevated suite.
+- Cost of change: low
+
 ## 2026-11-21 MSI custom actions find hlabd.exe through INSTALLFOLDER
 
 - Type: decision
