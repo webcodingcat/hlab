@@ -118,6 +118,14 @@ hlabd remove-user-data             # as the uninstalling user
 
 MSI properties: `KEEPDATA` (0/1, from the bundle variable `KeepData`), `HLABUI` (1 = show the prerequisite message box, from the bundle).
 
+Added after the tests were written:
+
+- `tools/installer` (package main): `validateVersion(v string) error`.
+- `internal/prereq` missing-item texts must contain, case-insensitive: architecture `x64` or `64-bit`; Windows version `22000`, `20348`, `Windows 11` or `Server 2022`; edition `home` or `edition`; hardware virtualization `virtualization`; Hyper-V `hyper-v`; PowerShell module `powershell`; the restart line is exactly "Restart Windows to finish enabling Hyper-V".
+- `internal/hostnet/windows` exports `ErrNoConsoleUser`; without `ca.pem` the uninstall calls neither `RemoveRootTrust` nor `RemoveWSLTrust`.
+- `task e2e:elevated` runs `go test -tags e2einstall ./test/install/...` with `-timeout 420m` (above the sum of the row limits in install_test.go).
+- The elevated suite expects: `bin\hlab-setup-<v>.exe` from `task installer`; quiet uninstall `/uninstall /quiet KeepData=1`; the prerequisite custom action Id contains "prereq"; the bundle's WebView2 `pv` search variable name contains "WebView" and the WebView2 package Id contains "webview"; bundle Publisher `webcodingcat` and DisplayName starting with "HLab"; shortcuts named `HLab.lnk`.
+
 ## Plans
 
 - [ ] 12-01 Prerequisite check
