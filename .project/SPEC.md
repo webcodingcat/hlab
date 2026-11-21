@@ -18,7 +18,9 @@ Versions as of 2026-11-18 (reasoning and sources in DECISIONS.md, "Stack").
   v1.1.73 (DNS server in hlab-agent), `github.com/google/nftables` v0.3.0
   (hlab-agent), `github.com/vishvananda/netlink` v1.3.1 (hlab-agent),
   `github.com/pb33f/libopenapi-validator` v0.16.3 (response validation in
-  tests); standard library `net/http`, `log/slog`, `crypto/x509`.
+  tests),
+  `github.com/modelcontextprotocol/go-sdk` v1.8.0 (`hlab mcp`, stdio and
+  in-memory transport); standard library `net/http`, `log/slog`, `crypto/x509`.
 - Hyper-V: Hyper-V PowerShell module through one persistent Windows
   PowerShell 5.1 process; `CreateVirtualDisk` from virtdisk.dll for volume
   disks.
@@ -194,12 +196,14 @@ secrets").
   badges and a link line; what HLab is; screenshots; prerequisites;
   installation; first steps (project, token, client endpoint settings for
   hcloud, OpenTofu and Ansible); tray program; WSL2 prerequisites;
-  uninstallation; links to the other documents. The detailed usage per
+  uninstallation; a short note on the MCP server `hlab mcp`; links to the
+  other documents. The detailed usage per
   resource lives in `docs/guide.md`. Images live in `docs/images/`;
   screenshots of the console are generated from the running tray
   program, in light and dark mode.
 - D2 Command reference: `docs/commands.md`, every `hlab` command and
-  flag with an example.
+  flag with an example, and a section `hlab mcp` with every tool and a
+  configuration example for Claude Code and Claude Desktop.
 - D3 Configuration reference: `docs/configuration.md`, every key of
   `settings.toml`, the custom server types file and the catalog files.
 - D4 Known deviations from Hetzner: `docs/deviations.md`, for users: short

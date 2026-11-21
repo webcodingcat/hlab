@@ -52,6 +52,20 @@
       2. Each client builds the example environment, it is reachable via
          SSH from host and WSL2, and the client deletes it completely.
 
+- [ ] 17 MCP server.
+      Requirements: MCP-01, MCP-02, MCP-03, MCP-04, MCP-05.
+      Depends on: 15.
+      Success criteria:
+      1. An MCP client controls hlab through `hlab mcp`: every tool does
+         what its `hlab` command does; while the cloud is stopped,
+         `cloud_status`, `logs` and `version` work and every other tool
+         says that the cloud is not running.
+      2. `cloud_start` and `cloud_stop` return once the cloud has reached
+         its state, and a refusal comes back as a tool error.
+      3. `docs/commands.md` describes every tool with a configuration
+         example for Claude Code and Claude Desktop; the README points to
+         it.
+
 - [ ] 16 Release checks in test VMs.
       Requirements: DOC-08.
       Depends on: 13 and every other phase of milestone 1; it stays the
@@ -77,4 +91,4 @@
 - Server console with a working wss VNC console
 - WSL2 in mirrored networking mode
 - More system images and app images
-- MCP server for controlling HLab
+- MCP tools that read and change Hetzner resources (`decisions/mcp-server.md`)

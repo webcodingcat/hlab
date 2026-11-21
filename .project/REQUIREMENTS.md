@@ -212,13 +212,21 @@ One requirement per client; the test map has one row per resource type.
 - CLI-03 the Ansible collection runs every module and the inventory plugin against hlab from WSL2 with only the endpoint changed (goal 1) [e2e]
 - CLI-04 each client builds the example environment of the success criterion, it is reachable via SSH from host and WSL2, and the client deletes it completely (goal 1) [e2e]
 
+### MCP server (`MCP`)
+
+- MCP-01 `hlab mcp` serves MCP over stdio with the tools `cloud_status`, `cloud_start`, `cloud_stop`, `project_create`, `project_list`, `project_delete`, `token_create`, `token_list`, `token_revoke`, `logs`, `ca_export`, `ca_trust` and `version`, each doing what its `hlab` command does; `project_list` gives the resource counts per type, `logs` the last N lines (default 200, at most 1000), `ca_export` the CA as PEM text (goal 5) [unit]
+- MCP-02 while the cloud is stopped, `cloud_status`, `logs` and `version` work, every other tool returns the tool error "the cloud is not running", and the MCP server stays up (goal 5) [unit]
+- MCP-03 `cloud_start` and `cloud_stop` wait until the cloud is running or stopped, return a failed start or a refusal with its message as a tool error, and give up after about 5 minutes; `project_delete` waits for its action (goal 5) [unit]
+- MCP-04 `token_create` returns the token value once, `token_list` never returns values, and no tool discards the state or updates the catalog (goal 5) [unit]
+- MCP-05 an MCP client starts `hlab mcp` against the running dev service and creates a project, creates a token and deletes the project (goal 5) [e2e]
+
 ### Documentation (`DOC`)
 
 They hold at the close of every phase, measured against what is built so
 far, and belong to no single phase. They serve the "Documentation" section
 of IDEA.md rather than a numbered goal.
 
-- DOC-01 every command and flag of `hlab` is described in `docs/commands.md` [unit]
+- DOC-01 every command and flag of `hlab` and every tool of `hlab mcp` is described in `docs/commands.md` [unit]
 - DOC-02 every key of every configuration file is described in `docs/configuration.md` [unit]
 - DOC-03 every API endpoint hlab serves differently from Hetzner, and every `unsupported_error`, is listed in `docs/development/api-coverage.md`, and `docs/deviations.md` describes the deviations for users by topic without routes [unit]
 - DOC-04 every link in README.md and docs/ resolves [unit]
@@ -385,6 +393,11 @@ What the target vision in IDEA.md will need, not built yet.
 | CLI-02 | 13 | |
 | CLI-03 | 13 | |
 | CLI-04 | 13 | |
+| MCP-01 | 17 | |
+| MCP-02 | 17 | |
+| MCP-03 | 17 | |
+| MCP-04 | 17 | |
+| MCP-05 | 17 | |
 | DOC-01 | all | |
 | DOC-02 | all | |
 | DOC-03 | all | |

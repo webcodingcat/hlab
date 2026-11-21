@@ -28,6 +28,8 @@ official clients.
    stops the cloud without admin prompts, and stop/start keeps everything.
 4. Leaving no trace: uninstalling removes all VMs, networks, routes and DNS
    rules.
+5. AI agents control hlab: an MCP server offers the functions of the
+   management command to MCP clients such as Claude Code.
 
 ## Scope of the first version
 
@@ -76,6 +78,10 @@ official clients.
   IPv4 range configurable, collision check at start.
 - Projects and tokens (exactly 64 characters, read or read/write) via an own
   management command; several isolated projects at the same time.
+- MCP server `hlab mcp` (stdio) with the functions of the management command
+  and the resource overview per project, without discarding the state or
+  the catalog update; Hetzner resources stay with the three clients
+  (`decisions/mcp-server.md`).
 - A small appliance (Debian cloud image, set up by cloud-init) routes traffic
   and serves DNS, bound into Windows via NRPT. Servers are reachable directly
   from host and WSL2, reach the internet outbound, and are not reachable
@@ -132,6 +138,7 @@ is built for now.
 - Separate network segments per location or network zone
 - German UI (translation)
 - Automatic update check
+- MCP tools that read and change Hetzner resources
 
 ## Constraints
 

@@ -448,6 +448,7 @@ Inside `hlabd` (Go packages under `internal/`):
   hlab ca export <file>
   hlab ca trust on|off
   hlab version
+  hlab mcp                     # MCP server over stdio, started by an MCP client
   ```
 
   Output is human-readable; `--output json` gives JSON for every command.
@@ -476,6 +477,22 @@ Inside `hlabd` (Go packages under `internal/`):
   state of a newer hlab version. The same refusal and discard apply to
   `public_range_changed` (assigned IPs outside a changed `public_range`).
 - Status file `<data dir>\status.json`: `{"state":"starting"|"running"|"stopped"}`, `{"state":"stopped","error":...}` after a failed start, `{"state":"refused","problem":{"code","message","fatal"}}` after a refusal; `hlab cloud status` reads it while the service is stopped.
+- `mcp` (`decisions/mcp-server.md`): an MCP server over stdio for MCP
+  clients such as Claude Code; stdout carries only protocol messages,
+  diagnostics go to stderr. It stays up while the cloud is stopped and uses
+  the same management client and service controller as the other
+  commands. Tools (names and arguments are a stable interface):
+  `cloud_status`, `cloud_start`, `cloud_stop` (both wait for `running` or
+  `stopped` through the status file, at most about 5 minutes; a failed
+  start or a refusal is a tool error), `project_create {display_name}`,
+  `project_list` (with `resources_by_type`), `project_delete {name}`
+  (waits for its action), `token_create {project, name, read_only}` (the
+  value once), `token_list {project}`, `token_revoke {project, name}`,
+  `logs {lines}` (default 200, at most 1000, from the log files while the
+  cloud is stopped), `ca_export` (PEM text), `ca_trust {on}`, `version`.
+  Results are JSON as with `--output json`; errors are MCP tool errors
+  with the message `hlab` prints, "the cloud is not running" while it is
+  stopped. There is no tool for `--discard-state` or `catalog update`.
 - Depends on: management API.
 
 ### hlab-tray (tray program)

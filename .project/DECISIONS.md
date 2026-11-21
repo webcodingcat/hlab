@@ -3167,3 +3167,19 @@ taken with the approval of the spec or by an answer from the user.
 - What: the MCP server taken from "Later" into milestone 1 is a subcommand `hlab mcp` that the MCP client starts and that speaks MCP over stdio and talks to hlabd through the management pipe; it offers neither `cloud start --discard-state` nor `catalog update`; its scope is in clarification (Q18, `decisions/mcp-server.md`).
 - Why: no new port, listener or authentication, the same access as `hlab`, and no destructive state discard or real Hetzner token in an agent's hands.
 - Cost of change: low
+
+## 2026-11-21 MCP server in milestone 1 with the functions of `hlab`
+
+- Type: change
+- Phase: change (Q18)
+- What: the MCP server moves from "Later" into milestone 1 as phase 17 before phase 16, with goal 5 in IDEA.md, requirements MCP-01 to MCP-05, DOC-01 extended to its tools, and the tools of `decisions/mcp-server.md` (the functions of `hlab` plus the resource overview per project); tools for Hetzner resources stay for later.
+- Why: the user wants agents to control hlab in the first version, and a thin layer over the management client adds no domain logic.
+- Cost of change: low
+
+## 2026-11-21 MCP library: official Go SDK
+
+- Type: decision
+- Phase: change (Q18)
+- What: `hlab mcp` uses `github.com/modelcontextprotocol/go-sdk` v1.8.0 (latest stable; MCP 2026-07-28 and older protocol versions, needs Go 1.25), with `mcp.AddTool` on typed structs, `StdioTransport`, and `NewInMemoryTransports` for unit tests; handler errors become tool errors (`isError`).
+- Why: the official SDK infers and validates schemas from structs and has an in-memory transport for tests; `mark3labs/mcp-go` needs manual argument handling and offers nothing more here.
+- Cost of change: low

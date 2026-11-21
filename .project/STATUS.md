@@ -10,7 +10,7 @@ STATUS: IN_PROGRESS
 - Phase: 13 Client matrix and success criterion (next)
 - Base branch: main
 - Last done: phase 12 merged into main (2026-11-21): setup bundle and MSI (`task installer VERSION=x.y.z`) with WebView2, prerequisite check, shortcuts, upgrade and downgrade refusal; `hlabd uninstall-cleanup [--keep-data]` removes VMs, switch, host network, forwarding, service, CA trust and files by exact name; elevated suite `task e2e:elevated` written, not yet run (phase 16)
-- Next: /wcc:phase in a new session builds phase 13; items from "Later" can be taken in with /wcc:change before phase 16, which runs all manual checks and the installer suite in two test VMs
+- Next: /wcc:phase in a new session builds phase 13, then phase 17 (MCP server `hlab mcp`); items from "Later" can be taken in with /wcc:change before phase 16, which runs all manual checks and the installer suite in two test VMs
 
 ## Open manual checks
 
@@ -34,15 +34,7 @@ STATUS: IN_PROGRESS
      /wcc:phase asks those of its phase at its start, /wcc:change takes
      answers any time. -->
 
-- Q18 Scope of the MCP server for controlling HLab, taken from "Later" into
-  milestone 1 (a phase before 16): which tools it offers. Options: the
-  functions of `hlab` (cloud status, start and stop, projects, tokens,
-  logs, CA); those plus reading and changing Hetzner resources through
-  the project API; read-only. Recommendation: the functions of `hlab`.
-  Already settled (DECISIONS.md, 2026-11-21): it runs as `hlab mcp` over
-  stdio and uses the management pipe; it offers neither
-  `cloud start --discard-state` nor `catalog update`.
-  - In clarification: decisions/mcp-server.md
+- none
 
 ## If BLOCKED
 
