@@ -32,7 +32,7 @@ const (
 	uninstallStopWait  = preshutdownTimeout + 20*time.Second
 )
 
-// Installer registers and removes the service of the current profile. It
+// Installer registers the service of the current profile. It
 // needs administrator rights.
 type Installer struct{}
 
@@ -213,22 +213,6 @@ func systemRoot() string {
 // the one-shot stop override in Paths.State that the cloud reads when it
 // halts; its content is "off" or "shutdown".
 const stopOverrideFile = "uninstall-stop"
-
-// Uninstall stops the service with the configured stop_behaviour, removes
-// it and, unless keepData, the data folder %ProgramData%\<profile>.
-func (*Installer) Uninstall(keepData bool) error {
-	ctx := context.Background()
-	if err := StopService(ctx); err != nil {
-		return err
-	}
-	if err := RemoveService(ctx, "shutdown"); err != nil {
-		return err
-	}
-	if keepData {
-		return nil
-	}
-	return os.RemoveAll(DataDir())
-}
 
 // RemoveService writes mode ("off" or "shutdown") to the stop override
 // <Paths.State>\uninstall-stop when the service runs, stops the service,

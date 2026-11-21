@@ -92,10 +92,7 @@ func run(args []string) int {
 func uninstallCleanup(keepData bool) error {
 	ctx := context.Background()
 	tag := profile.Current().Tag
-	hv, closeHV, err := hypervisor(ctx, tag)
-	if err != nil {
-		return err
-	}
+	hv, closeHV := hypervisor(ctx, tag)
 	defer closeHV()
 	res, err := uninstall.Run(ctx, uninstall.Options{
 		Tag:        tag,
@@ -124,21 +121,22 @@ func (serviceRemover) RemoveService(ctx context.Context, mode string) error {
 // hypervisor returns the Hyper-V platform of the profile. When Hyper-V
 // cannot be loaded and its management service is not registered, nothing
 // of hlab can be left in Hyper-V: the result lists no VMs and has no switch.
-func hypervisor(ctx context.Context, tag string) (uninstall.Hypervisor, func(), error) {
+// Otherwise a Hyper-V that cannot be loaded reports the load error for the
+// VMs and the switch, so the cleanup does every other step and names it.
+func hypervisor(ctx context.Context, tag string) (uninstall.Hypervisor, func()) {
 	p, err := hyperv.New(hyperv.Options{SwitchName: tag})
 	if err == nil {
 		return p, func() {
 			if cl, ok := p.(interface{ Close() error }); ok {
 				_ = cl.Close()
 			}
-		}, nil
+		}
 	}
-	f, ferr := windows.Prerequisites(ctx)
-	if ferr != nil || f.VMMS {
-		return nil, nil, fmt.Errorf("load Hyper-V: %w", err)
+	if f, ferr := windows.Prerequisites(ctx); ferr == nil && !f.VMMS {
+		fmt.Println("note: Hyper-V is not installed; no VMs or switch to remove")
+		return noHyperV{}, func() {}
 	}
-	fmt.Println("note: Hyper-V is not installed; no VMs or switch to remove")
-	return noHyperV{}, func() {}, nil
+	return brokenHyperV{fmt.Errorf("load Hyper-V: %w", err)}, func() {}
 }
 
 // noHyperV stands in for a Hyper-V that is not installed.
@@ -147,6 +145,14 @@ type noHyperV struct{}
 func (noHyperV) VMs(context.Context, string) ([]string, error) { return nil, nil }
 func (noHyperV) DeleteVM(context.Context, string) error        { return nil }
 func (noHyperV) DeleteSwitch(context.Context, string) error    { return nil }
+
+// brokenHyperV stands in for a Hyper-V that is installed but cannot be
+// loaded: listing the VMs and deleting the switch fail with err.
+type brokenHyperV struct{ err error }
+
+func (h brokenHyperV) VMs(context.Context, string) ([]string, error) { return nil, h.err }
+func (h brokenHyperV) DeleteVM(context.Context, string) error        { return h.err }
+func (h brokenHyperV) DeleteSwitch(context.Context, string) error    { return h.err }
 
 // removeUserData deletes the per-user folders of the calling user below
 // %AppData% and %LocalAppData%.
