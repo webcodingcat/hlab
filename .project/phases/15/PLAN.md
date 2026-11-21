@@ -128,15 +128,15 @@ of `main`, in list over 80 %.
   - Adjusts: -
   - [x] `internal/projectname/projectname.go` with `ValidateDisplay` and `Derive` per Interfaces (RESEARCH option A); `go.mod`/`go.sum`: `golang.org/x/text` becomes a direct requirement (`go mod tidy`)
 
-- [ ] 15-02 Store: schema version 2, display names, counts per type
+- [x] 15-02 Store: schema version 2, display names, counts per type
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: PROJ-06, UI-11 | Tests: internal/store/store_test.go
   - Reads: ARCHITECTURE "store", "Data schema"; REQUIREMENTS LIFE-08, PROJ-06; DECISIONS "resources_by_type has one key per console tab"; CONTEXT.md
   - Size: ~150 lines in 6 files
   - Adjusts: internal/apitest/apitest.go, internal/cloud/recover_test.go, internal/cloud/reload_test.go (`CreateProject(tx, name)` becomes `CreateProject(tx, name, name)`)
-  - [ ] `internal/store/store.go`: `SchemaVersion = 2`, fresh schema with `display_name TEXT NOT NULL`; `migrate` case 1 in the same transaction: `ALTER TABLE projects ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`, `UPDATE projects SET display_name = name`, `PRAGMA user_version = 2`; other versions stay `*IncompatibleError`
-  - [ ] `internal/store/projects.go`: `Project.DisplayName`, `CreateProject(tx, name, displayName)`, every project select (`ProjectByName`, `ListProjects`, `TokenByHash`) reads `display_name`; `CountResourcesByType` per Interfaces
-  - [ ] adjust the three callers named under Adjusts
+  - [x] `internal/store/store.go`: `SchemaVersion = 2`, fresh schema with `display_name TEXT NOT NULL`; `migrate` case 1 in the same transaction: `ALTER TABLE projects ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`, `UPDATE projects SET display_name = name`, `PRAGMA user_version = 2`; other versions stay `*IncompatibleError`
+  - [x] `internal/store/projects.go`: `Project.DisplayName`, `CreateProject(tx, name, displayName)`, every project select (`ProjectByName`, `ListProjects`, `TokenByHash`) reads `display_name`; `CountResourcesByType` per Interfaces
+  - [x] adjust the three callers named under Adjusts
 
 - [ ] 15-03 Management API: create by display name, list with display name and counts
   - Wave: 2 | Depends on: 15-01, 15-02 | Review: alone
