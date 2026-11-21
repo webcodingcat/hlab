@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 Queued RRSet changes commit at success
+
+- Type: decision
+- Phase: phase 13
+- What: an RRSet create, delete or action is checked against a copy at the request, applied again at its turn into the zone's optional `_hlab.pending` (served only to the agent while it publishes), committed to the current record at success and dropped on error or by Recover after a stop; zone-level actions still store at once and refuse while an action holds the zone.
+- Why: GET and the published zone must show a queued change only at success; the zone keeps all RRSets in one record, so a pending copy is the smallest fit.
+- Cost of change: low
+
 ## 2026-11-21 The OpenTofu LB row does not read services from the data source
 
 - Type: decision
