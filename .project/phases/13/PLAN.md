@@ -274,12 +274,12 @@ a group is split per client).
   - Size: ~220 lines in 1 file
   - [x] Fixture row `CLI-02/load_balancers`: `hcloud_load_balancer`, `hcloud_load_balancer_network`, two `hcloud_load_balancer_service` and two `hcloud_load_balancer_target` (server with private IP, label selector) created in parallel, updates of type, algorithm and a service, data sources `hcloud_load_balancer(s)`, `hcloud_load_balancer_type(s)`, destroy.
 
-- [ ] 13-21 Load balancers with Ansible
+- [x] 13-21 Load balancers with Ansible
   - Wave: 3 | Depends on: 13-01, 13-04 | Review: alone | e2e
   - Requirements: CLI-03 | Tests: test/e2e/clients_lb_ansible_test.go
   - Reads: RESEARCH.md §3; `ansible-doc` of the load balancer modules
   - Size: ~200 lines in 1 file
-  - [ ] Fixture row `CLI-03/load_balancers`: `load_balancer`, `load_balancer_network`, `load_balancer_service`, `load_balancer_target` (server with private IP, label selector, IP), `load_balancer_info`, updates, absent.
+  - [x] Fixture row `CLI-03/load_balancers`: `load_balancer`, `load_balancer_network`, `load_balancer_service`, `load_balancer_target` (server with private IP, label selector, IP), `load_balancer_info`, updates, absent.
 
 - [x] 13-22 Certificates with all clients
   - Wave: 2 | Depends on: 13-01 | Review: alone | e2e
