@@ -2,7 +2,8 @@
 
 `hlab` manages the local cloud: start and stop, projects, API tokens,
 the server type catalog and the HLab CA.
-In a working copy it is `bin\hlab.exe`; the examples write `hlab`.
+The installation puts it on `PATH`; in a working copy it is
+`bin\hlab.exe`. The examples write `hlab`.
 
 `hlab cloud start`, `stop` and `status` work at any time. All other
 commands except `hlab logs` and `hlab version` talk to the running cloud

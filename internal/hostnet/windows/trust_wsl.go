@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -56,6 +57,15 @@ func (h *HostNet) trustWSL(ctx context.Context, pem []byte, on bool) error {
 	return nil
 }
 
+// RemoveWSLTrust removes the CA from every WSL2 distro of the console user
+// once. It returns ErrNoConsoleUser when nobody is logged on and leaves no
+// switch pending; failing distros are skipped and returned, each by name.
+func (h *HostNet) RemoveWSLTrust(ctx context.Context, pemData []byte) error {
+	h.wslMu.Lock()
+	defer h.wslMu.Unlock()
+	return h.applyWSL(ctx, pemData, false)
+}
+
 // watchLogon applies the pending switch once a user is logged on at the
 // console: it retries every logonPoll until nothing is pending. The caller
 // holds wslMu.
@@ -99,7 +109,8 @@ func (h *HostNet) wslChanged(ctx context.Context) {
 }
 
 // applyWSL runs the install or removal script in each distro. It returns
-// errNoUser when the commands cannot run for lack of a logged-on user.
+// errNoUser when the commands cannot run for lack of a logged-on user, else
+// the failures of the distros joined, each naming its distro.
 func (h *HostNet) applyWSL(ctx context.Context, pem []byte, on bool) error {
 	out, code, err := h.opts.RunAsUser(ctx, nil, "wsl.exe", "--list", "--quiet")
 	if errors.Is(err, errNoUser) {
@@ -113,6 +124,7 @@ func (h *HostNet) applyWSL(ctx context.Context, pem []byte, on bool) error {
 	if !on {
 		script, stdin = wslRemoveScript, nil
 	}
+	var errs []error
 	for _, d := range wslDistros(out) {
 		out, code, err := h.opts.RunAsUser(ctx, stdin, "wsl.exe", "-d", d, "-u", "root", "-e", "sh", "-c", script)
 		switch {
@@ -120,13 +132,15 @@ func (h *HostNet) applyWSL(ctx context.Context, pem []byte, on bool) error {
 			return err
 		case err != nil:
 			slog.Warn("hostnet: CA switch in WSL distro failed", "distro", d, "on", on, "err", err)
+			errs = append(errs, fmt.Errorf("WSL distro %s: %w", d, err))
 		case code == exitNoUpdateCA:
 			slog.Info("hostnet: WSL distro has no update-ca-certificates; skipped", "distro", d)
 		case code != 0:
 			slog.Warn("hostnet: CA switch in WSL distro failed", "distro", d, "on", on, "exit", code, "output", strings.TrimSpace(decodeWSLOutput(out)))
+			errs = append(errs, fmt.Errorf("WSL distro %s: exit code %d", d, code))
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // wslDistros parses the output of `wsl.exe --list --quiet` without the

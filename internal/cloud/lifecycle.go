@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/discard"
@@ -160,6 +162,11 @@ func (c *Cloud) halt(ctx context.Context, hostShutdown bool) error {
 	} else {
 		slog.Warn("settings unreadable at stop, using the stop behaviour of the start", "err", err, "stop_behaviour", behaviour)
 	}
+	behaviour, skip := haltBehaviour(c.d.Paths.State, behaviour)
+	if skip {
+		slog.Info("uninstall stop override: not halting servers")
+		return nil
+	}
 	slog.Info("halting servers", "stop_behaviour", behaviour, "host_shutdown", hostShutdown)
 	var errs []error
 	for _, m := range c.mods {
@@ -170,4 +177,35 @@ func (c *Cloud) halt(ctx context.Context, hostShutdown bool) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// StopOverrideFile is the one-shot stop override the uninstaller writes into
+// Paths.State before it stops the service; its content is "off" or "shutdown".
+const StopOverrideFile = "uninstall-stop"
+
+// haltBehaviour returns the behaviour halt uses and whether halt is skipped:
+// "off" skips it (the uninstaller turns the VMs off when it deletes them),
+// "shutdown" overrides the configured behaviour, no file or another content
+// keeps configured. The file is deleted once read.
+func haltBehaviour(stateDir, configured string) (behaviour string, skip bool) {
+	path := filepath.Join(stateDir, StopOverrideFile)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			slog.Warn("stop override unreadable", "path", path, "err", err)
+		}
+		return configured, false
+	}
+	if err := os.Remove(path); err != nil {
+		slog.Warn("stop override not deleted", "path", path, "err", err)
+	}
+	switch strings.TrimSpace(string(data)) {
+	case "off":
+		return configured, true
+	case "shutdown":
+		return "shutdown", false
+	default:
+		slog.Warn("stop override unknown, keeping the stop behaviour", "content", string(data), "stop_behaviour", configured)
+		return configured, false
+	}
 }

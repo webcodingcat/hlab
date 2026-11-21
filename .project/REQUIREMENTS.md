@@ -225,6 +225,7 @@ of IDEA.md rather than a numbered goal.
 - DOC-05 every view of the tray has a help text and every help text belongs to a view, with the app taking its view list from `views.json` [unit]; that each help text names only views and buttons that exist is checked by hand with DOC-07
 - DOC-06 every command in the developer guide exists in the Taskfile [unit]
 - DOC-07 README and guides are understandable for their audience, and the help texts name only views and buttons that exist [manual]
+- DOC-08 `docs/development/release-checks.md` describes how to set up the two test VMs of the release checks by hand (Hyper-V, fresh Windows, nested virtualization; one with the development tools for the elevated installer suite, one without them for the user's flow) and what runs in which [manual]
 
 ## Later
 
@@ -374,12 +375,12 @@ What the target vision in IDEA.md will need, not built yet.
 | UI-09 | 14 | x |
 | UI-10 | 14 | x |
 | UI-11 | 15 | x |
-| INST-01 | 12 | |
-| INST-02 | 12 | |
-| INST-03 | 12 | |
-| INST-04 | 12 | |
-| INST-05 | 12 | |
-| INST-06 | 12 | |
+| INST-01 | 12 | x |
+| INST-02 | 12 | x |
+| INST-03 | 12 | x |
+| INST-04 | 12 | x |
+| INST-05 | 12 | x |
+| INST-06 | 12 | x |
 | CLI-01 | 13 | |
 | CLI-02 | 13 | |
 | CLI-03 | 13 | |
@@ -391,3 +392,4 @@ What the target vision in IDEA.md will need, not built yet.
 | DOC-05 | all | |
 | DOC-06 | all | |
 | DOC-07 | all | |
+| DOC-08 | 16 | |

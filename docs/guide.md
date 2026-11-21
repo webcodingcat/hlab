@@ -237,7 +237,7 @@ hcloud: ISO not found: netboot.xyz
   copy, for example a wrong SHA-256, shows only in the status):
 
   ```
-  > bin\hlab.exe cloud status
+  > hlab cloud status
   state: running
   version: dev
   problem: own ISO 100002 ("Gone") is left out: open D:/missing/gone.iso: <error message of Windows>
@@ -532,7 +532,7 @@ To reach the service with a plain `curl https://<name>`, add the HLab CA
 to the trust stores of Windows and WSL2:
 
 ```
-> bin\hlab.exe ca trust on
+> hlab ca trust on
 the HLab CA is trusted on this host
 > curl.exe https://www.lab.internal/
 ```
@@ -543,7 +543,7 @@ and in WSL2:
 curl https://www.lab.internal/
 ```
 
-`bin\hlab.exe ca trust off` removes it again from both. The switch is
+`hlab ca trust off` removes it again from both. The switch is
 off until you turn it on, and stays on across cloud starts.
 
 The risk: the HLab CA cannot be limited to your zones, because zones may
@@ -556,7 +556,7 @@ the CA to servers.
 Without trust, give the CA certificate to the client that needs it:
 
 ```
-> bin\hlab.exe ca export hlab-ca.pem
+> hlab ca export hlab-ca.pem
 HLab CA written to hlab-ca.pem
 ```
 
@@ -621,9 +621,9 @@ back and start it again later; servers, IPs, networks, firewalls, volumes,
 load balancers and DNS zones are kept:
 
 ```
-> bin\hlab.exe cloud stop
+> hlab cloud stop
 the cloud is stopping
-> bin\hlab.exe cloud start
+> hlab cloud start
 the cloud is starting
 ```
 
@@ -635,7 +635,7 @@ does the same through Hyper-V; after the reboot, start the cloud again.
 The details, also on changing the setting, are under
 [Stop behaviour](configuration.md#stop-behaviour).
 
-When something goes wrong, `bin\hlab.exe logs` shows the end of the
+When something goes wrong, `hlab logs` shows the end of the
 service's log, also while the cloud is stopped; `--follow` keeps
 watching it.
 
@@ -643,12 +643,12 @@ watching it.
 
 HLab refuses to start with a state it cannot use: one written by a newer
 HLab version, a damaged state file, or a state that holds addresses
-outside a changed `public_range`. `bin\hlab.exe cloud status` then shows
+outside a changed `public_range`. `hlab cloud status` then shows
 `state: refused` and the reason. Set the range back, or, if you can lose
 everything in the cloud, confirm the discard:
 
 ```
-> bin\hlab.exe cloud start --discard-state
+> hlab cloud start --discard-state
 the cloud is starting
 ```
 
@@ -662,7 +662,7 @@ discarded by this flag.
 
 Every build belongs to a profile. `task build` builds the `dev` profile:
 service `hlab-dev`, data in `%ProgramData%\hlab-dev`, Hyper-V objects named
-`hlab-dev...`. A future installed HLab uses the `release` profile with the
+`hlab-dev...`. The installed HLab uses the `release` profile with the
 name `hlab`. Both may be installed on one machine, but only one cloud runs
 at a time: a cloud refuses to start while the other one runs, and
 `hlab cloud status` names the reason.

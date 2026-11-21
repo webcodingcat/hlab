@@ -19,13 +19,134 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
-An entry that revokes or changes an earlier one states in full what holds
-now, names the earlier entry under `Replaces:`, and the earlier entry moves
-unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
+## 2026-11-21 Manual checks and the installer suite move to a last phase in two test VMs
 
-Keep entries short and their titles telling: phases find the entries
-they need by their titles and do not read this file in full. Details belong
-in ARCHITECTURE.md or the plan.
+- Type: change
+- Phase: change
+- What: no phase stops for a manual check any more; the new phase 16, always the last of milestone 1 with phases taken in from "Later" inserted before it, runs the elevated installer suite in a development test VM and every open manual check in a user test VM without development tools, both fresh Windows Hyper-V VMs with nested virtualization that the user sets up by hand from `docs/development/release-checks.md` (DOC-08).
+- Why: the user has no time for manual checks now, wants to pull items from "Later" forward, and wants the installation tested in the user's own flow on a clean machine.
+- Cost of change: low
+- Replaces: 2026-11-21 All manual checks wait for the release, in a dedicated test VM
+
+## 2026-11-21 Bundle sets HLABUI from WixBundleUILevel
+
+- Type: decision
+- Phase: phase 12
+- What: the bundle passes `HLABUI=1` to the MSI only when `WixBundleUILevel = 4` (full UI), so quiet and passive runs never show the prerequisite message box; the bundle UpgradeCode is 81FBE7E2-15D3-4E38-9FBA-57FC18DB72D5, named "HLab", Publisher webcodingcat.
+- Why: a Burn built-in avoids the overridable fallback whose quiet install would wait on a message box; the value 4 is checked by the elevated suite.
+- Cost of change: low
+
+## 2026-11-21 MSI custom actions find hlabd.exe through INSTALLFOLDER
+
+- Type: decision
+- Phase: phase 12
+- What: every custom action that runs while hlabd.exe is removed calls `"[INSTALLFOLDER]hlabd.exe"`; the shortcut component keys on the HKCU value `Software\webcodingcat\hlab\Shortcuts`; the MSI UpgradeCode is D98713BD-2D6B-4822-AB75-0F2943A2E802.
+- Why: `[#file]` is blank when the component is Absent, and ICE43/ICE57 reject a file or HKLM key path for non-advertised shortcuts.
+- Cost of change: low
+
+## 2026-11-21 Uninstall runs only through internal/uninstall
+
+- Type: decision
+- Phase: phase 12
+- What: `Uninstall(keepData)` is removed from `sysint.Installer`; `hlabd uninstall-cleanup` runs `uninstall.Run`, and a Hyper-V that cannot be loaded is reported as a failed object after all other steps.
+- Why: nothing called the narrower path any more, and CONTEXT.md INST-04 requires every other step to run before an error is reported.
+- Cost of change: low
+
+## 2026-11-21 Prerequisite check refuses Server Core and finds the Hyper-V module in a version folder
+
+- Type: decision
+- Phase: phase 12
+- What: `prereq.Facts.ServerCore` makes Server Core an unsupported edition, and the Hyper-V PowerShell module counts as present in `Modules\Hyper-V` or a version folder below it.
+- Why: SPEC requires Desktop Experience, and Windows 11 keeps the module under `Hyper-V\2.0.0.0`.
+- Cost of change: low
+
+## 2026-11-21 Prerequisite check runs as an immediate MSI custom action from the Binary table
+
+- Type: decision
+- Phase: phase 12
+- What: hlabd.exe is embedded as an MSI Binary and `check-prerequisites` runs as an immediate custom action before InstallValidate (`NOT REMOVE`), showing a message box when `HLABUI=1` and writing `%TEMP%\hlab-setup-prerequisites.log` otherwise.
+- Why: INST-02 is unit-tested Go logic that must run before anything changes; `bal:Condition` cannot run Go and a failed ExePackage shows only an error code.
+- Cost of change: low
+
+## 2026-11-21 Prerequisite check needs no elevation
+
+- Type: decision
+- Phase: phase 12
+- What: the check reads registry, files, the vmms service and Win32_ComputerSystem/Win32_Processor, never Win32_OptionalFeature or DISM.
+- Why: an immediate custom action under Burn may run unelevated.
+- Cost of change: low
+
+## 2026-11-21 Service stop at upgrade and uninstall without ServiceControl
+
+- Type: decision
+- Phase: phase 12
+- What: an upgrade runs a deferred `hlabd stop-service` in the old product, and a real uninstall lets `uninstall-cleanup` stop and remove the service; no ServiceControl element.
+- Why: research could not confirm how ServiceControl handles a service that is already gone.
+- Cost of change: low
+
+## 2026-11-21 Uninstall stop mode is passed in the file uninstall-stop
+
+- Type: decision
+- Phase: phase 12
+- What: the cleanup writes `<DataDir>\uninstall-stop` ("off" or "shutdown") before the SCM stop, and `cloud.halt` reads and deletes it, overriding stop_behaviour.
+- Why: an SCM stop carries no parameter, and the `sysint.ServiceHost` interface stays as it is.
+- Cost of change: low
+
+## 2026-11-21 WSL trust removal at uninstall only when trust was used
+
+- Type: decision
+- Phase: phase 12
+- What: uninstall removes the CA from WSL only when `trust_ca` is on or the root store held the CA; Hyper-V missing at uninstall counts as no VMs.
+- Why: avoids running update-ca-certificates in every distro when trust was never on, and keeps uninstall possible without Hyper-V.
+- Cost of change: low
+
+## 2026-11-21 DeleteSwitch removes the host adapter on failure and retries
+
+- Type: decision
+- Phase: phase 12
+- What: if `Remove-VMSwitch` fails, `DeleteSwitch` removes the management-OS adapter first and retries.
+- Why: whether PVLAN settings block the removal is unverified; INST-04 settles it.
+- Cost of change: low
+
+## 2026-11-21 INST-01 does not test the WebView2 download path
+
+- Type: decision
+- Phase: phase 12
+- What: INST-01 proves the install and that a present WebView2 is detected and the bootstrapper skipped, not its download.
+- Why: Windows 11 always has WebView2, and removing it would damage the developer's machine (agreed by the user).
+- Cost of change: low
+
+## 2026-11-21 WebView2 bootstrapper cached outside the repository
+
+- Type: decision
+- Phase: phase 12
+- What: `tools/installer` keeps the bootstrapper in `%LocalAppData%\hlab-build-cache`, refreshes it after 7 days, falls back to the cached copy on a failed download and embeds it in the bundle without committing it.
+- Why: the redistribution terms allow embedding, and `%LocalAppData%\hlab` is deleted by uninstall.
+- Cost of change: low
+
+## 2026-11-21 Fixed UpgradeCodes for MSI and bundle
+
+- Type: decision
+- Phase: phase 12
+- What: the MSI and the bundle each have one fixed UpgradeCode GUID in the repository that never changes.
+- Why: the user set this for the MSI; the bundle's upgrades depend on its own code the same way.
+- Cost of change: high
+
+## 2026-11-21 Failed first install rolls back with keep-data cleanup
+
+- Type: decision
+- Phase: phase 12
+- What: a failed first install rolls back by running `uninstall-cleanup --keep-data`.
+- Why: removes host objects created so far without deleting data a user may have from an earlier install.
+- Cost of change: low
+
+## 2026-11-21 Tray per-user data deleted at uninstall
+
+- Type: decision
+- Phase: phase 12
+- What: without KEEPDATA an impersonated deferred custom action deletes `%AppData%\hlab-tray.exe` (the Wails default WebView2 folder) and `%LocalAppData%\hlab` if present, for the uninstalling user only.
+- Why: the tray uses the Wails default folder, and the user asked for the per-user data to go.
+- Cost of change: low
 
 ## 2026-11-21 Tray e2e tests find project cards by their visible display name
 

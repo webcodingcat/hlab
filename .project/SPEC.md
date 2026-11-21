@@ -157,7 +157,8 @@ appear here, only names.
     same with `sc.exe` and `icacls`.
   - The installer suite (`task e2e:elevated`, INST-01, 04, 05, 06) installs
     and uninstalls MSI packages and inspects Hyper-V and the host; it needs
-    an elevated terminal. Phase 12 stops so the user runs it.
+    an elevated terminal. It runs in phase 16, in the development test VM
+    (see "Test VMs for the release checks").
   - A dev service that runs a binary from a user-writable folder as SYSTEM
     is acceptable only on a development machine; the developer guide says
     so.
@@ -166,6 +167,17 @@ appear here, only names.
   objects differ (ARCHITECTURE.md "Profiles"). Only one of their clouds runs
   at a time: each refuses to start while the other runs, and the end-to-end
   harness refuses to run while the release cloud runs.
+- Test VMs for the release checks (phase 16), set up by hand by the user
+  as `docs/development/release-checks.md` describes; Claude creates
+  neither. Both are Hyper-V VMs on the development machine with a fresh
+  Windows 11 Pro and nested virtualization, so HLab can run its own VMs
+  inside.
+  - Development test VM: the development tools of this section and a
+    checkout of the repository; runs only the elevated installer suite.
+  - User test VM: no development tools; the user installs HLab with the
+    setup EXE built on the development machine and goes through the
+    manual checks as a user would (installation, console, shutdown,
+    uninstallation).
 
 ## Documentation
 
@@ -201,6 +213,8 @@ secrets").
   (tools, `dev-setup.ps1`), `build-and-test.md` (Taskfile targets, unit,
   e2e, elevated suite), `components.md` (overview linking to the code),
   `adding-a-resource.md` (a new resource module step by step),
+  `release-checks.md` (setting up the two test VMs and what runs in
+  which, from phase 16),
   `api-coverage.md` (every endpoint hlab serves, every endpoint or
   behaviour that differs from Hetzner with its route, and every
   `unsupported_error`).

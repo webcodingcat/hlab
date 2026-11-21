@@ -15,9 +15,12 @@ import (
 	xwin "golang.org/x/sys/windows"
 )
 
-// errNoUser reports that no user is logged on at the console, so commands
-// in the user's context cannot run.
-var errNoUser = errors.New("hostnet: no user logged on at the console")
+// ErrNoConsoleUser reports that no user is logged on at the console, so
+// commands in the user's context cannot run.
+var ErrNoConsoleUser = errors.New("hostnet: no user logged on at the console")
+
+// errNoUser is the package's short name for ErrNoConsoleUser.
+var errNoUser = ErrNoConsoleUser
 
 // UserRunner runs name with args in the console user's context, writes
 // stdin to its standard input and returns its standard output and exit

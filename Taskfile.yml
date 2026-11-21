@@ -43,6 +43,12 @@ tasks:
     cmds:
       - go build -ldflags "{{.LDFLAGS}}" -o bin/hlab-agent ./cmd/hlab-agent
 
+  installer:
+    desc: "Build the release MSI and setup bundle into bin/ (VERSION=x.y.z required; needs WiX 7.0.1 with its util and bal extensions)"
+    deps: [frontend:build]
+    cmds:
+      - go run ./tools/installer {{.VERSION}}
+
   lint:
     desc: "Lint Go code (default ./..., or the packages after --) and type-check the frontend"
     cmds:
@@ -93,3 +99,8 @@ tasks:
     desc: "Run the end-to-end tests against real Hyper-V and clients; filter with -- -run <regexp>"
     cmds:
       - go test -tags e2e -count=1 -timeout 60m ./test/e2e/... {{.CLI_ARGS}}
+
+  e2e:elevated:
+    desc: "Run the elevated installer suite (administrator terminal; refuses while a release hlab is installed); filter with -- -run <regexp>"
+    cmds:
+      - go test -tags e2einstall -count=1 -timeout 420m ./test/install/... {{.CLI_ARGS}}
