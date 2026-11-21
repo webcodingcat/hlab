@@ -399,10 +399,12 @@ func testCLI03Networks(t *testing.T, c *rowCtx) {
 	}
 	e.wantServerNet(t, "server_network", fx, id, "10.42.1.5", "10.42.1.6")
 
-	e.ansibleOK(t, w, "cli03-networks-update", localPlay(t, row, present("10.42.0.0/15", "two", "10.42.1.7")))
+	// The range stays: HLab refuses change_ip_range while servers are attached
+	// (DECISIONS 2026-11-19 "Network and IP refusals").
+	e.ansibleOK(t, w, "cli03-networks-update", localPlay(t, row, present("10.42.0.0/16", "two", "10.42.1.7")))
 	got = e.networkInfo(t, id)
-	if want := map[string]string{"row": "cli-03-networks", "stage": "two"}; got.IPRange != "10.42.0.0/15" || !maps.Equal(got.Labels, want) {
-		t.Errorf("updated network: range %s, labels %v; want 10.42.0.0/15, %v", got.IPRange, got.Labels, want)
+	if want := map[string]string{"row": "cli-03-networks", "stage": "two"}; got.IPRange != "10.42.0.0/16" || !maps.Equal(got.Labels, want) {
+		t.Errorf("updated network: range %s, labels %v; want 10.42.0.0/16, %v", got.IPRange, got.Labels, want)
 	}
 	e.wantServerNet(t, "updated server_network", fx, id, "10.42.1.5", "10.42.1.7")
 
