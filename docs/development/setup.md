@@ -29,7 +29,13 @@ On the Windows host:
 
 In WSL2 (Ubuntu 24.04 or newer, NAT mode, `dnsTunneling` on): `uv`, then
 `uv tool install ansible-core==2.22.0 --with hcloud==2.27.0` and
-`ansible-galaxy collection install hetzner.hcloud:==7.2.0`.
+`ansible-galaxy collection install hetzner.hcloud:==7.2.0`. The storage box
+end-to-end tests also need `rsync`, `borgbackup`, `smbclient` and `lftp`
+there:
+
+```powershell
+wsl -d Ubuntu -- sudo apt-get install -y rsync borgbackup smbclient lftp
+```
 
 Internet access for image, ISO, package and OpenAPI downloads.
 
