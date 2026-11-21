@@ -118,7 +118,7 @@ appear here, only names.
   cloud, created once by the user: endpoint `http://api.hetzner.internal/v1`
   and Hetzner endpoint `http://api.hetzner.internal/hetzner/v1` set in the context
   (`hcloud --context hlab-docs config set endpoint ...` and
-  `... config set hetzner_endpoint ...`, not `--global`), token of a read/write token of the hlab project `docs`.
+  `... config set hetzner-endpoint ...`, not `--global`), token of a read/write token of the hlab project `docs`.
   The `doc-writer` agent uses it to run the examples of the user
   documentation against the running dev service:
   - hcloud examples run as `hcloud --context hlab-docs <command>`, with
@@ -136,8 +136,10 @@ appear here, only names.
     token value, and delete the resources they created before they finish.
   - The context is usable if `hcloud context list` names it and
     `hcloud --context hlab-docs config get endpoint` returns
-    `http://api.hetzner.internal/v1`; otherwise the examples are not run and
-    the documentation plan says why. The active context is never changed.
+    `http://api.hetzner.internal/v1` (and, for Storage Box examples,
+    `config get hetzner-endpoint` returns
+    `http://api.hetzner.internal/hetzner/v1`); otherwise the examples are
+    not run and the documentation plan says why. The active context is never changed.
 - Operation: the product has no dependency on hcloud. `hlab catalog
   update` and the tray ask the user for a real Hetzner token (ARCHITECTURE.md,
   "hlab"); hlab uses it for that one update and never stores it.
