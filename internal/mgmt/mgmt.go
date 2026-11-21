@@ -14,7 +14,6 @@ import (
 	"maps"
 	"math/big"
 	"net/http"
-	"regexp"
 	"slices"
 	"strconv"
 	"time"
@@ -22,6 +21,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/logfile"
+	"github.com/webcodingcat/hlab/internal/projectname"
 	"github.com/webcodingcat/hlab/internal/resource"
 	"github.com/webcodingcat/hlab/internal/settings"
 	"github.com/webcodingcat/hlab/internal/store"
@@ -93,9 +93,12 @@ type Deps struct {
 
 // Project is a project as the management API returns it.
 type Project struct {
-	Name      string    `json:"name"`
-	Created   time.Time `json:"created"`
-	Resources int       `json:"resources"`
+	Name        string    `json:"name"`
+	DisplayName string    `json:"display_name"`
+	Created     time.Time `json:"created"`
+	Resources   int       `json:"resources"`
+	// ResourcesByType counts the resources per console tab; {} when empty.
+	ResourcesByType map[string]int `json:"resources_by_type"`
 }
 
 // Token is a token as the management API returns it. Value is only set in
@@ -187,8 +190,6 @@ func (s server) status(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, st)
 }
 
-var projectName = regexp.MustCompile(`^[a-z0-9-]{1,63}$`)
-
 func (s server) listProjects(w http.ResponseWriter, _ *http.Request) {
 	out := []Project{}
 	err := s.d.Store.Tx(func(tx store.Tx) error {
@@ -201,7 +202,14 @@ func (s server) listProjects(w http.ResponseWriter, _ *http.Request) {
 			if err != nil {
 				return err
 			}
-			out = append(out, Project{Name: p.Name, Created: p.Created, Resources: n})
+			byType, err := store.CountResourcesByType(tx, p.ID)
+			if err != nil {
+				return err
+			}
+			out = append(out, Project{
+				Name: p.Name, DisplayName: p.DisplayName, Created: p.Created,
+				Resources: n, ResourcesByType: byType,
+			})
 		}
 		return nil
 	})
@@ -214,26 +222,35 @@ func (s server) listProjects(w http.ResponseWriter, _ *http.Request) {
 
 func (s server) createProject(w http.ResponseWriter, req *http.Request) {
 	var body struct {
-		Name string `json:"name"`
+		DisplayName string `json:"display_name"`
 	}
 	if !decode(w, req, &body) {
 		return
 	}
-	if !projectName.MatchString(body.Name) {
-		writeError(w, http.StatusBadRequest, "invalid_input", "the project name must have 1 to 63 characters a-z, 0-9 and -")
+	display, err := projectname.ValidateDisplay(body.DisplayName)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_input", err.Error())
+		return
+	}
+	name := projectname.Derive(display)
+	if name == "" {
+		writeError(w, http.StatusBadRequest, "invalid_input", "the display name gives an empty project name")
 		return
 	}
 	var p store.Project
-	err := s.d.Store.Tx(func(tx store.Tx) error {
+	err = s.d.Store.Tx(func(tx store.Tx) error {
 		var err error
-		p, err = store.CreateProject(tx, body.Name, body.Name)
+		p, err = store.CreateProject(tx, name, display)
 		return err
 	})
 	if err != nil {
-		fail(w, err, "project "+body.Name)
+		fail(w, err, "project "+name)
 		return
 	}
-	writeJSON(w, http.StatusCreated, Project{Name: p.Name, Created: p.Created})
+	writeJSON(w, http.StatusCreated, Project{
+		Name: p.Name, DisplayName: p.DisplayName, Created: p.Created,
+		ResourcesByType: map[string]int{},
+	})
 }
 
 // projectRef is the resource type of a project in the actions of project
