@@ -113,6 +113,9 @@ func setup() error {
 		return err
 	}
 
+	if err := buildFrontend(ctx); err != nil {
+		return err
+	}
 	for _, v := range []string{oldVersion, newVersion} {
 		if err := buildSetup(ctx, v); err != nil {
 			return err
@@ -238,25 +241,44 @@ func repoRoot() (string, error) {
 	}
 }
 
-// buildSetup builds the bundle of one version with `task installer` and
-// keeps a copy in the run's temporary folder.
+// buildFrontend builds the tray frontend once; tools/installer embeds the
+// built frontend but does not build it (`task installer` does).
+func buildFrontend(ctx context.Context) error {
+	logf("building the tray frontend")
+	return runBuild(ctx, 15*time.Minute, "task", "frontend:build")
+}
+
+// buildSetup builds the installers of one version with tools/installer into
+// the run's temporary folder.
 func buildSetup(ctx context.Context, version string) error {
 	logf("building the installers %s", version)
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	out := filepath.Join(harness.tmp, "build")
+	if err := runBuild(ctx, 30*time.Minute, "go", "run", "./tools/installer", "-out", out, version); err != nil {
+		return err
+	}
+	exe := filepath.Join(out, "hlab-setup-"+version+".exe")
+	if notExist(exe) {
+		return fmt.Errorf("tools/installer %s wrote no %s", version, exe)
+	}
+	harness.setups[version] = exe
+	return nil
+}
+
+// runBuild runs a build step in the repository root with its output on
+// stderr and a deadline.
+func runBuild(ctx context.Context, timeout time.Duration, name string, args ...string) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "task", "installer", "VERSION="+version)
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = harness.root
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("task installer VERSION=%s: %w", version, err)
+		if ctx.Err() != nil {
+			return fmt.Errorf("%s %s did not finish in time (limit %s)", name, strings.Join(args, " "), timeout)
+		}
+		return fmt.Errorf("%s %s: %w", name, strings.Join(args, " "), err)
 	}
-	name := "hlab-setup-" + version + ".exe"
-	dst := filepath.Join(harness.tmp, name)
-	if err := copyFile(filepath.Join(harness.root, "bin", name), dst); err != nil {
-		return err
-	}
-	harness.setups[version] = dst
 	return nil
 }
 
