@@ -175,12 +175,12 @@ a group is split per client).
   - [x] `servers/servers.go`: the next actions of `POST /servers` with `networks`, `firewalls` and `volumes` queue on network, firewall and volume refs instead of refusing, so two servers created in parallel with the same network and firewall both succeed.
   - [x] `firewalls_test.go`, `servers_test.go`: the rows of the test map.
 
-- [ ] 13-08 Servers with hcloud
+- [x] 13-08 Servers with hcloud
   - Wave: 2 | Depends on: 13-01 | Review: alone | e2e
   - Requirements: CLI-01 | Tests: test/e2e/clients_servers_hcloud_test.go
   - Reads: CONTEXT.md "Scope"; RESEARCH.md §1 (server); `hcloud server --help` and each subcommand's help; REQUIREMENTS SRV-11, SRV-13, SRV-14, SRV-15
   - Size: ~260 lines in 1 file
-  - [ ] Row `CLI-01/servers` (own server, 1 slot): create with labels, ssh key, user data, placement group; list, describe, ip, update, labels; poweroff, poweron, reboot, reset, shutdown; reset-password; change-type (powered off, x86 type); rebuild; enable/disable-rescue; enable/disable-backup; create-image (snapshot, deleted afterwards); attach-iso, detach-iso; set-rdns; metrics; enable/disable-protection; add-to/remove-from-placement-group; delete; each step checked through the API.
+  - [x] Row `CLI-01/servers` (own server, 1 slot): create with labels, ssh key, user data, placement group; list, describe, ip, update, labels; poweroff, poweron, reboot, reset, shutdown; reset-password; change-type (powered off, x86 type); rebuild; enable/disable-rescue; enable/disable-backup; create-image (snapshot, deleted afterwards); attach-iso, detach-iso; set-rdns; metrics; enable/disable-protection; add-to/remove-from-placement-group; delete; each step checked through the API.
 
 - [ ] 13-09 Servers with OpenTofu
   - Wave: 2 | Depends on: 13-01 | Review: alone | e2e
