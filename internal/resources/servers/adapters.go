@@ -24,12 +24,9 @@ func (m *Module) SyncAdapters(ctx context.Context, stor *store.Store, id int64, 
 		return err
 	}
 	p, name := m.d.Platform, m.vmName(id)
-	hasVM := true
-	if _, err := p.State(ctx, name); err != nil {
-		if !isNotFound(err) {
-			return err
-		}
-		hasVM = false
+	hasVM, err := m.hasVM(ctx, id)
+	if err != nil {
+		return err
 	}
 	if hasVM {
 		want := map[string]bool{}
@@ -78,6 +75,36 @@ func (m *Module) SyncAdapters(ctx context.Context, stor *store.Store, id int64, 
 		return err
 	}
 	return m.d.PushAgent(ctx)
+}
+
+// RewriteSeed rebuilds the seed of server id from its stored record
+// without touching adapters or the agent, for a Recover before the agent
+// is ready.
+func (m *Module) RewriteSeed(ctx context.Context, stor *store.Store, id int64) error {
+	var rec Record
+	if err := stor.Tx(func(tx store.Tx) error {
+		var err error
+		rec, err = Load(tx, id)
+		return err
+	}); err != nil {
+		return err
+	}
+	hasVM, err := m.hasVM(ctx, id)
+	if err != nil {
+		return err
+	}
+	return m.rewriteSeed(ctx, rec, hasVM)
+}
+
+// hasVM reports whether the VM of server id exists.
+func (m *Module) hasVM(ctx context.Context, id int64) (bool, error) {
+	if _, err := m.d.Platform.State(ctx, m.vmName(id)); err != nil {
+		if !isNotFound(err) {
+			return false, err
+		}
+		return false, nil
+	}
+	return true, nil
 }
 
 // loadWithAll returns server id and all server records.

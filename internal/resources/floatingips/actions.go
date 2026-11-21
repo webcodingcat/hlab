@@ -86,15 +86,15 @@ func (m *Module) assign(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	m.change(w, req, id, "assign_floating_ip", func(tx store.Tx, r *Record) ([]actions.Ref, error) {
+	m.assignment(w, req, id, "assign_floating_ip", func(tx store.Tx, r Record) (*int64, error) {
 		srv, err := loadServer(tx, r.Hlab.ProjectID, body.Server)
 		if err != nil {
 			return nil, err
 		}
-		if err := m.assignTo(tx, r, srv); err != nil {
+		if err := m.checkAssign(r, srv); err != nil {
 			return nil, err
 		}
-		return []actions.Ref{{ID: srv.ID, Type: "server"}}, nil
+		return &srv.ID, nil
 	})
 }
 
@@ -105,15 +105,132 @@ func (m *Module) unassign(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	m.change(w, req, id, "unassign_floating_ip", func(tx store.Tx, r *Record) ([]actions.Ref, error) {
-		if r.Server == nil {
-			return nil, nil
+	m.assignment(w, req, id, "unassign_floating_ip", func(store.Tx, Record) (*int64, error) { return nil, nil })
+}
+
+// assignment runs an assign or unassign of floating IP id; target checks
+// the action against floating IP r and returns the server r ends on (nil:
+// none). The request checks target on the committed state and starts the
+// action on the floating IP, refused while it has a running action, and
+// on its current and its target server, queued behind their actions. The
+// work waits its turn, checks target again, pushes the new assignment to
+// the agent as pending and, at success, applies it to the floating IP as
+// it is then, so GET shows the change together with the action's success and a
+// failed or interrupted action changes nothing.
+func (m *Module) assignment(w http.ResponseWriter, req *http.Request, id int64, command string, target func(tx store.Tx, r Record) (*int64, error)) {
+	p, _ := api.ProjectFrom(req.Context())
+	acts := api.ActionsFrom(req.Context())
+	st := api.StoreFrom(req.Context())
+	own := actions.Ref{ID: id, Type: refType}
+	var action *actions.Action
+	err := st.Tx(func(tx store.Tx) error {
+		r, err := Load(tx, p.ID, id)
+		if err != nil {
+			return err
 		}
-		sid := *r.Server
-		if err := detach(tx, r); err != nil {
-			return nil, err
+		to, err := target(tx, r)
+		if err != nil {
+			return err
 		}
-		return []actions.Ref{{ID: sid, Type: "server"}}, nil
+		refs := []actions.Ref{own}
+		for _, sid := range []*int64{r.Server, to} {
+			if sid != nil {
+				refs = append(refs, actions.Ref{ID: *sid, Type: "server"})
+			}
+		}
+		action, err = acts.StartQueued(tx, p.ID, command, refs, []actions.Ref{own})
+		return err
+	})
+	if err != nil {
+		api.Fail(w, err)
+		return
+	}
+	actionID := action.ID
+	acts.Run(actionID, func(ctx context.Context, _ func(int)) error {
+		var to *int64
+		err := st.Tx(func(tx store.Tx) error {
+			r, err := Load(tx, p.ID, id)
+			if err != nil {
+				return err
+			}
+			to, err = target(tx, r)
+			if err != nil {
+				return err
+			}
+			r.Hlab.Pending = &Pending{Action: actionID, Server: to}
+			return put(tx, r)
+		})
+		if err != nil {
+			return actionError(err)
+		}
+		pushErr := m.d.PushAgent(ctx)
+		err = st.Tx(func(tx store.Tx) error {
+			r, err := Load(tx, p.ID, id)
+			if errors.Is(err, store.ErrNotFound) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if pd := r.Hlab.Pending; pd != nil && pd.Action == actionID {
+				r.Hlab.Pending = nil
+			}
+			if pushErr == nil {
+				// Checked in the first transaction; the action holds the
+				// floating IP and both servers since.
+				if err := m.move(tx, &r, to); err != nil {
+					return err
+				}
+			}
+			return put(tx, r)
+		})
+		return errors.Join(pushErr, err)
+	})
+	api.JSON(w, http.StatusCreated, map[string]any{"action": action})
+}
+
+// move assigns r to server to (nil: none), updating the servers'
+// public_net.floating_ips.
+func (m *Module) move(tx store.Tx, r *Record, to *int64) error {
+	if to == nil {
+		return detach(tx, r)
+	}
+	return attach(tx, r, *to)
+}
+
+// actionError turns an error of a check inside an action's work into the
+// action's error object with the code the request would have answered.
+func actionError(err error) error {
+	var fe *api.FieldError
+	if !errors.As(err, &fe) {
+		return err
+	}
+	code := fe.Code
+	if code == "" {
+		code = "invalid_input"
+	}
+	return &actions.Error{Code: code, Message: fe.Message}
+}
+
+// Recover implements resource.Recoverer: an assign or unassign interrupted
+// by a stop has been marked error, so its pending entry goes and the
+// floating IP keeps its committed server.
+func (m *Module) Recover(_ context.Context) error {
+	return m.d.Store.Tx(func(tx store.Tx) error {
+		recs, err := store.ListAll[Record](tx, Kind)
+		if err != nil {
+			return err
+		}
+		for _, r := range recs {
+			if r.Hlab.Pending == nil {
+				continue
+			}
+			r.Hlab.Pending = nil
+			if err := put(tx, r); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 
@@ -152,6 +269,30 @@ func loadServer(tx store.Tx, projectID, id int64) (servers.Record, error) {
 // be in the network zone of r's home location and not already hold r. An
 // r assigned to another server is taken from it first.
 func (m *Module) assignTo(tx store.Tx, r *Record, srv servers.Record) error {
+	if err := m.checkAssign(*r, srv); err != nil {
+		return err
+	}
+	return attach(tx, r, srv.ID)
+}
+
+// attach takes r from its server and assigns it to server sid, adding it
+// to the server's public_net.floating_ips.
+func attach(tx store.Tx, r *Record, sid int64) error {
+	if err := detach(tx, r); err != nil {
+		return err
+	}
+	r.Server = &sid
+	return servers.Update(tx, sid, func(s *servers.Record) error {
+		if !slices.Contains(s.PublicNet.FloatingIPs, r.ID) {
+			s.PublicNet.FloatingIPs = append(s.PublicNet.FloatingIPs, r.ID)
+		}
+		return nil
+	})
+}
+
+// checkAssign checks the assign rules of r to srv: the server must be in
+// the network zone of r's home location and not already hold r.
+func (m *Module) checkAssign(r Record, srv servers.Record) error {
 	if r.Server != nil && *r.Server == srv.ID {
 		return &api.FieldError{Code: "floating_ip_assigned", Message: "the floating IP is already assigned to the server"}
 	}
@@ -160,17 +301,7 @@ func (m *Module) assignTo(tx store.Tx, r *Record, srv servers.Record) error {
 	if home.NetworkZone != at.NetworkZone {
 		return &api.FieldError{Field: "server", Message: "the server is outside the network zone of the floating IP's home location"}
 	}
-	if err := detach(tx, r); err != nil {
-		return err
-	}
-	sid := srv.ID
-	r.Server = &sid
-	return servers.Update(tx, sid, func(s *servers.Record) error {
-		if !slices.Contains(s.PublicNet.FloatingIPs, r.ID) {
-			s.PublicNet.FloatingIPs = append(s.PublicNet.FloatingIPs, r.ID)
-		}
-		return nil
-	})
+	return nil
 }
 
 // detach takes r from its server's public_net.floating_ips and clears its
@@ -217,7 +348,8 @@ func (m *Module) ServerDeleted(tx store.Tx, serverID int64) error {
 }
 
 // Contribute implements resource.NetContributor: one entry per IPv4
-// floating IP, targeting the public IPv4 of its server, and its effective
+// floating IP, targeting the public IPv4 of its server (the pending one
+// while an assign or unassign runs), and its effective
 // PTR name; the target is invalid when the floating IP is unassigned or its
 // server has no public IPv4 or is being deleted. IPv6 floating IPs carry no
 // traffic.
@@ -245,8 +377,12 @@ func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 			continue
 		}
 		var target netip.Addr
-		if r.Server != nil {
-			target = targets[*r.Server]
+		srv := r.Server
+		if p := r.Hlab.Pending; p != nil {
+			srv = p.Server
+		}
+		if srv != nil {
+			target = targets[*srv]
 		}
 		doc.FloatingIPs = append(doc.FloatingIPs, agentapi.FloatingIP{IP: ip, Target: target})
 		if doc.PTR == nil {

@@ -229,6 +229,11 @@ type Internal struct {
 	// and a failed or interrupted action restores it; nil when no such
 	// action runs.
 	NetBefore *NetState `json:"net_before,omitempty"`
+	// PublicBefore is the public IPv4 or IPv6 before the primary IP action
+	// running on the server: the API shows it until the action succeeds,
+	// and a failed or interrupted action restores it; nil when no such
+	// action runs.
+	PublicBefore *PublicBefore `json:"public_before,omitempty"`
 }
 
 // Rescue is the rescue state of a server.
@@ -476,7 +481,7 @@ func (m *Module) show(tx store.Tx, r Record) (Server, error) {
 		return Server{}, err
 	}
 	s := r.Server
-	s.PublicNet = showPublic(s.PublicNet)
+	s.PublicNet = showPublic(r.shownPublicNet())
 	s.PrivateNet = r.shownPrivateNet()
 	if ok {
 		s.PlacementGroup = &g
@@ -537,7 +542,7 @@ func (m *Module) list(w http.ResponseWriter, req *http.Request) {
 		out = make([]Server, 0, len(recs))
 		for _, r := range recs {
 			s := r.Server
-			s.PublicNet = showPublic(s.PublicNet)
+			s.PublicNet = showPublic(r.shownPublicNet())
 			s.PrivateNet = r.shownPrivateNet()
 			if g, ok := members[r.ID]; ok {
 				s.PlacementGroup = &g

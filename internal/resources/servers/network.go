@@ -30,6 +30,32 @@ type NetState struct {
 	Networks   map[int64]NetInternal `json:"networks"`
 }
 
+// PublicBefore is the public IPv4 (V6 false) or IPv6 (V6 true) of a
+// server before a primary IP action changed it.
+type PublicBefore struct {
+	V6   bool  `json:"v6"`
+	IPv4 *IPv4 `json:"ipv4,omitempty"`
+	IPv6 *IPv6 `json:"ipv6,omitempty"`
+}
+
+// Apply returns pn with the entry of b's family taken from b.
+func (b PublicBefore) Apply(pn PublicNet) PublicNet {
+	if b.V6 {
+		pn.IPv6 = b.IPv6
+	} else {
+		pn.IPv4 = b.IPv4
+	}
+	return pn
+}
+
+// shownPublicNet is the public_net the API shows of r.
+func (r Record) shownPublicNet() PublicNet {
+	if b := r.Hlab.PublicBefore; b != nil {
+		return b.Apply(r.PublicNet)
+	}
+	return r.PublicNet
+}
+
 // shownPrivateNet is the private_net the API shows of r.
 func (r Record) shownPrivateNet() []PrivateNet {
 	if r.Hlab.NetBefore != nil {

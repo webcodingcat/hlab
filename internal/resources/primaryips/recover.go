@@ -2,17 +2,24 @@ package primaryips
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
-// Recover implements resource.Recoverer: every server whose public_net
-// carries a primary IP ID without record (servers created before primary
-// IPs had records) gets that record, assigned to it, with auto_delete.
-// Records that exist stay as they are, so a second run changes nothing.
-func (m *Module) Recover(_ context.Context) error {
-	return m.d.Store.Tx(func(tx store.Tx) error {
+// Recover implements resource.Recoverer. An assign or unassign
+// interrupted by a stop has been marked error, so every primary IP and
+// server it left with a saved earlier state gets that state back, and the
+// seed of such a server is rebuilt from it. Then every server whose
+// public_net carries a primary IP ID without record (servers created
+// before primary IPs had records) gets that record, assigned to it, with
+// auto_delete. Records that exist stay as they are, so a second run
+// changes nothing.
+func (m *Module) Recover(ctx context.Context) error {
+	var restored []int64
+	err := m.d.Store.Tx(func(tx store.Tx) error {
 		recs, err := store.ListAll[Record](tx, Kind)
 		if err != nil {
 			return err
@@ -20,12 +27,29 @@ func (m *Module) Recover(_ context.Context) error {
 		have := map[int64]bool{}
 		for _, r := range recs {
 			have[r.ID] = true
+			if r.Hlab.Before == nil {
+				continue
+			}
+			settlePIP(&r, true)
+			if err := put(tx, r); err != nil {
+				return err
+			}
 		}
 		srvs, err := store.ListAll[servers.Record](tx, servers.Kind)
 		if err != nil {
 			return err
 		}
 		for _, s := range srvs {
+			if s.Hlab.PublicBefore != nil {
+				if err := servers.Update(tx, s.ID, func(r *servers.Record) error {
+					settleServer(r, true)
+					return nil
+				}); err != nil {
+					return err
+				}
+				settleServer(&s, true)
+				restored = append(restored, s.ID)
+			}
 			var missing []Record
 			if v4 := s.PublicNet.IPv4; v4 != nil && v4.ID != 0 && !have[v4.ID] {
 				missing = append(missing, recovered(s, v4.ID, typeIPv4, v4.IP))
@@ -42,6 +66,16 @@ func (m *Module) Recover(_ context.Context) error {
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, id := range restored {
+		if err := m.d.Servers.RewriteSeed(ctx, m.d.Store, id); err != nil && !errors.Is(err, store.ErrNotFound) {
+			errs = append(errs, fmt.Errorf("rewrite seed of server %d: %w", id, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // recovered is the record of primary IP id with ip of family typ, assigned
