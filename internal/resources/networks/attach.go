@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/netip"
 	"slices"
@@ -50,6 +51,9 @@ func (m *Module) AttachAtCreate(tx store.Tx, projectID, _ int64, location string
 		if err != nil {
 			return nil, nil, err
 		}
+		if pn.MACAddress, err = nextMAC(tx); err != nil {
+			return nil, nil, err
+		}
 		held = append(held, pn)
 		nets[id] = ni
 	}
@@ -58,7 +62,7 @@ func (m *Module) AttachAtCreate(tx store.Tx, projectID, _ int64, location string
 
 // allocate checks the attach of a server in location, which holds the
 // networks held (with nets), to network req.Network and returns its
-// private_net entry with a new private MAC. field names the network in
+// private_net entry without MAC address. field names the network in
 // errors.
 func (m *Module) allocate(tx store.Tx, projectID int64, location string, held []servers.PrivateNet,
 	nets map[int64]servers.NetInternal, req attachRequest, field string) (servers.PrivateNet, servers.NetInternal, error) {
@@ -102,12 +106,17 @@ func (m *Module) allocate(tx store.Tx, projectID int64, location string, held []
 	if err != nil {
 		return none, servers.NetInternal{}, err
 	}
+	return servers.PrivateNet{Network: n.ID, IP: ip.String(), AliasIPs: aliases},
+		servers.NetInternal{VLAN: n.Hlab.VLAN, IPRange: rng.String()}, nil
+}
+
+// nextMAC is a new private adapter MAC.
+func nextMAC(tx store.Tx) (string, error) {
 	mac, err := servers.NextPrivateMAC(tx)
 	if err != nil {
-		return none, servers.NetInternal{}, err
+		return "", err
 	}
-	return servers.PrivateNet{Network: n.ID, IP: ip.String(), AliasIPs: aliases, MACAddress: mac.String()},
-		servers.NetInternal{VLAN: n.Hlab.VLAN, IPRange: rng.String()}, nil
+	return mac.String(), nil
 }
 
 // pickIP returns the IP for a new member of network n in network zone
@@ -242,34 +251,93 @@ func checkAliases(subnets []Subnet, gw netip.Addr, used map[netip.Addr]bool, ips
 	return out, nil
 }
 
-// serverChange runs one network action of server id on network netID: in
-// a single transaction it applies f to the server record and starts the
-// action command on server and network; the action's work syncs the
-// server's adapters, seed and agent document.
+// serverChange runs one network action of server id on network netID. The
+// request checks f on the current server record and starts the action
+// command, refused while the server has an action and queued behind the
+// actions holding the network. The work applies f again to the state the
+// earlier actions left, stores it, syncs the server's adapters, seed and
+// agent document, and only then lets the API show the new private_net. An
+// entry f adds gets its MAC address in the work. A failed sync restores
+// the previous network state and syncs again.
 func (m *Module) serverChange(w http.ResponseWriter, req *http.Request, id, netID int64, command string, f func(tx store.Tx, r *servers.Record) error) {
 	p, _ := api.ProjectFrom(req.Context())
 	acts := api.ActionsFrom(req.Context())
 	stor := api.StoreFrom(req.Context())
 	var action *actions.Action
 	err := stor.Tx(func(tx store.Tx) error {
-		if _, err := store.Get[servers.Record](tx, servers.Kind, p.ID, id); err != nil {
+		r, err := store.Get[servers.Record](tx, servers.Kind, p.ID, id)
+		if err != nil {
 			return err
 		}
-		if err := servers.Update(tx, id, func(r *servers.Record) error { return f(tx, r) }); err != nil {
+		server := actions.Ref{ID: id, Type: serverRefType}
+		if action, err = acts.StartQueued(tx, p.ID, command, []actions.Ref{server, {ID: netID, Type: refType}}, []actions.Ref{server}); err != nil {
 			return err
 		}
-		var err error
-		action, err = acts.Start(tx, p.ID, command, []actions.Ref{{ID: id, Type: serverRefType}, {ID: netID, Type: refType}})
-		return err
+		return f(tx, &r)
 	})
 	if err != nil {
 		api.Fail(w, err)
 		return
 	}
 	acts.Run(action.ID, func(ctx context.Context, _ func(int)) error {
-		return m.d.Servers.SyncAdapters(ctx, stor, id, []int64{netID})
+		err := stor.Tx(func(tx store.Tx) error {
+			return servers.Update(tx, id, func(r *servers.Record) error {
+				before := &servers.NetState{PrivateNet: append([]servers.PrivateNet{}, r.PrivateNet...), Networks: maps.Clone(r.Hlab.Networks)}
+				if err := f(tx, r); err != nil {
+					return err
+				}
+				for i := range r.PrivateNet {
+					if r.PrivateNet[i].MACAddress != "" {
+						continue
+					}
+					var err error
+					if r.PrivateNet[i].MACAddress, err = nextMAC(tx); err != nil {
+						return err
+					}
+				}
+				r.Hlab.NetBefore = before
+				return nil
+			})
+		})
+		if err != nil {
+			return workError(err)
+		}
+		serr := m.d.Servers.SyncAdapters(ctx, stor, id, []int64{netID})
+		err = stor.Tx(func(tx store.Tx) error {
+			return servers.Update(tx, id, func(r *servers.Record) error {
+				if serr != nil {
+					restoreServer(r)
+				}
+				r.Hlab.NetBefore = nil
+				return nil
+			})
+		})
+		if serr != nil {
+			if err != nil {
+				slog.Warn("restore server networks after a failed action", "server", id, "err", err)
+			}
+			if err := m.d.Servers.SyncAdapters(ctx, stor, id, []int64{netID}); err != nil {
+				slog.Warn("sync adapters after a failed network action", "server", id, "err", err)
+			}
+			return serr
+		}
+		return err
 	})
 	api.JSON(w, http.StatusCreated, map[string]any{"action": action})
+}
+
+// workError is err of an action's work as Hetzner's error object: a field
+// error keeps its code and message.
+func workError(err error) error {
+	var fe *api.FieldError
+	if !errors.As(err, &fe) {
+		return err
+	}
+	code := fe.Code
+	if code == "" {
+		code = "invalid_input"
+	}
+	return &actions.Error{Code: code, Message: fe.Message}
 }
 
 // attachToNetwork attaches a server to a network (running or not).

@@ -224,6 +224,11 @@ type Internal struct {
 	// Adapters are the MACs of the private adapters the VM has, so a
 	// detach knows which adapter to remove.
 	Adapters []string `json:"adapters,omitempty"`
+	// NetBefore is the network state before the network action running on
+	// the server: the API shows its private_net until the action succeeds,
+	// and a failed or interrupted action restores it; nil when no such
+	// action runs.
+	NetBefore *NetState `json:"net_before,omitempty"`
 }
 
 // Rescue is the rescue state of a server.
@@ -472,6 +477,7 @@ func (m *Module) show(tx store.Tx, r Record) (Server, error) {
 	}
 	s := r.Server
 	s.PublicNet = showPublic(s.PublicNet)
+	s.PrivateNet = r.shownPrivateNet()
 	if ok {
 		s.PlacementGroup = &g
 	}
@@ -532,6 +538,7 @@ func (m *Module) list(w http.ResponseWriter, req *http.Request) {
 		for _, r := range recs {
 			s := r.Server
 			s.PublicNet = showPublic(s.PublicNet)
+			s.PrivateNet = r.shownPrivateNet()
 			if g, ok := members[r.ID]; ok {
 				s.PlacementGroup = &g
 			}

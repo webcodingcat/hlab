@@ -24,6 +24,20 @@ type NetInternal struct {
 	IPRange string `json:"ip_range"` // gateway = first host address
 }
 
+// NetState is the network state of a server.
+type NetState struct {
+	PrivateNet []PrivateNet          `json:"private_net"`
+	Networks   map[int64]NetInternal `json:"networks"`
+}
+
+// shownPrivateNet is the private_net the API shows of r.
+func (r Record) shownPrivateNet() []PrivateNet {
+	if r.Hlab.NetBefore != nil {
+		return r.Hlab.NetBefore.PrivateNet
+	}
+	return r.PrivateNet
+}
+
 // PublicNetRequest is the public_net of a server create; IPv4 or IPv6 0
 // means make a new primary IP.
 type PublicNetRequest struct {
