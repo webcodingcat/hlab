@@ -161,12 +161,12 @@ Added after the tests were written:
   - Size: ~80 lines in 2 files
   - [x] `internal/cloud/lifecycle.go`: `StopOverrideFile`, `haltBehaviour`; `halt` uses it: "off" skips halting the servers, "shutdown" overrides the configured behaviour (60 s per guest as today); the file is deleted when read
 
-- [ ] 12-05 Uninstall orchestration
+- [x] 12-05 Uninstall orchestration
   - Wave: 2 | Depends on: 12-02 | Review: alone
   - Requirements: INST-04, INST-05 | Tests: internal/uninstall/uninstall_test.go
   - Reads: ARCHITECTURE "Installer", "Profiles", "Files and formats"; CONTEXT.md INST-04, INST-05; DECISIONS "Release and dev profile side by side"; `internal/discard/discard.go` as a pattern
   - Size: ~300 lines in 2 files
-  - [ ] `internal/uninstall/uninstall.go`: `Options`, `Run`, `ProfileVM`, `RemoveFiles`, `RemoveUserData` as in Interfaces; data_folder from `settings.Load(<DataDir>\settings.toml)` read before anything is deleted (default when unreadable); a Hyper-V that is not installed lists no VMs (no error); WSL `ErrNoConsoleUser` and distro failures become `Result.Notes`
+  - [x] `internal/uninstall/uninstall.go`: `Options`, `Run`, `ProfileVM`, `RemoveFiles`, `RemoveUserData` as in Interfaces; data_folder from `settings.Load(<DataDir>\settings.toml)` read before anything is deleted (default when unreadable); a Hyper-V that is not installed lists no VMs (no error); WSL `ErrNoConsoleUser` and distro failures become `Result.Notes`
 
 - [x] 12-06 Installer build tool and task
   - Wave: 1 | Depends on: - | Review: alone
