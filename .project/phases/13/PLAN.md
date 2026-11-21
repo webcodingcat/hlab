@@ -129,15 +129,15 @@ a group is split per client).
   - [x] `internal/actions/actions_test.go`: the rows of the test map.
   - [x] `internal/api/deviations.go`, `docs/development/api-coverage.md`, `docs/deviations.md`: one deviation per queuing endpoint of the table above ("a second action on the same network/load balancer/server waits as running instead of answering 423 locked"); the user page says it in prose under the matching topics without routes (DOC-03 keeps holding).
 
-- [ ] 13-03 Networks: queue and effect at success
+- [x] 13-03 Networks: queue and effect at success
   - Wave: 2 | Depends on: 13-02 | Review: alone
   - Requirements: CLI-02 | Tests: internal/resources/networks/networks_test.go
   - Reads: CONTEXT.md "Actions"; Interfaces "internal/actions"; internal/resources/networks/attach.go, actions.go
   - Size: ~220 lines in 3 files
   - Adjusts: tests in networks_test.go or attach_test.go that expect 423 `locked` for a queuing action (none found by grep at planning)
-  - [ ] `attach.go`: server `attach_to_network`, `detach_from_network`, `change_alias_ips` and the LB attach path through `StartQueued` (refuse server or LB, queue network); the server's `private_net` and the network's `servers` change only when the work commits at `success`, checked against the state after the earlier actions.
-  - [ ] `actions.go`: `add_subnet`, `delete_subnet`, `add_route`, `delete_route` queue on the network; subnets and routes appear on GET at `success`; `change_ip_range`, `change_protection` keep refusing.
-  - [ ] `networks_test.go`: the rows of the test map.
+  - [x] `attach.go`: server `attach_to_network`, `detach_from_network`, `change_alias_ips` and the LB attach path through `StartQueued` (refuse server or LB, queue network); the server's `private_net` and the network's `servers` change only when the work commits at `success`, checked against the state after the earlier actions.
+  - [x] `actions.go`: `add_subnet`, `delete_subnet`, `add_route`, `delete_route` queue on the network; subnets and routes appear on GET at `success`; `change_ip_range`, `change_protection` keep refusing.
+  - [x] `networks_test.go`: the rows of the test map.
 
 - [x] 13-04 Load balancers: queue and effect at success
   - Wave: 2 | Depends on: 13-02 | Review: alone

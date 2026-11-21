@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-21 Network actions keep the earlier state and restore it
+
+- Type: decision
+- Phase: phase 13
+- What: network attach, detach, alias, subnet and route actions store their change at once, keep the earlier state in `_hlab.net_before` (servers) or `_hlab.shown` (networks), which GET shows while the action runs, and restore it on error and at cloud start (networks is a `resource.Recoverer`; a VM adapter an interrupted attach already added stays until that server's next network action).
+- Why: adapter sync and agent push already read the stored change, so restoring covers the error and restart cases with a smaller change than committing at success.
+- Cost of change: low
+
 ## 2026-11-21 Queued load balancer changes wait as pending state
 
 - Type: decision
