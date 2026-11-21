@@ -73,6 +73,11 @@ holds at most 16 volumes, an attached volume cannot be deleted, and a
 volume that does not fit into the free disk space is refused. As at
 Hetzner, the filesystem is not grown for you.
 
+Where Hetzner answers `locked` because the server is busy, attaching or
+detaching a volume waits instead: the action shows as `running` and is
+carried out after the earlier actions on that server, in the order they
+were sent. An action on the volume itself still answers `locked`.
+
 ## Networks, primary and floating IPs
 
 There is no DHCP server: a server's private network is set up by
@@ -81,6 +86,14 @@ HLab helper in the guest. The MTU is 1500 (Hetzner: 1450), and private
 adapters have other MAC addresses than at Hetzner, so tools that look for
 Hetzner's MACs, such as hc-utils, do not find them. vSwitch subnets are
 not supported. The gateway is the first address of the network range.
+
+Attaching a server or load balancer to a network, detaching it, changing
+alias IPs and adding or deleting subnets and routes do not answer
+`locked` while another of these actions runs on the same network, as
+Hetzner does: the action shows as `running` and is carried out after the
+earlier ones, in the order they were sent. Assigning and unassigning
+primary and floating IPs likewise wait for other actions on the server.
+Changing the network's range or protection still answers `locked`.
 
 Primary and floating IPv4 addresses come from the local public range. A
 floating IPv4 reaches its server through the server's public IPv4; as at
@@ -96,6 +109,11 @@ effect. A firewall shows as applied at once, never as pending. Hetzner's
 limits of 500 effective rules per firewall and 50 firewalls per project
 are not enforced, while the limits per rule list and per server are.
 Addresses in rules must be exact network prefixes such as `10.0.0.0/24`.
+
+Applying a firewall to servers or removing it waits for other actions on
+those servers instead of answering `locked`, and the firewall actions of
+a newly created server wait for other actions on the same firewall, so
+servers created at the same time with one firewall all succeed.
 
 ## DNS and reverse DNS
 
@@ -122,6 +140,11 @@ carries no traffic. IP targets may be almost any IPv4 address, servers
 of the cloud included, not only your dedicated servers. The PROXY protocol is sent in
 version 2, HTTPS health checks do not verify the target's certificate,
 and a load balancer joins at most one network.
+
+Adding and removing targets and adding, changing and deleting services
+wait for other actions on the load balancer and its target servers
+instead of answering `locked`; they show as `running` until their turn
+comes, in the order they were sent.
 
 Managed certificates are issued by the HLab CA instead of Let's Encrypt,
 only for domains that lie in a DNS zone of the project. They are valid

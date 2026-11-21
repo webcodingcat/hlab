@@ -398,5 +398,101 @@ func Deviations() []Deviation {
 			Endpoint:    "POST /certificates",
 			Description: "uploaded certificates are not checked for expiry or chain order; an unreadable PEM or a key that does not match answers 422 invalid_input",
 		},
+		{
+			Endpoint:    "POST /servers/{id}/actions/attach_to_network",
+			Description: "a second action on the same network waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /servers/{id}/actions/detach_from_network",
+			Description: "a second action on the same network waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /servers/{id}/actions/change_alias_ips",
+			Description: "a second action on the same network waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/attach_to_network",
+			Description: "a second action on the same network waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/detach_from_network",
+			Description: "a second action on the same network waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /networks/{id}/actions/add_subnet",
+			Description: "a second action on the same network waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /networks/{id}/actions/delete_subnet",
+			Description: "a second action on the same network waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /networks/{id}/actions/add_route",
+			Description: "a second action on the same network waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /networks/{id}/actions/delete_route",
+			Description: "a second action on the same network waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/add_target",
+			Description: "a second action on the same load balancer or target server waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/remove_target",
+			Description: "a second action on the same load balancer or target server waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/add_service",
+			Description: "a second action on the same load balancer or target server waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/update_service",
+			Description: "a second action on the same load balancer or target server waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /load_balancers/{id}/actions/delete_service",
+			Description: "a second action on the same load balancer or target server waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /volumes/{id}/actions/attach",
+			Description: "a second action on the same server waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /volumes/{id}/actions/detach",
+			Description: "a second action on the same server waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /volumes",
+			Description: "the attach action of a create with server waits as running behind a second action on the same server instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /floating_ips/{id}/actions/assign",
+			Description: "a second action on the same server waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /floating_ips/{id}/actions/unassign",
+			Description: "a second action on the same server waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /primary_ips/{id}/actions/assign",
+			Description: "a second action on the same server waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /primary_ips/{id}/actions/unassign",
+			Description: "a second action on the same server waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /firewalls/{id}/actions/apply_to_resources",
+			Description: "a second action on the same server waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /firewalls/{id}/actions/remove_from_resources",
+			Description: "a second action on the same server waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /servers",
+			Description: "the firewall actions of a create with firewalls wait as running behind a second action on the same firewall instead of answering 423 locked",
+		},
 	}
 }

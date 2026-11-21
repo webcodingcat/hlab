@@ -1,6 +1,8 @@
 // Package actions keeps Hetzner actions and runs their work in a worker
-// pool. A handler creates the action with Start inside its transaction and
-// hands the work to Run after the commit.
+// pool. A handler creates the action with Start or StartQueued inside its
+// transaction and hands the work to Run after the commit. Run starts the
+// work only after every earlier running action that shares a resource with
+// it has finished, so actions on one resource work in order of creation.
 package actions
 
 import (
@@ -41,8 +43,8 @@ type Error struct {
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
 
-// ErrLocked is returned by Start when a referenced resource has a running
-// action. Handlers answer it with Hetzner's 423 "locked".
+// ErrLocked is returned by Start, StartAll and StartQueued when a resource
+// they refuse on has a running action. Handlers answer it with Hetzner's 423 "locked".
 var ErrLocked = &Error{Code: "locked", Message: "the resource is locked by a running action"}
 
 // ErrProtected is returned for an operation refused by the resource's
@@ -104,6 +106,19 @@ func (m *Manager) failInterrupted() error {
 // tx. It returns ErrLocked if one of resources has a running action.
 func (m *Manager) Start(tx store.Tx, projectID int64, command string, resources []Ref) (*Action, error) {
 	if err := checkLocks(tx, resources); err != nil {
+		return nil, err
+	}
+	return create(tx, projectID, Spec{Command: command, Resources: resources})
+}
+
+// StartQueued creates a running action of projectID for command on
+// resources in tx. It returns ErrLocked if a running action (one that
+// still waits in the queue included) references one of refuse; refuse is
+// a subset of resources and names the resources whose own state the
+// action changes. A resource of resources that is not in refuse never
+// refuses: the action queues behind the actions holding it.
+func (m *Manager) StartQueued(tx store.Tx, projectID int64, command string, resources, refuse []Ref) (*Action, error) {
+	if err := checkLocks(tx, refuse); err != nil {
 		return nil, err
 	}
 	return create(tx, projectID, Spec{Command: command, Resources: resources})
@@ -278,9 +293,12 @@ func fromStore(r store.Action) (*Action, error) {
 }
 
 // Run runs fn for action id in the worker pool and records its progress
-// and result. It returns at once.
+// and result. It returns at once. The work waits, without holding a
+// worker, until every running action with a lower ID that shares a
+// resource with action id has finished.
 func (m *Manager) Run(id int64, fn func(ctx context.Context, progress func(int)) error) {
 	go func() {
+		m.waitTurn(id)
 		m.sem <- struct{}{}
 		defer func() { <-m.sem }()
 		ctx := context.Background()
@@ -302,6 +320,61 @@ func (m *Manager) Run(id int64, fn func(ctx context.Context, progress func(int))
 		m.finished = make(chan struct{})
 		m.mu.Unlock()
 	}()
+}
+
+// waitTurn returns once no running action with a lower ID than id shares a
+// resource with action id. A store error ends the wait, so the work runs
+// rather than hangs.
+func (m *Manager) waitTurn(id int64) {
+	for {
+		m.mu.Lock()
+		finished := m.finished
+		m.mu.Unlock()
+		ahead, err := m.ahead(id)
+		if err != nil {
+			slog.Error("wait for earlier actions", "id", id, "err", err)
+			return
+		}
+		if !ahead {
+			return
+		}
+		<-finished
+	}
+}
+
+// ahead reports whether a running action with a lower ID than id shares a
+// resource with action id.
+func (m *Manager) ahead(id int64) (bool, error) {
+	found := false
+	err := m.st.Tx(func(tx store.Tx) error {
+		own, err := store.GetAction(tx, id)
+		if err != nil {
+			return err
+		}
+		a, err := fromStore(own)
+		if err != nil {
+			return err
+		}
+		running, err := store.RunningActions(tx)
+		if err != nil {
+			return err
+		}
+		for _, r := range running {
+			if r.ID >= id {
+				break
+			}
+			other, err := fromStore(r)
+			if err != nil {
+				return err
+			}
+			if slices.ContainsFunc(other.Resources, func(ref Ref) bool { return slices.Contains(a.Resources, ref) }) {
+				found = true
+				return nil
+			}
+		}
+		return nil
+	})
+	return found, err
 }
 
 // WaitIdle returns when projectID has no running action, or ctx's error
