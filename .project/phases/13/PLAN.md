@@ -310,12 +310,12 @@ a group is split per client).
   - Size: ~220 lines in 1 file
   - [x] Row `CLI-04/hcloud` (2 slots, own project): network with subnet, firewall allowing 22, two cx23 Ubuntu servers in the network with the firewall, LB with both as private targets and a TCP service on a free listen port to 22, volume and floating IP on server 1, zone `<runID>-hcloud.test` with an A record per server; SSH from host and WSL2 to both public IPv4s and once through the LB's service; then every resource deleted with hcloud and `assertProjectEmpty`.
 
-- [ ] 13-26 Example environment with OpenTofu
+- [x] 13-26 Example environment with OpenTofu
   - Wave: 3 | Depends on: 13-01, 13-03, 13-04, 13-05, 13-06, 13-07 | Review: alone | e2e
   - Requirements: CLI-04 | Tests: test/e2e/clients_example_tofu_test.go
   - Reads: CONTEXT.md "CLI-04"; RESEARCH.md §4 (OpenTofu call order, parallelism)
   - Size: ~220 lines in 1 file
-  - [ ] Row `CLI-04/tofu` (2 slots, own project): the same environment as one `main.tf` with default parallelism, `apply`, the same SSH checks, `destroy` and `assertProjectEmpty`.
+  - [x] Row `CLI-04/tofu` (2 slots, own project): the same environment as one `main.tf` with default parallelism, `apply`, the same SSH checks, `destroy` and `assertProjectEmpty`.
 
 - [ ] 13-27 Example environment with Ansible
   - Wave: 3 | Depends on: 13-01, 13-03, 13-04, 13-05, 13-06, 13-07 | Review: alone | e2e
