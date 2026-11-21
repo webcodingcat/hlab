@@ -42,6 +42,7 @@ Who refuses and who queues (CONTEXT "Actions"):
 | floating IP `assign`, `unassign` | floating IP | server |
 | primary IP `assign`, `unassign` | primary IP | server |
 | firewall `apply_to_resources`, `remove_from_resources`, and the firewall actions of `POST /servers` with `firewalls` | firewall (only for the firewall's own actions) | servers, firewall (from server create) |
+| zone RRSet create, delete and all RRSet actions | - | zone |
 | everything else (power, rebuild, change_type, change_protection, delete, change_ip_range, change_algorithm, change_type of the LB, set_rules ...) | all refs, as today | - |
 
 ### test/e2e client matrix (plan 13-01)
@@ -288,12 +289,12 @@ a group is split per client).
   - Size: ~300 lines in 1 file
   - [x] Rows `CLI-01/certificates`, `CLI-02/certificates`, `CLI-03/certificates`: an uploaded certificate (self-signed, made in Go in the row's temp folder) and a managed certificate for a name in a zone `<runID>-<client>-cert.test` the same client creates; describe, list, update, labels, `retry` (hcloud), delete; tofu `hcloud_uploaded_certificate`, `hcloud_managed_certificate`, data sources `hcloud_certificate(s)`; Ansible `certificate`, `certificate_info`; zone and certificates gone at the end.
 
-- [ ] 13-23 Zones with all clients
+- [x] 13-23 Zones with all clients
   - Wave: 2 | Depends on: 13-01 | Review: alone | e2e
   - Requirements: CLI-01, CLI-02, CLI-03 | Tests: test/e2e/clients_zones_test.go
   - Reads: RESEARCH.md §1 (zone, zone rrset), §2 (`hcloud_zone`, `hcloud_zone_rrset`, `hcloud_zone_record`), §3; REQUIREMENTS DNS-01
   - Size: ~380 lines in 1 file
-  - [ ] Rows `CLI-01/zones`: zone create, change-ttl, protection, add/set/remove-records, import-zonefile, export-zonefile, rrset create, change-ttl, add/set/remove-records, labels, protection, delete; `CLI-02/zones`: `hcloud_zone`, `hcloud_zone_rrset`, `hcloud_zone_record`, updates, data sources `hcloud_zone(s)`, `hcloud_zone_rrset(s)`; `CLI-03/zones`: `zone`, `zone_info`, `zone_rrset`, `zone_rrset_info`; zone names `<runID>-<client>.test`.
+  - [x] Rows `CLI-01/zones`: zone create, change-ttl, protection, add/set/remove-records, import-zonefile, export-zonefile, rrset create, change-ttl, add/set/remove-records, labels, protection, delete; `CLI-02/zones`: `hcloud_zone`, `hcloud_zone_rrset`, `hcloud_zone_record`, updates, data sources `hcloud_zone(s)`, `hcloud_zone_rrset(s)`; `CLI-03/zones`: `zone`, `zone_info`, `zone_rrset`, `zone_rrset_info`; zone names `<runID>-<client>.test`.
 
 - [x] 13-24 Ansible inventory
   - Wave: 2 | Depends on: 13-01 | Review: alone | e2e

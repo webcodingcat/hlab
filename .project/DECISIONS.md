@@ -135,7 +135,7 @@ taken with the approval of the spec or by an answer from the user.
 
 - Type: decision
 - Phase: phase 13
-- What: network attach/detach and `change_alias_ips` queue on the network, subnet and route actions on the network, LB target and service actions on the LB and its target servers, volume attach/detach and floating/primary IP assign/unassign on the server, firewall apply/remove on the servers and a server create's firewall actions on the firewall; all others refuse on every ref as before (table in phases/13/PLAN.md "Interfaces", deviation in deviations.md and `api.Deviations()`).
+- What: network attach/detach and `change_alias_ips` queue on the network, subnet and route actions on the network, LB target and service actions on the LB and its target servers, volume attach/detach and floating/primary IP assign/unassign on the server, firewall apply/remove on the servers, a server create's firewall actions on the firewall, and RRSet create, delete and actions on the zone (zone-level actions keep refusing); all others refuse on every ref as before (table in phases/13/PLAN.md "Interfaces", deviation in deviations.md and `api.Deviations()`).
 - Why: OpenTofu creates sibling resources in parallel and does not retry on `locked` (phases/13/RESEARCH.md §4), while Hetzner accepts these configurations.
 - Cost of change: medium
 
