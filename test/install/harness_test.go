@@ -729,9 +729,14 @@ func selectDistro(ctx context.Context) (string, error) {
 	if d := strings.TrimSpace(os.Getenv(distroEnv)); d != "" {
 		return d, nil
 	}
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, "wsl.exe", "--list", "--quiet")
 	cmd.Env = append(os.Environ(), "WSL_UTF8=1")
 	out, err := cmd.Output()
+	if ctx.Err() != nil {
+		return "", errors.New("wsl.exe --list --quiet did not finish in time (limit 1m0s)")
+	}
 	if err != nil {
 		return "", fmt.Errorf("wsl.exe --list --quiet: %w", err)
 	}
