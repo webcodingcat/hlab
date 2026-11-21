@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-21 The OpenTofu LB row does not read services from the data source
+
+- Type: decision
+- Phase: phase 13
+- What: CLI-02/load_balancers reads `data.hcloud_load_balancer` by its targets and algorithm, not by its `service` list, and the hcloud LB row waits for `delete-service`, which does not wait for its action.
+- Why: provider 1.70.2 declares `service` in the data source schema but never sets it (internal/loadbalancer/resource.go:421-450), on Hetzner as on hlab; hcloud v1.70.2 delete-service never calls WaitForActions.
+- Cost of change: low
+
 ## 2026-11-21 Rules of an unapplied firewall succeed at once
 
 - Type: decision

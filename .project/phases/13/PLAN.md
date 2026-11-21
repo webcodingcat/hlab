@@ -267,12 +267,12 @@ a group is split per client).
   - Size: ~220 lines in 1 file
   - [x] Fixture row `CLI-01/load_balancers`: create, attach-to-network (network of the row), add-service (tcp and http), update-service, add-target (the fixture server with `--use-private-ip` after attaching it, a label selector, an IP), remove-target, delete-service, change-algorithm, change-type, disable/enable-public-interface, set-rdns, metrics, update, labels, protection, detach-from-network, delete.
 
-- [ ] 13-20 Load balancers with OpenTofu
+- [x] 13-20 Load balancers with OpenTofu
   - Wave: 3 | Depends on: 13-01, 13-04 | Review: alone | e2e
   - Requirements: CLI-02 | Tests: test/e2e/clients_lb_tofu_test.go
   - Reads: RESEARCH.md §2 (load balancer resources, call order), §4
   - Size: ~220 lines in 1 file
-  - [ ] Fixture row `CLI-02/load_balancers`: `hcloud_load_balancer`, `hcloud_load_balancer_network`, two `hcloud_load_balancer_service` and two `hcloud_load_balancer_target` (server with private IP, label selector) created in parallel, updates of type, algorithm and a service, data sources `hcloud_load_balancer(s)`, `hcloud_load_balancer_type(s)`, destroy.
+  - [x] Fixture row `CLI-02/load_balancers`: `hcloud_load_balancer`, `hcloud_load_balancer_network`, two `hcloud_load_balancer_service` and two `hcloud_load_balancer_target` (server with private IP, label selector) created in parallel, updates of type, algorithm and a service, data sources `hcloud_load_balancer(s)`, `hcloud_load_balancer_type(s)`, destroy.
 
 - [ ] 13-21 Load balancers with Ansible
   - Wave: 3 | Depends on: 13-01, 13-04 | Review: alone | e2e
