@@ -3,6 +3,7 @@ package primaryips
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/netip"
 
@@ -110,17 +111,24 @@ func (m *Module) assign(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	m.change(w, req, id, "assign_primary_ip", func(tx store.Tx, r *Record) ([]actions.Ref, error) {
-		srv, err := loadServer(tx, r.Hlab.ProjectID, body.AssigneeID)
-		if err != nil {
-			return nil, err
-		}
-		if err := assignTo(tx, r, srv); err != nil {
-			return nil, err
-		}
-		return []actions.Ref{{ID: srv.ID, Type: "server"}}, nil
-	})
+	m.assignment(w, req, id, "assign_primary_ip",
+		func(Record) (int64, error) { return body.AssigneeID, nil },
+		func(r *Record, s *servers.Record) error {
+			if s == nil {
+				return &api.FieldError{Field: "assignee_id", Message: "server not found"}
+			}
+			if err := checkAssign(*r, *s); err != nil {
+				return err
+			}
+			sid := s.ID
+			r.AssigneeID = &sid
+			setPublic(&s.PublicNet, *r)
+			return nil
+		})
 }
+
+// errLBHeld answers an unassign of a primary IP a load balancer holds.
+var errLBHeld = &api.FieldError{Message: "a primary IP held by a load balancer is released by deleting the load balancer"}
 
 // unassign takes the primary IP from its stopped server; an unassigned
 // primary IP stays as it is.
@@ -129,32 +137,190 @@ func (m *Module) unassign(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	m.change(w, req, id, "unassign_primary_ip", func(tx store.Tx, r *Record) ([]actions.Ref, error) {
-		if r.AssigneeID == nil {
-			return nil, nil
-		}
-		if heldByLB(*r) {
-			return nil, &api.FieldError{Message: "a primary IP held by a load balancer is released by deleting the load balancer"}
-		}
-		sid := *r.AssigneeID
-		err := servers.Update(tx, sid, func(s *servers.Record) error {
-			if s.Status != servers.StatusOff {
-				return errNotStopped
+	m.assignment(w, req, id, "unassign_primary_ip",
+		func(r Record) (int64, error) {
+			switch {
+			case r.AssigneeID == nil:
+				return 0, nil
+			case heldByLB(r):
+				return 0, errLBHeld
 			}
-			if r.Type == typeIPv4 && s.PublicNet.IPv4 != nil && s.PublicNet.IPv4.ID == r.ID {
-				s.PublicNet.IPv4 = nil
+			return *r.AssigneeID, nil
+		},
+		func(r *Record, s *servers.Record) error {
+			switch {
+			case r.AssigneeID == nil:
+				return nil
+			case heldByLB(*r):
+				return errLBHeld
 			}
-			if r.Type == typeIPv6 && s.PublicNet.IPv6 != nil && s.PublicNet.IPv6.ID == r.ID {
-				s.PublicNet.IPv6 = nil
+			if s != nil && s.ID == *r.AssigneeID {
+				if s.Status != servers.StatusOff {
+					return errNotStopped
+				}
+				if r.Type == typeIPv4 && s.PublicNet.IPv4 != nil && s.PublicNet.IPv4.ID == r.ID {
+					s.PublicNet.IPv4 = nil
+				}
+				if r.Type == typeIPv6 && s.PublicNet.IPv6 != nil && s.PublicNet.IPv6.ID == r.ID {
+					s.PublicNet.IPv6 = nil
+				}
 			}
+			r.AssigneeID = nil
 			return nil
 		})
-		if err != nil && !errors.Is(err, store.ErrNotFound) {
-			return nil, err
+}
+
+// assignment runs an assign or unassign of primary IP id on the server
+// serverOf returns (0: none); f checks the action and changes primary IP r
+// and server s (nil when it is gone) in memory. The request checks f on
+// the committed state and starts the action on the primary IP, refused
+// while it has a running action, and on the server, queued behind its
+// actions. The work waits its turn, applies f to the state the earlier
+// actions left and stores it with the earlier assignment and public IP,
+// which the API shows until the action succeeds; then it rebuilds the
+// server's seed and the agent document. A failed rebuild restores the
+// earlier state and rebuilds again; an interrupted one is restored by
+// Recover.
+func (m *Module) assignment(w http.ResponseWriter, req *http.Request, id int64, command string,
+	serverOf func(r Record) (int64, error), f func(r *Record, s *servers.Record) error) {
+	p, _ := api.ProjectFrom(req.Context())
+	acts := api.ActionsFrom(req.Context())
+	st := api.StoreFrom(req.Context())
+	own := actions.Ref{ID: id, Type: refType}
+	var action *actions.Action
+	var sid int64
+	err := st.Tx(func(tx store.Tx) error {
+		r, err := Load(tx, p.ID, id)
+		if err != nil {
+			return err
 		}
-		r.AssigneeID = nil
-		return []actions.Ref{{ID: sid, Type: "server"}}, nil
+		if sid, err = serverOf(r); err != nil {
+			return err
+		}
+		refs := []actions.Ref{own}
+		var s *servers.Record
+		if sid != 0 {
+			refs = append(refs, actions.Ref{ID: sid, Type: "server"})
+			srv, err := store.Get[servers.Record](tx, servers.Kind, p.ID, sid)
+			switch {
+			case err == nil:
+				s = &srv
+			case !errors.Is(err, store.ErrNotFound):
+				return err
+			}
+		}
+		if err := f(&r, s); err != nil {
+			return err
+		}
+		action, err = acts.StartQueued(tx, p.ID, command, refs, []actions.Ref{own})
+		return err
 	})
+	if err != nil {
+		api.Fail(w, err)
+		return
+	}
+	acts.Run(action.ID, func(ctx context.Context, _ func(int)) error {
+		err := st.Tx(func(tx store.Tx) error {
+			r, err := Load(tx, p.ID, id)
+			if err != nil {
+				return err
+			}
+			before := &Before{AssigneeID: r.AssigneeID}
+			if sid != 0 {
+				err = servers.Update(tx, sid, func(s *servers.Record) error {
+					b := &servers.PublicBefore{V6: r.Type == typeIPv6, IPv4: s.PublicNet.IPv4, IPv6: s.PublicNet.IPv6}
+					if err := f(&r, s); err != nil {
+						return err
+					}
+					s.Hlab.PublicBefore = b
+					return nil
+				})
+			}
+			if sid == 0 || errors.Is(err, store.ErrNotFound) {
+				err = f(&r, nil)
+			}
+			if err != nil {
+				return err
+			}
+			r.Hlab.Before = before
+			return put(tx, r)
+		})
+		if err != nil {
+			return actionError(err)
+		}
+		serr := m.applyTo(ctx, sid)
+		err = st.Tx(func(tx store.Tx) error { return settle(tx, p.ID, id, sid, serr != nil) })
+		if serr != nil {
+			if err != nil {
+				slog.Warn("restore primary IP after a failed action", "primary_ip", id, "err", err)
+			}
+			if err := m.applyTo(ctx, sid); err != nil {
+				slog.Warn("rebuild server after a failed primary IP action", "server", sid, "err", err)
+			}
+			return serr
+		}
+		return err
+	})
+	api.JSON(w, http.StatusCreated, map[string]any{"action": action})
+}
+
+// settle ends the assign or unassign of primary IP id on server sid (0:
+// none): the earlier state is dropped, or put back when restore is set.
+// Records gone meanwhile are no error.
+func settle(tx store.Tx, projectID, id, sid int64, restore bool) error {
+	r, err := Load(tx, projectID, id)
+	switch {
+	case err == nil:
+		settlePIP(&r, restore)
+		if err := put(tx, r); err != nil {
+			return err
+		}
+	case !errors.Is(err, store.ErrNotFound):
+		return err
+	}
+	if sid == 0 {
+		return nil
+	}
+	err = servers.Update(tx, sid, func(s *servers.Record) error {
+		settleServer(s, restore)
+		return nil
+	})
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	return err
+}
+
+// settlePIP drops the earlier assignment of r, put back first when restore
+// is set.
+func settlePIP(r *Record, restore bool) {
+	if b := r.Hlab.Before; b != nil && restore {
+		r.AssigneeID = b.AssigneeID
+	}
+	r.Hlab.Before = nil
+}
+
+// settleServer drops the earlier public IP of s, put back first when
+// restore is set.
+func settleServer(s *servers.Record, restore bool) {
+	if b := s.Hlab.PublicBefore; b != nil && restore {
+		s.PublicNet = b.Apply(s.PublicNet)
+	}
+	s.Hlab.PublicBefore = nil
+}
+
+// actionError turns an error of a check inside an action's work into the
+// action's error object with the code the request would have answered.
+func actionError(err error) error {
+	var fe *api.FieldError
+	if !errors.As(err, &fe) {
+		return err
+	}
+	code := fe.Code
+	if code == "" {
+		code = "invalid_input"
+	}
+	return &actions.Error{Code: code, Message: fe.Message}
 }
 
 var errNotStopped = &api.FieldError{Code: "server_not_stopped", Message: "the server must be powered off"}
@@ -172,6 +338,19 @@ func loadServer(tx store.Tx, projectID, id int64) (servers.Record, error) {
 // assignTo checks Hetzner's assign rules and assigns r to srv, setting the
 // server's public_net entry of r's family.
 func assignTo(tx store.Tx, r *Record, srv servers.Record) error {
+	if err := checkAssign(*r, srv); err != nil {
+		return err
+	}
+	sid := srv.ID
+	r.AssigneeID = &sid
+	return servers.Update(tx, sid, func(s *servers.Record) error {
+		setPublic(&s.PublicNet, *r)
+		return nil
+	})
+}
+
+// checkAssign checks Hetzner's assign rules of r to srv.
+func checkAssign(r Record, srv servers.Record) error {
 	switch {
 	case r.AssigneeID != nil:
 		return &api.FieldError{Code: "primary_ip_already_assigned", Message: "the primary IP is already assigned"}
@@ -184,12 +363,7 @@ func assignTo(tx store.Tx, r *Record, srv servers.Record) error {
 	case r.Type == typeIPv6 && srv.PublicNet.IPv6 != nil:
 		return &api.FieldError{Code: "server_has_ipv6", Message: "the server already has a public IPv6"}
 	}
-	sid := srv.ID
-	r.AssigneeID = &sid
-	return servers.Update(tx, sid, func(s *servers.Record) error {
-		setPublic(&s.PublicNet, *r)
-		return nil
-	})
+	return nil
 }
 
 // setPublic puts r with its reverse DNS entries into the public_net entry

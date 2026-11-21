@@ -7,10 +7,14 @@ import (
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
-// Recover implements resource.Recoverer: every server whose public_net
-// carries a primary IP ID without record (servers created before primary
-// IPs had records) gets that record, assigned to it, with auto_delete.
-// Records that exist stay as they are, so a second run changes nothing.
+// Recover implements resource.Recoverer. An assign or unassign
+// interrupted by a stop has been marked error, so every primary IP and
+// server it left with a saved earlier state gets that state back; the seed
+// follows at the server's next primary IP action. Then every server whose
+// public_net carries a primary IP ID without record (servers created
+// before primary IPs had records) gets that record, assigned to it, with
+// auto_delete. Records that exist stay as they are, so a second run
+// changes nothing.
 func (m *Module) Recover(_ context.Context) error {
 	return m.d.Store.Tx(func(tx store.Tx) error {
 		recs, err := store.ListAll[Record](tx, Kind)
@@ -20,12 +24,28 @@ func (m *Module) Recover(_ context.Context) error {
 		have := map[int64]bool{}
 		for _, r := range recs {
 			have[r.ID] = true
+			if r.Hlab.Before == nil {
+				continue
+			}
+			settlePIP(&r, true)
+			if err := put(tx, r); err != nil {
+				return err
+			}
 		}
 		srvs, err := store.ListAll[servers.Record](tx, servers.Kind)
 		if err != nil {
 			return err
 		}
 		for _, s := range srvs {
+			if s.Hlab.PublicBefore != nil {
+				if err := servers.Update(tx, s.ID, func(r *servers.Record) error {
+					settleServer(r, true)
+					return nil
+				}); err != nil {
+					return err
+				}
+				settleServer(&s, true)
+			}
 			var missing []Record
 			if v4 := s.PublicNet.IPv4; v4 != nil && v4.ID != 0 && !have[v4.ID] {
 				missing = append(missing, recovered(s, v4.ID, typeIPv4, v4.IP))

@@ -85,7 +85,17 @@ type Record struct {
 	Hlab struct {
 		ProjectID int64  `json:"project_id"`
 		Location  string `json:"location"`
+		// Before is the assignment before the assign or unassign running
+		// on the primary IP: the API shows it until the action succeeds,
+		// and a failed or interrupted action restores it; nil when no such
+		// action runs.
+		Before *Before `json:"before,omitempty"`
 	} `json:"_hlab"`
+}
+
+// Before is the assignee of a primary IP before an assign or unassign.
+type Before struct {
+	AssigneeID *int64 `json:"assignee_id"`
 }
 
 // Module is the primary IPs resource type.
@@ -157,6 +167,9 @@ func view(r Record) PrimaryIP {
 		p.Labels = map[string]string{}
 	}
 	p.DNSPtr = rdns.Show(p.DNSPtr, owner(r))
+	if b := r.Hlab.Before; b != nil {
+		p.AssigneeID = b.AssigneeID
+	}
 	if p.AssigneeType == "" {
 		p.AssigneeType = "server"
 	}
