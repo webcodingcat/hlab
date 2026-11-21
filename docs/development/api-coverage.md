@@ -87,6 +87,30 @@ HLab serves these endpoints:
 the parameters of Hetzner's API description. Every other endpoint answers
 404 `not_found`.
 
+## Action queue
+
+Hetzner serialises actions per resource and answers 423 `locked` while
+another action runs on a resource of the request. HLab keeps 423 `locked`
+for actions that change the state of their own resource (power, rebuild,
+change_type, change_protection, delete, `change_ip_range`, `set_rules`
+and similar), but the actions below wait instead: they are created
+`running` and their work starts after every earlier running action that
+shares a resource with them has finished, in order of creation. A
+resource listed as "refuses" still answers 423 `locked` while another
+action holds it.
+
+| Endpoint | Waits for actions on | Refuses |
+|---|---|---|
+| `POST /servers/{id}/actions/attach_to_network`, `POST /servers/{id}/actions/detach_from_network`, `POST /servers/{id}/actions/change_alias_ips` | the network | the server |
+| `POST /load_balancers/{id}/actions/attach_to_network`, `POST /load_balancers/{id}/actions/detach_from_network` | the network | the load balancer |
+| `POST /networks/{id}/actions/add_subnet`, `POST /networks/{id}/actions/delete_subnet`, `POST /networks/{id}/actions/add_route`, `POST /networks/{id}/actions/delete_route` | the network | - |
+| `POST /load_balancers/{id}/actions/add_target`, `POST /load_balancers/{id}/actions/remove_target`, `POST /load_balancers/{id}/actions/add_service`, `POST /load_balancers/{id}/actions/update_service`, `POST /load_balancers/{id}/actions/delete_service` | the load balancer and its target servers | - |
+| `POST /volumes/{id}/actions/attach`, `POST /volumes/{id}/actions/detach`, `POST /volumes` with `server` | the server | the volume |
+| `POST /floating_ips/{id}/actions/assign`, `POST /floating_ips/{id}/actions/unassign` | the server | the floating IP |
+| `POST /primary_ips/{id}/actions/assign`, `POST /primary_ips/{id}/actions/unassign` | the server | the primary IP |
+| `POST /firewalls/{id}/actions/apply_to_resources`, `POST /firewalls/{id}/actions/remove_from_resources` | the servers | the firewall |
+| `POST /servers` with `firewalls` (its firewall actions) | the firewall | - |
+
 ## POST /servers
 
 - The IPv6 /64 is assigned formally from the documentation range
