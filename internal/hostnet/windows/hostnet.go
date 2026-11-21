@@ -198,7 +198,7 @@ func (h *HostNet) Up(ctx context.Context, cfg hostnet.Config) error {
 	if h.opts.Program == "" {
 		return errors.New("hostnet: no program for the firewall rule")
 	}
-	if err := h.restore(ctx); err != nil {
+	if err := h.Restore(ctx); err != nil {
 		return err
 	}
 	var prev []forwarding
@@ -246,7 +246,7 @@ func (h *HostNet) Down(ctx context.Context) error {
 	if err := h.run(ctx, downScript(h.tag, alias(h.tag)), nil); err != nil {
 		return fmt.Errorf("hostnet: down: %w", err)
 	}
-	if err := h.restore(ctx); err != nil {
+	if err := h.Restore(ctx); err != nil {
 		return err
 	}
 	h.mu.Lock()
@@ -283,9 +283,9 @@ func (h *HostNet) restorePath() string {
 	return filepath.Join(h.opts.StateDir, restoreFile)
 }
 
-// restore sets the forwarding values recorded in the restore file and
+// Restore sets the forwarding values recorded in the restore file and
 // deletes it; without the file it does nothing.
-func (h *HostNet) restore(ctx context.Context) error {
+func (h *HostNet) Restore(ctx context.Context) error {
 	data, err := os.ReadFile(h.restorePath())
 	if errors.Is(err, os.ErrNotExist) {
 		return nil

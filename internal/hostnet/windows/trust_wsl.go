@@ -56,6 +56,15 @@ func (h *HostNet) trustWSL(ctx context.Context, pem []byte, on bool) error {
 	return nil
 }
 
+// RemoveWSLTrust removes the CA from every WSL2 distro of the console user
+// once. It returns ErrNoConsoleUser when nobody is logged on and leaves no
+// switch pending; failing distros are logged and skipped.
+func (h *HostNet) RemoveWSLTrust(ctx context.Context, pemData []byte) error {
+	h.wslMu.Lock()
+	defer h.wslMu.Unlock()
+	return h.applyWSL(ctx, pemData, false)
+}
+
 // watchLogon applies the pending switch once a user is logged on at the
 // console: it retries every logonPoll until nothing is pending. The caller
 // holds wslMu.
