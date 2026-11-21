@@ -3199,3 +3199,11 @@ taken with the approval of the spec or by an answer from the user.
 - What: usernames `u<n>` from 100000, one public IPv4 per box routed to the storage VM, `reachable_externally` means reachable from host and WSL2, btrfs subvolumes with quotas and snapshots, WebDAV and FTPS certificates from the hlab CA, types and prices from `task catalog`, the Hetzner API description frozen in `api/hetzner-openapi.lock`.
 - Why: the simplest layout that gives every protocol its Hetzner port and behaviour without changing the appliance's role.
 - Cost of change: medium
+
+## 2026-11-21 Upgrade to wcc 0.32.18
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.32.17 to 0.32.18: version line only; all migrations and templates already matched.
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
