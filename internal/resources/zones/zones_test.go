@@ -61,8 +61,10 @@ type zoneEnv struct {
 
 	failPush atomic.Bool
 	mu       sync.Mutex
-	pushes   []agentapi.Config
-	sets     [][]string
+	// hold, while not nil, keeps every agent push waiting until it is closed.
+	hold   chan struct{}
+	pushes []agentapi.Config
+	sets   [][]string
 }
 
 // newZoneEnv mounts the zones module with a recording agent push (failing
@@ -90,6 +92,12 @@ func newZoneEnv(t *testing.T) *zoneEnv {
 func (e *zoneEnv) push(context.Context) error {
 	if e.failPush.Load() {
 		return errors.New("agent unreachable")
+	}
+	e.mu.Lock()
+	hold := e.hold
+	e.mu.Unlock()
+	if hold != nil {
+		<-hold
 	}
 	var doc agentapi.Config
 	if err := e.Store.Tx(func(tx store.Tx) error { return e.mod.Contribute(tx, &doc) }); err != nil {
@@ -426,6 +434,7 @@ func TestZones(t *testing.T) {
 	t.Run("DNS-01/secondary", testSecondary)
 	t.Run("DNS-01/rrsets", testRRSets)
 	t.Run("DNS-01/zonefile", testZonefile)
+	t.Run("DNS-01/queue", testQueue)
 	t.Run("DNS-04", testShadow)
 }
 

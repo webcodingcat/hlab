@@ -110,6 +110,7 @@ action holds it.
 | `POST /primary_ips/{id}/actions/assign`, `POST /primary_ips/{id}/actions/unassign` | the server | the primary IP |
 | `POST /firewalls/{id}/actions/apply_to_resources`, `POST /firewalls/{id}/actions/remove_from_resources` | the servers | the firewall |
 | `POST /servers` with `firewalls` (its firewall actions) | the firewall | - |
+| `POST /zones/{id}/actions/change_protection`, `POST /zones/{id}/actions/change_ttl`, `POST /zones/{id}/actions/change_primary_nameservers`, `POST /zones/{id}/actions/import_zonefile`, `POST /zones/{id}/rrsets`, `DELETE /zones/{id}/rrsets/{rr_name}/{rr_type}` and the RRSet actions | the zone | - |
 
 ## POST /servers
 

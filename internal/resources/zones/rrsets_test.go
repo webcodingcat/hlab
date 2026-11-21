@@ -161,3 +161,42 @@ func testRRSets(t *testing.T) {
 		t.Errorf("SOA after refused set_records %+v, want %+v", got.Records, soa.Records)
 	}
 }
+
+// testQueue: while a zone action still publishes, further zone and RRSet
+// actions on the same zone wait as running instead of answering locked, as
+// the Ansible zone_rrset module and parallel OpenTofu siblings need; the
+// zone delete still answers locked.
+func testQueue(t *testing.T) {
+	e := newZoneEnv(t)
+	z := createZone(t, e, map[string]any{"name": "example.com", "mode": "primary", "ttl": 3600})
+	www := rrsetPath(z.ID, "www", "A")
+	runAction(t, e, zonePath(z.ID)+"/rrsets", map[string]any{"name": "www", "type": "A", "records": records("198.51.100.10")}, "create_rrset")
+
+	hold := make(chan struct{})
+	e.mu.Lock()
+	e.hold = hold
+	e.mu.Unlock()
+	var acts []actionView
+	acts = append(acts, startAction(t, e, http.MethodPost, www+"/actions/change_ttl", map[string]any{"ttl": 900}, http.StatusCreated))
+	acts = append(acts, startAction(t, e, http.MethodPost, www+"/actions/set_records", map[string]any{"records": records("198.51.100.20")}, http.StatusCreated))
+	acts = append(acts, startAction(t, e, http.MethodPost, zonePath(z.ID)+"/rrsets", map[string]any{"name": "api", "type": "A", "records": records("198.51.100.30")}, http.StatusCreated))
+	acts = append(acts, startAction(t, e, http.MethodPost, zonePath(z.ID)+"/actions/change_ttl", map[string]any{"ttl": 7200}, http.StatusCreated))
+	wantError(t, e.Do(http.MethodDelete, zonePath(z.ID), nil), http.StatusLocked, "locked", "DELETE of a zone with running actions")
+	e.mu.Lock()
+	e.hold = nil
+	e.mu.Unlock()
+	close(hold)
+	for _, a := range acts {
+		waitSuccess(t, e, a, "queued "+a.Command)
+	}
+
+	pz, _ := pushedZone(e.lastPush(t), "example.com")
+	got := map[string]agentapi.RRSet{}
+	for _, r := range pz.RRSets {
+		got[r.Name+"/"+r.Type] = r
+	}
+	if pz.TTL != 7200 || got["www/A"].TTL != 900 || !reflect.DeepEqual(got["www/A"].Records, []string{"198.51.100.20"}) ||
+		!reflect.DeepEqual(got["api/A"].Records, []string{"198.51.100.30"}) {
+		t.Errorf("pushed zone %+v, want TTL 7200, www/A 900 with 198.51.100.20 and api/A with 198.51.100.30", pz)
+	}
+}

@@ -494,5 +494,53 @@ func Deviations() []Deviation {
 			Endpoint:    "POST /servers",
 			Description: "the firewall actions of a create with firewalls wait as running behind a second action on the same firewall instead of answering 423 locked",
 		},
+		{
+			Endpoint:    "POST /zones/{id}/actions/change_protection",
+			Description: "a second action on the same zone waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /zones/{id}/actions/change_ttl",
+			Description: "a second action on the same zone waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /zones/{id}/actions/change_primary_nameservers",
+			Description: "a second action on the same zone waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /zones/{id}/actions/import_zonefile",
+			Description: "a second action on the same zone waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /zones/{id}/rrsets",
+			Description: "a second action on the same zone waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "DELETE /zones/{id}/rrsets/{rr_name}/{rr_type}",
+			Description: "a second action on the same zone waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /zones/{id}/rrsets/{rr_name}/{rr_type}/actions/change_protection",
+			Description: "a second action on the same zone waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /zones/{id}/rrsets/{rr_name}/{rr_type}/actions/change_ttl",
+			Description: "a second action on the same zone waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /zones/{id}/rrsets/{rr_name}/{rr_type}/actions/set_records",
+			Description: "a second action on the same zone waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /zones/{id}/rrsets/{rr_name}/{rr_type}/actions/add_records",
+			Description: "a second action on the same zone waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /zones/{id}/rrsets/{rr_name}/{rr_type}/actions/remove_records",
+			Description: "a second action on the same zone waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "POST /zones/{id}/rrsets/{rr_name}/{rr_type}/actions/update_records",
+			Description: "a second action on the same zone waits as running instead of answering 423 locked",
+		},
 	}
 }
