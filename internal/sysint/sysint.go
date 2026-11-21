@@ -64,13 +64,10 @@ type ServiceHost interface {
 	Run(start func(ctx context.Context, params []string) error, stop func(ctx context.Context, reason StopReason) error) error
 }
 
-// Installer registers and removes the service and its folders. Used by
-// hlabd install and hlabd uninstall-cleanup.
+// Installer registers the service and its folders. Used by hlabd install.
 type Installer interface {
 	// Install registers the service of the current profile and creates
 	// its data folder; dev marks the call of scripts/dev-setup.ps1. The
 	// release and the dev profile may be installed side by side.
 	Install(dev bool) error
-	// Uninstall removes the service and, unless keepData, the data folder.
-	Uninstall(keepData bool) error
 }
