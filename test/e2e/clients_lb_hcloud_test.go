@@ -214,6 +214,13 @@ func testCLI01LoadBalancers(t *testing.T, c *rowCtx) {
 	e.hcloudOK(t, "load-balancer", "remove-target", "--ip", lbTargetIP, name)
 	e.hcloudOK(t, "load-balancer", "remove-target", "--label-selector", selector, name)
 	e.hcloudOK(t, "load-balancer", "delete-service", "--listen-port", "8080", name)
+	// hcloud delete-service returns without waiting for its action (unlike
+	// the other load-balancer commands); the next steps need it finished.
+	if err := waitFor(2*time.Minute, time.Second, func() (bool, error) {
+		return len(e.lbInfo(t, id).Services) == 1, nil
+	}); err != nil {
+		t.Errorf("delete-service: service 8080 still there: %v", err)
+	}
 	e.wantLB(t, "remove-target, delete-service", id, []string{"tcp:2222>22"}, []string{fmt.Sprintf("server:%d:private", fx.ID)})
 
 	e.hcloudOK(t, "load-balancer", "change-algorithm", "--algorithm-type", "least_connections", name)
