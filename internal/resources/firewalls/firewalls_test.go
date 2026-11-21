@@ -501,6 +501,8 @@ func testQueue(t *testing.T) {
 	}
 	wantError(t, fwAction(e, f1.ID, "apply_to_resources", applyBody(serverTarget(other.ID))),
 		http.StatusLocked, "locked", "second apply_to_resources of f1 while its first runs")
+	wantError(t, e.Do(http.MethodDelete, fmt.Sprintf("/firewalls/%d", f2.ID), nil),
+		http.StatusLocked, "locked", "DELETE of f2 while its apply_to_resources waits")
 
 	release()
 	releaseSecond := e.gate.Next(t, "apply f2 queued behind f1")

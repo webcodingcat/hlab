@@ -35,14 +35,27 @@ func (res resolution) firewallsOf(id int64) []int64 { return res.servers[id] }
 // reaches reports whether firewall fw is applied to server id.
 func (res resolution) reaches(fw, id int64) bool { return slices.Contains(res.servers[id], fw) }
 
-// resolve computes the servers the firewalls of projectID reach: first the
-// direct entries, then the selectors over the project's servers that have a
-// public IPv4 and are not deleting. A selector match that would give a
-// server a sixth firewall is skipped.
+// resolve computes the servers the firewalls of projectID reach as GET
+// shows them: first the direct entries, then the selectors over the
+// project's servers that have a public IPv4 and are not deleting. A
+// selector match that would give a server a sixth firewall is skipped.
 func resolve(tx store.Tx, projectID int64) (resolution, error) {
+	return resolveWith(tx, projectID, false)
+}
+
+// resolveWith is resolve; with pending, a firewall with a running apply or
+// remove counts with the applied_to that action pushes to the agent.
+func resolveWith(tx store.Tx, projectID int64, pending bool) (resolution, error) {
 	fws, err := store.List[Record](tx, Kind, projectID)
 	if err != nil {
 		return resolution{}, err
+	}
+	if pending {
+		for i, f := range fws {
+			if p := f.Hlab.Pending; p != nil {
+				fws[i].AppliedTo = p.AppliedTo
+			}
+		}
 	}
 	srvs, err := store.List[servers.Record](tx, servers.Kind, projectID)
 	if err != nil {
