@@ -275,7 +275,7 @@ func TestCLI(t *testing.T) {
 		if len(lines) == 0 || !regexp.MustCompile(`^NAME\s+RESOURCES\s+CREATED\s+DISPLAY NAME\s*$`).MatchString(lines[0]) {
 			t.Errorf("project list header is not NAME, RESOURCES, CREATED, DISPLAY NAME:\n%s", out)
 		}
-		row := regexp.MustCompile(`(?m)^web-coding-cat\s+\d+\s+\S+\s+Web Coding Cat\s*$`)
+		row := regexp.MustCompile(`(?m)^web-coding-cat\s+\d+\s+\S+ \S+\s+Web Coding Cat\s*$`)
 		if !row.MatchString(out) {
 			t.Errorf("project list has no row web-coding-cat with display name \"Web Coding Cat\" last:\n%s", out)
 		}
