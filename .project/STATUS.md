@@ -34,7 +34,11 @@ STATUS: IN_PROGRESS
      /wcc:phase asks those of its phase at its start, /wcc:change takes
      answers any time. -->
 
-- none
+- Q19 (13 13-19): Should a load balancer action that changes its own state (change_algorithm, change_type, the public interface actions) queue behind a running target or service action instead of answering 423 `locked`?
+  - Context: `hcloud load-balancer delete-service` (v1.70.2) does not wait for its action; in hlab the action runs for the length of an agent push, so a script running `delete-service` and then `change-algorithm` gets `locked`, while at Hetzner the action is done almost at once. The CLI-01 row now waits for the service to be gone.
+  - Options: 1. keep `locked` and document it in deviations.md 2. let these LB state changes queue as well 3. finish service and target actions on the LB faster (push in the background)
+  - Recommendation: 1, because the user set the rule "locked stays for state changes of the own resource" and only one hcloud command is affected.
+  - Affects: CLI-01, CLI-02, DECISIONS "Which actions queue instead of locked", docs/deviations.md
 
 ## If BLOCKED
 

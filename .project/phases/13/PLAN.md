@@ -260,12 +260,12 @@ a group is split per client).
   - Size: ~280 lines in 1 file
   - [x] Fixture rows `CLI-01/firewalls`, `CLI-02/firewalls`, `CLI-03/firewalls`: create with rules, add-rule, delete-rule, replace-rules, update, labels, apply to the fixture server and a label selector, remove, delete; tofu `hcloud_firewall`, `hcloud_firewall_attachment`, data sources `hcloud_firewall(s)`; Ansible `firewall`, `firewall_resource`, `firewall_info`. Rules always allow 22 inbound so the fixture stays reachable.
 
-- [ ] 13-19 Load balancers with hcloud
+- [x] 13-19 Load balancers with hcloud
   - Wave: 3 | Depends on: 13-01, 13-04 | Review: alone | e2e
   - Requirements: CLI-01 | Tests: test/e2e/clients_lb_hcloud_test.go
   - Reads: RESEARCH.md §1 (load-balancer); REQUIREMENTS LB-01, LB-06
   - Size: ~220 lines in 1 file
-  - [ ] Fixture row `CLI-01/load_balancers`: create, attach-to-network (network of the row), add-service (tcp and http), update-service, add-target (the fixture server with `--use-private-ip` after attaching it, a label selector, an IP), remove-target, delete-service, change-algorithm, change-type, disable/enable-public-interface, set-rdns, metrics, update, labels, protection, detach-from-network, delete.
+  - [x] Fixture row `CLI-01/load_balancers`: create, attach-to-network (network of the row), add-service (tcp and http), update-service, add-target (the fixture server with `--use-private-ip` after attaching it, a label selector, an IP), remove-target, delete-service, change-algorithm, change-type, disable/enable-public-interface, set-rdns, metrics, update, labels, protection, detach-from-network, delete.
 
 - [ ] 13-20 Load balancers with OpenTofu
   - Wave: 3 | Depends on: 13-01, 13-04 | Review: alone | e2e
