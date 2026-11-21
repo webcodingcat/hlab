@@ -170,13 +170,13 @@ of `main`, in list over 80 %.
   - Adjusts: -
   - [x] `ui/frontend/src/lib/projects.ts` per Interfaces; `ui/frontend/src/state.ts`: `Project` re-exported from `lib/projects.ts` (the old local type goes), stores `projectSort` and `projectLayout`
 
-- [ ] 15-07 Tray: project card
+- [x] 15-07 Tray: project card
   - Wave: 2 | Depends on: 15-06 | Review: alone
   - Requirements: UI-11 | Tests: ui/frontend/tests/e2e/projects.spec.ts (through 15-08)
   - Reads: UI-SPEC "Foundation", "Colours", "Typography", "Spacing and grid", "Building blocks" (Button, row menu, Confirm dialog), "Views" (Projects), "Behaviour" (keyboard and accessibility); CONTEXT.md
   - Size: ~200 lines in 1 file
   - Adjusts: -
-  - [ ] `ui/frontend/src/lib/ProjectCard.svelte`:
+  - [x] `ui/frontend/src/lib/ProjectCard.svelte`:
     - Lucide `Folder` icon, the display name at 16 px semibold, the name at 12 px muted in the normal typeface, a "…" menu with Delete at the top right (button label "Actions", items `role="menuitem"` like the table row menu).
     - Footer button `resourcesText(n)` with a chevron opening a menu of `resourceEntries` links to `href({area: "project", project, view, page: {kind: "list"}})`; with no resources a "+ Create server" link to the servers create page.
     - A click on the card outside those controls opens `consoleStart(name)`. Grid layout as an equal-size card, list layout as one full-width row with the same content. Escape and an outside click close the open menu.
