@@ -253,12 +253,12 @@ a group is split per client).
   - Size: ~260 lines in 1 file
   - [x] Fixture rows `CLI-01/volumes`, `CLI-02/volumes`, `CLI-03/volumes`: create in a location and on the fixture server with automount and format, attach, detach, resize, update, labels, protection, delete; tofu `hcloud_volume`, `hcloud_volume_attachment`, data sources `hcloud_volume(s)`; Ansible `volume`, `volume_attachment`, `volume_info`.
 
-- [ ] 13-18 Firewalls with all clients
+- [x] 13-18 Firewalls with all clients
   - Wave: 3 | Depends on: 13-01, 13-07 | Review: alone | e2e
   - Requirements: CLI-01, CLI-02, CLI-03 | Tests: test/e2e/clients_firewalls_test.go
   - Reads: RESEARCH.md §1, §2 (`hcloud_firewall_attachment`), §3 (`firewall_resource`); REQUIREMENTS FW-01
   - Size: ~280 lines in 1 file
-  - [ ] Fixture rows `CLI-01/firewalls`, `CLI-02/firewalls`, `CLI-03/firewalls`: create with rules, add-rule, delete-rule, replace-rules, update, labels, apply to the fixture server and a label selector, remove, delete; tofu `hcloud_firewall`, `hcloud_firewall_attachment`, data sources `hcloud_firewall(s)`; Ansible `firewall`, `firewall_resource`, `firewall_info`. Rules always allow 22 inbound so the fixture stays reachable.
+  - [x] Fixture rows `CLI-01/firewalls`, `CLI-02/firewalls`, `CLI-03/firewalls`: create with rules, add-rule, delete-rule, replace-rules, update, labels, apply to the fixture server and a label selector, remove, delete; tofu `hcloud_firewall`, `hcloud_firewall_attachment`, data sources `hcloud_firewall(s)`; Ansible `firewall`, `firewall_resource`, `firewall_info`. Rules always allow 22 inbound so the fixture stays reachable.
 
 - [ ] 13-19 Load balancers with hcloud
   - Wave: 3 | Depends on: 13-01, 13-04 | Review: alone | e2e
