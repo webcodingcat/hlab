@@ -224,10 +224,11 @@ type Internal struct {
 	// Adapters are the MACs of the private adapters the VM has, so a
 	// detach knows which adapter to remove.
 	Adapters []string `json:"adapters,omitempty"`
-	// ShownPrivateNet is the private_net the API shows while a network
-	// action runs on the server, whose change shows at its success; nil
-	// shows PrivateNet.
-	ShownPrivateNet *[]PrivateNet `json:"shown_private_net,omitempty"`
+	// NetBefore is the network state before the network action running on
+	// the server: the API shows its private_net until the action succeeds,
+	// and a failed or interrupted action restores it; nil when no such
+	// action runs.
+	NetBefore *NetState `json:"net_before,omitempty"`
 }
 
 // Rescue is the rescue state of a server.

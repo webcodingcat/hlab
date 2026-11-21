@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -34,6 +35,8 @@ type netEnv struct {
 	nw   *networks.Module
 
 	gate *apitest.PushGate
+	// failPush makes every agent push fail.
+	failPush atomic.Bool
 
 	mu     sync.Mutex
 	pushed *agentapi.Config
@@ -70,6 +73,9 @@ func (e *netEnv) contribute() (agentapi.Config, error) {
 func (e *netEnv) push(ctx context.Context) error {
 	if err := e.gate.Wait(ctx); err != nil {
 		return err
+	}
+	if e.failPush.Load() {
+		return errors.New("agent unreachable")
 	}
 	doc, err := e.contribute()
 	if err != nil {
@@ -863,5 +869,75 @@ func testEffect(t *testing.T) {
 	waitSuccess(t, e, a, "add_route")
 	if got := getNetwork(t, e, n.ID).Routes; !slices.Equal(got, []routeView{{"10.100.0.0/24", "10.0.1.5"}}) {
 		t.Errorf("after add_route: routes %v, want 10.100.0.0/24 via 10.0.1.5", got)
+	}
+	e.gate.Open()
+
+	// A failed action leaves no effect, stored or shown.
+	s2 := createServer(t, e, "s2", "fsn1", nil)
+	e.failPush.Store(true)
+	a = startedAction(t, serverAction(e, s2, "attach_to_network", map[string]any{"network": n.ID}), "attach with a failing push")
+	if got := e.WaitAction(a.ID); got.Status != "error" {
+		t.Fatalf("attach with a failing push: action %q, want error", got.Status)
+	}
+	a = startedAction(t, networkAction(e, n.ID, "add_route", route("10.101.0.0/24", "10.0.1.5")), "add_route with a failing push")
+	if got := e.WaitAction(a.ID); got.Status != "error" {
+		t.Fatalf("add_route with a failing push: action %q, want error", got.Status)
+	}
+	e.failPush.Store(false)
+	wantUnchanged(t, e, s2, n.ID, []routeView{{"10.100.0.0/24", "10.0.1.5"}}, "after the failed actions")
+	attach(t, e, s2, n.ID, nil)
+	runNetworkAction(t, e, n.ID, "add_route", route("10.101.0.0/24", "10.0.1.5"))
+
+	// An action interrupted by a stop leaves no effect after cloud start.
+	s3 := createServer(t, e, "s3", "fsn1", nil)
+	routes := getNetwork(t, e, n.ID).Routes
+	e.gate.Close()
+	a = startedAction(t, serverAction(e, s3, "attach_to_network", map[string]any{"network": n.ID}), "attach interrupted by a stop")
+	release = e.gate.Next(t, "attach interrupted by a stop")
+	if err := e.nw.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
+	}
+	wantUnchanged(t, e, s3, n.ID, routes, "after Recover with an interrupted attach")
+	release()
+	e.WaitAction(a.ID)
+	a = startedAction(t, networkAction(e, n.ID, "add_route", route("10.102.0.0/24", "10.0.1.5")), "add_route interrupted by a stop")
+	release = e.gate.Next(t, "add_route interrupted by a stop")
+	if err := e.nw.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
+	}
+	wantUnchanged(t, e, s3, n.ID, routes, "after Recover with an interrupted add_route")
+	release()
+	e.WaitAction(a.ID)
+}
+
+// wantUnchanged checks, on GET and in the stored records, that server is
+// not in network and the network has exactly routes.
+func wantUnchanged(t *testing.T, e *netEnv, server, network int64, routes []routeView, what string) {
+	t.Helper()
+	if _, ok := privateNet(t, e, server, network); ok {
+		t.Errorf("%s: GET shows server %d in network %d", what, server, network)
+	}
+	if got := getNetwork(t, e, network); slices.Contains(got.Servers, server) || !slices.Equal(got.Routes, routes) {
+		t.Errorf("%s: GET network servers %v routes %v, want without %d and routes %v", what, got.Servers, got.Routes, server, routes)
+	}
+	err := e.Store.Tx(func(tx store.Tx) error {
+		r, err := servers.Load(tx, server)
+		if err != nil {
+			return err
+		}
+		if len(r.PrivateNet) != 0 {
+			t.Errorf("%s: stored private_net of server %d %v, want none", what, server, r.PrivateNet)
+		}
+		n, err := networks.Load(tx, e.Project.ID, network)
+		if err != nil {
+			return err
+		}
+		if len(n.Routes) != len(routes) {
+			t.Errorf("%s: stored routes %v, want %v", what, n.Routes, routes)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("load records: %v", err)
 	}
 }

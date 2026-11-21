@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/netip"
 	"slices"
@@ -256,7 +257,8 @@ func checkAliases(subnets []Subnet, gw netip.Addr, used map[netip.Addr]bool, ips
 // actions holding the network. The work applies f again to the state the
 // earlier actions left, stores it, syncs the server's adapters, seed and
 // agent document, and only then lets the API show the new private_net. An
-// entry f adds gets its MAC address in the work.
+// entry f adds gets its MAC address in the work. A failed sync restores
+// the previous network state and syncs again.
 func (m *Module) serverChange(w http.ResponseWriter, req *http.Request, id, netID int64, command string, f func(tx store.Tx, r *servers.Record) error) {
 	p, _ := api.ProjectFrom(req.Context())
 	acts := api.ActionsFrom(req.Context())
@@ -280,7 +282,7 @@ func (m *Module) serverChange(w http.ResponseWriter, req *http.Request, id, netI
 	acts.Run(action.ID, func(ctx context.Context, _ func(int)) error {
 		err := stor.Tx(func(tx store.Tx) error {
 			return servers.Update(tx, id, func(r *servers.Record) error {
-				shown := append([]servers.PrivateNet{}, r.PrivateNet...)
+				before := &servers.NetState{PrivateNet: append([]servers.PrivateNet{}, r.PrivateNet...), Networks: maps.Clone(r.Hlab.Networks)}
 				if err := f(tx, r); err != nil {
 					return err
 				}
@@ -293,21 +295,31 @@ func (m *Module) serverChange(w http.ResponseWriter, req *http.Request, id, netI
 						return err
 					}
 				}
-				r.Hlab.ShownPrivateNet = &shown
+				r.Hlab.NetBefore = before
 				return nil
 			})
 		})
 		if err != nil {
 			return workError(err)
 		}
-		err = m.d.Servers.SyncAdapters(ctx, stor, id, []int64{netID})
-		if serr := stor.Tx(func(tx store.Tx) error {
+		serr := m.d.Servers.SyncAdapters(ctx, stor, id, []int64{netID})
+		err = stor.Tx(func(tx store.Tx) error {
 			return servers.Update(tx, id, func(r *servers.Record) error {
-				r.Hlab.ShownPrivateNet = nil
+				if serr != nil {
+					restoreServer(r)
+				}
+				r.Hlab.NetBefore = nil
 				return nil
 			})
-		}); serr != nil && err == nil {
-			err = serr
+		})
+		if serr != nil {
+			if err != nil {
+				slog.Warn("restore server networks after a failed action", "server", id, "err", err)
+			}
+			if err := m.d.Servers.SyncAdapters(ctx, stor, id, []int64{netID}); err != nil {
+				slog.Warn("sync adapters after a failed network action", "server", id, "err", err)
+			}
+			return serr
 		}
 		return err
 	})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/netip"
 	"slices"
@@ -33,14 +34,16 @@ type memberDoc struct {
 	ID         int64       `json:"id"`
 	PrivateNet []memberNet `json:"private_net"`
 	Hlab       struct {
-		ShownPrivateNet *[]memberNet `json:"shown_private_net"`
+		NetBefore *struct {
+			PrivateNet []memberNet `json:"private_net"`
+		} `json:"net_before"`
 	} `json:"_hlab"`
 }
 
 // shown is the private_net the API shows of d.
 func (d memberDoc) shown() []memberNet {
-	if d.Hlab.ShownPrivateNet != nil {
-		return *d.Hlab.ShownPrivateNet
+	if d.Hlab.NetBefore != nil {
+		return d.Hlab.NetBefore.PrivateNet
 	}
 	return d.PrivateNet
 }
@@ -104,7 +107,7 @@ func (m *Module) change(w http.ResponseWriter, req *http.Request, id int64, comm
 // command, queued behind the actions holding the network. The work applies
 // f again to the state the earlier actions left, stores it, pushes the
 // agent document and only then lets the API show the new subnets and
-// routes.
+// routes. A failed push restores the previous ones and pushes again.
 func (m *Module) queuedChange(w http.ResponseWriter, req *http.Request, id int64, command string, f func(tx store.Tx, r *Record) error) {
 	p, _ := api.ProjectFrom(req.Context())
 	acts := api.ActionsFrom(req.Context())
@@ -140,8 +143,8 @@ func (m *Module) queuedChange(w http.ResponseWriter, req *http.Request, id int64
 		if err != nil {
 			return workError(err)
 		}
-		err = m.push(ctx)
-		if serr := stor.Tx(func(tx store.Tx) error {
+		perr := m.push(ctx)
+		err = stor.Tx(func(tx store.Tx) error {
 			r, err := Load(tx, p.ID, id)
 			if errors.Is(err, store.ErrNotFound) {
 				return nil // deleted while the action ran
@@ -149,10 +152,18 @@ func (m *Module) queuedChange(w http.ResponseWriter, req *http.Request, id int64
 			if err != nil {
 				return err
 			}
+			if perr != nil {
+				restoreNetwork(&r)
+			}
 			r.Hlab.Shown = nil
 			return put(tx, r)
-		}); serr != nil && err == nil {
-			err = serr
+		})
+		if perr != nil {
+			if err != nil {
+				slog.Warn("restore network after a failed action", "network", id, "err", err)
+			}
+			m.pushLogged(ctx)
+			return perr
 		}
 		return err
 	})

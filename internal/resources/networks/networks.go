@@ -87,9 +87,10 @@ type Record struct {
 	Hlab    struct {
 		ProjectID int64 `json:"project_id"`
 		VLAN      int   `json:"vlan"`
-		// Shown are the subnets and routes the API shows while a subnet or
-		// route action runs, whose change shows at its success; nil shows
-		// the record's own.
+		// Shown are the subnets and routes before the subnet or route action
+		// running on the network: the API shows them until the action
+		// succeeds, and a failed or interrupted action restores them; nil
+		// when no such action runs.
 		Shown *shownParts `json:"shown,omitempty"`
 	} `json:"_hlab"`
 }
