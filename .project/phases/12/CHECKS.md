@@ -1,5 +1,8 @@
 # Phase 12 manual checks
 
+These checks run in phase 16 in the test VMs (SPEC.md "Test VMs for the
+release checks"); phase 16 writes their guides for the VMs anew.
+
 ## INST-01 to INST-06 The elevated installer suite passes on this machine
 
 - Start: an elevated PowerShell in the repository root, then `task e2e:elevated`

@@ -19,21 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
-## 2026-11-21 All manual checks wait for the release, in a dedicated test VM
+## 2026-11-21 Manual checks and the installer suite move to a last phase in two test VMs
 
-- Type: approval
+- Type: change
 - Phase: change
-- What: no phase stops for a manual check any more, phase 12 included; every open manual check, the elevated installer suite and the INST checks of phase 12 among them, stays in "Open manual checks" and is done before the release of milestone 1 in a dedicated Hyper-V VM with Windows and nested virtualization, not on the development machine.
-- Why: the user has no time for manual checks now and wants the phases to go on; installer and uninstaller checks need a clean machine without the development setup.
+- What: no phase stops for a manual check any more; the new phase 16, always the last of milestone 1 with phases taken in from "Later" inserted before it, runs the elevated installer suite in a development test VM and every open manual check in a user test VM without development tools, both fresh Windows Hyper-V VMs with nested virtualization that the user sets up by hand from `docs/development/release-checks.md` (DOC-08).
+- Why: the user has no time for manual checks now, wants to pull items from "Later" forward, and wants the installation tested in the user's own flow on a clean machine.
 - Cost of change: low
-
-An entry that revokes or changes an earlier one states in full what holds
-now, names the earlier entry under `Replaces:`, and the earlier entry moves
-unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
-
-Keep entries short and their titles telling: phases find the entries
-they need by their titles and do not read this file in full. Details belong
-in ARCHITECTURE.md or the plan.
+- Replaces: 2026-11-21 All manual checks wait for the release, in a dedicated test VM
 
 ## 2026-11-21 Bundle sets HLABUI from WixBundleUILevel
 

@@ -60,6 +60,22 @@
       2. Each client builds the example environment, it is reachable via
          SSH from host and WSL2, and the client deletes it completely.
 
+- [ ] 16 Release checks in test VMs.
+      Requirements: DOC-08.
+      Depends on: 13 and every other phase of milestone 1; it stays the
+      last phase of the milestone, and phases taken in from "Later" are
+      inserted before it.
+      Success criteria:
+      1. `docs/development/release-checks.md` describes both test VMs,
+         and the user has set them up by it.
+      2. The elevated installer suite (`task e2e:elevated`) passes in the
+         development test VM.
+      3. In the user test VM the setup EXE installs HLab without
+         development tools, and the manual checks of milestone 1 (INST-03,
+         INST-05, UI-09, LIFE-05, DOC-07 and those of later phases) pass
+         there.
+      Stops for: manual check.
+
 ## Later
 
 - Fault injection (server failure, network disruption, latency, API errors,

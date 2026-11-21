@@ -4,6 +4,22 @@ Entries from DECISIONS.md that a later entry revoked or changed, moved here
 unchanged; the later entry names them under `Replaces:`. Newest first. No
 skill reads this file; it keeps the history for looking things up.
 
+## 2026-11-21 All manual checks wait for the release, in a dedicated test VM
+
+- Type: approval
+- Phase: change
+- What: no phase stops for a manual check any more, phase 12 included; every open manual check, the elevated installer suite and the INST checks of phase 12 among them, stays in "Open manual checks" and is done before the release of milestone 1 in a dedicated Hyper-V VM with Windows and nested virtualization, not on the development machine.
+- Why: the user has no time for manual checks now and wants the phases to go on; installer and uninstaller checks need a clean machine without the development setup.
+- Cost of change: low
+
+An entry that revokes or changes an earlier one states in full what holds
+now, names the earlier entry under `Replaces:`, and the earlier entry moves
+unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
+
+Keep entries short and their titles telling: phases find the entries
+they need by their titles and do not read this file in full. Details belong
+in ARCHITECTURE.md or the plan.
+
 ## 2026-11-19 CA common name per profile
 
 - Type: decision
