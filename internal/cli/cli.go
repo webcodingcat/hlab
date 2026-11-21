@@ -80,7 +80,7 @@ var commands = []command{
 	{path: "cloud stop", run: cloudStop},
 	{path: "cloud status", run: cloudStatus},
 	{path: "catalog update", opts: []string{"hetzner-token-env"}, run: catalogUpdate},
-	{path: "project create", args: "<name>", nargs: 1, run: projectCreate},
+	{path: "project create", args: "<display-name>", nargs: 1, run: projectCreate},
 	{path: "project list", run: projectList},
 	{path: "project delete", args: "<name>", nargs: 1, run: projectDelete},
 	{path: "token create", flags: []string{"project", "name"}, bools: []string{"read-only"}, run: tokenCreate},
@@ -406,32 +406,43 @@ func catalogUpdate(c *call) error {
 }
 
 func projectCreate(c *call) error {
-	var p map[string]any
-	if err := c.mgmt(http.MethodPost, "/projects", map[string]string{"name": c.args[0]}, &p); err != nil {
+	var raw []byte
+	if err := c.mgmt(http.MethodPost, "/projects", map[string]string{"display_name": c.args[0]}, &raw); err != nil {
 		return err
 	}
-	return c.out(p, "project "+c.args[0]+" created\n")
+	var p struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return err
+	}
+	return c.out(json.RawMessage(raw), "project "+p.Name+" created\n")
 }
 
 func projectList(c *call) error {
+	var raw []byte
+	if err := c.mgmt(http.MethodGet, "/projects", nil, &raw); err != nil {
+		return err
+	}
 	var body struct {
 		Projects []struct {
-			Name      string    `json:"name"`
-			Created   time.Time `json:"created"`
-			Resources int       `json:"resources"`
+			Name        string    `json:"name"`
+			DisplayName string    `json:"display_name"`
+			Created     time.Time `json:"created"`
+			Resources   int       `json:"resources"`
 		} `json:"projects"`
 	}
-	if err := c.mgmt(http.MethodGet, "/projects", nil, &body); err != nil {
+	if err := json.Unmarshal(raw, &body); err != nil {
 		return err
 	}
 	var b strings.Builder
 	tw := tabwriter.NewWriter(&b, 0, 4, 2, ' ', 0)
-	_, _ = fmt.Fprintln(tw, "NAME\tRESOURCES\tCREATED")
+	_, _ = fmt.Fprintln(tw, "NAME\tRESOURCES\tCREATED\tDISPLAY NAME")
 	for _, p := range body.Projects {
-		_, _ = fmt.Fprintf(tw, "%s\t%d\t%s\n", p.Name, p.Resources, p.Created.Local().Format(time.DateTime))
+		_, _ = fmt.Fprintf(tw, "%s\t%d\t%s\t%s\n", p.Name, p.Resources, p.Created.Local().Format(time.DateTime), p.DisplayName)
 	}
 	_ = tw.Flush()
-	return c.out(body, b.String())
+	return c.out(json.RawMessage(raw), b.String())
 }
 
 func projectDelete(c *call) error {
