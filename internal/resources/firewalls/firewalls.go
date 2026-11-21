@@ -3,9 +3,11 @@ package firewalls
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -314,6 +316,25 @@ func shown(tx store.Tx, r Record) (Firewall, error) {
 	return res.show(r), nil
 }
 
+// busy reports whether a running action, one waiting in the queue
+// included, references firewall id.
+func busy(tx store.Tx, id int64) (bool, error) {
+	running, err := store.RunningActions(tx)
+	if err != nil {
+		return false, err
+	}
+	for _, a := range running {
+		var refs []actions.Ref
+		if err := json.Unmarshal([]byte(a.Resources), &refs); err != nil {
+			return false, err
+		}
+		if slices.Contains(refs, fwRef(id)) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // update changes only the name and labels present in the body; labels,
 // when present, replace the whole set.
 func (m *Module) update(w http.ResponseWriter, req *http.Request) {
@@ -361,7 +382,8 @@ func (m *Module) update(w http.ResponseWriter, req *http.Request) {
 }
 
 // delete removes a firewall that is applied nowhere, neither to a server
-// nor by a label selector.
+// nor by a label selector, and that no running action holds: an apply
+// commits applied_to only at success.
 func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 	id, ok := api.PathID(w, req)
 	if !ok {
@@ -375,6 +397,12 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 		}
 		if len(r.AppliedTo) > 0 {
 			return &api.FieldError{Code: "resource_in_use", Message: fmt.Sprintf("firewall %d is still in use", id)}
+		}
+		if held, err := busy(tx, id); err != nil || held {
+			if err == nil {
+				err = actions.ErrLocked
+			}
+			return err
 		}
 		return store.Delete(tx, Kind, p.ID, id)
 	})

@@ -802,7 +802,8 @@ func testChange(t *testing.T) {
 }
 
 // testRecover: Q14 moves the formal IPv6 of load balancers to the prefix
-// 0xA0000000; Recover moves PTR entries stored on the old /64.
+// 0xA0000000; Recover moves PTR entries stored on the old /64. It also
+// drops the pending state of an action a stop interrupted.
 func testRecover(t *testing.T) {
 	e := newEnv(t)
 	var mod any = e.lb
@@ -838,9 +839,20 @@ func testRecover(t *testing.T) {
 		{IP: lb.ipv4(), DNSPtr: "lb.example.com"},
 	})
 	setPTRs(t, e, held.ID, heldEntries)
+	// The pending state of an action a stop interrupted.
+	setPending(t, e, held.ID, &loadbalancers.Pending{Action: 99, Services: []loadbalancers.Service{}, Targets: []loadbalancers.Target{}})
 
 	if err := rec.Recover(context.Background()); err != nil {
 		t.Fatalf("Recover: %v", err)
+	}
+	if err := e.Store.Tx(func(tx store.Tx) error {
+		r, err := store.Get[loadbalancers.Record](tx, loadbalancers.Kind, e.Project.ID, held.ID)
+		if err == nil && r.Hlab.Pending != nil {
+			t.Errorf("pending state after Recover: %+v, want none", r.Hlab.Pending)
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
 	}
 	want := []rdns.Entry{
 		{IP: new6.String(), DNSPtr: "lb6.example.com"},
@@ -895,6 +907,21 @@ func setPTRs(t *testing.T, e *lbEnv, id int64, entries []rdns.Entry) {
 	})
 	if err != nil {
 		t.Fatalf("store dns_ptr of load balancer %d: %v", id, err)
+	}
+}
+
+func setPending(t *testing.T, e *lbEnv, id int64, p *loadbalancers.Pending) {
+	t.Helper()
+	err := e.Store.Tx(func(tx store.Tx) error {
+		r, err := store.Get[loadbalancers.Record](tx, loadbalancers.Kind, e.Project.ID, id)
+		if err != nil {
+			return err
+		}
+		r.Hlab.Pending = p
+		return store.Put(tx, store.Meta{Kind: loadbalancers.Kind, ID: id, ProjectID: e.Project.ID, Name: r.Name, Labels: r.Labels, Created: r.Created}, r)
+	})
+	if err != nil {
+		t.Fatalf("store pending state of load balancer %d: %v", id, err)
 	}
 }
 
