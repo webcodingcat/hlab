@@ -3,7 +3,8 @@
 // Command hlabd is the hlab Windows service. Without arguments it runs the
 // cloud under the service manager; `install [--dev]` and
 // `uninstall-cleanup [--keep-data]` register and remove it (administrator
-// rights needed).
+// rights needed); `check-prerequisites [--ui]` lists what the machine lacks
+// (used by the installer before anything is installed).
 package main
 
 import (
@@ -13,10 +14,15 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"strings"
+
+	xwin "golang.org/x/sys/windows"
 
 	"github.com/webcodingcat/hlab/internal/cloud"
 	hnwin "github.com/webcodingcat/hlab/internal/hostnet/windows"
 	"github.com/webcodingcat/hlab/internal/logfile"
+	"github.com/webcodingcat/hlab/internal/prereq"
 	"github.com/webcodingcat/hlab/internal/sysint"
 	"github.com/webcodingcat/hlab/internal/sysint/windows"
 )
@@ -45,8 +51,15 @@ func run(args []string) int {
 			return 2
 		}
 		err = uninstall(*keep)
+	case "check-prerequisites":
+		fs := flag.NewFlagSet("check-prerequisites", flag.ContinueOnError)
+		ui := fs.Bool("ui", false, "show the result in a message box")
+		if fs.Parse(args[1:]) != nil || fs.NArg() > 0 {
+			return 2
+		}
+		return checkPrerequisites(*ui)
 	default:
-		fmt.Fprintln(os.Stderr, "usage: hlabd [install [--dev] | uninstall-cleanup [--keep-data]]")
+		fmt.Fprintln(os.Stderr, "usage: hlabd [install [--dev] | uninstall-cleanup [--keep-data] | check-prerequisites [--ui]]")
 		return 2
 	}
 	if err != nil {
@@ -71,6 +84,38 @@ func uninstall(keepData bool) error {
 		return nil
 	}
 	return inst.Uninstall(false)
+}
+
+// prereqLog is the file in %TEMP% that keeps the list of a failed check
+// for the setup log.
+const prereqLog = "hlab-setup-prerequisites.log"
+
+// checkPrerequisites prints what the machine lacks, writes it to
+// %TEMP%\hlab-setup-prerequisites.log and, with ui, shows it in a message
+// box. It returns 1 when anything is missing or the facts cannot be read.
+func checkPrerequisites(ui bool) int {
+	var lines []string
+	f, err := windows.Prerequisites(context.Background())
+	if err != nil {
+		lines = []string{"Could not check the prerequisites of hlab: " + err.Error()}
+	} else {
+		lines = prereq.Missing(f)
+	}
+	if len(lines) == 0 {
+		fmt.Println("All prerequisites of hlab are present.")
+		return 0
+	}
+	text := "hlab cannot be installed on this machine:\r\n\r\n- " + strings.Join(lines, "\r\n- ") + "\r\n"
+	fmt.Print(text)
+	if err := os.WriteFile(filepath.Join(os.TempDir(), prereqLog), []byte(text), 0o644); err != nil {
+		fmt.Fprintln(os.Stderr, "hlabd:", err)
+	}
+	if ui {
+		body, _ := xwin.UTF16PtrFromString(text)
+		caption, _ := xwin.UTF16PtrFromString("HLab Setup")
+		_, _ = xwin.MessageBox(0, body, caption, xwin.MB_OK|xwin.MB_ICONERROR|xwin.MB_TOPMOST|xwin.MB_SETFOREGROUND)
+	}
+	return 1
 }
 
 // service runs the cloud under the service manager, logging JSON lines to
