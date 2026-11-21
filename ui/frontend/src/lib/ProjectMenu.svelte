@@ -2,34 +2,49 @@
   import { ChevronDown } from "@lucide/svelte";
   import { mgmt } from "./bridge";
   import { showError } from "./toast";
+  import { sortProjects } from "./projects";
   import { consoleStart, href, running, type Project } from "../state";
 
-  // The project name in the breadcrumb of a project console; it opens a
-  // menu with the other projects to switch to.
+  // The project in the breadcrumb of a project console, shown by its display
+  // name; it opens a menu with the other projects to switch to.
   let { project }: { project: string } = $props();
 
   let open = $state(false);
-  let others = $state<string[] | undefined>();
+  let projects = $state<Project[] | undefined>();
 
-  async function load() {
-    others = undefined;
-    if (!$running) {
-      others = [];
+  const label = $derived(projects?.find((p) => p.name === project)?.display_name || project);
+  const others = $derived(
+    projects &&
+      sortProjects(
+        projects.filter((p) => p.name !== project),
+        { key: "display_name", dir: "asc" },
+      ),
+  );
+
+  async function load(isRunning: boolean) {
+    if (!isRunning) {
+      projects = [];
       return;
     }
     try {
       const res = await mgmt<{ projects: Project[] }>("GET", "/projects");
-      others = (res.projects ?? []).map((p) => p.name).filter((n) => n !== project);
+      projects = res.projects ?? [];
     } catch (err) {
-      others = [];
+      projects = [];
       showError("Load projects", err);
     }
   }
 
+  // Loads when mounted, when project changes and when the cloud starts.
+  $effect(() => {
+    void project;
+    load($running);
+  });
+
   function toggle(e: MouseEvent) {
     e.stopPropagation();
     open = !open;
-    if (open) load();
+    if (open) load($running);
   }
 </script>
 
@@ -37,16 +52,16 @@
 
 <div class="wrap">
   <button class="name" aria-haspopup="menu" aria-expanded={open} aria-current="page" onclick={toggle}>
-    {project}<ChevronDown size={16} aria-hidden="true" />
+    {label}<ChevronDown size={16} aria-hidden="true" />
   </button>
   {#if open}
     <ul role="menu" aria-label="Switch project">
       {#if !others}
         <li role="none" class="muted">Loading…</li>
       {:else}
-        {#each others as name (name)}
+        {#each others as p (p.name)}
           <li role="none">
-            <a role="menuitem" href={href(consoleStart(name))} onclick={() => (open = false)}>{name}</a>
+            <a role="menuitem" href={href(consoleStart(p.name))} onclick={() => (open = false)}>{p.display_name}</a>
           </li>
         {:else}
           <li role="none" class="muted">No other projects</li>
