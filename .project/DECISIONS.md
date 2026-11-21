@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-21 Reboot of a booting guest retries for two minutes
+
+- Type: decision
+- Phase: phase 13
+- What: when Hyper-V refuses both InitiateReboot and InitiateShutdown with 32768 (guest still booting), hlab asks again every 2 s for up to 2 minutes before it reports InvalidState.
+- Why: hcloud reboots right after poweron; retrying keeps the reboot graceful instead of a hard reset.
+- Cost of change: low
+
 ## 2026-11-21 hcloud all list moves to phase 21
 
 - Type: decision
