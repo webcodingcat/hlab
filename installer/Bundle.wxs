@@ -6,8 +6,10 @@
   (hlab-<version>.msi) and %LocalAppData%\hlab-build-cache
   (MicrosoftEdgeWebview2Setup.exe).
 
-  Chain: the WebView2 Evergreen bootstrapper when no runtime is installed,
-  then the MSI.
+  Chain: the MSI first, then the WebView2 Evergreen bootstrapper when no
+  runtime is installed. The MSI goes first so that its prerequisite check
+  (HlabCheckPrereq) can refuse before anything permanent is installed; the
+  tray needs WebView2 only when it is launched after the chain.
 
   Variables:
   - KeepData (0/1, default 0, overridable): the Modify page checkbox "Keep
@@ -47,6 +49,11 @@
                          Key="Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" />
 
     <Chain>
+      <MsiPackage Id="hlab" SourceFile="hlab-$(Version).msi" Compressed="yes">
+        <MsiProperty Name="KEEPDATA" Value="[KeepData]" />
+        <MsiProperty Name="HLABUI" Value="1" Condition="WixBundleUILevel = 4" />
+      </MsiPackage>
+
       <ExePackage Id="webview2"
                   SourceFile="MicrosoftEdgeWebview2Setup.exe"
                   Compressed="yes"
@@ -56,11 +63,6 @@
                   InstallArguments="/silent /install"
                   DetectCondition="(WebView2MachineVersion AND WebView2MachineVersion &lt;&gt; &quot;0.0.0.0&quot;) OR (WebView2UserVersion AND WebView2UserVersion &lt;&gt; &quot;0.0.0.0&quot;)"
                   InstallCondition="NOT ((WebView2MachineVersion AND WebView2MachineVersion &lt;&gt; &quot;0.0.0.0&quot;) OR (WebView2UserVersion AND WebView2UserVersion &lt;&gt; &quot;0.0.0.0&quot;))" />
-
-      <MsiPackage Id="hlab" SourceFile="hlab-$(Version).msi" Compressed="yes">
-        <MsiProperty Name="KEEPDATA" Value="[KeepData]" />
-        <MsiProperty Name="HLABUI" Value="1" Condition="WixBundleUILevel = 4" />
-      </MsiPackage>
     </Chain>
   </Bundle>
 </Wix>
