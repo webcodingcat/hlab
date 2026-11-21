@@ -160,8 +160,10 @@ output "type_names" {
 		!maps.Equal(got.Labels, map[string]string{"row": "cli-02-load-balancers"}) {
 		t.Errorf("load balancer %+v, want %s, lb11, round_robin, in network %d", got, name, network)
 	}
-	// The data source's service list stays null in provider 1.70.2 although
-	// GET returns both services (wantLB above), so the row reads targets.
+	// Provider 1.70.2 declares a service list on the data source but never
+	// sets it (getLoadBalancerAttributes in internal/loadbalancer/resource.go
+	// has no "service" key), so the row reads the data source's targets;
+	// wantLB above checks the services GET returns.
 	if n := d.output(t, "by_id_targets"); n != "2" {
 		t.Errorf("data hcloud_load_balancer by ID: %s targets, want 2", n)
 	}
