@@ -203,12 +203,19 @@ of `main`, in list over 80 %.
   - Adjusts: -
   - [x] `ui/frontend/src/lib/ProjectMenu.svelte`: loads `GET /projects` when mounted and when `project` changes; the button shows the display name of `project` (the name until loaded or when not listed); the menu lists the other projects by display name, sorted with `sortProjects(…, {key: "display_name", dir: "asc"})`, linking by name
 
-- [ ] 15-10 Documentation
+- [x] 15-10 Documentation
   - Wave: 4 | Depends on: 15-01, 15-02, 15-03, 15-04, 15-05, 15-06, 15-07, 15-08, 15-09 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06, DOC-07 | Tests: test/docs/docs_test.go (existing)
   - Reads: SPEC "Documentation", "Accounts and secrets" (hcloud context `hlab-docs`); REQUIREMENTS DOC; UI-SPEC "Language of the interface"; CONTEXT.md
   - Size: ~150 lines in 6 files plus 2 screenshots
   - Adjusts: -
-  - [ ] `docs/commands.md` (`hlab project create <display-name>` with a quoted example and the derived name, the derivation rule, the refusals, `project list` with DISPLAY NAME last), `docs/guide.md` and `README.md` (projects, display name and name, the project list)
-  - [ ] `ui/frontend/src/help/projects.md`: cards and list, search, sort, grid/list switch, "N resources", "+ Create server", "+ New project" with the derived name, delete by typing the display name, breadcrumb with display names; `docs/development/api-coverage.md` and `docs/deviations.md` only if a project statement there changed
-  - [ ] regenerate `docs/images/projects-{light,dark}.png` with `task docs:screenshots`
+  - [x] `docs/commands.md` (`hlab project create <display-name>` with a quoted example and the derived name, the derivation rule, the refusals, `project list` with DISPLAY NAME last), `docs/guide.md` and `README.md` (projects, display name and name, the project list)
+  - [x] `ui/frontend/src/help/projects.md`: cards and list, search, sort, grid/list switch, "N resources", "+ Create server", "+ New project" with the derived name, delete by typing the display name, breadcrumb with display names; `docs/development/api-coverage.md` and `docs/deviations.md` only if a project statement there changed
+  - [x] regenerate `docs/images/projects-{light,dark}.png` with `task docs:screenshots`
+
+## Close
+
+- Unit suite `task test`, `task test:frontend` (278 passed), `task lint` and `task build`: green on f85895c.
+- End-to-end: `task e2e -- -v -run 'TestE2E/(UI-05|UI-11|UI-02)$'` green on f85895c (UI-05 7 s, UI-11 17 s, UI-02 88 s); UI-02 runs because the shared `openConsole` helper changed, and the shared setup exercises the changed `hlab project create`.
+- Verifier: no blockers, no architecture differences, no open decisions, no backlog; no manual requirement in this phase.
+- Documentation examples: the successful `hlab project create` and the `hlab project list` table were not run live, because SPEC.md "Documentation" forbids agents to create or list projects; their output follows TestCLI/PROJ-06 and the CLI's table format.
