@@ -27,6 +27,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-21 CLI project test matches the existing CREATED format
+
+- Type: decision
+- Phase: phase 15
+- What: TestCLI/PROJ-06 matches CREATED as date and time with a space (`\S+ \S+`), the format `hlab project list` already prints.
+- Why: the test wrote CREATED as one word, which contradicts the existing public output; the check stays the same.
+- Cost of change: low
+
 ## 2026-11-21 Store counts resources per tab and takes display names
 
 - Type: decision

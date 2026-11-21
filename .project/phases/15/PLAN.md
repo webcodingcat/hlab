@@ -146,13 +146,13 @@ of `main`, in list over 80 %.
   - Adjusts: -
   - [x] `internal/mgmt/mgmt.go`: `mgmt.Project` per Interfaces; `createProject` decodes `{"display_name"}`, `projectname.ValidateDisplay` (400 `invalid_input` with its message, also for a body with only `name`), `projectname.Derive` ("" gives 400 `invalid_input` "the display name gives an empty project name"), `store.CreateProject` (ErrConflict gives 409 `conflict` "project <derived> already exists" through `fail`), 201 with the project and `resources_by_type` `{}`; `listProjects` adds `display_name` and `store.CountResourcesByType`; the regexp `projectName` goes
 
-- [ ] 15-04 hlab: project create by display name, list with display name
+- [x] 15-04 hlab: project create by display name, list with display name
   - Wave: 3 | Depends on: 15-03 | Review: alone
   - Requirements: PROJ-06 | Tests: internal/cli/cli_test.go
   - Reads: ARCHITECTURE "hlab (management command)"; DECISIONS "hlab project list puts the display name last"; CONTEXT.md
   - Size: ~40 lines in 1 file
   - Adjusts: -
-  - [ ] `internal/cli/cli.go`: `project create` takes `<display-name>` (one argument, usage line), sends `{"display_name"}`, prints `project <derived name> created` from the response; `project list` columns NAME, RESOURCES, CREATED, DISPLAY NAME; `--output json` passes the body through
+  - [x] `internal/cli/cli.go`: `project create` takes `<display-name>` (one argument, usage line), sends `{"display_name"}`, prints `project <derived name> created` from the response; `project list` columns NAME, RESOURCES, CREATED, DISPLAY NAME; `--output json` passes the body through
 
 - [ ] 15-05 Tray bridge: derived name preview
   - Wave: 2 | Depends on: 15-01 | Review: alone
