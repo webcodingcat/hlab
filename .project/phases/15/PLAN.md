@@ -138,13 +138,13 @@ of `main`, in list over 80 %.
   - [x] `internal/store/projects.go`: `Project.DisplayName`, `CreateProject(tx, name, displayName)`, every project select (`ProjectByName`, `ListProjects`, `TokenByHash`) reads `display_name`; `CountResourcesByType` per Interfaces
   - [x] adjust the three callers named under Adjusts
 
-- [ ] 15-03 Management API: create by display name, list with display name and counts
+- [x] 15-03 Management API: create by display name, list with display name and counts
   - Wave: 2 | Depends on: 15-01, 15-02 | Review: alone
   - Requirements: PROJ-06, UI-11 | Tests: internal/mgmt/mgmt_test.go
   - Reads: ARCHITECTURE "Management API" (`GET /projects`, `POST /projects`); REQUIREMENTS PROJ-06, UI-11; CONTEXT.md
   - Size: ~90 lines in 1 file
   - Adjusts: -
-  - [ ] `internal/mgmt/mgmt.go`: `mgmt.Project` per Interfaces; `createProject` decodes `{"display_name"}`, `projectname.ValidateDisplay` (400 `invalid_input` with its message, also for a body with only `name`), `projectname.Derive` ("" gives 400 `invalid_input` "the display name gives an empty project name"), `store.CreateProject` (ErrConflict gives 409 `conflict` "project <derived> already exists" through `fail`), 201 with the project and `resources_by_type` `{}`; `listProjects` adds `display_name` and `store.CountResourcesByType`; the regexp `projectName` goes
+  - [x] `internal/mgmt/mgmt.go`: `mgmt.Project` per Interfaces; `createProject` decodes `{"display_name"}`, `projectname.ValidateDisplay` (400 `invalid_input` with its message, also for a body with only `name`), `projectname.Derive` ("" gives 400 `invalid_input` "the display name gives an empty project name"), `store.CreateProject` (ErrConflict gives 409 `conflict` "project <derived> already exists" through `fail`), 201 with the project and `resources_by_type` `{}`; `listProjects` adds `display_name` and `store.CountResourcesByType`; the regexp `projectName` goes
 
 - [ ] 15-04 hlab: project create by display name, list with display name
   - Wave: 3 | Depends on: 15-03 | Review: alone
