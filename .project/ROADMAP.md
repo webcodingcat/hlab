@@ -91,3 +91,4 @@
 - Server console with a working wss VNC console
 - WSL2 in mirrored networking mode
 - More system images and app images
+- MCP server for controlling HLab
