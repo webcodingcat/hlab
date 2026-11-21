@@ -12,6 +12,11 @@ SSH keys, servers, placement groups, volumes, networks, primary and
 floating IPs, firewalls, DNS zones, load balancers and certificates.
 Anything else answers `not_found`.
 
+Storage boxes are not offered. hcloud reads them from its separate
+Hetzner endpoint, not from `HCLOUD_ENDPOINT`, so `hcloud all list` fails
+against HLab and sends your HLab token to `api.hetzner.com`; do not run
+it.
+
 ## Servers
 
 Servers are VMs on your machine and run only x86 server types; Arm types
