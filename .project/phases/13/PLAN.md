@@ -289,7 +289,7 @@ a group is split per client).
   - Size: ~300 lines in 1 file
   - [x] Rows `CLI-01/certificates`, `CLI-02/certificates`, `CLI-03/certificates`: an uploaded certificate (self-signed, made in Go in the row's temp folder) and a managed certificate for a name in a zone `<runID>-<client>-cert.test` the same client creates; describe, list, update, labels, `retry` (hcloud), delete; tofu `hcloud_uploaded_certificate`, `hcloud_managed_certificate`, data sources `hcloud_certificate(s)`; Ansible `certificate`, `certificate_info`; zone and certificates gone at the end.
 
-- [x] 13-23 Zones with all clients
+- [ ] 13-23 Zones with all clients
   - Wave: 2 | Depends on: 13-01 | Review: alone | e2e
   - Requirements: CLI-01, CLI-02, CLI-03 | Tests: test/e2e/clients_zones_test.go
   - Reads: RESEARCH.md §1 (zone, zone rrset), §2 (`hcloud_zone`, `hcloud_zone_rrset`, `hcloud_zone_record`), §3; REQUIREMENTS DNS-01
