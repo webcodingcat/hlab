@@ -3151,3 +3151,11 @@ taken with the approval of the spec or by an answer from the user.
 - What: the Playwright `e2e` project sets `actionTimeout: 60_000`, and the servers spec waits for a form control to be visible before choosing select or radio group.
 - Why: an unbounded click held a UI-02 run for 40 minutes; the spec counted controls before the form had rendered.
 - Cost of change: low
+
+## 2026-11-21 Upgrade to wcc 0.32.17
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.32.16 to 0.32.17: version line only; all migrations and templates already matched.
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
