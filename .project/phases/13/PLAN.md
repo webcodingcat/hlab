@@ -139,15 +139,15 @@ a group is split per client).
   - [ ] `actions.go`: `add_subnet`, `delete_subnet`, `add_route`, `delete_route` queue on the network; subnets and routes appear on GET at `success`; `change_ip_range`, `change_protection` keep refusing.
   - [ ] `networks_test.go`: the rows of the test map.
 
-- [ ] 13-04 Load balancers: queue and effect at success
+- [x] 13-04 Load balancers: queue and effect at success
   - Wave: 2 | Depends on: 13-02 | Review: alone
   - Requirements: CLI-02 | Tests: internal/resources/loadbalancers/loadbalancers_test.go
   - Reads: CONTEXT.md "Actions"; Interfaces "internal/actions"; internal/resources/loadbalancers/actions.go, targets.go, services.go, network.go
   - Size: ~240 lines in 5 files
   - Adjusts: tests in loadbalancers_test.go, targets_test.go or services_test.go that expect 423 `locked` for a queuing action (none found by grep at planning)
-  - [ ] `actions.go` (shared start helper), `targets.go`, `services.go`: target and service actions through `StartQueued` (queue on the LB and the target servers); targets and services appear on GET and in the agent document at `success`; `add_target` with `use_private_ip` checks the committed network state; `change_type`, `change_algorithm`, public interface and protection keep refusing.
-  - [ ] `network.go`: LB `attach_to_network`/`detach_from_network` refuse the LB, queue the network; `private_net` at `success`.
-  - [ ] `loadbalancers_test.go`: the rows of the test map.
+  - [x] `actions.go` (shared start helper), `targets.go`, `services.go`: target and service actions through `StartQueued` (queue on the LB and the target servers); targets and services appear on GET and in the agent document at `success`; `add_target` with `use_private_ip` checks the committed network state; `change_type`, `change_algorithm`, public interface and protection keep refusing.
+  - [x] `network.go`: LB `attach_to_network`/`detach_from_network` refuse the LB, queue the network; `private_net` at `success`.
+  - [x] `loadbalancers_test.go`: the rows of the test map.
 
 - [ ] 13-05 Volumes: queue and effect at success
   - Wave: 2 | Depends on: 13-02 | Review: alone
