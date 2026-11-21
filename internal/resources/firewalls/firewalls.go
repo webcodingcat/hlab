@@ -75,7 +75,17 @@ type Record struct {
 	Firewall
 	Hlab struct {
 		ProjectID int64 `json:"project_id"`
+		// Pending is the applied_to a running apply_to_resources or
+		// remove_from_resources action pushes to the agent before it
+		// commits it at success; nil without one.
+		Pending *Pending `json:"pending,omitempty"`
 	} `json:"_hlab"`
+}
+
+// Pending is the applied_to of a firewall while action Action runs.
+type Pending struct {
+	Action    int64     `json:"action"`
+	AppliedTo []Applied `json:"applied_to"`
 }
 
 // Module is the firewalls resource type.

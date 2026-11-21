@@ -142,7 +142,7 @@ func (m *Module) runPush(acts *actions.Manager, started []*actions.Action) {
 // change loads firewall id of the request's project, lets f change it and
 // return the specs of its actions, stores it and starts the actions with a
 // lock on the firewall; after the commit the actions run and the answer is
-// 201 {actions}.
+// 201 {actions}. set_rules uses it.
 func (m *Module) change(w http.ResponseWriter, req *http.Request, f func(tx store.Tx, r *Record, res resolution) ([]actions.Spec, error)) {
 	id, ok := api.PathID(w, req)
 	if !ok {
@@ -185,8 +185,8 @@ func (m *Module) applyToResources(w http.ResponseWriter, req *http.Request) {
 	if !api.Decode(w, req, &body) {
 		return
 	}
-	m.change(w, req, func(tx store.Tx, r *Record, res resolution) ([]actions.Spec, error) {
-		return applyTargets(tx, r, res, body.ApplyTo, "apply_to")
+	m.changeTargets(w, req, body.ApplyTo, func(tx store.Tx, r *Record, res resolution, ts []Target) ([]actions.Spec, error) {
+		return applyTargets(tx, r, res, ts, "apply_to")
 	})
 }
 
@@ -197,8 +197,150 @@ func (m *Module) removeFromResources(w http.ResponseWriter, req *http.Request) {
 	if !api.Decode(w, req, &body) {
 		return
 	}
-	m.change(w, req, func(_ store.Tx, r *Record, res resolution) ([]actions.Spec, error) {
-		return removeTargets(r, res, body.RemoveFrom)
+	m.changeTargets(w, req, body.RemoveFrom, func(_ store.Tx, r *Record, res resolution, ts []Target) ([]actions.Spec, error) {
+		return removeTargets(r, res, ts)
+	})
+}
+
+// targetsFunc adds or removes targets on firewall r and returns one action
+// spec per target, in the order of targets.
+type targetsFunc func(tx store.Tx, r *Record, res resolution, targets []Target) ([]actions.Spec, error)
+
+// changeTargets runs apply_to_resources or remove_from_resources of the
+// firewall in the path: the request checks all targets with f against the
+// committed state and starts one action per target, refusing with locked
+// only while the firewall has a running action; the actions queue behind
+// the running actions of their servers. The work of each action applies its
+// own target to the state the earlier actions left, pushes that applied_to
+// to the agent as pending and, at success, applies the target once more to
+// the record as it is then and commits it, so GET shows the change together
+// with the action's success and an error or a stop leaves the old state.
+func (m *Module) changeTargets(w http.ResponseWriter, req *http.Request, targets []Target, f targetsFunc) {
+	id, ok := api.PathID(w, req)
+	if !ok {
+		return
+	}
+	p, _ := api.ProjectFrom(req.Context())
+	acts := api.ActionsFrom(req.Context())
+	st := api.StoreFrom(req.Context())
+	var started []*actions.Action
+	err := st.Tx(func(tx store.Tx) error {
+		r, err := Load(tx, p.ID, id)
+		if err != nil {
+			return err
+		}
+		res, err := resolve(tx, p.ID)
+		if err != nil {
+			return err
+		}
+		specs, err := f(tx, &r, res, targets)
+		if err != nil {
+			return err
+		}
+		started, err = acts.StartAll(tx, p.ID, []actions.Ref{fwRef(id)}, specs)
+		return err
+	})
+	if err != nil {
+		api.Fail(w, err)
+		return
+	}
+	for i, a := range started {
+		actionID, target := a.ID, targets[i:i+1]
+		acts.Run(actionID, func(ctx context.Context, _ func(int)) error {
+			return m.commitTarget(ctx, st, p.ID, id, actionID, target, f)
+		})
+	}
+	api.JSON(w, http.StatusCreated, map[string]any{"actions": started})
+}
+
+// commitTarget is the work of action actionID of changeTargets on firewall
+// id with its target.
+func (m *Module) commitTarget(ctx context.Context, st *store.Store, projectID, id, actionID int64, target []Target, f targetsFunc) error {
+	step := func(tx store.Tx, r Record) (Record, error) {
+		res, err := resolve(tx, projectID)
+		if err != nil {
+			return r, err
+		}
+		next := r
+		next.AppliedTo = slices.Clone(r.AppliedTo)
+		_, err = f(tx, &next, res, target)
+		return next, err
+	}
+	err := st.Tx(func(tx store.Tx) error {
+		r, err := Load(tx, projectID, id)
+		if err != nil {
+			return err
+		}
+		next, err := step(tx, r)
+		if err != nil {
+			return err
+		}
+		r.Hlab.Pending = &Pending{Action: actionID, AppliedTo: next.AppliedTo}
+		return put(tx, r)
+	})
+	if err != nil {
+		return actionError(err)
+	}
+	pushErr := m.d.PushAgent(ctx)
+	var changeErr error
+	err = st.Tx(func(tx store.Tx) error {
+		r, err := Load(tx, projectID, id)
+		if errors.Is(err, store.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if pd := r.Hlab.Pending; pd != nil && pd.Action == actionID {
+			r.Hlab.Pending = nil
+		}
+		if pushErr == nil {
+			// The change again, on the record as it is now, so a server
+			// deleted while the action ran stays gone.
+			var next Record
+			if next, changeErr = step(tx, r); changeErr == nil {
+				r = next
+			}
+		}
+		return put(tx, r)
+	})
+	return errors.Join(pushErr, actionError(changeErr), err)
+}
+
+// actionError turns a validation error inside an action's work into the
+// action's error.
+func actionError(err error) error {
+	var fe *api.FieldError
+	if errors.As(err, &fe) {
+		code := fe.Code
+		if code == "" {
+			code = "invalid_input"
+		}
+		return &actions.Error{Code: code, Message: fe.Message}
+	}
+	return err
+}
+
+// Recover implements resource.Recoverer: an apply or remove action
+// interrupted by a stop has been marked error, so every firewall drops the
+// applied_to it left pending; the next agent push follows the committed
+// state.
+func (m *Module) Recover(_ context.Context) error {
+	return m.d.Store.Tx(func(tx store.Tx) error {
+		fws, err := store.ListAll[Record](tx, Kind)
+		if err != nil {
+			return err
+		}
+		for _, f := range fws {
+			if f.Hlab.Pending == nil {
+				continue
+			}
+			f.Hlab.Pending = nil
+			if err := put(tx, f); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 
@@ -229,8 +371,10 @@ func (m *Module) setRules(w http.ResponseWriter, req *http.Request) {
 
 // AttachAtCreate implements servers.Firewalls: it applies firewalls ids to
 // the new server serverID inside the create transaction, starts one
-// apply_firewall action per firewall with a lock on the firewalls only and
-// runs them; their pushes wait for the commit of tx.
+// apply_firewall action per firewall and runs them; they refuse on nothing
+// and queue behind the running actions of the firewalls (the next actions
+// of other server creates included), and their pushes wait for the commit
+// of tx.
 func (m *Module) AttachAtCreate(tx store.Tx, acts *actions.Manager, projectID, serverID int64, hasIPv4 bool, ids []int64) ([]*actions.Action, error) {
 	res, err := resolve(tx, projectID)
 	if err != nil {
@@ -250,7 +394,6 @@ func (m *Module) AttachAtCreate(tx store.Tx, acts *actions.Manager, projectID, s
 	if !hasIPv4 {
 		return nil, &api.FieldError{Code: codePrivateOnly, Message: fmt.Sprintf("server %d has no public IPv4", serverID)}
 	}
-	var lock []actions.Ref
 	var specs []actions.Spec
 	have := len(res.firewallsOf(serverID))
 	for _, r := range recs {
@@ -264,10 +407,9 @@ func (m *Module) AttachAtCreate(tx store.Tx, acts *actions.Manager, projectID, s
 		if err := put(tx, r); err != nil {
 			return nil, err
 		}
-		lock = append(lock, fwRef(r.ID))
 		specs = append(specs, serverSpec("apply_firewall", serverID, r.ID))
 	}
-	started, err := acts.StartAll(tx, projectID, lock, specs)
+	started, err := acts.StartAll(tx, projectID, nil, specs)
 	if err != nil {
 		return nil, err
 	}
