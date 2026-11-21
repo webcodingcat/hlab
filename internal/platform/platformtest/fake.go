@@ -44,7 +44,6 @@ type Fake struct {
 	mu       sync.Mutex
 	vms      map[string]*vm
 	disks    map[string]int64 // path -> nominal size
-	switches map[string]bool
 	res      platform.Resources
 	calls    []Call
 	failNext map[string][]error
@@ -57,9 +56,8 @@ var _ platform.Platform = (*Fake)(nil)
 // 1 TiB free disk.
 func NewFake() *Fake {
 	return &Fake{
-		vms:      map[string]*vm{},
-		disks:    map[string]int64{},
-		switches: map[string]bool{},
+		vms:   map[string]*vm{},
+		disks: map[string]int64{},
 		res: platform.Resources{
 			MemoryMB: 64 * 1024, FreeMemoryMB: 64 * 1024,
 			LogicalCPUs: 16, FreeDiskBytes: 1 << 40,
@@ -171,37 +169,22 @@ func (f *Fake) existing(op, name string) (*vm, error) {
 	return v, nil
 }
 
-// EnsureSwitch records the call and creates the switch.
+// EnsureSwitch records the call.
 func (f *Fake) EnsureSwitch(ctx context.Context, spec platform.SwitchSpec) error {
 	if err := f.begin(ctx, "EnsureSwitch", "", spec); err != nil {
 		return err
 	}
-	defer f.mu.Unlock()
-	f.switches[spec.Name] = true
+	f.mu.Unlock()
 	return nil
 }
 
-// DeleteSwitch removes the switch named exactly name; a missing switch is
-// no error.
+// DeleteSwitch records the call.
 func (f *Fake) DeleteSwitch(ctx context.Context, name string) error {
 	if err := f.begin(ctx, "DeleteSwitch", "", name); err != nil {
 		return err
 	}
-	defer f.mu.Unlock()
-	delete(f.switches, name)
+	f.mu.Unlock()
 	return nil
-}
-
-// Switches returns the sorted names of the switches that exist.
-func (f *Fake) Switches() []string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	out := make([]string, 0, len(f.switches))
-	for name := range f.switches {
-		out = append(out, name)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // CreateVM creates a VM that is off.
