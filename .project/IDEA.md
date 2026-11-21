@@ -105,7 +105,8 @@ official clients.
 - Installer (EXE with MSI, installs WebView2 if missing) that checks Hyper-V
   and says exactly what is missing; updates via a new installer. Uninstalling
   always removes VMs, networks, routes and NRPT rules, and asks whether to
-  keep user data (disks, volumes, snapshots, backups, image cache, logs;
+  keep user data (disks, volumes, snapshots, backups, storage box data,
+  image cache, logs;
   default: delete).
 - Responses are validated against a frozen copy of Hetzner's OpenAPI
   description.

@@ -67,35 +67,49 @@
          it.
 
 - [ ] 18 Storage Box API.
-      Requirements: SBOX-01.
+      Requirements: SBOX-01, SBOX-02, SBOX-09, SBOX-10, SBOX-20.
       Depends on: 13.
       Success criteria:
-      1. `http://api.hetzner.internal/hetzner/v1` serves storage box types, storage
-         boxes and their actions as the frozen Hetzner API description
-         says, with the cloud tokens of the project.
+      1. `http://api.hetzner.internal/hetzner/v1` serves storage box types,
+         storage boxes, subaccounts and their actions as the frozen Hetzner
+         API description says, with the cloud tokens of the project.
       2. `task catalog` writes the storage box types with prices from the
          real API.
 
-- [ ] 19 Storage VM and data access.
-      Requirements: SBOX-02, SBOX-03, SBOX-04, SBOX-05, SBOX-06, SBOX-07,
-      SBOX-08.
+- [ ] 19 Storage VM and SSH access.
+      Requirements: SBOX-03, SBOX-04, SBOX-06, SBOX-08, SBOX-11, SBOX-12,
+      SBOX-13.
       Depends on: 18.
       Success criteria:
-      1. Data written to a storage box over each protocol can be read back
-         over the others, from a server, and from host and WSL2 only with
-         reachable_externally.
-      2. Subaccounts see only their home directory; read-only ones write
-         nothing.
-      3. Snapshots, the snapshot plan, rollback and the quota behave as at
-         Hetzner, and everything survives a stop and start of the cloud.
+      1. The first storage box creates the storage VM; data written over
+         SFTP on port 22 can be read back over rsync and Borg on port 23.
+      2. A box is reachable from a server, and from host and WSL2 only with
+         reachable_externally; the uninstall cleanup removes the storage VM.
+      3. Subaccounts see only their home directory; read-only ones write
+         nothing; the quota of the type holds.
       4. `docs/guide.md`, `docs/deviations.md` and `docs/configuration.md`
-         describe storage boxes.
+         describe storage boxes and their SSH access.
 
-- [ ] 20 Storage Boxes in the console and the clients.
-      Requirements: UI-12, CLI-05.
-      Depends on: 19, 17.
+- [ ] 20 SMB, WebDAV, FTP and snapshots.
+      Requirements: SBOX-05, SBOX-07, SBOX-14, SBOX-15, SBOX-16, SBOX-17,
+      SBOX-18, SBOX-19.
+      Depends on: 19.
       Success criteria:
-      1. The console manages storage boxes, subaccounts and snapshots.
+      1. Data written over SMB, WebDAV or FTPS can be read back over SFTP;
+         SMB, WebDAV and port 23 answer only while their access setting
+         is on.
+      2. Snapshots, the snapshot plan and a rollback behave as at Hetzner.
+      3. Data, accounts and snapshots survive a stop and start of the
+         cloud.
+      4. `docs/guide.md` and `docs/deviations.md` describe the protocols and
+         snapshots.
+
+- [ ] 21 Storage Boxes in the console and the clients.
+      Requirements: UI-12, UI-13, CLI-05, CLI-06, CLI-07.
+      Depends on: 20, 17.
+      Success criteria:
+      1. The console manages storage boxes, their subaccounts and
+         snapshots.
       2. hcloud, OpenTofu and Ansible pass their storage box rows with only
          their endpoints changed.
       3. The README names the Hetzner endpoint setting of each client, and

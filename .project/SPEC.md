@@ -31,8 +31,12 @@ Versions as of 2026-11-18 (reasoning and sources in DECISIONS.md, "Stack").
   icon generator `tools/icons`, which writes the committed `.syso` files.
 - Storage VM: Debian 13 `generic` cloud image, cloud-init, btrfs-progs
   (data disk, quotas, snapshots), OpenSSH (ports 22 and 23), rsync,
-  borgbackup, Samba, Apache 2.4 with mod_dav (WebDAV over HTTPS), vsftpd
-  (FTP and explicit FTPS); Debian packages; hlab-agent in role `storage`.
+  borgbackup, Samba, Apache 2.4 with mod_dav and libapache2-mpm-itk (WebDAV
+  over HTTPS, files owned by the box, E17), vsftpd (FTP and explicit FTPS);
+  Debian 13 packages pinned by version and SHA-256 in
+  `catalog/storage-debs.json`, downloaded once on the host and put on the
+  storage VM's cidata like the appliance's packages (no apt from the VM);
+  hlab-agent in role `storage`.
 - Appliance: Debian 13 `generic` cloud image, cloud-init, nftables,
   HAProxy 3.0 (Debian package), iproute2 (VRF, VLAN, netns), xfsprogs,
   e2fsprogs; hlab-agent as one static Go binary.
@@ -99,7 +103,12 @@ appear here, only names.
     pages). With a usable context it calls
     `hcloud --context <name> api <path>`; without one it says why and asks
     for a token with a hidden prompt, uses it for this run only and calls
-    the API itself.
+    the API itself. The storage box types (with prices) come from the
+    Hetzner API, always `https://api.hetzner.com/v1/storage_box_types`, with
+    the same token: taken from the usable context with
+    `hcloud --context <name> config get token --allow-sensitive` in the
+    child process only, else from the same hidden prompt; the context's
+    `hetzner-endpoint` is not read.
   - The live check of `hlab catalog update` (CAT-03) runs unattended, so it
     never prompts: with a usable context its test harness takes the token
     through hcloud

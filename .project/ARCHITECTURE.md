@@ -112,7 +112,10 @@ Inside `hlabd` (Go packages under `internal/`):
   firewalls, load_balancers, load_balancer_types, certificates, volumes,
   placement_groups, zones, pricing, actions; under `/hetzner/v1`:
   storage_boxes with subaccounts and snapshots, storage_box_types, and
-  their actions). A new resource type is a new
+  their actions; these actions live in the one action store, so their IDs
+  are unique across both APIs and `GET /v1/actions?id=` and
+  `GET /v1/actions/{id}` of the Cloud API return them too, which hcloud and
+  the provider poll (E12, E13)). A new resource type is a new
   package plus one line in `Cloud.modules()` (`internal/cloud`); the core
   does not change.
 - Interface:
@@ -120,7 +123,7 @@ Inside `hlabd` (Go packages under `internal/`):
   ```go
   type Module interface {
       Type() string                     // "servers"
-      Routes(r resource.Registrar)      // registers its endpoints and actions (Handle(pattern, handler), ServeMux patterns under /v1)
+      Routes(r resource.Registrar)      // registers its endpoints and actions (Handle(pattern, handler), ServeMux patterns under /v1; storage box modules under /hetzner/v1)
   }
   // optional interfaces, detected by type assertion:
   type Deleter interface {              // modules whose resources need work to delete (project deletion)
@@ -236,7 +239,7 @@ Inside `hlabd` (Go packages under `internal/`):
 
   type SwitchSpec struct { Name string; PVLANPrimary, PVLANSecondary int } // internal switch; host adapter isolated
   type VMSpec struct {
-      Name        string // "hlab-server-<id>", "hlab-appliance"
+      Name        string // "hlab-server-<id>", "hlab-appliance", "hlab-storage"
       CPUs        int
       MemoryMB    int64  // static
       Folder      string // VM configuration folder in the data folder
@@ -336,7 +339,7 @@ Inside `hlabd` (Go packages under `internal/`):
 - Purpose: `internal/uninstall` is the order `hlabd uninstall-cleanup` runs:
   service (with the stop override, see "Cloud start and stop"), forwarding
   restore, CA trust (thumbprint read from `ca.pem` before files go), host
-  network, VMs `<tag>-server-<digits>` and `<tag>-appliance` by exact name,
+  network, VMs `<tag>-server-<digits>`, `<tag>-appliance` and `<tag>-storage` by exact name,
   switch `<tag>`, files. Missing objects are no error; an existing object
   that cannot be removed fails the run after all other steps, naming it; WSL
   failures are notes. `internal/prereq` turns detected machine facts
@@ -577,6 +580,7 @@ HTTP/1.1 over `\\.\pipe\hlab`, JSON. All paths under `/mgmt/v1`:
 | `POST /projects/{name}/tokens` | body `{"name":"t","read_only":false}`; `201 {"name":"t","read_only":false,"token":"<64 chars [A-Za-z0-9]>"}`, the only time the value is returned |
 | `DELETE /projects/{name}/tokens/{token-name}` | `204` |
 | `ANY /projects/{name}/api/v1/{rest}` | forwards to the Hetzner API handlers with that project and read/write rights |
+| `ANY /projects/{name}/api/hetzner/v1/{rest}` | the same for the Hetzner API (Storage Boxes) under `/hetzner/v1` |
 | `POST /catalog/update` | body `{"hetzner_token": "..."}` (required, used once, never stored or logged); `200 {"server_types":n}`; `400 invalid_input` without a token; `502 server_error` with Hetzner's message when the real API refuses |
 | `GET /logs?follow=1` | log lines as newline-delimited JSON; followers end when the cloud stops |
 | `GET /ca.pem` | the hlab CA certificate |
@@ -636,6 +640,14 @@ locks a resource of type `project`.
       Metadata     []Metadata
       API          APIProxy              // listen 198.19.0.1:80, backend 198.19.0.2:8780
       Upstream     []netip.AddrPort      // DNS forwarders: the host's DNS servers, else 1.1.1.1:53, 9.9.9.9:53
+      Storage      netip.Addr            // the storage VM's address (Addrs.Storage); invalid while it does not exist
+      StorageBoxes []StorageBox          // routed /32 to Storage, DNS names, host/WSL2 filter, allowed ports
+  }
+
+  type StorageBox struct {
+      IP                  netip.Addr
+      Names               []string // "u100000.storagebox.hetzner.internal", "u100000-sub1.storagebox.hetzner.internal"
+      ReachableExternally bool     // false: drop from host and WSL2
   }
 
   type Server struct {
@@ -744,27 +756,75 @@ locks a resource of type `project`.
   with the first storage box of any project and deleted with the last; it
   starts and stops with the cloud and follows `stop_behaviour`. Data disk
   `<data folder>\storage\data.vhdx` (dynamic, btrfs); one subvolume per box
-  with a quota of its type's size (SBOX-06), snapshots as read-only btrfs
-  snapshots, shown under `.zfs/snapshot/<name>` with zfs_enabled.
+  and a level-1 qgroup over it and its snapshots with the type's size as
+  limit (SBOX-06, E18), snapshots as read-only btrfs snapshots outside the
+  account chroots, shown under `.zfs/snapshot/<name>` with zfs_enabled.
 - Network: each storage box gets a public IPv4 of the range like a server,
   routed `/32` by the appliance to the storage VM's public adapter; the
   agent DNS answers `u<n>.storagebox.hetzner.internal` and
   `u<n>-sub<m>.storagebox.hetzner.internal` with it. The appliance drops traffic
-  from the host and WSL2 to a box without reachable_externally.
+  from the host and WSL2 to a box without reachable_externally and allows
+  TCP 21, 22, 23, 443, 445 and the passive FTP range 50000-50099 to box
+  IPs (E17).
 - Accounts: box `u<n>` (`n` from 100000 upward, never reused), subaccounts
-  `u<n>-sub<m>` (`m` from 1 upward per box); passwords follow Hetzner's
-  policy, the VM keeps only hashes. Services per box IP: OpenSSH on 22
+  `u<n>-sub<m>` (`m` from 1 upward per box), with the box's UID so files
+  belong to the box (E17); passwords follow Hetzner's policy, and the VM
+  gets only a sha512-crypt and an NT hash per account (E19), never logged
+  or returned by an API. Services per box IP: OpenSSH on 22
   (SFTP/SCP, chrooted) and 23 (SFTP/SCP, rsync, borg serve; only with
   ssh_enabled), Samba on 445 (share `backup`, a subaccount's share named
   after it), Apache with mod_dav on 443 (certificate from the hlab CA),
   vsftpd on 21 (FTP and explicit FTPS); read-only subaccounts write
   nothing.
-- Interface: like the appliance agent, HTTP on its transit address with
-  its own secret: `PUT /v1/storage` takes the full `agentapi.Storage`
-  (boxes with IP, quota, accounts, password hashes, SSH keys, access
-  settings) and applies it idempotently; jobs `snapshot`, `rollback`,
-  `delete-snapshot`, `folders` and `usage` run what the actions need. The
-  snapshot plans are run by the scheduler in hlabd.
+- Address: `Addrs.Storage`, a fixed address of the public range (default
+  `198.19.255.253`, never handed out to servers), routed by the appliance
+  like a server's; the box IPs are further `/32` routes to it.
+- Interface: like the appliance agent, HTTP on `Addrs.Storage:9100` with
+  its own secret from its cidata:
+
+  | Method and path | Purpose |
+  |---|---|
+  | `PUT /v1/storage` | full `agentapi.Storage`, applied idempotently; returns the applied generation |
+  | `POST /v1/jobs` | `agentapi.StorageJob`, returns `agentapi.StorageJobResult` when done |
+
+  ```go
+  type Storage struct {
+      Schema, Generation int
+      Boxes []Box
+  }
+  type Box struct {
+      ID         int64
+      User       string     // "u100000"
+      IP         netip.Addr
+      QuotaBytes int64      // size of the type
+      Hashes     Hashes
+      SSHKeys    []string   // OpenSSH public keys
+      Access     Access     // ssh, samba, webdav, zfs
+      Subaccounts []Subaccount
+  }
+  type Subaccount struct {
+      User     string     // "u100000-sub1"
+      HomeDir  string     // relative to the box's data, no leading slash
+      Hashes   Hashes
+      Access   Access     // ssh, samba, webdav, readonly
+  }
+  type Hashes struct { Crypt, NT string } // sha512-crypt and NT hash (E19), never logged
+  type Access struct { SSH, Samba, WebDAV, ZFS, ReadOnly bool }
+  type StorageJob struct {
+      Kind     string // "snapshot" | "rollback" | "delete-snapshot" | "folders" | "usage"
+      Box      string // box user
+      Snapshot string // snapshot name for snapshot, rollback, delete-snapshot
+      Path     string // for folders
+  }
+  type StorageJobResult struct {
+      Folders []string
+      Usage   struct{ Data, Snapshots int64 }       // bytes, from the qgroups (E18)
+      SnapshotSizes map[string]int64
+  }
+  ```
+
+  The snapshot plans are run by the scheduler in hlabd, which sends
+  `snapshot` and `delete-snapshot` jobs.
 
 ### Guest integration
 
@@ -838,7 +898,7 @@ locks a resource of type `project`.
 All addresses below derive from the configured public range
 (`network.public_range`, default `198.19.0.0/16`); the addresses shown are
 those of the default range. `internal/transit.For(range)` returns them
-(`Addrs{Host, Appliance, APIListen, APIProxy, Agent}`) for every component;
+(`Addrs{Host, Appliance, APIListen, APIProxy, Agent, Storage}`) for every component;
 the agent reads its own from the `transit` file of its seed.
 
 - Virtual switch `hlab` (internal). The host adapter `vEthernet (hlab)` has
@@ -854,7 +914,7 @@ the agent reads its own from the `transit` file of its seed.
 - Servers get public IPv4 addresses from `.4` upward as `/32` with on-link
   gateway `172.31.1.1`. Allocation continues after the last address handed
   out (counter in `kv`) and wraps to `.4` only at the end of the range,
-  skipping addresses in use, so a freed address is not reused at once (SSH
+  skipping addresses in use and `Addrs.Storage`, so a freed address is not reused at once (SSH
   host key conflicts).
 - hlabd listens on `198.19.0.2:8780` only; one inbound Windows Firewall rule
   (group `hlab`) allows TCP 8780 for all firewall profiles (the internal
@@ -949,6 +1009,7 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 | `%ProgramData%\hlab\catalog\server-types.json` | same; written by `hlab catalog update`, preferred when present | hlabd |
 | `%ProgramFiles%\hlab\catalog\{images,isos,locations,load-balancer-types,pricing}.json` | Hetzner API shapes plus `_hlab.source` (URL, checksum URL, format); locations, load balancer types and pricing from `task catalog`, images and ISOs by hand | release |
 | `%ProgramFiles%\hlab\catalog\storage-box-types.json` | `{"storage_box_types": [...]}` as returned by Hetzner's API, prices included | `task catalog` (release) |
+| `%ProgramFiles%\hlab\catalog\storage-debs.json` | same shape as `appliance-debs.json`: the Debian 13 packages of the storage VM, pinned by version and SHA-256; cached in `<data>\cache\debs\` and put on the storage VM cidata | release |
 | `%ProgramFiles%\hlab\catalog\appliance-debs.json` | `{"debs":[{"name","urls","sha256"}]}`: Debian packages missing from the appliance image; cached in `<data>\cache\debs\` and put on the appliance cidata as `<name>.deb` | release |
 | `%ProgramData%\hlab\state.db` | SQLite, see "Data schema" | hlabd |
 | `%ProgramData%\hlab\logs\hlabd.log` | JSON lines (`time`, `level`, `msg`, fields), 10 MB x 5 rotated | hlabd (writes); hlab logs and the tray (read, also during rotation) |

@@ -20,13 +20,30 @@
 - Data and protocols live in a storage VM of their own, not on the
   appliance.
 - The console gets a Storage Boxes section; it is built after phase 13,
-  with its own client tests (CLI-05).
+  with its own client tests (CLI-05 to CLI-07).
 
 ## Details
 
 - The clients use their second endpoint setting (hcloud `hetzner_endpoint`
-  / `--hetzner-endpoint`, provider `endpoint_hetzner`, Ansible
-  `api_endpoint_hetzner`) and the same project token as for the Cloud API.
+  / `--hetzner-endpoint` / `HETZNER_ENDPOINT`, Ansible
+  `api_endpoint_hetzner` / `HETZNER_ENDPOINT`) and the same project token
+  as for the Cloud API. The OpenTofu provider 1.70.2 ignores its attribute
+  `endpoint_hetzner` (a provider bug, E13); it is configured with the
+  environment variable `HETZNER_ENDPOINT`, which the documentation and the
+  tests of CLI-06 use.
+- Clients wait for storage box actions through the Cloud API
+  (`GET /v1/actions?id=`, E12), so both APIs share one action store.
+- `day_of_week` of a snapshot plan follows the API (1 Monday to 7 Sunday,
+  null every day); 0 is refused (E14).
+- One process per service serves all boxes (E17): over SSH and FTP the
+  credentials of one box also log in at another box's address, landing in
+  their own box; SMB refuses that. `docs/deviations.md` names it.
+- WebDAV for subaccounts: name-based virtual hosts on the box's IP, one per
+  account name, each with a certificate from the hlab CA (SNI); not yet
+  tried in an experiment.
+- SMB from Windows uses NTLMv2 (E16); a future Windows build that blocks
+  NTLM by default would break it from the host. `docs/deviations.md`
+  names the risk.
 - Usernames `u<n>` with `n` from 100000 upward, never reused; subaccounts
   `u<n>-sub<m>`. Each box gets a public IPv4 of the range, routed by the
   appliance to the storage VM; the agent DNS answers the box and

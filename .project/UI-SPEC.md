@@ -117,7 +117,14 @@ everywhere.
     bar on top (see "Section tabs"), also when it has only one tab:
     Servers: Servers, Snapshots, Backups, Placement Groups; Volumes:
     Volumes; Storage Boxes: Storage Boxes (a box's detail page has the
-    tabs Overview, Subaccounts, Snapshots and Settings); Firewalls: Firewalls; Load Balancers: Load Balancers;
+    tabs Overview: hostname, username, type, location, usage, folders
+    with a path field, delete with protection; Subaccounts: list, create,
+    edit name, description, home directory and access settings, reset
+    password, delete; Snapshots: list, create, edit description, delete,
+    roll back with a confirm dialog, and the snapshot plan; Settings:
+    access settings, delete protection, change type, reset password;
+    "Create Storage Box" on the list opens a form with name, location,
+    type, password, SSH keys and access settings); Firewalls: Firewalls; Load Balancers: Load Balancers;
     Networks: Networks; IPs: Primary IPs, Floating IPs; DNS: DNS Zones;
     Security: SSH Keys, API tokens, Certificates. Snapshots and Backups
     list the project's images of that type (system images are not

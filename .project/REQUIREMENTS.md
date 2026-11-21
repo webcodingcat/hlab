@@ -29,7 +29,7 @@ resource types.
 - API-07 every resource with labels accepts labels on create and update and rejects invalid keys or values with `invalid_input` (goal 1) [unit]
 - API-08 every asynchronous operation returns an action whose status and progress move from `running` to `success` or `error`, readable at `/actions/{id}` and the resource's action endpoints (goal 1) [unit]
 - API-09 errors use Hetzner's error object and codes, with `details.fields` for `invalid_input` (goal 1) [unit]
-- API-10 every response of every endpoint validates against the frozen Hetzner OpenAPI description (goal 1) [unit]
+- API-10 every response of every endpoint validates against the frozen Hetzner OpenAPI descriptions, `cloud.spec.json` for `/v1` and `hetzner.spec.json` for `/hetzner/v1` (goal 1) [unit]
 - API-11 a name that Hetzner requires to be unique per project returns `uniqueness_error` when reused (goal 1) [unit]
 - API-12 a resource with delete (or rebuild) protection refuses that operation with `protected` until protection is removed (goal 1) [unit]
 - API-13 a second conflicting action on a resource with a running action returns `locked` (goal 1) [unit]
@@ -161,14 +161,26 @@ resource types.
 
 The Hetzner API (`http://api.hetzner.internal/hetzner/v1`), with the cloud tokens of the project.
 
-- SBOX-01 the Hetzner API serves storage box types (from the catalog, with prices) and storage boxes with create, update, delete, folders and the actions change_type, change_protection, reset_password, update_access_settings, enable and disable snapshot plan and rollback_snapshot, with Hetzner behaviour (goal 1) [unit]
-- SBOX-02 subaccounts are created, updated, deleted and get a home directory, a password and access settings including read-only; each logs in with its own username and sees only its home directory (goal 2) [e2e]
-- SBOX-03 a storage box holds real data on `uNNNNN.storagebox.hetzner.internal` with its password or SSH keys: SFTP and SCP on port 22, SFTP, SCP, rsync and BorgBackup on port 23 with ssh_enabled, SMB on port 445 with samba_enabled (share `backup`, a subaccount's share named after it), WebDAV over HTTPS on port 443 with webdav_enabled, FTP and FTPS on port 21 (goal 2) [e2e]
+- SBOX-01 the Hetzner API lists and shows the storage box types of the catalog with their prices per location (goal 1) [unit]
+- SBOX-09 storage boxes are created, listed with Hetzner's filters and sort keys, shown, updated and deleted with Hetzner's fields; create and delete run as actions, and a new box is `initializing` until it is `active` (goal 1) [unit]
+- SBOX-10 the actions change_protection, change_type, reset_password and update_access_settings change a box as at Hetzner, and a delete-protected box refuses deletion (goal 1) [unit]
+- SBOX-20 enable_snapshot_plan validates max_snapshots, minute, hour, day_of_week and day_of_month as at Hetzner and sets the plan, replacing an existing one, and disable_snapshot_plan removes it (goal 1) [unit]
+- SBOX-11 `folders` lists the real folders of a box under a path (goal 2) [e2e]
+- SBOX-02 subaccounts are created, listed, updated and deleted through the API, with change_home_directory, reset_subaccount_password and update_access_settings (goal 1) [unit]
+- SBOX-12 a subaccount logs in with its own username and password and sees only its home directory; a read-only subaccount reads but writes nothing (goal 2) [e2e]
+- SBOX-03 SFTP and SCP on port 22 of `u<n>.storagebox.hetzner.internal` read and write a box's data with its password or its SSH keys (goal 2) [e2e]
+- SBOX-13 port 23 serves SFTP, SCP, rsync and BorgBackup, only while ssh_enabled is on (goal 2) [e2e]
+- SBOX-14 SMB on port 445 serves the share `backup` of a box and a subaccount's share named after it, only while samba_enabled is on (goal 2) [e2e]
+- SBOX-15 WebDAV over HTTPS on port 443 serves a box's data, only while webdav_enabled is on (goal 2) [e2e]
+- SBOX-16 FTP and explicit FTPS on port 21 serve a box's data (goal 2) [e2e]
 - SBOX-04 a storage box is reachable from the servers; from the host and WSL2 only with reachable_externally (goal 2) [e2e]
-- SBOX-05 snapshots are taken by hand and by the snapshot plan, which keeps at most max_snapshots automatic ones; the limits of the type hold; a rollback restores the data and deletes newer snapshots; with zfs_enabled the snapshots are visible as read-only folders (goal 2) [e2e]
+- SBOX-05 manual snapshots are created, listed, updated and deleted, and the snapshot limit of the type holds (goal 2) [e2e]
+- SBOX-17 the snapshot plan takes an automatic snapshot at its time and keeps at most max_snapshots of them, deleting the oldest (goal 2) [unit]
+- SBOX-18 rollback_snapshot restores a box's data to the snapshot and deletes newer snapshots (goal 2) [e2e]
+- SBOX-19 with zfs_enabled the snapshots are visible as read-only folders under `.zfs/snapshot` (goal 2) [e2e]
 - SBOX-06 the size of the type is a hard quota, and change_type refuses a type smaller than the stored data (goal 2) [e2e]
 - SBOX-07 data, accounts and snapshots of storage boxes survive a stop and start of the cloud (goal 3) [e2e]
-- SBOX-08 uninstalling removes the storage VM; the data of storage boxes are user data and remain only when the user keeps them (goal 4) [e2e]
+- SBOX-08 the uninstall cleanup removes the storage VM by its exact name, and the data of storage boxes are user data that only `--keep-data` keeps (goal 4) [unit]
 
 ### Host integration (`HOST`)
 
@@ -203,7 +215,8 @@ The Hetzner API (`http://api.hetzner.internal/hetzner/v1`), with the cloud token
 - UI-09 the example environment of the success criterion can be created and deleted by hand in the console (goal 3) [manual]
 - UI-10 the ISOs view in the Administration lists the catalog and the own ISOs and adds, edits and removes own ISOs from a URL or a local file (goal 3) [e2e]
 - UI-11 the project list shows the projects as cards in a grid or as rows in a list (switch remembered), sorted by display name or creation date in either direction, each with display name, name, a menu (Delete) and its resources per type that open their section ("Create server" when empty), and a dashed "New project" tile that creates a project (goal 3) [e2e]
-- UI-12 the console lists, shows, creates, configures and deletes storage boxes, their subaccounts and snapshots in the active project (goal 3) [e2e]
+- UI-12 the console lists, shows, creates, configures and deletes the storage boxes of the active project (goal 3) [e2e]
+- UI-13 the console lists, creates, configures and deletes the subaccounts and snapshots of a storage box and rolls a box back to a snapshot (goal 3) [e2e]
 
 ### Installer (`INST`)
 
@@ -225,7 +238,9 @@ One requirement per client; the test map has one row per resource type.
 - CLI-02 the OpenTofu provider manages every Cloud API resource and reads every Cloud API data source against hlab with only the endpoint changed (goal 1) [e2e]
 - CLI-03 the Ansible collection runs every Cloud API module and the inventory plugin against hlab from WSL2 with only the endpoint changed (goal 1) [e2e]
 - CLI-04 each client builds the example environment of the success criterion, it is reachable via SSH from host and WSL2, and the client deletes it completely (goal 1) [e2e]
-- CLI-05 each client manages storage boxes, subaccounts and snapshots and reads storage box types against hlab with only its cloud and Hetzner endpoints changed (goal 1) [e2e]
+- CLI-05 the hcloud CLI manages storage boxes, subaccounts and snapshots and reads storage box types against hlab with only its cloud and Hetzner endpoints changed (goal 1) [e2e]
+- CLI-06 the OpenTofu provider manages every storage box resource and reads every storage box data source against hlab with only its cloud and Hetzner endpoints changed (goal 1) [e2e]
+- CLI-07 the Ansible collection runs every storage box module against hlab from WSL2 with only its cloud and Hetzner endpoints changed (goal 1) [e2e]
 
 ### MCP server (`MCP`)
 
@@ -373,12 +388,24 @@ What the target vision in IDEA.md will need, not built yet.
 | DNS-04 | 07 | x |
 | DNS-05 | 07 | x |
 | SBOX-01 | 18 | |
-| SBOX-02 | 19 | |
+| SBOX-09 | 18 | |
+| SBOX-10 | 18 | |
+| SBOX-20 | 18 | |
+| SBOX-11 | 19 | |
+| SBOX-02 | 18 | |
+| SBOX-12 | 19 | |
 | SBOX-03 | 19 | |
+| SBOX-13 | 19 | |
+| SBOX-14 | 20 | |
+| SBOX-15 | 20 | |
+| SBOX-16 | 20 | |
 | SBOX-04 | 19 | |
-| SBOX-05 | 19 | |
+| SBOX-05 | 20 | |
+| SBOX-17 | 20 | |
+| SBOX-18 | 20 | |
+| SBOX-19 | 20 | |
 | SBOX-06 | 19 | |
-| SBOX-07 | 19 | |
+| SBOX-07 | 20 | |
 | SBOX-08 | 19 | |
 | HOST-01 | 05 | x |
 | HOST-02 | 09 | x |
@@ -405,7 +432,8 @@ What the target vision in IDEA.md will need, not built yet.
 | UI-09 | 14 | x |
 | UI-10 | 14 | x |
 | UI-11 | 15 | x |
-| UI-12 | 20 | |
+| UI-12 | 21 | |
+| UI-13 | 21 | |
 | INST-01 | 12 | x |
 | INST-02 | 12 | x |
 | INST-03 | 12 | x |
@@ -416,7 +444,9 @@ What the target vision in IDEA.md will need, not built yet.
 | CLI-02 | 13 | |
 | CLI-03 | 13 | |
 | CLI-04 | 13 | |
-| CLI-05 | 20 | |
+| CLI-05 | 21 | |
+| CLI-06 | 21 | |
+| CLI-07 | 21 | |
 | MCP-01 | 17 | |
 | MCP-02 | 17 | |
 | MCP-03 | 17 | |
