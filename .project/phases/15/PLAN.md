@@ -195,13 +195,13 @@ of `main`, in list over 80 %.
   - [ ] adjust the tests named under Adjusts
   - [ ] `test/e2e/e2e_test.go` and `test/e2e/ui_test.go`: subtest `UI-11` running `runSpec(t, "UI-11", 5*time.Minute, nil)` (lower to about twice the first full run)
 
-- [ ] 15-09 Tray: breadcrumb and project switcher with display names
+- [x] 15-09 Tray: breadcrumb and project switcher with display names
   - Wave: 3 | Depends on: 15-03, 15-06 | Review: alone
   - Requirements: UI-11 | Tests: -
   - Reads: UI-SPEC "Views" (Project console breadcrumb); CONTEXT.md
   - Size: ~40 lines in 1 file
   - Adjusts: -
-  - [ ] `ui/frontend/src/lib/ProjectMenu.svelte`: loads `GET /projects` when mounted and when `project` changes; the button shows the display name of `project` (the name until loaded or when not listed); the menu lists the other projects by display name, sorted with `sortProjects(…, {key: "display_name", dir: "asc"})`, linking by name
+  - [x] `ui/frontend/src/lib/ProjectMenu.svelte`: loads `GET /projects` when mounted and when `project` changes; the button shows the display name of `project` (the name until loaded or when not listed); the menu lists the other projects by display name, sorted with `sortProjects(…, {key: "display_name", dir: "asc"})`, linking by name
 
 - [ ] 15-10 Documentation
   - Wave: 4 | Depends on: 15-01, 15-02, 15-03, 15-04, 15-05, 15-06, 15-07, 15-08, 15-09 | Review: alone
