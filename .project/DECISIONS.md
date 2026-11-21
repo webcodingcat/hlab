@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-21 Network members list attached members with status ok
+
+- Type: decision
+- Phase: phase 13
+- What: `GET /networks/{id}/members` (Hetzner's shape, filters type, subnet and status, sort, pagination) lists a server or load balancer once its attach has succeeded, always with status `ok`; the CLI-03 networks update keeps its ip_range because hlab refuses `change_ip_range` while servers are attached.
+- Why: it matches the network's own `servers` list, and the range change is covered by CLI-01 before the attach.
+- Cost of change: low
+
 ## 2026-11-21 Reboot of a booting guest retries for two minutes
 
 - Type: decision
