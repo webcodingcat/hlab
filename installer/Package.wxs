@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  hlab-<version>.msi: the per-machine package of the release profile.
+  Built by tools/installer (`task installer VERSION=x.y.z`) with
+  -d Version=<version>, the util extension and two bind paths: <out>\release
+  (hlabd.exe, hlab.exe, hlab-tray.exe, hlab-agent) and the repository root.
+  Only the setup bundle (Bundle.wxs) is listed in "Apps"; it passes KEEPDATA
+  and HLABUI.
+
+  Custom actions (all run hlabd.exe):
+  - check-prerequisites: immediate, from the Binary table, before anything
+    changes; with HLABUI=1 it shows the message box.
+  - install: deferred as LocalSystem after InstallFiles; on a failed first
+    install its rollback runs uninstall-cleanup keep-data.
+  - stop-service: in the old product during a major upgrade, before its files
+    go.
+  - uninstall-cleanup (keep-data with KEEPDATA=1): on a real uninstall, before the files go;
+    a non-zero exit rolls the uninstall back.
+  - remove-user-data: as the uninstalling user, unless KEEPDATA=1.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <!-- The UpgradeCode never changes: upgrade and downgrade depend on it. -->
+  <Package Name="HLab"
+           Manufacturer="webcodingcat"
+           Version="$(Version)"
+           UpgradeCode="D98713BD-2D6B-4822-AB75-0F2943A2E802"
+           Scope="perMachine"
+           Language="1033">
+
+    <MajorUpgrade Schedule="afterInstallValidate"
+                  DowngradeErrorMessage="A newer version of HLab is already installed. Uninstall it first to install this version." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Hidden from "Apps"; the bundle is the listed entry. -->
+    <Property Id="ARPSYSTEMCOMPONENT" Value="1" />
+    <!-- 1 keeps the data folder at uninstall (from the bundle variable KeepData). -->
+    <Property Id="KEEPDATA" Value="0" Secure="yes" />
+    <!-- 1 shows the prerequisite failure in a message box (from the bundle). -->
+    <Property Id="HLABUI" Value="0" Secure="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="hlab">
+        <Directory Id="CATALOGFOLDER" Name="catalog" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <StandardDirectory Id="DesktopFolder" />
+
+    <Feature Id="Main" Title="HLab" AllowAbsent="no">
+      <ComponentGroupRef Id="Binaries" />
+      <ComponentGroupRef Id="Catalogs" />
+    </Feature>
+
+    <ComponentGroup Id="Binaries" Directory="INSTALLFOLDER">
+      <Component Id="Hlabd">
+        <File Id="HlabdExe" Source="hlabd.exe" KeyPath="yes" />
+        <!-- Removal matches name and value: keep the value the same in every version. -->
+        <Environment Id="HlabPath" Name="PATH" Value="[INSTALLFOLDER]" Action="set"
+                     Part="last" System="yes" Permanent="no" />
+      </Component>
+      <Component Id="Hlab">
+        <File Id="HlabExe" Source="hlab.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="HlabTray">
+        <File Id="HlabTrayExe" Source="hlab-tray.exe" KeyPath="yes" />
+      </Component>
+      <!-- Shortcuts need a key path under HKCU (ICE43, ICE57). -->
+      <Component Id="Shortcuts">
+        <Shortcut Id="StartMenuShortcut" Name="HLab" Directory="ProgramMenuFolder"
+                  Target="[INSTALLFOLDER]hlab-tray.exe" WorkingDirectory="INSTALLFOLDER" Description="HLab" />
+        <Shortcut Id="DesktopShortcut" Name="HLab" Directory="DesktopFolder"
+                  Target="[INSTALLFOLDER]hlab-tray.exe" WorkingDirectory="INSTALLFOLDER" Description="HLab" />
+        <RegistryValue Root="HKCU" Key="Software\webcodingcat\hlab" Name="Shortcuts"
+                       Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+      <Component Id="HlabAgent">
+        <File Id="HlabAgent" Source="hlab-agent" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="Catalogs" Directory="CATALOGFOLDER">
+      <Files Include="..\catalog\*.json" />
+    </ComponentGroup>
+
+    <!-- A running tray is ended before its files are replaced or removed. -->
+    <util:CloseApplication Id="CloseTray" Target="hlab-tray.exe" CloseMessage="yes"
+                           TerminateProcess="1" RebootPrompt="no" />
+
+    <!-- Prerequisites: from the Binary table, so no installed file is needed. -->
+    <Binary Id="HlabdBinary" SourceFile="hlabd.exe" />
+    <SetProperty Id="PREREQARGS" Action="SetPrereqArgs" Value="--ui" Sequence="execute"
+                 Before="HlabCheckPrereq" Condition="HLABUI=1" />
+    <CustomAction Id="HlabCheckPrereq" BinaryRef="HlabdBinary"
+                  ExeCommand="check-prerequisites [PREREQARGS]"
+                  Execute="immediate" Return="check" />
+
+    <!-- Install: service, security descriptor, %ProgramData%\hlab and ACLs. -->
+    <CustomAction Id="HlabInstallRollback" FileRef="HlabdExe"
+                  ExeCommand="uninstall-cleanup --keep-data"
+                  Execute="rollback" Impersonate="no" Return="ignore" />
+    <CustomAction Id="HlabInstall" FileRef="HlabdExe" ExeCommand="install"
+                  Execute="deferred" Impersonate="no" Return="check" />
+
+    <!-- Upgrade: the old product stops the service before its files go. -->
+    <CustomAction Id="HlabStopService" FileRef="HlabdExe" ExeCommand="stop-service"
+                  Execute="deferred" Impersonate="no" Return="check" />
+
+    <!-- Uninstall: the deferred WixQuietExec reads its command line from the
+         property of the same Id and logs the output. -->
+    <SetProperty Id="CLEANUPARGS" Action="SetCleanupArgs" Value="--keep-data" Sequence="execute"
+                 Before="SetHlabCleanup" Condition="KEEPDATA=1" />
+    <SetProperty Id="HlabCleanup" Action="SetHlabCleanup" Sequence="execute" Before="HlabCleanup"
+                 Value="&quot;[#HlabdExe]&quot; uninstall-cleanup [CLEANUPARGS]"
+                 Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    <CustomAction Id="HlabCleanup" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixQuietExec"
+                  Execute="deferred" Impersonate="no" Return="check" />
+
+    <!-- The uninstalling user's tray data (other accounts keep theirs). -->
+    <CustomAction Id="HlabRemoveUserData" FileRef="HlabdExe" ExeCommand="remove-user-data"
+                  Execute="deferred" Impersonate="yes" Return="check" />
+
+    <InstallExecuteSequence>
+      <Custom Action="HlabCheckPrereq" Before="InstallValidate" Condition="NOT REMOVE" />
+      <Custom Action="HlabInstallRollback" Before="HlabInstall"
+              Condition="NOT Installed AND NOT WIX_UPGRADE_DETECTED AND NOT REMOVE" />
+      <Custom Action="HlabInstall" After="InstallFiles" Condition="NOT REMOVE" />
+      <Custom Action="HlabStopService" Before="RemoveFiles"
+              Condition="REMOVE=&quot;ALL&quot; AND UPGRADINGPRODUCTCODE" />
+      <Custom Action="HlabCleanup" Before="StopServices"
+              Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="HlabRemoveUserData" After="HlabCleanup"
+              Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE AND KEEPDATA&lt;&gt;1" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>
