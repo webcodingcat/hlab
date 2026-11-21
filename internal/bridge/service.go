@@ -15,6 +15,7 @@ import (
 
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/mgmtclient"
+	"github.com/webcodingcat/hlab/internal/projectname"
 	"github.com/webcodingcat/hlab/internal/settings"
 	"github.com/webcodingcat/hlab/internal/sysint"
 )
@@ -294,6 +295,12 @@ func (s *Service) Locations() ([]Location, error) {
 	}
 	slices.SortFunc(locs, func(a, b Location) int { return strings.Compare(a.Name, b.Name) })
 	return locs, nil
+}
+
+// ProjectName returns the project name derived from a display name, for
+// the live preview in the create dialog. It needs no cloud.
+func (s *Service) ProjectName(display string) string {
+	return projectname.Derive(display)
 }
 
 // catalog loads the catalog the way hlabd does.
