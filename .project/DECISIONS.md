@@ -27,6 +27,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-21 MSI custom actions find hlabd.exe through INSTALLFOLDER
+
+- Type: decision
+- Phase: phase 12
+- What: every custom action that runs while hlabd.exe is removed calls `"[INSTALLFOLDER]hlabd.exe"`; the shortcut component keys on the HKCU value `Software\webcodingcat\hlab\Shortcuts`; the MSI UpgradeCode is D98713BD-2D6B-4822-AB75-0F2943A2E802.
+- Why: `[#file]` is blank when the component is Absent, and ICE43/ICE57 reject a file or HKLM key path for non-advertised shortcuts.
+- Cost of change: low
+
 ## 2026-11-21 Uninstall runs only through internal/uninstall
 
 - Type: decision
