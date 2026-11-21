@@ -329,3 +329,7 @@ Closing a running hlab-tray
   `Microsoft-Hyper-V` and `-Management-PowerShell`; reboot-pending registry markers.
 - Remove-VM leftovers (saved-state files), Remove-VMSwitch with PVLAN, the CreateProcessAsUser path from an MSI CA.
 - Value of `BOOTSTRAPPER_ACTION_UNINSTALL` (3) and the exact case of `$(sys.BUILDARCHSHORT)` in the CA binary name.
+
+## Correction from plan 12-01
+
+- On Windows 11 the Hyper-V PowerShell module is at `Modules\Hyper-V\<version>\Hyper-V.psd1` (here `2.0.0.0`), not directly in `Modules\Hyper-V`; any file search for it (also a Burn `util:FileSearch`) must allow the version folder.

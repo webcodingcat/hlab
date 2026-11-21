@@ -128,14 +128,14 @@ Added after the tests were written:
 
 ## Plans
 
-- [ ] 12-01 Prerequisite check
+- [x] 12-01 Prerequisite check
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: INST-02 | Tests: internal/prereq/prereq_test.go
   - Reads: REQUIREMENTS INST; SPEC "Machine prerequisites"; ARCHITECTURE "Installer", "system integration"; RESEARCH.md §3, §4; CONTEXT.md INST-02
   - Size: ~250 lines in 4 files
-  - [ ] `internal/prereq/prereq.go`: `Facts`, `Missing` as in Interfaces
-  - [ ] `internal/sysint/windows/prereq.go`: `Prerequisites` from registry (EditionID, CurrentBuildNumber, InstallationType), the module file, an SCM query of vmms, one `Get-CimInstance Win32_ComputerSystem, Win32_Processor` call through powershell.exe; no Win32_OptionalFeature, no DISM, nothing that needs elevation
-  - [ ] `cmd/hlabd/main.go`: `check-prerequisites [--ui]`: prints the list, writes it to `%TEMP%\hlab-setup-prerequisites.log`, with `--ui` shows it in one MessageBoxW (MB_ICONERROR|MB_TOPMOST|MB_SETFOREGROUND), exits 1 when anything is missing; a failure to read the facts is exit 1 with the reason
+  - [x] `internal/prereq/prereq.go`: `Facts`, `Missing` as in Interfaces
+  - [x] `internal/sysint/windows/prereq.go`: `Prerequisites` from registry (EditionID, CurrentBuildNumber, InstallationType), the module file, an SCM query of vmms, one `Get-CimInstance Win32_ComputerSystem, Win32_Processor` call through powershell.exe; no Win32_OptionalFeature, no DISM, nothing that needs elevation
+  - [x] `cmd/hlabd/main.go`: `check-prerequisites [--ui]`: prints the list, writes it to `%TEMP%\hlab-setup-prerequisites.log`, with `--ui` shows it in one MessageBoxW (MB_ICONERROR|MB_TOPMOST|MB_SETFOREGROUND), exits 1 when anything is missing; a failure to read the facts is exit 1 with the reason
 
 - [x] 12-02 Platform: delete the switch
   - Wave: 1 | Depends on: - | Review: alone
@@ -145,13 +145,13 @@ Added after the tests were written:
   - [x] `internal/platform/platform.go`, `internal/platform/hyperv/hyperv.go`: `DeleteSwitch` matching `$_.Name -eq $name` exactly; missing is no error; if `Remove-VMSwitch -Force` fails, remove the management-OS adapter of that name first and retry (PVLAN on the host adapter is unverified, RESEARCH §6)
   - [x] `internal/platform/platformtest/fake.go`: switches in the fake (created by EnsureSwitch, removed by DeleteSwitch, failure injection like the other calls)
 
-- [ ] 12-03 Host network: uninstall helpers
+- [x] 12-03 Host network: uninstall helpers
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: INST-04 | Tests: -
   - Reads: ARCHITECTURE "hostnet", "Network" (WSL2); DECISIONS "Q9", "WSL trust runner", "Host settings restored after a crash"; RESEARCH.md §7
   - Size: ~90 lines in 3 files
-  - [ ] `internal/hostnet/windows/hostnet.go`: exported `Restore` (the existing `restore`)
-  - [ ] `internal/hostnet/windows/trust.go`, `trust_wsl.go`: `RemoveRootTrust` (thumbprint lookup of `trustRoot`, reports whether it was there), `RemoveWSLTrust` (one `applyWSL(off)`, returns `ErrNoConsoleUser`, never sets `wslPending` or starts `watchLogon`), `ErrNoConsoleUser` exported from `errNoUser`
+  - [x] `internal/hostnet/windows/hostnet.go`: exported `Restore` (the existing `restore`)
+  - [x] `internal/hostnet/windows/trust.go`, `trust_wsl.go`: `RemoveRootTrust` (thumbprint lookup of `trustRoot`, reports whether it was there), `RemoveWSLTrust` (one `applyWSL(off)`, returns `ErrNoConsoleUser`, never sets `wslPending` or starts `watchLogon`), `ErrNoConsoleUser` exported from `errNoUser`
 
 - [ ] 12-04 Cloud: stop override for the uninstaller
   - Wave: 1 | Depends on: - | Review: alone

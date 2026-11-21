@@ -27,6 +27,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-21 Prerequisite check refuses Server Core and finds the Hyper-V module in a version folder
+
+- Type: decision
+- Phase: phase 12
+- What: `prereq.Facts.ServerCore` makes Server Core an unsupported edition, and the Hyper-V PowerShell module counts as present in `Modules\Hyper-V` or a version folder below it.
+- Why: SPEC requires Desktop Experience, and Windows 11 keeps the module under `Hyper-V\2.0.0.0`.
+- Cost of change: low
+
 ## 2026-11-21 Prerequisite check runs as an immediate MSI custom action from the Binary table
 
 - Type: decision
