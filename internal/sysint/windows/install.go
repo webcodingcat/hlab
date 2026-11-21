@@ -3,6 +3,7 @@
 package windows
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -208,17 +209,19 @@ func systemRoot() string {
 	return `C:\Windows`
 }
 
-// Uninstall stops and removes the service and, unless keepData, the data
-// folder %ProgramData%\<profile>. Removing the Hyper-V and host objects
-// tagged with the profile (VMs, switch, NAT, routes, NRPT and firewall
-// rules) belongs to the installer phase 12 of the roadmap.
+// stopOverrideFile is cloud.StopOverrideFile (cloud imports this package):
+// the one-shot stop override in Paths.State that the cloud reads when it
+// halts; its content is "off" or "shutdown".
+const stopOverrideFile = "uninstall-stop"
+
+// Uninstall stops the service with the configured stop_behaviour, removes
+// it and, unless keepData, the data folder %ProgramData%\<profile>.
 func (*Installer) Uninstall(keepData bool) error {
-	m, err := mgr.Connect()
-	if err != nil {
-		return fmt.Errorf("connect to the service manager (administrator rights needed): %w", err)
+	ctx := context.Background()
+	if err := StopService(ctx); err != nil {
+		return err
 	}
-	defer func() { _ = m.Disconnect() }()
-	if err := removeService(m, profile.Current().ServiceName); err != nil {
+	if err := RemoveService(ctx, "shutdown"); err != nil {
 		return err
 	}
 	if keepData {
@@ -227,7 +230,55 @@ func (*Installer) Uninstall(keepData bool) error {
 	return os.RemoveAll(DataDir())
 }
 
-func removeService(m *mgr.Mgr, name string) error {
+// RemoveService writes mode ("off" or "shutdown") to the stop override
+// <Paths.State>\uninstall-stop when the service runs, stops the service,
+// waits up to uninstallStopWait and deletes it. A missing service is no
+// error. The override file is deleted afterwards if the cloud left it.
+func RemoveService(ctx context.Context, mode string) error {
+	return withService(func(s *mgr.Service, name string) error {
+		st, err := s.Query()
+		if err != nil {
+			return fmt.Errorf("query service %s: %w", name, err)
+		}
+		if st.State != svc.Stopped {
+			override := filepath.Join(DataDir(), stopOverrideFile)
+			if err := os.WriteFile(override, []byte(mode), 0o644); err != nil {
+				return fmt.Errorf("write stop override %s: %w", override, err)
+			}
+			defer func() { _ = os.Remove(override) }()
+			if err := stopAndWait(ctx, s, name, st); err != nil {
+				return err
+			}
+		}
+		if err := s.Delete(); err != nil {
+			return fmt.Errorf("delete service %s: %w", name, err)
+		}
+		return nil
+	})
+}
+
+// StopService stops the service of the current profile if it runs and
+// waits until it has stopped; the configured stop_behaviour applies. A
+// missing service is no error.
+func StopService(ctx context.Context) error {
+	return withService(func(s *mgr.Service, name string) error {
+		st, err := s.Query()
+		if err != nil {
+			return fmt.Errorf("query service %s: %w", name, err)
+		}
+		return stopAndWait(ctx, s, name, st)
+	})
+}
+
+// withService opens the service of the current profile and calls f; a
+// missing service is no error and f is not called.
+func withService(f func(s *mgr.Service, name string) error) error {
+	m, err := mgr.Connect()
+	if err != nil {
+		return fmt.Errorf("connect to the service manager (administrator rights needed): %w", err)
+	}
+	defer func() { _ = m.Disconnect() }()
+	name := profile.Current().ServiceName
 	s, err := m.OpenService(name)
 	if errors.Is(err, xwin.ERROR_SERVICE_DOES_NOT_EXIST) {
 		return nil
@@ -236,29 +287,36 @@ func removeService(m *mgr.Mgr, name string) error {
 		return fmt.Errorf("open service %s: %w", name, err)
 	}
 	defer func() { _ = s.Close() }()
-	st, err := s.Query()
-	if err != nil {
-		return fmt.Errorf("query service %s: %w", name, err)
+	return f(s, name)
+}
+
+// stopAndWait stops the service in state st unless it is stopped and waits
+// up to uninstallStopWait until it has stopped.
+func stopAndWait(ctx context.Context, s *mgr.Service, name string, st svc.Status) error {
+	if st.State == svc.Stopped {
+		return nil
 	}
-	if st.State != svc.Stopped {
-		if st.State != svc.StopPending {
-			if _, err := s.Control(svc.Stop); err != nil {
-				return fmt.Errorf("stop service %s: %w", name, err)
-			}
-		}
-		deadline := time.Now().Add(uninstallStopWait)
-		for st.State != svc.Stopped {
-			if time.Now().After(deadline) {
-				return fmt.Errorf("service %s did not stop within %s", name, uninstallStopWait)
-			}
-			time.Sleep(time.Second)
-			if st, err = s.Query(); err != nil {
-				return fmt.Errorf("query service %s: %w", name, err)
-			}
+	if st.State != svc.StopPending {
+		if _, err := s.Control(svc.Stop); err != nil {
+			return fmt.Errorf("stop service %s: %w", name, err)
 		}
 	}
-	if err := s.Delete(); err != nil {
-		return fmt.Errorf("delete service %s: %w", name, err)
+	deadline := time.Now().Add(uninstallStopWait)
+	for {
+		st, err := s.Query()
+		if err != nil {
+			return fmt.Errorf("query service %s: %w", name, err)
+		}
+		if st.State == svc.Stopped {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("service %s did not stop within %s", name, uninstallStopWait)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
 	}
-	return nil
 }

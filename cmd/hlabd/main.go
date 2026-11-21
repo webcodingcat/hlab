@@ -1,10 +1,13 @@
 //go:build windows
 
 // Command hlabd is the hlab Windows service. Without arguments it runs the
-// cloud under the service manager; `install [--dev]` and
-// `uninstall-cleanup [--keep-data]` register and remove it (administrator
-// rights needed); `check-prerequisites [--ui]` lists what the machine lacks
-// (used by the installer before anything is installed).
+// cloud under the service manager. The other commands are called by the
+// MSI and scripts/dev-setup.ps1: `install [--dev]` registers the service,
+// `uninstall-cleanup [--keep-data]` removes everything of the profile from
+// the host, `stop-service` stops a running cloud before an upgrade (these
+// need administrator rights), `remove-user-data` deletes the per-user
+// folders of the calling user and `check-prerequisites [--ui]` lists what
+// the machine lacks.
 package main
 
 import (
@@ -22,9 +25,12 @@ import (
 	"github.com/webcodingcat/hlab/internal/cloud"
 	hnwin "github.com/webcodingcat/hlab/internal/hostnet/windows"
 	"github.com/webcodingcat/hlab/internal/logfile"
+	"github.com/webcodingcat/hlab/internal/platform/hyperv"
 	"github.com/webcodingcat/hlab/internal/prereq"
+	"github.com/webcodingcat/hlab/internal/profile"
 	"github.com/webcodingcat/hlab/internal/sysint"
 	"github.com/webcodingcat/hlab/internal/sysint/windows"
+	"github.com/webcodingcat/hlab/internal/uninstall"
 )
 
 func main() {
@@ -50,7 +56,17 @@ func run(args []string) int {
 		if fs.Parse(args[1:]) != nil || fs.NArg() > 0 {
 			return 2
 		}
-		err = uninstall(*keep)
+		err = uninstallCleanup(*keep)
+	case "stop-service":
+		if len(args) > 1 {
+			return 2
+		}
+		err = windows.StopService(context.Background())
+	case "remove-user-data":
+		if len(args) > 1 {
+			return 2
+		}
+		err = removeUserData()
 	case "check-prerequisites":
 		fs := flag.NewFlagSet("check-prerequisites", flag.ContinueOnError)
 		ui := fs.Bool("ui", false, "show the result in a message box")
@@ -59,7 +75,7 @@ func run(args []string) int {
 		}
 		return checkPrerequisites(*ui)
 	default:
-		fmt.Fprintln(os.Stderr, "usage: hlabd [install [--dev] | uninstall-cleanup [--keep-data] | check-prerequisites [--ui]]")
+		fmt.Fprintln(os.Stderr, "usage: hlabd [install [--dev] | uninstall-cleanup [--keep-data] | stop-service | remove-user-data | check-prerequisites [--ui]]")
 		return 2
 	}
 	if err != nil {
@@ -69,21 +85,81 @@ func run(args []string) int {
 	return 0
 }
 
-// uninstall stops and removes the service, removes the host networking of
-// the profile (restoring the recorded host settings, which live in the data
-// folder) and then, unless keepData, the data folder.
-func uninstall(keepData bool) error {
-	inst := windows.NewInstaller()
-	if err := inst.Uninstall(true); err != nil {
+// uninstallCleanup removes the service, the host settings, the CA trust,
+// the VMs and the switch of the profile and, unless keepData, its files. It
+// prints what was skipped; the error lists each object that could not be
+// removed.
+func uninstallCleanup(keepData bool) error {
+	ctx := context.Background()
+	tag := profile.Current().Tag
+	hv, closeHV, err := hypervisor(ctx, tag)
+	if err != nil {
 		return err
 	}
-	if err := hnwin.New(hnwin.Options{StateDir: windows.DataDir()}).Down(context.Background()); err != nil {
+	defer closeHV()
+	res, err := uninstall.Run(ctx, uninstall.Options{
+		Tag:        tag,
+		DataDir:    windows.DataDir(),
+		KeepData:   keepData,
+		Service:    serviceRemover{},
+		Host:       hnwin.New(hnwin.Options{StateDir: windows.DataDir()}),
+		Hypervisor: hv,
+	})
+	for _, n := range res.Notes {
+		fmt.Println("note:", n)
+	}
+	if err != nil {
+		return fmt.Errorf("uninstall-cleanup could not remove:\n- %s", strings.ReplaceAll(err.Error(), "\n", "\n- "))
+	}
+	return nil
+}
+
+// serviceRemover is the uninstall.Service of the current profile.
+type serviceRemover struct{}
+
+func (serviceRemover) RemoveService(ctx context.Context, mode string) error {
+	return windows.RemoveService(ctx, mode)
+}
+
+// hypervisor returns the Hyper-V platform of the profile. When Hyper-V
+// cannot be loaded and its management service is not registered, nothing
+// of hlab can be left in Hyper-V: the result lists no VMs and has no switch.
+func hypervisor(ctx context.Context, tag string) (uninstall.Hypervisor, func(), error) {
+	p, err := hyperv.New(hyperv.Options{SwitchName: tag})
+	if err == nil {
+		return p, func() {
+			if cl, ok := p.(interface{ Close() error }); ok {
+				_ = cl.Close()
+			}
+		}, nil
+	}
+	f, ferr := windows.Prerequisites(ctx)
+	if ferr != nil || f.VMMS {
+		return nil, nil, fmt.Errorf("load Hyper-V: %w", err)
+	}
+	fmt.Println("note: Hyper-V is not installed; no VMs or switch to remove")
+	return noHyperV{}, func() {}, nil
+}
+
+// noHyperV stands in for a Hyper-V that is not installed.
+type noHyperV struct{}
+
+func (noHyperV) VMs(context.Context, string) ([]string, error) { return nil, nil }
+func (noHyperV) DeleteVM(context.Context, string) error        { return nil }
+func (noHyperV) DeleteSwitch(context.Context, string) error    { return nil }
+
+// removeUserData deletes the per-user folders of the calling user below
+// %AppData% and %LocalAppData%.
+func removeUserData() error {
+	appData, err := os.UserConfigDir()
+	if err != nil {
 		return err
 	}
-	if keepData {
-		return nil
+	localAppData, err := os.UserCacheDir()
+	if err != nil {
+		return err
 	}
-	return inst.Uninstall(false)
+	return uninstall.RemoveUserData(appData, localAppData)
 }
 
 // prereqLog is the file in %TEMP% that keeps the list of a failed check
