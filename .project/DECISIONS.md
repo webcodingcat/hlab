@@ -19,6 +19,30 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-21 Queued load balancer changes wait as pending state
+
+- Type: decision
+- Phase: phase 13
+- What: a queued LB target or service action validates again against the state earlier actions left, keeps its result in the stored record's optional `_hlab.pending`, serves it to the agent while it runs and commits it to the visible fields only at `success` (dropped if the push fails).
+- Why: GET must show the change only at `success`, while the agent document must already contain it when it is pushed.
+- Cost of change: low
+
+## 2026-11-21 Validation failures inside queued work keep their error code
+
+- Type: decision
+- Phase: phase 13
+- What: a check that fails inside a queued action's work becomes the action's error with the code the request would have answered (e.g. `target_already_defined`), not `server_error`.
+- Why: clients see the same code whether the conflict was found at the request or after the queue.
+- Cost of change: low
+
+## 2026-11-21 Private targets on an LB without network answer load_balancer_not_attached_to_network
+
+- Type: decision
+- Phase: phase 13
+- What: `add_target` with `use_private_ip` on a load balancer without a committed network answers 422 `load_balancer_not_attached_to_network`, checked before `resolve_cloud_private_targets_error`.
+- Why: the test map row asks for Hetzner's code for this case.
+- Cost of change: low
+
 ## 2026-11-21 The Ansible servers row attaches no ISO
 
 - Type: decision
