@@ -162,13 +162,13 @@ of `main`, in list over 80 %.
   - Adjusts: -
   - [ ] `internal/bridge/service.go`: `ProjectName(display string) string` returning `projectname.Derive(display)`; reachable from the frontend as `service<string>("Service", "ProjectName", text)`
 
-- [ ] 15-06 Tray: project list logic
+- [x] 15-06 Tray: project list logic
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-11 | Tests: ui/frontend/tests/unit/projects.test.ts
   - Reads: UI-SPEC "Views" (Projects, Project console sidebar and tabs); REQUIREMENTS UI-11; ARCHITECTURE "Management API" (`GET /projects`); CONTEXT.md
   - Size: ~120 lines in 2 files
   - Adjusts: -
-  - [ ] `ui/frontend/src/lib/projects.ts` per Interfaces; `ui/frontend/src/state.ts`: `Project` re-exported from `lib/projects.ts` (the old local type goes), stores `projectSort` and `projectLayout`
+  - [x] `ui/frontend/src/lib/projects.ts` per Interfaces; `ui/frontend/src/state.ts`: `Project` re-exported from `lib/projects.ts` (the old local type goes), stores `projectSort` and `projectLayout`
 
 - [ ] 15-07 Tray: project card
   - Wave: 2 | Depends on: 15-06 | Review: alone
