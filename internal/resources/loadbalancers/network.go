@@ -63,7 +63,7 @@ func (m *Module) attachToNetwork(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	m.change(w, req, id, "attach_to_network", func(tx store.Tx, r *Record) ([]actions.Ref, error) {
+	m.queued(w, req, id, "attach_to_network", true, func(tx store.Tx, r *Record) ([]actions.Ref, error) {
 		if err := m.attach(tx, r, body.Network, body.IP, body.IPRange); err != nil {
 			return nil, err
 		}
@@ -81,7 +81,7 @@ func (m *Module) detachFromNetwork(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	m.change(w, req, id, "detach_from_network", func(_ store.Tx, r *Record) ([]actions.Ref, error) {
+	m.queued(w, req, id, "detach_from_network", true, func(_ store.Tx, r *Record) ([]actions.Ref, error) {
 		if len(r.PrivateNet) == 0 || r.PrivateNet[0].Network != body.Network {
 			return nil, &api.FieldError{Code: "load_balancer_not_attached_to_network", Message: "the load balancer is not attached to this network"}
 		}

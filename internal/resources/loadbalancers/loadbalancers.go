@@ -117,7 +117,27 @@ type Record struct {
 		IPv6ID  *int64 `json:"ipv6_id"`
 		// VLAN is the VLAN of the attached network.
 		VLAN int `json:"vlan"`
+		// Pending is the state a running action pushes to the agent before
+		// it commits it at success; nil without one.
+		Pending *Pending `json:"pending,omitempty"`
 	} `json:"_hlab"`
+}
+
+// Pending is the services, targets and network of a load balancer that the
+// running action Action has computed: the agent document uses them while
+// that action runs, GET shows them once it has succeeded.
+type Pending struct {
+	Action     int64        `json:"action"`
+	Services   []Service    `json:"services"`
+	Targets    []Target     `json:"targets"`
+	PrivateNet []PrivateNet `json:"private_net"`
+	VLAN       int          `json:"vlan"`
+}
+
+// apply returns r with the state of p.
+func (p *Pending) apply(r Record) Record {
+	r.Services, r.Targets, r.PrivateNet, r.Hlab.VLAN = p.Services, p.Targets, p.PrivateNet, p.VLAN
+	return r
 }
 
 // IPv4 is the public IPv4 of r; it always parses, it is written only from

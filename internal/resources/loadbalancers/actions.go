@@ -3,8 +3,10 @@ package loadbalancers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/api"
@@ -41,6 +43,97 @@ func (m *Module) change(w http.ResponseWriter, req *http.Request, id int64, comm
 	}
 	acts.Run(action.ID, func(ctx context.Context, _ func(int)) error { return m.d.PushAgent(ctx) })
 	api.JSON(w, http.StatusCreated, map[string]any{"action": action})
+}
+
+// queued runs a load balancer action that queues behind the running actions
+// on its resources: target, service and network actions. The request
+// checks f against the committed state and starts the action command on
+// the load balancer and the refs f returns; it refuses with locked only
+// when refuseLB is set and the load balancer has a running action. The work
+// waits its turn, applies f again to the state the earlier actions left,
+// pushes that state to the agent as pending and commits it at success, so
+// GET shows the change together with the action's success.
+func (m *Module) queued(w http.ResponseWriter, req *http.Request, id int64, command string, refuseLB bool, f func(tx store.Tx, r *Record) ([]actions.Ref, error)) {
+	p, _ := api.ProjectFrom(req.Context())
+	acts := api.ActionsFrom(req.Context())
+	st := api.StoreFrom(req.Context())
+	lbRef := actions.Ref{ID: id, Type: refType}
+	var action *actions.Action
+	err := st.Tx(func(tx store.Tx) error {
+		r, err := Load(tx, p.ID, id)
+		if err != nil {
+			return err
+		}
+		more, err := f(tx, &r)
+		if err != nil {
+			return err
+		}
+		var refuse []actions.Ref
+		if refuseLB {
+			refuse = []actions.Ref{lbRef}
+		}
+		action, err = acts.StartQueued(tx, p.ID, command, append([]actions.Ref{lbRef}, more...), refuse)
+		return err
+	})
+	if err != nil {
+		api.Fail(w, err)
+		return
+	}
+	actionID := action.ID
+	acts.Run(actionID, func(ctx context.Context, _ func(int)) error {
+		err := st.Tx(func(tx store.Tx) error {
+			r, err := Load(tx, p.ID, id)
+			if err != nil {
+				return err
+			}
+			next := r
+			next.Services = slices.Clone(r.Services)
+			next.Targets = slices.Clone(r.Targets)
+			next.PrivateNet = slices.Clone(r.PrivateNet)
+			if _, err := f(tx, &next); err != nil {
+				return err
+			}
+			r.Hlab.Pending = &Pending{
+				Action: actionID, Services: next.Services, Targets: next.Targets,
+				PrivateNet: next.PrivateNet, VLAN: next.Hlab.VLAN,
+			}
+			return put(tx, r)
+		})
+		if err != nil {
+			return actionError(err)
+		}
+		pushErr := m.d.PushAgent(ctx)
+		err = st.Tx(func(tx store.Tx) error {
+			r, err := Load(tx, p.ID, id)
+			if errors.Is(err, store.ErrNotFound) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if pd := r.Hlab.Pending; pushErr == nil && pd != nil && pd.Action == actionID {
+				r = pd.apply(r)
+			}
+			r.Hlab.Pending = nil
+			return put(tx, r)
+		})
+		return errors.Join(pushErr, err)
+	})
+	api.JSON(w, http.StatusCreated, map[string]any{"action": action})
+}
+
+// actionError turns an error of a validation inside an action's work into
+// the action's error object with the code the request would have answered.
+func actionError(err error) error {
+	var fe *api.FieldError
+	if errors.As(err, &fe) {
+		code := fe.Code
+		if code == "" {
+			code = "invalid_input"
+		}
+		return &actions.Error{Code: code, Message: fe.Message}
+	}
+	return err
 }
 
 // decodeAction reads the path ID and the body of a load balancer action;

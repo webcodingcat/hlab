@@ -16,6 +16,9 @@ import (
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
+// serverRefType is the resource type of a server in actions.
+const serverRefType = "server"
+
 // Target types.
 const (
 	targetServer   = "server"
@@ -94,9 +97,9 @@ func (m *Module) addTarget(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	m.change(w, req, id, "add_target", func(tx store.Tx, r *Record) ([]actions.Ref, error) {
+	m.queued(w, req, id, "add_target", false, func(tx store.Tx, r *Record) ([]actions.Ref, error) {
 		typ, _ := m.lbType(r.Hlab.Type)
-		return nil, m.addTargetTo(tx, r, typ, body)
+		return targetRefs(body), m.addTargetTo(tx, r, typ, body)
 	})
 }
 
@@ -107,15 +110,24 @@ func (m *Module) removeTarget(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	m.change(w, req, id, "remove_target", func(_ store.Tx, r *Record) ([]actions.Ref, error) {
+	m.queued(w, req, id, "remove_target", false, func(_ store.Tx, r *Record) ([]actions.Ref, error) {
 		for i, t := range r.Targets {
 			if sameTarget(t, body) {
 				r.Targets = append(r.Targets[:i:i], r.Targets[i+1:]...)
-				return nil, nil
+				return targetRefs(body), nil
 			}
 		}
 		return nil, &api.FieldError{Code: "not_found", Message: "the load balancer has no such target"}
 	})
+}
+
+// targetRefs are the action resources of target t besides the load
+// balancer: the server of a server target.
+func targetRefs(t Target) []actions.Ref {
+	if t.Type == targetServer && t.Server != nil {
+		return []actions.Ref{{ID: t.Server.ID, Type: serverRefType}}
+	}
+	return nil
 }
 
 // createTargets adds the targets of a create request to r, within the
@@ -178,6 +190,9 @@ func (m *Module) checkServerTarget(tx store.Tx, r Record, t Target) (Target, err
 	}
 	if err != nil {
 		return t, err
+	}
+	if t.UsePrivateIP && len(r.PrivateNet) == 0 {
+		return t, &api.FieldError{Code: "load_balancer_not_attached_to_network", Message: "a target with use_private_ip needs the load balancer in a network"}
 	}
 	if !m.sameZone(r, s) {
 		return t, &api.FieldError{Field: "server", Message: "the server is in another network zone than the load balancer"}
