@@ -27,6 +27,94 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-21 Prerequisite check runs as an immediate MSI custom action from the Binary table
+
+- Type: decision
+- Phase: phase 12
+- What: hlabd.exe is embedded as an MSI Binary and `check-prerequisites` runs as an immediate custom action before InstallValidate (`NOT REMOVE`), showing a message box when `HLABUI=1` and writing `%TEMP%\hlab-setup-prerequisites.log` otherwise.
+- Why: INST-02 is unit-tested Go logic that must run before anything changes; `bal:Condition` cannot run Go and a failed ExePackage shows only an error code.
+- Cost of change: low
+
+## 2026-11-21 Prerequisite check needs no elevation
+
+- Type: decision
+- Phase: phase 12
+- What: the check reads registry, files, the vmms service and Win32_ComputerSystem/Win32_Processor, never Win32_OptionalFeature or DISM.
+- Why: an immediate custom action under Burn may run unelevated.
+- Cost of change: low
+
+## 2026-11-21 Service stop at upgrade and uninstall without ServiceControl
+
+- Type: decision
+- Phase: phase 12
+- What: an upgrade runs a deferred `hlabd stop-service` in the old product, and a real uninstall lets `uninstall-cleanup` stop and remove the service; no ServiceControl element.
+- Why: research could not confirm how ServiceControl handles a service that is already gone.
+- Cost of change: low
+
+## 2026-11-21 Uninstall stop mode is passed in the file uninstall-stop
+
+- Type: decision
+- Phase: phase 12
+- What: the cleanup writes `<DataDir>\uninstall-stop` ("off" or "shutdown") before the SCM stop, and `cloud.halt` reads and deletes it, overriding stop_behaviour.
+- Why: an SCM stop carries no parameter, and the `sysint.ServiceHost` interface stays as it is.
+- Cost of change: low
+
+## 2026-11-21 WSL trust removal at uninstall only when trust was used
+
+- Type: decision
+- Phase: phase 12
+- What: uninstall removes the CA from WSL only when `trust_ca` is on or the root store held the CA; Hyper-V missing at uninstall counts as no VMs.
+- Why: avoids running update-ca-certificates in every distro when trust was never on, and keeps uninstall possible without Hyper-V.
+- Cost of change: low
+
+## 2026-11-21 DeleteSwitch removes the host adapter on failure and retries
+
+- Type: decision
+- Phase: phase 12
+- What: if `Remove-VMSwitch` fails, `DeleteSwitch` removes the management-OS adapter first and retries.
+- Why: whether PVLAN settings block the removal is unverified; INST-04 settles it.
+- Cost of change: low
+
+## 2026-11-21 INST-01 does not test the WebView2 download path
+
+- Type: decision
+- Phase: phase 12
+- What: INST-01 proves the install and that a present WebView2 is detected and the bootstrapper skipped, not its download.
+- Why: Windows 11 always has WebView2, and removing it would damage the developer's machine (agreed by the user).
+- Cost of change: low
+
+## 2026-11-21 WebView2 bootstrapper cached outside the repository
+
+- Type: decision
+- Phase: phase 12
+- What: `tools/installer` keeps the bootstrapper in `%LocalAppData%\hlab-build-cache`, refreshes it after 7 days, falls back to the cached copy on a failed download and embeds it in the bundle without committing it.
+- Why: the redistribution terms allow embedding, and `%LocalAppData%\hlab` is deleted by uninstall.
+- Cost of change: low
+
+## 2026-11-21 Fixed UpgradeCodes for MSI and bundle
+
+- Type: decision
+- Phase: phase 12
+- What: the MSI and the bundle each have one fixed UpgradeCode GUID in the repository that never changes.
+- Why: the user set this for the MSI; the bundle's upgrades depend on its own code the same way.
+- Cost of change: high
+
+## 2026-11-21 Failed first install rolls back with keep-data cleanup
+
+- Type: decision
+- Phase: phase 12
+- What: a failed first install rolls back by running `uninstall-cleanup --keep-data`.
+- Why: removes host objects created so far without deleting data a user may have from an earlier install.
+- Cost of change: low
+
+## 2026-11-21 Tray per-user data deleted at uninstall
+
+- Type: decision
+- Phase: phase 12
+- What: without KEEPDATA an impersonated deferred custom action deletes `%AppData%\hlab-tray.exe` (the Wails default WebView2 folder) and `%LocalAppData%\hlab` if present, for the uninstalling user only.
+- Why: the tray uses the Wails default folder, and the user asked for the per-user data to go.
+- Cost of change: low
+
 ## 2026-11-21 Tray e2e tests find project cards by their visible display name
 
 - Type: decision
