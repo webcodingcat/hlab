@@ -263,6 +263,51 @@ func TestCLI(t *testing.T) {
 		}
 	})
 
+	t.Run("PROJ-06", func(t *testing.T) {
+		h := newHlab(t)
+
+		if out := h.mustRun(t, "project", "create", "Web Coding Cat"); strings.TrimSpace(out) != "project web-coding-cat created" {
+			t.Errorf("project create \"Web Coding Cat\" printed %q, want \"project web-coding-cat created\"", out)
+		}
+
+		out := h.mustRun(t, "project", "list")
+		lines := nonEmptyLines(out)
+		if len(lines) == 0 || !regexp.MustCompile(`^NAME\s+RESOURCES\s+CREATED\s+DISPLAY NAME\s*$`).MatchString(lines[0]) {
+			t.Errorf("project list header is not NAME, RESOURCES, CREATED, DISPLAY NAME:\n%s", out)
+		}
+		row := regexp.MustCompile(`(?m)^web-coding-cat\s+\d+\s+\S+\s+Web Coding Cat\s*$`)
+		if !row.MatchString(out) {
+			t.Errorf("project list has no row web-coding-cat with display name \"Web Coding Cat\" last:\n%s", out)
+		}
+
+		jsonOut := h.mustRun(t, "project", "list", "--output", "json")
+		var list struct {
+			Projects []struct {
+				Name        string `json:"name"`
+				DisplayName string `json:"display_name"`
+			} `json:"projects"`
+		}
+		if err := json.Unmarshal([]byte(jsonOut), &list); err != nil {
+			t.Fatalf("project list --output json: %v\n%s", err, jsonOut)
+		}
+		found := false
+		for _, p := range list.Projects {
+			if p.Name == "web-coding-cat" {
+				found = true
+				if p.DisplayName != "Web Coding Cat" {
+					t.Errorf("project list --output json: display_name %q, want \"Web Coding Cat\"", p.DisplayName)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("project list --output json does not list web-coding-cat:\n%s", jsonOut)
+		}
+
+		if code, _, _ := h.run(t, "project", "create", "web coding cat"); code != 1 {
+			t.Errorf("project create \"web coding cat\" after \"Web Coding Cat\": exit %d, want 1", code)
+		}
+	})
+
 	t.Run("CERT-05", func(t *testing.T) {
 		const pem = "-----BEGIN CERTIFICATE-----\nTUlJQ2FDQQ==\n-----END CERTIFICATE-----\n"
 		h := newHlabWith(t, func(d *mgmt.Deps) {

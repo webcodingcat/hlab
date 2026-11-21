@@ -106,6 +106,18 @@ invalid stored values fall back to the defaults.
 Svelte: `lib/ProjectCard.svelte` with props
 `{ project: Project; layout: Layout; ondelete: (p: Project) => void }`.
 
+Accessible names the UI-11 e2e tests rely on (15-07, 15-08): a card is the
+smallest element holding the display name, an "Actions" button and the text
+"N resource(s)" or "Create server"; the layout switch is a button or radio
+named "Grid" / "List"; the sort menu is a button whose name starts with
+"Sort", with items "Display name" and "Created"; the direction arrow is a
+button named /ascending|descending|direction|reverse/i; the tile is a button
+named /New project/; the dialog shows "Create project", the field label
+"Display name", the text "Name: <derived>" and the buttons "Create" and
+"Cancel"; the conflict text contains "already exists" and the name; the
+resource menu entry reads "1 SSH Key". In grid a card is under half the width
+of `main`, in list over 80 %.
+
 ## Plans
 
 - [ ] 15-01 Project name derivation
