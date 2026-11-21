@@ -76,10 +76,14 @@ func (e *env) wantVolume(t *testing.T, step string, id int64, name string, size 
 }
 
 // deleteVolumeUnprotected turns off the delete protection of a volume a
-// row made and deletes it; 0 is no volume.
+// row made and deletes it; 0 is no volume, and a volume the row deleted
+// already is left alone (deleteVolume waits for one that exists).
 func (e *env) deleteVolumeUnprotected(t *testing.T, id int64) {
 	t.Helper()
 	if id == 0 {
+		return
+	}
+	if status, _, err := e.apiDo(context.Background(), http.MethodGet, fmt.Sprintf("/volumes/%d", id), nil, nil); err == nil && status == http.StatusNotFound {
 		return
 	}
 	path := fmt.Sprintf("/volumes/%d/actions/change_protection", id)
@@ -190,10 +194,6 @@ output "by_id_size" {
   value = data.hcloud_volume.by_id.size
 }
 
-output "by_id_server" {
-  value = data.hcloud_volume.by_id.server_id
-}
-
 output "label_ids" {
   value = jsonencode(data.hcloud_volumes.by_label.volumes[*].id)
 }
@@ -209,7 +209,7 @@ output "label_ids" {
 	idText := d.output(t, "id")
 	id = parseID(t, idText)
 	e.wantVolume(t, "apply", id, name, 10, map[string]string{"row": "cli-02-volumes", "stage": "one"}, fx)
-	if s := d.output(t, "by_id_server"); s != fmt.Sprint(fx.ID) {
+	if s := fmt.Sprint(d.dataValues(t, "data.hcloud_volume.by_id")["server_id"]); s != fmt.Sprint(fx.ID) {
 		t.Errorf("data hcloud_volume by ID: server %s, want %d", s, fx.ID)
 	}
 	if ids := d.output(t, "label_ids"); ids != "["+idText+"]" {

@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-21 hcloud all list moves to phase 21
+
+- Type: decision
+- Phase: phase 13
+- What: the row CLI-01/all is dropped from phase 13 and `hcloud all list` is tested in the CLI-05 row of phase 21.
+- Why: hcloud v1.70.2 always fetches storage boxes from the Hetzner endpoint, so with the Cloud API endpoint alone it fails and sends the hlab project token to api.hetzner.com.
+- Cost of change: low
+
 ## 2026-11-21 Firewall apply commits at success and delete waits for actions
 
 - Type: decision

@@ -351,3 +351,12 @@ slots, on top of the existing rows (under 60 minutes now). So the client
 rows alone take about 90 minutes, and a full `task e2e` takes about 2 to
 2.5 hours, within the 180 minutes set by 13-01. The phase close sets the
 timeout to about twice the measured run.
+
+## Findings from the first e2e run
+
+The first run of the client rows (before any product change of the phase)
+showed these product bugs; the plan named fixes each with a unit test first.
+
+- 13-08: `POST /servers/{id}/actions/reboot` right after poweron with status `running` ends `error` with `server_error` ("InitiateShutdown ... returned 32768"); it must succeed.
+- 13-14: `GET /networks/{id}/members` is missing (404 `not_found`); hcloud `network list-members` and Ansible `network_member_info` use it.
+- 13-21: `POST /load_balancers` with `"location": <numeric ID>` (as hcloud-python sends) answers 400 `json_error`; Hetzner accepts ID or name (internal/resources/loadbalancers/create.go:32).

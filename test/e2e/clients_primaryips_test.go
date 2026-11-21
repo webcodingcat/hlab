@@ -126,6 +126,16 @@ func (e *env) freeFixtureIPv6(t *testing.T, fx *server) func() {
 			return
 		}
 		if cur != own {
+			// A client may have powered the server on again (the
+			// provider does after assigning), and assign needs it off.
+			if s, _ := e.serverStatus(fx.ID); s != "off" {
+				if err := e.postAction(fmt.Sprintf("/servers/%d/actions/poweroff", fx.ID), nil, 5*time.Minute); err != nil {
+					t.Errorf("restore the fixture: power off: %v", err)
+				}
+				if err := e.waitStatus(fx.ID, "off", 2*time.Minute); err != nil {
+					t.Errorf("restore the fixture: %v", err)
+				}
+			}
 			if cur != 0 {
 				if err := e.postAction(fmt.Sprintf("/primary_ips/%d/actions/unassign", cur), nil, 5*time.Minute); err != nil {
 					t.Errorf("restore the fixture: unassign primary IP %d: %v", cur, err)
@@ -286,10 +296,6 @@ output "id" {
   value = hcloud_primary_ip.p.id
 }
 
-output "by_id_name" {
-  value = data.hcloud_primary_ip.by_id.name
-}
-
 output "by_id_assignee" {
   value = data.hcloud_primary_ip.by_id.assignee_id
 }
@@ -315,7 +321,7 @@ output "label_ids" {
 		t.Errorf("primary IP %+v, want ipv6 %s without auto_delete with %v", got, name, want)
 	}
 	e.wantAssigned(t, "hcloud_primary_ip", id, fx, true)
-	if n := d.output(t, "by_id_name"); n != name {
+	if n, _ := d.dataValues(t, "data.hcloud_primary_ip.by_id")["name"].(string); n != name {
 		t.Errorf("data hcloud_primary_ip by ID: name %q, want %q", n, name)
 	}
 	if a := d.output(t, "by_id_assignee"); a != fmt.Sprint(fx.ID) {

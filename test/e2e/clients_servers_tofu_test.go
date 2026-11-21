@@ -132,9 +132,13 @@ func testCLI02Servers(t *testing.T, _ *rowCtx) {
 	if got.PlacementGroup == nil || got.PlacementGroup.ID != pgID {
 		t.Errorf("placement group %+v, want %d", got.PlacementGroup, pgID)
 	}
-	if got.BackupWindow == nil || !got.RescueEnabled || got.ISO == nil || got.ISO.Name != first.iso {
-		t.Errorf("backup_window %v, rescue_enabled %t, iso %+v; want backups, rescue and ISO %s", got.BackupWindow, got.RescueEnabled, got.ISO, first.iso)
+	if got.BackupWindow == nil || got.ISO == nil || got.ISO.Name != first.iso {
+		t.Errorf("backup_window %v, iso %+v; want backups and ISO %s", got.BackupWindow, got.ISO, first.iso)
 	}
+	// The provider enables rescue and resets the server into it; the boot
+	// ends rescue mode, so rescue_enabled is false again (as at Hetzner).
+	e.assertActionDone(t, "/servers/"+idText, "enable_rescue")
+	e.assertActionDone(t, "/servers/"+idText, "reset_server")
 	if !got.Protection.Delete || !got.Protection.Rebuild {
 		t.Errorf("protection %+v, want delete and rebuild", got.Protection)
 	}

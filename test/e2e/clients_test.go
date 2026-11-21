@@ -32,8 +32,8 @@ const (
 	distroEnv = "HLAB_E2E_WSL_DISTRO"
 )
 
-// wslEnv is the selected Ubuntu distro and the temporary directory inside
-// it holding a copy of the run's private key (mode 0600). teardown deletes
+// wslEnv is the selected Ubuntu distro and the temporary directory in its
+// home directory holding a copy of the run's private key (mode 0600). teardown deletes
 // the directory.
 type wslEnv struct {
 	distro string
@@ -87,7 +87,13 @@ func newWSL(e *env) (*wslEnv, error) {
 	if err != nil {
 		return nil, err
 	}
-	script := "set -e\numask 077\nd=$(mktemp -d)\ncat > \"$d/id_ed25519\" <<'HLAB_KEY_EOF'\n" +
+	// The directory lives in the home directory, not in /tmp: /tmp is a
+	// tmpfs under systemd and WSL2 stops an idle distro, which empties it
+	// between two steps of the run. Copies older than a day are left over
+	// from runs that ended without teardown.
+	script := "set -e\numask 077\nmkdir -p \"$HOME/.cache\"\n" +
+		"find \"$HOME/.cache\" -maxdepth 1 -name 'hlab-e2e.*' -mmin +1440 -exec rm -rf -- {} +\n" +
+		"d=$(mktemp -d \"$HOME/.cache/hlab-e2e.XXXXXXXX\")\ncat > \"$d/id_ed25519\" <<'HLAB_KEY_EOF'\n" +
 		strings.TrimSpace(strings.ReplaceAll(string(key), "\r", "")) +
 		"\nHLAB_KEY_EOF\nchmod 600 \"$d/id_ed25519\"\nprintf '%s' \"$d\"\n"
 	r, err = w.run(context.Background(), 2*time.Minute, nil, script)
@@ -368,6 +374,40 @@ func (d *tofuDir) run(t *testing.T, args ...string) result {
 func (d *tofuDir) output(t *testing.T, name string) string {
 	t.Helper()
 	return strings.TrimSpace(d.run(t, "output", "-raw", name).Stdout)
+}
+
+// dataValues reads the attributes of a data source from the state. An
+// output cannot carry an attribute the provider's schema marks optional and
+// not computed (hcloud_primary_ip name, hcloud_volume server_id,
+// hcloud_ssh_key name and fingerprint, the rule blocks of hcloud_firewall):
+// when the read waits for the apply, OpenTofu plans such an output as the
+// configured null and keeps it, while the data source holds what the
+// provider read. Numbers come as json.Number.
+func (d *tofuDir) dataValues(t *testing.T, address string) map[string]any {
+	t.Helper()
+	r := d.run(t, "show", "-json", "-no-color")
+	var state struct {
+		Values struct {
+			RootModule struct {
+				Resources []struct {
+					Address string         `json:"address"`
+					Values  map[string]any `json:"values"`
+				} `json:"resources"`
+			} `json:"root_module"`
+		} `json:"values"`
+	}
+	dec := json.NewDecoder(strings.NewReader(r.Stdout))
+	dec.UseNumber()
+	if err := dec.Decode(&state); err != nil {
+		t.Fatalf("tofu show -json: %v", err)
+	}
+	for _, res := range state.Values.RootModule.Resources {
+		if res.Address == address {
+			return res.Values
+		}
+	}
+	t.Fatalf("%s is not in the state", address)
+	return nil
 }
 
 // apiGet sends GET <path> to the hlab API with the run's token and decodes

@@ -107,8 +107,29 @@ func testCLI03Servers(t *testing.T, _ *rowCtx) {
 	status("off")
 	step("started", state("started"))
 	status("running")
+	// hetzner.hcloud 7.2.0 restarts with poweroff and poweron, not reboot.
+	done := func(command string) int {
+		t.Helper()
+		var body struct {
+			Actions []struct {
+				Command string `json:"command"`
+				Status  string `json:"status"`
+			} `json:"actions"`
+		}
+		e.getOK(t, res+"/actions?per_page=50", &body)
+		n := 0
+		for _, a := range body.Actions {
+			if a.Command == command && a.Status == "success" {
+				n++
+			}
+		}
+		return n
+	}
+	stops, starts := done("stop_server"), done("start_server")
 	step("restarted", state("restarted"))
-	e.assertActionDone(t, res, "reboot_server")
+	if s, st := done("stop_server"), done("start_server"); s != stops+1 || st != starts+1 {
+		t.Errorf("state restarted: %d stop_server and %d start_server actions more, want one each", s-stops, st-starts)
+	}
 	status("running")
 
 	step("unprotect", `    - name: protection off

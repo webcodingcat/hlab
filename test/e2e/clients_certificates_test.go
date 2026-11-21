@@ -131,6 +131,21 @@ func (e *env) waitIssued(t *testing.T, id int64) {
 	}
 }
 
+// waitIssuance waits until the issuance of a managed certificate has the
+// status want.
+func (e *env) waitIssuance(t *testing.T, id int64, want string) {
+	t.Helper()
+	var last string
+	if err := waitFor(5*time.Minute, 2*time.Second, func() (bool, error) {
+		if c := e.certInfo(t, id); c.Status != nil {
+			last = c.Status.Issuance
+		}
+		return last == want, nil
+	}); err != nil {
+		t.Fatalf("managed certificate %d (issuance %q): want %q: %v", id, last, want, err)
+	}
+}
+
 // checkCerts checks the uploaded and the managed certificate of a row
 // through the API.
 func checkCerts(t *testing.T, e *env, up, man certDetail, upHost, manHost string, labels map[string]string) {
@@ -160,11 +175,23 @@ func testCLI01Certificates(t *testing.T, c *rowCtx) {
 	})
 	certFile, keyFile, _, _ := selfSigned(t, t.TempDir(), upHost)
 
+	// retry only acts on a failed issuance: the managed certificate is
+	// created before its zone, fails, and is retried once the zone exists.
+	e.hcloudOK(t, "certificate", "create", "--name", upName, "--type", "uploaded", "--cert-file", certFile, "--key-file", keyFile, "--label", "row=cli-01-certificates")
+	// hcloud waits for create_certificate, which fails without the zone.
+	if r, err := e.hcloudRun(ctx, hcloudTimeout, "certificate", "create", "--name", manName, "--type", "managed", "--domain", manHost,
+		"--label", "row=cli-01-certificates"); !strings.Contains(r.Stderr, "dns_zone_not_found") {
+		t.Fatalf("hcloud certificate create --type managed without the zone: %v, want dns_zone_not_found\n%s", err, r)
+	}
+	up, man := e.certByName(t, upName), e.certByName(t, manName)
+	e.waitIssuance(t, man.ID, "failed")
 	e.hcloudOK(t, "zone", "create", "--name", zone)
 	zoneID := e.zoneByName(t, zone)
-	e.hcloudOK(t, "certificate", "create", "--name", upName, "--type", "uploaded", "--cert-file", certFile, "--key-file", keyFile, "--label", "row=cli-01-certificates")
-	e.hcloudOK(t, "certificate", "create", "--name", manName, "--type", "managed", "--domain", manHost, "--label", "row=cli-01-certificates")
-	up, man := e.certByName(t, upName), e.certByName(t, manName)
+	before := certActions(t, e, man.ID)
+	e.hcloudOK(t, "certificate", "retry", manName)
+	if after := certActions(t, e, man.ID); after <= before {
+		t.Errorf("certificate retry added no action (%d before, %d after)", before, after)
+	}
 	checkCerts(t, e, up, man, upHost, manHost, map[string]string{"row": "cli-01-certificates"})
 
 	var listed []named
@@ -189,13 +216,6 @@ func testCLI01Certificates(t *testing.T, c *rowCtx) {
 			t.Errorf("updated certificate %q with labels %v, want %q with %v", got.Name, got.Labels, cd.Name+"-renamed", want)
 		}
 	}
-
-	before := certActions(t, e, man.ID)
-	e.hcloudOK(t, "certificate", "retry", manName+"-renamed")
-	if after := certActions(t, e, man.ID); after <= before {
-		t.Errorf("certificate retry added no action (%d before, %d after)", before, after)
-	}
-	e.waitIssued(t, man.ID)
 
 	e.hcloudOK(t, "certificate", "delete", upName+"-renamed", manName+"-renamed")
 	e.hcloudOK(t, "zone", "delete", zone)

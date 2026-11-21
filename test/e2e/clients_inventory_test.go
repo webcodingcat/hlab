@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -12,6 +13,30 @@ import (
 
 func init() {
 	registerRow(clientRow{Req: "CLI-03", Name: "inventory", Fixture: true, Run: testCLI03Inventory})
+}
+
+// inventoryString is a string host variable of `ansible-inventory --list`.
+// ansible-core 2.22 writes the profile inventory_legacy, which wraps an
+// unsafe value as {"__ansible_unsafe": "..."}; a plain string is taken too.
+type inventoryString string
+
+func (s *inventoryString) UnmarshalJSON(b []byte) error {
+	var plain string
+	if err := json.Unmarshal(b, &plain); err == nil {
+		*s = inventoryString(plain)
+		return nil
+	}
+	var wrapped struct {
+		Unsafe *string `json:"__ansible_unsafe"`
+	}
+	if err := json.Unmarshal(b, &wrapped); err != nil {
+		return err
+	}
+	if wrapped.Unsafe == nil {
+		return fmt.Errorf("host variable %s is neither a string nor an unsafe string", b)
+	}
+	*s = inventoryString(*wrapped.Unsafe)
+	return nil
 }
 
 // testCLI03Inventory: the inventory plugin hetzner.hcloud.hcloud lists the
@@ -35,8 +60,8 @@ keyed_groups:
 	var inv struct {
 		Meta struct {
 			HostVars map[string]struct {
-				AnsibleHost string `json:"ansible_host"`
-				HcloudIPv4  string `json:"hcloud_ipv4"`
+				AnsibleHost inventoryString `json:"ansible_host"`
+				HcloudIPv4  inventoryString `json:"hcloud_ipv4"`
 			} `json:"hostvars"`
 		} `json:"_meta"`
 	}
@@ -51,7 +76,7 @@ keyed_groups:
 	if !ok {
 		t.Fatalf("the inventory has no host %s:\n%s", fx.Name, r.Stdout)
 	}
-	if host.AnsibleHost != ipv4.IP || host.HcloudIPv4 != ipv4.IP {
+	if string(host.AnsibleHost) != ipv4.IP || string(host.HcloudIPv4) != ipv4.IP {
 		t.Errorf("host %s: ansible_host %q, hcloud_ipv4 %q; the API has %s", fx.Name, host.AnsibleHost, host.HcloudIPv4, ipv4.IP)
 	}
 

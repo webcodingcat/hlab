@@ -58,14 +58,6 @@ data "hcloud_ssh_keys" "by_label" {
   depends_on    = [hcloud_ssh_key.k]
 }
 
-output "ds_name" {
-  value = data.hcloud_ssh_key.by_id.name
-}
-
-output "ds_fingerprint" {
-  value = data.hcloud_ssh_key.by_id.fingerprint
-}
-
 output "ds_ids" {
   value = jsonencode(data.hcloud_ssh_keys.by_label.ssh_keys[*].id)
 }
@@ -92,7 +84,8 @@ output "ds_ids" {
 	if got.SSHKey.Name != name || !maps.Equal(got.SSHKey.Labels, first) {
 		t.Errorf("created key %q with labels %v, want %q with %v", got.SSHKey.Name, got.SSHKey.Labels, name, first)
 	}
-	if n, fp := d.output(t, "ds_name"), d.output(t, "ds_fingerprint"); n != got.SSHKey.Name || fp != got.SSHKey.Fingerprint {
+	ds := d.dataValues(t, "data.hcloud_ssh_key.by_id")
+	if n, fp := fmt.Sprint(ds["name"]), fmt.Sprint(ds["fingerprint"]); n != got.SSHKey.Name || fp != got.SSHKey.Fingerprint {
 		t.Errorf("data hcloud_ssh_key: name %q, fingerprint %q; the API has %q, %q", n, fp, got.SSHKey.Name, got.SSHKey.Fingerprint)
 	}
 	if ids := d.output(t, "ds_ids"); ids != "["+id+"]" {

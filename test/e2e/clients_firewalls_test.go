@@ -255,10 +255,6 @@ output "id" {
   value = hcloud_firewall.f.id
 }
 
-output "by_id_rules" {
-  value = length(data.hcloud_firewall.by_id.rule)
-}
-
 output "label_ids" {
   value = jsonencode(data.hcloud_firewalls.by_label.firewalls[*].id)
 }
@@ -278,8 +274,8 @@ output "label_ids" {
 	if want := map[string]string{"row": "cli-02-firewalls", "stage": "one"}; got.Name != name || !maps.Equal(got.Labels, want) {
 		t.Errorf("firewall %q with labels %v, want %q with %v", got.Name, got.Labels, name, want)
 	}
-	if n := d.output(t, "by_id_rules"); n != "2" {
-		t.Errorf("data hcloud_firewall by ID: %s rules, want 2", n)
+	if rules, _ := d.dataValues(t, "data.hcloud_firewall.by_id")["rule"].([]any); len(rules) != 2 {
+		t.Errorf("data hcloud_firewall by ID: %d rules, want 2", len(rules))
 	}
 	if ids := d.output(t, "label_ids"); ids != "["+idText+"]" {
 		t.Errorf("data hcloud_firewalls with row=cli-02-firewalls: IDs %s, want [%s]", ids, idText)

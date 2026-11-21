@@ -14,8 +14,9 @@ Left out of all clients (CONTEXT.md "Scope"): hcloud `datacenter`, tofu
 as at Hetzner); `server request-console` (`unsupported_error`); vswitch
 subnets and `network expose-routes-to-vswitch`; the tofu `datacenter`
 arguments (removed in provider 1.67.0); storage boxes (phase 21). `hcloud
-all list` is the row `CLI-01/all` unless it needs the Hetzner endpoint;
-then the row moves to CLI-05 in phase 21 and is noted here.
+all list` moves to CLI-05 in phase 21: hcloud v1.70.2 always fetches
+storage boxes from the Hetzner endpoint, so without one it fails and sends
+the hlab token to api.hetzner.com.
 
 The unit rows of CLI-02 prove the action queue that lets OpenTofu create
 sibling resources in parallel (CONTEXT.md "Actions").
@@ -41,7 +42,6 @@ sibling resources in parallel (CONTEXT.md "Actions").
 | CLI-01 | `hcloud location list` and `describe` by name and ID match the API | e2e | test/e2e/clients_catalog_test.go: TestE2E/CLI-01/locations | 13-11 |
 | CLI-01 | `hcloud load-balancer-type list` and `describe` by name and ID match the API | e2e | test/e2e/clients_catalog_test.go: TestE2E/CLI-01/load_balancer_types | 13-11 |
 | CLI-01 | `hcloud iso list` and `describe` by name and ID match the API | e2e | test/e2e/clients_catalog_test.go: TestE2E/CLI-01/isos | 13-11 |
-| CLI-01 | `hcloud all list` lists the resources of the project with the Cloud API endpoint alone | e2e | test/e2e/clients_catalog_test.go: TestE2E/CLI-01/all | 13-11 |
 | CLI-02 | `hcloud_server_type` and `hcloud_server_types` match the API | e2e | test/e2e/clients_catalog_test.go: TestE2E/CLI-02/server_types | 13-11 |
 | CLI-02 | `hcloud_location` and `hcloud_locations` match the API | e2e | test/e2e/clients_catalog_test.go: TestE2E/CLI-02/locations | 13-11 |
 | CLI-02 | `hcloud_load_balancer_type` and `hcloud_load_balancer_types` match the API | e2e | test/e2e/clients_catalog_test.go: TestE2E/CLI-02/load_balancer_types | 13-11 |

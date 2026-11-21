@@ -62,7 +62,6 @@ func init() {
 		}
 		registerRow(clientRow{Req: "CLI-03", Name: ct.row, Run: func(t *testing.T, _ *rowCtx) { testCLI03Catalog(t, ct) }})
 	}
-	registerRow(clientRow{Req: "CLI-01", Name: "all", Run: func(t *testing.T, c *rowCtx) { testCLI01All(t, c.E) }})
 }
 
 // testCLI01Catalog: `hcloud <type> list` and `describe` by name and ID
@@ -81,20 +80,6 @@ func testCLI01Catalog(t *testing.T, e *env, ct catalogType) {
 		if d.ID != id || d.Name != want[id] {
 			t.Errorf("hcloud %s describe %s: %d %q, the API has %d %q", ct.hcloud, ref, d.ID, d.Name, id, want[id])
 		}
-	}
-}
-
-// testCLI01All: `hcloud all list` with the Cloud API endpoint alone lists
-// the resources of the project, among them the run's SSH key.
-func testCLI01All(t *testing.T, e *env) {
-	var all map[string]json.RawMessage
-	e.hcloudJSON(t, &all, "all", "list")
-	var keys []named
-	if err := json.Unmarshal(all["ssh_keys"], &keys); err != nil {
-		t.Fatalf("hcloud all list -o json has no list ssh_keys: %v", err)
-	}
-	if id := e.sshKeyID(t); namedOf(keys)[id] != e.sshKey {
-		t.Errorf("hcloud all list: SSH keys %v, want the run's key %d %s among them", keys, id, e.sshKey)
 	}
 }
 
