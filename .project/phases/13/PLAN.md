@@ -158,13 +158,13 @@ a group is split per client).
   - [x] `attach.go`, `volumes.go`: attach, detach and the attach of a create with `server` refuse the volume and queue on the server; `server` on the volume and `volumes` on the server change at `success`.
   - [x] `volumes_test.go`: the rows of the test map.
 
-- [ ] 13-06 Floating and primary IPs: queue and effect at success
+- [x] 13-06 Floating and primary IPs: queue and effect at success
   - Wave: 2 | Depends on: 13-02 | Review: alone
   - Requirements: CLI-02 | Tests: internal/resources/floatingips/floatingips_test.go, internal/resources/primaryips/primaryips_test.go
   - Reads: CONTEXT.md "Actions"; Interfaces "internal/actions"; internal/resources/floatingips/actions.go, internal/resources/primaryips/actions.go
   - Size: ~200 lines in 4 files
-  - [ ] `floatingips/actions.go`, `primaryips/actions.go`: assign and unassign refuse the IP and queue on the server; `server`/`assignee_id` and the server's `public_net` change at `success`.
-  - [ ] `floatingips_test.go`, `primaryips_test.go`: the rows of the test map.
+  - [x] `floatingips/actions.go`, `primaryips/actions.go`: assign and unassign refuse the IP and queue on the server; `server`/`assignee_id` and the server's `public_net` change at `success`.
+  - [x] `floatingips_test.go`, `primaryips_test.go`: the rows of the test map.
 
 - [ ] 13-07 Firewalls and server create: queue
   - Wave: 2 | Depends on: 13-02 | Review: alone

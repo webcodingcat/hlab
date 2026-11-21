@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-21 Floating IPs commit at success, primary IPs restore their earlier state
+
+- Type: decision
+- Phase: phase 13
+- What: floating IP assign/unassign keep `_hlab.pending` and commit at success; primary IP assign/unassign store the change with the earlier state (`_hlab.before`, server `_hlab.public_before`) shown on GET until success, restore it on error and in Recover, which also rewrites the seed and fails cloud start if that fails; an assign of a floating IP that is on a server also queues on that server.
+- Why: a floating IP change is only an agent push, while a primary IP change rebuilds the seed from the stored server record.
+- Cost of change: medium
+
 ## 2026-11-21 Volume attach commits at success and delete waits for actions
 
 - Type: decision
