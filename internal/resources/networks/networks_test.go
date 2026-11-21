@@ -772,7 +772,7 @@ func listMembers(t *testing.T, e *netEnv, id int64, query string) []memberView {
 
 // testMembers: GET /networks/{id}/members lists the servers with their
 // alias IPs and the LBs of the network with their subnets, filtered by
-// type and subnet.
+// type and subnet, and sorted by ip (as an address), status, id and type.
 func testMembers(t *testing.T) {
 	e := newNetEnv(t)
 	lbs := &fakeLBs{members: map[int64][]networks.LBMember{}}
@@ -798,6 +798,27 @@ func testMembers(t *testing.T) {
 	}
 	if got := listMembers(t, e, n.ID, "?subnet=10.0.1.0%2F24"); len(got) != 1 || got[0].ID != a {
 		t.Errorf("members with subnet=10.0.1.0/24: %+v, want server %d", got, a)
+	}
+
+	// 10.0.2.10 sorts after 10.0.2.9 as an address, before it as a string.
+	lbs.add(n.ID, 8, netip.MustParseAddr("10.0.2.10"))
+	ids := func(query string) []int64 {
+		t.Helper()
+		var out []int64
+		for _, mb := range listMembers(t, e, n.ID, query) {
+			out = append(out, mb.ID)
+		}
+		return out
+	}
+	for query, want := range map[string][]int64{
+		"?sort=ip":                  {a, 7, 8},
+		"?sort=ip:desc":             {8, 7, a},
+		"?sort=status&sort=id:desc": {8, 7, a},
+		"?sort=status:desc&sort=ip": {a, 7, 8},
+	} {
+		if got := ids(query); !slices.Equal(got, want) {
+			t.Errorf("members with %s: IDs %v, want %v", query, got, want)
+		}
 	}
 	wantError(t, e.Do(http.MethodGet, "/networks/999/members", nil), http.StatusNotFound, "not_found", "members of an unknown network")
 }

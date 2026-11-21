@@ -326,14 +326,23 @@ type Member struct {
 
 var memberOptions = api.ListOptions[Member]{
 	Sort: map[string]func(a, b Member) int{
-		"id":   func(a, b Member) int { return cmp.Compare(a.ID, b.ID) },
-		"type": func(a, b Member) int { return strings.Compare(a.Type, b.Type) },
+		"id":     func(a, b Member) int { return cmp.Compare(a.ID, b.ID) },
+		"type":   func(a, b Member) int { return strings.Compare(a.Type, b.Type) },
+		"status": func(a, b Member) int { return strings.Compare(a.Status, b.Status) },
+		"ip":     func(a, b Member) int { return memberAddr(a).Compare(memberAddr(b)) },
 	},
 	Filters: map[string]func(Member, []string) bool{
 		"type":   func(mb Member, v []string) bool { return slices.Contains(v, mb.Type) },
 		"status": func(mb Member, v []string) bool { return slices.Contains(v, mb.Status) },
 		"subnet": func(mb Member, v []string) bool { return slices.Contains(v, mb.Subnet) },
 	},
+}
+
+// memberAddr is the IP of mb as an address; an unparsable IP is the zero
+// address, which sorts first.
+func memberAddr(mb Member) netip.Addr {
+	a, _ := netip.ParseAddr(mb.IP)
+	return a
 }
 
 // memberSubnet is the range of the subnet of r that holds ip, or "".
