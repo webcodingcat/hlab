@@ -27,6 +27,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-21 Tray e2e tests find project cards by their visible display name
+
+- Type: decision
+- Phase: phase 15
+- What: the shared `projectCard` helper in tests/e2e/console.ts matches a card by its visible display name, and UI-05, `openConsole` and the screenshot spec use it; the direction arrow is named "Ascending"/"Descending" and the sort button "Sort: <key>".
+- Why: the closed delete dialog keeps the name in a hidden element, so a hidden match made `toBeHidden` after a delete fail.
+- Cost of change: low
+
 ## 2026-11-21 CLI project test matches the existing CREATED format
 
 - Type: decision

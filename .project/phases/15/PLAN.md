@@ -181,19 +181,19 @@ of `main`, in list over 80 %.
     - Footer button `resourcesText(n)` with a chevron opening a menu of `resourceEntries` links to `href({area: "project", project, view, page: {kind: "list"}})`; with no resources a "+ Create server" link to the servers create page.
     - A click on the card outside those controls opens `consoleStart(name)`. Grid layout as an equal-size card, list layout as one full-width row with the same content. Escape and an outside click close the open menu.
 
-- [ ] 15-08 Tray: project list page
+- [x] 15-08 Tray: project list page
   - Wave: 3 | Depends on: 15-03, 15-05, 15-07 | Review: alone
   - Requirements: UI-11 | Tests: ui/frontend/tests/e2e/projects.spec.ts, test/e2e/ui_test.go
   - Reads: UI-SPEC "Views" (Projects, Cloud stopped), "Building blocks" (Confirm dialog, Action toast), "Behaviour"; ARCHITECTURE "hlab-tray (tray program)" (UI tests); CONTEXT.md; DECISIONS "E2E rows of a plan run after its merge"
   - Size: ~330 lines in 6 files
   - Adjusts: ui/frontend/tests/e2e/projects.spec.ts (UI-05: create through the "+ New project" tile with field "Display name", open and delete through the card; checks unchanged), ui/frontend/tests/e2e/console.ts (`openConsole` clicks the project's card instead of a table row), ui/frontend/tests/screenshots/console.spec.ts (sample projects found as cards, opened by their card)
-  - [ ] `ui/frontend/src/views/Projects.svelte` rebuilt:
+  - [x] `ui/frontend/src/views/Projects.svelte` rebuilt:
     - Toolbar: a search field (`role="searchbox"`, label "Search", `filterProjects`), a sort menu (Display name, Created) with a direction arrow button, and a grid/list switch, bound to `projectSort`/`projectLayout`.
     - The cards in grid or list (CSS grid, auto-fill, about 280 px minimum), then the dashed "+ New project" tile; with no projects the sentence "There are no projects yet." plus the tile; skeleton while loading; CloudStopped while stopped; refresh every 5 s.
     - "Create project" dialog: field "Display name", below it "Name: <derived>" from `ProjectName` live; POST `{"display_name"}`; `invalid_input`/`conflict` message under the field.
     - Delete: ConfirmDialog with `typedName` the display name, toast title `actionTitle("Project", display name, "Delete")`, the deletion still by name.
-  - [ ] adjust the tests named under Adjusts
-  - [ ] `test/e2e/e2e_test.go` and `test/e2e/ui_test.go`: subtest `UI-11` running `runSpec(t, "UI-11", 5*time.Minute, nil)` (lower to about twice the first full run)
+  - [x] adjust the tests named under Adjusts
+  - [x] `test/e2e/e2e_test.go` and `test/e2e/ui_test.go`: subtest `UI-11` running `runSpec(t, "UI-11", 5*time.Minute, nil)` (lower to about twice the first full run)
 
 - [x] 15-09 Tray: breadcrumb and project switcher with display names
   - Wave: 3 | Depends on: 15-03, 15-06 | Review: alone
