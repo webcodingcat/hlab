@@ -170,19 +170,16 @@ func checkSubDescription(d string) error {
 	return nil
 }
 
-// subLimit returns the subaccounts_limit of the type of box r.
-func (m *Module) subLimit(r Record) (int, error) {
+// subLimit returns the subaccounts_limit of the type object stored on box
+// r, so a type a later catalog drops keeps its limit.
+func subLimit(r Record) (int, error) {
 	var t struct {
-		ID int64 `json:"id"`
+		SubaccountsLimit int `json:"subaccounts_limit"`
 	}
 	if err := json.Unmarshal(r.StorageBoxType, &t); err != nil {
 		return 0, fmt.Errorf("storage box %d: type: %w", r.ID, err)
 	}
-	st, ok := m.boxType(strconv.FormatInt(t.ID, 10))
-	if !ok {
-		return 0, fmt.Errorf("storage box %d: type %d not in the catalog", r.ID, t.ID)
-	}
-	return st.SubaccountsLimit, nil
+	return t.SubaccountsLimit, nil
 }
 
 var subListOptions = api.ListOptions[Subaccount]{
@@ -293,9 +290,6 @@ func (m *Module) createSubaccount(w http.ResponseWriter, req *http.Request) {
 		Labels:        body.Labels,
 		Created:       time.Now().UTC().Truncate(time.Second),
 	}}
-	if s.Labels == nil {
-		s.Labels = map[string]string{}
-	}
 	s.HLab.Hashes = hashes
 	if body.AccessSettings != nil {
 		body.AccessSettings.apply(&s.AccessSettings)
@@ -313,7 +307,7 @@ func (m *Module) createSubaccount(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			return err
 		}
-		if limit, err = m.subLimit(box); err != nil {
+		if limit, err = subLimit(box); err != nil {
 			return err
 		}
 		if len(subs) >= limit {
