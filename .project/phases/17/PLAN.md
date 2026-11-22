@@ -57,15 +57,15 @@ the message `hlab` prints.
   - [x] In `internal/mgmt/mgmt.go`, the `actions.ErrLocked` branch of the project deletion finds the running `delete_project` action of the project (`Actions.ListFor(0, projectRef, p.ID)`, status `running`) and answers `409 conflict` with `"action_id":n` in the error object; the message stays.
   - [x] Add `ActionID int64 \`json:"action_id,omitempty"\`` to `mgmtclient.APIError` in `internal/mgmtclient/mgmtclient.go`; `AnswerError` keeps it. `hlab project delete` keeps printing the conflict message.
 
-- [ ] 17-02 MCP server and its tools
+- [x] 17-02 MCP server and its tools
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: MCP-01, MCP-02, MCP-04 | Tests: internal/cli/mcp_test.go
   - Reads: REQUIREMENTS.md "MCP server (`MCP`)"; ARCHITECTURE.md "hlab (management command)" (the `mcp` item); `decisions/mcp-server.md`; CONTEXT.md; RESEARCH.md "AddTool", "Transports and Server.Run", "Client side"
   - Size: ~380 lines in 4 files
   - Adjusts: -
-  - [ ] Add `github.com/modelcontextprotocol/go-sdk` v1.8.0 (`go get`, `go.mod`, `go.sum`).
-  - [ ] New `internal/cli/mcp.go`: `MCPOptions`, `NewMCPServer`, `MCPTools`; one handler per tool that builds a `call` with `json: true`, the request ctx and stdout captured, runs the existing command function and returns the captured text as the result (command error -> `IsError`). `logs` streams `/logs` without follow and keeps the last N lines (from `logfile.Tail(LogDir, "hlabd.log", N, false, ...)` on `ErrNotRunning`); `ca_export` returns the PEM of `/ca.pem`; `token_create` adds the note; `cloud_start`, `cloud_stop` and `project_delete` here call the existing command functions without waiting (17-03 adds the waits). Implementation name `hlab`, version `version.Version`.
-  - [ ] In `internal/cli/cli.go`: command `mcp` in the table, running `NewMCPServer(c.io, MCPOptions{}).Run` over `mcp.IOTransport` on `IO.Stdin`/`IO.Stdout` (stdin EOF and a nil return end with exit 0); `Commands()` lists `mcp` without `--output`, and `hlab mcp --output json` is a usage error.
+  - [x] Add `github.com/modelcontextprotocol/go-sdk` v1.8.0 (`go get`, `go.mod`, `go.sum`).
+  - [x] New `internal/cli/mcp.go`: `MCPOptions`, `NewMCPServer`, `MCPTools`; one handler per tool that builds a `call` with `json: true`, the request ctx and stdout captured, runs the existing command function and returns the captured text as the result (command error -> `IsError`). `logs` streams `/logs` without follow and keeps the last N lines (from `logfile.Tail(LogDir, "hlabd.log", N, false, ...)` on `ErrNotRunning`); `ca_export` returns the PEM of `/ca.pem`; `token_create` adds the note; `cloud_start`, `cloud_stop` and `project_delete` here call the existing command functions without waiting (17-03 adds the waits). Implementation name `hlab`, version `version.Version`.
+  - [x] In `internal/cli/cli.go`: command `mcp` in the table, running `NewMCPServer(c.io, MCPOptions{}).Run` over `mcp.IOTransport` on `IO.Stdin`/`IO.Stdout` (stdin EOF and a nil return end with exit 0); `Commands()` lists `mcp` without `--output`, and `hlab mcp --output json` is a usage error.
 
 - [ ] 17-03 Waiting cloud and project tools
   - Wave: 2 | Depends on: 17-01, 17-02 | Review: alone
