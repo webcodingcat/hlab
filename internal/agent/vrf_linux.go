@@ -63,7 +63,7 @@ func (v *VRF) Name() string { return "vrf" }
 
 // Apply implements Applier.
 func (v *VRF) Apply(_ context.Context, cfg agentapi.Config) error {
-	links, err := netlink.LinkList()
+	links, err := dump(netlink.LinkList)
 	if err != nil {
 		return fmt.Errorf("vrf: list links: %w", err)
 	}
@@ -282,9 +282,11 @@ func syncVRFRoutes(want []netlink.Route) error {
 	for _, r := range want {
 		keep[routeKey(r)] = true
 	}
-	have, err := netlink.RouteListFiltered(netlink.FAMILY_V4,
-		&netlink.Route{Protocol: routeProtocol, Table: unix.RT_TABLE_UNSPEC},
-		netlink.RT_FILTER_PROTOCOL|netlink.RT_FILTER_TABLE)
+	have, err := dump(func() ([]netlink.Route, error) {
+		return netlink.RouteListFiltered(netlink.FAMILY_V4,
+			&netlink.Route{Protocol: routeProtocol, Table: unix.RT_TABLE_UNSPEC},
+			netlink.RT_FILTER_PROTOCOL|netlink.RT_FILTER_TABLE)
+	})
 	if err != nil {
 		return fmt.Errorf("vrf: list routes: %w", err)
 	}

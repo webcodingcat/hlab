@@ -20,6 +20,12 @@ import (
 // own routes and never those of the system (static, kernel, dhcp).
 const routeProtocol netlink.RouteProtocol = 200
 
+// dump makes the netlink dump list, again when a concurrent change of the
+// kernel tables interrupted it.
+func dump[T any](list func() (T, error)) (T, error) {
+	return retryDump(netlink.ErrDumpInterrupted, list)
+}
+
 // fixedAddrs are the appliance's addresses besides its transit address:
 // the guests' gateway, the metadata service and Hetzner's resolvers.
 var fixedAddrs = []netip.Addr{
@@ -92,7 +98,9 @@ func (n *Network) syncRoutes(link netlink.Link, cfg agentapi.Config) error {
 		}
 	}
 
-	have, err := netlink.RouteListFiltered(netlink.FAMILY_V4, &netlink.Route{Protocol: routeProtocol}, netlink.RT_FILTER_PROTOCOL)
+	have, err := dump(func() ([]netlink.Route, error) {
+		return netlink.RouteListFiltered(netlink.FAMILY_V4, &netlink.Route{Protocol: routeProtocol}, netlink.RT_FILTER_PROTOCOL)
+	})
 	if err != nil {
 		return fmt.Errorf("list routes: %w", err)
 	}

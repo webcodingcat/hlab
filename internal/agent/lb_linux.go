@@ -186,7 +186,7 @@ func (l *LoadBalancers) removeStale(ctx context.Context, want map[int64]bool) er
 		slog.Info("load balancer removed", "lb", id)
 	}
 
-	links, err := netlink.LinkList()
+	links, err := dump(netlink.LinkList)
 	if err != nil {
 		return fmt.Errorf("loadbalancers: list links: %w", err)
 	}
@@ -373,7 +373,9 @@ func linkDel(lk netlink.Link) error {
 
 // syncPeerAddr makes a /32 the only IPv4 address of the netns link.
 func syncPeerAddr(h *netlink.Handle, link netlink.Link, a netip.Addr) error {
-	have, err := h.AddrList(link, netlink.FAMILY_V4)
+	have, err := dump(func() ([]netlink.Addr, error) {
+		return h.AddrList(link, netlink.FAMILY_V4)
+	})
 	if err != nil {
 		return fmt.Errorf("addresses of %s: %w", link.Attrs().Name, err)
 	}
@@ -414,9 +416,11 @@ func syncDevRoutes(h *netlink.Handle, link netlink.Link, table int, want []netli
 		}
 		keep[key(want[i])] = true
 	}
-	have, err := h.RouteListFiltered(netlink.FAMILY_V4,
-		&netlink.Route{LinkIndex: link.Attrs().Index, Table: table, Protocol: lbRouteProtocol},
-		netlink.RT_FILTER_OIF|netlink.RT_FILTER_TABLE|netlink.RT_FILTER_PROTOCOL)
+	have, err := dump(func() ([]netlink.Route, error) {
+		return h.RouteListFiltered(netlink.FAMILY_V4,
+			&netlink.Route{LinkIndex: link.Attrs().Index, Table: table, Protocol: lbRouteProtocol},
+			netlink.RT_FILTER_OIF|netlink.RT_FILTER_TABLE|netlink.RT_FILTER_PROTOCOL)
+	})
 	if err != nil {
 		return fmt.Errorf("routes of %s: %w", link.Attrs().Name, err)
 	}
