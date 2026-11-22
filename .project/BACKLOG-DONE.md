@@ -4,6 +4,16 @@ Checked items from BACKLOG.md, done or dropped, moved here unchanged at the
 close of each backlog phase. Newest backlog phase first. No skill
 reads this file; it keeps the notes for looking things up.
 
+## B3
+
+- [x] later: servers: `Reconcile` (internal/resources/servers/reconcile.go) takes an existing VM as it is and never checks an existing disk file, so a VM left without disk, adapter, seed or boot order by an aborted create stays broken; phase 09 (LIFE-02/03/04) restores servers through `Reconcile` and needs it to do only the difference (source: 03 03-06 review) - dropped by the user
+- [x] later: sysint uninstall: `hlabd uninstall-cleanup` does not remove the hlab CA from LocalMachine\Root or the WSL2 distros, so after uninstalling the user's machine still trusts the hlab CA (decisions/managed-certificates.md says uninstall removes it); phase 12 (INST-04) needs it, until then README says to run `hlab ca trust off` first (source: 08 doc-writer) - dropped by the user
+- [x] bug: ui/frontend (Projects.svelte, Tokens.svelte): the Created column shows the stored UTC time without a zone, so users see times off by their UTC offset from `hlab project list` and `hlab token list`, which print local time (source: 10 10-33 review)
+- [x] bug: servers (power actions): under a full parallel `task e2e` the status of a rebooted server stayed `stopping` for over 2 minutes after the guest was back on SSH with a new boot_id (SRV-07 at the B2 close; 3 of 3 green alone), so a user rebooting under load sees a running server as stopping and actions on it may be refused (source: B2 close)
+- [x] bug: ui/frontend (lib/LabelsField.svelte): text left in the labels box that breaks the label rule is not sent when a create form or "Save labels" is submitted, and the error disappears with the form, so the user does not learn the label was not saved (source: 14 verifier)
+- [x] bug: servers (delete): deleting a server removes its load balancer targets in the store but pushes no agent document, so the appliance keeps balancing to the deleted server until a later push (source: 13 13-04 fix)
+- [x] bug: platform/hyperv (shutdown): `PowerShutdown` right after poweron is refused by a still booting guest (32768) and does not retry like reboot does, so a user who shuts down a booting server gets an error (source: 13 13-08)
+
 ## B2
 
 - [x] bug: test/e2e harness: `stopRunningCloud` (test/e2e/main_test.go) stops the dev cloud only in state `running`; a developer whose dev service is up in `starting` or `refused` still gets the `task build` error because the service holds `bin\hlabd.exe` (source: B1 verifier) - fixed in B2-03: stops `running`, waits through `starting` and `stopping`; `refused` needs no stop because the service process has exited

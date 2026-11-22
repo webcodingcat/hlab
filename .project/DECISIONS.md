@@ -26,6 +26,7 @@ taken with the approval of the spec or by an answer from the user.
 - What: a new `platform.PowerShutdownRetry` asks a still booting guest again for up to 2 minutes and is used only by the API `shutdown` action, while `PowerShutdown` stays a single ask for halt, appliance stop and rescue.
 - Why: the B3-02 review found that the retry in `PowerShutdown` stretched cloud stop and uninstall past the 60 s halt timeout of phase 09.
 - Cost of change: low
+- Replaces: 2026-11-22 Shutdown retry as a testable function
 
 ## 2026-11-22 LabelsField sets message and validity together
 
@@ -57,14 +58,6 @@ taken with the approval of the spec or by an answer from the user.
 - Phase: phase B3
 - What: the API delete action pushes the agent document after removing the server, a failed push logs a warning naming the server and its load balancers, and project deletion does not push per server.
 - Why: the document also carries the deleted server's metadata and firewall state, and mgmt already pushes once at the end of a project deletion.
-- Cost of change: low
-
-## 2026-11-22 Shutdown retry as a testable function
-
-- Type: decision
-- Phase: phase B3
-- What: `shutdown(ctx, name, timeout, interval, ask)` in hyperv.go wraps `untilAccepted`, and `Power(PowerShutdown)` calls it with `guestReadyTimeout` and 2 s like reboot.
-- Why: the PowerShell runner cannot be faked, so the test passes the ask function.
 - Cost of change: low
 
 ## 2026-11-22 One shared createdText in local time

@@ -4,11 +4,11 @@ Taken in by the user with /wcc:change on 2026-11-22.
 
 ## Items
 
-- [ ] bug: ui/frontend (Projects.svelte, Tokens.svelte): the Created column shows the stored UTC time without a zone, so users see times off by their UTC offset from `hlab project list` and `hlab token list`, which print local time (source: 10 10-33 review)
-- [ ] bug: servers (power actions): under a full parallel `task e2e` the status of a rebooted server stayed `stopping` for over 2 minutes after the guest was back on SSH with a new boot_id (SRV-07 at the B2 close; 3 of 3 green alone), so a user rebooting under load sees a running server as stopping and actions on it may be refused (source: B2 close)
-- [ ] bug: ui/frontend (lib/LabelsField.svelte): text left in the labels box that breaks the label rule is not sent when a create form or "Save labels" is submitted, and the error disappears with the form, so the user does not learn the label was not saved (source: 14 verifier)
-- [ ] bug: servers (delete): deleting a server removes its load balancer targets in the store but pushes no agent document, so the appliance keeps balancing to the deleted server until a later push (source: 13 13-04 fix)
-- [ ] bug: platform/hyperv (shutdown): `PowerShutdown` right after poweron is refused by a still booting guest (32768) and does not retry like reboot does, so a user who shuts down a booting server gets an error (source: 13 13-08)
+- [x] bug: ui/frontend (Projects.svelte, Tokens.svelte): the Created column shows the stored UTC time without a zone, so users see times off by their UTC offset from `hlab project list` and `hlab token list`, which print local time (source: 10 10-33 review)
+- [x] bug: servers (power actions): under a full parallel `task e2e` the status of a rebooted server stayed `stopping` for over 2 minutes after the guest was back on SSH with a new boot_id (SRV-07 at the B2 close; 3 of 3 green alone), so a user rebooting under load sees a running server as stopping and actions on it may be refused (source: B2 close)
+- [x] bug: ui/frontend (lib/LabelsField.svelte): text left in the labels box that breaks the label rule is not sent when a create form or "Save labels" is submitted, and the error disappears with the form, so the user does not learn the label was not saved (source: 14 verifier)
+- [x] bug: servers (delete): deleting a server removes its load balancer targets in the store but pushes no agent document, so the appliance keeps balancing to the deleted server until a later push (source: 13 13-04 fix)
+- [x] bug: platform/hyperv (shutdown): `PowerShutdown` right after poweron is refused by a still booting guest (32768) and does not retry like reboot does, so a user who shuts down a booting server gets an error (source: 13 13-08)
 
 Note on the Projects item: the project list no longer has a Created
 column (cards and rows, UI-11; `created` only sorts), so only Tokens and
@@ -91,3 +91,9 @@ export function createdText(created: string): string;
   - Size: ~20 lines in 2 to 3 files
   - Adjusts: -
   - [x] docs/development/api-coverage.md "Server actions" and docs/deviations.md (servers): `shutdown` asks a guest that is still booting again for up to 2 minutes before it fails; the server shows `stopping` until the guest turns off, and a reboot from inside the guest no longer leaves it there. Console times are local time wherever a help text or the guide names them.
+
+## Close
+
+- Unit suite and linter: `task test`, `task test:frontend` (280 passed), `task lint` green at 675f022.
+- End-to-end: `task e2e -- -v -run 'TestE2E/(UI-02|SRV-07)$'` at 675f022, both green (UI-02 1m49s; its limit raised to 4m30s after the 2m7s run with the new spec).
+- Manual checks: none.

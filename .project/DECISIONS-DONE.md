@@ -4,6 +4,14 @@ Entries from DECISIONS.md that a later entry revoked or changed, moved here
 unchanged; the later entry names them under `Replaces:`. Newest first. No
 skill reads this file; it keeps the history for looking things up.
 
+## 2026-11-22 Shutdown retry as a testable function
+
+- Type: decision
+- Phase: phase B3
+- What: `shutdown(ctx, name, timeout, interval, ask)` in hyperv.go wraps `untilAccepted`, and `Power(PowerShutdown)` calls it with `guestReadyTimeout` and 2 s like reboot.
+- Why: the PowerShell runner cannot be faked, so the test passes the ask function.
+- Cost of change: low
+
 ## 2026-11-21 All manual checks wait for the release, in a dedicated test VM
 
 - Type: approval
