@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 MCP progress counts notifications
+
+- Type: decision
+- Phase: phase 17
+- What: progress notifications carry a counter rising with each notification as `progress` and the current state or the action's percentage as `message`.
+- Why: the action's percentage can stay the same between polls, and MCP requires progress to increase.
+- Cost of change: low
+
 ## 2026-11-22 MCP tools listed by name
 
 - Type: decision
