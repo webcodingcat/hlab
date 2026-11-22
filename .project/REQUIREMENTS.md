@@ -447,11 +447,11 @@ What the target vision in IDEA.md will need, not built yet.
 | CLI-05 | 21 | |
 | CLI-06 | 21 | |
 | CLI-07 | 21 | |
-| MCP-01 | 17 | |
-| MCP-02 | 17 | |
-| MCP-03 | 17 | |
-| MCP-04 | 17 | |
-| MCP-05 | 17 | |
+| MCP-01 | 17 | x |
+| MCP-02 | 17 | x |
+| MCP-03 | 17 | x |
+| MCP-04 | 17 | x |
+| MCP-05 | 17 | x |
 | DOC-01 | all | |
 | DOC-02 | all | |
 | DOC-03 | all | |

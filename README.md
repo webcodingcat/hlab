@@ -253,6 +253,20 @@ Projects and their sections need the running cloud; while it is stopped,
 the project pages show "Start the cloud to manage projects" with a
 **Start cloud** button. The `?` button of each page opens its help.
 
+## MCP server
+
+`hlab mcp` lets an AI agent such as Claude Code or Claude Desktop start
+and stop the cloud and manage projects, tokens, the log and the HLab CA
+through the Model Context Protocol. Register it with your client, for
+example:
+
+```
+> claude mcp add --transport stdio --scope user hlab -- "C:\Program Files\hlab\hlab.exe" mcp
+```
+
+The tools and the configuration for Claude Desktop are in the
+[command reference](docs/commands.md#mcp-server).
+
 ## WSL2
 
 hcloud, OpenTofu and Ansible in a WSL2 distribution reach
@@ -323,7 +337,8 @@ of it in `%ProgramData%\Package Cache`.
 ## More documentation
 
 - [Guide](docs/guide.md): every resource with hcloud, OpenTofu and Ansible.
-- [Command reference](docs/commands.md): every `hlab` command and flag.
+- [Command reference](docs/commands.md): every `hlab` command and flag,
+  and the tools of the MCP server `hlab mcp`.
 - [Configuration reference](docs/configuration.md): `settings.toml`, own
   server types and the catalogs.
 - [Known deviations](docs/deviations.md): what differs from Hetzner.

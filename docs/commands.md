@@ -1,18 +1,19 @@
 # Command reference
 
 `hlab` manages the local cloud: start and stop, projects, API tokens,
-the server type catalog and the HLab CA.
+the server type catalog and the HLab CA; `hlab mcp` offers the same to AI
+agents as an [MCP server](#mcp-server).
 The installation puts it on `PATH`; in a working copy it is
 `bin\hlab.exe`. The examples write `hlab`.
 
 `hlab cloud start`, `stop` and `status` work at any time. All other
-commands except `hlab logs` and `hlab version` talk to the running cloud
+commands except `hlab logs`, `hlab version` and `hlab mcp` talk to the running cloud
 and fail with `hlab: the cloud is not running` while it is stopped.
 
 ## Output and exit codes
 
 Every command prints text for people. `--output json` prints JSON instead,
-for scripts:
+for scripts (every command except `hlab mcp`):
 
 ```
 > hlab version --output json
@@ -325,3 +326,116 @@ described in the [configuration reference](configuration.md#log-files).
 > hlab version
 HLab dev
 ```
+
+## MCP server
+
+### hlab mcp
+
+`hlab mcp` is a [Model Context Protocol](https://modelcontextprotocol.io)
+server for AI agents such as Claude Code and Claude Desktop. You do not
+run it yourself: the MCP client starts it and talks to it over standard
+input and output; it ends when the client closes its input. It takes no
+flags; `hlab mcp --output json` fails with exit code 2.
+
+The tools start and stop the cloud and manage projects, tokens, the log
+and the HLab CA. Servers, networks and the other Hetzner resources have no
+tools; an agent manages them with hcloud, OpenTofu or Ansible and a token
+from `token_create`.
+
+#### Configuration
+
+Claude Code, for all your projects:
+
+```
+> claude mcp add --transport stdio --scope user hlab -- "C:\Program Files\hlab\hlab.exe" mcp
+```
+
+Claude Desktop: add the server to
+`%APPDATA%\Claude\claude_desktop_config.json` and restart Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "hlab": {
+      "command": "C:\\Program Files\\hlab\\hlab.exe",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+In a working copy, use the path of `bin\hlab.exe` instead; it controls the
+dev service.
+
+#### Tools
+
+| Tool | Arguments | Result |
+|---|---|---|
+| `cloud_status` | none | like `hlab cloud status` |
+| `cloud_start` | none | starts the cloud, waits until it runs, then the cloud status |
+| `cloud_stop` | none | stops the cloud, waits until it is stopped, then the cloud status |
+| `project_create` | `display_name` | like `hlab project create` |
+| `project_list` | none | the projects with `resources_by_type`, like `hlab project list` |
+| `project_delete` | `name` | deletes the project and waits until it is gone, like `hlab project delete` |
+| `token_create` | `project`, `name`, `read_only` (optional, default false) | the token with its value, and a note that the value cannot be retrieved again |
+| `token_list` | `project` | the tokens without their values, like `hlab token list` |
+| `token_revoke` | `project`, `name` | like `hlab token revoke` |
+| `logs` | `lines` (optional, 1 to 1000, default 200) | the last lines of the hlabd log, one JSON line each |
+| `ca_export` | none | the certificate of the HLab CA as PEM text; no file is written |
+| `ca_trust` | `on` (true or false) | like `hlab ca trust on` or `off` |
+| `version` | none | like `hlab version` |
+
+A result is text: what the `hlab` command prints with `--output json`.
+`cloud_start` returns, for example:
+
+```
+{
+  "problems": [],
+  "shadowing_zones": [],
+  "state": "running",
+  "version": "dev"
+}
+```
+
+`logs` with `"lines": 2`:
+
+```
+{"time":"2026-11-22T07:36:24.6139668+01:00","level":"INFO","msg":"halting servers","stop_behaviour":"save","host_shutdown":false}
+{"time":"2026-11-22T07:36:37.6531115+01:00","level":"INFO","msg":"cloud stopped"}
+```
+
+When the command fails, the tool returns a tool error with the message
+`hlab` prints, without the `hlab:` prefix. An argument outside its range,
+such as `"lines": 2000`, is a tool error as well.
+
+No tool discards the state or updates the server type catalog; use
+`hlab cloud start --discard-state` and `hlab catalog update` for that.
+
+#### While the cloud is stopped
+
+`cloud_status`, `cloud_start`, `cloud_stop`, `logs` (read from the log
+files) and `version` work. Every other tool returns the tool error
+`the cloud is not running`, and `hlab mcp` keeps running, so the agent can
+call `cloud_start`.
+
+#### Waiting
+
+- `cloud_start` returns once the cloud runs, at once if it already runs. A
+  stop in progress is waited out first, a start in progress is waited for.
+  A refused start is the tool error `the cloud refused to start: <problem>`,
+  a failed one `the cloud failed to start: <error>`. After 5 minutes the
+  tool gives up with `the cloud is still not running after 5m0s`.
+- `cloud_stop` works the same way the other way round and gives up with
+  `the cloud is still not stopped after 5m0s`.
+- `project_delete` waits for the deletion, at most 30 minutes. If the
+  project is already being deleted, it waits for that deletion. A failure
+  is the tool error `deleting project <name> failed: <reason>`.
+
+When the client asks for progress, these three tools report the current
+state about every 10 seconds, for example `the cloud is starting`.
+
+A client that stops waiting ends only the wait: the start, stop or
+deletion goes on in HLab, and calling the tool again waits for it. Some
+clients cancel a call after a short time (Claude Desktop probably after
+about 60 seconds); then `cloud_status` and `project_list` show how far the
+operation got.

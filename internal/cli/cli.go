@@ -72,7 +72,9 @@ type command struct {
 	flags []string // value flags, required
 	opts  []string // value flags, optional
 	bools []string // boolean flags
-	run   func(c *call) error
+	// noOutput: the command takes no --output (it prints no result).
+	noOutput bool
+	run      func(c *call) error
 }
 
 var commands = []command{
@@ -90,9 +92,11 @@ var commands = []command{
 	{path: "ca trust", args: "on|off", nargs: 1, run: caTrust},
 	{path: "logs", bools: []string{"follow"}, run: logs},
 	{path: "version", run: printVersion},
+	{path: "mcp", noOutput: true, run: serveMCP},
 }
 
-// Commands lists every command and its flags, the global --output included.
+// Commands lists every command and its flags, the global --output included
+// where the command takes it.
 func Commands() []Command {
 	out := make([]Command, 0, len(commands))
 	for _, c := range commands {
@@ -106,7 +110,10 @@ func Commands() []Command {
 		for _, f := range c.bools {
 			flags = append(flags, "--"+f)
 		}
-		out = append(out, Command{Path: c.path, Flags: append(flags, "--output")})
+		if !c.noOutput {
+			flags = append(flags, "--output")
+		}
+		out = append(out, Command{Path: c.path, Flags: flags})
 	}
 	return out
 }
@@ -164,7 +171,7 @@ func usage() string {
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("Every command accepts --output json.\n")
+	b.WriteString("Every command except mcp accepts --output json.\n")
 	return b.String()
 }
 
@@ -206,6 +213,9 @@ func parse(args []string) (*call, command, error) {
 			return nil, command{}, usageError{"no command given"}
 		}
 		return nil, command{}, usageError{fmt.Sprintf("unknown command %q", strings.Join(words, " "))}
+	}
+	if c.json && cmd.noOutput {
+		return nil, command{}, usageError{fmt.Sprintf("hlab %s takes no --output", cmd.path)}
 	}
 	c.args = words[n:]
 	// rest holds flags with the word after each; bool flags give that word back.
@@ -452,7 +462,7 @@ func projectDelete(c *call) error {
 	if err := c.mgmt(http.MethodDelete, "/projects/"+pathEscape(c.args[0]), nil, &body); err != nil {
 		return err
 	}
-	if err := c.waitAction(body.ActionID, projectDeleteTimeout); err != nil {
+	if err := c.waitAction(body.ActionID, projectDeleteTimeout, nil); err != nil {
 		return fmt.Errorf("deleting project %s failed: %w", c.args[0], err)
 	}
 	return c.out(body, "project "+c.args[0]+" deleted\n")
@@ -466,14 +476,16 @@ const projectDeleteTimeout = 30 * time.Minute
 const actionPoll = 200 * time.Millisecond
 
 // waitAction polls the management action id until it is no longer running
-// and returns its error, if any; it gives up after timeout.
-func (c *call) waitAction(id int64, timeout time.Duration) error {
+// and returns its error, if any; it gives up after timeout. seen, if not
+// nil, gets the progress of every read that finds the action running.
+func (c *call) waitAction(id int64, timeout time.Duration, seen func(progress int)) error {
 	deadline := time.Now().Add(timeout)
 	for {
 		var body struct {
 			Action struct {
-				Status string               `json:"status"`
-				Error  *mgmtclient.APIError `json:"error"`
+				Status   string               `json:"status"`
+				Progress int                  `json:"progress"`
+				Error    *mgmtclient.APIError `json:"error"`
 			} `json:"action"`
 		}
 		if err := c.mgmt(http.MethodGet, fmt.Sprintf("/actions/%d", id), nil, &body); err != nil {
@@ -490,6 +502,9 @@ func (c *call) waitAction(id int64, timeout time.Duration) error {
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("still running after %s (action %d)", timeout, id)
+		}
+		if seen != nil {
+			seen(body.Action.Progress)
 		}
 		select {
 		case <-c.ctx.Done():
