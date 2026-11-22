@@ -67,14 +67,14 @@ export function createdText(created: string): string;
   - Adjusts: -
   - [ ] internal/platform/hyperv/hyperv.go: `shutdown` as in Interfaces; `Power` case `PowerShutdown` returns `shutdown(ctx, name, guestReadyTimeout, 2*time.Second, <ask calling p.askGuest(ctx, name, "InitiateShutdown")>)`; the doc comments of `guestReadyTimeout` and `Power` name shutdown too.
 
-- [ ] B3-03 Console Created times in local time
+- [x] B3-03 Console Created times in local time
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-02 | Tests: ui/frontend/tests/unit/format.test.ts
   - Reads: REQUIREMENTS UI-02, UI-05; ui/frontend/src/lib/format.ts; ui/frontend/src/views/servers/servers.ts; ui/frontend/src/views/Tokens.svelte; internal/cli/cli.go project and token list (local time)
   - Size: ~20 lines in 3 files
   - Adjusts: -
-  - [ ] ui/frontend/src/lib/format.ts: `createdText` parses the timestamp with `new Date` and builds year, month, day, hours and minutes from the local getters, zero-padded, as "YYYY-MM-DD hh:mm"; an unparsable value is shown as given.
-  - [ ] ui/frontend/src/views/servers/servers.ts: its own `createdText` becomes a re-export of the one in lib/format.ts; ui/frontend/src/views/Tokens.svelte: the Created column uses `createdText`.
+  - [x] ui/frontend/src/lib/format.ts: `createdText` parses the timestamp with `new Date` and builds year, month, day, hours and minutes from the local getters, zero-padded, as "YYYY-MM-DD hh:mm"; an unparsable value is shown as given.
+  - [x] ui/frontend/src/views/servers/servers.ts: its own `createdText` becomes a re-export of the one in lib/format.ts; ui/frontend/src/views/Tokens.svelte: the Created column uses `createdText`.
 
 - [ ] B3-04 Labels box refuses a submit with invalid text
   - Wave: 1 | Depends on: - | Review: alone
