@@ -1,0 +1,172 @@
+{
+  "storage_box_types": [
+    {
+      "id": 1333,
+      "name": "bx11",
+      "description": "BX11",
+      "snapshot_limit": 10,
+      "automatic_snapshot_limit": 10,
+      "subaccounts_limit": 100,
+      "size": 1099511627776,
+      "prices": [
+        {
+          "location": "fsn1",
+          "price_hourly": {
+            "gross": "0.0061",
+            "net": "0.0051"
+          },
+          "price_monthly": {
+            "gross": "3.8080",
+            "net": "3.2000"
+          },
+          "setup_fee": {
+            "gross": "0.0000",
+            "net": "0.0000"
+          }
+        },
+        {
+          "location": "hel1",
+          "price_hourly": {
+            "gross": "0.0061",
+            "net": "0.0051"
+          },
+          "price_monthly": {
+            "gross": "3.8080",
+            "net": "3.2000"
+          },
+          "setup_fee": {
+            "gross": "0.0000",
+            "net": "0.0000"
+          }
+        }
+      ],
+      "deprecation": null
+    },
+    {
+      "id": 1334,
+      "name": "bx21",
+      "description": "BX21",
+      "snapshot_limit": 20,
+      "automatic_snapshot_limit": 20,
+      "subaccounts_limit": 100,
+      "size": 5497558138880,
+      "prices": [
+        {
+          "location": "fsn1",
+          "price_hourly": {
+            "gross": "0.0208",
+            "net": "0.0175"
+          },
+          "price_monthly": {
+            "gross": "12.9710",
+            "net": "10.9000"
+          },
+          "setup_fee": {
+            "gross": "0.0000",
+            "net": "0.0000"
+          }
+        },
+        {
+          "location": "hel1",
+          "price_hourly": {
+            "gross": "0.0208",
+            "net": "0.0175"
+          },
+          "price_monthly": {
+            "gross": "12.9710",
+            "net": "10.9000"
+          },
+          "setup_fee": {
+            "gross": "0.0000",
+            "net": "0.0000"
+          }
+        }
+      ],
+      "deprecation": null
+    },
+    {
+      "id": 1335,
+      "name": "bx31",
+      "description": "BX31",
+      "snapshot_limit": 30,
+      "automatic_snapshot_limit": 30,
+      "subaccounts_limit": 100,
+      "size": 10995116277760,
+      "prices": [
+        {
+          "location": "fsn1",
+          "price_hourly": {
+            "gross": "0.0396",
+            "net": "0.0333"
+          },
+          "price_monthly": {
+            "gross": "24.7520",
+            "net": "20.8000"
+          },
+          "setup_fee": {
+            "gross": "0.0000",
+            "net": "0.0000"
+          }
+        },
+        {
+          "location": "hel1",
+          "price_hourly": {
+            "gross": "0.0396",
+            "net": "0.0333"
+          },
+          "price_monthly": {
+            "gross": "24.7520",
+            "net": "20.8000"
+          },
+          "setup_fee": {
+            "gross": "0.0000",
+            "net": "0.0000"
+          }
+        }
+      ],
+      "deprecation": null
+    },
+    {
+      "id": 1336,
+      "name": "bx41",
+      "description": "BX41",
+      "snapshot_limit": 40,
+      "automatic_snapshot_limit": 40,
+      "subaccounts_limit": 100,
+      "size": 21990232555520,
+      "prices": [
+        {
+          "location": "fsn1",
+          "price_hourly": {
+            "gross": "0.0775",
+            "net": "0.0651"
+          },
+          "price_monthly": {
+            "gross": "48.3140",
+            "net": "40.6000"
+          },
+          "setup_fee": {
+            "gross": "0.0000",
+            "net": "0.0000"
+          }
+        },
+        {
+          "location": "hel1",
+          "price_hourly": {
+            "gross": "0.0775",
+            "net": "0.0651"
+          },
+          "price_monthly": {
+            "gross": "48.3140",
+            "net": "40.6000"
+          },
+          "setup_fee": {
+            "gross": "0.0000",
+            "net": "0.0000"
+          }
+        }
+      ],
+      "deprecation": null
+    }
+  ]
+}

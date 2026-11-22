@@ -109,13 +109,13 @@ Stored documents (`resources` table, no migration):
   - [x] New `internal/resources/storageboxtypes/storageboxtypes.go`: constructor `New(cat *catalog.Catalog)` like `servertypes.New`, `Prefix` `api.HetznerPrefix`, `GET /storage_box_types` (filter `name`, paging, sorted by ID) and `GET /storage_box_types/{id}` serving `Raw`; wired in `Cloud.modules()` (`internal/cloud/cloud.go`). Rows for both routes in `docs/development/api-coverage.md` (section "Storage Boxes", full `/hetzner/v1` routes).
   - [x] New `internal/apitest/storage.go` with `StorageBoxTypes(t)` and `internal/apitest/testdata/storage-box-types.json`: three types in the shape of the description (bx11 1 TB, bx21 5 TB, bx31 10 TB; `snapshot_limit` 10/20/30, `automatic_snapshot_limit` 10/20/30, `subaccounts_limit` 5/200/300 (bx11 small so SBOX-02/limit_numbering stays fast); prices for fsn1, nbg1, hel1, bx11 without nbg1).
 
-- [ ] 18-03 `task catalog` fetches the storage box types
+- [x] 18-03 `task catalog` fetches the storage box types
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: - (success criterion 2) | Tests: -
   - Reads: SPEC.md "Accounts and secrets" (`task catalog`); CONTEXT.md item 4; RESEARCH.md "Q2"; `tools/catalog/main.go`
   - Size: ~90 lines in 2 files
   - Adjusts: -
-  - [ ] `tools/catalog/main.go`: after the Cloud lists, fetch all pages of `https://api.hetzner.com/v1/storage_box_types` (`per_page=50`, follow `meta.pagination.next_page`) with a usable context through hcloud itself, as for the Cloud lists: `hcloud --context <name> --endpoint https://api.hetzner.com/v1 api /storage_box_types -v page=<n> -v per_page=50` through the existing `hcloudCmd` (the token never leaves hcloud; never `config get token`); without one with the token of the hidden prompt and the script's own HTTP call; the context's `hetzner-endpoint` is not read; the token is never printed or written. Write `catalog/storage-box-types.json` as `{"storage_box_types":[...]}`. Package comment and the `catalog` task description in `Taskfile.yml` name the new file. The implementer does not run `task catalog`; the main session does.
+  - [x] `tools/catalog/main.go`: after the Cloud lists, fetch all pages of `https://api.hetzner.com/v1/storage_box_types` (`per_page=50`, follow `meta.pagination.next_page`) with a usable context through hcloud itself, as for the Cloud lists: `hcloud --context <name> --endpoint https://api.hetzner.com/v1 api /storage_box_types -v page=<n> -v per_page=50` through the existing `hcloudCmd` (the token never leaves hcloud; never `config get token`); without one with the token of the hidden prompt and the script's own HTTP call; the context's `hetzner-endpoint` is not read; the token is never printed or written. Write `catalog/storage-box-types.json` as `{"storage_box_types":[...]}`. Package comment and the `catalog` task description in `Taskfile.yml` name the new file. The implementer does not run `task catalog`; the main session does.
 
 - [x] 18-04 Storage Box passwords and their hashes
   - Wave: 1 | Depends on: - | Review: alone
