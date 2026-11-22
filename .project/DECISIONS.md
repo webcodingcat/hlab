@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 Subaccounts stored at create, listed without paging
+
+- Type: decision
+- Phase: phase 18
+- What: a new subaccount is stored with its username in the create transaction and `create_subaccount` only runs Apply; the list uses `api.ListAllRequest` (no paging, no `meta`, as the description has none); the limit error carries `details.limits [{"name":"subaccounts_limit"}]`, and the subaccount `update_access_settings` action is named `update_subaccount_access_settings`.
+- Why: the description shows no initializing state or paging for subaccounts, and the test map expects these names.
+- Cost of change: low
+
 ## 2026-11-22 Storage box actions validate before the lock
 
 - Type: decision

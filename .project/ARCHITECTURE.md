@@ -91,7 +91,8 @@ Inside `hlabd` (Go packages under `internal/`):
   ListOptions[T])` filters by `name` and `label_selector`, sorts by the
   endpoint's keys and pages (`page`, `per_page` 25 by default, at most 50;
   a page beyond the last is empty with `next_page` null) and writes
-  `meta.pagination`; modules reach store and action manager through
+  `meta.pagination`; `api.ListAllRequest` filters and sorts the same way
+  without paging or `meta` (storage box subaccounts); modules reach store and action manager through
   `api.StoreFrom(ctx)`/`api.ActionsFrom(ctx)`; `api.Error(code, message,
   details)` writes Hetzner's error object with the status from
   `api.Status(code)`, the one table of HTTP statuses (taken from the error
@@ -115,7 +116,13 @@ Inside `hlabd` (Go packages under `internal/`):
   their actions; these actions live in the one action store, so their IDs
   are unique across both APIs and `GET /v1/actions?id=` and
   `GET /v1/actions/{id}` of the Cloud API return them too, which hcloud and
-  the provider poll (E12, E13)). A new resource type is a new
+  the provider poll (E12, E13)). `internal/resources/storageboxes` stores
+  boxes under kind `storage_boxes` (`Record`: the API object plus `_hlab`
+  with `n`, `next_sub`, `ssh_keys`, `hashes {crypt, nt}`) and subaccounts
+  under `storage_box_subaccounts` (`SubaccountRecord` with `_hlab.hashes`);
+  every box and subaccount action locks the box and runs the hook
+  `Deps.Apply`, nil until the storage VM (phase 19) sets it; subaccount
+  actions reference `storage_box` and `storage_box_subaccount`. A new resource type is a new
   package plus one line in `Cloud.modules()` (`internal/cloud`); the core
   does not change.
 - Interface:
