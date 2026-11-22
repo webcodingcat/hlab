@@ -8,10 +8,11 @@ each difference with its route.
 
 The API offers actions, locations, server types, prices, images, ISOs,
 SSH keys, servers, placement groups, volumes, networks, primary and
-floating IPs, firewalls, DNS zones, load balancers and certificates;
-anything else answers `not_found`. hcloud reads storage boxes from its
-separate Hetzner endpoint, so `hcloud all list` fails and sends your
-HLab token to `api.hetzner.com`; do not run it.
+floating IPs, firewalls, DNS zones, load balancers and certificates, and
+storage boxes at Hetzner's separate endpoint; anything else answers
+`not_found`. Set both endpoints as in [First steps](../README.md#first-steps):
+a client without the second one sends its storage box requests, with your
+HLab token, to `api.hetzner.com`.
 
 ## Servers
 
@@ -126,6 +127,19 @@ only for domains that lie in a DNS zone of the project. They are valid
 for 90 days and renewed 30 days before they expire. Clients trust them
 only after [`hlab ca trust on`](commands.md#hlab-ca-trust) or with the
 exported CA certificate.
+
+## Storage boxes
+
+A storage box exists only in the API so far: boxes and subaccounts can be
+created, changed and deleted, but they hold no data and offer no SSH,
+SFTP, Samba or WebDAV access. A snapshot plan is stored but takes no
+snapshots; folders and snapshots are not available. Host names end in
+`storagebox.hetzner.internal`. Passwords follow Hetzner's rules but are
+not checked against known data breaches. Invalid input, such as a home
+directory with a leading slash, is refused at once instead of by a failed
+action. While an action on a box or one of its subaccounts runs, any other
+one on that box answers `locked`. The types and prices come from HLab's
+catalog; `hlab catalog update` does not refresh them.
 
 ## Actions that wait instead of answering locked
 

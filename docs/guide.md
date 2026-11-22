@@ -568,14 +568,81 @@ curl --cacert hlab-ca.pem https://www.lab.internal/
 In a server, pass the file with cloud-init (`ca_certs`) or copy it
 there yourself.
 
+## Storage boxes
+
+hcloud reaches storage boxes through `HETZNER_ENDPOINT` (see
+[First steps](../README.md#first-steps)). A box and its subaccounts exist
+only in the API so far; they hold no data and offer no SSH, Samba or
+WebDAV access.
+
+```
+> hcloud storage-box-type list
+ID     NAME   DESCRIPTION   SIZE      SNAPSHOT LIMIT   AUTOMATIC SNAPSHOT LIMIT   SUBACCOUNTS LIMIT
+1333   bx11   BX11          1.0 TiB   10               10                         100
+1334   bx21   BX21          5.0 TiB   20               20                         100
+1335   bx31   BX31          10 TiB    30               30                         100
+1336   bx41   BX41          20 TiB    40               40                         100
+> hcloud storage-box create --name backup --type bx11 --location fsn1 --password 'Secret-Passw0rd'
+Waiting for create_storage_box (storage_box: 1) ...
+Waiting for create_storage_box (storage_box: 1) ... done
+Storage Box 1 created
+Server: u100000.storagebox.hetzner.internal
+Username: u100000
+> hcloud storage-box subaccount create backup --home-directory web1 --password 'Other-Passw0rd'
+Waiting for create_subaccount (storage_box: 1, storage_box_subaccount: 1) ...
+Waiting for create_subaccount (storage_box: 1, storage_box_subaccount: 1) ... done
+Storage Box Subaccount 1 created
+> hcloud storage-box subaccount list backup
+ID   NAME           HOME DIRECTORY   DESCRIPTION   USERNAME       SERVER                                     AGE
+1    u100000-sub1   web1             -             u100000-sub1   u100000-sub1.storagebox.hetzner.internal   just now
+```
+
+A password has 12 to 128 characters with at least one upper case letter,
+one lower case letter, one digit and one special character; otherwise the
+command fails at once:
+
+```
+> hcloud storage-box reset-password backup --password 'short'
+hcloud: invalid input in field 'password' (invalid_input)
+- password: password must be 12 to 128 characters long
+```
+
+`enable-snapshot-plan` stores a plan without taking snapshots, and
+`enable-protection backup delete` makes `delete` answer `protected`:
+
+```
+> hcloud storage-box enable-snapshot-plan backup --max-snapshots 7 --hour 3 --minute 0
+Waiting for enable_snapshot_plan (storage_box: 1) ...
+Waiting for enable_snapshot_plan (storage_box: 1) ... done
+Snapshot Plan enabled for Storage Box 1
+> hcloud storage-box enable-protection backup delete
+Waiting for change_protection (storage_box: 1) ...
+Waiting for change_protection (storage_box: 1) ... done
+Resource protection enabled for Storage Box 1
+> hcloud storage-box delete backup
+hcloud: the resource is protected (protected)
+> hcloud storage-box disable-protection backup delete
+Waiting for change_protection (storage_box: 1) ...
+Waiting for change_protection (storage_box: 1) ... done
+Resource protection disabled for Storage Box 1
+> hcloud storage-box delete backup
+Waiting for delete_storage_box (storage_box: 1) ...
+Waiting for delete_storage_box (storage_box: 1) ... done
+Storage Box backup deleted
+```
+
+Deleting a box deletes its subaccounts. The types come from HLab's
+catalog; see [Catalogs](configuration.md#catalogs).
+
 ## OpenTofu and Ansible
 
-The OpenTofu provider and the Ansible collection read the same two
+The OpenTofu provider and the Ansible collection read the same three
 variables as hcloud (see [First steps](../README.md#first-steps)), so the provider block and the module calls stay as
 they are for the real cloud. For OpenTofu on Windows:
 
 ```powershell
 $env:HCLOUD_ENDPOINT = "http://api.hetzner.internal/v1"
+$env:HETZNER_ENDPOINT = "http://api.hetzner.internal/hetzner/v1"
 $env:HCLOUD_TOKEN = "<the token>"
 ```
 
@@ -597,6 +664,7 @@ For Ansible in WSL2 (see [WSL2](../README.md#wsl2)), set them in the shell that 
 
 ```bash
 export HCLOUD_ENDPOINT=http://api.hetzner.internal/v1
+export HETZNER_ENDPOINT=http://api.hetzner.internal/hetzner/v1
 export HCLOUD_TOKEN=<the token>
 ```
 

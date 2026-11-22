@@ -70,6 +70,22 @@ func ListRequest[T any](w http.ResponseWriter, req *http.Request, key string, it
 	})
 }
 
+// ListAllRequest is ListRequest for an endpoint without paging: it filters
+// and sorts items alike and writes all of them under key, without meta.
+func ListAllRequest[T any](w http.ResponseWriter, req *http.Request, key string, items []T, opt ListOptions[T]) {
+	q := req.URL.Query()
+	out, err := filterList(q, items, opt)
+	if err != nil {
+		Fail(w, err)
+		return
+	}
+	if err := sortList(q["sort"], out, opt.Sort); err != nil {
+		Fail(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{key: out})
+}
+
 // filterList returns a new slice with the items that pass every filter
 // present in q.
 func filterList[T any](q url.Values, items []T, opt ListOptions[T]) ([]T, error) {

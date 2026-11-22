@@ -29,13 +29,7 @@ On the Windows host:
 
 In WSL2 (Ubuntu 24.04 or newer, NAT mode, `dnsTunneling` on): `uv`, then
 `uv tool install ansible-core==2.22.0 --with hcloud==2.27.0` and
-`ansible-galaxy collection install hetzner.hcloud:==7.2.0`. The storage box
-end-to-end tests also need `rsync`, `borgbackup`, `smbclient` and `lftp`
-there:
-
-```powershell
-wsl -d Ubuntu -- sudo apt-get install -y rsync borgbackup smbclient lftp
-```
+`ansible-galaxy collection install hetzner.hcloud:==7.2.0`.
 
 Internet access for image, ISO, package and OpenAPI downloads.
 
@@ -115,5 +109,9 @@ refuses to start while the other one runs.
 with a read-only token (`hcloud context create HLab`), or set
 `HLAB_HCLOUD_CONTEXT` to the name of another context. Without hcloud or the
 context, `task catalog` asks for a token and uses it for that run only.
+The storage box types come from `https://api.hetzner.com/v1`; with the
+context, hcloud fetches them itself
+(`hcloud --context <name> --endpoint https://api.hetzner.com/v1 api /storage_box_types`),
+so the context's own `hetzner-endpoint` setting does not matter.
 
 Next: [Build and test](build-and-test.md).

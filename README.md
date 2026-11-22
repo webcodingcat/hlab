@@ -25,7 +25,8 @@ machine before you run it at Hetzner.
 HLab offers projects and API tokens, SSH keys, servers with snapshots,
 backups, rescue system and ISOs, volumes, placement groups, private
 networks, primary and floating IPs, firewalls, DNS zones with reverse DNS,
-load balancers and certificates. Other parts of the Hetzner API answer
+load balancers and certificates, and storage boxes with subaccounts as API
+records that hold no data yet. Other parts of the Hetzner API answer
 `not_found`; what else differs is in [Known deviations](docs/deviations.md).
 A [tray program](#the-tray-program) starts and stops the cloud and manages
 projects, tokens, every resource of a project, server types and settings.
@@ -114,15 +115,25 @@ project demo created
 <64-character token>
 ```
 
-Point hcloud at HLab with two environment variables (PowerShell):
+Point hcloud at HLab with three environment variables (PowerShell):
 
 ```powershell
 $env:HCLOUD_ENDPOINT = "http://api.hetzner.internal/v1"
+$env:HETZNER_ENDPOINT = "http://api.hetzner.internal/hetzner/v1"
 $env:HCLOUD_TOKEN = "<the token>"
 ```
 
-The OpenTofu provider and the Ansible collection read the same two
+`HCLOUD_ENDPOINT` is the Cloud API. `HETZNER_ENDPOINT` is the Hetzner API
+that serves storage boxes; without it, hcloud sends storage box requests,
+`hcloud all list` included, with your HLab token to `api.hetzner.com`. In
+an hcloud context the same settings are `endpoint` and `hetzner-endpoint`
+(`hcloud config set endpoint ...` and `hcloud config set hetzner-endpoint ...`).
+
+The OpenTofu provider and the Ansible collection read the same three
 variables; see [OpenTofu and Ansible](docs/guide.md#opentofu-and-ansible).
+Ansible also takes the Hetzner endpoint as the module option
+`api_endpoint_hetzner`. The OpenTofu provider 1.70.2 ignores its attribute
+`endpoint_hetzner`, so set `HETZNER_ENDPOINT` for it.
 Then use hcloud as with the real cloud:
 
 ```
@@ -150,8 +161,8 @@ Clean up with `hlab project delete demo`, which deletes the
 server and the SSH key with the project, and `hlab cloud stop`.
 
 The [guide](docs/guide.md) shows every resource with hcloud and in the
-window: servers, placement groups, snapshots and backups, ISOs, volumes, networks, IPs, firewalls, DNS, load balancers and
-certificates, and stopping and starting the cloud.
+window: servers, placement groups, snapshots and backups, ISOs, volumes, networks, IPs, firewalls, DNS, load balancers,
+certificates, storage boxes (with hcloud only), and stopping and starting the cloud.
 
 ## The tray program
 

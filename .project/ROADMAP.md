@@ -49,15 +49,7 @@
 
 - [x] B3 Backlog: console times and labels, server power and delete fixes → phases/B3/
 
-- [ ] 18 Storage Box API.
-      Requirements: SBOX-01, SBOX-02, SBOX-09, SBOX-10, SBOX-20.
-      Depends on: 13.
-      Success criteria:
-      1. `http://api.hetzner.internal/hetzner/v1` serves storage box types,
-         storage boxes, subaccounts and their actions as the frozen Hetzner
-         API description says, with the cloud tokens of the project.
-      2. `task catalog` writes the storage box types with prices from the
-         real API.
+- [x] 18 Storage Box API (SBOX-01, SBOX-02, SBOX-09, SBOX-10, SBOX-20) → phases/18/
 
 - [ ] 19 Storage VM and SSH access.
       Requirements: SBOX-03, SBOX-04, SBOX-06, SBOX-08, SBOX-11, SBOX-12,

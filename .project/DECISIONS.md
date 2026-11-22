@@ -19,6 +19,160 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 Subaccounts stored at create, listed without paging
+
+- Type: decision
+- Phase: phase 18
+- What: a new subaccount is stored with its username in the create transaction and `create_subaccount` only runs Apply; the list uses `api.ListAllRequest` (no paging, no `meta`, as the description has none); the limit error carries `details.limits [{"name":"subaccounts_limit"}]`, and the subaccount `update_access_settings` action is named `update_subaccount_access_settings`.
+- Why: the description shows no initializing state or paging for subaccounts, and the test map expects these names.
+- Cost of change: low
+
+## 2026-11-22 Storage box actions validate before the lock
+
+- Type: decision
+- Phase: phase 18
+- What: change_type, reset_password and the snapshot plan check the body and the stored box before the box lock, so invalid input gets 422 even while another action runs, and a type without `automatic_snapshot_limit` puts no upper bound on max_snapshots.
+- Why: the API validates first; a null limit is read as no limit.
+- Cost of change: low
+
+## 2026-11-22 Storage box sort and stored catalog objects
+
+- Type: decision
+- Phase: phase 18
+- What: sort key `stats.size_filesystem` sorts by `stats.size`, and a box stores `storage_box_type` and `location` as catalog objects at create, so a later catalog update does not change existing boxes.
+- Why: the description offers the sort key without such a stats field; Hetzner boxes keep their type data.
+- Cost of change: low
+
+## 2026-11-22 Storage box types only from the shipped catalog
+
+- Type: decision
+- Phase: phase 18
+- What: `catalog.Load` reads `storage-box-types.json` only from the shipped catalog folder, never from the data folder, so `hlab catalog update` cannot touch it.
+- Why: CAT-03 updates only the Cloud catalogs.
+- Cost of change: low
+
+## 2026-11-22 Storage VM interfaces and catalog through hcloud
+
+- Type: change
+- Phase: phase 18
+- What: the storage VM has the fixed address `Addrs.Storage` (default `198.19.255.253`) with `PUT /v1/storage` and `POST /v1/jobs`, the appliance document gets `Storage` and `StorageBoxes`, the storage modules register under `/hetzner/v1` and the management API forwards `/projects/{name}/api/hetzner/v1/{rest}`; the storage VM's Debian packages are pinned in `catalog/storage-debs.json`; `task catalog` reads the storage box types with a usable context through `hcloud --context <name> --endpoint https://api.hetzner.com/v1 api /storage_box_types -v page=<n> -v per_page=50` over all pages, else with the token of the hidden prompt; SBOX-08 is a unit test of the uninstall cleanup, INST-04 in the elevated suite covers removal on a real machine.
+- Why: the user decided that the token stays inside hcloud, as for the Cloud catalogs, after the permission system refused reading it out with `config get token`.
+- Cost of change: low
+- Replaces: 2026-11-21 Storage VM interfaces and catalog
+
+## 2026-11-22 apitest needs both API descriptions
+
+- Type: decision
+- Phase: phase 18
+- What: `apitest.RequireDescription` loads both `cloud.spec.json` and `hetzner.spec.json`, so every apitest-based test needs both cached by `task openapi`.
+- Why: one entry check for all tests.
+- Cost of change: low
+
+## 2026-11-22 Bare API prefixes answer not_found
+
+- Type: decision
+- Phase: phase 18
+- What: a request to exactly `/v1` or `/hetzner/v1` answers `not_found` before authentication.
+- Why: the test map expects one behaviour for every unknown path under both prefixes.
+- Cost of change: low
+
+## 2026-11-22 Storage password error texts
+
+- Type: decision
+- Phase: phase 18
+- What: `storagepass.Check` returns three texts (length, characters not allowed, missing character classes) used as the `details.fields` message.
+- Why: the frozen description gives no wording.
+- Cost of change: low
+
+## 2026-11-22 Storage Box API on the same api.Router
+
+- Type: change
+- Phase: phase 18
+- What: the Storage Box stays in milestone 1 as phases 18 to 21 (requirements SBOX-*, UI-12, UI-13, CLI-05 to CLI-07, details in `decisions/storage-box.md`), and its Hetzner API is served by the same api.Router and middleware under `/hetzner/v1`, a module choosing that prefix through the optional `resource.Prefixed`, with `APIRoutes` reporting full paths.
+- Why: one middleware chain and one listener instead of a second router.
+- Cost of change: low
+- Replaces: 2026-11-21 Storage Boxes in milestone 1
+
+## 2026-11-22 Every storage box action locks the box
+
+- Type: decision
+- Phase: phase 18
+- What: a second concurrent action on a box, subaccount actions included, returns 423 `locked`; evidence exists only for parallel subaccount and snapshot creates (provider PR #1307), the rest is without evidence.
+- Why: the simplest rule, and safe for clients that retry.
+- Cost of change: low
+
+## 2026-11-22 Storage box validation errors answer 422 at once
+
+- Type: decision
+- Phase: phase 18
+- What: error codes follow Hetzner's general table, and every validation error answers 422 `invalid_input` at once where Hetzner sometimes fails the action (`action_failed`, e.g. home_directory), listed in `docs/deviations.md`.
+- Why: an immediate, specific answer; the frozen description names no specific codes.
+- Cost of change: low
+
+## 2026-11-22 Storage box action list by wildcard route
+
+- Type: decision
+- Phase: phase 18
+- What: `/storage_boxes/actions/{id}` is served through `GET /storage_boxes/{id}/{sub}` as zones do, with an alias in the docs test.
+- Why: Go's ServeMux rejects that pattern beside `/storage_boxes/{id}/actions`.
+- Cost of change: low
+
+## 2026-11-22 Storage box stored layout
+
+- Type: decision
+- Phase: phase 18
+- What: subaccounts are their own store kind `storage_box_subaccounts` with the box ID; the box keeps `_hlab.n`, `_hlab.next_sub`, `_hlab.ssh_keys` and `_hlab.hashes {crypt, nt}`, the subaccount `_hlab.hashes`, and kv `storage_boxes/next_user` starts at 100000.
+- Why: global subaccount IDs and lists through ListRequest; phase 19 reads these fields.
+- Cost of change: medium (stored layout read by later phases; no migration today)
+
+## 2026-11-22 Storage box system and server names
+
+- Type: decision
+- Phase: phase 18
+- What: `system` is `<LOCATION>-BX<box id>` and `server` is `u<n>.storagebox.hetzner.internal` (subaccounts `u<n>-sub<m>.…`), all null with `username` and `snapshot_plan` while `initializing`.
+- Why: a stable number in the documented form, under hlab's own domain.
+- Cost of change: low
+
+## 2026-11-22 Storage passwords without x/crypto
+
+- Type: decision
+- Phase: phase 18
+- What: the password policy (the description's exact character set, 12 to 128 runes) lives in `internal/storagepass` and the NT hash in `internal/nthash`, without golang.org/x/crypto; the breach check is not done.
+- Why: as `internal/shacrypt` already is, no new dependency.
+- Cost of change: low
+
+## 2026-11-22 Storage box Apply hook
+
+- Type: decision
+- Phase: phase 18
+- What: `storageboxes.Deps.Apply` runs for every box and subaccount action, nil in phase 18 and set by phase 19; tests gate it to keep actions running.
+- Why: phase 19 plugs the storage VM in without changing the handlers.
+- Cost of change: low
+
+## 2026-11-22 Storage box types from a recorded response in tests
+
+- Type: decision
+- Phase: phase 18
+- What: unit tests use `internal/apitest/testdata/storage-box-types.json` (bx11, bx21, bx31 with fsn1, nbg1, hel1 prices, bx11 without nbg1), and the main session runs `task catalog` with context HLab once for the shipped catalog.
+- Why: tests stay stable whether the shipped catalog exists or not.
+- Cost of change: low
+
+## 2026-11-22 Storage box coverage rows in one plan
+
+- Type: decision
+- Phase: phase 18
+- What: plan 18-05 writes all Storage Box rows of `docs/development/api-coverage.md` and all `api.Deviations()` entries, 18-08 the prose.
+- Why: keeps DOC-03 green between plans; the wave-4 plans touch different files.
+- Cost of change: low
+
+## 2026-11-22 Subaccount create and PUT are synchronous
+
+- Type: decision
+- Phase: phase 18
+- What: subaccount create returns the subaccount at once with its username, and box and subaccount `PUT` are synchronous.
+- Why: the frozen description shows no initializing state for subaccounts and synchronous PUTs.
+- Cost of change: low
+
 ## 2026-11-22 Shutdown retry only for the API action
 
 - Type: decision
@@ -3521,14 +3675,6 @@ taken with the approval of the spec or by an answer from the user.
 - Why: the official SDK infers and validates schemas from structs and has an in-memory transport for tests; `mark3labs/mcp-go` needs manual argument handling and offers nothing more here.
 - Cost of change: low
 
-## 2026-11-21 Storage Boxes in milestone 1
-
-- Type: change
-- Phase: change
-- What: the Storage Box moves from the target vision into milestone 1 as phases 18 to 20 after phase 13 (API, storage VM with real data over SFTP/SCP, rsync, Borg, SMB, WebDAV and FTP/FTPS, console section and client tests), with requirements SBOX-01 to SBOX-08, UI-12 and CLI-05, addresses under `hetzner.internal` and the details in `decisions/storage-box.md`; UI-02 and CLI-01 to CLI-03 now name the Cloud API.
-- Why: the user wants Storage Box setups testable in the first version, with real data as goal 2 asks.
-- Cost of change: medium (additions: three phases, a second VM role of hlab-agent, a second router under `/hetzner/v1`; no rebuild of existing code)
-
 ## 2026-11-21 Storage Box details
 
 - Type: decision
@@ -3552,14 +3698,6 @@ taken with the approval of the spec or by an answer from the user.
 - What: the bundled Storage Box requirements become one capability each (SBOX-01 to SBOX-20, UI-12 and UI-13, CLI-05 to CLI-07 per client), the phases become 18 API, 19 storage VM and SSH, 20 SMB, WebDAV, FTP and snapshots, 21 console and clients, and the feasibility check E12 to E19 is worked into ARCHITECTURE.md, SPEC.md and `decisions/storage-box.md` (shared action store, `HETZNER_ENDPOINT` for OpenTofu, mpm-itk, subaccounts with the box's UID, crypt and NT hashes, level-1 qgroups, passive FTP ports).
 - Why: one requirement per checkable capability lets each phase test and verify it, and the riskiest assumptions of the storage VM are proven before it is built.
 - Cost of change: low (planning only)
-
-## 2026-11-21 Storage VM interfaces and catalog
-
-- Type: decision
-- Phase: change
-- What: the storage VM has the fixed address `Addrs.Storage` (default `198.19.255.253`) with `PUT /v1/storage` and `POST /v1/jobs`, the appliance document gets `Storage` and `StorageBoxes`, the storage modules register under `/hetzner/v1` and the management API forwards `/projects/{name}/api/hetzner/v1/{rest}`; the storage VM's Debian packages are pinned in `catalog/storage-debs.json` like the appliance's; `task catalog` reads storage box types from `https://api.hetzner.com/v1` with the context's token; SBOX-08 is a unit test of the uninstall cleanup, while INST-04 in the elevated suite covers removal on a real machine.
-- Why: the spec review found these interfaces missing; each choice reuses an existing pattern of the appliance, the catalog or the uninstall cleanup.
-- Cost of change: medium
 
 ## 2026-11-21 SMB from WSL2 to a storage box works like SSH
 

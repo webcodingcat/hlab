@@ -52,6 +52,8 @@ import (
 	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/resources/servertypes"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
+	"github.com/webcodingcat/hlab/internal/resources/storageboxes"
+	"github.com/webcodingcat/hlab/internal/resources/storageboxtypes"
 	"github.com/webcodingcat/hlab/internal/resources/volumes"
 	"github.com/webcodingcat/hlab/internal/resources/zones"
 	"github.com/webcodingcat/hlab/internal/scheduler"
@@ -436,6 +438,8 @@ func (c *Cloud) modules() []resource.Module {
 		lb,
 		zns,
 		vol,
+		storageboxtypes.New(c.cat),
+		storageboxes.New(storageboxes.Deps{Catalog: c.cat}),
 	}
 }
 

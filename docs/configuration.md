@@ -229,6 +229,7 @@ development service reads them from `catalog\` of the working copy.
 | `server-types.json` | Server types, as Hetzner's API returns them | `task catalog` |
 | `load-balancer-types.json` | Load balancer types, served at `/load_balancer_types` | `task catalog` |
 | `pricing.json` | Prices, served at `/pricing` | `task catalog` |
+| `storage-box-types.json` | Storage box types with their prices per location, as Hetzner's API returns them, served at `/hetzner/v1/storage_box_types`; without the file there are none | `task catalog` |
 | `images.json` | The system images ubuntu-22.04, ubuntu-24.04, ubuntu-26.04, debian-12, debian-13, each with its download source in `_hlab.source` | by hand |
 | `isos.json` | The ISOs served at `/isos`, see [ISOs](#isos) | by hand |
 | `appliance-debs.json` | Debian packages the appliance needs for formatting volumes and for load balancers, see [Appliance packages](#appliance-packages) | by hand |
@@ -238,7 +239,7 @@ development service reads them from `catalog\` of the working copy.
 (`%ProgramData%\hlab-dev\catalog\server-types.json`). While that file
 exists, HLab serves its server types instead of those of the shipped
 `server-types.json`; delete it to go back to the shipped ones at the next
-start.
+start. It does not change the storage box types.
 
 HLab downloads an image from the source in `images.json` the first time a
 server uses it, checks it against the checksum file of the source, converts

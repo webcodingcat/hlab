@@ -15,8 +15,9 @@ import (
 
 // Registrar receives the endpoints of a module.
 type Registrar interface {
-	// Handle registers h for an http.ServeMux pattern relative to /v1,
-	// for example "GET /ssh_keys" or "POST /servers/{id}/actions/poweron".
+	// Handle registers h for an http.ServeMux pattern relative to the
+	// module's prefix (/v1 unless the module is Prefixed), for example
+	// "GET /ssh_keys" or "POST /servers/{id}/actions/poweron".
 	Handle(pattern string, h http.Handler)
 }
 
@@ -27,6 +28,13 @@ type Module interface {
 	Type() string
 	// Routes registers the module's endpoints and actions.
 	Routes(r Registrar)
+}
+
+// Prefixed is the optional interface of a module served under another API
+// prefix than /v1, for example api.HetznerPrefix for the Storage Boxes. The
+// patterns its Routes registers stay relative to that prefix.
+type Prefixed interface {
+	Prefix() string
 }
 
 // NetContributor is the optional interface of a module that contributes

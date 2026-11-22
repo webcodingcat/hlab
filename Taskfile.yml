@@ -75,12 +75,12 @@ tasks:
       - npm run test:unit
 
   openapi:
-    desc: Download the pinned Hetzner OpenAPI description into the user cache folder
+    desc: Download the pinned Hetzner OpenAPI descriptions (cloud.spec.json and hetzner.spec.json) into the user cache folder
     cmds:
       - go run ./tools/openapi
 
   catalog:
-    desc: Generate the shipped location, server type, load balancer type and pricing catalogs from the real Hetzner API
+    desc: Generate the shipped location, server type, load balancer type, pricing and storage box type (storage-box-types.json) catalogs from the real Hetzner API
     cmds:
       - go run ./tools/catalog
 
