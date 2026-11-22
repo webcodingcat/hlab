@@ -25,9 +25,6 @@ const (
 // frozen description; the error text is the details.fields message. The
 // breach check of the real API is not done.
 func Check(pw string) error {
-	if !utf8.ValidString(pw) {
-		return errors.New("password contains characters that are not allowed")
-	}
 	if n := utf8.RuneCountInString(pw); n < minLen || n > maxLen {
 		return errors.New("password must be 12 to 128 characters long")
 	}
