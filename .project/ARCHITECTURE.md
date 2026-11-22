@@ -505,11 +505,12 @@ Inside `hlabd` (Go packages under `internal/`):
   `project_list` (with `resources_by_type`), `project_delete {name}`
   (waits for its action), `token_create {project, name, read_only}` (the
   value once), `token_list {project}`, `token_revoke {project, name}`,
-  `logs {lines}` (default 200, at most 1000, from the log files while the
-  cloud is stopped), `ca_export` (PEM text), `ca_trust {on}`, `version`.
+  `logs {lines}` (default 200, 1 to 1000, otherwise a tool error; from the
+  log files while the cloud is stopped), `ca_export` (PEM text), `ca_trust {on}`, `version`.
   Results are JSON as with `--output json`; errors are MCP tool errors
   with the message `hlab` prints, "the cloud is not running" while it is
   stopped. There is no tool for `--discard-state` or `catalog update`.
+  `hlab mcp` takes no `--output`.
 - Depends on: management API.
 
 ### hlab-tray (tray program)

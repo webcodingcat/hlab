@@ -19,6 +19,22 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 MCP tools listed by name
+
+- Type: decision
+- Phase: phase 17
+- What: `cli.MCPTools()` returns the tool names sorted by name.
+- Why: go-sdk lists tools sorted by name and MCP-04 compares both lists.
+- Cost of change: low
+
+## 2026-11-22 Default of logs lines applied by the handler
+
+- Type: decision
+- Phase: phase 17
+- What: the `logs` input schema has no `default` keyword; the handler applies 200 and the description says so.
+- Why: go-sdk v1.8.0 panics on a call without arguments when the schema has a default.
+- Cost of change: low
+
 ## 2026-11-22 Project actions of project 0 include those without a project
 
 - Type: decision
