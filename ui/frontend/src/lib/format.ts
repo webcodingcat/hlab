@@ -8,9 +8,12 @@ export function labelText(labels: Record<string, string>): string {
     .join(", ");
 }
 
-/** createdText shows an API timestamp as "YYYY-MM-DD hh:mm". */
+/** createdText shows an API timestamp in local time as "YYYY-MM-DD hh:mm"; an unparsable value is shown as given. */
 export function createdText(created: string): string {
-  return created.slice(0, 16).replace("T", " ");
+  const d = new Date(created);
+  if (isNaN(d.getTime())) return created;
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 /** protocolText shows an IP type as IPv4 or IPv6. */
