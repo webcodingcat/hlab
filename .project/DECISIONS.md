@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 Upgrade to wcc 0.32.19
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.32.18 to 0.32.19: only the version line in CLAUDE.md; rules, migrations and planning document sections were already current.
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
+
 ## 2026-11-22 Q19 Load balancer state changes keep answering locked
 
 - Type: decision
