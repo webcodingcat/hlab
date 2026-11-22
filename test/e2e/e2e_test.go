@@ -82,6 +82,7 @@ func TestE2E(t *testing.T) {
 	t.Run("LB-04", parallel(testLB04))
 	t.Run("LB-05", parallel(testLB05))
 	t.Run("CERT-04", parallel(testCERT04))
+	t.Run("MCP-05", parallel(testMCP05))
 
 	// The client matrix: one subtest per client and resource type, each
 	// registered by its group file through registerRow.

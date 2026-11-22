@@ -528,6 +528,63 @@ func TestMgmt(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("MCP-03", func(t *testing.T) {
+		cat, err := catalog.Load("../../catalog")
+		if err != nil {
+			t.Fatalf("load shipped catalog: %v", err)
+		}
+		env := apitest.New(t,
+			servers.New(apitest.ServersDeps(t, cat, platformtest.NewFake())),
+			resactions.New(),
+		)
+		deleter := &fakeDeleter{gate: make(chan struct{}), fail: map[int64]bool{}}
+		h := mgmt.New(mgmt.Deps{
+			Store:    env.Store,
+			API:      env.Router,
+			Status:   func() mgmt.Status { return mgmt.Status{State: "running"} },
+			Actions:  env.Actions,
+			Deleters: map[string]resource.Deleter{servers.Kind: deleter},
+		})
+		createServer(t, env, "Bearer "+env.Token, "p-1")
+
+		action := deleteProject(t, h, "p")
+		released := false
+		release := func() {
+			if !released {
+				released = true
+				close(deleter.gate)
+			}
+		}
+		t.Cleanup(release)
+
+		rec := do(t, h, http.MethodDelete, "/projects/p")
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("DELETE /projects/p while its deletion runs: status %d, want 409 (%s)", rec.Code, rec.Body.String())
+		}
+		var body struct {
+			Error struct {
+				Code     string `json:"code"`
+				Message  string `json:"message"`
+				ActionID int64  `json:"action_id"`
+			} `json:"error"`
+		}
+		decode(t, rec, &body)
+		if body.Error.Code != "conflict" {
+			t.Errorf("second DELETE /projects/p: error code %q, want conflict", body.Error.Code)
+		}
+		if body.Error.Message == "" {
+			t.Errorf("second DELETE /projects/p: empty error message")
+		}
+		if body.Error.ActionID != action {
+			t.Errorf("second DELETE /projects/p: action_id %d, want %d of the running deletion", body.Error.ActionID, action)
+		}
+
+		release()
+		if status := waitMgmtAction(t, h, action); status != "success" {
+			t.Fatalf("deletion of p ended %q, want success", status)
+		}
+	})
 }
 
 // doBody sends a request with a JSON body to the management API.

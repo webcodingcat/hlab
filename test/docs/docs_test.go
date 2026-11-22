@@ -42,6 +42,15 @@ func TestDocs(t *testing.T) {
 				}
 			}
 		}
+		tools := cli.MCPTools()
+		if len(tools) == 0 {
+			t.Fatal("cli.MCPTools() lists no tool")
+		}
+		for _, name := range tools {
+			if !containsWord(doc, name) {
+				t.Errorf("MCP tool %q is not described in docs/commands.md", name)
+			}
+		}
 	})
 
 	t.Run("DOC-02", func(t *testing.T) {
