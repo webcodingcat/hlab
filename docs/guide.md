@@ -83,7 +83,8 @@ each resource below names what its section offers.
 Every create form and every **Labels** tab takes labels as chips. Type
 `env=dev` or `env` and press Enter, Space or a comma to turn it into a
 chip; a label that breaks Hetzner's rules or repeats a key shows an error
-under the box and stays in the input. Click a chip and press Delete to
+under the box and stays in the input, and the form is not sent until
+you correct or clear it. Click a chip and press Delete to
 remove it, or double-click it to edit it.
 
 - **Servers** lists the servers with status, public IPv4, type, location

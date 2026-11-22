@@ -27,9 +27,10 @@ Public IPv4 addresses come from a local range (`198.19.0.0/16` by
 default). The IPv6 network of a server is assigned on paper only: it
 carries no traffic and the guest has no IPv6 address. A root password
 returned for a server without SSH keys does not expire. A shutdown
-counts as done once the guest has been asked; the server shows
-`stopping` until the guest turns off. Resetting the root password works
-through a small HLab helper in the guest and only while the server runs.
+counts as done once the guest has accepted it, and a guest that is still
+booting is asked again for up to 2 minutes; the server shows `stopping`
+until the guest turns off. Resetting the root password works through a
+small HLab helper in the guest and only while the server runs.
 The remote console is not available. Metrics are sampled every 10
 seconds and kept for 24 hours in memory, so they are lost when the cloud
 stops. The metadata service offers only Hetzner's paths, not the

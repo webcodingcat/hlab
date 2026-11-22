@@ -84,10 +84,10 @@ export function createdText(created: string): string;
   - Adjusts: -
   - [x] ui/frontend/src/lib/LabelsField.svelte: `commit` calls `input.setCustomValidity(message)` when the text breaks the label rule or repeats a key, and `setCustomValidity("")` when the text becomes a chip or is empty, so the enclosing form (FormPage create forms, LabelsTab "Save labels") does not submit. The input's `oninvalid` calls `preventDefault()` (no browser bubble) and focuses the input; the field's own error line stays, linked with `aria-describedby` as now. Header comment updated.
 
-- [ ] B3-05 Documentation
+- [x] B3-05 Documentation
   - Wave: 2 | Depends on: B3-01, B3-02, B3-03, B3-04 | Review: alone
   - Requirements: DOC-01 to DOC-08 (no new rows; the existing test/docs tests stay green) | Tests: -
   - Reads: SPEC "Documentation"; REQUIREMENTS DOC; docs/development/api-coverage.md "Server actions"; docs/deviations.md servers paragraph; ui/frontend/src/help/ texts that mention Created times or labels
   - Size: ~20 lines in 2 to 3 files
   - Adjusts: -
-  - [ ] docs/development/api-coverage.md "Server actions" and docs/deviations.md (servers): `shutdown` asks a guest that is still booting again for up to 2 minutes before it fails; the server shows `stopping` until the guest turns off, and a reboot from inside the guest no longer leaves it there. Console times are local time wherever a help text or the guide names them.
+  - [x] docs/development/api-coverage.md "Server actions" and docs/deviations.md (servers): `shutdown` asks a guest that is still booting again for up to 2 minutes before it fails; the server shows `stopping` until the guest turns off, and a reboot from inside the guest no longer leaves it there. Console times are local time wherever a help text or the guide names them.
