@@ -8,7 +8,6 @@ import (
 	"slices"
 
 	"github.com/webcodingcat/hlab/internal/api"
-	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/resource"
 	"github.com/webcodingcat/hlab/internal/storagepass"
 	"github.com/webcodingcat/hlab/internal/store"
@@ -160,20 +159,16 @@ func (b snapshotPlanRequest) validate(limit *int) error {
 	return nil
 }
 
-// storedType returns the catalog type of box r.
-func (m *Module) storedType(r Record) (catalog.StorageBoxType, error) {
-	var ref struct {
-		ID int64 `json:"id"`
+// snapshotLimit returns the automatic_snapshot_limit of the type object
+// stored on box r, so a later catalog does not change it.
+func snapshotLimit(r Record) (*int, error) {
+	var st struct {
+		AutomaticSnapshotLimit *int `json:"automatic_snapshot_limit"`
 	}
-	if err := json.Unmarshal(r.StorageBoxType, &ref); err != nil {
-		return catalog.StorageBoxType{}, fmt.Errorf("storage box type of box %d: %w", r.ID, err)
+	if err := json.Unmarshal(r.StorageBoxType, &st); err != nil {
+		return nil, fmt.Errorf("storage box type of box %d: %w", r.ID, err)
 	}
-	for _, st := range m.d.Catalog.StorageBoxTypes {
-		if st.ID == ref.ID {
-			return st, nil
-		}
-	}
-	return catalog.StorageBoxType{}, fmt.Errorf("storage box %d: type %d not in the catalog", r.ID, ref.ID)
+	return st.AutomaticSnapshotLimit, nil
 }
 
 // enableSnapshotPlan sets the snapshot plan, replacing an existing one;
@@ -184,11 +179,11 @@ func (m *Module) enableSnapshotPlan(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	m.boxAction(w, req, "enable_snapshot_plan", func(r Record) error {
-		st, err := m.storedType(r)
+		limit, err := snapshotLimit(r)
 		if err != nil {
 			return err
 		}
-		return body.validate(st.AutomaticSnapshotLimit)
+		return body.validate(limit)
 	}, func(tx store.Tx, projectID int64, r *Record) error {
 		r.SnapshotPlan = &SnapshotPlan{
 			MaxSnapshots: *body.MaxSnapshots,
