@@ -444,6 +444,8 @@ func TestCatalog(t *testing.T) {
 		cat.ReloadOwn(customFile)
 		check(t, "valid file after the colliding one", []string{"own-b"}, false)
 	})
+
+	t.Run("SBOX-01", testStorageBoxTypes)
 }
 
 // loadAll loads the shipped catalog with dataDir and customFile and fails
@@ -535,4 +537,105 @@ func checkOwnObject(t *testing.T, obj map[string]any, spec catalog.OwnSpec, id i
 			}
 		}
 	}
+}
+
+// boxType returns a storage box type object in the shape of the Hetzner
+// API with a price for each of locs.
+func boxType(id int64, name string, size int64, snapshots any, subaccounts int, locs ...string) map[string]any {
+	prices := []any{}
+	for _, l := range locs {
+		prices = append(prices, map[string]any{
+			"location":      l,
+			"price_hourly":  map[string]any{"net": "0.0050", "gross": "0.0060"},
+			"price_monthly": map[string]any{"net": "3.2000", "gross": "3.8080"},
+			"setup_fee":     map[string]any{"net": "0.0000", "gross": "0.0000"},
+		})
+	}
+	return map[string]any{
+		"id":                       id,
+		"name":                     name,
+		"description":              "Storage Box " + name,
+		"snapshot_limit":           snapshots,
+		"automatic_snapshot_limit": snapshots,
+		"subaccounts_limit":        subaccounts,
+		"size":                     size,
+		"prices":                   prices,
+		"deprecation":              nil,
+	}
+}
+
+// copyShipped copies the shipped catalog files except
+// storage-box-types.json into a new folder.
+func copyShipped(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	entries, err := os.ReadDir(shippedDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || e.Name() == "storage-box-types.json" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(shippedDir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, e.Name()), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func testStorageBoxTypes(t *testing.T) {
+	t.Run("without the file", func(t *testing.T) {
+		cat, err := catalog.Load(copyShipped(t))
+		if err != nil {
+			t.Fatalf("Load without storage-box-types.json: %v", err)
+		}
+		if len(cat.StorageBoxTypes) != 0 {
+			t.Errorf("StorageBoxTypes = %+v, want none", cat.StorageBoxTypes)
+		}
+	})
+
+	t.Run("from the file", func(t *testing.T) {
+		dir := copyShipped(t)
+		objects := []map[string]any{
+			boxType(1333, "bx11", 1099511627776, 10, 100, "fsn1", "hel1"),
+			boxType(1334, "bx21", 5497558138880, nil, 200, "fsn1", "nbg1", "hel1"),
+		}
+		writeJSON(t, filepath.Join(dir, "storage-box-types.json"), map[string]any{"storage_box_types": objects})
+
+		cat, err := catalog.Load(dir)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if len(cat.StorageBoxTypes) != len(objects) {
+			t.Fatalf("StorageBoxTypes has %d types, want %d", len(cat.StorageBoxTypes), len(objects))
+		}
+		ten := 10
+		want := []catalog.StorageBoxType{
+			{ID: 1333, Name: "bx11", Size: 1099511627776, SnapshotLimit: &ten, AutomaticSnapshotLimit: &ten,
+				SubaccountsLimit: 100, Locations: []string{"fsn1", "hel1"}},
+			{ID: 1334, Name: "bx21", Size: 5497558138880, SubaccountsLimit: 200, Locations: []string{"fsn1", "nbg1", "hel1"}},
+		}
+		for i, got := range cat.StorageBoxTypes {
+			raw := got.Raw
+			got.Raw = nil
+			if !reflect.DeepEqual(got, want[i]) {
+				t.Errorf("StorageBoxTypes[%d] = %+v, want %+v", i, got, want[i])
+			}
+			var gotObj, wantObj any
+			wantRaw, _ := json.Marshal(objects[i])
+			if err := json.Unmarshal(raw, &gotObj); err != nil {
+				t.Errorf("StorageBoxTypes[%d].Raw = %q: %v", i, raw, err)
+				continue
+			}
+			_ = json.Unmarshal(wantRaw, &wantObj)
+			if !reflect.DeepEqual(gotObj, wantObj) {
+				t.Errorf("StorageBoxTypes[%d].Raw = %s, want the object of the file %s", i, raw, wantRaw)
+			}
+		}
+	})
 }

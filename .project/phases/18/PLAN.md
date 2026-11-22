@@ -106,8 +106,8 @@ Stored documents (`resources` table, no migration):
   - Size: ~220 lines in 6 files
   - Adjusts: -
   - [ ] `internal/catalog/catalog.go` (or a new `storageboxtypes.go` in the package): `StorageBoxType`, `ParseStorageBoxTypes`, field `Catalog.StorageBoxTypes` filled by `Load` from `storage-box-types.json` when present (`Locations` from `prices[].location`); `hlab catalog update` does not touch it.
-  - [ ] New `internal/resources/storageboxtypes/storageboxtypes.go`: `Prefix` `api.HetznerPrefix`, `GET /storage_box_types` (filter `name`, paging, sorted by ID) and `GET /storage_box_types/{id}` serving `Raw`; wired in `Cloud.modules()` (`internal/cloud/cloud.go`). Rows for both routes in `docs/development/api-coverage.md` (section "Storage Boxes", full `/hetzner/v1` routes).
-  - [ ] New `internal/apitest/storage.go` with `StorageBoxTypes(t)` and `internal/apitest/testdata/storage-box-types.json`: three types in the shape of the description (bx11 1 TB, bx21 5 TB, bx31 10 TB; `snapshot_limit` 10/20/30, `automatic_snapshot_limit` 10/20/30, `subaccounts_limit` 100/200/300; prices for fsn1, nbg1, hel1, bx11 without nbg1).
+  - [ ] New `internal/resources/storageboxtypes/storageboxtypes.go`: constructor `New(cat *catalog.Catalog)` like `servertypes.New`, `Prefix` `api.HetznerPrefix`, `GET /storage_box_types` (filter `name`, paging, sorted by ID) and `GET /storage_box_types/{id}` serving `Raw`; wired in `Cloud.modules()` (`internal/cloud/cloud.go`). Rows for both routes in `docs/development/api-coverage.md` (section "Storage Boxes", full `/hetzner/v1` routes).
+  - [ ] New `internal/apitest/storage.go` with `StorageBoxTypes(t)` and `internal/apitest/testdata/storage-box-types.json`: three types in the shape of the description (bx11 1 TB, bx21 5 TB, bx31 10 TB; `snapshot_limit` 10/20/30, `automatic_snapshot_limit` 10/20/30, `subaccounts_limit` 5/200/300 (bx11 small so SBOX-02/limit_numbering stays fast); prices for fsn1, nbg1, hel1, bx11 without nbg1).
 
 - [ ] 18-03 `task catalog` fetches the storage box types
   - Wave: 1 | Depends on: - | Review: alone

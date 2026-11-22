@@ -42,6 +42,8 @@ import (
 	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/resources/servertypes"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
+	"github.com/webcodingcat/hlab/internal/resources/storageboxes"
+	"github.com/webcodingcat/hlab/internal/resources/storageboxtypes"
 	"github.com/webcodingcat/hlab/internal/resources/zones"
 )
 
@@ -63,6 +65,7 @@ func newFullEnv(t *testing.T) *apitest.Env {
 	if err != nil {
 		t.Fatalf("load shipped catalog: %v", err)
 	}
+	cat.StorageBoxTypes = apitest.StorageBoxTypes(t)
 	d := apitest.ServersDeps(t, cat, platformtest.NewFake())
 	srv := servers.New(d)
 	nets := networks.New(networks.Deps{Store: d.Store, Catalog: cat, Servers: srv, PushAgent: d.PushAgent})
@@ -98,7 +101,55 @@ func newFullEnv(t *testing.T) *apitest.Env {
 		placementgroups.New(),
 		srv, nets, pips, fips, fws, zns,
 		loadbalancertypes.New(cat), certs, lbs,
+		storageboxtypes.New(cat), storageboxes.New(storageboxes.Deps{Catalog: cat}),
 	)
+}
+
+// boxPassword meets the Storage Box password policy.
+const boxPassword = "Secret-Pass-123"
+
+// boxBody is the create body of a bx21 storage box in fsn1.
+func boxBody(name string) map[string]any {
+	return map[string]any{"name": name, "storage_box_type": "bx21", "location": "fsn1", "password": boxPassword}
+}
+
+// createBox creates a storage box named name with labels (nil: none),
+// waits for its action and returns its ID.
+func createBox(t *testing.T, e *apitest.Env, name string, labels map[string]string) int64 {
+	t.Helper()
+	body := boxBody(name)
+	if labels != nil {
+		body["labels"] = labels
+	}
+	status, m := call(t, e, http.MethodPost, "/hetzner/v1/storage_boxes", body)
+	if status != http.StatusCreated {
+		t.Fatalf("POST /hetzner/v1/storage_boxes %q: status %d, want 201: %v", name, status, m)
+	}
+	e.For(t).WaitAction(idOf(m["action"]))
+	return idOf(m["storage_box"])
+}
+
+// subaccountBody is the create body of a subaccount named name with the
+// home directory name.
+func subaccountBody(name string) map[string]any {
+	return map[string]any{"name": name, "home_directory": name, "password": boxPassword}
+}
+
+// createSubaccount creates a subaccount named name with labels (nil: none)
+// in box, waits for its action and returns its ID.
+func createSubaccount(t *testing.T, e *apitest.Env, box int64, name string, labels map[string]string) int64 {
+	t.Helper()
+	body := subaccountBody(name)
+	if labels != nil {
+		body["labels"] = labels
+	}
+	path := fmt.Sprintf("/hetzner/v1/storage_boxes/%d/subaccounts", box)
+	status, m := call(t, e, http.MethodPost, path, body)
+	if status != http.StatusCreated {
+		t.Fatalf("POST %s %q: status %d, want 201: %v", path, name, status, m)
+	}
+	e.For(t).WaitAction(idOf(m["action"]))
+	return idOf(m["subaccount"])
 }
 
 // lbBody is the create body of an lb11 load balancer in fsn1.
@@ -267,7 +318,7 @@ func create(t *testing.T, e *apitest.Env, r labeled, name string, labels map[str
 func snapshot(t *testing.T, e *apitest.Env) string {
 	t.Helper()
 	var b strings.Builder
-	for _, p := range []string{"/ssh_keys", "/servers", "/placement_groups", "/servers/actions"} {
+	for _, p := range []string{"/ssh_keys", "/servers", "/placement_groups", "/servers/actions", "/hetzner/v1/storage_boxes"} {
 		resp := e.Do(http.MethodGet, p+"?per_page=50", nil)
 		data, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
@@ -317,6 +368,7 @@ func testReadOnly(t *testing.T) {
 	loc := firstID(t, env, "/locations", "locations")
 	typ := firstID(t, env, "/server_types", "server_types")
 	img := firstID(t, env, "/images", "images")
+	box := createBox(t, env, "box-ro", nil)
 
 	reads := []string{
 		"/locations", fmt.Sprintf("/locations/%d", loc),
@@ -330,6 +382,7 @@ func testReadOnly(t *testing.T) {
 		"/servers/actions",
 		fmt.Sprintf("/servers/%d/actions", f.server),
 		fmt.Sprintf("/servers/%d/actions/%d", f.server, f.action),
+		"/hetzner/v1/storage_boxes", fmt.Sprintf("/hetzner/v1/storage_boxes/%d", box),
 	}
 	for _, p := range reads {
 		t.Run("GET "+p, func(t *testing.T) {
@@ -357,6 +410,7 @@ func testReadOnly(t *testing.T) {
 		{http.MethodPost, srv + "/actions/request_console", nil},
 		{http.MethodPost, srv + "/actions/remove_from_placement_group", nil},
 		{http.MethodPost, srv + "/actions/add_to_placement_group", map[string]any{"placement_group": f.group}},
+		{http.MethodPost, "/hetzner/v1/storage_boxes", boxBody("ro-box")},
 	}
 	before := snapshot(t, env)
 	for _, w := range writes {
@@ -383,8 +437,12 @@ func testProjectIsolation(t *testing.T) {
 	}
 	protectAction := idOf(m["action"])
 	env.For(t).WaitAction(protectAction)
+	box := createBox(t, env, "box-p", nil)
+	sub := createSubaccount(t, env, box, "sub-p", nil)
 	q := env.NewToken("q", false)
 	srv := fmt.Sprintf("/servers/%d", f.server)
+	boxPath := fmt.Sprintf("/hetzner/v1/storage_boxes/%d", box)
+	subPath := fmt.Sprintf("%s/subaccounts/%d", boxPath, sub)
 
 	type request struct {
 		method, path string
@@ -422,6 +480,15 @@ func testProjectIsolation(t *testing.T) {
 		}, "actions", []int64{f.action, protectAction}, []request{
 			{http.MethodGet, fmt.Sprintf("/actions/%d", f.action), nil},
 			{http.MethodGet, fmt.Sprintf("/actions/%d", protectAction), nil},
+		}},
+		{"storage_boxes", []string{"/hetzner/v1/storage_boxes"}, "storage_boxes", []int64{box}, []request{
+			{http.MethodGet, boxPath, nil},
+			{http.MethodPut, boxPath, map[string]any{"name": "taken-over"}},
+			{http.MethodDelete, boxPath, nil},
+			{http.MethodGet, boxPath + "/subaccounts", nil},
+			{http.MethodGet, subPath, nil},
+			{http.MethodPut, subPath, map[string]any{"description": "taken-over"}},
+			{http.MethodDelete, subPath, nil},
 		}},
 	}
 	before := snapshot(t, env)
@@ -470,6 +537,8 @@ func testListPaging(t *testing.T) {
 		t.Fatalf("change_protection: status %d: %v", status, m)
 	}
 	env.For(t).WaitAction(idOf(m["action"]))
+	createBox(t, env, "box-one", nil)
+	createBox(t, env, "box-two", nil)
 
 	endpoints := []struct{ path, key string }{
 		{"/ssh_keys", "ssh_keys"},
@@ -480,6 +549,8 @@ func testListPaging(t *testing.T) {
 		{"/images", "images"},
 		{"/servers/actions", "actions"},
 		{fmt.Sprintf("/servers/%d/actions", server), "actions"},
+		{"/hetzner/v1/storage_boxes", "storage_boxes"},
+		{"/hetzner/v1/storage_box_types", "storage_box_types"},
 	}
 	for _, ep := range endpoints {
 		t.Run(ep.path, func(t *testing.T) {
@@ -524,24 +595,15 @@ func ids(items []any) []int64 {
 
 // listParams returns the query parameters of GET path in the frozen
 // OpenAPI description and the documented sort fields (without :asc/:desc).
+// A path under /hetzner/v1 is looked up without the prefix in
+// hetzner.spec.json, every other one in cloud.spec.json.
 func listParams(t *testing.T, path string) (map[string]bool, []string) {
 	t.Helper()
-	descOnce.Do(func() {
-		p, err := apitest.DescriptionPath()
-		if err != nil {
-			descErr = err
-			return
-		}
-		data, err := os.ReadFile(p)
-		if err != nil {
-			descErr = err
-			return
-		}
-		descErr = json.Unmarshal(data, &desc)
-	})
-	if descErr != nil {
-		t.Fatalf("read OpenAPI description: %v", descErr)
+	d := &cloudDesc
+	if rest, ok := strings.CutPrefix(path, "/hetzner/v1"); ok {
+		d, path = &hetznerDesc, rest
 	}
+	desc := d.load(t)
 	op, ok := desc.Paths[path]["get"]
 	if !ok {
 		t.Fatalf("GET %s not in the OpenAPI description", path)
@@ -580,18 +642,61 @@ type descParam struct {
 	} `json:"schema"`
 }
 
-var (
-	descOnce sync.Once
-	descErr  error
-	desc     struct {
-		Paths map[string]map[string]struct {
-			Parameters []descParam `json:"parameters"`
-		} `json:"paths"`
-		Components struct {
-			Parameters map[string]descParam `json:"parameters"`
-		} `json:"components"`
+// descDoc is the part of an OpenAPI description listParams reads.
+type descDoc struct {
+	Paths map[string]map[string]struct {
+		Parameters []descParam `json:"parameters"`
+	} `json:"paths"`
+	Components struct {
+		Parameters map[string]descParam `json:"parameters"`
+	} `json:"components"`
+}
+
+// openapiDesc is one OpenAPI description, read once from the file pathOf
+// names.
+type openapiDesc struct {
+	pathOf func() (string, error)
+	once   sync.Once
+	err    error
+	doc    descDoc
+}
+
+func (d *openapiDesc) load(t *testing.T) *descDoc {
+	t.Helper()
+	d.once.Do(func() {
+		p, err := d.pathOf()
+		if err != nil {
+			d.err = err
+			return
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			d.err = err
+			return
+		}
+		d.err = json.Unmarshal(data, &d.doc)
+	})
+	if d.err != nil {
+		t.Fatalf("read OpenAPI description: %v", d.err)
 	}
+	return &d.doc
+}
+
+var (
+	cloudDesc   = openapiDesc{pathOf: apitest.DescriptionPath}
+	hetznerDesc = openapiDesc{pathOf: apitest.HetznerDescriptionPath}
 )
+
+// fieldOf returns the value of a sort field of item; a dotted field such as
+// "stats.size" names a field of a nested object.
+func fieldOf(item map[string]any, field string) any {
+	var v any = item
+	for part := range strings.SplitSeq(field, ".") {
+		m, _ := v.(map[string]any)
+		v = m[part]
+	}
+	return v
+}
 
 // compareField orders two values of one JSON field: numbers numerically,
 // timestamps by time, other strings lexically. ok is false when one is null.
@@ -636,7 +741,7 @@ func checkOrder(t *testing.T, query string, items []any, keys []sortKey) {
 		a, _ := items[i-1].(map[string]any)
 		b, _ := items[i].(map[string]any)
 		for _, k := range keys {
-			c, ok := compareField(a[k.field], b[k.field])
+			c, ok := compareField(fieldOf(a, k.field), fieldOf(b, k.field))
 			if !ok {
 				break
 			}
@@ -648,7 +753,7 @@ func checkOrder(t *testing.T, query string, items []any, keys []sortKey) {
 			}
 			if c > 0 {
 				t.Errorf("%s: item %d (%s %v) before item %d (%s %v)", query,
-					idOf(a), k.field, a[k.field], idOf(b), k.field, b[k.field])
+					idOf(a), k.field, fieldOf(a, k.field), idOf(b), k.field, fieldOf(b, k.field))
 				return
 			}
 		}
@@ -663,6 +768,17 @@ func testListFilterSort(t *testing.T) {
 		create(t, env, r, "alpha", prod, nil)
 		create(t, env, r, "beta", dev, nil)
 		create(t, env, r, "gamma", nil, nil)
+	}
+	var box int64
+	for _, n := range []struct {
+		name   string
+		labels map[string]string
+	}{{"alpha", prod}, {"beta", dev}, {"gamma", nil}} {
+		id := createBox(t, env, n.name, n.labels)
+		if box == 0 {
+			box = id
+		}
+		createSubaccount(t, env, box, n.name, n.labels)
 	}
 	server := firstID(t, env, "/servers", "servers")
 	for _, del := range []bool{true, false} {
@@ -702,14 +818,22 @@ func testListFilterSort(t *testing.T) {
 		{fmt.Sprintf("/servers/%d/actions", server), "/servers/{id}/actions", "actions", func([]any) []filter {
 			return []filter{{"status", "status", "success"}, {"status", "status", "error"}}
 		}},
+		{"/hetzner/v1/storage_boxes", "/hetzner/v1/storage_boxes", "storage_boxes", nil},
+		{fmt.Sprintf("/hetzner/v1/storage_boxes/%d/subaccounts", box), "/hetzner/v1/storage_boxes/{id}/subaccounts", "subaccounts", nil},
 	}
 	for _, ep := range endpoints {
 		t.Run(ep.path, func(t *testing.T) {
 			e := env.For(t)
 			params, sorts := listParams(t, ep.descPath)
+			// A list without paging in the description (subaccounts) gets
+			// no per_page.
+			first := "?"
+			if params["per_page"] {
+				first = "?per_page=50&"
+			}
 			get := func(query string) (int, []any, map[string]any) {
 				t.Helper()
-				status, m := call(t, e, http.MethodGet, ep.path+"?per_page=50&"+query, nil)
+				status, m := call(t, e, http.MethodGet, ep.path+first+query, nil)
 				items, _ := m[ep.key].([]any)
 				return status, items, m
 			}
@@ -993,16 +1117,19 @@ func testLabelsOnResources(t *testing.T) {
 			}
 		})
 	}
-	var zone int64
+	var zone, labeledBox int64
 	for _, r := range []struct {
 		name, key string
 		// create creates the object with labels and returns its path.
 		create func(t *testing.T, e *apitest.Env, labels map[string]string) string
+		// post, when set, returns the path and body of a create request
+		// that must be refused once it carries invalid labels.
+		post func() (string, map[string]any)
 	}{
 		{"zones", "zone", func(t *testing.T, e *apitest.Env, labels map[string]string) string {
 			zone = createZone(t, e, "labeled.test", labels)
 			return fmt.Sprintf("/zones/%d", zone)
-		}},
+		}, nil},
 		{"rrsets", "rrset", func(t *testing.T, e *apitest.Env, labels map[string]string) string {
 			if zone == 0 {
 				zone = createZone(t, e, "labeled.test", nil)
@@ -1015,12 +1142,24 @@ func testLabelsOnResources(t *testing.T) {
 			}
 			e.WaitAction(idOf(m["action"]))
 			return fmt.Sprintf("/zones/%d/rrsets/www/A", zone)
-		}},
+		}, nil},
 		{"load_balancers", "load_balancer", func(t *testing.T, e *apitest.Env, labels map[string]string) string {
 			return createLabeled(t, e, "/load_balancers", "load_balancer", lbBody("labeled-lb"), labels)
-		}},
+		}, nil},
 		{"certificates", "certificate", func(t *testing.T, e *apitest.Env, labels map[string]string) string {
 			return createLabeled(t, e, "/certificates", "certificate", certBody("labeled-cert"), labels)
+		}, nil},
+		{"storage_boxes", "storage_box", func(t *testing.T, e *apitest.Env, labels map[string]string) string {
+			return createLabeled(t, e, "/hetzner/v1/storage_boxes", "storage_box", boxBody("labeled-box"), labels)
+		}, func() (string, map[string]any) {
+			return "/hetzner/v1/storage_boxes", boxBody("bad-labels-box")
+		}},
+		{"subaccounts", "subaccount", func(t *testing.T, e *apitest.Env, labels map[string]string) string {
+			labeledBox = createBox(t, e, "labeled-sub-box", nil)
+			return createLabeled(t, e, fmt.Sprintf("/hetzner/v1/storage_boxes/%d/subaccounts", labeledBox), "subaccount",
+				subaccountBody("labeled-sub"), labels)
+		}, func() (string, map[string]any) {
+			return fmt.Sprintf("/hetzner/v1/storage_boxes/%d/subaccounts", labeledBox), subaccountBody("bad-labels-sub")
 		}},
 	} {
 		t.Run(r.name, func(t *testing.T) {
@@ -1053,6 +1192,16 @@ func testLabelsOnResources(t *testing.T) {
 			}
 			if got := current(); !reflect.DeepEqual(got, map[string]any{"c": "3"}) {
 				t.Errorf("labels after refused PUT %v, want c=3 kept", got)
+			}
+			if r.post != nil {
+				p, body := r.post()
+				body["labels"] = invalid
+				status, m := call(t, e, http.MethodPost, p, body)
+				if status != http.StatusUnprocessableEntity || errCode(m) != "invalid_input" ||
+					!reflect.DeepEqual(errFields(m), []string{"labels"}) {
+					t.Errorf("POST %s with invalid labels: status %d code %q fields %v, want 422 invalid_input on labels",
+						p, status, errCode(m), errFields(m))
+				}
 			}
 		})
 	}
@@ -1130,6 +1279,19 @@ func testNameUniqueness(t *testing.T) {
 			}
 		})
 	}
+	t.Run("storage_boxes", func(t *testing.T) {
+		e := env.For(t)
+		createBox(t, e, "dup-box", nil)
+		other := createBox(t, e, "other-box", nil)
+		status, m := call(t, e, http.MethodPost, "/hetzner/v1/storage_boxes", boxBody("dup-box"))
+		if status != http.StatusConflict || errCode(m) != "uniqueness_error" {
+			t.Errorf("create with a used name: status %d code %q, want 409 uniqueness_error", status, errCode(m))
+		}
+		status, m = call(t, e, http.MethodPut, fmt.Sprintf("/hetzner/v1/storage_boxes/%d", other), map[string]any{"name": "dup-box"})
+		if status != http.StatusConflict || errCode(m) != "uniqueness_error" {
+			t.Errorf("PUT to a used name: status %d code %q, want 409 uniqueness_error", status, errCode(m))
+		}
+	})
 	t.Run("zones", func(t *testing.T) {
 		e := env.For(t)
 		createZone(t, e, "dup.test", nil)
