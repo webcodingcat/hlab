@@ -42,10 +42,6 @@ type routeRecorder struct {
 }
 
 func (r *routeRecorder) Handle(pattern string, _ http.Handler) {
-	if method, path, ok := strings.Cut(pattern, " "); ok {
-		pattern = method + " " + r.prefix + path
-	} else {
-		pattern = r.prefix + pattern
-	}
-	r.patterns = append(r.patterns, pattern)
+	method, path, _ := strings.Cut(pattern, " ")
+	r.patterns = append(r.patterns, method+" "+r.prefix+path)
 }
