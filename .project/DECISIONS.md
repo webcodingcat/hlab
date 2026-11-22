@@ -19,6 +19,182 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 Volume detach commits after its push; task e2e limit 120 minutes
+
+- Type: decision
+- Phase: phase 13
+- What: a volume detach records the volume detached only after its agent push (an internal `_hlab.detaching` keeps it out of the agent document meanwhile, Recover completes an interrupted detach whose disk already left the VM), and `task e2e` gets `-timeout 120m`.
+- Why: GET showed `server: null` while the detach still held the volume, so UI-02 deleted into 423; the full run at the close took 58 minutes.
+- Cost of change: low
+
+## 2026-11-22 The agent retries interrupted netlink dumps
+
+- Type: decision
+- Phase: phase 13
+- What: every link, address and route list on the agent's apply path is made again on `netlink.ErrDumpInterrupted`, up to 5 tries, before the push fails.
+- Why: parallel pushes since the action queue let links change during a list, which failed an LB delete with server_error, and the delete loops need a complete list.
+- Cost of change: low
+
+## 2026-11-22 Queued RRSet changes commit at success
+
+- Type: decision
+- Phase: phase 13
+- What: an RRSet create, delete or action is checked against a copy at the request, applied again at its turn into the zone's optional `_hlab.pending` (served only to the agent while it publishes), committed to the current record at success and dropped on error or by Recover after a stop; zone-level actions still store at once and refuse while an action holds the zone.
+- Why: GET and the published zone must show a queued change only at success; the zone keeps all RRSets in one record, so a pending copy is the smallest fit.
+- Cost of change: low
+
+## 2026-11-21 The OpenTofu LB row does not read services from the data source
+
+- Type: decision
+- Phase: phase 13
+- What: CLI-02/load_balancers reads `data.hcloud_load_balancer` by its targets and algorithm, not by its `service` list, and the hcloud LB row waits for `delete-service`, which does not wait for its action.
+- Why: provider 1.70.2 declares `service` in the data source schema but never sets it (internal/loadbalancer/resource.go:421-450), on Hetzner as on hlab; hcloud v1.70.2 delete-service never calls WaitForActions.
+- Cost of change: low
+
+## 2026-11-21 Rules of an unapplied firewall succeed at once
+
+- Type: decision
+- Phase: phase 13
+- What: when a firewall is applied to nothing, the `set_firewall_rules` action of `POST /firewalls` and of `set_rules` ends `success` inside the request (`actions.Manager.Succeed`), without an agent push.
+- Why: Ansible's `firewall` module does not wait for these actions, so its next call hit 423 `locked`; Hetzner also finishes them at once.
+- Cost of change: low
+
+## 2026-11-21 Network members list attached members with status ok
+
+- Type: decision
+- Phase: phase 13
+- What: `GET /networks/{id}/members` (Hetzner's shape, filters type, subnet and status, sort, pagination) lists a server or load balancer once its attach has succeeded, always with status `ok`; the CLI-03 networks update keeps its ip_range because hlab refuses `change_ip_range` while servers are attached.
+- Why: it matches the network's own `servers` list, and the range change is covered by CLI-01 before the attach.
+- Cost of change: low
+
+## 2026-11-21 Reboot of a booting guest retries for two minutes
+
+- Type: decision
+- Phase: phase 13
+- What: when Hyper-V refuses both InitiateReboot and InitiateShutdown with 32768 (guest still booting), hlab asks again every 2 s for up to 2 minutes before it reports InvalidState.
+- Why: hcloud reboots right after poweron; retrying keeps the reboot graceful instead of a hard reset.
+- Cost of change: low
+
+## 2026-11-21 hcloud all list moves to phase 21
+
+- Type: decision
+- Phase: phase 13
+- What: the row CLI-01/all is dropped from phase 13 and `hcloud all list` is tested in the CLI-05 row of phase 21.
+- Why: hcloud v1.70.2 always fetches storage boxes from the Hetzner endpoint, so with the Cloud API endpoint alone it fails and sends the hlab project token to api.hetzner.com.
+- Cost of change: low
+
+## 2026-11-21 Firewall apply commits at success and delete waits for actions
+
+- Type: decision
+- Phase: phase 13
+- What: `apply_to_resources`/`remove_from_resources` start one action per target that keeps `_hlab.pending` and commits its own target to the current record at success (Recover clears leftovers), a server create still writes `applied_to` in its create transaction and queues its `apply_firewall` on the firewall, and DELETE /firewalls/{id} answers 423 `locked` while an action holds the firewall.
+- Why: GET shows an apply only at success while FW-01/server_create expects the firewall applied in the create response, and without the lock a firewall could be deleted during its apply.
+- Cost of change: low
+
+## 2026-11-21 Floating IPs commit at success, primary IPs restore their earlier state
+
+- Type: decision
+- Phase: phase 13
+- What: floating IP assign/unassign keep `_hlab.pending` and commit at success; primary IP assign/unassign store the change with the earlier state (`_hlab.before`, server `_hlab.public_before`) shown on GET until success, restore it on error and in Recover, which also rewrites the seed and fails cloud start if that fails; an assign of a floating IP that is on a server also queues on that server.
+- Why: a floating IP change is only an agent push, while a primary IP change rebuilds the seed from the stored server record.
+- Cost of change: medium
+
+## 2026-11-21 Volume attach commits at success and delete waits for actions
+
+- Type: decision
+- Phase: phase 13
+- What: a volume attach (also the one of a create with `server`, which only queues) is checked again at its turn, kept as `_hlab.pending` and applied to the current record at success; a failed push takes the disk off again, Recover drops a pending attach after a stop, and DELETE /volumes/{id} answers 423 `locked` while any action holds the volume.
+- Why: GET shows the attach only at success, and without the lock a volume could be deleted during its attach.
+- Cost of change: low
+
+## 2026-11-21 Network actions keep the earlier state and restore it
+
+- Type: decision
+- Phase: phase 13
+- What: network attach, detach, alias, subnet and route actions store their change at once, keep the earlier state in `_hlab.net_before` (servers) or `_hlab.shown` (networks), which GET shows while the action runs, and restore it on error and at cloud start (networks is a `resource.Recoverer`; a VM adapter an interrupted attach already added stays until that server's next network action).
+- Why: adapter sync and agent push already read the stored change, so restoring covers the error and restart cases with a smaller change than committing at success.
+- Cost of change: low
+
+## 2026-11-21 Queued load balancer changes wait as pending state
+
+- Type: decision
+- Phase: phase 13
+- What: a queued LB target or service action validates again against the state earlier actions left, keeps its result in the stored record's optional `_hlab.pending`, serves it to the agent while it runs and commits it to the visible fields only at `success` (dropped if the push fails).
+- Why: GET must show the change only at `success`, while the agent document must already contain it when it is pushed.
+- Cost of change: low
+
+## 2026-11-21 Validation failures inside queued work keep their error code
+
+- Type: decision
+- Phase: phase 13
+- What: a check that fails inside a queued action's work becomes the action's error with the code the request would have answered (e.g. `target_already_defined`), not `server_error`.
+- Why: clients see the same code whether the conflict was found at the request or after the queue.
+- Cost of change: low
+
+## 2026-11-21 Private targets on an LB without network answer load_balancer_not_attached_to_network
+
+- Type: decision
+- Phase: phase 13
+- What: `add_target` with `use_private_ip` on a load balancer without a committed network answers 422 `load_balancer_not_attached_to_network`, checked before `resolve_cloud_private_targets_error`.
+- Why: the test map row asks for Hetzner's code for this case.
+- Cost of change: low
+
+## 2026-11-21 The Ansible servers row attaches no ISO
+
+- Type: decision
+- Phase: phase 13
+- What: CLI-03/servers leaves out attaching an ISO, which hcloud and OpenTofu still cover.
+- Why: the `hetzner.hcloud.server` module of collection 7.2.0 has no ISO option (checked with `ansible-doc` in WSL2).
+- Cost of change: low
+
+## 2026-11-21 Action queue in Run
+
+- Type: decision
+- Phase: phase 13
+- What: `actions.StartQueued` refuses with `locked` only on the refuse refs, and every action's `Run` waits without taking a worker until all running actions with a lower ID that share a ref have finished; a queued action shows as `running`.
+- Why: it realises the queuing the user asked for in one place without a new action status, and waiting before taking a worker keeps more queued actions than workers from deadlocking.
+- Cost of change: medium
+
+## 2026-11-21 Which actions queue instead of locked
+
+- Type: decision
+- Phase: phase 13
+- What: network attach/detach and `change_alias_ips` queue on the network, subnet and route actions on the network, LB target and service actions on the LB and its target servers, volume attach/detach and floating/primary IP assign/unassign on the server, firewall apply/remove on the servers, a server create's firewall actions on the firewall, and RRSet create, delete and actions on the zone (zone-level actions keep refusing); all others refuse on every ref as before (table in phases/13/PLAN.md "Interfaces", deviation in deviations.md and `api.Deviations()`).
+- Why: OpenTofu creates sibling resources in parallel and does not retry on `locked` (phases/13/RESEARCH.md §4), while Hetzner accepts these configurations.
+- Cost of change: medium
+
+## 2026-11-21 Client matrix rows register through init()
+
+- Type: decision
+- Phase: phase 13
+- What: client rows register with `registerRow` from `init()` in one file per group (`test/e2e/clients_<group>[_<client>]_test.go`), and `testClients` runs each client's fixture rows one after another, the others in parallel.
+- Why: plans of one wave never touch a shared dispatcher file, and a fixture server holds its slot only while its rows run.
+- Cost of change: low
+
+## 2026-11-21 One client matrix subtest per type and client
+
+- Type: decision
+- Phase: phase 13
+- What: every type including the read-only catalog types has one row per client, snapshots are covered in the images row, and reverse DNS has own rows only for OpenTofu and Ansible because hcloud's `set-rdns` runs in each type's row.
+- Why: each row stays filterable as `TestE2E/CLI-0n/<type>`.
+- Cost of change: low
+
+## 2026-11-21 The queue plan writes its own deviation entries
+
+- Type: decision
+- Phase: phase 13
+- What: plan 13-02 adds the queue deviations to `api.Deviations()`, `api-coverage.md` and `deviations.md`; the documentation plan only checks them.
+- Why: DOC-03 fails as soon as an `api.Deviations()` entry has no matching line in `api-coverage.md`.
+- Cost of change: low
+
+## 2026-11-21 Primary IP client rows use the fixture server
+
+- Type: decision
+- Phase: phase 13
+- What: the primary IP rows assign an IPv6 primary IP to the powered-off fixture server after unassigning its own IPv6, then restore it.
+- Why: Hetzner assigns primary IPs only to powered-off servers, and the fixture must stay reachable for the rows after it.
+- Cost of change: low
+
 ## 2026-11-21 Manual checks and the installer suite move to a last phase in two test VMs
 
 - Type: change

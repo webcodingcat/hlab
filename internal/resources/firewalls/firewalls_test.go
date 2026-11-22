@@ -38,6 +38,7 @@ type fwEnv struct {
 	fw  *firewalls.Module
 
 	failPush atomic.Bool
+	gate     *apitest.PushGate
 	mu       sync.Mutex
 	pushes   []agentapi.Config
 }
@@ -53,7 +54,7 @@ func newFWEnv(t *testing.T) *fwEnv {
 	}
 	fake := platformtest.NewFake()
 	fake.SetResources(plenty)
-	e := &fwEnv{}
+	e := &fwEnv{gate: apitest.NewPushGate(t)}
 	d := apitest.ServersDeps(t, cat, fake)
 	d.PushAgent = e.push
 	e.srv = servers.New(d)
@@ -64,7 +65,10 @@ func newFWEnv(t *testing.T) *fwEnv {
 	return e
 }
 
-func (e *fwEnv) push(context.Context) error {
+func (e *fwEnv) push(ctx context.Context) error {
+	if err := e.gate.Wait(ctx); err != nil {
+		return err
+	}
 	if e.failPush.Load() {
 		return errors.New("agent unreachable")
 	}
@@ -386,6 +390,8 @@ func TestFirewalls(t *testing.T) {
 	t.Run("FW-01/delete_in_use", testDeleteInUse)
 	t.Run("FW-01/server_create", testServerCreate)
 	t.Run("FW-05", testLabelChange)
+	t.Run("CLI-02", testQueue)
+	t.Run("CLI-03", testUnappliedRules)
 }
 
 func testCRUD(t *testing.T) {
@@ -471,4 +477,87 @@ func testCRUD(t *testing.T) {
 	if _, ok := getFirewall(t, e, fw.ID); ok {
 		t.Errorf("firewall %d still there after DELETE", fw.ID)
 	}
+}
+
+// testQueue: apply_to_resources of two firewalls to one server queue on
+// the server; a second apply of the same firewall still refuses.
+func testQueue(t *testing.T) {
+	e := newFWEnv(t)
+	s := createServer(t, e, "s", nil)
+	other := createServer(t, e, "other", nil)
+	f1, _ := createFirewall(t, e, map[string]any{"name": "f1"})
+	f2, _ := createFirewall(t, e, map[string]any{"name": "f2"})
+	e.gate.Close()
+
+	first := startFWAction(t, e, f1.ID, "apply_to_resources", applyBody(serverTarget(s.ID)))
+	release := e.gate.Next(t, "apply f1")
+	if got := mustFirewall(t, e, f1.ID).appliedServers(); slices.Contains(got, s.ID) {
+		t.Errorf("while apply f1 runs: applied servers %v, want %d not yet", got, s.ID)
+	}
+	second := startFWAction(t, e, f2.ID, "apply_to_resources", applyBody(serverTarget(s.ID)))
+	for _, a := range append(append([]actionView{}, first...), second...) {
+		if a.Status != "running" {
+			t.Errorf("action %d %s: status %q, want running", a.ID, a.Command, a.Status)
+		}
+	}
+	wantError(t, fwAction(e, f1.ID, "apply_to_resources", applyBody(serverTarget(other.ID))),
+		http.StatusLocked, "locked", "second apply_to_resources of f1 while its first runs")
+	wantError(t, e.Do(http.MethodDelete, fmt.Sprintf("/firewalls/%d", f2.ID), nil),
+		http.StatusLocked, "locked", "DELETE of f2 while its apply_to_resources waits")
+
+	release()
+	releaseSecond := e.gate.Next(t, "apply f2 queued behind f1")
+	for _, a := range first {
+		if got := e.For(t).GetAction(a.ID); got.Status != "success" {
+			t.Errorf("apply f1 action %d when the queued apply of f2 worked: %q, want success", a.ID, got.Status)
+		}
+	}
+	if got := mustFirewall(t, e, f1.ID).appliedServers(); !slices.Equal(got, []int64{s.ID}) {
+		t.Errorf("after apply f1: applied servers %v, want [%d]", got, s.ID)
+	}
+	if got := mustFirewall(t, e, f2.ID).appliedServers(); slices.Contains(got, s.ID) {
+		t.Errorf("while apply f2 runs: applied servers %v, want %d not yet", got, s.ID)
+	}
+	releaseSecond()
+	waitAll(t, e, second, "success", "apply f2")
+	if got := mustFirewall(t, e, f2.ID).appliedServers(); !slices.Equal(got, []int64{s.ID}) {
+		t.Errorf("after apply f2: applied servers %v, want [%d]", got, s.ID)
+	}
+}
+
+// testUnappliedRules: the rules of a firewall applied nowhere change at
+// once, so Ansible's firewall module, which does not wait for the actions
+// of a create or set_rules, can change the rules and apply the firewall
+// right after.
+func testUnappliedRules(t *testing.T) {
+	e := newFWEnv(t)
+	s := createServer(t, e, "s", nil)
+	e.gate.Close()
+
+	resp := e.Do(http.MethodPost, "/firewalls", map[string]any{"name": "fw", "rules": []firewalls.Rule{sshRule}})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /firewalls: status %d (%s), want 201", resp.StatusCode, apitest.ErrorCode(t, resp))
+	}
+	var created struct {
+		Firewall fwView       `json:"firewall"`
+		Actions  []actionView `json:"actions"`
+	}
+	apitest.Decode(t, resp, &created)
+	for _, a := range created.Actions {
+		if a.Status != "success" {
+			t.Errorf("create action %d %s: status %q, want success", a.ID, a.Command, a.Status)
+		}
+	}
+	rules := []firewalls.Rule{sshRule, inRule("tcp", ptr("443"), "0.0.0.0/0")}
+	for _, a := range startFWAction(t, e, created.Firewall.ID, "set_rules", map[string]any{"rules": rules}) {
+		if a.Status != "success" {
+			t.Errorf("set_rules action %d %s: status %q, want success", a.ID, a.Command, a.Status)
+		}
+	}
+	if got := mustFirewall(t, e, created.Firewall.ID).Rules; !reflect.DeepEqual(got, rules) {
+		t.Errorf("after set_rules: rules %+v, want %+v", got, rules)
+	}
+	applied := startFWAction(t, e, created.Firewall.ID, "apply_to_resources", applyBody(serverTarget(s.ID)))
+	e.gate.Next(t, "apply after set_rules")()
+	waitAll(t, e, applied, "success", "apply after set_rules")
 }

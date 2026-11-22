@@ -10,8 +10,9 @@ import (
 
 // Contribute implements resource.NetContributor. It runs after servers:
 // each doc.Servers entry gets the IDs of the firewalls applied to it, label
-// selectors resolved, and every firewall that reaches a server is added
-// with its rules.
+// selectors resolved and the applied_to of running apply and remove
+// actions included, and every firewall that reaches a server is added with
+// its rules.
 func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 	fws, err := store.ListAll[Record](tx, Kind)
 	if err != nil {
@@ -25,7 +26,7 @@ func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 			continue
 		}
 		resolved[f.Hlab.ProjectID] = true
-		res, err := resolve(tx, f.Hlab.ProjectID)
+		res, err := resolveWith(tx, f.Hlab.ProjectID, true)
 		if err != nil {
 			return err
 		}

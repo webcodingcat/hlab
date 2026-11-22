@@ -146,7 +146,17 @@ type Record struct {
 	RRSets []RRSet `json:"rrsets"`
 	Hlab   struct {
 		ProjectID int64 `json:"project_id"`
+		// Pending is the RRSets a running RRSet action publishes before it
+		// commits them at success; GET shows RRSets.
+		Pending *Pending `json:"pending,omitempty"`
 	} `json:"_hlab"`
+}
+
+// Pending is the RRSets of a zone as the running action Action leaves
+// them.
+type Pending struct {
+	Action int64   `json:"action"`
+	RRSets []RRSet `json:"rrsets"`
 }
 
 // Sets returns the RRSets of r without labels and protection.

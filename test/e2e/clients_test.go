@@ -32,8 +32,8 @@ const (
 	distroEnv = "HLAB_E2E_WSL_DISTRO"
 )
 
-// wslEnv is the selected Ubuntu distro and the temporary directory inside
-// it holding a copy of the run's private key (mode 0600). teardown deletes
+// wslEnv is the selected Ubuntu distro and the temporary directory in its
+// home directory holding a copy of the run's private key (mode 0600). teardown deletes
 // the directory.
 type wslEnv struct {
 	distro string
@@ -87,7 +87,13 @@ func newWSL(e *env) (*wslEnv, error) {
 	if err != nil {
 		return nil, err
 	}
-	script := "set -e\numask 077\nd=$(mktemp -d)\ncat > \"$d/id_ed25519\" <<'HLAB_KEY_EOF'\n" +
+	// The directory lives in the home directory, not in /tmp: /tmp is a
+	// tmpfs under systemd and WSL2 stops an idle distro, which empties it
+	// between two steps of the run. Copies older than a day are left over
+	// from runs that ended without teardown.
+	script := "set -e\numask 077\nmkdir -p \"$HOME/.cache\"\n" +
+		"find \"$HOME/.cache\" -maxdepth 1 -name 'hlab-e2e.*' -mmin +1440 -exec rm -rf -- {} +\n" +
+		"d=$(mktemp -d \"$HOME/.cache/hlab-e2e.XXXXXXXX\")\ncat > \"$d/id_ed25519\" <<'HLAB_KEY_EOF'\n" +
 		strings.TrimSpace(strings.ReplaceAll(string(key), "\r", "")) +
 		"\nHLAB_KEY_EOF\nchmod 600 \"$d/id_ed25519\"\nprintf '%s' \"$d\"\n"
 	r, err = w.run(context.Background(), 2*time.Minute, nil, script)
@@ -217,10 +223,24 @@ func checkAnsible(w *wslEnv) error {
 // Python) and the hlab endpoint and token from the environment.
 func (e *env) playbook(t *testing.T, w *wslEnv, name, content string) result {
 	t.Helper()
+	return e.playbookWithin(t, w, name, content, playbookTimeout)
+}
+
+const (
+	// playbookTimeout bounds a playbook that creates no server.
+	playbookTimeout = 10 * time.Minute
+	// playbookServerTimeout bounds a playbook that creates servers; the
+	// first server of an image downloads and converts it (createServer).
+	playbookServerTimeout = 45 * time.Minute
+)
+
+// playbookWithin is playbook with a deadline the caller sets.
+func (e *env) playbookWithin(t *testing.T, w *wslEnv, name, content string, timeout time.Duration) result {
+	t.Helper()
 	file := w.dir + "/" + name + ".yml"
 	script := "set -e\ncat > '" + file + "' <<'HLAB_PLAYBOOK_EOF'\n" + content + "\nHLAB_PLAYBOOK_EOF\n" +
 		"ANSIBLE_NOCOLOR=1 ansible-playbook -i localhost, '" + file + "'\n"
-	r, err := w.run(context.Background(), 10*time.Minute, e.ansibleEnviron(), script)
+	r, err := w.run(context.Background(), timeout, e.ansibleEnviron(), script)
 	if err != nil {
 		t.Fatalf("ansible-playbook %s: %v\n%s", name, err, r)
 	}
@@ -261,7 +281,18 @@ func checkTofu() error {
 type tofuDir struct {
 	e   *env
 	dir string
+	// timeout bounds one tofu command; zero is tofuTimeout. A row whose
+	// apply creates servers sets tofuServerTimeout.
+	timeout time.Duration
 }
+
+const (
+	// tofuTimeout bounds a tofu command that creates no server.
+	tofuTimeout = 15 * time.Minute
+	// tofuServerTimeout bounds a tofu command that creates servers; the
+	// first server of an image downloads and converts it (createServer).
+	tofuServerTimeout = 45 * time.Minute
+)
 
 // newTofuDir creates a working directory with the provider pinned and no
 // provider arguments: the endpoint and token come from HCLOUD_ENDPOINT and
@@ -327,8 +358,12 @@ func (d *tofuDir) run(t *testing.T, args ...string) result {
 		tofuInitMu.Lock()
 		defer tofuInitMu.Unlock()
 	}
+	timeout := d.timeout
+	if timeout == 0 {
+		timeout = tofuTimeout
+	}
 	all := append([]string{"-chdir=" + d.dir}, args...)
-	r, err := command(context.Background(), 15*time.Minute, environ, "", tofuBin, all...)
+	r, err := command(context.Background(), timeout, environ, "", tofuBin, all...)
 	if err != nil {
 		t.Fatalf("tofu %s: %v\n%s", strings.Join(args, " "), err, r)
 	}
@@ -339,6 +374,40 @@ func (d *tofuDir) run(t *testing.T, args ...string) result {
 func (d *tofuDir) output(t *testing.T, name string) string {
 	t.Helper()
 	return strings.TrimSpace(d.run(t, "output", "-raw", name).Stdout)
+}
+
+// dataValues reads the attributes of a data source from the state. An
+// output cannot carry an attribute the provider's schema marks optional and
+// not computed (hcloud_primary_ip name, hcloud_volume server_id,
+// hcloud_ssh_key name and fingerprint, the rule blocks of hcloud_firewall):
+// when the read waits for the apply, OpenTofu plans such an output as the
+// configured null and keeps it, while the data source holds what the
+// provider read. Numbers come as json.Number.
+func (d *tofuDir) dataValues(t *testing.T, address string) map[string]any {
+	t.Helper()
+	r := d.run(t, "show", "-json", "-no-color")
+	var state struct {
+		Values struct {
+			RootModule struct {
+				Resources []struct {
+					Address string         `json:"address"`
+					Values  map[string]any `json:"values"`
+				} `json:"resources"`
+			} `json:"root_module"`
+		} `json:"values"`
+	}
+	dec := json.NewDecoder(strings.NewReader(r.Stdout))
+	dec.UseNumber()
+	if err := dec.Decode(&state); err != nil {
+		t.Fatalf("tofu show -json: %v", err)
+	}
+	for _, res := range state.Values.RootModule.Resources {
+		if res.Address == address {
+			return res.Values
+		}
+	}
+	t.Fatalf("%s is not in the state", address)
+	return nil
 }
 
 // apiGet sends GET <path> to the hlab API with the run's token and decodes
@@ -366,7 +435,21 @@ func (e *env) apiGet(ctx context.Context, path string, out any) (int, error) {
 
 // apiIDs returns the IDs of a list endpoint over all pages.
 func (e *env) apiIDs(ctx context.Context, path, key string) ([]int64, error) {
-	var ids []int64
+	items, err := e.apiItems(ctx, path, key)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(items))
+	for _, it := range items {
+		ids = append(ids, it.ID)
+	}
+	return ids, nil
+}
+
+// apiItems returns ID and name of every item of a list endpoint over all
+// pages.
+func (e *env) apiItems(ctx context.Context, path, key string) ([]named, error) {
+	var all []named
 	for page := 1; ; page++ {
 		var body map[string]json.RawMessage
 		sep := "?"
@@ -380,15 +463,11 @@ func (e *env) apiIDs(ctx context.Context, path, key string) ([]int64, error) {
 		if status != http.StatusOK {
 			return nil, fmt.Errorf("GET %s: status %d", path, status)
 		}
-		var items []struct {
-			ID int64 `json:"id"`
-		}
+		var items []named
 		if err := json.Unmarshal(body[key], &items); err != nil {
 			return nil, fmt.Errorf("GET %s: no list %q: %w", path, key, err)
 		}
-		for _, it := range items {
-			ids = append(ids, it.ID)
-		}
+		all = append(all, items...)
 		var meta struct {
 			Pagination struct {
 				NextPage *int `json:"next_page"`
@@ -398,7 +477,7 @@ func (e *env) apiIDs(ctx context.Context, path, key string) ([]int64, error) {
 			return nil, fmt.Errorf("GET %s: no meta.pagination: %w", path, err)
 		}
 		if meta.Pagination.NextPage == nil {
-			return ids, nil
+			return all, nil
 		}
 		if page > 1000 {
 			return nil, errors.New("GET " + path + ": more than 1000 pages")

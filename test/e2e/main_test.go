@@ -160,8 +160,10 @@ func setup() error {
 	return deleteLeftoverProjects()
 }
 
-// leftoverProject matches exactly the project names this harness creates.
-var leftoverProject = regexp.MustCompile(`^e2e-\d{8}-\d{6}$`)
+// leftoverProject matches exactly the project names this harness creates:
+// the run's project e2e-<time> and the projects of newProjectEnv,
+// e2e-<time>-<suffix>.
+var leftoverProject = regexp.MustCompile(`^e2e-\d{8}-\d{6}(-[a-z0-9][a-z0-9-]*)?$`)
 
 // deleteLeftoverProjects deletes the projects earlier runs left behind
 // (a run that was killed before its teardown); other projects stay.

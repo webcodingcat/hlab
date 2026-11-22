@@ -83,7 +83,18 @@ type Record struct {
 	Hlab struct {
 		ProjectID    int64  `json:"project_id"`
 		HomeLocation string `json:"home_location"`
+		// Pending is the assignment an assign or unassign running on the
+		// floating IP pushes to the agent before it commits; nil when no
+		// such action runs.
+		Pending *Pending `json:"pending,omitempty"`
 	} `json:"_hlab"`
+}
+
+// Pending is the server (nil: none) action Action assigns the floating IP
+// to.
+type Pending struct {
+	Action int64  `json:"action"`
+	Server *int64 `json:"server"`
 }
 
 // Module is the floating IPs resource type.

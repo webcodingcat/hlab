@@ -3,9 +3,11 @@ package firewalls
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -75,7 +77,17 @@ type Record struct {
 	Firewall
 	Hlab struct {
 		ProjectID int64 `json:"project_id"`
+		// Pending is the applied_to a running apply_to_resources or
+		// remove_from_resources action pushes to the agent before it
+		// commits it at success; nil without one.
+		Pending *Pending `json:"pending,omitempty"`
 	} `json:"_hlab"`
+}
+
+// Pending is the applied_to of a firewall while action Action runs.
+type Pending struct {
+	Action    int64     `json:"action"`
+	AppliedTo []Applied `json:"applied_to"`
 }
 
 // Module is the firewalls resource type.
@@ -213,7 +225,8 @@ type createRequest struct {
 }
 
 // create stores a firewall; with rules it starts a set_firewall_rules
-// action, with apply_to the apply actions; each ends after the agent push.
+// action, with apply_to the apply actions; each ends after the agent push,
+// or at once when the firewall is applied nowhere.
 func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	var body createRequest
 	if !api.Decode(w, req, &body) {
@@ -226,6 +239,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	acts := api.ActionsFrom(req.Context())
 	var f Firewall
 	started := []*actions.Action{}
+	var done []*actions.Action
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
 		if err := checkName(tx, p.ID, body.Name, 0); err != nil {
 			return err
@@ -270,6 +284,14 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			return err
 		}
+		if len(r.AppliedTo) == 0 {
+			// Applied nowhere, the rules filter nothing yet.
+			if err := acts.Succeed(tx, a); err != nil {
+				return err
+			}
+			done = a
+			a = nil
+		}
 		started = append(started, a...)
 		f, err = shown(tx, r)
 		return err
@@ -279,6 +301,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	m.runPush(acts, started)
+	started = append(started, done...)
 	api.JSON(w, http.StatusCreated, map[string]any{"firewall": f, "actions": started})
 }
 
@@ -302,6 +325,25 @@ func shown(tx store.Tx, r Record) (Firewall, error) {
 		return Firewall{}, err
 	}
 	return res.show(r), nil
+}
+
+// busy reports whether a running action, one waiting in the queue
+// included, references firewall id.
+func busy(tx store.Tx, id int64) (bool, error) {
+	running, err := store.RunningActions(tx)
+	if err != nil {
+		return false, err
+	}
+	for _, a := range running {
+		var refs []actions.Ref
+		if err := json.Unmarshal([]byte(a.Resources), &refs); err != nil {
+			return false, err
+		}
+		if slices.Contains(refs, fwRef(id)) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // update changes only the name and labels present in the body; labels,
@@ -351,7 +393,8 @@ func (m *Module) update(w http.ResponseWriter, req *http.Request) {
 }
 
 // delete removes a firewall that is applied nowhere, neither to a server
-// nor by a label selector.
+// nor by a label selector, and that no running action holds: an apply
+// commits applied_to only at success.
 func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 	id, ok := api.PathID(w, req)
 	if !ok {
@@ -365,6 +408,12 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 		}
 		if len(r.AppliedTo) > 0 {
 			return &api.FieldError{Code: "resource_in_use", Message: fmt.Sprintf("firewall %d is still in use", id)}
+		}
+		if held, err := busy(tx, id); err != nil || held {
+			if err == nil {
+				err = actions.ErrLocked
+			}
+			return err
 		}
 		return store.Delete(tx, Kind, p.ID, id)
 	})

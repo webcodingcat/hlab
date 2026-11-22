@@ -76,19 +76,28 @@ func TestE2E(t *testing.T) {
 	t.Run("RDNS-02", parallel(testRDNS02))
 	t.Run("META-01", parallel(testMETA01))
 	t.Run("HOST-03", parallel(testHOST03))
-	t.Run("CLI-02", parallel(testCLI02))
-	t.Run("CLI-03", parallel(testCLI03))
 	t.Run("CAT-03", parallel(testCAT03))
 	t.Run("LB-02", parallel(testLB02))
 	t.Run("LB-03", parallel(testLB03))
 	t.Run("LB-04", parallel(testLB04))
 	t.Run("LB-05", parallel(testLB05))
 	t.Run("CERT-04", parallel(testCERT04))
+
+	// The client matrix: one subtest per client and resource type, each
+	// registered by its group file through registerRow.
+	for _, req := range []string{"CLI-01", "CLI-02", "CLI-03", "CLI-04"} {
+		t.Run(req, func(t *testing.T) {
+			t.Parallel()
+			testClients(t, req)
+		})
+	}
 }
 
+// parallel runs a row in parallel with the others and logs its start, end
+// and elapsed time.
 func parallel(f func(t *testing.T)) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Parallel()
-		f(t)
+		logged(f)(t)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -87,7 +88,18 @@ type Record struct {
 	Hlab    struct {
 		ProjectID int64 `json:"project_id"`
 		VLAN      int   `json:"vlan"`
+		// Shown are the subnets and routes before the subnet or route action
+		// running on the network: the API shows them until the action
+		// succeeds, and a failed or interrupted action restores them; nil
+		// when no such action runs.
+		Shown *shownParts `json:"shown,omitempty"`
 	} `json:"_hlab"`
+}
+
+// shownParts are the subnets and routes the API shows of a network.
+type shownParts struct {
+	Subnets []Subnet `json:"subnets"`
+	Routes  []Route  `json:"routes"`
 }
 
 // Module is the networks resource type.
@@ -107,6 +119,7 @@ func (m *Module) Routes(r resource.Registrar) {
 	r.Handle("GET /networks", http.HandlerFunc(m.list))
 	r.Handle("POST /networks", http.HandlerFunc(m.create))
 	r.Handle("GET /networks/{id}", http.HandlerFunc(m.get))
+	r.Handle("GET /networks/{id}/members", http.HandlerFunc(m.listMembers))
 	r.Handle("PUT /networks/{id}", http.HandlerFunc(m.update))
 	r.Handle("DELETE /networks/{id}", http.HandlerFunc(m.delete))
 	r.Handle("POST /networks/{id}/actions/change_protection", http.HandlerFunc(m.changeProtection))
@@ -136,6 +149,9 @@ func put(tx store.Tx, r Record) error {
 // view is the network as the API shows it.
 func view(r Record) Network {
 	n := r.Network
+	if r.Hlab.Shown != nil {
+		n.Subnets, n.Routes = r.Hlab.Shown.Subnets, r.Hlab.Shown.Routes
+	}
 	if n.Subnets == nil {
 		n.Subnets = []Subnet{}
 	}
@@ -160,7 +176,7 @@ func serversByNetwork(tx store.Tx, projectID int64) (map[int64][]int64, error) {
 	}
 	out := map[int64][]int64{}
 	for _, d := range docs {
-		for _, p := range d.PrivateNet {
+		for _, p := range d.shown() {
 			out[p.Network] = append(out[p.Network], d.ID)
 		}
 	}
@@ -296,6 +312,96 @@ func (m *Module) get(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	api.JSON(w, http.StatusOK, map[string]any{"network": n})
+}
+
+// Member is a resource attached to a network in Hetzner's API shape.
+type Member struct {
+	Type     string   `json:"type"` // "server" | "load_balancer"
+	ID       int64    `json:"id"`
+	IP       string   `json:"ip"`
+	Status   string   `json:"status"` // always "ok": the API shows a member once its attach succeeded
+	AliasIPs []string `json:"alias_ips"`
+	Subnet   string   `json:"subnet"`
+}
+
+var memberOptions = api.ListOptions[Member]{
+	Sort: map[string]func(a, b Member) int{
+		"id":     func(a, b Member) int { return cmp.Compare(a.ID, b.ID) },
+		"type":   func(a, b Member) int { return strings.Compare(a.Type, b.Type) },
+		"status": func(a, b Member) int { return strings.Compare(a.Status, b.Status) },
+		"ip":     func(a, b Member) int { return memberAddr(a).Compare(memberAddr(b)) },
+	},
+	Filters: map[string]func(Member, []string) bool{
+		"type":   func(mb Member, v []string) bool { return slices.Contains(v, mb.Type) },
+		"status": func(mb Member, v []string) bool { return slices.Contains(v, mb.Status) },
+		"subnet": func(mb Member, v []string) bool { return slices.Contains(v, mb.Subnet) },
+	},
+}
+
+// memberAddr is the IP of mb as an address; an unparsable IP is the zero
+// address, which sorts first.
+func memberAddr(mb Member) netip.Addr {
+	a, _ := netip.ParseAddr(mb.IP)
+	return a
+}
+
+// memberSubnet is the range of the subnet of r that holds ip, or "".
+func memberSubnet(r Record, ip string) string {
+	a, err := netip.ParseAddr(ip)
+	if err != nil {
+		return ""
+	}
+	if p := subnetOf(r, a); p.IsValid() {
+		return p.String()
+	}
+	return ""
+}
+
+// listMembers is GET /networks/{id}/members: the servers (as the network
+// shows them) and the LBs attached to the network.
+func (m *Module) listMembers(w http.ResponseWriter, req *http.Request) {
+	id, ok := api.PathID(w, req)
+	if !ok {
+		return
+	}
+	p, _ := api.ProjectFrom(req.Context())
+	out := []Member{}
+	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
+		r, err := Load(tx, p.ID, id)
+		if err != nil {
+			return err
+		}
+		docs, err := store.List[memberDoc](tx, servers.Kind, p.ID)
+		if err != nil {
+			return err
+		}
+		for _, d := range docs {
+			for _, pn := range d.shown() {
+				if pn.Network != id {
+					continue
+				}
+				aliases := pn.AliasIPs
+				if aliases == nil {
+					aliases = []string{}
+				}
+				out = append(out, Member{Type: "server", ID: d.ID, IP: pn.IP, Status: "ok", AliasIPs: aliases, Subnet: memberSubnet(r, pn.IP)})
+			}
+		}
+		lbs, err := m.lbMembers(tx, p.ID, id)
+		if err != nil {
+			return err
+		}
+		for _, lb := range lbs {
+			ip := lb.IP.String()
+			out = append(out, Member{Type: "load_balancer", ID: lb.ID, IP: ip, Status: "ok", AliasIPs: []string{}, Subnet: memberSubnet(r, ip)})
+		}
+		return nil
+	})
+	if err != nil {
+		api.Fail(w, err)
+		return
+	}
+	api.ListRequest(w, req, "members", out, memberOptions)
 }
 
 // createRequest is POST /networks.

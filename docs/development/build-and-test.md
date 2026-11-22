@@ -114,6 +114,55 @@ token of the same hcloud context as `CAT-03`, and without one checks
 Hetzner's refusal of an invalid token. Release builds never carry the
 `e2e` tag.
 
+### Client matrix
+
+```
+task e2e -- -run '^TestE2E$/^CLI-0[1-4]$/'
+task e2e -- -run 'TestE2E/CLI-02/volumes'
+task e2e -- -run '^TestE2E$/^CLI-02$/^servers$'
+task e2e -- -run '^TestE2E$/^CLI-0[1-3]$/^zones$'
+```
+
+The rows `CLI-01` (hcloud), `CLI-02` (OpenTofu) and `CLI-03` (Ansible in
+WSL2) drive one client through every resource type, one subtest per
+type: `servers`, `images`, `ssh_keys`, `placement_groups`, `networks`,
+`primary_ips`, `floating_ips`, `volumes`, `firewalls`, `load_balancers`,
+`certificates`, `zones`, `server_types`, `locations`,
+`load_balancer_types` and `isos` (not for OpenTofu, which has no ISO data
+source), plus `rdns` for OpenTofu and Ansible (hcloud sets reverse DNS in
+each type's row) and `inventory` for Ansible. Each row changes only the
+client's endpoint and token, checks every step through the API, deletes
+what it made with the same client and checks that it is gone. `CLI-04`
+has one row per client (`hcloud`, `tofu`, `ansible`); each builds the
+example environment in a project of its own (network, firewall, two
+servers, volume, floating IP, load balancer with a TCP service to SSH,
+DNS zone), reaches both servers over SSH from Windows and WSL2 on their
+public IPv4 and once through the load balancer, and deletes it again.
+
+The rows of one client that need a running server share a fixture
+server labelled `client=<client>` and run one after another; the other
+rows run in parallel. At most three servers of a run exist at a time, so
+a row waits until enough of them are free: the `servers` rows take one,
+each `CLI-04` row two. All client rows together took about 14 minutes in
+one run; `task e2e` gives the whole suite 120 minutes, about twice its last full run (58 minutes).
+
+`go test` splits a `-run` pattern at the slashes and matches each part
+against one level of subtest names. One pattern therefore selects one
+group: a single row, all rows of a client, or one type across clients as
+in the last example. Rows of different groups, such as `CLI-01/servers`
+and `CLI-02/volumes`, need one run each. Anchor the parts (`^servers$`)
+where a name is part of another one.
+
+Not covered by the matrix: the datacenter commands, data sources and
+module (the API answers 410 as at Hetzner), `hcloud server
+request-console` (`unsupported_error`), vSwitch subnets and `hcloud
+network expose-routes-to-vswitch`, storage boxes, and `hcloud all list`,
+which needs storage boxes from the Hetzner endpoint. The Ansible
+`servers` row attaches no ISO, because the `server` module of
+hetzner.hcloud 7.2.0 has no ISO option, and the OpenTofu
+`load_balancers` row does not read the services from the
+`hcloud_load_balancer` data source, which provider 1.70.2 never fills.
+
 The harness runs `task build`, starts the development cloud if it is
 stopped (and stops it again at the end if it started it), creates one
 project `e2e-<yyyymmdd-hhmmss>` with an SSH key per run, and deletes that

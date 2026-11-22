@@ -107,6 +107,7 @@ type volEnv struct {
 	*apitest.Env
 	fake *recPlatform
 	jobs *jobRecorder
+	push *apitest.PushGate
 }
 
 // newVolEnv mounts the servers and volumes modules wired like the cloud
@@ -121,6 +122,7 @@ func newVolEnv(t *testing.T) *volEnv {
 	fake := &recPlatform{Fake: platformtest.NewFake(), page83: map[string][16]byte{}, luns: map[string]int{}}
 	fake.SetResources(plenty)
 	jobs := &jobRecorder{}
+	push := apitest.NewPushGate(t)
 	d := apitest.ServersDeps(t, cat, fake)
 	d.Settings.ReserveDiskGB = reserveDiskGB
 	d.ExtraDisks = func(tx store.Tx) ([]servers.DiskUse, error) {
@@ -143,10 +145,10 @@ func newVolEnv(t *testing.T) *volEnv {
 		VMPrefix:     d.Settings.VMPrefix,
 		CheckDisk:    srv.CheckDisk,
 		ApplianceJob: jobs.run,
-		PushAgent:    func(context.Context) error { return nil },
+		PushAgent:    push.Wait,
 	})
 	srv.SetVolumes(vol)
-	return &volEnv{Env: apitest.New(t, srv, vol, resactions.New()), fake: fake, jobs: jobs}
+	return &volEnv{Env: apitest.New(t, srv, vol, resactions.New()), fake: fake, jobs: jobs, push: push}
 }
 
 // wantPage83 is 484C4142-0000-4000-8000-<id as 12 hex digits> in text
@@ -683,4 +685,102 @@ func TestVolumes(t *testing.T) {
 			t.Errorf("AttachDisk of %s at call %d, last CreateVM at call %d: want the attach after the VM exists", path, attach, createVM)
 		}
 	})
+
+	t.Run("CLI-02/queue", func(t *testing.T) {
+		e := newVolEnv(t)
+		s := createServer(t, e, "s", "fsn1", nil)
+		v1 := createVolume(t, e, "v1", 10)
+		v2 := createVolume(t, e, "v2", 10)
+		base := len(attachCalls(e))
+
+		releaseFirst := e.fake.Block("AttachDisk")
+		t.Cleanup(sync.OnceFunc(releaseFirst))
+		first := startVolumeAction(t, e, v1, "attach", attachTo(s))
+		waitAttachCalls(t, e, base+1, "attach v1")
+		second := startVolumeAction(t, e, v2, "attach", attachTo(s))
+		wantLocked(t, e, v1, s, "attach")
+		releaseSecond := e.fake.Block("AttachDisk")
+		t.Cleanup(sync.OnceFunc(releaseSecond))
+		releaseFirst()
+		waitAttachCalls(t, e, base+2, "attach v2 queued behind v1")
+		if a := e.GetAction(first); a.Status != "success" {
+			t.Errorf("attach v1 when the queued attach of v2 worked: %q, want success", a.Status)
+		}
+		releaseSecond()
+		e.waitSuccess(t, second, "attach v2")
+		if got := serverVolumes(t, e, s); !slices.Equal(got, []int64{v1, v2}) {
+			t.Errorf("server volumes %v, want [%d %d]", got, v1, v2)
+		}
+	})
+
+	t.Run("CLI-02/effect", func(t *testing.T) {
+		e := newVolEnv(t)
+		s := createServer(t, e, "s", "fsn1", nil)
+		v := createVolume(t, e, "v", 10)
+		base := len(attachCalls(e))
+
+		release := e.fake.Block("AttachDisk")
+		t.Cleanup(sync.OnceFunc(release))
+		act := startVolumeAction(t, e, v, "attach", attachTo(s))
+		waitAttachCalls(t, e, base+1, "attach")
+		if got := getVolume(t, e, v); got.Server != nil {
+			t.Errorf("while attach runs: volume server %d, want null", *got.Server)
+		}
+		if got := serverVolumes(t, e, s); slices.Contains(got, v) {
+			t.Errorf("while attach runs: server volumes %v, want %d not yet", got, v)
+		}
+		release()
+		e.waitSuccess(t, act, "attach")
+		if got := getVolume(t, e, v); got.Server == nil || *got.Server != s {
+			t.Errorf("after attach: volume server %v, want %d", got.Server, s)
+		}
+		if got := serverVolumes(t, e, s); !slices.Contains(got, v) {
+			t.Errorf("after attach: server volumes %v, want %d", got, v)
+		}
+
+		// A detach with automount shows the volume detached only once it
+		// has pushed the agent document and succeeded.
+		w := createVolume(t, e, "w", 10)
+		runVolumeAction(t, e, w, "attach", map[string]any{"server": s, "automount": true})
+		e.push.Close()
+		detach := startVolumeAction(t, e, w, "detach", nil)
+		releasePush := e.push.Next(t, "detach")
+		if got := getVolume(t, e, w); got.Server == nil || *got.Server != s {
+			t.Errorf("while detach runs: volume server %v, want %d", got.Server, s)
+		}
+		if got := serverVolumes(t, e, s); !slices.Contains(got, w) {
+			t.Errorf("while detach runs: server volumes %v, want %d still", got, w)
+		}
+		releasePush()
+		e.waitSuccess(t, detach, "detach")
+		if got := getVolume(t, e, w); got.Server != nil {
+			t.Errorf("after detach: volume server %d, want null", *got.Server)
+		}
+		if got := serverVolumes(t, e, s); slices.Contains(got, w) {
+			t.Errorf("after detach: server volumes %v, want %d gone", got, w)
+		}
+	})
+}
+
+// attachCalls returns the AttachDisk calls of the platform so far.
+func attachCalls(e *volEnv) []platformtest.Call {
+	var out []platformtest.Call
+	for _, c := range e.fake.Calls() {
+		if c.Op == "AttachDisk" {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// waitAttachCalls waits until the platform saw n AttachDisk calls.
+func waitAttachCalls(t *testing.T, e *volEnv, n int, what string) {
+	t.Helper()
+	deadline := time.Now().Add(apitest.ActionTimeout)
+	for len(attachCalls(e)) < n {
+		if time.Now().After(deadline) {
+			t.Fatalf("%s: %d AttachDisk calls within %s, want %d", what, len(attachCalls(e)), apitest.ActionTimeout, n)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }

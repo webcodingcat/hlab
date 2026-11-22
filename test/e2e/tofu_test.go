@@ -15,17 +15,17 @@ import (
 	"time"
 )
 
-// testCLI02 holds the OpenTofu rows of CLI-02, one subtest per resource type.
-func testCLI02(t *testing.T) {
-	t.Run("ssh_keys", parallel(testCLI02SSHKeys))
-	t.Run("placement_groups", parallel(testCLI02PlacementGroups))
+func init() {
+	registerRow(clientRow{Req: "CLI-02", Name: "ssh_keys", Run: func(t *testing.T, _ *rowCtx) { testCLI02SSHKeys(t) }})
+	registerRow(clientRow{Req: "CLI-02", Name: "placement_groups", Run: func(t *testing.T, _ *rowCtx) { testCLI02PlacementGroups(t) }})
 }
 
 // updatedInPlace is the summary line of `tofu apply` for an in-place update.
 const updatedInPlace = "0 added, 1 changed, 0 destroyed"
 
 // testCLI02SSHKeys: hcloud_ssh_key with labels is created, a second apply
-// with changed labels updates it in place, and destroy removes it.
+// with changed labels updates it in place, the data sources hcloud_ssh_key
+// (by ID) and hcloud_ssh_keys (by label) read it, and destroy removes it.
 func testCLI02SSHKeys(t *testing.T) {
 	e := sharedTofu(t)
 	ctx := context.Background()
@@ -48,20 +48,34 @@ func testCLI02SSHKeys(t *testing.T) {
 output "id" {
   value = hcloud_ssh_key.k.id
 }
+
+data "hcloud_ssh_key" "by_id" {
+  id = hcloud_ssh_key.k.id
+}
+
+data "hcloud_ssh_keys" "by_label" {
+  with_selector = "row=cli-02-ssh-keys"
+  depends_on    = [hcloud_ssh_key.k]
+}
+
+output "ds_ids" {
+  value = jsonencode(data.hcloud_ssh_keys.by_label.ssh_keys[*].id)
+}
 `, name, hclMap(labels))
 	}
 
 	d.run(t, "init", "-no-color")
 
-	first := map[string]string{"env": "e2e", "row": "cli-02"}
+	first := map[string]string{"env": "e2e", "row": "cli-02-ssh-keys"}
 	d.writeMain(t, main(first))
 	d.run(t, "apply", "-auto-approve", "-no-color")
 	id := d.output(t, "id")
 	var got struct {
 		SSHKey struct {
-			ID     int64             `json:"id"`
-			Name   string            `json:"name"`
-			Labels map[string]string `json:"labels"`
+			ID          int64             `json:"id"`
+			Name        string            `json:"name"`
+			Fingerprint string            `json:"fingerprint"`
+			Labels      map[string]string `json:"labels"`
 		} `json:"ssh_key"`
 	}
 	if status, err := e.apiGet(ctx, "/ssh_keys/"+id, &got); err != nil || status != http.StatusOK {
@@ -70,8 +84,15 @@ output "id" {
 	if got.SSHKey.Name != name || !maps.Equal(got.SSHKey.Labels, first) {
 		t.Errorf("created key %q with labels %v, want %q with %v", got.SSHKey.Name, got.SSHKey.Labels, name, first)
 	}
+	ds := d.dataValues(t, "data.hcloud_ssh_key.by_id")
+	if n, fp := fmt.Sprint(ds["name"]), fmt.Sprint(ds["fingerprint"]); n != got.SSHKey.Name || fp != got.SSHKey.Fingerprint {
+		t.Errorf("data hcloud_ssh_key: name %q, fingerprint %q; the API has %q, %q", n, fp, got.SSHKey.Name, got.SSHKey.Fingerprint)
+	}
+	if ids := d.output(t, "ds_ids"); ids != "["+id+"]" {
+		t.Errorf("data hcloud_ssh_keys with row=cli-02-ssh-keys: IDs %s, want [%s]", ids, id)
+	}
 
-	second := map[string]string{"env": "e2e", "stage": "two"}
+	second := map[string]string{"row": "cli-02-ssh-keys", "stage": "two"}
 	d.writeMain(t, main(second))
 	r := d.run(t, "apply", "-auto-approve", "-no-color")
 	if !strings.Contains(r.Stdout, updatedInPlace) {
@@ -93,8 +114,9 @@ output "id" {
 }
 
 // testCLI02PlacementGroups: hcloud_placement_group of type spread is created,
-// a second apply with a new name and labels updates it in place, and
-// destroy removes it.
+// a second apply with a new name and labels updates it in place, the data
+// sources hcloud_placement_group (by ID) and hcloud_placement_groups (by
+// label) read it, and destroy removes it.
 func testCLI02PlacementGroups(t *testing.T) {
 	e := sharedTofu(t)
 	ctx := context.Background()
@@ -110,6 +132,27 @@ func testCLI02PlacementGroups(t *testing.T) {
 output "id" {
   value = hcloud_placement_group.g.id
 }
+
+data "hcloud_placement_group" "by_id" {
+  id = hcloud_placement_group.g.id
+}
+
+data "hcloud_placement_groups" "by_label" {
+  with_selector = "row=cli-02-placement-groups"
+  depends_on    = [hcloud_placement_group.g]
+}
+
+output "ds_name" {
+  value = data.hcloud_placement_group.by_id.name
+}
+
+output "ds_type" {
+  value = data.hcloud_placement_group.by_id.type
+}
+
+output "ds_ids" {
+  value = jsonencode(data.hcloud_placement_groups.by_label.placement_groups[*].id)
+}
 `, name, hclMap(labels))
 	}
 	type group struct {
@@ -123,7 +166,7 @@ output "id" {
 
 	d.run(t, "init", "-no-color")
 
-	name1, labels1 := harness.runID+"-tofu-pg", map[string]string{"env": "e2e"}
+	name1, labels1 := harness.runID+"-tofu-pg", map[string]string{"env": "e2e", "row": "cli-02-placement-groups"}
 	d.writeMain(t, main(name1, labels1))
 	d.run(t, "apply", "-auto-approve", "-no-color")
 	id := d.output(t, "id")
@@ -134,8 +177,14 @@ output "id" {
 	if pg := got.PlacementGroup; pg.Name != name1 || pg.Type != "spread" || !maps.Equal(pg.Labels, labels1) {
 		t.Errorf("created group %+v, want name %q, type spread, labels %v", pg, name1, labels1)
 	}
+	if n, typ := d.output(t, "ds_name"), d.output(t, "ds_type"); n != got.PlacementGroup.Name || typ != got.PlacementGroup.Type {
+		t.Errorf("data hcloud_placement_group: name %q, type %q; the API has %q, %q", n, typ, got.PlacementGroup.Name, got.PlacementGroup.Type)
+	}
+	if ids := d.output(t, "ds_ids"); ids != "["+id+"]" {
+		t.Errorf("data hcloud_placement_groups with row=cli-02-placement-groups: IDs %s, want [%s]", ids, id)
+	}
 
-	name2, labels2 := harness.runID+"-tofu-pg-renamed", map[string]string{"env": "e2e", "stage": "two"}
+	name2, labels2 := harness.runID+"-tofu-pg-renamed", map[string]string{"row": "cli-02-placement-groups", "stage": "two"}
 	d.writeMain(t, main(name2, labels2))
 	r := d.run(t, "apply", "-auto-approve", "-no-color")
 	if !strings.Contains(r.Stdout, updatedInPlace) {

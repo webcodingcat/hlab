@@ -44,7 +44,8 @@ func (m *Module) publishNow(ctx context.Context) error {
 }
 
 // Contribute implements resource.NetContributor: every primary zone with
-// its RRSets, each TTL resolved against the zone's TTL.
+// its RRSets (the pending ones of a running RRSet action), each TTL
+// resolved against the zone's TTL.
 func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 	recs, err := store.ListAll[Record](tx, Kind)
 	if err != nil {
@@ -56,7 +57,11 @@ func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 			continue
 		}
 		z := agentapi.Zone{Name: r.Name, TTL: r.TTL}
-		for _, s := range r.RRSets {
+		sets := r.RRSets
+		if r.Hlab.Pending != nil {
+			sets = r.Hlab.Pending.RRSets
+		}
+		for _, s := range sets {
 			ttl := r.TTL
 			if s.TTL != nil {
 				ttl = *s.TTL
@@ -79,4 +84,26 @@ func bumpSerial(r *Record, now time.Time) {
 	old, _ := strconv.ParseUint(f[2], 10, 32)
 	f[2] = strconv.FormatUint(uint64(dnszone.NextSerial(uint32(old), now)), 10) //nolint:gosec // parsed with 32 bits
 	r.RRSets[i].Records[0].Value = strings.Join(f, " ")
+}
+
+// Recover implements resource.Recoverer: an RRSet action interrupted by a
+// stop has been marked error, so the pending RRSets it left are dropped and
+// the agent follows the committed RRSets.
+func (m *Module) Recover(_ context.Context) error {
+	return m.d.Store.Tx(func(tx store.Tx) error {
+		recs, err := store.ListAll[Record](tx, Kind)
+		if err != nil {
+			return err
+		}
+		for _, r := range recs {
+			if r.Hlab.Pending == nil {
+				continue
+			}
+			r.Hlab.Pending = nil
+			if err := put(tx, r); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

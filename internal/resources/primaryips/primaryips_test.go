@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -32,7 +35,9 @@ var publicRange = netip.MustParsePrefix("198.19.0.0/16")
 type pipEnv struct {
 	*apitest.Env
 	pip    *primaryips.Module
-	pushes *atomic.Int64 // agent pushes of both modules
+	pushes *atomic.Int64     // agent pushes of both modules
+	gate   *apitest.PushGate // holds the agent pushes of both modules
+	data   string            // data folder of the servers module
 }
 
 func loadCatalog(t *testing.T) *catalog.Catalog {
@@ -55,13 +60,20 @@ func newPIPEnv(t *testing.T) *pipEnv {
 	fake.SetResources(plenty)
 	d := apitest.ServersDeps(t, cat, fake)
 	pushes := new(atomic.Int64)
-	d.PushAgent = func(context.Context) error { pushes.Add(1); return nil }
+	gate := apitest.NewPushGate(t)
+	d.PushAgent = func(ctx context.Context) error {
+		if err := gate.Wait(ctx); err != nil {
+			return err
+		}
+		pushes.Add(1)
+		return nil
+	}
 	srv := servers.New(d)
 	pip := newModule(d, cat, srv)
 	srv.SetPublicIPs(pip)
 	srv.OnDelete(pip.ServerDeleted)
 	srv.SetDNSPtrs(pip)
-	return &pipEnv{Env: apitest.New(t, srv, pip, resactions.New()), pip: pip, pushes: pushes}
+	return &pipEnv{Env: apitest.New(t, srv, pip, resactions.New()), pip: pip, pushes: pushes, gate: gate, data: d.Settings.DataFolder}
 }
 
 func newModule(d servers.Deps, cat *catalog.Catalog, srv *servers.Module) *primaryips.Module {
@@ -703,6 +715,105 @@ func TestPrimaryIPs(t *testing.T) {
 		wantInvalidField(t, e.Do(http.MethodPost, path+"/actions/change_dns_ptr",
 			map[string]any{"ip": other.IP, "dns_ptr": "x.example.com"}), "ip", "server change_dns_ptr on an IP it does not hold")
 	})
+
+	t.Run("CLI-02/interrupted", testInterrupted)
+	t.Run("CLI-02", func(t *testing.T) {
+		e := newPIPEnv(t)
+		ip := createPIP(t, e, map[string]any{"name": "queue", "type": "ipv4", "location": "fsn1"})
+		s := stoppedServer(t, e, "s", "fsn1")
+		y := stoppedServer(t, e, "y", "fsn1")
+		v6 := getServer(t, e, s).PublicNet.IPv6
+		if v6 == nil {
+			t.Fatalf("server %d has no IPv6 primary IP", s)
+		}
+		e.gate.Close()
+
+		// The unassign of the server's IPv6 holds the server as a
+		// secondary ref only.
+		holder := startPIPAction(t, e, v6.ID, "unassign", nil)
+		releaseHolder := e.gate.Next(t, "unassign of the IPv6")
+		assign := startPIPAction(t, e, ip.ID, "assign", assignTo(s))
+		wantError(t, pipAction(e, ip.ID, "assign", assignTo(y)),
+			http.StatusLocked, "locked", "second assign of the primary IP")
+
+		releaseHolder()
+		releaseAssign := e.gate.Next(t, "assign queued behind the unassign")
+		if a := e.GetAction(holder.ID); a.Status != "success" {
+			t.Errorf("unassign when the queued assign worked: %q, want success", a.Status)
+		}
+		if got := assignee(mustPIP(t, e, ip.ID)); got != 0 {
+			t.Errorf("while assign runs: assignee_id %d, want null", got)
+		}
+		if got := getServer(t, e, s).PublicNet.IPv4; got != nil {
+			t.Errorf("while assign runs: server public_net.ipv4 %+v, want null", got)
+		}
+		releaseAssign()
+		waitSuccess(t, e, assign.ID, "assign")
+		if got := assignee(mustPIP(t, e, ip.ID)); got != s {
+			t.Errorf("after assign: assignee_id %d, want %d", got, s)
+		}
+		if got := getServer(t, e, s); ipv4ID(got) != ip.ID {
+			t.Errorf("after assign: server public_net.ipv4 %+v, want primary IP %d", got.PublicNet.IPv4, ip.ID)
+		}
+	})
+}
+
+// testInterrupted checks that Recover after a stop during an assign's
+// rebuild puts the earlier state back into store and seed.
+func testInterrupted(t *testing.T) {
+	e := newPIPEnv(t)
+	ip := createPIP(t, e, map[string]any{"name": "cut", "type": "ipv4", "location": "fsn1"})
+	s := stoppedServer(t, e, "s", "fsn1")
+	e.gate.Close()
+	assign := startPIPAction(t, e, ip.ID, "assign", assignTo(s))
+	release := e.gate.Next(t, "assign rebuilding the server")
+	if !seedHas(t, e, s, ip.IP) {
+		t.Fatalf("seed of server %d during the assign lacks %s", s, ip.IP)
+	}
+
+	if err := e.pip.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover: %v", err)
+	}
+	if got := assignee(mustPIP(t, e, ip.ID)); got != 0 {
+		t.Errorf("after Recover: assignee_id %d, want null", got)
+	}
+	if got := getServer(t, e, s).PublicNet.IPv4; got != nil {
+		t.Errorf("after Recover: server public_net.ipv4 %+v, want null", got)
+	}
+	if seedHas(t, e, s, ip.IP) {
+		t.Errorf("after Recover: seed of server %d still carries %s", s, ip.IP)
+	}
+	release()
+	e.WaitAction(assign.ID)
+}
+
+// seedHas reports whether the seed ISO of server id contains text; the
+// ISO stores its files uncompressed.
+func seedHas(t *testing.T, e *pipEnv, id int64, text string) bool {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(e.data, "disks", fmt.Sprintf("server-%d-cidata.iso", id)))
+	if err != nil {
+		t.Fatalf("read seed of server %d: %v", id, err)
+	}
+	return strings.Contains(string(data), text)
+}
+
+// startPIPAction posts the action, expects 201 and returns the action,
+// which is still running.
+func startPIPAction(t *testing.T, e *pipEnv, id int64, name string, body any) apitest.Action {
+	t.Helper()
+	resp := pipAction(e, id, name, body)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /primary_ips/%d/actions/%s %v: status %d (%s), want 201", id, name, body, resp.StatusCode, apitest.ErrorCode(t, resp))
+	}
+	var b struct {
+		Action apitest.Action `json:"action"`
+	}
+	apitest.Decode(t, resp, &b)
+	if b.Action.Status != "running" {
+		t.Errorf("%s primary IP %d: action status %q, want running", name, id, b.Action.Status)
+	}
+	return b.Action
 }
 
 // apiCode is the API code of an error the module returns to the

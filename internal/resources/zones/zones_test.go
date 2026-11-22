@@ -61,6 +61,7 @@ type zoneEnv struct {
 
 	failPush atomic.Bool
 	mu       sync.Mutex
+	gate     *apitest.PushGate
 	pushes   []agentapi.Config
 	sets     [][]string
 }
@@ -75,7 +76,7 @@ func newZoneEnv(t *testing.T) *zoneEnv {
 	}
 	// ServersDeps opens the store the next apitest.New uses.
 	st := apitest.ServersDeps(t, cat, platformtest.NewFake()).Store
-	e := &zoneEnv{shadow: &fakeShadow{}}
+	e := &zoneEnv{shadow: &fakeShadow{}, gate: apitest.NewPushGate(t)}
 	e.mod = zones.New(zones.Deps{
 		Store:     st,
 		PushAgent: e.push,
@@ -87,9 +88,12 @@ func newZoneEnv(t *testing.T) *zoneEnv {
 	return e
 }
 
-func (e *zoneEnv) push(context.Context) error {
+func (e *zoneEnv) push(ctx context.Context) error {
 	if e.failPush.Load() {
 		return errors.New("agent unreachable")
+	}
+	if err := e.gate.Wait(ctx); err != nil {
+		return err
 	}
 	var doc agentapi.Config
 	if err := e.Store.Tx(func(tx store.Tx) error { return e.mod.Contribute(tx, &doc) }); err != nil {
@@ -426,6 +430,8 @@ func TestZones(t *testing.T) {
 	t.Run("DNS-01/secondary", testSecondary)
 	t.Run("DNS-01/rrsets", testRRSets)
 	t.Run("DNS-01/zonefile", testZonefile)
+	t.Run("CLI-02/queue", testQueue)
+	t.Run("CLI-02/effect", testEffect)
 	t.Run("DNS-04", testShadow)
 }
 

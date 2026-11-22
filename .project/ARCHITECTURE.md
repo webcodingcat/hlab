@@ -143,7 +143,7 @@ Inside `hlabd` (Go packages under `internal/`):
   type ActionUser interface {           // modules starting actions outside a handler (daily backups); Mount calls it before Routes
       UseActions(m *actions.Manager)
   }
-  type Recoverer interface {            // modules with records to repair at cloud start (images, volumes: half-made records; primary_ips: missing records; load_balancers: PTR entries on the pre-Q14 formal IPv6)
+  type Recoverer interface {            // modules with records to repair at cloud start (images, volumes: half-made records; load_balancers: PTR entries on the pre-Q14 formal IPv6 and pending state left by a stop; firewalls, zones: pending state left by a stop; networks: earlier state left by an interrupted network action; volumes: pending attach left by a stop; floating_ips: pending assign; primary_ips: missing records and the earlier state, including the seed, left by an interrupted assign)
       Recover(ctx context.Context) error // cloud start calls it before the API serves and before the first scheduled job run
   }
   type Lifecycle interface {            // modules whose VMs follow the cloud's stop and start (servers)
@@ -194,9 +194,18 @@ Inside `hlabd` (Go packages under `internal/`):
   that locks it; `Manager.StartAll(tx, projectID, lock []Ref, specs []Spec)
   ([]*Action, error)` checks locks once, only on `lock`, and starts one
   action per `Spec{Command, Resources}` without the batch locking itself;
-  `actions.Run(id, func(ctx, progress func(int)) error)` runs
-  the work in a worker pool and sets `success` or `error` with Hetzner's
-  error object. Actions survive a stop: running actions are marked `error`
+  `Manager.StartQueued(tx, projectID, command, resources, refuse []Ref)
+  (*Action, error)` returns `locked` only for the `refuse` refs and lets the
+  action queue behind the others (the queuing actions are listed in
+  `api.Deviations()`);
+  `actions.Run(id, func(ctx, progress func(int)) error)` first waits,
+  without holding a worker, until every running action with a lower ID that
+  shares a ref has finished (also for actions from `Start` and `StartAll`),
+  then runs the work in a worker pool and sets `success` or `error` with
+  Hetzner's error object; a queued action shows as `running`.
+  `Manager.Succeed(tx, acts)` marks actions created in the same transaction
+  `success` at once, without `Run` (an action with nothing to do, such as
+  the rules of a firewall applied to nothing). Actions survive a stop: running actions are marked `error`
   with code `server_error` at the next start. `Manager.ListFor(projectID, refType, resourceID)` lists
   the actions of one resource (or of a resource type) for the generic
   action endpoints; `ErrProtected` is returned for an action refused by

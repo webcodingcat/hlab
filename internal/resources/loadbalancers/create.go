@@ -29,7 +29,7 @@ type createRequest struct {
 	} `json:"public_net"`
 	Network     int64             `json:"network"`
 	NetworkZone string            `json:"network_zone"`
-	Location    string            `json:"location"`
+	Location    json.RawMessage   `json:"location"`
 	Services    []json.RawMessage `json:"services"`
 	Targets     []json.RawMessage `json:"targets"`
 }
@@ -95,7 +95,7 @@ func (m *Module) newRecord(tx store.Tx, projectID int64, body createRequest) (Re
 	if !ok {
 		return r, &api.FieldError{Field: "load_balancer_type", Message: "load balancer type " + refString(body.LoadBalancerType) + " not found"}
 	}
-	loc, err := m.createLocation(body.Location, body.NetworkZone)
+	loc, err := m.createLocation(refString(body.Location), body.NetworkZone)
 	if err != nil {
 		return r, err
 	}

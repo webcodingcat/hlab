@@ -63,7 +63,7 @@ func (m *Module) attachToNetwork(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	m.change(w, req, id, "attach_to_network", func(tx store.Tx, r *Record) ([]actions.Ref, error) {
+	m.queued(w, req, id, "attach_to_network", true, func(tx store.Tx, r *Record) ([]actions.Ref, error) {
 		if err := m.attach(tx, r, body.Network, body.IP, body.IPRange); err != nil {
 			return nil, err
 		}
@@ -81,7 +81,7 @@ func (m *Module) detachFromNetwork(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	m.change(w, req, id, "detach_from_network", func(_ store.Tx, r *Record) ([]actions.Ref, error) {
+	m.queued(w, req, id, "detach_from_network", true, func(_ store.Tx, r *Record) ([]actions.Ref, error) {
 		if len(r.PrivateNet) == 0 || r.PrivateNet[0].Network != body.Network {
 			return nil, &api.FieldError{Code: "load_balancer_not_attached_to_network", Message: "the load balancer is not attached to this network"}
 		}
@@ -162,18 +162,28 @@ func (m *Module) InNetwork(tx store.Tx, projectID, netID int64) ([]networks.LBMe
 	return out, nil
 }
 
-// NetworkDeleted detaches every load balancer from network netID.
+// NetworkDeleted detaches every load balancer from network netID, in the
+// pending state of a running action too.
 func (m *Module) NetworkDeleted(tx store.Tx, netID int64) error {
 	recs, err := store.ListAll[Record](tx, Kind)
 	if err != nil {
 		return err
 	}
 	for _, r := range recs {
-		if len(r.PrivateNet) == 0 || r.PrivateNet[0].Network != netID {
+		changed := false
+		if len(r.PrivateNet) > 0 && r.PrivateNet[0].Network == netID {
+			r.PrivateNet = []PrivateNet{}
+			r.Hlab.VLAN = 0
+			changed = true
+		}
+		if p := r.Hlab.Pending; p != nil && len(p.PrivateNet) > 0 && p.PrivateNet[0].Network == netID {
+			p.PrivateNet = []PrivateNet{}
+			p.VLAN = 0
+			changed = true
+		}
+		if !changed {
 			continue
 		}
-		r.PrivateNet = []PrivateNet{}
-		r.Hlab.VLAN = 0
 		if err := put(tx, r); err != nil {
 			return err
 		}
