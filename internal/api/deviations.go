@@ -526,5 +526,25 @@ func Deviations() []Deviation {
 			Endpoint:    "POST /zones/{id}/rrsets/{rr_name}/{rr_type}/actions/update_records",
 			Description: "a second action on the same zone waits as running instead of answering 423 locked",
 		},
+		{
+			Endpoint:    "POST /hetzner/v1/storage_boxes",
+			Description: "a storage box holds no data and offers no protocol yet; only its API record exists",
+		},
+		{
+			Endpoint:    "POST /hetzner/v1/storage_boxes",
+			Description: "server is u<n>.storagebox.hetzner.internal, a subaccount's u<n>-sub<m>.storagebox.hetzner.internal, instead of Hetzner's your-storagebox.de",
+		},
+		{
+			Endpoint:    "POST /hetzner/v1/storage_boxes",
+			Description: "passwords are checked against the password policy but not against known data breaches, also at reset_password and for subaccounts",
+		},
+		{
+			Endpoint:    "POST /hetzner/v1/storage_boxes/{id}/subaccounts",
+			Description: "invalid input, a home_directory with a leading slash included, answers 422 invalid_input at once where Hetzner may fail the action instead",
+		},
+		{
+			Endpoint:    "POST /hetzner/v1/storage_boxes/{id}/actions/change_type",
+			Description: "every action on a storage box or one of its subaccounts locks the box: a second action answers 423 locked until the first ends; Hetzner documents this only for creating subaccounts and snapshots",
+		},
 	}
 }
