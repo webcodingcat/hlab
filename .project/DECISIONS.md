@@ -19,6 +19,22 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 Shutdown retry only for the API action
+
+- Type: decision
+- Phase: phase B3
+- What: a new `platform.PowerShutdownRetry` asks a still booting guest again for up to 2 minutes and is used only by the API `shutdown` action, while `PowerShutdown` stays a single ask for halt, appliance stop and rescue.
+- Why: the B3-02 review found that the retry in `PowerShutdown` stretched cloud stop and uninstall past the 60 s halt timeout of phase 09.
+- Cost of change: low
+
+## 2026-11-22 LabelsField sets message and validity together
+
+- Type: decision
+- Phase: phase B3
+- What: a helper `fail(m)` in LabelsField.svelte sets the error line and the custom validity together and is also used when a chip is put back into the box.
+- Why: a stale invalid mark would otherwise block a later valid submit.
+- Cost of change: low
+
 ## 2026-11-22 Server delete reads load balancer targets before removal
 
 - Type: decision

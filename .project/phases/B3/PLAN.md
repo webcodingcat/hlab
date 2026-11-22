@@ -59,13 +59,13 @@ export function createdText(created: string): string;
   - [x] internal/resources/servers/watch.go: the module keeps in memory the IDs of servers the watch itself moved to `stopping` from a VM reading. The rule "stopping stays while the VM runs" applies only to servers not in that set; a server in it goes back to `running` when its VM runs. The entry is removed when the watch writes another status and in `touch` (every status an action sets). Doc comment of `watch` updated: the shutdown action's lock covers the action itself, the stopping it leaves stays until the VM is off, and a stopping read during a guest's own reboot does not stick.
   - [x] internal/resources/servers/servers.go `delete`: before `remove`, read the IDs of the load balancers targeting the server through the `loadBalancers` hook (nil hook: none); after `remove` succeeds, call `m.d.PushAgent`. A failed push does not fail the action: `slog.Warn` names the server ID and the load balancer IDs, with a one-sentence comment that the next push repairs the appliance's state. `Delete` (project deletion) does not push.
 
-- [ ] B3-02 Shutdown of a booting guest retries
+- [x] B3-02 Shutdown of a booting guest retries
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SRV-07 | Tests: internal/platform/hyperv/hyperv_test.go
   - Reads: REQUIREMENTS SRV-07; DECISIONS "2026-11-21 Reboot of a booting guest retries for two minutes"; internal/platform/hyperv/hyperv.go `askGuest`, `untilAccepted`, `reboot`, `Power`
   - Size: ~40 lines in 1 file
   - Adjusts: -
-  - [ ] internal/platform/hyperv/hyperv.go: `shutdown` as in Interfaces; `Power` case `PowerShutdown` returns `shutdown(ctx, name, guestReadyTimeout, 2*time.Second, <ask calling p.askGuest(ctx, name, "InitiateShutdown")>)`; the doc comments of `guestReadyTimeout` and `Power` name shutdown too.
+  - [x] internal/platform/hyperv/hyperv.go: `shutdown` as in Interfaces; `Power` case `PowerShutdown` returns `shutdown(ctx, name, guestReadyTimeout, 2*time.Second, <ask calling p.askGuest(ctx, name, "InitiateShutdown")>)`; the doc comments of `guestReadyTimeout` and `Power` name shutdown too.
 
 - [x] B3-03 Console Created times in local time
   - Wave: 1 | Depends on: - | Review: alone
