@@ -942,7 +942,11 @@ func TestMCP(t *testing.T) {
 			before := log.count()
 			deleter.gate = make(chan struct{})
 			svc.set(sysint.StateStopped)
-			del := startCall(context.Background(), cs, &mcp.CallToolParams{Name: "project_delete", Arguments: map[string]any{"name": "quiet"}})
+			// The deletion runs on a session whose pipe stays reachable while
+			// the fake service is stopped again for cloud_start (MCP-02: a
+			// stopped cloud refuses project_delete).
+			ungated := base.mcpSession(t, fastWaits, log.options(), nil)
+			del := startCall(context.Background(), ungated, &mcp.CallToolParams{Name: "project_delete", Arguments: map[string]any{"name": "quiet"}})
 			eventually(t, "the deletion of quiet runs", func() bool {
 				deleter.mu.Lock()
 				defer deleter.mu.Unlock()

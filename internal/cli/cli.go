@@ -462,7 +462,7 @@ func projectDelete(c *call) error {
 	if err := c.mgmt(http.MethodDelete, "/projects/"+pathEscape(c.args[0]), nil, &body); err != nil {
 		return err
 	}
-	if err := c.waitAction(body.ActionID, projectDeleteTimeout); err != nil {
+	if err := c.waitAction(body.ActionID, projectDeleteTimeout, nil); err != nil {
 		return fmt.Errorf("deleting project %s failed: %w", c.args[0], err)
 	}
 	return c.out(body, "project "+c.args[0]+" deleted\n")
@@ -476,14 +476,16 @@ const projectDeleteTimeout = 30 * time.Minute
 const actionPoll = 200 * time.Millisecond
 
 // waitAction polls the management action id until it is no longer running
-// and returns its error, if any; it gives up after timeout.
-func (c *call) waitAction(id int64, timeout time.Duration) error {
+// and returns its error, if any; it gives up after timeout. seen, if not
+// nil, gets the progress of every read that finds the action running.
+func (c *call) waitAction(id int64, timeout time.Duration, seen func(progress int)) error {
 	deadline := time.Now().Add(timeout)
 	for {
 		var body struct {
 			Action struct {
-				Status string               `json:"status"`
-				Error  *mgmtclient.APIError `json:"error"`
+				Status   string               `json:"status"`
+				Progress int                  `json:"progress"`
+				Error    *mgmtclient.APIError `json:"error"`
 			} `json:"action"`
 		}
 		if err := c.mgmt(http.MethodGet, fmt.Sprintf("/actions/%d", id), nil, &body); err != nil {
@@ -500,6 +502,9 @@ func (c *call) waitAction(id int64, timeout time.Duration) error {
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("still running after %s (action %d)", timeout, id)
+		}
+		if seen != nil {
+			seen(body.Action.Progress)
 		}
 		select {
 		case <-c.ctx.Done():
