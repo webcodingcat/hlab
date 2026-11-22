@@ -5,17 +5,21 @@ endpoint or behaviour that differs from the real Hetzner Cloud API with
 its route, and every `unsupported_error`. Users read the short summary by
 topic in [Known deviations](../deviations.md) instead.
 
-HLab answers in Hetzner's formats, at `http://api.hetzner.internal/v1`,
-with a token from `hlab token create`.
+HLab answers in Hetzner's formats, at `http://api.hetzner.internal/v1`
+for the Cloud API and at `http://api.hetzner.internal/hetzner/v1` for the
+[Storage Boxes](#storage-boxes) of Hetzner's API, with a token from
+`hlab token create`.
 
 The list is kept complete by a test (`TestDocs/DOC-03` in
 [test/docs](../../test/docs/docs_test.go)):
 
 - every route hlabd registers, as returned by `cloud.APIRoutes()` in
   [internal/cloud/routes.go](../../internal/cloud/routes.go), must appear
-  on this page literally, in backticks and relative to `/v1` (for example
-  `POST /servers/{id}/actions/poweron`), so a new endpoint goes into the
-  [Endpoints](#endpoints) table;
+  on this page literally, in backticks: a Cloud API route relative to
+  `/v1` (for example `POST /servers/{id}/actions/poweron`), a route of a
+  module served under another prefix with that prefix (for example
+  `GET /hetzner/v1/storage_boxes`), so a new endpoint goes into the
+  [Endpoints](#endpoints) table or the table of its section;
 - every entry of `api.Deviations()` in
   [internal/api/deviations.go](../../internal/api/deviations.go) must name
   an endpoint that appears on this page, and none of them may appear in

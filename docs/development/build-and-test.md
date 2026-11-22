@@ -43,11 +43,13 @@ task test -- ./internal/resources/... -run 'TestResources/API-10'
 
 `task test` runs `go test ./...`, or `go test` with the arguments after
 `--`. Run `task openapi` once per machine first: it downloads Hetzner's
-OpenAPI description, checks it against the SHA-256 pin in
-`api/openapi.lock` and caches it in your user cache folder
-(`%LocalAppData%\hlab\openapi\cloud.spec.json`). Every API test validates
-the responses against it and fails with "run `task openapi`" when it is
-missing.
+two OpenAPI descriptions, the Cloud API pinned by SHA-256 in
+`api/openapi.lock` and the Hetzner API (storage boxes) pinned in
+`api/hetzner-openapi.lock`, checks each against its pin and caches them in
+your user cache folder (`%LocalAppData%\hlab\openapi\cloud.spec.json` and
+`hetzner.spec.json`). Every API test validates the responses against the
+description of its path (`/hetzner/v1/...` against `hetzner.spec.json`)
+and fails with "run `task openapi`" when it is missing.
 
 Test names carry the requirement they prove (`TestResources/API-10`), so
 `-run` selects one requirement.
@@ -243,8 +245,10 @@ task catalog
 ```
 
 regenerates `catalog\locations.json`, `server-types.json`,
-`load-balancer-types.json` and `pricing.json` from the real Hetzner API
-(see [Developer setup](setup.md#optional-access-to-the-real-hetzner-api)).
+`load-balancer-types.json` and `pricing.json` from the real Hetzner Cloud
+API, and `storage-box-types.json` from `https://api.hetzner.com/v1`, all
+pages of each (see
+[Developer setup](setup.md#optional-access-to-the-real-hetzner-api)).
 `catalog\images.json` is maintained by hand.
 
 ## Icons

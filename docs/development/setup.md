@@ -115,5 +115,9 @@ refuses to start while the other one runs.
 with a read-only token (`hcloud context create HLab`), or set
 `HLAB_HCLOUD_CONTEXT` to the name of another context. Without hcloud or the
 context, `task catalog` asks for a token and uses it for that run only.
+The storage box types come from `https://api.hetzner.com/v1`; with the
+context, hcloud fetches them itself
+(`hcloud --context <name> --endpoint https://api.hetzner.com/v1 api /storage_box_types`),
+so the context's own `hetzner-endpoint` setting does not matter.
 
 Next: [Build and test](build-and-test.md).
