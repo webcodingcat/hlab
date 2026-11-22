@@ -77,11 +77,11 @@ the message `hlab` prints.
   - [x] Also in `mcp_wait.go`: `project_delete` waits with `waitAction` and `projectDeleteTimeout`, and on a `409` with `ActionID` waits for that action. Every wait ends with the request ctx (the operation goes on in hlabd). With a progress token from `req.Params.GetProgressToken()`, every `Progress` interval sends `req.Session.NotifyProgress` with the current state (`project_delete`: the action's progress). Wire the waits into the handlers in `internal/cli/mcp.go`.
   - [x] Run the MCP-05 row against the dev service (`task build`, `task e2e -- -run 'TestE2E/MCP-05'`) and repair what it shows in `hlab mcp`.
 
-- [ ] 17-04 Documentation
+- [x] 17-04 Documentation
   - Wave: 3 | Depends on: 17-03 | Review: alone
   - Requirements: DOC-01, DOC-04, DOC-07 | Tests: test/docs/docs_test.go
   - Reads: SPEC.md "Documentation" (D1, D2); `decisions/mcp-server.md` item 9 and 10; CONTEXT.md (docs item); RESEARCH.md "Configuration for the docs", "Tool-call timeouts of the clients"; docs/commands.md; README.md
   - Size: ~150 lines in 2 files
   - Adjusts: -
-  - [ ] `docs/commands.md`: section `hlab mcp` covering every tool with its arguments and result; the behaviour while the cloud is stopped and the waits; the sentence on clients with a short per-call limit (Claude Desktop probably about 60 s), whose wait may be cancelled while the operation continues, so `cloud_status`/`project_list` show the state; configuration examples for Claude Code (`claude mcp add --transport stdio --scope user hlab -- <path>\hlab.exe mcp`) and Claude Desktop (`%APPDATA%\Claude\claude_desktop_config.json`).
-  - [ ] `README.md`: short note on the MCP server linking to the section; the "More documentation" line names the MCP tools. No `.mcp.json` is checked in.
+  - [x] `docs/commands.md`: section `hlab mcp` covering every tool with its arguments and result; the behaviour while the cloud is stopped and the waits; the sentence on clients with a short per-call limit (Claude Desktop probably about 60 s), whose wait may be cancelled while the operation continues, so `cloud_status`/`project_list` show the state; configuration examples for Claude Code (`claude mcp add --transport stdio --scope user hlab -- <path>\hlab.exe mcp`) and Claude Desktop (`%APPDATA%\Claude\claude_desktop_config.json`).
+  - [x] `README.md`: short note on the MCP server linking to the section; the "More documentation" line names the MCP tools. No `.mcp.json` is checked in.
