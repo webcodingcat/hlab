@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 Volume detach commits after its push; task e2e limit 120 minutes
+
+- Type: decision
+- Phase: phase 13
+- What: a volume detach records the volume detached only after its agent push (an internal `_hlab.detaching` keeps it out of the agent document meanwhile, Recover completes an interrupted detach whose disk already left the VM), and `task e2e` gets `-timeout 120m`.
+- Why: GET showed `server: null` while the detach still held the volume, so UI-02 deleted into 423; the full run at the close took 58 minutes.
+- Cost of change: low
+
 ## 2026-11-22 The agent retries interrupted netlink dumps
 
 - Type: decision

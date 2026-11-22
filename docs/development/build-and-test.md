@@ -144,7 +144,7 @@ server labelled `client=<client>` and run one after another; the other
 rows run in parallel. At most three servers of a run exist at a time, so
 a row waits until enough of them are free: the `servers` rows take one,
 each `CLI-04` row two. All client rows together took about 14 minutes in
-one run; `task e2e` gives the whole suite 180 minutes.
+one run; `task e2e` gives the whole suite 120 minutes, about twice its last full run (58 minutes).
 
 `go test` splits a `-run` pattern at the slashes and matches each part
 against one level of subtest names. One pattern therefore selects one

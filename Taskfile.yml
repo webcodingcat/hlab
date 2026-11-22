@@ -98,7 +98,7 @@ tasks:
   e2e:
     desc: "Run the end-to-end tests against real Hyper-V and clients; filter with -- -run <regexp>"
     cmds:
-      - go test -tags e2e -count=1 -timeout 180m ./test/e2e/... {{.CLI_ARGS}}
+      - go test -tags e2e -count=1 -timeout 120m ./test/e2e/... {{.CLI_ARGS}}
 
   e2e:elevated:
     desc: "Run the elevated installer suite (administrator terminal; refuses while a release hlab is installed); filter with -- -run <regexp>"
