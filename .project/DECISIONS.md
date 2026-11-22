@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 The agent retries interrupted netlink dumps
+
+- Type: decision
+- Phase: phase 13
+- What: every link, address and route list on the agent's apply path is made again on `netlink.ErrDumpInterrupted`, up to 5 tries, before the push fails.
+- Why: parallel pushes since the action queue let links change during a list, which failed an LB delete with server_error, and the delete loops need a complete list.
+- Cost of change: low
+
 ## 2026-11-22 Queued RRSet changes commit at success
 
 - Type: decision
