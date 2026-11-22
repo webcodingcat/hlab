@@ -129,17 +129,17 @@ var mcpTools = []mcpTool{
 			}
 			return s.command(ctx, caTrust, []string{arg}, nil)
 		}),
-	tool("cloud_start", "Start the cloud (the hlabd service), like hlab cloud start.", nil,
-		func(s *mcpServer, ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) *mcp.CallToolResult {
-			return s.command(ctx, cloudStart, nil, nil)
+	tool("cloud_start", "Start the cloud (the hlabd service) and wait until it runs (at most 5 minutes); returns the cloud status.", nil,
+		func(s *mcpServer, ctx context.Context, req *mcp.CallToolRequest, _ noArgs) *mcp.CallToolResult {
+			return s.cloudStartWait(ctx, req)
 		}),
 	tool("cloud_status", "Return the state of the cloud, like hlab cloud status.", nil,
 		func(s *mcpServer, ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) *mcp.CallToolResult {
 			return s.command(ctx, cloudStatus, nil, nil)
 		}),
-	tool("cloud_stop", "Stop the cloud (the hlabd service), like hlab cloud stop.", nil,
-		func(s *mcpServer, ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) *mcp.CallToolResult {
-			return s.command(ctx, cloudStop, nil, nil)
+	tool("cloud_stop", "Stop the cloud (the hlabd service) and wait until it is stopped (at most 5 minutes); returns the cloud status.", nil,
+		func(s *mcpServer, ctx context.Context, req *mcp.CallToolRequest, _ noArgs) *mcp.CallToolResult {
+			return s.cloudStopWait(ctx, req)
 		}),
 	tool("logs", "Return the last lines of hlabd.log as JSON lines, one per line.", logsSchema(),
 		func(s *mcpServer, ctx context.Context, _ *mcp.CallToolRequest, in logsArgs) *mcp.CallToolResult {
@@ -166,9 +166,9 @@ var mcpTools = []mcpTool{
 		func(s *mcpServer, ctx context.Context, _ *mcp.CallToolRequest, in projectCreateArgs) *mcp.CallToolResult {
 			return s.command(ctx, projectCreate, []string{in.DisplayName}, nil)
 		}),
-	tool("project_delete", "Delete a project with all its resources, like hlab project delete.", nil,
-		func(s *mcpServer, ctx context.Context, _ *mcp.CallToolRequest, in projectDeleteArgs) *mcp.CallToolResult {
-			return s.command(ctx, projectDelete, []string{in.Name}, nil)
+	tool("project_delete", "Delete a project with all its resources and wait until the deletion has ended, like hlab project delete.", nil,
+		func(s *mcpServer, ctx context.Context, req *mcp.CallToolRequest, in projectDeleteArgs) *mcp.CallToolResult {
+			return s.projectDeleteWait(ctx, req, in.Name)
 		}),
 	tool("project_list", "List the projects with their resource counts per type.", nil,
 		func(s *mcpServer, ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) *mcp.CallToolResult {
