@@ -19,6 +19,46 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 APIError carries the action ID of a conflict
+
+- Type: decision
+- Phase: phase 17
+- What: `mgmtclient.APIError` gets an additive field `ActionID` (`action_id`, omitempty) that carries Q20 to the cli.
+- Why: the cli already decodes this error, and `Error()` and `hlab project delete` stay unchanged.
+- Cost of change: low
+
+## 2026-11-22 MCP waits in their own plan
+
+- Type: decision
+- Phase: phase 17
+- What: 17-02 builds the server and all tools without waiting, 17-03 adds waits, progress and cancel in `internal/cli/mcp_wait.go` and the MCP-05 e2e test.
+- Why: together they exceed the size of one reviewable plan.
+- Cost of change: low
+
+## 2026-11-22 Stale status.json checked by modification time
+
+- Type: decision
+- Phase: phase 17
+- What: the cli treats `status.json` as newer than its request by `os.Stat` modification time; `cloudstatus` stays unchanged.
+- Why: the simplest check that needs no format change.
+- Cost of change: low
+
+## 2026-11-22 SCM running counts as cloud running
+
+- Type: decision
+- Phase: phase 17
+- What: the MCP cloud waits poll `Service.State` and read `status.json` only for `stopped`.
+- Why: hlabd reports Running to the service manager only after its start function returned.
+- Cost of change: low
+
+## 2026-11-22 Q20 Conflict on project deletion names the running action
+
+- Type: decision
+- Phase: phase 17
+- What: the `409 conflict` of `DELETE /projects/{name}` carries `action_id` of the running deletion in its error object, so `project_delete` of the MCP server waits for it.
+- Why: the user chose it at the phase start; success and failure of the running deletion stay exact, and the field is additive.
+- Cost of change: medium
+
 ## 2026-11-22 Upgrade to wcc 0.32.19
 
 - Type: approval
