@@ -289,7 +289,7 @@ func (f *Fake) Power(ctx context.Context, name string, op platform.PowerOp) erro
 		v.state = platform.StateRunning
 	case platform.PowerStop:
 		v.state = platform.StateOff
-	case platform.PowerShutdown:
+	case platform.PowerShutdown, platform.PowerShutdownRetry:
 		if !v.holdShutdown {
 			v.state = platform.StateOff
 		}
