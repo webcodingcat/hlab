@@ -2,7 +2,7 @@
 // resource and the resource type of the API path the console sends. They
 // need no browser.
 import { test, expect } from "@playwright/test";
-import { actionTitle, resourceType } from "../../src/lib/format";
+import { actionTitle, createdText, resourceType } from "../../src/lib/format";
 
 test.describe("UI-02 action titles", () => {
   const titles: { name: string; type: string; resource: string; action: string; want: string }[] = [
@@ -63,6 +63,25 @@ test.describe("UI-02 action titles", () => {
   for (const c of paths) {
     test(`resourceType: ${c.path}`, () => {
       expect(resourceType(c.path)).toBe(c.want);
+    });
+  }
+});
+
+test.describe("UI-02 created times", () => {
+  // The expected text comes from the local getters of the same instant, so
+  // the cases hold in any time zone.
+  const local = (d: Date): string => {
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+  const instant = new Date(Date.UTC(2026, 0, 31, 23, 45, 12));
+  const cases: { name: string; created: string }[] = [
+    { name: "timestamp with Z", created: "2026-01-31T23:45:12Z" },
+    { name: "timestamp with +00:00", created: "2026-01-31T23:45:12+00:00" },
+  ];
+  for (const c of cases) {
+    test(c.name, () => {
+      expect(createdText(c.created)).toBe(local(instant));
     });
   }
 });

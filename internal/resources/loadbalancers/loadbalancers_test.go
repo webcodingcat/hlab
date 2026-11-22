@@ -617,6 +617,7 @@ func TestLoadBalancers(t *testing.T) {
 	t.Run("LB-03", testServicesHTTP)
 	t.Run("LB-04", testServicesHTTPS)
 	t.Run("LB-06", testTargets)
+	t.Run("LB-06/server_delete_push", testServerDeletePush)
 	t.Run("LB-05", testHealthStatus)
 	t.Run("LB-08", testMetrics)
 	t.Run("LB-09", testDNSPtr)

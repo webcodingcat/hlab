@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/apitest"
 )
 
@@ -122,4 +123,40 @@ func testTargets(t *testing.T) {
 	}
 	wantError(t, addTarget(e, full.ID, ipTargetBody("203.0.113.200")),
 		http.StatusForbidden, "resource_limit_exceeded", "a 26th target on lb11")
+}
+
+// testServerDeletePush: deleting a server that is a target pushes an agent
+// document without the deleted server's upstream.
+func testServerDeletePush(t *testing.T) {
+	e := newEnv(t)
+	lb := createLB(t, e, lbBody("delete-push"))
+	gone := createServer(t, e, "gone", "fsn1", nil)
+	kept := createServer(t, e, "kept", "fsn1", nil)
+	runLBAction(t, e, lb.ID, "add_target", serverTargetBody(gone.ID, false))
+	runLBAction(t, e, lb.ID, "add_target", serverTargetBody(kept.ID, false))
+
+	goneKey, keptKey := fmt.Sprintf("server:%d", gone.ID), fmt.Sprintf("server:%d", kept.ID)
+	hasKey := func(l agentapi.LoadBalancer, key string) bool {
+		return slices.ContainsFunc(l.Targets, func(tg agentapi.LBTarget) bool { return tg.Key == key })
+	}
+	e.waitDoc(t, "both server targets", func(doc agentapi.Config) bool {
+		l, ok := pushedLB(doc, lb.ID)
+		return ok && hasKey(l, goneKey) && hasKey(l, keptKey)
+	})
+
+	resp := e.Do(http.MethodDelete, fmt.Sprintf("/servers/%d", gone.ID), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("DELETE /servers/%d: status %d (%s), want 200", gone.ID, resp.StatusCode, apitest.ErrorCode(t, resp))
+	}
+	var del struct {
+		Action apitest.Action `json:"action"`
+	}
+	apitest.Decode(t, resp, &del)
+	if a := e.For(t).WaitAction(del.Action.ID); a.Status != "success" {
+		t.Fatalf("delete server: action %q %+v, want success", a.Status, a.Error)
+	}
+	e.waitDoc(t, "the load balancer without the deleted server's upstream", func(doc agentapi.Config) bool {
+		l, ok := pushedLB(doc, lb.ID)
+		return ok && !hasKey(l, goneKey) && hasKey(l, keptKey)
+	})
 }
