@@ -102,7 +102,8 @@ func TestDocs(t *testing.T) {
 		// aliases maps an internal wildcard route to the documented routes it
 		// serves; any other route must appear literally on the page.
 		aliases := map[string][]string{
-			"GET /zones/{id}/{sub}": {"GET /zones/actions/{id}"},
+			"GET /zones/{id}/{sub}":                    {"GET /zones/actions/{id}"},
+			"GET /hetzner/v1/storage_boxes/{id}/{sub}": {"GET /hetzner/v1/storage_boxes/actions/{id}"},
 		}
 		for _, r := range routes {
 			if strings.Contains(coverage, "`"+r+"`") {

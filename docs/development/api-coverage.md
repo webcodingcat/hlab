@@ -633,6 +633,45 @@ The Storage Box endpoints of Hetzner's API are served under
 | Endpoint | Notes |
 |---|---|
 | `GET /hetzner/v1/storage_box_types`, `GET /hetzner/v1/storage_box_types/{id}` | The types of HLab's catalog file `storage-box-types.json`, as Hetzner lists them; none without the file. `hlab catalog update` does not change them. |
+| `GET /hetzner/v1/storage_boxes`, `POST /hetzner/v1/storage_boxes`, `GET /hetzner/v1/storage_boxes/{id}`, `PUT /hetzner/v1/storage_boxes/{id}`, `DELETE /hetzner/v1/storage_boxes/{id}` | `PUT` answers at once; create and delete run as actions. |
+| `POST /hetzner/v1/storage_boxes/{id}/actions/change_protection`, `POST /hetzner/v1/storage_boxes/{id}/actions/change_type`, `POST /hetzner/v1/storage_boxes/{id}/actions/reset_password`, `POST /hetzner/v1/storage_boxes/{id}/actions/update_access_settings`, `POST /hetzner/v1/storage_boxes/{id}/actions/enable_snapshot_plan`, `POST /hetzner/v1/storage_boxes/{id}/actions/disable_snapshot_plan` | `change_type` also takes a smaller type; a snapshot plan is stored only. |
+| `GET /hetzner/v1/storage_boxes/{id}/subaccounts`, `POST /hetzner/v1/storage_boxes/{id}/subaccounts`, `GET /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}`, `PUT /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}`, `DELETE /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}` | The subaccount list has no paging, as in the description. |
+| `POST /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}/actions/change_home_directory`, `POST /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}/actions/reset_subaccount_password`, `POST /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}/actions/update_access_settings` | `update_access_settings` refuses `home_directory`; use `change_home_directory`. |
+| `GET /hetzner/v1/storage_boxes/actions`, `GET /hetzner/v1/storage_boxes/actions/{id}`, `GET /hetzner/v1/storage_boxes/{id}/actions`, `GET /hetzner/v1/storage_boxes/{id}/actions/{action_id}` | Box and subaccount actions are readable at all of these and at `GET /v1/actions/{id}` and `GET /v1/actions?id=`. |
+
+Not served yet; they answer 404 `not_found`: `GET /hetzner/v1/storage_boxes/{id}/folders`,
+the snapshots (`GET /hetzner/v1/storage_boxes/{id}/snapshots`,
+`POST /hetzner/v1/storage_boxes/{id}/snapshots`,
+`GET /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}`,
+`PUT /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}`,
+`DELETE /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}`) and
+`POST /hetzner/v1/storage_boxes/{id}/actions/rollback_snapshot`.
+
+- A storage box holds no data and offers no protocol yet; only its API
+  record exists.
+- `POST /hetzner/v1/storage_boxes` answers with the box in status
+  `initializing`: `username`, `server`, `system` and `snapshot_plan` are
+  null and `stats` are 0. Once `create_storage_box` succeeds the box is
+  `active` with `username` `u<n>` (`n` from 100000, never reused),
+  `server` `u<n>.storagebox.hetzner.internal` and `system`
+  `<LOCATION>-BX<id>`, such as `FSN1-BX1`. Subaccounts are
+  `u<n>-sub<m>` at `u<n>-sub<m>.storagebox.hetzner.internal`.
+- `location` must be one the type has a price for; `ssh_keys` must be in
+  OpenSSH format. Passwords follow Hetzner's password policy for boxes and
+  subaccounts, on create and on reset, but are not checked against known
+  data breaches. HLab keeps only a sha512-crypt and an NT hash of a
+  password.
+- Invalid input answers 422 `invalid_input` at once, also where Hetzner
+  fails the action instead, such as a `home_directory` with a leading
+  slash at `POST /hetzner/v1/storage_boxes/{id}/subaccounts`.
+- A box name is unique in the project, a subaccount name in its box;
+  both answer 409 `uniqueness_error`.
+- Every action on a box or one of its subaccounts locks the box: while it
+  runs, a second one, `DELETE` included, answers 423 `locked`. Hetzner
+  documents this only for creating subaccounts and snapshots, see
+  `POST /hetzner/v1/storage_boxes/{id}/actions/change_type` and the other
+  actions. A box with delete protection answers 423 `protected` to
+  `DELETE`.
 
 ## Projects
 
