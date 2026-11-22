@@ -387,12 +387,12 @@ What the target vision in IDEA.md will need, not built yet.
 | DNS-03 | 07 | x |
 | DNS-04 | 07 | x |
 | DNS-05 | 07 | x |
-| SBOX-01 | 18 | |
-| SBOX-09 | 18 | |
-| SBOX-10 | 18 | |
-| SBOX-20 | 18 | |
+| SBOX-01 | 18 | x |
+| SBOX-09 | 18 | x |
+| SBOX-10 | 18 | x |
+| SBOX-20 | 18 | x |
 | SBOX-11 | 19 | |
-| SBOX-02 | 18 | |
+| SBOX-02 | 18 | x |
 | SBOX-12 | 19 | |
 | SBOX-03 | 19 | |
 | SBOX-13 | 19 | |

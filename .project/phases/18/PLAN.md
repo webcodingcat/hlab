@@ -154,7 +154,7 @@ Stored documents (`resources` table, no migration):
   - [x] `internal/resources/storageboxes/subaccounts.go`: `POST /storage_boxes/{id}/subaccounts` (`home_directory` by the description's pattern and length, without leading slash; password policy; `access_settings` with `readonly`; `name` optional, defaults to the username, unique per box; `description`, labels; 403 `resource_limit_exceeded` with `details.limits` at the type's `subaccounts_limit`; action `create_subaccount` referencing box and subaccount; username `u<n>-sub<m>` with `m` from the box's `next_sub`, never reused; `server` `u<n>-sub<m>.storagebox.hetzner.internal`), list (filters `name`, `username`, `label_selector`, `sort`, no paging as the description has none), show, `PUT` (`name`, `description`, labels), `DELETE` (action `delete_subaccount`).
   - [x] Subaccount actions `change_home_directory`, `reset_subaccount_password` and `update_access_settings` (the five flags with `readonly`; `home_directory` not accepted there), validated first, run as actions referencing box and subaccount and locking the box.
 
-- [ ] 18-08 Documentation
+- [x] 18-08 Documentation
   - Wave: 5 | Depends on: 18-03, 18-06, 18-07 | Review: alone
   - Requirements: DOC-02, DOC-03, DOC-04, DOC-06, DOC-07 | Tests: test/docs/docs_test.go
   - Reads: SPEC.md "Documentation" (D1, D3, D4, D6), "Accounts and secrets" (`hlab-docs`); `decisions/storage-box.md` "Details"; CONTEXT.md (documentation item); EXPERIMENTS.md E12, E13, E15; README.md, docs/deviations.md, docs/configuration.md, docs/development/api-coverage.md, docs/development/build-and-test.md
@@ -162,3 +162,10 @@ Stored documents (`resources` table, no migration):
   - Adjusts: -
   - [ ] `docs/deviations.md`: a "Storage boxes" topic (API only so far: no data and no protocols yet; host names under `storagebox.hetzner.internal`; no breach check of passwords; invalid input refused at once instead of a failed action; every action on a box locks it), without routes. `docs/development/api-coverage.md`: prose of the Storage Box section checked against what is built. `docs/configuration.md`: catalog file `storage-box-types.json`.
   - [ ] `README.md`: the Hetzner endpoint setting of hcloud (`hetzner_endpoint`/`HETZNER_ENDPOINT`), Ansible (`api_endpoint_hetzner`) and OpenTofu (`HETZNER_ENDPOINT`, the attribute is ignored by provider 1.70.2) in the first steps. `docs/development/build-and-test.md`: `task openapi` fetches both descriptions, `task catalog` also writes `storage-box-types.json`. hcloud examples run through `hcloud --context hlab-docs` (its `hetzner-endpoint` is set).
+
+## Close
+
+- End-to-end: none ran; the phase has no end-to-end rows and changed no end-to-end test code.
+- Unit suite and lint in full green on 55e2dc8; after the docs-only verifier fix `task test -- ./test/docs/...` green.
+- `task catalog` run by the main session with context HLab (4 storage box types, Cloud catalogs unchanged).
+- OpenTofu example (`hcloud_storage_box_types`) run by the main session after the doc writer's run was refused: works with `HETZNER_ENDPOINT`; the provider attribute `endpoint_hetzner` alone gives 401 from api.hetzner.com, as the docs say.

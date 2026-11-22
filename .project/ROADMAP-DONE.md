@@ -6,6 +6,16 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x] 18 Storage Box API.
+      Requirements: SBOX-01, SBOX-02, SBOX-09, SBOX-10, SBOX-20.
+      Depends on: 13.
+      Success criteria:
+      1. `http://api.hetzner.internal/hetzner/v1` serves storage box types,
+         storage boxes, subaccounts and their actions as the frozen Hetzner
+         API description says, with the cloud tokens of the project.
+      2. `task catalog` writes the storage box types with prices from the
+         real API.
+
 - [x] B3 Backlog: console times and labels, server power and delete fixes → phases/B3/
 
 - [x] 17 MCP server.
