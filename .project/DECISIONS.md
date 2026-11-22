@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 Q19 Load balancer state changes keep answering locked
+
+- Type: decision
+- Phase: change
+- What: change_algorithm, change_type and the public interface actions of a load balancer keep answering 423 `locked` while a target or service action holds it; docs/deviations.md says that a following command after hcloud's `delete-service`, which does not wait, can get `locked`.
+- Why: the user keeps the rule that state changes of a resource itself refuse, and only one hcloud command is affected.
+- Cost of change: low
+
 ## 2026-11-22 Volume detach commits after its push; task e2e limit 120 minutes
 
 - Type: decision

@@ -139,6 +139,10 @@ succeed. A waiting action shows as `running`, runs in the order sent,
 and its change appears when it succeeds. Actions that change a resource
 itself, such as its protection, a network's range, a zone's TTL or
 deleting it, still answer `locked` while another action holds it.
+Some clients do not wait for every action: `hcloud load-balancer
+delete-service` returns at once, so a following `change-algorithm` or
+`change-type` on the same load balancer can answer `locked` until the
+service is gone.
 
 ## Projects, server types and prices
 
