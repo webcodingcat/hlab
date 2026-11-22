@@ -76,13 +76,13 @@ export function createdText(created: string): string;
   - [x] ui/frontend/src/lib/format.ts: `createdText` parses the timestamp with `new Date` and builds year, month, day, hours and minutes from the local getters, zero-padded, as "YYYY-MM-DD hh:mm"; an unparsable value is shown as given.
   - [x] ui/frontend/src/views/servers/servers.ts: its own `createdText` becomes a re-export of the one in lib/format.ts; ui/frontend/src/views/Tokens.svelte: the Created column uses `createdText`.
 
-- [ ] B3-04 Labels box refuses a submit with invalid text
+- [x] B3-04 Labels box refuses a submit with invalid text
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-02 | Tests: ui/frontend/tests/e2e/placementgroups.spec.ts
   - Reads: REQUIREMENTS UI-02; UI-SPEC "Labels field"; E9 in research/EXPERIMENTS.md; ui/frontend/src/lib/LabelsField.svelte, LabelsTab.svelte, FormPage.svelte; ui/frontend/tests/e2e/console.ts `addLabel`, placementgroups.spec.ts
   - Size: ~30 lines in 1 file
   - Adjusts: -
-  - [ ] ui/frontend/src/lib/LabelsField.svelte: `commit` calls `input.setCustomValidity(message)` when the text breaks the label rule or repeats a key, and `setCustomValidity("")` when the text becomes a chip or is empty, so the enclosing form (FormPage create forms, LabelsTab "Save labels") does not submit. The input's `oninvalid` calls `preventDefault()` (no browser bubble) and focuses the input; the field's own error line stays, linked with `aria-describedby` as now. Header comment updated.
+  - [x] ui/frontend/src/lib/LabelsField.svelte: `commit` calls `input.setCustomValidity(message)` when the text breaks the label rule or repeats a key, and `setCustomValidity("")` when the text becomes a chip or is empty, so the enclosing form (FormPage create forms, LabelsTab "Save labels") does not submit. The input's `oninvalid` calls `preventDefault()` (no browser bubble) and focuses the input; the field's own error line stays, linked with `aria-describedby` as now. Header comment updated.
 
 - [ ] B3-05 Documentation
   - Wave: 2 | Depends on: B3-01, B3-02, B3-03, B3-04 | Review: alone
