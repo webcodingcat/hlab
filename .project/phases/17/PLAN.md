@@ -85,3 +85,9 @@ the message `hlab` prints.
   - Adjusts: -
   - [x] `docs/commands.md`: section `hlab mcp` covering every tool with its arguments and result; the behaviour while the cloud is stopped and the waits; the sentence on clients with a short per-call limit (Claude Desktop probably about 60 s), whose wait may be cancelled while the operation continues, so `cloud_status`/`project_list` show the state; configuration examples for Claude Code (`claude mcp add --transport stdio --scope user hlab -- <path>\hlab.exe mcp`) and Claude Desktop (`%APPDATA%\Claude\claude_desktop_config.json`).
   - [x] `README.md`: short note on the MCP server linking to the section; the "More documentation" line names the MCP tools. No `.mcp.json` is checked in.
+
+## Close
+
+- End-to-end: `task e2e -- -run 'TestE2E/MCP-05'` ran green on 6c7ea4a (83 s) during 17-03; only documentation and planning files changed after it, so it counts at the close.
+- Unit suite and linter over the whole project: green on 62c6c52.
+- Verifier: no blockers; ARCHITECTURE.md `mcp` item now says the waits use the service state and the status file.

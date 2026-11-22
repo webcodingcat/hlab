@@ -500,7 +500,7 @@ Inside `hlabd` (Go packages under `internal/`):
   the same management client and service controller as the other
   commands. Tools (names and arguments are a stable interface):
   `cloud_status`, `cloud_start`, `cloud_stop` (both wait for `running` or
-  `stopped` through the status file, at most about 5 minutes; a failed
+  `stopped` through the service state and the status file, at most about 5 minutes; a failed
   start or a refusal is a tool error), `project_create {display_name}`,
   `project_list` (with `resources_by_type`), `project_delete {name}`
   (waits for its action), `token_create {project, name, read_only}` (the

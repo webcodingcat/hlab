@@ -6,6 +6,20 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x] 17 MCP server.
+      Requirements: MCP-01, MCP-02, MCP-03, MCP-04, MCP-05.
+      Depends on: 15.
+      Success criteria:
+      1. An MCP client controls hlab through `hlab mcp`: every tool does
+         what its `hlab` command does; while the cloud is stopped,
+         `cloud_status`, `logs` and `version` work and every other tool
+         says that the cloud is not running.
+      2. `cloud_start` and `cloud_stop` return once the cloud has reached
+         its state, and a refusal comes back as a tool error.
+      3. `docs/commands.md` describes every tool with a configuration
+         example for Claude Code and Claude Desktop; the README points to
+         it.
+
 - [x] 13 Client matrix and success criterion.
       Requirements: CLI-01, CLI-02, CLI-03, CLI-04.
       Depends on: 14, 15, 12.

@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 17 MCP server (next)
+- Phase: 18 Storage Box API (next)
 - Base branch: main
-- Last done: phase 13 merged into main (2026-11-22): hcloud, OpenTofu and Ansible pass the client matrix for every Cloud API type and build, reach and delete the example environment; actions sharing a resource now queue instead of answering `locked`, with effects shown at `success` and restored after errors and stops; `task e2e` takes 54 min, limit 120m
-- Next: /wcc:phase in a new session builds phase 17 (MCP server `hlab mcp`), then phases 18 to 21 (Storage Boxes); /wcc:change takes items from "Later" before phase 16, which runs all manual checks and the installer suite in two test VMs
+- Last done: phase 17 merged into main (2026-11-22): `hlab mcp` serves 13 MCP tools over stdio; cloud_start, cloud_stop and project_delete wait with progress notifications, and a cancel ends only the wait; the 409 of a running project deletion names its action
+- Next: /wcc:phase in a new session builds phase 18 (Storage Box API), then phases 19 to 21; /wcc:change takes items from "Later" before phase 16, which runs all manual checks and the installer suite in two test VMs
 
 ## Open manual checks
 
