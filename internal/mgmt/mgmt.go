@@ -285,7 +285,11 @@ func (s server) deleteProject(w http.ResponseWriter, req *http.Request) {
 		return nil
 	})
 	if errors.Is(err, actions.ErrLocked) {
-		writeError(w, http.StatusConflict, "conflict", "a deletion of project "+name+" is running")
+		e := map[string]any{"code": "conflict", "message": "a deletion of project " + name + " is running"}
+		if id := s.runningDeletion(p.ID); id != 0 {
+			e["action_id"] = id
+		}
+		writeJSON(w, http.StatusConflict, map[string]any{"error": e})
 		return
 	}
 	if err != nil {
@@ -296,6 +300,22 @@ func (s server) deleteProject(w http.ResponseWriter, req *http.Request) {
 		return s.purge(ctx, p, progress)
 	})
 	writeJSON(w, http.StatusAccepted, map[string]int64{"action_id": action.ID})
+}
+
+// runningDeletion returns the ID of the running delete_project action of
+// the project, or 0 when none is found.
+func (s server) runningDeletion(projectID int64) int64 {
+	list, err := s.d.Actions.ListFor(0, projectRef, projectID)
+	if err != nil {
+		slog.Error("list project deletions", "err", err)
+		return 0
+	}
+	for _, a := range list {
+		if a.Command == "delete_project" && a.Status == actions.StatusRunning {
+			return a.ID
+		}
+	}
+	return 0
 }
 
 // idleTimeout bounds how long a project deletion waits for the project's
