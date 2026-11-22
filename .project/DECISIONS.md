@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 Backlog phase B3
+
+- Type: change
+- Phase: change
+- What: the user took the five backlog bugs (console Created times without zone, reboot status stuck at stopping under load, invalid labels dropped silently, server delete without agent push for load balancer targets, shutdown of a booting guest without retry) into phase B3 before phase 18, and dropped the Reconcile and uninstall CA items as overtaken by phases 09 and 12.
+- Why: the user's choice from the backlog.
+- Cost of change: low
+
 ## 2026-11-22 MCP progress counts notifications
 
 - Type: decision
