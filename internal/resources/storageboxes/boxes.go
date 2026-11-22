@@ -158,9 +158,6 @@ func (m *Module) location(ref string) (catalog.Location, bool) {
 
 // validate checks the fields of a create body that need no store.
 func (m *Module) validate(body createRequest) (catalog.StorageBoxType, catalog.Location, error) {
-	if strings.TrimSpace(body.Name) == "" {
-		return catalog.StorageBoxType{}, catalog.Location{}, &api.FieldError{Field: "name", Message: "name is required"}
-	}
 	st, ok := m.boxType(body.StorageBoxType)
 	if !ok {
 		return st, catalog.Location{}, &api.FieldError{Field: "storage_box_type", Message: "unknown storage box type"}
