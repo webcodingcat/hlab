@@ -1,7 +1,7 @@
 // Package catalog loads the shipped catalogs (locations, server types, load
-// balancer types, pricing, images, ISOs). The files hold Hetzner's API
-// shapes; images and ISOs carry their download source in `_hlab.source`,
-// which is never served.
+// balancer types, pricing, images, ISOs, Storage Box types). The files hold
+// Hetzner's API shapes; images and ISOs carry their download source in
+// `_hlab.source`, which is never served.
 package catalog
 
 import (
@@ -87,6 +87,8 @@ type Catalog struct {
 	Images            []Image
 	ISOs              []ISO
 	LoadBalancerTypes []json.RawMessage
+	// StorageBoxTypes come from storage-box-types.json; none without it.
+	StorageBoxTypes []StorageBoxType
 
 	mu          sync.RWMutex
 	serverTypes []ServerType // catalog types followed by the own types
@@ -163,6 +165,9 @@ func Load(dir string) (*Catalog, error) {
 		return nil, err
 	}
 	c.pricing = pricing.Pricing
+	if c.StorageBoxTypes, err = loadStorageBoxTypes(dir); err != nil {
+		return nil, err
+	}
 	return c, nil
 }
 

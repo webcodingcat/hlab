@@ -624,6 +624,16 @@ nothing physically: a `spread` group only records its member servers.
   every served type; an own type without `prices` gets zero prices in each
   of its locations.
 
+## Storage Boxes
+
+The Storage Box endpoints of Hetzner's API are served under
+`http://api.hetzner.internal/hetzner/v1`, the address of
+`api.hetzner.com/v1`; the routes below carry that prefix.
+
+| Endpoint | Notes |
+|---|---|
+| `GET /hetzner/v1/storage_box_types`, `GET /hetzner/v1/storage_box_types/{id}` | The types of HLab's catalog file `storage-box-types.json`, as Hetzner lists them; none without the file. `hlab catalog update` does not change them. |
+
 ## Projects
 
 Projects and tokens are managed with the `hlab` command and in the tray
