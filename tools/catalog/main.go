@@ -1,13 +1,15 @@
 // Command catalog generates the shipped catalogs catalog/locations.json,
 // catalog/server-types.json, catalog/load-balancer-types.json and
-// catalog/pricing.json from the real Hetzner API (`task catalog`, run from
-// the repository root).
+// catalog/pricing.json from the real Hetzner Cloud API and
+// catalog/storage-box-types.json from the Hetzner API
+// (https://api.hetzner.com/v1) (`task catalog`, run from the repository
+// root).
 //
-// It calls the API through the hcloud context named HLab (or
-// HLAB_HCLOUD_CONTEXT) when that context is usable; otherwise it says why
-// and asks for a token with a hidden prompt, which it uses for this run
-// only. Lists are written as the API returns them with all pages merged
-// into one list and without meta.
+// It calls both APIs through the hcloud context named HLab (or
+// HLAB_HCLOUD_CONTEXT) when that context is usable, so the token never
+// leaves hcloud; otherwise it says why and asks for a token with a hidden
+// prompt, which it uses for this run only. Lists are written as the API
+// returns them with all pages merged into one list and without meta.
 package main
 
 import (
@@ -31,6 +33,7 @@ import (
 
 const (
 	endpoint       = "https://api.hetzner.cloud/v1"
+	hetznerAPI     = "https://api.hetzner.com/v1"
 	defaultContext = "HLab"
 	outDir         = "catalog"
 	perPage        = 50
@@ -61,17 +64,19 @@ func run() error {
 	if name == "" {
 		name = defaultContext
 	}
-	var get fetcher
+	var get, getHetzner fetcher
 	if err := usableContext(ctx, name); err == nil {
 		fmt.Printf("using hcloud context %q\n", name)
 		get = hcloudFetcher(name)
+		getHetzner = hcloudFetcher(name, "--endpoint", hetznerAPI)
 	} else {
 		fmt.Fprintf(os.Stderr, "hcloud context %q not usable: %v\n", name, err)
 		token, err := promptToken()
 		if err != nil {
 			return err
 		}
-		get = httpFetcher(token)
+		get = httpFetcher(endpoint, token)
+		getHetzner = httpFetcher(hetznerAPI, token)
 	}
 
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
@@ -90,7 +95,14 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("/pricing: %w", err)
 	}
-	return write("pricing.json", json.RawMessage(pricing))
+	if err := write("pricing.json", json.RawMessage(pricing)); err != nil {
+		return err
+	}
+	boxTypes, err := allPages(ctx, getHetzner, "/storage_box_types", "storage_box_types")
+	if err != nil {
+		return fmt.Errorf("/storage_box_types: %w", err)
+	}
+	return write("storage-box-types.json", map[string]any{"storage_box_types": boxTypes})
 }
 
 // allPages fetches every page of a list endpoint and returns its items.
@@ -190,9 +202,11 @@ func usableContext(ctx context.Context, name string) error {
 	return nil
 }
 
-func hcloudFetcher(name string) fetcher {
+// hcloudFetcher calls `hcloud --context name <flags> api` for each request.
+func hcloudFetcher(name string, flags ...string) fetcher {
 	return func(ctx context.Context, path string, q url.Values) ([]byte, error) {
-		args := []string{"--context", name, "api"}
+		args := append([]string{"--context", name}, flags...)
+		args = append(args, "api")
 		for k, vs := range q {
 			for _, v := range vs {
 				args = append(args, "-v", k+"="+v)
@@ -202,9 +216,10 @@ func hcloudFetcher(name string) fetcher {
 	}
 }
 
-func httpFetcher(token string) fetcher {
+// httpFetcher calls the API at base with the token itself.
+func httpFetcher(base, token string) fetcher {
 	return func(ctx context.Context, path string, q url.Values) ([]byte, error) {
-		u := endpoint + path
+		u := base + path
 		if len(q) > 0 {
 			u += "?" + q.Encode()
 		}
