@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 Storage box types only from the shipped catalog
+
+- Type: decision
+- Phase: phase 18
+- What: `catalog.Load` reads `storage-box-types.json` only from the shipped catalog folder, never from the data folder, so `hlab catalog update` cannot touch it.
+- Why: CAT-03 updates only the Cloud catalogs.
+- Cost of change: low
+
 ## 2026-11-22 Storage VM interfaces and catalog through hcloud
 
 - Type: change

@@ -99,15 +99,15 @@ Stored documents (`resources` table, no migration):
   - [x] `internal/apitest/openapi.go`: the loader takes the description file; a second validator for `hetzner.spec.json`, built once, with `"url": "https://api.hetzner.com/v1"` rewritten to `"url": "/hetzner/v1"` in the bytes and `upperRangeKeys` applied (`lbAssignee` only for cloud.spec.json); `ValidateResponse` picks the validator by the request path; `HetznerDescriptionPath`; `RequireDescription` names `task openapi` for either file. `internal/apitest/apitest.go`: `HetznerBaseURL` and the path rule of `Do`/`DoAuth`.
   - [x] New `api/hetzner-openapi.lock` (`https://docs.hetzner.cloud/hetzner.spec.json`, SHA-256 `3afa18f135b62f4c6703a855fe0c5d5f5769f9bac8451a09819acc6a637cb688`); `tools/openapi/main.go` processes both lock files, caching `cloud.spec.json` and `hetzner.spec.json`; the `openapi` task description in `Taskfile.yml` names both.
 
-- [ ] 18-02 Storage box types from the catalog
+- [x] 18-02 Storage box types from the catalog
   - Wave: 2 | Depends on: 18-01 | Review: alone
   - Requirements: SBOX-01 | Tests: internal/catalog/catalog_test.go, internal/resources/storageboxtypes/storageboxtypes_test.go
   - Reads: ARCHITECTURE.md "Files and formats" (storage-box-types.json); SPEC.md "References" (Hetzner API description, path `/storage_box_types`); CONTEXT.md item 3; RESEARCH.md "Q2" (type item fields); `internal/resources/servertypes/servertypes.go` as the pattern
   - Size: ~220 lines in 6 files
   - Adjusts: -
-  - [ ] `internal/catalog/catalog.go` (or a new `storageboxtypes.go` in the package): `StorageBoxType`, `ParseStorageBoxTypes`, field `Catalog.StorageBoxTypes` filled by `Load` from `storage-box-types.json` when present (`Locations` from `prices[].location`); `hlab catalog update` does not touch it.
-  - [ ] New `internal/resources/storageboxtypes/storageboxtypes.go`: constructor `New(cat *catalog.Catalog)` like `servertypes.New`, `Prefix` `api.HetznerPrefix`, `GET /storage_box_types` (filter `name`, paging, sorted by ID) and `GET /storage_box_types/{id}` serving `Raw`; wired in `Cloud.modules()` (`internal/cloud/cloud.go`). Rows for both routes in `docs/development/api-coverage.md` (section "Storage Boxes", full `/hetzner/v1` routes).
-  - [ ] New `internal/apitest/storage.go` with `StorageBoxTypes(t)` and `internal/apitest/testdata/storage-box-types.json`: three types in the shape of the description (bx11 1 TB, bx21 5 TB, bx31 10 TB; `snapshot_limit` 10/20/30, `automatic_snapshot_limit` 10/20/30, `subaccounts_limit` 5/200/300 (bx11 small so SBOX-02/limit_numbering stays fast); prices for fsn1, nbg1, hel1, bx11 without nbg1).
+  - [x] `internal/catalog/catalog.go` (or a new `storageboxtypes.go` in the package): `StorageBoxType`, `ParseStorageBoxTypes`, field `Catalog.StorageBoxTypes` filled by `Load` from `storage-box-types.json` when present (`Locations` from `prices[].location`); `hlab catalog update` does not touch it.
+  - [x] New `internal/resources/storageboxtypes/storageboxtypes.go`: constructor `New(cat *catalog.Catalog)` like `servertypes.New`, `Prefix` `api.HetznerPrefix`, `GET /storage_box_types` (filter `name`, paging, sorted by ID) and `GET /storage_box_types/{id}` serving `Raw`; wired in `Cloud.modules()` (`internal/cloud/cloud.go`). Rows for both routes in `docs/development/api-coverage.md` (section "Storage Boxes", full `/hetzner/v1` routes).
+  - [x] New `internal/apitest/storage.go` with `StorageBoxTypes(t)` and `internal/apitest/testdata/storage-box-types.json`: three types in the shape of the description (bx11 1 TB, bx21 5 TB, bx31 10 TB; `snapshot_limit` 10/20/30, `automatic_snapshot_limit` 10/20/30, `subaccounts_limit` 5/200/300 (bx11 small so SBOX-02/limit_numbering stays fast); prices for fsn1, nbg1, hel1, bx11 without nbg1).
 
 - [ ] 18-03 `task catalog` fetches the storage box types
   - Wave: 1 | Depends on: - | Review: alone
