@@ -89,15 +89,15 @@ Stored documents (`resources` table, no migration):
 
 ## Plans
 
-- [ ] 18-01 Hetzner API prefix and its validation
+- [x] 18-01 Hetzner API prefix and its validation
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: API-10, API-14 | Tests: internal/api/router_test.go
   - Reads: ARCHITECTURE.md "api", "resource (one module per resource type)"; SPEC.md "References"; CONTEXT.md items 1, 2, 5, 6; RESEARCH.md "Q3"; EXPERIMENTS.md E8, E12
   - Size: ~260 lines in 7 files
   - Adjusts: -
-  - [ ] `internal/resource/resource.go`: interface `Prefixed`. `internal/api/router.go`: `HetznerPrefix`; the router keeps one mux per prefix, `underPrefix` accepts both prefixes and strips the matching one, `Mount` picks the mux by `Prefixed`; unknown paths under either prefix answer `not_found`. `internal/cloud/routes.go`: `APIRoutes` records each module's patterns and prefixes those of a `Prefixed` module with its prefix.
-  - [ ] `internal/apitest/openapi.go`: the loader takes the description file; a second validator for `hetzner.spec.json`, built once, with `"url": "https://api.hetzner.com/v1"` rewritten to `"url": "/hetzner/v1"` in the bytes and `upperRangeKeys` applied (`lbAssignee` only for cloud.spec.json); `ValidateResponse` picks the validator by the request path; `HetznerDescriptionPath`; `RequireDescription` names `task openapi` for either file. `internal/apitest/apitest.go`: `HetznerBaseURL` and the path rule of `Do`/`DoAuth`.
-  - [ ] New `api/hetzner-openapi.lock` (`https://docs.hetzner.cloud/hetzner.spec.json`, SHA-256 `3afa18f135b62f4c6703a855fe0c5d5f5769f9bac8451a09819acc6a637cb688`); `tools/openapi/main.go` processes both lock files, caching `cloud.spec.json` and `hetzner.spec.json`; the `openapi` task description in `Taskfile.yml` names both.
+  - [x] `internal/resource/resource.go`: interface `Prefixed`. `internal/api/router.go`: `HetznerPrefix`; the router keeps one mux per prefix, `underPrefix` accepts both prefixes and strips the matching one, `Mount` picks the mux by `Prefixed`; unknown paths under either prefix answer `not_found`. `internal/cloud/routes.go`: `APIRoutes` records each module's patterns and prefixes those of a `Prefixed` module with its prefix.
+  - [x] `internal/apitest/openapi.go`: the loader takes the description file; a second validator for `hetzner.spec.json`, built once, with `"url": "https://api.hetzner.com/v1"` rewritten to `"url": "/hetzner/v1"` in the bytes and `upperRangeKeys` applied (`lbAssignee` only for cloud.spec.json); `ValidateResponse` picks the validator by the request path; `HetznerDescriptionPath`; `RequireDescription` names `task openapi` for either file. `internal/apitest/apitest.go`: `HetznerBaseURL` and the path rule of `Do`/`DoAuth`.
+  - [x] New `api/hetzner-openapi.lock` (`https://docs.hetzner.cloud/hetzner.spec.json`, SHA-256 `3afa18f135b62f4c6703a855fe0c5d5f5769f9bac8451a09819acc6a637cb688`); `tools/openapi/main.go` processes both lock files, caching `cloud.spec.json` and `hetzner.spec.json`; the `openapi` task description in `Taskfile.yml` names both.
 
 - [ ] 18-02 Storage box types from the catalog
   - Wave: 2 | Depends on: 18-01 | Review: alone
@@ -109,7 +109,7 @@ Stored documents (`resources` table, no migration):
   - [ ] New `internal/resources/storageboxtypes/storageboxtypes.go`: constructor `New(cat *catalog.Catalog)` like `servertypes.New`, `Prefix` `api.HetznerPrefix`, `GET /storage_box_types` (filter `name`, paging, sorted by ID) and `GET /storage_box_types/{id}` serving `Raw`; wired in `Cloud.modules()` (`internal/cloud/cloud.go`). Rows for both routes in `docs/development/api-coverage.md` (section "Storage Boxes", full `/hetzner/v1` routes).
   - [ ] New `internal/apitest/storage.go` with `StorageBoxTypes(t)` and `internal/apitest/testdata/storage-box-types.json`: three types in the shape of the description (bx11 1 TB, bx21 5 TB, bx31 10 TB; `snapshot_limit` 10/20/30, `automatic_snapshot_limit` 10/20/30, `subaccounts_limit` 5/200/300 (bx11 small so SBOX-02/limit_numbering stays fast); prices for fsn1, nbg1, hel1, bx11 without nbg1).
 
-- [ ] 18-03 `task catalog` fetches the storage box types
+- [!] 18-03 `task catalog` fetches the storage box types - stopped: the permission system denied the edit that reads the hcloud context token (`hcloud --context <name> config get token --allow-sensitive`); no workaround tried, the user must allow or make the edit; partial diff in the scratchpad
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: - (success criterion 2) | Tests: -
   - Reads: SPEC.md "Accounts and secrets" (`task catalog`); CONTEXT.md item 4; RESEARCH.md "Q2"; `tools/catalog/main.go`

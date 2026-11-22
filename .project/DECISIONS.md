@@ -19,6 +19,30 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 apitest needs both API descriptions
+
+- Type: decision
+- Phase: phase 18
+- What: `apitest.RequireDescription` loads both `cloud.spec.json` and `hetzner.spec.json`, so every apitest-based test needs both cached by `task openapi`.
+- Why: one entry check for all tests.
+- Cost of change: low
+
+## 2026-11-22 Bare API prefixes answer not_found
+
+- Type: decision
+- Phase: phase 18
+- What: a request to exactly `/v1` or `/hetzner/v1` answers `not_found` before authentication.
+- Why: the test map expects one behaviour for every unknown path under both prefixes.
+- Cost of change: low
+
+## 2026-11-22 Storage password error texts
+
+- Type: decision
+- Phase: phase 18
+- What: `storagepass.Check` returns three texts (length, characters not allowed, missing character classes) used as the `details.fields` message.
+- Why: the frozen description gives no wording.
+- Cost of change: low
+
 ## 2026-11-22 Storage Box API on the same api.Router
 
 - Type: change
