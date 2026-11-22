@@ -48,14 +48,14 @@ the message `hlab` prints.
 
 ## Plans
 
-- [ ] 17-01 Conflict on project deletion names the running action
+- [x] 17-01 Conflict on project deletion names the running action
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: MCP-03 | Tests: internal/mgmt/mgmt_test.go
   - Reads: ARCHITECTURE.md "Management API (named pipe)" (`DELETE /projects/{name}`); DECISIONS.md "Q20 Conflict on project deletion names the running action"; CONTEXT.md
   - Size: ~40 lines in 2 files
   - Adjusts: -
-  - [ ] In `internal/mgmt/mgmt.go`, the `actions.ErrLocked` branch of the project deletion finds the running `delete_project` action of the project (`Actions.ListFor(0, projectRef, p.ID)`, status `running`) and answers `409 conflict` with `"action_id":n` in the error object; the message stays.
-  - [ ] Add `ActionID int64 \`json:"action_id,omitempty"\`` to `mgmtclient.APIError` in `internal/mgmtclient/mgmtclient.go`; `AnswerError` keeps it. `hlab project delete` keeps printing the conflict message.
+  - [x] In `internal/mgmt/mgmt.go`, the `actions.ErrLocked` branch of the project deletion finds the running `delete_project` action of the project (`Actions.ListFor(0, projectRef, p.ID)`, status `running`) and answers `409 conflict` with `"action_id":n` in the error object; the message stays.
+  - [x] Add `ActionID int64 \`json:"action_id,omitempty"\`` to `mgmtclient.APIError` in `internal/mgmtclient/mgmtclient.go`; `AnswerError` keeps it. `hlab project delete` keeps printing the conflict message.
 
 - [ ] 17-02 MCP server and its tools
   - Wave: 1 | Depends on: - | Review: alone

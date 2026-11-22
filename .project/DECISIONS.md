@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 Project actions of project 0 include those without a project
+
+- Type: decision
+- Phase: phase 17
+- What: `store.ProjectActions(tx, 0)` matches `project_id IS NULL`, so project 0 finds the `delete_project` action, as `Actions.Get(0, id)` already does.
+- Why: without it the 409 of a running project deletion could not name its action (Q20).
+- Cost of change: low
+
 ## 2026-11-22 APIError carries the action ID of a conflict
 
 - Type: decision
