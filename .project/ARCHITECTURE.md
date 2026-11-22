@@ -146,6 +146,9 @@ Inside `hlabd` (Go packages under `internal/`):
   type Recoverer interface {            // modules with records to repair at cloud start (images, volumes: half-made records; load_balancers: PTR entries on the pre-Q14 formal IPv6 and pending state left by a stop; firewalls, zones: pending state left by a stop; networks: earlier state left by an interrupted network action; volumes: pending attach left by a stop; floating_ips: pending assign; primary_ips: missing records and the earlier state, including the seed, left by an interrupted assign)
       Recover(ctx context.Context) error // cloud start calls it before the API serves and before the first scheduled job run
   }
+  type Prefixed interface {             // modules served under another prefix than /v1 (storage box modules: api.HetznerPrefix "/hetzner/v1"); APIRoutes reports their full paths
+      Prefix() string
+  }
   type Lifecycle interface {            // modules whose VMs follow the cloud's stop and start (servers)
       Halt(ctx context.Context, behaviour string, hostShutdown bool) error // at stop, after API and jobs, before the appliance; nothing at a host shutdown
       Restore(ctx context.Context, behaviour string) error // at start after the first PushAgent, before the management API and jobs (the Hetzner API already serves): stop action on Off/Saved VMs, resume or power on servers recorded running

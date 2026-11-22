@@ -4,6 +4,14 @@ Entries from DECISIONS.md that a later entry revoked or changed, moved here
 unchanged; the later entry names them under `Replaces:`. Newest first. No
 skill reads this file; it keeps the history for looking things up.
 
+## 2026-11-21 Storage Boxes in milestone 1
+
+- Type: change
+- Phase: change
+- What: the Storage Box moves from the target vision into milestone 1 as phases 18 to 20 after phase 13 (API, storage VM with real data over SFTP/SCP, rsync, Borg, SMB, WebDAV and FTP/FTPS, console section and client tests), with requirements SBOX-01 to SBOX-08, UI-12 and CLI-05, addresses under `hetzner.internal` and the details in `decisions/storage-box.md`; UI-02 and CLI-01 to CLI-03 now name the Cloud API.
+- Why: the user wants Storage Box setups testable in the first version, with real data as goal 2 asks.
+- Cost of change: medium (additions: three phases, a second VM role of hlab-agent, a second router under `/hetzner/v1`; no rebuild of existing code)
+
 ## 2026-11-22 Shutdown retry as a testable function
 
 - Type: decision
