@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 Storage box sort and stored catalog objects
+
+- Type: decision
+- Phase: phase 18
+- What: sort key `stats.size_filesystem` sorts by `stats.size`, and a box stores `storage_box_type` and `location` as catalog objects at create, so a later catalog update does not change existing boxes.
+- Why: the description offers the sort key without such a stats field; Hetzner boxes keep their type data.
+- Cost of change: low
+
 ## 2026-11-22 Storage box types only from the shipped catalog
 
 - Type: decision
