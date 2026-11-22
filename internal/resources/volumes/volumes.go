@@ -102,6 +102,9 @@ type Internal struct {
 	// Pending is the attach a running action has started and commits at
 	// success; nil without one.
 	Pending *Pending `json:"pending,omitempty"`
+	// Detaching is set while a detach whose disk has left the server's VM
+	// pushes the agent document; the volume shows attached until then.
+	Detaching bool `json:"detaching,omitempty"`
 }
 
 // Pending is the attach of a volume the running action Action works on:

@@ -83,8 +83,9 @@ func (m *Module) Delete(_ context.Context, id int64) error {
 }
 
 // Recover implements resource.Recoverer: it removes every volume record
-// with status creating and its disk file; a missing file is no error. The
-// attach of a volume interrupted by a stop is dropped: its disk leaves the
+// with status creating and its disk file; a missing file is no error. A
+// detach interrupted by a stop after its disk left the VM is recorded as
+// done. The attach of a volume interrupted by a stop is dropped: its disk leaves the
 // server's VM and the volume stays as it was before the attach.
 func (m *Module) Recover(ctx context.Context) error {
 	var cut, interrupted []Record
@@ -94,6 +95,12 @@ func (m *Module) Recover(ctx context.Context) error {
 			return err
 		}
 		for _, r := range all {
+			// A detach a stop interrupted after its disk left the VM ends.
+			if r.Hlab.Detaching {
+				if err := unbind(tx, r.ID); err != nil {
+					return err
+				}
+			}
 			if r.Hlab.Pending != nil {
 				interrupted = append(interrupted, r)
 				r.Hlab.Pending = nil

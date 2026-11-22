@@ -107,6 +107,42 @@ type volEnv struct {
 	*apitest.Env
 	fake *recPlatform
 	jobs *jobRecorder
+	push *pushGate
+}
+
+// pushGate is the PushAgent dependency; while gate is set, a push signals
+// entered and waits for gate to close.
+type pushGate struct {
+	mu      sync.Mutex
+	gate    chan struct{}
+	entered chan struct{}
+}
+
+func (p *pushGate) run(ctx context.Context) error {
+	p.mu.Lock()
+	gate, entered := p.gate, p.entered
+	p.gate, p.entered = nil, nil
+	p.mu.Unlock()
+	if gate == nil {
+		return nil
+	}
+	close(entered)
+	select {
+	case <-gate:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// block makes the next push wait; it returns a channel closed when that
+// push starts and the function that lets it go on.
+func (p *pushGate) block() (<-chan struct{}, func()) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	gate, entered := make(chan struct{}), make(chan struct{})
+	p.gate, p.entered = gate, entered
+	return entered, sync.OnceFunc(func() { close(gate) })
 }
 
 // newVolEnv mounts the servers and volumes modules wired like the cloud
@@ -121,6 +157,7 @@ func newVolEnv(t *testing.T) *volEnv {
 	fake := &recPlatform{Fake: platformtest.NewFake(), page83: map[string][16]byte{}, luns: map[string]int{}}
 	fake.SetResources(plenty)
 	jobs := &jobRecorder{}
+	push := &pushGate{}
 	d := apitest.ServersDeps(t, cat, fake)
 	d.Settings.ReserveDiskGB = reserveDiskGB
 	d.ExtraDisks = func(tx store.Tx) ([]servers.DiskUse, error) {
@@ -143,10 +180,10 @@ func newVolEnv(t *testing.T) *volEnv {
 		VMPrefix:     d.Settings.VMPrefix,
 		CheckDisk:    srv.CheckDisk,
 		ApplianceJob: jobs.run,
-		PushAgent:    func(context.Context) error { return nil },
+		PushAgent:    push.run,
 	})
 	srv.SetVolumes(vol)
-	return &volEnv{Env: apitest.New(t, srv, vol, resactions.New()), fake: fake, jobs: jobs}
+	return &volEnv{Env: apitest.New(t, srv, vol, resactions.New()), fake: fake, jobs: jobs, push: push}
 }
 
 // wantPage83 is 484C4142-0000-4000-8000-<id as 12 hex digits> in text
@@ -734,6 +771,33 @@ func TestVolumes(t *testing.T) {
 		}
 		if got := serverVolumes(t, e, s); !slices.Contains(got, v) {
 			t.Errorf("after attach: server volumes %v, want %d", got, v)
+		}
+
+		// A detach with automount shows the volume detached only once it
+		// has pushed the agent document and succeeded.
+		w := createVolume(t, e, "w", 10)
+		runVolumeAction(t, e, w, "attach", map[string]any{"server": s, "automount": true})
+		entered, releasePush := e.push.block()
+		t.Cleanup(releasePush)
+		detach := startVolumeAction(t, e, w, "detach", nil)
+		select {
+		case <-entered:
+		case <-time.After(apitest.ActionTimeout):
+			t.Fatalf("detach: no agent push within %s", apitest.ActionTimeout)
+		}
+		if got := getVolume(t, e, w); got.Server == nil || *got.Server != s {
+			t.Errorf("while detach runs: volume server %v, want %d", got.Server, s)
+		}
+		if got := serverVolumes(t, e, s); !slices.Contains(got, w) {
+			t.Errorf("while detach runs: server volumes %v, want %d still", got, w)
+		}
+		releasePush()
+		e.waitSuccess(t, detach, "detach")
+		if got := getVolume(t, e, w); got.Server != nil {
+			t.Errorf("after detach: volume server %d, want null", *got.Server)
+		}
+		if got := serverVolumes(t, e, s); slices.Contains(got, w) {
+			t.Errorf("after detach: server volumes %v, want %d gone", got, w)
 		}
 	})
 }

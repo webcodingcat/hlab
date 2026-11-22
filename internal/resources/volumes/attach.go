@@ -117,7 +117,7 @@ func unbind(tx store.Tx, id int64) error {
 		return err
 	}
 	server := *r.Server
-	r.Server, r.Assignee, r.Hlab.LUN, r.Hlab.Automount = nil, nil, 0, false
+	r.Server, r.Assignee, r.Hlab.LUN, r.Hlab.Automount, r.Hlab.Detaching = nil, nil, 0, false, false
 	if err := put(tx, r); err != nil {
 		return err
 	}
@@ -236,20 +236,31 @@ func busy(tx store.Tx, id int64) (bool, error) {
 	return false, nil
 }
 
-// unplug removes the disk of the attached volume r from its server's VM
-// and then records it as detached. A VM already gone is no error.
+// unplug removes the disk of the attached volume r from its server's VM,
+// with automount pushes the agent document without it, and then records it
+// as detached. A VM already gone is no error.
 func (m *Module) unplug(ctx context.Context, stor *store.Store, r Record) error {
 	err := m.d.Platform.DetachDisk(ctx, servers.VMName(m.d.VMPrefix, *r.Server), r.Hlab.Path)
 	if err != nil && !isNotFound(err) {
 		return err
 	}
-	if err := stor.Tx(func(tx store.Tx) error { return unbind(tx, r.ID) }); err != nil {
-		return err
-	}
+	err = nil
 	if r.Hlab.Automount {
-		return m.d.PushAgent(ctx)
+		// The agent document leaves the volume out while it still shows
+		// attached; it shows detached only once the push is done.
+		if err := stor.Tx(func(tx store.Tx) error {
+			cur, err := load(tx, r.ID)
+			if err != nil {
+				return err
+			}
+			cur.Hlab.Detaching = true
+			return put(tx, cur)
+		}); err != nil {
+			return err
+		}
+		err = m.d.PushAgent(ctx)
 	}
-	return nil
+	return errors.Join(err, stor.Tx(func(tx store.Tx) error { return unbind(tx, r.ID) }))
 }
 
 func isNotFound(err error) bool {
@@ -438,7 +449,7 @@ func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
 	}
 	auto := map[int64][]int64{}
 	for _, r := range recs {
-		if r.Server != nil && r.Hlab.Automount {
+		if r.Server != nil && r.Hlab.Automount && !r.Hlab.Detaching {
 			auto[*r.Server] = append(auto[*r.Server], r.ID)
 		}
 		if p := r.Hlab.Pending; p != nil && p.Automount {
