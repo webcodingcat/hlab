@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 Upgrade to wcc 0.32.20
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.32.19 to 0.32.20: the secrets rule of the project CLAUDE.md now lets the tool make the call and allows reading a credential out only where SPEC.md says so, inside that one command; version line set.
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
+
 ## 2026-11-22 Subaccounts stored at create, listed without paging
 
 - Type: decision

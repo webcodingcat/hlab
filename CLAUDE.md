@@ -1,6 +1,6 @@
 # Project rules (wcc)
 
-wcc version: 0.32.19
+wcc version: 0.32.20
 
 These rules come from the wcc plugin; `/wcc:upgrade` updates them.
 
@@ -61,8 +61,10 @@ conversation, ask when something is unclear.
 ## Secrets
 
 - Secrets live in `.env`, never committed; `.env.example` lists the names.
-  Credentials from a tool's own login stay with that tool; use them only
-  through the tool. Never read, print or write a secret anywhere.
+  Credentials from a tool's own login stay with that tool; let the tool
+  make the call. Read one out of the tool only where SPEC.md says so, for
+  a program that cannot use the tool, inside that one command. Never
+  print or write a secret anywhere.
 
 ## Tests
 
