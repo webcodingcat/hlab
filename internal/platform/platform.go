@@ -81,6 +81,9 @@ const (
 	PowerReboot           // Shutdown integration service
 	PowerReset
 	PowerSave
+	// PowerShutdownRetry is a shutdown that asks a still booting guest
+	// again until it accepts or a deadline has passed.
+	PowerShutdownRetry
 )
 
 func (o PowerOp) String() string {
@@ -97,6 +100,8 @@ func (o PowerOp) String() string {
 		return "reset"
 	case PowerSave:
 		return "save"
+	case PowerShutdownRetry:
+		return "shutdown-retry"
 	}
 	return fmt.Sprintf("PowerOp(%d)", int(o))
 }
