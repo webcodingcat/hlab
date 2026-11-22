@@ -117,14 +117,14 @@ Stored documents (`resources` table, no migration):
   - Adjusts: -
   - [ ] `tools/catalog/main.go`: after the Cloud lists, fetch all pages of `https://api.hetzner.com/v1/storage_box_types` (`per_page=50`, follow `meta.pagination.next_page`) with a bearer token: from a usable context through `hcloud --context <name> config get token --allow-sensitive` in the child process only (clearing `HCLOUD_TOKEN`, `HCLOUD_ENDPOINT`, `HCLOUD_CONTEXT`), else the token of the hidden prompt; the context's `hetzner-endpoint` is not read; the token is never printed or written. Write `catalog/storage-box-types.json` as `{"storage_box_types":[...]}`. Package comment and the `catalog` task description in `Taskfile.yml` name the new file. The implementer does not run `task catalog`; the main session does.
 
-- [ ] 18-04 Storage Box passwords and their hashes
+- [x] 18-04 Storage Box passwords and their hashes
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SBOX-09, SBOX-02 (password policy) | Tests: internal/nthash/nthash_test.go, internal/storagepass/storagepass_test.go
   - Reads: CONTEXT.md items 11, 12; RESEARCH.md "Q1" (password policy); EXPERIMENTS.md E19; `internal/shacrypt/shacrypt.go`
   - Size: ~200 lines in 2 files
   - Adjusts: -
-  - [ ] New `internal/nthash/nthash.go`: MD4 (RFC 1320) and `Hex` over the UTF-16LE encoding of the password.
-  - [ ] New `internal/storagepass/storagepass.go`: `Check` (12 to 128 runes; only `a-z A-Z Ä Ö Ü ä ö ü ß 0-9 ^ ° ! § $ % / ( ) = ? + # - . , ; : ~ * @ { } _ &`; at least one upper case letter (A-Z, Ä Ö Ü), one lower case letter (a-z, ä ö ü ß), one digit and one of the other allowed characters; no breach check), `Hashes`, `Hash`.
+  - [x] New `internal/nthash/nthash.go`: MD4 (RFC 1320) and `Hex` over the UTF-16LE encoding of the password.
+  - [x] New `internal/storagepass/storagepass.go`: `Check` (12 to 128 runes; only `a-z A-Z Ä Ö Ü ä ö ü ß 0-9 ^ ° ! § $ % / ( ) = ? + # - . , ; : ~ * @ { } _ &`; at least one upper case letter (A-Z, Ä Ö Ü), one lower case letter (a-z, ä ö ü ß), one digit and one of the other allowed characters; no breach check), `Hashes`, `Hash`.
 
 - [ ] 18-05 Storage boxes: create, list, show, update, delete
   - Wave: 3 | Depends on: 18-02, 18-04 | Review: alone
