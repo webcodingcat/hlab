@@ -7,7 +7,7 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: B3 Backlog: console times and labels, server power and delete fixes (next)
+- Phase: B3 Backlog: console times and labels, server power and delete fixes (in progress)
 - Base branch: main
 - Last done: phase 17 merged into main (2026-11-22): `hlab mcp` serves 13 MCP tools over stdio; cloud_start, cloud_stop and project_delete wait with progress notifications, and a cancel ends only the wait; the 409 of a running project deletion names its action
 - Next: /wcc:phase in a new session builds backlog phase B3, then phase 18 (Storage Box API) and phases 19 to 21; /wcc:change takes items from "Later" before phase 16, which runs all manual checks and the installer suite in two test VMs

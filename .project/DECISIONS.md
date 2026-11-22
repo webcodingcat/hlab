@@ -19,6 +19,54 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 Who set stopping decides whether it sticks
+
+- Type: decision
+- Phase: phase B3
+- What: the status watch remembers in memory the servers it moved to `stopping` from a VM reading and returns only those to `running` when the VM runs, while a `stopping` set by the shutdown action (whose running lock is the shutdown marker) stays until the VM is off.
+- Why: the shutdown action ends once the guest accepted the request, before the VM is off, and the B2 log shows the watch reading `stopping` during a guest's own reboot.
+- Cost of change: low
+
+## 2026-11-22 Push after every API server delete
+
+- Type: decision
+- Phase: phase B3
+- What: the API delete action pushes the agent document after removing the server, a failed push logs a warning naming the server and its load balancers, and project deletion does not push per server.
+- Why: the document also carries the deleted server's metadata and firewall state, and mgmt already pushes once at the end of a project deletion.
+- Cost of change: low
+
+## 2026-11-22 Shutdown retry as a testable function
+
+- Type: decision
+- Phase: phase B3
+- What: `shutdown(ctx, name, timeout, interval, ask)` in hyperv.go wraps `untilAccepted`, and `Power(PowerShutdown)` calls it with `guestReadyTimeout` and 2 s like reboot.
+- Why: the PowerShell runner cannot be faked, so the test passes the ask function.
+- Cost of change: low
+
+## 2026-11-22 One shared createdText in local time
+
+- Type: decision
+- Phase: phase B3
+- What: lib/format.ts `createdText` shows local time as "YYYY-MM-DD hh:mm", views/servers/servers.ts re-exports it, and a value that cannot be parsed is shown as given.
+- Why: one place for the format, matching the local time of the CLI.
+- Cost of change: low
+
+## 2026-11-22 Labels e2e proves no request through the Wails bridge
+
+- Type: decision
+- Phase: phase B3
+- What: "UI-02 invalid labels" is its own test that records the page's calls to `/wails/runtime` and checks the API afterwards to prove nothing was sent.
+- Why: the console sends API calls only through the Wails bridge.
+- Cost of change: low
+
+## 2026-11-22 Test IDs of the B3 fixes
+
+- Type: decision
+- Phase: phase B3
+- What: the reboot and shutdown fixes are unit rows under SRV-07, the delete push under LB-06 and the Created times under UI-02.
+- Why: these are the requirements whose promise the bugs break; the SRV-07 e2e stays unchanged for the milestone close.
+- Cost of change: low
+
 ## 2026-11-22 Backlog phase B3
 
 - Type: change
