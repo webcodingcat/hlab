@@ -16,6 +16,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -30,8 +31,21 @@ import (
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
-// BaseURL is the URL clients use for the Hetzner API.
+// BaseURL is the URL clients use for the Hetzner Cloud API.
 const BaseURL = "http://api.hetzner.internal/v1"
+
+// HetznerBaseURL is the URL clients use for the Hetzner API (Storage
+// Boxes).
+const HetznerBaseURL = "http://api.hetzner.internal" + api.HetznerPrefix
+
+// requestURL returns the URL Do sends path to: a path starting with
+// api.HetznerPrefix as it is on the API host, any other below BaseURL.
+func requestURL(path string) string {
+	if strings.HasPrefix(path, api.HetznerPrefix) {
+		return "http://api.hetzner.internal" + path
+	}
+	return BaseURL + path
+}
 
 // Env is one in-process API with its own store.
 type Env struct {
@@ -110,8 +124,10 @@ func (e *Env) NewToken(project string, readOnly bool) string {
 }
 
 // Do sends a request with the read/write token of project "p". path is
-// the API path without "/v1" (as in the OpenAPI description), with an
-// optional query. body is nil, raw []byte or a value encoded as JSON.
+// the Cloud API path without "/v1" (as in cloud.spec.json) or the full
+// path of the Hetzner API starting with api.HetznerPrefix, with an
+// optional query; the response is validated against the matching
+// description. body is nil, raw []byte or a value encoded as JSON.
 func (e *Env) Do(method, path string, body any) *http.Response {
 	e.t.Helper()
 	return e.DoAuth("Bearer "+e.Token, method, path, body)
@@ -132,7 +148,7 @@ func (e *Env) DoAuth(authorization, method, path string, body any) *http.Respons
 			e.t.Fatalf("encode request body: %v", err)
 		}
 	}
-	req := httptest.NewRequestWithContext(context.Background(), method, BaseURL+path, bytes.NewReader(raw))
+	req := httptest.NewRequestWithContext(context.Background(), method, requestURL(path), bytes.NewReader(raw))
 	if raw != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -143,7 +159,7 @@ func (e *Env) DoAuth(authorization, method, path string, body any) *http.Respons
 	e.Router.ServeHTTP(rec, req)
 	resp := rec.Result()
 	// A fresh request for the validator: the handler may have read the body.
-	check := httptest.NewRequestWithContext(context.Background(), method, BaseURL+path, bytes.NewReader(raw))
+	check := httptest.NewRequestWithContext(context.Background(), method, requestURL(path), bytes.NewReader(raw))
 	if raw != nil {
 		check.Header.Set("Content-Type", "application/json")
 	}
