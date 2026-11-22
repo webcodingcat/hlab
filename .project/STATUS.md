@@ -7,7 +7,7 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 18 Storage Box API (next)
+- Phase: 18 Storage Box API (in progress)
 - Base branch: main
 - Last done: backlog phase B3 merged into main (2026-11-22): console Created times in local time, invalid label text blocks the submit, a reboot no longer sticks at `stopping`, server delete pushes the agent document, and the API shutdown asks a booting guest again for up to 2 minutes
 - Next: /wcc:phase in a new session builds phase 18 (Storage Box API), then phases 19 to 21; /wcc:change takes items from "Later" before phase 16, which runs all manual checks and the installer suite in two test VMs
