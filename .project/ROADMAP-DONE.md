@@ -6,6 +6,15 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x] 13 Client matrix and success criterion.
+      Requirements: CLI-01, CLI-02, CLI-03, CLI-04.
+      Depends on: 14, 15, 12.
+      Success criteria:
+      1. Every resource type passes its row for hcloud, OpenTofu and
+         Ansible.
+      2. Each client builds the example environment, it is reachable via
+         SSH from host and WSL2, and the client deletes it completely.
+
 - [x] 12 Installer and uninstaller.
       Requirements: INST-01, INST-02, INST-03, INST-04, INST-05, INST-06.
       Depends on: 09.

@@ -440,10 +440,10 @@ What the target vision in IDEA.md will need, not built yet.
 | INST-04 | 12 | x |
 | INST-05 | 12 | x |
 | INST-06 | 12 | x |
-| CLI-01 | 13 | |
-| CLI-02 | 13 | |
-| CLI-03 | 13 | |
-| CLI-04 | 13 | |
+| CLI-01 | 13 | x |
+| CLI-02 | 13 | x |
+| CLI-03 | 13 | x |
+| CLI-04 | 13 | x |
 | CLI-05 | 21 | |
 | CLI-06 | 21 | |
 | CLI-07 | 21 | |

@@ -324,13 +324,13 @@ a group is split per client).
   - Size: ~240 lines in 1 file
   - [x] Row `CLI-04/ansible` (2 slots, own project): the same environment from a create playbook in WSL2, the same SSH checks from host and WSL2, a delete playbook and `assertProjectEmpty`.
 
-- [ ] 13-28 Documentation
+- [x] 13-28 Documentation
   - Wave: 4 | Depends on: all other plans | Review: alone
   - Requirements: DOC-01 to DOC-06 (held), DOC-07 (manual) | Tests: test/docs/docs_test.go (existing)
   - Reads: SPEC "Documentation", "Accounts and secrets" (hlab-docs); DECISIONS entries of this phase
   - Size: ~150 lines in 4 files
-  - [ ] `docs/development/build-and-test.md`: the client matrix (rows `CLI-0n/<type>`, fixture rows, filters such as `task e2e -- -run 'TestE2E/CLI-02/volumes'`, run time and the timeout the phase close set), the exclusions.
-  - [ ] `README.md` and `docs/guide.md`: client settings and the example environment only where something the phase built differs from what they say; `docs/deviations.md` and `api-coverage.md` checked against the deviations the phase added.
+  - [x] `docs/development/build-and-test.md`: the client matrix (rows `CLI-0n/<type>`, fixture rows, filters such as `task e2e -- -run 'TestE2E/CLI-02/volumes'`, run time and the timeout the phase close set), the exclusions.
+  - [x] `README.md` and `docs/guide.md`: client settings and the example environment only where something the phase built differs from what they say; `docs/deviations.md` and `api-coverage.md` checked against the deviations the phase added.
 
 ## Run-time estimate
 
@@ -366,3 +366,9 @@ showed these product bugs; the plan named fixes each with a unit test first.
 ## Runs
 
 - 931db15: `task e2e -- -v -run '^TestE2E$/^CLI-0[1-4]$/'` (13.6 min): 48 rows green; plans 13-10 to 13-13, 13-15 to 13-17, 13-22, 13-24 and 13-25 needed no change after the queue plans and are checked off without a review (no commit of their own). Red: CLI-01/02/03 networks and load_balancers, CLI-02/03 zones, CLI-03/firewalls, CLI-04/tofu and /ansible.
+- be9b89a (close): `task test`, `task lint` green; `task e2e -- -v` (all tests, because the phase changed the shared harness: main_test.go, clients_test.go) 58 min: UI-02 (volume detach showed `server: null` before its push) and LB-05 (agent netlink dump interrupted) red, fixed in 5babd70/11efba9 and 0da068c.
+
+## Close
+
+- 11efba9: `task test`, `task lint` green; `task e2e -- -v` (all tests, shared harness changed) green, 122 tests in 54 min; `task e2e` limit set to 120m.
+- Manual requirements: none new (DOC-07 stays in the open list from phase 01).

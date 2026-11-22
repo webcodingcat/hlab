@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 13 Client matrix and success criterion (next)
+- Phase: 17 MCP server (next)
 - Base branch: main
-- Last done: phase 12 merged into main (2026-11-21): setup bundle and MSI (`task installer VERSION=x.y.z`) with WebView2, prerequisite check, shortcuts, upgrade and downgrade refusal; `hlabd uninstall-cleanup [--keep-data]` removes VMs, switch, host network, forwarding, service, CA trust and files by exact name; elevated suite `task e2e:elevated` written, not yet run (phase 16)
-- Next: /wcc:phase in a new session builds phase 13, then phase 17 (MCP server `hlab mcp`) and phases 18 to 21 (Storage Boxes); items from "Later" can be taken in with /wcc:change before phase 16, which runs all manual checks and the installer suite in two test VMs
+- Last done: phase 13 merged into main (2026-11-22): hcloud, OpenTofu and Ansible pass the client matrix for every Cloud API type and build, reach and delete the example environment; actions sharing a resource now queue instead of answering `locked`, with effects shown at `success` and restored after errors and stops; `task e2e` takes 54 min, limit 120m
+- Next: /wcc:phase in a new session builds phase 17 (MCP server `hlab mcp`), then phases 18 to 21 (Storage Boxes); /wcc:change takes the answer to Q19 and items from "Later" before phase 16, which runs all manual checks and the installer suite in two test VMs
 
 ## Open manual checks
 
