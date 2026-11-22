@@ -104,11 +104,11 @@ appear here, only names.
     `hcloud --context <name> api <path>`; without one it says why and asks
     for a token with a hidden prompt, uses it for this run only and calls
     the API itself. The storage box types (with prices) come from the
-    Hetzner API, always `https://api.hetzner.com/v1/storage_box_types`, with
-    the same token: taken from the usable context with
-    `hcloud --context <name> config get token --allow-sensitive` in the
-    child process only, else from the same hidden prompt; the context's
-    `hetzner-endpoint` is not read.
+    Hetzner API, always `https://api.hetzner.com/v1/storage_box_types`, all
+    pages: with a usable context through hcloud itself,
+    `hcloud --context <name> --endpoint https://api.hetzner.com/v1 api /storage_box_types -v page=<n> -v per_page=50`,
+    so the token never leaves hcloud; without one with the token of the same
+    hidden prompt; the context's `hetzner-endpoint` is not read.
   - The live check of `hlab catalog update` (CAT-03) runs unattended, so it
     never prompts: with a usable context its test harness takes the token
     through hcloud

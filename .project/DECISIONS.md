@@ -19,6 +19,15 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 Storage VM interfaces and catalog through hcloud
+
+- Type: change
+- Phase: phase 18
+- What: the storage VM has the fixed address `Addrs.Storage` (default `198.19.255.253`) with `PUT /v1/storage` and `POST /v1/jobs`, the appliance document gets `Storage` and `StorageBoxes`, the storage modules register under `/hetzner/v1` and the management API forwards `/projects/{name}/api/hetzner/v1/{rest}`; the storage VM's Debian packages are pinned in `catalog/storage-debs.json`; `task catalog` reads the storage box types with a usable context through `hcloud --context <name> --endpoint https://api.hetzner.com/v1 api /storage_box_types -v page=<n> -v per_page=50` over all pages, else with the token of the hidden prompt; SBOX-08 is a unit test of the uninstall cleanup, INST-04 in the elevated suite covers removal on a real machine.
+- Why: the user decided that the token stays inside hcloud, as for the Cloud catalogs, after the permission system refused reading it out with `config get token`.
+- Cost of change: low
+- Replaces: 2026-11-21 Storage VM interfaces and catalog
+
 ## 2026-11-22 apitest needs both API descriptions
 
 - Type: decision
@@ -3657,14 +3666,6 @@ taken with the approval of the spec or by an answer from the user.
 - What: the bundled Storage Box requirements become one capability each (SBOX-01 to SBOX-20, UI-12 and UI-13, CLI-05 to CLI-07 per client), the phases become 18 API, 19 storage VM and SSH, 20 SMB, WebDAV, FTP and snapshots, 21 console and clients, and the feasibility check E12 to E19 is worked into ARCHITECTURE.md, SPEC.md and `decisions/storage-box.md` (shared action store, `HETZNER_ENDPOINT` for OpenTofu, mpm-itk, subaccounts with the box's UID, crypt and NT hashes, level-1 qgroups, passive FTP ports).
 - Why: one requirement per checkable capability lets each phase test and verify it, and the riskiest assumptions of the storage VM are proven before it is built.
 - Cost of change: low (planning only)
-
-## 2026-11-21 Storage VM interfaces and catalog
-
-- Type: decision
-- Phase: change
-- What: the storage VM has the fixed address `Addrs.Storage` (default `198.19.255.253`) with `PUT /v1/storage` and `POST /v1/jobs`, the appliance document gets `Storage` and `StorageBoxes`, the storage modules register under `/hetzner/v1` and the management API forwards `/projects/{name}/api/hetzner/v1/{rest}`; the storage VM's Debian packages are pinned in `catalog/storage-debs.json` like the appliance's; `task catalog` reads storage box types from `https://api.hetzner.com/v1` with the context's token; SBOX-08 is a unit test of the uninstall cleanup, while INST-04 in the elevated suite covers removal on a real machine.
-- Why: the spec review found these interfaces missing; each choice reuses an existing pattern of the appliance, the catalog or the uninstall cleanup.
-- Cost of change: medium
 
 ## 2026-11-21 SMB from WSL2 to a storage box works like SSH
 

@@ -4,6 +4,14 @@ Entries from DECISIONS.md that a later entry revoked or changed, moved here
 unchanged; the later entry names them under `Replaces:`. Newest first. No
 skill reads this file; it keeps the history for looking things up.
 
+## 2026-11-21 Storage VM interfaces and catalog
+
+- Type: decision
+- Phase: change
+- What: the storage VM has the fixed address `Addrs.Storage` (default `198.19.255.253`) with `PUT /v1/storage` and `POST /v1/jobs`, the appliance document gets `Storage` and `StorageBoxes`, the storage modules register under `/hetzner/v1` and the management API forwards `/projects/{name}/api/hetzner/v1/{rest}`; the storage VM's Debian packages are pinned in `catalog/storage-debs.json` like the appliance's; `task catalog` reads storage box types from `https://api.hetzner.com/v1` with the context's token; SBOX-08 is a unit test of the uninstall cleanup, while INST-04 in the elevated suite covers removal on a real machine.
+- Why: the spec review found these interfaces missing; each choice reuses an existing pattern of the appliance, the catalog or the uninstall cleanup.
+- Cost of change: medium
+
 ## 2026-11-21 Storage Boxes in milestone 1
 
 - Type: change
