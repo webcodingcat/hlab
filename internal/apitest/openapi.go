@@ -15,77 +15,108 @@ import (
 
 	"github.com/pb33f/libopenapi"
 	validator "github.com/pb33f/libopenapi-validator"
+
+	"github.com/webcodingcat/hlab/internal/api"
 )
 
-// MissingDescription is the message a test fails with when the frozen
+// MissingDescription is the message a test fails with when a frozen
 // OpenAPI description is not in the user cache folder.
 const MissingDescription = "OpenAPI description not cached: run `task openapi`"
 
 // DescriptionPath returns where `task openapi` caches the frozen Hetzner
-// OpenAPI description: <user cache dir>/hlab/openapi/cloud.spec.json.
+// Cloud OpenAPI description: <user cache dir>/hlab/openapi/cloud.spec.json.
 func DescriptionPath() (string, error) {
+	return cachePath("cloud.spec.json")
+}
+
+// HetznerDescriptionPath returns where `task openapi` caches the frozen
+// Hetzner API description (Storage Boxes):
+// <user cache dir>/hlab/openapi/hetzner.spec.json.
+func HetznerDescriptionPath() (string, error) {
+	return cachePath("hetzner.spec.json")
+}
+
+func cachePath(name string) (string, error) {
 	dir, err := os.UserCacheDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "hlab", "openapi", "cloud.spec.json"), nil
+	return filepath.Join(dir, "hlab", "openapi", name), nil
+}
+
+// description is one frozen OpenAPI description and its validator, built
+// once per test binary.
+type description struct {
+	pathOf func() (string, error)
+	patch  func([]byte) ([]byte, error)
+
+	once sync.Once
+	val  validator.Validator
+	err  error
+	mu   sync.Mutex // the validator is shared by parallel tests
 }
 
 var (
-	specOnce  sync.Once
-	specVal   validator.Validator
-	specErr   error
-	specMutex sync.Mutex // the validator is shared by parallel tests
+	cloudDescription   = &description{pathOf: DescriptionPath, patch: lbAssignee}
+	hetznerDescription = &description{pathOf: HetznerDescriptionPath, patch: hetznerServer}
 )
 
-// errMissing marks a missing cache file.
-var errMissing = errors.New(MissingDescription)
+// descriptionFor returns the description a request path belongs to.
+func descriptionFor(path string) *description {
+	if path == api.HetznerPrefix || strings.HasPrefix(path, api.HetznerPrefix+"/") {
+		return hetznerDescription
+	}
+	return cloudDescription
+}
 
-// loadValidator builds the validator once per test binary.
-func loadValidator() (validator.Validator, error) {
-	specOnce.Do(func() {
-		path, err := DescriptionPath()
+// load builds the validator once.
+func (d *description) load() (validator.Validator, error) {
+	d.once.Do(func() {
+		path, err := d.pathOf()
 		if err != nil {
-			specErr = fmt.Errorf("%s (%v)", MissingDescription, err)
+			d.err = fmt.Errorf("%s (%v)", MissingDescription, err)
 			return
 		}
 		data, err := os.ReadFile(path)
 		if errors.Is(err, fs.ErrNotExist) {
-			specErr = errMissing
+			d.err = fmt.Errorf("%s (%s missing)", MissingDescription, filepath.Base(path))
 			return
 		}
 		if err != nil {
-			specErr = fmt.Errorf("read %s: %w", path, err)
+			d.err = fmt.Errorf("read %s: %w", path, err)
 			return
 		}
-		data, err = lbAssignee(data)
+		data, err = d.patch(data)
 		if err != nil {
-			specErr = fmt.Errorf("patch %s: %w", path, err)
+			d.err = fmt.Errorf("patch %s: %w", path, err)
 			return
 		}
 		doc, err := libopenapi.NewDocument(upperRangeKeys(data))
 		if err != nil {
-			specErr = fmt.Errorf("parse %s: %w", path, err)
+			d.err = fmt.Errorf("parse %s: %w", path, err)
 			return
 		}
 		// ValidateDocument() is deliberately not called: the Hetzner
-		// description does not pass the 3.1.2 meta-schema (EXPERIMENTS.md E8).
+		// descriptions do not pass the 3.1.2 meta-schema (EXPERIMENTS.md E8).
 		v, errs := validator.NewValidator(doc)
 		if len(errs) > 0 {
-			specErr = fmt.Errorf("build validator from %s: %w", path, errors.Join(errs...))
+			d.err = fmt.Errorf("build validator from %s: %w", path, errors.Join(errs...))
 			return
 		}
-		specVal = v
+		d.val = v
 	})
-	return specVal, specErr
+	return d.val, d.err
 }
 
-// RequireDescription fails the test at once when the frozen OpenAPI
-// description is not cached or cannot be loaded.
+// RequireDescription fails the test at once when a frozen OpenAPI
+// description (cloud.spec.json or hetzner.spec.json) is not cached or
+// cannot be loaded.
 func RequireDescription(t testingT) {
 	t.Helper()
-	if _, err := loadValidator(); err != nil {
-		t.Fatal(err.Error())
+	for _, d := range []*description{cloudDescription, hetznerDescription} {
+		if _, err := d.load(); err != nil {
+			t.Fatal(err.Error())
+		}
 	}
 }
 
@@ -98,11 +129,13 @@ type testingT interface {
 }
 
 // ValidateResponse checks one response to req against the frozen OpenAPI
-// description and reports every violation on t. The response body stays
-// readable for the caller.
+// description of its path (hetzner.spec.json under api.HetznerPrefix,
+// cloud.spec.json otherwise) and reports every violation on t. The
+// response body stays readable for the caller.
 func ValidateResponse(t testingT, req *http.Request, resp *http.Response) {
 	t.Helper()
-	v, err := loadValidator()
+	d := descriptionFor(req.URL.Path)
+	v, err := d.load()
 	if err != nil {
 		t.Fatal(err.Error())
 		return
@@ -117,9 +150,9 @@ func ValidateResponse(t testingT, req *http.Request, resp *http.Response) {
 
 	check := *resp
 	check.Body = io.NopCloser(bytes.NewReader(body))
-	specMutex.Lock()
+	d.mu.Lock()
 	ok, verrs := v.ValidateHttpResponse(req, &check)
-	specMutex.Unlock()
+	d.mu.Unlock()
 	if ok {
 		return
 	}
@@ -143,6 +176,19 @@ func upperRangeKeys(data []byte) []byte {
 		data = bytes.ReplaceAll(data, []byte(`"`+k+`xx":`), []byte(`"`+k+`XX":`))
 	}
 	return data
+}
+
+// hetznerServerURL is the server URL of the Hetzner API description.
+var hetznerServerURL = []byte(`"url": "https://api.hetzner.com/v1"`)
+
+// hetznerServer rewrites the server URL of the Hetzner API description to
+// the relative "/hetzner/v1": the validator strips only the server URL's
+// path from a request path, and hlab serves that API under /hetzner/v1.
+func hetznerServer(data []byte) ([]byte, error) {
+	if !bytes.Contains(data, hetznerServerURL) {
+		return nil, errors.New("server URL https://api.hetzner.com/v1 not found")
+	}
+	return bytes.ReplaceAll(data, hetznerServerURL, []byte(`"url": "`+api.HetznerPrefix+`"`)), nil
 }
 
 // assigneeEnum matches the start of the enum of primary_ip.assignee_type

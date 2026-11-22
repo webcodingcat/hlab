@@ -1,5 +1,6 @@
 // Package api is the HTTP layer of the Hetzner-compatible API shared by all
-// resource modules: routing under /v1, request log, token authentication,
+// resource modules: routing under /v1 (Cloud API) and /hetzner/v1 (Hetzner
+// API), request log, token authentication,
 // JSON body checks, the read-only guard and the response helpers.
 package api
 
@@ -19,8 +20,15 @@ import (
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
-// Prefix is the path prefix of the API.
+// Prefix is the path prefix of the Cloud API, the default of a module.
 const Prefix = "/v1"
+
+// HetznerPrefix is the path prefix of the Hetzner API (Storage Boxes); a
+// module served there implements resource.Prefixed.
+const HetznerPrefix = "/hetzner/v1"
+
+// prefixes are the API prefixes the router serves, each with its own mux.
+var prefixes = []string{Prefix, HetznerPrefix}
 
 // Deps are the parts of hlabd the handlers reach through the request.
 type Deps struct {
@@ -28,31 +36,45 @@ type Deps struct {
 	Actions *actions.Manager
 }
 
-// Router serves the API of all mounted modules under /v1.
+// Router serves the API of all mounted modules, each under its prefix.
 type Router struct {
 	deps    Deps
-	mux     *http.ServeMux
+	muxes   map[string]*http.ServeMux // by prefix
+	inner   map[string]http.Handler   // the middleware chain of each mux
 	handler http.Handler
 }
 
 // New returns a router without modules.
 func New(deps Deps) *Router {
-	r := &Router{deps: deps, mux: http.NewServeMux()}
-	r.mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		NotFound(w)
-	}))
-	inner := r.authenticate(checkJSON(guardReadOnly(r.mux)))
-	r.handler = logRequests(r.underPrefix(http.StripPrefix(Prefix, inner)))
+	r := &Router{deps: deps, muxes: map[string]*http.ServeMux{}, inner: map[string]http.Handler{}}
+	for _, p := range prefixes {
+		mux := http.NewServeMux()
+		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			NotFound(w)
+		}))
+		r.muxes[p] = mux
+		r.inner[p] = http.StripPrefix(p, r.authenticate(checkJSON(guardReadOnly(mux))))
+	}
+	r.handler = logRequests(r.underPrefix())
 	return r
 }
 
-// Mount registers the endpoints of m and hands the action manager to a
+// Mount registers the endpoints of m under its prefix (Prefix, or the one
+// of a resource.Prefixed module) and hands the action manager to a
 // resource.ActionUser.
 func (r *Router) Mount(m resource.Module) {
+	prefix := Prefix
+	if p, ok := m.(resource.Prefixed); ok {
+		prefix = p.Prefix()
+	}
+	mux, ok := r.muxes[prefix]
+	if !ok {
+		panic("api: module " + m.Type() + " has unknown prefix " + prefix)
+	}
 	if u, ok := m.(resource.ActionUser); ok {
 		u.UseActions(r.deps.Actions)
 	}
-	m.Routes(registrar{r.mux})
+	m.Routes(registrar{mux})
 }
 
 // ServeHTTP serves one API request.
@@ -64,15 +86,18 @@ type registrar struct{ mux *http.ServeMux }
 
 func (g registrar) Handle(pattern string, h http.Handler) { g.mux.Handle(pattern, h) }
 
-// underPrefix answers not_found outside /v1 and puts the dependencies into
-// the request context.
-func (r *Router) underPrefix(next http.Handler) http.Handler {
+// underPrefix answers not_found outside the prefixes, passes a request
+// under one to that prefix's chain with the prefix stripped and puts the
+// dependencies into the request context.
+func (r *Router) underPrefix() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.URL.Path != Prefix && !strings.HasPrefix(req.URL.Path, Prefix+"/") {
-			NotFound(w)
-			return
+		for _, p := range prefixes {
+			if strings.HasPrefix(req.URL.Path, p+"/") {
+				r.inner[p].ServeHTTP(w, req.WithContext(withDeps(req.Context(), r.deps)))
+				return
+			}
 		}
-		next.ServeHTTP(w, req.WithContext(withDeps(req.Context(), r.deps)))
+		NotFound(w)
 	})
 }
 

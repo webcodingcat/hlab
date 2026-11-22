@@ -1,7 +1,9 @@
-// Command openapi downloads the frozen Hetzner OpenAPI description named in
-// api/openapi.lock, checks its SHA-256 against the pin and caches it at
-// <user cache dir>/hlab/openapi/cloud.spec.json, where the API tests read
-// it. Run it from the repository root (`task openapi`).
+// Command openapi downloads the frozen Hetzner OpenAPI descriptions named
+// in api/openapi.lock (Cloud API) and api/hetzner-openapi.lock (Hetzner API,
+// Storage Boxes), checks each SHA-256 against its pin and caches them at
+// <user cache dir>/hlab/openapi/cloud.spec.json and hetzner.spec.json,
+// where the API tests read them. Run it from the repository root
+// (`task openapi`).
 package main
 
 import (
@@ -18,7 +20,11 @@ import (
 	"time"
 )
 
-const lockPath = "api/openapi.lock"
+// pins are the lock files and the cache file name of each description.
+var pins = []struct{ lock, cache string }{
+	{"api/openapi.lock", "cloud.spec.json"},
+	{"api/hetzner-openapi.lock", "hetzner.spec.json"},
+}
 
 type lock struct {
 	URL    string `json:"url"`
@@ -26,15 +32,18 @@ type lock struct {
 }
 
 func main() {
-	path, err := run()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "openapi:", err)
-		os.Exit(1)
+	for _, p := range pins {
+		path, err := run(p.lock, p.cache)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "openapi:", err)
+			os.Exit(1)
+		}
+		fmt.Println("cached", path)
 	}
-	fmt.Println("cached", path)
 }
 
-func run() (string, error) {
+// run caches the description pinned in lockPath as name.
+func run(lockPath, name string) (string, error) {
 	raw, err := os.ReadFile(lockPath)
 	if err != nil {
 		return "", fmt.Errorf("read %s (run from the repository root): %w", lockPath, err)
@@ -51,7 +60,7 @@ func run() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dest := filepath.Join(cache, "hlab", "openapi", "cloud.spec.json")
+	dest := filepath.Join(cache, "hlab", "openapi", name)
 	if data, err := os.ReadFile(dest); err == nil && sum(data) == strings.ToLower(l.SHA256) {
 		return dest, nil
 	}

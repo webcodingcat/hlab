@@ -75,7 +75,7 @@ tasks:
       - npm run test:unit
 
   openapi:
-    desc: Download the pinned Hetzner OpenAPI description into the user cache folder
+    desc: Download the pinned Hetzner OpenAPI descriptions (cloud.spec.json and hetzner.spec.json) into the user cache folder
     cmds:
       - go run ./tools/openapi
 
