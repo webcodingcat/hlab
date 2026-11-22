@@ -49,7 +49,8 @@ func (m *Module) setStatus(stor *store.Store, id int64, status string) error {
 	return stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, status) })
 }
 
-// touch counts a status change of server id by an action.
+// touch counts a status change of server id by an action; the status is
+// then no longer one the watch read.
 func (m *Module) touch(id int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -57,6 +58,28 @@ func (m *Module) touch(id int64) {
 		m.changes = map[int64]uint64{}
 	}
 	m.changes[id]++
+	delete(m.watchStopping, id)
+}
+
+// setWatchStopping records whether the watch itself moved server id to
+// stopping from a VM reading.
+func (m *Module) setWatchStopping(id int64, on bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !on {
+		delete(m.watchStopping, id)
+		return
+	}
+	if m.watchStopping == nil {
+		m.watchStopping = map[int64]bool{}
+	}
+	m.watchStopping[id] = true
+}
+
+func (m *Module) isWatchStopping(id int64) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.watchStopping[id]
 }
 
 func (m *Module) changeCount(id int64) uint64 {
@@ -66,9 +89,12 @@ func (m *Module) changeCount(id int64) uint64 {
 }
 
 // watch gives every server without a running action the status of its
-// VM's state, then watches its rescue (watchRescue). A server shown
-// stopping keeps it while its VM still runs: the guest has been asked to
-// shut down and has not finished.
+// VM's state, then watches its rescue (watchRescue). The lock of a
+// running shutdown action covers the action itself; the stopping status
+// that action leaves stays while the VM still runs, because the guest has
+// been asked to shut down and has not finished. A stopping the watch read
+// from the VM itself (as during a guest's own reboot) does not stick: the
+// server goes back to running when its VM runs.
 func (m *Module) watch(ctx context.Context) {
 	stor := m.d.Store
 	var recs []Record
@@ -124,7 +150,7 @@ func (m *Module) watch(ctx context.Context) {
 				continue // deleted meanwhile
 			}
 			if r.Status == s.status || r.Status == StatusInitializing || r.Status == StatusDeleting ||
-				(r.Status == StatusStopping && s.status == StatusRunning) {
+				(r.Status == StatusStopping && s.status == StatusRunning && !m.isWatchStopping(id)) {
 				continue
 			}
 			slog.Info("server status follows its VM", "id", id, "from", r.Status, "to", s.status)
@@ -132,6 +158,7 @@ func (m *Module) watch(ctx context.Context) {
 			if err := put(tx, r); err != nil {
 				return err
 			}
+			m.setWatchStopping(id, s.status == StatusStopping)
 		}
 		return nil
 	}); err != nil {
