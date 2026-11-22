@@ -190,9 +190,9 @@ func testUI11(t *testing.T) {
 // deleted, with the type, location and image of the other server rows.
 // Volumes, Load Balancers, Networks, Firewalls, Floating IPs, Primary IPs,
 // DNS, Certificates and Placement Groups share one project: each creates a
-// resource through its form, labels and deletes it. The limit is about twice the last full run (1m31s).
+// resource through its form, labels and deletes it. The limit is about twice the last full run (2m7s).
 func testUI02(t *testing.T) {
-	runSpec(t, "UI-02", 3*time.Minute, []string{
+	runSpec(t, "UI-02", 4*time.Minute+30*time.Second, []string{
 		"HLAB_E2E_SERVER_TYPE=" + serverType,
 		"HLAB_E2E_SERVER_LOCATION=" + serverLocation,
 		"HLAB_E2E_SERVER_IMAGE=" + serverImage,

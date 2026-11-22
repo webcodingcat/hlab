@@ -47,7 +47,7 @@
 
 - [x] 17 MCP server (MCP-01, MCP-02, MCP-03, MCP-04, MCP-05) → phases/17/
 
-- [ ] B3 Backlog: console times and labels, server power and delete fixes → phases/B3/
+- [x] B3 Backlog: console times and labels, server power and delete fixes → phases/B3/
 
 - [ ] 18 Storage Box API.
       Requirements: SBOX-01, SBOX-02, SBOX-09, SBOX-10, SBOX-20.

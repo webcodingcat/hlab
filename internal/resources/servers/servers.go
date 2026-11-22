@@ -285,6 +285,9 @@ type Module struct {
 	// changes counts the status changes actions made per server, so the
 	// status watch skips a server whose state it read before one.
 	changes map[int64]uint64
+	// watchStopping holds the servers the status watch itself moved to
+	// stopping from a VM reading; they go back to running when the VM runs.
+	watchStopping map[int64]bool
 }
 
 // New returns the module.
@@ -1040,7 +1043,24 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 	}
 
 	acts.Run(action.ID, func(ctx context.Context, _ func(int)) error {
-		return m.remove(ctx, stor, id)
+		var lbs []int64
+		if m.loadBalancers != nil {
+			if err := stor.Tx(func(tx store.Tx) error {
+				var err error
+				lbs, err = m.loadBalancers(tx, id)
+				return err
+			}); err != nil {
+				return err
+			}
+		}
+		if err := m.remove(ctx, stor, id); err != nil {
+			return err
+		}
+		if err := m.d.PushAgent(ctx); err != nil {
+			// The next push repairs the appliance's state.
+			slog.Warn("push agent document after server delete", "id", id, "load_balancers", lbs, "err", err)
+		}
+		return nil
 	})
 	api.JSON(w, http.StatusOK, map[string]any{"action": action})
 }

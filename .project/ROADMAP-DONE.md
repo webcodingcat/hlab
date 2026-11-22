@@ -6,6 +6,8 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x] B3 Backlog: console times and labels, server power and delete fixes → phases/B3/
+
 - [x] 17 MCP server.
       Requirements: MCP-01, MCP-02, MCP-03, MCP-04, MCP-05.
       Depends on: 15.

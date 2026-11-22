@@ -436,6 +436,39 @@ func TestServers(t *testing.T) {
 		}
 	})
 
+	t.Run("SRV-07/reboot_status", func(t *testing.T) {
+		fake := platformtest.NewFake()
+		env, mod, _ := newFakeEnv(t, fake, nil)
+		id := createdServer(t, env, "reboot-status", nil)
+		waitStatus(t, env, id, "running")
+		vm := vmName(t, fake)
+
+		// The guest's own reboot after the action: the watch reads the VM
+		// stopping, then running again.
+		runAction(t, env, id, "reboot", nil)
+		fake.SetState(vm, platform.StateStopping)
+		tickWatch(t, mod)
+		fake.SetState(vm, platform.StateRunning)
+		tickWatch(t, mod)
+		if got := getServer(t, env, id).Status; got != "running" {
+			t.Errorf("status one watch interval after the rebooted VM runs again: %q, want running", got)
+		}
+
+		fake.HoldShutdown(vm)
+		runAction(t, env, id, "shutdown", nil)
+		for i := range 2 {
+			tickWatch(t, mod)
+			if got := getServer(t, env, id).Status; got != "stopping" {
+				t.Errorf("status %d watch intervals after shutdown with the VM still running: %q, want stopping", i+1, got)
+			}
+		}
+		fake.SetState(vm, platform.StateOff)
+		tickWatch(t, mod)
+		if got := getServer(t, env, id).Status; got != "off" {
+			t.Errorf("status one watch interval after the VM went off: %q, want off", got)
+		}
+	})
+
 	t.Run("SRV-02", func(t *testing.T) {
 		fake := platformtest.NewFake()
 		env, _, deps := newFakeEnv(t, fake, nil)

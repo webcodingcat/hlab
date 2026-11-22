@@ -7,7 +7,9 @@
   // selects a chip, Delete or Backspace removes it, Backspace in the empty
   // input removes the last chip, a double click puts it back into the input.
   // A broken rule or a key used twice shows under the box and the text stays;
-  // error (the API's labels message) shows there too.
+  // the input is then marked invalid (setCustomValidity), so the enclosing
+  // form refuses a submit while the error line stays, without the browser's
+  // bubble. error (the API's labels message) shows there too.
   type Props = { rows: LabelRow[]; error?: string };
 
   let { rows = $bindable(), error }: Props = $props();
@@ -18,25 +20,37 @@
   let message = $state<string | undefined>();
   let input = $state<HTMLInputElement>();
 
+  /** fail shows m under the box and marks the input invalid; undefined clears both. */
+  function fail(m: string | undefined) {
+    message = m;
+    input?.setCustomValidity(m ?? "");
+  }
+
   /** commit turns the typed text into a chip; it keeps the text on an error. */
   function commit() {
     if (text.trim() === "") {
       text = "";
-      message = undefined;
+      fail(undefined);
       return;
     }
     const r = parseLabel(text);
     if ("error" in r) {
-      message = r.error;
+      fail(r.error);
       return;
     }
     if (rows.some((x) => x.key === r.row.key)) {
-      message = `Label key "${r.row.key}" is used twice.`;
+      fail(`Label key "${r.row.key}" is used twice.`);
       return;
     }
     rows = [...rows, r.row];
     text = "";
-    message = undefined;
+    fail(undefined);
+  }
+
+  /** invalid keeps the browser's bubble away and puts the user back in the box. */
+  function invalid(e: Event) {
+    e.preventDefault();
+    input?.focus();
   }
 
   function remove(i: number) {
@@ -49,7 +63,7 @@
     const r = rows[i];
     remove(i);
     text = r.value === "" ? r.key : `${r.key}=${r.value}`;
-    message = undefined;
+    fail(undefined);
   }
 
   function inputKey(e: KeyboardEvent) {
@@ -111,6 +125,7 @@
       aria-describedby={shown ? `${id}-rule ${id}-error` : `${id}-rule`}
       onkeydown={inputKey}
       onblur={commit}
+      oninvalid={invalid}
     />
   </div>
   {#if shown}<div id={`${id}-error`} class="error">{shown}</div>{/if}

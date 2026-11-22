@@ -254,7 +254,7 @@ Inside `hlabd` (Go packages under `internal/`):
       Folder      string // VM configuration folder in the data folder
       StopAction  StopAction // StopSave | StopShutdown
   }
-  type PowerOp int   // PowerStart, PowerStop (hard), PowerShutdown, PowerReboot, PowerReset, PowerSave
+  type PowerOp int   // PowerStart, PowerStop (hard), PowerShutdown, PowerReboot, PowerReset, PowerSave, PowerShutdownRetry (shutdown that asks a still booting guest again, user API only)
   type StopAction int
   type VMState int   // StateOff, StateStarting, StateRunning, StateStopping, StateSaved, StatePaused, StateOther
   type Segment struct { PublicPVLAN, Promiscuous, Trunk bool; VLAN int } // public: PVLAN isolated port (Promiscuous: the appliance's port); private: access VLAN 2..4092; Trunk: the appliance's adapter for all VLANs 2..4092

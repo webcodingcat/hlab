@@ -151,10 +151,13 @@ action holds it.
 
 ## Server actions
 
-- `shutdown` asks the guest to shut down and succeeds once the request is
-  sent. The server shows `stopping` until the guest has turned the VM
-  off, then `off`; a guest that ignores the request stays `stopping`
-  while it runs.
+- `shutdown` asks the guest to shut down and succeeds once the guest has
+  accepted the request. A guest that is still booting refuses it; HLab
+  asks again every 2 seconds for up to 2 minutes before the action fails.
+  The server shows `stopping` until the guest has turned the VM off, then
+  `off`; a guest that ignores the request stays `stopping` while it runs.
+  A reboot started inside the guest shows `stopping` only while the VM
+  restarts and `running` again once it runs.
 - `rebuild` takes a system image, or a snapshot or backup of the project
   by ID. An image whose `disk_size` exceeds the server type's disk answers
   422 `invalid_input` on the field `image`.

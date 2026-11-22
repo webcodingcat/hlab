@@ -19,6 +19,71 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 Shutdown retry only for the API action
+
+- Type: decision
+- Phase: phase B3
+- What: a new `platform.PowerShutdownRetry` asks a still booting guest again for up to 2 minutes and is used only by the API `shutdown` action, while `PowerShutdown` stays a single ask for halt, appliance stop and rescue.
+- Why: the B3-02 review found that the retry in `PowerShutdown` stretched cloud stop and uninstall past the 60 s halt timeout of phase 09.
+- Cost of change: low
+- Replaces: 2026-11-22 Shutdown retry as a testable function
+
+## 2026-11-22 LabelsField sets message and validity together
+
+- Type: decision
+- Phase: phase B3
+- What: a helper `fail(m)` in LabelsField.svelte sets the error line and the custom validity together and is also used when a chip is put back into the box.
+- Why: a stale invalid mark would otherwise block a later valid submit.
+- Cost of change: low
+
+## 2026-11-22 Server delete reads load balancer targets before removal
+
+- Type: decision
+- Phase: phase B3
+- What: the delete action reads the targeting load balancer IDs for the push warning just before `remove`, and a store error there fails the action like any other store error.
+- Why: after the removal the targets are gone, and a store error means the delete cannot be done safely anyway.
+- Cost of change: low
+
+## 2026-11-22 Who set stopping decides whether it sticks
+
+- Type: decision
+- Phase: phase B3
+- What: the status watch remembers in memory the servers it moved to `stopping` from a VM reading and returns only those to `running` when the VM runs, while a `stopping` set by the shutdown action (whose running lock is the shutdown marker) stays until the VM is off.
+- Why: the shutdown action ends once the guest accepted the request, before the VM is off, and the B2 log shows the watch reading `stopping` during a guest's own reboot.
+- Cost of change: low
+
+## 2026-11-22 Push after every API server delete
+
+- Type: decision
+- Phase: phase B3
+- What: the API delete action pushes the agent document after removing the server, a failed push logs a warning naming the server and its load balancers, and project deletion does not push per server.
+- Why: the document also carries the deleted server's metadata and firewall state, and mgmt already pushes once at the end of a project deletion.
+- Cost of change: low
+
+## 2026-11-22 One shared createdText in local time
+
+- Type: decision
+- Phase: phase B3
+- What: lib/format.ts `createdText` shows local time as "YYYY-MM-DD hh:mm", views/servers/servers.ts re-exports it, and a value that cannot be parsed is shown as given.
+- Why: one place for the format, matching the local time of the CLI.
+- Cost of change: low
+
+## 2026-11-22 Labels e2e proves no request through the Wails bridge
+
+- Type: decision
+- Phase: phase B3
+- What: "UI-02 invalid labels" is its own test that records the page's calls to `/wails/runtime` and checks the API afterwards to prove nothing was sent.
+- Why: the console sends API calls only through the Wails bridge.
+- Cost of change: low
+
+## 2026-11-22 Test IDs of the B3 fixes
+
+- Type: decision
+- Phase: phase B3
+- What: the reboot and shutdown fixes are unit rows under SRV-07, the delete push under LB-06 and the Created times under UI-02.
+- Why: these are the requirements whose promise the bugs break; the SRV-07 e2e stays unchanged for the milestone close.
+- Cost of change: low
+
 ## 2026-11-22 Backlog phase B3
 
 - Type: change

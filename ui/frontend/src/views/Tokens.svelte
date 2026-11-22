@@ -8,7 +8,7 @@
   import HelpButton from "../lib/HelpButton.svelte";
   import Table, { type Column } from "../lib/Table.svelte";
   import { ApiError, mgmt } from "../lib/bridge";
-  import { actionTitle } from "../lib/format";
+  import { actionTitle, createdText } from "../lib/format";
   import { action, showError } from "../lib/toast";
   import { running } from "../state";
 
@@ -25,7 +25,7 @@
   const columns: Column<Token>[] = [
     { key: "name", label: "Name", value: (t) => t.name, sortable: true },
     { key: "access", label: "Access", value: (t) => (t.read_only ? "Read only" : "Read & write"), sortable: true },
-    { key: "created", label: "Created", value: (t) => t.created.slice(0, 16).replace("T", " "), sortable: true },
+    { key: "created", label: "Created", value: (t) => createdText(t.created), sortable: true },
   ];
 
   async function load() {

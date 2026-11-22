@@ -236,8 +236,8 @@ func (p *Platform) askGuest(ctx context.Context, name, method string) (bool, int
 	return rv == 0 || rv == 4096, rv, nil
 }
 
-// guestReadyTimeout bounds how long a reboot keeps asking a guest that
-// refuses both requests, as a guest does while it still boots and its
+// guestReadyTimeout bounds how long a reboot or shutdown keeps asking a
+// guest that refuses, as a guest does while it still boots and its
 // Shutdown integration service is not up yet.
 const guestReadyTimeout = 2 * time.Minute
 
@@ -304,7 +304,23 @@ func (p *Platform) reboot(ctx context.Context, name string) error {
 	return err
 }
 
+// shutdown asks the guest through ask (InitiateShutdown) every interval
+// until it accepts or timeout has passed (untilAccepted); a guest that
+// still refuses then gives a *platform.Error of Kind InvalidState naming
+// vm name and the last return value. Power(PowerShutdownRetry) calls it
+// with guestReadyTimeout and 2 s, Power(PowerShutdown) with a single ask.
+func shutdown(ctx context.Context, name string, timeout, interval time.Duration,
+	ask func(context.Context) (bool, int64, error)) error {
+	ok, rv, err := untilAccepted(ctx, timeout, interval, ask)
+	if err == nil && !ok {
+		err = &platform.Error{Kind: platform.InvalidState, Op: "Power", Err: fmt.Errorf("InitiateShutdown of vm %s returned %d", name, rv)}
+	}
+	return err
+}
+
 // Power runs a power operation; Shutdown returns once the guest was asked,
+// ShutdownRetry once the guest accepted the request, asking a still
+// booting guest again until guestReadyTimeout;
 // Reboot once the guest was asked or, in its fallback, started again.
 func (p *Platform) Power(ctx context.Context, name string, op platform.PowerOp) error {
 	var body string
@@ -315,11 +331,13 @@ func (p *Platform) Power(ctx context.Context, name string, op platform.PowerOp) 
 	case platform.PowerStop:
 		body = `Stop-VM -VM $vm -TurnOff -Force`
 	case platform.PowerShutdown:
-		ok, rv, err := p.askGuest(ctx, name, "InitiateShutdown")
-		if err == nil && !ok {
-			err = &platform.Error{Kind: platform.InvalidState, Op: "Power", Err: fmt.Errorf("InitiateShutdown of vm %s returned %d", name, rv)}
-		}
-		return err
+		return shutdown(ctx, name, 0, 0, func(ctx context.Context) (bool, int64, error) {
+			return p.askGuest(ctx, name, "InitiateShutdown")
+		})
+	case platform.PowerShutdownRetry:
+		return shutdown(ctx, name, guestReadyTimeout, 2*time.Second, func(ctx context.Context) (bool, int64, error) {
+			return p.askGuest(ctx, name, "InitiateShutdown")
+		})
 	case platform.PowerReboot:
 		return p.reboot(ctx, name)
 	case platform.PowerReset:

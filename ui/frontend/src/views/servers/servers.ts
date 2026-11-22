@@ -50,8 +50,7 @@ const tones: Record<string, Tone> = { running: "success", off: "muted", unknown:
 /** tone is the status pill's colour role of a server status. */
 export const tone = (status: string): Tone => tones[status] ?? "warning";
 
-/** createdText shows an ISO time as "YYYY-MM-DD HH:MM". */
-export const createdText = (created: string) => created.slice(0, 16).replace("T", " ");
+export { createdText } from "../../lib/format";
 
 /** usableImages keeps the available x86 system images, snapshots and backups. */
 export const usableImages = (all: Image[]) =>

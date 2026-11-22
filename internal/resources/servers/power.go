@@ -25,9 +25,10 @@ type powerAction struct {
 var (
 	actPowerOn  = powerAction{"start_server", StatusStarting, platform.PowerStart, StatusRunning}
 	actPowerOff = powerAction{"stop_server", StatusStopping, platform.PowerStop, StatusOff}
-	// shutdown succeeds once the request is sent; the status watch shows
-	// off when the guest has turned the VM off.
-	actShutdown = powerAction{"shutdown_server", StatusStopping, platform.PowerShutdown, StatusStopping}
+	// shutdown succeeds once the guest accepted the request, asking a
+	// still booting guest again; the status watch shows off when the guest
+	// has turned the VM off.
+	actShutdown = powerAction{"shutdown_server", StatusStopping, platform.PowerShutdownRetry, StatusStopping}
 	actReboot   = powerAction{"reboot_server", "", platform.PowerReboot, StatusRunning}
 	actReset    = powerAction{"reset_server", "", platform.PowerReset, StatusRunning}
 )
