@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 Server delete reads load balancer targets before removal
+
+- Type: decision
+- Phase: phase B3
+- What: the delete action reads the targeting load balancer IDs for the push warning just before `remove`, and a store error there fails the action like any other store error.
+- Why: after the removal the targets are gone, and a store error means the delete cannot be done safely anyway.
+- Cost of change: low
+
 ## 2026-11-22 Who set stopping decides whether it sticks
 
 - Type: decision

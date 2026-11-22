@@ -50,14 +50,14 @@ export function createdText(created: string): string;
 
 ## Plans
 
-- [ ] B3-01 Server status after reboot and agent push after delete
+- [x] B3-01 Server status after reboot and agent push after delete
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SRV-07, LB-06 | Tests: internal/resources/servers/servers_test.go, internal/resources/loadbalancers/targets_test.go, internal/resources/loadbalancers/loadbalancers_test.go
   - Reads: REQUIREMENTS SRV-07, LB-06; ARCHITECTURE "hlabd (Windows service)" (servers module, status watch, agent document); DECISIONS "2026-11-21 Reboot of a booting guest retries for two minutes"; the note on the shutdown marker above; internal/resources/servers/watch.go, power.go, servers.go `delete`, `remove`, `SetLoadBalancers`; internal/cloud/cloud.go `PushAgent`; internal/mgmt/mgmt.go project deletion (pushes once at the end)
   - Size: ~110 lines in 3 files
   - Adjusts: -
-  - [ ] internal/resources/servers/watch.go: the module keeps in memory the IDs of servers the watch itself moved to `stopping` from a VM reading. The rule "stopping stays while the VM runs" applies only to servers not in that set; a server in it goes back to `running` when its VM runs. The entry is removed when the watch writes another status and in `touch` (every status an action sets). Doc comment of `watch` updated: the shutdown action's lock covers the action itself, the stopping it leaves stays until the VM is off, and a stopping read during a guest's own reboot does not stick.
-  - [ ] internal/resources/servers/servers.go `delete`: before `remove`, read the IDs of the load balancers targeting the server through the `loadBalancers` hook (nil hook: none); after `remove` succeeds, call `m.d.PushAgent`. A failed push does not fail the action: `slog.Warn` names the server ID and the load balancer IDs, with a one-sentence comment that the next push repairs the appliance's state. `Delete` (project deletion) does not push.
+  - [x] internal/resources/servers/watch.go: the module keeps in memory the IDs of servers the watch itself moved to `stopping` from a VM reading. The rule "stopping stays while the VM runs" applies only to servers not in that set; a server in it goes back to `running` when its VM runs. The entry is removed when the watch writes another status and in `touch` (every status an action sets). Doc comment of `watch` updated: the shutdown action's lock covers the action itself, the stopping it leaves stays until the VM is off, and a stopping read during a guest's own reboot does not stick.
+  - [x] internal/resources/servers/servers.go `delete`: before `remove`, read the IDs of the load balancers targeting the server through the `loadBalancers` hook (nil hook: none); after `remove` succeeds, call `m.d.PushAgent`. A failed push does not fail the action: `slog.Warn` names the server ID and the load balancer IDs, with a one-sentence comment that the next push repairs the appliance's state. `Delete` (project deletion) does not push.
 
 - [ ] B3-02 Shutdown of a booting guest retries
   - Wave: 1 | Depends on: - | Review: alone
