@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-22 Storage box actions validate before the lock
+
+- Type: decision
+- Phase: phase 18
+- What: change_type, reset_password and the snapshot plan check the body and the stored box before the box lock, so invalid input gets 422 even while another action runs, and a type without `automatic_snapshot_limit` puts no upper bound on max_snapshots.
+- Why: the API validates first; a null limit is read as no limit.
+- Cost of change: low
+
 ## 2026-11-22 Storage box sort and stored catalog objects
 
 - Type: decision

@@ -136,14 +136,14 @@ Stored documents (`resources` table, no migration):
   - [x] Action endpoints with `actionsres.RoutesFor(r, "storage_boxes", "storage_box")` plus `GET /storage_boxes/{id}/{sub}` serving `/storage_boxes/actions/{id}` (as zones do); empty `actionRoutes` in `actions.go` and `subaccountRoutes` in `subaccounts.go` for 18-06 and 18-07.
   - [x] `internal/api/deviations.go`: the Storage Box deviations (no data or protocols yet before phase 19, `server` under `storagebox.hetzner.internal`, no breach check of passwords, validation errors as 422 instead of a failed action, every box action locks the box); `docs/development/api-coverage.md`: rows for every Storage Box route of the phase (including those of 18-06 and 18-07), the deviations and the routes not served yet (`folders`, snapshots, `rollback_snapshot`); the docs test alias.
 
-- [ ] 18-06 Storage box actions
+- [x] 18-06 Storage box actions
   - Wave: 4 | Depends on: 18-05 | Review: alone
   - Requirements: SBOX-10, SBOX-20 | Tests: internal/resources/storageboxes/actions_test.go
   - Reads: REQUIREMENTS.md "Storage Boxes"; SPEC.md "References" (the `/storage_boxes/{id}/actions/*` operations); CONTEXT.md; RESEARCH.md "Q1" (snapshot plan, change_type); EXPERIMENTS.md E14
   - Size: ~300 lines in 1 file
   - Adjusts: -
-  - [ ] `internal/resources/storageboxes/actions.go`: `change_protection` (`delete`), `change_type` (type exists and has a price in the box's location; smaller types allowed), `reset_password` (policy, new hashes), `update_access_settings` (`reachable_externally`, `samba_enabled`, `ssh_enabled`, `webdav_enabled`, `zfs_enabled`, absent fields unchanged). Each validates first (422 `invalid_input` with `details.fields`), then runs as a box action through the 18-05 helper and changes the stored box when it succeeds; a box with a running action answers 423 `locked`.
-  - [ ] `enable_snapshot_plan` (`max_snapshots` 1 up to the type's `automatic_snapshot_limit`, `minute` 0-59 and `hour` 0-23 required, `day_of_week` 1-7 or null, `day_of_month` 1-31 or null; replaces an existing plan) and `disable_snapshot_plan` (plan null); phase 18 only stores the plan.
+  - [x] `internal/resources/storageboxes/actions.go`: `change_protection` (`delete`), `change_type` (type exists and has a price in the box's location; smaller types allowed), `reset_password` (policy, new hashes), `update_access_settings` (`reachable_externally`, `samba_enabled`, `ssh_enabled`, `webdav_enabled`, `zfs_enabled`, absent fields unchanged). Each validates first (422 `invalid_input` with `details.fields`), then runs as a box action through the 18-05 helper and changes the stored box when it succeeds; a box with a running action answers 423 `locked`.
+  - [x] `enable_snapshot_plan` (`max_snapshots` 1 up to the type's `automatic_snapshot_limit`, `minute` 0-59 and `hour` 0-23 required, `day_of_week` 1-7 or null, `day_of_month` 1-31 or null; replaces an existing plan) and `disable_snapshot_plan` (plan null); phase 18 only stores the plan.
 
 - [ ] 18-07 Storage box subaccounts
   - Wave: 4 | Depends on: 18-05 | Review: alone
