@@ -76,9 +76,10 @@ func ListActions(tx Tx, projectID int64, ids []int64) ([]Action, error) {
 		WHERE project_id = ? AND id IN (`+marks+`) ORDER BY id`, args...)
 }
 
-// ProjectActions returns all actions of projectID, ordered by ID.
+// ProjectActions returns all actions of projectID, ordered by ID; projectID
+// 0 means the actions without a project.
 func ProjectActions(tx Tx, projectID int64) ([]Action, error) {
-	return queryActions(tx, `SELECT `+actionColumns+` FROM actions WHERE project_id = ? ORDER BY id`, projectID)
+	return queryActions(tx, `SELECT `+actionColumns+` FROM actions WHERE project_id IS ? ORDER BY id`, nullProject(projectID))
 }
 
 // RunningActions returns all actions with status "running", ordered by ID.

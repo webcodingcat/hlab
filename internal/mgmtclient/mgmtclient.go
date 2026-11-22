@@ -22,6 +22,9 @@ var ErrNotRunning = errors.New("the cloud is not running")
 type APIError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// ActionID names the running deletion in the 409 conflict of
+	// DELETE /projects/{name}.
+	ActionID int64 `json:"action_id,omitempty"`
 }
 
 func (e APIError) Error() string { return e.Message }
