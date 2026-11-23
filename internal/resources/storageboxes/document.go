@@ -106,7 +106,7 @@ func keyLines(keys []string) []string {
 	var out []string
 	for _, k := range keys {
 		k = strings.TrimSpace(k)
-		if k != "" && !strings.ContainsAny(k, "\r\n") {
+		if !strings.ContainsAny(k, "\r\n") {
 			out = append(out, k)
 		}
 	}
