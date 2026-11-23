@@ -207,16 +207,16 @@ CompactDisk(ctx context.Context, path string) error
     - it refuses everything else with "Command not allowed".
   - [ ] `cmd/hlab-agent/main.go`: subcommands `storage-shell` (exec of the argv, never `sh -c`) and `storage-keys`.
 
-- [ ] 19-08 Storage boxes: action outcomes
+- [x] 19-08 Storage boxes: action outcomes
   - Wave: 3 | Depends on: 19-06 | Review: alone
   - Requirements: SBOX-03 (box lifecycle with the storage VM) | Tests: internal/resources/storageboxes/storage_test.go, internal/resources/storageboxes/storageboxes_test.go, internal/resources/storageboxes/helpers_test.go
   - Reads: CONTEXT.md "Failed create", "Delete", "Not active"; BACKLOG.md item on `createSubaccount`; `internal/resources/storageboxes/*.go`
   - Size: ~250 lines in 4 files
   - Adjusts: internal/resources/storageboxes/helpers_test.go (the Deps it builds, if the gated Apply needs the new fields)
-  - [ ] `storageboxes.go`, `boxes.go`:
+  - [x] `storageboxes.go`, `boxes.go`:
     - A failed `create_storage_box` deletes the box and releases its IP; the action carries the error.
     - Delete sets `_hlab.deleting` in the begin transaction and runs Apply; records go and the IP is released only after Apply succeeded; on failure the mark is cleared.
-  - [ ] `subaccounts.go`, `subaccount_actions.go`, `actions.go`: subaccount create and every action but delete answer 423 `locked` on a box that is not `active`; new `recover.go`: `Recover` deletes boxes whose create was interrupted.
+  - [x] `subaccounts.go`, `subaccount_actions.go`, `actions.go`: subaccount create and every action but delete answer 423 `locked` on a box that is not `active`; new `recover.go`: `Recover` deletes boxes whose create was interrupted.
 
 - [ ] 19-09 Storage VM: creation and removal
   - Wave: 3 | Depends on: 19-04 | Review: alone

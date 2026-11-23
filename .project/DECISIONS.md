@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Storage box not-active guard and Recover
+
+- Type: decision
+- Phase: phase 19
+- What: Every box and subaccount action except the deletes answers 423 `locked` on a box that is not active (checked in `boxAction` and `subAction`); `Recover` at start deletes boxes still `initializing` and finishes deletes still marked `_hlab.deleting`.
+- Why: No box stays stuck after a stop or crash, and a box whose data are gone never shows as active.
+- Cost of change: low
+
 ## 2026-11-23 Storage box firewall chains only drop or return
 
 - Type: decision
