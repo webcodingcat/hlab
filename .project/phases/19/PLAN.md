@@ -143,14 +143,14 @@ CompactDisk(ctx context.Context, path string) error
   - [ ] `internal/transit/transit.go`: `Storage` and `StorageAgent`; `internal/ipam/ipam.go`: `NextPublic` skips the storage address.
   - [ ] New `internal/agentclient/storage.go`: `StorageClient` with `WaitReady`, `Push` and `Job` on the existing request helper of `agentclient.go`.
 
-- [ ] 19-02 Own storage box types
+- [x] 19-02 Own storage box types
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SBOX-21 | Tests: internal/catalog/storageboxtypes_custom_test.go, internal/catalog/catalog_test.go, internal/cloud/reload_test.go
   - Reads: REQUIREMENTS.md SBOX-21; ARCHITECTURE.md "Files and formats" (`storage-box-types.custom.json`); CONTEXT.md "SBOX-21"; `internal/catalog/custom.go` and `isos_custom.go` as the pattern
   - Size: ~230 lines in 4 files
   - Adjusts: field `Catalog.StorageBoxTypes` becomes the method `StorageBoxTypes()`: `testStorageBoxTypes` in internal/catalog/catalog_test.go, internal/resources/conventions_test.go:68, internal/resources/storageboxes/helpers_test.go:50 and :65 (what they use, e.g. through a setter)
-  - [ ] `internal/catalog/storageboxtypes.go` (and a new `storageboxtypes_custom.go`): read the own file, append its types after the catalog's, an invalid file or an ID or name colliding with a catalog type keeps only the catalog types and sets the warning.
-  - [ ] `internal/cloud/reload.go` and `internal/cloud/cloud.go`: create the file as `[]` with the settings.toml ACL at start, load it at start and on `/settings/reload`, report the warning as problem `custom_storage_box_types` in the status.
+  - [x] `internal/catalog/storageboxtypes.go` (and a new `storageboxtypes_custom.go`): read the own file, append its types after the catalog's, an invalid file or an ID or name colliding with a catalog type keeps only the catalog types and sets the warning.
+  - [x] `internal/cloud/reload.go` and `internal/cloud/cloud.go`: create the file as `[]` with the settings.toml ACL at start, load it at start and on `/settings/reload`, report the warning as problem `custom_storage_box_types` in the status.
 
 - [ ] 19-03 Uninstall removes the storage VM
   - Wave: 1 | Depends on: - | Review: alone

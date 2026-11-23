@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Own storage box types follow own server types
+
+- Type: decision
+- Phase: phase 19
+- What: Own storage box types need IDs from `MinOwnID`, a name, and no duplicate within the own file; the catalog exposes `StorageBoxTypes()`, `SetStorageBoxTypes` (tests), `StorageBoxTypeByRef`, `ReloadOwnStorageBoxTypes` and `OwnStorageBoxTypesWarning`.
+- Why: The same rules as `server-types.custom.json` keep both files alike for the user, and the method guards the list for reload.
+- Cost of change: low
+
 ## 2026-11-23 Storage box quota with full qgroups
 
 - Type: decision
