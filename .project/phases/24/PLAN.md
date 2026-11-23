@@ -27,3 +27,10 @@ signature changes, and `internal/actions` stays as it is.
   - Adjusts: none
   - [x] `docs/guide.md` (OpenTofu storage box example): drop the paragraph that `tofu destroy` can stop with `locked` and must run again; say that one destroy removes the box with its subaccounts and snapshots. `docs/deviations.md`: in "Storage boxes" drop "run it again" and keep that other actions on a busy box answer `locked`; in "Actions that wait instead of answering locked" add deleting subaccounts and snapshots, which wait for the box.
   - [x] `docs/development/api-coverage.md`: rewrite the storage box note "Every action on a box ... locks the box" so that `DELETE` of a subaccount or snapshot waits as running behind the box's actions while everything else, `DELETE` of the box included, answers 423 `locked`; add the waiting delete to the subaccount and snapshot rows.
+
+## Close
+
+- Unit suite `task test` and linter `task lint`: green on 407752d.
+- E2E: `task e2e -- -run 'TestE2E/CLI-06/destroy$'` green on 66da6c7 (only docs changed since); `task e2e -- -v -run 'TestE2E/CLI-06/(storage_boxes|subaccounts|snapshots|storage_box_types)$'` green on 407752d.
+- Code review 24-01 and verifier: no blockers, no decisions, no backlog.
+- Manual checks: none (CLI-06 is e2e).
