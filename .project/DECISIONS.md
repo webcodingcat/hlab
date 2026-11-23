@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Apache setup on the storage VM
+
+- Type: decision
+- Phase: phase 20
+- What: WebDAV password files are 0640 root and the box's group; without box IPs Apache is disabled; a box IP not listening on 443 15 s after a graceful reload gets one restart; a changed certificate reloads Apache; a failing configtest puts the old site back.
+- Why: mpm-itk switches to the box user before authentication, Apache refuses to start without a Listen line, and a graceful reload picking up a new Listen is unconfirmed (RESEARCH.md section 3).
+- Cost of change: low
+
 ## 2026-11-23 Snapshot plan bookkeeping
 
 - Type: decision
