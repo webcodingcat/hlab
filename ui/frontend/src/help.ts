@@ -6,6 +6,7 @@ export type ViewId =
   | "projects"
   | "servers"
   | "volumes"
+  | "storage-boxes"
   | "load-balancers"
   | "networks"
   | "firewalls"
@@ -20,6 +21,7 @@ export type ViewId =
   | "isos"
   | "tokens"
   | "server-types"
+  | "storage-box-types"
   | "settings"
   | "logs";
 

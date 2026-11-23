@@ -28,6 +28,7 @@ export function actionTitle(type: string, name: string, action: string): string 
 const types: Record<string, string> = {
   servers: "Server",
   volumes: "Volume",
+  storage_boxes: "Storage Box",
   firewalls: "Firewall",
   images: "Image",
   placement_groups: "Placement group",
