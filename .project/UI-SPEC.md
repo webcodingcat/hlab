@@ -132,11 +132,11 @@ everywhere.
     contains the open tab is highlighted. The last opened project is
     remembered.
   - Administration (gear): breadcrumb "Administration", left sidebar with
-    Server Types, ISOs, Settings, Logs.
+    Server Types, Storage Box Types, ISOs, Settings, Logs.
 - Cloud stopped: the project list and the project console show the text
   "Start the cloud to manage projects" with the Start button; the
   Administration (Server Types: catalog and own types, as hlabd would merge
-  them; ISOs: catalog and own ISOs; Settings; Logs: last file contents)
+  them; Storage Box Types: catalog and own types; ISOs: catalog and own ISOs; Settings; Logs: last file contents)
   stays available.
 - Resource list per type: resource table.
 - Create per type: one form page following the Hetzner Console's order
@@ -183,6 +183,11 @@ everywhere.
   with a required password field for the Hetzner token (hint "Used once
   for the update, never stored."), "Update" and "Cancel"; the token is
   cleared when the dialog closes and never stored.
+- Storage Box Types: table of the storage box type catalog with source
+  column (catalog, own); add, edit and remove own types as on Server Types
+  (name, description, size, snapshot and subaccount limits, locations with
+  the same "All locations" checkbox list); no update button, the catalog
+  comes with the release.
 - ISOs: table of the ISO catalog and the own ISOs with source column
   (catalog, own), name, description, architecture; "Add ISO" opens a form
   with name (required, stored as the ISO's description; own ISOs have no

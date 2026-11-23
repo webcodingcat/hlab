@@ -57,7 +57,9 @@
 - WebDAV and FTPS use a certificate from the hlab CA; clients trust it
   with the existing `trust_ca` switch or skip verification.
 - Storage box types and prices come from the real API through
-  `task catalog`; the locations are those the types have prices for.
+  `task catalog`, plus the user's own types from
+  `storage-box-types.custom.json`; the locations are those the types have
+  prices for.
 - The storage VM exists while at least one storage box exists, starts and
   stops with the cloud and follows `stop_behaviour`.
 

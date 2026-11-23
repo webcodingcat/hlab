@@ -605,7 +605,7 @@ HTTP/1.1 over `\\.\pipe\hlab`, JSON. All paths under `/mgmt/v1`:
 | `GET /logs?follow=1` | log lines as newline-delimited JSON; followers end when the cloud stops |
 | `GET /ca.pem` | the hlab CA certificate |
 | `PUT /trust` | body `{"on": bool}`; `200 {"on": bool}`; `400 invalid_input` without `on`; `500 server_error` when the trust store or the settings file fails |
-| `POST /settings/reload` | re-read the settings file (applies `logging.level`), the own server types (refreshes the `custom_server_types` problem) and the own ISOs (copies new local files, refreshes the `custom_isos` problem); `200 {}` or `500 server_error` |
+| `POST /settings/reload` | re-read the settings file (applies `logging.level`), the own server types (refreshes the `custom_server_types` problem), the own storage box types (refreshes the `custom_storage_box_types` problem) and the own ISOs (copies new local files, refreshes the `custom_isos` problem); `200 {}` or `500 server_error` |
 
 Errors: `{"error":{"code":"...","message":"..."}}` with codes
 `invalid_input`, `not_found`, `conflict`, `cloud_not_running`,
@@ -1028,6 +1028,7 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
 | `%ProgramFiles%\hlab\catalog\server-types.json` | `{"server_types": [...]}` as returned by Hetzner's API | `task catalog` (release) |
 | `%ProgramData%\hlab\catalog\server-types.json` | same; written by `hlab catalog update`, preferred when present | hlabd |
 | `%ProgramFiles%\hlab\catalog\{images,isos,locations,load-balancer-types,pricing}.json` | Hetzner API shapes plus `_hlab.source` (URL, checksum URL, format); locations, load balancer types and pricing from `task catalog`, images and ISOs by hand | release |
+| `%ProgramData%\hlab\storage-box-types.custom.json` | JSON array of Hetzner `storage_box_type` objects (IDs from 100000), served in `/storage_box_types` after the catalog types; an invalid file or an ID or name colliding with a catalog type leaves out all own types as the non-fatal problem `custom_storage_box_types` | tray, user; hlabd creates it as `[]` with the settings.toml ACL at start when missing |
 | `%ProgramFiles%\hlab\catalog\storage-box-types.json` | `{"storage_box_types": [...]}` as returned by Hetzner's API, prices included | `task catalog` (release) |
 | `%ProgramFiles%\hlab\catalog\storage-debs.json` | same shape as `appliance-debs.json`: the Debian 13 packages of the storage VM, pinned by version and SHA-256; cached in `<data>\cache\debs\` and put on the storage VM cidata | release |
 | `%ProgramFiles%\hlab\catalog\appliance-debs.json` | `{"debs":[{"name","urls","sha256"}]}`: Debian packages missing from the appliance image; cached in `<data>\cache\debs\` and put on the appliance cidata as `<name>.deb` | release |

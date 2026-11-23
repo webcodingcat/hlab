@@ -10,7 +10,7 @@ STATUS: IN_PROGRESS
 - Phase: 19 Storage VM and SSH access (next)
 - Base branch: main
 - Last done: phase 18 merged into main (2026-11-22): the Hetzner API serves storage box types, storage boxes, subaccounts and their actions under `/hetzner/v1`, and `task catalog` writes the storage box types from the real API
-- Next: /wcc:phase in a new session builds phase 19 (Storage VM and SSH access), then phases 20 and 21; /wcc:change takes the open decision Q21 and items from "Later" before phase 16
+- Next: /wcc:phase in a new session builds phase 19 (Storage VM and SSH access), then phases 20 and 21; /wcc:change takes items from "Later" before phase 16
 
 ## Open manual checks
 
@@ -34,13 +34,4 @@ STATUS: IN_PROGRESS
      /wcc:phase asks those of its phase at its start, /wcc:change takes
      answers any time. -->
 
-- Q21 (phase 18, verifier): Should SPEC.md D4 raise the limit of `docs/deviations.md` from about 150 lines?
-  - Context: the file has 177 lines after phase 18 (163 before), the new "Storage boxes" topic added about 16; phases 19 and 20 add protocol and snapshot text.
-  - Options: 1. raise the D4 limit to about 200 lines 2. shorten other topics to get back under 150 3. keep the wording and accept the overrun as "about"
-  - Recommendation: 1, because the storage box topic keeps growing with phases 19 and 20.
-  - Affects: DOC-03, SPEC.md D4
-
-## If BLOCKED
-
-- Reason: -
-- Decision needed: -
+- none

@@ -53,7 +53,7 @@
 
 - [ ] 19 Storage VM and SSH access.
       Requirements: SBOX-03, SBOX-04, SBOX-06, SBOX-08, SBOX-11, SBOX-12,
-      SBOX-13.
+      SBOX-13, SBOX-21.
       Depends on: 18.
       Success criteria:
       1. The first storage box creates the storage VM; data written over
@@ -61,7 +61,8 @@
       2. A box is reachable from a server, and from host and WSL2 only with
          reachable_externally; the uninstall cleanup removes the storage VM.
       3. Subaccounts see only their home directory; read-only ones write
-         nothing; the quota of the type holds.
+         nothing; the quota of the type holds, tested with own small
+         storage box types from `storage-box-types.custom.json`.
       4. `docs/guide.md`, `docs/deviations.md` and `docs/configuration.md`
          describe storage boxes and their SSH access.
 
@@ -80,7 +81,7 @@
          snapshots.
 
 - [ ] 21 Storage Boxes in the console and the clients.
-      Requirements: UI-12, UI-13, CLI-05, CLI-06, CLI-07.
+      Requirements: UI-12, UI-13, UI-14, CLI-05, CLI-06, CLI-07.
       Depends on: 20, 17.
       Success criteria:
       1. The console manages storage boxes, their subaccounts and

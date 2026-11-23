@@ -227,12 +227,12 @@ secrets").
   flag with an example, and a section `hlab mcp` with every tool and a
   configuration example for Claude Code and Claude Desktop.
 - D3 Configuration reference: `docs/configuration.md`, every key of
-  `settings.toml`, the custom server types file and the catalog files.
+  `settings.toml`, the custom server types file, the custom storage box types file and the catalog files.
 - D4 Known deviations from Hetzner: `docs/deviations.md`, for users: short
   prose grouped by topic (servers, images and backups, volumes, networks
   and IPs, firewalls, DNS, load balancers and certificates, storage boxes,
   projects and server types, WSL2), saying what a user notices and what is not
-  available, without routes or endpoint lists; about 150 lines at most.
+  available, without routes or endpoint lists; about 250 lines at most.
 - D5 Help inside the program: one help text per tray view in
   `ui/frontend/src/help/<view>.md`, shown by the help button.
 - D6 Developer guide: `docs/development/`, for outside contributors: `setup.md`

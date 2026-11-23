@@ -19,6 +19,22 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Own storage box types file
+
+- Type: change
+- Phase: change
+- What: `%ProgramData%\hlab\storage-box-types.custom.json` adds the user's own storage box types (Hetzner `storage_box_type` objects, IDs from 100000) like `server-types.custom.json` (SBOX-21, unit, phase 19); its tray view is UI-14 (e2e, phase 21); the SBOX-06 e2e test uses a 64 MiB and a 128 MiB own type, writes the file with the user's ACL and calls `POST /mgmt/v1/settings/reload`.
+- Why: the smallest Hetzner type is 1 TiB, so quota and change_type could not be proven end to end with real data; the user wants own types as a feature, not a test aid.
+- Cost of change: medium
+
+## 2026-11-23 Q21 deviations.md up to about 250 lines
+
+- Type: change
+- Phase: change
+- What: SPEC.md D4 allows `docs/deviations.md` about 250 lines.
+- Why: phases 19 and 20 add storage box access, protocols and snapshots (Q21).
+- Cost of change: low
+
 ## 2026-11-22 Upgrade to wcc 0.32.20
 
 - Type: approval

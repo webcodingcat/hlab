@@ -162,6 +162,7 @@ resource types.
 The Hetzner API (`http://api.hetzner.internal/hetzner/v1`), with the cloud tokens of the project.
 
 - SBOX-01 the Hetzner API lists and shows the storage box types of the catalog with their prices per location (goal 1) [unit]
+- SBOX-21 storage box types come from the shipped catalog file plus the user's own types file `storage-box-types.custom.json`, and appear in `/storage_box_types`; an invalid or colliding own file gives a warning and only the catalog types (goal 1) [unit]
 - SBOX-09 storage boxes are created, listed with Hetzner's filters and sort keys, shown, updated and deleted with Hetzner's fields; create and delete run as actions, and a new box is `initializing` until it is `active` (goal 1) [unit]
 - SBOX-10 the actions change_protection, change_type, reset_password and update_access_settings change a box as at Hetzner, and a delete-protected box refuses deletion (goal 1) [unit]
 - SBOX-20 enable_snapshot_plan validates max_snapshots, minute, hour, day_of_week and day_of_month as at Hetzner and sets the plan, replacing an existing one, and disable_snapshot_plan removes it (goal 1) [unit]
@@ -217,6 +218,7 @@ The Hetzner API (`http://api.hetzner.internal/hetzner/v1`), with the cloud token
 - UI-11 the project list shows the projects as cards in a grid or as rows in a list (switch remembered), sorted by display name or creation date in either direction, each with display name, name, a menu (Delete) and its resources per type that open their section ("Create server" when empty), and a dashed "New project" tile that creates a project (goal 3) [e2e]
 - UI-12 the console lists, shows, creates, configures and deletes the storage boxes of the active project (goal 3) [e2e]
 - UI-13 the console lists, creates, configures and deletes the subaccounts and snapshots of a storage box and rolls a box back to a snapshot (goal 3) [e2e]
+- UI-14 the storage box types view shows the catalog types and adds, edits and removes own storage box types (goal 3) [e2e]
 
 ### Installer (`INST`)
 
@@ -388,6 +390,7 @@ What the target vision in IDEA.md will need, not built yet.
 | DNS-04 | 07 | x |
 | DNS-05 | 07 | x |
 | SBOX-01 | 18 | x |
+| SBOX-21 | 19 | |
 | SBOX-09 | 18 | x |
 | SBOX-10 | 18 | x |
 | SBOX-20 | 18 | x |
@@ -434,6 +437,7 @@ What the target vision in IDEA.md will need, not built yet.
 | UI-11 | 15 | x |
 | UI-12 | 21 | |
 | UI-13 | 21 | |
+| UI-14 | 21 | |
 | INST-01 | 12 | x |
 | INST-02 | 12 | x |
 | INST-03 | 12 | x |
