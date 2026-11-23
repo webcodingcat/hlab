@@ -132,7 +132,7 @@ func (c *screenConn) MouseButton(ctx context.Context, index int, down bool) erro
 
 func (c *screenConn) MouseScroll(ctx context.Context, delta int) error {
 	return c.do(ctx, "MouseScroll", func(w *consoleWMI) error {
-		return w.input("Msvm_SyntheticMouse", "SetScrollPosition", map[string]any{"ScrollPosition": delta})
+		return w.input("Msvm_SyntheticMouse", "SetScrollPosition", map[string]any{"ScrollPositionDelta": delta})
 	})
 }
 
