@@ -261,7 +261,8 @@ Inside `hlabd` (Go packages under `internal/`):
   type VMSpec struct {
       Name        string // "hlab-server-<id>", "hlab-appliance", "hlab-storage"
       CPUs        int
-      MemoryMB    int64  // static
+      MemoryMB    int64  // static, or with DynamicMemory the startup and maximum
+      DynamicMemory bool // Hyper-V dynamic memory, minimum platform.DynamicMemoryMinMB (512); the storage VM uses it with 2048
       Folder      string // VM configuration folder in the data folder
       StopAction  StopAction // StopSave | StopShutdown
   }

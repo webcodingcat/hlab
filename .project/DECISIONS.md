@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Install groups run only for packages on the ISO
+
+- Type: decision
+- Phase: phase 20
+- What: Each install group of `hlab-agent-install.sh`, xfs and HAProxy included, runs only when its main package is on the ISO, and the dynamic memory minimum is the constant `platform.DynamicMemoryMinMB` (512).
+- Why: The storage ISO now carries libicu76, liblua5.4-0 and lsb-base, which would otherwise be installed again at every storage VM boot.
+- Cost of change: low
+
 ## 2026-11-23 Storage box firewall chains pass the protocol ports
 
 - Type: decision
