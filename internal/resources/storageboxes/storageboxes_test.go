@@ -30,6 +30,13 @@ func TestStorageBoxes(t *testing.T) {
 	t.Run("SBOX-02/limit_numbering", testSubaccountLimitNumbering)
 	t.Run("SBOX-02/list_update_delete", testSubaccountListUpdateDelete)
 	t.Run("SBOX-02/actions", testSubaccountActions)
+	t.Run("SBOX-09/create_failed", testCreateFailed)
+	t.Run("SBOX-09/delete_confirmed", testDeleteConfirmed)
+	t.Run("SBOX-02/not_active", testNotActive)
+	t.Run("SBOX-11/path", testFoldersPath)
+	t.Run("SBOX-06/change_type", testChangeTypeUsage)
+	t.Run("SBOX-06/free_space", testFreeSpace)
+	t.Run("SBOX-09/stats", testStats)
 }
 
 // listActions returns the actions at path.

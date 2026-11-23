@@ -446,6 +446,7 @@ func TestCatalog(t *testing.T) {
 	})
 
 	t.Run("SBOX-01", testStorageBoxTypes)
+	t.Run("SBOX-21", testOwnStorageBoxTypes)
 }
 
 // loadAll loads the shipped catalog with dataDir and customFile and fails

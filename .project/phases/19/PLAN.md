@@ -125,6 +125,13 @@ func (c *Catalog) OwnStorageBoxTypesWarning() string    // "" when fine
 CompactDisk(ctx context.Context, path string) error
 ```
 
+### Names the tests fix (from the test writers)
+
+- storageagent (19-04): `type State struct{ Filesystem bool; Boxes, Subvolumes []string }` (box user names); `type Step struct{ Kind StepKind; Box string }`; constants `StepFormat`, `StepCreateBox`, `StepRemoveBox`; the format step comes first.
+- agent (19-05): `func StorageBoxDropped(cfg agentapi.Config, src, dst netip.Addr) bool` in `internal/agent/storagebox.go`, the host's transit /30 from `cfg.PublicRange` via `transit.For`.
+- Port23 (19-07): refusals contain "Command not allowed"; the sftp argv starts with a path ending in `sftp-server`; rrsync gets `/home` as its last argument; borg gets `--restrict-to-path /home`, a client's own `--restrict-to-path /` is refused.
+- catalog (19-02): `Catalog.StorageBoxTypes()` (method), `ReloadOwnStorageBoxTypes`, `OwnStorageBoxTypesWarning`.
+
 ## Plans
 
 - [ ] 19-01 Storage interfaces, addresses and client
@@ -141,6 +148,7 @@ CompactDisk(ctx context.Context, path string) error
   - Requirements: SBOX-21 | Tests: internal/catalog/storageboxtypes_custom_test.go, internal/catalog/catalog_test.go, internal/cloud/reload_test.go
   - Reads: REQUIREMENTS.md SBOX-21; ARCHITECTURE.md "Files and formats" (`storage-box-types.custom.json`); CONTEXT.md "SBOX-21"; `internal/catalog/custom.go` and `isos_custom.go` as the pattern
   - Size: ~230 lines in 4 files
+  - Adjusts: field `Catalog.StorageBoxTypes` becomes the method `StorageBoxTypes()`: `testStorageBoxTypes` in internal/catalog/catalog_test.go, internal/resources/conventions_test.go:68, internal/resources/storageboxes/helpers_test.go:50 and :65 (what they use, e.g. through a setter)
   - [ ] `internal/catalog/storageboxtypes.go` (and a new `storageboxtypes_custom.go`): read the own file, append its types after the catalog's, an invalid file or an ID or name colliding with a catalog type keeps only the catalog types and sets the warning.
   - [ ] `internal/cloud/reload.go` and `internal/cloud/cloud.go`: create the file as `[]` with the settings.toml ACL at start, load it at start and on `/settings/reload`, report the warning as problem `custom_storage_box_types` in the status.
 
@@ -179,6 +187,7 @@ CompactDisk(ctx context.Context, path string) error
   - Requirements: SBOX-03, SBOX-04 | Tests: -
   - Reads: CONTEXT.md "Create", "Delete", "Network"; DECISIONS.md "Storage box stored layout", "Storage box Apply hook"; `internal/resources/storageboxes/*.go`
   - Size: ~250 lines in 4 files
+  - Note: storage_test.go also uses `FreeSpaceReserve` and `StatsEvery` of 19-10; 19-06 declares both (constant and interval) so the package's tests compile; 19-10 gives them their behaviour.
   - [ ] `boxes.go`: in the create transaction assign `_hlab.n` (kv counter) and `_hlab.ip` (`ipam.NextPublic`); the API keeps `username`, `server`, `system` null until active; `storageboxes.go`: the new `Deps` fields and `HLab.IP`, `HLab.Deleting`.
   - [ ] New `document.go`: `Boxes(tx)` (all projects, quota from the stored type, hashes, keys, access, subaccounts; boxes marked deleting left out) and `Contribute` (`Config.Storage` when any box exists, `Config.StorageBoxes` with names and reachability).
 

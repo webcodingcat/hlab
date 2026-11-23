@@ -224,6 +224,45 @@ func testReload(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("SBOX-21_reload", func(t *testing.T) {
+		c, config := reloadCloud(t, "info", "[]")
+		file := filepath.Join(config, "storage-box-types.custom.json")
+		catalogTypes := len(c.cat.StorageBoxTypes())
+
+		writeFile(t, file, ownBoxTypesJSON(t, "own-box-a"))
+		if err := c.reload(context.Background()); err != nil {
+			t.Fatalf("reload with a changed own storage box types file: %v", err)
+		}
+		if got := boxTypeNames(c.cat); len(got) != catalogTypes+1 || got[catalogTypes] != "own-box-a" {
+			t.Errorf("storage box types after reload %v, want the catalog's followed by own-box-a", got)
+		}
+		if hasProblem(c, "custom_storage_box_types") {
+			t.Error("custom_storage_box_types problem with a valid own file")
+		}
+
+		writeFile(t, file, "[{not json")
+		if err := c.reload(context.Background()); err != nil {
+			t.Fatalf("reload with an invalid own storage box types file: %v", err)
+		}
+		if got := boxTypeNames(c.cat); len(got) != catalogTypes {
+			t.Errorf("storage box types after reload of an invalid file %v, want only the %d of the catalog", got, catalogTypes)
+		}
+		if !hasProblem(c, "custom_storage_box_types") {
+			t.Error("no custom_storage_box_types problem after reload of an invalid own file")
+		}
+
+		writeFile(t, file, ownBoxTypesJSON(t, "own-box-b"))
+		if err := c.reload(context.Background()); err != nil {
+			t.Fatalf("reload with a valid own file again: %v", err)
+		}
+		if got := boxTypeNames(c.cat); len(got) != catalogTypes+1 || got[catalogTypes] != "own-box-b" {
+			t.Errorf("storage box types after the repairing reload %v, want the catalog's followed by own-box-b", got)
+		}
+		if hasProblem(c, "custom_storage_box_types") {
+			t.Error("custom_storage_box_types problem still reported after a valid own file")
+		}
+	})
 }
 
 // isoCloud is reloadCloud with an own ISOs file, a data folder, a store
@@ -390,5 +429,45 @@ func ownNames(cat *catalog.Catalog) []string {
 func hasCustomProblem(c *Cloud) bool {
 	return slices.ContainsFunc(c.mgmtStatus().Problems, func(p mgmt.Problem) bool {
 		return p.Code == "custom_server_types"
+	})
+}
+
+// ownBoxTypesJSON is an own storage box types file with one type named
+// name, a copy of the first shipped storage box type with ID MinOwnID.
+func ownBoxTypesJSON(t *testing.T, name string) string {
+	t.Helper()
+	cat, err := catalog.Load(shippedCatalog)
+	if err != nil {
+		t.Fatalf("load shipped catalog: %v", err)
+	}
+	types := cat.StorageBoxTypes()
+	if len(types) == 0 {
+		t.Fatal("shipped catalog has no storage box types")
+	}
+	var st map[string]any
+	if err := json.Unmarshal(types[0].Raw, &st); err != nil {
+		t.Fatal(err)
+	}
+	st["id"], st["name"] = catalog.MinOwnID, name
+	data, err := json.Marshal([]any{st})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// boxTypeNames are the names of the storage box types of cat in order.
+func boxTypeNames(cat *catalog.Catalog) []string {
+	var names []string
+	for _, st := range cat.StorageBoxTypes() {
+		names = append(names, st.Name)
+	}
+	return names
+}
+
+// hasProblem reports whether /status lists a problem with code.
+func hasProblem(c *Cloud, code string) bool {
+	return slices.ContainsFunc(c.mgmtStatus().Problems, func(p mgmt.Problem) bool {
+		return p.Code == code
 	})
 }
