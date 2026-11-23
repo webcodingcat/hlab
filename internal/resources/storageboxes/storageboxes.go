@@ -64,7 +64,7 @@ type Deps struct {
 	Job func(ctx context.Context, job agentapi.StorageJob) (agentapi.StorageJobResult, error)
 	// FreeBytes returns the free bytes of the host drive of the data folder.
 	FreeBytes func() (uint64, error)
-	// Clock drives the stats job; nil: scheduler.RealClock().
+	// Clock drives the stats and snapshot plan jobs; nil: scheduler.RealClock().
 	Clock scheduler.Clock
 	// PushAgent pushes the appliance's document again after the failed
 	// path of an action changed the store (a box deleted after a failed
@@ -164,6 +164,9 @@ type HLab struct {
 	// Deleting marks a box whose delete_storage_box runs; the storage VM's
 	// document leaves it out.
 	Deleting bool `json:"deleting,omitempty"`
+	// PlanChecked is when the snapshot plan job last checked the box's
+	// plan; zero without a plan.
+	PlanChecked time.Time `json:"plan_checked,omitzero"`
 }
 
 // Record is a stored box.
