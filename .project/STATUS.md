@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 24 Storage box destroy in one run (next)
+- Phase: 23 Server console (next)
 - Base branch: main
-- Last done: phase 21 merged into main (2026-11-23): storage boxes and own storage box types in the console; hcloud, OpenTofu and Ansible pass their storage box rows; project deletion now also removes storage boxes and actions
-- Next: /wcc:phase in a new session builds phase 24 (storage box destroy in one run), then phase 23 (server console), then phase 16 (release checks in test VMs)
+- Last done: phase 24 merged into main (2026-11-23): deleting a subaccount or snapshot while the box is busy waits as running instead of answering 423 `locked`, so one `tofu destroy` removes a box with its subaccounts and snapshots
+- Next: /wcc:phase in a new session builds phase 23 (server console), then phase 16 (release checks in test VMs)
 
 ## Open manual checks
 

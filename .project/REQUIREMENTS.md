@@ -455,7 +455,7 @@ What the target vision in IDEA.md will need, not built yet.
 | CLI-03 | 13 | x |
 | CLI-04 | 13 | x |
 | CLI-05 | 21 | x |
-| CLI-06 | 21, 24 | |
+| CLI-06 | 21, 24 | x |
 | CLI-07 | 21 | x |
 | CON-01 | 23 | |
 | CON-02 | 23 | |
