@@ -17,7 +17,8 @@ runs.
 - Clicking a row opens the box's page with these tabs:
   - **Overview** shows the hostname and username with copy buttons, the
     type, the location, the usage of data and snapshots, and the folders
-    of the box: type a path or click a folder to descend, **Up** goes back.
+    of the box: click a folder to descend, or type a path and press
+    **Open**; **Up** goes back.
   - **Subaccounts** lists the subaccounts. **Create subaccount** asks for
     name, description, home directory, password and access (SSH, Samba,
     WebDAV, read-only, reachable externally); the row menu offers

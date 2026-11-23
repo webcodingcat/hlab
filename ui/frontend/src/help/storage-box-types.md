@@ -1,8 +1,10 @@
 # Storage Box Types
 
 The storage box types your projects can use: the shipped catalog and your
-own types. The list shows while the cloud is stopped too. The catalog
-comes with the release and has no update button.
+own types; the column **Source** tells them apart. The list shows while
+the cloud is stopped too. The catalog comes with the release and has no
+update button. When your own types cannot be used, a banner above the
+list says why.
 
 - **Add storage box type** opens a form for your own type: name,
   description, size (in MiB, GiB or TiB), snapshot limit, automatic

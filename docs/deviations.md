@@ -145,7 +145,8 @@ with `scp -O`. Port 23 runs only SFTP, scp, rsync and BorgBackup; Hetzner's
 other commands there, such as `ls` or `df`, answer `Command not allowed`.
 Every BorgBackup version a client asks for is served by BorgBackup 1.4.
 Keys in `.ssh/authorized_keys` work on both ports in OpenSSH and in RFC
-4716 format; the keys given at create are written there once. The host
+4716 format; the keys given at create, one OpenSSH line each, are
+written there once. The host
 and WSL2 count as outside: they reach a box only when it or one of its
 subaccounts is reachable externally, while servers always reach it, and
 an account that is not reachable externally is refused from them on
@@ -190,7 +191,8 @@ account, not for subaccounts. Passwords follow Hetzner's rules but are not check
 known data breaches. Invalid input, such as a home directory with a
 leading slash, is refused at once instead of by a failed action. While an
 action on a box or one of its subaccounts runs, any other one on that box
-answers `locked`. The types and prices come from HLab's catalog and your
+answers `locked`, so `tofu destroy` of a box with its subaccounts and
+snapshots can stop with `locked`; run it again. The types and prices come from HLab's catalog and your
 [own types](configuration.md#own-storage-box-types); `hlab catalog update`
 does not refresh them.
 

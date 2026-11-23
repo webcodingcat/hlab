@@ -99,7 +99,14 @@ file dialog (`PickISOFile`) and therefore lives beside the window:
   and `RemoveISO` do the same for the own ISOs in `isos.custom.json`;
   `ISOs` reads the files and lists the catalog ISOs, every entry of the
   file and why entries are left out, so the Administration's ISOs view
-  works while the cloud is stopped.
+  works while the cloud is stopped. `StorageBoxTypes`,
+  `AddStorageBoxType`, `UpdateStorageBoxType` and `RemoveStorageBoxType`
+  do the same for the own storage box types in
+  `storage-box-types.custom.json` through `AddOwnStorageBoxType`,
+  `UpdateOwnStorageBoxType` and `RemoveOwnStorageBoxType` of
+  [internal/catalog](../../internal/catalog/storageboxtypes_own.go);
+  `StorageBoxTypes` lists the catalog types, the own types with their
+  form values and why own types are left out.
 - `Cloud` polls every 2 s: the service manager's state, `/mgmt/v1/status`
   while the cloud runs, and `status.json` through
   [internal/cloudstatus](../../internal/cloudstatus) while it is stopped.
@@ -129,7 +136,8 @@ The project console
 ([src/views/ProjectConsole.svelte](../../ui/frontend/src/views/ProjectConsole.svelte))
 takes its navigation from
 [src/lib/consoleNav.ts](../../ui/frontend/src/lib/consoleNav.ts):
-`navGroups` holds the sidebar groups Cloud (Servers, Volumes, Firewalls)
+`navGroups` holds the sidebar groups Cloud (Servers, Volumes, Storage
+Boxes, Firewalls)
 and Networking (Load Balancers, Networks, IPs, DNS) and the group
 Security without a heading. Each entry lists its views as tabs (Servers:
 servers, snapshots, backups, placement-groups; IPs: primary-ips,
@@ -150,16 +158,20 @@ stopped, and then the list, the create form or the detail page by
 `page`. The console finds these components with
 `import.meta.glob("./*/Section.svelte")`, keyed by folder name. Snapshots
 and Backups share `src/views/images/ImageList.svelte` with a `type` prop.
-The resource sections reach the project's Hetzner API through the
-management API's project proxy and are built from these parts of
-`src/lib`:
+The resource sections reach the project's Cloud API through the
+management API's project proxy (`/mgmt/v1/projects/{name}/api/v1/...`),
+and Storage Boxes its Hetzner API through the second proxy route
+`/mgmt/v1/projects/{name}/api/hetzner/v1/...`. They are built from these
+parts of `src/lib`:
 
 - `api.ts`: `api` sends one request, `listAll` reads every page of a list,
   `runApi` runs a request under an action toast, and `runOn` does so for
   an action on a named resource. Its toast title comes from
   `actionTitle(type, name, action)` in `format.ts`, for example
   "Network test: Delete", with the type derived from the request path by
-  `resourceType`.
+  `resourceType`. `hetznerApi`, `hetznerListAll`, `runHetzner` and
+  `runHetznerOn` do the same against the Hetzner API; their toasts
+  follow the action through the Cloud API's `GET /actions/{id}`.
 - `actions.ts`: `runAction` follows the returned action and its next
   actions to the end and shows their progress in a toast (`toast.ts`,
   `Toast.svelte`).
@@ -184,17 +196,21 @@ management API's project proxy and are built from these parts of
   `update`, `remove`, `createAt`, `changeProtection`, `changeDnsPtr`).
 - `src/lib/resources/<resource>.ts` (volumes, load balancers, networks,
   firewalls, floating IPs, primary IPs, zones, certificates, placement
-  groups, images) exports per resource the create form's request
+  groups, images, storage boxes) exports per resource the create form's request
   `create` (images have none), the detail page's actions menu `menu`
   with Delete last, and `tabs`, the actions of the detail tabs and row
   menus by ID. `firewallRules.ts` converts between the rows of the rules
-  editor and the API's rules. These modules import neither the bridge nor
+  editor and the API's rules. `storageBoxSubaccounts.ts` and
+  `storageBoxSnapshots.ts` hold the requests of the storage box tabs
+  Subaccounts and Snapshots, the snapshot plan's body (`planBody`) and
+  the snapshots a rollback deletes (`newerThan`). These modules import neither the bridge nor
   the Wails runtime, so their unit tests in `tests/unit` check every
   request without a browser.
 - `ResourceActionsMenu.svelte` renders a `menu`: it asks for confirmation
   as the entry says (typing the name for `typed-name`), shows the
   section's input dialog for entries that need input, and runs the request
-  under a toast. `ReverseDnsDialog.svelte` is the shared reverse DNS
+  under a toast. It and `LabelsTab.svelte` take the prop `hetzner` to send
+  their requests to the Hetzner API. `ReverseDnsDialog.svelte` is the shared reverse DNS
   dialog, and `format.ts` formats labels, creation times and ISO names
   (`isoTitle`: the name, or the description of an own ISO) for the
   tables.

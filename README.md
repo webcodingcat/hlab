@@ -159,11 +159,12 @@ when the VM runs; a fresh server needs about a minute more until
 cloud-init has finished and SSH accepts the key.
 
 Clean up with `hlab project delete demo`, which deletes the
-server and the SSH key with the project, and `hlab cloud stop`.
+server, the SSH key and the project's actions with the project, and
+`hlab cloud stop`.
 
 The [guide](docs/guide.md) shows every resource with hcloud and in the
 window: servers, placement groups, snapshots and backups, ISOs, volumes, networks, IPs, firewalls, DNS, load balancers,
-certificates, storage boxes (with hcloud only), and stopping and starting the cloud.
+certificates, storage boxes, OpenTofu and Ansible, and stopping and starting the cloud.
 
 ## The tray program
 
@@ -210,7 +211,7 @@ confirm.
   starts again.
 - The **project console** opens on **Servers**. Its sidebar groups the
   entries like the Hetzner Cloud Console: **Cloud** with **Servers**,
-  **Volumes** and **Firewalls**; **Networking** with **Load Balancers**,
+  **Volumes**, **Storage Boxes** and **Firewalls**; **Networking** with **Load Balancers**,
   **Networks**, **IPs** and **DNS**; and, below a line, **Security**. A
   click on a group heading collapses or expands it, and the window
   remembers the collapsed groups. An entry with several views shows them
@@ -241,6 +242,11 @@ confirm.
     actions menu (power, rebuild, change type, rename, delete) and the
     tabs Overview, Networking, Firewalls, Volumes, Backups, Snapshots,
     Rescue, ISO, Graphs, Labels and Protection.
+  - **Storage Boxes**: the list with **Create Storage Box**, and a page
+    per box with the tabs Overview (host name, user name, usage and a
+    folder browser), Subaccounts, Snapshots (with the snapshot plan),
+    Settings and Labels. See
+    [Storage boxes in the window](docs/guide.md#storage-boxes-in-the-window).
   - **API tokens**: **Create token** asks for a name and whether the
     token is read only, and shows the token once with a copy button;
     **Revoke** is in the row menu.
@@ -251,6 +257,11 @@ confirm.
     change or remove it; **Update from Hetzner** asks for a Hetzner token
     in a dialog and uses it once, without storing it. See
     [Custom server types](docs/configuration.md#custom-server-types).
+  - **Storage Box Types**: the catalog and your own storage box types,
+    also while the cloud is stopped. **Add storage box type** adds an own
+    type with its size and limits for all or selected locations; **Edit**
+    and **Remove** are in an own type's row menu. See
+    [Own storage box types](docs/guide.md#own-storage-box-types).
   - **ISOs**: the ISOs of the catalog and your own ISOs, also while the
     cloud is stopped. **Add ISO** adds an own ISO from a URL or a local
     `.iso` file; **Edit** and **Remove** are in an own ISO's row menu.

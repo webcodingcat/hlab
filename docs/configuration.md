@@ -224,7 +224,9 @@ Your own storage box types go in `storage-box-types.custom.json` beside
 settings.toml (`%ProgramData%\hlab-dev\storage-box-types.custom.json`
 for the development service). The cloud start creates it with an empty
 list `[]` when it is missing, with the permissions of settings.toml, so
-interactive users may edit it.
+interactive users may edit it. Administration > Storage Box Types in the
+[tray program](../README.md#the-tray-program) adds, edits and removes
+types in it; you can also edit it by hand.
 
 The file is a JSON array of storage box type objects in the format of
 Hetzner's API. HLab serves the types after those of the catalog at
@@ -262,10 +264,16 @@ any other type:
 A file that cannot be read, or whose types break these rules, is ignored
 as a whole; `hlab cloud status` then names the reason on a `problem:`
 line, and the JSON output lists it with the code
-`custom_storage_box_types`. Changes apply at the next
+`custom_storage_box_types`. Changes by hand apply at the next
 `hlab cloud start`, or while the cloud runs when the tray program saves
-a change of the settings, the server types or the ISOs. Boxes of a type
-you remove keep it; new boxes and `change_type` cannot use it any more.
+a change of the settings, the server types, the ISOs or the storage box
+types; changes made in the tray apply at once while the cloud runs,
+otherwise at the next start. The tray gives a new type the next free
+`id` from 100000, `deprecation` `null` and one entry in `prices` with
+zero prices for each location ticked in its form, or for every location
+of the catalog when "All locations" is ticked; it writes `size` in
+bytes. Boxes of a type you remove keep it; new boxes and `change_type`
+cannot use it any more.
 
 ## Catalogs
 

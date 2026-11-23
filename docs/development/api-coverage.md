@@ -678,7 +678,9 @@ The Storage Box endpoints of Hetzner's API are served under
   `<LOCATION>-BX<id>`, such as `FSN1-BX1`. Subaccounts are
   `u<n>-sub<m>` at `u<n>-sub<m>.storagebox.hetzner.internal`.
 - `location` must be one the type has a price for; `ssh_keys` must be in
-  OpenSSH format. Passwords follow Hetzner's password policy for boxes and
+  OpenSSH format, one line each: white space around a key, such as the
+  newline at the end of a key file, is removed, and a key that still
+  spans lines answers 422 `invalid_input` on `ssh_keys`. Passwords follow Hetzner's password policy for boxes and
   subaccounts, on create and on reset, but are not checked against known
   data breaches. HLab keeps only a sha512-crypt and an NT hash of a
   password.

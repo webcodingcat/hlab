@@ -168,7 +168,7 @@ for example) have finished, then deletes everything the project owns:
 servers with their VMs and disks (protected servers too), volumes with
 their disk files, snapshots and backups, networks, primary and floating
 IPs, firewalls, load balancers, certificates, DNS zones, SSH keys and
-placement groups. The command
+placement groups, and the project's actions. The command
 returns when all is gone, which takes a while for many servers. If a
 resource cannot be deleted, the command fails with
 `hlab: deleting project <name> failed: <reason>`; the project stays with
