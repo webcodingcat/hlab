@@ -85,6 +85,7 @@ func testSubaccountCreateInvalid(t *testing.T) {
 		field string
 	}{
 		{"leading_slash", func(b map[string]any) { b["home_directory"] = "/data" }, "home_directory"},
+		{"dotdot", func(b map[string]any) { b["home_directory"] = "../u100001" }, "home_directory"},
 		{"character_outside_pattern", func(b map[string]any) { b["home_directory"] = "data$1" }, "home_directory"},
 		{"longer_than_999", func(b map[string]any) { b["home_directory"] = strings.Repeat("a", 1000) }, "home_directory"},
 		{"password_policy", func(b map[string]any) { b["password"] = "short" }, "password"},

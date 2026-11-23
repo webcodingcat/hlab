@@ -55,7 +55,7 @@ func (m *Module) changeHomeDirectory(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	m.subAction(w, req, "change_home_directory", func(tx store.Tx, projectID int64, s SubaccountRecord) error {
-		s.HomeDirectory = body.HomeDirectory
+		s.HomeDirectory = cleanHome(body.HomeDirectory)
 		return putSub(tx, projectID, s)
 	})
 }

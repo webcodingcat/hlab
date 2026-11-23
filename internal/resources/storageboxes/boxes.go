@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"slices"
 	"strconv"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/ipam"
 	"github.com/webcodingcat/hlab/internal/resource"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
 	"github.com/webcodingcat/hlab/internal/storagepass"
@@ -176,8 +178,9 @@ func (m *Module) validate(body createRequest) (catalog.StorageBoxType, catalog.L
 	return st, loc, api.CheckLabels(body.Labels)
 }
 
-// create stores the box as initializing and starts create_storage_box,
-// which gives it its username, server and system and makes it active.
+// create stores the box as initializing with its number and IP and starts
+// create_storage_box, which shows its username, server and system and
+// makes it active.
 func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	var body createRequest
 	if !api.Decode(w, req, &body) {
@@ -221,6 +224,14 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		if r.ID, err = store.NextID(tx, Kind); err != nil {
 			return err
 		}
+		if r.HLab.N, err = nextUser(tx); err != nil {
+			return err
+		}
+		ip, err := ipam.NextPublic(tx, m.d.PublicRange)
+		if err != nil {
+			return err
+		}
+		r.HLab.IP = ip.String()
 		if err := put(tx, p.ID, r); err != nil {
 			return err
 		}
@@ -233,19 +244,17 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	}
 	system := strings.ToUpper(loc.Name) + "-BX" + strconv.FormatInt(r.ID, 10)
 	m.run(req, a.ID, r.ID, func(tx store.Tx, projectID int64, b *Record) error {
-		n, err := nextUser(tx)
-		if err != nil {
-			return err
-		}
-		username := "u" + strconv.FormatInt(n, 10)
+		username := userName(b.HLab.N)
 		server := username + "." + serverDomain
-		b.HLab.N = n
 		b.Username, b.Server, b.System = &username, &server, &system
 		b.Status = StatusActive
 		return put(tx, projectID, *b)
 	})
 	api.JSON(w, http.StatusCreated, map[string]any{"storage_box": r.Box, "action": a})
 }
+
+// userName is the username of box number n.
+func userName(n int64) string { return "u" + strconv.FormatInt(n, 10) }
 
 // nextUser takes the next username number from the kv counter.
 func nextUser(tx store.Tx) (int64, error) {
@@ -326,6 +335,11 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 				if err := store.Delete(tx, SubaccountKind, projectID, s.ID); err != nil {
 					return err
 				}
+			}
+		}
+		if a, err := netip.ParseAddr(r.HLab.IP); err == nil {
+			if err := ipam.Release(tx, a); err != nil {
+				return err
 			}
 		}
 		return store.Delete(tx, Kind, projectID, r.ID)

@@ -447,7 +447,7 @@ func (c *Cloud) modules() []resource.Module {
 		zns,
 		vol,
 		storageboxtypes.New(c.cat),
-		storageboxes.New(storageboxes.Deps{Catalog: c.cat}),
+		storageboxes.New(storageboxes.Deps{Catalog: c.cat, PublicRange: c.set.Network.PublicRange}),
 	}
 }
 

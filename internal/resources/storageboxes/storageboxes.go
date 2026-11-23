@@ -9,15 +9,18 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/netip"
 	"slices"
 	"strconv"
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/actions"
+	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
+	"github.com/webcodingcat/hlab/internal/scheduler"
 	"github.com/webcodingcat/hlab/internal/storagepass"
 	"github.com/webcodingcat/hlab/internal/store"
 )
@@ -35,12 +38,33 @@ const (
 	StatusActive       = "active"
 )
 
+// StorageMAC is the MAC of the storage VM's adapter on the public PVLAN.
+const StorageMAC = "02:48:4c:00:00:03"
+
+// FreeSpaceReserve is the free space of the host drive of the data folder
+// below which create and a change_type to a larger type answer 412
+// resource_unavailable.
+const FreeSpaceReserve = 10 << 30
+
+// StatsEvery is the interval of the job refreshing the stats of the boxes.
+const StatsEvery = 5 * time.Minute
+
 // Deps are the dependencies of the module.
 type Deps struct {
 	Catalog *catalog.Catalog
-	// Apply makes the storage VM match box boxID; it runs in the work
-	// function of every box and subaccount action. nil does nothing.
+	// PublicRange is the range box IPs are handed out of.
+	PublicRange netip.Prefix
+	// Apply makes the storage VM match the store (all boxes without the
+	// deleting mark); it runs in the work function of every box and
+	// subaccount action and returns only after the storage agent
+	// confirmed. nil does nothing.
 	Apply func(ctx context.Context, boxID int64) error
+	// Job runs a job on the storage VM.
+	Job func(ctx context.Context, job agentapi.StorageJob) (agentapi.StorageJobResult, error)
+	// FreeBytes returns the free bytes of the host drive of the data folder.
+	FreeBytes func() (uint64, error)
+	// Clock drives the stats job; nil: scheduler.RealClock().
+	Clock scheduler.Clock
 }
 
 // Module is the storage_boxes resource type.
@@ -118,12 +142,16 @@ type Box struct {
 
 // HLab is the part of a stored box that the API never shows.
 type HLab struct {
-	// N is the number of the username u<n>; 0 until create_storage_box
-	// succeeds.
+	// N is the number of the username u<n>, assigned at create.
 	N       int64              `json:"n,omitempty"`
 	Hashes  storagepass.Hashes `json:"hashes"`
 	NextSub int64              `json:"next_sub"`
 	SSHKeys []string           `json:"ssh_keys,omitempty"`
+	// IP is the box's address from the public range, assigned at create.
+	IP string `json:"ip,omitempty"`
+	// Deleting marks a box whose delete_storage_box runs; the storage VM's
+	// document leaves it out.
+	Deleting bool `json:"deleting,omitempty"`
 }
 
 // Record is a stored box.
