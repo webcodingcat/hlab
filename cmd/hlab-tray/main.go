@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -61,9 +62,23 @@ func main() {
 		},
 	})
 
+	console := bridge.NewConsole(bridge.ConsoleDeps{
+		CA: func(ctx context.Context) ([]byte, error) {
+			status, body, err := client.Do(ctx, http.MethodGet, "/ca.pem", nil)
+			if err != nil {
+				return nil, err
+			}
+			if status != http.StatusOK {
+				return nil, mgmtclient.AnswerError(status, body)
+			}
+			return body, nil
+		},
+	})
+
 	// A second instance exits inside application.New, before anything
 	// else starts.
-	app := application.New(appOptions(svc, cloud, logs))
+	app := application.New(appOptions(svc, cloud, logs, application.NewService(console)))
+	consoleWindows.setApp(app)
 	tray.setup(app, cloud)
 
 	ctx, cancel := context.WithCancel(context.Background())

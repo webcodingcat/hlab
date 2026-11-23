@@ -116,7 +116,7 @@ func (u *consoleUpstream) handle(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	defer c.CloseNow()
+	defer func() { _ = c.CloseNow() }()
 	ctx, cancel := context.WithTimeout(r.Context(), waitTimeout)
 	defer cancel()
 	if err := c.Write(ctx, websocket.MessageBinary, u.greeting); err != nil {
@@ -199,7 +199,7 @@ func TestConsoleProxy(t *testing.T) {
 			if err != nil {
 				t.Fatalf("dial %s from origin wails.localhost: %v", local, err)
 			}
-			defer c.CloseNow()
+			defer func() { _ = c.CloseNow() }()
 			c.SetReadLimit(-1)
 
 			if got := readBytes(ctx, t, c, len(up.greeting)); !bytes.Equal(got, up.greeting) {
@@ -257,7 +257,7 @@ func TestConsoleProxy(t *testing.T) {
 				defer cancel()
 				c, _, err := websocket.Dial(ctx, local, &websocket.DialOptions{HTTPHeader: originHeader("http://wails.localhost")})
 				if err == nil {
-					defer c.CloseNow()
+					defer func() { _ = c.CloseNow() }()
 					if _, data, err := c.Read(ctx); err == nil {
 						t.Errorf("proxy relayed %q from a server certificate of another CA", data)
 					}
@@ -277,7 +277,7 @@ func TestConsoleProxy(t *testing.T) {
 			defer cancel()
 			c, resp, err := websocket.Dial(ctx, local, &websocket.DialOptions{HTTPHeader: originHeader("http://evil.example")})
 			if err == nil {
-				defer c.CloseNow()
+				defer func() { _ = c.CloseNow() }()
 				t.Fatalf("dial %s from origin evil.example: accepted, want refused", local)
 			}
 			if resp != nil && resp.StatusCode == http.StatusSwitchingProtocols {
