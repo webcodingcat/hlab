@@ -47,7 +47,7 @@ taken with the approval of the spec or by an answer from the user.
 
 - Type: decision
 - Phase: phase 20
-- What: pam_access also restricts a box account without reachable_externally; every account not skipped gets a vsftpd user file with write_enable by its read-only flag; vsftpd.conf replaces Debian's file (pam_service_name=vsftpd, local_root=/srv/chroot/$USER/home, allow_writeable_chroot=YES); changes reload through `systemctl reload vsftpd`.
+- What: pam_access also restricts a box account without reachable_externally; every account not skipped gets a vsftpd user file with write_enable by its read-only flag; vsftpd.conf replaces Debian's file (pam_service_name=vsftpd, local_root=/srv/chroot/$USER/home, allow_writeable_chroot=YES); changes reload through `systemctl reload vsftpd`; the TLS options are `ssl_tlsv11`/`ssl_tlsv12`/`ssl_tlsv13` and there is no `reverse_lookup_enable`, as Debian's vsftpd 3.0.5 binary knows them (RESEARCH.md section 4 names them wrongly).
 - Why: sshd, Samba and WebDAV restrict the box account the same way, FTP has no access switch, and vsftpd's default PAM service is "ftp".
 - Cost of change: low
 
