@@ -330,14 +330,18 @@ func testSBOX18(t *testing.T) {
 	s2 := e.createSnapshot(t, box, "sbox18 S2", nil)
 
 	// The subaccount's session stays open on a fifo until the server ends
-	// it; the script reports whether it ended within sessionEndTimeout.
+	// it; the script reports whether it ended within sessionEndTimeout. The
+	// session is sftp's ssh transport process: sftp -b blocked on its input
+	// does not notice the transport ending before its next command.
 	session := "rm -f ready cmds\nmkfifo cmds\n" +
 		"sftp $SSHOPTS -P 22 -b - \"$LOGIN\" < cmds > session.out 2>&1 &\npid=$!\n" +
 		"exec 3> cmds\nprintf 'ls -1\\n' >&3\n" +
 		"for i in $(seq 30); do grep -q sub-a.bin session.out && break; kill -0 $pid 2>/dev/null || break; sleep 1; done\n" +
 		"grep -q sub-a.bin session.out || { echo SESSION-NOT-OPEN; cat session.out; kill $pid 2>/dev/null || true; exit 1; }\n" +
+		"ssh=$(pgrep -P $pid -x ssh) || { echo SESSION-NO-TRANSPORT; kill $pid; exit 1; }\n" +
 		"touch ready\n" +
-		fmt.Sprintf("if timeout %d tail --pid=$pid -f /dev/null; then echo SESSION-ENDED; else echo SESSION-ALIVE; kill $pid; exit 1; fi\n",
+		fmt.Sprintf("if timeout %d tail --pid=$ssh -f /dev/null; then echo SESSION-ENDED; exec 3>&-; wait $pid || true; "+
+			"else echo SESSION-ALIVE; kill $pid; exit 1; fi\n",
 			int(sessionEndTimeout/time.Second))
 	type outcome struct {
 		r   result

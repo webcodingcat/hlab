@@ -153,14 +153,14 @@ func (a *Agent) rollbackData(ctx context.Context, b agentapi.Box, n int, job age
 }
 
 // endSessions ends every connection to the box IP and every process of the
-// box UID, which the box shares with its subaccounts. ss -K needs a kernel
-// with socket destroy; without it the processes ss shows on the sockets
-// are killed (smbd children run as root and are found only that way).
+// box UID, which the box shares with its subaccounts. The processes ss
+// shows on the sockets (smbd children run as root and are found only that
+// way) and those of the UID are killed first: their connections close with
+// a FIN, which TCP retransmits until the client has it. ss -K then resets
+// what no process holds; its single RST, if lost, would leave an idle
+// client unaware, and kernels without socket destroy ignore it.
 func endSessions(ctx context.Context, ip netip.Addr, n int) error {
 	addr := ip.String()
-	if _, err := run(ctx, "ss", "-K", "-tn", "src", addr); err != nil {
-		return err
-	}
 	out, err := run(ctx, "ss", "-tnpH", "src", addr)
 	if err != nil {
 		return err
@@ -174,7 +174,11 @@ func endSessions(ctx context.Context, ip netip.Addr, n int) error {
 			return fmt.Errorf("kill %d: %w", pid, err)
 		}
 	}
-	return killUser(ctx, n)
+	if err := killUser(ctx, n); err != nil {
+		return err
+	}
+	_, err = run(ctx, "ss", "-K", "-tn", "src", addr)
+	return err
 }
 
 // clearDavLocks deletes the WebDAV lock databases of the box; their
