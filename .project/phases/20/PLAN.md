@@ -229,14 +229,14 @@ type Step struct {
   - [ ] New internal/storageagent/rollback_linux.go, job `rollback` in the order of RESEARCH.md 6: fence the box IP's ports 21, 22, 23, 443, 445, 50000-50099 with a reject rule through `github.com/google/nftables` (own table, removed at the end also on failure); end the sessions of the box and all its subaccounts (`ss -K` on the box IP's sockets, kill of the PIDs `ss -tnp` shows when `ss -K` is not supported, `pkill -KILL -U <box uid>`), delete the box's DavLockDB files, wait with a deadline until `fuser -m` on the box's mounts is empty; unmount `.zfs/snapshot`, the subaccount homes and the box home; swap the data with a writable snapshot `-i 1/<n>` of the target, remove the `Newer` snapshots and the old data, `subvolume sync` with a deadline, `qgroup clear-stale`, the E18 accounting check; recreate missing subaccount homes with the box UID; bind everything again. A failure before the swap leaves the data untouched.
   - [ ] Register `rollback` in postJob (agent.go); a missing target snapshot is `not_found`.
 
-- [ ] 20-12 Snapshot plan runs
+- [x] 20-12 Snapshot plan runs
   - Wave: 3 | Depends on: 20-06 | Review: alone
   - Requirements: SBOX-17 | Tests: internal/resources/storageboxes/snapshots_test.go (SBOX-17)
   - Reads: REQUIREMENTS SBOX-17, SBOX-20; hetzner.spec.json `enable_snapshot_plan` description; RESEARCH.md 5; CONTEXT.md (AND); ARCHITECTURE "scheduler"; internal/resources/storageboxes/{stats.go,snapshots.go}
   - Size: ~250 lines in 5 files
-  - [ ] New internal/resources/storageboxes/snapplan.go: `Due`, `Prune`, and the job `storage box snapshot plans` every `PlanEvery` on `Deps.Clock`: for each active box with a plan whose `Due` falls in (`_hlab.plan_checked`, now], it stores `plan_checked`, starts `create_snapshot` through `StartQueued` (it waits behind running actions of the box) for an automatic snapshot `snapshot-daily--<UTC time>`, and after its success deletes the snapshots `Prune` returns (jobs `delete-snapshot`, then records). Times missed while the cloud was stopped are not caught up (`plan_checked` starts at the cloud start when older).
-  - [ ] Add the job to `Jobs()` and fill the snapshot stats from `SnapshotSizes` and `SnapshotFS` in the stats refresh (stats.go); add the `HLab.PlanChecked` field (storageboxes.go).
-  - [ ] `api.Deviations()` entry and api-coverage.md line: missed plan times are skipped (internal/api/deviations.go, docs/development/api-coverage.md).
+  - [x] New internal/resources/storageboxes/snapplan.go: `Due`, `Prune`, and the job `storage box snapshot plans` every `PlanEvery` on `Deps.Clock`: for each active box with a plan whose `Due` falls in (`_hlab.plan_checked`, now], it stores `plan_checked`, starts `create_snapshot` through `StartQueued` (it waits behind running actions of the box) for an automatic snapshot `snapshot-daily--<UTC time>`, and after its success deletes the snapshots `Prune` returns (jobs `delete-snapshot`, then records). Times missed while the cloud was stopped are not caught up (`plan_checked` starts at the cloud start when older).
+  - [x] Add the job to `Jobs()` and fill the snapshot stats from `SnapshotSizes` and `SnapshotFS` in the stats refresh (stats.go); add the `HLab.PlanChecked` field (storageboxes.go).
+  - [x] `api.Deviations()` entry and api-coverage.md line: missed plan times are skipped (internal/api/deviations.go, docs/development/api-coverage.md).
 
 - [ ] 20-13 rollback_snapshot action
   - Wave: 5 | Depends on: 20-11, 20-12 | Review: alone
