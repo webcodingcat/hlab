@@ -136,14 +136,9 @@ type createRequest struct {
 	AccessSettings *accessRequest    `json:"access_settings"`
 }
 
-// boxType returns the catalog type whose name or ID is ref.
+// boxType returns the catalog or own type whose name or ID is ref.
 func (m *Module) boxType(ref string) (catalog.StorageBoxType, bool) {
-	for _, st := range m.d.Catalog.StorageBoxTypes {
-		if st.Name == ref || strconv.FormatInt(st.ID, 10) == ref {
-			return st, true
-		}
-	}
-	return catalog.StorageBoxType{}, false
+	return m.d.Catalog.StorageBoxTypeByRef(ref)
 }
 
 // location returns the catalog location whose name or ID is ref.

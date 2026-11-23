@@ -66,7 +66,7 @@ func newBoxEnv(t *testing.T) *boxEnv {
 	if err != nil {
 		t.Fatalf("load shipped catalog: %v", err)
 	}
-	cat.StorageBoxTypes = apitest.StorageBoxTypes(t)
+	cat.SetStorageBoxTypes(apitest.StorageBoxTypes(t))
 	e := &boxEnv{cat: cat, gate: apitest.NewPushGate(t), agent: &fakeAgent{}, clock: newTickClock()}
 	e.free.Store(plentyFree)
 	e.mod = storageboxes.New(storageboxes.Deps{
@@ -213,7 +213,7 @@ func (c *tickClock) waitsFor(d time.Duration) bool {
 // storageType returns the recorded type name.
 func (e *boxEnv) storageType(t *testing.T, name string) catalog.StorageBoxType {
 	t.Helper()
-	for _, st := range e.cat.StorageBoxTypes {
+	for _, st := range e.cat.StorageBoxTypes() {
 		if st.Name == name {
 			return st
 		}
