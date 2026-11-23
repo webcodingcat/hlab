@@ -19,6 +19,22 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Error 67 came from Git Bash, not from SMB
+
+- Type: assumption
+- Phase: phase 22
+- What: `net use` failed with system error 67 in phase 20 because Git Bash collapsed the leading `\` of the UNC path; smb.conf and `internal/hostnet` stay unchanged.
+- Why: run from PowerShell or Go, `net use` mapped, wrote and read a box's and a subaccount's share without any change (phases/22/RESEARCH.md); SBOX-22 proves it, and a failure with an intact path becomes an open decision.
+- Cost of change: low
+
+## 2026-11-23 SBOX-22 is one e2e test in its own file
+
+- Type: decision
+- Phase: phase 22
+- What: SBOX-22 is one e2e row covering the box share and the subaccount share, in the new file `test/e2e/storagebox_hostsmb_test.go`, with no unit row; SMB from WSL2 and servers is checked by the unchanged SBOX-14, SBOX-12 and SBOX-04 rows.
+- Why: the phase has no product logic to test, and a separate file keeps the 610-line protocols test file from growing while the shared helpers are reused.
+- Cost of change: low
+
 ## 2026-11-23 SMB from the Windows host (Q22)
 
 - Type: change
