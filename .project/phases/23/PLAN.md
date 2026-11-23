@@ -136,14 +136,14 @@ func (w *Windows) OpenConsole(project string, id int64, name string) error
 
 ## Plans
 
-- [ ] 23-01 Console forward and DNS name on the appliance, host firewall port
+- [x] 23-01 Console forward and DNS name on the appliance, host firewall port
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: CON-01 | Tests: test/e2e/console_test.go (runs at 23-07)
   - Reads: ARCHITECTURE.md "hlab-agent (appliance)" (Config with `Console ConsoleForward`), "Network"; EXPERIMENTS.md E23; CONTEXT.md technical choices
   - Size: ~180 lines in 7 files
-  - [ ] `agentapi.ConsoleForward{Listen, Backend netip.AddrPort}` and `Config.Console` (additive, schema 1); `transit.Addrs.ConsoleListen` (.2:8781) and `ConsoleProxy` (.1:443) in `internal/agentapi/agentapi.go`, `internal/transit/transit.go`
-  - [ ] Agent: a plain TCP forward Applier for `Config.Console` (listen, accept, copy both ways, restart on change, nothing while Listen is invalid) in `internal/agent/forward.go` and its registration in `internal/agent/agent.go`; A record `console.hetzner.internal` → `Console.Listen` address in `internal/agent/dns.go`
-  - [ ] Host: the inbound firewall rule allows TCP 8780 and 8781 in `internal/hostnet/windows/scripts.go` (and `hostnet.go` constant)
+  - [x] `agentapi.ConsoleForward{Listen, Backend netip.AddrPort}` and `Config.Console` (additive, schema 1); `transit.Addrs.ConsoleListen` (.2:8781) and `ConsoleProxy` (.1:443) in `internal/agentapi/agentapi.go`, `internal/transit/transit.go`
+  - [x] Agent: a plain TCP forward Applier for `Config.Console` (listen, accept, copy both ways, restart on change, nothing while Listen is invalid) in `internal/agent/forward.go` and its registration in `internal/agent/agent.go`; A record `console.hetzner.internal` → `Console.Listen` address in `internal/agent/dns.go`
+  - [x] Host: the inbound firewall rule allows TCP 8780 and 8781 in `internal/hostnet/windows/scripts.go` (and `hostnet.go` constant)
 
 - [x] 23-02 Console input translation and platform console interface
   - Wave: 1 | Depends on: - | Review: alone
