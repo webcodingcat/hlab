@@ -19,6 +19,22 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Plans with end-to-end rows finish in the main checkout
+
+- Type: decision
+- Phase: phase 20
+- What: A plan with end-to-end rows is merged into the phase branch once its fast checks pass and runs its end-to-end rows and repairs in the main checkout, one such plan at a time.
+- Why: The e2e harness refuses to run outside the checkout whose `bin\hlabd.exe` the dev service hlab-dev runs, and re-registering the service needs elevated rights.
+- Cost of change: low
+
+## 2026-11-23 Samba setup on the storage VM
+
+- Type: decision
+- Phase: phase 20
+- What: NT hashes are imported from a 0600 smbpasswd file in /run with `pdbedit -i` and the account's SID is restored with `pdbedit -r -U`; smbd restarts when its interface list (the box IPs) changes and reloads otherwise; a box with Samba off gets an empty per-IP file and no tdbsam entry.
+- Why: `pdbedit --set-nt-hash` takes the hash only in argv, and `reload-config` does not make smbd listen on new addresses (Samba source).
+- Cost of change: low
+
 ## 2026-11-23 Snapshot API details
 
 - Type: decision
