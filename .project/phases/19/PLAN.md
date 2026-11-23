@@ -173,14 +173,14 @@ CompactDisk(ctx context.Context, path string) error
   - [x] `jobs_linux.go`: `folders` (direct subdirectories, hidden ones included, sorted; `not_found` and `invalid_path` errors), `usage` from `btrfs qgroup show --raw`.
   - [x] `cmd/hlab-agent/main.go`: `--role storage` starts the storage agent on the address of the transit file, data disk at SCSI LUN 1.
 
-- [ ] 19-05 Appliance: routes, names and reachability of the boxes
+- [x] 19-05 Appliance: routes, names and reachability of the boxes
   - Wave: 2 | Depends on: 19-01 | Review: alone
   - Requirements: SBOX-04 | Tests: internal/agent/storagebox_test.go
   - Reads: ARCHITECTURE.md "Storage VM" (Network), "Network"; CONTEXT.md "Network"; EXPERIMENTS.md E3, E4, E17 (passive FTP note for phase 20); `internal/agent/network_linux.go`, `isolation_linux.go`, `firewall.go`, `dns.go`
   - Size: ~300 lines in 5 files
-  - [ ] `internal/agent/network_linux.go`: a `/32` route to `Storage.Addr` and onlink `/32` routes of the box IPs via it.
-  - [ ] `internal/agent/dns.go`: answers each name of `StorageBoxes` under `storagebox.hetzner.internal` with the box IP; `isolation_linux.go`: the storage MAC with `Storage.Addr` and the box IPs as its sources.
-  - [ ] New `internal/agent/storagebox.go` (pure: which box IPs drop external sources) and its use in `firewall_linux.go`: forwarded traffic from sources outside the public range or inside the host's transit `/30` to a box IP is dropped unless `ReachableExternally`; TCP 22 and 23 to box IPs pass otherwise.
+  - [x] `internal/agent/network_linux.go`: a `/32` route to `Storage.Addr` and onlink `/32` routes of the box IPs via it.
+  - [x] `internal/agent/dns.go`: answers each name of `StorageBoxes` under `storagebox.hetzner.internal` with the box IP; `isolation_linux.go`: the storage MAC with `Storage.Addr` and the box IPs as its sources.
+  - [x] New `internal/agent/storagebox.go` (pure: which box IPs drop external sources) and its use in `firewall_linux.go`: forwarded traffic from sources outside the public range or inside the host's transit `/30` to a box IP is dropped unless `ReachableExternally`; TCP 22 and 23 to box IPs pass otherwise.
 
 - [x] 19-06 Storage boxes: stored IP, user and the documents
   - Wave: 2 | Depends on: 19-01 | Review: alone

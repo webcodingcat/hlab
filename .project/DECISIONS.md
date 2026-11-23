@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Storage box firewall chains only drop or return
+
+- Type: decision
+- Phase: phase 19
+- What: Each box IP gets its own nftables chain `box<i>`, jumped to from the forward chain, that drops external sources of boxes not reachable externally and ports other than TCP 22/23 and returns otherwise.
+- Why: Allowed traffic must still pass the server's own outbound firewall (FW-03, review of 19-05).
+- Cost of change: low
+
 ## 2026-11-23 One failing box or subaccount does not stop the storage apply
 
 - Type: decision
@@ -31,7 +39,7 @@ taken with the approval of the spec or by an answer from the user.
 
 - Type: decision
 - Phase: phase 19
-- What: The appliance passes only TCP 22 and 23 to box IPs and drops the rest, so a box IP never reaches the storage agent on 9100; phase 20 adds its ports to `storageBoxPorts`.
+- What: The appliance lets only TCP 22 and 23 through to box IPs (subject to the server firewalls) and drops the rest, so a box IP never reaches the storage agent on 9100; phase 20 adds its ports to `storageBoxPorts`.
 - Why: Phase 19 serves only SSH, and the agent port must stay internal.
 - Cost of change: low
 
