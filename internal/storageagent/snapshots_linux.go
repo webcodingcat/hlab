@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -186,21 +187,28 @@ func bindReadOnlyAt(src string, dst int) error {
 	return nil
 }
 
-// unmountAt unmounts with flags the mount with ID id that p below r leads
-// to; p is opened through os.Root, and the mount is left alone when its ID
-// differs.
+// unmountAt unmounts with flags the mount with ID id at p below r. The
+// parent of p is opened through os.Root and the last element is never
+// followed; the mount is left alone when its ID differs. No descriptor is
+// held on the mount itself, which would keep it busy.
 func unmountAt(r *os.Root, p string, id uint64, flags int) error {
-	f, err := r.Open(p)
+	dir, name := path.Split(p)
+	if dir == "" {
+		dir = "."
+	}
+	f, err := r.Open(dir)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = f.Close() }()
 	var stx unix.Statx_t
-	if err := unix.Statx(int(f.Fd()), "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &stx); err != nil {
+	if err := unix.Statx(int(f.Fd()), name, unix.AT_SYMLINK_NOFOLLOW, unix.STATX_MNT_ID, &stx); err != nil {
 		return err
 	}
 	if stx.Mnt_id != id {
 		return fmt.Errorf("%s leads to mount %d, want %d", p, stx.Mnt_id, id)
 	}
-	return unix.Unmount(fmt.Sprintf("/proc/self/fd/%d", f.Fd()), flags)
+	// A mount point cannot be renamed or removed, so name still leads to
+	// the mount checked above.
+	return unix.Unmount(fmt.Sprintf("/proc/self/fd/%d/%s", f.Fd(), name), flags|unix.UMOUNT_NOFOLLOW)
 }

@@ -303,7 +303,7 @@ func testSBOX18(t *testing.T) {
 	e := sharedEnv(t)
 	_, w := sharedWSL(t)
 	wdir := wslWorkDir(t, w)
-	box := newTestBox(t, e, "sbox18", "bx11", map[string]bool{"reachable_externally": true})
+	box := newTestBox(t, e, "sbox18", "bx11", map[string]bool{"reachable_externally": true, "zfs_enabled": true})
 	sub := e.createSubaccount(t, box, "sbox18-sub", map[string]bool{"reachable_externally": true})
 	owner, subLogin := passwordLogin(box, 22), passwordLogin(sub, 22)
 	dir := t.TempDir()
@@ -394,6 +394,9 @@ func testSBOX18(t *testing.T) {
 			sameFile(t, a, back, "a.bin after the rollback")
 		}
 	}
+
+	in := ".zfs/snapshot/" + s1.Name
+	eventually(t, "sftp ls "+in+" after the rollback", func() (result, error) { return hostSFTP(owner, "ls "+in+"\n") })
 
 	if eventually(t, "subaccount logs in again after the rollback", func() (result, error) {
 		r, err := hostSFTP(subLogin, "ls -1\n")
