@@ -19,6 +19,15 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Storage box firewall chains pass the protocol ports
+
+- Type: decision
+- Phase: phase 20
+- What: Each box IP gets its own nftables chain `box<i>`, jumped to from the forward chain, that drops external sources of boxes not reachable externally and ports other than TCP 21, 22, 23, 443, 445 and 50000-50099, and returns otherwise; the storage agent's 9100 stays unreachable from box IPs.
+- Why: Allowed traffic must still pass the server's own outbound firewall (FW-03), and phase 20 serves FTP, WebDAV and SMB on the box IPs.
+- Cost of change: low
+- Replaces: 2026-11-23 Storage box firewall chains only drop or return; 2026-11-23 Only SSH ports reach box IPs in phase 19
+
 ## 2026-11-23 Storage agent services and snapshot contract
 
 - Type: decision
@@ -172,28 +181,12 @@ taken with the approval of the spec or by an answer from the user.
 - Why: No box stays stuck after a stop or crash, and a box whose data are gone never shows as active.
 - Cost of change: low
 
-## 2026-11-23 Storage box firewall chains only drop or return
-
-- Type: decision
-- Phase: phase 19
-- What: Each box IP gets its own nftables chain `box<i>`, jumped to from the forward chain, that drops external sources of boxes not reachable externally and ports other than TCP 22/23 and returns otherwise.
-- Why: Allowed traffic must still pass the server's own outbound firewall (FW-03, review of 19-05).
-- Cost of change: low
-
 ## 2026-11-23 One failing box or subaccount does not stop the storage apply
 
 - Type: decision
 - Phase: phase 19
 - What: A refused or failing subaccount is logged, loses its chroot and is left out of the passwords; a failing box is logged and skipped while the others are applied, and the PUT answers 500 with all box failures joined; a failed format stops the apply.
 - Why: A user's files must not stop the storage of every other box (review of 19-04), and hlabd must not take a failed box as applied.
-- Cost of change: low
-
-## 2026-11-23 Only SSH ports reach box IPs in phase 19
-
-- Type: decision
-- Phase: phase 19
-- What: The appliance lets only TCP 22 and 23 through to box IPs (subject to the server firewalls) and drops the rest, so a box IP never reaches the storage agent on 9100; phase 20 adds its ports to `storageBoxPorts`.
-- Why: Phase 19 serves only SSH, and the agent port must stay internal.
 - Cost of change: low
 
 ## 2026-11-23 Box rules before established accept

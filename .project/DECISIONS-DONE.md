@@ -4,6 +4,22 @@ Entries from DECISIONS.md that a later entry revoked or changed, moved here
 unchanged; the later entry names them under `Replaces:`. Newest first. No
 skill reads this file; it keeps the history for looking things up.
 
+## 2026-11-23 Storage box firewall chains only drop or return
+
+- Type: decision
+- Phase: phase 19
+- What: Each box IP gets its own nftables chain `box<i>`, jumped to from the forward chain, that drops external sources of boxes not reachable externally and ports other than TCP 22/23 and returns otherwise.
+- Why: Allowed traffic must still pass the server's own outbound firewall (FW-03, review of 19-05).
+- Cost of change: low
+
+## 2026-11-23 Only SSH ports reach box IPs in phase 19
+
+- Type: decision
+- Phase: phase 19
+- What: The appliance lets only TCP 22 and 23 through to box IPs (subject to the server firewalls) and drops the rest, so a box IP never reaches the storage agent on 9100; phase 20 adds its ports to `storageBoxPorts`.
+- Why: Phase 19 serves only SSH, and the agent port must stay internal.
+- Cost of change: low
+
 ## 2026-11-21 WebDAV for subaccounts by name-based virtual hosts
 
 - Type: assumption
