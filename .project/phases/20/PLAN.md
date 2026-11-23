@@ -81,10 +81,10 @@ type SnapshotRecord struct {
 }
 
 // internal/resources/storageboxes (snapplan.go), pure
-// Due returns the latest minute in (from, to] at which plan p runs, in UTC;
+// Due reports whether plan p runs at a minute in (from, to], in UTC;
 // day_of_week (1 Monday .. 7 Sunday) and day_of_month both must match
 // when both are set (AND).
-func Due(p SnapshotPlan, from, to time.Time) (time.Time, bool)
+func Due(p SnapshotPlan, from, to time.Time) bool
 // Prune returns the automatic snapshots of snaps beyond the newest max,
 // oldest first; manual snapshots are never returned.
 func Prune(snaps []Snapshot, max int) []Snapshot
