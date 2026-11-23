@@ -36,7 +36,8 @@ type Agent struct {
 
 	mu         sync.Mutex // serializes applies and jobs
 	generation int
-	mounted    bool // the data disk is mounted at Root
+	mounted    bool   // the data disk is mounted at Root
+	sshd       string //nolint:unused // the sshd configuration applied last; used on Linux
 }
 
 // jobError is a failed job with the HTTP status and code it answers.

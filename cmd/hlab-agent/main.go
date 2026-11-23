@@ -43,6 +43,14 @@ const (
 var trunkMAC = net.HardwareAddr{0x02, 0x48, 0x4c, 0x00, 0x00, 0x02}
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "storage-shell":
+			os.Exit(storageShell(os.Args[2:]))
+		case "storage-keys":
+			os.Exit(storageKeys(os.Args[2:]))
+		}
+	}
 	if err := run(); err != nil {
 		slog.Error("hlab-agent", "err", err)
 		os.Exit(1)
@@ -77,6 +85,44 @@ func run() error {
 	default:
 		return fmt.Errorf("unknown role %q", *role)
 	}
+}
+
+// storageShell is the ForceCommand of port 23 on the storage VM, running
+// inside the account's chroot: it execs the argv Port23 makes of
+// SSH_ORIGINAL_COMMAND, never through a shell, or refuses it on stderr.
+// sshd sets USER; -ro marks a read-only subaccount.
+func storageShell(args []string) int {
+	fs := flag.NewFlagSet("storage-shell", flag.ContinueOnError)
+	readOnly := fs.Bool("ro", false, "the account is read-only")
+	if err := fs.Parse(args); err != nil || fs.NArg() != 0 {
+		return 2
+	}
+	argv, err := storageagent.Port23(os.Getenv("USER"), *readOnly, os.Getenv("SSH_ORIGINAL_COMMAND"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	err = syscall.Exec(argv[0], argv, os.Environ())
+	fmt.Fprintln(os.Stderr, "exec:", err)
+	return 1
+}
+
+// storageKeys is the AuthorizedKeysCommand of sshd on the storage VM: it
+// prints the OpenSSH key lines of the account named by its argument.
+func storageKeys(args []string) int {
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: hlab-agent storage-keys <user>")
+		return 2
+	}
+	keys, err := storageagent.AccountKeys(args[0])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "storage-keys:", err)
+		return 1
+	}
+	for _, k := range keys {
+		fmt.Println(k)
+	}
+	return 0
 }
 
 // runStorage serves the storage agent until a signal ends it.

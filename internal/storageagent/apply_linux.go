@@ -34,10 +34,6 @@ func homeDir(dir string) (string, error) {
 	return filepath.Clean(dir), nil
 }
 
-// chrootBase holds one root-owned chroot per account (E17); sshd chroots
-// into chrootBase/<user>, whose home is a bind mount of the account's data.
-const chrootBase = "/srv/chroot"
-
 // run executes a command and returns its output; on failure the error
 // carries the command's output. Never pass a secret as an argument.
 func run(ctx context.Context, name string, args ...string) (string, error) {
@@ -88,6 +84,9 @@ func (a *Agent) apply(ctx context.Context, doc agentapi.Storage) error {
 		}
 	}
 	if err := setPasswords(ctx, doc, skipped); err != nil {
+		errs = append(errs, err)
+	}
+	if err := a.applySSHD(ctx, sshdConfig(doc, skipped)); err != nil {
 		errs = append(errs, err)
 	}
 	if err := a.checkQuota(ctx); err != nil {
@@ -598,6 +597,31 @@ func setPasswords(ctx context.Context, doc agentapi.Storage, skipped map[string]
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("chpasswd: %w: %s", err, bytes.TrimSpace(out))
 	}
+	return nil
+}
+
+// applySSHD writes conf as the sshd configuration and reloads sshd when
+// conf differs from what this agent applied last; sshd checks the new
+// file before it replaces the old one.
+func (a *Agent) applySSHD(ctx context.Context, conf string) error {
+	if conf == a.sshd {
+		return nil
+	}
+	tmp := sshdConfigFile + ".hlab"
+	if err := os.WriteFile(tmp, []byte(conf), 0o644); err != nil {
+		return err
+	}
+	if _, err := run(ctx, "/usr/sbin/sshd", "-t", "-f", tmp); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, sshdConfigFile); err != nil {
+		return err
+	}
+	if _, err := run(ctx, "systemctl", "reload-or-restart", "ssh.service"); err != nil {
+		return err
+	}
+	a.sshd = conf
 	return nil
 }
 
