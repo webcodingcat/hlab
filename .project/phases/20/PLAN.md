@@ -140,12 +140,12 @@ type Step struct {
 
 ## Plans
 
-- [ ] 20-01 Storage contract for snapshots and TLS
+- [x] 20-01 Storage contract for snapshots and TLS
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SBOX-05, SBOX-15, SBOX-16, SBOX-18 (contract only) | Tests: -
   - Reads: ARCHITECTURE "Storage VM"; PLAN.md "Interfaces"; internal/agentapi/storage.go
   - Size: ~60 lines in 1 file
-  - [ ] Add the job kinds, `Storage.TLS`, `TLS`, `Box.Snapshots`, `StorageJob.Newer` and `StorageJobResult.SnapshotFS` in internal/agentapi/storage.go, with doc comments as in "Interfaces"; update the comment of the job kinds.
+  - [x] Add the job kinds, `Storage.TLS`, `TLS`, `Box.Snapshots`, `StorageJob.Newer` and `StorageJobResult.SnapshotFS` in internal/agentapi/storage.go, with doc comments as in "Interfaces"; update the comment of the job kinds.
 
 - [ ] 20-02 Storage VM packages and memory
   - Wave: 1 | Depends on: - | Review: alone
