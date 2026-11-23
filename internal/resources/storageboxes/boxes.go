@@ -185,7 +185,7 @@ func (m *Module) validate(body createRequest) (catalog.StorageBoxType, catalog.L
 		return st, loc, &api.FieldError{Field: "password", Message: err.Error()}
 	}
 	for _, k := range body.SSHKeys {
-		if _, err := sshkeys.Fingerprint(k); err != nil {
+		if _, err := sshkeys.Fingerprint(k); err != nil || strings.ContainsAny(k, "\r\n") {
 			return st, loc, &api.FieldError{Field: "ssh_keys", Message: "ssh_keys must be public keys in OpenSSH format"}
 		}
 	}
@@ -204,6 +204,11 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	}
 	if body.Labels == nil {
 		body.Labels = map[string]string{}
+	}
+	// A key read from a file ends in a newline; like Hetzner, take it
+	// without the white space around it.
+	for i, k := range body.SSHKeys {
+		body.SSHKeys[i] = strings.TrimSpace(k)
 	}
 	st, loc, err := m.validate(body)
 	if err == nil {
