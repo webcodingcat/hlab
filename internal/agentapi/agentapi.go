@@ -1,5 +1,6 @@
 // Package agentapi holds the documents hlabd and hlab-agent exchange over
-// the agent's HTTP interface (PUT /v1/config, GET /v1/status, POST /v1/jobs).
+// the agent's HTTP interface (PUT /v1/config, GET /v1/status, POST /v1/jobs),
+// and hlabd and the storage agent (PUT /v1/storage, POST /v1/jobs).
 package agentapi
 
 import "net/netip"
@@ -21,6 +22,8 @@ type Config struct {
 	Metadata           []Metadata
 	API                APIProxy         // listen 198.19.0.1:80, backend 198.19.0.2:8780
 	Upstream           []netip.AddrPort // DNS forwarders: the host's DNS servers, else 1.1.1.1:53, 9.9.9.9:53
+	Storage            StorageVM        // Addr invalid: no storage VM
+	StorageBoxes       []StorageBoxRoute
 }
 
 // Server is a server's public side.

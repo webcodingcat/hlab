@@ -446,6 +446,7 @@ func TestCatalog(t *testing.T) {
 	})
 
 	t.Run("SBOX-01", testStorageBoxTypes)
+	t.Run("SBOX-21", testOwnStorageBoxTypes)
 }
 
 // loadAll loads the shipped catalog with dataDir and customFile and fails
@@ -594,8 +595,8 @@ func testStorageBoxTypes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Load without storage-box-types.json: %v", err)
 		}
-		if len(cat.StorageBoxTypes) != 0 {
-			t.Errorf("StorageBoxTypes = %+v, want none", cat.StorageBoxTypes)
+		if len(cat.StorageBoxTypes()) != 0 {
+			t.Errorf("StorageBoxTypes = %+v, want none", cat.StorageBoxTypes())
 		}
 	})
 
@@ -611,8 +612,8 @@ func testStorageBoxTypes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
-		if len(cat.StorageBoxTypes) != len(objects) {
-			t.Fatalf("StorageBoxTypes has %d types, want %d", len(cat.StorageBoxTypes), len(objects))
+		if len(cat.StorageBoxTypes()) != len(objects) {
+			t.Fatalf("StorageBoxTypes has %d types, want %d", len(cat.StorageBoxTypes()), len(objects))
 		}
 		ten := 10
 		want := []catalog.StorageBoxType{
@@ -620,7 +621,7 @@ func testStorageBoxTypes(t *testing.T) {
 				SubaccountsLimit: 100, Locations: []string{"fsn1", "hel1"}},
 			{ID: 1334, Name: "bx21", Size: 5497558138880, SubaccountsLimit: 200, Locations: []string{"fsn1", "nbg1", "hel1"}},
 		}
-		for i, got := range cat.StorageBoxTypes {
+		for i, got := range cat.StorageBoxTypes() {
 			raw := got.Raw
 			got.Raw = nil
 			if !reflect.DeepEqual(got, want[i]) {

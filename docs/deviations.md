@@ -130,16 +130,45 @@ exported CA certificate.
 
 ## Storage boxes
 
-A storage box exists only in the API so far: boxes and subaccounts can be
-created, changed and deleted, but they hold no data and offer no SSH,
-SFTP, Samba or WebDAV access. A snapshot plan is stored but takes no
-snapshots; folders and snapshots are not available. Host names end in
-`storagebox.hetzner.internal`. Passwords follow Hetzner's rules but are
-not checked against known data breaches. Invalid input, such as a home
-directory with a leading slash, is refused at once instead of by a failed
-action. While an action on a box or one of its subaccounts runs, any other
-one on that box answers `locked`. The types and prices come from HLab's
-catalog; `hlab catalog update` does not refresh them.
+All storage boxes live in one storage VM on your machine, which HLab
+creates with the first box and removes with the last; their data stay
+on its disk while the cloud is stopped. Host names end in
+`storagebox.hetzner.internal`. Every box has an address of its own, but
+one SSH server answers on all of them, so the user name and password or
+key of one box also log in at another box's address.
+
+Port 22 serves SFTP only: scp works in its default SFTP mode, but not
+with `scp -O`. Port 23 runs only SFTP, scp, rsync and BorgBackup; Hetzner's
+other commands there, such as `ls` or `df`, answer `Command not allowed`.
+Every BorgBackup version a client asks for is served by BorgBackup 1.4.
+Samba and WebDAV are not available. Keys in `.ssh/authorized_keys` work
+on both ports in OpenSSH and in RFC 4716 format; the keys given at create
+are written there once. The host and WSL2 count as outside: they reach a
+box only when it or one of its subaccounts is reachable externally, while
+servers always reach it.
+
+A box that is full refuses further writes with a plain failure of the
+client, such as SFTP's `Failure`. Changing to a smaller type is refused
+while the box holds more data than the new size, and creating a box or
+changing to a larger type is refused with `resource_unavailable` while
+the drive of HLab's data folder has less than 10 GiB free. The size shown
+for a box is refreshed every 5 minutes and after each of its actions.
+
+If creating a box fails, the box is deleted again and the action shows
+the error. A box that is not yet active answers `locked` to every action
+except delete, to creating subaccounts and to listing folders. Listing
+folders shows the folders directly below the path, hidden ones such as
+`.ssh` included; a path that does not exist answers `not_found`, and an
+absolute path or one with `..` answers `invalid_input`.
+
+A snapshot plan is stored but takes no snapshots, and snapshots are not
+available. Passwords follow Hetzner's rules but are not checked against
+known data breaches. Invalid input, such as a home directory with a
+leading slash, is refused at once instead of by a failed action. While an
+action on a box or one of its subaccounts runs, any other one on that box
+answers `locked`. The types and prices come from HLab's catalog and your
+[own types](configuration.md#own-storage-box-types); `hlab catalog update`
+does not refresh them.
 
 ## Actions that wait instead of answering locked
 

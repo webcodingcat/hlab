@@ -247,6 +247,7 @@ Inside `hlabd` (Go packages under `internal/`):
       CreateDisk(ctx, path string, sizeBytes int64, from string, page83 [16]byte) error // thin VHDX, optional copy of base
       CreateChildDisk(ctx, path, parent string) error // differencing VHDX on parent, new disk identifier
       ResizeDisk(ctx, path string, sizeBytes int64) error
+      CompactDisk(ctx, path string) error // Optimize-VHD -Mode Full on a detached disk (storage data disk at cloud stop)
       AttachDisk(ctx, vm, path string, lun int) error   // hot-add on SCSI controller 0
       DetachDisk(ctx, vm, path string) error
       SetDVD(ctx, vm string, slot int, iso string) error // DVD drives on SCSI controller 1: slot 0 cidata, slot 1 user ISO; "" ejects and returns once the drive is empty
@@ -660,14 +661,19 @@ locks a resource of type `project`.
       Metadata     []Metadata
       API          APIProxy              // listen 198.19.0.1:80, backend 198.19.0.2:8780
       Upstream     []netip.AddrPort      // DNS forwarders: the host's DNS servers, else 1.1.1.1:53, 9.9.9.9:53
-      Storage      netip.Addr            // the storage VM's address (Addrs.Storage); invalid while it does not exist
-      StorageBoxes []StorageBox          // routed /32 to Storage, DNS names, host/WSL2 filter, allowed ports
+      Storage      StorageVM             // the storage VM; Addr invalid while it does not exist
+      StorageBoxes []StorageBoxRoute     // routed /32 to Storage.Addr, DNS names, host/WSL2 filter, allowed ports
   }
 
-  type StorageBox struct {
+  type StorageVM struct {
+      Addr netip.Addr // Addrs.Storage
+      MAC  string     // "02:48:4c:00:00:03"
+  }
+
+  type StorageBoxRoute struct {
       IP                  netip.Addr
-      Names               []string // "u100000.storagebox.hetzner.internal", "u100000-sub1.storagebox.hetzner.internal"
-      ReachableExternally bool     // false: drop from host and WSL2
+      Names               []string // "u100000", "u100000-sub1": labels below storagebox.hetzner.internal
+      ReachableExternally bool     // box or any of its subaccounts; false: drop from host and WSL2
   }
 
   type Server struct {
@@ -785,7 +791,10 @@ locks a resource of type `project`.
   `u<n>-sub<m>.storagebox.hetzner.internal` with it. The appliance drops traffic
   from the host and WSL2 to a box without reachable_externally and allows
   TCP 21, 22, 23, 443, 445 and the passive FTP range 50000-50099 to box
-  IPs (E17).
+  IPs (E17; phase 19 opens only 22 and 23). Each box IP has its own
+  nftables chain that only drops or returns, so the servers' outbound
+  firewalls still apply. The storage agent puts every box IP as a /32 on
+  its interface.
 - Accounts: box `u<n>` (`n` from 100000 upward, never reused), subaccounts
   `u<n>-sub<m>` (`m` from 1 upward per box), with the box's UID so files
   belong to the box (E17); passwords follow Hetzner's policy, and the VM
@@ -805,11 +814,13 @@ locks a resource of type `project`.
   | Method and path | Purpose |
   |---|---|
   | `PUT /v1/storage` | full `agentapi.Storage`, applied idempotently; returns the applied generation |
-  | `POST /v1/jobs` | `agentapi.StorageJob`, returns `agentapi.StorageJobResult` when done |
+  | `POST /v1/jobs` | `agentapi.StorageJob`, returns `agentapi.StorageJobResult` when done; a failed job answers `agentapi.StorageJobError{"error": code}` with `not_found` or `invalid_path` (hlabd maps them to 404 and 422) |
 
   ```go
   type Storage struct {
       Schema, Generation int
+      PublicRange        netip.Prefix // sources outside it, or inside HostNet, are external
+      HostNet            netip.Prefix // the host's transit /30
       Boxes []Box
   }
   type Box struct {
@@ -829,7 +840,8 @@ locks a resource of type `project`.
       Access   Access     // ssh, samba, webdav, readonly
   }
   type Hashes struct { Crypt, NT string } // sha512-crypt and NT hash (E19), never logged
-  type Access struct { SSH, Samba, WebDAV, ZFS, ReadOnly bool }
+  type Access struct { SSH, Samba, WebDAV, ZFS, ReadOnly, ReachableExternally bool }
+  type Usage struct { Data, Snapshots int64 } // bytes, from the qgroups
   type StorageJob struct {
       Kind     string // "snapshot" | "rollback" | "delete-snapshot" | "folders" | "usage"
       Box      string // box user
@@ -918,7 +930,7 @@ locks a resource of type `project`.
 All addresses below derive from the configured public range
 (`network.public_range`, default `198.19.0.0/16`); the addresses shown are
 those of the default range. `internal/transit.For(range)` returns them
-(`Addrs{Host, Appliance, APIListen, APIProxy, Agent, Storage}`) for every component;
+(`Addrs{Host, Appliance, APIListen, APIProxy, Agent, Storage, StorageAgent}`; `StorageAgent` is `Storage:9100`) for every component;
 the agent reads its own from the `transit` file of its seed.
 
 - Virtual switch `hlab` (internal). The host adapter `vEthernet (hlab)` has
@@ -1063,7 +1075,8 @@ level = "info"
   if missing, create `server-types.custom.json` if missing, open the hlab CA (created if missing) and renew its CRL,
   apply `hostnet.TrustCA` when `trust_ca` is on (a failure is a status
   problem, not an abort), start appliance, `hostnet.Up`, serve the Hetzner API, push agent document,
-  restore servers and the storage VM (resume saved ones; power on those marked running), push the storage document, start
+  restore servers and the storage VM (resume saved ones; power on those marked running), push the storage document
+  in the background with retries (also when only the `storage` folder is left, so an orphaned storage VM is deleted), start
   the management API and scheduler (with the weekly `crl` job), set status `running`.
 - Stop (SCM stop or `SERVICE_CONTROL_PRESHUTDOWN` at Windows shutdown):
   stop jobs, close the log followers' `Done`, stop the APIs, record which servers ran, then per `stop_behaviour`
@@ -1072,7 +1085,10 @@ level = "info"
   "off" skips halting the servers, "shutdown" replaces the configured
   behaviour) save or
   shut down every running VM (Shutdown integration service, 60 s, then
-  hard off), stop the appliance, `hostnet.Down`, close store. At Windows
+  hard off), then the storage VM the same way and, when it is off,
+  compact its data disk with `CompactDisk` (a failure is logged; skipped
+  and logged with `save`, at a Windows shutdown and with the "off"
+  override), stop the appliance, `hostnet.Down`, close store. At Windows
   shutdown `vmms` runs before hlabd in `PreshutdownOrder` and already
   applies each VM's `AutomaticStopAction` (set at the last cloud start on
   Off and Saved VMs; Hyper-V refuses a change on a running VM); hlabd's

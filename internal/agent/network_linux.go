@@ -37,7 +37,8 @@ var fixedAddrs = []netip.Addr{
 
 // Network is the Applier of the public segment on one interface: fixed
 // addresses, IPv4 forwarding, proxy ARP, one /32 route per server and one
-// per assigned floating IP.
+// per assigned floating IP, and for the storage VM one /32 to it plus an
+// onlink /32 per box IP via it.
 type Network struct {
 	Interface string
 }
@@ -81,7 +82,8 @@ func (n *Network) Apply(_ context.Context, cfg agentapi.Config) error {
 
 // syncRoutes makes the agent's routes on link exactly one /32 per server
 // public IPv4 and one onlink /32 per assigned floating IP via its target's
-// public IPv4.
+// public IPv4, plus the storage VM's /32 and an onlink /32 per box IP via
+// the storage VM.
 func (n *Network) syncRoutes(link netlink.Link, cfg agentapi.Config) error {
 	idx := link.Attrs().Index
 	// want maps a destination to its gateway; an invalid gateway means the
@@ -95,6 +97,15 @@ func (n *Network) syncRoutes(link netlink.Link, cfg agentapi.Config) error {
 	for _, f := range cfg.FloatingIPs {
 		if f.IP.Is4() && f.Target.Is4() {
 			want[f.IP] = f.Target
+		}
+	}
+	// The storage VM is on the link like a server; the box IPs go to it.
+	if st := cfg.Storage.Addr; st.Is4() {
+		want[st] = netip.Addr{}
+		for _, b := range cfg.StorageBoxes {
+			if b.IP.Is4() {
+				want[b.IP] = st
+			}
 		}
 	}
 

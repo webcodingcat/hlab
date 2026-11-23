@@ -9,15 +9,19 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/netip"
 	"slices"
 	"strconv"
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/actions"
+	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/ipam"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
+	"github.com/webcodingcat/hlab/internal/scheduler"
 	"github.com/webcodingcat/hlab/internal/storagepass"
 	"github.com/webcodingcat/hlab/internal/store"
 )
@@ -35,16 +39,46 @@ const (
 	StatusActive       = "active"
 )
 
+// StorageMAC is the MAC of the storage VM's adapter on the public PVLAN.
+const StorageMAC = "02:48:4c:00:00:03"
+
+// FreeSpaceReserve is the free space of the host drive of the data folder
+// below which create and a change_type to a larger type answer 412
+// resource_unavailable.
+const FreeSpaceReserve = 10 << 30
+
+// StatsEvery is the interval of the job refreshing the stats of the boxes.
+const StatsEvery = 5 * time.Minute
+
 // Deps are the dependencies of the module.
 type Deps struct {
 	Catalog *catalog.Catalog
-	// Apply makes the storage VM match box boxID; it runs in the work
-	// function of every box and subaccount action. nil does nothing.
+	// PublicRange is the range box IPs are handed out of.
+	PublicRange netip.Prefix
+	// Apply makes the storage VM match the store (all boxes without the
+	// deleting mark); it runs in the work function of every box and
+	// subaccount action and returns only after the storage agent
+	// confirmed. nil does nothing.
 	Apply func(ctx context.Context, boxID int64) error
+	// Job runs a job on the storage VM.
+	Job func(ctx context.Context, job agentapi.StorageJob) (agentapi.StorageJobResult, error)
+	// FreeBytes returns the free bytes of the host drive of the data folder.
+	FreeBytes func() (uint64, error)
+	// Clock drives the stats job; nil: scheduler.RealClock().
+	Clock scheduler.Clock
+	// PushAgent pushes the appliance's document again after the failed
+	// path of an action changed the store (a box deleted after a failed
+	// create, the deleting mark cleared). nil does nothing.
+	PushAgent func(ctx context.Context) error
+	// Store is what Recover works on outside a request.
+	Store *store.Store
 }
 
 // Module is the storage_boxes resource type.
-type Module struct{ d Deps }
+type Module struct {
+	d    Deps
+	acts *actions.Manager // set at mount (UseActions); the stats job reads the store through it
+}
 
 // New returns the module.
 func New(d Deps) *Module { return &Module{d: d} }
@@ -60,6 +94,7 @@ func (m *Module) Routes(r resource.Registrar) {
 	m.boxRoutes(r)
 	m.actionRoutes(r)
 	m.subaccountRoutes(r)
+	r.Handle("GET /storage_boxes/{id}/folders", http.HandlerFunc(m.folders))
 	// GET /storage_boxes/actions/{id} conflicts with
 	// /storage_boxes/{id}/actions in http.ServeMux; the less specific
 	// pattern takes it.
@@ -118,12 +153,16 @@ type Box struct {
 
 // HLab is the part of a stored box that the API never shows.
 type HLab struct {
-	// N is the number of the username u<n>; 0 until create_storage_box
-	// succeeds.
+	// N is the number of the username u<n>, assigned at create.
 	N       int64              `json:"n,omitempty"`
 	Hashes  storagepass.Hashes `json:"hashes"`
 	NextSub int64              `json:"next_sub"`
 	SSHKeys []string           `json:"ssh_keys,omitempty"`
+	// IP is the box's address from the public range, assigned at create.
+	IP string `json:"ip,omitempty"`
+	// Deleting marks a box whose delete_storage_box runs; the storage VM's
+	// document leaves it out.
+	Deleting bool `json:"deleting,omitempty"`
 }
 
 // Record is a stored box.
@@ -148,6 +187,38 @@ func put(tx store.Tx, projectID int64, r Record) error {
 
 func boxRef(id int64) actions.Ref { return actions.Ref{ID: id, Type: refType} }
 
+// errNotActive refuses subaccount create and every action but delete on a
+// box that is not active.
+var errNotActive = &actions.Error{Code: "locked", Message: "the storage box is not active"}
+
+// checkActive returns errNotActive unless box r is active.
+func checkActive(r Record) error {
+	if r.Status != StatusActive {
+		return errNotActive
+	}
+	return nil
+}
+
+// removeBox deletes stored box r of projectID with its subaccounts and
+// releases its IP.
+func removeBox(tx store.Tx, projectID int64, r Record) error {
+	subs, err := boxSubs(tx, projectID, r.ID)
+	if err != nil {
+		return err
+	}
+	for _, s := range subs {
+		if err := store.Delete(tx, SubaccountKind, projectID, s.ID); err != nil {
+			return err
+		}
+	}
+	if a, err := netip.ParseAddr(r.HLab.IP); err == nil {
+		if err := ipam.Release(tx, a); err != nil {
+			return err
+		}
+	}
+	return store.Delete(tx, Kind, projectID, r.ID)
+}
+
 // begin starts command on box boxID of projectID in tx. The action
 // references the box and extra; it answers actions.ErrLocked while any
 // action of the box runs, so every action on one box locks it.
@@ -156,34 +227,67 @@ func begin(tx store.Tx, acts *actions.Manager, projectID, boxID int64, command s
 	return acts.Start(tx, projectID, command, refs)
 }
 
+// boxFunc changes stored box r of projectID in tx and stores what it
+// changes itself.
+type boxFunc func(tx store.Tx, projectID int64, r *Record) error
+
 // run hands the work of action actionID on box boxID to the action
-// manager: Apply, then done on the stored box of projectID in one
-// transaction. done stores what it changes itself.
-func (m *Module) run(req *http.Request, actionID, boxID int64, done func(tx store.Tx, projectID int64, r *Record) error) {
+// manager. Each step works on the stored box of projectID in a
+// transaction of its own: change (if not nil) stores the action's change,
+// so Apply pushes documents that already hold it; then Apply; then done
+// (if not nil) and a refresh of the box's stats. When Apply fails, failed
+// (if not nil) runs instead of done and undoes what change stored, the
+// appliance's document is pushed again, and the action fails with Apply's
+// error.
+func (m *Module) run(req *http.Request, actionID, boxID int64, change, done, failed boxFunc) {
 	p, _ := api.ProjectFrom(req.Context())
 	st := api.StoreFrom(req.Context())
-	api.ActionsFrom(req.Context()).Run(actionID, func(ctx context.Context, _ func(int)) error {
-		if m.d.Apply != nil {
-			if err := m.d.Apply(ctx, boxID); err != nil {
-				return err
-			}
+	onBox := func(fn boxFunc) error {
+		if fn == nil {
+			return nil
 		}
 		return st.Tx(func(tx store.Tx) error {
 			r, err := Load(tx, p.ID, boxID)
 			if err != nil {
 				return err
 			}
-			return done(tx, p.ID, &r)
+			return fn(tx, p.ID, &r)
 		})
+	}
+	api.ActionsFrom(req.Context()).Run(actionID, func(ctx context.Context, _ func(int)) error {
+		if err := onBox(change); err != nil {
+			return err
+		}
+		if m.d.Apply != nil {
+			if err := m.d.Apply(ctx, boxID); err != nil {
+				if failed != nil {
+					if ferr := onBox(failed); ferr != nil {
+						return errors.Join(err, ferr)
+					}
+					if m.d.PushAgent != nil {
+						if perr := m.d.PushAgent(ctx); perr != nil {
+							return errors.Join(err, perr)
+						}
+					}
+				}
+				return err
+			}
+		}
+		if err := onBox(done); err != nil {
+			return err
+		}
+		m.refreshStats(ctx, st, p.ID, boxID)
+		return nil
 	})
 }
 
 // boxAction answers a request that runs command as an action on the box
-// of the path: check refuses on the stored box before the action starts,
-// done changes it when the action succeeds (see run). It answers 201 with
-// the action.
+// of the path: a box that is not active and check refuse on the stored
+// box before the action starts, change stores the action's change before
+// Apply, and a failed Apply restores the box as it was (see run). It
+// answers 201 with the action.
 func (m *Module) boxAction(w http.ResponseWriter, req *http.Request, command string,
-	check func(r Record) error, done func(tx store.Tx, projectID int64, r *Record) error,
+	check func(r Record) error, change boxFunc,
 ) {
 	id, ok := api.PathID(w, req)
 	if !ok {
@@ -195,6 +299,9 @@ func (m *Module) boxAction(w http.ResponseWriter, req *http.Request, command str
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
 		r, err := Load(tx, p.ID, id)
 		if err != nil {
+			return err
+		}
+		if err := checkActive(r); err != nil {
 			return err
 		}
 		if check != nil {
@@ -209,7 +316,13 @@ func (m *Module) boxAction(w http.ResponseWriter, req *http.Request, command str
 		api.Fail(w, err)
 		return
 	}
-	m.run(req, a.ID, id, done)
+	var old Record
+	m.run(req, a.ID, id, func(tx store.Tx, projectID int64, r *Record) error {
+		old = *r
+		return change(tx, projectID, r)
+	}, nil, func(tx store.Tx, projectID int64, _ *Record) error {
+		return put(tx, projectID, old)
+	})
 	api.JSON(w, http.StatusCreated, map[string]any{"action": a})
 }
 

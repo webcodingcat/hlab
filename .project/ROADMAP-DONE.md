@@ -6,6 +6,21 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x] 19 Storage VM and SSH access.
+      Requirements: SBOX-03, SBOX-04, SBOX-06, SBOX-08, SBOX-11, SBOX-12,
+      SBOX-13, SBOX-21.
+      Depends on: 18.
+      Success criteria:
+      1. The first storage box creates the storage VM; data written over
+         SFTP on port 22 can be read back over rsync and Borg on port 23.
+      2. A box is reachable from a server, and from host and WSL2 only with
+         reachable_externally; the uninstall cleanup removes the storage VM.
+      3. Subaccounts see only their home directory; read-only ones write
+         nothing; the quota of the type holds, tested with own small
+         storage box types from `storage-box-types.custom.json`.
+      4. `docs/guide.md`, `docs/deviations.md` and `docs/configuration.md`
+         describe storage boxes and their SSH access.
+
 - [x] 18 Storage Box API.
       Requirements: SBOX-01, SBOX-02, SBOX-09, SBOX-10, SBOX-20.
       Depends on: 13.

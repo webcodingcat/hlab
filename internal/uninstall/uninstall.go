@@ -52,7 +52,7 @@ type Options struct {
 type Result struct{ Notes []string }
 
 // hlabDirs are the folders hlabd creates in the data_folder.
-var hlabDirs = []string{"disks", "volumes", "images", "isos", "cache", "appliance", "vms"}
+var hlabDirs = []string{"disks", "volumes", "images", "isos", "cache", "appliance", "vms", "storage"}
 
 // Run removes everything of the profile in a fixed order. Every step runs
 // even after an earlier one failed; the joined error names each object that
@@ -146,10 +146,10 @@ func notFound(err error) bool {
 	return errors.As(err, &pe) && pe.Kind == platform.NotFound
 }
 
-// ProfileVM reports whether name is "<tag>-appliance" or
+// ProfileVM reports whether name is "<tag>-appliance", "<tag>-storage" or
 // "<tag>-server-<digits>".
 func ProfileVM(tag, name string) bool {
-	if name == tag+"-appliance" {
+	if name == tag+"-appliance" || name == tag+"-storage" {
 		return true
 	}
 	n, ok := strings.CutPrefix(name, tag+"-server-")
@@ -165,7 +165,8 @@ func ProfileVM(tag, name string) bool {
 }
 
 // RemoveFiles deletes dataDir; a data_folder outside it loses only disks,
-// volumes, images, isos, cache, appliance, vms and itself when then empty.
+// volumes, images, isos, cache, appliance, vms, storage and itself when then
+// empty.
 func RemoveFiles(dataDir, dataFolder string) error {
 	var errs []error
 	if dataFolder != "" && !inside(dataDir, dataFolder) {

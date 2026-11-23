@@ -65,7 +65,7 @@ func TestDocs(t *testing.T) {
 				t.Errorf("settings.toml key %q is not described in docs/configuration.md", k)
 			}
 		}
-		files := []string{"server-types.custom.json"}
+		files := []string{"server-types.custom.json", "storage-box-types.custom.json"}
 		catalogs, _ := filepath.Glob(filepath.Join(root, "catalog", "*.json"))
 		if len(catalogs) == 0 {
 			t.Error("no catalog files in catalog/")

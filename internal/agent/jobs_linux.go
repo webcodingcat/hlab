@@ -469,3 +469,9 @@ func rewriteFile(path string, ids map[string]string) error {
 	}
 	return os.WriteFile(path, []byte(out), info.Mode().Perm())
 }
+
+// FindDisk returns /dev/sdX of the disk at SCSI lun, waiting a moment for
+// it to appear.
+func FindDisk(ctx context.Context, lun int) (string, error) {
+	return findDisk(ctx, lun)
+}

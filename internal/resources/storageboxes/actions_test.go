@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+
+	"github.com/webcodingcat/hlab/internal/agentapi"
+	"github.com/webcodingcat/hlab/internal/resources/storageboxes"
+	"github.com/webcodingcat/hlab/internal/store"
 )
 
 // boxActionPath is the path of the box action name of box id.
@@ -100,8 +104,16 @@ func testAccessSettings(t *testing.T) {
 		t.Errorf("after update_access_settings: %+v, want %+v", got, want)
 	}
 
-	runAction(t, e, boxActionPath(box.ID, "update_access_settings"),
+	_, finish := holdAction(t, e, boxActionPath(box.ID, "update_access_settings"),
 		map[string]bool{"samba_enabled": true, "reachable_externally": false}, "update_access_settings")
+	var doc []agentapi.Box
+	if err := e.Store.Tx(func(tx store.Tx) (err error) { doc, err = storageboxes.Boxes(tx); return err }); err != nil {
+		t.Fatalf("storage document: %v", err)
+	}
+	if len(doc) != 1 || doc[0].Access.ReachableExternally || !doc[0].Access.Samba {
+		t.Errorf("storage document during Apply: %+v, want the change in it (samba on, not reachable externally)", doc)
+	}
+	finish()
 	want = accessView{SambaEnabled: true, SSHEnabled: true, ZFSEnabled: true}
 	if got := mustBox(t, e, box.ID).AccessSettings; got != want {
 		t.Errorf("after second update_access_settings: %+v, want %+v", got, want)

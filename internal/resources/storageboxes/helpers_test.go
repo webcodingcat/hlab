@@ -8,16 +8,21 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/apitest"
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/nthash"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/storageboxes"
+	"github.com/webcodingcat/hlab/internal/scheduler"
 	"github.com/webcodingcat/hlab/internal/shacrypt"
 	"github.com/webcodingcat/hlab/internal/store"
 )
@@ -31,12 +36,26 @@ const validPassword = "Valid-Passw0rd"
 // sshKey is a public key in OpenSSH format.
 const sshKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGwlGJHbN/WPoDzAAKGfXG7xfegxs03VqyfwiwMd/K8z test@hlab"
 
+// publicRange is the public range the module hands box IPs out of.
+var publicRange = netip.MustParsePrefix("198.19.0.0/16")
+
+// plentyFree is the default free space of the fake host drive.
+const plentyFree = uint64(1) << 40
+
 // boxEnv is the storage box module with the recorded storage box types,
-// the actions module, and an Apply that waits on gate.
+// the actions module, an Apply that waits on gate and then fails with
+// applyErr, a fake storage agent, a fake host drive and a test clock.
 type boxEnv struct {
 	*apitest.Env
-	cat  *catalog.Catalog
-	gate *apitest.PushGate
+	cat   *catalog.Catalog
+	gate  *apitest.PushGate
+	mod   *storageboxes.Module
+	agent *fakeAgent
+	clock *tickClock
+	free  atomic.Uint64
+
+	mu       sync.Mutex
+	applyErr error
 }
 
 // newBoxEnv mounts the storage box module on the shipped catalog with the
@@ -47,22 +66,154 @@ func newBoxEnv(t *testing.T) *boxEnv {
 	if err != nil {
 		t.Fatalf("load shipped catalog: %v", err)
 	}
-	cat.StorageBoxTypes = apitest.StorageBoxTypes(t)
-	e := &boxEnv{cat: cat, gate: apitest.NewPushGate(t)}
-	mod := storageboxes.New(storageboxes.Deps{Catalog: cat, Apply: e.apply})
-	e.Env = apitest.New(t, mod, resactions.New())
+	cat.SetStorageBoxTypes(apitest.StorageBoxTypes(t))
+	e := &boxEnv{cat: cat, gate: apitest.NewPushGate(t), agent: &fakeAgent{}, clock: newTickClock()}
+	e.free.Store(plentyFree)
+	e.mod = storageboxes.New(storageboxes.Deps{
+		Catalog:     cat,
+		PublicRange: publicRange,
+		Apply:       e.apply,
+		Job:         e.agent.job,
+		FreeBytes:   func() (uint64, error) { return e.free.Load(), nil },
+		Clock:       e.clock,
+	})
+	e.Env = apitest.New(t, e.mod, resactions.New())
 	return e
 }
 
-// apply waits while the gate is closed.
+// apply waits while the gate is closed, then returns the error set by
+// failApply.
 func (e *boxEnv) apply(ctx context.Context, _ int64) error {
-	return e.gate.Wait(ctx)
+	if err := e.gate.Wait(ctx); err != nil {
+		return err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.applyErr
+}
+
+// failApply makes every later Apply fail with err; nil lets it succeed.
+func (e *boxEnv) failApply(err error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.applyErr = err
+}
+
+// fakeAgent is the storage agent's job endpoint: usage answers the set
+// usage, folders the set answer; it records every job.
+type fakeAgent struct {
+	mu      sync.Mutex
+	calls   []agentapi.StorageJob
+	usage   agentapi.Usage
+	folders func(agentapi.StorageJob) (agentapi.StorageJobResult, error)
+}
+
+func (a *fakeAgent) job(_ context.Context, j agentapi.StorageJob) (agentapi.StorageJobResult, error) {
+	a.mu.Lock()
+	a.calls = append(a.calls, j)
+	usage, folders := a.usage, a.folders
+	a.mu.Unlock()
+	if j.Kind == agentapi.StorageJobFolders && folders != nil {
+		return folders(j)
+	}
+	return agentapi.StorageJobResult{Usage: usage}, nil
+}
+
+// setUsage sets the usage the agent reports for every box.
+func (a *fakeAgent) setUsage(u agentapi.Usage) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.usage = u
+}
+
+// setFolders sets the answer of folders jobs.
+func (a *fakeAgent) setFolders(f func(agentapi.StorageJob) (agentapi.StorageJobResult, error)) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.folders = f
+}
+
+// jobsOf returns the recorded jobs of kind.
+func (a *fakeAgent) jobsOf(kind string) []agentapi.StorageJob {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var out []agentapi.StorageJob
+	for _, j := range a.calls {
+		if j.Kind == kind {
+			out = append(out, j)
+		}
+	}
+	return out
+}
+
+// tickClock is a scheduler.Clock that only moves when the test ticks it.
+type tickClock struct {
+	mu      sync.Mutex
+	now     time.Time
+	waiters []tickWaiter
+}
+
+type tickWaiter struct {
+	d  time.Duration
+	at time.Time
+	ch chan time.Time
+}
+
+var _ scheduler.Clock = (*tickClock)(nil)
+
+func newTickClock() *tickClock {
+	return &tickClock{now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+}
+
+func (c *tickClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *tickClock) After(d time.Duration) <-chan time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ch := make(chan time.Time, 1)
+	c.waiters = append(c.waiters, tickWaiter{d: d, at: c.now.Add(d), ch: ch})
+	return ch
+}
+
+// tick waits up to apitest.ActionTimeout until something waits for d,
+// then moves the clock forward by d and fires every wait that is due.
+func (c *tickClock) tick(t *testing.T, d time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(apitest.ActionTimeout)
+	for !c.waitsFor(d) {
+		if time.Now().After(deadline) {
+			t.Fatalf("nothing waits on the clock for %s within %s", d, apitest.ActionTimeout)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+	kept := c.waiters[:0]
+	for _, w := range c.waiters {
+		if !w.at.After(c.now) {
+			w.ch <- c.now
+			continue
+		}
+		kept = append(kept, w)
+	}
+	c.waiters = kept
+}
+
+func (c *tickClock) waitsFor(d time.Duration) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.ContainsFunc(c.waiters, func(w tickWaiter) bool { return w.d == d })
 }
 
 // storageType returns the recorded type name.
 func (e *boxEnv) storageType(t *testing.T, name string) catalog.StorageBoxType {
 	t.Helper()
-	for _, st := range e.cat.StorageBoxTypes {
+	for _, st := range e.cat.StorageBoxTypes() {
 		if st.Name == name {
 			return st
 		}

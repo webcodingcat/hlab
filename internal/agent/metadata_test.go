@@ -30,6 +30,7 @@ func TestAgent(t *testing.T) {
 	t.Run("LB-05/check", testHAProxyChecks)
 	t.Run("LB-05/stat", testParseStat)
 	t.Run("LB-07", testHAProxyProxyProtocol)
+	t.Run("SBOX-04/external", testStorageBoxExternal)
 }
 
 // testMetadataPrivateVLAN: two servers with the same private IP in two

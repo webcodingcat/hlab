@@ -41,6 +41,9 @@ type Platform interface {
 	ResizeDisk(ctx context.Context, path string, sizeBytes int64) error
 	AttachDisk(ctx context.Context, vm, path string, lun int) error // hot-add on SCSI controller 0
 	DetachDisk(ctx context.Context, vm, path string) error
+	// CompactDisk shrinks the detached dynamic VHDX path to the blocks in
+	// use (Optimize-VHD -Mode Full).
+	CompactDisk(ctx context.Context, path string) error
 	// SetDVD sets the DVD drive on SCSI controller 1: slot 0 cidata, slot 1
 	// user ISO; "" ejects.
 	SetDVD(ctx context.Context, vm string, slot int, iso string) error

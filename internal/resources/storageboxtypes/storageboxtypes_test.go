@@ -34,13 +34,13 @@ func TestStorageBoxTypes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("load shipped catalog: %v", err)
 		}
-		cat.StorageBoxTypes = apitest.StorageBoxTypes(t)
-		if len(cat.StorageBoxTypes) == 0 {
+		cat.SetStorageBoxTypes(apitest.StorageBoxTypes(t))
+		if len(cat.StorageBoxTypes()) == 0 {
 			t.Fatal("recorded storage box types are empty")
 		}
 		env := apitest.New(t, storageboxtypes.New(cat))
 		byName := map[string]catalog.StorageBoxType{}
-		for _, st := range cat.StorageBoxTypes {
+		for _, st := range cat.StorageBoxTypes() {
 			byName[st.Name] = st
 		}
 

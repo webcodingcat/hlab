@@ -25,8 +25,8 @@ machine before you run it at Hetzner.
 HLab offers projects and API tokens, SSH keys, servers with snapshots,
 backups, rescue system and ISOs, volumes, placement groups, private
 networks, primary and floating IPs, firewalls, DNS zones with reverse DNS,
-load balancers and certificates, and storage boxes with subaccounts as API
-records that hold no data yet. Other parts of the Hetzner API answer
+load balancers and certificates, and storage boxes with subaccounts that
+you reach with SFTP, scp, rsync and BorgBackup. Other parts of the Hetzner API answer
 `not_found`; what else differs is in [Known deviations](docs/deviations.md).
 A [tray program](#the-tray-program) starts and stops the cloud and manages
 projects, tokens, every resource of a project, server types and settings.
@@ -316,8 +316,8 @@ data (`%AppData%\hlab-tray.exe`, `%LocalAppData%\hlab`). With a
 `data_folder` outside `%ProgramData%\hlab`, only the folders HLab created
 there are deleted.
 
-- **Keep projects, servers and settings** keeps `%ProgramData%\hlab` and
-  your tray data. The servers are shut down first so their disks stay
+- **Keep projects, servers and settings** keeps `%ProgramData%\hlab`,
+  with the data of the storage boxes, and your tray data. The servers are shut down first so their disks stay
   consistent; the VMs, the switch and the host settings are removed all
   the same. After a new installation, the next cloud start recreates the
   VMs and the servers boot fresh from their kept disks; a CA trust that

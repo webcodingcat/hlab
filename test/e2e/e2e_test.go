@@ -16,6 +16,12 @@ func TestE2E(t *testing.T) {
 	t.Cleanup(func() { releaseNetFixture(t) })
 	// The same for the load balancer LB-02 to LB-05 and CERT-04 share.
 	t.Cleanup(func() { releaseLBFixture(t) })
+	// The same for the storage box SBOX-03, SBOX-04, SBOX-11, SBOX-12 and
+	// SBOX-13 share.
+	t.Cleanup(func() { releaseStorageBoxFixture(t) })
+	// The same for the storage box SBOX-03, SBOX-04, SBOX-11, SBOX-12 and
+	// SBOX-13 share; it goes after the rows' own boxes.
+	t.Cleanup(func() { releaseStorageBoxFixture(t) })
 	// The e2e tray the UI rows share ends with the group.
 	t.Cleanup(func() { releaseTray(t) })
 
@@ -83,6 +89,12 @@ func TestE2E(t *testing.T) {
 	t.Run("LB-05", parallel(testLB05))
 	t.Run("CERT-04", parallel(testCERT04))
 	t.Run("MCP-05", parallel(testMCP05))
+	t.Run("SBOX-03", parallel(testSBOX03))
+	t.Run("SBOX-04", parallel(testSBOX04))
+	t.Run("SBOX-11", parallel(testSBOX11))
+	t.Run("SBOX-13", parallel(testSBOX13))
+	t.Run("SBOX-12", parallel(testSBOX12))
+	t.Run("SBOX-06", parallel(testSBOX06))
 
 	// The client matrix: one subtest per client and resource type, each
 	// registered by its group file through registerRow.

@@ -48,10 +48,14 @@ func (c *Cloud) applianceDir() string {
 }
 
 // agentSecret returns the agent's bearer secret, creating it once.
-func (c *Cloud) agentSecret() (string, error) {
+func (c *Cloud) agentSecret() (string, error) { return c.kvSecret(secretKey) }
+
+// kvSecret returns the bearer secret kept under the kv key, creating it
+// once.
+func (c *Cloud) kvSecret(key string) (string, error) {
 	var secret string
 	err := c.st.Tx(func(tx store.Tx) error {
-		v, err := store.GetKV(tx, secretKey)
+		v, err := store.GetKV(tx, key)
 		if err == nil {
 			secret = v
 			return nil
@@ -64,10 +68,10 @@ func (c *Cloud) agentSecret() (string, error) {
 			return err
 		}
 		secret = hex.EncodeToString(b)
-		return store.SetKV(tx, secretKey, secret)
+		return store.SetKV(tx, key, secret)
 	})
 	if err != nil {
-		return "", fmt.Errorf("agent secret: %w", err)
+		return "", fmt.Errorf("%s: %w", key, err)
 	}
 	return secret, nil
 }
@@ -194,9 +198,9 @@ func (c *Cloud) ensureTrunk(ctx context.Context, name string) error {
 	return err
 }
 
-// applianceDebs is catalog/appliance-debs.json: packages the appliance
-// image lacks, installed from its cidata ISO.
-type applianceDebs struct {
+// debList is catalog/appliance-debs.json or catalog/storage-debs.json:
+// packages the Debian image lacks, installed from the VM's cidata ISO.
+type debList struct {
 	Debs []struct {
 		Name   string   `json:"name"`   // file <name>.deb on the ISO and in the cache
 		URLs   []string `json:"urls"`   // tried in order
@@ -204,28 +208,28 @@ type applianceDebs struct {
 	} `json:"debs"`
 }
 
-// debsDir caches the appliance's .deb files.
+// debsDir caches the .deb files of the appliance and the storage VM.
 func (c *Cloud) debsDir() string {
 	return filepath.Join(c.set.Storage.DataFolder, "cache", "debs")
 }
 
-// applianceDebFiles downloads the packages of catalog/appliance-debs.json
-// once into the cache and returns them keyed by their file name on the ISO.
-func (c *Cloud) applianceDebFiles(ctx context.Context) (map[string][]byte, error) {
-	data, err := os.ReadFile(filepath.Join(c.d.Paths.Catalog, "appliance-debs.json"))
+// debFiles downloads the packages of the catalog file once into the cache
+// and returns them keyed by their file name on the ISO.
+func (c *Cloud) debFiles(ctx context.Context, catalogFile string) (map[string][]byte, error) {
+	data, err := os.ReadFile(filepath.Join(c.d.Paths.Catalog, catalogFile))
 	if err != nil {
 		return nil, err
 	}
-	var list applianceDebs
+	var list debList
 	if err := json.Unmarshal(data, &list); err != nil {
-		return nil, fmt.Errorf("appliance-debs.json: %w", err)
+		return nil, fmt.Errorf("%s: %w", catalogFile, err)
 	}
 	files := map[string][]byte{}
 	for _, d := range list.Debs {
 		file := d.Name + ".deb"
 		path := filepath.Join(c.debsDir(), file)
 		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-			slog.Info("downloading an appliance package", "name", d.Name)
+			slog.Info("downloading a package", "name", d.Name, "list", catalogFile)
 			if err := images.Fetch(ctx, nil, d.URLs, d.SHA256, path); err != nil {
 				return nil, err
 			}
@@ -249,7 +253,7 @@ func (c *Cloud) writeApplianceISO(ctx context.Context, secret string) error {
 	if err != nil {
 		return fmt.Errorf("read the hlab-agent binary: %w", err)
 	}
-	files, err := c.applianceDebFiles(ctx)
+	files, err := c.debFiles(ctx, "appliance-debs.json")
 	if err != nil {
 		slog.Warn("appliance packages unavailable; xfs volumes cannot be formatted", "err", err)
 		files = map[string][]byte{}
@@ -284,12 +288,16 @@ func (c *Cloud) writeApplianceISO(ctx context.Context, secret string) error {
 	}, c.isoPath())
 }
 
-// stopAppliance shuts the appliance down through the Shutdown integration
-// service and turns it off when it is not off within shutdownTimeout.
+// stopAppliance shuts the appliance down.
 func (c *Cloud) stopAppliance(ctx context.Context) error {
-	name := c.applianceName()
+	return c.shutdownVM(ctx, c.applianceName())
+}
+
+// shutdownVM shuts VM name down through the Shutdown integration service
+// and turns it off when it is not off within shutdownTimeout.
+func (c *Cloud) shutdownVM(ctx context.Context, name string) error {
 	if err := c.plat.Power(ctx, name, platform.PowerShutdown); err != nil {
-		slog.Warn("appliance shutdown failed; turning it off", "err", err)
+		slog.Warn("VM shutdown failed; turning it off", "vm", name, "err", err)
 		return c.plat.Power(ctx, name, platform.PowerStop)
 	}
 	sctx, cancel := context.WithTimeout(ctx, shutdownTimeout)
@@ -303,7 +311,7 @@ func (c *Cloud) stopAppliance(ctx context.Context) error {
 		}
 		select {
 		case <-sctx.Done():
-			slog.Warn("appliance did not shut down in time; turning it off")
+			slog.Warn("VM did not shut down in time; turning it off", "vm", name)
 			return c.plat.Power(ctx, name, platform.PowerStop)
 		case <-t.C:
 		}

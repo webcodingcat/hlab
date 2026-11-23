@@ -53,8 +53,9 @@ func TestIPAM(t *testing.T) {
 		}
 		last := mustNext("198.19.0.7")
 
-		// Continue to the end of the range; then it wraps to .4, skips the
-		// used .4 and returns the released .5.
+		// Continue to the end of the range, skipping the storage VM's .13;
+		// then it wraps to .4, skips the used .4 and returns the released .5.
+		storage := netip.MustParseAddr("198.19.0.13")
 		for {
 			a := mustNext("")
 			if a.Less(last) {
@@ -63,8 +64,12 @@ func TestIPAM(t *testing.T) {
 				}
 				break
 			}
-			if a != last.Next() {
-				t.Fatalf("NextPublic = %s after %s, want %s", a, last, last.Next())
+			want := last.Next()
+			if want == storage {
+				want = want.Next()
+			}
+			if a != want {
+				t.Fatalf("NextPublic = %s after %s, want %s", a, last, want)
 			}
 			if !r.Contains(a) {
 				t.Fatalf("NextPublic = %s outside %s", a, r)

@@ -636,23 +636,33 @@ The Storage Box endpoints of Hetzner's API are served under
 
 | Endpoint | Notes |
 |---|---|
-| `GET /hetzner/v1/storage_box_types`, `GET /hetzner/v1/storage_box_types/{id}` | The types of HLab's catalog file `storage-box-types.json`, as Hetzner lists them; none without the file. `hlab catalog update` does not change them. |
-| `GET /hetzner/v1/storage_boxes`, `POST /hetzner/v1/storage_boxes`, `GET /hetzner/v1/storage_boxes/{id}`, `PUT /hetzner/v1/storage_boxes/{id}`, `DELETE /hetzner/v1/storage_boxes/{id}` | `PUT` answers at once; create and delete run as actions. |
-| `POST /hetzner/v1/storage_boxes/{id}/actions/change_protection`, `POST /hetzner/v1/storage_boxes/{id}/actions/change_type`, `POST /hetzner/v1/storage_boxes/{id}/actions/reset_password`, `POST /hetzner/v1/storage_boxes/{id}/actions/update_access_settings`, `POST /hetzner/v1/storage_boxes/{id}/actions/enable_snapshot_plan`, `POST /hetzner/v1/storage_boxes/{id}/actions/disable_snapshot_plan` | `change_type` also takes a smaller type; a snapshot plan is stored only. |
+| `GET /hetzner/v1/storage_box_types`, `GET /hetzner/v1/storage_box_types/{id}` | The types of HLab's catalog file `storage-box-types.json`, as Hetzner lists them, followed by the own types of `storage-box-types.custom.json`; none without either file. `hlab catalog update` does not change them. |
+| `GET /hetzner/v1/storage_boxes`, `POST /hetzner/v1/storage_boxes`, `GET /hetzner/v1/storage_boxes/{id}`, `PUT /hetzner/v1/storage_boxes/{id}`, `DELETE /hetzner/v1/storage_boxes/{id}` | `PUT` answers at once; create and delete run as actions. Create and `change_type` to a larger type answer 412 `resource_unavailable` below 10 GiB free on the drive of the data folder. |
+| `POST /hetzner/v1/storage_boxes/{id}/actions/change_protection`, `POST /hetzner/v1/storage_boxes/{id}/actions/change_type`, `POST /hetzner/v1/storage_boxes/{id}/actions/reset_password`, `POST /hetzner/v1/storage_boxes/{id}/actions/update_access_settings`, `POST /hetzner/v1/storage_boxes/{id}/actions/enable_snapshot_plan`, `POST /hetzner/v1/storage_boxes/{id}/actions/disable_snapshot_plan` | `change_type` also takes a smaller type, unless the box holds more data than it: 422 `invalid_input` on `storage_box_type`. A snapshot plan is stored only. |
+| `GET /hetzner/v1/storage_boxes/{id}/folders` | The direct subdirectories of `path` (default `.`), hidden ones included, sorted. |
 | `GET /hetzner/v1/storage_boxes/{id}/subaccounts`, `POST /hetzner/v1/storage_boxes/{id}/subaccounts`, `GET /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}`, `PUT /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}`, `DELETE /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}` | The subaccount list has no paging, as in the description. |
 | `POST /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}/actions/change_home_directory`, `POST /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}/actions/reset_subaccount_password`, `POST /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}/actions/update_access_settings` | `update_access_settings` refuses `home_directory`; use `change_home_directory`. |
 | `GET /hetzner/v1/storage_boxes/actions`, `GET /hetzner/v1/storage_boxes/actions/{id}`, `GET /hetzner/v1/storage_boxes/{id}/actions`, `GET /hetzner/v1/storage_boxes/{id}/actions/{action_id}` | Box and subaccount actions are readable at all of these and at `GET /v1/actions/{id}` and `GET /v1/actions?id=`. |
 
-Not served yet; they answer 404 `not_found`: `GET /hetzner/v1/storage_boxes/{id}/folders`,
-the snapshots (`GET /hetzner/v1/storage_boxes/{id}/snapshots`,
+Not served yet; they answer 404 `not_found`: the snapshots (`GET /hetzner/v1/storage_boxes/{id}/snapshots`,
 `POST /hetzner/v1/storage_boxes/{id}/snapshots`,
 `GET /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}`,
 `PUT /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}`,
 `DELETE /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}`) and
 `POST /hetzner/v1/storage_boxes/{id}/actions/rollback_snapshot`.
 
-- A storage box holds no data and offers no protocol yet; only its API
-  record exists.
+- The boxes live in the storage VM `<tag>-storage`, which the first
+  `create_storage_box` creates and the delete of the last box removes;
+  each box is a btrfs subvolume with a quota of its type's size. They are
+  reached over SSH only: SFTP on port 22, and with `ssh_enabled` SFTP,
+  scp, rsync and `borg serve` on port 23. Samba and WebDAV are not
+  offered; `samba_enabled`, `webdav_enabled` and `zfs_enabled` have
+  no effect. The server answers on every box address, so the
+  credentials of one box also log in at another box's address.
+- `reachable_externally` of the box or of one of its subaccounts opens
+  the box address to the host and WSL2; servers always reach it.
+- `ssh_keys` are written once at create into `.ssh/authorized_keys` of
+  the box; OpenSSH lines and RFC 4716 blocks work on both ports.
 - `POST /hetzner/v1/storage_boxes` answers with the box in status
   `initializing`: `username`, `server`, `system` and `snapshot_plan` are
   null and `stats` are 0. Once `create_storage_box` succeeds the box is
@@ -670,6 +680,17 @@ the snapshots (`GET /hetzner/v1/storage_boxes/{id}/snapshots`,
   slash at `POST /hetzner/v1/storage_boxes/{id}/subaccounts`.
 - A box name is unique in the project, a subaccount name in its box;
   both answer 409 `uniqueness_error`.
+- A failed or interrupted `create_storage_box` deletes the box and
+  releases its address; the action carries the error.
+  `DELETE /hetzner/v1/storage_boxes/{id}` succeeds only after the storage
+  VM removed the box; otherwise the box stays and the action fails.
+- A box that is not `active` answers 423 `locked` to every action except
+  delete, to `POST /hetzner/v1/storage_boxes/{id}/subaccounts` and to
+  `GET /hetzner/v1/storage_boxes/{id}/folders`.
+- `GET /hetzner/v1/storage_boxes/{id}/folders` answers 422
+  `invalid_input` on `path` for an absolute path or one with `..`, and
+  404 `not_found` for a path that does not exist.
+- `stats` are refreshed every 5 minutes and after each action of the box.
 - Every action on a box or one of its subaccounts locks the box: while it
   runs, a second one, `DELETE` included, answers 423 `locked`. Hetzner
   documents this only for creating subaccounts and snapshots, see

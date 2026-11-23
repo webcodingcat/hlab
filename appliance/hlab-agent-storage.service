@@ -1,0 +1,18 @@
+[Unit]
+Description=hlab storage agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# Installs the current agent binary, secret and transit address from the
+# cidata ISO, and the storage packages at the first boot.
+ExecStartPre=/usr/local/sbin/hlab-agent-install
+ExecStart=/usr/local/sbin/hlab-agent -role storage -secret /etc/hlab-agent/secret -transit /etc/hlab-agent/transit
+# dpkg of the storage packages runs in ExecStartPre.
+TimeoutStartSec=300
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

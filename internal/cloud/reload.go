@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/settings"
 )
 
@@ -46,9 +47,11 @@ func ensureConfigList(configDir, name string) error {
 	return settings.CopySecurity(filepath.Join(configDir, "settings.toml"), path)
 }
 
-// reload applies a changed settings file, own server types file and own
-// ISOs file to the running cloud: logging.level at once, the own server
-// types with their custom_server_types problem, the own ISOs with their
+// reload applies a changed settings file, own server types file, own
+// storage box types file and own ISOs file to the running cloud:
+// logging.level at once, the own server types with their
+// custom_server_types problem, the own storage box types with their
+// custom_storage_box_types problem, the own ISOs with their
 // copies, cache cleanup and custom_isos problem. stop_behaviour is read again at the stop;
 // public_range, data_folder and the reserves apply at the next start. An
 // invalid settings file changes nothing and returns its error.
@@ -62,6 +65,7 @@ func (c *Cloud) reload(ctx context.Context) error {
 		c.d.Level.Set(l)
 	}
 	c.cat.ReloadOwn(filepath.Join(c.d.Paths.Config, customServerTypesFile))
+	c.cat.ReloadOwnStorageBoxTypes(filepath.Join(c.d.Paths.Config, catalog.OwnStorageBoxTypesFile))
 	c.loadOwnISOs(ctx)
 	slog.Info("settings reloaded", "logging_level", set.Logging.Level, "own_server_types", len(c.cat.Own()),
 		"own_isos", len(c.cat.OwnISOs()))

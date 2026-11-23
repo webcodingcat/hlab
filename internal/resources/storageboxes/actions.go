@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/webcodingcat/hlab/internal/api"
+	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/resource"
 	"github.com/webcodingcat/hlab/internal/storagepass"
 	"github.com/webcodingcat/hlab/internal/store"
@@ -40,36 +41,66 @@ func (m *Module) changeProtection(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
-// changeType moves the box to another type with a price in its location;
-// a smaller type is allowed (phase 19 refuses one the data does not fit).
+// changeType moves the box to another type with a price in its location.
+// A larger type needs the free space reserve on the host drive; a smaller
+// one must hold the box's data and snapshots.
 func (m *Module) changeType(w http.ResponseWriter, req *http.Request) {
 	var body struct {
-		StorageBoxType string `json:"storage_box_type"`
+		StorageBoxType json.RawMessage `json:"storage_box_type"`
 	}
 	if !api.Decode(w, req, &body) {
 		return
 	}
-	st, ok := m.boxType(body.StorageBoxType)
+	st, ok := m.boxType(refString(body.StorageBoxType))
 	if !ok {
 		api.Fail(w, &api.FieldError{Field: "storage_box_type", Message: "unknown storage box type"})
 		return
 	}
+	id, ok := api.PathID(w, req)
+	if !ok {
+		return
+	}
+	p, _ := api.ProjectFrom(req.Context())
+	var r Record
+	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
+		var err error
+		if r, err = Load(tx, p.ID, id); err != nil {
+			return err
+		}
+		if err := checkActive(r); err != nil {
+			return err
+		}
+		return checkLocation(r, st)
+	})
+	if err == nil {
+		err = m.checkResize(req.Context(), r, st)
+	}
+	if err != nil {
+		api.Fail(w, err)
+		return
+	}
 	m.boxAction(w, req, "change_type", func(r Record) error {
-		var loc struct {
-			Name string `json:"name"`
-		}
-		if err := json.Unmarshal(r.Location, &loc); err != nil {
-			return fmt.Errorf("location of storage box %d: %w", r.ID, err)
-		}
-		if !slices.Contains(st.Locations, loc.Name) {
-			return &api.FieldError{Field: "storage_box_type",
-				Message: fmt.Sprintf("storage box type %s is not available in %s", st.Name, loc.Name)}
-		}
-		return nil
+		return checkLocation(r, st)
 	}, func(tx store.Tx, projectID int64, r *Record) error {
 		r.StorageBoxType = st.Raw
 		return put(tx, projectID, *r)
 	})
+}
+
+// checkLocation refuses type st when it has no price in the location of
+// box r.
+func checkLocation(r Record, st catalog.StorageBoxType) error {
+	var loc struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(r.Location, &loc); err != nil {
+		return fmt.Errorf("location of storage box %d: %w", r.ID, err)
+	}
+	if !slices.Contains(st.Locations, loc.Name) {
+		return &api.FieldError{Field: "storage_box_type",
+			Message: fmt.Sprintf("storage box type %s is not available in %s", st.Name, loc.Name)}
+	}
+	return nil
 }
 
 // resetPassword replaces the stored hashes; the plain password is only

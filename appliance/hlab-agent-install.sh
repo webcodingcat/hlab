@@ -3,8 +3,9 @@
 # ISO (volume label "cidata"); hlabd writes a new ISO at every cloud start.
 # The .deb files on the ISO are installed only while their tool is missing:
 # xfsprogs and its libraries while mkfs.xfs is missing, HAProxy and its
-# libraries while haproxy is missing. A failure there does not keep the
-# agent down.
+# libraries while haproxy is missing, and on the storage VM btrfs-progs,
+# rsync, borgbackup and their libraries while btrfs is missing. A failure
+# there does not keep the agent down.
 set -eu
 
 dev=$(blkid -L cidata)
@@ -41,4 +42,11 @@ if ! command -v haproxy >/dev/null 2>&1; then
 	install_debs haproxy liblua5.4-0 libopentracing-c-wrapper0t64 libopentracing1 lsb-base
 	# The agent runs its own HAProxy instances; Debian's service stays off.
 	systemctl disable --now haproxy >/dev/null 2>&1 || true
+fi
+
+# Only the storage VM's ISO carries btrfs-progs.
+if [ -e "$mnt/btrfs-progs.deb" ] && ! command -v btrfs >/dev/null 2>&1; then
+	install_debs btrfs-progs liblzo2-2 libreiserfscore0t64 rsync borgbackup python3-msgpack python3-packaging
+	# The agent runs rsync through rrsync over SSH; the rsync daemon stays off.
+	systemctl disable --now rsync.service >/dev/null 2>&1 || true
 fi

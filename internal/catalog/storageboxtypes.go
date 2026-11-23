@@ -35,8 +35,13 @@ func ParseStorageBoxTypes(data []byte) ([]StorageBoxType, error) {
 	if doc.StorageBoxTypes == nil {
 		return nil, errors.New(`no "storage_box_types" list`)
 	}
-	out := make([]StorageBoxType, 0, len(*doc.StorageBoxTypes))
-	for _, raw := range *doc.StorageBoxTypes {
+	return parseStorageBoxTypeObjects(*doc.StorageBoxTypes)
+}
+
+// parseStorageBoxTypeObjects decodes storage_box_type objects.
+func parseStorageBoxTypeObjects(raws []json.RawMessage) ([]StorageBoxType, error) {
+	out := make([]StorageBoxType, 0, len(raws))
+	for _, raw := range raws {
 		var item struct {
 			ID                     int64  `json:"id"`
 			Name                   string `json:"name"`

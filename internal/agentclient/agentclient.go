@@ -156,7 +156,16 @@ func (c *Client) doWith(ctx context.Context, hc *http.Client, method, path strin
 		return err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s: %s", resp.Status, bytes.TrimSpace(data))
+		return &statusError{code: resp.StatusCode, status: resp.Status, body: bytes.TrimSpace(data)}
 	}
 	return json.Unmarshal(data, out)
 }
+
+// statusError is an answer of the agent other than 200 OK.
+type statusError struct {
+	code   int
+	status string
+	body   []byte
+}
+
+func (e *statusError) Error() string { return fmt.Sprintf("%s: %s", e.status, e.body) }

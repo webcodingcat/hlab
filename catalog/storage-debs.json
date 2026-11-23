@@ -1,0 +1,60 @@
+{
+  "debs": [
+    {
+      "name": "btrfs-progs",
+      "urls": [
+        "http://deb.debian.org/debian/pool/main/b/btrfs-progs/btrfs-progs_6.14-1_amd64.deb",
+        "https://snapshot.debian.org/archive/debian/20250422T095244Z/pool/main/b/btrfs-progs/btrfs-progs_6.14-1_amd64.deb"
+      ],
+      "sha256": "ae3ab86d467b8b765ea1ea3e264c11a07a6f8a73e6b3df665c787d45b9b3491f"
+    },
+    {
+      "name": "liblzo2-2",
+      "urls": [
+        "http://deb.debian.org/debian/pool/main/l/lzo2/liblzo2-2_2.10-3+b1_amd64.deb",
+        "https://snapshot.debian.org/archive/debian/20241029T234230Z/pool/main/l/lzo2/liblzo2-2_2.10-3+b1_amd64.deb"
+      ],
+      "sha256": "f3032201fe2928a87e13f05ce256ff3ac2a7860c7e594dc51ae6d7348a4466ce"
+    },
+    {
+      "name": "libreiserfscore0t64",
+      "urls": [
+        "http://deb.debian.org/debian/pool/main/r/reiserfsprogs/libreiserfscore0t64_3.6.27-9_amd64.deb",
+        "https://snapshot.debian.org/archive/debian/20240822T210525Z/pool/main/r/reiserfsprogs/libreiserfscore0t64_3.6.27-9_amd64.deb"
+      ],
+      "sha256": "138245c2abc72dc0428328da0a5991cae176d51b20552a313f566ccbca7f8a98"
+    },
+    {
+      "name": "rsync",
+      "urls": [
+        "http://deb.debian.org/debian/pool/main/r/rsync/rsync_3.5.0+ds1-0+deb13u2_amd64.deb",
+        "https://snapshot.debian.org/archive/debian/20261108T203330Z/pool/main/r/rsync/rsync_3.5.0+ds1-0+deb13u2_amd64.deb"
+      ],
+      "sha256": "ae4136280d73f307f0908d9aa8e0f05d94b9ad8c35124ba9b83cb994c2f337e8"
+    },
+    {
+      "name": "borgbackup",
+      "urls": [
+        "http://deb.debian.org/debian/pool/main/b/borgbackup/borgbackup_1.4.0-5_amd64.deb",
+        "https://snapshot.debian.org/archive/debian/20250325T204825Z/pool/main/b/borgbackup/borgbackup_1.4.0-5_amd64.deb"
+      ],
+      "sha256": "51e1cbdee1fccb31e9c63b93fda81d5fffb14289dc31ba27984e04ebb0c85733"
+    },
+    {
+      "name": "python3-msgpack",
+      "urls": [
+        "http://deb.debian.org/debian/pool/main/p/python-msgpack/python3-msgpack_1.0.3-3+b4_amd64.deb",
+        "https://snapshot.debian.org/archive/debian/20250227T025207Z/pool/main/p/python-msgpack/python3-msgpack_1.0.3-3+b4_amd64.deb"
+      ],
+      "sha256": "83e8cf382150fbc53397ef4bbb9a40cf5a5ed7e7d2865da6fe71985812af0957"
+    },
+    {
+      "name": "python3-packaging",
+      "urls": [
+        "http://deb.debian.org/debian/pool/main/p/python-packaging/python3-packaging_25.0-1_all.deb",
+        "https://snapshot.debian.org/archive/debian/20250426T204242Z/pool/main/p/python-packaging/python3-packaging_25.0-1_all.deb"
+      ],
+      "sha256": "d70c8469f6e9c6105e1ebcd3ebdc963f11dadbeddd89d2d1a2a3cb1c97d2ecbc"
+    }
+  ]
+}

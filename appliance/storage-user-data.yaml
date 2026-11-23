@@ -1,0 +1,23 @@
+#cloud-config
+# First boot of the storage VM: installs the hlab-agent unit (role storage)
+# and its install script; the unit installs the storage packages and the
+# agent and starts it at every boot.
+# A new instance-id keeps the SSH host keys, so clients of the boxes do not
+# see a changed host key.
+ssh_deletekeys: false
+write_files:
+  - path: /usr/local/sbin/hlab-agent-install
+    permissions: "0755"
+    encoding: b64
+    content: @INSTALL_B64@
+  - path: /etc/systemd/system/hlab-agent.service
+    permissions: "0644"
+    encoding: b64
+    content: @UNIT_B64@
+runcmd:
+  # The agent owns /etc/ssh/sshd_config and reloads ssh.service; sshd must
+  # not be socket-activated.
+  - [sh, -c, "systemctl disable --now ssh.socket >/dev/null 2>&1 || true"]
+  - [systemctl, enable, --now, ssh.service]
+  - [systemctl, daemon-reload]
+  - [systemctl, enable, --now, hlab-agent.service]

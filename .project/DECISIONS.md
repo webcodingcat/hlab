@@ -19,6 +19,294 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Storage box actions store their change before Apply
+
+- Type: decision
+- Phase: phase 19
+- What: Box and subaccount actions store their change before Apply and put the whole old record back (or delete a new subaccount) when Apply fails, then push the appliance document again; create and delete keep activation and removal after a successful Apply; `storage_box_type` is accepted as name or ID.
+- Why: The storage VM must get each change with its own action (found by the documentation run), and hcloud sends the type ID.
+- Cost of change: low
+
+## 2026-11-23 Storage VM in the cloud's life
+
+- Type: decision
+- Phase: phase 19
+- What: Apply pushes the appliance document before it ensures the storage VM, cloud start also runs the storage apply when the `storage` folder exists without boxes, halt shuts the storage VM down after the servers and compacts its data disk (skipped and logged with `save`, at a Windows shutdown and with the uninstall override), and a failed box action pushes the appliance document again through `storageboxes.Deps.PushAgent`.
+- Why: The appliance must route the storage address before hlabd can reach the agent, an orphaned VM must go, and the appliance must match the store after every outcome.
+- Cost of change: low
+
+## 2026-11-23 Boxes being deleted leave the appliance at once
+
+- Type: decision
+- Phase: phase 19
+- What: `Contribute` skips boxes marked `Deleting`, so the push during a delete removes the box's route and names and, after the last box, `Config.Storage`.
+- Why: Users and servers must not resolve a box that is being deleted (review of 19-11).
+- Cost of change: low
+
+## 2026-11-23 Storage agent puts box IPs on its interface
+
+- Type: decision
+- Phase: phase 19
+- What: At each apply the storage agent adds every box IP as a /32 on the interface carrying `Addrs.Storage` and removes /32s of the public range no box holds; a box whose IP cannot be added fails like any other box step.
+- Why: The appliance routes box IPs to the storage VM's MAC, so the VM must own them.
+- Cost of change: low
+
+## 2026-11-23 Storage VM boot and packages
+
+- Type: decision
+- Phase: phase 19
+- What: The storage debs install from the shared `hlab-agent-install.sh` in one `dpkg -i` at every boot until btrfs exists; the storage user-data disables `ssh.socket`, enables `ssh.service` and keeps SSH host keys (`ssh_deletekeys: false`); a failed deb download fails the storage VM creation before any VM exists, and a create never deletes an existing data.vhdx.
+- Why: A failed first boot retries, box clients keep trusting the host keys, and box data are never lost by a create.
+- Cost of change: low
+
+## 2026-11-23 Storage box usage, free space and stats
+
+- Type: decision
+- Phase: phase 19
+- What: change_type asks the agent for usage only for a smaller type and checks free space only for a larger one; stats are refreshed every `StatsEvery` by a scheduled job and after each box action, a failing usage job is only logged; the job reads the store through the new `actions.Manager.Store()`.
+- Why: Each check runs only where it can refuse, and stats must never fail an action.
+- Cost of change: low
+
+## 2026-11-23 Account chroots without /tmp
+
+- Type: decision
+- Phase: phase 19
+- What: Account chroots have no `/tmp` (removed with its content at the next apply), and `storage-shell` sets `TMPDIR=/home` for accounts that may write.
+- Why: Nothing may be written outside the box quota onto the storage VM's system disk (review of 19-07).
+- Cost of change: low
+
+## 2026-11-23 Storage agent owns sshd_config
+
+- Type: decision
+- Phase: phase 19
+- What: The storage agent writes all of `/etc/ssh/sshd_config` (only listed accounts, no root) and reloads `ssh.service`; `storage-shell` and `storage-keys` run from `/usr/local/sbin/hlab-agent`.
+- Why: Debian and cloud-init settings cannot reach past its Match blocks.
+- Cost of change: low
+
+## 2026-11-23 Port 23 and key filters are strict
+
+- Type: decision
+- Phase: phase 19
+- What: Port 23 accepts only the flags OpenSSH scp and borg serve really send and refuses quotes (paths with spaces) and unknown users; authorized keys are passed on as `<type> <base64>` only, dropping options and comments.
+- Why: No user input may become a command or an sshd key option.
+- Cost of change: low
+
+## 2026-11-23 Storage box not-active guard and Recover
+
+- Type: decision
+- Phase: phase 19
+- What: Every box and subaccount action except the deletes answers 423 `locked` on a box that is not active (checked in `boxAction` and `subAction`); `Recover` at start deletes boxes still `initializing` and finishes deletes still marked `_hlab.deleting`.
+- Why: No box stays stuck after a stop or crash, and a box whose data are gone never shows as active.
+- Cost of change: low
+
+## 2026-11-23 Storage box firewall chains only drop or return
+
+- Type: decision
+- Phase: phase 19
+- What: Each box IP gets its own nftables chain `box<i>`, jumped to from the forward chain, that drops external sources of boxes not reachable externally and ports other than TCP 22/23 and returns otherwise.
+- Why: Allowed traffic must still pass the server's own outbound firewall (FW-03, review of 19-05).
+- Cost of change: low
+
+## 2026-11-23 One failing box or subaccount does not stop the storage apply
+
+- Type: decision
+- Phase: phase 19
+- What: A refused or failing subaccount is logged, loses its chroot and is left out of the passwords; a failing box is logged and skipped while the others are applied, and the PUT answers 500 with all box failures joined; a failed format stops the apply.
+- Why: A user's files must not stop the storage of every other box (review of 19-04), and hlabd must not take a failed box as applied.
+- Cost of change: low
+
+## 2026-11-23 Only SSH ports reach box IPs in phase 19
+
+- Type: decision
+- Phase: phase 19
+- What: The appliance lets only TCP 22 and 23 through to box IPs (subject to the server firewalls) and drops the rest, so a box IP never reaches the storage agent on 9100; phase 20 adds its ports to `storageBoxPorts`.
+- Why: Phase 19 serves only SSH, and the agent port must stay internal.
+- Cost of change: low
+
+## 2026-11-23 Box rules before established accept
+
+- Type: decision
+- Phase: phase 19
+- What: The storage box rules run first in the forward chain of `hlab_fw`, before the established/related accept.
+- Why: Switching off reachable_externally also cuts connections already open.
+- Cost of change: low
+
+## 2026-11-23 Storage agent sets hashes through chpasswd
+
+- Type: decision
+- Phase: phase 19
+- What: The storage agent sets account hashes with `chpasswd -e` on stdin and writes only changed entries.
+- Why: No hash appears in argv, ps or error messages.
+- Cost of change: low
+
+## 2026-11-23 Storage VM on-disk layout
+
+- Type: decision
+- Phase: phase 19
+- What: Each box is the subvolume `<mount>/<user>`, chroots live under `/srv/chroot/<user>`, the passwd home is `/home` and the shell `/bin/sh`; `Plan` adds `StepUpdateBox` for every box in the document.
+- Why: Chroot and data stay apart, and an update never touches data.
+- Cost of change: medium
+
+## 2026-11-23 Storage agent guards subaccount homes
+
+- Type: decision
+- Phase: phase 19
+- What: The storage agent skips and logs a subaccount whose home is absolute, has a `..` element or leaves the box (checked through os.Root), and binds homes through a descriptor pinned by os.Root.
+- Why: Defence in depth behind the API check, also against symlinks swapped in later.
+- Cost of change: low
+
+## 2026-11-23 hlab-agent role flag
+
+- Type: decision
+- Phase: phase 19
+- What: `hlab-agent --role appliance|storage` (default appliance); the storage role listens on `<transit>:9100` and answers 503 to jobs before the first apply mounted the disk.
+- Why: One binary serves both VMs.
+- Cost of change: low
+
+## 2026-11-23 Subaccount home directory without dot-dot
+
+- Type: decision
+- Phase: phase 19
+- What: `checkHome` refuses any `..` element with 422 `invalid_input` (field `home_directory`) on create and change_home_directory, and stores the value cleaned by `path.Clean`.
+- Why: A home directory must never lead a subaccount into another box's data (review of 19-06).
+- Cost of change: low
+
+## 2026-11-23 Storage box delete releases its IP
+
+- Type: decision
+- Phase: phase 19
+- What: A successful `delete_storage_box` releases the box IP, and `storageboxes.Deps` gets `PublicRange`, `Job`, `FreeBytes` and `Clock`.
+- Why: Create now assigns an IP from the public range, which must not leak.
+- Cost of change: low
+
+## 2026-11-23 Storage client readiness and generation
+
+- Type: decision
+- Phase: phase 19
+- What: `StorageClient.WaitReady` takes any HTTP answer to `GET /v1/storage` as ready, and `Push` keeps its own generation counter in kv `storage.generation`, bounded only by the caller's ctx.
+- Why: The storage agent has no status path, and pushes are bounded by each action's own deadline.
+- Cost of change: low
+
+## 2026-11-23 Exported transit.Broadcast
+
+- Type: decision
+- Phase: phase 19
+- What: `transit.Broadcast(prefix)` is exported and replaces ipam's private broadcast helper.
+- Why: `Addrs.Storage` and ipam need the same broadcast address.
+- Cost of change: low
+
+## 2026-11-23 Own storage box types follow own server types
+
+- Type: decision
+- Phase: phase 19
+- What: Own storage box types need IDs from `MinOwnID`, a name, and no duplicate within the own file; the catalog exposes `StorageBoxTypes()`, `SetStorageBoxTypes` (tests), `StorageBoxTypeByRef`, `ReloadOwnStorageBoxTypes` and `OwnStorageBoxTypesWarning`.
+- Why: The same rules as `server-types.custom.json` keep both files alike for the user, and the method guards the list for reload.
+- Cost of change: low
+
+## 2026-11-23 Storage box quota with full qgroups
+
+- Type: decision
+- Phase: phase 19
+- What: Each box gets a subvolume with a level-1 qgroup limited to the type size (E18), not btrfs simple quotas.
+- Why: Full qgroups are tested and their snapshot and rollback accounting is known; squota limits are unprobed (RESEARCH 6).
+- Cost of change: medium
+
+## 2026-11-23 Failed storage box create deletes the box
+
+- Type: decision
+- Phase: phase 19
+- What: A failed or interrupted `create_storage_box` deletes the box and releases its IP, and the action carries the error.
+- Why: No box gets stuck `initializing` and a new create just works (user answer).
+- Cost of change: low
+
+## 2026-11-23 Free-space reserve for storage boxes
+
+- Type: decision
+- Phase: phase 19
+- What: Before `create_storage_box` and `change_type` to a larger type hlabd answers 412 `resource_unavailable` when the host drive of the data folder has less than 10 GiB free.
+- Why: The dynamic data disk grows into the host drive, and a full drive would break every VM.
+- Cost of change: low
+
+## 2026-11-23 No image file per storage box
+
+- Type: decision
+- Phase: phase 19
+- What: All boxes share one dynamic `storage\data.vhdx` with btrfs subvolumes; one image file per box was rejected.
+- Why: Per-box files need host and VM to coordinate at every create and delete and a shrink at change_type.
+- Cost of change: medium
+
+## 2026-11-23 Storage agent package and subcommands
+
+- Type: decision
+- Phase: phase 19
+- What: The storage agent is `internal/storageagent`, run as `hlab-agent --role storage`, with `storage-shell` (port 23 ForceCommand) and `storage-keys` (AuthorizedKeysCommand) as subcommands of the same binary.
+- Why: No script runs through `sh -c`, and the filters stay testable Go.
+- Cost of change: low
+
+## 2026-11-23 Storage data disk at SCSI LUN 1
+
+- Type: decision
+- Phase: phase 19
+- What: The data disk is attached at SCSI LUN 1 of the storage VM.
+- Why: The agent finds it by a fixed path.
+- Cost of change: low
+
+## 2026-11-23 Read-only subaccounts get a read-only bind mount
+
+- Type: decision
+- Phase: phase 19
+- What: Besides `internal-sftp -R` and `rrsync -ro`, a read-only subaccount's home is a read-only bind mount.
+- Why: Borg serve has no read-only switch, so only the mount keeps it from writing.
+- Cost of change: low
+
+## 2026-11-23 Storage Apply matches the whole store
+
+- Type: decision
+- Phase: phase 19
+- What: Apply makes the storage VM match all boxes of the store, creating the VM for the first box and deleting the VM and `storage\` without boxes.
+- Why: The VM lifecycle lives in one place.
+- Cost of change: low
+
+## 2026-11-23 Storage agent logic as pure functions
+
+- Type: decision
+- Phase: phase 19
+- What: `Plan`, `Port23` and `AuthorizedKeys` are OS-independent pure functions.
+- Why: Data safety, the port 23 filter and key formats get unit tests on Windows.
+- Cost of change: low
+
+## 2026-11-23 Storage agent job error codes
+
+- Type: decision
+- Phase: phase 19
+- What: Storage agent jobs fail with `not_found` or `invalid_path`, which hlabd maps to 404 and 422.
+- Why: The folders endpoint needs both answers.
+- Cost of change: low
+
+## 2026-11-23 agentapi.Storage carries PublicRange and HostNet
+
+- Type: decision
+- Phase: phase 19
+- What: `agentapi.Storage` gets `PublicRange` and `HostNet` (added fields).
+- Why: The storage VM needs them for the sshd `Match Address` of subaccounts not reachable externally.
+- Cost of change: low
+
+## 2026-11-23 New storage box promises under phase 18 IDs
+
+- Type: decision
+- Phase: phase 19
+- What: The unit rows for failed create, delete after confirmation and stats sit under SBOX-09, the 423 on boxes not active under SBOX-02.
+- Why: They are new promises of those requirements from CONTEXT.md and the backlog.
+- Cost of change: low
+
+## 2026-11-23 No unit row for storage VM lifecycle in cloud
+
+- Type: decision
+- Phase: phase 19
+- What: The compaction at stop and the VM lifecycle in `internal/cloud` have no unit row; CHECKS.md and the SBOX-03 e2e row cover them.
+- Why: A fake of Hyper-V would test only glue.
+- Cost of change: low
+
 ## 2026-11-23 Own storage box types file
 
 - Type: change

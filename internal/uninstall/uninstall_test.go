@@ -368,6 +368,48 @@ func TestUninstall(t *testing.T) {
 		}
 	})
 
+	t.Run("SBOX-08/storage_vm", func(t *testing.T) {
+		vms := []string{"hlab-storage", "hlab-storage-1", "hlab-storage-old", "hlab-storagex", "hlab-dev-storage", "hlab-appliance"}
+		want := map[string]bool{"hlab-storage": true, "hlab-appliance": true}
+		for _, name := range vms {
+			if got := uninstall.ProfileVM("hlab", name); got != want[name] {
+				t.Errorf("ProfileVM(%q, %q) = %v, want %v", "hlab", name, got, want[name])
+			}
+		}
+		s := newSetup(t, false, false, vms...)
+		if _, err := uninstall.Run(ctx, s.options(false)); err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		deleted := map[string]bool{}
+		for _, c := range s.rec.all("DeleteVM ") {
+			deleted[strings.TrimPrefix(c, "DeleteVM ")] = true
+		}
+		for _, name := range vms {
+			if deleted[name] != want[name] {
+				t.Errorf("VM %q deleted = %v, want %v", name, deleted[name], want[name])
+			}
+		}
+	})
+
+	t.Run("SBOX-08/keep_data", func(t *testing.T) {
+		for _, keep := range []bool{false, true} {
+			s := newSetup(t, false, false)
+			outside := filepath.Join(t.TempDir(), "VMs")
+			box := filepath.Join(outside, "storage", "data.vhdx")
+			mkFile(t, box)
+			toml := fmt.Sprintf("[storage]\ndata_folder = '%s'\n", outside)
+			if err := os.WriteFile(filepath.Join(s.dataDir, "settings.toml"), []byte(toml), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := uninstall.Run(ctx, s.options(keep)); err != nil {
+				t.Fatalf("Run(keep=%v): %v", keep, err)
+			}
+			if got := exists(box); got != keep {
+				t.Errorf("keep=%v: storage box data exist after Run = %v, want %v", keep, got, keep)
+			}
+		}
+	})
+
 	t.Run("INST-05/data-folder", func(t *testing.T) {
 		hlabDirs := []string{"disks", "volumes", "images", "isos", "cache", "appliance", "vms"}
 

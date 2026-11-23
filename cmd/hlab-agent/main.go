@@ -1,5 +1,7 @@
-// Command hlab-agent runs inside the hlab appliance VM. It serves the agent
-// interface for hlabd and applies the pushed network document.
+// Command hlab-agent runs inside the hlab appliance VM, where it serves the
+// agent interface for hlabd and applies the pushed network document, and
+// with --role storage inside the storage VM, where it applies the storage
+// document.
 package main
 
 import (
@@ -14,10 +16,13 @@ import (
 	"net/netip"
 	"os"
 	"os/signal"
+	"slices"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/agent"
+	"github.com/webcodingcat/hlab/internal/storageagent"
 	"github.com/webcodingcat/hlab/internal/version"
 )
 
@@ -29,6 +34,10 @@ const (
 	metadataAddr    = "169.254.169.254:80"
 	publicInterface = "eth0"
 	lbDir           = "/run/hlab"
+	// The storage VM's data disk sits at SCSI LUN 1 and is mounted at
+	// storageRoot.
+	dataDiskLUN = 1
+	storageRoot = "/srv/sbox"
 )
 
 // trunkMAC is the MAC of the appliance's second adapter, the trunk that
@@ -36,6 +45,14 @@ const (
 var trunkMAC = net.HardwareAddr{0x02, 0x48, 0x4c, 0x00, 0x00, 0x02}
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "storage-shell":
+			os.Exit(storageShell(os.Args[2:]))
+		case "storage-keys":
+			os.Exit(storageKeys(os.Args[2:]))
+		}
+	}
 	if err := run(); err != nil {
 		slog.Error("hlab-agent", "err", err)
 		os.Exit(1)
@@ -44,7 +61,8 @@ func main() {
 
 func run() error {
 	secretFile := flag.String("secret", "/etc/hlab-agent/secret", "file holding the bearer secret")
-	transitFile := flag.String("transit", "/etc/hlab-agent/transit", "file holding the appliance's transit address")
+	transitFile := flag.String("transit", "/etc/hlab-agent/transit", "file holding the agent's listen address")
+	role := flag.String("role", "appliance", "appliance or storage")
 	flag.Parse()
 
 	raw, err := os.ReadFile(*secretFile)
@@ -60,6 +78,93 @@ func run() error {
 		return fmt.Errorf("transit address %q is no IPv4 address", bytes.TrimSpace(rawTransit))
 	}
 	listenAddr := netip.AddrPortFrom(transit, listenPort).String()
+	secret := bytes.TrimSpace(raw)
+	switch *role {
+	case "appliance":
+		return runAppliance(secret, listenAddr)
+	case "storage":
+		return runStorage(secret, listenAddr)
+	default:
+		return fmt.Errorf("unknown role %q", *role)
+	}
+}
+
+// storageShell is the ForceCommand of port 23 on the storage VM, running
+// inside the account's chroot: it execs the argv Port23 makes of
+// SSH_ORIGINAL_COMMAND, never through a shell, or refuses it on stderr.
+// sshd sets USER; -ro marks a read-only subaccount.
+func storageShell(args []string) int {
+	fs := flag.NewFlagSet("storage-shell", flag.ContinueOnError)
+	readOnly := fs.Bool("ro", false, "the account is read-only")
+	if err := fs.Parse(args); err != nil || fs.NArg() != 0 {
+		return 2
+	}
+	argv, err := storageagent.Port23(os.Getenv("USER"), *readOnly, os.Getenv("SSH_ORIGINAL_COMMAND"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	// The chroot has no /tmp; temporary files of borg and rsync go into
+	// the home, counted by the box quota. Read-only accounts write none.
+	env := slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "TMPDIR=") })
+	if !*readOnly {
+		env = append(env, "TMPDIR=/home")
+	}
+	err = syscall.Exec(argv[0], argv, env)
+	fmt.Fprintln(os.Stderr, "exec:", err)
+	return 1
+}
+
+// storageKeys is the AuthorizedKeysCommand of sshd on the storage VM: it
+// prints the OpenSSH key lines of the account named by its argument.
+func storageKeys(args []string) int {
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: hlab-agent storage-keys <user>")
+		return 2
+	}
+	keys, err := storageagent.AccountKeys(args[0])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "storage-keys:", err)
+		return 1
+	}
+	for _, k := range keys {
+		fmt.Println(k)
+	}
+	return 0
+}
+
+// runStorage serves the storage agent until a signal ends it.
+func runStorage(secret []byte, listenAddr string) error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	disk, err := agent.FindDisk(ctx, dataDiskLUN)
+	if err != nil {
+		return fmt.Errorf("data disk: %w", err)
+	}
+	a, err := storageagent.New(secret, storageagent.Options{DataDisk: disk, Root: storageRoot})
+	if err != nil {
+		return err
+	}
+	srv := &http.Server{Addr: listenAddr, Handler: a.Handler(), ReadHeaderTimeout: 30 * time.Second}
+	errc := make(chan error, 1)
+	go func() { errc <- srv.ListenAndServe() }()
+	slog.Info("hlab-agent started", "version", version.Version, "role", "storage", "listen", listenAddr, "disk", disk)
+	select {
+	case err := <-errc:
+		return err
+	case <-ctx.Done():
+	}
+	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdown); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		slog.Warn("shutdown", "err", err)
+	}
+	return nil
+}
+
+// runAppliance serves the appliance agent and the metadata service until
+// a signal ends them.
+func runAppliance(secret []byte, listenAddr string) error {
 	proxy := &agent.APIProxy{}
 	dns := &agent.DNS{}
 	defer dns.Close()
@@ -70,7 +175,7 @@ func run() error {
 	// The network applier adds the addresses the DNS server binds, so it
 	// comes first; the VRF applier needs its IPv4 forwarding, and the load
 	// balancers enslave their network veths to its VRF devices.
-	a, err := agent.New(bytes.TrimSpace(raw),
+	a, err := agent.New(secret,
 		agent.NewNetwork(publicInterface), vrf, agent.NewLoadBalancers(lbDir), agent.NewIsolation(publicInterface), agent.NewFirewall(publicInterface), dns, proxy, metadata)
 	if err != nil {
 		return err

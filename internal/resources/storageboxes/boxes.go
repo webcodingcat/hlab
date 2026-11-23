@@ -2,6 +2,7 @@ package storageboxes
 
 import (
 	"cmp"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/ipam"
 	"github.com/webcodingcat/hlab/internal/resource"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
 	"github.com/webcodingcat/hlab/internal/storagepass"
@@ -129,21 +131,30 @@ func (a accessRequest) apply(s *AccessSettings) {
 type createRequest struct {
 	Name           string            `json:"name"`
 	Location       string            `json:"location"`
-	StorageBoxType string            `json:"storage_box_type"`
+	StorageBoxType json.RawMessage   `json:"storage_box_type"`
 	Password       string            `json:"password"`
 	Labels         map[string]string `json:"labels"`
 	SSHKeys        []string          `json:"ssh_keys"`
 	AccessSettings *accessRequest    `json:"access_settings"`
 }
 
-// boxType returns the catalog type whose name or ID is ref.
-func (m *Module) boxType(ref string) (catalog.StorageBoxType, bool) {
-	for _, st := range m.d.Catalog.StorageBoxTypes {
-		if st.Name == ref || strconv.FormatInt(st.ID, 10) == ref {
-			return st, true
-		}
+// refString is a reference given as a JSON string or number, as text; ""
+// for anything else.
+func refString(raw json.RawMessage) string {
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
 	}
-	return catalog.StorageBoxType{}, false
+	var n json.Number
+	if json.Unmarshal(raw, &n) == nil {
+		return n.String()
+	}
+	return ""
+}
+
+// boxType returns the catalog or own type whose name or ID is ref.
+func (m *Module) boxType(ref string) (catalog.StorageBoxType, bool) {
+	return m.d.Catalog.StorageBoxTypeByRef(ref)
 }
 
 // location returns the catalog location whose name or ID is ref.
@@ -158,7 +169,7 @@ func (m *Module) location(ref string) (catalog.Location, bool) {
 
 // validate checks the fields of a create body that need no store.
 func (m *Module) validate(body createRequest) (catalog.StorageBoxType, catalog.Location, error) {
-	st, ok := m.boxType(body.StorageBoxType)
+	st, ok := m.boxType(refString(body.StorageBoxType))
 	if !ok {
 		return st, catalog.Location{}, &api.FieldError{Field: "storage_box_type", Message: "unknown storage box type"}
 	}
@@ -181,8 +192,11 @@ func (m *Module) validate(body createRequest) (catalog.StorageBoxType, catalog.L
 	return st, loc, api.CheckLabels(body.Labels)
 }
 
-// create stores the box as initializing and starts create_storage_box,
-// which gives it its username, server and system and makes it active.
+// create stores the box as initializing with its number and IP and starts
+// create_storage_box, which shows its username, server and system and
+// makes it active. When Apply fails, the box is deleted and its IP
+// released. Below the free space reserve on the host drive it answers 412
+// resource_unavailable.
 func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	var body createRequest
 	if !api.Decode(w, req, &body) {
@@ -192,6 +206,9 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		body.Labels = map[string]string{}
 	}
 	st, loc, err := m.validate(body)
+	if err == nil {
+		err = m.checkFree()
+	}
 	if err != nil {
 		api.Fail(w, err)
 		return
@@ -226,6 +243,14 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		if r.ID, err = store.NextID(tx, Kind); err != nil {
 			return err
 		}
+		if r.HLab.N, err = nextUser(tx); err != nil {
+			return err
+		}
+		ip, err := ipam.NextPublic(tx, m.d.PublicRange)
+		if err != nil {
+			return err
+		}
+		r.HLab.IP = ip.String()
 		if err := put(tx, p.ID, r); err != nil {
 			return err
 		}
@@ -237,20 +262,20 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	system := strings.ToUpper(loc.Name) + "-BX" + strconv.FormatInt(r.ID, 10)
-	m.run(req, a.ID, r.ID, func(tx store.Tx, projectID int64, b *Record) error {
-		n, err := nextUser(tx)
-		if err != nil {
-			return err
-		}
-		username := "u" + strconv.FormatInt(n, 10)
+	m.run(req, a.ID, r.ID, nil, func(tx store.Tx, projectID int64, b *Record) error {
+		username := userName(b.HLab.N)
 		server := username + "." + serverDomain
-		b.HLab.N = n
 		b.Username, b.Server, b.System = &username, &server, &system
 		b.Status = StatusActive
 		return put(tx, projectID, *b)
+	}, func(tx store.Tx, projectID int64, b *Record) error {
+		return removeBox(tx, projectID, *b)
 	})
 	api.JSON(w, http.StatusCreated, map[string]any{"storage_box": r.Box, "action": a})
 }
+
+// userName is the username of box number n.
+func userName(n int64) string { return "u" + strconv.FormatInt(n, 10) }
 
 // nextUser takes the next username number from the kv counter.
 func nextUser(tx store.Tx) (int64, error) {
@@ -310,29 +335,42 @@ func (m *Module) update(w http.ResponseWriter, req *http.Request) {
 	api.JSON(w, http.StatusOK, map[string]any{"storage_box": r.Box})
 }
 
-// delete starts delete_storage_box, which removes the box and its
-// subaccounts; a box with delete protection answers 423 protected.
+// delete starts delete_storage_box on a box without delete protection
+// (423 protected otherwise). The box is marked deleting in the same
+// transaction, so Apply leaves it out of the storage VM's document; only
+// after Apply succeeded are the box and its subaccounts deleted and its IP
+// released. When Apply fails, the mark is cleared and the action fails.
 func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
-	m.boxAction(w, req, deleteCommand, func(r Record) error {
-		if r.Protection.Delete {
-			return actions.ErrProtected
-		}
-		return nil
-	}, func(tx store.Tx, projectID int64, r *Record) error {
-		subs, err := store.List[struct {
-			ID         int64 `json:"id"`
-			StorageBox int64 `json:"storage_box"`
-		}](tx, SubaccountKind, projectID)
+	id, ok := api.PathID(w, req)
+	if !ok {
+		return
+	}
+	p, _ := api.ProjectFrom(req.Context())
+	acts := api.ActionsFrom(req.Context())
+	var a *actions.Action
+	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
+		r, err := Load(tx, p.ID, id)
 		if err != nil {
 			return err
 		}
-		for _, s := range subs {
-			if s.StorageBox == r.ID {
-				if err := store.Delete(tx, SubaccountKind, projectID, s.ID); err != nil {
-					return err
-				}
-			}
+		if r.Protection.Delete {
+			return actions.ErrProtected
 		}
-		return store.Delete(tx, Kind, projectID, r.ID)
+		if a, err = begin(tx, acts, p.ID, id, deleteCommand); err != nil {
+			return err
+		}
+		r.HLab.Deleting = true
+		return put(tx, p.ID, r)
 	})
+	if err != nil {
+		api.Fail(w, err)
+		return
+	}
+	m.run(req, a.ID, id, nil, func(tx store.Tx, projectID int64, r *Record) error {
+		return removeBox(tx, projectID, *r)
+	}, func(tx store.Tx, projectID int64, r *Record) error {
+		r.HLab.Deleting = false
+		return put(tx, projectID, *r)
+	})
+	api.JSON(w, http.StatusCreated, map[string]any{"action": a})
 }

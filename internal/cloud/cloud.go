@@ -112,6 +112,12 @@ type Cloud struct {
 	cat    *catalog.Catalog
 	images *images.Store
 	agent  *agentclient.Client
+	// storage talks to the storage agent; storageMu runs one apply of the
+	// storage VM at a time.
+	storage   *agentclient.StorageClient
+	storageMu sync.Mutex
+	// stopStorage ends the start's background apply of the storage VM.
+	stopStorage func()
 	acts   *actions.Manager
 	ca     *ca.CA
 	mods   []resource.Module
@@ -143,6 +149,10 @@ func New(d Deps) *Cloud {
 // problemCustomServerTypes is the /status problem of own server types
 // that LoadAll could not add or a catalog update dropped.
 const problemCustomServerTypes = "custom_server_types"
+
+// problemCustomStorageBoxTypes is the /status problem of own storage box
+// types that are left out.
+const problemCustomStorageBoxTypes = "custom_storage_box_types"
 
 // status is the content of the status file.
 type status struct {
@@ -239,6 +249,9 @@ func (c *Cloud) start(ctx context.Context, params []string) error {
 	if err := ensureCustomISOs(c.d.Paths.Config); err != nil {
 		return fmt.Errorf("create the own ISOs file: %w", err)
 	}
+	if err := ensureConfigList(c.d.Paths.Config, catalog.OwnStorageBoxTypesFile); err != nil {
+		return fmt.Errorf("create the own storage box types file: %w", err)
+	}
 	customFile := filepath.Join(c.d.Paths.Config, customServerTypesFile)
 	var catWarns []string
 	c.cat, catWarns, err = catalog.LoadAll(c.d.Paths.Catalog, c.d.Paths.Config, customFile)
@@ -250,6 +263,7 @@ func (c *Cloud) start(ctx context.Context, params []string) error {
 		// and a reload clears it.
 		c.cat.ReloadOwn(customFile)
 	}
+	c.cat.ReloadOwnStorageBoxTypes(filepath.Join(c.d.Paths.Config, catalog.OwnStorageBoxTypesFile))
 	conv, ok := c.plat.(interface {
 		ConvertToDynamic(ctx context.Context, src, dst string) error
 	})
@@ -288,6 +302,9 @@ func (c *Cloud) start(ctx context.Context, params []string) error {
 		return err
 	}
 	c.acts = actions.New(c.st)
+	if c.storage, err = c.newStorageClient(); err != nil {
+		return err
+	}
 	c.shadow = zones.NewShadow(zones.PublicLookup(c.hostDNS(ctx), shadowLookupTimeout))
 	c.mods = c.modules()
 	if err := recoverModules(ctx, c.mods); err != nil {
@@ -315,6 +332,7 @@ func (c *Cloud) start(ctx context.Context, params []string) error {
 		return err
 	}
 	c.restore(ctx)
+	c.startStorage(ctx)
 
 	if err := c.serveManagement(router); err != nil {
 		return err
@@ -439,7 +457,7 @@ func (c *Cloud) modules() []resource.Module {
 		zns,
 		vol,
 		storageboxtypes.New(c.cat),
-		storageboxes.New(storageboxes.Deps{Catalog: c.cat}),
+		storageboxes.New(c.storageDeps()),
 	}
 }
 
@@ -602,6 +620,9 @@ func (c *Cloud) mgmtStatus() mgmt.Status {
 	if w := c.cat.OwnTypesWarning(); w != "" {
 		st.Problems = append(st.Problems, mgmt.Problem{Code: problemCustomServerTypes, Message: w})
 	}
+	if w := c.cat.OwnStorageBoxTypesWarning(); w != "" {
+		st.Problems = append(st.Problems, mgmt.Problem{Code: problemCustomStorageBoxTypes, Message: w})
+	}
 	for _, w := range c.cat.OwnISOsWarnings() {
 		st.Problems = append(st.Problems, mgmt.Problem{Code: problemCustomISOs, Message: w})
 	}
@@ -648,6 +669,10 @@ func (c *Cloud) teardown(ctx context.Context, reason sysint.StopReason) error {
 		cancel()
 	}
 	c.mgmtSrv, c.apiSrv = nil, nil
+	if c.stopStorage != nil {
+		c.stopStorage()
+		c.stopStorage = nil
+	}
 
 	if c.restored {
 		if err := c.halt(ctx, reason == sysint.StopHostShutdown); err != nil {

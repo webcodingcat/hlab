@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path"
 	"regexp"
 	"slices"
 	"strconv"
@@ -130,7 +131,8 @@ func subPathIDs(w http.ResponseWriter, req *http.Request) (int64, int64, bool) {
 }
 
 // checkHome checks a home directory against the description: 1 to 999
-// characters of its pattern, relative to the box's root.
+// characters of its pattern, relative to the box's root and never leaving
+// it through a ".." element.
 func checkHome(h string) error {
 	msg := ""
 	switch {
@@ -142,12 +144,18 @@ func checkHome(h string) error {
 		msg = "home_directory must not start with a slash"
 	case !homePattern.MatchString(h):
 		msg = "home_directory may only contain a-z, A-Z, 0-9, space, '.', '/', '_' and '-'"
+	case slices.Contains(strings.Split(h, "/"), ".."):
+		msg = "home_directory must not contain '..'"
 	}
 	if msg != "" {
 		return &api.FieldError{Field: "home_directory", Message: msg}
 	}
 	return nil
 }
+
+// cleanHome is home directory h, accepted by checkHome, in its stored
+// form: without empty and "." elements.
+func cleanHome(h string) string { return path.Clean(h) }
 
 // checkSubName checks the length of a name and that no other subaccount
 // of the box has it.
@@ -264,7 +272,7 @@ func (b subCreateRequest) validate() error {
 
 // createSubaccount stores the subaccount with username u<n>-sub<m>, m
 // taken from the box's counter and never reused, and runs
-// create_subaccount on the box.
+// create_subaccount on the box; a failed Apply deletes the subaccount.
 func (m *Module) createSubaccount(w http.ResponseWriter, req *http.Request) {
 	boxID, ok := api.PathID(w, req)
 	if !ok {
@@ -285,7 +293,7 @@ func (m *Module) createSubaccount(w http.ResponseWriter, req *http.Request) {
 	}
 	s := SubaccountRecord{Subaccount: Subaccount{
 		StorageBox:    boxID,
-		HomeDirectory: body.HomeDirectory,
+		HomeDirectory: cleanHome(body.HomeDirectory),
 		Description:   body.Description,
 		Labels:        body.Labels,
 		Created:       time.Now().UTC().Truncate(time.Second),
@@ -301,6 +309,9 @@ func (m *Module) createSubaccount(w http.ResponseWriter, req *http.Request) {
 	err = api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
 		box, err := Load(tx, p.ID, boxID)
 		if err != nil {
+			return err
+		}
+		if err := checkActive(box); err != nil {
 			return err
 		}
 		subs, err := boxSubs(tx, p.ID, boxID)
@@ -344,7 +355,9 @@ func (m *Module) createSubaccount(w http.ResponseWriter, req *http.Request) {
 		api.Fail(w, err)
 		return
 	}
-	m.run(req, a.ID, boxID, func(store.Tx, int64, *Record) error { return nil })
+	m.run(req, a.ID, boxID, nil, nil, func(tx store.Tx, projectID int64, _ *Record) error {
+		return store.Delete(tx, SubaccountKind, projectID, s.ID)
+	})
 	api.JSON(w, http.StatusCreated, map[string]any{
 		"subaccount": map[string]any{"id": s.ID, "storage_box": boxID},
 		"action":     a,
@@ -413,10 +426,12 @@ func (m *Module) deleteSubaccount(w http.ResponseWriter, req *http.Request) {
 
 // subAction answers a request that runs command as an action on the
 // subaccount of the path, referencing box and subaccount and locking the
-// box; done stores the change when the action succeeds. Callers validate
+// box; change stores the action's change before Apply, and a failed Apply
+// restores the subaccount as it was (see run). A box that is not
+// active refuses every command but delete_subaccount. Callers validate
 // the request first. It answers 201 with the action.
 func (m *Module) subAction(w http.ResponseWriter, req *http.Request, command string,
-	done func(tx store.Tx, projectID int64, s SubaccountRecord) error,
+	change func(tx store.Tx, projectID int64, s SubaccountRecord) error,
 ) {
 	boxID, subID, ok := subPathIDs(w, req)
 	if !ok {
@@ -429,6 +444,15 @@ func (m *Module) subAction(w http.ResponseWriter, req *http.Request, command str
 		if _, err := loadSub(tx, p.ID, boxID, subID); err != nil {
 			return err
 		}
+		if command != deleteSubCommand {
+			box, err := Load(tx, p.ID, boxID)
+			if err != nil {
+				return err
+			}
+			if err := checkActive(box); err != nil {
+				return err
+			}
+		}
 		var err error
 		a, err = begin(tx, acts, p.ID, boxID, command, subRef(subID))
 		return err
@@ -437,12 +461,15 @@ func (m *Module) subAction(w http.ResponseWriter, req *http.Request, command str
 		api.Fail(w, err)
 		return
 	}
+	var old SubaccountRecord
 	m.run(req, a.ID, boxID, func(tx store.Tx, projectID int64, _ *Record) error {
-		s, err := store.Get[SubaccountRecord](tx, SubaccountKind, projectID, subID)
-		if err != nil {
+		var err error
+		if old, err = store.Get[SubaccountRecord](tx, SubaccountKind, projectID, subID); err != nil {
 			return err
 		}
-		return done(tx, projectID, s)
+		return change(tx, projectID, old)
+	}, nil, func(tx store.Tx, projectID int64, _ *Record) error {
+		return putSub(tx, projectID, old)
 	})
 	api.JSON(w, http.StatusCreated, map[string]any{"action": a})
 }

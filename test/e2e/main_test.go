@@ -736,6 +736,12 @@ type apiError struct {
 // optional JSON body. A 2xx body is decoded into out (nil: ignored); any
 // other body gives its error object. It returns the status code.
 func (e *env) apiDo(ctx context.Context, method, path string, body, out any) (int, apiError, error) {
+	return e.apiDoAt(ctx, apiEndpoint, method, path, body, out)
+}
+
+// apiDoAt is apiDo against the API under base (apiEndpoint or
+// hetznerEndpoint).
+func (e *env) apiDoAt(ctx context.Context, base, method, path string, body, out any) (int, apiError, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	var rd io.Reader
@@ -746,7 +752,7 @@ func (e *env) apiDo(ctx context.Context, method, path string, body, out any) (in
 		}
 		rd = bytes.NewReader(b)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, apiEndpoint+path, rd)
+	req, err := http.NewRequestWithContext(ctx, method, base+path, rd)
 	if err != nil {
 		return 0, apiError{}, err
 	}
@@ -842,10 +848,8 @@ func (e *env) waitStatus(id int64, want string, timeout time.Duration) error {
 }
 
 // sshPassword runs a command as root on the server with a password login
-// only (no key is offered). OpenSSH asks a temporary askpass script, which
-// prints the password from the environment of this one ssh process; the
-// script never holds the password, and it and a fresh known_hosts file (a
-// password login is refused for a host whose key changed) are deleted when
+// only (no key is offered); see askpassEnviron. A fresh known_hosts file (a
+// password login is refused for a host whose key changed) is deleted when
 // the command returns.
 func sshPassword(s *server, password string, timeout time.Duration, remote string) (result, error) {
 	dir, err := os.MkdirTemp(harness.tmp, "askpass-")
@@ -853,28 +857,10 @@ func sshPassword(s *server, password string, timeout time.Duration, remote strin
 		return result{}, err
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
-
-	ps := filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
-	script := filepath.Join(dir, "askpass.cmd")
-	content := "@echo off\r\n\"" + ps + "\" -NoProfile -NonInteractive -Command \"[Console]::Out.WriteLine($env:HLAB_E2E_ROOT_PASSWORD)\"\r\n"
-	if err := os.WriteFile(script, []byte(content), 0o600); err != nil {
+	environ, err := askpassEnviron(dir, password)
+	if err != nil {
 		return result{}, err
 	}
-
-	var environ []string
-	for _, kv := range os.Environ() {
-		u := strings.ToUpper(kv)
-		if strings.HasPrefix(u, "SSH_ASKPASS") || strings.HasPrefix(u, "HLAB_E2E_ROOT_PASSWORD=") {
-			continue
-		}
-		environ = append(environ, kv)
-	}
-	environ = append(environ,
-		"SSH_ASKPASS="+script,
-		"SSH_ASKPASS_REQUIRE=force",
-		"DISPLAY=hlab-e2e:0",
-		"HLAB_E2E_ROOT_PASSWORD="+password,
-	)
 	return command(context.Background(), timeout, environ, "", harness.ssh,
 		"-o", "PubkeyAuthentication=no",
 		"-o", "IdentitiesOnly=yes",
@@ -885,4 +871,32 @@ func sshPassword(s *server, password string, timeout time.Duration, remote strin
 		"-o", "ConnectTimeout=10",
 		"-o", "LogLevel=ERROR",
 		"root@"+s.IPv4, remote)
+}
+
+// askpassEnviron writes an askpass script into dir and returns the
+// environment for one Windows OpenSSH process (ssh, sftp, scp) that makes it
+// answer the password prompt through the script. The script prints the
+// password from the environment of that one process and never holds it;
+// the caller deletes dir when the command returns.
+func askpassEnviron(dir, password string) ([]string, error) {
+	ps := filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+	script := filepath.Join(dir, "askpass.cmd")
+	content := "@echo off\r\n\"" + ps + "\" -NoProfile -NonInteractive -Command \"[Console]::Out.WriteLine($env:HLAB_E2E_PASSWORD)\"\r\n"
+	if err := os.WriteFile(script, []byte(content), 0o600); err != nil {
+		return nil, err
+	}
+	var environ []string
+	for _, kv := range os.Environ() {
+		u := strings.ToUpper(kv)
+		if strings.HasPrefix(u, "SSH_ASKPASS") || strings.HasPrefix(u, "HLAB_E2E_PASSWORD=") {
+			continue
+		}
+		environ = append(environ, kv)
+	}
+	return append(environ,
+		"SSH_ASKPASS="+script,
+		"SSH_ASKPASS_REQUIRE=force",
+		"DISPLAY=hlab-e2e:0",
+		"HLAB_E2E_PASSWORD="+password,
+	), nil
 }
