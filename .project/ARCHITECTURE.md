@@ -805,7 +805,7 @@ locks a resource of type `project`.
   | Method and path | Purpose |
   |---|---|
   | `PUT /v1/storage` | full `agentapi.Storage`, applied idempotently; returns the applied generation |
-  | `POST /v1/jobs` | `agentapi.StorageJob`, returns `agentapi.StorageJobResult` when done |
+  | `POST /v1/jobs` | `agentapi.StorageJob`, returns `agentapi.StorageJobResult` when done; a failed job answers `agentapi.StorageJobError{"error": code}` with `not_found` or `invalid_path` (hlabd maps them to 404 and 422) |
 
   ```go
   type Storage struct {

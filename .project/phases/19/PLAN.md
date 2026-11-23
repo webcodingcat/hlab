@@ -134,14 +134,14 @@ CompactDisk(ctx context.Context, path string) error
 
 ## Plans
 
-- [ ] 19-01 Storage interfaces, addresses and client
+- [x] 19-01 Storage interfaces, addresses and client
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SBOX-03, SBOX-04 (groundwork) | Tests: -
   - Reads: ARCHITECTURE.md "Storage VM", "Network"; CONTEXT.md "Addresses", "Network"; this plan's "Interfaces"
   - Size: ~260 lines in 5 files
-  - [ ] New `internal/agentapi/storage.go` with the storage types, jobs and job error codes; `Config.Storage` and `Config.StorageBoxes` in `internal/agentapi/agentapi.go`.
-  - [ ] `internal/transit/transit.go`: `Storage` and `StorageAgent`; `internal/ipam/ipam.go`: `NextPublic` skips the storage address.
-  - [ ] New `internal/agentclient/storage.go`: `StorageClient` with `WaitReady`, `Push` and `Job` on the existing request helper of `agentclient.go`.
+  - [x] New `internal/agentapi/storage.go` with the storage types, jobs and job error codes; `Config.Storage` and `Config.StorageBoxes` in `internal/agentapi/agentapi.go`.
+  - [x] `internal/transit/transit.go`: `Storage` and `StorageAgent`; `internal/ipam/ipam.go`: `NextPublic` skips the storage address.
+  - [x] New `internal/agentclient/storage.go`: `StorageClient` with `WaitReady`, `Push` and `Job` on the existing request helper of `agentclient.go`.
 
 - [x] 19-02 Own storage box types
   - Wave: 1 | Depends on: - | Review: alone

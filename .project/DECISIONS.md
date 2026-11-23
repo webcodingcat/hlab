@@ -19,6 +19,22 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Storage client readiness and generation
+
+- Type: decision
+- Phase: phase 19
+- What: `StorageClient.WaitReady` takes any HTTP answer to `GET /v1/storage` as ready, and `Push` keeps its own generation counter in kv `storage.generation`, bounded only by the caller's ctx.
+- Why: The storage agent has no status path, and pushes are bounded by each action's own deadline.
+- Cost of change: low
+
+## 2026-11-23 Exported transit.Broadcast
+
+- Type: decision
+- Phase: phase 19
+- What: `transit.Broadcast(prefix)` is exported and replaces ipam's private broadcast helper.
+- Why: `Addrs.Storage` and ipam need the same broadcast address.
+- Cost of change: low
+
 ## 2026-11-23 Own storage box types follow own server types
 
 - Type: decision
