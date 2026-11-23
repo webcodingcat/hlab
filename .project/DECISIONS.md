@@ -19,6 +19,79 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Storage agent services and snapshot contract
+
+- Type: decision
+- Phase: phase 20
+- What: Samba, Apache and vsftpd are storage-agent services that register in `init`; `agentapi.Box.Snapshots` lists the stored snapshot names, and the agent removes only unlisted snapshot subvolumes; `StorageJob.Newer` carries the snapshots a rollback deletes, and `SnapshotFS` (referenced bytes) joins `SnapshotSizes` (exclusive bytes).
+- Why: The three service plans then touch only their own files, and the agent can clean up after an interrupted create without ever losing a stored snapshot.
+- Cost of change: medium
+
+## 2026-11-23 Snapshot records and automatic snapshots
+
+- Type: decision
+- Phase: phase 20
+- What: Snapshots are the store kind `storage_box_snapshots` with `_hlab.creating` for an unconfirmed create; a name taken in the same second moves to the next free second; automatic snapshots are visible `create_snapshot` actions started through `StartQueued`, named `snapshot-daily--<UTC>`, and plan times missed while the cloud is stopped are skipped (tracked in `_hlab.plan_checked`).
+- Why: It reuses the store, action and scheduler patterns of the storage boxes module; Hetzner documents only the `snapshot-daily--` prefix.
+- Cost of change: medium
+
+## 2026-11-23 Snapshot errors
+
+- Type: decision
+- Phase: phase 20
+- What: A full `snapshot_limit` answers 403 `resource_limit_exceeded` with `details.limits [{"name":"snapshot_limit"}]`, and rollback_snapshot with an unknown snapshot answers 404 `not_found`.
+- Why: The new API's code is undocumented (the Robot API answers 409); this matches the subaccounts limit already served.
+- Cost of change: low
+
+## 2026-11-23 Storage VM setup for the protocols
+
+- Type: decision
+- Phase: phase 20
+- What: `VMSpec.DynamicMemory` (minimum 512 MB, startup and maximum MemoryMB) switches existing storage VMs at their next start while off; the install script installs the Samba, Apache and vsftpd groups each while its tool is missing; the rollback fence is a reject rule set through `google/nftables`.
+- Why: Storage VMs from phase 19 get the protocols at their next boot, and the generic image has no `nft` program.
+- Cost of change: low
+
+## 2026-11-23 Protocol test rows
+
+- Type: decision
+- Phase: phase 20
+- What: TestE2E/SBOX-04/ftp is the pam_access proof, SMB and WebDAV get matching SBOX-04 and SBOX-12 rows, and the SMB refusal of a subaccount without reachable_externally is checked from WSL2 only.
+- Why: Each protocol plan proves its own refusal and read-only access; curl on a server speaks only SMB1.
+- Cost of change: low
+
+## 2026-11-23 One wildcard certificate for WebDAV and FTPS
+
+- Type: decision
+- Phase: phase 20
+- What: hlabd issues one certificate `*.storagebox.hetzner.internal` from the hlab CA for all Apache vhosts and vsftpd; Apache keeps one name-based vhost per account and selects it by SNI.
+- Why: The user chose it (Q1): vsftpd cannot pick a certificate by name, and a per-account certificate would be issued again at every subaccount change.
+- Cost of change: medium
+- Replaces: 2026-11-21 WebDAV for subaccounts by name-based virtual hosts
+
+## 2026-11-23 vsftpd refuses subaccounts by pam_access
+
+- Type: decision
+- Phase: phase 20
+- What: vsftpd refuses subaccounts without reachable_externally from the host and WSL2 through `pam_access` in `/etc/pam.d/vsftpd`; an end-to-end row proves it on Debian 13.
+- Why: The user accepted the evidence from vsftpd's source and access.conf(5) (Q2); sshd, Apache and Samba refuse such subaccounts in their own configuration the same way.
+- Cost of change: low
+
+## 2026-11-23 Snapshot plan days combine with AND
+
+- Type: decision
+- Phase: phase 20
+- What: when both `day_of_week` and `day_of_month` of a snapshot plan are set, a day must match both.
+- Why: The user decided it from the Ansible documentation of hetzner.hcloud.storage_box (RESEARCH.md of phase 20, section 5); Hetzner's API description does not say.
+- Cost of change: low
+
+## 2026-11-23 Storage VM with 2048 MB dynamic memory
+
+- Type: decision
+- Phase: phase 20
+- What: the storage VM gets 2048 MB of dynamic memory.
+- Why: The user set it because smbd, Apache with mpm-itk and vsftpd run side by side with sshd.
+- Cost of change: low
+
 ## 2026-11-23 Storage box actions store their change before Apply
 
 - Type: decision
@@ -4018,11 +4091,3 @@ taken with the approval of the spec or by an answer from the user.
 - What: SMB (TCP 445) from WSL2 in NAT mode reaches a storage box over the same forwarding path as SSH (E4, HOST-03); the check needs elevated rights and was skipped by the user (E16).
 - Why: SMB is one more TCP port on a confirmed path; the end-to-end tests of SBOX-04 and SBOX-14 prove it.
 - Cost of change: high
-
-## 2026-11-21 WebDAV for subaccounts by name-based virtual hosts
-
-- Type: assumption
-- Phase: change
-- What: subaccounts reach WebDAV on the box's IP through one name-based virtual host per account name with its own hlab CA certificate (SNI); not tried in E17.
-- Why: Hetzner gives each subaccount its own hostname on the box's address; Apache with mpm-itk serves per-vhost users (E17).
-- Cost of change: medium
