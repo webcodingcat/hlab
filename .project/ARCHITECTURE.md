@@ -545,7 +545,11 @@ Inside `hlabd` (Go packages under `internal/`):
   `ISOs`/`AddISO`/`UpdateISO`/`RemoveISO` the same way for the catalog
   and the own ISOs (own rows from the file's entries, own ISOs addressed
   by ID; results `ListedISO`, `ISOList`) (results `ListedType`,
-  `ServerTypeList`, `Invalid` for field errors), `Locations() ([]Location{name, city})`
+  `ServerTypeList`, `Invalid` for field errors),
+  `StorageBoxTypes`/`AddStorageBoxType`/`UpdateStorageBoxType`/`RemoveStorageBoxType`
+  the same way for storage box types (`catalog.OwnStorageBoxTypeSpec` with an
+  explicit non-empty location list, own types addressed by name; results
+  `ListedStorageBoxType`, `StorageBoxTypeList`), `Locations() ([]Location{name, city})`
   from the shipped catalog, also while the cloud is stopped; `bridge.Cloud`
   with status, start and stop, recording "starting"/"stopping" as soon as
   the SCM accepts a start or stop (a poll begun earlier cannot overwrite
@@ -569,7 +573,9 @@ Inside `hlabd` (Go packages under `internal/`):
   `{project, page}`, found by ProjectConsole through `import.meta.glob`); it uses only
   the bridge; the Hetzner resources are
   managed through the management API's project proxy
-  (`/mgmt/v1/projects/{name}/api/v1/...`), so the UI exercises the same
+  (`/mgmt/v1/projects/{name}/api/v1/...`, storage boxes through
+  `/mgmt/v1/projects/{name}/api/hetzner/v1/...` with `hetznerApi` and
+  `runHetzner` in `lib/api.ts`, actions polled on the Cloud API's `/actions/{id}`), so the UI exercises the same
   handlers as the clients. Views per UI-SPEC.md.
 - Start and stop through the SCM open the manager with `SC_MANAGER_CONNECT`
   and the service with `SERVICE_START|SERVICE_STOP|SERVICE_QUERY_STATUS`

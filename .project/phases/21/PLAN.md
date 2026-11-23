@@ -169,31 +169,31 @@ access_settings, snapshot_plan, protection, stats, labels).
 
 ## Plans
 
-- [ ] 21-01 Own storage box types: catalog writers and bridge
+- [x] 21-01 Own storage box types: catalog writers and bridge
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-14 | Tests: internal/catalog/catalog_test.go, internal/resources/storageboxtypes/storageboxtypes_test.go, internal/bridge/service_test.go
   - Reads: CONTEXT.md; Interfaces "Go"; ARCHITECTURE.md "Files and formats" (storage-box-types.custom.json), "hlab-tray"; DECISIONS "Own storage box types follow own server types", "Own storage box types file"; hetzner.spec.json schema `storage_box_type` (prices entry shape); internal/catalog/custom.go (AddOwn/UpdateOwn/RemoveOwn/readOwnRaw/writeOwn), storageboxtypes_custom.go; internal/bridge/service.go
   - Size: ~300 lines in 3 files
-  - [ ] `internal/catalog/storageboxtypes_own.go`: `OwnStorageBoxTypeSpec`, add, update, remove and `OwnStorageBoxTypes` as in Interfaces, writing in place with the settings.toml ACL kept (reuse `writeOwn`).
-  - [ ] `internal/bridge/service.go`: `StorageBoxTypes`, `AddStorageBoxType`, `UpdateStorageBoxType`, `RemoveStorageBoxType`; problem from `OwnStorageBoxTypesWarning` of a freshly loaded catalog; field errors as `*Invalid`.
-  - [ ] Make the test map's rows of this plan pass.
+  - [x] `internal/catalog/storageboxtypes_own.go`: `OwnStorageBoxTypeSpec`, add, update, remove and `OwnStorageBoxTypes` as in Interfaces, writing in place with the settings.toml ACL kept (reuse `writeOwn`).
+  - [x] `internal/bridge/service.go`: `StorageBoxTypes`, `AddStorageBoxType`, `UpdateStorageBoxType`, `RemoveStorageBoxType`; problem from `OwnStorageBoxTypesWarning` of a freshly loaded catalog; field errors as `*Invalid`.
+  - [x] Make the test map's rows of this plan pass.
 
-- [ ] 21-02 Console foundation for storage boxes
+- [x] 21-02 Console foundation for storage boxes
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-12, UI-14 | Tests: ui/frontend/tests/unit/routes.test.ts, ui/frontend/tests/unit/projects.test.ts, ui/frontend/tests/unit/help.test.ts
   - Reads: CONTEXT.md; UI-SPEC.md "Views" (Project console, Storage Box Types); Interfaces "TypeScript: Hetzner API", "routes, navigation, project counts"; ui/frontend/src/lib/api.ts, routes.ts, consoleNav.ts, projects.ts, help.ts, views.json, views/ProjectConsole.svelte; docs/development/components.md "views"
   - Size: ~200 lines in 9 files
-  - [ ] `lib/api.ts`: `hetznerApi`, `hetznerListAll`, `runHetzner`, `runHetznerOn`; `lib/format.ts` maps the path `storage_boxes` to the type "Storage Box" if `resourceType` needs it.
-  - [ ] `lib/routes.ts`, `lib/consoleNav.ts`, `views/ProjectConsole.svelte` (icon), `lib/projects.ts`: the new views, entry and count.
-  - [ ] `views.json`, `help.ts`, `help/storage-boxes.md`, `help/storage-box-types.md` (first version naming the views and buttons of UI-SPEC.md; the documentation plan checks them).
+  - [x] `lib/api.ts`: `hetznerApi`, `hetznerListAll`, `runHetzner`, `runHetznerOn`; `lib/format.ts` maps the path `storage_boxes` to the type "Storage Box" if `resourceType` needs it.
+  - [x] `lib/routes.ts`, `lib/consoleNav.ts`, `views/ProjectConsole.svelte` (icon), `lib/projects.ts`: the new views, entry and count.
+  - [x] `views.json`, `help.ts`, `help/storage-boxes.md`, `help/storage-box-types.md` (first version naming the views and buttons of UI-SPEC.md; the documentation plan checks them).
 
-- [ ] 21-03 Storage box action modules
+- [x] 21-03 Storage box action modules
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-12, UI-13 | Tests: ui/frontend/tests/unit/storageBoxes.test.ts
   - Reads: Interfaces "pure action modules"; hetzner.spec.json request bodies of `POST /storage_boxes`, the box and subaccount actions, snapshots and `enable_snapshot_plan`; research/EXPERIMENTS.md E14; ui/frontend/src/lib/resourceActions.ts, lib/resources/volumes.ts, tests/unit/resourceTable.ts
   - Size: ~220 lines in 3 files
-  - [ ] `lib/resources/storageBoxes.ts` with the `StorageBox` and `BoxType` types and `typesIn`.
-  - [ ] `lib/resources/storageBoxSubaccounts.ts` and `lib/resources/storageBoxSnapshots.ts` with `planBody` and `newerThan`; nested IDs from `input.subaccount` / `input.snapshot`.
+  - [x] `lib/resources/storageBoxes.ts` with the `StorageBox` and `BoxType` types and `typesIn`.
+  - [x] `lib/resources/storageBoxSubaccounts.ts` and `lib/resources/storageBoxSnapshots.ts` with `planBody` and `newerThan`; nested IDs from `input.subaccount` / `input.snapshot`.
 
 - [ ] 21-04 E2E harness: Hetzner endpoint for the clients
   - Wave: 1 | Depends on: - | Review: alone
@@ -258,6 +258,7 @@ access_settings, snapshot_plan, protection, stats, labels).
   - Reads: CONTEXT.md; research/EXPERIMENTS.md E12, E14, E20; `hcloud storage-box --help` and the subcommands' help; internal/resources/storageboxes (only for a fix)
   - Size: ~40 lines in up to 3 files (no product change expected by E20)
   - [ ] Run the CLI-05 rows; fix in hlab what they find (a fix of a public API shape stops the plan).
+  - Found by the first run of the new tests (2026-11-23): a box created with an SSH public key that ends in a newline (as OpenTofu's `file()` or Ansible's lookup give it) is accepted by the API, but the storage agent refuses the whole document (`invalid document: box u100100: SSH key spans lines`), so every later storage push fails and every create of any box errors. Fix in hlab: handle such a key at the API the way Hetzner does, and make sure one bad box cannot block the pushes of all others.
 
 - [ ] 21-12 Storage boxes with OpenTofu
   - Wave: 3 | Depends on: 21-11 | Review: alone | e2e
