@@ -41,6 +41,10 @@ func TestStorageBoxes(t *testing.T) {
 	t.Run("SBOX-17/at_time", testSnapshotPlanAtTime)
 	t.Run("SBOX-17/retention", testSnapshotPlanRetention)
 	t.Run("SBOX-18/api", testRollbackAPI)
+	t.Run("CLI-06/delete_subaccount_waits", testDeleteSubaccountWaits)
+	t.Run("CLI-06/delete_snapshot_waits", testDeleteSnapshotWaits)
+	t.Run("CLI-06/others_locked", testDeleteOthersLocked)
+	t.Run("CLI-06/gone_at_turn", testDeleteGoneAtTurn)
 }
 
 // listActions returns the actions at path.
