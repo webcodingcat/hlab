@@ -221,7 +221,7 @@ type Step struct {
   - [x] New internal/storageagent/ftp.go: `FTPConfig`. vsftpd.conf: `listen=YES`, `listen_ipv6=NO`, no `listen_address` or `pasv_address`, passive 50000-50099, local users chrooted to `/srv/chroot/$USER/home`, `ssl_enable=YES` with the wildcard certificate, TLS 1.2 and 1.3 only, modern `ssl_ciphers`, `require_ssl_reuse=NO`, `force_local_logins_ssl=NO`, `force_local_data_ssl=NO`, `reverse_lookup_enable=NO`, `user_config_dir`; per account a file with `write_enable=NO` for read-only ones; `Access`: per subaccount without reachable_externally `+:<user>:<PublicRange> EXCEPT <HostNet>` then `-:<user>:ALL`, ending with `+:ALL:ALL`.
   - [x] New internal/storageagent/ftp_linux.go: a registered service that writes the files, adds `account required pam_access.so accessfile=/etc/security/vsftpd-access.conf` to `/etc/pam.d/vsftpd` before the common-account include (once), enables vsftpd at the first apply and sends SIGHUP only when vsftpd.conf or the certificate changed. If the e2e row SBOX-04/ftp still fails after three repair attempts, the plan stops (CONTEXT.md Q2).
 
-- [ ] 20-11 Rollback in the storage agent
+- [x] 20-11 Rollback in the storage agent
   - Wave: 4 | Depends on: 20-07 | Review: alone
   - Requirements: SBOX-18 | Tests: - (its e2e row is in 20-13)
   - Reads: E17, E18; RESEARCH.md 6; CONTEXT.md (subaccount sessions); internal/storageagent/{agent.go,snapshots_linux.go,apply_linux.go} (bind, remount, ensureChroot)
@@ -238,7 +238,7 @@ type Step struct {
   - [x] Add the job to `Jobs()` and fill the snapshot stats from `SnapshotSizes` and `SnapshotFS` in the stats refresh (stats.go); add the `HLab.PlanChecked` field (storageboxes.go).
   - [x] `api.Deviations()` entry and api-coverage.md line: missed plan times are skipped (internal/api/deviations.go, docs/development/api-coverage.md).
 
-- [ ] 20-13 rollback_snapshot action
+- [x] 20-13 rollback_snapshot action
   - Wave: 5 | Depends on: 20-11, 20-12 | Review: alone
   - Requirements: SBOX-18 | Tests: internal/resources/storageboxes/snapshots_test.go (SBOX-18); test/e2e/storagebox_snapshot_test.go (SBOX-18)
   - Reads: hetzner.spec.json `/storage_boxes/{id}/actions/rollback_snapshot`; RESEARCH.md 5 (rollback); internal/resources/storageboxes/{actions.go,snapshots.go}
