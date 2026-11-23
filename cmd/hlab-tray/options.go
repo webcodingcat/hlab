@@ -13,10 +13,10 @@ import (
 var e2eOptions func(*application.Options)
 
 // appOptions returns the application options: the three bridge services,
-// the file dialogs, the embedded frontend and one tray per user and
-// profile. A second start shows and focuses the window of the first and
-// exits.
-func appOptions(svc *bridge.Service, cloud *bridge.Cloud, logs *bridge.Logs) application.Options {
+// the file dialogs, the window service, the extra services (the console
+// proxy), the embedded frontend and one tray per user and profile. A
+// second start shows and focuses the window of the first and exits.
+func appOptions(svc *bridge.Service, cloud *bridge.Cloud, logs *bridge.Logs, extra ...application.Service) application.Options {
 	opts := application.Options{
 		Name:        "HLab",
 		Description: "Local Hetzner-compatible cloud",
@@ -25,6 +25,7 @@ func appOptions(svc *bridge.Service, cloud *bridge.Cloud, logs *bridge.Logs) app
 			application.NewService(cloud),
 			application.NewService(logs),
 			application.NewService(&Files{}),
+			application.NewService(consoleWindows),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.BundledAssetFileServer(ui.Dist),
@@ -40,6 +41,7 @@ func appOptions(svc *bridge.Service, cloud *bridge.Cloud, logs *bridge.Logs) app
 		},
 		OnShutdown: func() { tray.quitting.Store(true) },
 	}
+	opts.Services = append(opts.Services, extra...)
 	if e2eOptions != nil {
 		e2eOptions(&opts)
 	}
