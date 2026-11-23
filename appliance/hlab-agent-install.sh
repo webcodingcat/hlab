@@ -58,9 +58,7 @@ fi
 # with Debian's configuration: policy-rc.d keeps every service down during
 # dpkg; the storage agent configures and starts them.
 install_daemon_debs() {
-	printf '#!/bin/sh
-exit 101
-' >/usr/sbin/policy-rc.d
+	printf '#!/bin/sh\nexit 101\n' >/usr/sbin/policy-rc.d
 	chmod 0755 /usr/sbin/policy-rc.d
 	install_debs "$@"
 	rm -f /usr/sbin/policy-rc.d
@@ -69,12 +67,16 @@ exit 101
 # Only the storage VM's ISO carries Samba, Apache and vsftpd. Their services
 # stay off until the storage agent has configured them.
 if [ -e "$mnt/samba.deb" ] && ! command -v smbd >/dev/null 2>&1; then
-	install_daemon_debs samba samba-common samba-common-bin samba-libs libldb2 libtalloc2 libtdb1 		libtevent0t64 libwbclient0 libcups2t64 libavahi-client3 libavahi-common3 		libavahi-common-data libicu76 libncurses6 libjansson4
+	install_daemon_debs samba samba-common samba-common-bin samba-libs libldb2 libtalloc2 libtdb1 \
+		libtevent0t64 libwbclient0 libcups2t64 libavahi-client3 libavahi-common3 \
+		libavahi-common-data libicu76 libncurses6 libjansson4
 	systemctl disable --now nmbd smbd >/dev/null 2>&1 || true
 fi
 
 if [ -e "$mnt/apache2.deb" ] && ! command -v apache2 >/dev/null 2>&1; then
-	install_daemon_debs apache2 apache2-bin apache2-data apache2-utils libapache2-mpm-itk libapr1t64 		libaprutil1t64 libaprutil1-ldap libaprutil1-dbd-sqlite3 liblua5.4-0 perl libperl5.40 		perl-modules-5.40 libgdbm-compat4t64
+	install_daemon_debs apache2 apache2-bin apache2-data apache2-utils libapache2-mpm-itk libapr1t64 \
+		libaprutil1t64 libaprutil1-ldap libaprutil1-dbd-sqlite3 liblua5.4-0 perl libperl5.40 \
+		perl-modules-5.40 libgdbm-compat4t64
 	systemctl disable --now apache2 >/dev/null 2>&1 || true
 	if command -v apache2 >/dev/null 2>&1; then
 		# The agent writes one site with a Listen per box address; Debian's
