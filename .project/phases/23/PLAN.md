@@ -153,13 +153,13 @@ func (w *Windows) OpenConsole(project string, id int64, name string) error
   - [x] `platform.Console`, `platform.ConsoleConn`, `platform.Frame` in `internal/platform/platform.go`
   - [x] `Keyboard.Keysym` (US keysym → set 1 table: letters, digits, symbols, Return, Tab, BackSpace, Escape, Delete, Home/End/PgUp/PgDn/Insert and arrows with 0xE0, F1-F12, Shift/Control/Alt/Super left and right, keypad; Shift correction around a character whose US Shift state differs from the held one), `QEMUKey`, `Pointer` in `internal/console/input.go`
 
-- [ ] 23-03 RFB 3.8 session
+- [x] 23-03 RFB 3.8 session
   - Wave: 2 | Depends on: 23-02 | Review: alone
   - Requirements: CON-01, CON-02 | Tests: internal/console/rfb_test.go
   - Reads: PLAN.md "Interfaces"; SPEC.md "Server console"; RESEARCH.md "noVNC and RFB details"; research/server-console.md section 3; EXPERIMENTS.md E22 (VNC auth bit reversal), E24 (pixel format), E25 (frames)
   - Size: ~400 lines in 2 files
-  - [ ] `Serve` in `internal/console/rfb.go`: version, security type 2 with DES challenge (key bytes bit-reversed, password cut to 8 characters, comment why), SecurityResult 1 with reason "authentication failed", ClientInit/ServerInit, SetPixelFormat (32-bpp true colour, any shifts, endianness), SetEncodings (remember DesktopSize and QEMU Extended Key Event; answer the latter with its pseudo-rectangle), FramebufferUpdateRequest (full at once; incremental held until a change), KeyEvent, QEMU message 255/0, PointerEvent, ClientCutText ignored
-  - [ ] Frame loop in `internal/console/frames.go`: grab on the interval only while connected and right after each input event, keep the last frame (black at start) when `ok` is false, RGB565 → client format, changed rectangles by diff, DesktopSize as last rectangle on a size change
+  - [x] `Serve` in `internal/console/rfb.go`: version, security type 2 with DES challenge (key bytes bit-reversed, password cut to 8 characters, comment why), SecurityResult 1 with reason "authentication failed", ClientInit/ServerInit, SetPixelFormat (32-bpp true colour, any shifts, endianness), SetEncodings (remember DesktopSize and QEMU Extended Key Event; answer the latter with its pseudo-rectangle), FramebufferUpdateRequest (full at once; incremental held until a change), KeyEvent, QEMU message 255/0, PointerEvent, ClientCutText ignored
+  - [x] Frame loop in `internal/console/frames.go`: grab on the interval only while connected and right after each input event, keep the last frame (black at start) when `ok` is false, RGB565 → client format, changed rectangles by diff, DesktopSize as last rectangle on a size change
 
 - [ ] 23-04 Console service: tokens and WebSocket listener
   - Wave: 3 | Depends on: 23-03 | Review: alone
