@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Storage box actions store their change before Apply
+
+- Type: decision
+- Phase: phase 19
+- What: Box and subaccount actions store their change before Apply and put the whole old record back (or delete a new subaccount) when Apply fails, then push the appliance document again; create and delete keep activation and removal after a successful Apply; `storage_box_type` is accepted as name or ID.
+- Why: The storage VM must get each change with its own action (found by the documentation run), and hcloud sends the type ID.
+- Cost of change: low
+
 ## 2026-11-23 Storage VM in the cloud's life
 
 - Type: decision
