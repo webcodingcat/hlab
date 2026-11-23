@@ -108,11 +108,8 @@ func (a *Agent) rollbackData(ctx context.Context, b agentapi.Box, n int, job age
 	if err := waitIdle(ctx, homes); err != nil {
 		return err
 	}
-	// Innermost first: .zfs/snapshot lies inside the box's home.
-	for _, p := range mounts {
-		if err := unix.Unmount(p, 0); err != nil {
-			return fmt.Errorf("unmount %s: %w", p, err)
-		}
+	if err := unmountBox(mounts); err != nil {
+		return err
 	}
 
 	data := filepath.Join(a.o.Root, b.User)
@@ -223,6 +220,37 @@ func boxMounts(box string) ([]string, error) {
 	}
 	slices.SortFunc(out, func(x, y string) int { return len(y) - len(x) })
 	return out, nil
+}
+
+// unmountBox unmounts mounts, innermost first, without a lazy detach, so a
+// busy mount stops the rollback before the swap. A home is unmounted by its
+// path, which the account cannot change; a mount inside a home
+// (.zfs/snapshot) lies on a path the account controls and is unmounted
+// through a descriptor of os.Root whose mount ID matches.
+func unmountBox(mounts []string) error {
+	info, err := readMounts()
+	if err != nil {
+		return err
+	}
+	for _, p := range mounts {
+		home, rel, inner := strings.Cut(p, "/home/")
+		if !inner {
+			if err := unix.Unmount(p, 0); err != nil {
+				return fmt.Errorf("unmount %s: %w", p, err)
+			}
+			continue
+		}
+		r, err := os.OpenRoot(home + "/home")
+		if err != nil {
+			return err
+		}
+		err = unmountAt(r, rel, info[p].id, 0)
+		_ = r.Close()
+		if err != nil {
+			return fmt.Errorf("unmount %s: %w", p, err)
+		}
+	}
+	return nil
 }
 
 // waitIdle waits until no process uses the filesystems of paths (fuser -m

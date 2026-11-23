@@ -125,7 +125,7 @@ func (a *Agent) applyZFS(b agentapi.Box, n int) error {
 	m, mounted := mounts[target]
 	want := "/" + snapshotDir + "/" + b.User
 	if mounted && (!b.Access.ZFS || m.root != want || !m.readOnly) {
-		if err := unmountAt(r, ".zfs/snapshot", m.id); err != nil {
+		if err := unmountAt(r, ".zfs/snapshot", m.id, unix.MNT_DETACH); err != nil {
 			return fmt.Errorf("unmount %s: %w", target, err)
 		}
 		mounted = false
@@ -186,9 +186,10 @@ func bindReadOnlyAt(src string, dst int) error {
 	return nil
 }
 
-// unmountAt detaches the mount with ID id that p below r leads to; p is
-// opened through os.Root, and the mount is left alone when its ID differs.
-func unmountAt(r *os.Root, p string, id uint64) error {
+// unmountAt unmounts with flags the mount with ID id that p below r leads
+// to; p is opened through os.Root, and the mount is left alone when its ID
+// differs.
+func unmountAt(r *os.Root, p string, id uint64, flags int) error {
 	f, err := r.Open(p)
 	if err != nil {
 		return err
@@ -201,5 +202,5 @@ func unmountAt(r *os.Root, p string, id uint64) error {
 	if stx.Mnt_id != id {
 		return fmt.Errorf("%s leads to mount %d, want %d", p, stx.Mnt_id, id)
 	}
-	return unix.Unmount(fmt.Sprintf("/proc/self/fd/%d", f.Fd()), unix.MNT_DETACH)
+	return unix.Unmount(fmt.Sprintf("/proc/self/fd/%d", f.Fd()), flags)
 }
