@@ -533,13 +533,15 @@ func newEnv() (*env, error) {
 	}
 	e.token = tok.Token
 
-	// hcloud never sees the user's configuration or context.
+	// hcloud never sees the user's configuration or context, and no client
+	// sees an inherited Hetzner endpoint: all get hlab's.
 	cfg := filepath.Join(harness.tmp, "hcloud.toml")
 	if err := os.WriteFile(cfg, nil, 0o600); err != nil {
 		return nil, err
 	}
 	for _, kv := range os.Environ() {
-		if strings.HasPrefix(strings.ToUpper(kv), "HCLOUD_") {
+		k, _, _ := strings.Cut(kv, "=")
+		if strings.HasPrefix(strings.ToUpper(k), "HCLOUD_") || strings.EqualFold(k, hetznerEnvVar) {
 			continue
 		}
 		e.hcloudEnv = append(e.hcloudEnv, kv)
@@ -547,6 +549,7 @@ func newEnv() (*env, error) {
 	e.hcloudEnv = append(e.hcloudEnv,
 		"HCLOUD_TOKEN="+e.token,
 		"HCLOUD_ENDPOINT="+apiEndpoint,
+		hetznerEnvVar+"="+hetznerEndpoint,
 		"HCLOUD_CONFIG="+cfg,
 	)
 

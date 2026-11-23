@@ -54,11 +54,11 @@ func registerRow(r clientRow) {
 // clientOf names the client of a requirement in resource names.
 func clientOf(req string) string {
 	switch req {
-	case "CLI-01":
+	case "CLI-01", "CLI-05":
 		return "hcloud"
-	case "CLI-02":
+	case "CLI-02", "CLI-06":
 		return "tofu"
-	case "CLI-03":
+	case "CLI-03", "CLI-07":
 		return "ansible"
 	default:
 		return "example"
@@ -174,8 +174,9 @@ func logged(f func(t *testing.T)) func(t *testing.T) {
 }
 
 // newProjectEnv creates a project of its own (name <runID>-<suffix>) with a
-// read/write token, an hcloud environment and the run's SSH key registered
-// under the run's key name; the project is deleted at cleanup.
+// read/write token, an hcloud environment (hlab's Cloud and Hetzner
+// endpoints) and the run's SSH key registered under the run's key name; the
+// project is deleted at cleanup.
 func newProjectEnv(t *testing.T, suffix string) *env {
 	t.Helper()
 	base := sharedEnv(t)
@@ -211,12 +212,12 @@ func newProjectEnv(t *testing.T, suffix string) *env {
 	for _, kv := range base.hcloudEnv {
 		k, _, _ := strings.Cut(kv, "=")
 		switch strings.ToUpper(k) {
-		case "HCLOUD_TOKEN", "HCLOUD_CONFIG":
+		case "HCLOUD_TOKEN", "HCLOUD_CONFIG", hetznerEnvVar:
 			continue
 		}
 		e.hcloudEnv = append(e.hcloudEnv, kv)
 	}
-	e.hcloudEnv = append(e.hcloudEnv, "HCLOUD_TOKEN="+e.token, "HCLOUD_CONFIG="+cfg)
+	e.hcloudEnv = append(e.hcloudEnv, "HCLOUD_TOKEN="+e.token, "HCLOUD_CONFIG="+cfg, hetznerEnvVar+"="+hetznerEndpoint)
 	e.hcloudOK(t, "ssh-key", "create", "--name", e.sshKey, "--public-key-from-file", e.pubKey)
 	return e
 }
