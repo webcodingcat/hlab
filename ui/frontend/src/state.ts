@@ -57,6 +57,7 @@ const viewInfo: Record<ViewId, { title: string; area: Area }> = {
   projects: { title: "Projects", area: "projects" },
   servers: { title: "Servers", area: "project" },
   volumes: { title: "Volumes", area: "project" },
+  "storage-boxes": { title: "Storage Boxes", area: "project" },
   "load-balancers": { title: "Load Balancers", area: "project" },
   networks: { title: "Networks", area: "project" },
   firewalls: { title: "Firewalls", area: "project" },
@@ -71,6 +72,7 @@ const viewInfo: Record<ViewId, { title: string; area: Area }> = {
   isos: { title: "ISOs", area: "admin" },
   tokens: { title: "API tokens", area: "project" },
   "server-types": { title: "Server Types", area: "admin" },
+  "storage-box-types": { title: "Storage Box Types", area: "admin" },
   settings: { title: "Settings", area: "admin" },
   logs: { title: "Logs", area: "admin" },
 };

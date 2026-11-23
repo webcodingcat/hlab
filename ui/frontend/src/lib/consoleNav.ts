@@ -26,6 +26,7 @@ export const navGroups: NavGroup[] = [
         ],
       },
       { id: "volumes", title: "Volumes", tabs: [{ view: "volumes", title: "Volumes" }] },
+      { id: "storage-boxes", title: "Storage Boxes", tabs: [{ view: "storage-boxes", title: "Storage Boxes" }] },
       { id: "firewalls", title: "Firewalls", tabs: [{ view: "firewalls", title: "Firewalls" }] },
     ],
   },
