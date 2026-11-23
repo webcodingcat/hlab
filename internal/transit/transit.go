@@ -4,23 +4,28 @@ package transit
 
 import "net/netip"
 
-// Ports of the API backend on the host, the API proxy and the agent on the
-// appliance; the storage agent listens on the same port as the agent.
+// Ports of the API backend and the console backend on the host, the API
+// proxy, the console forward and the agent on the appliance; the storage
+// agent listens on the same port as the agent.
 const (
-	apiListenPort = 8780
-	apiProxyPort  = 80
-	agentPort     = 9100
+	apiListenPort     = 8780
+	apiProxyPort      = 80
+	consoleListenPort = 8781
+	consoleProxyPort  = 443
+	agentPort         = 9100
 )
 
 // Addrs are the transit addresses of one public range.
 type Addrs struct {
-	Host         netip.Prefix   // range .2/30
-	Appliance    netip.Addr     // range .1
-	APIListen    netip.AddrPort // .2:8780
-	APIProxy     netip.AddrPort // .1:80
-	Agent        netip.AddrPort // .1:9100
-	Storage      netip.Addr     // broadcast minus 2 of the range, 198.19.255.253 by default
-	StorageAgent netip.AddrPort // Storage:9100
+	Host          netip.Prefix   // range .2/30
+	Appliance     netip.Addr     // range .1
+	APIListen     netip.AddrPort // .2:8780
+	APIProxy      netip.AddrPort // .1:80
+	ConsoleListen netip.AddrPort // .2:8781
+	ConsoleProxy  netip.AddrPort // .1:443
+	Agent         netip.AddrPort // .1:9100
+	Storage       netip.Addr     // broadcast minus 2 of the range, 198.19.255.253 by default
+	StorageAgent  netip.AddrPort // Storage:9100
 }
 
 // For returns the transit addresses of the range r: the appliance takes the
@@ -31,13 +36,15 @@ func For(r netip.Prefix) Addrs {
 	host := appliance.Next()
 	storage := Broadcast(r).Prev().Prev()
 	return Addrs{
-		Host:         netip.PrefixFrom(host, 30),
-		Appliance:    appliance,
-		APIListen:    netip.AddrPortFrom(host, apiListenPort),
-		APIProxy:     netip.AddrPortFrom(appliance, apiProxyPort),
-		Agent:        netip.AddrPortFrom(appliance, agentPort),
-		Storage:      storage,
-		StorageAgent: netip.AddrPortFrom(storage, agentPort),
+		Host:          netip.PrefixFrom(host, 30),
+		Appliance:     appliance,
+		APIListen:     netip.AddrPortFrom(host, apiListenPort),
+		APIProxy:      netip.AddrPortFrom(appliance, apiProxyPort),
+		ConsoleListen: netip.AddrPortFrom(host, consoleListenPort),
+		ConsoleProxy:  netip.AddrPortFrom(appliance, consoleProxyPort),
+		Agent:         netip.AddrPortFrom(appliance, agentPort),
+		Storage:       storage,
+		StorageAgent:  netip.AddrPortFrom(storage, agentPort),
 	}
 }
 

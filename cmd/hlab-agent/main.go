@@ -166,6 +166,8 @@ func runStorage(secret []byte, listenAddr string) error {
 // a signal ends them.
 func runAppliance(secret []byte, listenAddr string) error {
 	proxy := &agent.APIProxy{}
+	console := &agent.ConsoleForward{}
+	defer console.Close()
 	dns := &agent.DNS{}
 	defer dns.Close()
 	metadata := agent.NewMetadata()
@@ -176,7 +178,7 @@ func runAppliance(secret []byte, listenAddr string) error {
 	// comes first; the VRF applier needs its IPv4 forwarding, and the load
 	// balancers enslave their network veths to its VRF devices.
 	a, err := agent.New(secret,
-		agent.NewNetwork(publicInterface), vrf, agent.NewLoadBalancers(lbDir), agent.NewIsolation(publicInterface), agent.NewFirewall(publicInterface), dns, proxy, metadata)
+		agent.NewNetwork(publicInterface), vrf, agent.NewLoadBalancers(lbDir), agent.NewIsolation(publicInterface), agent.NewFirewall(publicInterface), dns, proxy, console, metadata)
 	if err != nil {
 		return err
 	}

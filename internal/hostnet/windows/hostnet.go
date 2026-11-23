@@ -23,8 +23,12 @@ import (
 	"github.com/webcodingcat/hlab/internal/profile"
 )
 
-// apiPort is the port hlabd listens on at the host address.
-const apiPort = 8780
+// apiPort and consolePort are the ports hlabd listens on at the host
+// address: the cloud API and the server console.
+const (
+	apiPort     = 8780
+	consolePort = 8781
+)
 
 // restoreFile records host settings hostnet changes but does not own.
 const restoreFile = "hostnet-restore.json"

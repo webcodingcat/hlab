@@ -70,7 +70,7 @@ func restoreScript(entries []forwarding) string {
 }
 
 // upScript sets the host IP, the route of the public range, WinNAT,
-// forwarding and the firewall rule for the API port.
+// forwarding and the firewall rule for the API and console ports.
 func upScript(cfg hostnet.Config, tag, program string) string {
 	a := q(alias(cfg.SwitchName))
 	host := q(cfg.HostAddr.Addr().String())
@@ -86,8 +86,8 @@ func upScript(cfg hostnet.Config, tag, program string) string {
 		fmt.Sprintf("if (-not $nat) { New-NetNat -Name %s -InternalIPInterfaceAddressPrefix %s | Out-Null }", q(tag), public),
 		"Get-NetIPInterface -AddressFamily IPv4 -ErrorAction SilentlyContinue | "+wslOrHlab(alias(cfg.SwitchName))+" | Set-NetIPInterface -Forwarding Enabled",
 		fmt.Sprintf("Remove-NetFirewallRule -Group %s -ErrorAction SilentlyContinue", q(tag)),
-		fmt.Sprintf("New-NetFirewallRule -DisplayName %s -Group %s -Direction Inbound -Action Allow -Protocol TCP -LocalPort %d -LocalAddress %s -RemoteAddress %s -InterfaceAlias %s -Program %s -Profile Any | Out-Null",
-			q(tag+" API"), q(tag), apiPort, host, appliance, a, q(program)),
+		fmt.Sprintf("New-NetFirewallRule -DisplayName %s -Group %s -Direction Inbound -Action Allow -Protocol TCP -LocalPort %d,%d -LocalAddress %s -RemoteAddress %s -InterfaceAlias %s -Program %s -Profile Any | Out-Null",
+			q(tag+" API"), q(tag), apiPort, consolePort, host, appliance, a, q(program)),
 	)
 }
 

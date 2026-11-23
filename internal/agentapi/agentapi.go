@@ -21,6 +21,7 @@ type Config struct {
 	PTR                map[netip.Addr]string
 	Metadata           []Metadata
 	API                APIProxy         // listen 198.19.0.1:80, backend 198.19.0.2:8780
+	Console            ConsoleForward   // TCP listen 198.19.0.1:443, backend 198.19.0.2:8781; TLS passes through
 	Upstream           []netip.AddrPort // DNS forwarders: the host's DNS servers, else 1.1.1.1:53, 9.9.9.9:53
 	Storage            StorageVM        // Addr invalid: no storage VM
 	StorageBoxes       []StorageBoxRoute
@@ -187,6 +188,14 @@ type PasswordReset struct {
 
 // APIProxy is the agent's reverse proxy to the hlabd API.
 type APIProxy struct {
+	Listen  netip.AddrPort
+	Backend netip.AddrPort
+}
+
+// ConsoleForward is the agent's plain TCP forward to the hlabd server
+// console; the agent's DNS answers console.hetzner.internal with the
+// address of Listen. Listen invalid: no forward.
+type ConsoleForward struct {
 	Listen  netip.AddrPort
 	Backend netip.AddrPort
 }
