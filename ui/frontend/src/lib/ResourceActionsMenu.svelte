@@ -3,7 +3,7 @@
   import ActionsMenu from "./ActionsMenu.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import Dialog from "./Dialog.svelte";
-  import { runOn } from "./api";
+  import { runHetznerOn, runOn } from "./api";
   import { request, type Input, type ResourceAction } from "./resourceActions";
 
   // The actions menu of a resource's detail page or list row, built from
@@ -13,7 +13,8 @@
   // the request runs under the toast "<Type> <name>: <label>". Every dialog closes
   // at once; ondone follows when the request and its actions succeeded.
   // An entry for which onselect returns true is left to the page (for
-  // example Reverse DNS with its own dialog).
+  // example Reverse DNS with its own dialog). hetzner sends the requests to
+  // the Hetzner API (storage boxes) instead of the Cloud API.
   type Props = {
     project: string;
     id: number;
@@ -22,9 +23,10 @@
     input?: Snippet<[ResourceAction, (i: Input) => void, () => void]>;
     ondone: (a: ResourceAction) => void;
     onselect?: (a: ResourceAction) => boolean;
+    hetzner?: boolean;
   };
 
-  let { project, id, name, actions, input, ondone, onselect }: Props = $props();
+  let { project, id, name, actions, input, ondone, onselect, hetzner = false }: Props = $props();
 
   // The entry whose input dialog or confirmation is open, with its input.
   let pending = $state<{ action: ResourceAction; input: Input } | undefined>();
@@ -34,7 +36,7 @@
   async function run(a: ResourceAction, i: Input) {
     const req = request(a, id, i);
     if (!req) return;
-    const res = await runOn(project, name, a.label, req);
+    const res = await (hetzner ? runHetznerOn : runOn)(project, name, a.label, req);
     if (res !== undefined) ondone(a);
   }
 

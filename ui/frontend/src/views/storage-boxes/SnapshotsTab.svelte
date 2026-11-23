@@ -29,12 +29,11 @@
   import Field from "../../lib/Field.svelte";
   import Table, { type Column } from "../../lib/Table.svelte";
   import { hetznerListAll, runHetznerOn } from "../../lib/api";
-  import { createdText } from "../../lib/format";
+  import { bytesText, createdText } from "../../lib/format";
   import { request, type Input } from "../../lib/resourceActions";
   import type { StorageBox } from "../../lib/resources/storageBoxes";
   import { newerThan, tabs } from "../../lib/resources/storageBoxSnapshots";
   import { showError } from "../../lib/toast";
-  import { bytesText } from "./Section.svelte";
   import SnapshotPlanDialog from "./SnapshotPlanDialog.svelte";
 
   // The Snapshots tab of a storage box: the snapshot plan with "Set plan"

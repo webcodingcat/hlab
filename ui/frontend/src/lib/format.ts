@@ -52,3 +52,15 @@ export function resourceType(path: string): string {
 export function isoTitle(iso: { name: string | null; description: string }): string {
   return iso.name ?? iso.description;
 }
+
+/** bytesText shows a byte count in the largest binary unit that keeps it at 1 or more. */
+export function bytesText(n: number): string {
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let v = n;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${i === 0 ? v : v.toFixed(1)} ${units[i]}`;
+}

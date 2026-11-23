@@ -2,15 +2,16 @@
   import { untrack } from "svelte";
   import Button from "./Button.svelte";
   import LabelsField from "./LabelsField.svelte";
-  import { api } from "./api";
+  import { api, hetznerApi } from "./api";
   import { formErrors } from "./formErrors";
   import { toLabels, toRows, type LabelRow } from "./labels";
 
   // The Labels tab of a detail page: edits the resource's labels and saves
-  // them with PUT <path> {labels}.
-  type Props = { project: string; path: string; labels: Record<string, string>; onsaved: () => void };
+  // them with PUT <path> {labels}; hetzner sends it to the Hetzner API
+  // (storage boxes) instead of the Cloud API.
+  type Props = { project: string; path: string; labels: Record<string, string>; onsaved: () => void; hetzner?: boolean };
 
-  let { project, path, labels, onsaved }: Props = $props();
+  let { project, path, labels, onsaved, hetzner = false }: Props = $props();
 
   let rows = $state<LabelRow[]>([]);
   // base is the last state of the labels shown; rows that still equal it are unedited.
@@ -35,7 +36,7 @@
     saving = true;
     error = general = undefined;
     try {
-      await api(project, "PUT", path, { labels: r.labels });
+      await (hetzner ? hetznerApi : api)(project, "PUT", path, { labels: r.labels });
       rows = toRows(r.labels);
       base = JSON.stringify(rows);
       onsaved();
