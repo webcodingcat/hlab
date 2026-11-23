@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Storage agent jobs wait for a running apply
+
+- Type: decision
+- Phase: phase 20
+- What: Every storage agent job sent by hlabd waits until a running storage apply has finished.
+- Why: An apply reads the boxes long before it sends the document, so a snapshot created meanwhile was removed by the agent as unlisted (SBOX-05 e2e failure).
+- Cost of change: low
+
 ## 2026-11-23 rollback_snapshot details
 
 - Type: decision
