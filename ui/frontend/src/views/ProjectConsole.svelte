@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Globe, HardDrive, KeyRound, MapPin, Network, Scale, Server, Shield } from "@lucide/svelte";
+  import { Archive, Globe, HardDrive, KeyRound, MapPin, Network, Scale, Server, Shield } from "@lucide/svelte";
   import type { Component } from "svelte";
   import SectionSidebar, { type SectionGroup } from "../lib/SectionSidebar.svelte";
   import SectionTabs from "../lib/SectionTabs.svelte";
@@ -23,6 +23,7 @@
   const icons: Record<string, typeof Server> = {
     servers: Server,
     volumes: HardDrive,
+    "storage-boxes": Archive,
     firewalls: Shield,
     "load-balancers": Scale,
     networks: Network,

@@ -1,12 +1,8 @@
 package catalog
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
-	"os"
 	"slices"
 	"strconv"
 )
@@ -75,18 +71,7 @@ func (c *Catalog) OwnStorageBoxTypesWarning() string {
 // readOwnStorageBoxTypes reads the JSON array of storage_box_type objects
 // of file; a missing file has none.
 func readOwnStorageBoxTypes(file string) ([]StorageBoxType, error) {
-	data, err := os.ReadFile(file)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var raw []json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil, err
-	}
-	own, err := parseStorageBoxTypeObjects(raw)
+	_, own, err := readOwnBoxRaw(file)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,7 @@
 package bridge_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -321,6 +323,7 @@ func TestBridge(t *testing.T) {
 		}
 	})
 
+	t.Run("UI-14", testStorageBoxTypes)
 	t.Run("UI-01/tray", testTray)
 	t.Run("UI-01/pending", testPending)
 	t.Run("UI-01/control", testControl)
@@ -378,6 +381,102 @@ func listedSources(t *testing.T, list bridge.ServerTypeList) map[string]string {
 		t.Error("no catalog type listed")
 	}
 	return out
+}
+
+// testStorageBoxTypes lists, adds, updates and removes own storage box
+// types through the bridge with the cloud stopped.
+func testStorageBoxTypes(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, catalog.OwnStorageBoxTypesFile)
+	if err := os.WriteFile(file, []byte("[]"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var running atomic.Bool
+	svc, f := newService(t, dir, &running)
+
+	// listed maps the listed names to their entries.
+	listed := func(t *testing.T) (map[string]bridge.ListedStorageBoxType, string) {
+		t.Helper()
+		list, err := svc.StorageBoxTypes()
+		if err != nil {
+			t.Fatalf("StorageBoxTypes while stopped: %v", err)
+		}
+		out := map[string]bridge.ListedStorageBoxType{}
+		for _, lt := range list.Types {
+			var st struct {
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal(lt.Type, &st); err != nil || st.Name == "" {
+				t.Fatalf("listed type %s is not a storage_box_type object: %v", lt.Type, err)
+			}
+			out[st.Name] = lt
+		}
+		return out, list.Problem
+	}
+
+	spec := catalog.OwnStorageBoxTypeSpec{Name: "own-a", Description: "own type a", Size: 64 << 20,
+		SnapshotLimit: 10, AutomaticSnapshotLimit: 10, SubaccountsLimit: 100, Locations: []string{"fsn1"}}
+	if inv, err := svc.AddStorageBoxType(spec); inv != nil || err != nil {
+		t.Fatalf("AddStorageBoxType while stopped = %+v, %v; want nil, nil", inv, err)
+	}
+	types, problem := listed(t)
+	if problem != "" {
+		t.Errorf("StorageBoxTypes problem %q with a valid own file, want none", problem)
+	}
+	if bx11 := types["bx11"]; bx11.Source != "catalog" || bx11.Own != nil {
+		t.Errorf("bx11 listed with source %q and own spec %+v, want catalog without a spec", bx11.Source, bx11.Own)
+	}
+	if a := types["own-a"]; a.Source != "own" || a.Own == nil || !reflect.DeepEqual(*a.Own, spec) {
+		t.Errorf("own-a listed with source %q and spec %+v, want own with %+v", a.Source, a.Own, spec)
+	}
+
+	before, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := spec
+	bad.Name, bad.Size = "own-b", 0
+	if inv, err := svc.AddStorageBoxType(bad); err != nil || inv == nil || inv.Field != "size" {
+		t.Errorf("AddStorageBoxType with size 0 = %+v, %v; want an Invalid for size", inv, err)
+	}
+	bad = spec
+	bad.SubaccountsLimit = -1
+	if inv, err := svc.UpdateStorageBoxType(bad); err != nil || inv == nil || inv.Field != "subaccounts_limit" {
+		t.Errorf("UpdateStorageBoxType with a negative subaccounts limit = %+v, %v; want an Invalid for subaccounts_limit", inv, err)
+	}
+	if after, _ := os.ReadFile(file); !bytes.Equal(before, after) {
+		t.Errorf("own file changed by a refused write: %s", after)
+	}
+
+	spec.Description = "own type a, changed"
+	if inv, err := svc.UpdateStorageBoxType(spec); inv != nil || err != nil {
+		t.Fatalf("UpdateStorageBoxType while stopped = %+v, %v; want nil, nil", inv, err)
+	}
+	types, _ = listed(t)
+	if a := types["own-a"]; a.Own == nil || a.Own.Description != spec.Description {
+		t.Errorf("own-a after the update listed with spec %+v, want description %q", a.Own, spec.Description)
+	}
+
+	if err := svc.RemoveStorageBoxType("own-a"); err != nil {
+		t.Fatalf("RemoveStorageBoxType while stopped: %v", err)
+	}
+	if types, _ = listed(t); types["own-a"].Source != "" {
+		t.Errorf("own-a still listed after the remove")
+	}
+	if n := f.count(reload); n != 0 {
+		t.Errorf("%s sent %d times while stopped, want never", reload, n)
+	}
+
+	if err := os.WriteFile(file, []byte("[{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	types, problem = listed(t)
+	if problem == "" {
+		t.Error("StorageBoxTypes with an invalid own file reports no problem")
+	}
+	if types["bx11"].Source != "catalog" {
+		t.Errorf("bx11 with an invalid own file listed with source %q, want catalog", types["bx11"].Source)
+	}
 }
 
 // listedCores is the cores of the type named name in the list of svc.

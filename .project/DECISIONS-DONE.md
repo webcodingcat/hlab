@@ -4,6 +4,22 @@ Entries from DECISIONS.md that a later entry revoked or changed, moved here
 unchanged; the later entry names them under `Replaces:`. Newest first. No
 skill reads this file; it keeps the history for looking things up.
 
+## 2026-11-18 Server protection and console details
+
+- Type: decision
+- Phase: phase 02
+- What: `change_protection` writes the flags in the transaction that starts its action; delete checks protection before the lock (protected and locked answers `protected`); resource action lists accept `id` and `status`; `request_console` answers `unsupported_error` for any server ID.
+- Why: the simplest order that the description allows; the console is unsupported regardless of the server.
+- Cost of change: low
+
+## 2026-11-18 request_console and vswitch subnets
+
+- Type: decision
+- Phase: spec
+- What: request_console returns `unsupported_error` ("server console is not supported by hlab yet"); vswitch subnets return `invalid_input` on field `type`.
+- Why: neither may pretend to work (decisions/server-console.md); vSwitches couple to dedicated servers that hlab has no equivalent for.
+- Cost of change: low
+
 ## 2026-11-23 Storage box firewall chains only drop or return
 
 - Type: decision

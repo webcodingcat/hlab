@@ -1,6 +1,6 @@
 # Decision: server console
 
-Status: decided (2026-11-18)
+Status: decided (2026-11-18), changed (2026-11-23)
 
 ## Question
 
@@ -49,3 +49,24 @@ error response) is left to the spec; it must not pretend a working console.
 
 These options are kept as input for the later version; none of them is chosen
 yet.
+
+## Change 2026-11-23: the console moves into milestone 1
+
+The user moved the server console into milestone 1 (phase 23):
+
+- Approach: alternative (a), the graphical console, if an experiment shows
+  it is fast enough; otherwise alternative (c), the serial console rendered
+  as RFB behind the same `wss_url`. Too slow means any of: fewer than about
+  5 frames per second at 1024x768, keyboard input visible later than about
+  0.5 s, or hlabd needing more than one CPU core per open console for
+  good. The experiment measures exactly these three values and records
+  them in `research/EXPERIMENTS.md`.
+- Address: `wss://console.hetzner.internal/?server_id=<id>&token=<token>`
+  plus a VNC password, built like Hetzner's
+  `wss://web-console.hetzner.cloud/...`, reachable from the host and WSL2.
+- Certificate: issued by the hlab CA. The tray's console window works
+  whether or not the CA is trusted; an own browser or VNC client accepts
+  the URL only while "Trust CA" is on, which the documentation and the
+  deviations say. hlab never switches trust on by itself.
+- The tray opens the console from the server's actions menu (noVNC);
+  `unsupported_error` for request_console goes away.

@@ -61,6 +61,11 @@ everywhere.
 - Detail page: title with status pill and actions menu, tabs (Overview first,
   then per resource: Networking, Firewalls, Volumes, Backups, Snapshots,
   Rescue, ISO, Graphs, Services, Targets, Records, Labels, Protection).
+- Server console: the server's actions menu entry "Console" opens a
+  separate window titled "Console: <server name>" that fills it with the
+  server's screen (noVNC, scaled to the window), a top bar with the
+  connection state and a "Send Ctrl+Alt+Del" button; when the connection
+  ends the window says so and offers "Reconnect".
 - Form: labelled fields in one column, inline validation message under the
   field (error colour), Hetzner's field error messages from `details.fields`
   shown under the matching field; submit button at the bottom right.
@@ -81,7 +86,7 @@ everywhere.
   (error colour) and stays in the input.
 - Confirm dialog: for every delete and every destructive action; the
   resource name must be typed for projects (their display name), servers,
-  volumes, networks and zones.
+  volumes, networks, zones and storage boxes.
 - Action toast: bottom right, shows a running action with progress and its
   result; errors stay until closed. Its title is `<Type> <name>: <action>`,
   e.g. "Network Test: Delete", "Record www A: Change TTL".

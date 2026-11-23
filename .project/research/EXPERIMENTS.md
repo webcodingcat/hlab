@@ -488,3 +488,205 @@ computed NT hash.
 Consequence: hlabd computes both hashes and the storage document carries
 them per account; the NT hash is unsalted and never logged or returned.
 yescrypt (`$y$`) was not tested; stay with `$6$`.
+
+## E20 hcloud 1.70.2 runs every storage box command against hlab unchanged
+
+- Result: confirmed (three client-side quirks)
+- Checked on: 2026-11-23
+- By: experiment
+- Status: valid
+
+How it was checked: hcloud 1.70.2 with context `hlab-docs` (`endpoint`
+`http://api.hetzner.internal/v1`, `hetzner-endpoint`
+`http://api.hetzner.internal/hetzner/v1`) against the dev cloud, with
+`HCLOUD_TOKEN`, `HCLOUD_ENDPOINT` and `HCLOUD_CONTEXT` cleared; a 68-step pass
+over every command under `storage-box`, `storage-box subaccount`,
+`storage-box snapshot` and `storage-box-type`, plus
+`hcloud all list --debug --debug-file <tmp>` (the debug file holds the token
+and passwords; write it outside the repo and delete it).
+
+Observed: every command returns rc 0; refusals match Hetzner (protected
+delete: `the resource is protected (protected)`; `home_directory` with `..`:
+422 `invalid_input`). `all list` sends 14 requests, all to
+`api.hetzner.internal`, storage boxes via `/hetzner/v1/storage_boxes`; its
+`-o json` is one object of arrays incl. `storage_boxes`. hcloud waits for
+storage box actions with `GET /v1/actions?id=<n>` on the Cloud endpoint.
+`create -o json` prints the create response (`status` `initializing`, empty
+`username`/`server`); read them with a later `describe`. Subaccounts have no
+label or protection commands; labels only at create. Timings: first box
+create 56 s (storage VM start), rollback 9-24 s, snapshot delete ~9 s,
+other actions ~2 s.
+
+Client quirks (no hlab change): hcloud resolves a subaccount argument by ID
+or `?name=`, never by username; `describe -o json` prints Sunday as
+`day_of_week` 0 (Go `time.Weekday`) while the API holds 7; rollback deletes
+newer snapshots (by design, SBOX-18). In Git Bash, arguments starting with
+`/` are rewritten unless `MSYS_NO_PATHCONV=1`. `hcloud api` needs
+`--endpoint .../hetzner/v1` for storage box paths.
+
+Consequence: CLI-05 rows address subaccounts by name or ID, do not check
+Sunday in JSON output, and expect newer snapshots gone after a rollback.
+
+## E21 Graphical server console through Hyper-V WMI: frame rate, key delay, CPU
+
+- Result: frame rate and CPU confirmed (gate passed); key delay unclear
+  (estimated well below the limit, direct measurement planned for the start
+  of phase 23)
+- Checked on: 2026-11-23, Hyper-V on 10.0.26300, AMD Ryzen AI Max+ 395
+  (16 cores / 32 threads), while the e2e suite ran other VMs
+- By: experiment (read-only WMI calls against running hlab-dev VMs; no key
+  was sent to any VM)
+- Status: valid for frames and CPU; key delay planned
+
+Gate (`decisions/server-console.md`): graphical only with about 5 frames/s
+at 1024x768, a key press visible within about 0.5 s and at most one CPU core
+of hlabd per open console.
+
+How it was checked: a Go 1.27.4 program (non-elevated, user in Hyper-V
+Administrators) in its own module with `github.com/go-ole/go-ole` v1.3.0 and
+`golang.org/x/sys` v0.50.0, against `hlab-dev-server-687` (Ubuntu 24.04 at
+the tty1 login prompt, `Msvm_VideoHead` 1024x768, 32 bpp). Lookups:
+`Msvm_ComputerSystem WHERE ElementName=<vm>` gives `Name` (GUID);
+`Msvm_VirtualSystemSettingData WHERE VirtualSystemIdentifier=<guid> AND
+VirtualSystemType='Microsoft:Hyper-V:System:Realized'`;
+`Msvm_VideoHead WHERE SystemName=<guid>`;
+`Msvm_Keyboard WHERE SystemName=<guid>`. Frame call: `ExecMethod` on the
+`Msvm_VirtualSystemManagementService` path, method
+`GetVirtualSystemThumbnailImage`, in-parameters `TargetSystem` = VSSD path
+(BSTR), `WidthPixels`/`HeightPixels` (VT_I4); one in-parameter object is
+reused for every frame. Frames polled back to back, or with a 200 ms start
+interval for the 5 frames/s cap. CPU from the localized counter
+`\Prozess(*)\Prozessorzeit (%)` (English `\Process(*)\% Processor Time`),
+sampled every 2 s for 24 s; readable without elevation, while the CPU of
+`vmms.exe` in `Get-Process` is not.
+
+Observed (1024x768 unless stated):
+
+| Run | frames/s | ms per frame p50 / p95 | probe process | vmms.exe | vmwp.exe (all) |
+|---|---|---|---|---|---|
+| idle baseline | - | - | - | 0.11 cores | 0.02 cores |
+| 1 console, uncapped | 7.3-7.7 | 126-133 / 145-151 | 0.03 cores | 0.96 cores | 0.09 cores |
+| 1 console, capped at 5/s | 5.0 | 131 / 147 | 0.03 cores | 0.69 cores | 0.07 cores |
+| 3 consoles at once, uncapped | 5.3-5.6 each | 178-186 / 197-203 | 0.07 cores (all three) | 2.73 cores | 0.16 cores |
+| 1 console, 640x480 | 21.7 | 45 / 53 | - | - | - |
+
+- The frame is RGB565 little endian (`r = v>>11`, `g = v>>5&63`,
+  `b = v&31`), 1024*768*2 + 4 bytes: four trailing zero bytes. The decoded
+  frame showed the real login screen.
+- `Msvm_Keyboard.IsKeyPressed` (read-only, same call path as `TypeKey`):
+  4.2-4.8 ms p50, max 6 ms.
+- The cost is CPU in `vmms.exe` (about 0.13 core-seconds per frame,
+  roughly proportional to the requested pixel count), not in the caller.
+  The calling process (the later hlabd) stays near 0.03 cores per console.
+
+Key delay (not measured, no input was sent to dev VMs): estimate = `TypeKey`
+call (~5 ms) + guest echo (ms) + wait for the next frame (at most one frame
+interval, 200 ms at 5/s) + one capture (~130 ms) + a raw frame over the
+loopback (<20 ms), about 0.15-0.35 s, below the 0.5 s limit.
+
+Pitfalls:
+- Do not use the WbemScripting automation layer (`SWbemLocator`, `oleutil`
+  on `SWbemObject`) for frames: it returns `uint8[]` as a SAFEARRAY of
+  VARIANTs (VT 12); building and freeing 1.5 million VARIANTs per frame cost
+  330 ms and 0.7-0.8 cores in the caller (measured 1.6-2.1 frames/s). Use the
+  raw `IWbemServices` / `IWbemClassObject` vtables:
+  `CoCreateInstance(CLSID_WbemLocator {4590F811-1D3A-11D0-891F-00AA004B2E24},
+  CLSCTX_INPROC_SERVER, IID_IWbemLocator {DC12A687-737F-11CF-884D-00AA004B2E24})`,
+  `IWbemLocator.ConnectServer` (vtable index 3),
+  `CoSetProxyBlanket(svc, 10, 0, nil, 3, 3, nil, 0)`, IWbemServices
+  `GetObject` 6 / `ExecMethod` 24, IWbemClassObject `Get` 4 / `Put` 5 /
+  `SpawnInstance` 15 / `GetMethod` 19. `ImageData` then is VT_ARRAY|VT_UI1
+  and is copied with `SafeArrayAccessData` in one step; `VariantClear` it
+  and release the out-parameter object every frame.
+- go-ole's `SafeArrayConversion.ToByteArray` calls `SafeArrayGetElement`
+  per byte; equally unusable for frames.
+- Parallel consoles share vmms; with three, each drops to about 5.5
+  frames/s. Cap the poll rate (5/s), poll only while a client is connected,
+  and request a frame right after a key or pointer event instead of waiting
+  for the timer.
+- The dev host's CPU baseline jumps by several cores while the e2e suite
+  runs; per-process counters are needed, a system-wide idle delta is too
+  noisy.
+
+Planned for the start of phase 23 (key delay, needs input to a VM): on a
+test VM of the phase at a text login prompt (not a dev-service VM in use),
+call `Msvm_Keyboard.TypeKey(0x41)` through the raw vtable path five times.
+Before each press, record every screen hash seen during 1.5 s (the blinking
+cursor gives two states); after the press, poll frames back to back until a
+hash appears that was not seen before; then send Backspace (0x08). Pass: the
+median of the five delays is at most 0.5 s minus one frame interval at the
+chosen cap (about 0.3 s at 5 frames/s, since the check polls uncapped), and
+`TypeKey` returns within 100 ms. Repeat the 5 frames/s run of the table on
+the same VM: pass if it reaches 5 frames/s at 1024x768 and the probe plus
+`vmms.exe` stay at or below one core. Record the values here.
+
+Consequence: the console is graphical (alternative (a)) unless the key
+check fails. hlabd's console source calls WMI through raw COM vtables
+(go-ole v1.3.0 is already an indirect dependency; `golang.org/x/sys/windows`
+alone suffices), caps polling at 5 frames/s, and diffs frames in Go before
+sending. Most CPU of one console is in `vmms.exe` (about 0.7 cores at 5/s);
+the documentation should say so.
+
+## E22 The tray's WebView2 connects to a loopback WebSocket and runs noVNC 1.7.0
+
+- Result: confirmed
+- Checked on: 2026-11-23
+- By: experiment
+- Status: valid
+
+How it was checked: a minimal Wails v3.1.0 app (`application.New`,
+`AssetFileServerFS`, one window) with a Go listener on `127.0.0.1:0` using
+`github.com/coder/websocket` v1.8.14 (`websocket.Accept` with
+`OriginPatterns: []string{"wails.localhost"}`, then
+`websocket.NetConn(ctx, c, websocket.MessageBinary)`). First a plain page
+(`new WebSocket("ws://127.0.0.1:<port>/<token>")`, `binaryType =
+"arraybuffer"`, binary round trip); then a Svelte 5.58.0 page built by Vite
+8.3.8 with the project's `vite.config.ts` (no `build.target`) that does
+`import RFB from "@novnc/novnc"` (1.7.0) and `new RFB(el,
+"ws://127.0.0.1:<port>/tok", { credentials: { password } })`; the Go side
+spoke the RFB 3.8 handshake with VNC Authentication.
+
+Observed: WebView2 `Edg/157.0.0.0`; request `Origin: http://wails.localhost`;
+binary bytes round-trip unchanged; noVNC sends no `Sec-WebSocket-Protocol`,
+answers `RFB 003.008\n`, picks security type 2, and its response equals
+DES-ECB of the challenge with the 8-byte password whose key bytes are
+bit-reversed (Go `crypto/des`). No mixed-content block and no local network
+prompt. `vite build` succeeds with the default target (211 kB, 66 kB gzip);
+the top-level await of noVNC's `core/util/browser.js` stays in the bundle
+and runs in WebView2. `svelte-check --fail-on-warnings` fails with TS7016
+("Could not find a declaration file for module '@novnc/novnc'"); a local
+`src/novnc.d.ts` with `declare module "@novnc/novnc" { export default class
+RFB extends EventTarget { ... } }` fixes it (`@types/novnc__novnc` exists
+only for 1.6.0).
+
+Pitfalls: Wails creates a WebView2 data folder `%APPDATA%\<exe name>`
+(delete it after an experiment); the page origin on Windows is
+`http://wails.localhost`, which must be in `OriginPatterns` (coder/websocket
+rejects foreign origins by default); the server must not require a
+subprotocol.
+
+Consequence: the tray's loopback ws-to-wss proxy works as planned; the
+frontend needs a noVNC type declaration file; no Vite target change. Loading
+noVNC with a dynamic `import()` in the console window keeps its top-level
+await out of the main window's start.
+
+## E23 Port 443 on the appliance address 198.19.0.1 is free
+
+- Result: confirmed
+- Checked on: 2026-11-23
+- By: code reading of `internal/agent` (not run)
+- Status: valid
+
+Observed: in the root namespace the agent binds `Config.API.Listen`
+(`198.19.0.1:80`), DNS on `198.19.0.1:53` and `185.12.64.1/2:53`, and the
+metadata service `169.254.169.254:80` in the VRFs. HAProxy binds `:<port>`
+(also 443) only inside the per-load-balancer netns `lb<ID>`. Port 443 in
+`firewall_linux.go` is the storage boxes' WebDAV, filtered by the boxes'
+own routed /32 addresses. The nftables `input` chain of `inet hlab` has
+policy accept and only drops metadata spoofing. The DNS zone
+`hetzner.internal` holds only `api.hetzner.internal` (from
+`Config.API.Listen`) and storage box names.
+
+Consequence: the console forward can listen on `198.19.0.1:443`; the
+agent's DNS needs a new A record for `console.hetzner.internal` (from
+`Config.Console`), as ARCHITECTURE.md already says.

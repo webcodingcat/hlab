@@ -48,3 +48,52 @@ export function runOn<T extends ActionResult>(
 ): Promise<T | undefined> {
   return runApi<T>(project, actionTitle(resourceType(req.path), name, action), req.method, req.path, req.body);
 }
+
+/** hetznerApi sends one request to the project's Hetzner API (/mgmt/v1/projects/{name}/api/hetzner/v1<path>). */
+export function hetznerApi<T>(project: string, method: string, path: string, body?: unknown): Promise<T> {
+  return mgmt<T>(method, `/projects/${encodeURIComponent(project)}/api/hetzner/v1${path}`, body);
+}
+
+/** hetznerListAll reads every page of a Hetzner API list endpoint; a response without meta is one page. */
+export async function hetznerListAll<T>(project: string, path: string, key: string): Promise<T[]> {
+  const sep = path.includes("?") ? "&" : "?";
+  const items: T[] = [];
+  let page: number | null | undefined = 1;
+  while (page) {
+    const res: Page & Record<string, unknown> = await hetznerApi(
+      project,
+      "GET",
+      `${path}${sep}page=${page}&per_page=${perPage}`,
+    );
+    items.push(...((res[key] as T[] | undefined) ?? []));
+    page = res.meta?.pagination?.next_page;
+  }
+  return items;
+}
+
+/**
+ * runHetzner runs one Hetzner API request under an action toast; the action
+ * is polled through the Cloud API's GET /actions/{id}, which also returns
+ * storage box actions.
+ */
+export function runHetzner<T extends ActionResult>(
+  project: string,
+  title: string,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<T | undefined> {
+  return runAction(title, () => hetznerApi<T>(project, method, path, body), {
+    get: async (id) => (await api<{ action: Action }>(project, "GET", `/actions/${id}`)).action,
+  });
+}
+
+/** runHetznerOn runs a Hetzner API request on the named resource under the toast "<Type> <name>: <action>". */
+export function runHetznerOn<T extends ActionResult>(
+  project: string,
+  name: string,
+  action: string,
+  req: { method: string; path: string; body?: unknown },
+): Promise<T | undefined> {
+  return runHetzner<T>(project, actionTitle(resourceType(req.path), name, action), req.method, req.path, req.body);
+}

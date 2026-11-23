@@ -131,3 +131,29 @@ test.describe("UI-02 resource routes", () => {
     });
   }
 });
+
+test.describe("UI-12 storage box routes", () => {
+  const at = (page: unknown) => ({ area: "project", project: "demo", view: "storage-boxes", page }) as Route;
+  const cases: { name: string; route: Route; hash: string }[] = [
+    { name: "list", route: at({ kind: "list" }), hash: "#/projects/demo/storage-boxes" },
+    { name: "new", route: at({ kind: "new" }), hash: "#/projects/demo/storage-boxes/new" },
+  ];
+  for (const tab of ["overview", "subaccounts", "snapshots", "settings", "labels"]) {
+    cases.push({
+      name: `detail ${tab}`,
+      route: at({ kind: "detail", id: 7, tab }),
+      hash: `#/projects/demo/storage-boxes/7/${tab}`,
+    });
+  }
+  cases.push({
+    name: "admin storage-box-types",
+    route: { area: "admin", view: "storage-box-types" } as Route,
+    hash: "#/admin/storage-box-types",
+  });
+  for (const c of cases) {
+    test(c.name, () => {
+      expect(href(c.route)).toBe(c.hash);
+      expect(parse(c.hash)).toEqual(c.route);
+    });
+  }
+});

@@ -5,6 +5,7 @@
   "backups",
   "placement-groups",
   "volumes",
+  "storage-boxes",
   "firewalls",
   "load-balancers",
   "networks",
@@ -15,6 +16,7 @@
   "tokens",
   "certificates",
   "server-types",
+  "storage-box-types",
   "isos",
   "settings",
   "logs"

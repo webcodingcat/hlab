@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Cpu, Disc, ScrollText, Settings as SettingsIcon } from "@lucide/svelte";
+  import { Archive, Cpu, Disc, ScrollText, Settings as SettingsIcon } from "@lucide/svelte";
   import Banner from "./lib/Banner.svelte";
   import ProjectMenu from "./lib/ProjectMenu.svelte";
   import SectionSidebar, { type SectionItem } from "./lib/SectionSidebar.svelte";
@@ -12,6 +12,7 @@
   import Projects from "./views/Projects.svelte";
   import ServerTypes from "./views/ServerTypes.svelte";
   import Settings from "./views/Settings.svelte";
+  import StorageBoxTypes from "./views/StorageBoxTypes.svelte";
 
   $effect(() => {
     const offCloud = initCloud();
@@ -25,6 +26,7 @@
   // The Administration sidebar: the admin views of views.json.
   const adminIcons: Partial<Record<ViewId, SectionItem["icon"]>> = {
     "server-types": Cpu,
+    "storage-box-types": Archive,
     isos: Disc,
     settings: SettingsIcon,
     logs: ScrollText,
@@ -64,6 +66,7 @@
         <SectionSidebar label="Administration" items={adminItems} />
         <main>
           {#if $route.view === "server-types"}<ServerTypes />
+          {:else if $route.view === "storage-box-types"}<StorageBoxTypes />
           {:else if $route.view === "isos"}<Isos />
           {:else if $route.view === "settings"}<Settings />
           {:else}<Logs />{/if}

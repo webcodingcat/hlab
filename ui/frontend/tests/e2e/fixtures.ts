@@ -93,10 +93,10 @@ export async function trayClick(page: Page, item: CloudItem): Promise<void> {
 
 /**
  * openView opens a view of the shell: the project list through "HLab" in
- * the top bar, Server Types, Settings and Logs through the gear
+ * the top bar, the other views through the gear
  * ("Administration") and the Administration sidebar.
  */
-export async function openView(page: Page, name: "Projects" | "Server Types" | "Settings" | "Logs"): Promise<void> {
+export async function openView(page: Page, name: "Projects" | "Server Types" | "Storage Box Types" | "Settings" | "Logs"): Promise<void> {
   const banner = page.getByRole("banner");
   if (name === "Projects") {
     await banner.getByRole("link", { name: "HLab" }).first().click();

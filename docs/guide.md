@@ -912,6 +912,45 @@ Storage Box backup deleted
 Deleting a box deletes its subaccounts, snapshots and data; deleting the
 last box also removes the storage VM.
 
+### Storage boxes in the window
+
+**Storage Boxes** is an entry of the sidebar's **Cloud** group. Its list
+shows each box's name, user name, type, location, usage and status and
+refreshes every 5 seconds. **Create Storage Box** opens a form with the
+**Location**, the **Type** (only the types offered there), the **Name**,
+the **Password** (a refusal by the password rules appears under the
+field), the **SSH keys** of the project as checkboxes, the access settings
+(SSH, Samba, WebDAV, ZFS, reachable externally) and labels. To install a
+key that is not an SSH key of the project, create the box with hcloud,
+OpenTofu or Ansible.
+
+A box's page has an actions menu with **Rename** and **Delete** and
+these tabs:
+
+- **Overview**: the host name and user name with copy buttons, type,
+  location, the usage of files and snapshots, and the box's folders.
+  Click a folder to open it, type a path and press **Open**, or go back
+  with **Up**.
+- **Subaccounts**: **Create subaccount** asks for name, description, home
+  directory, password and access (SSH, Samba, WebDAV, read-only,
+  reachable externally); **Edit**, **Reset password** and **Delete** are
+  in each row's menu.
+- **Snapshots**: the snapshot plan ("No plan" or the plan in UTC) with
+  **Set plan**, which asks for the maximum number of snapshots, hour and
+  minute in UTC, a day of the week and a day of the month (each "Every
+  day" by default), and **Disable plan**. **Create snapshot** takes an
+  optional description; each row's menu offers **Edit**, **Roll back**
+  and **Delete**. The confirmation of a rollback lists the newer
+  snapshots it deletes.
+- **Settings**: the access settings, delete protection, **Change type**
+  (only types offered in the box's location; a type too small for the
+  box's data is refused with a message) and **Reset password** to a
+  password you enter.
+- **Labels**: the box's labels.
+
+**Delete**, in the list's row menu and the actions menu, asks you to type
+the box's name; while delete protection is on, it is disabled.
+
 ### Own storage box types
 
 The types come from HLab's catalog; see [Catalogs](configuration.md#catalogs).
@@ -939,6 +978,17 @@ write remote "/home/big.bin": Failure
 ```
 
 `big.bin` has 70 MB, more than the 64 MiB of the type.
+
+In the window, Administration > **Storage Box Types** lists the catalog
+types and your own, also while the cloud is stopped; the column
+**Source** tells them apart. **Add storage box type** asks for name,
+description, size (a number in MiB, GiB or TiB), snapshot limit,
+automatic snapshot limit and subaccounts limit (10, 10 and 100 unless
+you change them) and the locations: **All locations** is ticked by
+default; untick it and tick the locations the type is offered in.
+**Edit** and **Remove** are in an own type's row menu. Changes apply at
+once while the cloud runs. When the file of own types cannot be used, a
+banner above the list says why.
 
 ## OpenTofu and Ansible
 
@@ -988,6 +1038,127 @@ in plays for `localhost`, so the modules find hcloud-python:
     - hetzner.hcloud.server_info:
       register: servers
 ```
+
+### Storage boxes with OpenTofu and Ansible
+
+OpenTofu creates a box with a subaccount; the provider reads the key
+file with its trailing newline, which HLab takes like Hetzner does:
+
+```hcl
+resource "hcloud_storage_box" "backup" {
+  name             = "backup"
+  storage_box_type = "bx11"
+  location         = "fsn1"
+  password         = "Secret-Passw0rd"
+  ssh_keys         = [file("id_ed25519.pub")]
+
+  access_settings = {
+    reachable_externally = true
+    ssh_enabled          = true
+  }
+
+  snapshot_plan = {
+    max_snapshots = 7
+    hour          = 3
+    minute        = 0
+  }
+}
+
+resource "hcloud_storage_box_subaccount" "web1" {
+  storage_box_id = hcloud_storage_box.backup.id
+  name           = "web1"
+  home_directory = "web1"
+  password       = "Other-Passw0rd1"
+
+  access_settings = {
+    ssh_enabled = true
+    readonly    = true
+  }
+}
+
+output "server" {
+  value = hcloud_storage_box.backup.server
+}
+```
+
+```
+> tofu apply
+...
+hcloud_storage_box.backup: Creation complete after 1m0s [name=backup]
+hcloud_storage_box_subaccount.web1: Creating...
+hcloud_storage_box_subaccount.web1: Creation complete after 2s [name=web1]
+
+Apply complete! Resources: 2 added, 0 changed, 0 destroyed.
+
+Outputs:
+
+server = "u100131.storagebox.hetzner.internal"
+```
+
+A box runs one action at a time and answers `locked` to a second one.
+OpenTofu deletes sibling resources in parallel, so `tofu destroy` of a
+box together with its subaccounts and `hcloud_storage_box_snapshot`
+resources can stop with `the resource is locked by a running action
+(locked)`; run it again to delete the rest.
+
+The same with Ansible, plus a snapshot:
+
+```yaml
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  tasks:
+    - name: Create the storage box
+      hetzner.hcloud.storage_box:
+        name: backup
+        storage_box_type: bx11
+        location: fsn1
+        password: Secret-Passw0rd
+        access_settings:
+          ssh_enabled: true
+          reachable_externally: true
+        state: present
+      register: box
+
+    - name: Add a read-only subaccount
+      hetzner.hcloud.storage_box_subaccount:
+        storage_box: backup
+        name: web1
+        home_directory: web1
+        password: Other-Passw0rd1
+        access_settings:
+          ssh_enabled: true
+          readonly: true
+        state: present
+
+    - name: Take a snapshot
+      hetzner.hcloud.storage_box_snapshot:
+        storage_box: backup
+        description: before cleanup
+        state: present
+      register: snap
+
+    - name: Show the box address and the snapshot
+      ansible.builtin.debug:
+        msg: "{{ box.hcloud_storage_box.server }}, snapshot {{ snap.hcloud_storage_box_snapshot.name }}"
+```
+
+```
+$ ansible-playbook box.yml
+...
+TASK [Show the box address and the snapshot] ***********************************
+ok: [localhost] => {
+    "msg": "u100130.storagebox.hetzner.internal, snapshot 2026-11-23T16-38-17"
+}
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=4    changed=3    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0
+```
+
+`hetzner.hcloud.storage_box` with `state: absent` deletes the box with
+its subaccounts and snapshots.
 
 ## Stopping and starting the cloud
 

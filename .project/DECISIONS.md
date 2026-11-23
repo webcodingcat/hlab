@@ -19,6 +19,121 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Server console moves into milestone 1
+
+- Type: change
+- Phase: change
+- What: the server console moves from the target vision into milestone 1 as phase 23 after phase 21: request_console returns `wss://console.hetzner.internal/?server_id=<id>&token=<token>` with a VNC password and a certificate of the hlab CA, the tray opens it from the server's actions menu (with or without CA trust), graphical via Hyper-V if an experiment meets the limits (about 5 frames per second at 1024x768, input within about 0.5 s, at most one CPU core per console), otherwise the serial console; details in `decisions/server-console.md`, requirements SRV-17 (changed), CON-01, CON-02 and UI-15.
+- Why: the user wants the server console working in the first version.
+- Cost of change: medium (an addition: one phase with a new hlabd component, an appliance forward and a tray window; the existing `unsupported_error` answer and the disabled menu entry are replaced)
+- Replaces: 2026-11-18 Server protection and console details; 2026-11-18 request_console and vswitch subnets
+
+## 2026-11-23 Server protection details
+
+- Type: decision
+- Phase: change
+- What: `change_protection` writes the flags in the transaction that starts its action; delete checks protection before the lock (protected and locked answers `protected`); resource action lists accept `id` and `status`.
+- Why: the simplest order that the description allows (the console part of the 2026-11-18 entry went with the console change).
+- Cost of change: low
+- Replaces: 2026-11-18 Server protection and console details
+
+## 2026-11-23 vswitch subnets
+
+- Type: decision
+- Phase: change
+- What: vswitch subnets return `invalid_input` on field `type`.
+- Why: vSwitches couple to dedicated servers that hlab has no equivalent for (the console part of the 2026-11-18 entry went with the console change).
+- Cost of change: low
+- Replaces: 2026-11-18 request_console and vswitch subnets
+
+## 2026-11-23 Project deletion removes storage boxes through their module
+
+- Type: decision
+- Phase: phase 21
+- What: the storage box module implements `resource.Deleter` like the API delete (mark deleting, apply storage, remove box and release its IP); a failed apply keeps the project for a retry.
+- Why: deleting a project left box accounts and files in the storage VM and never released the boxes' IPs, which broke PROJ-04 (found by the phase 21 verifier).
+- Cost of change: low
+
+## 2026-11-23 Deleting a project deletes its actions
+
+- Type: decision
+- Phase: phase 21
+- What: `store.DeleteProject` also deletes the project's actions, and opening the store deletes the actions of projects that no longer exist; no schema change.
+- Why: SQLite reuses the highest deleted project ID, so a new project listed and could read a deleted project's actions (found by UI-13); AUTOINCREMENT IDs would need a migration.
+- Cost of change: low
+
+## 2026-11-23 Storage box SSH keys are trimmed, multi-line keys refused
+
+- Type: decision
+- Phase: phase 21
+- What: creating a box trims the whitespace around each SSH key and refuses a key that still spans lines with 422 on `ssh_keys`; the storage document trims every stored key and leaves out any that still spans lines.
+- Why: keys read from a file end in a newline, and one such key made the storage agent refuse the whole document, so every box create failed.
+- Cost of change: low
+
+## 2026-11-23 Own storage box type form keeps the "All locations" checkbox
+
+- Type: decision
+- Phase: phase 21
+- What: the own-type form keeps UI-SPEC.md's "All locations" checkbox, checked by default; checked, the console sends every catalog location explicitly, unchecked at least one location is required.
+- Why: UI-SPEC.md asks for it and it meets the user's "all preselected" correction while the file keeps an explicit location list.
+- Cost of change: low
+
+## 2026-11-23 Client storage box plans run one after another
+
+- Type: decision
+- Phase: phase 21
+- What: the hcloud, OpenTofu and Ansible storage box plans run in sequence.
+- Why: each may have to fix the same storage box module in hlab, and parallel plans must not touch the same files.
+- Cost of change: low
+
+## 2026-11-23 Subaccounts and Snapshots tabs built standalone
+
+- Type: decision
+- Phase: phase 21
+- What: the two tabs are standalone components wired into the box detail page by plan 21-10; shared types `StorageBox` and `BoxType` live in `lib/resources/storageBoxes.ts`.
+- Why: parallel wave-2 plans stay off the same files.
+- Cost of change: low
+
+## 2026-11-23 UI-12 and UI-13 share one storage box
+
+- Type: decision
+- Phase: phase 21
+- What: both console rows take the shared box fixture, with a 20-minute limit each.
+- Why: the storage VM boots once instead of being deleted and recreated between them.
+- Cost of change: low
+
+## 2026-11-23 Own storage box types: size in bytes, explicit locations
+
+- Type: decision
+- Phase: phase 21
+- What: the console sends the own-type size in bytes (MiB/GiB/TiB as binary units), and the own-type spec stores an explicit non-empty location list.
+- Why: matches hcloud's units, and the user's location multi-select replaces "no location means all".
+- Cost of change: low
+
+## 2026-11-23 UI-12 reaches the folder browser through a subaccount home
+
+- Type: decision
+- Phase: phase 21
+- What: the folder browser test uses a subaccount with home directory `data/web` created through the API; the project-list count test is part of UI-12.
+- Why: needs no file transfer; the count is new console behaviour of this phase.
+- Cost of change: low
+
+## 2026-11-23 hcloud all list checked through its debug file
+
+- Type: decision
+- Phase: phase 21
+- What: the `all list` test reads hcloud's debug file to prove no request went to Hetzner; the file is written to the run's temp folder, deleted and never logged.
+- Why: it is the only record of every request host, and it holds the token.
+- Cost of change: low
+
+## 2026-11-23 Deleting a storage box needs its name typed (Q23)
+
+- Type: decision
+- Phase: phase 21
+- What: the console's confirm dialog for deleting a storage box asks for the box name to be typed, as for volumes; UI-SPEC.md adds storage boxes to that list.
+- Why: The user chose it (Q23): deleting a box destroys its data and all its snapshots.
+- Cost of change: low
+
 ## 2026-11-23 Upgrade to wcc 0.32.23
 
 - Type: approval
@@ -1667,14 +1782,6 @@ taken with the approval of the spec or by an answer from the user.
 - Why: one source of truth, and Hetzner allows one group per server.
 - Cost of change: low
 
-## 2026-11-18 Server protection and console details
-
-- Type: decision
-- Phase: phase 02
-- What: `change_protection` writes the flags in the transaction that starts its action; delete checks protection before the lock (protected and locked answers `protected`); resource action lists accept `id` and `status`; `request_console` answers `unsupported_error` for any server ID.
-- Why: the simplest order that the description allows; the console is unsupported regardless of the server.
-- Cost of change: low
-
 ## 2026-11-18 Catalog lists through ListRequest
 
 - Type: decision
@@ -2150,14 +2257,6 @@ taken with the approval of the spec or by an answer from the user.
 - Phase: spec
 - What: The frozen Hetzner OpenAPI description is downloaded by `task openapi` from docs.hetzner.cloud, checked against the SHA-256 in `api/openapi.lock` and cached outside the repository; changing the pin is a deliberate commit.
 - Why: the file carries no licence, so committing it to an Apache-2.0 repository is unclear; the pin keeps it frozen.
-- Cost of change: low
-
-## 2026-11-18 request_console and vswitch subnets
-
-- Type: decision
-- Phase: spec
-- What: request_console returns `unsupported_error` ("server console is not supported by hlab yet"); vswitch subnets return `invalid_input` on field `type`.
-- Why: neither may pretend to work (decisions/server-console.md); vSwitches couple to dedicated servers that hlab has no equivalent for.
 - Cost of change: low
 
 ## 2026-11-18 Phases run without elevated rights

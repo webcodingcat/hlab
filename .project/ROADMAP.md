@@ -57,16 +57,7 @@
 
 - [x] 22 SMB from the Windows host (SBOX-22) → phases/22/
 
-- [ ] 21 Storage Boxes in the console and the clients.
-      Requirements: UI-12, UI-13, UI-14, CLI-05, CLI-06, CLI-07.
-      Depends on: 20, 17.
-      Success criteria:
-      1. The console manages storage boxes, their subaccounts and
-         snapshots.
-      2. hcloud, OpenTofu and Ansible pass their storage box rows with only
-         their endpoints changed.
-      3. The README names the Hetzner endpoint setting of each client, and
-         the help text of the new view exists.
+- [x] 21 Storage Boxes in the console and the clients (UI-12, UI-13, UI-14, CLI-05, CLI-06, CLI-07) → phases/21/
 
 - [ ] 16 Release checks in test VMs.
       Requirements: DOC-08.
@@ -89,7 +80,6 @@
 - Fault injection (server failure, network disruption, latency, API errors,
   rate limits, storage errors)
 - Linux host with KVM/libvirt, including the tray
-- Server console with a working wss VNC console
 - WSL2 in mirrored networking mode
 - More system images and app images
 - MCP tools that read and change Hetzner resources (`decisions/mcp-server.md`)

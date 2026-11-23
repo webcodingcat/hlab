@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"slices"
@@ -18,8 +19,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/apitest"
 	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/ipam"
 	"github.com/webcodingcat/hlab/internal/mgmt"
 	"github.com/webcodingcat/hlab/internal/platform/platformtest"
 	"github.com/webcodingcat/hlab/internal/resource"
@@ -28,6 +31,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/resources/networks"
 	"github.com/webcodingcat/hlab/internal/resources/servers"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
+	"github.com/webcodingcat/hlab/internal/resources/storageboxes"
 	"github.com/webcodingcat/hlab/internal/settings"
 	"github.com/webcodingcat/hlab/internal/store"
 )
@@ -275,6 +279,78 @@ func TestMgmt(t *testing.T) {
 			}
 			if firstNet < lastOther {
 				t.Errorf("networks Delete started before every server and load balancer was deleted (server %d); calls %v", srv, calls)
+			}
+		})
+
+		t.Run("storage_boxes", func(t *testing.T) {
+			srvDeps := apitest.ServersDeps(t, cat, platformtest.NewFake())
+			var mu sync.Mutex
+			var applied [][]agentapi.Box // the storage document at each Apply
+			boxes := storageboxes.New(storageboxes.Deps{
+				Catalog:     cat,
+				PublicRange: srvDeps.PublicRange,
+				Store:       srvDeps.Store,
+				Apply: func(context.Context, int64) error {
+					return srvDeps.Store.Tx(func(tx store.Tx) error {
+						doc, err := storageboxes.Boxes(tx)
+						mu.Lock()
+						applied = append(applied, doc)
+						mu.Unlock()
+						return err
+					})
+				},
+			})
+			mods := []resource.Module{servers.New(srvDeps), boxes, resactions.New()}
+			env := apitest.New(t, mods...)
+			deleters := map[string]resource.Deleter{}
+			for _, m := range mods {
+				if d, ok := m.(resource.Deleter); ok {
+					deleters[m.Type()] = d
+				}
+			}
+			h := mgmt.New(mgmt.Deps{
+				Store:    env.Store,
+				API:      env.Router,
+				Status:   func() mgmt.Status { return mgmt.Status{State: "running"} },
+				Actions:  env.Actions,
+				Deleters: deleters,
+			})
+
+			const boxID = 900003
+			var ip netip.Addr
+			err := env.Store.Tx(func(tx store.Tx) error {
+				var err error
+				if ip, err = ipam.NextPublic(tx, srvDeps.PublicRange); err != nil {
+					return err
+				}
+				r := storageboxes.Record{
+					Box:  storageboxes.Box{ID: boxID, Name: "p-box", Status: storageboxes.StatusActive},
+					HLab: storageboxes.HLab{N: 1, IP: ip.String()},
+				}
+				return store.Put(tx, store.Meta{Kind: storageboxes.Kind, ID: boxID, ProjectID: env.Project.ID, Name: r.Name}, r)
+			})
+			if err != nil {
+				t.Fatalf("store storage box row: %v", err)
+			}
+
+			action := deleteProject(t, h, "p")
+			if status := waitMgmtAction(t, h, action); status != "success" {
+				t.Fatalf("deletion of p ended %q, want success", status)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if len(applied) != 1 || len(applied[0]) != 0 {
+				t.Errorf("storage documents applied while deleting p = %v, want one without the box", applied)
+			}
+			err = env.Store.Tx(func(tx store.Tx) error {
+				used, _, err := ipam.Outside(tx, netip.MustParsePrefix("10.0.0.0/8"))
+				if slices.Contains(used, ip) {
+					t.Errorf("IP %s of the storage box is still in use after deleting p", ip)
+				}
+				return err
+			})
+			if err != nil {
+				t.Fatalf("read store: %v", err)
 			}
 		})
 	})

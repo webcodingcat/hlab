@@ -4,6 +4,7 @@
 export type ProjectView =
   | "servers"
   | "volumes"
+  | "storage-boxes"
   | "load-balancers"
   | "networks"
   | "firewalls"
@@ -16,7 +17,7 @@ export type ProjectView =
   | "snapshots"
   | "backups"
   | "tokens";
-export type AdminView = "server-types" | "isos" | "settings" | "logs";
+export type AdminView = "server-types" | "storage-box-types" | "isos" | "settings" | "logs";
 export type Page = { kind: "list" } | { kind: "new" } | { kind: "detail"; id: number; tab: string };
 export type Route =
   | { area: "projects" }
@@ -26,6 +27,7 @@ export type Route =
 const projectViews: ProjectView[] = [
   "servers",
   "volumes",
+  "storage-boxes",
   "load-balancers",
   "networks",
   "firewalls",
@@ -39,7 +41,7 @@ const projectViews: ProjectView[] = [
   "backups",
   "tokens",
 ];
-const adminViews: AdminView[] = ["server-types", "isos", "settings", "logs"];
+const adminViews: AdminView[] = ["server-types", "storage-box-types", "isos", "settings", "logs"];
 // Views with only a list page.
 const listOnly: ProjectView[] = ["tokens"];
 // Views with a list and a detail page but no create page.

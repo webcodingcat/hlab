@@ -1,8 +1,9 @@
 // README screenshots of the tray window (tools/screenshots, task
 // docs:screenshots): the project list filtered to the sample projects
-// demo-* as cards and the "API tokens" section of demo-web, each in light and dark,
-// written to HLAB_SCREENSHOTS_DIR. The tool creates the samples; only
-// their names and the token's name are on screen, never a token value.
+// demo-* as cards and the "API tokens" and "Storage Boxes" sections of
+// demo-web, each in light and dark, written to HLAB_SCREENSHOTS_DIR. The
+// tool creates the samples; only their names, the token's name and the
+// storage box are on screen, never a token value.
 import path from "node:path";
 import type { Page } from "@playwright/test";
 import { test, expect, env, openView, tableRow } from "../e2e/fixtures";
@@ -41,6 +42,11 @@ test("README screenshots", async ({ page }) => {
     await section(page, "API tokens");
     await expect(tableRow(page, "ci")).toBeVisible();
     await shoot(page, "tokens");
+
+    // The storage box "backups" of demo-web.
+    await section(page, "Storage Boxes");
+    await expect(tableRow(page, "backups")).toBeVisible();
+    await shoot(page, "storage-boxes");
   } finally {
     await page.emulateMedia({ colorScheme: null });
     const cdp = await page.context().newCDPSession(page);

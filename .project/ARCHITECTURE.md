@@ -61,6 +61,10 @@ the other profile runs. Both may be installed side by side.
     agent's API proxy; the Hetzner API (Storage Boxes) on the same
     listener under `/hetzner/v1`, reached as `http://api.hetzner.internal/hetzner/v1`, with
     the same tokens and middleware.
+  - Server console on `198.19.0.2:8781` (TLS with a certificate of the
+    hlab CA for `console.hetzner.internal`, WebSocket, RFB inside), reached
+    as `wss://console.hetzner.internal/...` through the agent's TCP
+    forward on `198.19.0.1:443`; see "Server console".
   - Management API: HTTP over the named pipe `\\.\pipe\hlab` (ACL: SYSTEM,
     Administrators, Interactive Users `IU`), see "Management API".
   - `hlabd install [--dev]` and `hlabd uninstall-cleanup [--keep-data]`:
@@ -532,6 +536,14 @@ Inside `hlabd` (Go packages under `internal/`):
 ### hlab-tray (tray program)
 
 - Purpose: tray icon and console window like Docker Desktop.
+- Server console window (phase 23): a second Wails window with noVNC;
+  a fourth Wails service `bridge.Console` with
+  `Open(wssURL) (localURL string)` starts a loopback
+  WebSocket proxy `ws://127.0.0.1:<port>/<random>` to the `wss_url` that
+  checks the certificate against the hlab CA itself (`GET /ca.pem`) and
+  accepts the origin `wails.localhost`, so the window works while Windows
+  does not trust the CA (E22). The window loads noVNC with a dynamic
+  `import()`.
 - Interface: Wails v3 application. Go side: `tray` (icon, menu, start/stop
   through SCM), `bridge` (package without a Wails import, bound as three
   Wails services: `bridge.Service` with
@@ -545,7 +557,11 @@ Inside `hlabd` (Go packages under `internal/`):
   `ISOs`/`AddISO`/`UpdateISO`/`RemoveISO` the same way for the catalog
   and the own ISOs (own rows from the file's entries, own ISOs addressed
   by ID; results `ListedISO`, `ISOList`) (results `ListedType`,
-  `ServerTypeList`, `Invalid` for field errors), `Locations() ([]Location{name, city})`
+  `ServerTypeList`, `Invalid` for field errors),
+  `StorageBoxTypes`/`AddStorageBoxType`/`UpdateStorageBoxType`/`RemoveStorageBoxType`
+  the same way for storage box types (`catalog.OwnStorageBoxTypeSpec` with an
+  explicit non-empty location list, own types addressed by name; results
+  `ListedStorageBoxType`, `StorageBoxTypeList`), `Locations() ([]Location{name, city})`
   from the shipped catalog, also while the cloud is stopped; `bridge.Cloud`
   with status, start and stop, recording "starting"/"stopping" as soon as
   the SCM accepts a start or stop (a poll begun earlier cannot overwrite
@@ -569,7 +585,9 @@ Inside `hlabd` (Go packages under `internal/`):
   `{project, page}`, found by ProjectConsole through `import.meta.glob`); it uses only
   the bridge; the Hetzner resources are
   managed through the management API's project proxy
-  (`/mgmt/v1/projects/{name}/api/v1/...`), so the UI exercises the same
+  (`/mgmt/v1/projects/{name}/api/v1/...`, storage boxes through
+  `/mgmt/v1/projects/{name}/api/hetzner/v1/...` with `hetznerApi` and
+  `runHetzner` in `lib/api.ts`, actions polled on the Cloud API's `/actions/{id}`), so the UI exercises the same
   handlers as the clients. Views per UI-SPEC.md.
 - Start and stop through the SCM open the manager with `SC_MANAGER_CONNECT`
   and the service with `SERVICE_START|SERVICE_STOP|SERVICE_QUERY_STATUS`
@@ -591,6 +609,42 @@ Inside `hlabd` (Go packages under `internal/`):
   (DECISIONS.md "Tray UI tests through a CDP port in an e2e-only build").
 - Depends on: management API, settings file.
 
+### Server console (hlabd package `console`, phase 23)
+
+- Purpose: the RFB-over-WebSocket server behind `request_console`.
+- Interface:
+  - `console.Service.Issue(serverID int64, vm string) (wssURL, password string)`
+    called by the servers module; tokens and passwords live only in memory,
+    a token is valid one minute to connect and belongs to one server.
+  - Screen source, chosen once by the experiment of phase 23
+    (`decisions/server-console.md`):
+
+    ```go
+    type Source interface { // one per open connection
+        Size() (w, h int)
+        Frame(ctx context.Context) (Frame, error) // full frame, RGB565 or rendered text
+        Key(ctx context.Context, keysym uint32, down bool) error
+        Pointer(ctx context.Context, x, y int, buttons uint8) error
+    }
+    ```
+
+    The graphical source uses a `platform.Console` extension
+    (`Screen`, `Keys`, `Mouse` on a VM; Hyper-V WMI
+    `GetVirtualSystemThumbnailImage`, `Msvm_Keyboard`,
+    `Msvm_SyntheticMouse`) called through the raw `IWbemServices` COM
+    vtables with `golang.org/x/sys/windows`, not the scripting layer or the
+    PowerShell runner, which are too slow (E21); frames are RGB565 little
+    endian with 4 trailing bytes that are dropped. The source polls at
+    most 5 frames per second and only while a client is connected, takes a
+    frame right after each key or pointer event, and the server sends only
+    changed rectangles. The serial source taps the COM1 pipe hlabd
+    already serves (output rendered as text, keys written to the pipe).
+  - RFB 3.8: VNC Authentication, Raw encoding, DesktopSize; one
+    connection per token.
+- Depends on: platform (graphical) or the COM1 pipe (serial), the hlab CA,
+  which issues the listener's certificate for `console.hetzner.internal`
+  at every cloud start (`console.Service` gets it as a `tls.Certificate`).
+
 ### Management API (named pipe)
 
 HTTP/1.1 over `\\.\pipe\hlab`, JSON. All paths under `/mgmt/v1`:
@@ -600,7 +654,7 @@ HTTP/1.1 over `\\.\pipe\hlab`, JSON. All paths under `/mgmt/v1`:
 | `GET /status` | `{"state":"running","version":"...","problems":[Problem],"shadowing_zones":[{"zone":"example.com","project":"p"}],"appliance_generation":n}`; besides the hostnet problems, a non-fatal `custom_server_types` problem when the own server types are invalid or collide and are not served, and a non-fatal `custom_isos` problem for an invalid or colliding own ISO or a local file that cannot be copied |
 | `GET /projects` | `{"projects":[{"name":"web-coding-cat","display_name":"Web Coding Cat","created":"RFC3339","resources":n,"resources_by_type":{"servers":n,...}}]}`; `resources_by_type` has a key per resource kind with a count above zero, one key per console tab, so each count opens exactly one tab (`servers`, `volumes`, `load_balancers`, `networks`, `firewalls`, `floating_ips`, `primary_ips`, `zones`, `certificates`, `ssh_keys`, `placement_groups`, `snapshots`, `backups`, `storage_boxes`; images are split by type into `snapshots` and `backups`) |
 | `POST /projects` | body `{"display_name":"Web Coding Cat"}` (trimmed, 1-255 chars, no control characters); the name is derived by hlabd (lower case; ä ö ü ß as ae oe ue ss; other accents dropped; every run of other characters as `-`; no `-` at either end; cut to 255 chars); `201` with the project; `400 invalid_input` for an invalid display name or an empty derived name; `409 conflict` if the derived name exists. A display name never changes |
-| `DELETE /projects/{name}` | `202 {"action_id":n}`; revokes the project's tokens at once, then in one action deletes every resource through its module's `resource.Deleter`, the rest through the store, then the project; `409 conflict` while a deletion of that project runs, its error object carrying the running action as `"action_id":n` (phase 17, additive); on failure the project stays listed. `hlab project delete` waits for the action |
+| `DELETE /projects/{name}` | `202 {"action_id":n}`; revokes the project's tokens at once, then in one action deletes every resource through its module's `resource.Deleter`, storage boxes through the storage box module (storage document applied, IP released), the rest through the store, then the project together with its actions; `409 conflict` while a deletion of that project runs, its error object carrying the running action as `"action_id":n` (phase 17, additive); on failure the project stays listed. `hlab project delete` waits for the action |
 | `GET /actions/{id}` | `200 {"action": <Hetzner action object>}`; `404 not_found` for an unknown ID or an action of a project |
 | `GET /projects/{name}/tokens` | `{"tokens":[{"name":"t","read_only":false,"created":"RFC3339"}]}` (never the value) |
 | `POST /projects/{name}/tokens` | body `{"name":"t","read_only":false}`; `201 {"name":"t","read_only":false,"token":"<64 chars [A-Za-z0-9]>"}`, the only time the value is returned |
@@ -665,6 +719,7 @@ locks a resource of type `project`.
       PTR          map[netip.Addr]string // IPv4 only; filled by primary IPs, floating IPs and load balancers (the LB's own IPv4; primary IPs held by an LB are left to it) through internal/rdns; a server's change_dns_ptr writes to its primary IP
       Metadata     []Metadata
       API          APIProxy              // listen 198.19.0.1:80, backend 198.19.0.2:8780
+      Console      ConsoleForward        // TCP 198.19.0.1:443 -> 198.19.0.2:8781, TLS passes through; the agent DNS answers console.hetzner.internal with 198.19.0.1 (phase 23, additive)
       Upstream     []netip.AddrPort      // DNS forwarders: the host's DNS servers, else 1.1.1.1:53, 9.9.9.9:53
       Storage      StorageVM             // the storage VM; Addr invalid while it does not exist
       StorageBoxes []StorageBoxRoute     // routed /32 to Storage.Addr, DNS names, host/WSL2 filter, allowed ports
@@ -952,7 +1007,7 @@ the agent reads its own from the `transit` file of its seed.
   Hetzner).
 - Host route: public range via `198.19.0.1`. NRPT: `.hetzner.internal`, the
   reverse zone(s) of the public range and every user zone point to
-  `198.19.0.1`. `api.hetzner.internal` resolves to `198.19.0.1`; the agent
+  `198.19.0.1`. `api.hetzner.internal` and `console.hetzner.internal` resolve to `198.19.0.1`; the agent
   proxies port 80 to `198.19.0.2:8780`, so hlabd never needs port 80 on the
   host.
 - Servers get public IPv4 addresses from `.4` upward as `/32` with on-link
@@ -960,8 +1015,9 @@ the agent reads its own from the `transit` file of its seed.
   out (counter in `kv`) and wraps to `.4` only at the end of the range,
   skipping addresses in use and `Addrs.Storage`, so a freed address is not reused at once (SSH
   host key conflicts).
-- hlabd listens on `198.19.0.2:8780` only; one inbound Windows Firewall rule
-  (group `hlab`) allows TCP 8780 for all firewall profiles (the internal
+- hlabd listens on `198.19.0.2:8780` and, for the server console,
+  `198.19.0.2:8781` only; one inbound Windows Firewall rule
+  (group `hlab`) allows TCP 8780 and 8781 for all firewall profiles (the internal
   adapter is an unidentified network in profile Public), restricted to
   interface `vEthernet (hlab)`, local address `198.19.0.2`, remote address
   `198.19.0.1` and the program `hlabd.exe` of the running profile. `Up`
@@ -1123,9 +1179,6 @@ level = "info"
   the API, store, resource modules, cidata, images (VHDX becomes qcow2 inside
   `platform`) and the appliance stay unchanged. Every `%ProgramData%` path in
   this document is `sysint.Paths` on Windows.
-- Server console: a new component (RFB-over-WebSocket bridge) behind
-  `request_console`, using `Platform` extensions for framebuffer and input;
-  the endpoint already exists and returns `unsupported_error` until then.
 - WSL2 mirrored mode: a second implementation path inside `hostnet` chosen
   by `WatchWSL`; the appliance and the API do not change.
 - More images: new entries in `catalog/images.json` with their sources; the

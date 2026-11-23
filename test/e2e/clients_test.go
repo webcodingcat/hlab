@@ -160,11 +160,11 @@ func removeWSLDir() error {
 	return nil
 }
 
-// ansibleEnviron hands HCLOUD_TOKEN and HCLOUD_ENDPOINT to the distro
-// through WSLENV; nothing else of the client configuration changes.
+// ansibleEnviron hands HCLOUD_TOKEN, HCLOUD_ENDPOINT and HETZNER_ENDPOINT
+// to the distro through WSLENV; nothing else of the client configuration changes.
 func (e *env) ansibleEnviron() []string {
 	out := make([]string, 0, len(e.hcloudEnv)+1)
-	wslenv := "HCLOUD_TOKEN/u:HCLOUD_ENDPOINT/u"
+	wslenv := "HCLOUD_TOKEN/u:HCLOUD_ENDPOINT/u:" + hetznerEnvVar + "/u"
 	for _, kv := range e.hcloudEnv {
 		if k, v, _ := strings.Cut(kv, "="); strings.EqualFold(k, "WSLENV") {
 			if v != "" {
@@ -295,8 +295,9 @@ const (
 )
 
 // newTofuDir creates a working directory with the provider pinned and no
-// provider arguments: the endpoint and token come from HCLOUD_ENDPOINT and
-// HCLOUD_TOKEN only.
+// provider arguments: the endpoints and token come from HCLOUD_ENDPOINT,
+// HETZNER_ENDPOINT (storage boxes, never endpoint_hetzner) and HCLOUD_TOKEN
+// only.
 func (e *env) newTofuDir(t *testing.T, name string) *tofuDir {
 	t.Helper()
 	dir := filepath.Join(harness.tmp, "tofu-"+name)

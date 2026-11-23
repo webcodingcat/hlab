@@ -42,6 +42,7 @@ const kinds: { key: string; view: ProjectView; one: string; many: string }[] = [
   { key: "backups", view: "backups", one: "Backup", many: "Backups" },
   { key: "placement_groups", view: "placement-groups", one: "Placement Group", many: "Placement Groups" },
   { key: "volumes", view: "volumes", one: "Volume", many: "Volumes" },
+  { key: "storage_boxes", view: "storage-boxes", one: "Storage Box", many: "Storage Boxes" },
   { key: "firewalls", view: "firewalls", one: "Firewall", many: "Firewalls" },
   { key: "load_balancers", view: "load-balancers", one: "Load Balancer", many: "Load Balancers" },
   { key: "networks", view: "networks", one: "Network", many: "Networks" },

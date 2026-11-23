@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 21 Storage Boxes in the console and the clients (next)
+- Phase: 16 Release checks in test VMs (next)
 - Base branch: main
-- Last done: phase 22 merged into main (2026-11-23): the Windows host maps a box's and a subaccount's SMB share with `net use`; error 67 of phase 20 came from Git Bash, not from SMB
-- Next: /wcc:phase in a new session builds phase 21 (Storage Boxes in the console and the clients), then phase 16; /wcc:change takes items from "Later" before phase 16
+- Last done: phase 21 merged into main (2026-11-23): storage boxes and own storage box types in the console; hcloud, OpenTofu and Ansible pass their storage box rows; project deletion now also removes storage boxes and actions
+- Next: /wcc:change for Q24 (or leave it), then /wcc:phase in a new session builds phase 16 (release checks in test VMs)
 
 ## Open manual checks
 
@@ -35,7 +35,11 @@ STATUS: IN_PROGRESS
      /wcc:phase asks those of its phase at its start, /wcc:change takes
      answers any time. -->
 
-- none
+- Q24 (phase 21, 21-14 docs): Should `tofu destroy` of a storage box with subaccounts and snapshots succeed in one run?
+  - Context: OpenTofu deletes a box's snapshot and subaccount in parallel; hlab locks the box during any action (phase 18 decision "Every storage box action locks the box"), so the second delete gets 423 `locked` and the first `tofu destroy` stops; a second run deletes the rest. Documented in docs/guide.md and docs/deviations.md.
+  - Options: 1. Keep it and document it (as now) 2. Queue a delete that arrives while the box is locked instead of answering 423 3. Let deletes of subaccounts and snapshots run while another delete of the same box runs
+  - Recommendation: 1, if real Hetzner answers the same way; otherwise 2, because users of OpenTofu expect one destroy to clean up.
+  - Affects: CLI-06, SBOX-02, ARCHITECTURE.md "Storage boxes" (box lock)
 
 ## If BLOCKED
 
