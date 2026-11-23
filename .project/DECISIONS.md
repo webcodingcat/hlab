@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 vsftpd setup on the storage VM
+
+- Type: decision
+- Phase: phase 20
+- What: pam_access also restricts a box account without reachable_externally; every account not skipped gets a vsftpd user file with write_enable by its read-only flag; vsftpd.conf replaces Debian's file (pam_service_name=vsftpd, local_root=/srv/chroot/$USER/home, allow_writeable_chroot=YES); changes reload through `systemctl reload vsftpd`.
+- Why: sshd, Samba and WebDAV restrict the box account the same way, FTP has no access switch, and vsftpd's default PAM service is "ftp".
+- Cost of change: low
+
 ## 2026-11-23 Apache setup on the storage VM
 
 - Type: decision
