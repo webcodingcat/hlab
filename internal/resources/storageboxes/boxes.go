@@ -2,6 +2,7 @@ package storageboxes
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -378,4 +379,62 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 		return put(tx, projectID, *r)
 	})
 	api.JSON(w, http.StatusCreated, map[string]any{"action": a})
+}
+
+// Delete implements resource.Deleter for project deletion: it removes box
+// id of any project as delete_storage_box does. The box is marked
+// deleting, Apply removes it from the storage VM, then the box with its
+// subaccounts and snapshots is deleted and its IP released. When Apply
+// fails, the mark is cleared, the appliance's document is pushed again and
+// the error is returned. A box already gone is no error.
+func (m *Module) Delete(ctx context.Context, id int64) error {
+	var projectID int64
+	found := false
+	mark := func(deleting bool) error {
+		return m.d.Store.Tx(func(tx store.Tx) error {
+			projects, err := store.ListProjects(tx)
+			if err != nil {
+				return err
+			}
+			for _, p := range projects {
+				r, err := Load(tx, p.ID, id)
+				if errors.Is(err, store.ErrNotFound) {
+					continue
+				}
+				if err != nil {
+					return err
+				}
+				projectID, found = p.ID, true
+				r.HLab.Deleting = deleting
+				return put(tx, p.ID, r)
+			}
+			return nil
+		})
+	}
+	if err := mark(true); err != nil || !found {
+		return err
+	}
+	if m.d.Apply != nil {
+		if err := m.d.Apply(ctx, id); err != nil {
+			if ferr := mark(false); ferr != nil {
+				return errors.Join(err, ferr)
+			}
+			if m.d.PushAgent != nil {
+				if perr := m.d.PushAgent(ctx); perr != nil {
+					return errors.Join(err, perr)
+				}
+			}
+			return err
+		}
+	}
+	return m.d.Store.Tx(func(tx store.Tx) error {
+		r, err := Load(tx, projectID, id)
+		if errors.Is(err, store.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		return removeBox(tx, projectID, r)
+	})
 }
