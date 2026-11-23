@@ -124,7 +124,8 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET "+Prefix+"/projects/{name}/tokens", s.listTokens)
 	mux.HandleFunc("POST "+Prefix+"/projects/{name}/tokens", s.createToken)
 	mux.HandleFunc("DELETE "+Prefix+"/projects/{name}/tokens/{token}", s.deleteToken)
-	mux.HandleFunc(Prefix+"/projects/{name}/api/v1/{rest...}", s.proxy)
+	mux.HandleFunc(Prefix+"/projects/{name}/api/v1/{rest...}", s.proxy(api.Prefix))
+	mux.HandleFunc(Prefix+"/projects/{name}/api/hetzner/v1/{rest...}", s.proxy(api.HetznerPrefix))
 	if d.UpdateCatalog != nil {
 		mux.HandleFunc("POST "+Prefix+"/catalog/update", s.updateCatalog)
 	}
@@ -602,18 +603,20 @@ func (s server) trust(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"on": *body.On})
 }
 
-// proxy forwards a request to the Hetzner API handlers as project name
-// with read/write rights.
-func (s server) proxy(w http.ResponseWriter, req *http.Request) {
-	p, ok := s.project(w, req)
-	if !ok {
-		return
+// proxy forwards a request to the API handlers under prefix (the Cloud
+// API's or the Hetzner API's) as project name with read/write rights.
+func (s server) proxy(prefix string) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		p, ok := s.project(w, req)
+		if !ok {
+			return
+		}
+		r := req.Clone(api.WithProject(req.Context(), p))
+		r.URL.Path = prefix + "/" + req.PathValue("rest")
+		r.URL.RawPath = ""
+		r.RequestURI = ""
+		s.d.API.ServeHTTP(w, r)
 	}
-	r := req.Clone(api.WithProject(req.Context(), p))
-	r.URL.Path = api.Prefix + "/" + req.PathValue("rest")
-	r.URL.RawPath = ""
-	r.RequestURI = ""
-	s.d.API.ServeHTTP(w, r)
 }
 
 const tokenAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
