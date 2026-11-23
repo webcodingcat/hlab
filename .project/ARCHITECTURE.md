@@ -128,7 +128,10 @@ Inside `hlabd` (Go packages under `internal/`):
   object plus `_hlab.creating` for an unconfirmed create); a box with a
   snapshot plan keeps `_hlab.plan_checked`, the last minute the plan job
   checked;
-  every box and subaccount action locks the box and runs the hook
+  every box and subaccount action locks the box, except deleting a
+  subaccount or a snapshot, which never answers `locked` for the box and
+  queues behind its running actions (`StartQueued`), so the storage VM
+  still works on one box one job at a time; every action runs the hook
   `Deps.Apply`, nil until the storage VM (phase 19) sets it; subaccount
   actions reference `storage_box` and `storage_box_subaccount`. A new resource type is a new
   package plus one line in `Cloud.modules()` (`internal/cloud`); the core

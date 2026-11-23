@@ -19,6 +19,15 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Storage box deletes of subaccounts and snapshots wait instead of answering locked
+
+- Type: change
+- Phase: change
+- What: Q24 answered: deleting a subaccount or a snapshot never answers 423 `locked` because of another action on the same box but queues behind it, while the storage VM still works on one box one job at a time; one `tofu destroy` of a box with subaccounts and snapshots succeeds in its first run (CLI-06, new phase 24), and the hint to run it again leaves docs/guide.md and docs/deviations.md.
+- Why: real Hetzner allows parallel actions on a box (`locked` is documented only for parallel creates, provider issue #1297 and PRs #1294, #1307) and the provider never retries a delete, so a destroy against Hetzner is not known to stop, and OpenTofu users expect one destroy to clean up.
+- Cost of change: low (an addition: one small phase; the box lock stays for every other action)
+- Replaces: 2026-11-22 Every storage box action locks the box
+
 ## 2026-11-23 Server console moves into milestone 1
 
 - Type: change
@@ -729,14 +738,6 @@ taken with the approval of the spec or by an answer from the user.
 - Why: one middleware chain and one listener instead of a second router.
 - Cost of change: low
 - Replaces: 2026-11-21 Storage Boxes in milestone 1
-
-## 2026-11-22 Every storage box action locks the box
-
-- Type: decision
-- Phase: phase 18
-- What: a second concurrent action on a box, subaccount actions included, returns 423 `locked`; evidence exists only for parallel subaccount and snapshot creates (provider PR #1307), the rest is without evidence.
-- Why: the simplest rule, and safe for clients that retry.
-- Cost of change: low
 
 ## 2026-11-22 Storage box validation errors answer 422 at once
 

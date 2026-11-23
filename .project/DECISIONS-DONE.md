@@ -4,6 +4,14 @@ Entries from DECISIONS.md that a later entry revoked or changed, moved here
 unchanged; the later entry names them under `Replaces:`. Newest first. No
 skill reads this file; it keeps the history for looking things up.
 
+## 2026-11-22 Every storage box action locks the box
+
+- Type: decision
+- Phase: phase 18
+- What: a second concurrent action on a box, subaccount actions included, returns 423 `locked`; evidence exists only for parallel subaccount and snapshot creates (provider PR #1307), the rest is without evidence.
+- Why: the simplest rule, and safe for clients that retry.
+- Cost of change: low
+
 ## 2026-11-18 Server protection and console details
 
 - Type: decision

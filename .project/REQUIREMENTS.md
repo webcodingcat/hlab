@@ -248,7 +248,7 @@ One requirement per client; the test map has one row per resource type.
 - CLI-03 the Ansible collection runs every Cloud API module and the inventory plugin against hlab from WSL2 with only the endpoint changed (goal 1) [e2e]
 - CLI-04 each client builds the example environment of the success criterion, it is reachable via SSH from host and WSL2, and the client deletes it completely (goal 1) [e2e]
 - CLI-05 the hcloud CLI manages storage boxes, subaccounts and snapshots and reads storage box types against hlab with only its cloud and Hetzner endpoints changed (goal 1) [e2e]
-- CLI-06 the OpenTofu provider manages every storage box resource and reads every storage box data source against hlab with only its cloud and Hetzner endpoints changed (goal 1) [e2e]
+- CLI-06 the OpenTofu provider manages every storage box resource and reads every storage box data source against hlab with only its cloud and Hetzner endpoints changed, and one `tofu destroy` removes a box together with its subaccounts and snapshots (goal 1) [e2e]
 - CLI-07 the Ansible collection runs every storage box module against hlab from WSL2 with only its cloud and Hetzner endpoints changed (goal 1) [e2e]
 
 ### MCP server (`MCP`)
@@ -455,7 +455,7 @@ What the target vision in IDEA.md will need, not built yet.
 | CLI-03 | 13 | x |
 | CLI-04 | 13 | x |
 | CLI-05 | 21 | x |
-| CLI-06 | 21 | x |
+| CLI-06 | 21, 24 | |
 | CLI-07 | 21 | x |
 | CON-01 | 23 | |
 | CON-02 | 23 | |

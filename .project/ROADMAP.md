@@ -59,9 +59,28 @@
 
 - [x] 21 Storage Boxes in the console and the clients (UI-12, UI-13, UI-14, CLI-05, CLI-06, CLI-07) → phases/21/
 
+- [ ] 24 Storage box destroy in one run.
+      Requirements: CLI-06.
+      Depends on: 21.
+      Adjusts: the unit tests of internal/resources/storageboxes that
+      expect 423 `locked` for deleting a subaccount or snapshot while
+      another action on the box runs, and the CLI-06 rows of
+      test/e2e/clients_storagebox_tofu_test.go.
+      Success criteria:
+      1. Deleting a subaccount or a snapshot while another action on the
+         same box runs is accepted and finishes after it instead of
+         answering 423 `locked`; the storage VM still applies one job per
+         box at a time. Other actions keep answering `locked`.
+      2. One `tofu destroy` of a box with a subaccount and a snapshot
+         succeeds in its first run (e2e row CLI-06).
+      3. docs/guide.md and docs/deviations.md no longer tell the user to
+         run `tofu destroy` a second time, and docs/deviations.md lists
+         these deletes among the actions that wait instead of answering
+         `locked`.
+
 - [ ] 23 Server console.
       Requirements: SRV-17, CON-01, CON-02, UI-15.
-      Depends on: 21 (order only), 03.
+      Depends on: 24 (order only), 03.
       Adjusts: the code and tests that expect `unsupported_error` for
       request_console or a disabled "Console" menu entry (servers module,
       `api.Deviations`, `serverActions.ts` and their unit, conventions and
