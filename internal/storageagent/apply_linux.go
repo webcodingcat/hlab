@@ -45,9 +45,10 @@ func run(ctx context.Context, name string, args ...string) (string, error) {
 }
 
 // apply brings the storage VM to doc: the steps of Plan, then the box
-// addresses, then the passwords, then the quota accounting check of E18. A box whose step
-// fails is logged and left out of its later steps and the passwords; the
-// others are applied, and the failures are returned together at the end.
+// addresses, then the passwords, sshd and the protocol services, then the
+// quota accounting check of E18. A box whose step fails is logged and left
+// out of its later steps and the passwords; the others are applied, and the
+// failures are returned together at the end.
 func (a *Agent) apply(ctx context.Context, doc agentapi.Storage) error {
 	st, err := a.state(ctx)
 	if err != nil {
@@ -99,6 +100,9 @@ func (a *Agent) apply(ctx context.Context, doc agentapi.Storage) error {
 		errs = append(errs, err)
 	}
 	if err := a.applySSHD(ctx, sshdConfig(doc, skipped)); err != nil {
+		errs = append(errs, err)
+	}
+	if err := applyServices(ctx, doc, skipped); err != nil {
 		errs = append(errs, err)
 	}
 	if err := a.checkQuota(ctx); err != nil {
