@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
+	"strings"
 
 	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/store"
@@ -77,7 +78,7 @@ func docBox(r Record, subs []SubaccountRecord, snaps []SnapshotRecord) (agentapi
 		IP:         ip,
 		QuotaBytes: t.Size,
 		Hashes:     agentapi.Hashes{Crypt: r.HLab.Hashes.Crypt, NT: r.HLab.Hashes.NT},
-		SSHKeys:    r.HLab.SSHKeys,
+		SSHKeys:    keyLines(r.HLab.SSHKeys),
 		Access: agentapi.Access{SSH: a.SSHEnabled, Samba: a.SambaEnabled, WebDAV: a.WebDAVEnabled,
 			ZFS: a.ZFSEnabled, ReachableExternally: a.ReachableExternally},
 	}
@@ -95,6 +96,21 @@ func docBox(r Record, subs []SubaccountRecord, snaps []SnapshotRecord) (agentapi
 		})
 	}
 	return b, nil
+}
+
+// keyLines returns keys as authorized_keys lines: trimmed, and without a
+// key that still spans lines, which the storage agent would refuse for the
+// whole document. Such keys come only from boxes stored before create
+// trimmed them.
+func keyLines(keys []string) []string {
+	var out []string
+	for _, k := range keys {
+		k = strings.TrimSpace(k)
+		if k != "" && !strings.ContainsAny(k, "\r\n") {
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 // Contribute implements resource.NetContributor: the storage VM when any
