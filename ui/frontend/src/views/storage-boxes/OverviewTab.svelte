@@ -13,6 +13,8 @@
   let { project, box }: { project: string; box: StorageBox } = $props();
 
   const boxId = $derived(box.id);
+  // Only a change of the status to or from active reloads the folders, not every refresh.
+  const active = $derived(box.status === "active");
 
   let path = $state("");
   let draft = $state("");
@@ -20,8 +22,9 @@
   let problem = $state<string | undefined>();
   let seq = 0;
 
-  // The folders of path load when the box or the path changes.
+  // The folders of path load when the box, the path or whether the box is active changes.
   $effect(() => {
+    void active;
     const p = path;
     const n = ++seq;
     folders = undefined;
