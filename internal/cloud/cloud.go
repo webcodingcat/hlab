@@ -144,6 +144,10 @@ func New(d Deps) *Cloud {
 // that LoadAll could not add or a catalog update dropped.
 const problemCustomServerTypes = "custom_server_types"
 
+// problemCustomStorageBoxTypes is the /status problem of own storage box
+// types that are left out.
+const problemCustomStorageBoxTypes = "custom_storage_box_types"
+
 // status is the content of the status file.
 type status struct {
 	State   string   `json:"state"` // "starting", "running", "refused", "stopped"
@@ -239,6 +243,9 @@ func (c *Cloud) start(ctx context.Context, params []string) error {
 	if err := ensureCustomISOs(c.d.Paths.Config); err != nil {
 		return fmt.Errorf("create the own ISOs file: %w", err)
 	}
+	if err := ensureConfigList(c.d.Paths.Config, catalog.OwnStorageBoxTypesFile); err != nil {
+		return fmt.Errorf("create the own storage box types file: %w", err)
+	}
 	customFile := filepath.Join(c.d.Paths.Config, customServerTypesFile)
 	var catWarns []string
 	c.cat, catWarns, err = catalog.LoadAll(c.d.Paths.Catalog, c.d.Paths.Config, customFile)
@@ -250,6 +257,7 @@ func (c *Cloud) start(ctx context.Context, params []string) error {
 		// and a reload clears it.
 		c.cat.ReloadOwn(customFile)
 	}
+	c.cat.ReloadOwnStorageBoxTypes(filepath.Join(c.d.Paths.Config, catalog.OwnStorageBoxTypesFile))
 	conv, ok := c.plat.(interface {
 		ConvertToDynamic(ctx context.Context, src, dst string) error
 	})
@@ -601,6 +609,9 @@ func (c *Cloud) mgmtStatus() mgmt.Status {
 	}
 	if w := c.cat.OwnTypesWarning(); w != "" {
 		st.Problems = append(st.Problems, mgmt.Problem{Code: problemCustomServerTypes, Message: w})
+	}
+	if w := c.cat.OwnStorageBoxTypesWarning(); w != "" {
+		st.Problems = append(st.Problems, mgmt.Problem{Code: problemCustomStorageBoxTypes, Message: w})
 	}
 	for _, w := range c.cat.OwnISOsWarnings() {
 		st.Problems = append(st.Problems, mgmt.Problem{Code: problemCustomISOs, Message: w})

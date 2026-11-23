@@ -65,7 +65,7 @@ func newFullEnv(t *testing.T) *apitest.Env {
 	if err != nil {
 		t.Fatalf("load shipped catalog: %v", err)
 	}
-	cat.StorageBoxTypes = apitest.StorageBoxTypes(t)
+	cat.SetStorageBoxTypes(apitest.StorageBoxTypes(t))
 	d := apitest.ServersDeps(t, cat, platformtest.NewFake())
 	srv := servers.New(d)
 	nets := networks.New(networks.Deps{Store: d.Store, Catalog: cat, Servers: srv, PushAgent: d.PushAgent})

@@ -87,8 +87,6 @@ type Catalog struct {
 	Images            []Image
 	ISOs              []ISO
 	LoadBalancerTypes []json.RawMessage
-	// StorageBoxTypes come from storage-box-types.json; none without it.
-	StorageBoxTypes []StorageBoxType
 
 	mu          sync.RWMutex
 	serverTypes []ServerType // catalog types followed by the own types
@@ -98,6 +96,10 @@ type Catalog struct {
 
 	ownISOs        []ISO    // own ISOs served after the catalog ISOs
 	ownISOWarnings []string // why own ISOs are left out
+
+	storageBoxTypes    []StorageBoxType // of storage-box-types.json; none without it
+	ownStorageBoxTypes []StorageBoxType // own types served after the catalog's
+	ownBoxTypesWarning string           // why the own storage box types are left out
 }
 
 // Load reads the catalog files in dir.
@@ -165,7 +167,7 @@ func Load(dir string) (*Catalog, error) {
 		return nil, err
 	}
 	c.pricing = pricing.Pricing
-	if c.StorageBoxTypes, err = loadStorageBoxTypes(dir); err != nil {
+	if c.storageBoxTypes, err = loadStorageBoxTypes(dir); err != nil {
 		return nil, err
 	}
 	return c, nil

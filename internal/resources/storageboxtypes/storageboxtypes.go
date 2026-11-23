@@ -37,8 +37,9 @@ func (st boxType) MarshalJSON() ([]byte, error) { return st.Raw, nil }
 
 // list offers name, page and per_page only, as the description does.
 func (m *Module) list(w http.ResponseWriter, req *http.Request) {
-	items := make([]boxType, 0, len(m.cat.StorageBoxTypes))
-	for _, st := range m.cat.StorageBoxTypes {
+	types := m.cat.StorageBoxTypes()
+	items := make([]boxType, 0, len(types))
+	for _, st := range types {
 		items = append(items, boxType(st))
 	}
 	slices.SortStableFunc(items, func(a, b boxType) int { return cmp.Compare(a.ID, b.ID) })
@@ -52,7 +53,7 @@ func (m *Module) get(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	for _, st := range m.cat.StorageBoxTypes {
+	for _, st := range m.cat.StorageBoxTypes() {
 		if st.ID == id {
 			api.JSON(w, http.StatusOK, map[string]any{"storage_box_type": st.Raw})
 			return
