@@ -11,8 +11,13 @@ type Storage struct {
 	Schema, Generation int
 	PublicRange        netip.Prefix // sources outside it, or inside HostNet, are external
 	HostNet            netip.Prefix // the host's transit /30
+	TLS                TLS          // the wildcard certificate of WebDAV and FTPS
 	Boxes              []Box
 }
+
+// TLS is the certificate *.storagebox.hetzner.internal from the hlab CA:
+// leaf plus CA chain, and the PKCS#8 key. Never logged.
+type TLS struct{ CertPEM, KeyPEM string }
 
 // Box is one storage box.
 type Box struct {
@@ -24,6 +29,10 @@ type Box struct {
 	SSHKeys     []string // OpenSSH lines, written once into .ssh/authorized_keys at creation
 	Access      Access   // SSH, Samba, WebDAV, ZFS, ReachableExternally
 	Subaccounts []Subaccount
+	// Snapshots are the names of the box's snapshots in the store; the
+	// agent removes snapshot subvolumes of the box that are not listed and
+	// never one that is.
+	Snapshots []string
 }
 
 // Subaccount is a subaccount of a box.
@@ -40,18 +49,22 @@ type Hashes struct{ Crypt, NT string }
 // Access holds the switches of an account.
 type Access struct{ SSH, Samba, WebDAV, ZFS, ReadOnly, ReachableExternally bool }
 
-// Storage job kinds; "snapshot", "rollback" and "delete-snapshot" follow.
+// Storage job kinds.
 const (
-	StorageJobFolders = "folders"
-	StorageJobUsage   = "usage"
+	StorageJobFolders        = "folders"
+	StorageJobUsage          = "usage"
+	StorageJobSnapshot       = "snapshot"        // read-only snapshot <Snapshot> of box <Box>
+	StorageJobDeleteSnapshot = "delete-snapshot" // removes snapshot <Snapshot>
+	StorageJobRollback       = "rollback"        // box data back to <Snapshot>, then removes <Newer>
 )
 
 // StorageJob is work on the storage VM (POST /v1/jobs).
 type StorageJob struct {
-	Kind     string // StorageJobFolders | StorageJobUsage
-	Box      string // box user
-	Snapshot string
-	Path     string // folders: relative path, "." by default
+	Kind     string   // one of the StorageJob* kinds
+	Box      string   // box user
+	Snapshot string   // snapshot, delete-snapshot, rollback: the snapshot name
+	Path     string   // folders: relative path, "." by default
+	Newer    []string // rollback: the snapshots created after Snapshot, removed with it
 }
 
 // Usage is the space a box takes, in bytes, from its qgroups.
@@ -61,7 +74,8 @@ type Usage struct{ Data, Snapshots int64 }
 type StorageJobResult struct {
 	Folders       []string // names of direct subdirectories, sorted
 	Usage         Usage
-	SnapshotSizes map[string]int64
+	SnapshotSizes map[string]int64 // name -> exclusive bytes (stats.size); usage and snapshot jobs
+	SnapshotFS    map[string]int64 // name -> referenced bytes (stats.size_filesystem)
 }
 
 // Codes of a failed storage job, answered as StorageJobError: HTTP 404 with
