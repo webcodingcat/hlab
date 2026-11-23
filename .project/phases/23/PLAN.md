@@ -161,13 +161,13 @@ func (w *Windows) OpenConsole(project string, id int64, name string) error
   - [x] `Serve` in `internal/console/rfb.go`: version, security type 2 with DES challenge (key bytes bit-reversed, password cut to 8 characters, comment why), SecurityResult 1 with reason "authentication failed", ClientInit/ServerInit, SetPixelFormat (32-bpp true colour, any shifts, endianness), SetEncodings (remember DesktopSize and QEMU Extended Key Event; answer the latter with its pseudo-rectangle), FramebufferUpdateRequest (full at once; incremental held until a change), KeyEvent, QEMU message 255/0, PointerEvent, ClientCutText ignored
   - [x] Frame loop in `internal/console/frames.go`: grab on the interval only while connected and right after each input event, keep the last frame (black at start) when `ok` is false, RGB565 → client format, changed rectangles by diff, DesktopSize as last rectangle on a size change
 
-- [ ] 23-04 Console service: tokens and WebSocket listener
+- [x] 23-04 Console service: tokens and WebSocket listener
   - Wave: 3 | Depends on: 23-03 | Review: alone
   - Requirements: CON-01, CON-02 | Tests: internal/console/service_test.go
   - Reads: PLAN.md "Interfaces"; SPEC.md "Server console"; ARCHITECTURE.md "Server console"; research/server-console.md section 3 (coder/websocket); EXPERIMENTS.md E22
   - Size: ~250 lines in 3 files
-  - [ ] `New`, `Issue` (UUID v4 token from crypto/rand, 32-character alphanumeric password, TTL one minute from Clock, kept in memory), `Handler` (query `server_id` and `token`; unknown, used, expired or foreign → 403 without body detail, before the upgrade; token consumed at the upgrade; `websocket.Accept` without origin check for outside clients, no subprotocol required; `websocket.NetConn` binary; `Open` then `Serve`), `Serve(ln)` with TLS, `CloseServer`, `Close` in `internal/console/service.go`
-  - [ ] `github.com/coder/websocket` v1.8.15 as a direct dependency in `go.mod`/`go.sum`
+  - [x] `New`, `Issue` (UUID v4 token from crypto/rand, 32-character alphanumeric password, TTL one minute from Clock, kept in memory), `Handler` (query `server_id` and `token`; unknown, used, expired or foreign → 403 without body detail, before the upgrade; token consumed at the upgrade; `websocket.Accept` without origin check for outside clients, no subprotocol required; `websocket.NetConn` binary; `Open` then `Serve`), `Serve(ln)` with TLS, `CloseServer`, `Close` in `internal/console/service.go`
+  - [x] `github.com/coder/websocket` v1.8.15 as a direct dependency in `go.mod`/`go.sum`
 
 - [x] 23-05 Raw WMI access for Hyper-V
   - Wave: 1 | Depends on: - | Review: alone
