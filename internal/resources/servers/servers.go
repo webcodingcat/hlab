@@ -125,6 +125,18 @@ type Deps struct {
 	// HaltTimeout bounds the wait for the guests to shut down at cloud
 	// stop before their VMs are turned off hard; 0 = 60 s.
 	HaltTimeout time.Duration
+	// Console issues the URLs of request_console and ends a deleted
+	// server's open consoles.
+	Console Console
+}
+
+// Console is the server console service (console.Service).
+type Console interface {
+	// Issue returns the wss URL and VNC password of a new console of
+	// server serverID, whose VM is vm.
+	Issue(serverID int64, vm string) (wssURL, password string, err error)
+	// CloseServer ends the open consoles of serverID.
+	CloseServer(serverID int64)
 }
 
 // Server is a server in Hetzner's API shape.
@@ -1098,6 +1110,7 @@ func (m *Module) remove(ctx context.Context, stor *store.Store, id int64) error 
 		return err
 	}
 	m.d.Metrics.Forget(id)
+	m.d.Console.CloseServer(id)
 	var backups []imagesres.Record
 	if err := stor.Tx(func(tx store.Tx) error {
 		r, err := Load(tx, id)

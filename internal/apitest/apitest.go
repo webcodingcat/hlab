@@ -24,6 +24,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/console"
 	"github.com/webcodingcat/hlab/internal/metrics"
 	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/resource"
@@ -210,9 +211,10 @@ func RandomToken() string {
 
 // ServersDeps returns the servers module's dependencies for tests: the
 // catalog cat, the public range 198.19.0.0/16, platform p, a temporary
-// data folder, images that resolve to a path in it without any file, and
-// an agent push that does nothing. Store is the store the next New(t)
-// uses, so the module's jobs and project deletion see the API's servers.
+// data folder, images that resolve to a path in it without any file, an
+// agent push that does nothing and a console service without a listener.
+// Store is the store the next New(t) uses, so the module's jobs and
+// project deletion see the API's servers.
 func ServersDeps(t testing.TB, cat *catalog.Catalog, p platform.Platform) servers.Deps {
 	t.Helper()
 	dir := t.TempDir()
@@ -220,6 +222,8 @@ func ServersDeps(t testing.TB, cat *catalog.Catalog, p platform.Platform) server
 	nextStores.Lock()
 	nextStores.m[t] = st
 	nextStores.Unlock()
+	cons := console.New(console.Config{Host: "console.hetzner.internal"})
+	t.Cleanup(func() { _ = cons.Close() })
 	return servers.Deps{
 		Catalog:     cat,
 		PublicRange: netip.MustParsePrefix("198.19.0.0/16"),
@@ -233,6 +237,7 @@ func ServersDeps(t testing.TB, cat *catalog.Catalog, p platform.Platform) server
 			StopBehaviour: "save",
 			VMPrefix:      "hlab-test",
 		},
+		Console: cons,
 	}
 }
 

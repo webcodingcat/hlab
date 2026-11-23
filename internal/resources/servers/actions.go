@@ -12,10 +12,6 @@ import (
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
-// consoleMessage is the fixed answer to request_console (SPEC.md "Fixed API
-// answers").
-const consoleMessage = "server console is not supported by HLab yet"
-
 // changeProtection sets the delete and rebuild protection present in the
 // body as an action. The change is written with the action; its work has
 // nothing left to do.
@@ -59,9 +55,43 @@ func (m *Module) changeProtection(w http.ResponseWriter, req *http.Request) {
 	api.JSON(w, http.StatusCreated, map[string]any{"action": action})
 }
 
-// requestConsole answers the fixed unsupported_error; it creates no action.
-func (m *Module) requestConsole(w http.ResponseWriter, _ *http.Request) {
-	api.Error(w, "unsupported_error", consoleMessage, nil)
+// requestConsole records a finished request_console action on the server,
+// in any state and without waiting for its other actions, and answers the
+// console URL and password the console service issues; the server itself
+// does not change.
+func (m *Module) requestConsole(w http.ResponseWriter, req *http.Request) {
+	id, ok := api.PathID(w, req)
+	if !ok {
+		return
+	}
+	p, _ := api.ProjectFrom(req.Context())
+	acts := api.ActionsFrom(req.Context())
+	var (
+		action           *actions.Action
+		wssURL, password string
+	)
+	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
+		if _, err := store.Get[Record](tx, Kind, p.ID, id); err != nil {
+			return err
+		}
+		started, err := acts.StartAll(tx, p.ID, nil, []actions.Spec{{
+			Command: "request_console", Resources: []actions.Ref{{ID: id, Type: refType}},
+		}})
+		if err != nil {
+			return err
+		}
+		if err := acts.Succeed(tx, started); err != nil {
+			return err
+		}
+		action = started[0]
+		wssURL, password, err = m.d.Console.Issue(id, m.vmName(id))
+		return err
+	})
+	if err != nil {
+		api.Fail(w, err)
+		return
+	}
+	api.JSON(w, http.StatusCreated, map[string]any{"action": action, "wss_url": wssURL, "password": password})
 }
 
 // addToPlacementGroup makes a stopped server a member of a placement group
