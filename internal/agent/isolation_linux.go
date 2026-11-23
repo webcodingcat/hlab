@@ -345,6 +345,16 @@ func guestSources(cfg agentapi.Config) (macs, pairs []nftables.SetElement) {
 			pairs = append(pairs, nftables.SetElement{Key: pairKey(mac, f.IP)})
 		}
 	}
+	// The storage VM sends from its own address and the box IPs.
+	if mac, err := net.ParseMAC(cfg.Storage.MAC); err == nil && len(mac) == 6 && cfg.Storage.Addr.Is4() {
+		macs = append(macs, nftables.SetElement{Key: mac})
+		pairs = append(pairs, nftables.SetElement{Key: pairKey(mac, cfg.Storage.Addr)})
+		for _, b := range cfg.StorageBoxes {
+			if b.IP.Is4() {
+				pairs = append(pairs, nftables.SetElement{Key: pairKey(mac, b.IP)})
+			}
+		}
+	}
 	return macs, pairs
 }
 
