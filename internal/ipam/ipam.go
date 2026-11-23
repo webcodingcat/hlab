@@ -2,7 +2,8 @@
 // Allocation starts at the range's fifth address (the first four are the
 // transit network between host and appliance), continues after the last
 // address handed out and wraps to the start only at the end of the range,
-// skipping addresses in use, so a released address is not reused at once.
+// skipping addresses in use and the storage VM's address, so a released
+// address is not reused at once.
 package ipam
 
 import (
@@ -12,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/webcodingcat/hlab/internal/store"
+	"github.com/webcodingcat/hlab/internal/transit"
 )
 
 const (
@@ -35,7 +37,8 @@ func NextPublic(tx store.Tx, r netip.Prefix) (netip.Addr, error) {
 	for range firstOffset {
 		first = first.Next()
 	}
-	last := broadcast(r).Prev() // the broadcast address is never handed out
+	last := transit.Broadcast(r).Prev() // the broadcast address is never handed out
+	storage := transit.For(r).Storage
 	if !r.Contains(first) || last.Less(first) {
 		return netip.Addr{}, ErrFull
 	}
@@ -51,9 +54,12 @@ func NextPublic(tx store.Tx, r netip.Prefix) (netip.Addr, error) {
 
 	a := start
 	for {
-		used, err := inUse(tx, a)
-		if err != nil {
-			return netip.Addr{}, err
+		used := a == storage
+		if !used {
+			var err error
+			if used, err = inUse(tx, a); err != nil {
+				return netip.Addr{}, err
+			}
 		}
 		if !used {
 			if err := store.SetKV(tx, usedPrefix+a.String(), "1"); err != nil {
@@ -121,16 +127,4 @@ func inUse(tx store.Tx, a netip.Addr) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
-}
-
-// broadcast returns the last address of r.
-func broadcast(r netip.Prefix) netip.Addr {
-	b := r.Addr().As4()
-	host := 32 - r.Bits()
-	for i := 3; i >= 0 && host > 0; i-- {
-		n := min(host, 8)
-		b[i] |= byte(1<<n - 1)
-		host -= n
-	}
-	return netip.AddrFrom4(b)
 }
