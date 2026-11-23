@@ -218,15 +218,15 @@ CompactDisk(ctx context.Context, path string) error
     - Delete sets `_hlab.deleting` in the begin transaction and runs Apply; records go and the IP is released only after Apply succeeded; on failure the mark is cleared.
   - [x] `subaccounts.go`, `subaccount_actions.go`, `actions.go`: subaccount create and every action but delete answer 423 `locked` on a box that is not `active`; new `recover.go`: `Recover` deletes boxes whose create was interrupted.
 
-- [ ] 19-09 Storage VM: creation and removal
+- [x] 19-09 Storage VM: creation and removal
   - Wave: 3 | Depends on: 19-04 | Review: alone
   - Requirements: SBOX-03 | Tests: -
   - Reads: ARCHITECTURE.md "Storage VM", "Files and formats"; CONTEXT.md "Storage VM", "Data disk", "storage-debs.json"; RESEARCH.md 1, 4, 9; `internal/cloud/appliance.go`, `appliance/*`
   - Size: ~380 lines in 5 files
   - Note (from 19-07): the storage VM installs hlab-agent at `/usr/local/sbin/hlab-agent` (root-owned, 0755, inside /usr so the chroots see it), and sshd must run as `ssh.service`, not socket-activated through `ssh.socket` (disable the socket if Debian 13 enables it); the agent owns `/etc/ssh/sshd_config` and reloads with `systemctl reload-or-restart ssh.service`.
-  - [ ] New `catalog/storage-debs.json` with the seven packages of RESEARCH.md 1.2 (pool and snapshot URL; every SHA-256 recomputed from the downloaded file before committing).
-  - [ ] New `appliance/storage-user-data.yaml` and the storage part of `appliance/appliance.go` (install the debs with one `dpkg -i`, disable `rsync.service`, start `hlab-agent --role storage`).
-  - [ ] New `internal/cloud/storage.go`: `ensureStorageVM` and `deleteStorageVM`:
+  - [x] New `catalog/storage-debs.json` with the seven packages of RESEARCH.md 1.2 (pool and snapshot URL; every SHA-256 recomputed from the downloaded file before committing).
+  - [x] New `appliance/storage-user-data.yaml` and the storage part of `appliance/appliance.go` (install the debs with one `dpkg -i`, disable `rsync.service`, start `hlab-agent --role storage`).
+  - [x] New `internal/cloud/storage.go`: `ensureStorageVM` and `deleteStorageVM`:
     - `<tag>-storage` with 2 vCPU and 1024 MB; a 10 GB system disk copied from debian-13; a 64 TiB dynamic `storage\data.vhdx` at LUN 1; MAC `02:48:4c:00:00:03` on the public PVLAN as an isolated port.
     - The cidata holds the agent, kv `storage.secret`, the address `Addrs.Storage` and the debs; the stop action follows `stop_behaviour`.
     - A half-created VM is removed again.

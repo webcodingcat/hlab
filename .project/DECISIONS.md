@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Storage VM boot and packages
+
+- Type: decision
+- Phase: phase 19
+- What: The storage debs install from the shared `hlab-agent-install.sh` in one `dpkg -i` at every boot until btrfs exists; the storage user-data disables `ssh.socket`, enables `ssh.service` and keeps SSH host keys (`ssh_deletekeys: false`); a failed deb download fails the storage VM creation before any VM exists, and a create never deletes an existing data.vhdx.
+- Why: A failed first boot retries, box clients keep trusting the host keys, and box data are never lost by a create.
+- Cost of change: low
+
 ## 2026-11-23 Storage box usage, free space and stats
 
 - Type: decision
