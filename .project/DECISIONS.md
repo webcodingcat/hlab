@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Snapshots on the storage VM
+
+- Type: decision
+- Phase: phase 20
+- What: Snapshots live in `<root>/.snapshots/<user>/<name>` (root:<box gid>, 0750); `.zfs/snapshot` is a private read-only bind inside the chroot home, so WebDAV (Apache with PrivateTmp) does not show it, while SFTP, SCP, SMB and FTP do; snapshot jobs refuse names outside `^[A-Za-z0-9][A-Za-z0-9._-]*$` with 400.
+- Why: A private bind cannot reach the box data, other homes or Apache's namespace; SBOX-19 names no protocol, and `docs/deviations.md` states the WebDAV gap.
+- Cost of change: low
+
 ## 2026-11-23 vsftpd setup on the storage VM
 
 - Type: decision
