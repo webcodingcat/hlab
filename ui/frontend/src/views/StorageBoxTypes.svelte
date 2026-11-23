@@ -128,12 +128,12 @@
 
   async function openEdit(t: Row) {
     await loadLocations();
-    const own = t.own?.locations ?? (t.prices ?? []).map((p) => p.location);
+    const own = t.own!.locations;
     const all = locations.length > 0 && locations.every((l) => own.includes(l.name));
     spec = {
       name: t.name,
       description: t.description ?? "",
-      ...splitSize(t.own?.size ?? t.size),
+      ...splitSize(t.own!.size),
       snapshot_limit: t.snapshot_limit,
       automatic_snapshot_limit: t.automatic_snapshot_limit,
       subaccounts_limit: t.subaccounts_limit,
