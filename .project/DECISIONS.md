@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Rollback on the storage VM
+
+- Type: decision
+- Phase: phase 20
+- What: The agent keeps the last applied document for the rollback job; the fence is the nftables table `hlab_rollback` (input, TCP reset), cleared at the start of each rollback; it waits up to 30 s with `fuser -m` on the homes of the box and its subaccounts, unmounts without MNT_DETACH, keeps the old data at `<root>/.rollback-<box>` until deleted, and rebinds through `updateBox` also after a failure; rollback names are checked like snapshot names.
+- Why: The job carries no IPs, subaccounts or ZFS setting, and a busy mount must stop the rollback before the swap so the data stays untouched.
+- Cost of change: low
+
 ## 2026-11-23 Snapshots on the storage VM
 
 - Type: decision
