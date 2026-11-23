@@ -89,5 +89,9 @@ func (c *Cloud) cloudJobs() []scheduler.Job {
 				slog.Error("renew the CRL", "err", err)
 			}
 		},
+	}, {
+		Name:  "storage-tls",
+		Every: storageTLSCheckEvery,
+		Run:   c.renewStorageTLS,
 	}}
 }

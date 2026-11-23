@@ -88,9 +88,14 @@ func (c *Cloud) applyStorage(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	cert, err := c.storageTLS()
+	if err != nil {
+		return err
+	}
 	doc := agentapi.Storage{
 		PublicRange: c.set.Network.PublicRange,
 		HostNet:     c.addrs.Host.Masked(),
+		TLS:         cert,
 		Boxes:       boxes,
 	}
 	if err := c.storage.Push(ctx, doc); err != nil {
