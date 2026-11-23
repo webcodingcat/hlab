@@ -169,12 +169,12 @@ func (w *Windows) OpenConsole(project string, id int64, name string) error
   - [ ] `New`, `Issue` (UUID v4 token from crypto/rand, 32-character alphanumeric password, TTL one minute from Clock, kept in memory), `Handler` (query `server_id` and `token`; unknown, used, expired or foreign → 403 without body detail, before the upgrade; token consumed at the upgrade; `websocket.Accept` without origin check for outside clients, no subprotocol required; `websocket.NetConn` binary; `Open` then `Serve`), `Serve(ln)` with TLS, `CloseServer`, `Close` in `internal/console/service.go`
   - [ ] `github.com/coder/websocket` v1.8.15 as a direct dependency in `go.mod`/`go.sum`
 
-- [ ] 23-05 Raw WMI access for Hyper-V
+- [x] 23-05 Raw WMI access for Hyper-V
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: CON-01 | Tests: test/e2e/console_test.go (runs at 23-07)
   - Reads: EXPERIMENTS.md E21 (pitfalls: raw vtables, indexes, CoSetProxyBlanket, SafeArrayAccessData), E25
   - Size: ~300 lines in 2 files
-  - [ ] `internal/platform/hyperv/wmi_windows.go`: COM init on a locked OS thread, `IWbemLocator.ConnectServer` to `root\virtualization\v2`, `CoSetProxyBlanket`, `IWbemServices` `ExecQuery`/`GetObject`/`ExecMethod`, `IWbemClassObject` `Get`/`Put`/`SpawnInstance`/`GetMethod`, VARIANT helpers for BSTR, I4, BOOL, VT_ARRAY|VT_UI1 in and out (one `SafeArrayAccessData` copy), Release and VariantClear on every path, through `golang.org/x/sys/windows` only
+  - [x] `internal/platform/hyperv/wmi_windows.go`: COM init on a locked OS thread, `IWbemLocator.ConnectServer` to `root\virtualization\v2`, `CoSetProxyBlanket`, `IWbemServices` `ExecQuery`/`GetObject`/`ExecMethod`, `IWbemClassObject` `Get`/`Put`/`SpawnInstance`/`GetMethod`, VARIANT helpers for BSTR, I4, BOOL, VT_ARRAY|VT_UI1 in and out (one `SafeArrayAccessData` copy), Release and VariantClear on every path, through `golang.org/x/sys/windows` only
 
 - [ ] 23-06 Hyper-V console connection
   - Wave: 2 | Depends on: 23-02, 23-05 | Review: alone
