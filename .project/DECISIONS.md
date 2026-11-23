@@ -19,6 +19,30 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 request_console finishes its action in one step
+
+- Type: decision
+- Phase: phase 23
+- What: `request_console` creates and finishes its action in one transaction without the server's lock check, and deleting a server also drops its unused console tokens.
+- Why: The console must work while other actions run on the server, and a deleted server's URL must not connect.
+- Cost of change: low
+
+## 2026-11-23 Console input refused by the VM is dropped
+
+- Type: decision
+- Phase: phase 23
+- What: Input to a VM without keyboard or mouse device, or a non-zero ReturnValue of an input method, is dropped without error, and the RFB session stays open.
+- Why: An off or starting server must keep its console open (CONTEXT.md); only the e2e tests notice a wrong argument.
+- Cost of change: low
+
+## 2026-11-23 Console window shows the proxy's close reason
+
+- Type: decision
+- Phase: phase 23
+- What: The console page opens the WebSocket itself and hands it to noVNC, so "Disconnected" shows the proxy's reason; "Console" is also in the server list's row menu, and the proxy relays in messages of at most 32 KiB.
+- Why: noVNC's disconnect event carries no reason, the plan names the row menu, and default WebSocket peers refuse larger messages.
+- Cost of change: low
+
 ## 2026-11-23 Console keyboard: physical keys and characters
 
 - Type: decision

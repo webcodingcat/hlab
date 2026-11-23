@@ -70,7 +70,7 @@ func Pointer(prevMask, mask uint8, x, y, w, h int) []PointerOp
 // rfb.go, 23-03.
 
 type SessionOptions struct {
-	Name     string             // desktop name in ServerInit, the server's name
+	Name     string             // desktop name in ServerInit; one value for all servers (empty), the tray window shows the server name in its title
 	Interval time.Duration      // poll interval; 0 = 200 ms (5 frames/s)
 	Clock    scheduler.Clock    // nil = real clock
 }
@@ -201,15 +201,15 @@ func (w *Windows) OpenConsole(project string, id int64, name string) error
   - [x] `bridge.Console` in `internal/bridge/console.go`: `Open` gets the CA through `CA`, listens on `127.0.0.1:0` for one connection on a random path, `websocket.Accept` with `OriginPatterns: wails.localhost`, dials the `wss_url` with `tls.Config{RootCAs: hlab CA only, ServerName: URL host}`, copies binary messages both ways, closes both sides when one ends and the listener after a minute unused
   - [x] `Windows` service in `cmd/hlab-tray/windows.go`: window map under a mutex cleared in each window's `WindowClosing` listener, create "Console: <name>" at `/#/server-console/<project>/<id>` (about 1100x800) or show, restore and focus; register `bridge.Console` (with `client` for `/ca.pem`) and `Windows` in `cmd/hlab-tray/options.go` and `main.go`; quitting closes the console windows
 
-- [ ] 23-09 Tray: console window and the "Console" menu entry
+- [x] 23-09 Tray: console window and the "Console" menu entry
   - Wave: 2 | Depends on: 23-08 | Review: alone
   - Requirements: UI-15 | Tests: ui/frontend/tests/e2e/serverconsole.spec.ts
   - Reads: UI-SPEC.md "Building blocks" (Server console), "Behaviour", "Language of the interface"; PLAN.md "Interfaces"; EXPERIMENTS.md E22, E24; RESEARCH.md "noVNC and RFB details" (securityfailure, sendCtrlAltDel)
   - Size: ~350 lines in 8 files
   - Adjusts: `ui/frontend/tests/unit/serverActions.test.ts` (the console entry is no longer disabled; the case expecting `disabledHint` uses the new entry instead), `ui/frontend/tests/unit/routes.test.ts` only if it enumerates every route kind
-  - [ ] `@novnc/novnc` 1.7.0 in `ui/frontend/package.json` and `package-lock.json`; `ui/frontend/src/novnc.d.ts` (RFB class: constructor, `scaleViewport`, `sendCtrlAltDel`, `disconnect`, events)
-  - [ ] Route `server-console` in `ui/frontend/src/lib/routes.ts`; `App.svelte` renders `ui/frontend/src/views/ServerConsole.svelte` for it without the shell: top bar with the connection state ("Connecting", "Connected", "Disconnected" with the reason) and "Send Ctrl+Alt+Del", the screen filling the window (`scaleViewport`), "Reconnect" after a drop; on load and on Reconnect it runs `request_console` through the project proxy, calls `Console.Open(wss_url)` and starts noVNC (dynamic `import()`) with the password
-  - [ ] The "Console" entry in `ui/frontend/src/lib/serverActions.ts` is enabled and opens the window through `Windows.OpenConsole(project, id, name)` in `ui/frontend/src/views/servers/ServerActions.svelte` (and the row menu where the server actions appear)
+  - [x] `@novnc/novnc` 1.7.0 in `ui/frontend/package.json` and `package-lock.json`; `ui/frontend/src/novnc.d.ts` (RFB class: constructor, `scaleViewport`, `sendCtrlAltDel`, `disconnect`, events)
+  - [x] Route `server-console` in `ui/frontend/src/lib/routes.ts`; `App.svelte` renders `ui/frontend/src/views/ServerConsole.svelte` for it without the shell: top bar with the connection state ("Connecting", "Connected", "Disconnected" with the reason) and "Send Ctrl+Alt+Del", the screen filling the window (`scaleViewport`), "Reconnect" after a drop; on load and on Reconnect it runs `request_console` through the project proxy, calls `Console.Open(wss_url)` and starts noVNC (dynamic `import()`) with the password
+  - [x] The "Console" entry in `ui/frontend/src/lib/serverActions.ts` is enabled and opens the window through `Windows.OpenConsole(project, id, name)` in `ui/frontend/src/views/servers/ServerActions.svelte` (and the row menu where the server actions appear)
 
 - [ ] 23-10 Documentation
   - Wave: 5 | Depends on: 23-07, 23-09 | Review: alone
