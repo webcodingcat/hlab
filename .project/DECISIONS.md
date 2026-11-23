@@ -19,6 +19,110 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Storage box quota with full qgroups
+
+- Type: decision
+- Phase: phase 19
+- What: Each box gets a subvolume with a level-1 qgroup limited to the type size (E18), not btrfs simple quotas.
+- Why: Full qgroups are tested and their snapshot and rollback accounting is known; squota limits are unprobed (RESEARCH 6).
+- Cost of change: medium
+
+## 2026-11-23 Failed storage box create deletes the box
+
+- Type: decision
+- Phase: phase 19
+- What: A failed or interrupted `create_storage_box` deletes the box and releases its IP, and the action carries the error.
+- Why: No box gets stuck `initializing` and a new create just works (user answer).
+- Cost of change: low
+
+## 2026-11-23 Free-space reserve for storage boxes
+
+- Type: decision
+- Phase: phase 19
+- What: Before `create_storage_box` and `change_type` to a larger type hlabd answers 412 `resource_unavailable` when the host drive of the data folder has less than 10 GiB free.
+- Why: The dynamic data disk grows into the host drive, and a full drive would break every VM.
+- Cost of change: low
+
+## 2026-11-23 No image file per storage box
+
+- Type: decision
+- Phase: phase 19
+- What: All boxes share one dynamic `storage\data.vhdx` with btrfs subvolumes; one image file per box was rejected.
+- Why: Per-box files need host and VM to coordinate at every create and delete and a shrink at change_type.
+- Cost of change: medium
+
+## 2026-11-23 Storage agent package and subcommands
+
+- Type: decision
+- Phase: phase 19
+- What: The storage agent is `internal/storageagent`, run as `hlab-agent --role storage`, with `storage-shell` (port 23 ForceCommand) and `storage-keys` (AuthorizedKeysCommand) as subcommands of the same binary.
+- Why: No script runs through `sh -c`, and the filters stay testable Go.
+- Cost of change: low
+
+## 2026-11-23 Storage data disk at SCSI LUN 1
+
+- Type: decision
+- Phase: phase 19
+- What: The data disk is attached at SCSI LUN 1 of the storage VM.
+- Why: The agent finds it by a fixed path.
+- Cost of change: low
+
+## 2026-11-23 Read-only subaccounts get a read-only bind mount
+
+- Type: decision
+- Phase: phase 19
+- What: Besides `internal-sftp -R` and `rrsync -ro`, a read-only subaccount's home is a read-only bind mount.
+- Why: Borg serve has no read-only switch, so only the mount keeps it from writing.
+- Cost of change: low
+
+## 2026-11-23 Storage Apply matches the whole store
+
+- Type: decision
+- Phase: phase 19
+- What: Apply makes the storage VM match all boxes of the store, creating the VM for the first box and deleting the VM and `storage\` without boxes.
+- Why: The VM lifecycle lives in one place.
+- Cost of change: low
+
+## 2026-11-23 Storage agent logic as pure functions
+
+- Type: decision
+- Phase: phase 19
+- What: `Plan`, `Port23` and `AuthorizedKeys` are OS-independent pure functions.
+- Why: Data safety, the port 23 filter and key formats get unit tests on Windows.
+- Cost of change: low
+
+## 2026-11-23 Storage agent job error codes
+
+- Type: decision
+- Phase: phase 19
+- What: Storage agent jobs fail with `not_found` or `invalid_path`, which hlabd maps to 404 and 422.
+- Why: The folders endpoint needs both answers.
+- Cost of change: low
+
+## 2026-11-23 agentapi.Storage carries PublicRange and HostNet
+
+- Type: decision
+- Phase: phase 19
+- What: `agentapi.Storage` gets `PublicRange` and `HostNet` (added fields).
+- Why: The storage VM needs them for the sshd `Match Address` of subaccounts not reachable externally.
+- Cost of change: low
+
+## 2026-11-23 New storage box promises under phase 18 IDs
+
+- Type: decision
+- Phase: phase 19
+- What: The unit rows for failed create, delete after confirmation and stats sit under SBOX-09, the 423 on boxes not active under SBOX-02.
+- Why: They are new promises of those requirements from CONTEXT.md and the backlog.
+- Cost of change: low
+
+## 2026-11-23 No unit row for storage VM lifecycle in cloud
+
+- Type: decision
+- Phase: phase 19
+- What: The compaction at stop and the VM lifecycle in `internal/cloud` have no unit row; CHECKS.md and the SBOX-03 e2e row cover them.
+- Why: A fake of Hyper-V would test only glue.
+- Cost of change: low
+
 ## 2026-11-23 Own storage box types file
 
 - Type: change
