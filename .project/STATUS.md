@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 20 SMB, WebDAV, FTP and snapshots (next)
+- Phase: 21 Storage Boxes in the console and the clients (next)
 - Base branch: main
-- Last done: phase 19 merged into main (2026-11-23): the first storage box creates the storage VM; boxes and subaccounts serve SFTP/SCP on port 22 and rsync/Borg on port 23 with quota, reachability and own storage box types
-- Next: /wcc:phase in a new session builds phase 20 (SMB, WebDAV, FTP and snapshots), then phase 21; /wcc:change takes items from "Later" before phase 16
+- Last done: phase 20 merged into main (2026-11-23): storage boxes serve SMB, WebDAV over HTTPS and FTP/FTPS, with snapshots, snapshot plans and rollback; data, accounts and snapshots survive a stop and start
+- Next: /wcc:phase in a new session builds phase 21 (console and clients), then phase 16; /wcc:change takes Q22 (SMB from the Windows host) and items from "Later" before phase 16
 
 ## Open manual checks
 

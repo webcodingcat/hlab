@@ -246,11 +246,18 @@ type Step struct {
   - [x] New internal/resources/storageboxes/rollback.go: `POST /storage_boxes/{id}/actions/rollback_snapshot` with `snapshot` as ID or name (a missing one 404 `not_found`), action `rollback_snapshot` on box and snapshot, job `rollback` with `Newer` = all snapshots of the box created after the target (manual and automatic), then their records go and the stats refresh; register the route in `actionRoutes` (actions.go).
   - [x] `api.Deviations()` entry if any, and the endpoint in docs/development/api-coverage.md as served (internal/api/deviations.go, docs/development/api-coverage.md).
 
-- [ ] 20-14 Documentation
+- [x] 20-14 Documentation
   - Wave: 6 | Depends on: 20-01 to 20-13 | Review: alone
   - Requirements: DOC-01 to DOC-06 (kept green), DOC-07 (manual) | Tests: test/docs/docs_test.go (existing)
   - Reads: SPEC "Documentation"; REQUIREMENTS DOC; docs/guide.md "Storage boxes"; docs/deviations.md "Storage boxes"; docs/configuration.md (catalog files); docs/development/api-coverage.md storage box part
   - Size: ~250 lines in 4 files
-  - [ ] docs/guide.md: SMB (share `backup`, subaccount shares, Windows `net use` and smbclient), WebDAV (URLs per account, trusting the hlab CA), FTP and FTPS (passive only, lftp example), snapshots (create, list, rollback, snapshot plan in UTC, `.zfs/snapshot`), each example run through `hlab-docs` where it is an hcloud command.
-  - [ ] docs/deviations.md (about 250 lines at most): remove "snapshot plan is stored only"; add missed plan times skipped, NTLM risk from Windows, certificate from the hlab CA, credentials of one box at another box's address over FTP, passive FTP only, limit answer for manual snapshots, rollback ends open sessions of the box and its subaccounts.
-  - [ ] docs/configuration.md (storage VM packages) and docs/development/api-coverage.md (wording of the served snapshot endpoints and the protocols).
+  - [x] docs/guide.md: SMB (share `backup`, subaccount shares, Windows `net use` and smbclient), WebDAV (URLs per account, trusting the hlab CA), FTP and FTPS (passive only, lftp example), snapshots (create, list, rollback, snapshot plan in UTC, `.zfs/snapshot`), each example run through `hlab-docs` where it is an hcloud command.
+  - [x] docs/deviations.md (about 250 lines at most): remove "snapshot plan is stored only"; add missed plan times skipped, NTLM risk from Windows, certificate from the hlab CA, credentials of one box at another box's address over FTP, passive FTP only, limit answer for manual snapshots, rollback ends open sessions of the box and its subaccounts.
+  - [x] docs/configuration.md (storage VM packages) and docs/development/api-coverage.md (wording of the served snapshot endpoints and the protocols).
+
+## Close
+
+- Unit suite and lint over the whole project: green on 7ca143c (only `.project/` changed up to 80ac5d1).
+- End-to-end: all tests, because `internal/platform/hyperv` now passes the memory mode at every VM create and change: `task e2e -- -v` on 80ac5d1, 142 green in 52 min.
+- A first full run on 7ca143c hung at 13:46: hlabd answered no Hetzner API request any more while the management API did; no storage activity near the hang, no lock cycle found in the code, no dump possible without elevated rights; the rerun was green. SBOX-12/smb in that run got 423 for 5 minutes on the busy shared box (starvation, not a deadlock).
+- The documentation run found two bugs the rows did not cover (rollback with zfs_enabled, box SMB writes after a subaccount's login); both fixed, SBOX-18 and SBOX-14 gained one check each.

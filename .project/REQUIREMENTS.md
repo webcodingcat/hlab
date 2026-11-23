@@ -399,16 +399,16 @@ What the target vision in IDEA.md will need, not built yet.
 | SBOX-12 | 19 | x |
 | SBOX-03 | 19 | x |
 | SBOX-13 | 19 | x |
-| SBOX-14 | 20 | |
-| SBOX-15 | 20 | |
-| SBOX-16 | 20 | |
+| SBOX-14 | 20 | x |
+| SBOX-15 | 20 | x |
+| SBOX-16 | 20 | x |
 | SBOX-04 | 19 | x |
-| SBOX-05 | 20 | |
-| SBOX-17 | 20 | |
-| SBOX-18 | 20 | |
-| SBOX-19 | 20 | |
+| SBOX-05 | 20 | x |
+| SBOX-17 | 20 | x |
+| SBOX-18 | 20 | x |
+| SBOX-19 | 20 | x |
 | SBOX-06 | 19 | x |
-| SBOX-07 | 20 | |
+| SBOX-07 | 20 | x |
 | SBOX-08 | 19 | x |
 | HOST-01 | 05 | x |
 | HOST-02 | 09 | x |

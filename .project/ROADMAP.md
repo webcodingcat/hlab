@@ -53,19 +53,7 @@
 
 - [x] 19 Storage VM and SSH access (SBOX-03, SBOX-04, SBOX-06, SBOX-08, SBOX-11, SBOX-12, SBOX-13, SBOX-21) → phases/19/
 
-- [ ] 20 SMB, WebDAV, FTP and snapshots.
-      Requirements: SBOX-05, SBOX-07, SBOX-14, SBOX-15, SBOX-16, SBOX-17,
-      SBOX-18, SBOX-19.
-      Depends on: 19.
-      Success criteria:
-      1. Data written over SMB, WebDAV or FTPS can be read back over SFTP;
-         SMB, WebDAV and port 23 answer only while their access setting
-         is on.
-      2. Snapshots, the snapshot plan and a rollback behave as at Hetzner.
-      3. Data, accounts and snapshots survive a stop and start of the
-         cloud.
-      4. `docs/guide.md` and `docs/deviations.md` describe the protocols and
-         snapshots.
+- [x] 20 SMB, WebDAV, FTP and snapshots (SBOX-05, SBOX-07, SBOX-14, SBOX-15, SBOX-16, SBOX-17, SBOX-18, SBOX-19) → phases/20/
 
 - [ ] 21 Storage Boxes in the console and the clients.
       Requirements: UI-12, UI-13, UI-14, CLI-05, CLI-06, CLI-07.
