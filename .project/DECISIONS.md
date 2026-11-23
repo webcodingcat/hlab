@@ -19,6 +19,41 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Server console moves into milestone 1
+
+- Type: change
+- Phase: change
+- What: the server console moves from the target vision into milestone 1 as phase 23 after phase 21: request_console returns `wss://console.hetzner.internal/?server_id=<id>&token=<token>` with a VNC password and a certificate of the hlab CA, the tray opens it from the server's actions menu (with or without CA trust), graphical via Hyper-V if an experiment meets the limits (about 5 frames per second at 1024x768, input within about 0.5 s, at most one CPU core per console), otherwise the serial console; details in `decisions/server-console.md`, requirements SRV-17 (changed), CON-01, CON-02 and UI-15.
+- Why: the user wants the server console working in the first version.
+- Cost of change: medium (an addition: one phase with a new hlabd component, an appliance forward and a tray window; the existing `unsupported_error` answer and the disabled menu entry are replaced)
+- Replaces: 2026-11-18 Server protection and console details; 2026-11-18 request_console and vswitch subnets
+
+## 2026-11-23 Server protection details
+
+- Type: decision
+- Phase: change
+- What: `change_protection` writes the flags in the transaction that starts its action; delete checks protection before the lock (protected and locked answers `protected`); resource action lists accept `id` and `status`.
+- Why: the simplest order that the description allows (the console part of the 2026-11-18 entry went with the console change).
+- Cost of change: low
+- Replaces: 2026-11-18 Server protection and console details
+
+## 2026-11-23 vswitch subnets
+
+- Type: decision
+- Phase: change
+- What: vswitch subnets return `invalid_input` on field `type`.
+- Why: vSwitches couple to dedicated servers that hlab has no equivalent for (the console part of the 2026-11-18 entry went with the console change).
+- Cost of change: low
+- Replaces: 2026-11-18 request_console and vswitch subnets
+
+## 2026-11-23 Project deletion removes storage boxes through their module
+
+- Type: decision
+- Phase: phase 21
+- What: the storage box module implements `resource.Deleter` like the API delete (mark deleting, apply storage, remove box and release its IP); a failed apply keeps the project for a retry.
+- Why: deleting a project left box accounts and files in the storage VM and never released the boxes' IPs, which broke PROJ-04 (found by the phase 21 verifier).
+- Cost of change: low
+
 ## 2026-11-23 Deleting a project deletes its actions
 
 - Type: decision
@@ -1747,14 +1782,6 @@ taken with the approval of the spec or by an answer from the user.
 - Why: one source of truth, and Hetzner allows one group per server.
 - Cost of change: low
 
-## 2026-11-18 Server protection and console details
-
-- Type: decision
-- Phase: phase 02
-- What: `change_protection` writes the flags in the transaction that starts its action; delete checks protection before the lock (protected and locked answers `protected`); resource action lists accept `id` and `status`; `request_console` answers `unsupported_error` for any server ID.
-- Why: the simplest order that the description allows; the console is unsupported regardless of the server.
-- Cost of change: low
-
 ## 2026-11-18 Catalog lists through ListRequest
 
 - Type: decision
@@ -2230,14 +2257,6 @@ taken with the approval of the spec or by an answer from the user.
 - Phase: spec
 - What: The frozen Hetzner OpenAPI description is downloaded by `task openapi` from docs.hetzner.cloud, checked against the SHA-256 in `api/openapi.lock` and cached outside the repository; changing the pin is a deliberate commit.
 - Why: the file carries no licence, so committing it to an Apache-2.0 repository is unclear; the pin keeps it frozen.
-- Cost of change: low
-
-## 2026-11-18 request_console and vswitch subnets
-
-- Type: decision
-- Phase: spec
-- What: request_console returns `unsupported_error` ("server console is not supported by hlab yet"); vswitch subnets return `invalid_input` on field `type`.
-- Why: neither may pretend to work (decisions/server-console.md); vSwitches couple to dedicated servers that hlab has no equivalent for.
 - Cost of change: low
 
 ## 2026-11-18 Phases run without elevated rights

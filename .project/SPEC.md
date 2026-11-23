@@ -20,13 +20,17 @@ Versions as of 2026-11-18 (reasoning and sources in DECISIONS.md, "Stack").
   `github.com/pb33f/libopenapi-validator` v0.16.3 (response validation in
   tests),
   `github.com/modelcontextprotocol/go-sdk` v1.8.0 (`hlab mcp`, stdio and
-  in-memory transport); standard library `net/http`, `log/slog`, `crypto/x509`.
+  in-memory transport), `github.com/coder/websocket` v1.8.15 (E22 ran with v1.8.14; server
+  console WebSocket in hlabd and the tray's console proxy, phase 23;
+  `research/server-console.md`); standard library `net/http`, `log/slog`, `crypto/x509`.
 - Hyper-V: Hyper-V PowerShell module through one persistent Windows
   PowerShell 5.1 process; `CreateVirtualDisk` from virtdisk.dll for volume
   disks.
 - Tray: Wails v3.1.0 (pinned exactly), Svelte 5.58.0, Vite 8.3.8, TypeScript
   5.9.3 (the 7.x line is not yet confirmed with `svelte-check`),
-  `@lucide/svelte` 1.75.0, Node.js 24.22.3 LTS for the frontend build (newer Node versions work for development).
+  `@lucide/svelte` 1.75.0, `@novnc/novnc` 1.7.0 (console window, phase 23;
+  builds with the default target, ships no types, so the frontend declares
+  the module itself; E22), Node.js 24.22.3 LTS for the frontend build (newer Node versions work for development).
 - Windows icon resources: `github.com/tc-hib/winres` v0.3.1 (0BSD) in the
   icon generator `tools/icons`, which writes the committed `.syso` files.
 - Storage VM: Debian 13 `generic` cloud image, cloud-init, btrfs-progs
@@ -60,13 +64,46 @@ Versions as of 2026-11-18 (reasoning and sources in DECISIONS.md, "Stack").
 
 Fixed API answers:
 
-- `POST /servers/{id}/actions/request_console`: error code
-  `unsupported_error` with the HTTP status Hetzner documents for it, message
-  `server console is not supported by HLab yet`.
 - Subnet `type: vswitch`: `invalid_input`, field `type`, message
   `vswitch subnets are not supported by HLab`.
 - `/datacenters`: as at Hetzner since 2026-10-01 (410 Gone, per the frozen
   description).
+
+## Server console
+
+- `POST /servers/{id}/actions/request_console` answers as the frozen
+  description says (201, a finished `request_console` action, `wss_url`,
+  `password`); `wss_url` is
+  `wss://console.hetzner.internal/?server_id=<id>&token=<token>`, and the
+  token is valid for one minute to connect, an open connection is not cut
+  when it expires. The password is the VNC password (RFB security type
+  VNC Authentication).
+- The console speaks RFB 3.8 over WebSocket with TLS; the certificate for
+  `console.hetzner.internal` comes from the hlab CA. hlab never switches
+  "Trust CA" on by itself: an own browser or VNC client accepts the URL
+  only while trust is on (docs/deviations.md says so); the tray's console
+  window works either way.
+- Graphical or serial: phase 23 starts with an experiment on the real host
+  that measures, for the graphical path (Hyper-V framebuffer and input
+  through WMI), the frame rate at 1024x768, the delay until a key press is
+  visible and hlabd's CPU load per open console. If it reaches about 5
+  frames per second, about 0.5 s and at most one CPU core, the console is
+  graphical; otherwise it shows the server's serial console (COM1, ttyS0)
+  rendered as text into the RFB framebuffer, with keyboard input sent to
+  the serial port. The values and the choice go to
+  `research/EXPERIMENTS.md` (`decisions/server-console.md`).
+  E21 already measured 7.3 to 7.7 frames per second uncapped and a steady
+  5 capped at 1024x768, with hlabd at about 0.03 cores; the graphical path
+  is chosen unless the key delay check of E21, still to run at the start
+  of phase 23, fails. One open console costs about 0.7 cores, almost all
+  in the Hyper-V service `vmms.exe`; the limit of one core counts hlabd,
+  as the user set it, and the documentation names the `vmms.exe` load.
+- The certificate for `console.hetzner.internal` is issued by the hlab CA
+  at every cloud start, like the CRL renewal. The end-to-end test of CON-01
+  trusts the certificate by loading `/ca.pem` into its own client and never
+  switches "Trust CA" on.
+- `hcloud server request-console` against hlab prints the URL and password
+  like at Hetzner; the end-to-end test of CON-01 takes its URL from it.
 
 ## References
 
@@ -83,6 +120,8 @@ touches here instead of relying on memory.
   `task openapi` from `https://docs.hetzner.cloud/hetzner.spec.json`, a
   copy from after 2026-04-21), OpenAPI 3.1.2 pinned by SHA-256 in
   `api/hetzner-openapi.lock`; settles the same for `/hetzner/v1`.
+- RFB protocol 3.8 (RFC 6143) for the server console, as noVNC 1.7.0
+  speaks it (`research/server-console.md`).
 
 ## Accounts and secrets
 

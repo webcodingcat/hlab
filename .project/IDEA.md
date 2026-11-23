@@ -39,8 +39,8 @@ official clients.
     rebuild, change type, rescue as a real Linux rescue system, reset root
     password, create image/snapshot, backups (daily automatic, 7 kept, plus
     manual), attach/detach ISO, protection), server types, locations,
-    datacenters, images, ISOs. Exception: the console (request_console) is
-    not in v1; the API answers with a documented error
+    datacenters, images, ISOs, and the console: request_console returns a
+    working wss VNC console that the tray also opens
     (`decisions/server-console.md`).
   - SSH keys, primary IPs, floating IPs (really move), reverse DNS (really
     resolves)
@@ -63,7 +63,9 @@ official clients.
 - API at `http://api.hetzner.internal/v1`, plain HTTP, no CA
   (`decisions/api-transport.md`); the Storage Box API of the Hetzner API
   at `http://api.hetzner.internal/hetzner/v1`, Storage Boxes at
-  `uNNNNN.storagebox.hetzner.internal` (`decisions/storage-box.md`).
+  `uNNNNN.storagebox.hetzner.internal` (`decisions/storage-box.md`); the
+  server console at `wss://console.hetzner.internal` with a certificate of
+  the hlab CA (`decisions/server-console.md`).
 - Locations: all six real Hetzner locations with datacenters and network
   zones; one shared network segment, Hetzner's location rules enforced by
   the API, all guest traffic routed (/32) through the appliance
@@ -121,7 +123,6 @@ is built for now.
 - Deliberate fault injection: server failure, network disruption, latency
   between locations, API errors and rate limits, storage errors
 - Linux as a full host with KVM/libvirt, including the UI
-- Server console (request_console with a working wss VNC console)
 - WSL2 in mirrored networking mode
 - More images: other Hetzner system images (Rocky, Alma, Fedora, CentOS
   Stream, openSUSE), later app images
@@ -187,7 +188,6 @@ the per-resource client tests.
 
 ## Open for the SPEC
 
-- The exact error request_console returns in v1
 - Default public IPv4 range and collision handling
 - Where load balancers, firewalls and floating IPs are implemented
   (appliance, separate VMs, Hyper-V features)

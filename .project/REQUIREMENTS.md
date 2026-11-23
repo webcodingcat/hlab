@@ -74,12 +74,17 @@ resource types.
 - SRV-14 create image with type backup creates a manual backup of a server with backups enabled (goal 2) [unit]
 - SRV-15 attach ISO inserts the ISO into the server's virtual DVD drive and the server boots from it after reset; detach ISO removes it (goal 2) [e2e]
 - SRV-16 deleting a server removes its VM and disk and releases its IPs, except primary IPs with `auto_delete` false (goal 4) [e2e]
-- SRV-17 request console returns `unsupported_error` with the message documented in SPEC.md (goal 1) [unit]
+- SRV-17 request console returns a `request_console` action, a `wss_url` and a `password` in Hetzner's form as SPEC.md describes (goal 1) [unit]
 - SRV-18 a VM always gets the full RAM of its type; a server that would exceed RAM or disk minus the Windows reserve, or a type with more vCPUs than the host's logical cores, returns `resource_unavailable` (goal 2) [unit]
 - SRV-19 server disks are dynamic (thin-provisioned) VHDX files in the configured data folder (goal 2) [e2e]
 - SRV-20 the server status follows Hetzner's states (initializing, starting, running, stopping, off, rebuilding, migrating, deleting) for every action (goal 1) [unit]
 - SRV-21 `/servers/{id}/metrics` returns cpu, disk and network time series measured on the VM (goal 2) [e2e]
 - SRV-22 placement groups of type spread hold at most 10 servers and list their servers (goal 1) [unit]
+
+### Server console (`CON`)
+
+- CON-01 a VNC client connecting to the `wss_url` of request console with its `password` sees the server's screen and its keyboard and mouse input reaches the server; the serial console replaces the screen if the graphical path fails its experiment (SPEC.md "Server console") (goal 2) [e2e]
+- CON-02 a console connection is refused with a wrong password, an unknown or expired token or a token of another server (goal 1) [unit]
 
 ### SSH keys (`KEY`)
 
@@ -220,6 +225,7 @@ The Hetzner API (`http://api.hetzner.internal/hetzner/v1`), with the cloud token
 - UI-12 the console lists, shows, creates, configures and deletes the storage boxes of the active project (goal 3) [e2e]
 - UI-13 the console lists, creates, configures and deletes the subaccounts and snapshots of a storage box and rolls a box back to a snapshot (goal 3) [e2e]
 - UI-14 the storage box types view shows the catalog types and adds, edits and removes own storage box types (goal 3) [e2e]
+- UI-15 the server's actions menu entry "Console" opens a console window that shows the server's screen and sends keyboard input, also while the hlab CA is not trusted (goal 3) [e2e]
 
 ### Installer (`INST`)
 
@@ -274,7 +280,6 @@ What the target vision in IDEA.md will need, not built yet.
 
 - FAULT-01 inject server failure, network disruption, latency between locations, API errors, rate limits and storage errors
 - LINUX-01 run hlab with the tray on Linux with KVM/libvirt
-- CON-01 request console returns a working wss VNC console
 - HOST-05 WSL2 in mirrored networking mode
 - CAT-09 further system images (Rocky, Alma, Fedora, CentOS Stream, openSUSE) and app images
 
@@ -287,7 +292,6 @@ What the target vision in IDEA.md will need, not built yet.
 | Hetzner's performance, outages and rate limits | Non-goal in IDEA.md; only deliberate fault injection later |
 | Running ARM (CAX) servers | Non-goal in IDEA.md; the types are listed but return `resource_unavailable` |
 | Shrinking a server's RAM below its type | Non-goal in IDEA.md |
-| Server console in v1 | `decisions/server-console.md`; returns `unsupported_error` |
 | vSwitch subnets (Robot coupling) | No dedicated servers exist in hlab; returns `invalid_input` |
 | Real IPv6 traffic | Possible later in IDEA.md; addresses are formal only |
 | Hetzner's private ISOs | Not downloadable; a public ISO catalog and the user's own ISOs (CAT-10) replace them |
@@ -341,7 +345,7 @@ What the target vision in IDEA.md will need, not built yet.
 | SRV-14 | 04 | x |
 | SRV-15 | 04 | x |
 | SRV-16 | 01 | x |
-| SRV-17 | 02 | x |
+| SRV-17 | 23 | |
 | SRV-18 | 03 | x |
 | SRV-19 | 01 | x |
 | SRV-20 | 03 | x |
@@ -453,6 +457,9 @@ What the target vision in IDEA.md will need, not built yet.
 | CLI-05 | 21 | |
 | CLI-06 | 21 | |
 | CLI-07 | 21 | |
+| CON-01 | 23 | |
+| CON-02 | 23 | |
+| UI-15 | 23 | |
 | MCP-01 | 17 | x |
 | MCP-02 | 17 | x |
 | MCP-03 | 17 | x |

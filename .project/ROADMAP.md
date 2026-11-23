@@ -68,6 +68,26 @@
       3. The README names the Hetzner endpoint setting of each client, and
          the help text of the new view exists.
 
+- [ ] 23 Server console.
+      Requirements: SRV-17, CON-01, CON-02, UI-15.
+      Depends on: 21 (order only), 03.
+      Adjusts: the code and tests that expect `unsupported_error` for
+      request_console or a disabled "Console" menu entry (servers module,
+      `api.Deviations`, `serverActions.ts` and their unit, conventions and
+      hcloud client tests) and docs/development/build-and-test.md.
+      Success criteria:
+      1. The experiment of SPEC.md "Server console" has measured frame
+         rate, input delay and CPU load of the graphical path and recorded
+         them in research/EXPERIMENTS.md; the phase builds the graphical
+         console if all three meet their limits, otherwise the serial one.
+      2. `hcloud server request-console` prints a `wss_url` and password,
+         and a VNC client sees the server's screen and types into it.
+      3. The actions menu entry "Console" in the tray opens the console
+         window, with the hlab CA trusted or not.
+      4. docs/deviations.md and docs/development/api-coverage.md no longer
+         list the console as unsupported; the README and the help text of
+         the server view describe it.
+
 - [ ] 16 Release checks in test VMs.
       Requirements: DOC-08.
       Depends on: 13 and every other phase of milestone 1; it stays the
@@ -89,7 +109,6 @@
 - Fault injection (server failure, network disruption, latency, API errors,
   rate limits, storage errors)
 - Linux host with KVM/libvirt, including the tray
-- Server console with a working wss VNC console
 - WSL2 in mirrored networking mode
 - More system images and app images
 - MCP tools that read and change Hetzner resources (`decisions/mcp-server.md`)
