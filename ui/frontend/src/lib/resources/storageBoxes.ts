@@ -1,6 +1,6 @@
 // Storage box actions: the create form's request, the detail page's actions
 // menu and the actions of the detail tabs, plus the types a location offers.
-import { createAt, pick, postAction, remove, rename, update, type ResourceAction } from "../resourceActions";
+import { changeProtection, createAt, pick, postAction, remove, rename, update, type ResourceAction } from "../resourceActions";
 
 const base = "storage_boxes";
 
@@ -45,11 +45,7 @@ const updateAccess = postAction(base, "update_access_settings", "update_access_s
   needsInput: true,
 });
 
-const protection = postAction(base, "change_protection", "change_protection", {
-  label: "Change protection",
-  body: (i) => ({ delete: i.delete }),
-  needsInput: true,
-});
+const protection = changeProtection(base);
 
 const labels = update(base, "labels", "Labels", (i) => ({ labels: i.labels }), { needsInput: true });
 
