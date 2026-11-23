@@ -176,12 +176,12 @@ func (w *Windows) OpenConsole(project string, id int64, name string) error
   - Size: ~300 lines in 2 files
   - [x] `internal/platform/hyperv/wmi_windows.go`: COM init on a locked OS thread, `IWbemLocator.ConnectServer` to `root\virtualization\v2`, `CoSetProxyBlanket`, `IWbemServices` `ExecQuery`/`GetObject`/`ExecMethod`, `IWbemClassObject` `Get`/`Put`/`SpawnInstance`/`GetMethod`, VARIANT helpers for BSTR, I4, BOOL, VT_ARRAY|VT_UI1 in and out (one `SafeArrayAccessData` copy), Release and VariantClear on every path, through `golang.org/x/sys/windows` only
 
-- [ ] 23-06 Hyper-V console connection
+- [x] 23-06 Hyper-V console connection
   - Wave: 2 | Depends on: 23-02, 23-05 | Review: alone
   - Requirements: CON-01 | Tests: test/e2e/console_test.go (runs at 23-07)
   - Reads: PLAN.md "Interfaces"; EXPERIMENTS.md E21, E25; ARCHITECTURE.md "platform (interface) and platform/hyperv"
   - Size: ~280 lines in 2 files
-  - [ ] `Platform.OpenConsole` in `internal/platform/hyperv/screen_windows.go` (plus a `_other.go` stub if the package builds elsewhere): lookups by VM name (`Msvm_ComputerSystem`, realized VSSD, `Msvm_VideoHead`, `Msvm_Keyboard`, `Msvm_SyntheticMouse`), one worker goroutine per conn owning the COM connection; `Screen` reads VideoHead then `GetVirtualSystemThumbnailImage` at that size (ReturnValue 32775/32779 → ok false, trailing bytes dropped), `Scancodes` via `TypeScancodes` (VT_ARRAY|VT_UI1), `MouseMove` via `SetAbsolutePosition`, `MouseButton` via `SetButtonState`, `MouseScroll` via `SetScrollPosition`; a missing VM is `platform.Error{Kind: NotFound}`
+  - [x] `Platform.OpenConsole` in `internal/platform/hyperv/screen_windows.go` (plus a `_other.go` stub if the package builds elsewhere): lookups by VM name (`Msvm_ComputerSystem`, realized VSSD, `Msvm_VideoHead`, `Msvm_Keyboard`, `Msvm_SyntheticMouse`), one worker goroutine per conn owning the COM connection; `Screen` reads VideoHead then `GetVirtualSystemThumbnailImage` at that size (ReturnValue 32775/32779 → ok false, trailing bytes dropped), `Scancodes` via `TypeScancodes` (VT_ARRAY|VT_UI1), `MouseMove` via `SetAbsolutePosition`, `MouseButton` via `SetButtonState`, `MouseScroll` via `SetScrollPosition`; a missing VM is `platform.Error{Kind: NotFound}`
 
 - [ ] 23-07 request_console and the console in the cloud
   - Wave: 4 | Depends on: 23-01, 23-04, 23-06 | Review: alone
