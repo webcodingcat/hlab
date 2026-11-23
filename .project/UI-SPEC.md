@@ -81,7 +81,7 @@ everywhere.
   (error colour) and stays in the input.
 - Confirm dialog: for every delete and every destructive action; the
   resource name must be typed for projects (their display name), servers,
-  volumes, networks and zones.
+  volumes, networks, zones and storage boxes.
 - Action toast: bottom right, shows a running action with progress and its
   result; errors stay until closed. Its title is `<Type> <name>: <action>`,
   e.g. "Network Test: Delete", "Record www A: Change TTL".

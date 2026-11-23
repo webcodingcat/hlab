@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Deleting a storage box needs its name typed (Q23)
+
+- Type: decision
+- Phase: phase 21
+- What: the console's confirm dialog for deleting a storage box asks for the box name to be typed, as for volumes; UI-SPEC.md adds storage boxes to that list.
+- Why: The user chose it (Q23): deleting a box destroys its data and all its snapshots.
+- Cost of change: low
+
 ## 2026-11-23 Upgrade to wcc 0.32.23
 
 - Type: approval

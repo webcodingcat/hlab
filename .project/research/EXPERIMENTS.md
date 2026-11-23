@@ -488,3 +488,41 @@ computed NT hash.
 Consequence: hlabd computes both hashes and the storage document carries
 them per account; the NT hash is unsalted and never logged or returned.
 yescrypt (`$y$`) was not tested; stay with `$6$`.
+
+## E20 hcloud 1.70.2 runs every storage box command against hlab unchanged
+
+- Result: confirmed (three client-side quirks)
+- Checked on: 2026-11-23
+- By: experiment
+- Status: valid
+
+How it was checked: hcloud 1.70.2 with context `hlab-docs` (`endpoint`
+`http://api.hetzner.internal/v1`, `hetzner-endpoint`
+`http://api.hetzner.internal/hetzner/v1`) against the dev cloud, with
+`HCLOUD_TOKEN`, `HCLOUD_ENDPOINT` and `HCLOUD_CONTEXT` cleared; a 68-step pass
+over every command under `storage-box`, `storage-box subaccount`,
+`storage-box snapshot` and `storage-box-type`, plus
+`hcloud all list --debug --debug-file <tmp>` (the debug file holds the token
+and passwords; write it outside the repo and delete it).
+
+Observed: every command returns rc 0; refusals match Hetzner (protected
+delete: `the resource is protected (protected)`; `home_directory` with `..`:
+422 `invalid_input`). `all list` sends 14 requests, all to
+`api.hetzner.internal`, storage boxes via `/hetzner/v1/storage_boxes`; its
+`-o json` is one object of arrays incl. `storage_boxes`. hcloud waits for
+storage box actions with `GET /v1/actions?id=<n>` on the Cloud endpoint.
+`create -o json` prints the create response (`status` `initializing`, empty
+`username`/`server`); read them with a later `describe`. Subaccounts have no
+label or protection commands; labels only at create. Timings: first box
+create 56 s (storage VM start), rollback 9-24 s, snapshot delete ~9 s,
+other actions ~2 s.
+
+Client quirks (no hlab change): hcloud resolves a subaccount argument by ID
+or `?name=`, never by username; `describe -o json` prints Sunday as
+`day_of_week` 0 (Go `time.Weekday`) while the API holds 7; rollback deletes
+newer snapshots (by design, SBOX-18). In Git Bash, arguments starting with
+`/` are rewritten unless `MSYS_NO_PATHCONV=1`. `hcloud api` needs
+`--endpoint .../hetzner/v1` for storage box paths.
+
+Consequence: CLI-05 rows address subaccounts by name or ID, do not check
+Sunday in JSON output, and expect newer snapshots gone after a rollback.
