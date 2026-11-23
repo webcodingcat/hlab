@@ -49,7 +49,9 @@ func run(ctx context.Context, name string, args ...string) (string, error) {
 }
 
 // apply brings the storage VM to doc: the steps of Plan, then the
-// passwords, then the quota accounting check of E18.
+// passwords, then the quota accounting check of E18. A box whose step
+// fails is logged and left out of its later steps and the passwords; the
+// others are applied, and the failures are returned together at the end.
 func (a *Agent) apply(ctx context.Context, doc agentapi.Storage) error {
 	st, err := a.state(ctx)
 	if err != nil {
@@ -59,25 +61,39 @@ func (a *Agent) apply(ctx context.Context, doc agentapi.Storage) error {
 	for _, b := range doc.Boxes {
 		boxes[b.User] = b
 	}
+	skipped := map[string]bool{} // accounts left out of the passwords
+	var errs []error
 	for _, s := range Plan(st, doc) {
+		if s.Kind == StepFormat {
+			if err := a.format(ctx); err != nil {
+				return err
+			}
+			continue
+		}
+		if skipped[s.Box] {
+			continue
+		}
 		switch s.Kind {
-		case StepFormat:
-			err = a.format(ctx)
 		case StepRemoveBox:
 			err = a.removeBox(ctx, s.Box)
 		case StepCreateBox:
 			err = a.createBox(ctx, boxes[s.Box])
 		case StepUpdateBox:
-			err = a.updateBox(ctx, boxes[s.Box])
+			err = a.updateBox(ctx, boxes[s.Box], skipped)
 		}
 		if err != nil {
-			return err
+			slog.Error("storage box step failed", "box", s.Box, "step", s.Kind, "err", err)
+			errs = append(errs, fmt.Errorf("box %s: %w", s.Box, err))
+			skipped[s.Box] = true
 		}
 	}
-	if err := setPasswords(ctx, doc); err != nil {
-		return err
+	if err := setPasswords(ctx, doc, skipped); err != nil {
+		errs = append(errs, err)
 	}
-	return a.checkQuota(ctx)
+	if err := a.checkQuota(ctx); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 // state mounts the data disk when it holds a filesystem and returns what
@@ -239,7 +255,9 @@ func (a *Agent) createBox(ctx context.Context, b agentapi.Box) error {
 // updateBox brings the accounts of an existing box to the document without
 // touching its data: the quota limit, the subaccounts and their homes, and
 // the chroots of all accounts.
-func (a *Agent) updateBox(ctx context.Context, b agentapi.Box) error {
+// A subaccount whose home or chroot cannot be set up is logged, loses its
+// chroot and is added to skipped.
+func (a *Agent) updateBox(ctx context.Context, b agentapi.Box, skipped map[string]bool) error {
 	n, err := boxUID(b.User)
 	if err != nil {
 		return err
@@ -265,20 +283,20 @@ func (a *Agent) updateBox(ctx context.Context, b agentapi.Box) error {
 		if err == nil {
 			err = a.ensureHome(b.User, n, home)
 		}
+		if err == nil {
+			if _, ok := users[s.User]; !ok {
+				_, err = run(ctx, "useradd", "-o", "-M", "-N", "-u", id, "-g", id, "-d", "/home", "-s", "/bin/sh", s.User)
+			}
+		}
+		if err == nil {
+			err = a.ensureChroot(s.User, n, b.User, home, s.Access.ReadOnly)
+		}
 		if err != nil {
 			slog.Error("subaccount skipped", "user", s.User, "err", err)
+			skipped[s.User] = true
 			if err := removeChroot(s.User); err != nil {
 				return err
 			}
-			continue
-		}
-		if _, ok := users[s.User]; !ok {
-			if _, err := run(ctx, "useradd", "-o", "-M", "-N", "-u", id, "-g", id, "-d", "/home", "-s", "/bin/sh", s.User); err != nil {
-				return err
-			}
-		}
-		if err := a.ensureChroot(s.User, n, b.User, home, s.Access.ReadOnly); err != nil {
-			return err
 		}
 	}
 	for u := range users {
@@ -292,7 +310,8 @@ func (a *Agent) updateBox(ctx context.Context, b agentapi.Box) error {
 }
 
 // ensureHome creates the missing directories of home below the box's
-// data, owned by the box; symlinks cannot lead out of the data.
+// data, owned by the box, and requires home to be a directory; symlinks
+// cannot lead out of the data.
 func (a *Agent) ensureHome(box string, n int, home string) error {
 	r, err := os.OpenRoot(filepath.Join(a.o.Root, box))
 	if err != nil {
@@ -316,6 +335,13 @@ func (a *Agent) ensureHome(box string, n int, home string) error {
 		if err := r.Lchown(p, n, n); err != nil {
 			return err
 		}
+	}
+	st, err := r.Stat(home)
+	if err != nil {
+		return err
+	}
+	if !st.IsDir() {
+		return fmt.Errorf("home %s is no directory", home)
 	}
 	return nil
 }
@@ -534,7 +560,9 @@ func (a *Agent) removeBox(ctx context.Context, box string) error {
 // setPasswords sets the crypt hash of every account whose shadow entry
 // differs, through the standard input of chpasswd -e so that no hash
 // appears in an argument list or an error.
-func setPasswords(ctx context.Context, doc agentapi.Storage) error {
+// Skipped accounts, and accounts without a shadow entry, are left out, so
+// that one of them cannot fail the passwords of the others.
+func setPasswords(ctx context.Context, doc agentapi.Storage, skipped map[string]bool) error {
 	shadow, err := os.ReadFile("/etc/shadow")
 	if err != nil {
 		return err
@@ -548,11 +576,15 @@ func setPasswords(ctx context.Context, doc agentapi.Storage) error {
 	}
 	var in strings.Builder
 	set := func(user, hash string) {
-		if hash != "" && have[user] != hash {
+		old, ok := have[user]
+		if ok && !skipped[user] && hash != "" && old != hash {
 			in.WriteString(user + ":" + hash + "\n")
 		}
 	}
 	for _, b := range doc.Boxes {
+		if skipped[b.User] {
+			continue
+		}
 		set(b.User, b.Hashes.Crypt)
 		for _, s := range b.Subaccounts {
 			set(s.User, s.Hashes.Crypt)
