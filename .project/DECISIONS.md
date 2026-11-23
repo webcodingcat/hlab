@@ -19,6 +19,30 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Account chroots without /tmp
+
+- Type: decision
+- Phase: phase 19
+- What: Account chroots have no `/tmp` (removed with its content at the next apply), and `storage-shell` sets `TMPDIR=/home` for accounts that may write.
+- Why: Nothing may be written outside the box quota onto the storage VM's system disk (review of 19-07).
+- Cost of change: low
+
+## 2026-11-23 Storage agent owns sshd_config
+
+- Type: decision
+- Phase: phase 19
+- What: The storage agent writes all of `/etc/ssh/sshd_config` (only listed accounts, no root) and reloads `ssh.service`; `storage-shell` and `storage-keys` run from `/usr/local/sbin/hlab-agent`.
+- Why: Debian and cloud-init settings cannot reach past its Match blocks.
+- Cost of change: low
+
+## 2026-11-23 Port 23 and key filters are strict
+
+- Type: decision
+- Phase: phase 19
+- What: Port 23 accepts only the flags OpenSSH scp and borg serve really send and refuses quotes (paths with spaces) and unknown users; authorized keys are passed on as `<type> <base64>` only, dropping options and comments.
+- Why: No user input may become a command or an sshd key option.
+- Cost of change: low
+
 ## 2026-11-23 Storage box not-active guard and Recover
 
 - Type: decision

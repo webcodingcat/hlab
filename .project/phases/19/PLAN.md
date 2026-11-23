@@ -191,21 +191,21 @@ CompactDisk(ctx context.Context, path string) error
   - [x] `boxes.go`: in the create transaction assign `_hlab.n` (kv counter) and `_hlab.ip` (`ipam.NextPublic`); the API keeps `username`, `server`, `system` null until active; `storageboxes.go`: the new `Deps` fields and `HLab.IP`, `HLab.Deleting`.
   - [x] New `document.go`: `Boxes(tx)` (all projects, quota from the stored type, hashes, keys, access, subaccounts; boxes marked deleting left out) and `Contribute` (`Config.Storage` when any box exists, `Config.StorageBoxes` with names and reachability).
 
-- [ ] 19-07 Storage agent: SSH on ports 22 and 23
+- [x] 19-07 Storage agent: SSH on ports 22 and 23
   - Wave: 3 | Depends on: 19-04 | Review: alone
   - Requirements: SBOX-03, SBOX-12, SBOX-13 | Tests: internal/storageagent/port23_test.go, internal/storageagent/keys_test.go
   - Reads: CONTEXT.md "sshd", "SSH keys", "Network" (Match Address); EXPERIMENTS.md E17; RESEARCH.md 2
   - Size: ~380 lines in 5 files
-  - [ ] New `internal/storageagent/sshd.go`: one sshd config:
+  - [x] New `internal/storageagent/sshd.go`: one sshd config:
     - port 22: internal-sftp chrooted to `/home`, `-R` only for read-only subaccounts;
     - port 23 only for accounts with ssh_enabled, with `ForceCommand hlab-agent storage-shell`;
     - `AuthorizedKeysCommand hlab-agent storage-keys %u`;
     - `Match Address` that refuses external sources for accounts that are not reachable externally;
     - reloaded after each apply that changes it.
-  - [ ] New `port23.go` (pure `Port23`) and `keys.go` (pure `AuthorizedKeys`, reading `<home>/.ssh/authorized_keys` of the account):
+  - [x] New `port23.go` (pure `Port23`) and `keys.go` (pure `AuthorizedKeys`, reading `<home>/.ssh/authorized_keys` of the account):
     - Port23 allows `internal-sftp`/sftp-server, strictly parsed `scp -t|-f <path>`, `rsync --server` through `rrsync [-ro] /home`, and `borg serve --restrict-to-path /home` (accepting `--remote-path` borg-1.1, borg-1.2, borg-1.4);
     - it refuses everything else with "Command not allowed".
-  - [ ] `cmd/hlab-agent/main.go`: subcommands `storage-shell` (exec of the argv, never `sh -c`) and `storage-keys`.
+  - [x] `cmd/hlab-agent/main.go`: subcommands `storage-shell` (exec of the argv, never `sh -c`) and `storage-keys`.
 
 - [x] 19-08 Storage boxes: action outcomes
   - Wave: 3 | Depends on: 19-06 | Review: alone
@@ -223,6 +223,7 @@ CompactDisk(ctx context.Context, path string) error
   - Requirements: SBOX-03 | Tests: -
   - Reads: ARCHITECTURE.md "Storage VM", "Files and formats"; CONTEXT.md "Storage VM", "Data disk", "storage-debs.json"; RESEARCH.md 1, 4, 9; `internal/cloud/appliance.go`, `appliance/*`
   - Size: ~380 lines in 5 files
+  - Note (from 19-07): the storage VM installs hlab-agent at `/usr/local/sbin/hlab-agent` (root-owned, 0755, inside /usr so the chroots see it), and sshd must run as `ssh.service`, not socket-activated through `ssh.socket` (disable the socket if Debian 13 enables it); the agent owns `/etc/ssh/sshd_config` and reloads with `systemctl reload-or-restart ssh.service`.
   - [ ] New `catalog/storage-debs.json` with the seven packages of RESEARCH.md 1.2 (pool and snapshot URL; every SHA-256 recomputed from the downloaded file before committing).
   - [ ] New `appliance/storage-user-data.yaml` and the storage part of `appliance/appliance.go` (install the debs with one `dpkg -i`, disable `rsync.service`, start `hlab-agent --role storage`).
   - [ ] New `internal/cloud/storage.go`: `ensureStorageVM` and `deleteStorageVM`:
