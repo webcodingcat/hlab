@@ -19,6 +19,54 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Client storage box plans run one after another
+
+- Type: decision
+- Phase: phase 21
+- What: the hcloud, OpenTofu and Ansible storage box plans run in sequence.
+- Why: each may have to fix the same storage box module in hlab, and parallel plans must not touch the same files.
+- Cost of change: low
+
+## 2026-11-23 Subaccounts and Snapshots tabs built standalone
+
+- Type: decision
+- Phase: phase 21
+- What: the two tabs are standalone components wired into the box detail page by plan 21-10; shared types `StorageBox` and `BoxType` live in `lib/resources/storageBoxes.ts`.
+- Why: parallel wave-2 plans stay off the same files.
+- Cost of change: low
+
+## 2026-11-23 UI-12 and UI-13 share one storage box
+
+- Type: decision
+- Phase: phase 21
+- What: both console rows take the shared box fixture, with a 20-minute limit each.
+- Why: the storage VM boots once instead of being deleted and recreated between them.
+- Cost of change: low
+
+## 2026-11-23 Own storage box types: size in bytes, explicit locations
+
+- Type: decision
+- Phase: phase 21
+- What: the console sends the own-type size in bytes (MiB/GiB/TiB as binary units), and the own-type spec stores an explicit non-empty location list.
+- Why: matches hcloud's units, and the user's location multi-select replaces "no location means all".
+- Cost of change: low
+
+## 2026-11-23 UI-12 reaches the folder browser through a subaccount home
+
+- Type: decision
+- Phase: phase 21
+- What: the folder browser test uses a subaccount with home directory `data/web` created through the API; the project-list count test is part of UI-12.
+- Why: needs no file transfer; the count is new console behaviour of this phase.
+- Cost of change: low
+
+## 2026-11-23 hcloud all list checked through its debug file
+
+- Type: decision
+- Phase: phase 21
+- What: the `all list` test reads hcloud's debug file to prove no request went to Hetzner; the file is written to the run's temp folder, deleted and never logged.
+- Why: it is the only record of every request host, and it holds the token.
+- Cost of change: low
+
 ## 2026-11-23 Deleting a storage box needs its name typed (Q23)
 
 - Type: decision
