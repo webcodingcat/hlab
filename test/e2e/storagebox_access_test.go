@@ -142,7 +142,7 @@ func (e *env) createSubaccount(t *testing.T, box *storageBox, home string, acces
 	}
 	path := fmt.Sprintf("/storage_boxes/%d/subaccounts", box.ID)
 	body := map[string]any{"home_directory": home, "password": pw, "access_settings": access}
-	status, aerr, err := e.hetznerDo(context.Background(), http.MethodPost, path, body, &created)
+	status, aerr, err := e.hetznerLocked(http.MethodPost, path, body, &created)
 	if err != nil || status != http.StatusCreated {
 		t.Fatalf("POST %s: status %d %s %s %v", path, status, aerr.Code, aerr.Message, err)
 	}

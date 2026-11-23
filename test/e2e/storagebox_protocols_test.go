@@ -26,7 +26,26 @@ const (
 	protocolSwitchTimeout = 2 * time.Minute
 	// davRequestTimeout limits one WebDAV request from the host.
 	davRequestTimeout = time.Minute
+	// boxLockTimeout is the wait while another row's action locks the box.
+	boxLockTimeout = 5 * time.Minute
 )
+
+// hetznerLocked is hetznerDo for a request that starts an action on a box
+// other rows act on too: while the API answers 423 locked (a running action
+// of the box), it tries again until boxLockTimeout.
+func (e *env) hetznerLocked(method, path string, body, out any) (int, apiError, error) {
+	var status int
+	var aerr apiError
+	var err error
+	werr := waitFor(boxLockTimeout, 2*time.Second, func() (bool, error) {
+		status, aerr, err = e.hetznerDo(context.Background(), method, path, body, out)
+		return err != nil || status != http.StatusLocked, nil
+	})
+	if werr != nil && err == nil {
+		err = fmt.Errorf("box still locked: %w", werr)
+	}
+	return status, aerr, err
+}
 
 // caFixture is the hlab CA certificate, exported once per run.
 var caFixture struct {
@@ -196,7 +215,7 @@ func (e *env) updateAccess(t *testing.T, path string, access map[string]bool) {
 		} `json:"action"`
 	}
 	path += "/actions/update_access_settings"
-	status, aerr, err := e.hetznerDo(context.Background(), http.MethodPost, path, access, &body)
+	status, aerr, err := e.hetznerLocked(http.MethodPost, path, access, &body)
 	if err != nil || status != http.StatusCreated && status != http.StatusOK {
 		t.Fatalf("POST %s: status %d %s %s %v", path, status, aerr.Code, aerr.Message, err)
 	}
