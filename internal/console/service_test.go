@@ -142,7 +142,7 @@ func (e *serviceEnv) dial(t *testing.T, wssURL string) (net.Conn, *http.Response
 		return nil, resp, err
 	}
 	conn := websocket.NetConn(context.Background(), ws, websocket.MessageBinary)
-	t.Cleanup(func() { conn.Close() })
+	t.Cleanup(func() { _ = conn.Close() })
 	return conn, resp, nil
 }
 
