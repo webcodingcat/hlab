@@ -232,14 +232,20 @@ func begin(tx store.Tx, acts *actions.Manager, projectID, boxID int64, command s
 type boxFunc func(tx store.Tx, projectID int64, r *Record) error
 
 // run hands the work of action actionID on box boxID to the action
-// manager: Apply, then done on the stored box of projectID in one
-// transaction, then a refresh of the box's stats. When Apply fails, failed (if not nil) runs instead of done
-// and the action fails with Apply's error; the appliance's document is
-// then pushed again, as failed changed what it holds.
-func (m *Module) run(req *http.Request, actionID, boxID int64, done, failed boxFunc) {
+// manager. Each step works on the stored box of projectID in a
+// transaction of its own: change (if not nil) stores the action's change,
+// so Apply pushes documents that already hold it; then Apply; then done
+// (if not nil) and a refresh of the box's stats. When Apply fails, failed
+// (if not nil) runs instead of done and undoes what change stored, the
+// appliance's document is pushed again, and the action fails with Apply's
+// error.
+func (m *Module) run(req *http.Request, actionID, boxID int64, change, done, failed boxFunc) {
 	p, _ := api.ProjectFrom(req.Context())
 	st := api.StoreFrom(req.Context())
 	onBox := func(fn boxFunc) error {
+		if fn == nil {
+			return nil
+		}
 		return st.Tx(func(tx store.Tx) error {
 			r, err := Load(tx, p.ID, boxID)
 			if err != nil {
@@ -249,6 +255,9 @@ func (m *Module) run(req *http.Request, actionID, boxID int64, done, failed boxF
 		})
 	}
 	api.ActionsFrom(req.Context()).Run(actionID, func(ctx context.Context, _ func(int)) error {
+		if err := onBox(change); err != nil {
+			return err
+		}
 		if m.d.Apply != nil {
 			if err := m.d.Apply(ctx, boxID); err != nil {
 				if failed != nil {
@@ -274,10 +283,11 @@ func (m *Module) run(req *http.Request, actionID, boxID int64, done, failed boxF
 
 // boxAction answers a request that runs command as an action on the box
 // of the path: a box that is not active and check refuse on the stored
-// box before the action starts, done changes it when the action succeeds
-// (see run). It answers 201 with the action.
+// box before the action starts, change stores the action's change before
+// Apply, and a failed Apply restores the box as it was (see run). It
+// answers 201 with the action.
 func (m *Module) boxAction(w http.ResponseWriter, req *http.Request, command string,
-	check func(r Record) error, done boxFunc,
+	check func(r Record) error, change boxFunc,
 ) {
 	id, ok := api.PathID(w, req)
 	if !ok {
@@ -306,7 +316,13 @@ func (m *Module) boxAction(w http.ResponseWriter, req *http.Request, command str
 		api.Fail(w, err)
 		return
 	}
-	m.run(req, a.ID, id, done, nil)
+	var old Record
+	m.run(req, a.ID, id, func(tx store.Tx, projectID int64, r *Record) error {
+		old = *r
+		return change(tx, projectID, r)
+	}, nil, func(tx store.Tx, projectID int64, _ *Record) error {
+		return put(tx, projectID, old)
+	})
 	api.JSON(w, http.StatusCreated, map[string]any{"action": a})
 }
 
