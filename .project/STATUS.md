@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 22 SMB from the Windows host (next)
+- Phase: 21 Storage Boxes in the console and the clients (next)
 - Base branch: main
-- Last done: phase 20 merged into main (2026-11-23): storage boxes serve SMB, WebDAV over HTTPS and FTP/FTPS, with snapshots, snapshot plans and rollback; data, accounts and snapshots survive a stop and start
-- Next: /wcc:phase in a new session builds phase 22 (SMB from the Windows host), then phase 21 and phase 16; /wcc:change takes items from "Later" before phase 16
+- Last done: phase 22 merged into main (2026-11-23): the Windows host maps a box's and a subaccount's SMB share with `net use`; error 67 of phase 20 came from Git Bash, not from SMB
+- Next: /wcc:phase in a new session builds phase 21 (Storage Boxes in the console and the clients), then phase 16; /wcc:change takes items from "Later" before phase 16
 
 ## Open manual checks
 

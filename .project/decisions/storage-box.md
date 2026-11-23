@@ -44,7 +44,9 @@
 - SMB from Windows uses NTLMv2 (E16); a future Windows build that blocks
   NTLM by default would break it from the host. `docs/deviations.md`
   names the risk. The Windows host must map the shares with `net use`
-  (SBOX-22, Q22); phase 20 found system error 67 there while WSL2 worked.
+  (SBOX-22, Q22); it does (phase 22). The system error 67 phase 20 saw
+  came from Git Bash collapsing the leading `\\` of the UNC path, not
+  from SMB: run `net use` from PowerShell, cmd or Go's `exec.Command`.
 - Usernames `u<n>` with `n` from 100000 upward, never reused; subaccounts
   `u<n>-sub<m>`. Each box gets a public IPv4 of the range, routed by the
   appliance to the storage VM; the agent DNS answers the box and

@@ -720,6 +720,28 @@ NT_STATUS_ACCESS_DENIED opening remote file \notes.txt
 The share of the read-only subaccount refuses the write. The server
 speaks SMB 2.1 and newer; `smbclient -L` does not list the shares.
 
+From Windows, in PowerShell or cmd, `net use` maps a share without a
+drive letter; the box (or subaccount) must be reachable externally:
+
+```
+> net use \\u100011.storagebox.hetzner.internal\backup Secret-Passw0rd /user:u100011 /persistent:no
+The command completed successfully.
+> Copy-Item report.txt \\u100011.storagebox.hetzner.internal\backup\web1\
+> net use \\u100011-sub1.storagebox.hetzner.internal\u100011-sub1 Other-Passw0rd /user:u100011-sub1 /persistent:no
+The command completed successfully.
+> Get-Content \\u100011-sub1.storagebox.hetzner.internal\u100011-sub1\report.txt
+via smb
+> net use \\u100011.storagebox.hetzner.internal\backup /delete
+\\u100011.storagebox.hetzner.internal\backup was deleted successfully.
+> net use \\u100011-sub1.storagebox.hetzner.internal\u100011-sub1 /delete
+\\u100011-sub1.storagebox.hetzner.internal\u100011-sub1 was deleted successfully.
+```
+
+Map each account under its own server name, the subaccount under
+`u100011-sub1.storagebox.hetzner.internal`, not under the box's. Run
+`net use` from PowerShell or cmd, not from Git Bash, which turns the
+leading `\\` into `\` so that Windows answers `System error 67`.
+
 ### WebDAV
 
 With WebDAV enabled, each account is served at
