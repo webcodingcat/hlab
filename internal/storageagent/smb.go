@@ -32,15 +32,9 @@ const sambaIncludeDir = "/etc/samba"
 func SambaConfig(doc agentapi.Storage, skipped map[string]bool) SambaFiles {
 	files := SambaFiles{PerIP: map[netip.Addr]string{}}
 	var ips []string
-	internal := ""
-	if doc.PublicRange.IsValid() {
-		internal = doc.PublicRange.Masked().String()
-		if doc.HostNet.IsValid() {
-			internal += " EXCEPT " + doc.HostNet.Masked().String()
-		}
-	}
+	internal := doc.PublicRange.Masked().String() + " EXCEPT " + doc.HostNet.Masked().String()
 	for _, b := range doc.Boxes {
-		if skipped[b.User] || !b.IP.IsValid() {
+		if skipped[b.User] {
 			continue
 		}
 		ips = append(ips, b.IP.String())
@@ -56,7 +50,7 @@ func SambaConfig(doc agentapi.Storage, skipped map[string]bool) SambaFiles {
 			} else {
 				c.WriteString("\tread only = no\n")
 			}
-			if !a.ReachableExternally && internal != "" {
+			if !a.ReachableExternally {
 				fmt.Fprintf(&c, "\thosts allow = %s\n", internal)
 			}
 		}
