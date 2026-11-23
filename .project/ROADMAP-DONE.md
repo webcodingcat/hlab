@@ -6,6 +6,26 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x] 23 Server console.
+      Requirements: SRV-17, CON-01, CON-02, UI-15.
+      Depends on: 24 (order only), 03.
+      Adjusts: the code and tests that expect `unsupported_error` for
+      request_console or a disabled "Console" menu entry (servers module,
+      `api.Deviations`, `serverActions.ts` and their unit, conventions and
+      hcloud client tests) and docs/development/build-and-test.md.
+      Success criteria:
+      1. The experiment of SPEC.md "Server console" has measured frame
+         rate, input delay and CPU load of the graphical path and recorded
+         them in research/EXPERIMENTS.md; the phase builds the graphical
+         console if all three meet their limits, otherwise the serial one.
+      2. `hcloud server request-console` prints a `wss_url` and password,
+         and a VNC client sees the server's screen and types into it.
+      3. The actions menu entry "Console" in the tray opens the console
+         window, with the hlab CA trusted or not.
+      4. docs/deviations.md and docs/development/api-coverage.md no longer
+         list the console as unsupported; the README and the help text of
+         the server view describe it.
+
 - [x] 24 Storage box destroy in one run.
       Requirements: CLI-06.
       Depends on: 21.

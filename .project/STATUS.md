@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 23 Server console (in progress, branch wcc/phase-23)
+- Phase: 16 Release checks in test VMs (next)
 - Base branch: main
-- Last done: phase 24 merged into main (2026-11-23): deleting a subaccount or snapshot while the box is busy waits as running instead of answering 423 `locked`, so one `tofu destroy` removes a box with its subaccounts and snapshots
-- Next: /wcc:phase in a new session builds phase 23 (server console), then phase 16 (release checks in test VMs)
+- Last done: phase 23 merged into main (2026-11-23): `hcloud server request-console` gives a working VNC console (screen, keyboard, mouse through Hyper-V), and the tray opens it in its own window from the server's "Console" entry, also without "Trust CA"
+- Next: /wcc:phase in a new session builds phase 16 (release checks in test VMs), the last phase of milestone 1; it stops for the manual checks
 
 ## Open manual checks
 
