@@ -68,8 +68,11 @@ export function planBody(p: PlanInput): {
 
 export type Snap = { id: number; name: string; created: string };
 
-/** newerThan lists the snapshots created after target (the ones a rollback deletes), oldest first. */
+/**
+ * newerThan lists the snapshots created after target (the ones a rollback
+ * deletes), oldest first. Like hlab's rollback it goes by ID, which grows
+ * with every create, since two snapshots can share the second of created.
+ */
 export function newerThan(snapshots: Snap[], target: Snap): Snap[] {
-  const t = Date.parse(target.created);
-  return snapshots.filter((s) => Date.parse(s.created) > t).sort((a, b) => Date.parse(a.created) - Date.parse(b.created));
+  return snapshots.filter((s) => s.id > target.id).sort((a, b) => a.id - b.id);
 }
