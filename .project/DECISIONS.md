@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Storage agent puts box IPs on its interface
+
+- Type: decision
+- Phase: phase 19
+- What: At each apply the storage agent adds every box IP as a /32 on the interface carrying `Addrs.Storage` and removes /32s of the public range no box holds; a box whose IP cannot be added fails like any other box step.
+- Why: The appliance routes box IPs to the storage VM's MAC, so the VM must own them.
+- Cost of change: low
+
 ## 2026-11-23 Storage VM boot and packages
 
 - Type: decision
