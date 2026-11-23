@@ -152,6 +152,7 @@ an account that is not reachable externally is refused from them on
 every protocol.
 
 SMB serves SMB 2.1 and newer; `smbclient -L` does not list the shares.
+The Windows host maps the shares with `net use` like any SMB server.
 Windows logs in to SMB with NTLM, so a future Windows version that turns
 NTLM off would no longer reach the shares. WebDAV and FTPS use one
 certificate for `*.storagebox.hetzner.internal` from the HLab CA, which

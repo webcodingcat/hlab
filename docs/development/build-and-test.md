@@ -95,6 +95,11 @@ task e2e
 It copies the run's SSH key into a temporary folder inside that
 distribution and deletes the folder at the end of the run.
 
+Run Windows commands with UNC paths, such as `net use \\server\share`
+when you check an SMB share by hand, from PowerShell or cmd, not from Git
+Bash, which collapses the leading `\\` (`System error 67`). The row
+`SBOX-22` calls `net.exe` directly for this reason.
+
 The row `CAT-03` runs `hlab catalog update` with the token of the hcloud
 context for the real API (`HLab`, or the name in `HLAB_HCLOUD_CONTEXT`; see
 [Developer setup](setup.md#optional-access-to-the-real-hetzner-api)); it is
