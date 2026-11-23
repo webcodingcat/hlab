@@ -219,14 +219,14 @@ access_settings, snapshot_plan, protection, stats, labels).
   - [x] `views/storage-boxes/Section.svelte`: list (name, username, type, location, usage, status), row menu Delete (typed name; disabled with a hint under delete protection), empty state, 5 s refresh; `new` opens the form, detail opens `Detail.svelte` (a stub showing the name until 21-07).
   - [x] `StorageBoxCreate.svelte`: location, type (`typesIn`), name, password (field errors under it), SSH keys as checkboxes of the project's keys (sends their public keys), access settings, labels; Create runs `create` under a toast.
 
-- [ ] 21-07 Storage box detail: Overview, Settings, Labels
+- [x] 21-07 Storage box detail: Overview, Settings, Labels
   - Wave: 3 | Depends on: 21-06 | Review: alone | e2e
   - Requirements: UI-12 | Tests: test/e2e/ui_test.go, ui/frontend/tests/e2e/storageboxes.spec.ts (UI-12)
   - Reads: CONTEXT.md; UI-SPEC.md "Building blocks" (Detail page, Copy field, Confirm dialog), "Views" (box detail tabs); Interfaces; ui/frontend/src/views/volumes/VolumeDetail.svelte, lib/DetailPage.svelte, LabelsTab.svelte, ProtectionTab.svelte, CopyField.svelte
   - Size: ~380 lines in 4 files
-  - [ ] `Detail.svelte`: title with status pill, actions menu (Rename, Delete typed name), tabs Overview, Subaccounts, Snapshots, Settings, Labels (Subaccounts and Snapshots show nothing until 21-10).
-  - [ ] `OverviewTab.svelte`: hostname and username as copy fields, type, location, usage (data and snapshots of size), folder browser (path field, folder click descends, "Up").
-  - [ ] `SettingsTab.svelte`: access settings, delete protection, change type (`typesIn` of the box's location), reset password dialog (field errors under the field); Labels via `LabelsTab`.
+  - [x] `Detail.svelte`: title with status pill, actions menu (Rename, Delete typed name), tabs Overview, Subaccounts, Snapshots, Settings, Labels (Subaccounts and Snapshots show nothing until 21-10).
+  - [x] `OverviewTab.svelte`: hostname and username as copy fields, type, location, usage (data and snapshots of size), folder browser (path field, folder click descends, "Up").
+  - [x] `SettingsTab.svelte`: access settings, delete protection, change type (`typesIn` of the box's location), reset password dialog (field errors under the field); Labels via `LabelsTab`.
 
 - [x] 21-08 Storage box Subaccounts tab
   - Wave: 2 | Depends on: 21-02, 21-03 | Review: alone
@@ -244,13 +244,13 @@ access_settings, snapshot_plan, protection, stats, labels).
   - [x] `SnapshotsTab.svelte`: plan summary ("No plan" or the plan in UTC) with "Set plan" and "Disable plan" (confirm); table (name, description, size, automatic, created), "Create snapshot" (optional description), row menu Edit description, Roll back (confirm naming `newerThan`), Delete (plain).
   - [x] `SnapshotPlanDialog.svelte`: max snapshots, hour, minute (UTC), day of week (Every day, Monday..Sunday), day of month (Every day, 1..31), body through `planBody`.
 
-- [ ] 21-10 Subaccounts and snapshots in the box detail
+- [x] 21-10 Subaccounts and snapshots in the box detail
   - Wave: 4 | Depends on: 21-07, 21-08, 21-09 | Review: alone | e2e
   - Requirements: UI-13 | Tests: test/e2e/ui_test.go, ui/frontend/tests/e2e/storageboxes.spec.ts (UI-13)
   - Reads: Interfaces "Svelte: storage box detail tabs"; ui/frontend/src/views/storage-boxes/Detail.svelte
   - Size: ~30 lines in 1 file
-  - [ ] `Detail.svelte` renders `SubaccountsTab` and `SnapshotsTab` with the box and a refresh.
-  - [ ] Make TestE2E/UI-13 pass.
+  - [x] `Detail.svelte` renders `SubaccountsTab` and `SnapshotsTab` with the box and a refresh.
+  - [x] Make TestE2E/UI-13 pass.
 
 - [x] 21-11 Storage boxes with hcloud
   - Wave: 2 | Depends on: 21-04 | Review: alone | e2e
