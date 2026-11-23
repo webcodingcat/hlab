@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
 	"strconv"
 
 	"github.com/google/nftables"
@@ -23,7 +24,11 @@ import (
 // connections pass. A forwarded IPv4 packet that leaves on the public
 // interface to a filtered address jumps to the server's in-chain, one that
 // arrives on it from a filtered address jumps to the server's out-chain
-// (only when the server's outbound traffic is restricted). A server chain
+// (only when the server's outbound traffic is restricted). Packets to a
+// storage box IP are checked before all of it: from external sources
+// (outside the public range or inside the host's transit /30) they are
+// dropped unless the box is reachable externally; otherwise only TCP 22 and
+// 23 pass. A server chain
 // returns for a packet one of its rules allows and drops everything else;
 // returning lets a packet between two filtered servers pass both checks.
 // Private networks never use the public interface and are never filtered.
@@ -64,6 +69,8 @@ func (f *Firewall) Apply(_ context.Context, cfg agentapi.Config) error {
 		Priority: nftables.ChainPriorityRef(*nftables.ChainPriorityFilter + 10),
 		Policy:   &accept,
 	})
+	pub := ifname(f.Interface)
+	addStorageBoxRules(c, table, forward, pub, compileStorageBoxes(cfg))
 	if len(filters) > 0 {
 		// ct state established,related accept
 		c.AddRule(&nftables.Rule{
@@ -83,7 +90,6 @@ func (f *Firewall) Apply(_ context.Context, cfg agentapi.Config) error {
 			},
 		})
 	}
-	pub := ifname(f.Interface)
 	for _, sf := range filters {
 		id := strconv.FormatInt(sf.ServerID, 10)
 		in := c.AddChain(&nftables.Chain{Table: table, Name: "in" + id})
@@ -163,3 +169,55 @@ func addServerChain(c *nftables.Conn, table *nftables.Table, chain *nftables.Cha
 	}
 	c.AddRule(&nftables.Rule{Table: table, Chain: chain, Exprs: []expr.Any{&expr.Verdict{Kind: expr.VerdictDrop}}})
 }
+
+// addStorageBoxRules adds the rules of the box IPs to chain: per box IP the
+// drops of external sources when it is not reachable externally, an accept
+// for each port of storageBoxPorts and a drop of everything else.
+func addStorageBoxRules(c *nftables.Conn, table *nftables.Table, chain *nftables.Chain, iface []byte, f boxFilter) {
+	for _, a := range f.All {
+		// oifname <pub> meta nfproto ipv4 ip daddr <box IP>
+		to := []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
+			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: iface},
+			&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
+			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV4}},
+			&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseNetworkHeader, Offset: 16, Len: 4},
+			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: a.AsSlice()},
+		}
+		rule := func(verdict expr.VerdictKind, match ...expr.Any) {
+			exprs := append(append(append([]expr.Any{}, to...), match...), &expr.Verdict{Kind: verdict})
+			c.AddRule(&nftables.Rule{Table: table, Chain: chain, Exprs: exprs})
+		}
+		if slices.Contains(f.Closed, a) {
+			// ip saddr != <public range> drop
+			rule(expr.VerdictDrop, sourceIn(f.Public, expr.CmpOpNeq)...)
+			if f.HostNet.IsValid() {
+				// ip saddr <host transit /30> drop
+				rule(expr.VerdictDrop, sourceIn(f.HostNet, expr.CmpOpEq)...)
+			}
+		}
+		for _, port := range storageBoxPorts {
+			// meta l4proto tcp tcp dport <port> accept
+			rule(expr.VerdictAccept,
+				&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{protoTCP}},
+				&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2},
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: binaryutil.BigEndian.PutUint16(port)},
+			)
+		}
+		rule(expr.VerdictDrop)
+	}
+}
+
+// sourceIn compares the IPv4 source address, masked to p, with p.
+func sourceIn(p netip.Prefix, op expr.CmpOp) []expr.Any {
+	return []expr.Any{
+		&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseNetworkHeader, Offset: 12, Len: 4},
+		&expr.Bitwise{SourceRegister: 1, DestRegister: 1, Len: 4, Mask: net.CIDRMask(p.Bits(), 32), Xor: make([]byte, 4)},
+		&expr.Cmp{Op: op, Register: 1, Data: p.Addr().AsSlice()},
+	}
+}
+
+// storageBoxPorts are the TCP ports that pass to a box IP: SSH on 22 and
+// 23. Everything else to a box IP is dropped.
+var storageBoxPorts = []uint16{22, 23}
