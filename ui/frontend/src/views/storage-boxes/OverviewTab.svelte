@@ -80,7 +80,7 @@
   <dd>{box.location.name}</dd>
   <dt>Usage</dt>
   <dd>
-    {bytesText(box.stats.size_data + box.stats.size_snapshots)} of {bytesText(box.stats.size)}
+    used {bytesText(box.stats.size)} of {bytesText(box.storage_box_type.size)}
     <span class="muted">(files {bytesText(box.stats.size_data)}, snapshots {bytesText(box.stats.size_snapshots)})</span>
   </dd>
 </dl>

@@ -23,7 +23,7 @@
   let failing = false;
 
   const usageText = (b: StorageBox) =>
-    `${bytesText(b.stats.size_data + b.stats.size_snapshots)} of ${bytesText(b.stats.size)}`;
+    `used ${bytesText(b.stats.size)} of ${bytesText(b.storage_box_type.size)}`;
 
   const columns: Column<StorageBox>[] = [
     { key: "name", label: "Name", value: (b) => b.name, sortable: true },

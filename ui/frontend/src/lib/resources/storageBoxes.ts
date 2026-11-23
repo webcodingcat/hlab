@@ -13,7 +13,8 @@ export type StorageBox = {
   username: string | null;
   server: string | null;
   status: string;
-  storage_box_type: BoxType;
+  /** The type; size is its capacity in bytes. */
+  storage_box_type: BoxType & { size: number };
   location: { name: string };
   access_settings: Record<string, boolean>;
   snapshot_plan: Record<string, number | null> | null;
