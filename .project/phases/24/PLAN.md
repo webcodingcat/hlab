@@ -9,15 +9,15 @@ signature changes, and `internal/actions` stays as it is.
 
 ## Plans
 
-- [ ] 24-01 Queued deletes of subaccounts and snapshots
+- [x] 24-01 Queued deletes of subaccounts and snapshots
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: CLI-06 | Tests: internal/resources/storageboxes/deletes_test.go, internal/resources/storageboxes/storageboxes_test.go (registration), test/e2e/clients_storagebox_tofu_test.go (CLI-06/destroy)
   - Reads: REQUIREMENTS CLI-06; ARCHITECTURE "hlabd (Windows service)" the storage box paragraph (box lock, `StartQueued`); DECISIONS "2026-11-23 Storage box deletes of subaccounts and snapshots wait instead of answering locked"; phases/24/CONTEXT.md; phases/21/RESEARCH.md the OpenTofu delete lines (provider waits for each delete action, ignores not found)
   - Size: ~120 lines in 4 files
   - Adjusts: none (no existing unit test expects 423 for these deletes)
-  - [ ] `subAction` in `internal/resources/storageboxes/subaccounts.go`: for `delete_subaccount` start the action with `acts.StartQueued(tx, p.ID, command, [box, sub], nil)` instead of `begin`; when its turn comes and the box or the subaccount is gone, end with success without `Apply`; other subaccount commands keep `begin`. Update the comments of `begin` in `storageboxes.go` and of `subAction`.
-  - [ ] `deleteSnapshot` in `internal/resources/storageboxes/snapshots.go`: start with `StartQueued(..., [box, snap], nil)`; when its turn comes, reload box and snapshot in a transaction, skip the agent job and succeed if either is gone, otherwise run `removeSnapshot` with the reloaded records.
-  - [ ] `internal/api/deviations.go`: reword the storage box entry at `change_type` (every action locks the box except deleting a subaccount or a snapshot, which waits as running), and add entries for `DELETE /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}` and `DELETE /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}` ("a delete while another action on the box runs waits as running instead of answering 423 locked").
+  - [x] `subAction` in `internal/resources/storageboxes/subaccounts.go`: for `delete_subaccount` start the action with `acts.StartQueued(tx, p.ID, command, [box, sub], nil)` instead of `begin`; when its turn comes and the box or the subaccount is gone, end with success without `Apply`; other subaccount commands keep `begin`. Update the comments of `begin` in `storageboxes.go` and of `subAction`.
+  - [x] `deleteSnapshot` in `internal/resources/storageboxes/snapshots.go`: start with `StartQueued(..., [box, snap], nil)`; when its turn comes, reload box and snapshot in a transaction, skip the agent job and succeed if either is gone, otherwise run `removeSnapshot` with the reloaded records.
+  - [x] `internal/api/deviations.go`: reword the storage box entry at `change_type` (every action locks the box except deleting a subaccount or a snapshot, which waits as running), and add entries for `DELETE /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}` and `DELETE /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}` ("a delete while another action on the box runs waits as running instead of answering 423 locked").
 
 - [ ] 24-02 Documentation
   - Wave: 2 | Depends on: 24-01 | Review: alone

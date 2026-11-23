@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 A box gone at an action's turn ends it successfully
+
+- Type: decision
+- Phase: phase 24
+- What: `run` in the storage box package treats a box missing at the change step, or the sentinel `errGone`, as success without `Apply`.
+- Why: only queued deletes can meet a missing box, because deleting the box is locked while any action runs.
+- Cost of change: low
+
 ## 2026-11-23 Subaccount and snapshot deletes wait instead of locking
 
 - Type: decision
