@@ -346,7 +346,7 @@ func (a *Agent) ensureHome(box string, n int, home string) error {
 }
 
 // ensureChroot builds the chroot of account user (E17): /usr bound
-// read-only, the usual links, device nodes, tmp, a minimal passwd and
+// read-only, the usual links, device nodes, no tmp, a minimal passwd and
 // group, and home bound from home below the box's data, read-only for
 // read-only subaccounts.
 func (a *Agent) ensureChroot(user string, n int, box, home string, readOnly bool) error {
@@ -356,11 +356,10 @@ func (a *Agent) ensureChroot(user string, n int, box, home string, readOnly bool
 			return err
 		}
 	}
-	tmp := filepath.Join(dir, "tmp")
-	if err := os.MkdirAll(tmp, 0o755); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp, 0o777|fs.ModeSticky); err != nil {
+	// The chroot offers no writable place outside the home: a /tmp on the
+	// system disk would escape the box quota. Earlier chroots had one;
+	// it goes with its content (RemoveAll does not follow symlinks).
+	if err := os.RemoveAll(filepath.Join(dir, "tmp")); err != nil {
 		return err
 	}
 	for _, l := range []string{"bin", "sbin", "lib", "lib64"} {

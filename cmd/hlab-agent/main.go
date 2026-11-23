@@ -16,6 +16,8 @@ import (
 	"net/netip"
 	"os"
 	"os/signal"
+	"slices"
+	"strings"
 	"syscall"
 	"time"
 
@@ -102,7 +104,13 @@ func storageShell(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	err = syscall.Exec(argv[0], argv, os.Environ())
+	// The chroot has no /tmp; temporary files of borg and rsync go into
+	// the home, counted by the box quota. Read-only accounts write none.
+	env := slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "TMPDIR=") })
+	if !*readOnly {
+		env = append(env, "TMPDIR=/home")
+	}
+	err = syscall.Exec(argv[0], argv, env)
 	fmt.Fprintln(os.Stderr, "exec:", err)
 	return 1
 }
