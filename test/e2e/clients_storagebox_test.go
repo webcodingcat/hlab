@@ -8,7 +8,6 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
-	"strings"
 	"testing"
 	"time"
 )
@@ -22,38 +21,11 @@ import (
 // Ansible collection read the Hetzner API endpoint from (E12, E13, E15).
 const hetznerEnvVar = "HETZNER_ENDPOINT"
 
-// withHetznerEndpoint returns environ without an inherited
-// HETZNER_ENDPOINT and with hlab's; WSLENV hands it to WSL2. A client that
-// missed it would send its requests to the real api.hetzner.com.
-func withHetznerEndpoint(environ []string) []string {
-	out := make([]string, 0, len(environ)+2)
-	wslenv := hetznerEnvVar + "/u"
-	for _, kv := range environ {
-		k, v, _ := strings.Cut(kv, "=")
-		switch {
-		case strings.EqualFold(k, hetznerEnvVar):
-			continue
-		case strings.EqualFold(k, "WSLENV"):
-			for _, part := range strings.Split(v, ":") {
-				name, _, _ := strings.Cut(part, "/")
-				if part != "" && !strings.EqualFold(name, hetznerEnvVar) {
-					wslenv = part + ":" + wslenv
-				}
-			}
-			continue
-		}
-		out = append(out, kv)
-	}
-	return append(out, hetznerEnvVar+"="+hetznerEndpoint, "WSLENV="+wslenv)
-}
-
-// boxProjectEnv is a project of its own (newProjectEnv) whose clients get
+// boxProjectEnv is a project of its own (newProjectEnv); its clients get
 // hlab's Cloud and Hetzner endpoints and the project's token only.
 func boxProjectEnv(t *testing.T, suffix string) *env {
 	t.Helper()
-	e := newProjectEnv(t, suffix)
-	e.hcloudEnv = withHetznerEndpoint(e.hcloudEnv)
-	return e
+	return newProjectEnv(t, suffix)
 }
 
 // boxAccess is the access_settings object of a box or a subaccount;

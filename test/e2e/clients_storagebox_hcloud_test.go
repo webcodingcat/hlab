@@ -246,7 +246,6 @@ func testCLI05Snapshots(t *testing.T, _ *rowCtx) {
 // types as /storage_box_types serves them.
 func testCLI05StorageBoxTypes(t *testing.T, c *rowCtx) {
 	e := *c.E
-	e.hcloudEnv = withHetznerEndpoint(c.E.hcloudEnv)
 
 	// Other rows add and remove own types; the comparison is repeated until
 	// both sides were read without such a change in between.

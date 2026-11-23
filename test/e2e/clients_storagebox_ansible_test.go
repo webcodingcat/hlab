@@ -361,7 +361,6 @@ func testCLI07Snapshots(t *testing.T, _ *rowCtx) {
 func testCLI07StorageBoxTypes(t *testing.T, _ *rowCtx) {
 	shared, w := sharedAnsible(t)
 	e := *shared
-	e.hcloudEnv = withHetznerEndpoint(shared.hcloudEnv)
 	bx11 := e.apiBoxType(t, "bx11")
 
 	// Other rows add and remove own types; the comparison is repeated until

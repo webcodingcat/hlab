@@ -446,7 +446,6 @@ output "id" {
 // name and ID and hcloud_storage_box_types match /storage_box_types.
 func testCLI06StorageBoxTypes(t *testing.T, _ *rowCtx) {
 	e := *sharedTofu(t)
-	e.hcloudEnv = withHetznerEndpoint(e.hcloudEnv)
 	bx11 := e.apiBoxType(t, "bx11")
 	d := e.newTofuDir(t, "storage-box-types")
 	d.writeMain(t, fmt.Sprintf(`data "hcloud_storage_box_type" "by_name" {

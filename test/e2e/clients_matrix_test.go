@@ -212,12 +212,12 @@ func newProjectEnv(t *testing.T, suffix string) *env {
 	for _, kv := range base.hcloudEnv {
 		k, _, _ := strings.Cut(kv, "=")
 		switch strings.ToUpper(k) {
-		case "HCLOUD_TOKEN", "HCLOUD_CONFIG", hetznerEnvVar:
+		case "HCLOUD_TOKEN", "HCLOUD_CONFIG":
 			continue
 		}
 		e.hcloudEnv = append(e.hcloudEnv, kv)
 	}
-	e.hcloudEnv = append(e.hcloudEnv, "HCLOUD_TOKEN="+e.token, "HCLOUD_CONFIG="+cfg, hetznerEnvVar+"="+hetznerEndpoint)
+	e.hcloudEnv = append(e.hcloudEnv, "HCLOUD_TOKEN="+e.token, "HCLOUD_CONFIG="+cfg)
 	e.hcloudOK(t, "ssh-key", "create", "--name", e.sshKey, "--public-key-from-file", e.pubKey)
 	return e
 }
