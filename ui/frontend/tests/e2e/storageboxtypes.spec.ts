@@ -38,7 +38,7 @@ async function locationOf(box: Locator): Promise<string> {
 test("UI-14", async ({ page }) => {
   test.setTimeout(4 * 60_000);
   // Storage Box Types is an Administration view like Server Types.
-  await openView(page, "Storage Box Types" as Parameters<typeof openView>[1]);
+  await openView(page, "Storage Box Types");
 
   // The catalog is listed with its source, and the view has its help text.
   const shipped = tableRow(page, "bx11");
