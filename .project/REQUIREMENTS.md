@@ -345,7 +345,7 @@ What the target vision in IDEA.md will need, not built yet.
 | SRV-14 | 04 | x |
 | SRV-15 | 04 | x |
 | SRV-16 | 01 | x |
-| SRV-17 | 23 | |
+| SRV-17 | 23 | x |
 | SRV-18 | 03 | x |
 | SRV-19 | 01 | x |
 | SRV-20 | 03 | x |
@@ -457,9 +457,9 @@ What the target vision in IDEA.md will need, not built yet.
 | CLI-05 | 21 | x |
 | CLI-06 | 21, 24 | x |
 | CLI-07 | 21 | x |
-| CON-01 | 23 | |
-| CON-02 | 23 | |
-| UI-15 | 23 | |
+| CON-01 | 23 | x |
+| CON-02 | 23 | x |
+| UI-15 | 23 | x |
 | MCP-01 | 17 | x |
 | MCP-02 | 17 | x |
 | MCP-03 | 17 | x |

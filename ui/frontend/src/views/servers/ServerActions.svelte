@@ -7,6 +7,7 @@
   import SecretDialog from "../../lib/SecretDialog.svelte";
   import type { ActionResult } from "../../lib/actions";
   import { listAll, runOn } from "../../lib/api";
+  import { openConsoleWindow } from "../../lib/bridge";
   import { menuActions, request, type Input, type ServerAction } from "../../lib/serverActions";
   import { showError } from "../../lib/toast";
   import {
@@ -86,6 +87,10 @@
   }
 
   function choose(a: ServerAction) {
+    if (a.id === "console") {
+      openConsoleWindow(project, server.id, server.name).catch((err) => showError("Open the console", err));
+      return;
+    }
     if (!a.needsInput) {
       proceed(a, {});
       return;

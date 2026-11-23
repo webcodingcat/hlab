@@ -7,7 +7,7 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 23 Server console (next)
+- Phase: 23 Server console (in progress, branch wcc/phase-23)
 - Base branch: main
 - Last done: phase 24 merged into main (2026-11-23): deleting a subaccount or snapshot while the box is busy waits as running instead of answering 423 `locked`, so one `tofu destroy` removes a box with its subaccounts and snapshots
 - Next: /wcc:phase in a new session builds phase 23 (server console), then phase 16 (release checks in test VMs)

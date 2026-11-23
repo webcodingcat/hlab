@@ -19,6 +19,110 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 request_console finishes its action in one step
+
+- Type: decision
+- Phase: phase 23
+- What: `request_console` creates and finishes its action in one transaction without the server's lock check, and deleting a server also drops its unused console tokens.
+- Why: The console must work while other actions run on the server, and a deleted server's URL must not connect.
+- Cost of change: low
+
+## 2026-11-23 Console input refused by the VM is dropped
+
+- Type: decision
+- Phase: phase 23
+- What: Input to a VM without keyboard or mouse device, or a non-zero ReturnValue of an input method, is dropped without error, and the RFB session stays open.
+- Why: An off or starting server must keep its console open (CONTEXT.md); only the e2e tests notice a wrong argument.
+- Cost of change: low
+
+## 2026-11-23 Console window shows the proxy's close reason
+
+- Type: decision
+- Phase: phase 23
+- What: The console page opens the WebSocket itself and hands it to noVNC, so "Disconnected" shows the proxy's reason; "Console" is also in the server list's row menu, and the proxy relays in messages of at most 32 KiB.
+- Why: noVNC's disconnect event carries no reason, the plan names the row menu, and default WebSocket peers refuse larger messages.
+- Cost of change: low
+
+## 2026-11-23 Console keyboard: physical keys and characters
+
+- Type: decision
+- Phase: phase 23
+- What: Keys from a VNC client offering the QEMU Extended Key Event pass straight through as scan codes; other clients' keysyms go through a US set-1 table with Shift corrected (Q1 answered (c) by the user).
+- Why: It behaves like Hetzner's console and is right for guests of any layout (E25).
+- Cost of change: low
+
+## 2026-11-23 Console screen source is platform.ConsoleConn
+
+- Type: decision
+- Phase: phase 23
+- What: The screen source is `platform.ConsoleConn` (Screen with an ok flag, Scancodes, MouseMove, MouseButton, MouseScroll, Close), opened through an optional `platform.Console` extension, and `internal/console` translates RFB input into it.
+- Why: E25 requires scan codes for every key, and pure translation in the console package is unit-testable without Hyper-V.
+- Cost of change: low
+
+## 2026-11-23 Console token is a UUID from crypto/rand
+
+- Type: decision
+- Phase: phase 23
+- What: The console token is a UUID v4 built from crypto/rand, without a new direct dependency.
+- Why: It is the simplest way to the UUID form the user confirmed.
+- Cost of change: low
+
+## 2026-11-23 Console certificate kept in memory
+
+- Type: decision
+- Phase: phase 23
+- What: The console certificate is issued from the hlab CA at every cloud start and kept only in memory, not in kv.
+- Why: SPEC.md issues it at every start, so nothing has to survive a restart.
+- Cost of change: low
+
+## 2026-11-23 request_console stays in the deviations with a new text
+
+- Type: decision
+- Phase: phase 23
+- What: `api.Deviations` keeps the `request_console` endpoint with a new description (console.hetzner.internal, hlab CA certificate, Hyper-V screen), changed in plan 23-07.
+- Why: DOC-03 checks that the endpoint appears in api-coverage.md and so stays green until the documentation plan.
+- Cost of change: low
+
+## 2026-11-23 Console forward is a plain TCP forward in the agent
+
+- Type: decision
+- Phase: phase 23
+- What: The agent forwards `198.19.0.1:443` to hlabd's console listener with a plain TCP forward in `internal/agent/forward.go` and an A record for `console.hetzner.internal`; the host firewall rule opens 8781 next to 8780.
+- Why: TLS has to reach hlabd unchanged (ARCHITECTURE.md).
+- Cost of change: low
+
+## 2026-11-23 Tray console proxy serves one connection per Open
+
+- Type: decision
+- Phase: phase 23
+- What: The loopback proxy of `bridge.Console` serves exactly one connection per `Open` and closes its listener after a minute without one; Reconnect calls `Open` again.
+- Why: It is the smallest proxy that fits one console page per window with a random path.
+- Cost of change: low
+
+## 2026-11-23 Console window is a route outside the views
+
+- Type: decision
+- Phase: phase 23
+- What: The console window is the route `#/server-console/<project>/<id>`, rendered by App.svelte without the shell and outside views.json.
+- Why: It is not a project view, and DOC-05 pairs only views with help texts.
+- Cost of change: low
+
+## 2026-11-23 Console accepts 32-bpp pixel formats only
+
+- Type: decision
+- Phase: phase 23
+- What: The RFB layer accepts any 32-bpp true-colour pixel format with the client's shifts and endianness and closes the connection for other depths.
+- Why: noVNC and common VNC clients use 32 bpp; smaller depths are not needed for the requirement.
+- Cost of change: low
+
+## 2026-11-23 CON-01 tested by unit rows and three e2e rows
+
+- Type: decision
+- Phase: phase 23
+- What: CON-01 gets unit rows for input translation, RFB updates, resize, no picture and token expiry besides three e2e rows (screen, keyboard, mouse).
+- Why: The e2e rows need real Hyper-V and take minutes, the logic behind them needs feedback in seconds.
+- Cost of change: low
+
 ## 2026-11-23 A box gone at an action's turn ends it successfully
 
 - Type: decision

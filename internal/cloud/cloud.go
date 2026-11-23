@@ -25,6 +25,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/ca"
 	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/console"
 	"github.com/webcodingcat/hlab/internal/dnszone"
 	"github.com/webcodingcat/hlab/internal/hostnet"
 	hnwin "github.com/webcodingcat/hlab/internal/hostnet/windows"
@@ -119,9 +120,11 @@ type Cloud struct {
 	storageMu sync.Mutex
 	// stopStorage ends the start's background apply of the storage VM.
 	stopStorage func()
-	acts   *actions.Manager
-	ca     *ca.CA
-	mods   []resource.Module
+	acts        *actions.Manager
+	ca          *ca.CA
+	// console serves the server consoles of request_console.
+	console *console.Service
+	mods    []resource.Module
 	// shadow keeps the primary zones that shadow a public domain.
 	shadow *zones.Shadow
 	// pushMu keeps agent documents in the order they were built.
@@ -307,6 +310,9 @@ func (c *Cloud) start(ctx context.Context, params []string) error {
 		return err
 	}
 	c.shadow = zones.NewShadow(zones.PublicLookup(c.hostDNS(ctx), shadowLookupTimeout))
+	if err := c.newConsole(); err != nil {
+		return err
+	}
 	c.mods = c.modules()
 	if err := recoverModules(ctx, c.mods); err != nil {
 		return err
@@ -319,6 +325,9 @@ func (c *Cloud) start(ctx context.Context, params []string) error {
 		router.Mount(m)
 	}
 	if err := c.serveAPI(ctx, c.withCRL(router)); err != nil {
+		return err
+	}
+	if err := c.serveConsole(); err != nil {
 		return err
 	}
 
@@ -392,6 +401,7 @@ func (c *Cloud) modules() []resource.Module {
 		},
 		ExtraDisks:     volumeDisks,
 		RescueSeedHold: rescueSeedHold,
+		Console:        c.console,
 	})
 	vol := volumes.New(volumes.Deps{
 		Catalog:      c.cat,
@@ -521,6 +531,7 @@ func (c *Cloud) PushAgent(ctx context.Context) error {
 	doc := agentapi.Config{
 		PublicRange: c.set.Network.PublicRange,
 		API:         agentapi.APIProxy{Listen: c.addrs.APIProxy, Backend: c.addrs.APIListen},
+		Console:     agentapi.ConsoleForward{Listen: c.addrs.ConsoleProxy, Backend: c.addrs.ConsoleListen},
 	}
 	doc.Upstream = c.hostDNS(ctx)
 	err := c.st.Tx(func(tx store.Tx) error {
@@ -670,6 +681,7 @@ func (c *Cloud) teardown(ctx context.Context, reason sysint.StopReason) error {
 		cancel()
 	}
 	c.mgmtSrv, c.apiSrv = nil, nil
+	c.closeConsole()
 	if c.stopStorage != nil {
 		c.stopStorage()
 		c.stopStorage = nil

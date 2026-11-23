@@ -176,9 +176,11 @@ func (t *trayUI) showWindow() {
 	window.Focus()
 }
 
-// quit ends the tray only; the cloud keeps running.
+// quit ends the tray only and closes the console windows; the cloud keeps
+// running.
 func (t *trayUI) quit() {
 	t.quitting.Store(true)
+	consoleWindows.closeAll()
 	t.app.Quit()
 }
 

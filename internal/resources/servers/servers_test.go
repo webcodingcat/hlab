@@ -29,6 +29,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/apitest"
 	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/console"
 	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/platform/platformtest"
 	"github.com/webcodingcat/hlab/internal/resource"
@@ -229,28 +230,57 @@ func TestServers(t *testing.T) {
 	})
 
 	t.Run("SRV-17", func(t *testing.T) {
-		env := newEnv(t, platformtest.NewFake())
+		svc := console.New(console.Config{Host: "console.hetzner.internal"})
+		t.Cleanup(func() { _ = svc.Close() })
+		env, _, _ := newFakeEnv(t, platformtest.NewFake(), func(d *servers.Deps) { d.Console = svc })
 		id, act := createServer(t, env, "console", nil)
 		env.WaitAction(act)
-		path := fmt.Sprintf("/servers/%d/actions", id)
-		before := len(listActions(t, env, path))
+		serverPath := fmt.Sprintf("/servers/%d", id)
+		before := rawServer(t, env, serverPath)
 
-		resp := env.Do(http.MethodPost, fmt.Sprintf("/servers/%d/actions/request_console", id), nil)
-		if resp.StatusCode != http.StatusUnprocessableEntity {
-			t.Errorf("request_console: status %d, want 422", resp.StatusCode)
+		resp := env.Do(http.MethodPost, serverPath+"/actions/request_console", nil)
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("request_console: status %d, want 201", resp.StatusCode)
 		}
 		var body struct {
-			Error struct {
-				Code    string `json:"code"`
-				Message string `json:"message"`
-			} `json:"error"`
+			Action struct {
+				apitest.Action
+				Resources []struct {
+					ID   int64  `json:"id"`
+					Type string `json:"type"`
+				} `json:"resources"`
+			} `json:"action"`
+			WSSURL   string `json:"wss_url"`
+			Password string `json:"password"`
 		}
 		apitest.Decode(t, resp, &body)
-		if body.Error.Code != "unsupported_error" || body.Error.Message != "server console is not supported by HLab yet" {
-			t.Errorf("request_console: error %+v, want unsupported_error with the SPEC message", body.Error)
+
+		a := body.Action
+		if a.Command != "request_console" || a.Status != "success" || a.Progress != 100 || a.Finished == nil || a.Error != nil {
+			t.Errorf("request_console action: %+v, want a finished request_console with status success", a.Action)
 		}
-		if after := len(listActions(t, env, path)); after != before {
-			t.Errorf("GET %s: %d actions after request_console, want %d", path, after, before)
+		if len(a.Resources) != 1 || a.Resources[0].ID != id || a.Resources[0].Type != "server" {
+			t.Errorf("request_console action resources %+v, want only server %d", a.Resources, id)
+		}
+		wantURL := regexp.MustCompile(fmt.Sprintf(`^wss://console\.hetzner\.internal/\?server_id=%d&token=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`, id))
+		if !wantURL.MatchString(body.WSSURL) {
+			t.Errorf("wss_url %q, want wss://console.hetzner.internal/?server_id=%d&token=<uuid>", body.WSSURL, id)
+		}
+		if !regexp.MustCompile(`^[A-Za-z0-9]{32}$`).MatchString(body.Password) {
+			t.Errorf("password %q, want 32 letters and digits", body.Password)
+		}
+
+		listed := false
+		for _, l := range listActions(t, env, serverPath+"/actions") {
+			if id, _ := l["id"].(float64); int64(id) == a.ID {
+				listed = l["command"] == "request_console" && l["status"] == "success"
+			}
+		}
+		if !listed {
+			t.Errorf("GET %s/actions: no finished request_console action %d", serverPath, a.ID)
+		}
+		if after := rawServer(t, env, serverPath); !reflect.DeepEqual(after, before) {
+			t.Errorf("GET %s after request_console:\n%v\nwant unchanged:\n%v", serverPath, after, before)
 		}
 	})
 
@@ -1568,6 +1598,20 @@ func rawAction(t *testing.T, env *apitest.Env, path string) map[string]any {
 	}
 	apitest.Decode(t, resp, &body)
 	return body.Action
+}
+
+// rawServer reads GET path as the raw server object.
+func rawServer(t *testing.T, env *apitest.Env, path string) map[string]any {
+	t.Helper()
+	resp := env.Do(http.MethodGet, path, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s: status %d, want 200", path, resp.StatusCode)
+	}
+	var body struct {
+		Server map[string]any `json:"server"`
+	}
+	apitest.Decode(t, resp, &body)
+	return body.Server
 }
 
 func listActions(t *testing.T, env *apitest.Env, path string) []map[string]any {

@@ -546,9 +546,14 @@ Inside `hlabd` (Go packages under `internal/`):
   checks the certificate against the hlab CA itself (`GET /ca.pem`) and
   accepts the origin `wails.localhost`, so the window works while Windows
   does not trust the CA (E22). The window loads noVNC with a dynamic
-  `import()`.
+  `import()`. Another Wails service `Windows` in `cmd/hlab-tray` with
+  `OpenConsole(project string, id int64, name string) error` opens the
+  window "Console: <name>" at the route
+  `#/server-console/<project>/<id>` (outside `views.json`, no shell) or
+  brings the open one of that server to the front; it keeps its own
+  window map under a mutex, cleared when a window closes (E24).
 - Interface: Wails v3 application. Go side: `tray` (icon, menu, start/stop
-  through SCM), `bridge` (package without a Wails import, bound as three
+  through SCM), `bridge` (package without a Wails import, bound as four
   Wails services: `bridge.Service` with
   `Call(method, path, body string) (Response{status, body}, error)` that
   forwards to the management API, `ProjectName(display string) string`
@@ -616,35 +621,47 @@ Inside `hlabd` (Go packages under `internal/`):
 
 - Purpose: the RFB-over-WebSocket server behind `request_console`.
 - Interface:
-  - `console.Service.Issue(serverID int64, vm string) (wssURL, password string)`
-    called by the servers module; tokens and passwords live only in memory,
+  - `console.Service.Issue(serverID int64, vm string) (wssURL, password string, err error)`
+    and `CloseServer(serverID int64)` (ends its open connections and drops
+    its unused tokens), called by the servers module through its
+    `servers.Console` interface; tokens and passwords live only in memory,
     a token is valid one minute to connect and belongs to one server.
-  - Screen source, chosen once by the experiment of phase 23
-    (`decisions/server-console.md`):
+  - Screen source: the graphical console (gate passed,
+    `decisions/server-console.md`, E21, E25), an optional platform
+    extension that hlabd type-asserts:
 
     ```go
-    type Source interface { // one per open connection
-        Size() (w, h int)
-        Frame(ctx context.Context) (Frame, error) // full frame, RGB565 or rendered text
-        Key(ctx context.Context, keysym uint32, down bool) error
-        Pointer(ctx context.Context, x, y int, buttons uint8) error
+    type Console interface { // package platform, implemented by platform/hyperv
+        OpenConsole(ctx context.Context, vm string) (ConsoleConn, error)
     }
+    type ConsoleConn interface { // one per open RFB connection, calls serialized
+        Screen(ctx context.Context) (f Frame, ok bool, err error) // ok false: no picture now
+        Scancodes(ctx context.Context, codes []byte) error        // scan code set 1
+        MouseMove(ctx context.Context, x, y int) error             // pixels, clamped
+        MouseButton(ctx context.Context, index int, down bool) error // 1 left, 2 right, 3 middle
+        MouseScroll(ctx context.Context, delta int) error          // +120 one notch up
+        Close() error
+    }
+    type Frame struct{ Width, Height int; Pix []byte } // RGB565 little endian
     ```
 
-    The graphical source uses a `platform.Console` extension
-    (`Screen`, `Keys`, `Mouse` on a VM; Hyper-V WMI
-    `GetVirtualSystemThumbnailImage`, `Msvm_Keyboard`,
-    `Msvm_SyntheticMouse`) called through the raw `IWbemServices` COM
-    vtables with `golang.org/x/sys/windows`, not the scripting layer or the
-    PowerShell runner, which are too slow (E21); frames are RGB565 little
-    endian with 4 trailing bytes that are dropped. The source polls at
-    most 5 frames per second and only while a client is connected, takes a
-    frame right after each key or pointer event, and the server sends only
-    changed rectangles. The serial source taps the COM1 pipe hlabd
-    already serves (output rendered as text, keys written to the pipe).
-  - RFB 3.8: VNC Authentication, Raw encoding, DesktopSize; one
-    connection per token.
-- Depends on: platform (graphical) or the COM1 pipe (serial), the hlab CA,
+    Hyper-V WMI `GetVirtualSystemThumbnailImage`,
+    `Msvm_Keyboard.TypeScancodes` and `Msvm_SyntheticMouse` are called
+    through the raw `IWbemServices` COM vtables with
+    `golang.org/x/sys/windows`, not the scripting layer or the PowerShell
+    runner, which are too slow (E21); `TypeText` and VK codes are not used
+    (E25). The console package translates RFB input: keysyms through a US
+    set-1 table with Shift corrected, QEMU Extended Key Event keycodes
+    straight to scan codes, button bits 0/1/2 to indexes 1/3/2 and bits
+    3/4 to scroll +120/-120. It polls at most 5 frames per second and only
+    while a client is connected, takes a frame right after each input
+    event, keeps the last frame while there is no picture, sends
+    DesktopSize when the resolution changes, and sends only changed
+    rectangles.
+  - RFB 3.8: VNC Authentication, Raw encoding, DesktopSize, QEMU Extended
+    Key Event; any 32-bpp true-colour pixel format; one connection per
+    token.
+- Depends on: platform (`platform.Console`), the hlab CA,
   which issues the listener's certificate for `console.hetzner.internal`
   at every cloud start (`console.Service` gets it as a `tls.Certificate`).
 

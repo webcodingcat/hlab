@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,6 +15,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/BurntSushi/toml"
 
 	"github.com/webcodingcat/hlab/test/traylaunch"
 )
@@ -269,6 +272,51 @@ func testUI13(t *testing.T) {
 // testUI06: the logs view shows the service log and follows it.
 func testUI06(t *testing.T) {
 	runSpec(t, "UI-06", 10*time.Minute, nil)
+}
+
+// testUI15: with "Trust CA" off, "Console" in the actions menu of the
+// shared server opens the window "Console: <name>", whose screen shows a
+// picture that typed keys change. If "Trust CA" is on, it is switched off
+// for the row and on again afterwards.
+func testUI15(t *testing.T) {
+	e, srv := sharedServer(t)
+	trusted, err := caTrusted()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trusted {
+		t.Cleanup(func() {
+			if r, err := runHlab(context.Background(), 5*time.Minute, "ca", "trust", "on"); err != nil {
+				t.Errorf("restore: hlab ca trust on: %v\n%s", err, r)
+			}
+		})
+		if r, err := runHlab(context.Background(), 5*time.Minute, "ca", "trust", "off"); err != nil {
+			t.Fatalf("hlab ca trust off: %v\n%s", err, r)
+		}
+	}
+	runSpec(t, "UI-15", 5*time.Minute, []string{
+		"HLAB_E2E_PROJECT=" + e.project,
+		"HLAB_E2E_API_TOKEN=" + e.token,
+		"HLAB_E2E_SERVER_ID=" + strconv.FormatInt(srv.ID, 10),
+		"HLAB_E2E_SERVER_NAME=" + srv.Name,
+	}, e.token)
+}
+
+// caTrusted reports whether [certificates] trust_ca of the dev settings is
+// on; a missing file means off.
+func caTrusted() (bool, error) {
+	var s struct {
+		Certificates struct {
+			TrustCA bool `toml:"trust_ca"`
+		} `toml:"certificates"`
+	}
+	if _, err := toml.DecodeFile(settingsPath(), &s); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read trust_ca from %s: %w", settingsPath(), err)
+	}
+	return s.Certificates.TrustCA, nil
 }
 
 // hetznerAccount is what a usable hcloud context gives: its token and the

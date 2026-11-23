@@ -51,6 +51,9 @@ func TestE2E(t *testing.T) {
 	t.Run("UI-14", testUI14)
 	t.Run("UI-12", testUI12)
 	t.Run("UI-13", testUI13)
+	// UI-15 opens a second tray window; it runs last of the UI rows, so the
+	// rows before it find only the main window.
+	t.Run("UI-15", testUI15)
 
 	t.Run("PROJ-05", parallel(testPROJ05))
 	t.Run("API-01", parallel(testAPI01))
@@ -69,6 +72,9 @@ func TestE2E(t *testing.T) {
 	t.Run("SRV-11", parallel(testSRV11))
 	t.Run("SRV-12", parallel(testSRV12))
 	t.Run("SRV-15", parallel(testSRV15))
+	// The CON-01 rows share one VNC session and run one after the other
+	// inside it: CON-01/screen, CON-01/keyboard, CON-01/mouse.
+	t.Run("CON-01", parallel(testCON01))
 	t.Run("VOL-02", parallel(testVOL02))
 	t.Run("VOL-03", parallel(testVOL03))
 	t.Run("VOL-04", parallel(testVOL04))

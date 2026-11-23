@@ -64,6 +64,36 @@ A cloud with too little free RAM or disk, beyond the reserve set in the
 [configuration](configuration.md#settingstoml), refuses to
 create or start a server with `resource_unavailable`.
 
+### Server console
+
+`request-console` gives the URL and password of the server's screen, as
+at Hetzner:
+
+```
+> hcloud server request-console web1
+Waiting for request_console (server: 732) ...
+Waiting for request_console (server: 732) ... done
+Console for Server 732:
+WebSocket URL: wss://console.hetzner.internal/?server_id=732&token=95be0e57-1b2b-420e-a9bf-7bdfbb0d375a
+VNC Password: kRVjPAVG6tjB5TZ0jUdkEa6LZV0kIhFN
+```
+
+- The URL works for one connection, started within one minute; an open
+  connection stays open until you close it. Request a new URL for every
+  connection.
+- A VNC client that speaks WebSocket (such as noVNC) shows the screen and
+  sends keyboard and mouse input. The console's certificate comes from the HLab CA,
+  so your own browser or VNC client accepts it only while the CA is
+  trusted (see [Trusting the HLab CA](#trusting-the-hlab-ca)). The
+  console window of the HLab window works either way.
+- The console works in any server state. While the server is off,
+  starting, stopping, saving or restoring, it shows the last picture or
+  black and the live picture returns when there is one again.
+- Several consoles may be open on one server; they share keyboard and
+  mouse. They close when the server is deleted or the cloud stops.
+- The picture refreshes up to 5 times a second. Each open console costs
+  about 0.7 CPU cores, almost all in the Hyper-V service `vmms.exe`.
+
 ## Servers in the window
 
 The HLab window manages the same resources as hcloud. Click a project's
@@ -90,7 +120,7 @@ remove it, or double-click it to edit it.
 - **Servers** lists the servers with status, public IPv4, type, location
   and labels. The search field takes a name or a label selector such as
   `env=dev`. The row menu (`…`) powers a server on, shuts it down,
-  reboots, resets, powers it off or deletes it.
+  reboots, resets, powers it off, opens its console or deletes it.
 - **Create server** opens a form in the order of the Hetzner Console:
   location, image (system images, snapshots and backups), type, public
   and private networking, SSH keys, volumes, firewalls, backups,
@@ -98,10 +128,20 @@ remove it, or double-click it to edit it.
   keys gets a root password, shown once with a copy button.
 - A click on a server opens its detail page. The `…` menu next to its name
   holds the power actions, **Reset root password**, **Rebuild**,
-  **Change type**, **Rename**, the placement group actions and **Delete**.
+  **Change type**, **Rename**, the placement group actions, **Console**
+  and **Delete**.
   The tabs Networking, Firewalls, Volumes, Backups, Snapshots, Rescue,
   ISO, Graphs, Labels and Protection cover the rest of the actions shown
-  above. **Console** stays disabled: HLab has no remote console.
+  above.
+- **Console** opens the window "Console: <server name>" with the server's
+  screen, scaled to the window. A pill shows **Connecting**,
+  **Connected** or **Disconnected** with the reason; **Send
+  Ctrl+Alt+Del** sends that key combination, and **Reconnect** appears
+  after the connection drops and connects with a new URL. Each server
+  has at most one console window; **Console** again brings it to the
+  front. Closing the window ends the connection, and quitting the tray
+  program closes all console windows. The window works whether or not
+  the HLab CA is trusted.
 - Power off, reset, rebuild, change type, enable rescue, restoring and
   deleting a backup or snapshot ask for confirmation; deleting a server
   needs its name typed. A root password that **Reset root password**,

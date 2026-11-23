@@ -70,3 +70,11 @@ The user moved the server console into milestone 1 (phase 23):
   deviations say. hlab never switches trust on by itself.
 - The tray opens the console from the server's actions menu (noVNC);
   `unsupported_error` for request_console goes away.
+
+## Gate result 2026-11-23 (phase 23)
+
+The graphical console is built. E21 and E25 measured 5.01 frames per
+second at 1024x768, keyboard input visible after 135 ms (median, at most
+179 ms), and about 0.6 cores in `vmms.exe` with under 0.03 cores in the
+caller per open console; all three meet the limits above. The serial
+console is not built.

@@ -32,7 +32,11 @@ counts as done once the guest has accepted it, and a guest that is still
 booting is asked again for up to 2 minutes; the server shows `stopping`
 until the guest turns off. Resetting the root password works through a
 small HLab helper in the guest and only while the server runs.
-The remote console is not available. Metrics are sampled every 10
+The server console shows the Hyper-V screen of the server at
+`console.hetzner.internal`; its certificate comes from the HLab CA, so
+your own browser or VNC client accepts it only while you trust the CA
+(the console window of HLab works either way). Each open console costs
+about 0.7 CPU cores of the Hyper-V service `vmms.exe`. Metrics are sampled every 10
 seconds and kept for 24 hours in memory, so they are lost when the cloud
 stops. The metadata service offers only Hetzner's paths, not the
 EC2-style ones. Placement groups only record their members, since every

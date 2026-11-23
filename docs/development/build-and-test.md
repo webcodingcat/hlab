@@ -118,8 +118,18 @@ Placement Groups in one shared project `e2e-ui02-res-<time>`, made and
 deleted through `hlab`, each creating a resource through its form,
 labelling and deleting it; ISOs only checks the list. `UI-04` updates the server types with the
 token of the same hcloud context as `CAT-03`, and without one checks
-Hetzner's refusal of an invalid token. Release builds never carry the
+Hetzner's refusal of an invalid token. `UI-15` opens the console window
+of the run's shared server and runs last of the `UI-` rows; it needs the
+HLab CA untrusted, so when trust is on it runs `hlab ca trust off` first
+and `hlab ca trust on` afterwards. Release builds never carry the
 `e2e` tag.
+
+`CON-01` takes the URL and password from `hcloud server request-console`
+on the shared server and opens one VNC session with the test's own
+client, which trusts only the HLab CA. Its subtests `CON-01/screen`,
+`CON-01/keyboard` and `CON-01/mouse` run in that session one after the
+other and check over SSH that the input reached the guest's keyboard
+and mouse devices.
 
 ### Client matrix
 
@@ -162,7 +172,7 @@ where a name is part of another one.
 
 Not covered by the matrix: the datacenter commands, data sources and
 module (the API answers 410 as at Hetzner), `hcloud server
-request-console` (`unsupported_error`), vSwitch subnets and `hcloud
+request-console` (covered by `CON-01`), vSwitch subnets and `hcloud
 network expose-routes-to-vswitch`, storage boxes, and `hcloud all list`,
 which needs storage boxes from the Hetzner endpoint. The Ansible
 `servers` row attaches no ISO, because the `server` module of

@@ -100,7 +100,7 @@ func Deviations() []Deviation {
 		},
 		{
 			Endpoint:    "POST /servers/{id}/actions/request_console",
-			Description: "answers unsupported_error: server console is not supported by HLab yet",
+			Description: "wss_url points to console.hetzner.internal, whose certificate comes from the HLab CA; the console shows the Hyper-V screen of the server",
 		},
 		{
 			Endpoint:    "http://169.254.169.254/hetzner/v1/metadata",

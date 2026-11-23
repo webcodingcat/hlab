@@ -30,6 +30,7 @@ var defaultUpstream = []string{"1.1.1.1:53", "9.9.9.9:53"}
 const (
 	internalZone    = "hetzner.internal."
 	apiName         = "api.hetzner.internal."
+	consoleName     = "console.hetzner.internal."
 	storageBoxZone  = "storagebox." + internalZone
 	dnsTTL          = 60
 	upstreamTimeout = 2 * time.Second
@@ -324,6 +325,9 @@ func buildDNSData(cfg agentapi.Config) *dnsData {
 	internal := newZone(internalZone, serial)
 	if api := cfg.API.Listen.Addr(); api.Is4() {
 		internal.add(&dns.A{Hdr: hdr(apiName, dns.TypeA), A: api.AsSlice()})
+	}
+	if console := cfg.Console.Listen.Addr(); console.Is4() {
+		internal.add(&dns.A{Hdr: hdr(consoleName, dns.TypeA), A: console.AsSlice()})
 	}
 	for _, b := range cfg.StorageBoxes {
 		if !b.IP.Is4() {

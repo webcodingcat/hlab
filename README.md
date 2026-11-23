@@ -239,9 +239,12 @@ confirm.
     [guide](docs/guide.md).
   - **Servers**: the list with **Create server** and power actions in the
     row menu, the create form, and a detail page per server with an
-    actions menu (power, rebuild, change type, rename, delete) and the
-    tabs Overview, Networking, Firewalls, Volumes, Backups, Snapshots,
-    Rescue, ISO, Graphs, Labels and Protection.
+    actions menu (power, rebuild, change type, rename, console, delete)
+    and the tabs Overview, Networking, Firewalls, Volumes, Backups,
+    Snapshots, Rescue, ISO, Graphs, Labels and Protection. **Console**
+    opens a window with the server's screen, keyboard and mouse, also
+    while the HLab CA is not trusted; see
+    [Server console](docs/guide.md#server-console).
   - **Storage Boxes**: the list with **Create Storage Box**, and a page
     per box with the tabs Overview (host name, user name, usage and a
     folder browser), Subaccounts, Snapshots (with the snapshot plan),

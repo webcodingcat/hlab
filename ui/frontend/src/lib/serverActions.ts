@@ -92,14 +92,8 @@ export const menuActions: ServerAction[] = [
     needsInput: true,
   }),
   simple("remove_from_placement_group", "Remove from placement group"),
-  {
-    id: "console",
-    label: "Console",
-    confirm: "none",
-    password: false,
-    needsInput: false,
-    disabledHint: "Not available in HLab",
-  },
+  // Opens the server's console window; it sends no request itself.
+  { id: "console", label: "Console", confirm: "none", password: false, needsInput: false },
   {
     id: "delete",
     label: "Delete",
@@ -212,7 +206,7 @@ const tabList: ServerAction[] = [
 
 export const tabActions: Record<string, ServerAction> = Object.fromEntries(tabList.map((a) => [a.id, a]));
 
-/** request builds method, path and body; undefined for a disabled entry. */
+/** request builds method, path and body; undefined for a disabled entry or one without a request (Console). */
 export function request(
   a: ServerAction,
   server: number,
