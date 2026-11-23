@@ -821,8 +821,10 @@ locks a resource of type `project`.
       Schema, Generation int
       PublicRange        netip.Prefix // sources outside it, or inside HostNet, are external
       HostNet            netip.Prefix // the host's transit /30
+      TLS                *TLS         // wildcard *.storagebox.hetzner.internal for WebDAV and FTPS
       Boxes []Box
   }
+  type TLS struct { CertPEM, KeyPEM string } // from the hlab CA, key never logged
   type Box struct {
       ID         int64
       User       string     // "u100000"
@@ -832,6 +834,7 @@ locks a resource of type `project`.
       SSHKeys    []string   // OpenSSH public keys
       Access     Access     // ssh, samba, webdav, zfs
       Subaccounts []Subaccount
+      Snapshots  []string   // stored snapshot names; the agent removes only unlisted snapshot subvolumes
   }
   type Subaccount struct {
       User     string     // "u100000-sub1"
@@ -847,11 +850,13 @@ locks a resource of type `project`.
       Box      string // box user
       Snapshot string // snapshot name for snapshot, rollback, delete-snapshot
       Path     string // for folders
+      Newer    []string // rollback: the snapshots created after the target, deleted with it
   }
   type StorageJobResult struct {
       Folders []string
       Usage   struct{ Data, Snapshots int64 }       // bytes, from the qgroups (E18)
-      SnapshotSizes map[string]int64
+      SnapshotSizes map[string]int64 // exclusive bytes per snapshot
+      SnapshotFS    map[string]int64 // referenced bytes per snapshot
   }
   ```
 
