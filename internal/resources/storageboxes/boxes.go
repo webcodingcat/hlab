@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/netip"
 	"slices"
 	"strconv"
 	"strings"
@@ -180,7 +179,8 @@ func (m *Module) validate(body createRequest) (catalog.StorageBoxType, catalog.L
 
 // create stores the box as initializing with its number and IP and starts
 // create_storage_box, which shows its username, server and system and
-// makes it active.
+// makes it active. When Apply fails, the box is deleted and its IP
+// released.
 func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	var body createRequest
 	if !api.Decode(w, req, &body) {
@@ -249,6 +249,8 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		b.Username, b.Server, b.System = &username, &server, &system
 		b.Status = StatusActive
 		return put(tx, projectID, *b)
+	}, func(tx store.Tx, projectID int64, b *Record) error {
+		return removeBox(tx, projectID, *b)
 	})
 	api.JSON(w, http.StatusCreated, map[string]any{"storage_box": r.Box, "action": a})
 }
@@ -314,34 +316,42 @@ func (m *Module) update(w http.ResponseWriter, req *http.Request) {
 	api.JSON(w, http.StatusOK, map[string]any{"storage_box": r.Box})
 }
 
-// delete starts delete_storage_box, which removes the box and its
-// subaccounts; a box with delete protection answers 423 protected.
+// delete starts delete_storage_box on a box without delete protection
+// (423 protected otherwise). The box is marked deleting in the same
+// transaction, so Apply leaves it out of the storage VM's document; only
+// after Apply succeeded are the box and its subaccounts deleted and its IP
+// released. When Apply fails, the mark is cleared and the action fails.
 func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
-	m.boxAction(w, req, deleteCommand, func(r Record) error {
-		if r.Protection.Delete {
-			return actions.ErrProtected
-		}
-		return nil
-	}, func(tx store.Tx, projectID int64, r *Record) error {
-		subs, err := store.List[struct {
-			ID         int64 `json:"id"`
-			StorageBox int64 `json:"storage_box"`
-		}](tx, SubaccountKind, projectID)
+	id, ok := api.PathID(w, req)
+	if !ok {
+		return
+	}
+	p, _ := api.ProjectFrom(req.Context())
+	acts := api.ActionsFrom(req.Context())
+	var a *actions.Action
+	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
+		r, err := Load(tx, p.ID, id)
 		if err != nil {
 			return err
 		}
-		for _, s := range subs {
-			if s.StorageBox == r.ID {
-				if err := store.Delete(tx, SubaccountKind, projectID, s.ID); err != nil {
-					return err
-				}
-			}
+		if r.Protection.Delete {
+			return actions.ErrProtected
 		}
-		if a, err := netip.ParseAddr(r.HLab.IP); err == nil {
-			if err := ipam.Release(tx, a); err != nil {
-				return err
-			}
+		if a, err = begin(tx, acts, p.ID, id, deleteCommand); err != nil {
+			return err
 		}
-		return store.Delete(tx, Kind, projectID, r.ID)
+		r.HLab.Deleting = true
+		return put(tx, p.ID, r)
 	})
+	if err != nil {
+		api.Fail(w, err)
+		return
+	}
+	m.run(req, a.ID, id, func(tx store.Tx, projectID int64, r *Record) error {
+		return removeBox(tx, projectID, *r)
+	}, func(tx store.Tx, projectID int64, r *Record) error {
+		r.HLab.Deleting = false
+		return put(tx, projectID, *r)
+	})
+	api.JSON(w, http.StatusCreated, map[string]any{"action": a})
 }

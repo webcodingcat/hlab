@@ -311,6 +311,9 @@ func (m *Module) createSubaccount(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			return err
 		}
+		if err := checkActive(box); err != nil {
+			return err
+		}
 		subs, err := boxSubs(tx, p.ID, boxID)
 		if err != nil {
 			return err
@@ -352,7 +355,7 @@ func (m *Module) createSubaccount(w http.ResponseWriter, req *http.Request) {
 		api.Fail(w, err)
 		return
 	}
-	m.run(req, a.ID, boxID, func(store.Tx, int64, *Record) error { return nil })
+	m.run(req, a.ID, boxID, func(store.Tx, int64, *Record) error { return nil }, nil)
 	api.JSON(w, http.StatusCreated, map[string]any{
 		"subaccount": map[string]any{"id": s.ID, "storage_box": boxID},
 		"action":     a,
@@ -421,7 +424,8 @@ func (m *Module) deleteSubaccount(w http.ResponseWriter, req *http.Request) {
 
 // subAction answers a request that runs command as an action on the
 // subaccount of the path, referencing box and subaccount and locking the
-// box; done stores the change when the action succeeds. Callers validate
+// box; done stores the change when the action succeeds. A box that is not
+// active refuses every command but delete_subaccount. Callers validate
 // the request first. It answers 201 with the action.
 func (m *Module) subAction(w http.ResponseWriter, req *http.Request, command string,
 	done func(tx store.Tx, projectID int64, s SubaccountRecord) error,
@@ -437,6 +441,15 @@ func (m *Module) subAction(w http.ResponseWriter, req *http.Request, command str
 		if _, err := loadSub(tx, p.ID, boxID, subID); err != nil {
 			return err
 		}
+		if command != deleteSubCommand {
+			box, err := Load(tx, p.ID, boxID)
+			if err != nil {
+				return err
+			}
+			if err := checkActive(box); err != nil {
+				return err
+			}
+		}
 		var err error
 		a, err = begin(tx, acts, p.ID, boxID, command, subRef(subID))
 		return err
@@ -451,6 +464,6 @@ func (m *Module) subAction(w http.ResponseWriter, req *http.Request, command str
 			return err
 		}
 		return done(tx, projectID, s)
-	})
+	}, nil)
 	api.JSON(w, http.StatusCreated, map[string]any{"action": a})
 }
