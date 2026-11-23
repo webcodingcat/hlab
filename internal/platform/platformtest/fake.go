@@ -218,6 +218,7 @@ func (f *Fake) SetVM(ctx context.Context, name string, spec platform.VMSpec) err
 	}
 	if spec.MemoryMB > 0 {
 		v.spec.MemoryMB = spec.MemoryMB
+		v.spec.DynamicMemory = spec.DynamicMemory
 	}
 	v.spec.StopAction = spec.StopAction
 	return nil

@@ -120,6 +120,7 @@ func (p *Platform) CreateVM(ctx context.Context, spec platform.VMSpec) error {
 	}
 	_, err = p.r.run(ctx, "CreateVM", map[string]any{
 		"name": spec.Name, "cpus": spec.CPUs, "memory": spec.MemoryMB * 1024 * 1024,
+		"dynamic": spec.DynamicMemory, "minimum": int64(platform.DynamicMemoryMinMB) * 1024 * 1024,
 		"folder": spec.Folder, "stop": stop,
 	}, `if (Get-VM -Name $name -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq $name }) {
   throw [System.InvalidOperationException]::new("vm $name exists")
@@ -128,6 +129,7 @@ $vm = New-VM -Name $name -Generation 2 -MemoryStartupBytes $memory -Path $folder
 try {
   Get-VMNetworkAdapter -VM $vm | Remove-VMNetworkAdapter
   Set-VM -VM $vm -ProcessorCount $cpus -StaticMemory -MemoryStartupBytes $memory -AutomaticCheckpointsEnabled $false -CheckpointType Standard -AutomaticStartAction Nothing -AutomaticStopAction $stop
+  if ($dynamic) { Set-VM -VM $vm -DynamicMemory -MemoryMinimumBytes $minimum -MemoryStartupBytes $memory -MemoryMaximumBytes $memory }
   Set-VMFirmware -VM $vm -EnableSecureBoot On -SecureBootTemplate MicrosoftUEFICertificateAuthority
   Set-VMComPort -VM $vm -Number 1 -Path ('\\.\pipe\' + $name + '-com1')
 } catch {
@@ -138,8 +140,8 @@ try {
 	return err
 }
 
-// SetVM changes CPUs and memory (when set) and the stop action of a
-// stopped VM.
+// SetVM changes CPUs and memory (when set; static or dynamic as the spec
+// says) and the stop action of a stopped VM.
 func (p *Platform) SetVM(ctx context.Context, name string, spec platform.VMSpec) error {
 	stop, err := stopAction(spec.StopAction)
 	if err != nil {
@@ -147,10 +149,13 @@ func (p *Platform) SetVM(ctx context.Context, name string, spec platform.VMSpec)
 	}
 	_, err = p.r.run(ctx, "SetVM", map[string]any{
 		"name": name, "cpus": spec.CPUs, "memory": spec.MemoryMB * 1024 * 1024, "stop": stop,
+		"dynamic": spec.DynamicMemory, "minimum": int64(platform.DynamicMemoryMinMB) * 1024 * 1024,
 	}, getVM+`if ([int]$vm.State -ne 3) { throw [System.InvalidOperationException]::new("vm $name is not off") }
 $a = @{ VM = $vm; AutomaticStopAction = $stop }
 if ($cpus -gt 0) { $a.ProcessorCount = $cpus }
-if ($memory -gt 0) { $a.StaticMemory = $true; $a.MemoryStartupBytes = $memory }
+if ($memory -gt 0 -and $dynamic) {
+  $a.DynamicMemory = $true; $a.MemoryMinimumBytes = $minimum; $a.MemoryStartupBytes = $memory; $a.MemoryMaximumBytes = $memory
+} elseif ($memory -gt 0) { $a.StaticMemory = $true; $a.MemoryStartupBytes = $memory }
 Set-VM @a
 `)
 	return err
