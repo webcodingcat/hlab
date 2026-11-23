@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 19 Storage VM and SSH access (next)
+- Phase: 20 SMB, WebDAV, FTP and snapshots (next)
 - Base branch: main
-- Last done: phase 18 merged into main (2026-11-22): the Hetzner API serves storage box types, storage boxes, subaccounts and their actions under `/hetzner/v1`, and `task catalog` writes the storage box types from the real API
-- Next: /wcc:phase in a new session builds phase 19 (Storage VM and SSH access), then phases 20 and 21; /wcc:change takes items from "Later" before phase 16
+- Last done: phase 19 merged into main (2026-11-23): the first storage box creates the storage VM; boxes and subaccounts serve SFTP/SCP on port 22 and rsync/Borg on port 23 with quota, reachability and own storage box types
+- Next: /wcc:phase in a new session builds phase 20 (SMB, WebDAV, FTP and snapshots), then phase 21; /wcc:change takes items from "Later" before phase 16
 
 ## Open manual checks
 
@@ -24,6 +24,7 @@ STATUS: IN_PROGRESS
 - INST-03 (12): the setup creates shortcuts that open only the tray program, and "Launch" starts it without admin rights
 - INST-05 (12): uninstalling asks whether to keep the data; with the default answer no file of hlab remains
 - UI-09 (14): the example environment can be created and deleted by hand in the console
+- COMPACT (19): a deleted box gives its space on the host back after a cloud stop (data.vhdx compaction)
 - All of them, and those of later phases, are done in phase 16: the suite in the development test VM, the others in the user test VM (SPEC.md "Test VMs for the release checks").
 
 ## Open decisions

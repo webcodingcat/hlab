@@ -276,3 +276,9 @@ CompactDisk(ctx context.Context, path string) error
   - [x] `docs/configuration.md`: `storage-debs.json`, `storage-box-types.custom.json`, the folders `storage` and `cache\debs`.
   - [x] `docs/development/api-coverage.md` and `internal/api/deviations.go`: `folders` served, snapshots and rollback still unserved until phase 20.
   - [x] `docs/development/components.md`: the storage agent.
+
+## Close
+
+- Unit suite and lint over the whole project: green (b6bd301).
+- End-to-end: all tests, because the shared harness (`apiDo`, `sshPassword` in test/e2e/main_test.go) changed: `task e2e -- -v` on b6bd301, 126 green, `CLI-04/tofu` red. Rerun alone three times: green, red, green. Cause found on `main` too (pre-existing, not phase 19): a server attached to a network in the first seconds of its boot loses its seed ISO to `rewriteSeed` and gets no public IP; recorded in BACKLOG.md.
+- The new rows SBOX-03, -04, -06, -11, -12, -13 ran green on eb7aef5 and again in the full run after the close fixes.

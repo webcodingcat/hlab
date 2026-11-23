@@ -390,26 +390,26 @@ What the target vision in IDEA.md will need, not built yet.
 | DNS-04 | 07 | x |
 | DNS-05 | 07 | x |
 | SBOX-01 | 18 | x |
-| SBOX-21 | 19 | |
+| SBOX-21 | 19 | x |
 | SBOX-09 | 18 | x |
 | SBOX-10 | 18 | x |
 | SBOX-20 | 18 | x |
-| SBOX-11 | 19 | |
+| SBOX-11 | 19 | x |
 | SBOX-02 | 18 | x |
-| SBOX-12 | 19 | |
-| SBOX-03 | 19 | |
-| SBOX-13 | 19 | |
+| SBOX-12 | 19 | x |
+| SBOX-03 | 19 | x |
+| SBOX-13 | 19 | x |
 | SBOX-14 | 20 | |
 | SBOX-15 | 20 | |
 | SBOX-16 | 20 | |
-| SBOX-04 | 19 | |
+| SBOX-04 | 19 | x |
 | SBOX-05 | 20 | |
 | SBOX-17 | 20 | |
 | SBOX-18 | 20 | |
 | SBOX-19 | 20 | |
-| SBOX-06 | 19 | |
+| SBOX-06 | 19 | x |
 | SBOX-07 | 20 | |
-| SBOX-08 | 19 | |
+| SBOX-08 | 19 | x |
 | HOST-01 | 05 | x |
 | HOST-02 | 09 | x |
 | HOST-03 | 02 | x |
