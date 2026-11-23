@@ -65,10 +65,15 @@ func ListProjects(tx Tx) ([]Project, error) {
 	return out, rows.Err()
 }
 
-// DeleteProject removes the project id with its tokens and resources, or
-// returns ErrNotFound.
+// DeleteProject removes the project id with its tokens, resources and
+// actions, or returns ErrNotFound. SQLite gives a new project the ID of a
+// deleted one, so actions left behind would show up in that project.
 func DeleteProject(tx Tx, id int64) error {
-	return affected(tx.exec(`DELETE FROM projects WHERE id = ?`, id))
+	if err := affected(tx.exec(`DELETE FROM projects WHERE id = ?`, id)); err != nil {
+		return err
+	}
+	_, err := tx.exec(`DELETE FROM actions WHERE project_id = ?`, id)
+	return err
 }
 
 // CreateToken stores a token of project projectID by the SHA-256 of its
