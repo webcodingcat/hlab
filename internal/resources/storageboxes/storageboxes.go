@@ -66,6 +66,10 @@ type Deps struct {
 	FreeBytes func() (uint64, error)
 	// Clock drives the stats job; nil: scheduler.RealClock().
 	Clock scheduler.Clock
+	// PushAgent pushes the appliance's document again after the failed
+	// path of an action changed the store (a box deleted after a failed
+	// create, the deleting mark cleared). nil does nothing.
+	PushAgent func(ctx context.Context) error
 	// Store is what Recover works on outside a request.
 	Store *store.Store
 }
@@ -230,7 +234,8 @@ type boxFunc func(tx store.Tx, projectID int64, r *Record) error
 // run hands the work of action actionID on box boxID to the action
 // manager: Apply, then done on the stored box of projectID in one
 // transaction, then a refresh of the box's stats. When Apply fails, failed (if not nil) runs instead of done
-// and the action fails with Apply's error.
+// and the action fails with Apply's error; the appliance's document is
+// then pushed again, as failed changed what it holds.
 func (m *Module) run(req *http.Request, actionID, boxID int64, done, failed boxFunc) {
 	p, _ := api.ProjectFrom(req.Context())
 	st := api.StoreFrom(req.Context())
@@ -249,6 +254,11 @@ func (m *Module) run(req *http.Request, actionID, boxID int64, done, failed boxF
 				if failed != nil {
 					if ferr := onBox(failed); ferr != nil {
 						return errors.Join(err, ferr)
+					}
+					if m.d.PushAgent != nil {
+						if perr := m.d.PushAgent(ctx); perr != nil {
+							return errors.Join(err, perr)
+						}
 					}
 				}
 				return err

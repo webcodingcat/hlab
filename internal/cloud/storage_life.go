@@ -48,6 +48,7 @@ func (c *Cloud) storageDeps() storageboxes.Deps {
 			return c.storage.Job(ctx, job)
 		},
 		FreeBytes: c.freeBytes,
+		PushAgent: c.PushAgent,
 	}
 }
 
