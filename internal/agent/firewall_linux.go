@@ -25,10 +25,10 @@ import (
 // interface to a filtered address jumps to the server's in-chain, one that
 // arrives on it from a filtered address jumps to the server's out-chain
 // (only when the server's outbound traffic is restricted). Packets to a
-// storage box IP are checked before all of it: from external sources
-// (outside the public range or inside the host's transit /30) they are
-// dropped unless the box is reachable externally; otherwise only TCP 22 and
-// 23 pass. A server chain
+// storage box IP jump to the box's chain before all of it: from external
+// sources (outside the public range or inside the host's transit /30) they
+// are dropped unless the box is reachable externally, and only TCP 22 and
+// 23 return; returned packets continue to the server chains. A server chain
 // returns for a packet one of its rules allows and drops everything else;
 // returning lets a packet between two filtered servers pass both checks.
 // Private networks never use the public interface and are never filtered.
@@ -170,23 +170,17 @@ func addServerChain(c *nftables.Conn, table *nftables.Table, chain *nftables.Cha
 	c.AddRule(&nftables.Rule{Table: table, Chain: chain, Exprs: []expr.Any{&expr.Verdict{Kind: expr.VerdictDrop}}})
 }
 
-// addStorageBoxRules adds the rules of the box IPs to chain: per box IP the
-// drops of external sources when it is not reachable externally, an accept
-// for each port of storageBoxPorts and a drop of everything else.
+// addStorageBoxRules sends every packet to a box IP from chain to a chain of
+// that box. The box chain only drops or returns: it drops external sources
+// when the box is not reachable externally, returns for each port of
+// storageBoxPorts and drops everything else, so allowed packets go on to
+// the server chains (a server's restricted outbound traffic included).
 func addStorageBoxRules(c *nftables.Conn, table *nftables.Table, chain *nftables.Chain, iface []byte, f boxFilter) {
-	for _, a := range f.All {
-		// oifname <pub> meta nfproto ipv4 ip daddr <box IP>
-		to := []expr.Any{
-			&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
-			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: iface},
-			&expr.Meta{Key: expr.MetaKeyNFPROTO, Register: 1},
-			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.NFPROTO_IPV4}},
-			&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseNetworkHeader, Offset: 16, Len: 4},
-			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: a.AsSlice()},
-		}
+	for i, a := range f.All {
+		box := c.AddChain(&nftables.Chain{Table: table, Name: "box" + strconv.Itoa(i)})
 		rule := func(verdict expr.VerdictKind, match ...expr.Any) {
-			exprs := append(append(append([]expr.Any{}, to...), match...), &expr.Verdict{Kind: verdict})
-			c.AddRule(&nftables.Rule{Table: table, Chain: chain, Exprs: exprs})
+			exprs := append(append([]expr.Any{}, match...), &expr.Verdict{Kind: verdict})
+			c.AddRule(&nftables.Rule{Table: table, Chain: box, Exprs: exprs})
 		}
 		if slices.Contains(f.Closed, a) {
 			// ip saddr != <public range> drop
@@ -197,8 +191,8 @@ func addStorageBoxRules(c *nftables.Conn, table *nftables.Table, chain *nftables
 			}
 		}
 		for _, port := range storageBoxPorts {
-			// meta l4proto tcp tcp dport <port> accept
-			rule(expr.VerdictAccept,
+			// meta l4proto tcp tcp dport <port> return
+			rule(expr.VerdictReturn,
 				&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
 				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{protoTCP}},
 				&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2},
@@ -206,6 +200,8 @@ func addStorageBoxRules(c *nftables.Conn, table *nftables.Table, chain *nftables
 			)
 		}
 		rule(expr.VerdictDrop)
+		// oifname <pub> meta nfproto ipv4 ip daddr <box IP> jump box<i>
+		c.AddRule(addrJump(table, chain, expr.MetaKeyOIFNAME, iface, 16, a, box.Name))
 	}
 }
 
