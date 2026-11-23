@@ -22,3 +22,15 @@ func (a *Agent) folders(context.Context, agentapi.StorageJob) (agentapi.StorageJ
 func (a *Agent) usage(context.Context, agentapi.StorageJob) (agentapi.StorageJobResult, error) {
 	return agentapi.StorageJobResult{}, errNeedsLinux
 }
+
+func (a *Agent) snapshot(context.Context, agentapi.StorageJob) (agentapi.StorageJobResult, error) {
+	return agentapi.StorageJobResult{}, errNeedsLinux
+}
+
+func (a *Agent) deleteSnapshotJob(context.Context, agentapi.StorageJob) (agentapi.StorageJobResult, error) {
+	return agentapi.StorageJobResult{}, errNeedsLinux
+}
+
+func (a *Agent) rollback(context.Context, agentapi.StorageJob) (agentapi.StorageJobResult, error) {
+	return agentapi.StorageJobResult{}, errNeedsLinux
+}

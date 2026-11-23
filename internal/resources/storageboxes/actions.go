@@ -23,6 +23,7 @@ func (m *Module) actionRoutes(r resource.Registrar) {
 	r.Handle("POST /storage_boxes/{id}/actions/update_access_settings", http.HandlerFunc(m.updateAccessSettings))
 	r.Handle("POST /storage_boxes/{id}/actions/enable_snapshot_plan", http.HandlerFunc(m.enableSnapshotPlan))
 	r.Handle("POST /storage_boxes/{id}/actions/disable_snapshot_plan", http.HandlerFunc(m.disableSnapshotPlan))
+	r.Handle("POST /storage_boxes/{id}/actions/rollback_snapshot", http.HandlerFunc(m.rollbackSnapshot))
 }
 
 // changeProtection sets the delete protection present in the body.

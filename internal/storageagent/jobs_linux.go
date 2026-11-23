@@ -65,7 +65,7 @@ func (a *Agent) folders(_ context.Context, job agentapi.StorageJob) (agentapi.St
 
 // usage returns the bytes of the box from its qgroups (E18): Data is what
 // the box's subvolume references, Snapshots what the level-1 qgroup holds
-// beyond it.
+// beyond it; and the exclusive and referenced bytes of each snapshot.
 func (a *Agent) usage(ctx context.Context, job agentapi.StorageJob) (agentapi.StorageJobResult, error) {
 	n, err := boxUID(job.Box)
 	if err != nil {
@@ -75,7 +75,7 @@ func (a *Agent) usage(ctx context.Context, job agentapi.StorageJob) (agentapi.St
 	if _, err := os.Lstat(data); errors.Is(err, fs.ErrNotExist) {
 		return agentapi.StorageJobResult{}, errNotFound
 	}
-	out, err := run(ctx, "btrfs", "inspect-internal", "rootid", data)
+	subs, err := a.subvolumes(ctx)
 	if err != nil {
 		return agentapi.StorageJobResult{}, err
 	}
@@ -83,7 +83,15 @@ func (a *Agent) usage(ctx context.Context, job agentapi.StorageJob) (agentapi.St
 	if err != nil {
 		return agentapi.StorageJobResult{}, err
 	}
-	u := agentapi.Usage{Data: qg["0/"+strings.TrimSpace(out)]}
-	u.Snapshots = max(qg["1/"+strconv.Itoa(n)]-u.Data, 0)
-	return agentapi.StorageJobResult{Usage: u}, nil
+	u := agentapi.Usage{Data: qg["0/"+subs[job.Box]].rfer}
+	u.Snapshots = max(qg["1/"+strconv.Itoa(n)].rfer-u.Data, 0)
+	res := agentapi.StorageJobResult{Usage: u, SnapshotSizes: map[string]int64{}, SnapshotFS: map[string]int64{}}
+	prefix := snapshotDir + "/" + job.Box + "/"
+	for p, id := range subs {
+		if name, ok := strings.CutPrefix(p, prefix); ok && snapshotNameRE.MatchString(name) {
+			res.SnapshotSizes[name] = qg["0/"+id].excl
+			res.SnapshotFS[name] = qg["0/"+id].rfer
+		}
+	}
+	return res, nil
 }

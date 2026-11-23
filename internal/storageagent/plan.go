@@ -11,11 +11,13 @@ import (
 )
 
 // State is what the storage VM holds before an apply: whether the data
-// disk carries a filesystem, and the box users and box subvolumes found.
+// disk carries a filesystem, and the box users, box subvolumes and snapshot
+// subvolumes found.
 type State struct {
 	Filesystem bool
-	Boxes      []string // box users in /etc/passwd
-	Subvolumes []string // box subvolumes below the root
+	Boxes      []string            // box users in /etc/passwd
+	Subvolumes []string            // box subvolumes below the root
+	Snapshots  map[string][]string // box user -> snapshot names found
 }
 
 // StepKind is the kind of a Step.
@@ -29,19 +31,24 @@ const (
 	StepRemoveBox
 	StepCreateBox
 	StepUpdateBox
+	StepRemoveSnapshot
 )
 
-// Step is one step of an apply; Box is the box user, empty for StepFormat.
+// Step is one step of an apply; Box is the box user, empty for StepFormat;
+// Snapshot is the snapshot name of StepRemoveSnapshot.
 type Step struct {
-	Kind StepKind
-	Box  string
+	Kind     StepKind
+	Box      string
+	Snapshot string
 }
 
 // Plan returns the steps that bring have to want: the format step only
 // when the disk holds no filesystem, a removal for each box found that the
 // document lacks, a creation for each box of the document not fully found,
-// and an update for every box of the document. A box present in the
-// document is never removed.
+// a removal for each snapshot of a box of the document that its Snapshots
+// lack, and an update for every box of the document. A box present in the
+// document is never removed, and neither is a listed snapshot; a removed
+// box loses its snapshots with it.
 func Plan(have State, want agentapi.Storage) []Step {
 	var steps []Step
 	if !have.Filesystem {
@@ -52,7 +59,11 @@ func Plan(have State, want agentapi.Storage) []Step {
 		wanted[b.User] = true
 	}
 	var found []string
-	for _, u := range append(slices.Clone(have.Boxes), have.Subvolumes...) {
+	all := append(slices.Clone(have.Boxes), have.Subvolumes...)
+	for u := range have.Snapshots {
+		all = append(all, u)
+	}
+	for _, u := range all {
 		if !slices.Contains(found, u) {
 			found = append(found, u)
 		}
@@ -61,6 +72,13 @@ func Plan(have State, want agentapi.Storage) []Step {
 	for _, u := range found {
 		if !wanted[u] {
 			steps = append(steps, Step{Kind: StepRemoveBox, Box: u})
+		}
+	}
+	for _, b := range want.Boxes {
+		for _, name := range have.Snapshots[b.User] {
+			if !slices.Contains(b.Snapshots, name) {
+				steps = append(steps, Step{Kind: StepRemoveSnapshot, Box: b.User, Snapshot: name})
+			}
 		}
 	}
 	for _, b := range want.Boxes {
@@ -77,6 +95,8 @@ func Plan(have State, want agentapi.Storage) []Step {
 var (
 	boxUserRE = regexp.MustCompile(`^u[1-9][0-9]{0,8}$`)
 	subUserRE = regexp.MustCompile(`^(u[1-9][0-9]{0,8})-sub[1-9][0-9]{0,5}$`)
+	// snapshotNameRE is a snapshot name the agent takes into a path.
+	snapshotNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 )
 
 // boxUID returns the UID of box user, the number after the "u".
