@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Samba ID map pinned for shared box UIDs
+
+- Type: decision
+- Phase: phase 20
+- What: After setting the Samba accounts, each apply pins every account's SID-to-UID entry and maps each box UID to S-1-22-1-<uid> in Samba's cache (`net cache add`, 520 weeks).
+- Why: A box and its subaccounts share one UID, and smbd takes a file's owner SID from a cached UID-to-SID mapping that each first login rewrites, so one subaccount login took the box's write access on `backup` (documentation run); it relies on Samba's internal cache keys, which SBOX-14 guards.
+- Cost of change: low
+
 ## 2026-11-23 Mounts inside homes are handled by descriptor
 
 - Type: decision
