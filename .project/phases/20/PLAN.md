@@ -171,13 +171,13 @@ type Step struct {
   - [x] New internal/storageagent/services_linux.go: `service`, `registerService`, and `applyServices` that writes `doc.TLS` to `tlsDir` (key 0600, root only; written only when changed, never logged) and runs every registered service; a failing service is logged and joined into the apply error, the others still run.
   - [x] Call `applyServices` in apply (internal/storageagent/apply_linux.go) after `applySSHD`.
 
-- [ ] 20-05 Storage TLS certificate in hlabd
+- [x] 20-05 Storage TLS certificate in hlabd
   - Wave: 2 | Depends on: 20-01 | Review: alone
   - Requirements: SBOX-15, SBOX-16 (certificate) | Tests: -
   - Reads: CONTEXT.md (Q1); ARCHITECTURE "ca", "Storage VM"; internal/cloud/storage_life.go applyStorage; internal/cloud/ca.go; internal/ca/ca.go Issue
   - Size: ~90 lines in 2 files
-  - [ ] New internal/cloud/storage_tls.go: `storageTLS()` returns the certificate `*.storagebox.hetzner.internal` kept in kv (`storage.tls_cert`, `storage.tls_key`), issued by `ca.Issue` when missing, not parseable, or expiring within 30 days.
-  - [ ] Put it into `agentapi.Storage.TLS` in applyStorage (internal/cloud/storage_life.go).
+  - [x] New internal/cloud/storage_tls.go: `storageTLS()` returns the certificate `*.storagebox.hetzner.internal` kept in kv (`storage.tls_cert`, `storage.tls_key`), issued by `ca.Issue` when missing, not parseable, or expiring within 30 days.
+  - [x] Put it into `agentapi.Storage.TLS` in applyStorage (internal/cloud/storage_life.go).
 
 - [ ] 20-06 Snapshot resource in the Hetzner API
   - Wave: 2 | Depends on: 20-01 | Review: alone

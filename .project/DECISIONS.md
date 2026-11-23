@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Storage certificate in kv, renewed daily
+
+- Type: decision
+- Phase: phase 20
+- What: The storage VM's wildcard certificate is kept in kv (`storage.tls_cert`, `storage.tls_key`), reissued when missing, unparseable, not matching its key or within 30 days of expiry, and the daily cloud job `storage-tls` pushes the storage document again when that is due while boxes exist.
+- Why: Without the job a certificate would expire on a storage VM whose boxes do not change for 60 days (review of 20-05).
+- Cost of change: low
+
 ## 2026-11-23 Install groups run only for packages on the ISO
 
 - Type: decision
