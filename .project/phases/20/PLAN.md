@@ -147,14 +147,14 @@ type Step struct {
   - Size: ~60 lines in 1 file
   - [x] Add the job kinds, `Storage.TLS`, `TLS`, `Box.Snapshots`, `StorageJob.Newer` and `StorageJobResult.SnapshotFS` in internal/agentapi/storage.go, with doc comments as in "Interfaces"; update the comment of the job kinds.
 
-- [ ] 20-02 Storage VM packages and memory
+- [x] 20-02 Storage VM packages and memory
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SBOX-14, SBOX-15, SBOX-16 (prerequisites) | Tests: -
   - Reads: SPEC "Stack" (storage VM); RESEARCH.md 1.1, 1.2, 1.3, 3 (first point); CONTEXT.md; catalog/storage-debs.json; appliance/hlab-agent-install.sh; appliance/storage-user-data.yaml; internal/platform/platform.go VMSpec; internal/platform/hyperv/hyperv.go CreateVM, SetVM; internal/cloud/storage.go
   - Size: ~300 lines in 5 files (most of it catalog entries)
-  - [ ] Add the 32 packages of RESEARCH.md 1.2 to catalog/storage-debs.json (format of the existing entries, `lsb-base` with the values of appliance-debs.json). Resolve each URL as a snapshot.debian.org URL through `/mr/binary/<pkg>/<version>/binfiles`, download each file and recompute its SHA-256 and size; never commit a hash from RESEARCH.md unchecked.
-  - [ ] In appliance/hlab-agent-install.sh install the Samba, Apache and vsftpd groups each while its tool is missing (`smbd`, `apache2`, `vsftpd`), independently of btrfs, so storage VMs of phase 19 get them at their next boot. Use a `policy-rc.d` exiting 101 during `dpkg -i`; afterwards disable `nmbd`, `smbd`, `apache2` and `vsftpd` until the agent configures them; remove Apache's `ports.conf` Listen lines and `sites-enabled/000-default.conf`; `a2dismod -f mpm_event` and `a2enmod mpm_prefork mpm_itk ssl dav dav_fs auth_basic authn_file authz_user authz_host`. Keep the rule that a failure does not keep the agent down.
-  - [ ] Add `VMSpec.DynamicMemory` (platform.go) and use it in hyperv.go CreateVM and SetVM (`-DynamicMemory`, minimum 512 MB, startup and maximum MemoryMB); the storage VM in internal/cloud/storage.go gets 2048 MB dynamic (SetVM already runs on an off VM at start, so existing VMs change too). Other VMs stay static.
+  - [x] Add the 32 packages of RESEARCH.md 1.2 to catalog/storage-debs.json (format of the existing entries, `lsb-base` with the values of appliance-debs.json). Resolve each URL as a snapshot.debian.org URL through `/mr/binary/<pkg>/<version>/binfiles`, download each file and recompute its SHA-256 and size; never commit a hash from RESEARCH.md unchecked.
+  - [x] In appliance/hlab-agent-install.sh install the Samba, Apache and vsftpd groups each while its tool is missing (`smbd`, `apache2`, `vsftpd`), independently of btrfs, so storage VMs of phase 19 get them at their next boot. Use a `policy-rc.d` exiting 101 during `dpkg -i`; afterwards disable `nmbd`, `smbd`, `apache2` and `vsftpd` until the agent configures them; remove Apache's `ports.conf` Listen lines and `sites-enabled/000-default.conf`; `a2dismod -f mpm_event` and `a2enmod mpm_prefork mpm_itk ssl dav dav_fs auth_basic authn_file authz_user authz_host`. Keep the rule that a failure does not keep the agent down.
+  - [x] Add `VMSpec.DynamicMemory` (platform.go) and use it in hyperv.go CreateVM and SetVM (`-DynamicMemory`, minimum 512 MB, startup and maximum MemoryMB); the storage VM in internal/cloud/storage.go gets 2048 MB dynamic (SetVM already runs on an off VM at start, so existing VMs change too). Other VMs stay static.
 
 - [x] 20-03 Appliance lets the protocol ports through to box IPs
   - Wave: 1 | Depends on: - | Review: alone
