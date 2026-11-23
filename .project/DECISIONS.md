@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Storage box SSH keys are trimmed, multi-line keys refused
+
+- Type: decision
+- Phase: phase 21
+- What: creating a box trims the whitespace around each SSH key and refuses a key that still spans lines with 422 on `ssh_keys`; the storage document trims every stored key and leaves out any that still spans lines.
+- Why: keys read from a file end in a newline, and one such key made the storage agent refuse the whole document, so every box create failed.
+- Cost of change: low
+
 ## 2026-11-23 Own storage box type form keeps the "All locations" checkbox
 
 - Type: decision
