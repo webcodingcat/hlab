@@ -144,12 +144,6 @@ func (c *fakeConn) mouseLog() []string {
 	return append([]string(nil), c.mouse...)
 }
 
-func (c *fakeConn) isClosed() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.closed
-}
-
 func (c *fakeConn) Screen(context.Context) (platform.Frame, bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -586,27 +580,30 @@ func startServe(t *testing.T, src platform.ConsoleConn, password string, o Sessi
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	defer ln.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &served{done: make(chan struct{})}
 	go func() {
 		defer close(s.done)
+		// Closed only after Accept: on Windows closing the listener resets
+		// a dialed connection that is not accepted yet.
 		conn, err := ln.Accept()
+		_ = ln.Close()
 		if err != nil {
 			s.err = err
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		s.err = Serve(ctx, conn, src, password, o)
 	}()
 	conn, err := net.Dial("tcp", ln.Addr().String())
 	if err != nil {
 		cancel()
+		_ = ln.Close()
 		t.Fatalf("dial: %v", err)
 	}
 	t.Cleanup(func() {
 		cancel()
-		conn.Close()
+		_ = conn.Close()
 		select {
 		case <-s.done:
 		case <-time.After(stepTimeout):
