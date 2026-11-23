@@ -3,13 +3,16 @@
 package cloud
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/agentapi"
+	"github.com/webcodingcat/hlab/internal/resources/storageboxes"
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
@@ -24,6 +27,9 @@ const (
 	// storageTLSRenewBefore renews the certificate this long before it
 	// expires.
 	storageTLSRenewBefore = 30 * 24 * time.Hour
+	// storageTLSCheckEvery is how often the cloud checks whether the
+	// certificate is due for renewal.
+	storageTLSCheckEvery = 24 * time.Hour
 )
 
 // storageTLS returns the storage VM's wildcard certificate kept in kv. It
@@ -87,4 +93,46 @@ func storageTLSValid(certPEM, keyPEM string, now time.Time) bool {
 		return false
 	}
 	return now.Add(storageTLSRenewBefore).Before(leaf.NotAfter)
+}
+
+// storageTLSDue reports whether storage boxes exist and storageTLS would
+// issue a new certificate.
+func (c *Cloud) storageTLSDue() (bool, error) {
+	var due bool
+	err := c.st.Tx(func(tx store.Tx) error {
+		boxes, err := storageboxes.Boxes(tx)
+		if err != nil || len(boxes) == 0 {
+			return err
+		}
+		certPEM, err := getKVOptional(tx, storageTLSCertKey)
+		if err != nil {
+			return err
+		}
+		keyPEM, err := getKVOptional(tx, storageTLSKeyKey)
+		if err != nil {
+			return err
+		}
+		due = !storageTLSValid(certPEM, keyPEM, time.Now())
+		return nil
+	})
+	return due, err
+}
+
+// renewStorageTLS pushes the storage document again when the certificate
+// is due, so the renewed one reaches the storage VM; it does nothing
+// otherwise.
+func (c *Cloud) renewStorageTLS(ctx context.Context) {
+	due, err := c.storageTLSDue()
+	if err != nil {
+		slog.Error("check the storage TLS certificate", "err", err)
+		return
+	}
+	if !due {
+		return
+	}
+	if err := c.applyStorage(ctx); err != nil {
+		slog.Error("renew the storage TLS certificate", "err", err)
+		return
+	}
+	slog.Info("storage TLS certificate renewed")
 }
