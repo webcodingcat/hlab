@@ -8,7 +8,7 @@ while the cloud runs. The list and an open server refresh every 5 seconds.
   `env=dev`.
 - Click a server to open its detail page.
 - The row menu (`…`) holds **Power on**, **Shutdown**, **Reboot**,
-  **Reset**, **Power off** and **Delete**.
+  **Reset**, **Power off**, **Console** and **Delete**.
 
 ## Create a server
 
@@ -35,7 +35,8 @@ The `…` button next to the name opens the actions menu:
   grows to the new type's size, which cannot be undone.
 - **Rename**, **Add to placement group** and
   **Remove from placement group**.
-- **Console** is not available in HLab.
+- **Console** opens the server's screen in a window of its own, see
+  below.
 - **Delete** deletes the server and its disk; type its name to confirm.
 
 The tabs:
@@ -66,6 +67,23 @@ The tabs:
   the create form work the same way.
 - **Protection**: protection against deletion and against rebuild,
   then **Save**.
+
+## The console window
+
+The window "Console: <server name>" shows the server's screen, scaled to
+the window; click into it to type and use the mouse. It works whether or
+not the HLab CA is trusted.
+
+- The pill shows **Connecting**, **Connected** or **Disconnected**, with
+  the reason after a drop.
+- **Send Ctrl+Alt+Del** sends that key combination to the server.
+- **Reconnect** appears after the connection drops and connects again.
+- While the server is off, starting or stopping, the screen shows its
+  last picture or black until there is a live picture again.
+- **Console** on a server whose window is open brings that window to the
+  front. Closing the window ends the connection.
+- An open console costs about 0.7 CPU cores, almost all in the Hyper-V
+  service `vmms.exe`.
 
 Servers is an entry of the sidebar's **Cloud** group; its tabs also lead
 to **Snapshots**, **Backups** and **Placement Groups**.

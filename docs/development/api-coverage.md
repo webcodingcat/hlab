@@ -53,7 +53,7 @@ HLab serves these endpoints:
 | `POST /servers/{id}/actions/create_image`, `POST /servers/{id}/actions/enable_backup`, `POST /servers/{id}/actions/disable_backup` | See [Snapshots and backups](#snapshots-and-backups). |
 | `POST /servers/{id}/actions/enable_rescue`, `POST /servers/{id}/actions/disable_rescue` | See [Rescue system](#rescue-system). |
 | `POST /servers/{id}/actions/attach_iso`, `POST /servers/{id}/actions/detach_iso` | See [ISOs](#isos). |
-| `POST /servers/{id}/actions/request_console` | 422 `unsupported_error`, see [Server actions](#server-actions). |
+| `POST /servers/{id}/actions/request_console` | See [Server actions](#server-actions). |
 | `GET /placement_groups`, `POST /placement_groups`, `GET /placement_groups/{id}`, `PUT /placement_groups/{id}`, `DELETE /placement_groups/{id}` | See [Placement groups](#placement-groups). |
 | `GET /volumes`, `POST /volumes`, `GET /volumes/{id}`, `PUT /volumes/{id}`, `DELETE /volumes/{id}` | See [Volumes](#volumes). |
 | `POST /volumes/{id}/actions/attach`, `POST /volumes/{id}/actions/detach`, `POST /volumes/{id}/actions/resize`, `POST /volumes/{id}/actions/change_protection` | See [Volumes](#volumes). |
@@ -180,8 +180,19 @@ action holds it.
   not `running` the action answers 409 `conflict`. When the cloud stops
   during the action, the action ends with `server_error` at the next
   start, and the server no longer receives the new password.
-- `request_console` answers 422 `unsupported_error` with the message
-  `server console is not supported by HLab yet` and starts no action.
+- `request_console` works in every server state, also while another
+  action runs, and records a finished `request_console` action; the
+  server does not change. `wss_url` is
+  `wss://console.hetzner.internal/?server_id=<id>&token=<uuid>`, served
+  by hlabd on port 8781 of the second address of `public_range`
+  (`198.19.0.2:8781` by default) behind a TCP forward on port 443 of the
+  appliance, with a certificate the HLab CA issues at every cloud start.
+  The token allows one connection, started within one minute. The
+  console speaks RFB 3.8 with VNC Authentication only, Raw encoding and
+  the DesktopSize pseudo-encoding, and shows the Hyper-V screen of the
+  VM; a wrong password fails the VNC handshake with a reason, and an
+  unknown, used, expired or foreign token gets HTTP 403 before the
+  WebSocket upgrade.
 
 ## Snapshots and backups
 
