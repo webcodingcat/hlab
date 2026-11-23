@@ -1,17 +1,3 @@
-<script module lang="ts">
-  /** bytesText shows a byte count in the largest binary unit that keeps it at 1 or more. */
-  export function bytesText(n: number): string {
-    const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-    let v = n;
-    let i = 0;
-    while (v >= 1024 && i < units.length - 1) {
-      v /= 1024;
-      i++;
-    }
-    return `${i === 0 ? v : v.toFixed(1)} ${units[i]}`;
-  }
-</script>
-
 <script lang="ts">
   import CloudStopped from "../../lib/CloudStopped.svelte";
   import ConfirmDialog from "../../lib/ConfirmDialog.svelte";
@@ -19,6 +5,7 @@
   import StatusPill from "../../lib/StatusPill.svelte";
   import Table, { type Column } from "../../lib/Table.svelte";
   import { hetznerListAll, runHetznerOn } from "../../lib/api";
+  import { bytesText } from "../../lib/format";
   import { request } from "../../lib/resourceActions";
   import { tabs, type StorageBox } from "../../lib/resources/storageBoxes";
   import { showError } from "../../lib/toast";
