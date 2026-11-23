@@ -57,36 +57,7 @@
 
 - [x] 22 SMB from the Windows host (SBOX-22) → phases/22/
 
-- [ ] 21 Storage Boxes in the console and the clients.
-      Requirements: UI-12, UI-13, UI-14, CLI-05, CLI-06, CLI-07.
-      Depends on: 20, 17.
-      Success criteria:
-      1. The console manages storage boxes, their subaccounts and
-         snapshots.
-      2. hcloud, OpenTofu and Ansible pass their storage box rows with only
-         their endpoints changed.
-      3. The README names the Hetzner endpoint setting of each client, and
-         the help text of the new view exists.
-
-- [ ] 23 Server console.
-      Requirements: SRV-17, CON-01, CON-02, UI-15.
-      Depends on: 21 (order only), 03.
-      Adjusts: the code and tests that expect `unsupported_error` for
-      request_console or a disabled "Console" menu entry (servers module,
-      `api.Deviations`, `serverActions.ts` and their unit, conventions and
-      hcloud client tests) and docs/development/build-and-test.md.
-      Success criteria:
-      1. The experiment of SPEC.md "Server console" has measured frame
-         rate, input delay and CPU load of the graphical path and recorded
-         them in research/EXPERIMENTS.md; the phase builds the graphical
-         console if all three meet their limits, otherwise the serial one.
-      2. `hcloud server request-console` prints a `wss_url` and password,
-         and a VNC client sees the server's screen and types into it.
-      3. The actions menu entry "Console" in the tray opens the console
-         window, with the hlab CA trusted or not.
-      4. docs/deviations.md and docs/development/api-coverage.md no longer
-         list the console as unsupported; the README and the help text of
-         the server view describe it.
+- [x] 21 Storage Boxes in the console and the clients (UI-12, UI-13, UI-14, CLI-05, CLI-06, CLI-07) → phases/21/
 
 - [ ] 16 Release checks in test VMs.
       Requirements: DOC-08.

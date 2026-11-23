@@ -441,9 +441,9 @@ What the target vision in IDEA.md will need, not built yet.
 | UI-09 | 14 | x |
 | UI-10 | 14 | x |
 | UI-11 | 15 | x |
-| UI-12 | 21 | |
-| UI-13 | 21 | |
-| UI-14 | 21 | |
+| UI-12 | 21 | x |
+| UI-13 | 21 | x |
+| UI-14 | 21 | x |
 | INST-01 | 12 | x |
 | INST-02 | 12 | x |
 | INST-03 | 12 | x |
@@ -454,9 +454,9 @@ What the target vision in IDEA.md will need, not built yet.
 | CLI-02 | 13 | x |
 | CLI-03 | 13 | x |
 | CLI-04 | 13 | x |
-| CLI-05 | 21 | |
-| CLI-06 | 21 | |
-| CLI-07 | 21 | |
+| CLI-05 | 21 | x |
+| CLI-06 | 21 | x |
+| CLI-07 | 21 | x |
 | CON-01 | 23 | |
 | CON-02 | 23 | |
 | UI-15 | 23 | |

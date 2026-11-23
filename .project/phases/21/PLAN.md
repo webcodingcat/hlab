@@ -274,11 +274,17 @@ access_settings, snapshot_plan, protection, stats, labels).
   - Size: ~100 lines in up to 4 files
   - [x] Run the CLI-07 rows; fix in hlab what they find (`?name=` and `?username=` filters on subaccounts and snapshots, `GET /storage_boxes/actions/{id}` polling).
 
-- [ ] 21-14 Documentation
+- [x] 21-14 Documentation
   - Wave: 5 | Depends on: 21-05, 21-10, 21-13 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06, DOC-07 | Tests: test/docs/docs_test.go
   - Reads: SPEC.md "Documentation", "Accounts and secrets" (hlab-docs); REQUIREMENTS.md "Documentation"; CONTEXT.md; README.md "First steps", "The tray program"; docs/guide.md "Storage boxes", "OpenTofu and Ansible"; docs/configuration.md own storage box types; docs/development/components.md; ui/frontend/tests/screenshots/console.spec.ts; BACKLOG.md item on `hcloud all list`
   - Size: ~300 lines in 8 files
-  - [ ] README: keep `HETZNER_ENDPOINT` and hcloud `hetzner-endpoint`, name `api_endpoint_hetzner` for Ansible and the env variable for OpenTofu, drop "storage boxes (with hcloud only)", mention the console's Storage Boxes and Storage Box Types; console screenshots of the Storage Boxes section in light and dark (screenshot spec).
-  - [ ] docs/guide.md: storage boxes in the window (list, create, detail tabs, subaccounts, snapshots and plan, rollback), OpenTofu and Ansible storage box examples (run against `hlab-docs`), own types through the Administration; docs/configuration.md: the tray writes `storage-box-types.custom.json`; components.md: the new views and bridge methods.
-  - [ ] Help texts `storage-boxes.md` and `storage-box-types.md` match the built views and buttons.
+  - [x] README: keep `HETZNER_ENDPOINT` and hcloud `hetzner-endpoint`, name `api_endpoint_hetzner` for Ansible and the env variable for OpenTofu, drop "storage boxes (with hcloud only)", mention the console's Storage Boxes and Storage Box Types; console screenshots of the Storage Boxes section in light and dark (screenshot spec).
+  - [x] docs/guide.md: storage boxes in the window (list, create, detail tabs, subaccounts, snapshots and plan, rollback), OpenTofu and Ansible storage box examples (run against `hlab-docs`), own types through the Administration; docs/configuration.md: the tray writes `storage-box-types.custom.json`; components.md: the new views and bridge methods.
+  - [x] Help texts `storage-boxes.md` and `storage-box-types.md` match the built views and buttons.
+
+## Close
+
+- E2E at the close: all tests, because the phase changed the shared harness every client test uses (`HETZNER_ENDPOINT` in `hcloudEnv`): `task e2e -- -v` on 55b681e, 162 passed, 0 failed, 66 min.
+- Unit suite and linter over the whole project: green on 55b681e.
+- Fixes at the close: management proxy route for the Hetzner API, a project's actions deleted with it, rollback dialog by snapshot ID, project deletion removes storage boxes (PROJ-04), usage against the type's capacity.
