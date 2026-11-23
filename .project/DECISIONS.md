@@ -19,6 +19,62 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 One failing box or subaccount does not stop the storage apply
+
+- Type: decision
+- Phase: phase 19
+- What: A refused or failing subaccount is logged, loses its chroot and is left out of the passwords; a failing box is logged and skipped while the others are applied, and the PUT answers 500 with all box failures joined; a failed format stops the apply.
+- Why: A user's files must not stop the storage of every other box (review of 19-04), and hlabd must not take a failed box as applied.
+- Cost of change: low
+
+## 2026-11-23 Only SSH ports reach box IPs in phase 19
+
+- Type: decision
+- Phase: phase 19
+- What: The appliance passes only TCP 22 and 23 to box IPs and drops the rest, so a box IP never reaches the storage agent on 9100; phase 20 adds its ports to `storageBoxPorts`.
+- Why: Phase 19 serves only SSH, and the agent port must stay internal.
+- Cost of change: low
+
+## 2026-11-23 Box rules before established accept
+
+- Type: decision
+- Phase: phase 19
+- What: The storage box rules run first in the forward chain of `hlab_fw`, before the established/related accept.
+- Why: Switching off reachable_externally also cuts connections already open.
+- Cost of change: low
+
+## 2026-11-23 Storage agent sets hashes through chpasswd
+
+- Type: decision
+- Phase: phase 19
+- What: The storage agent sets account hashes with `chpasswd -e` on stdin and writes only changed entries.
+- Why: No hash appears in argv, ps or error messages.
+- Cost of change: low
+
+## 2026-11-23 Storage VM on-disk layout
+
+- Type: decision
+- Phase: phase 19
+- What: Each box is the subvolume `<mount>/<user>`, chroots live under `/srv/chroot/<user>`, the passwd home is `/home` and the shell `/bin/sh`; `Plan` adds `StepUpdateBox` for every box in the document.
+- Why: Chroot and data stay apart, and an update never touches data.
+- Cost of change: medium
+
+## 2026-11-23 Storage agent guards subaccount homes
+
+- Type: decision
+- Phase: phase 19
+- What: The storage agent skips and logs a subaccount whose home is absolute, has a `..` element or leaves the box (checked through os.Root), and binds homes through a descriptor pinned by os.Root.
+- Why: Defence in depth behind the API check, also against symlinks swapped in later.
+- Cost of change: low
+
+## 2026-11-23 hlab-agent role flag
+
+- Type: decision
+- Phase: phase 19
+- What: `hlab-agent --role appliance|storage` (default appliance); the storage role listens on `<transit>:9100` and answers 503 to jobs before the first apply mounted the disk.
+- Why: One binary serves both VMs.
+- Cost of change: low
+
 ## 2026-11-23 Subaccount home directory without dot-dot
 
 - Type: decision

@@ -159,19 +159,19 @@ CompactDisk(ctx context.Context, path string) error
   - Size: ~20 lines in 1 file
   - [x] `internal/uninstall/uninstall.go`: `ProfileVM` matches exactly `<tag>-storage`; `hlabDirs` gets `storage`.
 
-- [ ] 19-04 Storage agent: disk, boxes and jobs
+- [x] 19-04 Storage agent: disk, boxes and jobs
   - Wave: 2 | Depends on: 19-01 | Review: alone
   - Requirements: SBOX-03, SBOX-06, SBOX-11, SBOX-12 | Tests: internal/storageagent/plan_test.go
   - Reads: ARCHITECTURE.md "Storage VM"; CONTEXT.md "Data disk", "Storage agent"; EXPERIMENTS.md E17, E18, E19; RESEARCH.md 4, 6; `internal/agent/agent.go` (handler and secret pattern), `internal/agent/jobs_linux.go` (disk by LUN, `run`)
   - Size: ~400 lines in 5 files
-  - [ ] New `internal/storageagent`: `agent.go` (handler `PUT /v1/storage`, `POST /v1/jobs`, bearer secret), `plan.go` (pure `Plan`: make the filesystem only when the disk holds none, never touch a box present in the document, remove only boxes absent from it), `apply_linux.go` plus `apply_other.go`:
+  - [x] New `internal/storageagent`: `agent.go` (handler `PUT /v1/storage`, `POST /v1/jobs`, bearer secret), `plan.go` (pure `Plan`: make the filesystem only when the disk holds none, never touch a box present in the document, remove only boxes absent from it), `apply_linux.go` plus `apply_other.go`:
     - `mkfs.btrfs -K`; mount with `discard=async`; `quota enable`.
     - Per box: the user with UID `n`, the subvolume and the level-1 qgroup `1/<n>` limited to `QuotaBytes`.
     - Hashes through `usermod -p`, the chroots of E17, and a read-only bind of the home for read-only subaccounts.
     - The `.ssh/authorized_keys` of a new box from `SSHKeys`; missing subaccount homes are created.
     - After each apply, `qgroup show` is checked for "inconsistent", followed by `quota rescan -w` when needed.
-  - [ ] `jobs_linux.go`: `folders` (direct subdirectories, hidden ones included, sorted; `not_found` and `invalid_path` errors), `usage` from `btrfs qgroup show --raw`.
-  - [ ] `cmd/hlab-agent/main.go`: `--role storage` starts the storage agent on the address of the transit file, data disk at SCSI LUN 1.
+  - [x] `jobs_linux.go`: `folders` (direct subdirectories, hidden ones included, sorted; `not_found` and `invalid_path` errors), `usage` from `btrfs qgroup show --raw`.
+  - [x] `cmd/hlab-agent/main.go`: `--role storage` starts the storage agent on the address of the transit file, data disk at SCSI LUN 1.
 
 - [ ] 19-05 Appliance: routes, names and reachability of the boxes
   - Wave: 2 | Depends on: 19-01 | Review: alone
