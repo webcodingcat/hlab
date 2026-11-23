@@ -129,3 +129,14 @@ test.describe("UI-11 resources", () => {
     });
   }
 });
+
+test.describe("UI-12 storage box count", () => {
+  test("storage boxes after volumes", () => {
+    // The keys out of sidebar order, so the place must come from resourceEntries.
+    expect(resourceEntries({ firewalls: 1, storage_boxes: 2, volumes: 1 })).toEqual([
+      { key: "volumes", count: 1, label: "1 Volume", view: "volumes" },
+      { key: "storage_boxes", count: 2, label: "2 Storage Boxes", view: "storage-boxes" },
+      { key: "firewalls", count: 1, label: "1 Firewall", view: "firewalls" },
+    ]);
+  });
+});

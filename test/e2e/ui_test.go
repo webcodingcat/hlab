@@ -213,6 +213,59 @@ func testUI10(t *testing.T) {
 	runSpec(t, "UI-10", 15*time.Second, []string{"HLAB_E2E_ISO_FILE=" + file})
 }
 
+// testUI14: the Storage Box Types view lists the catalog, adds an own type
+// of 64 MiB in all locations but one, which the run's project serves, edits
+// and removes it. The own types file is restored afterwards if the spec
+// left it changed.
+func testUI14(t *testing.T) {
+	e := sharedEnv(t)
+	file := ownStorageBoxTypes()
+	orig, err := os.ReadFile(file)
+	existed := err == nil
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("read %s: %v", file, err)
+	}
+	t.Cleanup(func() {
+		now, err := os.ReadFile(file)
+		if (err == nil) == existed && string(now) == string(orig) {
+			return
+		}
+		if existed {
+			err = os.WriteFile(file, orig, 0o644)
+		} else {
+			err = os.Remove(file)
+		}
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("restore %s: %v", file, err)
+			return
+		}
+		if err := reloadSettings(); err != nil {
+			t.Errorf("reload after restoring %s: %v", file, err)
+		}
+	})
+	runSpec(t, "UI-14", 5*time.Minute, []string{"HLAB_E2E_API_TOKEN=" + e.token}, e.token)
+}
+
+// testUI12: the Storage Boxes section in a project of its own creates a box
+// with the run's SSH key through the form, shows it, changes its settings,
+// labels, renames and deletes it. It takes the shared box first, so the
+// storage VM stays up between the storage box rows.
+func testUI12(t *testing.T) {
+	e, _ := sharedBox(t)
+	runSpec(t, "UI-12", 20*time.Minute, []string{
+		"HLAB_E2E_SERVER_LOCATION=" + serverLocation,
+		"HLAB_E2E_SSH_KEY=" + e.key,
+		"HLAB_E2E_SSH_PUBKEY_FILE=" + e.pubKey,
+	})
+}
+
+// testUI13: the Subaccounts and Snapshots tabs of a box made through the
+// API in a project of its own; like UI-12 it takes the shared box first.
+func testUI13(t *testing.T) {
+	sharedBox(t)
+	runSpec(t, "UI-13", 20*time.Minute, []string{"HLAB_E2E_SERVER_LOCATION=" + serverLocation})
+}
+
 // testUI06: the logs view shows the service log and follows it.
 func testUI06(t *testing.T) {
 	runSpec(t, "UI-06", 10*time.Minute, nil)

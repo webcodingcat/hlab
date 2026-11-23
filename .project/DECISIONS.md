@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Own storage box type form keeps the "All locations" checkbox
+
+- Type: decision
+- Phase: phase 21
+- What: the own-type form keeps UI-SPEC.md's "All locations" checkbox, checked by default; checked, the console sends every catalog location explicitly, unchecked at least one location is required.
+- Why: UI-SPEC.md asks for it and it meets the user's "all preselected" correction while the file keeps an explicit location list.
+- Cost of change: low
+
 ## 2026-11-23 Client storage box plans run one after another
 
 - Type: decision

@@ -3,6 +3,7 @@ package storageboxtypes_test
 import (
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strconv"
@@ -126,6 +127,93 @@ func TestStorageBoxTypes(t *testing.T) {
 			if code := apitest.ErrorCode(t, resp); code != "not_found" {
 				t.Errorf("error code %q, want not_found", code)
 			}
+		})
+	})
+
+	t.Run("UI-14", func(t *testing.T) {
+		cat, err := catalog.Load("../../../catalog")
+		if err != nil {
+			t.Fatalf("load shipped catalog: %v", err)
+		}
+		cat.SetStorageBoxTypes(apitest.StorageBoxTypes(t))
+		var catalogNames []string
+		for _, st := range cat.StorageBoxTypes() {
+			catalogNames = append(catalogNames, st.Name)
+		}
+		file := filepath.Join(t.TempDir(), catalog.OwnStorageBoxTypesFile)
+		spec := catalog.OwnStorageBoxTypeSpec{
+			Name: "own-64m", Description: "own box type", Size: 64 << 20,
+			SnapshotLimit: 10, AutomaticSnapshotLimit: 10, SubaccountsLimit: 100,
+			Locations: []string{"fsn1", "nbg1"}, // of fsn1, nbg1 and hel1
+		}
+		own, err := catalog.AddOwnStorageBoxType(cat, file, spec)
+		if err != nil {
+			t.Fatalf("AddOwnStorageBoxType: %v", err)
+		}
+		cat.ReloadOwnStorageBoxTypes(file)
+		if w := cat.OwnStorageBoxTypesWarning(); w != "" {
+			t.Fatalf("warning %q for the written own type, want none", w)
+		}
+		env := apitest.New(t, storageboxtypes.New(cat))
+
+		type item struct {
+			ID     int64  `json:"id"`
+			Name   string `json:"name"`
+			Size   int64  `json:"size"`
+			Prices []struct {
+				Location string `json:"location"`
+			} `json:"prices"`
+		}
+		checkOwn := func(t *testing.T, it item) {
+			t.Helper()
+			if it.ID != own.ID || it.Size != spec.Size {
+				t.Errorf("own type served with ID %d and size %d, want %d and %d", it.ID, it.Size, own.ID, spec.Size)
+			}
+			var locs []string
+			for _, p := range it.Prices {
+				locs = append(locs, p.Location)
+			}
+			slices.Sort(locs)
+			if !slices.Equal(locs, spec.Locations) {
+				t.Errorf("own type served with prices for %v, want only %v", locs, spec.Locations)
+			}
+		}
+
+		t.Run("list", func(t *testing.T) {
+			e := env.For(t)
+			resp := e.Do(http.MethodGet, base, nil)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("GET %s = %d, want 200", base, resp.StatusCode)
+			}
+			var body struct {
+				StorageBoxTypes []item `json:"storage_box_types"`
+			}
+			apitest.Decode(t, resp, &body)
+			var names []string
+			for _, it := range body.StorageBoxTypes {
+				names = append(names, it.Name)
+			}
+			if want := append(slices.Clone(catalogNames), "own-64m"); !slices.Equal(names, want) {
+				t.Fatalf("listed types %v, want the catalog's followed by the own one %v", names, want)
+			}
+			checkOwn(t, body.StorageBoxTypes[len(catalogNames)])
+		})
+
+		t.Run("get", func(t *testing.T) {
+			e := env.For(t)
+			path := base + "/" + strconv.FormatInt(own.ID, 10)
+			resp := e.Do(http.MethodGet, path, nil)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("GET %s = %d, want 200", path, resp.StatusCode)
+			}
+			var body struct {
+				StorageBoxType item `json:"storage_box_type"`
+			}
+			apitest.Decode(t, resp, &body)
+			if body.StorageBoxType.Name != "own-64m" {
+				t.Errorf("GET %s served %q, want own-64m", path, body.StorageBoxType.Name)
+			}
+			checkOwn(t, body.StorageBoxType)
 		})
 	})
 }

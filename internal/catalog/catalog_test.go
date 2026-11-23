@@ -447,6 +447,9 @@ func TestCatalog(t *testing.T) {
 
 	t.Run("SBOX-01", testStorageBoxTypes)
 	t.Run("SBOX-21", testOwnStorageBoxTypes)
+	t.Run("UI-14/add", testAddOwnStorageBoxType)
+	t.Run("UI-14/update", testUpdateOwnStorageBoxType)
+	t.Run("UI-14/remove", testRemoveOwnStorageBoxType)
 }
 
 // loadAll loads the shipped catalog with dataDir and customFile and fails
@@ -639,4 +642,245 @@ func testStorageBoxTypes(t *testing.T) {
 			}
 		}
 	})
+}
+
+// ownBoxFile writes an own storage box type file holding own-pre (ID
+// MinOwnID) and returns its path and the shipped catalog with it loaded.
+func ownBoxFile(t *testing.T) (string, *catalog.Catalog) {
+	t.Helper()
+	file := filepath.Join(t.TempDir(), catalog.OwnStorageBoxTypesFile)
+	writeJSON(t, file, []any{boxType(catalog.MinOwnID, "own-pre", 64<<20, 2, 3, "fsn1")})
+	cat, err := catalog.Load(shippedDir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	cat.ReloadOwnStorageBoxTypes(file)
+	if w := cat.OwnStorageBoxTypesWarning(); w != "" {
+		t.Fatalf("warning %q for the own file, want none", w)
+	}
+	return file, cat
+}
+
+// boxSpec is a valid own storage box type spec named name.
+func boxSpec(name string, locs ...string) catalog.OwnStorageBoxTypeSpec {
+	return catalog.OwnStorageBoxTypeSpec{
+		Name: name, Description: "own box type " + name, Size: 64 << 20,
+		SnapshotLimit: 10, AutomaticSnapshotLimit: 5, SubaccountsLimit: 100, Locations: locs,
+	}
+}
+
+// checkOwnBoxObject checks that obj is the Hetzner storage_box_type object
+// built for s with ID id: its values, deprecation null and one price entry
+// per location of s with every price 0.
+func checkOwnBoxObject(t *testing.T, obj map[string]any, s catalog.OwnStorageBoxTypeSpec, id int64) {
+	t.Helper()
+	want := map[string]any{
+		"id": float64(id), "name": s.Name, "description": s.Description, "size": float64(s.Size),
+		"snapshot_limit": float64(s.SnapshotLimit), "automatic_snapshot_limit": float64(s.AutomaticSnapshotLimit),
+		"subaccounts_limit": float64(s.SubaccountsLimit),
+	}
+	for k, v := range want {
+		if obj[k] != v {
+			t.Errorf("own box type %s: %s = %v, want %v", s.Name, k, obj[k], v)
+		}
+	}
+	if d, ok := obj["deprecation"]; !ok || d != nil {
+		t.Errorf("own box type %s: deprecation = %v (present %v), want null", s.Name, d, ok)
+	}
+	prices, ok := obj["prices"].([]any)
+	if !ok {
+		t.Fatalf("own box type %s: prices %v, want a list", s.Name, obj["prices"])
+	}
+	var locs []string
+	for _, p := range prices {
+		entry, _ := p.(map[string]any)
+		loc, _ := entry["location"].(string)
+		locs = append(locs, loc)
+		for _, key := range []string{"price_hourly", "price_monthly", "setup_fee"} {
+			amount, _ := entry[key].(map[string]any)
+			for _, part := range []string{"net", "gross"} {
+				v, _ := amount[part].(string)
+				if f, err := strconv.ParseFloat(v, 64); err != nil || f != 0 {
+					t.Errorf("own box type %s: %s price %s.%s = %v, want zero", s.Name, loc, key, part, amount[part])
+				}
+			}
+		}
+	}
+	slices.Sort(locs)
+	wantLocs := slices.Clone(s.Locations)
+	slices.Sort(wantLocs)
+	if !slices.Equal(locs, wantLocs) {
+		t.Errorf("own box type %s: price locations %v, want one each for %v", s.Name, locs, wantLocs)
+	}
+}
+
+// boxRefusal is a spec the own storage box type writers refuse, with the
+// field of the error.
+type boxRefusal struct {
+	name  string
+	spec  catalog.OwnStorageBoxTypeSpec
+	field string
+}
+
+// invalidBoxSpecs are the refused values other than the name, for a type
+// named name.
+func invalidBoxSpecs(name string) []boxRefusal {
+	with := func(change func(*catalog.OwnStorageBoxTypeSpec)) catalog.OwnStorageBoxTypeSpec {
+		s := boxSpec(name, "fsn1")
+		change(&s)
+		return s
+	}
+	return []boxRefusal{
+		{"size 0", with(func(s *catalog.OwnStorageBoxTypeSpec) { s.Size = 0 }), "size"},
+		{"negative snapshot limit", with(func(s *catalog.OwnStorageBoxTypeSpec) { s.SnapshotLimit = -1 }), "snapshot_limit"},
+		{"negative automatic snapshot limit", with(func(s *catalog.OwnStorageBoxTypeSpec) { s.AutomaticSnapshotLimit = -1 }), "automatic_snapshot_limit"},
+		{"negative subaccounts limit", with(func(s *catalog.OwnStorageBoxTypeSpec) { s.SubaccountsLimit = -1 }), "subaccounts_limit"},
+		{"unknown location", with(func(s *catalog.OwnStorageBoxTypeSpec) { s.Locations = []string{"fsn1", "nowhere1"} }), "locations"},
+		{"no location", with(func(s *catalog.OwnStorageBoxTypeSpec) { s.Locations = nil }), "locations"},
+	}
+}
+
+// checkRefused runs op, which must return a *FieldError for field and
+// leave file unchanged.
+func checkRefused(t *testing.T, file, field string, op func() error) {
+	t.Helper()
+	before, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = op()
+	var fe *catalog.FieldError
+	if !errors.As(err, &fe) || fe.Field != field {
+		t.Errorf("error %v, want a FieldError for %q", err, field)
+	}
+	if after, _ := os.ReadFile(file); !bytes.Equal(before, after) {
+		t.Errorf("own file changed by a refused write: %s", after)
+	}
+}
+
+func testAddOwnStorageBoxType(t *testing.T) {
+	file, cat := ownBoxFile(t)
+	pre := readCustom(t, file)[0]
+
+	spec := boxSpec("own-a", "fsn1", "hel1")
+	st, err := catalog.AddOwnStorageBoxType(cat, file, spec)
+	if err != nil {
+		t.Fatalf("AddOwnStorageBoxType: %v", err)
+	}
+	if st.ID != catalog.MinOwnID+1 || st.Name != "own-a" {
+		t.Errorf("AddOwnStorageBoxType returned %s with ID %d, want own-a with ID %d", st.Name, st.ID, catalog.MinOwnID+1)
+	}
+	own := readCustom(t, file)
+	if len(own) != 2 {
+		t.Fatalf("own file holds %d types after the add, want 2", len(own))
+	}
+	if !reflect.DeepEqual(own[0], pre) {
+		t.Errorf("own-pre changed by the add: %v, want %v", own[0], pre)
+	}
+	checkOwnBoxObject(t, own[1], spec, catalog.MinOwnID+1)
+	cat.ReloadOwnStorageBoxTypes(file)
+
+	refusals := append([]boxRefusal{
+		{"empty name", boxSpec("", "fsn1"), "name"},
+		{"catalog name taken", boxSpec(shippedBoxTypes(t)[0].Name, "fsn1"), "name"},
+		{"own name taken", boxSpec("own-pre", "fsn1"), "name"},
+	}, invalidBoxSpecs("own-b")...)
+	for _, r := range refusals {
+		t.Run(r.name, func(t *testing.T) {
+			checkRefused(t, file, r.field, func() error {
+				_, err := catalog.AddOwnStorageBoxType(cat, file, r.spec)
+				return err
+			})
+		})
+	}
+}
+
+func testUpdateOwnStorageBoxType(t *testing.T) {
+	file, cat := ownBoxFile(t)
+	if _, err := catalog.AddOwnStorageBoxType(cat, file, boxSpec("own-a", "fsn1")); err != nil {
+		t.Fatalf("AddOwnStorageBoxType own-a: %v", err)
+	}
+	cat.ReloadOwnStorageBoxTypes(file)
+	before := readCustom(t, file)
+
+	changed := catalog.OwnStorageBoxTypeSpec{Name: "own-pre", Description: "bigger", Size: 128 << 20,
+		SnapshotLimit: 0, AutomaticSnapshotLimit: 1, SubaccountsLimit: 7, Locations: []string{"nbg1", "hel1"}}
+	st, err := catalog.UpdateOwnStorageBoxType(cat, file, changed)
+	if err != nil {
+		t.Fatalf("UpdateOwnStorageBoxType own-pre: %v", err)
+	}
+	if st.ID != catalog.MinOwnID || st.Name != "own-pre" {
+		t.Errorf("UpdateOwnStorageBoxType returned %s with ID %d, want own-pre with ID %d", st.Name, st.ID, catalog.MinOwnID)
+	}
+	own := readCustom(t, file)
+	if len(own) != 2 || own[0]["name"] != "own-pre" || own[1]["name"] != "own-a" {
+		t.Fatalf("own file after the update holds %v, want own-pre then own-a", own)
+	}
+	checkOwnBoxObject(t, own[0], changed, catalog.MinOwnID)
+	if !reflect.DeepEqual(own[1], before[1]) {
+		t.Errorf("own-a changed by the update of own-pre: %v, want %v", own[1], before[1])
+	}
+	cat.ReloadOwnStorageBoxTypes(file)
+
+	for _, r := range invalidBoxSpecs("own-a") {
+		t.Run(r.name, func(t *testing.T) {
+			checkRefused(t, file, r.field, func() error {
+				_, err := catalog.UpdateOwnStorageBoxType(cat, file, r.spec)
+				return err
+			})
+		})
+	}
+	t.Run("unknown name", func(t *testing.T) {
+		before, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := catalog.UpdateOwnStorageBoxType(cat, file, boxSpec("own-x", "fsn1")); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("UpdateOwnStorageBoxType of an unknown name = %v, want an fs.ErrNotExist error", err)
+		}
+		if after, _ := os.ReadFile(file); !bytes.Equal(before, after) {
+			t.Errorf("own file changed by the update of an unknown name: %s", after)
+		}
+	})
+}
+
+func testRemoveOwnStorageBoxType(t *testing.T) {
+	file, cat := ownBoxFile(t)
+	a := boxSpec("own-a", "fsn1", "nbg1")
+	if _, err := catalog.AddOwnStorageBoxType(cat, file, a); err != nil {
+		t.Fatalf("AddOwnStorageBoxType own-a: %v", err)
+	}
+
+	specs, err := catalog.OwnStorageBoxTypes(file)
+	if err != nil {
+		t.Fatalf("OwnStorageBoxTypes: %v", err)
+	}
+	pre := catalog.OwnStorageBoxTypeSpec{Name: "own-pre", Description: "Storage Box own-pre", Size: 64 << 20,
+		SnapshotLimit: 2, AutomaticSnapshotLimit: 2, SubaccountsLimit: 3, Locations: []string{"fsn1"}}
+	if want := []catalog.OwnStorageBoxTypeSpec{pre, a}; !reflect.DeepEqual(specs, want) {
+		t.Errorf("OwnStorageBoxTypes = %+v, want %+v", specs, want)
+	}
+
+	if err := catalog.RemoveOwnStorageBoxType(file, "own-pre"); err != nil {
+		t.Fatalf("RemoveOwnStorageBoxType own-pre: %v", err)
+	}
+	own := readCustom(t, file)
+	if len(own) != 1 || own[0]["name"] != "own-a" {
+		t.Errorf("own file after removing own-pre holds %v, want only own-a", own)
+	}
+	before, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.RemoveOwnStorageBoxType(file, "own-pre"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("RemoveOwnStorageBoxType of an unknown name = %v, want an fs.ErrNotExist error", err)
+	}
+	if after, _ := os.ReadFile(file); !bytes.Equal(before, after) {
+		t.Errorf("own file changed by removing an unknown name: %s", after)
+	}
+
+	missing, err := catalog.OwnStorageBoxTypes(filepath.Join(t.TempDir(), catalog.OwnStorageBoxTypesFile))
+	if err != nil || len(missing) != 0 {
+		t.Errorf("OwnStorageBoxTypes of a missing file = %+v, %v; want none", missing, err)
+	}
 }

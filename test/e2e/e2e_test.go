@@ -48,6 +48,9 @@ func TestE2E(t *testing.T) {
 	t.Run("UI-02", testUI02)
 	t.Run("UI-06", testUI06)
 	t.Run("UI-10", testUI10)
+	t.Run("UI-14", testUI14)
+	t.Run("UI-12", testUI12)
+	t.Run("UI-13", testUI13)
 
 	t.Run("PROJ-05", parallel(testPROJ05))
 	t.Run("API-01", parallel(testAPI01))
@@ -111,7 +114,7 @@ func TestE2E(t *testing.T) {
 
 	// The client matrix: one subtest per client and resource type, each
 	// registered by its group file through registerRow.
-	for _, req := range []string{"CLI-01", "CLI-02", "CLI-03", "CLI-04"} {
+	for _, req := range []string{"CLI-01", "CLI-02", "CLI-03", "CLI-04", "CLI-05", "CLI-06", "CLI-07"} {
 		t.Run(req, func(t *testing.T) {
 			t.Parallel()
 			testClients(t, req)

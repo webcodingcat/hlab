@@ -12,7 +12,7 @@ Confirmed assumptions:
 - Project list "N resources" menu counts storage boxes and opens the section.
 - Administration view "Storage Box Types": catalog and own types with source column and problem banner; add, edit, remove own types (name, description, size, snapshot limit, automatic snapshot limit, subaccounts limit, locations); works while the cloud is stopped.
 - Own-type size: number plus unit MiB/GiB/TiB (default GiB); limits default 10, 10, 100.
-- Own-type locations: multi-select of the catalog's locations, all preselected, at least one; the type is offered at box creation and change type only there (user correction).
+- Own-type locations: multi-select of the catalog's locations, all preselected through UI-SPEC.md's "All locations" checkbox (checked by default; then every catalog location is sent explicitly), otherwise at least one; the type is offered at box creation and change type only there (user correction).
 - Own-type prices: one entry per selected location with all prices 0 in the shape of the Hetzner description, as for own server types; responses for own types pass the check against hetzner.spec.json (user correction).
 - Help texts "Storage Boxes" and "Storage Box Types".
 - Client tests: one subtest each for storage boxes, subaccounts, snapshots, storage box types, separately for hcloud, OpenTofu, Ansible; each client gets only hlab's Cloud and Hetzner endpoints and the token.
