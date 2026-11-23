@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -229,7 +230,7 @@ func (s *Service) AddISO(spec catalog.OwnISOSpec) (*Invalid, error) {
 		return nil, err
 	}
 	_, err = catalog.AddOwnISO(cat, s.isoFile(), spec)
-	return s.isoResult(err)
+	return s.ownResult(err)
 }
 
 // UpdateISO replaces the own ISO spec.ID in the own ISOs file and has a
@@ -240,7 +241,7 @@ func (s *Service) UpdateISO(spec catalog.OwnISOSpec) (*Invalid, error) {
 		return nil, err
 	}
 	_, err = catalog.UpdateOwnISO(cat, s.isoFile(), spec)
-	return s.isoResult(err)
+	return s.ownResult(err)
 }
 
 // RemoveISO removes the own ISO id from the own ISOs file and has a
@@ -264,9 +265,9 @@ func (s *Service) isoCatalog() (*catalog.Catalog, []string, error) {
 	return cat, cat.ReloadOwnISOs(s.isoFile()), nil
 }
 
-// isoResult turns the error of an own ISOs file change into a refused
-// field, or reloads a running cloud after a change.
-func (s *Service) isoResult(err error) (*Invalid, error) {
+// ownResult turns the error of a change of an own ISOs or storage box
+// types file into a refused field, or reloads a running cloud after it.
+func (s *Service) ownResult(err error) (*Invalid, error) {
 	if err != nil {
 		if fe, ok := errors.AsType[*catalog.FieldError](err); ok {
 			return &Invalid{Field: fe.Field, Message: fe.Message}, nil
@@ -274,6 +275,104 @@ func (s *Service) isoResult(err error) (*Invalid, error) {
 		return nil, err
 	}
 	return nil, s.reload()
+}
+
+// ListedStorageBoxType is a storage box type with where it comes from; an
+// own type also carries its spec for the edit form.
+type ListedStorageBoxType struct {
+	Type   json.RawMessage                `json:"type"`   // Hetzner storage_box_type object
+	Source string                         `json:"source"` // "catalog" | "own"
+	Own    *catalog.OwnStorageBoxTypeSpec `json:"own,omitempty"`
+}
+
+// StorageBoxTypeList is the catalog and own types and why own types are
+// left out.
+type StorageBoxTypeList struct {
+	Types   []ListedStorageBoxType `json:"types"`
+	Problem string                 `json:"problem,omitempty"` // like custom_storage_box_types
+}
+
+// StorageBoxTypes lists the catalog storage box types followed by every
+// entry of the own storage box types file, also those left out of
+// serving, so they can be edited or removed; Problem says why own types
+// are left out. A file that cannot be read lists no own types. It reads
+// the files, so it works while the cloud is stopped.
+func (s *Service) StorageBoxTypes() (StorageBoxTypeList, error) {
+	cat, _, err := s.catalog()
+	if err != nil {
+		return StorageBoxTypeList{}, err
+	}
+	list := StorageBoxTypeList{Types: []ListedStorageBoxType{}}
+	for _, st := range cat.StorageBoxTypes() {
+		list.Types = append(list.Types, ListedStorageBoxType{Type: st.Raw, Source: "catalog"})
+	}
+	file := s.boxTypesFile()
+	cat.ReloadOwnStorageBoxTypes(file)
+	list.Problem = cat.OwnStorageBoxTypesWarning()
+	specs, err := catalog.OwnStorageBoxTypes(file)
+	if err != nil || len(specs) == 0 {
+		return list, nil // the problem names the file
+	}
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return list, nil
+	}
+	var raw []json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil || len(raw) != len(specs) {
+		return list, nil
+	}
+	for i := range specs {
+		list.Types = append(list.Types, ListedStorageBoxType{Type: raw[i], Source: "own", Own: &specs[i]})
+	}
+	return list, nil
+}
+
+// AddStorageBoxType adds an own storage box type to the own storage box
+// types file and has a running cloud re-read it. An invalid spec returns
+// its field.
+func (s *Service) AddStorageBoxType(spec catalog.OwnStorageBoxTypeSpec) (*Invalid, error) {
+	cat, err := s.boxTypesCatalog()
+	if err != nil {
+		return nil, err
+	}
+	_, err = catalog.AddOwnStorageBoxType(cat, s.boxTypesFile(), spec)
+	return s.ownResult(err)
+}
+
+// UpdateStorageBoxType replaces the own storage box type spec.Name in the
+// own storage box types file and has a running cloud re-read it. An
+// invalid spec returns its field.
+func (s *Service) UpdateStorageBoxType(spec catalog.OwnStorageBoxTypeSpec) (*Invalid, error) {
+	cat, err := s.boxTypesCatalog()
+	if err != nil {
+		return nil, err
+	}
+	_, err = catalog.UpdateOwnStorageBoxType(cat, s.boxTypesFile(), spec)
+	return s.ownResult(err)
+}
+
+// RemoveStorageBoxType removes the own storage box type name from the own
+// storage box types file and has a running cloud re-read it.
+func (s *Service) RemoveStorageBoxType(name string) error {
+	if err := catalog.RemoveOwnStorageBoxType(s.boxTypesFile(), name); err != nil {
+		return err
+	}
+	return s.reload()
+}
+
+func (s *Service) boxTypesFile() string {
+	return filepath.Join(s.d.Paths.Config, catalog.OwnStorageBoxTypesFile)
+}
+
+// boxTypesCatalog loads the catalog with the own storage box types it
+// serves, as hlabd does.
+func (s *Service) boxTypesCatalog() (*catalog.Catalog, error) {
+	cat, _, err := s.catalog()
+	if err != nil {
+		return nil, err
+	}
+	cat.ReloadOwnStorageBoxTypes(s.boxTypesFile())
+	return cat, nil
 }
 
 // Location is one catalog location as the views show it.
