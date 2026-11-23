@@ -66,8 +66,7 @@ type Deps struct {
 	FreeBytes func() (uint64, error)
 	// Clock drives the stats job; nil: scheduler.RealClock().
 	Clock scheduler.Clock
-	// Store is what Recover works on outside a request; nil: Recover does
-	// nothing.
+	// Store is what Recover works on outside a request.
 	Store *store.Store
 }
 
