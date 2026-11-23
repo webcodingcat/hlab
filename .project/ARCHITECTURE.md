@@ -1024,7 +1024,7 @@ CREATE INDEX resources_project ON resources(project_id, kind);
 CREATE TABLE actions  (id INTEGER PRIMARY KEY, project_id INTEGER, command TEXT NOT NULL, status TEXT NOT NULL,
                        progress INTEGER NOT NULL, started TEXT NOT NULL, finished TEXT, error TEXT, resources TEXT NOT NULL);
 CREATE TABLE ids      (kind TEXT PRIMARY KEY, next INTEGER NOT NULL);
-CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocations: IPs, VLANs, appliance secret
+CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocations: IPs, VLANs, appliance secret, storage.tls_cert and storage.tls_key (wildcard certificate of the storage VM)
 ```
 
 - `doc` holds the resource in Hetzner's API shape plus an `_hlab` object for
