@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Snapshot API details
+
+- Type: decision
+- Phase: phase 20
+- What: The snapshot description pattern is anchored, name and `created` come from `Deps.Clock`, `create_snapshot` and `delete_snapshot` call the agent job without an Apply (a failed create deletes the record and the agent removes the unlisted subvolume at its next apply), and delete runs on a box that is not active, like `delete_subaccount`.
+- Why: The unanchored pattern of the description accepts any text, and the test clock must give matching names.
+- Cost of change: low
+
 ## 2026-11-23 Storage certificate in kv, renewed daily
 
 - Type: decision
