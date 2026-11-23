@@ -55,8 +55,8 @@ taken with the approval of the spec or by an answer from the user.
 
 - Type: decision
 - Phase: phase 20
-- What: Snapshots live in `<root>/.snapshots/<user>/<name>` (root:<box gid>, 0750); `.zfs/snapshot` is a private read-only bind inside the chroot home, so WebDAV (Apache with PrivateTmp) does not show it, while SFTP, SCP, SMB and FTP do; snapshot jobs refuse names outside `^[A-Za-z0-9][A-Za-z0-9._-]*$` with 400.
-- Why: A private bind cannot reach the box data, other homes or Apache's namespace; SBOX-19 names no protocol, and `docs/deviations.md` states the WebDAV gap.
+- What: Snapshots live in `<root>/.snapshots/<user>/<name>` (root:<box gid>, 0750); `.zfs/snapshot` is a read-only bind inside the chroot home that SFTP, SCP, SMB, FTP and WebDAV show (the documentation run listed it over WebDAV); snapshot jobs refuse names outside `^[A-Za-z0-9][A-Za-z0-9._-]*$` with 400.
+- Why: A private bind cannot reach the box data or other homes; it follows E18.
 - Cost of change: low
 
 ## 2026-11-23 vsftpd setup on the storage VM
