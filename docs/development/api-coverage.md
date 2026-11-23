@@ -636,7 +636,7 @@ The Storage Box endpoints of Hetzner's API are served under
 
 | Endpoint | Notes |
 |---|---|
-| `GET /hetzner/v1/storage_box_types`, `GET /hetzner/v1/storage_box_types/{id}` | The types of HLab's catalog file `storage-box-types.json`, as Hetzner lists them; none without the file. `hlab catalog update` does not change them. |
+| `GET /hetzner/v1/storage_box_types`, `GET /hetzner/v1/storage_box_types/{id}` | The types of HLab's catalog file `storage-box-types.json`, as Hetzner lists them, followed by the own types of `storage-box-types.custom.json`; none without either file. `hlab catalog update` does not change them. |
 | `GET /hetzner/v1/storage_boxes`, `POST /hetzner/v1/storage_boxes`, `GET /hetzner/v1/storage_boxes/{id}`, `PUT /hetzner/v1/storage_boxes/{id}`, `DELETE /hetzner/v1/storage_boxes/{id}` | `PUT` answers at once; create and delete run as actions. Create and `change_type` to a larger type answer 412 `resource_unavailable` below 10 GiB free on the drive of the data folder. |
 | `POST /hetzner/v1/storage_boxes/{id}/actions/change_protection`, `POST /hetzner/v1/storage_boxes/{id}/actions/change_type`, `POST /hetzner/v1/storage_boxes/{id}/actions/reset_password`, `POST /hetzner/v1/storage_boxes/{id}/actions/update_access_settings`, `POST /hetzner/v1/storage_boxes/{id}/actions/enable_snapshot_plan`, `POST /hetzner/v1/storage_boxes/{id}/actions/disable_snapshot_plan` | `change_type` also takes a smaller type, unless the box holds more data than it: 422 `invalid_input` on `storage_box_type`. A snapshot plan is stored only. |
 | `GET /hetzner/v1/storage_boxes/{id}/folders` | The direct subdirectories of `path` (default `.`), hidden ones included, sorted. |

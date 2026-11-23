@@ -258,13 +258,13 @@ CompactDisk(ctx context.Context, path string) error
   - [x] `internal/platform/platform.go`, `internal/platform/hyperv/disks.go`, `internal/platform/platformtest/fake.go`: `CompactDisk` (`Optimize-VHD -Path <p> -Mode Full`).
   - [x] Write `phases/19/CHECKS.md`: write 2 GB into a box, delete the box, stop the cloud, compare the size of `data.vhdx` before and after.
 
-- [ ] 19-12 Documentation
+- [x] 19-12 Documentation
   - Wave: 6 | Depends on: 19-01 to 19-11 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06 | Tests: test/docs/docs_test.go
   - Reads: SPEC.md "Documentation" (D4 now about 250 lines); CONTEXT.md "Documentation"; `docs/guide.md` "Storage boxes", `docs/deviations.md` "Storage boxes", `docs/configuration.md`, `docs/development/api-coverage.md`, `internal/api/deviations.go`
   - Size: ~250 lines in 6 files
-  - [ ] `docs/guide.md`: SSH access on ports 22 and 23 (sftp, scp, rsync, borg), keys, subaccounts, reachability, folders, own storage box types; examples run through context `hlab-docs`.
-  - [ ] `docs/deviations.md`:
+  - [x] `docs/guide.md`: SSH access on ports 22 and 23 (sftp, scp, rsync, borg), keys, subaccounts, reachability, folders, own storage box types; examples run through context `hlab-docs`.
+  - [x] `docs/deviations.md`:
     - credentials of one box log in at another box's address over SSH;
     - names under `storagebox.hetzner.internal`;
     - a failed create deletes the box;
@@ -273,6 +273,6 @@ CompactDisk(ctx context.Context, path string) error
     - the free-space reserve;
     - the port 23 command set and key formats;
     - the folders answers.
-  - [ ] `docs/configuration.md`: `storage-debs.json`, `storage-box-types.custom.json`, the folders `storage` and `cache\debs`.
-  - [ ] `docs/development/api-coverage.md` and `internal/api/deviations.go`: `folders` served, snapshots and rollback still unserved until phase 20.
-  - [ ] `docs/development/components.md`: the storage agent.
+  - [x] `docs/configuration.md`: `storage-debs.json`, `storage-box-types.custom.json`, the folders `storage` and `cache\debs`.
+  - [x] `docs/development/api-coverage.md` and `internal/api/deviations.go`: `folders` served, snapshots and rollback still unserved until phase 20.
+  - [x] `docs/development/components.md`: the storage agent.
