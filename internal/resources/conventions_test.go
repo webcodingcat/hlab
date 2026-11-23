@@ -101,7 +101,7 @@ func newFullEnv(t *testing.T) *apitest.Env {
 		placementgroups.New(),
 		srv, nets, pips, fips, fws, zns,
 		loadbalancertypes.New(cat), certs, lbs,
-		storageboxtypes.New(cat), storageboxes.New(storageboxes.Deps{Catalog: cat}),
+		storageboxtypes.New(cat), storageboxes.New(storageboxes.Deps{Catalog: cat, PublicRange: d.PublicRange}),
 	)
 }
 
