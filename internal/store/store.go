@@ -97,6 +97,10 @@ func Open(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, notDatabase(err)
 	}
+	if err := s.dropOrphanActions(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -145,6 +149,15 @@ func (s *Store) migrate() error {
 		default:
 			return &IncompatibleError{Found: v, Want: SchemaVersion}
 		}
+	})
+}
+
+// dropOrphanActions deletes the actions of deleted projects, left behind by
+// versions that kept them when a project was deleted.
+func (s *Store) dropOrphanActions() error {
+	return s.Tx(func(tx Tx) error {
+		_, err := tx.exec(`DELETE FROM actions WHERE project_id IS NOT NULL AND project_id NOT IN (SELECT id FROM projects)`)
+		return err
 	})
 }
 
