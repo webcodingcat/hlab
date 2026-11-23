@@ -219,6 +219,10 @@ func checkLocks(tx store.Tx, refs []Ref) error {
 	return nil
 }
 
+// Store returns the store the manager works on, for the jobs of a module
+// that got the manager through resource.ActionUser.
+func (m *Manager) Store() *store.Store { return m.st }
+
 // Get returns the action id of projectID, or store.ErrNotFound if it does
 // not exist or belongs to another project.
 func (m *Manager) Get(projectID, id int64) (*Action, error) {

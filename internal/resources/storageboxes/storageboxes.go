@@ -71,7 +71,10 @@ type Deps struct {
 }
 
 // Module is the storage_boxes resource type.
-type Module struct{ d Deps }
+type Module struct {
+	d    Deps
+	acts *actions.Manager // set at mount (UseActions); the stats job reads the store through it
+}
 
 // New returns the module.
 func New(d Deps) *Module { return &Module{d: d} }
@@ -226,7 +229,7 @@ type boxFunc func(tx store.Tx, projectID int64, r *Record) error
 
 // run hands the work of action actionID on box boxID to the action
 // manager: Apply, then done on the stored box of projectID in one
-// transaction. When Apply fails, failed (if not nil) runs instead of done
+// transaction, then a refresh of the box's stats. When Apply fails, failed (if not nil) runs instead of done
 // and the action fails with Apply's error.
 func (m *Module) run(req *http.Request, actionID, boxID int64, done, failed boxFunc) {
 	p, _ := api.ProjectFrom(req.Context())
@@ -251,7 +254,11 @@ func (m *Module) run(req *http.Request, actionID, boxID int64, done, failed boxF
 				return err
 			}
 		}
-		return onBox(done)
+		if err := onBox(done); err != nil {
+			return err
+		}
+		m.refreshStats(ctx, st, p.ID, boxID)
+		return nil
 	})
 }
 

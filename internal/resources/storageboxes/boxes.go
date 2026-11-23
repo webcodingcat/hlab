@@ -180,7 +180,8 @@ func (m *Module) validate(body createRequest) (catalog.StorageBoxType, catalog.L
 // create stores the box as initializing with its number and IP and starts
 // create_storage_box, which shows its username, server and system and
 // makes it active. When Apply fails, the box is deleted and its IP
-// released.
+// released. Below the free space reserve on the host drive it answers 412
+// resource_unavailable.
 func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 	var body createRequest
 	if !api.Decode(w, req, &body) {
@@ -190,6 +191,9 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		body.Labels = map[string]string{}
 	}
 	st, loc, err := m.validate(body)
+	if err == nil {
+		err = m.checkFree()
+	}
 	if err != nil {
 		api.Fail(w, err)
 		return
