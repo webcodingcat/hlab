@@ -17,10 +17,10 @@ const PlanEvery = time.Minute
 // automaticPrefix starts the name of a snapshot the plan takes.
 const automaticPrefix = "snapshot-daily--"
 
-// Due returns the latest minute in (from, to] at which plan p runs, in
-// UTC; day_of_week (1 Monday .. 7 Sunday) and day_of_month both must
+// Due reports whether plan p runs at a minute in (from, to], in UTC;
+// day_of_week (1 Monday .. 7 Sunday) and day_of_month both must
 // match when both are set (AND).
-func Due(p SnapshotPlan, from, to time.Time) (time.Time, bool) {
+func Due(p SnapshotPlan, from, to time.Time) bool {
 	to = to.UTC()
 	at := time.Date(to.Year(), to.Month(), to.Day(), p.Hour, p.Minute, 0, 0, time.UTC)
 	if at.After(to) {
@@ -28,10 +28,10 @@ func Due(p SnapshotPlan, from, to time.Time) (time.Time, bool) {
 	}
 	for ; at.After(from); at = at.AddDate(0, 0, -1) {
 		if planDay(p, at) {
-			return at, true
+			return true
 		}
 	}
-	return time.Time{}, false
+	return false
 }
 
 // planDay reports whether plan p runs on the day of at.
@@ -139,7 +139,7 @@ func (m *Module) checkPlan(tx store.Tx, projectID int64, r Record, started, now 
 	} else if checked.Before(started) {
 		checked = started
 	}
-	_, due := Due(*r.SnapshotPlan, checked, now)
+	due := Due(*r.SnapshotPlan, checked, now)
 	r.HLab.PlanChecked = now
 	if err := put(tx, projectID, r); err != nil || !due {
 		return nil, err
