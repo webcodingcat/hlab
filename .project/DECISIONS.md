@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 rollback_snapshot details
+
+- Type: decision
+- Phase: phase 20
+- What: Snapshots "created after the target" are those with a higher ID; an empty `snapshot` answers 422 invalid_input; an unknown snapshot answers 404 before the box's active check.
+- Why: IDs follow creation order even when two snapshots share a second.
+- Cost of change: low
+
 ## 2026-11-23 Rollback on the storage VM
 
 - Type: decision
