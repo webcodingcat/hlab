@@ -56,7 +56,7 @@ func WebDAVConfig(doc agentapi.Storage, skipped map[string]bool, tlsDir string) 
 		line("\tSSLCertificateKeyFile %s", key)
 	}
 	for _, b := range doc.Boxes {
-		if skipped[b.User] || !b.IP.IsValid() {
+		if skipped[b.User] {
 			continue
 		}
 		addr := b.IP.String() + ":443"
@@ -94,11 +94,9 @@ func WebDAVConfig(doc agentapi.Storage, skipped map[string]bool, tlsDir string) 
 			if a.ReadOnly {
 				line("\t\t\tRequire method GET HEAD OPTIONS PROPFIND")
 			}
-			if !a.ReachableExternally && doc.PublicRange.IsValid() {
+			if !a.ReachableExternally {
 				line("\t\t\tRequire ip %s", doc.PublicRange.Masked())
-				if doc.HostNet.IsValid() {
-					line("\t\t\tRequire not ip %s", doc.HostNet.Masked())
-				}
+				line("\t\t\tRequire not ip %s", doc.HostNet.Masked())
 			}
 			line("\t\t</RequireAll>")
 			line("\t</Directory>")

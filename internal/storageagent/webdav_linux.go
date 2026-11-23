@@ -43,7 +43,7 @@ func (w *webdav) Apply(ctx context.Context, doc agentapi.Storage, skipped map[st
 	gids := map[string]int{}
 	boxes := map[string]bool{}
 	for _, b := range doc.Boxes {
-		if skipped[b.User] || !b.IP.IsValid() {
+		if skipped[b.User] {
 			continue
 		}
 		n, err := boxUID(b.User)
