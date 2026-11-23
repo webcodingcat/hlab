@@ -156,12 +156,12 @@ type Step struct {
   - [ ] In appliance/hlab-agent-install.sh install the Samba, Apache and vsftpd groups each while its tool is missing (`smbd`, `apache2`, `vsftpd`), independently of btrfs, so storage VMs of phase 19 get them at their next boot. Use a `policy-rc.d` exiting 101 during `dpkg -i`; afterwards disable `nmbd`, `smbd`, `apache2` and `vsftpd` until the agent configures them; remove Apache's `ports.conf` Listen lines and `sites-enabled/000-default.conf`; `a2dismod -f mpm_event` and `a2enmod mpm_prefork mpm_itk ssl dav dav_fs auth_basic authn_file authz_user authz_host`. Keep the rule that a failure does not keep the agent down.
   - [ ] Add `VMSpec.DynamicMemory` (platform.go) and use it in hyperv.go CreateVM and SetVM (`-DynamicMemory`, minimum 512 MB, startup and maximum MemoryMB); the storage VM in internal/cloud/storage.go gets 2048 MB dynamic (SetVM already runs on an off VM at start, so existing VMs change too). Other VMs stay static.
 
-- [ ] 20-03 Appliance lets the protocol ports through to box IPs
+- [x] 20-03 Appliance lets the protocol ports through to box IPs
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SBOX-14, SBOX-15, SBOX-16 (network) | Tests: -
   - Reads: ARCHITECTURE "Storage VM" (Network); DECISIONS "Storage box firewall chains only drop or return", "Only SSH ports reach box IPs in phase 19"; internal/agent/firewall_linux.go addStorageBoxRules
   - Size: ~40 lines in 1 file
-  - [ ] Extend `storageBoxPorts` in internal/agent/firewall_linux.go to TCP 21, 22, 23, 443, 445 and add one range rule for TCP 50000-50099 (passive FTP); the chain still only drops or returns, and 9100 stays dropped.
+  - [x] Extend `storageBoxPorts` in internal/agent/firewall_linux.go to TCP 21, 22, 23, 443, 445 and add one range rule for TCP 50000-50099 (passive FTP); the chain still only drops or returns, and 9100 stays dropped.
 
 - [ ] 20-04 Storage agent service frame and TLS files
   - Wave: 2 | Depends on: 20-01 | Review: alone
