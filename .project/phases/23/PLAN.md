@@ -183,15 +183,15 @@ func (w *Windows) OpenConsole(project string, id int64, name string) error
   - Size: ~280 lines in 2 files
   - [x] `Platform.OpenConsole` in `internal/platform/hyperv/screen_windows.go` (plus a `_other.go` stub if the package builds elsewhere): lookups by VM name (`Msvm_ComputerSystem`, realized VSSD, `Msvm_VideoHead`, `Msvm_Keyboard`, `Msvm_SyntheticMouse`), one worker goroutine per conn owning the COM connection; `Screen` reads VideoHead then `GetVirtualSystemThumbnailImage` at that size (ReturnValue 32775/32779 → ok false, trailing bytes dropped), `Scancodes` via `TypeScancodes` (VT_ARRAY|VT_UI1), `MouseMove` via `SetAbsolutePosition`, `MouseButton` via `SetButtonState`, `MouseScroll` via `SetScrollPosition`; a missing VM is `platform.Error{Kind: NotFound}`
 
-- [ ] 23-07 request_console and the console in the cloud
+- [x] 23-07 request_console and the console in the cloud
   - Wave: 4 | Depends on: 23-01, 23-04, 23-06 | Review: alone
   - Requirements: SRV-17, CON-01 | Tests: internal/resources/servers/servers_test.go, test/e2e/console_test.go
   - Reads: PLAN.md "Interfaces"; SPEC.md "Server console"; frozen OpenAPI (`%LocalAppData%\hlab\openapi\cloud.spec.json`, operationId `request_server_console`); ARCHITECTURE.md "Server console", "ca"; CONTEXT.md
   - Size: ~260 lines in 7 files
   - Adjusts: `internal/apitest` `ServersDeps` (gives a console), `internal/resources/servers/servers_test.go` and `internal/resources/conventions_test.go` environments if they build `servers.Deps` without a console; the old SRV-17 subtest is replaced by the test writer
-  - [ ] `servers.Console` in `Deps`; `requestConsole` in `internal/resources/servers/actions.go`: load the server, start and finish a `request_console` action in one transaction, `Issue`, answer 201 `{action, wss_url, password}`; the delete path calls `CloseServer`; `consoleMessage` removed
-  - [ ] Cloud: at start issue the `console.hetzner.internal` certificate from the hlab CA (in memory), build `console.New` with `Open` through the `platform.Console` assertion and the server's VM name, listen on `addrs.ConsoleListen`, close at stop; `Config.Console` in the agent document; in `internal/cloud/cloud.go`, a new `internal/cloud/console.go`
-  - [ ] `api.Deviations`: the `request_console` entry describes `console.hetzner.internal`, the hlab CA certificate and the Hyper-V screen instead of `unsupported_error`, in `internal/api/deviations.go`
+  - [x] `servers.Console` in `Deps`; `requestConsole` in `internal/resources/servers/actions.go`: load the server, start and finish a `request_console` action in one transaction, `Issue`, answer 201 `{action, wss_url, password}`; the delete path calls `CloseServer`; `consoleMessage` removed
+  - [x] Cloud: at start issue the `console.hetzner.internal` certificate from the hlab CA (in memory), build `console.New` with `Open` through the `platform.Console` assertion and the server's VM name, listen on `addrs.ConsoleListen`, close at stop; `Config.Console` in the agent document; in `internal/cloud/cloud.go`, a new `internal/cloud/console.go`
+  - [x] `api.Deviations`: the `request_console` entry describes `console.hetzner.internal`, the hlab CA certificate and the Hyper-V screen instead of `unsupported_error`, in `internal/api/deviations.go`
 
 - [x] 23-08 Tray: console proxy and console windows
   - Wave: 1 | Depends on: - | Review: alone
