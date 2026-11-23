@@ -642,13 +642,10 @@ The Storage Box endpoints of Hetzner's API are served under
 | `GET /hetzner/v1/storage_boxes/{id}/folders` | The direct subdirectories of `path` (default `.`), hidden ones included, sorted. |
 | `GET /hetzner/v1/storage_boxes/{id}/subaccounts`, `POST /hetzner/v1/storage_boxes/{id}/subaccounts`, `GET /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}`, `PUT /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}`, `DELETE /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}` | The subaccount list has no paging, as in the description. |
 | `POST /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}/actions/change_home_directory`, `POST /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}/actions/reset_subaccount_password`, `POST /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}/actions/update_access_settings` | `update_access_settings` refuses `home_directory`; use `change_home_directory`. |
+| `GET /hetzner/v1/storage_boxes/{id}/snapshots`, `POST /hetzner/v1/storage_boxes/{id}/snapshots`, `GET /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}`, `PUT /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}`, `DELETE /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}` | The snapshot list has no paging, as in the description. `PUT` answers at once; create and delete run as the actions `create_snapshot` and `delete_snapshot` on box and snapshot. A manual snapshot is named after the UTC time of its create, such as `2025-02-12T11-35-19`; when the box already has a snapshot of that name, such as after a second create within one second, it gets the next free second. A create beyond the type's `snapshot_limit` of manual snapshots answers 403 `resource_limit_exceeded` with `details.limits` `snapshot_limit`; a failed `create_snapshot` deletes the snapshot. |
 | `GET /hetzner/v1/storage_boxes/actions`, `GET /hetzner/v1/storage_boxes/actions/{id}`, `GET /hetzner/v1/storage_boxes/{id}/actions`, `GET /hetzner/v1/storage_boxes/{id}/actions/{action_id}` | Box and subaccount actions are readable at all of these and at `GET /v1/actions/{id}` and `GET /v1/actions?id=`. |
 
-Not served yet; they answer 404 `not_found`: the snapshots (`GET /hetzner/v1/storage_boxes/{id}/snapshots`,
-`POST /hetzner/v1/storage_boxes/{id}/snapshots`,
-`GET /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}`,
-`PUT /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}`,
-`DELETE /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}`) and
+Not served yet; it answers 404 `not_found`:
 `POST /hetzner/v1/storage_boxes/{id}/actions/rollback_snapshot`.
 
 - The boxes live in the storage VM `<tag>-storage`, which the first

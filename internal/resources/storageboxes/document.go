@@ -23,12 +23,16 @@ func Boxes(tx store.Tx) ([]agentapi.Box, error) {
 	if err != nil {
 		return nil, err
 	}
+	snaps, err := snapsByBox(tx)
+	if err != nil {
+		return nil, err
+	}
 	out := []agentapi.Box{}
 	for _, r := range recs {
 		if r.HLab.Deleting {
 			continue
 		}
-		b, err := docBox(r, subs[r.ID])
+		b, err := docBox(r, subs[r.ID], snaps[r.ID])
 		if err != nil {
 			return nil, err
 		}
@@ -52,8 +56,10 @@ func subsByBox(tx store.Tx) (map[int64][]SubaccountRecord, error) {
 	return by, nil
 }
 
-// docBox is stored box r with its subaccounts subs in the document's shape.
-func docBox(r Record, subs []SubaccountRecord) (agentapi.Box, error) {
+// docBox is stored box r with its subaccounts subs and snapshots snaps in
+// the document's shape; every snapshot record is listed, one still
+// creating included.
+func docBox(r Record, subs []SubaccountRecord, snaps []SnapshotRecord) (agentapi.Box, error) {
 	ip, err := netip.ParseAddr(r.HLab.IP)
 	if err != nil {
 		return agentapi.Box{}, fmt.Errorf("storage box %d: ip: %w", r.ID, err)
@@ -74,6 +80,9 @@ func docBox(r Record, subs []SubaccountRecord) (agentapi.Box, error) {
 		SSHKeys:    r.HLab.SSHKeys,
 		Access: agentapi.Access{SSH: a.SSHEnabled, Samba: a.SambaEnabled, WebDAV: a.WebDAVEnabled,
 			ZFS: a.ZFSEnabled, ReachableExternally: a.ReachableExternally},
+	}
+	for _, s := range snaps {
+		b.Snapshots = append(b.Snapshots, s.Name)
 	}
 	for _, s := range subs {
 		sa := s.AccessSettings

@@ -94,6 +94,7 @@ func (m *Module) Routes(r resource.Registrar) {
 	m.boxRoutes(r)
 	m.actionRoutes(r)
 	m.subaccountRoutes(r)
+	m.snapshotRoutes(r)
 	r.Handle("GET /storage_boxes/{id}/folders", http.HandlerFunc(m.folders))
 	// GET /storage_boxes/actions/{id} conflicts with
 	// /storage_boxes/{id}/actions in http.ServeMux; the less specific
@@ -200,7 +201,7 @@ func checkActive(r Record) error {
 }
 
 // removeBox deletes stored box r of projectID with its subaccounts and
-// releases its IP.
+// snapshots and releases its IP.
 func removeBox(tx store.Tx, projectID int64, r Record) error {
 	subs, err := boxSubs(tx, projectID, r.ID)
 	if err != nil {
@@ -208,6 +209,15 @@ func removeBox(tx store.Tx, projectID int64, r Record) error {
 	}
 	for _, s := range subs {
 		if err := store.Delete(tx, SubaccountKind, projectID, s.ID); err != nil {
+			return err
+		}
+	}
+	snaps, err := boxSnaps(tx, projectID, r.ID)
+	if err != nil {
+		return err
+	}
+	for _, s := range snaps {
+		if err := store.Delete(tx, SnapshotKind, projectID, s.ID); err != nil {
 			return err
 		}
 	}

@@ -566,5 +566,13 @@ func Deviations() []Deviation {
 			Endpoint:    "POST /hetzner/v1/storage_boxes/{id}/actions/change_type",
 			Description: "every action on a storage box or one of its subaccounts locks the box: a second action answers 423 locked until the first ends; Hetzner documents this only for creating subaccounts and snapshots",
 		},
+		{
+			Endpoint:    "POST /hetzner/v1/storage_boxes/{id}/snapshots",
+			Description: "a create beyond the type's snapshot_limit of manual snapshots answers 403 resource_limit_exceeded with details.limits snapshot_limit",
+		},
+		{
+			Endpoint:    "POST /hetzner/v1/storage_boxes/{id}/snapshots",
+			Description: "a manual snapshot whose UTC time is already a snapshot name of the box, such as a second create within one second, is named after the next free second",
+		},
 	}
 }
