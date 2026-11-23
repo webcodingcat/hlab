@@ -82,7 +82,8 @@ func testCLI05StorageBoxes(t *testing.T, _ *rowCtx) {
 		t.Error("after enable-protection: protection.delete is false")
 	}
 	r, err := e.hcloudRun(context.Background(), hcloudTimeout, "storage-box", "delete", renamed)
-	if err != nil || r.ExitCode == 0 || !strings.Contains(r.Stderr, "protected") {
+	// The refusal is a non-zero exit, which hcloudRun also returns as err.
+	if r.ExitCode == 0 || !strings.Contains(r.Stderr, "protected") {
 		t.Errorf("hcloud storage-box delete of a protected box: %v, want a refusal naming the protection\n%s", err, r)
 	}
 	e.boxByID(t, id)
