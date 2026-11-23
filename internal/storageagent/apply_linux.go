@@ -548,12 +548,8 @@ func (a *Agent) removeBox(ctx context.Context, box string) error {
 		return err
 	}
 	id := strconv.Itoa(n)
-	// pkill exits with 1 when no process matched.
-	if _, err := run(ctx, "pkill", "-KILL", "-U", id); err != nil {
-		var ee *exec.ExitError
-		if !errors.As(err, &ee) || ee.ExitCode() != 1 {
-			return err
-		}
+	if err := killUser(ctx, n); err != nil {
+		return err
 	}
 	users, err := ids("/etc/passwd")
 	if err != nil {
@@ -624,6 +620,18 @@ func (a *Agent) removeBox(ctx context.Context, box string) error {
 	}
 	_, err = run(ctx, "btrfs", "qgroup", "clear-stale", a.o.Root)
 	return err
+}
+
+// killUser kills every process of UID n; pkill exits with 1 when no
+// process matched.
+func killUser(ctx context.Context, n int) error {
+	if _, err := run(ctx, "pkill", "-KILL", "-U", strconv.Itoa(n)); err != nil {
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) || ee.ExitCode() != 1 {
+			return err
+		}
+	}
+	return nil
 }
 
 // setPasswords sets the crypt hash of every account whose shadow entry

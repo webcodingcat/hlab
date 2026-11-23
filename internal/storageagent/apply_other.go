@@ -30,3 +30,7 @@ func (a *Agent) snapshot(context.Context, agentapi.StorageJob) (agentapi.Storage
 func (a *Agent) deleteSnapshotJob(context.Context, agentapi.StorageJob) (agentapi.StorageJobResult, error) {
 	return agentapi.StorageJobResult{}, errNeedsLinux
 }
+
+func (a *Agent) rollback(context.Context, agentapi.StorageJob) (agentapi.StorageJobResult, error) {
+	return agentapi.StorageJobResult{}, errNeedsLinux
+}
