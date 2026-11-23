@@ -152,12 +152,12 @@ CompactDisk(ctx context.Context, path string) error
   - [x] `internal/catalog/storageboxtypes.go` (and a new `storageboxtypes_custom.go`): read the own file, append its types after the catalog's, an invalid file or an ID or name colliding with a catalog type keeps only the catalog types and sets the warning.
   - [x] `internal/cloud/reload.go` and `internal/cloud/cloud.go`: create the file as `[]` with the settings.toml ACL at start, load it at start and on `/settings/reload`, report the warning as problem `custom_storage_box_types` in the status.
 
-- [ ] 19-03 Uninstall removes the storage VM
+- [x] 19-03 Uninstall removes the storage VM
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SBOX-08 | Tests: internal/uninstall/uninstall_test.go
   - Reads: REQUIREMENTS.md SBOX-08, INST-04, INST-05; `internal/uninstall/uninstall.go`
   - Size: ~20 lines in 1 file
-  - [ ] `internal/uninstall/uninstall.go`: `ProfileVM` matches exactly `<tag>-storage`; `hlabDirs` gets `storage`.
+  - [x] `internal/uninstall/uninstall.go`: `ProfileVM` matches exactly `<tag>-storage`; `hlabDirs` gets `storage`.
 
 - [ ] 19-04 Storage agent: disk, boxes and jobs
   - Wave: 2 | Depends on: 19-01 | Review: alone
