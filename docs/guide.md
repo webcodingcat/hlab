@@ -1095,11 +1095,10 @@ Outputs:
 server = "u100131.storagebox.hetzner.internal"
 ```
 
-A box runs one action at a time and answers `locked` to a second one.
-OpenTofu deletes sibling resources in parallel, so `tofu destroy` of a
-box together with its subaccounts and `hcloud_storage_box_snapshot`
-resources can stop with `the resource is locked by a running action
-(locked)`; run it again to delete the rest.
+A single `tofu destroy` removes the box together with its subaccounts
+and `hcloud_storage_box_snapshot` resources: deletes of subaccounts and
+snapshots wait for the box's running actions instead of failing with
+`locked`.
 
 The same with Ansible, plus a snapshot:
 
