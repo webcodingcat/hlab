@@ -117,12 +117,21 @@ func (a *Agent) postJob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid job: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	if (job.Kind == agentapi.StorageJobSnapshot || job.Kind == agentapi.StorageJobDeleteSnapshot) &&
+		!snapshotNameRE.MatchString(job.Snapshot) {
+		http.Error(w, fmt.Sprintf("invalid job: invalid snapshot name %q", job.Snapshot), http.StatusBadRequest)
+		return
+	}
 	var run func(context.Context, agentapi.StorageJob) (agentapi.StorageJobResult, error)
 	switch job.Kind {
 	case agentapi.StorageJobFolders:
 		run = a.folders
 	case agentapi.StorageJobUsage:
 		run = a.usage
+	case agentapi.StorageJobSnapshot:
+		run = a.snapshot
+	case agentapi.StorageJobDeleteSnapshot:
+		run = a.deleteSnapshotJob
 	default:
 		http.Error(w, fmt.Sprintf("unknown job kind %q", job.Kind), http.StatusBadRequest)
 		return

@@ -77,6 +77,8 @@ func (a *Agent) apply(ctx context.Context, doc agentapi.Storage) error {
 			err = a.createBox(ctx, boxes[s.Box])
 		case StepUpdateBox:
 			err = a.updateBox(ctx, boxes[s.Box], skipped)
+		case StepRemoveSnapshot:
+			err = a.deleteSnapshot(ctx, s.Box, s.Snapshot)
 		}
 		if err != nil {
 			slog.Error("storage box step failed", "box", s.Box, "step", s.Kind, "err", err)
@@ -144,17 +146,43 @@ func (a *Agent) state(ctx context.Context) (State, error) {
 		}
 	}
 	st.Filesystem = true
-	out, err := run(ctx, "btrfs", "subvolume", "list", a.o.Root)
+	subs, err := a.subvolumes(ctx)
 	if err != nil {
 		return st, err
 	}
-	for line := range strings.Lines(out) {
-		_, p, ok := strings.Cut(strings.TrimSpace(line), " path ")
-		if ok && boxUserRE.MatchString(p) {
+	st.Snapshots = map[string][]string{}
+	for p := range subs {
+		if boxUserRE.MatchString(p) {
 			st.Subvolumes = append(st.Subvolumes, p)
+			continue
+		}
+		parts := strings.Split(p, "/")
+		if len(parts) == 3 && parts[0] == snapshotDir && boxUserRE.MatchString(parts[1]) && snapshotNameRE.MatchString(parts[2]) {
+			st.Snapshots[parts[1]] = append(st.Snapshots[parts[1]], parts[2])
 		}
 	}
+	slices.Sort(st.Subvolumes)
+	for _, names := range st.Snapshots {
+		slices.Sort(names)
+	}
 	return st, nil
+}
+
+// subvolumes returns the ID of every subvolume by its path below the root.
+func (a *Agent) subvolumes(ctx context.Context) (map[string]string, error) {
+	out, err := run(ctx, "btrfs", "subvolume", "list", a.o.Root)
+	if err != nil {
+		return nil, err
+	}
+	subs := map[string]string{}
+	for line := range strings.Lines(out) {
+		f := strings.Fields(line)
+		_, p, ok := strings.Cut(strings.TrimSpace(line), " path ")
+		if ok && len(f) > 1 && f[0] == "ID" {
+			subs[p] = f[1]
+		}
+	}
+	return subs, nil
 }
 
 // hasFilesystem reports whether dev carries any signature blkid knows;
@@ -282,6 +310,9 @@ func (a *Agent) updateBox(ctx context.Context, b agentapi.Box, skipped map[strin
 		return err
 	}
 	if err := a.ensureChroot(b.User, n, b.User, ".", false); err != nil {
+		return err
+	}
+	if err := a.applyZFS(b, n); err != nil {
 		return err
 	}
 	users, err := ids("/etc/passwd")
@@ -475,11 +506,17 @@ func removeChroot(user string) error {
 	if err != nil {
 		return err
 	}
+	var below []string
 	for p := range mounts {
 		if p == dir || strings.HasPrefix(p, dir+"/") {
-			if err := unix.Unmount(p, unix.MNT_DETACH); err != nil {
-				return fmt.Errorf("unmount %s: %w", p, err)
-			}
+			below = append(below, p)
+		}
+	}
+	// Innermost first: .zfs/snapshot lies inside home.
+	slices.SortFunc(below, func(x, y string) int { return len(y) - len(x) })
+	for _, p := range below {
+		if err := unix.Unmount(p, unix.MNT_DETACH); err != nil {
+			return fmt.Errorf("unmount %s: %w", p, err)
 		}
 	}
 	if mounts, err = readMounts(); err != nil {
@@ -504,7 +541,7 @@ func removeAccount(ctx context.Context, user string) error {
 
 // removeBox deletes a box absent from the document: its processes, the
 // chroots and users of the box and its subaccounts, the group, the
-// subvolume and the qgroup.
+// snapshots, the subvolume and the qgroup.
 func (a *Agent) removeBox(ctx context.Context, box string) error {
 	n, err := boxUID(box)
 	if err != nil {
@@ -546,17 +583,35 @@ func (a *Agent) removeBox(ctx context.Context, box string) error {
 			return err
 		}
 	}
+	snaps := filepath.Join(a.o.Root, snapshotDir, box)
+	entries, err := os.ReadDir(snaps)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	deleted := false
+	for _, e := range entries {
+		if _, err := run(ctx, "btrfs", "subvolume", "delete", filepath.Join(snaps, e.Name())); err != nil {
+			return err
+		}
+		deleted = true
+	}
+	if err := os.Remove(snaps); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
 	data := filepath.Join(a.o.Root, box)
 	if _, err := os.Lstat(data); err == nil {
 		if _, err := run(ctx, "btrfs", "subvolume", "delete", data); err != nil {
 			return err
 		}
+		deleted = true
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if deleted {
 		// E18: the deletion must finish before stale qgroups are cleared.
 		if _, err := run(ctx, "btrfs", "subvolume", "sync", a.o.Root); err != nil {
 			return err
 		}
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return err
 	}
 	qg, err := a.qgroups(ctx)
 	if err != nil {
@@ -654,21 +709,26 @@ func (a *Agent) checkQuota(ctx context.Context) error {
 	return err
 }
 
-// qgroups returns the referenced bytes of every qgroup by its ID ("0/256",
+// qgroup holds the referenced and exclusive bytes of a qgroup.
+type qgroup struct{ rfer, excl int64 }
+
+// qgroups returns the bytes of every qgroup by its ID ("0/256",
 // "1/100000") from btrfs qgroup show --raw.
-func (a *Agent) qgroups(ctx context.Context) (map[string]int64, error) {
+func (a *Agent) qgroups(ctx context.Context) (map[string]qgroup, error) {
 	out, err := run(ctx, "btrfs", "qgroup", "show", "--raw", "--sync", a.o.Root)
 	if err != nil {
 		return nil, err
 	}
-	qg := map[string]int64{}
+	qg := map[string]qgroup{}
 	for line := range strings.Lines(out) {
 		f := strings.Fields(line)
 		if len(f) < 3 || !strings.Contains(f[0], "/") {
 			continue
 		}
-		if rfer, err := strconv.ParseInt(f[1], 10, 64); err == nil {
-			qg[f[0]] = rfer
+		rfer, err1 := strconv.ParseInt(f[1], 10, 64)
+		excl, err2 := strconv.ParseInt(f[2], 10, 64)
+		if err1 == nil && err2 == nil {
+			qg[f[0]] = qgroup{rfer: rfer, excl: excl}
 		}
 	}
 	return qg, nil
