@@ -288,12 +288,16 @@ func (c *Cloud) writeApplianceISO(ctx context.Context, secret string) error {
 	}, c.isoPath())
 }
 
-// stopAppliance shuts the appliance down through the Shutdown integration
-// service and turns it off when it is not off within shutdownTimeout.
+// stopAppliance shuts the appliance down.
 func (c *Cloud) stopAppliance(ctx context.Context) error {
-	name := c.applianceName()
+	return c.shutdownVM(ctx, c.applianceName())
+}
+
+// shutdownVM shuts VM name down through the Shutdown integration service
+// and turns it off when it is not off within shutdownTimeout.
+func (c *Cloud) shutdownVM(ctx context.Context, name string) error {
 	if err := c.plat.Power(ctx, name, platform.PowerShutdown); err != nil {
-		slog.Warn("appliance shutdown failed; turning it off", "err", err)
+		slog.Warn("VM shutdown failed; turning it off", "vm", name, "err", err)
 		return c.plat.Power(ctx, name, platform.PowerStop)
 	}
 	sctx, cancel := context.WithTimeout(ctx, shutdownTimeout)
@@ -307,7 +311,7 @@ func (c *Cloud) stopAppliance(ctx context.Context) error {
 		}
 		select {
 		case <-sctx.Done():
-			slog.Warn("appliance did not shut down in time; turning it off")
+			slog.Warn("VM did not shut down in time; turning it off", "vm", name)
 			return c.plat.Power(ctx, name, platform.PowerStop)
 		case <-t.C:
 		}

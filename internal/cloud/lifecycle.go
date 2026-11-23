@@ -154,7 +154,8 @@ func (c *Cloud) restore(ctx context.Context) {
 }
 
 // halt saves or shuts down what runs per stop_behaviour, read again from
-// the settings (the start's value if the file is invalid now).
+// the settings (the start's value if the file is invalid now): the
+// servers, then the storage VM.
 func (c *Cloud) halt(ctx context.Context, hostShutdown bool) error {
 	behaviour := c.set.Cloud.StopBehaviour
 	if set, err := settings.Load(filepath.Join(c.d.Paths.Config, "settings.toml")); err == nil {
@@ -175,6 +176,9 @@ func (c *Cloud) halt(ctx context.Context, hostShutdown bool) error {
 				errs = append(errs, fmt.Errorf("%s: halt: %w", m.Type(), err))
 			}
 		}
+	}
+	if err := c.haltStorage(ctx, behaviour, hostShutdown); err != nil {
+		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
 }

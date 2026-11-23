@@ -451,6 +451,15 @@ func (f *Fake) ResizeDisk(ctx context.Context, path string, sizeBytes int64) err
 	return nil
 }
 
+// CompactDisk records the call with the path as Arg.
+func (f *Fake) CompactDisk(ctx context.Context, path string) error {
+	if err := f.begin(ctx, "CompactDisk", "", path); err != nil {
+		return err
+	}
+	f.mu.Unlock()
+	return nil
+}
+
 // AttachDisk records the call.
 func (f *Fake) AttachDisk(ctx context.Context, name, path string, lun int) error {
 	return f.onVM(ctx, "AttachDisk", name, path)

@@ -247,6 +247,13 @@ Remove-VMHardDiskDrive -VMHardDiskDrive $d
 	return err
 }
 
+// CompactDisk runs Optimize-VHD -Mode Full on the detached VHDX path; not
+// mounted, Hyper-V runs it as Prezeroed and drops trimmed blocks.
+func (p *Platform) CompactDisk(ctx context.Context, path string) error {
+	_, err := p.r.run(ctx, "CompactDisk", map[string]any{"path": path}, `Optimize-VHD -Path $path -Mode Full`)
+	return err
+}
+
 // ConvertToDynamic writes the dynamic VHDX dst from the VHD src (the
 // images.Options.Convert step); src stays.
 func (p *Platform) ConvertToDynamic(ctx context.Context, src, dst string) error {

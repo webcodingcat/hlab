@@ -37,10 +37,6 @@ const (
 // sits on the public segment like a server.
 var storageGateway = netip.MustParseAddr("172.31.1.1")
 
-// The storage lifecycle of plan 19-11 calls ensureStorageVM and
-// deleteStorageVM; until then this keeps them in use.
-var _ = []any{(*Cloud).ensureStorageVM, (*Cloud).deleteStorageVM}
-
 func (c *Cloud) storageName() string { return c.tag + "-storage" }
 
 // storageDir holds the storage VM: its configuration, system disk, data
@@ -86,11 +82,12 @@ func (c *Cloud) ensureStorageVM(ctx context.Context) error {
 			return err
 		}
 	case err == nil:
-		if err := c.plat.SetStopAction(ctx, name, spec.StopAction); err != nil {
-			return err
-		}
+		// Hyper-V refuses a changed stop action on a running VM.
 		if state == platform.StateRunning || state == platform.StateStarting {
 			return nil
+		}
+		if err := c.plat.SetStopAction(ctx, name, spec.StopAction); err != nil {
+			return err
 		}
 	case errors.As(err, &perr) && perr.Kind == platform.NotFound:
 		// The ISO comes first: a failed package download leaves no VM.
