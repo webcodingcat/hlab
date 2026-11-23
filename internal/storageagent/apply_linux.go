@@ -44,8 +44,8 @@ func run(ctx context.Context, name string, args ...string) (string, error) {
 	return string(out), nil
 }
 
-// apply brings the storage VM to doc: the steps of Plan, then the
-// passwords, then the quota accounting check of E18. A box whose step
+// apply brings the storage VM to doc: the steps of Plan, then the box
+// addresses, then the passwords, then the quota accounting check of E18. A box whose step
 // fails is logged and left out of its later steps and the passwords; the
 // others are applied, and the failures are returned together at the end.
 func (a *Agent) apply(ctx context.Context, doc agentapi.Storage) error {
@@ -81,6 +81,18 @@ func (a *Agent) apply(ctx context.Context, doc agentapi.Storage) error {
 			slog.Error("storage box step failed", "box", s.Box, "step", s.Kind, "err", err)
 			errs = append(errs, fmt.Errorf("box %s: %w", s.Box, err))
 			skipped[s.Box] = true
+		}
+	}
+	failed, err := applyBoxAddrs(doc, skipped)
+	if err != nil {
+		slog.Error("storage box addresses failed", "err", err)
+		errs = append(errs, err)
+	}
+	for _, b := range doc.Boxes {
+		if err := failed[b.User]; err != nil {
+			slog.Error("storage box address failed", "box", b.User, "err", err)
+			errs = append(errs, fmt.Errorf("box %s: %w", b.User, err))
+			skipped[b.User] = true
 		}
 	}
 	if err := setPasswords(ctx, doc, skipped); err != nil {
