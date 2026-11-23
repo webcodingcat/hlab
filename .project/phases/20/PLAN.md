@@ -163,13 +163,13 @@ type Step struct {
   - Size: ~40 lines in 1 file
   - [x] Extend `storageBoxPorts` in internal/agent/firewall_linux.go to TCP 21, 22, 23, 443, 445 and add one range rule for TCP 50000-50099 (passive FTP); the chain still only drops or returns, and 9100 stays dropped.
 
-- [ ] 20-04 Storage agent service frame and TLS files
+- [x] 20-04 Storage agent service frame and TLS files
   - Wave: 2 | Depends on: 20-01 | Review: alone
   - Requirements: SBOX-14, SBOX-15, SBOX-16 (frame) | Tests: -
   - Reads: PLAN.md "Interfaces"; DECISIONS "One failing box or subaccount does not stop the storage apply", "Storage agent logic as pure functions"; internal/storageagent/apply_linux.go apply
   - Size: ~120 lines in 2 files
-  - [ ] New internal/storageagent/services_linux.go: `service`, `registerService`, and `applyServices` that writes `doc.TLS` to `tlsDir` (key 0600, root only; written only when changed, never logged) and runs every registered service; a failing service is logged and joined into the apply error, the others still run.
-  - [ ] Call `applyServices` in apply (internal/storageagent/apply_linux.go) after `applySSHD`.
+  - [x] New internal/storageagent/services_linux.go: `service`, `registerService`, and `applyServices` that writes `doc.TLS` to `tlsDir` (key 0600, root only; written only when changed, never logged) and runs every registered service; a failing service is logged and joined into the apply error, the others still run.
+  - [x] Call `applyServices` in apply (internal/storageagent/apply_linux.go) after `applySSHD`.
 
 - [ ] 20-05 Storage TLS certificate in hlabd
   - Wave: 2 | Depends on: 20-01 | Review: alone
