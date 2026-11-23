@@ -232,22 +232,23 @@ CompactDisk(ctx context.Context, path string) error
     - A half-created VM is removed again.
     - Delete removes the VM and the folder `storage\`.
 
-- [ ] 19-10 Storage boxes: folders, change_type, free space and stats
+- [x] 19-10 Storage boxes: folders, change_type, free space and stats
   - Wave: 4 | Depends on: 19-08 | Review: alone
   - Requirements: SBOX-06, SBOX-11 | Tests: internal/resources/storageboxes/storage_test.go
   - Reads: CONTEXT.md "Folders", "Stats", "Free space"; RESEARCH.md 3, 8; the frozen `hetzner.spec.json` operation `list_storage_box_folders`; `internal/scheduler/scheduler.go`
   - Size: ~300 lines in 4 files
-  - [ ] New `folders.go`: `GET /storage_boxes/{id}/folders?path=` (default `.`): 422 `invalid_input` (field `path`) for an absolute or escaping path before the agent is asked, 404 `not_found` for a missing one, 423 on a box that is not active; validated against the description.
-  - [ ] `actions.go`:
+  - [x] New `folders.go`: `GET /storage_boxes/{id}/folders?path=` (default `.`): 422 `invalid_input` (field `path`) for an absolute or escaping path before the agent is asked, 404 `not_found` for a missing one, 423 on a box that is not active; validated against the description.
+  - [x] `actions.go`:
     - change_type asks `Job` for usage and answers 422 `invalid_input` (field `storage_box_type`) when data plus snapshots exceed the new size.
     - Create (`boxes.go`) and a larger change_type answer 412 `resource_unavailable` when `FreeBytes` is below `FreeSpaceReserve`.
-  - [ ] New `stats.go`: `Jobs()` refreshes `stats` of every active box every `StatsEvery` on `Deps.Clock`, and after each box action.
+  - [x] New `stats.go`: `Jobs()` refreshes `stats` of every active box every `StatsEvery` on `Deps.Clock`, and after each box action.
 
 - [ ] 19-11 Storage VM in the cloud's life
   - Wave: 5 | Depends on: 19-02, 19-05, 19-07, 19-09, 19-10 | Review: alone
   - Requirements: SBOX-03, SBOX-04, SBOX-06, SBOX-11, SBOX-12, SBOX-13 | Tests: test/e2e/storagebox_test.go, test/e2e/storagebox_access_test.go
   - Reads: ARCHITECTURE.md "Cloud start and stop", "Storage VM"; CONTEXT.md "Lifecycle", "Compaction", "Free space"; RESEARCH.md 5, 7, 8, 9; `internal/cloud/cloud.go`, `lifecycle.go`
   - Size: ~350 lines in 5 files
+  - Note (from 19-10): the stats job takes its clock from `scheduler.Run`; pass the cloud's scheduler clock there. `storageboxes.Deps.Clock` has no effect.
   - [ ] New `internal/cloud/storage_life.go`:
     - Apply builds `storageboxes.Boxes`. Without boxes it deletes the VM, the folder and the storage document; otherwise it ensures the VM, waits for the agent (deadline about 5 min), pushes the document and then `PushAgent`.
     - `Job` goes through the storage client; `FreeBytes` uses `windows.GetDiskFreeSpaceEx` on the data folder.

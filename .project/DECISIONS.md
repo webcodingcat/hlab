@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Storage box usage, free space and stats
+
+- Type: decision
+- Phase: phase 19
+- What: change_type asks the agent for usage only for a smaller type and checks free space only for a larger one; stats are refreshed every `StatsEvery` by a scheduled job and after each box action, a failing usage job is only logged; the job reads the store through the new `actions.Manager.Store()`.
+- Why: Each check runs only where it can refuse, and stats must never fail an action.
+- Cost of change: low
+
 ## 2026-11-23 Account chroots without /tmp
 
 - Type: decision
