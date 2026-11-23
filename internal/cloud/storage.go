@@ -20,11 +20,12 @@ import (
 	"github.com/webcodingcat/hlab/internal/transit"
 )
 
-// The storage VM (CONTEXT.md: Debian 13 generic, 2 vCPU, 1024 MB, 10 GB
-// system disk, a 64 TiB dynamic data disk at SCSI LUN 1).
+// The storage VM (CONTEXT.md: Debian 13 generic, 2 vCPU, 2048 MB of
+// dynamic memory, 10 GB system disk, a 64 TiB dynamic data disk at SCSI
+// LUN 1).
 const (
 	storageCPUs       = 2
-	storageMemoryMB   = 1024
+	storageMemoryMB   = 2048
 	storageSystemSize = 10 << 30
 	storageDataSize   = 64 << 40
 	storageDataLUN    = 1
@@ -58,11 +59,12 @@ func (c *Cloud) storageSecret() (string, error) { return c.kvSecret(storageSecre
 func (c *Cloud) ensureStorageVM(ctx context.Context) error {
 	name := c.storageName()
 	spec := platform.VMSpec{
-		Name:       name,
-		CPUs:       storageCPUs,
-		MemoryMB:   storageMemoryMB,
-		Folder:     c.storageDir(),
-		StopAction: platform.StopSave,
+		Name:          name,
+		CPUs:          storageCPUs,
+		MemoryMB:      storageMemoryMB,
+		DynamicMemory: true,
+		Folder:        c.storageDir(),
+		StopAction:    platform.StopSave,
 	}
 	if c.set.Cloud.StopBehaviour == "shutdown" {
 		spec.StopAction = platform.StopShutdown

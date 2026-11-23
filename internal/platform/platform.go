@@ -66,12 +66,16 @@ type SwitchSpec struct {
 
 // VMSpec describes a VM.
 type VMSpec struct {
-	Name       string // "<tag>-server-<id>", "<tag>-appliance"
-	CPUs       int
-	MemoryMB   int64  // static
-	Folder     string // VM configuration folder in the data folder
-	StopAction StopAction
+	Name          string // "<tag>-server-<id>", "<tag>-appliance"
+	CPUs          int
+	MemoryMB      int64  // startup memory; with DynamicMemory also the maximum
+	DynamicMemory bool   // dynamic memory, minimum DynamicMemoryMinMB; false: static
+	Folder        string // VM configuration folder in the data folder
+	StopAction    StopAction
 }
+
+// DynamicMemoryMinMB is the minimum memory of a VM with dynamic memory.
+const DynamicMemoryMinMB = 512
 
 // PowerOp is a power operation.
 type PowerOp int
