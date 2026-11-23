@@ -19,9 +19,6 @@ func TestE2E(t *testing.T) {
 	// The same for the storage box SBOX-03, SBOX-04, SBOX-11, SBOX-12 and
 	// SBOX-13 share.
 	t.Cleanup(func() { releaseStorageBoxFixture(t) })
-	// The same for the storage box SBOX-03, SBOX-04, SBOX-11, SBOX-12 and
-	// SBOX-13 share; it goes after the rows' own boxes.
-	t.Cleanup(func() { releaseStorageBoxFixture(t) })
 	// The e2e tray the UI rows share ends with the group.
 	t.Cleanup(func() { releaseTray(t) })
 
@@ -31,7 +28,10 @@ func TestE2E(t *testing.T) {
 
 	// LIFE-02, LIFE-03, LIFE-04 and LIFE-07 share one fixture and one stop
 	// and start per stop behaviour, so they also run alone; their fixture
-	// goes and settings.toml is restored before the parallel rows.
+	// goes and settings.toml is restored before the parallel rows. SBOX-07
+	// adds a storage box to the fixture before the save cycle, so it runs
+	// first.
+	t.Run("SBOX-07", logged(testSBOX07))
 	t.Run("LIFE-02", testLIFE02)
 	t.Run("LIFE-03", testLIFE03)
 	t.Run("LIFE-04", testLIFE04)
@@ -95,6 +95,18 @@ func TestE2E(t *testing.T) {
 	t.Run("SBOX-13", parallel(testSBOX13))
 	t.Run("SBOX-12", parallel(testSBOX12))
 	t.Run("SBOX-06", parallel(testSBOX06))
+	t.Run("SBOX-14", parallel(testSBOX14))
+	t.Run("SBOX-12/smb", parallel(testSBOX12SMB))
+	t.Run("SBOX-04/smb", parallel(testSBOX04SMB))
+	t.Run("SBOX-15", parallel(testSBOX15))
+	t.Run("SBOX-12/webdav", parallel(testSBOX12WebDAV))
+	t.Run("SBOX-04/webdav", parallel(testSBOX04WebDAV))
+	t.Run("SBOX-16", parallel(testSBOX16))
+	t.Run("SBOX-12/ftp", parallel(testSBOX12FTP))
+	t.Run("SBOX-04/ftp", parallel(testSBOX04FTP))
+	t.Run("SBOX-05", parallel(testSBOX05))
+	t.Run("SBOX-19", parallel(testSBOX19))
+	t.Run("SBOX-18", parallel(testSBOX18))
 
 	// The client matrix: one subtest per client and resource type, each
 	// registered by its group file through registerRow.

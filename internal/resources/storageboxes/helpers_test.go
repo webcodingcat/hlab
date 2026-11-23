@@ -20,6 +20,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/apitest"
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/nthash"
+	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/resources/storageboxes"
 	"github.com/webcodingcat/hlab/internal/scheduler"
@@ -99,22 +100,23 @@ func (e *boxEnv) failApply(err error) {
 	e.applyErr = err
 }
 
-// fakeAgent is the storage agent's job endpoint: usage answers the set
-// usage, folders the set answer; it records every job.
+// fakeAgent is the storage agent's job endpoint: a kind with an answer set
+// by setAnswer gets that answer, every other job succeeds with the set
+// usage; it records every job.
 type fakeAgent struct {
 	mu      sync.Mutex
 	calls   []agentapi.StorageJob
 	usage   agentapi.Usage
-	folders func(agentapi.StorageJob) (agentapi.StorageJobResult, error)
+	answers map[string]func(agentapi.StorageJob) (agentapi.StorageJobResult, error)
 }
 
 func (a *fakeAgent) job(_ context.Context, j agentapi.StorageJob) (agentapi.StorageJobResult, error) {
 	a.mu.Lock()
 	a.calls = append(a.calls, j)
-	usage, folders := a.usage, a.folders
+	usage, answer := a.usage, a.answers[j.Kind]
 	a.mu.Unlock()
-	if j.Kind == agentapi.StorageJobFolders && folders != nil {
-		return folders(j)
+	if answer != nil {
+		return answer(j)
 	}
 	return agentapi.StorageJobResult{Usage: usage}, nil
 }
@@ -126,11 +128,20 @@ func (a *fakeAgent) setUsage(u agentapi.Usage) {
 	a.usage = u
 }
 
-// setFolders sets the answer of folders jobs.
-func (a *fakeAgent) setFolders(f func(agentapi.StorageJob) (agentapi.StorageJobResult, error)) {
+// setAnswer sets the answer of jobs of kind (snapshot, delete-snapshot,
+// rollback, folders); nil restores the default success.
+func (a *fakeAgent) setAnswer(kind string, f func(agentapi.StorageJob) (agentapi.StorageJobResult, error)) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.folders = f
+	if a.answers == nil {
+		a.answers = map[string]func(agentapi.StorageJob) (agentapi.StorageJobResult, error){}
+	}
+	a.answers[kind] = f
+}
+
+// setFolders sets the answer of folders jobs.
+func (a *fakeAgent) setFolders(f func(agentapi.StorageJob) (agentapi.StorageJobResult, error)) {
+	a.setAnswer(agentapi.StorageJobFolders, f)
 }
 
 // jobsOf returns the recorded jobs of kind.
@@ -202,6 +213,68 @@ func (c *tickClock) tick(t *testing.T, d time.Duration) {
 		kept = append(kept, w)
 	}
 	c.waiters = kept
+}
+
+// set moves the clock to at, without waiting, and fires every wait that
+// is due then.
+func (c *tickClock) set(at time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = at
+	kept := c.waiters[:0]
+	for _, w := range c.waiters {
+		if !w.at.After(c.now) {
+			w.ch <- c.now
+			continue
+		}
+		kept = append(kept, w)
+	}
+	c.waiters = kept
+}
+
+// awaitWait waits up to apitest.ActionTimeout until something waits on the
+// clock for d.
+func (c *tickClock) awaitWait(t *testing.T, d time.Duration, what string) {
+	t.Helper()
+	deadline := time.Now().Add(apitest.ActionTimeout)
+	for !c.waitsFor(d) {
+		if time.Now().After(deadline) {
+			t.Fatalf("%s: nothing waits on the clock for %s within %s", what, d, apitest.ActionTimeout)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// startJobs runs the module's scheduled jobs on the test clock until t ends.
+func startJobs(t *testing.T, e *boxEnv) {
+	t.Helper()
+	sch, ok := any(e.mod).(resource.Scheduled)
+	if !ok {
+		t.Fatal("storage box module has no scheduled jobs")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		scheduler.Run(ctx, e.clock, sch.Jobs())
+		close(done)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(apitest.ActionTimeout):
+			t.Errorf("scheduler still runs %s after the test", apitest.ActionTimeout)
+		}
+	})
+}
+
+// runPlansAt moves the clock to at once the snapshot plan job waits on it,
+// and returns when that job's run has ended (it waits on the clock again).
+func runPlansAt(t *testing.T, e *boxEnv, at time.Time) {
+	t.Helper()
+	e.clock.awaitWait(t, storageboxes.PlanEvery, "before "+at.Format(time.RFC3339))
+	e.clock.set(at)
+	e.clock.awaitWait(t, storageboxes.PlanEvery, "plan run at "+at.Format(time.RFC3339))
 }
 
 func (c *tickClock) waitsFor(d time.Duration) bool {

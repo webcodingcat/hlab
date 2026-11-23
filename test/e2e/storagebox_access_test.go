@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -278,76 +279,119 @@ func reloadSettings() error {
 	return nil
 }
 
-// addOwnStorageBoxTypes adds the given types (name and size) to the own
-// types file as the interactive user, reloads, waits until the API lists
-// them, and restores the file as found when the row ends.
-func addOwnStorageBoxTypes(t *testing.T, e *env, sizes map[string]int64) {
-	t.Helper()
-	file := ownStorageBoxTypes()
-	orig, err := os.ReadFile(file)
-	existed := err == nil
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		var err error
-		if existed {
-			err = os.WriteFile(file, orig, 0o600)
-		} else {
-			err = os.Remove(file)
-		}
-		// Absent before and absent now is the restored state.
-		if err != nil && !(!existed && errors.Is(err, fs.ErrNotExist)) {
-			t.Errorf("restoring %s: %v", file, err)
-		}
-		if err := reloadSettings(); err != nil {
-			t.Errorf("reload after restoring %s: %v", file, err)
-		}
-	})
+// ownTypesFile serializes the rows that add own types: each adds its own
+// types and removes only those at cleanup; the last one restores the file
+// as found before the first.
+var ownTypesFile struct {
+	mu      sync.Mutex
+	users   int
+	existed bool
+	orig    []byte
+}
 
+// writeOwnTypes rewrites the own types file without the types named in
+// drop and with add appended; an invalid file serves no own types, so its
+// content is dropped. The caller holds ownTypesFile.mu.
+func writeOwnTypes(drop map[string]int64, add func(types []map[string]any) []map[string]any) error {
+	file := ownStorageBoxTypes()
 	var types []map[string]any
-	if existed {
-		if err := json.Unmarshal(orig, &types); err != nil {
-			types = nil // an invalid file serves no own types; the row replaces it until it ends
+	if b, err := os.ReadFile(file); err == nil {
+		if json.Unmarshal(b, &types) != nil {
+			types = nil
 		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
 	}
-	next := int64(100000)
 	types = slices.DeleteFunc(types, func(m map[string]any) bool {
-		_, mine := sizes[fmt.Sprint(m["name"])]
+		_, mine := drop[fmt.Sprint(m["name"])]
 		return mine
 	})
-	for _, m := range types {
-		if id, ok := m["id"].(float64); ok && int64(id) >= next {
-			next = int64(id) + 1
-		}
+	if add != nil {
+		types = add(types)
 	}
-	zero := map[string]string{"gross": "0.0000", "net": "0.0000"}
+	b, err := json.MarshalIndent(types, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(file, b, 0o600)
+}
+
+// addOwnStorageBoxTypes adds the given types (name and size) with
+// snapshot_limit snapshotLimit to the own types file as the interactive
+// user, reloads, and waits until the API lists them. Parallel callers each
+// add their own types; at cleanup a caller removes only its own, and the
+// last restores the file as found.
+func addOwnStorageBoxTypes(t *testing.T, e *env, sizes map[string]int64, snapshotLimit int) {
+	t.Helper()
+	file := ownStorageBoxTypes()
 	names := make([]string, 0, len(sizes))
 	for name := range sizes {
 		names = append(names, name)
 	}
 	slices.Sort(names)
-	for _, name := range names {
-		types = append(types, map[string]any{
-			"id": next, "name": name, "description": name,
-			"snapshot_limit": 10, "automatic_snapshot_limit": 10, "subaccounts_limit": 100,
-			"size": sizes[name],
-			"prices": []map[string]any{{
-				"location": serverLocation, "price_hourly": zero, "price_monthly": zero, "setup_fee": zero,
-			}},
-			"deprecation": nil,
-		})
-		next++
+
+	ownTypesFile.mu.Lock()
+	if ownTypesFile.users == 0 {
+		orig, err := os.ReadFile(file)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			ownTypesFile.mu.Unlock()
+			t.Fatal(err)
+		}
+		ownTypesFile.existed, ownTypesFile.orig = err == nil, orig
 	}
-	b, err := json.MarshalIndent(types, "", "  ")
+	ownTypesFile.users++
+	t.Cleanup(func() {
+		ownTypesFile.mu.Lock()
+		defer ownTypesFile.mu.Unlock()
+		ownTypesFile.users--
+		var err error
+		switch {
+		case ownTypesFile.users > 0:
+			err = writeOwnTypes(sizes, nil)
+		case ownTypesFile.existed:
+			err = os.WriteFile(file, ownTypesFile.orig, 0o600)
+		default:
+			// Absent before and absent now is the restored state.
+			if err = os.Remove(file); errors.Is(err, fs.ErrNotExist) {
+				err = nil
+			}
+		}
+		if err != nil {
+			t.Errorf("removing own types %v from %s: %v", names, file, err)
+		}
+		if err := reloadSettings(); err != nil {
+			t.Errorf("reload after removing own types %v: %v", names, err)
+		}
+	})
+
+	zero := map[string]string{"gross": "0.0000", "net": "0.0000"}
+	err := writeOwnTypes(sizes, func(types []map[string]any) []map[string]any {
+		next := int64(100000)
+		for _, m := range types {
+			if id, ok := m["id"].(float64); ok && int64(id) >= next {
+				next = int64(id) + 1
+			}
+		}
+		for _, name := range names {
+			types = append(types, map[string]any{
+				"id": next, "name": name, "description": name,
+				"snapshot_limit": snapshotLimit, "automatic_snapshot_limit": 10, "subaccounts_limit": 100,
+				"size": sizes[name],
+				"prices": []map[string]any{{
+					"location": serverLocation, "price_hourly": zero, "price_monthly": zero, "setup_fee": zero,
+				}},
+				"deprecation": nil,
+			})
+			next++
+		}
+		return types
+	})
+	if err == nil {
+		err = reloadSettings()
+	}
+	ownTypesFile.mu.Unlock()
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(file, b, 0o600); err != nil {
-		t.Fatalf("writing %s as the interactive user: %v", file, err)
-	}
-	if err := reloadSettings(); err != nil {
-		t.Fatal(err)
+		t.Fatalf("adding own types %v to %s as the interactive user: %v", names, file, err)
 	}
 
 	var listed []string
@@ -383,7 +427,7 @@ func addOwnStorageBoxTypes(t *testing.T, e *env, sizes map[string]int64) {
 func testSBOX06(t *testing.T) {
 	const small, large = "e2e-64m", "e2e-128m"
 	e := sharedEnv(t)
-	addOwnStorageBoxTypes(t, e, map[string]int64{small: 64 << 20, large: 128 << 20})
+	addOwnStorageBoxTypes(t, e, map[string]int64{small: 64 << 20, large: 128 << 20}, 10)
 	access := map[string]bool{"reachable_externally": true}
 	smallBox := newTestBox(t, e, "sbox06-small", small, access)
 	largeBox := newTestBox(t, e, "sbox06-large", large, access)
