@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Upgrade to wcc 0.32.23
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.32.21 to 0.32.23: section "Lists for the user" added to CLAUDE.md, empty "If BLOCKED" section restored in STATUS.md.
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
+
 ## 2026-11-23 Error 67 came from Git Bash, not from SMB
 
 - Type: assumption

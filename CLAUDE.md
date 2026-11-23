@@ -1,6 +1,6 @@
 # Project rules (wcc)
 
-wcc version: 0.32.21
+wcc version: 0.32.23
 
 These rules come from the wcc plugin; `/wcc:upgrade` updates them.
 
@@ -18,6 +18,18 @@ These rules come from the wcc plugin; `/wcc:upgrade` updates them.
 - User and developer documentation lives where "Documentation" in SPEC.md
   says, describes what is built, and is updated at the close of each
   phase.
+
+## Lists for the user
+
+- What the user is asked to confirm or decide (assumptions, a summary,
+  findings, backlog items, options) is written for someone who knows the
+  project but not its code: one plain sentence per line, saying what
+  happens or what is chosen and what the user will notice. Explain a
+  technical term the first time; use code names, file paths and commands
+  only where the user acts on them.
+- Choices only a developer would weigh (internal structure, interfaces
+  between components, storage layout) follow in a short block of their
+  own, marked as technical and safe to skip.
 
 ## During a phase
 
