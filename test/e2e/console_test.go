@@ -611,9 +611,11 @@ func startGuestInput(t *testing.T, e *env, s *server, device, tag string) *guest
 	if r, err := e.ssh(s, time.Minute, inputReaderScript, "cat > "+script); err != nil {
 		t.Fatalf("copy the input reader to %s: %v\n%s", s.Name, err, r)
 	}
-	// The pattern does not match the killing shell's own command line.
-	stop := "pkill -f '[h]lab-e2e-con01-" + tag + ".log'; rm -f " + g.log
-	start := stop + "; setsid -f timeout 600 python3 " + script + " '" + device + "' " + g.log + " </dev/null >/dev/null 2>&1"
+	// Neither the pattern nor the path, split by empty quotes, matches the
+	// killing shell's own command line; the reader still gets the real path.
+	quoted := "/root/hlab-e2e-con01-''" + tag + ".log"
+	stop := "pkill -f '[h]lab-e2e-con01-" + tag + ".log'; rm -f " + quoted
+	start := stop + "; setsid -f timeout 600 python3 " + script + " '" + device + "' " + quoted + " </dev/null >/dev/null 2>&1"
 	if r, err := e.ssh(s, time.Minute, "", start); err != nil {
 		t.Fatalf("start the input reader on %s: %v\n%s", s.Name, err, r)
 	}
