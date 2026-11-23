@@ -193,13 +193,13 @@ func (w *Windows) OpenConsole(project string, id int64, name string) error
   - [ ] Cloud: at start issue the `console.hetzner.internal` certificate from the hlab CA (in memory), build `console.New` with `Open` through the `platform.Console` assertion and the server's VM name, listen on `addrs.ConsoleListen`, close at stop; `Config.Console` in the agent document; in `internal/cloud/cloud.go`, a new `internal/cloud/console.go`
   - [ ] `api.Deviations`: the `request_console` entry describes `console.hetzner.internal`, the hlab CA certificate and the Hyper-V screen instead of `unsupported_error`, in `internal/api/deviations.go`
 
-- [ ] 23-08 Tray: console proxy and console windows
+- [x] 23-08 Tray: console proxy and console windows
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-15 | Tests: internal/bridge/console_test.go
   - Reads: PLAN.md "Interfaces"; ARCHITECTURE.md "hlab-tray (tray program)"; EXPERIMENTS.md E22, E24
   - Size: ~300 lines in 5 files
-  - [ ] `bridge.Console` in `internal/bridge/console.go`: `Open` gets the CA through `CA`, listens on `127.0.0.1:0` for one connection on a random path, `websocket.Accept` with `OriginPatterns: wails.localhost`, dials the `wss_url` with `tls.Config{RootCAs: hlab CA only, ServerName: URL host}`, copies binary messages both ways, closes both sides when one ends and the listener after a minute unused
-  - [ ] `Windows` service in `cmd/hlab-tray/windows.go`: window map under a mutex cleared in each window's `WindowClosing` listener, create "Console: <name>" at `/#/server-console/<project>/<id>` (about 1100x800) or show, restore and focus; register `bridge.Console` (with `client` for `/ca.pem`) and `Windows` in `cmd/hlab-tray/options.go` and `main.go`; quitting closes the console windows
+  - [x] `bridge.Console` in `internal/bridge/console.go`: `Open` gets the CA through `CA`, listens on `127.0.0.1:0` for one connection on a random path, `websocket.Accept` with `OriginPatterns: wails.localhost`, dials the `wss_url` with `tls.Config{RootCAs: hlab CA only, ServerName: URL host}`, copies binary messages both ways, closes both sides when one ends and the listener after a minute unused
+  - [x] `Windows` service in `cmd/hlab-tray/windows.go`: window map under a mutex cleared in each window's `WindowClosing` listener, create "Console: <name>" at `/#/server-console/<project>/<id>` (about 1100x800) or show, restore and focus; register `bridge.Console` (with `client` for `/ca.pem`) and `Windows` in `cmd/hlab-tray/options.go` and `main.go`; quitting closes the console windows
 
 - [ ] 23-09 Tray: console window and the "Console" menu entry
   - Wave: 2 | Depends on: 23-08 | Review: alone
