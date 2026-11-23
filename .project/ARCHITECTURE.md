@@ -119,7 +119,11 @@ Inside `hlabd` (Go packages under `internal/`):
   the provider poll (E12, E13)). `internal/resources/storageboxes` stores
   boxes under kind `storage_boxes` (`Record`: the API object plus `_hlab`
   with `n`, `next_sub`, `ssh_keys`, `hashes {crypt, nt}`) and subaccounts
-  under `storage_box_subaccounts` (`SubaccountRecord` with `_hlab.hashes`);
+  under `storage_box_subaccounts` (`SubaccountRecord` with `_hlab.hashes`)
+  and snapshots under `storage_box_snapshots` (`SnapshotRecord`: the API
+  object plus `_hlab.creating` for an unconfirmed create); a box with a
+  snapshot plan keeps `_hlab.plan_checked`, the last minute the plan job
+  checked;
   every box and subaccount action locks the box and runs the hook
   `Deps.Apply`, nil until the storage VM (phase 19) sets it; subaccount
   actions reference `storage_box` and `storage_box_subaccount`. A new resource type is a new
@@ -261,7 +265,8 @@ Inside `hlabd` (Go packages under `internal/`):
   type VMSpec struct {
       Name        string // "hlab-server-<id>", "hlab-appliance", "hlab-storage"
       CPUs        int
-      MemoryMB    int64  // static
+      MemoryMB    int64  // static, or with DynamicMemory the startup and maximum
+      DynamicMemory bool // Hyper-V dynamic memory, minimum platform.DynamicMemoryMinMB (512); the storage VM uses it with 2048
       Folder      string // VM configuration folder in the data folder
       StopAction  StopAction // StopSave | StopShutdown
   }
@@ -799,7 +804,9 @@ locks a resource of type `project`.
   `u<n>-sub<m>` (`m` from 1 upward per box), with the box's UID so files
   belong to the box (E17); passwords follow Hetzner's policy, and the VM
   gets only a sha512-crypt and an NT hash per account (E19), never logged
-  or returned by an API. Services per box IP: OpenSSH on 22
+  or returned by an API. Services of the boxes (sshd and vsftpd answer on
+  every address and tell boxes apart by account, Samba and Apache bind
+  each box IP): OpenSSH on 22
   (SFTP/SCP, chrooted) and 23 (SFTP/SCP, rsync, borg serve; only with
   ssh_enabled), Samba on 445 (share `backup`, a subaccount's share named
   after it), Apache with mod_dav on 443 (certificate from the hlab CA),
@@ -821,8 +828,10 @@ locks a resource of type `project`.
       Schema, Generation int
       PublicRange        netip.Prefix // sources outside it, or inside HostNet, are external
       HostNet            netip.Prefix // the host's transit /30
+      TLS                TLS          // wildcard *.storagebox.hetzner.internal for WebDAV and FTPS
       Boxes []Box
   }
+  type TLS struct { CertPEM, KeyPEM string } // from the hlab CA, key never logged
   type Box struct {
       ID         int64
       User       string     // "u100000"
@@ -832,6 +841,7 @@ locks a resource of type `project`.
       SSHKeys    []string   // OpenSSH public keys
       Access     Access     // ssh, samba, webdav, zfs
       Subaccounts []Subaccount
+      Snapshots  []string   // stored snapshot names; the agent removes only unlisted snapshot subvolumes
   }
   type Subaccount struct {
       User     string     // "u100000-sub1"
@@ -847,11 +857,13 @@ locks a resource of type `project`.
       Box      string // box user
       Snapshot string // snapshot name for snapshot, rollback, delete-snapshot
       Path     string // for folders
+      Newer    []string // rollback: the snapshots created after the target, deleted with it
   }
   type StorageJobResult struct {
       Folders []string
       Usage   struct{ Data, Snapshots int64 }       // bytes, from the qgroups (E18)
-      SnapshotSizes map[string]int64
+      SnapshotSizes map[string]int64 // exclusive bytes per snapshot
+      SnapshotFS    map[string]int64 // referenced bytes per snapshot
   }
   ```
 
@@ -1018,7 +1030,7 @@ CREATE INDEX resources_project ON resources(project_id, kind);
 CREATE TABLE actions  (id INTEGER PRIMARY KEY, project_id INTEGER, command TEXT NOT NULL, status TEXT NOT NULL,
                        progress INTEGER NOT NULL, started TEXT NOT NULL, finished TEXT, error TEXT, resources TEXT NOT NULL);
 CREATE TABLE ids      (kind TEXT PRIMARY KEY, next INTEGER NOT NULL);
-CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocations: IPs, VLANs, appliance secret
+CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocations: IPs, VLANs, appliance secret, storage.tls_cert and storage.tls_key (wildcard certificate of the storage VM)
 ```
 
 - `doc` holds the resource in Hetzner's API shape plus an `_hlab` object for

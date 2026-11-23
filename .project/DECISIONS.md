@@ -19,6 +19,200 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Samba ID map pinned for shared box UIDs
+
+- Type: decision
+- Phase: phase 20
+- What: After setting the Samba accounts, each apply pins every account's SID-to-UID entry and maps each box UID to S-1-22-1-<uid> in Samba's cache (`net cache add`, 520 weeks).
+- Why: A box and its subaccounts share one UID, and smbd takes a file's owner SID from a cached UID-to-SID mapping that each first login rewrites, so one subaccount login took the box's write access on `backup` (documentation run); it relies on Samba's internal cache keys, which SBOX-14 guards.
+- Cost of change: low
+
+## 2026-11-23 Mounts inside homes are handled by descriptor
+
+- Type: decision
+- Phase: phase 20
+- What: `.zfs/snapshot` is attached read-only with open_tree, mount_setattr and move_mount onto a folder pinned through os.Root, and mounts inside a home are unmounted through an os.Root descriptor whose mount ID matches mountinfo (rollback, removeChroot, applyZFS).
+- Why: A box account can swap a path for a symlink over SFTP, so a path-based remount or unmount could hit any mount of the storage VM (review of 20-07).
+- Cost of change: low
+
+## 2026-11-23 Storage agent jobs wait for a running apply
+
+- Type: decision
+- Phase: phase 20
+- What: Every storage agent job sent by hlabd waits until a running storage apply has finished.
+- Why: An apply reads the boxes long before it sends the document, so a snapshot created meanwhile was removed by the agent as unlisted (SBOX-05 e2e failure).
+- Cost of change: low
+
+## 2026-11-23 rollback_snapshot details
+
+- Type: decision
+- Phase: phase 20
+- What: Snapshots "created after the target" are those with a higher ID; an empty `snapshot` answers 422 invalid_input; an unknown snapshot answers 404 before the box's active check.
+- Why: IDs follow creation order even when two snapshots share a second.
+- Cost of change: low
+
+## 2026-11-23 Rollback on the storage VM
+
+- Type: decision
+- Phase: phase 20
+- What: The agent keeps the last applied document for the rollback job; the fence is the nftables table `hlab_rollback` (input, TCP reset), cleared at the start of each rollback; it waits up to 30 s with `fuser -m` on the homes of the box and its subaccounts, unmounts without MNT_DETACH, keeps the old data at `<root>/.rollback-<box>` until deleted, and rebinds through `updateBox` also after a failure; rollback names are checked like snapshot names.
+- Why: The job carries no IPs, subaccounts or ZFS setting, and a busy mount must stop the rollback before the swap so the data stays untouched.
+- Cost of change: low
+
+## 2026-11-23 Snapshots on the storage VM
+
+- Type: decision
+- Phase: phase 20
+- What: Snapshots live in `<root>/.snapshots/<user>/<name>` (root:<box gid>, 0750); `.zfs/snapshot` is a read-only bind inside the chroot home that SFTP, SCP, SMB, FTP and WebDAV show (the documentation run listed it over WebDAV); snapshot jobs refuse names outside `^[A-Za-z0-9][A-Za-z0-9._-]*$` with 400.
+- Why: A private bind cannot reach the box data or other homes; it follows E18.
+- Cost of change: low
+
+## 2026-11-23 vsftpd setup on the storage VM
+
+- Type: decision
+- Phase: phase 20
+- What: pam_access also restricts a box account without reachable_externally; every account not skipped gets a vsftpd user file with write_enable by its read-only flag; vsftpd.conf replaces Debian's file (pam_service_name=vsftpd, local_root=/srv/chroot/$USER/home, allow_writeable_chroot=YES); changes reload through `systemctl reload vsftpd`; the TLS options are `ssl_tlsv11`/`ssl_tlsv12`/`ssl_tlsv13` and there is no `reverse_lookup_enable`, as Debian's vsftpd 3.0.5 binary knows them (RESEARCH.md section 4 names them wrongly).
+- Why: sshd, Samba and WebDAV restrict the box account the same way, FTP has no access switch, and vsftpd's default PAM service is "ftp".
+- Cost of change: low
+
+## 2026-11-23 Apache setup on the storage VM
+
+- Type: decision
+- Phase: phase 20
+- What: WebDAV password files are 0640 root and the box's group; without box IPs Apache is disabled; a box IP not listening on 443 15 s after a graceful reload gets one restart; a changed certificate reloads Apache; a failing configtest puts the old site back.
+- Why: mpm-itk switches to the box user before authentication, Apache refuses to start without a Listen line, and a graceful reload picking up a new Listen is unconfirmed (RESEARCH.md section 3).
+- Cost of change: low
+
+## 2026-11-23 Snapshot plan bookkeeping
+
+- Type: decision
+- Phase: phase 20
+- What: The plan job writes `_hlab.plan_checked` to every box with a plan on each run and clears it when the plan goes; a missing value or one older than the cloud start counts as now or the start; automatic snapshots take the run time as name and `created`; the stats refresh updates only the snapshots its result names.
+- Why: A plan just enabled or a cloud just started never catches up past times, as `docs/deviations.md` says.
+- Cost of change: low
+
+## 2026-11-23 Plans with end-to-end rows finish in the main checkout
+
+- Type: decision
+- Phase: phase 20
+- What: A plan with end-to-end rows is merged into the phase branch once its fast checks pass and runs its end-to-end rows and repairs in the main checkout, one such plan at a time.
+- Why: The e2e harness refuses to run outside the checkout whose `bin\hlabd.exe` the dev service hlab-dev runs, and re-registering the service needs elevated rights.
+- Cost of change: low
+
+## 2026-11-23 Samba setup on the storage VM
+
+- Type: decision
+- Phase: phase 20
+- What: NT hashes are imported from a 0600 smbpasswd file in /run with `pdbedit -i` and the account's SID is restored with `pdbedit -r -U`; smbd restarts when its interface list (the box IPs) changes and reloads otherwise; a box with Samba off gets an empty per-IP file and no tdbsam entry.
+- Why: `pdbedit --set-nt-hash` takes the hash only in argv, and `reload-config` does not make smbd listen on new addresses (Samba source).
+- Cost of change: low
+
+## 2026-11-23 Snapshot API details
+
+- Type: decision
+- Phase: phase 20
+- What: The snapshot description pattern is anchored, name and `created` come from `Deps.Clock`, `create_snapshot` and `delete_snapshot` call the agent job without an Apply (a failed create deletes the record and the agent removes the unlisted subvolume at its next apply), and delete runs on a box that is not active, like `delete_subaccount`.
+- Why: The unanchored pattern of the description accepts any text, and the test clock must give matching names.
+- Cost of change: low
+
+## 2026-11-23 Storage certificate in kv, renewed daily
+
+- Type: decision
+- Phase: phase 20
+- What: The storage VM's wildcard certificate is kept in kv (`storage.tls_cert`, `storage.tls_key`), reissued when missing, unparseable, not matching its key or within 30 days of expiry, and the daily cloud job `storage-tls` pushes the storage document again when that is due while boxes exist.
+- Why: Without the job a certificate would expire on a storage VM whose boxes do not change for 60 days (review of 20-05).
+- Cost of change: low
+
+## 2026-11-23 Install groups run only for packages on the ISO
+
+- Type: decision
+- Phase: phase 20
+- What: Each install group of `hlab-agent-install.sh`, xfs and HAProxy included, runs only when its main package is on the ISO, and the dynamic memory minimum is the constant `platform.DynamicMemoryMinMB` (512).
+- Why: The storage ISO now carries libicu76, liblua5.4-0 and lsb-base, which would otherwise be installed again at every storage VM boot.
+- Cost of change: low
+
+## 2026-11-23 Storage box firewall chains pass the protocol ports
+
+- Type: decision
+- Phase: phase 20
+- What: Each box IP gets its own nftables chain `box<i>`, jumped to from the forward chain, that drops external sources of boxes not reachable externally and ports other than TCP 21, 22, 23, 443, 445 and 50000-50099, and returns otherwise; the storage agent's 9100 stays unreachable from box IPs.
+- Why: Allowed traffic must still pass the server's own outbound firewall (FW-03), and phase 20 serves FTP, WebDAV and SMB on the box IPs.
+- Cost of change: low
+- Replaces: 2026-11-23 Storage box firewall chains only drop or return; 2026-11-23 Only SSH ports reach box IPs in phase 19
+
+## 2026-11-23 Storage agent services and snapshot contract
+
+- Type: decision
+- Phase: phase 20
+- What: Samba, Apache and vsftpd are storage-agent services that register in `init`; `agentapi.Box.Snapshots` lists the stored snapshot names, and the agent removes only unlisted snapshot subvolumes; `StorageJob.Newer` carries the snapshots a rollback deletes, and `SnapshotFS` (referenced bytes) joins `SnapshotSizes` (exclusive bytes).
+- Why: The three service plans then touch only their own files, and the agent can clean up after an interrupted create without ever losing a stored snapshot.
+- Cost of change: medium
+
+## 2026-11-23 Snapshot records and automatic snapshots
+
+- Type: decision
+- Phase: phase 20
+- What: Snapshots are the store kind `storage_box_snapshots` with `_hlab.creating` for an unconfirmed create; a name taken in the same second moves to the next free second; automatic snapshots are visible `create_snapshot` actions started through `StartQueued`, named `snapshot-daily--<UTC>`, and plan times missed while the cloud is stopped are skipped (tracked in `_hlab.plan_checked`).
+- Why: It reuses the store, action and scheduler patterns of the storage boxes module; Hetzner documents only the `snapshot-daily--` prefix.
+- Cost of change: medium
+
+## 2026-11-23 Snapshot errors
+
+- Type: decision
+- Phase: phase 20
+- What: A full `snapshot_limit` answers 403 `resource_limit_exceeded` with `details.limits [{"name":"snapshot_limit"}]`, and rollback_snapshot with an unknown snapshot answers 404 `not_found`.
+- Why: The new API's code is undocumented (the Robot API answers 409); this matches the subaccounts limit already served.
+- Cost of change: low
+
+## 2026-11-23 Storage VM setup for the protocols
+
+- Type: decision
+- Phase: phase 20
+- What: `VMSpec.DynamicMemory` (minimum 512 MB, startup and maximum MemoryMB) switches existing storage VMs at their next start while off; the install script installs the Samba, Apache and vsftpd groups each while its tool is missing; the rollback fence is a reject rule set through `google/nftables`.
+- Why: Storage VMs from phase 19 get the protocols at their next boot, and the generic image has no `nft` program.
+- Cost of change: low
+
+## 2026-11-23 Protocol test rows
+
+- Type: decision
+- Phase: phase 20
+- What: TestE2E/SBOX-04/ftp is the pam_access proof, SMB and WebDAV get matching SBOX-04 and SBOX-12 rows, and the SMB refusal of a subaccount without reachable_externally is checked from WSL2 only.
+- Why: Each protocol plan proves its own refusal and read-only access; curl on a server speaks only SMB1.
+- Cost of change: low
+
+## 2026-11-23 One wildcard certificate for WebDAV and FTPS
+
+- Type: decision
+- Phase: phase 20
+- What: hlabd issues one certificate `*.storagebox.hetzner.internal` from the hlab CA for all Apache vhosts and vsftpd; Apache keeps one name-based vhost per account and selects it by SNI.
+- Why: The user chose it (Q1): vsftpd cannot pick a certificate by name, and a per-account certificate would be issued again at every subaccount change.
+- Cost of change: medium
+- Replaces: 2026-11-21 WebDAV for subaccounts by name-based virtual hosts
+
+## 2026-11-23 vsftpd refuses subaccounts by pam_access
+
+- Type: decision
+- Phase: phase 20
+- What: vsftpd refuses subaccounts without reachable_externally from the host and WSL2 through `pam_access` in `/etc/pam.d/vsftpd`; an end-to-end row proves it on Debian 13.
+- Why: The user accepted the evidence from vsftpd's source and access.conf(5) (Q2); sshd, Apache and Samba refuse such subaccounts in their own configuration the same way.
+- Cost of change: low
+
+## 2026-11-23 Snapshot plan days combine with AND
+
+- Type: decision
+- Phase: phase 20
+- What: when both `day_of_week` and `day_of_month` of a snapshot plan are set, a day must match both.
+- Why: The user decided it from the Ansible documentation of hetzner.hcloud.storage_box (RESEARCH.md of phase 20, section 5); Hetzner's API description does not say.
+- Cost of change: low
+
+## 2026-11-23 Storage VM with 2048 MB dynamic memory
+
+- Type: decision
+- Phase: phase 20
+- What: the storage VM gets 2048 MB of dynamic memory.
+- Why: The user set it because smbd, Apache with mpm-itk and vsftpd run side by side with sshd.
+- Cost of change: low
+
 ## 2026-11-23 Storage box actions store their change before Apply
 
 - Type: decision
@@ -99,28 +293,12 @@ taken with the approval of the spec or by an answer from the user.
 - Why: No box stays stuck after a stop or crash, and a box whose data are gone never shows as active.
 - Cost of change: low
 
-## 2026-11-23 Storage box firewall chains only drop or return
-
-- Type: decision
-- Phase: phase 19
-- What: Each box IP gets its own nftables chain `box<i>`, jumped to from the forward chain, that drops external sources of boxes not reachable externally and ports other than TCP 22/23 and returns otherwise.
-- Why: Allowed traffic must still pass the server's own outbound firewall (FW-03, review of 19-05).
-- Cost of change: low
-
 ## 2026-11-23 One failing box or subaccount does not stop the storage apply
 
 - Type: decision
 - Phase: phase 19
 - What: A refused or failing subaccount is logged, loses its chroot and is left out of the passwords; a failing box is logged and skipped while the others are applied, and the PUT answers 500 with all box failures joined; a failed format stops the apply.
 - Why: A user's files must not stop the storage of every other box (review of 19-04), and hlabd must not take a failed box as applied.
-- Cost of change: low
-
-## 2026-11-23 Only SSH ports reach box IPs in phase 19
-
-- Type: decision
-- Phase: phase 19
-- What: The appliance lets only TCP 22 and 23 through to box IPs (subject to the server firewalls) and drops the rest, so a box IP never reaches the storage agent on 9100; phase 20 adds its ports to `storageBoxPorts`.
-- Why: Phase 19 serves only SSH, and the agent port must stay internal.
 - Cost of change: low
 
 ## 2026-11-23 Box rules before established accept
@@ -4018,11 +4196,3 @@ taken with the approval of the spec or by an answer from the user.
 - What: SMB (TCP 445) from WSL2 in NAT mode reaches a storage box over the same forwarding path as SSH (E4, HOST-03); the check needs elevated rights and was skipped by the user (E16).
 - Why: SMB is one more TCP port on a confirmed path; the end-to-end tests of SBOX-04 and SBOX-14 prove it.
 - Cost of change: high
-
-## 2026-11-21 WebDAV for subaccounts by name-based virtual hosts
-
-- Type: assumption
-- Phase: change
-- What: subaccounts reach WebDAV on the box's IP through one name-based virtual host per account name with its own hlab CA certificate (SNI); not tried in E17.
-- Why: Hetzner gives each subaccount its own hostname on the box's address; Apache with mpm-itk serves per-vhost users (E17).
-- Cost of change: medium

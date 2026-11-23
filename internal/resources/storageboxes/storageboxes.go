@@ -64,7 +64,7 @@ type Deps struct {
 	Job func(ctx context.Context, job agentapi.StorageJob) (agentapi.StorageJobResult, error)
 	// FreeBytes returns the free bytes of the host drive of the data folder.
 	FreeBytes func() (uint64, error)
-	// Clock drives the stats job; nil: scheduler.RealClock().
+	// Clock drives the stats and snapshot plan jobs; nil: scheduler.RealClock().
 	Clock scheduler.Clock
 	// PushAgent pushes the appliance's document again after the failed
 	// path of an action changed the store (a box deleted after a failed
@@ -94,6 +94,7 @@ func (m *Module) Routes(r resource.Registrar) {
 	m.boxRoutes(r)
 	m.actionRoutes(r)
 	m.subaccountRoutes(r)
+	m.snapshotRoutes(r)
 	r.Handle("GET /storage_boxes/{id}/folders", http.HandlerFunc(m.folders))
 	// GET /storage_boxes/actions/{id} conflicts with
 	// /storage_boxes/{id}/actions in http.ServeMux; the less specific
@@ -163,6 +164,9 @@ type HLab struct {
 	// Deleting marks a box whose delete_storage_box runs; the storage VM's
 	// document leaves it out.
 	Deleting bool `json:"deleting,omitempty"`
+	// PlanChecked is when the snapshot plan job last checked the box's
+	// plan; zero without a plan.
+	PlanChecked time.Time `json:"plan_checked,omitzero"`
 }
 
 // Record is a stored box.
@@ -200,7 +204,7 @@ func checkActive(r Record) error {
 }
 
 // removeBox deletes stored box r of projectID with its subaccounts and
-// releases its IP.
+// snapshots and releases its IP.
 func removeBox(tx store.Tx, projectID int64, r Record) error {
 	subs, err := boxSubs(tx, projectID, r.ID)
 	if err != nil {
@@ -208,6 +212,15 @@ func removeBox(tx store.Tx, projectID int64, r Record) error {
 	}
 	for _, s := range subs {
 		if err := store.Delete(tx, SubaccountKind, projectID, s.ID); err != nil {
+			return err
+		}
+	}
+	snaps, err := boxSnaps(tx, projectID, r.ID)
+	if err != nil {
+		return err
+	}
+	for _, s := range snaps {
+		if err := store.Delete(tx, SnapshotKind, projectID, s.ID); err != nil {
 			return err
 		}
 	}

@@ -36,6 +36,7 @@ type Agent struct {
 
 	mu         sync.Mutex // serializes applies and jobs
 	generation int
+	doc        agentapi.Storage // the document applied last, also when its apply failed
 	mounted    bool   // the data disk is mounted at Root
 	sshd       string //nolint:unused // the sshd configuration applied last; used on Linux
 }
@@ -94,7 +95,9 @@ func (a *Agent) putStorage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("generation %d is older than the applied generation %d", doc.Generation, a.generation), http.StatusConflict)
 		return
 	}
-	if err := a.apply(r.Context(), doc); err != nil {
+	err := a.apply(r.Context(), doc)
+	a.doc = doc
+	if err != nil {
 		slog.Error("storage apply failed", "generation", doc.Generation, "err", err)
 		http.Error(w, "apply: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -117,12 +120,27 @@ func (a *Agent) postJob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid job: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	if job.Kind == agentapi.StorageJobSnapshot || job.Kind == agentapi.StorageJobDeleteSnapshot ||
+		job.Kind == agentapi.StorageJobRollback {
+		for _, name := range append([]string{job.Snapshot}, job.Newer...) {
+			if !snapshotNameRE.MatchString(name) {
+				http.Error(w, fmt.Sprintf("invalid job: invalid snapshot name %q", name), http.StatusBadRequest)
+				return
+			}
+		}
+	}
 	var run func(context.Context, agentapi.StorageJob) (agentapi.StorageJobResult, error)
 	switch job.Kind {
 	case agentapi.StorageJobFolders:
 		run = a.folders
 	case agentapi.StorageJobUsage:
 		run = a.usage
+	case agentapi.StorageJobSnapshot:
+		run = a.snapshot
+	case agentapi.StorageJobDeleteSnapshot:
+		run = a.deleteSnapshotJob
+	case agentapi.StorageJobRollback:
+		run = a.rollback
 	default:
 		http.Error(w, fmt.Sprintf("unknown job kind %q", job.Kind), http.StatusBadRequest)
 		return

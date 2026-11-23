@@ -37,6 +37,10 @@ func TestStorageBoxes(t *testing.T) {
 	t.Run("SBOX-06/change_type", testChangeTypeUsage)
 	t.Run("SBOX-06/free_space", testFreeSpace)
 	t.Run("SBOX-09/stats", testStats)
+	t.Run("SBOX-05/api", testSnapshotAPI)
+	t.Run("SBOX-17/at_time", testSnapshotPlanAtTime)
+	t.Run("SBOX-17/retention", testSnapshotPlanRetention)
+	t.Run("SBOX-18/api", testRollbackAPI)
 }
 
 // listActions returns the actions at path.

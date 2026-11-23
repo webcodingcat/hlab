@@ -92,10 +92,8 @@ func sshdConfig(doc agentapi.Storage, skipped map[string]bool) string {
 
 	if len(internal) > 0 {
 		users := strings.Join(internal, ",")
-		if doc.HostNet.IsValid() {
-			line("Match User %s Address %s", users, doc.HostNet.Masked())
-			line("\tDenyUsers *")
-		}
+		line("Match User %s Address %s", users, doc.HostNet.Masked())
+		line("\tDenyUsers *")
 		if doc.PublicRange.IsValid() {
 			line("Match User %s Address *,!%s", users, doc.PublicRange.Masked())
 			line("\tDenyUsers *")

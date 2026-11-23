@@ -20,9 +20,14 @@ import (
 func (m *Module) UseActions(a *actions.Manager) { m.acts = a }
 
 // Jobs implements resource.Scheduled: the stats of every active box are
-// refreshed every StatsEvery.
+// refreshed every StatsEvery, the snapshot plans checked every PlanEvery.
+// Jobs is called at the cloud start; plan times before it are skipped.
 func (m *Module) Jobs() []scheduler.Job {
-	return []scheduler.Job{{Name: "storage box stats", Every: StatsEvery, Run: m.refreshAll}}
+	started := m.clock().Now().UTC()
+	return []scheduler.Job{
+		{Name: "storage box stats", Every: StatsEvery, Run: m.refreshAll},
+		{Name: "storage box snapshot plans", Every: PlanEvery, Run: func(ctx context.Context) { m.runPlans(ctx, started) }},
+	}
 }
 
 // refreshAll refreshes the stats of every active box of every project.
@@ -89,10 +94,11 @@ func (m *Module) setStats(ctx context.Context, st *store.Store, projectID, boxID
 	if err != nil {
 		return err
 	}
-	u, err := m.usage(ctx, r)
+	res, err := m.d.Job(ctx, agentapi.StorageJob{Kind: agentapi.StorageJobUsage, Box: userName(r.HLab.N)})
 	if err != nil {
 		return err
 	}
+	u := res.Usage
 	return st.Tx(func(tx store.Tx) error {
 		r, err := Load(tx, projectID, boxID)
 		if errors.Is(err, store.ErrNotFound) {
@@ -102,8 +108,36 @@ func (m *Module) setStats(ctx context.Context, st *store.Store, projectID, boxID
 			return err
 		}
 		r.Stats = Stats{Size: u.Data + u.Snapshots, SizeData: u.Data, SizeSnapshots: u.Snapshots}
-		return put(tx, projectID, r)
+		if err := put(tx, projectID, r); err != nil {
+			return err
+		}
+		return setSnapStats(tx, projectID, boxID, res)
 	})
+}
+
+// setSnapStats sets the stats of the snapshots of box boxID of projectID
+// that the usage result res reports.
+func setSnapStats(tx store.Tx, projectID, boxID int64, res agentapi.StorageJobResult) error {
+	snaps, err := boxSnaps(tx, projectID, boxID)
+	if err != nil {
+		return err
+	}
+	for _, s := range snaps {
+		size, ok := res.SnapshotSizes[s.Name]
+		fs, fsOK := res.SnapshotFS[s.Name]
+		if !ok && !fsOK {
+			continue
+		}
+		stats := SnapshotStats{Size: size, SizeFilesystem: fs}
+		if stats == s.Stats {
+			continue
+		}
+		s.Stats = stats
+		if err := putSnap(tx, projectID, s); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // usage asks the storage agent for the usage of box r.

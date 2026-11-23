@@ -11,7 +11,7 @@
                         |  Hyper-V, host network
                         +---- Hyper-V ----> server VMs (cloud-init seed ISO)
                         +---- HTTP -------> storage VM: hlab-agent --role storage
-                                            (btrfs, sshd for the storage boxes)
+                                            (btrfs, sshd, Samba, Apache, vsftpd)
 ```
 
 A client calls `http://api.hetzner.internal/v1`. The name resolves (NRPT
@@ -35,7 +35,8 @@ through the appliance. On the appliance every network is a VRF of its
 own, so networks with overlapping ranges stay apart.
 
 The storage boxes live in a third kind of VM, `<tag>-storage` (Debian 13,
-folder `<data>\storage`), which exists while there is at least one box.
+2048 MB dynamic memory, folder `<data>\storage`), which exists while
+there is at least one box.
 It sits on the public segment at the second address before the broadcast
 address of `public_range` (`198.19.255.253` by default) with the fixed
 MAC `02:48:4c:00:00:03`; the appliance routes every box IP to it. Its
@@ -43,14 +44,28 @@ MAC `02:48:4c:00:00:03`; the appliance routes every box IP to it. Its
 ([internal/storageagent](../../internal/storageagent)). hlabd pushes the
 complete list of boxes and subaccounts with `PUT /v1/storage`; the agent
 makes the data disk `data.vhdx` (btrfs, one subvolume with a quota per
-box, one chroot per account), the Unix accounts and the sshd
-configuration match it and deletes what the document no longer names.
-`POST /v1/jobs` answers `folders` and `usage`. sshd serves internal-sftp
+box, one chroot per account, snapshots in `.snapshots/<user>/<name>`),
+the Unix accounts, the sshd configuration and the protocol services
+match it and deletes what the document no longer names. The protocol
+services register themselves and are configured at every apply: Samba
+([smb.go](../../internal/storageagent/smb.go)), Apache with mpm-itk for
+WebDAV ([webdav.go](../../internal/storageagent/webdav.go)) and vsftpd
+([ftp.go](../../internal/storageagent/ftp.go)); each renders its files
+in a pure function and has a `_linux.go` part that writes and reloads
+them. WebDAV and FTPS use the certificate
+`*.storagebox.hetzner.internal` that hlabd issues from the HLab CA
+([internal/cloud/storage_tls.go](../../internal/cloud/storage_tls.go))
+and sends with the document. `POST /v1/jobs` answers `folders`, `usage`,
+`snapshot`, `delete-snapshot` and `rollback`
+([snapshots_linux.go](../../internal/storageagent/snapshots_linux.go),
+[rollback_linux.go](../../internal/storageagent/rollback_linux.go)).
+sshd serves internal-sftp
 on port 22; on port 23 it runs `hlab-agent storage-shell`, which allows
 only sftp-server, scp, rrsync and `borg serve` inside the account's home
 ([port23.go](../../internal/storageagent/port23.go)), and both ports take
-keys from `hlab-agent storage-keys`. The appliance drops traffic from the
-host and WSL2 to box IPs that are not reachable externally
+keys from `hlab-agent storage-keys`. The appliance lets only TCP 21,
+22, 23, 443, 445 and 50000-50099 through to box IPs and drops traffic
+from the host and WSL2 to box IPs that are not reachable externally
 ([internal/agent/storagebox.go](../../internal/agent/storagebox.go)).
 
 ## Programs

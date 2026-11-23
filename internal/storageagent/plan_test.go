@@ -13,6 +13,10 @@ func TestStorageAgent(t *testing.T) {
 	t.Run("SBOX-03/keep_data", testPlanKeepsData)
 	t.Run("SBOX-03/keys", testAuthorizedKeys)
 	t.Run("SBOX-13/commands", testPort23)
+	t.Run("SBOX-07/keep_snapshots", testPlanKeepsSnapshots)
+	t.Run("SBOX-14/config", testSambaConfig)
+	t.Run("SBOX-15/config", testWebDAVConfig)
+	t.Run("SBOX-16/config", testFTPConfig)
 }
 
 func box(user, ip string) agentapi.Box {
@@ -98,6 +102,84 @@ func testPlanKeepsData(t *testing.T) {
 			}
 			if got := boxesOf(steps, storageagent.StepRemoveBox); !slices.Equal(got, c.removed) {
 				t.Errorf("removed boxes = %v, want %v", got, c.removed)
+			}
+		})
+	}
+}
+
+func testPlanKeepsSnapshots(t *testing.T) {
+	withSnaps := func(b agentapi.Box, snaps ...string) agentapi.Box {
+		b.Snapshots = snaps
+		return b
+	}
+	doc := func(boxes ...agentapi.Box) agentapi.Storage {
+		return agentapi.Storage{
+			Schema:      agentapi.StorageSchema,
+			Generation:  2,
+			PublicRange: netip.MustParsePrefix("198.19.0.0/16"),
+			HostNet:     netip.MustParsePrefix("198.19.0.0/30"),
+			Boxes:       boxes,
+		}
+	}
+	found := []string{"u100000", "u100001"}
+	have := storageagent.State{
+		Filesystem: true,
+		Boxes:      found,
+		Subvolumes: found,
+		Snapshots: map[string][]string{
+			"u100000": {"2026-11-20T10-00-00", "2026-11-21T10-00-00"},
+			"u100001": {"snapshot-daily--2026-11-22T00-00-00"},
+		},
+	}
+	b0 := box("u100000", "198.19.0.20")
+	b1 := withSnaps(box("u100001", "198.19.0.21"), "snapshot-daily--2026-11-22T00-00-00")
+
+	cases := []struct {
+		name string
+		want agentapi.Storage
+		// removed are the "box/snapshot" a StepRemoveSnapshot must name;
+		// mayRemove those it may name in addition (snapshots of a removed box).
+		removed, mayRemove []string
+		removedBoxes       []string
+	}{
+		{
+			name: "first_apply_after_restart",
+			want: doc(withSnaps(b0, "2026-11-20T10-00-00", "2026-11-21T10-00-00"), b1),
+		},
+		{
+			name:    "one_snapshot_gone",
+			want:    doc(withSnaps(b0, "2026-11-21T10-00-00"), b1),
+			removed: []string{"u100000/2026-11-20T10-00-00"},
+		},
+		{
+			name:         "box_removed",
+			want:         doc(b1),
+			mayRemove:    []string{"u100000/2026-11-20T10-00-00", "u100000/2026-11-21T10-00-00"},
+			removedBoxes: []string{"u100000"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			steps := storageagent.Plan(have, c.want)
+			var got []string
+			for _, s := range steps {
+				if s.Kind == storageagent.StepRemoveSnapshot {
+					got = append(got, s.Box+"/"+s.Snapshot)
+				}
+			}
+			slices.Sort(got)
+			for _, r := range c.removed {
+				if !slices.Contains(got, r) {
+					t.Errorf("removed snapshots = %v, want %s among them", got, r)
+				}
+			}
+			for _, g := range got {
+				if !slices.Contains(c.removed, g) && !slices.Contains(c.mayRemove, g) {
+					t.Errorf("removed snapshot %s, want it kept: %+v", g, steps)
+				}
+			}
+			if got := boxesOf(steps, storageagent.StepRemoveBox); !slices.Equal(got, c.removedBoxes) {
+				t.Errorf("removed boxes = %v, want %v", got, c.removedBoxes)
 			}
 		})
 	}

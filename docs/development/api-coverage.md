@@ -638,29 +638,36 @@ The Storage Box endpoints of Hetzner's API are served under
 |---|---|
 | `GET /hetzner/v1/storage_box_types`, `GET /hetzner/v1/storage_box_types/{id}` | The types of HLab's catalog file `storage-box-types.json`, as Hetzner lists them, followed by the own types of `storage-box-types.custom.json`; none without either file. `hlab catalog update` does not change them. |
 | `GET /hetzner/v1/storage_boxes`, `POST /hetzner/v1/storage_boxes`, `GET /hetzner/v1/storage_boxes/{id}`, `PUT /hetzner/v1/storage_boxes/{id}`, `DELETE /hetzner/v1/storage_boxes/{id}` | `PUT` answers at once; create and delete run as actions. Create and `change_type` to a larger type answer 412 `resource_unavailable` below 10 GiB free on the drive of the data folder. |
-| `POST /hetzner/v1/storage_boxes/{id}/actions/change_protection`, `POST /hetzner/v1/storage_boxes/{id}/actions/change_type`, `POST /hetzner/v1/storage_boxes/{id}/actions/reset_password`, `POST /hetzner/v1/storage_boxes/{id}/actions/update_access_settings`, `POST /hetzner/v1/storage_boxes/{id}/actions/enable_snapshot_plan`, `POST /hetzner/v1/storage_boxes/{id}/actions/disable_snapshot_plan` | `change_type` also takes a smaller type, unless the box holds more data than it: 422 `invalid_input` on `storage_box_type`. A snapshot plan is stored only. |
+| `POST /hetzner/v1/storage_boxes/{id}/actions/change_protection`, `POST /hetzner/v1/storage_boxes/{id}/actions/change_type`, `POST /hetzner/v1/storage_boxes/{id}/actions/reset_password`, `POST /hetzner/v1/storage_boxes/{id}/actions/update_access_settings`, `POST /hetzner/v1/storage_boxes/{id}/actions/enable_snapshot_plan`, `POST /hetzner/v1/storage_boxes/{id}/actions/disable_snapshot_plan` | `change_type` also takes a smaller type, unless the box holds more data than it: 422 `invalid_input` on `storage_box_type`. The snapshot plan takes an automatic snapshot `snapshot-daily--<UTC time>` at its UTC time as the action `create_snapshot`, queued behind running actions of the box, then deletes the oldest automatic snapshots beyond `max_snapshots`; `day_of_week` and `day_of_month` together both must match. Plan times missed while the cloud was stopped are skipped, not caught up at the next start. |
 | `GET /hetzner/v1/storage_boxes/{id}/folders` | The direct subdirectories of `path` (default `.`), hidden ones included, sorted. |
 | `GET /hetzner/v1/storage_boxes/{id}/subaccounts`, `POST /hetzner/v1/storage_boxes/{id}/subaccounts`, `GET /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}`, `PUT /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}`, `DELETE /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}` | The subaccount list has no paging, as in the description. |
 | `POST /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}/actions/change_home_directory`, `POST /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}/actions/reset_subaccount_password`, `POST /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}/actions/update_access_settings` | `update_access_settings` refuses `home_directory`; use `change_home_directory`. |
+| `GET /hetzner/v1/storage_boxes/{id}/snapshots`, `POST /hetzner/v1/storage_boxes/{id}/snapshots`, `GET /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}`, `PUT /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}`, `DELETE /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}` | The snapshot list has no paging, as in the description. `PUT` answers at once; create and delete run as the actions `create_snapshot` and `delete_snapshot` on box and snapshot. A manual snapshot is named after the UTC time of its create, such as `2025-02-12T11-35-19`; when the box already has a snapshot of that name, such as after a second create within one second, it gets the next free second. A create beyond the type's `snapshot_limit` of manual snapshots answers 403 `resource_limit_exceeded` with `details.limits` `snapshot_limit`; a failed `create_snapshot` deletes the snapshot. |
 | `GET /hetzner/v1/storage_boxes/actions`, `GET /hetzner/v1/storage_boxes/actions/{id}`, `GET /hetzner/v1/storage_boxes/{id}/actions`, `GET /hetzner/v1/storage_boxes/{id}/actions/{action_id}` | Box and subaccount actions are readable at all of these and at `GET /v1/actions/{id}` and `GET /v1/actions?id=`. |
-
-Not served yet; they answer 404 `not_found`: the snapshots (`GET /hetzner/v1/storage_boxes/{id}/snapshots`,
-`POST /hetzner/v1/storage_boxes/{id}/snapshots`,
-`GET /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}`,
-`PUT /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}`,
-`DELETE /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}`) and
-`POST /hetzner/v1/storage_boxes/{id}/actions/rollback_snapshot`.
+| `POST /hetzner/v1/storage_boxes/{id}/actions/rollback_snapshot` | `snapshot` takes the ID or the name; an unknown snapshot answers 404 `not_found`. The action `rollback_snapshot` on box and snapshot brings the box's data back to the snapshot and deletes every snapshot of the box created after it, manual and automatic. It ends the open sessions of the box and its subaccounts on every protocol; new connections are refused while it runs. |
 
 - The boxes live in the storage VM `<tag>-storage`, which the first
   `create_storage_box` creates and the delete of the last box removes;
-  each box is a btrfs subvolume with a quota of its type's size. They are
-  reached over SSH only: SFTP on port 22, and with `ssh_enabled` SFTP,
-  scp, rsync and `borg serve` on port 23. Samba and WebDAV are not
-  offered; `samba_enabled`, `webdav_enabled` and `zfs_enabled` have
-  no effect. The server answers on every box address, so the
-  credentials of one box also log in at another box's address.
+  each box is a btrfs subvolume with a quota of its type's size, and
+  each snapshot a read-only btrfs snapshot of it. The protocols: SFTP on
+  port 22; with `ssh_enabled` SFTP, scp, rsync and `borg serve` on port
+  23; with `samba_enabled` SMB 2.1 and newer on port 445 (share `backup`
+  for the box, a share named after each subaccount); with
+  `webdav_enabled` WebDAV over HTTPS on port 443 at
+  `https://<user>.storagebox.hetzner.internal/` only; FTP and explicit
+  FTPS on port 21, always on, passive only with the data ports
+  50000-50099. WebDAV and FTPS use one certificate
+  `*.storagebox.hetzner.internal` from the HLab CA, reissued 30 days
+  before it expires. sshd and vsftpd answer on every box address, so
+  the credentials of one box also log in at another box's address over
+  SSH and FTP; Samba and Apache admit an account only at its own box's
+  address.
+- With `zfs_enabled`, the box account (not its subaccounts) sees its
+  snapshots read-only under `.zfs/snapshot`.
 - `reachable_externally` of the box or of one of its subaccounts opens
-  the box address to the host and WSL2; servers always reach it.
+  the box address to the host and WSL2; servers always reach it. An
+  account without it is refused from the host and WSL2 on every
+  protocol.
 - `ssh_keys` are written once at create into `.ssh/authorized_keys` of
   the box; OpenSSH lines and RFC 4716 blocks work on both ports.
 - `POST /hetzner/v1/storage_boxes` answers with the box in status

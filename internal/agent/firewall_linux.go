@@ -173,8 +173,9 @@ func addServerChain(c *nftables.Conn, table *nftables.Table, chain *nftables.Cha
 // addStorageBoxRules sends every packet to a box IP from chain to a chain of
 // that box. The box chain only drops or returns: it drops external sources
 // when the box is not reachable externally, returns for each port of
-// storageBoxPorts and drops everything else, so allowed packets go on to
-// the server chains (a server's restricted outbound traffic included).
+// storageBoxPorts and the passive FTP range and drops everything else, so
+// allowed packets go on to the server chains (a server's restricted
+// outbound traffic included).
 func addStorageBoxRules(c *nftables.Conn, table *nftables.Table, chain *nftables.Chain, iface []byte, f boxFilter) {
 	for i, a := range f.All {
 		box := c.AddChain(&nftables.Chain{Table: table, Name: "box" + strconv.Itoa(i)})
@@ -190,15 +191,23 @@ func addStorageBoxRules(c *nftables.Conn, table *nftables.Table, chain *nftables
 				rule(expr.VerdictDrop, sourceIn(f.HostNet, expr.CmpOpEq)...)
 			}
 		}
+		tcpDport := []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{protoTCP}},
+			&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2},
+		}
 		for _, port := range storageBoxPorts {
 			// meta l4proto tcp tcp dport <port> return
-			rule(expr.VerdictReturn,
-				&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
-				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{protoTCP}},
-				&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2},
-				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: binaryutil.BigEndian.PutUint16(port)},
-			)
+			rule(expr.VerdictReturn, append(slices.Clone(tcpDport),
+				&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: binaryutil.BigEndian.PutUint16(port)})...)
 		}
+		// meta l4proto tcp tcp dport <passive FTP range> return
+		rule(expr.VerdictReturn, append(slices.Clone(tcpDport), &expr.Range{
+			Op:       expr.CmpOpEq,
+			Register: 1,
+			FromData: binaryutil.BigEndian.PutUint16(storageBoxPassiveFrom),
+			ToData:   binaryutil.BigEndian.PutUint16(storageBoxPassiveTo),
+		})...)
 		rule(expr.VerdictDrop)
 		// oifname <pub> meta nfproto ipv4 ip daddr <box IP> jump box<i>
 		c.AddRule(addrJump(table, chain, expr.MetaKeyOIFNAME, iface, 16, a, box.Name))
@@ -214,6 +223,13 @@ func sourceIn(p netip.Prefix, op expr.CmpOp) []expr.Any {
 	}
 }
 
-// storageBoxPorts are the TCP ports that pass to a box IP: SSH on 22 and
-// 23. Everything else to a box IP is dropped.
-var storageBoxPorts = []uint16{22, 23}
+// storageBoxPorts are the TCP ports that pass to a box IP: FTP on 21, SSH
+// on 22 and 23, WebDAV on 443 and SMB on 445, plus the passive FTP range
+// storageBoxPassiveFrom-storageBoxPassiveTo. Everything else to a box IP,
+// the storage agent's 9100 included, is dropped.
+var storageBoxPorts = []uint16{21, 22, 23, 443, 445}
+
+const (
+	storageBoxPassiveFrom uint16 = 50000
+	storageBoxPassiveTo   uint16 = 50099
+)

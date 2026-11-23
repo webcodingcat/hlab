@@ -202,6 +202,11 @@ func psValue(v any) string {
 		return strconv.Itoa(v)
 	case int64:
 		return strconv.FormatInt(v, 10)
+	case bool:
+		if v {
+			return "$true"
+		}
+		return "$false"
 	}
 	panic(fmt.Sprintf("hyperv: unsupported value type %T", v))
 }

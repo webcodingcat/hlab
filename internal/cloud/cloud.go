@@ -113,7 +113,8 @@ type Cloud struct {
 	images *images.Store
 	agent  *agentclient.Client
 	// storage talks to the storage agent; storageMu runs one apply of the
-	// storage VM at a time.
+	// storage VM at a time and keeps jobs out of an apply, whose document
+	// would otherwise miss a snapshot a job takes meanwhile.
 	storage   *agentclient.StorageClient
 	storageMu sync.Mutex
 	// stopStorage ends the start's background apply of the storage VM.

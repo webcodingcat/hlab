@@ -130,22 +130,38 @@ exported CA certificate.
 
 ## Storage boxes
 
-All storage boxes live in one storage VM on your machine, which HLab
-creates with the first box and removes with the last; their data stay
+All storage boxes live in one storage VM on your machine, with up to
+2048 MB of dynamic memory, which HLab creates with the first box and
+removes with the last; their data stay
 on its disk while the cloud is stopped. Host names end in
 `storagebox.hetzner.internal`. Every box has an address of its own, but
-one SSH server answers on all of them, so the user name and password or
-key of one box also log in at another box's address.
+one SSH server and one FTP server answer on all of them, so the user name
+and password or key of one box also log in at another box's address over
+SSH and FTP; SMB and WebDAV admit an account only at its own box's
+address.
 
 Port 22 serves SFTP only: scp works in its default SFTP mode, but not
 with `scp -O`. Port 23 runs only SFTP, scp, rsync and BorgBackup; Hetzner's
 other commands there, such as `ls` or `df`, answer `Command not allowed`.
 Every BorgBackup version a client asks for is served by BorgBackup 1.4.
-Samba and WebDAV are not available. Keys in `.ssh/authorized_keys` work
-on both ports in OpenSSH and in RFC 4716 format; the keys given at create
-are written there once. The host and WSL2 count as outside: they reach a
-box only when it or one of its subaccounts is reachable externally, while
-servers always reach it.
+Keys in `.ssh/authorized_keys` work on both ports in OpenSSH and in RFC
+4716 format; the keys given at create are written there once. The host
+and WSL2 count as outside: they reach a box only when it or one of its
+subaccounts is reachable externally, while servers always reach it, and
+an account that is not reachable externally is refused from them on
+every protocol.
+
+SMB serves SMB 2.1 and newer; `smbclient -L` does not list the shares.
+Windows logs in to SMB with NTLM, so a future Windows version that turns
+NTLM off would no longer reach the shares. WebDAV and FTPS use one
+certificate for `*.storagebox.hetzner.internal` from the HLab CA, which
+HLab renews before it expires; clients trust it only after
+[`hlab ca trust on`](commands.md#hlab-ca-trust) or with the exported CA
+certificate.
+WebDAV answers only under the account's host name, not under the bare
+address. FTP is always on, without a switch, and runs in passive mode
+only, on ports 50000 to 50099; plain FTP is accepted besides explicit
+FTPS.
 
 A box that is full refuses further writes with a plain failure of the
 client, such as SFTP's `Failure`. Changing to a smaller type is refused
@@ -161,8 +177,15 @@ folders shows the folders directly below the path, hidden ones such as
 `.ssh` included; a path that does not exist answers `not_found`, and an
 absolute path or one with `..` answers `invalid_input`.
 
-A snapshot plan is stored but takes no snapshots, and snapshots are not
-available. Passwords follow Hetzner's rules but are not checked against
+Snapshot plans run in UTC within a minute of their time; when both a day
+of the week and a day of the month are set, a day must match both. Plan
+times while the cloud is stopped are skipped, not made up later. A
+manual snapshot beyond the type's snapshot limit is refused with
+`resource_limit_exceeded`, and two manual snapshots within one second
+get names one second apart. A rollback ends the open sessions of the box
+and its subaccounts on every protocol and refuses new connections until
+it is done. With ZFS enabled, `.zfs/snapshot` appears only for the box
+account, not for subaccounts. Passwords follow Hetzner's rules but are not checked against
 known data breaches. Invalid input, such as a home directory with a
 leading slash, is refused at once instead of by a failed action. While an
 action on a box or one of its subaccounts runs, any other one on that box

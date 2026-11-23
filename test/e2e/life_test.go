@@ -72,19 +72,25 @@ type lifeFixture struct {
 	e    *env
 	err  error
 
-	names    []string
-	a, b     *member
-	c        *server
-	network  int64
-	fipID    int64
-	fip      string
-	fwID     int64
-	lbID     int64
-	lbIP     string
-	volID    int64
-	zone     string
-	zoneID   int64
-	slots    int
+	names   []string
+	a, b    *member
+	c       *server
+	network int64
+	fipID   int64
+	fip     string
+	fwID    int64
+	lbID    int64
+	lbIP    string
+	volID   int64
+	zone    string
+	zoneID  int64
+	slots   int
+	// SBOX-07: a box with data, a subaccount and a snapshot, added by
+	// testSBOX07 before the save cycle.
+	box      *storageBox
+	boxSub   *storageBox
+	boxSnap  string
+	boxData  string // local copy of life.bin in the box
 	mu       sync.Mutex
 	released bool
 }
@@ -183,6 +189,71 @@ func testLIFE07(t *testing.T) {
 			t.Errorf("started again (%s): %s", b, msg)
 		}
 	}
+}
+
+// testSBOX07: a box with data, a subaccount and a snapshot keeps all
+// three over a stop and start of the cloud: data over SFTP, the
+// subaccount's login, the snapshot in the list and under .zfs/snapshot.
+func testSBOX07(t *testing.T) {
+	f := sharedLife(t)
+	if lifeCycles["save"].before != nil {
+		t.Fatal("the save cycle ran before SBOX-07 added its storage box to the fixture")
+	}
+	f.addStorageBox(t)
+	runLifeCycle(t, f, "save")
+	e := f.e
+
+	owner := passwordLogin(f.box, 22)
+	back := filepath.Join(t.TempDir(), "back.bin")
+	if eventually(t, "box reads life.bin over SFTP after stop and start", func() (result, error) {
+		return hostSFTP(owner, fmt.Sprintf("get life.bin %s\n", sftpPath(back)))
+	}) {
+		sameFile(t, f.boxData, back, "life.bin after stop and start")
+	}
+	eventually(t, "subaccount logs in after stop and start", func() (result, error) {
+		return hostSFTP(passwordLogin(f.boxSub, 22), "ls\n")
+	})
+	if names := snapshotNames(e.listSnapshots(t, f.box)); !slices.Contains(names, f.boxSnap) {
+		t.Errorf("snapshots after stop and start %v, want %s", names, f.boxSnap)
+	}
+	in := ".zfs/snapshot/" + f.boxSnap + "/life.bin"
+	zfsBack := filepath.Join(t.TempDir(), "zfs-back.bin")
+	if eventually(t, "box reads "+in+" after stop and start", func() (result, error) {
+		return hostSFTP(owner, fmt.Sprintf("get %s %s\n", in, sftpPath(zfsBack)))
+	}) {
+		sameFile(t, f.boxData, zfsBack, in+" after stop and start")
+	}
+}
+
+// addStorageBox adds SBOX-07's box to the fixture: zfs_enabled, life.bin
+// written over SFTP, a subaccount and a snapshot; releaseLifeFixture
+// deletes it.
+func (f *lifeFixture) addStorageBox(t *testing.T) {
+	t.Helper()
+	e := f.e
+	box, err := e.createStorageBox(harness.runID+"-life-sbox", "bx11",
+		map[string]bool{"reachable_externally": true, "zfs_enabled": true}, nil)
+	if box != nil {
+		f.mu.Lock()
+		f.box = box
+		f.mu.Unlock()
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.boxData = randomFile(t, t.TempDir(), "life.bin", 1<<20)
+	if !eventually(t, "sftp put life.bin into "+box.Username, func() (result, error) {
+		return hostSFTP(passwordLogin(box, 22), fmt.Sprintf("put %s life.bin\n", sftpPath(f.boxData)))
+	}) {
+		t.FailNow()
+	}
+	f.boxSub = e.createSubaccount(t, box, "life-sub", map[string]bool{"reachable_externally": true})
+	if !eventually(t, "subaccount logs in before stop and start", func() (result, error) {
+		return hostSFTP(passwordLogin(f.boxSub, 22), "ls\n")
+	}) {
+		t.FailNow()
+	}
+	f.boxSnap = e.createSnapshot(t, box, "life", nil).Name
 }
 
 // sharedLife returns the LIFE fixture, created once; releaseLifeFixture
@@ -807,6 +878,11 @@ func releaseLifeFixture(t *testing.T) {
 	}
 	if f.fipID != 0 {
 		e.deleteFloatingIP(t, f.fipID)
+	}
+	if f.box != nil {
+		if err := e.deleteStorageBox(f.box.ID); err != nil {
+			t.Errorf("delete storage box %s: %v", f.box.Username, err)
+		}
 	}
 	if f.volID != 0 {
 		e.deleteVolume(t, f.volID)

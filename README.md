@@ -25,8 +25,9 @@ machine before you run it at Hetzner.
 HLab offers projects and API tokens, SSH keys, servers with snapshots,
 backups, rescue system and ISOs, volumes, placement groups, private
 networks, primary and floating IPs, firewalls, DNS zones with reverse DNS,
-load balancers and certificates, and storage boxes with subaccounts that
-you reach with SFTP, scp, rsync and BorgBackup. Other parts of the Hetzner API answer
+load balancers and certificates, and storage boxes with subaccounts and
+snapshots that you reach with SFTP, scp, rsync, BorgBackup, SMB, WebDAV
+and FTP. Other parts of the Hetzner API answer
 `not_found`; what else differs is in [Known deviations](docs/deviations.md).
 A [tray program](#the-tray-program) starts and stops the cloud and manages
 projects, tokens, every resource of a project, server types and settings.
