@@ -546,9 +546,14 @@ Inside `hlabd` (Go packages under `internal/`):
   checks the certificate against the hlab CA itself (`GET /ca.pem`) and
   accepts the origin `wails.localhost`, so the window works while Windows
   does not trust the CA (E22). The window loads noVNC with a dynamic
-  `import()`.
+  `import()`. Another Wails service `Windows` in `cmd/hlab-tray` with
+  `OpenConsole(project string, id int64, name string) error` opens the
+  window "Console: <name>" at the route
+  `#/server-console/<project>/<id>` (outside `views.json`, no shell) or
+  brings the open one of that server to the front; it keeps its own
+  window map under a mutex, cleared when a window closes (E24).
 - Interface: Wails v3 application. Go side: `tray` (icon, menu, start/stop
-  through SCM), `bridge` (package without a Wails import, bound as three
+  through SCM), `bridge` (package without a Wails import, bound as four
   Wails services: `bridge.Service` with
   `Call(method, path, body string) (Response{status, body}, error)` that
   forwards to the management API, `ProjectName(display string) string`
@@ -616,8 +621,10 @@ Inside `hlabd` (Go packages under `internal/`):
 
 - Purpose: the RFB-over-WebSocket server behind `request_console`.
 - Interface:
-  - `console.Service.Issue(serverID int64, vm string) (wssURL, password string)`
-    called by the servers module; tokens and passwords live only in memory,
+  - `console.Service.Issue(serverID int64, vm string) (wssURL, password string, err error)`
+    and `CloseServer(serverID int64)` (ends its open connections and drops
+    its unused tokens), called by the servers module through its
+    `servers.Console` interface; tokens and passwords live only in memory,
     a token is valid one minute to connect and belongs to one server.
   - Screen source: the graphical console (gate passed,
     `decisions/server-console.md`, E21, E25), an optional platform

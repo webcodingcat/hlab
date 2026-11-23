@@ -211,10 +211,16 @@ func (w *Windows) OpenConsole(project string, id int64, name string) error
   - [x] Route `server-console` in `ui/frontend/src/lib/routes.ts`; `App.svelte` renders `ui/frontend/src/views/ServerConsole.svelte` for it without the shell: top bar with the connection state ("Connecting", "Connected", "Disconnected" with the reason) and "Send Ctrl+Alt+Del", the screen filling the window (`scaleViewport`), "Reconnect" after a drop; on load and on Reconnect it runs `request_console` through the project proxy, calls `Console.Open(wss_url)` and starts noVNC (dynamic `import()`) with the password
   - [x] The "Console" entry in `ui/frontend/src/lib/serverActions.ts` is enabled and opens the window through `Windows.OpenConsole(project, id, name)` in `ui/frontend/src/views/servers/ServerActions.svelte` (and the row menu where the server actions appear)
 
-- [ ] 23-10 Documentation
+- [x] 23-10 Documentation
   - Wave: 5 | Depends on: 23-07, 23-09 | Review: alone
   - Requirements: DOC-03, DOC-04, DOC-05, DOC-06, DOC-07 | Tests: test/docs/docs_test.go (existing)
   - Reads: SPEC.md "Documentation", "Server console"; REQUIREMENTS.md "Documentation (`DOC`)"; CONTEXT.md; EXPERIMENTS.md E21, E25 (CPU of `vmms.exe`)
   - Size: ~150 lines in 7 files
-  - [ ] `docs/deviations.md` (servers: the console works; the certificate from the hlab CA, an own browser or VNC client needs "Trust CA"; about 0.7 cores in `vmms.exe` per open console; no serial console), `docs/development/api-coverage.md` (request_console no longer `unsupported_error`; URL host, token, certificate), `docs/development/build-and-test.md` (CON-01 and UI-15 rows, `hcloud server request-console` no longer listed as uncovered)
-  - [ ] `README.md` and `docs/guide.md` (Console in the server's actions menu, `hcloud server request-console` with a VNC client and "Trust CA"), `ui/frontend/src/help/servers.md` (Console opens the console window, Send Ctrl+Alt+Del, Reconnect); screenshots only if the guide shows the console window
+  - [x] `docs/deviations.md` (servers: the console works; the certificate from the hlab CA, an own browser or VNC client needs "Trust CA"; about 0.7 cores in `vmms.exe` per open console; no serial console), `docs/development/api-coverage.md` (request_console no longer `unsupported_error`; URL host, token, certificate), `docs/development/build-and-test.md` (CON-01 and UI-15 rows, `hcloud server request-console` no longer listed as uncovered)
+  - [x] `README.md` and `docs/guide.md` (Console in the server's actions menu, `hcloud server request-console` with a VNC client and "Trust CA"), `ui/frontend/src/help/servers.md` (Console opens the console window, Send Ctrl+Alt+Del, Reconnect); screenshots only if the guide shows the console window
+
+## Close
+
+- 2026-11-23 on 90d4f8c: `task test` green, `task lint` green, `task e2e -- -run '^TestE2E/(CON-01|UI-15)$' -v` green (CON-01/screen, /keyboard, /mouse, UI-15).
+- Verifier: no blockers; ARCHITECTURE.md brought up to the code (tray `Windows` service and console route, `Issue` error return and `CloseServer`).
+- No manual requirements in this phase.
