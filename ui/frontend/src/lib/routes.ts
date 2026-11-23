@@ -22,7 +22,9 @@ export type Page = { kind: "list" } | { kind: "new" } | { kind: "detail"; id: nu
 export type Route =
   | { area: "projects" }
   | { area: "project"; project: string; view: ProjectView; page: Page }
-  | { area: "admin"; view: AdminView };
+  | { area: "admin"; view: AdminView }
+  // The console window of one server, opened by the tray outside the shell.
+  | { area: "server-console"; project: string; server: number };
 
 const projectViews: ProjectView[] = [
   "servers",
@@ -54,6 +56,8 @@ export function href(r: Route): string {
       return "#/projects";
     case "admin":
       return `#/admin/${r.view}`;
+    case "server-console":
+      return `#/server-console/${encodeURIComponent(r.project)}/${r.server}`;
     case "project": {
       const base = `#/projects/${encodeURIComponent(r.project)}/${r.view}`;
       switch (r.page.kind) {
@@ -85,6 +89,11 @@ export function parse(hash: string): Route | undefined {
   if (parts.length === 1 && parts[0] === "projects") return { area: "projects" };
   if (parts.length === 2 && parts[0] === "admin" && adminViews.includes(parts[1] as AdminView)) {
     return { area: "admin", view: parts[1] as AdminView };
+  }
+  if (parts.length === 3 && parts[0] === "server-console") {
+    const project = decode(parts[1]);
+    if (!project || !/^[1-9][0-9]*$/.test(parts[2])) return undefined;
+    return { area: "server-console", project, server: Number(parts[2]) };
   }
   if (parts[0] !== "projects" || parts.length < 3 || parts.length > 5) return undefined;
   const project = decode(parts[1]);

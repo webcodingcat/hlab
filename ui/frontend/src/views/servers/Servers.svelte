@@ -5,6 +5,7 @@
   import StatusPill from "../../lib/StatusPill.svelte";
   import Table, { type Column, type RowAction } from "../../lib/Table.svelte";
   import { listAll, runOn } from "../../lib/api";
+  import { openConsoleWindow } from "../../lib/bridge";
   import { menuActions, request, type ServerAction } from "../../lib/serverActions";
   import { showError } from "../../lib/toast";
   import { href, running, type Page } from "../../state";
@@ -59,7 +60,7 @@
   });
 
   // The row menu: the entries of the actions menu that need no input.
-  const rowIds = ["poweron", "shutdown", "reboot", "reset", "poweroff", "delete"];
+  const rowIds = ["poweron", "shutdown", "reboot", "reset", "poweroff", "console", "delete"];
   const rowEntries = menuActions.filter((a) => rowIds.includes(a.id));
 
   let pending = $state<{ action: ServerAction; server: Server } | undefined>();
@@ -73,6 +74,10 @@
   }
 
   function choose(a: ServerAction, s: Server) {
+    if (a.id === "console") {
+      openConsoleWindow(project, s.id, s.name).catch((err) => showError("Open the console", err));
+      return;
+    }
     if (a.confirm === "none") {
       run(a, s);
       return;

@@ -21,7 +21,7 @@ export class ApiError extends Error {
 }
 
 /** service calls a method of a bound bridge type. */
-export function service<T>(type: "Service" | "Cloud" | "Logs", method: string, ...args: unknown[]): Promise<T> {
+export function service<T>(type: "Service" | "Cloud" | "Logs" | "Console", method: string, ...args: unknown[]): Promise<T> {
   return Call.ByName(`${bridgePkg}.${type}.${method}`, ...args) as Promise<T>;
 }
 
@@ -72,4 +72,14 @@ export function on<T>(event: "cloud" | "logs", fn: (data: T) => void): () => voi
 /** pickISOFile opens the Windows file dialog for one .iso file; "" when cancelled. */
 export function pickISOFile(): Promise<string> {
   return Call.ByName("main.Files.PickISOFile") as Promise<string>;
+}
+
+/** openConsoleWindow opens the console window of a server, or brings its open one to the front. */
+export function openConsoleWindow(project: string, id: number, name: string): Promise<void> {
+  return Call.ByName("main.Windows.OpenConsole", project, id, name) as Promise<void>;
+}
+
+/** openConsoleProxy starts the tray's loopback proxy to a console wss URL and returns its ws URL. */
+export function openConsoleProxy(wssURL: string): Promise<string> {
+  return service<string>("Console", "Open", wssURL);
 }

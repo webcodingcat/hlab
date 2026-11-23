@@ -194,9 +194,9 @@ test.describe("UI-02 requests", () => {
     });
   }
 
-  test("request: console is disabled and builds no request", () => {
+  test("request: console is enabled and builds no request", () => {
     const console = entry({ menu: "Console" });
-    expect(console.disabledHint).toBe("Not available in HLab");
+    expect(console.disabledHint).toBeUndefined();
     expect(request(console, server, {})).toBeUndefined();
   });
 });

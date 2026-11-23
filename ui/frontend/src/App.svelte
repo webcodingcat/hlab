@@ -11,6 +11,7 @@
   import ProjectConsole from "./views/ProjectConsole.svelte";
   import Projects from "./views/Projects.svelte";
   import ServerTypes from "./views/ServerTypes.svelte";
+  import ServerConsole from "./views/ServerConsole.svelte";
   import Settings from "./views/Settings.svelte";
   import StorageBoxTypes from "./views/StorageBoxTypes.svelte";
 
@@ -43,43 +44,48 @@
   );
 </script>
 
-<div class="shell">
-  <TopBar>
-    {#snippet breadcrumb()}
-      <nav aria-label="Breadcrumb">
-        {#if $route.area === "project"}
-          <a href={href({ area: "projects" })}>Projects</a>
-          <span aria-hidden="true">/</span>
-          {#key $route.project}<ProjectMenu project={$route.project} />{/key}
-        {:else if $route.area === "admin"}
-          <span aria-current="page">Administration</span>
-        {:else}
-          <span aria-current="page">Projects</span>
-        {/if}
-      </nav>
-    {/snippet}
-  </TopBar>
-  <Banner />
-  <div class="scroll">
-    {#if $route.area === "admin"}
-      <div class="area">
-        <SectionSidebar label="Administration" items={adminItems} />
-        <main>
-          {#if $route.view === "server-types"}<ServerTypes />
-          {:else if $route.view === "storage-box-types"}<StorageBoxTypes />
-          {:else if $route.view === "isos"}<Isos />
-          {:else if $route.view === "settings"}<Settings />
-          {:else}<Logs />{/if}
-        </main>
-      </div>
-    {:else if $route.area === "project"}
-      {#key $route.project}<ProjectConsole project={$route.project} view={$route.view} page={$route.page} />{/key}
-    {:else}
-      <main><Projects /></main>
-    {/if}
+{#if $route.area === "server-console"}
+  <!-- The console window of a server, without the shell. -->
+  {#key `${$route.project}/${$route.server}`}<ServerConsole project={$route.project} server={$route.server} />{/key}
+{:else}
+  <div class="shell">
+    <TopBar>
+      {#snippet breadcrumb()}
+        <nav aria-label="Breadcrumb">
+          {#if $route.area === "project"}
+            <a href={href({ area: "projects" })}>Projects</a>
+            <span aria-hidden="true">/</span>
+            {#key $route.project}<ProjectMenu project={$route.project} />{/key}
+          {:else if $route.area === "admin"}
+            <span aria-current="page">Administration</span>
+          {:else}
+            <span aria-current="page">Projects</span>
+          {/if}
+        </nav>
+      {/snippet}
+    </TopBar>
+    <Banner />
+    <div class="scroll">
+      {#if $route.area === "admin"}
+        <div class="area">
+          <SectionSidebar label="Administration" items={adminItems} />
+          <main>
+            {#if $route.view === "server-types"}<ServerTypes />
+            {:else if $route.view === "storage-box-types"}<StorageBoxTypes />
+            {:else if $route.view === "isos"}<Isos />
+            {:else if $route.view === "settings"}<Settings />
+            {:else}<Logs />{/if}
+          </main>
+        </div>
+      {:else if $route.area === "project"}
+        {#key $route.project}<ProjectConsole project={$route.project} view={$route.view} page={$route.page} />{/key}
+      {:else}
+        <main><Projects /></main>
+      {/if}
+    </div>
   </div>
-</div>
-<Toast />
+  <Toast />
+{/if}
 
 <style>
   /* The top bar stays in place; only the area below it scrolls, and its
