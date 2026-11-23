@@ -58,6 +58,40 @@ type Platform interface {
 	HostResources(ctx context.Context) (Resources, error)
 }
 
+// Console is an optional extension of Platform: hlabd type-asserts it.
+type Console interface {
+	// OpenConsole opens the screen, keyboard and mouse of VM vm; one per
+	// open RFB connection. NotFound when the VM does not exist.
+	OpenConsole(ctx context.Context, vm string) (ConsoleConn, error)
+}
+
+// ConsoleConn is one open console of a VM. Calls are serialized by the
+// caller; Close may be called from another goroutine.
+type ConsoleConn interface {
+	// Screen grabs the current screen at its current resolution. ok false:
+	// no picture now (VM off, starting, stopping, saving, restoring), not
+	// an error; err only for real failures.
+	Screen(ctx context.Context) (f Frame, ok bool, err error)
+	// Scancodes types scan code set 1 bytes (make, break = make|0x80,
+	// 0xE0 prefix before extended make and break).
+	Scancodes(ctx context.Context, codes []byte) error
+	// MouseMove moves to x, y in pixels of the current resolution; the
+	// caller clamps to the screen, never negative.
+	MouseMove(ctx context.Context, x, y int) error
+	// MouseButton presses or releases button 1 left, 2 right, 3 middle.
+	MouseButton(ctx context.Context, index int, down bool) error
+	// MouseScroll scrolls by delta; +120 is one notch up.
+	MouseScroll(ctx context.Context, delta int) error
+	Close() error
+}
+
+// Frame is a screen as RGB565 little endian, Width*Height*2 bytes (the 4
+// trailing bytes of the WMI image already dropped).
+type Frame struct {
+	Width, Height int
+	Pix           []byte
+}
+
 // SwitchSpec describes the internal switch; the host adapter is isolated.
 type SwitchSpec struct {
 	Name                         string
