@@ -19,6 +19,22 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Subaccount home directory without dot-dot
+
+- Type: decision
+- Phase: phase 19
+- What: `checkHome` refuses any `..` element with 422 `invalid_input` (field `home_directory`) on create and change_home_directory, and stores the value cleaned by `path.Clean`.
+- Why: A home directory must never lead a subaccount into another box's data (review of 19-06).
+- Cost of change: low
+
+## 2026-11-23 Storage box delete releases its IP
+
+- Type: decision
+- Phase: phase 19
+- What: A successful `delete_storage_box` releases the box IP, and `storageboxes.Deps` gets `PublicRange`, `Job`, `FreeBytes` and `Clock`.
+- Why: Create now assigns an IP from the public range, which must not leak.
+- Cost of change: low
+
 ## 2026-11-23 Storage client readiness and generation
 
 - Type: decision

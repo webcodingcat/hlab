@@ -182,14 +182,14 @@ CompactDisk(ctx context.Context, path string) error
   - [ ] `internal/agent/dns.go`: answers each name of `StorageBoxes` under `storagebox.hetzner.internal` with the box IP; `isolation_linux.go`: the storage MAC with `Storage.Addr` and the box IPs as its sources.
   - [ ] New `internal/agent/storagebox.go` (pure: which box IPs drop external sources) and its use in `firewall_linux.go`: forwarded traffic from sources outside the public range or inside the host's transit `/30` to a box IP is dropped unless `ReachableExternally`; TCP 22 and 23 to box IPs pass otherwise.
 
-- [ ] 19-06 Storage boxes: stored IP, user and the documents
+- [x] 19-06 Storage boxes: stored IP, user and the documents
   - Wave: 2 | Depends on: 19-01 | Review: alone
   - Requirements: SBOX-03, SBOX-04 | Tests: -
   - Reads: CONTEXT.md "Create", "Delete", "Network"; DECISIONS.md "Storage box stored layout", "Storage box Apply hook"; `internal/resources/storageboxes/*.go`
   - Size: ~250 lines in 4 files
   - Note: storage_test.go also uses `FreeSpaceReserve` and `StatsEvery` of 19-10; 19-06 declares both (constant and interval) so the package's tests compile; 19-10 gives them their behaviour.
-  - [ ] `boxes.go`: in the create transaction assign `_hlab.n` (kv counter) and `_hlab.ip` (`ipam.NextPublic`); the API keeps `username`, `server`, `system` null until active; `storageboxes.go`: the new `Deps` fields and `HLab.IP`, `HLab.Deleting`.
-  - [ ] New `document.go`: `Boxes(tx)` (all projects, quota from the stored type, hashes, keys, access, subaccounts; boxes marked deleting left out) and `Contribute` (`Config.Storage` when any box exists, `Config.StorageBoxes` with names and reachability).
+  - [x] `boxes.go`: in the create transaction assign `_hlab.n` (kv counter) and `_hlab.ip` (`ipam.NextPublic`); the API keeps `username`, `server`, `system` null until active; `storageboxes.go`: the new `Deps` fields and `HLab.IP`, `HLab.Deleting`.
+  - [x] New `document.go`: `Boxes(tx)` (all projects, quota from the stored type, hashes, keys, access, subaccounts; boxes marked deleting left out) and `Contribute` (`Config.Storage` when any box exists, `Config.StorageBoxes` with names and reachability).
 
 - [ ] 19-07 Storage agent: SSH on ports 22 and 23
   - Wave: 3 | Depends on: 19-04 | Review: alone
