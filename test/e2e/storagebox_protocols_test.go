@@ -325,6 +325,15 @@ func testSBOX14(t *testing.T) {
 		}
 	}
 
+	// The box and its subaccounts share one UID: after the subaccount's
+	// share was used, the box still writes on backup.
+	againSum := wslData(t, w, dir, "again.bin", 1<<20)
+	if r, err := w.smbclient(dir, box, "backup", "put again.bin sbox14-again.bin"); err != nil {
+		t.Errorf("smbclient put on //%s/backup after the subaccount's share was used: %v\n%s", box.Server, err, r)
+	} else if got := hostSum(t, owner, "sbox14-again.bin"); got != againSum {
+		t.Errorf("sbox14-again.bin over SFTP has SHA-256 %s, written over SMB %s", got, againSum)
+	}
+
 	e.updateAccess(t, boxPath(box), map[string]bool{"reachable_externally": true, "samba_enabled": false,
 		"ssh_enabled": false, "webdav_enabled": false, "zfs_enabled": false})
 	refusedWithin(t, "share backup of "+box.Server+" with samba_enabled off", func() (result, error) {

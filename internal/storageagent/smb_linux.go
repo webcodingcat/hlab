@@ -65,6 +65,9 @@ func (s *samba) Apply(ctx context.Context, doc agentapi.Storage, skipped map[str
 	if err := setSambaAccounts(ctx, files.Accounts, hashes, uids); err != nil {
 		errs = append(errs, err)
 	}
+	if err := pinSambaOwners(ctx, files.Accounts, uids); err != nil {
+		errs = append(errs, err)
+	}
 	switch {
 	case !s.started || globalChanged:
 		if _, err := run(ctx, "systemctl", "enable", "smbd.service"); err != nil {
@@ -217,6 +220,47 @@ func setSambaHash(ctx context.Context, user string, uid int, nt, sid string) err
 	}
 	_, err = pdbedit(ctx, nil, "-r", "-u", user, "-U", sid)
 	return err
+}
+
+// sambaIDCacheTime is how long the pinned ID mappings of pinSambaOwners
+// last; every apply sets them again.
+const sambaIDCacheTime = "520w"
+
+// pinSambaOwners makes smbd see every file of a box as owned by the Unix
+// user SID of the box's UID, which the token of each of its accounts holds.
+//
+// smbd checks access against an ACL made from the mode bits, whose owner is
+// the SID it maps the file's UID to. It caches that mapping in gencache
+// whenever it maps an account's SID to its UID at a login, so with the box
+// and its subaccounts sharing one UID (E19) the owner became the account
+// that logged in first, and all others lost the owner's write access. The
+// SID-to-UID mappings of the accounts are pinned in the cache, so that a
+// login does not look them up and overwrite the owner, and the UID maps to
+// S-1-22-1-<uid>. The cache keys are Samba's (source3/lib/idmap_cache.c).
+func pinSambaOwners(ctx context.Context, accounts []string, uids map[string]int) error {
+	have, err := sambaEntries(ctx)
+	if err != nil {
+		return err
+	}
+	pinned := map[int]bool{}
+	var errs []error
+	for _, user := range accounts {
+		e, ok := have[user]
+		if !ok {
+			continue
+		}
+		uid := uids[user]
+		if _, err := run(ctx, "net", "cache", "add", "IDMAP/SID2XID/"+e.sid, fmt.Sprintf("%d:U", uid), sambaIDCacheTime); err != nil {
+			errs = append(errs, err)
+		}
+		if !pinned[uid] {
+			pinned[uid] = true
+			if _, err := run(ctx, "net", "cache", "add", fmt.Sprintf("IDMAP/UID2SID/%d", uid), fmt.Sprintf("S-1-22-1-%d", uid), sambaIDCacheTime); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // sambaEntries returns the tdbsam entries by account name.
