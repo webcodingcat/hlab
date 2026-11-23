@@ -401,7 +401,7 @@ What the target vision in IDEA.md will need, not built yet.
 | SBOX-03 | 19 | x |
 | SBOX-13 | 19 | x |
 | SBOX-14 | 20 | x |
-| SBOX-22 | 22 | |
+| SBOX-22 | 22 | x |
 | SBOX-15 | 20 | x |
 | SBOX-16 | 20 | x |
 | SBOX-04 | 19 | x |

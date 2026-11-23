@@ -6,6 +6,17 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x] 22 SMB from the Windows host.
+      Requirements: SBOX-22.
+      Depends on: 20.
+      Success criteria:
+      1. `net use` on the Windows host maps the share `backup` of a box
+         and a subaccount's share, and data written there reads back
+         over SFTP.
+      2. SMB from WSL2 and from servers keeps working (SBOX-14).
+      3. `docs/guide.md` shows the `net use` example and
+         `docs/deviations.md` no longer says the host cannot map shares.
+
 - [x] 20 SMB, WebDAV, FTP and snapshots.
       Requirements: SBOX-05, SBOX-07, SBOX-14, SBOX-15, SBOX-16, SBOX-17,
       SBOX-18, SBOX-19.
