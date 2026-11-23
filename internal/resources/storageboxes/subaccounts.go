@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path"
 	"regexp"
 	"slices"
 	"strconv"
@@ -130,7 +131,8 @@ func subPathIDs(w http.ResponseWriter, req *http.Request) (int64, int64, bool) {
 }
 
 // checkHome checks a home directory against the description: 1 to 999
-// characters of its pattern, relative to the box's root.
+// characters of its pattern, relative to the box's root and never leaving
+// it through a ".." element.
 func checkHome(h string) error {
 	msg := ""
 	switch {
@@ -142,12 +144,18 @@ func checkHome(h string) error {
 		msg = "home_directory must not start with a slash"
 	case !homePattern.MatchString(h):
 		msg = "home_directory may only contain a-z, A-Z, 0-9, space, '.', '/', '_' and '-'"
+	case slices.Contains(strings.Split(h, "/"), ".."):
+		msg = "home_directory must not contain '..'"
 	}
 	if msg != "" {
 		return &api.FieldError{Field: "home_directory", Message: msg}
 	}
 	return nil
 }
+
+// cleanHome is home directory h, accepted by checkHome, in its stored
+// form: without empty and "." elements.
+func cleanHome(h string) string { return path.Clean(h) }
 
 // checkSubName checks the length of a name and that no other subaccount
 // of the box has it.
@@ -285,7 +293,7 @@ func (m *Module) createSubaccount(w http.ResponseWriter, req *http.Request) {
 	}
 	s := SubaccountRecord{Subaccount: Subaccount{
 		StorageBox:    boxID,
-		HomeDirectory: body.HomeDirectory,
+		HomeDirectory: cleanHome(body.HomeDirectory),
 		Description:   body.Description,
 		Labels:        body.Labels,
 		Created:       time.Now().UTC().Truncate(time.Second),
