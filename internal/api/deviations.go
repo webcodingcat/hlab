@@ -528,7 +528,27 @@ func Deviations() []Deviation {
 		},
 		{
 			Endpoint:    "POST /hetzner/v1/storage_boxes",
-			Description: "a storage box holds no data and offers no protocol yet; only its API record exists",
+			Description: "all boxes live in one storage VM and are reached over SSH only (SFTP on port 22; SFTP, scp, rsync and borg serve on port 23 with ssh_enabled); Samba, WebDAV and ZFS are not offered, and the credentials of one box also log in at another box's address",
+		},
+		{
+			Endpoint:    "POST /hetzner/v1/storage_boxes",
+			Description: "answers 412 resource_unavailable below 10 GiB free on the drive of the data folder, as does change_type to a larger type",
+		},
+		{
+			Endpoint:    "POST /hetzner/v1/storage_boxes",
+			Description: "a failed or interrupted create_storage_box deletes the box and releases its address; the action carries the error",
+		},
+		{
+			Endpoint:    "POST /hetzner/v1/storage_boxes/{id}/actions/change_type",
+			Description: "a smaller type is refused with 422 invalid_input on storage_box_type while the box holds more data than its size",
+		},
+		{
+			Endpoint:    "POST /hetzner/v1/storage_boxes/{id}/actions/change_type",
+			Description: "a box that is not active answers 423 locked to every action except delete, to creating subaccounts and to listing folders",
+		},
+		{
+			Endpoint:    "GET /hetzner/v1/storage_boxes/{id}/folders",
+			Description: "an absolute path or one with .. answers 422 invalid_input on path, a path that does not exist 404 not_found",
 		},
 		{
 			Endpoint:    "POST /hetzner/v1/storage_boxes",

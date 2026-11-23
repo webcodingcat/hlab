@@ -46,12 +46,12 @@ func (m *Module) changeProtection(w http.ResponseWriter, req *http.Request) {
 // one must hold the box's data and snapshots.
 func (m *Module) changeType(w http.ResponseWriter, req *http.Request) {
 	var body struct {
-		StorageBoxType string `json:"storage_box_type"`
+		StorageBoxType json.RawMessage `json:"storage_box_type"`
 	}
 	if !api.Decode(w, req, &body) {
 		return
 	}
-	st, ok := m.boxType(body.StorageBoxType)
+	st, ok := m.boxType(refString(body.StorageBoxType))
 	if !ok {
 		api.Fail(w, &api.FieldError{Field: "storage_box_type", Message: "unknown storage box type"})
 		return

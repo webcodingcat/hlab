@@ -2,6 +2,7 @@ package storageboxes
 
 import (
 	"cmp"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -130,11 +131,25 @@ func (a accessRequest) apply(s *AccessSettings) {
 type createRequest struct {
 	Name           string            `json:"name"`
 	Location       string            `json:"location"`
-	StorageBoxType string            `json:"storage_box_type"`
+	StorageBoxType json.RawMessage   `json:"storage_box_type"`
 	Password       string            `json:"password"`
 	Labels         map[string]string `json:"labels"`
 	SSHKeys        []string          `json:"ssh_keys"`
 	AccessSettings *accessRequest    `json:"access_settings"`
+}
+
+// refString is a reference given as a JSON string or number, as text; ""
+// for anything else.
+func refString(raw json.RawMessage) string {
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	var n json.Number
+	if json.Unmarshal(raw, &n) == nil {
+		return n.String()
+	}
+	return ""
 }
 
 // boxType returns the catalog or own type whose name or ID is ref.
@@ -154,7 +169,7 @@ func (m *Module) location(ref string) (catalog.Location, bool) {
 
 // validate checks the fields of a create body that need no store.
 func (m *Module) validate(body createRequest) (catalog.StorageBoxType, catalog.Location, error) {
-	st, ok := m.boxType(body.StorageBoxType)
+	st, ok := m.boxType(refString(body.StorageBoxType))
 	if !ok {
 		return st, catalog.Location{}, &api.FieldError{Field: "storage_box_type", Message: "unknown storage box type"}
 	}
@@ -247,7 +262,7 @@ func (m *Module) create(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	system := strings.ToUpper(loc.Name) + "-BX" + strconv.FormatInt(r.ID, 10)
-	m.run(req, a.ID, r.ID, func(tx store.Tx, projectID int64, b *Record) error {
+	m.run(req, a.ID, r.ID, nil, func(tx store.Tx, projectID int64, b *Record) error {
 		username := userName(b.HLab.N)
 		server := username + "." + serverDomain
 		b.Username, b.Server, b.System = &username, &server, &system
@@ -351,7 +366,7 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 		api.Fail(w, err)
 		return
 	}
-	m.run(req, a.ID, id, func(tx store.Tx, projectID int64, r *Record) error {
+	m.run(req, a.ID, id, nil, func(tx store.Tx, projectID int64, r *Record) error {
 		return removeBox(tx, projectID, *r)
 	}, func(tx store.Tx, projectID int64, r *Record) error {
 		r.HLab.Deleting = false

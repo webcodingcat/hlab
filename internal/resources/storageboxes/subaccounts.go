@@ -272,7 +272,7 @@ func (b subCreateRequest) validate() error {
 
 // createSubaccount stores the subaccount with username u<n>-sub<m>, m
 // taken from the box's counter and never reused, and runs
-// create_subaccount on the box.
+// create_subaccount on the box; a failed Apply deletes the subaccount.
 func (m *Module) createSubaccount(w http.ResponseWriter, req *http.Request) {
 	boxID, ok := api.PathID(w, req)
 	if !ok {
@@ -355,7 +355,9 @@ func (m *Module) createSubaccount(w http.ResponseWriter, req *http.Request) {
 		api.Fail(w, err)
 		return
 	}
-	m.run(req, a.ID, boxID, func(store.Tx, int64, *Record) error { return nil }, nil)
+	m.run(req, a.ID, boxID, nil, nil, func(tx store.Tx, projectID int64, _ *Record) error {
+		return store.Delete(tx, SubaccountKind, projectID, s.ID)
+	})
 	api.JSON(w, http.StatusCreated, map[string]any{
 		"subaccount": map[string]any{"id": s.ID, "storage_box": boxID},
 		"action":     a,
@@ -424,11 +426,12 @@ func (m *Module) deleteSubaccount(w http.ResponseWriter, req *http.Request) {
 
 // subAction answers a request that runs command as an action on the
 // subaccount of the path, referencing box and subaccount and locking the
-// box; done stores the change when the action succeeds. A box that is not
+// box; change stores the action's change before Apply, and a failed Apply
+// restores the subaccount as it was (see run). A box that is not
 // active refuses every command but delete_subaccount. Callers validate
 // the request first. It answers 201 with the action.
 func (m *Module) subAction(w http.ResponseWriter, req *http.Request, command string,
-	done func(tx store.Tx, projectID int64, s SubaccountRecord) error,
+	change func(tx store.Tx, projectID int64, s SubaccountRecord) error,
 ) {
 	boxID, subID, ok := subPathIDs(w, req)
 	if !ok {
@@ -458,12 +461,15 @@ func (m *Module) subAction(w http.ResponseWriter, req *http.Request, command str
 		api.Fail(w, err)
 		return
 	}
+	var old SubaccountRecord
 	m.run(req, a.ID, boxID, func(tx store.Tx, projectID int64, _ *Record) error {
-		s, err := store.Get[SubaccountRecord](tx, SubaccountKind, projectID, subID)
-		if err != nil {
+		var err error
+		if old, err = store.Get[SubaccountRecord](tx, SubaccountKind, projectID, subID); err != nil {
 			return err
 		}
-		return done(tx, projectID, s)
-	}, nil)
+		return change(tx, projectID, old)
+	}, nil, func(tx store.Tx, projectID int64, _ *Record) error {
+		return putSub(tx, projectID, old)
+	})
 	api.JSON(w, http.StatusCreated, map[string]any{"action": a})
 }
