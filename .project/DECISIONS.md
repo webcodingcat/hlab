@@ -19,6 +19,30 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Rollback on the storage VM
+
+- Type: decision
+- Phase: phase 20
+- What: The agent keeps the last applied document for the rollback job; the fence is the nftables table `hlab_rollback` (input, TCP reset), cleared at the start of each rollback; it waits up to 30 s with `fuser -m` on the homes of the box and its subaccounts, unmounts without MNT_DETACH, keeps the old data at `<root>/.rollback-<box>` until deleted, and rebinds through `updateBox` also after a failure; rollback names are checked like snapshot names.
+- Why: The job carries no IPs, subaccounts or ZFS setting, and a busy mount must stop the rollback before the swap so the data stays untouched.
+- Cost of change: low
+
+## 2026-11-23 Snapshots on the storage VM
+
+- Type: decision
+- Phase: phase 20
+- What: Snapshots live in `<root>/.snapshots/<user>/<name>` (root:<box gid>, 0750); `.zfs/snapshot` is a private read-only bind inside the chroot home, so WebDAV (Apache with PrivateTmp) does not show it, while SFTP, SCP, SMB and FTP do; snapshot jobs refuse names outside `^[A-Za-z0-9][A-Za-z0-9._-]*$` with 400.
+- Why: A private bind cannot reach the box data, other homes or Apache's namespace; SBOX-19 names no protocol, and `docs/deviations.md` states the WebDAV gap.
+- Cost of change: low
+
+## 2026-11-23 vsftpd setup on the storage VM
+
+- Type: decision
+- Phase: phase 20
+- What: pam_access also restricts a box account without reachable_externally; every account not skipped gets a vsftpd user file with write_enable by its read-only flag; vsftpd.conf replaces Debian's file (pam_service_name=vsftpd, local_root=/srv/chroot/$USER/home, allow_writeable_chroot=YES); changes reload through `systemctl reload vsftpd`.
+- Why: sshd, Samba and WebDAV restrict the box account the same way, FTP has no access switch, and vsftpd's default PAM service is "ftp".
+- Cost of change: low
+
 ## 2026-11-23 Apache setup on the storage VM
 
 - Type: decision
