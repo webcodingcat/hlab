@@ -27,7 +27,7 @@ func (m *Module) Jobs() []scheduler.Job {
 
 // refreshAll refreshes the stats of every active box of every project.
 func (m *Module) refreshAll(ctx context.Context) {
-	if m.d.Job == nil || m.acts == nil {
+	if m.d.Job == nil {
 		return
 	}
 	st := m.acts.Store()
