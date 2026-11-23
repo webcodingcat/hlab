@@ -247,6 +247,14 @@ confirm.
     folder browser), Subaccounts, Snapshots (with the snapshot plan),
     Settings and Labels. See
     [Storage boxes in the window](docs/guide.md#storage-boxes-in-the-window).
+
+    <p align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/storage-boxes-dark.png">
+        <img src="docs/images/storage-boxes-light.png" alt="The storage boxes of a project in the HLab window" width="420">
+      </picture>
+    </p>
+
   - **API tokens**: **Create token** asks for a name and whether the
     token is read only, and shows the token once with a copy button;
     **Revoke** is in the row menu.
