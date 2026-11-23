@@ -739,8 +739,8 @@ func tcpService(listen, dest int) map[string]any {
 
 // testChange: algorithm, type, name and labels, protection and deletion.
 func testChange(t *testing.T) {
-	// A public range with three addresses, so a released one is the only
-	// one left to allocate.
+	// A public range with two addresses for load balancers (the third is
+	// the storage VM's), so a released one is the only one left to allocate.
 	small := netip.MustParsePrefix("198.18.0.0/29")
 	e := newEnv(t, func(d *loadbalancers.Deps) { d.PublicRange = small })
 
@@ -784,11 +784,10 @@ func testChange(t *testing.T) {
 	mustLB(t, e, lb.ID)
 	runLBAction(t, e, lb.ID, "change_protection", map[string]any{"delete": false})
 
-	// lb and bigLB hold two of the three addresses; the third LB takes the
-	// last one, so the next create only succeeds with a released address.
-	third := createLB(t, e, lbBody("third"))
-	freed := third.ipv4()
-	deleteLB(t, e, third.ID)
+	// lb and bigLB hold both addresses, so the next create only succeeds
+	// with a released address.
+	freed := bigLB.ipv4()
+	deleteLB(t, e, bigLB.ID)
 	again := createLB(t, e, lbBody("again"))
 	if again.ipv4() != freed {
 		t.Errorf("LB created after the delete got %q, want the released %s", again.ipv4(), freed)
