@@ -44,7 +44,7 @@ log `%ProgramData%\hlab-dev\logs\hlabd.log`.
 |---|---|---|
 | `[cloud]` `stop_behaviour` | `"save"` | `"save"` or `"shutdown"`: what happens to running servers when the cloud stops or Windows shuts down; see [Stop behaviour](#stop-behaviour). |
 | `[network]` `public_range` | `"198.19.0.0/16"` | IPv4 range of the public addresses; see [Public range](#public-range). |
-| `[storage]` `data_folder` | `<data folder>\data` | Folder of the VM disks, seed ISOs, downloaded images and ISOs, snapshots, backups, volumes and the appliance; see [Data folder](#data-folder). |
+| `[storage]` `data_folder` | `<data folder>\data` | Folder of the VM disks, seed ISOs, downloaded images and ISOs, snapshots, backups, volumes, the appliance and the storage VM; see [Data folder](#data-folder). |
 | `[resources]` `reserve_ram_mb` | `4096` | RAM in MB kept free for Windows. Creating, starting or changing the type of a server answers `resource_unavailable` when the server's RAM exceeds the host's free RAM minus this reserve. |
 | `[resources]` `reserve_disk_gb` | `50` | Disk space in GB kept free in the data folder. Creating, rebuilding or changing the type of a server, creating an image and creating or resizing a volume answer `resource_unavailable` when the disks of all servers and volumes, grown to their full size, would leave less than this free. |
 | `[certificates]` `trust_ca` | `false` | Whether the HLab CA, which signs managed certificates, is in the trust store of Windows and of the WSL2 distributions. Set it with [`hlab ca trust`](commands.md#hlab-ca-trust); while it is `true`, every cloud start adds the CA again. Read the [risk](guide.md#trusting-the-hlab-ca) before you switch it on. |
@@ -218,6 +218,55 @@ source changed stays in the servers that have it attached until it is
 detached; its cache file is deleted at the next start or tray change after
 no server has it attached any more.
 
+## Own storage box types
+
+Your own storage box types go in `storage-box-types.custom.json` beside
+settings.toml (`%ProgramData%\hlab-dev\storage-box-types.custom.json`
+for the development service). The cloud start creates it with an empty
+list `[]` when it is missing, with the permissions of settings.toml, so
+interactive users may edit it.
+
+The file is a JSON array of storage box type objects in the format of
+Hetzner's API. HLab serves the types after those of the catalog at
+`/hetzner/v1/storage_box_types`, and creating a box accepts them like
+any other type:
+
+```json
+[
+  {
+    "id": 100001,
+    "name": "tiny",
+    "description": "Tiny test box",
+    "size": 67108864,
+    "snapshot_limit": 10,
+    "automatic_snapshot_limit": 10,
+    "subaccounts_limit": 10,
+    "prices": [
+      {
+        "location": "fsn1",
+        "price_hourly": {"gross": "0.0000", "net": "0.0000"},
+        "price_monthly": {"gross": "0.0000", "net": "0.0000"},
+        "setup_fee": {"gross": "0.0000", "net": "0.0000"}
+      }
+    ],
+    "deprecation": null
+  }
+]
+```
+
+- `id` is 100000 or more; `id` and `name` are unique and taken by no
+  catalog type. `name` is required.
+- `size` in bytes is the quota of a box of the type.
+- A box can be created only in the locations of `prices`.
+
+A file that cannot be read, or whose types break these rules, is ignored
+as a whole; `hlab cloud status` then names the reason on a `problem:`
+line, and the JSON output lists it with the code
+`custom_storage_box_types`. Changes apply at the next
+`hlab cloud start`, or while the cloud runs when the tray program saves
+a change of the settings, the server types or the ISOs. Boxes of a type
+you remove keep it; new boxes and `change_type` cannot use it any more.
+
 ## Catalogs
 
 The catalogs hold what the API serves as Hetzner's fixed offer. The
@@ -233,6 +282,7 @@ development service reads them from `catalog\` of the working copy.
 | `images.json` | The system images ubuntu-22.04, ubuntu-24.04, ubuntu-26.04, debian-12, debian-13, each with its download source in `_hlab.source` | by hand |
 | `isos.json` | The ISOs served at `/isos`, see [ISOs](#isos) | by hand |
 | `appliance-debs.json` | Debian packages the appliance needs for formatting volumes and for load balancers, see [Appliance packages](#appliance-packages) | by hand |
+| `storage-debs.json` | Debian packages the storage VM needs for the storage boxes, see [Storage VM packages](#storage-vm-packages) | by hand |
 
 `hlab catalog update` writes the current server types from Hetzner to
 `catalog\server-types.json` in the data folder
@@ -321,6 +371,17 @@ while `haproxy` is missing. Without them the cloud still starts; creating
 a volume with `format` `xfs` then fails, and load balancers accept no
 traffic.
 
+### Storage VM packages
+
+`storage-debs.json` names, in the same format, the Debian packages the
+storage VM needs: `btrfs-progs` with `liblzo2-2` and
+`libreiserfscore0t64` for the box data, `rsync`, and `borgbackup` with
+`python3-msgpack` and `python3-packaging`. HLab downloads them into
+`<data_folder>\cache\debs` when it creates or starts the storage VM, and
+the VM installs them at its first boot. Unlike the appliance packages,
+they are required: when a download fails, creating the first storage box
+fails with the error.
+
 ## Data folder
 
 The folder of `[storage]` `data_folder` holds:
@@ -332,11 +393,19 @@ The folder of `[storage]` `data_folder` holds:
 | `images` | Downloaded system images as base disks, the rescue base `rescue-v2.vhdx`, and the snapshots and backups of all projects as `image-<id>.vhdx`. |
 | `isos` | Downloaded ISOs of `isos.json`, and own ISOs as `own-<id>-<hash>.iso`. |
 | `volumes` | Volume disks as `volume-<id>.vhdx`. |
-| `cache\debs` | Downloaded packages of `appliance-debs.json`. |
+| `cache\debs` | Downloaded packages of `appliance-debs.json` and `storage-debs.json`. |
 | `appliance` | The appliance VM with its disk and seed ISO. |
+| `storage` | The storage VM with its system disk `system.vhdx`, its seed ISO and `data.vhdx`, which holds the data of all storage boxes. It exists while there is at least one storage box. |
 
 Deleting a snapshot, backup, volume or project deletes its files; the
 downloaded images, ISOs and packages stay until you delete them.
+
+`data.vhdx` grows with the data of the boxes and does not shrink when
+data are deleted. When the cloud stops with `stop_behaviour` `shutdown`,
+HLab compacts it after the storage VM is off; with `save`, or when Windows
+shuts down, it stays as it is. Creating a storage box, or changing one
+to a larger type, answers `resource_unavailable` while the drive of the
+data folder has less than 10 GiB free.
 
 The HLab CA is not in the data folder but in `ca` beside settings.toml
 (`%ProgramData%\hlab-dev\ca`): `ca.pem` (the CA certificate), `ca.key`

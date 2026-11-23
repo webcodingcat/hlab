@@ -571,9 +571,10 @@ there yourself.
 ## Storage boxes
 
 hcloud reaches storage boxes through `HETZNER_ENDPOINT` (see
-[First steps](../README.md#first-steps)). A box and its subaccounts exist
-only in the API so far; they hold no data and offer no SSH, Samba or
-WebDAV access.
+[First steps](../README.md#first-steps)). A box stores files that you
+reach over SSH: SFTP and scp on port 22, and with SSH enabled also
+rsync, BorgBackup, SFTP and scp on port 23. Samba and WebDAV are not
+offered.
 
 ```
 > hcloud storage-box-type list
@@ -582,20 +583,119 @@ ID     NAME   DESCRIPTION   SIZE      SNAPSHOT LIMIT   AUTOMATIC SNAPSHOT LIMIT 
 1334   bx21   BX21          5.0 TiB   20               20                         100
 1335   bx31   BX31          10 TiB    30               30                         100
 1336   bx41   BX41          20 TiB    40               40                         100
-> hcloud storage-box create --name backup --type bx11 --location fsn1 --password 'Secret-Passw0rd'
-Waiting for create_storage_box (storage_box: 1) ...
-Waiting for create_storage_box (storage_box: 1) ... done
-Storage Box 1 created
-Server: u100000.storagebox.hetzner.internal
-Username: u100000
-> hcloud storage-box subaccount create backup --home-directory web1 --password 'Other-Passw0rd'
-Waiting for create_subaccount (storage_box: 1, storage_box_subaccount: 1) ...
-Waiting for create_subaccount (storage_box: 1, storage_box_subaccount: 1) ... done
-Storage Box Subaccount 1 created
+> hcloud storage-box create --name backup --type bx11 --location fsn1 --password 'Secret-Passw0rd' --enable-ssh --reachable-externally --ssh-key "$(cat ~/.ssh/id_ed25519.pub)"
+Waiting for create_storage_box (storage_box: 12) ...
+Waiting for create_storage_box (storage_box: 12) ... done
+Storage Box 12 created
+Server: u100011.storagebox.hetzner.internal
+Username: u100011
+> hcloud storage-box subaccount create backup --home-directory web1 --password 'Other-Passw0rd' --readonly --enable-ssh --reachable-externally
+Waiting for create_subaccount (storage_box: 12, storage_box_subaccount: 6) ...
+Waiting for create_subaccount (storage_box: 12, storage_box_subaccount: 6) ... done
+Storage Box Subaccount 6 created
 > hcloud storage-box subaccount list backup
 ID   NAME           HOME DIRECTORY   DESCRIPTION   USERNAME       SERVER                                     AGE
-1    u100000-sub1   web1             -             u100000-sub1   u100000-sub1.storagebox.hetzner.internal   just now
+6    u100011-sub1   web1             -             u100011-sub1   u100011-sub1.storagebox.hetzner.internal   2s
 ```
+
+The first box of the cloud creates a storage VM, so its create takes
+longer; the data of all boxes stay on that VM's disk while the cloud is
+stopped. The box logs in with its password or with the keys given at
+`--ssh-key`. The subaccount `u100011-sub1` gets the home directory
+`web1`, which is created for it.
+
+### Files over SSH
+
+From Windows, on port 22:
+
+```
+> sftp u100011@u100011.storagebox.hetzner.internal
+sftp> ls
+web1
+sftp> put notes.txt web1/
+sftp> ls web1
+web1/notes.txt
+sftp> exit
+> scp u100011@u100011.storagebox.hetzner.internal:web1/notes.txt copy.txt
+```
+
+Port 22 serves SFTP only; scp works through its default SFTP mode, not
+with `scp -O`. Port 23 also runs rsync and BorgBackup. From WSL2, with
+the key in `~/.ssh` there:
+
+```
+$ rsync -av -e 'ssh -p 23' site/ u100011@u100011.storagebox.hetzner.internal:site/
+sending incremental file list
+created directory site
+./
+index.html
+
+sent 138 bytes  received 65 bytes  406.00 bytes/sec
+total size is 12  speedup is 0.06
+$ borg init --encryption=repokey ssh://u100011@u100011.storagebox.hetzner.internal:23/./borg
+$ borg create ssh://u100011@u100011.storagebox.hetzner.internal:23/./borg::monday site
+$ borg list ssh://u100011@u100011.storagebox.hetzner.internal:23/./borg
+monday                               Mon, 2026-11-23 08:21:55 [ed7c2f86f4f5fbc68744a95b3991c460f30311473ce80a854f9f8bc1220edcf3]
+```
+
+`borg init` asks for the passphrase of the repository. `--remote-path`
+`borg-1.1`, `borg-1.2` or `borg-1.4` is accepted; all of them run
+BorgBackup 1.4. Any other command on port 23
+answers `Command not allowed`, and with SSH turned off for the account
+port 23 refuses the login.
+
+More keys go into `.ssh/authorized_keys` in the box, one OpenSSH key per
+line or in RFC 4716 format; they apply to both ports. HLab writes the keys
+of `--ssh-key` there once, at create.
+
+### Reachability
+
+Servers of the cloud reach every box. The host and WSL2 reach a box only
+when it, or one of its subaccounts, is created with
+`--reachable-externally`; otherwise the connection times out:
+
+```
+> hcloud storage-box create --name closed --type bx11 --location fsn1 --password 'Secret-Passw0rd' --ssh-key "$(cat ~/.ssh/id_ed25519.pub)"
+Waiting for create_storage_box (storage_box: 13) ...
+Waiting for create_storage_box (storage_box: 13) ... done
+Storage Box 13 created
+Server: u100012.storagebox.hetzner.internal
+Username: u100012
+> sftp u100012@u100012.storagebox.hetzner.internal
+ssh: connect to host u100012.storagebox.hetzner.internal port 22: Connection timed out
+Connection closed
+```
+
+### Subaccounts
+
+A subaccount logs in with its own name and password and sees only its
+home directory; `--readonly` lets it read but not write:
+
+```
+> sftp u100011-sub1@u100011-sub1.storagebox.hetzner.internal
+sftp> ls
+notes.txt
+sftp> put notes.txt other.txt
+Uploading notes.txt to /home/other.txt
+dest open "/home/other.txt": Permission denied
+```
+
+### Folders
+
+`folders` lists the folders of a box, or those below `--path`:
+
+```
+> hcloud storage-box folders backup
+Folders:
+- .ssh
+- borg
+- site
+- web1
+> hcloud storage-box folders backup --path missing
+hcloud: the requested resource was not found (not_found)
+```
+
+### Passwords, snapshot plans and protection
 
 A password has 12 to 128 characters with at least one upper case letter,
 one lower case letter, one digit and one special character; otherwise the
@@ -612,27 +712,55 @@ hcloud: invalid input in field 'password' (invalid_input)
 
 ```
 > hcloud storage-box enable-snapshot-plan backup --max-snapshots 7 --hour 3 --minute 0
-Waiting for enable_snapshot_plan (storage_box: 1) ...
-Waiting for enable_snapshot_plan (storage_box: 1) ... done
-Snapshot Plan enabled for Storage Box 1
+Waiting for enable_snapshot_plan (storage_box: 12) ...
+Waiting for enable_snapshot_plan (storage_box: 12) ... done
+Snapshot Plan enabled for Storage Box 12
 > hcloud storage-box enable-protection backup delete
-Waiting for change_protection (storage_box: 1) ...
-Waiting for change_protection (storage_box: 1) ... done
-Resource protection enabled for Storage Box 1
+Waiting for change_protection (storage_box: 12) ...
+Waiting for change_protection (storage_box: 12) ... done
+Resource protection enabled for Storage Box 12
 > hcloud storage-box delete backup
 hcloud: the resource is protected (protected)
 > hcloud storage-box disable-protection backup delete
-Waiting for change_protection (storage_box: 1) ...
-Waiting for change_protection (storage_box: 1) ... done
-Resource protection disabled for Storage Box 1
+Waiting for change_protection (storage_box: 12) ...
+Waiting for change_protection (storage_box: 12) ... done
+Resource protection disabled for Storage Box 12
 > hcloud storage-box delete backup
-Waiting for delete_storage_box (storage_box: 1) ...
-Waiting for delete_storage_box (storage_box: 1) ... done
+Waiting for delete_storage_box (storage_box: 12) ...
+Waiting for delete_storage_box (storage_box: 12) ... done
 Storage Box backup deleted
 ```
 
-Deleting a box deletes its subaccounts. The types come from HLab's
-catalog; see [Catalogs](configuration.md#catalogs).
+Deleting a box deletes its subaccounts and its data; deleting the last
+box also removes the storage VM.
+
+### Own storage box types
+
+The types come from HLab's catalog; see [Catalogs](configuration.md#catalogs).
+Small types of your own, defined in
+[storage-box-types.custom.json](configuration.md#own-storage-box-types),
+make it easy to try what happens when a box is full:
+
+```
+> hcloud storage-box-type list
+ID       NAME   DESCRIPTION     SIZE      SNAPSHOT LIMIT   AUTOMATIC SNAPSHOT LIMIT   SUBACCOUNTS LIMIT
+1333     bx11   BX11            1.0 TiB   10               10                         100
+1334     bx21   BX21            5.0 TiB   20               20                         100
+1335     bx31   BX31            10 TiB    30               30                         100
+1336     bx41   BX41            20 TiB    40               40                         100
+100001   tiny   Tiny test box   64 MiB    10               10                         10
+> hcloud storage-box create --name small --type tiny --location fsn1 --password 'Secret-Passw0rd' --reachable-externally --ssh-key "$(cat ~/.ssh/id_ed25519.pub)"
+Waiting for create_storage_box (storage_box: 14) ...
+Waiting for create_storage_box (storage_box: 14) ... done
+Storage Box 14 created
+Server: u100013.storagebox.hetzner.internal
+Username: u100013
+> sftp u100013@u100013.storagebox.hetzner.internal
+sftp> put big.bin
+write remote "/home/big.bin": Failure
+```
+
+`big.bin` has 70 MB, more than the 64 MiB of the type.
 
 ## OpenTofu and Ansible
 
