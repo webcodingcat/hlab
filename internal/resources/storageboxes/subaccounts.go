@@ -428,8 +428,11 @@ func (m *Module) deleteSubaccount(w http.ResponseWriter, req *http.Request) {
 // subaccount of the path, referencing box and subaccount and locking the
 // box; change stores the action's change before Apply, and a failed Apply
 // restores the subaccount as it was (see run). A box that is not
-// active refuses every command but delete_subaccount. Callers validate
-// the request first. It answers 201 with the action.
+// active refuses every command but delete_subaccount. delete_subaccount
+// never answers locked: it waits as running behind the box's actions,
+// and when box or subaccount is gone at its turn it succeeds without
+// Apply. Callers validate the request first. It answers 201 with the
+// action.
 func (m *Module) subAction(w http.ResponseWriter, req *http.Request, command string,
 	change func(tx store.Tx, projectID int64, s SubaccountRecord) error,
 ) {
@@ -454,6 +457,10 @@ func (m *Module) subAction(w http.ResponseWriter, req *http.Request, command str
 			}
 		}
 		var err error
+		if command == deleteSubCommand {
+			a, err = acts.StartQueued(tx, p.ID, command, []actions.Ref{boxRef(boxID), subRef(subID)}, nil)
+			return err
+		}
 		a, err = begin(tx, acts, p.ID, boxID, command, subRef(subID))
 		return err
 	})
@@ -464,7 +471,11 @@ func (m *Module) subAction(w http.ResponseWriter, req *http.Request, command str
 	var old SubaccountRecord
 	m.run(req, a.ID, boxID, func(tx store.Tx, projectID int64, _ *Record) error {
 		var err error
-		if old, err = store.Get[SubaccountRecord](tx, SubaccountKind, projectID, subID); err != nil {
+		old, err = store.Get[SubaccountRecord](tx, SubaccountKind, projectID, subID)
+		if command == deleteSubCommand && errors.Is(err, store.ErrNotFound) {
+			return errGone
+		}
+		if err != nil {
 			return err
 		}
 		return change(tx, projectID, old)
