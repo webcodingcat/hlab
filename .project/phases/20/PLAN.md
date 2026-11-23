@@ -188,14 +188,14 @@ type Step struct {
   - [x] `removeBox` (storageboxes.go) also deletes the box's snapshot records; `docBox` (document.go) fills `Box.Snapshots` with the names of all its snapshot records; `Recover` (recover.go) deletes snapshot records still `creating`.
   - [x] Add `api.Deviations()` entries (internal/api/deviations.go: the limit answer, the name taken within one second) and move the snapshot endpoints in docs/development/api-coverage.md from "Not served yet" to served, with those entries.
 
-- [ ] 20-07 Storage agent snapshot jobs and `.zfs`
+- [x] 20-07 Storage agent snapshot jobs and `.zfs`
   - Wave: 3 | Depends on: 20-04, 20-06 | Review: alone
   - Requirements: SBOX-05, SBOX-19, SBOX-07 | Tests: internal/storageagent/plan_test.go; test/e2e/storagebox_snapshot_test.go (SBOX-05, SBOX-19); test/e2e/life_test.go (SBOX-07)
   - Reads: E18; ARCHITECTURE "Storage VM"; DECISIONS "Storage VM on-disk layout", "Storage box quota with full qgroups"; RESEARCH.md 5 (`.zfs`), 6 (layout); internal/storageagent/{plan.go,agent.go,jobs_linux.go,apply_linux.go}
   - Size: ~380 lines in 5 files
-  - [ ] Plan (plan.go): `State.Snapshots`, `StepRemoveSnapshot` for each snapshot subvolume of a box in the document that `Box.Snapshots` lacks; boxes absent from the document lose their snapshots with the box; a listed snapshot is never removed; the snapshot folder is never taken for a box. state and removeBox in apply_linux.go read and remove `<mount>/.snapshots/<user>/<name>`.
-  - [ ] New internal/storageagent/snapshots_linux.go: jobs `snapshot` (`btrfs subvolume snapshot -r -i 1/<n>`, name checked against `^[A-Za-z0-9][A-Za-z0-9._-]*$`, then the E18 accounting check; result with the snapshot's sizes) and `delete-snapshot` (`not_found` when missing); register both in postJob (agent.go); the `usage` job (jobs_linux.go) also returns `SnapshotSizes` and `SnapshotFS` of all snapshots of the box from `qgroup show --raw`.
-  - [ ] `.zfs`: with `Access.ZFS` the box account's chroot home gets `.zfs/snapshot` as a read-only bind of the box's snapshot folder (bind plus read-only remount) at every apply, removed when ZFS is off; subaccounts never get it (apply_linux.go, snapshots_linux.go).
+  - [x] Plan (plan.go): `State.Snapshots`, `StepRemoveSnapshot` for each snapshot subvolume of a box in the document that `Box.Snapshots` lacks; boxes absent from the document lose their snapshots with the box; a listed snapshot is never removed; the snapshot folder is never taken for a box. state and removeBox in apply_linux.go read and remove `<mount>/.snapshots/<user>/<name>`.
+  - [x] New internal/storageagent/snapshots_linux.go: jobs `snapshot` (`btrfs subvolume snapshot -r -i 1/<n>`, name checked against `^[A-Za-z0-9][A-Za-z0-9._-]*$`, then the E18 accounting check; result with the snapshot's sizes) and `delete-snapshot` (`not_found` when missing); register both in postJob (agent.go); the `usage` job (jobs_linux.go) also returns `SnapshotSizes` and `SnapshotFS` of all snapshots of the box from `qgroup show --raw`.
+  - [x] `.zfs`: with `Access.ZFS` the box account's chroot home gets `.zfs/snapshot` as a read-only bind of the box's snapshot folder (bind plus read-only remount) at every apply, removed when ZFS is off; subaccounts never get it (apply_linux.go, snapshots_linux.go).
 
 - [x] 20-08 Samba
   - Wave: 3 | Depends on: 20-02, 20-03, 20-04 | Review: alone

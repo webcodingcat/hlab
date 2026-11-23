@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Mounts inside homes are handled by descriptor
+
+- Type: decision
+- Phase: phase 20
+- What: `.zfs/snapshot` is attached read-only with open_tree, mount_setattr and move_mount onto a folder pinned through os.Root, and mounts inside a home are unmounted through an os.Root descriptor whose mount ID matches mountinfo (rollback, removeChroot, applyZFS).
+- Why: A box account can swap a path for a symlink over SFTP, so a path-based remount or unmount could hit any mount of the storage VM (review of 20-07).
+- Cost of change: low
+
 ## 2026-11-23 Storage agent jobs wait for a running apply
 
 - Type: decision
