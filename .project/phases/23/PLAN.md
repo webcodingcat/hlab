@@ -145,13 +145,13 @@ func (w *Windows) OpenConsole(project string, id int64, name string) error
   - [ ] Agent: a plain TCP forward Applier for `Config.Console` (listen, accept, copy both ways, restart on change, nothing while Listen is invalid) in `internal/agent/forward.go` and its registration in `internal/agent/agent.go`; A record `console.hetzner.internal` → `Console.Listen` address in `internal/agent/dns.go`
   - [ ] Host: the inbound firewall rule allows TCP 8780 and 8781 in `internal/hostnet/windows/scripts.go` (and `hostnet.go` constant)
 
-- [ ] 23-02 Console input translation and platform console interface
+- [x] 23-02 Console input translation and platform console interface
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: CON-01 | Tests: internal/console/input_test.go
   - Reads: PLAN.md "Interfaces"; EXPERIMENTS.md E25; RESEARCH.md "noVNC and RFB details" (sendCtrlAltDel, QEMU Extended Key Event); CONTEXT.md "Answers" Q1
   - Size: ~380 lines in 3 files
-  - [ ] `platform.Console`, `platform.ConsoleConn`, `platform.Frame` in `internal/platform/platform.go`
-  - [ ] `Keyboard.Keysym` (US keysym → set 1 table: letters, digits, symbols, Return, Tab, BackSpace, Escape, Delete, Home/End/PgUp/PgDn/Insert and arrows with 0xE0, F1-F12, Shift/Control/Alt/Super left and right, keypad; Shift correction around a character whose US Shift state differs from the held one), `QEMUKey`, `Pointer` in `internal/console/input.go`
+  - [x] `platform.Console`, `platform.ConsoleConn`, `platform.Frame` in `internal/platform/platform.go`
+  - [x] `Keyboard.Keysym` (US keysym → set 1 table: letters, digits, symbols, Return, Tab, BackSpace, Escape, Delete, Home/End/PgUp/PgDn/Insert and arrows with 0xE0, F1-F12, Shift/Control/Alt/Super left and right, keypad; Shift correction around a character whose US Shift state differs from the held one), `QEMUKey`, `Pointer` in `internal/console/input.go`
 
 - [ ] 23-03 RFB 3.8 session
   - Wave: 2 | Depends on: 23-02 | Review: alone
