@@ -19,6 +19,22 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Storage VM in the cloud's life
+
+- Type: decision
+- Phase: phase 19
+- What: Apply pushes the appliance document before it ensures the storage VM, cloud start also runs the storage apply when the `storage` folder exists without boxes, halt shuts the storage VM down after the servers and compacts its data disk (skipped and logged with `save`, at a Windows shutdown and with the uninstall override), and a failed box action pushes the appliance document again through `storageboxes.Deps.PushAgent`.
+- Why: The appliance must route the storage address before hlabd can reach the agent, an orphaned VM must go, and the appliance must match the store after every outcome.
+- Cost of change: low
+
+## 2026-11-23 Boxes being deleted leave the appliance at once
+
+- Type: decision
+- Phase: phase 19
+- What: `Contribute` skips boxes marked `Deleting`, so the push during a delete removes the box's route and names and, after the last box, `Config.Storage`.
+- Why: Users and servers must not resolve a box that is being deleted (review of 19-11).
+- Cost of change: low
+
 ## 2026-11-23 Storage agent puts box IPs on its interface
 
 - Type: decision
