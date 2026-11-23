@@ -116,8 +116,6 @@ func check(op string, r uintptr) error {
 // wmiConn is an IWbemServices connection to one namespace.
 type wmiConn struct{ svc *comObject }
 
-//lint:ignore U1000 OpenConsole (plan 23-06) calls it.
-//
 // openWMI locks the calling goroutine to its OS thread, initializes COM
 // there and connects to namespace ns, for example root\virtualization\v2.
 func openWMI(ns string) (*wmiConn, error) {
