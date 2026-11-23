@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Snapshot plan bookkeeping
+
+- Type: decision
+- Phase: phase 20
+- What: The plan job writes `_hlab.plan_checked` to every box with a plan on each run and clears it when the plan goes; a missing value or one older than the cloud start counts as now or the start; automatic snapshots take the run time as name and `created`; the stats refresh updates only the snapshots its result names.
+- Why: A plan just enabled or a cloud just started never catches up past times, as `docs/deviations.md` says.
+- Cost of change: low
+
 ## 2026-11-23 Plans with end-to-end rows finish in the main checkout
 
 - Type: decision
