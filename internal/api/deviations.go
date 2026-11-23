@@ -578,5 +578,9 @@ func Deviations() []Deviation {
 			Endpoint:    "POST /hetzner/v1/storage_boxes/{id}/actions/enable_snapshot_plan",
 			Description: "plan times missed while the cloud was stopped are skipped, not caught up at the next start",
 		},
+		{
+			Endpoint:    "POST /hetzner/v1/storage_boxes/{id}/actions/rollback_snapshot",
+			Description: "the rollback ends the open sessions of the box and its subaccounts on every protocol; an unknown snapshot, by ID or name, answers 404 not_found",
+		},
 	}
 }
