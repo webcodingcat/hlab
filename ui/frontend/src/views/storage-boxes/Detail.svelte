@@ -11,6 +11,8 @@
   import { href } from "../../state";
   import OverviewTab from "./OverviewTab.svelte";
   import SettingsTab from "./SettingsTab.svelte";
+  import SnapshotsTab from "./SnapshotsTab.svelte";
+  import SubaccountsTab from "./SubaccountsTab.svelte";
 
   // The detail page of one storage box: title with status pill, actions
   // menu (Rename, Delete with the name typed, disabled under delete
@@ -96,6 +98,10 @@
       <LabelsTab {project} {path} labels={b.labels} onsaved={load} hetzner />
     {:else if current === "settings"}
       <SettingsTab {project} box={b} refresh={load} />
+    {:else if current === "subaccounts"}
+      <SubaccountsTab {project} box={b} refresh={load} />
+    {:else if current === "snapshots"}
+      <SnapshotsTab {project} box={b} refresh={load} />
     {:else if current === "overview"}
       <OverviewTab {project} box={b} />
     {/if}
