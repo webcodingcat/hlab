@@ -195,29 +195,29 @@ access_settings, snapshot_plan, protection, stats, labels).
   - [x] `lib/resources/storageBoxes.ts` with the `StorageBox` and `BoxType` types and `typesIn`.
   - [x] `lib/resources/storageBoxSubaccounts.ts` and `lib/resources/storageBoxSnapshots.ts` with `planBody` and `newerThan`; nested IDs from `input.subaccount` / `input.snapshot`.
 
-- [ ] 21-04 E2E harness: Hetzner endpoint for the clients
+- [x] 21-04 E2E harness: Hetzner endpoint for the clients
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: CLI-05, CLI-06, CLI-07 | Tests: -
   - Reads: Interfaces "E2E harness"; SPEC.md "Accounts and secrets"; research/EXPERIMENTS.md E12, E13, E15; test/e2e/main_test.go (env setup), clients_test.go (`ansibleEnviron`, tofu `environ`), clients_matrix_test.go (`newProjectEnv`, `clientOf`), e2e_test.go
   - Size: ~40 lines in 4 files
-  - [ ] `main_test.go` and `clients_matrix_test.go`: drop inherited `HETZNER_ENDPOINT`, set hlab's in `hcloudEnv` (also in `newProjectEnv`); `clientOf` for CLI-05..07.
-  - [ ] `clients_test.go`: `WSLENV` gets `HETZNER_ENDPOINT/u`; comments of tofu `newTofuDir` name both variables. `e2e_test.go`: the client loop runs CLI-01..CLI-07.
+  - [x] `main_test.go` and `clients_matrix_test.go`: drop inherited `HETZNER_ENDPOINT`, set hlab's in `hcloudEnv` (also in `newProjectEnv`); `clientOf` for CLI-05..07.
+  - [x] `clients_test.go`: `WSLENV` gets `HETZNER_ENDPOINT/u`; comments of tofu `newTofuDir` name both variables. `e2e_test.go`: the client loop runs CLI-01..CLI-07.
 
-- [ ] 21-05 Storage Box Types view
+- [x] 21-05 Storage Box Types view
   - Wave: 2 | Depends on: 21-01, 21-02 | Review: alone | e2e
   - Requirements: UI-14 | Tests: test/e2e/ui_test.go, ui/frontend/tests/e2e/storageboxtypes.spec.ts
   - Reads: CONTEXT.md (own-type size, locations, limits); UI-SPEC.md "Storage Box Types", "Server Types", "Building blocks"; Interfaces "Go: bridge"; ui/frontend/src/views/ServerTypes.svelte, App.svelte; ui/frontend/tests/e2e/servertypes.spec.ts
   - Size: ~350 lines in 2 files
-  - [ ] `views/StorageBoxTypes.svelte`: table (name, description, size, snapshot limit, automatic snapshot limit, subaccounts limit, locations, source), problem banner, "Add storage box type" dialog (size number plus unit MiB/GiB/TiB, default GiB; limits default 10, 10, 100; locations as a checkbox list of the catalog locations "<name> (<city>)", all checked at the start, at least one), own rows with Edit (name read-only) and Remove (confirm).
-  - [ ] `App.svelte`: admin sidebar item "Storage Box Types" after Server Types and the view switch.
+  - [x] `views/StorageBoxTypes.svelte`: table (name, description, size, snapshot limit, automatic snapshot limit, subaccounts limit, locations, source), problem banner, "Add storage box type" dialog (size number plus unit MiB/GiB/TiB, default GiB; limits default 10, 10, 100; locations as a checkbox list of the catalog locations "<name> (<city>)", all checked at the start, at least one), own rows with Edit (name read-only) and Remove (confirm).
+  - [x] `App.svelte`: admin sidebar item "Storage Box Types" after Server Types and the view switch.
 
-- [ ] 21-06 Storage box list and create form
+- [x] 21-06 Storage box list and create form
   - Wave: 2 | Depends on: 21-02, 21-03 | Review: alone
   - Requirements: UI-12 | Tests: - (proved by UI-12 and UI-13 end to end)
   - Reads: CONTEXT.md; UI-SPEC.md "Building blocks", "Views" (Storage Boxes, Create), "Behaviour"; Interfaces; ui/frontend/src/views/volumes/Section.svelte, VolumeCreate.svelte, lib/Table.svelte, FormPage.svelte, LabelsField.svelte
   - Size: ~330 lines in 3 files
-  - [ ] `views/storage-boxes/Section.svelte`: list (name, username, type, location, usage, status), row menu Delete (typed name; disabled with a hint under delete protection), empty state, 5 s refresh; `new` opens the form, detail opens `Detail.svelte` (a stub showing the name until 21-07).
-  - [ ] `StorageBoxCreate.svelte`: location, type (`typesIn`), name, password (field errors under it), SSH keys as checkboxes of the project's keys (sends their public keys), access settings, labels; Create runs `create` under a toast.
+  - [x] `views/storage-boxes/Section.svelte`: list (name, username, type, location, usage, status), row menu Delete (typed name; disabled with a hint under delete protection), empty state, 5 s refresh; `new` opens the form, detail opens `Detail.svelte` (a stub showing the name until 21-07).
+  - [x] `StorageBoxCreate.svelte`: location, type (`typesIn`), name, password (field errors under it), SSH keys as checkboxes of the project's keys (sends their public keys), access settings, labels; Create runs `create` under a toast.
 
 - [ ] 21-07 Storage box detail: Overview, Settings, Labels
   - Wave: 3 | Depends on: 21-06 | Review: alone | e2e
@@ -228,21 +228,21 @@ access_settings, snapshot_plan, protection, stats, labels).
   - [ ] `OverviewTab.svelte`: hostname and username as copy fields, type, location, usage (data and snapshots of size), folder browser (path field, folder click descends, "Up").
   - [ ] `SettingsTab.svelte`: access settings, delete protection, change type (`typesIn` of the box's location), reset password dialog (field errors under the field); Labels via `LabelsTab`.
 
-- [ ] 21-08 Storage box Subaccounts tab
+- [x] 21-08 Storage box Subaccounts tab
   - Wave: 2 | Depends on: 21-02, 21-03 | Review: alone
   - Requirements: UI-13 | Tests: - (proved by UI-12 and UI-13 end to end)
   - Reads: CONTEXT.md; UI-SPEC.md "Views" (Subaccounts), "Building blocks"; Interfaces "Svelte: storage box detail tabs"; ui/frontend/src/lib/Table.svelte, Dialog.svelte, ConfirmDialog.svelte
   - Size: ~280 lines in 2 files
-  - [ ] `SubaccountsTab.svelte`: table (username, name, home directory, description, access), "Create subaccount" dialog (name, description, home directory, password, SSH/Samba/WebDAV/read-only/reachable externally), row menu Edit (name, description, home directory, access; sends only the changed requests), Reset password (dialog), Delete (plain confirm).
-  - [ ] `SubaccountDialog.svelte` shared by create and edit.
+  - [x] `SubaccountsTab.svelte`: table (username, name, home directory, description, access), "Create subaccount" dialog (name, description, home directory, password, SSH/Samba/WebDAV/read-only/reachable externally), row menu Edit (name, description, home directory, access; sends only the changed requests), Reset password (dialog), Delete (plain confirm).
+  - [x] `SubaccountDialog.svelte` shared by create and edit.
 
-- [ ] 21-09 Storage box Snapshots tab and plan
+- [x] 21-09 Storage box Snapshots tab and plan
   - Wave: 2 | Depends on: 21-02, 21-03 | Review: alone
   - Requirements: UI-13 | Tests: - (proved by UI-12 and UI-13 end to end)
   - Reads: CONTEXT.md; UI-SPEC.md "Views" (Snapshots); Interfaces; research/EXPERIMENTS.md E14; ui/frontend/src/lib/Table.svelte, Dialog.svelte, ConfirmDialog.svelte
   - Size: ~300 lines in 2 files
-  - [ ] `SnapshotsTab.svelte`: plan summary ("No plan" or the plan in UTC) with "Set plan" and "Disable plan" (confirm); table (name, description, size, automatic, created), "Create snapshot" (optional description), row menu Edit description, Roll back (confirm naming `newerThan`), Delete (plain).
-  - [ ] `SnapshotPlanDialog.svelte`: max snapshots, hour, minute (UTC), day of week (Every day, Monday..Sunday), day of month (Every day, 1..31), body through `planBody`.
+  - [x] `SnapshotsTab.svelte`: plan summary ("No plan" or the plan in UTC) with "Set plan" and "Disable plan" (confirm); table (name, description, size, automatic, created), "Create snapshot" (optional description), row menu Edit description, Roll back (confirm naming `newerThan`), Delete (plain).
+  - [x] `SnapshotPlanDialog.svelte`: max snapshots, hour, minute (UTC), day of week (Every day, Monday..Sunday), day of month (Every day, 1..31), body through `planBody`.
 
 - [ ] 21-10 Subaccounts and snapshots in the box detail
   - Wave: 4 | Depends on: 21-07, 21-08, 21-09 | Review: alone | e2e
@@ -252,27 +252,27 @@ access_settings, snapshot_plan, protection, stats, labels).
   - [ ] `Detail.svelte` renders `SubaccountsTab` and `SnapshotsTab` with the box and a refresh.
   - [ ] Make TestE2E/UI-13 pass.
 
-- [ ] 21-11 Storage boxes with hcloud
+- [x] 21-11 Storage boxes with hcloud
   - Wave: 2 | Depends on: 21-04 | Review: alone | e2e
   - Requirements: CLI-05 | Tests: test/e2e/clients_storagebox_hcloud_test.go, test/e2e/clients_storagebox_test.go
   - Reads: CONTEXT.md; research/EXPERIMENTS.md E12, E14, E20; `hcloud storage-box --help` and the subcommands' help; internal/resources/storageboxes (only for a fix)
   - Size: ~40 lines in up to 3 files (no product change expected by E20)
-  - [ ] Run the CLI-05 rows; fix in hlab what they find (a fix of a public API shape stops the plan).
+  - [x] Run the CLI-05 rows; fix in hlab what they find (a fix of a public API shape stops the plan).
   - Found by the first run of the new tests (2026-11-23): a box created with an SSH public key that ends in a newline (as OpenTofu's `file()` or Ansible's lookup give it) is accepted by the API, but the storage agent refuses the whole document (`invalid document: box u100100: SSH key spans lines`), so every later storage push fails and every create of any box errors. Fix in hlab: handle such a key at the API the way Hetzner does, and make sure one bad box cannot block the pushes of all others.
 
-- [ ] 21-12 Storage boxes with OpenTofu
+- [x] 21-12 Storage boxes with OpenTofu
   - Wave: 3 | Depends on: 21-11 | Review: alone | e2e
   - Requirements: CLI-06 | Tests: test/e2e/clients_storagebox_tofu_test.go
   - Reads: RESEARCH.md "OpenTofu provider storage boxes"; research/EXPERIMENTS.md E13; internal/resources/storageboxes (boxes.go update, subaccounts.go, snapshots.go)
   - Size: ~100 lines in up to 4 files
-  - [ ] Run the CLI-06 rows; fix in hlab what they find, for example an empty `PUT /storage_boxes/{id}` or `locked` on subaccount and snapshot create while a box action runs.
+  - [x] Run the CLI-06 rows; fix in hlab what they find, for example an empty `PUT /storage_boxes/{id}` or `locked` on subaccount and snapshot create while a box action runs.
 
-- [ ] 21-13 Storage boxes with Ansible
+- [x] 21-13 Storage boxes with Ansible
   - Wave: 4 | Depends on: 21-12 | Review: alone | e2e
   - Requirements: CLI-07 | Tests: test/e2e/clients_storagebox_ansible_test.go
   - Reads: RESEARCH.md "Ansible collection storage boxes"; research/EXPERIMENTS.md E15; internal/resources/storageboxes
   - Size: ~100 lines in up to 4 files
-  - [ ] Run the CLI-07 rows; fix in hlab what they find (`?name=` and `?username=` filters on subaccounts and snapshots, `GET /storage_boxes/actions/{id}` polling).
+  - [x] Run the CLI-07 rows; fix in hlab what they find (`?name=` and `?username=` filters on subaccounts and snapshots, `GET /storage_boxes/actions/{id}` polling).
 
 - [ ] 21-14 Documentation
   - Wave: 5 | Depends on: 21-05, 21-10, 21-13 | Review: alone

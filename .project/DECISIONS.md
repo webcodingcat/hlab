@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 Deleting a project deletes its actions
+
+- Type: decision
+- Phase: phase 21
+- What: `store.DeleteProject` also deletes the project's actions, and opening the store deletes the actions of projects that no longer exist; no schema change.
+- Why: SQLite reuses the highest deleted project ID, so a new project listed and could read a deleted project's actions (found by UI-13); AUTOINCREMENT IDs would need a migration.
+- Cost of change: low
+
 ## 2026-11-23 Storage box SSH keys are trimmed, multi-line keys refused
 
 - Type: decision
