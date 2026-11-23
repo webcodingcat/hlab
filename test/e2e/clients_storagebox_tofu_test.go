@@ -17,6 +17,7 @@ func init() {
 	registerRow(clientRow{Req: "CLI-06", Name: "subaccounts", Run: testCLI06Subaccounts})
 	registerRow(clientRow{Req: "CLI-06", Name: "snapshots", Run: testCLI06Snapshots})
 	registerRow(clientRow{Req: "CLI-06", Name: "storage_box_types", Run: testCLI06StorageBoxTypes})
+	registerRow(clientRow{Req: "CLI-06", Name: "destroy", Run: testCLI06Destroy})
 }
 
 // flatBox is a storage box as the OpenTofu data sources and the Ansible
@@ -479,5 +480,79 @@ data "hcloud_storage_box_types" "all" {}
 		if got != bx11 {
 			t.Errorf("%s: %+v, the API has %+v", addr, got, bx11)
 		}
+	}
+}
+
+// testCLI06Destroy: OpenTofu with HCLOUD_ENDPOINT and HETZNER_ENDPOINT only
+// applies a box with a subaccount and a snapshot of it; a single
+// `tofu destroy` exits 0 and removes all three.
+func testCLI06Destroy(t *testing.T, _ *rowCtx) {
+	sharedTofu(t)
+	e := boxProjectEnv(t, "cli06-destroy")
+	name := resName("cli06", "destroy")
+	cleanupBoxesNamed(t, e, name)
+	d := e.newTofuDir(t, "storage-box-destroy")
+	d.writeMain(t, fmt.Sprintf(`resource "hcloud_storage_box" "b" {
+  name             = %[1]q
+  storage_box_type = "bx11"
+  location         = %[2]q
+  password         = %[3]q
+  labels           = { row = "cli-06-destroy" }
+
+  access_settings = {
+    reachable_externally = false
+    samba_enabled        = false
+    ssh_enabled          = true
+    webdav_enabled       = false
+    zfs_enabled          = false
+  }
+}
+
+resource "hcloud_storage_box_subaccount" "s" {
+  storage_box_id = hcloud_storage_box.b.id
+  home_directory = "cli06/destroy"
+  password       = %[4]q
+
+  access_settings = {
+    reachable_externally = false
+    readonly             = false
+    samba_enabled        = false
+    ssh_enabled          = true
+    webdav_enabled       = false
+  }
+}
+
+resource "hcloud_storage_box_snapshot" "snap" {
+  storage_box_id = hcloud_storage_box.b.id
+  description    = "cli06-destroy"
+}
+
+output "box" {
+  value = hcloud_storage_box.b.id
+}
+
+output "subaccount" {
+  value = hcloud_storage_box_subaccount.s.id
+}
+
+output "snapshot" {
+  value = hcloud_storage_box_snapshot.snap.id
+}
+`, name, serverLocation, boxPassword(), boxPassword()))
+	d.run(t, "init", "-no-color")
+	d.run(t, "apply", "-auto-approve", "-no-color")
+	box := parseID(t, d.output(t, "box"))
+	sub := parseID(t, d.output(t, "subaccount"))
+	snap := parseID(t, d.output(t, "snapshot"))
+	boxPath := fmt.Sprintf("/storage_boxes/%d", box)
+	paths := []string{
+		fmt.Sprintf("%s/subaccounts/%d", boxPath, sub),
+		fmt.Sprintf("%s/snapshots/%d", boxPath, snap),
+		boxPath,
+	}
+
+	d.run(t, "destroy", "-auto-approve", "-no-color")
+	for _, p := range paths {
+		e.assertHetznerGone(t, p)
 	}
 }

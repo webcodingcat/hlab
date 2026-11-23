@@ -234,11 +234,18 @@ func removeBox(tx store.Tx, projectID int64, r Record) error {
 
 // begin starts command on box boxID of projectID in tx. The action
 // references the box and extra; it answers actions.ErrLocked while any
-// action of the box runs, so every action on one box locks it.
+// action of the box runs, so every action on one box locks it. Deleting a
+// subaccount or a snapshot does not use begin: it starts with
+// actions.Manager.StartQueued and waits as running behind the box's
+// actions; while it waits, begin answers locked like for any other action.
 func begin(tx store.Tx, acts *actions.Manager, projectID, boxID int64, command string, extra ...actions.Ref) (*actions.Action, error) {
 	refs := append([]actions.Ref{boxRef(boxID)}, extra...)
 	return acts.Start(tx, projectID, command, refs)
 }
+
+// errGone reports that the box or the item of a queued delete is gone at
+// the action's turn.
+var errGone = errors.New("the storage box or the item is gone")
 
 // boxFunc changes stored box r of projectID in tx and stores what it
 // changes itself.
@@ -251,7 +258,9 @@ type boxFunc func(tx store.Tx, projectID int64, r *Record) error
 // (if not nil) and a refresh of the box's stats. When Apply fails, failed
 // (if not nil) runs instead of done and undoes what change stored, the
 // appliance's document is pushed again, and the action fails with Apply's
-// error.
+// error. When the box is gone at the action's turn, or change returns
+// errGone, the action succeeds without Apply: a queued delete found
+// nothing left to delete.
 func (m *Module) run(req *http.Request, actionID, boxID int64, change, done, failed boxFunc) {
 	p, _ := api.ProjectFrom(req.Context())
 	st := api.StoreFrom(req.Context())
@@ -261,6 +270,9 @@ func (m *Module) run(req *http.Request, actionID, boxID int64, change, done, fai
 		}
 		return st.Tx(func(tx store.Tx) error {
 			r, err := Load(tx, p.ID, boxID)
+			if errors.Is(err, store.ErrNotFound) {
+				return errGone
+			}
 			if err != nil {
 				return err
 			}
@@ -268,7 +280,9 @@ func (m *Module) run(req *http.Request, actionID, boxID int64, change, done, fai
 		})
 	}
 	api.ActionsFrom(req.Context()).Run(actionID, func(ctx context.Context, _ func(int)) error {
-		if err := onBox(change); err != nil {
+		if err := onBox(change); errors.Is(err, errGone) {
+			return nil
+		} else if err != nil {
 			return err
 		}
 		if m.d.Apply != nil {

@@ -564,7 +564,15 @@ func Deviations() []Deviation {
 		},
 		{
 			Endpoint:    "POST /hetzner/v1/storage_boxes/{id}/actions/change_type",
-			Description: "every action on a storage box or one of its subaccounts locks the box: a second action answers 423 locked until the first ends; Hetzner documents this only for creating subaccounts and snapshots",
+			Description: "every action on a storage box or one of its subaccounts locks the box except deleting a subaccount or a snapshot, which waits as running: a second action answers 423 locked until the first ends; Hetzner documents this only for creating subaccounts and snapshots",
+		},
+		{
+			Endpoint:    "DELETE /hetzner/v1/storage_boxes/{id}/subaccounts/{subaccount_id}",
+			Description: "a delete while another action on the box runs waits as running instead of answering 423 locked",
+		},
+		{
+			Endpoint:    "DELETE /hetzner/v1/storage_boxes/{id}/snapshots/{snapshot_id}",
+			Description: "a delete while another action on the box runs waits as running instead of answering 423 locked",
 		},
 		{
 			Endpoint:    "POST /hetzner/v1/storage_boxes/{id}/snapshots",

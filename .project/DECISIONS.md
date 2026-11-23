@@ -19,6 +19,38 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 A box gone at an action's turn ends it successfully
+
+- Type: decision
+- Phase: phase 24
+- What: `run` in the storage box package treats a box missing at the change step, or the sentinel `errGone`, as success without `Apply`.
+- Why: only queued deletes can meet a missing box, because deleting the box is locked while any action runs.
+- Cost of change: low
+
+## 2026-11-23 Subaccount and snapshot deletes wait instead of locking
+
+- Type: decision
+- Phase: phase 24
+- What: deleting a subaccount or snapshot starts a queued action (`StartQueued` with the box reference) that waits its turn, and ends successfully when its item is already gone; every other action keeps answering 423 `locked`.
+- Why: success criterion 1 of phase 24, so one `tofu destroy` of a box with a subaccount and a snapshot succeeds.
+- Cost of change: low
+
+## 2026-11-23 Phase 24 queueing tested by unit rows under CLI-06
+
+- Type: decision
+- Phase: phase 24
+- What: the queueing logic is tested by four unit rows `CLI-06/...` in the storage box tests (wait, order, others still locked, item already gone) besides the e2e row `TestE2E/CLI-06/destroy`.
+- Why: CLI-06 is the only requirement and is e2e; unit rows give fast feedback on the logic behind it.
+- Cost of change: low
+
+## 2026-11-23 Phase 24 deviation entries in the API plan
+
+- Type: decision
+- Phase: phase 24
+- What: the new entries of `api.Deviations()` are written in plan 24-01, not in the documentation plan.
+- Why: both DELETE routes are already in api-coverage.md, so DOC-03 stays green between the plans.
+- Cost of change: low
+
 ## 2026-11-23 Storage box deletes of subaccounts and snapshots wait instead of answering locked
 
 - Type: change

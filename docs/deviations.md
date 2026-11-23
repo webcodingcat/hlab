@@ -191,8 +191,8 @@ account, not for subaccounts. Passwords follow Hetzner's rules but are not check
 known data breaches. Invalid input, such as a home directory with a
 leading slash, is refused at once instead of by a failed action. While an
 action on a box or one of its subaccounts runs, any other one on that box
-answers `locked`, so `tofu destroy` of a box with its subaccounts and
-snapshots can stop with `locked`; run it again. The types and prices come from HLab's catalog and your
+answers `locked`, deleting the box included; only deleting a subaccount
+or a snapshot waits (see below). The types and prices come from HLab's catalog and your
 [own types](configuration.md#own-storage-box-types); `hlab catalog update`
 does not refresh them.
 
@@ -203,7 +203,9 @@ actions wait: attaching and detaching volumes, assigning primary and
 floating IPs and applying or removing firewalls wait for the server;
 network attachments, alias IPs, subnets and routes for the network;
 targets and services for the load balancer and its target servers;
-record changes for the zone; and the firewall actions of a new server
+record changes for the zone; deleting storage box subaccounts and
+snapshots for the box, so one `tofu destroy` removes a box with all of
+them; and the firewall actions of a new server
 for the firewall, so servers created together with one firewall all
 succeed. A waiting action shows as `running`, runs in the order sent,
 and its change appears when it succeeds. Actions that change a resource

@@ -421,7 +421,9 @@ func (m *Module) updateSnapshot(w http.ResponseWriter, req *http.Request) {
 }
 
 // deleteSnapshot runs delete_snapshot on box and snapshot: the storage
-// agent's delete-snapshot job, then the record goes.
+// agent's delete-snapshot job, then the record goes. It never answers
+// locked: it waits as running behind the box's actions, and when box or
+// snapshot is gone at its turn it succeeds without a job.
 func (m *Module) deleteSnapshot(w http.ResponseWriter, req *http.Request) {
 	boxID, snapID, ok := snapPathIDs(w, req)
 	if !ok {
@@ -431,17 +433,12 @@ func (m *Module) deleteSnapshot(w http.ResponseWriter, req *http.Request) {
 	st := api.StoreFrom(req.Context())
 	acts := api.ActionsFrom(req.Context())
 	var a *actions.Action
-	var box Record
-	var s SnapshotRecord
 	err := st.Tx(func(tx store.Tx) error {
+		if _, err := loadSnap(tx, p.ID, boxID, snapID); err != nil {
+			return err
+		}
 		var err error
-		if s, err = loadSnap(tx, p.ID, boxID, snapID); err != nil {
-			return err
-		}
-		if box, err = Load(tx, p.ID, boxID); err != nil {
-			return err
-		}
-		a, err = begin(tx, acts, p.ID, boxID, deleteSnapCommand, snapRef(snapID))
+		a, err = acts.StartQueued(tx, p.ID, deleteSnapCommand, []actions.Ref{boxRef(boxID), snapRef(snapID)}, nil)
 		return err
 	})
 	if err != nil {
@@ -449,6 +446,22 @@ func (m *Module) deleteSnapshot(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	acts.Run(a.ID, func(ctx context.Context, _ func(int)) error {
+		var box Record
+		var s SnapshotRecord
+		err := st.Tx(func(tx store.Tx) error {
+			var err error
+			if s, err = loadSnap(tx, p.ID, boxID, snapID); err != nil {
+				return err
+			}
+			box, err = Load(tx, p.ID, boxID)
+			return err
+		})
+		if errors.Is(err, store.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
 		if err := m.removeSnapshot(ctx, st, p.ID, box, s); err != nil {
 			return err
 		}
