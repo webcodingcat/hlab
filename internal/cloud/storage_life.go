@@ -44,7 +44,12 @@ func (c *Cloud) storageDeps() storageboxes.Deps {
 		PublicRange: c.set.Network.PublicRange,
 		Store:       c.st,
 		Apply:       func(ctx context.Context, _ int64) error { return c.applyStorage(ctx) },
+		// A job waits for a running apply: a document built before a
+		// snapshot record was stored must reach the agent before the
+		// snapshot exists, or the agent removes it as unlisted.
 		Job: func(ctx context.Context, job agentapi.StorageJob) (agentapi.StorageJobResult, error) {
+			c.storageMu.Lock()
+			defer c.storageMu.Unlock()
 			return c.storage.Job(ctx, job)
 		},
 		FreeBytes: c.freeBytes,
