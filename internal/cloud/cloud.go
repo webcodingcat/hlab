@@ -112,6 +112,12 @@ type Cloud struct {
 	cat    *catalog.Catalog
 	images *images.Store
 	agent  *agentclient.Client
+	// storage talks to the storage agent; storageMu runs one apply of the
+	// storage VM at a time.
+	storage   *agentclient.StorageClient
+	storageMu sync.Mutex
+	// stopStorage ends the start's background apply of the storage VM.
+	stopStorage func()
 	acts   *actions.Manager
 	ca     *ca.CA
 	mods   []resource.Module
@@ -296,6 +302,9 @@ func (c *Cloud) start(ctx context.Context, params []string) error {
 		return err
 	}
 	c.acts = actions.New(c.st)
+	if c.storage, err = c.newStorageClient(); err != nil {
+		return err
+	}
 	c.shadow = zones.NewShadow(zones.PublicLookup(c.hostDNS(ctx), shadowLookupTimeout))
 	c.mods = c.modules()
 	if err := recoverModules(ctx, c.mods); err != nil {
@@ -323,6 +332,7 @@ func (c *Cloud) start(ctx context.Context, params []string) error {
 		return err
 	}
 	c.restore(ctx)
+	c.startStorage(ctx)
 
 	if err := c.serveManagement(router); err != nil {
 		return err
@@ -447,7 +457,7 @@ func (c *Cloud) modules() []resource.Module {
 		zns,
 		vol,
 		storageboxtypes.New(c.cat),
-		storageboxes.New(storageboxes.Deps{Catalog: c.cat, PublicRange: c.set.Network.PublicRange, Store: c.st}),
+		storageboxes.New(c.storageDeps()),
 	}
 }
 
@@ -659,6 +669,10 @@ func (c *Cloud) teardown(ctx context.Context, reason sysint.StopReason) error {
 		cancel()
 	}
 	c.mgmtSrv, c.apiSrv = nil, nil
+	if c.stopStorage != nil {
+		c.stopStorage()
+		c.stopStorage = nil
+	}
 
 	if c.restored {
 		if err := c.halt(ctx, reason == sysint.StopHostShutdown); err != nil {

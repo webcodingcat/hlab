@@ -90,12 +90,14 @@ func docBox(r Record, subs []SubaccountRecord) (agentapi.Box, error) {
 
 // Contribute implements resource.NetContributor: the storage VM when any
 // box exists and a route per box with its account names and whether the
-// box or any of its subaccounts is reachable externally.
+// box or any of its subaccounts is reachable externally. Boxes marked
+// deleting are left out, as in the storage VM's document.
 func (m *Module) Contribute(tx store.Tx, doc *agentapi.Config) error {
-	recs, err := store.ListAll[Record](tx, Kind)
+	all, err := store.ListAll[Record](tx, Kind)
 	if err != nil {
 		return err
 	}
+	recs := slices.DeleteFunc(all, func(r Record) bool { return r.HLab.Deleting })
 	if len(recs) == 0 {
 		return nil
 	}
