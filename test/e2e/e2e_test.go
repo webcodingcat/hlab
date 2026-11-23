@@ -98,6 +98,7 @@ func TestE2E(t *testing.T) {
 	t.Run("SBOX-14", parallel(testSBOX14))
 	t.Run("SBOX-12/smb", parallel(testSBOX12SMB))
 	t.Run("SBOX-04/smb", parallel(testSBOX04SMB))
+	t.Run("SBOX-22", parallel(testSBOX22))
 	t.Run("SBOX-15", parallel(testSBOX15))
 	t.Run("SBOX-12/webdav", parallel(testSBOX12WebDAV))
 	t.Run("SBOX-04/webdav", parallel(testSBOX04WebDAV))
