@@ -690,3 +690,93 @@ policy accept and only drops metadata spoofing. The DNS zone
 Consequence: the console forward can listen on `198.19.0.1:443`; the
 agent's DNS needs a new A record for `console.hetzner.internal` (from
 `Config.Console`), as ARCHITECTURE.md already says.
+
+## E24 The tray opens, focuses and closes a second window and Playwright drives it
+
+- Result: confirmed
+- Checked on: 2026-11-23
+- By: experiment (phase 23), Wails v3.1.0, WebView2 157, playwright-core 1.65.1, noVNC 1.7.0
+- Status: valid
+
+Observed: a bound service creates a `WebviewWindow` at runtime with
+`URL: "/#/console/<id>"` and a title; the hash route loads from the bundled
+asset server and noVNC connects. A second `Open` shows, restores and
+focuses the existing window. `Close()` and the window's X close it for real
+(page gone in under 50 ms, RFB connection ends); the main window's
+`WindowClosing` hide hook is per window and still only hides the main
+window. Every window builds its own WebView2 environment from the
+app-wide `AdditionalBrowserArgs`/`WebviewUserDataPath` of the e2e build
+without error. Playwright `connectOverCDP` sees the console page in the
+single context, reads canvas pixels with `getImageData` and sends keys,
+`Control+Alt+Delete` included, which reach the RFB server as keysyms.
+noVNC sends `SetPixelFormat` 32 bpp, little endian, red shift 0, blue
+shift 16. Pitfalls: `Close()` is asynchronous and `GetByName` returns the
+first match, so the service keeps its own window map under a mutex and
+clears it in the window's `WindowClosing` listener; the new page appears
+first as `about:blank`, so tests wait for a page whose URL holds
+`#/console/<id>`; one run of six hung after `app.Run()` returned, so the
+launcher stops the tray hard after a deadline. Not tested: focusing from a
+pure background state (Windows may refuse `SetForegroundWindow`).
+
+Repeat: a Wails v3.1.0 probe with a hide-on-close main window and a bound
+`Console` service (`Open`, `Close`), a loopback RFB 3.8 server with a
+two-colour 320x240 screen that logs KeyEvents, and a Node script that
+attaches over CDP, opens, focuses and closes the windows and reads pixels.
+
+## E25 Hyper-V console input, frames in every VM state, and guest input devices
+
+- Result: confirmed (key delay gate passed; two WMI methods unusable)
+- Checked on: 2026-11-23
+- By: experiment (phase 23) on Windows 11 Pro 10.0.26300, Ubuntu 24.04.5 cloud image (kernel 6.8.0-147), Go raw WMI vtables as in E21, no elevation
+- Status: valid
+
+Observed:
+- Key delay: `Msvm_Keyboard.TypeKey(0x41)` at the tty1 login prompt was
+  visible after a median of 135 ms (max 179 ms) when frames are grabbed
+  right after the input; with frames only from a 200 ms timer the median
+  was 258 ms (max 311 ms). One input call takes about 5 ms (first call in
+  a process about 40 ms).
+- 5 frames/s at 1024x768, three runs: 5.01 frames/s, p95 144 ms per frame,
+  no errors, caller 0.01-0.02 cores, `vmms.exe` 0.59-0.61 cores (max 0.81),
+  idle 0.03.
+- Keyboard: `PressKey`/`ReleaseKey`/`TypeKey(UInt32 KeyCode)` with held
+  Shift, Ctrl and Alt (left and right VKs) arrive in order. VK_HOME 0x24
+  never sends its key-up (the guest keeps HOME held); `TypeText` produces
+  garbage; VK_OEM_102, VK_CLEAR and 0x15 return 32773. Hyper-V emulates no
+  autorepeat. `TypeScancodes(UInt8Array Scancodes)` takes scan code set 1:
+  break = make | 0x80, the 0xE0 prefix precedes make and break, make and
+  break may go in separate calls; it releases HOME correctly.
+- Mouse: `SetAbsolutePosition(SInt32, SInt32)` takes pixels of the current
+  resolution (clamped above, negative values rejected with 32773);
+  `SetButtonState(UInt32 ButtonIndex, Boolean IsDown)` index 1 left,
+  2 right, 3 middle; `SetScrollPosition(SInt32)` in steps of 120 (+120
+  wheel up), smaller deltas do nothing. Each call 6-8 ms.
+- `GetVirtualSystemThumbnailImage`: ReturnValue 0 with a frame while
+  running and when saved (the last screen); 32775 while off, starting,
+  shutting down or saving; 32779 while restoring; never a job. After a
+  guest resolution change (1024x768 to 1280x800, `Msvm_VideoHead`
+  changes) a request at the old size returns a scaled image and one at the
+  new size w·h·2+4 bytes.
+- Guest: the stock image loads `hid_hyperv` and `hyperv_keyboard`;
+  "Microsoft Vmbus HID-compliant Mouse" (ABS 0..32767, wheel) and
+  "AT Translated Set 2 keyboard" appear in `/proc/bus/input/devices` with
+  `/dev/input/event*` readable by root over SSH.
+- Invalid values come back as ReturnValue 32773 with HRESULT 0; `UInt8Array`
+  parameters are built as VT_ARRAY|VT_UI1.
+
+Consequence: the graphical console passes the gate (decisions/server-console.md).
+Keys go through `TypeScancodes` with a keysym → set-1 table (down = make,
+up = break, client autorepeat forwarded as further makes), never
+`TypeText`, and HOME never through a VK. Frames are grabbed right after
+an input event as well as on the poll timer. A non-zero thumbnail
+ReturnValue means "no picture now": keep the connection, show the last or
+a black frame. A changed `Msvm_VideoHead` triggers a DesktopSize update.
+RFB button bits 0/1/2 map to Hyper-V indexes 1/3/2, buttons 4/5 to scroll
+±120. The e2e test finds the guest input devices by name in
+`/proc/bus/input/devices`.
+
+Repeat: a throwaway project and an Ubuntu 24.04 cx23 server in the dev
+service; a Go probe that calls the methods above through raw WMI vtables
+and hashes frames until one changes; a root `python3` reader of
+`/dev/input/event*` over SSH; `Get-Counter` on `vmms.exe`; `Save-VM`,
+`Start-VM` and `hcloud server poweroff/poweron` for the VM states.
