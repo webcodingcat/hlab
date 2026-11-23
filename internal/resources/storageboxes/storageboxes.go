@@ -18,6 +18,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/ipam"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
 	"github.com/webcodingcat/hlab/internal/scheduler"
@@ -65,6 +66,8 @@ type Deps struct {
 	FreeBytes func() (uint64, error)
 	// Clock drives the stats job; nil: scheduler.RealClock().
 	Clock scheduler.Clock
+	// Store is what Recover works on outside a request.
+	Store *store.Store
 }
 
 // Module is the storage_boxes resource type.
@@ -84,6 +87,7 @@ func (m *Module) Routes(r resource.Registrar) {
 	m.boxRoutes(r)
 	m.actionRoutes(r)
 	m.subaccountRoutes(r)
+	r.Handle("GET /storage_boxes/{id}/folders", http.HandlerFunc(m.folders))
 	// GET /storage_boxes/actions/{id} conflicts with
 	// /storage_boxes/{id}/actions in http.ServeMux; the less specific
 	// pattern takes it.
@@ -176,6 +180,38 @@ func put(tx store.Tx, projectID int64, r Record) error {
 
 func boxRef(id int64) actions.Ref { return actions.Ref{ID: id, Type: refType} }
 
+// errNotActive refuses subaccount create and every action but delete on a
+// box that is not active.
+var errNotActive = &actions.Error{Code: "locked", Message: "the storage box is not active"}
+
+// checkActive returns errNotActive unless box r is active.
+func checkActive(r Record) error {
+	if r.Status != StatusActive {
+		return errNotActive
+	}
+	return nil
+}
+
+// removeBox deletes stored box r of projectID with its subaccounts and
+// releases its IP.
+func removeBox(tx store.Tx, projectID int64, r Record) error {
+	subs, err := boxSubs(tx, projectID, r.ID)
+	if err != nil {
+		return err
+	}
+	for _, s := range subs {
+		if err := store.Delete(tx, SubaccountKind, projectID, s.ID); err != nil {
+			return err
+		}
+	}
+	if a, err := netip.ParseAddr(r.HLab.IP); err == nil {
+		if err := ipam.Release(tx, a); err != nil {
+			return err
+		}
+	}
+	return store.Delete(tx, Kind, projectID, r.ID)
+}
+
 // begin starts command on box boxID of projectID in tx. The action
 // references the box and extra; it answers actions.ErrLocked while any
 // action of the box runs, so every action on one box locks it.
@@ -184,34 +220,47 @@ func begin(tx store.Tx, acts *actions.Manager, projectID, boxID int64, command s
 	return acts.Start(tx, projectID, command, refs)
 }
 
+// boxFunc changes stored box r of projectID in tx and stores what it
+// changes itself.
+type boxFunc func(tx store.Tx, projectID int64, r *Record) error
+
 // run hands the work of action actionID on box boxID to the action
 // manager: Apply, then done on the stored box of projectID in one
-// transaction. done stores what it changes itself.
-func (m *Module) run(req *http.Request, actionID, boxID int64, done func(tx store.Tx, projectID int64, r *Record) error) {
+// transaction. When Apply fails, failed (if not nil) runs instead of done
+// and the action fails with Apply's error.
+func (m *Module) run(req *http.Request, actionID, boxID int64, done, failed boxFunc) {
 	p, _ := api.ProjectFrom(req.Context())
 	st := api.StoreFrom(req.Context())
-	api.ActionsFrom(req.Context()).Run(actionID, func(ctx context.Context, _ func(int)) error {
-		if m.d.Apply != nil {
-			if err := m.d.Apply(ctx, boxID); err != nil {
-				return err
-			}
-		}
+	onBox := func(fn boxFunc) error {
 		return st.Tx(func(tx store.Tx) error {
 			r, err := Load(tx, p.ID, boxID)
 			if err != nil {
 				return err
 			}
-			return done(tx, p.ID, &r)
+			return fn(tx, p.ID, &r)
 		})
+	}
+	api.ActionsFrom(req.Context()).Run(actionID, func(ctx context.Context, _ func(int)) error {
+		if m.d.Apply != nil {
+			if err := m.d.Apply(ctx, boxID); err != nil {
+				if failed != nil {
+					if ferr := onBox(failed); ferr != nil {
+						return errors.Join(err, ferr)
+					}
+				}
+				return err
+			}
+		}
+		return onBox(done)
 	})
 }
 
 // boxAction answers a request that runs command as an action on the box
-// of the path: check refuses on the stored box before the action starts,
-// done changes it when the action succeeds (see run). It answers 201 with
-// the action.
+// of the path: a box that is not active and check refuse on the stored
+// box before the action starts, done changes it when the action succeeds
+// (see run). It answers 201 with the action.
 func (m *Module) boxAction(w http.ResponseWriter, req *http.Request, command string,
-	check func(r Record) error, done func(tx store.Tx, projectID int64, r *Record) error,
+	check func(r Record) error, done boxFunc,
 ) {
 	id, ok := api.PathID(w, req)
 	if !ok {
@@ -223,6 +272,9 @@ func (m *Module) boxAction(w http.ResponseWriter, req *http.Request, command str
 	err := api.StoreFrom(req.Context()).Tx(func(tx store.Tx) error {
 		r, err := Load(tx, p.ID, id)
 		if err != nil {
+			return err
+		}
+		if err := checkActive(r); err != nil {
 			return err
 		}
 		if check != nil {
@@ -237,7 +289,7 @@ func (m *Module) boxAction(w http.ResponseWriter, req *http.Request, command str
 		api.Fail(w, err)
 		return
 	}
-	m.run(req, a.ID, id, done)
+	m.run(req, a.ID, id, done, nil)
 	api.JSON(w, http.StatusCreated, map[string]any{"action": a})
 }
 
