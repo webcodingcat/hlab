@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 21 Storage Boxes in the console and the clients (next)
+- Phase: 22 SMB from the Windows host (next)
 - Base branch: main
 - Last done: phase 20 merged into main (2026-11-23): storage boxes serve SMB, WebDAV over HTTPS and FTP/FTPS, with snapshots, snapshot plans and rollback; data, accounts and snapshots survive a stop and start
-- Next: /wcc:phase in a new session builds phase 21 (console and clients), then phase 16; /wcc:change takes Q22 (SMB from the Windows host) and items from "Later" before phase 16
+- Next: /wcc:phase in a new session builds phase 22 (SMB from the Windows host), then phase 21 and phase 16; /wcc:change takes items from "Later" before phase 16
 
 ## Open manual checks
 
@@ -35,8 +35,4 @@ STATUS: IN_PROGRESS
      /wcc:phase asks those of its phase at its start, /wcc:change takes
      answers any time. -->
 
-- Q22 (phase 20 documentation run): Must SMB work from the Windows host itself, not only from WSL2 and servers?
-  - Context: `net use \\u<n>.storagebox.hetzner.internal\backup` (also by IP and to `IPC$`) and `New-SmbMapping` fail with system error 67 "network name not found", while TCP 445 is open and smbclient from WSL2 works on the same box; SBOX-14 and its test map row name WSL2 only, and `decisions/storage-box.md` assumes Windows uses NTLMv2 (E16, never tried).
-  - Options: 1. Make SMB work from the Windows host (investigate the Windows client: signing, dialect, name, the host's own port 445) and add a host row to SBOX-14 2. Keep SMB for WSL2 and servers and state in `docs/deviations.md` that the Windows host cannot map the share
-  - Recommendation: 1, because mapping a share from Windows is the common way people use a Hetzner storage box over SMB.
-  - Affects: SBOX-14, `docs/deviations.md`, `decisions/storage-box.md`
+- none

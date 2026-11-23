@@ -172,6 +172,7 @@ The Hetzner API (`http://api.hetzner.internal/hetzner/v1`), with the cloud token
 - SBOX-03 SFTP and SCP on port 22 of `u<n>.storagebox.hetzner.internal` read and write a box's data with its password or its SSH keys (goal 2) [e2e]
 - SBOX-13 port 23 serves SFTP, SCP, rsync and BorgBackup, only while ssh_enabled is on (goal 2) [e2e]
 - SBOX-14 SMB on port 445 serves the share `backup` of a box and a subaccount's share named after it, only while samba_enabled is on (goal 2) [e2e]
+- SBOX-22 the Windows host maps a box's share `backup` and a subaccount's share with `net use \\u<n>.storagebox.hetzner.internal\<share>` and reads and writes them (goal 2) [e2e]
 - SBOX-15 WebDAV over HTTPS on port 443 serves a box's data, only while webdav_enabled is on (goal 2) [e2e]
 - SBOX-16 FTP and explicit FTPS on port 21 serve a box's data (goal 2) [e2e]
 - SBOX-04 a storage box is reachable from the servers; from the host and WSL2 only with reachable_externally (goal 2) [e2e]
@@ -400,6 +401,7 @@ What the target vision in IDEA.md will need, not built yet.
 | SBOX-03 | 19 | x |
 | SBOX-13 | 19 | x |
 | SBOX-14 | 20 | x |
+| SBOX-22 | 22 | |
 | SBOX-15 | 20 | x |
 | SBOX-16 | 20 | x |
 | SBOX-04 | 19 | x |

@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-23 SMB from the Windows host (Q22)
+
+- Type: change
+- Phase: change
+- What: The Windows host must map a box's and a subaccount's SMB share with `net use` (new requirement SBOX-22, e2e), built in the new phase 22 before phase 21.
+- Why: The user chose it (Q22): mapping a share from Windows is the common way people use a Hetzner storage box over SMB, and phase 20 found `net use` failing with system error 67.
+- Cost of change: low
+
 ## 2026-11-23 Samba ID map pinned for shared box UIDs
 
 - Type: decision
