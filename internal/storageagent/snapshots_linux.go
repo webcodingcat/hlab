@@ -107,7 +107,9 @@ func (a *Agent) deleteSnapshot(ctx context.Context, box, name string) error {
 // the box account's chroot home when b.Access.ZFS is set, and removes it
 // otherwise. Subaccounts never get it. The home mount is made private
 // first so that the bind does not propagate into the box's data or a
-// subaccount's home.
+// subaccount's home. The account controls the path below home, so the
+// agent never mounts or unmounts by that path: it acts on descriptors that
+// os.Root opened, and on a mount only when its ID matches.
 func (a *Agent) applyZFS(b agentapi.Box, n int) error {
 	home := filepath.Join(chrootBase, b.User, "home")
 	target := filepath.Join(home, ".zfs", "snapshot")
@@ -115,19 +117,19 @@ func (a *Agent) applyZFS(b agentapi.Box, n int) error {
 	if err != nil {
 		return err
 	}
-	m, mounted := mounts[target]
-	want := "/" + snapshotDir + "/" + b.User
-	if mounted && (!b.Access.ZFS || m.root != want || !m.readOnly) {
-		if err := unix.Unmount(target, unix.MNT_DETACH); err != nil {
-			return fmt.Errorf("unmount %s: %w", target, err)
-		}
-		mounted = false
-	}
 	r, err := os.OpenRoot(home)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = r.Close() }()
+	m, mounted := mounts[target]
+	want := "/" + snapshotDir + "/" + b.User
+	if mounted && (!b.Access.ZFS || m.root != want || !m.readOnly) {
+		if err := unmountAt(r, ".zfs/snapshot", m.id); err != nil {
+			return fmt.Errorf("unmount %s: %w", target, err)
+		}
+		mounted = false
+	}
 	if !b.Access.ZFS {
 		// Only empty folders go; data the account put there stays.
 		for _, p := range []string{".zfs/snapshot", ".zfs"} {
@@ -162,11 +164,42 @@ func (a *Agent) applyZFS(b agentapi.Box, n int) error {
 	if err := unix.Mount("", home, "", unix.MS_PRIVATE, ""); err != nil {
 		return fmt.Errorf("make %s private: %w", home, err)
 	}
-	// The descriptor pins the folder os.Root resolved, so a symlink swapped
-	// in later cannot move the bind out of the home. The read-only remount
-	// goes by path: through the descriptor it would hit the home mount.
-	if err := bind(src, fmt.Sprintf("/proc/self/fd/%d", f.Fd()), false); err != nil {
+	return bindReadOnlyAt(src, int(f.Fd()))
+}
+
+// bindReadOnlyAt clones src as a detached bind mount, makes it read-only
+// and attaches it on the directory descriptor dst, which pins the folder
+// os.Root resolved: no path the account controls is resolved, and the bind
+// is never writable.
+func bindReadOnlyAt(src string, dst int) error {
+	tree, err := unix.OpenTree(unix.AT_FDCWD, src, unix.OPEN_TREE_CLONE|unix.OPEN_TREE_CLOEXEC)
+	if err != nil {
+		return fmt.Errorf("open_tree %s: %w", src, err)
+	}
+	defer func() { _ = unix.Close(tree) }()
+	if err := unix.MountSetattr(tree, "", unix.AT_EMPTY_PATH, &unix.MountAttr{Attr_set: unix.MOUNT_ATTR_RDONLY}); err != nil {
+		return fmt.Errorf("mount_setattr %s: %w", src, err)
+	}
+	if err := unix.MoveMount(tree, "", dst, "", unix.MOVE_MOUNT_F_EMPTY_PATH|unix.MOVE_MOUNT_T_EMPTY_PATH); err != nil {
+		return fmt.Errorf("move_mount %s: %w", src, err)
+	}
+	return nil
+}
+
+// unmountAt detaches the mount with ID id that p below r leads to; p is
+// opened through os.Root, and the mount is left alone when its ID differs.
+func unmountAt(r *os.Root, p string, id uint64) error {
+	f, err := r.Open(p)
+	if err != nil {
 		return err
 	}
-	return remount(target, true)
+	defer func() { _ = f.Close() }()
+	var stx unix.Statx_t
+	if err := unix.Statx(int(f.Fd()), "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &stx); err != nil {
+		return err
+	}
+	if stx.Mnt_id != id {
+		return fmt.Errorf("%s leads to mount %d, want %d", p, stx.Mnt_id, id)
+	}
+	return unix.Unmount(fmt.Sprintf("/proc/self/fd/%d", f.Fd()), unix.MNT_DETACH)
 }

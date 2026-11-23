@@ -512,9 +512,16 @@ func removeChroot(user string) error {
 			below = append(below, p)
 		}
 	}
-	// Innermost first: .zfs/snapshot lies inside home.
-	slices.SortFunc(below, func(x, y string) int { return len(y) - len(x) })
+	// Only the outermost mounts, whose paths the account cannot change: a
+	// detach takes the mounts inside them (.zfs/snapshot in home) along.
+	slices.Sort(below)
+	var top []string
 	for _, p := range below {
+		if len(top) == 0 || !strings.HasPrefix(p, top[len(top)-1]+"/") {
+			top = append(top, p)
+		}
+	}
+	for _, p := range top {
 		if err := unix.Unmount(p, unix.MNT_DETACH); err != nil {
 			return fmt.Errorf("unmount %s: %w", p, err)
 		}
@@ -765,6 +772,7 @@ func ids(file string) (map[string]int, error) {
 
 // mount is one entry of /proc/self/mountinfo.
 type mount struct {
+	id       uint64 // mount ID
 	root     string // path within the mounted filesystem
 	readOnly bool
 }
@@ -782,7 +790,8 @@ func readMounts() (map[string]mount, error) {
 			continue
 		}
 		opts := strings.Split(f[5], ",")
-		out[unescape(f[4])] = mount{root: unescape(f[3]), readOnly: slices.Contains(opts, "ro")}
+		id, _ := strconv.ParseUint(f[0], 10, 64)
+		out[unescape(f[4])] = mount{id: id, root: unescape(f[3]), readOnly: slices.Contains(opts, "ro")}
 	}
 	return out, nil
 }
