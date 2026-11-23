@@ -226,8 +226,8 @@ type Step struct {
   - Requirements: SBOX-18 | Tests: - (its e2e row is in 20-13)
   - Reads: E17, E18; RESEARCH.md 6; CONTEXT.md (subaccount sessions); internal/storageagent/{agent.go,snapshots_linux.go,apply_linux.go} (bind, remount, ensureChroot)
   - Size: ~300 lines in 2 files
-  - [ ] New internal/storageagent/rollback_linux.go, job `rollback` in the order of RESEARCH.md 6: fence the box IP's ports 21, 22, 23, 443, 445, 50000-50099 with a reject rule through `github.com/google/nftables` (own table, removed at the end also on failure); end the sessions of the box and all its subaccounts (`ss -K` on the box IP's sockets, kill of the PIDs `ss -tnp` shows when `ss -K` is not supported, `pkill -KILL -U <box uid>`), delete the box's DavLockDB files, wait with a deadline until `fuser -m` on the box's mounts is empty; unmount `.zfs/snapshot`, the subaccount homes and the box home; swap the data with a writable snapshot `-i 1/<n>` of the target, remove the `Newer` snapshots and the old data, `subvolume sync` with a deadline, `qgroup clear-stale`, the E18 accounting check; recreate missing subaccount homes with the box UID; bind everything again. A failure before the swap leaves the data untouched.
-  - [ ] Register `rollback` in postJob (agent.go); a missing target snapshot is `not_found`.
+  - [x] New internal/storageagent/rollback_linux.go, job `rollback` in the order of RESEARCH.md 6: fence the box IP's ports 21, 22, 23, 443, 445, 50000-50099 with a reject rule through `github.com/google/nftables` (own table, removed at the end also on failure); end the sessions of the box and all its subaccounts (`ss -K` on the box IP's sockets, kill of the PIDs `ss -tnp` shows when `ss -K` is not supported, `pkill -KILL -U <box uid>`), delete the box's DavLockDB files, wait with a deadline until `fuser -m` on the box's mounts is empty; unmount `.zfs/snapshot`, the subaccount homes and the box home; swap the data with a writable snapshot `-i 1/<n>` of the target, remove the `Newer` snapshots and the old data, `subvolume sync` with a deadline, `qgroup clear-stale`, the E18 accounting check; recreate missing subaccount homes with the box UID; bind everything again. A failure before the swap leaves the data untouched.
+  - [x] Register `rollback` in postJob (agent.go); a missing target snapshot is `not_found`.
 
 - [x] 20-12 Snapshot plan runs
   - Wave: 3 | Depends on: 20-06 | Review: alone
@@ -243,8 +243,8 @@ type Step struct {
   - Requirements: SBOX-18 | Tests: internal/resources/storageboxes/snapshots_test.go (SBOX-18); test/e2e/storagebox_snapshot_test.go (SBOX-18)
   - Reads: hetzner.spec.json `/storage_boxes/{id}/actions/rollback_snapshot`; RESEARCH.md 5 (rollback); internal/resources/storageboxes/{actions.go,snapshots.go}
   - Size: ~150 lines in 4 files
-  - [ ] New internal/resources/storageboxes/rollback.go: `POST /storage_boxes/{id}/actions/rollback_snapshot` with `snapshot` as ID or name (a missing one 404 `not_found`), action `rollback_snapshot` on box and snapshot, job `rollback` with `Newer` = all snapshots of the box created after the target (manual and automatic), then their records go and the stats refresh; register the route in `actionRoutes` (actions.go).
-  - [ ] `api.Deviations()` entry if any, and the endpoint in docs/development/api-coverage.md as served (internal/api/deviations.go, docs/development/api-coverage.md).
+  - [x] New internal/resources/storageboxes/rollback.go: `POST /storage_boxes/{id}/actions/rollback_snapshot` with `snapshot` as ID or name (a missing one 404 `not_found`), action `rollback_snapshot` on box and snapshot, job `rollback` with `Newer` = all snapshots of the box created after the target (manual and automatic), then their records go and the stats refresh; register the route in `actionRoutes` (actions.go).
+  - [x] `api.Deviations()` entry if any, and the endpoint in docs/development/api-coverage.md as served (internal/api/deviations.go, docs/development/api-coverage.md).
 
 - [ ] 20-14 Documentation
   - Wave: 6 | Depends on: 20-01 to 20-13 | Review: alone
