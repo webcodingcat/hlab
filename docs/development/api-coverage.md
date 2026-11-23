@@ -648,14 +648,26 @@ The Storage Box endpoints of Hetzner's API are served under
 
 - The boxes live in the storage VM `<tag>-storage`, which the first
   `create_storage_box` creates and the delete of the last box removes;
-  each box is a btrfs subvolume with a quota of its type's size. They are
-  reached over SSH only: SFTP on port 22, and with `ssh_enabled` SFTP,
-  scp, rsync and `borg serve` on port 23. Samba and WebDAV are not
-  offered; `samba_enabled`, `webdav_enabled` and `zfs_enabled` have
-  no effect. The server answers on every box address, so the
-  credentials of one box also log in at another box's address.
+  each box is a btrfs subvolume with a quota of its type's size, and
+  each snapshot a read-only btrfs snapshot of it. The protocols: SFTP on
+  port 22; with `ssh_enabled` SFTP, scp, rsync and `borg serve` on port
+  23; with `samba_enabled` SMB 2.1 and newer on port 445 (share `backup`
+  for the box, a share named after each subaccount); with
+  `webdav_enabled` WebDAV over HTTPS on port 443 at
+  `https://<user>.storagebox.hetzner.internal/` only; FTP and explicit
+  FTPS on port 21, always on, passive only with the data ports
+  50000-50099. WebDAV and FTPS use one certificate
+  `*.storagebox.hetzner.internal` from the HLab CA, reissued 30 days
+  before it expires. sshd and vsftpd answer on every box address, so
+  the credentials of one box also log in at another box's address over
+  SSH and FTP; Samba and Apache admit an account only at its own box's
+  address.
+- With `zfs_enabled`, the box account (not its subaccounts) sees its
+  snapshots read-only under `.zfs/snapshot`.
 - `reachable_externally` of the box or of one of its subaccounts opens
-  the box address to the host and WSL2; servers always reach it.
+  the box address to the host and WSL2; servers always reach it. An
+  account without it is refused from the host and WSL2 on every
+  protocol.
 - `ssh_keys` are written once at create into `.ssh/authorized_keys` of
   the box; OpenSSH lines and RFC 4716 blocks work on both ports.
 - `POST /hetzner/v1/storage_boxes` answers with the box in status

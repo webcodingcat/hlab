@@ -573,8 +573,9 @@ there yourself.
 hcloud reaches storage boxes through `HETZNER_ENDPOINT` (see
 [First steps](../README.md#first-steps)). A box stores files that you
 reach over SSH: SFTP and scp on port 22, and with SSH enabled also
-rsync, BorgBackup, SFTP and scp on port 23. Samba and WebDAV are not
-offered.
+rsync, BorgBackup, SFTP and scp on port 23. With Samba enabled it serves
+SMB on port 445, with WebDAV enabled WebDAV over HTTPS on port 443, and
+FTP with explicit FTPS on port 21 is always on.
 
 ```
 > hcloud storage-box-type list
@@ -583,13 +584,13 @@ ID     NAME   DESCRIPTION   SIZE      SNAPSHOT LIMIT   AUTOMATIC SNAPSHOT LIMIT 
 1334   bx21   BX21          5.0 TiB   20               20                         100
 1335   bx31   BX31          10 TiB    30               30                         100
 1336   bx41   BX41          20 TiB    40               40                         100
-> hcloud storage-box create --name backup --type bx11 --location fsn1 --password 'Secret-Passw0rd' --enable-ssh --reachable-externally --ssh-key "$(cat ~/.ssh/id_ed25519.pub)"
+> hcloud storage-box create --name backup --type bx11 --location fsn1 --password 'Secret-Passw0rd' --enable-ssh --enable-samba --enable-webdav --reachable-externally --ssh-key "$(cat ~/.ssh/id_ed25519.pub)"
 Waiting for create_storage_box (storage_box: 12) ...
 Waiting for create_storage_box (storage_box: 12) ... done
 Storage Box 12 created
 Server: u100011.storagebox.hetzner.internal
 Username: u100011
-> hcloud storage-box subaccount create backup --home-directory web1 --password 'Other-Passw0rd' --readonly --enable-ssh --reachable-externally
+> hcloud storage-box subaccount create backup --home-directory web1 --password 'Other-Passw0rd' --readonly --enable-ssh --enable-samba --enable-webdav --reachable-externally
 Waiting for create_subaccount (storage_box: 12, storage_box_subaccount: 6) ...
 Waiting for create_subaccount (storage_box: 12, storage_box_subaccount: 6) ... done
 Storage Box Subaccount 6 created
@@ -666,6 +667,10 @@ ssh: connect to host u100012.storagebox.hetzner.internal port 22: Connection tim
 Connection closed
 ```
 
+The flag also counts per account: an account created without it is
+refused from the host and WSL2 on every protocol, even when another
+account of the same box has it.
+
 ### Subaccounts
 
 A subaccount logs in with its own name and password and sees only its
@@ -695,7 +700,163 @@ Folders:
 hcloud: the requested resource was not found (not_found)
 ```
 
-### Passwords, snapshot plans and protection
+### SMB
+
+With Samba enabled, a box serves the share `backup` with its data, and
+each subaccount with Samba enabled a share named after it with its home
+directory. Every share admits only its own account. From WSL2 with
+smbclient:
+
+```
+$ smbclient //u100011.storagebox.hetzner.internal/backup -U u100011%Secret-Passw0rd -c 'put notes.txt; ls notes.txt'
+putting file notes.txt as \notes.txt (0.7 kB/s) (average 0.7 kB/s)
+  notes.txt                           A       12  Mon Nov 23 12:42:14 2026
+
+		68719476736 blocks of size 1024. 68717362176 blocks available
+$ smbclient //u100011-sub1.storagebox.hetzner.internal/u100011-sub1 -U u100011-sub1%Other-Passw0rd -c 'put notes.txt'
+NT_STATUS_ACCESS_DENIED opening remote file \notes.txt
+```
+
+The share of the read-only subaccount refuses the write. The server
+speaks SMB 2.1 and newer; `smbclient -L` does not list the shares.
+
+### WebDAV
+
+With WebDAV enabled, each account is served at
+`https://<user>.storagebox.hetzner.internal/`, with its name and password.
+The server certificate comes from the HLab CA, so give the client the CA
+certificate (or trust it, see [Trusting the HLab CA](#trusting-the-hlab-ca)):
+
+```
+> hlab ca export hlab-ca.pem
+HLab CA written to hlab-ca.pem
+```
+
+In WSL2, in the folder of that file (such as `/mnt/c/Users/<you>`):
+
+```
+$ curl -sS -o /dev/null -w '%{http_code}\n' --cacert hlab-ca.pem -u u100011:Secret-Passw0rd -T dav.txt https://u100011.storagebox.hetzner.internal/dav.txt
+201
+$ curl -sS --cacert hlab-ca.pem -u u100011:Secret-Passw0rd https://u100011.storagebox.hetzner.internal/dav.txt
+via webdav
+$ curl -sS -o /dev/null -w '%{http_code}\n' --cacert hlab-ca.pem -u u100011-sub1:Other-Passw0rd -T dav.txt https://u100011-sub1.storagebox.hetzner.internal/dav.txt
+403
+```
+
+A read-only account may only read (`403` on the upload). Use the host
+name: the bare IP address does not match the certificate and answers
+`403`.
+
+### FTP and FTPS
+
+FTP on port 21 is always on, for the box and every subaccount; there is
+no switch for it. It runs in passive mode only (data ports 50000 to
+50099), and plain FTP and explicit FTPS (`AUTH TLS`) are both accepted.
+From WSL2 with lftp, which uses FTPS when the server offers it:
+
+```
+$ lftp -u u100011,Secret-Passw0rd -e 'set ftp:ssl-force true; set ssl:ca-file hlab-ca.pem; put index.html; ls index.html; bye' u100011.storagebox.hetzner.internal
+-rw-r--r--    1 100011   100011         14 Nov 23 11:42 index.html
+```
+
+Without `ssl:ca-file`, lftp stops with `Certificate verification: The
+certificate is NOT trusted`. A read-only subaccount can read but not
+write.
+
+### Snapshots
+
+A snapshot keeps the box's data as it is at that moment. Manual
+snapshots are named after the UTC time of their creation:
+
+```
+> hcloud storage-box snapshot create backup --description 'before cleanup'
+Waiting for create_snapshot (storage_box: 12, storage_box_snapshot: 3) ...
+Waiting for create_snapshot (storage_box: 12, storage_box_snapshot: 3) ... done
+Storage Box Snapshot 3 created
+Name: 2026-11-23T11-42-17
+Size: 16 KiB
+> hcloud storage-box snapshot create backup
+Waiting for create_snapshot (storage_box: 12, storage_box_snapshot: 4) ...
+Waiting for create_snapshot (storage_box: 12, storage_box_snapshot: 4) ... done
+Storage Box Snapshot 4 created
+Name: 2026-11-23T11-42-18
+Size: 16 KiB
+> hcloud storage-box snapshot list backup
+ID   NAME                  DESCRIPTION      SIZE     IS AUTOMATIC   AGE
+3    2026-11-23T11-42-17   before cleanup   16 KiB   no             2s
+4    2026-11-23T11-42-18   -                16 KiB   no             1s
+```
+
+A type allows a limited number of manual snapshots (`SNAPSHOT LIMIT` in
+`hcloud storage-box-type list`); one more is refused with
+`resource_limit_exceeded`. `hcloud storage-box snapshot update backup <name> --description <text>`
+changes the description, and `hcloud storage-box snapshot delete backup
+<name>` deletes a snapshot.
+
+`rollback-snapshot` brings the box's data back to a snapshot and deletes
+every snapshot taken after it. Here `notes.txt` was deleted after the
+first snapshot:
+
+```
+$ lftp -u u100011,Secret-Passw0rd -e 'set ftp:ssl-force true; set ssl:ca-file hlab-ca.pem; rm notes.txt; bye' u100011.storagebox.hetzner.internal
+> hcloud storage-box rollback-snapshot backup --snapshot 2026-11-23T11-42-17
+Waiting for rollback_snapshot (storage_box: 12, storage_box_snapshot: 3) ...
+Waiting for rollback_snapshot (storage_box: 12, storage_box_snapshot: 3) ... done
+Rolled back Storage Box 12 to Snapshot 3
+> hcloud storage-box snapshot list backup
+ID   NAME                  DESCRIPTION      SIZE     IS AUTOMATIC   AGE
+3    2026-11-23T11-42-17   before cleanup   16 KiB   no             1m
+$ lftp -u u100011,Secret-Passw0rd -e 'set ftp:ssl-force true; set ssl:ca-file hlab-ca.pem; ls notes.txt; bye' u100011.storagebox.hetzner.internal
+-rwxr--r--    1 100011   100011         12 Nov 23 11:42 notes.txt
+```
+
+A rollback ends the open sessions of the box and its subaccounts on
+every protocol; connect again afterwards.
+
+With ZFS enabled, the box account sees its snapshots as read-only
+folders under `.zfs/snapshot`; subaccounts do not get it:
+
+```
+> hcloud storage-box update-access-settings backup --enable-zfs
+Waiting for update_access_settings (storage_box: 12) ...
+Waiting for update_access_settings (storage_box: 12) ... done
+Access settings updated for Storage Box 12
+$ lftp -u u100011,Secret-Passw0rd -e 'set ftp:ssl-force true; set ssl:ca-file hlab-ca.pem; ls .zfs/snapshot; ls .zfs/snapshot/2026-11-23T11-42-17; bye' u100011.storagebox.hetzner.internal
+drwxr-x---    1 100011   100011         60 Nov 23 11:42 2026-11-23T11-42-17
+-rw-r--r--    1 100011   100011         11 Nov 23 11:42 dav.txt
+-rw-r--r--    1 100011   100011         14 Nov 23 11:42 index.html
+-rwxr--r--    1 100011   100011         12 Nov 23 11:42 notes.txt
+drwxr-x---    1 100011   100011          0 Nov 23 11:41 web1
+```
+
+SFTP, scp and SMB show the same folders.
+
+### Snapshot plans
+
+A snapshot plan takes an automatic snapshot at its time, given in UTC,
+and keeps at most `--max-snapshots` of them, deleting the oldest; manual
+snapshots are never deleted by it. Without `--day-of-week` and
+`--day-of-month` it runs every day; with both set, a day must match
+both:
+
+```
+> hcloud storage-box enable-snapshot-plan backup --max-snapshots 7 --hour 11 --minute 45
+Waiting for enable_snapshot_plan (storage_box: 12) ...
+Waiting for enable_snapshot_plan (storage_box: 12) ... done
+Snapshot Plan enabled for Storage Box 12
+> hcloud storage-box snapshot list backup
+ID   NAME                                  DESCRIPTION      SIZE     IS AUTOMATIC   AGE
+3    2026-11-23T11-42-17                   before cleanup   16 KiB   no             3m
+5    snapshot-daily--2026-11-23T11-45-56   -                16 KiB   yes            1s
+```
+
+The automatic snapshot shows as a `create_snapshot` action of the box,
+taken within a minute of the plan time. Plan times while the cloud is
+stopped are skipped, not made up at the next start.
+`hcloud storage-box disable-snapshot-plan backup` ends the plan; the
+automatic snapshots stay.
+
+### Passwords and protection
 
 A password has 12 to 128 characters with at least one upper case letter,
 one lower case letter, one digit and one special character; otherwise the
@@ -707,14 +868,9 @@ hcloud: invalid input in field 'password' (invalid_input)
 - password: password must be 12 to 128 characters long
 ```
 
-`enable-snapshot-plan` stores a plan without taking snapshots, and
 `enable-protection backup delete` makes `delete` answer `protected`:
 
 ```
-> hcloud storage-box enable-snapshot-plan backup --max-snapshots 7 --hour 3 --minute 0
-Waiting for enable_snapshot_plan (storage_box: 12) ...
-Waiting for enable_snapshot_plan (storage_box: 12) ... done
-Snapshot Plan enabled for Storage Box 12
 > hcloud storage-box enable-protection backup delete
 Waiting for change_protection (storage_box: 12) ...
 Waiting for change_protection (storage_box: 12) ... done
@@ -731,8 +887,8 @@ Waiting for delete_storage_box (storage_box: 12) ... done
 Storage Box backup deleted
 ```
 
-Deleting a box deletes its subaccounts and its data; deleting the last
-box also removes the storage VM.
+Deleting a box deletes its subaccounts, snapshots and data; deleting the
+last box also removes the storage VM.
 
 ### Own storage box types
 

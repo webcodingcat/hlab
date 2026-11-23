@@ -375,10 +375,13 @@ traffic.
 
 `storage-debs.json` names, in the same format, the Debian packages the
 storage VM needs: `btrfs-progs` with `liblzo2-2` and
-`libreiserfscore0t64` for the box data, `rsync`, and `borgbackup` with
-`python3-msgpack` and `python3-packaging`. HLab downloads them into
+`libreiserfscore0t64` for the box data, `rsync`, `borgbackup` with
+`python3-msgpack` and `python3-packaging`, `samba` for SMB, `apache2`
+with `libapache2-mpm-itk` for WebDAV, and `vsftpd` for FTP, each with
+the libraries it needs. HLab downloads them into
 `<data_folder>\cache\debs` when it creates or starts the storage VM, and
-the VM installs them at its first boot. Unlike the appliance packages,
+the VM installs those it lacks at boot, so a storage VM made by an older
+HLab gets new packages at its next start. Unlike the appliance packages,
 they are required: when a download fails, creating the first storage box
 fails with the error.
 
@@ -395,7 +398,7 @@ The folder of `[storage]` `data_folder` holds:
 | `volumes` | Volume disks as `volume-<id>.vhdx`. |
 | `cache\debs` | Downloaded packages of `appliance-debs.json` and `storage-debs.json`. |
 | `appliance` | The appliance VM with its disk and seed ISO. |
-| `storage` | The storage VM with its system disk `system.vhdx`, its seed ISO and `data.vhdx`, which holds the data of all storage boxes. It exists while there is at least one storage box. |
+| `storage` | The storage VM with its system disk `system.vhdx`, its seed ISO and `data.vhdx`, which holds the data and snapshots of all storage boxes. It exists while there is at least one storage box. |
 
 Deleting a snapshot, backup, volume or project deletes its files; the
 downloaded images, ISOs and packages stay until you delete them.
