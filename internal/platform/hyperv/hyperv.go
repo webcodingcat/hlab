@@ -349,6 +349,10 @@ func (p *Platform) Power(ctx context.Context, name string, op platform.PowerOp) 
 		body = `Restart-VM -VM $vm -Force`
 	case platform.PowerSave:
 		body = `Save-VM -VM $vm`
+	case platform.PowerPause:
+		body = `if ($vm.State -ne 'Paused') { Suspend-VM -VM $vm }`
+	case platform.PowerResume:
+		body = `if ($vm.State -eq 'Paused') { Resume-VM -VM $vm }`
 	default:
 		return &platform.Error{Kind: platform.Failed, Op: "Power", Err: fmt.Errorf("unknown power operation %v", op)}
 	}

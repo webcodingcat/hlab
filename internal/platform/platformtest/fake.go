@@ -36,6 +36,7 @@ type vm struct {
 	holdShutdown bool
 	sample       *platform.Sample
 	nics         []platform.NICSpec
+	iops         map[string]int // disk path -> MaximumIOPS set with SetDiskIOPS
 }
 
 // Fake implements platform.Platform in memory; it is safe for concurrent
@@ -275,7 +276,9 @@ func (f *Fake) DeleteVM(ctx context.Context, name string) error {
 }
 
 // Power applies op: Start, Reboot, Reset run the VM; Stop turns it off;
-// Shutdown turns it off unless HoldShutdown was called; Save saves it.
+// Shutdown turns it off unless HoldShutdown was called; Save saves it;
+// Pause pauses a Running or Paused VM (InvalidState otherwise); Resume
+// runs a Paused VM and leaves any other state unchanged.
 func (f *Fake) Power(ctx context.Context, name string, op platform.PowerOp) error {
 	if err := f.begin(ctx, "Power", name, op); err != nil {
 		return err
@@ -296,6 +299,15 @@ func (f *Fake) Power(ctx context.Context, name string, op platform.PowerOp) erro
 		}
 	case platform.PowerSave:
 		v.state = platform.StateSaved
+	case platform.PowerPause:
+		if v.state != platform.StateRunning && v.state != platform.StatePaused {
+			return errOf(platform.InvalidState, "Power", "vm %s cannot be paused in state %v", name, v.state)
+		}
+		v.state = platform.StatePaused
+	case platform.PowerResume:
+		if v.state == platform.StatePaused {
+			v.state = platform.StateRunning
+		}
 	default:
 		return errOf(platform.Failed, "Power", "unknown power operation %v", op)
 	}
@@ -469,6 +481,41 @@ func (f *Fake) AttachDisk(ctx context.Context, name, path string, lun int) error
 // DetachDisk records the call.
 func (f *Fake) DetachDisk(ctx context.Context, name, path string) error {
 	return f.onVM(ctx, "DetachDisk", name, path)
+}
+
+// SetDiskIOPS records the limit of path on the VM; path "" clears every
+// limit of the VM.
+func (f *Fake) SetDiskIOPS(ctx context.Context, name, path string, max int) error {
+	if err := f.begin(ctx, "SetDiskIOPS", name, path); err != nil {
+		return err
+	}
+	defer f.mu.Unlock()
+	v, err := f.existing("SetDiskIOPS", name)
+	if err != nil {
+		return err
+	}
+	switch {
+	case path == "":
+		v.iops = nil
+	case max == 0:
+		delete(v.iops, path)
+	default:
+		if v.iops == nil {
+			v.iops = map[string]int{}
+		}
+		v.iops[path] = max
+	}
+	return nil
+}
+
+// IOPS returns the limit SetDiskIOPS set for path on the VM, 0 for none.
+func (f *Fake) IOPS(name, path string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if v, ok := f.vms[name]; ok {
+		return v.iops[path]
+	}
+	return 0
 }
 
 // SetDVD records the call.

@@ -41,6 +41,12 @@ type Platform interface {
 	ResizeDisk(ctx context.Context, path string, sizeBytes int64) error
 	AttachDisk(ctx context.Context, vm, path string, lun int) error // hot-add on SCSI controller 0
 	DetachDisk(ctx context.Context, vm, path string) error
+	// SetDiskIOPS sets Hyper-V MaximumIOPS (I/Os of 8 KiB per second) of
+	// the drive holding the VHDX path on vm, running or not; 0 removes the
+	// limit. A drive already at max is left as it is. path "" means every
+	// hard disk drive of vm, read in one call (cloud start cleanup, E37).
+	// NotFound when vm does not exist or path is not attached to it.
+	SetDiskIOPS(ctx context.Context, vm, path string, max int) error
 	// CompactDisk shrinks the detached dynamic VHDX path to the blocks in
 	// use (Optimize-VHD -Mode Full).
 	CompactDisk(ctx context.Context, path string) error
@@ -125,6 +131,8 @@ const (
 	// PowerShutdownRetry is a shutdown that asks a still booting guest
 	// again until it accepts or a deadline has passed.
 	PowerShutdownRetry
+	PowerPause  // Suspend-VM; no error on a Paused VM
+	PowerResume // Resume-VM; no-op (no error) unless the VM is Paused
 )
 
 func (o PowerOp) String() string {
@@ -143,6 +151,10 @@ func (o PowerOp) String() string {
 		return "save"
 	case PowerShutdownRetry:
 		return "shutdown-retry"
+	case PowerPause:
+		return "pause"
+	case PowerResume:
+		return "resume"
 	}
 	return fmt.Sprintf("PowerOp(%d)", int(o))
 }
