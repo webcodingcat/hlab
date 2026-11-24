@@ -247,6 +247,23 @@ Remove-VMHardDiskDrive -VMHardDiskDrive $d
 	return err
 }
 
+// SetDiskIOPS sets MaximumIOPS of the drive holding the VHDX path on the
+// VM, or of every hard disk drive with path ""; drives already at max are
+// not set again (E37). A path not attached to the VM is NotFound.
+func (p *Platform) SetDiskIOPS(ctx context.Context, vm, path string, max int) error {
+	_, err := p.r.run(ctx, "SetDiskIOPS", map[string]any{"name": vm, "path": path, "max": max}, getVM+`$drives = @(Get-VMHardDiskDrive -VM $vm)
+if ($path) {
+  $full = [System.IO.Path]::GetFullPath($path)
+  $drives = @($drives | Where-Object { $_.Path -and [System.IO.Path]::GetFullPath($_.Path) -eq $full } | Select-Object -First 1)
+  if ($drives.Count -eq 0) { throw [System.Management.Automation.ItemNotFoundException]::new("disk $path is not attached to vm $name") }
+}
+foreach ($d in $drives) {
+  if ($d.MaximumIOPS -ne $max) { Set-VMHardDiskDrive -VMHardDiskDrive $d -MaximumIOPS $max }
+}
+`)
+	return err
+}
+
 // CompactDisk runs Optimize-VHD -Mode Full on the detached VHDX path; not
 // mounted, Hyper-V runs it as Prezeroed and drops trimmed blocks.
 func (p *Platform) CompactDisk(ctx context.Context, path string) error {
