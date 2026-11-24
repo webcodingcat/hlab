@@ -217,3 +217,8 @@ the block stays within the three server slots. The shared restart of
 A) and a `latency` fault between fsn1 and hel1 before the stop, checked
 by FAULT-07/restart and FAULT-08/restart; the net fixture goes with
 `releaseFaultFixture`.
+
+## Close
+
+- Unit suite, linter and build in full: green.
+- e2e: `task e2e -- -run 'TestE2E/^FAULT-(06|07|08|09|10|11)$' -v`, all passed (FAULT-06/09/10 selected for the changed `faultFixture.restart`).
