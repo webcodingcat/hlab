@@ -178,7 +178,7 @@ func runAppliance(secret []byte, listenAddr string) error {
 	// comes first; the VRF applier needs its IPv4 forwarding, and the load
 	// balancers enslave their network veths to its VRF devices.
 	a, err := agent.New(secret,
-		agent.NewNetwork(publicInterface), vrf, agent.NewLoadBalancers(lbDir), agent.NewIsolation(publicInterface), agent.NewFirewall(publicInterface), dns, proxy, console, metadata)
+		agent.NewNetwork(publicInterface), vrf, agent.NewLoadBalancers(lbDir), agent.NewIsolation(publicInterface), agent.NewFirewall(publicInterface), agent.NewFaults(publicInterface, trunkMAC), dns, proxy, console, metadata)
 	if err != nil {
 		return err
 	}
