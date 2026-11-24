@@ -60,7 +60,7 @@ async function created(project: string, kind: string): Promise<Fault> {
 async function shows(page: Page, row: Locator, target: string, params: string, left: string | RegExp): Promise<void> {
   await expect(await column(page, row, /^Target$/i)).toHaveText(target);
   await expect(await column(page, row, /^Param/i)).toHaveText(params);
-  await expect(row).toContainText(left);
+  await expect(await column(page, row, /^Remaining/i)).toHaveText(left);
 }
 
 test("UI-16 project faults: create every kind through the form, end one, end all", async ({ page }) => {
@@ -170,7 +170,7 @@ test("UI-16 project faults: create every kind through the form, end one, end all
   row = await submit(page, "Rate limit");
   const rate = await created(project, "rate_limit");
   expect({ params: rate.params, ends: rate.ends !== null }).toEqual({ params: { per_hour: 3600 }, ends: true });
-  await shows(page, row, "Project", "3600 per hour", /\b(?:[1-5] min|\d{1,2} s) left\b/);
+  await shows(page, row, "Project", "3600 per hour", /^(?:[1-5] min|\d{1,2} s) left$/);
   await expect(await column(page, row, /^Seed$/i)).toHaveText(/^\s*$/);
 
   // Volume unavailable on A's attached volume.
