@@ -427,3 +427,249 @@ foreach ($v in '0.1.0', '0.1.1') {
 Run the loop in the repository root. The version of the milestone itself
 is decided when the milestone closes; 0.1.0 and 0.1.1 only serve the
 checks.
+
+### The checks in order
+
+Each check below says where it starts, what it needs, its steps and what
+you should see. Run them in this order; each one builds on the state the
+one before leaves behind:
+
+1. [Install and launch](#install-and-launch-inst-03)
+2. [Names of the first cloud start](#names-of-the-first-cloud-start)
+3. [Example environment in the window](#example-environment-in-the-window-ui-09)
+4. [Update over an older version](#update-over-an-older-version-inst-06)
+5. [Windows shutdown with a running cloud](#windows-shutdown-with-a-running-cloud-life-05)
+6. [Storage box space after a delete](#storage-box-space-after-a-delete-compact)
+7. [Uninstall](#uninstall-inst-05)
+
+To run them again from the start, shut the VM down, go back to its
+checkpoint `fresh` (see [Checkpoint the fresh VM](#checkpoint-the-fresh-vm))
+and copy the setup programs in again. Note each result, with what you saw
+where it differs from "Expected".
+
+### Install and launch (INST-03)
+
+- Start: Explorer in the user test VM, folder `C:\Temp`.
+- Setup: no HLab installed (a fresh VM).
+- Steps:
+  1. Double-click `hlab-setup-0.1.0.exe`. SmartScreen may warn because the
+     setup program is not signed: **More info**, then **Run anyway**.
+  2. Click **Install** and confirm the administrator prompt.
+  3. On the last page click **Launch**.
+  4. Open Task Manager, **Details**, right-click a column heading,
+     **Select columns**, tick **Elevated**, and look at `hlab-tray.exe`.
+  5. Open the Start menu and type `HLab`; look at the desktop.
+  6. In Task Manager open **Startup apps**.
+- Expected: **Launch** opens the HLab window and the tray icon without
+  another administrator prompt, and `hlab-tray.exe` shows **Elevated**
+  "No". The Start menu and the desktop each have one shortcut "HLab",
+  which opens the window and nothing else. HLab is not among the startup
+  apps.
+
+### Names of the first cloud start
+
+- Start: the HLab window from the check above.
+- Setup: run [the subnet check](#check-the-subnet-before-the-first-cloud-start)
+  in a PowerShell inside the VM; every line must end in `ok`.
+- Steps:
+  1. Click **Start cloud** in the top bar and wait until the window shows
+     the cloud running; the first start takes several minutes.
+  2. Open Hyper-V Manager inside the VM and confirm its administrator
+     prompt.
+  3. Double-click the VM `hlab-appliance` to open its console.
+- Expected: Hyper-V Manager lists the VM `hlab-appliance`, and its console
+  shows the prompt `hlab-appliance login:`.
+
+### Example environment in the window (UI-09)
+
+This builds the example environment by hand, two servers in a private
+network behind a load balancer and a firewall, with a volume, a floating
+IP and a DNS zone, and deletes it again. On the way it checks the help
+texts of the views it opens.
+
+- Start: the HLab window with the cloud running.
+- Setup: an SSH key in the VM, copied to the clipboard. In a PowerShell
+  inside the VM:
+
+  ```powershell
+  ssh-keygen -t ed25519
+  Get-Content $HOME\.ssh\id_ed25519.pub | Set-Clipboard
+  ```
+
+- Steps:
+  1. **+ New project** with the display name `demo`, and open it. In
+     **Security**, tab **SSH Keys**, **Add SSH key** and paste the key.
+  2. **Networks**: **Create network** `demo-net` with the IP range
+     `10.0.0.0/16`; on its page, **Add subnet** `10.0.1.0/24`.
+  3. **Firewalls**: **Create firewall** `demo-fw` with inbound TCP rules
+     for port 22 and port 80.
+  4. **Servers**: **Create server** twice, `web1` and `web2`, each with
+     your SSH key, the network `demo-net` and the firewall `demo-fw`. Wait
+     until both run, then run `ssh root@<IPv4 of web1> hostname` in
+     PowerShell.
+  5. **Volumes**: **Create volume** `demo-vol`, 10 GB, server `web1`;
+     detach it and attach it again from its actions menu.
+  6. **Load Balancers**: **Create load balancer** `demo-lb` with the
+     network `demo-net`, the targets `web1` and `web2` and the HTTP
+     service on port 80; look through its tabs.
+  7. **IPs**, tab **Floating IPs**: **Create floating IP** (IPv4) for
+     `web1`; **Unassign** it, then **Assign** it to `web2`.
+  8. **DNS**: **Add zone** `demo.internal`; in **Records** add an `A`
+     record `www` with the floating IP; open **Zone file**.
+  9. On `web1`'s page, tab **Snapshots**, **Create snapshot**; delete it
+     in **Servers**, tab **Snapshots**.
+  10. Switch Windows between light and dark mode (Settings >
+      Personalization > Colors) and look over the pages you used.
+  11. In every view you opened, click `?`.
+  12. Delete everything by hand: the load balancer, the floating IP, the
+      volume, the zone and the firewall, then the servers, then the
+      network and the SSH key. Keep the project `demo`.
+- Expected: every step works from the window alone. Each action ends in
+  a toast naming the resource and the action, and errors appear at their
+  field. `ssh` prints `web1`. Each help text names only views, tabs and
+  buttons that exist. At the end every section of the project is empty.
+
+### Update over an older version (INST-06)
+
+- Start: the HLab window with the cloud running, 0.1.0 installed.
+- Setup: in the project `demo`, add the SSH key again and create one
+  server `upd1` with it. Change a setting: **Administration** >
+  **Settings**, the log level `debug`, **Save settings**.
+- Steps:
+  1. Run `C:\Temp\hlab-setup-0.1.1.exe`, click **Install** and confirm
+     the administrator prompt. Setup closes the tray program and stops
+     the cloud.
+  2. On the last page click **Launch**.
+  3. Open Settings > Apps > Installed apps and find "HLab".
+  4. In the window click **Start cloud** and wait until it runs; then, in
+     a new PowerShell:
+
+     ```powershell
+     hlab cloud status
+     ssh root@<IPv4 of upd1> hostname
+     ```
+
+- Expected: Apps lists "HLab" once, with version 0.1.1. `hlab cloud
+  status` shows `state: running` and `version: 0.1.1`. The project `demo`,
+  the server `upd1` and the log level `debug` are still there, and `ssh`
+  prints `upd1`.
+
+### Windows shutdown with a running cloud (LIFE-05)
+
+- Start: a PowerShell inside the VM, the cloud running, `upd1` running.
+- Setup: the stop behaviour under **Administration** > **Settings** is
+  `save`, the default. Note the server's boot ID and boot time:
+
+  ```powershell
+  ssh root@<IPv4 of upd1> 'cat /proc/sys/kernel/random/boot_id; uptime -s'
+  ```
+
+- Steps:
+  1. While the cloud runs, shut the user test VM down from its Start
+     menu (Power > Shut down).
+  2. Start the VM again from the development machine and sign in.
+  3. Open HLab from the Start menu. Click **Start cloud** and wait until
+     it runs.
+  4. Run the `ssh` command of the setup again.
+  5. Optional: set the stop behaviour to `shutdown`, **Save settings**,
+     then **Stop cloud** and **Start cloud** once (Hyper-V takes the new
+     value only at a cloud start), and repeat steps 1 to 4.
+- Expected: after the restart the window shows the cloud stopped until
+  you start it. With `save`, `upd1` runs again with the same boot ID: it
+  was saved, not restarted. With `shutdown`, it runs again with a new boot
+  ID and a later boot time: it was shut down and powered on.
+  **Administration** > **Logs** shows no error about restoring servers.
+
+### Storage box space after a delete (COMPACT)
+
+When a box is deleted and the cloud stops, HLab compacts the storage VM's
+data disk, so the drive gets the space back.
+
+- Start: the HLab window with the cloud running, project `demo`.
+- Setup:
+  1. **Administration** > **Settings**: set the stop behaviour to
+     `shutdown` and **Save settings**; with `save` the disk is not
+     compacted.
+  2. **Storage Boxes**: **Create Storage Box** twice. Box A with a
+     password, **Samba** and **reachable externally** on; box B with the
+     defaults. Box B keeps the storage VM: deleting the last box removes
+     the VM with its disk. Note box A's host name and user name from its
+     **Overview**.
+  3. Create a file of 2 GB of random data, in a PowerShell inside the VM:
+
+     ```powershell
+     $buf = New-Object byte[] (64MB)
+     $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+     $f = [IO.File]::Create('C:\Temp\random.bin')
+     try { for ($i = 0; $i -lt 32; $i++) { $rng.GetBytes($buf); $f.Write($buf, 0, $buf.Length) } } finally { $f.Close() }
+     ```
+
+- Steps:
+  1. In Hyper-V Manager, open the console of the VM `hlab-storage`.
+  2. In Explorer's address bar type `\\<host name of box A>\backup`, sign
+     in with box A's user name and password, and copy
+     `C:\Temp\random.bin` into the share.
+  3. **Stop cloud**, then read the size of the data disk in an
+     administrator PowerShell:
+
+     ```powershell
+     (Get-Item C:\ProgramData\hlab\data\storage\data.vhdx).Length / 1GB
+     ```
+
+  4. **Start cloud**, delete box A (type its name to confirm) and wait
+     until it is gone from the list.
+  5. **Stop cloud** and read the size again.
+  6. Afterwards set the stop behaviour back to `save`, start the cloud
+     and delete box B.
+- Expected: Hyper-V Manager lists `hlab-storage`, and its console shows
+  `hlab-storage login:`. After step 3 the disk is about 2 GB larger than
+  an empty one; after step 5 it is clearly smaller again, roughly as
+  before the copy. **Administration** > **Logs** shows "data disk of the
+  storage VM compacted" with its duration.
+
+### Uninstall (INST-05)
+
+- Start: Settings > Apps > Installed apps, "HLab", **Uninstall**.
+- Setup: HLab 0.1.1 installed, the tray running.
+- Steps:
+  1. Start the uninstall and confirm the administrator prompt.
+  2. Look at the page that opens, leave its checkbox unchecked and click
+     **Uninstall**.
+  3. Afterwards, in a PowerShell inside the VM:
+
+     ```powershell
+     'C:\Program Files\hlab', 'C:\ProgramData\hlab',
+       "$env:APPDATA\hlab-tray.exe", "$env:LOCALAPPDATA\hlab" |
+       ForEach-Object { '{0}: {1}' -f $_, (Test-Path $_) }
+     Get-ChildItem -Recurse -Filter HLab.lnk -ErrorAction SilentlyContinue `
+       "$env:ProgramData\Microsoft\Windows\Start Menu\Programs",
+       "$env:APPDATA\Microsoft\Windows\Start Menu\Programs",
+       "$env:PUBLIC\Desktop", "$HOME\Desktop"
+     ```
+
+  4. Open Hyper-V Manager and its Virtual Switch Manager.
+- Expected: the page shows the checkbox "Keep projects, servers and
+  settings", unchecked. The tray closes and "HLab" is gone from Apps.
+  Every line of step 3 ends in `False` and no shortcut is listed. Hyper-V
+  Manager shows no VM `hlab-appliance`, `hlab-storage` or `hlab-server-<n>`,
+  and no switch `hlab`.
+
+## Reading the documentation
+
+On the development machine, read the documents as their readers would,
+in a Markdown preview in light and dark theme:
+
+- `README.md`, as a developer who tests Hetzner setups and has never seen
+  HLab: the banner, badges and link line, the screenshots that follow the
+  theme, and whether installation and first steps can be followed without
+  asking anyone.
+- [docs/guide.md](../guide.md), [docs/commands.md](../commands.md),
+  [docs/configuration.md](../configuration.md) and
+  [docs/deviations.md](../deviations.md), as a user: is each resource,
+  command and setting clear?
+- The guides in this folder, as an outside contributor who wants to set
+  up, build, test and extend HLab.
+
+Nothing may be unclear, missing, or describe what is not built. The help
+texts of the window are checked in the user test VM, in
+[Example environment in the window](#example-environment-in-the-window-ui-09).

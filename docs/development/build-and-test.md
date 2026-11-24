@@ -253,6 +253,11 @@ program): uninstall that first. It checks that the VMs and the switch of
 the dev profile survive uninstalling the release. When a run fails, its
 logs stay in the temporary folder `hlab-e2einstall-*` it names.
 
+Because it installs and uninstalls a release, the suite is run for a
+release in a development test VM rather than on the development machine;
+[Release checks](release-checks.md#development-test-vm) says how to set
+one up.
+
 ## Catalogs
 
 ```

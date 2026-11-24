@@ -394,4 +394,5 @@ of it in `%ProgramData%\Package Cache`.
   server types and the catalogs.
 - [Known deviations](docs/deviations.md): what differs from Hetzner.
 - [Developer guide](docs/development/setup.md): setup, build and tests,
-  components, adding a resource.
+  components, adding a resource, and the
+  [release checks](docs/development/release-checks.md) in two test VMs.
