@@ -219,13 +219,13 @@ is shared by the project's Faults and Active faults.
     "No faults are active in this project." with "Create fault"; errors as
     toast
 
-- [ ] 28-06 Create fault form
+- [x] 28-06 Create fault form
   - Wave: 3 | Depends on: 28-01, 28-05 | Review: alone
   - Requirements: UI-16 | Tests: ui/frontend/tests/e2e/faults.spec.ts
   - Reads: UI-SPEC.md "Building blocks" (Form), "Faults"; CONTEXT.md
     "Assumptions"; ARCHITECTURE.md "Management API" (kind table)
   - Size: ~350 lines in 3 files
-  - [ ] `views/faults/FaultForm.svelte`: kind select with its explanation,
+  - [x] `views/faults/FaultForm.svelte`: kind select with its explanation,
     only the kind's fields (target selects of fitting servers, attached
     volumes, storage boxes, servers and volumes grouped for `disk_slow`;
     latency segmented control Server | Between locations with two
@@ -236,19 +236,19 @@ is shared by the project's Faults and Active faults.
     `showsSeed`, duration select with custom text; "No ... in this
     project" and Create disabled when nothing fits; body from
     `requestBody`; field errors through `formErrors` with `formField`
-  - [ ] `views/faults/Section.svelte` shows the form for page `new` and
+  - [x] `views/faults/Section.svelte` shows the form for page `new` and
     returns to the list after a create
 
-- [ ] 28-07 Active faults page and top bar pill
+- [x] 28-07 Active faults page and top bar pill
   - Wave: 3 | Depends on: 28-02, 28-05 | Review: alone
   - Requirements: UI-17 | Tests: ui/frontend/tests/e2e/faults.spec.ts
   - Reads: UI-SPEC.md "Views" (Shell top bar, Active faults), "Colours";
     ARCHITECTURE.md "hlab-tray (tray program)"
   - Size: ~220 lines in 4 files
-  - [ ] `state.ts` `CloudState.faults`; `lib/TopBar.svelte` pill
+  - [x] `state.ts` `CloudState.faults`; `lib/TopBar.svelte` pill
     `faultsPill(n)` in the warning colour left of the cloud status pill
     while running and `faults > 0`, a link to `#/faults`
-  - [ ] `views/ActiveFaults.svelte` (breadcrumb "Active faults", help
+  - [x] `views/ActiveFaults.svelte` (breadcrumb "Active faults", help
     button for `active-faults`, `GET /faults` and `GET /projects` for
     display names and per project the target names, 5 s refresh,
     `FaultsTable` with the Project column, "End" per row, "End all" with

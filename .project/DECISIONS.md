@@ -19,6 +19,30 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-24 Fault lists load target names best-effort
+
+- Type: decision
+- Phase: phase 28
+- What: the project's Faults page and "Active faults" always show the faults of the management API and load the server, volume and storage box names per project best-effort through `faultTargetNames`.
+- Why: an `api_error` fault on reads must not hide the faults that the user wants to end.
+- Cost of change: low
+
+## 2026-11-24 "End" in a fault row needs no confirmation
+
+- Type: decision
+- Phase: phase 28
+- What: "End" in a fault row ends the fault at once with an action toast; only "End all" asks first.
+- Why: ending one fault is harmless and quickly undone by creating it again.
+- Cost of change: low
+
+## 2026-11-24 Fault table texts the plan left open
+
+- Type: decision
+- Phase: phase 28
+- What: a latency fault without jitter reads "50 ms", a cut "public, 100 % loss", a loss fault "private, 30 % loss"; the Percent field has no hint text.
+- Why: the shortest texts that follow the UI-SPEC examples; a hint naming the range would hide the error check of UI-16.
+- Cost of change: low
+
 ## 2026-11-24 A lost connection keeps the last fault count
 
 - Type: decision
