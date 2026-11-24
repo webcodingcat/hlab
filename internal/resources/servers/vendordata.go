@@ -27,17 +27,22 @@ import (
 // confirms it and remembers the ID, so a reset is applied once.
 //
 // Private adapters: per entry whose MAC is one of hlab's (02:48:4c:2x:xx:xx)
-// and belongs to a link that does not carry its private IP yet (a link
-// hot-added after boot; links the seed's network-config configured at boot
-// are left to it, with what the user added), it sets the private IP as /32
+// and belongs to a link that does not carry its private IP when the hook
+// first sees it after boot (a link hot-added after boot; links the seed's
+// network-config configured at boot are left to it, with what the user
+// added), it sets the private IP as /32
 // and a route to the network range via the gateway, on-link; Hetzner's
 // guests get the same from DHCP, hlab has no DHCP server. With
 // systemd-networkd active it writes
 // /run/systemd/network/05-hlab-<mac>.network (volatile, gone after a
 // reboot) and reconfigures the link; otherwise it uses ip addr/route
 // replace. What it set is kept in /run/hlab-guest/networks.json and removed
-// again when the entry goes (detach). Alias IPs are left to the user, as at
-// Hetzner.
+// again when the entry goes (detach). The links that carried their IP when
+// first seen are kept in /run/hlab-guest/boot-links.json. A link on either
+// list is not configured again during that boot, even after it lost its
+// address in a carrier drop (E47), so the user's netplan settings for it
+// stay in force; a detached link leaves both lists. Alias IPs are left to
+// the user, as at Hetzner.
 const guestHook = `#!@PYTHON@
 # hlab guest hook: picks up grown volumes, configures private adapters,
 # applies a pending root password reset.
@@ -51,6 +56,7 @@ BASE = "http://169.254.169.254/hlab/v1/password-reset"
 STATE = "/var/lib/hlab-guest/last-reset"
 PRIVATE = "http://169.254.169.254/hetzner/v1/metadata/private-networks"
 NETSTATE = "/run/hlab-guest/networks.json"
+BOOTSTATE = "/run/hlab-guest/boot-links.json"
 NETDIR = "/run/systemd/network"
 MAC_PREFIX = "02:48:4c:2"
 
@@ -94,8 +100,8 @@ def quiet(*args):
     subprocess.run(list(args), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-# A link that already carries its private IP was configured by the seed's
-# network-config at boot (or by an earlier run): the hook leaves it alone.
+# A link that carries its private IP when the hook first sees it was
+# configured by the seed's network-config at boot: the hook leaves it alone.
 def has_ip(dev, ip):
     out = subprocess.run(["ip", "-o", "addr", "show", "dev", dev],
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -130,6 +136,20 @@ def remove_net(mac, dev, cfg):
         quiet("ip", "addr", "del", cfg["ip"] + "/32", "dev", dev)
 
 
+def load_state(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(data, f)
+
+
 def sync_networks():
     import yaml
     with urllib.request.urlopen(PRIVATE, timeout=4) as r:
@@ -143,11 +163,8 @@ def sync_networks():
             continue
         want[mac] = {"ip": str(e["ip"]), "gateway": str(e["gateway"]),
                      "network": str(e.get("network") or e.get("subnet"))}
-    try:
-        with open(NETSTATE) as f:
-            have = json.load(f)
-    except (OSError, ValueError):
-        have = {}
+    have = load_state(NETSTATE)
+    booted = load_state(BOOTSTATE)
     devs = links()
     done = {}
     for mac, cfg in have.items():
@@ -155,9 +172,16 @@ def sync_networks():
             done[mac] = cfg
         else:
             remove_net(mac, devs.get(mac), cfg)
+    seen = {}
+    for mac, cfg in booted.items():
+        if want.get(mac) == cfg and mac in devs:
+            seen[mac] = cfg
     networkd = None
     for mac, cfg in want.items():
-        if mac in done or mac not in devs or has_ip(devs[mac], cfg["ip"]):
+        if mac in done or mac in seen or mac not in devs:
+            continue
+        if has_ip(devs[mac], cfg["ip"]):
+            seen[mac] = cfg
             continue
         if networkd is None:
             networkd = networkd_active()
@@ -167,9 +191,9 @@ def sync_networks():
             continue
         done[mac] = cfg
     if done != have:
-        os.makedirs(os.path.dirname(NETSTATE), exist_ok=True)
-        with open(NETSTATE, "w") as f:
-            json.dump(done, f)
+        save_state(NETSTATE, done)
+    if seen != booted:
+        save_state(BOOTSTATE, seen)
 
 
 def main():
