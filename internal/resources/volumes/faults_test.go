@@ -153,24 +153,45 @@ func testRemoveRestore(t *testing.T) {
 
 func testEndsFirst(t *testing.T) {
 	cases := []struct {
-		name   string
-		action string
-		body   any
-		op     string // the platform work the action does
+		name string
+		run  func(t *testing.T, e *faultEnv, server, volume int64)
+		ops  []string // the platform work the action does
 	}{
-		{"detach", "detach", nil, "DetachDisk"},
-		{"resize", "resize", map[string]any{"size": 20}, "ResizeDisk"},
+		{"detach", func(t *testing.T, e *faultEnv, _, v int64) {
+			runVolumeAction(t, e.volEnv, v, "detach", nil)
+		}, []string{"DetachDisk"}},
+		{"resize", func(t *testing.T, e *faultEnv, _, v int64) {
+			runVolumeAction(t, e.volEnv, v, "resize", map[string]any{"size": 20})
+		}, []string{"ResizeDisk"}},
+		{"server_delete", func(t *testing.T, e *faultEnv, s, _ int64) {
+			resp := e.Do(http.MethodDelete, fmt.Sprintf("/servers/%d", s), nil)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("DELETE /servers/%d: status %d, want 200", s, resp.StatusCode)
+			}
+			var b struct {
+				Action apitest.Action `json:"action"`
+			}
+			apitest.Decode(t, resp, &b)
+			e.waitSuccess(t, b.Action.ID, "delete server")
+		}, []string{"DetachDisk", "DeleteVM"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newFaultEnv(t)
-			_, v := attachedPair(t, e)
-			before := opCount(e.volEnv, tc.op)
+			s, v := attachedPair(t, e)
+			before := map[string]int{}
+			for _, op := range tc.ops {
+				before[op] = opCount(e.volEnv, op)
+			}
 
-			runVolumeAction(t, e.volEnv, v, tc.action, tc.body)
+			tc.run(t, e, s, v)
 
-			if n := opCount(e.volEnv, tc.op); n <= before {
-				t.Fatalf("%s: %d %s calls after the action, want more than %d", tc.action, n, tc.op, before)
+			grown := false
+			for _, op := range tc.ops {
+				grown = grown || opCount(e.volEnv, op) > before[op]
+			}
+			if !grown {
+				t.Fatalf("%s: no new %v calls after the action", tc.name, tc.ops)
 			}
 			var mine []endCall
 			for _, c := range e.endCalls() {
@@ -179,13 +200,15 @@ func testEndsFirst(t *testing.T) {
 				}
 			}
 			if len(mine) == 0 {
-				t.Fatalf("%s: EndFaults calls %+v, want one for volume %d", tc.action, e.endCalls(), v)
+				t.Fatalf("%s: EndFaults calls %+v, want one for volume %d", tc.name, e.endCalls(), v)
 			}
 			if mine[0].Project != e.Project.Name {
-				t.Errorf("%s: EndFaults project %q, want %q", tc.action, mine[0].Project, e.Project.Name)
+				t.Errorf("%s: EndFaults project %q, want %q", tc.name, mine[0].Project, e.Project.Name)
 			}
-			if got := mine[0].Seen[tc.op]; got != before {
-				t.Errorf("%s: %d %s calls when EndFaults ran, want %d (the faults end before the platform work)", tc.action, got, tc.op, before)
+			for _, op := range tc.ops {
+				if got := mine[0].Seen[op]; got != before[op] {
+					t.Errorf("%s: %d %s calls when EndFaults ran, want %d (the faults end before the platform work)", tc.name, got, op, before[op])
+				}
 			}
 		})
 	}
