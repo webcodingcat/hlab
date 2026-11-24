@@ -23,6 +23,14 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-24 Image servers are created with --allow-deprecated-image
+
+- Type: decision
+- Phase: phase 29
+- What: the e2e image fixture always passes `--allow-deprecated-image` to `hcloud server create`; the checks are unchanged.
+- Why: hcloud refuses the deprecated fedora-43 without it.
+- Cost of change: low
+
 ## 2026-11-24 Guest hooks get their interpreter by placeholder
 
 - Type: decision

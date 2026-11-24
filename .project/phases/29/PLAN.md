@@ -132,7 +132,7 @@ E2E harness (writer of `test/e2e/images_test.go`):
     `users: []` in the cloud-config part; doc comment of `vendorData`
     updated
 
-- [ ] 29-05 Image matrix on the dev cloud
+- [!] 29-05 Image matrix on the dev cloud - waits for Q25: fedora-44 ends `cloud-init status` with exit 2 (cloud-init race on Fedora: `hostnamectl set-hostname` from meta-data `local-hostname` in the local stage before D-Bus is up); the fix needs a change of the seed contract. Tried: two e2e runs (92db440, 9d325a3; 30 of 34 then all but SRV-23/fedora-44 green) and two diagnosis servers; harness fix 9d325a3 not yet reviewed
   - Wave: 2 | Depends on: 29-01, 29-02, 29-03, 29-04 | Review: alone
   - Requirements: SRV-23, SRV-24 | Tests: test/e2e/images_test.go
   - Reads: EXPERIMENTS.md E30-E34, E45; ARCHITECTURE.md "Guest
@@ -145,7 +145,7 @@ E2E harness (writer of `test/e2e/images_test.go`):
     `internal/resources/servers` what a failing case shows, within this
     phase's choices. Rerun only the failing image's case.
 
-- [ ] 29-06 Documentation
+- [ ] 29-06 Documentation (skipped: depends on 29-05)
   - Wave: 3 | Depends on: 29-05 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-07 | Tests: existing tests of test/docs (no new rows)
   - Reads: SPEC.md "Documentation"; CONTEXT.md "Assumptions"; ROADMAP.md

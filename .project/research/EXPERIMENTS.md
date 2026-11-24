@@ -1125,7 +1125,7 @@ arguments and the interpreter the vendor script finds.
 - Result: confirmed, no change needed
 - Checked on: 2026-11-24, Fedora 43 (6.17.1, cloud-init 25.2), Fedora 44 (6.19.10, cloud-init 25.3, Python 3.14.3), Cloud Base Generic qcow2
 - By: experiment (method in E30)
-- Status: valid
+- Status: superseded (phase 29 29-05): with `on-link` gone, fedora-44 still ends `cloud-init status` with exit 2 in two of two e2e runs and fedora-43 in one of two: the local stage runs `hostnamectl set-hostname` for meta-data `local-hostname` before D-Bus is up ("Failed to connect to system scope bus via local transport"), a WARNING in recoverable_errors; the init stage then sets the hostname correctly
 
 Observed: Secure Boot, drivers, serial console, SSH 21 s after poweron;
 NoCloud, NetworkManager /32 network, outbound, private network at create
