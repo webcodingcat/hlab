@@ -103,14 +103,14 @@ The injected crash's action error is `server_error` with message
   - [x] `internal/faults/manager.go`: `Active` (applied entries only) and `EndKind` over the existing `end`.
   - [x] `internal/faults/effects.go` (new): `ServerInjector`, `VolumeInjector`, `Effects`.
 
-- [ ] 26-03 Servers: crash, freeze and system disk limit
+- [x] 26-03 Servers: crash, freeze and system disk limit
   - Wave: 2 | Depends on: 26-01, 26-02 | Review: alone
   - Requirements: FAULT-05, FAULT-06, FAULT-10 | Tests: internal/resources/servers/faults_test.go
   - Reads: REQUIREMENTS FAULT-05, FAULT-06, FAULT-10; ARCHITECTURE "faults (phase 25)" the server paragraph, "resource"; DECISIONS "2026-11-24 A crashed server cannot be started while its fault is active", "2026-11-24 Where deletes end their faults"; EXPERIMENTS E26, E35, E36; phases/26/CONTEXT.md; `internal/resources/servers/power.go`, `rescue.go` `bootPower`, `rebuild.go`, `watch.go` `statusOf`
   - Size: ~280 lines in 5 files
   - Adjusts: -
-  - [ ] `internal/resources/servers/faults.go` (new): `Crash` (ends a freeze through `Deps.EndFault` first, `PowerStop`, status `off` through `setStatus`, no action), `Freeze` (`*faults.InputError` "server is not running" unless the VM is Running; `PowerPause`; the status stays), `Thaw` (`PowerResume` only on a Paused VM), `SetSystemDiskIOPS` (`SetDiskIOPS` on the system disk path); unknown server `faults.ErrNotFound`.
-  - [ ] `internal/resources/servers/servers.go`, `power.go`, `rebuild.go`, `rescue.go`: `Deps.FaultActive` and `Deps.EndFault`; in the work of the five power actions and rebuild, before any platform call, `EndFault(server_freeze)`; for poweron, reboot, reset and rebuild, while `FaultActive(server_crash)` the action ends with `server_error` "the server's host failed (injected fault)" before anything changes (rebuild keeps its disk); the project name is taken in the handler and passed into the work.
+  - [x] `internal/resources/servers/faults.go` (new): `Crash` (ends a freeze through `Deps.EndFault` first, `PowerStop`, status `off` through `setStatus`, no action), `Freeze` (`*faults.InputError` "server is not running" unless the VM is Running; `PowerPause`; the status stays), `Thaw` (`PowerResume` only on a Paused VM), `SetSystemDiskIOPS` (`SetDiskIOPS` on the system disk path); unknown server `faults.ErrNotFound`.
+  - [x] `internal/resources/servers/servers.go`, `power.go`, `rebuild.go`, `rescue.go`: `Deps.FaultActive` and `Deps.EndFault`; in the work of the five power actions and rebuild, before any platform call, `EndFault(server_freeze)`; for poweron, reboot, reset and rebuild, while `FaultActive(server_crash)` the action ends with `server_error` "the server's host failed (injected fault)" before anything changes (rebuild keeps its disk); the project name is taken in the handler and passed into the work.
 
 - [ ] 26-04 Servers: cleanup at cloud start
   - Wave: 2 | Depends on: 26-01 | Review: alone
