@@ -16,13 +16,16 @@ export type ProjectView =
   | "placement-groups"
   | "snapshots"
   | "backups"
-  | "tokens";
+  | "tokens"
+  | "faults";
 export type AdminView = "server-types" | "storage-box-types" | "isos" | "settings" | "logs";
 export type Page = { kind: "list" } | { kind: "new" } | { kind: "detail"; id: number; tab: string };
 export type Route =
   | { area: "projects" }
   | { area: "project"; project: string; view: ProjectView; page: Page }
   | { area: "admin"; view: AdminView }
+  // Active faults: the faults of every project, opened from the top bar.
+  | { area: "faults" }
   // The console window of one server, opened by the tray outside the shell.
   | { area: "server-console"; project: string; server: number };
 
@@ -42,18 +45,23 @@ const projectViews: ProjectView[] = [
   "snapshots",
   "backups",
   "tokens",
+  "faults",
 ];
 const adminViews: AdminView[] = ["server-types", "storage-box-types", "isos", "settings", "logs"];
 // Views with only a list page.
 const listOnly: ProjectView[] = ["tokens"];
 // Views with a list and a detail page but no create page.
 const noNew: ProjectView[] = ["snapshots", "backups"];
+// Views with a list and a create page but no detail page.
+const noDetail: ProjectView[] = ["faults"];
 
 /** href is the hash of a route. */
 export function href(r: Route): string {
   switch (r.area) {
     case "projects":
       return "#/projects";
+    case "faults":
+      return "#/faults";
     case "admin":
       return `#/admin/${r.view}`;
     case "server-console":
@@ -87,6 +95,7 @@ function decode(s: string): string | undefined {
 export function parse(hash: string): Route | undefined {
   const parts = hash.replace(/^#\/?/, "").split("/");
   if (parts.length === 1 && parts[0] === "projects") return { area: "projects" };
+  if (parts.length === 1 && parts[0] === "faults") return { area: "faults" };
   if (parts.length === 2 && parts[0] === "admin" && adminViews.includes(parts[1] as AdminView)) {
     return { area: "admin", view: parts[1] as AdminView };
   }
@@ -103,7 +112,7 @@ export function parse(hash: string): Route | undefined {
   if (parts.length === 3) return route({ kind: "list" });
   if (listOnly.includes(view)) return undefined;
   if (parts.length === 4 && parts[3] === "new") return noNew.includes(view) ? undefined : route({ kind: "new" });
-  if (!/^[1-9][0-9]*$/.test(parts[3])) return undefined;
+  if (noDetail.includes(view) || !/^[1-9][0-9]*$/.test(parts[3])) return undefined;
   const tab = parts.length === 5 && /^[a-z-]+$/.test(parts[4]) ? parts[4] : "overview";
   return route({ kind: "detail", id: Number(parts[3]), tab });
 }

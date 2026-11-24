@@ -75,6 +75,8 @@ const viewInfo: Record<ViewId, { title: string; area: Area }> = {
   "storage-box-types": { title: "Storage Box Types", area: "admin" },
   settings: { title: "Settings", area: "admin" },
   logs: { title: "Logs", area: "admin" },
+  faults: { title: "Faults", area: "project" },
+  "active-faults": { title: "Active faults", area: "faults" },
 };
 
 /** views are the views of views.json in its order, with title and area. */

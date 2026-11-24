@@ -1,5 +1,16 @@
 <script lang="ts">
-  import { Archive, Globe, HardDrive, KeyRound, MapPin, Network, Scale, Server, Shield } from "@lucide/svelte";
+  import {
+    Archive,
+    Globe,
+    HardDrive,
+    KeyRound,
+    MapPin,
+    Network,
+    Scale,
+    Server,
+    Shield,
+    TriangleAlert,
+  } from "@lucide/svelte";
   import type { Component } from "svelte";
   import SectionSidebar, { type SectionGroup } from "../lib/SectionSidebar.svelte";
   import SectionTabs from "../lib/SectionTabs.svelte";
@@ -30,6 +41,7 @@
     ips: MapPin,
     dns: Globe,
     security: KeyRound,
+    faults: TriangleAlert,
   };
 
   const Section = $derived(sectionComponents[view]);

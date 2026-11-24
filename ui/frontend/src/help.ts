@@ -23,7 +23,9 @@ export type ViewId =
   | "server-types"
   | "storage-box-types"
   | "settings"
-  | "logs";
+  | "logs"
+  | "faults"
+  | "active-faults";
 
 function escape(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
