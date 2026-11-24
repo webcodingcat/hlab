@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -19,12 +20,19 @@ import (
 )
 
 // source serves one raw image and its SHA256SUMS file and counts the
-// downloads of the image.
+// downloads of the image. With requireUA it answers 403 to a request whose
+// User-Agent does not start with "hlab/"; each path answers 503 to its
+// first unavailable requests (all of them when unavailable is negative).
 type source struct {
-	image     []byte
-	sums      atomic.Value // string
-	downloads atomic.Int64
-	srv       *httptest.Server
+	image       []byte
+	sums        atomic.Value // string
+	downloads   atomic.Int64
+	requireUA   atomic.Bool
+	unavailable atomic.Int64
+	srv         *httptest.Server
+
+	mu       sync.Mutex
+	requests map[string]int64 // per path
 }
 
 const imageFile = "test-generic-amd64.raw"
@@ -32,7 +40,7 @@ const imageFile = "test-generic-amd64.raw"
 func newSource(t *testing.T) *source {
 	t.Helper()
 	img := bytes.Repeat([]byte{0xA5}, 1<<20) // 1 MiB raw disk
-	s := &source{image: img}
+	s := &source{image: img, requests: map[string]int64{}}
 	sum := sha256.Sum256(img)
 	s.setSum(hex.EncodeToString(sum[:]))
 	mux := http.NewServeMux()
@@ -43,7 +51,21 @@ func newSource(t *testing.T) *source {
 	mux.HandleFunc("GET /img/SHA256SUMS", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, s.sums.Load().(string))
 	})
-	s.srv = httptest.NewServer(mux)
+	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.requireUA.Load() && !strings.HasPrefix(r.UserAgent(), "hlab/") {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		s.mu.Lock()
+		s.requests[r.URL.Path]++
+		n := s.requests[r.URL.Path]
+		s.mu.Unlock()
+		if u := s.unavailable.Load(); u < 0 || n <= u {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	}))
 	t.Cleanup(s.srv.Close)
 	return s
 }
@@ -405,6 +427,132 @@ func TestImages(t *testing.T) {
 		}
 		if got := parConv.calls.Load(); got != 1 {
 			t.Errorf("conversions under concurrent use = %d, want 1", got)
+		}
+	})
+
+	t.Run("CAT-09_checksums", func(t *testing.T) {
+		ctx := context.Background()
+		const (
+			other    = "other-generic-amd64.qcow2"
+			otherSum = "1111111111111111111111111111111111111111111111111111111111111111"
+		)
+		cases := []struct {
+			name string
+			sums func(hexSum string) string
+		}{
+			{"gnu", func(h string) string {
+				return fmt.Sprintf("%s  %s\n", h, imageFile)
+			}},
+			{"bsd", func(h string) string {
+				return fmt.Sprintf("# %s: 1048576 bytes\nSHA256 (%s) = %s\n", imageFile, imageFile, h)
+			}},
+			{"pgp_clearsigned_bsd", func(h string) string {
+				return "-----BEGIN PGP SIGNED MESSAGE-----\n" +
+					"Hash: SHA256\n" +
+					"\n" +
+					fmt.Sprintf("# %s: 1048576 bytes\n", other) +
+					fmt.Sprintf("SHA256 (%s) = %s\n", other, otherSum) +
+					fmt.Sprintf("# %s: 1048576 bytes\n", imageFile) +
+					fmt.Sprintf("SHA256 (%s) = %s\n", imageFile, h) +
+					"-----BEGIN PGP SIGNATURE-----\n" +
+					"\n" +
+					"iQIzBAEBCAAdFiEEexampleexampleexampleexampleAAoJEexample\n" +
+					"=AbCd\n" +
+					"-----END PGP SIGNATURE-----\n"
+			}},
+		}
+		for _, c := range cases {
+			t.Run(c.name, func(t *testing.T) {
+				src := newSource(t)
+				sum := sha256.Sum256(src.image)
+				src.sums.Store(c.sums(hex.EncodeToString(sum[:])))
+				conv := &converter{}
+				st := newStore(t, src, conv)
+				base, err := st.Ensure(ctx, "debian-13")
+				if err != nil {
+					t.Fatalf("Ensure with a %s checksum file: %v", c.name, err)
+				}
+				if _, err := os.Stat(base); err != nil {
+					t.Errorf("cached base %q: %v", base, err)
+				}
+				if d, n := src.downloads.Load(), conv.calls.Load(); d != 1 || n != 1 {
+					t.Errorf("downloads %d, conversions %d, want 1 and 1", d, n)
+				}
+			})
+		}
+
+		t.Run("bsd_wrong_digest", func(t *testing.T) {
+			src := newSource(t)
+			wrong := hex.EncodeToString(make([]byte, sha256.Size))
+			src.sums.Store(fmt.Sprintf("SHA256 (%s) = %s\n", imageFile, wrong))
+			conv := &converter{}
+			st := newStore(t, src, conv)
+			if p, err := st.Ensure(ctx, "debian-13"); err == nil {
+				t.Fatalf("Ensure with a wrong BSD digest = %q, want an error", p)
+			}
+			if got := conv.calls.Load(); got != 0 {
+				t.Errorf("conversions after the wrong digest = %d, want 0", got)
+			}
+			good := sha256.Sum256(src.image)
+			src.sums.Store(fmt.Sprintf("SHA256 (%s) = %s\n", imageFile, hex.EncodeToString(good[:])))
+			before := src.downloads.Load()
+			if _, err := st.Ensure(ctx, "debian-13"); err != nil {
+				t.Fatalf("Ensure after fixing the digest: %v", err)
+			}
+			if got := src.downloads.Load() - before; got != 1 {
+				t.Errorf("downloads after fixing the digest = %d, want 1 (nothing cached by the failed attempt)", got)
+			}
+		})
+	})
+
+	t.Run("CAT-09_mirror", func(t *testing.T) {
+		ctx := context.Background()
+		cases := []struct {
+			name        string
+			requireUA   bool
+			unavailable int64 // 503 answers per path; negative: always
+			ok          bool
+		}{
+			{"user_agent", true, 0, true},
+			{"503_once", false, 1, true},
+			{"503_always", false, -1, false},
+		}
+		for _, c := range cases {
+			t.Run(c.name, func(t *testing.T) {
+				src := newSource(t)
+				src.requireUA.Store(c.requireUA)
+				src.unavailable.Store(c.unavailable)
+				conv := &converter{}
+				st := newStore(t, src, conv)
+				base, err := st.Ensure(ctx, "debian-13")
+				if !c.ok {
+					if err == nil {
+						t.Fatalf("Ensure from a source answering 503 every time = %q, want an error", base)
+					}
+					if got := conv.calls.Load(); got != 0 {
+						t.Errorf("conversions after the failed Ensure = %d, want 0", got)
+					}
+					// Nothing is cached: once the source answers, the
+					// image is downloaded and converted.
+					src.unavailable.Store(0)
+					if _, err := st.Ensure(ctx, "debian-13"); err != nil {
+						t.Fatalf("Ensure after the source recovered: %v", err)
+					}
+					if d, n := src.downloads.Load(), conv.calls.Load(); d != 1 || n != 1 {
+						t.Errorf("after the source recovered: downloads %d, conversions %d, want 1 and 1", d, n)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatalf("Ensure: %v", err)
+				}
+				if _, err := os.Stat(base); err != nil {
+					t.Errorf("cached base %q: %v", base, err)
+				}
+				if d, n := src.downloads.Load(), conv.calls.Load(); d != 1 || n != 1 {
+					t.Errorf("downloads %d, conversions %d, want 1 and 1", d, n)
+				}
+			})
 		}
 	})
 }

@@ -1125,7 +1125,7 @@ arguments and the interpreter the vendor script finds.
 - Result: confirmed, no change needed
 - Checked on: 2026-11-24, Fedora 43 (6.17.1, cloud-init 25.2), Fedora 44 (6.19.10, cloud-init 25.3, Python 3.14.3), Cloud Base Generic qcow2
 - By: experiment (method in E30)
-- Status: valid
+- Status: superseded (phase 29 29-05): with `on-link` gone, fedora-44 still ends `cloud-init status` with exit 2 in two of two e2e runs and fedora-43 in one of two: the local stage runs `hostnamectl set-hostname` for meta-data `local-hostname` before D-Bus is up ("Failed to connect to system scope bus via local transport"), a WARNING in recoverable_errors; the init stage then sets the hostname correctly
 
 Observed: Secure Boot, drivers, serial console, SSH 21 s after poweron;
 NoCloud, NetworkManager /32 network, outbound, private network at create
@@ -1350,3 +1350,84 @@ Consequence for tests: no SMB connection to the box before the fault
 failing within 2 min without checking the error code; prove recovery by
 retrying a new `net use` for at least 90 s. `Get-SmbConnection` needs
 elevation; match `net.exe` by exit code, its messages are localized.
+
+## E45 `cloud-init status` on ubuntu-22.04/24.04/26.04 and debian-12/13 with hlab's seed, vendor-data and `users: []`
+
+- Result: confirmed, no change needed for Ubuntu and Debian
+- Checked on: 2026-11-24, dev cloud at 9c1dea1, Hyper-V Gen2, cx23; cloud-init 26.1 (Ubuntu 22.04.5, 24.04.5), 26.2 (Ubuntu 26.04.1), 22.4.2 (Debian 12), 25.1.4 (Debian 13)
+- By: experiment
+- Status: valid
+
+Method: one server per image via hcloud 1.70.2 with SSH key, private
+network at create and an ext4 volume with automount, user_data
+`#cloud-config` with `users: []` and a runcmd marker (the default merge
+keeps `users` wherever it sits); then `cloud-init status --wait --long`,
+`--format json`, `cloud-init schema --system --annotate`, the log grepped
+for WARNING/DEPRECAT, `getent passwd` for UID 1000-59999; API reboot and
+status again.
+
+Observed:
+- Exit 0, status done, `errors: []`, `recoverable_errors: {}` on all five,
+  on first boot and after reboot; volume mounted, marker written, no user
+  with UID >= 1000.
+- Ubuntu and Debian 13 validate network-config v2 with netplan's Python
+  API, which accepts `on-link`; cloud-init's own JSON v2 schema still
+  rejects `on-link` in 26.1 and 26.2 too (E31's range 24.4-25.3 is too
+  narrow), so images without netplan (EL, Fedora, openSUSE) end
+  "degraded" (exit 2) for exactly this key.
+- Debian 12 (22.4) does not validate network-config v2; its cloud-config
+  schema rejects `users: []` ("[] is too short") with a log WARNING only,
+  status stays done with exit 0, and no default user is created.
+- No deprecated key in the vendor-data on any image.
+- Routes rendered by netplan: `default via 172.31.1.1 onlink` and
+  `10.0.0.0/16 via 10.0.0.1 onlink`. Not proven: that networkd sets
+  onlink by itself if `on-link` is dropped from the seed.
+
+Pitfalls: scripts written on Windows carry CRLF (dash fails on
+`2>&1\r`); `cloud-init schema -t network-config` does not exist in 22.4.
+
+## E46 Hostname from vendor-data instead of meta-data `local-hostname` (Q25)
+
+- Result: refuted with `hostname` alone (EL and Fedora get the reverse-DNS name); confirmed with `hostname` and `fqdn` both set to the server name. Also refuted: an empty seed user-data `#cloud-config` keeps `cloud-init status` at 0
+- Checked on: 2026-11-24, dev cloud at c566f4b, Hyper-V Gen2, cx23; ubuntu-24.04 (cloud-init 26.1), debian-12 (22.4.2), debian-13 (25.1.4), rocky-8 (23.4-7.el8_10), rocky-9 (24.4-8.el9_8.1), fedora-43 (25.2), fedora-44 (25.3), opensuse-16 (25.1.3)
+- By: experiment
+- Status: valid
+
+Method: per image a server created without user_data; the seed copied
+from `/dev/sr0` to `/var/lib/cloud/seed/nocloud/` with `local-hostname`
+removed from meta-data and `hostname` (A) or `hostname` + `fqdn` (B) added
+to vendor-data's cloud-config part; `datasource: {NoCloud: {fs_label:
+null}}` keeps cloud-init off the DVD (else the DVD's files win);
+`/etc/hostname` and `/etc/hosts` restored to the image's content; a probe
+unit (`DefaultDependencies=no`, between cloud-init-local and cloud-init)
+logs the hostname; `cloud-init clean --logs`, reboot, then status, log and
+journal. Fedora ran A and B twice.
+
+Observed:
+- Local stage: no hostname set and no `hostnamectl` call on any image; the
+  Fedora D-Bus warning is gone.
+- Between local and init stage the guest carries the image's own name
+  (`ubuntu` on Ubuntu, `localhost` elsewhere, from an empty
+  `/etc/hostname`); on NetworkManager images (Fedora, EL, openSUSE)
+  NetworkManager sets transient `localhost.localdomain` and then the
+  reverse-DNS name `static.<ip>.clients.your-server.de`, as it already did
+  with today's seed on Fedora.
+- A: `cc_set_hostname` takes the fqdn from the current system name; with
+  `prefer_fqdn` in `rhel.py` rocky-8, rocky-9, fedora-43 and fedora-44 end
+  with the reverse-DNS name; Ubuntu, Debian and openSUSE end with the
+  server name. Status exit 0 everywhere.
+- B: final static hostname and `/etc/hostname` are the server name on all
+  eight; status exit 0 on all, Fedora twice each. No `/etc/hosts` entry
+  (no image sets `manage_etc_hosts`).
+- Seed user-data `#cloud-config\n` alone (server without user_data): exit
+  2 "empty cloud config" on ubuntu-24.04, debian-13, opensuse-16, fedora;
+  rocky-9 crashes in init-local (`TypeError` in
+  `_should_wait_via_user_data`, exit 1). `#cloud-config\n{}\n` gives exit 0
+  on all tested images.
+- rocky-8 always lists `skipping .../scripts/vendor as its not executable`
+  in recoverable_errors with exit 0; debian-12 keeps E45's `users: []`
+  warning with exit 0.
+
+Pitfalls: with the cidata DVD attached a seed directory alone is not
+enough (`fs_label: null`); after `cloud-init clean` `/etc/hostname` hides
+the pre-init name; `cloud-init clean` makes new host keys.

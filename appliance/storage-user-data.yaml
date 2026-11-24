@@ -5,6 +5,10 @@
 # A new instance-id keeps the SSH host keys, so clients of the boxes do not
 # see a changed host key.
 ssh_deletekeys: false
+# The seed's meta-data has no local-hostname; the name comes from here
+# (smbd's NetBIOS name follows it).
+hostname: @NAME@
+fqdn: @NAME@
 write_files:
   - path: /usr/local/sbin/hlab-agent-install
     permissions: "0755"

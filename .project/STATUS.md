@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 29 More system images (next)
+- Phase: 16 Release checks in test VMs (next)
 - Base branch: main
-- Last done: phase 28 merged into main (2026-11-24): the console creates, lists and ends faults per project, the top bar shows "N faults active" leading to all active faults, and the tray menu offers "End all faults"
-- Next: /wcc:phase in a new session builds phase 29 (more system images); phase 16 (release checks) stays the last phase and stops for the manual checks
+- Last done: phase 29 merged into main (2026-11-24): eleven more system images (Rocky, Alma, CentOS Stream, Fedora, openSUSE) boot with every server feature on Hyper-V; no image creates a default user, and the hostname comes from vendor-data on every image (Q25)
+- Next: /wcc:phase in a new session builds phase 16 (release checks), the last phase of milestone 1; it stops for the manual checks
 
 ## Open manual checks
 

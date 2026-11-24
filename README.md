@@ -156,9 +156,12 @@ root@web1:~# uname -sr
 Linux 6.8.0-147-generic
 ```
 
-The server gets the CPUs, memory and disk of its server type. The first
-server with an image downloads that image from its official source, so it
-takes longer; later servers reuse the cached copy. `server create` returns
+The server gets the CPUs, memory and disk of its server type. The system
+images are Hetzner's: Ubuntu 22.04, 24.04 and 26.04, Debian 12 and 13,
+Rocky Linux and AlmaLinux 8, 9 and 10, CentOS Stream 9 and 10, Fedora 43
+and 44, and openSUSE Leap 16 (see [Choosing an image](docs/guide.md#choosing-an-image)).
+The first server with an image downloads that image from its official
+source, so it takes longer; later servers reuse the cached copy. `server create` returns
 when the VM runs; a fresh server needs about a minute more until
 cloud-init has finished and SSH accepts the key.
 

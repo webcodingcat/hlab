@@ -23,6 +23,118 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-24 Appliance and storage VM name themselves through their user-data
+
+- Type: decision
+- Phase: phase 29
+- What: the cloud-config user-data of the appliance and the storage VM sets `hostname` and `fqdn` to their hlab name (placeholder `@NAME@`); existing VMs apply it once at the next cloud start because their instance-id changes.
+- Why: with `local-hostname` gone from meta-data (Q25) they would keep the image's default name.
+- Cost of change: low
+
+## 2026-11-24 Vendor-data sets fqdn next to hostname
+
+- Type: decision
+- Phase: phase 29
+- What: the cloud-config part of vendor-data sets both `hostname` and `fqdn` to the server's name.
+- Why: with `hostname` alone EL and Fedora take the reverse-DNS name as hostname (E46); Hetzner's `local-hostname` gives the same pair.
+- Cost of change: low
+
+## 2026-11-24 Empty user-data is `#cloud-config` with `{}`
+
+- Type: decision
+- Phase: phase 29
+- What: cidata writes an empty user-data or vendor-data as `#cloud-config\n{}\n`, for servers without user_data and every other seed.
+- Why: newer cloud-init reports an empty part as degraded and EL9's crashes in init-local on it (E46).
+- Cost of change: low
+
+## 2026-11-24 The hostname comes from vendor-data on every image (Q25)
+
+- Type: change
+- Phase: phase 29
+- What: Q25 answered: the seed's `meta-data` carries no `local-hostname` on any image; the server's name reaches the guest as `hostname` in the cloud-config part of vendor-data, set in cloud-init's init stage.
+- Why: the user chose one way for all images (option 2); on Fedora cloud-init sets a meta-data hostname in the local stage before D-Bus is up and `cloud-init status` then exits 2.
+- Cost of change: low (seed content only; existing servers keep their hostname, all 16 images are re-checked by SRV-23)
+
+## 2026-11-24 Image servers are created with --allow-deprecated-image
+
+- Type: decision
+- Phase: phase 29
+- What: the e2e image fixture always passes `--allow-deprecated-image` to `hcloud server create`; the checks are unchanged.
+- Why: hcloud refuses the deprecated fedora-43 without it.
+- Cost of change: low
+
+## 2026-11-24 Guest hooks get their interpreter by placeholder
+
+- Type: decision
+- Phase: phase 29
+- What: vendor-data writes hooks, units and the udev rule with `@PYTHON@`; the shell part picks `/usr/bin/python3` or `/usr/libexec/platform-python` right after `set -e` and replaces the placeholder in all six files before reloading systemd and udev.
+- Why: units and rules are loaded with the real interpreter of each image.
+- Cost of change: low
+
+## 2026-11-24 No download retry after cancellation
+
+- Type: decision
+- Phase: phase 29
+- What: a failed image or package request is not retried when its context is already cancelled.
+- Why: the retry could not succeed.
+- Cost of change: low
+
+## 2026-11-24 Image rows start their per-image subtests from goroutines
+
+- Type: decision
+- Phase: phase 29
+- What: TestE2E/SRV-23 and SRV-24 share one server per image through `imageRow`, which starts the per-image subtests from goroutines without `t.Parallel`, capped by the three server slots, and counts a subtest the filter skips as released.
+- Why: with `t.Parallel` a row could wait for a slot only the other row's not-yet-scheduled subtest frees, a deadlock.
+- Cost of change: low
+
+## 2026-11-24 One keyless rocky-8 server for the account checks
+
+- Type: decision
+- Phase: phase 29
+- What: the SRV-24 default-user and user_data `users` checks and the SRV-23 create-time password check share one extra keyless rocky-8 server.
+- Why: rocky-8 has the oldest cloud-init and Python 3.6, the strictest case, and a second extra server costs one more boot.
+- Cost of change: low
+
+## 2026-11-24 Vendor-data text changes proven end to end only
+
+- Type: decision
+- Phase: phase 29
+- What: the root-only and Python 3.6 changes in vendor-data get no unit row; SRV-23 and SRV-24 prove them on every image.
+- Why: they are configuration text without logic.
+- Cost of change: low
+
+## 2026-11-24 CAT-06 test no longer fixes the image count
+
+- Type: decision
+- Phase: phase 29
+- What: TestImages/CAT-06 drops its "only these five images" and count checks and still checks the five images and their attributes.
+- Why: the checks contradict CAT-09.
+- Cost of change: low
+
+## 2026-11-24 Deprecated fedora-43 checked in unit and e2e
+
+- Type: decision
+- Phase: phase 29
+- What: the CAT-09 unit row lists with `include_deprecated=true` as hcloud sends it, and SRV-23 expects a date in fedora-43's deprecated column of `hcloud image list --type system`.
+- Why: success criterion 1 names the hcloud CLI.
+- Cost of change: low
+
+## 2026-11-24 One on-link switch per seed
+
+- Type: decision
+- Phase: phase 29
+- What: `cidata.Seed.NoOnLink` turns `on-link` off for the whole seed; the rescue seed keeps `on-link` because rescue always runs Debian 13.
+- Why: all adapters of a guest share one renderer.
+- Cost of change: low
+
+## 2026-11-24 User-Agent and retry in the one download function
+
+- Type: decision
+- Phase: phase 29
+- What: `User-Agent: hlab/<version>` and a single retry live in the one download function, so ISO and package downloads get them too; a 404 after the retry still falls back to the alternative source.
+- Why: one place serves every download.
+- Cost of change: low
+
 ## 2026-11-24 Upgrade to wcc 0.32.27
 
 - Type: approval

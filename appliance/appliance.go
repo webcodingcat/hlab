@@ -3,10 +3,10 @@
 // The appliance's cidata ISO (volume label "cidata", written by hlabd at
 // every cloud start) must contain:
 //
-//   - user-data: UserData()
+//   - user-data: UserData(name), which sets hostname and fqdn to name
 //   - meta-data: instance-id (the appliance name plus a hash of the
 //     user-data and the network-config, so a changed user-data or public
-//     range runs once on an existing appliance) and local-hostname
+//     range runs once on an existing appliance), no local-hostname
 //   - network-config: v2, eth0 with the transit address of the public range
 //     (range .1/30) and default route via the host (range .2)
 //   - AgentFile ("hlab-agent"): the static Linux binary bin/hlab-agent
@@ -23,7 +23,7 @@
 // the agent, so a cloud start with a new ISO
 // updates the agent.
 //
-// The storage VM boots the same way with StorageUserData(): its unit starts
+// The storage VM boots the same way with StorageUserData(name): its unit starts
 // the agent with --role storage, TransitFile holds the storage address,
 // and its ISO carries the packages of catalog/storage-debs.json
 // (btrfs-progs, rsync, borgbackup and their libraries), installed in one
@@ -34,6 +34,7 @@ package appliance
 import (
 	_ "embed"
 	"encoding/base64"
+	"strconv"
 	"strings"
 )
 
@@ -57,16 +58,18 @@ var (
 	storageUserData string
 )
 
-// UserData returns the appliance's cloud-init user-data.
-func UserData() []byte { return render(userData, unit) }
+// UserData returns the cloud-init user-data of the appliance named name.
+func UserData(name string) []byte { return render(userData, unit, name) }
 
-// StorageUserData returns the storage VM's cloud-init user-data.
-func StorageUserData() []byte { return render(storageUserData, storageUnit) }
+// StorageUserData returns the cloud-init user-data of the storage VM named
+// name.
+func StorageUserData(name string) []byte { return render(storageUserData, storageUnit, name) }
 
-func render(data, unit string) []byte {
+func render(data, unit, name string) []byte {
 	enc := base64.StdEncoding.EncodeToString
 	return []byte(strings.NewReplacer(
 		"@INSTALL_B64@", enc([]byte(installScript)),
 		"@UNIT_B64@", enc([]byte(unit)),
+		"@NAME@", strconv.Quote(name),
 	).Replace(data))
 }

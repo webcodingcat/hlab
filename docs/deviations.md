@@ -22,7 +22,9 @@ logical CPUs, and its RAM and disk must fit into what is free beyond the
 reserves in the [configuration](configuration.md#settingstoml);
 otherwise creating, powering on or changing the type answers
 `resource_unavailable`. Creating a server finishes when the VM runs; SSH
-answers a few seconds later.
+answers a few seconds later. Early in the first boot the guest has
+another hostname (`localhost`, `ubuntu` or its reverse-DNS name) until
+cloud-init sets the server's name.
 
 Public IPv4 addresses come from a local range (`198.19.0.0/16` by
 default). The IPv6 network of a server is assigned on paper only: it
@@ -50,9 +52,12 @@ showing `running`.
 
 ## Images, snapshots, backups, rescue and ISOs
 
-The system images are Ubuntu 22.04, 24.04 and 26.04 and Debian 12 and
-13; each is downloaded the first time a server uses it, which takes a
-while. A snapshot is taken while the server keeps running and is
+The system images are Hetzner's except debian-11; each is downloaded
+the first time a server uses it, which takes a while. Rocky Linux 10,
+AlmaLinux 10 and CentOS Stream 10 need a host CPU with x86-64-v3 (AVX2).
+No image creates a default user such as `ubuntu`, so only root and the
+users from your user data can log in. fedora-43 stays usable after its
+removal date, 2027-02-09, until an HLab release drops it. A snapshot is taken while the server keeps running and is
 crash-consistent, like the disk after a power cut; its size is that of
 the uncompressed disk file. Backups ignore the shown backup window: HLab
 makes one backup per server and day at its first hourly check of that

@@ -506,7 +506,7 @@ Inside `hlabd` (Go packages under `internal/`):
   the appliance disk from the Debian 13 `generic` image. Checksum files
   are read in GNU (`hash  name`), BSD (`SHA256 (name) = hash`) and
   PGP clear-signed BSD format, skipping other lines; the HTTP client sends
-  the User-Agent `hlab/<version>` and retries once on a non-200 answer
+  the User-Agent `hlab/<version>` and retries once on a transport error or a non-200 answer
   (E30, phase 29). Sources that prune old builds (Rocky, Alma, CentOS
   Stream, openSUSE) are given by their `latest` file and checksum file.
 - Depends on: platform.
@@ -517,17 +517,30 @@ Inside `hlabd` (Go packages under `internal/`):
   `vendor-data`, `network-config` v2) written in Go (`go-diskfs`, ISO 9660
   with Rock Ridge, volume label `cidata`).
 - Interface: `cidata.Build(Seed) ([]byte, error)` and `cidata.BuildFile(Seed,
-  path)`; `Seed` carries instance ID, hostname, SSH keys, user-data,
-  vendor-data, interfaces (MAC, addresses, gateway, routes, nameservers)
-  and extra files (the appliance's agent binary and secret). `network-config`: public adapter `/32` with on-link default route
+  path)`; `Seed` carries instance ID, SSH keys, user-data,
+  vendor-data, interfaces (MAC, addresses, gateway, routes, nameservers),
+  extra files (the appliance's agent binary and secret) and `NoOnLink`, set
+  by the servers module from the image's `os_flavor`. `network-config`: public adapter `/32` with on-link default route
   via `172.31.1.1`, nameservers `185.12.64.1` and `185.12.64.2`; one adapter
   per private network with its `/32` and a route to the network's range via
   the network gateway, like Hetzner. The route key `on-link` is written only
   for images that render with netplan (Ubuntu, Debian); for the others
   (`os_flavor` rocky, alma, centos, fedora, opensuse) it is left out, since
   their renderers ignore it and cloud-init's schema rejects it, which makes
-  `cloud-init status` exit with 2 (E31; phase 29). `vendor-data` installs
-  the guest hooks (see "Guest integration").
+  `cloud-init status` exit with 2 (E31, E45; phase 29); the rescue seed keeps it (Debian 13). `vendor-data` installs
+  the guest hooks (see "Guest integration"). `meta-data` has the instance
+  ID and public keys but no `local-hostname`: the hostname comes from vendor-data in the
+  init stage, because Fedora's cloud-init sets a meta-data hostname in the
+  local stage before D-Bus is up and then reports degraded (Q25, phase 29).
+  cloud-init sets no placeholder name in the local stage; until the init
+  stage the guest carries the image's own name (`ubuntu`, else `localhost`),
+  and on NetworkManager images (EL, Fedora, openSUSE) NetworkManager sets
+  `localhost.localdomain` and then the reverse-DNS name for a few seconds
+  (E46). An empty user-data or vendor-data is written as
+  `#cloud-config
+{}
+`, since newer cloud-init rejects an empty part and
+  EL9's crashes on it (E46).
 - Depends on: nothing.
 
 #### scheduler
@@ -1169,8 +1182,9 @@ locks a resource of type `project`.
   disks were not created by hlab (ISO installs) lack the hooks; listed as a
   deviation.
 - `vendor-data` is a multipart MIME document: a cloud-config part with
-  only `disable_root`, `ssh_pwauth`, `chpasswd` and (phase 29)
-  `users: []`, so no image creates its default user and root is the only
+  only `disable_root`, `ssh_pwauth`, `chpasswd`, `hostname` and `fqdn`
+  (both the server's name; Q25, E46: with `hostname` alone EL and Fedora
+  prefer the reverse-DNS name) and (phase 29) `users: []`, so no image creates its default user and root is the only
   login, like Hetzner (users from user_data still apply, since user-data
   replaces that key), and a
   `text/x-shellscript` part (run once per instance) that writes the hooks,

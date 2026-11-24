@@ -3,6 +3,9 @@
 # script; the unit installs and starts the agent at every boot.
 # systemd-resolved stays: its stub listens on 127.0.0.53/54 only and the
 # agent's DNS binds specific addresses, so they do not conflict.
+# The seed's meta-data has no local-hostname; the name comes from here.
+hostname: @NAME@
+fqdn: @NAME@
 write_files:
   - path: /usr/local/sbin/hlab-agent-install
     permissions: "0755"

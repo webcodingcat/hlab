@@ -22,19 +22,26 @@ import (
 
 // Seed is everything one guest receives through its seed ISO.
 type Seed struct {
+	// InstanceID is the only identity in meta-data: it carries no
+	// local-hostname, since cloud-init would set that in its local stage,
+	// where Fedora's hostnamectl fails before D-Bus is up. A guest that needs
+	// a hostname gets it from user-data or vendor-data.
 	InstanceID string
-	Hostname   string
 	SSHKeys    []string
 	// UserData is passed through as given (a #cloud-config or a script);
-	// empty means an empty #cloud-config.
+	// empty means an empty #cloud-config mapping.
 	UserData string
 	// VendorData is passed through as given; empty means an empty
-	// #cloud-config.
+	// #cloud-config mapping.
 	VendorData string
 	// Interfaces are named eth0, eth1, ... in this order.
 	Interfaces []Interface
 	// Files are extra files at the ISO root, keyed by file name.
 	Files map[string][]byte
+	// NoOnLink leaves the key on-link out of every route of every
+	// interface in network-config, for guests whose renderer is not
+	// netplan: they ignore the key and cloud-init's v2 schema rejects it.
+	NoOnLink bool
 }
 
 // Interface is one network adapter of the guest, matched by MAC address.
@@ -56,7 +63,9 @@ type Route struct {
 const (
 	sectorSize  = 2048
 	volumeLabel = "cidata"
-	emptyConfig = "#cloud-config\n"
+	// emptyConfig is an empty mapping: cloud-init reports a part without
+	// content as degraded, and EL9's crashes on it in init-local (E46).
+	emptyConfig = "#cloud-config\n{}\n"
 )
 
 var seedFiles = []string{"meta-data", "user-data", "vendor-data", "network-config"}
@@ -156,9 +165,6 @@ func render(seed Seed) (map[string][]byte, error) {
 	if strings.TrimSpace(seed.InstanceID) == "" {
 		return nil, errors.New("cidata: instance id is missing")
 	}
-	if strings.TrimSpace(seed.Hostname) == "" {
-		return nil, errors.New("cidata: hostname is missing")
-	}
 
 	out := make(map[string][]byte, len(seedFiles)+len(seed.Files))
 	for name, data := range seed.Files {
@@ -174,16 +180,15 @@ func render(seed Seed) (map[string][]byte, error) {
 	}
 
 	meta, err := marshal(metaData{
-		InstanceID:    seed.InstanceID,
-		LocalHostname: seed.Hostname,
-		PublicKeys:    nonNil(seed.SSHKeys),
+		InstanceID: seed.InstanceID,
+		PublicKeys: nonNil(seed.SSHKeys),
 	})
 	if err != nil {
 		return nil, err
 	}
 	out["meta-data"] = meta
 
-	network, err := networkConfig(seed.Interfaces)
+	network, err := networkConfig(seed.Interfaces, !seed.NoOnLink)
 	if err != nil {
 		return nil, err
 	}
@@ -195,9 +200,8 @@ func render(seed Seed) (map[string][]byte, error) {
 }
 
 type metaData struct {
-	InstanceID    string   `json:"instance-id"`
-	LocalHostname string   `json:"local-hostname"`
-	PublicKeys    []string `json:"public-keys"`
+	InstanceID string   `json:"instance-id"`
+	PublicKeys []string `json:"public-keys"`
 }
 
 type network struct {
@@ -234,8 +238,8 @@ type nameservers struct {
 
 // networkConfig renders network-config version 2. An interface without
 // address is optional, so it does not block systemd-networkd-wait-online
-// in the guest.
-func networkConfig(ifaces []Interface) ([]byte, error) {
+// in the guest. Without withOnLink no route carries on-link.
+func networkConfig(ifaces []Interface, withOnLink bool) ([]byte, error) {
 	cfg := network{Network: networkV2{Version: 2, Ethernets: map[string]ethernet{}}}
 	seen := map[string]bool{}
 	for i, iface := range ifaces {
@@ -260,7 +264,7 @@ func networkConfig(ifaces []Interface) ([]byte, error) {
 			if iface.Gateway.Is6() {
 				def = netip.PrefixFrom(netip.IPv6Unspecified(), 0)
 			}
-			eth.Routes = append(eth.Routes, route{To: def.String(), Via: iface.Gateway.String(), OnLink: true})
+			eth.Routes = append(eth.Routes, route{To: def.String(), Via: iface.Gateway.String(), OnLink: withOnLink})
 		}
 		for _, r := range iface.Routes {
 			if !r.To.IsValid() || !r.Via.IsValid() {
@@ -269,7 +273,7 @@ func networkConfig(ifaces []Interface) ([]byte, error) {
 			eth.Routes = append(eth.Routes, route{
 				To:     r.To.Masked().String(),
 				Via:    r.Via.String(),
-				OnLink: !onLink(iface.Addresses, r.Via),
+				OnLink: withOnLink && !onLink(iface.Addresses, r.Via),
 			})
 		}
 		if len(iface.Nameservers) > 0 {
