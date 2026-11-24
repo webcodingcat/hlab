@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 16 Release checks in test VMs (next)
+- Phase: B4 Backlog (next), then 16 Release checks in test VMs
 - Base branch: main
 - Last done: phase 29 merged into main (2026-11-24): eleven more system images (Rocky, Alma, CentOS Stream, Fedora, openSUSE) boot with every server feature on Hyper-V; no image creates a default user, and the hostname comes from vendor-data on every image (Q25)
-- Next: /wcc:phase in a new session builds phase 16 (release checks), the last phase of milestone 1; it stops for the manual checks
+- Next: /wcc:phase in a new session builds backlog phase B4 (seed ISO on early network attach, snapshot rollback leftovers, private network after cloud start, duplicate convention tests), then phase 16 (release checks), the last phase of milestone 1
 
 ## Open manual checks
 
