@@ -66,7 +66,7 @@ Behaviour the tests build on:
 
 ## Plans
 
-- [ ] B4-01 Servers: seed swap held after a boot, due swaps at cloud start
+- [x] B4-01 Servers: seed swap held after a boot, due swaps at cloud start
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SRV-01 | Tests: internal/resources/servers/adapters_test.go
   - Reads: ARCHITECTURE.md "cidata", "Guest integration", "Cloud start
@@ -74,7 +74,7 @@ Behaviour the tests build on:
     server", "Rescue seed held 90 s after the boot into rescue";
     CONTEXT.md; Interfaces above
   - Size: ~250 lines in 7 files
-  - [ ] `internal/resources/servers/servers.go` (`Deps.SeedHold`,
+  - [x] `internal/resources/servers/servers.go` (`Deps.SeedHold`,
     `Internal.SeedDue`, per-server boot times and mutexes in `Module`),
     `internal/resources/servers/adapters.go` (`rewriteSeed`: `SeedDue`
     set before the eject or the deferral; the delayed swap waits on
@@ -83,7 +83,7 @@ Behaviour the tests build on:
     leaving slot 0 alone while rescue holds it; `SeedDue` cleared after
     the insert), `internal/cloud/cloud.go` (`seedHold = 90 * time.Second`
     next to `rescueSeedHold`)
-  - [ ] Note the boot and hold the server's mutex around the power call
+  - [x] Note the boot and hold the server's mutex around the power call
     in every start path: `bootPower` and the start in `rebootFromRescue`
     (`rescue.go`), create (`servers.go`), `rebuild.go`, `changetype.go`;
     `lifecycle.go` `Restore` notes a boot only for a VM that was Off, then
