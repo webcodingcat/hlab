@@ -255,14 +255,14 @@ is shared by the project's Faults and Active faults.
     confirm dialog through `DELETE /faults`, empty text "No faults are
     active.", cloud stopped text) and its route in `App.svelte`
 
-- [ ] 28-08 Documentation
+- [x] 28-08 Documentation
   - Wave: 4 | Depends on: 28-01, 28-02, 28-03, 28-04, 28-05, 28-06, 28-07 | Review: alone
   - Requirements: DOC-04, DOC-05, DOC-07 | Tests: test/docs/docs_test.go (existing)
   - Reads: SPEC.md "Documentation"; UI-SPEC.md "Faults", "Active faults",
     "Tray menu"; README.md "The tray program"; docs/guide.md "Fault
     injection"
   - Size: ~150 lines in 4 files
-  - [ ] `ui/frontend/src/help/faults.md` and `help/active-faults.md`
+  - [x] `ui/frontend/src/help/faults.md` and `help/active-faults.md`
     complete (views and buttons as built); README.md "The tray program"
     names the Faults entry, the top bar pill and "End all faults" in the
     tray menu; docs/guide.md "Fault injection" describes creating, seeing
@@ -279,3 +279,9 @@ keeps each creatable (`server_freeze` created and ended before
 its end. UI-17 runs in the UI block after UI-14; its harness creates two
 small projects and their `api_error` and `rate_limit` faults through
 `hlab fault create` and deletes the projects afterwards.
+
+## Close
+
+- Unit suite (Go and frontend), linter and build in full: green.
+- e2e: `task e2e -- -run 'TestE2E/^(UI-16|UI-17)$'` on c8d47a7, both passed.
+- Verifier: no blockers, no architecture differences.
