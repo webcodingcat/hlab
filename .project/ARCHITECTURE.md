@@ -506,7 +506,7 @@ Inside `hlabd` (Go packages under `internal/`):
   the appliance disk from the Debian 13 `generic` image. Checksum files
   are read in GNU (`hash  name`), BSD (`SHA256 (name) = hash`) and
   PGP clear-signed BSD format, skipping other lines; the HTTP client sends
-  the User-Agent `hlab/<version>` and retries once on a non-200 answer
+  the User-Agent `hlab/<version>` and retries once on a transport error or a non-200 answer
   (E30, phase 29). Sources that prune old builds (Rocky, Alma, CentOS
   Stream, openSUSE) are given by their `latest` file and checksum file.
 - Depends on: platform.

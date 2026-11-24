@@ -71,23 +71,7 @@
 
 - [x] 28 Faults in the tray (UI-16, UI-17, UI-18) → phases/28/
 
-- [ ] 29 More system images.
-      Requirements: CAT-09, SRV-23, SRV-24.
-      Depends on: 01, 04, 05.
-      Adjusts: `catalog/images.json`, the checksum parser and HTTP client
-      of `internal/images`, the network-config of `internal/cidata`, the
-      vendor-data and hooks of the servers module, the e2e image matrix,
-      README (image list), docs/guide.md, docs/deviations.md (EL10 needs
-      an x86-64-v3 host CPU; no default user; debian-11, which Hetzner
-      retires on 2026-12-01, is not offered).
-      Success criteria:
-      1. `hcloud image list --type system` shows the eleven new images
-         under Hetzner's names and IDs, fedora-43 as deprecated.
-      2. A server from each new image boots, takes SSH keys, password and
-         user_data, joins private networks, mounts a volume and resets its
-         root password; `cloud-init status` exits with 0 on every image.
-      3. On no image, Ubuntu and Debian included, a default user such as
-         `ubuntu` or `rocky` exists; root logs in.
+- [x] 29 More system images (CAT-09, SRV-23, SRV-24) → phases/29/
 
 - [ ] 16 Release checks in test VMs.
       Requirements: DOC-08.

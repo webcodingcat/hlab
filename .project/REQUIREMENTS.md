@@ -352,7 +352,7 @@ What the target vision in IDEA.md will need, not built yet.
 | CAT-06 | 01 | x |
 | CAT-07 | 01 | x |
 | CAT-08 | 04 | x |
-| CAT-09 | 29 | |
+| CAT-09 | 29 | x |
 | CAT-10 | 14 | x |
 | SRV-01 | 01 | x |
 | SRV-02 | 03 | x |
@@ -376,8 +376,8 @@ What the target vision in IDEA.md will need, not built yet.
 | SRV-20 | 03 | x |
 | SRV-21 | 03 | x |
 | SRV-22 | 02 | x |
-| SRV-23 | 29 | |
-| SRV-24 | 29 | |
+| SRV-23 | 29 | x |
+| SRV-24 | 29 | x |
 | KEY-01 | 02 | x |
 | META-01 | 03 | x |
 | NET-01 | 05 | x |

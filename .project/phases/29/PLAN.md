@@ -153,19 +153,23 @@ E2E harness (writer of `test/e2e/images_test.go`):
 ` (E46). Then rerun
     `TestE2E/SRV-2[34]` in full (the seed of every image changes).
 
-- [ ] 29-06 Documentation
+- [x] 29-06 Documentation
   - Wave: 3 | Depends on: 29-05 | Review: alone
   - Requirements: DOC-01, DOC-02, DOC-03, DOC-04, DOC-07 | Tests: existing tests of test/docs (no new rows)
   - Reads: SPEC.md "Documentation"; CONTEXT.md "Assumptions"; ROADMAP.md
     phase 29 "Adjusts"
   - Size: ~80 lines in 4 files
-  - [ ] `README.md` (image list) and `docs/guide.md` (choosing an image:
+  - [x] `README.md` (image list) and `docs/guide.md` (choosing an image:
     the sixteen images, root-only login with users from user_data,
     fedora-43 deprecated and hidden from the console's dialogs, a slow
     first create while the image downloads)
-  - [ ] `docs/deviations.md` ("Servers" or "Images and backups": EL10
+  - [x] `docs/deviations.md` ("Servers" or "Images and backups": EL10
     images need a host CPU with x86-64-v3 (AVX2); no image creates its
     default user, Ubuntu and Debian included; debian-11 is not offered;
     fedora-43 stays usable after Hetzner's removal date until a release
     drops it) and `docs/configuration.md` (the `images.json` row names all
     images)
+
+## Close
+
+- E2E selection: `task e2e -- -run 'TestE2E/(SRV-01|SRV-11|SRV-23|SRV-24|SBOX-03|SBOX-14|META-01)$' -v`: SRV-23 and SRV-24 are the phase's rows; the seed of every server (SRV-01 hostname, SRV-11 rescue), the storage VM (SBOX-03, SBOX-14) and the appliance (META-01) changed.
