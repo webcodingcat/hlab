@@ -6,6 +6,8 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x ] B4 Backlog: seed ISO on early network attach, snapshot rollback leftovers, private network after cloud start, duplicate convention tests → phases/B4/
+
 - [x] 29 More system images.
       Requirements: CAT-09, SRV-23, SRV-24.
       Depends on: 01, 04, 05.

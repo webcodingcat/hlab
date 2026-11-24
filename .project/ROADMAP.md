@@ -73,7 +73,7 @@
 
 - [x] 29 More system images (CAT-09, SRV-23, SRV-24) → phases/29/
 
-- [ ] B4 Backlog: seed ISO on early network attach, snapshot rollback leftovers, private network after cloud start, duplicate convention tests → phases/B4/
+- [x ] B4 Backlog: seed ISO on early network attach, snapshot rollback leftovers, private network after cloud start, duplicate convention tests → phases/B4/
 
 - [ ] 16 Release checks in test VMs.
       Requirements: DOC-08.
