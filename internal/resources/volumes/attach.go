@@ -366,6 +366,7 @@ func (m *Module) detach(w http.ResponseWriter, req *http.Request) {
 		if rec.Server == nil {
 			return nil
 		}
+		m.endFaults(ctx, p.Name, id)
 		return m.unplug(ctx, stor, rec)
 	})
 	api.JSON(w, http.StatusCreated, map[string]any{"action": action})

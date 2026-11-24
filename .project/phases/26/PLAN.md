@@ -120,15 +120,15 @@ The injected crash's action error is `server_error` with message
   - Adjusts: -
   - [ ] `internal/resources/servers/recover.go` (new): `Recover` implementing `resource.Recoverer`: for every server whose VM exists, `PowerResume` when it is Paused and `SetDiskIOPS(vm, "", 0)` (all drives, volumes included); errors logged per server, never abort the start.
 
-- [ ] 26-05 Volumes: unavailable, slow and cleanup at cloud start
+- [x] 26-05 Volumes: unavailable, slow and cleanup at cloud start
   - Wave: 2 | Depends on: 26-01, 26-02 | Review: alone
   - Requirements: FAULT-09, FAULT-10 (FAULT-02 at cloud start) | Tests: internal/resources/volumes/faults_test.go
   - Reads: REQUIREMENTS FAULT-09, FAULT-10; ARCHITECTURE "faults (phase 25)" the volume paragraph, "resource"; DECISIONS "2026-11-24 Where deletes end their faults"; EXPERIMENTS E28, E36; phases/26/CONTEXT.md; `internal/resources/volumes/attach.go`, `volumes.go` `resize`, `disk.go` `Recover`
   - Size: ~200 lines in 4 files
   - Adjusts: -
-  - [ ] `internal/resources/volumes/faults.go` (new): `Remove` (`DetachDisk` from the server's VM, record unchanged), `Restore` (`AttachDisk` at the record's LUN), `SetIOPS` (`SetDiskIOPS` on the volume's path at its server's VM); unknown volume `faults.ErrNotFound`, an unattached one `*faults.InputError`.
-  - [ ] `internal/resources/volumes/attach.go`, `volumes.go`: detach and resize call `Deps.EndFaults` for the volume before their platform work (errors logged, the action goes on).
-  - [ ] `internal/resources/volumes/disk.go`: `Recover` also calls `AttachDisk` (idempotent) for every attached volume at its LUN; a failure is logged.
+  - [x] `internal/resources/volumes/faults.go` (new): `Remove` (`DetachDisk` from the server's VM, record unchanged), `Restore` (`AttachDisk` at the record's LUN), `SetIOPS` (`SetDiskIOPS` on the volume's path at its server's VM); unknown volume `faults.ErrNotFound`, an unattached one `*faults.InputError`.
+  - [x] `internal/resources/volumes/attach.go`, `volumes.go`: detach and resize call `Deps.EndFaults` for the volume before their platform work (errors logged, the action goes on).
+  - [x] `internal/resources/volumes/disk.go`: `Recover` also calls `AttachDisk` (idempotent) for every attached volume at its LUN; a failure is logged.
 
 - [ ] 26-06 Server and disk faults in the cloud
   - Wave: 3 | Depends on: 26-03, 26-04, 26-05 | Review: alone

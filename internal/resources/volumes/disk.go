@@ -86,9 +86,11 @@ func (m *Module) Delete(_ context.Context, id int64) error {
 // with status creating and its disk file; a missing file is no error. A
 // detach interrupted by a stop after its disk left the VM is recorded as
 // done. The attach of a volume interrupted by a stop is dropped: its disk leaves the
-// server's VM and the volume stays as it was before the attach.
+// server's VM and the volume stays as it was before the attach. The disk of
+// every attached volume is attached again at its LUN, so a volume an
+// abrupt end left removed by a fault is back; a failure is logged.
 func (m *Module) Recover(ctx context.Context) error {
-	var cut, interrupted []Record
+	var cut, interrupted, bound []Record
 	err := m.d.Store.Tx(func(tx store.Tx) error {
 		all, err := store.ListAll[Record](tx, Kind)
 		if err != nil {
@@ -109,6 +111,9 @@ func (m *Module) Recover(ctx context.Context) error {
 				}
 			}
 			if r.Status != StatusCreating {
+				if r.Server != nil && !r.Hlab.Detaching {
+					bound = append(bound, r)
+				}
 				continue
 			}
 			if err := store.Delete(tx, Kind, r.Hlab.ProjectID, r.ID); err != nil {
@@ -127,6 +132,12 @@ func (m *Module) Recover(ctx context.Context) error {
 		vm := servers.VMName(m.d.VMPrefix, r.Hlab.Pending.Server)
 		if err := m.d.Platform.DetachDisk(ctx, vm, r.Hlab.Path); err != nil && !isNotFound(err) {
 			errs = append(errs, err)
+		}
+	}
+	for _, r := range bound {
+		vm := servers.VMName(m.d.VMPrefix, *r.Server)
+		if err := m.d.Platform.AttachDisk(ctx, vm, r.Hlab.Path, r.Hlab.LUN); err != nil {
+			slog.Warn("attach the disk of a volume at cloud start", "volume", r.ID, "server", *r.Server, "err", err)
 		}
 	}
 	for _, r := range cut {
