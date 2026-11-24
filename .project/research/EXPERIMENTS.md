@@ -1239,3 +1239,114 @@ limit is slow.
 Consequence: an IOPS check uses `--ramp_time=2`, `--bs=8k`, the raw device
 with `--readonly`, accepts the limit within about 10 % and checks
 "unlimited" as far above it (more than 5 times).
+
+## E40 nftables input/output hooks for private (VRF) traffic to and from the appliance
+
+- Result: confirmed with a correction: the output hook supports neither `meta sdifname` nor `iifname`
+- Checked on: 2026-11-24, Debian 13 cx23 server (`debian-13`, the appliance image), kernel 6.12.117, iproute2 6.15.0, nftables 1.1.3 (CLI only in the throwaway VM)
+- By: experiment
+- Status: valid
+
+Observed: namespace model of `vrf_linux.go` (router with `p0` in main and
+trunk VLAN `t20` enslaved to `vrf20`, table 1020; a private server
+10.0.0.2 on VLAN 20; HTTP listener bound to `vrf20` on 169.254.169.254;
+kernel default `ip rule`, `tcp/udp_l3mdev_accept` 0). Traffic from the
+server to the appliance's own addresses (gateway ping, metadata HTTP) and
+the appliance's own `ping -I vrf20` show in input `iifname "vrf20"` with
+`meta sdifname "t20"` (`iifname "t20"` never matches); output and
+postrouting run twice, first with `oifname "vrf20"`, then `"t20"`. Rules
+that work: input `iifname "vrf<vlan>" meta sdifname "t<vlan>" ip saddr <ip> drop`,
+output `oifname "t<vlan>" ip daddr <ip> drop`; each alone stops all
+three. `meta sdifname` or `iifname` in an output chain fails with
+"Operation not supported" and aborts the whole transaction. Private
+servers also reach the appliance's public addresses (185.12.64.1,
+198.19.0.1) through the local table, so an input cut must match every
+packet from the server, not only gateway and metadata addresses. A
+`numgen` in output would advance twice per VRF packet.
+
+## E41 Egress tc on p0 and t<vlan> also delays packets the appliance sends itself
+
+- Result: confirmed
+- Checked on: same VM and model as E40
+- By: experiment
+- Status: valid
+
+Observed: `tc qdisc add dev <dev> root handle 1: htb default 1`, classes
+1:1 and 1:10 (`htb rate 10gbit quantum 200000`), `netem delay 50ms limit
+100000` as child 10: of 1:10, `flower dst_ip <server>` to 1:10. Ping to
+gateway, DNS over UDP, HTTP to the API address and metadata rose from
+0.1 to 0.5 ms to 50 ms (HTTP 100 ms: SYN-ACK and response each pass) on
+`p0` (public) and on `t20` (private, also for the appliance's own
+`ping -I vrf20`); deleting the root qdisc restored 0.05 ms. Egress
+shaping delays only the direction toward the server: a service round trip
+gets the delay once, server-to-server traffic through two shaped egresses
+twice. `vrf<vlan>` must keep its default `noqueue`; a qdisc on the VRF
+device sends local packets another way.
+
+## E42 netem seed sequence across filter and class changes and `tc qdisc change`
+
+- Result: confirmed for filters and sibling classes; `tc qdisc change` or `replace` with `seed` restarts the sequence, without `seed` it continues
+- Checked on: same VM and model as E40
+- By: experiment
+- Status: valid
+
+Observed: tree of E41 with `netem loss random 10% seed 42 limit 100000`,
+`ping -c 100 -i 0.005` runs, lost `icmp_seq` compared. Identical loss
+lists to one continuous run of 200 after: adding and deleting a sibling
+class with its own netem and flower filters, `tc class change` of 1:1,
+deleting and re-adding the flow's own filter. `tc qdisc change` or
+`replace` with `seed 42` (also with `delay 1ms` added) restarts at the
+first loss of a fresh fault; `change` without `seed` continues the
+sequence and `tc qdisc show` still reports `seed 42`; changing to 20 %
+with `seed 42` equals a fresh 20 % fault. Consequence: pass `seed` when a
+fault's netem parameters change, and skip `tc qdisc change` when nothing
+changed. A seed-less `add` gets a random seed. Loss draws come only from
+packets entering that netem.
+
+## E43 ethtool in the appliance image, and offloads through SIOCETHTOOL
+
+- Result: confirmed: ethtool 1:6.14.2-1 is preinstalled in `debian-13`; the SIOCETHTOOL ioctl from Go works too
+- Checked on: 2026-11-24, fresh `debian-13` server (Debian 13.7, kernel 6.12.117, `hv_netvsc`)
+- By: experiment
+- Status: valid
+
+Observed: `dpkg-query -W ethtool iproute2 nftables` shows ethtool and
+iproute2 installed, nftables not installed. `/usr/sbin/ethtool -K <dev>
+gro off gso off tso off lro off` is the simplest way. Alternative with
+golang.org/x/sys v0.50.0: `ioctl(fd, unix.SIOCETHTOOL, &ifreq)` on an
+AF_INET datagram socket with an own ifreq `{Name [16]byte; Data
+unsafe.Pointer}` padded to 40 bytes (not `unix.Ifreq`), commands
+`ETHTOOL_GGRO/SGRO`, `GGSO/SGSO`, `GTSO/STSO`, and `GFLAGS/SFLAGS` with
+`ETH_FLAG_LRO = 1<<15` (no constant in x/sys). Off and on round-tripped
+on eth0; a VLAN subinterface has LRO `[fixed]` off; unknown interface
+gives `no such device`. `STSO off` also clears the TSO sub-features.
+
+## E44 Windows SMB client while a storage box IP is dropped, and its recovery
+
+- Result: confirmed: while dropped, `net use` fails after 21 to 84 s and a TCP 445 dial after 21 s; after the drop ends the box is reachable at once, but the first `net use` to the same name can fail for up to about 50 s
+- Checked on: 2026-11-24, Windows 11 Pro 10.0.26300 (German UI), dev service `hlab-dev`, hcloud 1.70.2, PowerShell 5.1 unelevated
+- By: experiment
+- Status: valid
+
+Observed: drop made by `storage-box update-access-settings
+--reachable-externally=false|true` (plain nftables `drop` in the box IP's
+chain before `ct state established`, no reject; in place when the action
+ends, 2 to 3 s). Host: MaxSynRetransmissions 4, SMB SessionTimeout 60,
+KeepConn 600. While dropped: TCP dial to `<ip>:445` fails after 21.0 s
+(with a 3 s timeout: no answer); a fresh `net use` fails after 42 s (IP)
+or 59 s (FQDN, also tries 139) with error 64 or 67; with an old or
+half-dead SMB connection to the server still open, `net use` either
+succeeds in 0.04 s without traffic or fails after 84 s; a write over an
+earlier mapping blocks 82 s, then "network path not found". After the
+drop ends: dial connects at once; the first `net use` to the same name
+fails 0 to 2 times after 21 s each with error 67 (the WebDAV redirector
+tries port 80) and then succeeds; `net use /delete` before does not help;
+a failure under the IP does not block the FQDN. An old mapping recovers
+only after about 82 s (then "access denied" for about 53 s). After
+`net use /delete` the TCP connection stays ESTABLISHED 10 to 20 s.
+Consequence for tests: no SMB connection to the box before the fault
+(wait with a deadline until `netstat -n -p tcp` shows none to
+`<ip>:445`); prove the drop with a short-timeout TCP dial, or a `net use`
+failing within 2 min without checking the error code; prove recovery by
+retrying a new `net use` for at least 90 s. `Get-SmbConnection` needs
+elevation; match `net.exe` by exit code, its messages are localized.

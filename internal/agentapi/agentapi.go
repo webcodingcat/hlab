@@ -25,6 +25,35 @@ type Config struct {
 	Upstream           []netip.AddrPort // DNS forwarders: the host's DNS servers, else 1.1.1.1:53, 9.9.9.9:53
 	Storage            StorageVM        // Addr invalid: no storage VM
 	StorageBoxes       []StorageBoxRoute
+	Faults             []NetFault // network, latency and storage box faults
+}
+
+// NetFault is an active network, latency or storage_box_unavailable fault.
+type NetFault struct {
+	ID          int64         // the fault's ID
+	Kind        string        // "network" | "latency" | "storage_box_unavailable"
+	Server      *FaultServer  // network, latency on a server
+	Traffic     string        // network: "public" | "private" | "all"
+	From, To    []FaultServer // latency between locations: the project's servers in each location
+	BoxIP       netip.Addr    // storage_box_unavailable
+	LossPercent int           // network: 1-100 (100 cuts)
+	Seed        uint64        // network with LossPercent below 100
+	DelayMs     int           // latency
+	JitterMs    int           // latency
+}
+
+// FaultServer is a fault's server with its addresses.
+type FaultServer struct {
+	ID         int64
+	PublicIPv4 netip.Addr     // invalid without one
+	Private    []FaultPrivate // always with the VLAN, private ranges may overlap
+}
+
+// FaultPrivate is a server's address in one private network.
+type FaultPrivate struct {
+	VLAN     int
+	IP       netip.Addr
+	AliasIPs []netip.Addr
 }
 
 // Server is a server's public side.

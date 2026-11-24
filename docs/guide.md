@@ -1201,27 +1201,24 @@ its subaccounts and snapshots.
 
 ## Fault injection
 
-A fault makes the API, a server or a volume of one project fail on
-purpose, so you can see how your scripts, OpenTofu configurations,
-Ansible playbooks and services cope with errors, rate limits, crashed
-servers and failing disks. Create faults with
+A fault makes the API, a server, its network, a volume or a storage box
+of one project fail on purpose, so you can see how your scripts,
+OpenTofu configurations, Ansible playbooks and services cope with
+errors, rate limits, crashed servers, lost packets, slow links and
+failing disks. Create faults with
 [`hlab fault`](commands.md#faults) or, for an AI agent, with the MCP tools
 `fault_create`, `fault_list` and `fault_delete`.
 
 An `api_error` or `rate_limit` fault affects only requests made with an
 API token of its project, to the Cloud API and the Storage Box API alike;
-the HLab window is never affected. A server or volume fault acts on the
-machine itself and creates no action. A fault ends when its `--duration`
+the HLab window is never affected. A server, network, volume or storage
+box fault acts on the machine or its traffic itself and creates no
+action. A fault ends when its `--duration`
 runs out, when you delete it, when its target or project is deleted and
 when the cloud stops; after a cloud start no fault is active, and paused
-servers, removed volume disks and disk limits a fault left behind are
-undone. `hlab cloud status` shows `faults active: <n>` while there are
-any.
-
-This version offers the kinds `api_error`, `rate_limit`, `server_crash`,
-`server_freeze`, `volume_unavailable` and `disk_slow`; the command
-refuses `network`, `latency` and `storage_box_unavailable` as not
-available yet.
+servers, removed volume disks, disk limits, dropped or delayed packets a
+fault left behind are undone. `hlab cloud status` shows
+`faults active: <n>` while there are any.
 
 ### API errors
 
@@ -1431,6 +1428,133 @@ second may run slightly above it. A volume must be attached, and
 detaching it ends the fault. A system disk keeps its limit across power
 actions, reboots, rebuild, rescue and a crash until the fault ends, so a
 server with a very low limit boots slowly.
+
+### Network cuts and packet loss
+
+A `network` fault drops the packets of a server's public traffic
+(`--traffic public`), its private networks (`private`) or both (`all`).
+With `--loss-percent 100` it cuts the traffic:
+
+```
+> hlab fault create network --project docs --server 778 --traffic public --loss-percent 100
+fault 2 created
+> ssh -o ConnectTimeout=5 root@198.19.4.231 true
+ssh: connect to host 198.19.4.231 port 22: Connection timed out
+> hlab fault delete --project docs --all
+the faults of project docs ended
+> ssh root@198.19.4.231 'echo back'
+back
+```
+
+A public cut also takes away the server's DNS, the metadata service and
+the API, which it reaches through the cloud's own network; they answer
+again as soon as the fault ends, without a restart. The server console
+keeps working, since it does not use the server's network. The fault
+covers the server's floating IPs and alias IPs as well, and addresses or
+networks the server gets while the fault is active.
+
+Below 100 %, the fault drops that share of the packets going to the
+server; the packets it sends pass, so a ping loses about the chosen
+share. The seed fixes which packets are hit. Here `web-2` pings the
+private IP of `web-1` with two faults of the same seed, one after the
+other, and the same pings are answered:
+
+```
+> hlab fault create network --project docs --server 778 --traffic private --loss-percent 20 --seed 42
+fault 7 created with seed 42
+root@web-2:~# ping -c 20 -i 0.01 -W 1 10.0.1.1 | grep -o 'icmp_seq=[0-9]*' | tr '\n' ' '
+icmp_seq=1 icmp_seq=8 icmp_seq=9 icmp_seq=10 icmp_seq=11 icmp_seq=13 icmp_seq=15 icmp_seq=16 icmp_seq=17 icmp_seq=18 icmp_seq=19 icmp_seq=20
+> hlab fault delete --project docs --all
+the faults of project docs ended
+> hlab fault create network --project docs --server 778 --traffic private --loss-percent 20 --seed 42
+fault 8 created with seed 42
+root@web-2:~# ping -c 20 -i 0.01 -W 1 10.0.1.1 | grep -o 'icmp_seq=[0-9]*' | tr '\n' ' '
+icmp_seq=1 icmp_seq=8 icmp_seq=9 icmp_seq=10 icmp_seq=11 icmp_seq=13 icmp_seq=15 icmp_seq=16 icmp_seq=17 icmp_seq=18 icmp_seq=19 icmp_seq=20
+```
+
+A seed repeats its drops as long as the same packets arrive in the same
+order and the fault's own settings stay the same. Other packets to the
+server on the same network draw from the same sequence, so a run is
+repeatable only when nothing else sends to it there. Creating or ending a `latency` fault on
+the server continues the sequence; with jitter, packets can change their
+order, which changes the packets hit from then on. Without `--seed` HLab
+chooses one and prints it. A cut draws nothing and takes no seed.
+
+### Latency
+
+A `latency` fault adds `--delay-ms` (1 to 10000) to every round trip,
+varied by up to `--jitter-ms` (at most the delay). On a server it delays
+every packet to the server, from any source, DNS and metadata answers
+included:
+
+```
+> hlab fault create latency --project docs --server 778 --delay-ms 100 --jitter-ms 20 --duration 10m
+fault 9 created
+root@web-2:~# ping -c 10 -i 0.2 -q 198.19.4.231 | tail -1
+rtt min/avg/max/mdev = 83.025/108.479/124.558/12.143 ms
+root@web-2:~# ping -c 10 -i 0.2 -q 10.0.1.1 | tail -1
+rtt min/avg/max/mdev = 86.880/100.607/121.608/10.148 ms
+> hlab fault delete --project docs --all
+the faults of project docs ended
+root@web-2:~# ping -c 10 -i 0.2 -q 198.19.4.231 | tail -1
+rtt min/avg/max/mdev = 0.630/1.849/3.038/0.592 ms
+```
+
+With jitter, packets can arrive out of order. Between two locations,
+`--from` and `--to` delay the traffic between the project's servers in
+them, public and private, each direction by half the delay. Here `web-1`
+is in fsn1, `web-2` in fsn1 and `web-3` in hel1:
+
+```
+> hlab fault create latency --project docs --from fsn1 --to hel1 --delay-ms 50
+fault 10 created
+root@web-1:~# ping -c 10 -i 0.2 -q 10.0.1.3 | tail -1
+rtt min/avg/max/mdev = 52.143/53.558/56.113/1.061 ms
+root@web-1:~# ping -c 10 -i 0.2 -q 198.19.4.233 | tail -1
+rtt min/avg/max/mdev = 52.198/54.041/57.528/1.621 ms
+root@web-1:~# ping -c 10 -i 0.2 -q 10.0.1.2 | tail -1
+rtt min/avg/max/mdev = 0.556/1.392/2.524/0.509 ms
+```
+
+Only traffic between servers of the project is delayed, their floating
+and alias IPs included; load balancers, storage boxes, the host, DNS and
+the servers of other projects keep their normal times. `--from hel1 --to
+fsn1` is the same target, so a second fault on it is refused:
+
+```
+> hlab fault create latency --project docs --from hel1 --to fsn1 --delay-ms 20
+hlab: fault 10 of kind latency is already active on this target: conflict
+```
+
+A `latency` and a `network` fault on the same server add up: the delayed
+packets are also dropped at the chosen share.
+
+### Unavailable storage boxes
+
+A `storage_box_unavailable` fault makes a storage box unreachable on
+every protocol, from servers, the host and WSL2; connections time out:
+
+```
+> hlab fault create storage_box_unavailable --project docs --storage-box 172
+fault 11 created
+> sftp u100171@u100171.storagebox.hetzner.internal
+ssh: connect to host u100171.storagebox.hetzner.internal port 22: Connection timed out
+Connection closed
+> hcloud storage-box describe backup -o format='{{.Status}}'
+active
+> hlab fault delete --project docs 11
+fault 11 ended
+> sftp u100171@u100171.storagebox.hetzner.internal
+Connected to u100171.storagebox.hetzner.internal.
+sftp>
+```
+
+The fault blocks the box's own address, and with it the host names of
+its subaccounts; API actions and snapshot plans keep working. Deleting
+the box ends the fault. After the fault ends, SFTP and WebDAV and every
+access from servers and WSL2 work at once, but SMB on the Windows host
+comes back late: a new `net use` can fail for about 50 seconds, and a
+share mapped before the fault answers again after about 80 seconds.
 
 ## Stopping and starting the cloud
 

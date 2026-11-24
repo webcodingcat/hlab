@@ -134,6 +134,9 @@ type Cloud struct {
 	// faults holds the active faults of this run; nil while stopped. It is
 	// read by API requests and module actions, hence atomic.
 	faults atomic.Pointer[faults.Manager]
+	// netEffects keeps the active net faults of this run for the agent
+	// document; nil while stopped.
+	netEffects atomic.Pointer[faults.NetEffects]
 	// shadow keeps the primary zones that shadow a public domain.
 	shadow *zones.Shadow
 	// pushMu keeps agent documents in the order they were built.
@@ -557,6 +560,13 @@ func (c *Cloud) PushAgent(ctx context.Context) error {
 				}
 			}
 		}
+		if net := c.netEffects.Load(); net != nil {
+			fs, err := netFaults(tx, &doc, net.Faults())
+			if err != nil {
+				return fmt.Errorf("faults: %w", err)
+			}
+			doc.Faults = fs
+		}
 		return nil
 	})
 	if err != nil {
@@ -704,6 +714,7 @@ func (c *Cloud) teardown(ctx context.Context, reason sysint.StopReason) error {
 	}
 	c.mgmtSrv, c.apiSrv = nil, nil
 	c.faults.Store(nil)
+	c.netEffects.Store(nil)
 	c.closeConsole()
 	if c.stopStorage != nil {
 		c.stopStorage()

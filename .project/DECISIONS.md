@@ -19,6 +19,135 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-24 The restart rows wait for steady private traffic before measuring
+
+- Type: decision
+- Phase: phase 27
+- What: FAULT-07/restart and FAULT-08/restart wait, with a deadline, until a short ping burst from B to A loses nothing before the zero-loss measurement.
+- Why: after the VMs resume from saved state private pings drop for about 1 s in one block, also without the faults applier, and the rows check leftover faults, not that transient.
+- Cost of change: low
+
+## 2026-11-24 LRO stays off after a loss fault; tc deletes of missing qdiscs are ignored
+
+- Type: decision
+- Phase: phase 27
+- What: when offloads go back on the applier turns on GRO, GSO and TSO but leaves LRO off; tc `del` failures saying "No such file" or "handle of zero" are ignored, and after any other tc failure the applier forgets its tc state and rebuilds on the next document.
+- Why: LRO on broke TCP through the forwarding appliance in the e2e run, and the default root qdiscs (mq, noqueue) answer "handle of zero" on delete.
+- Cost of change: low
+
+## 2026-11-24 tc filters with explicit handles, netem changes with all parameters
+
+- Type: decision
+- Phase: phase 27
+- What: flower filters get the handle `minor<<16 | index+1`, a `qdisc change` of a netem repeats all its parameters and passes `seed` only when loss or seed changed, a device leaving the plan only loses its root qdisc, and a minor in the previous state is not reused in the same run.
+- Why: tc deletes one filter of a shared prio only by handle and resets what a change does not name (E29, E42).
+- Cost of change: low
+
+## 2026-11-24 A box fault with an unparsable IP fails the push
+
+- Type: decision
+- Phase: phase 27
+- What: an unparsable stored box IP makes building the fault entries return an error, as the storage box module's document does.
+- Why: every box record gets a valid IP when it is created, so the case is a broken store and is not hidden.
+- Cost of change: low
+- Replaces: 2026-11-24 A box fault with an unparsable IP is left out
+
+## 2026-11-24 A locations latency lists only servers in the agent document
+
+- Type: decision
+- Phase: phase 27
+- What: a locations fault lists only those of the project's stored servers that are also in `doc.Servers`, so a server being deleted drops out as for a server target.
+- Why: the same rule for both target kinds needs no extra deletion hook.
+- Cost of change: low
+
+## 2026-11-24 A locations latency class carries the destination's own faults
+
+- Type: decision
+- Phase: phase 27
+- What: a netem class of a locations latency adds the destination server's own latency (delay and jitter) to the half delay and takes that server's loss and seed on the device; without loss its seed is the locations fault's ID.
+- Why: a packet passes one netem per device, so all faults on that destination must be merged into its class.
+- Cost of change: low
+
+## 2026-11-24 A locations latency covers a server's floating and alias IPs
+
+- Type: decision
+- Phase: phase 27
+- What: for a `latency` fault between two locations, a server's floating IPs and alias IPs count as its addresses, as sources and as destinations, like for a `network` fault.
+- Why: the same address set for all net faults is the simplest rule, and traffic to a floating IP reaches the same server.
+- Cost of change: low
+
+## 2026-11-24 A storage box fault blocks only the box's own address
+
+- Type: decision
+- Phase: phase 27
+- What: `storage_box_unavailable` drops the box's IP on the appliance; its credentials still log in over SSH and FTP at another box's address (E17), and docs/deviations.md names this.
+- Why: answer of the user to Q2; locking the accounts in the storage VM would change `agentapi.Storage` and the storage agent for a side path nobody uses by accident.
+- Cost of change: low
+
+## 2026-11-24 Fault cleanup on the appliance is proven by unit rows and behaviour
+
+- Type: decision
+- Phase: phase 27
+- What: success criterion 4 of phase 27 is proven by unit tests of the agent's fault planner (an empty or smaller list removes every rule and qdisc, leftovers included) and e2e checks that ping time and loss return to normal; no status interface reports the appliance's fault rules.
+- Why: answer of the user to Q1; a new read-only interface only for tests, or access into the appliance, is not worth it.
+- Cost of change: low
+
+## 2026-11-24 Agent fault logic as pure plan, pure tc diff and Linux applier
+
+- Type: decision
+- Phase: phase 27
+- What: the agent's fault logic splits into `PlanFaults`, `TcCommands` with `TcState` (both pure) and a Linux applier, like firewall.go and firewall_linux.go.
+- Why: the logic runs in `task test` on Windows, and the unit rows for success criterion 4 rest on it.
+- Cost of change: low
+
+## 2026-11-24 Netem classes keyed by destination and source group
+
+- Type: decision
+- Phase: phase 27
+- What: netem classes are keyed by destination server plus source group (all sources, or one locations fault) with stable minors; an unchanged class is never touched, so a latency fault on the same server continues the loss sequence, but a locations latency splits that server's flows into a new class whose loss sequence starts anew.
+- Why: E42 shows a sequence survives sibling changes and seed-less `change`; one class per flow group keeps loss from being drawn by other traffic.
+- Cost of change: low
+
+## 2026-11-24 Public fault rules pinned to the public device
+
+- Type: decision
+- Phase: phase 27
+- What: cut and box drop rules for public addresses match `iifname`/`oifname` of the public device.
+- Why: a project's private range may overlap the public range and must not be hit.
+- Cost of change: low
+
+## 2026-11-24 A netem without loss uses the latency fault's ID as seed
+
+- Type: decision
+- Phase: phase 27
+- What: hlab passes the latency fault's ID as explicit `seed` to a netem that has no loss fault.
+- Why: a seed-less `tc qdisc add` takes a random seed (E42), which would make later loss changes unrepeatable.
+- Cost of change: low
+
+## 2026-11-24 The agent's first document rebuilds fault state from scratch
+
+- Type: decision
+- Phase: phase 27
+- What: on the first document after the agent starts, the applier deletes the root qdisc of the public device and of every `t<vlan>`, and any leftover `hlab_fault` table, then rebuilds.
+- Why: the state after an abrupt end is unknown, and leftovers must not survive a cloud start.
+- Cost of change: low
+
+## 2026-11-24 Net fault e2e rows share the fault fixture and its restart
+
+- Type: decision
+- Phase: phase 27
+- What: the net e2e rows reuse the fault fixture's server and add one more in fsn1, one in hel1, a private network and a storage box; they run after FAULT-05 and share the one cloud restart.
+- Why: it stays within the three server slots and needs no second restart.
+- Cost of change: low
+
+## 2026-11-24 FAULT-02 gets agent unit rows for the empty plan
+
+- Type: decision
+- Phase: phase 27
+- What: FAULT-02 gets two agent unit rows: an empty plan, and the tc commands that undo a tree.
+- Why: follows "Cloud start cleanup is tested under FAULT-02".
+- Cost of change: low
+
 ## 2026-11-24 One IOPS reset per server at cloud start
 
 - Type: decision

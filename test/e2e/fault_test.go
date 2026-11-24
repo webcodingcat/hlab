@@ -426,6 +426,11 @@ func (f *faultFixture) restart() error {
 	if err := e.waitReady(f.srv); err != nil {
 		return err
 	}
+	// The net faults FAULT-07/restart and FAULT-08/restart check, before the
+	// freeze stops A from answering.
+	if err := f.netFaultsBeforeRestart(); err != nil {
+		return err
+	}
 	drives, err := vmDrives(vmName(f.srv.ID))
 	if err != nil {
 		return err

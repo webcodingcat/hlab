@@ -41,14 +41,25 @@ func TestE2E(t *testing.T) {
 	// The FAULT rows share one server with a mounted volume and one stop
 	// and start of the cloud, run lazily by the first restart row, so they
 	// run alone after the LIFE rows; their fixture goes before the UI rows.
+	// The network, latency and storage box rows add servers B and C, a
+	// network and a box to that server; the shared restart also sets up
+	// the faults FAULT-07/restart and FAULT-08/restart check.
 	t.Run("FAULT-10", logged(testFAULT10))
 	t.Run("FAULT-09", logged(testFAULT09))
 	t.Run("FAULT-06", logged(testFAULT06))
 	t.Run("FAULT-05", logged(testFAULT05))
+	t.Run("FAULT-07/cut", logged(testFAULT07Cut))
+	t.Run("FAULT-07/loss", logged(testFAULT07Loss))
+	t.Run("FAULT-08/locations", logged(testFAULT08Locations))
+	t.Run("FAULT-08/server", logged(testFAULT08Server))
+	t.Run("FAULT-11", logged(testFAULT11))
 	t.Run("FAULT-06/restart", logged(testFAULT06Restart))
 	t.Run("FAULT-09/restart", logged(testFAULT09Restart))
 	t.Run("FAULT-10/restart", logged(testFAULT10Restart))
+	t.Run("FAULT-07/restart", logged(testFAULT07Restart))
+	t.Run("FAULT-08/restart", logged(testFAULT08Restart))
 	releaseFaultFixture(t)
+	releaseFaultNetFixture(t)
 
 	// The UI rows drive the one tray window, and UI-01 stops and starts the
 	// cloud, so they run alone after the LIFE rows.

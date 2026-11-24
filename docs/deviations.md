@@ -149,7 +149,9 @@ on its disk while the cloud is stopped. Host names end in
 one SSH server and one FTP server answer on all of them, so the user name
 and password or key of one box also log in at another box's address over
 SSH and FTP; SMB and WebDAV admit an account only at its own box's
-address.
+address. For the same reason a box that a
+[fault](guide.md#unavailable-storage-boxes) makes unavailable still
+takes its logins over SSH and FTP at another box's address.
 
 Port 22 serves SFTP only: scp works in its default SFTP mode, but not
 with `scp -O`. Port 23 runs only SFTP, scp, rsync and BorgBackup; Hetzner's
