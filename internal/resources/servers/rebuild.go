@@ -114,7 +114,7 @@ func (m *Module) rebuild(w http.ResponseWriter, req *http.Request) {
 
 	acts.Run(action.ID, func(ctx context.Context, progress func(int)) error {
 		progress(10)
-		if err := m.rebuildMachine(ctx, stor, id, check); err != nil {
+		if err := m.rebuildMachine(ctx, stor, p.Name, id, check); err != nil {
 			// The status follows what the VM does now.
 			m.settle(ctx, stor, id)
 			return err
@@ -130,8 +130,13 @@ func (m *Module) rebuild(w http.ResponseWriter, req *http.Request) {
 // MAC and IP and carries the rebuild's instance-id) and starts the VM; the VM keeps
 // its drives, and the new files inherit the data folder's access for VMs.
 // The image is fetched before the old disk goes, so a failed download
-// leaves the server as it was.
-func (m *Module) rebuildMachine(ctx context.Context, stor *store.Store, id int64, check func(context.Context) error) error {
+// leaves the server as it was. A freeze of the server ends first; while a
+// crash is active the rebuild fails before anything changes.
+func (m *Module) rebuildMachine(ctx context.Context, stor *store.Store, project string, id int64, check func(context.Context) error) error {
+	m.endFreeze(ctx, project, id)
+	if m.crashed(project, id) {
+		return errCrashed
+	}
 	if err := check(ctx); err != nil {
 		return err
 	}
