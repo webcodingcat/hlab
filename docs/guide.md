@@ -1201,21 +1201,27 @@ its subaccounts and snapshots.
 
 ## Fault injection
 
-A fault makes the API of one project fail on purpose, so you can see how
-your scripts, OpenTofu configurations and Ansible playbooks cope with
-errors and rate limits. Create faults with
+A fault makes the API, a server or a volume of one project fail on
+purpose, so you can see how your scripts, OpenTofu configurations,
+Ansible playbooks and services cope with errors, rate limits, crashed
+servers and failing disks. Create faults with
 [`hlab fault`](commands.md#faults) or, for an AI agent, with the MCP tools
 `fault_create`, `fault_list` and `fault_delete`.
 
-A fault affects only requests made with an API token of its project, to
-the Cloud API and the Storage Box API alike. The HLab window is never
-affected. A fault ends when its `--duration` runs out, when you delete it,
-when its project is deleted and when the cloud stops; after a cloud start
-no fault is active. `hlab cloud status` shows `faults active: <n>` while
-there are any.
+An `api_error` or `rate_limit` fault affects only requests made with an
+API token of its project, to the Cloud API and the Storage Box API alike;
+the HLab window is never affected. A server or volume fault acts on the
+machine itself and creates no action. A fault ends when its `--duration`
+runs out, when you delete it, when its target or project is deleted and
+when the cloud stops; after a cloud start no fault is active, and paused
+servers, removed volume disks and disk limits a fault left behind are
+undone. `hlab cloud status` shows `faults active: <n>` while there are
+any.
 
-This version offers the kinds `api_error` and `rate_limit`; the command
-refuses the others as not available yet.
+This version offers the kinds `api_error`, `rate_limit`, `server_crash`,
+`server_freeze`, `volume_unavailable` and `disk_slow`; the command
+refuses `network`, `latency` and `storage_box_unavailable` as not
+available yet.
 
 ### API errors
 
@@ -1308,6 +1314,122 @@ Ratelimit-Reset: 1795512879
 The eleventh call fails after hcloud has retried for up to about 30
 seconds. Requests an `api_error` fault refuses still count. When the
 fault ends, the project is back at 3600.
+
+### Server crashes
+
+A `server_crash` fault turns the server off hard, as if its host had
+failed, and keeps it from running until the fault ends:
+
+```
+> hlab fault create server_crash --project docs --server 755
+fault 3 created
+> hcloud server describe web-1 -o format='{{.Status}}'
+off
+> hcloud server poweron web-1
+Waiting for start_server (server: 755) ...
+Waiting for start_server (server: 755) ... failed
+hcloud: the server's host failed (injected fault) (server_error, 7717)
+> hlab fault delete --project docs 3
+fault 3 ended
+> hcloud server poweron web-1
+Waiting for start_server (server: 755) ...
+Waiting for start_server (server: 755) ... done
+Server 755 started
+```
+
+While the crash lasts, poweron, reboot, reset, rebuild and change type
+fail with this `server_error` and change nothing; a refused rebuild keeps
+the server's disk. Poweroff and shutdown succeed. Ending the fault leaves
+the server off. A crash on a server that is already off is accepted, and
+a crash on a frozen server ends the freeze.
+
+### Frozen servers
+
+A `server_freeze` fault pauses a running server. The API still shows it
+`running`, but it answers no packet:
+
+```
+> hlab fault create server_freeze --project docs --server 755
+fault 15 created
+> hcloud server describe web-1 -o format='{{.Status}}'
+running
+> ssh -o ConnectTimeout=5 root@198.19.4.201 true
+ssh: connect to host 198.19.4.201 port 22: Connection timed out
+> hlab fault delete --project docs --all
+the faults of project docs ended
+> ssh root@198.19.4.201 'echo back'
+back
+```
+
+The server goes on where it stopped when the fault ends, or when you run
+poweron, poweroff, shutdown, reboot, reset or rebuild on it; that action
+ends the fault and then runs. Every other action runs on the paused
+server. A server that is not running is refused with
+`hlab: target: server is not running`.
+
+### Unavailable volumes
+
+A `volume_unavailable` fault takes an attached volume's disk away from
+its server; the API still shows the volume attached:
+
+```
+> hlab fault create volume_unavailable --project docs --volume 207
+fault 4 created
+> hlab fault delete --project docs 4
+fault 4 ended
+```
+
+What the guest sees depends on whether the volume was in use:
+
+- Nothing had a file or directory open on it: the guest unmounts the
+  volume itself. Files written to the mount point then land on the system
+  disk without an error.
+- A process held a file or its working directory there: the filesystem
+  stays mounted and every access fails with `Input/output error`.
+
+When the fault ends, the disk comes back within seconds under the same
+`/dev/disk/by-id/scsi-0HC_Volume_<id>` name, possibly as another `sd`
+device, and the data written before is there. An automount volume that
+was not in use is mounted again by itself. Otherwise mount it again; when
+it was in use, end its processes or unmount the dead mount lazily first:
+
+```
+root@web-1:~# umount -l /mnt/HC_Volume_207
+root@web-1:~# mount /mnt/HC_Volume_207
+root@web-1:~# cat /mnt/HC_Volume_207/hello.txt
+hello
+```
+
+The fault needs an attached volume (`hlab: target: volume 207 is not
+attached` otherwise); detaching, resizing or deleting the volume ends it.
+On a server that is off the fault is accepted, and the server starts
+without the disk.
+
+### Slow disks
+
+A `disk_slow` fault limits a volume (`--volume`) or a server's system
+disk (`--server`) to `--iops` I/Os per second, from 10 to 1000000. Hyper-V
+counts in units of 8 KiB, so one 64 KiB read counts as eight. Reading
+1000 blocks of 8 KiB takes about 10 seconds at 100:
+
+```
+> hlab fault create disk_slow --project docs --volume 207 --iops 100
+fault 7 created
+root@web-1:~# dd if=/dev/disk/by-id/scsi-0HC_Volume_207 of=/dev/null bs=8k count=1000 iflag=direct
+8192000 bytes (8.2 MB, 7.8 MiB) copied, 9.04528 s, 906 kB/s
+> hlab fault delete --project docs 7
+fault 7 ended
+root@web-1:~# dd if=/dev/disk/by-id/scsi-0HC_Volume_207 of=/dev/null bs=8k count=1000 skip=5000 iflag=direct
+8192000 bytes (8.2 MB, 7.8 MiB) copied, 0.107199 s, 76.4 MB/s
+> hlab fault create disk_slow --project docs --server 755 --iops 200 --duration 10m
+fault 8 created
+```
+
+The limit applies within a second, reads and writes alike; the first
+second may run slightly above it. A volume must be attached, and
+detaching it ends the fault. A system disk keeps its limit across power
+actions, reboots, rebuild, rescue and a crash until the fault ends, so a
+server with a very low limit boots slowly.
 
 ## Stopping and starting the cloud
 

@@ -307,8 +307,9 @@ the HLab CA is no longer trusted on this host
 
 ## Faults
 
-A fault makes the API of one project misbehave on purpose, so you can test
-how your setup copes; see [Fault injection](guide.md#fault-injection).
+A fault makes the API, a server or a volume of one project misbehave on
+purpose, so you can test how your setup copes; see
+[Fault injection](guide.md#fault-injection).
 Faults live in memory: they end when their duration runs out, when their
 project is deleted and when the cloud stops. Fault IDs start at 1 after
 every cloud start.
@@ -324,14 +325,20 @@ numbers, its seed.
 fault 2 created with seed 42
 > hlab fault create rate_limit --project docs --per-hour 10 --duration 15m
 fault 7 created
+> hlab fault create disk_slow --project docs --volume 207 --iops 100
+fault 9 created
 ```
 
-Two kinds can be created:
+These kinds can be created:
 
 | Kind | Flags | Effect |
 |---|---|---|
 | `api_error` | `--code` (required), `--percent` (required, 1 to 100), `--only` (`read` or `write`), `--resource`, `--seed` | answers that share of the project's API requests with the Hetzner error `--code` |
 | `rate_limit` | `--per-hour` (required, 1 to 3600) | allows the project that many API requests per hour |
+| `server_crash` | `--server <id>` (required) | turns the server off hard; it cannot be started while the fault lasts |
+| `server_freeze` | `--server <id>` (required) | pauses the running server; the API still shows it `running` |
+| `volume_unavailable` | `--volume <id>` (required, an attached volume) | removes the volume's disk from its server; the API still shows it attached |
+| `disk_slow` | `--volume <id>` (an attached volume) or `--server <id>`, `--iops` (required, 10 to 1000000) | limits the volume or the server's system disk to `--iops` I/Os of 8 KiB per second |
 
 `--code` is any Hetzner error code HLab knows, such as `service_error`,
 `conflict` or `locked`. `--only read` limits `api_error` to GET and HEAD
@@ -345,12 +352,11 @@ delete it. `--seed` is an unsigned 64-bit integer; without it HLab chooses
 one below 2^53. The same seed and the same requests in the same order hit
 the same requests.
 
-The other flags belong to the kinds `server_crash`, `server_freeze`,
-`network`, `latency`, `volume_unavailable`, `disk_slow` and
+The other flags belong to the kinds `network`, `latency` and
 `storage_box_unavailable`, which this version refuses with
-`hlab: kind: kind <kind> is not available yet`: the targets `--server`,
-`--volume`, `--storage-box`, `--from` and `--to`, and the parameters
-`--traffic`, `--loss-percent`, `--delay-ms`, `--jitter-ms` and `--iops`.
+`hlab: kind: kind <kind> is not available yet`: the targets
+`--storage-box`, `--from` and `--to`, and the parameters `--traffic`,
+`--loss-percent`, `--delay-ms` and `--jitter-ms`.
 
 The command fails with exit code 1 for invalid values, an unknown project
 or target, and a second fault of the same kind (for `api_error` and

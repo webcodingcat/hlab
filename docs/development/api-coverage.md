@@ -746,6 +746,20 @@ project proxy:
   `<code> injected by HLab fault <id>`; an injected `invalid_input` has
   `details.fields: []`. Requests it refuses still count against the bucket.
 
+The server and disk faults act on the VMs and create no action:
+
+- While `server_crash` is active, the actions `poweron`, `reboot`,
+  `reset`, `rebuild` and `change_type` of
+  `POST /v1/servers/{id}/actions/...` are created and then fail with
+  `server_error` "the server's host failed (injected fault)" before
+  anything changes; `poweroff` and `shutdown` succeed. The crash itself
+  sets the server's `status` to `off` without an action.
+- While `server_freeze` is active, `GET /v1/servers/{id}` keeps showing
+  `running`; the five power actions and `rebuild` end the freeze first.
+- `volume_unavailable` and `disk_slow` on a volume leave `server` of
+  `GET /v1/volumes/{id}` unchanged; `detach` and `resize` of the volume end
+  them before they run.
+
 ## Projects
 
 Projects and tokens are managed with the `hlab` command and in the tray
