@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-24 A locations latency class carries the destination's own faults
+
+- Type: decision
+- Phase: phase 27
+- What: a netem class of a locations latency adds the destination server's own latency (delay and jitter) to the half delay and takes that server's loss and seed on the device; without loss its seed is the locations fault's ID.
+- Why: a packet passes one netem per device, so all faults on that destination must be merged into its class.
+- Cost of change: low
+
 ## 2026-11-24 A locations latency covers a server's floating and alias IPs
 
 - Type: decision
