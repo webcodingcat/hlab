@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-24 tc filters with explicit handles, netem changes with all parameters
+
+- Type: decision
+- Phase: phase 27
+- What: flower filters get the handle `minor<<16 | index+1`, a `qdisc change` of a netem repeats all its parameters and passes `seed` only when loss or seed changed, a device leaving the plan only loses its root qdisc, and a minor in the previous state is not reused in the same run.
+- Why: tc deletes one filter of a shared prio only by handle and resets what a change does not name (E29, E42).
+- Cost of change: low
+
 ## 2026-11-24 A box fault with an unparsable IP fails the push
 
 - Type: decision
