@@ -1385,3 +1385,49 @@ Observed:
 
 Pitfalls: scripts written on Windows carry CRLF (dash fails on
 `2>&1\r`); `cloud-init schema -t network-config` does not exist in 22.4.
+
+## E46 Hostname from vendor-data instead of meta-data `local-hostname` (Q25)
+
+- Result: refuted with `hostname` alone (EL and Fedora get the reverse-DNS name); confirmed with `hostname` and `fqdn` both set to the server name. Also refuted: an empty seed user-data `#cloud-config` keeps `cloud-init status` at 0
+- Checked on: 2026-11-24, dev cloud at c566f4b, Hyper-V Gen2, cx23; ubuntu-24.04 (cloud-init 26.1), debian-12 (22.4.2), debian-13 (25.1.4), rocky-8 (23.4-7.el8_10), rocky-9 (24.4-8.el9_8.1), fedora-43 (25.2), fedora-44 (25.3), opensuse-16 (25.1.3)
+- By: experiment
+- Status: valid
+
+Method: per image a server created without user_data; the seed copied
+from `/dev/sr0` to `/var/lib/cloud/seed/nocloud/` with `local-hostname`
+removed from meta-data and `hostname` (A) or `hostname` + `fqdn` (B) added
+to vendor-data's cloud-config part; `datasource: {NoCloud: {fs_label:
+null}}` keeps cloud-init off the DVD (else the DVD's files win);
+`/etc/hostname` and `/etc/hosts` restored to the image's content; a probe
+unit (`DefaultDependencies=no`, between cloud-init-local and cloud-init)
+logs the hostname; `cloud-init clean --logs`, reboot, then status, log and
+journal. Fedora ran A and B twice.
+
+Observed:
+- Local stage: no hostname set and no `hostnamectl` call on any image; the
+  Fedora D-Bus warning is gone.
+- Between local and init stage the guest carries the image's own name
+  (`ubuntu` on Ubuntu, `localhost` elsewhere, from an empty
+  `/etc/hostname`); on NetworkManager images (Fedora, EL, openSUSE)
+  NetworkManager sets transient `localhost.localdomain` and then the
+  reverse-DNS name `static.<ip>.clients.your-server.de`, as it already did
+  with today's seed on Fedora.
+- A: `cc_set_hostname` takes the fqdn from the current system name; with
+  `prefer_fqdn` in `rhel.py` rocky-8, rocky-9, fedora-43 and fedora-44 end
+  with the reverse-DNS name; Ubuntu, Debian and openSUSE end with the
+  server name. Status exit 0 everywhere.
+- B: final static hostname and `/etc/hostname` are the server name on all
+  eight; status exit 0 on all, Fedora twice each. No `/etc/hosts` entry
+  (no image sets `manage_etc_hosts`).
+- Seed user-data `#cloud-config\n` alone (server without user_data): exit
+  2 "empty cloud config" on ubuntu-24.04, debian-13, opensuse-16, fedora;
+  rocky-9 crashes in init-local (`TypeError` in
+  `_should_wait_via_user_data`, exit 1). `#cloud-config\n{}\n` gives exit 0
+  on all tested images.
+- rocky-8 always lists `skipping .../scripts/vendor as its not executable`
+  in recoverable_errors with exit 0; debian-12 keeps E45's `users: []`
+  warning with exit 0.
+
+Pitfalls: with the cidata DVD attached a seed directory alone is not
+enough (`fs_label: null`); after `cloud-init clean` `/etc/hostname` hides
+the pre-init name; `cloud-init clean` makes new host keys.

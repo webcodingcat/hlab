@@ -23,6 +23,22 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-24 Vendor-data sets fqdn next to hostname
+
+- Type: decision
+- Phase: phase 29
+- What: the cloud-config part of vendor-data sets both `hostname` and `fqdn` to the server's name.
+- Why: with `hostname` alone EL and Fedora take the reverse-DNS name as hostname (E46); Hetzner's `local-hostname` gives the same pair.
+- Cost of change: low
+
+## 2026-11-24 Empty user-data is `#cloud-config` with `{}`
+
+- Type: decision
+- Phase: phase 29
+- What: the seed's user-data of a server without user_data is `#cloud-config\n{}\n`.
+- Why: newer cloud-init reports an empty part as degraded and EL9's crashes in init-local on it (E46).
+- Cost of change: low
+
 ## 2026-11-24 The hostname comes from vendor-data on every image (Q25)
 
 - Type: change

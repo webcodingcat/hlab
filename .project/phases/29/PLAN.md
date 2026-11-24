@@ -145,8 +145,12 @@ E2E harness (writer of `test/e2e/images_test.go`):
     `internal/resources/servers` what a failing case shows, within this
     phase's choices. Rerun only the failing image's case.
   - [ ] Q25: `internal/cidata` writes no `local-hostname` into `meta-data`;
-    the servers module puts `hostname: <server name>` into the cloud-config
-    part of vendor-data for every image (rescue included). Then rerun
+    the servers module puts `hostname: <server name>` and `fqdn: <server
+    name>` into the cloud-config part of vendor-data for every image (rescue
+    included); the user-data of a server without user_data becomes
+    `#cloud-config
+{}
+` (E46). Then rerun
     `TestE2E/SRV-2[34]` in full (the seed of every image changes).
 
 - [ ] 29-06 Documentation

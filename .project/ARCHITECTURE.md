@@ -532,6 +532,15 @@ Inside `hlabd` (Go packages under `internal/`):
   ID but no `local-hostname`: the hostname comes from vendor-data in the
   init stage, because Fedora's cloud-init sets a meta-data hostname in the
   local stage before D-Bus is up and then reports degraded (Q25, phase 29).
+  cloud-init sets no placeholder name in the local stage; until the init
+  stage the guest carries the image's own name (`ubuntu`, else `localhost`),
+  and on NetworkManager images (EL, Fedora, openSUSE) NetworkManager sets
+  `localhost.localdomain` and then the reverse-DNS name for a few seconds
+  (E46). A server without user_data gets the user-data
+  `#cloud-config
+{}
+`, since newer cloud-init rejects an empty part and
+  EL9's crashes on it (E46).
 - Depends on: nothing.
 
 #### scheduler
@@ -1173,8 +1182,9 @@ locks a resource of type `project`.
   disks were not created by hlab (ISO installs) lack the hooks; listed as a
   deviation.
 - `vendor-data` is a multipart MIME document: a cloud-config part with
-  only `disable_root`, `ssh_pwauth`, `chpasswd`, `hostname` (the server's
-  name; Q25) and (phase 29) `users: []`, so no image creates its default user and root is the only
+  only `disable_root`, `ssh_pwauth`, `chpasswd`, `hostname` and `fqdn`
+  (both the server's name; Q25, E46: with `hostname` alone EL and Fedora
+  prefer the reverse-DNS name) and (phase 29) `users: []`, so no image creates its default user and root is the only
   login, like Hetzner (users from user_data still apply, since user-data
   replaces that key), and a
   `text/x-shellscript` part (run once per instance) that writes the hooks,
