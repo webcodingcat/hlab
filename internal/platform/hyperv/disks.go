@@ -251,9 +251,6 @@ Remove-VMHardDiskDrive -VMHardDiskDrive $d
 // VM, or of every hard disk drive with path ""; drives already at max are
 // not set again (E37). A path not attached to the VM is NotFound.
 func (p *Platform) SetDiskIOPS(ctx context.Context, vm, path string, max int) error {
-	if max < 0 {
-		return &platform.Error{Kind: platform.Failed, Op: "SetDiskIOPS", Err: fmt.Errorf("negative IOPS limit %d", max)}
-	}
 	_, err := p.r.run(ctx, "SetDiskIOPS", map[string]any{"name": vm, "path": path, "max": max}, getVM+`$drives = @(Get-VMHardDiskDrive -VM $vm)
 if ($path) {
   $full = [System.IO.Path]::GetFullPath($path)
