@@ -23,6 +23,22 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-24 Seed swap waits for a hold after a boot hlab starts (Q26)
+
+- Type: decision
+- Phase: phase B4
+- What: a network attach or detach right after a boot finishes at once, and the seed ISO swap waits until 90 s after the boot hlab started, is noted as `seed_due` on the server and is finished at the next cloud start if hlabd restarts.
+- Why: E48 showed an early slot-0 swap leaves the guest without hostname and public IP, and the user chose no waiting in the attach action.
+- Cost of change: low
+
+## 2026-11-24 Network drops after resume are a documented deviation (Q27)
+
+- Type: decision
+- Phase: phase B4
+- What: hlab adds no workaround for the 11 to 25 s network drops of each server after a cloud start from saved state; docs/deviations.md describes them.
+- Why: E47 found the cause in Hyper-V's restore and the guest's `hv_netvsc` driver, and no measured mitigation helped.
+- Cost of change: low
+
 ## 2026-11-24 Appliance and storage VM name themselves through their user-data
 
 - Type: decision
