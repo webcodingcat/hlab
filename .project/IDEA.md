@@ -30,6 +30,9 @@ official clients.
    rules.
 5. AI agents control hlab: an MCP server offers the functions of the
    management command to MCP clients such as Claude Code.
+6. Failure handling of setups can be tested: deliberate, repeatable faults
+   (servers, network, API, storage) are set, seen and ended in the tray,
+   and through the management API for tests and automation.
 
 ## Scope of the first version
 
@@ -110,6 +113,15 @@ official clients.
   keep user data (disks, volumes, snapshots, backups, storage box data,
   image cache, logs;
   default: delete).
+- Deliberate fault injection per project: server crash and freeze, network
+  disruption (cut or packet loss) per server, latency between locations or
+  per server, API errors and rate limits for the project's clients, slow or
+  unavailable volumes and server disks, unavailable storage boxes; each
+  fault has an optional duration and ends at the latest at cloud stop;
+  random choices take a seed, so a test can repeat them. The tray console
+  sets, shows and ends faults; the management API, `hlab fault` and MCP
+  tools do the same for tests and automation
+  (`decisions/fault-injection.md`).
 - Responses are validated against a frozen copy of Hetzner's OpenAPI
   description.
 - The state has a version number from the start; until a 1.0 the user
@@ -120,8 +132,6 @@ official clients.
 The architecture is designed for this target vision; only the first version
 is built for now.
 
-- Deliberate fault injection: server failure, network disruption, latency
-  between locations, API errors and rate limits, storage errors
 - Linux as a full host with KVM/libvirt, including the UI
 - WSL2 in mirrored networking mode
 - More images: other Hetzner system images (Rocky, Alma, Fedora, CentOS

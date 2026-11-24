@@ -103,7 +103,10 @@ everywhere.
 - Shell, built like the Hetzner Cloud Console, in three areas:
   - Top bar on every page: application icon and "HLab" (a click leads to
     the project list), breadcrumb, cloud status pill, Start/Stop button and
-    a gear icon button (label "Administration") on the right. The gear is
+    a gear icon button (label "Administration") on the right. While any
+    fault of any project is active, a pill "N faults active" in the warning
+    colour stands left of the cloud status pill; a click opens "Active
+    faults" (see "Faults"). The gear is
     a toggle: a click opens Administration, a second click closes it and
     returns to the page shown before (the project list when there was
     none); while Administration is open the gear shows as pressed.
@@ -118,7 +121,7 @@ everywhere.
     are remembered; a 1 px border line separates the groups. Groups and
     entries: "Cloud" with Servers, Volumes, Storage Boxes, Firewalls; "Networking" with
     Load Balancers, Networks, IPs, DNS; after a separator line the single
-    entry "Security" (no heading). Every entry opens a page with a tab
+    entries "Security" and "Faults" (no heading). Every entry opens a page with a tab
     bar on top (see "Section tabs"), also when it has only one tab:
     Servers: Servers, Snapshots, Backups, Placement Groups; Volumes:
     Volumes; Storage Boxes: Storage Boxes (a box's detail page has the
@@ -131,7 +134,7 @@ everywhere.
     "Create Storage Box" on the list opens a form with name, location,
     type, password, SSH keys and access settings); Firewalls: Firewalls; Load Balancers: Load Balancers;
     Networks: Networks; IPs: Primary IPs, Floating IPs; DNS: DNS Zones;
-    Security: SSH Keys, API tokens, Certificates. Snapshots and Backups
+    Security: SSH Keys, API tokens, Certificates; Faults: Faults. Snapshots and Backups
     list the project's images of that type (system images are not
     listed); ISOs are not part of the project console. The entry that
     contains the open tab is highlighted. The last opened project is
@@ -202,6 +205,28 @@ everywhere.
   dialog; own rows have "Edit" (the add form filled in) and "Remove" (confirm dialog) in the row menu.
   Available while the cloud is stopped; a local file is copied when the
   cloud reads the own ISOs.
+- Faults (project console): table of the project's active faults with
+  kind, target (a link to the server, volume or storage box; "Project" for
+  API errors and rate limits; "fsn1 ↔ hel1" for latency between
+  locations), parameters in one short line ("20 % server_error, writes,
+  servers"), seed, and remaining time ("4 min left", "until ended"); each
+  row has "End" in its row menu, the toolbar "Create fault" and "End all"
+  (confirm dialog). The empty state reads "No faults are active in this
+  project." with "Create fault". "Create fault" opens a form page: kind as
+  a select with a one-line explanation of the chosen kind, then only the
+  fields of that kind (target select of the project's servers, volumes or
+  storage boxes; for latency a segmented control Server | Between
+  locations with two location selects; error code select, percent,
+  "Only" as Reads | Writes | All, resource type select; requests per hour;
+  traffic as Public | Private | All, loss percent; delay and jitter in ms;
+  IOPS), an optional seed field where the kind has one (hint "Empty: HLab
+  chooses one and shows it."), and a duration select (Until ended, 1, 5,
+  15, 60 minutes, custom). A rejected field shows its error under it.
+- Active faults (`#/faults`, from the top bar pill): breadcrumb "Active
+  faults", the same table as the project's Faults with a Project column
+  first (a link to the project's Faults), "End" per row and "End all"
+  (confirm dialog); no create button. With no active fault it shows "No
+  faults are active." and the pill disappears.
 - Settings: grouped form for every key of `settings.toml`; the trust switch
   shows the risk text from `decisions/managed-certificates.md` and a "Save
   CA certificate" button.
@@ -218,7 +243,8 @@ everywhere.
   corner (about a third of the icon, with a 1 px contrasting rim): success
   colour while running, warning while starting, stopping or checking, text
   muted while stopped, error colour on an error or a lost connection.
-- Tray menu: status line, Open HLab, one cloud item, Quit. The cloud item
+- Tray menu: status line, Open HLab, one cloud item, "End all faults"
+  while any fault is active, Quit. The cloud item
   reads "Start cloud" while the cloud is stopped (also after a failed or
   refused start) and "Stop cloud" while it runs (also with the connection
   lost); while it starts, stops or its state is being checked it is

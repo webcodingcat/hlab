@@ -226,6 +226,9 @@ The Hetzner API (`http://api.hetzner.internal/hetzner/v1`), with the cloud token
 - UI-13 the console lists, creates, configures and deletes the subaccounts and snapshots of a storage box and rolls a box back to a snapshot (goal 3) [e2e]
 - UI-14 the storage box types view shows the catalog types and adds, edits and removes own storage box types (goal 3) [e2e]
 - UI-15 the server's actions menu entry "Console" opens a console window that shows the server's screen and sends keyboard input, also while the hlab CA is not trusted (goal 3) [e2e]
+- UI-16 the project console's entry "Faults" lists the project's active faults with kind, target, parameters, seed and remaining time, creates a fault of every kind with its parameters, and ends one or all of them (goal 6) [e2e]
+- UI-17 while any fault of any project is active, the top bar shows "N faults active", which opens the list of all active faults with their project and "End all" (goal 6) [e2e]
+- UI-18 while faults are active, the tray menu has the item "End all faults", which ends every fault of every project (goal 6) [unit]
 
 ### Installer (`INST`)
 
@@ -258,6 +261,27 @@ One requirement per client; the test map has one row per resource type.
 - MCP-03 `cloud_start` and `cloud_stop` wait until the cloud is running or stopped, return a failed start or a refusal with its message as a tool error, and give up after about 5 minutes; `project_delete` waits for its action (goal 5) [unit]
 - MCP-04 `token_create` returns the token value once, `token_list` never returns values, and no tool discards the state or updates the catalog (goal 5) [unit]
 - MCP-05 an MCP client starts `hlab mcp` against the running dev service and creates a project, creates a token and deletes the project (goal 5) [e2e]
+- MCP-06 `hlab mcp` also serves the tools `fault_create`, `fault_list` and `fault_delete`, each doing what its `hlab fault` command does (goal 5) [unit]
+
+### Fault injection (`FAULT`)
+
+Faults belong to a project, live in memory only and are set through the
+tray, the management API, `hlab fault` and the MCP tools
+(`decisions/fault-injection.md`). The kinds share their model and
+lifetime (FAULT-01, FAULT-02), tested once where they are implemented.
+
+- FAULT-01 the management API creates a fault of a project with its kind, target, parameters, an optional duration and, for `api_error` and `network` with packet loss, an optional seed (chosen by hlab and returned when missing), rejects invalid input, an unknown target and a second fault of the same kind on the same target, lists the active faults of a project and of all projects, and ends one fault, all of a project or all (goal 6) [unit]
+- FAULT-02 a fault ends when its duration runs out, when its target or project is deleted and at cloud stop, and ending it undoes its effect; after a cloud start no fault is active (goal 6) [unit]
+- FAULT-03 an `api_error` fault answers a share (1-100 %) of the project's token requests with the chosen Hetzner error code and its status, optionally only reads or only writes and only one resource type, in the Cloud API and the Storage Box API; with the same seed and the same sequence of requests it hits the same requests; requests through the management API's project proxy are never affected (goal 6) [unit]
+- FAULT-04 a `rate_limit` fault limits the project's token requests to N per hour like Hetzner, answering `429 rate_limit_exceeded` when none is left; every response of both APIs carries Hetzner's `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` headers, with 3600 and no limiting while no `rate_limit` fault is active (goal 6) [unit]
+- FAULT-05 a `server_crash` fault turns the server's VM off hard and the server shows `off`; while it is active, every action that would run the VM (poweron, reboot, reset, rebuild) fails with an action error; ending it leaves the server off (goal 6) [e2e]
+- FAULT-06 a `server_freeze` fault pauses the server's VM while the API keeps showing `running` and the server answers no packet; ending it, or a power action on the server, resumes the VM where it stopped (goal 6) [e2e]
+- FAULT-07 a `network` fault on a server cuts its public traffic, its private traffic or both, including the appliance's DNS and metadata service, or drops a share (1-100 %) of those packets; with the same seed and the same order of packets the same packets are dropped; after the fault ends the server reaches DNS, the metadata service and other servers again without a restart (goal 6) [e2e]
+- FAULT-08 a `latency` fault delays the packets between the project's servers in two locations, or all packets of one server, by a delay with an optional jitter (goal 6) [e2e]
+- FAULT-09 a `volume_unavailable` fault removes the volume's disk from its server so I/O on it fails, while the API keeps showing it attached; ending it attaches the disk again, and after a remount in the guest the volume's data is readable (goal 6) [e2e]
+- FAULT-10 a `disk_slow` fault limits a volume or a server's system disk to N I/Os of 8 KiB per second; ending it removes the limit (goal 6) [e2e]
+- FAULT-11 a `storage_box_unavailable` fault makes a storage box unreachable on every protocol from servers, host and WSL2; ending it restores access (goal 6) [e2e]
+- FAULT-12 `hlab fault create`, `hlab fault list` and `hlab fault delete` do what the management API does, with every kind and parameter as flags (goal 6) [unit]
 
 ### Documentation (`DOC`)
 
@@ -278,7 +302,6 @@ of IDEA.md rather than a numbered goal.
 
 What the target vision in IDEA.md will need, not built yet.
 
-- FAULT-01 inject server failure, network disruption, latency between locations, API errors, rate limits and storage errors
 - LINUX-01 run hlab with the tray on Linux with KVM/libvirt
 - HOST-05 WSL2 in mirrored networking mode
 - CAT-09 further system images (Rocky, Alma, Fedora, CentOS Stream, openSUSE) and app images
@@ -289,7 +312,7 @@ What the target vision in IDEA.md will need, not built yet.
 |------|-----|
 | Billing | Non-goal in IDEA.md |
 | Security for multi-user or production use | Non-goal in IDEA.md; tokens are fake values, the API is plain HTTP |
-| Hetzner's performance, outages and rate limits | Non-goal in IDEA.md; only deliberate fault injection later |
+| Hetzner's performance, outages and rate limits | Non-goal in IDEA.md; only deliberately injected faults (`FAULT`) |
 | Running ARM (CAX) servers | Non-goal in IDEA.md; the types are listed but return `resource_unavailable` |
 | Shrinking a server's RAM below its type | Non-goal in IDEA.md |
 | vSwitch subnets (Robot coupling) | No dedicated servers exist in hlab; returns `invalid_input` |
@@ -465,6 +488,22 @@ What the target vision in IDEA.md will need, not built yet.
 | MCP-03 | 17 | x |
 | MCP-04 | 17 | x |
 | MCP-05 | 17 | x |
+| MCP-06 | 25 | |
+| FAULT-01 | 25 | |
+| FAULT-02 | 25 | |
+| FAULT-03 | 25 | |
+| FAULT-04 | 25 | |
+| FAULT-05 | 26 | |
+| FAULT-06 | 26 | |
+| FAULT-07 | 27 | |
+| FAULT-08 | 27 | |
+| FAULT-09 | 26 | |
+| FAULT-10 | 26 | |
+| FAULT-11 | 27 | |
+| FAULT-12 | 25 | |
+| UI-16 | 28 | |
+| UI-17 | 28 | |
+| UI-18 | 28 | |
 | DOC-01 | all | |
 | DOC-02 | all | |
 | DOC-03 | all | |

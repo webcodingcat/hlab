@@ -63,6 +63,77 @@
 
 - [x] 23 Server console (SRV-17, CON-01, CON-02, UI-15) → phases/23/
 
+- [ ] 25 Fault model, API errors and rate limits.
+      Requirements: FAULT-01, FAULT-02, FAULT-03, FAULT-04, FAULT-12,
+      MCP-06.
+      Depends on: 17, 21.
+      Adjusts: the management API and `GET /status` (additive), the `api`
+      middleware chain, MCP-01's tool list in `hlab mcp` and its tests,
+      docs/commands.md, docs/guide.md.
+      Success criteria:
+      1. A fault created through `hlab fault create` appears in
+         `hlab fault list` and in `GET /mgmt/v1/status`, and ends by
+         itself after its duration, by `hlab fault delete`, with its
+         project and at cloud stop.
+      2. With an `api_error` fault of 50 % on writes to servers, hcloud
+         gets the chosen error on about half of its `server create` calls,
+         the same calls again with the same seed, while reads and the tray
+         console keep working.
+      3. With a `rate_limit` fault of 10 per hour, the eleventh hcloud
+         call in a row gets `rate_limit_exceeded`, and every response
+         carries the `RateLimit-*` headers.
+      4. An MCP client creates, lists and ends a fault through `hlab mcp`.
+
+- [ ] 26 Server and disk faults.
+      Requirements: FAULT-05, FAULT-06, FAULT-09, FAULT-10.
+      Depends on: 25, 04.
+      Adjusts: `platform.Platform` (additive: `SetDiskIOPS`, `PowerPause`,
+      `PowerResume`), the servers and volumes modules (power actions,
+      detach, resize, delete and cloud start), docs/guide.md.
+      Success criteria:
+      1. A crashed server shows `off`, cannot be started while the fault
+         is active, and starts normally after it ends.
+      2. A frozen server shows `running` but answers no ping; `hcloud
+         server reset` or ending the fault brings it back.
+      3. In a server, reads of an unavailable volume fail and work again
+         after the fault ends; a slow disk reaches at most about its IOPS
+         limit in `fio` (installed in the test server by the test).
+      4. After a cloud restart with faults active before, no VM is
+         paused, every attached volume is back and no IOPS limit is left.
+
+- [ ] 27 Network, latency and storage box faults.
+      Requirements: FAULT-07, FAULT-08, FAULT-11.
+      Depends on: 25, 05, 20.
+      Adjusts: `agentapi.Config` (additive: `Faults`), hlab-agent's
+      appliers, docs/guide.md.
+      Success criteria:
+      1. A `network` fault cuts a server's public or private traffic, or
+         drops about the chosen share of pings, the same pings again with
+         the same seed.
+      2. A `latency` fault of 100 ms between fsn1 and hel1 raises the ping
+         time between servers there by about 100 ms and leaves servers in
+         one location unchanged.
+      3. A storage box under `storage_box_unavailable` refuses SFTP, SMB
+         and WebDAV from a server, the host and WSL2, and serves them again
+         after the fault ends.
+      4. Ending any of these faults, by hand, by its duration or at cloud
+         stop, leaves no `hlab_fault` rule and no netem qdisc on the
+         appliance.
+
+- [ ] 28 Faults in the tray.
+      Requirements: UI-16, UI-17, UI-18.
+      Depends on: 25, 26, 27, 14.
+      Adjusts: `views.json` and the help texts (views `faults` and
+      `active-faults`), the sidebar, the top bar, the tray menu and
+      `TrayModel`, README (tray section), docs/guide.md.
+      Success criteria:
+      1. In the project console's "Faults", the user creates a fault of
+         every kind, sees it in the table with its seed and remaining
+         time, and ends it.
+      2. While a fault is active, the top bar shows "N faults active",
+         which leads to the list of all projects' faults, and "End all"
+         there or in the tray menu ends them all.
+
 - [ ] 16 Release checks in test VMs.
       Requirements: DOC-08.
       Depends on: 13 and every other phase of milestone 1; it stays the
@@ -81,8 +152,6 @@
 
 ## Later
 
-- Fault injection (server failure, network disruption, latency, API errors,
-  rate limits, storage errors)
 - Linux host with KVM/libvirt, including the tray
 - WSL2 in mirrored networking mode
 - More system images and app images

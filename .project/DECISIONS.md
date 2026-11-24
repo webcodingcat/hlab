@@ -19,6 +19,54 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-24 Fault injection in milestone 1
+
+- Type: change
+- Phase: change
+- What: Fault injection (server crash and freeze, network disruption, latency, API errors, rate limits, slow or unavailable disks, unavailable storage boxes) moves from the target vision into milestone 1 as phases 25 to 28 before phase 16, controlled in the tray console and through the management API, `hlab fault` and MCP tools (`decisions/fault-injection.md`).
+- Why: The user wants to test failure handling of their setups with the first version, and set, see and end faults in the tray.
+- Cost of change: medium
+
+## 2026-11-24 Fault interfaces
+
+- Type: decision
+- Phase: change
+- What: Faults are served at `/mgmt/v1/faults` and `/mgmt/v1/projects/{name}/faults` with the fault object of ARCHITECTURE.md (kinds `server_crash`, `server_freeze`, `network`, `latency`, `api_error`, `rate_limit`, `volume_unavailable`, `disk_slow`, `storage_box_unavailable` and their parameter names), as `hlab fault create|list|delete`, as the MCP tools `fault_create`, `fault_list` and `fault_delete`, and to the appliance as `agentapi.Config.Faults`; `api_error` draws one value per matching request in arrival order from a `math/rand/v2` PCG seeded with the fault's seed, and reads are GET and HEAD.
+- Why: The user chose the kinds, parameters, seeds and ways of control in /wcc:change on 2026-11-24 (`decisions/fault-injection.md`); these shapes carry them, and scripts and tests will depend on them.
+- Cost of change: high
+
+## 2026-11-24 A network cut also cuts the appliance's services
+
+- Type: decision
+- Phase: change
+- What: A `network` fault with 100 % cuts the server off from everything, including the appliance's DNS, metadata service and API proxy, and after it ends the server reaches all of them again without a restart.
+- Why: The user wants a cut to behave like a real network failure, and a test must show the recovery.
+- Cost of change: low
+
+## 2026-11-24 A crashed server cannot be started while its fault is active
+
+- Type: decision
+- Phase: change
+- What: While a `server_crash` fault is active, poweron, reboot and reset end with the action error `server_error`, and ending the fault leaves the server off.
+- Why: A crash stands for a failed host, which at Hetzner also keeps the server down until the host is back; without the block the fault would be a plain power off.
+- Cost of change: low
+
+## 2026-11-24 One fault per kind and target, with fixed parameter ranges
+
+- Type: decision
+- Phase: change
+- What: A second fault of the same kind on the same target is refused with `conflict`, and the parameters have the ranges of the fault object table in ARCHITECTURE.md (durations 1 s to 24 h, delay up to 10 s, IOPS from 10, at most 3600 requests per hour).
+- Why: Two overlapping faults of one kind would have no clear combined effect, and the ranges keep every fault reversible and observable.
+- Cost of change: low
+
+## 2026-11-24 RateLimit headers on every API response
+
+- Type: decision
+- Phase: change
+- What: Every response of the Cloud API and the Storage Box API carries Hetzner's `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`, counted against Hetzner's default of 3600 per hour without ever refusing while no `rate_limit` fault is active.
+- Why: The user chose Hetzner's behaviour with headers; clients that read them see the same values as at Hetzner.
+- Cost of change: low
+
 ## 2026-11-23 request_console finishes its action in one step
 
 - Type: decision

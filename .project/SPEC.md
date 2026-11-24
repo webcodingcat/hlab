@@ -259,7 +259,8 @@ secrets").
   hcloud, OpenTofu and Ansible); tray program; WSL2 prerequisites;
   uninstallation; a short note on the MCP server `hlab mcp`; links to the
   other documents. The detailed usage per
-  resource lives in `docs/guide.md`. Images live in `docs/images/`;
+  resource, and fault injection with an example per fault kind, live in
+  `docs/guide.md`. Images live in `docs/images/`;
   screenshots of the console are generated from the running tray
   program, in light and dark mode.
 - D2 Command reference: `docs/commands.md`, every `hlab` command and

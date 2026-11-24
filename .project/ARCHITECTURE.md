@@ -89,9 +89,13 @@ Inside `hlabd` (Go packages under `internal/`):
 - Purpose: HTTP layer shared by all resource types.
 - Interface: `api.Router` mounts every registered `resource.Module`.
   Middleware, in order: request log, token auth (`Authorization: Bearer`,
-  SHA-256 hash lookup, sets `Project` and `ReadOnly` in the context), JSON
-  decoding (`json_error`), read-only guard (`token_readonly` for every
-  non-GET), handler. Shared helpers: `api.ListRequest(w, req, key, items,
+  SHA-256 hash lookup, sets `Project` and `ReadOnly` in the context),
+  faults (`faults.Middleware`, phase 25: Hetzner's `RateLimit-*` headers on
+  every response, the project's `rate_limit` and `api_error` faults; only
+  for requests authenticated by a token: token auth marks them in the
+  context (`api.ByToken(ctx)`), the management API's project proxy sets
+  the project without that mark and is never affected), JSON decoding (`json_error`), read-only guard
+  (`token_readonly` for every non-GET), handler. Shared helpers: `api.ListRequest(w, req, key, items,
   ListOptions[T])` filters by `name` and `label_selector`, sorts by the
   endpoint's keys and pages (`page`, `per_page` 25 by default, at most 50;
   a page beyond the last is empty with `next_page` null) and writes
@@ -263,6 +267,7 @@ Inside `hlabd` (Go packages under `internal/`):
       DetachDisk(ctx, vm, path string) error
       SetDVD(ctx, vm string, slot int, iso string) error // DVD drives on SCSI controller 1: slot 0 cidata, slot 1 user ISO; "" ejects and returns once the drive is empty
       SetBootOrder(ctx, vm string, order []BootDevice) error
+      SetDiskIOPS(ctx, vm, path string, max int) error  // Hyper-V MaximumIOPS of the attached disk, live; 0 removes the limit (phase 26)
       Snapshot(ctx, vm, diskPath, target string) error  // crash-consistent copy of a running or stopped disk
       MetricsAll(ctx, vms []string) (map[string]Sample, error) // cpu %, disk bytes, net bytes; one counter read for all VMs; VMs not on the host are left out
       HostResources(ctx) (Resources, error)              // RAM, logical cores, free disk in data folder
@@ -277,7 +282,7 @@ Inside `hlabd` (Go packages under `internal/`):
       Folder      string // VM configuration folder in the data folder
       StopAction  StopAction // StopSave | StopShutdown
   }
-  type PowerOp int   // PowerStart, PowerStop (hard), PowerShutdown, PowerReboot, PowerReset, PowerSave, PowerShutdownRetry (shutdown that asks a still booting guest again, user API only)
+  type PowerOp int   // PowerStart, PowerStop (hard), PowerShutdown, PowerReboot, PowerReset, PowerSave, PowerShutdownRetry (shutdown that asks a still booting guest again, user API only), PowerPause, PowerResume (Suspend-VM/Resume-VM, phase 26)
   type StopAction int
   type VMState int   // StateOff, StateStarting, StateRunning, StateStopping, StateSaved, StatePaused, StateOther
   type Segment struct { PublicPVLAN, Promiscuous, Trunk bool; VLAN int } // public: PVLAN isolated port (Promiscuous: the appliance's port); private: access VLAN 2..4092; Trunk: the appliance's adapter for all VLANs 2..4092
@@ -378,6 +383,88 @@ Inside `hlabd` (Go packages under `internal/`):
   (`prereq.Facts`, read by `sysint/windows.Prerequisites`) into the ordered
   list of what is missing (`prereq.Missing`).
 - Depends on: platform, hostnet/windows, sysint/windows, settings.
+
+#### faults (phase 25)
+
+- Purpose: deliberate fault injection (`decisions/fault-injection.md`).
+- Interface: `faults.Manager` holds the active faults in memory, one
+  sequence of IDs per cloud run, with a timer per fault with a duration.
+  `Create(project, Spec) (Fault, error)`, `List(project string)` ("" for
+  all), `End(project string, id int64)`, `EndProject(project)`,
+  `EndAll()`, `EndTarget(project, targetType string, id int64)` (called
+  by the modules when a target is deleted or an API action ends a fault,
+  see below; deleting a project ends its faults first). Ending a fault
+  undoes its effect before it leaves the list.
+  `Spec{Kind, Target{Type, ID, From, To}, Params, Seed *uint64, Duration}`
+  with the kinds and parameters of "Fault object" in "Management API".
+  At most one fault per kind and target (`conflict`).
+- Types:
+
+  ```go
+  type Fault struct {
+      ID       int64
+      Project  string
+      Kind     string            // see "Fault object"
+      Target   *Target           // nil for api_error and rate_limit
+      Params   map[string]any    // validated per kind, JSON as in "Fault object"
+      Seed     *uint64
+      Created  time.Time
+      Ends     *time.Time
+  }
+  type Target struct { Type string; ID int64; From, To string } // Type "server" | "volume" | "storage_box" | "locations"
+  type ServerInjector interface { // servers module
+      Crash(ctx context.Context, project string, id int64) error
+      Freeze(ctx context.Context, project string, id int64) error
+      Thaw(ctx context.Context, project string, id int64) error           // resumes only a Paused VM
+      SetSystemDiskIOPS(ctx context.Context, project string, id int64, max int) error // 0 removes
+  }
+  type VolumeInjector interface { // volumes module
+      Remove(ctx context.Context, project string, id int64) error
+      Restore(ctx context.Context, project string, id int64) error
+      SetIOPS(ctx context.Context, project string, id int64, max int) error
+  }
+  ```
+
+- Effects, each through the component that owns the resource (no module
+  logic in `faults`):
+  - `api_error`, `rate_limit`: `faults.Middleware` in the `api` chain.
+    `api_error` draws from a PRNG seeded with the fault's seed
+    (`math/rand/v2` PCG), one draw per matching request in arrival order,
+    and answers `api.Error(code, ...)` with `api.Status(code)`; reads are
+    GET and HEAD. `rate_limit` is a token bucket of N per project,
+    refilled by N/3600 per second; without it every response carries
+    Hetzner's default (3600, refill 1/s) as headers without ever refusing.
+  - `server_crash`, `server_freeze`, `disk_slow` on a server: the servers
+    module implements `faults.ServerInjector` (`Crash`, `Freeze`, `Thaw`,
+    `SetSystemDiskIOPS`); crash runs `PowerStop` and records status `off`;
+    while a crash fault is active, every action that would run the VM
+    (poweron, reboot, reset, rebuild, and a change_type or rescue that
+    would start it) ends with `server_error` ("the server's host failed (injected
+    fault)"); every power action on a frozen server ends the freeze fault
+    first, then runs; `PowerResume` only on a VM in state Paused (it fails
+    on Saved or Off; a hard stop or save works on a paused VM, E26).
+    `disk_slow` sets Hyper-V `MaximumIOPS`, counted in I/Os of 8 KiB, live
+    on the running VM (E27). Deleting the server ends its faults.
+  - `volume_unavailable`, `disk_slow` on a volume: the volumes module
+    implements `faults.VolumeInjector` (`Remove`, `Restore`, `SetIOPS`);
+    `Remove` detaches the disk from the VM without changing the record,
+    `Restore` attaches it again at its LUN through hlabd (removing a disk
+    drops the VM's access entry on the VHDX, so only hlabd as LocalSystem
+    can attach it again; E28). The guest finds it again under
+    `/dev/disk/by-id/scsi-0HC_Volume_<id>` but does not remount it. Detach, resize and delete of
+    the volume and delete of its server end the volume's faults first.
+  - `network`, `latency`, `storage_box_unavailable`: entries of
+    `agentapi.Config.Faults`, pushed with the agent document; the agent
+    applies them (see "hlab-agent"). Deleting the server or box ends them;
+    a `latency` fault between locations follows the project's servers as
+    they are created and deleted.
+  - Cloud start: before the API serves, the servers module resumes every
+    paused server VM, and the volumes module attaches every attached
+    volume's disk that is missing on its VM and removes every IOPS limit,
+    so effects left by an abrupt end (Windows shutdown, crash of hlabd)
+    are undone; the first agent document has no faults.
+- Depends on: api, servers, volumes, storage boxes (target lookups and
+  deletion hooks), agent document.
 
 #### agent client
 
@@ -487,6 +574,9 @@ Inside `hlabd` (Go packages under `internal/`):
   hlab logs [--follow]
   hlab ca export <file>
   hlab ca trust on|off
+  hlab fault create --project <name> <kind> [target and parameter flags] [--seed <n>] [--duration <d>]
+  hlab fault list [--project <name>]
+  hlab fault delete --project <name> <id> | --project <name> --all | --all
   hlab version
   hlab mcp                     # MCP server over stdio, started by an MCP client
   ```
@@ -529,7 +619,11 @@ Inside `hlabd` (Go packages under `internal/`):
   (waits for its action), `token_create {project, name, read_only}` (the
   value once), `token_list {project}`, `token_revoke {project, name}`,
   `logs {lines}` (default 200, 1 to 1000, otherwise a tool error; from the
-  log files while the cloud is stopped), `ca_export` (PEM text), `ca_trust {on}`, `version`.
+  log files while the cloud is stopped), `ca_export` (PEM text), `ca_trust {on}`, `version`,
+  and (phase 25) `fault_create {project, kind, target, params, seed, duration}`
+  with the fields of the fault object, `fault_list {project}` (project
+  optional: all projects), `fault_delete {project, id, all}` (`id`, or
+  `all` for the project, or `all` without project for every fault).
   Results are JSON as with `--output json`; errors are MCP tool errors
   with the message `hlab` prints, "the cloud is not running" while it is
   stopped. There is no tool for `--discard-state` or `catalog update`.
@@ -573,8 +667,10 @@ Inside `hlabd` (Go packages under `internal/`):
   from the shipped catalog, also while the cloud is stopped; `bridge.Cloud`
   with status, start and stop, recording "starting"/"stopping" as soon as
   the SCM accepts a start or stop (a poll begun earlier cannot overwrite
-  it), and `TrayModel{icon, tooltip, status, cloud_item, cloud_action}`
-  for the one cloud menu item; `bridge.Logs` with the log stream, sent as
+  it), and `TrayModel{icon, tooltip, status, cloud_item, cloud_action, faults}`
+  for the one cloud menu item and, while `faults` (the count from
+  `GET /status`) is above zero, the item "End all faults" that calls
+  `DELETE /mgmt/v1/faults` (phase 28); `bridge.Logs` with the log stream, sent as
   one `logs` event per 100 ms batch, plus `Search(query, minLevel)
   SearchResult{lines, capped}` and `Older(oldest) OlderResult{lines,
   at_start}`, which read `hlabd.log` and its rotated files directly
@@ -585,7 +681,8 @@ Inside `hlabd` (Go packages under `internal/`):
   `ui` (`ui/embed.go`), calling the bridge through `Call.ByName` of
   `@wailsio/runtime`, with views switched by `location.hash` (`#/projects`,
   `#/projects/<name>/<view>`, `.../<view>/new`, `.../<view>/<id>/<tab>`,
-  `#/admin/<view>`; parsed in `lib/routes.ts`, a project console starts on
+  `#/admin/<view>`, `#/faults` for the list of all active faults (phase
+  28); parsed in `lib/routes.ts`, a project console starts on
   `servers`; each view is one tab of a sidebar entry (UI-SPEC.md "Project
   console"), `images` is split into the views `snapshots` and `backups`,
   `isos` is an Administration view; the view list comes from `views.json`; project sections other
@@ -671,21 +768,52 @@ HTTP/1.1 over `\\.\pipe\hlab`, JSON. All paths under `/mgmt/v1`:
 
 | Method and path | Purpose |
 |---|---|
-| `GET /status` | `{"state":"running","version":"...","problems":[Problem],"shadowing_zones":[{"zone":"example.com","project":"p"}],"appliance_generation":n}`; besides the hostnet problems, a non-fatal `custom_server_types` problem when the own server types are invalid or collide and are not served, and a non-fatal `custom_isos` problem for an invalid or colliding own ISO or a local file that cannot be copied |
+| `GET /status` | `{"state":"running","version":"...","problems":[Problem],"shadowing_zones":[{"zone":"example.com","project":"p"}],"appliance_generation":n,"faults":n}` (`faults`: active faults of all projects, phase 25); besides the hostnet problems, a non-fatal `custom_server_types` problem when the own server types are invalid or collide and are not served, and a non-fatal `custom_isos` problem for an invalid or colliding own ISO or a local file that cannot be copied |
 | `GET /projects` | `{"projects":[{"name":"web-coding-cat","display_name":"Web Coding Cat","created":"RFC3339","resources":n,"resources_by_type":{"servers":n,...}}]}`; `resources_by_type` has a key per resource kind with a count above zero, one key per console tab, so each count opens exactly one tab (`servers`, `volumes`, `load_balancers`, `networks`, `firewalls`, `floating_ips`, `primary_ips`, `zones`, `certificates`, `ssh_keys`, `placement_groups`, `snapshots`, `backups`, `storage_boxes`; images are split by type into `snapshots` and `backups`) |
 | `POST /projects` | body `{"display_name":"Web Coding Cat"}` (trimmed, 1-255 chars, no control characters); the name is derived by hlabd (lower case; ä ö ü ß as ae oe ue ss; other accents dropped; every run of other characters as `-`; no `-` at either end; cut to 255 chars); `201` with the project; `400 invalid_input` for an invalid display name or an empty derived name; `409 conflict` if the derived name exists. A display name never changes |
-| `DELETE /projects/{name}` | `202 {"action_id":n}`; revokes the project's tokens at once, then in one action deletes every resource through its module's `resource.Deleter`, storage boxes through the storage box module (storage document applied, IP released), the rest through the store, then the project together with its actions; `409 conflict` while a deletion of that project runs, its error object carrying the running action as `"action_id":n` (phase 17, additive); on failure the project stays listed. `hlab project delete` waits for the action |
+| `DELETE /projects/{name}` | `202 {"action_id":n}`; revokes the project's tokens at once and ends its faults (phase 25), then in one action deletes every resource through its module's `resource.Deleter`, storage boxes through the storage box module (storage document applied, IP released), the rest through the store, then the project together with its actions; `409 conflict` while a deletion of that project runs, its error object carrying the running action as `"action_id":n` (phase 17, additive); on failure the project stays listed. `hlab project delete` waits for the action |
 | `GET /actions/{id}` | `200 {"action": <Hetzner action object>}`; `404 not_found` for an unknown ID or an action of a project |
 | `GET /projects/{name}/tokens` | `{"tokens":[{"name":"t","read_only":false,"created":"RFC3339"}]}` (never the value) |
 | `POST /projects/{name}/tokens` | body `{"name":"t","read_only":false}`; `201 {"name":"t","read_only":false,"token":"<64 chars [A-Za-z0-9]>"}`, the only time the value is returned |
 | `DELETE /projects/{name}/tokens/{token-name}` | `204` |
 | `ANY /projects/{name}/api/v1/{rest}` | forwards to the Hetzner API handlers with that project and read/write rights |
 | `ANY /projects/{name}/api/hetzner/v1/{rest}` | the same for the Hetzner API (Storage Boxes) under `/hetzner/v1` |
+| `GET /faults` | `{"faults":[Fault]}`, the active faults of all projects (phase 25) |
+| `DELETE /faults` | `204`; ends every fault |
+| `GET /projects/{name}/faults` | `{"faults":[Fault]}` |
+| `POST /projects/{name}/faults` | body: the fault object without `id`, `project`, `created` and `ends`, with an optional `duration`; `201 {"fault": Fault}` with the seed chosen when missing; `400 invalid_input` for an unknown kind or a missing or invalid parameter; `404 not_found` for an unknown target; `409 conflict` for a second fault of the same kind on the same target |
+| `DELETE /projects/{name}/faults/{id}` | `204`; `404 not_found` |
+| `DELETE /projects/{name}/faults` | `204`; ends every fault of the project |
 | `POST /catalog/update` | body `{"hetzner_token": "..."}` (required, used once, never stored or logged); `200 {"server_types":n}`; `400 invalid_input` without a token; `502 server_error` with Hetzner's message when the real API refuses |
 | `GET /logs?follow=1` | log lines as newline-delimited JSON; followers end when the cloud stops |
 | `GET /ca.pem` | the hlab CA certificate |
 | `PUT /trust` | body `{"on": bool}`; `200 {"on": bool}`; `400 invalid_input` without `on`; `500 server_error` when the trust store or the settings file fails |
 | `POST /settings/reload` | re-read the settings file (applies `logging.level`), the own server types (refreshes the `custom_server_types` problem), the own storage box types (refreshes the `custom_storage_box_types` problem) and the own ISOs (copies new local files, refreshes the `custom_isos` problem); `200 {}` or `500 server_error` |
+
+Fault object (phase 25):
+
+```json
+{"id": 3, "project": "p", "kind": "api_error",
+ "target": null,
+ "params": {"code": "server_error", "percent": 20, "only": "write", "resource": "servers"},
+ "seed": 12345, "created": "RFC3339", "ends": "RFC3339 or null"}
+```
+
+| `kind` | `target` | `params` |
+|---|---|---|
+| `server_crash`, `server_freeze` | `{"type":"server","id":n}` | none |
+| `network` | `{"type":"server","id":n}` | `traffic` `public`, `private` or `all`; `loss_percent` 1-100 (100 cuts) |
+| `latency` | `{"type":"server","id":n}` or `{"type":"locations","from":"fsn1","to":"hel1"}` | `delay_ms` 1-10000, `jitter_ms` 0 to `delay_ms` |
+| `api_error` | null (the project) | `code` a Hetzner error code of `api.Status`, `percent` 1-100, `only` `read`, `write` or absent, `resource` a top-level path segment (`servers`, `storage_boxes`, ...) or absent |
+| `rate_limit` | null | `per_hour` 1-3600 |
+| `volume_unavailable` | `{"type":"volume","id":n}` (attached) | none |
+| `disk_slow` | `{"type":"volume","id":n}` or `{"type":"server","id":n}` (system disk) | `iops` 10-1000000 |
+| `storage_box_unavailable` | `{"type":"storage_box","id":n}` | none |
+
+`seed` (unsigned 64 bit) applies to `api_error` and to `network` with
+`loss_percent` below 100, and is null for the others; `duration` in the
+request is a Go duration string ("5m", 1 s to 24 h), `ends` is null
+without one.
 
 Errors: `{"error":{"code":"...","message":"..."}}` with codes
 `invalid_input`, `not_found`, `conflict`, `cloud_not_running`,
@@ -707,6 +835,30 @@ locks a resource of type `project`.
   private networks, nftables (port isolation backstop, firewalls, floating
   IP routes), HAProxy per load balancer, DNS server, metadata service, API
   proxy, and the worker for jobs that need Linux tools.
+- Faults (phase 27, `research/fault-injection.md`, E26-E29): the Applier
+  `faults` (after `firewall`) applies `Config.Faults`. Cuts (`network`
+  with 100 %) and the `storage_box_unavailable` drops are rules of their
+  own table `inet hlab_fault` (forward hook at priority -10, before
+  `hlab` and `hlab_fw`, and for cuts also input and output chains, so a
+  cut server reaches no appliance service either: DNS, metadata, API
+  proxy, console forward). Private addresses are matched together with
+  their VLAN (`iifname "vrf<vlan>"` or `meta sdifname "t<vlan>"` in the
+  forward hook), never by address alone, since private ranges of projects
+  may overlap. Packet loss below 100 % and latency are `tc` qdiscs on
+  egress of the appliance's interfaces toward and away from the server:
+  HTB or prio with netem children, selected by flower filters on the
+  addresses or by a packet mark set in `hlab_fault` and matched by a `fw`
+  filter (never a root netem, which also sees ARP and neighbour traffic
+  and loses repeatability). Each flow reaches one netem child, so the
+  agent merges the faults that hit the same flow (a server's loss and a
+  location latency) into one netem, for example `netem delay 50ms 10ms
+  loss random 10% seed 42 limit 100000`. The agent runs the `tc` command
+  of iproute2 (the netlink library has no netem seed). While a loss fault
+  is active it turns off GRO, GSO, TSO and LRO on the physical adapters
+  (public and trunk), so loss counts real packets, and turns them on
+  again when the last one ends. Removing an entry removes its rules and
+  qdiscs; an empty list leaves no `hlab_fault` rule and no netem qdisc,
+  and the server reaches everything again without a restart.
 - Firewalls: `CompileFirewalls(agentapi.Config) ([]ServerFilter, error)`
   turns the document into one filter per server; the Applier `firewall`
   (after `isolation`) replaces table `inet hlab_fw` (forward chain at
@@ -743,7 +895,26 @@ locks a resource of type `project`.
       Upstream     []netip.AddrPort      // DNS forwarders: the host's DNS servers, else 1.1.1.1:53, 9.9.9.9:53
       Storage      StorageVM             // the storage VM; Addr invalid while it does not exist
       StorageBoxes []StorageBoxRoute     // routed /32 to Storage.Addr, DNS names, host/WSL2 filter, allowed ports
+      Faults       []NetFault            // phase 27, additive: network, latency and storage box faults
   }
+
+  type NetFault struct {
+      ID          int64         // the fault's ID
+      Kind        string        // "network" | "latency" | "storage_box_unavailable"
+      Server      *FaultServer  // network, latency on a server
+      Traffic     string        // network: "public" | "private" | "all"
+      From, To    []FaultServer // latency between locations: the project's servers in each location
+      BoxIP       netip.Addr    // storage_box_unavailable
+      LossPercent int           // network: 1-100 (100 cuts)
+      Seed        uint64        // network with LossPercent below 100
+      DelayMs, JitterMs int     // latency
+  }
+  type FaultServer struct {
+      ID         int64
+      PublicIPv4 netip.Addr     // invalid without one
+      Private    []FaultPrivate // private ranges of projects may overlap, so always with the VLAN
+  }
+  type FaultPrivate struct { VLAN int; IP netip.Addr; AliasIPs []netip.Addr }
 
   type StorageVM struct {
       Addr netip.Addr // Addrs.Storage
@@ -1167,7 +1338,8 @@ level = "info"
   in the background with retries (also when only the `storage` folder is left, so an orphaned storage VM is deleted), start
   the management API and scheduler (with the weekly `crl` job), set status `running`.
 - Stop (SCM stop or `SERVICE_CONTROL_PRESHUTDOWN` at Windows shutdown):
-  stop jobs, close the log followers' `Done`, stop the APIs, record which servers ran, then per `stop_behaviour`
+  stop jobs, end every fault (`faults.Manager.EndAll`; not at a Windows
+  shutdown, where the next cloud start undoes what is left), close the log followers' `Done`, stop the APIs, record which servers ran, then per `stop_behaviour`
   (read again from settings.toml; overridden once by the file
   `uninstall-stop` in the state folder, which hlabd reads and deletes:
   "off" skips halting the servers, "shutdown" replaces the configured
@@ -1187,11 +1359,6 @@ level = "info"
 
 ## Extension to the target vision
 
-- Fault injection: a new resource-like module `faults` in the management API
-  that adds entries to `agentapi.Config` (netem and drop rules on the
-  appliance, which already sees all traffic), an API middleware for API
-  errors and rate limits, and a decorator around `platform.Platform` for
-  server and storage failures. No core change.
 - Linux host with KVM/libvirt: implement `platform.Platform` with libvirt,
   `hostnet.HostNet` with Linux routes and systemd-resolved instead of NRPT,
   `sysint` with systemd, a Unix socket and Linux paths, and build the tray

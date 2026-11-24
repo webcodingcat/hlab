@@ -780,3 +780,201 @@ service; a Go probe that calls the methods above through raw WMI vtables
 and hashes frames until one changes; a root `python3` reader of
 `/dev/input/event*` over SSH; `Get-Counter` on `vmms.exe`; `Save-VM`,
 `Start-VM` and `hcloud server poweroff/poweron` for the VM states.
+
+## E26 Pause, save and hard stop of a paused Hyper-V VM
+
+- Result: confirmed (`Save-VM` and `Stop-VM -TurnOff` both accept a paused VM)
+- Checked on: 2026-11-24, Hyper-V on 10.0.26300, Debian 13 server (kernel 6.12.117+deb13-amd64) of a throwaway project in the dev service, no elevation
+- By: experiment
+- Status: valid
+
+How it was checked: the PowerShell cmdlets the platform uses
+(`internal/platform/hyperv`), state read from `Get-VM` and
+`Msvm_ComputerSystem.EnabledState`; a guest loop writing `date +%s.%N`
+every 0.2 s.
+
+```
+Suspend-VM -Name $n                      # 0.46 s; State Paused, EnabledState 9
+Suspend-VM -Name $n                      # again: warning "already in this state", no error
+Save-VM -Name $n                         # on Paused: 1.35 s, State Saved (EnabledState 6)
+Resume-VM -Name $n                       # on Saved or Off: error "cannot be performed in the current state"
+Start-VM -Name $n                        # from Saved: 0.77 s, Running
+Stop-VM -Name $n -TurnOff -Force         # on Paused: 0.22 s, State Off (EnabledState 3)
+Stop-VM -Name $n -Force                  # graceful, on Paused: returns without error, State Off
+```
+
+Observed: a 30 s pause left a 30.4 s gap in the guest's tick log; after
+`Resume-VM` the guest clock was right at once (no step needed), no
+soft-lockup or RCU warning in the kernel log. After Paused, Save, Start
+the guest time matched the host within 1 s.
+
+Consequence: `server_crash` on a frozen server can run `PowerStop`
+directly, and `PowerSave` (cloud stop with stop behaviour "save") works on
+paused VMs; neither needs `Resume-VM` first. `PowerResume` works only on a
+Paused VM (it fails on Saved and Off), so ending a freeze checks the state
+first. Paused is `EnabledState` 9 on this host (not 32768 as
+`research/fault-injection.md` says); the platform already maps 9 and 32788.
+
+## E27 Hyper-V `MaximumIOPS` applies live on Windows 11 client Hyper-V
+
+- Result: confirmed
+- Checked on: 2026-11-24, same VM as E26, no elevation (member of Hyper-V Administrators)
+- By: experiment
+- Status: valid
+
+How it was checked: in the running guest
+`dd if=/dev/zero of=<file> bs=8k count=1000 oflag=direct` on the volume
+(LUN 1) and on the system disk (LUN 0) before, with and after the limit.
+
+```
+Set-VMHardDiskDrive -VMName $n -ControllerType SCSI -ControllerNumber 0 -ControllerLocation 1 -MaximumIOPS 100   # 0.71 s
+Set-VMHardDiskDrive -VMName $n -ControllerType SCSI -ControllerNumber 0 -ControllerLocation 0 -MaximumIOPS 200
+Get-VMHardDiskDrive -VMName $n | Set-VMHardDiskDrive -MaximumIOPS 0                                              # removes both
+```
+
+Observed: volume 0.16 s (51.7 MB/s) unlimited, 9.2 s (892 kB/s) at 100;
+system disk 0.12 s unlimited, 4.0 s at 200; 200 writes of 64 KiB at 100
+took 15.1 s (8 KiB normalisation: 1600 / 100 = 16 s expected); 500 direct
+8 KiB reads at 100 took 4.9 s (reads are limited too); after
+`-MaximumIOPS 0` back to 0.13 s. The VM stayed Running throughout.
+
+Consequence: `SetDiskIOPS` as planned; the limit takes effect within a
+second without any guest action. The first second runs slightly above the
+limit (about 110 IOPS at 100). The unit is 8 KiB I/Os, so UI and
+documentation should say so.
+
+## E28 Hot-removing and re-adding a data VHDX on a running Debian 13 guest
+
+- Result: confirmed with a correction: what the guest sees depends on whether the filesystem is busy
+- Checked on: 2026-11-24, same VM as E26, ext4 volume mounted by systemd from `/etc/fstab` (`/dev/disk/by-id/scsi-0HC_Volume_<id>`, `nofail`)
+- By: experiment
+- Status: valid
+
+How it was checked: a guest loop appending to a file on the volume, then
+
+```
+Get-VMHardDiskDrive -VMName $n -ControllerType SCSI -ControllerNumber 0 -ControllerLocation 1 | Remove-VMHardDiskDrive   # 0.95 s, as the user
+Add-VMHardDiskDrive -VMName $n -ControllerType SCSI -ControllerNumber 0 -ControllerLocation 1 -Path <volume vhdx>
+#   as the user: AccessDenied 0x80070005 "no permission to open the attachment"
+# re-add therefore through hlabd (LocalSystem): hcloud volume detach, hcloud volume attach
+```
+
+Observed:
+- Not busy (the loop opened and closed the file per write): the kernel
+  logged `device offline error` and `Aborting journal`, then systemd
+  unmounted the filesystem by itself (the fstab mount unit is bound to the
+  device). Later writes to the mount point succeeded silently on the root
+  disk (`rc=0`), not with an I/O error.
+- Busy (a process with an open file and its working directory on the
+  volume): unmount failed, the filesystem stayed mounted on the dead
+  device, `EXT4-fs (sdb): shut down requested`, every access returned
+  `Input/output error`.
+- Re-adding at the same LUN: the guest registered the disk within about
+  10 s, as `sdb` again when the old one was unmounted, else as the next
+  free name `sdc`. `/dev/disk/by-id/scsi-0HC_Volume_<id>` pointed to the
+  new device in both cases. Nothing was remounted automatically.
+  `mount /mnt/HC_Volume_<id>` worked at once, ext4 replayed its journal
+  ("recovery complete"), data written before the removal was there. In the
+  busy case the new mount stacks on the dead one, which goes away only
+  after its users end (`umount -l` or ending the processes).
+- `Remove-VMHardDiskDrive` deletes the VM's own access entry on the VHDX;
+  `Add-VMHardDiskDrive` then needs a caller with write access to the file
+  (hlabd as LocalSystem has it; the interactive user only has read on
+  `C:\ProgramData\hlab-dev\data\volumes`). hlab's `DetachDisk` of a disk
+  already missing on the VM completed without error.
+
+Consequence: `volume_unavailable` works as planned; `Restore` re-adds at
+the same LUN and the by-id name stays right. The user documentation must
+say that the guest either loses the mount (writes then land on the system
+disk under the empty mount point) or keeps a dead mount with I/O errors,
+and that after the fault the volume is mounted again (`umount -l` first in
+the busy case). Tests of this fault run the platform calls through hlabd,
+not as the interactive user.
+
+## E29 netem with seed, tc on VRF interfaces and an extra nftables forward table on Debian 13
+
+- Result: confirmed, with corrections (the forward hook sees the VRF device as `iifname`; the agent's netlink library has no netem seed)
+- Checked on: 2026-11-24, Debian 13 VM kernel 6.12.117+deb13-amd64 (Debian `generic` image like the appliance), iproute2 6.15.0, nftables 1.1.3 (installed in the throwaway VM; the agent itself uses google/nftables v0.3.0 and vishvananda/netlink v1.3.1)
+- By: experiment
+- Status: valid
+
+How it was checked: network namespaces in the VM modelled on the
+appliance: router `r` with `p0` in the main table (public) and `t20`
+enslaved to `vrf20` (table 1020, private); two hosts behind each on a
+bridge, each with a `/32` and an on-link gateway, so host-to-host traffic
+enters and leaves the same router interface; `send_redirects=0`. Loss
+measured as the missing `icmp_seq` of `ping -c 200 -i 0.005`.
+
+```
+tc qdisc replace dev p0 root netem loss random 10% seed 42
+tc qdisc add dev t20 root handle 1: htb default 1
+tc class add dev t20 parent 1: classid 1:1 htb rate 10gbit
+tc class add dev t20 parent 1: classid 1:10 htb rate 10gbit
+tc qdisc add dev t20 parent 1:10 handle 10: netem loss random 10% seed 42      # or: delay 50ms 10ms limit 100000
+tc filter add dev t20 parent 1: protocol ip prio 1 flower dst_ip 10.0.0.7 classid 1:10
+tc filter add dev t20 parent 1: protocol ip prio 2 flower src_ip 10.0.0.7 classid 1:10
+# prio variant: root handle 1: prio bands 3 priomap 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1, netem on parent 1:3
+table inet hlab_fault { chain fw_chain { type filter hook forward priority -10; policy accept;
+  ip saddr 10.0.0.5 ip daddr 10.0.0.7 numgen inc mod 10 { 2, 5 } counter drop;
+  ip saddr { 198.19.4.10 } ip daddr { 198.19.4.20 } meta mark set 0x10 counter; } }
+tc filter add dev p0 parent 1: protocol ip prio 1 handle 0x10 fw classid 1:10   # mark from forward -> netem child
+```
+
+Observed:
+- Seed: with the netem child behind flower filters for exactly one flow,
+  every run with seed 42 lost the same 41 packets (7 14 19 20 ... 193), on
+  HTB and prio parents, on `p0` and `t20`, and after a reboot of the VM.
+  Seed 43 and no seed gave other patterns. As root qdisc on `p0` (which
+  also sees ARP and IPv6 neighbour traffic) runs agreed only for the first
+  ~90 packets, then shifted by one. Without `seed`, `tc qdisc show`
+  reports the seed the kernel chose. Seeds up to 2^64-1 are accepted. A
+  fixed delay in the same netem leaves the loss pattern unchanged; delay
+  with jitter changes it (jitter draws from the same generator), and it is
+  again identical run to run.
+- Latency: `delay 50ms 10ms` on egress of both router interfaces, filtered
+  on the server's address (public) or the address pair (VRF): RTT
+  86-114 ms, avg 100 ms, public and private alike; other traffic unchanged
+  (0.1 ms); deleting the root qdisc restored 0.1 ms. Flower filters on a
+  VRF slave work normally.
+- nftables: `inet hlab` (forward priority 0, prerouting), `inet hlab_fw`
+  (forward priority 10, `ct state established,related accept`) and
+  `inet hlab_fault` (forward priority -10) load and work together;
+  deleting `hlab_fault` leaves the others intact. The forward chain ran
+  once per packet (36 counts for 20 requests and 16 replies). For VRF
+  traffic the forward hook sees `iifname "vrf20"` (not `t20`), `oifname
+  "t20"` and `meta sdifname "t20"`; prerouting runs twice (with `t20` and
+  with `vrf20`). `numgen inc` after the address match dropped exactly
+  packets 3, 6, 13, 16. A mark set in the forward hook is seen by a tc
+  `fw` filter on egress (80 ms added).
+- Offloads: `hv_netvsc` has GRO, GSO, TSO and LRO on (LRO is the
+  vSwitch's receive coalescing); all four switch off with
+  `ethtool -K eth0 gro off gso off tso off lro off` and back on; VLAN
+  devices accept `gro off` too. The kernel logs "htb: netem qdisc 10: is
+  non-work-conserving?" when netem sits under HTB (harmless; none with
+  prio); HTB at 10gbit warns about a big quantum (harmless, set `quantum`).
+- Syntax: netem has no `jitter` keyword (`delay 50ms 10ms`); `tc qdisc
+  replace` resets every parameter not given (`limit` back to 1000).
+- Libraries: vishvananda/netlink v1.3.1 `Netem` has no seed field (no
+  `TCA_NETEM_PRNG_SEED`) and no delay distribution; `Flower`, `Fw`, HTB and
+  prio are there. google/nftables v0.3.0 has `expr.Numgen`.
+
+Consequence: per-fault netem children selected by flower filters (or by a
+mark set in `hlab_fault`) give repeatable loss for the same packet
+sequence; the agent sets the seed through `tc` (iproute2 is in the
+appliance image) or adds the raw seed attribute itself. Rules in
+`hlab_fault` for private traffic match `oifname`/`meta sdifname t<vlan>`
+or `iifname vrf<vlan>` together with the address, because private ranges
+of different projects may overlap. A flow reaches only one netem child, so
+a flow hit by a loss and a latency fault needs one netem with both
+settings. GRO, GSO, TSO and LRO go off on the appliance's physical
+adapters (public and trunk), not only on VLAN subinterfaces. Forward-hook
+rules do not touch traffic between a server and the appliance's own
+services (DNS, metadata, API proxy, console); a cut that should stop those
+too needs input and output chains.
+
+Repeat: a throwaway project with a Debian 13 cx23 server and a 10 GB ext4
+volume in the dev service (`hcloud` with
+`HCLOUD_ENDPOINT=http://api.hetzner.internal/v1` and a project token), SSH
+as root; the namespace topology above built with `ip netns` and
+`ip link add ... type veth|bridge|vrf`; `apt-get install nftables` inside
+the VM only for the nft CLI.

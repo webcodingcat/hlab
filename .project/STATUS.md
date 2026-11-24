@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 16 Release checks in test VMs (next)
+- Phase: 25 Fault model, API errors and rate limits (next)
 - Base branch: main
 - Last done: phase 23 merged into main (2026-11-23): `hcloud server request-console` gives a working VNC console (screen, keyboard, mouse through Hyper-V), and the tray opens it in its own window from the server's "Console" entry, also without "Trust CA"
-- Next: /wcc:phase in a new session builds phase 16 (release checks in test VMs), the last phase of milestone 1; it stops for the manual checks
+- Next: /wcc:phase in a new session builds phase 25; fault injection (phases 25 to 28) was taken into milestone 1 on 2026-11-24, and phase 16 (release checks) stays the last phase and stops for the manual checks
 
 ## Open manual checks
 
