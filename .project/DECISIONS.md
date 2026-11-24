@@ -19,6 +19,94 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-24 Fault manager calls take a context
+
+- Type: decision
+- Phase: phase 25
+- What: `faults.Manager` methods that run or undo effects (Create, End, EndProject, EndAll, EndTarget) take a `context.Context`.
+- Why: the effects of phase 26 are Hyper-V calls that need a context.
+- Cost of change: low
+
+## 2026-11-24 Faults name projects, the cloud looks up targets
+
+- Type: decision
+- Phase: phase 25
+- What: Faults identify projects by name, and target lookup goes through a `TargetLookup` function the cloud supplies.
+- Why: the API context and management routes carry the name, and `faults` stays free of module logic.
+- Cost of change: low
+
+## 2026-11-24 Fault kinds become active by registered effects
+
+- Type: decision
+- Phase: phase 25
+- What: `api_error` and `rate_limit` are always available; any other kind without an effect in `Options.Effects` is refused with `invalid_input` "not available yet".
+- Why: phases 26 and 27 then only register effects.
+- Cost of change: low
+
+## 2026-11-24 Seed on a kind without randomness is refused
+
+- Type: decision
+- Phase: phase 25
+- What: A seed given to a kind that takes none (or to `network` at 100 %) is `invalid_input` on `seed`.
+- Why: a silently ignored seed would mislead.
+- Cost of change: low
+
+## 2026-11-24 Unknown location 404, unattached volume invalid
+
+- Type: decision
+- Phase: phase 25
+- What: An unknown location in a `latency` target is `404 not_found`, and a volume that is not attached for `volume_unavailable` is `invalid_input`.
+- Why: it follows the fault object table.
+- Cost of change: low
+
+## 2026-11-24 api_error resource checked against mounted modules
+
+- Type: decision
+- Phase: phase 25
+- What: `api_error`'s `resource` is checked against the mounted modules' types (`api.Router.Resources()`).
+- Why: a typo would otherwise create a fault that never hits.
+- Cost of change: low
+
+## 2026-11-24 Default RateLimit headers set before auth
+
+- Type: decision
+- Phase: phase 25
+- What: The api layer always sets default `RateLimit-*` headers (3600/3600/now) before auth, and the fault middleware overwrites them for token requests.
+- Why: 401 and unknown-path responses carry the headers without `api` importing `faults`.
+- Cost of change: low
+
+## 2026-11-24 RateLimit header rounding
+
+- Type: decision
+- Phase: phase 25
+- What: `RateLimit-Remaining` is the floor of the bucket's tokens and `RateLimit-Reset` is now plus the time until full, rounded up to whole seconds.
+- Why: Hetzner's documentation gives no rounding.
+- Cost of change: low
+
+## 2026-11-24 Status handler counts faults itself
+
+- Type: decision
+- Phase: phase 25
+- What: The management status handler fills `faults` from `Deps.Faults.Count()` instead of the cloud's status function.
+- Why: it can then be tested in `internal/mgmt`.
+- Cost of change: low
+
+## 2026-11-24 Small helpers for the fault wiring
+
+- Type: decision
+- Phase: phase 25
+- What: New helpers `api.HasStatus` and `apitest.NewWith(Options{Faults})`, and modules get an optional `Deps.EndFaults` hook for target deletion.
+- Why: they are the smallest additions that carry the interfaces.
+- Cost of change: low
+
+## 2026-11-24 Fault cloud wiring has no own test row
+
+- Type: decision
+- Phase: phase 25
+- What: The cloud wiring (new manager per start, `EndAll` at cloud stop, `EndTarget` in deletes) has no own test row; the manager behaviour behind it has rows.
+- Why: the wiring is glue.
+- Cost of change: low
+
 ## 2026-11-24 More system images in milestone 1
 
 - Type: change
