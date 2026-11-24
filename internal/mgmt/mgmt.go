@@ -20,6 +20,7 @@ import (
 
 	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/api"
+	"github.com/webcodingcat/hlab/internal/faults"
 	"github.com/webcodingcat/hlab/internal/logfile"
 	"github.com/webcodingcat/hlab/internal/projectname"
 	"github.com/webcodingcat/hlab/internal/resource"
@@ -37,6 +38,9 @@ type Status struct {
 	Problems []Problem `json:"problems"`
 	// ShadowingZones are the primary zones that shadow a public domain.
 	ShadowingZones []ShadowingZone `json:"shadowing_zones"`
+	// Faults is the number of active faults of all projects, filled by the
+	// handler from Deps.Faults.
+	Faults int `json:"faults"`
 }
 
 // ShadowingZone is a zone whose name also resolves publicly, with the name
@@ -89,6 +93,9 @@ type Deps struct {
 	// Done is closed when the cloud stops; it ends the followers of
 	// GET /logs, so they do not hold up the shutdown. nil never ends them.
 	Done <-chan struct{}
+	// Faults holds the active faults; nil leaves the fault routes out and
+	// reports 0 faults in GET /status.
+	Faults *faults.Manager
 }
 
 // Project is a project as the management API returns it.
@@ -141,6 +148,9 @@ func New(d Deps) http.Handler {
 	if d.Reload != nil {
 		mux.HandleFunc("POST "+Prefix+"/settings/reload", s.reload)
 	}
+	if d.Faults != nil {
+		s.faultRoutes(mux)
+	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "unknown path")
 	})
@@ -187,6 +197,10 @@ func (s server) status(w http.ResponseWriter, _ *http.Request) {
 	}
 	if st.ShadowingZones == nil {
 		st.ShadowingZones = []ShadowingZone{}
+	}
+	st.Faults = 0
+	if s.d.Faults != nil {
+		st.Faults = s.d.Faults.Count()
 	}
 	writeJSON(w, http.StatusOK, st)
 }
@@ -258,8 +272,9 @@ func (s server) createProject(w http.ResponseWriter, req *http.Request) {
 // deletion; a running deletion locks its project.
 const projectRef = "project"
 
-// deleteProject revokes the project's tokens at once and starts an action
-// without a project that deletes the project with all its resources.
+// deleteProject revokes the project's tokens and ends its faults at once
+// and starts an action without a project that deletes the project with all
+// its resources.
 func (s server) deleteProject(w http.ResponseWriter, req *http.Request) {
 	name := req.PathValue("name")
 	var p store.Project
@@ -296,6 +311,11 @@ func (s server) deleteProject(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		fail(w, err, "project "+name)
 		return
+	}
+	if s.d.Faults != nil {
+		if err := s.d.Faults.EndProject(req.Context(), name); err != nil {
+			slog.Warn("end the faults of a deleted project", "project", name, "err", err)
+		}
 	}
 	s.d.Actions.Run(action.ID, func(ctx context.Context, progress func(int)) error {
 		return s.purge(ctx, p, progress)
