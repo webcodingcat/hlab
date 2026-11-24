@@ -151,34 +151,34 @@ filled by the status handler from `Deps.Faults.Count()`.
 
 ## Plans
 
-- [ ] 25-01 Fault manager
+- [x] 25-01 Fault manager
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: FAULT-01, FAULT-02 | Tests: internal/faults/manager_test.go, internal/faults/helpers_test.go
   - Reads: REQUIREMENTS FAULT-01, FAULT-02; ARCHITECTURE "faults (phase 25)", "Management API (named pipe)" the fault rows and "Fault object"; decisions/fault-injection.md; DECISIONS "2026-11-24 Fault interfaces", "2026-11-24 One fault per kind and target, with fixed parameter ranges"; phases/25/CONTEXT.md
   - Size: ~400 lines in 4 files
   - Adjusts: none
-  - [ ] `internal/faults/fault.go`: the types, constants, `Request.Spec`, `InputError`, `ErrNotFound`, `ErrConflict`, `Effect`, `TargetLookup`, `Options` of "Interfaces".
-  - [ ] `internal/faults/kinds.go`: validation per kind of target and params with the ranges of the fault object table (`traffic`, `loss_percent`, `delay_ms`, `jitter_ms`, `code` via `api.HasStatus` (added here in `internal/api/errors.go`), `percent`, `only`, `resource` against `Options.Resources`, `per_hour`, `iops`), duration 1 s to 24 h, from != to; seed only for `api_error` and `network` with `loss_percent` below 100 (otherwise `*InputError` on `seed`); kinds without effect refused as not available yet; numbers in params normalized to int64.
-  - [ ] `internal/faults/manager.go`: `Manager` with mutex, IDs from 1, `Create` (validate, lookup, conflict, chosen seed in 1..MaxChosenSeed from crypto/rand, Apply, timer on `Clock.After` with a stop channel), `List`, `Count`, `End`, `EndProject`, `EndAll`, `EndTarget` (Undo before removal; Undo errors joined and logged, the fault still ends).
+  - [x] `internal/faults/fault.go`: the types, constants, `Request.Spec`, `InputError`, `ErrNotFound`, `ErrConflict`, `Effect`, `TargetLookup`, `Options` of "Interfaces".
+  - [x] `internal/faults/kinds.go`: validation per kind of target and params with the ranges of the fault object table (`traffic`, `loss_percent`, `delay_ms`, `jitter_ms`, `code` via `api.HasStatus` (added here in `internal/api/errors.go`), `percent`, `only`, `resource` against `Options.Resources`, `per_hour`, `iops`), duration 1 s to 24 h, from != to; seed only for `api_error` and `network` with `loss_percent` below 100 (otherwise `*InputError` on `seed`); kinds without effect refused as not available yet; numbers in params normalized to int64.
+  - [x] `internal/faults/manager.go`: `Manager` with mutex, IDs from 1, `Create` (validate, lookup, conflict, chosen seed in 1..MaxChosenSeed from crypto/rand, Apply, timer on `Clock.After` with a stop channel), `List`, `Count`, `End`, `EndProject`, `EndAll`, `EndTarget` (Undo before removal; Undo errors joined and logged, the fault still ends).
 
-- [ ] 25-02 API fault layer: api_error, rate limits and headers
+- [x] 25-02 API fault layer: api_error, rate limits and headers
   - Wave: 2 | Depends on: 25-01 | Review: alone
   - Requirements: FAULT-03, FAULT-04 | Tests: internal/faults/middleware_test.go, internal/faults/ratelimit_test.go
   - Reads: REQUIREMENTS FAULT-03, FAULT-04, API-10; ARCHITECTURE "api", "faults (phase 25)" the `api_error`/`rate_limit` paragraph; research/fault-injection.md section 1; DECISIONS "2026-11-24 RateLimit headers on every API response", "2026-11-24 Fault interfaces"; phases/25/CONTEXT.md
   - Size: ~330 lines in 4 files
   - Adjusts: none (`apitest.New` keeps its signature)
-  - [ ] `internal/api/router.go`, `internal/api/context.go`: `Deps.Faults` applied after `authenticate` and before `checkJSON`; the `ByToken` mark set only on the token path; default `RateLimit-*` headers set in `underPrefix` for every request under a prefix; `Router.Resources()` from the mounted modules' `Type()`.
-  - [ ] `internal/faults/middleware.go`: for `api.ByToken` requests of a project: the bucket (the `rate_limit` fault's: capacity N, refill N/3600 per second, full at creation; otherwise the default 3600, refill 1/s, never refusing, floor 0) with lazy refill from `Clock.Now()`; a refused request answers `429 rate_limit_exceeded` and does not count; then `api_error` with filters `only` (GET/HEAD are reads) and `resource` (first segment after `/v1` or `/hetzner/v1`), one `IntN(100) < percent` draw per matching request on the fault's `rand.New(rand.NewPCG(seed, seed))` under the lock; a hit answers `api.Error(code, "<code> injected by HLab fault <id>", details)` with `details.fields: []` for `invalid_input`; `RateLimit-Limit`, `RateLimit-Remaining` (floor of tokens) and `RateLimit-Reset` (Unix seconds, now + ceil of the time until full) on every answer. A `rate_limit` fault's bucket is dropped when it ends; the default bucket is kept per project.
-  - [ ] `internal/apitest/apitest.go`: `Options` and `NewWith` passing `Faults` into `api.Deps`.
+  - [x] `internal/api/router.go`, `internal/api/context.go`: `Deps.Faults` applied after `authenticate` and before `checkJSON`; the `ByToken` mark set only on the token path; default `RateLimit-*` headers set in `underPrefix` for every request under a prefix; `Router.Resources()` from the mounted modules' `Type()`.
+  - [x] `internal/faults/middleware.go`: for `api.ByToken` requests of a project: the bucket (the `rate_limit` fault's: capacity N, refill N/3600 per second, full at creation; otherwise the default 3600, refill 1/s, never refusing, floor 0) with lazy refill from `Clock.Now()`; a refused request answers `429 rate_limit_exceeded` and does not count; then `api_error` with filters `only` (GET/HEAD are reads) and `resource` (first segment after `/v1` or `/hetzner/v1`), one `IntN(100) < percent` draw per matching request on the fault's `rand.New(rand.NewPCG(seed, seed))` under the lock; a hit answers `api.Error(code, "<code> injected by HLab fault <id>", details)` with `details.fields: []` for `invalid_input`; `RateLimit-Limit`, `RateLimit-Remaining` (floor of tokens) and `RateLimit-Reset` (Unix seconds, now + ceil of the time until full) on every answer. A `rate_limit` fault's bucket is dropped when it ends; the default bucket is kept per project.
+  - [x] `internal/apitest/apitest.go`: `Options` and `NewWith` passing `Faults` into `api.Deps`.
 
-- [ ] 25-03 Management API for faults
+- [x] 25-03 Management API for faults
   - Wave: 2 | Depends on: 25-01 | Review: alone
   - Requirements: FAULT-01, FAULT-02 | Tests: internal/mgmt/faults_test.go, internal/mgmt/mgmt_test.go (registration)
   - Reads: REQUIREMENTS FAULT-01, FAULT-02; ARCHITECTURE "Management API (named pipe)" (table, "Fault object", errors, `mgmt.Deps`); DECISIONS "2026-11-24 Fault interfaces"; phases/25/CONTEXT.md
   - Size: ~220 lines in 2 files
   - Adjusts: none
-  - [ ] `internal/mgmt/faults.go`: handlers for `GET /faults`, `DELETE /faults`, `GET|POST|DELETE /projects/{name}/faults`, `DELETE /projects/{name}/faults/{id}`; unknown project `404 not_found`; body decoding with unknown fields refused; `*faults.InputError` to `400 invalid_input` (field in the message), `ErrNotFound` to `404 not_found`, `ErrConflict` to `409 conflict`, others `500 server_error`.
-  - [ ] `internal/mgmt/mgmt.go`: `Deps.Faults`, the routes (only when set), `Status.Faults` from `Count()`, and `EndProject` in `deleteProject` right after the token revocation.
+  - [x] `internal/mgmt/faults.go`: handlers for `GET /faults`, `DELETE /faults`, `GET|POST|DELETE /projects/{name}/faults`, `DELETE /projects/{name}/faults/{id}`; unknown project `404 not_found`; body decoding with unknown fields refused; `*faults.InputError` to `400 invalid_input` (field in the message), `ErrNotFound` to `404 not_found`, `ErrConflict` to `409 conflict`, others `500 server_error`.
+  - [x] `internal/mgmt/mgmt.go`: `Deps.Faults`, the routes (only when set), `Status.Faults` from `Count()`, and `EndProject` in `deleteProject` right after the token revocation.
 
 - [ ] 25-04 Faults in the cloud
   - Wave: 3 | Depends on: 25-02, 25-03 | Review: alone

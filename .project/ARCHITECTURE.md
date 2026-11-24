@@ -94,7 +94,11 @@ Inside `hlabd` (Go packages under `internal/`):
   every response, the project's `rate_limit` and `api_error` faults; only
   for requests authenticated by a token: token auth marks them in the
   context (`api.ByToken(ctx)`), the management API's project proxy sets
-  the project without that mark and is never affected), JSON decoding (`json_error`), read-only guard
+  the project without that mark and is never affected; the router takes
+  it as the optional `api.Deps.Faults func(http.Handler) http.Handler`,
+  set by the cloud to `(*faults.Manager).Middleware`, and sets default
+  `RateLimit-*` headers on every request under a prefix before auth;
+  `(*api.Router).Resources()` lists the mounted modules' types), JSON decoding (`json_error`), read-only guard
   (`token_readonly` for every non-GET), handler. Shared helpers: `api.ListRequest(w, req, key, items,
   ListOptions[T])` filters by `name` and `label_selector`, sorts by the
   endpoint's keys and pages (`page`, `per_page` 25 by default, at most 50;
@@ -827,7 +831,8 @@ without one.
 Errors: `{"error":{"code":"...","message":"..."}}` with codes
 `invalid_input`, `not_found`, `conflict`, `cloud_not_running`,
 `server_error`. The handlers get `mgmt.Deps` with, among others,
-`Actions`, `Deleters` (the modules implementing `resource.Deleter`),
+`Faults` (the `*faults.Manager`; nil leaves the fault routes out and
+`faults` in `/status` at 0, phase 25), `Actions`, `Deleters` (the modules implementing `resource.Deleter`),
 `UpdateCatalog` (nil leaves the route out), `ServerTypes` (the count
 returned by the catalog update) and `PushAgent` (pushes the agent document
 after a project deletion), `CACert` (the PEM for `/ca.pem`), `Trust`

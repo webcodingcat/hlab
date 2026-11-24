@@ -19,6 +19,54 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-24 One bucket counts each token request
+
+- Type: decision
+- Phase: phase 25
+- What: While a `rate_limit` fault is active only its bucket counts a token request; the project's default bucket stays untouched and is used again afterwards.
+- Why: a request should be counted once, against the limit the client sees.
+- Cost of change: low
+
+## 2026-11-24 Rate limit arithmetic and default reset clock
+
+- Type: decision
+- Phase: phase 25
+- What: Refill is `capacity*elapsedSeconds/3600` and Reset `ceil((capacity-tokens)*3600/capacity)`; the router's default `RateLimit-Reset` on 401 and proxy answers uses the wall clock.
+- Why: whole steps (360 s at 10 per hour) come out exact in floating point, and the router has no clock of its own.
+- Cost of change: low
+
+## 2026-11-24 Fault cleanup errors at project delete and fault delete
+
+- Type: decision
+- Phase: phase 25
+- What: An `EndProject` error during `DELETE /projects/{name}` is logged as a warning and the deletion goes on; a fault `DELETE` with joined Undo errors answers `500 server_error` although the faults have ended.
+- Why: project deletion must not depend on effect cleanup, and a failed undo should be visible to the caller.
+- Cost of change: low
+
+## 2026-11-24 Unknown fault parameters are refused
+
+- Type: decision
+- Phase: phase 25
+- What: Unknown parameter keys of a fault are `invalid_input` on `params.<name>`; field names are `kind`, `target`, `target.type|id|from|to`, `params.<name>`, `seed` and `duration`.
+- Why: unchecked outside input would be silently ignored.
+- Cost of change: low
+
+## 2026-11-24 Latency faults conflict in both directions
+
+- Type: decision
+- Phase: phase 25
+- What: A `latency` fault from A to B conflicts with one from B to A.
+- Why: both hit the same traffic.
+- Cost of change: low
+
+## 2026-11-24 Undo errors do not keep a fault alive
+
+- Type: decision
+- Phase: phase 25
+- What: The End methods return the joined Undo errors and log them, and the faults end anyway.
+- Why: a fault that cannot be undone must not stay listed forever.
+- Cost of change: low
+
 ## 2026-11-24 Fault manager calls take a context
 
 - Type: decision
