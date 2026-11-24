@@ -94,9 +94,12 @@ func testFaults(t *testing.T) {
 	t.Run("FAULT-05/blocked", func(t *testing.T) {
 		env, mod, p, h := newFaultEnv(t)
 		ctx := lifeCtx(t)
-		id := createdServer(t, env, "blocked", nil)
+		id := createdServer(t, env, "blocked", map[string]any{"user_data": blockedUserData})
 		vm := vmName(t, p.Fake)
 		disk := systemDisk(t, p, vm)
+		path := fmt.Sprintf("/servers/%d", id)
+		image0 := imageName(rawServer(t, env, path))
+		userData0 := seedFile(t, h.dataFolder, "user-data")
 		if !fileExists(disk) {
 			t.Fatalf("system disk file %s missing after create", disk)
 		}
@@ -112,7 +115,8 @@ func testFaults(t *testing.T) {
 			{"poweron", nil},
 			{"reboot", nil},
 			{"reset", nil},
-			{"rebuild", map[string]any{"image": "ubuntu-24.04"}},
+			{"rebuild", map[string]any{"image": "debian-13", "user_data": "#cloud-config\n# hlab-refused-rebuild\n"}},
+			{"change_type", map[string]any{"server_type": "cx33", "upgrade_disk": false}},
 		} {
 			t.Run(c.action, func(t *testing.T) {
 				n := len(p.Calls())
@@ -140,6 +144,12 @@ func testFaults(t *testing.T) {
 					}
 					if !fileExists(disk) {
 						t.Errorf("system disk file %s gone after the refused rebuild", disk)
+					}
+					if got := imageName(rawServer(t, env, path)); got != image0 {
+						t.Errorf("GET %s image after the refused rebuild: %q, want %q", path, got, image0)
+					}
+					if got := seedFile(t, h.dataFolder, "user-data"); string(got) != string(userData0) {
+						t.Errorf("seed user-data after the refused rebuild:\n%s\nwant unchanged:\n%s", got, userData0)
 					}
 				}
 			})
@@ -372,6 +382,8 @@ type faultHooks struct {
 	p       *recPlatform
 	crashed atomic.Int64
 	inj     faults.ServerInjector
+	// dataFolder is the module's data folder (seed files).
+	dataFolder string
 
 	mu    sync.Mutex
 	ended []endedFault
@@ -426,7 +438,8 @@ func newFaultEnv(t *testing.T) (*apitest.Env, *servers.Module, *recPlatform, *fa
 	p := newRecPlatform()
 	p.diskFileBytes = 1
 	h := &faultHooks{p: p}
-	env, mod, _ := newFakeEnv(t, p, h.tune)
+	env, mod, d := newFakeEnv(t, p, h.tune)
+	h.dataFolder = d.Settings.DataFolder
 	h.mu.Lock()
 	h.inj = mod
 	h.mu.Unlock()
@@ -451,6 +464,17 @@ func (r *recPlatform) createCount() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return len(r.creates)
+}
+
+// blockedUserData is the user_data of the server FAULT-05/blocked crashes.
+const blockedUserData = "#cloud-config\n# hlab-before-crash\n"
+
+// imageName is the name of the image of a raw server object, "" when it
+// has none.
+func imageName(server map[string]any) string {
+	img, _ := server["image"].(map[string]any)
+	name, _ := img["name"].(string)
+	return name
 }
 
 // usableISO is the name of a non-deprecated ISO of the shipped catalog.
