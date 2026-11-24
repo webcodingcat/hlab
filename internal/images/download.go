@@ -16,6 +16,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/webcodingcat/hlab/internal/version"
 )
 
 // checksum is the expected digest of the image file.
@@ -134,18 +136,35 @@ func Fetch(ctx context.Context, client *http.Client, urls []string, sha256hex, d
 	return os.Rename(tmp, dst)
 }
 
-// findSum reads lines "<hex> *<file>" or "<hex>  <file>" and returns the
-// one whose file name is exactly file.
+// findSum returns the entry for exactly file in a checksum file. It reads
+// GNU lines "<hex>  <file>" or "<hex> *<file>" and BSD lines
+// "<ALGO> (<file>) = <hex>" with ALGO SHA256 or SHA512, and skips empty
+// lines, "#" comments and the PGP armour of a clear-signed file (the
+// signature is not verified).
 func findSum(r io.Reader, file string) (checksum, error) {
 	sc := bufio.NewScanner(r)
+	inHeader, inSignature := false, false
 	for sc.Scan() {
-		hexSum, rest, ok := strings.Cut(strings.TrimSpace(sc.Text()), " ")
-		if !ok {
+		line := strings.TrimSpace(sc.Text())
+		switch {
+		case line == "-----BEGIN PGP SIGNED MESSAGE-----":
+			inHeader = true
+			continue
+		case inHeader:
+			// Armour headers ("Hash: ...") end at the first empty line.
+			inHeader = line != ""
+			continue
+		case line == "-----BEGIN PGP SIGNATURE-----":
+			inSignature = true
+			continue
+		case inSignature:
+			inSignature = line != "-----END PGP SIGNATURE-----"
+			continue
+		case line == "" || strings.HasPrefix(line, "#"):
 			continue
 		}
-		rest = strings.TrimPrefix(rest, " ")
-		rest = strings.TrimPrefix(rest, "*")
-		if rest != file {
+		hexSum, name, ok := parseSumLine(line)
+		if !ok || name != file {
 			continue
 		}
 		hexSum = strings.ToLower(hexSum)
@@ -164,6 +183,25 @@ func findSum(r io.Reader, file string) (checksum, error) {
 		return checksum{}, err
 	}
 	return checksum{}, fmt.Errorf("no entry for %s", file)
+}
+
+// parseSumLine splits a BSD line "<ALGO> (<file>) = <hex>" (ALGO SHA256 or
+// SHA512) or a GNU line "<hex>  <file>" / "<hex> *<file>" into digest and
+// file name.
+func parseSumLine(line string) (hexSum, file string, ok bool) {
+	if algo, rest, found := strings.Cut(line, " ("); found && (algo == "SHA256" || algo == "SHA512") {
+		if i := strings.LastIndex(rest, ") = "); i >= 0 {
+			return strings.TrimSpace(rest[i+len(") = "):]), rest[:i], true
+		}
+		return "", "", false
+	}
+	hexSum, rest, found := strings.Cut(line, " ")
+	if !found {
+		return "", "", false
+	}
+	rest = strings.TrimPrefix(rest, " ")
+	rest = strings.TrimPrefix(rest, "*")
+	return hexSum, rest, true
 }
 
 // download streams rawURL into f and verifies its digest.
@@ -188,13 +226,24 @@ func copyVerified(body io.Reader, w io.Writer, rawURL string, want checksum) err
 	return nil
 }
 
-// get answers the body of rawURL; any status but 200 is an error, 404 one
-// wrapping errNotFound.
+// get answers the body of rawURL. Every request carries the User-Agent
+// "hlab/<version>"; a transport error or any status but 200 is retried
+// once. Any status but 200 is an error, 404 one wrapping errNotFound.
 func get(ctx context.Context, client *http.Client, rawURL string) (io.ReadCloser, error) {
+	body, err := getOnce(ctx, client, rawURL)
+	if err == nil || ctx.Err() != nil {
+		return body, err
+	}
+	return getOnce(ctx, client, rawURL)
+}
+
+// getOnce sends one request for rawURL; see get.
+func getOnce(ctx context.Context, client *http.Client, rawURL string) (io.ReadCloser, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("User-Agent", "hlab/"+version.Version)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
