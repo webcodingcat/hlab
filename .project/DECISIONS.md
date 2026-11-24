@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-24 A locations latency covers a server's floating and alias IPs
+
+- Type: decision
+- Phase: phase 27
+- What: for a `latency` fault between two locations, a server's floating IPs and alias IPs count as its addresses, as sources and as destinations, like for a `network` fault.
+- Why: the same address set for all net faults is the simplest rule, and traffic to a floating IP reaches the same server.
+- Cost of change: low
+
 ## 2026-11-24 A storage box fault blocks only the box's own address
 
 - Type: decision

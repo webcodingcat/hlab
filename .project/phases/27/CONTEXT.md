@@ -32,3 +32,4 @@ Confirmed by the user on 2026-11-24. Experiments: E40 to E44 in research/EXPERIM
 
 - Q1: success criterion 4 is proven by unit tests of the agent's planner (an empty or smaller list removes every rule and qdisc, leftovers included) plus e2e checks that ping time and loss return to normal after ending by hand, by duration and at cloud stop. No new status interface.
 - Q2: the fault blocks only the box's own address; the side path over another box's address (E17) is named in docs/deviations.md.
+- A locations latency treats a server's floating IPs and alias IPs as its addresses, as sources and destinations (decision during test writing).

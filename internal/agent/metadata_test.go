@@ -31,6 +31,14 @@ func TestAgent(t *testing.T) {
 	t.Run("LB-05/stat", testParseStat)
 	t.Run("LB-07", testHAProxyProxyProtocol)
 	t.Run("SBOX-04/external", testStorageBoxExternal)
+	t.Run("FAULT-07/cut", testFaultCut)
+	t.Run("FAULT-07/loss", testFaultLoss)
+	t.Run("FAULT-07/merge", testFaultMerge)
+	t.Run("FAULT-08/locations", testFaultLocations)
+	t.Run("FAULT-08/server", testFaultServerLatency)
+	t.Run("FAULT-11/box", testFaultBox)
+	t.Run("FAULT-02/empty_plan", testFaultEmptyPlan)
+	t.Run("FAULT-02/tc_commands", testTcCommands)
 }
 
 // testMetadataPrivateVLAN: two servers with the same private IP in two
