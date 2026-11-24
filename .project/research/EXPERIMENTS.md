@@ -848,7 +848,7 @@ documentation should say so.
 - Result: confirmed with a correction: what the guest sees depends on whether the filesystem is busy
 - Checked on: 2026-11-24, same VM as E26, ext4 volume mounted by systemd from `/etc/fstab` (`/dev/disk/by-id/scsi-0HC_Volume_<id>`, `nofail`)
 - By: experiment
-- Status: valid
+- Status: superseded (phase 26 observed that an idle volume with `automount` is mounted again by hlab's udev rule once the disk is re-added; "Nothing was remounted automatically" holds only for a plain fstab mount as used here, and a busy volume still needs the remount, see ARCHITECTURE.md; 2026-11-24)
 
 How it was checked: a guest loop appending to a file on the volume, then
 
