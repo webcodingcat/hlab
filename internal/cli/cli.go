@@ -67,13 +67,13 @@ const (
 
 type command struct {
 	path  string
-	args  string   // positional arguments for the usage text
-	nargs int      // number of positional arguments
+	args  string // positional arguments for the usage text
+	nargs int    // number of positional arguments
 	// optArgs is the number of optional positional arguments after nargs.
 	optArgs int
-	flags []string // value flags, required
-	opts  []string // value flags, optional
-	bools []string // boolean flags
+	flags   []string // value flags, required
+	opts    []string // value flags, optional
+	bools   []string // boolean flags
 	// noOutput: the command takes no --output (it prints no result).
 	noOutput bool
 	run      func(c *call) error
