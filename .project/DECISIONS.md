@@ -23,6 +23,38 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-24 Test VMs use the Default Switch
+
+- Type: decision
+- Phase: phase 16
+- What: both test VMs connect to Hyper-V's Default Switch, and the guide checks each VM's subnet against 198.19.0.0/16 and 172.31.1.1 before the first cloud start (on an overlap: restart the host, check again).
+- Why: the user chose it, because an own NAT on the development machine would stop the dev cloud (one WinNAT per host).
+- Cost of change: low
+
+## 2026-11-24 Release checks guide written in two plans
+
+- Type: decision
+- Phase: phase 16
+- What: 16-01 writes the VM setup part of `docs/development/release-checks.md`, the documentation plan 16-02 adds the reusable user-check steps and the links.
+- Why: one plan would come to about 500 lines.
+- Cost of change: low
+
+## 2026-11-24 Order of the checks in the user test VM
+
+- Type: decision
+- Phase: phase 16
+- What: INST-03 install, appliance name check, UI-09 with DOC-07, update check (INST-06), LIFE-05, COMPACT with the storage VM name check, INST-05 uninstall last.
+- Why: each check leaves the state the next one needs, and the storage VM exists only after the first box.
+- Cost of change: low
+
+## 2026-11-24 Local account at Windows setup left to the guide
+
+- Type: assumption
+- Phase: phase 16
+- What: the guide names the answer file, "Domain join instead" and setup without network as routes to a local account; none is confirmed on current media, and corrections come back through `/wcc:report`.
+- Why: RESEARCH.md found the older bypasses removed and the remaining reports contradictory.
+- Cost of change: low
+
 ## 2026-11-24 Delayed seed swaps end with the cloud's run
 
 - Type: decision
