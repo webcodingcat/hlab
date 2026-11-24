@@ -84,15 +84,15 @@ The injected crash's action error is `server_error` with message
 
 ## Plans
 
-- [ ] 26-01 Platform: pause, resume and disk IOPS
+- [x] 26-01 Platform: pause, resume and disk IOPS
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: FAULT-06, FAULT-10 | Tests: - (the Hyper-V calls are proven by test/e2e/fault_test.go, the fake by the module tests)
   - Reads: ARCHITECTURE "platform (interface) and platform/hyperv"; EXPERIMENTS E26, E27, E35, E36, E37; phases/26/CONTEXT.md "Technical choices"
   - Size: ~170 lines in 4 files
   - Adjusts: -
-  - [ ] `internal/platform/platform.go`: `PowerPause`, `PowerResume` (with `String`), `SetDiskIOPS` in the interface.
-  - [ ] `internal/platform/hyperv/hyperv.go`, `internal/platform/hyperv/disks.go`: `Suspend-VM` / `Resume-VM` (resume only when the state is Paused), `SetDiskIOPS` via `Get-VMHardDiskDrive` filtered by full path (or all drives for ""), `Set-VMHardDiskDrive -MaximumIOPS` only where the value differs; errors as `platform.Error`.
-  - [ ] `internal/platform/platformtest/fake.go`: pause, resume, `SetDiskIOPS` and `IOPS` as in "Interfaces".
+  - [x] `internal/platform/platform.go`: `PowerPause`, `PowerResume` (with `String`), `SetDiskIOPS` in the interface.
+  - [x] `internal/platform/hyperv/hyperv.go`, `internal/platform/hyperv/disks.go`: `Suspend-VM` / `Resume-VM` (resume only when the state is Paused), `SetDiskIOPS` via `Get-VMHardDiskDrive` filtered by full path (or all drives for ""), `Set-VMHardDiskDrive -MaximumIOPS` only where the value differs; errors as `platform.Error`.
+  - [x] `internal/platform/platformtest/fake.go`: pause, resume, `SetDiskIOPS` and `IOPS` as in "Interfaces".
 
 - [x] 26-02 Fault manager: Active, EndKind and effects
   - Wave: 1 | Depends on: - | Review: alone
