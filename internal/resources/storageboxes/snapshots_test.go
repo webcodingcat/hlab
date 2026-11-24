@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/agentapi"
+	"github.com/webcodingcat/hlab/internal/agentclient"
 	"github.com/webcodingcat/hlab/internal/apitest"
 	"github.com/webcodingcat/hlab/internal/resources/storageboxes"
 )
@@ -173,7 +174,9 @@ func hasJob(jobs []agentapi.StorageJob, user, name string) bool {
 }
 
 // automaticName is the name of the automatic snapshot taken at at.
-func automaticName(at time.Time) string { return "snapshot-daily--" + at.UTC().Format(snapshotNameLayout) }
+func automaticName(at time.Time) string {
+	return "snapshot-daily--" + at.UTC().Format(snapshotNameLayout)
+}
 
 func testSnapshotAPI(t *testing.T) {
 	e := newBoxEnv(t)
@@ -466,5 +469,61 @@ func testRollbackAPI(t *testing.T) {
 	}
 	if n := len(e.agent.jobsOf(agentapi.StorageJobRollback)); n != 2 {
 		t.Errorf("%d rollback jobs, want 2 (none for unknown snapshots)", n)
+	}
+}
+
+// agentNotFound answers a job as the storage agent does for a snapshot it
+// no longer has.
+func agentNotFound(agentapi.StorageJob) (agentapi.StorageJobResult, error) {
+	return agentapi.StorageJobResult{}, &agentclient.JobError{Status: http.StatusNotFound, Code: agentapi.JobErrNotFound}
+}
+
+func testSnapshotDeleteGone(t *testing.T) {
+	e := newBoxEnv(t)
+	box := createBox(t, e, boxBody("snapshot-gone"))
+	snap := createSnapshot(t, e, box.ID, map[string]any{})
+	e.agent.setAnswer(agentapi.StorageJobDeleteSnapshot, agentNotFound)
+
+	a := startAction(t, e, http.MethodDelete, snapshotPath(box.ID, snap.ID), nil, http.StatusCreated)
+	waitSuccess(t, e, a, "delete_snapshot of a snapshot the agent no longer has")
+	if _, ok := getSnapshot(t, e, box.ID, snap.ID); ok {
+		t.Errorf("snapshot %d still found after delete_snapshot", snap.ID)
+	}
+	if got := listSnapshots(t, e, box.ID, ""); len(got) != 0 {
+		t.Errorf("snapshots after delete_snapshot: %v, want none", snapshotNames(got))
+	}
+}
+
+func testSnapshotPruneGone(t *testing.T) {
+	e := newBoxEnv(t)
+	box := createBox(t, e, boxBody("prune-gone"))
+	user := *box.Username
+	enablePlan(t, e, box.ID, map[string]any{"max_snapshots": 10, "minute": 0, "hour": 3})
+	startPlans(t, e)
+
+	var taken []string
+	for day := 1; day <= 2; day++ {
+		when := time.Date(2026, 1, day, 3, 0, 0, 0, time.UTC)
+		runPlansAt(t, e, when)
+		taken = append(taken, automaticName(when))
+		waitSnapshots(t, e, box.ID, "?is_automatic=true", taken)
+	}
+	waitBoxIdle(t, e, box.ID)
+
+	enablePlan(t, e, box.ID, map[string]any{"max_snapshots": 1, "minute": 0, "hour": 3})
+	oldest := taken[0]
+	e.agent.setAnswer(agentapi.StorageJobDeleteSnapshot, func(j agentapi.StorageJob) (agentapi.StorageJobResult, error) {
+		if j.Snapshot == oldest {
+			return agentNotFound(j)
+		}
+		return agentapi.StorageJobResult{}, nil
+	})
+	when := time.Date(2026, 1, 3, 3, 0, 0, 0, time.UTC)
+	runPlansAt(t, e, when)
+	newest := automaticName(when)
+	waitSnapshots(t, e, box.ID, "?is_automatic=true", []string{newest})
+	waitBoxIdle(t, e, box.ID)
+	if !hasJob(e.agent.jobsOf(agentapi.StorageJobDeleteSnapshot), user, taken[1]) {
+		t.Errorf("no delete-snapshot job for the pruned snapshot %s after the one the agent no longer has", taken[1])
 	}
 }

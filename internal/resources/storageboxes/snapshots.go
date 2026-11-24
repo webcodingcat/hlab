@@ -15,6 +15,7 @@ import (
 
 	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/agentapi"
+	"github.com/webcodingcat/hlab/internal/agentclient"
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/resource"
 	"github.com/webcodingcat/hlab/internal/scheduler"
@@ -472,12 +473,15 @@ func (m *Module) deleteSnapshot(w http.ResponseWriter, req *http.Request) {
 }
 
 // removeSnapshot runs the storage agent's delete-snapshot job for stored
-// snapshot s of box of projectID, then deletes the record.
+// snapshot s of box of projectID, then deletes the record. A snapshot the
+// agent no longer has (as after a rollback that failed after the swap)
+// counts as already gone.
 func (m *Module) removeSnapshot(ctx context.Context, st *store.Store, projectID int64, box Record, s SnapshotRecord) error {
 	_, err := m.d.Job(ctx, agentapi.StorageJob{
 		Kind: agentapi.StorageJobDeleteSnapshot, Box: userName(box.HLab.N), Snapshot: s.Name,
 	})
-	if err != nil {
+	var je *agentclient.JobError
+	if err != nil && (!errors.As(err, &je) || je.Code != agentapi.JobErrNotFound) {
 		return err
 	}
 	return st.Tx(func(tx store.Tx) error {

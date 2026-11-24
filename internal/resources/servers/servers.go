@@ -123,6 +123,10 @@ type Deps struct {
 	// hlab started the VM into rescue, so the rescue system reads it before
 	// the server's seed returns; 0 = none.
 	RescueSeedHold time.Duration
+	// SeedHold is how long after a boot hlab started a seed swap waits,
+	// so cloud-init reads the seed it booted with (E48: up to 37 s);
+	// 0 = none. internal/cloud sets 90 s.
+	SeedHold time.Duration
 	// HaltTimeout bounds the wait for the guests to shut down at cloud
 	// stop before their VMs are turned off hard; 0 = 60 s.
 	HaltTimeout time.Duration
@@ -256,6 +260,10 @@ type Internal struct {
 	// and a failed or interrupted action restores it; nil when no such
 	// action runs.
 	PublicBefore *PublicBefore `json:"public_before,omitempty"`
+	// SeedDue is set before the seed in slot 0 is ejected or its swap is
+	// put off, and cleared once the new seed is inserted; the end of
+	// Restore swaps the seed of every server that still has it.
+	SeedDue bool `json:"seed_due,omitempty"`
 }
 
 // Rescue is the rescue state of a server.
@@ -310,6 +318,17 @@ type Module struct {
 	// watchStopping holds the servers the status watch itself moved to
 	// stopping from a VM reading; they go back to running when the VM runs.
 	watchStopping map[int64]bool
+	// boots holds per server the time of the last boot hlab started.
+	boots map[int64]time.Time
+	// seedLocks order seed swaps against the boots hlab starts, per server.
+	seedLocks map[int64]*sync.Mutex
+	// seedPending holds the servers with a delayed seed swap waiting.
+	seedPending map[int64]bool
+	// run bounds the delayed seed swaps to the cloud's run; Halt ends it
+	// and waits for seedSwaps.
+	run       context.Context
+	stopRun   context.CancelFunc
+	seedSwaps sync.WaitGroup
 }
 
 // New returns the module.
@@ -378,7 +397,7 @@ func (m *Module) powerOn(ctx context.Context, stor *store.Store, id int64) error
 	if err := stor.Tx(func(tx store.Tx) error { return SetStatus(tx, id, StatusStarting) }); err != nil {
 		return err
 	}
-	return m.d.Platform.Power(ctx, m.vmName(id), platform.PowerStart)
+	return m.powerVM(ctx, id, platform.PowerStart, true)
 }
 
 // Contribute implements resource.NetContributor: every server not being

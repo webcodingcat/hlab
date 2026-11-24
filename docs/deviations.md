@@ -89,13 +89,19 @@ still shows as attached.
 
 ## Networks, primary and floating IPs
 
-There is no DHCP server: a server's private network is set up by
-cloud-init at boot, and a network attached while the server runs by the
-HLab helper in the guest. The MTU is 1500 (Hetzner: 1450), and private
-adapters have other MAC addresses than at Hetzner, so tools that look
-for Hetzner's MACs, such as hc-utils, do not find them. vSwitch subnets
-are not supported. The gateway is the first address of the network
-range.
+There is no DHCP server: cloud-init sets up private networks at boot,
+the HLab helper in the guest those attached while the server runs. The
+MTU is 1500 (Hetzner: 1450), and private adapters have other MAC
+addresses than at Hetzner, so tools such as hc-utils do not find them.
+vSwitch subnets are not supported. The gateway is the first address of
+the network range.
+
+When the cloud starts after a stop with
+[`stop_behaviour = "save"`](configuration.md#stop-behaviour), Hyper-V
+and the guest's network driver cut each resumed server's network for
+about 11 to 25 seconds. A server created with an earlier HLab version
+keeps its own netplan settings for a private network through such a cut
+only after a rebuild.
 
 Primary and floating IPv4 addresses come from the local public range. A
 floating IPv4 reaches its server through the server's public IPv4; as at

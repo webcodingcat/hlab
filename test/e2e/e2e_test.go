@@ -37,6 +37,7 @@ func TestE2E(t *testing.T) {
 	t.Run("LIFE-02", testLIFE02)
 	t.Run("LIFE-03", testLIFE03)
 	t.Run("LIFE-04", testLIFE04)
+	t.Run("LIFE-04/netplan_private", testLIFE04NetplanPrivate)
 	t.Run("LIFE-07", testLIFE07)
 	releaseLifeFixture(t)
 

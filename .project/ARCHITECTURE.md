@@ -1165,6 +1165,15 @@ locks a resource of type `project`.
 
 - cidata ISO in DVD slot 0 and user ISO in DVD slot 1 (SCSI controller 1), server disk at SCSI controller 0 LUN 0,
   volumes from LUN 1 upward.
+- Seed swap hold (phase B4, E48): within `Deps.SeedHold` (90 s) after a
+  boot hlab started (create, power on, reset, reboot, rebuild, change type,
+  end of rescue, power on of an Off VM at cloud start) slot 0 is not
+  changed; the server record's internal `seed_due` is set before the eject
+  or the deferral and cleared after the insert, and when the hold ends the
+  seed file is rebuilt from the record as it is then and swapped in. A boot hlab starts waits
+  for a running swap of that server (per-server seed lock). A Saved VM
+  resumed at cloud start is no boot; `Restore` swaps every seed still
+  marked `seed_due`, which also refills a slot 0 left empty by a crash.
 - `vendor-data` installs two hooks into every server created from an hlab
   image: a udev rule that creates `/dev/disk/by-id/scsi-0HC_Volume_<id>`
   from the disk's Page 83 identifier (hlab creates volume disks with the identifier `484C4142-0000-4000-8000-<volume ID as 12 hex digits>`; the last 6 bytes survive in both the T10 and the NAA designator the guest sees), and
@@ -1173,7 +1182,10 @@ locks a resource of type `project`.
   `scsi-0HC_Volume_*` disk so a grown volume shows its new size; it also
   configures hot-added private adapters (MAC `02:48:4c:2x:xx:xx`, only
   links not yet carrying their private IP, so the seed's config stays in
-  charge of the others) live from
+  charge of the others; a link that carried its IP when the hook first saw
+  it after boot, listed in `/run/hlab-guest/boot-links.json`, and a link the
+  hook took over, listed in `networks.json`, are not configured again during
+  that boot even after a carrier drop removed the address, phase B4, E47) live from
   `/hetzner/v1/metadata/private-networks` (`/32` plus the route to the
   network range via the gateway, no alias IPs) through networkd files in
   `/run` or `ip` without networkd. The script also writes the cloud-init

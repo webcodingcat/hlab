@@ -26,6 +26,9 @@ const (
 	publicRange = "198.19.0.0/16"
 	// lifeData is what the fixture writes to its volume.
 	lifeData = "hlab-e2e-life-volume"
+	// lifeAlias is A's alias IP on the private network, put on A's private
+	// link by a netplan file of the user.
+	lifeAlias = "10.80.1.200"
 )
 
 // baseNamespaces are the NRPT namespaces every start adds for the default
@@ -109,6 +112,7 @@ type lifeCycle struct {
 	stopped       []string         // LIFE-07 findings while stopped
 	started       []string         // LIFE-07 findings after the start
 	fixture       []string         // LIFE-04 findings after the start
+	netplan       []string         // LIFE-04/netplan_private findings after the save start
 }
 
 type boot struct {
@@ -171,6 +175,17 @@ func testLIFE04(t *testing.T) {
 		for _, msg := range runLifeCycle(t, f, b).fixture {
 			t.Errorf("after stop and start with %s: %s", b, msg)
 		}
+	}
+}
+
+// testLIFE04NetplanPrivate: the user's netplan file that puts A's alias IP
+// on its boot-configured private link stays in force over the save cycle
+// and a forced carrier drop on that link afterwards:
+// B pings the alias and the guest hook wrote no 05-hlab-*.network file.
+func testLIFE04NetplanPrivate(t *testing.T) {
+	f := sharedLife(t)
+	for _, msg := range runLifeCycle(t, f, "save").netplan {
+		t.Errorf("after stop and start with save: %s", msg)
 	}
 }
 
@@ -330,7 +345,7 @@ func (f *lifeFixture) create() error {
 		return err
 	}
 
-	steps := []func() error{f.createFloatingIP, f.createFirewall, f.createLB, f.createVolume, f.createZone}
+	steps := []func() error{f.createFloatingIP, f.createFirewall, f.createLB, f.createVolume, f.createZone, f.createPrivateAlias}
 	for _, step := range steps {
 		if err := step(); err != nil {
 			return err
@@ -516,6 +531,84 @@ func (f *lifeFixture) createVolume() error {
 	return nil
 }
 
+// createPrivateAlias sets lifeAlias as A's alias IP through the API and
+// puts it on A's private link, configured by the seed at boot, through a
+// netplan file of the user; it waits until B pings the alias.
+func (f *lifeFixture) createPrivateAlias() error {
+	e := f.e
+	if err := e.postAction(fmt.Sprintf("/servers/%d/actions/change_alias_ips", f.a.ID),
+		map[string]any{"network": f.network, "alias_ips": []string{lifeAlias}}, 10*time.Minute); err != nil {
+		return fmt.Errorf("set alias IP %s on %s: %w", lifeAlias, f.a.Name, err)
+	}
+	r, err := e.ssh(f.a.server, time.Minute, "", netplanID+f.a.privMAC+" "+f.a.privIf)
+	id := strings.TrimSpace(r.Stdout)
+	if err != nil || id == "" {
+		return fmt.Errorf("%s: netplan ID of the private link %s: %v\n%s", f.a.Name, f.a.privIf, err, r)
+	}
+	conf := "network:\n  version: 2\n  ethernets:\n    " + id + ":\n      addresses:\n        - " + lifeAlias + "/32\n"
+	if r, err := e.ssh(f.a.server, time.Minute, conf,
+		"cat > /etc/netplan/60-hlab-life-priv.yaml && chmod 600 /etc/netplan/60-hlab-life-priv.yaml && "+
+			"(nohup sh -c 'sleep 1; netplan apply' >/dev/null 2>&1 &)"); err != nil {
+		return fmt.Errorf("%s: configure the alias IP: %v\n%s", f.a.Name, err, r)
+	}
+	if msgs := f.checkPrivateAlias(); len(msgs) > 0 {
+		return fmt.Errorf("alias IP before the first stop: %s", strings.Join(msgs, "; "))
+	}
+	return nil
+}
+
+// checkPrivateAlias returns what of LIFE-04/netplan_private does not hold:
+// B pings A's alias IP and A has no 05-hlab-*.network file.
+func (f *lifeFixture) checkPrivateAlias() []string {
+	e := f.e
+	var msgs []string
+	var last result
+	if err := waitFor(3*time.Minute, 3*time.Second, func() (bool, error) {
+		r, err := e.ssh(f.b.server, 30*time.Second, "", "ping -c 1 -W 2 "+lifeAlias)
+		last = r
+		return err == nil && r.ExitCode == 0, nil
+	}); err != nil {
+		msgs = append(msgs, fmt.Sprintf("%s cannot ping the alias IP %s of %s: %v\n%s", f.b.Name, lifeAlias, f.a.Name, err, last))
+	}
+	r, err := e.ssh(f.a.server, 30*time.Second, "", "ls /run/systemd/network/ | grep '^05-hlab-.*[.]network$' || true")
+	if err != nil {
+		msgs = append(msgs, fmt.Sprintf("%s: list /run/systemd/network: %v\n%s", f.a.Name, err, r))
+	} else if files := strings.Fields(r.Stdout); len(files) > 0 {
+		msgs = append(msgs, fmt.Sprintf("%s has %v for its private link %s, want none (the user's netplan file holds)", f.a.Name, files, f.a.privIf))
+	}
+	return msgs
+}
+
+// dropPrivateLinkScript takes A's private link down and drops its IPv4
+// addresses, as a carrier drop under systemd-networkd does, until the
+// guest hook (hlab-guest.service, every 5 s) has finished two runs, so at
+// least one ran wholly while the link was down; deadline 60 s. Then it
+// brings the link up and lets networkd configure it again. %[1]s is the
+// link.
+const dropPrivateLinkScript = `dev=%[1]s
+runs() { systemctl show -p InactiveEnterTimestampMonotonic --value hlab-guest.service; }
+ip link set dev "$dev" down && ip -4 addr flush dev "$dev"
+last=$(runs); seen=0; i=0
+while [ "$seen" -lt 2 ] && [ "$i" -lt 120 ]; do
+  sleep 0.5; i=$((i+1))
+  now=$(runs)
+  if [ "$now" != "$last" ]; then seen=$((seen+1)); last=$now; fi
+done
+ip link set dev "$dev" up
+networkctl reconfigure "$dev" >/dev/null 2>&1 || true
+echo "hook runs while down: $seen"
+[ "$seen" -ge 2 ]`
+
+// dropPrivateLink forces a carrier drop on A's private link that outlasts
+// a run of the guest hook.
+func (f *lifeFixture) dropPrivateLink() error {
+	r, err := f.e.ssh(f.a.server, 2*time.Minute, "", fmt.Sprintf(dropPrivateLinkScript, f.a.privIf))
+	if err != nil || r.ExitCode != 0 {
+		return fmt.Errorf("%s: carrier drop on %s outlasting two hook runs: %v\n%s", f.a.Name, f.a.privIf, err, r)
+	}
+	return nil
+}
+
 func (f *lifeFixture) mount() string { return fmt.Sprintf("/mnt/HC_Volume_%d", f.volID) }
 
 func (f *lifeFixture) createZone() error {
@@ -671,6 +764,16 @@ func (c *lifeCycle) run(f *lifeFixture, behaviour string) error {
 		return err
 	}
 	c.fixture = f.check()
+	if behaviour == "save" {
+		c.netplan = f.checkPrivateAlias()
+		// A carrier drop at the start does not always reach the hook;
+		// a forced one that outlasts a run of the hook does.
+		if err := f.dropPrivateLink(); err != nil {
+			c.netplan = append(c.netplan, err.Error())
+		} else {
+			c.netplan = append(c.netplan, f.checkPrivateAlias()...)
+		}
+	}
 	return nil
 }
 

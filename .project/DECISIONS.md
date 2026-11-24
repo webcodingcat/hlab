@@ -23,6 +23,78 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-24 Delayed seed swaps end with the cloud's run
+
+- Type: decision
+- Phase: phase B4
+- What: delayed seed swaps run under a module-local context that `Halt` cancels, waiting for a swap already under way, which always finishes so slot 0 is never left empty.
+- Why: No new dependency is needed, and a cancelled swap must not leave the drive empty.
+- Cost of change: low
+
+## 2026-11-24 A seed write during rescue clears seed_due
+
+- Type: decision
+- Phase: phase B4
+- What: when rescue holds slot 0 or the server has no VM, `rewriteSeed` writes the seed file and clears `seed_due`.
+- Why: Ending rescue or creating the VM inserts that current file anyway.
+- Cost of change: low
+
+## 2026-11-24 Due seed swaps run at the end of Restore
+
+- Type: decision
+- Phase: phase B4
+- What: due seed swaps (`seed_due`) are done at the end of the servers module's `Restore`, through the normal swap path with its hold, not in `Recover`.
+- Why: `Recover` runs before the VMs resume, and changing the DVD of a Saved VM is untested (E35 covers only Paused VMs).
+- Cost of change: low
+
+## 2026-11-24 An empty seed slot is found through seed_due
+
+- Type: decision
+- Phase: phase B4
+- What: a slot 0 left empty by a crash between eject and insert is found through the `seed_due` note set before the eject; the platform gets no method to read a DVD drive.
+- Why: The note already marks every server whose seed write did not finish.
+- Cost of change: low
+
+## 2026-11-24 A Saved VM started at cloud start is a resume
+
+- Type: decision
+- Phase: phase B4
+- What: a Saved VM started by `Restore` gets no seed hold; only the power-on of an Off VM there counts as a boot.
+- Why: Resume from saved state does not run cloud-init again (E48).
+- Cost of change: low
+
+## 2026-11-24 Guest hook keeps its own link list in a second file
+
+- Type: decision
+- Phase: phase B4
+- What: the guest hook records the links it leaves alone or took over in a second file in `/run/hlab-guest`; `networks.json` keeps its format.
+- Why: An unchanged `networks.json` keeps the hook's existing contract with hlabd.
+- Cost of change: low
+
+## 2026-11-24 Steady private traffic is 800 pings without loss
+
+- Type: decision
+- Phase: phase B4
+- What: the restart e2e rows wait for one continuous `ping -c 800 -i 0.01 -W 1` (8 s) without loss, retried until a 2-minute deadline.
+- Why: E47 saw up to about 3 s of good traffic between two drop windows.
+- Cost of change: low
+
+## 2026-11-24 Seed swap waits for a hold after a boot hlab starts (Q26)
+
+- Type: decision
+- Phase: phase B4
+- What: a network attach or detach right after a boot finishes at once, and the seed ISO swap waits until 90 s after the boot hlab started, is noted as `seed_due` on the server and is finished at the next cloud start if hlabd restarts.
+- Why: E48 showed an early slot-0 swap leaves the guest without hostname and public IP, and the user chose no waiting in the attach action.
+- Cost of change: low
+
+## 2026-11-24 Network drops after resume are a documented deviation (Q27)
+
+- Type: decision
+- Phase: phase B4
+- What: hlab adds no workaround for the 11 to 25 s network drops of each server after a cloud start from saved state; docs/deviations.md describes them.
+- Why: E47 found the cause in Hyper-V's restore and the guest's `hv_netvsc` driver, and no measured mitigation helped.
+- Cost of change: low
+
 ## 2026-11-24 Appliance and storage VM name themselves through their user-data
 
 - Type: decision

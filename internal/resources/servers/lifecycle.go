@@ -28,6 +28,7 @@ const haltPoll = 100 * time.Millisecond
 // deadline ("shutdown"). Their servers get status running, servers whose
 // VM is off get off.
 func (m *Module) Halt(ctx context.Context, behaviour string, hostShutdown bool) error {
+	m.endRun()
 	if hostShutdown {
 		return nil
 	}
@@ -158,7 +159,8 @@ func (m *Module) Restore(ctx context.Context, behaviour string) error {
 		if r.Status != StatusRunning && r.Status != StatusStarting {
 			continue
 		}
-		if err := m.bootPower(ctx, m.d.Store, r.ID, platform.PowerStart); err != nil {
+		// A start of a Saved VM resumes it and is no boot.
+		if err := m.bootPowerFrom(ctx, m.d.Store, r.ID, platform.PowerStart, st == platform.StateOff); err != nil {
 			slog.Error("start server at restore", "id", r.ID, "err", err)
 			continue
 		}
@@ -166,7 +168,27 @@ func (m *Module) Restore(ctx context.Context, behaviour string) error {
 			slog.Error("set server status at restore", "id", r.ID, "err", err)
 		}
 	}
+	m.swapDueSeeds(ctx)
 	return nil
+}
+
+// swapDueSeeds swaps the seed of every server with seed_due, as an hlabd
+// that ended during a hold or a swap leaves it; a server just booted
+// waits out its hold.
+func (m *Module) swapDueSeeds(ctx context.Context) {
+	recs, err := m.records()
+	if err != nil {
+		slog.Error("list servers for due seed swaps at restore", "err", err)
+		return
+	}
+	for _, r := range recs {
+		if !r.Hlab.SeedDue {
+			continue
+		}
+		if err := m.RewriteSeed(ctx, m.d.Store, r.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
+			slog.Error("swap a due seed at restore", "id", r.ID, "err", err)
+		}
+	}
 }
 
 // records lists all servers of all projects.
