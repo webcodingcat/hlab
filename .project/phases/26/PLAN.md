@@ -139,11 +139,17 @@ The injected crash's action error is `server_error` with message
   - [x] `internal/cloud/faults.go`: `Options.Effects = faults.Effects(servers module, volumes module)`; nil-safe `faultActive` and `endFault` over the run's manager; `lookupTarget` refuses `disk_slow` on an unattached volume with an `*faults.InputError` like `volume_unavailable`.
   - [x] `internal/cloud/cloud.go`: the servers module's `Deps.FaultActive` and `Deps.EndFault`; the modules kept so `newFaults` can pass them.
 
-- [ ] 26-07 Documentation
+- [x] 26-07 Documentation
   - Wave: 4 | Depends on: 26-01, 26-02, 26-03, 26-04, 26-05, 26-06 | Review: alone
   - Requirements: DOC-01, DOC-03, DOC-04, DOC-07 | Tests: test/docs/docs_test.go (existing)
   - Reads: SPEC "Documentation" (D1, D4, D6) and "Accounts and secrets" (hlab-docs context); REQUIREMENTS FAULT-05, FAULT-06, FAULT-09, FAULT-10, DOC-01 to DOC-07; decisions/fault-injection.md; EXPERIMENTS E28, E27; phases/26/CONTEXT.md
   - Size: ~150 lines in 3 files
   - Adjusts: -
-  - [ ] `docs/guide.md`: in "Fault injection", one example each for `server_crash`, `server_freeze`, `volume_unavailable` and `disk_slow` (volume and system disk) with `hlab fault create`; what the guest sees with an unavailable volume and how to mount it again (`umount -l` first when it was busy); that the limit counts I/Os of 8 KiB; which actions are refused during a crash and which end a freeze; the kinds still to come named.
-  - [ ] `docs/deviations.md` and `docs/development/components.md`: a crashed or frozen server creates no action; the platform's pause and IOPS calls and the cloud start cleanup.
+  - [x] `docs/guide.md`: in "Fault injection", one example each for `server_crash`, `server_freeze`, `volume_unavailable` and `disk_slow` (volume and system disk) with `hlab fault create`; what the guest sees with an unavailable volume and how to mount it again (`umount -l` first when it was busy); that the limit counts I/Os of 8 KiB; which actions are refused during a crash and which end a freeze; the kinds still to come named.
+  - [x] `docs/deviations.md` and `docs/development/components.md`: a crashed or frozen server creates no action; the platform's pause and IOPS calls and the cloud start cleanup.
+
+## Close
+
+- Unit suite (`task test`) and linter (`task lint`) over the whole project: green on bd74e04.
+- End-to-end: `task e2e -- -run 'TestE2E/FAULT-' -v`, all FAULT rows green on bd74e04 (209 s for the tests).
+- Verifier: one documentation blocker (shutdown of a crashed server fails) fixed in the docs; one code blocker (a server delete did not end its volumes' faults) fixed in `DetachAll` with an extra case in TestVolumes/FAULT-09/ends_first; four ARCHITECTURE.md differences updated; no decisions, no backlog.

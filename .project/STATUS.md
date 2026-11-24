@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 26 Server and disk faults (next)
+- Phase: 27 Network, latency and storage box faults (next)
 - Base branch: main
-- Last done: phase 25 merged into main (2026-11-24): faults are created, listed and ended through the management API, `hlab fault` and the MCP tools; `api_error` and `rate_limit` act on token requests, and every API response carries the `RateLimit-*` headers
-- Next: /wcc:phase in a new session builds phase 26 (server and disk faults); phase 16 (release checks) stays the last phase and stops for the manual checks
+- Last done: phase 26 merged into main (2026-11-24): `server_crash`, `server_freeze`, `volume_unavailable` and `disk_slow` act on servers and volumes, and every cloud start undoes what a fault left behind
+- Next: /wcc:phase in a new session builds phase 27 (network, latency and storage box faults); phase 16 (release checks) stays the last phase and stops for the manual checks
 
 ## Open manual checks
 
