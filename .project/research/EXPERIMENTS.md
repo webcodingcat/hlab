@@ -1152,3 +1152,90 @@ there is no `/etc/ssh/sshd_config` (vendor config in `/usr/etc`), but
 `cloud-init status` exit code 2 as in E31.
 
 Consequence: opensuse-16 works with the existing seed and hooks.
+
+## E35 Disk, NIC, DVD and checkpoint operations on a Paused VM
+
+- Result: confirmed, no change needed
+- Checked on: 2026-11-24, client Hyper-V, persistent runspace, not elevated
+- By: experiment (throwaway Gen2 VM without OS, user-owned VHDX/ISO files)
+- Status: valid
+
+Observed: after `Suspend-VM`, `Add-`/`Remove-VMHardDiskDrive`,
+`Set-VMHardDiskDrive -MaximumIOPS`, hlab's AttachNIC sequence,
+`Remove-VMNetworkAdapter`, DVD eject/insert/change (eject poll 5.3 s),
+`Add-VMDvdDrive` and the checkpoint-based snapshot (checkpoint, copy,
+`Remove-VMSnapshot`, merge 4.5 s) all succeed in under a second each (waits
+aside), none hangs, and the VM stays Paused; `Resume-VM` then runs normally.
+`Add-VMNetworkAdapterAcl -RemoteMacAddress` needs the dashed MAC form in
+every state.
+
+Consequence: no action has to end a freeze or refuse on a Paused VM other
+than the power actions and rebuild; `Snapshot` needs no change; the cloud
+start cleanup may resume, reattach and clear limits in any order. Attaching
+on hlab's real data folder still needs hlabd (LocalSystem, E28).
+
+## E36 MaximumIOPS belongs to the drive, not to the file
+
+- Result: confirmed, consequence for the design
+- Checked on: 2026-11-24, client Hyper-V, not elevated
+- By: experiment (method in E35)
+- Status: valid
+
+Observed: `Set-VMHardDiskDrive -MaximumIOPS 300` works on an Off VM and reads
+back 300 after Start-VM, a hard and a graceful stop, and after the VHDX at
+the drive's path is deleted and recreated as a full copy (rebuild) or as a
+differencing child (rescue); the VM starts normally on the new file.
+
+Consequence: a limit is never cleared by rebuild, power cycle or crash; only
+an explicit `SetDiskIOPS(...,0)` (fault end, cloud start cleanup) clears it;
+deleting the server removes it with the VM.
+
+## E37 Cost of reading and clearing disk limits at cloud start
+
+- Result: confirmed, no change needed
+- Checked on: 2026-11-24, persistent runspace, warm Hyper-V module
+- By: experiment (median of 20 runs)
+- Status: valid
+
+Observed: `Get-VMHardDiskDrive -VMName` about 20 ms per VM (16 ms Off);
+`Get-VM | Get-VMHardDiskDrive` for two VMs 53 ms; a Set to 0 on a drive
+already at 0 about 35 ms; Get then filtered Set with nothing set 20 ms.
+
+Consequence: the cleanup reads all drives of a VM in one call and sets only
+those with `MaximumIOPS -gt 0`, about 20 ms per VM with nothing to fix.
+
+## E38 fio installs in debian-13 and ubuntu-24.04 servers through hlab's NAT
+
+- Result: confirmed, with a correction
+- Checked on: 2026-11-24, dev cloud, cx23 in fsn1, debian-13 (fio 3.39) and ubuntu-24.04 (fio 3.36)
+- By: experiment
+- Status: valid
+
+Observed: `apt-get install -y fio` alone fails on both ("Unable to locate
+package"); after `cloud-init status --wait` and `apt-get update`,
+`apt-get install -y --no-install-recommends fio` works: about 36 s in all on
+Debian, 15 s on Ubuntu.
+
+Consequence: the e2e test waits for cloud-init, runs `apt-get update` first
+and gives update plus install about 2 minutes.
+
+## E39 Measuring IOPS with fio at a Hyper-V limit
+
+- Result: confirmed
+- Checked on: 2026-11-24, same servers as E38, limit set with `Set-VMHardDiskDrive -MaximumIOPS`
+- By: experiment
+- Status: valid
+
+Observed: command (read-only, raw device):
+`fio --name=iops --filename=<dev> --readonly --rw=randread --bs=8k --direct=1 --ioengine=libaio --iodepth=16 --ramp_time=2 --runtime=5 --time_based --output-format=json`;
+IOPS is `.jobs[0].read.iops`. Volume device:
+`/dev/disk/by-id/scsi-0HC_Volume_<id>`; system disk:
+`/dev/$(lsblk -n -o PKNAME "$(findmnt -n -o SOURCE /)")` (sda/sdb order
+differs between distributions). Unlimited 130k to 170k IOPS; at 200 with
+ramp 197 to 200, without ramp 213 to 239 (first-second burst as in E27);
+`--bs=64k` gives 27.5 (8 KiB normalisation). Laying out a file under the
+limit is slow.
+
+Consequence: an IOPS check uses `--ramp_time=2`, `--bs=8k`, the raw device
+with `--readonly`, accepts the limit within about 10 % and checks
+"unlimited" as far above it (more than 5 times).
