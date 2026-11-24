@@ -4,6 +4,14 @@ Entries from DECISIONS.md that a later entry revoked or changed, moved here
 unchanged; the later entry names them under `Replaces:`. Newest first. No
 skill reads this file; it keeps the history for looking things up.
 
+## 2026-11-24 A box fault with an unparsable IP is left out
+
+- Type: decision
+- Phase: phase 27
+- What: a storage box whose stored IP cannot be parsed counts as gone, and its fault is left out of the agent document.
+- Why: a broken record must not stop the push for every other fault and resource.
+- Cost of change: low
+
 ## 2026-11-22 Every storage box action locks the box
 
 - Type: decision
