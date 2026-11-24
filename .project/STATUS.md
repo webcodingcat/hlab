@@ -7,7 +7,7 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 27 Network, latency and storage box faults (next)
+- Phase: 27 Network, latency and storage box faults (in progress)
 - Base branch: main
 - Last done: phase 26 merged into main (2026-11-24): `server_crash`, `server_freeze`, `volume_unavailable` and `disk_slow` act on servers and volumes, and every cloud start undoes what a fault left behind
 - Next: /wcc:phase in a new session builds phase 27 (network, latency and storage box faults); phase 16 (release checks) stays the last phase and stops for the manual checks
