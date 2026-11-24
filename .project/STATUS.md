@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 27 Network, latency and storage box faults (in progress)
+- Phase: 28 Faults in the tray (next)
 - Base branch: main
-- Last done: phase 26 merged into main (2026-11-24): `server_crash`, `server_freeze`, `volume_unavailable` and `disk_slow` act on servers and volumes, and every cloud start undoes what a fault left behind
-- Next: /wcc:phase in a new session builds phase 27 (network, latency and storage box faults); phase 16 (release checks) stays the last phase and stops for the manual checks
+- Last done: phase 27 merged into main (2026-11-24): `network`, `latency` and `storage_box_unavailable` faults act on the appliance through the agent document, and ending them leaves no rule or qdisc behind
+- Next: /wcc:phase in a new session builds phase 28 (faults in the tray); phase 16 (release checks) stays the last phase and stops for the manual checks
 
 ## Open manual checks
 

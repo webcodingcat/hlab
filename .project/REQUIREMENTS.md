@@ -499,11 +499,11 @@ What the target vision in IDEA.md will need, not built yet.
 | FAULT-04 | 25 | x |
 | FAULT-05 | 26 | x |
 | FAULT-06 | 26 | x |
-| FAULT-07 | 27 | |
-| FAULT-08 | 27 | |
+| FAULT-07 | 27 | x |
+| FAULT-08 | 27 | x |
 | FAULT-09 | 26 | x |
 | FAULT-10 | 26 | x |
-| FAULT-11 | 27 | |
+| FAULT-11 | 27 | x |
 | FAULT-12 | 25 | x |
 | UI-16 | 28 | |
 | UI-17 | 28 | |

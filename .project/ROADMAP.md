@@ -67,24 +67,7 @@
 
 - [x] 26 Server and disk faults (FAULT-05, FAULT-06, FAULT-09, FAULT-10) → phases/26/
 
-- [ ] 27 Network, latency and storage box faults.
-      Requirements: FAULT-07, FAULT-08, FAULT-11.
-      Depends on: 25, 05, 20.
-      Adjusts: `agentapi.Config` (additive: `Faults`), hlab-agent's
-      appliers, docs/guide.md.
-      Success criteria:
-      1. A `network` fault cuts a server's public or private traffic, or
-         drops about the chosen share of pings, the same pings again with
-         the same seed.
-      2. A `latency` fault of 100 ms between fsn1 and hel1 raises the ping
-         time between servers there by about 100 ms and leaves servers in
-         one location unchanged.
-      3. A storage box under `storage_box_unavailable` refuses SFTP, SMB
-         and WebDAV from a server, the host and WSL2, and serves them again
-         after the fault ends.
-      4. Ending any of these faults, by hand, by its duration or at cloud
-         stop, leaves no `hlab_fault` rule and no netem qdisc on the
-         appliance.
+- [x] 27 Network, latency and storage box faults (FAULT-07, FAULT-08, FAULT-11) → phases/27/
 
 - [ ] 28 Faults in the tray.
       Requirements: UI-16, UI-17, UI-18.
