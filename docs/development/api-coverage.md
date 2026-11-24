@@ -752,7 +752,8 @@ The server and disk faults act on the VMs and create no action:
   `reset`, `rebuild` and `change_type` of
   `POST /v1/servers/{id}/actions/...` are created and then fail with
   `server_error` "the server's host failed (injected fault)" before
-  anything changes; `poweroff` and `shutdown` succeed. The crash itself
+  anything changes; `poweroff` succeeds and `shutdown` fails as on any
+  server that is off. The crash itself
   sets the server's `status` to `off` without an action.
 - While `server_freeze` is active, `GET /v1/servers/{id}` keeps showing
   `running`; the five power actions and `rebuild` end the freeze first.

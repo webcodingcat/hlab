@@ -1339,7 +1339,8 @@ Server 755 started
 
 While the crash lasts, poweron, reboot, reset, rebuild and change type
 fail with this `server_error` and change nothing; a refused rebuild keeps
-the server's disk. Poweroff and shutdown succeed. Ending the fault leaves
+the server's disk. Poweroff succeeds; shutdown fails as on any server
+that is off. Ending the fault leaves
 the server off. A crash on a server that is already off is accepted, and
 a crash on a frozen server ends the freeze.
 

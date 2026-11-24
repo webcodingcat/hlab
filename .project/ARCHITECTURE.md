@@ -169,7 +169,7 @@ Inside `hlabd` (Go packages under `internal/`):
   type ActionUser interface {           // modules starting actions outside a handler (daily backups); Mount calls it before Routes
       UseActions(m *actions.Manager)
   }
-  type Recoverer interface {            // modules with records to repair at cloud start (images, volumes: half-made records; load_balancers: PTR entries on the pre-Q14 formal IPv6 and pending state left by a stop; firewalls, zones: pending state left by a stop; networks: earlier state left by an interrupted network action; volumes: pending attach left by a stop; floating_ips: pending assign; primary_ips: missing records and the earlier state, including the seed, left by an interrupted assign)
+  type Recoverer interface {            // modules with records to repair at cloud start (images, volumes: half-made records; load_balancers: PTR entries on the pre-Q14 formal IPv6 and pending state left by a stop; firewalls, zones: pending state left by a stop; networks: earlier state left by an interrupted network action; volumes: pending attach left by a stop; floating_ips: pending assign; primary_ips: missing records and the earlier state, including the seed, left by an interrupted assign; servers: paused VMs and disk limits left by faults; volumes: also disks a fault removed)
       Recover(ctx context.Context) error // cloud start calls it before the API serves and before the first scheduled job run
   }
   type Prefixed interface {             // modules served under another prefix than /v1 (storage box modules: api.HetznerPrefix "/hetzner/v1"); APIRoutes reports their full paths
@@ -451,8 +451,8 @@ Inside `hlabd` (Go packages under `internal/`):
     (poweron, reboot, reset, rebuild, and a change_type or rescue that
     would start it) ends with `server_error` ("the server's host failed (injected
     fault)"); every power action on a frozen server ends the freeze fault
-    first, then runs; `PowerResume` only on a VM in state Paused (it fails
-    on Saved or Off; a hard stop or save works on a paused VM, E26).
+    first, then runs; `PowerResume` acts only on a VM in state Paused and is a
+    no-op otherwise (a hard stop or save works on a paused VM, E26).
     `disk_slow` sets Hyper-V `MaximumIOPS`, counted in I/Os of 8 KiB, live
     on the running VM (E27). Deleting the server ends its faults.
   - `volume_unavailable`, `disk_slow` on a volume: the volumes module
@@ -461,7 +461,8 @@ Inside `hlabd` (Go packages under `internal/`):
     `Restore` attaches it again at its LUN through hlabd (removing a disk
     drops the VM's access entry on the VHDX, so only hlabd as LocalSystem
     can attach it again; E28). The guest finds it again under
-    `/dev/disk/by-id/scsi-0HC_Volume_<id>` but does not remount it. Detach, resize and delete of
+    `/dev/disk/by-id/scsi-0HC_Volume_<id>`; an idle automount volume is
+    mounted again by its udev rule, otherwise the user remounts it. Detach, resize and delete of
     the volume and delete of its server end the volume's faults first.
   - `network`, `latency`, `storage_box_unavailable`: entries of
     `agentapi.Config.Faults`, pushed with the agent document; the agent
@@ -469,8 +470,9 @@ Inside `hlabd` (Go packages under `internal/`):
     a `latency` fault between locations follows the project's servers as
     they are created and deleted.
   - Cloud start: before the API serves, the servers module resumes every
-    paused server VM, and the volumes module attaches every attached
-    volume's disk that is missing on its VM and removes every IOPS limit,
+    paused server VM and removes every IOPS limit of its drives
+    (`SetDiskIOPS(vm, "", 0)`), and the volumes module attaches every
+    attached volume's disk that is missing on its VM,
     so effects left by an abrupt end (Windows shutdown, crash of hlabd)
     are undone; the first agent document has no faults.
 - Depends on: api, servers, volumes, storage boxes (target lookups and
