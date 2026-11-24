@@ -110,7 +110,7 @@ Behaviour the tests build on:
   - Reads: DECISIONS.md "Rollback on the storage VM", "Snapshot records
     and automatic snapshots"; CONTEXT.md
   - Size: ~20 lines in 1 file
-  - [ ] `internal/resources/storageboxes/snapshots.go`, `removeSnapshot`:
+  - [x] `internal/resources/storageboxes/snapshots.go`, `removeSnapshot`:
     an `*agentclient.JobError` with `Code == agentapi.JobErrNotFound`
     counts as already gone; the record is deleted and the caller
     (delete_snapshot, `prune`) goes on
