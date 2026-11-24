@@ -187,14 +187,14 @@ Rules of the plan (ARCHITECTURE.md "hlab-agent", E29, E40, E41):
   - [ ] `internal/agent/faults_linux.go` (new) and `faults_other.go` (new, stub like `firewall_other.go`): Applier `faults`: `PlanFaults`; table `inet hlab_fault` (chains forward, input, output at priority -10, policy accept) replaced whole through google/nftables, deleted when the plan has no rule (also a leftover one); candidates = the public device and every `t<vlan>` link; runs `TcCommands` through `tc` (exec, combined output in errors, "No such file" on a delete ignored); `/usr/sbin/ethtool -K <dev> gro off gso off tso off lro off` on the public and trunk adapters when `OffloadsOff` turns on, `on` again when it turns off; keeps `TcState` and the offload state in memory.
   - [ ] `cmd/hlab-agent/main.go`: register the applier after `NewFirewall`.
 
-- [ ] 27-05 Net faults in the cloud
+- [x] 27-05 Net faults in the cloud
   - Wave: 2 | Depends on: 27-01 | Review: alone
   - Requirements: FAULT-07, FAULT-08, FAULT-11 | Tests: internal/cloud/faults_test.go
   - Reads: ARCHITECTURE "faults (phase 25)" (the network paragraph), "hlab-agent" (`agentapi.Config`), "Cloud start and stop"; phases/27/CONTEXT.md; `internal/cloud/faults.go`, `internal/cloud/cloud.go` `PushAgent`, `newFaults` callers; `internal/resources/servers/servers.go` `Contribute`, `internal/resources/networks/contribute.go`, `internal/resources/storageboxes` `Load`
   - Size: ~200 lines in 2 files
   - Adjusts: -
-  - [ ] `internal/cloud/faults.go`: per run a `faults.NewNetEffects(c.PushAgent)` kept beside the manager, its `Effects()` merged into `Options.Effects`; `netFaults` as in "Interfaces" (server target: public IPv4 from `doc.Servers`, private from the members of `doc.Networks` with VLAN, IP and alias IPs; locations: the project's servers in the store by location, then their entries as for a server; box: the record's IP; parameters and seed from the fault).
-  - [ ] `internal/cloud/cloud.go`: `PushAgent` sets `doc.Faults` from the run's net effects inside its store transaction, after the modules; none while stopped. Check that no caller of `endFaults` holds `pushMu`.
+  - [x] `internal/cloud/faults.go`: per run a `faults.NewNetEffects(c.PushAgent)` kept beside the manager, its `Effects()` merged into `Options.Effects`; `netFaults` as in "Interfaces" (server target: public IPv4 from `doc.Servers`, private from the members of `doc.Networks` with VLAN, IP and alias IPs; locations: the project's servers in the store by location, then their entries as for a server; box: the record's IP; parameters and seed from the fault).
+  - [x] `internal/cloud/cloud.go`: `PushAgent` sets `doc.Faults` from the run's net effects inside its store transaction, after the modules; none while stopped. Check that no caller of `endFaults` holds `pushMu`.
 
 - [ ] 27-06 Documentation
   - Wave: 5 | Depends on: 27-01, 27-02, 27-03, 27-04, 27-05 | Review: alone
