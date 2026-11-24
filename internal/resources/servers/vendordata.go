@@ -38,7 +38,7 @@ import (
 // replace. What it set is kept in /run/hlab-guest/networks.json and removed
 // again when the entry goes (detach). Alias IPs are left to the user, as at
 // Hetzner.
-const guestHook = `#!/usr/bin/python3
+const guestHook = `#!@PYTHON@
 # hlab guest hook: picks up grown volumes, configures private adapters,
 # applies a pending root password reset.
 import glob
@@ -98,7 +98,8 @@ def quiet(*args):
 # network-config at boot (or by an earlier run): the hook leaves it alone.
 def has_ip(dev, ip):
     out = subprocess.run(["ip", "-o", "addr", "show", "dev", dev],
-                         capture_output=True, text=True).stdout
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         universal_newlines=True).stdout
     return (" %s/" % ip) in out
 
 
@@ -192,7 +193,7 @@ def main():
     except FileNotFoundError:
         pass
     subprocess.run(["chpasswd", "-e"], input="root:%s\n" % reset["sha512_crypt"],
-                   text=True, check=True)
+                   universal_newlines=True, check=True)
     req = urllib.request.Request(BASE + "/" + rid + "/done", data=b"", method="POST")
     urllib.request.urlopen(req, timeout=4).close()
     os.makedirs(os.path.dirname(STATE), exist_ok=True)
@@ -209,7 +210,7 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /usr/local/sbin/hlab-guest
+ExecStart=@PYTHON@ /usr/local/sbin/hlab-guest
 `
 
 const guestTimer = `[Unit]
@@ -242,7 +243,7 @@ ExecStart=/bin/sync
 // the page 83 identifier 484C4142-0000-4000-8000-<id> (DECISIONS "Volume
 // identifier byte order"); the guest sees its first bytes as 42414c480000
 // and the ID as the last 6 bytes, in the T10 and in the NAA designator (E6).
-const volumeID = `#!/usr/bin/python3
+const volumeID = `#!@PYTHON@
 # hlab udev helper: prints the volume ID of an hlab volume disk.
 import sys
 
@@ -272,7 +273,7 @@ sys.exit(main())
 // volumeRule names hlab volume disks scsi-0HC_Volume_<id> like Hetzner's
 // and starts the volume hook for each.
 const volumeRule = `# hlab volumes: /dev/disk/by-id/scsi-0HC_Volume_<id> and the automount hook.
-ACTION=="add|change", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", KERNEL=="sd*", PROGRAM="/usr/bin/python3 /usr/local/sbin/hlab-volume-id %k", ENV{HLAB_VOLUME_ID}="%c"
+ACTION=="add|change", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", KERNEL=="sd*", PROGRAM="@PYTHON@ /usr/local/sbin/hlab-volume-id %k", ENV{HLAB_VOLUME_ID}="%c"
 ENV{HLAB_VOLUME_ID}=="?*", SYMLINK+="disk/by-id/scsi-0HC_Volume_$env{HLAB_VOLUME_ID}", TAG+="systemd", ENV{SYSTEMD_WANTS}+="hlab-volume@$env{HLAB_VOLUME_ID}.service"
 `
 
@@ -281,7 +282,7 @@ ENV{HLAB_VOLUME_ID}=="?*", SYMLINK+="disk/by-id/scsi-0HC_Volume_$env{HLAB_VOLUME
 // mounts it, if it carries a filesystem, at /mnt/HC_Volume_<id> with an
 // fstab line. The lock keeps it apart from the user-data part of server
 // creation.
-const volumeHook = `#!/usr/bin/python3
+const volumeHook = `#!@PYTHON@
 # hlab volume hook: mounts an attached volume listed for automount.
 import fcntl
 import json
@@ -316,7 +317,8 @@ def main():
     dev = "/dev/disk/by-id/scsi-0HC_Volume_%d" % vid
     mnt = "/mnt/HC_Volume_%d" % vid
     fs = subprocess.run(["blkid", "-o", "value", "-s", "TYPE", dev],
-                        capture_output=True, text=True).stdout.strip()
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                        universal_newlines=True).stdout.strip()
     if not fs:
         return
     with open("/run/hlab-volume.lock", "w") as lock:
@@ -343,7 +345,7 @@ After=network-online.target
 [Service]
 Type=oneshot
 TimeoutStartSec=120
-ExecStart=/usr/bin/python3 /usr/local/sbin/hlab-volume %i
+ExecStart=@PYTHON@ /usr/local/sbin/hlab-volume %i
 `
 
 // networkUpdates is the cloud-init drop-in that renders the network-config
@@ -557,23 +559,30 @@ func occursIn(parts []mimePart, s string) bool {
 
 // vendorData returns the server's vendor-data, a multipart MIME document.
 // Its cloud-config part lets root log in with its keys, enables password
-// login and, if rootHash is set, makes it root's password without expiry;
-// user_data may override these keys. Its shell script part, run once per
-// instance by cloud-init's scripts_vendor, installs the sshd drop-in that
-// allows root password login (cloud images refuse it) and the hlab-guest
-// timer that applies later password resets and private networks, and the
-// cloud-init drop-in that renders network-config on every boot; being a
-// script, a user_data with its own write_files or runcmd does not replace
-// it.
+// login, sets `users: []` so no image creates its default user (servers
+// have root only, like Hetzner's) and, if rootHash is set, makes it root's
+// password without expiry; user_data may override these keys, its own
+// `users` included. Its shell script part, run once per instance by
+// cloud-init's scripts_vendor, installs the sshd drop-in that allows root
+// password login (cloud images refuse it) and the hlab-guest timer that
+// applies later password resets and private networks, and the cloud-init
+// drop-in that renders network-config on every boot; being a script, a
+// user_data with its own write_files or runcmd does not replace it. The
+// Python hooks run on Python 3.6 and later; the script writes the
+// interpreter it finds (/usr/bin/python3, else EL8's
+// /usr/libexec/platform-python) for the @PYTHON@ placeholder in their
+// shebangs, units and udev rule.
 func vendorData(rootHash string) string {
 	var cfg strings.Builder
-	cfg.WriteString("#cloud-config\ndisable_root: false\nssh_pwauth: true\n")
+	cfg.WriteString("#cloud-config\ndisable_root: false\nssh_pwauth: true\nusers: []\n")
 	if rootHash != "" {
 		cfg.WriteString("chpasswd:\n  expire: false\n  users:\n    - name: root\n      type: hash\n      password: \"" + rootHash + "\"\n")
 	}
 
 	var sh strings.Builder
 	sh.WriteString("#!/bin/sh\n# HLab guest hooks: root password login and password resets.\nset -e\n")
+	// EL8 images have no /usr/bin/python3, only the platform Python (E32).
+	sh.WriteString("PY=/usr/bin/python3\n[ -x \"$PY\" ] || PY=/usr/libexec/platform-python\n")
 	writeFile(&sh, "/etc/ssh/sshd_config.d/00-hlab-root.conf", "0644", "PermitRootLogin yes\n")
 	writeFile(&sh, "/usr/local/sbin/hlab-guest", "0755", guestHook)
 	writeFile(&sh, "/etc/systemd/system/hlab-guest.service", "0644", guestService)
@@ -587,6 +596,10 @@ func vendorData(rootHash string) string {
 	// rewrites when private networks change; cloud-init's default renders it
 	// only on a new instance.
 	writeFile(&sh, "/etc/cloud/cloud.cfg.d/99-hlab-network.cfg", "0644", networkUpdates)
+	// The hooks, their units and the udev rule run the interpreter found above.
+	sh.WriteString("sed -i \"s|@PYTHON@|$PY|\" /usr/local/sbin/hlab-guest /usr/local/sbin/hlab-volume-id" +
+		" /usr/local/sbin/hlab-volume /etc/systemd/system/hlab-guest.service" +
+		" /etc/systemd/system/hlab-volume@.service /etc/udev/rules.d/61-hlab-volume.rules\n")
 	sh.WriteString("systemctl daemon-reload\n")
 	sh.WriteString("systemctl enable --now hlab-guest.timer\n")
 	// Disks attached before this script ran get their names now.
