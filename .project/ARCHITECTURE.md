@@ -271,7 +271,7 @@ Inside `hlabd` (Go packages under `internal/`):
       DetachDisk(ctx, vm, path string) error
       SetDVD(ctx, vm string, slot int, iso string) error // DVD drives on SCSI controller 1: slot 0 cidata, slot 1 user ISO; "" ejects and returns once the drive is empty
       SetBootOrder(ctx, vm string, order []BootDevice) error
-      SetDiskIOPS(ctx, vm, path string, max int) error  // Hyper-V MaximumIOPS of the attached disk, live; 0 removes the limit (phase 26)
+      SetDiskIOPS(ctx, vm, path string, max int) error  // Hyper-V MaximumIOPS of the attached disk, live; 0 removes the limit; path "" sets every drive of the VM (phase 26)
       Snapshot(ctx, vm, diskPath, target string) error  // crash-consistent copy of a running or stopped disk
       MetricsAll(ctx, vms []string) (map[string]Sample, error) // cpu %, disk bytes, net bytes; one counter read for all VMs; VMs not on the host are left out
       HostResources(ctx) (Resources, error)              // RAM, logical cores, free disk in data folder
@@ -399,6 +399,12 @@ Inside `hlabd` (Go packages under `internal/`):
   by the modules when a target is deleted or an API action ends a fault,
   see below; deleting a project ends its faults first). Ending a fault
   undoes its effect before it leaves the list.
+  `Active(project, kind, targetType string, id int64) bool` (the servers
+  module's crash block) and `EndKind(ctx, project, kind, targetType string,
+  id int64)` (ends one kind on one target, e.g. a freeze before a power
+  action). `Effects(ServerInjector, VolumeInjector) map[string]Effect`
+  builds the effects of the server and disk kinds; the cloud passes them in
+  `Options.Effects`.
   `Spec{Kind, Target{Type, ID, From, To}, Params, Seed *uint64, Duration}`
   with the kinds and parameters of "Fault object" in "Management API".
   At most one fault per kind and target (`conflict`).

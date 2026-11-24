@@ -94,14 +94,14 @@ The injected crash's action error is `server_error` with message
   - [ ] `internal/platform/hyperv/hyperv.go`, `internal/platform/hyperv/disks.go`: `Suspend-VM` / `Resume-VM` (resume only when the state is Paused), `SetDiskIOPS` via `Get-VMHardDiskDrive` filtered by full path (or all drives for ""), `Set-VMHardDiskDrive -MaximumIOPS` only where the value differs; errors as `platform.Error`.
   - [ ] `internal/platform/platformtest/fake.go`: pause, resume, `SetDiskIOPS` and `IOPS` as in "Interfaces".
 
-- [ ] 26-02 Fault manager: Active, EndKind and effects
+- [x] 26-02 Fault manager: Active, EndKind and effects
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: FAULT-05, FAULT-06, FAULT-10 | Tests: internal/faults/manager_test.go, internal/faults/effects_test.go
   - Reads: ARCHITECTURE "faults (phase 25)"; DECISIONS "2026-11-24 Fault kinds become active by registered effects", "2026-11-24 Undo errors do not keep a fault alive"; phases/26/CONTEXT.md
   - Size: ~130 lines in 3 files
   - Adjusts: -
-  - [ ] `internal/faults/manager.go`: `Active` (applied entries only) and `EndKind` over the existing `end`.
-  - [ ] `internal/faults/effects.go` (new): `ServerInjector`, `VolumeInjector`, `Effects`.
+  - [x] `internal/faults/manager.go`: `Active` (applied entries only) and `EndKind` over the existing `end`.
+  - [x] `internal/faults/effects.go` (new): `ServerInjector`, `VolumeInjector`, `Effects`.
 
 - [ ] 26-03 Servers: crash, freeze and system disk limit
   - Wave: 2 | Depends on: 26-01, 26-02 | Review: alone
