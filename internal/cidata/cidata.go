@@ -63,7 +63,9 @@ type Route struct {
 const (
 	sectorSize  = 2048
 	volumeLabel = "cidata"
-	emptyConfig = "#cloud-config\n"
+	// emptyConfig is an empty mapping: cloud-init reports a part without
+	// content as degraded, and EL9's crashes on it in init-local (E46).
+	emptyConfig = "#cloud-config\n{}\n"
 )
 
 var seedFiles = []string{"meta-data", "user-data", "vendor-data", "network-config"}
