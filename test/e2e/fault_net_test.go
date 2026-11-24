@@ -337,26 +337,28 @@ func (e *env) lostSeqs(t *testing.T, from *server, ip string) []int {
 	return lost
 }
 
-// waitSteadyPing waits until three bursts in a row of 100 pings at 10 ms
-// from the server to ip lose none, so a measurement after a start does not
-// see the platform's transient while the VMs resume. A leftover 20 % loss
-// cannot pass a single burst.
+var pingLossRe = regexp.MustCompile(`\d+ packets transmitted, \d+ received.*packet loss`)
+
+// waitSteadyPing waits until one continuous run of 800 pings at 10 ms (8 s)
+// from the server to ip loses none, so a measurement after a start does not
+// see the platform's drops while the VMs resume (E47: the longest gap
+// between drop windows was about 3 s). A leftover 20 % loss cannot pass.
 func (e *env) waitSteadyPing(t *testing.T, from *server, ip string) {
 	t.Helper()
-	var last result
-	clean := 0
+	lastLoss := "none"
 	if err := waitFor(2*time.Minute, time.Second, func() (bool, error) {
-		r, _ := e.ssh(from, 30*time.Second, "", "ping -c 100 -i 0.01 -W 2 -q "+ip)
-		last = r
+		r, _ := e.ssh(from, 30*time.Second, "", "ping -c 800 -i 0.01 -W 1 -q "+ip)
 		if r.ExitCode == 0 && strings.Contains(r.Stdout, " 0% packet loss") {
-			clean++
-		} else {
-			t.Logf("%s ping %s at %s: burst with loss: %s", from.Name, ip, time.Now().Format(time.TimeOnly), strings.TrimSpace(r.Stdout))
-			clean = 0
+			return true, nil
 		}
-		return clean >= 3, nil
+		lastLoss = strings.TrimSpace(r.Stdout)
+		if m := pingLossRe.FindString(r.Stdout); m != "" {
+			lastLoss = m
+		}
+		t.Logf("%s ping %s at %s: run with loss: %s", from.Name, ip, time.Now().Format(time.TimeOnly), lastLoss)
+		return false, nil
 	}); err != nil {
-		t.Fatalf("pings from %s to %s still lose packets: %v\n%s", from.Name, ip, err, last)
+		t.Fatalf("pings from %s to %s found no 8 s without loss: %v; last loss: %s", from.Name, ip, err, lastLoss)
 	}
 }
 
