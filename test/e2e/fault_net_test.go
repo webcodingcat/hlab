@@ -337,16 +337,24 @@ func (e *env) lostSeqs(t *testing.T, from *server, ip string) []int {
 	return lost
 }
 
-// waitSteadyPing waits until a burst of 50 pings at 10 ms from the server
-// to ip loses none, so a measurement after a start does not see the
-// platform's transient while the VMs resume.
+// waitSteadyPing waits until three bursts in a row of 100 pings at 10 ms
+// from the server to ip lose none, so a measurement after a start does not
+// see the platform's transient while the VMs resume. A leftover 20 % loss
+// cannot pass a single burst.
 func (e *env) waitSteadyPing(t *testing.T, from *server, ip string) {
 	t.Helper()
 	var last result
-	if err := waitFor(time.Minute, 2*time.Second, func() (bool, error) {
-		r, _ := e.ssh(from, 30*time.Second, "", "ping -c 50 -i 0.01 -W 2 -q "+ip)
+	clean := 0
+	if err := waitFor(2*time.Minute, time.Second, func() (bool, error) {
+		r, _ := e.ssh(from, 30*time.Second, "", "ping -c 100 -i 0.01 -W 2 -q "+ip)
 		last = r
-		return r.ExitCode == 0 && strings.Contains(r.Stdout, " 0% packet loss"), nil
+		if r.ExitCode == 0 && strings.Contains(r.Stdout, " 0% packet loss") {
+			clean++
+		} else {
+			t.Logf("%s ping %s at %s: burst with loss: %s", from.Name, ip, time.Now().Format(time.TimeOnly), strings.TrimSpace(r.Stdout))
+			clean = 0
+		}
+		return clean >= 3, nil
 	}); err != nil {
 		t.Fatalf("pings from %s to %s still lose packets: %v\n%s", from.Name, ip, err, last)
 	}
