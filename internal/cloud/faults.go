@@ -126,9 +126,6 @@ func netFaults(tx store.Tx, doc *agentapi.Config, fs []faults.Fault) ([]agentapi
 	entries := faultServers(doc)
 	var out []agentapi.NetFault
 	for _, f := range fs {
-		if f.Target == nil {
-			continue
-		}
 		nf := agentapi.NetFault{
 			ID:          f.ID,
 			Kind:        f.Kind,
@@ -165,8 +162,6 @@ func netFaults(tx store.Tx, doc *agentapi.Config, fs []faults.Fault) ([]agentapi
 				continue
 			}
 			nf.BoxIP = ip
-		default:
-			continue
 		}
 		out = append(out, nf)
 	}
@@ -244,20 +239,13 @@ func boxIP(tx store.Tx, project string, id int64) (netip.Addr, bool, error) {
 	}
 	ip, err := netip.ParseAddr(r.HLab.IP)
 	if err != nil {
-		return netip.Addr{}, false, nil
+		return netip.Addr{}, false, fmt.Errorf("storage box %d: %w", id, err)
 	}
 	return ip, true, nil
 }
 
 // paramInt returns the integer parameter name of a fault, 0 without one.
 func paramInt(params map[string]any, name string) int {
-	switch n := params[name].(type) {
-	case int64:
-		return int(n)
-	case int:
-		return n
-	case float64:
-		return int(n)
-	}
-	return 0
+	n, _ := params[name].(int64)
+	return int(n)
 }
