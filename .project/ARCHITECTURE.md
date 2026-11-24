@@ -394,7 +394,7 @@ Inside `hlabd` (Go packages under `internal/`):
 - Interface: `faults.Manager` holds the active faults in memory, one
   sequence of IDs per cloud run, with a timer per fault with a duration.
   `Create(ctx, project, Spec) (Fault, error)`, `List(project string)` ("" for
-  all), `End(ctx, project string, id int64)`, `EndProject(ctx, project)`,
+  all), `Count()` (active faults of all projects), `End(ctx, project string, id int64)`, `EndProject(ctx, project)`,
   `EndAll(ctx)`, `EndTarget(ctx, project, targetType string, id int64)` (called
   by the modules when a target is deleted or an API action ends a fault,
   see below; deleting a project ends its faults first). Ending a fault

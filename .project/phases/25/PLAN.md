@@ -207,12 +207,18 @@ filled by the status handler from `Deps.Faults.Count()`.
   - [x] `internal/cli/mcp_fault.go`: argument structs (`target *faultTarget` omitempty, `params map[string]any` omitempty, `seed *uint64`, `duration` omitempty; `fault_delete` with `project` omitempty, `id *int64`, `all bool`), hand-written input schemas with `maximum: 9007199254740991` on `seed` and no `default`, handlers running the 25-05 command functions with JSON output through `s.command`; `fault_delete` with neither or both of `id` and `all` is a tool error.
   - [x] `internal/cli/mcp.go`: the three tools in `mcpTools`, in name order.
 
-- [ ] 25-07 Documentation
+- [x] 25-07 Documentation
   - Wave: 5 | Depends on: 25-01, 25-02, 25-03, 25-04, 25-05, 25-06 | Review: alone
   - Requirements: DOC-01, DOC-03, DOC-04, DOC-07 | Tests: test/docs/docs_test.go (existing DOC-01, DOC-03, DOC-04)
   - Reads: SPEC "Documentation" (D1, D2, D4, D6) and "Accounts and secrets" (hlab-docs context); REQUIREMENTS DOC-01 to DOC-07; phases/25/CONTEXT.md; phases/25/RESEARCH.md "Hetzner client libraries"; decisions/fault-injection.md
   - Size: ~250 lines in 4 files
   - Adjusts: none
-  - [ ] `docs/commands.md`: `hlab fault create|list|delete` with every flag and an example; the MCP tools `fault_create`, `fault_list`, `fault_delete` with their arguments and the seed limit of 2^53-1; `hlab cloud status` shows active faults.
-  - [ ] `docs/guide.md`: section "Fault injection" (what a fault is, lifetime, seeds, that the tray console is never affected), with examples for `api_error` (`service_error`, and `conflict` that clients retry) and `rate_limit` (`hcloud server list`, headers), which client retries which codes (RESEARCH.md); later kinds named as coming.
-  - [ ] `docs/deviations.md`: hlab never limits requests without a `rate_limit` fault; `docs/development/api-coverage.md` and `docs/development/components.md`: the `RateLimit-*` headers on every response, the management API's fault routes, the package `internal/faults`.
+  - [x] `docs/commands.md`: `hlab fault create|list|delete` with every flag and an example; the MCP tools `fault_create`, `fault_list`, `fault_delete` with their arguments and the seed limit of 2^53-1; `hlab cloud status` shows active faults.
+  - [x] `docs/guide.md`: section "Fault injection" (what a fault is, lifetime, seeds, that the tray console is never affected), with examples for `api_error` (`service_error`, and `conflict` that clients retry) and `rate_limit` (`hcloud server list`, headers), which client retries which codes (RESEARCH.md); later kinds named as coming.
+  - [x] `docs/deviations.md`: hlab never limits requests without a `rate_limit` fault; `docs/development/api-coverage.md` and `docs/development/components.md`: the `RateLimit-*` headers on every response, the management API's fault routes, the package `internal/faults`.
+
+## Close
+
+- Unit suite (`task test`) and linter (`task lint`) over the whole project: green on b9644e9.
+- End-to-end: no row of this phase is end-to-end; as a smoke check of the changed API chain, cloud stop and delete paths ran `task e2e -- -v -run 'TestE2E/(LIFE-01|SRV-01|VOL-02|SBOX-03)$'`, green on b9644e9.
+- Verifier: no blockers, no decisions, no backlog.
