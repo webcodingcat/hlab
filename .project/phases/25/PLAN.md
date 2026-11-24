@@ -180,32 +180,32 @@ filled by the status handler from `Deps.Faults.Count()`.
   - [x] `internal/mgmt/faults.go`: handlers for `GET /faults`, `DELETE /faults`, `GET|POST|DELETE /projects/{name}/faults`, `DELETE /projects/{name}/faults/{id}`; unknown project `404 not_found`; body decoding with unknown fields refused; `*faults.InputError` to `400 invalid_input` (field in the message), `ErrNotFound` to `404 not_found`, `ErrConflict` to `409 conflict`, others `500 server_error`.
   - [x] `internal/mgmt/mgmt.go`: `Deps.Faults`, the routes (only when set), `Status.Faults` from `Count()`, and `EndProject` in `deleteProject` right after the token revocation.
 
-- [ ] 25-04 Faults in the cloud
+- [x] 25-04 Faults in the cloud
   - Wave: 3 | Depends on: 25-02, 25-03 | Review: alone
   - Requirements: FAULT-01, FAULT-02, FAULT-03, FAULT-04 (wiring) | Tests: none of its own (glue; the rows of 25-01 to 25-03 cover the behaviour)
   - Reads: ARCHITECTURE "faults (phase 25)", "Cloud start and stop"; phases/25/CONTEXT.md "Technical choices"; `internal/cloud/cloud.go` `start`, `modules`, `serveManagement`, `teardown`
   - Size: ~140 lines in 6 files
   - Adjusts: none
-  - [ ] `internal/cloud/cloud.go`, `internal/cloud/faults.go`: a new `faults.Manager` at every start (before the router), with `Lookup` (server, volume and storage box in the project through the store, volume attached for `volume_unavailable`, locations from the catalog) and `Resources` from the router; `api.Deps.Faults = mgr.Middleware`; `mgmt.Deps.Faults`; `EndAll` in `teardown` before the API servers shut down, skipped at a host shutdown; the manager dropped after stop.
-  - [ ] `internal/resources/servers/servers.go`, `internal/resources/volumes/volumes.go`, `internal/resources/storageboxes/storageboxes.go`, `internal/resources/storageboxes/boxes.go`: an optional `Deps.EndFaults func(ctx context.Context, project, targetType string, id int64) error` (nil = none), called when a server, volume or storage box is deleted, before its resources go; set by the cloud to `mgr.EndTarget`.
+  - [x] `internal/cloud/cloud.go`, `internal/cloud/faults.go`: a new `faults.Manager` at every start (before the router), with `Lookup` (server, volume and storage box in the project through the store, volume attached for `volume_unavailable`, locations from the catalog) and `Resources` from the router; `api.Deps.Faults = mgr.Middleware`; `mgmt.Deps.Faults`; `EndAll` in `teardown` before the API servers shut down, skipped at a host shutdown; the manager dropped after stop.
+  - [x] `internal/resources/servers/servers.go`, `internal/resources/volumes/volumes.go`, `internal/resources/storageboxes/storageboxes.go`, `internal/resources/storageboxes/boxes.go`: an optional `Deps.EndFaults func(ctx context.Context, project, targetType string, id int64) error` (nil = none), called when a server, volume or storage box is deleted, before its resources go; set by the cloud to `mgr.EndTarget`.
 
-- [ ] 25-05 `hlab fault` commands
+- [x] 25-05 `hlab fault` commands
   - Wave: 3 | Depends on: 25-03 | Review: alone
   - Requirements: FAULT-12 | Tests: internal/cli/fault_test.go, internal/cli/cli_test.go (registration)
   - Reads: REQUIREMENTS FAULT-12; ARCHITECTURE "hlab (management command)" (command list, output, exit codes), "Management API (named pipe)" fault rows and "Fault object"; phases/25/CONTEXT.md; `internal/cli/cli.go` `parse`, `commands`, `cloudStatus`
   - Size: ~330 lines in 2 files
   - Adjusts: none
-  - [ ] `internal/cli/cli.go`: command entries for `fault create` (one argument `<kind>`, required `--project`, optional target, parameter, `--seed`, `--duration` flags), `fault list` (optional `--project`), `fault delete` (optional `<id>`, optional `--project`, bool `--all`); the parser learns optional positional arguments (a minimum and maximum count) without changing the existing commands' behaviour; `cloud status` prints `faults active: N` when N > 0.
-  - [ ] `internal/cli/fault.go`: `faultCreate` (flags to a `faults.Request`; non-integer values and a target given twice are usage errors with exit 2), `faultList` (table ID, PROJECT, KIND, TARGET, PARAMS, SEED, REMAINING; `--output json` the fault objects), `faultDelete` (`--project p <id>`, `--project p --all`, `--all`; any other combination exit 2).
+  - [x] `internal/cli/cli.go`: command entries for `fault create` (one argument `<kind>`, required `--project`, optional target, parameter, `--seed`, `--duration` flags), `fault list` (optional `--project`), `fault delete` (optional `<id>`, optional `--project`, bool `--all`); the parser learns optional positional arguments (a minimum and maximum count) without changing the existing commands' behaviour; `cloud status` prints `faults active: N` when N > 0.
+  - [x] `internal/cli/fault.go`: `faultCreate` (flags to a `faults.Request`; non-integer values and a target given twice are usage errors with exit 2), `faultList` (table ID, PROJECT, KIND, TARGET, PARAMS, SEED, REMAINING; `--output json` the fault objects), `faultDelete` (`--project p <id>`, `--project p --all`, `--all`; any other combination exit 2).
 
-- [ ] 25-06 MCP fault tools
+- [x] 25-06 MCP fault tools
   - Wave: 4 | Depends on: 25-05 | Review: alone
   - Requirements: MCP-06 | Tests: internal/cli/mcp_fault_test.go, internal/cli/mcp_test.go (registration and `toolArgs`)
   - Reads: REQUIREMENTS MCP-01, MCP-02, MCP-06; ARCHITECTURE "hlab (management command)" the `mcp` paragraph; phases/25/RESEARCH.md "MCP go-sdk"; DECISIONS "2026-11-22 Default of logs lines applied by the handler", "2026-11-22 MCP tools listed by name"; phases/25/CONTEXT.md
   - Size: ~200 lines in 2 files
   - Adjusts: none (the tool-list loops of MCP-01, MCP-02 and MCP-04 take the new tools through `cli.MCPTools()`; their `toolArgs` entries come with the test map)
-  - [ ] `internal/cli/mcp_fault.go`: argument structs (`target *faultTarget` omitempty, `params map[string]any` omitempty, `seed *uint64`, `duration` omitempty; `fault_delete` with `project` omitempty, `id *int64`, `all bool`), hand-written input schemas with `maximum: 9007199254740991` on `seed` and no `default`, handlers running the 25-05 command functions with JSON output through `s.command`; `fault_delete` with neither or both of `id` and `all` is a tool error.
-  - [ ] `internal/cli/mcp.go`: the three tools in `mcpTools`, in name order.
+  - [x] `internal/cli/mcp_fault.go`: argument structs (`target *faultTarget` omitempty, `params map[string]any` omitempty, `seed *uint64`, `duration` omitempty; `fault_delete` with `project` omitempty, `id *int64`, `all bool`), hand-written input schemas with `maximum: 9007199254740991` on `seed` and no `default`, handlers running the 25-05 command functions with JSON output through `s.command`; `fault_delete` with neither or both of `id` and `all` is a tool error.
+  - [x] `internal/cli/mcp.go`: the three tools in `mcpTools`, in name order.
 
 - [ ] 25-07 Documentation
   - Wave: 5 | Depends on: 25-01, 25-02, 25-03, 25-04, 25-05, 25-06 | Review: alone

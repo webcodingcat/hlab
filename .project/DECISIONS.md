@@ -19,6 +19,38 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-24 Cloud holds the fault manager behind a stable layer
+
+- Type: decision
+- Phase: phase 25
+- What: The cloud keeps the fault manager in an atomic pointer and gives `api.Deps.Faults` and the modules' `EndFaults` nil-safe functions that use the current manager or pass through.
+- Why: the router and modules are built before the manager, which needs `Router.Resources()`, and actions may still run after a stop.
+- Cost of change: low
+
+## 2026-11-24 Where deletes end their faults
+
+- Type: decision
+- Phase: phase 25
+- What: A server delete ends its faults at the start of the delete action, a volume after the checking transaction before its disk file goes, a storage box in the handler before its action; an `EndFaults` error is logged and the delete goes on; project deletion relies on `EndProject` in mgmt.
+- Why: faults end before their target disappears, and cleanup errors must not block a delete.
+- Cost of change: low
+
+## 2026-11-24 MCP fault schemas generated, then extended
+
+- Type: decision
+- Phase: phase 25
+- What: The `fault_create` input schema is generated with `jsonschema.For` and gets `maximum` 2^53-1 on `seed`; optional fields carry `omitempty`, and a missing `params` is sent as `{}`.
+- Why: the same result as a hand-written schema without duplication, and MCP-06 needs calls that leave fields out.
+- Cost of change: low
+
+## 2026-11-24 hlab fault commands use their own types
+
+- Type: decision
+- Phase: phase 25
+- What: The CLI uses its own fault request and object types instead of importing `internal/faults`, and empty flag values count as not given.
+- Why: `hlab.exe` does not pull in the api package, and the MCP handlers can pass a flags map with blanks.
+- Cost of change: low
+
 ## 2026-11-24 One bucket counts each token request
 
 - Type: decision
