@@ -4,7 +4,7 @@
   import ConfirmDialog from "../lib/ConfirmDialog.svelte";
   import FaultsTable from "../lib/FaultsTable.svelte";
   import HelpButton from "../lib/HelpButton.svelte";
-  import { hetznerListAll, listAll } from "../lib/api";
+  import { faultTargetNames } from "../lib/api";
   import { mgmt } from "../lib/bridge";
   import { kindLabel, targetText, type Fault } from "../lib/faults";
   import { actionTitle } from "../lib/format";
@@ -13,26 +13,12 @@
 
   // "Active faults": the active faults of every project with a Project
   // column, the names of their targets from each project's servers, volumes
-  // and storage boxes (IDs are global per kind, so one map serves all).
+  // and storage boxes (IDs are global per kind, so one map serves all); a
+  // name list that fails leaves those names out, the faults still show.
   let rows = $state<Fault[] | undefined>();
   let projects = $state<{ name: string; display: string }[]>([]);
   let names = $state(new Map<string, string>());
   let failing = false;
-
-  type Named = { id: number; name: string };
-
-  async function targetNames(project: string): Promise<[string, string][]> {
-    const [servers, volumes, boxes] = await Promise.all([
-      listAll<Named>(project, "/servers", "servers"),
-      listAll<Named>(project, "/volumes", "volumes"),
-      hetznerListAll<Named>(project, "/storage_boxes", "storage_boxes"),
-    ]);
-    return [
-      ...servers.map((s) => [`server:${s.id}`, s.name] as [string, string]),
-      ...volumes.map((v) => [`volume:${v.id}`, v.name] as [string, string]),
-      ...boxes.map((b) => [`storage_box:${b.id}`, b.name] as [string, string]),
-    ];
-  }
 
   async function load() {
     try {
@@ -42,7 +28,7 @@
       ]);
       const faults = f.faults ?? [];
       const withFaults = [...new Set(faults.map((x) => x.project))];
-      const lists = await Promise.all(withFaults.map(targetNames));
+      const lists = await Promise.all(withFaults.map(faultTargetNames));
       projects = (p.projects ?? []).map((x) => ({ name: x.name, display: x.display_name }));
       names = new Map(lists.flat());
       rows = faults;

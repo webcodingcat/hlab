@@ -97,3 +97,23 @@ export function runHetznerOn<T extends ActionResult>(
 ): Promise<T | undefined> {
   return runHetzner<T>(project, actionTitle(resourceType(req.path), name, action), req.method, req.path, req.body);
 }
+
+type Named = { id: number; name: string };
+
+/**
+ * faultTargetNames reads the names of a project's servers, volumes and
+ * storage boxes keyed "server:42", "volume:7", "storage_box:3" for the
+ * target column of the faults tables. Best-effort: a list that fails (an
+ * api_error fault on reads, for example) leaves its names out.
+ */
+export async function faultTargetNames(project: string): Promise<[string, string][]> {
+  const lists = await Promise.allSettled([
+    listAll<Named>(project, "/servers", "servers"),
+    listAll<Named>(project, "/volumes", "volumes"),
+    hetznerListAll<Named>(project, "/storage_boxes", "storage_boxes"),
+  ]);
+  const prefixes = ["server", "volume", "storage_box"];
+  return lists.flatMap((r, i) =>
+    r.status === "fulfilled" ? r.value.map((x) => [`${prefixes[i]}:${x.id}`, x.name] as [string, string]) : [],
+  );
+}

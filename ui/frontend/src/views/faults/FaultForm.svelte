@@ -282,7 +282,7 @@
         </select>
       {/snippet}
     </Field>
-    {@render numberField("Percent", "percent", "Share of the requests that fail, 1 to 100.")}
+    {@render numberField("Percent", "percent")}
     {@render segmented("Only", "only", [
       { value: "read", text: "Reads" },
       { value: "write", text: "Writes" },

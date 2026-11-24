@@ -5,7 +5,7 @@
   import FaultsTable from "../../lib/FaultsTable.svelte";
   import FaultForm from "./FaultForm.svelte";
   import HelpButton from "../../lib/HelpButton.svelte";
-  import { hetznerListAll, listAll } from "../../lib/api";
+  import { faultTargetNames } from "../../lib/api";
   import { mgmt } from "../../lib/bridge";
   import { kindLabel, targetText, type Fault } from "../../lib/faults";
   import { actionTitle } from "../../lib/format";
@@ -14,7 +14,8 @@
 
   // The "Faults" section of a project console: the project's active faults
   // from the management API with the names of its servers, volumes and
-  // storage boxes for the target column; page "new" is the create form.
+  // storage boxes for the target column (best-effort: a failed name list
+  // leaves those names out); page "new" is the create form.
   let { project, page }: { project: string; page: Page } = $props();
 
   const base = $derived(`/projects/${encodeURIComponent(project)}/faults`);
@@ -23,21 +24,10 @@
   let names = $state(new Map<string, string>());
   let failing = false;
 
-  type Named = { id: number; name: string };
-
   async function load() {
     try {
-      const [f, servers, volumes, boxes] = await Promise.all([
-        mgmt<{ faults: Fault[] | null }>("GET", base),
-        listAll<Named>(project, "/servers", "servers"),
-        listAll<Named>(project, "/volumes", "volumes"),
-        hetznerListAll<Named>(project, "/storage_boxes", "storage_boxes"),
-      ]);
-      names = new Map([
-        ...servers.map((s) => [`server:${s.id}`, s.name] as const),
-        ...volumes.map((v) => [`volume:${v.id}`, v.name] as const),
-        ...boxes.map((b) => [`storage_box:${b.id}`, b.name] as const),
-      ]);
+      const [f, n] = await Promise.all([mgmt<{ faults: Fault[] | null }>("GET", base), faultTargetNames(project)]);
+      names = new Map(n);
       rows = f.faults ?? [];
       failing = false;
     } catch (err) {
