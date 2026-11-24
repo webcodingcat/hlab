@@ -41,7 +41,8 @@ func (m *Module) reset(w http.ResponseWriter, req *http.Request)    { m.power(w,
 
 // power runs a as a locking action on the server of the request. poweron
 // checks the host's resources first, in the request and again in the
-// action.
+// action. The action ends a freeze of the server first; poweron, reboot
+// and reset fail while a crash is active.
 func (m *Module) power(w http.ResponseWriter, req *http.Request, a powerAction) {
 	id, ok := api.PathID(w, req)
 	if !ok {
@@ -99,7 +100,13 @@ func (m *Module) power(w http.ResponseWriter, req *http.Request, a powerAction) 
 
 	acts.Run(action.ID, func(ctx context.Context, progress func(int)) error {
 		progress(10)
-		err := check(ctx)
+		m.endFreeze(ctx, p.Name, id)
+		var err error
+		if a.op != platform.PowerStop && a.op != platform.PowerShutdownRetry && m.crashed(p.Name, id) {
+			err = errCrashed
+		} else {
+			err = check(ctx)
+		}
 		if err == nil {
 			err = m.bootPower(ctx, stor, id, a.op)
 		}
