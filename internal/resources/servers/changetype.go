@@ -189,5 +189,5 @@ func (m *Module) changeMachine(ctx context.Context, stor *store.Store, project s
 	}); err != nil {
 		return err
 	}
-	return p.Power(ctx, name, platform.PowerStart)
+	return m.powerVM(ctx, id, platform.PowerStart, true)
 }

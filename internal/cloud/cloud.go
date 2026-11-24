@@ -389,6 +389,10 @@ func (c *Cloud) startJobs(ctx context.Context) {
 // cloud-init having read its seed.
 const rescueSeedHold = 90 * time.Second
 
+// seedHold covers the first boot of a server up to cloud-init having read
+// its seed (E48: up to 37 s), before hlab swaps the seed.
+const seedHold = 90 * time.Second
+
 // metricsRetention is how long the samples of the servers' VMs are kept.
 const metricsRetention = 24 * time.Hour
 
@@ -414,6 +418,7 @@ func (c *Cloud) modules() []resource.Module {
 		},
 		ExtraDisks:     volumeDisks,
 		RescueSeedHold: rescueSeedHold,
+		SeedHold:       seedHold,
 		Console:        c.console,
 		EndFaults:      c.endFaults,
 		FaultActive:    c.faultActive,

@@ -175,5 +175,5 @@ func (m *Module) rebuildMachine(ctx context.Context, stor *store.Store, project 
 	if err := m.reconcile(ctx, stor, id); err != nil {
 		return err
 	}
-	return p.Power(ctx, name, platform.PowerStart)
+	return m.powerVM(ctx, id, platform.PowerStart, true)
 }

@@ -156,6 +156,11 @@ func (m *Module) startRescue(ctx context.Context, stor *store.Store, id int64, k
 	if err := p.AttachDisk(ctx, name, disk, rescueLUN); err != nil {
 		return err
 	}
+	// Slot 0 and the rescue state change under the seed lock, so a
+	// delayed seed swap does not put the server's seed back.
+	lock := m.seedLock(id)
+	lock.Lock()
+	defer lock.Unlock()
 	seed := m.seed(rec)
 	seed.SSHKeys = keys
 	seed.UserData = ""
@@ -181,6 +186,12 @@ func (m *Module) startRescue(ctx context.Context, stor *store.Store, id int64, k
 // reboot or reset while rescue is enabled boots the rescue system and ends
 // rescue; one without rescue removes a rescue disk left from before.
 func (m *Module) bootPower(ctx context.Context, stor *store.Store, id int64, op platform.PowerOp) error {
+	return m.bootPowerFrom(ctx, stor, id, op, true)
+}
+
+// bootPowerFrom is bootPower; boot false runs a start that resumes a
+// saved VM, which is no boot for the seed hold.
+func (m *Module) bootPowerFrom(ctx context.Context, stor *store.Store, id int64, op platform.PowerOp, boot bool) error {
 	if op == platform.PowerReboot {
 		rec, err := m.load(stor, id)
 		if err != nil {
@@ -190,10 +201,11 @@ func (m *Module) bootPower(ctx context.Context, stor *store.Store, id int64, op 
 			return m.rebootFromRescue(ctx, stor, id)
 		}
 	}
-	if err := m.d.Platform.Power(ctx, m.vmName(id), op); err != nil {
+	isBoot := op == platform.PowerStart || op == platform.PowerReboot || op == platform.PowerReset
+	if err := m.powerVM(ctx, id, op, boot && isBoot); err != nil {
 		return err
 	}
-	if op != platform.PowerStart && op != platform.PowerReboot && op != platform.PowerReset {
+	if !isBoot {
 		return nil
 	}
 	rec, err := m.load(stor, id)
@@ -252,7 +264,7 @@ func (m *Module) rebootFromRescue(ctx context.Context, stor *store.Store, id int
 	if err := m.dropRescueDisk(ctx, stor, id); err != nil {
 		return err
 	}
-	return p.Power(ctx, name, platform.PowerStart)
+	return m.powerVM(ctx, id, platform.PowerStart, true)
 }
 
 // watchRescue disables a rescue unused for 60 minutes and removes the
@@ -295,6 +307,9 @@ func (m *Module) clearRescue(ctx context.Context, stor *store.Store, id int64) e
 // endRescue restores LUN 0 first and the server's seed and records rescue
 // as disabled; the rescue disk stays until it can be removed.
 func (m *Module) endRescue(ctx context.Context, stor *store.Store, id int64, booted bool) error {
+	lock := m.seedLock(id)
+	lock.Lock()
+	defer lock.Unlock()
 	if err := m.restoreBoot(ctx, stor, id); err != nil {
 		return err
 	}
@@ -308,6 +323,7 @@ func (m *Module) endRescue(ctx context.Context, stor *store.Store, id int64, boo
 
 // restoreBoot sets the boot order without rescue (an attached ISO, then
 // LUN 0), puts the server's seed in DVD slot 0 and deletes the rescue seed.
+// The caller holds the seed lock of server id.
 func (m *Module) restoreBoot(ctx context.Context, stor *store.Store, id int64) error {
 	rec, err := m.load(stor, id)
 	if err != nil {
