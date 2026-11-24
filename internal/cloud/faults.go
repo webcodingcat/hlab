@@ -20,21 +20,11 @@ import (
 // server and disk faults act through the run's servers and volumes
 // modules.
 func (c *Cloud) newFaults(resources []string) {
-	opts := faults.Options{Lookup: c.lookupTarget, Resources: resources}
-	var s faults.ServerInjector
-	var v faults.VolumeInjector
-	for _, m := range c.mods {
-		switch m := m.(type) {
-		case *servers.Module:
-			s = m
-		case *volumes.Module:
-			v = m
-		}
-	}
-	if s != nil && v != nil {
-		opts.Effects = faults.Effects(s, v)
-	}
-	c.faults.Store(faults.New(opts))
+	c.faults.Store(faults.New(faults.Options{
+		Lookup:    c.lookupTarget,
+		Resources: resources,
+		Effects:   faults.Effects(c.srv, c.vol),
+	}))
 }
 
 // faultLayer is the fault layer of the API chain. The router is built
