@@ -198,6 +198,31 @@ func (m *Manager) EndTarget(ctx context.Context, project, targetType string, id 
 	}).err
 }
 
+// Active reports whether a fault of kind on the target of targetType and
+// id is listed (applied) in project.
+func (m *Manager) Active(project, kind, targetType string, id int64) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, e := range m.entries {
+		if e.applied && onTarget(e.fault, project, kind, targetType, id) {
+			return true
+		}
+	}
+	return false
+}
+
+// EndKind ends the faults of kind on the target of targetType and id in
+// project; none listed is no error.
+func (m *Manager) EndKind(ctx context.Context, project, kind, targetType string, id int64) error {
+	return m.end(ctx, func(f Fault) bool { return onTarget(f, project, kind, targetType, id) }).err
+}
+
+// onTarget reports whether f is of kind on the target of targetType and id
+// in project.
+func onTarget(f Fault, project, kind, targetType string, id int64) bool {
+	return f.Project == project && f.Kind == kind && f.Target != nil && f.Target.Type == targetType && f.Target.ID == id
+}
+
 type endResult struct {
 	n   int
 	err error
