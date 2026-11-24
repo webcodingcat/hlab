@@ -174,7 +174,9 @@ func hasJob(jobs []agentapi.StorageJob, user, name string) bool {
 }
 
 // automaticName is the name of the automatic snapshot taken at at.
-func automaticName(at time.Time) string { return "snapshot-daily--" + at.UTC().Format(snapshotNameLayout) }
+func automaticName(at time.Time) string {
+	return "snapshot-daily--" + at.UTC().Format(snapshotNameLayout)
+}
 
 func testSnapshotAPI(t *testing.T) {
 	e := newBoxEnv(t)
