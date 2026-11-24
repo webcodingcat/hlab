@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 28 Faults in the tray (in progress)
+- Phase: 29 More system images (next)
 - Base branch: main
-- Last done: phase 27 merged into main (2026-11-24): `network`, `latency` and `storage_box_unavailable` faults act on the appliance through the agent document, and ending them leaves no rule or qdisc behind
-- Next: /wcc:phase in a new session builds phase 28 (faults in the tray); phase 16 (release checks) stays the last phase and stops for the manual checks
+- Last done: phase 28 merged into main (2026-11-24): the console creates, lists and ends faults per project, the top bar shows "N faults active" leading to all active faults, and the tray menu offers "End all faults"
+- Next: /wcc:phase in a new session builds phase 29 (more system images); phase 16 (release checks) stays the last phase and stops for the manual checks
 
 ## Open manual checks
 

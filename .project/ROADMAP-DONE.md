@@ -402,3 +402,17 @@ this file; it keeps the details for looking things up.
       4. Ending any of these faults, by hand, by its duration or at cloud
          stop, leaves no `hlab_fault` rule and no netem qdisc on the
          appliance.
+
+- [x] 28 Faults in the tray.
+      Requirements: UI-16, UI-17, UI-18.
+      Depends on: 25, 26, 27, 14.
+      Adjusts: `views.json` and the help texts (views `faults` and
+      `active-faults`), the sidebar, the top bar, the tray menu and
+      `TrayModel`, README (tray section), docs/guide.md.
+      Success criteria:
+      1. In the project console's "Faults", the user creates a fault of
+         every kind, sees it in the table with its seed and remaining
+         time, and ends it.
+      2. While a fault is active, the top bar shows "N faults active",
+         which leads to the list of all projects' faults, and "End all"
+         there or in the tray menu ends them all.
