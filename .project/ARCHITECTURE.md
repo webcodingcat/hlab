@@ -1168,7 +1168,7 @@ locks a resource of type `project`.
 - Seed swap hold (phase B4, E48): within `Deps.SeedHold` (90 s) after a
   boot hlab started (create, power on, reset, reboot, rebuild, change type,
   end of rescue, power on of an Off VM at cloud start) slot 0 is not
-  changed; the server record's internal `seed_due` is set before the eject
+  changed while the VM runs (a VM found Off swaps at once, phase 16); the server record's internal `seed_due` is set before the eject
   or the deferral and cleared after the insert, and when the hold ends the
   seed file is rebuilt from the record as it is then and swapped in. A boot hlab starts waits
   for a running swap of that server (per-server seed lock). A Saved VM

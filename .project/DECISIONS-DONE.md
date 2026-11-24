@@ -4,6 +4,14 @@ Entries from DECISIONS.md that a later entry revoked or changed, moved here
 unchanged; the later entry names them under `Replaces:`. Newest first. No
 skill reads this file; it keeps the history for looking things up.
 
+## 2026-11-24 Seed swap waits for a hold after a boot hlab starts (Q26)
+
+- Type: decision
+- Phase: phase B4
+- What: a network attach or detach right after a boot finishes at once, and the seed ISO swap waits until 90 s after the boot hlab started, is noted as `seed_due` on the server and is finished at the next cloud start if hlabd restarts.
+- Why: E48 showed an early slot-0 swap leaves the guest without hostname and public IP, and the user chose no waiting in the attach action.
+- Cost of change: low
+
 ## 2026-11-24 A box fault with an unparsable IP is left out
 
 - Type: decision

@@ -23,6 +23,23 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-25 SRV-08 accepts a minor release of the image's major version
+
+- Type: decision
+- Phase: phase 16
+- What: the SRV-08 end-to-end test accepts `/etc/os-release` naming a minor release of the image's `os_version` (for example "rocky 8.10" for "8"), never another major.
+- Why: the catalog gives rocky-8 only its major release, as Hetzner does, while the guest reports 8.10.
+- Cost of change: low
+
+## 2026-11-25 Seed swap waits for a hold only while the VM runs
+
+- Type: decision
+- Phase: phase 16
+- What: a network attach or detach right after a boot finishes at once; the seed ISO swap waits until 90 s after the boot hlab started unless the VM is off, then it swaps at once; a waiting swap is noted as `seed_due` on the server and finished at the next cloud start if hlabd restarts.
+- Why: E48 showed an early slot-0 swap leaves a booting guest without hostname and public IP, but an Off VM reads no seed, and the full e2e run showed the hold kept a primary IP assigned right after create from taking effect (PIP-02).
+- Cost of change: low
+- Replaces: 2026-11-24 Seed swap waits for a hold after a boot hlab starts (Q26)
+
 ## 2026-11-24 Test VM names and stop action
 
 - Type: decision
@@ -125,14 +142,6 @@ unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 - Phase: phase B4
 - What: the restart e2e rows wait for one continuous `ping -c 800 -i 0.01 -W 1` (8 s) without loss, retried until a 2-minute deadline.
 - Why: E47 saw up to about 3 s of good traffic between two drop windows.
-- Cost of change: low
-
-## 2026-11-24 Seed swap waits for a hold after a boot hlab starts (Q26)
-
-- Type: decision
-- Phase: phase B4
-- What: a network attach or detach right after a boot finishes at once, and the seed ISO swap waits until 90 s after the boot hlab started, is noted as `seed_due` on the server and is finished at the next cloud start if hlabd restarts.
-- Why: E48 showed an early slot-0 swap leaves the guest without hostname and public IP, and the user chose no waiting in the attach action.
 - Cost of change: low
 
 ## 2026-11-24 Network drops after resume are a documented deviation (Q27)
