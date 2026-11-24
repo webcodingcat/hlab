@@ -160,6 +160,7 @@ func (m *Module) startRescue(ctx context.Context, stor *store.Store, id int64, k
 	seed.SSHKeys = keys
 	seed.UserData = ""
 	seed.VendorData = vendorData(hash)
+	seed.NoOnLink = false // the rescue system is Debian, whatever the server's image
 	if err := cidata.BuildFile(seed, seedPath); err != nil {
 		return err
 	}

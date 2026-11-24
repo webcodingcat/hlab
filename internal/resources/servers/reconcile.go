@@ -2,6 +2,7 @@ package servers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -158,7 +159,24 @@ func (m *Module) seed(rec Record) cidata.Seed {
 		UserData:   seedUserData(rec.Hlab.UserData, rec.Hlab.AutomountVolumes),
 		VendorData: vendorData(rec.Hlab.RootHash),
 		Interfaces: append([]cidata.Interface{public}, privateInterfaces(rec)...),
+		NoOnLink:   !netplanFlavor(rec.Image),
 	}
+}
+
+// notNetplan are the os_flavor values of images whose network renderer is
+// not netplan; their seeds leave on-link out of every route.
+var notNetplan = map[string]bool{"rocky": true, "alma": true, "centos": true, "fedora": true, "opensuse": true}
+
+// netplanFlavor reports whether the image object image may get on-link
+// routes: false only for a readable image whose os_flavor is in notNetplan.
+func netplanFlavor(image json.RawMessage) bool {
+	var img struct {
+		OSFlavor string `json:"os_flavor"`
+	}
+	if len(image) == 0 || json.Unmarshal(image, &img) != nil {
+		return true
+	}
+	return !notNetplan[img.OSFlavor]
 }
 
 // createVM creates the VM with the server's disk, public adapter, private

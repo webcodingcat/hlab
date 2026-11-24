@@ -35,6 +35,10 @@ type Seed struct {
 	Interfaces []Interface
 	// Files are extra files at the ISO root, keyed by file name.
 	Files map[string][]byte
+	// NoOnLink leaves the key on-link out of every route of every
+	// interface in network-config, for guests whose renderer is not
+	// netplan: they ignore the key and cloud-init's v2 schema rejects it.
+	NoOnLink bool
 }
 
 // Interface is one network adapter of the guest, matched by MAC address.
@@ -183,7 +187,7 @@ func render(seed Seed) (map[string][]byte, error) {
 	}
 	out["meta-data"] = meta
 
-	network, err := networkConfig(seed.Interfaces)
+	network, err := networkConfig(seed.Interfaces, !seed.NoOnLink)
 	if err != nil {
 		return nil, err
 	}
@@ -234,8 +238,8 @@ type nameservers struct {
 
 // networkConfig renders network-config version 2. An interface without
 // address is optional, so it does not block systemd-networkd-wait-online
-// in the guest.
-func networkConfig(ifaces []Interface) ([]byte, error) {
+// in the guest. Without withOnLink no route carries on-link.
+func networkConfig(ifaces []Interface, withOnLink bool) ([]byte, error) {
 	cfg := network{Network: networkV2{Version: 2, Ethernets: map[string]ethernet{}}}
 	seen := map[string]bool{}
 	for i, iface := range ifaces {
@@ -260,7 +264,7 @@ func networkConfig(ifaces []Interface) ([]byte, error) {
 			if iface.Gateway.Is6() {
 				def = netip.PrefixFrom(netip.IPv6Unspecified(), 0)
 			}
-			eth.Routes = append(eth.Routes, route{To: def.String(), Via: iface.Gateway.String(), OnLink: true})
+			eth.Routes = append(eth.Routes, route{To: def.String(), Via: iface.Gateway.String(), OnLink: withOnLink})
 		}
 		for _, r := range iface.Routes {
 			if !r.To.IsValid() || !r.Via.IsValid() {
@@ -269,7 +273,7 @@ func networkConfig(ifaces []Interface) ([]byte, error) {
 			eth.Routes = append(eth.Routes, route{
 				To:     r.To.Masked().String(),
 				Via:    r.Via.String(),
-				OnLink: !onLink(iface.Addresses, r.Via),
+				OnLink: withOnLink && !onLink(iface.Addresses, r.Via),
 			})
 		}
 		if len(iface.Nameservers) > 0 {
