@@ -529,14 +529,14 @@ Inside `hlabd` (Go packages under `internal/`):
   their renderers ignore it and cloud-init's schema rejects it, which makes
   `cloud-init status` exit with 2 (E31, E45; phase 29); the rescue seed keeps it (Debian 13). `vendor-data` installs
   the guest hooks (see "Guest integration"). `meta-data` has the instance
-  ID but no `local-hostname`: the hostname comes from vendor-data in the
+  ID and public keys but no `local-hostname`: the hostname comes from vendor-data in the
   init stage, because Fedora's cloud-init sets a meta-data hostname in the
   local stage before D-Bus is up and then reports degraded (Q25, phase 29).
   cloud-init sets no placeholder name in the local stage; until the init
   stage the guest carries the image's own name (`ubuntu`, else `localhost`),
   and on NetworkManager images (EL, Fedora, openSUSE) NetworkManager sets
   `localhost.localdomain` and then the reverse-DNS name for a few seconds
-  (E46). A server without user_data gets the user-data
+  (E46). An empty user-data or vendor-data is written as
   `#cloud-config
 {}
 `, since newer cloud-init rejects an empty part and

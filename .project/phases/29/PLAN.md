@@ -132,19 +132,19 @@ E2E harness (writer of `test/e2e/images_test.go`):
     `users: []` in the cloud-config part; doc comment of `vendorData`
     updated
 
-- [ ] 29-05 Image matrix on the dev cloud
+- [x] 29-05 Image matrix on the dev cloud
   - Wave: 2 | Depends on: 29-01, 29-02, 29-03, 29-04 | Review: alone
   - Requirements: SRV-23, SRV-24 | Tests: test/e2e/images_test.go
   - Reads: EXPERIMENTS.md E30-E34, E45; ARCHITECTURE.md "Guest
     integration"; CONTEXT.md "Answers"; Interfaces above (E2E harness)
   - Size: ~0-100 lines in at most 3 files (fixes only where a row fails)
-  - [ ] `task build`, restart the dev service, then run
+  - [x] `task build`, restart the dev service, then run
     `task e2e -- -run 'TestE2E/SRV-2[34]'`. The first run downloads and
     converts all eleven new images (about 8 GB, 1.5 to 5 minutes each).
-  - [ ] Fix in `internal/images`, `internal/cidata` or
+  - [x] Fix in `internal/images`, `internal/cidata` or
     `internal/resources/servers` what a failing case shows, within this
     phase's choices. Rerun only the failing image's case.
-  - [ ] Q25: `internal/cidata` writes no `local-hostname` into `meta-data`;
+  - [x] Q25: `internal/cidata` writes no `local-hostname` into `meta-data`;
     the servers module puts `hostname: <server name>` and `fqdn: <server
     name>` into the cloud-config part of vendor-data for every image (rescue
     included); the user-data of a server without user_data becomes

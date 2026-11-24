@@ -23,6 +23,14 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-24 Appliance and storage VM name themselves through their user-data
+
+- Type: decision
+- Phase: phase 29
+- What: the cloud-config user-data of the appliance and the storage VM sets `hostname` and `fqdn` to their hlab name (placeholder `@NAME@`); existing VMs apply it once at the next cloud start because their instance-id changes.
+- Why: with `local-hostname` gone from meta-data (Q25) they would keep the image's default name.
+- Cost of change: low
+
 ## 2026-11-24 Vendor-data sets fqdn next to hostname
 
 - Type: decision
@@ -35,7 +43,7 @@ unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
 - Type: decision
 - Phase: phase 29
-- What: the seed's user-data of a server without user_data is `#cloud-config\n{}\n`.
+- What: cidata writes an empty user-data or vendor-data as `#cloud-config\n{}\n`, for servers without user_data and every other seed.
 - Why: newer cloud-init reports an empty part as degraded and EL9's crashes in init-local on it (E46).
 - Cost of change: low
 
