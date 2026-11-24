@@ -23,6 +23,54 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-24 One keyless rocky-8 server for the account checks
+
+- Type: decision
+- Phase: phase 29
+- What: the SRV-24 default-user and user_data `users` checks and the SRV-23 create-time password check share one extra keyless rocky-8 server.
+- Why: rocky-8 has the oldest cloud-init and Python 3.6, the strictest case, and a second extra server costs one more boot.
+- Cost of change: low
+
+## 2026-11-24 Vendor-data text changes proven end to end only
+
+- Type: decision
+- Phase: phase 29
+- What: the root-only and Python 3.6 changes in vendor-data get no unit row; SRV-23 and SRV-24 prove them on every image.
+- Why: they are configuration text without logic.
+- Cost of change: low
+
+## 2026-11-24 CAT-06 test no longer fixes the image count
+
+- Type: decision
+- Phase: phase 29
+- What: TestImages/CAT-06 drops its "only these five images" and count checks and still checks the five images and their attributes.
+- Why: the checks contradict CAT-09.
+- Cost of change: low
+
+## 2026-11-24 Deprecated fedora-43 checked in unit and e2e
+
+- Type: decision
+- Phase: phase 29
+- What: the CAT-09 unit row lists with `include_deprecated=true` as hcloud sends it, and SRV-23 expects a date in fedora-43's deprecated column of `hcloud image list --type system`.
+- Why: success criterion 1 names the hcloud CLI.
+- Cost of change: low
+
+## 2026-11-24 One on-link switch per seed
+
+- Type: decision
+- Phase: phase 29
+- What: `cidata.Seed.NoOnLink` turns `on-link` off for the whole seed; the rescue seed keeps `on-link` because rescue always runs Debian 13.
+- Why: all adapters of a guest share one renderer.
+- Cost of change: low
+
+## 2026-11-24 User-Agent and retry in the one download function
+
+- Type: decision
+- Phase: phase 29
+- What: `User-Agent: hlab/<version>` and a single retry live in the one download function, so ISO and package downloads get them too; a 404 after the retry still falls back to the alternative source.
+- Why: one place serves every download.
+- Cost of change: low
+
 ## 2026-11-24 Upgrade to wcc 0.32.27
 
 - Type: approval

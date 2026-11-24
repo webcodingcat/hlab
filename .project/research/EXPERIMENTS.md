@@ -1350,3 +1350,38 @@ Consequence for tests: no SMB connection to the box before the fault
 failing within 2 min without checking the error code; prove recovery by
 retrying a new `net use` for at least 90 s. `Get-SmbConnection` needs
 elevation; match `net.exe` by exit code, its messages are localized.
+
+## E45 `cloud-init status` on ubuntu-22.04/24.04/26.04 and debian-12/13 with hlab's seed, vendor-data and `users: []`
+
+- Result: confirmed, no change needed for Ubuntu and Debian
+- Checked on: 2026-11-24, dev cloud at 9c1dea1, Hyper-V Gen2, cx23; cloud-init 26.1 (Ubuntu 22.04.5, 24.04.5), 26.2 (Ubuntu 26.04.1), 22.4.2 (Debian 12), 25.1.4 (Debian 13)
+- By: experiment
+- Status: valid
+
+Method: one server per image via hcloud 1.70.2 with SSH key, private
+network at create and an ext4 volume with automount, user_data
+`#cloud-config` with `users: []` and a runcmd marker (the default merge
+keeps `users` wherever it sits); then `cloud-init status --wait --long`,
+`--format json`, `cloud-init schema --system --annotate`, the log grepped
+for WARNING/DEPRECAT, `getent passwd` for UID 1000-59999; API reboot and
+status again.
+
+Observed:
+- Exit 0, status done, `errors: []`, `recoverable_errors: {}` on all five,
+  on first boot and after reboot; volume mounted, marker written, no user
+  with UID >= 1000.
+- Ubuntu and Debian 13 validate network-config v2 with netplan's Python
+  API, which accepts `on-link`; cloud-init's own JSON v2 schema still
+  rejects `on-link` in 26.1 and 26.2 too (E31's range 24.4-25.3 is too
+  narrow), so images without netplan (EL, Fedora, openSUSE) end
+  "degraded" (exit 2) for exactly this key.
+- Debian 12 (22.4) does not validate network-config v2; its cloud-config
+  schema rejects `users: []` ("[] is too short") with a log WARNING only,
+  status stays done with exit 0, and no default user is created.
+- No deprecated key in the vendor-data on any image.
+- Routes rendered by netplan: `default via 172.31.1.1 onlink` and
+  `10.0.0.0/16 via 10.0.0.1 onlink`. Not proven: that networkd sets
+  onlink by itself if `on-link` is dropped from the seed.
+
+Pitfalls: scripts written on Windows carry CRLF (dash fails on
+`2>&1\r`); `cloud-init schema -t network-config` does not exist in 22.4.
