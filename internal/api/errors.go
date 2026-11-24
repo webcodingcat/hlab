@@ -4,86 +4,110 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 
 	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/store"
 )
 
-// statuses maps every error code to its HTTP status. It is the error table
-// of the frozen OpenAPI description (info.description), plus
-// token_readonly, which the API answers to writes with a read-only token,
-// and the operation-specific codes of single endpoints.
-var statuses = map[string]int{
-	"json_error":              http.StatusBadRequest,
-	"unauthorized":            http.StatusUnauthorized,
-	"forbidden":               http.StatusForbidden,
-	"maintenance":             http.StatusForbidden,
-	"resource_limit_exceeded": http.StatusForbidden,
-	"token_readonly":          http.StatusForbidden,
-	"not_found":               http.StatusNotFound,
-	"method_not_allowed":      http.StatusMethodNotAllowed,
-	"uniqueness_error":        http.StatusConflict,
-	"conflict":                http.StatusConflict,
-	"deprecated_api_endpoint": http.StatusGone,
-	"resource_unavailable":    http.StatusPreconditionFailed,
-	"invalid_input":           http.StatusUnprocessableEntity,
-	"service_error":           http.StatusUnprocessableEntity,
-	"unsupported_error":       http.StatusUnprocessableEntity,
-	"locked":                  http.StatusLocked,
-	"protected":               http.StatusLocked,
-	"rate_limit_exceeded":     http.StatusTooManyRequests,
-	"server_error":            http.StatusInternalServerError,
-	"bad_gateway":             http.StatusBadGateway,
-	"unavailable":             http.StatusServiceUnavailable,
-	"timeout":                 http.StatusGatewayTimeout,
+// codes lists every error code with its HTTP status in a fixed order. It is
+// the error table of the frozen OpenAPI description (info.description),
+// plus token_readonly, which the API answers to writes with a read-only
+// token, followed by the operation-specific codes of single endpoints.
+var codes = []CodeStatus{
+	{"json_error", http.StatusBadRequest},
+	{"unauthorized", http.StatusUnauthorized},
+	{"forbidden", http.StatusForbidden},
+	{"maintenance", http.StatusForbidden},
+	{"resource_limit_exceeded", http.StatusForbidden},
+	{"token_readonly", http.StatusForbidden},
+	{"not_found", http.StatusNotFound},
+	{"method_not_allowed", http.StatusMethodNotAllowed},
+	{"uniqueness_error", http.StatusConflict},
+	{"conflict", http.StatusConflict},
+	{"deprecated_api_endpoint", http.StatusGone},
+	{"resource_unavailable", http.StatusPreconditionFailed},
+	{"invalid_input", http.StatusUnprocessableEntity},
+	{"service_error", http.StatusUnprocessableEntity},
+	{"unsupported_error", http.StatusUnprocessableEntity},
+	{"locked", http.StatusLocked},
+	{"protected", http.StatusLocked},
+	{"rate_limit_exceeded", http.StatusTooManyRequests},
+	{"server_error", http.StatusInternalServerError},
+	{"bad_gateway", http.StatusBadGateway},
+	{"unavailable", http.StatusServiceUnavailable},
+	{"timeout", http.StatusGatewayTimeout},
 
 	// Operation-specific codes of single endpoints.
-	"placement_error":            http.StatusUnprocessableEntity,
-	"server_not_stopped":         http.StatusUnprocessableEntity,
-	"invalid_server_type":        http.StatusUnprocessableEntity,
-	"already_in_placement_group": http.StatusUnprocessableEntity,
-	"volume_already_attached":    http.StatusUnprocessableEntity,
+	{"placement_error", http.StatusUnprocessableEntity},
+	{"server_not_stopped", http.StatusUnprocessableEntity},
+	{"invalid_server_type", http.StatusUnprocessableEntity},
+	{"already_in_placement_group", http.StatusUnprocessableEntity},
+	{"volume_already_attached", http.StatusUnprocessableEntity},
 
 	// Codes of networks, primary IPs and floating IPs.
-	"must_be_unassigned":             http.StatusUnprocessableEntity,
-	"primary_ip_assigned":            http.StatusUnprocessableEntity,
-	"primary_ip_already_assigned":    http.StatusUnprocessableEntity,
-	"primary_ip_datacenter_mismatch": http.StatusUnprocessableEntity,
-	"primary_ip_version_mismatch":    http.StatusPreconditionFailed,
-	"server_has_ipv4":                http.StatusUnprocessableEntity,
-	"server_has_ipv6":                http.StatusUnprocessableEntity,
-	"floating_ip_assigned":           http.StatusUnprocessableEntity,
-	"server_already_attached":        http.StatusUnprocessableEntity,
-	"ip_not_available":               http.StatusUnprocessableEntity,
-	"no_subnet_available":            http.StatusUnprocessableEntity,
-	"networks_overlap":               http.StatusUnprocessableEntity,
+	{"must_be_unassigned", http.StatusUnprocessableEntity},
+	{"primary_ip_assigned", http.StatusUnprocessableEntity},
+	{"primary_ip_already_assigned", http.StatusUnprocessableEntity},
+	{"primary_ip_datacenter_mismatch", http.StatusUnprocessableEntity},
+	{"primary_ip_version_mismatch", http.StatusPreconditionFailed},
+	{"server_has_ipv4", http.StatusUnprocessableEntity},
+	{"server_has_ipv6", http.StatusUnprocessableEntity},
+	{"floating_ip_assigned", http.StatusUnprocessableEntity},
+	{"server_already_attached", http.StatusUnprocessableEntity},
+	{"ip_not_available", http.StatusUnprocessableEntity},
+	{"no_subnet_available", http.StatusUnprocessableEntity},
+	{"networks_overlap", http.StatusUnprocessableEntity},
 
 	// Codes of firewalls.
-	"resource_in_use":                    http.StatusUnprocessableEntity,
-	"firewall_already_applied":           http.StatusUnprocessableEntity,
-	"firewall_managed_by_label_selector": http.StatusUnprocessableEntity,
-	"private_net_only_server":            http.StatusUnprocessableEntity,
-	"server_already_added":               http.StatusUnprocessableEntity,
+	{"resource_in_use", http.StatusUnprocessableEntity},
+	{"firewall_already_applied", http.StatusUnprocessableEntity},
+	{"firewall_managed_by_label_selector", http.StatusUnprocessableEntity},
+	{"private_net_only_server", http.StatusUnprocessableEntity},
+	{"server_already_added", http.StatusUnprocessableEntity},
 	// POST /firewalls answers it with 422 instead.
-	"firewall_resource_not_found": http.StatusNotFound,
+	{"firewall_resource_not_found", http.StatusNotFound},
 
 	// Codes of zones.
-	"incorrect_zone_mode": http.StatusUnprocessableEntity,
+	{"incorrect_zone_mode", http.StatusUnprocessableEntity},
 
 	// Codes of load balancers and the primary IPs they hold.
-	"load_balancer_already_attached":          http.StatusUnprocessableEntity,
-	"load_balancer_not_attached_to_network":   http.StatusUnprocessableEntity,
-	"targets_without_use_private_ip":          http.StatusUnprocessableEntity,
-	"load_balancer_public_interface_disabled": http.StatusUnprocessableEntity,
-	"resolve_cloud_private_targets_error":     http.StatusUnprocessableEntity,
-	"resolve_cloud_public_targets_error":      http.StatusUnprocessableEntity,
-	"target_already_defined":                  http.StatusUnprocessableEntity,
-	"invalid_load_balancer_type":              http.StatusUnprocessableEntity,
-	"primary_ip_blocked":                      http.StatusUnprocessableEntity,
-	"primary_ip_location_mismatch":            http.StatusUnprocessableEntity,
+	{"load_balancer_already_attached", http.StatusUnprocessableEntity},
+	{"load_balancer_not_attached_to_network", http.StatusUnprocessableEntity},
+	{"targets_without_use_private_ip", http.StatusUnprocessableEntity},
+	{"load_balancer_public_interface_disabled", http.StatusUnprocessableEntity},
+	{"resolve_cloud_private_targets_error", http.StatusUnprocessableEntity},
+	{"resolve_cloud_public_targets_error", http.StatusUnprocessableEntity},
+	{"target_already_defined", http.StatusUnprocessableEntity},
+	{"invalid_load_balancer_type", http.StatusUnprocessableEntity},
+	{"primary_ip_blocked", http.StatusUnprocessableEntity},
+	{"primary_ip_location_mismatch", http.StatusUnprocessableEntity},
 	// add_service answers 412; update_service answers 422 through
 	// FieldError.Status.
-	"source_port_already_used": http.StatusPreconditionFailed,
+	{"source_port_already_used", http.StatusPreconditionFailed},
+}
+
+// CodeStatus is an error code with its HTTP status.
+type CodeStatus struct {
+	Code   string `json:"code"`
+	Status int    `json:"status"`
+}
+
+// statuses maps every error code of codes to its HTTP status.
+var statuses = func() map[string]int {
+	m := make(map[string]int, len(codes))
+	for _, c := range codes {
+		m[c.Code] = c.Status
+	}
+	return m
+}()
+
+// Codes returns every error code of Status in a fixed order: the general
+// Hetzner error table first (json_error ... timeout, as in the frozen
+// description), then the operation-specific codes, each group in the
+// order of the source table.
+func Codes() []CodeStatus {
+	return slices.Clone(codes)
 }
 
 // Status returns the HTTP status of an error code; unknown codes give 500.
