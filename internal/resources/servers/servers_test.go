@@ -994,6 +994,7 @@ func TestServers(t *testing.T) {
 	testRescue(t)
 	testISOs(t)
 	testVendorData(t)
+	testSeed(t)
 	testAdapters(t)
 	testLifecycle(t)
 	testFaults(t)

@@ -23,6 +23,14 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-24 Image rows start their per-image subtests from goroutines
+
+- Type: decision
+- Phase: phase 29
+- What: TestE2E/SRV-23 and SRV-24 share one server per image through `imageRow`, which starts the per-image subtests from goroutines without `t.Parallel`, capped by the three server slots, and counts a subtest the filter skips as released.
+- Why: with `t.Parallel` a row could wait for a slot only the other row's not-yet-scheduled subtest frees, a deadlock.
+- Cost of change: low
+
 ## 2026-11-24 One keyless rocky-8 server for the account checks
 
 - Type: decision

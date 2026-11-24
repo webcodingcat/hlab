@@ -19,6 +19,8 @@ func TestE2E(t *testing.T) {
 	// The same for the storage box SBOX-03, SBOX-04, SBOX-11, SBOX-12 and
 	// SBOX-13 share.
 	t.Cleanup(func() { releaseStorageBoxFixture(t) })
+	// The same for the image servers and networks SRV-23 and SRV-24 share.
+	t.Cleanup(func() { releaseImageFixtures(t) })
 	// The e2e tray the UI rows share ends with the group.
 	t.Cleanup(func() { releaseTray(t) })
 
@@ -99,6 +101,10 @@ func TestE2E(t *testing.T) {
 	t.Run("SRV-11", parallel(testSRV11))
 	t.Run("SRV-12", parallel(testSRV12))
 	t.Run("SRV-15", parallel(testSRV15))
+	// SRV-23 and SRV-24 share one server per system image; imageRow runs
+	// them with parallel and records that the filter selected them.
+	t.Run("SRV-23", imageRow(testSRV23))
+	t.Run("SRV-24", imageRow(testSRV24))
 	// The CON-01 rows share one VNC session and run one after the other
 	// inside it: CON-01/screen, CON-01/keyboard, CON-01/mouse.
 	t.Run("CON-01", parallel(testCON01))

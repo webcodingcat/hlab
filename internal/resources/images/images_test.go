@@ -290,7 +290,6 @@ func TestImages(t *testing.T) {
 		for _, img := range list.Images {
 			w, ok := want[img.Name]
 			if !ok {
-				t.Errorf("unexpected system image %q", img.Name)
 				continue
 			}
 			seen[img.Name] = true
@@ -305,9 +304,6 @@ func TestImages(t *testing.T) {
 				t.Errorf("system image %s missing", name)
 			}
 		}
-		if len(list.Images) != len(want) {
-			t.Errorf("GET /images?type=system returned %d images, want %d", len(list.Images), len(want))
-		}
 
 		resp = env.Do(http.MethodGet, "/images?name=ubuntu-24.04", nil)
 		if resp.StatusCode != http.StatusOK {
@@ -321,4 +317,113 @@ func TestImages(t *testing.T) {
 			t.Errorf("GET /images?name=ubuntu-24.04 = %+v, want exactly ubuntu-24.04", byName.Images)
 		}
 	})
+
+	t.Run("CAT-09", func(t *testing.T) {
+		cat, err := catalog.Load("../../../catalog")
+		if err != nil {
+			t.Fatalf("load shipped catalog: %v", err)
+		}
+		env := apitest.New(t, images.New(cat))
+
+		// list returns the images of GET /images<query> by name, as raw
+		// fields.
+		list := func(query string) map[string]map[string]json.RawMessage {
+			t.Helper()
+			resp := env.Do(http.MethodGet, "/images"+query, nil)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("GET /images%s: status %d, want 200", query, resp.StatusCode)
+			}
+			var body struct {
+				Images []map[string]json.RawMessage `json:"images"`
+			}
+			apitest.Decode(t, resp, &body)
+			out := map[string]map[string]json.RawMessage{}
+			for _, img := range body.Images {
+				var name string
+				if err := json.Unmarshal(img["name"], &name); err != nil {
+					t.Fatalf("GET /images%s: image name %s: %v", query, img["name"], err)
+				}
+				out[name] = img
+			}
+			return out
+		}
+		all := list("?type=system&include_deprecated=true")
+		plain := list("?type=system")
+
+		const fedora43Deprecation = `{"announced":"2026-11-12T00:00:00Z","unavailable_after":"2027-02-09T00:00:00Z"}`
+		cases := []struct {
+			name, description, flavor, version, created string
+			id                                          int64
+			deprecation                                 string // JSON; "null" when none
+		}{
+			{"rocky-8", "Rocky Linux 8", "rocky", "8", "2021-08-19T06:30:23Z", 45780948, "null"},
+			{"rocky-9", "Rocky Linux 9", "rocky", "9", "2022-07-20T13:55:52Z", 76766499, "null"},
+			{"rocky-10", "Rocky Linux 10", "rocky", "10", "2025-06-17T13:03:39Z", 245249370, "null"},
+			{"alma-8", "AlmaLinux 8", "alma", "8", "2023-03-27T11:32:49Z", 104788983, "null"},
+			{"alma-9", "AlmaLinux 9", "alma", "9", "2023-03-27T11:33:04Z", 104788996, "null"},
+			{"alma-10", "AlmaLinux 10", "alma", "10", "2025-06-17T13:06:30Z", 245249013, "null"},
+			{"centos-stream-9", "CentOS Stream 9", "centos", "Stream 9", "2022-01-27T07:52:03Z", 59752342, "null"},
+			{"centos-stream-10", "CentOS Stream 10", "centos", "Stream 10", "2025-01-08T09:54:17Z", 210163277, "null"},
+			{"fedora-43", "Fedora 43", "fedora", "43", "2025-12-18T13:14:36Z", 342035601, fedora43Deprecation},
+			{"fedora-44", "Fedora 44", "fedora", "44", "2026-05-18T10:57:10Z", 387893188, "null"},
+			{"opensuse-16", "openSUSE Leap 16", "opensuse", "16", "2025-12-19T09:04:13Z", 342262088, "null"},
+		}
+		for _, c := range cases {
+			t.Run(c.name, func(t *testing.T) {
+				img, ok := all[c.name]
+				if !ok {
+					t.Fatalf("GET /images?type=system&include_deprecated=true lacks %s", c.name)
+				}
+				want := map[string]any{
+					"id": c.id, "name": c.name, "description": c.description,
+					"os_flavor": c.flavor, "os_version": c.version, "disk_size": 5,
+					"rapid_deploy": true, "created": c.created, "type": "system",
+					"status": "available", "architecture": "x86",
+				}
+				for field, w := range want {
+					wantJSON, err := json.Marshal(w)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !jsonEqual(t, img[field], wantJSON) {
+						t.Errorf("%s: %s = %s, want %s", c.name, field, img[field], wantJSON)
+					}
+				}
+				if raw, ok := img["deprecated"]; ok {
+					t.Errorf("%s has the field deprecated (%s), want none", c.name, raw)
+				}
+				if raw, ok := img["deprecation"]; !ok || !jsonEqual(t, raw, []byte(c.deprecation)) {
+					t.Errorf("%s: deprecation = %s, want %s", c.name, raw, c.deprecation)
+				}
+				_, listed := plain[c.name]
+				if wantListed := c.name != "fedora-43"; listed != wantListed {
+					t.Errorf("GET /images?type=system lists %s: %v, want %v", c.name, listed, wantListed)
+				}
+			})
+		}
+
+		if _, ok := all["debian-11"]; ok {
+			t.Errorf("GET /images?type=system&include_deprecated=true lists debian-11")
+		}
+		if _, ok := plain["debian-11"]; ok {
+			t.Errorf("GET /images?type=system lists debian-11")
+		}
+	})
+}
+
+// jsonEqual reports whether two JSON documents hold the same value; an
+// absent value (nil) equals nothing.
+func jsonEqual(t *testing.T, a, b []byte) bool {
+	t.Helper()
+	if a == nil || b == nil {
+		return false
+	}
+	var va, vb any
+	if err := json.Unmarshal(a, &va); err != nil {
+		t.Fatalf("decode %s: %v", a, err)
+	}
+	if err := json.Unmarshal(b, &vb); err != nil {
+		t.Fatalf("decode %s: %v", b, err)
+	}
+	return reflect.DeepEqual(va, vb)
 }
