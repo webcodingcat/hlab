@@ -1206,8 +1206,9 @@ of one project fail on purpose, so you can see how your scripts,
 OpenTofu configurations, Ansible playbooks and services cope with
 errors, rate limits, crashed servers, lost packets, slow links and
 failing disks. Create faults with
-[`hlab fault`](commands.md#faults) or, for an AI agent, with the MCP tools
-`fault_create`, `fault_list` and `fault_delete`.
+[`hlab fault`](commands.md#faults), in the window (see
+[Faults in the window](#faults-in-the-window)) or, for an AI agent, with
+the MCP tools `fault_create`, `fault_list` and `fault_delete`.
 
 An `api_error` or `rate_limit` fault affects only requests made with an
 API token of its project, to the Cloud API and the Storage Box API alike;
@@ -1218,7 +1219,8 @@ runs out, when you delete it, when its target or project is deleted and
 when the cloud stops; after a cloud start no fault is active, and paused
 servers, removed volume disks, disk limits, dropped or delayed packets a
 fault left behind are undone. `hlab cloud status` shows
-`faults active: <n>` while there are any.
+`faults active: <n>` while there are any; the window shows the pill
+"N faults active" in its top bar.
 
 ### API errors
 
@@ -1555,6 +1557,38 @@ the box ends the fault. After the fault ends, SFTP and WebDAV and every
 access from servers and WSL2 work at once, but SMB on the Windows host
 comes back late: a new `net use` can fail for about 50 seconds, and a
 share mapped before the fault answers again after about 80 seconds.
+
+### Faults in the window
+
+The entry **Faults** in a project's sidebar lists the project's active
+faults, refreshed every 5 seconds, with their kind, target, parameters,
+seed and remaining time. The target reads "Project" for API errors and
+rate limits and, for example, "fsn1 ↔ hel1" for latency between two
+locations; a server, volume or storage box links to its page. The
+parameters fit in one line, such as "20 % server_error, writes, servers"
+or "50 ms ± 10 ms"; the remaining time reads "4 min left", "45 s left" or
+"until ended".
+
+**Create fault** opens a form: choose the kind, read the one-line
+explanation below it, and fill in the fields of that kind, which match
+the options of `hlab fault create`. The target select lists only what
+fits the kind, for example only attached volumes for
+**Volume unavailable**; with nothing fitting, **Create fault** stays
+disabled. The **Seed** field shows for API errors and for network faults
+below 100 % loss; left empty, HLab chooses a seed and the list shows it.
+**Duration** offers **Until ended**, 1, 5, 15 and 60 minutes, or
+**Custom** typed as `90s`, `10m` or `2h` (1 s to 24 h). A value HLab
+refuses shows its reason under the field.
+
+**End** in a fault's row menu ends that fault; **End all** ends every
+fault of the project after you confirm.
+
+While any project has an active fault, the top bar shows a pill
+"1 fault active" or "N faults active". It opens **Active faults**, the
+faults of all projects with a Project column, **End** per fault and
+**End all** for every project. The tray menu shows **End all faults** at
+the same time; it ends all faults at once, without a confirmation, and
+disappears within a few seconds.
 
 ## Stopping and starting the cloud
 
