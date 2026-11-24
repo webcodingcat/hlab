@@ -23,6 +23,14 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-24 The hostname comes from vendor-data on every image (Q25)
+
+- Type: change
+- Phase: phase 29
+- What: Q25 answered: the seed's `meta-data` carries no `local-hostname` on any image; the server's name reaches the guest as `hostname` in the cloud-config part of vendor-data, set in cloud-init's init stage.
+- Why: the user chose one way for all images (option 2); on Fedora cloud-init sets a meta-data hostname in the local stage before D-Bus is up and `cloud-init status` then exits 2.
+- Cost of change: low (seed content only; existing servers keep their hostname, all 16 images are re-checked by SRV-23)
+
 ## 2026-11-24 Image servers are created with --allow-deprecated-image
 
 - Type: decision

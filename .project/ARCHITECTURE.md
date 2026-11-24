@@ -517,7 +517,7 @@ Inside `hlabd` (Go packages under `internal/`):
   `vendor-data`, `network-config` v2) written in Go (`go-diskfs`, ISO 9660
   with Rock Ridge, volume label `cidata`).
 - Interface: `cidata.Build(Seed) ([]byte, error)` and `cidata.BuildFile(Seed,
-  path)`; `Seed` carries instance ID, hostname, SSH keys, user-data,
+  path)`; `Seed` carries instance ID, SSH keys, user-data,
   vendor-data, interfaces (MAC, addresses, gateway, routes, nameservers),
   extra files (the appliance's agent binary and secret) and `NoOnLink`, set
   by the servers module from the image's `os_flavor`. `network-config`: public adapter `/32` with on-link default route
@@ -528,7 +528,10 @@ Inside `hlabd` (Go packages under `internal/`):
   (`os_flavor` rocky, alma, centos, fedora, opensuse) it is left out, since
   their renderers ignore it and cloud-init's schema rejects it, which makes
   `cloud-init status` exit with 2 (E31, E45; phase 29); the rescue seed keeps it (Debian 13). `vendor-data` installs
-  the guest hooks (see "Guest integration").
+  the guest hooks (see "Guest integration"). `meta-data` has the instance
+  ID but no `local-hostname`: the hostname comes from vendor-data in the
+  init stage, because Fedora's cloud-init sets a meta-data hostname in the
+  local stage before D-Bus is up and then reports degraded (Q25, phase 29).
 - Depends on: nothing.
 
 #### scheduler
@@ -1170,8 +1173,8 @@ locks a resource of type `project`.
   disks were not created by hlab (ISO installs) lack the hooks; listed as a
   deviation.
 - `vendor-data` is a multipart MIME document: a cloud-config part with
-  only `disable_root`, `ssh_pwauth`, `chpasswd` and (phase 29)
-  `users: []`, so no image creates its default user and root is the only
+  only `disable_root`, `ssh_pwauth`, `chpasswd`, `hostname` (the server's
+  name; Q25) and (phase 29) `users: []`, so no image creates its default user and root is the only
   login, like Hetzner (users from user_data still apply, since user-data
   replaces that key), and a
   `text/x-shellscript` part (run once per instance) that writes the hooks,
