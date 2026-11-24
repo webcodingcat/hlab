@@ -3,10 +3,13 @@ package servers
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
+	"time"
 
 	"github.com/webcodingcat/hlab/internal/cidata"
 	"github.com/webcodingcat/hlab/internal/platform"
@@ -198,11 +201,24 @@ func (m *Module) syncDeny(ctx context.Context, all []Record, nets []int64) error
 
 // rewriteSeed builds the seed of rec again. With a VM it ejects slot 0
 // first and inserts the new seed afterwards, unless rescue holds slot 0
-// (ending rescue inserts the server's seed).
+// (ending rescue inserts the server's seed). Within the seed hold after a
+// boot hlab started it only notes the swap as due and swaps later from the
+// record as it is then. It holds the server's seed lock, so no boot hlab
+// starts meets an empty drive.
 func (m *Module) rewriteSeed(ctx context.Context, rec Record, hasVM bool) error {
+	lock := m.seedLock(rec.ID)
+	lock.Lock()
+	defer lock.Unlock()
 	p, name, seed := m.d.Platform, m.vmName(rec.ID), m.seedPath(rec.ID)
 	insert := hasVM && !rescueOn(rec)
 	if insert {
+		if err := m.setSeedDue(rec.ID, true); err != nil {
+			return err
+		}
+		if m.holdLeft(rec.ID) > 0 {
+			m.delaySeed(rec.ID)
+			return nil
+		}
 		if err := p.SetDVD(ctx, name, 0, ""); err != nil {
 			return err
 		}
@@ -217,7 +233,120 @@ func (m *Module) rewriteSeed(ctx context.Context, rec Record, hasVM bool) error 
 		return err
 	}
 	if insert {
-		return p.SetDVD(ctx, name, 0, seed)
+		if err := p.SetDVD(ctx, name, 0, seed); err != nil {
+			return err
+		}
+	}
+	if insert || rec.Hlab.SeedDue {
+		return m.setSeedDue(rec.ID, false)
 	}
 	return nil
+}
+
+// setSeedDue sets the seed_due note of server id to due.
+func (m *Module) setSeedDue(id int64, due bool) error {
+	return m.d.Store.Tx(func(tx store.Tx) error {
+		r, err := Load(tx, id)
+		if err != nil || r.Hlab.SeedDue == due {
+			return err
+		}
+		r.Hlab.SeedDue = due
+		return put(tx, r)
+	})
+}
+
+// seedLock returns the lock that orders the seed swaps and the boots of
+// server id.
+func (m *Module) seedLock(id int64) *sync.Mutex {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.seedLocks == nil {
+		m.seedLocks = map[int64]*sync.Mutex{}
+	}
+	l, ok := m.seedLocks[id]
+	if !ok {
+		l = &sync.Mutex{}
+		m.seedLocks[id] = l
+	}
+	return l
+}
+
+// powerVM runs op on the VM of server id under its seed lock; boot notes
+// the time as a boot hlab started.
+func (m *Module) powerVM(ctx context.Context, id int64, op platform.PowerOp, boot bool) error {
+	lock := m.seedLock(id)
+	lock.Lock()
+	defer lock.Unlock()
+	if boot {
+		m.mu.Lock()
+		if m.boots == nil {
+			m.boots = map[int64]time.Time{}
+		}
+		m.boots[id] = m.d.Clock.Now()
+		m.mu.Unlock()
+	}
+	return m.d.Platform.Power(ctx, m.vmName(id), op)
+}
+
+// holdLeft is how long the seed hold of server id still lasts.
+func (m *Module) holdLeft(id int64) time.Duration {
+	m.mu.Lock()
+	boot, ok := m.boots[id]
+	m.mu.Unlock()
+	if !ok || m.d.SeedHold <= 0 {
+		return 0
+	}
+	return boot.Add(m.d.SeedHold).Sub(m.d.Clock.Now())
+}
+
+// delaySeed swaps the seed of server id once its hold has passed, in the
+// background within the cloud's run; one delayed swap per server waits at
+// a time.
+func (m *Module) delaySeed(id int64) {
+	m.mu.Lock()
+	if m.seedPending == nil {
+		m.seedPending = map[int64]bool{}
+	}
+	if m.seedPending[id] {
+		m.mu.Unlock()
+		return
+	}
+	m.seedPending[id] = true
+	if m.run == nil {
+		m.run, m.stopRun = context.WithCancel(context.Background())
+	}
+	run := m.run
+	m.seedSwaps.Add(1)
+	m.mu.Unlock()
+	go func() {
+		defer m.seedSwaps.Done()
+		select {
+		case <-run.Done():
+		case <-m.d.Clock.After(m.holdLeft(id)):
+		}
+		m.mu.Lock()
+		delete(m.seedPending, id)
+		m.mu.Unlock()
+		if run.Err() != nil {
+			return
+		}
+		// A swap once begun ends, so slot 0 is not left empty.
+		err := m.RewriteSeed(context.WithoutCancel(run), m.d.Store, id)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			slog.Error("swap the seed after the hold", "id", id, "err", err)
+		}
+	}()
+}
+
+// endRun ends the delayed seed swaps of the cloud's run and waits for a
+// swap under way; the servers keep seed_due.
+func (m *Module) endRun() {
+	m.mu.Lock()
+	stop := m.stopRun
+	m.run, m.stopRun = nil, nil
+	m.mu.Unlock()
+	if stop != nil {
+		stop()
+	}
+	m.seedSwaps.Wait()
 }
