@@ -113,7 +113,7 @@ func PlanFaults(cfg agentapi.Config, public string) FaultPlan {
 	for _, f := range cfg.Faults {
 		switch f.Kind {
 		case faultNetwork:
-			if f.Server == nil || f.LossPercent <= 0 {
+			if f.Server == nil {
 				continue
 			}
 			if f.LossPercent >= 100 {
@@ -291,9 +291,6 @@ func (p *faultPlanner) addPairs(f agentapi.NetFault, dev, key string, srcs, dsts
 }
 
 func (p *faultPlanner) addClass(dev string, c NetemClass) {
-	if len(c.Flows) == 0 {
-		return
-	}
 	if p.plan.Devices == nil {
 		p.plan.Devices = map[string][]NetemClass{}
 	}
