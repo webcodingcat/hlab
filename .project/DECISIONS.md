@@ -19,6 +19,18 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+An entry that revokes or changes an earlier one states in full what holds
+now, names the earlier entry under `Replaces:`, and the earlier entry moves
+unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
+
+## 2026-11-24 Upgrade to wcc 0.32.27
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.32.26 to 0.32.27: the DECISIONS.md header paragraph on replaced entries and the version line.
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
+
 ## 2026-11-24 Fault lists load target names best-effort
 
 - Type: decision
