@@ -162,12 +162,12 @@ Behaviour the tests build on:
   - [x] Fix in the files of B4-01, B4-02 or B4-05 what a failing row
     shows; rerun only that row
 
-- [ ] B4-07 Documentation
+- [x] B4-07 Documentation
   - Wave: 3 | Depends on: B4-06 | Review: alone
   - Requirements: DOC-03, DOC-04, DOC-07 | Tests: existing tests of test/docs (no new rows)
   - Reads: SPEC.md "Documentation"; CONTEXT.md "Assumptions"; EXPERIMENTS.md E47
   - Size: ~10 lines in 1 file
-  - [ ] `docs/deviations.md` ("Networks, primary and floating IPs"):
+  - [x] `docs/deviations.md` ("Networks, primary and floating IPs"):
     after a cloud start from saved state each server's network drops for
     about 11 to 25 s, caused by Hyper-V and the guest's network driver;
     one sentence that servers created before this release keep their own
