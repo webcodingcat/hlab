@@ -23,6 +23,22 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-24 Delayed seed swaps end with the cloud's run
+
+- Type: decision
+- Phase: phase B4
+- What: delayed seed swaps run under a module-local context that `Halt` cancels, waiting for a swap already under way, which always finishes so slot 0 is never left empty.
+- Why: No new dependency is needed, and a cancelled swap must not leave the drive empty.
+- Cost of change: low
+
+## 2026-11-24 A seed write during rescue clears seed_due
+
+- Type: decision
+- Phase: phase B4
+- What: when rescue holds slot 0 or the server has no VM, `rewriteSeed` writes the seed file and clears `seed_due`.
+- Why: Ending rescue or creating the VM inserts that current file anyway.
+- Cost of change: low
+
 ## 2026-11-24 Due seed swaps run at the end of Restore
 
 - Type: decision

@@ -1165,6 +1165,15 @@ locks a resource of type `project`.
 
 - cidata ISO in DVD slot 0 and user ISO in DVD slot 1 (SCSI controller 1), server disk at SCSI controller 0 LUN 0,
   volumes from LUN 1 upward.
+- Seed swap hold (phase B4, E48): within `Deps.SeedHold` (90 s) after a
+  boot hlab started (create, power on, reset, reboot, rebuild, change type,
+  end of rescue, power on of an Off VM at cloud start) slot 0 is not
+  changed; the new seed file is written, the server record's internal
+  `seed_due` is set before the eject or the deferral and cleared after the
+  insert, and the swap runs when the hold ends. A boot hlab starts waits
+  for a running swap of that server (per-server seed lock). A Saved VM
+  resumed at cloud start is no boot; `Restore` swaps every seed still
+  marked `seed_due`, which also refills a slot 0 left empty by a crash.
 - `vendor-data` installs two hooks into every server created from an hlab
   image: a udev rule that creates `/dev/disk/by-id/scsi-0HC_Volume_<id>`
   from the disk's Page 83 identifier (hlab creates volume disks with the identifier `484C4142-0000-4000-8000-<volume ID as 12 hex digits>`; the last 6 bytes survive in both the T10 and the NAA designator the guest sees), and
