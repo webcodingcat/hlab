@@ -95,7 +95,98 @@ What the block sets and why:
 
 ### Install Windows
 
-Start the VM and open its console:
+Windows setup asks for a Microsoft account; these checks need a local
+account. Which way to it works depends on the Windows build; try them in
+this order.
+
+**Answer file (first choice).** Before the first start, put an answer file
+on a second virtual DVD. Windows setup reads `autounattend.xml` from the
+root of a DVD; the file below hides the online account screens and creates
+one local account in the group Administrators. It holds the password in
+plain text, so use one for this VM only, and delete the folder and the ISO
+once Windows is set up. Paste the block on the development machine, with
+`$Name` and `$VmRoot` as above:
+
+```powershell
+$User     = 'tester'
+$Password = Read-Host "Password for the local account $User"
+$Dir      = "$VmRoot\$Name\unattend"
+$UnattendIso = "$VmRoot\$Name\unattend.iso"
+New-Item -ItemType Directory -Force $Dir | Out-Null
+$u = [Security.SecurityElement]::Escape($User)
+$p = [Security.SecurityElement]::Escape($Password)
+@"
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <OOBE>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+      </OOBE>
+      <UserAccounts>
+        <LocalAccounts>
+          <LocalAccount wcm:action="add">
+            <Name>$u</Name>
+            <Group>Administrators</Group>
+            <Password>
+              <Value>$p</Value>
+              <PlainText>true</PlainText>
+            </Password>
+          </LocalAccount>
+        </LocalAccounts>
+      </UserAccounts>
+    </component>
+  </settings>
+</unattend>
+"@ | Set-Content -Encoding UTF8 "$Dir\autounattend.xml"
+
+Add-Type -TypeDefinition @'
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+public static class IsoFile {
+  public static void Save(object image, string path) {
+    var s = (IStream)image;
+    var buf = new byte[65536];
+    var read = Marshal.AllocHGlobal(4);
+    try {
+      using (var f = File.Create(path)) {
+        while (true) {
+          s.Read(buf, buf.Length, read);
+          int n = Marshal.ReadInt32(read);
+          if (n == 0) break;
+          f.Write(buf, 0, n);
+        }
+      }
+    } finally { Marshal.FreeHGlobal(read); }
+  }
+}
+'@
+$fsi = New-Object -ComObject IMAPI2FS.MsftFileSystemImage
+$fsi.FileSystemsToCreate = 3
+$fsi.VolumeName = 'UNATTEND'
+$fsi.Root.AddTree($Dir, $false)
+[IsoFile]::Save($fsi.CreateResultImage().ImageStream, $UnattendIso)
+Add-VMDvdDrive -VMName $Name -Path $UnattendIso
+```
+
+The ISO is built with Windows' own image mastering interface (IMAPI), so no
+extra tool is needed. The Windows ISO stays the first boot device.
+
+**"Domain join instead".** Without the answer file, on "How would you like
+to set up this device?" choose "Set up for work or school", then "Sign-in
+options", then "Domain join instead".
+
+**Setup without network.** Disconnect the VM from the network before the
+setup screens ask for an account, so setup offers "I don't have internet",
+and connect it again after the first sign-in:
+
+```powershell
+Disconnect-VMNetworkAdapter -VMName $Name
+Connect-VMNetworkAdapter -VMName $Name -SwitchName 'Default Switch'
+```
+
+Then start the VM and open its console:
 
 ```powershell
 Start-VM -Name $Name
@@ -110,28 +201,14 @@ In Windows setup:
 2. Choose **Windows 11 Pro**: Hyper-V needs Pro, Enterprise or Education.
 3. Install on the empty disk.
 
-At the start of the setup screens after the first restart, set up a local
-account instead of a Microsoft account. Which way works depends on the
-Windows build; try them in this order:
-
-- On "How would you like to set up this device?" choose "Set up for work or
-  school", then "Sign-in options", then "Domain join instead".
-- On the network screen, press Shift+F10 and run `start ms-cxh:localonly`
-  in the command prompt that opens.
-- Disconnect the VM from the network before the screens ask for an
-  account, so setup offers "I don't have internet", and connect it again
-  after the first sign-in:
-
-  ```powershell
-  Disconnect-VMNetworkAdapter -VMName $Name
-  Connect-VMNetworkAdapter -VMName $Name -SwitchName 'Default Switch'
-  ```
-
-The account setup creates is an administrator under User Account Control,
-like on most users' machines. After the first sign-in, remove the ISO:
+After the restarts, sign in with the local account. It is an administrator
+under User Account Control, like on most users' machines. Then remove the
+ISOs from the VM, and delete the answer file folder and its ISO if you
+used them:
 
 ```powershell
-Set-VMDvdDrive -VMName $Name -Path $null
+Get-VMDvdDrive -VMName $Name | Set-VMDvdDrive -Path $null
+Remove-Item -Recurse "$VmRoot\$Name\unattend", "$VmRoot\$Name\unattend.iso" -ErrorAction SilentlyContinue
 ```
 
 ### Enable Hyper-V in the VM
