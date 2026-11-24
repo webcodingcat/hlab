@@ -19,6 +19,54 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-24 One IOPS reset per server at cloud start
+
+- Type: decision
+- Phase: phase 26
+- What: `SetDiskIOPS(vm, "", 0)` clears every drive of a VM in one call, and the servers module's cloud start cleanup uses it for the system disk and the volumes, so the volumes cleanup only reattaches disks.
+- Why: E37 shows one read per VM is the cheapest cleanup, and the approved signature stays.
+- Cost of change: low
+
+## 2026-11-24 Cloud start cleanup is tested under FAULT-02
+
+- Type: decision
+- Phase: phase 26
+- What: the unit rows for the `Recover` of the servers and volumes modules are named FAULT-02.
+- Why: FAULT-02 holds the promise that no fault is active after a cloud start, at unit level.
+- Cost of change: low
+
+## 2026-11-24 Fault e2e rows share one server and one restart
+
+- Type: decision
+- Phase: phase 26
+- What: success criterion 4 is checked by FAULT-06/restart, FAULT-09/restart and FAULT-10/restart sharing one lazy cloud stop and start, and all FAULT e2e rows run alone after the LIFE rows on one debian-13 server with one volume.
+- Why: they restart the cloud and act on the same server, so they cannot run in parallel.
+- Cost of change: low
+
+## 2026-11-24 disk_slow on an unattached volume is refused in the target lookup
+
+- Type: decision
+- Phase: phase 26
+- What: the cloud's fault target lookup refuses `disk_slow` on an unattached volume, next to the existing check for `volume_unavailable`.
+- Why: both kinds need the drive, and one check keeps the error the same.
+- Cost of change: low
+
+## 2026-11-24 Crash block and freeze end run inside the action work
+
+- Type: decision
+- Phase: phase 26
+- What: the power and rebuild actions check the crash block and end a freeze in their work, before any Hyper-V call, with the project name passed in from the request handler.
+- Why: faults are kept by project name, and checking before Hyper-V leaves the server unchanged on refusal.
+- Cost of change: low
+
+## 2026-11-24 Freeze and slow disk e2e thresholds
+
+- Type: decision
+- Phase: phase 26
+- What: the freeze check pings the server's IPv4 from the host, and the fio check accepts at most 220 IOPS at a limit of 200 and more than 1000 after the fault ends.
+- Why: E39 measured 197 to 200 with ramp and 130k unlimited, so these bounds are stable.
+- Cost of change: low
+
 ## 2026-11-24 Cloud holds the fault manager behind a stable layer
 
 - Type: decision
