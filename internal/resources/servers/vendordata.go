@@ -560,7 +560,9 @@ func occursIn(parts []mimePart, s string) bool {
 // vendorData returns the server's vendor-data, a multipart MIME document.
 // Its cloud-config part lets root log in with its keys, enables password
 // login, sets `users: []` so no image creates its default user (servers
-// have root only, like Hetzner's) and, if rootHash is set, makes it root's
+// have root only, like Hetzner's), sets hostname and fqdn to name (the seed's
+// meta-data has no local-hostname; with hostname alone EL and Fedora keep
+// the reverse-DNS name) and, if rootHash is set, makes it root's
 // password without expiry; user_data may override these keys, its own
 // `users` included. Its shell script part, run once per instance by
 // cloud-init's scripts_vendor, installs the sshd drop-in that allows root
@@ -572,9 +574,10 @@ func occursIn(parts []mimePart, s string) bool {
 // interpreter it finds (/usr/bin/python3, else EL8's
 // /usr/libexec/platform-python) for the @PYTHON@ placeholder in their
 // shebangs, units and udev rule.
-func vendorData(rootHash string) string {
+func vendorData(rootHash, name string) string {
 	var cfg strings.Builder
 	cfg.WriteString("#cloud-config\ndisable_root: false\nssh_pwauth: true\nusers: []\n")
+	cfg.WriteString("hostname: " + strconv.Quote(name) + "\nfqdn: " + strconv.Quote(name) + "\n")
 	if rootHash != "" {
 		cfg.WriteString("chpasswd:\n  expire: false\n  users:\n    - name: root\n      type: hash\n      password: \"" + rootHash + "\"\n")
 	}

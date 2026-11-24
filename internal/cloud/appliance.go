@@ -281,7 +281,6 @@ func (c *Cloud) writeApplianceISO(ctx context.Context, secret string) error {
 	sum := sha256.Sum256(fmt.Appendf(userData, "\n%s %v %s", iface.MAC, iface.Addresses, iface.Gateway))
 	return cidata.BuildFile(cidata.Seed{
 		InstanceID: c.applianceName() + "-" + hex.EncodeToString(sum[:6]),
-		Hostname:   c.applianceName(),
 		UserData:   string(userData),
 		Interfaces: []cidata.Interface{iface},
 		Files:      files,

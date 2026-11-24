@@ -22,14 +22,17 @@ import (
 
 // Seed is everything one guest receives through its seed ISO.
 type Seed struct {
+	// InstanceID is the only identity in meta-data: it carries no
+	// local-hostname, since cloud-init would set that in its local stage,
+	// where Fedora's hostnamectl fails before D-Bus is up. A guest that needs
+	// a hostname gets it from user-data or vendor-data.
 	InstanceID string
-	Hostname   string
 	SSHKeys    []string
 	// UserData is passed through as given (a #cloud-config or a script);
-	// empty means an empty #cloud-config.
+	// empty means an empty #cloud-config mapping.
 	UserData string
 	// VendorData is passed through as given; empty means an empty
-	// #cloud-config.
+	// #cloud-config mapping.
 	VendorData string
 	// Interfaces are named eth0, eth1, ... in this order.
 	Interfaces []Interface
@@ -160,9 +163,6 @@ func render(seed Seed) (map[string][]byte, error) {
 	if strings.TrimSpace(seed.InstanceID) == "" {
 		return nil, errors.New("cidata: instance id is missing")
 	}
-	if strings.TrimSpace(seed.Hostname) == "" {
-		return nil, errors.New("cidata: hostname is missing")
-	}
 
 	out := make(map[string][]byte, len(seedFiles)+len(seed.Files))
 	for name, data := range seed.Files {
@@ -178,9 +178,8 @@ func render(seed Seed) (map[string][]byte, error) {
 	}
 
 	meta, err := marshal(metaData{
-		InstanceID:    seed.InstanceID,
-		LocalHostname: seed.Hostname,
-		PublicKeys:    nonNil(seed.SSHKeys),
+		InstanceID: seed.InstanceID,
+		PublicKeys: nonNil(seed.SSHKeys),
 	})
 	if err != nil {
 		return nil, err
@@ -199,9 +198,8 @@ func render(seed Seed) (map[string][]byte, error) {
 }
 
 type metaData struct {
-	InstanceID    string   `json:"instance-id"`
-	LocalHostname string   `json:"local-hostname"`
-	PublicKeys    []string `json:"public-keys"`
+	InstanceID string   `json:"instance-id"`
+	PublicKeys []string `json:"public-keys"`
 }
 
 type network struct {

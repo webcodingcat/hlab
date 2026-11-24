@@ -6,7 +6,7 @@
 //   - user-data: UserData()
 //   - meta-data: instance-id (the appliance name plus a hash of the
 //     user-data and the network-config, so a changed user-data or public
-//     range runs once on an existing appliance) and local-hostname
+//     range runs once on an existing appliance), no local-hostname
 //   - network-config: v2, eth0 with the transit address of the public range
 //     (range .1/30) and default route via the host (range .2)
 //   - AgentFile ("hlab-agent"): the static Linux binary bin/hlab-agent

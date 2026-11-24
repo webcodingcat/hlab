@@ -154,10 +154,9 @@ func (m *Module) seed(rec Record) cidata.Seed {
 	}
 	return cidata.Seed{
 		InstanceID: instanceID,
-		Hostname:   rec.Name,
 		SSHKeys:    rec.Hlab.SSHKeys,
 		UserData:   seedUserData(rec.Hlab.UserData, rec.Hlab.AutomountVolumes),
-		VendorData: vendorData(rec.Hlab.RootHash),
+		VendorData: vendorData(rec.Hlab.RootHash, rec.Name),
 		Interfaces: append([]cidata.Interface{public}, privateInterfaces(rec)...),
 		NoOnLink:   !netplanFlavor(rec.Image),
 	}
