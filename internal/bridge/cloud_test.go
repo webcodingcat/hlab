@@ -3,6 +3,7 @@ package bridge_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -473,5 +474,102 @@ func testBanner(t *testing.T) {
 	}
 	if s := c.Status(); s.State != "stopped" || s.ConnectionLost {
 		t.Errorf("state after a regular stop %+v, want only stopped", s)
+	}
+}
+
+// faultsStatusMux answers GET /mgmt/v1/status as a running hlabd with the
+// fault count n.
+func faultsStatusMux(n *atomic.Int32) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /mgmt/v1/status", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"state":"running","version":"1.2.3","problems":[],"shadowing_zones":[],"faults":%d}`, n.Load())
+	})
+	return mux
+}
+
+// testFaultsModel checks that the polled state and the tray model carry the
+// fault count of GET /status.
+func testFaultsModel(t *testing.T) {
+	scm := &fakeSCM{state: sysint.StateRunning}
+	var n atomic.Int32
+	f := newFakeMgmt(t, faultsStatusMux(&n))
+	c, rec := runCloud(t, scm, f, filepath.Join(t.TempDir(), "status.json"), nil)
+
+	// The cases build on each other in order.
+	for _, tc := range []struct {
+		name  string
+		setup func(t *testing.T)
+		want  int
+	}{
+		{"running with 2", func(t *testing.T) {
+			n.Store(2)
+			waitCloud(t, c, rec, "running with 2 faults", func(s bridge.State) bool { return s.State == "running" && s.Faults == 2 })
+		}, 2},
+		{"running with 0", func(t *testing.T) {
+			n.Store(0)
+			waitCloud(t, c, rec, "running with 0 faults", func(s bridge.State) bool { return s.State == "running" && s.Faults == 0 })
+		}, 0},
+		{"connection lost after a count of 2", func(t *testing.T) {
+			n.Store(2)
+			waitCloud(t, c, rec, "running with 2 faults", func(s bridge.State) bool { return s.State == "running" && s.Faults == 2 })
+			f.down.Store(true)
+			waitCloud(t, c, rec, "connection lost", func(s bridge.State) bool { return s.ConnectionLost })
+		}, 2},
+		{"stopped", func(t *testing.T) {
+			scm.set(sysint.StateStopped)
+			waitCloud(t, c, rec, "stopped", func(s bridge.State) bool { return s.State == "stopped" })
+		}, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.setup(t)
+			s := c.Status()
+			if s.Faults != tc.want {
+				t.Errorf("State.Faults %d in %+v, want %d", s.Faults, s, tc.want)
+			}
+			if got := bridge.Tray(s).Faults; got != tc.want {
+				t.Errorf("Tray(...).Faults %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+// testEndAllFaults checks that EndAllFaults sends DELETE /mgmt/v1/faults and
+// passes on a refusal with its message.
+func testEndAllFaults(t *testing.T) {
+	var refuse atomic.Bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("DELETE /mgmt/v1/faults", func(w http.ResponseWriter, _ *http.Request) {
+		if refuse.Load() {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(`{"error":{"code":"cloud_not_running","message":"the cloud is not running"}}`))
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	f := newFakeMgmt(t, mux)
+	c := bridge.NewCloud(bridge.CloudDeps{
+		Service:    &fakeSCM{state: sysint.StateRunning},
+		Client:     f.client(),
+		StatusFile: filepath.Join(t.TempDir(), "status.json"),
+		Interval:   pollInterval,
+		OnChange:   func(bridge.State) {},
+	})
+
+	if err := c.EndAllFaults(); err != nil {
+		t.Fatalf("EndAllFaults on 204: %v", err)
+	}
+	if got := f.count("DELETE /faults"); got != 1 {
+		t.Errorf("DELETE /mgmt/v1/faults sent %d times, want 1", got)
+	}
+
+	refuse.Store(true)
+	err := c.EndAllFaults()
+	if err == nil {
+		t.Fatal("EndAllFaults on cloud_not_running: no error")
+	}
+	if !strings.Contains(err.Error(), "the cloud is not running") {
+		t.Errorf("EndAllFaults error %q, want the message \"the cloud is not running\"", err)
 	}
 }

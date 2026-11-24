@@ -58,6 +58,9 @@ func TestE2E(t *testing.T) {
 	t.Run("FAULT-10/restart", logged(testFAULT10Restart))
 	t.Run("FAULT-07/restart", logged(testFAULT07Restart))
 	t.Run("FAULT-08/restart", logged(testFAULT08Restart))
+	// UI-16 creates every kind through the tray on the fixture's resources
+	// and ends them all, before the fixture goes; it starts the shared tray.
+	t.Run("UI-16", testUI16)
 	releaseFaultFixture(t)
 	releaseFaultNetFixture(t)
 
@@ -72,6 +75,7 @@ func TestE2E(t *testing.T) {
 	t.Run("UI-06", testUI06)
 	t.Run("UI-10", testUI10)
 	t.Run("UI-14", testUI14)
+	t.Run("UI-17", testUI17)
 	t.Run("UI-12", testUI12)
 	t.Run("UI-13", testUI13)
 	// UI-15 opens a second tray window; it runs last of the UI rows, so the

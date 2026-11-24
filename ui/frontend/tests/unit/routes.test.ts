@@ -157,3 +157,29 @@ test.describe("UI-12 storage box routes", () => {
     });
   }
 });
+
+test.describe("UI-16 fault routes", () => {
+  const at = (page: unknown) => ({ area: "project", project: "demo", view: "faults", page }) as Route;
+  const cases: { name: string; route: Route; hash: string }[] = [
+    { name: "list", route: at({ kind: "list" }), hash: "#/projects/demo/faults" },
+    { name: "new", route: at({ kind: "new" }), hash: "#/projects/demo/faults/new" },
+  ];
+  for (const c of cases) {
+    test(`href and parse agree: ${c.name}`, () => {
+      expect(href(c.route)).toBe(c.hash);
+      expect(parse(c.hash)).toEqual(c.route);
+    });
+  }
+
+  test("faults have no detail page", () => {
+    expect(parse("#/projects/demo/faults/3")).toBeUndefined();
+  });
+});
+
+test.describe("UI-17 active faults route", () => {
+  test("href and parse agree", () => {
+    const route = { area: "faults" } as Route;
+    expect(href(route)).toBe("#/faults");
+    expect(parse("#/faults")).toEqual(route);
+  });
+});
