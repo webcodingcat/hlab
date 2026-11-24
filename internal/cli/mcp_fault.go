@@ -6,9 +6,11 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-
-	"github.com/webcodingcat/hlab/internal/faults"
 )
+
+// maxSeed is the largest seed fault_create accepts: 2^53-1, the same limit
+// as the seed hlab chooses (internal/cli does not import internal/faults).
+const maxSeed = 1<<53 - 1
 
 type faultCreateArgs struct {
 	Project  string         `json:"project" jsonschema:"name of the project"`
@@ -37,7 +39,7 @@ func faultCreateSchema() *jsonschema.Schema {
 	if err != nil {
 		panic(err)
 	}
-	s.Properties["seed"].Maximum = jsonschema.Ptr(float64(faults.MaxChosenSeed))
+	s.Properties["seed"].Maximum = jsonschema.Ptr(float64(maxSeed))
 	return s
 }
 
