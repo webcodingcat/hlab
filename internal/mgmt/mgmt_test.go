@@ -661,6 +661,9 @@ func TestMgmt(t *testing.T) {
 			t.Fatalf("deletion of p ended %q, want success", status)
 		}
 	})
+
+	t.Run("FAULT-01", testMgmtFaultRoutes)
+	t.Run("FAULT-02", testMgmtFaultsProjectDeleted)
 }
 
 // doBody sends a request with a JSON body to the management API.

@@ -13,6 +13,7 @@ const (
 	keyDeps ctxKey = iota
 	keyProject
 	keyReadOnly
+	keyByToken
 )
 
 func withDeps(ctx context.Context, d Deps) context.Context {
@@ -30,6 +31,18 @@ func withAuth(ctx context.Context, p store.Project, readOnly bool) context.Conte
 // set it.
 func WithProject(ctx context.Context, p store.Project) context.Context {
 	return withAuth(ctx, p, false)
+}
+
+// withToken marks ctx as authenticated by a token.
+func withToken(ctx context.Context) context.Context {
+	return context.WithValue(ctx, keyByToken, true)
+}
+
+// ByToken reports whether the request was authenticated by a token; a
+// project set by WithProject is never marked.
+func ByToken(ctx context.Context) bool {
+	b, _ := ctx.Value(keyByToken).(bool)
+	return b
 }
 
 // ProjectFrom returns the project the request's token selected.

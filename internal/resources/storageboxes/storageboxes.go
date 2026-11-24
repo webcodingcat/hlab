@@ -72,6 +72,9 @@ type Deps struct {
 	PushAgent func(ctx context.Context) error
 	// Store is what Recover works on outside a request.
 	Store *store.Store
+	// EndFaults ends the faults on a deleted storage box of a project
+	// (faults.Manager.EndTarget); nil = none.
+	EndFaults func(ctx context.Context, project, targetType string, id int64) error
 }
 
 // Module is the storage_boxes resource type.

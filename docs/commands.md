@@ -1,7 +1,7 @@
 # Command reference
 
 `hlab` manages the local cloud: start and stop, projects, API tokens,
-the server type catalog and the HLab CA; `hlab mcp` offers the same to AI
+the server type catalog, the HLab CA and faults; `hlab mcp` offers the same to AI
 agents as an [MCP server](#mcp-server).
 The installation puts it on `PATH`; in a working copy it is
 `bin\hlab.exe`. The examples write `hlab`.
@@ -76,7 +76,8 @@ the cloud is stopping
 ### hlab cloud status
 
 Shows the state (`running`, `stopped`, `starting`, `stopping`), the version,
-any problem found at start, and the DNS zones that hide a public domain.
+any problem found at start, the number of active [faults](#faults) and the
+DNS zones that hide a public domain.
 
 ```
 > hlab cloud status
@@ -84,11 +85,22 @@ state: running
 version: dev
 > hlab cloud status --output json
 {
+  "faults": 0,
   "problems": [],
   "shadowing_zones": [],
   "state": "running",
   "version": "dev"
 }
+```
+
+While faults are active, the text adds `faults active: <n>`; the JSON
+output has the number under `faults`:
+
+```
+> hlab cloud status
+state: running
+version: dev
+faults active: 1
 ```
 
 When the last start was refused, for example because the cloud of the
@@ -293,6 +305,118 @@ the HLab CA is trusted on this host
 the HLab CA is no longer trusted on this host
 ```
 
+## Faults
+
+A fault makes the API of one project misbehave on purpose, so you can test
+how your setup copes; see [Fault injection](guide.md#fault-injection).
+Faults live in memory: they end when their duration runs out, when their
+project is deleted and when the cloud stops. Fault IDs start at 1 after
+every cloud start.
+
+### hlab fault create
+
+`hlab fault create <kind> --project <project>` creates a fault of the
+kind in the project and prints its ID and, for kinds that draw random
+numbers, its seed.
+
+```
+> hlab fault create api_error --project docs --code service_error --percent 50 --only write --seed 42
+fault 2 created with seed 42
+> hlab fault create rate_limit --project docs --per-hour 10 --duration 15m
+fault 7 created
+```
+
+Two kinds can be created:
+
+| Kind | Flags | Effect |
+|---|---|---|
+| `api_error` | `--code` (required), `--percent` (required, 1 to 100), `--only` (`read` or `write`), `--resource`, `--seed` | answers that share of the project's API requests with the Hetzner error `--code` |
+| `rate_limit` | `--per-hour` (required, 1 to 3600) | allows the project that many API requests per hour |
+
+`--code` is any Hetzner error code HLab knows, such as `service_error`,
+`conflict` or `locked`. `--only read` limits `api_error` to GET and HEAD
+requests, `--only write` to all others. `--resource` limits it to one
+resource type, named like the first part of the API path after `/v1`:
+`servers`, `volumes`, `storage_boxes`, `placement_groups` and so on.
+
+`--duration` (any kind) ends the fault after a time such as `30s`, `5m`
+or `2h`, from 1 second to 24 hours; without it the fault stays until you
+delete it. `--seed` is an unsigned 64-bit integer; without it HLab chooses
+one below 2^53. The same seed and the same requests in the same order hit
+the same requests.
+
+The other flags belong to the kinds `server_crash`, `server_freeze`,
+`network`, `latency`, `volume_unavailable`, `disk_slow` and
+`storage_box_unavailable`, which this version refuses with
+`hlab: kind: kind <kind> is not available yet`: the targets `--server`,
+`--volume`, `--storage-box`, `--from` and `--to`, and the parameters
+`--traffic`, `--loss-percent`, `--delay-ms`, `--jitter-ms` and `--iops`.
+
+The command fails with exit code 1 for invalid values, an unknown project
+or target, and a second fault of the same kind (for `api_error` and
+`rate_limit`: in the same project); a number flag with a non-number fails
+with exit code 2:
+
+```
+> hlab fault create api_error --project docs --code nope --percent 10
+hlab: params.code: nope is not a Hetzner error code
+> hlab fault create rate_limit --project docs --per-hour 10 --seed 1
+hlab: seed: kind rate_limit takes no seed (only api_error and network with loss_percent below 100)
+> hlab fault create rate_limit --project docs --per-hour 20
+hlab: fault 8 of kind rate_limit is already active on this target: conflict
+> hlab fault create rate_limit --project docs --per-hour ten
+hlab: --per-hour needs an integer, not "ten"
+```
+
+### hlab fault list
+
+Lists the active faults of all projects, or of `--project <project>`, with
+their target, parameters, seed and remaining time (`-` without a
+duration). `--output json` prints the fault objects with their `created`
+and `ends` times.
+
+```
+> hlab fault list
+ID  PROJECT  KIND       TARGET  PARAMS                                    SEED  REMAINING
+9   docs     api_error  -       code=service_error,only=write,percent=50  42    9m51s
+> hlab fault list --project docs --output json
+{
+  "faults": [
+    {
+      "id": 1,
+      "project": "docs",
+      "kind": "api_error",
+      "target": null,
+      "params": {
+        "code": "service_error",
+        "only": "write",
+        "percent": 50,
+        "resource": "servers"
+      },
+      "seed": 5562314858092496,
+      "created": "2026-11-24T09:33:47.7986006+01:00",
+      "ends": "2026-11-24T09:43:47.7986006+01:00"
+    }
+  ]
+}
+```
+
+### hlab fault delete
+
+Ends one fault, the faults of a project, or every fault:
+
+```
+> hlab fault delete --project docs 7
+fault 7 ended
+> hlab fault delete --project docs --all
+the faults of project docs ended
+> hlab fault delete --all
+all faults ended
+```
+
+Any other combination of `<id>`, `--project` and `--all` fails with exit
+code 2; an unknown fault ID fails with `hlab: fault 99: not found`.
+
 ## Other
 
 ### hlab logs
@@ -337,8 +461,8 @@ run it yourself: the MCP client starts it and talks to it over standard
 input and output; it ends when the client closes its input. It takes no
 flags; `hlab mcp --output json` fails with exit code 2.
 
-The tools start and stop the cloud and manage projects, tokens, the log
-and the HLab CA. Servers, networks and the other Hetzner resources have no
+The tools start and stop the cloud and manage projects, tokens, the log,
+the HLab CA and faults. Servers, networks and the other Hetzner resources have no
 tools; an agent manages them with hcloud, OpenTofu or Ansible and a token
 from `token_create`.
 
@@ -384,12 +508,25 @@ dev service.
 | `ca_export` | none | the certificate of the HLab CA as PEM text; no file is written |
 | `ca_trust` | `on` (true or false) | like `hlab ca trust on` or `off` |
 | `version` | none | like `hlab version` |
+| `fault_create` | `project`, `kind`, `target` (optional), `params` (optional), `seed` (optional, at most 2^53-1), `duration` (optional) | the new fault with its ID and seed, like `hlab fault create` |
+| `fault_list` | `project` (optional; all projects without it) | the active faults, like `hlab fault list` |
+| `fault_delete` | `project` with `id`, `project` with `all`, or `all` alone | ends the faults, like `hlab fault delete` |
+
+`fault_create` takes the parameters of a kind as an object named as in the
+fault list, for example
+`{"project": "docs", "kind": "api_error", "params": {"code": "service_error", "percent": 50, "only": "write"}, "seed": 42, "duration": "10m"}`;
+`target` is an object such as `{"type": "server", "id": 4}`. A `seed`
+above 2^53-1 (9007199254740991) is a tool error, because `hlab mcp` reads
+numbers as floating point, exact only up to there; use
+`hlab fault create --seed` for larger seeds. `fault_delete` with neither
+or both of `id` and `all` is a tool error.
 
 A result is text: what the `hlab` command prints with `--output json`.
 `cloud_start` returns, for example:
 
 ```
 {
+  "faults": 0,
   "problems": [],
   "shadowing_zones": [],
   "state": "running",

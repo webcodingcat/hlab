@@ -12,6 +12,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +36,9 @@ var prefixes = []string{Prefix, HetznerPrefix}
 type Deps struct {
 	Store   *store.Store
 	Actions *actions.Manager
+	// Faults wraps the chain after token auth (faults.Manager.Middleware);
+	// nil = none.
+	Faults func(http.Handler) http.Handler
 }
 
 // Router serves the API of all mounted modules, each under its prefix.
@@ -41,6 +46,7 @@ type Router struct {
 	deps    Deps
 	muxes   map[string]*http.ServeMux // by prefix
 	inner   map[string]http.Handler   // the middleware chain of each mux
+	types   []string                  // Type() of the mounted modules
 	handler http.Handler
 }
 
@@ -53,7 +59,11 @@ func New(deps Deps) *Router {
 			NotFound(w)
 		}))
 		r.muxes[p] = mux
-		r.inner[p] = http.StripPrefix(p, r.authenticate(checkJSON(guardReadOnly(mux))))
+		chain := checkJSON(guardReadOnly(mux))
+		if deps.Faults != nil {
+			chain = deps.Faults(chain)
+		}
+		r.inner[p] = http.StripPrefix(p, r.authenticate(chain))
 	}
 	r.handler = logRequests(r.underPrefix())
 	return r
@@ -75,6 +85,17 @@ func (r *Router) Mount(m resource.Module) {
 		u.UseActions(r.deps.Actions)
 	}
 	m.Routes(registrar{mux})
+	if !slices.Contains(r.types, m.Type()) {
+		r.types = append(r.types, m.Type())
+	}
+}
+
+// Resources returns the first path segments of the mounted modules
+// (their Type()), sorted.
+func (r *Router) Resources() []string {
+	out := slices.Clone(r.types)
+	slices.Sort(out)
+	return out
 }
 
 // ServeHTTP serves one API request.
@@ -88,11 +109,17 @@ func (g registrar) Handle(pattern string, h http.Handler) { g.mux.Handle(pattern
 
 // underPrefix answers not_found outside the prefixes, passes a request
 // under one to that prefix's chain with the prefix stripped and puts the
-// dependencies into the request context.
+// dependencies into the request context. Every response under a prefix
+// gets Hetzner's default RateLimit-* headers; the fault layer overwrites
+// them for token requests.
 func (r *Router) underPrefix() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		for _, p := range prefixes {
 			if strings.HasPrefix(req.URL.Path, p+"/") {
+				h := w.Header()
+				h.Set("RateLimit-Limit", "3600")
+				h.Set("RateLimit-Remaining", "3600")
+				h.Set("RateLimit-Reset", strconv.FormatInt(time.Now().Unix(), 10))
 				r.inner[p].ServeHTTP(w, req.WithContext(withDeps(req.Context(), r.deps)))
 				return
 			}
@@ -130,7 +157,7 @@ func (r *Router) authenticate(next http.Handler) http.Handler {
 			ServerError(w, err)
 			return
 		}
-		next.ServeHTTP(w, req.WithContext(withAuth(req.Context(), project, tok.ReadOnly)))
+		next.ServeHTTP(w, req.WithContext(withToken(withAuth(req.Context(), project, tok.ReadOnly))))
 	})
 }
 

@@ -141,6 +141,9 @@ var mcpTools = []mcpTool{
 		func(s *mcpServer, ctx context.Context, req *mcp.CallToolRequest, _ noArgs) *mcp.CallToolResult {
 			return s.cloudStopWait(ctx, req)
 		}),
+	faultCreateTool,
+	faultDeleteTool,
+	faultListTool,
 	tool("logs", "Return the last lines of hlabd.log as JSON lines, one per line.", logsSchema(),
 		func(s *mcpServer, ctx context.Context, _ *mcp.CallToolRequest, in logsArgs) *mcp.CallToolResult {
 			n := in.Lines

@@ -54,6 +54,7 @@ func (c *Cloud) storageDeps() storageboxes.Deps {
 		},
 		FreeBytes: c.freeBytes,
 		PushAgent: c.PushAgent,
+		EndFaults: c.endFaults,
 	}
 }
 
