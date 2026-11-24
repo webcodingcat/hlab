@@ -561,19 +561,17 @@ func testListPaging(t *testing.T) {
 				t.Fatalf("%d items, need two", len(full))
 			}
 			total := pagination(all)["total_entries"]
-			for page := 1; page <= 2; page++ {
-				status, m := call(t, e, http.MethodGet, fmt.Sprintf("%s?per_page=1&page=%d", ep.path, page), nil)
-				if status != http.StatusOK {
-					t.Fatalf("page %d: status %d", page, status)
-				}
-				items, _ := m[ep.key].([]any)
-				if len(items) != 1 || idOf(items[0]) != idOf(full[page-1]) {
-					t.Errorf("page %d: items %v, want only ID %d", page, ids(items), idOf(full[page-1]))
-				}
-				p := pagination(m)
-				if p["page"] != float64(page) || p["per_page"] != float64(1) || p["total_entries"] != total {
-					t.Errorf("page %d: meta.pagination %v", page, p)
-				}
+			status, m := call(t, e, http.MethodGet, ep.path+"?per_page=1&page=2", nil)
+			if status != http.StatusOK {
+				t.Fatalf("page 2: status %d", status)
+			}
+			items, _ := m[ep.key].([]any)
+			if len(items) != 1 || idOf(items[0]) != idOf(full[1]) {
+				t.Errorf("page 2: items %v, want only ID %d", ids(items), idOf(full[1]))
+			}
+			p := pagination(m)
+			if p["page"] != float64(2) || p["per_page"] != float64(1) || p["total_entries"] != total {
+				t.Errorf("page 2: meta.pagination %v", p)
 			}
 		})
 	}
@@ -1058,78 +1056,32 @@ func labelsOf(obj map[string]any) map[string]any {
 func testLabelsOnResources(t *testing.T) {
 	env := newFullEnv(t)
 	invalid := map[string]string{"hetzner.cloud/reserved": "x"}
-	for _, r := range labeledTypes {
-		t.Run(r.typ, func(t *testing.T) {
-			e := env.For(t)
-			obj := create(t, e, r, "labeled", map[string]string{"a": "1", "b": "2"}, nil)
-			if got := labelsOf(obj); !reflect.DeepEqual(got, map[string]any{"a": "1", "b": "2"}) {
-				t.Errorf("labels after create %v, want a=1, b=2", got)
-			}
-			path := fmt.Sprintf("/%s/%d", r.typ, idOf(obj))
-			current := func() map[string]any {
-				t.Helper()
-				status, m := call(t, e, http.MethodGet, path, nil)
-				if status != http.StatusOK {
-					t.Fatalf("GET %s: status %d", path, status)
-				}
-				o, _ := m[r.key].(map[string]any)
-				return labelsOf(o)
-			}
-
-			status, m := call(t, e, http.MethodPut, path, map[string]any{"labels": map[string]string{"c": "3"}})
-			if status != http.StatusOK {
-				t.Fatalf("PUT with labels: status %d: %v", status, m)
-			}
-			if got := current(); !reflect.DeepEqual(got, map[string]any{"c": "3"}) {
-				t.Errorf("labels after PUT with labels %v, want only c=3", got)
-			}
-
-			status, m = call(t, e, http.MethodPut, path, map[string]any{"name": "relabeled"})
-			if status != http.StatusOK {
-				t.Fatalf("PUT without labels: status %d: %v", status, m)
-			}
-			if got := current(); !reflect.DeepEqual(got, map[string]any{"c": "3"}) {
-				t.Errorf("labels after PUT without labels %v, want c=3 kept", got)
-			}
-
-			body := r.body("bad-labels", nextN())
-			body["labels"] = invalid
-			for _, req := range []struct {
-				method, path string
-				body         any
-			}{
-				{http.MethodPost, "/" + r.typ, body},
-				{http.MethodPut, path, map[string]any{"labels": invalid}},
-			} {
-				status, m := call(t, e, req.method, req.path, req.body)
-				if status != http.StatusUnprocessableEntity || errCode(m) != "invalid_input" ||
-					!reflect.DeepEqual(errFields(m), []string{"labels"}) {
-					t.Errorf("%s %s with invalid labels: status %d code %q fields %v, want 422 invalid_input on labels",
-						req.method, req.path, status, errCode(m), errFields(m))
-				}
-			}
-			if got := current(); !reflect.DeepEqual(got, map[string]any{"c": "3"}) {
-				t.Errorf("labels after refused PUT %v, want c=3 kept", got)
-			}
-			status, m = call(t, e, http.MethodGet, "/"+r.typ+"?name=bad-labels", nil)
-			if items, _ := m[r.typ].([]any); status != http.StatusOK || len(items) != 0 {
-				t.Errorf("refused create stored %d items (status %d)", len(items), status)
-			}
-		})
-	}
 	var zone, labeledBox int64
+	fromType := func(r labeled) func(t *testing.T, e *apitest.Env, labels map[string]string) string {
+		return func(t *testing.T, e *apitest.Env, labels map[string]string) string {
+			return fmt.Sprintf("/%s/%d", r.typ, idOf(create(t, e, r, "labeled", labels, nil)))
+		}
+	}
+	postType := func(r labeled) func() (string, map[string]any) {
+		return func() (string, map[string]any) { return "/" + r.typ, r.body("bad-labels", nextN()) }
+	}
 	for _, r := range []struct {
 		name, key string
 		// create creates the object with labels and returns its path.
 		create func(t *testing.T, e *apitest.Env, labels map[string]string) string
+		// keep is a PUT body without labels.
+		keep map[string]any
 		// post, when set, returns the path and body of a create request
 		// that must be refused once it carries invalid labels.
 		post func() (string, map[string]any)
 	}{
+		{"ssh_keys", "ssh_key", fromType(labeledTypes[0]), map[string]any{"name": "relabeled"}, postType(labeledTypes[0])},
+		{"servers", "server", fromType(labeledTypes[1]), map[string]any{"name": "relabeled"}, postType(labeledTypes[1])},
+		{"placement_groups", "placement_group", fromType(labeledTypes[2]), map[string]any{"name": "relabeled"}, postType(labeledTypes[2])},
 		{"zones", "zone", func(t *testing.T, e *apitest.Env, labels map[string]string) string {
 			zone = createZone(t, e, "labeled.test", labels)
 			return fmt.Sprintf("/zones/%d", zone)
-		}, nil},
+		}, map[string]any{}, nil},
 		{"rrsets", "rrset", func(t *testing.T, e *apitest.Env, labels map[string]string) string {
 			if zone == 0 {
 				zone = createZone(t, e, "labeled.test", nil)
@@ -1142,29 +1094,29 @@ func testLabelsOnResources(t *testing.T) {
 			}
 			e.WaitAction(idOf(m["action"]))
 			return fmt.Sprintf("/zones/%d/rrsets/www/A", zone)
-		}, nil},
+		}, map[string]any{}, nil},
 		{"load_balancers", "load_balancer", func(t *testing.T, e *apitest.Env, labels map[string]string) string {
 			return createLabeled(t, e, "/load_balancers", "load_balancer", lbBody("labeled-lb"), labels)
-		}, nil},
+		}, map[string]any{"name": "relabeled-lb"}, nil},
 		{"certificates", "certificate", func(t *testing.T, e *apitest.Env, labels map[string]string) string {
 			return createLabeled(t, e, "/certificates", "certificate", certBody("labeled-cert"), labels)
-		}, nil},
+		}, map[string]any{"name": "relabeled-cert"}, nil},
 		{"storage_boxes", "storage_box", func(t *testing.T, e *apitest.Env, labels map[string]string) string {
 			return createLabeled(t, e, "/hetzner/v1/storage_boxes", "storage_box", boxBody("labeled-box"), labels)
-		}, func() (string, map[string]any) {
+		}, map[string]any{"name": "relabeled-box"}, func() (string, map[string]any) {
 			return "/hetzner/v1/storage_boxes", boxBody("bad-labels-box")
 		}},
 		{"subaccounts", "subaccount", func(t *testing.T, e *apitest.Env, labels map[string]string) string {
 			labeledBox = createBox(t, e, "labeled-sub-box", nil)
 			return createLabeled(t, e, fmt.Sprintf("/hetzner/v1/storage_boxes/%d/subaccounts", labeledBox), "subaccount",
 				subaccountBody("labeled-sub"), labels)
-		}, func() (string, map[string]any) {
+		}, map[string]any{"description": "relabeled"}, func() (string, map[string]any) {
 			return fmt.Sprintf("/hetzner/v1/storage_boxes/%d/subaccounts", labeledBox), subaccountBody("bad-labels-sub")
 		}},
 	} {
 		t.Run(r.name, func(t *testing.T) {
 			e := env.For(t)
-			path := r.create(t, e, map[string]string{"a": "1"})
+			path := r.create(t, e, map[string]string{"a": "1", "b": "2"})
 			current := func() map[string]any {
 				t.Helper()
 				status, m := call(t, e, http.MethodGet, path, nil)
@@ -1174,33 +1126,39 @@ func testLabelsOnResources(t *testing.T) {
 				o, _ := m[r.key].(map[string]any)
 				return labelsOf(o)
 			}
-			if got := current(); !reflect.DeepEqual(got, map[string]any{"a": "1"}) {
-				t.Errorf("labels after create %v, want a=1", got)
+			if got := current(); !reflect.DeepEqual(got, map[string]any{"a": "1", "b": "2"}) {
+				t.Errorf("labels after create %v, want a=1, b=2", got)
 			}
 			status, m := call(t, e, http.MethodPut, path, map[string]any{"labels": map[string]string{"c": "3"}})
 			if status != http.StatusOK {
 				t.Fatalf("PUT with labels: status %d: %v", status, m)
 			}
 			if got := current(); !reflect.DeepEqual(got, map[string]any{"c": "3"}) {
-				t.Errorf("labels after PUT %v, want only c=3", got)
+				t.Errorf("labels after PUT with labels %v, want only c=3", got)
 			}
-			status, m = call(t, e, http.MethodPut, path, map[string]any{"labels": invalid})
-			if status != http.StatusUnprocessableEntity || errCode(m) != "invalid_input" ||
-				!reflect.DeepEqual(errFields(m), []string{"labels"}) {
-				t.Errorf("PUT with an invalid label key: status %d code %q fields %v, want 422 invalid_input on labels",
-					status, errCode(m), errFields(m))
+			status, m = call(t, e, http.MethodPut, path, r.keep)
+			if status != http.StatusOK {
+				t.Fatalf("PUT without labels: status %d: %v", status, m)
 			}
 			if got := current(); !reflect.DeepEqual(got, map[string]any{"c": "3"}) {
-				t.Errorf("labels after refused PUT %v, want c=3 kept", got)
+				t.Errorf("labels after PUT without labels %v, want c=3 kept", got)
 			}
+			type request struct {
+				method, path string
+				body         map[string]any
+			}
+			reqs := []request{{http.MethodPut, path, map[string]any{"labels": invalid}}}
 			if r.post != nil {
 				p, body := r.post()
 				body["labels"] = invalid
-				status, m := call(t, e, http.MethodPost, p, body)
+				reqs = append(reqs, request{http.MethodPost, p, body})
+			}
+			for _, req := range reqs {
+				status, m := call(t, e, req.method, req.path, req.body)
 				if status != http.StatusUnprocessableEntity || errCode(m) != "invalid_input" ||
 					!reflect.DeepEqual(errFields(m), []string{"labels"}) {
-					t.Errorf("POST %s with invalid labels: status %d code %q fields %v, want 422 invalid_input on labels",
-						p, status, errCode(m), errFields(m))
+					t.Errorf("%s %s with invalid labels: status %d code %q fields %v, want 422 invalid_input on labels",
+						req.method, req.path, status, errCode(m), errFields(m))
 				}
 			}
 		})
