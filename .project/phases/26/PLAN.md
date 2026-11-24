@@ -130,14 +130,14 @@ The injected crash's action error is `server_error` with message
   - [x] `internal/resources/volumes/attach.go`, `volumes.go`: detach and resize call `Deps.EndFaults` for the volume before their platform work (errors logged, the action goes on).
   - [x] `internal/resources/volumes/disk.go`: `Recover` also calls `AttachDisk` (idempotent) for every attached volume at its LUN; a failure is logged.
 
-- [ ] 26-06 Server and disk faults in the cloud
+- [x] 26-06 Server and disk faults in the cloud
   - Wave: 3 | Depends on: 26-03, 26-04, 26-05 | Review: alone
   - Requirements: FAULT-05, FAULT-06, FAULT-09, FAULT-10 | Tests: internal/cloud/faults_test.go, test/e2e/fault_test.go
   - Reads: ARCHITECTURE "faults (phase 25)", "Cloud start and stop"; phases/26/CONTEXT.md; `internal/cloud/faults.go`, `internal/cloud/cloud.go` `modules`, `start`
   - Size: ~90 lines in 2 files
   - Adjusts: -
-  - [ ] `internal/cloud/faults.go`: `Options.Effects = faults.Effects(servers module, volumes module)`; nil-safe `faultActive` and `endFault` over the run's manager; `lookupTarget` refuses `disk_slow` on an unattached volume with an `*faults.InputError` like `volume_unavailable`.
-  - [ ] `internal/cloud/cloud.go`: the servers module's `Deps.FaultActive` and `Deps.EndFault`; the modules kept so `newFaults` can pass them.
+  - [x] `internal/cloud/faults.go`: `Options.Effects = faults.Effects(servers module, volumes module)`; nil-safe `faultActive` and `endFault` over the run's manager; `lookupTarget` refuses `disk_slow` on an unattached volume with an `*faults.InputError` like `volume_unavailable`.
+  - [x] `internal/cloud/cloud.go`: the servers module's `Deps.FaultActive` and `Deps.EndFault`; the modules kept so `newFaults` can pass them.
 
 - [ ] 26-07 Documentation
   - Wave: 4 | Depends on: 26-01, 26-02, 26-03, 26-04, 26-05, 26-06 | Review: alone
