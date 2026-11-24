@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"math"
 	"net/http"
 	"slices"
@@ -21,7 +20,6 @@ import (
 	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/catalog"
-	"github.com/webcodingcat/hlab/internal/faults"
 	"github.com/webcodingcat/hlab/internal/platform"
 	"github.com/webcodingcat/hlab/internal/resource"
 	resactions "github.com/webcodingcat/hlab/internal/resources/actions"
@@ -63,8 +61,8 @@ type Deps struct {
 	ApplianceJob func(ctx context.Context, diskPath string, job agentapi.Job) error
 	// PushAgent rebuilds and pushes the agent document.
 	PushAgent func(ctx context.Context) error
-	// EndFaults ends the faults on a deleted volume of a project
-	// (faults.Manager.EndTarget); nil = none.
+	// EndFaults ends the faults on a volume of a project before it is
+	// deleted, detached or resized (faults.Manager.EndTarget); nil = none.
 	EndFaults func(ctx context.Context, project, targetType string, id int64) error
 }
 
@@ -577,11 +575,7 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 		api.Fail(w, err)
 		return
 	}
-	if m.d.EndFaults != nil {
-		if err := m.d.EndFaults(req.Context(), p.Name, faults.TargetVolume, id); err != nil {
-			slog.Warn("end the faults of a deleted volume", "id", id, "err", err)
-		}
-	}
+	m.endFaults(req.Context(), p.Name, id)
 	if err := removeFile(r.Hlab.Path); err != nil {
 		api.ServerError(w, err)
 		return
@@ -693,6 +687,7 @@ func (m *Module) resize(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	acts.Run(action.ID, func(ctx context.Context, _ func(int)) error {
+		m.endFaults(ctx, p.Name, id)
 		err := m.d.Platform.ResizeDisk(ctx, old.Hlab.Path, int64(size)<<30)
 		if err == nil {
 			return nil
