@@ -94,6 +94,12 @@ func Status(code string) int {
 	return http.StatusInternalServerError
 }
 
+// HasStatus reports whether code is in the status table.
+func HasStatus(code string) bool {
+	_, ok := statuses[code]
+	return ok
+}
+
 // Error writes Hetzner's error object with the status of code. details nil
 // is written as an empty object.
 func Error(w http.ResponseWriter, code, message string, details any) {
