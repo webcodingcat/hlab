@@ -303,7 +303,6 @@ of IDEA.md rather than a numbered goal.
 What the target vision in IDEA.md will need, not built yet.
 
 - LINUX-01 run hlab with the tray on Linux with KVM/libvirt
-- HOST-05 WSL2 in mirrored networking mode
 - CAT-09 further system images (Rocky, Alma, Fedora, CentOS Stream, openSUSE) and app images
 
 ## Out of scope

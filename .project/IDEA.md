@@ -95,7 +95,7 @@ official clients.
   and serves DNS, bound into Windows via NRPT. Servers are reachable directly
   from host and WSL2, reach the internet outbound, and are not reachable
   from LAN or internet. WSL2 is supported in NAT mode with dnsTunneling (the
-  defaults); hlab detects mirrored mode and reports it as not supported yet,
+  defaults); hlab detects mirrored mode and reports it as not supported,
   and never changes `.wslconfig` or WSL distros
   (`decisions/wsl2-networking.md`).
 - Tray program like Docker Desktop: only it starts and stops the cloud,
@@ -133,7 +133,6 @@ The architecture is designed for this target vision; only the first version
 is built for now.
 
 - Linux as a full host with KVM/libvirt, including the UI
-- WSL2 in mirrored networking mode
 - More images: other Hetzner system images (Rocky, Alma, Fedora, CentOS
   Stream, openSUSE), later app images
 
@@ -153,7 +152,6 @@ is built for now.
 - Separate network segments per location or network zone
 - German UI (translation)
 - Automatic update check
-- MCP tools that read and change Hetzner resources
 
 ## Constraints
 

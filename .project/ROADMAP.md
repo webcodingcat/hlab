@@ -153,6 +153,4 @@
 ## Later
 
 - Linux host with KVM/libvirt, including the tray
-- WSL2 in mirrored networking mode
 - More system images and app images
-- MCP tools that read and change Hetzner resources (`decisions/mcp-server.md`)

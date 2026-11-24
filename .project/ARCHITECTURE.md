@@ -1366,8 +1366,6 @@ level = "info"
   the API, store, resource modules, cidata, images (VHDX becomes qcow2 inside
   `platform`) and the appliance stay unchanged. Every `%ProgramData%` path in
   this document is `sysint.Paths` on Windows.
-- WSL2 mirrored mode: a second implementation path inside `hostnet` chosen
-  by `WatchWSL`; the appliance and the API do not change.
 - More images: new entries in `catalog/images.json` with their sources; the
   image pipeline (download on the host, convert, cache) is generic.
 

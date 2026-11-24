@@ -85,8 +85,8 @@ Details:
   (`ANY /mgmt/v1/projects/{name}/api/v1/{rest}`). Rejected for milestone 1
   as much larger (tools, schemas, validation and tests for every resource
   type and action) and bypassing the token model (the path has full
-  rights). Kept as a candidate for a later version, added on top of this
-  scope.
+  rights). Kept as a candidate for a later version until the user removed
+  it from the plans on 2026-11-24.
 - One generic tool that forwards any Hetzner API call to a project.
   Rejected: cheap, but unvalidated and with full write rights.
 - (C) Read-only tools. Rejected: contradicts the settled decision that

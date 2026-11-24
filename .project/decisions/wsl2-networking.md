@@ -20,8 +20,9 @@ WSL2, where Ansible runs.
 - The first version supports WSL2 in NAT mode only, with `dnsTunneling`
   enabled (the default).
 - hlab detects when WSL runs in mirrored mode (or another non-NAT mode) and
-  reports clearly that it is not supported yet, instead of failing silently.
-- Mirrored mode moves to a later version (target vision).
+  reports clearly that it is not supported, instead of failing silently.
+- Mirrored mode moved to a later version (target vision); on 2026-11-24 the
+  user removed it from the plans altogether.
 - hlab does not change `.wslconfig` and changes nothing inside WSL
   distributions. It checks the prerequisites, reports what is missing (for
   example `dnsTunneling=false`), and the documentation lists them.

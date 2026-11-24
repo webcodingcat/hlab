@@ -19,6 +19,14 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-24 WSL2 mirrored mode and MCP resource tools dropped
+
+- Type: change
+- Phase: change
+- What: WSL2 in mirrored networking mode (HOST-05) and MCP tools that read and change Hetzner resources are removed from the target vision, "Possible later", "Later" and the architecture's extensions, without becoming non-goals; hlab keeps reporting mirrored mode as not supported.
+- Why: The user does not want to pursue either of them.
+- Cost of change: low
+
 ## 2026-11-24 Fault injection in milestone 1
 
 - Type: change
