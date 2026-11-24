@@ -26,7 +26,8 @@ import (
 // HTB trees with netem children on the egress of the public device and the
 // t<vlan> links, changed by `tc` from the applied state it keeps in
 // memory. While a loss fault is active, GRO, GSO, TSO and LRO are off on
-// the public and the trunk adapter, so loss counts real packets.
+// the public and the trunk adapter, so loss counts real packets; GRO, GSO
+// and TSO are on otherwise, LRO stays off.
 type Faults struct {
 	Interface string
 	TrunkMAC  net.HardwareAddr
@@ -82,7 +83,13 @@ func (f *Faults) Apply(ctx context.Context, cfg agentapi.Config) error {
 			if dev == "" {
 				continue
 			}
-			args := []string{"-K", dev, "gro", state, "gso", state, "tso", state, "lro", state}
+			args := []string{"-K", dev, "gro", state, "gso", state, "tso", state}
+			if plan.OffloadsOff {
+				// LRO is never turned on again: the kernel turns it off
+				// when forwarding is enabled, and a router forwarding
+				// coalesced segments breaks TCP through it.
+				args = append(args, "lro", "off")
+			}
 			if out, err := exec.CommandContext(ctx, "/usr/sbin/ethtool", args...).CombinedOutput(); err != nil {
 				return fmt.Errorf("faults: ethtool %s: %w: %s", strings.Join(args, " "), err, bytes.TrimSpace(out))
 			}
