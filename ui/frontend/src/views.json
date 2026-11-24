@@ -15,9 +15,11 @@
   "ssh-keys",
   "tokens",
   "certificates",
+  "faults",
   "server-types",
   "storage-box-types",
   "isos",
   "settings",
-  "logs"
+  "logs",
+  "active-faults"
 ]
