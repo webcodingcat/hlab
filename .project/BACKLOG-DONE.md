@@ -4,6 +4,10 @@ Checked items from BACKLOG.md, done or dropped, moved here unchanged at the
 close of each backlog phase. Newest backlog phase first. No skill
 reads this file; it keeps the notes for looking things up.
 
+## Dropped outside a backlog phase
+
+- [x] bug: tray console, create fault form: with an `api_error` fault on reads in a project, the form cannot load its target lists, so the user cannot create a further fault there until that fault ends (source: phase 28 28-06 review) Dropped 2026-11-24: the tray reaches the API only through the management API's project proxy (`api.WithProject`, internal/mgmt/mgmt.go `proxy`), which the fault middleware never marks (FAULT-03), so an `api_error` fault cannot hit the form's lists.
+
 ## B3
 
 - [x] later: servers: `Reconcile` (internal/resources/servers/reconcile.go) takes an existing VM as it is and never checks an existing disk file, so a VM left without disk, adapter, seed or boot order by an aborted create stays broken; phase 09 (LIFE-02/03/04) restores servers through `Reconcile` and needs it to do only the difference (source: 03 03-06 review) - dropped by the user
