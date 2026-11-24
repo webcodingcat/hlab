@@ -115,17 +115,17 @@ Behaviour the tests build on:
     counts as already gone; the record is deleted and the caller
     (delete_snapshot, `prune`) goes on
 
-- [ ] B4-04 Convention tests: one wiring case per endpoint for paging and labels
+- [x] B4-04 Convention tests: one wiring case per endpoint for paging and labels
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: API-05, API-07 | Tests: internal/resources/conventions_test.go (restructured, see TESTS.md "Restructured tests")
   - Reads: CONTEXT.md "Assumptions" (convention tests); TESTS.md
     "Restructured tests"
   - Size: ~-150 lines in 1 file
-  - [ ] Measure before: the line count of `testListPaging` and
+  - [x] Measure before: the line count of `testListPaging` and
     `testLabelsOnResources` and the run time of
     `task test -- ./internal/resources/... -run 'TestResources/API-0[57]'`
     (median of three runs)
-  - [ ] `internal/resources/conventions_test.go`: `testListPaging` checks
+  - [x] `internal/resources/conventions_test.go`: `testListPaging` checks
     per endpoint only `per_page=1&page=2` (the second item of the full
     list; `meta.pagination` page 2, per_page 1 and the full list's
     total_entries). `testLabelsOnResources` becomes one table over every
@@ -136,7 +136,7 @@ Behaviour the tests build on:
     answer 422 `invalid_input` on `labels`. The checks "refused create
     stores nothing" and "refused PUT keeps the labels" go. Helpers are
     reused
-  - [ ] Measure after the same way; both values go to "Close"
+  - [x] Measure after the same way; both values go to "Close"
 
 - [ ] B4-05 E2E harness: steady private traffic is 8 s without loss
   - Wave: 1 | Depends on: - | Review: alone
@@ -174,3 +174,7 @@ Behaviour the tests build on:
     netplan settings on private links through such a drop only after a
     rebuild. Keep the file near 250 lines (tighten a sentence elsewhere
     if needed)
+
+## Close
+
+- B4-04: `testListPaging` + `testLabelsOnResources` 206 -> 164 lines (55+151 -> 53+111), `conventions_test.go` 1303 -> 1261 lines; run time of `task test -- ./internal/resources/... -run 'TestResources/API-0[57]' -count=1` (median of three) 0.99 s -> 1.05 s, mostly environment setup.
