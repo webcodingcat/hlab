@@ -150,16 +150,16 @@ Behaviour the tests build on:
     minutes; on timeout the failure names the server, the peer address and
     the last loss seen. The measurements of the rows stay unchanged
 
-- [ ] B4-06 End to end: seed hold, guest hook and restart rows on the dev cloud
+- [x] B4-06 End to end: seed hold, guest hook and restart rows on the dev cloud
   - Wave: 2 | Depends on: B4-01, B4-02, B4-05 | Review: alone
   - Requirements: CLI-04, LIFE-04, FAULT-07, FAULT-08 | Tests: test/e2e/life_test.go, test/e2e/fault_net_test.go, existing TestE2E/CLI-04/tofu
   - Reads: CONTEXT.md; EXPERIMENTS.md E47, E48; CLAUDE.md "Build and test commands"
   - Size: ~0-80 lines in at most 3 files (fixes only where a row fails)
-  - [ ] `task build`, restart the dev service, then
+  - [x] `task build`, restart the dev service, then
     `task e2e -- -run 'TestE2E/(LIFE-0[2347]|FAULT-0[78])'`
-  - [ ] `task e2e -- -run 'TestE2E/CLI-04/tofu'` five times in a row; the
+  - [x] `task e2e -- -run 'TestE2E/CLI-04/tofu'` five times in a row; the
     results go to "Close" (before: about every second run failed, phase 19)
-  - [ ] Fix in the files of B4-01, B4-02 or B4-05 what a failing row
+  - [x] Fix in the files of B4-01, B4-02 or B4-05 what a failing row
     shows; rerun only that row
 
 - [ ] B4-07 Documentation
@@ -178,3 +178,4 @@ Behaviour the tests build on:
 ## Close
 
 - B4-04: `testListPaging` + `testLabelsOnResources` 206 -> 164 lines (55+151 -> 53+111), `conventions_test.go` 1303 -> 1261 lines; run time of `task test -- ./internal/resources/... -run 'TestResources/API-0[57]' -count=1` (median of three) 0.99 s -> 1.05 s, mostly environment setup.
+- B4-06 on 37c2961: `task e2e -- -run 'TestE2E/(LIFE-0[2347]|FAULT-0[78])'` ok in 829 s; `TestE2E/CLI-04/tofu` five times in a row, all green (162, 174, 163, 160, 164 s; before: about every second run failed). `TestE2E/LIFE-04/netplan_private` failed before the B4-02 fix for the right reason (`05-hlab-*.network` written, alias IP unreachable) and passes after it.
