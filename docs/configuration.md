@@ -287,7 +287,7 @@ development service reads them from `catalog\` of the working copy.
 | `load-balancer-types.json` | Load balancer types, served at `/load_balancer_types` | `task catalog` |
 | `pricing.json` | Prices, served at `/pricing` | `task catalog` |
 | `storage-box-types.json` | Storage box types with their prices per location, as Hetzner's API returns them, served at `/hetzner/v1/storage_box_types`; without the file there are none | `task catalog` |
-| `images.json` | The system images ubuntu-22.04, ubuntu-24.04, ubuntu-26.04, debian-12, debian-13, each with its download source in `_hlab.source` | by hand |
+| `images.json` | The system images ubuntu-22.04, ubuntu-24.04, ubuntu-26.04, debian-12, debian-13, rocky-8, rocky-9, rocky-10, alma-8, alma-9, alma-10, centos-stream-9, centos-stream-10, fedora-43, fedora-44 and opensuse-16, as Hetzner's API returns them (fedora-43 with Hetzner's `deprecation`), each with its download source in `_hlab.source` | by hand |
 | `isos.json` | The ISOs served at `/isos`, see [ISOs](#isos) | by hand |
 | `appliance-debs.json` | Debian packages the appliance needs for formatting volumes and for load balancers, see [Appliance packages](#appliance-packages) | by hand |
 | `storage-debs.json` | Debian packages the storage VM needs for the storage boxes, see [Storage VM packages](#storage-vm-packages) | by hand |

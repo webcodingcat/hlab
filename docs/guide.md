@@ -64,6 +64,66 @@ A cloud with too little free RAM or disk, beyond the reserve set in the
 [configuration](configuration.md#settingstoml), refuses to
 create or start a server with `resource_unavailable`.
 
+### Choosing an image
+
+`hcloud image list --type system` shows the system images, under
+Hetzner's names and IDs:
+
+```
+> hcloud image list --type system
+ID          TYPE     NAME               DESCRIPTION        ARCHITECTURE   IMAGE SIZE   DISK SIZE   CREATED                    DEPRECATED
+45780948    system   rocky-8            Rocky Linux 8      x86            -            5 GB        2021-08-19 08:30:23 CEST   -
+59752342    system   centos-stream-9    CentOS Stream 9    x86            -            5 GB        2022-01-27 08:52:03 CET    -
+67794396    system   ubuntu-22.04       Ubuntu 22.04       x86            -            5 GB        2022-04-21 15:32:38 CEST   -
+76766499    system   rocky-9            Rocky Linux 9      x86            -            5 GB        2022-07-20 15:55:52 CEST   -
+104788983   system   alma-8             AlmaLinux 8        x86            -            5 GB        2023-03-27 13:32:49 CEST   -
+104788996   system   alma-9             AlmaLinux 9        x86            -            5 GB        2023-03-27 13:33:04 CEST   -
+114690387   system   debian-12          Debian 12          x86            -            5 GB        2023-06-13 08:00:02 CEST   -
+161547269   system   ubuntu-24.04       Ubuntu 24.04       x86            -            5 GB        2024-04-25 15:26:27 CEST   -
+210163277   system   centos-stream-10   CentOS Stream 10   x86            -            5 GB        2025-01-08 10:54:17 CET    -
+245249013   system   alma-10            AlmaLinux 10       x86            -            5 GB        2025-06-17 15:06:30 CEST   -
+245249370   system   rocky-10           Rocky Linux 10     x86            -            5 GB        2025-06-17 15:03:39 CEST   -
+310554929   system   debian-13          Debian 13          x86            -            5 GB        2025-08-18 08:15:25 CEST   -
+342035601   system   fedora-43          Fedora 43          x86            -            5 GB        2025-12-18 14:14:36 CET    2026-11-12 01:00:00 CET
+342262088   system   opensuse-16        openSUSE Leap 16   x86            -            5 GB        2025-12-19 10:04:13 CET    -
+387893188   system   fedora-44          Fedora 44          x86            -            5 GB        2026-05-18 12:57:10 CEST   -
+387894169   system   ubuntu-26.04       Ubuntu 26.04       x86            -            5 GB        2026-05-18 13:00:39 CEST   -
+```
+
+- The first server or rebuild with an image downloads it from its
+  official source, which takes a few minutes; later ones reuse the copy.
+- fedora-43 is deprecated, as at Hetzner. The window's **Create server**
+  and **Rebuild** dialogs leave it out, and hcloud asks for a flag:
+
+  ```
+  > hcloud server create --name web1 --type cx23 --location fsn1 --image fedora-43 --ssh-key demo
+  hcloud: Image "fedora-43" is deprecated and will no longer be available for order as of 2027-02-09, please use --allow-deprecated-image to create a Server with this Image
+  ```
+
+  With `--allow-deprecated-image`, or by name or ID through the API, it
+  still works.
+- On every image root is the only login, as at Hetzner: no image creates
+  its default user such as `ubuntu`, `debian` or `rocky`. Users you
+  define in the user data are created:
+
+  ```
+  > hcloud server create --name web2 --type cx23 --location fsn1 --image ubuntu-24.04 --ssh-key demo --user-data-from-file users.yaml
+  ```
+
+  with `users.yaml`:
+
+  ```yaml
+  #cloud-config
+  users:
+    - name: dev
+      ssh_authorized_keys:
+        - ssh-ed25519 AAAA... dev
+  ```
+
+- The guest's hostname is the server's name. cloud-init sets it a few
+  seconds into the first boot; until then the guest has another name,
+  such as `localhost`, `ubuntu` or its reverse-DNS name.
+
 ### Server console
 
 `request-console` gives the URL and password of the server's screen, as
