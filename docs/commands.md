@@ -307,8 +307,8 @@ the HLab CA is no longer trusted on this host
 
 ## Faults
 
-A fault makes the API, a server or a volume of one project misbehave on
-purpose, so you can test how your setup copes; see
+A fault makes the API, a server, its network, a volume or a storage box
+of one project misbehave on purpose, so you can test how your setup copes; see
 [Fault injection](guide.md#fault-injection).
 Faults live in memory: they end when their duration runs out, when their
 project is deleted and when the cloud stops. Fault IDs start at 1 after
@@ -327,6 +327,12 @@ fault 2 created with seed 42
 fault 7 created
 > hlab fault create disk_slow --project docs --volume 207 --iops 100
 fault 9 created
+> hlab fault create network --project docs --server 778 --traffic private --loss-percent 20 --seed 42
+fault 3 created with seed 42
+> hlab fault create latency --project docs --from fsn1 --to hel1 --delay-ms 50
+fault 10 created
+> hlab fault create storage_box_unavailable --project docs --storage-box 172
+fault 11 created
 ```
 
 These kinds can be created:
@@ -339,6 +345,9 @@ These kinds can be created:
 | `server_freeze` | `--server <id>` (required) | pauses the running server; the API still shows it `running` |
 | `volume_unavailable` | `--volume <id>` (required, an attached volume) | removes the volume's disk from its server; the API still shows it attached |
 | `disk_slow` | `--volume <id>` (an attached volume) or `--server <id>`, `--iops` (required, 10 to 1000000) | limits the volume or the server's system disk to `--iops` I/Os of 8 KiB per second |
+| `network` | `--server <id>` (required), `--traffic` (required: `public`, `private` or `all`), `--loss-percent` (required, 1 to 100), `--seed` (below 100 % only) | drops that share of the packets to the server; 100 cuts its traffic both ways |
+| `latency` | `--server <id>`, or `--from <location>` and `--to <location>`; `--delay-ms` (required, 1 to 10000), `--jitter-ms` (0 to the delay) | adds the delay to every round trip of the server, or of the traffic between the project's servers in the two locations |
+| `storage_box_unavailable` | `--storage-box <id>` (required) | makes the storage box unreachable on every protocol |
 
 `--code` is any Hetzner error code HLab knows, such as `service_error`,
 `conflict` or `locked`. `--only read` limits `api_error` to GET and HEAD
@@ -350,13 +359,8 @@ resource type, named like the first part of the API path after `/v1`:
 or `2h`, from 1 second to 24 hours; without it the fault stays until you
 delete it. `--seed` is an unsigned 64-bit integer; without it HLab chooses
 one below 2^53. The same seed and the same requests in the same order hit
-the same requests.
-
-The other flags belong to the kinds `network`, `latency` and
-`storage_box_unavailable`, which this version refuses with
-`hlab: kind: kind <kind> is not available yet`: the targets
-`--storage-box`, `--from` and `--to`, and the parameters `--traffic`,
-`--loss-percent`, `--delay-ms` and `--jitter-ms`.
+the same requests, and for `network` the same packets in the same order.
+`--from fsn1 --to hel1` and `--from hel1 --to fsn1` are the same target.
 
 The command fails with exit code 1 for invalid values, an unknown project
 or target, and a second fault of the same kind (for `api_error` and
@@ -521,7 +525,9 @@ dev service.
 `fault_create` takes the parameters of a kind as an object named as in the
 fault list, for example
 `{"project": "docs", "kind": "api_error", "params": {"code": "service_error", "percent": 50, "only": "write"}, "seed": 42, "duration": "10m"}`;
-`target` is an object such as `{"type": "server", "id": 4}`. A `seed`
+`target` is an object such as `{"type": "server", "id": 4}`, with the
+types `server`, `volume` and `storage_box`, or
+`{"type": "locations", "from": "fsn1", "to": "hel1"}`. A `seed`
 above 2^53-1 (9007199254740991) is a tool error, because `hlab mcp` reads
 numbers as floating point, exact only up to there; use
 `hlab fault create --seed` for larger seeds. `fault_delete` with neither

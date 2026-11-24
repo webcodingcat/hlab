@@ -196,14 +196,14 @@ Rules of the plan (ARCHITECTURE.md "hlab-agent", E29, E40, E41):
   - [x] `internal/cloud/faults.go`: per run a `faults.NewNetEffects(c.PushAgent)` kept beside the manager, its `Effects()` merged into `Options.Effects`; `netFaults` as in "Interfaces" (server target: public IPv4 from `doc.Servers`, private from the members of `doc.Networks` with VLAN, IP and alias IPs; locations: the project's servers in the store by location, then their entries as for a server; box: the record's IP; parameters and seed from the fault).
   - [x] `internal/cloud/cloud.go`: `PushAgent` sets `doc.Faults` from the run's net effects inside its store transaction, after the modules; none while stopped. Check that no caller of `endFaults` holds `pushMu`.
 
-- [ ] 27-06 Documentation
+- [x] 27-06 Documentation
   - Wave: 5 | Depends on: 27-01, 27-02, 27-03, 27-04, 27-05 | Review: alone
   - Requirements: DOC-01, DOC-03, DOC-04, DOC-07 | Tests: test/docs/docs_test.go (existing)
   - Reads: SPEC "Documentation" (D1, D4, D6) and "Accounts and secrets" (hlab-docs context); REQUIREMENTS FAULT-07, FAULT-08, FAULT-11, DOC-01 to DOC-07; decisions/fault-injection.md; EXPERIMENTS E17, E44; phases/27/CONTEXT.md
   - Size: ~150 lines in 3 files
   - Adjusts: -
-  - [ ] `docs/guide.md`, "Fault injection": the sentence naming `network`, `latency` and `storage_box_unavailable` as not available goes; one example each with `hlab fault create` (a cut, a loss with seed, latency on a server and between fsn1 and hel1, a box); loss hits packets to the server, the delay is added once per round trip, jitter may reorder, what keeps a seed's pattern repeatable, that a locations latency hits only server-to-server traffic of the project, that a cut also stops DNS, metadata and the API while the console keeps working, and the SMB delay on the Windows host after a box fault.
-  - [ ] `docs/deviations.md` (a blocked box is still reachable with its credentials over SSH and FTP at another box's address) and `docs/development/components.md` (the agent's faults applier, plan and tc state).
+  - [x] `docs/guide.md`, "Fault injection": the sentence naming `network`, `latency` and `storage_box_unavailable` as not available goes; one example each with `hlab fault create` (a cut, a loss with seed, latency on a server and between fsn1 and hel1, a box); loss hits packets to the server, the delay is added once per round trip, jitter may reorder, what keeps a seed's pattern repeatable, that a locations latency hits only server-to-server traffic of the project, that a cut also stops DNS, metadata and the API while the console keeps working, and the SMB delay on the Windows host after a box fault.
+  - [x] `docs/deviations.md` (a blocked box is still reachable with its credentials over SSH and FTP at another box's address) and `docs/development/components.md` (the agent's faults applier, plan and tc state).
 
 ## Order of the e2e rows
 

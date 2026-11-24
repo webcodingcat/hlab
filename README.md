@@ -32,8 +32,9 @@ and FTP. Other parts of the Hetzner API answer
 A [tray program](#the-tray-program) starts and stops the cloud and manages
 projects, tokens, every resource of a project, server types and settings.
 With [fault injection](docs/guide.md#fault-injection) you make a project's
-API answer with errors or rate limits, crash or freeze a server, or take
-away or slow down a disk, to test how your setup copes.
+API answer with errors or rate limits, crash or freeze a server, cut,
+thin out or delay its network, take away or slow down a disk, or make a
+storage box unreachable, to test how your setup copes.
 
 <p align="center">
   <picture>
