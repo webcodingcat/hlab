@@ -3,6 +3,7 @@
   import CloudStopped from "../../lib/CloudStopped.svelte";
   import ConfirmDialog from "../../lib/ConfirmDialog.svelte";
   import FaultsTable from "../../lib/FaultsTable.svelte";
+  import FaultForm from "./FaultForm.svelte";
   import HelpButton from "../../lib/HelpButton.svelte";
   import { hetznerListAll, listAll } from "../../lib/api";
   import { mgmt } from "../../lib/bridge";
@@ -13,7 +14,7 @@
 
   // The "Faults" section of a project console: the project's active faults
   // from the management API with the names of its servers, volumes and
-  // storage boxes for the target column.
+  // storage boxes for the target column; page "new" is the create form.
   let { project, page }: { project: string; page: Page } = $props();
 
   const base = $derived(`/projects/${encodeURIComponent(project)}/faults`);
@@ -54,6 +55,8 @@
     return () => clearInterval(t);
   });
 
+  const list = $derived(href({ area: "project", project, view: "faults", page: { kind: "list" } }));
+
   function openCreate() {
     location.hash = href({ area: "project", project, view: "faults", page: { kind: "new" } });
   }
@@ -73,10 +76,14 @@
   }
 </script>
 
-<div class="title-row">
-  <h1>Faults</h1>
-  <HelpButton view="faults" />
-</div>
+{#if $running && page.kind === "new"}
+  <FaultForm {project} {list} />
+{:else}
+  <div class="title-row">
+    <h1>Faults</h1>
+    <HelpButton view="faults" />
+  </div>
+{/if}
 
 {#if !$running}
   <CloudStopped />
