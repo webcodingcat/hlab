@@ -112,13 +112,13 @@ The injected crash's action error is `server_error` with message
   - [x] `internal/resources/servers/faults.go` (new): `Crash` (ends a freeze through `Deps.EndFault` first, `PowerStop`, status `off` through `setStatus`, no action), `Freeze` (`*faults.InputError` "server is not running" unless the VM is Running; `PowerPause`; the status stays), `Thaw` (`PowerResume` only on a Paused VM), `SetSystemDiskIOPS` (`SetDiskIOPS` on the system disk path); unknown server `faults.ErrNotFound`.
   - [x] `internal/resources/servers/servers.go`, `power.go`, `rebuild.go`, `rescue.go`: `Deps.FaultActive` and `Deps.EndFault`; in the work of the five power actions and rebuild, before any platform call, `EndFault(server_freeze)`; for poweron, reboot, reset and rebuild, while `FaultActive(server_crash)` the action ends with `server_error` "the server's host failed (injected fault)" before anything changes (rebuild keeps its disk); the project name is taken in the handler and passed into the work.
 
-- [ ] 26-04 Servers: cleanup at cloud start
+- [x] 26-04 Servers: cleanup at cloud start
   - Wave: 2 | Depends on: 26-01 | Review: alone
   - Requirements: FAULT-06, FAULT-10 (FAULT-02 at cloud start) | Tests: internal/resources/servers/faults_test.go
   - Reads: ARCHITECTURE "resource" (`Recoverer`), "faults (phase 25)" the cloud start paragraph, "Cloud start and stop"; EXPERIMENTS E37; phases/26/CONTEXT.md
   - Size: ~70 lines in 1 file
   - Adjusts: -
-  - [ ] `internal/resources/servers/recover.go` (new): `Recover` implementing `resource.Recoverer`: for every server whose VM exists, `PowerResume` when it is Paused and `SetDiskIOPS(vm, "", 0)` (all drives, volumes included); errors logged per server, never abort the start.
+  - [x] `internal/resources/servers/recover.go` (new): `Recover` implementing `resource.Recoverer`: for every server whose VM exists, `PowerResume` when it is Paused and `SetDiskIOPS(vm, "", 0)` (all drives, volumes included); errors logged per server, never abort the start.
 
 - [x] 26-05 Volumes: unavailable, slow and cleanup at cloud start
   - Wave: 2 | Depends on: 26-01, 26-02 | Review: alone
