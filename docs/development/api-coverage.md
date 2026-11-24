@@ -721,6 +721,31 @@ The Storage Box endpoints of Hetzner's API are served under
   subaccount or snapshot is already gone at its turn. A box with delete protection answers 423 `protected` to
   `DELETE`.
 
+## Rate limits and faults
+
+Every response under `/v1` and `/hetzner/v1`, errors, 401 and unknown
+paths included, carries `RateLimit-Limit`, `RateLimit-Remaining` and
+`RateLimit-Reset` (Unix seconds when the bucket is full again). Requests
+with a valid API token count against one bucket per project for both
+APIs: 3600 per hour, one back per second. Unlike Hetzner, HLab never
+refuses a request when that bucket is empty; `RateLimit-Remaining` stops
+at 0. A response without a valid token shows 3600 of 3600 and counts
+nothing.
+
+The faults of a project ([internal/faults](../../internal/faults)) act on
+its token requests after authentication, never on the management API's
+project proxy:
+
+- `rate_limit` replaces the bucket by one of `per_hour` requests, full at
+  creation; an empty bucket answers 429 `rate_limit_exceeded`, and that
+  request does not count. When the fault ends the default bucket applies
+  again.
+- `api_error` answers a share of the requests that pass its `only`
+  (`read` is GET and HEAD) and `resource` (first path segment after the
+  prefix) filters with the chosen code and the status of that code, message
+  `<code> injected by HLab fault <id>`; an injected `invalid_input` has
+  `details.fields: []`. Requests it refuses still count against the bucket.
+
 ## Projects
 
 Projects and tokens are managed with the `hlab` command and in the tray

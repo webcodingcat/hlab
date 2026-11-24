@@ -31,6 +31,8 @@ and FTP. Other parts of the Hetzner API answer
 `not_found`; what else differs is in [Known deviations](docs/deviations.md).
 A [tray program](#the-tray-program) starts and stops the cloud and manages
 projects, tokens, every resource of a project, server types and settings.
+With [fault injection](docs/guide.md#fault-injection) you make a project's
+API answer with errors or rate limits to test how your setup copes.
 
 <p align="center">
   <picture>
@@ -290,8 +292,8 @@ the project pages show "Start the cloud to manage projects" with a
 ## MCP server
 
 `hlab mcp` lets an AI agent such as Claude Code or Claude Desktop start
-and stop the cloud and manage projects, tokens, the log and the HLab CA
-through the Model Context Protocol. Register it with your client, for
+and stop the cloud and manage projects, tokens, the log, the HLab CA and
+faults through the Model Context Protocol. Register it with your client, for
 example:
 
 ```
@@ -370,7 +372,8 @@ of it in `%ProgramData%\Package Cache`.
 
 ## More documentation
 
-- [Guide](docs/guide.md): every resource with hcloud, OpenTofu and Ansible.
+- [Guide](docs/guide.md): every resource with hcloud, OpenTofu and
+  Ansible, and fault injection.
 - [Command reference](docs/commands.md): every `hlab` command and flag,
   and the tools of the MCP server `hlab mcp`.
 - [Configuration reference](docs/configuration.md): `settings.toml`, own

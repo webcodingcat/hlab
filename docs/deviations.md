@@ -232,6 +232,11 @@ Hetzner with your token. Your own server types, defined in the
 program, appear after the catalog types; without prices they cost
 nothing.
 
+HLab sends Hetzner's rate limit headers and counts each project's
+requests against 3600 per hour, but never refuses a request for it unless
+you set a `rate_limit` [fault](guide.md#rate-limits); scripts that would
+run into Hetzner's limit work in HLab.
+
 ## WSL2
 
 Servers and the API are reachable from WSL2 only in NAT networking mode

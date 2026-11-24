@@ -1199,6 +1199,116 @@ localhost                  : ok=4    changed=3    unreachable=0    failed=0    s
 `hetzner.hcloud.storage_box` with `state: absent` deletes the box with
 its subaccounts and snapshots.
 
+## Fault injection
+
+A fault makes the API of one project fail on purpose, so you can see how
+your scripts, OpenTofu configurations and Ansible playbooks cope with
+errors and rate limits. Create faults with
+[`hlab fault`](commands.md#faults) or, for an AI agent, with the MCP tools
+`fault_create`, `fault_list` and `fault_delete`.
+
+A fault affects only requests made with an API token of its project, to
+the Cloud API and the Storage Box API alike. The HLab window is never
+affected. A fault ends when its `--duration` runs out, when you delete it,
+when its project is deleted and when the cloud stops; after a cloud start
+no fault is active. `hlab cloud status` shows `faults active: <n>` while
+there are any.
+
+This version offers the kinds `api_error` and `rate_limit`; the command
+refuses the others as not available yet.
+
+### API errors
+
+An `api_error` fault answers a share of the project's requests with a
+Hetzner error, before HLab acts on them. Half of all writes fail with
+`service_error` here:
+
+```
+> hlab fault create api_error --project docs --code service_error --percent 50 --only write --seed 42
+fault 2 created with seed 42
+> hcloud placement-group create --name pg-1 --type spread
+Placement Group 109 created
+> hcloud placement-group create --name pg-2 --type spread
+hcloud: service_error injected by HLab fault 2 (service_error)
+> hcloud placement-group create --name pg-3 --type spread
+Placement Group 110 created
+> hcloud placement-group create --name pg-4 --type spread
+Placement Group 111 created
+> hlab fault delete --project docs --all
+the faults of project docs ended
+```
+
+`--only read` (GET and HEAD) or `--only write` (everything else) and
+`--resource servers` (or `volumes`, `storage_boxes` and the other first
+parts of the API path) narrow the requests the fault draws for. Each
+matching request draws once, in the order they arrive. The seed fixes the
+draws: a new fault with seed 42 and the same requests fails the same
+second request again. Without `--seed` HLab chooses one and prints it, so
+you can repeat a run later.
+
+The error code decides whether the client gives up. hcloud, the OpenTofu
+provider and the Ansible collection retry `conflict`,
+`rate_limit_exceeded`, `bad_gateway` and `timeout` up to five times,
+waiting up to about 31 seconds in all, and fail at once on every other
+code, such as `service_error`, `server_error`, `locked` or
+`invalid_input`. Use a code that is not retried to see your setup handle
+a failure, and `conflict` to see the client recover:
+
+```
+> hlab fault create api_error --project docs --code conflict --percent 50 --only read --resource placement_groups --seed 42
+fault 6 created with seed 42
+> hcloud placement-group list
+...
+> hlab logs
+...
+2026-11-24 09:34:28 INFO api request method=GET path=/v1/placement_groups status=200 duration=505500
+2026-11-24 09:34:28 INFO api request method=GET path=/v1/placement_groups status=409 duration=0
+2026-11-24 09:34:29 INFO api request method=GET path=/v1/placement_groups status=200 duration=871600
+```
+
+Every `hcloud placement-group list` succeeds; the log shows the refused
+request and the retry after it.
+
+### Rate limits
+
+Hetzner allows 3600 requests per hour and project. HLab sends Hetzner's
+headers on every response and counts each project's token requests, but
+never refuses one without a `rate_limit` fault:
+
+```
+> curl -s -o /dev/null -D - -H "Authorization: Bearer $HCLOUD_TOKEN" http://api.hetzner.internal/v1/servers
+HTTP/1.1 200 OK
+Ratelimit-Limit: 3600
+Ratelimit-Remaining: 3599
+Ratelimit-Reset: 1795509320
+```
+
+`RateLimit-Remaining` is the number of requests left; one comes back per
+second. `RateLimit-Reset` is the Unix time when all are back.
+
+A `rate_limit` fault lowers the limit to `--per-hour` requests. It starts
+with all of them and gives one back every 3600/N seconds; a request with
+none left gets `429 rate_limit_exceeded`, which does not count. With 10
+per hour, `hcloud server list` (one request per call) works ten times:
+
+```
+> hlab fault create rate_limit --project docs --per-hour 10 --duration 15m
+fault 7 created
+> hcloud server list
+...
+> hcloud server list
+hcloud: rate limit exceeded (rate_limit_exceeded)
+> curl -s -o /dev/null -D - -H "Authorization: Bearer $HCLOUD_TOKEN" http://api.hetzner.internal/v1/servers
+HTTP/1.1 429 Too Many Requests
+Ratelimit-Limit: 10
+Ratelimit-Remaining: 0
+Ratelimit-Reset: 1795512879
+```
+
+The eleventh call fails after hcloud has retried for up to about 30
+seconds. Requests an `api_error` fault refuses still count. When the
+fault ends, the project is back at 3600.
+
 ## Stopping and starting the cloud
 
 The cloud never starts with Windows. Stop it when you need the memory
