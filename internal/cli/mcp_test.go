@@ -435,6 +435,12 @@ func toolArgs(name string) map[string]any {
 		return map[string]any{"project": "p", "name": "old"}
 	case "ca_trust":
 		return map[string]any{"on": true}
+	case "fault_create":
+		return map[string]any{"project": "p", "kind": "rate_limit", "params": map[string]any{"per_hour": 10}}
+	case "fault_list":
+		return map[string]any{"project": "p"}
+	case "fault_delete":
+		return map[string]any{"project": "p", "all": true}
 	}
 	return nil
 }
@@ -1012,6 +1018,8 @@ func TestMCP(t *testing.T) {
 			}
 		})
 	})
+
+	t.Run("MCP-06", testFaultTools)
 
 	t.Run("MCP-04", func(t *testing.T) {
 		var catMu sync.Mutex

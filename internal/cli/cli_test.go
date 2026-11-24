@@ -403,6 +403,8 @@ func TestCLI(t *testing.T) {
 		}
 	})
 
+	t.Run("FAULT-12", testFaultCommands)
+
 	t.Run("LIFE-08", func(t *testing.T) {
 		svc := &fakeService{state: sysint.StateStopped}
 		down := &hlab{dial: notRunning}
