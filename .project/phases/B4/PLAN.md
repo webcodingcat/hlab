@@ -138,13 +138,13 @@ Behaviour the tests build on:
     reused
   - [x] Measure after the same way; both values go to "Close"
 
-- [ ] B4-05 E2E harness: steady private traffic is 8 s without loss
+- [x] B4-05 E2E harness: steady private traffic is 8 s without loss
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: FAULT-07, FAULT-08 | Tests: test/e2e/fault_net_test.go (restart rows, waiting step only)
   - Reads: EXPERIMENTS.md E47; DECISIONS.md "The restart rows wait for
     steady private traffic before measuring"; CONTEXT.md
   - Size: ~40 lines in 1 file
-  - [ ] `test/e2e/fault_net_test.go`, `waitSteadyPing`: steady means one
+  - [x] `test/e2e/fault_net_test.go`, `waitSteadyPing`: steady means one
     continuous ping run at 10 ms for 8 s (`ping -c 800 -i 0.01 -W 1`)
     with no loss, retried until it passes, with its own deadline of 2
     minutes; on timeout the failure names the server, the peer address and
