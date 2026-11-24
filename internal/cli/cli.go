@@ -69,6 +69,8 @@ type command struct {
 	path  string
 	args  string   // positional arguments for the usage text
 	nargs int      // number of positional arguments
+	// optArgs is the number of optional positional arguments after nargs.
+	optArgs int
 	flags []string // value flags, required
 	opts  []string // value flags, optional
 	bools []string // boolean flags
@@ -90,6 +92,9 @@ var commands = []command{
 	{path: "token revoke", args: "<name>", nargs: 1, flags: []string{"project"}, run: tokenRevoke},
 	{path: "ca export", args: "<file>", nargs: 1, run: caExport},
 	{path: "ca trust", args: "on|off", nargs: 1, run: caTrust},
+	{path: "fault create", args: "<kind>", nargs: 1, flags: []string{"project"}, opts: faultCreateOpts, run: faultCreate},
+	{path: "fault list", opts: []string{"project"}, run: faultList},
+	{path: "fault delete", args: "[<id>]", optArgs: 1, opts: []string{"project"}, bools: []string{"all"}, run: faultDelete},
 	{path: "logs", bools: []string{"follow"}, run: logs},
 	{path: "version", run: printVersion},
 	{path: "mcp", noOutput: true, run: serveMCP},
@@ -244,8 +249,11 @@ func parse(args []string) (*call, command, error) {
 			return nil, command{}, usageError{fmt.Sprintf("unknown flag --%s for hlab %s", name, cmd.path)}
 		}
 	}
-	if len(c.args) != cmd.nargs {
-		return nil, command{}, usageError{fmt.Sprintf("hlab %s takes %d argument(s)", cmd.path, cmd.nargs)}
+	if len(c.args) < cmd.nargs || len(c.args) > cmd.nargs+cmd.optArgs {
+		if cmd.optArgs == 0 {
+			return nil, command{}, usageError{fmt.Sprintf("hlab %s takes %d argument(s)", cmd.path, cmd.nargs)}
+		}
+		return nil, command{}, usageError{fmt.Sprintf("hlab %s takes %d to %d argument(s)", cmd.path, cmd.nargs, cmd.nargs+cmd.optArgs)}
 	}
 	for _, f := range cmd.flags {
 		if c.flags[f] == "" {
@@ -358,6 +366,9 @@ func cloudStatus(c *call) error {
 						text += fmt.Sprintf("problem: %v\n", m["message"])
 					}
 				}
+			}
+			if n, ok := st["faults"].(float64); ok && n > 0 {
+				text += fmt.Sprintf("faults active: %v\n", n)
 			}
 			if zs, ok := st["shadowing_zones"].([]any); ok {
 				for _, z := range zs {

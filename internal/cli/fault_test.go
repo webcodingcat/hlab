@@ -77,7 +77,7 @@ func mgmtCall(t *testing.T, h *hlab, method, path string, body any) (int, []byte
 	if err != nil {
 		t.Fatalf("%s %s: %v", method, path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	out, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("read the answer of %s %s: %v", method, path, err)
