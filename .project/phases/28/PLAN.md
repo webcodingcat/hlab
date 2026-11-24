@@ -142,37 +142,37 @@ is shared by the project's Faults and Active faults.
 
 ## Plans
 
-- [ ] 28-01 Error codes and field errors for the fault form
+- [x] 28-01 Error codes and field errors for the fault form
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-16 | Tests: internal/mgmt/faults_test.go
   - Reads: ARCHITECTURE.md "Management API (named pipe)" (fault routes and
     errors), "hlab-tray (tray program)"; DECISIONS.md "Fault interfaces";
     CONTEXT.md "Technical choices"
   - Size: ~110 lines in 4 files
-  - [ ] `api.Codes()` and `CodeStatus` in `internal/api/errors.go` (keep
+  - [x] `api.Codes()` and `CodeStatus` in `internal/api/errors.go` (keep
     `statuses` as the one source; an ordered list of the general codes
     decides the order); `Service.ErrorCodes()` in
     `internal/bridge/service.go`
-  - [ ] `failFault` in `internal/mgmt/faults.go` adds `details.fields`
+  - [x] `failFault` in `internal/mgmt/faults.go` adds `details.fields`
     with the `InputError`'s field and message (a `writeFieldError` helper
     in `internal/mgmt/mgmt.go`); other errors unchanged
 
-- [ ] 28-02 Tray menu item "End all faults"
+- [x] 28-02 Tray menu item "End all faults"
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-18 | Tests: internal/bridge/cloud_test.go, internal/bridge/service_test.go
   - Reads: ARCHITECTURE.md "hlab-tray (tray program)"; UI-SPEC.md "Tray
     menu"; RESEARCH.md "Wails tray menu"; DECISIONS.md "Phase 10 findings:
     tray cloud item and pending state", "Tray quit and tray state in e2e"
   - Size: ~120 lines in 3 files
-  - [ ] `internal/bridge/cloud.go`: `statusAnswer.Faults`, `State.Faults`
+  - [x] `internal/bridge/cloud.go`: `statusAnswer.Faults`, `State.Faults`
     (0 unless running, kept on a lost connection like the problems),
     `TrayModel.Faults` from `Tray`, `Cloud.EndAllFaults()`
-  - [ ] `cmd/hlab-tray/tray.go` and `cmd/hlab-tray/e2e.go`: the hidden item
+  - [x] `cmd/hlab-tray/tray.go` and `cmd/hlab-tray/e2e.go`: the hidden item
     after the cloud item, shown while `Faults > 0`, its click through
     `click` (failure in the existing message box), `TrayTest.Click`
     doc comment
 
-- [ ] 28-03 Faults routes, sidebar entry and view list
+- [x] 28-03 Faults routes, sidebar entry and view list
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-16, UI-17, DOC-05 | Tests: ui/frontend/tests/unit/routes.test.ts
   - Reads: UI-SPEC.md "Views" (Shell, Project console, Faults, Active
@@ -180,10 +180,10 @@ is shared by the project's Faults and Active faults.
     DECISIONS.md "Q15 DOC-05 views from views.json"; SPEC.md
     "Documentation" D5
   - Size: ~170 lines in 8 files
-  - [ ] `lib/routes.ts` (view `faults` list and new, area `faults` for
+  - [x] `lib/routes.ts` (view `faults` list and new, area `faults` for
     `#/faults`), `lib/consoleNav.ts` (entry after Security),
     `views/ProjectConsole.svelte` (icon `TriangleAlert`)
-  - [ ] `views.json` and `state.ts` `viewInfo` (`faults` in area project,
+  - [x] `views.json` and `state.ts` `viewInfo` (`faults` in area project,
     `active-faults` in area faults), first help texts
     `help/faults.md` and `help/active-faults.md` (each with a heading;
     the documentation plan completes them)
