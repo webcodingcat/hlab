@@ -188,14 +188,14 @@ is shared by the project's Faults and Active faults.
     `help/faults.md` and `help/active-faults.md` (each with a heading;
     the documentation plan completes them)
 
-- [ ] 28-04 Fault display and request logic
+- [x] 28-04 Fault display and request logic
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: UI-16, UI-17 | Tests: ui/frontend/tests/unit/faults.test.ts
   - Reads: UI-SPEC.md "Faults", "Active faults"; ARCHITECTURE.md
     "Management API" (fault object and kind table); CONTEXT.md
     "Assumptions"
   - Size: ~260 lines in 1 file
-  - [ ] `ui/frontend/src/lib/faults.ts` as in Interfaces: kinds with
+  - [x] `ui/frontend/src/lib/faults.ts` as in Interfaces: kinds with
     labels and explanations, `paramsSummary`, `targetText`, `remaining`,
     `faultsPill`, `defaultForm`, `showsSeed`, `requestBody`, `formField`,
     `faultResources`
