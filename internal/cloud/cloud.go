@@ -409,6 +409,8 @@ func (c *Cloud) modules() []resource.Module {
 		RescueSeedHold: rescueSeedHold,
 		Console:        c.console,
 		EndFaults:      c.endFaults,
+		FaultActive:    c.faultActive,
+		EndFault:       c.endFault,
 	})
 	vol := volumes.New(volumes.Deps{
 		Catalog:      c.cat,

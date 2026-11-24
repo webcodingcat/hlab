@@ -16,9 +16,25 @@ import (
 )
 
 // newFaults sets a new fault manager for this cloud run; resources are
-// the first path segments of the router's modules.
+// the first path segments of the router's modules. The effects of the
+// server and disk faults act through the run's servers and volumes
+// modules.
 func (c *Cloud) newFaults(resources []string) {
-	c.faults.Store(faults.New(faults.Options{Lookup: c.lookupTarget, Resources: resources}))
+	opts := faults.Options{Lookup: c.lookupTarget, Resources: resources}
+	var s faults.ServerInjector
+	var v faults.VolumeInjector
+	for _, m := range c.mods {
+		switch m := m.(type) {
+		case *servers.Module:
+			s = m
+		case *volumes.Module:
+			v = m
+		}
+	}
+	if s != nil && v != nil {
+		opts.Effects = faults.Effects(s, v)
+	}
+	c.faults.Store(faults.New(opts))
 }
 
 // faultLayer is the fault layer of the API chain. The router is built
@@ -44,9 +60,24 @@ func (c *Cloud) endFaults(ctx context.Context, project, targetType string, id in
 	return nil
 }
 
+// faultActive reports whether a fault of kind is active on the target;
+// never without a manager.
+func (c *Cloud) faultActive(project, kind, targetType string, id int64) bool {
+	m := c.faults.Load()
+	return m != nil && m.Active(project, kind, targetType, id)
+}
+
+// endFault ends the faults of kind on the target; none without a manager.
+func (c *Cloud) endFault(ctx context.Context, project, kind, targetType string, id int64) error {
+	if m := c.faults.Load(); m != nil {
+		return m.EndKind(ctx, project, kind, targetType, id)
+	}
+	return nil
+}
+
 // lookupTarget checks that t exists in project: servers, volumes and
-// storage boxes in the store (a volume_unavailable volume must be
-// attached), locations in the catalog.
+// storage boxes in the store (a volume_unavailable or disk_slow volume
+// must be attached), locations in the catalog.
 func (c *Cloud) lookupTarget(_ context.Context, project, kind string, t faults.Target) error {
 	if t.Type == faults.TargetLocations {
 		for _, l := range []string{t.From, t.To} {
@@ -70,7 +101,7 @@ func (c *Cloud) lookupTarget(_ context.Context, project, kind string, t faults.T
 		case faults.TargetVolume:
 			var v volumes.Record
 			v, err = store.Get[volumes.Record](tx, volumes.Kind, p.ID, t.ID)
-			if err == nil && kind == faults.KindVolumeUnavailable && v.Server == nil {
+			if err == nil && (kind == faults.KindVolumeUnavailable || kind == faults.KindDiskSlow) && v.Server == nil {
 				return &faults.InputError{Field: "target", Message: fmt.Sprintf("volume %d is not attached", t.ID)}
 			}
 		case faults.TargetStorageBox:
