@@ -3,12 +3,13 @@ package faults
 import (
 	"cmp"
 	"context"
-	"crypto/rand"
+	crand "crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
+	"math/rand/v2"
 	"slices"
 	"sync"
 	"time"
@@ -26,6 +27,9 @@ type Manager struct {
 	mu      sync.Mutex
 	nextID  int64
 	entries map[int64]*entry
+	// defaults are the default rate limit buckets by project, kept for
+	// the cloud's lifetime.
+	defaults map[string]*bucket
 }
 
 // entry is a fault and its lifetime state.
@@ -37,6 +41,10 @@ type entry struct {
 	// ending is set once a caller ends the fault; Undo runs then.
 	ending bool
 	stop   chan struct{} // closed when the fault ends; stops its timer
+	// rng draws the hits of an api_error fault; bucket is the token
+	// bucket of a rate_limit fault. Both are used under Manager.mu.
+	rng    *rand.Rand
+	bucket *bucket
 }
 
 // New returns a Manager without faults.
@@ -47,6 +55,7 @@ func New(o Options) *Manager {
 		effects:   maps.Clone(o.Effects),
 		resources: slices.Clone(o.Resources),
 		entries:   map[int64]*entry{},
+		defaults:  map[string]*bucket{},
 	}
 	if m.clock == nil {
 		m.clock = scheduler.RealClock()
@@ -98,6 +107,13 @@ func (m *Manager) Create(ctx context.Context, project string, s Spec) (Fault, er
 		f.Ends = &ends
 	}
 	e := &entry{fault: f, stop: make(chan struct{})}
+	switch f.Kind {
+	case KindAPIError:
+		e.rng = rand.New(rand.NewPCG(*f.Seed, *f.Seed))
+	case KindRateLimit:
+		perHour, _ := params["per_hour"].(int64)
+		e.bucket = newBucket(float64(perHour), f.Created)
+	}
 	m.entries[f.ID] = e
 	m.mu.Unlock()
 
@@ -239,7 +255,7 @@ func conflicts(a, b Fault) bool {
 func chooseSeed() (uint64, error) {
 	var b [8]byte
 	for {
-		if _, err := rand.Read(b[:]); err != nil {
+		if _, err := crand.Read(b[:]); err != nil {
 			return 0, fmt.Errorf("choose seed: %w", err)
 		}
 		if v := binary.LittleEndian.Uint64(b[:]) & MaxChosenSeed; v != 0 {

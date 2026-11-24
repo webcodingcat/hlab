@@ -66,11 +66,23 @@ type Env struct {
 // OpenAPI description is not cached.
 func New(t testing.TB, mods ...resource.Module) *Env {
 	t.Helper()
+	return NewWith(t, Options{}, mods...)
+}
+
+// Options are the optional parts of an Env.
+type Options struct {
+	// Faults is api.Deps.Faults of the router; nil = none.
+	Faults func(http.Handler) http.Handler
+}
+
+// NewWith is New with options.
+func NewWith(t testing.TB, o Options, mods ...resource.Module) *Env {
+	t.Helper()
 	RequireDescription(t)
 
 	st := takeStore(t)
 	mgr := actions.New(st)
-	router := api.New(api.Deps{Store: st, Actions: mgr})
+	router := api.New(api.Deps{Store: st, Actions: mgr, Faults: o.Faults})
 	for _, m := range mods {
 		router.Mount(m)
 	}
