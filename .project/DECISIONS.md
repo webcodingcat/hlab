@@ -4760,3 +4760,11 @@ taken with the approval of the spec or by an answer from the user.
 - What: SMB (TCP 445) from WSL2 in NAT mode reaches a storage box over the same forwarding path as SSH (E4, HOST-03); the check needs elevated rights and was skipped by the user (E16).
 - Why: SMB is one more TCP port on a confirmed path; the end-to-end tests of SBOX-04 and SBOX-14 prove it.
 - Cost of change: high
+
+## 2026-11-24 Upgrade to wcc 0.32.26
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.32.25 to 0.32.26: version line only.
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
