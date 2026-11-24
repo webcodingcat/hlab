@@ -33,6 +33,9 @@ type State struct {
 	Error          string                `json:"error,omitempty"` // failed start
 	ConnectionLost bool                  `json:"connection_lost"`
 	Version        string                `json:"version,omitempty"`
+	// Faults is the number of active faults of all projects from GET
+	// /status; 0 unless running, a lost connection keeps the last count.
+	Faults int `json:"faults"`
 }
 
 // CloudDeps are the dependencies of a Cloud.
@@ -157,14 +160,14 @@ func (c *Cloud) poll(ctx context.Context) {
 		prev, prevFails := c.state, c.fails
 		c.mu.Unlock()
 		if st, ok := c.status(ctx); ok {
-			next.Problems, next.Version = st.Problems, st.Version
+			next.Problems, next.Version, next.Faults = st.Problems, st.Version, st.Faults
 		} else {
 			if ctx.Err() != nil {
 				return
 			}
 			fails = prevFails + 1
 			if prev.State == sysint.StateRunning {
-				next.Problems, next.Version = prev.Problems, prev.Version
+				next.Problems, next.Version, next.Faults = prev.Problems, prev.Version, prev.Faults
 			}
 			next.ConnectionLost = fails >= lostAfter
 		}
@@ -185,6 +188,7 @@ func (c *Cloud) poll(ctx context.Context) {
 type statusAnswer struct {
 	Version  string                `json:"version"`
 	Problems []cloudstatus.Problem `json:"problems"`
+	Faults   int                   `json:"faults"`
 }
 
 // status asks the management API for its status; false when it does not
@@ -203,6 +207,20 @@ func (c *Cloud) status(ctx context.Context) (statusAnswer, bool) {
 	return st, true
 }
 
+// EndAllFaults ends the active faults of all projects through the
+// management API; a status other than 204 is an error carrying the
+// management API's message.
+func (c *Cloud) EndAllFaults() error {
+	status, body, err := c.d.Client.Do(context.Background(), http.MethodDelete, "/faults", nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent {
+		return mgmtclient.AnswerError(status, body)
+	}
+	return nil
+}
+
 // TrayModel is what the tray icon and its menu show.
 type TrayModel struct {
 	Icon        string `json:"icon"`         // running|stopped|busy|error
@@ -210,6 +228,7 @@ type TrayModel struct {
 	Status      string `json:"status"`       // menu status line
 	CloudItem   string `json:"cloud_item"`   // label of the one cloud item
 	CloudAction string `json:"cloud_action"` // "start" | "stop" | "" (item disabled)
+	Faults      int    `json:"faults"`       // > 0: the menu shows "End all faults"
 }
 
 // Labels of the tray menu's cloud item.
@@ -231,7 +250,7 @@ const (
 // action of the cloud item.
 func Tray(s State) TrayModel {
 	m := func(icon, status, item, action string) TrayModel {
-		return TrayModel{Icon: icon, Tooltip: "HLab: " + status, Status: status, CloudItem: item, CloudAction: action}
+		return TrayModel{Icon: icon, Tooltip: "HLab: " + status, Status: status, CloudItem: item, CloudAction: action, Faults: s.Faults}
 	}
 	switch {
 	case s.State == sysint.StateRunning && s.ConnectionLost:

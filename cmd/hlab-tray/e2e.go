@@ -37,6 +37,7 @@ type TrayTest struct{}
 func (*TrayTest) State() bridge.TrayModel { return tray.state() }
 
 // Click runs the menu item with the label item as a click in the menu
-// would: "Open HLab", "Quit" or the cloud item's current label ("Start
-// cloud", "Stop cloud"); a label the menu does not show is an error.
+// would: "Open HLab", "Quit", "End all faults" (errDisabled while no fault
+// is active) or the cloud item's current label ("Start cloud", "Stop
+// cloud"); a label the menu does not show is an error.
 func (*TrayTest) Click(item string) error { return tray.click(item) }

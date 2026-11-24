@@ -16,8 +16,9 @@ import (
 // Labels of the fixed tray menu items; the cloud item's label comes from
 // bridge.TrayModel.
 const (
-	labelOpen = "Open HLab"
-	labelQuit = "Quit"
+	labelOpen      = "Open HLab"
+	labelEndFaults = "End all faults"
+	labelQuit      = "Quit"
 )
 
 // errDisabled is returned for a click on a disabled menu item.
@@ -37,6 +38,7 @@ type trayUI struct {
 	menu    *application.Menu
 	status  *application.MenuItem
 	item    *application.MenuItem // the one cloud item: Start or Stop
+	faults  *application.MenuItem // "End all faults", shown while faults are active
 
 	updating sync.Mutex // one tray update at a time
 
@@ -81,6 +83,8 @@ func (t *trayUI) setup(app *application.App, cloud *bridge.Cloud) {
 	menu.Add(labelOpen).OnClick(onClick(fixed(labelOpen)))
 	item := menu.Add(bridge.Tray(bridge.State{}).CloudItem).
 		OnClick(onClick(func() string { return t.state().CloudItem }))
+	faults := menu.Add(labelEndFaults).OnClick(onClick(fixed(labelEndFaults)))
+	faults.SetHidden(true)
 	menu.AddSeparator()
 	menu.Add(labelQuit).OnClick(onClick(fixed(labelQuit)))
 
@@ -90,7 +94,7 @@ func (t *trayUI) setup(app *application.App, cloud *bridge.Cloud) {
 
 	t.mu.Lock()
 	t.app, t.window, t.cloud = app, window, cloud
-	t.systray, t.menu, t.status, t.item = systray, menu, status, item
+	t.systray, t.menu, t.status, t.item, t.faults = systray, menu, status, item, faults
 	t.mu.Unlock()
 	t.apply(cloud.Status(), false)
 }
@@ -121,6 +125,7 @@ func (t *trayUI) apply(s bridge.State, emit bool) {
 	t.status.SetLabel(m.Status)
 	t.item.SetLabel(m.CloudItem)
 	t.item.SetEnabled(m.CloudAction != "")
+	t.faults.SetHidden(m.Faults == 0)
 	t.menu.Update()
 	if emit {
 		t.app.Event.Emit("cloud", s)
@@ -140,7 +145,8 @@ func (t *trayUI) state() bridge.TrayModel {
 }
 
 // click runs the action of the menu item with label; for the cloud item
-// label is its current label. A disabled item returns errDisabled.
+// label is its current label. A disabled item, and "End all faults" while
+// it is hidden, returns errDisabled.
 func (t *trayUI) click(label string) error {
 	switch label {
 	case labelOpen:
@@ -149,6 +155,11 @@ func (t *trayUI) click(label string) error {
 	case labelQuit:
 		t.quit()
 		return nil
+	case labelEndFaults:
+		if t.state().Faults == 0 {
+			return errDisabled
+		}
+		return t.cloud.EndAllFaults()
 	}
 	m := t.state()
 	if label != m.CloudItem {
