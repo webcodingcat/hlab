@@ -178,14 +178,14 @@ Rules of the plan (ARCHITECTURE.md "hlab-agent", E29, E40, E41):
   - Adjusts: -
   - [x] `internal/agent/faulttc.go` (new): `TcState`, `TcCommands`: with have nil, `qdisc del dev <d> root` for every candidate (errors for a missing qdisc are the applier's to ignore); a device leaving want loses its root qdisc; a device entering want gets root HTB, class `1:1`; per class by Key: new → class, netem (with seed), flower filters (pairs prio 1, destination only prio 2); gone → filters, class deleted; changed flows → filters replaced, netem untouched; changed netem → `qdisc change` per E42; minors kept per Key, new ones from `0x10` upward without reuse of a live minor.
 
-- [ ] 27-04 Agent: faults applier on the appliance
+- [x] 27-04 Agent: faults applier on the appliance
   - Wave: 4 | Depends on: 27-03, 27-05 | Review: alone
   - Requirements: FAULT-07, FAULT-08, FAULT-11 | Tests: test/e2e/fault_net_test.go
   - Reads: ARCHITECTURE "hlab-agent"; EXPERIMENTS E29, E40, E43; phases/27/CONTEXT.md; `internal/agent/firewall_linux.go`, `firewall_other.go`, `isolation_linux.go` (nftables table handling), `cmd/hlab-agent/main.go` `runAppliance`
   - Size: ~300 lines in 4 files
   - Adjusts: -
-  - [ ] `internal/agent/faults_linux.go` (new) and `faults_other.go` (new, stub like `firewall_other.go`): Applier `faults`: `PlanFaults`; table `inet hlab_fault` (chains forward, input, output at priority -10, policy accept) replaced whole through google/nftables, deleted when the plan has no rule (also a leftover one); candidates = the public device and every `t<vlan>` link; runs `TcCommands` through `tc` (exec, combined output in errors, "No such file" on a delete ignored); `/usr/sbin/ethtool -K <dev> gro off gso off tso off lro off` on the public and trunk adapters when `OffloadsOff` turns on, `on` again when it turns off; keeps `TcState` and the offload state in memory.
-  - [ ] `cmd/hlab-agent/main.go`: register the applier after `NewFirewall`.
+  - [x] `internal/agent/faults_linux.go` (new) and `faults_other.go` (new, stub like `firewall_other.go`): Applier `faults`: `PlanFaults`; table `inet hlab_fault` (chains forward, input, output at priority -10, policy accept) replaced whole through google/nftables, deleted when the plan has no rule (also a leftover one); candidates = the public device and every `t<vlan>` link; runs `TcCommands` through `tc` (exec, combined output in errors, "No such file" on a delete ignored); `/usr/sbin/ethtool -K <dev> gro off gso off tso off lro off` on the public and trunk adapters when `OffloadsOff` turns on, `on` again when it turns off; keeps `TcState` and the offload state in memory.
+  - [x] `cmd/hlab-agent/main.go`: register the applier after `NewFirewall`.
 
 - [x] 27-05 Net faults in the cloud
   - Wave: 2 | Depends on: 27-01 | Review: alone

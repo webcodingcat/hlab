@@ -868,8 +868,12 @@ locks a resource of type `project`.
   cut server reaches no appliance service either: DNS, metadata, API
   proxy, console forward). Private addresses are matched together with
   their VLAN (`iifname "vrf<vlan>"` or `meta sdifname "t<vlan>"` in the
-  forward hook), never by address alone, since private ranges of projects
-  may overlap. Packet loss below 100 % and latency are `tc` qdiscs on
+  forward hook; in input `iifname "vrf<vlan>" meta sdifname "t<vlan>"`,
+  in output `oifname "t<vlan>"`, since output supports neither `sdifname`
+  nor `iifname`, E40), never by address alone, since private ranges of
+  projects may overlap; public addresses are matched on the public device.
+  The tc trees sit only on the public device and the `t<vlan>` links,
+  never on `vrf<vlan>` (E41). Packet loss below 100 % and latency are `tc` qdiscs on
   egress of the appliance's interfaces toward and away from the server:
   HTB or prio with netem children, selected by flower filters on the
   addresses or by a packet mark set in `hlab_fault` and matched by a `fw`
@@ -880,8 +884,9 @@ locks a resource of type `project`.
   loss random 10% seed 42 limit 100000`. The agent runs the `tc` command
   of iproute2 (the netlink library has no netem seed). While a loss fault
   is active it turns off GRO, GSO, TSO and LRO on the physical adapters
-  (public and trunk), so loss counts real packets, and turns them on
-  again when the last one ends. Removing an entry removes its rules and
+  (public and trunk), so loss counts real packets, and turns GRO, GSO and
+  TSO on again when the last one ends; LRO stays off, since it breaks
+  forwarded TCP. Removing an entry removes its rules and
   qdiscs; an empty list leaves no `hlab_fault` rule and no netem qdisc,
   and the server reaches everything again without a restart.
 - Firewalls: `CompileFirewalls(agentapi.Config) ([]ServerFilter, error)`
