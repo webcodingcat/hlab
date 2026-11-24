@@ -199,7 +199,7 @@ func (c *Cloud) writeStorageISO(ctx context.Context) error {
 	}
 	// As for the appliance, the instance-id follows the user-data and the
 	// network settings; the user-data keeps the SSH host keys.
-	userData := appliance.StorageUserData()
+	userData := appliance.StorageUserData(c.storageName())
 	sum := sha256.Sum256(fmt.Appendf(userData, "\n%s %v %s", iface.MAC, iface.Addresses, iface.Gateway))
 	return cidata.BuildFile(cidata.Seed{
 		InstanceID: c.storageName() + "-" + hex.EncodeToString(sum[:6]),

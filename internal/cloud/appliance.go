@@ -277,7 +277,7 @@ func (c *Cloud) writeApplianceISO(ctx context.Context, secret string) error {
 	// settings, so cloud-init treats an existing appliance as a new instance
 	// once and writes the changed unit, install script and network-config;
 	// the appliance keeps no state that this loses.
-	userData := appliance.UserData()
+	userData := appliance.UserData(c.applianceName())
 	sum := sha256.Sum256(fmt.Appendf(userData, "\n%s %v %s", iface.MAC, iface.Addresses, iface.Gateway))
 	return cidata.BuildFile(cidata.Seed{
 		InstanceID: c.applianceName() + "-" + hex.EncodeToString(sum[:6]),
