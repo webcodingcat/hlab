@@ -466,7 +466,10 @@ Inside `hlabd` (Go packages under `internal/`):
     the volume and delete of its server end the volume's faults first.
   - `network`, `latency`, `storage_box_unavailable`: entries of
     `agentapi.Config.Faults`, pushed with the agent document; the agent
-    applies them (see "hlab-agent"). Deleting the server or box ends them;
+    applies them (see "hlab-agent"). `faults.NewNetEffects(push)` returns
+    one `Effect` for the three kinds (`Effects()`), keeps the active net
+    faults (`Faults()`, sorted by ID) and pushes the document on Apply and
+    Undo; a failed push takes the fault out again. Deleting the server or box ends them;
     a `latency` fault between locations follows the project's servers as
     they are created and deleted.
   - Cloud start: before the API serves, the servers module resumes every
