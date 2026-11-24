@@ -169,6 +169,18 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
 }
 
+// writeFieldError writes an error whose details name the refused field in
+// Hetzner's shape: details.fields with the field's name and message.
+func writeFieldError(w http.ResponseWriter, status int, code, message, field, fieldMessage string) {
+	writeJSON(w, status, map[string]any{"error": map[string]any{
+		"code":    code,
+		"message": message,
+		"details": map[string]any{"fields": []any{
+			map[string]any{"name": field, "messages": []string{fieldMessage}},
+		}},
+	}})
+}
+
 // fail answers a store error: not found, conflict or a server error.
 func fail(w http.ResponseWriter, err error, what string) {
 	switch {

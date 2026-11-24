@@ -25,7 +25,7 @@ func failFault(w http.ResponseWriter, err error) {
 	var in *faults.InputError
 	switch {
 	case errors.As(err, &in):
-		writeError(w, http.StatusBadRequest, "invalid_input", in.Error())
+		writeFieldError(w, http.StatusBadRequest, "invalid_input", in.Error(), in.Field, in.Message)
 	case errors.Is(err, faults.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found", err.Error())
 	case errors.Is(err, faults.ErrConflict):

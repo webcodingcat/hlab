@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/mgmtclient"
 	"github.com/webcodingcat/hlab/internal/projectname"
@@ -379,6 +380,12 @@ func (s *Service) boxTypesCatalog() (*catalog.Catalog, error) {
 type Location struct {
 	Name string `json:"name"`
 	City string `json:"city"`
+}
+
+// ErrorCodes is api.Codes() for the fault form's error code select; no
+// cloud needed.
+func (s *Service) ErrorCodes() []api.CodeStatus {
+	return api.Codes()
 }
 
 // Locations lists the catalog's locations sorted by name. It reads the
