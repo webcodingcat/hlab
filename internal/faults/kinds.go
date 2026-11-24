@@ -1,7 +1,6 @@
 package faults
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"slices"
@@ -222,23 +221,13 @@ func toInt64(v any) (int64, bool) {
 	switch n := v.(type) {
 	case int:
 		return int64(n), true
-	case int32:
-		return int64(n), true
 	case int64:
 		return n, true
-	case uint64:
-		if n > math.MaxInt64 {
-			return 0, false
-		}
-		return int64(n), true
 	case float64:
 		if n != math.Trunc(n) || n < math.MinInt64 || n >= math.MaxInt64 {
 			return 0, false
 		}
 		return int64(n), true
-	case json.Number:
-		i, err := n.Int64()
-		return i, err == nil
 	}
 	return 0, false
 }
