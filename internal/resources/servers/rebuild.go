@@ -82,6 +82,12 @@ func (m *Module) rebuild(w http.ResponseWriter, req *http.Request) {
 		rootPassword, rootHash = pw, hash
 	}
 
+	// A rebuild refused during a crash leaves the record as it is.
+	crashed := m.crashed(p.Name, id)
+	if crashed {
+		rootPassword = nil
+	}
+
 	var action *actions.Action
 	err = stor.Tx(func(tx store.Tx) error {
 		r, err := store.Get[Record](tx, Kind, p.ID, id)
@@ -92,7 +98,7 @@ func (m *Module) rebuild(w http.ResponseWriter, req *http.Request) {
 			return actions.ErrProtected
 		}
 		action, err = acts.Start(tx, p.ID, "rebuild_server", []actions.Ref{{ID: id, Type: refType}})
-		if err != nil {
+		if err != nil || crashed {
 			return err
 		}
 		r.Status = StatusRebuilding
@@ -114,6 +120,9 @@ func (m *Module) rebuild(w http.ResponseWriter, req *http.Request) {
 
 	acts.Run(action.ID, func(ctx context.Context, progress func(int)) error {
 		progress(10)
+		if crashed {
+			return errCrashed
+		}
 		if err := m.rebuildMachine(ctx, stor, p.Name, id, check); err != nil {
 			// The status follows what the VM does now.
 			m.settle(ctx, stor, id)
