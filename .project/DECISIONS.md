@@ -23,6 +23,46 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-24 Due seed swaps run at the end of Restore
+
+- Type: decision
+- Phase: phase B4
+- What: due seed swaps (`seed_due`) are done at the end of the servers module's `Restore`, through the normal swap path with its hold, not in `Recover`.
+- Why: `Recover` runs before the VMs resume, and changing the DVD of a Saved VM is untested (E35 covers only Paused VMs).
+- Cost of change: low
+
+## 2026-11-24 An empty seed slot is found through seed_due
+
+- Type: decision
+- Phase: phase B4
+- What: a slot 0 left empty by a crash between eject and insert is found through the `seed_due` note set before the eject; the platform gets no method to read a DVD drive.
+- Why: The note already marks every server whose seed write did not finish.
+- Cost of change: low
+
+## 2026-11-24 A Saved VM started at cloud start is a resume
+
+- Type: decision
+- Phase: phase B4
+- What: a Saved VM started by `Restore` gets no seed hold; only the power-on of an Off VM there counts as a boot.
+- Why: Resume from saved state does not run cloud-init again (E48).
+- Cost of change: low
+
+## 2026-11-24 Guest hook keeps its own link list in a second file
+
+- Type: decision
+- Phase: phase B4
+- What: the guest hook records the links it leaves alone or took over in a second file in `/run/hlab-guest`; `networks.json` keeps its format.
+- Why: An unchanged `networks.json` keeps the hook's existing contract with hlabd.
+- Cost of change: low
+
+## 2026-11-24 Steady private traffic is 800 pings without loss
+
+- Type: decision
+- Phase: phase B4
+- What: the restart e2e rows wait for one continuous `ping -c 800 -i 0.01 -W 1` (8 s) without loss, retried until a 2-minute deadline.
+- Why: E47 saw up to about 3 s of good traffic between two drop windows.
+- Cost of change: low
+
 ## 2026-11-24 Seed swap waits for a hold after a boot hlab starts (Q26)
 
 - Type: decision
