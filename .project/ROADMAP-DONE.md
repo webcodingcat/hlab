@@ -6,6 +6,23 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
+- [x] 26 Server and disk faults.
+      Requirements: FAULT-05, FAULT-06, FAULT-09, FAULT-10.
+      Depends on: 25, 04.
+      Adjusts: `platform.Platform` (additive: `SetDiskIOPS`, `PowerPause`,
+      `PowerResume`), the servers and volumes modules (power actions,
+      detach, resize, delete and cloud start), docs/guide.md.
+      Success criteria:
+      1. A crashed server shows `off`, cannot be started while the fault
+         is active, and starts normally after it ends.
+      2. A frozen server shows `running` but answers no ping; `hcloud
+         server reset` or ending the fault brings it back.
+      3. In a server, reads of an unavailable volume fail and work again
+         after the fault ends; a slow disk reaches at most about its IOPS
+         limit in `fio` (installed in the test server by the test).
+      4. After a cloud restart with faults active before, no VM is
+         paused, every attached volume is back and no IOPS limit is left.
+
 - [x] 23 Server console.
       Requirements: SRV-17, CON-01, CON-02, UI-15.
       Depends on: 24 (order only), 03.

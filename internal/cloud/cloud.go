@@ -127,6 +127,10 @@ type Cloud struct {
 	// console serves the server consoles of request_console.
 	console *console.Service
 	mods    []resource.Module
+	// srv and vol are the servers and volumes modules of mods; the fault
+	// effects act through them.
+	srv *servers.Module
+	vol *volumes.Module
 	// faults holds the active faults of this run; nil while stopped. It is
 	// read by API requests and module actions, hence atomic.
 	faults atomic.Pointer[faults.Manager]
@@ -409,6 +413,8 @@ func (c *Cloud) modules() []resource.Module {
 		RescueSeedHold: rescueSeedHold,
 		Console:        c.console,
 		EndFaults:      c.endFaults,
+		FaultActive:    c.faultActive,
+		EndFault:       c.endFault,
 	})
 	vol := volumes.New(volumes.Deps{
 		Catalog:      c.cat,
@@ -422,6 +428,7 @@ func (c *Cloud) modules() []resource.Module {
 		EndFaults:    c.endFaults,
 	})
 	srv.SetVolumes(vol)
+	c.srv, c.vol = srv, vol
 	nets := networks.New(networks.Deps{Store: c.st, Catalog: c.cat, Servers: srv, PushAgent: c.PushAgent})
 	pips := primaryips.New(primaryips.Deps{
 		Store: c.st, Catalog: c.cat, PublicRange: c.set.Network.PublicRange, Servers: srv, PushAgent: c.PushAgent,

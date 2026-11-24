@@ -996,6 +996,7 @@ func TestServers(t *testing.T) {
 	testVendorData(t)
 	testAdapters(t)
 	testLifecycle(t)
+	testFaults(t)
 
 	t.Run("CLI-02", func(t *testing.T) {
 		fake := platformtest.NewFake()

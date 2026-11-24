@@ -132,6 +132,12 @@ type Deps struct {
 	// EndFaults ends the faults on a deleted server of a project
 	// (faults.Manager.EndTarget); nil = none.
 	EndFaults func(ctx context.Context, project, targetType string, id int64) error
+	// FaultActive reports whether a fault of kind is active on server id
+	// of project (faults.Manager.Active); nil = never.
+	FaultActive func(project, kind, targetType string, id int64) bool
+	// EndFault ends the faults of kind on server id of project
+	// (faults.Manager.EndKind); nil = none.
+	EndFault func(ctx context.Context, project, kind, targetType string, id int64) error
 }
 
 // Console is the server console service (console.Service).

@@ -89,7 +89,7 @@ func (m *Module) changeType(w http.ResponseWriter, req *http.Request) {
 
 	acts.Run(action.ID, func(ctx context.Context, progress func(int)) error {
 		progress(10)
-		if err := m.changeMachine(ctx, stor, id, typ, diskGB, check); err != nil {
+		if err := m.changeMachine(ctx, stor, p.Name, id, typ, diskGB, check); err != nil {
 			// The status follows what the VM does now.
 			m.settle(ctx, stor, id)
 			return err
@@ -151,8 +151,12 @@ func typeAt(typ catalog.ServerType, location string) (offered, deprecated bool) 
 
 // changeMachine sets the cores and RAM of typ on the VM of server id,
 // grows its disk to diskGB, stores the new type and size and starts the
-// VM.
-func (m *Module) changeMachine(ctx context.Context, stor *store.Store, id int64, typ catalog.ServerType, diskGB int, check func(context.Context) error) error {
+// VM. While a crash is active on the server it fails before anything
+// changes.
+func (m *Module) changeMachine(ctx context.Context, stor *store.Store, project string, id int64, typ catalog.ServerType, diskGB int, check func(context.Context) error) error {
+	if m.crashed(project, id) {
+		return errCrashed
+	}
 	if err := check(ctx); err != nil {
 		return err
 	}

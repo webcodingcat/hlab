@@ -43,6 +43,11 @@ EC2-style ones. Placement groups only record their members, since every
 server runs on the same machine; a spread group still takes at most 10
 servers.
 
+Hetzner has no fault injection. A server that HLab crashes or freezes
+with a [fault](guide.md#server-crashes) gets no action for it in its
+action list; a crashed server just shows `off`, a frozen one keeps
+showing `running`.
+
 ## Images, snapshots, backups, rescue and ISOs
 
 The system images are Ubuntu 22.04, 24.04 and 26.04 and Debian 12 and
@@ -73,7 +78,9 @@ boot. A server without them, for example because its user data turns off
 cloud-init's vendor data, sees a volume as a plain SCSI disk. A server
 holds at most 16 volumes, an attached volume cannot be deleted, and a
 volume that does not fit into the free disk space is refused. As at
-Hetzner, the filesystem is not grown for you.
+Hetzner, the filesystem is not grown for you. A volume made unavailable
+or slow by a [fault](guide.md#unavailable-volumes) gets no action and
+still shows as attached.
 
 ## Networks, primary and floating IPs
 

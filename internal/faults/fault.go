@@ -117,7 +117,7 @@ type Effect interface {
 
 // TargetLookup checks that t exists in project: ErrNotFound (wrapped) for
 // an unknown server, volume, storage box or location, an *InputError for a
-// volume that is not attached when kind is volume_unavailable.
+// volume that is not attached when kind is volume_unavailable or disk_slow.
 type TargetLookup func(ctx context.Context, project, kind string, t Target) error
 
 // Options configure a Manager.

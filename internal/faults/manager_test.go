@@ -512,3 +512,73 @@ func jsonOf(t *testing.T, v any) string {
 	}
 	return string(b)
 }
+
+func init() {
+	register("FAULT-05", testFault05)
+	register("FAULT-06", testFault06)
+}
+
+func testFault05(t *testing.T) {
+	t.Run("active", func(t *testing.T) {
+		e := newEnv(t)
+		crash := e.create(t, "p", faults.Spec{Kind: faults.KindServerCrash, Target: serverTarget(7), Params: map[string]any{}})
+
+		cases := []struct {
+			name, project, kind, targetType string
+			id                              int64
+			want                            bool
+		}{
+			{"listed", "p", faults.KindServerCrash, faults.TargetServer, 7, true},
+			{"other_server", "p", faults.KindServerCrash, faults.TargetServer, 8, false},
+			{"other_kind", "p", faults.KindServerFreeze, faults.TargetServer, 7, false},
+			{"other_target_type", "p", faults.KindServerCrash, faults.TargetVolume, 7, false},
+			{"other_project", "q", faults.KindServerCrash, faults.TargetServer, 7, false},
+		}
+		for _, c := range cases {
+			if got := e.M.Active(c.project, c.kind, c.targetType, c.id); got != c.want {
+				t.Errorf("%s: Active(%s, %s, %s, %d) = %v, want %v", c.name, c.project, c.kind, c.targetType, c.id, got, c.want)
+			}
+		}
+
+		if err := e.M.End(t.Context(), "p", crash.ID); err != nil {
+			t.Fatalf("End(p, %d): %v", crash.ID, err)
+		}
+		if e.M.Active("p", faults.KindServerCrash, faults.TargetServer, 7) {
+			t.Error("Active(p, server_crash, server, 7) = true after the fault ended, want false")
+		}
+	})
+}
+
+func testFault06(t *testing.T) {
+	t.Run("end_kind", func(t *testing.T) {
+		e := newEnv(t)
+		ctx := t.Context()
+		freeze7 := e.create(t, "p", faults.Spec{Kind: faults.KindServerFreeze, Target: serverTarget(7), Params: map[string]any{}})
+		slow7 := e.create(t, "p", faults.Spec{Kind: faults.KindDiskSlow, Target: serverTarget(7), Params: map[string]any{"iops": 100}})
+		freeze8 := e.create(t, "p", faults.Spec{Kind: faults.KindServerFreeze, Target: serverTarget(8), Params: map[string]any{}})
+
+		if err := e.M.EndKind(ctx, "p", faults.KindServerFreeze, faults.TargetServer, 7); err != nil {
+			t.Fatalf("EndKind(p, server_freeze, server, 7): %v", err)
+		}
+		if got, want := e.listedIDs("p"), []int64{slow7.ID, freeze8.ID}; !slices.Equal(got, want) {
+			t.Errorf("listed %v, want %v", got, want)
+		}
+		freezes := e.Effects[faults.KindServerFreeze]
+		if n := freezes.UndoCount(freeze7.ID); n != 1 {
+			t.Errorf("Undo of the freeze on server 7 ran %d times, want 1", n)
+		}
+		if n := freezes.UndoCount(freeze8.ID); n != 0 {
+			t.Errorf("Undo of the freeze on server 8 ran %d times, want 0", n)
+		}
+		if n := e.Effects[faults.KindDiskSlow].UndoCount(slow7.ID); n != 0 {
+			t.Errorf("Undo of disk_slow on server 7 ran %d times, want 0", n)
+		}
+
+		if err := e.M.EndKind(ctx, "p", faults.KindServerFreeze, faults.TargetServer, 7); err != nil {
+			t.Errorf("EndKind with no freeze listed: %v, want nil", err)
+		}
+		if got, want := e.listedIDs("p"), []int64{slow7.ID, freeze8.ID}; !slices.Equal(got, want) {
+			t.Errorf("listed %v after the second EndKind, want %v", got, want)
+		}
+	})
+}

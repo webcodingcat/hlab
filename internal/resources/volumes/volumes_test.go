@@ -105,6 +105,7 @@ func (r *jobRecorder) recorded() []recordedJob {
 
 type volEnv struct {
 	*apitest.Env
+	vol  *volumes.Module
 	fake *recPlatform
 	jobs *jobRecorder
 	push *apitest.PushGate
@@ -114,6 +115,13 @@ type volEnv struct {
 // does (hooks, disk rule with the volume disks) on the shipped catalog and
 // a fake platform with plenty of disk.
 func newVolEnv(t *testing.T) *volEnv {
+	t.Helper()
+	return newVolEnvWith(t, nil)
+}
+
+// newVolEnvWith is newVolEnv with endFaults as the EndFaults hook of the
+// volumes module (nil = none).
+func newVolEnvWith(t *testing.T, endFaults func(ctx context.Context, project, targetType string, id int64) error) *volEnv {
 	t.Helper()
 	cat, err := catalog.Load("../../../catalog")
 	if err != nil {
@@ -146,9 +154,10 @@ func newVolEnv(t *testing.T) *volEnv {
 		CheckDisk:    srv.CheckDisk,
 		ApplianceJob: jobs.run,
 		PushAgent:    push.Wait,
+		EndFaults:    endFaults,
 	})
 	srv.SetVolumes(vol)
-	return &volEnv{Env: apitest.New(t, srv, vol, resactions.New()), fake: fake, jobs: jobs, push: push}
+	return &volEnv{Env: apitest.New(t, srv, vol, resactions.New()), vol: vol, fake: fake, jobs: jobs, push: push}
 }
 
 // wantPage83 is 484C4142-0000-4000-8000-<id as 12 hex digits> in text
@@ -760,6 +769,8 @@ func TestVolumes(t *testing.T) {
 			t.Errorf("after detach: server volumes %v, want %d gone", got, w)
 		}
 	})
+
+	testFaults(t)
 }
 
 // attachCalls returns the AttachDisk calls of the platform so far.

@@ -366,6 +366,7 @@ func (m *Module) detach(w http.ResponseWriter, req *http.Request) {
 		if rec.Server == nil {
 			return nil
 		}
+		m.endFaults(ctx, p.Name, id)
 		return m.unplug(ctx, stor, rec)
 	})
 	api.JSON(w, http.StatusCreated, map[string]any{"action": action})
@@ -416,19 +417,34 @@ func (m *Module) Attach(ctx context.Context, stor *store.Store, serverID int64, 
 }
 
 // DetachAll implements servers.VolumeHooks: it detaches every volume of
-// server serverID; the volume files stay.
+// server serverID once the faults of all of them ended; the volume files
+// stay.
 func (m *Module) DetachAll(ctx context.Context, stor *store.Store, serverID int64) error {
 	var attached []Record
+	projects := map[int64]string{}
 	if err := stor.Tx(func(tx store.Tx) error {
 		recs, err := store.ListAll[Record](tx, Kind)
+		if err != nil {
+			return err
+		}
 		for _, r := range recs {
 			if r.Server != nil && *r.Server == serverID {
 				attached = append(attached, r)
 			}
 		}
+		if len(attached) == 0 {
+			return nil
+		}
+		ps, err := store.ListProjects(tx)
+		for _, p := range ps {
+			projects[p.ID] = p.Name
+		}
 		return err
 	}); err != nil {
 		return err
+	}
+	for _, r := range attached {
+		m.endFaults(ctx, projects[r.Hlab.ProjectID], r.ID)
 	}
 	for _, r := range attached {
 		if err := m.unplug(ctx, stor, r); err != nil {
