@@ -198,7 +198,6 @@ func (s server) status(w http.ResponseWriter, _ *http.Request) {
 	if st.ShadowingZones == nil {
 		st.ShadowingZones = []ShadowingZone{}
 	}
-	st.Faults = 0
 	if s.d.Faults != nil {
 		st.Faults = s.d.Faults.Count()
 	}

@@ -99,7 +99,7 @@ func (s server) endFault(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	id, err := strconv.ParseInt(req.PathValue("id"), 10, 64)
-	if err != nil || id < 1 {
+	if err != nil {
 		writeError(w, http.StatusNotFound, "not_found", "fault not found")
 		return
 	}
