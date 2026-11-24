@@ -23,6 +23,22 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-24 Test VM names and stop action
+
+- Type: decision
+- Phase: phase 16
+- What: the test VMs are named `release-check-dev` and `release-check-user`, without automatic checkpoints and with `-AutomaticStopAction ShutDown`.
+- Why: the names avoid HLab's `hlab-` prefix, and a host shutdown never saves a nested VM.
+- Cost of change: low
+
+## 2026-11-24 Answer-file ISO built with IMAPI2
+
+- Type: decision
+- Phase: phase 16
+- What: the guide builds the answer-file ISO (oobeSystem pass only, local account `tester`, password asked with `Read-Host`, folder deleted afterwards) with Windows' own IMAPI2FS interface.
+- Why: a fresh development machine has no oscdimg.
+- Cost of change: low
+
 ## 2026-11-24 Test VMs use the Default Switch
 
 - Type: decision
