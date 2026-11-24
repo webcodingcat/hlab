@@ -19,6 +19,22 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-24 A locations latency lists only servers in the agent document
+
+- Type: decision
+- Phase: phase 27
+- What: a locations fault lists only those of the project's stored servers that are also in `doc.Servers`, so a server being deleted drops out as for a server target.
+- Why: the same rule for both target kinds needs no extra deletion hook.
+- Cost of change: low
+
+## 2026-11-24 A box fault with an unparsable IP is left out
+
+- Type: decision
+- Phase: phase 27
+- What: a storage box whose stored IP cannot be parsed counts as gone, and its fault is left out of the agent document.
+- Why: a broken record must not stop the push for every other fault and resource.
+- Cost of change: low
+
 ## 2026-11-24 A locations latency class carries the destination's own faults
 
 - Type: decision
