@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/webcodingcat/hlab/internal/apitest"
 	"github.com/webcodingcat/hlab/internal/platform"
@@ -128,6 +129,212 @@ func testAdapters(t *testing.T) {
 			t.Errorf("seed of server %d keeps the detached interface", a)
 		}
 	})
+
+	t.Run("SRV-01/seed_hold", func(t *testing.T) {
+		p := newRecPlatform()
+		p.SetResources(roomy)
+		clk := newTestClock(time.Date(2026, 11, 24, 3, 0, 0, 0, time.UTC))
+		env, mod, d := newFakeEnv(t, p, func(d *servers.Deps) {
+			d.Clock = clk
+			d.SeedHold = seedHold
+		})
+		id := createdServer(t, env, "early", nil)
+		waitStatus(t, env, id, "running")
+		vm := servers.VMName(d.Settings.VMPrefix, id)
+		ctx, cancel := context.WithTimeout(context.Background(), apitest.ActionTimeout)
+		defer cancel()
+
+		clk.Add(10 * time.Second)
+		mac := attachInRecord(t, env, id, 77, 12, "10.0.1.2")
+		n := len(p.dvdSets(0))
+		waiters := clk.waiting()
+		if err := mod.SyncAdapters(ctx, env.Store, id, []int64{77}); err != nil {
+			t.Fatalf("SyncAdapters 10 s after the create: %v", err)
+		}
+		if _, ok := nicOf(p.Fake, vm, mac); !ok {
+			t.Errorf("VM %s has no adapter %s after SyncAdapters within the hold", vm, mac)
+		}
+		if got := p.dvdSets(0)[n:]; len(got) != 0 {
+			t.Errorf("SetDVD calls on slot 0 within the hold: %+v, want none", got)
+		}
+		if !seedDue(t, env, id) {
+			t.Error("seed_due not set after SyncAdapters within the hold")
+		}
+
+		waitWaiter(clk, waiters)
+		clk.Add(seedHold - 10*time.Second + time.Second)
+		sets := waitSeedInserted(t, env, p, vm, id, n, mac)
+		if sets[0].iso != "" {
+			t.Errorf("slot 0 sets after the hold %+v, want an eject before the insert", sets)
+		}
+
+		// After the hold a second attach swaps the seed before it returns.
+		mac2 := attachInRecord(t, env, id, 78, 13, "10.1.1.2")
+		n = len(p.dvdSets(0))
+		if err := mod.SyncAdapters(ctx, env.Store, id, []int64{78}); err != nil {
+			t.Fatalf("SyncAdapters after the hold: %v", err)
+		}
+		if sets := p.dvdSets(0)[n:]; len(sets) == 0 || sets[len(sets)-1].iso == "" {
+			t.Fatalf("slot 0 after SyncAdapters after the hold: %+v, want a new seed inserted", sets)
+		}
+		if _, ok := seedEthernet(t, p.Fake, vm, mac2); !ok {
+			t.Errorf("seed after the second attach has no interface %s", mac2)
+		}
+		if seedDue(t, env, id) {
+			t.Error("seed_due set after SyncAdapters after the hold, want cleared")
+		}
+	})
+
+	t.Run("SRV-01/seed_due_at_start", func(t *testing.T) {
+		cases := []struct {
+			name     string
+			behavior string
+			poweroff bool
+			held     bool
+		}{
+			{"saved_resumed", "save", false, false},
+			{"off_powered_on", "shutdown", false, true},
+			{"off_stays_off", "shutdown", true, false},
+		}
+		for _, c := range cases {
+			t.Run(c.name, func(t *testing.T) {
+				p := newRecPlatform()
+				p.SetResources(roomy)
+				clk := newTestClock(time.Date(2026, 11, 24, 3, 0, 0, 0, time.UTC))
+				env, mod, d := newFakeEnv(t, p, func(d *servers.Deps) {
+					shortHalt(d)
+					d.Clock = clk
+					d.SeedHold = seedHold
+				})
+				lc := lifecycleOf(t, mod)
+				id := createdServer(t, env, "due", nil)
+				waitStatus(t, env, id, "running")
+				vm := servers.VMName(d.Settings.VMPrefix, id)
+				if c.poweroff {
+					runAction(t, env, id, "poweroff", nil)
+				}
+				clk.Add(seedHold + time.Second)
+				if err := lc.Halt(lifeCtx(t), c.behavior, false); err != nil {
+					t.Fatalf("Halt %s: %v", c.behavior, err)
+				}
+
+				// hlabd ended with the swap due: the record holds a new
+				// network and seed_due, slot 0 the old seed.
+				mac := attachInRecord(t, env, id, 77, 12, "10.0.1.2")
+				err := env.Store.Tx(func(tx store.Tx) error {
+					return servers.Update(tx, id, func(r *servers.Record) error {
+						r.Hlab.SeedDue = true
+						return nil
+					})
+				})
+				if err != nil {
+					t.Fatalf("set seed_due on server %d: %v", id, err)
+				}
+
+				n := len(p.dvdSets(0))
+				waiters := clk.waiting()
+				if err := lc.Restore(lifeCtx(t), c.behavior); err != nil {
+					t.Fatalf("Restore %s: %v", c.behavior, err)
+				}
+				if c.held {
+					if got := p.dvdSets(0)[n:]; len(got) != 0 {
+						t.Errorf("SetDVD calls on slot 0 within the hold after the power-on: %+v, want none", got)
+					}
+					if !seedDue(t, env, id) {
+						t.Error("seed_due cleared within the hold after the power-on, want set")
+					}
+					waitWaiter(clk, waiters)
+					clk.Add(seedHold + time.Second)
+				}
+				waitSeedInserted(t, env, p, vm, id, n, mac)
+			})
+		}
+	})
+}
+
+// seedHold is the SeedHold the seed rows use.
+const seedHold = 90 * time.Second
+
+// attachInRecord adds a private network to the record of server id, as an
+// attach does before it calls SyncAdapters, and returns its MAC.
+func attachInRecord(t *testing.T, env *apitest.Env, id, netID int64, vlan int, ip string) string {
+	t.Helper()
+	var mac string
+	err := env.Store.Tx(func(tx store.Tx) error {
+		m, err := servers.NextPrivateMAC(tx)
+		if err != nil {
+			return err
+		}
+		mac = strings.ToLower(m.String())
+		return servers.Update(tx, id, func(r *servers.Record) error {
+			r.PrivateNet = append(r.PrivateNet, servers.PrivateNet{
+				Network: netID, IP: ip, AliasIPs: []string{}, MACAddress: m.String(),
+			})
+			if r.Hlab.Networks == nil {
+				r.Hlab.Networks = map[int64]servers.NetInternal{}
+			}
+			r.Hlab.Networks[netID] = servers.NetInternal{VLAN: vlan, IPRange: "10.0.0.0/8"}
+			return nil
+		})
+	})
+	if err != nil {
+		t.Fatalf("attach server %d to network %d in its record: %v", id, netID, err)
+	}
+	return mac
+}
+
+// seedDue reports the seed_due note of server id.
+func seedDue(t *testing.T, env *apitest.Env, id int64) bool {
+	t.Helper()
+	var due bool
+	err := env.Store.Tx(func(tx store.Tx) error {
+		r, err := servers.Load(tx, id)
+		due = r.Hlab.SeedDue
+		return err
+	})
+	if err != nil {
+		t.Fatalf("load server %d: %v", id, err)
+	}
+	return due
+}
+
+// waiting is the number of pending After calls of the clock.
+func (c *testClock) waiting() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.waiters)
+}
+
+// waitWaiter waits up to a second for a new After call on clk, so a
+// delayed swap has set its deadline before the clock moves; a module that
+// waits otherwise goes on after that second.
+func waitWaiter(clk *testClock, before int) {
+	deadline := time.Now().Add(time.Second)
+	for clk.waiting() <= before && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// waitSeedInserted waits for a seed with the interface mac in slot 0 of vm
+// after its n-th set of slot 0 and seed_due cleared; it returns the sets
+// after n.
+func waitSeedInserted(t *testing.T, env *apitest.Env, p *recPlatform, vm string, id int64, n int, mac string) []dvdSet {
+	t.Helper()
+	deadline := time.Now().Add(apitest.ActionTimeout)
+	for {
+		sets := p.dvdSets(0)[n:]
+		if len(sets) > 0 && sets[len(sets)-1].iso != "" && !seedDue(t, env, id) {
+			if _, ok := seedEthernet(t, p.Fake, vm, mac); !ok {
+				t.Errorf("seed inserted into slot 0 of %s has no interface %s", vm, mac)
+			}
+			return sets
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("slot 0 of %s after %s: sets %+v, seed_due %v; want the current seed inserted and seed_due cleared",
+				vm, apitest.ActionTimeout, sets, seedDue(t, env, id))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // nicOf returns the adapter of vm with MAC mac on the fake platform.
