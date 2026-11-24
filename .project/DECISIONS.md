@@ -23,6 +23,14 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-24 Guest hooks get their interpreter by placeholder
+
+- Type: decision
+- Phase: phase 29
+- What: vendor-data writes hooks, units and the udev rule with `@PYTHON@`; the shell part picks `/usr/bin/python3` or `/usr/libexec/platform-python` right after `set -e` and replaces the placeholder in all six files before reloading systemd and udev.
+- Why: units and rules are loaded with the real interpreter of each image.
+- Cost of change: low
+
 ## 2026-11-24 No download retry after cancellation
 
 - Type: decision

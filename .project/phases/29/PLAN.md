@@ -118,14 +118,14 @@ E2E harness (writer of `test/e2e/images_test.go`):
     `NoOnLink` from `os_flavor` in `rec.Image` (a small helper reading the
     raw JSON; a missing or unreadable image object keeps `on-link`)
 
-- [ ] 29-04 Guest hooks for every image: Python 3.6, interpreter, root only
+- [x] 29-04 Guest hooks for every image: Python 3.6, interpreter, root only
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SRV-23, SRV-24 | Tests: - (proved by TestE2E/SRV-23 and SRV-24)
   - Reads: ARCHITECTURE.md "Guest integration"; EXPERIMENTS.md E32, E45;
     RESEARCH.md "cloud-init users and vendor-data merge"; DECISIONS.md
     "Servers log in as root only"; Interfaces above (Vendor-data)
   - Size: ~60 lines in 1 file
-  - [ ] `internal/resources/servers/vendordata.go`: Python 3.6 compatible
+  - [x] `internal/resources/servers/vendordata.go`: Python 3.6 compatible
     `subprocess.run` arguments in `guestHook` and `volumeHook`; the
     `@PYTHON@` placeholder in the shebangs, `ExecStart=` lines and udev
     `PROGRAM=`, filled by the shell part with the interpreter it finds;
