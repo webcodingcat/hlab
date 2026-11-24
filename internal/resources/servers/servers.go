@@ -24,6 +24,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/agentapi"
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/faults"
 	"github.com/webcodingcat/hlab/internal/ipam"
 	"github.com/webcodingcat/hlab/internal/metrics"
 	"github.com/webcodingcat/hlab/internal/platform"
@@ -128,6 +129,9 @@ type Deps struct {
 	// Console issues the URLs of request_console and ends a deleted
 	// server's open consoles.
 	Console Console
+	// EndFaults ends the faults on a deleted server of a project
+	// (faults.Manager.EndTarget); nil = none.
+	EndFaults func(ctx context.Context, project, targetType string, id int64) error
 }
 
 // Console is the server console service (console.Service).
@@ -1055,6 +1059,11 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 	}
 
 	acts.Run(action.ID, func(ctx context.Context, _ func(int)) error {
+		if m.d.EndFaults != nil {
+			if err := m.d.EndFaults(ctx, p.Name, faults.TargetServer, id); err != nil {
+				slog.Warn("end the faults of a deleted server", "id", id, "err", err)
+			}
+		}
 		var lbs []int64
 		if m.loadBalancers != nil {
 			if err := stor.Tx(func(tx store.Tx) error {

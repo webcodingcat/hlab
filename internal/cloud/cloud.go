@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/webcodingcat/hlab/internal/actions"
@@ -27,6 +28,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/catalog"
 	"github.com/webcodingcat/hlab/internal/console"
 	"github.com/webcodingcat/hlab/internal/dnszone"
+	"github.com/webcodingcat/hlab/internal/faults"
 	"github.com/webcodingcat/hlab/internal/hostnet"
 	hnwin "github.com/webcodingcat/hlab/internal/hostnet/windows"
 	"github.com/webcodingcat/hlab/internal/images"
@@ -125,6 +127,9 @@ type Cloud struct {
 	// console serves the server consoles of request_console.
 	console *console.Service
 	mods    []resource.Module
+	// faults holds the active faults of this run; nil while stopped. It is
+	// read by API requests and module actions, hence atomic.
+	faults atomic.Pointer[faults.Manager]
 	// shadow keeps the primary zones that shadow a public domain.
 	shadow *zones.Shadow
 	// pushMu keeps agent documents in the order they were built.
@@ -320,10 +325,11 @@ func (c *Cloud) start(ctx context.Context, params []string) error {
 	if err := c.publishZones(ctx); err != nil {
 		return err
 	}
-	router := api.New(api.Deps{Store: c.st, Actions: c.acts})
+	router := api.New(api.Deps{Store: c.st, Actions: c.acts, Faults: c.faultLayer})
 	for _, m := range c.mods {
 		router.Mount(m)
 	}
+	c.newFaults(router.Resources())
 	if err := c.serveAPI(ctx, c.withCRL(router)); err != nil {
 		return err
 	}
@@ -402,6 +408,7 @@ func (c *Cloud) modules() []resource.Module {
 		ExtraDisks:     volumeDisks,
 		RescueSeedHold: rescueSeedHold,
 		Console:        c.console,
+		EndFaults:      c.endFaults,
 	})
 	vol := volumes.New(volumes.Deps{
 		Catalog:      c.cat,
@@ -412,6 +419,7 @@ func (c *Cloud) modules() []resource.Module {
 		CheckDisk:    srv.CheckDisk,
 		ApplianceJob: c.applianceJob,
 		PushAgent:    c.PushAgent,
+		EndFaults:    c.endFaults,
 	})
 	srv.SetVolumes(vol)
 	nets := networks.New(networks.Deps{Store: c.st, Catalog: c.cat, Servers: srv, PushAgent: c.PushAgent})
@@ -612,6 +620,7 @@ func (c *Cloud) serveManagement(apiHandler http.Handler) error {
 		LogDir:       c.d.Paths.Logs,
 		Reload:       c.reload,
 		Done:         c.done,
+		Faults:       c.faults.Load(),
 	})
 	c.mgmtSrv = &http.Server{Handler: h, ReadHeaderTimeout: 30 * time.Second}
 	go serve(c.mgmtSrv, ln, "management")
@@ -670,6 +679,12 @@ func (c *Cloud) teardown(ctx context.Context, reason sysint.StopReason) error {
 		close(c.done)
 		c.done = nil
 	}
+	// At a host shutdown the next cloud start undoes what is left.
+	if m := c.faults.Load(); m != nil && reason != sysint.StopHostShutdown {
+		if err := m.EndAll(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("end faults: %w", err))
+		}
+	}
 	for _, srv := range []*http.Server{c.mgmtSrv, c.apiSrv} {
 		if srv == nil {
 			continue
@@ -681,6 +696,7 @@ func (c *Cloud) teardown(ctx context.Context, reason sysint.StopReason) error {
 		cancel()
 	}
 	c.mgmtSrv, c.apiSrv = nil, nil
+	c.faults.Store(nil)
 	c.closeConsole()
 	if c.stopStorage != nil {
 		c.stopStorage()

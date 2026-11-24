@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 	"github.com/webcodingcat/hlab/internal/actions"
 	"github.com/webcodingcat/hlab/internal/api"
 	"github.com/webcodingcat/hlab/internal/catalog"
+	"github.com/webcodingcat/hlab/internal/faults"
 	"github.com/webcodingcat/hlab/internal/ipam"
 	"github.com/webcodingcat/hlab/internal/resource"
 	"github.com/webcodingcat/hlab/internal/resources/sshkeys"
@@ -371,6 +373,11 @@ func (m *Module) delete(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		api.Fail(w, err)
 		return
+	}
+	if m.d.EndFaults != nil {
+		if err := m.d.EndFaults(req.Context(), p.Name, faults.TargetStorageBox, id); err != nil {
+			slog.Warn("end the faults of a deleted storage box", "id", id, "err", err)
+		}
 	}
 	m.run(req, a.ID, id, nil, func(tx store.Tx, projectID int64, r *Record) error {
 		return removeBox(tx, projectID, *r)
