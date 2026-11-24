@@ -200,18 +200,18 @@ is shared by the project's Faults and Active faults.
     `faultsPill`, `defaultForm`, `showsSeed`, `requestBody`, `formField`,
     `faultResources`
 
-- [ ] 28-05 Faults table and the project's Faults list
+- [x] 28-05 Faults table and the project's Faults list
   - Wave: 2 | Depends on: 28-03, 28-04 | Review: alone
   - Requirements: UI-16 | Tests: ui/frontend/tests/e2e/faults.spec.ts
   - Reads: UI-SPEC.md "Building blocks" (Resource table, Confirm dialog,
     Action toast), "Faults", "Behaviour"; the existing `lib/Table.svelte`
     and one `views/<view>/Section.svelte` as pattern
   - Size: ~300 lines in 3 files
-  - [ ] `lib/FaultsTable.svelte`: kind, target (link to the server,
+  - [x] `lib/FaultsTable.svelte`: kind, target (link to the server,
     volume or storage box detail; "Project"; "fsn1 ↔ hel1"), parameters,
     seed, remaining time; optional Project column first (display name,
     link to the project's Faults); row menu "End"
-  - [ ] `views/faults/Section.svelte` list page: loads
+  - [x] `views/faults/Section.svelte` list page: loads
     `GET /projects/{name}/faults` through `mgmt()` and the project's
     servers, volumes and storage boxes for the names, refreshes every 5 s
     and after every action; toolbar "Create fault" and "End all" (confirm
