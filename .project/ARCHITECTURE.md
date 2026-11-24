@@ -1182,7 +1182,10 @@ locks a resource of type `project`.
   `scsi-0HC_Volume_*` disk so a grown volume shows its new size; it also
   configures hot-added private adapters (MAC `02:48:4c:2x:xx:xx`, only
   links not yet carrying their private IP, so the seed's config stays in
-  charge of the others) live from
+  charge of the others; a link that carried its IP when the hook first saw
+  it after boot, listed in `/run/hlab-guest/boot-links.json`, and a link the
+  hook took over, listed in `networks.json`, are not configured again during
+  that boot even after a carrier drop removed the address, phase B4, E47) live from
   `/hetzner/v1/metadata/private-networks` (`/32` plus the route to the
   network range via the gateway, no alias IPs) through networkd files in
   `/run` or `ip` without networkd. The script also writes the cloud-init
