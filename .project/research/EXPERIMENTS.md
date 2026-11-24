@@ -1431,3 +1431,102 @@ Observed:
 Pitfalls: with the cidata DVD attached a seed directory alone is not
 enough (`fs_label: null`); after `cloud-init clean` `/etc/hostname` hides
 the pre-init name; `cloud-init clean` makes new host keys.
+
+## E47 Private network drops after resume from saved state (phase B4)
+
+- Result: confirmed and explained; the cause is in Hyper-V's restore and the guest's `hv_netvsc` driver, no hlab step removes it. Refuted: "up to about 5 minutes" (the drops end 11 to 25 s after the first loss)
+- Checked on: 2026-11-24, dev cloud at a9c685a, `stop_behaviour = "save"`, ubuntu-24.04 (kernel 6.8.0-147, systemd 255), cx23, two servers in fsn1 and a third in hel1, one network, no faults active
+- By: experiment
+- Status: valid
+
+Method: each guest ran `ping -D -O -i 0.01 -W 1 <peer private IP>` (started
+before the stop, it resumes with the VM) and logged eth1 carrier, address
+and route every 50 ms; full cycle `hlab cloud stop` / `hlab cloud start`,
+and guest-only cycle `Save-VM` / `Start-VM` (no elevation) with the cloud
+running; `tcpdump 'icmp or arp'` on eth1 of both guests in one run. Loss
+counted by `icmp_seq` without reply, not by guest time (the clock steps by
+about 3 s after resume).
+
+Observed:
+- Full cycle: one or two blocks of about 90 to 540 lost pings in a row,
+  sometimes a few percent in the following 10 s, then no loss in 6 minutes.
+  The same pattern with only one guest saved and resumed, so the appliance
+  boot, agent document push, deny lists, VLANs and start order are not the
+  cause; VLAN and ACL settings are unchanged, the appliance answers ARP at once.
+- On restore Hyper-V sends each NIC several disconnect/connect events within
+  about 100 ms, twice (port connect and vmbus resume; VmSwitch-Operational
+  event 220, localized text). `hv_netvsc` handles link changes at most every
+  2 s, so eth0 and eth1 lose carrier two or three times for 2 to 3 s each
+  over 10 to 20 s; public traffic drops too.
+- While the carrier is off the guest drops all outgoing packets (the peer's
+  echo requests arrive, no reply leaves); after carrier on the gateway's ARP
+  entry is gone (`arp_evict_nocarrier=1`).
+- Lost pings in guest-only runs: baseline 371 and 600; networkd
+  `ConfigureWithoutCarrier=yes` + `IgnoreCarrierLoss=yes` 603;
+  `arp_evict_nocarrier=0` 370; adapters disconnected while saved and
+  `Connect-VMNetworkAdapter` after `Start-VM` 323 (one carrier-off window
+  only); VLAN and 4 ACL entries survive the reconnect. A gratuitous ARP
+  cannot help, flushing appliance tables does not touch the cause.
+- Side effect: while the carrier is off networkd removes the static private
+  address; the guest hook (`has_ip` in `internal/resources/servers/vendordata.go`)
+  then treats the link as hot-added and writes `05-hlab-<mac>.network`, which
+  sorts before the seed's `10-netplan-eth1.network`, so the user's netplan
+  settings for that link are not applied until the next reboot.
+- Waiting condition that is stable: `/sys/class/net/eth{0,1}/carrier_changes`
+  unchanged for 8 s (deadline 2 min); 100 good pings can fall between two
+  drop windows.
+
+Pitfalls: `ping -O` reports "no answer yet" after 1 s although late replies
+arrive; Ubuntu `sh` is dash; `hlab logs` returns only the last 1000 lines.
+
+## E48 cloud-init seed timing and the slot-0 swap on an early network attach (phase B4)
+
+- Result: confirmed: a seed swap inside the window leaves the guest with the image's default hostname and no public IP on all five images; a swap after it does no harm; later stages use the cache. Refuted: that an hlabd restart or a cloud start rewrites stale seeds
+- Checked on: 2026-11-24, dev cloud at a9c685a, Hyper-V Gen2, cx23, fsn1, idle host; ubuntu-24.04 (cloud-init 26.1), debian-13 (25.1.4), rocky-10 (24.4-7.el10), fedora-44 (25.3), opensuse-16 (25.1.3)
+- By: experiment and code reading
+- Status: valid
+
+Method: servers created stopped, then `hcloud server poweron`; a PowerShell
+watcher swapped slot 0 like `SetDVD` (`Set-VMDvdDrive -Path $null`, poll
+until empty, insert the same ISO) at a given `(Get-VM).Uptime`; firmware
+offset = VM uptime minus guest `/proc/uptime`; evidence from
+`/var/log/cloud-init.log`, `journalctl -b <n>`; real path: `hcloud server
+create` then `attach-to-network` at once, as OpenTofu does.
+
+Observed (VM time from start):
+
+| image | seed unmounted | local stage done |
+|---|---|---|
+| ubuntu-24.04 | 7.2-7.5 s | 7.6-8.1 s |
+| debian-13 | 9.7-9.9 s | 10.4-10.7 s |
+| rocky-10 | 16.4-16.7 s | 16.5-16.9 s |
+| fedora-44 | 12.2-12.5 s | 12.3-12.6 s |
+| opensuse-16 | 36.4-36.9 s (first boot only; later boots about 6.5 s guest time) | 36.6-37.1 s |
+
+- The window opens at about VM start + 4 s: ds-identify (systemd generator)
+  looks for `cidata` right after switch-root; an empty drive then disables
+  cloud-init for that boot.
+- `Set-VMDvdDrive -Path $null` takes 5.1 to 5.4 s until the drive is empty,
+  insert 0.2 s: every `rewriteSeed` on a running VM empties the drive for
+  at least about 5.3 s.
+- Swap inside the window: 5 of 5 failed ("No local datasource found", DHCP
+  fallback, wait-online timeout 60-120 s, `DataSourceNone`, default
+  hostname, no public IP, unreachable). Real path: attach finished at VM
+  uptime 11-14 s; ubuntu 2/2 and debian 1/1 failed, rocky-10 1/1 passed.
+  `hcloud server reset` repairs a failed server.
+- Swap after the window: 5 of 5 fine. Network, config and final stages log
+  `restored from cache` and never mount `/dev/sr0`.
+- Every later boot (power-on, reboot, reset) reads the seed again in the
+  local stage, so the window returns at every boot. A later boot with an
+  empty drive keeps hostname and IPs from the earlier boot (ubuntu-24.04).
+- Code: `servers.reconcile` builds the seed only when the file is missing and
+  runs at create and rebuild only; cloud start (`recoverModules`, `restore`)
+  rewrites seeds only in `primaryips.Recover` for rebuilt primary IPs. A stale
+  seed stays until the server's next `SyncAdapters`; if hlabd ends between
+  eject and insert in `rewriteSeed`, slot 0 stays empty and nothing puts it back.
+- Measured worst case 37 s on an idle host; a 90 s hold covers it. A reboot
+  inside the guest does not reset Hyper-V uptime and stays invisible to hlab.
+
+Pitfalls: Get-VM Uptime includes firmware (add 2 to 4.3 s to guest `Up`);
+PowerShell starts in 1 to 5 s; scripts need LF endings; a failed guest's
+`cloud-init.log` may be gone after reset (use the persistent journal).
