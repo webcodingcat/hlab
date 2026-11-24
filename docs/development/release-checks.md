@@ -558,7 +558,7 @@ texts of the views it opens.
 
 - Start: a PowerShell inside the VM, the cloud running, `upd1` running.
 - Setup: the stop behaviour under **Administration** > **Settings** is
-  `save`, the default. Note the server's boot ID and boot time:
+  **Save the VMs' state**, the default. Note the server's boot ID and boot time:
 
   ```powershell
   ssh root@<IPv4 of upd1> 'cat /proc/sys/kernel/random/boot_id; uptime -s'
@@ -571,12 +571,12 @@ texts of the views it opens.
   3. Open HLab from the Start menu. Click **Start cloud** and wait until
      it runs.
   4. Run the `ssh` command of the setup again.
-  5. Optional: set the stop behaviour to `shutdown`, **Save settings**,
+  5. Optional: set the stop behaviour to **Shut the VMs down**, **Save settings**,
      then **Stop cloud** and **Start cloud** once (Hyper-V takes the new
      value only at a cloud start), and repeat steps 1 to 4.
 - Expected: after the restart the window shows the cloud stopped until
-  you start it. With `save`, `upd1` runs again with the same boot ID: it
-  was saved, not restarted. With `shutdown`, it runs again with a new boot
+  you start it. With **Save the VMs' state**, `upd1` runs again with the same boot ID: it
+  was saved, not restarted. With **Shut the VMs down**, it runs again with a new boot
   ID and a later boot time: it was shut down and powered on.
   **Administration** > **Logs** shows no error about restoring servers.
 
@@ -588,7 +588,7 @@ data disk, so the drive gets the space back.
 - Start: the HLab window with the cloud running, project `demo`.
 - Setup:
   1. **Administration** > **Settings**: set the stop behaviour to
-     `shutdown` and **Save settings**; with `save` the disk is not
+     **Shut the VMs down** and **Save settings**; with **Save the VMs' state** the disk is not
      compacted.
   2. **Storage Boxes**: **Create Storage Box** twice. Box A with a
      password, **Samba** and **reachable externally** on; box B with the
@@ -619,7 +619,7 @@ data disk, so the drive gets the space back.
   4. **Start cloud**, delete box A (type its name to confirm) and wait
      until it is gone from the list.
   5. **Stop cloud** and read the size again.
-  6. Afterwards set the stop behaviour back to `save`, start the cloud
+  6. Afterwards set the stop behaviour back to **Save the VMs' state**, start the cloud
      and delete box B.
 - Expected: Hyper-V Manager lists `hlab-storage`, and its console shows
   `hlab-storage login:`. After step 3 the disk is about 2 GB larger than
