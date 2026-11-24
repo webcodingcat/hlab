@@ -304,9 +304,11 @@ func (f *imageFix) create(e *env) error {
 	if err := os.WriteFile(file, []byte(imageUserData("")), 0o600); err != nil {
 		return err
 	}
-	// The first server of an image downloads and converts it.
+	// The first server of an image downloads and converts it. hcloud
+	// refuses a deprecated image (fedora-43) without --allow-deprecated-image.
 	r, err := e.hcloudRun(context.Background(), 45*time.Minute, "server", "create",
 		"--name", f.name, "--type", serverType, "--location", serverLocation, "--image", f.key,
+		"--allow-deprecated-image",
 		"--ssh-key", e.sshKey, "--user-data-from-file", file, "--network", strconv.FormatInt(netA, 10))
 	if err != nil {
 		return fmt.Errorf("hcloud server create %s from %s: %v\n%s", f.name, f.key, err, r)
