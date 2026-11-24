@@ -104,7 +104,7 @@ Behaviour the tests build on:
     address. `networks.json` keeps its format; a detached link leaves both
     lists; Python 3.6 compatible like the rest of the hook
 
-- [ ] B4-03 Storage boxes: a snapshot the agent no longer has is deleted
+- [x] B4-03 Storage boxes: a snapshot the agent no longer has is deleted
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SBOX-05, SBOX-17 | Tests: internal/resources/storageboxes/snapshots_test.go
   - Reads: DECISIONS.md "Rollback on the storage VM", "Snapshot records
