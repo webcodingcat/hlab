@@ -499,7 +499,9 @@ func testSRV08(t *testing.T) {
 	if err != nil {
 		t.Fatalf("os-release: %v\n%s", err, r)
 	}
-	if got, want := strings.TrimSpace(r.Stdout), img.OSFlavor+" "+img.OSVersion; got != want {
+	// The image's os_version is the major release for some systems
+	// ("8" for rocky-8) while VERSION_ID carries the minor ("8.10").
+	if got, want := strings.TrimSpace(r.Stdout), img.OSFlavor+" "+img.OSVersion; got != want && !strings.HasPrefix(got, want+".") {
 		t.Errorf("/etc/os-release names %q, want %q (image %s)", got, want, img.Name)
 	}
 	r, err = e.ssh(srv, time.Minute, "", "if test -e "+srv08Marker+"; then echo present; else echo absent; fi")

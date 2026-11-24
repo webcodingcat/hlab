@@ -195,8 +195,9 @@ func (m *Module) syncDeny(ctx context.Context, all []Record, nets []int64) error
 // under the seed lock. With a VM it ejects slot 0
 // first and inserts the new seed afterwards, unless rescue holds slot 0
 // (ending rescue inserts the server's seed). Within the seed hold after a
-// boot hlab started it only notes the swap as due and swaps later from the
-// record as it is then. It holds the server's seed lock, so no boot hlab
+// boot hlab started, while the VM still runs, it only notes the swap as due
+// and swaps later from the record as it is then; a VM off since then reads
+// no seed, so it swaps at once and the next boot gets the new seed. It holds the server's seed lock, so no boot hlab
 // starts meets an empty drive, and rescue's changes of slot 0 (which
 // hold it too) are not undone.
 func (m *Module) rewriteSeed(ctx context.Context, stor *store.Store, id int64, hasVM bool) error {
@@ -213,7 +214,7 @@ func (m *Module) rewriteSeed(ctx context.Context, stor *store.Store, id int64, h
 		if err := m.setSeedDue(rec.ID, true); err != nil {
 			return err
 		}
-		if m.holdLeft(rec.ID) > 0 {
+		if m.holdLeft(rec.ID) > 0 && !vmOff(ctx, p, name) {
 			m.delaySeed(rec.ID)
 			return nil
 		}
@@ -239,6 +240,13 @@ func (m *Module) rewriteSeed(ctx context.Context, stor *store.Store, id int64, h
 		return m.setSeedDue(rec.ID, false)
 	}
 	return nil
+}
+
+// vmOff reports whether VM name is known to be off; an unknown state
+// counts as running, so the hold applies.
+func vmOff(ctx context.Context, p platform.Platform, name string) bool {
+	st, err := p.State(ctx, name)
+	return err == nil && st == platform.StateOff
 }
 
 // setSeedDue sets the seed_due note of server id to due.
