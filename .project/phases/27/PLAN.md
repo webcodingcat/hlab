@@ -162,13 +162,13 @@ Rules of the plan (ARCHITECTURE.md "hlab-agent", E29, E40, E41):
   - [x] `internal/agentapi/agentapi.go`: `Config.Faults`, `NetFault`, `FaultServer`, `FaultPrivate` as in "Interfaces".
   - [x] `internal/faults/neteffects.go` (new): `NetEffects`, `NewNetEffects`, `Effects`, `Faults` as in "Interfaces"; Apply adds the fault before calling push, so the document built during the push holds it.
 
-- [ ] 27-02 Agent: fault plan
+- [x] 27-02 Agent: fault plan
   - Wave: 2 | Depends on: 27-01 | Review: alone
   - Requirements: FAULT-07, FAULT-08, FAULT-11 (FAULT-02: an empty list plans nothing) | Tests: internal/agent/faults_test.go
   - Reads: REQUIREMENTS FAULT-07, FAULT-08, FAULT-11; ARCHITECTURE "hlab-agent" (Faults paragraph, `agentapi.Config`); EXPERIMENTS E29, E40, E41; phases/27/CONTEXT.md; this file "Interfaces" (rules of the plan); `internal/agent/firewall.go` (floating IPs per server, pure compile pattern)
   - Size: ~300 lines in 1 file
   - Adjusts: -
-  - [ ] `internal/agent/faultplan.go` (new): `FaultPlan`, `FaultRule`, `NetemClass`, `Netem`, `Flow`, `PlanFaults` by the rules in "Interfaces": cuts, loss, server latency, location latency, box drops, merging per destination and source group with stable keys, the seed of a netem without loss, `OffloadsOff`; rules and classes sorted so the same document gives the same plan.
+  - [x] `internal/agent/faultplan.go` (new): `FaultPlan`, `FaultRule`, `NetemClass`, `Netem`, `Flow`, `PlanFaults` by the rules in "Interfaces": cuts, loss, server latency, location latency, box drops, merging per destination and source group with stable keys, the seed of a netem without loss, `OffloadsOff`; rules and classes sorted so the same document gives the same plan.
 
 - [ ] 27-03 Agent: tc commands from the applied state
   - Wave: 3 | Depends on: 27-02 | Review: alone
