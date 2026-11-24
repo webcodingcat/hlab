@@ -6,6 +6,7 @@
   import Toast from "./lib/Toast.svelte";
   import TopBar from "./lib/TopBar.svelte";
   import { href, initCloud, initRoute, route, views, type AdminView, type ViewId } from "./state";
+  import ActiveFaults from "./views/ActiveFaults.svelte";
   import Isos from "./views/Isos.svelte";
   import Logs from "./views/Logs.svelte";
   import ProjectConsole from "./views/ProjectConsole.svelte";
@@ -58,6 +59,8 @@
             {#key $route.project}<ProjectMenu project={$route.project} />{/key}
           {:else if $route.area === "admin"}
             <span aria-current="page">Administration</span>
+          {:else if $route.area === "faults"}
+            <span aria-current="page">Active faults</span>
           {:else}
             <span aria-current="page">Projects</span>
           {/if}
@@ -79,6 +82,8 @@
         </div>
       {:else if $route.area === "project"}
         {#key $route.project}<ProjectConsole project={$route.project} view={$route.view} page={$route.page} />{/key}
+      {:else if $route.area === "faults"}
+        <main><ActiveFaults /></main>
       {:else}
         <main><Projects /></main>
       {/if}

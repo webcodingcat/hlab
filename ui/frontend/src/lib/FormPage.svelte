@@ -6,23 +6,25 @@
 
   // A create form on its own page: title row with help button, the fields
   // in one column, the general error line, Cancel and submit at the bottom
-  // right. Enter submits; busy shows the spinner in the submit button.
+  // right. Enter submits; busy shows the spinner in the submit button;
+  // disabled keeps the form from being sent.
   type Props = {
     title: string;
     help: ViewId;
     submitLabel: string;
     busy: boolean;
+    disabled?: boolean;
     general?: string;
     onsubmit: () => void;
     oncancel: () => void;
     children: Snippet;
   };
 
-  let { title, help, submitLabel, busy, general, onsubmit, oncancel, children }: Props = $props();
+  let { title, help, submitLabel, busy, disabled = false, general, onsubmit, oncancel, children }: Props = $props();
 
   function submit(e: SubmitEvent) {
     e.preventDefault();
-    if (!busy) onsubmit();
+    if (!busy && !disabled) onsubmit();
   }
 </script>
 
@@ -36,7 +38,7 @@
   {#if general}<p class="general" role="alert">{general}</p>{/if}
   <div class="actions">
     <Button onclick={oncancel} disabled={busy}>Cancel</Button>
-    <Button type="submit" variant="primary" loading={busy}>{submitLabel}</Button>
+    <Button type="submit" variant="primary" loading={busy} {disabled}>{submitLabel}</Button>
   </div>
 </form>
 

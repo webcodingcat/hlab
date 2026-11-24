@@ -664,6 +664,7 @@ func TestMgmt(t *testing.T) {
 
 	t.Run("FAULT-01", testMgmtFaultRoutes)
 	t.Run("FAULT-02", testMgmtFaultsProjectDeleted)
+	t.Run("UI-16", testMgmtFaultFieldErrors)
 }
 
 // doBody sends a request with a JSON body to the management API.

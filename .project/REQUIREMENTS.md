@@ -505,9 +505,9 @@ What the target vision in IDEA.md will need, not built yet.
 | FAULT-10 | 26 | x |
 | FAULT-11 | 27 | x |
 | FAULT-12 | 25 | x |
-| UI-16 | 28 | |
-| UI-17 | 28 | |
-| UI-18 | 28 | |
+| UI-16 | 28 | x |
+| UI-17 | 28 | x |
+| UI-18 | 28 | x |
 | DOC-01 | all | |
 | DOC-02 | all | |
 | DOC-03 | all | |

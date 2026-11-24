@@ -255,3 +255,88 @@ func testMgmtFaultsProjectDeleted(t *testing.T) {
 		t.Errorf("GET /faults after deleting p lists %v, want only q's rate_limit", left)
 	}
 }
+
+func testMgmtFaultFieldErrors(t *testing.T) {
+	_, h := newFaultsMgmt(t)
+	if rec := doBody(t, h, http.MethodPost, "/projects/p/faults",
+		`{"kind":"api_error","params":{"code":"server_error","percent":20}}`); rec.Code != http.StatusCreated {
+		t.Fatalf("POST api_error: status %d, want 201 (%s)", rec.Code, rec.Body.String())
+	}
+
+	for _, tc := range []struct {
+		name   string
+		body   string
+		status int
+		code   string
+		field  string // refused field in details.fields; "" for no details
+	}{
+		{
+			name: "percent out of range", body: `{"kind":"api_error","params":{"code":"server_error","percent":0}}`,
+			status: http.StatusBadRequest, code: "invalid_input", field: "params.percent",
+		},
+		{
+			name: "duration 2d", body: `{"kind":"rate_limit","params":{"per_hour":10},"duration":"2d"}`,
+			status: http.StatusBadRequest, code: "invalid_input", field: "duration",
+		},
+		{
+			name: "target from missing", body: `{"kind":"latency","target":{"type":"locations","to":"hel1"},"params":{"delay_ms":50}}`,
+			status: http.StatusBadRequest, code: "invalid_input", field: "target.from",
+		},
+		{
+			name: "kind unknown", body: `{"kind":"no_such_kind"}`,
+			status: http.StatusBadRequest, code: "invalid_input", field: "kind",
+		},
+		{
+			name:   "not found without details",
+			body:   fmt.Sprintf(`{"kind":"server_freeze","target":{"type":"server","id":%d}}`, faultServer+1),
+			status: http.StatusNotFound, code: "not_found",
+		},
+		{
+			name: "conflict without details", body: `{"kind":"api_error","params":{"code":"conflict","percent":50}}`,
+			status: http.StatusConflict, code: "conflict",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := doBody(t, h, http.MethodPost, "/projects/p/faults", tc.body)
+			if rec.Code != tc.status {
+				t.Fatalf("POST %s: status %d, want %d (%s)", tc.body, rec.Code, tc.status, rec.Body.String())
+			}
+			var body struct {
+				Error struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+					Details *struct {
+						Fields []struct {
+							Name     string   `json:"name"`
+							Messages []string `json:"messages"`
+						} `json:"fields"`
+					} `json:"details"`
+				} `json:"error"`
+			}
+			decode(t, rec, &body)
+			e := body.Error
+			if e.Code != tc.code {
+				t.Errorf("POST %s: error code %q, want %q", tc.body, e.Code, tc.code)
+			}
+			if e.Message == "" {
+				t.Errorf("POST %s: error without message", tc.body)
+			}
+			if tc.field == "" {
+				if e.Details != nil {
+					t.Errorf("POST %s: error details %s, want none", tc.body, rec.Body.String())
+				}
+				return
+			}
+			if e.Details == nil || len(e.Details.Fields) != 1 {
+				t.Fatalf("POST %s: error details %s, want one field %q", tc.body, rec.Body.String(), tc.field)
+			}
+			f := e.Details.Fields[0]
+			if f.Name != tc.field || len(f.Messages) != 1 || f.Messages[0] == "" {
+				t.Fatalf("POST %s: details field %q with messages %q, want %q with one message", tc.body, f.Name, f.Messages, tc.field)
+			}
+			if want := f.Name + ": " + f.Messages[0]; e.Message != want {
+				t.Errorf("POST %s: error message %q, want %q", tc.body, e.Message, want)
+			}
+		})
+	}
+}

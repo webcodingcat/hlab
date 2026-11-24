@@ -328,6 +328,8 @@ func TestBridge(t *testing.T) {
 	t.Run("UI-01/pending", testPending)
 	t.Run("UI-01/control", testControl)
 	t.Run("UI-01/banner", testBanner)
+	t.Run("UI-18/model", testFaultsModel)
+	t.Run("UI-18/end_all", testEndAllFaults)
 	t.Run("UI-06", testLogs)
 }
 

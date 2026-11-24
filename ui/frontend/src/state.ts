@@ -22,9 +22,10 @@ export type CloudState = {
   error?: string;
   connection_lost: boolean;
   version?: string;
+  faults: number; // active faults of all projects; 0 unless running
 };
 
-export const cloud = writable<CloudState>({ state: "", problems: [], connection_lost: false });
+export const cloud = writable<CloudState>({ state: "", problems: [], connection_lost: false, faults: 0 });
 
 export const running = derived(cloud, ($c) => $c.state === "running");
 
@@ -75,6 +76,8 @@ const viewInfo: Record<ViewId, { title: string; area: Area }> = {
   "storage-box-types": { title: "Storage Box Types", area: "admin" },
   settings: { title: "Settings", area: "admin" },
   logs: { title: "Logs", area: "admin" },
+  faults: { title: "Faults", area: "project" },
+  "active-faults": { title: "Active faults", area: "faults" },
 };
 
 /** views are the views of views.json in its order, with title and area. */

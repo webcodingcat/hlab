@@ -19,6 +19,86 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-24 Fault lists load target names best-effort
+
+- Type: decision
+- Phase: phase 28
+- What: the project's Faults page and "Active faults" always show the faults of the management API and load the server, volume and storage box names per project best-effort through `faultTargetNames`.
+- Why: an `api_error` fault on reads must not hide the faults that the user wants to end.
+- Cost of change: low
+
+## 2026-11-24 "End" in a fault row needs no confirmation
+
+- Type: decision
+- Phase: phase 28
+- What: "End" in a fault row ends the fault at once with an action toast; only "End all" asks first.
+- Why: ending one fault is harmless and quickly undone by creating it again.
+- Cost of change: low
+
+## 2026-11-24 Fault table texts the plan left open
+
+- Type: decision
+- Phase: phase 28
+- What: a latency fault without jitter reads "50 ms", a cut "public, 100 % loss", a loss fault "private, 30 % loss"; the Percent field has no hint text.
+- Why: the shortest texts that follow the UI-SPEC examples; a hint naming the range would hide the error check of UI-16.
+- Cost of change: low
+
+## 2026-11-24 A lost connection keeps the last fault count
+
+- Type: decision
+- Phase: phase 28
+- What: the tray keeps the last fault count while the connection to hlabd is lost, like the problems, and shows 0 while the cloud is stopped.
+- Why: the pill and the tray item do not flicker during short hiccups.
+- Cost of change: low
+
+## 2026-11-24 TrayModel carries only the fault count
+
+- Type: decision
+- Phase: phase 28
+- What: `TrayModel` gets `Faults int`, and `cmd/hlab-tray` shows "End all faults" while it is above 0.
+- Why: the count and `Cloud.EndAllFaults` are unit-tested in the bridge; showing the item is glue.
+- Cost of change: low
+
+## 2026-11-24 Field errors only on the fault create
+
+- Type: decision
+- Phase: phase 28
+- What: the management API adds `details.fields` only to `invalid_input` of the fault create; other management errors stay unchanged.
+- Why: the form shows errors under their fields, and the addition does not break existing clients.
+- Cost of change: low
+
+## 2026-11-24 Fault resource types are a fixed frontend list, error codes come from Go
+
+- Type: decision
+- Phase: phase 28
+- What: the resource type select uses a fixed frontend list `faultResources`; the error code select uses `api.Codes()` from Go, general codes first.
+- Why: hlabd builds the Go resource list only at cloud start from the router, while the error code table is static.
+- Cost of change: low
+
+## 2026-11-24 Faults routes plan carries the sidebar entry and first help texts
+
+- Type: decision
+- Phase: phase 28
+- What: plan 28-03 adds the sidebar entry, `consoleNav.ts` and first help texts with the views; the documentation plan completes the help texts.
+- Why: svelte-check and the UI-07 and DOC-05 tests need one help text per view in `views.json`.
+- Cost of change: low
+
+## 2026-11-24 Tray fault e2e rows reuse the fault fixture
+
+- Type: decision
+- Phase: phase 28
+- What: UI-16 runs on the fault fixture's resources after FAULT-08/restart and before `releaseFaultFixture`, ending the freeze before the crash; UI-17 runs after UI-14 with two projects of its own and `api_error`/`rate_limit` faults.
+- Why: no further VM boot is needed.
+- Cost of change: low
+
+## 2026-11-24 No new DOC rows for the fault views
+
+- Type: decision
+- Phase: phase 28
+- What: phase 28 adds no DOC test rows.
+- Why: DOC-04, DOC-05 and UI-07 pick up the new views through `views.json`, and DOC-07 is manual.
+- Cost of change: low
+
 ## 2026-11-24 The restart rows wait for steady private traffic before measuring
 
 - Type: decision

@@ -59,6 +59,7 @@ export const navGroups: NavGroup[] = [
           { view: "certificates", title: "Certificates" },
         ],
       },
+      { id: "faults", title: "Faults", tabs: [{ view: "faults", title: "Faults" }] },
     ],
   },
 ];

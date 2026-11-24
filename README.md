@@ -168,7 +168,7 @@ server, the SSH key and the project's actions with the project, and
 
 The [guide](docs/guide.md) shows every resource with hcloud and in the
 window: servers, placement groups, snapshots and backups, ISOs, volumes, networks, IPs, firewalls, DNS, load balancers,
-certificates, storage boxes, OpenTofu and Ansible, and stopping and starting the cloud.
+certificates, storage boxes, OpenTofu and Ansible, fault injection, and stopping and starting the cloud.
 
 ## The tray program
 
@@ -188,6 +188,8 @@ menu:
 - **Start cloud** while the cloud is stopped, **Stop cloud** while it
   runs; while it starts or stops the item is disabled and reads
   "Starting cloud…" or "Stopping cloud…";
+- **End all faults** while any project has an active
+  [fault](docs/guide.md#fault-injection); it ends them all without asking;
 - **Quit** ends the tray program; the cloud keeps running.
 
 Closing the window only hides it. Starting `hlab-tray.exe` again shows
@@ -197,7 +199,10 @@ with Windows.
 The top bar of the window holds **HLab** (back to the project list), the
 breadcrumb, the cloud state with **Start cloud** or **Stop cloud**, and
 the gear **Administration**; a second click on the gear returns to the
-page shown before. A banner reports a lost connection to the
+page shown before. While any project has an active fault, a pill
+"N faults active" stands left of the cloud state; it opens **Active
+faults**, the faults of all projects with **End** per fault and **End
+all**. A banner reports a lost connection to the
 service or a failed start; when the cloud refused to start because of its
 state, it offers **Discard state and start**, which does what
 `hlab cloud start --discard-state` does (see
@@ -216,7 +221,8 @@ confirm.
 - The **project console** opens on **Servers**. Its sidebar groups the
   entries like the Hetzner Cloud Console: **Cloud** with **Servers**,
   **Volumes**, **Storage Boxes** and **Firewalls**; **Networking** with **Load Balancers**,
-  **Networks**, **IPs** and **DNS**; and, below a line, **Security**. A
+  **Networks**, **IPs** and **DNS**; and, below a line, **Security** and
+  **Faults**. A
   click on a group heading collapses or expands it, and the window
   remembers the collapsed groups. An entry with several views shows them
   as tabs above the page:
@@ -265,6 +271,9 @@ confirm.
   - **API tokens**: **Create token** asks for a name and whether the
     token is read only, and shows the token once with a copy button;
     **Revoke** is in the row menu.
+  - **Faults**: the project's active faults with **Create fault**, **End**
+    per fault and **End all**. See
+    [Faults in the window](docs/guide.md#faults-in-the-window).
 - **Administration** has its own sidebar:
   - **Server Types**: the catalog and your own types, also while the
     cloud is stopped. **Add server type** adds an own type for all or

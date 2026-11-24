@@ -384,3 +384,73 @@ func usableHetzner(ctx context.Context) (hetznerAccount, string) {
 	}
 	return hetznerAccount{token: token, types: types}, ""
 }
+
+// testUI16: the project's Faults in the tray on the fault fixture's
+// resources (server A with its mounted volume, servers B and C, the storage
+// box): every kind is created through the form, one is ended through its
+// row menu and the rest through "End all". It runs in the FAULT block before
+// releaseFaultFixture; a failed run leaves no fault behind.
+func testUI16(t *testing.T) {
+	f, n := sharedFaultNet(t)
+	e := f.e
+	t.Cleanup(func() {
+		if r, err := runHlab(context.Background(), 2*time.Minute, "fault", "delete", "--project", e.project, "--all"); err != nil || r.ExitCode != 0 {
+			t.Errorf("hlab fault delete --all after UI-16: %v\n%s", err, r)
+		}
+	})
+	id := func(v int64) string { return strconv.FormatInt(v, 10) }
+	runSpec(t, "UI-16", 15*time.Minute, []string{
+		"HLAB_E2E_PROJECT=" + e.project,
+		"HLAB_E2E_API_TOKEN=" + e.token,
+		"HLAB_E2E_SERVER_A_ID=" + id(n.a.ID),
+		"HLAB_E2E_SERVER_A_NAME=" + n.a.Name,
+		"HLAB_E2E_SERVER_B_ID=" + id(n.b.ID),
+		"HLAB_E2E_SERVER_B_NAME=" + n.b.Name,
+		"HLAB_E2E_SERVER_C_ID=" + id(n.c.ID),
+		"HLAB_E2E_SERVER_C_NAME=" + n.c.Name,
+		"HLAB_E2E_VOLUME_ID=" + id(f.volID),
+		// The fixture names its volume like server A.
+		"HLAB_E2E_VOLUME_NAME=" + harness.runID + "-fault",
+		"HLAB_E2E_STORAGE_BOX_ID=" + id(n.box.ID),
+		"HLAB_E2E_STORAGE_BOX_NAME=" + harness.runID + "-faultbox",
+		"HLAB_E2E_SERVER_LOCATION=" + serverLocation,
+		"HLAB_E2E_OTHER_LOCATION=" + faultOtherLocation,
+	}, e.token)
+}
+
+// testUI17: Active faults and the top bar pill over two projects of their
+// own with api_error and rate_limit faults made through `hlab fault create`;
+// the projects are deleted afterwards, which ends what the spec left.
+func testUI17(t *testing.T) {
+	ctx := context.Background()
+	var names []string
+	for _, suffix := range []string{"ui17-a", "ui17-b"} {
+		// The name is given as the display name; lower case, digits and "-"
+		// derive to themselves, so the Project column, which shows the
+		// display name, shows the name the spec looks for.
+		name := harness.runID + "-" + suffix
+		if r, err := runHlab(ctx, 2*time.Minute, "project", "create", name); err != nil || r.ExitCode != 0 {
+			t.Fatalf("hlab project create %s: %v\n%s", name, err, r)
+		}
+		t.Cleanup(func() {
+			if r, err := runHlab(context.Background(), 5*time.Minute, "project", "delete", name); err != nil || r.ExitCode != 0 {
+				t.Errorf("hlab project delete %s: %v\n%s", name, err, r)
+			}
+		})
+		names = append(names, name)
+	}
+	for _, args := range [][]string{
+		{"api_error", "--project", names[0], "--code", "server_error", "--percent", "20"},
+		{"rate_limit", "--project", names[0], "--per-hour", "3600"},
+		{"api_error", "--project", names[1], "--code", "conflict", "--percent", "10", "--only", "read"},
+	} {
+		full := append([]string{"fault", "create"}, args...)
+		if r, err := runHlab(ctx, 2*time.Minute, full...); err != nil || r.ExitCode != 0 {
+			t.Fatalf("hlab %s: %v\n%s", strings.Join(full, " "), err, r)
+		}
+	}
+	runSpec(t, "UI-17", 5*time.Minute, []string{
+		"HLAB_E2E_PROJECT_A=" + names[0],
+		"HLAB_E2E_PROJECT_B=" + names[1],
+	})
+}

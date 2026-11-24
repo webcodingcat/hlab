@@ -687,14 +687,16 @@ Inside `hlabd` (Go packages under `internal/`):
   `StorageBoxTypes`/`AddStorageBoxType`/`UpdateStorageBoxType`/`RemoveStorageBoxType`
   the same way for storage box types (`catalog.OwnStorageBoxTypeSpec` with an
   explicit non-empty location list, own types addressed by name; results
-  `ListedStorageBoxType`, `StorageBoxTypeList`), `Locations() ([]Location{name, city})`
+  `ListedStorageBoxType`, `StorageBoxTypeList`), `ErrorCodes() []{code, status}` (the Hetzner error codes of `api.Codes()`, general ones first, for the fault form, phase 28), `Locations() ([]Location{name, city})`
   from the shipped catalog, also while the cloud is stopped; `bridge.Cloud`
   with status, start and stop, recording "starting"/"stopping" as soon as
   the SCM accepts a start or stop (a poll begun earlier cannot overwrite
   it), and `TrayModel{icon, tooltip, status, cloud_item, cloud_action, faults}`
   for the one cloud menu item and, while `faults` (the count from
   `GET /status`) is above zero, the item "End all faults" that calls
-  `DELETE /mgmt/v1/faults` (phase 28); `bridge.Logs` with the log stream, sent as
+  `DELETE /mgmt/v1/faults` through `Cloud.EndAllFaults()` (phase 28; the
+  window's `State.faults` carries the same count, 0 unless running, the last
+  count kept while the connection is lost); `bridge.Logs` with the log stream, sent as
   one `logs` event per 100 ms batch, plus `Search(query, minLevel)
   SearchResult{lines, capped}` and `Older(oldest) OlderResult{lines,
   at_start}`, which read `hlabd.log` and its rotated files directly
@@ -805,7 +807,7 @@ HTTP/1.1 over `\\.\pipe\hlab`, JSON. All paths under `/mgmt/v1`:
 | `GET /faults` | `{"faults":[Fault]}`, the active faults of all projects (phase 25) |
 | `DELETE /faults` | `204`; ends every fault |
 | `GET /projects/{name}/faults` | `{"faults":[Fault]}` |
-| `POST /projects/{name}/faults` | body: the fault object without `id`, `project`, `created` and `ends`, with an optional `duration`; `201 {"fault": Fault}` with the seed chosen when missing; `400 invalid_input` for an unknown kind or a missing or invalid parameter; `404 not_found` for an unknown target; `409 conflict` for a second fault of the same kind on the same target |
+| `POST /projects/{name}/faults` | body: the fault object without `id`, `project`, `created` and `ends`, with an optional `duration`; `201 {"fault": Fault}` with the seed chosen when missing; `400 invalid_input` for an unknown kind or a missing or invalid parameter, with `details.fields: [{"name": "params.percent", "messages": ["..."]}]` naming the refused field (phase 28); `404 not_found` for an unknown target; `409 conflict` for a second fault of the same kind on the same target |
 | `DELETE /projects/{name}/faults/{id}` | `204`; `404 not_found` |
 | `DELETE /projects/{name}/faults` | `204`; ends every fault of the project |
 | `POST /catalog/update` | body `{"hetzner_token": "..."}` (required, used once, never stored or logged); `200 {"server_types":n}`; `400 invalid_input` without a token; `502 server_error` with Hetzner's message when the real API refuses |
