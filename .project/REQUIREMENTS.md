@@ -54,6 +54,7 @@ resource types.
 - CAT-06 system images ubuntu-22.04, ubuntu-24.04, ubuntu-26.04, debian-12 and debian-13 are listed under Hetzner's names and attributes (goal 1) [unit]
 - CAT-07 an image is downloaded from its official source on first use, verified by checksum, converted once and reused from the cache (goal 2) [unit]
 - CAT-08 `/isos` lists the ISO catalog; an ISO is downloaded on first attach, verified by checksum and cached (goal 2) [unit]
+- CAT-09 system images rocky-8, rocky-9, rocky-10, alma-8, alma-9, alma-10, centos-stream-9, centos-stream-10, fedora-43, fedora-44 and opensuse-16 are listed under Hetzner's names, IDs and attributes from `research/hetzner-system-images.json` (fedora-43 with Hetzner's deprecation), and are downloaded and verified like CAT-07, also from mirrors that refuse unknown clients and with checksum files in GNU, BSD or PGP-signed BSD format (goal 1) [unit]
 - CAT-10 the user's own ISOs file adds ISOs to `/isos` for every project as type `private` (name null, shown by their description, attached by ID; a name matches only catalog ISOs); an own ISO comes from a URL (downloaded on first attach, verified when a SHA-256 is given) or from a local `.iso` file that hlabd copies into its cache when it reads the file, and attaches like a catalog ISO; a local file that cannot be copied leaves out only that ISO (goal 2) [unit]
 
 ### Servers (`SRV`)
@@ -80,6 +81,8 @@ resource types.
 - SRV-20 the server status follows Hetzner's states (initializing, starting, running, stopping, off, rebuilding, migrating, deleting) for every action (goal 1) [unit]
 - SRV-21 `/servers/{id}/metrics` returns cpu, disk and network time series measured on the VM (goal 2) [e2e]
 - SRV-22 placement groups of type spread hold at most 10 servers and list their servers (goal 1) [unit]
+- SRV-23 a server created from each system image of CAT-06 and CAT-09 boots with its name as hostname, SSH keys, root password and user_data, is reachable via SSH and outbound, joins a private network at create and later, mounts a volume with automount, applies a root password reset, and `cloud-init status` reports done without error (goal 2) [e2e]
+- SRV-24 a server logs in as root only, like Hetzner's images: the image's default user (`ubuntu`, `debian`, `rocky`, `almalinux`, `cloud-user`, `fedora`, ...) is not created, while users from user_data are (goal 2) [e2e]
 
 ### Server console (`CON`)
 
@@ -303,7 +306,6 @@ of IDEA.md rather than a numbered goal.
 What the target vision in IDEA.md will need, not built yet.
 
 - LINUX-01 run hlab with the tray on Linux with KVM/libvirt
-- CAT-09 further system images (Rocky, Alma, Fedora, CentOS Stream, openSUSE) and app images
 
 ## Out of scope
 
@@ -350,6 +352,7 @@ What the target vision in IDEA.md will need, not built yet.
 | CAT-06 | 01 | x |
 | CAT-07 | 01 | x |
 | CAT-08 | 04 | x |
+| CAT-09 | 29 | |
 | CAT-10 | 14 | x |
 | SRV-01 | 01 | x |
 | SRV-02 | 03 | x |
@@ -373,6 +376,8 @@ What the target vision in IDEA.md will need, not built yet.
 | SRV-20 | 03 | x |
 | SRV-21 | 03 | x |
 | SRV-22 | 02 | x |
+| SRV-23 | 29 | |
+| SRV-24 | 29 | |
 | KEY-01 | 02 | x |
 | META-01 | 03 | x |
 | NET-01 | 05 | x |

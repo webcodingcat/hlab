@@ -47,7 +47,14 @@ Versions as of 2026-11-18 (reasoning and sources in DECISIONS.md, "Stack").
 - Guest images: Ubuntu cloud images (`*-server-cloudimg-amd64.img`,
   qcow2) for ubuntu-22.04, 24.04, 26.04; Debian `generic` raw images for
   debian-12, 13; downloaded from cloud-images.ubuntu.com and
-  cloud.debian.org with their SHA256/SHA512 sums.
+  cloud.debian.org with their SHA256/SHA512 sums. From phase 29 the
+  GenericCloud qcow2 images of Rocky (8, 9, 10, dl.rockylinux.org) and
+  AlmaLinux (8, 9, 10, repo.almalinux.org), CentOS Stream GenericCloud (9,
+  10, cloud.centos.org), Fedora Cloud Base Generic (43, 44,
+  download.fedoraproject.org) and openSUSE Leap 16.0 Minimal-VM Cloud
+  (download.opensuse.org), with their SHA-256 files; the exact URLs are in
+  `research/EXPERIMENTS.md` E30. EL10 images need a host CPU with
+  x86-64-v3 (AVX2).
 - Installer: WiX Toolset v7.0.1 (MSI plus Burn bundle; the OSMF EULA is
   accepted in the build, no fee for a project without revenue), WebView2
   Evergreen bootstrapper (`MicrosoftEdgeWebview2Setup.exe`, always the current online bootstrapper; it has no version of its own).

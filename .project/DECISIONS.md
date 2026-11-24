@@ -19,6 +19,30 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-24 More system images in milestone 1
+
+- Type: change
+- Phase: change
+- What: Every current Hetzner x86 system image (rocky-8, rocky-9, rocky-10, alma-8, alma-9, alma-10, centos-stream-9, centos-stream-10, fedora-43, fedora-44 and opensuse-16) moves into milestone 1 as phase 29 with full server parity, after one boot experiment per image (E30-E34) that all passed; app images are dropped from the target vision.
+- Why: The user wants their setups tested on the distributions Hetzner offers, but needs no app images.
+- Cost of change: low
+
+## 2026-11-24 Servers log in as root only
+
+- Type: decision
+- Phase: change
+- What: vendor-data sets `users: []` on every image, so no cloud image creates its default user (`ubuntu`, `debian`, `rocky`, ...), while users from user_data still apply.
+- Why: The user chose Hetzner's behaviour, where system images have root only.
+- Cost of change: low
+
+## 2026-11-24 EL8 hooks, checksum formats and no on-link outside netplan
+
+- Type: decision
+- Phase: change
+- What: The guest hooks become Python 3.6 compatible with the interpreter chosen at install, the image pipeline reads GNU, BSD and PGP-signed BSD checksum files with its own User-Agent, and the network-config leaves out `on-link` for images that do not render with netplan.
+- Why: The experiments E30-E34 showed these as the only changes the new images need, and the `on-link` key makes `cloud-init status` exit with 2 there.
+- Cost of change: low
+
 ## 2026-11-24 WSL2 mirrored mode and MCP resource tools dropped
 
 - Type: change

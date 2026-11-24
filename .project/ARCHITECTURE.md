@@ -488,7 +488,12 @@ Inside `hlabd` (Go packages under `internal/`):
   name)` (cached under the catalog name or the own ISO's `_hlab.name`; serves
   catalog and own ISOs, see `isos.custom.json`); `images.EnsureRescue(ctx)`. Snapshots, backups and system
   images live as VHDX files in the data folder. The same pipeline creates
-  the appliance disk from the Debian 13 `generic` image.
+  the appliance disk from the Debian 13 `generic` image. Checksum files
+  are read in GNU (`hash  name`), BSD (`SHA256 (name) = hash`) and
+  PGP clear-signed BSD format, skipping other lines; the HTTP client sends
+  the User-Agent `hlab/<version>` and retries once on a non-200 answer
+  (E30, phase 29). Sources that prune old builds (Rocky, Alma, CentOS
+  Stream, openSUSE) are given by their `latest` file and checksum file.
 - Depends on: platform.
 
 #### cidata
@@ -502,8 +507,12 @@ Inside `hlabd` (Go packages under `internal/`):
   and extra files (the appliance's agent binary and secret). `network-config`: public adapter `/32` with on-link default route
   via `172.31.1.1`, nameservers `185.12.64.1` and `185.12.64.2`; one adapter
   per private network with its `/32` and a route to the network's range via
-  the network gateway, like Hetzner. `vendor-data` installs the guest hooks
-  (see "Guest integration").
+  the network gateway, like Hetzner. The route key `on-link` is written only
+  for images that render with netplan (Ubuntu, Debian); for the others
+  (`os_flavor` rocky, alma, centos, fedora, opensuse) it is left out, since
+  their renderers ignore it and cloud-init's schema rejects it, which makes
+  `cloud-init status` exit with 2 (E31; phase 29). `vendor-data` installs
+  the guest hooks (see "Guest integration").
 - Depends on: nothing.
 
 #### scheduler
@@ -1137,9 +1146,17 @@ locks a resource of type `project`.
   disks were not created by hlab (ISO installs) lack the hooks; listed as a
   deviation.
 - `vendor-data` is a multipart MIME document: a cloud-config part with
-  only `disable_root`, `ssh_pwauth` and `chpasswd`, and a
+  only `disable_root`, `ssh_pwauth`, `chpasswd` and (phase 29)
+  `users: []`, so no image creates its default user and root is the only
+  login, like Hetzner (users from user_data still apply, since user-data
+  replaces that key), and a
   `text/x-shellscript` part (run once per instance) that writes the hooks,
-  their units and the `00-hlab-root.conf` sshd drop-in. User cloud-config
+  their units and the `00-hlab-root.conf` sshd drop-in. The hooks are
+  Python 3.6 compatible (no `capture_output` or `text` arguments), and the
+  script writes the interpreter it finds (`/usr/bin/python3`, else
+  `/usr/libexec/platform-python` on EL8) into their shebangs, `ExecStart=`
+  lines and the udev `PROGRAM=` (E32, phase 29). They run with SELinux
+  enforcing on the EL, Fedora and openSUSE images (E31-E34). User cloud-config
   keys such as `runcmd` or `write_files` cannot replace the hooks.
   The script installs `hlab-sync.service` (After=cloud-final.service, runs
   `sync` once) and queues it, so a hard poweroff right after the first boot
@@ -1366,8 +1383,6 @@ level = "info"
   the API, store, resource modules, cidata, images (VHDX becomes qcow2 inside
   `platform`) and the appliance stay unchanged. Every `%ProgramData%` path in
   this document is `sysint.Paths` on Windows.
-- More images: new entries in `catalog/images.json` with their sources; the
-  image pipeline (download on the host, convert, cache) is generic.
 
 ## Verified assumptions
 

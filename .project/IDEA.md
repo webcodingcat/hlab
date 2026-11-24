@@ -73,8 +73,11 @@ official clients.
   zones; one shared network segment, Hetzner's location rules enforced by
   the API, all guest traffic routed (/32) through the appliance
   (`decisions/locations.md`).
-- Images: Ubuntu and Debian from official cloud images under Hetzner's image
-  names, downloaded on demand and cached. ISOs: a catalog of publicly
+- Images: every current Hetzner x86 system image (Ubuntu, Debian, Rocky,
+  Alma, CentOS Stream, Fedora, openSUSE) from its official cloud image
+  under Hetzner's image name, downloaded on demand and cached, with every
+  server function working on each; servers log in as root only, like
+  Hetzner's images. No app images. ISOs: a catalog of publicly
   downloadable ISOs.
 - Server types: the current Hetzner catalog as its own file, own types can be
   added, updatable from the real Hetzner API (optional real token). ARM types
@@ -133,8 +136,6 @@ The architecture is designed for this target vision; only the first version
 is built for now.
 
 - Linux as a full host with KVM/libvirt, including the UI
-- More images: other Hetzner system images (Rocky, Alma, Fedora, CentOS
-  Stream, openSUSE), later app images
 
 ## Non-goals
 

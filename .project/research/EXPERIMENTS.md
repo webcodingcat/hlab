@@ -978,3 +978,177 @@ volume in the dev service (`hcloud` with
 as root; the namespace topology above built with `ip netns` and
 `ip link add ... type veth|bridge|vrf`; `apt-get install nftables` inside
 the VM only for the nft CLI.
+
+## E30 Download, checksum and qcow2 conversion of the EL, Fedora and openSUSE cloud images through hlab's pipeline
+
+- Result: confirmed for conversion; refuted for the checksum parser (BSD format) and partly for downloads (a Fedora mirror blocks Go's User-Agent)
+- Checked on: 2026-11-24, Windows 11 Pro 26300, Hyper-V, Go 1.27.4, go-qcow2reader v0.8.0, hlab `internal/images` and `hyperv.ConvertToDynamic` at commit b3441e9
+- By: experiment
+- Status: valid
+
+How it was checked: a small `package main` inside the module
+(`.project/research/experiments/images/conv`, gitignored) builds
+`images.New(images.Options{Catalog: {name: {URL, ChecksumURL, Format:
+"qcow2"}}, Convert: hyperv.New(...).ConvertToDynamic})` and calls `Ensure`;
+a second pass served local GNU-format copies of the BSD checksum files
+through a `file` transport. The qcow2 headers were read from the first 112
+bytes (HTTP range request).
+
+```
+ensure rocky-10: err=images: rocky-10: checksum file .../Rocky-10-GenericCloud-Base.latest.x86_64.qcow2.CHECKSUM: no entry for Rocky-10-GenericCloud-Base.latest.x86_64.qcow2
+ensure fedora-44: err=... GET https://download.fedoraproject.org/.../Fedora-Cloud-44-1.7-x86_64-CHECKSUM: 403 Forbidden
+ensure alma-10: base=...\alma-10.vhdx err=<nil> (1m32s)
+curl -A Go-http-client/1.1 https://mirror.dogado.de/fedora/.../Fedora-Cloud-44-1.7-x86_64-CHECKSUM -> 403; -A hlab/0.1 -> 200
+```
+
+Observed:
+- Checksum files: GNU format (`hash  name`, works today) for Alma (one
+  `CHECKSUM` per folder, listing the `-latest` names) and openSUSE
+  (`.sha256`); BSD format (`SHA256 (name) = hash`, fails in
+  `images.findSum`) for Rocky `.CHECKSUM`, CentOS Stream `.SHA256SUM` and
+  Fedora `-CHECKSUM` (PGP clear-signed, with `#` lines). With GNU copies
+  all 11 images downloaded, verified and converted.
+- qcow2: all 11 are version 3, 64 KiB clusters, incompatible features 0
+  (no extended L2, no external data file, no zstd, no backing file);
+  go-qcow2reader v0.8.0 needs no change. Virtual sizes 10 GiB (Rocky,
+  Alma, CentOS Stream), 5 GiB (Fedora), 1.43 GiB (openSUSE); conversion
+  1.5 to 5 min per image.
+- Downloads: `download.fedoraproject.org` redirects to a random mirror;
+  `mirror.dogado.de` answers 403 to Go's default User-Agent and 200 to any
+  other; one of 11 pipeline runs failed this way.
+- Sources (2026-11-24): Rocky
+  `https://dl.rockylinux.org/pub/rocky/<8|9|10>/images/x86_64/Rocky-<v>-GenericCloud-Base.latest.x86_64.qcow2`
+  with `<same>.CHECKSUM`; Alma
+  `https://repo.almalinux.org/almalinux/<8|9|10>/cloud/x86_64/images/AlmaLinux-<v>-GenericCloud-latest.x86_64.qcow2`
+  with `CHECKSUM` in the folder; CentOS Stream
+  `https://cloud.centos.org/centos/<9|10>-stream/x86_64/images/CentOS-Stream-GenericCloud-<v>-latest.x86_64.qcow2`
+  with `<same>.SHA256SUM`; Fedora
+  `https://download.fedoraproject.org/pub/fedora/linux/releases/<43|44>/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-<43-1.6|44-1.7>.x86_64.qcow2`
+  with `Fedora-Cloud-<43-1.6|44-1.7>-x86_64-CHECKSUM`; openSUSE
+  `https://download.opensuse.org/distribution/leap/16.0/appliances/Leap-16.0-Minimal-VM.x86_64-Cloud.qcow2`
+  with `<same>.sha256`. Rocky, Alma, CentOS Stream and openSUSE prune old
+  builds, so their `latest` file and the current checksum file are used;
+  Fedora's release tree is frozen.
+- Real API values (`hcloud image list --type system -a x86`, read-only):
+  rocky-8 45780948, centos-stream-9 59752342 (os_version "Stream 9"),
+  rocky-9 76766499, alma-8 104788983, alma-9 104788996, centos-stream-10
+  210163277 ("Stream 10"), alma-10 245249013, rocky-10 245249370,
+  fedora-43 342035601 (deprecation announced 2026-11-12, unavailable_after
+  2027-02-09T00:00:00Z), opensuse-16 342262088, fedora-44 387893188; all
+  disk_size 5, rapid_deploy true; created dates and descriptions from the
+  same call (kept in `experiments/images/real-images.json`).
+
+Method of E31-E34: each server was created through the dev API from
+debian-12 with `start_after_create: false` (cx23, fsn1, private network
+attached at create, user_data with `write_files` and `runcmd` markers,
+with or without an SSH key); its system disk was then replaced by a copy
+of the converted base (`Resize-VHD` to 40 GB, `Set-VMHardDiskDrive` at
+SCSI 0/0), so the VM is otherwise hlab's own (Gen2, Secure Boot template
+MicrosoftUEFICertificateAuthority, COM1, hlab's cidata). After poweron:
+SSH and a check script, `reset_password` and a password login, a 10 GB
+ext4 volume with automount attached while running, `attach_to_network` of
+a second network while running, `reboot` through the API and the checks
+again.
+
+Consequence: `findSum` also parses BSD lines and skips PGP and `#` lines;
+the image HTTP client sends an `hlab/<version>` User-Agent and retries
+once on a non-200 answer.
+
+Repeat: scripts in `.project/research/experiments/images/tools/`
+(`run.py`, `guestcheck.sh`); set `MSYS_NO_PATHCONV=1` in Git Bash; the
+swapped disk copy has to be deleted by hand.
+
+## E31 rocky-9/10, alma-9/10, centos-stream-9/10 on Hyper-V Gen2 with hlab's seed and hooks
+
+- Result: confirmed, no change needed
+- Checked on: 2026-11-24, Rocky 9.9 / 10.3, AlmaLinux 9.9 / 10.3, CentOS Stream 9 (5.14.0-765) / 10 (6.12.0-284), cloud-init 24.4; dev cloud at b3441e9
+- By: experiment (method in E30)
+- Status: valid
+
+Observed:
+- Boot with Secure Boot on; `hv_vmbus`, `hv_storvsc`, `hv_netvsc` in the
+  initramfs; `console=ttyS0,115200n8`; SSH 13 to 38 s after poweron. EL10
+  is built for x86-64-v3 (AVX2) and boots on this host (processor
+  compatibility off).
+- NoCloud: hostname, user_data, root SSH key, create-time root password,
+  root disk grown to 40 GB.
+- Network: EL9 renders sysconfig, EL10 NetworkManager keyfiles; both get
+  the /32, `172.31.1.1 scope link` and the default route; outbound, DNS
+  and SSH from the host work; the private network at create gets its /32
+  and range route.
+- Hooks with SELinux enforcing, 0 AVC denials: password reset, volume
+  symlink and automount with fstab line, hot-added adapter through the
+  `ip` path (networkd inactive), sshd drop-in (`permitrootlogin yes`),
+  `hlab-sync`; after the API reboot the seed re-renders the hot-added
+  adapter and fstab mounts the volume.
+- `cloud-init status` ends "degraded done" with exit code 2: the
+  network-config v2 schema of cloud-init 24.4 to 25.3 rejects `on-link`
+  in routes; without it the file validates, and the NetworkManager and
+  sysconfig renderers ignore the key anyway.
+- cloud-init creates the distro's default user (`rocky`, `almalinux`,
+  `cloud-user`) with the SSH key and passwordless sudo.
+
+Consequence: these six images work with the existing seed and hooks.
+
+## E32 rocky-8 and alma-8: hlab's hooks fail on Python 3.6, fixed in the vendor script
+
+- Result: refuted as is; confirmed with a hook change
+- Checked on: 2026-11-24, Rocky 8.10, AlmaLinux 8.10, cloud-init 23.4, platform-python 3.6.8
+- By: experiment (method in E30)
+- Status: valid
+
+```
+journalctl -u hlab-guest: TypeError: __init__() got an unexpected keyword argument 'text'
+hlab-volume@199: TypeError: __init__() got an unexpected keyword argument 'capture_output'
+rocky-8 hlab-guest.service: ExecMainStatus=203 (no /usr/bin/python3)
+API reset_password: server_error "the server did not confirm the password reset within 2m0s"
+```
+
+Observed: boot, Secure Boot, drivers, the sysconfig /32 network, the
+private network at create, create-time password, user_data, sshd drop-in
+and `hlab-sync` work; password reset, volume automount and hot-added
+adapters fail (on rocky-8 also the volume symlink). With
+`stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True`
+instead of `capture_output=True, text=True` (and `universal_newlines=True`
+instead of `text=True`) in `hlab-guest` and `hlab-volume`, and the
+interpreter chosen by the vendor script (`/usr/bin/python3`, else
+`/usr/libexec/platform-python`) in the shebangs, `ExecStart=` lines and
+the udev `PROGRAM=`, every check passes, also after a reboot, with 0 AVC
+denials. The changed scripts run with exit 0 under Python 3.14 (Fedora
+44) with `-W error::DeprecationWarning`.
+
+Consequence: the hooks in `vendordata.go` use only Python 3.6-compatible
+arguments and the interpreter the vendor script finds.
+
+## E33 fedora-43 and fedora-44 on Hyper-V Gen2 with hlab's seed and hooks
+
+- Result: confirmed, no change needed
+- Checked on: 2026-11-24, Fedora 43 (6.17.1, cloud-init 25.2), Fedora 44 (6.19.10, cloud-init 25.3, Python 3.14.3), Cloud Base Generic qcow2
+- By: experiment (method in E30)
+- Status: valid
+
+Observed: Secure Boot, drivers, serial console, SSH 21 s after poweron;
+NoCloud, NetworkManager /32 network, outbound, private network at create
+and hot-added, volume automount, password reset, sshd drop-in, `hlab-sync`
+and the reboot all pass with SELinux enforcing (one AVC on fedora-43 from
+`reboot`, unrelated to hlab). `cloud-init status` exit code 2 as in E31.
+
+Consequence: both work as is once the checksum parser and User-Agent of
+E30 are in.
+
+## E34 opensuse-16 (Leap 16.0 Minimal-VM Cloud) on Hyper-V Gen2 with hlab's seed and hooks
+
+- Result: confirmed, no change needed
+- Checked on: 2026-11-24, openSUSE Leap 16.0, kernel 6.12.0-160000.41-default, cloud-init 25.1.3
+- By: experiment (method in E30)
+- Status: valid
+
+Observed: Secure Boot (SUSE key), hv drivers in the initramfs, SSH 61 s
+after poweron (the slowest image); cloud-init renders NetworkManager
+keyfiles (wicked inactive); all network, volume, password reset, hot-add,
+`hlab-sync` and reboot checks pass with SELinux enforcing and 0 AVCs;
+there is no `/etc/ssh/sshd_config` (vendor config in `/usr/etc`), but
+`00-hlab-root.conf` in `/etc/ssh/sshd_config.d/` is honoured.
+`cloud-init status` exit code 2 as in E31.
+
+Consequence: opensuse-16 works with the existing seed and hooks.
