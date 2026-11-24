@@ -337,6 +337,21 @@ func (e *env) lostSeqs(t *testing.T, from *server, ip string) []int {
 	return lost
 }
 
+// waitSteadyPing waits until a burst of 50 pings at 10 ms from the server
+// to ip loses none, so a measurement after a start does not see the
+// platform's transient while the VMs resume.
+func (e *env) waitSteadyPing(t *testing.T, from *server, ip string) {
+	t.Helper()
+	var last result
+	if err := waitFor(time.Minute, 2*time.Second, func() (bool, error) {
+		r, _ := e.ssh(from, 30*time.Second, "", "ping -c 50 -i 0.01 -W 2 -q "+ip)
+		last = r
+		return r.ExitCode == 0 && strings.Contains(r.Stdout, " 0% packet loss"), nil
+	}); err != nil {
+		t.Fatalf("pings from %s to %s still lose packets: %v\n%s", from.Name, ip, err, last)
+	}
+}
+
 // waitNoPing waits until one ping from the server to ip fails, then checks
 // that five fail.
 func (e *env) waitNoPing(t *testing.T, from *server, ip string) {
@@ -791,6 +806,7 @@ func testFAULT07Restart(t *testing.T) {
 	e.waitSSH(t, n.a.server, 5*time.Minute)
 	e.waitSSH(t, n.b.server, 5*time.Minute)
 	e.waitPing(t, n.b.server, n.a.privIP)
+	e.waitSteadyPing(t, n.b.server, n.a.privIP)
 	if lost := e.lostSeqs(t, n.b.server, n.a.privIP); len(lost) != 0 {
 		t.Errorf("after stop and start with a loss fault before %d pings lost (icmp_seq %v), want none", len(lost), lost)
 	}
@@ -805,6 +821,7 @@ func testFAULT08Restart(t *testing.T) {
 	e.waitSSH(t, n.a.server, 5*time.Minute)
 	e.waitSSH(t, n.c.server, 5*time.Minute)
 	e.waitPing(t, n.a.server, n.c.privIP)
+	e.waitSteadyPing(t, n.a.server, n.c.privIP)
 	checkSame(t, "A to C public after stop and start", pingStats{avg: n.restartPub}, e.pingStats(t, n.a.server, n.c.IPv4))
 	checkSame(t, "A to C private after stop and start", pingStats{avg: n.restartPriv}, e.pingStats(t, n.a.server, n.c.privIP))
 }
