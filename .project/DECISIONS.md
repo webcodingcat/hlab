@@ -23,6 +23,14 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-24 No download retry after cancellation
+
+- Type: decision
+- Phase: phase 29
+- What: a failed image or package request is not retried when its context is already cancelled.
+- Why: the retry could not succeed.
+- Cost of change: low
+
 ## 2026-11-24 Image rows start their per-image subtests from goroutines
 
 - Type: decision

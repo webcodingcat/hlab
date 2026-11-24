@@ -518,15 +518,16 @@ Inside `hlabd` (Go packages under `internal/`):
   with Rock Ridge, volume label `cidata`).
 - Interface: `cidata.Build(Seed) ([]byte, error)` and `cidata.BuildFile(Seed,
   path)`; `Seed` carries instance ID, hostname, SSH keys, user-data,
-  vendor-data, interfaces (MAC, addresses, gateway, routes, nameservers)
-  and extra files (the appliance's agent binary and secret). `network-config`: public adapter `/32` with on-link default route
+  vendor-data, interfaces (MAC, addresses, gateway, routes, nameservers),
+  extra files (the appliance's agent binary and secret) and `NoOnLink`, set
+  by the servers module from the image's `os_flavor`. `network-config`: public adapter `/32` with on-link default route
   via `172.31.1.1`, nameservers `185.12.64.1` and `185.12.64.2`; one adapter
   per private network with its `/32` and a route to the network's range via
   the network gateway, like Hetzner. The route key `on-link` is written only
   for images that render with netplan (Ubuntu, Debian); for the others
   (`os_flavor` rocky, alma, centos, fedora, opensuse) it is left out, since
   their renderers ignore it and cloud-init's schema rejects it, which makes
-  `cloud-init status` exit with 2 (E31; phase 29). `vendor-data` installs
+  `cloud-init status` exit with 2 (E31, E45; phase 29); the rescue seed keeps it (Debian 13). `vendor-data` installs
   the guest hooks (see "Guest integration").
 - Depends on: nothing.
 

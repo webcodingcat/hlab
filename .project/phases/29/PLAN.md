@@ -69,22 +69,22 @@ E2E harness (writer of `test/e2e/images_test.go`):
 
 ## Plans
 
-- [ ] 29-01 Image downloads: checksum formats, User-Agent and one retry
+- [x] 29-01 Image downloads: checksum formats, User-Agent and one retry
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: CAT-09 | Tests: internal/images/images_test.go
   - Reads: ARCHITECTURE.md "images"; EXPERIMENTS.md E30; DECISIONS.md
     "EL8 hooks, checksum formats and no on-link outside netplan"; CONTEXT.md
     "Technical choices"; Interfaces above (Images)
   - Size: ~100 lines in 1 file
-  - [ ] `internal/images/download.go`: `findSum` reads GNU and BSD lines
+  - [x] `internal/images/download.go`: `findSum` reads GNU and BSD lines
     and skips `#` lines and the PGP armour of clear-signed files; the
     error for a missing entry stays `no entry for <file>`
-  - [ ] `internal/images/download.go`: `get` sets the User-Agent
+  - [x] `internal/images/download.go`: `get` sets the User-Agent
     `hlab/<version.Version>` and retries once on a transport error or a
     non-200 answer, closing the first body; 404 after the retry still
     wraps `errNotFound`
 
-- [ ] 29-02 Catalog: the eleven new system images
+- [x] 29-02 Catalog: the eleven new system images
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: CAT-09 | Tests: internal/resources/images/images_test.go
   - Reads: `research/hetzner-system-images.json` (the eleven entries);
@@ -96,7 +96,7 @@ E2E harness (writer of `test/e2e/images_test.go`):
     its "unexpected system image" and count checks contradict CAT-09. It
     keeps checking that the five CAT-06 images are listed with their
     attributes, and no longer that they are the only ones.
-  - [ ] `catalog/images.json`: append, in this order, rocky-8, rocky-9,
+  - [x] `catalog/images.json`: append, in this order, rocky-8, rocky-9,
     rocky-10, alma-8, alma-9, alma-10, centos-stream-9, centos-stream-10,
     fedora-43, fedora-44 and opensuse-16 as Hetzner's objects from the
     research file, without the field `deprecated`. fedora-43 keeps its
@@ -104,17 +104,17 @@ E2E harness (writer of `test/e2e/images_test.go`):
     `checksum_url` and `format: "qcow2"` from E30: the `latest` files for
     Rocky, Alma, CentOS Stream and openSUSE, the frozen versioned files for
     Fedora, and Alma's folder `CHECKSUM`. debian-11 is not added.
-  - [ ] Adjust TestImages/CAT-06 as above
+  - [x] Adjust TestImages/CAT-06 as above
 
-- [ ] 29-03 Seed network-config without on-link for non-netplan images
+- [x] 29-03 Seed network-config without on-link for non-netplan images
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: SRV-23 | Tests: internal/resources/servers/seed_test.go
   - Reads: ARCHITECTURE.md "cidata", "Guest integration"; EXPERIMENTS.md
     E31, E45; Interfaces above (cidata, Servers)
   - Size: ~60 lines in 2 files
-  - [ ] `internal/cidata/cidata.go`: `Seed.NoOnLink`; with it set, no
+  - [x] `internal/cidata/cidata.go`: `Seed.NoOnLink`; with it set, no
     route carries `on-link` (default route and private ranges)
-  - [ ] `internal/resources/servers/reconcile.go`: `seed(rec)` sets
+  - [x] `internal/resources/servers/reconcile.go`: `seed(rec)` sets
     `NoOnLink` from `os_flavor` in `rec.Image` (a small helper reading the
     raw JSON; a missing or unreadable image object keeps `on-link`)
 
