@@ -179,7 +179,8 @@ func testLIFE04(t *testing.T) {
 }
 
 // testLIFE04NetplanPrivate: the user's netplan file that puts A's alias IP
-// on its boot-configured private link stays in force over the save cycle:
+// on its boot-configured private link stays in force over the save cycle
+// and a forced carrier drop on that link afterwards:
 // B pings the alias and the guest hook wrote no 05-hlab-*.network file.
 func testLIFE04NetplanPrivate(t *testing.T) {
 	f := sharedLife(t)
@@ -578,6 +579,36 @@ func (f *lifeFixture) checkPrivateAlias() []string {
 	return msgs
 }
 
+// dropPrivateLinkScript takes A's private link down and drops its IPv4
+// addresses, as a carrier drop under systemd-networkd does, until the
+// guest hook (hlab-guest.service, every 5 s) has finished two runs, so at
+// least one ran wholly while the link was down; deadline 60 s. Then it
+// brings the link up and lets networkd configure it again. %[1]s is the
+// link.
+const dropPrivateLinkScript = `dev=%[1]s
+runs() { systemctl show -p InactiveEnterTimestampMonotonic --value hlab-guest.service; }
+ip link set dev "$dev" down && ip -4 addr flush dev "$dev"
+last=$(runs); seen=0; i=0
+while [ "$seen" -lt 2 ] && [ "$i" -lt 120 ]; do
+  sleep 0.5; i=$((i+1))
+  now=$(runs)
+  if [ "$now" != "$last" ]; then seen=$((seen+1)); last=$now; fi
+done
+ip link set dev "$dev" up
+networkctl reconfigure "$dev" >/dev/null 2>&1 || true
+echo "hook runs while down: $seen"
+[ "$seen" -ge 2 ]`
+
+// dropPrivateLink forces a carrier drop on A's private link that outlasts
+// a run of the guest hook.
+func (f *lifeFixture) dropPrivateLink() error {
+	r, err := f.e.ssh(f.a.server, 2*time.Minute, "", fmt.Sprintf(dropPrivateLinkScript, f.a.privIf))
+	if err != nil || r.ExitCode != 0 {
+		return fmt.Errorf("%s: carrier drop on %s outlasting two hook runs: %v\n%s", f.a.Name, f.a.privIf, err, r)
+	}
+	return nil
+}
+
 func (f *lifeFixture) mount() string { return fmt.Sprintf("/mnt/HC_Volume_%d", f.volID) }
 
 func (f *lifeFixture) createZone() error {
@@ -735,6 +766,13 @@ func (c *lifeCycle) run(f *lifeFixture, behaviour string) error {
 	c.fixture = f.check()
 	if behaviour == "save" {
 		c.netplan = f.checkPrivateAlias()
+		// A carrier drop at the start does not always reach the hook;
+		// a forced one that outlasts a run of the hook does.
+		if err := f.dropPrivateLink(); err != nil {
+			c.netplan = append(c.netplan, err.Error())
+		} else {
+			c.netplan = append(c.netplan, f.checkPrivateAlias()...)
+		}
 	}
 	return nil
 }
