@@ -170,13 +170,13 @@ Rules of the plan (ARCHITECTURE.md "hlab-agent", E29, E40, E41):
   - Adjusts: -
   - [x] `internal/agent/faultplan.go` (new): `FaultPlan`, `FaultRule`, `NetemClass`, `Netem`, `Flow`, `PlanFaults` by the rules in "Interfaces": cuts, loss, server latency, location latency, box drops, merging per destination and source group with stable keys, the seed of a netem without loss, `OffloadsOff`; rules and classes sorted so the same document gives the same plan.
 
-- [ ] 27-03 Agent: tc commands from the applied state
+- [x] 27-03 Agent: tc commands from the applied state
   - Wave: 3 | Depends on: 27-02 | Review: alone
   - Requirements: FAULT-07, FAULT-08 (FAULT-02: ending undoes the effect) | Tests: internal/agent/faults_test.go
   - Reads: ARCHITECTURE "hlab-agent" (Faults paragraph); EXPERIMENTS E29 (syntax), E41, E42; phases/27/CONTEXT.md; this file "Interfaces"
   - Size: ~200 lines in 1 file
   - Adjusts: -
-  - [ ] `internal/agent/faulttc.go` (new): `TcState`, `TcCommands`: with have nil, `qdisc del dev <d> root` for every candidate (errors for a missing qdisc are the applier's to ignore); a device leaving want loses its root qdisc; a device entering want gets root HTB, class `1:1`; per class by Key: new → class, netem (with seed), flower filters (pairs prio 1, destination only prio 2); gone → filters, class deleted; changed flows → filters replaced, netem untouched; changed netem → `qdisc change` per E42; minors kept per Key, new ones from `0x10` upward without reuse of a live minor.
+  - [x] `internal/agent/faulttc.go` (new): `TcState`, `TcCommands`: with have nil, `qdisc del dev <d> root` for every candidate (errors for a missing qdisc are the applier's to ignore); a device leaving want loses its root qdisc; a device entering want gets root HTB, class `1:1`; per class by Key: new → class, netem (with seed), flower filters (pairs prio 1, destination only prio 2); gone → filters, class deleted; changed flows → filters replaced, netem untouched; changed netem → `qdisc change` per E42; minors kept per Key, new ones from `0x10` upward without reuse of a live minor.
 
 - [ ] 27-04 Agent: faults applier on the appliance
   - Wave: 4 | Depends on: 27-03, 27-05 | Review: alone
