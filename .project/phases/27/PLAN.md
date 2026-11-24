@@ -153,14 +153,14 @@ Rules of the plan (ARCHITECTURE.md "hlab-agent", E29, E40, E41):
 
 ## Plans
 
-- [ ] 27-01 Fault entries in the agent document and the net effect
+- [x] 27-01 Fault entries in the agent document and the net effect
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: FAULT-07, FAULT-08, FAULT-11 | Tests: internal/faults/effects_test.go
   - Reads: ARCHITECTURE "faults (phase 25)", "hlab-agent" (the `agentapi.Config` block); DECISIONS "2026-11-24 Fault kinds become active by registered effects", "2026-11-24 Undo errors do not keep a fault alive", "2026-11-24 Agent document without JSON tags"; phases/27/CONTEXT.md "Technical choices"; `internal/faults/effects.go`, `manager.go` `Create`
   - Size: ~140 lines in 3 files
   - Adjusts: -
-  - [ ] `internal/agentapi/agentapi.go`: `Config.Faults`, `NetFault`, `FaultServer`, `FaultPrivate` as in "Interfaces".
-  - [ ] `internal/faults/neteffects.go` (new): `NetEffects`, `NewNetEffects`, `Effects`, `Faults` as in "Interfaces"; Apply adds the fault before calling push, so the document built during the push holds it.
+  - [x] `internal/agentapi/agentapi.go`: `Config.Faults`, `NetFault`, `FaultServer`, `FaultPrivate` as in "Interfaces".
+  - [x] `internal/faults/neteffects.go` (new): `NetEffects`, `NewNetEffects`, `Effects`, `Faults` as in "Interfaces"; Apply adds the fault before calling push, so the document built during the push holds it.
 
 - [ ] 27-02 Agent: fault plan
   - Wave: 2 | Depends on: 27-01 | Review: alone
