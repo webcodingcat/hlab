@@ -74,7 +74,7 @@ func (m *Module) SyncAdapters(ctx context.Context, stor *store.Store, id int64, 
 	if err := m.syncDeny(ctx, all, touched); err != nil {
 		return err
 	}
-	if err := m.rewriteSeed(ctx, rec, hasVM); err != nil {
+	if err := m.rewriteSeed(ctx, stor, id, hasVM); err != nil {
 		return err
 	}
 	return m.d.PushAgent(ctx)
@@ -84,19 +84,11 @@ func (m *Module) SyncAdapters(ctx context.Context, stor *store.Store, id int64, 
 // without touching adapters or the agent, for a Recover before the agent
 // is ready.
 func (m *Module) RewriteSeed(ctx context.Context, stor *store.Store, id int64) error {
-	var rec Record
-	if err := stor.Tx(func(tx store.Tx) error {
-		var err error
-		rec, err = Load(tx, id)
-		return err
-	}); err != nil {
-		return err
-	}
 	hasVM, err := m.hasVM(ctx, id)
 	if err != nil {
 		return err
 	}
-	return m.rewriteSeed(ctx, rec, hasVM)
+	return m.rewriteSeed(ctx, stor, id, hasVM)
 }
 
 // hasVM reports whether the VM of server id exists.
@@ -199,16 +191,22 @@ func (m *Module) syncDeny(ctx context.Context, all []Record, nets []int64) error
 	return nil
 }
 
-// rewriteSeed builds the seed of rec again. With a VM it ejects slot 0
+// rewriteSeed builds the seed of server id again from its record as it is
+// under the seed lock. With a VM it ejects slot 0
 // first and inserts the new seed afterwards, unless rescue holds slot 0
 // (ending rescue inserts the server's seed). Within the seed hold after a
 // boot hlab started it only notes the swap as due and swaps later from the
 // record as it is then. It holds the server's seed lock, so no boot hlab
-// starts meets an empty drive.
-func (m *Module) rewriteSeed(ctx context.Context, rec Record, hasVM bool) error {
-	lock := m.seedLock(rec.ID)
+// starts meets an empty drive, and rescue's changes of slot 0 (which
+// hold it too) are not undone.
+func (m *Module) rewriteSeed(ctx context.Context, stor *store.Store, id int64, hasVM bool) error {
+	lock := m.seedLock(id)
 	lock.Lock()
 	defer lock.Unlock()
+	rec, err := m.load(stor, id)
+	if err != nil {
+		return err
+	}
 	p, name, seed := m.d.Platform, m.vmName(rec.ID), m.seedPath(rec.ID)
 	insert := hasVM && !rescueOn(rec)
 	if insert {
