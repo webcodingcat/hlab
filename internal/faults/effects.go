@@ -1,9 +1,6 @@
 package faults
 
-import (
-	"context"
-	"fmt"
-)
+import "context"
 
 // ServerInjector is implemented by the servers module.
 type ServerInjector interface {
@@ -46,11 +43,11 @@ func nothing(context.Context, string, int64) error { return nil }
 type effect struct{ apply, undo targetCall }
 
 func (e effect) Apply(ctx context.Context, f Fault) error {
-	return e.apply(ctx, f.Project, targetID(f))
+	return e.apply(ctx, f.Project, f.Target.ID)
 }
 
 func (e effect) Undo(ctx context.Context, f Fault) error {
-	return e.undo(ctx, f.Project, targetID(f))
+	return e.undo(ctx, f.Project, f.Target.ID)
 }
 
 // diskSlow sets the IOPS limit of a volume or a server's system disk.
@@ -66,23 +63,11 @@ func (d diskSlow) Apply(ctx context.Context, f Fault) error {
 
 func (d diskSlow) Undo(ctx context.Context, f Fault) error { return d.set(ctx, f, 0) }
 
+// set limits the server's system disk or the volume; validation allows
+// only these two target types for disk_slow.
 func (d diskSlow) set(ctx context.Context, f Fault, max int) error {
-	if f.Target == nil {
-		return fmt.Errorf("disk_slow fault %d has no target", f.ID)
-	}
-	switch f.Target.Type {
-	case TargetServer:
+	if f.Target.Type == TargetServer {
 		return d.s.SetSystemDiskIOPS(ctx, f.Project, f.Target.ID, max)
-	case TargetVolume:
-		return d.v.SetIOPS(ctx, f.Project, f.Target.ID, max)
 	}
-	return fmt.Errorf("disk_slow fault %d: target type %s", f.ID, f.Target.Type)
-}
-
-// targetID is the ID of f's target, 0 without one.
-func targetID(f Fault) int64 {
-	if f.Target == nil {
-		return 0
-	}
-	return f.Target.ID
+	return d.v.SetIOPS(ctx, f.Project, f.Target.ID, max)
 }
