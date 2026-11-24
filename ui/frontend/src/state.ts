@@ -22,9 +22,10 @@ export type CloudState = {
   error?: string;
   connection_lost: boolean;
   version?: string;
+  faults: number; // active faults of all projects; 0 unless running
 };
 
-export const cloud = writable<CloudState>({ state: "", problems: [], connection_lost: false });
+export const cloud = writable<CloudState>({ state: "", problems: [], connection_lost: false, faults: 0 });
 
 export const running = derived(cloud, ($c) => $c.state === "running");
 

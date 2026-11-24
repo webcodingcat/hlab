@@ -425,6 +425,9 @@ func testUI17(t *testing.T) {
 	ctx := context.Background()
 	var names []string
 	for _, suffix := range []string{"ui17-a", "ui17-b"} {
+		// The name is given as the display name; lower case, digits and "-"
+		// derive to themselves, so the Project column, which shows the
+		// display name, shows the name the spec looks for.
 		name := harness.runID + "-" + suffix
 		if r, err := runHlab(ctx, 2*time.Minute, "project", "create", name); err != nil || r.ExitCode != 0 {
 			t.Fatalf("hlab project create %s: %v\n%s", name, err, r)
