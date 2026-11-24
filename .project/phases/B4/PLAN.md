@@ -89,14 +89,14 @@ Behaviour the tests build on:
     `lifecycle.go` `Restore` notes a boot only for a VM that was Off, then
     swaps the seed of every server with `SeedDue`
 
-- [ ] B4-02 Guest hook: leave boot-configured links alone after a carrier drop
+- [x] B4-02 Guest hook: leave boot-configured links alone after a carrier drop
   - Wave: 1 | Depends on: - | Review: alone
   - Requirements: LIFE-04 | Tests: test/e2e/life_test.go (row LIFE-04/netplan_private, run in B4-06)
   - Reads: ARCHITECTURE.md "Guest integration"; EXPERIMENTS.md E47;
     DECISIONS.md "Guest hook for private adapters", "Guest picks up
     private network changes live"; CONTEXT.md
   - Size: ~40 lines in 1 file
-  - [ ] `internal/resources/servers/vendordata.go`, `sync_networks` of the
+  - [x] `internal/resources/servers/vendordata.go`, `sync_networks` of the
     guest hook: a second state file in `/run/hlab-guest` lists the links
     that carried their private IP when the hook first saw them after boot.
     Such a link, and a link the hook took over itself (`networks.json`), is
