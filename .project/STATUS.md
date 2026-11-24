@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 25 Fault model, API errors and rate limits (next)
+- Phase: 26 Server and disk faults (next)
 - Base branch: main
-- Last done: phase 23 merged into main (2026-11-23): `hcloud server request-console` gives a working VNC console (screen, keyboard, mouse through Hyper-V), and the tray opens it in its own window from the server's "Console" entry, also without "Trust CA"
-- Next: /wcc:phase in a new session builds phase 25; fault injection (phases 25 to 28) was taken into milestone 1 on 2026-11-24, and phase 16 (release checks) stays the last phase and stops for the manual checks
+- Last done: phase 25 merged into main (2026-11-24): faults are created, listed and ended through the management API, `hlab fault` and the MCP tools; `api_error` and `rate_limit` act on token requests, and every API response carries the `RateLimit-*` headers
+- Next: /wcc:phase in a new session builds phase 26 (server and disk faults); phase 16 (release checks) stays the last phase and stops for the manual checks
 
 ## Open manual checks
 

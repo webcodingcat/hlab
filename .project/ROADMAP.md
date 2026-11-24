@@ -63,26 +63,7 @@
 
 - [x] 23 Server console (SRV-17, CON-01, CON-02, UI-15) → phases/23/
 
-- [ ] 25 Fault model, API errors and rate limits.
-      Requirements: FAULT-01, FAULT-02, FAULT-03, FAULT-04, FAULT-12,
-      MCP-06.
-      Depends on: 17, 21.
-      Adjusts: the management API and `GET /status` (additive), the `api`
-      middleware chain, MCP-01's tool list in `hlab mcp` and its tests,
-      docs/commands.md, docs/guide.md.
-      Success criteria:
-      1. A fault created through `hlab fault create` appears in
-         `hlab fault list` and in `GET /mgmt/v1/status`, and ends by
-         itself after its duration, by `hlab fault delete`, with its
-         project and at cloud stop.
-      2. With an `api_error` fault of 50 % on writes to servers, hcloud
-         gets the chosen error on about half of its `server create` calls,
-         the same calls again with the same seed, while reads and the tray
-         console keep working.
-      3. With a `rate_limit` fault of 10 per hour, the eleventh hcloud
-         call in a row gets `rate_limit_exceeded`, and every response
-         carries the `RateLimit-*` headers.
-      4. An MCP client creates, lists and ends a fault through `hlab mcp`.
+- [x] 25 Fault model, API errors and rate limits (FAULT-01, FAULT-02, FAULT-03, FAULT-04, FAULT-12, MCP-06) → phases/25/
 
 - [ ] 26 Server and disk faults.
       Requirements: FAULT-05, FAULT-06, FAULT-09, FAULT-10.

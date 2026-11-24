@@ -492,11 +492,11 @@ What the target vision in IDEA.md will need, not built yet.
 | MCP-03 | 17 | x |
 | MCP-04 | 17 | x |
 | MCP-05 | 17 | x |
-| MCP-06 | 25 | |
-| FAULT-01 | 25 | |
-| FAULT-02 | 25 | |
-| FAULT-03 | 25 | |
-| FAULT-04 | 25 | |
+| MCP-06 | 25 | x |
+| FAULT-01 | 25 | x |
+| FAULT-02 | 25 | x |
+| FAULT-03 | 25 | x |
+| FAULT-04 | 25 | x |
 | FAULT-05 | 26 | |
 | FAULT-06 | 26 | |
 | FAULT-07 | 27 | |
@@ -504,7 +504,7 @@ What the target vision in IDEA.md will need, not built yet.
 | FAULT-09 | 26 | |
 | FAULT-10 | 26 | |
 | FAULT-11 | 27 | |
-| FAULT-12 | 25 | |
+| FAULT-12 | 25 | x |
 | UI-16 | 28 | |
 | UI-17 | 28 | |
 | UI-18 | 28 | |
