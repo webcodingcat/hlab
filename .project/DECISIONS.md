@@ -19,6 +19,22 @@ others already use: data schema, file and save formats, public URLs and
 interfaces, authentication. Claude never takes such decisions alone. They are
 taken with the approval of the spec or by an answer from the user.
 
+## 2026-11-24 The restart rows wait for steady private traffic before measuring
+
+- Type: decision
+- Phase: phase 27
+- What: FAULT-07/restart and FAULT-08/restart wait, with a deadline, until a short ping burst from B to A loses nothing before the zero-loss measurement.
+- Why: after the VMs resume from saved state private pings drop for about 1 s in one block, also without the faults applier, and the rows check leftover faults, not that transient.
+- Cost of change: low
+
+## 2026-11-24 LRO stays off after a loss fault; tc deletes of missing qdiscs are ignored
+
+- Type: decision
+- Phase: phase 27
+- What: when offloads go back on the applier turns on GRO, GSO and TSO but leaves LRO off; tc `del` failures saying "No such file" or "handle of zero" are ignored, and after any other tc failure the applier forgets its tc state and rebuilds on the next document.
+- Why: LRO on broke TCP through the forwarding appliance in the e2e run, and the default root qdiscs (mq, noqueue) answer "handle of zero" on delete.
+- Cost of change: low
+
 ## 2026-11-24 tc filters with explicit handles, netem changes with all parameters
 
 - Type: decision
