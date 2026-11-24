@@ -38,6 +38,18 @@ func TestE2E(t *testing.T) {
 	t.Run("LIFE-07", testLIFE07)
 	releaseLifeFixture(t)
 
+	// The FAULT rows share one server with a mounted volume and one stop
+	// and start of the cloud, run lazily by the first restart row, so they
+	// run alone after the LIFE rows; their fixture goes before the UI rows.
+	t.Run("FAULT-10", logged(testFAULT10))
+	t.Run("FAULT-09", logged(testFAULT09))
+	t.Run("FAULT-06", logged(testFAULT06))
+	t.Run("FAULT-05", logged(testFAULT05))
+	t.Run("FAULT-06/restart", logged(testFAULT06Restart))
+	t.Run("FAULT-09/restart", logged(testFAULT09Restart))
+	t.Run("FAULT-10/restart", logged(testFAULT10Restart))
+	releaseFaultFixture(t)
+
 	// The UI rows drive the one tray window, and UI-01 stops and starts the
 	// cloud, so they run alone after the LIFE rows.
 	t.Run("UI-01", testUI01)

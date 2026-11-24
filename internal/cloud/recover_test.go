@@ -21,6 +21,7 @@ import (
 
 func TestCloud(t *testing.T) {
 	testReload(t)
+	testFaults(t)
 	t.Run("VOL-01", func(t *testing.T) {
 		cat, err := catalog.Load("../../catalog")
 		if err != nil {
