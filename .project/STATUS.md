@@ -41,7 +41,7 @@ STATUS: MANUAL_CHECK
   - Context: in the release checks the WSL part of `hlab ca trust on/off` waited forever because vmconnect's enhanced session is a Remote Desktop session and `WTSGetActiveConsoleSessionId` then has no user; a developer working on their machine over Remote Desktop would see the same.
   - Options: 1. keep the console user only and document it 2. use the console user, else the single active Remote Desktop session's user 3. apply the switch to every signed-in user's distros
   - Recommendation: 2, because it covers the Remote Desktop case without touching other users' distros.
-  - Affects: CERT-04, ARCHITECTURE.md "Host networking" (TrustCA, console user)
+  - Affects: CERT-04, ARCHITECTURE.md (TrustCA and the WSL trust pass over the console user's distros)
 
 ## If BLOCKED
 
