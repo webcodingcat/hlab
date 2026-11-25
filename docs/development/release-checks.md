@@ -67,7 +67,9 @@ Set-VMKeyProtector -VMName $Name -NewLocalKeyProtector
 Enable-VMTPM -VMName $Name
 $dvd = Add-VMDvdDrive -VMName $Name -Path $Iso -Passthru
 Set-VMFirmware -VMName $Name -FirstBootDevice $dvd
-Enable-VMIntegrationService -VMName $Name -Name 'Guest Service Interface'
+Get-VMIntegrationService -VMName $Name |
+  Where-Object { $_.Id -like '*6C09BB55-D683-4DA0-8931-C9BF705F6480' } |
+  Enable-VMIntegrationService
 Set-VM -Name $Name -AutomaticCheckpointsEnabled $false -AutomaticStopAction ShutDown
 ```
 
@@ -86,55 +88,168 @@ What the block sets and why:
   machine. HLab builds its own switch and NAT inside the VM, as on a real
   machine.
 - The integration service "Guest Service Interface" lets `Copy-VMFile` copy
-  files from the development machine into the VM. On a Windows host in
-  another language the service has a translated name;
-  `Get-VMIntegrationService -VMName $Name` lists the names.
+  files from the development machine into the VM. The block selects it by
+  its ID, so it works in any host language.
 - No automatic checkpoints, and the VM shuts down instead of saving its
   state when the development machine shuts down (see
   [Shut a VM down, do not save it](#shut-a-vm-down-do-not-save-it)).
 
 ### Install Windows
 
-Windows setup asks for a Microsoft account; these checks need a local
-account. Which way to it works depends on the Windows build; try them in
-this order.
+An answer file runs the whole Windows setup without a question: it wipes
+and partitions the VM's disk, installs Windows 11 Pro, creates a local
+administrator account, skips the setup screens, signs in once by itself,
+enables Hyper-V and restarts. Windows setup reads `autounattend.xml` from
+the root of a DVD, so the block below builds a small ISO with it and adds
+it as a second virtual DVD before the first start.
 
-**Answer file (first choice).** Before the first start, put an answer file
-on a second virtual DVD. Windows setup reads `autounattend.xml` from the
-root of a DVD; the file below hides the online account screens and creates
-one local account in the group Administrators. It holds the password in
-plain text, so use one for this VM only, and delete the folder and the ISO
-once Windows is set up. Paste the block on the development machine, with
-`$Name` and `$VmRoot` as above:
+Set `$Lang` to the language of your Windows ISO (for example `'de-DE'` or
+`'en-US'`); setup stops if it does not match. Then paste the block on the
+development machine, with `$Name` and `$VmRoot` as above. It asks for the
+account's password and writes it in plain text into the answer file, so use
+one for this VM only; the folder and the ISO are deleted once Windows is
+set up.
 
 ```powershell
+$Lang     = 'en-US'                    # language of the Windows ISO, e.g. 'de-DE'
 $User     = 'tester'
 $Password = Read-Host "Password for the local account $User"
 $Dir      = "$VmRoot\$Name\unattend"
 $UnattendIso = "$VmRoot\$Name\unattend.iso"
 New-Item -ItemType Directory -Force $Dir | Out-Null
+
+$su = $User.Replace("'", "''")
+$sp = $Password.Replace("'", "''")
+$account = @"
+New-LocalUser -Name '$su' -Password (ConvertTo-SecureString '$sp' -AsPlainText -Force) -PasswordNeverExpires
+Add-LocalGroupMember -SID 'S-1-5-32-544' -Member '$su'
+reg.exe add 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Setup\OOBE' /v UnattendCreatedUser /t REG_DWORD /d 1 /f
+"@
+[IO.File]::WriteAllText("$Dir\account.ps1", $account, (New-Object Text.UTF8Encoding $true))
+
 $u = [Security.SecurityElement]::Escape($User)
 $p = [Security.SecurityElement]::Escape($Password)
 @"
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+  <settings pass="windowsPE">
+    <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <SetupUILanguage>
+        <UILanguage>$Lang</UILanguage>
+      </SetupUILanguage>
+      <InputLocale>$Lang</InputLocale>
+      <SystemLocale>$Lang</SystemLocale>
+      <UILanguage>$Lang</UILanguage>
+      <UserLocale>$Lang</UserLocale>
+    </component>
+    <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <DiskConfiguration>
+        <Disk wcm:action="add">
+          <DiskID>0</DiskID>
+          <WillWipeDisk>true</WillWipeDisk>
+          <CreatePartitions>
+            <CreatePartition wcm:action="add">
+              <Order>1</Order>
+              <Type>EFI</Type>
+              <Size>100</Size>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>2</Order>
+              <Type>MSR</Type>
+              <Size>16</Size>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>3</Order>
+              <Type>Primary</Type>
+              <Extend>true</Extend>
+            </CreatePartition>
+          </CreatePartitions>
+          <ModifyPartitions>
+            <ModifyPartition wcm:action="add">
+              <Order>1</Order>
+              <PartitionID>1</PartitionID>
+              <Format>FAT32</Format>
+              <Label>System</Label>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>2</Order>
+              <PartitionID>2</PartitionID>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>3</Order>
+              <PartitionID>3</PartitionID>
+              <Format>NTFS</Format>
+              <Label>Windows</Label>
+              <Letter>C</Letter>
+            </ModifyPartition>
+          </ModifyPartitions>
+        </Disk>
+      </DiskConfiguration>
+      <ImageInstall>
+        <OSImage>
+          <InstallTo>
+            <DiskID>0</DiskID>
+            <PartitionID>3</PartitionID>
+          </InstallTo>
+        </OSImage>
+      </ImageInstall>
+      <UserData>
+        <ProductKey>
+          <Key>W269N-WFGWX-YVC9B-4J6C9-T83GX</Key>
+          <WillShowUI>OnError</WillShowUI>
+        </ProductKey>
+        <AcceptEula>true</AcceptEula>
+      </UserData>
+    </component>
+  </settings>
+  <settings pass="specialize">
+    <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Path>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "&amp; ('{0}:\account.ps1' -f (Get-Volume -FileSystemLabel UNATTEND).DriveLetter)"</Path>
+        </RunSynchronousCommand>
+      </RunSynchronous>
+    </component>
+  </settings>
   <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <InputLocale>$Lang</InputLocale>
+      <SystemLocale>$Lang</SystemLocale>
+      <UILanguage>$Lang</UILanguage>
+      <UserLocale>$Lang</UserLocale>
+    </component>
     <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
       <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
         <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <ProtectYourPC>3</ProtectYourPC>
       </OOBE>
-      <UserAccounts>
-        <LocalAccounts>
-          <LocalAccount wcm:action="add">
-            <Name>$u</Name>
-            <Group>Administrators</Group>
-            <Password>
-              <Value>$p</Value>
-              <PlainText>true</PlainText>
-            </Password>
-          </LocalAccount>
-        </LocalAccounts>
-      </UserAccounts>
+      <AutoLogon>
+        <Username>$u</Username>
+        <Password>
+          <Value>$p</Value>
+          <PlainText>true</PlainText>
+        </Password>
+        <Enabled>true</Enabled>
+        <LogonCount>1</LogonCount>
+      </AutoLogon>
+      <FirstLogonCommands>
+        <SynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <CommandLine>reg.exe add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoLogonCount /t REG_DWORD /d 0 /f</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <CommandLine>powershell.exe -NoProfile -Command "Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All -NoRestart"</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <CommandLine>shutdown.exe /r /t 0</CommandLine>
+        </SynchronousCommand>
+      </FirstLogonCommands>
     </component>
   </settings>
 </unattend>
@@ -173,20 +288,35 @@ Add-VMDvdDrive -VMName $Name -Path $UnattendIso
 The ISO is built with Windows' own image mastering interface (IMAPI), so no
 extra tool is needed. The Windows ISO stays the first boot device.
 
-**"Domain join instead".** Without the answer file, on "How would you like
-to set up this device?" choose "Set up for work or school", then "Sign-in
-options", then "Domain join instead".
+What the answer file does, in the order setup runs it:
 
-**Setup without network.** Disconnect the VM from the network before the
-setup screens ask for an account, so setup offers "I don't have internet",
-and connect it again after the first sign-in:
+- Setup language, keyboard and region come from `$Lang`, during setup
+  and in the installed Windows.
+- Disk 0 is wiped and gets the layout a Generation 2 VM boots from: an
+  EFI partition of 100 MB (FAT32), a 16 MB reserved partition and the rest
+  for Windows (NTFS).
+- The product key `W269N-WFGWX-YVC9B-4J6C9-T83GX` is Microsoft's published
+  KMS client setup key for Windows 11 Pro. It only selects the edition:
+  Hyper-V needs Pro, Enterprise or Education. Windows stays unactivated,
+  which is enough for these checks (a watermark, and personalization is
+  locked). The licence terms are accepted.
+- The script `account.ps1` from the same ISO runs while Windows configures
+  itself (the specialize pass). It creates the local account and adds it
+  to the group with the well-known SID `S-1-5-32-544`, which is the
+  Administrators group in every Windows language ("Administratoren" in
+  German, for example). It then marks the account as created by the answer
+  file, so the setup screens do not ask for one.
+- The setup screens for the licence, online accounts, wireless networks
+  and privacy settings are skipped; privacy settings keep Windows'
+  defaults.
+- The account signs in once by itself. Its first sign-in enables
+  `Microsoft-Hyper-V` with all its parts and restarts the VM. The account
+  is an administrator under User Account Control, like on most users'
+  machines.
 
-```powershell
-Disconnect-VMNetworkAdapter -VMName $Name
-Connect-VMNetworkAdapter -VMName $Name -SwitchName 'Default Switch'
-```
+### Start the VM and run setup
 
-Then start the VM and open its console:
+Start the VM and open its console:
 
 ```powershell
 Start-VM -Name $Name
@@ -194,36 +324,37 @@ vmconnect.exe localhost $Name
 ```
 
 Press a key when the console shows "Press any key to boot from CD or DVD".
-In Windows setup:
+Then wait: setup installs Windows and restarts several times, signs in
+once by itself, enables Hyper-V and restarts again while Hyper-V is set
+up. Setup is done when the console shows the sign-in screen and the VM
+no longer restarts.
 
-1. Choose "I don't have a product key"; Windows stays unactivated, which is
-   enough for these checks (a watermark, and personalization is locked).
-2. Choose **Windows 11 Pro**: Hyper-V needs Pro, Enterprise or Education.
-3. Install on the empty disk.
+Sign in with the local account. In an administrator PowerShell inside the
+VM, check that Hyper-V is enabled; the line `State` must say `Enabled`:
 
-After the restarts, sign in with the local account. It is an administrator
-under User Account Control, like on most users' machines. Then remove the
-ISOs from the VM, and delete the answer file folder and its ISO if you
-used them:
+```powershell
+Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V
+```
+
+On the development machine, remove both ISOs from the VM and delete the
+answer file folder and its ISO:
 
 ```powershell
 Get-VMDvdDrive -VMName $Name | Set-VMDvdDrive -Path $null
-Remove-Item -Recurse "$VmRoot\$Name\unattend", "$VmRoot\$Name\unattend.iso" -ErrorAction SilentlyContinue
+Remove-Item -Recurse "$VmRoot\$Name\unattend", "$VmRoot\$Name\unattend.iso"
 ```
 
 ### Enable Hyper-V in the VM
 
-In an administrator PowerShell inside the VM:
-
-```powershell
-Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All
-Restart-Computer
-```
-
-If the feature cannot be enabled, nested virtualization is off: shut the
-VM down, check `Get-VMProcessor -VMName $Name | Select-Object
+The answer file enables Hyper-V; the check in
+[Start the VM and run setup](#start-the-vm-and-run-setup) shows it. If
+`State` is not `Enabled`, nested virtualization is off: shut the VM down,
+check `Get-VMProcessor -VMName $Name | Select-Object
 ExposeVirtualizationExtensions` on the development machine, and set it
-again while the VM is off.
+again while the VM is off. Then enable Hyper-V in an administrator
+PowerShell inside the VM with
+`Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All`
+and restart it.
 
 ### Check the subnet before the first cloud start
 
