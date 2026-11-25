@@ -360,9 +360,7 @@ function Wait-WindowsSetup([pscredential]$Credential) {
 }
 
 function Remove-AnswerMedia([string]$Dir, [string]$Path) {
-    if (Get-VM -Name $Name -ErrorAction SilentlyContinue) {
-        Get-VMDvdDrive -VMName $Name | Where-Object { $_.Path } | Set-VMDvdDrive -Path $null
-    }
+    Get-VMDvdDrive -VMName $Name | Where-Object { $_.Path } | Set-VMDvdDrive -Path $null
     foreach ($item in @($Dir, $Path)) {
         if (Test-Path -LiteralPath $item) {
             Remove-Item -LiteralPath $item -Recurse -Force
