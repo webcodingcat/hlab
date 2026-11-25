@@ -1,4 +1,4 @@
-STATUS: IN_PROGRESS
+STATUS: MANUAL_CHECK
 
 <!-- Allowed values: IDEA, IDEA_DONE, SPEC_REVIEW, READY, IN_PROGRESS, MANUAL_CHECK, BLOCKED, DONE -->
 
@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 30 Repository and CI, the last phase of milestone 1 (not started)
+- Phase: milestone 1 complete; all phases done, tag `wcc-milestone-1` set locally
 - Base branch: main
-- Last done: phase 16 merged into main (2026-11-25): release checks in the two test VMs, all manual checks of milestone 1 fit; on the way the setup bundle, upgrade, uninstall, storage VM trim and stall, WSL trust for the interactive user (Q28) and several console fixes were built
-- Next: /wcc:phase in a new session runs phase 30 (private repository, CI, release workflow, full task e2e, tag wcc-milestone-1); then /wcc:release publishes v0.1.0 from main
+- Last done: phase 30 merged into main (2026-11-26): private repository `webcodingcat/hlab` created and `main` pushed, CI green on f19f01a (second run, after the WiX EULA step and an SBOX-18 test fix), release workflow in place; full `task e2e` green apart from the known CLI-02/load_balancers flake (three reruns green)
+- Next: /wcc:report walks through the manual checks REL-01 to REL-03, then /wcc:phase sets DONE; then /wcc:release publishes v0.1.0 from main
 
 ## Open manual checks
 
@@ -18,7 +18,9 @@ STATUS: IN_PROGRESS
      one line each: "- UI-04 (03): <requirement>". The guide is in
      phases/<id>/CHECKS.md. /wcc:report walks through them. -->
 
-- none
+- REL-01 (30): the repository webcodingcat/hlab holds the history of main under Apache-2.0, with LICENSE and README links
+- REL-02 (30): every push and pull request to main runs build, Go tests, lint, frontend tests and the installer build on a Windows runner
+- REL-03 (30): a tag vX.Y.Z builds and publishes MSI, setup EXE and SHA256SUMS.txt as a GitHub release
 
 ## Open decisions
 

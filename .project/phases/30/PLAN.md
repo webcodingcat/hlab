@@ -104,3 +104,6 @@ elevated rights; no secret is printed.
 
 - End-to-end (last phase of milestone 1, all tests): `task e2e -- -v` on fdc401b ran 70 min; every subtest passed except `TestE2E/CLI-02/load_balancers` (423 locked on `hcloud_load_balancer_network` under full load, the known backlog flake); `task e2e -- -v -run 'TestE2E/CLI-02/load_balancers$'` three times in a row: all green. Unit suite, `task lint` and `task build`: green.
 - Verifier: no blockers, no architecture differences, no decisions, no backlog.
+- Repository: `webcodingcat/hlab` created private; `main` pushed after a clean gitleaks scan (1329 commits).
+- CI run 1 (bb19b71, https://github.com/webcodingcat/hlab/actions/runs/45719636517): red; `installer` needed `wix eula accept wix7` (WIX7015), `test` hit the SBOX-18/api 423 flake. Repair round 1 (f19f01a): EULA step in both workflows, `testRollbackAPI` waits with `waitBoxIdle`; scanned again and pushed.
+- CI run 2 (f19f01a, https://github.com/webcodingcat/hlab/actions/runs/45721074355): green, all five jobs. No tag pushed; `wcc-milestone-1` stays local.

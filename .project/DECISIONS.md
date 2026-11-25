@@ -27,6 +27,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-26 CI and release accept the WiX licence
+
+- Type: decision
+- Phase: phase 30
+- What: The `installer` job of `ci.yml` and `release.yml` run `wix eula accept wix7` before adding the WiX extensions, as `docs/development/setup.md` already prescribes for developers.
+- Why: a fresh runner refuses `wix extension add` with WIX7015 until the OSMF EULA is accepted (first CI run).
+- Cost of change: low
+
 ## 2026-11-25 Sort on server types and ISOs follows the renewed pin
 
 - Type: decision

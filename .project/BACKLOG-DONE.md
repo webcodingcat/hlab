@@ -4,6 +4,10 @@ Checked items from BACKLOG.md, done or dropped, moved here unchanged at the
 close of each backlog phase. Newest backlog phase first. No skill
 reads this file; it keeps the notes for looking things up.
 
+## 30
+
+- [x] minor: storageboxes tests: `TestStorageBoxes/SBOX-18/api` failed once under load (`POST /hetzner/v1/storage_boxes/1/snapshots` answered 423 locked, want 201) and passed in five reruns; the test does not wait for the previous action to finish (source: phase 16) (done in phase 30 CI repair: testRollbackAPI waits with waitBoxIdle before the next snapshot)
+
 ## B4
 
 - [x] minor: internal/resources/conventions_test.go: TestResources/API-05 and API-07 repeat over every endpoint the paging and label cases that internal/api/list_test.go and internal/labels/labels_test.go already cover in full; about 200 to 300 lines more to read and keep up, take in only when the tests get in the way, e.g. a rework of api.List (the per-endpoint sort rows of API-06 stay: each resource has its own sort table) (source: user after phase 02) (done in B4: one wiring case per endpoint for paging and labels, 206 -> 164 lines)
