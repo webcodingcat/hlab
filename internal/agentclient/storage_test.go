@@ -2,6 +2,7 @@ package agentclient
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -33,6 +34,9 @@ func TestStorageClient(t *testing.T) {
 				return
 			}
 			if applies.Add(1) == 1 {
+				// The server notices a client that gave up only once the
+				// request body is read.
+				_, _ = io.Copy(io.Discard, r.Body)
 				select {
 				case <-r.Context().Done():
 					close(abandoned)
