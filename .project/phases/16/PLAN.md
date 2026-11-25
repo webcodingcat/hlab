@@ -28,3 +28,8 @@ a feedback phase if a check fails (CONTEXT.md, "Technical choices").
 ## Close
 
 Not a plan; the main session does it after 16-02 (CONTEXT.md, "Full end-to-end run"). First, `task e2e` runs in full on the development machine. Then the session writes `phases/16/CHECKS.md` with one entry per check, linking to the guide's sections, and sets `STATUS: MANUAL_CHECK`. The tag `wcc-milestone-1` follows only after every check passes; if a feedback phase changes code, `task e2e` runs in full again first.
+
+Run at this close:
+- `task e2e -- -v` (all end-to-end tests) on 58787a8: 243 passed, SRV-08 (test compared "rocky 8.10" exactly with "8") and PIP-02 (seed hold also applied to an Off VM, product bug) failed; fixed in 5d50341.
+- `task e2e -- -v` (all) on 5d50341 after the fix: PASS, 246 passed, 69 min (limit 120m stays). `task test` and `task lint` green on 5d50341.
+- CHECKS.md written; the phase waits for the manual checks in the test VMs.
