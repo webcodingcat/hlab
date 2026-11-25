@@ -23,6 +23,15 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-25 Windows in the test VMs installed fully by the answer file
+
+- Type: decision
+- Phase: phase 16
+- What: the answer file of `docs/development/release-checks.md` runs the whole Windows setup of a test VM (windowsPE and oobeSystem passes: language from a variable matching the ISO, disk layout for a Generation 2 VM, Windows 11 Pro without activation, licence terms, local account, privacy screens) and, through a one-time automatic sign-in and first-logon commands, enables Hyper-V and restarts; "Domain join instead" and setup without network are dropped from the guide.
+- Why: the user asked for it in /wcc:report: one way, easier to follow and to repeat than three routes and manual setup screens.
+- Cost of change: low
+- Replaces: 2026-11-24 Answer-file ISO built with IMAPI2 (the ISO is still built with IMAPI2); 2026-11-24 Local account at Windows setup left to the guide
+
 ## 2026-11-25 SRV-08 accepts a minor release of the image's major version
 
 - Type: decision
@@ -48,14 +57,6 @@ unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 - Why: the names avoid HLab's `hlab-` prefix, and a host shutdown never saves a nested VM.
 - Cost of change: low
 
-## 2026-11-24 Answer-file ISO built with IMAPI2
-
-- Type: decision
-- Phase: phase 16
-- What: the guide builds the answer-file ISO (oobeSystem pass only, local account `tester`, password asked with `Read-Host`, folder deleted afterwards) with Windows' own IMAPI2FS interface.
-- Why: a fresh development machine has no oscdimg.
-- Cost of change: low
-
 ## 2026-11-24 Test VMs use the Default Switch
 
 - Type: decision
@@ -78,14 +79,6 @@ unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 - Phase: phase 16
 - What: INST-03 install, appliance name check, UI-09 with DOC-07, update check (INST-06), LIFE-05, COMPACT with the storage VM name check, INST-05 uninstall last.
 - Why: each check leaves the state the next one needs, and the storage VM exists only after the first box.
-- Cost of change: low
-
-## 2026-11-24 Local account at Windows setup left to the guide
-
-- Type: assumption
-- Phase: phase 16
-- What: the guide names the answer file, "Domain join instead" and setup without network as routes to a local account; none is confirmed on current media, and corrections come back through `/wcc:report`.
-- Why: RESEARCH.md found the older bypasses removed and the remaining reports contradictory.
 - Cost of change: low
 
 ## 2026-11-24 Delayed seed swaps end with the cloud's run

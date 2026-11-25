@@ -4,6 +4,22 @@ Entries from DECISIONS.md that a later entry revoked or changed, moved here
 unchanged; the later entry names them under `Replaces:`. Newest first. No
 skill reads this file; it keeps the history for looking things up.
 
+## 2026-11-24 Answer-file ISO built with IMAPI2
+
+- Type: decision
+- Phase: phase 16
+- What: the guide builds the answer-file ISO (oobeSystem pass only, local account `tester`, password asked with `Read-Host`, folder deleted afterwards) with Windows' own IMAPI2FS interface.
+- Why: a fresh development machine has no oscdimg.
+- Cost of change: low
+
+## 2026-11-24 Local account at Windows setup left to the guide
+
+- Type: assumption
+- Phase: phase 16
+- What: the guide names the answer file, "Domain join instead" and setup without network as routes to a local account; none is confirmed on current media, and corrections come back through `/wcc:report`.
+- Why: RESEARCH.md found the older bypasses removed and the remaining reports contradictory.
+- Cost of change: low
+
 ## 2026-11-24 Seed swap waits for a hold after a boot hlab starts (Q26)
 
 - Type: decision

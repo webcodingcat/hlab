@@ -11,9 +11,9 @@ the development machine at this close (see PLAN.md "Close").
 
 - Start: `docs/development/release-checks.md`, sections "What runs where" and "Create a test VM", on the development machine in an elevated PowerShell.
 - Setup: the official Windows 11 ISO; Hyper-V on the development machine. Claude can check the commands against the machine on request, but creates neither VM.
-- Steps: 1. Create `release-check-dev` and `release-check-user` as "Create the VM" says. 2. Install Windows with a local account ("Install Windows"; note which of the three local-account routes worked). 3. Enable Hyper-V in each VM. 4. Run the subnet check in each VM ("Check the subnet before the first cloud start"). 5. Shut each VM down and take the checkpoint ("Checkpoint the fresh VM").
+- Steps: 1. Create `release-check-dev` and `release-check-user` as "Create the VM" says. 2. Install Windows with the answer file ("Install Windows"); it creates the local account and enables Hyper-V without further input. 3. Check that Hyper-V is enabled in each VM. 4. Run the subnet check in each VM ("Check the subnet before the first cloud start"). 5. Shut each VM down and take the checkpoint ("Checkpoint the fresh VM").
 - Expected: both VMs boot Windows 11 Pro with nested Hyper-V enabled, the subnet check passes, and every command of the guide ran as written; any step that differed is reported with `/wcc:report` so the guide is corrected.
-- Result: open
+- Result: does not fit, see plan
 
 ## INST-01 to INST-06 The elevated installer suite passes in the development test VM
 
