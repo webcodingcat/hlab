@@ -97,13 +97,13 @@ fails (CONTEXT.md, "Technical choices").
   - [x] Set `MSIRESTARTMANAGERCONTROL` in `installer/Package.wxs` so Windows Installer neither shuts down nor restarts the service; build with `task installer VERSION=0.0.9` and check with a quick MSI query (e.g. PowerShell `WindowsInstaller.Installer` COM) that the property is in the built MSI; delete the build output afterwards.
   - [x] In the harness, keep the run's folder when any test failed, and copy the release `hlabd.log*` into it before each uninstall; the teardown line names the folder.
 
-- [ ] 16-11 Restore recreates the VM of a kept server
+- [x] 16-11 Restore recreates the VM of a kept server
   - Wave: 11 | Depends on: 16-10 | Review: alone
   - Requirements: INST-05 | Tests: `internal/resources/servers/lifecycle_test.go: TestServers/INST-05/restore-recreates-vm` (new, written first); the other tests of `internal/resources/servers/...` and `internal/cloud/...` (run only); elevated `TestInstall/INST-05/keep` again by the user
   - Reads: the 2026-11-25 "bug" entry on INST-05/keep under "Findings from manual testing" below; TESTS.md row of 16-11; `internal/resources/servers/lifecycle.go` (`Restore`), `reconcile.go` (`Reconcile`, `reconcile`), `lifecycle_test.go` (fakes and style); `internal/cloud/lifecycle.go` (`restore`)
   - Size: ~80 lines in 2 files
   - Adjusts: -
-  - [ ] In `Restore`, reconcile a server whose VM is not found before reading its state again and powering it as today; log and skip on a reconcile error.
+  - [x] In `Restore`, reconcile a server whose VM is not found before reading its state again and powering it as today; log and skip on a reconcile error.
 
 ## Close
 
@@ -117,6 +117,7 @@ Run at this close:
 - 2026-11-25, after the elevated suite failed in the development test VM: 16-06 (test afb27aa, fix 96bdfdb and 5ca5b79: `Theme="hyperlinkLicense" LicenseUrl=""`, ProgressPassive page dropped) and 16-07 (157598b: script calls with `-ExecutionPolicy Bypass`, suite with `-v`). `TestE2E/INST-01` passes, `task test -- ./tools/installer/...`, lint and build green, `TestDocs` green. Product code changed, so `task e2e` runs in full again before the tag; INST-01 to INST-06 are asked again.
 - 2026-11-25, after the second elevated suite run and Q28: 16-08 (tests 981e0e2, fix bc01e1c: hostnet scripts end with `exit 0`, `runPowerShell` reports stdout and stderr, interactive user) and 16-09 (tests 6b8d4ba, fix e16bbcd: `stopAndWait` waits for START_PENDING and ends the process after 3 min, start deadlines). Package tests, lint and build green; reviews without blockers. `task e2e` runs in full again before the tag; INST-01 to INST-06 are asked again.
 - 2026-11-25, after the third elevated suite run: 16-10 (fe1a6e4: `MSIRESTARTMANAGERCONTROL=Disable`, checked in the built MSI; the harness keeps a failed run's folder and copies `hlabd.log*` before each uninstall). Installer tests, vet and lint green. INST-01 to INST-06 are asked again; INST-05/keep is diagnosed from the kept logs.
+- 2026-11-25, after the fourth elevated suite run: 16-11 (test 3c90a7b, fix 592fb0b: `Restore` recreates a missing VM through `reconcile`; the copied log helper moved to `internal/apitest`). Package tests and lint green. INST-01 to INST-06 are asked again.
 
 ## Findings from manual testing
 

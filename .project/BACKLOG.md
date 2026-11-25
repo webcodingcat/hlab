@@ -8,4 +8,4 @@ phase. Every item states what goes wrong for whom and has a severity:
 and taste do not go here; a finding that needs a change to REQUIREMENTS.md,
 SPEC.md or ARCHITECTURE.md goes to "Open decisions" in STATUS.md. Checked items move to
 BACKLOG-DONE.md when a backlog phase closes.
-
+- [ ] minor: storageboxes tests: `TestStorageBoxes/SBOX-18/api` failed once under load (`POST /hetzner/v1/storage_boxes/1/snapshots` answered 423 locked, want 201) and passed in five reruns; the test does not wait for the previous action to finish (source: phase 16)
