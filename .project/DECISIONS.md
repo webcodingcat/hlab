@@ -5354,3 +5354,11 @@ in ARCHITECTURE.md or the plan.
 - What: project files brought from wcc 0.32.27 to 0.33.0: header paragraph of DECISIONS.md on short entries and telling titles, version line.
 - Why: the skills of the installed version search for these keys and rules
 - Cost of change: low
+
+## 2026-11-25 Upgrade to wcc 0.34.0
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.33.0 to 0.34.0: version line only; the "Release" section that SPEC.md now needs follows with `/wcc:change`.
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
