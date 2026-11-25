@@ -1,0 +1,151 @@
+# CI of hlab: build, Go unit tests, linter, frontend unit tests and the
+# installer build on every push to main and every pull request against main.
+# End-to-end tests and the elevated installer suite stay local.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/frontend/package-lock.json
+      - uses: go-task/setup-task@v2
+        with:
+          version: 3.54.0
+      - run: task build
+
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: go-task/setup-task@v2
+        with:
+          version: 3.54.0
+      - name: Resolve the OpenAPI cache folder
+        id: openapi
+        run: |
+          $dir = Join-Path $env:LOCALAPPDATA 'hlab\openapi'
+          "dir=$dir" >> $env:GITHUB_OUTPUT
+      - name: Restore the pinned OpenAPI descriptions
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.openapi.outputs.dir }}
+          key: openapi-${{ runner.os }}-${{ hashFiles('api/openapi.lock', 'api/hetzner-openapi.lock') }}
+      - run: task openapi
+      - run: task test
+
+  lint:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/frontend/package-lock.json
+      - uses: go-task/setup-task@v2
+        with:
+          version: 3.54.0
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        continue-on-error: true
+        with:
+          version: v2.15.0
+          install-only: true
+      - name: Put golangci-lint on PATH
+        run: |
+          if (Get-Command golangci-lint -ErrorAction SilentlyContinue) {
+            golangci-lint version
+            exit 0
+          }
+          $found = Get-ChildItem -Path $env:RUNNER_TOOL_CACHE, $env:RUNNER_TEMP -Filter golangci-lint.exe -Recurse -File -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if ($found) {
+            $found.DirectoryName >> $env:GITHUB_PATH
+            & $found.FullName version
+            exit 0
+          }
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Join-Path (go env GOPATH) 'bin' >> $env:GITHUB_PATH
+      - run: task lint
+
+  frontend:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/frontend/package-lock.json
+      - uses: go-task/setup-task@v2
+        with:
+          version: 3.54.0
+      - run: task test:frontend
+
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/frontend/package-lock.json
+      - uses: go-task/setup-task@v2
+        with:
+          version: 3.54.0
+      - name: Install WiX 7.0.1
+        run: |
+          dotnet tool install --global wix --version 7.0.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Join-Path $env:USERPROFILE '.dotnet\tools' >> $env:GITHUB_PATH
+      - name: Add the WiX extensions
+        run: |
+          wix extension add -g WixToolset.Util.wixext/7.0.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          wix extension add -g WixToolset.BootstrapperApplications.wixext/7.0.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - run: task installer VERSION=0.0.0

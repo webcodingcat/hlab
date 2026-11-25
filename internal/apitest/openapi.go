@@ -91,7 +91,7 @@ func (d *description) load() (validator.Validator, error) {
 			d.err = fmt.Errorf("patch %s: %w", path, err)
 			return
 		}
-		doc, err := libopenapi.NewDocument(upperRangeKeys(data))
+		doc, err := libopenapi.NewDocument(data)
 		if err != nil {
 			d.err = fmt.Errorf("parse %s: %w", path, err)
 			return
@@ -165,17 +165,6 @@ func ValidateResponse(t testingT, req *http.Request, resp *http.Response) {
 	}
 	t.Errorf("%s %s: response %d does not match the OpenAPI description:%s\n  body: %s",
 		req.Method, req.URL.RequestURI(), resp.StatusCode, b.String(), truncate(body, 2000))
-}
-
-// upperRangeKeys rewrites the response range keys "4xx" and "5xx" of the
-// Hetzner description to "4XX" and "5XX": OpenAPI defines them upper case
-// and libopenapi-validator matches only that form, so without this every
-// error response would be reported as undocumented.
-func upperRangeKeys(data []byte) []byte {
-	for _, k := range []string{"1", "2", "3", "4", "5"} {
-		data = bytes.ReplaceAll(data, []byte(`"`+k+`xx":`), []byte(`"`+k+`XX":`))
-	}
-	return data
 }
 
 // hetznerServerURL is the server URL of the Hetzner API description.

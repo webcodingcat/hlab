@@ -1,0 +1,42 @@
+# Findings of gitleaks that are no secrets, by fingerprint.
+
+# docs/guide.md line 77: example console token, console password or storage box password of the local emulator shown in the user guide
+90d4f8c7a9a6f29d01177c3ccbfbb64681cc7362:docs/guide.md:generic-api-key:77
+# docs/guide.md line 78: example console token, console password or storage box password of the local emulator shown in the user guide
+90d4f8c7a9a6f29d01177c3ccbfbb64681cc7362:docs/guide.md:generic-api-key:78
+# internal/bridge/console_test.go line 185: password or token fixture of a unit test
+5245c7909ff440e2cce0c3cc11872ab4d023c782:internal/bridge/console_test.go:generic-api-key:185
+# internal/console/service_test.go line 234: password or token fixture of a unit test
+5245c7909ff440e2cce0c3cc11872ab4d023c782:internal/console/service_test.go:generic-api-key:234
+# internal/console/rfb_test.go line 26: password or token fixture of a unit test
+5245c7909ff440e2cce0c3cc11872ab4d023c782:internal/console/rfb_test.go:generic-api-key:26
+# internal/resources/storageboxes/deletes_test.go line 111: password or token fixture of a unit test
+6068e4c3c3b314ef6c5da094bed161e7c3edc706:internal/resources/storageboxes/deletes_test.go:generic-api-key:111
+# docs/guide.md line 1052: example console token, console password or storage box password of the local emulator shown in the user guide
+4136758bcc320ea044ede11bdaa9bff21cde9dfa:docs/guide.md:generic-api-key:1052
+# docs/guide.md line 1071: example console token, console password or storage box password of the local emulator shown in the user guide
+4136758bcc320ea044ede11bdaa9bff21cde9dfa:docs/guide.md:generic-api-key:1071
+# docs/guide.md line 1118: example console token, console password or storage box password of the local emulator shown in the user guide
+4136758bcc320ea044ede11bdaa9bff21cde9dfa:docs/guide.md:generic-api-key:1118
+# docs/guide.md line 1130: example console token, console password or storage box password of the local emulator shown in the user guide
+4136758bcc320ea044ede11bdaa9bff21cde9dfa:docs/guide.md:generic-api-key:1130
+# docs/guide.md line 738: example storage box credentials for a local *.storagebox.hetzner.internal host in the user guide
+24cf2f562d1530ed7bd1c9cd9b107f38eadb425a:docs/guide.md:curl-auth-user:738
+# docs/guide.md line 740: example storage box credentials for a local *.storagebox.hetzner.internal host in the user guide
+24cf2f562d1530ed7bd1c9cd9b107f38eadb425a:docs/guide.md:curl-auth-user:740
+# docs/guide.md line 742: example storage box credentials for a local *.storagebox.hetzner.internal host in the user guide
+24cf2f562d1530ed7bd1c9cd9b107f38eadb425a:docs/guide.md:curl-auth-user:742
+# internal/storagepass/storagepass.go line 55: code comment naming the hash formats hlab keeps, not a value
+6a471876257080a552a9753e01d5f0de17bb36ca:internal/storagepass/storagepass.go:generic-api-key:55
+# internal/nthash/nthash_test.go line 47: password or token fixture of a unit test
+dfaf12d99b4195b01dd14fdea7985b24d6bf226c:internal/nthash/nthash_test.go:generic-api-key:47
+# internal/resources/conventions_test.go line 109: storage box password fixture of a unit test
+dfaf12d99b4195b01dd14fdea7985b24d6bf226c:internal/resources/conventions_test.go:generic-api-key:109
+# internal/resources/storageboxes/actions_test.go line 114: password or token fixture of a unit test
+dfaf12d99b4195b01dd14fdea7985b24d6bf226c:internal/resources/storageboxes/actions_test.go:generic-api-key:114
+# internal/resources/openapi_test.go line 209: password or token fixture of a unit test
+dfaf12d99b4195b01dd14fdea7985b24d6bf226c:internal/resources/openapi_test.go:generic-api-key:209
+# internal/resources/openapi_test.go line 234: password or token fixture of a unit test
+dfaf12d99b4195b01dd14fdea7985b24d6bf226c:internal/resources/openapi_test.go:generic-api-key:234
+# internal/resources/zones/zones_test.go line 571: DNS key fixture of a unit test
+3738148909ab9e145efb396db0c50edf65a87755:internal/resources/zones/zones_test.go:generic-api-key:571

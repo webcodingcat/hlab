@@ -70,8 +70,10 @@ func run(lockPath, name string) (string, error) {
 		return "", err
 	}
 	if got := sum(data); got != strings.ToLower(l.SHA256) {
-		return "", fmt.Errorf("%s has SHA-256 %s, but %s pins %s: the published description changed; "+
-			"review the new version and update the pin in a deliberate commit", l.URL, got, lockPath, l.SHA256)
+		return "", fmt.Errorf("%s: Hetzner has changed the published description at %s; "+
+			"the pin in %s no longer matches (published SHA-256 %s, pinned SHA-256 %s); "+
+			"a deliberate re-pin is needed: update the lock file and run task openapi "+
+			"(see docs/development/releasing.md)", name, l.URL, lockPath, got, l.SHA256)
 	}
 
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
