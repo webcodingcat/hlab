@@ -2,8 +2,9 @@
 
 ## Interfaces
 
-None. The phase writes documentation only; product code changes only through
-a feedback phase if a check fails (CONTEXT.md, "Technical choices").
+None. The phase writes documentation and two developer scripts for the test
+VMs (16-04); product code changes only through a feedback phase if a check
+fails (CONTEXT.md, "Technical choices").
 
 ## Plans
 
@@ -33,6 +34,24 @@ a feedback phase if a check fails (CONTEXT.md, "Technical choices").
   - Adjusts: -
   - [x] Select the integration service "Guest Service Interface" by its ID in "Create the VM", and make the answer file language-independent apart from one language variable (finding 1).
   - [x] Let the answer file run the whole Windows setup and enable Hyper-V; remove "Domain join instead" and "Setup without network"; give the shared steps a heading of their own; shrink "Enable Hyper-V in the VM" to the check (findings 2 and 3). Keep the anchors other documents link to, or update those links.
+
+- [ ] 16-04 Test VM scripts
+  - Wave: 4 | Depends on: 16-03 | Review: alone
+  - Requirements: DOC-08 | Tests: none (DOC-08 is manual; both scripts need elevated rights, Hyper-V and a Windows ISO). Check: both files parse without errors with `[System.Management.Automation.Language.Parser]::ParseFile`, and PSScriptAnalyzer reports no error if it is installed.
+  - Reads: the "bug" and "change" entries of 2026-11-25 about the pasted block and the scripts under "Findings from manual testing" below (the full specification of both scripts); DECISIONS.md "2026-11-25 Test VMs set up by scripts", "2026-11-25 Test VM account created in the specialize pass", "2026-11-24 Test VM names and stop action", "2026-11-24 Test VMs use the Default Switch"; `docs/development/release-checks.md` "Create a test VM" up to "Checkpoint the fresh VM" and "Development test VM" up to "Bring the repository in" (the commands the scripts take over, unchanged in what they set); `docs/development/setup.md` "Tools" (versions); `scripts/dev-setup.ps1` (style: header comment, `#Requires`, error handling)
+  - Size: ~400 lines in 2 files
+  - Adjusts: -
+  - [ ] Write `scripts/release-check-vm.ps1` as the change entry specifies: parameters, secure password prompt with confirmation, refusal when the VM exists, VM creation, answer files and ISO with the check that `autounattend.xml` exists, start and `vmconnect`, waiting with a deadline over PowerShell Direct until Hyper-V is enabled, removing the ISOs and answer files in a `finally`, the subnet check inside the VM, copying `release-check-dev-tools.ps1` into `release-check-dev`, `Stop-VM` and the checkpoint `fresh`. No secret in output or logs.
+  - [ ] Write `scripts/release-check-dev-tools.ps1` as the change entry specifies: idempotent steps for the winget tools, WiX with licence and extensions, Wails, WSL2 with Ubuntu, `PATH` refreshed between steps, and with `-Bundle` and `-Hash` the hash comparison and the clone to `C:\src\hlab`; say what follows (restart, first start of "Ubuntu").
+
+- [ ] 16-05 Documentation: release checks guide with the test VM scripts
+  - Wave: 5 | Depends on: 16-04 | Review: alone
+  - Requirements: DOC-08 | Tests: `test/docs/docs_test.go: TestDocs/DOC-04`, `TestDocs/DOC-06` (existing, run only)
+  - Reads: the "change" entry of 2026-11-25 about the scripts under "Findings from manual testing" below (its `docs/development/release-checks.md` item); `scripts/release-check-vm.ps1` and `scripts/release-check-dev-tools.ps1` from 16-04; `docs/development/release-checks.md` (all); `docs/development/setup.md` where it names `dev-setup.ps1`; CHECKS.md DOC-08 and INST-01 to INST-06
+  - Size: ~200 lines in 2 files
+  - Adjusts: -
+  - [ ] Rewrite "Create a test VM" and "Development test VM" of `docs/development/release-checks.md` around the two scripts as the change entry says, keeping the explanations, the subnet check block for later checks, the anchors other documents link to, and how to clean up a half-built VM or answer ISO.
+  - [ ] Name the two scripts in `docs/development/setup.md` next to `dev-setup.ps1` if it lists scripts; run `task test -- ./test/docs/...`.
 
 ## Close
 
