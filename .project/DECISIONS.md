@@ -23,6 +23,14 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-25 Every named delete asks for the name
+
+- Type: change
+- Phase: feedback
+- What: every delete of something with a name asks for that name to be typed (UI-SPEC.md "Confirm dialog"), not only projects, servers, volumes, networks, zones and storage boxes; unnamed entries and other destructive actions keep the plain confirm.
+- Why: the user found the two kinds of delete dialog inconsistent during UI-09 and chose the typed name everywhere.
+- Cost of change: low
+
 ## 2026-11-25 MSI without Restart Manager
 
 - Type: decision

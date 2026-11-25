@@ -84,9 +84,13 @@ everywhere.
   double click puts the chip back into the input for editing. A key used
   twice or a text that breaks the rule shows its message under the box
   (error colour) and stays in the input.
-- Confirm dialog: for every delete and every destructive action; the
-  resource name must be typed for projects (their display name), servers,
-  volumes, networks, zones and storage boxes.
+- Confirm dialog: for every delete and every destructive action; every
+  delete of something with a name (projects by their display name, every
+  resource, snapshots and backups, images, DNS records, storage box
+  subaccounts and snapshots, API tokens, own server and storage box types)
+  asks for that name to be typed. Entries without a name of their own
+  (firewall rules, routes, subnets, label rows) and destructive actions
+  other than delete keep the plain confirm.
 - Action toast: bottom right, shows a running action with progress and its
   result; errors stay until closed. Its title is `<Type> <name>: <action>`,
   e.g. "Network Test: Delete", "Record www A: Change TTL".
