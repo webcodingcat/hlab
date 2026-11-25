@@ -35,6 +35,9 @@ func TestE2E(t *testing.T) {
 	// first.
 	t.Run("SBOX-07", logged(testSBOX07))
 	t.Run("LIFE-02", testLIFE02)
+	// SBOX-03/compact writes and deletes a box's data before the shutdown
+	// cycle, which it runs, so it comes before LIFE-03.
+	t.Run("SBOX-03/compact", logged(testSBOX03Compact))
 	t.Run("LIFE-03", testLIFE03)
 	t.Run("LIFE-04", testLIFE04)
 	t.Run("LIFE-04/netplan_private", testLIFE04NetplanPrivate)

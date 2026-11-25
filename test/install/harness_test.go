@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -607,7 +608,8 @@ type burnRun struct {
 	log string
 }
 
-// runBundle runs the bundle of version quietly with a log and a deadline.
+// runBundle runs the bundle of version quietly with a log and a deadline;
+// "/passive" among args replaces "/quiet" (progress, no prompts).
 func runBundle(ctx context.Context, version, what string, args ...string) (burnRun, error) {
 	exe, ok := harness.setups[version]
 	if !ok {
@@ -617,7 +619,10 @@ func runBundle(ctx context.Context, version, what string, args ...string) (burnR
 	base := fmt.Sprintf("%02d-%s-%s", harness.logSeq, what, version)
 	logFile := filepath.Join(harness.tmp, base+".log")
 	logf("running %s %s (log %s)", filepath.Base(exe), strings.Join(args, " "), logFile)
-	args = append(args, "/quiet", "/norestart", "/log", logFile)
+	if !slices.Contains(args, "/passive") {
+		args = append(args, "/quiet")
+	}
+	args = append(args, "/norestart", "/log", logFile)
 	r, err := command(ctx, 30*time.Minute, "", exe, args...)
 	run := burnRun{result: r, log: readLogs(filepath.Join(harness.tmp, base+"*.log"))}
 	if err != nil && r.ExitCode <= 0 {
@@ -661,9 +666,9 @@ func tail(s string) string {
 }
 
 // install runs the bundle of version on a machine without hlab or with an
-// older version and expects success.
-func install(ctx context.Context, version string) (burnRun, error) {
-	r, err := runBundle(ctx, version, "install")
+// older version and expects success; args go to the bundle (e.g. "/passive").
+func install(ctx context.Context, version string, args ...string) (burnRun, error) {
+	r, err := runBundle(ctx, version, "install", args...)
 	harness.installGen++
 	if err != nil {
 		return r, err
