@@ -23,6 +23,10 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+Keep entries short and their titles telling: phases find the entries
+they need by their titles and do not read this file in full. Details belong
+in ARCHITECTURE.md or the plan.
+
 ## 2026-11-25 Repository, CI and releases on GitHub
 
 - Type: change
@@ -5340,5 +5344,13 @@ unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 - Type: approval
 - Phase: upgrade
 - What: project files brought from wcc 0.32.25 to 0.32.26: version line only.
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
+
+## 2026-11-25 Upgrade to wcc 0.33.0
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.32.27 to 0.33.0: header paragraph of DECISIONS.md on short entries and telling titles, version line.
 - Why: the skills of the installed version search for these keys and rules
 - Cost of change: low

@@ -18,8 +18,7 @@ STATUS: IN_PROGRESS
      one line each: "- UI-04 (03): <requirement>". The guide is in
      phases/<id>/CHECKS.md. /wcc:report walks through them. -->
 
- uninstalling asks whether to keep the data; with the default answer no file of hlab remains
-- none
+- none
 
 ## Open decisions
 
