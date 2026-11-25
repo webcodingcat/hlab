@@ -105,47 +105,55 @@ fails (CONTEXT.md, "Technical choices").
   - Adjusts: -
   - [x] In `Restore`, reconcile a server whose VM is not found before reading its state again and powering it as today; log and skip on a reconcile error.
 
-- [ ] 16-12 Create server form and state-dependent row menus
+- [x] 16-12 Create server form and state-dependent row menus
   - Wave: 12 | Depends on: 16-11 | Review: alone
   - Requirements: UI-09, CAT-02 | Tests: TESTS.md rows of 16-12 (new, written first); the other frontend unit tests (run only)
   - Reads: the 2026-11-25 minor on the default location, the bug on hidden server types, and the minors on the volume and IP row menus under "Findings from manual testing" below; TESTS.md rows of 16-12; `ui/frontend/src/views/servers/ServerCreate.svelte`, `servers.ts`, `ServerActions.svelte`; `ui/frontend/src/views/volumes/Section.svelte`, `VolumeActionInput.svelte`; `ui/frontend/src/views/floating-ips/Section.svelte` and detail; `ui/frontend/src/views/primary-ips/Section.svelte` and detail; the matching tests in `ui/frontend/tests/unit`
   - Size: ~200 lines in 8 files
   - Adjusts: frontend e2e specs that pick a type, location or use the Detach/Unassign row entry (what they click, not what they check)
-  - [ ] Location preselected by lowest ID; `typesIn` without the `available` filter and with the "(deprecated)" label.
-  - [ ] One state-dependent Attach/Detach entry in the Volumes row menu, Assign/Unassign in the Floating and Primary IPs row menus, opening the detail page's input.
+  - [x] Location preselected by lowest ID; `typesIn` without the `available` filter and with the "(deprecated)" label.
+  - [x] One state-dependent Attach/Detach entry in the Volumes row menu, Assign/Unassign in the Floating and Primary IPs row menus, opening the detail page's input.
 
-- [ ] 16-13 Typed name for every delete; storage box create toast
+- [x] 16-13 Typed name for every delete; storage box create toast
   - Wave: 13 | Depends on: 16-12 | Review: alone
   - Requirements: UI-09, UI-12 | Tests: TESTS.md rows of 16-13 (new, written first); the other frontend unit tests (run only); the frontend e2e specs that delete through the window (adjusted)
   - Reads: the 2026-11-25 change on the typed name and the bug on the storage box create toast under "Findings from manual testing" below; UI-SPEC.md "Confirm dialog"; TESTS.md rows of 16-13; `ui/frontend/src/lib/resources/*.ts`, `lib/resourceActions.ts`, `lib/ResourceActionsMenu.svelte`, `lib/ConfirmDialog.svelte`, the `views/*/Section.svelte` row menus and detail pages with Delete/Remove; `views/storage-boxes/StorageBoxCreate.svelte`, `lib/actions.ts`, `lib/api.ts`
   - Size: ~250 lines in many small edits
   - Adjusts: every frontend e2e spec that confirms a delete now types the name (helper in `tests/e2e/console.ts` or `fixtures.ts`, used, not copied)
-  - [ ] Every named delete uses the typed-name confirm; unnamed entries and other destructive actions keep the plain confirm.
-  - [ ] Find and fix why following the storage box create action asks for project "undefined"; check the other storage box action follows.
+  - [x] Every named delete uses the typed-name confirm; unnamed entries and other destructive actions keep the plain confirm.
+  - [x] Find and fix why following the storage box create action asks for project "undefined"; check the other storage box action follows.
 
-- [ ] 16-14 Upgrade closes the tray and stops the service before the files-in-use check
+- [x] 16-14 Upgrade closes the tray and stops the service before the files-in-use check
   - Wave: 14 | Depends on: 16-13 | Review: alone
   - Requirements: INST-06 | Tests: `test/install: TestInstall/INST-06` extended (TESTS.md row of 16-14), run by the user in the development test VM; `go vet -tags e2einstall ./test/install/...`
   - Reads: the 2026-11-25 bug "Files In Use" under "Findings from manual testing" below; DECISIONS.md "2026-11-25 MSI without Restart Manager"; `installer/Package.wxs`; `test/install/install_test.go` (`testINST06`), `harness_test.go` (`install`, how a run passes UI level); Windows Installer and WiX documentation on InstallValidate, FilesInUse, MSIRESTARTMANAGERCONTROL and util:CloseApplication scheduling
   - Size: ~80 lines in 3 files
   - Adjusts: -
-  - [ ] Close the tray and stop the service before InstallValidate on an upgrade so no files-in-use dialog appears and the service stays stopped; extend INST-06 with the tray running and a `/passive` upgrade. Do not run setup programs on the development machine; build and inspect the MSI only.
+  - [x] Close the tray and stop the service before InstallValidate on an upgrade so no files-in-use dialog appears and the service stays stopped; extend INST-06 with the tray running and a `/passive` upgrade. Do not run setup programs on the development machine; build and inspect the MSI only.
 
-- [ ] 16-15 Storage VM releases free blocks before the compaction
+- [x] 16-15 Storage VM releases free blocks before the compaction
   - Wave: 15 | Depends on: 16-14 | Review: alone
   - Requirements: SBOX-03 (compaction) | Tests: TESTS.md row of 16-15 (extended e2e row, written first); unit tests of the touched packages (run only)
   - Reads: the 2026-11-25 bug on COMPACT under "Findings from manual testing" below; DECISIONS.md entry on halt compacting the storage data disk (Grep "compacts its data disk"); `internal/cloud/storage_life.go`; `internal/platform/hyperv/disks.go` (`CompactDisk`); the storage VM's provisioning and agent (Grep for the storage VM's cloud-init or install script and its data file system mount); `test/e2e` storage box rows (Grep `SBOX-03`)
   - Size: ~100 lines in 4 files
   - Adjusts: -
-  - [ ] Make the storage VM discard the blocks of deleted data before it is shut down for a compaction (fstrim at shutdown or the discard mount option, by the documentation), and assert in the e2e row that the disk returns to roughly its size before the data.
+  - [x] Make the storage VM discard the blocks of deleted data before it is shut down for a compaction (fstrim at shutdown or the discard mount option, by the documentation), and assert in the e2e row that the disk returns to roughly its size before the data.
 
 - [ ] 16-16 Documentation: SMB share with Win+R
   - Wave: 16 | Depends on: 16-15 | Review: alone
   - Requirements: DOC-08, SBOX-22 | Tests: `test/docs/docs_test.go: TestDocs/DOC-04`, `TestDocs/DOC-06` (existing, run only)
-  - Reads: the 2026-11-25 minor on Explorer's address bar under "Findings from manual testing" below; `docs/development/release-checks.md` "Storage box space after a delete (COMPACT)"; the user docs that tell how to open a storage box share from Windows (Grep `\\` and "Explorer" in docs/)
+  - Reads: the 2026-11-25 minor on Explorer's address bar under "Findings from manual testing" below; `docs/development/release-checks.md` "Storage box space after a delete (COMPACT)"; the user docs that tell how to open a storage box share from Windows (Grep `\\` and "Explorer" in docs/); the in-app help texts that 16-12 and 16-13 made outdated: `ui/frontend/src/help/volumes.md`, `floating-ips.md`, `primary-ips.md`, `certificates.md`, `firewalls.md` and every other help text that describes a row menu or a delete confirmation (Grep "confirm" and "menu" in ui/frontend/src/help)
   - Size: ~20 lines in 2 files
   - Adjusts: -
-  - [ ] Open the share with Win+R and name `net use` plus `Copy-Item` as the PowerShell way; if 16-12 to 16-15 changed what a guide describes (row menus, typed name), update it.
+  - [ ] Open the share with Win+R and name `net use` plus `Copy-Item` as the PowerShell way; update the help texts and guides that 16-12 and 16-13 changed (state-dependent Attach/Assign row entries, typed name for every named delete); DOC-05 keeps every help text tied to its view.
+
+- [ ] 16-17 Create forms and DNS tabs follow their action in their own project
+  - Wave: 17 | Depends on: 16-13 | Review: alone
+  - Requirements: UI-09 (and the create views' requirements UI-02, UI-12) | Tests: one frontend unit test of the shared way a form follows its action with the project taken at submit (row in TESTS.md), the other frontend unit tests (run only)
+  - Reads: the 2026-11-25 bug on the storage box create toast under "Findings from manual testing" below and the 16-13 fix (`views/storage-boxes/createStorageBox.ts`); the review's list of places that read the `project` prop late: `views/certificates/CertificateCreate.svelte`, `dns/ZoneCreate.svelte`, `dns/tabs/PrimaryNameservers.svelte`, `dns/tabs/ZoneFile.svelte`, `firewalls/FirewallCreate.svelte`, `floating-ips/FloatingIpCreate.svelte`, `load-balancers/LoadBalancerCreate.svelte`, `networks/NetworkCreate.svelte`, `placement-groups/PlacementGroupCreate.svelte`, `primary-ips/PrimaryIpCreate.svelte`, `servers/ServerCreate.svelte` (also the backup `runOn` after the create), `volumes/VolumeCreate.svelte`; `lib/api.ts` (`runOn`, `runApi`), `lib/actions.ts`
+  - Size: ~120 lines in 13 files
+  - Adjusts: -
+  - [ ] Take the project as a plain value at submit in every listed place (best through one shared helper the forms use, as `runOn` does), so a create or DNS change still running after the user leaves the project console or switches project follows its action in its own project.
 
 ## Close
 
