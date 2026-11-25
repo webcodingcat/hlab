@@ -10,7 +10,7 @@ STATUS: MANUAL_CHECK
 - Phase: 16 Release checks in test VMs (waits for the manual checks on branch wcc/phase-16), the last phase of milestone 1
 - Base branch: main
 - Last done: backlog phase B4 merged into main (2026-11-24): a network attach right after a boot no longer costs the server its seed ISO (Q26), deleting and pruning snapshots a failed rollback left behind works, the guest hook keeps user netplan settings after a carrier drop, and the network drops after a resume are documented (Q27)
-- Next: task e2e:elevated again in release-check-dev with a bundle of wcc/phase-16, then /wcc:report for the user-VM checks; /wcc:phase then closes phase 16 (full task e2e after the setup bundle fix) and tags wcc-milestone-1
+- Next: /wcc:phase builds the findings in phases/16/PLAN.md (WSL trust in the basic session, uninstall during a pending service start, cleanup scripts that exit 1 silently); then task e2e:elevated again in release-check-dev (basic session) and /wcc:report for the user-VM checks
 
 ## Open manual checks
 
@@ -37,7 +37,11 @@ STATUS: MANUAL_CHECK
      /wcc:phase asks those of its phase at its start, /wcc:change takes
      answers any time. -->
 
-- none
+- Q28 (feedback): Should the CA trust switch also reach the WSL distros of a user signed in over Remote Desktop, not only those of the console user?
+  - Context: in the release checks the WSL part of `hlab ca trust on/off` waited forever because vmconnect's enhanced session is a Remote Desktop session and `WTSGetActiveConsoleSessionId` then has no user; a developer working on their machine over Remote Desktop would see the same.
+  - Options: 1. keep the console user only and document it 2. use the console user, else the single active Remote Desktop session's user 3. apply the switch to every signed-in user's distros
+  - Recommendation: 2, because it covers the Remote Desktop case without touching other users' distros.
+  - Affects: CERT-04, ARCHITECTURE.md "Host networking" (TrustCA, console user)
 
 ## If BLOCKED
 
