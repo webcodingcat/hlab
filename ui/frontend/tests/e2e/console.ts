@@ -4,7 +4,7 @@
 // shared project of the phase 14 sections and the steps they have in common.
 import type { Locator, Page } from "@playwright/test";
 import { navGroups } from "../../src/lib/consoleNav";
-import { test, expect, hlab, openView, tableRow, rowAction, uniqueName, apiEndpoint, api } from "./fixtures";
+import { test, expect, hlab, openView, tableRow, rowAction, uniqueName, apiEndpoint, api, confirmTyped } from "./fixtures";
 
 export type TestProject = { name: string; token: string; remove: () => Promise<void> };
 
@@ -187,19 +187,13 @@ export async function addLabel(page: Page): Promise<void> {
 }
 
 /**
- * deleteRow deletes the list row named name through its row menu; with
- * typed the dialog's Delete stays disabled until the name is typed.
+ * deleteRow deletes the list row named name through its row menu; the
+ * dialog's Delete stays disabled until the name is typed.
  */
-export async function deleteRow(page: Page, name: string, typed: boolean): Promise<void> {
+export async function deleteRow(page: Page, name: string): Promise<void> {
   const row = tableRow(page, name);
   await expect(row).toBeVisible({ timeout: 30_000 });
   await rowAction(row, "Delete");
-  const dialog = page.getByRole("dialog");
-  const confirm = dialog.getByRole("button", { name: "Delete", exact: true });
-  if (typed) {
-    await expect(confirm).toBeDisabled();
-    await dialog.getByRole("textbox").fill(name);
-  }
-  await confirm.click();
+  await confirmTyped(page, "Delete", name);
   await expect(row).toBeHidden({ timeout: 2 * 60_000 });
 }

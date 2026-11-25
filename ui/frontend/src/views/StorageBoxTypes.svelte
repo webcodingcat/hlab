@@ -311,7 +311,7 @@
   </form>
 </Dialog>
 
-<ConfirmDialog bind:open={confirmOpen} title="Remove storage box type" confirmLabel="Remove" onconfirm={remove}>
+<ConfirmDialog bind:open={confirmOpen} title="Remove storage box type" confirmLabel="Remove" typedName={removing?.name} onconfirm={remove}>
   <p>Removing <strong>{removing?.name}</strong> keeps existing storage boxes of this type; new storage boxes cannot use it.</p>
 </ConfirmDialog>
 

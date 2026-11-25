@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, expect, env, api, rowAction, tableRow } from "./fixtures";
+import { test, expect, env, api, rowAction, tableRow, confirmTyped } from "./fixtures";
 import { newProject, send, openConsole, section, helpOpens, pick, openRow, addLabel, deleteRow, menuAction } from "./console";
 import type { TestProject } from "./console";
 
@@ -309,7 +309,7 @@ test("UI-12", async ({ page }) => {
     await expect.poll(async () => (await boxGet(token, box.id))?.protection.delete, { timeout: 5 * 60_000 }).toBe(false);
     await idle(token, box.id);
     await section(page, "Storage Boxes");
-    await deleteRow(page, renamed, true);
+    await deleteRow(page, renamed);
     await expect.poll(async () => (await hetzner(token, "GET", `/storage_boxes/${box.id}`)).status, { timeout: 5 * 60_000 }).toBe(404);
   } finally {
     await dropBoxes(project);
@@ -375,9 +375,10 @@ test("UI-13", async ({ page }) => {
     await expect(dialog).toBeHidden();
     await expect.poll(() => succeeded(token, "reset_subaccount_password"), { timeout: 5 * 60_000 }).toBe(resets + 1);
     await idle(token, box.id);
-    const subId = (await subOf())!.id;
+    const sub = (await subOf())!;
+    const subId = sub.id;
     await rowAction(subRow, "Delete");
-    await page.getByRole("dialog").getByRole("button", { name: "Delete", exact: true }).click();
+    await confirmTyped(page, "Delete", sub.username);
     await expect(subRow).toBeHidden({ timeout: 2 * 60_000 });
     await expect.poll(async () => (await hetzner(token, "GET", `/storage_boxes/${box.id}/subaccounts/${subId}`)).status, { timeout: 2 * 60_000 }).toBe(404);
     await idle(token, box.id);
@@ -424,7 +425,7 @@ test("UI-13", async ({ page }) => {
 
     // Delete the first.
     await rowAction(tableRow(page, first.name), "Delete");
-    await page.getByRole("dialog").getByRole("button", { name: "Delete", exact: true }).click();
+    await confirmTyped(page, "Delete", first.name);
     await expect(tableRow(page, first.name)).toBeHidden({ timeout: 2 * 60_000 });
     await expect.poll(async () => (await hetzner(token, "GET", `/storage_boxes/${box.id}/snapshots/${first.id}`)).status, { timeout: 2 * 60_000 }).toBe(404);
     await idle(token, box.id);

@@ -1,5 +1,5 @@
 import type { Locator } from "@playwright/test";
-import { test, expect, env, openView, rowAction, tableRow, uniqueName } from "./fixtures";
+import { test, expect, env, openView, rowAction, tableRow, uniqueName, confirmTyped } from "./fixtures";
 import { helpOpens } from "./console";
 
 /** The Hetzner API of hlab (storage boxes and their types). */
@@ -115,7 +115,7 @@ test("UI-14", async ({ page }) => {
 
   // Remove after the confirmation takes it out of the view and the API.
   await rowAction(own, "Remove");
-  await page.getByRole("dialog").getByRole("button", { name: "Remove", exact: true }).click();
+  await confirmTyped(page, "Remove", name);
   await expect(own).toBeHidden();
   await expect.poll(async () => (await served(name)) === undefined, { timeout: 30_000 }).toBe(true);
 });

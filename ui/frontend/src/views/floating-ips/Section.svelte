@@ -156,6 +156,7 @@
   bind:open={confirmOpen}
   title={`${pending?.action.label ?? ""} floating IP`}
   confirmLabel={pending?.action.label ?? ""}
+  typedName={pending?.action.confirm === "typed-name" ? pending.fip.name : undefined}
   onconfirm={run}
 >
   {#if pending?.action.id === "delete"}

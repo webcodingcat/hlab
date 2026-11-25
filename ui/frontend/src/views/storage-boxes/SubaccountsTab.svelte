@@ -63,18 +63,18 @@
     refresh();
   }
 
-  const poll = { get: async (id: number) => (await api<{ action: Action }>(project, "GET", `/actions/${id}`)).action };
-
   // send runs a request under an action toast; answered gets the API's
   // error, or nothing once the request is accepted (the toast follows the
-  // action from there).
+  // action from there). The project is taken now: the poll may outlive this
+  // tab, and the prop then follows the current route.
   function send(title: string, a: ResourceAction, input: Input, answered: (err?: unknown) => void) {
     const req = request(a, boxId, input)!;
+    const p = project;
     return runAction(
       title,
       async () => {
         try {
-          const res = await hetznerApi<ActionResult>(project, req.method, req.path, req.body);
+          const res = await hetznerApi<ActionResult>(p, req.method, req.path, req.body);
           answered();
           return res;
         } catch (err) {
@@ -82,7 +82,7 @@
           throw err;
         }
       },
-      poll,
+      { get: async (id) => (await api<{ action: Action }>(p, "GET", `/actions/${id}`)).action },
     );
   }
 
@@ -234,7 +234,7 @@
   </form>
 </Dialog>
 
-<ConfirmDialog bind:open={deleteOpen} title="Delete subaccount" confirmLabel="Delete" onconfirm={remove}>
+<ConfirmDialog bind:open={deleteOpen} title="Delete subaccount" confirmLabel="Delete" typedName={deleting?.username} onconfirm={remove}>
   {#if deleting}
     <p>The subaccount <strong>{deleting.username}</strong> is deleted; it can no longer log in.</p>
   {/if}

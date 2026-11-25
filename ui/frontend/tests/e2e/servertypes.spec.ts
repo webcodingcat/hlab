@@ -1,4 +1,4 @@
-import { test, expect, env, openView, rowAction, tableRow, api, uniqueName } from "./fixtures";
+import { test, expect, env, openView, rowAction, tableRow, api, uniqueName, confirmTyped } from "./fixtures";
 
 type TypeList = { server_types?: { name: string; cores?: number; locations?: { name: string }[] }[] };
 
@@ -97,7 +97,7 @@ test("UI-04", async ({ page }) => {
 
   // Remove it again.
   await rowAction(own, "Remove");
-  await page.getByRole("dialog").getByRole("button", { name: "Remove", exact: true }).click();
+  await confirmTyped(page, "Remove", name);
   await expect(own).toBeHidden();
   await expect.poll(() => served(name), { timeout: 30_000 }).toEqual([]);
 

@@ -1,5 +1,5 @@
 import { generateKeyPairSync } from "node:crypto";
-import { test, expect, rowAction, tableRow, api } from "./fixtures";
+import { test, expect, rowAction, tableRow, api, confirmTyped } from "./fixtures";
 import { newProject, send, openConsole, section, helpOpens } from "./console";
 
 type SshKey = { id: number; name: string; fingerprint: string; labels: Record<string, string> };
@@ -76,7 +76,7 @@ test("UI-02 ssh keys", async ({ page }) => {
     await section(page, "SSH Keys");
     await expect(row).toBeVisible();
     await rowAction(row, "Delete");
-    await page.getByRole("dialog").getByRole("button", { name: "Delete", exact: true }).click();
+    await confirmTyped(page, "Delete", name);
     await expect(row).toBeHidden({ timeout: 30_000 });
     await expect.poll(async () => (await keysNamed(project.token, name)).length, { timeout: 30_000 }).toBe(0);
     expect((await api(project.token, `/ssh_keys/${created.id}`)).status).toBe(404);

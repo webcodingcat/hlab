@@ -165,6 +165,7 @@
   bind:open={confirmOpen}
   title={pending?.id === "rollback" ? "Roll back storage box" : "Delete snapshot"}
   confirmLabel={pending?.id === "rollback" ? "Roll back" : "Delete"}
+  typedName={pending?.id === "delete" ? pending.snap.name : undefined}
   onconfirm={confirmed}
 >
   {#if pending?.id === "rollback"}

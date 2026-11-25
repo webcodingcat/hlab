@@ -37,7 +37,7 @@ const dnsPtr = changeDnsPtr(base);
 
 const protection = changeProtection(base);
 
-const del = remove(base, "Delete", "plain");
+const del = remove(base, "Delete", "typed-name");
 
 /** menu is the detail page's actions menu, Delete last. */
 export const menu: ResourceAction[] = [rename(base), assign, unassign, dnsPtr, protection, del];

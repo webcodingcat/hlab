@@ -27,7 +27,7 @@ export const tabs: Record<string, ResourceAction> = {
     confirm: "none",
     needsInput: true,
   },
-  delete: { id: "delete", label: "Delete", method: "DELETE", path: at, confirm: "plain", needsInput: false },
+  delete: { id: "delete", label: "Delete", method: "DELETE", path: at, confirm: "typed-name", needsInput: false },
   rollback: postAction(base, "rollback", "rollback_snapshot", {
     label: "Roll back",
     body: (i) => ({ snapshot: i.snapshot }),

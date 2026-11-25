@@ -32,7 +32,7 @@ test("UI-02 placement groups", async ({ page, shared }) => {
 
   // Delete after the confirmation removes it from the list and the API.
   await section(page, "Placement Groups");
-  await deleteRow(page, name, false);
+  await deleteRow(page, name);
   await expect.poll(async () => (await api(token, `/placement_groups/${created.id}`)).status, { timeout: 60_000 }).toBe(404);
 });
 

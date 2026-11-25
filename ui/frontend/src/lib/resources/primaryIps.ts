@@ -33,7 +33,7 @@ const assign = postAction(base, "assign", "assign", {
 
 const unassign = postAction(base, "unassign", "unassign", { label: "Unassign", confirm: "plain" });
 
-const del = remove(base, "Delete", "plain");
+const del = remove(base, "Delete", "typed-name");
 
 /** menu is the detail page's actions menu, Delete last. */
 export const menu: ResourceAction[] = [rename(base), assign, unassign, changeDnsPtr(base), changeProtection(base), del];
