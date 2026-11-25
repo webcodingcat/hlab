@@ -31,7 +31,8 @@ type serverType catalog.ServerType
 
 func (st serverType) MarshalJSON() ([]byte, error) { return st.Raw, nil }
 
-// list offers name, page and per_page only, as the description does.
+// list offers name, sort (id, name), page and per_page, as the
+// description does.
 func (m *Module) list(w http.ResponseWriter, req *http.Request) {
 	types := m.cat.Types()
 	items := make([]serverType, 0, len(types))
@@ -41,6 +42,10 @@ func (m *Module) list(w http.ResponseWriter, req *http.Request) {
 	slices.SortStableFunc(items, func(a, b serverType) int { return cmp.Compare(a.ID, b.ID) })
 	api.ListRequest(w, req, "server_types", items, api.ListOptions[serverType]{
 		Name: func(st serverType) string { return st.Name },
+		Sort: map[string]func(a, b serverType) int{
+			"id":   func(a, b serverType) int { return cmp.Compare(a.ID, b.ID) },
+			"name": func(a, b serverType) int { return cmp.Compare(a.Name, b.Name) },
+		},
 	})
 }
 
