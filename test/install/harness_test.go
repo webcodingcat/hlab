@@ -74,7 +74,7 @@ func TestMain(m *testing.M) {
 
 func run(m *testing.M) (code int, err error) {
 	defer func() {
-		if terr := teardown(); terr != nil && err == nil {
+		if terr := teardown(code != 0 || err != nil); terr != nil && err == nil {
 			err = terr
 		}
 	}()
@@ -171,7 +171,10 @@ func refuseRelease(ctx context.Context) error {
 	return nil
 }
 
-func teardown() error {
+// teardown uninstalls the release and starts the dev cloud again; the run's
+// folder with the setup, MSI and service logs stays when failed is set or
+// the teardown itself fails.
+func teardown(failed bool) error {
 	ctx := context.Background()
 	var errs []error
 	if len(harness.setups) == 2 {
@@ -192,7 +195,7 @@ func teardown() error {
 			errs = append(errs, err)
 		}
 	}
-	if harness.tmp != "" && len(errs) == 0 {
+	if harness.tmp != "" && !failed && len(errs) == 0 {
 		_ = os.RemoveAll(harness.tmp)
 	} else if harness.tmp != "" {
 		logf("teardown: the logs of this run stay in %s", harness.tmp)
@@ -684,6 +687,7 @@ func uninstall(ctx context.Context, keep bool) error {
 		args = append(args, "KeepData=1")
 		what = "uninstall-keep"
 	}
+	saveServiceLogs(what, v)
 	r, err := runBundle(ctx, v, what, args...)
 	if err != nil {
 		return err
@@ -695,6 +699,18 @@ func uninstall(ctx context.Context, keep bool) error {
 		fix = nil
 	}
 	return nil
+}
+
+// saveServiceLogs copies the release hlabd.log* into the run's folder before
+// an uninstall removes them, numbered like the Burn log that follows.
+func saveServiceLogs(what, version string) {
+	files, _ := filepath.Glob(filepath.Join(releaseDataDir(), "logs", "hlabd.log*"))
+	dir := filepath.Join(harness.tmp, fmt.Sprintf("%02d-%s-%s-hlabd", harness.logSeq+1, what, version))
+	for _, f := range files {
+		if err := copyFile(f, filepath.Join(dir, filepath.Base(f))); err != nil {
+			logf("copying %s: %v", f, err)
+		}
+	}
 }
 
 // ensureInstalled brings the machine to exactly version installed; a newer

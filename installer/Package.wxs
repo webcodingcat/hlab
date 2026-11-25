@@ -13,7 +13,8 @@
   - install: deferred as LocalSystem after InstallFiles; on a failed first
     install its rollback runs uninstall-cleanup keep-data.
   - stop-service: in the old product during a major upgrade, before its files
-    go.
+    go. MSIRESTARTMANAGERCONTROL=Disable keeps Windows Installer's Restart
+    Manager from stopping the service and starting it again after an upgrade.
   - uninstall-cleanup (keep-data with KEEPDATA=1): on a real uninstall, before the files go;
     a non-zero exit rolls the uninstall back.
   - remove-user-data: as the uninstalling user, unless KEEPDATA=1.
@@ -38,6 +39,10 @@
     <Property Id="KEEPDATA" Value="0" Secure="yes" />
     <!-- 1 shows the prerequisite failure in a message box (from the bundle). -->
     <Property Id="HLABUI" Value="0" Secure="yes" />
+    <!-- No Restart Manager: it would shut the running service down during
+         InstallValidate and start it again at the end of an upgrade. The
+         old product's stop-service stops it before its files go. -->
+    <Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="hlab">
