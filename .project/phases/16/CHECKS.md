@@ -85,4 +85,4 @@ the development machine at this close (see PLAN.md "Close").
 - Setup: none.
 - Steps: as in the guide section.
 - Expected: README, user guides and developer guides read clearly for their audience; the help texts checked during UI-09 name only existing views and buttons.
-- Result: open (2026-11-25: the help texts part fits, checked within UI-09; the reading of README and guides is still open)
+- Result: fits (2026-11-25: README, user documents and developer guides read on the development machine; the help texts were checked within UI-09)
