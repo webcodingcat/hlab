@@ -95,3 +95,22 @@ func (a *Agent) usage(ctx context.Context, job agentapi.StorageJob) (agentapi.St
 	}
 	return res, nil
 }
+
+// trim discards the free blocks of the data file system before the VM is
+// shut down for a compaction of its data disk. The discard=async mount
+// option discards freed extents only lazily and drops what is queued at
+// the unmount, and a deleted subvolume is cleaned up in the background,
+// so trim waits for that cleanup, commits the transaction that frees the
+// extents and then runs fstrim, which discards all free space of btrfs.
+func (a *Agent) trim(ctx context.Context, _ agentapi.StorageJob) (agentapi.StorageJobResult, error) {
+	for _, args := range [][]string{
+		{"btrfs", "subvolume", "sync", a.o.Root},
+		{"btrfs", "filesystem", "sync", a.o.Root},
+		{"fstrim", a.o.Root},
+	} {
+		if _, err := run(ctx, args[0], args[1:]...); err != nil {
+			return agentapi.StorageJobResult{}, err
+		}
+	}
+	return agentapi.StorageJobResult{}, nil
+}

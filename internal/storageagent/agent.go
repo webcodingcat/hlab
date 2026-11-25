@@ -116,9 +116,11 @@ func (a *Agent) postJob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid job: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	if _, err := boxUID(job.Box); err != nil {
-		http.Error(w, "invalid job: "+err.Error(), http.StatusBadRequest)
-		return
+	if job.Kind != agentapi.StorageJobTrim {
+		if _, err := boxUID(job.Box); err != nil {
+			http.Error(w, "invalid job: "+err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 	if job.Kind == agentapi.StorageJobSnapshot || job.Kind == agentapi.StorageJobDeleteSnapshot ||
 		job.Kind == agentapi.StorageJobRollback {
@@ -141,6 +143,8 @@ func (a *Agent) postJob(w http.ResponseWriter, r *http.Request) {
 		run = a.deleteSnapshotJob
 	case agentapi.StorageJobRollback:
 		run = a.rollback
+	case agentapi.StorageJobTrim:
+		run = a.trim
 	default:
 		http.Error(w, fmt.Sprintf("unknown job kind %q", job.Kind), http.StatusBadRequest)
 		return
