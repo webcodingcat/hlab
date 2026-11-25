@@ -23,6 +23,22 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-25 Test VM script waits for the Hyper-V service
+
+- Type: decision
+- Phase: phase 16
+- What: `release-check-vm.ps1` treats setup as finished when the service `vmms` runs in the VM, read over PowerShell Direct, and shows sign-in errors in its progress line.
+- Why: the account is a local administrator under UAC whose remote token is filtered, so `Get-WindowsOptionalFeature` could not be read.
+- Cost of change: low
+
+## 2026-11-25 Test VM script asks nothing before its checks
+
+- Type: decision
+- Phase: phase 16
+- What: `release-check-vm.ps1` checks elevation, its arguments and that no VM of the name exists before it asks for the password, opens the console before starting the VM, and gives the user test VM 4 vCPU unless `-Cpu` says otherwise.
+- Why: no password is typed for a refused run, and the short "boot from CD or DVD" prompt is not missed.
+- Cost of change: low
+
 ## 2026-11-25 Test VM account created in the specialize pass
 
 - Type: assumption
