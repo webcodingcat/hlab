@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"net/netip"
 	"os"
+	"io"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -262,7 +263,7 @@ func waitIdle(ctx context.Context, paths []string) error {
 	ctx, cancel := context.WithTimeout(ctx, rollbackIdleWait)
 	defer cancel()
 	for {
-		err := exec.CommandContext(ctx, "fuser", append([]string{"-s", "-m"}, paths...)...).Run()
+		err := runBounded(ctx, nil, io.Discard, io.Discard, func() []byte { return nil }, "fuser", append([]string{"-s", "-m"}, paths...)...)
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && ee.ExitCode() == 1 {
 			return nil
