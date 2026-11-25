@@ -371,8 +371,13 @@ Inside `hlabd` (Go packages under `internal/`):
   `internal/uninstall`, not part of the interface): `Restore(ctx)` (the
   restore file above), `RemoveRootTrust(pem) (had bool, err)` (LocalMachine\Root
   by thumbprint, a missing CA is no error), `RemoveWSLTrust(ctx, pem)` (one
-  pass over the console user's distros, returns each failed distro by name,
-  `ErrNoConsoleUser` when nobody is logged on).
+  pass over the interactive user's distros, returns each failed distro by
+  name, `ErrNoConsoleUser` when there is no interactive user).
+- Interactive user: the user signed in at the console; when nobody is,
+  the user of the single active Remote Desktop session (vmconnect's
+  enhanced session is one). With several active Remote Desktop sessions
+  and nobody at the console there is none. `TrustCA`, `RemoveWSLTrust` and
+  the `.wslconfig` reading all use this user (Q28).
 - Depends on: Windows networking (see SPEC.md).
 
 #### uninstall and prereq
@@ -1314,13 +1319,14 @@ the agent reads its own from the `transit` file of its seed.
   route; NRPT applies inside WSL with dnsTunneling (E4). hostnet records the
   previous forwarding state and restores it in `Down`, and re-applies
   forwarding when WSL recreates its adapter. WSL's fallback mode
-  (VirtioProxy), mirrored and other modes are detected from the console
-  user's `%UserProfile%\.wslconfig` (`networkingMode`, `dnsTunneling`,
+  (VirtioProxy), mirrored and other modes are detected from the
+  interactive user's `%UserProfile%\.wslconfig` (`networkingMode`, `dnsTunneling`,
   read through the WTS user token) plus the host adapters; hlabd runs no
   `wsl.exe` or `wslinfo` for this. The one exception is the CA trust switch:
-  `TrustCA` runs `wsl.exe` with the console user's token to add or remove
-  the hlab CA in each WSL2 distro, only while trust is on (pending until
-  the next logon when nobody is logged on).
+  `TrustCA` runs `wsl.exe` with the interactive user's token (see
+  "Interactive user") to add or remove the hlab CA in each WSL2 distro,
+  only while trust is on (pending until the next logon when there is no
+  interactive user).
 - NRPT: one suffix rule per zone (`.example.net`) also covers the zone
   apex (E5).
 

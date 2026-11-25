@@ -146,7 +146,7 @@ resource types.
 - CERT-01 an uploaded certificate is stored with its chain and key; fingerprint, domain names and validity are read from it (goal 1) [unit]
 - CERT-02 a managed certificate is issued by the hlab CA when all its domains lie in hlab DNS zones, fails with an error otherwise, and retry issues it again (goal 1) [unit]
 - CERT-03 managed certificates are renewed before they expire (goal 2) [unit]
-- CERT-04 the trust switch adds the hlab CA to the Windows trust store and to every WSL2 distro, and removes it again (goal 2) [e2e]
+- CERT-04 the trust switch adds the hlab CA to the Windows trust store and to every WSL2 distro of the interactive user (the user at the console, else the user of the single active Remote Desktop session), and removes it again (goal 2) [e2e]
 - CERT-05 `GET /mgmt/v1/ca.pem` and `hlab ca export <file>` return the hlab CA certificate (goal 2) [unit]
 
 ### Volumes (`VOL`)

@@ -23,6 +23,14 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-25 Q28 WSL trust follows the interactive user
+
+- Type: change
+- Phase: feedback
+- What: the CA trust switch, its removal at uninstall and the `.wslconfig` reading use the interactive user: the user at the console, else the user of the single active Remote Desktop session; with several such sessions and nobody at the console the switch stays pending as before.
+- Why: the user chose it in /wcc:report after the WSL part of the trust switch never ran in vmconnect's enhanced session, which a developer working over Remote Desktop would hit too.
+- Cost of change: low
+
 ## 2026-11-25 Setup bundle uses the hyperlink theme with an empty licence URL
 
 - Type: decision
