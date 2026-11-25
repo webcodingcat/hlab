@@ -538,16 +538,25 @@ func removeAccount(ctx context.Context, user string) error {
 	return err
 }
 
-// removeBox deletes a box absent from the document: its processes, the
-// chroots and users of the box and its subaccounts, the group, the
-// snapshots, the subvolume and the qgroup.
+// removeBox deletes a box absent from the document: its sessions and
+// processes, the chroots and users of the box and its subaccounts, the
+// group, the snapshots, the subvolume and the qgroup.
+// A session left open would keep the deleted subvolume in use, and btrfs
+// subvolume sync would wait for it: an smbd child runs as root and holds
+// the share's directory as long as the client keeps its connection (the
+// Windows client keeps it after net use /delete), so with the box IP of
+// the document applied last the sessions on it end as for a rollback.
 func (a *Agent) removeBox(ctx context.Context, box string) error {
 	n, err := boxUID(box)
 	if err != nil {
 		return err
 	}
 	id := strconv.Itoa(n)
-	if err := killUser(ctx, n); err != nil {
+	if i := slices.IndexFunc(a.doc.Boxes, func(b agentapi.Box) bool { return b.User == box }); i >= 0 {
+		if err := endSessions(ctx, a.doc.Boxes[i].IP, n); err != nil {
+			return err
+		}
+	} else if err := killUser(ctx, n); err != nil {
 		return err
 	}
 	users, err := ids("/etc/passwd")
