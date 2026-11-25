@@ -21,7 +21,7 @@ the development machine at this close (see PLAN.md "Close").
 - Setup: `release-check-dev` from DOC-08; a `git bundle` of `wcc/phase-16` copied in (the setup bundle fix of 16-06 is not on `main` until phase 16 closes).
 - Steps: 1. Run `release-check-dev-tools.ps1` in the VM (the tools, then after the restart the clone of the bundle), run `task build` and `scripts\dev-setup.ps1` elevated, start the dev cloud once. 2. In an elevated terminal run `task e2e:elevated`.
 - Expected: the suite ends with `ok` for every subtest (INST-01, INST-04, INST-05, INST-06); on a failure the log folder named in the guide stays for the report.
-- Result: fits (2026-11-25, fifth run on wcc/phase-16 at 24fe51c: all seven rows passed, `ok github.com/webcodingcat/hlab/test/install 1414.705s`)
+- Result: open (asked again for the extended INST-06 after 16-14; the fifth run on 24fe51c fitted)
 
 ## INST-03 The setup creates shortcuts that open only the tray program, and "Launch" starts it without admin rights
 
@@ -45,7 +45,7 @@ the development machine at this close (see PLAN.md "Close").
 - Setup: as in the guide section (project `demo` with an SSH key).
 - Steps: as in the guide section, opening "?" in the views it passes.
 - Expected: every resource of the example environment can be created and deleted in the console, and each help text names only views and buttons that exist.
-- Result: does not fit, see plan (2026-11-25, release-check-user: the walk-through worked to the end and the help texts fit; findings: default location, hidden server types, attach/assign in the row menus, typed name for every delete)
+- Result: open (asked again after the fixes of 2026-11-25; previous run: 2026-11-25, release-check-user: the walk-through worked to the end and the help texts fit; findings: default location, hidden server types, attach/assign in the row menus, typed name for every delete)
 
 ## INST-06 An update over an older version keeps settings and state
 
@@ -53,7 +53,7 @@ the development machine at this close (see PLAN.md "Close").
 - Setup: HLab 0.1.0 with a project and a running server.
 - Steps: as in the guide section: install 0.1.1 over it, start the cloud, reach the server with `ssh`.
 - Expected: project, server and settings remain, Settings > Apps and `hlab cloud status` show 0.1.1, and the server answers over SSH after the cloud start.
-- Result: does not fit, see plan (2026-11-25, release-check-user: project, server, setting and version 0.1.1 kept, Apps lists HLab once, ssh answers; but setup showed "Files In Use: HLab" for the open tray)
+- Result: open (asked again after the fixes of 2026-11-25; previous run: 2026-11-25, release-check-user: project, server, setting and version 0.1.1 kept, Apps lists HLab once, ssh answers; but setup showed "Files In Use: HLab" for the open tray)
 
 ## LIFE-05 A Windows shutdown or restart with the cloud running applies the stop behaviour
 
@@ -69,7 +69,7 @@ the development machine at this close (see PLAN.md "Close").
 - Setup: as in the guide section (stop behaviour **Shut the VMs down**, two boxes, a 2 GB random file).
 - Steps: as in the guide section.
 - Expected: Hyper-V Manager lists `hlab-storage` and its console shows `hlab-storage login:`; `data.vhdx` grows by about 2 GB after the copy and shrinks again after deleting box A and stopping the cloud.
-- Result: does not fit, see plan (2026-11-25, release-check-user: hlab-storage named correctly; data.vhdx 2.24 GB after a 2 GB copy, 1.24 GB after deleting the box and stopping, only half reclaimed; also the create toast and the Explorer step, see plan)
+- Result: open (asked again after the fixes of 2026-11-25; previous run: 2026-11-25, release-check-user: hlab-storage named correctly; data.vhdx 2.24 GB after a 2 GB copy, 1.24 GB after deleting the box and stopping, only half reclaimed; also the create toast and the Explorer step, see plan)
 
 ## INST-05 Uninstalling asks whether to keep the data; with the default answer no file of hlab remains
 

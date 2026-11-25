@@ -23,6 +23,30 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-25 Upgrade ends the tray and stops the service before InstallValidate
+
+- Type: decision
+- Phase: phase 16
+- What: on an upgrade (`WIX_UPGRADE_DETECTED AND NOT REMOVE`) the MSI runs, before InstallValidate, `taskkill /F /IM hlab-tray.exe` through WixQuietExec (failure ignored) and `hlabd stop-service` from the Binary table (failure stops the upgrade); `MSIRESTARTMANAGERCONTROL` stays `Disable`.
+- Why: the files-in-use check runs in InstallValidate, before util:CloseApplication can end the tray, and the tray does not quit when its window closes.
+- Cost of change: low
+
+## 2026-11-25 Storage VM trims before a compaction
+
+- Type: decision
+- Phase: phase 16
+- What: before hlabd shuts the storage VM down for a compaction it sends the storage job `trim` (`btrfs subvolume sync`, `btrfs filesystem sync`, `fstrim` on the data file system; 5-minute deadline, failure logged).
+- Why: `discard=async` drops queued discards at unmount and a deleted box's subvolume is freed in the background, so without the trim `Optimize-VHD` reclaimed only part of the space.
+- Cost of change: low
+
+## 2026-11-25 Actions are followed in the project taken at submit
+
+- Type: decision
+- Phase: phase 16
+- What: every create form and DNS tab follows its action through `runApi`, `runOn`, `runHetzner` or `runHetznerOn` with the project passed as a value and optional `onanswer`/`onerror` hooks.
+- Why: a Svelte prop read later resolves to the current route, which has no or another project once the user has left the console.
+- Cost of change: low
+
 ## 2026-11-25 Every named delete asks for the name
 
 - Type: change

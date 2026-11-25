@@ -139,21 +139,21 @@ fails (CONTEXT.md, "Technical choices").
   - Adjusts: -
   - [x] Make the storage VM discard the blocks of deleted data before it is shut down for a compaction (fstrim at shutdown or the discard mount option, by the documentation), and assert in the e2e row that the disk returns to roughly its size before the data.
 
-- [ ] 16-16 Documentation: SMB share with Win+R
+- [x] 16-16 Documentation: SMB share with Win+R
   - Wave: 16 | Depends on: 16-15 | Review: alone
   - Requirements: DOC-08, SBOX-22 | Tests: `test/docs/docs_test.go: TestDocs/DOC-04`, `TestDocs/DOC-06` (existing, run only)
   - Reads: the 2026-11-25 minor on Explorer's address bar under "Findings from manual testing" below; `docs/development/release-checks.md` "Storage box space after a delete (COMPACT)"; the user docs that tell how to open a storage box share from Windows (Grep `\\` and "Explorer" in docs/); the in-app help texts that 16-12 and 16-13 made outdated: `ui/frontend/src/help/volumes.md`, `floating-ips.md`, `primary-ips.md`, `certificates.md`, `firewalls.md` and every other help text that describes a row menu or a delete confirmation (Grep "confirm" and "menu" in ui/frontend/src/help)
   - Size: ~20 lines in 2 files
   - Adjusts: -
-  - [ ] Open the share with Win+R and name `net use` plus `Copy-Item` as the PowerShell way; update the help texts and guides that 16-12 and 16-13 changed (state-dependent Attach/Assign row entries, typed name for every named delete); DOC-05 keeps every help text tied to its view.
+  - [x] Open the share with Win+R and name `net use` plus `Copy-Item` as the PowerShell way; update the help texts and guides that 16-12 and 16-13 changed (state-dependent Attach/Assign row entries, typed name for every named delete); DOC-05 keeps every help text tied to its view.
 
-- [ ] 16-17 Create forms and DNS tabs follow their action in their own project
+- [x] 16-17 Create forms and DNS tabs follow their action in their own project
   - Wave: 17 | Depends on: 16-13 | Review: alone
   - Requirements: UI-09 (and the create views' requirements UI-02, UI-12) | Tests: one frontend unit test of the shared way a form follows its action with the project taken at submit (row in TESTS.md), the other frontend unit tests (run only)
   - Reads: the 2026-11-25 bug on the storage box create toast under "Findings from manual testing" below and the 16-13 fix (`views/storage-boxes/createStorageBox.ts`); the review's list of places that read the `project` prop late: `views/certificates/CertificateCreate.svelte`, `dns/ZoneCreate.svelte`, `dns/tabs/PrimaryNameservers.svelte`, `dns/tabs/ZoneFile.svelte`, `firewalls/FirewallCreate.svelte`, `floating-ips/FloatingIpCreate.svelte`, `load-balancers/LoadBalancerCreate.svelte`, `networks/NetworkCreate.svelte`, `placement-groups/PlacementGroupCreate.svelte`, `primary-ips/PrimaryIpCreate.svelte`, `servers/ServerCreate.svelte` (also the backup `runOn` after the create), `volumes/VolumeCreate.svelte`; `lib/api.ts` (`runOn`, `runApi`), `lib/actions.ts`
   - Size: ~120 lines in 13 files
   - Adjusts: -
-  - [ ] Take the project as a plain value at submit in every listed place (best through one shared helper the forms use, as `runOn` does), so a create or DNS change still running after the user leaves the project console or switches project follows its action in its own project.
+  - [x] Take the project as a plain value at submit in every listed place (best through one shared helper the forms use, as `runOn` does), so a create or DNS change still running after the user leaves the project console or switches project follows its action in its own project.
 
 ## Close
 
@@ -168,6 +168,7 @@ Run at this close:
 - 2026-11-25, after the second elevated suite run and Q28: 16-08 (tests 981e0e2, fix bc01e1c: hostnet scripts end with `exit 0`, `runPowerShell` reports stdout and stderr, interactive user) and 16-09 (tests 6b8d4ba, fix e16bbcd: `stopAndWait` waits for START_PENDING and ends the process after 3 min, start deadlines). Package tests, lint and build green; reviews without blockers. `task e2e` runs in full again before the tag; INST-01 to INST-06 are asked again.
 - 2026-11-25, after the third elevated suite run: 16-10 (fe1a6e4: `MSIRESTARTMANAGERCONTROL=Disable`, checked in the built MSI; the harness keeps a failed run's folder and copies `hlabd.log*` before each uninstall). Installer tests, vet and lint green. INST-01 to INST-06 are asked again; INST-05/keep is diagnosed from the kept logs.
 - 2026-11-25, after the fourth elevated suite run: 16-11 (test 3c90a7b, fix 592fb0b: `Restore` recreates a missing VM through `reconcile`; the copied log helper moved to `internal/apitest`). Package tests and lint green. INST-01 to INST-06 are asked again.
+- 2026-11-25, after the user-VM checks: 16-12 (f40cd2f), 16-13 (954ac5e), 16-14 (ed7c506), 16-15 (028165c, review fix 5dc3896), 16-16 (671b549), 16-17 (774c220, 02979df), tests db21331 and 27d7570. Frontend unit tests (370), svelte-check, UI e2e rows UI-01 to UI-17 and `TestE2E/SBOX-03/compact` green; reviews without open blockers. UI-09, INST-06, COMPACT and INST-01 to INST-06 (elevated, for the files-in-use change) are asked again; a full `task e2e` runs before the tag.
 - `task build`, `task test`, `task lint` green and `task e2e -- -v` on 9c578f8+16-08/16-09 (started 11:0x, before 16-10/16-11): 244 passed, `TestE2E/CLI-03/servers` failed once (Ansible "server stopped" answered `locked` while the machine was loaded by parallel package tests) and passed alone afterwards. A full `task e2e` on the final commit is still due before the tag.
 
 ## Findings from manual testing
