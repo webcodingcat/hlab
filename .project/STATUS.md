@@ -10,7 +10,7 @@ STATUS: MANUAL_CHECK
 - Phase: 16 Release checks in test VMs (waits for the manual checks on branch wcc/phase-16), the last phase of milestone 1
 - Base branch: main
 - Last done: backlog phase B4 merged into main (2026-11-24): a network attach right after a boot no longer costs the server its seed ISO (Q26), deleting and pruning snapshots a failed rollback left behind works, the guest hook keeps user netplan settings after a carrier drop, and the network drops after a resume are documented (Q27)
-- Next: set up the two test VMs by docs/development/release-checks.md, then /wcc:report walks through the checks in phases/16/CHECKS.md; /wcc:phase then closes phase 16 and tags wcc-milestone-1
+- Next: /wcc:phase builds the test VM scripts (findings in phases/16/PLAN.md), then the user sets up the two test VMs with them, then /wcc:report walks through the checks in phases/16/CHECKS.md; /wcc:phase then closes phase 16 and tags wcc-milestone-1
 
 ## Open manual checks
 

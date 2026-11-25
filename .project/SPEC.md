@@ -237,9 +237,17 @@ appear here, only names.
   objects differ (ARCHITECTURE.md "Profiles"). Only one of their clouds runs
   at a time: each refuses to start while the other runs, and the end-to-end
   harness refuses to run while the release cloud runs.
-- Test VMs for the release checks (phase 16), set up by hand by the user
-  as `docs/development/release-checks.md` describes; Claude creates
-  neither. Both are Hyper-V VMs on the development machine with a fresh
+- Test VMs for the release checks (phase 16), set up by the user with two
+  scripts that `docs/development/release-checks.md` describes; Claude
+  runs neither and creates neither VM.
+  - `scripts/release-check-vm.ps1`, run elevated on the development
+    machine, creates one test VM in one call: the VM, the answer-file ISO
+    (Windows and Hyper-V installed without a question), waiting for setup
+    to finish, removing the ISOs, the first subnet check inside the VM,
+    shutting it down and the checkpoint `fresh`.
+  - `scripts/release-check-dev-tools.ps1`, run elevated inside the
+    development test VM, installs the development tools the installer
+    suite needs and clones the repository from a `git bundle`. Both are Hyper-V VMs on the development machine with a fresh
   Windows 11 Pro and nested virtualization, so HLab can run its own VMs
   inside.
   - Development test VM: the development tools of this section and a

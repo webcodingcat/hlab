@@ -4,6 +4,32 @@ Entries from DECISIONS.md that a later entry revoked or changed, moved here
 unchanged; the later entry names them under `Replaces:`. Newest first. No
 skill reads this file; it keeps the history for looking things up.
 
+## 2026-11-25 Windows in the test VMs installed fully by the answer file
+
+- Type: decision
+- Phase: phase 16
+- What: the answer file of `docs/development/release-checks.md` runs the whole Windows setup of a test VM (windowsPE and oobeSystem passes: language from a variable matching the ISO, disk layout for a Generation 2 VM, Windows 11 Pro without activation, licence terms, local account, privacy screens) and, through a one-time automatic sign-in and first-logon commands, enables Hyper-V and restarts; "Domain join instead" and setup without network are dropped from the guide.
+- Why: the user asked for it in /wcc:report: one way, easier to follow and to repeat than three routes and manual setup screens.
+- Cost of change: low
+- Replaces: 2026-11-24 Answer-file ISO built with IMAPI2 (the ISO is still built with IMAPI2); 2026-11-24 Local account at Windows setup left to the guide
+
+## 2026-11-25 SRV-08 accepts a minor release of the image's major version
+
+- Type: decision
+- Phase: phase 16
+- What: the SRV-08 end-to-end test accepts `/etc/os-release` naming a minor release of the image's `os_version` (for example "rocky 8.10" for "8"), never another major.
+- Why: the catalog gives rocky-8 only its major release, as Hetzner does, while the guest reports 8.10.
+- Cost of change: low
+
+## 2026-11-25 Seed swap waits for a hold only while the VM runs
+
+- Type: decision
+- Phase: phase 16
+- What: a network attach or detach right after a boot finishes at once; the seed ISO swap waits until 90 s after the boot hlab started unless the VM is off, then it swaps at once; a waiting swap is noted as `seed_due` on the server and finished at the next cloud start if hlabd restarts.
+- Why: E48 showed an early slot-0 swap leaves a booting guest without hostname and public IP, but an Off VM reads no seed, and the full e2e run showed the hold kept a primary IP assigned right after create from taking effect (PIP-02).
+- Cost of change: low
+- Replaces: 2026-11-24 Seed swap waits for a hold after a boot hlab starts (Q26)
+
 ## 2026-11-24 Answer-file ISO built with IMAPI2
 
 - Type: decision

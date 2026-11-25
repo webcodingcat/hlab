@@ -82,7 +82,7 @@
       inserted before it.
       Success criteria:
       1. `docs/development/release-checks.md` describes both test VMs,
-         and the user has set them up by it.
+         and the user has set them up with its scripts.
       2. The elevated installer suite (`task e2e:elevated`) passes in the
          development test VM.
       3. In the user test VM the setup EXE installs HLab without

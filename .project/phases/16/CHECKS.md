@@ -10,16 +10,16 @@ the development machine at this close (see PLAN.md "Close").
 ## DOC-08 The guide describes both test VMs, and they are set up by it
 
 - Start: `docs/development/release-checks.md`, sections "What runs where" and "Create a test VM", on the development machine in an elevated PowerShell.
-- Setup: the official Windows 11 ISO; Hyper-V on the development machine. Claude can check the commands against the machine on request, but creates neither VM.
-- Steps: 1. Create `release-check-dev` and `release-check-user` as "Create the VM" says. 2. Install Windows with the answer file ("Install Windows"); it creates the local account and enables Hyper-V without further input. 3. Check that Hyper-V is enabled in each VM. 4. Run the subnet check in each VM ("Check the subnet before the first cloud start"). 5. Shut each VM down and take the checkpoint ("Checkpoint the fresh VM").
-- Expected: both VMs boot Windows 11 Pro with nested Hyper-V enabled, the subnet check passes, and every command of the guide ran as written; any step that differed is reported with `/wcc:report` so the guide is corrected.
-- Result: open
+- Setup: the official Windows 11 ISO; Hyper-V on the development machine. Claude can check the commands against the machine on request, but runs neither script and creates neither VM.
+- Steps: 1. Run `scripts\release-check-vm.ps1` for `release-check-dev` and for `release-check-user` as "Create a test VM" says, pressing a key for "boot from CD or DVD" when asked. 2. Wait until each run ends with the checkpoint `fresh`.
+- Expected: each run ends without an error; both VMs boot Windows 11 Pro with nested Hyper-V enabled, the subnet check inside passes, no answer ISO is left attached, and each VM is off with a checkpoint `fresh`; any step that differed is reported with `/wcc:report` so the guide or the script is corrected.
+- Result: does not fit, see plan (2026-11-25: the pasted "Install Windows" block lost its password prompt to the pasted text; replaced by scripts, see PLAN.md "Findings from manual testing")
 
 ## INST-01 to INST-06 The elevated installer suite passes in the development test VM
 
 - Start: `docs/development/release-checks.md`, section "Development test VM" ("Install the tools", "Bring the repository in", "Register the service and start the dev cloud once", "Run the elevated installer suite").
 - Setup: `release-check-dev` from DOC-08; a `git bundle` of `main` copied in.
-- Steps: 1. Install the tools, clone the bundle, run `scripts\dev-setup.ps1` elevated, `task build`, start the dev cloud once. 2. In an elevated terminal run `task e2e:elevated`.
+- Steps: 1. Run `release-check-dev-tools.ps1` in the VM (the tools, then after the restart the clone of the bundle), run `task build` and `scripts\dev-setup.ps1` elevated, start the dev cloud once. 2. In an elevated terminal run `task e2e:elevated`.
 - Expected: the suite ends with `ok` for every subtest (INST-01, INST-04, INST-05, INST-06); on a failure the log folder named in the guide stays for the report.
 - Result: open
 

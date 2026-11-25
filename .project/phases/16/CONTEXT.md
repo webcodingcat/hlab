@@ -2,7 +2,7 @@
 
 ## Confirmed assumptions
 
-- The guide `docs/development/release-checks.md` gives copy-and-paste PowerShell commands the user runs on the development machine to create each VM (Gen2, Secure Boot, vTPM, nested virtualization, static memory); no new script in the repository.
+- The guide `docs/development/release-checks.md` describes two scripts the user runs: `scripts/release-check-vm.ps1` on the development machine creates each VM (Gen2, Secure Boot, vTPM, nested virtualization, static memory) up to its checkpoint, `scripts/release-check-dev-tools.ps1` inside the development test VM installs the tools and clones the bundle (changed 2026-11-25 by /wcc:report, see DECISIONS.md "2026-11-25 Test VMs set up by scripts"; copy-and-paste blocks before).
 - The guide gives minimum sizes: development test VM 8 vCPU, 24 GB RAM, 200 GB disk; user test VM 4 to 8 vCPU, 16 GB RAM, 150 GB disk.
 - Both VMs use Hyper-V's "Default Switch"; HLab builds its own network inside each VM as on a real machine.
 - Before the first cloud start in each VM the guide shows the VM's IPv4 subnet (`Get-NetIPAddress`), which must contain neither 198.19.0.0/16 nor 172.31.1.1; on an overlap the guide says to restart the development machine (host) and check the subnet again.
