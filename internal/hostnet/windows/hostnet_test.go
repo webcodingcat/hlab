@@ -5,6 +5,7 @@ package windows_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -13,6 +14,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	xwin "golang.org/x/sys/windows"
 
 	"github.com/webcodingcat/hlab/internal/hostnet"
 	"github.com/webcodingcat/hlab/internal/hostnet/windows"
@@ -302,4 +306,40 @@ func TestHostNet(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("INST-05", func(t *testing.T) {
+		// Uninstalling must succeed when the cleanup's objects are already
+		// gone: downScript for a tag whose switch and adapter never existed
+		// runs through the real PowerShell runner without an error.
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		tag := fmt.Sprintf("hlab-absent-%d", os.Getpid())
+		if _, err := windows.RunPowerShell(ctx, windows.DownScript(tag, "vEthernet ("+tag+")")); err != nil {
+			if !xwin.GetCurrentProcessToken().IsElevated() && needsElevation(err.Error()) {
+				t.Skipf("downScript needs elevation for a cmdlet it calls on this host: %v", err)
+			}
+			t.Errorf("downScript for the absent tag %s: %v, want success", tag, err)
+		}
+
+		// A failing script names both what it wrote to stdout and to stderr.
+		_, err := windows.RunPowerShell(ctx, "Write-Output 'inst05-stdout-marker'\n[Console]::Error.WriteLine('inst05-stderr-marker')\nexit 3")
+		if err == nil {
+			t.Fatal("script exiting 3: no error")
+		}
+		for _, marker := range []string{"inst05-stdout-marker", "inst05-stderr-marker"} {
+			if !strings.Contains(err.Error(), marker) {
+				t.Errorf("error %q of a failing script lacks %q", err, marker)
+			}
+		}
+	})
+}
+
+// needsElevation reports whether a PowerShell error is an access denial.
+func needsElevation(msg string) bool {
+	for _, s := range []string{"PermissionDenied", "0x80070005", "Access denied", "Access is denied"} {
+		if strings.Contains(msg, s) {
+			return true
+		}
+	}
+	return false
 }

@@ -6,11 +6,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"unicode/utf16"
+
+	xwin "golang.org/x/sys/windows"
 )
 
 // wslCall is one command the fake user runner received.
@@ -107,6 +110,67 @@ const testCAPEM = "-----BEGIN CERTIFICATE-----\nTUlJQ2FDQQ==\n-----END CERTIFICA
 
 func TestHostNet(t *testing.T) {
 	t.Run("CERT-04", func(t *testing.T) {
+		t.Run("interactive-user", func(t *testing.T) {
+			// A fake session list as WTSEnumerateSessions returns it: session
+			// 0 is the services session, 1 the console; users holds the
+			// sessions WTSQueryUserToken finds a user in.
+			const console = 1
+			services := xwin.WTS_SESSION_INFO{SessionID: 0, State: xwin.WTSDisconnected}
+			cases := []struct {
+				name     string
+				sessions []xwin.WTS_SESSION_INFO
+				users    []uint32
+				want     uint32
+				none     bool
+			}{
+				{
+					name: "console user",
+					sessions: []xwin.WTS_SESSION_INFO{services,
+						{SessionID: 1, State: xwin.WTSActive},
+						{SessionID: 2, State: xwin.WTSActive}},
+					users: []uint32{1, 2},
+					want:  1,
+				},
+				{
+					name: "one active remote desktop session",
+					sessions: []xwin.WTS_SESSION_INFO{services,
+						{SessionID: 1, State: xwin.WTSConnected},
+						{SessionID: 2, State: xwin.WTSActive}},
+					users: []uint32{2},
+					want:  2,
+				},
+				{
+					name: "two active remote desktop sessions",
+					sessions: []xwin.WTS_SESSION_INFO{services,
+						{SessionID: 1, State: xwin.WTSConnected},
+						{SessionID: 2, State: xwin.WTSActive},
+						{SessionID: 3, State: xwin.WTSActive}},
+					users: []uint32{2, 3},
+					none:  true,
+				},
+				{
+					name: "disconnected remote desktop session",
+					sessions: []xwin.WTS_SESSION_INFO{services,
+						{SessionID: 1, State: xwin.WTSConnected},
+						{SessionID: 2, State: xwin.WTSDisconnected}},
+					users: []uint32{2},
+					none:  true,
+				},
+			}
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					hasUser := func(id uint32) bool { return slices.Contains(tc.users, id) }
+					got, err := interactiveSession(console, tc.sessions, hasUser)
+					switch {
+					case tc.none && !errors.Is(err, errNoUser):
+						t.Errorf("interactiveSession = %d, %v; want errNoUser", got, err)
+					case !tc.none && (err != nil || got != tc.want):
+						t.Errorf("interactiveSession = %d, %v; want session %d", got, err, tc.want)
+					}
+				})
+			}
+		})
+
 		ctx := context.Background()
 		fake := &fakeWSL{exit: map[string]int{}}
 		h := New(Options{
