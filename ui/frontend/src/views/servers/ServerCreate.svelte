@@ -11,7 +11,7 @@
   import { request, tabActions } from "../../lib/serverActions";
   import { showError } from "../../lib/toast";
   import { href } from "../../state";
-  import { imageGroups, imageLabel, typeLabel, typesIn, usableImages, type Image, type Named, type ServerType } from "./servers";
+  import { defaultLocation, imageGroups, imageLabel, typeLabel, typesIn, usableImages, type Image, type Named, type ServerType } from "./servers";
 
   // The create form of a server in the order of the Hetzner Console. The
   // request runs under an action toast; once it answers, a root password
@@ -54,7 +54,7 @@
       types = t;
       [sshKeys, networks, primaryIps, volumes, firewalls, placementGroups] = [k, n, p, v, f, g];
       serverNames = s.map((x) => x.name);
-      if (!location && locations.length > 0) location = locations[0].name;
+      if (!location) location = defaultLocation(locations);
     } catch (err) {
       showError("Load the server options", err);
     }
@@ -85,7 +85,7 @@
 
   const groups = $derived(imageGroups(images));
 
-  // Only the types available in the chosen location.
+  // Every non-ARM type of the chosen location, available or not.
   const typeOptions = $derived(typesIn(types, location));
   $effect(() => {
     if (!typeOptions.some((t) => t.name === serverType)) serverType = typeOptions[0]?.name ?? "";
@@ -174,7 +174,7 @@
     const l = toLabels(labelRows);
     errors = { fields: {} };
     if (!image) errors.fields.image = "Choose an image.";
-    if (!serverType) errors.fields.server_type = "Choose a type available in this location.";
+    if (!serverType) errors.fields.server_type = "Choose a type offered in this location.";
     if ("error" in l || Object.keys(errors.fields).length > 0) return;
     busy = true;
     const withBackups = backups;
@@ -245,7 +245,7 @@
     {#snippet children(c)}
       <select id={c.id} aria-describedby={c.describedby} aria-invalid={c.invalid} bind:value={serverType}>
         {#each typeOptions as t (t.id)}
-          <option value={t.name}>{typeLabel(t)}</option>
+          <option value={t.name}>{typeLabel(t, location)}</option>
         {/each}
       </select>
     {/snippet}

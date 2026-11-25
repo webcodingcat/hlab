@@ -43,14 +43,16 @@
 <script lang="ts">
   import CloudStopped from "../../lib/CloudStopped.svelte";
   import ConfirmDialog from "../../lib/ConfirmDialog.svelte";
+  import Dialog from "../../lib/Dialog.svelte";
   import HelpButton from "../../lib/HelpButton.svelte";
   import Table, { type Column } from "../../lib/Table.svelte";
   import { listAll, runOn } from "../../lib/api";
   import { createdText, labelText, protocolText } from "../../lib/format";
-  import { request, type ResourceAction } from "../../lib/resourceActions";
-  import { tabs } from "../../lib/resources/primaryIps";
+  import { request, type Input, type ResourceAction } from "../../lib/resourceActions";
+  import { rowAction, tabs } from "../../lib/resources/primaryIps";
   import { showError } from "../../lib/toast";
   import { href, running, type Page } from "../../state";
+  import PrimaryIpActionInput from "./PrimaryIpActionInput.svelte";
   import PrimaryIpCreate from "./PrimaryIpCreate.svelte";
   import PrimaryIpDetail from "./PrimaryIpDetail.svelte";
 
@@ -103,28 +105,38 @@
     location.hash = href({ area: "project", project, view: "primary-ips", page: p });
   }
 
-  // Row menu: Unassign and Delete, each with a plain confirmation.
-  let pending = $state<{ pip: PrimaryIp; action: ResourceAction } | undefined>();
+  // Row menu: Assign (with the server select) while unassigned, Unassign
+  // with a plain confirmation while assigned to a server; Delete with the
+  // name typed.
+  let pending = $state<{ pip: PrimaryIp; action: ResourceAction; input: Input } | undefined>();
+  let inputOpen = $state(false);
   let confirmOpen = $state(false);
 
   function ask(pip: PrimaryIp, action: ResourceAction) {
-    pending = { pip, action };
-    confirmOpen = true;
+    pending = { pip, action, input: {} };
+    if (action.needsInput) inputOpen = true;
+    else confirmOpen = true;
+  }
+
+  function submit(input: Input) {
+    if (!pending) return;
+    inputOpen = false;
+    pending = { ...pending, input };
+    if (pending.action.confirm === "none") run();
+    else confirmOpen = true;
   }
 
   function run() {
     if (!pending) return;
-    const { pip, action } = pending;
-    const req = request(action, pip.id)!;
+    const { pip, action, input } = pending;
+    const req = request(action, pip.id, input)!;
     // Not awaited: the dialog closes at once, the toast follows the request.
     runOn(project, pip.name, action.label, req).then(load);
   }
 
-  function unassignHint(p: PrimaryIp): string | undefined {
-    if (p.assignee_id === null) return "The primary IP is not assigned.";
-    if (p.assignee_type === "load_balancer") return "Deleting the load balancer releases it.";
-    return undefined;
-  }
+  // A primary IP held by a load balancer cannot be unassigned.
+  const unassignHint = (p: PrimaryIp) =>
+    p.assignee_id !== null && p.assignee_type === "load_balancer" ? "Deleting the load balancer releases it." : undefined;
 </script>
 
 {#if !$running}
@@ -155,8 +167,8 @@
     onrowclick={(p) => open({ kind: "detail", id: p.id, tab: "overview" })}
     actions={(p) => [
       {
-        label: "Unassign",
-        onclick: () => ask(p, tabs.unassign),
+        label: rowAction(p).label,
+        onclick: () => ask(p, rowAction(p)),
         disabled: unassignHint(p) !== undefined,
         hint: unassignHint(p),
       },
@@ -164,6 +176,12 @@
     ]}
   />
 {/if}
+
+<Dialog bind:open={inputOpen} title={`${pending?.action.label ?? ""} ${pending?.pip.name ?? ""}`}>
+  {#if pending && inputOpen}
+    <PrimaryIpActionInput action={pending.action} pip={pending.pip} {servers} {submit} cancel={() => (inputOpen = false)} />
+  {/if}
+</Dialog>
 
 <ConfirmDialog
   bind:open={confirmOpen}

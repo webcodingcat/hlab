@@ -17,14 +17,16 @@
 <script lang="ts">
   import CloudStopped from "../../lib/CloudStopped.svelte";
   import ConfirmDialog from "../../lib/ConfirmDialog.svelte";
+  import Dialog from "../../lib/Dialog.svelte";
   import HelpButton from "../../lib/HelpButton.svelte";
   import Table, { type Column } from "../../lib/Table.svelte";
   import { listAll, runOn } from "../../lib/api";
   import { createdText, labelText } from "../../lib/format";
-  import { request, type ResourceAction } from "../../lib/resourceActions";
-  import { tabs } from "../../lib/resources/volumes";
+  import { request, type Input, type ResourceAction } from "../../lib/resourceActions";
+  import { rowAction, tabs } from "../../lib/resources/volumes";
   import { showError } from "../../lib/toast";
   import { href, running, type Page } from "../../state";
+  import VolumeActionInput from "./VolumeActionInput.svelte";
   import VolumeCreate from "./VolumeCreate.svelte";
   import VolumeDetail from "./VolumeDetail.svelte";
 
@@ -35,10 +37,11 @@
   const list = $derived(href({ area: "project", project, view: "volumes", page: { kind: "list" } }));
 
   let rows = $state<Volume[] | undefined>();
-  let serverNames = $state<Record<number, string>>({});
+  type Server = { id: number; name: string; location: { name: string } };
+  let servers = $state<Server[]>([]);
   let failing = false;
 
-  const serverText = (v: Volume) => (v.server === null ? "" : (serverNames[v.server] ?? `${v.server}`));
+  const serverText = (v: Volume) => (v.server === null ? "" : (servers.find((s) => s.id === v.server)?.name ?? `${v.server}`));
 
   const columns: Column<Volume>[] = [
     { key: "name", label: "Name", value: (v) => v.name, sortable: true },
@@ -53,9 +56,9 @@
     try {
       const [v, s] = await Promise.all([
         listAll<Volume>(project, "/volumes", "volumes"),
-        listAll<{ id: number; name: string }>(project, "/servers", "servers"),
+        listAll<Server>(project, "/servers", "servers"),
       ]);
-      serverNames = Object.fromEntries(s.map((x) => [x.id, x.name]));
+      servers = s.sort((a, b) => a.name.localeCompare(b.name));
       rows = v;
       failing = false;
     } catch (err) {
@@ -77,19 +80,30 @@
     location.hash = href({ area: "project", project, view: "volumes", page: p });
   }
 
-  // Row menu: Detach with a plain confirmation, Delete with the name typed.
-  let pending = $state<{ volume: Volume; action: ResourceAction } | undefined>();
+  // Row menu: Attach (with the server select) while detached, Detach with a
+  // plain confirmation while attached; Delete with the name typed.
+  let pending = $state<{ volume: Volume; action: ResourceAction; input: Input } | undefined>();
+  let inputOpen = $state(false);
   let confirmOpen = $state(false);
 
   function ask(volume: Volume, action: ResourceAction) {
-    pending = { volume, action };
-    confirmOpen = true;
+    pending = { volume, action, input: {} };
+    if (action.needsInput) inputOpen = true;
+    else confirmOpen = true;
+  }
+
+  function submit(input: Input) {
+    if (!pending) return;
+    inputOpen = false;
+    pending = { ...pending, input };
+    if (pending.action.confirm === "none") run();
+    else confirmOpen = true;
   }
 
   function run() {
     if (!pending) return;
-    const { volume, action } = pending;
-    const req = request(action, volume.id);
+    const { volume, action, input } = pending;
+    const req = request(action, volume.id, input);
     if (!req) return;
     // Not awaited: the dialog closes at once, the toast follows the request.
     runOn(project, volume.name, action.label, req).then(load);
@@ -123,16 +137,17 @@
     oncreate={() => open({ kind: "new" })}
     onrowclick={(v) => open({ kind: "detail", id: v.id, tab: "overview" })}
     actions={(v) => [
-      {
-        label: "Detach",
-        onclick: () => ask(v, tabs.detach),
-        disabled: v.server === null,
-        hint: v.server === null ? "The volume is not attached." : undefined,
-      },
+      { label: rowAction(v).label, onclick: () => ask(v, rowAction(v)) },
       { label: "Delete", onclick: () => ask(v, tabs.delete) },
     ]}
   />
 {/if}
+
+<Dialog bind:open={inputOpen} title={`${pending?.action.label ?? ""} ${pending?.volume.name ?? ""}`}>
+  {#if pending && inputOpen}
+    <VolumeActionInput action={pending.action} volume={pending.volume} {servers} {submit} cancel={() => (inputOpen = false)} />
+  {/if}
+</Dialog>
 
 <ConfirmDialog
   bind:open={confirmOpen}

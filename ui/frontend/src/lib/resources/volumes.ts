@@ -43,6 +43,9 @@ const del = remove(base, "Delete", "typed-name");
 /** menu is the detail page's actions menu, Delete last. */
 export const menu: ResourceAction[] = [rename(base), resize, attach, detach, protection, del];
 
+/** rowAction is the list row menu's entry that follows the state: Attach while detached, Detach while attached. */
+export const rowAction = (v: { server: number | null }): ResourceAction => (v.server === null ? attach : detach);
+
 /** tabs are the actions of the detail tabs and the list row menu. */
 export const tabs: Record<string, ResourceAction> = {
   resize,

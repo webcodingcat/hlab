@@ -178,7 +178,7 @@
         {#snippet children(c)}
           <select id={c.id} bind:value={serverType}>
             <option value="" disabled>Choose a type</option>
-            {#each typeOptions as t (t.id)}<option value={t.name}>{typeLabel(t)}</option>{/each}
+            {#each typeOptions as t (t.id)}<option value={t.name}>{typeLabel(t, server.location.name)}</option>{/each}
           </select>
         {/snippet}
       </Field>
