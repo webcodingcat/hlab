@@ -10,7 +10,7 @@ STATUS: MANUAL_CHECK
 - Phase: 16 Release checks in test VMs (waits for the manual checks on branch wcc/phase-16), the last phase of milestone 1
 - Base branch: main
 - Last done: backlog phase B4 merged into main (2026-11-24): a network attach right after a boot no longer costs the server its seed ISO (Q26), deleting and pruning snapshots a failed rollback left behind works, the guest hook keeps user netplan settings after a carrier drop, and the network drops after a resume are documented (Q27)
-- Next: task e2e:elevated again in release-check-dev with a bundle of wcc/phase-16 (enhanced session is fine since Q28), then /wcc:report for the user-VM checks; /wcc:phase then closes phase 16 (full task e2e after the fixes) and tags wcc-milestone-1
+- Next: the user checks in release-check-user with /wcc:report (INST-03 first); /wcc:phase then closes phase 16 (full task e2e on the final commit) and tags wcc-milestone-1
 
 ## Open manual checks
 
@@ -20,7 +20,6 @@ STATUS: MANUAL_CHECK
 
 - DOC-07 (01): README and guides are understandable for their audience, help texts name only existing views and buttons
 - LIFE-05 (09): a Windows shutdown or restart with the cloud running applies the stop behaviour
-- INST-01 to INST-06 (12): the elevated installer suite passes in the development test VM
 - INST-03 (12): the setup creates shortcuts that open only the tray program, and "Launch" starts it without admin rights
 - INST-05 (12): uninstalling asks whether to keep the data; with the default answer no file of hlab remains
 - UI-09 (14): the example environment can be created and deleted by hand in the console

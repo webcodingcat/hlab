@@ -21,7 +21,7 @@ the development machine at this close (see PLAN.md "Close").
 - Setup: `release-check-dev` from DOC-08; a `git bundle` of `wcc/phase-16` copied in (the setup bundle fix of 16-06 is not on `main` until phase 16 closes).
 - Steps: 1. Run `release-check-dev-tools.ps1` in the VM (the tools, then after the restart the clone of the bundle), run `task build` and `scripts\dev-setup.ps1` elevated, start the dev cloud once. 2. In an elevated terminal run `task e2e:elevated`.
 - Expected: the suite ends with `ok` for every subtest (INST-01, INST-04, INST-05, INST-06); on a failure the log folder named in the guide stays for the report.
-- Result: open
+- Result: fits (2026-11-25, fifth run on wcc/phase-16 at 24fe51c: all seven rows passed, `ok github.com/webcodingcat/hlab/test/install 1414.705s`)
 
 ## INST-03 The setup creates shortcuts that open only the tray program, and "Launch" starts it without admin rights
 
