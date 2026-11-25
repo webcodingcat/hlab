@@ -21,7 +21,7 @@ the development machine at this close (see PLAN.md "Close").
 - Setup: `release-check-dev` from DOC-08; a `git bundle` of `main` copied in.
 - Steps: 1. Run `release-check-dev-tools.ps1` in the VM (the tools, then after the restart the clone of the bundle), run `task build` and `scripts\dev-setup.ps1` elevated, start the dev cloud once. 2. In an elevated terminal run `task e2e:elevated`.
 - Expected: the suite ends with `ok` for every subtest (INST-01, INST-04, INST-05, INST-06); on a failure the log folder named in the guide stays for the report.
-- Result: open
+- Result: does not fit, see plan (2026-11-25: every row failed, the setup bundle does not start: 0x80070490 "manifest is missing wixstdba information")
 
 ## INST-03 The setup creates shortcuts that open only the tray program, and "Launch" starts it without admin rights
 
