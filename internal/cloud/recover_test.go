@@ -4,8 +4,10 @@ package cloud
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,11 +19,66 @@ import (
 	imagesres "github.com/webcodingcat/hlab/internal/resources/images"
 	"github.com/webcodingcat/hlab/internal/resources/volumes"
 	"github.com/webcodingcat/hlab/internal/store"
+	"github.com/webcodingcat/hlab/internal/sysint"
 )
 
 func TestCloud(t *testing.T) {
 	testReload(t)
 	testFaults(t)
+	t.Run("INST-06/start-deadline", func(t *testing.T) {
+		state := t.TempDir()
+		var lv slog.LevelVar
+		c := New(Deps{Paths: sysint.Paths{Config: t.TempDir(), State: state, Catalog: shippedCatalog}, Level: &lv})
+		// The parts of a start that ran up to the API: a teardown closes
+		// the store and the stop channel.
+		st, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
+		if err != nil {
+			t.Fatalf("open store: %v", err)
+		}
+		t.Cleanup(func() { _ = st.Close() })
+		c.st = st
+		done := make(chan struct{})
+		c.done = done
+		// The step after the API has started never finishes on its own.
+		c.startTimeout = 200 * time.Millisecond
+		c.startSteps = func(ctx context.Context, _ []string) error {
+			<-ctx.Done()
+			return ctx.Err()
+		}
+
+		result := make(chan error, 1)
+		go func() { result <- c.Start(context.Background(), nil) }()
+		select {
+		case err = <-result:
+		case <-time.After(10 * time.Second):
+			t.Fatal("Start still running 10 s after a start deadline of 200 ms")
+		}
+		if err == nil {
+			t.Fatal("Start = nil, want an error for the start past its deadline")
+		}
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("Start = %v, want an error wrapping context.DeadlineExceeded", err)
+		}
+		select {
+		case <-done:
+		default:
+			t.Error("no teardown after the failed start: stop channel still open")
+		}
+		if c.st != nil {
+			t.Error("no teardown after the failed start: store still open")
+		}
+		data, err := os.ReadFile(filepath.Join(state, statusFile))
+		if err != nil {
+			t.Fatalf("read status file: %v", err)
+		}
+		var s status
+		if err := json.Unmarshal(data, &s); err != nil {
+			t.Fatalf("parse status file %s: %v", data, err)
+		}
+		if s.State != sysint.StateStopped || s.Error == "" {
+			t.Errorf("status file = %s, want state %q with the start's error", data, sysint.StateStopped)
+		}
+	})
 	t.Run("VOL-01", func(t *testing.T) {
 		cat, err := catalog.Load("../../catalog")
 		if err != nil {
