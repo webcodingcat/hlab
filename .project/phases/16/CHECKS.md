@@ -45,7 +45,7 @@ the development machine at this close (see PLAN.md "Close").
 - Setup: as in the guide section (project `demo` with an SSH key).
 - Steps: as in the guide section, opening "?" in the views it passes.
 - Expected: every resource of the example environment can be created and deleted in the console, and each help text names only views and buttons that exist.
-- Result: open
+- Result: does not fit, see plan (2026-11-25, release-check-user: the walk-through worked to the end and the help texts fit; findings: default location, hidden server types, attach/assign in the row menus, typed name for every delete)
 
 ## INST-06 An update over an older version keeps settings and state
 
@@ -85,4 +85,4 @@ the development machine at this close (see PLAN.md "Close").
 - Setup: none.
 - Steps: as in the guide section.
 - Expected: README, user guides and developer guides read clearly for their audience; the help texts checked during UI-09 name only existing views and buttons.
-- Result: open
+- Result: open (2026-11-25: the help texts part fits, checked within UI-09; the reading of README and guides is still open)
