@@ -4,6 +4,15 @@ Entries from DECISIONS.md that a later entry revoked or changed, moved here
 unchanged; the later entry names them under `Replaces:`. Newest first. No
 skill reads this file; it keeps the history for looking things up.
 
+## 2026-11-21 Manual checks and the installer suite move to a last phase in two test VMs
+
+- Type: change
+- Phase: change
+- What: no phase stops for a manual check any more; the new phase 16, always the last of milestone 1 with phases taken in from "Later" inserted before it, runs the elevated installer suite in a development test VM and every open manual check in a user test VM without development tools, both fresh Windows Hyper-V VMs with nested virtualization that the user sets up by hand from `docs/development/release-checks.md` (DOC-08).
+- Why: the user has no time for manual checks now, wants to pull items from "Later" forward, and wants the installation tested in the user's own flow on a clean machine.
+- Cost of change: low
+- Replaces: 2026-11-21 All manual checks wait for the release, in a dedicated test VM
+
 ## 2026-11-25 Windows in the test VMs installed fully by the answer file
 
 - Type: decision

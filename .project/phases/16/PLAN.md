@@ -157,7 +157,7 @@ fails (CONTEXT.md, "Technical choices").
 
 ## Close
 
-Not a plan; the main session does it after 16-02 (CONTEXT.md, "Full end-to-end run"). First, `task e2e` runs in full on the development machine. Then the session writes `phases/16/CHECKS.md` with one entry per check, linking to the guide's sections, and sets `STATUS: MANUAL_CHECK`. The tag `wcc-milestone-1` follows only after every check passes; if a feedback phase changes code, `task e2e` runs in full again first.
+Not a plan; the main session does it after 16-02 (CONTEXT.md, "Full end-to-end run"). First, `task e2e` runs in full on the development machine. Then the session writes `phases/16/CHECKS.md` with one entry per check, linking to the guide's sections, and sets `STATUS: MANUAL_CHECK`. The tag `wcc-milestone-1` is set by phase 30 (repository, CI and release v0.1.0, DECISIONS.md "2026-11-25 Repository, CI and releases on GitHub"), the last phase of milestone 1; phase 16 closes with the full `task e2e` and its merge into `main`.
 
 Run at this close:
 - `task e2e -- -v` (all end-to-end tests) on 58787a8: 243 passed, SRV-08 (test compared "rocky 8.10" exactly with "8") and PIP-02 (seed hold also applied to an Off VM, product bug) failed; fixed in 5d50341.

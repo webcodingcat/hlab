@@ -23,6 +23,31 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-25 Repository, CI and releases on GitHub
+
+- Type: change
+- Phase: change
+- What: a new last phase 30 of milestone 1 creates the public repository `webcodingcat/hlab` (Apache-2.0), a CI workflow on GitHub-hosted Windows runners for every push to `main` and pull request against `main` (build, Go tests, lint, frontend unit tests, installer build), and a release workflow that publishes the unsigned MSI and setup EXE with checksums for a tag `vX.Y.Z`, starting with v0.1.0; phases push `main` at their close without waiting for the CI, and the next phase checks the last run first.
+- Why: the user wants the project published with CI/CD and a first release once phase 16 is done, without phases waiting for CI.
+- Cost of change: low
+
+## 2026-11-25 Approval: Claude creates the repository, pushes and releases
+
+- Type: approval
+- Phase: change
+- What: the user approved that Claude creates `webcodingcat/hlab` with `gh`, pushes `main` at each phase close, pushes the milestone and release tags and creates the GitHub releases.
+- Why: the user chose "Claude does everything" for publishing.
+- Cost of change: low
+
+## 2026-11-25 Phase 16 is the last phase before the release phase
+
+- Type: change
+- Phase: change
+- What: phase 16 is the only phase that stops for manual checks; it is the last phase of milestone 1 before phase 30 (repository, CI and release), with phases taken in from "Later" inserted before it, runs the elevated installer suite in a development test VM and every open manual check in a user test VM without development tools, both fresh Windows Hyper-V VMs with nested virtualization set up with the repository's scripts as `docs/development/release-checks.md` describes (DOC-08).
+- Why: the release phase needs a checked milestone; the rest of the 2026-11-21 rule stands.
+- Cost of change: low
+- Replaces: 2026-11-21 Manual checks and the installer suite move to a last phase in two test VMs
+
 ## 2026-11-25 Restore recreates the VM of a kept server
 
 - Type: decision
@@ -2121,15 +2146,6 @@ unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 - What: the primary IP rows assign an IPv6 primary IP to the powered-off fixture server after unassigning its own IPv6, then restore it.
 - Why: Hetzner assigns primary IPs only to powered-off servers, and the fixture must stay reachable for the rows after it.
 - Cost of change: low
-
-## 2026-11-21 Manual checks and the installer suite move to a last phase in two test VMs
-
-- Type: change
-- Phase: change
-- What: no phase stops for a manual check any more; the new phase 16, always the last of milestone 1 with phases taken in from "Later" inserted before it, runs the elevated installer suite in a development test VM and every open manual check in a user test VM without development tools, both fresh Windows Hyper-V VMs with nested virtualization that the user sets up by hand from `docs/development/release-checks.md` (DOC-08).
-- Why: the user has no time for manual checks now, wants to pull items from "Later" forward, and wants the installation tested in the user's own flow on a clean machine.
-- Cost of change: low
-- Replaces: 2026-11-21 All manual checks wait for the release, in a dedicated test VM
 
 ## 2026-11-21 Bundle sets HLABUI from WixBundleUILevel
 
