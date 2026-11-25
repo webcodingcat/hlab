@@ -72,7 +72,7 @@ func wslProblems(s wslSettings) []hostnet.Problem {
 	return out
 }
 
-// checkWSL reads the console user's .wslconfig and reports what hlab does
+// checkWSL reads the interactive user's .wslconfig and reports what hlab does
 // not support. It never changes the file. A file that cannot be read
 // leaves the mode unknown and gives no problem.
 func (h *HostNet) checkWSL(ctx context.Context) []hostnet.Problem {
