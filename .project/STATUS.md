@@ -10,7 +10,7 @@ STATUS: MANUAL_CHECK
 - Phase: 16 Release checks in test VMs (waits for the manual checks on branch wcc/phase-16), the last phase of milestone 1
 - Base branch: main
 - Last done: backlog phase B4 merged into main (2026-11-24): a network attach right after a boot no longer costs the server its seed ISO (Q26), deleting and pruning snapshots a failed rollback left behind works, the guest hook keeps user netplan settings after a carrier drop, and the network drops after a resume are documented (Q27)
-- Next: /wcc:phase builds the findings in phases/16/PLAN.md (WSL trust in the basic session, uninstall during a pending service start, cleanup scripts that exit 1 silently); then task e2e:elevated again in release-check-dev (basic session) and /wcc:report for the user-VM checks
+- Next: /wcc:phase builds the findings in phases/16/PLAN.md (WSL trust for the interactive user (Q28), uninstall during a pending service start, cleanup scripts that exit 1 silently); then task e2e:elevated again in release-check-dev and /wcc:report for the user-VM checks
 
 ## Open manual checks
 
