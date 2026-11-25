@@ -18,7 +18,7 @@ STATUS: IN_PROGRESS
      one line each: "- UI-04 (03): <requirement>". The guide is in
      phases/<id>/CHECKS.md. /wcc:report walks through them. -->
 
-- none
+- none
 
 ## Open decisions
 
