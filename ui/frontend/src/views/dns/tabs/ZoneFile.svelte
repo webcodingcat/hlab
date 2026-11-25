@@ -3,9 +3,7 @@
   import Button from "../../../lib/Button.svelte";
   import ConfirmDialog from "../../../lib/ConfirmDialog.svelte";
   import Field from "../../../lib/Field.svelte";
-  import { runAction, type Action, type ActionResult } from "../../../lib/actions";
-  import { api } from "../../../lib/api";
-  import { actionTitle, resourceType } from "../../../lib/format";
+  import { api, runOn } from "../../../lib/api";
   import { formErrors } from "../../../lib/formErrors";
   import { request } from "../../../lib/resourceActions";
   import { menu, tabs } from "../../../lib/resources/zones";
@@ -65,21 +63,14 @@
     error = undefined;
     busy = true;
     const req = request(importAction, zoneId, { zonefile: text })!;
-    const res = await runAction(
-      actionTitle(resourceType(req.path), zone.name, importAction.label),
-      async () => {
-        try {
-          return await api<ActionResult>(project, req.method, req.path, req.body);
-        } catch (err) {
-          const f = formErrors(err, ["zonefile"]);
-          error = f.fields.zonefile ?? f.general;
-          throw err;
-        } finally {
-          busy = false;
-        }
+    const res = await runOn(project, zone.name, importAction.label, req, {
+      onanswer: () => (busy = false),
+      onerror: (err) => {
+        busy = false;
+        const f = formErrors(err, ["zonefile"]);
+        error = f.fields.zonefile ?? f.general;
       },
-      { get: async (id) => (await api<{ action: Action }>(project, "GET", `/actions/${id}`)).action },
-    );
+    });
     if (res === undefined) return;
     text = "";
     load();

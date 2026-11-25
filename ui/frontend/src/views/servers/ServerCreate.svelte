@@ -3,8 +3,8 @@
   import FormPage from "../../lib/FormPage.svelte";
   import LabelsField from "../../lib/LabelsField.svelte";
   import SecretDialog from "../../lib/SecretDialog.svelte";
-  import { runAction, type Action, type ActionResult } from "../../lib/actions";
-  import { api, listAll, runOn } from "../../lib/api";
+  import type { ActionResult } from "../../lib/actions";
+  import { listAll, runApi, runOn } from "../../lib/api";
   import { actionTitle } from "../../lib/format";
   import { formErrors, type FormErrors } from "../../lib/formErrors";
   import { toLabels, type LabelRow } from "../../lib/labels";
@@ -177,14 +177,22 @@
     if (!serverType) errors.fields.server_type = "Choose a type offered in this location.";
     if ("error" in l || Object.keys(errors.fields).length > 0) return;
     busy = true;
+    // Project, name and the backup choice are taken now: the actions run on
+    // after the form has closed, when the props follow the current route.
+    const inProject = project;
+    const serverName = name.trim();
     const withBackups = backups;
     // The answer opens the password or the detail page at once; the toast
     // follows the create action and the start after it.
-    const result = await runAction(
-      actionTitle("Server", name.trim(), "Create"),
-      async () => {
-        try {
-          const res = await api<Created>(project, "POST", "/servers", body(l.labels));
+    const result = await runApi<Created>(
+      inProject,
+      actionTitle("Server", serverName, "Create"),
+      "POST",
+      "/servers",
+      body(l.labels),
+      {
+        onanswer: (res) => {
+          busy = false;
           createdId = res.server.id;
           if (res.root_password) {
             password = res.root_password;
@@ -192,19 +200,16 @@
           } else {
             openDetail();
           }
-          return res;
-        } catch (err) {
-          errors = formErrors(err, known);
-          throw err;
-        } finally {
+        },
+        onerror: (err) => {
           busy = false;
-        }
+          errors = formErrors(err, known);
+        },
       },
-      { get: async (id) => (await api<{ action: Action }>(project, "GET", `/actions/${id}`)).action },
     );
-    const req = request(tabActions.enable_backup, createdId);
-    if (result && withBackups && req) {
-      await runOn(project, name.trim(), tabActions.enable_backup.label, req);
+    const req = result && request(tabActions.enable_backup, result.server.id);
+    if (withBackups && req) {
+      await runOn(inProject, serverName, tabActions.enable_backup.label, req);
     }
   }
 </script>

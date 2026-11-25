@@ -2,9 +2,7 @@
   import Field from "../../lib/Field.svelte";
   import FormPage from "../../lib/FormPage.svelte";
   import LabelsField from "../../lib/LabelsField.svelte";
-  import { runAction, type Action, type ActionResult } from "../../lib/actions";
-  import { api } from "../../lib/api";
-  import { actionTitle, resourceType } from "../../lib/format";
+  import { runOn } from "../../lib/api";
   import { formErrors, type FormErrors } from "../../lib/formErrors";
   import { toLabels, type LabelRow } from "../../lib/labels";
   import { request } from "../../lib/resourceActions";
@@ -47,22 +45,16 @@
       apply_to: applyTo,
     })!;
     busy = true;
-    await runAction(
-      actionTitle(resourceType(req.path), firewallName, "Create"),
-      async () => {
-        try {
-          const res = await api<ActionResult>(project, req.method, req.path, req.body);
-          window.location.hash = list;
-          return res;
-        } catch (err) {
-          errors = formErrors(err, known);
-          throw err;
-        } finally {
-          busy = false;
-        }
+    await runOn(project, firewallName, "Create", req, {
+      onanswer: () => {
+        busy = false;
+        window.location.hash = list;
       },
-      { get: async (id) => (await api<{ action: Action }>(project, "GET", `/actions/${id}`)).action },
-    );
+      onerror: (err) => {
+        busy = false;
+        errors = formErrors(err, known);
+      },
+    });
   }
 </script>
 
