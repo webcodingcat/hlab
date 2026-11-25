@@ -48,6 +48,22 @@ unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 - Cost of change: low
 - Replaces: 2026-11-21 Manual checks and the installer suite move to a last phase in two test VMs
 
+## 2026-11-25 Deadlines for storage applies, jobs and agent commands
+
+- Type: decision
+- Phase: phase 16
+- What: every command the storage agent runs ends after 10 minutes (the error names the command and its duration), hlabd gives up on a storage apply after 30 minutes and on a storage job after 25 minutes (the trim keeps its 5 minutes), and a killed command is waited for at most 5 seconds.
+- Why: a hung `btrfs subvolume sync` held the storage lock for good and left every box action running; the longest legitimate commands (subvolume sync after deleting a large box, quota rescan, fstrim of a large disk) take a few minutes.
+- Cost of change: low
+
+## 2026-11-25 Box removal ends the box's sessions first
+
+- Type: decision
+- Phase: phase 16
+- What: the storage agent's `removeBox` ends the sessions on the box's IP (as a rollback does) before it deletes the subvolume.
+- Why: an smbd child running as root kept a deleted box's share in use while Windows held its connection, so `btrfs subvolume sync` waited without end.
+- Cost of change: low
+
 ## 2026-11-25 Restore recreates the VM of a kept server
 
 - Type: decision
