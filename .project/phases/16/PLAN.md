@@ -155,6 +155,15 @@ fails (CONTEXT.md, "Technical choices").
   - Adjusts: -
   - [x] Take the project as a plain value at submit in every listed place (best through one shared helper the forms use, as `runOn` does), so a create or DNS change still running after the user leaves the project console or switches project follows its action in its own project.
 
+- [ ] 16-18 Storage applies and agent commands with deadlines; the stall after the compaction
+  - Wave: 18 | Depends on: 16-17 | Review: alone
+  - Requirements: SBOX-03, SBOX-08 (box removal), and the storage box actions of SBOX-04, SBOX-12 | Tests: TESTS.md rows of 16-18 (new, written first); `task e2e -- -v -run 'TestE2E/SBOX-'` (after `SBOX-03/compact`) green, then the full `task e2e`
+  - Reads: the 2026-11-25 bug "storage apply hangs after the compaction" under "Findings from manual testing" below; TESTS.md rows of 16-18; `internal/agentclient/agentclient.go`, `storage.go` (`Push`, `Job`, `jobHTTP`); `internal/cloud/storage_life.go` and the callers that hold `storageMu`; `internal/storageagent` (apply, `removeBox`, the command runner, `jobs_linux.go` trim); DECISIONS.md "2026-11-25 Storage VM trims before a compaction"; the e2e log of the hang in the session scratchpad (`f1-sbox.log`)
+  - Size: ~200 lines in 6 files
+  - Adjusts: -
+  - [ ] Every storage apply and job hlabd sends has a deadline (longest legitimate apply plus margin, stated in DECISIONS.md); on expiry the error is logged, `storageMu` is released and the waiting box actions fail with an error instead of staying running. Every command the storage agent runs has a deadline, and an expired one is reported in the apply's error with the command and its duration.
+  - [ ] Reproduce with the storage box rows after `SBOX-03/compact`, read from `hlabd.log` which command stalls, and fix its cause; the storage box rows and then the full `task e2e` are green.
+
 ## Close
 
 Not a plan; the main session does it after 16-02 (CONTEXT.md, "Full end-to-end run"). First, `task e2e` runs in full on the development machine. Then the session writes `phases/16/CHECKS.md` with one entry per check, linking to the guide's sections, and sets `STATUS: MANUAL_CHECK`. The tag `wcc-milestone-1` is set by phase 30 (repository, CI and release v0.1.0, DECISIONS.md "2026-11-25 Repository, CI and releases on GitHub"), the last phase of milestone 1; phase 16 closes with the full `task e2e` and its merge into `main`.

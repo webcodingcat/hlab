@@ -15,6 +15,8 @@
 | UI-09 | a create form or DNS tab that follows its action takes the project at submit: when the route changes to no project or another project while the action runs, the action is still followed in the project it was started in and the toast shows success | unit | ui/frontend/tests/unit/actions.test.ts: UI-09 action follow keeps its project | 16-17 |
 | INST-06 | an upgrade over a running cloud with the tray running and a passive UI (`/passive`) finishes without a files-in-use stop, closes the tray and leaves the service stopped | e2e (elevated) | test/install/install_test.go: TestInstall/INST-06 (extended) | 16-14 |
 | SBOX-03 | after a box with data is deleted and the cloud stops with "Shut the VMs down", the storage VM data disk returns to roughly its size before the data was written | e2e | test/e2e/storagebox_test.go: TestE2E/SBOX-03/compact (serial subtest, new) | 16-15 |
+| SBOX-08 | a storage apply that does not answer within its deadline fails with an error, releases the storage lock and fails the waiting box action instead of leaving it running (fake agent, short deadline) | unit | internal/cloud or internal/agentclient tests: SBOX-08/apply-deadline | 16-18 |
+| SBOX-08 | a storage agent command that does not finish within its deadline is ended and the apply's error names the command and its duration (fake command, short deadline) | unit | internal/storageagent tests: SBOX-08/command-deadline | 16-18 |
 
 Before the 2026-11-25 findings there were no rows: phase 16 has no `unit` or `e2e` requirement: DOC-08 and DOC-07 are
 `manual` and are checked by the user (CHECKS.md). DOC-01 to DOC-06 already
