@@ -118,6 +118,7 @@ Run at this close:
 - 2026-11-25, after the second elevated suite run and Q28: 16-08 (tests 981e0e2, fix bc01e1c: hostnet scripts end with `exit 0`, `runPowerShell` reports stdout and stderr, interactive user) and 16-09 (tests 6b8d4ba, fix e16bbcd: `stopAndWait` waits for START_PENDING and ends the process after 3 min, start deadlines). Package tests, lint and build green; reviews without blockers. `task e2e` runs in full again before the tag; INST-01 to INST-06 are asked again.
 - 2026-11-25, after the third elevated suite run: 16-10 (fe1a6e4: `MSIRESTARTMANAGERCONTROL=Disable`, checked in the built MSI; the harness keeps a failed run's folder and copies `hlabd.log*` before each uninstall). Installer tests, vet and lint green. INST-01 to INST-06 are asked again; INST-05/keep is diagnosed from the kept logs.
 - 2026-11-25, after the fourth elevated suite run: 16-11 (test 3c90a7b, fix 592fb0b: `Restore` recreates a missing VM through `reconcile`; the copied log helper moved to `internal/apitest`). Package tests and lint green. INST-01 to INST-06 are asked again.
+- `task build`, `task test`, `task lint` green and `task e2e -- -v` on 9c578f8+16-08/16-09 (started 11:0x, before 16-10/16-11): 244 passed, `TestE2E/CLI-03/servers` failed once (Ansible "server stopped" answered `locked` while the machine was loaded by parallel package tests) and passed alone afterwards. A full `task e2e` on the final commit is still due before the tag.
 
 ## Findings from manual testing
 
