@@ -4,8 +4,8 @@ Before a milestone is released, HLab is checked on Windows machines that
 look like a user's: a fresh Windows 11 Pro without the history of the
 development machine. Two Hyper-V VMs on the development machine serve for
 this. Each has nested virtualization on, so HLab can run its own VMs
-inside it. This guide says how to set them up by hand and what runs in
-which.
+inside it. This guide says how to set them up with the repository's
+scripts and what runs in which.
 
 ## What runs where
 
@@ -22,16 +22,20 @@ time; set up and use one, shut it down, then the other.
 
 ## Create a test VM
 
-Both VMs are created the same way; only their sizes differ:
+The script `scripts\release-check-vm.ps1` creates a test VM, from nothing
+up to a VM that is off, has Windows 11 Pro with Hyper-V set up and a
+checkpoint `fresh`. Both VMs are created with it; the name decides the
+sizes:
 
-| VM | Name used below | vCPU | Memory (static) | Disk |
+| VM | Name | vCPU | Memory (static) | Disk |
 |---|---|---|---|---|
 | Development test VM | `release-check-dev` | 8 | 24 GB | 200 GB |
-| User test VM | `release-check-user` | 4 to 8 | 16 GB | 150 GB |
+| User test VM | `release-check-user` | 4 (4 to 8 with `-Cpu`) | 16 GB | 150 GB |
 
-The names avoid the prefix `hlab-`, which HLab uses for its own VMs. Run the
-PowerShell commands of this section on the development machine, in an
-administrator PowerShell or as a member of "Hyper-V Administrators".
+The names avoid the prefix `hlab-`, which HLab uses for its own VMs. Run
+the commands of this section on the development machine, in an
+administrator PowerShell; the script refuses to run without elevated
+rights.
 
 ### Get the Windows 11 ISO
 
@@ -44,253 +48,91 @@ ISO; compare it with the downloaded file:
 Get-FileHash C:\VMs\iso\Win11_x64.iso -Algorithm SHA256
 ```
 
-### Create the VM
+### Run the script
 
-Set the first lines to the VM you create, then paste the whole block.
-`$VmRoot` must be on a disk with room for the VM's disk.
+In the repository root, once per VM:
 
 ```powershell
-$Name   = 'release-check-dev'          # or 'release-check-user'
-$Cpu    = 8                            # user test VM: 4 to 8
-$Memory = 24GB                         # user test VM: 16GB
-$Disk   = 200GB                        # user test VM: 150GB
-$Iso    = 'C:\VMs\iso\Win11_x64.iso'
-$VmRoot = 'C:\VMs'
-
-New-VM -Name $Name -Generation 2 -Path $VmRoot -MemoryStartupBytes $Memory `
-  -NewVHDPath "$VmRoot\$Name\$Name.vhdx" -NewVHDSizeBytes $Disk `
-  -SwitchName 'Default Switch'
-Set-VMMemory -VMName $Name -DynamicMemoryEnabled $false
-Set-VMProcessor -VMName $Name -Count $Cpu -ExposeVirtualizationExtensions $true
-Set-VMFirmware -VMName $Name -EnableSecureBoot On -SecureBootTemplate MicrosoftWindows
-Set-VMKeyProtector -VMName $Name -NewLocalKeyProtector
-Enable-VMTPM -VMName $Name
-$dvd = Add-VMDvdDrive -VMName $Name -Path $Iso -Passthru
-Set-VMFirmware -VMName $Name -FirstBootDevice $dvd
-Get-VMIntegrationService -VMName $Name |
-  Where-Object { $_.Id -like '*6C09BB55-D683-4DA0-8931-C9BF705F6480' } |
-  Enable-VMIntegrationService
-Set-VM -Name $Name -AutomaticCheckpointsEnabled $false -AutomaticStopAction ShutDown
+.\scripts\release-check-vm.ps1 -Name release-check-dev -Iso C:\VMs\iso\Win11_x64.iso -Lang de-DE
+.\scripts\release-check-vm.ps1 -Name release-check-user -Iso C:\VMs\iso\Win11_x64.iso -Lang de-DE
 ```
 
-What the block sets and why:
+| Parameter | Meaning |
+|---|---|
+| `-Name` | `release-check-dev` or `release-check-user` (required) |
+| `-Iso` | path of the Windows 11 ISO (required) |
+| `-Lang` | language of the ISO, for example `de-DE` or `en-US` (required); Windows setup stops if it does not match |
+| `-Cpu` | vCPU count; `release-check-user` accepts 4 to 8, `release-check-dev` only 8 |
+| `-VmRoot` | folder for the VM and its disk, default `C:\VMs`; it needs room for the disk |
+| `-User` | name of the local administrator account in the VM, default `tester` |
+
+The script asks for the account's password twice before it creates
+anything. It writes the password in plain text into the answer files, so
+use one for this VM only; the files are deleted before the script ends.
+
+When the script has started the VM, it opens the VM's console. Press a
+key there when it shows "Press any key to boot from CD or DVD"; that is
+the only input setup needs. Then wait: setup installs Windows and
+restarts the VM several times. The script prints a line every 30 seconds
+while it waits and gives up after 90 minutes.
+
+A successful run ends with the line that the VM "is set up, shut down
+and has the checkpoint 'fresh'". Sign in to the VM with the account and
+password you gave.
+
+### What the script does
+
+Each step prints a line `[n/9]`:
+
+1. It stops if a VM of that name exists already; it only creates new VMs.
+2. It creates the VM in `<VmRoot>\<name>` with the settings below.
+3. It writes the answer files to `<VmRoot>\<name>\unattend`, checks that
+   `autounattend.xml` was written, builds `<VmRoot>\<name>\unattend.iso`
+   from them and adds it to the VM as a second DVD. The Windows ISO stays
+   the first boot device.
+4. It opens the console with `vmconnect` and starts the VM.
+5. It waits until Windows answers over PowerShell Direct with the account
+   and Hyper-V's management service runs inside the VM, that is, until
+   setup is done and Hyper-V is enabled.
+6. It empties both DVD drives and deletes the answer folder and its ISO.
+   This step also runs when an earlier step fails or you stop the script
+   with Ctrl+C.
+7. It runs [the subnet check](#check-the-subnet-before-the-first-cloud-start)
+   inside the VM and stops on an overlap.
+8. For `release-check-dev` it copies `scripts\release-check-dev-tools.ps1`
+   to `C:\Temp` in the VM.
+9. It shuts the VM down and takes the checkpoint `fresh`.
+
+The ISO is built with Windows' own image mastering interface (IMAPI), so no
+extra tool is needed.
+
+### The VM settings and why
 
 - Generation 2 with Secure Boot (template `MicrosoftWindows`) and a
   virtual TPM: Windows 11 requires them. The TPM's key protector is bound
   to this development machine; the VM does not start on another host
   without a new one.
 - Static memory: while Hyper-V runs inside a VM, its memory cannot change.
-- `-ExposeVirtualizationExtensions $true` turns on nested virtualization.
+- Nested virtualization (`-ExposeVirtualizationExtensions $true`) is on.
   It can only be set while the VM is off. On an AMD processor the VM's
-  configuration version must be 9.3 or higher; `Get-VM $Name | Select-Object
-  Name, Version` shows it (a Windows 11 host creates 12.x).
+  configuration version must be 9.3 or higher; `Get-VM <name> |
+  Select-Object Name, Version` shows it (a Windows 11 host creates 12.x).
 - "Default Switch" gives the VM internet access through the development
   machine. HLab builds its own switch and NAT inside the VM, as on a real
   machine.
 - The integration service "Guest Service Interface" lets `Copy-VMFile` copy
-  files from the development machine into the VM. The block selects it by
+  files from the development machine into the VM. The script selects it by
   its ID, so it works in any host language.
 - No automatic checkpoints, and the VM shuts down instead of saving its
   state when the development machine shuts down (see
   [Shut a VM down, do not save it](#shut-a-vm-down-do-not-save-it)).
 
-### Install Windows
+### What the answer file does
 
-An answer file runs the whole Windows setup without a question: it wipes
-and partitions the VM's disk, installs Windows 11 Pro, creates a local
-administrator account, skips the setup screens, signs in once by itself,
-enables Hyper-V and restarts. Windows setup reads `autounattend.xml` from
-the root of a DVD, so the block below builds a small ISO with it and adds
-it as a second virtual DVD before the first start.
+The answer file runs the whole Windows setup without a question, in this
+order:
 
-Set `$Lang` to the language of your Windows ISO (for example `'de-DE'` or
-`'en-US'`); setup stops if it does not match. Then paste the block on the
-development machine, with `$Name` and `$VmRoot` as above. It asks for the
-account's password and writes it in plain text into the answer file, so use
-one for this VM only; the folder and the ISO are deleted once Windows is
-set up.
-
-```powershell
-$Lang     = 'en-US'                    # language of the Windows ISO, e.g. 'de-DE'
-$User     = 'tester'
-$Password = Read-Host "Password for the local account $User"
-$Dir      = "$VmRoot\$Name\unattend"
-$UnattendIso = "$VmRoot\$Name\unattend.iso"
-New-Item -ItemType Directory -Force $Dir | Out-Null
-
-$su = $User.Replace("'", "''")
-$sp = $Password.Replace("'", "''")
-$account = @"
-New-LocalUser -Name '$su' -Password (ConvertTo-SecureString '$sp' -AsPlainText -Force) -PasswordNeverExpires
-Add-LocalGroupMember -SID 'S-1-5-32-544' -Member '$su'
-reg.exe add 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Setup\OOBE' /v UnattendCreatedUser /t REG_DWORD /d 1 /f
-"@
-[IO.File]::WriteAllText("$Dir\account.ps1", $account, (New-Object Text.UTF8Encoding $true))
-
-$u = [Security.SecurityElement]::Escape($User)
-$p = [Security.SecurityElement]::Escape($Password)
-@"
-<?xml version="1.0" encoding="utf-8"?>
-<unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
-  <settings pass="windowsPE">
-    <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      <SetupUILanguage>
-        <UILanguage>$Lang</UILanguage>
-      </SetupUILanguage>
-      <InputLocale>$Lang</InputLocale>
-      <SystemLocale>$Lang</SystemLocale>
-      <UILanguage>$Lang</UILanguage>
-      <UserLocale>$Lang</UserLocale>
-    </component>
-    <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      <DiskConfiguration>
-        <Disk wcm:action="add">
-          <DiskID>0</DiskID>
-          <WillWipeDisk>true</WillWipeDisk>
-          <CreatePartitions>
-            <CreatePartition wcm:action="add">
-              <Order>1</Order>
-              <Type>EFI</Type>
-              <Size>100</Size>
-            </CreatePartition>
-            <CreatePartition wcm:action="add">
-              <Order>2</Order>
-              <Type>MSR</Type>
-              <Size>16</Size>
-            </CreatePartition>
-            <CreatePartition wcm:action="add">
-              <Order>3</Order>
-              <Type>Primary</Type>
-              <Extend>true</Extend>
-            </CreatePartition>
-          </CreatePartitions>
-          <ModifyPartitions>
-            <ModifyPartition wcm:action="add">
-              <Order>1</Order>
-              <PartitionID>1</PartitionID>
-              <Format>FAT32</Format>
-              <Label>System</Label>
-            </ModifyPartition>
-            <ModifyPartition wcm:action="add">
-              <Order>2</Order>
-              <PartitionID>2</PartitionID>
-            </ModifyPartition>
-            <ModifyPartition wcm:action="add">
-              <Order>3</Order>
-              <PartitionID>3</PartitionID>
-              <Format>NTFS</Format>
-              <Label>Windows</Label>
-              <Letter>C</Letter>
-            </ModifyPartition>
-          </ModifyPartitions>
-        </Disk>
-      </DiskConfiguration>
-      <ImageInstall>
-        <OSImage>
-          <InstallTo>
-            <DiskID>0</DiskID>
-            <PartitionID>3</PartitionID>
-          </InstallTo>
-        </OSImage>
-      </ImageInstall>
-      <UserData>
-        <ProductKey>
-          <Key>W269N-WFGWX-YVC9B-4J6C9-T83GX</Key>
-          <WillShowUI>OnError</WillShowUI>
-        </ProductKey>
-        <AcceptEula>true</AcceptEula>
-      </UserData>
-    </component>
-  </settings>
-  <settings pass="specialize">
-    <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      <RunSynchronous>
-        <RunSynchronousCommand wcm:action="add">
-          <Order>1</Order>
-          <Path>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "&amp; ('{0}:\account.ps1' -f (Get-Volume -FileSystemLabel UNATTEND).DriveLetter)"</Path>
-        </RunSynchronousCommand>
-      </RunSynchronous>
-    </component>
-  </settings>
-  <settings pass="oobeSystem">
-    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      <InputLocale>$Lang</InputLocale>
-      <SystemLocale>$Lang</SystemLocale>
-      <UILanguage>$Lang</UILanguage>
-      <UserLocale>$Lang</UserLocale>
-    </component>
-    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      <OOBE>
-        <HideEULAPage>true</HideEULAPage>
-        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
-        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
-        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
-        <ProtectYourPC>1</ProtectYourPC>
-      </OOBE>
-      <AutoLogon>
-        <Username>$u</Username>
-        <Password>
-          <Value>$p</Value>
-          <PlainText>true</PlainText>
-        </Password>
-        <Enabled>true</Enabled>
-        <LogonCount>1</LogonCount>
-      </AutoLogon>
-      <FirstLogonCommands>
-        <SynchronousCommand wcm:action="add">
-          <Order>1</Order>
-          <CommandLine>reg.exe add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoLogonCount /t REG_DWORD /d 0 /f</CommandLine>
-        </SynchronousCommand>
-        <SynchronousCommand wcm:action="add">
-          <Order>2</Order>
-          <CommandLine>powershell.exe -NoProfile -Command "Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All -NoRestart"</CommandLine>
-        </SynchronousCommand>
-        <SynchronousCommand wcm:action="add">
-          <Order>3</Order>
-          <CommandLine>shutdown.exe /r /t 0</CommandLine>
-        </SynchronousCommand>
-      </FirstLogonCommands>
-    </component>
-  </settings>
-</unattend>
-"@ | Set-Content -Encoding UTF8 "$Dir\autounattend.xml"
-
-Add-Type -TypeDefinition @'
-using System.IO;
-using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.ComTypes;
-public static class IsoFile {
-  public static void Save(object image, string path) {
-    var s = (IStream)image;
-    var buf = new byte[65536];
-    var read = Marshal.AllocHGlobal(4);
-    try {
-      using (var f = File.Create(path)) {
-        while (true) {
-          s.Read(buf, buf.Length, read);
-          int n = Marshal.ReadInt32(read);
-          if (n == 0) break;
-          f.Write(buf, 0, n);
-        }
-      }
-    } finally { Marshal.FreeHGlobal(read); }
-  }
-}
-'@
-$fsi = New-Object -ComObject IMAPI2FS.MsftFileSystemImage
-$fsi.FileSystemsToCreate = 3
-$fsi.VolumeName = 'UNATTEND'
-$fsi.Root.AddTree($Dir, $false)
-[IsoFile]::Save($fsi.CreateResultImage().ImageStream, $UnattendIso)
-Add-VMDvdDrive -VMName $Name -Path $UnattendIso
-```
-
-The ISO is built with Windows' own image mastering interface (IMAPI), so no
-extra tool is needed. The Windows ISO stays the first boot device.
-
-What the answer file does, in the order setup runs it:
-
-- Setup language, keyboard and region come from `$Lang`, during setup
+- Setup language, keyboard and region come from `-Lang`, during setup
   and in the installed Windows.
 - Disk 0 is wiped and gets the layout a Generation 2 VM boots from: an
   EFI partition of 100 MB (FAT32), a 16 MB reserved partition and the rest
@@ -314,42 +156,66 @@ What the answer file does, in the order setup runs it:
   is an administrator under User Account Control, like on most users'
   machines.
 
-### Start the VM and run setup
+### When the script stops
 
-Start the VM and open its console:
+The script stops at the first error and says why. Before it creates the
+VM, it stops without changing anything when it runs without elevated
+rights, the ISO is missing, `-Cpu` is out of range, the two passwords
+differ or are empty, or the VM exists already.
+
+After the VM exists:
+
+- **Wrong password, or setup takes too long.** While it waits, a line
+  `not reachable: ...` about credentials means the account does not
+  accept the password; stop the script with Ctrl+C. After 90 minutes the
+  script stops by itself. Look at the VM's console, then remove the VM as
+  below and run the script again.
+- **Overlap in the subnet check.** Windows and Hyper-V are set up, but
+  the VM is running and has no checkpoint. Follow
+  [Check the subnet before the first cloud start](#check-the-subnet-before-the-first-cloud-start)
+  until every line says `ok`, then finish by hand on the development
+  machine (the `Copy-VMFile` line only for `release-check-dev`):
+
+  ```powershell
+  Copy-VMFile -Name 'release-check-dev' -SourcePath C:\path\to\hlab\scripts\release-check-dev-tools.ps1 `
+    -DestinationPath C:\Temp\release-check-dev-tools.ps1 -FileSource Host -CreateFullPath -Force
+  Stop-VM -Name 'release-check-dev'
+  Checkpoint-VM -Name 'release-check-dev' -SnapshotName 'fresh'
+  ```
+
+- **Answer files left behind.** If the script cannot delete them, it
+  prints a warning naming them; they hold the password. Remove the answer
+  ISO from the VM and delete the folder and the ISO:
+
+  ```powershell
+  $Name = 'release-check-dev'                  # or 'release-check-user'
+  $Dir  = "C:\VMs\$Name"                       # <VmRoot>\<name>
+  Get-VMDvdDrive -VMName $Name | Where-Object Path -eq "$Dir\unattend.iso" | Remove-VMDvdDrive
+  Remove-Item -Recurse -Force "$Dir\unattend", "$Dir\unattend.iso"
+  ```
+
+To remove a half-built VM and start again, turn it off, remove it and
+delete its folder, which holds its configuration and its disk:
 
 ```powershell
-Start-VM -Name $Name
-vmconnect.exe localhost $Name
+$Name = 'release-check-dev'                    # or 'release-check-user'
+Stop-VM -Name $Name -TurnOff -Force
+Remove-VM -Name $Name -Force
+Remove-Item -Recurse -Force "C:\VMs\$Name"     # <VmRoot>\<name>
 ```
 
-Press a key when the console shows "Press any key to boot from CD or DVD".
-Then wait: setup installs Windows and restarts several times, signs in
-once by itself, enables Hyper-V and restarts again while Hyper-V is set
-up. Setup is done when the console shows the sign-in screen and the VM
-no longer restarts.
+### Enable Hyper-V in the VM
 
-Sign in with the local account. In an administrator PowerShell inside the
-VM, check that Hyper-V is enabled; the line `State` must say `Enabled`:
+The answer file enables Hyper-V, and the script waits for it. To check
+it by hand, run in an administrator PowerShell inside the VM; the line
+`State` must say `Enabled`:
 
 ```powershell
 Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V
 ```
 
-On the development machine, remove both ISOs from the VM and delete the
-answer file folder and its ISO:
-
-```powershell
-Get-VMDvdDrive -VMName $Name | Set-VMDvdDrive -Path $null
-Remove-Item -Recurse "$VmRoot\$Name\unattend", "$VmRoot\$Name\unattend.iso"
-```
-
-### Enable Hyper-V in the VM
-
-The answer file enables Hyper-V; the check in
-[Start the VM and run setup](#start-the-vm-and-run-setup) shows it. If
-`State` is not `Enabled`, nested virtualization is off: shut the VM down,
-check `Get-VMProcessor -VMName $Name | Select-Object
+If it is not `Enabled`, nested virtualization is off: shut the VM down,
+check `Get-VMProcessor -VMName <name> | Select-Object
 ExposeVirtualizationExtensions` on the development machine, and set it
 again while the VM is off. Then enable Hyper-V in an administrator
 PowerShell inside the VM with
@@ -362,8 +228,10 @@ HLab's public range is `198.19.0.0/16`, and its servers use `172.31.1.1`
 as their gateway. The "Default Switch" gives the VM an address from
 `172.16.0.0/12` and may choose another subnet after the development machine
 restarts. If the VM's subnet contains `172.31.1.1` or overlaps
-`198.19.0.0/16`, HLab's addresses inside the VM clash with it. Before the
-first cloud start in each VM, run in a PowerShell inside the VM:
+`198.19.0.0/16`, HLab's addresses inside the VM clash with it. The script
+checks this once; after every restart of the development machine, check
+again before the first cloud start in each VM, in a PowerShell inside the
+VM:
 
 ```powershell
 function Get-IPv4Number([string]$Ip) {
@@ -393,62 +261,61 @@ session by shutting Windows down in the VM, or from the development
 machine:
 
 ```powershell
-Stop-VM -Name $Name
+Stop-VM -Name 'release-check-user'
 ```
 
 Never use `Save-VM` or "Save" in Hyper-V Manager for these VMs.
 
 ### Checkpoint the fresh VM
 
-Once a VM is set up as its section below describes, shut it down and
-take a checkpoint while it is off. Each check run can then start from the
-same clean state:
+The script ends with the checkpoint `fresh` of the VM while it is off.
+Each check run can start again from that clean state; shut the VM down
+first:
 
 ```powershell
-Checkpoint-VM -Name $Name -SnapshotName 'fresh'
-# later, with the VM off, back to the clean state:
-Restore-VMCheckpoint -VMName $Name -Name 'fresh' -Confirm:$false
+Restore-VMCheckpoint -VMName 'release-check-user' -Name 'fresh' -Confirm:$false
+```
+
+For the development test VM, `fresh` comes before its tools. Once the
+tools and the clone below are in, shut it down and take a checkpoint of
+its own, so a later run need not install them again:
+
+```powershell
+Checkpoint-VM -Name 'release-check-dev' -SnapshotName 'tools'
 ```
 
 ## Development test VM
 
-The development test VM runs only the elevated installer suite. It gets
-the tools the suite needs and a clone of the repository, nothing else.
+The development test VM runs only the elevated installer suite. The
+script `release-check-dev-tools.ps1`, which `release-check-vm.ps1` copied
+to `C:\Temp` in the VM, gives it the tools the suite needs and a clone of
+the repository, nothing else.
 
 ### Install the tools
 
-In an administrator PowerShell inside the VM, install the tools with
-winget. The versions must match [Developer setup](setup.md#tools); check
-them with `go version`, `node --version` and `task --version` afterwards.
+Start the VM, sign in, and run in an administrator PowerShell inside it:
 
 ```powershell
-winget install --id Git.Git -e
-winget install --id GoLang.Go -e
-winget install --id OpenJS.NodeJS.LTS -e
-winget install --id Task.Task -e
-winget install --id Microsoft.DotNet.SDK.8 -e
+powershell -ExecutionPolicy Bypass -File C:\Temp\release-check-dev-tools.ps1
 ```
 
-Open a new administrator PowerShell, so the new `PATH` applies, and add
-WiX with its license and extensions, and Wails:
+It installs, and skips each part that is already there:
 
-```powershell
-dotnet tool install --global wix --version 7.0.1
-wix eula accept wix7
-wix extension add -g WixToolset.Util.wixext/7.0.1
-wix extension add -g WixToolset.BootstrapperApplications.wixext/7.0.1
-go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
-```
+- with winget: Git, Go, Node.js LTS, Task and the .NET SDK 8,
+- WiX 7.0.1 with its licence accepted and the extensions
+  `WixToolset.Util.wixext` and `WixToolset.BootstrapperApplications.wixext`,
+- Wails v3.1.0,
+- WSL2 with `Ubuntu-24.04`.
 
-Install WSL2 with Ubuntu, restart, then open "Ubuntu" from the Start menu
-once and create its user:
+It refreshes `PATH` between the steps, so no new terminal is needed, and
+prints the versions of Go, Node.js, Task and WiX at the end; they must
+match [Developer setup](setup.md#tools). If winget is not available yet
+right after the first sign-in, the script says so; wait a few minutes and
+run it again.
 
-```powershell
-wsl --install -d Ubuntu-24.04
-Restart-Computer
-```
-
-The suite needs no hcloud, OpenTofu or Ansible.
+When it has installed WSL2, its last lines ask for a restart: restart the
+VM (`Restart-Computer`), open "Ubuntu" from the Start menu once and create
+its user. The suite needs no hcloud, OpenTofu or Ansible.
 
 ### Bring the repository in
 
@@ -467,13 +334,16 @@ The bundle holds what is committed on `main`, nothing uncommitted.
 while the VM is still booting; wait until Windows shows the sign-in screen
 and run it again.
 
-Inside the VM, compare the hash with the one printed on the development
-machine, then clone:
+Inside the VM, run the script again with the bundle and the printed hash:
 
 ```powershell
-(Get-FileHash C:\Temp\hlab.bundle -Algorithm SHA256).Hash
-git clone -b main C:\Temp\hlab.bundle C:\src\hlab
+powershell -ExecutionPolicy Bypass -File C:\Temp\release-check-dev-tools.ps1 -Bundle C:\Temp\hlab.bundle -Hash <sha256>
 ```
+
+`-Bundle` and `-Hash` go together. The script skips the tools that are
+in, compares the hash, stops if it differs, and clones `main` to
+`C:\src\hlab`; it skips the clone if that folder exists. It ends with
+`All tools are set up.` once WSL2 and Ubuntu are set up as well.
 
 ### Register the service and start the dev cloud once
 

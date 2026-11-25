@@ -3,7 +3,9 @@
 How to build HLab from source, register its development service and run
 it from your working copy. Users install HLab with the setup program that
 `task installer` builds (see [Build and test](build-and-test.md#installers)).
-Before a release, the installers are checked in two Hyper-V test VMs; see
+Before a release, the installers are checked in two Hyper-V test VMs,
+which `scripts\release-check-vm.ps1` and
+`scripts\release-check-dev-tools.ps1` set up; see
 [Release checks](release-checks.md).
 
 ## Tools
