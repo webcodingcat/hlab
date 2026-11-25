@@ -13,7 +13,7 @@
 | UI-09 | every delete of something with a name asks for the typed name; unnamed entries keep the plain confirm (one case per kind of dialog where it is implemented, one resource each to show it is wired in) | unit | ui/frontend/tests/unit/actions.test.ts: UI-09 typed-name delete | 16-13 |
 | UI-12 | creating a storage box from the window follows its action to success without a "project undefined" error | unit | ui/frontend/tests/unit/storageBoxes.test.ts: UI-12 create follows the action | 16-13 |
 | INST-06 | an upgrade over a running cloud with the tray running and a passive UI (`/passive`) finishes without a files-in-use stop, closes the tray and leaves the service stopped | e2e (elevated) | test/install/install_test.go: TestInstall/INST-06 (extended) | 16-14 |
-| SBOX-03 | after a box with data is deleted and the cloud stops with "Shut the VMs down", the storage VM data disk returns to roughly its size before the data was written | e2e | test/e2e: the storage box row that covers the compaction, or SBOX-03 (extended) | 16-15 |
+| SBOX-03 | after a box with data is deleted and the cloud stops with "Shut the VMs down", the storage VM data disk returns to roughly its size before the data was written | e2e | test/e2e/storagebox_test.go: TestE2E/SBOX-03/compact (serial subtest, new) | 16-15 |
 
 Before the 2026-11-25 findings there were no rows: phase 16 has no `unit` or `e2e` requirement: DOC-08 and DOC-07 are
 `manual` and are checked by the user (CHECKS.md). DOC-01 to DOC-06 already
