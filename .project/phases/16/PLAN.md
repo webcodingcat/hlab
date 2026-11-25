@@ -99,7 +99,7 @@ fails (CONTEXT.md, "Technical choices").
 
 - [ ] 16-11 Restore recreates the VM of a kept server
   - Wave: 11 | Depends on: 16-10 | Review: alone
-  - Requirements: INST-05 | Tests: `internal/resources/servers/lifecycle_test.go: TestLifecycle/INST-05/restore-recreates-vm` (new, written first); the other tests of `internal/resources/servers/...` and `internal/cloud/...` (run only); elevated `TestInstall/INST-05/keep` again by the user
+  - Requirements: INST-05 | Tests: `internal/resources/servers/lifecycle_test.go: TestServers/INST-05/restore-recreates-vm` (new, written first); the other tests of `internal/resources/servers/...` and `internal/cloud/...` (run only); elevated `TestInstall/INST-05/keep` again by the user
   - Reads: the 2026-11-25 "bug" entry on INST-05/keep under "Findings from manual testing" below; TESTS.md row of 16-11; `internal/resources/servers/lifecycle.go` (`Restore`), `reconcile.go` (`Reconcile`, `reconcile`), `lifecycle_test.go` (fakes and style); `internal/cloud/lifecycle.go` (`restore`)
   - Size: ~80 lines in 2 files
   - Adjusts: -
