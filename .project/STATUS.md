@@ -10,7 +10,7 @@ STATUS: MANUAL_CHECK
 - Phase: 16 Release checks in test VMs (waits for the manual checks on branch wcc/phase-16), the last phase of milestone 1
 - Base branch: main
 - Last done: backlog phase B4 merged into main (2026-11-24): a network attach right after a boot no longer costs the server its seed ISO (Q26), deleting and pruning snapshots a failed rollback left behind works, the guest hook keeps user netplan settings after a carrier drop, and the network drops after a resume are documented (Q27)
-- Next: /wcc:report with new setup programs in release-check-user for UI-09, INST-06, COMPACT, then INST-05 and DOC-07; /wcc:phase then closes phase 16 (full task e2e) and tags wcc-milestone-1
+- Next: DOC-07 (reading README and guides) with /wcc:report; /wcc:phase then closes phase 16 (full task e2e) and tags wcc-milestone-1
 
 ## Open manual checks
 
@@ -19,7 +19,6 @@ STATUS: MANUAL_CHECK
      phases/<id>/CHECKS.md. /wcc:report walks through them. -->
 
 - DOC-07 (01): README and guides are understandable for their audience, help texts name only existing views and buttons
-- INST-05 (12): uninstalling asks whether to keep the data; with the default answer no file of hlab remains
  uninstalling asks whether to keep the data; with the default answer no file of hlab remains
 - All of them, and those of later phases, are done in phase 16: the suite in the development test VM, the others in the user test VM (SPEC.md "Test VMs for the release checks").
 

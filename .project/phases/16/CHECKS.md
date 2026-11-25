@@ -77,7 +77,7 @@ the development machine at this close (see PLAN.md "Close").
 - Setup: HLab installed in `release-check-user`, after all checks above.
 - Steps: as in the guide section.
 - Expected: the uninstall asks about the data, and with the default answer no HLab file, folder or shortcut remains.
-- Result: open
+- Result: fits (2026-11-25, release-check-user, 0.1.1 with the default answer: checkbox shown unchecked, tray closed, HLab gone from Apps, no file, folder, shortcut, VM or switch left)
 
 ## DOC-07 README and guides are understandable for their audience, help texts name only existing views and buttons
 
