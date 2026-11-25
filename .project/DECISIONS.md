@@ -23,6 +23,14 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-25 Setup bundle uses the hyperlink theme with an empty licence URL
+
+- Type: decision
+- Phase: phase 16
+- What: `installer/Bundle.wxs` sets `Theme="hyperlinkLicense" LicenseUrl=""` with the own theme.xml, which drops its ProgressPassive page so passive runs show the Progress page.
+- Why: with `Theme="none"` WiX 7 writes no wixstdba data and the bundle failed at start (0x80070490); theme.xml derives from the hyperlink theme, and an empty URL hides the licence link.
+- Cost of change: low
+
 ## 2026-11-25 Test VM script waits for the Hyper-V service
 
 - Type: decision

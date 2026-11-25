@@ -53,22 +53,22 @@ fails (CONTEXT.md, "Technical choices").
   - [x] Rewrite "Create a test VM" and "Development test VM" of `docs/development/release-checks.md` around the two scripts as the change entry says, keeping the explanations, the subnet check block for later checks, the anchors other documents link to, and how to clean up a half-built VM or answer ISO.
   - [x] Name the two scripts in `docs/development/setup.md` next to `dev-setup.ps1` if it lists scripts; run `task test -- ./test/docs/...`.
 
-- [ ] 16-06 Setup bundle starts its bootstrapper application
+- [x] 16-06 Setup bundle starts its bootstrapper application
   - Wave: 6 | Depends on: 16-05 | Review: alone
   - Requirements: INST-01 to INST-06 | Tests: `test/e2e/installer_test.go: TestE2E/INST-01` (new, written first); `tools/installer/installer_test.go` (existing, run only); `task e2e:elevated` runs again in the development test VM by the user
   - Reads: the 2026-11-25 "bug" entry on the setup bundle under "Findings from manual testing" below; TESTS.md row INST-01; `installer/Bundle.wxs`, `installer/theme.xml`, `installer/theme.wxl`; `tools/installer/main.go` (`wixBuild`, `-out`); `test/install/harness_test.go` `buildFrontend`, `buildSetup` (how a bundle is built into a temporary folder); `test/e2e/e2e_test.go` (how a row is registered and logged); `.project/phases/12/RESEARCH.md` around line 151 (the wrong `Theme="none"` advice); WiX 7 bal documentation for `WixStandardBootstrapperApplication/@Theme` (via the `researcher` if needed)
   - Size: ~120 lines in 4 files
   - Adjusts: -
-  - [ ] Test first: `TestE2E/INST-01` builds the installers of one version with `go run ./tools/installer -out <temp> <version>` (the frontend is built by `task build` before `task e2e`; build it if `ui/frontend/dist` is missing, as the install harness does), runs the bundle with `/layout <temp>\layout /quiet /log <temp>\layout.log` under a deadline, and fails with the log's `e000` lines when the exit code is not 0 or the log has an `e000` line. It fails on the current bundle with 0x80070490.
-  - [ ] Fix `installer/Bundle.wxs`: a built-in `Theme` value that keeps the own `ThemeFile` and `LocalizationFile` (the experiment used `Theme="hyperlinkLicense" LicenseUrl=""`; choose the value the WiX 7 documentation gives for a custom theme, with no visible licence link unless theme.xml shows one), and give the duplicated controls `OverallProgressPackageText` and `OverallCalculatedProgressbar` in `installer/theme.xml` unique names or remove the duplicates as the WiX standard theme does, so the layout log has no `e000` line. Keep what each page shows.
+  - [x] Test first: `TestE2E/INST-01` builds the installers of one version with `go run ./tools/installer -out <temp> <version>` (the frontend is built by `task build` before `task e2e`; build it if `ui/frontend/dist` is missing, as the install harness does), runs the bundle with `/layout <temp>\layout /quiet /log <temp>\layout.log` under a deadline, and fails with the log's `e000` lines when the exit code is not 0 or the log has an `e000` line. It fails on the current bundle with 0x80070490.
+  - [x] Fix `installer/Bundle.wxs`: a built-in `Theme` value that keeps the own `ThemeFile` and `LocalizationFile` (the experiment used `Theme="hyperlinkLicense" LicenseUrl=""`; choose the value the WiX 7 documentation gives for a custom theme, with no visible licence link unless theme.xml shows one), and give the duplicated controls `OverallProgressPackageText` and `OverallCalculatedProgressbar` in `installer/theme.xml` unique names or remove the duplicates as the WiX standard theme does, so the layout log has no `e000` line. Keep what each page shows.
 
-- [ ] 16-07 Documentation: script calls and the elevated suite with -v
+- [x] 16-07 Documentation: script calls and the elevated suite with -v
   - Wave: 7 | Depends on: 16-06 | Review: alone
   - Requirements: DOC-08 | Tests: `test/docs/docs_test.go: TestDocs/DOC-04`, `TestDocs/DOC-06` (existing, run only)
   - Reads: the 2026-11-25 "bug" entry on the execution policy and the "minor" entry on `-v` under "Findings from manual testing" below; `docs/development/release-checks.md`; `docs/development/setup.md`; `docs/development/build-and-test.md` "Elevated installer suite"
   - Size: ~30 lines in 3 files
   - Adjusts: -
-  - [ ] Call every repository script the guides tell the reader to run with `powershell -ExecutionPolicy Bypass -File`, with one sentence why; document the elevated suite as `task e2e:elevated -- -v`; if 16-06 changed what the setup programs show, nothing else changes in the guides.
+  - [x] Call every repository script the guides tell the reader to run with `powershell -ExecutionPolicy Bypass -File`, with one sentence why; document the elevated suite as `task e2e:elevated -- -v`; if 16-06 changed what the setup programs show, nothing else changes in the guides.
 
 ## Close
 
@@ -79,6 +79,7 @@ Run at this close:
 - `task e2e -- -v` (all) on 5d50341 after the fix: PASS, 246 passed, 69 min (limit 120m stays). `task test` and `task lint` green on 5d50341.
 - CHECKS.md written; the phase waits for the manual checks in the test VMs.
 - 2026-11-25, after /wcc:report: 16-04 (6e6adbd, da395ed, review fix a4af7ec) and 16-05 (30f89c3) built the test VM scripts and the guide around them; both scripts parse without errors and PSScriptAnalyzer reports no error, `task test -- ./test/docs/...` green. No product code changed, so `task e2e` did not run again. DOC-08 is asked again.
+- 2026-11-25, after the elevated suite failed in the development test VM: 16-06 (test afb27aa, fix 96bdfdb and 5ca5b79: `Theme="hyperlinkLicense" LicenseUrl=""`, ProgressPassive page dropped) and 16-07 (157598b: script calls with `-ExecutionPolicy Bypass`, suite with `-v`). `TestE2E/INST-01` passes, `task test -- ./tools/installer/...`, lint and build green, `TestDocs` green. Product code changed, so `task e2e` runs in full again before the tag; INST-01 to INST-06 are asked again.
 
 ## Findings from manual testing
 
