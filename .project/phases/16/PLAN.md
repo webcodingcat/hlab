@@ -88,14 +88,14 @@ fails (CONTEXT.md, "Technical choices").
   - [x] `stopAndWait` (used by `StopService` and service removal): a START_PENDING service is waited for with a deadline until it is Running and then stopped; a service still pending after the deadline has its process ended (by its PID from the service status), so `uninstall-cleanup` can remove the service and delete its log; keep the existing stop deadline for Running and STOP_PENDING. The fake service manager goes behind a small interface in the package, not into the product's public API.
   - [x] The cloud start gets deadlines for its steps after the API has started (agent document push, server reconcile and whatever else the code waits on there) and an overall start deadline, so a start that cannot finish fails with a logged error and a teardown; record in DECISIONS.md which step hung if a reproduction or the code shows it. If a fix would change when the service reports Running, stop and report it instead of building it (open decision).
 
-- [ ] 16-10 Upgrade leaves the service stopped; the installer suite keeps the logs of a failed run
+- [x] 16-10 Upgrade leaves the service stopped; the installer suite keeps the logs of a failed run
   - Wave: 10 | Depends on: 16-09 | Review: alone
   - Requirements: INST-06, INST-01 to INST-06 (harness) | Tests: existing elevated row `test/install: TestInstall/INST-06` (run again by the user in the development test VM); `go vet -tags e2einstall ./test/install/...` compiles the harness
   - Reads: the 2026-11-25 "bug" entries on INST-06 (Restart Manager) and on the test harness under "Findings from manual testing" below; `installer/Package.wxs` (custom actions, upgrade); `test/install/harness_test.go` (`TestMain`, `run`, `teardown`, `uninstall`), `test/install/install_test.go` (where `uninstall` is called); Windows Installer documentation of `MSIRESTARTMANAGERCONTROL`
   - Size: ~60 lines in 3 files
   - Adjusts: -
-  - [ ] Set `MSIRESTARTMANAGERCONTROL` in `installer/Package.wxs` so Windows Installer neither shuts down nor restarts the service; build with `task installer VERSION=0.0.9` and check with a quick MSI query (e.g. PowerShell `WindowsInstaller.Installer` COM) that the property is in the built MSI; delete the build output afterwards.
-  - [ ] In the harness, keep the run's folder when any test failed, and copy the release `hlabd.log*` into it before each uninstall; the teardown line names the folder.
+  - [x] Set `MSIRESTARTMANAGERCONTROL` in `installer/Package.wxs` so Windows Installer neither shuts down nor restarts the service; build with `task installer VERSION=0.0.9` and check with a quick MSI query (e.g. PowerShell `WindowsInstaller.Installer` COM) that the property is in the built MSI; delete the build output afterwards.
+  - [x] In the harness, keep the run's folder when any test failed, and copy the release `hlabd.log*` into it before each uninstall; the teardown line names the folder.
 
 ## Close
 
@@ -108,6 +108,7 @@ Run at this close:
 - 2026-11-25, after /wcc:report: 16-04 (6e6adbd, da395ed, review fix a4af7ec) and 16-05 (30f89c3) built the test VM scripts and the guide around them; both scripts parse without errors and PSScriptAnalyzer reports no error, `task test -- ./test/docs/...` green. No product code changed, so `task e2e` did not run again. DOC-08 is asked again.
 - 2026-11-25, after the elevated suite failed in the development test VM: 16-06 (test afb27aa, fix 96bdfdb and 5ca5b79: `Theme="hyperlinkLicense" LicenseUrl=""`, ProgressPassive page dropped) and 16-07 (157598b: script calls with `-ExecutionPolicy Bypass`, suite with `-v`). `TestE2E/INST-01` passes, `task test -- ./tools/installer/...`, lint and build green, `TestDocs` green. Product code changed, so `task e2e` runs in full again before the tag; INST-01 to INST-06 are asked again.
 - 2026-11-25, after the second elevated suite run and Q28: 16-08 (tests 981e0e2, fix bc01e1c: hostnet scripts end with `exit 0`, `runPowerShell` reports stdout and stderr, interactive user) and 16-09 (tests 6b8d4ba, fix e16bbcd: `stopAndWait` waits for START_PENDING and ends the process after 3 min, start deadlines). Package tests, lint and build green; reviews without blockers. `task e2e` runs in full again before the tag; INST-01 to INST-06 are asked again.
+- 2026-11-25, after the third elevated suite run: 16-10 (fe1a6e4: `MSIRESTARTMANAGERCONTROL=Disable`, checked in the built MSI; the harness keeps a failed run's folder and copies `hlabd.log*` before each uninstall). Installer tests, vet and lint green. INST-01 to INST-06 are asked again; INST-05/keep is diagnosed from the kept logs.
 
 ## Findings from manual testing
 

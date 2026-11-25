@@ -23,6 +23,14 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-25 MSI without Restart Manager
+
+- Type: decision
+- Phase: phase 16
+- What: `installer/Package.wxs` sets `MSIRESTARTMANAGERCONTROL=Disable`, so only the old product's `hlabd stop-service` stops the service during an upgrade and nothing starts it again.
+- Why: in the release checks the service was running again after a quiet upgrade, most likely restarted by the Restart Manager; INST-06 expects it stopped.
+- Cost of change: low
+
 ## 2026-11-25 Uninstall ends a service stuck in its start
 
 - Type: decision
