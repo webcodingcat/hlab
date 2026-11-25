@@ -1,0 +1,79 @@
+# Release of hlab: on a pushed tag vX.Y.Z, build the MSI and the setup
+# bundle with that version and publish them with SHA256SUMS.txt as the
+# GitHub release vX.Y.Z. It runs no tests; CI must be green on the tagged
+# commit before the tag is pushed (see docs/development/releasing.md).
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check the version of the tag
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          if ($version -notmatch '^([0-9]+)\.([0-9]+)\.([0-9]+)$') {
+            Write-Output "::error::Tag $env:GITHUB_REF_NAME is not of the form vX.Y.Z."
+            exit 1
+          }
+          $limits = @(255, 255, 65535)
+          $names = @('major', 'minor', 'patch')
+          for ($i = 0; $i -lt 3; $i++) {
+            $n = [bigint]$Matches[$i + 1]
+            if ($n -gt $limits[$i]) {
+              Write-Output "::error::Tag $env:GITHUB_REF_NAME is no valid MSI version: $($names[$i]) must be at most $($limits[$i])."
+              exit 1
+            }
+          }
+          "VERSION=$version" >> $env:GITHUB_ENV
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/frontend/package-lock.json
+      - uses: go-task/setup-task@v2
+        with:
+          version: 3.54.0
+      - name: Install WiX 7.0.1
+        run: |
+          dotnet tool install --global wix --version 7.0.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Join-Path $env:USERPROFILE '.dotnet\tools' >> $env:GITHUB_PATH
+      - name: Add the WiX extensions
+        run: |
+          wix extension add -g WixToolset.Util.wixext/7.0.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          wix extension add -g WixToolset.BootstrapperApplications.wixext/7.0.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build the installers
+        run: task installer VERSION=$env:VERSION
+      - name: Write SHA256SUMS.txt
+        run: |
+          $files = @("hlab-$env:VERSION.msi", "hlab-setup-$env:VERSION.exe")
+          $lines = foreach ($name in $files) {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path 'bin' $name)).Hash.ToLowerInvariant()
+            "$hash  $name`n"
+          }
+          $path = Join-Path (Get-Location) 'bin\SHA256SUMS.txt'
+          [IO.File]::WriteAllText($path, -join $lines, [Text.UTF8Encoding]::new($false))
+          Get-Content -LiteralPath $path
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$env:GITHUB_REF_NAME" "bin/hlab-$env:VERSION.msi" "bin/hlab-setup-$env:VERSION.exe" bin/SHA256SUMS.txt --title "$env:GITHUB_REF_NAME" --verify-tag --generate-notes
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
