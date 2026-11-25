@@ -452,3 +452,18 @@ this file; it keeps the details for looking things up.
          INST-05, UI-09, LIFE-05, DOC-07 and those of later phases) pass
          there.
       Stops for: manual check.
+
+- [x] 30 Repository and CI.
+      Requirements: REL-01, REL-02, REL-03.
+      Depends on: 16; it is the last phase of milestone 1.
+      Success criteria:
+      1. `webcodingcat/hlab` exists on GitHub as a private repository with
+         `LICENSE` (Apache-2.0), README and documentation, and holds the
+         history of `main` unchanged; the user makes it public.
+      2. A push to `main` runs the CI workflow on a Windows runner and it
+         is green, including the installer build.
+      3. `.github/workflows/release.yml` builds and publishes a release
+         for a tag `vX.Y.Z`; the phase pushes no version tag. The first
+         release v0.1.0 is made by `/wcc:release` from `main`. README and
+         `docs/development/releasing.md` describe installing from
+         releases and making a release.
