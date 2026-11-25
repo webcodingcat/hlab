@@ -322,13 +322,26 @@ function Wait-WindowsSetup([pscredential]$Credential) {
     $started = Get-Date
     $deadline = $started + $SetupDeadline
     while ($true) {
+        # The Hyper-V management service exists only once the feature is
+        # enabled and the final restart is done; reading it needs no
+        # elevated token.
         $state = 'not reachable yet'
         try {
             $state = Invoke-Command -VMName $Name -Credential $Credential -ErrorAction Stop -ScriptBlock {
-                [string](Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V).State
+                $vmms = Get-Service -Name vmms -ErrorAction SilentlyContinue
+                if (-not $vmms) {
+                    'not enabled yet'
+                } elseif ($vmms.Status -eq 'Running') {
+                    'Enabled'
+                } else {
+                    "service vmms $($vmms.Status)"
+                }
             }
         } catch {
-            $state = 'not reachable yet'
+            $message = $_.Exception.Message
+            if ($message -match 'credential|password|access|denied|logon|user name') {
+                $state = "not reachable: $message"
+            }
         }
         $minutes = [int]((Get-Date) - $started).TotalMinutes
         if ($state -eq 'Enabled') {
@@ -339,6 +352,9 @@ function Wait-WindowsSetup([pscredential]$Credential) {
             throw "Windows setup did not finish within $([int]$SetupDeadline.TotalMinutes) minutes (last state: $state). Look at the VM's console."
         }
         Write-Host "    $minutes min: Windows setup running, Hyper-V $state"
+        if ($state -like 'not reachable: *') {
+            Write-Host '    If the password is wrong, stop the script (Ctrl+C) and remove the VM; the answer files are deleted on exit.'
+        }
         Start-Sleep -Seconds $PollInterval
     }
 }
