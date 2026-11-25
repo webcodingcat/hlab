@@ -10,7 +10,7 @@ STATUS: MANUAL_CHECK
 - Phase: 16 Release checks in test VMs (waits for the manual checks on branch wcc/phase-16), the last phase of milestone 1
 - Base branch: main
 - Last done: backlog phase B4 merged into main (2026-11-24): a network attach right after a boot no longer costs the server its seed ISO (Q26), deleting and pruning snapshots a failed rollback left behind works, the guest hook keeps user netplan settings after a carrier drop, and the network drops after a resume are documented (Q27)
-- Next: set up the two test VMs with scripts\release-check-vm.ps1 (docs/development/release-checks.md), then /wcc:report walks through the checks in phases/16/CHECKS.md; /wcc:phase then closes phase 16 and tags wcc-milestone-1
+- Next: the test VMs are set up; /wcc:report walks through the checks in phases/16/CHECKS.md; /wcc:phase then closes phase 16 and tags wcc-milestone-1
 
 ## Open manual checks
 
@@ -25,7 +25,6 @@ STATUS: MANUAL_CHECK
 - INST-05 (12): uninstalling asks whether to keep the data; with the default answer no file of hlab remains
 - UI-09 (14): the example environment can be created and deleted by hand in the console
 - COMPACT (19): a deleted box gives its space on the host back after a cloud stop (data.vhdx compaction)
-- DOC-08 (16): the guide describes both test VMs, and they are set up by it
 - NAMES (16): the appliance shows its name `hlab-appliance` after the first cloud start in the user test VM
 - INST-06 (16): an update from 0.1.0 to 0.1.1 in the user test VM keeps project, server and settings, and the server answers over SSH
 - All of them, and those of later phases, are done in phase 16: the suite in the development test VM, the others in the user test VM (SPEC.md "Test VMs for the release checks").

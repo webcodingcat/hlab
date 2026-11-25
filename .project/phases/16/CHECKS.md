@@ -13,7 +13,7 @@ the development machine at this close (see PLAN.md "Close").
 - Setup: the official Windows 11 ISO; Hyper-V on the development machine. Claude can check the commands against the machine on request, but runs neither script and creates neither VM.
 - Steps: 1. Run `scripts\release-check-vm.ps1` for `release-check-dev` and for `release-check-user` as "Create a test VM" says, pressing a key for "boot from CD or DVD" when asked. 2. Wait until each run ends with the checkpoint `fresh`.
 - Expected: each run ends without an error; both VMs boot Windows 11 Pro with nested Hyper-V enabled, the subnet check inside passes, no answer ISO is left attached, and each VM is off with a checkpoint `fresh`; any step that differed is reported with `/wcc:report` so the guide or the script is corrected.
-- Result: open
+- Result: fits (2026-11-25: both VMs set up by `release-check-vm.ps1`; the development test VM also has its tools and the bundle from `release-check-dev-tools.ps1`)
 
 ## INST-01 to INST-06 The elevated installer suite passes in the development test VM
 

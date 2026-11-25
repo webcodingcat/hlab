@@ -41,9 +41,9 @@ unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
 ## 2026-11-25 Test VM account created in the specialize pass
 
-- Type: assumption
+- Type: decision
 - Phase: phase 16
-- What: the answer file creates the local account with a script in the specialize pass that adds it to Administrators by SID S-1-5-32-544 and sets `UnattendCreatedUser`, so OOBE asks for no account; the first real install in a test VM confirms it (fallback: `<Group>Administrators</Group>` in LocalAccounts).
+- What: the answer file creates the local account with a script in the specialize pass that adds it to Administrators by SID S-1-5-32-544 and sets `UnattendCreatedUser`, so OOBE asks for no account; confirmed by the first real install of both test VMs on 2026-11-25.
 - Why: `<Group>` needs the group's localized name, which depends on the ISO language.
 - Cost of change: low
 
