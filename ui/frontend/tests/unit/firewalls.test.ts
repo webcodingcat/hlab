@@ -62,7 +62,7 @@ test.describe("UI-02 firewalls", () => {
       want: { method: "POST", path: fw("remove_from_resources"), body: { remove_from: [selector] } },
       confirm: "plain",
     },
-    { name: "delete", ref: { menu: "Delete" }, want: { method: "DELETE", path: `/firewalls/${id}` }, confirm: "plain" },
+    { name: "delete", ref: { menu: "Delete" }, want: { method: "DELETE", path: `/firewalls/${id}` }, confirm: "typed-name" },
   ];
   for (const c of cases) test(c.name, () => check(mod, c));
 });

@@ -128,7 +128,7 @@ test.describe("UI-02 zones", () => {
       ref: { tab: "rrset_delete" },
       input: rrSet,
       want: { method: "DELETE", path: rr },
-      confirm: "plain",
+      confirm: "typed-name",
     },
   ];
   for (const c of cases) test(c.name, () => check(mod, c));

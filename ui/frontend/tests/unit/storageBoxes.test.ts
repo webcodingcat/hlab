@@ -1,9 +1,12 @@
 // Unit tests of the storage box action modules: every entry of the box,
 // subaccount and snapshot modules calls the right endpoint with the right
 // body and carries the right confirmation; the types offered per location,
-// the snapshot plan body and the snapshots a rollback deletes. They need no
-// browser.
+// the snapshot plan body and the snapshots a rollback deletes; creating a box
+// follows its action through a fake bridge transport. They need no browser.
 import { test, expect } from "@playwright/test";
+import { setTransport } from "@wailsio/runtime";
+import { get } from "svelte/store";
+import { toasts } from "../../src/lib/toast";
 import * as boxes from "../../src/lib/resources/storageBoxes";
 import * as subaccounts from "../../src/lib/resources/storageBoxSubaccounts";
 import * as snapshots from "../../src/lib/resources/storageBoxSnapshots";
@@ -198,7 +201,7 @@ test.describe("UI-13 subaccounts", () => {
       ref: { tab: "delete" },
       input: { subaccount: sub },
       want: { method: "DELETE", path: sa },
-      confirm: "plain",
+      confirm: "typed-name",
     },
   ];
   for (const c of cases) test(c.name, () => check(subMod, c));
@@ -228,7 +231,7 @@ test.describe("UI-13 snapshots", () => {
       ref: { tab: "delete" },
       input: { snapshot: snap },
       want: { method: "DELETE", path: sn },
-      confirm: "plain",
+      confirm: "typed-name",
     },
     {
       name: "rollback",
@@ -304,5 +307,46 @@ test.describe("UI-13 plan and rollback", () => {
     test(c.name, () => {
       expect(snapshots.newerThan(list, c.target).map((x) => x.id)).toEqual(c.want);
     });
+  }
+});
+
+test("UI-12 create follows the action", async () => {
+  // A fake bridge: Service.Call answers the management API of project "demo";
+  // any other project is unknown, as the management API answers it.
+  const seen: string[] = [];
+  const box = { id: 3, name: "box-a", status: "initializing" };
+  setTransport({
+    call: async (_object: unknown, _method: unknown, _window: unknown, call: { args: [string, string, string] }) => {
+      const [method, path] = call.args;
+      seen.push(`${method} ${path}`);
+      const project = path.split("/")[2];
+      if (project !== "demo") {
+        return { status: 404, body: { error: { code: "not_found", message: `project ${project} not found` } } };
+      }
+      if (method === "POST" && path === "/projects/demo/api/hetzner/v1/storage_boxes") {
+        return { status: 201, body: { storage_box: box, action: { id: 77, command: "create", status: "running", progress: 0, error: null } } };
+      }
+      if (method === "GET" && /\/actions\/77$/.test(path)) {
+        return { status: 200, body: { action: { id: 77, command: "create", status: "success", progress: 100, error: null } } };
+      }
+      return { status: 404, body: { error: { code: "not_found", message: `no route ${method} ${path}` } } };
+    },
+  });
+  try {
+    const { createStorageBox } = await import("../../src/views/storage-boxes/createStorageBox");
+    await createStorageBox("demo", {
+      name: "box-a",
+      location: "fsn1",
+      storage_box_type: "bx11",
+      password: "Secret-Pass-123!",
+      labels: {},
+    });
+    const toast = get(toasts).find((t) => t.title === "Storage Box box-a: Create");
+    expect(toast?.message ?? "").not.toContain("undefined");
+    expect(toast?.kind).toBe("success");
+    expect(seen.some((r) => r.startsWith("GET ") && r.endsWith("/actions/77"))).toBe(true);
+    expect(seen.filter((r) => r.includes("undefined"))).toEqual([]);
+  } finally {
+    setTransport(null);
   }
 });

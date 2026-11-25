@@ -1,10 +1,18 @@
 // Unit tests of the action polling: waitAction follows one action until it
 // ends, runAction runs a request under a progress toast and waits for its
-// action and every next action. They need no browser.
+// action and every next action; and which entries confirm a delete with the
+// typed name. They need no browser.
 import { test, expect } from "@playwright/test";
 import { get } from "svelte/store";
 import { ActionError, runAction, waitAction, type Action, type Poll } from "../../src/lib/actions";
 import { toasts, type Toast } from "../../src/lib/toast";
+import type { Confirm } from "../../src/lib/resourceActions";
+import * as floatingIps from "../../src/lib/resources/floatingIps";
+import * as networks from "../../src/lib/resources/networks";
+import * as storageBoxSnapshots from "../../src/lib/resources/storageBoxSnapshots";
+import * as volumes from "../../src/lib/resources/volumes";
+import { tabActions } from "../../src/lib/serverActions";
+import { entry } from "./resourceTable";
 
 function act(id: number, status: Action["status"], progress: number, error: Action["error"] = null): Action {
   return { id, command: "poweroff", status, progress, error };
@@ -109,4 +117,34 @@ test.describe("UI-02 polling", () => {
     expect(last?.kind).toBe("error");
     expect(last?.message).toBe("conflict: server is locked");
   });
+});
+
+// Every delete of something with a name asks for the typed name; entries
+// without a name of their own and destructive actions other than delete keep
+// the plain confirm. One case per kind of confirm entry, one resource each.
+test.describe("UI-09 typed-name delete", () => {
+  const cases: { name: string; confirm: () => Confirm | undefined; want: Confirm }[] = [
+    {
+      name: "resource delete from the actions menu",
+      confirm: () => entry(floatingIps, { menu: "Delete" }).confirm,
+      want: "typed-name",
+    },
+    {
+      name: "delete of a named sub-entry in a detail tab",
+      confirm: () => entry({ menu: [], tabs: storageBoxSnapshots.tabs }, { tab: "delete" }).confirm,
+      want: "typed-name",
+    },
+    { name: "delete of a server's snapshot or backup", confirm: () => tabActions.delete_image?.confirm, want: "typed-name" },
+    {
+      name: "delete of an entry without a name",
+      confirm: () => entry(networks, { tab: "delete_subnet" }).confirm,
+      want: "plain",
+    },
+    {
+      name: "destructive action other than delete",
+      confirm: () => entry(volumes, { menu: "Detach" }).confirm,
+      want: "plain",
+    },
+  ];
+  for (const c of cases) test(c.name, () => expect(c.confirm()).toBe(c.want));
 });

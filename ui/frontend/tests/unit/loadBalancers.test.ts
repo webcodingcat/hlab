@@ -176,7 +176,7 @@ test.describe("UI-02 load balancers", () => {
       want: { method: "POST", path: la("change_protection"), body: { delete: true } },
       confirm: "none",
     },
-    { name: "delete", ref: { menu: "Delete" }, want: { method: "DELETE", path: `/load_balancers/${id}` }, confirm: "plain" },
+    { name: "delete", ref: { menu: "Delete" }, want: { method: "DELETE", path: `/load_balancers/${id}` }, confirm: "typed-name" },
   ];
   for (const c of cases) test(c.name, () => check(mod, c));
 });
