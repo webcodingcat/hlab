@@ -27,6 +27,30 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-25 First push and CI wait run in the close of phase 30
+
+- Type: decision
+- Phase: phase 30
+- What: Repository creation, secret scan, push of `main` and the wait for green CI (5 min to appear, 45 min for the result, at most three repair rounds) are the "Close" section of phase 30's PLAN.md, run by the main session after the merge.
+- Why: pushing is the main session's job and the documentation plan has to stay last.
+- Cost of change: low
+
+## 2026-11-25 Test fixtures in the history allowed by .gitleaksignore
+
+- Type: decision
+- Phase: phase 30
+- What: Secrets gitleaks finds in the history that are provably test fixtures or example values are listed by fingerprint in `.gitleaksignore` with file and reason; any other finding stops the push.
+- Why: the history holds fake keys (test certificates, research examples) and is pushed unchanged.
+- Cost of change: low
+
+## 2026-11-25 OpenAPI pins renewed for CI
+
+- Type: decision
+- Phase: phase 30
+- What: Phase 30 re-pins `api/openapi.lock` and `api/hetzner-openapi.lock` to the descriptions Hetzner publishes now and fixes what newly fails; CI caches the files keyed on the pins and fails with a clear pin message when Hetzner changes them again.
+- Why: the old pinned files are no longer published or archived anywhere and may not be committed, so a fresh runner could not get them (user's answer to Q1 of phase 30).
+- Cost of change: low
+
 ## 2026-11-25 Releases through /wcc:release, phases do not push
 
 - Type: change
