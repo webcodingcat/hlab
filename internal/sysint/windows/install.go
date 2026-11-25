@@ -29,8 +29,29 @@ const serviceSDDL = "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDW
 const (
 	preshutdownTimeout = 180 * time.Second
 	interactiveUsers   = "*S-1-5-4"
-	uninstallStopWait  = preshutdownTimeout + 20*time.Second
 )
+
+// The waits of stopAndWait; variables so tests can shorten them.
+var (
+	// uninstallStopWait bounds the wait for a stopping service.
+	uninstallStopWait = preshutdownTimeout + 20*time.Second
+	// startPendingWait bounds the wait for a starting service to run, so
+	// that it can be stopped; its process is ended after it.
+	startPendingWait = 3 * time.Minute
+	// stopPoll is the interval between two queries of the service.
+	stopPoll = time.Second
+)
+
+// endProcess ends the process pid; stopAndWait uses it for a service that
+// is still starting after startPendingWait.
+var endProcess = func(pid uint32) error {
+	h, err := xwin.OpenProcess(xwin.PROCESS_TERMINATE, false, pid)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = xwin.CloseHandle(h) }()
+	return xwin.TerminateProcess(h, 1)
+}
 
 // Installer registers the service of the current profile. It
 // needs administrator rights.
@@ -274,33 +295,74 @@ func withService(f func(s *mgr.Service, name string) error) error {
 	return f(s, name)
 }
 
+// serviceHandle is the part of a service manager entry stopAndWait uses.
+type serviceHandle interface {
+	Query() (svc.Status, error)
+	Control(c svc.Cmd) (svc.Status, error)
+}
+
 // stopAndWait stops the service in state st unless it is stopped and waits
-// up to uninstallStopWait until it has stopped.
-func stopAndWait(ctx context.Context, s *mgr.Service, name string, st svc.Status) error {
+// up to uninstallStopWait until it has stopped. A starting service, which
+// refuses the stop, is waited for up to startPendingWait until it runs and
+// then stopped; if it is still starting then, its process is ended.
+func stopAndWait(ctx context.Context, s serviceHandle, name string, st svc.Status) error {
+	if st.State == svc.StartPending {
+		var err error
+		if st, err = waitUntil(ctx, s, name, func(st svc.State) bool { return st != svc.StartPending }, startPendingWait); err != nil {
+			return err
+		}
+		if st.State == svc.StartPending {
+			if st.ProcessId == 0 {
+				return fmt.Errorf("service %s still starting after %s and its process is unknown", name, startPendingWait)
+			}
+			if err := endProcess(st.ProcessId); err != nil {
+				return fmt.Errorf("end process %d of service %s, still starting after %s: %w", st.ProcessId, name, startPendingWait, err)
+			}
+			return waitStopped(ctx, s, name)
+		}
+	}
 	if st.State == svc.Stopped {
 		return nil
 	}
 	if st.State != svc.StopPending {
 		if _, err := s.Control(svc.Stop); err != nil {
+			if errors.Is(err, xwin.ERROR_SERVICE_NOT_ACTIVE) {
+				return nil
+			}
 			return fmt.Errorf("stop service %s: %w", name, err)
 		}
 	}
-	deadline := time.Now().Add(uninstallStopWait)
+	return waitStopped(ctx, s, name)
+}
+
+// waitStopped waits up to uninstallStopWait until the service has stopped.
+func waitStopped(ctx context.Context, s serviceHandle, name string) error {
+	st, err := waitUntil(ctx, s, name, func(st svc.State) bool { return st == svc.Stopped }, uninstallStopWait)
+	if err != nil {
+		return err
+	}
+	if st.State != svc.Stopped {
+		return fmt.Errorf("service %s did not stop within %s", name, uninstallStopWait)
+	}
+	return nil
+}
+
+// waitUntil queries the service every stopPoll until done is true for its
+// state or wait has passed, and returns its last status.
+func waitUntil(ctx context.Context, s serviceHandle, name string, done func(svc.State) bool, wait time.Duration) (svc.Status, error) {
+	deadline := time.Now().Add(wait)
 	for {
 		st, err := s.Query()
 		if err != nil {
-			return fmt.Errorf("query service %s: %w", name, err)
+			return st, fmt.Errorf("query service %s: %w", name, err)
 		}
-		if st.State == svc.Stopped {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("service %s did not stop within %s", name, uninstallStopWait)
+		if done(st.State) || time.Now().After(deadline) {
+			return st, nil
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Second):
+			return st, ctx.Err()
+		case <-time.After(stopPoll):
 		}
 	}
 }
