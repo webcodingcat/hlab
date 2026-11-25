@@ -4,7 +4,6 @@ package storageagent
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -178,17 +177,15 @@ func (a *Agent) subvolumes(ctx context.Context) (map[string]string, error) {
 // hasFilesystem reports whether dev carries any signature blkid knows;
 // blkid exits with 2 when it finds none.
 func hasFilesystem(ctx context.Context, dev string) (bool, error) {
-	ctx, cancel := commandContext(ctx)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "blkid", "-p", "-o", "value", "-s", "TYPE", dev).Output()
+	out, _, err := runIO(ctx, nil, "blkid", "-p", "-o", "value", "-s", "TYPE", dev)
 	var ee *exec.ExitError
 	if errors.As(err, &ee) && ee.ExitCode() == 2 {
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("blkid %s: %w", dev, err)
+		return false, err
 	}
-	return len(bytes.TrimSpace(out)) > 0, nil
+	return strings.TrimSpace(out) != "", nil
 }
 
 // format makes the btrfs filesystem without the TRIM of the whole device
@@ -678,14 +675,8 @@ func setPasswords(ctx context.Context, doc agentapi.Storage, skipped map[string]
 	if in.Len() == 0 {
 		return nil
 	}
-	ctx, cancel := commandContext(ctx)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "chpasswd", "-e")
-	cmd.Stdin = strings.NewReader(in.String())
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("chpasswd: %w: %s", err, bytes.TrimSpace(out))
-	}
-	return nil
+	_, _, err = runIO(ctx, strings.NewReader(in.String()), "chpasswd", "-e")
+	return err
 }
 
 // applySSHD writes conf as the sshd configuration and reloads sshd when

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 	"time"
@@ -24,49 +25,68 @@ var commandTimeout = 10 * time.Minute
 // run returns without it.
 const commandWaitGrace = 5 * time.Second
 
-// commandContext returns ctx bounded by commandTimeout, for a command not
-// started through run.
-func commandContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(ctx, commandTimeout)
-}
-
 // run executes a command and returns its output; on failure the error
 // carries the command's output. A command that does not finish within
 // commandTimeout (or ctx) is killed, and the error names it and how long
 // it ran. Never pass a secret as an argument.
 func run(ctx context.Context, name string, args ...string) (string, error) {
-	cctx, cancel := commandContext(ctx)
-	defer cancel()
-	type result struct {
-		out []byte
-		err error
+	var out bytes.Buffer
+	err := runBounded(ctx, nil, &out, &out, out.Bytes, name, args...)
+	if errors.Is(err, errNotExited) {
+		return "", err
 	}
-	done := make(chan result, 1)
+	return out.String(), err
+}
+
+// runIO executes a command like run, with stdin and its standard output
+// and standard error apart. On failure the error carries only the
+// standard error, so a standard output that may hold a secret stays with
+// the caller.
+func runIO(ctx context.Context, stdin io.Reader, name string, args ...string) (stdout, stderr string, err error) {
+	var o, e bytes.Buffer
+	err = runBounded(ctx, stdin, &o, &e, e.Bytes, name, args...)
+	if errors.Is(err, errNotExited) {
+		return "", "", err
+	}
+	return o.String(), e.String(), err
+}
+
+// errNotExited marks a command killed at its deadline whose process did
+// not exit within commandWaitGrace; its output buffers may still be
+// written to and must not be read.
+var errNotExited = errors.New("the process did not exit")
+
+// runBounded runs the command with stdin, stdout and stderr under
+// commandTimeout (or ctx) and commandWaitGrace; detail returns the output
+// an error carries and is only called once the command has exited. The
+// command's exit error stays wrapped, so callers can read its exit code.
+func runBounded(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, detail func() []byte, name string, args ...string) error {
+	cctx, cancel := context.WithTimeout(ctx, commandTimeout)
+	defer cancel()
+	done := make(chan error, 1)
 	start := time.Now()
 	cmd := exec.CommandContext(cctx, name, args...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
 	cmd.WaitDelay = commandWaitGrace
-	go func() {
-		out, err := cmd.CombinedOutput()
-		done <- result{out, err}
-	}()
+	go func() { done <- cmd.Run() }()
 	line := strings.TrimSpace(name + " " + strings.Join(args, " "))
-	var r result
+	var err error
 	select {
-	case r = <-done:
+	case err = <-done:
 	case <-cctx.Done():
 		select {
-		case r = <-done:
+		case err = <-done:
 		case <-time.After(commandWaitGrace):
-			return "", fmt.Errorf("%s: not finished after %v, the process did not exit: %w",
-				line, time.Since(start).Round(time.Millisecond), cctx.Err())
+			return fmt.Errorf("%s: not finished after %v, %w: %w",
+				line, time.Since(start).Round(time.Millisecond), errNotExited, cctx.Err())
 		}
 	}
-	if r.err != nil {
-		if cerr := cctx.Err(); cerr != nil && !errors.Is(r.err, cerr) {
-			return string(r.out), fmt.Errorf("%s: ended after %v: %w (%v): %s",
-				line, time.Since(start).Round(time.Millisecond), cerr, r.err, bytes.TrimSpace(r.out))
+	if err != nil {
+		if cerr := cctx.Err(); cerr != nil && !errors.Is(err, cerr) {
+			return fmt.Errorf("%s: ended after %v: %w (%w): %s",
+				line, time.Since(start).Round(time.Millisecond), cerr, err, bytes.TrimSpace(detail()))
 		}
-		return string(r.out), fmt.Errorf("%s: %w: %s", line, r.err, bytes.TrimSpace(r.out))
+		return fmt.Errorf("%s: %w: %s", line, err, bytes.TrimSpace(detail()))
 	}
-	return string(r.out), nil
+	return nil
 }
