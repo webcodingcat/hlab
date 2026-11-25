@@ -298,13 +298,19 @@ func sftpPath(p string) string {
 	return `"` + filepath.ToSlash(p) + `"`
 }
 
-// randomFile writes size random bytes into a new file of dir.
-func randomFile(t *testing.T, dir, name string, size int) string {
+// randomFile streams size random bytes into a new file of dir.
+func randomFile(t *testing.T, dir, name string, size int64) string {
 	t.Helper()
-	b := make([]byte, size)
-	_, _ = rand.Read(b)
 	p := filepath.Join(dir, name)
-	if err := os.WriteFile(p, b, 0o600); err != nil {
+	out, err := os.Create(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.CopyN(out, rand.Reader, size); err != nil {
+		_ = out.Close()
+		t.Fatal(err)
+	}
+	if err := out.Close(); err != nil {
 		t.Fatal(err)
 	}
 	return p
@@ -491,7 +497,7 @@ func testSBOX03Compact(t *testing.T) {
 
 	disk := filepath.Join(dataFolder(), "storage", "data.vhdx")
 	before := fileSize(t, disk)
-	src := randomFileOfSize(t, t.TempDir(), "compact.bin", compactData)
+	src := randomFile(t, t.TempDir(), "compact.bin", compactData)
 	if r, err := hostSFTP(owner, fmt.Sprintf("put %s compact.bin\n", sftpPath(src))); err != nil {
 		t.Fatalf("sftp put compact.bin: %v\n%s", err, r)
 	}
@@ -523,22 +529,4 @@ func fileSize(t *testing.T, path string) int64 {
 		t.Fatal(err)
 	}
 	return fi.Size()
-}
-
-// randomFileOfSize streams size random bytes into a new file of dir.
-func randomFileOfSize(t *testing.T, dir, name string, size int64) string {
-	t.Helper()
-	p := filepath.Join(dir, name)
-	out, err := os.Create(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := io.CopyN(out, rand.Reader, size); err != nil {
-		_ = out.Close()
-		t.Fatal(err)
-	}
-	if err := out.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return p
 }

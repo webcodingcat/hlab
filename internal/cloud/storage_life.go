@@ -221,9 +221,6 @@ func (c *Cloud) haltStorage(ctx context.Context, behaviour string, hostShutdown 
 // space of deleted data. A failure is only logged: the VM still shuts down
 // and the compaction reclaims what was discarded.
 func (c *Cloud) trimStorage(ctx context.Context) {
-	if c.storage == nil {
-		return
-	}
 	tctx, cancel := context.WithTimeout(ctx, storageTrimTimeout)
 	defer cancel()
 	start := time.Now()
