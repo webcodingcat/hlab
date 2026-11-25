@@ -23,7 +23,6 @@ STATUS: MANUAL_CHECK
 - INST-05 (12): uninstalling asks whether to keep the data; with the default answer no file of hlab remains
 - UI-09 (14): the example environment can be created and deleted by hand in the console
 - COMPACT (19): a deleted box gives its space on the host back after a cloud stop (data.vhdx compaction)
-- NAMES (16): the appliance shows its name `hlab-appliance` after the first cloud start in the user test VM
 - INST-06 (16): an update from 0.1.0 to 0.1.1 in the user test VM keeps project, server and settings, and the server answers over SSH
 - All of them, and those of later phases, are done in phase 16: the suite in the development test VM, the others in the user test VM (SPEC.md "Test VMs for the release checks").
 

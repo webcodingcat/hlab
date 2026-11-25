@@ -37,7 +37,7 @@ the development machine at this close (see PLAN.md "Close").
 - Setup: HLab 0.1.0 installed by INST-03, the cloud started once.
 - Steps: as in the guide section.
 - Expected: Hyper-V Manager in the VM lists `hlab-appliance`, and its console shows `hlab-appliance login:`. The storage VM's name is checked within COMPACT.
-- Result: open
+- Result: fits (2026-11-25, release-check-user)
 
 ## UI-09 The example environment can be created and deleted by hand in the console (with the DOC-07 help texts)
 
