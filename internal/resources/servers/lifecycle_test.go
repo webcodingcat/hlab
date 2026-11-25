@@ -1,12 +1,9 @@
 package servers_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"log/slog"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -206,7 +203,7 @@ func testLifecycle(t *testing.T) {
 			}
 		}
 
-		logs := captureDefaultLog(t)
+		logs := apitest.CaptureLog(t)
 		p.FailNext("CreateVM", &platform.Error{Kind: platform.Failed, Op: "CreateVM", Err: errors.New("create refused")})
 		n := len(p.Calls())
 		if err := lc.Restore(lifeCtx(t), "shutdown"); err != nil {
@@ -267,34 +264,6 @@ func testLifecycle(t *testing.T) {
 	})
 }
 
-// logBuffer is a log destination safe for concurrent writes.
-type logBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (b *logBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.Write(p)
-}
-
-func (b *logBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.String()
-}
-
-// captureDefaultLog sends the default logger, at debug level, to a buffer
-// until t ends. A test using it must not run in parallel.
-func captureDefaultLog(t *testing.T) *logBuffer {
-	t.Helper()
-	buf := &logBuffer{}
-	old := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	t.Cleanup(func() { slog.SetDefault(old) })
-	return buf
-}
 
 func shortHalt(d *servers.Deps) { d.HaltTimeout = haltTimeout }
 

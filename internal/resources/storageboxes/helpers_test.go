@@ -1,12 +1,10 @@
 package storageboxes_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/netip"
 	"slices"
@@ -679,31 +677,3 @@ func doRaw(t *testing.T, e *boxEnv, method, path string, body any) (int, string)
 	return resp.StatusCode, string(data)
 }
 
-// logBuffer collects log output written from several goroutines.
-type logBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (b *logBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.Write(p)
-}
-
-func (b *logBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.String()
-}
-
-// captureLog sends the default logger, at debug level, to a buffer until
-// t ends. A test using it must not run in parallel.
-func captureLog(t *testing.T) *logBuffer {
-	t.Helper()
-	buf := &logBuffer{}
-	old := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	t.Cleanup(func() { slog.SetDefault(old) })
-	return buf
-}
