@@ -45,7 +45,7 @@ the development machine at this close (see PLAN.md "Close").
 - Setup: as in the guide section (project `demo` with an SSH key).
 - Steps: as in the guide section, opening "?" in the views it passes.
 - Expected: every resource of the example environment can be created and deleted in the console, and each help text names only views and buttons that exist.
-- Result: open (asked again after the fixes of 2026-11-25; previous run: 2026-11-25, release-check-user: the walk-through worked to the end and the help texts fit; findings: default location, hidden server types, attach/assign in the row menus, typed name for every delete)
+- Result: fits (2026-11-25, release-check-user from the checkpoint fresh with the rebuilt 0.1.0: default location, server types, state-dependent row entries, typed-name deletes, storage box create toast and help texts checked; the full walk-through fitted earlier the same day)
 
 ## INST-06 An update over an older version keeps settings and state
 
