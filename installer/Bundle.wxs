@@ -31,11 +31,13 @@
     <!-- Launch runs in the unelevated BA process, never as an MSI action.
          Theme names the built-in theme the own theme.xml is derived from
          (HyperlinkTheme); ThemeFile and LocalizationFile replace its files.
-         Theme="hyperlinkLicense" writes no wixstdba data into the BA manifest and the
-         bundle fails at start with 0x80070490. No LicenseUrl: the licence
-         link and checkbox of the Install page stay hidden. -->
+         Theme="none" writes no wixstdba data into the BA manifest and the
+         bundle fails at start with 0x80070490. The hyperlink themes require
+         LicenseUrl; it is empty, so the licence link and checkbox of the
+         Install page stay hidden. -->
     <BootstrapperApplication>
       <bal:WixStandardBootstrapperApplication Theme="hyperlinkLicense"
+                                              LicenseUrl=""
                                               ThemeFile="$(sys.SOURCEFILEDIR)theme.xml"
                                               LocalizationFile="$(sys.SOURCEFILEDIR)theme.wxl"
                                               SuppressOptionsUI="yes"
