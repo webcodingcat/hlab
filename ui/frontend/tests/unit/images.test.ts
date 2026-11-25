@@ -27,7 +27,7 @@ test.describe("UI-02 images", () => {
       want: { method: "POST", path: `/images/${id}/actions/change_protection`, body: { delete: true } },
       confirm: "none",
     },
-    { name: "delete", ref: { menu: "Delete" }, want: { method: "DELETE", path: `/images/${id}` }, confirm: "plain" },
+    { name: "delete", ref: { menu: "Delete" }, want: { method: "DELETE", path: `/images/${id}` }, confirm: "typed-name" },
   ];
   for (const c of cases) test(c.name, () => check(mod, c));
 });

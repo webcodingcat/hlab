@@ -81,7 +81,7 @@ test("UI-02 volumes", async ({ page, shared }) => {
 
     // Delete needs the name typed and removes it from the list and the API.
     await section(page, "Volumes");
-    await deleteRow(page, name, true);
+    await deleteRow(page, name);
     await expect.poll(async () => (await api(token, `/volumes/${created.id}`)).status, { timeout: 2 * 60_000 }).toBe(404);
   } finally {
     // A running action of the server or its volume locks it for a while.

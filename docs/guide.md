@@ -167,7 +167,9 @@ tokens and Certificates. Every page needs the running cloud. The lists of
 all sections work alike: the search field takes a name or a label
 selector such as `env=dev`, the row menu (`…`) holds the quick actions, a
 click on a row opens the detail page with its actions menu and tabs, and
-each page's `?` button explains it. The paragraph "In the window" under
+each page's `?` button explains it. Deleting or removing anything with a
+name, in a row menu or an actions menu, asks you to type that name, as
+the dialog shows it. The paragraph "In the window" under
 each resource below names what its section offers.
 
 Every create form and every **Labels** tab takes labels as chips. Type
@@ -182,8 +184,10 @@ remove it, or double-click it to edit it.
   `env=dev`. The row menu (`…`) powers a server on, shuts it down,
   reboots, resets, powers it off, opens its console or deletes it.
 - **Create server** opens a form in the order of the Hetzner Console:
-  location, image (system images, snapshots and backups), type, public
-  and private networking, SSH keys, volumes, firewalls, backups,
+  location (preset to the one with the lowest ID), image (system images,
+  snapshots and backups), type (every x86 type of the location, one
+  deprecated there marked "(deprecated)"), public and private
+  networking, SSH keys, volumes, firewalls, backups,
   placement group, labels, cloud config and name. A server without SSH
   keys gets a root password, shown once with a copy button.
 - A click on a server opens its detail page. The `…` menu next to its name
@@ -202,9 +206,9 @@ remove it, or double-click it to edit it.
   front. Closing the window ends the connection, and quitting the tray
   program closes all console windows. The window works whether or not
   the HLab CA is trusted.
-- Power off, reset, rebuild, change type, enable rescue, restoring and
-  deleting a backup or snapshot ask for confirmation; deleting a server
-  needs its name typed. A root password that **Reset root password**,
+- Power off, reset, rebuild, change type, enable rescue and restoring a
+  backup or snapshot ask for confirmation; deleting a server, backup or
+  snapshot needs its name typed. A root password that **Reset root password**,
   a rebuild, a restore or enabling rescue returns shows once in the same
   dialog as at creation.
 - **SSH Keys** lists the keys with their fingerprints. **Add SSH key**
@@ -378,8 +382,9 @@ first free `volume-<n>`), the **Server** the volume is attached to and
 whose location it gets, the **Mount options** **Automatic** or
 **Manual**, the **Filesystem** ext4 or xfs, and labels. The window always
 creates a volume for a server; create one without a server with hcloud
-(`--location` instead of `--server`). **Detach** and
-**Delete** are in the row menu; a volume's page shows the Linux device
+(`--location` instead of `--server`). The row menu offers **Attach** for
+a detached volume, **Detach** for an attached one, and **Delete**; a
+volume's page shows the Linux device
 path with a copy button, and its actions menu offers **Rename**,
 **Resize**, **Attach**, **Detach**, **Change protection** and **Delete**.
 
@@ -467,8 +472,9 @@ the address reaches web2; web1 needs no change.
 In the window, **Create primary IP** and **Create floating IP** ask for
 a location or a server to assign the address to at once, the protocol,
 the name and labels; a primary IP also for **Auto delete**, which deletes
-it with its server and which its page switches on and off. **Unassign**
-and **Delete** are in the row menu. An IP's actions menu offers
+it with its server and which its page switches on and off. The row menu
+offers **Assign** for an unassigned IP, **Unassign** for an assigned one,
+and **Delete**. An IP's actions menu offers
 **Rename**, **Assign**, **Unassign**, **Reverse DNS**, **Change protection** and
 **Delete**; **Assign** offers only the servers the address can move to.
 
@@ -820,8 +826,11 @@ NT_STATUS_ACCESS_DENIED opening remote file \notes.txt
 The share of the read-only subaccount refuses the write. The server
 speaks SMB 2.1 and newer; `smbclient -L` does not list the shares.
 
-From Windows, in PowerShell or cmd, `net use` maps a share without a
-drive letter; the box (or subaccount) must be reachable externally:
+From Windows the box (or subaccount) must be reachable externally. To
+open a share in Explorer, press Win+R, enter
+`\\u100011.storagebox.hetzner.internal\backup` and sign in with the
+box's user name and password. In PowerShell or cmd, `net use` maps a
+share without a drive letter, and `Copy-Item` copies into it:
 
 ```
 > net use \\u100011.storagebox.hetzner.internal\backup Secret-Passw0rd /user:u100011 /persistent:no

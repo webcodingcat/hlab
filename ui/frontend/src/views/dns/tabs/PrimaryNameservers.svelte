@@ -2,9 +2,7 @@
   import { Plus, X } from "@lucide/svelte";
   import { untrack } from "svelte";
   import Button from "../../../lib/Button.svelte";
-  import { runAction, type Action, type ActionResult } from "../../../lib/actions";
-  import { api } from "../../../lib/api";
-  import { actionTitle, resourceType } from "../../../lib/format";
+  import { runOn } from "../../../lib/api";
   import { formErrors } from "../../../lib/formErrors";
   import { request } from "../../../lib/resourceActions";
   import { tabs } from "../../../lib/resources/zones";
@@ -55,21 +53,14 @@
       }));
     const req = request(action, zone.id, { primary_nameservers })!;
     busy = true;
-    const res = await runAction(
-      actionTitle(resourceType(req.path), zone.name, action.label),
-      async () => {
-        try {
-          return await api<ActionResult>(project, req.method, req.path, req.body);
-        } catch (err) {
-          const f = formErrors(err, ["primary_nameservers"]);
-          error = f.fields.primary_nameservers ?? f.general;
-          throw err;
-        } finally {
-          busy = false;
-        }
+    const res = await runOn(project, zone.name, action.label, req, {
+      onanswer: () => (busy = false),
+      onerror: (err) => {
+        busy = false;
+        const f = formErrors(err, ["primary_nameservers"]);
+        error = f.fields.primary_nameservers ?? f.general;
       },
-      { get: async (id) => (await api<{ action: Action }>(project, "GET", `/actions/${id}`)).action },
-    );
+    });
     if (res !== undefined) onchanged();
   }
 </script>

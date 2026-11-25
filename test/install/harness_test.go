@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -74,7 +75,7 @@ func TestMain(m *testing.M) {
 
 func run(m *testing.M) (code int, err error) {
 	defer func() {
-		if terr := teardown(); terr != nil && err == nil {
+		if terr := teardown(code != 0 || err != nil); terr != nil && err == nil {
 			err = terr
 		}
 	}()
@@ -171,7 +172,10 @@ func refuseRelease(ctx context.Context) error {
 	return nil
 }
 
-func teardown() error {
+// teardown uninstalls the release and starts the dev cloud again; the run's
+// folder with the setup, MSI and service logs stays when failed is set or
+// the teardown itself fails.
+func teardown(failed bool) error {
 	ctx := context.Background()
 	var errs []error
 	if len(harness.setups) == 2 {
@@ -192,7 +196,7 @@ func teardown() error {
 			errs = append(errs, err)
 		}
 	}
-	if harness.tmp != "" && len(errs) == 0 {
+	if harness.tmp != "" && !failed && len(errs) == 0 {
 		_ = os.RemoveAll(harness.tmp)
 	} else if harness.tmp != "" {
 		logf("teardown: the logs of this run stay in %s", harness.tmp)
@@ -604,7 +608,8 @@ type burnRun struct {
 	log string
 }
 
-// runBundle runs the bundle of version quietly with a log and a deadline.
+// runBundle runs the bundle of version quietly with a log and a deadline;
+// "/passive" among args replaces "/quiet" (progress, no prompts).
 func runBundle(ctx context.Context, version, what string, args ...string) (burnRun, error) {
 	exe, ok := harness.setups[version]
 	if !ok {
@@ -614,7 +619,10 @@ func runBundle(ctx context.Context, version, what string, args ...string) (burnR
 	base := fmt.Sprintf("%02d-%s-%s", harness.logSeq, what, version)
 	logFile := filepath.Join(harness.tmp, base+".log")
 	logf("running %s %s (log %s)", filepath.Base(exe), strings.Join(args, " "), logFile)
-	args = append(args, "/quiet", "/norestart", "/log", logFile)
+	if !slices.Contains(args, "/passive") {
+		args = append(args, "/quiet")
+	}
+	args = append(args, "/norestart", "/log", logFile)
 	r, err := command(ctx, 30*time.Minute, "", exe, args...)
 	run := burnRun{result: r, log: readLogs(filepath.Join(harness.tmp, base+"*.log"))}
 	if err != nil && r.ExitCode <= 0 {
@@ -658,9 +666,9 @@ func tail(s string) string {
 }
 
 // install runs the bundle of version on a machine without hlab or with an
-// older version and expects success.
-func install(ctx context.Context, version string) (burnRun, error) {
-	r, err := runBundle(ctx, version, "install")
+// older version and expects success; args go to the bundle (e.g. "/passive").
+func install(ctx context.Context, version string, args ...string) (burnRun, error) {
+	r, err := runBundle(ctx, version, "install", args...)
 	harness.installGen++
 	if err != nil {
 		return r, err
@@ -684,6 +692,7 @@ func uninstall(ctx context.Context, keep bool) error {
 		args = append(args, "KeepData=1")
 		what = "uninstall-keep"
 	}
+	saveServiceLogs(what, v)
 	r, err := runBundle(ctx, v, what, args...)
 	if err != nil {
 		return err
@@ -695,6 +704,18 @@ func uninstall(ctx context.Context, keep bool) error {
 		fix = nil
 	}
 	return nil
+}
+
+// saveServiceLogs copies the release hlabd.log* into the run's folder before
+// an uninstall removes them, numbered like the Burn log that follows.
+func saveServiceLogs(what, version string) {
+	files, _ := filepath.Glob(filepath.Join(releaseDataDir(), "logs", "hlabd.log*"))
+	dir := filepath.Join(harness.tmp, fmt.Sprintf("%02d-%s-%s-hlabd", harness.logSeq+1, what, version))
+	for _, f := range files {
+		if err := copyFile(f, filepath.Join(dir, filepath.Base(f))); err != nil {
+			logf("copying %s: %v", f, err)
+		}
+	}
 }
 
 // ensureInstalled brings the machine to exactly version installed; a newer

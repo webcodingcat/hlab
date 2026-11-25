@@ -3,6 +3,10 @@
 How to build HLab from source, register its development service and run
 it from your working copy. Users install HLab with the setup program that
 `task installer` builds (see [Build and test](build-and-test.md#installers)).
+Before a release, the installers are checked in two Hyper-V test VMs,
+which `scripts\release-check-vm.ps1` and
+`scripts\release-check-dev-tools.ps1` set up; see
+[Release checks](release-checks.md).
 
 ## Tools
 
@@ -54,8 +58,12 @@ machine, after the first build, in an administrator PowerShell in the
 repository:
 
 ```powershell
-.\scripts\dev-setup.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-setup.ps1
 ```
+
+A fresh Windows does not run script files under its default execution
+policy; `-ExecutionPolicy Bypass` lifts that for this one call only and
+changes no setting.
 
 The script runs `bin\hlabd.exe install --dev`, which
 
@@ -84,7 +92,8 @@ removes the host routes, NAT, DNS and firewall rules tagged `hlab-dev`,
 deletes the VMs `hlab-dev-appliance` and `hlab-dev-server-<n>` and the
 switch `hlab-dev`, and deletes `%ProgramData%\hlab-dev`. `--keep-data`
 keeps the data folder. It prints a `note:` line for what it skipped (for
-example the CA in WSL with nobody logged on at the console) and exits
+example the CA in WSL with no interactive user, that is nobody at the
+console and none or several active Remote Desktop sessions) and exits
 non-zero naming each object it could not remove.
 
 ## Profiles

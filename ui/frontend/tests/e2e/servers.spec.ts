@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, env, tableRow, api } from "./fixtures";
+import { test, expect, env, tableRow, api, confirmTyped } from "./fixtures";
 import { newProject, openConsole, section, helpOpens, menuAction } from "./console";
 
 type Server = { id: number; name: string; status: string };
@@ -120,11 +120,7 @@ test("UI-02 servers", async ({ page }) => {
 
     // Delete needs the name typed and removes the server from the list and the API.
     await menuAction(page, "Delete");
-    dialog = page.getByRole("dialog");
-    const confirm = dialog.getByRole("button", { name: "Delete", exact: true });
-    await expect(confirm).toBeDisabled();
-    await dialog.getByRole("textbox").fill(renamed);
-    await confirm.click();
+    await confirmTyped(page, "Delete", renamed);
     await expect(page.getByRole("heading", { level: 1, name: "Servers", exact: true })).toBeVisible({ timeout: 2 * 60_000 });
     await expect(tableRow(page, renamed)).toBeHidden({ timeout: 2 * 60_000 });
     await expect.poll(() => serverStatus(project.token, id), { timeout: 5 * 60_000 }).toBe("status 404");

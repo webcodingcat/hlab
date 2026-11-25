@@ -3,6 +3,7 @@ package servers_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -170,7 +171,99 @@ func testLifecycle(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("INST-05/restore-recreates-vm", func(t *testing.T) {
+		p := newRecPlatform()
+		p.diskFileBytes = 1 // the kept disks exist as files
+		env, mod, _ := newFakeEnv(t, p, shortHalt)
+		lc := lifecycleOf(t, mod)
+
+		type kept struct {
+			id     int64
+			vm     string
+			disk   string
+			status string
+		}
+		var all []kept
+		for _, c := range []struct{ name, status string }{
+			{"run-a", "running"}, {"off-a", "off"}, {"run-b", "running"}, {"off-b", "off"},
+		} {
+			id := createdServer(t, env, c.name, nil)
+			vm := vmName(t, p.Fake)
+			if c.status == "off" {
+				runAction(t, env, id, "poweroff", nil)
+			}
+			all = append(all, kept{id: id, vm: vm, disk: systemDisk(t, p, vm), status: c.status})
+		}
+
+		// A KeepData uninstall removed the VMs; state and disks stay.
+		for _, s := range all {
+			if err := p.DeleteVM(context.Background(), s.vm); err != nil {
+				t.Fatalf("delete VM %s as an uninstall does: %v", s.vm, err)
+			}
+		}
+
+		logs := apitest.CaptureLog(t)
+		p.FailNext("CreateVM", &platform.Error{Kind: platform.Failed, Op: "CreateVM", Err: errors.New("create refused")})
+		n := len(p.Calls())
+		if err := lc.Restore(lifeCtx(t), "shutdown"); err != nil {
+			t.Fatalf("Restore with one failing reconcile: %v", err)
+		}
+		calls := p.Calls()[n:]
+
+		creates := callsIn(calls, "CreateVM")
+		if len(creates) == 0 {
+			t.Fatal("Restore made no CreateVM call for the servers without a VM")
+		}
+		failed := creates[0].VM
+		if failed == "" {
+			failed = vmSpec(t, creates[0]).Name
+		}
+		if d := callsIn(calls, "CreateDisk"); len(d) != 0 {
+			t.Errorf("Restore created %d new disks, want none (the disks are kept)", len(d))
+		}
+		if d := callsIn(calls, "CreateChildDisk"); len(d) != 0 {
+			t.Errorf("Restore created %d new child disks, want none (the disks are kept)", len(d))
+		}
+		if !strings.Contains(logs.String(), "create refused") {
+			t.Errorf("the failed reconcile of VM %s is not in the log:\n%s", failed, logs.String())
+		}
+
+		restored := 0
+		for _, s := range all {
+			if s.vm == failed {
+				continue
+			}
+			restored++
+			want := platform.StateOff
+			if s.status == "running" {
+				want = platform.StateRunning
+			}
+			wantVMState(t, p.Fake, s.vm, want)
+			if got := systemDisk(t, p, s.vm); got != s.disk {
+				t.Errorf("system disk of the recreated VM %s: %s, want the kept %s", s.vm, got, s.disk)
+			}
+			if s.status == "off" {
+				if got := powerOps(calls, s.vm); len(got) != 0 {
+					t.Errorf("power calls on the recreated VM %s of an off server: %v, want none", s.vm, got)
+				}
+			}
+		}
+		if restored != len(all)-1 {
+			t.Errorf("servers restored after the failed one: %d, want %d", restored, len(all)-1)
+		}
+		tickWatch(t, mod)
+		for _, s := range all {
+			if s.vm == failed {
+				continue
+			}
+			if got := getServer(t, env, s.id).Status; got != s.status {
+				t.Errorf("server %d status after Restore: %q, want %q", s.id, got, s.status)
+			}
+		}
+	})
 }
+
 
 func shortHalt(d *servers.Deps) { d.HaltTimeout = haltTimeout }
 

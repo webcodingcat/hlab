@@ -98,7 +98,7 @@ export const tabs: Record<string, ResourceAction> = {
     label: "Delete",
     method: "DELETE",
     path: rrsetPath,
-    confirm: "plain",
+    confirm: "typed-name",
     needsInput: false,
   },
   delete: del,

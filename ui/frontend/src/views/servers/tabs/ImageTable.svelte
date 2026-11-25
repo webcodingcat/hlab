@@ -91,6 +91,7 @@
   bind:open={confirmOpen}
   title={pending?.id === "restore" ? `Restore ${server.name}` : `Delete ${kind}`}
   confirmLabel={pending?.id === "restore" ? "Restore" : "Delete"}
+  typedName={pending?.id === "delete_image" ? name(pending.image) : undefined}
   onconfirm={run}
 >
   {#if pending?.id === "restore"}

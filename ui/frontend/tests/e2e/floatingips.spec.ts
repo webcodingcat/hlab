@@ -38,6 +38,6 @@ test("UI-02 floating IPs", async ({ page, shared }) => {
 
   // Delete after the confirmation removes it from the list and the API.
   await section(page, "Floating IPs");
-  await deleteRow(page, name, false);
+  await deleteRow(page, name);
   await expect.poll(async () => (await api(token, `/floating_ips/${created.id}`)).status, { timeout: 60_000 }).toBe(404);
 });

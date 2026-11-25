@@ -14,8 +14,10 @@ while the cloud runs.
   without a server is created with hcloud, OpenTofu or Ansible.
 - The search field filters by name, or with `=` by labels, for example
   `team=ops`.
-- **Detach** in the row menu (`…`) detaches an attached volume from its
-  server after a confirmation.
+- The row menu (`…`) of a detached volume offers **Attach** (to a server
+  in the volume's location, optionally mounted automatically); that of an
+  attached volume offers **Detach**, which detaches it from its server
+  after a confirmation.
 - **Delete** in the row menu deletes the volume and its data after you type
   its name. An attached volume must be detached first.
 - Clicking a row opens the volume's page. **Overview** shows its size,

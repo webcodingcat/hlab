@@ -11,8 +11,8 @@ cloud runs.
   the server the snapshot was made from, labels and when it was made. The
   search field filters by name, or with `=` by labels, for example
   `team=ops`.
-- **Delete** in the row menu (`…`) deletes the snapshot after a
-  confirmation.
+- **Delete** in the row menu (`…`) deletes the snapshot after you
+  type its name, the description the list shows.
 - Clicking a row opens the snapshot's page. **Overview** shows its status,
   description, sizes and the server it was made from; **Labels** edits its
   labels; **Protection** protects it against deletion.

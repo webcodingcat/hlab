@@ -37,7 +37,7 @@ test.describe("UI-02 certificates", () => {
       want: { method: "POST", path: `/certificates/${id}/actions/retry` },
       confirm: "none",
     },
-    { name: "delete", ref: { menu: "Delete" }, want: { method: "DELETE", path: `/certificates/${id}` }, confirm: "plain" },
+    { name: "delete", ref: { menu: "Delete" }, want: { method: "DELETE", path: `/certificates/${id}` }, confirm: "typed-name" },
   ];
   for (const c of cases) test(c.name, () => check(mod, c));
 });

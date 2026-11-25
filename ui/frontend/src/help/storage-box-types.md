@@ -14,6 +14,6 @@ list says why.
 - **Edit** in an own type's row menu (`…`) opens the same form filled in
   with its values; the name stays fixed, **Save** applies the changes.
   Catalog types cannot be edited.
-- **Remove** in an own type's row menu (`…`) removes it after a
-  confirmation. Existing storage boxes of that type keep running; new
+- **Remove** in an own type's row menu (`…`) removes it after you
+  type its name. Existing storage boxes of that type keep running; new
   boxes cannot use it.

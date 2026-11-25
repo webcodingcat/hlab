@@ -237,7 +237,7 @@ func testUpdateDelete(t *testing.T) {
 }
 
 func testPasswordSecret(t *testing.T) {
-	logs := captureLog(t)
+	logs := apitest.CaptureLog(t)
 	e := newBoxEnv(t)
 	const first = "Kq7-Plain-Secret1"
 	const second = "Zr8.Other-Secret2"

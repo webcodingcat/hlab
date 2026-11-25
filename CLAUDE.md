@@ -132,3 +132,11 @@ All commands run from the repository root, without elevated rights.
   `task e2e -- -run <regexp>`, for example `task e2e -- -run 'TestE2E/SRV-01'`.
 - Once per machine, elevated, by the user only: `scripts\dev-setup.ps1`
   registers the dev service `hlab-dev` running `bin\hlabd.exe`.
+
+## Repository and CI
+
+- `main` is pushed to `https://github.com/webcodingcat/hlab` at the close of
+  each phase, without waiting for the CI (approved by the user, see
+  DECISIONS.md "2026-11-25 Approval: Claude creates the repository, pushes
+  and releases"). At the start of a phase, `gh run list --branch main
+  --limit 1` shows the last CI run; a red run is fixed first.

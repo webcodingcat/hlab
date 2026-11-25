@@ -130,7 +130,13 @@
   />
 {/if}
 
-<ConfirmDialog bind:open={confirmOpen} title={`Delete ${type}`} confirmLabel="Delete" onconfirm={run}>
+<ConfirmDialog
+  bind:open={confirmOpen}
+  title={`Delete ${type}`}
+  confirmLabel="Delete"
+  typedName={pending ? imageName(pending) : undefined}
+  onconfirm={run}
+>
   {#if pending}
     <p>The {pending.type} <strong>{imageName(pending)}</strong> is deleted for good.</p>
   {/if}

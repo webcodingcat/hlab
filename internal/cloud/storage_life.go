@@ -26,6 +26,9 @@ const (
 	// storageRetry is the pause between the start's attempts to bring the
 	// storage VM in line with the store.
 	storageRetry = 15 * time.Second
+	// storageTrimTimeout bounds the trim of the storage VM's data file
+	// system before its shutdown.
+	storageTrimTimeout = 5 * time.Minute
 )
 
 // newStorageClient returns the client of the storage agent.
@@ -105,6 +108,7 @@ func (c *Cloud) applyStorage(ctx context.Context) error {
 		Boxes:       boxes,
 	}
 	if err := c.storage.Push(ctx, doc); err != nil {
+		slog.Error("storage document push failed", "boxes", len(boxes), "err", err)
 		return err
 	}
 	slog.Info("storage document pushed", "boxes", len(boxes))
@@ -186,9 +190,11 @@ func (c *Cloud) haltStorage(ctx context.Context, behaviour string, hostShutdown 
 	}
 	if state == platform.StateRunning {
 		if behaviour == "shutdown" {
+			c.trimStorage(ctx)
 			err = c.shutdownVM(ctx, name)
 		} else if err = c.plat.Power(ctx, name, platform.PowerSave); err != nil {
 			slog.Warn("save of the storage VM failed, shutting it down", "err", err)
+			c.trimStorage(ctx)
 			err = c.shutdownVM(ctx, name)
 		}
 		if err != nil {
@@ -209,4 +215,22 @@ func (c *Cloud) haltStorage(ctx context.Context, behaviour string, hostShutdown 
 	}
 	slog.Info("data disk of the storage VM compacted", "path", c.storageDataDisk(), "took", time.Since(start).Round(time.Second).String())
 	return nil
+}
+
+// trimStorage has the storage agent discard the free blocks of the data
+// file system before the VM shuts down, so the compaction gives back the
+// space of deleted data. A failure is only logged: the VM still shuts down
+// and the compaction reclaims what was discarded.
+func (c *Cloud) trimStorage(ctx context.Context) {
+	tctx, cancel := context.WithTimeout(ctx, storageTrimTimeout)
+	defer cancel()
+	start := time.Now()
+	c.storageMu.Lock()
+	_, err := c.storage.Job(tctx, agentapi.StorageJob{Kind: agentapi.StorageJobTrim})
+	c.storageMu.Unlock()
+	if err != nil {
+		slog.Warn("trim of the storage VM's data file system failed", "err", err)
+		return
+	}
+	slog.Info("free blocks of the storage VM's data file system discarded", "took", time.Since(start).Round(time.Second).String())
 }

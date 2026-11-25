@@ -17,8 +17,8 @@ balancers. Certificates can only be managed while the cloud runs.
     notification and on the certificate's page.
 - The search field filters by name, or with `=` by labels, for example
   `team=ops`.
-- **Delete** in the row menu (`…`) deletes the certificate after a
-  confirmation. A certificate a load balancer service uses cannot be
+- **Delete** in the row menu (`…`) deletes the certificate after you
+  type its name. A certificate a load balancer service uses cannot be
   deleted.
 - Clicking a row opens the certificate's page. **Overview** shows the
   type, the status with the issuance error, the domains, the fingerprint,

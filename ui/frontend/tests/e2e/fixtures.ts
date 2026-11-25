@@ -115,6 +115,18 @@ export async function rowAction(row: Locator, action: string): Promise<void> {
   await row.page().getByRole("menuitem", { name: action, exact: true }).click();
 }
 
+/**
+ * confirmTyped confirms the open confirm dialog of a named delete: its
+ * button stays disabled until the name is typed, then it is clicked.
+ */
+export async function confirmTyped(page: Page, button: string, name: string): Promise<void> {
+  const dialog = page.getByRole("dialog");
+  const confirm = dialog.getByRole("button", { name: button, exact: true });
+  await expect(confirm).toBeDisabled();
+  await dialog.getByRole("textbox").fill(name);
+  await confirm.click();
+}
+
 /** tableRow is the row of the visible table that holds this exact cell text. */
 export function tableRow(page: Page, cell: string): Locator {
   return page

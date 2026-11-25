@@ -26,6 +26,32 @@ export async function listAll<T>(project: string, path: string, key: string): Pr
   return items;
 }
 
+/**
+ * Hooks lets a form react to the answer of its request: onanswer once the
+ * API answered, onerror when the request failed. The actions are followed
+ * after onanswer in the project passed as a plain value, so a form that
+ * closes or a route that changes meanwhile does not move them elsewhere.
+ */
+export type Hooks<T> = { onanswer?: (res: T) => void; onerror?: (err: unknown) => void };
+
+function answered<T>(send: () => Promise<T>, hooks: Hooks<T>): () => Promise<T> {
+  return async () => {
+    let res: T;
+    try {
+      res = await send();
+    } catch (err) {
+      hooks.onerror?.(err);
+      throw err;
+    }
+    hooks.onanswer?.(res);
+    return res;
+  };
+}
+
+function poll(project: string) {
+  return { get: async (id: number) => (await api<{ action: Action }>(project, "GET", `/actions/${id}`)).action };
+}
+
 /** runApi runs one request that answers with action and/or next_actions under an action toast. */
 export function runApi<T extends ActionResult>(
   project: string,
@@ -33,10 +59,9 @@ export function runApi<T extends ActionResult>(
   method: string,
   path: string,
   body?: unknown,
+  hooks: Hooks<T> = {},
 ): Promise<T | undefined> {
-  return runAction(title, () => api<T>(project, method, path, body), {
-    get: async (id) => (await api<{ action: Action }>(project, "GET", `/actions/${id}`)).action,
-  });
+  return runAction(title, answered(() => api<T>(project, method, path, body), hooks), poll(project));
 }
 
 /** runOn runs a request on the named resource under the toast "<Type> <name>: <action>", the type taken from its path. */
@@ -45,8 +70,9 @@ export function runOn<T extends ActionResult>(
   name: string,
   action: string,
   req: { method: string; path: string; body?: unknown },
+  hooks: Hooks<T> = {},
 ): Promise<T | undefined> {
-  return runApi<T>(project, actionTitle(resourceType(req.path), name, action), req.method, req.path, req.body);
+  return runApi<T>(project, actionTitle(resourceType(req.path), name, action), req.method, req.path, req.body, hooks);
 }
 
 /** hetznerApi sends one request to the project's Hetzner API (/mgmt/v1/projects/{name}/api/hetzner/v1<path>). */
@@ -82,10 +108,9 @@ export function runHetzner<T extends ActionResult>(
   method: string,
   path: string,
   body?: unknown,
+  hooks: Hooks<T> = {},
 ): Promise<T | undefined> {
-  return runAction(title, () => hetznerApi<T>(project, method, path, body), {
-    get: async (id) => (await api<{ action: Action }>(project, "GET", `/actions/${id}`)).action,
-  });
+  return runAction(title, answered(() => hetznerApi<T>(project, method, path, body), hooks), poll(project));
 }
 
 /** runHetznerOn runs a Hetzner API request on the named resource under the toast "<Type> <name>: <action>". */
@@ -94,8 +119,16 @@ export function runHetznerOn<T extends ActionResult>(
   name: string,
   action: string,
   req: { method: string; path: string; body?: unknown },
+  hooks: Hooks<T> = {},
 ): Promise<T | undefined> {
-  return runHetzner<T>(project, actionTitle(resourceType(req.path), name, action), req.method, req.path, req.body);
+  return runHetzner<T>(
+    project,
+    actionTitle(resourceType(req.path), name, action),
+    req.method,
+    req.path,
+    req.body,
+    hooks,
+  );
 }
 
 type Named = { id: number; name: string };

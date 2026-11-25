@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -297,13 +298,19 @@ func sftpPath(p string) string {
 	return `"` + filepath.ToSlash(p) + `"`
 }
 
-// randomFile writes size random bytes into a new file of dir.
-func randomFile(t *testing.T, dir, name string, size int) string {
+// randomFile streams size random bytes into a new file of dir.
+func randomFile(t *testing.T, dir, name string, size int64) string {
 	t.Helper()
-	b := make([]byte, size)
-	_, _ = rand.Read(b)
 	p := filepath.Join(dir, name)
-	if err := os.WriteFile(p, b, 0o600); err != nil {
+	out, err := os.Create(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.CopyN(out, rand.Reader, size); err != nil {
+		_ = out.Close()
+		t.Fatal(err)
+	}
+	if err := out.Close(); err != nil {
 		t.Fatal(err)
 	}
 	return p
@@ -454,4 +461,72 @@ func testSBOX11(t *testing.T) {
 	if got, want := folders("sbox11/alpha"), []string{"inner"}; !slices.Equal(got, want) {
 		t.Errorf("folders below sbox11/alpha %v, want %v", got, want)
 	}
+}
+
+const (
+	// compactData is what SBOX-03/compact writes into its box.
+	compactData = 512 << 20
+	// compactTolerance is how far data.vhdx may stay above its size before
+	// the data once the box is deleted and the disk compacted: a quarter of
+	// the data, room for btrfs metadata and the VHDX block granularity; a
+	// compaction that gives back only half of the data exceeds it.
+	compactTolerance = compactData / 4
+	// compactFlushTimeout covers btrfs committing the written data to the
+	// disk after the upload.
+	compactFlushTimeout = 3 * time.Minute
+)
+
+// testSBOX03Compact: after a box with data is deleted and the cloud stops
+// with "Shut the VMs down", the storage VM's data.vhdx returns to roughly
+// its size before the data was written (within compactTolerance). The
+// shared box keeps the storage VM while the data box goes; the row runs
+// the LIFE fixture's shutdown cycle, so it runs alone before LIFE-03.
+func testSBOX03Compact(t *testing.T) {
+	e, _ := sharedBox(t)
+	f := sharedLife(t)
+	if lifeCycles["shutdown"].before != nil {
+		t.Fatal("the shutdown cycle ran before SBOX-03/compact wrote and deleted its data")
+	}
+	box := newTestBox(t, e, "compact", "bx11", map[string]bool{"reachable_externally": true})
+	owner := passwordLogin(box, 22)
+	if !eventually(t, "box "+box.Username+" answers over SFTP", func() (result, error) {
+		return hostSFTP(owner, "ls\n")
+	}) {
+		t.FailNow()
+	}
+
+	disk := filepath.Join(dataFolder(), "storage", "data.vhdx")
+	before := fileSize(t, disk)
+	src := randomFile(t, t.TempDir(), "compact.bin", compactData)
+	if r, err := hostSFTP(owner, fmt.Sprintf("put %s compact.bin\n", sftpPath(src))); err != nil {
+		t.Fatalf("sftp put compact.bin: %v\n%s", err, r)
+	}
+	var grown int64
+	if err := waitFor(compactFlushTimeout, 5*time.Second, func() (bool, error) {
+		grown = fileSize(t, disk)
+		return grown-before >= compactData/2, nil
+	}); err != nil {
+		t.Fatalf("precondition: %s grew from %d to %d bytes after writing %d bytes, want at least half of them: %v", disk, before, grown, compactData, err)
+	}
+
+	if err := e.deleteStorageBox(box.ID); err != nil {
+		t.Fatalf("delete box %s: %v", box.Username, err)
+	}
+	runLifeCycle(t, f, "shutdown")
+
+	after := fileSize(t, disk)
+	if after > before+compactTolerance {
+		t.Errorf("%s is %d bytes after the box was deleted and the cloud stopped with shutdown; it was %d bytes before the %d bytes were written and %d with them, want at most %d",
+			disk, after, before, compactData, grown, before+compactTolerance)
+	}
+}
+
+// fileSize is the size of the file at path.
+func fileSize(t *testing.T, path string) int64 {
+	t.Helper()
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fi.Size()
 }

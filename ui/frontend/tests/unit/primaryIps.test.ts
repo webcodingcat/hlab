@@ -1,8 +1,9 @@
 // Unit tests of the primaryIps actions module: every entry of the create form,
 // the actions menu and the detail tabs calls the right endpoint with the
 // right body and carries the right confirmation. They need no browser.
-import { test } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import * as mod from "../../src/lib/resources/primaryIps";
+import { request } from "../../src/lib/resourceActions";
 import { check, id, type Case } from "./resourceTable";
 
 const pa = (act: string) => `/primary_ips/${id}/actions/${act}`;
@@ -76,7 +77,21 @@ test.describe("UI-02 primary IPs", () => {
       want: { method: "POST", path: pa("change_protection"), body: { delete: true } },
       confirm: "none",
     },
-    { name: "delete", ref: { menu: "Delete" }, want: { method: "DELETE", path: `/primary_ips/${id}` }, confirm: "plain" },
+    { name: "delete", ref: { menu: "Delete" }, want: { method: "DELETE", path: `/primary_ips/${id}` }, confirm: "typed-name" },
   ];
   for (const c of cases) test(c.name, () => check(mod, c));
+});
+
+test("UI-09 row menu attach/assign", () => {
+  // An unassigned primary IP offers Assign, which opens the server select.
+  const assign = mod.rowAction({ assignee_type: "server", assignee_id: null });
+  expect(assign.label).toBe("Assign");
+  expect(assign.needsInput).toBe(true);
+  expect(assign.confirm).toBe("none");
+  expect(request(assign, id, { assignee_id: 5 })?.path).toBe(pa("assign"));
+  // An assigned primary IP offers Unassign with its plain confirm.
+  const unassign = mod.rowAction({ assignee_type: "server", assignee_id: 5 });
+  expect(unassign.label).toBe("Unassign");
+  expect(unassign.confirm).toBe("plain");
+  expect(request(unassign, id, {})?.path).toBe(pa("unassign"));
 });

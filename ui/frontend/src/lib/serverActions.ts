@@ -125,7 +125,7 @@ const tabList: ServerAction[] = [
     label: "Delete",
     method: "DELETE",
     path: (_server, i) => `/images/${i.image}`,
-    confirm: "plain",
+    confirm: "typed-name",
     password: false,
     needsInput: false,
   },

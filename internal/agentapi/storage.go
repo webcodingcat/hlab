@@ -56,12 +56,16 @@ const (
 	StorageJobSnapshot       = "snapshot"        // read-only snapshot <Snapshot> of box <Box>
 	StorageJobDeleteSnapshot = "delete-snapshot" // removes snapshot <Snapshot>
 	StorageJobRollback       = "rollback"        // box data back to <Snapshot>, then removes <Newer>
+	// StorageJobTrim waits for deleted subvolumes to be cleaned up and
+	// discards the free blocks of the data file system, so a compaction of
+	// the data disk gives them back; it takes no Box.
+	StorageJobTrim = "trim"
 )
 
 // StorageJob is work on the storage VM (POST /v1/jobs).
 type StorageJob struct {
 	Kind     string   // one of the StorageJob* kinds
-	Box      string   // box user
+	Box      string   // box user; empty for trim
 	Snapshot string   // snapshot, delete-snapshot, rollback: the snapshot name
 	Path     string   // folders: relative path, "." by default
 	Newer    []string // rollback: the snapshots created after Snapshot, removed with it

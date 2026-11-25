@@ -135,8 +135,16 @@ touches here instead of relying on memory.
 What the user has to provide before the implementation runs. Values never
 appear here, only names.
 
-- No account is needed; API tokens are generated locally. The project has
-  no environment variables with secrets and no `.env.example`.
+- No account is needed to build, run or test HLab; API tokens are
+  generated locally. The project has no environment variables with secrets
+  and no `.env.example`.
+- Publishing only (phase 30 and every phase close after it): the user's
+  GitHub CLI login (`gh auth status`, account with rights to create and
+  push to repositories of the organisation `webcodingcat`; git over SSH
+  with the user's key). The credential stays with `gh` and git; the
+  project never reads or stores it. The workflows use only the
+  `GITHUB_TOKEN` GitHub provides, with `contents: write` for the release.
+  Publishing needs no elevated rights.
 - Optional, development and release only: an hcloud context for the real
   API (`https://api.hetzner.cloud/v1`, a read-only token is enough), named
   `HLab` by default; another name is set in the non-secret variable
@@ -201,6 +209,8 @@ appear here, only names.
 
 ## Machine prerequisites
 
+- For publishing (phase 30 on): the GitHub CLI `gh`, logged in (see
+  "Accounts and secrets").
 - Windows 11 Pro (or Enterprise/Education, or Windows Server 2022/2025 with
   Desktop Experience), x64, Hyper-V and its PowerShell module enabled,
   hardware virtualization on; the developer is a member of Hyper-V Administrators; for the end-to-end tests at least 16 GB RAM
@@ -237,9 +247,17 @@ appear here, only names.
   objects differ (ARCHITECTURE.md "Profiles"). Only one of their clouds runs
   at a time: each refuses to start while the other runs, and the end-to-end
   harness refuses to run while the release cloud runs.
-- Test VMs for the release checks (phase 16), set up by hand by the user
-  as `docs/development/release-checks.md` describes; Claude creates
-  neither. Both are Hyper-V VMs on the development machine with a fresh
+- Test VMs for the release checks (phase 16), set up by the user with two
+  scripts that `docs/development/release-checks.md` describes; Claude
+  runs neither and creates neither VM.
+  - `scripts/release-check-vm.ps1`, run elevated on the development
+    machine, creates one test VM in one call: the VM, the answer-file ISO
+    (Windows and Hyper-V installed without a question), waiting for setup
+    to finish, removing the ISOs, the first subnet check inside the VM,
+    shutting it down and the checkpoint `fresh`.
+  - `scripts/release-check-dev-tools.ps1`, run elevated inside the
+    development test VM, installs the development tools the installer
+    suite needs and clones the repository from a `git bundle`. Both are Hyper-V VMs on the development machine with a fresh
   Windows 11 Pro and nested virtualization, so HLab can run its own VMs
   inside.
   - Development test VM: the development tools of this section and a
@@ -248,6 +266,29 @@ appear here, only names.
     setup EXE built on the development machine and goes through the
     manual checks as a user would (installation, console, shutdown,
     uninstallation).
+
+
+## Repository, CI and releases
+
+- Repository `https://github.com/webcodingcat/hlab`, public, Apache-2.0
+  (`LICENSE` in the root). Claude creates it with `gh` (the user's login)
+  and pushes; the user approved this (DECISIONS.md "2026-11-25 Repository,
+  CI and releases on GitHub").
+- CI: GitHub Actions on GitHub-hosted `windows-latest` runners, workflow
+  `.github/workflows/ci.yml`, on every push to `main` and every pull request
+  against `main`: build (`task build`), Go unit tests (`task test`), linter
+  (`task lint`), frontend unit tests and the installer build, with the tool
+  versions of `docs/development/setup.md` and caches for Go modules, the Go
+  build and npm; independent jobs run in parallel. End-to-end tests and the
+  elevated installer suite stay local (IDEA.md constraints).
+- Releases: workflow `.github/workflows/release.yml` on a pushed tag
+  `vX.Y.Z`: `task installer VERSION=X.Y.Z`, then a GitHub release named
+  `vX.Y.Z` with `hlab-X.Y.Z.msi`, `hlab-setup-X.Y.Z.exe` and
+  `SHA256SUMS.txt`. The setup programs are not signed; the user guide
+  explains the SmartScreen warning.
+- Phases: at its close a phase pushes `main` (and a milestone tag) and does
+  not wait for the CI; the next `/wcc:phase` reads the last CI run of
+  `main` with `gh run list` at its start and fixes a red run first.
 
 ## Documentation
 
@@ -287,7 +328,8 @@ secrets").
   e2e, elevated suite), `components.md` (overview linking to the code),
   `adding-a-resource.md` (a new resource module step by step),
   `release-checks.md` (setting up the two test VMs and what runs in
-  which, from phase 16),
+  which, from phase 16), `releasing.md` (CI, tagging and publishing a
+  release, from phase 30),
   `api-coverage.md` (every endpoint hlab serves, every endpoint or
   behaviour that differs from Hetzner with its route, and every
   `unsupported_error`).

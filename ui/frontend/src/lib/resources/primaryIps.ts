@@ -33,10 +33,14 @@ const assign = postAction(base, "assign", "assign", {
 
 const unassign = postAction(base, "unassign", "unassign", { label: "Unassign", confirm: "plain" });
 
-const del = remove(base, "Delete", "plain");
+const del = remove(base, "Delete", "typed-name");
 
 /** menu is the detail page's actions menu, Delete last. */
 export const menu: ResourceAction[] = [rename(base), assign, unassign, changeDnsPtr(base), changeProtection(base), del];
+
+/** rowAction is the list row menu's entry that follows the state: Assign while unassigned, Unassign while assigned. */
+export const rowAction = (p: { assignee_id: number | null }): ResourceAction =>
+  p.assignee_id === null ? assign : unassign;
 
 /** tabs are the actions of the detail tabs and the list row menu. */
 export const tabs: Record<string, ResourceAction> = {

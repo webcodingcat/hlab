@@ -112,7 +112,7 @@
   />
 {/if}
 
-<ConfirmDialog bind:open={confirmOpen} title="Delete placement group" confirmLabel="Delete" onconfirm={run}>
+<ConfirmDialog bind:open={confirmOpen} title="Delete placement group" confirmLabel="Delete" typedName={pending?.name} onconfirm={run}>
   {#if pending}
     <p>
       The placement group <strong>{pending.name}</strong> is deleted for good; its servers keep running outside any

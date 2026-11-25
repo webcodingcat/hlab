@@ -23,6 +23,192 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-25 Repository, CI and releases on GitHub
+
+- Type: change
+- Phase: change
+- What: a new last phase 30 of milestone 1 creates the public repository `webcodingcat/hlab` (Apache-2.0), a CI workflow on GitHub-hosted Windows runners for every push to `main` and pull request against `main` (build, Go tests, lint, frontend unit tests, installer build), and a release workflow that publishes the unsigned MSI and setup EXE with checksums for a tag `vX.Y.Z`, starting with v0.1.0; phases push `main` at their close without waiting for the CI, and the next phase checks the last run first.
+- Why: the user wants the project published with CI/CD and a first release once phase 16 is done, without phases waiting for CI.
+- Cost of change: low
+
+## 2026-11-25 Approval: Claude creates the repository, pushes and releases
+
+- Type: approval
+- Phase: change
+- What: the user approved that Claude creates `webcodingcat/hlab` with `gh`, pushes `main` at each phase close, pushes the milestone and release tags and creates the GitHub releases.
+- Why: the user chose "Claude does everything" for publishing.
+- Cost of change: low
+
+## 2026-11-25 Phase 16 is the last phase before the release phase
+
+- Type: change
+- Phase: change
+- What: phase 16 is the only phase that stops for manual checks; it is the last phase of milestone 1 before phase 30 (repository, CI and release), with phases taken in from "Later" inserted before it, runs the elevated installer suite in a development test VM and every open manual check in a user test VM without development tools, both fresh Windows Hyper-V VMs with nested virtualization set up with the repository's scripts as `docs/development/release-checks.md` describes (DOC-08).
+- Why: the release phase needs a checked milestone; the rest of the 2026-11-21 rule stands.
+- Cost of change: low
+- Replaces: 2026-11-21 Manual checks and the installer suite move to a last phase in two test VMs
+
+## 2026-11-25 Deadlines for storage applies, jobs and agent commands
+
+- Type: decision
+- Phase: phase 16
+- What: every command the storage agent runs ends after 10 minutes (the error names the command and its duration), hlabd gives up on a storage apply after 30 minutes and on a storage job after 25 minutes (the trim keeps its 5 minutes), and a killed command is waited for at most 5 seconds.
+- Why: a hung `btrfs subvolume sync` held the storage lock for good and left every box action running; the longest legitimate commands (subvolume sync after deleting a large box, quota rescan, fstrim of a large disk) take a few minutes.
+- Cost of change: low
+
+## 2026-11-25 Box removal ends the box's sessions first
+
+- Type: decision
+- Phase: phase 16
+- What: the storage agent's `removeBox` ends the sessions on the box's IP (as a rollback does) before it deletes the subvolume.
+- Why: an smbd child running as root kept a deleted box's share in use while Windows held its connection, so `btrfs subvolume sync` waited without end.
+- Cost of change: low
+
+## 2026-11-25 Restore recreates the VM of a kept server
+
+- Type: decision
+- Phase: phase 16
+- What: at a cloud start `servers.Module.Restore` reconciles a stored server whose VM is missing (VM recreated from its kept disk, seed and adapters, never a new disk), then powers it per its stored status; a failed reconcile is logged and the next server continues.
+- Why: a KeepData uninstall removes the VMs but keeps the state and the disks, and INST-05 expects the servers back after a reinstall.
+- Cost of change: low
+
+## 2026-11-25 Upgrade ends the tray and stops the service before InstallValidate
+
+- Type: decision
+- Phase: phase 16
+- What: on an upgrade (`WIX_UPGRADE_DETECTED AND NOT REMOVE`) the MSI runs, before InstallValidate, `taskkill /F /IM hlab-tray.exe` through WixQuietExec (failure ignored) and `hlabd stop-service` from the Binary table (failure stops the upgrade); `MSIRESTARTMANAGERCONTROL` stays `Disable`.
+- Why: the files-in-use check runs in InstallValidate, before util:CloseApplication can end the tray, and the tray does not quit when its window closes.
+- Cost of change: low
+
+## 2026-11-25 Storage VM trims before a compaction
+
+- Type: decision
+- Phase: phase 16
+- What: before hlabd shuts the storage VM down for a compaction it sends the storage job `trim` (`btrfs subvolume sync`, `btrfs filesystem sync`, `fstrim` on the data file system; 5-minute deadline, failure logged).
+- Why: `discard=async` drops queued discards at unmount and a deleted box's subvolume is freed in the background, so without the trim `Optimize-VHD` reclaimed only part of the space.
+- Cost of change: low
+
+## 2026-11-25 Actions are followed in the project taken at submit
+
+- Type: decision
+- Phase: phase 16
+- What: every create form and DNS tab follows its action through `runApi`, `runOn`, `runHetzner` or `runHetznerOn` with the project passed as a value and optional `onanswer`/`onerror` hooks.
+- Why: a Svelte prop read later resolves to the current route, which has no or another project once the user has left the console.
+- Cost of change: low
+
+## 2026-11-25 Every named delete asks for the name
+
+- Type: change
+- Phase: feedback
+- What: every delete of something with a name asks for that name to be typed (UI-SPEC.md "Confirm dialog"), not only projects, servers, volumes, networks, zones and storage boxes; unnamed entries and other destructive actions keep the plain confirm.
+- Why: the user found the two kinds of delete dialog inconsistent during UI-09 and chose the typed name everywhere.
+- Cost of change: low
+
+## 2026-11-25 MSI without Restart Manager
+
+- Type: decision
+- Phase: phase 16
+- What: `installer/Package.wxs` sets `MSIRESTARTMANAGERCONTROL=Disable`, so only the old product's `hlabd stop-service` stops the service during an upgrade and nothing starts it again.
+- Why: in the release checks the service was running again after a quiet upgrade, most likely restarted by the Restart Manager; INST-06 expects it stopped.
+- Cost of change: low
+
+## 2026-11-25 Uninstall ends a service stuck in its start
+
+- Type: decision
+- Phase: phase 16
+- What: stopping the service for an uninstall or upgrade waits up to 3 minutes for a START_PENDING service, stops it once it runs, and otherwise ends its process by the PID from its status before the usual 200-second stop wait.
+- Why: Windows refuses a stop while a service starts, and the uninstall failed with 1603 and left HLab half removed.
+- Cost of change: low
+
+## 2026-11-25 Cloud start deadlines
+
+- Type: decision
+- Phase: phase 16
+- What: the cloud start has an overall deadline of 1 hour, the first agent document push 2 minutes and the server restore 10 minutes; which step hung in the test VM was not reproduced (candidates: the host DNS query in the push, a Hyper-V call in the restore).
+- Why: a start without deadlines kept the service in START_PENDING for good; 1 hour leaves room for a first start that downloads images.
+- Cost of change: low
+
+## 2026-11-25 Q28 WSL trust follows the interactive user
+
+- Type: change
+- Phase: feedback
+- What: the CA trust switch, its removal at uninstall and the `.wslconfig` reading use the interactive user: the user at the console, else the user of the single active Remote Desktop session; with several such sessions and nobody at the console the switch stays pending as before.
+- Why: the user chose it in /wcc:report after the WSL part of the trust switch never ran in vmconnect's enhanced session, which a developer working over Remote Desktop would hit too.
+- Cost of change: low
+
+## 2026-11-25 Setup bundle uses the hyperlink theme with an empty licence URL
+
+- Type: decision
+- Phase: phase 16
+- What: `installer/Bundle.wxs` sets `Theme="hyperlinkLicense" LicenseUrl=""` with the own theme.xml, which drops its ProgressPassive page so passive runs show the Progress page.
+- Why: with `Theme="none"` WiX 7 writes no wixstdba data and the bundle failed at start (0x80070490); theme.xml derives from the hyperlink theme, and an empty URL hides the licence link.
+- Cost of change: low
+
+## 2026-11-25 Test VM script waits for the Hyper-V service
+
+- Type: decision
+- Phase: phase 16
+- What: `release-check-vm.ps1` treats setup as finished when the service `vmms` runs in the VM, read over PowerShell Direct, and shows sign-in errors in its progress line.
+- Why: the account is a local administrator under UAC whose remote token is filtered, so `Get-WindowsOptionalFeature` could not be read.
+- Cost of change: low
+
+## 2026-11-25 Test VM script asks nothing before its checks
+
+- Type: decision
+- Phase: phase 16
+- What: `release-check-vm.ps1` checks elevation, its arguments and that no VM of the name exists before it asks for the password, opens the console before starting the VM, and gives the user test VM 4 vCPU unless `-Cpu` says otherwise.
+- Why: no password is typed for a refused run, and the short "boot from CD or DVD" prompt is not missed.
+- Cost of change: low
+
+## 2026-11-25 Test VM account created in the specialize pass
+
+- Type: decision
+- Phase: phase 16
+- What: the answer file creates the local account with a script in the specialize pass that adds it to Administrators by SID S-1-5-32-544 and sets `UnattendCreatedUser`, so OOBE asks for no account; confirmed by the first real install of both test VMs on 2026-11-25.
+- Why: `<Group>` needs the group's localized name, which depends on the ISO language.
+- Cost of change: low
+
+## 2026-11-25 Test VMs set up by scripts
+
+- Type: change
+- Phase: feedback
+- What: `scripts/release-check-vm.ps1` (development machine, elevated; parameters for the VM name, the Windows ISO, its language and the VM folder) creates a test VM in one call, from the VM with its sizes up to the checkpoint `fresh`, and `scripts/release-check-dev-tools.ps1` (inside the development test VM, elevated) installs the tools of the installer suite and clones the repository bundle; the answer file they build runs the whole Windows setup (language from the ISO language parameter, disk layout for a Generation 2 VM, Windows 11 Pro without activation, licence terms, local account, privacy screens) and, through a one-time automatic sign-in and first-logon commands, enables Hyper-V and restarts; `docs/development/release-checks.md` describes the calls instead of copy-and-paste blocks.
+- Why: the user asked for it in /wcc:report after a pasted block lost its password prompt to the pasted text and went on after an error; a script asks properly, stops at the first error and can be repeated.
+- Cost of change: low
+- Replaces: 2026-11-25 Windows in the test VMs installed fully by the answer file
+
+## 2026-11-24 Test VM names and stop action
+
+- Type: decision
+- Phase: phase 16
+- What: the test VMs are named `release-check-dev` and `release-check-user`, without automatic checkpoints and with `-AutomaticStopAction ShutDown`.
+- Why: the names avoid HLab's `hlab-` prefix, and a host shutdown never saves a nested VM.
+- Cost of change: low
+
+## 2026-11-24 Test VMs use the Default Switch
+
+- Type: decision
+- Phase: phase 16
+- What: both test VMs connect to Hyper-V's Default Switch, and the guide checks each VM's subnet against 198.19.0.0/16 and 172.31.1.1 before the first cloud start (on an overlap: restart the host, check again).
+- Why: the user chose it, because an own NAT on the development machine would stop the dev cloud (one WinNAT per host).
+- Cost of change: low
+
+## 2026-11-24 Release checks guide written in two plans
+
+- Type: decision
+- Phase: phase 16
+- What: 16-01 writes the VM setup part of `docs/development/release-checks.md`, the documentation plan 16-02 adds the reusable user-check steps and the links.
+- Why: one plan would come to about 500 lines.
+- Cost of change: low
+
+## 2026-11-24 Order of the checks in the user test VM
+
+- Type: decision
+- Phase: phase 16
+- What: INST-03 install, appliance name check, UI-09 with DOC-07, update check (INST-06), LIFE-05, COMPACT with the storage VM name check, INST-05 uninstall last.
+- Why: each check leaves the state the next one needs, and the storage VM exists only after the first box.
+- Cost of change: low
+
 ## 2026-11-24 Delayed seed swaps end with the cloud's run
 
 - Type: decision
@@ -77,14 +263,6 @@ unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 - Phase: phase B4
 - What: the restart e2e rows wait for one continuous `ping -c 800 -i 0.01 -W 1` (8 s) without loss, retried until a 2-minute deadline.
 - Why: E47 saw up to about 3 s of good traffic between two drop windows.
-- Cost of change: low
-
-## 2026-11-24 Seed swap waits for a hold after a boot hlab starts (Q26)
-
-- Type: decision
-- Phase: phase B4
-- What: a network attach or detach right after a boot finishes at once, and the seed ISO swap waits until 90 s after the boot hlab started, is noted as `seed_due` on the server and is finished at the next cloud start if hlabd restarts.
-- Why: E48 showed an early slot-0 swap leaves the guest without hostname and public IP, and the user chose no waiting in the attach action.
 - Cost of change: low
 
 ## 2026-11-24 Network drops after resume are a documented deviation (Q27)
@@ -1984,15 +2162,6 @@ unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 - What: the primary IP rows assign an IPv6 primary IP to the powered-off fixture server after unassigning its own IPv6, then restore it.
 - Why: Hetzner assigns primary IPs only to powered-off servers, and the fixture must stay reachable for the rows after it.
 - Cost of change: low
-
-## 2026-11-21 Manual checks and the installer suite move to a last phase in two test VMs
-
-- Type: change
-- Phase: change
-- What: no phase stops for a manual check any more; the new phase 16, always the last of milestone 1 with phases taken in from "Later" inserted before it, runs the elevated installer suite in a development test VM and every open manual check in a user test VM without development tools, both fresh Windows Hyper-V VMs with nested virtualization that the user sets up by hand from `docs/development/release-checks.md` (DOC-08).
-- Why: the user has no time for manual checks now, wants to pull items from "Later" forward, and wants the installation tested in the user's own flow on a clean machine.
-- Cost of change: low
-- Replaces: 2026-11-21 All manual checks wait for the release, in a dedicated test VM
 
 ## 2026-11-21 Bundle sets HLABUI from WixBundleUILevel
 

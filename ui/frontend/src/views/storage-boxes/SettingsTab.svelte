@@ -102,13 +102,15 @@
   async function resetPassword(e: SubmitEvent) {
     e.preventDefault();
     const req = request(tabs.reset_password, box.id, { password })!;
+    // The project is taken now: the poll may outlive this tab.
+    const p = project;
     resetBusy = true;
     resetErrors = { fields: {} };
     await runAction(
       actionTitle(resourceType(req.path), box.name, tabs.reset_password.label),
       async () => {
         try {
-          const res = await hetznerApi<ActionResult>(project, req.method, req.path, req.body);
+          const res = await hetznerApi<ActionResult>(p, req.method, req.path, req.body);
           resetOpen = false;
           password = "";
           return res;
@@ -119,7 +121,7 @@
           resetBusy = false;
         }
       },
-      { get: async (id) => (await api<{ action: Action }>(project, "GET", `/actions/${id}`)).action },
+      { get: async (id) => (await api<{ action: Action }>(p, "GET", `/actions/${id}`)).action },
     );
   }
 

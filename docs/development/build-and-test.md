@@ -233,13 +233,15 @@ afterwards.
 ## Elevated installer suite
 
 ```
-task e2e:elevated
-task e2e:elevated -- -run 'TestInstall/INST-05'
+task e2e:elevated -- -v
+task e2e:elevated -- -v -run 'TestInstall/INST-05'
 ```
 
 installs, upgrades and uninstalls the release profile on this machine and
 checks what is left in Hyper-V and on the host. Run it in an administrator
-terminal; a full run can take several hours. It builds the installers 0.0.1 and 0.0.2
+terminal; a full run can take several hours. With `-v`, `go test` prints
+`=== RUN` and `--- PASS` for every row and subtest beside the suite's own
+`start` and `end` lines. It builds the installers 0.0.1 and 0.0.2
 from the working copy (so it needs everything `task installer` needs and
 the frontend dependencies), stops the development cloud if it runs and
 starts it again at the end, and copies the dev profile's base images and
@@ -252,6 +254,11 @@ release HLab is installed (the service `hlab` or a registered HLab setup
 program): uninstall that first. It checks that the VMs and the switch of
 the dev profile survive uninstalling the release. When a run fails, its
 logs stay in the temporary folder `hlab-e2einstall-*` it names.
+
+Because it installs and uninstalls a release, the suite is run for a
+release in a development test VM rather than on the development machine;
+[Release checks](release-checks.md#development-test-vm) says how to set
+one up.
 
 ## Catalogs
 

@@ -314,7 +314,7 @@
   </form>
 </Dialog>
 
-<ConfirmDialog bind:open={confirmOpen} title="Remove server type" confirmLabel="Remove" onconfirm={remove}>
+<ConfirmDialog bind:open={confirmOpen} title="Remove server type" confirmLabel="Remove" typedName={removing?.name} onconfirm={remove}>
   <p>Removing <strong>{removing?.name}</strong> keeps existing servers of this type running; new servers cannot use it.</p>
 </ConfirmDialog>
 

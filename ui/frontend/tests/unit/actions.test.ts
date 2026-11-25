@@ -1,10 +1,21 @@
 // Unit tests of the action polling: waitAction follows one action until it
 // ends, runAction runs a request under a progress toast and waits for its
-// action and every next action. They need no browser.
+// action and every next action; and which entries confirm a delete with the
+// typed name; and that a request sent with the project taken at submit is
+// followed in that project after the route changed. They need no browser.
 import { test, expect } from "@playwright/test";
+import { setTransport } from "@wailsio/runtime";
 import { get } from "svelte/store";
 import { ActionError, runAction, waitAction, type Action, type Poll } from "../../src/lib/actions";
+import { runOn } from "../../src/lib/api";
 import { toasts, type Toast } from "../../src/lib/toast";
+import type { Confirm } from "../../src/lib/resourceActions";
+import * as floatingIps from "../../src/lib/resources/floatingIps";
+import * as networks from "../../src/lib/resources/networks";
+import * as storageBoxSnapshots from "../../src/lib/resources/storageBoxSnapshots";
+import * as volumes from "../../src/lib/resources/volumes";
+import { tabActions } from "../../src/lib/serverActions";
+import { entry } from "./resourceTable";
 
 function act(id: number, status: Action["status"], progress: number, error: Action["error"] = null): Action {
   return { id, command: "poweroff", status, progress, error };
@@ -109,4 +120,94 @@ test.describe("UI-02 polling", () => {
     expect(last?.kind).toBe("error");
     expect(last?.message).toBe("conflict: server is locked");
   });
+});
+
+// Every delete of something with a name asks for the typed name; entries
+// without a name of their own and destructive actions other than delete keep
+// the plain confirm. One case per kind of confirm entry, one resource each.
+test.describe("UI-09 typed-name delete", () => {
+  const cases: { name: string; confirm: () => Confirm | undefined; want: Confirm }[] = [
+    {
+      name: "resource delete from the actions menu",
+      confirm: () => entry(floatingIps, { menu: "Delete" }).confirm,
+      want: "typed-name",
+    },
+    {
+      name: "delete of a named sub-entry in a detail tab",
+      confirm: () => entry({ menu: [], tabs: storageBoxSnapshots.tabs }, { tab: "delete" }).confirm,
+      want: "typed-name",
+    },
+    { name: "delete of a server's snapshot or backup", confirm: () => tabActions.delete_image?.confirm, want: "typed-name" },
+    {
+      name: "delete of an entry without a name",
+      confirm: () => entry(networks, { tab: "delete_subnet" }).confirm,
+      want: "plain",
+    },
+    {
+      name: "destructive action other than delete",
+      confirm: () => entry(volumes, { menu: "Detach" }).confirm,
+      want: "plain",
+    },
+  ];
+  for (const c of cases) test(c.name, () => expect(c.confirm()).toBe(c.want));
+});
+
+// A create form or DNS tab sends its request with the project taken at
+// submit. When the answer arrives the form leaves (the route goes to no
+// project, or the user has switched to another project meanwhile); the
+// action is still followed in the project it was started in.
+test.describe("UI-09 action follow keeps its project", () => {
+  const cases: { name: string; next: string | undefined }[] = [
+    { name: "route changes to no project", next: undefined },
+    { name: "route changes to another project", next: "other" },
+  ];
+  for (const c of cases) {
+    test(c.name, async () => {
+      // A fake bridge: projects "demo" and "other" exist, action 5 only in "demo".
+      const route: { project: string | undefined } = { project: "demo" };
+      const seen: string[] = [];
+      setTransport({
+        call: async (_object: unknown, _method: unknown, _window: unknown, call: { args: [string, string, string] }) => {
+          const [method, path] = call.args;
+          seen.push(`${method} ${path}`);
+          const project = path.split("/")[2];
+          const missing = { status: 404, body: { error: { code: "not_found", message: `no route ${method} ${path}` } } };
+          if (project !== "demo" && project !== "other") return missing;
+          if (method === "POST" && path === `/projects/${project}/api/v1/volumes`) {
+            return { status: 201, body: { volume: { id: 9 }, action: act(5, "running", 0) } };
+          }
+          if (project === "demo" && method === "GET" && path === "/projects/demo/api/v1/actions/5") {
+            return { status: 200, body: { action: act(5, "success", 100) } };
+          }
+          return missing;
+        },
+      });
+      const title = `Volume vol-${c.name}: Create`;
+      const w = watch(title);
+      try {
+        const got = await runOn(
+          route.project!,
+          `vol-${c.name}`,
+          "Create",
+          { method: "POST", path: "/volumes", body: { name: `vol-${c.name}` } },
+          {
+            onanswer: () => {
+              route.project = c.next;
+              seen.push("route changed");
+            },
+          },
+        );
+        expect(got?.action?.id).toBe(5);
+        expect(seen).toEqual([
+          "POST /projects/demo/api/v1/volumes",
+          "route changed",
+          "GET /projects/demo/api/v1/actions/5",
+        ]);
+        expect(w.last()?.kind).toBe("success");
+      } finally {
+        w.stop();
+        setTransport(null);
+      }
+    });
+  }
 });

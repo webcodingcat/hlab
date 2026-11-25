@@ -40,8 +40,8 @@ type wslTrust struct {
 }
 
 // trustWSL installs (on) or removes (off) the CA in every WSL2 distro of
-// the console user. Distros without update-ca-certificates and failing
-// distros are logged and skipped. Without a logged-on user the switch
+// the interactive user. Distros without update-ca-certificates and failing
+// distros are logged and skipped. Without an interactive user the switch
 // stays pending until wslChanged applies it: at the next logon (polled by
 // watchLogon), the next Up or the next switch. WSL failures never fail the
 // switch: the Windows store is the part that must succeed.
@@ -50,25 +50,26 @@ func (h *HostNet) trustWSL(ctx context.Context, pem []byte, on bool) error {
 	defer h.wslMu.Unlock()
 	h.wslPending = nil
 	if errors.Is(h.applyWSL(ctx, pem, on), errNoUser) {
-		slog.Info("hostnet: no user logged on; the CA switch for WSL waits for the next WSL change", "on", on)
+		slog.Info("hostnet: no interactive user logged on; the CA switch for WSL waits for the next WSL change", "on", on)
 		h.wslPending = &wslTrust{pem: bytes.Clone(pem), on: on}
 		h.watchLogon()
 	}
 	return nil
 }
 
-// RemoveWSLTrust removes the CA from every WSL2 distro of the console user
-// once. It returns ErrNoConsoleUser when nobody is logged on and leaves no
-// switch pending; failing distros are skipped and returned, each by name.
+// RemoveWSLTrust removes the CA from every WSL2 distro of the interactive
+// user once. It returns ErrNoConsoleUser when there is no interactive user
+// and leaves no switch pending; failing distros are skipped and returned,
+// each by name.
 func (h *HostNet) RemoveWSLTrust(ctx context.Context, pemData []byte) error {
 	h.wslMu.Lock()
 	defer h.wslMu.Unlock()
 	return h.applyWSL(ctx, pemData, false)
 }
 
-// watchLogon applies the pending switch once a user is logged on at the
-// console: it retries every logonPoll until nothing is pending. The caller
-// holds wslMu.
+// watchLogon applies the pending switch once there is an interactive user
+// (at the console or in a single active Remote Desktop session): it
+// retries every logonPoll until nothing is pending. The caller holds wslMu.
 func (h *HostNet) watchLogon() {
 	if h.wslWatching {
 		return
@@ -109,7 +110,7 @@ func (h *HostNet) wslChanged(ctx context.Context) {
 }
 
 // applyWSL runs the install or removal script in each distro. It returns
-// errNoUser when the commands cannot run for lack of a logged-on user, else
+// errNoUser when the commands cannot run for lack of an interactive user, else
 // the failures of the distros joined, each naming its distro.
 func (h *HostNet) applyWSL(ctx context.Context, pem []byte, on bool) error {
 	out, code, err := h.opts.RunAsUser(ctx, nil, "wsl.exe", "--list", "--quiet")

@@ -209,7 +209,7 @@ test.describe("UI-02 confirmation", () => {
     { name: "change type", ref: { menu: "Change type" }, confirm: "plain" },
     { name: "enable rescue", ref: { tab: "enable_rescue" }, confirm: "plain" },
     { name: "restore", ref: { tab: "restore" }, confirm: "plain" },
-    { name: "delete image", ref: { tab: "delete_image" }, confirm: "plain" },
+    { name: "delete image", ref: { tab: "delete_image" }, confirm: "typed-name" },
     { name: "delete", ref: { menu: "Delete" }, confirm: "typed-name" },
     { name: "power on", ref: { menu: "Power on" }, confirm: "none" },
     { name: "shutdown", ref: { menu: "Shutdown" }, confirm: "none" },
@@ -221,9 +221,9 @@ test.describe("UI-02 confirmation", () => {
     });
   }
 
-  test("confirm: only delete needs the name typed", () => {
+  test("confirm: only delete and delete image need the name typed", () => {
     const typed = [...menuActions, ...Object.values(tabActions)].filter((a) => a.confirm === "typed-name");
-    expect(typed).toEqual([entry({ menu: "Delete" })]);
+    expect(typed).toEqual([entry({ menu: "Delete" }), entry({ tab: "delete_image" })]);
   });
 
   test("password: set exactly for reset root password, rebuild, restore and enable rescue", () => {

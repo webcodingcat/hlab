@@ -144,6 +144,15 @@ func (m *Module) Restore(ctx context.Context, behaviour string) error {
 	for _, r := range recs {
 		name := m.vmName(r.ID)
 		st, err := m.d.Platform.State(ctx, name)
+		if isNotFound(err) {
+			// A KeepData uninstall removes the VMs but keeps the state
+			// and the disks: the VM is made again from the kept disk.
+			if err := m.reconcile(ctx, m.d.Store, r.ID); err != nil {
+				slog.Error("recreate VM at restore", "id", r.ID, "vm", name, "err", err)
+				continue
+			}
+			st, err = m.d.Platform.State(ctx, name)
+		}
 		if err != nil {
 			if !isNotFound(err) {
 				slog.Error("read VM state at restore", "id", r.ID, "err", err)

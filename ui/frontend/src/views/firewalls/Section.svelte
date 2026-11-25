@@ -131,7 +131,7 @@
   />
 {/if}
 
-<ConfirmDialog bind:open={confirmOpen} title="Delete firewall" confirmLabel="Delete" onconfirm={run}>
+<ConfirmDialog bind:open={confirmOpen} title="Delete firewall" confirmLabel="Delete" typedName={pending?.name} onconfirm={run}>
   {#if pending}
     <p>
       The firewall <strong>{pending.name}</strong> is deleted for good.

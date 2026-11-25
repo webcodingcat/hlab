@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { test, expect, env, api, bound, openView, rowAction, tableRow, uniqueName } from "./fixtures";
+import { test, expect, env, api, bound, openView, rowAction, tableRow, uniqueName, confirmTyped } from "./fixtures";
 import { newProject, pick } from "./console";
 
 type Iso = { id: number; name: string | null; description: string; type: string };
@@ -100,7 +100,7 @@ test("UI-10 isos", async ({ page }) => {
     for (const name of [renamed, byPath]) {
       const row = tableRow(page, name);
       await rowAction(row, "Remove");
-      await page.getByRole("dialog").getByRole("button", { name: "Remove", exact: true }).click();
+      await confirmTyped(page, "Remove", name);
       await expect(row).toBeHidden({ timeout: 30_000 });
       await expect.poll(() => servedAs(token, name), { timeout: 60_000 }).toEqual([]);
     }

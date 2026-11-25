@@ -19,14 +19,16 @@
 <script lang="ts">
   import CloudStopped from "../../lib/CloudStopped.svelte";
   import ConfirmDialog from "../../lib/ConfirmDialog.svelte";
+  import Dialog from "../../lib/Dialog.svelte";
   import HelpButton from "../../lib/HelpButton.svelte";
   import Table, { type Column } from "../../lib/Table.svelte";
   import { listAll, runOn } from "../../lib/api";
   import { createdText, labelText, protocolText } from "../../lib/format";
-  import { request, type ResourceAction } from "../../lib/resourceActions";
-  import { tabs } from "../../lib/resources/floatingIps";
+  import { request, type Input, type ResourceAction } from "../../lib/resourceActions";
+  import { rowAction, tabs } from "../../lib/resources/floatingIps";
   import { showError } from "../../lib/toast";
   import { href, running, type Page } from "../../state";
+  import FloatingIpActionInput from "./FloatingIpActionInput.svelte";
   import FloatingIpCreate from "./FloatingIpCreate.svelte";
   import FloatingIpDetail from "./FloatingIpDetail.svelte";
 
@@ -37,10 +39,11 @@
   const list = $derived(href({ area: "project", project, view: "floating-ips", page: { kind: "list" } }));
 
   let rows = $state<FloatingIp[] | undefined>();
-  let serverNames = $state<Record<number, string>>({});
+  type Server = { id: number; name: string; location: { name: string; network_zone: string } };
+  let servers = $state<Server[]>([]);
   let failing = false;
 
-  const serverText = (f: FloatingIp) => (f.server === null ? "" : (serverNames[f.server] ?? `${f.server}`));
+  const serverText = (f: FloatingIp) => (f.server === null ? "" : (servers.find((s) => s.id === f.server)?.name ?? `${f.server}`));
 
   const columns: Column<FloatingIp>[] = [
     { key: "name", label: "Name", value: (f) => f.name, sortable: true },
@@ -56,9 +59,9 @@
     try {
       const [f, s] = await Promise.all([
         listAll<FloatingIp>(project, "/floating_ips", "floating_ips"),
-        listAll<{ id: number; name: string }>(project, "/servers", "servers"),
+        listAll<Server>(project, "/servers", "servers"),
       ]);
-      serverNames = Object.fromEntries(s.map((x) => [x.id, x.name]));
+      servers = s.sort((a, b) => a.name.localeCompare(b.name));
       rows = f;
       failing = false;
     } catch (err) {
@@ -80,19 +83,30 @@
     location.hash = href({ area: "project", project, view: "floating-ips", page: p });
   }
 
-  // Row menu: Unassign and Delete, each with a plain confirmation.
-  let pending = $state<{ fip: FloatingIp; action: ResourceAction } | undefined>();
+  // Row menu: Assign (with the server select) while unassigned, Unassign
+  // with a plain confirmation while assigned; Delete with the name typed.
+  let pending = $state<{ fip: FloatingIp; action: ResourceAction; input: Input } | undefined>();
+  let inputOpen = $state(false);
   let confirmOpen = $state(false);
 
   function ask(fip: FloatingIp, action: ResourceAction) {
-    pending = { fip, action };
-    confirmOpen = true;
+    pending = { fip, action, input: {} };
+    if (action.needsInput) inputOpen = true;
+    else confirmOpen = true;
+  }
+
+  function submit(input: Input) {
+    if (!pending) return;
+    inputOpen = false;
+    pending = { ...pending, input };
+    if (pending.action.confirm === "none") run();
+    else confirmOpen = true;
   }
 
   function run() {
     if (!pending) return;
-    const { fip, action } = pending;
-    const req = request(action, fip.id);
+    const { fip, action, input } = pending;
+    const req = request(action, fip.id, input);
     if (!req) return;
     // Not awaited: the dialog closes at once, the toast follows the request.
     runOn(project, fip.name, action.label, req).then(load);
@@ -126,21 +140,23 @@
     oncreate={() => open({ kind: "new" })}
     onrowclick={(f) => open({ kind: "detail", id: f.id, tab: "overview" })}
     actions={(f) => [
-      {
-        label: "Unassign",
-        onclick: () => ask(f, tabs.unassign),
-        disabled: f.server === null,
-        hint: f.server === null ? "The floating IP is not assigned." : undefined,
-      },
+      { label: rowAction(f).label, onclick: () => ask(f, rowAction(f)) },
       { label: "Delete", onclick: () => ask(f, tabs.delete) },
     ]}
   />
 {/if}
 
+<Dialog bind:open={inputOpen} title={`${pending?.action.label ?? ""} ${pending?.fip.name ?? ""}`}>
+  {#if pending && inputOpen}
+    <FloatingIpActionInput action={pending.action} fip={pending.fip} {servers} {submit} cancel={() => (inputOpen = false)} />
+  {/if}
+</Dialog>
+
 <ConfirmDialog
   bind:open={confirmOpen}
   title={`${pending?.action.label ?? ""} floating IP`}
   confirmLabel={pending?.action.label ?? ""}
+  typedName={pending?.action.confirm === "typed-name" ? pending.fip.name : undefined}
   onconfirm={run}
 >
   {#if pending?.action.id === "delete"}

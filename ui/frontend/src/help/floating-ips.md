@@ -14,9 +14,11 @@ the cloud runs.
   floating IP is a /64 network that carries no traffic in HLab.
 - The search field filters by name, or with `=` by labels, for example
   `team=ops`.
-- **Unassign** in the row menu (`…`) takes an assigned IP off its server
-  after a confirmation.
-- **Delete** in the row menu releases the floating IP after a confirmation.
+- The row menu (`…`) of an unassigned IP offers **Assign** (to a server in
+  the network zone); that of an assigned IP offers **Unassign**, which takes
+  it off its server after a confirmation.
+- **Delete** in the row menu releases the floating IP after you type its
+  name.
   An assigned IP must be unassigned first.
 - Clicking a row opens the floating IP's page. **Overview** shows its
   address with a copy button, the protocol, the description (**Edit

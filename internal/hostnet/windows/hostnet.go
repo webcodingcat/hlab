@@ -47,11 +47,11 @@ type Options struct {
 	StateDir string
 	// Program is the executable the firewall rule admits; default os.Executable().
 	Program string
-	// WSLConfig returns the console user's %UserProfile%\.wslconfig;
-	// found false when there is no file or no console user. Default: WTS
+	// WSLConfig returns the interactive user's %UserProfile%\.wslconfig;
+	// found false when there is no file or no interactive user. Default: WTS
 	// session token and GetUserProfileDirectory.
 	WSLConfig func(ctx context.Context) (data []byte, found bool, err error)
-	// RunAsUser runs commands such as wsl.exe in the console user's
+	// RunAsUser runs commands such as wsl.exe in the interactive user's
 	// context; default: CreateProcessAsUser with the WTS session token.
 	RunAsUser UserRunner
 }
@@ -101,7 +101,8 @@ func runPowerShell(ctx context.Context, script string) ([]byte, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("powershell: %w: %s", err, strings.TrimSpace(stderr.String()))
+		return nil, fmt.Errorf("powershell: %w: stdout: %s; stderr: %s", err,
+			strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()))
 	}
 	return stdout.Bytes(), nil
 }

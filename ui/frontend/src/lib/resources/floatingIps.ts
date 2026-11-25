@@ -37,10 +37,13 @@ const dnsPtr = changeDnsPtr(base);
 
 const protection = changeProtection(base);
 
-const del = remove(base, "Delete", "plain");
+const del = remove(base, "Delete", "typed-name");
 
 /** menu is the detail page's actions menu, Delete last. */
 export const menu: ResourceAction[] = [rename(base), assign, unassign, dnsPtr, protection, del];
+
+/** rowAction is the list row menu's entry that follows the state: Assign while unassigned, Unassign while assigned. */
+export const rowAction = (f: { server: number | null }): ResourceAction => (f.server === null ? assign : unassign);
 
 /** tabs are the actions of the detail tabs and the list row menu. */
 export const tabs: Record<string, ResourceAction> = {

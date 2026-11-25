@@ -19,7 +19,7 @@ export type ServerType = Named & {
   memory: number;
   disk: number;
   architecture: string;
-  locations: { name: string; available: boolean }[];
+  locations: { name: string; available: boolean; deprecation: unknown }[];
 };
 
 export type Server = {
@@ -69,9 +69,19 @@ export const imageGroups = (images: Image[]) =>
 /** imageLabel names a system image by its name, an own image by its description. */
 export const imageLabel = (i: Image) => (i.type === "system" ? (i.name ?? `${i.id}`) : i.description || `${i.type} ${i.id}`);
 
-/** typesIn lists the non-ARM types available in a location. */
-export const typesIn = (types: ServerType[], location: string) =>
-  types.filter((t) => t.architecture !== "arm" && t.locations.some((l) => l.name === location && l.available));
+/** defaultLocation is the name of the location with the lowest ID (Hetzner's order), "" without any. */
+export const defaultLocation = (locations: Named[]) =>
+  locations.reduce<Named | undefined>((min, l) => (min === undefined || l.id < min.id ? l : min), undefined)?.name ?? "";
 
-/** typeLabel describes a server type with its size. */
-export const typeLabel = (t: ServerType) => `${t.name} (${t.cores} vCPU, ${t.memory} GB RAM, ${t.disk} GB disk)`;
+/**
+ * typesIn lists the non-ARM types with an entry for a location, available or
+ * not: the API accepts them all.
+ */
+export const typesIn = (types: ServerType[], location: string) =>
+  types.filter((t) => t.architecture !== "arm" && t.locations.some((l) => l.name === location));
+
+/** typeLabel describes a server type with its size; " (deprecated)" when deprecated in the location. */
+export const typeLabel = (t: ServerType, location: string) => {
+  const deprecated = t.locations.some((l) => l.name === location && l.deprecation != null);
+  return `${t.name} (${t.cores} vCPU, ${t.memory} GB RAM, ${t.disk} GB disk)${deprecated ? " (deprecated)" : ""}`;
+};

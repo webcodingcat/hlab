@@ -23,9 +23,13 @@ func alias(name string) string {
 	return "vEthernet (" + name + ")"
 }
 
-// script joins lines after a header that stops at the first error.
+// script joins lines after a header that stops at the first error and ends
+// them with an explicit exit 0: powershell.exe -Command exits 1 when the
+// last statement failed, even silently under -ErrorAction SilentlyContinue,
+// so only a terminating error may make a script exit non-zero.
 func script(lines ...string) string {
-	return strings.Join(append([]string{"$ErrorActionPreference = 'Stop'"}, lines...), "\n")
+	lines = append([]string{"$ErrorActionPreference = 'Stop'"}, lines...)
+	return strings.Join(append(lines, "exit 0"), "\n")
 }
 
 // wslOrHlab filters NetIPInterface objects to the hlab and WSL adapters.

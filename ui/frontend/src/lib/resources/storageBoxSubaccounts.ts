@@ -47,5 +47,5 @@ export const tabs: Record<string, ResourceAction> = {
   update_access_settings: subAction("update_access_settings", "Update access settings", (i) =>
     pick(i, ["reachable_externally", "readonly", "samba_enabled", "ssh_enabled", "webdav_enabled"]),
   ),
-  delete: { id: "delete", label: "Delete", method: "DELETE", path: at, confirm: "plain", needsInput: false },
+  delete: { id: "delete", label: "Delete", method: "DELETE", path: at, confirm: "typed-name", needsInput: false },
 };

@@ -18,8 +18,8 @@ the cloud is stopped too.
 - **Edit** in an own ISO's row menu (`…`) opens the same form filled in
   with its values; **Save** applies the changes. Catalog ISOs cannot be
   edited.
-- **Remove** in an own ISO's row menu (`…`) removes it after a
-  confirmation. A server that has it attached keeps it until it is
+- **Remove** in an own ISO's row menu (`…`) removes it after you
+  type its name. A server that has it attached keeps it until it is
   detached.
 - When the file of own ISOs is broken or a local file is missing, a
   message above the table says why; `hlab cloud status` also names a

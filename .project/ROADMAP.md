@@ -73,23 +73,23 @@
 
 - [x] 29 More system images (CAT-09, SRV-23, SRV-24) → phases/29/
 
-- [x ] B4 Backlog: seed ISO on early network attach, snapshot rollback leftovers, private network after cloud start, duplicate convention tests → phases/B4/
+- [x] B4 Backlog: seed ISO on early network attach, snapshot rollback leftovers, private network after cloud start, duplicate convention tests → phases/B4/
 
-- [ ] 16 Release checks in test VMs.
-      Requirements: DOC-08.
-      Depends on: 13 and every other phase of milestone 1; it stays the
-      last phase of the milestone, and phases taken in from "Later" are
-      inserted before it.
+- [x] 16 Release checks in test VMs (DOC-08) → phases/16/
+
+- [ ] 30 Repository, CI and release v0.1.0.
+      Requirements: REL-01, REL-02, REL-03.
+      Depends on: 16; it is the last phase of milestone 1.
       Success criteria:
-      1. `docs/development/release-checks.md` describes both test VMs,
-         and the user has set them up by it.
-      2. The elevated installer suite (`task e2e:elevated`) passes in the
-         development test VM.
-      3. In the user test VM the setup EXE installs HLab without
-         development tools, and the manual checks of milestone 1 (INST-03,
-         INST-05, UI-09, LIFE-05, DOC-07 and those of later phases) pass
-         there.
-      Stops for: manual check.
+      1. `webcodingcat/hlab` is public on GitHub with `LICENSE`
+         (Apache-2.0) and the history of `main`.
+      2. A push to `main` runs the CI workflow on a Windows runner and it
+         is green.
+      3. The tag `v0.1.0`, on the commit that closes phase 30 and also
+         gets `wcc-milestone-1`, produces a GitHub release with
+         `hlab-0.1.0.msi`, `hlab-setup-0.1.0.exe` and `SHA256SUMS.txt`, and
+         README and `docs/development/releasing.md` describe installing
+         from releases and making a release.
 
 ## Later
 

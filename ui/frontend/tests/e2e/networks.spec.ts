@@ -28,6 +28,6 @@ test("UI-02 networks", async ({ page, shared }) => {
 
   // Delete needs the name typed and removes it from the list and the API.
   await section(page, "Networks");
-  await deleteRow(page, name, true);
+  await deleteRow(page, name);
   await expect.poll(async () => (await api(token, `/networks/${created.id}`)).status, { timeout: 60_000 }).toBe(404);
 });

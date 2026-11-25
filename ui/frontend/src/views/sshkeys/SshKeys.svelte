@@ -106,7 +106,7 @@
   />
 {/if}
 
-<ConfirmDialog bind:open={confirmOpen} title="Delete SSH key" confirmLabel="Delete" onconfirm={remove}>
+<ConfirmDialog bind:open={confirmOpen} title="Delete SSH key" confirmLabel="Delete" typedName={deleting?.name} onconfirm={remove}>
   <p>The SSH key <strong>{deleting?.name}</strong> is deleted. Servers that already use it keep it.</p>
 </ConfirmDialog>
 

@@ -381,8 +381,10 @@ func stopBehaviour() (string, error) {
 	return m[2], nil
 }
 
-// testINST06: upgrading 0.0.1 to 0.0.2 with the cloud running stops it,
-// leaves it stopped and keeps settings, projects, tokens and the server.
+// testINST06: upgrading 0.0.1 to 0.0.2 with the cloud and the tray running
+// and a passive UI (progress, no prompts) finishes without a files-in-use
+// stop, closes the tray, stops the cloud, leaves it and the service stopped
+// and keeps settings, projects, tokens and the server.
 func testINST06(ctx context.Context, t *testing.T) {
 	if err := ensureInstalled(ctx, oldVersion); err != nil {
 		t.Fatal(err)
@@ -397,9 +399,29 @@ func testINST06(ctx context.Context, t *testing.T) {
 	if st, err := cloudState(ctx, releaseHlab()); err != nil || st != "running" {
 		t.Fatalf("precondition: the release cloud is %q before the upgrade (%v)", st, err)
 	}
-
-	if _, err := install(ctx, newVersion); err != nil {
+	if running, err := trayRunning(ctx); err != nil {
 		t.Fatal(err)
+	} else if !running {
+		if err := startTray(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	run, err := install(ctx, newVersion, "/passive")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Windows Installer's files-in-use check (InstallValidate) logs each
+	// process holding a file the upgrade replaces; with the tray closed and
+	// the service stopped before it, there is none.
+	if m := filesInUseRe.FindAllString(run.log, -1); len(m) > 0 {
+		t.Errorf("the upgrade met files in use:\n%s", strings.Join(m, "\n"))
+	}
+	if running, err := trayRunning(ctx); err != nil {
+		t.Error(err)
+	} else if running {
+		t.Error("hlab-tray.exe still runs after the upgrade, want it closed")
 	}
 
 	if st, err := cloudState(ctx, releaseHlab()); err != nil {
@@ -448,6 +470,11 @@ func testINST06(ctx context.Context, t *testing.T) {
 		t.Errorf("VM %s of server %s is gone after the upgrade", f.vm, f.serverName)
 	}
 }
+
+// filesInUseRe matches Windows Installer's files-in-use log lines: message
+// 1603 "The file ... is being held in use by the following process", as
+// text or as a note with its number.
+var filesInUseRe = regexp.MustCompile(`(?im)^.*(being held in use|\b1: 1603\b).*$`)
 
 // testINST06Downgrade: installing 0.0.1 over 0.0.2 is refused and leaves
 // 0.0.2 installed.

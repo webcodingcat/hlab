@@ -3,9 +3,7 @@
   import Field from "../../lib/Field.svelte";
   import FormPage from "../../lib/FormPage.svelte";
   import LabelsField from "../../lib/LabelsField.svelte";
-  import { runAction, type Action, type ActionResult } from "../../lib/actions";
-  import { api, listAll } from "../../lib/api";
-  import { actionTitle, resourceType } from "../../lib/format";
+  import { listAll, runOn } from "../../lib/api";
   import { formErrors, type FormErrors } from "../../lib/formErrors";
   import { toLabels, type LabelRow } from "../../lib/labels";
   import { request, type Input } from "../../lib/resourceActions";
@@ -76,22 +74,16 @@
     const input: Input = { name: volumeName, size, server: Number(server), automount, format, labels: l.labels };
     const req = request(create, 0, input)!;
     busy = true;
-    await runAction(
-      actionTitle(resourceType(req.path), volumeName, "Create"),
-      async () => {
-        try {
-          const res = await api<ActionResult>(project, req.method, req.path, req.body);
-          window.location.hash = list;
-          return res;
-        } catch (err) {
-          errors = formErrors(err, known);
-          throw err;
-        } finally {
-          busy = false;
-        }
+    await runOn(project, volumeName, "Create", req, {
+      onanswer: () => {
+        busy = false;
+        window.location.hash = list;
       },
-      { get: async (id) => (await api<{ action: Action }>(project, "GET", `/actions/${id}`)).action },
-    );
+      onerror: (err) => {
+        busy = false;
+        errors = formErrors(err, known);
+      },
+    });
   }
 </script>
 

@@ -4,7 +4,6 @@ package storageagent
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -32,16 +31,6 @@ func homeDir(dir string) (string, error) {
 		return "", fmt.Errorf("home directory %q is absolute or escapes the box", dir)
 	}
 	return filepath.Clean(dir), nil
-}
-
-// run executes a command and returns its output; on failure the error
-// carries the command's output. Never pass a secret as an argument.
-func run(ctx context.Context, name string, args ...string) (string, error) {
-	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
-	if err != nil {
-		return string(out), fmt.Errorf("%s %s: %w: %s", name, strings.Join(args, " "), err, bytes.TrimSpace(out))
-	}
-	return string(out), nil
 }
 
 // apply brings the storage VM to doc: the steps of Plan, then the box
@@ -188,15 +177,15 @@ func (a *Agent) subvolumes(ctx context.Context) (map[string]string, error) {
 // hasFilesystem reports whether dev carries any signature blkid knows;
 // blkid exits with 2 when it finds none.
 func hasFilesystem(ctx context.Context, dev string) (bool, error) {
-	out, err := exec.CommandContext(ctx, "blkid", "-p", "-o", "value", "-s", "TYPE", dev).Output()
+	out, _, err := runIO(ctx, nil, "blkid", "-p", "-o", "value", "-s", "TYPE", dev)
 	var ee *exec.ExitError
 	if errors.As(err, &ee) && ee.ExitCode() == 2 {
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("blkid %s: %w", dev, err)
+		return false, err
 	}
-	return len(bytes.TrimSpace(out)) > 0, nil
+	return strings.TrimSpace(out) != "", nil
 }
 
 // format makes the btrfs filesystem without the TRIM of the whole device
@@ -546,16 +535,25 @@ func removeAccount(ctx context.Context, user string) error {
 	return err
 }
 
-// removeBox deletes a box absent from the document: its processes, the
-// chroots and users of the box and its subaccounts, the group, the
-// snapshots, the subvolume and the qgroup.
+// removeBox deletes a box absent from the document: its sessions and
+// processes, the chroots and users of the box and its subaccounts, the
+// group, the snapshots, the subvolume and the qgroup.
+// A session left open would keep the deleted subvolume in use, and btrfs
+// subvolume sync would wait for it: an smbd child runs as root and holds
+// the share's directory as long as the client keeps its connection (the
+// Windows client keeps it after net use /delete), so with the box IP of
+// the document applied last the sessions on it end as for a rollback.
 func (a *Agent) removeBox(ctx context.Context, box string) error {
 	n, err := boxUID(box)
 	if err != nil {
 		return err
 	}
 	id := strconv.Itoa(n)
-	if err := killUser(ctx, n); err != nil {
+	if i := slices.IndexFunc(a.doc.Boxes, func(b agentapi.Box) bool { return b.User == box }); i >= 0 {
+		if err := endSessions(ctx, a.doc.Boxes[i].IP, n); err != nil {
+			return err
+		}
+	} else if err := killUser(ctx, n); err != nil {
 		return err
 	}
 	users, err := ids("/etc/passwd")
@@ -677,12 +675,8 @@ func setPasswords(ctx context.Context, doc agentapi.Storage, skipped map[string]
 	if in.Len() == 0 {
 		return nil
 	}
-	cmd := exec.CommandContext(ctx, "chpasswd", "-e")
-	cmd.Stdin = strings.NewReader(in.String())
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("chpasswd: %w: %s", err, bytes.TrimSpace(out))
-	}
-	return nil
+	_, _, err = runIO(ctx, strings.NewReader(in.String()), "chpasswd", "-e")
+	return err
 }
 
 // applySSHD writes conf as the sshd configuration and reloads sshd when

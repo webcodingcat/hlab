@@ -144,7 +144,7 @@
   </form>
 </dialog>
 
-<ConfirmDialog bind:open={confirmOpen} title="Revoke token" confirmLabel="Revoke" onconfirm={revoke}>
+<ConfirmDialog bind:open={confirmOpen} title="Revoke token" confirmLabel="Revoke" typedName={revoking?.name} onconfirm={revoke}>
   <p>Clients using <strong>{revoking?.name}</strong> can no longer reach the API of {name}.</p>
 </ConfirmDialog>
 

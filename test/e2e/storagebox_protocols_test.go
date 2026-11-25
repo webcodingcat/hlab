@@ -26,7 +26,8 @@ const (
 	protocolSwitchTimeout = 2 * time.Minute
 	// davRequestTimeout limits one WebDAV request from the host.
 	davRequestTimeout = time.Minute
-	// boxLockTimeout is the wait while another row's action locks the box.
+	// boxLockTimeout is the wait while an action started outside the row's
+	// turn (boxTurn) still locks the box.
 	boxLockTimeout = 5 * time.Minute
 )
 
@@ -45,6 +46,26 @@ func (e *env) hetznerLocked(method, path string, body, out any) (int, apiError, 
 		err = fmt.Errorf("box still locked: %w", werr)
 	}
 	return status, aerr, err
+}
+
+// boxTurns holds one mutex per box (key /storage_boxes/<id>): rows that
+// start an action on the same box take turns, each holding its turn for the
+// request and the wait for its action. Under the load of a full run a box
+// action takes as long as the storage applies queued ahead of it, so a row
+// waits for the actions ahead of it, each bounded by boxActionTimeout,
+// instead of racing the other rows for the box's lock against one fixed
+// deadline.
+var boxTurns sync.Map
+
+// boxTurn waits for the turn of the box at the API path and returns its
+// release.
+func boxTurn(path string) func() {
+	parts := strings.SplitN(strings.TrimPrefix(path, "/"), "/", 3)
+	key := "/" + strings.Join(parts[:min(2, len(parts))], "/")
+	m, _ := boxTurns.LoadOrStore(key, &sync.Mutex{})
+	mu := m.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 // caFixture is the hlab CA certificate, exported once per run.
@@ -215,6 +236,7 @@ func (e *env) updateAccess(t *testing.T, path string, access map[string]bool) {
 		} `json:"action"`
 	}
 	path += "/actions/update_access_settings"
+	defer boxTurn(path)()
 	status, aerr, err := e.hetznerLocked(http.MethodPost, path, access, &body)
 	if err != nil || status != http.StatusCreated && status != http.StatusOK {
 		t.Fatalf("POST %s: status %d %s %s %v", path, status, aerr.Code, aerr.Message, err)

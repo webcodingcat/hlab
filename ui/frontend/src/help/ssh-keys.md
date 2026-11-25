@@ -12,7 +12,7 @@ runs.
   key with a copy button; change the name there with **Save name**.
   **Labels** edits the labels, saved with **Save labels**.
 - **Delete** in the row menu (`…`) or in the `…` menu of an open key
-  deletes the key after a confirmation. Servers that already use it keep
+  deletes the key after you type its name. Servers that already use it keep
   it.
 
 SSH Keys is a tab of **Security** in the sidebar on the left, beside

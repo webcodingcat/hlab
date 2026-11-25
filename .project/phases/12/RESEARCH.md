@@ -149,6 +149,7 @@ Checkbox bound to a Burn variable
   only when declared `bal:Overridable="yes"`; otherwise WixStdBA logs "Ignoring attempt to set non-overridable
   variable". <https://docs.firegiant.com/wix/schema/wxs/variable/>
 - BA element: `<bal:WixStandardBootstrapperApplication Theme="none" ThemeFile="theme.xml" LocalizationFile="theme.wxl" />`
+  (Superseded 2026-11-25, phase 16: with `Theme="none"` WiX 7 writes no wixstdba data and the bundle fails at start with 0x80070490; use a built-in theme value with the own ThemeFile, see phases/16/PLAN.md "Findings from manual testing".)
   (attributes `Theme` required, `ThemeFile`, `LocalizationFile`, `LogoFile`, `SuppressOptionsUI`, `SuppressRepair`,
   `ShowVersion`, `LaunchTarget`, `LaunchArguments`, `LaunchHidden`, `LaunchWorkingFolder`, `LaunchTargetElevatedId`,
   `LicenseFile`/`LicenseUrl`, `SupportCacheOnly`, `SuppressDowngradeFailure`).

@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 16 Release checks in test VMs (next), the last phase of milestone 1
+- Phase: 30 Repository, CI and release v0.1.0, the last phase of milestone 1 (not started)
 - Base branch: main
-- Last done: backlog phase B4 merged into main (2026-11-24): a network attach right after a boot no longer costs the server its seed ISO (Q26), deleting and pruning snapshots a failed rollback left behind works, the guest hook keeps user netplan settings after a carrier drop, and the network drops after a resume are documented (Q27)
-- Next: /wcc:phase in a new session builds phase 16 (release checks), the last phase of milestone 1
+- Last done: phase 16 merged into main (2026-11-25): release checks in the two test VMs, all manual checks of milestone 1 fit; on the way the setup bundle, upgrade, uninstall, storage VM trim and stall, WSL trust for the interactive user (Q28) and several console fixes were built
+- Next: /wcc:phase in a new session runs phase 30 (repository, CI, release v0.1.0, full task e2e, tag wcc-milestone-1)
 
 ## Open manual checks
 
@@ -18,14 +18,8 @@ STATUS: IN_PROGRESS
      one line each: "- UI-04 (03): <requirement>". The guide is in
      phases/<id>/CHECKS.md. /wcc:report walks through them. -->
 
-- DOC-07 (01): README and guides are understandable for their audience, help texts name only existing views and buttons
-- LIFE-05 (09): a Windows shutdown or restart with the cloud running applies the stop behaviour
-- INST-01 to INST-06 (12): the elevated installer suite passes in the development test VM
-- INST-03 (12): the setup creates shortcuts that open only the tray program, and "Launch" starts it without admin rights
-- INST-05 (12): uninstalling asks whether to keep the data; with the default answer no file of hlab remains
-- UI-09 (14): the example environment can be created and deleted by hand in the console
-- COMPACT (19): a deleted box gives its space on the host back after a cloud stop (data.vhdx compaction)
-- All of them, and those of later phases, are done in phase 16: the suite in the development test VM, the others in the user test VM (SPEC.md "Test VMs for the release checks").
+ uninstalling asks whether to keep the data; with the default answer no file of hlab remains
+- none
 
 ## Open decisions
 

@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, openView, rowAction, tableRow, api, uniqueName, hlab } from "./fixtures";
+import { test, expect, openView, rowAction, tableRow, api, uniqueName, hlab, confirmTyped } from "./fixtures";
 import { section, newProject, send, projectCard, openCard, type TestProject } from "./console";
 import { href } from "../../src/lib/routes";
 
@@ -42,7 +42,7 @@ test("UI-05", async ({ page }) => {
   const tokenRow = tableRow(page, "ui05");
   await expect(tokenRow).toBeVisible();
   await rowAction(tokenRow, "Revoke");
-  await page.getByRole("dialog").getByRole("button", { name: "Revoke", exact: true }).click();
+  await confirmTyped(page, "Revoke", "ui05");
   await expect(tokenRow).toBeHidden();
   await expect.poll(async () => (await api(token, "/servers")).status, { timeout: 30_000 }).toBe(401);
 
@@ -62,11 +62,7 @@ test("UI-05", async ({ page }) => {
   await page.getByRole("banner").getByRole("link", { name: "Projects", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Projects", exact: true })).toBeVisible();
   await rowAction(projectCard(page, project), "Delete");
-  dialog = page.getByRole("dialog");
-  const confirm = dialog.getByRole("button", { name: "Delete", exact: true });
-  await expect(confirm).toBeDisabled();
-  await dialog.getByRole("textbox").fill(project);
-  await confirm.click();
+  await confirmTyped(page, "Delete", project);
   await expect(projectCard(page, project)).toBeHidden({ timeout: 2 * 60_000 });
 });
 

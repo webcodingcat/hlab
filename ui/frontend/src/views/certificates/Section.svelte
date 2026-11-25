@@ -129,7 +129,7 @@
   />
 {/if}
 
-<ConfirmDialog bind:open={confirmOpen} title="Delete certificate" confirmLabel="Delete" onconfirm={run}>
+<ConfirmDialog bind:open={confirmOpen} title="Delete certificate" confirmLabel="Delete" typedName={pending?.name} onconfirm={run}>
   {#if pending}
     <p>
       The certificate <strong>{pending.name}</strong> is deleted for good; a certificate a load balancer service uses

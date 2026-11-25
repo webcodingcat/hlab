@@ -10,7 +10,7 @@ export const create: ResourceAction = createAt(base, "Create placement group", (
   type: "spread",
 }));
 
-const del = remove(base, "Delete", "plain");
+const del = remove(base, "Delete", "typed-name");
 
 /** menu is the detail page's actions menu, Delete last. */
 export const menu: ResourceAction[] = [rename(base), del];

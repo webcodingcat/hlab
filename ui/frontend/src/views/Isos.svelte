@@ -151,7 +151,7 @@
   <IsoForm bind:spec {errors} {saving} onsubmit={save} oncancel={() => (formOpen = false)} />
 </Dialog>
 
-<ConfirmDialog bind:open={confirmOpen} title="Remove ISO" confirmLabel="Remove" onconfirm={remove}>
+<ConfirmDialog bind:open={confirmOpen} title="Remove ISO" confirmLabel="Remove" typedName={removing ? isoTitle(removing) : undefined} onconfirm={remove}>
   <p>
     Removing <strong>{removing ? isoTitle(removing) : ""}</strong> keeps it in servers that have it attached until it is
     detached; it can no longer be attached.

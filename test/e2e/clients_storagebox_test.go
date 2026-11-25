@@ -293,6 +293,7 @@ func unprotectBox(t *testing.T, e *env, id int64) {
 		} `json:"action"`
 	}
 	path := fmt.Sprintf("/storage_boxes/%d/actions/change_protection", id)
+	defer boxTurn(path)()
 	status, aerr, err := e.hetznerLocked(http.MethodPost, path, map[string]bool{"delete": false}, &body)
 	if err != nil || status != http.StatusCreated && status != http.StatusOK {
 		t.Errorf("cleanup: POST %s: status %d %s %v", path, status, aerr.Code, err)

@@ -18,7 +18,7 @@ export const create: ResourceAction = createAt(base, "Add certificate", (i) =>
 // only then (HLab answers 422 otherwise).
 const retry = postAction(base, "retry", "retry", { label: "Retry" });
 
-const del = remove(base, "Delete", "plain");
+const del = remove(base, "Delete", "typed-name");
 
 /** menu is the detail page's actions menu, Delete last. */
 export const menu: ResourceAction[] = [rename(base), retry, del];

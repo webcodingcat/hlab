@@ -146,7 +146,7 @@ resource types.
 - CERT-01 an uploaded certificate is stored with its chain and key; fingerprint, domain names and validity are read from it (goal 1) [unit]
 - CERT-02 a managed certificate is issued by the hlab CA when all its domains lie in hlab DNS zones, fails with an error otherwise, and retry issues it again (goal 1) [unit]
 - CERT-03 managed certificates are renewed before they expire (goal 2) [unit]
-- CERT-04 the trust switch adds the hlab CA to the Windows trust store and to every WSL2 distro, and removes it again (goal 2) [e2e]
+- CERT-04 the trust switch adds the hlab CA to the Windows trust store and to every WSL2 distro of the interactive user (the user at the console, else the user of the single active Remote Desktop session), and removes it again (goal 2) [e2e]
 - CERT-05 `GET /mgmt/v1/ca.pem` and `hlab ca export <file>` return the hlab CA certificate (goal 2) [unit]
 
 ### Volumes (`VOL`)
@@ -286,6 +286,17 @@ lifetime (FAULT-01, FAULT-02), tested once where they are implemented.
 - FAULT-11 a `storage_box_unavailable` fault makes a storage box unreachable on every protocol from servers, host and WSL2; ending it restores access (goal 6) [e2e]
 - FAULT-12 `hlab fault create`, `hlab fault list` and `hlab fault delete` do what the management API does, with every kind and parameter as flags (goal 6) [unit]
 
+### Repository, CI and releases (`REL`)
+
+They serve the constraint "Open source on GitHub under Apache-2.0" in
+IDEA.md rather than a numbered goal. They are checked by looking at
+GitHub (repository, workflow runs, release assets) at the close of
+phase 30; a test inside the repository cannot see them.
+
+- REL-01 the repository `webcodingcat/hlab` on GitHub is public under Apache-2.0, with a `LICENSE` file and README links pointing to it [manual]
+- REL-02 every push to `main` and every pull request against `main` runs the build, the Go unit tests, the linter, the frontend unit tests and the installer build on a GitHub-hosted Windows runner; end-to-end tests are not part of it [manual]
+- REL-03 a pushed tag `vX.Y.Z` builds `hlab-X.Y.Z.msi` and `hlab-setup-X.Y.Z.exe` with version X.Y.Z and publishes both with a SHA-256 checksum file as a GitHub release; the first release is v0.1.0 from the commit that closes phase 30, the same commit that gets the tag `wcc-milestone-1`; README describes installing from the releases and `docs/development/releasing.md` describes CI and making a release [manual]
+
 ### Documentation (`DOC`)
 
 They hold at the close of every phase, measured against what is built so
@@ -299,7 +310,7 @@ of IDEA.md rather than a numbered goal.
 - DOC-05 every view of the tray has a help text and every help text belongs to a view, with the app taking its view list from `views.json` [unit]; that each help text names only views and buttons that exist is checked by hand with DOC-07
 - DOC-06 every command in the developer guide exists in the Taskfile [unit]
 - DOC-07 README and guides are understandable for their audience, and the help texts name only views and buttons that exist [manual]
-- DOC-08 `docs/development/release-checks.md` describes how to set up the two test VMs of the release checks by hand (Hyper-V, fresh Windows, nested virtualization; one with the development tools for the elevated installer suite, one without them for the user's flow) and what runs in which [manual]
+- DOC-08 `docs/development/release-checks.md` describes how to set up the two test VMs of the release checks with the repository's scripts, which the developer runs (Hyper-V, fresh Windows, nested virtualization; one with the development tools for the elevated installer suite, one without them for the user's flow), and what runs in which [manual]
 
 ## Later
 
@@ -508,6 +519,9 @@ What the target vision in IDEA.md will need, not built yet.
 | UI-16 | 28 | x |
 | UI-17 | 28 | x |
 | UI-18 | 28 | x |
+| REL-01 | 30 | |
+| REL-02 | 30 | |
+| REL-03 | 30 | |
 | DOC-01 | all | |
 | DOC-02 | all | |
 | DOC-03 | all | |
@@ -515,4 +529,4 @@ What the target vision in IDEA.md will need, not built yet.
 | DOC-05 | all | |
 | DOC-06 | all | |
 | DOC-07 | all | |
-| DOC-08 | 16 | |
+| DOC-08 | 16 | x |

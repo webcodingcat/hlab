@@ -4,7 +4,6 @@ package storageagent
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -13,7 +12,6 @@ import (
 	"io"
 	"net/netip"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -314,12 +312,9 @@ func verboseSIDs(out string) map[string]string {
 // pdbedit runs pdbedit with stdin. Its output may hold hashes, so it is
 // only returned, and an error carries only the standard error.
 func pdbedit(ctx context.Context, stdin io.Reader, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "pdbedit", args...)
-	cmd.Stdin = stdin
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("pdbedit %s: %w: %s", strings.Join(args, " "), err, bytes.TrimSpace(stderr.Bytes()))
+	out, _, err := runIO(ctx, stdin, "pdbedit", args...)
+	if err != nil {
+		return "", err
 	}
-	return stdout.String(), nil
+	return out, nil
 }

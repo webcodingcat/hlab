@@ -85,6 +85,15 @@ const (
 	listenTimeout = time.Minute
 	// serverShutdownTimeout bounds the graceful end of the HTTP servers.
 	serverShutdownTimeout = 10 * time.Second
+	// startTimeout bounds a whole start, a first one with the download of
+	// the appliance image included, so a start that cannot finish fails
+	// instead of keeping the service starting.
+	startTimeout = time.Hour
+	// pushAgentTimeout bounds the first agent document push of a start
+	// (host DNS servers and the push).
+	pushAgentTimeout = 2 * time.Minute
+	// restoreTimeout bounds resuming or powering on the servers at a start.
+	restoreTimeout = 10 * time.Minute
 	// statusFile is the cloud's state for hlab and the tray.
 	statusFile = "status.json"
 )
@@ -155,11 +164,16 @@ type Cloud struct {
 	// restored is set once Lifecycle.Restore ran; only then does the stop
 	// halt the servers and record which ran.
 	restored bool
+
+	// startTimeout bounds Start; startSteps are the steps it runs (nil:
+	// start). Tests replace both.
+	startTimeout time.Duration
+	startSteps   func(ctx context.Context, params []string) error
 }
 
 // New returns a stopped cloud.
 func New(d Deps) *Cloud {
-	return &Cloud{d: d, tag: profile.Current().Tag}
+	return &Cloud{d: d, tag: profile.Current().Tag, startTimeout: startTimeout}
 }
 
 // problemCustomServerTypes is the /status problem of own server types
@@ -191,10 +205,23 @@ func (r *refusal) Error() string { return "refused: " + r.p.Code + ": " + r.p.Me
 
 // Start brings the cloud up with the service's start parameters (see
 // discard.Param). On failure it undoes what it did, writes the status file
-// and returns the error.
+// and returns the error. A start that does not finish within startTimeout
+// fails with an error wrapping context.DeadlineExceeded.
 func (c *Cloud) Start(ctx context.Context, params []string) error {
 	c.writeStatus(status{State: "starting"})
-	err := c.start(ctx, params)
+	steps := c.startSteps
+	if steps == nil {
+		steps = c.start
+	}
+	sctx, cancel := context.WithTimeout(ctx, c.startTimeout)
+	err := steps(sctx, params)
+	if err != nil && errors.Is(sctx.Err(), context.DeadlineExceeded) {
+		if !errors.Is(err, context.DeadlineExceeded) {
+			err = fmt.Errorf("%w: %w", context.DeadlineExceeded, err)
+		}
+		err = fmt.Errorf("cloud start did not finish within %s: %w", c.startTimeout, err)
+	}
+	cancel()
 	if err == nil {
 		c.writeStatus(status{State: sysint.StateRunning})
 		slog.Info("cloud running")
@@ -351,10 +378,15 @@ func (c *Cloud) start(ctx context.Context, params []string) error {
 	if err != nil {
 		return err
 	}
-	if err := c.PushAgent(ctx); err != nil {
-		return err
+	pushCtx, cancel := context.WithTimeout(ctx, pushAgentTimeout)
+	err = c.PushAgent(pushCtx)
+	cancel()
+	if err != nil {
+		return fmt.Errorf("first agent document push: %w", err)
 	}
-	c.restore(ctx)
+	restoreCtx, cancel := context.WithTimeout(ctx, restoreTimeout)
+	c.restore(restoreCtx)
+	cancel()
 	c.startStorage(ctx)
 
 	if err := c.serveManagement(router); err != nil {

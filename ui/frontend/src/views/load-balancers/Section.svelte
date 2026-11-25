@@ -161,7 +161,7 @@
   />
 {/if}
 
-<ConfirmDialog bind:open={confirmOpen} title="Delete load balancer" confirmLabel="Delete" onconfirm={run}>
+<ConfirmDialog bind:open={confirmOpen} title="Delete load balancer" confirmLabel="Delete" typedName={pending?.name} onconfirm={run}>
   {#if pending}
     <p>The load balancer <strong>{pending.name}</strong> and its public IPs are deleted for good.</p>
   {/if}
