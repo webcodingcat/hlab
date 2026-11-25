@@ -27,6 +27,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-25 Sort on server types and ISOs follows the renewed pin
+
+- Type: decision
+- Phase: phase 30
+- What: `GET /server_types` and `GET /isos` accept `sort=id|name[:asc|:desc]` as the renewed cloud description documents; the lower-case `4xx`/`5xx` workaround in the test helper is gone because the descriptions use `4XX`/`5XX`.
+- Why: the conventions test reads the sort keys from the description, so the re-pin required it.
+- Cost of change: low
+
 ## 2026-11-25 First push and CI wait run in the close of phase 30
 
 - Type: decision
