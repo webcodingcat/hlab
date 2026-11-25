@@ -292,8 +292,10 @@ WSL2 distribution, as `/usr/local/share/ca-certificates/hlab-ca.crt`;
   it is on, every cloud start adds the CA again.
 - WSL2 distributions without `update-ca-certificates`, and the
   `docker-desktop` distributions, are skipped. The change in WSL2 runs as
-  the user logged on at the console; with nobody logged on it waits until
-  someone logs on.
+  the interactive user: the user logged on at the console, else the user
+  of the single active Remote Desktop session (Hyper-V's enhanced session
+  counts as one). With nobody at the console and none or several active
+  Remote Desktop sessions it waits until there is such a user.
 - When the Windows store cannot be changed, the command fails and the
   setting stays as it was.
 - `--output json` prints `{"on": true}` or `{"on": false}`.

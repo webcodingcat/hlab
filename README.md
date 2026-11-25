@@ -326,8 +326,10 @@ same endpoint and token. This needs WSL2 in NAT networking mode with
 `%UserProfile%\.wslconfig`, section `[wsl2]`, leave `networkingMode` unset
 or set it to `nat`, and leave `dnsTunneling` unset or set it to `true`.
 
-At every `hlab cloud start`, HLab reads the `.wslconfig` of the user
-logged on at the console. When it finds `networkingMode` set to
+At every `hlab cloud start`, HLab reads the `.wslconfig` of the
+interactive user: the user logged on at the console, else the user of the
+single active Remote Desktop session (Hyper-V's enhanced session counts as
+one). When it finds `networkingMode` set to
 `mirrored`, `virtioproxy`, `bridged` or `none`, or `dnsTunneling=false`,
 the cloud starts anyway and `hlab cloud status` shows a `problem:` line
 saying what to change. Change `.wslconfig`, run `wsl --shutdown`, and stop
@@ -363,8 +365,10 @@ there are deleted.
   was on returns at that start.
 - Other Windows accounts keep their own tray data folders; delete them in
   those accounts if you want them gone.
-- The CA is removed from the WSL2 distributions of the user logged on at
-  the console only. With nobody logged on, or when a distribution fails,
+- The CA is removed from the WSL2 distributions of the interactive user
+  only: the user at the console, else the user of the single active Remote
+  Desktop session. With no such user (nobody at the console and none or
+  several active Remote Desktop sessions), or when a distribution fails,
   the uninstall still completes and the CA file
   `/usr/local/share/ca-certificates/hlab-ca.crt` stays in those
   distributions; delete it there and run `sudo update-ca-certificates

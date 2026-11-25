@@ -92,7 +92,8 @@ removes the host routes, NAT, DNS and firewall rules tagged `hlab-dev`,
 deletes the VMs `hlab-dev-appliance` and `hlab-dev-server-<n>` and the
 switch `hlab-dev`, and deletes `%ProgramData%\hlab-dev`. `--keep-data`
 keeps the data folder. It prints a `note:` line for what it skipped (for
-example the CA in WSL with nobody logged on at the console) and exits
+example the CA in WSL with no interactive user, that is nobody at the
+console and none or several active Remote Desktop sessions) and exits
 non-zero naming each object it could not remove.
 
 ## Profiles
