@@ -529,4 +529,4 @@ What the target vision in IDEA.md will need, not built yet.
 | DOC-05 | all | |
 | DOC-06 | all | |
 | DOC-07 | all | |
-| DOC-08 | 16 | |
+| DOC-08 | 16 | x |

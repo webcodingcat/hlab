@@ -75,21 +75,7 @@
 
 - [x] B4 Backlog: seed ISO on early network attach, snapshot rollback leftovers, private network after cloud start, duplicate convention tests → phases/B4/
 
-- [ ] 16 Release checks in test VMs.
-      Requirements: DOC-08.
-      Depends on: 13 and every other phase of milestone 1; it is the last
-      phase before 30, and phases taken in from "Later" are inserted
-      before it.
-      Success criteria:
-      1. `docs/development/release-checks.md` describes both test VMs,
-         and the user has set them up with its scripts.
-      2. The elevated installer suite (`task e2e:elevated`) passes in the
-         development test VM.
-      3. In the user test VM the setup EXE installs HLab without
-         development tools, and the manual checks of milestone 1 (INST-03,
-         INST-05, UI-09, LIFE-05, DOC-07 and those of later phases) pass
-         there.
-      Stops for: manual check.
+- [x] 16 Release checks in test VMs (DOC-08) → phases/16/
 
 - [ ] 30 Repository, CI and release v0.1.0.
       Requirements: REL-01, REL-02, REL-03.

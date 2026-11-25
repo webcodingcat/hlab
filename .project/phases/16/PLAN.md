@@ -155,14 +155,14 @@ fails (CONTEXT.md, "Technical choices").
   - Adjusts: -
   - [x] Take the project as a plain value at submit in every listed place (best through one shared helper the forms use, as `runOn` does), so a create or DNS change still running after the user leaves the project console or switches project follows its action in its own project.
 
-- [ ] 16-18 Storage applies and agent commands with deadlines; the stall after the compaction
+- [x] 16-18 Storage applies and agent commands with deadlines; the stall after the compaction
   - Wave: 18 | Depends on: 16-17 | Review: alone
   - Requirements: SBOX-03, SBOX-08 (box removal), and the storage box actions of SBOX-04, SBOX-12 | Tests: TESTS.md rows of 16-18 (new, written first); `task e2e -- -v -run 'TestE2E/SBOX-'` (after `SBOX-03/compact`) green, then the full `task e2e`
   - Reads: the 2026-11-25 bug "storage apply hangs after the compaction" under "Findings from manual testing" below; TESTS.md rows of 16-18; `internal/agentclient/agentclient.go`, `storage.go` (`Push`, `Job`, `jobHTTP`); `internal/cloud/storage_life.go` and the callers that hold `storageMu`; `internal/storageagent` (apply, `removeBox`, the command runner, `jobs_linux.go` trim); DECISIONS.md "2026-11-25 Storage VM trims before a compaction"; the e2e log of the hang in the session scratchpad (`f1-sbox.log`)
   - Size: ~200 lines in 6 files
   - Adjusts: -
-  - [ ] Every storage apply and job hlabd sends has a deadline (longest legitimate apply plus margin, stated in DECISIONS.md); on expiry the error is logged, `storageMu` is released and the waiting box actions fail with an error instead of staying running. Every command the storage agent runs has a deadline, and an expired one is reported in the apply's error with the command and its duration.
-  - [ ] Reproduce with the storage box rows after `SBOX-03/compact`, read from `hlabd.log` which command stalls, and fix its cause; the storage box rows and then the full `task e2e` are green.
+  - [x] Every storage apply and job hlabd sends has a deadline (longest legitimate apply plus margin, stated in DECISIONS.md); on expiry the error is logged, `storageMu` is released and the waiting box actions fail with an error instead of staying running. Every command the storage agent runs has a deadline, and an expired one is reported in the apply's error with the command and its duration.
+  - [x] Reproduce with the storage box rows after `SBOX-03/compact`, read from `hlabd.log` which command stalls, and fix its cause; the storage box rows and then the full `task e2e` are green.
 
 ## Close
 
@@ -180,6 +180,8 @@ Run at this close:
 - 2026-11-25, after the user-VM checks: 16-12 (f40cd2f), 16-13 (954ac5e), 16-14 (ed7c506), 16-15 (028165c, review fix 5dc3896), 16-16 (671b549), 16-17 (774c220, 02979df), tests db21331 and 27d7570. Frontend unit tests (370), svelte-check, UI e2e rows UI-01 to UI-17 and `TestE2E/SBOX-03/compact` green; reviews without open blockers. UI-09, INST-06, COMPACT and INST-01 to INST-06 (elevated, for the files-in-use change) are asked again; a full `task e2e` runs before the tag.
 - `task test`, `task lint` green and `task e2e -- -v` on 9e236ef: 245 passed, `TestE2E/SBOX-04/smb` and `SBOX-12/smb` failed (`POST /storage_boxes/296/subaccounts` answered 423 locked for 5 min while SBOX-14 worked on the shared box); the three rows alone passed (SBOX-04 173 s, SBOX-12 135 s, SBOX-14 128 s). The closing full run decides.
 - `task build`, `task test`, `task lint` green and `task e2e -- -v` on 9c578f8+16-08/16-09 (started 11:0x, before 16-10/16-11): 244 passed, `TestE2E/CLI-03/servers` failed once (Ansible "server stopped" answered `locked` while the machine was loaded by parallel package tests) and passed alone afterwards. A full `task e2e` on the final commit is still due before the tag.
+
+- Closing run (2026-11-25): 16-18 (tests a09dc2c, deadlines d4d191d, stall fix 2eb1ede, test fake f1d0299, review fixes 0a853cc, e8ace4e) with the e2e turn per box (9c1c8e8). `task build`, `task test`, `task lint` green and `task e2e -- -v` on 0aa9144: 245 passed, every storage box row green, only `CLI-02/load_balancers` failed (OpenTofu got `locked` under full load) and passed alone on f8df7aa; `TestE2E/SBOX-` on f8df7aa: all 22 rows green. Phase 16 closes; the full `task e2e` runs again at the close of phase 30, the last phase of milestone 1.
 
 ## Findings from manual testing
 

@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 16 Release checks in test VMs (all manual checks fit; closing on branch wcc/phase-16); phase 30 Repository, CI and release v0.1.0 follows as the last phase of milestone 1
+- Phase: 30 Repository, CI and release v0.1.0, the last phase of milestone 1 (not started)
 - Base branch: main
-- Last done: backlog phase B4 merged into main (2026-11-24): a network attach right after a boot no longer costs the server its seed ISO (Q26), deleting and pruning snapshots a failed rollback left behind works, the guest hook keeps user netplan settings after a carrier drop, and the network drops after a resume are documented (Q27)
-- Next: /wcc:phase closes phase 16 (full task e2e, merge into main, no tag yet); then /wcc:phase runs phase 30, which publishes the repository, adds CI and releases v0.1.0, and tags wcc-milestone-1
+- Last done: phase 16 merged into main (2026-11-25): release checks in the two test VMs, all manual checks of milestone 1 fit; on the way the setup bundle, upgrade, uninstall, storage VM trim and stall, WSL trust for the interactive user (Q28) and several console fixes were built
+- Next: /wcc:phase in a new session runs phase 30 (repository, CI, release v0.1.0, full task e2e, tag wcc-milestone-1)
 
 ## Open manual checks
 
