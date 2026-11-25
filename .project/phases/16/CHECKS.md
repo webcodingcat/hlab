@@ -29,7 +29,7 @@ the development machine at this close (see PLAN.md "Close").
 - Setup: `release-check-user` from DOC-08; `hlab-setup-0.1.0.exe` and `hlab-setup-0.1.1.exe` built on the development machine and copied in.
 - Steps: as in the guide section.
 - Expected: as in the guide section: "Launch" opens the tray without a UAC prompt, one Start menu and one desktop shortcut, HLab not among the startup apps.
-- Result: open
+- Result: fits (2026-11-25, release-check-user, hlab-setup-0.1.0.exe)
 
 ## NAMES The appliance carries its name after the first cloud start
 
