@@ -12,6 +12,10 @@
     changes; with HLABUI=1 it shows the message box.
   - install: deferred as LocalSystem after InstallFiles; on a failed first
     install its rollback runs uninstall-cleanup keep-data.
+  - close-tray and stop-service-early: immediate, in the new product on an
+    upgrade, before InstallValidate: its files-in-use check finds neither a
+    running tray nor the service (taskkill from WixQuietExec, then
+    stop-service from the Binary table).
   - stop-service: in the old product during a major upgrade, before its files
     go. MSIRESTARTMANAGERCONTROL=Disable keeps Windows Installer's Restart
     Manager from stopping the service and starting it again after an upgrade.
@@ -109,6 +113,23 @@
     <CustomAction Id="HlabInstall" FileRef="HlabdExe" ExeCommand="install"
                   Execute="deferred" Impersonate="no" Return="check" />
 
+    <!-- Upgrade, before InstallValidate: with the Restart Manager disabled,
+         InstallValidate's files-in-use check would stop at a running tray
+         ("Files In Use"), and util:CloseApplication runs only before
+         InstallFiles (its termination in a deferred action). Immediate
+         actions may run before InstallValidate, deferred ones only between
+         InstallInitialize and InstallFinalize. So the new product ends every
+         tray (taskkill exits 128 when none runs: ignored) and stops the
+         service, as the installing administrator, before the check. -->
+    <SetProperty Id="WixQuietExecCmdLine" Action="SetCloseTrayCmd" Sequence="execute"
+                 Before="HlabCloseTray"
+                 Value="&quot;[System64Folder]taskkill.exe&quot; /F /IM hlab-tray.exe"
+                 Condition="WIX_UPGRADE_DETECTED AND NOT REMOVE" />
+    <CustomAction Id="HlabCloseTray" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixQuietExec"
+                  Execute="immediate" Return="ignore" />
+    <CustomAction Id="HlabStopServiceEarly" BinaryRef="HlabdBinary" ExeCommand="stop-service"
+                  Execute="immediate" Return="check" />
+
     <!-- Upgrade: the old product stops the service before its files go. -->
     <CustomAction Id="HlabStopService" Directory="INSTALLFOLDER"
                   ExeCommand="&quot;[INSTALLFOLDER]hlabd.exe&quot; stop-service"
@@ -131,6 +152,10 @@
 
     <InstallExecuteSequence>
       <Custom Action="HlabCheckPrereq" Before="InstallValidate" Condition="NOT REMOVE" />
+      <Custom Action="HlabCloseTray" After="HlabCheckPrereq"
+              Condition="WIX_UPGRADE_DETECTED AND NOT REMOVE" />
+      <Custom Action="HlabStopServiceEarly" After="HlabCloseTray"
+              Condition="WIX_UPGRADE_DETECTED AND NOT REMOVE" />
       <Custom Action="HlabInstallRollback" Before="HlabInstall"
               Condition="NOT Installed AND NOT WIX_UPGRADE_DETECTED AND NOT REMOVE" />
       <Custom Action="HlabInstall" After="InstallFiles" Condition="NOT REMOVE" />
