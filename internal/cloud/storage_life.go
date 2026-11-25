@@ -108,6 +108,7 @@ func (c *Cloud) applyStorage(ctx context.Context) error {
 		Boxes:       boxes,
 	}
 	if err := c.storage.Push(ctx, doc); err != nil {
+		slog.Error("storage document push failed", "boxes", len(boxes), "err", err)
 		return err
 	}
 	slog.Info("storage document pushed", "boxes", len(boxes))

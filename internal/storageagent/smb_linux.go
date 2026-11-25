@@ -314,6 +314,8 @@ func verboseSIDs(out string) map[string]string {
 // pdbedit runs pdbedit with stdin. Its output may hold hashes, so it is
 // only returned, and an error carries only the standard error.
 func pdbedit(ctx context.Context, stdin io.Reader, args ...string) (string, error) {
+	ctx, cancel := commandContext(ctx)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, "pdbedit", args...)
 	cmd.Stdin = stdin
 	var stdout, stderr bytes.Buffer

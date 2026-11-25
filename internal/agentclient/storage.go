@@ -17,10 +17,26 @@ import (
 // storageGenerationKey is the kv key of the last pushed storage generation.
 const storageGenerationKey = "storage.generation"
 
+// Deadlines of the requests to the storage agent. An apply or a job runs
+// a few btrfs commands; the longest legitimate one waits for the file
+// system on a large data disk (btrfs subvolume sync after the deletion of
+// a large box, a quota rescan, fstrim) and the agent ends any command
+// after 10 minutes (storageagent commandTimeout). An apply may run two
+// such commands (a box removal and the quota rescan), a job as well (the
+// trim's subvolume sync and fstrim, a rollback's deletions), plus the
+// short rest; the deadlines leave room for that, so an expired command
+// reaches hlabd in the agent's error before hlabd gives up.
+const (
+	storageApplyTimeout = 30 * time.Minute
+	storageJobTimeout   = 25 * time.Minute
+)
+
 // StorageClient talks to the storage agent on the storage VM.
 type StorageClient struct {
-	base *Client     // request helper; its jobHTTP has no timeout, so ctx bounds an apply or a job
-	mu   sync.Mutex // one push at a time, so generations arrive in order
+	base         *Client       // request helper; its jobHTTP has no timeout
+	applyTimeout time.Duration // bounds one apply, also without a deadline of the caller
+	jobTimeout   time.Duration // bounds one job, also without a deadline of the caller
+	mu           sync.Mutex    // one push at a time, so generations arrive in order
 }
 
 // JobError is a storage job the agent refused: the HTTP status and the
@@ -36,7 +52,7 @@ func (e *JobError) Error() string {
 
 // NewStorage returns a StorageClient; opts.Addr is transit Addrs.StorageAgent.
 func NewStorage(opts Options) *StorageClient {
-	return &StorageClient{base: New(opts)}
+	return &StorageClient{base: New(opts), applyTimeout: storageApplyTimeout, jobTimeout: storageJobTimeout}
 }
 
 // WaitReady polls the storage agent until it answers any HTTP request or
@@ -100,6 +116,8 @@ func (c *StorageClient) Push(ctx context.Context, doc agentapi.Storage) error {
 	if err != nil {
 		return fmt.Errorf("storage push: %w", err)
 	}
+	ctx, cancel := context.WithTimeout(ctx, c.applyTimeout)
+	defer cancel()
 	var applied struct{ Generation int }
 	if err := c.base.doWith(ctx, c.base.jobHTTP, http.MethodPut, "/v1/storage", body, &applied); err != nil {
 		return fmt.Errorf("storage push generation %d: %w", gen, err)
@@ -114,6 +132,8 @@ func (c *StorageClient) Job(ctx context.Context, job agentapi.StorageJob) (agent
 	if err != nil {
 		return agentapi.StorageJobResult{}, fmt.Errorf("storage job %s: %w", job.Kind, err)
 	}
+	ctx, cancel := context.WithTimeout(ctx, c.jobTimeout)
+	defer cancel()
 	var res agentapi.StorageJobResult
 	err = c.base.doWith(ctx, c.base.jobHTTP, http.MethodPost, "/v1/jobs", body, &res)
 	var se *statusError

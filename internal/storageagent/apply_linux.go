@@ -34,16 +34,6 @@ func homeDir(dir string) (string, error) {
 	return filepath.Clean(dir), nil
 }
 
-// run executes a command and returns its output; on failure the error
-// carries the command's output. Never pass a secret as an argument.
-func run(ctx context.Context, name string, args ...string) (string, error) {
-	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
-	if err != nil {
-		return string(out), fmt.Errorf("%s %s: %w: %s", name, strings.Join(args, " "), err, bytes.TrimSpace(out))
-	}
-	return string(out), nil
-}
-
 // apply brings the storage VM to doc: the steps of Plan, then the box
 // addresses, then the passwords, sshd and the protocol services, then the
 // quota accounting check of E18. A box whose step fails is logged and left
@@ -188,6 +178,8 @@ func (a *Agent) subvolumes(ctx context.Context) (map[string]string, error) {
 // hasFilesystem reports whether dev carries any signature blkid knows;
 // blkid exits with 2 when it finds none.
 func hasFilesystem(ctx context.Context, dev string) (bool, error) {
+	ctx, cancel := commandContext(ctx)
+	defer cancel()
 	out, err := exec.CommandContext(ctx, "blkid", "-p", "-o", "value", "-s", "TYPE", dev).Output()
 	var ee *exec.ExitError
 	if errors.As(err, &ee) && ee.ExitCode() == 2 {
@@ -677,6 +669,8 @@ func setPasswords(ctx context.Context, doc agentapi.Storage, skipped map[string]
 	if in.Len() == 0 {
 		return nil
 	}
+	ctx, cancel := commandContext(ctx)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, "chpasswd", "-e")
 	cmd.Stdin = strings.NewReader(in.String())
 	if out, err := cmd.CombinedOutput(); err != nil {
