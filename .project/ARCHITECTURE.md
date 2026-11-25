@@ -591,7 +591,10 @@ Inside `hlabd` (Go packages under `internal/`):
   }
   // hlabd uninstall-cleanup runs internal/uninstall.Run, which stops and
   // removes the service through sysint/windows RemoveService(ctx, mode);
-  // hlabd stop-service (before an upgrade) calls StopService(ctx).
+  // hlabd stop-service (before an upgrade) calls StopService(ctx). Both
+  // wait up to 3 min for a START_PENDING service, stop it once it runs,
+  // and otherwise end its process by the PID from its status before the
+  // 200 s stop wait.
   // these two live in the implementation package (sysint/windows):
   func ListenManagement() (net.Listener, error) // Windows: \\.\pipe\hlab with ACL
   func DialManagement(ctx context.Context) (net.Conn, error)
@@ -735,8 +738,10 @@ Inside `hlabd` (Go packages under `internal/`):
   the bridge; the Hetzner resources are
   managed through the management API's project proxy
   (`/mgmt/v1/projects/{name}/api/v1/...`, storage boxes through
-  `/mgmt/v1/projects/{name}/api/hetzner/v1/...` with `hetznerApi` and
-  `runHetzner` in `lib/api.ts`, actions polled on the Cloud API's `/actions/{id}`), so the UI exercises the same
+  `/mgmt/v1/projects/{name}/api/hetzner/v1/...` with `hetznerApi`; actions
+  are followed through `runApi`, `runOn`, `runHetzner` and `runHetznerOn`
+  in `lib/api.ts`, which take the project as a plain value at submit and
+  optional `Hooks{onanswer, onerror}`, polling the Cloud API's `/actions/{id}`), so the UI exercises the same
   handlers as the clients. Views per UI-SPEC.md.
 - Start and stop through the SCM open the manager with `SC_MANAGER_CONNECT`
   and the service with `SERVICE_START|SERVICE_STOP|SERVICE_QUERY_STATUS`
@@ -1149,8 +1154,8 @@ locks a resource of type `project`.
   type Access struct { SSH, Samba, WebDAV, ZFS, ReadOnly, ReachableExternally bool }
   type Usage struct { Data, Snapshots int64 } // bytes, from the qgroups
   type StorageJob struct {
-      Kind     string // "snapshot" | "rollback" | "delete-snapshot" | "folders" | "usage"
-      Box      string // box user
+      Kind     string // "snapshot" | "rollback" | "delete-snapshot" | "folders" | "usage" | "trim"
+      Box      string // box user; empty for "trim" (btrfs subvolume sync, filesystem sync, fstrim on the data file system)
       Snapshot string // snapshot name for snapshot, rollback, delete-snapshot
       Path     string // for folders
       Newer    []string // rollback: the snapshots created after the target, deleted with it
@@ -1252,7 +1257,13 @@ locks a resource of type `project`.
   readable state, then the files; without KEEPDATA an impersonated custom
   action then runs `hlabd remove-user-data` for the uninstalling user. An
   upgrade runs `hlabd stop-service` in the old product and never the
-  cleanup.
+  cleanup; before InstallValidate the new product ends `hlab-tray.exe`
+  (`taskkill` through WixQuietExec, failure ignored) and runs
+  `hlabd stop-service` from its Binary table (failure stops the upgrade),
+  both only with `WIX_UPGRADE_DETECTED AND NOT REMOVE`. The MSI sets
+  `MSIRESTARTMANAGERCONTROL=Disable`. The bundle uses WixStdBA with
+  `Theme="hyperlinkLicense"`, an empty `LicenseUrl` and the own
+  `theme.xml`/`theme.wxl`.
 
 ## Network
 
@@ -1406,9 +1417,12 @@ level = "info"
   if missing, create `server-types.custom.json` if missing, open the hlab CA (created if missing) and renew its CRL,
   apply `hostnet.TrustCA` when `trust_ca` is on (a failure is a status
   problem, not an abort), start appliance, `hostnet.Up`, serve the Hetzner API, push agent document,
-  restore servers and the storage VM (resume saved ones; power on those marked running), push the storage document
+  restore servers and the storage VM (a stored server whose VM is missing, as after a KeepData uninstall, is first recreated from its kept disk; resume saved ones; power on those marked running), push the storage document
   in the background with retries (also when only the `storage` folder is left, so an orphaned storage VM is deleted), start
   the management API and scheduler (with the weekly `crl` job), set status `running`.
+  The start has an overall deadline of 1 hour, the first agent document
+  push 2 minutes and the server restore 10 minutes; a start past a
+  deadline fails, writes `stopped` with the error and tears down.
 - Stop (SCM stop or `SERVICE_CONTROL_PRESHUTDOWN` at Windows shutdown):
   stop jobs, end every fault (`faults.Manager.EndAll`; not at a Windows
   shutdown, where the next cloud start undoes what is left), close the log followers' `Done`, stop the APIs, record which servers ran, then per `stop_behaviour`
@@ -1417,8 +1431,9 @@ level = "info"
   "off" skips halting the servers, "shutdown" replaces the configured
   behaviour) save or
   shut down every running VM (Shutdown integration service, 60 s, then
-  hard off), then the storage VM the same way and, when it is off,
-  compact its data disk with `CompactDisk` (a failure is logged; skipped
+  hard off), then the storage VM the same way (before a shutdown hlabd
+  sends it the storage job `trim`, 5-minute deadline, a failure is logged)
+  and, when it is off, compact its data disk with `CompactDisk` (a failure is logged; skipped
   and logged with `save`, at a Windows shutdown and with the "off"
   override), stop the appliance, `hostnet.Down`, close store. At Windows
   shutdown `vmms` runs before hlabd in `PreshutdownOrder` and already

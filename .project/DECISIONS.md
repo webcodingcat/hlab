@@ -23,6 +23,14 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-25 Restore recreates the VM of a kept server
+
+- Type: decision
+- Phase: phase 16
+- What: at a cloud start `servers.Module.Restore` reconciles a stored server whose VM is missing (VM recreated from its kept disk, seed and adapters, never a new disk), then powers it per its stored status; a failed reconcile is logged and the next server continues.
+- Why: a KeepData uninstall removes the VMs but keeps the state and the disks, and INST-05 expects the servers back after a reinstall.
+- Cost of change: low
+
 ## 2026-11-25 Upgrade ends the tray and stops the service before InstallValidate
 
 - Type: decision
