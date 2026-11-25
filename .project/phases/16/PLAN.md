@@ -70,23 +70,23 @@ fails (CONTEXT.md, "Technical choices").
   - Adjusts: -
   - [x] Call every repository script the guides tell the reader to run with `powershell -ExecutionPolicy Bypass -File`, with one sentence why; document the elevated suite as `task e2e:elevated -- -v`; if 16-06 changed what the setup programs show, nothing else changes in the guides.
 
-- [ ] 16-08 hostnet: cleanup scripts that never exit 1 silently, and the interactive user (Q28)
+- [x] 16-08 hostnet: cleanup scripts that never exit 1 silently, and the interactive user (Q28)
   - Wave: 8 | Depends on: 16-07 | Review: alone
   - Requirements: INST-05, CERT-04 | Tests: `internal/hostnet/windows/hostnet_test.go: TestHostNet/INST-05`, `internal/hostnet/windows/trust_test.go: TestHostNet/CERT-04/interactive-user` (new, written first); the other tests of `internal/hostnet/...` and `internal/uninstall/...` (run only)
   - Reads: the 2026-11-25 "bug" entry on uninstall-cleanup exiting 1 silently and the "change" entry Q28 under "Findings from manual testing" below; TESTS.md rows of 16-08; ARCHITECTURE.md "Interactive user" bullet and the hostnet `TrustCA` paragraph; DECISIONS.md "2026-11-25 Q28 WSL trust follows the interactive user"; `internal/hostnet/windows/scripts.go`, `hostnet.go` (`runPowerShell`, `run`), `runas.go`, `wslconfig.go`, `trust_wsl.go`
   - Size: ~200 lines in 6 files
   - Adjusts: -
-  - [ ] Make every hostnet PowerShell script independent of the last statement's `$?` (e.g. `script()` appends `exit 0`, so only a terminating error under `$ErrorActionPreference = 'Stop'` exits non-zero; check the other `powershell.exe -Command` scripts in the product for the same pattern and fix them the same way), and let `runPowerShell` report trimmed stdout and stderr in its error.
-  - [ ] One function that finds the interactive user's session (console session with a user token, else the single `WTSActive` Remote Desktop session with a user), used by `userRunner` and the `.wslconfig` reading; texts say "interactive user" where they meant the console user; no exported identifier renamed.
+  - [x] Make every hostnet PowerShell script independent of the last statement's `$?` (e.g. `script()` appends `exit 0`, so only a terminating error under `$ErrorActionPreference = 'Stop'` exits non-zero; check the other `powershell.exe -Command` scripts in the product for the same pattern and fix them the same way), and let `runPowerShell` report trimmed stdout and stderr in its error.
+  - [x] One function that finds the interactive user's session (console session with a user token, else the single `WTSActive` Remote Desktop session with a user), used by `userRunner` and the `.wslconfig` reading; texts say "interactive user" where they meant the console user; no exported identifier renamed.
 
-- [ ] 16-09 Uninstall while the service is still starting; start deadline
+- [x] 16-09 Uninstall while the service is still starting; start deadline
   - Wave: 9 | Depends on: 16-08 | Review: alone
   - Requirements: INST-05, INST-06 | Tests: `internal/sysint/windows/install_test.go: TestStopService/INST-05`, `internal/cloud/recover_test.go: TestCloud/INST-06/start-deadline` (new, written first); the other tests of `internal/sysint/...`, `internal/cloud/...`, `internal/uninstall/...` (run only); `task e2e:elevated` again in the development test VM by the user
   - Reads: the 2026-11-25 "bug" entry on the uninstall during a pending service start under "Findings from manual testing" below; TESTS.md rows of 16-09; `internal/sysint/windows/install.go` (`StopService`, `withService`, `stopAndWait`, `RemoveService`), `internal/sysint/windows/service.go` (`Execute`, `pending`), `cmd/hlabd/main.go` (`service`, `uninstallCleanup`), `internal/cloud/cloud.go` (`Start`, `start`, the steps after "API listening": agent document push and what follows), `internal/uninstall/uninstall.go`; ARCHITECTURE.md sections on hlabd's service and the cloud start (by heading)
   - Size: ~220 lines in 5 files
   - Adjusts: -
-  - [ ] `stopAndWait` (used by `StopService` and service removal): a START_PENDING service is waited for with a deadline until it is Running and then stopped; a service still pending after the deadline has its process ended (by its PID from the service status), so `uninstall-cleanup` can remove the service and delete its log; keep the existing stop deadline for Running and STOP_PENDING. The fake service manager goes behind a small interface in the package, not into the product's public API.
-  - [ ] The cloud start gets deadlines for its steps after the API has started (agent document push, server reconcile and whatever else the code waits on there) and an overall start deadline, so a start that cannot finish fails with a logged error and a teardown; record in DECISIONS.md which step hung if a reproduction or the code shows it. If a fix would change when the service reports Running, stop and report it instead of building it (open decision).
+  - [x] `stopAndWait` (used by `StopService` and service removal): a START_PENDING service is waited for with a deadline until it is Running and then stopped; a service still pending after the deadline has its process ended (by its PID from the service status), so `uninstall-cleanup` can remove the service and delete its log; keep the existing stop deadline for Running and STOP_PENDING. The fake service manager goes behind a small interface in the package, not into the product's public API.
+  - [x] The cloud start gets deadlines for its steps after the API has started (agent document push, server reconcile and whatever else the code waits on there) and an overall start deadline, so a start that cannot finish fails with a logged error and a teardown; record in DECISIONS.md which step hung if a reproduction or the code shows it. If a fix would change when the service reports Running, stop and report it instead of building it (open decision).
 
 ## Close
 
@@ -98,6 +98,7 @@ Run at this close:
 - CHECKS.md written; the phase waits for the manual checks in the test VMs.
 - 2026-11-25, after /wcc:report: 16-04 (6e6adbd, da395ed, review fix a4af7ec) and 16-05 (30f89c3) built the test VM scripts and the guide around them; both scripts parse without errors and PSScriptAnalyzer reports no error, `task test -- ./test/docs/...` green. No product code changed, so `task e2e` did not run again. DOC-08 is asked again.
 - 2026-11-25, after the elevated suite failed in the development test VM: 16-06 (test afb27aa, fix 96bdfdb and 5ca5b79: `Theme="hyperlinkLicense" LicenseUrl=""`, ProgressPassive page dropped) and 16-07 (157598b: script calls with `-ExecutionPolicy Bypass`, suite with `-v`). `TestE2E/INST-01` passes, `task test -- ./tools/installer/...`, lint and build green, `TestDocs` green. Product code changed, so `task e2e` runs in full again before the tag; INST-01 to INST-06 are asked again.
+- 2026-11-25, after the second elevated suite run and Q28: 16-08 (tests 981e0e2, fix bc01e1c: hostnet scripts end with `exit 0`, `runPowerShell` reports stdout and stderr, interactive user) and 16-09 (tests 6b8d4ba, fix e16bbcd: `stopAndWait` waits for START_PENDING and ends the process after 3 min, start deadlines). Package tests, lint and build green; reviews without blockers. `task e2e` runs in full again before the tag; INST-01 to INST-06 are asked again.
 
 ## Findings from manual testing
 

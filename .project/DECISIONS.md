@@ -23,6 +23,22 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-25 Uninstall ends a service stuck in its start
+
+- Type: decision
+- Phase: phase 16
+- What: stopping the service for an uninstall or upgrade waits up to 3 minutes for a START_PENDING service, stops it once it runs, and otherwise ends its process by the PID from its status before the usual 200-second stop wait.
+- Why: Windows refuses a stop while a service starts, and the uninstall failed with 1603 and left HLab half removed.
+- Cost of change: low
+
+## 2026-11-25 Cloud start deadlines
+
+- Type: decision
+- Phase: phase 16
+- What: the cloud start has an overall deadline of 1 hour, the first agent document push 2 minutes and the server restore 10 minutes; which step hung in the test VM was not reproduced (candidates: the host DNS query in the push, a Hyper-V call in the restore).
+- Why: a start without deadlines kept the service in START_PENDING for good; 1 hour leaves room for a first start that downloads images.
+- Cost of change: low
+
 ## 2026-11-25 Q28 WSL trust follows the interactive user
 
 - Type: change
