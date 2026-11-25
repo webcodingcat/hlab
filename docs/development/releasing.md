@@ -17,7 +17,7 @@ five jobs run in parallel:
 | `test` | `task openapi`, then `task test` |
 | `lint` | `task lint` with golangci-lint v2.15.0 |
 | `frontend` | `task test:frontend` |
-| `installer` | `task installer VERSION=0.0.0` with WiX 7.0.1 and its util and bootstrapper extensions |
+| `installer` | `task installer VERSION=0.0.0` with WiX 7.0.1, its licence (the Open Source Maintenance Fee EULA) accepted, and its util and bootstrapper extensions |
 
 The `installer` job only proves that the installers build; it keeps no
 download. The end-to-end tests (`task e2e`) and the elevated installer

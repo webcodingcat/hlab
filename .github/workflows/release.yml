@@ -53,8 +53,10 @@ jobs:
           dotnet tool install --global wix --version 7.0.1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Join-Path $env:USERPROFILE '.dotnet\tools' >> $env:GITHUB_PATH
-      - name: Add the WiX extensions
+      - name: Accept the WiX licence and add the extensions
         run: |
+          wix eula accept wix7
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           wix extension add -g WixToolset.Util.wixext/7.0.1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           wix extension add -g WixToolset.BootstrapperApplications.wixext/7.0.1

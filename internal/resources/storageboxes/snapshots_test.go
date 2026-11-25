@@ -428,8 +428,9 @@ func testRollbackAPI(t *testing.T) {
 	runPlansAt(t, e, planAt)
 	auto := automaticName(planAt)
 	waitSnapshots(t, e, box.ID, "?is_automatic=true", []string{auto})
+	waitBoxIdle(t, e, box.ID)
 	next()
-	s2 := createSnapshot(t, e, box.ID, map[string]any{})
+	s2 :=createSnapshot(t, e, box.ID, map[string]any{})
 
 	release := make(chan struct{})
 	e.agent.setAnswer(agentapi.StorageJobRollback, func(agentapi.StorageJob) (agentapi.StorageJobResult, error) {
