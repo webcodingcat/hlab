@@ -135,8 +135,9 @@ All commands run from the repository root, without elevated rights.
 
 ## Repository and CI
 
-- `main` is pushed to `https://github.com/webcodingcat/hlab` at the close of
-  each phase, without waiting for the CI (approved by the user, see
-  DECISIONS.md "2026-11-25 Approval: Claude creates the repository, pushes
-  and releases"). At the start of a phase, `gh run list --branch main
+- Phases do not push. Phase 30 creates `https://github.com/webcodingcat/hlab`
+  private and pushes `main` once; from milestone 2 on, phases run on
+  `wcc/milestone-2` (and so on), and only what `/wcc:release` merges reaches
+  `main` (see DECISIONS.md "2026-11-25 Releases through /wcc:release,
+  phases do not push"). At the start of a phase, `gh run list --branch main
   --limit 1` shows the last CI run; a red run is fixed first.

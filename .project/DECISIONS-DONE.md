@@ -4,6 +4,22 @@ Entries from DECISIONS.md that a later entry revoked or changed, moved here
 unchanged; the later entry names them under `Replaces:`. Newest first. No
 skill reads this file; it keeps the history for looking things up.
 
+## 2026-11-25 Repository, CI and releases on GitHub
+
+- Type: change
+- Phase: change
+- What: a new last phase 30 of milestone 1 creates the public repository `webcodingcat/hlab` (Apache-2.0), a CI workflow on GitHub-hosted Windows runners for every push to `main` and pull request against `main` (build, Go tests, lint, frontend unit tests, installer build), and a release workflow that publishes the unsigned MSI and setup EXE with checksums for a tag `vX.Y.Z`, starting with v0.1.0; phases push `main` at their close without waiting for the CI, and the next phase checks the last run first.
+- Why: the user wants the project published with CI/CD and a first release once phase 16 is done, without phases waiting for CI.
+- Cost of change: low
+
+## 2026-11-25 Approval: Claude creates the repository, pushes and releases
+
+- Type: approval
+- Phase: change
+- What: the user approved that Claude creates `webcodingcat/hlab` with `gh`, pushes `main` at each phase close, pushes the milestone and release tags and creates the GitHub releases.
+- Why: the user chose "Claude does everything" for publishing.
+- Cost of change: low
+
 ## 2026-11-21 Manual checks and the installer suite move to a last phase in two test VMs
 
 - Type: change

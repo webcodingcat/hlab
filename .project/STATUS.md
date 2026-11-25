@@ -7,10 +7,10 @@ STATUS: IN_PROGRESS
 <!-- One or two sentences per line; details belong in the phase folder. -->
 
 - Milestone: 1
-- Phase: 30 Repository, CI and release v0.1.0, the last phase of milestone 1 (not started)
+- Phase: 30 Repository and CI, the last phase of milestone 1 (not started)
 - Base branch: main
 - Last done: phase 16 merged into main (2026-11-25): release checks in the two test VMs, all manual checks of milestone 1 fit; on the way the setup bundle, upgrade, uninstall, storage VM trim and stall, WSL trust for the interactive user (Q28) and several console fixes were built
-- Next: /wcc:phase in a new session runs phase 30 (repository, CI, release v0.1.0, full task e2e, tag wcc-milestone-1)
+- Next: /wcc:phase in a new session runs phase 30 (private repository, CI, release workflow, full task e2e, tag wcc-milestone-1); then /wcc:release publishes v0.1.0 from main
 
 ## Open manual checks
 

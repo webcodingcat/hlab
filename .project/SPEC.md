@@ -138,7 +138,7 @@ appear here, only names.
 - No account is needed to build, run or test HLab; API tokens are
   generated locally. The project has no environment variables with secrets
   and no `.env.example`.
-- Publishing only (phase 30 and every phase close after it): the user's
+- Publishing only (phase 30 and `/wcc:release`): the user's
   GitHub CLI login (`gh auth status`, account with rights to create and
   push to repositories of the organisation `webcodingcat`; git over SSH
   with the user's key). The credential stays with `gh` and git; the
@@ -270,10 +270,11 @@ appear here, only names.
 
 ## Repository, CI and releases
 
-- Repository `https://github.com/webcodingcat/hlab`, public, Apache-2.0
-  (`LICENSE` in the root). Claude creates it with `gh` (the user's login)
-  and pushes; the user approved this (DECISIONS.md "2026-11-25 Repository,
-  CI and releases on GitHub").
+- Repository `https://github.com/webcodingcat/hlab`, Apache-2.0 (`LICENSE`
+  in the root). Phase 30 creates it private with `gh` (the user's login)
+  and pushes `main` with its history unchanged; the user makes it public
+  (DECISIONS.md "2026-11-25 Releases through /wcc:release, phases do not
+  push").
 - CI: GitHub Actions on GitHub-hosted `windows-latest` runners, workflow
   `.github/workflows/ci.yml`, on every push to `main` and every pull request
   against `main`: build (`task build`), Go unit tests (`task test`), linter
@@ -281,14 +282,29 @@ appear here, only names.
   versions of `docs/development/setup.md` and caches for Go modules, the Go
   build and npm; independent jobs run in parallel. End-to-end tests and the
   elevated installer suite stay local (IDEA.md constraints).
-- Releases: workflow `.github/workflows/release.yml` on a pushed tag
-  `vX.Y.Z`: `task installer VERSION=X.Y.Z`, then a GitHub release named
-  `vX.Y.Z` with `hlab-X.Y.Z.msi`, `hlab-setup-X.Y.Z.exe` and
-  `SHA256SUMS.txt`. The setup programs are not signed; the user guide
-  explains the SmartScreen warning.
-- Phases: at its close a phase pushes `main` (and a milestone tag) and does
-  not wait for the CI; the next `/wcc:phase` reads the last CI run of
-  `main` with `gh run list` at its start and fixes a red run first.
+- Workflow `.github/workflows/release.yml` on a pushed tag `vX.Y.Z`:
+  `task installer VERSION=X.Y.Z`, then a GitHub release named `vX.Y.Z`
+  with `hlab-X.Y.Z.msi`, `hlab-setup-X.Y.Z.exe` and `SHA256SUMS.txt`. The
+  setup programs are not signed; the user guide explains the SmartScreen
+  warning.
+- Phases do not push. From milestone 2 on they run on the branch
+  `wcc/milestone-2` (and so on); only what `/wcc:release` merges reaches
+  `main`. At its start a `/wcc:phase` reads the last CI run of `main` with
+  `gh run list --branch main --limit 1` and fixes a red run first.
+
+## Release
+
+- Version tag: `vX.Y.Z`; next version: minor per milestone, the user
+  confirms. The first release is `v0.1.0`, made from `main` after
+  milestone 1.
+- Remote: `origin` = `https://github.com/webcodingcat/hlab`
+- Tools: `gh` logged in with the scopes `repo` and `workflow`
+- Before the tag: the CI on the pushed `main` commit is green
+  (`gh run list --commit <sha>`)
+- The tag starts: the workflow `.github/workflows/release.yml` (see
+  "Repository, CI and releases")
+- Done when: `gh release view vX.Y.Z` lists `hlab-X.Y.Z.msi`,
+  `hlab-setup-X.Y.Z.exe` and `SHA256SUMS.txt`
 
 ## Documentation
 

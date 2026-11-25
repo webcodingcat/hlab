@@ -291,11 +291,12 @@ lifetime (FAULT-01, FAULT-02), tested once where they are implemented.
 They serve the constraint "Open source on GitHub under Apache-2.0" in
 IDEA.md rather than a numbered goal. They are checked by looking at
 GitHub (repository, workflow runs, release assets) at the close of
-phase 30; a test inside the repository cannot see them.
+phase 30, the first release after `/wcc:release` has published it; a test
+inside the repository cannot see them.
 
-- REL-01 the repository `webcodingcat/hlab` on GitHub is public under Apache-2.0, with a `LICENSE` file and README links pointing to it [manual]
+- REL-01 the repository `webcodingcat/hlab` on GitHub holds the history of `main` under Apache-2.0, with a `LICENSE` file and README links pointing to it; Claude creates it private, and the user makes it public [manual]
 - REL-02 every push to `main` and every pull request against `main` runs the build, the Go unit tests, the linter, the frontend unit tests and the installer build on a GitHub-hosted Windows runner; end-to-end tests are not part of it [manual]
-- REL-03 a pushed tag `vX.Y.Z` builds `hlab-X.Y.Z.msi` and `hlab-setup-X.Y.Z.exe` with version X.Y.Z and publishes both with a SHA-256 checksum file as a GitHub release; the first release is v0.1.0 from the commit that closes phase 30, the same commit that gets the tag `wcc-milestone-1`; README describes installing from the releases and `docs/development/releasing.md` describes CI and making a release [manual]
+- REL-03 a pushed tag `vX.Y.Z` builds `hlab-X.Y.Z.msi` and `hlab-setup-X.Y.Z.exe` with version X.Y.Z and publishes both with a SHA-256 checksum file as a GitHub release; phase 30 provides the workflow and a green installer build in the CI, and the first release v0.1.0 is made by `/wcc:release` from `main` after milestone 1; README describes installing from the releases and `docs/development/releasing.md` describes CI and making a release [manual]
 
 ### Documentation (`DOC`)
 

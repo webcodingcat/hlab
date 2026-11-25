@@ -27,21 +27,23 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
-## 2026-11-25 Repository, CI and releases on GitHub
+## 2026-11-25 Releases through /wcc:release, phases do not push
 
 - Type: change
 - Phase: change
-- What: a new last phase 30 of milestone 1 creates the public repository `webcodingcat/hlab` (Apache-2.0), a CI workflow on GitHub-hosted Windows runners for every push to `main` and pull request against `main` (build, Go tests, lint, frontend unit tests, installer build), and a release workflow that publishes the unsigned MSI and setup EXE with checksums for a tag `vX.Y.Z`, starting with v0.1.0; phases push `main` at their close without waiting for the CI, and the next phase checks the last run first.
-- Why: the user wants the project published with CI/CD and a first release once phase 16 is done, without phases waiting for CI.
+- What: phase 30 creates `webcodingcat/hlab` (Apache-2.0) private, pushes `main` with its history unchanged and builds the CI workflow for every push to `main` and pull request against `main` (build, Go tests, lint, frontend unit tests, installer build) and the release workflow for a tag `vX.Y.Z`, but publishes no release; the user makes the repository public; phases do not push, from milestone 2 on they run on `wcc/milestone-<n>`, only what `/wcc:release` merges reaches `main`, and `/wcc:release` publishes each version (first v0.1.0) as "Release" in SPEC.md describes; a phase still reads the last CI run of `main` at its start.
+- Why: the user wants releases made by `/wcc:release` rather than inside a phase, and decides the publication of the repository themselves.
 - Cost of change: low
+- Replaces: 2026-11-25 Repository, CI and releases on GitHub
 
-## 2026-11-25 Approval: Claude creates the repository, pushes and releases
+## 2026-11-25 Approval: Claude creates the private repository and releases with /wcc:release
 
 - Type: approval
 - Phase: change
-- What: the user approved that Claude creates `webcodingcat/hlab` with `gh`, pushes `main` at each phase close, pushes the milestone and release tags and creates the GitHub releases.
-- Why: the user chose "Claude does everything" for publishing.
+- What: the user approved that Claude creates `webcodingcat/hlab` private with `gh` and pushes `main` in phase 30, and that `/wcc:release` pushes `main` and the version tag and has the release workflow publish the release; the user makes the repository public.
+- Why: the user keeps the publication of the repository and lets releases go through `/wcc:release`.
 - Cost of change: low
+- Replaces: 2026-11-25 Approval: Claude creates the repository, pushes and releases
 
 ## 2026-11-25 Phase 16 is the last phase before the release phase
 

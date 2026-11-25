@@ -77,19 +77,20 @@
 
 - [x] 16 Release checks in test VMs (DOC-08) → phases/16/
 
-- [ ] 30 Repository, CI and release v0.1.0.
+- [ ] 30 Repository and CI.
       Requirements: REL-01, REL-02, REL-03.
       Depends on: 16; it is the last phase of milestone 1.
       Success criteria:
-      1. `webcodingcat/hlab` is public on GitHub with `LICENSE`
-         (Apache-2.0) and the history of `main`.
+      1. `webcodingcat/hlab` exists on GitHub as a private repository with
+         `LICENSE` (Apache-2.0), README and documentation, and holds the
+         history of `main` unchanged; the user makes it public.
       2. A push to `main` runs the CI workflow on a Windows runner and it
-         is green.
-      3. The tag `v0.1.0`, on the commit that closes phase 30 and also
-         gets `wcc-milestone-1`, produces a GitHub release with
-         `hlab-0.1.0.msi`, `hlab-setup-0.1.0.exe` and `SHA256SUMS.txt`, and
-         README and `docs/development/releasing.md` describe installing
-         from releases and making a release.
+         is green, including the installer build.
+      3. `.github/workflows/release.yml` builds and publishes a release
+         for a tag `vX.Y.Z`; the phase pushes no version tag. The first
+         release v0.1.0 is made by `/wcc:release` from `main`. README and
+         `docs/development/releasing.md` describe installing from
+         releases and making a release.
 
 ## Later
 
