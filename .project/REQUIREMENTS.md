@@ -520,14 +520,14 @@ What the target vision in IDEA.md will need, not built yet.
 | UI-16 | 28 | x |
 | UI-17 | 28 | x |
 | UI-18 | 28 | x |
-| REL-01 | 30 | |
-| REL-02 | 30 | |
-| REL-03 | 30 | |
-| DOC-01 | all | |
-| DOC-02 | all | |
-| DOC-03 | all | |
-| DOC-04 | all | |
-| DOC-05 | all | |
-| DOC-06 | all | |
-| DOC-07 | all | |
+| REL-01 | 30 | x |
+| REL-02 | 30 | x |
+| REL-03 | 30 | x |
+| DOC-01 | all | x |
+| DOC-02 | all | x |
+| DOC-03 | all | x |
+| DOC-04 | all | x |
+| DOC-05 | all | x |
+| DOC-06 | all | x |
+| DOC-07 | all | x |
 | DOC-08 | 16 | x |
