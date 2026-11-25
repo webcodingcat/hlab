@@ -61,7 +61,7 @@ the development machine at this close (see PLAN.md "Close").
 - Setup: as in the guide section (server `upd1` running, stop behaviour **Save the VMs' state**).
 - Steps: as in the guide section, optionally repeated with **Shut the VMs down**.
 - Expected: with **Save the VMs' state** the server keeps its boot ID; with **Shut the VMs down** it gets a new one; Logs show no error about restoring servers.
-- Result: open
+- Result: fits (2026-11-25, release-check-user, Save the VMs' state: same boot ID after the Windows shutdown, cloud stopped until started, no restore error; the optional Shut down run was not done)
 
 ## COMPACT A deleted box gives its space on the host back after a cloud stop
 

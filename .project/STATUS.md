@@ -19,7 +19,6 @@ STATUS: MANUAL_CHECK
      phases/<id>/CHECKS.md. /wcc:report walks through them. -->
 
 - DOC-07 (01): README and guides are understandable for their audience, help texts name only existing views and buttons
-- LIFE-05 (09): a Windows shutdown or restart with the cloud running applies the stop behaviour
 - INST-05 (12): uninstalling asks whether to keep the data; with the default answer no file of hlab remains
 - UI-09 (14): the example environment can be created and deleted by hand in the console
 - COMPACT (19): a deleted box gives its space on the host back after a cloud stop (data.vhdx compaction)
