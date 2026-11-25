@@ -22,7 +22,6 @@ STATUS: MANUAL_CHECK
 - INST-05 (12): uninstalling asks whether to keep the data; with the default answer no file of hlab remains
  uninstalling asks whether to keep the data; with the default answer no file of hlab remains
 - COMPACT (19): a deleted box gives its space on the host back after a cloud stop (data.vhdx compaction)
-- INST-06 (16): an update from 0.1.0 to 0.1.1 in the user test VM keeps project, server and settings, and the server answers over SSH
 - All of them, and those of later phases, are done in phase 16: the suite in the development test VM, the others in the user test VM (SPEC.md "Test VMs for the release checks").
 
 ## Open decisions

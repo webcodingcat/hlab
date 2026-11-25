@@ -53,7 +53,7 @@ the development machine at this close (see PLAN.md "Close").
 - Setup: HLab 0.1.0 with a project and a running server.
 - Steps: as in the guide section: install 0.1.1 over it, start the cloud, reach the server with `ssh`.
 - Expected: project, server and settings remain, Settings > Apps and `hlab cloud status` show 0.1.1, and the server answers over SSH after the cloud start.
-- Result: open (asked again after the fixes of 2026-11-25; previous run: 2026-11-25, release-check-user: project, server, setting and version 0.1.1 kept, Apps lists HLab once, ssh answers; but setup showed "Files In Use: HLab" for the open tray)
+- Result: fits (2026-11-25, release-check-user, rebuilt 0.1.0 to 0.1.1 with the tray open: no Files In Use dialog, settings, project and server kept, version 0.1.1, ssh answers)
 
 ## LIFE-05 A Windows shutdown or restart with the cloud running applies the stop behaviour
 
