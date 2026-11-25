@@ -69,7 +69,7 @@ the development machine at this close (see PLAN.md "Close").
 - Setup: as in the guide section (stop behaviour **Shut the VMs down**, two boxes, a 2 GB random file).
 - Steps: as in the guide section.
 - Expected: Hyper-V Manager lists `hlab-storage` and its console shows `hlab-storage login:`; `data.vhdx` grows by about 2 GB after the copy and shrinks again after deleting box A and stopping the cloud.
-- Result: open (asked again after the fixes of 2026-11-25; previous run: 2026-11-25, release-check-user: hlab-storage named correctly; data.vhdx 2.24 GB after a 2 GB copy, 1.24 GB after deleting the box and stopping, only half reclaimed; also the create toast and the Explorer step, see plan)
+- Result: fits (2026-11-25, release-check-user with the rebuilt 0.1.1: data.vhdx 2.21 GB after a 2 GB copy over SMB, 0.27 GB after deleting the box and stopping the cloud; hlab-storage named correctly, checked earlier the same day)
 
 ## INST-05 Uninstalling asks whether to keep the data; with the default answer no file of hlab remains
 

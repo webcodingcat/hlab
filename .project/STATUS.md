@@ -21,7 +21,6 @@ STATUS: MANUAL_CHECK
 - DOC-07 (01): README and guides are understandable for their audience, help texts name only existing views and buttons
 - INST-05 (12): uninstalling asks whether to keep the data; with the default answer no file of hlab remains
  uninstalling asks whether to keep the data; with the default answer no file of hlab remains
-- COMPACT (19): a deleted box gives its space on the host back after a cloud stop (data.vhdx compaction)
 - All of them, and those of later phases, are done in phase 16: the suite in the development test VM, the others in the user test VM (SPEC.md "Test VMs for the release checks").
 
 ## Open decisions
