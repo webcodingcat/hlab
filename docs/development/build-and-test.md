@@ -51,6 +51,15 @@ your user cache folder (`%LocalAppData%\hlab\openapi\cloud.spec.json` and
 description of its path (`/hetzner/v1/...` against `hetzner.spec.json`)
 and fails with "run `task openapi`" when it is missing.
 
+When Hetzner has changed a published description since it was pinned,
+`task openapi` stops without caching it:
+
+```
+openapi: cloud.spec.json: Hetzner has changed the published description at https://docs.hetzner.cloud/cloud.spec.json; the pin in api/openapi.lock no longer matches (published SHA-256 <hash>, pinned SHA-256 <hash>); a deliberate re-pin is needed: update the lock file and run task openapi (see docs/development/releasing.md)
+```
+
+[Releasing](releasing.md#openapi-pins) describes the re-pin.
+
 Test names carry the requirement they prove (`TestResources/API-10`), so
 `-run` selects one requirement.
 
@@ -224,7 +233,8 @@ task: Failed to run task "installer": exit status 1
 The WebView2 bootstrapper is downloaded into
 `%LocalAppData%\hlab-build-cache` and downloaded again when it is older
 than seven days; a failed download uses the cached copy and says so. The
-installers are not signed.
+installers are not signed. Published releases are built by the `Release`
+workflow on GitHub; see [Releasing](releasing.md).
 
 Uninstalling a release deletes `%LocalAppData%\hlab` of the uninstalling
 user, which holds the OpenAPI cache of the tests; run `task openapi` again

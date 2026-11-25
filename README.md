@@ -3,6 +3,8 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/webcodingcat/hlab/actions/workflows/ci.yml"><img src="https://github.com/webcodingcat/hlab/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/Go-1.27-00ADD8" alt="Go 1.27">
   <img src="https://img.shields.io/badge/platform-Windows-0078D4" alt="Platform: Windows">
 </p>
@@ -65,12 +67,19 @@ storage box unreachable, to test how your setup copes.
 
 ## Installation
 
-HLab has no published release yet. Build the setup program from a working
-copy with `task installer VERSION=1.0.0` (the tools are listed in the
-[developer setup](docs/development/setup.md#tools)); it writes
-`bin\hlab-setup-1.0.0.exe`.
+Download `hlab-setup-X.Y.Z.exe` and `SHA256SUMS.txt` of a release from
+<https://github.com/webcodingcat/hlab/releases> into one folder, and check
+the download in PowerShell in that folder (with the version you
+downloaded):
 
-Run `hlab-setup-<version>.exe` and confirm the administrator prompt. The
+```powershell
+$line = Select-String -Path SHA256SUMS.txt -Pattern 'hlab-setup-X.Y.Z.exe'
+(Get-FileHash hlab-setup-X.Y.Z.exe).Hash -eq $line.Line.Split(' ')[0]
+```
+
+`True` means the file is intact; on `False`, download it again.
+
+Run `hlab-setup-X.Y.Z.exe` and confirm the administrator prompt. The
 setup program is not signed, so Windows SmartScreen may show "Windows
 protected your PC"; choose **More info**, then **Run anyway**.
 
@@ -94,6 +103,10 @@ To update, run the setup program of the newer version. Projects, servers
 and settings stay. Setup closes the tray program and stops a running
 cloud, which stays stopped until you start it again. Setup refuses to
 install an older version over a newer one; uninstall first.
+
+To build the setup program yourself from a working copy, see
+[Installers](docs/development/build-and-test.md#installers) in the
+developer guide.
 
 ## First steps
 
@@ -400,3 +413,9 @@ of it in `%ProgramData%\Package Cache`.
 - [Developer guide](docs/development/setup.md): setup, build and tests,
   components, adding a resource, and the
   [release checks](docs/development/release-checks.md) in two test VMs.
+- [Releasing](docs/development/releasing.md): the CI, the OpenAPI pins,
+  making a release and the secret scan.
+
+## Licence
+
+HLab is licensed under the Apache License 2.0; see [LICENSE](LICENSE).
