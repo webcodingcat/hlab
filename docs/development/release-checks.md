@@ -53,9 +53,13 @@ Get-FileHash C:\VMs\iso\Win11_x64.iso -Algorithm SHA256
 In the repository root, once per VM:
 
 ```powershell
-.\scripts\release-check-vm.ps1 -Name release-check-dev -Iso C:\VMs\iso\Win11_x64.iso -Lang de-DE
-.\scripts\release-check-vm.ps1 -Name release-check-user -Iso C:\VMs\iso\Win11_x64.iso -Lang de-DE
+powershell -ExecutionPolicy Bypass -File .\scripts\release-check-vm.ps1 -Name release-check-dev -Iso C:\VMs\iso\Win11_x64.iso -Lang de-DE
+powershell -ExecutionPolicy Bypass -File .\scripts\release-check-vm.ps1 -Name release-check-user -Iso C:\VMs\iso\Win11_x64.iso -Lang de-DE
 ```
+
+A fresh Windows does not run script files under its default execution
+policy; `-ExecutionPolicy Bypass` lifts that for this one call only and
+changes no setting. Every script in this guide is called this way.
 
 | Parameter | Meaning |
 |---|---|
@@ -351,7 +355,7 @@ In an administrator PowerShell inside the VM, in `C:\src\hlab`:
 
 ```powershell
 task build
-.\scripts\dev-setup.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-setup.ps1
 ```
 
 [Register the development service](setup.md#register-the-development-service)
@@ -382,13 +386,15 @@ The suite needs:
 Run it, keeping a copy of the output in `C:\Temp`:
 
 ```powershell
-cmd /c "task e2e:elevated 2>&1" | Tee-Object -FilePath C:\Temp\e2e-elevated.log
+cmd /c "task e2e:elevated -- -v 2>&1" | Tee-Object -FilePath C:\Temp\e2e-elevated.log
 ```
 
 The suite builds the setup programs 0.0.1 and 0.0.2 from the clone, then
 runs the rows `INST-01`, `INST-04`, `INST-05` and `INST-06` with their
 subtests one after another. Each row logs
-`start TestInstall/<row>` and `end TestInstall/<row>: ok` with its time.
+`start TestInstall/<row>` and `end TestInstall/<row>: ok` with its time;
+with `-v`, `go test` also prints `=== RUN` and `--- PASS` (or `--- FAIL`)
+for every row and subtest.
 A full run can take several hours; the suite's limit is seven hours.
 
 It passed when the last line starts with `ok` and names the package

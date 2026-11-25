@@ -58,8 +58,12 @@ machine, after the first build, in an administrator PowerShell in the
 repository:
 
 ```powershell
-.\scripts\dev-setup.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-setup.ps1
 ```
+
+A fresh Windows does not run script files under its default execution
+policy; `-ExecutionPolicy Bypass` lifts that for this one call only and
+changes no setting.
 
 The script runs `bin\hlabd.exe install --dev`, which
 
