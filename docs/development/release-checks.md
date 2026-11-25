@@ -613,9 +613,15 @@ data disk, so the drive gets the space back.
 
 - Steps:
   1. In Hyper-V Manager, open the console of the VM `hlab-storage`.
-  2. In Explorer's address bar type `\\<host name of box A>\backup`, sign
-     in with box A's user name and password, and copy
-     `C:\Temp\random.bin` into the share.
+  2. Press Win+R, enter `\\<host name of box A>\backup`, sign in with
+     box A's user name and password, and copy `C:\Temp\random.bin` into
+     the share. The same from PowerShell:
+
+     ```powershell
+     net use \\<host name of box A>\backup /user:<user name of box A> *
+     Copy-Item C:\Temp\random.bin \\<host name of box A>\backup\
+     ```
+
   3. **Stop cloud**, then read the size of the data disk in an
      administrator PowerShell:
 
@@ -631,8 +637,9 @@ data disk, so the drive gets the space back.
 - Expected: Hyper-V Manager lists `hlab-storage`, and its console shows
   `hlab-storage login:`. After step 3 the disk is about 2 GB larger than
   an empty one; after step 5 it is clearly smaller again, roughly as
-  before the copy. **Administration** > **Logs** shows "data disk of the
-  storage VM compacted" with its duration.
+  before the copy. **Administration** > **Logs** shows "free blocks of
+  the storage VM's data file system discarded" and then "data disk of
+  the storage VM compacted", each with its duration.
 
 ### Uninstall (INST-05)
 

@@ -13,10 +13,13 @@ runs.
 - An IPv6 primary IP is a /64 network that carries no traffic in HLab.
 - The search field filters by name, or with `=` by labels, for example
   `team=ops`.
-- **Unassign** in the row menu (`…`) takes an assigned IP off its server
-  after a confirmation; the server must be powered off. An IP held by a
+- The row menu (`…`) of an unassigned IP offers **Assign** (to a
+  powered-off server of the location); that of an assigned IP offers
+  **Unassign**, which takes it off its server after a confirmation; the
+  server must be powered off. An IP held by a
   load balancer is released by deleting the load balancer.
-- **Delete** in the row menu releases the primary IP after a confirmation.
+- **Delete** in the row menu releases the primary IP after you type its
+  name.
   An assigned IP must be unassigned first.
 - Clicking a row opens the primary IP's page. **Overview** shows its
   address with a copy button, the protocol, the location, the assignee,

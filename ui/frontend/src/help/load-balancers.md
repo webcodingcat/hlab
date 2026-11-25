@@ -9,7 +9,7 @@ Load balancers can only be managed while the cloud runs.
 - The search field filters by name, or with `=` by labels, for example
   `team=ops`.
 - **Delete** in the row menu (`…`) deletes the load balancer and its public
-  IPs after a confirmation.
+  IPs after you type its name.
 - Clicking a row opens the load balancer's page:
   - **Overview** shows its public IPs with a copy button and their reverse
     DNS, whether the public interface is enabled, the type, the algorithm,

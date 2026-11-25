@@ -22,12 +22,14 @@ runs.
   - **Subaccounts** lists the subaccounts. **Create subaccount** asks for
     name, description, home directory, password and access (SSH, Samba,
     WebDAV, read-only, reachable externally); the row menu offers
-    **Edit**, **Reset password** and **Delete**.
+    **Edit**, **Reset password** and **Delete** (type the subaccount's
+    username to confirm).
   - **Snapshots** shows the snapshot plan ("No plan" or the plan in UTC)
     with **Set plan** and **Disable plan**, and the snapshots.
     **Create snapshot** takes an optional description; the row menu
     offers **Edit**, **Roll back** (the confirmation names the newer
-    snapshots it deletes) and **Delete**.
+    snapshots it deletes) and **Delete** (type the snapshot's name to
+    confirm).
   - **Settings** changes the access settings, the delete protection and
     the type (only types offered in the box's location), and resets the
     password to one you enter.

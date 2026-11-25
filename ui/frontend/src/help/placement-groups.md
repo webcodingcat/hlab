@@ -11,7 +11,7 @@ managed while the cloud runs.
   are created or with **Add to placement group** in a server's actions menu.
 - The search field filters by name, or with `=` by labels, for example
   `team=ops`.
-- **Delete** in the row menu (`…`) deletes the group after a confirmation,
+- **Delete** in the row menu (`…`) deletes the group after you type its name,
   also while it still has servers; they then belong to no group.
 - Clicking a row opens the group's page. **Overview** shows the type and
   its servers, each linking to the server's page; **Labels** edits its

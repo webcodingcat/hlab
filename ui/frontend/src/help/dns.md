@@ -25,7 +25,8 @@ the cloud runs.
   default), the values one per line and labels. The row menu (`…`) of a
   record set offers **Change TTL**, **Add records**, **Remove records**,
   **Change labels**, **Change protection** (a protected record set refuses
-  every change of its records and TTL) and **Delete**.
+  every change of its records and TTL) and **Delete** (type the record
+  set's name and type, such as `www A`, to confirm).
 - The SOA record set is managed by HLab, which raises its serial with every
   change; only its TTL can be changed.
 - **Zone file** shows the export of a primary zone in BIND format with

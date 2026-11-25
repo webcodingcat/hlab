@@ -12,8 +12,9 @@ while the cloud runs. The list and an open server refresh every 5 seconds.
 
 ## Create a server
 
-Choose **Location**, **Image** and **Type**; the type list shows only the
-types available in that location. Below them: public IPv4 and IPv6 (a new
+Choose **Location** (preset to the one with the lowest ID), **Image** and
+**Type**; the type list shows every x86 type of that location, a type
+deprecated there marked "(deprecated)". Below them: public IPv4 and IPv6 (a new
 or a free primary IP), private networks, **SSH keys**, free **Volumes** of
 the location, **Firewalls**, **Enable backups**, **Placement group**,
 labels, **Cloud config** and the **Name**, which HLab proposes as
@@ -53,8 +54,8 @@ The tabs:
   **Create backup**, **Disable backups**, which deletes the server's
   backups.
 - **Snapshots**: **Create snapshot**. In both lists, **Restore** writes the
-  image back to the server's disk and **Delete** deletes it, each after a
-  confirmation.
+  image back to the server's disk after a confirmation, and **Delete**
+  deletes it after you type its name.
 - **Rescue**: **Enable rescue** with the SSH keys for the rescue system;
   the next power on, reboot or reset boots it. **Disable rescue** ends it.
 - **ISO**: **Attach ISO** and **Detach ISO**. The first attach of an ISO

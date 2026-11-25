@@ -91,9 +91,9 @@ the list is also in `%TEMP%\hlab-setup-prerequisites.log`. Otherwise it
 nor the tray program starts with Windows.
 
 To update, run the setup program of the newer version. Projects, servers
-and settings stay; a running cloud is stopped and stays stopped until you
-start it again. Setup refuses to install an older version over a newer
-one; uninstall first.
+and settings stay. Setup closes the tray program and stops a running
+cloud, which stays stopped until you start it again. Setup refuses to
+install an older version over a newer one; uninstall first.
 
 ## First steps
 
