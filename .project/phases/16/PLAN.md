@@ -25,14 +25,14 @@ a feedback phase if a check fails (CONTEXT.md, "Technical choices").
   - [x] Add part 2 to `docs/development/release-checks.md`: the user checks in the user test VM as reusable steps (start, setup, steps, expected), in the order they run. (1) INST-03: setup EXE 0.1.0, "Launch" without an admin prompt, one start menu and one desktop shortcut, not in startup apps. (2) Name check after the first cloud start: Hyper-V Manager shows `hlab-appliance` and its console `hlab-appliance login:`. (3) UI-09 by hand in the tray console, with the help texts of the views it opens checked for DOC-07. (4) Update check (INST-06): a project with a server, the 0.1.1 setup over it, project, server and settings kept, tray and Apps show 0.1.1, after a cloud start the server answers `ssh` with the built-in client. (5) LIFE-05: shut down the test VM with the cloud and a server running, then check the stop behaviour and the uptime with `ssh`. (6) COMPACT: a storage box filled over SMB from Explorer, the `hlab-storage` name check, deleting the box, a cloud stop, and `data.vhdx` shrinking. (7) INST-05: uninstall from Settings > Apps with the default answer, and no HLab file or shortcut left. Add the DOC-07 reading of README and guides on the development machine. Each check gets a heading of its own, so CHECKS.md can link to it.
   - [x] Link the guide from `docs/development/build-and-test.md` ("Elevated installer suite": in practice it runs in the development test VM), `docs/development/setup.md` and README.md's list of developer documents. Check that DOC-01 to DOC-06 still hold for what this phase changed (`task test -- ./test/docs/...`).
 
-- [ ] 16-03 Documentation: release checks guide after manual testing
+- [x] 16-03 Documentation: release checks guide after manual testing
   - Wave: 3 | Depends on: 16-02 | Review: alone
   - Requirements: DOC-08 | Tests: `test/docs/docs_test.go: TestDocs/DOC-04`, `TestDocs/DOC-06` (existing, run only)
   - Reads: the three entries under "Findings from manual testing" below; DECISIONS.md "2026-11-25 Windows in the test VMs installed fully by the answer file"; `docs/development/release-checks.md` "Create a test VM" up to "Check the subnet before the first cloud start"; CHECKS.md DOC-08
   - Size: ~150 lines in 1 file
   - Adjusts: -
-  - [ ] Select the integration service "Guest Service Interface" by its ID in "Create the VM", and make the answer file language-independent apart from one language variable (finding 1).
-  - [ ] Let the answer file run the whole Windows setup and enable Hyper-V; remove "Domain join instead" and "Setup without network"; give the shared steps a heading of their own; shrink "Enable Hyper-V in the VM" to the check (findings 2 and 3). Keep the anchors other documents link to, or update those links.
+  - [x] Select the integration service "Guest Service Interface" by its ID in "Create the VM", and make the answer file language-independent apart from one language variable (finding 1).
+  - [x] Let the answer file run the whole Windows setup and enable Hyper-V; remove "Domain join instead" and "Setup without network"; give the shared steps a heading of their own; shrink "Enable Hyper-V in the VM" to the check (findings 2 and 3). Keep the anchors other documents link to, or update those links.
 
 ## Close
 

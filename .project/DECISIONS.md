@@ -23,6 +23,14 @@ An entry that revokes or changes an earlier one states in full what holds
 now, names the earlier entry under `Replaces:`, and the earlier entry moves
 unchanged to DECISIONS-DONE.md, so this file holds only what is valid.
 
+## 2026-11-25 Test VM account created in the specialize pass
+
+- Type: assumption
+- Phase: phase 16
+- What: the answer file creates the local account with a script in the specialize pass that adds it to Administrators by SID S-1-5-32-544 and sets `UnattendCreatedUser`, so OOBE asks for no account; the first real install in a test VM confirms it (fallback: `<Group>Administrators</Group>` in LocalAccounts).
+- Why: `<Group>` needs the group's localized name, which depends on the ISO language.
+- Cost of change: low
+
 ## 2026-11-25 Windows in the test VMs installed fully by the answer file
 
 - Type: decision

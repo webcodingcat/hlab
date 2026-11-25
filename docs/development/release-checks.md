@@ -225,7 +225,7 @@ $p = [Security.SecurityElement]::Escape($Password)
         <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
         <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
         <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
-        <ProtectYourPC>3</ProtectYourPC>
+        <ProtectYourPC>1</ProtectYourPC>
       </OOBE>
       <AutoLogon>
         <Username>$u</Username>
