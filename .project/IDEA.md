@@ -170,11 +170,11 @@ is built for now.
 
 ## Documentation
 
-- End users (developers testing Hetzner setups): README with installation,
+- End users: developers testing Hetzner setups; README with installation,
   first steps, commands, tray and uninstallation; a list of known deviations
   from Hetzner; a reference of the configuration files; help inside the
   program.
-- Developers (outside contributors): developer guide under `docs/development/` with
+- Developers: outside contributors; developer guide under `docs/development/` with
   setup, build/test, E2E against Hyper-V, components, and how to add a
   resource.
 

@@ -5412,3 +5412,11 @@ in ARCHITECTURE.md or the plan.
 - What: project files brought from wcc 0.33.0 to 0.34.0: version line only; the "Release" section that SPEC.md now needs follows with `/wcc:change`.
 - Why: the skills of the installed version search for these keys and rules
 - Cost of change: low
+
+## 2026-11-26 Upgrade to wcc 0.36.0
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.35.1 to 0.36.0: version line, the keys "End users" and "Developers" in IDEA.md "Documentation" in the template's form; the section "Repository and publication" that IDEA.md now needs follows with `/wcc:change`.
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
